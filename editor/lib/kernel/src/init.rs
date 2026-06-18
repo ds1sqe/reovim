@@ -28,6 +28,7 @@
 
 use {
     reovim_arch::panic::{PanicRecord, SetError},
+    reovim_kabi_platform::BootInfo,
     reovim_lib_ds::{RwLock, Shared},
 };
 
@@ -57,9 +58,13 @@ use crate::{
 ///   service.
 /// - `log_ring_bytes`: the log-ring capacity override; defaults to 1 MiB per
 ///   spec (LOG6). The config-driven form lands with the config service.
+/// - `boot_info`: hardware facts (memory map + CPU) discovered by the platform
+///   provider and pushed in at entry; defaults to empty on hosted builds with no
+///   firmware to query. The boot-tail diagnostics read it to print the banner.
 ///
-/// Fields are intentionally minimal per the rule-of-three: only what stage 0
-/// needs. Config fields for later stages arrive with those features.
+/// Fields are intentionally minimal per the rule-of-three: only what stage 0 and
+/// the boot-tail diagnostics need. Config fields for later stages arrive with
+/// those features.
 ///
 /// # Example
 ///
@@ -79,6 +84,11 @@ pub struct LauncherArgs {
     /// Log-ring capacity in bytes (LOG6 `log-ring-bytes`). Default: 1 MiB.
     /// The config-driven form lands with the config service.
     pub log_ring_bytes: usize,
+
+    /// Hardware facts discovered by the platform provider and pushed in at entry
+    /// (memory map + CPU). Default: empty (hosted builds with no firmware). The
+    /// boot-tail diagnostics read this to emit the hardware banner.
+    pub boot_info: BootInfo,
 }
 
 impl Default for LauncherArgs {
@@ -97,6 +107,7 @@ impl Default for LauncherArgs {
         Self {
             disposition: reovim_arch::panic::Disposition::Recover,
             log_ring_bytes: 1024 * 1024, // 1 MiB
+            boot_info: BootInfo::default(),
         }
     }
 }
@@ -461,6 +472,15 @@ impl Init {
         //
         // Every stage emits through `bus`; the built-in slot captures them all.
         run_boot_stages(&bus, &boot_anchor)?;
+
+        // ── Boot tail: hardware banner + live health probes ─────────────────
+        //
+        // dmesg-style diagnostics riding the live console (LOG1): the discovered
+        // hardware facts plus real checks of the subsystems that exist
+        // (clock/heap/ring/memory) — not per-stage theater on the structural-stub
+        // stages. Emitted through `bus` (and its built-in ring) before the bus is
+        // moved into `Kernel`; `args.boot_info` is the floor's discovered facts.
+        crate::diagnostics::run_at_boot_tail(&bus, &boot_anchor, &ring_shared, &args.boot_info);
 
         // ── Stage 7 handoff: construct Kernel ────────────────────────────────
         //

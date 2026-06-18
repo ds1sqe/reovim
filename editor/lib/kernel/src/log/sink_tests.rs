@@ -187,9 +187,11 @@ arch_test!(integration_smoke_boot_with_sink, {
     let init = Init::new(LauncherArgs::default());
     let kernel = init.boot().expect("boot must succeed");
 
-    // The ring now has 14 entries (boot stages 1..7, start+ok each).
+    // The ring now has 34 entries: boot stages 1..7 (start+ok each = 14) plus
+    // the 20 boot-tail health-probe lines (10 ping-pong probes, each a
+    // `probing...` line then a verdict).
     let ring_len_before_sink = kernel.log_ring.len();
-    assert_eq!(ring_len_before_sink, 14);
+    assert_eq!(ring_len_before_sink, 34);
 
     // Attach the file sink.
     let sink = FileSink::new(smoke_path);
@@ -207,8 +209,8 @@ arch_test!(integration_smoke_boot_with_sink, {
         },
     });
 
-    // The ring should now have 15 entries (14 boot + 1 post-sink).
-    assert_eq!(kernel.log_ring.len(), 15);
+    // The ring should now have 35 entries (34 boot + 1 post-sink).
+    assert_eq!(kernel.log_ring.len(), 35);
 
     // Read the log file and verify it is non-empty and contains LOG2 lines.
     let fd = openat(AT_FDCWD, smoke_path, O_RDONLY | O_CLOEXEC, 0)
@@ -220,7 +222,7 @@ arch_test!(integration_smoke_boot_with_sink, {
     assert!(n > 0, "log file must contain data after sink open + replay + emit");
 
     // AC byte-match (LOG1 end-to-end): the file is exactly the concatenation
-    // of the ring's rendered entries, in order — replayed head (14 boot
+    // of the ring's rendered entries, in order — replayed head (34 boot
     // lines) followed by the live post-sink line. One renderer, one
     // mechanism: ring bytes and sink bytes are the same bytes.
     let mut expected = reovim_lib_ds::Bytes::new();
@@ -237,8 +239,8 @@ arch_test!(integration_smoke_boot_with_sink, {
 
     let line_count = buf[..n].iter().filter(|&&b| b == b'\n').count();
     assert_eq!(
-        line_count, 15,
-        "log file must contain exactly 15 lines (14 boot replay + 1 event)"
+        line_count, 35,
+        "log file must contain exactly 35 lines (34 boot replay + 1 event)"
     );
 
     // Drop the sink to close the fd cleanly.

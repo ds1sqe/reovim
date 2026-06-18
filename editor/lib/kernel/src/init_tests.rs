@@ -35,6 +35,61 @@ arch_test!(init_args_accessor_returns_args, {
     assert_eq!(init.args().log_ring_bytes, 512 * 1024);
 });
 
+arch_test!(launcher_args_default_boot_info_is_empty, {
+    let args = LauncherArgs::default();
+    assert!(
+        args.boot_info.memory.is_empty(),
+        "default boot_info carries an empty memory map (no firmware to query)"
+    );
+    assert_eq!(args.boot_info.cpu_count, 0, "default boot_info has zeroed CPU fields");
+});
+
+arch_test!(launcher_args_boot_info_round_trips_multi_range, {
+    use reovim_kabi_platform::{BootInfo, MemoryKind, MemoryRange};
+
+    // `'static` backing for the slice — the arch payload's arena plays this role
+    // on the floor; a `static` array stands in for it under the test runner.
+    static RANGES: [MemoryRange; 3] = [
+        MemoryRange {
+            base: 0x0,
+            len: 0x4000_0000,
+            kind: MemoryKind::Usable,
+        },
+        MemoryRange {
+            base: 0x4000_0000,
+            len: 0x1000_0000,
+            kind: MemoryKind::Reserved,
+        },
+        MemoryRange {
+            base: 0x5000_0000,
+            len: 0x0010_0000,
+            kind: MemoryKind::Acpi,
+        },
+    ];
+
+    let args = LauncherArgs {
+        boot_info: BootInfo {
+            memory: &RANGES,
+            cpu_freq_hz: 54_000_000,
+            cpu_id: 0x410f_d083,
+            cpu_count: 1,
+        },
+        ..LauncherArgs::default()
+    };
+    let init = Init::new(args);
+    let info = init.args().boot_info;
+
+    // The whole multi-range map survives push-at-entry, byte for byte.
+    assert_eq!(info.memory.len(), 3, "all three ranges survive the round-trip");
+    assert_eq!(info.memory[0].kind, MemoryKind::Usable);
+    assert_eq!(info.memory[1].base, 0x4000_0000);
+    assert_eq!(info.memory[1].kind, MemoryKind::Reserved);
+    assert_eq!(info.memory[2].kind, MemoryKind::Acpi);
+    assert_eq!(info.cpu_freq_hz, 54_000_000);
+    assert_eq!(info.cpu_id, 0x410f_d083);
+    assert_eq!(info.cpu_count, 1);
+});
+
 arch_test!(init_boot_returns_shared_kernel, {
     let init = Init::new(LauncherArgs::default());
     let kernel = init.boot().expect("boot must succeed");

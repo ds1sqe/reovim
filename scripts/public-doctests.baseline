@@ -240,6 +240,8 @@ arch/src/sys/none_aarch64/framebuffer.rs	pub const fn base(&self) -> usize
 arch/src/sys/none_aarch64/framebuffer.rs	pub fn put_pixel(&self, x: u32, y: u32, color: u32)
 arch/src/sys/none_aarch64/framebuffer.rs	pub fn clear(&self, color: u32)
 arch/src/sys/none_aarch64/framebuffer.rs	pub fn init() -> Option<Framebuffer>
+arch/src/sys/none_aarch64/framebuffer.rs	pub fn arm_memory() -> Option<(u64, u64)>
+arch/src/sys/none_aarch64/boot_info.rs	pub fn collect_boot_info() -> BootInfo
 arch/src/sys/none_aarch64/console.rs	pub struct Console
 arch/src/sys/none_aarch64/console.rs	pub fn new(fb: Framebuffer, fg: u32, bg: u32, scale: u32) -> Self
 arch/src/sys/none_aarch64/console.rs	pub fn print(&mut self, s: &str)

@@ -87,6 +87,97 @@ use reovim_uapi_posix::{Errno, Fd, Mode, OpenFlags};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AllocError;
 
+// ── Boot information (push-at-entry static data) ───────────────────────────────
+
+/// The kind of a physical memory range in a [`BootInfo`] memory map.
+///
+/// Mirrors the E820 memory-type vocabulary a PC bootloader reports, narrowed to
+/// the classes the floor distinguishes. ARM's mailbox RAM query yields a single
+/// [`Usable`](MemoryKind::Usable) range; an x86 bootloader's E820 map carries
+/// several ranges of mixed kinds. `#[repr(u8)]` with explicit discriminants
+/// freezes the tag values so a range built from firmware data keeps its meaning.
+///
+/// ```rust
+/// use reovim_kabi_platform::MemoryKind;
+///
+/// assert_eq!(MemoryKind::Usable as u8, 1);
+/// ```
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MemoryKind {
+    /// RAM free for the allocator to use.
+    Usable = 1,
+    /// Firmware- or MMIO-reserved; not available as general RAM.
+    Reserved = 2,
+    /// ACPI tables (reclaimable after parsing; treated as reserved by the floor).
+    Acpi = 3,
+    /// Bad or otherwise unusable RAM.
+    Unusable = 4,
+}
+
+/// One physical address range in a [`BootInfo`] memory map.
+///
+/// `base` and `len` are byte address and byte size (`u64` so a memory map above
+/// 4 GiB is representable on either arch). `#[repr(C)]` freezes the field layout
+/// so the range matches the firmware-data shape it is built from.
+///
+/// ```rust
+/// use reovim_kabi_platform::{MemoryKind, MemoryRange};
+///
+/// let r = MemoryRange { base: 0, len: 0x4000_0000, kind: MemoryKind::Usable };
+/// assert_eq!(r.len, 1 << 30);
+/// ```
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MemoryRange {
+    /// Physical base address of the range, in bytes.
+    pub base: u64,
+    /// Length of the range, in bytes.
+    pub len: u64,
+    /// What the range may be used for.
+    pub kind: MemoryKind,
+}
+
+/// Hardware facts discovered at runtime and pushed into the kernel at entry.
+///
+/// The kernel is platform-neutral — it knows nothing about the board, the core
+/// count, or how much RAM is installed, and none of that is knowable at compile
+/// time (one image runs on machines with different hardware). A platform
+/// provider discovers these facts at boot (firmware mailbox / CPUID / E820) and
+/// hands a `BootInfo` to `Init::new` through the launcher args. This is one-shot
+/// *static data*, not a runtime-services callback, so it is delivered
+/// push-at-entry rather than through the [`PlatformVtable`].
+///
+/// An empty `BootInfo` (the [`Default`]) is valid: a hosted build that has no
+/// firmware to query carries an empty memory map and zeroed CPU fields, and the
+/// kernel reports only what is present.
+///
+/// ```rust
+/// use reovim_kabi_platform::BootInfo;
+///
+/// // The hosted / no-firmware default: empty map, zeroed CPU.
+/// let info = BootInfo::default();
+/// assert!(info.memory.is_empty());
+/// assert_eq!(info.cpu_count, 0);
+/// ```
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct BootInfo {
+    /// Physical memory map. E820-style on x86 (several ranges); ARM supplies a
+    /// single [`Usable`](MemoryKind::Usable) range. Backed by storage that lives
+    /// for the program's lifetime (the provider's boot arena), hence `'static`.
+    pub memory: &'static [MemoryRange],
+    /// CPU clock frequency in Hz (`CNTFRQ_EL0` on ARM; TSC-via-CPUID on x86), or
+    /// `0` when unknown.
+    pub cpu_freq_hz: u64,
+    /// CPU identification: `MIDR_EL1` on ARM narrowed to its low 32 bits (the
+    /// implementer/variant/part fields; bits 63:32 are architecturally RES0, so
+    /// the narrowing loses nothing), CPUID leaf 1 `eax` on x86. `0` when unknown.
+    pub cpu_id: u32,
+    /// Logical CPU count (`1` on the current single-core floor; `0` when unknown).
+    pub cpu_count: u32,
+}
+
 /// Maps a fd-op slot's `i64` return (`>= 0` success, `< 0` is `-errno`) to a
 /// typed `Result`. The success value is narrowed to the caller's `usize`
 /// (a byte count or a non-negative fd both fit).

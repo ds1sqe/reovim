@@ -41,6 +41,11 @@
 
 pub mod boot;
 pub mod clock;
+// Boot-tail hardware banner + live health probes. The module is `pub` so its
+// `pub(crate)` items are not flagged redundant (matches `log::render`), but no
+// item inside is `pub` — nothing leaks past the crate. `Init::boot` calls
+// `run_at_boot_tail` at the handoff tail.
+pub mod diagnostics;
 pub mod event_bus;
 pub mod init;
 pub mod kernel;
@@ -82,6 +87,10 @@ mod event_bus_tests;
 #[cfg(feature = "selftest")]
 #[path = "boot_tests.rs"]
 mod boot_tests;
+
+#[cfg(feature = "selftest")]
+#[path = "diagnostics_tests.rs"]
+mod diagnostics_tests;
 
 #[cfg(feature = "selftest")]
 #[path = "router_tests.rs"]

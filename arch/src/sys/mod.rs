@@ -39,6 +39,12 @@ pub use none_aarch64::framebuffer;
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 pub use none_aarch64::console;
 
+// Runtime hardware discovery: assembles RAM/CPU facts into a `BootInfo` the
+// bare-metal payload pushes into `Init::new`. Freestanding-only hardware
+// surface (the Linux backends have firmware-free defaults), same target gate.
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+pub use none_aarch64::collect_boot_info;
+
 #[cfg(not(any(
     all(target_os = "linux", target_arch = "x86_64"),
     all(target_os = "linux", target_arch = "aarch64"),

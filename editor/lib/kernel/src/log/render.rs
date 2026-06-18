@@ -364,9 +364,28 @@ pub(crate) const fn boot_stage_name(n: u8) -> &'static str {
 /// A [`core::fmt::Write`] sink over a fixed `&mut [u8]`, for building a short
 /// message without allocation. A write that would overflow the buffer fails,
 /// so the message is rejected whole rather than clipped mid-write.
-struct FixedWriter<'a> {
+///
+/// Shared with the `diagnostics` module (the boot banner + health probes), which
+/// builds its metric lines the same no-alloc way.
+pub(crate) struct FixedWriter<'a> {
     buf: &'a mut [u8],
     len: usize,
+}
+
+impl<'a> FixedWriter<'a> {
+    /// Wraps `buf` with the write cursor at the start.
+    pub(crate) const fn new(buf: &'a mut [u8]) -> Self {
+        Self { buf, len: 0 }
+    }
+
+    /// Consumes the writer and returns the written prefix as a `&str`.
+    ///
+    /// Every successful [`write_str`](core::fmt::Write::write_str) placed a whole
+    /// `&str` into the buffer, so the prefix is always valid UTF-8; an impossible
+    /// decode failure yields an empty string rather than panicking.
+    pub(crate) fn finish(self) -> &'a str {
+        core::str::from_utf8(&self.buf[..self.len]).unwrap_or("")
+    }
 }
 
 impl core::fmt::Write for FixedWriter<'_> {
@@ -413,6 +432,8 @@ fn kernel_subsystem_from_event(event: &str) -> &'static str {
         "boot"
     } else if event.starts_with("log.") {
         "log"
+    } else if event.starts_with("health.") {
+        "health"
     } else {
         "kernel"
     }
@@ -423,17 +444,22 @@ fn kernel_subsystem_from_event(event: &str) -> &'static str {
 /// This is the ONE rendering both the ring (`LogRing::push_event`) and the file
 /// sink use, so the two can never diverge (LOG1: one renderer, one mechanism).
 /// Boot-stage events get the human-readable message from [`boot_stage_message`];
-/// every other event renders the bare OBS1 event id.
+/// `health.*` events (the boot banner + probes) carry their already-formatted
+/// metric after the family prefix, so the prefix is stripped for the message
+/// while still selecting the `health` subsystem; every other event renders the
+/// bare OBS1 event id.
 ///
 /// # Errors
 ///
 /// Returns [`RenderError::Alloc`] if the backing [`Bytes`] cannot grow.
 pub(crate) fn render_event(event: &DS12Event) -> Result<Bytes, RenderError> {
     // The buffer holds the formatted boot-stage message for the duration of the
-    // `render_line` call below; non-boot events use the bare event id.
+    // `render_line` call below; non-boot events use the bare event id, minus the
+    // `health.` family prefix for health events (their metric is the remainder).
     let mut stage_buf = [0u8; 48];
-    let message =
-        boot_stage_message(&mut stage_buf, event.event, event.fields.stage).unwrap_or(event.event);
+    let message = boot_stage_message(&mut stage_buf, event.event, event.fields.stage)
+        .or_else(|| event.event.strip_prefix("health."))
+        .unwrap_or(event.event);
     let input = RenderInput {
         ts_nanos: event.ts_nanos,
         emitter_pkg: "kernel",

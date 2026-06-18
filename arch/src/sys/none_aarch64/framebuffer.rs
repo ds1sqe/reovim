@@ -62,6 +62,11 @@ const TAG_ALLOCATE_BUFFER: u32 = 0x0004_0001;
 const TAG_GET_PITCH: u32 = 0x0004_0008;
 const TAG_END: u32 = 0x0000_0000;
 
+/// Property tag: get the ARM-side memory region. Response is two words — base
+/// address and size in bytes. The ARM-memory tag reports an ARM-physical base
+/// (not a bus alias), so no bus→phys masking applies to its result.
+const TAG_GET_ARM_MEMORY: u32 = 0x0001_0005;
+
 /// The property buffer, 16-byte aligned (the mailbox address carries the
 /// channel in its low 4 bits, so the buffer must be 16-aligned for those bits
 /// to be free). The GPU reads it by physical address, so it must sit at a
@@ -260,6 +265,58 @@ pub fn init() -> Option<Framebuffer> {
         height: FB_HEIGHT,
         pitch,
     })
+}
+
+/// Queries the `VideoCore` for the ARM-visible RAM region (base + size in
+/// bytes) over the mailbox property interface.
+///
+/// Returns `None` if the firmware reports the batch failed or a zero size — the
+/// caller then reports memory as unknown rather than reporting a wrong range.
+/// Rides the same `mailbox_call` transport as [`init`]; the request is a single
+/// get-ARM-memory tag whose two-word value slot holds the base and size on the
+/// way back.
+#[must_use]
+pub fn arm_memory() -> Option<(u64, u64)> {
+    // One tag, two-word value slot:
+    //   [0] total size bytes  [1] request code 0
+    //   [2] tag id  [3] value bytes (8)  [4] req/resp code  [5] base  [6] size
+    //   [7] end tag
+    #[repr(C, align(16))]
+    struct MemBuffer {
+        words: [u32; 8],
+    }
+
+    let mut buf = MemBuffer { words: [0; 8] };
+    let w = &mut buf.words;
+    w[0] = 32; // 8 words * 4 bytes
+    w[1] = 0;
+    w[2] = TAG_GET_ARM_MEMORY;
+    w[3] = 8; // value buffer bytes: base + size
+    w[4] = 0;
+    w[5] = 0; // base (out)
+    w[6] = 0; // size (out)
+    w[7] = TAG_END;
+
+    // Same 16-aligned, sub-4-GiB stack-buffer reasoning as `init`: the address
+    // truncates to u32 without losing bits on this target's image layout.
+    #[allow(clippy::cast_possible_truncation)]
+    let addr = (&raw const buf.words).addr() as u32;
+    if addr & 0xF != 0 {
+        return None;
+    }
+    let message = (addr & !0xF) | MBOX_CH_PROP;
+
+    mailbox_call(message);
+
+    if buf.words[1] != MBOX_RESP_SUCCESS {
+        return None;
+    }
+    let base = buf.words[5];
+    let size = buf.words[6];
+    if size == 0 {
+        return None;
+    }
+    Some((u64::from(base), u64::from(size)))
 }
 
 /// Posts `message` to the property channel and waits for its echo.

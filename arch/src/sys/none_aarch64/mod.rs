@@ -19,12 +19,18 @@
 //! surface, and this target has no kernel ABI to expose.
 
 mod arena;
+mod boot_info;
 pub mod console;
 pub mod framebuffer;
 mod semihost;
 mod timer;
 mod uart;
 mod wrap;
+
+// Runtime hardware discovery (RAM / CPU) assembled into a `BootInfo` and pushed
+// into the kernel at entry. Freestanding-only — the Linux backends carry an
+// empty default; the bare-metal payload discovers real facts.
+pub use boot_info::collect_boot_info;
 
 // The wrapper-level floor this backend owes `sys/mod.rs`, realized over
 // hardware (Linux backends satisfy it from the shared `wrap.rs`).

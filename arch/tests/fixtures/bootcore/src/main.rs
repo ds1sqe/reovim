@@ -22,7 +22,7 @@
 
 use {
     core::arch::asm,
-    reovim_arch::sys::{console, framebuffer, write},
+    reovim_arch::sys::{collect_boot_info, console, framebuffer, write},
     reovim_kernel::{Init, LauncherArgs},
 };
 
@@ -59,11 +59,19 @@ reovim_arch::entry!(|_argc, _argv, _envp| {
 
     let _ = write(1, b"\nreovim kernel boot on bare metal\n");
 
+    // Discover the machine's real hardware facts (RAM / CPU model / CPU clock)
+    // and push them into the kernel at entry through `LauncherArgs.boot_info`.
+    let boot_info = collect_boot_info();
+    let args = LauncherArgs {
+        boot_info,
+        ..LauncherArgs::default()
+    };
+
     // Boot the REAL reovim kernel on the freestanding floor. Its boot-stage log
     // streams to both sinks live via the kernel's own stderr echo (fd 2 ->
     // file_write -> the floor's write fan-out) — no manual ring drain. `_kernel`
     // is held to boot and then parked.
-    let Ok(_kernel) = Init::new(LauncherArgs::default()).boot() else {
+    let Ok(_kernel) = Init::new(args).boot() else {
         let _ = write(1, b"kernel boot FAILED\n");
         park();
     };

@@ -173,11 +173,16 @@ arch_test!(log6_ring_has_boot_stage_lines_before_sink, {
     let init = Init::new(LauncherArgs::default());
     let kernel = init.boot().expect("boot must succeed");
 
-    // Stages 1..7 each emit start + ok (14 events via the bus).
-    // All must appear in the ring.
+    // Stages 1..7 each emit start + ok (14 events via the bus), then the boot
+    // tail emits 20 health-probe lines (10 ping-pong probes, each a
+    // `probing...` line then a verdict). All must appear in the ring.
     assert!(kernel.log_ring.len() > 0, "ring must have entries after Init::boot");
-    // We expect 14 events (stages 1..7, each start+ok).
-    assert_eq!(kernel.log_ring.len(), 14, "ring must hold 14 boot-stage events (7 × start+ok)");
+    // 14 boot-stage events (7 × start+ok) + 20 boot-tail health lines = 34.
+    assert_eq!(
+        kernel.log_ring.len(),
+        34,
+        "ring must hold 14 boot-stage events + 20 boot-tail health lines"
+    );
 });
 
 // ── set_builtin + bus routing ─────────────────────────────────────────────────
