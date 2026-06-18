@@ -12,7 +12,7 @@
 # not consulted by the probe).
 [workspace]
 resolver = "2"
-members = ["smoke", "panic-halt", "panic-recover", "panic-ab13", "selftest", "uapi-selftest", "net-smoke", "splash"]
+members = ["smoke", "panic-halt", "panic-recover", "panic-ab13", "selftest", "uapi-selftest", "net-smoke", "splash", "bootcore"]
 
 [workspace.package]
 version = "0.16.0-dev"

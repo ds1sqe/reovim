@@ -1,0 +1,31 @@
+[package]
+name = "arch-bootcore"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Bare-metal aarch64 boot-core: runs the real reovim-kernel Init::boot on QEMU raspi4b and renders the boot-stage log ring (UART + framebuffer console)"
+publish = false
+
+[[bin]]
+name = "arch-bootcore"
+path = "src/main.rs"
+# A `#![no_std] #![no_main]` bin has no libtest harness; disable the
+# test/bench/doc builds so a parent `cargo test` does not link a std harness
+# against it.
+test = false
+bench = false
+doctest = false
+
+[dependencies]
+# The platform floor with `runtime` (links `_start`, the `entry!` shim, the
+# `#[panic_handler]` lang item, and the `#[global_allocator]` the kernel needs).
+reovim-arch = { path = "../../..", features = ["runtime"] }
+# The real reovim kernel — this bin boots it on the bare-metal floor.
+reovim-kernel = { path = "../../../../editor/lib/kernel" }
+
+[lints]
+workspace = true
