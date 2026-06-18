@@ -140,6 +140,15 @@ reovim_arch::entry!(|_argc, _argv, _envp| {
         "color: \x1b[38;2;255;92;87mtruecolor \x1b[38;5;46mgreen \
          \x1b[38;5;33mblue \x1b[38;5;244mgray\x1b[0m\n",
     );
+    // Effects demo: the same byte stream drives the on-screen console and a
+    // real UART terminal. Each word turns its own attribute on, then off
+    // before the next, so a screendump shows them independently. Bold, dim,
+    // and italic are synthetic coverage transforms; underline overlays a row;
+    // reverse swaps the cell pens. The trailing `0` clears them all.
+    log.str(
+        "fx: \x1b[1mbold \x1b[22m\x1b[2mdim \x1b[22m\x1b[3mitalic \
+         \x1b[23m\x1b[4munderline \x1b[24m\x1b[7mreverse\x1b[0m\n",
+    );
 
     log.str("entering wfe loop\n");
 

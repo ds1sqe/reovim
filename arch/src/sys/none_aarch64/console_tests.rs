@@ -129,22 +129,17 @@ arch_test!(console_sgr_default_and_reset_restore_pens, {
     testrt::check(!reset.iter().any(|&p| p == PALETTE_GREEN), "no custom bg remains after SGR 0");
 });
 
-arch_test!(console_sgr_ignores_noncolor_attribute, {
-    // `1` (bold) is a non-color attribute the console does not render yet: it
-    // is consumed without moving the pen and without panicking.
-    let buf = render(&TERMINUS, "\x1b[1mM");
-    testrt::check(buf.iter().any(|&p| p == FG), "non-color SGR leaves the fg pen at default");
-    testrt::check(buf.iter().any(|&p| p == BG), "non-color SGR leaves the bg pen at default");
-});
-
-arch_test!(console_sgr_malformed_extended_leaves_pen, {
+arch_test!(console_sgr_malformed_extended_leaves_cell_plain, {
     // A `38` with no mode, a `38;5` with no index, and a short `38;2` triple
-    // are all malformed extended-color introducers: the pen must not move.
+    // are all malformed extended-color introducers. Each renders pixel-for-
+    // pixel as the plain glyph: the pen does not move, and — critically — the
+    // introducer consumes its trailing parameters, so a truncated triple's
+    // leftover `1`/`2` are not reinterpreted as bold/dim attribute codes.
+    let plain = render(&TERMINUS, "M");
     for seq in ["\x1b[38mM", "\x1b[38;5mM", "\x1b[38;2;1;2mM"] {
-        let buf = render(&TERMINUS, seq);
         testrt::check(
-            buf.iter().any(|&p| p == FG),
-            "malformed extended color leaves the fg pen at default",
+            render(&TERMINUS, seq) == plain,
+            "malformed extended color leaves the cell identical to the plain glyph",
         );
     }
 });
@@ -197,4 +192,155 @@ arch_test!(console_sgr_integration_colored_then_reset, {
     }
     testrt::check(a_red, "the colored cell A blits palette red");
     testrt::check(b_default, "after SGR 0, cell B blits the default fg");
+});
+
+// The effect tests below blit through Terminus (exact `0x00`/`0xFF` coverage)
+// so a post-effect pixel resolves to an exact color, and drive the effects the
+// way a terminal does — SGR attributes embedded in the printed stream.
+
+arch_test!(console_effect_reverse_swaps_pens, {
+    // Reverse swaps the pens, so the large cell background is painted in the
+    // foreground color: a reversed glyph has strictly more fg pixels than the
+    // normal one, whose fg appears only in the ink.
+    let normal = render(&TERMINUS, "M");
+    let reversed = render(&TERMINUS, "\x1b[7mM");
+    let normal_fg = normal.iter().filter(|&&p| p == FG).count();
+    let reversed_fg = reversed.iter().filter(|&&p| p == FG).count();
+    testrt::check(reversed_fg > normal_fg, "reverse inks the background in the fg pen");
+    testrt::check(reversed.iter().any(|&p| p == BG), "reverse paints the glyph in the bg pen");
+});
+
+arch_test!(console_effect_dim_halves_foreground, {
+    // Dim composites the foreground over the background at half coverage, so
+    // the ink resolves to exactly that blend and no full-intensity fg remains.
+    let dim_fg = blend(FG, BG, 128);
+    let dim = render(&TERMINUS, "\x1b[2mM");
+    testrt::check(dim.iter().any(|&p| p == dim_fg), "dim inks at half intensity toward bg");
+    testrt::check(!dim.iter().any(|&p| p == FG), "no full-intensity ink remains under dim");
+    testrt::check(dim.iter().any(|&p| p == BG), "dim leaves the cell background unchanged");
+});
+
+arch_test!(console_effect_off_codes_restore_normal, {
+    // The off-codes return the cell to the plain render: `27` clears reverse,
+    // `22` clears dim (and bold).
+    let normal = render(&TERMINUS, "M");
+    testrt::check(render(&TERMINUS, "\x1b[7m\x1b[27mM") == normal, "SGR 27 clears reverse");
+    testrt::check(render(&TERMINUS, "\x1b[2m\x1b[22mM") == normal, "SGR 22 clears dim");
+});
+
+arch_test!(console_effect_underline_paints_row, {
+    // Underline overlays a full-cell-width fg row near the cell bottom — it
+    // shows even on a space, where the plain render has none.
+    let row = (16 - 2) as usize; // cell_h - UNDERLINE_INSET
+    let underlined = render(&TERMINUS, "\x1b[4m ");
+    testrt::check(
+        (0..8).all(|x| underlined[row * 8 + x] == FG),
+        "underline paints a solid fg row across the cell",
+    );
+    let plain = render(&TERMINUS, " ");
+    testrt::check((0..8).all(|x| plain[row * 8 + x] == BG), "a plain space has no underline row");
+});
+
+arch_test!(console_effect_underline_off_code, {
+    // `24` removes the underline, restoring the plain space.
+    testrt::check(
+        render(&TERMINUS, "\x1b[4m\x1b[24m ") == render(&TERMINUS, " "),
+        "SGR 24 removes the underline",
+    );
+});
+
+arch_test!(console_effect_underline_uses_reverse_fg, {
+    // Underline + reverse: the cell background fills with the (original) fg,
+    // and the underline row draws in the post-reverse fg — the original bg.
+    let reversed_underline = render(&TERMINUS, "\x1b[7;4m ");
+    let row = (16 - 2) as usize;
+    testrt::check(
+        (0..8).all(|x| reversed_underline[row * 8 + x] == BG),
+        "the underline row uses the post-reverse foreground",
+    );
+    testrt::check(
+        (0..8).all(|x| reversed_underline[x] == FG),
+        "the reversed space fills the rest of the cell with the fg pen",
+    );
+});
+
+arch_test!(console_effect_bold_widens_ink, {
+    // Synthetic bold dilates each stem one pixel to the right, so the bold
+    // glyph has strictly more inked pixels than the normal one.
+    let normal_ink = render(&TERMINUS, "M").iter().filter(|&&p| p != BG).count();
+    let bold_ink = render(&TERMINUS, "\x1b[1mM")
+        .iter()
+        .filter(|&&p| p != BG)
+        .count();
+    testrt::check(bold_ink > normal_ink, "bold widens the glyph ink");
+});
+
+arch_test!(console_effect_bold_leaves_leftmost_column, {
+    // The leftmost column has no left neighbor, so bold's rightward dilation
+    // does not apply there: column 0 must match the plain glyph exactly. This
+    // isolates the `src > 0` false branch of the dilation.
+    let normal = render(&TERMINUS, "M");
+    let bold = render(&TERMINUS, "\x1b[1mM");
+    testrt::check(
+        (0..16).all(|y| bold[y * 8] == normal[y * 8]),
+        "bold leaves the leftmost column unchanged (no left neighbor to dilate)",
+    );
+});
+
+arch_test!(console_effect_italic_shears_upper_rows, {
+    // Synthetic italic shifts the upper rows right of the lower ones. The shear
+    // changes the render of any glyph shape (a sweep over a thin bar and a
+    // two-stem letter), and a vertical bar makes the lean direction visible:
+    // its topmost inked row sits at or right of its bottommost. The left-edge
+    // clip (upper rows whose source falls left of the cell) is exercised here
+    // without panic.
+    for (italic_seq, plain) in [("\x1b[3m|", "|"), ("\x1b[3mH", "H")] {
+        testrt::check(
+            render(&TERMINUS, italic_seq) != render(&TERMINUS, plain),
+            "italic shears the glyph, changing the render",
+        );
+    }
+    let italic = render(&TERMINUS, "\x1b[3m|");
+
+    let ink_col = |cell: &[u32; CELL_PIXELS], row: usize| (0..8).find(|&x| cell[row * 8 + x] == FG);
+    let top = (0..16).find_map(|r| ink_col(&italic, r).map(|c| (r, c)));
+    let bottom = (0..16)
+        .rev()
+        .find_map(|r| ink_col(&italic, r).map(|c| (r, c)));
+    match (top, bottom) {
+        (Some((tr, tc)), Some((br, bc))) => {
+            testrt::check(tr < br, "the bar spans multiple rows");
+            testrt::check(tc >= bc, "italic never shifts an upper row left of a lower one");
+        }
+        _ => testrt::check(false, "the italic bar must render ink"),
+    }
+});
+
+arch_test!(console_effect_attributes_compose_and_reset, {
+    // Bold + italic + a color pen compose on cell A; SGR 0 then clears every
+    // attribute and the pen, so cell B is pixel-identical to the plain glyph.
+    let mut buf = [0u32; 16 * 16];
+    let fb = Framebuffer::over_region(buf.as_mut_ptr() as usize, 16, 16, 16 * 4);
+    let mut console = Console::new(fb, &TERMINUS, Color::Rgb(FG), Color::Rgb(BG));
+    console.print("\x1b[1;3;31mM"); // cell A: bold italic red
+    console.print("\x1b[0mM"); // cell B: reset → plain default glyph
+
+    let plain = render(&TERMINUS, "M");
+    let mut a_red = false;
+    let mut b_matches_plain = true;
+    for y in 0..16 {
+        for x in 0..16 {
+            let p = buf[y * 16 + x];
+            if x < 8 {
+                a_red |= p == PALETTE_RED;
+            } else if p != plain[y * 8 + (x - 8)] {
+                b_matches_plain = false;
+            }
+        }
+    }
+    testrt::check(a_red, "composed cell A inks bold + italic in the color pen");
+    testrt::check(
+        b_matches_plain,
+        "SGR 0 clears every attribute and pen: cell B is the plain glyph",
+    );
 });
