@@ -624,27 +624,27 @@ unsafe extern "C" fn thread_id() -> i64 {
 const ENOSYS_CODE: i64 = 38;
 
 #[cfg(not(target_os = "linux"))]
-unsafe extern "C" fn unix_connect(_path: *const u8, _path_len: usize) -> i64 {
+const unsafe extern "C" fn unix_connect(_path: *const u8, _path_len: usize) -> i64 {
     -ENOSYS_CODE
 }
 #[cfg(not(target_os = "linux"))]
-unsafe extern "C" fn unix_listen(_path: *const u8, _path_len: usize) -> i64 {
+const unsafe extern "C" fn unix_listen(_path: *const u8, _path_len: usize) -> i64 {
     -ENOSYS_CODE
 }
 #[cfg(not(target_os = "linux"))]
-unsafe extern "C" fn unix_accept(_listener_fd: Fd) -> i64 {
+const unsafe extern "C" fn unix_accept(_listener_fd: Fd) -> i64 {
     -ENOSYS_CODE
 }
 #[cfg(not(target_os = "linux"))]
-unsafe extern "C" fn fd_read(_fd: Fd, _buf: *mut u8, _len: usize) -> i64 {
+const unsafe extern "C" fn fd_read(_fd: Fd, _buf: *mut u8, _len: usize) -> i64 {
     -ENOSYS_CODE
 }
 #[cfg(not(target_os = "linux"))]
-unsafe extern "C" fn fd_write(_fd: Fd, _buf: *const u8, _len: usize) -> i64 {
+const unsafe extern "C" fn fd_write(_fd: Fd, _buf: *const u8, _len: usize) -> i64 {
     -ENOSYS_CODE
 }
 #[cfg(not(target_os = "linux"))]
-unsafe extern "C" fn fd_close(_fd: Fd) -> i64 {
+const unsafe extern "C" fn fd_close(_fd: Fd) -> i64 {
     -ENOSYS_CODE
 }
 #[cfg(not(target_os = "linux"))]
@@ -657,13 +657,13 @@ unsafe extern "C" fn thread_spawn(_entry: unsafe extern "C" fn(*mut u8), _arg: *
 /// epoch (the consumer only uses it as a human-readable origin, never for
 /// ordering).
 #[cfg(not(target_os = "linux"))]
-unsafe extern "C" fn realtime_adapter() -> i64 {
+const unsafe extern "C" fn realtime_adapter() -> i64 {
     0
 }
 /// Freestanding file-open stub: `-ENOSYS` (no filesystem floor on bare metal),
 /// the same fallible shape as the other fd stubs.
 #[cfg(not(target_os = "linux"))]
-unsafe extern "C" fn file_open(
+const unsafe extern "C" fn file_open(
     _path: *const u8,
     _path_len: usize,
     _flags: OpenFlags,
@@ -674,13 +674,13 @@ unsafe extern "C" fn file_open(
 /// Freestanding thread-id stub: returns `0`, the single-bare-metal-thread
 /// sentinel (there is one thread of control, identified as id 0).
 #[cfg(not(target_os = "linux"))]
-unsafe extern "C" fn thread_id() -> i64 {
+const unsafe extern "C" fn thread_id() -> i64 {
     0
 }
 /// Freestanding file-write stub: `-ENOSYS` (no filesystem/stdio floor on bare
 /// metal), the same fallible shape as the other fd stubs.
 #[cfg(not(target_os = "linux"))]
-unsafe extern "C" fn file_write(_fd: Fd, _buf: *const u8, _len: usize) -> i64 {
+const unsafe extern "C" fn file_write(_fd: Fd, _buf: *const u8, _len: usize) -> i64 {
     -ENOSYS_CODE
 }
 

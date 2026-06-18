@@ -482,7 +482,7 @@ where
 /// Defining `#[panic_handler]` unconditionally would clash with the std
 /// libtest binary that hosts arch's pre-migration tests (bootstrap state 1):
 /// std already provides the lang item. The `runtime` feature is the gate —
-/// fixture and no_std test-runner bins enable it; libtest builds do not.
+/// fixture and `no_std` test-runner bins enable it; libtest builds do not.
 #[cfg(feature = "runtime")]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {

@@ -9,7 +9,7 @@
 //!
 //! Gated on the `runtime` feature: defining `_start` (a global symbol) in
 //! arch's pre-migration libtest builds (bootstrap state 1) would clash with
-//! the std runtime's own entry. Fixture bins and the Phase 5 no_std test
+//! the std runtime's own entry. Fixture bins and the Phase 5 `no_std` test
 //! runner enable `runtime`; libtest builds do not (see `arch/Cargo.toml`).
 
 /// The process entry point the kernel transfers control to (`_start`).
@@ -319,6 +319,9 @@ static ENVP: core::sync::atomic::AtomicPtr<*const u8> =
 /// have no shim; that is a link error by construction (the symbol is
 /// undefined), which is the intended "you must declare an entry" contract.
 #[cfg(feature = "runtime")]
+// argc/argv/envp are the canonical C entry-point parameter names; renaming
+// them to satisfy the lint would obscure the well-known convention.
+#[allow(clippy::similar_names)]
 extern "C" fn rust_entry(argc: usize, argv: *const *const u8, envp: *const *const u8) -> ! {
     // Stash envp before running main so the coverage exit path can read
     // `LLVM_PROFILE_FILE` from it. The cast drops only the outer const (the
@@ -432,7 +435,7 @@ unsafe extern "C" {
 /// Exits the process with `code`, emitting coverage profraw first under
 /// instrumentation.
 ///
-/// A `#![no_main]` no_std binary has no C-runtime `atexit` hook, so the LLVM
+/// A `#![no_main]` `no_std` binary has no C-runtime `atexit` hook, so the LLVM
 /// instrumentation profile is never written automatically (std binaries get
 /// it via the runtime's atexit registration). When built under coverage
 /// instrumentation this shim calls `__llvm_profile_write_file` — the

@@ -97,8 +97,10 @@ fn set_current_test(name: &'static str) {
 }
 
 /// Returns the name of the test running when the panic fired, or `None` when
-/// no test is active. The panic handler / test bin calls this to attribute a
-/// failure; the returned slice borrows the `'static` test name.
+/// no test is active.
+///
+/// The panic handler / test bin calls this to attribute a failure; the
+/// returned slice borrows the `'static` test name.
 ///
 /// ```ignore
 /// // current_test() is meaningful only inside the selftest runner binary.
@@ -123,6 +125,10 @@ pub fn current_test() -> Option<&'static str> {
 }
 
 /// The registered test cases as a slice (the distributed-slice walk).
+// TESTS_START/STOP bracket a linker section of `#[repr(C)]` `TestCase`
+// statics, so the section base is `TestCase`-aligned by construction (the
+// SAFETY note below details the invariant clippy cannot see).
+#[allow(clippy::cast_ptr_alignment)]
 fn registered() -> &'static [TestCase] {
     let start = (&raw const TESTS_START).cast::<TestCase>();
     let stop = (&raw const TESTS_STOP).cast::<TestCase>();
@@ -268,6 +274,12 @@ pub fn unique_path<'a>(prefix: &[u8], buf: &'a mut [u8; 64]) -> &'a [u8] {
     &buf[..=at]
 }
 
+/// Asserts `cond`, panicking with `msg` prefixed by the running test name.
+/// The panic is the failure path (fail-fast), as [`check_eq`].
+///
+/// # Panics
+///
+/// Panics when `cond` is `false`.
 pub fn check(cond: bool, msg: &str) {
     let test_name = current_test().unwrap_or("<unknown test>");
     assert!(cond, "{test_name}: {msg}");
@@ -286,6 +298,7 @@ pub fn check(cond: bool, msg: &str) {
 /// check_eq(1 + 1, 2);
 /// ```
 #[track_caller]
+#[allow(clippy::needless_pass_by_value)] // assert_eq!-style by-value comparands
 pub fn check_eq<T: PartialEq + core::fmt::Debug>(left: T, right: T) {
     assert!(
         left == right,

@@ -119,6 +119,7 @@ pub unsafe extern "C" fn memmove(dest: *mut u8, src: *const u8, n: usize) -> *mu
 /// // memcmp is a compiler intrinsic — runtime feature required; not called directly.
 /// ```
 #[unsafe(no_mangle)]
+#[allow(clippy::many_single_char_names)] // a/b/n: the canonical libc memcmp names
 pub unsafe extern "C" fn memcmp(a: *const u8, b: *const u8, n: usize) -> i32 {
     let mut i = 0;
     while i < n {

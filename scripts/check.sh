@@ -18,6 +18,10 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CLIPPY_TARGET="$ROOT/target/check-clippy"
+# The freestanding floor (reovim-arch on aarch64-unknown-none) is cfg-gated
+# out of the host build, so the host clippy above never sees it. It gets its
+# own clippy pass against its own target dir.
+CLIPPY_NONE_TARGET="$ROOT/target/check-clippy-none"
 
 usage() {
     sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
@@ -29,8 +33,8 @@ case "${1:-}" in
     --quick) mode=quick ;;
     --sequential) mode=sequential ;;
     --clean-cache)
-        rm -rf "$CLIPPY_TARGET"
-        echo "removed $CLIPPY_TARGET"
+        rm -rf "$CLIPPY_TARGET" "$CLIPPY_NONE_TARGET"
+        echo "removed $CLIPPY_TARGET $CLIPPY_NONE_TARGET"
         exit 0
         ;;
     -h | --help)
@@ -48,6 +52,14 @@ run_fmt() { cargo fmt --all --check; }
 run_clippy() {
     CARGO_TARGET_DIR="$CLIPPY_TARGET" \
         cargo clippy --workspace --all-targets -- -D warnings
+}
+# Freestanding-floor lints. Lib only (`reovim-arch` integration tests host a
+# std harness that cannot cross-compile to the bare-metal target); the
+# `runtime` feature links the `_start`/panic-handler surface the floor ships.
+run_clippy_none() {
+    CARGO_TARGET_DIR="$CLIPPY_NONE_TARGET" \
+        cargo clippy -p reovim-arch --target aarch64-unknown-none \
+        --features runtime -- -D warnings
 }
 run_tests() { cargo test --workspace; }
 run_doc_tests() { cargo test --workspace --doc; }
@@ -71,6 +83,12 @@ fi
 echo "==> fmt"
 if ! run_fmt; then
     echo "check.sh: fmt FAILED" >&2
+    exit 1
+fi
+
+echo "==> clippy (freestanding: aarch64-unknown-none)"
+if ! run_clippy_none; then
+    echo "check.sh: clippy-none FAILED (freestanding arch lints)" >&2
     exit 1
 fi
 
