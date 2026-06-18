@@ -10,6 +10,7 @@
 use {
     super::{
         super::{
+            color::Color,
             fonts::{Font, JETBRAINS_MONO, TERMINUS},
             framebuffer::Framebuffer,
         },
@@ -32,7 +33,7 @@ const CELL_PIXELS: usize = 8 * 16;
 fn render(font: &'static Font, s: &str) -> [u32; CELL_PIXELS] {
     let mut buf = [0u32; CELL_PIXELS];
     let fb = Framebuffer::over_region(buf.as_mut_ptr() as usize, 8, 16, 8 * 4);
-    let mut console = Console::new(fb, font, FG, BG);
+    let mut console = Console::new(fb, font, Color::Rgb(FG), Color::Rgb(BG));
     console.print(s);
     buf
 }
@@ -67,4 +68,73 @@ arch_test!(console_blit_out_of_range_is_blank, {
         let cell = render(font, "\u{01}");
         testrt::check(cell.iter().all(|&p| p == BG), "out-of-range byte renders blank");
     }
+});
+
+// The pen tests below blit through Terminus deliberately: its coverage is pure
+// `0x00`/`0xFF`, so a full-coverage ink pixel resolves to *exactly* the pen's
+// color and a background pixel to *exactly* the bg pen — equality is precise,
+// with no anti-aliased edge values to reason about.
+
+arch_test!(console_pen_indexed_blits_palette_rgb, {
+    // An indexed pen resolves through the palette and feeds the blend: index
+    // 196 is the cube's pure red (`0x00FF0000`).
+    let mut buf = [0u32; CELL_PIXELS];
+    let fb = Framebuffer::over_region(buf.as_mut_ptr() as usize, 8, 16, 8 * 4);
+    let mut console = Console::new(fb, &TERMINUS, Color::Rgb(FG), Color::Rgb(BG));
+    console.set_fg(Color::Indexed(196));
+    console.print("M");
+    testrt::check(buf.iter().any(|&p| p == 0x00FF_0000), "indexed pen paints palette-red ink");
+    testrt::check(buf.iter().any(|&p| p == BG), "background stays the bg pen");
+});
+
+arch_test!(console_pen_rgb_blits_truecolor, {
+    // A truecolor pen reaches the surface unchanged at full coverage.
+    let mut buf = [0u32; CELL_PIXELS];
+    let fb = Framebuffer::over_region(buf.as_mut_ptr() as usize, 8, 16, 8 * 4);
+    let mut console = Console::new(fb, &TERMINUS, Color::Rgb(FG), Color::Rgb(BG));
+    console.set_fg(Color::Rgb(0x00AB_CDEF));
+    console.print("M");
+    testrt::check(buf.iter().any(|&p| p == 0x00AB_CDEF), "rgb pen paints truecolor ink");
+});
+
+arch_test!(console_pen_change_affects_only_subsequent_cells, {
+    // Two cells side by side: cell A under a red pen, then the pen switches to
+    // green for cell B. Immediate-mode means cell A is never repainted, so its
+    // ink must stay red while only cell B is green. The 16-wide surface holds
+    // two 8-px cells (cols 0 and 1) on one row.
+    let mut buf = [0u32; 16 * 16];
+    let fb = Framebuffer::over_region(buf.as_mut_ptr() as usize, 16, 16, 16 * 4);
+    let mut console = Console::new(fb, &TERMINUS, Color::Rgb(FG), Color::Rgb(BG));
+    console.set_fg(Color::Rgb(0x00FF_0000));
+    console.print("M"); // cell A, col 0
+    console.set_fg(Color::Rgb(0x0000_FF00));
+    console.print("M"); // cell B, col 1
+
+    let (mut a_red, mut a_green, mut b_green) = (false, false, false);
+    for y in 0..16 {
+        for x in 0..16 {
+            let p = buf[y * 16 + x];
+            if x < 8 {
+                a_red |= p == 0x00FF_0000;
+                a_green |= p == 0x0000_FF00;
+            } else {
+                b_green |= p == 0x0000_FF00;
+            }
+        }
+    }
+    testrt::check(a_red, "cell A keeps the original red pen");
+    testrt::check(!a_green, "cell A was not repainted by the later green pen");
+    testrt::check(b_green, "cell B uses the new green pen");
+});
+
+arch_test!(console_reset_colors_restores_default, {
+    // After a `set_fg`, `reset_colors` returns the pen to the `new`-time fg.
+    let mut buf = [0u32; CELL_PIXELS];
+    let fb = Framebuffer::over_region(buf.as_mut_ptr() as usize, 8, 16, 8 * 4);
+    let mut console = Console::new(fb, &TERMINUS, Color::Rgb(FG), Color::Rgb(BG));
+    console.set_fg(Color::Rgb(0x0000_FF00));
+    console.reset_colors();
+    console.print("M");
+    testrt::check(buf.iter().any(|&p| p == FG), "reset restores the default fg ink");
+    testrt::check(!buf.iter().any(|&p| p == 0x0000_FF00), "no green ink after reset");
 });

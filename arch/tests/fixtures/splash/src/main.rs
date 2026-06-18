@@ -18,7 +18,7 @@
 
 use {
     core::arch::asm,
-    reovim_arch::sys::{console, fonts, framebuffer, write},
+    reovim_arch::sys::{color::Color, console, fonts, framebuffer, write},
 };
 
 /// Packs an RGB triple into a `0x00RRGGBB` pixel (matches the requested RGB
@@ -47,6 +47,21 @@ impl BootLog {
         let _ = write(1, s.as_bytes());
         if let Some(console) = self.console.as_mut() {
             console.print(s);
+        }
+    }
+
+    /// Sets the on-screen foreground pen for subsequent text. A no-op when the
+    /// framebuffer is absent — the UART sink has no color.
+    fn set_fg(&mut self, color: Color) {
+        if let Some(console) = self.console.as_mut() {
+            console.set_fg(color);
+        }
+    }
+
+    /// Restores the on-screen pen to the boot foreground/background.
+    fn reset_colors(&mut self) {
+        if let Some(console) = self.console.as_mut() {
+            console.reset_colors();
         }
     }
 
@@ -104,8 +119,8 @@ reovim_arch::entry!(|_argc, _argv, _envp| {
             console::Console::new(
                 fb,
                 BOOT_FONT,
-                rgb(0xC8, 0xE0, 0xFF),
-                rgb(0x0A, 0x14, 0x28),
+                Color::Rgb(rgb(0xC8, 0xE0, 0xFF)),
+                Color::Rgb(rgb(0x0A, 0x14, 0x28)),
             )
         }),
     };
@@ -130,6 +145,21 @@ reovim_arch::entry!(|_argc, _argv, _envp| {
     } else {
         log.str("mbox fb: alloc failed; uart only\n");
     }
+    // Color demo: render distinct truecolor and indexed-palette segments so a
+    // screendump proves the pen resolves both color forms. The pen change is
+    // console-only; the UART sink sees the words in its single color.
+    log.str("color: ");
+    log.set_fg(Color::Rgb(0x00FF_5C57));
+    log.str("truecolor ");
+    log.set_fg(Color::Indexed(46));
+    log.str("green ");
+    log.set_fg(Color::Indexed(33));
+    log.str("blue ");
+    log.set_fg(Color::Indexed(244));
+    log.str("gray");
+    log.reset_colors();
+    log.str("\n");
+
     log.str("entering wfe loop\n");
 
     loop {

@@ -19,6 +19,7 @@
 //! surface, and this target has no kernel ABI to expose.
 
 mod arena;
+pub mod color;
 pub mod console;
 pub mod fonts;
 pub mod framebuffer;

@@ -18,7 +18,7 @@
 //! scrollback (the boot log fits the surface), and no escape-sequence parsing
 //! — only `\n`/`\r` are interpreted.
 
-use super::{fonts::Font, framebuffer::Framebuffer};
+use super::{color::Color, fonts::Font, framebuffer::Framebuffer};
 
 /// Blank pixel rows inserted below each text row so lines are not crammed —
 /// it matters most for a full-cell bitmap font (Terminus), where glyphs touch
@@ -44,23 +44,27 @@ pub struct Console {
     cols: u32,
     /// Rows that fit the surface (`fb.height() / (font.cell_h + LINE_LEADING)`).
     rows: u32,
-    /// Foreground (glyph) pixel, `0x00RRGGBB`.
-    fg: u32,
-    /// Background (cell) pixel, `0x00RRGGBB`.
-    bg: u32,
+    /// Current foreground (glyph) pen, resolved per cell at draw time.
+    fg: Color,
+    /// Current background (cell) pen, resolved per cell at draw time.
+    bg: Color,
+    /// Foreground restored by [`Console::reset_colors`] (the `new`-time fg).
+    default_fg: Color,
 }
 
 impl Console {
     /// Builds a console over `fb` rendering through `font` with the given
-    /// foreground/background colors, and clears the whole surface to the
-    /// background. The cell grid derives from the font's cell metrics, which
-    /// are nonzero by construction (see [`Font`]'s const guards), so the
-    /// column/row division cannot divide by zero.
+    /// foreground/background color pens, and clears the whole surface to the
+    /// background. The foreground also becomes the default
+    /// [`reset_colors`](Console::reset_colors) restores. The cell grid derives
+    /// from the font's cell metrics, which are nonzero by construction (see
+    /// [`Font`]'s const guards), so the column/row division cannot divide by
+    /// zero.
     #[must_use]
-    pub fn new(fb: Framebuffer, font: &'static Font, fg: u32, bg: u32) -> Self {
+    pub fn new(fb: Framebuffer, font: &'static Font, fg: Color, bg: Color) -> Self {
         let cols = fb.width() / font.cell_w;
         let rows = fb.height() / (font.cell_h + LINE_LEADING);
-        fb.clear(bg);
+        fb.clear(bg.resolve());
         Self {
             fb,
             font,
@@ -70,7 +74,24 @@ impl Console {
             rows,
             fg,
             bg,
+            default_fg: fg,
         }
+    }
+
+    /// Sets the foreground pen for subsequent cells. Already-rendered cells are
+    /// not repainted — the console is immediate-mode with no cell grid, so a
+    /// pen change affects only what is drawn after it.
+    pub const fn set_fg(&mut self, fg: Color) {
+        self.fg = fg;
+    }
+
+    /// Restores the foreground pen to the one the console was built with — the
+    /// terminal `reset` / SGR-0 color behavior an escape-sequence parser
+    /// drives. Only the foreground is tracked: nothing changes the background
+    /// pen yet, so a background default would be a value that never diverges.
+    /// Background reset arrives with the setter that needs it.
+    pub const fn reset_colors(&mut self) {
+        self.fg = self.default_fg;
     }
 
     /// Renders `s` at the cursor, advancing one cell per byte. `\n` moves to
@@ -117,10 +138,13 @@ impl Console {
         let cell_h = self.font.cell_h;
         let x0 = self.col * cell_w;
         let y0 = self.row * (cell_h + LINE_LEADING);
+        // Resolve the pen to concrete pixels once per cell, not per pixel.
+        let fg = self.fg.resolve();
+        let bg = self.bg.resolve();
         for gy in 0..cell_h {
             for gx in 0..cell_w {
                 let cov = coverage[(gy * cell_w + gx) as usize];
-                let color = blend(self.fg, self.bg, cov);
+                let color = blend(fg, bg, cov);
                 self.fb.put_pixel(x0 + gx, y0 + gy, color);
             }
         }

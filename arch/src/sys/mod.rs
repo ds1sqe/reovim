@@ -41,6 +41,10 @@ pub use none_aarch64::framebuffer;
 pub use none_aarch64::console;
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 pub use none_aarch64::fonts;
+// The terminal color model the console pen resolves through (truecolor +
+// indexed palette). Same target gate as the console that consumes it.
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+pub use none_aarch64::color;
 
 #[cfg(not(any(
     all(target_os = "linux", target_arch = "x86_64"),
