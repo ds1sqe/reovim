@@ -1,0 +1,30 @@
+[package]
+name = "arch-splash"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Bare-metal aarch64 splash: UART boot banner + VideoCore mailbox framebuffer pattern (QEMU raspi4b)"
+publish = false
+
+[[bin]]
+name = "arch-splash"
+path = "src/main.rs"
+# A `#![no_std] #![no_main]` bin has no libtest harness; disable the
+# test/bench/doc builds so a parent `cargo test` does not link a std harness
+# against it.
+test = false
+bench = false
+doctest = false
+
+[dependencies]
+# Path dep on the platform floor with the `runtime` feature so the arch
+# `_start`, the `entry!` shim, and the `#[panic_handler]` lang item link.
+# No `selftest`: this is a demo payload, not a test runner.
+reovim-arch = { path = "../../..", features = ["runtime"] }
+
+[lints]
+workspace = true

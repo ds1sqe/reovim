@@ -27,6 +27,18 @@ mod none_aarch64;
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 use none_aarch64 as target;
 
+// The VideoCore mailbox framebuffer is freestanding-only hardware surface
+// (no Linux backend has one), exposed so the bare-metal splash payload can
+// drive it. Same target gate as the backend it lives in.
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+pub use none_aarch64::framebuffer;
+
+// The 8x8-font text console layered over the framebuffer, so the bare-metal
+// boot log renders on the HDMI surface and not only the UART. Same target
+// gate as the framebuffer it draws on.
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+pub use none_aarch64::console;
+
 #[cfg(not(any(
     all(target_os = "linux", target_arch = "x86_64"),
     all(target_os = "linux", target_arch = "aarch64"),

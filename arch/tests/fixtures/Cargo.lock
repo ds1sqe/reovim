@@ -46,6 +46,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "arch-splash"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-arch",
+]
+
+[[package]]
 name = "reovim-arch"
 version = "0.16.0-dev"
 dependencies = [

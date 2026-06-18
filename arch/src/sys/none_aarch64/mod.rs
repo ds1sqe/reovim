@@ -19,6 +19,8 @@
 //! surface, and this target has no kernel ABI to expose.
 
 mod arena;
+pub mod console;
+pub mod framebuffer;
 mod semihost;
 mod timer;
 mod uart;

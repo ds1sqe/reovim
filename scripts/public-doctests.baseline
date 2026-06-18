@@ -232,3 +232,14 @@ uapi/protocol/src/view.rs	pub struct CarrierIter<'a>
 uapi/protocol/src/view.rs	pub struct DomainEntryIter<'a>
 uapi/protocol/src/view.rs	pub struct RawInputIter<'a>
 uapi/protocol/src/view.rs	pub struct StrListIter<'a>
+arch/src/sys/none_aarch64/framebuffer.rs	pub struct Framebuffer
+arch/src/sys/none_aarch64/framebuffer.rs	pub const fn width(&self) -> u32
+arch/src/sys/none_aarch64/framebuffer.rs	pub const fn height(&self) -> u32
+arch/src/sys/none_aarch64/framebuffer.rs	pub const fn pitch(&self) -> u32
+arch/src/sys/none_aarch64/framebuffer.rs	pub const fn base(&self) -> usize
+arch/src/sys/none_aarch64/framebuffer.rs	pub fn put_pixel(&self, x: u32, y: u32, color: u32)
+arch/src/sys/none_aarch64/framebuffer.rs	pub fn clear(&self, color: u32)
+arch/src/sys/none_aarch64/framebuffer.rs	pub fn init() -> Option<Framebuffer>
+arch/src/sys/none_aarch64/console.rs	pub struct Console
+arch/src/sys/none_aarch64/console.rs	pub fn new(fb: Framebuffer, fg: u32, bg: u32) -> Self
+arch/src/sys/none_aarch64/console.rs	pub fn print(&mut self, s: &str)
