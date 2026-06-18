@@ -1,9 +1,10 @@
 //! Bare-metal aarch64 boot-log payload (QEMU raspi4b / BCM2711).
 //!
 //! Boots through the arch `_start`, asks the `VideoCore` for a 1280x720x32
-//! framebuffer over the mailbox property interface, wraps it in an 8x8-font
-//! text [`console::Console`] (rendered at 2x magnification), and renders the
-//! boot log onto the HDMI surface
+//! framebuffer over the mailbox property interface, wraps it in a
+//! [`console::Console`] rendering a selectable embedded font (here
+//! [`fonts::JETBRAINS_MONO`], anti-aliased) via coverage software-blend, and
+//! renders the boot log onto the HDMI surface
 //! while echoing the same lines to the PL011 UART. It then parks in a `wfe`
 //! loop forever — it deliberately does NOT semihosting-exit, so the rendered
 //! surface persists for a QEMU screendump / VNC capture. This is the floor's
@@ -17,7 +18,7 @@
 
 use {
     core::arch::asm,
-    reovim_arch::sys::{console, framebuffer, write},
+    reovim_arch::sys::{console, fonts, framebuffer, write},
 };
 
 /// Packs an RGB triple into a `0x00RRGGBB` pixel (matches the requested RGB
@@ -25,6 +26,10 @@ use {
 const fn rgb(r: u8, g: u8, b: u8) -> u32 {
     ((r as u32) << 16) | ((g as u32) << 8) | (b as u32)
 }
+
+/// The font this boot log renders through. Selecting another embedded font is
+/// a one-line change here (e.g. [`fonts::TERMINUS`]).
+const BOOT_FONT: &fonts::Font = &fonts::JETBRAINS_MONO;
 
 /// A dual-sink boot log: every line goes to the PL011 UART (fd 1) and, once
 /// the framebuffer is up, to the on-screen text console as well.
@@ -94,9 +99,14 @@ reovim_arch::entry!(|_argc, _argv, _envp| {
     let mut log = BootLog {
         console: fb.map(|fb| {
             // Light text on a dark slate background — legible on an HDMI
-            // capture and unmistakably "ours".
-            // 2x glyph scale: 16px cells, legible on the 1280x720 surface.
-            console::Console::new(fb, rgb(0xC8, 0xE0, 0xFF), rgb(0x0A, 0x14, 0x28), 2)
+            // capture and unmistakably "ours". The font renders at its native
+            // 8x16 cell via coverage software-blend.
+            console::Console::new(
+                fb,
+                BOOT_FONT,
+                rgb(0xC8, 0xE0, 0xFF),
+                rgb(0x0A, 0x14, 0x28),
+            )
         }),
     };
 
@@ -114,6 +124,9 @@ reovim_arch::entry!(|_argc, _argv, _envp| {
         log.dec(pitch as usize);
         log.str("\n");
         log.str("framebuffer console up; boot log on screen\n");
+        log.str("font: ");
+        log.str(BOOT_FONT.name());
+        log.str("\n");
     } else {
         log.str("mbox fb: alloc failed; uart only\n");
     }

@@ -1,5 +1,6 @@
 /target
 arch/tests/fixtures/target/
+arch/tests/glyph-rasterizer/target/
 editor/lib/kernel/tests/fixtures/target/
 editor/lib/server/tests/fixtures/target/
 apps/target/

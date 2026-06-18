@@ -33,11 +33,14 @@ use none_aarch64 as target;
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 pub use none_aarch64::framebuffer;
 
-// The 8x8-font text console layered over the framebuffer, so the bare-metal
-// boot log renders on the HDMI surface and not only the UART. Same target
-// gate as the framebuffer it draws on.
+// The coverage-blended text console layered over the framebuffer, so the
+// bare-metal boot log renders on the HDMI surface and not only the UART, plus
+// the selectable embedded fonts it blits through. Same target gate as the
+// framebuffer they draw on.
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 pub use none_aarch64::console;
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+pub use none_aarch64::fonts;
 
 #[cfg(not(any(
     all(target_os = "linux", target_arch = "x86_64"),

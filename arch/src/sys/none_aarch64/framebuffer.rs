@@ -158,6 +158,25 @@ impl Framebuffer {
     }
 }
 
+#[cfg(feature = "selftest")]
+impl Framebuffer {
+    /// Builds a framebuffer over a caller-owned memory region for selftests,
+    /// so the console blit can render into a readable buffer instead of the
+    /// MMIO surface. The same `put_pixel`/`clear` stores run; the only change
+    /// is that `base` addresses ordinary RAM the test can read back.
+    ///
+    /// `base` must point to at least `pitch * height` writable bytes that
+    /// outlive the returned handle, and `pitch >= width * 4`.
+    pub(crate) fn over_region(base: usize, width: u32, height: u32, pitch: u32) -> Self {
+        Self {
+            base,
+            width,
+            height,
+            pitch,
+        }
+    }
+}
+
 /// Requests a 1280x720x32 framebuffer from the `VideoCore` over the mailbox
 /// property interface and returns a [`Framebuffer`] over it.
 ///

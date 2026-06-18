@@ -65,6 +65,31 @@ arch/src/sys/net.rs	pub const SOCK_CLOEXEC: usize
 arch/src/sys/net.rs	pub const SOCK_STREAM: usize
 arch/src/sys/net.rs	pub const UNIX_PATH_MAX: usize
 arch/src/sys/none_aarch64/arena.rs	pub fn alloc_pages(len: usize) -> Result<usize, Errno>
+arch/src/sys/none_aarch64/console.rs	pub fn new(fb: Framebuffer, font: &'static Font, fg: u32, bg: u32) -> Self
+arch/src/sys/none_aarch64/console.rs	pub fn print(&mut self, s: &str)
+arch/src/sys/none_aarch64/console.rs	pub struct Console
+arch/src/sys/none_aarch64/fonts/jetbrains_mono.rs	pub const CELL_H: u32
+arch/src/sys/none_aarch64/fonts/jetbrains_mono.rs	pub const CELL_W: u32
+arch/src/sys/none_aarch64/fonts/jetbrains_mono.rs	pub const FIRST: u8
+arch/src/sys/none_aarch64/fonts/jetbrains_mono.rs	pub const LAST: u8
+arch/src/sys/none_aarch64/fonts/jetbrains_mono.rs	pub static GLYPHS: [u8; 12288]
+arch/src/sys/none_aarch64/fonts/mod.rs	pub const fn name(&self) -> &'static str
+arch/src/sys/none_aarch64/fonts/mod.rs	pub static JETBRAINS_MONO: Font
+arch/src/sys/none_aarch64/fonts/mod.rs	pub static TERMINUS: Font
+arch/src/sys/none_aarch64/fonts/mod.rs	pub struct Font
+arch/src/sys/none_aarch64/fonts/terminus.rs	pub const CELL_H: u32
+arch/src/sys/none_aarch64/fonts/terminus.rs	pub const CELL_W: u32
+arch/src/sys/none_aarch64/fonts/terminus.rs	pub const FIRST: u8
+arch/src/sys/none_aarch64/fonts/terminus.rs	pub const LAST: u8
+arch/src/sys/none_aarch64/fonts/terminus.rs	pub static GLYPHS: [u8; 12288]
+arch/src/sys/none_aarch64/framebuffer.rs	pub const fn base(&self) -> usize
+arch/src/sys/none_aarch64/framebuffer.rs	pub const fn height(&self) -> u32
+arch/src/sys/none_aarch64/framebuffer.rs	pub const fn pitch(&self) -> u32
+arch/src/sys/none_aarch64/framebuffer.rs	pub const fn width(&self) -> u32
+arch/src/sys/none_aarch64/framebuffer.rs	pub fn clear(&self, color: u32)
+arch/src/sys/none_aarch64/framebuffer.rs	pub fn init() -> Option<Framebuffer>
+arch/src/sys/none_aarch64/framebuffer.rs	pub fn put_pixel(&self, x: u32, y: u32, color: u32)
+arch/src/sys/none_aarch64/framebuffer.rs	pub struct Framebuffer
 arch/src/sys/none_aarch64/mod.rs	pub const unsafe fn clone_into(
 arch/src/sys/none_aarch64/semihost.rs	pub fn exit(code: i32) -> !
 arch/src/sys/none_aarch64/timer.rs	pub fn counter() -> u64
@@ -232,14 +257,3 @@ uapi/protocol/src/view.rs	pub struct CarrierIter<'a>
 uapi/protocol/src/view.rs	pub struct DomainEntryIter<'a>
 uapi/protocol/src/view.rs	pub struct RawInputIter<'a>
 uapi/protocol/src/view.rs	pub struct StrListIter<'a>
-arch/src/sys/none_aarch64/framebuffer.rs	pub struct Framebuffer
-arch/src/sys/none_aarch64/framebuffer.rs	pub const fn width(&self) -> u32
-arch/src/sys/none_aarch64/framebuffer.rs	pub const fn height(&self) -> u32
-arch/src/sys/none_aarch64/framebuffer.rs	pub const fn pitch(&self) -> u32
-arch/src/sys/none_aarch64/framebuffer.rs	pub const fn base(&self) -> usize
-arch/src/sys/none_aarch64/framebuffer.rs	pub fn put_pixel(&self, x: u32, y: u32, color: u32)
-arch/src/sys/none_aarch64/framebuffer.rs	pub fn clear(&self, color: u32)
-arch/src/sys/none_aarch64/framebuffer.rs	pub fn init() -> Option<Framebuffer>
-arch/src/sys/none_aarch64/console.rs	pub struct Console
-arch/src/sys/none_aarch64/console.rs	pub fn new(fb: Framebuffer, fg: u32, bg: u32, scale: u32) -> Self
-arch/src/sys/none_aarch64/console.rs	pub fn print(&mut self, s: &str)

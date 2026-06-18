@@ -21,6 +21,9 @@
 //! statics are clean for the next test. The selftest runner is single-threaded
 //! sequential; no serialization guard is needed.
 
+// `Bytes` backs the filesystem-capture helpers, which are Linux-only; gate the
+// import with them so the freestanding selftest build does not see it unused.
+#[cfg(target_os = "linux")]
 use reovim_lib_ds::Bytes;
 
 use crate::{arch_test, testrt};
