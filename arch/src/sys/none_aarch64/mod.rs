@@ -21,6 +21,7 @@
 mod arena;
 pub mod color;
 pub mod console;
+pub mod escape;
 pub mod fonts;
 pub mod framebuffer;
 mod semihost;

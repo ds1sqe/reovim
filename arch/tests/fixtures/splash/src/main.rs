@@ -50,21 +50,6 @@ impl BootLog {
         }
     }
 
-    /// Sets the on-screen foreground pen for subsequent text. A no-op when the
-    /// framebuffer is absent — the UART sink has no color.
-    fn set_fg(&mut self, color: Color) {
-        if let Some(console) = self.console.as_mut() {
-            console.set_fg(color);
-        }
-    }
-
-    /// Restores the on-screen pen to the boot foreground/background.
-    fn reset_colors(&mut self) {
-        if let Some(console) = self.console.as_mut() {
-            console.reset_colors();
-        }
-    }
-
     /// Writes `n` as decimal through both sinks, no allocation.
     fn dec(&mut self, n: usize) {
         let mut buf = [0u8; 20];
@@ -145,20 +130,16 @@ reovim_arch::entry!(|_argc, _argv, _envp| {
     } else {
         log.str("mbox fb: alloc failed; uart only\n");
     }
-    // Color demo: render distinct truecolor and indexed-palette segments so a
-    // screendump proves the pen resolves both color forms. The pen change is
-    // console-only; the UART sink sees the words in its single color.
-    log.str("color: ");
-    log.set_fg(Color::Rgb(0x00FF_5C57));
-    log.str("truecolor ");
-    log.set_fg(Color::Indexed(46));
-    log.str("green ");
-    log.set_fg(Color::Indexed(33));
-    log.str("blue ");
-    log.set_fg(Color::Indexed(244));
-    log.str("gray");
-    log.reset_colors();
-    log.str("\n");
+    // Color demo: one byte stream drives both sinks. The embedded SGR escape
+    // sequences move the on-screen console's color pen through its parser, and
+    // a real terminal on the UART interprets the identical bytes — so the
+    // colors are no longer console-only. A screendump proves the parser
+    // resolves both the truecolor (`38;2;r;g;b`) and indexed (`38;5;n`) forms,
+    // with `0` resetting to the boot pens.
+    log.str(
+        "color: \x1b[38;2;255;92;87mtruecolor \x1b[38;5;46mgreen \
+         \x1b[38;5;33mblue \x1b[38;5;244mgray\x1b[0m\n",
+    );
 
     log.str("entering wfe loop\n");
 
