@@ -48,10 +48,18 @@ const BUS_TO_PHYS_MASK: u32 = 0x3FFF_FFFF;
 const FB_WIDTH: u32 = 1280;
 const FB_HEIGHT: u32 = 720;
 const FB_DEPTH: u32 = 32;
-/// Pixel order tag value: `1` = RGB. (`0` would request BGR.) The draw code
-/// assembles pixels as `0x00RRGGBB`; if a screendump shows swapped red/blue,
-/// the firmware ignored the order tag and the draw packing must flip.
-const FB_PIXEL_ORDER_RGB: u32 = 1;
+/// Pixel-order tag value that yields an RGB-ordered surface, so a
+/// `0x00RRGGBB` pixel from the draw code displays with correct red and blue.
+///
+/// The Raspberry Pi firmware doc nominally assigns `0` = BGR, `1` = RGB, but
+/// QEMU's `raspi4b` model honors the tag with **inverted** value semantics:
+/// verified by QMP screendump, requesting `0` is what produces RGB output here
+/// (with `1`, red and blue come out swapped). The fix is the tag value, not the
+/// draw packing — the surface is genuinely RGB-ordered, so `put_pixel` keeps
+/// its logical `0x00RRGGBB` contract and the color model needs no swap. If this
+/// is ever run on real `VideoCore` firmware, re-confirm the value, as the
+/// hardware convention may differ from QEMU's.
+const FB_PIXEL_ORDER_RGB: u32 = 0;
 
 // Property tag identifiers (`VideoCore` mailbox property interface).
 const TAG_SET_PHYS_WH: u32 = 0x0004_8003;
@@ -168,6 +176,25 @@ impl Framebuffer {
             for x in 0..self.width {
                 self.put_pixel(x, y, color);
             }
+        }
+    }
+}
+
+#[cfg(feature = "selftest")]
+impl Framebuffer {
+    /// Builds a framebuffer over a caller-owned memory region for selftests,
+    /// so the console blit can render into a readable buffer instead of the
+    /// MMIO surface. The same `put_pixel`/`clear` stores run; the only change
+    /// is that `base` addresses ordinary RAM the test can read back.
+    ///
+    /// `base` must point to at least `pitch * height` writable bytes that
+    /// outlive the returned handle, and `pitch >= width * 4`.
+    pub(crate) fn over_region(base: usize, width: u32, height: u32, pitch: u32) -> Self {
+        Self {
+            base,
+            width,
+            height,
+            pitch,
         }
     }
 }

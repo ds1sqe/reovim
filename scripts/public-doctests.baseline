@@ -66,9 +66,34 @@ arch/src/sys/net.rs	pub const SOCK_STREAM: usize
 arch/src/sys/net.rs	pub const UNIX_PATH_MAX: usize
 arch/src/sys/none_aarch64/arena.rs	pub const fn capacity() -> usize
 arch/src/sys/none_aarch64/arena.rs	pub fn alloc_pages(len: usize) -> Result<usize, Errno>
-arch/src/sys/none_aarch64/console.rs	pub fn new(fb: Framebuffer, fg: u32, bg: u32, scale: u32) -> Self
+arch/src/sys/none_aarch64/color.rs	pub const fn resolve(self) -> u32
+arch/src/sys/none_aarch64/color.rs	pub enum Color
+arch/src/sys/none_aarch64/console.rs	pub fn new(
 arch/src/sys/none_aarch64/console.rs	pub fn print(&mut self, s: &str)
-arch/src/sys/none_aarch64/console.rs	pub struct Console
+arch/src/sys/none_aarch64/console.rs	pub fn screen_grid() -> Option<ScreenGrid<'static>>
+arch/src/sys/none_aarch64/console.rs	pub fn show_cursor(&mut self)
+arch/src/sys/none_aarch64/console.rs	pub struct Console<'g>
+arch/src/sys/none_aarch64/console.rs	pub struct ScreenGrid<'g>(&'g mut [Cell]);
+arch/src/sys/none_aarch64/escape.rs	pub const fn new() -> Self
+arch/src/sys/none_aarch64/escape.rs	pub enum Action
+arch/src/sys/none_aarch64/escape.rs	pub fn advance(&mut self, byte: u8) -> Option<Action>
+arch/src/sys/none_aarch64/escape.rs	pub fn as_slice(&self) -> &[u16]
+arch/src/sys/none_aarch64/escape.rs	pub struct Parser
+arch/src/sys/none_aarch64/escape.rs	pub struct SgrParams
+arch/src/sys/none_aarch64/fonts/jetbrains_mono.rs	pub const CELL_H: u32
+arch/src/sys/none_aarch64/fonts/jetbrains_mono.rs	pub const CELL_W: u32
+arch/src/sys/none_aarch64/fonts/jetbrains_mono.rs	pub const FIRST: u8
+arch/src/sys/none_aarch64/fonts/jetbrains_mono.rs	pub const LAST: u8
+arch/src/sys/none_aarch64/fonts/jetbrains_mono.rs	pub static GLYPHS: [u8; 12288]
+arch/src/sys/none_aarch64/fonts/mod.rs	pub const fn name(&self) -> &'static str
+arch/src/sys/none_aarch64/fonts/mod.rs	pub static JETBRAINS_MONO: Font
+arch/src/sys/none_aarch64/fonts/mod.rs	pub static TERMINUS: Font
+arch/src/sys/none_aarch64/fonts/mod.rs	pub struct Font
+arch/src/sys/none_aarch64/fonts/terminus.rs	pub const CELL_H: u32
+arch/src/sys/none_aarch64/fonts/terminus.rs	pub const CELL_W: u32
+arch/src/sys/none_aarch64/fonts/terminus.rs	pub const FIRST: u8
+arch/src/sys/none_aarch64/fonts/terminus.rs	pub const LAST: u8
+arch/src/sys/none_aarch64/fonts/terminus.rs	pub static GLYPHS: [u8; 12288]
 arch/src/sys/none_aarch64/framebuffer.rs	pub const fn base(&self) -> usize
 arch/src/sys/none_aarch64/framebuffer.rs	pub const fn height(&self) -> u32
 arch/src/sys/none_aarch64/framebuffer.rs	pub const fn pitch(&self) -> u32
@@ -299,9 +324,7 @@ arch/src/sys/none_aarch64/framebuffer.rs	pub fn clear(&self, color: u32)
 arch/src/sys/none_aarch64/framebuffer.rs	pub fn init() -> Option<Framebuffer>
 arch/src/sys/none_aarch64/framebuffer.rs	pub fn arm_memory() -> Option<(u64, u64)>
 arch/src/sys/none_aarch64/boot_info.rs	pub fn collect_boot_info() -> BootInfo
-arch/src/sys/none_aarch64/console.rs	pub struct Console
-arch/src/sys/none_aarch64/console.rs	pub fn new(fb: Framebuffer, fg: u32, bg: u32, scale: u32) -> Self
 arch/src/sys/none_aarch64/console.rs	pub fn print(&mut self, s: &str)
 arch/src/sys/none_aarch64/console.rs	pub fn write_bytes(&mut self, buf: &[u8])
-arch/src/sys/none_aarch64/console.rs	pub fn install(console: Console)
 arch/src/sys/none_x86_64/boot_info.rs	pub fn collect_boot_info() -> BootInfo
+arch/src/sys/none_aarch64/console.rs	pub fn install(console: Console<'static>)

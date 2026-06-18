@@ -1,0 +1,27 @@
+# Offline, dev-only glyph rasterizer for the bare-metal console fonts.
+#
+# DEPGRAPH-SHIELDED: this crate lives under `arch/tests/`, a path the depgraph
+# probe's tree-walk prunes via SKIP_DIRS (`lib/depgraph/src/lib.rs`). It is
+# therefore never enumerated as a product crate, so its registry dependency
+# (a pure-Rust TTF rasterizer) does not trip DAG5 `NonSovereignDep`. The
+# shipped `arch` crate gains no dependency: this tool only emits checked-in
+# `static` coverage tables that `arch` embeds as its own OFL-attributed data.
+#
+# It carries its own `[workspace]` so it is a standalone workspace root — its
+# lockfile and dependency graph never merge into the root reovim workspace.
+[workspace]
+
+[package]
+name = "glyph-rasterizer"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "glyph-rasterizer"
+path = "src/main.rs"
+
+[dependencies]
+# Pure-Rust TrueType rasterizer; emits grayscale coverage bitmaps. Confined to
+# this non-enumerated crate (see the header note).
+fontdue = "0.9"

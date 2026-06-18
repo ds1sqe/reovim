@@ -20,7 +20,10 @@
 
 mod arena;
 mod boot_info;
+pub mod color;
 pub mod console;
+pub mod escape;
+pub mod fonts;
 pub mod framebuffer;
 mod semihost;
 mod timer;

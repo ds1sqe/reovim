@@ -38,11 +38,18 @@ use none_x86_64 as target;
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 pub use none_aarch64::framebuffer;
 
-// The 8x8-font text console layered over the framebuffer, so the bare-metal
-// boot log renders on the HDMI surface and not only the UART. Same target
-// gate as the framebuffer it draws on.
+// The coverage-blended text console layered over the framebuffer, so the
+// bare-metal boot log renders on the HDMI surface and not only the UART, plus
+// the selectable embedded fonts it blits through. Same target gate as the
+// framebuffer they draw on.
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 pub use none_aarch64::console;
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+pub use none_aarch64::fonts;
+// The terminal color model the console pen resolves through (truecolor +
+// indexed palette). Same target gate as the console that consumes it.
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+pub use none_aarch64::color;
 
 // Runtime hardware discovery: assembles RAM/CPU facts into a `BootInfo` the
 // bare-metal payload pushes into `Init::new`. Freestanding-only hardware

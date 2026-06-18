@@ -35,7 +35,7 @@ use {
 #[cfg(target_arch = "aarch64")]
 use {
     core::arch::asm,
-    reovim_arch::sys::{console, framebuffer},
+    reovim_arch::sys::{color::Color, console, fonts, framebuffer},
 };
 
 #[cfg(target_arch = "x86_64")]
@@ -74,15 +74,17 @@ fn finish(code: i32) -> ! {
 reovim_arch::entry!(|_argc, _argv, _envp| {
     // aarch64: install the framebuffer as the floor's console sink so the
     // kernel's boot-stage log (its own fd-2 stderr echo included) renders on the
-    // HDMI surface as well as the UART. 2x glyph scale, legible on 1280x720. If
-    // the mailbox alloc fails the floor stays UART-only.
+    // HDMI surface as well as the UART, drawn through the JetBrains Mono coverage
+    // font over the console's retained-content grid. If the mailbox alloc or the
+    // one-shot screen-grid hand-out fails, the floor stays UART-only.
     #[cfg(target_arch = "aarch64")]
-    if let Some(fb) = framebuffer::init() {
+    if let Some((fb, grid)) = framebuffer::init().zip(console::screen_grid()) {
         console::install(console::Console::new(
             fb,
-            rgb(0xC8, 0xE0, 0xFF),
-            rgb(0x0A, 0x14, 0x28),
-            2,
+            &fonts::JETBRAINS_MONO,
+            Color::Rgb(rgb(0xC8, 0xE0, 0xFF)),
+            Color::Rgb(rgb(0x0A, 0x14, 0x28)),
+            grid,
         ));
     }
 

@@ -1,9 +1,10 @@
 //! Bare-metal aarch64 boot-log payload (QEMU raspi4b / BCM2711).
 //!
 //! Boots through the arch `_start`, asks the `VideoCore` for a 1280x720x32
-//! framebuffer over the mailbox property interface, wraps it in an 8x8-font
-//! text [`console::Console`] (rendered at 2x magnification), and renders the
-//! boot log onto the HDMI surface
+//! framebuffer over the mailbox property interface, wraps it in a
+//! [`console::Console`] rendering a selectable embedded font (here
+//! [`fonts::JETBRAINS_MONO`], anti-aliased) via coverage software-blend, and
+//! renders the boot log onto the HDMI surface
 //! while echoing the same lines to the PL011 UART. It then parks in a `wfe`
 //! loop forever — it deliberately does NOT semihosting-exit, so the rendered
 //! surface persists for a QEMU screendump / VNC capture. This is the floor's
@@ -17,7 +18,7 @@
 
 use {
     core::arch::asm,
-    reovim_arch::sys::{console, framebuffer, write},
+    reovim_arch::sys::{color::Color, console, fonts, framebuffer, write},
 };
 
 /// Packs an RGB triple into a `0x00RRGGBB` pixel (matches the requested RGB
@@ -26,13 +27,17 @@ const fn rgb(r: u8, g: u8, b: u8) -> u32 {
     ((r as u32) << 16) | ((g as u32) << 8) | (b as u32)
 }
 
+/// The font this boot log renders through. Selecting another embedded font is
+/// a one-line change here (e.g. [`fonts::TERMINUS`]).
+const BOOT_FONT: &fonts::Font = &fonts::JETBRAINS_MONO;
+
 /// A dual-sink boot log: every line goes to the PL011 UART (fd 1) and, once
 /// the framebuffer is up, to the on-screen text console as well.
 ///
 /// Before the framebuffer is acquired `console` is `None` and output is
 /// UART-only — the natural degraded path when the mailbox alloc fails.
 struct BootLog {
-    console: Option<console::Console>,
+    console: Option<console::Console<'static>>,
 }
 
 impl BootLog {
@@ -92,11 +97,18 @@ reovim_arch::entry!(|_argc, _argv, _envp| {
         .map(|fb| (fb.width(), fb.height(), fb.base(), fb.pitch()));
 
     let mut log = BootLog {
-        console: fb.map(|fb| {
-            // Light text on a dark slate background — legible on an HDMI
-            // capture and unmistakably "ours".
-            // 2x glyph scale: 16px cells, legible on the 1280x720 surface.
-            console::Console::new(fb, rgb(0xC8, 0xE0, 0xFF), rgb(0x0A, 0x14, 0x28), 2)
+        // Light text on a dark slate background — legible on an HDMI capture
+        // and unmistakably "ours". The font renders at its native 8x16 cell via
+        // coverage software-blend, backed by the console's retained-content grid
+        // (taken once from the lib's static store).
+        console: fb.zip(console::screen_grid()).map(|(fb, grid)| {
+            console::Console::new(
+                fb,
+                BOOT_FONT,
+                Color::Rgb(rgb(0xC8, 0xE0, 0xFF)),
+                Color::Rgb(rgb(0x0A, 0x14, 0x28)),
+                grid,
+            )
         }),
     };
 
@@ -114,10 +126,50 @@ reovim_arch::entry!(|_argc, _argv, _envp| {
         log.dec(pitch as usize);
         log.str("\n");
         log.str("framebuffer console up; boot log on screen\n");
+        log.str("font: ");
+        log.str(BOOT_FONT.name());
+        log.str("\n");
     } else {
         log.str("mbox fb: alloc failed; uart only\n");
     }
+    // Color demo: one byte stream drives both sinks. The embedded SGR escape
+    // sequences move the on-screen console's color pen through its parser, and
+    // a real terminal on the UART interprets the identical bytes — so the
+    // colors are no longer console-only. A screendump proves the parser
+    // resolves both the truecolor (`38;2;r;g;b`) and indexed (`38;5;n`) forms,
+    // with `0` resetting to the boot pens.
+    log.str(
+        "color: \x1b[38;2;255;92;87mtruecolor \x1b[38;5;46mgreen \
+         \x1b[38;5;33mblue \x1b[38;5;244mgray\x1b[0m\n",
+    );
+    // Effects demo: the same byte stream drives the on-screen console and a
+    // real UART terminal. Each word turns its own attribute on, then off
+    // before the next, so a screendump shows them independently. Bold, dim,
+    // and italic are synthetic coverage transforms; underline overlays a row;
+    // reverse swaps the cell pens. The trailing `0` clears them all.
+    log.str(
+        "fx: \x1b[1mbold \x1b[22m\x1b[2mdim \x1b[22m\x1b[3mitalic \
+         \x1b[23m\x1b[4munderline \x1b[24m\x1b[7mreverse\x1b[0m\n",
+    );
+
+    // Scroll demo: emit well over one screenful (the 1280x720 surface fits 36
+    // rows) so the boot-log header scrolls off the top and the newest lines
+    // land at the bottom. A screendump proves scroll-on-overflow repaints from
+    // the retained grid — the write-only framebuffer is never read back.
+    let mut n = 0;
+    while n < 40 {
+        log.str("scroll line ");
+        log.dec(n);
+        log.str("\n");
+        n += 1;
+    }
+
     log.str("entering wfe loop\n");
+
+    // Park a reverse-video block cursor at the write head for the capture.
+    if let Some(con) = log.console.as_mut() {
+        con.show_cursor();
+    }
 
     loop {
         // SAFETY: `wfe` is an unprivileged hint that parks the core until an
