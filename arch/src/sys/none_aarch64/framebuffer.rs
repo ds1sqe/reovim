@@ -3,7 +3,7 @@
 //! The Pi 4 has no separate display controller the ARM cores program
 //! directly: the framebuffer is owned by the `VideoCore` GPU, and the ARM
 //! side requests one over the *mailbox* property interface (channel 8).
-//! This module drives that interface to allocate a 640x480x32 surface and
+//! This module drives that interface to allocate a 1280x720x32 surface and
 //! exposes a minimal draw surface ([`Framebuffer`]) over the returned
 //! base/pitch — enough for the bare-metal splash to put unmistakable pixels
 //! on screen. No font, no double-buffer, no GPU command stream: the request
@@ -45,8 +45,8 @@ const BUS_TO_PHYS_MASK: u32 = 0x3FFF_FFFF;
 
 /// Requested surface geometry. Fixed for the splash; the request is rejected
 /// (or clamped) by firmware if unsupported, which the success check catches.
-const FB_WIDTH: u32 = 640;
-const FB_HEIGHT: u32 = 480;
+const FB_WIDTH: u32 = 1280;
+const FB_HEIGHT: u32 = 720;
 const FB_DEPTH: u32 = 32;
 /// Pixel order tag value: `1` = RGB. (`0` would request BGR.) The draw code
 /// assembles pixels as `0x00RRGGBB`; if a screendump shows swapped red/blue,
@@ -158,7 +158,7 @@ impl Framebuffer {
     }
 }
 
-/// Requests a 640x480x32 framebuffer from the `VideoCore` over the mailbox
+/// Requests a 1280x720x32 framebuffer from the `VideoCore` over the mailbox
 /// property interface and returns a [`Framebuffer`] over it.
 ///
 /// Returns `None` if the firmware reports the property batch failed or the

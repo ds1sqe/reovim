@@ -94,7 +94,8 @@ reovim_arch::entry!(|_argc, _argv, _envp| {
         console: fb.map(|fb| {
             // Light text on a dark slate background — legible on an HDMI
             // capture and unmistakably "ours".
-            console::Console::new(fb, rgb(0xC8, 0xE0, 0xFF), rgb(0x0A, 0x14, 0x28))
+            // 2x glyph scale: 16px cells, legible on the 1280x720 surface.
+            console::Console::new(fb, rgb(0xC8, 0xE0, 0xFF), rgb(0x0A, 0x14, 0x28), 2)
         }),
     };
 

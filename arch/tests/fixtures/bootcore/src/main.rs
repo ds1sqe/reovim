@@ -45,8 +45,9 @@ reovim_arch::entry!(|_argc, _argv, _envp| {
 
     // Bring up the framebuffer console for on-screen output (UART is the
     // always-present fallback when the mailbox alloc fails).
+    // 2x glyph scale: 16px cells, legible on the 1280x720 surface.
     let mut con = framebuffer::init()
-        .map(|fb| console::Console::new(fb, rgb(0xC8, 0xE0, 0xFF), rgb(0x0A, 0x14, 0x28)));
+        .map(|fb| console::Console::new(fb, rgb(0xC8, 0xE0, 0xFF), rgb(0x0A, 0x14, 0x28), 2));
     if let Some(con) = con.as_mut() {
         con.print("reovim kernel boot on bare metal\n");
     }

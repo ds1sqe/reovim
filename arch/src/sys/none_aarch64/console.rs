@@ -148,10 +148,13 @@ pub struct Console {
     col: u32,
     /// Cursor row in glyph cells.
     row: u32,
-    /// Columns that fit the surface (`fb.width() / GLYPH_W`).
+    /// Columns that fit the surface (`fb.width() / (GLYPH_W * scale)`).
     cols: u32,
-    /// Rows that fit the surface (`fb.height() / GLYPH_H`).
+    /// Rows that fit the surface (`fb.height() / (GLYPH_H * scale)`).
     rows: u32,
+    /// Integer glyph magnification: each font pixel becomes a `scale`×`scale`
+    /// block, so a cell is `8 * scale` pixels square. `1` is the native 8x8.
+    scale: u32,
     /// Foreground (glyph) pixel, `0x00RRGGBB`.
     fg: u32,
     /// Background (cell) pixel, `0x00RRGGBB`.
@@ -160,11 +163,14 @@ pub struct Console {
 
 impl Console {
     /// Builds a console over `fb` with the given foreground/background colors
-    /// and clears the whole surface to the background.
+    /// at integer glyph magnification `scale` (each font pixel becomes a
+    /// `scale`×`scale` block; `1` is the native 8x8), and clears the whole
+    /// surface to the background. A `scale` of `0` is treated as `1`.
     #[must_use]
-    pub fn new(fb: Framebuffer, fg: u32, bg: u32) -> Self {
-        let cols = fb.width() / GLYPH_W;
-        let rows = fb.height() / GLYPH_H;
+    pub fn new(fb: Framebuffer, fg: u32, bg: u32, scale: u32) -> Self {
+        let scale = if scale == 0 { 1 } else { scale };
+        let cols = fb.width() / (GLYPH_W * scale);
+        let rows = fb.height() / (GLYPH_H * scale);
         fb.clear(bg);
         Self {
             fb,
@@ -172,6 +178,7 @@ impl Console {
             row: 0,
             cols,
             rows,
+            scale,
             fg,
             bg,
         }
@@ -211,20 +218,28 @@ impl Console {
         }
     }
 
-    /// Blits the glyph for `byte` into the current cell.
+    /// Blits the glyph for `byte` into the current cell, magnified `scale`×.
     fn draw_cell(&self, byte: u8) {
         let rows = glyph(byte);
-        let x0 = self.col * GLYPH_W;
-        let y0 = self.row * GLYPH_H;
+        let cell_w = GLYPH_W * self.scale;
+        let x0 = self.col * cell_w;
+        let y0 = self.row * GLYPH_H * self.scale;
         for (gy, &bits) in rows.iter().enumerate() {
             for gx in 0..GLYPH_W {
                 // Bit 0 is the leftmost pixel in the font8x8 encoding.
                 let on = (bits >> gx) & 1 != 0;
                 let color = if on { self.fg } else { self.bg };
+                // Expand the one font pixel into a `scale`×`scale` block.
+                let px = x0 + gx * self.scale;
                 // `gy` is 0..8, so the cast into the pixel coordinate is
                 // value-preserving.
                 #[allow(clippy::cast_possible_truncation)]
-                self.fb.put_pixel(x0 + gx, y0 + gy as u32, color);
+                let py = y0 + (gy as u32) * self.scale;
+                for dy in 0..self.scale {
+                    for dx in 0..self.scale {
+                        self.fb.put_pixel(px + dx, py + dy, color);
+                    }
+                }
             }
         }
     }
