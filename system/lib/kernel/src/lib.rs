@@ -41,9 +41,10 @@ mod fdt;
 
 // The framebuffer console consumes the arch-sys-none-aarch64 `Framebuffer` type
 // (raw VideoCore MMIO, freestanding-only — the Q2 seam), so it is gated to the
-// target that defines that type. The `install` + `ConsoleSink` write-sink glob
-// lifted up with it; the floor still fans fd 1/2 to a fixture-installed console
-// this flight (the standing write-sink registry is 04b).
+// target that defines that type. The `install_console` boot action builds the
+// standing console and registers its `fn(&[u8])` trampoline into the floor's
+// write-sink registry, so fd 1/2 standingly fans to the framebuffer console with
+// no fixture-side install glue (SP04 04b).
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 pub mod console;
 

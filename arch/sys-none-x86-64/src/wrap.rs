@@ -17,7 +17,7 @@ use core::sync::atomic::{AtomicU32, Ordering};
 
 use crate::errno::{EAGAIN, EBADF, EINVAL, ENOENT, Errno};
 
-use super::{arena, semihost, timer};
+use super::{arena, semihost, sink, timer};
 
 // ---- mmap prot/flags --------------------------------------------------------
 
@@ -111,6 +111,11 @@ pub const CLONE_CHILD_CLEARTID: usize = 0x0020_0000;
 /// and stderr coincide. The write is total once started (polled port I/O
 /// cannot short-write), so the full length is always reported.
 ///
+/// The write-sink registry ([`sink::fan_out`]) is wired symmetrically with the
+/// aarch64 backend so the floor `write` path is uniform across arches; x86-none
+/// installs no sink (no console/framebuffer), so the fan-out is a no-op and
+/// fd 1/2 stay UART-only.
+///
 /// # Errors
 ///
 /// `EBADF` for any other fd: nothing else can be open ([`openat`] never
@@ -118,6 +123,7 @@ pub const CLONE_CHILD_CLEARTID: usize = 0x0020_0000;
 pub fn write(fd: i32, buf: &[u8]) -> Result<usize, Errno> {
     if fd == 1 || fd == 2 {
         super::uart::write_bytes(buf);
+        sink::fan_out(buf);
         Ok(buf.len())
     } else {
         Err(EBADF)

@@ -28,6 +28,13 @@ mod arena;
 pub mod errno;
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
 mod semihost;
+// The write-once `fn(&[u8])` write-sink registry, symmetric with the aarch64
+// backend (SP04 04b): the floor `write` fans fd 1/2 to an installed callback
+// (in addition to the UART). x86-none has no console, so the sink stays `None`
+// at runtime — the registry exists for a uniform floor `write` path across both
+// freestanding arches.
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+mod sink;
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
 mod timer;
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
@@ -47,6 +54,14 @@ pub use errno::{
     EADDRINUSE, EAGAIN, EBADF, ECONNREFUSED, EFAULT, EINVAL, ENOENT, ENOMEM, ENOTTY, EOPNOTSUPP,
     EPIPE, EWOULDBLOCK, Errno, from_ret,
 };
+
+/// Installs a `fn(&[u8])` callback as the floor's write sink (once).
+///
+/// Symmetric with the aarch64 backend's §11 impl-edge accessor; x86-none has no
+/// display, so nothing installs a sink at runtime, but the entry point exists so
+/// the registry surface is uniform across both freestanding arches.
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+pub use sink::install_write_sink;
 
 /// The Multiboot1 information-structure pointer the bootloader leaves in `EBX`
 /// at entry.

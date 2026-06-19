@@ -580,10 +580,12 @@ unsafe impl Sync for ConsoleSink {}
 /// The installed console, if any. `None` until a payload calls [`install`].
 static CONSOLE: ConsoleSink = ConsoleSink(UnsafeCell::new(None));
 
-/// Installs `console` as the floor's on-screen write sink, replacing any prior
-/// one. Call once, early, from a payload that has a display; the floor's `write`
-/// then mirrors every fd 1/2 byte to it.
-pub fn install(console: Console<'static>) {
+/// Parks `console` in the crate-static holder the write-sink trampoline reads.
+///
+/// Crate-internal: the public entry is [`install_console`], which builds the
+/// `Console`, parks it here, and registers the trampoline into the floor's
+/// write-sink registry. Called once, early, before the first fd 1/2 write.
+pub(crate) fn install(console: Console<'static>) {
     // SAFETY: single thread of control; no live reference into the cell exists
     // across this store.
     unsafe {
@@ -591,14 +593,43 @@ pub fn install(console: Console<'static>) {
     }
 }
 
+/// Builds the standing framebuffer console and wires it into the floor's
+/// fd 1/2 fan-out — the kernel's permanent on-screen sink, installed by the
+/// system kernel rather than by fixture glue.
+///
+/// It builds a [`Console<'static>`] over `fb` (the `VideoCore` `Framebuffer`
+/// raw-MMIO seam that stays below — the Q2 type), rendering through `font` with
+/// the `fg`/`bg` pens over the once-handed-out screen `grid`, parks it in this
+/// crate's [`CONSOLE`] static via [`install`], then registers [`write_bytes`]
+/// as the floor's `fn(&[u8])` write sink (the §11 downward install into
+/// arch-sys-none's
+/// [`install_write_sink`](reovim_arch_sys_none_aarch64::install_write_sink)).
+/// After this the floor `write` fans every fd 1/2 byte to the console from below
+/// through the registry — no `arch-sys-none → system-kernel` edge.
+///
+/// Call once, early — before the kernel's first `write(2,...)` (the
+/// no-read-before-install ordering). The registry install is write-once, so a
+/// stray second call cannot displace the standing console.
+pub fn install_console(
+    fb: Framebuffer,
+    font: &'static Font,
+    fg: Color,
+    bg: Color,
+    grid: ScreenGrid<'static>,
+) {
+    install(Console::new(fb, font, fg, bg, grid));
+    // The trampoline is the free `write_bytes` fn coerced to `fn(&[u8])`: the
+    // floor `write` calls it from below, and it drains into the parked console.
+    reovim_arch_sys_none_aarch64::install_write_sink(write_bytes);
+}
+
 /// Writes `buf` to the installed console, if one is present; a no-op otherwise.
 ///
-/// This is the standing-console sink for the floor's `write` fan-out. The floor
-/// `write` cannot name it directly (that would be a forbidden
-/// arch-sys-none → system-kernel upward edge): the write-sink registry that
-/// installs this as a downward `fn(&[u8])` trampoline is wired in 04b. Until
-/// then the migrated console is fixture-installed via [`install`] and this sink
-/// stands ready for that registry.
+/// This is the standing-console sink for the floor's `write` fan-out, and the
+/// `fn(&[u8])` trampoline [`install_console`] registers into the floor's
+/// write-sink registry. The floor `write` cannot name it directly (that would
+/// be a forbidden arch-sys-none → system-kernel upward edge): the registry
+/// holds it as a downward-installed callback and calls it from below.
 pub fn write_bytes(buf: &[u8]) {
     // SAFETY: single thread of control; the `&mut` borrow does not alias — no
     // other reference into the cell is live during the call.

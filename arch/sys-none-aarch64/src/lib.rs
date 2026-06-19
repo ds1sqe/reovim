@@ -39,6 +39,13 @@ pub mod errno;
 pub mod framebuffer;
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 mod semihost;
+// The write-once `fn(&[u8])` write-sink registry. The floor `write` fans fd 1/2
+// to an installed callback (in addition to the UART); the system kernel installs
+// its console-renderer trampoline downward at boot (SP04 04b). The console it
+// renders to lives one tier up, so this registry is the acyclic decoupling — no
+// reverse arch-sys-none → system-kernel edge.
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+mod sink;
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 mod timer;
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
@@ -51,6 +58,16 @@ pub use errno::{
     EADDRINUSE, EAGAIN, EBADF, ECONNREFUSED, EFAULT, EINVAL, ENOENT, ENOMEM, ENOTTY, EOPNOTSUPP,
     EPIPE, EWOULDBLOCK, Errno, from_ret,
 };
+
+/// Installs a `fn(&[u8])` callback as the floor's on-screen write sink (once).
+///
+/// The §11 system-kernel → arch-sys-none impl edge: the system kernel registers
+/// its console-renderer trampoline here at boot, and the floor `write` fans
+/// fd 1/2 to it from below. The console lives one tier up, so this downward
+/// install (called from below) is what keeps arch-sys-none free of a reverse
+/// upward edge (invariant #2).
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+pub use sink::install_write_sink;
 
 /// The firmware-provided flattened-device-tree (DTB) physical address.
 ///

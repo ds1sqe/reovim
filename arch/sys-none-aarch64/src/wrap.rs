@@ -17,7 +17,7 @@ use core::sync::atomic::{AtomicU32, Ordering};
 
 use crate::errno::{EAGAIN, EBADF, EINVAL, ENOENT, Errno};
 
-use super::{arena, semihost, timer};
+use super::{arena, semihost, sink, timer};
 
 // ---- mmap prot/flags --------------------------------------------------------
 
@@ -114,9 +114,9 @@ pub const CLONE_CHILD_CLEARTID: usize = 0x0020_0000;
 /// The framebuffer console moved up into `reovim-system-kernel` (SP04 04a), so
 /// the floor `write` no longer names it directly — that would be a forbidden
 /// arch-sys-none → system-kernel upward edge. The on-screen fan-out is restored
-/// by the write-sink registry (a downward-installed `fn(&[u8])` trampoline the
-/// system kernel installs at boot), wired in 04b; until then fd 1/2 are
-/// UART-only at the floor.
+/// by the write-sink registry ([`sink::fan_out`]), which calls the `fn(&[u8])`
+/// trampoline the system kernel installs downward at boot, or no-ops when no
+/// display is installed (the exit-code selftest fixtures stay UART-only).
 ///
 /// # Errors
 ///
@@ -125,7 +125,7 @@ pub const CLONE_CHILD_CLEARTID: usize = 0x0020_0000;
 pub fn write(fd: i32, buf: &[u8]) -> Result<usize, Errno> {
     if fd == 1 || fd == 2 {
         super::uart::write_bytes(buf);
-        // write-sink registry wired in 04b (the lifted console's fan-out).
+        sink::fan_out(buf);
         Ok(buf.len())
     } else {
         Err(EBADF)

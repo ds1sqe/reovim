@@ -98,20 +98,23 @@ entry!(|_argc, _argv, _envp| {
     #[cfg(target_os = "linux")]
     let _ = reovim_platform_linux_native::install_platform();
 
-    // aarch64: install the framebuffer as the floor's console sink so the
-    // kernel's boot-stage log (its own fd-2 stderr echo included) renders on the
-    // HDMI surface as well as the UART, drawn through the JetBrains Mono coverage
-    // font over the console's retained-content grid. If the mailbox alloc or the
+    // aarch64: stand up the system kernel's framebuffer console as the floor's
+    // fd 1/2 write sink, before the first `write` below (the
+    // no-read-before-install ordering). The kernel's boot-stage log (its own
+    // fd-2 stderr echo included) then renders on the HDMI surface as well as the
+    // UART, drawn through the JetBrains Mono coverage font over the console's
+    // retained-content grid. The install is the system kernel's own boot action
+    // now — no fixture-side `console::install` glue. If the mailbox alloc or the
     // one-shot screen-grid hand-out fails, the floor stays UART-only.
     #[cfg(target_arch = "aarch64")]
     if let Some((fb, grid)) = framebuffer::init().zip(console::screen_grid()) {
-        console::install(console::Console::new(
+        console::install_console(
             fb,
             &fonts::JETBRAINS_MONO,
             Color::Rgb(rgb(0xC8, 0xE0, 0xFF)),
             Color::Rgb(rgb(0x0A, 0x14, 0x28)),
             grid,
-        ));
+        );
     }
 
     let _ = write(1, b"\nreovim kernel boot on bare metal\n");
