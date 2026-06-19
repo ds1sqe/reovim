@@ -24,4 +24,13 @@ reovim_arch::arch_test!(deliberately_fails, {
     reovim_arch::testrt::check_eq(1 + 1, 3);
 });
 
-reovim_arch::entry!(|_argc, _argv, _envp| { testrt::run() });
+reovim_arch::entry!(|_argc, _argv, _envp| {
+    // Install the platform handle before anything reads it. The TUI platform
+    // test suite may access the handle during test execution; installing here,
+    // as the closure's first statement, matches the no-read-before-install
+    // discipline the `apps/*` composition roots follow. This fixture is
+    // host-only (native-only pin per `fixtures_exec.rs`), so only the POSIX
+    // provider is needed — no bare-metal scaffold branch.
+    let _ = reovim_platform_linux_native::install_platform();
+    testrt::run()
+});

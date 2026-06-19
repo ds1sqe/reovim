@@ -30,5 +30,11 @@ inject-failure = []
 reovim-platform-tui = { path = "../../..", features = ["selftest"] }
 reovim-arch         = { path = "../../../../../../arch", features = ["runtime", "selftest"] }
 
+# The platform-handle installer this composition root drives. The fixture is
+# host-only (native-only pin per `fixtures_exec.rs`), so only the real POSIX
+# provider is needed — no bare-metal scaffold branch.
+[dependencies.reovim-platform-linux-native]
+path = "../../../../../../platform/linux-native"
+
 [lints]
 workspace = true

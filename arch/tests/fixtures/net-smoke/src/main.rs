@@ -25,6 +25,14 @@ use reovim_arch::{
 };
 
 reovim_arch::entry!(|_argc, _argv, _envp| {
+    // Install the platform handle as the closure's first statement, before the
+    // UDS round-trip allocates / spawns / does fd ops through it. This fixture
+    // is Linux-only — `reovim_arch::net` is `cfg(target_os = "linux")`, so the
+    // body cannot build freestanding — so it installs the real POSIX provider
+    // unconditionally; there is no bare-metal branch (the stub scaffold would be
+    // dead, the fixture never links on `*-unknown-none`).
+    let _ = reovim_platform_linux_native::install_platform();
+
     // Use a fixed path. The socket is unlinked by `UnixListener::Drop`.
     let path: &[u8] = b"/tmp/reovim-arch-net-smoke-fixture\0";
 

@@ -86,9 +86,10 @@ pub use target::term;
 // ---- floor surface re-exports ------------------------------------------------
 
 /// The fused clone asm primitive: issues `clone` and in the child branches
-/// straight to `entry` on the new stack. Target-internal; only `thread`
-/// consumes it.
-pub(crate) use target::clone_into;
+/// straight to `entry` on the new stack. `arch::thread` consumes it in-crate,
+/// and the `platform-linux-native` provider names it through this facade for the
+/// detached-thread spawn adapter (SP02), so it is `pub` on the floor surface.
+pub use target::clone_into;
 
 pub use target::{EAGAIN, EBADF, EFAULT, EINVAL, ENOENT, ENOMEM, EWOULDBLOCK, Errno, from_ret};
 

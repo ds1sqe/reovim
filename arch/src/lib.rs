@@ -26,9 +26,6 @@ pub mod alloc;
 #[cfg(target_os = "linux")]
 pub mod net;
 pub mod panic;
-// arch's implementation of the down-face platform contract: the static vtable
-// of const fn pointers + the write-once boot install (SP02, arch → kabi).
-pub mod platform;
 pub mod sys;
 #[cfg(target_os = "linux")]
 pub mod term;

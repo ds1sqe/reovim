@@ -413,7 +413,7 @@ fn firewall_unconditional_arch_dep_still_trips() {
 }
 
 /// (iii) An UNCONDITIONAL `reovim-arch-sys-*` dep must ALSO trip the firewall.
-/// The `is_arch_crate_name` predicate covers the whole arch-family via the
+/// The `is_floor_crate_name` predicate covers the whole arch-family via the
 /// `name.starts_with("reovim-arch-sys-")` branch — this fixture proves that
 /// branch is live and not silently dead after any future refactor.
 #[test]

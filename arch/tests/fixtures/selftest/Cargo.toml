@@ -35,5 +35,17 @@ inject-failure = []
 # modules into the arch lib). Together they give this bin the full test suite.
 reovim-arch = { path = "../../..", features = ["runtime", "selftest"] }
 
+# The platform-handle installer this composition root drives, cfg-split by
+# target so exactly one links per build (mutually exclusive — neither
+# double-defines the handle). The selftest reads the handle through
+# `lib_ds_tests` (alloc + park/unpark), so it must install before `testrt::run`.
+# On hosted Linux the real POSIX provider installs; on `*-unknown-none` the
+# bare-metal scaffold does (linux-native cannot link there).
+[target.'cfg(target_os = "linux")'.dependencies]
+reovim-platform-linux-native = { path = "../../../../platform/linux-native" }
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+reovim-platform-stub-none = { path = "../../../../platform/stub-none" }
+
 [lints]
 workspace = true

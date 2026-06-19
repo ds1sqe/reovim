@@ -26,4 +26,15 @@ reovim_arch::arch_test!(deliberately_fails, {
     reovim_arch::testrt::check_eq(1 + 1, 3);
 });
 
-reovim_arch::entry!(|_argc, _argv, _envp| { testrt::run() });
+reovim_arch::entry!(|_argc, _argv, _envp| {
+    // Install the platform handle as the closure's first statement, before any
+    // test reads it (`lib_ds_tests` allocates + parks through the handle). The
+    // installer is cfg-split: the real POSIX provider on hosted Linux, the
+    // bare-metal scaffold on `*-unknown-none` — exactly one links per target,
+    // matching the no-read-before-install discipline the `apps/*` roots follow.
+    #[cfg(not(target_os = "linux"))]
+    let _ = reovim_platform_stub_none::install_platform();
+    #[cfg(target_os = "linux")]
+    let _ = reovim_platform_linux_native::install_platform();
+    testrt::run()
+});

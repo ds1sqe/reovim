@@ -606,16 +606,11 @@ extern "C" fn rust_entry(argc: usize, argv: *const *const u8, envp: *const *cons
     // `LLVM_PROFILE_FILE` from it. The cast drops only the outer const (the
     // atomic stores `*mut`); the pointer is never written through.
     ENVP.store(envp.cast_mut(), core::sync::atomic::Ordering::Release);
-    // Install the platform handle (SP02, AB12 write-once). This is the boot
-    // sequence point: arch's allocator is heap-free and already up, and the
-    // platform vtable is a `static` of const fn pointers (built at compile
-    // time), so the install is one atomic store with zero heap. After this
-    // line any consumer may read the handle (`kabi::handle`); reading it
-    // before this point is a boot-ordering bug, surfaced by `handle`'s panic
-    // (the no-read-before-install prerequisite, mirroring the panic-handler
-    // seams). The result is ignored by construction: `rust_entry` is the sole
-    // process entry, so a second install cannot occur here.
-    let _ = crate::platform::install_platform();
+    // The platform-vtable install moved out of arch (SP02): the provider crate
+    // `reovim-platform-linux-native` owns `install_platform()`, and the `apps/*`
+    // composition root drives it as the first statement of its `entry!` closure
+    // — before any `kabi::handle` read. `rust_entry` therefore no longer
+    // installs the handle; it just forwards the startup vectors to `arch_main`.
     // SAFETY: `arch_main` is the bin crate's `entry!`-installed shim with this
     // exact signature; `argc`/`argv`/`envp` are the kernel-provided startup
     // vectors forwarded verbatim from `_start`. The shim owns interpreting them.

@@ -24,6 +24,11 @@ doctest = false
 # `#[panic_handler]`) and `selftest` (to register arch_test! cases from the
 # net/term modules into the link section).
 reovim-arch = { path = "../../..", features = ["runtime", "selftest"] }
+# The platform-handle installer this composition root drives. The fixture is
+# Linux-only (it names `reovim_arch::net`, a `cfg(target_os = "linux")` module),
+# so it depends on the real POSIX provider unconditionally — no bare-metal
+# scaffold branch, since the body never links freestanding.
+reovim-platform-linux-native = { path = "../../../../platform/linux-native" }
 
 [lints]
 workspace = true

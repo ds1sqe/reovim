@@ -91,6 +91,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-platform-linux-native"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-kabi-platform",
+ "reovim-uapi-posix",
+]
+
+[[package]]
 name = "reovim-server-rt"
 version = "0.16.0-dev"
 dependencies = [
@@ -142,6 +151,7 @@ dependencies = [
  "reovim-domain-text",
  "reovim-kernel",
  "reovim-lib-ds",
+ "reovim-platform-linux-native",
  "reovim-server-rt",
  "reovim-subsys-domain",
  "reovim-uapi-abi",

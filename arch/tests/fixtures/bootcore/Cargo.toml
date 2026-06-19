@@ -27,5 +27,15 @@ reovim-arch = { path = "../../..", features = ["runtime"] }
 # The real reovim kernel — this bin boots it on the bare-metal floor.
 reovim-kernel = { path = "../../../../editor/lib/kernel" }
 
+# The platform-handle installer this composition root drives, cfg-split by
+# target so exactly one links per build. The kernel boot allocates + writes
+# through the handle, so it must install first. This fixture's real target is
+# `*-unknown-none` (the scaffold); a hosted Linux build gets the real provider.
+[target.'cfg(target_os = "linux")'.dependencies]
+reovim-platform-linux-native = { path = "../../../../platform/linux-native" }
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+reovim-platform-stub-none = { path = "../../../../platform/stub-none" }
+
 [lints]
 workspace = true

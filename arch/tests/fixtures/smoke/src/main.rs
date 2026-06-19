@@ -18,8 +18,14 @@ use {
 };
 
 reovim_arch::entry!(|_argc, _argv, _envp| {
+    // Install the platform handle as the closure's first statement, before the
+    // smoke allocates or spawns through it. This fixture is host-only (it
+    // self-skips under system-image mode), so it installs the real POSIX
+    // provider unconditionally — no bare-metal scaffold branch.
+    let _ = reovim_platform_linux_native::install_platform();
+
     // Allocate a lib/ds DS through the live allocator (reached via the handle
-    // the entry path installed before this shim runs).
+    // installed above).
     let mut seq: Seq<u64> = Seq::new();
     for i in 0..8 {
         if seq.try_push(i).is_err() {

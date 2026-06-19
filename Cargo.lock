@@ -95,6 +95,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-platform-linux-native"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-kabi-platform",
+ "reovim-uapi-posix",
+]
+
+[[package]]
+name = "reovim-platform-stub-none"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-kabi-platform",
+ "reovim-uapi-posix",
+]
+
+[[package]]
 name = "reovim-platform-tui"
 version = "0.16.0-dev"
 dependencies = [

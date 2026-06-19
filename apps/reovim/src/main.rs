@@ -48,6 +48,14 @@ static TEXT_PROJECTOR: TextProjector = TextProjector;
 static DEFAULT_SOCKET: &[u8] = b"/tmp/reovim-launcher.sock\0";
 
 reovim_arch::entry!(|argc, argv, _envp| {
+    // ── Install the platform vtable (SP02, AB12 write-once) ───────────────────
+    // The composition root drives the install: this is the first statement of
+    // the `entry!` closure, ahead of every `kabi::handle` read (the kernel boot,
+    // the socket syscalls), so the no-read-before-install invariant holds. The
+    // result is ignored by construction — this is the sole process entry, so a
+    // second install cannot occur here.
+    let _ = reovim_platform_linux_native::install_platform();
+
     // ── Resolve the socket path ───────────────────────────────────────────────
     let socket_path: &'static [u8] = if argc >= 2 {
         // SAFETY: argv[1] is a valid NUL-terminated C string for the process

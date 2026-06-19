@@ -120,6 +120,19 @@ pub fn default_category_table() -> Vec<(String, Category)> {
         ("arch/sys-linux-aarch64", Category::Foundation),
         ("arch/sys-none-aarch64", Category::Foundation),
         ("arch/sys-none-x86-64", Category::Foundation),
+        // platform/linux-native = the POSIX provider (SP02): canonicalizes
+        // NATIVE→POSIX and installs the kabi/platform vtable. Floor tier (it
+        // implements the down-face contract, structurally peer to arch), so it
+        // classifies Foundation; the firewall counts it a floor-family name no
+        // product may import (`is_floor_crate_name`).
+        ("platform/linux-native", Category::Foundation),
+        // platform/stub-none = the bare-metal selftest handle scaffold (SP02
+        // Phase 4): the freestanding -ENOSYS/sentinel vtable the selftest/
+        // bootcore fixtures install on *-unknown-none. Same floor tier as
+        // linux-native (it implements the same down-face contract), so it
+        // classifies Foundation and `is_floor_crate_name` counts it a
+        // floor-family name no product may import. Superseded by SP04.
+        ("platform/stub-none", Category::Foundation),
         ("lib/*", Category::Foundation),
         // kabi/* = down-face contract tier (SP01/SP02); classifies as Foundation
         // because the coarse matrix expresses tier relationships; the finer
@@ -262,6 +275,46 @@ pub fn default_foundation_grants() -> std::collections::BTreeMap<String, Vec<Str
     // sole Foundation edge is the SP07 lib/testrt dep above.
     m.insert("reovim-arch-sys-linux-x86-64".to_owned(), vec!["reovim-testrt".to_owned()]);
     m.insert("reovim-arch-sys-linux-aarch64".to_owned(), vec!["reovim-testrt".to_owned()]);
+    // ── SP02 platform-provider grants ───────────────────────────────────────
+    // The POSIX provider implements the down-face kabi/platform contract: it
+    // names the canonical Fd/OpenFlags/Mode newtypes (uapi/posix) at the slot
+    // boundary and builds + installs the `PlatformVtable` (kabi/platform).
+    m.insert(
+        "reovim-platform-linux-native".to_owned(),
+        vec![
+            "reovim-kabi-platform".to_owned(), // provider → kabi/platform (builds + installs the vtable)
+            "reovim-uapi-posix".to_owned(), // provider → uapi/posix (canonical Fd/OpenFlags/Mode at the slots)
+            // provider → arch: the ONE-WAY TRANSITIONAL backend edge (SP02 →
+            // retired in SP05). The provider names arch's alloc + clock backends
+            // (`arch::alloc`, `arch::time`) and the raw `arch::sys` syscall floor.
+            // It is acyclic — arch never names the provider back; the apps/*
+            // composition root drives the install. Retirement: SP05 severs
+            // product→arch and the alloc/clock kabi surface settles, then the
+            // provider's backend consumption migrates and this grant drops. The
+            // master crate-map carries this edge with a "transitional, retired in
+            // 05" note — the map is a target, this edge is a way-station.
+            "reovim-arch".to_owned(),
+        ],
+    );
+    // The bare-metal selftest handle scaffold (SP02 Phase 4) carries the same
+    // floor-family dep set as linux-native: it builds + installs the
+    // `PlatformVtable` (kabi/platform), names the canonical Fd/OpenFlags/Mode at
+    // its slot boundary (uapi/posix), and reaches arch's alloc + clock backends
+    // and the raw `arch::sys` floor (futex / write) through the SAME ONE-WAY
+    // TRANSITIONAL backend edge (SP02 → retired in SP05). Acyclic — arch never
+    // names the scaffold back; the fixture composition root drives the install.
+    // Superseded by SP04's real freestanding system-kernel provider.
+    m.insert(
+        "reovim-platform-stub-none".to_owned(),
+        vec![
+            "reovim-kabi-platform".to_owned(), // scaffold → kabi/platform (builds + installs the vtable)
+            "reovim-uapi-posix".to_owned(), // scaffold → uapi/posix (canonical Fd/OpenFlags/Mode at the slots)
+            // scaffold → arch: the same one-way transitional backend edge as
+            // linux-native (SP02 → retired in SP05) — alloc/clock backends +
+            // `arch::sys` futex/write. Acyclic via the composition-root install.
+            "reovim-arch".to_owned(),
+        ],
+    );
     m.insert(
         "reovim-lib-ds".to_owned(),
         vec![
@@ -2051,19 +2104,23 @@ fn swapset_group(path: &str) -> Option<String> {
     Some(format!("{root}/{dir}"))
 }
 
-/// Returns `true` when `crate_name` or any dep name in `deps` identifies
-/// an `arch` crate.  "arch crate" = exact name `reovim-arch` (the sole
-/// arch backend until SP02 lands; SP02/SP04 will refine if more arch crates
-/// appear).
+/// Returns `true` when `name` identifies a **floor-family** crate — a Tier-1
+/// crate below the import airlock no product may name by import.
 ///
-/// The firewall probe uses this to detect a DIRECT edge to the arch backend.
+/// The floor family is: `reovim-arch` itself, the per-target raw-mechanism
+/// crates carved out of it (`reovim-arch-sys-*`, SP01), and the platform
+/// providers that canonicalize NATIVE→POSIX above it (`reovim-platform-*`,
+/// SP02). The firewall probe uses this to detect a DIRECT edge to any of them.
 #[must_use]
-fn is_arch_crate_name(name: &str) -> bool {
+fn is_floor_crate_name(name: &str) -> bool {
     // `reovim-arch` plus the per-target raw-mechanism crates carved out of it
-    // (SP01): `reovim-arch-sys-{linux,none}-{x86-64,aarch64}`. They are
-    // arch-family floor crates, so a direct product edge naming any of them is
-    // an arch-family edge the firewall must detect (fd countdown ruling).
-    name == "reovim-arch" || name.starts_with("reovim-arch-sys-")
+    // (SP01: `reovim-arch-sys-{linux,none}-{x86-64,aarch64}`) plus the platform
+    // providers above it (SP02: `reovim-platform-linux-native`). They are all
+    // floor-family crates, so a direct product edge naming any of them is a
+    // floor edge the firewall must detect (fd countdown ruling).
+    name == "reovim-arch"
+        || name.starts_with("reovim-arch-sys-")
+        || name.starts_with("reovim-platform-")
 }
 
 // ── Probe 1: Direct-edge firewall ─────────────────────────────────────────────
@@ -2135,9 +2192,9 @@ pub fn run_firewall_probe(root: &Path) -> Result<StructuralViolations, ProbeErro
             // rather than silent (analogous to the structural probe's
             // allowlist reporting).
             if dep.optional {
-                if is_arch_crate_name(&dep.name) {
+                if is_floor_crate_name(&dep.name) {
                     eprintln!(
-                        "firewall: skipped optional arch dep `{}` in `{}` ({}) — \
+                        "firewall: skipped optional floor dep `{}` in `{}` ({}) — \
                          optional (selftest-gated) edge, not a product edge",
                         dep.name, krate.name, krate.path
                     );
@@ -2147,8 +2204,9 @@ pub fn run_firewall_probe(root: &Path) -> Result<StructuralViolations, ProbeErro
             let dep_path = name_to_path.get(dep.name.as_str()).copied().unwrap_or("");
 
             // Violation cases:
-            // (a) direct dep on the arch backend crate itself.
-            let is_arch_dep = is_arch_crate_name(&dep.name);
+            // (a) direct dep on any floor-family crate (arch / arch-sys-* /
+            //     platform-*).
+            let is_arch_dep = is_floor_crate_name(&dep.name);
             // (b) direct dep on system/kernel (World sovereign kernel).
             //     `path_starts_with` already matches the exact path component-wise.
             let is_sys_kernel = path_starts_with(dep_path, "system/kernel");
@@ -2500,12 +2558,14 @@ pub fn run_lib_ds_purity_probe(root: &Path) -> Result<StructuralViolations, Prob
             continue;
         }
 
-        // Manifest check: no dep in any table may name an arch crate.
+        // Manifest check: no dep in any table may name a floor-family crate
+        // (arch / arch-sys-* / platform-*) — lib/ds reaches the floor only
+        // through kabi.
         for dep in &krate.deps {
-            if is_arch_crate_name(&dep.name) {
+            if is_floor_crate_name(&dep.name) {
                 violations.push(format!(
-                    "lib-ds-purity: `{}` [{}] names arch crate `{}` — \
-                     lib/ds must reach arch primitives only through kabi, never directly",
+                    "lib-ds-purity: `{}` [{}] names floor crate `{}` — \
+                     lib/ds must reach floor primitives only through kabi, never directly",
                     krate.name, dep.table, dep.name
                 ));
             }

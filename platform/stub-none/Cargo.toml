@@ -1,0 +1,37 @@
+[package]
+name = "reovim-platform-stub-none"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Test-only bare-metal platform handle scaffold: the freestanding -ENOSYS/sentinel vtable the selftest/bootcore fixtures install (superseded by SP04's real system-kernel provider)"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+# The one-way transitional backend edge (SP02 → retired in SP05), mirroring the
+# linux-native provider: the stub's live slots name arch's alloc + clock
+# backends (`arch::alloc::{alloc,dealloc}`, `arch::time::{Instant,realtime}`)
+# and the raw syscall floor (`arch::sys::*` — futex for park/unpark, `write`
+# for the `file_write` UART sink). It is acyclic because arch never names the
+# stub back — the fixture composition root drives install, not arch (master
+# invariant 8). reovim-arch is a #![no_std] crate; DAG5/DAG6 are preserved.
+reovim-arch = { path = "../../arch" }
+
+# The down-face contract this crate implements: the `#[repr(C)] PlatformVtable`
+# slots, the write-once `install()` gate, and `InstallError`. A #![no_std] leaf
+# with no third-party deps, so DAG5/DAG6 hold.
+reovim-kabi-platform = { path = "../../kabi/platform" }
+
+# The canonical POSIX newtypes (Fd/OpenFlags/Mode) the adapter signatures name
+# at the slot boundary, identical to the shape linux-native's adapters carry.
+# A #![no_std] zero-dep leaf (DAG5/DAG6 preserved).
+reovim-uapi-posix = { path = "../../uapi/posix" }
+
+# No [dev-dependencies] or [build-dependencies] (DAG5/DAG6: zero third-party
+# deps). Beyond the three in-repo path deps above, only `core` is consumed.

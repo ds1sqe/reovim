@@ -35,5 +35,13 @@ reovim-uapi-protocol = { path = "../../../../uapi/protocol", features = ["selfte
 reovim-uapi-module-macros = { path = "../../../../uapi/module-macros", features = ["selftest"] }
 reovim-uapi-driver-macros = { path = "../../../../uapi/driver-macros", features = ["selftest"] }
 
+# The platform-handle installer this composition root drives. Enabling
+# `reovim-arch/selftest` compiles arch's `lib_ds_tests` into the link-section
+# test registry; those cases allocate + park through the handle, so
+# `testrt::run` reads it and this bin must install before the run. This fixture
+# is host-only (self-skips under system-image mode), so it links the real POSIX
+# provider unconditionally — no bare-metal scaffold.
+reovim-platform-linux-native = { path = "../../../../platform/linux-native" }
+
 [lints]
 workspace = true

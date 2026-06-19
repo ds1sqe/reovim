@@ -40,6 +40,13 @@ reovim_arch::arch_test!(deliberately_fails, {
 });
 
 reovim_arch::entry!(|_argc, _argv, _envp| {
+    // Install the platform handle before anything reads it. The kernel boot
+    // sequence accesses the handle; installing here, as the closure's first
+    // statement, matches the no-read-before-install discipline the `apps/*`
+    // composition roots follow. This fixture is host-only (native-only pin per
+    // `fixtures_exec.rs`), so only the POSIX provider is needed — no
+    // bare-metal scaffold branch.
+    let _ = reovim_platform_linux_native::install_platform();
     // Pin the panic disposition to Halt before running any test. The runner is
     // fail-fast: a failing selftest is non-recoverable, so it must exit the
     // halt code (70), deterministically — independent of test order. Without

@@ -1,6 +1,5 @@
 # Existing public API doctest gaps when the L12 scanner landed.
 # Format: relative/path<TAB>public item signature
-arch/src/platform.rs	pub fn install_platform() -> Result<(), InstallError>
 arch/src/profiler.rs	pub static __llvm_profile_runtime: i32
 arch/sys-linux-aarch64/src/errno.rs	pub const EADDRINUSE: Errno
 arch/sys-linux-aarch64/src/errno.rs	pub const EAGAIN: Errno

@@ -8,6 +8,7 @@ version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
  "reovim-kernel",
+ "reovim-platform-linux-native",
 ]
 
 [[package]]
@@ -16,6 +17,7 @@ version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
  "reovim-kernel",
+ "reovim-platform-linux-native",
 ]
 
 [[package]]
@@ -25,6 +27,7 @@ dependencies = [
  "reovim-arch",
  "reovim-domain-text",
  "reovim-kernel",
+ "reovim-platform-linux-native",
  "reovim-subsys-domain",
 ]
 
@@ -112,6 +115,15 @@ dependencies = [
 name = "reovim-lib-ds"
 version = "0.16.0-dev"
 dependencies = [
+ "reovim-kabi-platform",
+ "reovim-uapi-posix",
+]
+
+[[package]]
+name = "reovim-platform-linux-native"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-arch",
  "reovim-kabi-platform",
  "reovim-uapi-posix",
 ]

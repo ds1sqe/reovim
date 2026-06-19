@@ -39,4 +39,13 @@ reovim_arch::arch_test!(deliberately_fails, {
     reovim_arch::testrt::check_eq(1 + 1, 3);
 });
 
-reovim_arch::entry!(|_argc, _argv, _envp| { testrt::run() });
+reovim_arch::entry!(|_argc, _argv, _envp| {
+    // Install the platform handle as the closure's first statement, before any
+    // test reads it. Enabling `reovim-arch/selftest` links arch's `lib_ds_tests`
+    // into the shared link-section registry, and those cases allocate + park
+    // through the handle, so `testrt::run` reads it. This runner is host-only
+    // (it self-skips under system-image mode), so it installs the real POSIX
+    // provider unconditionally — no bare-metal scaffold branch.
+    let _ = reovim_platform_linux_native::install_platform();
+    testrt::run()
+});

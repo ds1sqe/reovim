@@ -8,6 +8,8 @@ version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
  "reovim-kernel",
+ "reovim-platform-linux-native",
+ "reovim-platform-stub-none",
 ]
 
 [[package]]
@@ -15,6 +17,7 @@ name = "arch-fixture-net-smoke"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-platform-linux-native",
 ]
 
 [[package]]
@@ -44,6 +47,7 @@ version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
  "reovim-lib-ds",
+ "reovim-platform-linux-native",
 ]
 
 [[package]]
@@ -51,6 +55,8 @@ name = "arch-selftest"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-platform-linux-native",
+ "reovim-platform-stub-none",
 ]
 
 [[package]]
@@ -140,6 +146,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-platform-linux-native"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-kabi-platform",
+ "reovim-uapi-posix",
+]
+
+[[package]]
+name = "reovim-platform-stub-none"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-kabi-platform",
+ "reovim-uapi-posix",
+]
+
+[[package]]
 name = "reovim-subsys-domain"
 version = "0.16.0-dev"
 dependencies = [
@@ -183,6 +207,7 @@ name = "uapi-selftest"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-platform-linux-native",
  "reovim-uapi-abi",
  "reovim-uapi-driver-macros",
  "reovim-uapi-module-macros",

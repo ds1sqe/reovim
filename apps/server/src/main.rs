@@ -34,6 +34,14 @@ static TEXT_HANDLER: TextHandler = TextHandler;
 static TEXT_PROJECTOR: TextProjector = TextProjector;
 
 reovim_arch::entry!(|argc, argv, _envp| {
+    // ── Install the platform vtable (SP02, AB12 write-once) ───────────────────
+    // The composition root drives the install: this is the first statement of
+    // the `entry!` closure, ahead of every `kabi::handle` read (the kernel boot,
+    // the futex/socket syscalls), so the no-read-before-install invariant holds.
+    // The result is ignored by construction — this is the sole process entry, so
+    // a second install cannot occur here.
+    let _ = reovim_platform_linux_native::install_platform();
+
     // ── Parse the socket path from argv[1] ────────────────────────────────────
     // Expect exactly one argument: the UDS socket path (NUL-terminated).
     // If missing, write a usage note to stderr and exit non-zero.

@@ -1,19 +1,29 @@
-//! arch's implementation of the down-face platform contract.
+//! `reovim-platform-linux-native` — the POSIX provider (the trap gate).
 //!
-//! `arch` is the platform provider: this module builds a `static`
-//! [`PlatformVtable`] from arch's real primitives (`time`, `alloc`, `sync`/
-//! `thread` futex) and installs it write-once at boot (AB12). This is the
-//! `arch → kabi` edge — arch implementing the contract `kabi` declares.
+//! This crate is the platform provider for the hosted Linux modes (both
+//! `x86_64` and `aarch64`): it builds a `static` [`PlatformVtable`] from arch's
+//! real primitives (`arch::time`, `arch::alloc`, the `arch::sys` futex/socket/
+//! fd/clone floor) and installs it write-once at boot (AB12). This is the
+//! `platform → kabi` edge — the provider implementing the contract `kabi`
+//! declares.
 //!
-//! ## SP02 scope: clock wired, the rest declared
+//! It is the **POSIX trap gate** of the three-knowledges split (OS-Modes §2.2):
+//! it knows hardware *and* contract, canonicalizes NATIVE→POSIX, and installs
+//! the `kabi/platform` vtable. For kernel-ABI Linux the mapping is a "thin
+//! passthrough" (OS-Modes §6.1) — most slots forward identity values — but the
+//! three real translations (errno→i64, `Fd` newtype unwrap, open-flag/mode
+//! `.bits()`) and the realtime `Timespec`→i64 flatten live here, the single
+//! canonicalization place (master invariant 3).
 //!
-//! SP02 wired the `clock` slot end-to-end (the boot selftest reads it through
-//! the installed handle). SP03 wires the rest: the
-//! `alloc`/`dealloc`/`park`/`unpark`/`unpark_all` slots point at arch's genuine
-//! backends and `lib/ds` consumes them through the handle's safe wrappers.
-//! `unpark_all` is the AB3 trailing append for the wake-all sync paths
-//! (`Condvar::notify_all`, `RwLock` release). Pointing every slot at a real
-//! backend keeps the vtable honest: the install proves the whole table.
+//! ## The one-way backend edge to `arch` (transitional, SP02 → SP05)
+//!
+//! The provider names arch's alloc + clock backends and the raw `arch::sys`
+//! floor through a sanctioned one-way `platform-linux-native → arch` Cargo edge.
+//! It is acyclic: `arch` never imports the provider — the `apps/*` composition
+//! root drives the install (`install_platform()` as the `entry!` closure's first
+//! statement), so the only floor↔provider crossing is `apps/* → provider`
+//! (master invariant 8). The edge is transitional; sub-plan 05 retires it as it
+//! severs product→`arch` and the alloc/clock contract surface settles.
 //!
 //! ## Zero heap to build
 //!
@@ -21,6 +31,25 @@
 //! allocates nothing. arch's allocator inits heap-free (it is the heap source),
 //! so the install can happen at boot before any allocation, dissolving the
 //! bootstrap chicken-egg (master plan, Bootstrap resolution).
+//!
+//! ## Selftests are parked (SP07)
+//!
+//! The boot/install selftests that previously rode `arch/src/platform_tests.rs`
+//! register through `arch_test!`, which now lives in the `reovim-testrt` leaf
+//! (sub-plan 01 extracted it). Restoring the provider's selftest harness — a
+//! `selftest`-gated dep on `reovim-testrt` plus a per-provider runner — is
+//! tracked under sub-plan 07, alongside the parked `arch-sys` floor tests. This
+//! flight keeps scope bounded and does not wire them; the original test bodies
+//! (`platform_clock_reads_through_installed_handle`,
+//! `platform_install_is_write_once`) are preserved in git history at
+//! `arch/src/platform_tests.rs` for SP07 to restore.
+#![no_std]
+// SAFETY (lint): the provider's vtable slots are `unsafe extern "C"` adapters —
+// the one ABI shape the `#[repr(C)]` table requires — and they dereference the
+// raw pointers the contract passes. The workspace lint stays `warn`, so every
+// crate above the provider still flags unsafe; the allow is scoped to this
+// crate. Every `unsafe` block carries a `// SAFETY:` comment.
+#![allow(unsafe_code)]
 
 use core::alloc::Layout;
 
@@ -29,29 +58,16 @@ use {
     reovim_uapi_posix::{Fd, Mode, OpenFlags},
 };
 
-use crate::{
+use reovim_arch::{
     alloc::{alloc as arch_alloc, dealloc as arch_dealloc},
-    sys::{Errno, FUTEX_PRIVATE_FLAG, FUTEX_WAIT, FUTEX_WAKE, futex},
-    time::Instant,
-};
-#[cfg(target_os = "linux")]
-use crate::{
-    sys::{Timespec, gettid, openat},
-    time::realtime,
-};
-
-// The net/thread fd-op backends are Linux-only kernel-ABI surface (the same
-// gate as `arch::net`/`arch::thread`); freestanding targets have no socket or
-// `clone` floor. The vtable shape is identical on every target — only the slot
-// IMPLEMENTATIONS differ (real adapters on Linux, `ENOSYS`-returning stubs on
-// freestanding) — so a `#[repr(C)]` table built either way stays ABI-compatible.
-#[cfg(target_os = "linux")]
-use crate::sys::net::{AF_UNIX, SockaddrUn, UNIX_PATH_MAX};
-#[cfg(target_os = "linux")]
-use crate::sys::{
-    AT_FDCWD, accept as sys_accept, bind as sys_bind, close as sys_close, connect as sys_connect,
-    listen as sys_listen, read as sys_read, send_nosignal, unix_stream_socket, unlinkat,
-    write as sys_write,
+    sys::{
+        AT_FDCWD, Errno, FUTEX_PRIVATE_FLAG, FUTEX_WAIT, FUTEX_WAKE, Timespec,
+        accept as sys_accept, bind as sys_bind, close as sys_close, connect as sys_connect, futex,
+        gettid, listen as sys_listen,
+        net::{AF_UNIX, SockaddrUn, UNIX_PATH_MAX},
+        openat, read as sys_read, send_nosignal, unix_stream_socket, unlinkat, write as sys_write,
+    },
+    time::{Instant, realtime},
 };
 
 /// `FUTEX_WAKE` count meaning "wake everyone".
@@ -162,25 +178,26 @@ unsafe extern "C" fn unpark_all(word: *const u32) {
     let _ = futex(addr, FUTEX_WAKE | FUTEX_PRIVATE_FLAG, WAKE_ALL, 0, 0, 0);
 }
 
-// ── net + thread fd-op adapters (SP05) ──────────────────────────────────────
+// ── net + thread fd-op adapters ─────────────────────────────────────────────
 //
-// Linux-only: the socket + `clone` floor exists only on Linux (same gate as
-// `arch::net`/`arch::thread`). The `#[cfg(not(target_os = "linux"))]` stub
-// adapters at the end of this section fill the identical vtable slots with
-// `-ENOSYS` returns so the `#[repr(C)]` table is one shape on every target.
+// The socket + `clone` floor the provider names is Linux kernel-ABI surface
+// (the `arch::sys::net::*` / `arch::sys::clone_into` items). The provider is the
+// hosted Linux provider for both Linux arches, so every adapter is realized
+// here; the freestanding `-ENOSYS` stub variants belong to the system kernel
+// (sub-plan 04), not this crate.
 
 /// `EINVAL` errno code, the negative-return used when a caller's path is
-/// malformed (empty, no NUL, or longer than `UNIX_PATH_MAX - 1`).
-#[cfg(target_os = "linux")]
-const EINVAL_CODE: i32 = 22;
+/// malformed (empty, no NUL, or longer than `UNIX_PATH_MAX - 1`). Derived from
+/// arch's canonical `Errno` so the provider never restates the floor's value.
+const EINVAL_CODE: i32 = reovim_arch::sys::EINVAL.code();
 /// `ENOMEM` errno code, the negative-return used when a thread stack or its
-/// shared block cannot be mapped/allocated.
-#[cfg(target_os = "linux")]
-const ENOMEM_CODE: i32 = 12;
+/// shared block cannot be mapped/allocated. Derived from arch's canonical
+/// `Errno` so the provider never restates the floor's value.
+const ENOMEM_CODE: i32 = reovim_arch::sys::ENOMEM.code();
 
 /// Encodes an arch [`Errno`] as the negative-errno `i64` the fd-op slots
-/// return: `-code`. Target-neutral — shared by the Linux fd-op adapters and the
-/// freestanding `file_write` adapter, so it carries no `target_os` gate.
+/// return: `-code` (positive `arch::sys::Errno` → negative `-errno` the FFI ABI
+/// carries; `kabi::map_fd_ret` recovers it consumer-side).
 const fn neg_errno(e: Errno) -> i64 {
     -(e.code() as i64)
 }
@@ -192,7 +209,6 @@ const fn neg_errno(e: Errno) -> i64 {
 /// # Safety
 ///
 /// `path` must point to `path_len` readable bytes.
-#[cfg(target_os = "linux")]
 unsafe fn sockaddr_from_raw(path: *const u8, path_len: usize) -> Option<(SockaddrUn, usize)> {
     // SAFETY: the caller guarantees `path` is valid for `path_len` bytes.
     let bytes = unsafe { core::slice::from_raw_parts(path, path_len) };
@@ -214,7 +230,6 @@ unsafe fn sockaddr_from_raw(path: *const u8, path_len: usize) -> Option<(Sockadd
 ///
 /// `unsafe extern "C"` per the vtable ABI. `path` must point to `path_len`
 /// readable bytes; a malformed path returns `-EINVAL` rather than UB.
-#[cfg(target_os = "linux")]
 #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 unsafe extern "C" fn unix_connect(path: *const u8, path_len: usize) -> i64 {
     // SAFETY: caller guarantees `path` is valid for `path_len` bytes.
@@ -244,7 +259,6 @@ unsafe extern "C" fn unix_connect(path: *const u8, path_len: usize) -> i64 {
 /// # Safety
 ///
 /// As [`unix_connect`]: `path` must point to `path_len` readable bytes.
-#[cfg(target_os = "linux")]
 #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 unsafe extern "C" fn unix_listen(path: *const u8, path_len: usize) -> i64 {
     // SAFETY: caller guarantees `path` is valid for `path_len` bytes.
@@ -281,7 +295,6 @@ unsafe extern "C" fn unix_listen(path: *const u8, path_len: usize) -> i64 {
 ///
 /// `unsafe extern "C"` per the vtable ABI. `listener_fd` is a scalar; a bad fd
 /// returns a negative errno.
-#[cfg(target_os = "linux")]
 #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 unsafe extern "C" fn unix_accept(listener_fd: Fd) -> i64 {
     // A valid accepted fd fits in i32; the narrowing cannot wrap. The canonical
@@ -299,7 +312,6 @@ unsafe extern "C" fn unix_accept(listener_fd: Fd) -> i64 {
 ///
 /// `unsafe extern "C"` per the vtable ABI. `buf` must point to `len` writable
 /// bytes; the adapter writes at most the returned count.
-#[cfg(target_os = "linux")]
 #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 unsafe extern "C" fn fd_read(fd: Fd, buf: *mut u8, len: usize) -> i64 {
     // SAFETY: caller guarantees `buf` is valid for `len` writable bytes.
@@ -320,7 +332,6 @@ unsafe extern "C" fn fd_read(fd: Fd, buf: *mut u8, len: usize) -> i64 {
 ///
 /// `unsafe extern "C"` per the vtable ABI. `buf` must point to `len` readable
 /// bytes.
-#[cfg(target_os = "linux")]
 #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 unsafe extern "C" fn fd_write(fd: Fd, buf: *const u8, len: usize) -> i64 {
     // SAFETY: caller guarantees `buf` is valid for `len` readable bytes.
@@ -346,7 +357,6 @@ unsafe extern "C" fn fd_write(fd: Fd, buf: *const u8, len: usize) -> i64 {
 ///
 /// `unsafe extern "C"` per the vtable ABI. `buf` must point to `len` readable
 /// bytes.
-#[cfg(target_os = "linux")]
 #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 unsafe extern "C" fn file_write(fd: Fd, buf: *const u8, len: usize) -> i64 {
     // SAFETY: caller guarantees `buf` is valid for `len` readable bytes.
@@ -364,7 +374,6 @@ unsafe extern "C" fn file_write(fd: Fd, buf: *const u8, len: usize) -> i64 {
 ///
 /// `unsafe extern "C"` per the vtable ABI. `fd` is a scalar; an already-closed
 /// fd returns a negative errno.
-#[cfg(target_os = "linux")]
 unsafe extern "C" fn fd_close(fd: Fd) -> i64 {
     // The canonical `Fd` maps to the raw `i32` arch's `close` wrapper takes.
     match sys_close(fd.as_i32()) {
@@ -390,7 +399,6 @@ unsafe extern "C" fn fd_close(fd: Fd) -> i64 {
 /// `unsafe extern "C"` per the vtable ABI. `entry` must be a valid function
 /// safe to call with `arg`; `arg` must be valid for the whole of `entry`'s
 /// execution. The new thread takes ownership of `arg`.
-#[cfg(target_os = "linux")]
 unsafe extern "C" fn thread_spawn(entry: unsafe extern "C" fn(*mut u8), arg: *mut u8) -> i64 {
     // SAFETY: the caller upholds the `entry`/`arg` contract; `spawn_detached`
     // maps a stack, stores the pair, and clones into the trampoline.
@@ -406,20 +414,16 @@ unsafe extern "C" fn thread_spawn(entry: unsafe extern "C" fn(*mut u8), arg: *mu
 /// trampoline copies both fields out and frees the box before running `entry`,
 /// so the only thing the detached thread leaks is its own stack mapping (which
 /// it runs on and cannot free).
-#[cfg(target_os = "linux")]
 struct SpawnPair {
     entry: unsafe extern "C" fn(*mut u8),
     arg: *mut u8,
 }
 
 /// Detached-thread page size (`x86_64`/`aarch64` 4 KiB base pages).
-#[cfg(target_os = "linux")]
 const SPAWN_PAGE_SIZE: usize = 4096;
 /// Usable detached-thread stack (1 MiB), excluding the guard page.
-#[cfg(target_os = "linux")]
 const SPAWN_STACK_SIZE: usize = 1024 * 1024;
 /// Total mapped detached-thread region: guard page + usable stack.
-#[cfg(target_os = "linux")]
 const SPAWN_MAP_SIZE: usize = SPAWN_PAGE_SIZE + SPAWN_STACK_SIZE;
 
 /// The `clone` flag set for a detached TLS-free worker thread.
@@ -429,13 +433,12 @@ const SPAWN_MAP_SIZE: usize = SPAWN_PAGE_SIZE + SPAWN_STACK_SIZE;
 /// Unlike `thread::spawn`, NO `CLONE_PARENT_SETTID`/`CLONE_CHILD_CLEARTID`: a
 /// detached thread has no join word, so the kernel neither sets nor clears a
 /// ctid — the parent gets the tid as the `clone` return and never waits on it.
-#[cfg(target_os = "linux")]
-const SPAWN_CLONE_FLAGS: usize = crate::sys::CLONE_VM
-    | crate::sys::CLONE_FS
-    | crate::sys::CLONE_FILES
-    | crate::sys::CLONE_SIGHAND
-    | crate::sys::CLONE_THREAD
-    | crate::sys::CLONE_SYSVSEM;
+const SPAWN_CLONE_FLAGS: usize = reovim_arch::sys::CLONE_VM
+    | reovim_arch::sys::CLONE_FS
+    | reovim_arch::sys::CLONE_FILES
+    | reovim_arch::sys::CLONE_SIGHAND
+    | reovim_arch::sys::CLONE_THREAD
+    | reovim_arch::sys::CLONE_SYSVSEM;
 
 /// Maps a guarded stack, boxes the `(entry, arg)` pair, and `clone`s a detached
 /// child into [`spawn_trampoline`]. Returns the child tid on success, or a
@@ -445,9 +448,8 @@ const SPAWN_CLONE_FLAGS: usize = crate::sys::CLONE_VM
 ///
 /// `entry`/`arg` must satisfy the [`thread_spawn`] contract: `entry` is a valid
 /// function safe to call with `arg`, and `arg` lives for `entry`'s execution.
-#[cfg(target_os = "linux")]
 unsafe fn spawn_detached(entry: unsafe extern "C" fn(*mut u8), arg: *mut u8) -> Result<i32, i32> {
-    use crate::sys::{
+    use reovim_arch::sys::{
         MAP_ANONYMOUS, MAP_PRIVATE, PROT_NONE, PROT_READ, PROT_WRITE, clone_into, mmap, mprotect,
         munmap,
     };
@@ -522,7 +524,6 @@ unsafe fn spawn_detached(entry: unsafe extern "C" fn(*mut u8), arg: *mut u8) -> 
 /// in `clone_into` (`arg` arrives in the target's first C-ABI argument register).
 /// The stack mapping is NOT freed here — the thread runs on it and no joiner
 /// exists to reclaim it (the deliberate detached-thread leak; see [`thread_spawn`]).
-#[cfg(target_os = "linux")]
 extern "C" fn spawn_trampoline(pair_ptr: usize) -> ! {
     let pair = pair_ptr as *mut SpawnPair;
     // SAFETY: `pair_ptr` is the pair-box pointer the parent stored at the stack
@@ -540,10 +541,10 @@ extern "C" fn spawn_trampoline(pair_ptr: usize) -> ! {
     // obligation); `entry` is safe to call with `arg`.
     unsafe { entry(arg) }
     // Exit the THREAD only (not the process). No ctid to clear (detached).
-    crate::sys::exit(0)
+    reovim_arch::sys::exit(0)
 }
 
-// ── time + file + thread-identity adapters (SP05) ────────────────────────────
+// ── time + file + thread-identity adapters ───────────────────────────────────
 
 /// The wall-clock adapter: reads arch's real-time clock and returns whole
 /// nanoseconds since the Unix epoch, matching the contract's `RealtimeFn` ABI.
@@ -556,7 +557,6 @@ extern "C" fn spawn_trampoline(pair_ptr: usize) -> ! {
 ///
 /// `unsafe extern "C"` to share the vtable's one ABI shape; the underlying
 /// `realtime` read has no precondition, so this is sound to call anytime.
-#[cfg(target_os = "linux")]
 unsafe extern "C" fn realtime_adapter() -> i64 {
     let Timespec { tv_sec, tv_nsec } = realtime();
     // tv_sec/tv_nsec are i64; the year-2262 horizon keeps this in range.
@@ -572,7 +572,6 @@ unsafe extern "C" fn realtime_adapter() -> i64 {
 /// `unsafe extern "C"` per the vtable ABI. `path` must point to `path_len`
 /// readable bytes containing a NUL-terminated pathname; a refused open maps to
 /// a negative errno rather than UB.
-#[cfg(target_os = "linux")]
 #[allow(
     clippy::cast_possible_truncation,
     clippy::cast_possible_wrap,
@@ -605,104 +604,12 @@ unsafe extern "C" fn file_open(
 ///
 /// `unsafe extern "C"` to share the vtable's one ABI shape; `gettid` takes no
 /// argument, dereferences no memory, and cannot fail.
-#[cfg(target_os = "linux")]
 unsafe extern "C" fn thread_id() -> i64 {
     i64::from(gettid())
 }
 
-// ── freestanding stub adapters (non-Linux) ───────────────────────────────────
-//
-// Freestanding targets have no socket/`clone` floor. The slots still exist (the
-// vtable is one `#[repr(C)]` shape on every target); they report `-ENOSYS` so a
-// consumer that somehow reaches them on a freestanding build gets a typed error
-// rather than a link failure. `ENOSYS` = 38 (Linux errno space, the shared floor
-// vocabulary).
-
-/// `ENOSYS` errno code — "function not implemented" — the freestanding stubs'
-/// negative return.
-#[cfg(not(target_os = "linux"))]
-const ENOSYS_CODE: i64 = 38;
-
-#[cfg(not(target_os = "linux"))]
-const unsafe extern "C" fn unix_connect(_path: *const u8, _path_len: usize) -> i64 {
-    -ENOSYS_CODE
-}
-#[cfg(not(target_os = "linux"))]
-const unsafe extern "C" fn unix_listen(_path: *const u8, _path_len: usize) -> i64 {
-    -ENOSYS_CODE
-}
-#[cfg(not(target_os = "linux"))]
-const unsafe extern "C" fn unix_accept(_listener_fd: Fd) -> i64 {
-    -ENOSYS_CODE
-}
-#[cfg(not(target_os = "linux"))]
-const unsafe extern "C" fn fd_read(_fd: Fd, _buf: *mut u8, _len: usize) -> i64 {
-    -ENOSYS_CODE
-}
-#[cfg(not(target_os = "linux"))]
-const unsafe extern "C" fn fd_write(_fd: Fd, _buf: *const u8, _len: usize) -> i64 {
-    -ENOSYS_CODE
-}
-#[cfg(not(target_os = "linux"))]
-const unsafe extern "C" fn fd_close(_fd: Fd) -> i64 {
-    -ENOSYS_CODE
-}
-#[cfg(not(target_os = "linux"))]
-unsafe extern "C" fn thread_spawn(_entry: unsafe extern "C" fn(*mut u8), _arg: *mut u8) -> i64 {
-    -ENOSYS_CODE
-}
-
-/// Freestanding wall-clock stub: returns `0`, the Unix-epoch sentinel. A
-/// bare-metal target has no real-time clock, so the wall anchor reads as the
-/// epoch (the consumer only uses it as a human-readable origin, never for
-/// ordering).
-#[cfg(not(target_os = "linux"))]
-const unsafe extern "C" fn realtime_adapter() -> i64 {
-    0
-}
-/// Freestanding file-open stub: `-ENOSYS` (no filesystem floor on bare metal),
-/// the same fallible shape as the other fd stubs.
-#[cfg(not(target_os = "linux"))]
-const unsafe extern "C" fn file_open(
-    _path: *const u8,
-    _path_len: usize,
-    _flags: OpenFlags,
-    _mode: Mode,
-) -> i64 {
-    -ENOSYS_CODE
-}
-/// Freestanding thread-id stub: returns `0`, the single-bare-metal-thread
-/// sentinel (there is one thread of control, identified as id 0).
-#[cfg(not(target_os = "linux"))]
-const unsafe extern "C" fn thread_id() -> i64 {
-    0
-}
-/// Freestanding file-write adapter: writes up to `len` bytes from `buf` to `fd`
-/// through the floor's byte sink, returning the byte count or a negative errno.
-///
-/// The bare-metal counterpart to the Linux [`file_write`] twin: there is no
-/// filesystem floor, but `sys::write` routes the standard fds (1/2) to the PL011
-/// UART, so the kernel's stdout/stderr — including the boot-stage `stderr_echo`
-/// — reaches the console live. `fd_write` (socket send) stays `-ENOSYS`.
-///
-/// # Safety
-///
-/// `unsafe extern "C"` per the vtable ABI. `buf` must point to `len` readable
-/// bytes.
-#[cfg(not(target_os = "linux"))]
-#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
-unsafe extern "C" fn file_write(fd: Fd, buf: *const u8, len: usize) -> i64 {
-    // SAFETY: caller guarantees `buf` is valid for `len` readable bytes.
-    let slice = unsafe { core::slice::from_raw_parts(buf, len) };
-    // A byte count never exceeds `isize::MAX`, so the cast cannot wrap.
-    match crate::sys::write(fd.as_i32(), slice) {
-        Ok(n) => n as i64,
-        Err(e) => neg_errno(e),
-    }
-}
-
-/// arch's platform vtable: a `static` of const function pointers (zero heap to
-/// build), the table the boot path installs.
+/// The provider's platform vtable: a `static` of const function pointers (zero
+/// heap to build), the table the boot path installs.
 ///
 /// The slot order matches [`PlatformVtable`]'s append-only (AB3) declaration.
 static PLATFORM_VTABLE: PlatformVtable = PlatformVtable {
@@ -712,8 +619,6 @@ static PLATFORM_VTABLE: PlatformVtable = PlatformVtable {
     park,
     unpark,
     unpark_all,
-    // SP05 net/thread slots: real adapters on Linux, `-ENOSYS` stubs on
-    // freestanding (the items above are cfg-selected to one impl per target).
     unix_connect,
     unix_listen,
     unix_accept,
@@ -721,34 +626,34 @@ static PLATFORM_VTABLE: PlatformVtable = PlatformVtable {
     fd_write,
     fd_close,
     thread_spawn,
-    // SP05 time/file/thread-identity slots: real adapters on Linux, `-ENOSYS`
-    // (or epoch/id-0 sentinels) on freestanding, cfg-selected to one impl per
-    // target.
     realtime: realtime_adapter,
     file_open,
     thread_id,
     file_write,
 };
 
-/// Installs arch's platform vtable as the process-wide handle (write-once).
+/// Installs the provider's platform vtable as the process-wide handle
+/// (write-once).
 ///
-/// The boot path (`rust_entry`, the arch-owned entry in `start.rs`) calls this
-/// once, after the allocator is up (it inits heap-free, so it is already
-/// usable) and the `static` vtable is built (it is `const`, so it is built at
-/// compile time). The first install wins; a second returns
+/// The `apps/*` composition root calls this once as the first statement of its
+/// `entry!` closure, after the allocator is up (it inits heap-free, so it is
+/// already usable) and the `static` vtable is built (it is `const`, so it is
+/// built at compile time). The first install wins; a second returns
 /// [`InstallError::AlreadyInstalled`] (AB12), mirroring the `arch::panic`
-/// write-once seams.
+/// write-once seams. Installing as the closure's first statement preserves the
+/// no-read-before-install invariant: every `kabi::handle` read runs after it.
 ///
 /// # Errors
 ///
 /// Returns [`InstallError::AlreadyInstalled`] if a handle is already installed
 /// — a double-boot bug, surfaced rather than silently overwritten.
+///
+/// # Example
+///
+/// ```ignore
+/// // First statement of the `apps/*` `entry!` closure, before any handle read:
+/// reovim_platform_linux_native::install_platform().expect("vtable already installed");
+/// ```
 pub fn install_platform() -> Result<(), InstallError> {
     install(&PLATFORM_VTABLE)
 }
-
-// L12 layout: tests live in the sibling file `platform_tests.rs`, declared as a
-// `#[path]` child so `super::` reaches `PLATFORM_VTABLE` and the adapters.
-#[cfg(feature = "selftest")]
-#[path = "platform_tests.rs"]
-mod tests;

@@ -41,5 +41,11 @@ reovim-domain-text = { path = "../../../../../../editor/domains/text", features 
 reovim-uapi-abi      = { path = "../../../../../../uapi/abi" }
 reovim-uapi-protocol = { path = "../../../../../../uapi/protocol" }
 
+# The platform-handle installer this composition root drives. The fixture is
+# host-only (native-only pin per `fixtures_exec.rs`), so only the real POSIX
+# provider is needed — no bare-metal scaffold branch.
+[dependencies.reovim-platform-linux-native]
+path = "../../../../../../platform/linux-native"
+
 [lints]
 workspace = true

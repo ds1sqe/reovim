@@ -72,6 +72,16 @@ fn finish(code: i32) -> ! {
 }
 
 reovim_arch::entry!(|_argc, _argv, _envp| {
+    // Install the platform handle as the closure's first statement, before the
+    // kernel boot reads it (the kernel allocates + writes through the handle).
+    // The installer is cfg-split: the bare-metal scaffold on `*-unknown-none`
+    // (this fixture's real target, where linux-native cannot link), the real
+    // POSIX provider on a hosted Linux build — exactly one links per target.
+    #[cfg(not(target_os = "linux"))]
+    let _ = reovim_platform_stub_none::install_platform();
+    #[cfg(target_os = "linux")]
+    let _ = reovim_platform_linux_native::install_platform();
+
     // aarch64: install the framebuffer as the floor's console sink so the
     // kernel's boot-stage log (its own fd-2 stderr echo included) renders on the
     // HDMI surface as well as the UART, drawn through the JetBrains Mono coverage

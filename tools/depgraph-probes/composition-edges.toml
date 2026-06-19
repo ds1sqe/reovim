@@ -44,6 +44,11 @@ from   = "reovim-server"
 to     = "reovim-lib-ds"
 reason = "composition root constructs Shared<T> handles for kernel wiring; the DS-algorithm tier moved from arch to lib/ds in the reorg, so the edge is now direct"
 
+[[edge]]
+from   = "reovim-server"
+to     = "reovim-platform-linux-native"
+reason = "composition root drives the platform vtable install — calls install_platform() as the entry! closure's first statement (SP02 moved this off arch's rust_entry self-call to keep platform->arch one-way and acyclic)"
+
 # ── reovim (apps/reovim/) ─────────────────────────────────────────────────────
 # Dual-mode launcher: in-process UDS composition root — boots server runtime
 # on background thread, runs TUI client on main thread over the real UDS socket.
@@ -82,3 +87,8 @@ reason = "needed for socket-path type surface used in argv NUL-scan and socket c
 from   = "reovim"
 to     = "reovim-lib-ds"
 reason = "composition root constructs Shared<T> handles for kernel wiring; the DS-algorithm tier moved from arch to lib/ds in the reorg, so the edge is now direct"
+
+[[edge]]
+from   = "reovim"
+to     = "reovim-platform-linux-native"
+reason = "composition root drives the platform vtable install — calls install_platform() as the entry! closure's first statement (SP02 moved this off arch's rust_entry self-call to keep platform->arch one-way and acyclic)"

@@ -28,6 +28,11 @@ reovim-arch = { path = "../../..", features = ["runtime"] }
 # Heap-DS algorithms (Seq/Shared/Mutex) the post-boot smoke exercises through
 # the installed handle (SP03): relocated from `reovim_arch::ds`/`::sync`.
 reovim-lib-ds = { path = "../../../../lib/ds" }
+# The platform-handle installer this composition root drives. The smoke
+# allocates + spawns through the handle, so it must install before those reads.
+# This fixture is host-only (self-skips under system-image mode), so it links
+# the real POSIX provider unconditionally — no bare-metal scaffold.
+reovim-platform-linux-native = { path = "../../../../platform/linux-native" }
 
 [lints]
 workspace = true

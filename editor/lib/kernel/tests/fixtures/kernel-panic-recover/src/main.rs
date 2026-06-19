@@ -28,6 +28,11 @@
 use reovim_kernel::{Init, LauncherArgs};
 
 reovim_arch::entry!(|argc, argv, _envp| {
+    // Install the platform handle as the closure's first statement, before
+    // `Init::boot()` reads it. The fixture is host-only (native-only pin per
+    // `fixtures_exec.rs`), so only the real POSIX provider is needed — no
+    // bare-metal scaffold branch.
+    let _ = reovim_platform_linux_native::install_platform();
     // SAFETY: `argc`/`argv` are the kernel-supplied startup vectors `_start`
     // forwarded: `argv` has `argc` C-string entries then a NULL terminator.
     let Some(fd) = (unsafe { open_sink_from_argv(argc, argv) }) else {

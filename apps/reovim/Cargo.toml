@@ -22,6 +22,10 @@ doctest = false
 # All other crates propagate `runtime` via `reovim-arch/runtime`; enabling it
 # here once unifies them all at the composition root.
 reovim-arch         = { path = "../../arch", features = ["runtime"] }
+# POSIX provider: builds + installs the kabi/platform vtable (SP02). The
+# composition root owns the install call, so the provider dep lives here, not in
+# arch (arch carries no edge to the provider — that would close a cycle).
+reovim-platform-linux-native = { path = "../../platform/linux-native" }
 # Heap-DS algorithms (Shared) relocated from `reovim_arch::ds` (SP03).
 reovim-lib-ds       = { path = "../../lib/ds" }
 # TUI platform runtime.
