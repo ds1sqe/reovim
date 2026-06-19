@@ -7,7 +7,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "Bare-metal aarch64 splash: UART boot banner + VideoCore mailbox framebuffer pattern (QEMU raspi4b)"
+description = "Bare-metal aarch64 boot splash: deliberate reovim branded splash over the VideoCore mailbox framebuffer (QEMU raspi4b)"
 publish = false
 
 [[bin]]
