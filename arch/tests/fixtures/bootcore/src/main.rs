@@ -31,9 +31,18 @@ use {
     reovim_arch::sys::write,
     reovim_kernel::{Init, LauncherArgs},
     // The device-neutral boot assembly lifted into the system kernel (SP04 04a);
-    // it reads the raw register/mailbox/DTB facts through the §11 impl edge.
+    // it reads the raw register/mailbox/DTB facts through the §11 impl edge. On
+    // the freestanding targets the system kernel also supplies the platform
+    // vtable installed below (SP04 04c).
     reovim_system_kernel::{collect_boot_info, collect_device_inventory},
 };
+
+// The freestanding system-kernel platform provider this composition root
+// installs on the bare-metal targets (SP04 04c) — the real product-path
+// successor to the `reovim-platform-stub-none` scaffold. Module-gated to
+// `target_os = "none"`, matching the system kernel's own gate.
+#[cfg(target_os = "none")]
+use reovim_system_kernel::platform as system_platform;
 
 #[cfg(target_arch = "aarch64")]
 use {
@@ -88,24 +97,30 @@ use reovim_arch_floor_none_aarch64::entry;
 use reovim_arch_floor_none_x86_64::entry;
 
 entry!(|_argc, _argv, _envp| {
-    // Install the platform handle as the closure's first statement, before the
-    // kernel boot reads it (the kernel allocates + writes through the handle).
-    // The installer is cfg-split: the bare-metal scaffold on `*-unknown-none`
-    // (this fixture's real target, where linux-native cannot link), the real
-    // POSIX provider on a hosted Linux build — exactly one links per target.
+    // Boot ordering — vtable-install → console-install → (kernel boot →) render —
+    // enforces the no-read-before-install invariant: every `kabi::handle` read
+    // (the kernel's allocs + writes) and every fd 1/2 write runs only after the
+    // handle and the console sink are standing.
+    //
+    // Step 1: install the platform handle as the closure's first statement,
+    // before any handle read. The installer is cfg-split: the freestanding
+    // SYSTEM-KERNEL provider on `*-unknown-none` (this fixture's real target,
+    // where linux-native cannot link — the real product path superseding
+    // stub-none, SP04 04c), the real POSIX provider on a hosted Linux build —
+    // exactly one links per target.
     #[cfg(not(target_os = "linux"))]
-    let _ = reovim_platform_stub_none::install_platform();
+    let _ = system_platform::install_platform();
     #[cfg(target_os = "linux")]
     let _ = reovim_platform_linux_native::install_platform();
 
-    // aarch64: stand up the system kernel's framebuffer console as the floor's
-    // fd 1/2 write sink, before the first `write` below (the
-    // no-read-before-install ordering). The kernel's boot-stage log (its own
-    // fd-2 stderr echo included) then renders on the HDMI surface as well as the
-    // UART, drawn through the JetBrains Mono coverage font over the console's
-    // retained-content grid. The install is the system kernel's own boot action
-    // now — no fixture-side `console::install` glue. If the mailbox alloc or the
-    // one-shot screen-grid hand-out fails, the floor stays UART-only.
+    // Step 2 (aarch64): stand up the system kernel's framebuffer console as the
+    // floor's fd 1/2 write sink, before the first `write` below. The kernel's
+    // boot-stage log (its own fd-2 stderr echo included) then renders on the
+    // HDMI surface as well as the UART, drawn through the JetBrains Mono coverage
+    // font over the console's retained-content grid. The install is the system
+    // kernel's own boot action now — no fixture-side `console::install` glue. If
+    // the mailbox alloc or the one-shot screen-grid hand-out fails, the floor
+    // stays UART-only.
     #[cfg(target_arch = "aarch64")]
     if let Some((fb, grid)) = framebuffer::init().zip(console::screen_grid()) {
         console::install_console(
@@ -117,7 +132,14 @@ entry!(|_argc, _argv, _envp| {
         );
     }
 
-    let _ = write(1, b"\nreovim kernel boot on bare metal\n");
+    // Name the installed provider in the boot log so the boot proves WHICH
+    // vtable is standing — the freestanding system-kernel provider on bare metal
+    // (the dual-path proof: bootcore installs the system-kernel vtable, not
+    // stub-none), the linux-native provider on a hosted build.
+    #[cfg(not(target_os = "linux"))]
+    let _ = write(1, b"\nreovim kernel boot on bare metal [provider: system-kernel]\n");
+    #[cfg(target_os = "linux")]
+    let _ = write(1, b"\nreovim kernel boot on bare metal [provider: linux-native]\n");
 
     // Discover the machine's real hardware facts (RAM / CPU) and push them into
     // the kernel at entry through `LauncherArgs.boot_info`. The boot-tail

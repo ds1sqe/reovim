@@ -186,6 +186,7 @@ dependencies = [
  "reovim-arch-sys-none-x86-64",
  "reovim-kabi-platform",
  "reovim-testrt",
+ "reovim-uapi-posix",
 ]
 
 [[package]]

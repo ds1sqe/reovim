@@ -38,9 +38,18 @@ reovim-arch-sys-none-aarch64 = { path = "../../../arch/sys-none-aarch64" }
 # facts through this crate's accessors. Same impl-edge shape as the aarch64 dep.
 reovim-arch-sys-none-x86-64 = { path = "../../../arch/sys-none-x86-64" }
 # The neutral boot-data types the assembly produces (BootInfo / MemoryKind /
-# MemoryRange / DeviceClass / DeviceEntry / DeviceInventory). kabi/platform is a
-# #![no_std] zero-dep leaf, so DAG5/DAG6 are preserved.
+# MemoryRange / DeviceClass / DeviceEntry / DeviceInventory), and the down-face
+# `PlatformVtable` contract the freestanding provider (SP04 04c) builds +
+# installs (the slots, the write-once `install()` gate, `InstallError`).
+# kabi/platform is a #![no_std] zero-dep leaf, so DAG5/DAG6 are preserved.
 reovim-kabi-platform = { path = "../../../kabi/platform" }
+# The canonical POSIX newtypes (Fd / OpenFlags / Mode) the freestanding
+# provider's slot signatures name at the vtable boundary (SP04 04c), identical to
+# the shape stub-none / linux-native carry. The lifted device-neutral library
+# (04a) named none of these — this edge enters with the provider, the sanctioned
+# uapi/posix edge from the SP04 Cargo-edge map. A #![no_std] zero-dep leaf
+# (DAG5/DAG6 preserved).
+reovim-uapi-posix = { path = "../../../uapi/posix" }
 # The core-only test runtime: the `selftest`-gated `*_tests.rs` modules register
 # through its arch_test! / check / check_eq, reaching the runner via the leaf —
 # the same path the tests used in arch-sys-none. A #![no_std] zero-dep leaf.

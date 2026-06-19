@@ -63,6 +63,25 @@ pub mod boot_info_x86;
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 pub mod inventory;
 
+// The freestanding platform provider: the genuine bare-metal `PlatformVtable`
+// the bootcore composition root installs at boot (SP04 04c), the real
+// product-path successor to the `reovim-platform-stub-none` selftest scaffold.
+// It is the bare-metal canonicalizer (invariant #3) — its live slots reach the
+// `arch-sys-none-*` raw mechanism through the §11 impl edge, and it installs
+// downward into kabi/platform. Freestanding-only: the live slots name the
+// per-arch raw mechanism, which exists only on the bare-metal targets.
+#[cfg(target_os = "none")]
+pub mod platform;
+
+// The boot-splash content (the `r e o v i m` wordmark, accent rule, identity
+// line, boot panel, SGR diagnostics) lifted out of the splash fixture (SP04
+// 04c). It renders through the standing console (04b) by writing to fd 1, so
+// every byte fans to the UART plus the framebuffer console — splash content was
+// always policy, so it lives here, not in the raw-mechanism floor. aarch64-only:
+// the framebuffer surface it brands exists only there (x86-none is UART-only).
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+pub mod splash;
+
 // ── device-neutral boot-surface re-exports ───────────────────────────────────
 //
 // The bootcore / splash fixtures name `collect_boot_info` / `collect_device_inventory`

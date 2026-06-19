@@ -376,21 +376,30 @@ pub fn default_foundation_grants() -> std::collections::BTreeMap<String, Vec<Str
     );
     // ── SP04 system-kernel grant ─────────────────────────────────────────────
     // The World system kernel lifts the device-neutral library + boot assembly
-    // out of the arch-sys-none-* crates (SP04 04a). Its only floor edges are the
-    // two freestanding raw-mechanism crates it implements over — the §11
-    // system-kernel → arch-sys-none impl edge (the console consumes the VideoCore
-    // `Framebuffer` type, the boot-info assembly reads the register/mailbox/DTB
-    // raw facts + arena through their accessors), the neutral boot-data types
-    // (kabi/platform), and the core-only test runtime (reovim-testrt) its
-    // `selftest`-gated `*_tests.rs` modules register through. No uapi/posix or
-    // lib/ds edge — the lifted code names neither (verified against the moved
-    // surface in 04a; not granted speculatively). No upward edge back.
+    // out of the arch-sys-none-* crates (SP04 04a) and stands up the genuine
+    // freestanding `PlatformVtable` provider it installs at boot (SP04 04c).
+    // Its floor edges are the two freestanding raw-mechanism crates it implements
+    // over — the §11 system-kernel → arch-sys-none impl edge (the console
+    // consumes the VideoCore `Framebuffer` type, the boot-info assembly reads the
+    // register/mailbox/DTB raw facts + arena through their accessors, AND the
+    // provider's live slots reach the clock / arena / futex / write backends
+    // there) — the down-face contract it builds + installs (kabi/platform), the
+    // canonical POSIX slot newtypes the provider names at the vtable boundary
+    // (uapi/posix — the lifted library named none of these; the edge enters with
+    // the 04c provider, the sanctioned uapi/posix edge from the SP04 Cargo-edge
+    // map, no longer speculative), and the core-only test runtime (reovim-testrt)
+    // its `selftest`-gated `*_tests.rs` modules register through. No lib/ds edge —
+    // the migrated surface and the provider name neither. No upward edge back:
+    // `file_write` reaches the floor `write`, not the other way. This is the real
+    // freestanding provider that supersedes stub-none for bootcore; stub-none's
+    // own grant STAYS (retained as the bare exit-code selftest scaffold).
     m.insert(
         "reovim-system-kernel".to_owned(),
         vec![
             "reovim-arch-sys-none-aarch64".to_owned(),
             "reovim-arch-sys-none-x86-64".to_owned(),
             "reovim-kabi-platform".to_owned(),
+            "reovim-uapi-posix".to_owned(), // provider → uapi/posix (canonical Fd/OpenFlags/Mode at the slots)
             "reovim-testrt".to_owned(),
         ],
     );

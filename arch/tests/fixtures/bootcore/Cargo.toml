@@ -37,13 +37,13 @@ reovim-system-kernel = { path = "../../../../system/lib/kernel", features = ["ru
 
 # The platform-handle installer this composition root drives, cfg-split by
 # target so exactly one links per build. The kernel boot allocates + writes
-# through the handle, so it must install first. This fixture's real target is
-# `*-unknown-none` (the scaffold); a hosted Linux build gets the real provider.
+# through the handle, so it must install first. On the freestanding targets the
+# vtable is the SYSTEM-KERNEL provider (SP04 04c) — the real product path that
+# supersedes `reovim-platform-stub-none` for bootcore — supplied by the
+# `reovim-system-kernel` dep already declared above; no separate stub-none dep.
+# A hosted Linux build gets the real linux-native provider.
 [target.'cfg(target_os = "linux")'.dependencies]
 reovim-platform-linux-native = { path = "../../../../platform/linux-native" }
-
-[target.'cfg(not(target_os = "linux"))'.dependencies]
-reovim-platform-stub-none = { path = "../../../../platform/stub-none" }
 
 # The per-target language floor (SP03): supplies `_start`, the `entry!` shim,
 # the `#[panic_handler]`, `rust_eh_personality`, and the `mem` intrinsics as LINK

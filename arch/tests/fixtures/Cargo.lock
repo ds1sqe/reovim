@@ -13,7 +13,6 @@ dependencies = [
  "reovim-arch-floor-none-x86-64",
  "reovim-kernel",
  "reovim-platform-linux-native",
- "reovim-platform-stub-none",
  "reovim-system-kernel",
 ]
 
@@ -236,6 +235,7 @@ dependencies = [
  "reovim-arch-sys-none-x86-64",
  "reovim-kabi-platform",
  "reovim-testrt",
+ "reovim-uapi-posix",
 ]
 
 [[package]]

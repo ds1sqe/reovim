@@ -14,13 +14,15 @@
 //! of the role the dropped `arch/src/platform.rs` `cfg(not(target_os="linux"))`
 //! adapters used to fill.
 //!
-//! ## Superseded by SP04
+//! ## Role: the exit-code selftest scaffold
 //!
-//! This is a *scaffold*, not the system kernel's real provider. Sub-plan 04
-//! authors the genuine freestanding system-kernel POSIX provider; when it lands
-//! it supersedes this crate and the bare-metal fixtures install that instead.
-//! Until then this minimal handle keeps the bare-metal selftest coverage green
-//! with zero regression while arch's production path stays provider-free.
+//! This is a *scaffold*, not the system kernel's real provider. The genuine
+//! freestanding `reovim-system-kernel` POSIX provider now exists and the real
+//! product path (bootcore) installs it. This crate is RETAINED as the minimal
+//! handle for the bare exit-code selftest fixtures, which want the `-ENOSYS`
+//! scaffold rather than the full console-carrying kernel provider — two distinct
+//! consumers (rule of three). It keeps that bare-metal selftest coverage green
+//! with zero regression.
 //!
 //! ## Empty on Linux
 //!
