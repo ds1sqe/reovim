@@ -62,6 +62,14 @@ pub use none_aarch64::collect_boot_info;
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
 pub use none_x86_64::collect_boot_info;
 
+// Device inventory: walks the firmware device tree (aarch64) or returns the
+// empty default (x86, no device tree). Same target gate as `collect_boot_info`.
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+pub use none_aarch64::collect_device_inventory;
+
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+pub use none_x86_64::collect_device_inventory;
+
 #[cfg(not(any(
     all(target_os = "linux", target_arch = "x86_64"),
     all(target_os = "linux", target_arch = "aarch64"),

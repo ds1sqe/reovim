@@ -28,7 +28,7 @@
 
 use {
     reovim_arch::panic::{PanicRecord, SetError},
-    reovim_kabi_platform::BootInfo,
+    reovim_kabi_platform::{BootInfo, DeviceInventory},
     reovim_lib_ds::{RwLock, Shared},
 };
 
@@ -61,6 +61,10 @@ use crate::{
 /// - `boot_info`: hardware facts (memory map + CPU) discovered by the platform
 ///   provider and pushed in at entry; defaults to empty on hosted builds with no
 ///   firmware to query. The boot-tail diagnostics read it to print the banner.
+/// - `device_inventory`: static device enumeration from the firmware device
+///   tree, discovered by the platform provider at boot; defaults to empty on
+///   hosted builds and on freestanding targets without a DTB. The kernel stores
+///   this for later driver-discovery phases.
 ///
 /// Fields are intentionally minimal per the rule-of-three: only what stage 0 and
 /// the boot-tail diagnostics need. Config fields for later stages arrive with
@@ -89,6 +93,12 @@ pub struct LauncherArgs {
     /// (memory map + CPU). Default: empty (hosted builds with no firmware). The
     /// boot-tail diagnostics read this to emit the hardware banner.
     pub boot_info: BootInfo,
+
+    /// Static device inventory from the firmware device tree, pushed in at entry.
+    /// Default: empty (hosted builds and freestanding targets without a DTB).
+    /// The kernel stores this for later driver-discovery phases; no consumer
+    /// reads it in this phase beyond storage in `LauncherArgs`.
+    pub device_inventory: DeviceInventory,
 }
 
 impl Default for LauncherArgs {
@@ -108,6 +118,7 @@ impl Default for LauncherArgs {
             disposition: reovim_arch::panic::Disposition::Recover,
             log_ring_bytes: 1024 * 1024, // 1 MiB
             boot_info: BootInfo::default(),
+            device_inventory: DeviceInventory::default(),
         }
     }
 }

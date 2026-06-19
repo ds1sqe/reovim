@@ -28,7 +28,7 @@
 #![allow(unsafe_code)]
 
 use {
-    reovim_arch::sys::{collect_boot_info, write},
+    reovim_arch::sys::{collect_boot_info, collect_device_inventory, write},
     reovim_kernel::{Init, LauncherArgs},
 };
 
@@ -94,8 +94,10 @@ reovim_arch::entry!(|_argc, _argv, _envp| {
     // the kernel at entry through `LauncherArgs.boot_info`. The boot-tail
     // diagnostics banner prints them on the live console.
     let boot_info = collect_boot_info();
+    let device_inventory = collect_device_inventory();
     let args = LauncherArgs {
         boot_info,
+        device_inventory,
         ..LauncherArgs::default()
     };
 

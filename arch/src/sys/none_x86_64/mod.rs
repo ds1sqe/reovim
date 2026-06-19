@@ -31,6 +31,15 @@ mod wrap;
 // firmware memory map from the Multiboot1 structure stashed by `_start`.
 pub use boot_info::collect_boot_info;
 
+/// x86 freestanding has no device tree; the device inventory is always empty.
+///
+/// Platform-ABI mirror of `none_aarch64::collect_device_inventory` so the
+/// `sys/mod.rs` re-export table is symmetric across both freestanding arches.
+#[must_use]
+pub fn collect_device_inventory() -> reovim_kabi_platform::DeviceInventory {
+    reovim_kabi_platform::DeviceInventory::default()
+}
+
 // The wrapper-level floor this backend owes `sys/mod.rs`, realized over
 // hardware (Linux backends satisfy it from the shared `wrap.rs`).
 pub use wrap::{

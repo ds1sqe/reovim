@@ -324,7 +324,27 @@ arch/src/sys/none_aarch64/framebuffer.rs	pub fn clear(&self, color: u32)
 arch/src/sys/none_aarch64/framebuffer.rs	pub fn init() -> Option<Framebuffer>
 arch/src/sys/none_aarch64/framebuffer.rs	pub fn arm_memory() -> Option<(u64, u64)>
 arch/src/sys/none_aarch64/boot_info.rs	pub fn collect_boot_info() -> BootInfo
+arch/src/sys/none_aarch64/mod.rs	pub fn collect_device_inventory() -> reovim_kabi_platform::DeviceInventory
 arch/src/sys/none_aarch64/console.rs	pub fn print(&mut self, s: &str)
 arch/src/sys/none_aarch64/console.rs	pub fn write_bytes(&mut self, buf: &[u8])
 arch/src/sys/none_x86_64/boot_info.rs	pub fn collect_boot_info() -> BootInfo
+arch/src/sys/none_x86_64/mod.rs	pub fn collect_device_inventory() -> reovim_kabi_platform::DeviceInventory
 arch/src/sys/none_aarch64/console.rs	pub fn install(console: Console<'static>)
+arch/src/sys/none_aarch64/fdt/enumerate.rs	pub fn classify(compatible: &str) -> DeviceClass
+arch/src/sys/none_aarch64/fdt/enumerate.rs	pub fn enumerate(fdt: &Fdt<'static>) -> DeviceInventory
+arch/src/sys/none_aarch64/fdt/reader.rs	pub const fn children(&self) -> ChildIter<'a>
+arch/src/sys/none_aarch64/fdt/reader.rs	pub enum FdtError
+arch/src/sys/none_aarch64/fdt/reader.rs	pub fn find_child_exact(&self, name: &str) -> Option<Node<'a>>
+arch/src/sys/none_aarch64/fdt/reader.rs	pub fn find_child(&self, name: &str) -> Option<Node<'a>>
+arch/src/sys/none_aarch64/fdt/reader.rs	pub fn first_compatible(&self) -> Option<&'a str>
+arch/src/sys/none_aarch64/fdt/reader.rs	pub fn first_interrupt_cell(&self) -> Option<u32>
+arch/src/sys/none_aarch64/fdt/reader.rs	pub fn name(&self) -> &'a str
+arch/src/sys/none_aarch64/fdt/reader.rs	pub fn parse(data: &'a [u8]) -> Result<Self, FdtError>
+arch/src/sys/none_aarch64/fdt/reader.rs	pub fn prop_bytes(&self, name: &str) -> Option<&'a [u8]>
+arch/src/sys/none_aarch64/fdt/reader.rs	pub fn reg(&self) -> Option<(u64, u64)>
+arch/src/sys/none_aarch64/fdt/reader.rs	pub fn root(&self) -> Result<Node<'a>, FdtError>
+arch/src/sys/none_aarch64/fdt/reader.rs	pub fn version(&self) -> u32
+arch/src/sys/none_aarch64/fdt/reader.rs	pub struct CellSizes
+arch/src/sys/none_aarch64/fdt/reader.rs	pub struct ChildIter<'a>
+arch/src/sys/none_aarch64/fdt/reader.rs	pub struct Fdt<'a>
+arch/src/sys/none_aarch64/fdt/reader.rs	pub struct Node<'a>

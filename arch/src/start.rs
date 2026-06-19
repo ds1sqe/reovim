@@ -466,6 +466,14 @@ pub extern "C" fn _start() -> ! {
     // `eret` continuation label and the table/stack/BSS symbols are all
     // link-time-resolved addresses inside this image.
     core::arch::naked_asm!(
+        // -- 0: capture the firmware DTB pointer before x0 is reused ----------
+        // Firmware (and QEMU `-dtb`) passes the flattened-device-tree physical
+        // address in x0 at entry, but the very next instruction overwrites x0
+        // with MPIDR. Move it into x19 — callee-saved in AAPCS64 and untouched
+        // by the entire prologue — so it survives to the post-BSS store below.
+        // Secondary cores also run this and then park at `wfe`; only core 0
+        // reaches the store, so only core 0's (real) DTB pointer is recorded.
+        "mov x19, x0",
         // -- 1: park anything that is not core 0 ------------------------------
         "mrs x0, mpidr_el1",
         "and x0, x0, #0xFF",   // Aff0 = core id within the cluster
@@ -513,6 +521,14 @@ pub extern "C" fn _start() -> ! {
         // (bits 4:2), SH (bits 9:8), AF (bit 10); the device block adds
         // PXN|UXN (bits 53:54) — nothing executes from peripherals.
         "5:",
+        // Stash the firmware DTB pointer, held in x19 since entry. This is the
+        // first instruction past the BSS clear's `b.hs 5f` exit, so it always
+        // runs on core 0; DTB_PTR lives in .bss, so storing it only now — after
+        // the clear — keeps the value from being zeroed. x0 is free scratch
+        // (the identity-map setup immediately below reloads it).
+        "adrp x0, {dtb_ptr}",
+        "add x0, x0, :lo12:{dtb_ptr}",
+        "str x19, [x0]",
         "adrp x0, {l1table}",
         "add x0, x0, :lo12:{l1table}",
         "movz x1, #0x0701",    // 0x0000_0000: normal (Attr0, inner-sh, AF)
@@ -554,9 +570,21 @@ pub extern "C" fn _start() -> ! {
         "bl {entry}",
         "brk #1",              // unreachable: rust_entry exits via semihosting
         l1table = sym L1_TABLE,
+        dtb_ptr = sym DTB_PTR,
         entry = sym rust_entry,
     )
 }
+
+/// The firmware-provided flattened-device-tree (DTB) physical address.
+///
+/// The aarch64 `_start` asm captures x0 into the callee-saved `x19` at the very
+/// first instruction (before `MPIDR` overwrites x0) and stores it here *after*
+/// the BSS clear, mirroring the x86 [`MULTIBOOT_INFO_PTR`] contract. The
+/// device-tree reader (`sys::none_aarch64::dtb_ptr`) loads it to walk the DTB
+/// and enumerate devices. Zero until stashed, and on any entry with no DTB
+/// (QEMU without `-dtb`), which the reader treats as "no device tree".
+#[cfg(all(feature = "runtime", target_arch = "aarch64", target_os = "none"))]
+pub(crate) static DTB_PTR: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
 
 /// The captured process environment vector (`envp`), stashed by [`rust_entry`]
 /// at startup so the exit path can read it without re-threading it through

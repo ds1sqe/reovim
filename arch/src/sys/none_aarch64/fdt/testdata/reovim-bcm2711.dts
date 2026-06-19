@@ -1,0 +1,75 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 ds1sqe
+//
+// A minimal, original BCM2711 (Raspberry Pi 4) device-tree authored for the
+// reovim FDT reader's host/selftest unit tests. It is NOT derived from the
+// Linux/Raspberry Pi kernel device-tree sources: it is a fresh, deliberately
+// small expression that models only the handful of nodes the reovim device
+// enumerator recognizes. The numeric reg addresses, compatible strings, and
+// cell counts are factual hardware constants of the BCM2711 SoC (not
+// copyrightable expression); the structure and selection of nodes are original.
+//
+// This fixture is compiled to reovim-bcm2711.dtb and embedded via include_bytes!
+// in the reader/enumerate tests, so it must stay free of any third-party
+// copyleft material — see the sibling testdata note. The full firmware device
+// tree used for the on-target QEMU run lives separately and is never compiled
+// into any binary (arch/tests/fixtures/dtb/).
+//
+// Addresses follow the real BCM2711 layout: peripherals carry their bus-space
+// reg values (0x7e..., and the GIC's 0x4004_1000 local block). The reovim
+// enumerator reports these raw reg bases; `ranges`-based bus→CPU address
+// translation is out of scope for static enumeration.
+
+/dts-v1/;
+
+/ {
+	compatible = "raspberrypi,4-model-b", "brcm,bcm2711";
+	model = "reovim BCM2711 test fixture";
+	#address-cells = <0x02>;
+	#size-cells = <0x01>;
+	interrupt-parent = <0x01>; // the GIC below carries phandle 0x01
+
+	memory@0 {
+		device_type = "memory";
+		reg = <0x00 0x00 0x40000000>; // 1 GiB at physical 0
+	};
+
+	soc {
+		compatible = "simple-bus";
+		#address-cells = <0x01>;
+		#size-cells = <0x01>;
+		ranges = <0x7e000000 0x00 0xfe000000 0x01800000>;
+
+		serial@7e201000 {
+			compatible = "arm,pl011", "arm,primecell";
+			reg = <0x7e201000 0x200>;
+			interrupts = <0x00 0x99 0x04>;
+		};
+
+		mailbox@7e00b880 {
+			compatible = "brcm,bcm2835-mbox";
+			reg = <0x7e00b880 0x40>;
+			interrupts = <0x00 0x01 0x04>;
+		};
+
+		interrupt-controller@40041000 {
+			compatible = "arm,gic-400";
+			reg = <0x40041000 0x1000>;
+			interrupt-controller;
+			#interrupt-cells = <0x03>;
+			phandle = <0x01>;
+		};
+
+		mmc@7e340000 {
+			compatible = "brcm,bcm2711-emmc2";
+			reg = <0x7e340000 0x100>;
+			interrupts = <0x00 0x7e 0x04>;
+		};
+
+		usb@7e980000 {
+			compatible = "brcm,bcm2708-usb";
+			reg = <0x7e980000 0x10000>;
+			interrupts = <0x00 0x09 0x04>;
+		};
+	};
+};

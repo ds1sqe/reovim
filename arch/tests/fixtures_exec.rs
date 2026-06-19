@@ -434,6 +434,13 @@ fn run_system_image(exe: &Path) -> (i32, String) {
         .arg(&img);
     } else {
         let img = objcopy_kernel_image(exe);
+        // QEMU's `raspi4b` machine generates no device tree (it has no FDT), so
+        // `x0` would be zero at `_start` and there would be nothing to
+        // enumerate. Supply the real Raspberry Pi 4 firmware DTB via `-dtb` so
+        // the boot path captures a genuine device tree. This blob is GPL-2.0
+        // third-party data used ONLY as a runtime input — never compiled into
+        // any binary; see tests/fixtures/dtb/PROVENANCE.md.
+        let dtb = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/dtb/bcm2711-rpi-4-b.dtb");
         cmd.args([
             "-M",
             "raspi4b",
@@ -443,6 +450,8 @@ fn run_system_image(exe: &Path) -> (i32, String) {
             "stdio",
             "-semihosting",
         ])
+        .arg("-dtb")
+        .arg(dtb)
         .arg("-kernel")
         .arg(&img);
     }

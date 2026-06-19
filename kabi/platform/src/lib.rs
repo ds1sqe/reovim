@@ -87,6 +87,105 @@ use reovim_uapi_posix::{Errno, Fd, Mode, OpenFlags};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AllocError;
 
+// ── Device inventory (push-at-entry static data) ──────────────────────────────
+
+/// The coarse device class assigned to a statically-enumerated DTB node.
+///
+/// This is a *Declared* / *Present* classification — the class the firmware
+/// device tree claims the device is. It is not a driver-lifecycle state: the
+/// kernel receives this once at entry and holds it without modifying it.
+/// Driver-specific details (interrupt routing, device-specific register maps,
+/// power domains) are driver concerns and are not encoded here.
+///
+/// ```rust
+/// use reovim_kabi_platform::DeviceClass;
+///
+/// assert_eq!(DeviceClass::Uart, DeviceClass::Uart);
+/// ```
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeviceClass {
+    /// A UART serial port (e.g. `arm,pl011`).
+    Uart = 0,
+    /// A generic interrupt controller (e.g. `arm,gic-400`).
+    Interrupt = 1,
+    /// A firmware mailbox channel (e.g. `brcm,bcm2835-mbox`).
+    Mailbox = 2,
+    /// A block storage device.
+    Block = 3,
+    /// A USB host controller or device.
+    Usb = 4,
+    /// A device whose compatible string was not recognised by the enumerator.
+    Unknown = 255,
+}
+
+/// One statically-enumerated device node: the one-shot, static facts the
+/// enumerator extracts from the firmware device tree at boot.
+///
+/// These are *Declared* / *Present* facts — what the device tree says the
+/// device is, not what a driver has discovered at runtime. Fields like `irq`
+/// and `capacity_bytes` carry honest "absent" sentinels (`u32::MAX` / `0`)
+/// where only a driver (or further firmware interrogation) could fill them in.
+/// The kernel stores this inventory for later driver-discovery phases.
+///
+/// ```rust
+/// use reovim_kabi_platform::{DeviceClass, DeviceEntry};
+///
+/// let entry = DeviceEntry {
+///     class: DeviceClass::Uart,
+///     mmio_base: 0x7e20_1000,
+///     mmio_len: 0x200,
+///     irq: u32::MAX,
+///     capacity_bytes: 0,
+///     compatible: "arm,pl011",
+/// };
+/// assert_eq!(entry.compatible, "arm,pl011");
+/// ```
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DeviceEntry {
+    /// Coarse device class, derived from the first `compatible` string.
+    pub class: DeviceClass,
+    /// MMIO base address from the node's `reg` property; `0` when absent.
+    pub mmio_base: u64,
+    /// MMIO region length in bytes from the node's `reg` property; `0` when absent.
+    pub mmio_len: u64,
+    /// Primary interrupt number — the first cell of the `interrupts` property.
+    /// `u32::MAX` when the property is absent or has not been decoded by this
+    /// enumerator phase (Phase 3 may decode more).
+    pub irq: u32,
+    /// Block device capacity in bytes. `0` for non-block devices and for block
+    /// devices where the capacity is not derivable from the DTB alone (a driver
+    /// must query the hardware).
+    pub capacity_bytes: u64,
+    /// The first NUL-separated string from the `compatible` property, backed by
+    /// the DTB byte slice (process-lifetime storage). Empty string `""` when the
+    /// property was absent or contained non-UTF-8 bytes.
+    pub compatible: &'static str,
+}
+
+/// The static device inventory discovered from the firmware device tree and
+/// pushed into the kernel at entry alongside [`BootInfo`].
+///
+/// Like [`BootInfo`], this is one-shot *static data* delivered push-at-entry.
+/// The `devices` slice is backed by the boot arena (process-lifetime storage).
+/// The empty default is valid: a hosted build or a freestanding target without
+/// a DTB carries no inventory, and the kernel reports only what is present.
+///
+/// ```rust
+/// use reovim_kabi_platform::DeviceInventory;
+///
+/// assert!(DeviceInventory::default().devices.is_empty());
+/// ```
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DeviceInventory {
+    /// The enumerated device entries. Backed by arena storage that lives for
+    /// the process lifetime, hence `'static`. Empty on hosted builds and on
+    /// freestanding targets without a DTB.
+    pub devices: &'static [DeviceEntry],
+}
+
 // ── Boot information (push-at-entry static data) ───────────────────────────────
 
 /// The kind of a physical memory range in a [`BootInfo`] memory map.
