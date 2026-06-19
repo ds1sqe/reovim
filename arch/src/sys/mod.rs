@@ -1,74 +1,68 @@
-//! Platform seam: `sys/` is the single boundary between target-neutral Rust
-//! and per-target asm.
+//! Platform seam facade: `arch::sys` re-exports the raw per-target mechanism
+//! from the `arch-sys-{target}` crate selected by the same cfg gates the old
+//! in-crate backend selection used.
 //!
-//! Backends are cfg-selected per target with identical floor signatures; all
-//! target asm lives in `sys/<target>/`. `errno.rs` is target-neutral floor
-//! vocabulary — the `Errno` type and value mapping every backend's wrappers
-//! return. `wrap.rs` is Linux-kernel-ABI family code shared by Linux backends
-//! only — freestanding backends bring their own wrap-level implementations
-//! behind the same floor signatures. Each backend re-exports the wrapper
-//! floor it owes; the single `pub use target::{…}` list below is the drift
-//! guard every backend must satisfy.
+//! The raw mechanism (syscalls, MMIO, asm, errno vocabulary, the freestanding
+//! console/framebuffer/font surface) moved out of `reovim-arch` into per-target
+//! `reovim-arch-sys-*` crates (SP01 carve-out). This module keeps the exact
+//! `arch::sys::*` public surface so no consumer — product or internal — changes
+//! an import: every name below was previously re-exported from
+//! `arch/src/sys/mod.rs`, now sourced from the per-target crate via a `pub use`.
+//!
+//! Each `arch-sys-{target}` is a downward `arch -> arch-sys` Cargo edge (a
+//! target-cfg-gated path dep in `arch/Cargo.toml`); there is no upward edge.
+//! The boot-pointer statics (`DTB_PTR`, `MULTIBOOT_INFO_PTR`) live in the
+//! `arch-sys-none-*` crates and the `arch::start` `_start` asm names them by
+//! cross-crate `sym` path.
 
-// ---- backend selection -------------------------------------------------------
+// ---- backend selection (per-target arch-sys crate) ---------------------------
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-mod linux_x86_64;
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use linux_x86_64 as target;
+use reovim_arch_sys_linux_x86_64 as target;
 
 #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
-mod linux_aarch64;
-#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
-use linux_aarch64 as target;
+use reovim_arch_sys_linux_aarch64 as target;
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
-mod none_aarch64;
-#[cfg(all(target_os = "none", target_arch = "aarch64"))]
-use none_aarch64 as target;
+use reovim_arch_sys_none_aarch64 as target;
 
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
-mod none_x86_64;
-#[cfg(all(target_os = "none", target_arch = "x86_64"))]
-use none_x86_64 as target;
+use reovim_arch_sys_none_x86_64 as target;
 
 // The VideoCore mailbox framebuffer is freestanding-only hardware surface
 // (no Linux backend has one), exposed so the bare-metal splash payload can
 // drive it. Same target gate as the backend it lives in.
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
-pub use none_aarch64::framebuffer;
+pub use target::framebuffer;
 
 // The coverage-blended text console layered over the framebuffer, so the
 // bare-metal boot log renders on the HDMI surface and not only the UART, plus
 // the selectable embedded fonts it blits through. Same target gate as the
 // framebuffer they draw on.
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
-pub use none_aarch64::console;
+pub use target::console;
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
-pub use none_aarch64::fonts;
+pub use target::fonts;
 // The terminal color model the console pen resolves through (truecolor +
 // indexed palette). Same target gate as the console that consumes it.
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
-pub use none_aarch64::color;
+pub use target::color;
 
 // Runtime hardware discovery: assembles RAM/CPU facts into a `BootInfo` the
 // bare-metal payload pushes into `Init::new`. Freestanding-only hardware
 // surface (the Linux backends have firmware-free defaults), same target gate.
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
-pub use none_aarch64::collect_boot_info;
+pub use target::collect_boot_info;
 
 // x86 discovers the same facts from the Multiboot1 memory map (stashed by
 // `_start`) and `CPUID`, feeding the identical neutral `BootInfo`.
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
-pub use none_x86_64::collect_boot_info;
+pub use target::collect_boot_info;
 
 // Device inventory: walks the firmware device tree (aarch64) or returns the
 // empty default (x86, no device tree). Same target gate as `collect_boot_info`.
-#[cfg(all(target_os = "none", target_arch = "aarch64"))]
-pub use none_aarch64::collect_device_inventory;
-
-#[cfg(all(target_os = "none", target_arch = "x86_64"))]
-pub use none_x86_64::collect_device_inventory;
+#[cfg(target_os = "none")]
+pub use target::collect_device_inventory;
 
 #[cfg(not(any(
     all(target_os = "linux", target_arch = "x86_64"),
@@ -77,35 +71,17 @@ pub use none_x86_64::collect_device_inventory;
     all(target_os = "none", target_arch = "x86_64"),
 )))]
 compile_error!(
-    "no arch sys backend for this target; see arch/src/sys/ for the per-target backend convention"
+    "no arch sys backend for this target; see the arch/sys-{target}/ crates for the per-target backend convention"
 );
 
-// ---- target-neutral floor vocabulary ------------------------------------------
-
-mod errno;
-
-#[cfg(feature = "selftest")]
-mod errno_tests;
-
-// ---- shared Linux-family wrappers ----------------------------------------------
-
-#[cfg(target_os = "linux")]
-mod wrap;
-
-#[cfg(all(target_os = "linux", feature = "selftest"))]
-mod wrap_tests;
+// ---- sockets / termios kernel-ABI surface ------------------------------------
 
 // Sockets and termios are kernel-ABI surface (DAG6 1.2 §10): Linux-only,
 // like `wrap.rs` — freestanding backends have neither.
 #[cfg(target_os = "linux")]
-pub mod net;
+pub use target::net;
 #[cfg(target_os = "linux")]
-pub mod term;
-
-#[cfg(all(target_os = "linux", feature = "selftest"))]
-mod net_tests;
-#[cfg(all(target_os = "linux", feature = "selftest"))]
-mod term_tests;
+pub use target::term;
 
 // ---- floor surface re-exports ------------------------------------------------
 
@@ -114,12 +90,12 @@ mod term_tests;
 /// consumes it.
 pub(crate) use target::clone_into;
 
-pub use errno::{EAGAIN, EBADF, EFAULT, EINVAL, ENOENT, ENOMEM, EWOULDBLOCK, Errno, from_ret};
+pub use target::{EAGAIN, EBADF, EFAULT, EINVAL, ENOENT, ENOMEM, EWOULDBLOCK, Errno, from_ret};
 
 // Raw syscalls are kernel-ABI-class surface (DAG6 1.2 §10): only targets
 // whose stable boundary IS the Linux syscall ABI may expose them.
 #[cfg(target_os = "linux")]
-pub use target::raw::{syscall0, syscall1, syscall2, syscall3, syscall4, syscall6};
+pub use target::{syscall0, syscall1, syscall2, syscall3, syscall4, syscall6};
 
 pub use target::{
     AT_FDCWD, CLOCK_MONOTONIC, CLOCK_REALTIME, CLONE_CHILD_CLEARTID, CLONE_FILES, CLONE_FS,
@@ -132,11 +108,11 @@ pub use target::{
 // Socket/termios/unlink wrappers are Linux-only kernel-ABI surface, same
 // class gate as `wrap.rs` itself (no freestanding realization exists).
 #[cfg(target_os = "linux")]
-pub use wrap::{
+pub use target::{
     AT_REMOVEDIR, MSG_NOSIGNAL, accept, bind, connect, ioctl, listen, send_nosignal, socket,
     unix_stream_socket, unlinkat,
 };
 
 // Errno constants used by the net/term wrappers — keep them in the same
 // re-export tier as the existing errno constants.
-pub use errno::{EADDRINUSE, ECONNREFUSED, ENOTTY, EOPNOTSUPP, EPIPE};
+pub use target::{EADDRINUSE, ECONNREFUSED, ENOTTY, EOPNOTSUPP, EPIPE};

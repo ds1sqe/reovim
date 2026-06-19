@@ -71,7 +71,7 @@ pub extern "C" fn _start() -> ! {
 /// such that `magic + flags + checksum ≡ 0 (mod 2^32)`. `flags = 0` requests
 /// nothing extra (no module alignment, no extra header tags) — the loader still
 /// fills the default info structure, whose memory map the floor reads via the
-/// boot pointer in `ebx` (stashed by `_start` into [`MULTIBOOT_INFO_PTR`]). The
+/// boot pointer in `ebx` (stashed by `_start` into `MULTIBOOT_INFO_PTR`). The
 /// linker script places `.multiboot` first, so the header lands at the image base.
 #[cfg(all(feature = "runtime", target_arch = "x86_64", target_os = "none"))]
 #[repr(C, align(4))]
@@ -139,21 +139,12 @@ static GDT: Gdt = Gdt([0, 0x00AF_9A00_0000_FFFF, 0x00CF_9200_0000_FFFF]);
 #[used]
 static HELLO: [u8; 39] = *b"reovim: hello from long mode (x86_64)\n\0";
 
-/// The Multiboot1 information-structure pointer the bootloader leaves in `EBX`
-/// at entry.
-///
-/// The `_start` asm stashes it here in the 32-bit prologue — *after* the BSS
-/// clear (so the store is not zeroed) and *before* the COM1 banner loop reuses
-/// `rbx`/`bl`. The x86 boot-info provider (`sys::collect_boot_info`) reads it to
-/// parse the firmware memory map. It is the storage cell; the single read API is
-/// `sys::none_x86_64::boot_info::multiboot_ptr`. Zero until stashed, and on any
-/// non-Multiboot entry, which the reader treats as "no boot info" (empty map).
-///
-/// This is the boot pointer Invariant 5 calls for gathering *separately* from
-/// the `(argc, argv, envp)` shape — it never threads through [`rust_entry`].
-#[cfg(all(feature = "runtime", target_arch = "x86_64", target_os = "none"))]
-pub(crate) static MULTIBOOT_INFO_PTR: core::sync::atomic::AtomicU32 =
-    core::sync::atomic::AtomicU32::new(0);
+// The Multiboot1 info-structure pointer (`MULTIBOOT_INFO_PTR`) the bootloader
+// leaves in `EBX` at entry was relocated into `reovim-arch-sys-none-x86-64`
+// (SP01 edge inversion): it is a raw hardware boot pointer and belongs with the
+// raw mechanism. The `_start` asm below names it by cross-crate `sym` path. This
+// is the boot pointer Invariant 5 calls for gathering *separately* from the
+// `(argc, argv, envp)` shape — it never threads through `rust_entry`.
 
 /// The bare-metal boot entry (`_start`) for the QEMU `q35` machine, entered via
 /// Multiboot1 (`qemu-system-x86_64 -kernel <elf>`).
@@ -162,7 +153,7 @@ pub(crate) static MULTIBOOT_INFO_PTR: core::sync::atomic::AtomicU32 =
 /// **32-bit protected mode**, paging off, interrupts off, with the boot info
 /// pointer in `ebx` and magic `0x2BADB002` in `eax`. There is no kernel and no
 /// process ABI: no argc/argv/envp exist, so [`rust_entry`] receives zeros. The
-/// boot pointer in `ebx` is stashed into [`MULTIBOOT_INFO_PTR`] for
+/// boot pointer in `ebx` is stashed into `MULTIBOOT_INFO_PTR` for
 /// `sys::collect_boot_info` (where the aarch64 arm instead discovers RAM live
 /// via the `VideoCore` mailbox).
 ///
@@ -175,7 +166,7 @@ pub(crate) static MULTIBOOT_INFO_PTR: core::sync::atomic::AtomicU32 =
 ///    upholding `mmap`'s zero-fill contract. BSS is cleared *before* the page
 ///    tables are filled because they live in `.bss`. Immediately after the
 ///    clear (and before the banner loop reuses `bl`), `ebx` — the Multiboot
-///    info pointer — is stashed into [`MULTIBOOT_INFO_PTR`].
+///    info pointer — is stashed into `MULTIBOOT_INFO_PTR`.
 /// 2. **Identity page tables.** `PD` gets 512 × 2 MiB present/writable pages
 ///    (low 1 GiB); `PML4[0]`/`PDPT[0]` point down the branch. `cr3 ← PML4`.
 /// 3. **Enable long mode.** `CR4.PAE`, then `EFER.LME` (MSR `0xC0000080`), then
@@ -316,7 +307,7 @@ pub extern "C" fn _start() -> ! {
         "call {entry}",
         "ud2",                       // unreachable: rust_entry exits via sys
         ".code64",                   // restore default mode after the block
-        mb_ptr = sym MULTIBOOT_INFO_PTR,
+        mb_ptr = sym reovim_arch_sys_none_x86_64::MULTIBOOT_INFO_PTR,
         pml4 = sym PML4,
         pdpt = sym PDPT,
         pd = sym PD,
@@ -570,21 +561,19 @@ pub extern "C" fn _start() -> ! {
         "bl {entry}",
         "brk #1",              // unreachable: rust_entry exits via semihosting
         l1table = sym L1_TABLE,
-        dtb_ptr = sym DTB_PTR,
+        dtb_ptr = sym reovim_arch_sys_none_aarch64::DTB_PTR,
         entry = sym rust_entry,
     )
 }
 
-/// The firmware-provided flattened-device-tree (DTB) physical address.
-///
-/// The aarch64 `_start` asm captures x0 into the callee-saved `x19` at the very
-/// first instruction (before `MPIDR` overwrites x0) and stores it here *after*
-/// the BSS clear, mirroring the x86 [`MULTIBOOT_INFO_PTR`] contract. The
-/// device-tree reader (`sys::none_aarch64::dtb_ptr`) loads it to walk the DTB
-/// and enumerate devices. Zero until stashed, and on any entry with no DTB
-/// (QEMU without `-dtb`), which the reader treats as "no device tree".
-#[cfg(all(feature = "runtime", target_arch = "aarch64", target_os = "none"))]
-pub(crate) static DTB_PTR: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+// The firmware-provided DTB physical address (`DTB_PTR`) was relocated into
+// `reovim-arch-sys-none-aarch64` (SP01 edge inversion): it is a raw hardware
+// boot pointer and belongs with the raw mechanism, mirroring the x86
+// `MULTIBOOT_INFO_PTR` contract. The aarch64 `_start` asm captures x0 into the
+// callee-saved `x19` at the very first instruction (before `MPIDR` overwrites
+// x0) and stores it via the cross-crate `sym` operand above, after the BSS
+// clear. The device-tree reader (`arch::sys::collect_device_inventory`) loads
+// it to walk the DTB and enumerate devices.
 
 /// The captured process environment vector (`envp`), stashed by [`rust_entry`]
 /// at startup so the exit path can read it without re-threading it through

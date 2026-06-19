@@ -1,0 +1,31 @@
+[package]
+name = "reovim-arch-sys-linux-aarch64"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "arch-sys raw per-target mechanism: aarch64-linux syscall FFI / asm, returning NATIVE values"
+publish = false
+
+[features]
+# Compiles the per-module sibling test files INTO the lib (L12 layout). Tests
+# declare via arch_test! and reach crate-private items through `super::`. The
+# arch selftest runner enables this; default builds do not.
+selftest = []
+
+[lints]
+workspace = true
+
+[dependencies]
+# Raw Linux syscall layer: core-only. No kabi/uapi/lib_ds edge — canonicalization
+# (NATIVE -> POSIX) is a later flight's provider concern, not this raw floor.
+# The one Foundation edge (SP07): the core-only test runtime, whose arch_test!
+# macro + check/check_eq the `selftest`-gated `*_tests.rs` modules register
+# through — reaching the runner via the leaf, never an upward arch-sys -> arch
+# edge. reovim-testrt is a #![no_std] zero-dep leaf (DAG5/DAG6 preserved).
+reovim-testrt = { path = "../../lib/testrt" }
+
+# No [dev-dependencies] or [build-dependencies] (DAG5/DAG6: zero third-party deps).

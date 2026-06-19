@@ -112,6 +112,14 @@ impl fmt::Display for Category {
 pub fn default_category_table() -> Vec<(String, Category)> {
     [
         ("arch", Category::Foundation),
+        // arch/sys-* = per-target raw mechanism crates carved out of reovim-arch
+        // (SP01). Floor tier, same as arch. The pattern grammar's `*` only
+        // matches a whole trailing component (`pattern_matches`), so each crate
+        // path is listed explicitly rather than via a `sys-*` suffix glob.
+        ("arch/sys-linux-x86-64", Category::Foundation),
+        ("arch/sys-linux-aarch64", Category::Foundation),
+        ("arch/sys-none-aarch64", Category::Foundation),
+        ("arch/sys-none-x86-64", Category::Foundation),
         ("lib/*", Category::Foundation),
         // kabi/* = down-face contract tier (SP01/SP02); classifies as Foundation
         // because the coarse matrix expresses tier relationships; the finer
@@ -212,8 +220,48 @@ pub fn default_foundation_grants() -> std::collections::BTreeMap<String, Vec<Str
             // arch → uapi/panic: arch re-exports and names the Disposition /
             // PanicRecord value types whose canonical home is uapi/panic.
             "reovim-uapi-panic".to_owned(),
+            // arch → arch-sys-{target}: the raw per-target mechanism carved out
+            // of arch (SP01). arch reaches each through the `arch::sys` facade;
+            // the deps are target-cfg-gated, so at most one enters a given
+            // build's graph. Downward floor edges — no upward edge back.
+            "reovim-arch-sys-linux-x86-64".to_owned(),
+            "reovim-arch-sys-linux-aarch64".to_owned(),
+            "reovim-arch-sys-none-aarch64".to_owned(),
+            "reovim-arch-sys-none-x86-64".to_owned(),
+            // arch → lib/testrt: arch re-exports the core-only test runtime
+            // through the `arch::testrt` facade and wires its injected
+            // output/TID edges onto arch's `sys` floor (SP07). lib/testrt is a
+            // Foundation leaf naming nothing back — a permitted Foundation edge.
+            "reovim-testrt".to_owned(),
         ],
     );
+    // ── SP01/SP07 arch-sys grants ───────────────────────────────────────────
+    // The two freestanding crates name the neutral boot-data types in
+    // kabi/platform (BootInfo / MemoryKind / MemoryRange / DeviceClass /
+    // DeviceEntry / DeviceInventory) for boot-info + device-inventory assembly.
+    // All four crates additionally depend on lib/testrt (SP07): their
+    // `selftest`-gated `*_tests.rs` modules register through its arch_test! /
+    // check / check_eq, reaching the runner via the leaf rather than an upward
+    // arch-sys → arch edge. lib/testrt is a Foundation leaf — a permitted
+    // Foundation→Foundation grant.
+    m.insert(
+        "reovim-arch-sys-none-aarch64".to_owned(),
+        vec![
+            "reovim-kabi-platform".to_owned(),
+            "reovim-testrt".to_owned(),
+        ],
+    );
+    m.insert(
+        "reovim-arch-sys-none-x86-64".to_owned(),
+        vec![
+            "reovim-kabi-platform".to_owned(),
+            "reovim-testrt".to_owned(),
+        ],
+    );
+    // The two Linux crates are otherwise core-only (raw syscall layer); their
+    // sole Foundation edge is the SP07 lib/testrt dep above.
+    m.insert("reovim-arch-sys-linux-x86-64".to_owned(), vec!["reovim-testrt".to_owned()]);
+    m.insert("reovim-arch-sys-linux-aarch64".to_owned(), vec!["reovim-testrt".to_owned()]);
     m.insert(
         "reovim-lib-ds".to_owned(),
         vec![
@@ -2011,9 +2059,11 @@ fn swapset_group(path: &str) -> Option<String> {
 /// The firewall probe uses this to detect a DIRECT edge to the arch backend.
 #[must_use]
 fn is_arch_crate_name(name: &str) -> bool {
-    // Exact crate name check.  If SP04 splits arch into sub-crates they will
-    // share this pattern and this function must be updated.
-    name == "reovim-arch"
+    // `reovim-arch` plus the per-target raw-mechanism crates carved out of it
+    // (SP01): `reovim-arch-sys-{linux,none}-{x86-64,aarch64}`. They are
+    // arch-family floor crates, so a direct product edge naming any of them is
+    // an arch-family edge the firewall must detect (fd countdown ruling).
+    name == "reovim-arch" || name.starts_with("reovim-arch-sys-")
 }
 
 // ── Probe 1: Direct-edge firewall ─────────────────────────────────────────────

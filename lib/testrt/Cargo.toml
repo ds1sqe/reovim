@@ -1,0 +1,26 @@
+[package]
+name = "reovim-testrt"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Core-only no_std test runtime: the arch_test! distributed-slice collector, fail-fast reporter, and check/check_eq assertions, with output and TID injected by the consumer"
+publish = false
+
+# No [dependencies]: the runtime is a #![no_std] core-only leaf. Output (fd
+# write) and the unique-path TID are INJECTED by the consumer (arch wraps them
+# onto its sys floor), so the leaf names no OS edge — DAG5 (Dependency
+# Sovereignty) and DAG6 (zero-std) hold by construction. `panic = "abort"` is
+# inherited from the workspace profile.
+
+[lints]
+workspace = true
+
+[features]
+# Compiles the leaf's own sibling test file (`testrt_tests.rs`) INTO the lib,
+# mirroring arch's selftest gating. The tests register via arch_test! and reach
+# the crate-private write_usize/CURRENT_TEST internals through `super::`.
+selftest = []

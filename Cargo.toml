@@ -6,7 +6,21 @@ members = [
     # reaches its allocator + futex backend through the kabi handle (SP03,
     # lib/ds → kabi only, never arch).
     "lib/ds",
+    # Core-only no_std test runtime carved out of reovim-arch (SP07): the
+    # arch_test! distributed-slice collector, fail-fast reporter, and
+    # check/check_eq. Output (fd write) and the unique-path TID are injected by
+    # the consumer, so the leaf names no OS edge. arch re-exports it through the
+    # `arch::testrt` facade; the arch-sys-* crates depend on it directly to
+    # register their floor selftests without an upward arch-sys → arch edge.
+    "lib/testrt",
     "arch",
+    # Per-target raw mechanism crates carved out of reovim-arch (SP01): syscall
+    # FFI / MMIO / asm, returning NATIVE values. arch reaches them via the
+    # arch::sys facade (target-cfg-gated path deps).
+    "arch/sys-linux-x86-64",
+    "arch/sys-linux-aarch64",
+    "arch/sys-none-aarch64",
+    "arch/sys-none-x86-64",
     "uapi/abi",
     "uapi/posix",
     "uapi/panic",

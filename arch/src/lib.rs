@@ -63,6 +63,16 @@ pub mod profiler;
 #[cfg(any(feature = "runtime", feature = "selftest"))]
 pub mod testrt;
 
+// Re-export the `arch_test!` macro from the leaf at the arch crate root so
+// `reovim_arch::arch_test!` keeps resolving for every external consumer
+// (tui/kernel/server fixtures + arch's own test modules). The macro is
+// `#[macro_export]` in `reovim-testrt`; this `pub use` republishes it here. It
+// emits `$crate::TestCase` — `$crate` resolves to the definition crate
+// (`reovim-testrt`), whose root holds `TestCase`, so the expansion is correct
+// regardless of the invocation path.
+#[cfg(any(feature = "runtime", feature = "selftest"))]
+pub use reovim_testrt::arch_test;
+
 // L12 layout (#785 Phase 5): all inline `#[cfg(test)]` blocks have been
 // migrated to sibling `*_tests.rs` files compiled under the `selftest`
 // feature. The libtest runner (`cargo test -p reovim-arch`) no longer builds

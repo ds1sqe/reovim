@@ -412,6 +412,54 @@ fn firewall_unconditional_arch_dep_still_trips() {
     );
 }
 
+/// (iii) An UNCONDITIONAL `reovim-arch-sys-*` dep must ALSO trip the firewall.
+/// The `is_arch_crate_name` predicate covers the whole arch-family via the
+/// `name.starts_with("reovim-arch-sys-")` branch — this fixture proves that
+/// branch is live and not silently dead after any future refactor.
+#[test]
+fn firewall_arch_sys_dep_trips_probe() {
+    let td = common::TempDir::new();
+    let root = td.path();
+
+    // A per-target raw-mechanism crate (arch-family floor).
+    common::write_file(
+        root,
+        "arch/sys-none-x86-64/Cargo.toml",
+        &pkg_toml("reovim-arch-sys-none-x86-64"),
+    );
+    // Same consumer as the unconditional-arch fixture: editor/lib/subsys/domain
+    // with a DIRECT dep on an arch-sys crate (forbidden: arch-family edge).
+    common::write_file(
+        root,
+        "editor/lib/subsys/domain/Cargo.toml",
+        &pkg_toml_with_path_dep(
+            "reovim-subsys-domain",
+            "reovim-arch-sys-none-x86-64",
+            "../../../../arch/sys-none-x86-64",
+        ),
+    );
+    common::write_file(
+        root,
+        "Cargo.toml",
+        &root_workspace_toml(&["arch/sys-none-x86-64", "editor/lib/subsys/domain"]),
+    );
+
+    let violations = run_firewall_probe(root).expect("firewall probe must run on fixture");
+    assert!(
+        !violations.is_empty(),
+        "firewall: a direct dep on reovim-arch-sys-* must trip the probe;\n\
+         got zero violations"
+    );
+    let names_both = violations
+        .iter()
+        .any(|v| v.contains("reovim-subsys-domain") && v.contains("reovim-arch-sys-none-x86-64"));
+    assert!(
+        names_both,
+        "firewall: the arch-sys violation must name both crates;\n\
+         violations: {violations:?}"
+    );
+}
+
 // ── 7. Positive fixture: transitive via lib/ds is allowed ────────────────────
 
 /// A synthetic `editor/lib/kernel` → `lib/ds` edge must NOT trip the firewall.

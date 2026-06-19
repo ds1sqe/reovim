@@ -2,238 +2,347 @@
 # Format: relative/path<TAB>public item signature
 arch/src/platform.rs	pub fn install_platform() -> Result<(), InstallError>
 arch/src/profiler.rs	pub static __llvm_profile_runtime: i32
-arch/src/sys/errno.rs	pub const EADDRINUSE: Errno
-arch/src/sys/errno.rs	pub const EAGAIN: Errno
-arch/src/sys/errno.rs	pub const EBADF: Errno
-arch/src/sys/errno.rs	pub const ECONNREFUSED: Errno
-arch/src/sys/errno.rs	pub const EFAULT: Errno
-arch/src/sys/errno.rs	pub const EINVAL: Errno
-arch/src/sys/errno.rs	pub const ENOENT: Errno
-arch/src/sys/errno.rs	pub const ENOMEM: Errno
-arch/src/sys/errno.rs	pub const ENOTTY: Errno
-arch/src/sys/errno.rs	pub const EOPNOTSUPP: Errno
-arch/src/sys/errno.rs	pub const EPIPE: Errno
-arch/src/sys/errno.rs	pub const EWOULDBLOCK: Errno
-arch/src/sys/linux_aarch64/mod.rs	pub unsafe fn clone_into(
-arch/src/sys/linux_aarch64/raw.rs	pub const ACCEPT: usize
-arch/src/sys/linux_aarch64/raw.rs	pub const BIND: usize
-arch/src/sys/linux_aarch64/raw.rs	pub const CLOCK_GETTIME: usize
-arch/src/sys/linux_aarch64/raw.rs	pub const CLONE: usize
-arch/src/sys/linux_aarch64/raw.rs	pub const CLOSE: usize
-arch/src/sys/linux_aarch64/raw.rs	pub const CONNECT: usize
-arch/src/sys/linux_aarch64/raw.rs	pub const EXIT_GROUP: usize
-arch/src/sys/linux_aarch64/raw.rs	pub const EXIT: usize
-arch/src/sys/linux_aarch64/raw.rs	pub const FUTEX: usize
-arch/src/sys/linux_aarch64/raw.rs	pub const GETTID: usize
-arch/src/sys/linux_aarch64/raw.rs	pub const IOCTL: usize
-arch/src/sys/linux_aarch64/raw.rs	pub const LISTEN: usize
-arch/src/sys/linux_aarch64/raw.rs	pub const MMAP: usize
-arch/src/sys/linux_aarch64/raw.rs	pub const MPROTECT: usize
-arch/src/sys/linux_aarch64/raw.rs	pub const MUNMAP: usize
-arch/src/sys/linux_aarch64/raw.rs	pub const OPENAT: usize
-arch/src/sys/linux_aarch64/raw.rs	pub const READ: usize
-arch/src/sys/linux_aarch64/raw.rs	pub const SENDTO: usize
-arch/src/sys/linux_aarch64/raw.rs	pub const SOCKET: usize
-arch/src/sys/linux_aarch64/raw.rs	pub const UNLINKAT: usize
-arch/src/sys/linux_aarch64/raw.rs	pub const WRITE: usize
-arch/src/sys/linux_aarch64/raw.rs	pub unsafe fn syscall1_noreturn(nr: usize, a1: usize) -> !
-arch/src/sys/linux_x86_64/mod.rs	pub unsafe fn clone_into(
-arch/src/sys/linux_x86_64/raw.rs	pub const ACCEPT: usize
-arch/src/sys/linux_x86_64/raw.rs	pub const BIND: usize
-arch/src/sys/linux_x86_64/raw.rs	pub const CLOCK_GETTIME: usize
-arch/src/sys/linux_x86_64/raw.rs	pub const CLONE: usize
-arch/src/sys/linux_x86_64/raw.rs	pub const CLOSE: usize
-arch/src/sys/linux_x86_64/raw.rs	pub const CONNECT: usize
-arch/src/sys/linux_x86_64/raw.rs	pub const EXIT_GROUP: usize
-arch/src/sys/linux_x86_64/raw.rs	pub const EXIT: usize
-arch/src/sys/linux_x86_64/raw.rs	pub const FUTEX: usize
-arch/src/sys/linux_x86_64/raw.rs	pub const GETTID: usize
-arch/src/sys/linux_x86_64/raw.rs	pub const IOCTL: usize
-arch/src/sys/linux_x86_64/raw.rs	pub const LISTEN: usize
-arch/src/sys/linux_x86_64/raw.rs	pub const MMAP: usize
-arch/src/sys/linux_x86_64/raw.rs	pub const MPROTECT: usize
-arch/src/sys/linux_x86_64/raw.rs	pub const MUNMAP: usize
-arch/src/sys/linux_x86_64/raw.rs	pub const OPENAT: usize
-arch/src/sys/linux_x86_64/raw.rs	pub const READ: usize
-arch/src/sys/linux_x86_64/raw.rs	pub const SENDTO: usize
-arch/src/sys/linux_x86_64/raw.rs	pub const SOCKET: usize
-arch/src/sys/linux_x86_64/raw.rs	pub const UNLINKAT: usize
-arch/src/sys/linux_x86_64/raw.rs	pub const WRITE: usize
-arch/src/sys/linux_x86_64/raw.rs	pub unsafe fn syscall1_noreturn(nr: usize, a1: usize) -> !
-arch/src/sys/net.rs	pub const AF_UNIX: u16
-arch/src/sys/net.rs	pub const SOCK_CLOEXEC: usize
-arch/src/sys/net.rs	pub const SOCK_STREAM: usize
-arch/src/sys/net.rs	pub const UNIX_PATH_MAX: usize
-arch/src/sys/none_aarch64/arena.rs	pub const fn capacity() -> usize
-arch/src/sys/none_aarch64/arena.rs	pub fn alloc_pages(len: usize) -> Result<usize, Errno>
-arch/src/sys/none_aarch64/color.rs	pub const fn resolve(self) -> u32
-arch/src/sys/none_aarch64/color.rs	pub enum Color
-arch/src/sys/none_aarch64/console.rs	pub fn new(
-arch/src/sys/none_aarch64/console.rs	pub fn print(&mut self, s: &str)
-arch/src/sys/none_aarch64/console.rs	pub fn screen_grid() -> Option<ScreenGrid<'static>>
-arch/src/sys/none_aarch64/console.rs	pub fn show_cursor(&mut self)
-arch/src/sys/none_aarch64/console.rs	pub struct Console<'g>
-arch/src/sys/none_aarch64/console.rs	pub struct ScreenGrid<'g>(&'g mut [Cell]);
-arch/src/sys/none_aarch64/escape.rs	pub const fn new() -> Self
-arch/src/sys/none_aarch64/escape.rs	pub enum Action
-arch/src/sys/none_aarch64/escape.rs	pub fn advance(&mut self, byte: u8) -> Option<Action>
-arch/src/sys/none_aarch64/escape.rs	pub fn as_slice(&self) -> &[u16]
-arch/src/sys/none_aarch64/escape.rs	pub struct Parser
-arch/src/sys/none_aarch64/escape.rs	pub struct SgrParams
-arch/src/sys/none_aarch64/fonts/jetbrains_mono.rs	pub const CELL_H: u32
-arch/src/sys/none_aarch64/fonts/jetbrains_mono.rs	pub const CELL_W: u32
-arch/src/sys/none_aarch64/fonts/jetbrains_mono.rs	pub const FIRST: u8
-arch/src/sys/none_aarch64/fonts/jetbrains_mono.rs	pub const LAST: u8
-arch/src/sys/none_aarch64/fonts/jetbrains_mono.rs	pub static GLYPHS: [u8; 12288]
-arch/src/sys/none_aarch64/fonts/mod.rs	pub const fn name(&self) -> &'static str
-arch/src/sys/none_aarch64/fonts/mod.rs	pub static JETBRAINS_MONO: Font
-arch/src/sys/none_aarch64/fonts/mod.rs	pub static TERMINUS: Font
-arch/src/sys/none_aarch64/fonts/mod.rs	pub struct Font
-arch/src/sys/none_aarch64/fonts/terminus.rs	pub const CELL_H: u32
-arch/src/sys/none_aarch64/fonts/terminus.rs	pub const CELL_W: u32
-arch/src/sys/none_aarch64/fonts/terminus.rs	pub const FIRST: u8
-arch/src/sys/none_aarch64/fonts/terminus.rs	pub const LAST: u8
-arch/src/sys/none_aarch64/fonts/terminus.rs	pub static GLYPHS: [u8; 12288]
-arch/src/sys/none_aarch64/framebuffer.rs	pub const fn base(&self) -> usize
-arch/src/sys/none_aarch64/framebuffer.rs	pub const fn height(&self) -> u32
-arch/src/sys/none_aarch64/framebuffer.rs	pub const fn pitch(&self) -> u32
-arch/src/sys/none_aarch64/framebuffer.rs	pub const fn width(&self) -> u32
-arch/src/sys/none_aarch64/framebuffer.rs	pub fn clear(&self, color: u32)
-arch/src/sys/none_aarch64/framebuffer.rs	pub fn init() -> Option<Framebuffer>
-arch/src/sys/none_aarch64/framebuffer.rs	pub fn put_pixel(&self, x: u32, y: u32, color: u32)
-arch/src/sys/none_aarch64/framebuffer.rs	pub fn sdram_clock_hz() -> Option<u64>
-arch/src/sys/none_aarch64/framebuffer.rs	pub struct Framebuffer
-arch/src/sys/none_aarch64/mod.rs	pub const unsafe fn clone_into(
-arch/src/sys/none_aarch64/semihost.rs	pub fn exit(code: i32) -> !
-arch/src/sys/none_aarch64/timer.rs	pub fn counter() -> u64
-arch/src/sys/none_aarch64/timer.rs	pub fn frequency() -> u64
-arch/src/sys/none_aarch64/uart.rs	pub fn write_bytes(buf: &[u8])
-arch/src/sys/none_aarch64/wrap.rs	pub const AT_FDCWD: i32
-arch/src/sys/none_aarch64/wrap.rs	pub const CLOCK_MONOTONIC: usize
-arch/src/sys/none_aarch64/wrap.rs	pub const CLOCK_REALTIME: usize
-arch/src/sys/none_aarch64/wrap.rs	pub const CLONE_CHILD_CLEARTID: usize
-arch/src/sys/none_aarch64/wrap.rs	pub const CLONE_FILES: usize
-arch/src/sys/none_aarch64/wrap.rs	pub const CLONE_FS: usize
-arch/src/sys/none_aarch64/wrap.rs	pub const CLONE_PARENT_SETTID: usize
-arch/src/sys/none_aarch64/wrap.rs	pub const CLONE_SIGHAND: usize
-arch/src/sys/none_aarch64/wrap.rs	pub const CLONE_SYSVSEM: usize
-arch/src/sys/none_aarch64/wrap.rs	pub const CLONE_THREAD: usize
-arch/src/sys/none_aarch64/wrap.rs	pub const CLONE_VM: usize
-arch/src/sys/none_aarch64/wrap.rs	pub const fn close(_fd: i32) -> Result<usize, Errno>
-arch/src/sys/none_aarch64/wrap.rs	pub const fn gettid() -> i32
-arch/src/sys/none_aarch64/wrap.rs	pub const fn mprotect(_addr: usize, _len: usize, _prot: usize) -> Result<usize, Errno>
-arch/src/sys/none_aarch64/wrap.rs	pub const fn munmap(_addr: usize, _len: usize) -> Result<usize, Errno>
-arch/src/sys/none_aarch64/wrap.rs	pub const fn openat(
-arch/src/sys/none_aarch64/wrap.rs	pub const fn read(fd: i32, _buf: &mut [u8]) -> Result<usize, Errno>
-arch/src/sys/none_aarch64/wrap.rs	pub const FUTEX_PRIVATE_FLAG: usize
-arch/src/sys/none_aarch64/wrap.rs	pub const FUTEX_WAIT: usize
-arch/src/sys/none_aarch64/wrap.rs	pub const FUTEX_WAKE: usize
-arch/src/sys/none_aarch64/wrap.rs	pub const MAP_ANONYMOUS: usize
-arch/src/sys/none_aarch64/wrap.rs	pub const MAP_FAILED: usize
-arch/src/sys/none_aarch64/wrap.rs	pub const MAP_PRIVATE: usize
-arch/src/sys/none_aarch64/wrap.rs	pub const O_CLOEXEC: usize
-arch/src/sys/none_aarch64/wrap.rs	pub const O_CREAT: usize
-arch/src/sys/none_aarch64/wrap.rs	pub const O_RDONLY: usize
-arch/src/sys/none_aarch64/wrap.rs	pub const O_TRUNC: usize
-arch/src/sys/none_aarch64/wrap.rs	pub const O_WRONLY: usize
-arch/src/sys/none_aarch64/wrap.rs	pub const PROT_NONE: usize
-arch/src/sys/none_aarch64/wrap.rs	pub const PROT_READ: usize
-arch/src/sys/none_aarch64/wrap.rs	pub const PROT_WRITE: usize
-arch/src/sys/none_aarch64/wrap.rs	pub fn clock_gettime(clockid: usize, tp: &mut Timespec) -> Result<usize, Errno>
-arch/src/sys/none_aarch64/wrap.rs	pub fn exit(code: i32) -> !
-arch/src/sys/none_aarch64/wrap.rs	pub fn exit_group(code: i32) -> !
-arch/src/sys/none_aarch64/wrap.rs	pub fn futex(
-arch/src/sys/none_aarch64/wrap.rs	pub fn mmap(
-arch/src/sys/none_aarch64/wrap.rs	pub fn write(fd: i32, buf: &[u8]) -> Result<usize, Errno>
-arch/src/sys/none_aarch64/wrap.rs	pub struct Timespec
-arch/src/sys/none_x86_64/arena.rs	pub fn alloc_pages(len: usize) -> Result<usize, Errno>
-arch/src/sys/none_x86_64/mod.rs	pub const unsafe fn clone_into(
-arch/src/sys/none_x86_64/semihost.rs	pub fn exit(code: i32) -> !
-arch/src/sys/none_x86_64/timer.rs	pub fn counter() -> u64
-arch/src/sys/none_x86_64/timer.rs	pub fn frequency() -> u64
-arch/src/sys/none_x86_64/uart.rs	pub fn write_bytes(buf: &[u8])
-arch/src/sys/none_x86_64/wrap.rs	pub const AT_FDCWD: i32
-arch/src/sys/none_x86_64/wrap.rs	pub const CLOCK_MONOTONIC: usize
-arch/src/sys/none_x86_64/wrap.rs	pub const CLOCK_REALTIME: usize
-arch/src/sys/none_x86_64/wrap.rs	pub const CLONE_CHILD_CLEARTID: usize
-arch/src/sys/none_x86_64/wrap.rs	pub const CLONE_FILES: usize
-arch/src/sys/none_x86_64/wrap.rs	pub const CLONE_FS: usize
-arch/src/sys/none_x86_64/wrap.rs	pub const CLONE_PARENT_SETTID: usize
-arch/src/sys/none_x86_64/wrap.rs	pub const CLONE_SIGHAND: usize
-arch/src/sys/none_x86_64/wrap.rs	pub const CLONE_SYSVSEM: usize
-arch/src/sys/none_x86_64/wrap.rs	pub const CLONE_THREAD: usize
-arch/src/sys/none_x86_64/wrap.rs	pub const CLONE_VM: usize
-arch/src/sys/none_x86_64/wrap.rs	pub const fn close(_fd: i32) -> Result<usize, Errno>
-arch/src/sys/none_x86_64/wrap.rs	pub const fn gettid() -> i32
-arch/src/sys/none_x86_64/wrap.rs	pub const fn mprotect(_addr: usize, _len: usize, _prot: usize) -> Result<usize, Errno>
-arch/src/sys/none_x86_64/wrap.rs	pub const fn munmap(_addr: usize, _len: usize) -> Result<usize, Errno>
-arch/src/sys/none_x86_64/wrap.rs	pub const fn openat(
-arch/src/sys/none_x86_64/wrap.rs	pub const fn read(fd: i32, _buf: &mut [u8]) -> Result<usize, Errno>
-arch/src/sys/none_x86_64/wrap.rs	pub const FUTEX_PRIVATE_FLAG: usize
-arch/src/sys/none_x86_64/wrap.rs	pub const FUTEX_WAIT: usize
-arch/src/sys/none_x86_64/wrap.rs	pub const FUTEX_WAKE: usize
-arch/src/sys/none_x86_64/wrap.rs	pub const MAP_ANONYMOUS: usize
-arch/src/sys/none_x86_64/wrap.rs	pub const MAP_FAILED: usize
-arch/src/sys/none_x86_64/wrap.rs	pub const MAP_PRIVATE: usize
-arch/src/sys/none_x86_64/wrap.rs	pub const O_CLOEXEC: usize
-arch/src/sys/none_x86_64/wrap.rs	pub const O_CREAT: usize
-arch/src/sys/none_x86_64/wrap.rs	pub const O_RDONLY: usize
-arch/src/sys/none_x86_64/wrap.rs	pub const O_TRUNC: usize
-arch/src/sys/none_x86_64/wrap.rs	pub const O_WRONLY: usize
-arch/src/sys/none_x86_64/wrap.rs	pub const PROT_NONE: usize
-arch/src/sys/none_x86_64/wrap.rs	pub const PROT_READ: usize
-arch/src/sys/none_x86_64/wrap.rs	pub const PROT_WRITE: usize
-arch/src/sys/none_x86_64/wrap.rs	pub fn clock_gettime(clockid: usize, tp: &mut Timespec) -> Result<usize, Errno>
-arch/src/sys/none_x86_64/wrap.rs	pub fn exit(code: i32) -> !
-arch/src/sys/none_x86_64/wrap.rs	pub fn exit_group(code: i32) -> !
-arch/src/sys/none_x86_64/wrap.rs	pub fn futex(
-arch/src/sys/none_x86_64/wrap.rs	pub fn mmap(
-arch/src/sys/none_x86_64/wrap.rs	pub fn write(fd: i32, buf: &[u8]) -> Result<usize, Errno>
-arch/src/sys/none_x86_64/wrap.rs	pub struct Timespec
-arch/src/sys/term.rs	pub const BRKINT: u32
-arch/src/sys/term.rs	pub const ECHOE: u32
-arch/src/sys/term.rs	pub const ECHOK: u32
-arch/src/sys/term.rs	pub const ECHO: u32
-arch/src/sys/term.rs	pub const ICANON: u32
-arch/src/sys/term.rs	pub const ICRNL: u32
-arch/src/sys/term.rs	pub const INPCK: u32
-arch/src/sys/term.rs	pub const ISIG: u32
-arch/src/sys/term.rs	pub const ISTRIP: u32
-arch/src/sys/term.rs	pub const IXON: u32
-arch/src/sys/term.rs	pub const NCCS: usize
-arch/src/sys/term.rs	pub const OPOST: u32
-arch/src/sys/term.rs	pub const TCGETS: usize
-arch/src/sys/term.rs	pub const TCSETS: usize
-arch/src/sys/term.rs	pub const VMIN: usize
-arch/src/sys/term.rs	pub const VTIME: usize
-arch/src/sys/wrap.rs	pub const AT_FDCWD: i32
-arch/src/sys/wrap.rs	pub const AT_REMOVEDIR: usize
-arch/src/sys/wrap.rs	pub const CLOCK_MONOTONIC: usize
-arch/src/sys/wrap.rs	pub const CLOCK_REALTIME: usize
-arch/src/sys/wrap.rs	pub const CLONE_CHILD_CLEARTID: usize
-arch/src/sys/wrap.rs	pub const CLONE_FILES: usize
-arch/src/sys/wrap.rs	pub const CLONE_FS: usize
-arch/src/sys/wrap.rs	pub const CLONE_PARENT_SETTID: usize
-arch/src/sys/wrap.rs	pub const CLONE_SIGHAND: usize
-arch/src/sys/wrap.rs	pub const CLONE_SYSVSEM: usize
-arch/src/sys/wrap.rs	pub const CLONE_THREAD: usize
-arch/src/sys/wrap.rs	pub const CLONE_VM: usize
-arch/src/sys/wrap.rs	pub const FUTEX_PRIVATE_FLAG: usize
-arch/src/sys/wrap.rs	pub const FUTEX_WAIT: usize
-arch/src/sys/wrap.rs	pub const FUTEX_WAKE: usize
-arch/src/sys/wrap.rs	pub const MAP_ANONYMOUS: usize
-arch/src/sys/wrap.rs	pub const MAP_FAILED: usize
-arch/src/sys/wrap.rs	pub const MAP_PRIVATE: usize
-arch/src/sys/wrap.rs	pub const MSG_NOSIGNAL: usize
-arch/src/sys/wrap.rs	pub const O_CLOEXEC: usize
-arch/src/sys/wrap.rs	pub const O_CREAT: usize
-arch/src/sys/wrap.rs	pub const O_RDONLY: usize
-arch/src/sys/wrap.rs	pub const O_TRUNC: usize
-arch/src/sys/wrap.rs	pub const O_WRONLY: usize
-arch/src/sys/wrap.rs	pub const PROT_NONE: usize
-arch/src/sys/wrap.rs	pub const PROT_READ: usize
-arch/src/sys/wrap.rs	pub const PROT_WRITE: usize
-arch/src/testrt/mod.rs	pub fn check(cond: bool, msg: &str)
+arch/sys-linux-aarch64/src/errno.rs	pub const EADDRINUSE: Errno
+arch/sys-linux-aarch64/src/errno.rs	pub const EAGAIN: Errno
+arch/sys-linux-aarch64/src/errno.rs	pub const EBADF: Errno
+arch/sys-linux-aarch64/src/errno.rs	pub const ECONNREFUSED: Errno
+arch/sys-linux-aarch64/src/errno.rs	pub const EFAULT: Errno
+arch/sys-linux-aarch64/src/errno.rs	pub const EINVAL: Errno
+arch/sys-linux-aarch64/src/errno.rs	pub const ENOENT: Errno
+arch/sys-linux-aarch64/src/errno.rs	pub const ENOMEM: Errno
+arch/sys-linux-aarch64/src/errno.rs	pub const ENOTTY: Errno
+arch/sys-linux-aarch64/src/errno.rs	pub const EOPNOTSUPP: Errno
+arch/sys-linux-aarch64/src/errno.rs	pub const EPIPE: Errno
+arch/sys-linux-aarch64/src/errno.rs	pub const EWOULDBLOCK: Errno
+arch/sys-linux-aarch64/src/lib.rs	pub unsafe fn clone_into(
+arch/sys-linux-aarch64/src/net.rs	pub const AF_UNIX: u16
+arch/sys-linux-aarch64/src/net.rs	pub const SOCK_CLOEXEC: usize
+arch/sys-linux-aarch64/src/net.rs	pub const SOCK_STREAM: usize
+arch/sys-linux-aarch64/src/net.rs	pub const UNIX_PATH_MAX: usize
+arch/sys-linux-aarch64/src/raw.rs	pub const ACCEPT: usize
+arch/sys-linux-aarch64/src/raw.rs	pub const BIND: usize
+arch/sys-linux-aarch64/src/raw.rs	pub const CLOCK_GETTIME: usize
+arch/sys-linux-aarch64/src/raw.rs	pub const CLONE: usize
+arch/sys-linux-aarch64/src/raw.rs	pub const CLOSE: usize
+arch/sys-linux-aarch64/src/raw.rs	pub const CONNECT: usize
+arch/sys-linux-aarch64/src/raw.rs	pub const EXIT: usize
+arch/sys-linux-aarch64/src/raw.rs	pub const EXIT_GROUP: usize
+arch/sys-linux-aarch64/src/raw.rs	pub const FUTEX: usize
+arch/sys-linux-aarch64/src/raw.rs	pub const GETTID: usize
+arch/sys-linux-aarch64/src/raw.rs	pub const IOCTL: usize
+arch/sys-linux-aarch64/src/raw.rs	pub const LISTEN: usize
+arch/sys-linux-aarch64/src/raw.rs	pub const MMAP: usize
+arch/sys-linux-aarch64/src/raw.rs	pub const MPROTECT: usize
+arch/sys-linux-aarch64/src/raw.rs	pub const MUNMAP: usize
+arch/sys-linux-aarch64/src/raw.rs	pub const OPENAT: usize
+arch/sys-linux-aarch64/src/raw.rs	pub const READ: usize
+arch/sys-linux-aarch64/src/raw.rs	pub const SENDTO: usize
+arch/sys-linux-aarch64/src/raw.rs	pub const SOCKET: usize
+arch/sys-linux-aarch64/src/raw.rs	pub const UNLINKAT: usize
+arch/sys-linux-aarch64/src/raw.rs	pub const WRITE: usize
+arch/sys-linux-aarch64/src/raw.rs	pub unsafe fn syscall1_noreturn(nr: usize, a1: usize) -> !
+arch/sys-linux-aarch64/src/term.rs	pub const BRKINT: u32
+arch/sys-linux-aarch64/src/term.rs	pub const ECHO: u32
+arch/sys-linux-aarch64/src/term.rs	pub const ECHOE: u32
+arch/sys-linux-aarch64/src/term.rs	pub const ECHOK: u32
+arch/sys-linux-aarch64/src/term.rs	pub const ICANON: u32
+arch/sys-linux-aarch64/src/term.rs	pub const ICRNL: u32
+arch/sys-linux-aarch64/src/term.rs	pub const INPCK: u32
+arch/sys-linux-aarch64/src/term.rs	pub const ISIG: u32
+arch/sys-linux-aarch64/src/term.rs	pub const ISTRIP: u32
+arch/sys-linux-aarch64/src/term.rs	pub const IXON: u32
+arch/sys-linux-aarch64/src/term.rs	pub const NCCS: usize
+arch/sys-linux-aarch64/src/term.rs	pub const OPOST: u32
+arch/sys-linux-aarch64/src/term.rs	pub const TCGETS: usize
+arch/sys-linux-aarch64/src/term.rs	pub const TCSETS: usize
+arch/sys-linux-aarch64/src/term.rs	pub const VMIN: usize
+arch/sys-linux-aarch64/src/term.rs	pub const VTIME: usize
+arch/sys-linux-aarch64/src/wrap.rs	pub const AT_FDCWD: i32
+arch/sys-linux-aarch64/src/wrap.rs	pub const AT_REMOVEDIR: usize
+arch/sys-linux-aarch64/src/wrap.rs	pub const CLOCK_MONOTONIC: usize
+arch/sys-linux-aarch64/src/wrap.rs	pub const CLOCK_REALTIME: usize
+arch/sys-linux-aarch64/src/wrap.rs	pub const CLONE_CHILD_CLEARTID: usize
+arch/sys-linux-aarch64/src/wrap.rs	pub const CLONE_FILES: usize
+arch/sys-linux-aarch64/src/wrap.rs	pub const CLONE_FS: usize
+arch/sys-linux-aarch64/src/wrap.rs	pub const CLONE_PARENT_SETTID: usize
+arch/sys-linux-aarch64/src/wrap.rs	pub const CLONE_SIGHAND: usize
+arch/sys-linux-aarch64/src/wrap.rs	pub const CLONE_SYSVSEM: usize
+arch/sys-linux-aarch64/src/wrap.rs	pub const CLONE_THREAD: usize
+arch/sys-linux-aarch64/src/wrap.rs	pub const CLONE_VM: usize
+arch/sys-linux-aarch64/src/wrap.rs	pub const FUTEX_PRIVATE_FLAG: usize
+arch/sys-linux-aarch64/src/wrap.rs	pub const FUTEX_WAIT: usize
+arch/sys-linux-aarch64/src/wrap.rs	pub const FUTEX_WAKE: usize
+arch/sys-linux-aarch64/src/wrap.rs	pub const MAP_ANONYMOUS: usize
+arch/sys-linux-aarch64/src/wrap.rs	pub const MAP_FAILED: usize
+arch/sys-linux-aarch64/src/wrap.rs	pub const MAP_PRIVATE: usize
+arch/sys-linux-aarch64/src/wrap.rs	pub const MSG_NOSIGNAL: usize
+arch/sys-linux-aarch64/src/wrap.rs	pub const O_CLOEXEC: usize
+arch/sys-linux-aarch64/src/wrap.rs	pub const O_CREAT: usize
+arch/sys-linux-aarch64/src/wrap.rs	pub const O_RDONLY: usize
+arch/sys-linux-aarch64/src/wrap.rs	pub const O_TRUNC: usize
+arch/sys-linux-aarch64/src/wrap.rs	pub const O_WRONLY: usize
+arch/sys-linux-aarch64/src/wrap.rs	pub const PROT_NONE: usize
+arch/sys-linux-aarch64/src/wrap.rs	pub const PROT_READ: usize
+arch/sys-linux-aarch64/src/wrap.rs	pub const PROT_WRITE: usize
+arch/sys-linux-x86-64/src/errno.rs	pub const EADDRINUSE: Errno
+arch/sys-linux-x86-64/src/errno.rs	pub const EAGAIN: Errno
+arch/sys-linux-x86-64/src/errno.rs	pub const EBADF: Errno
+arch/sys-linux-x86-64/src/errno.rs	pub const ECONNREFUSED: Errno
+arch/sys-linux-x86-64/src/errno.rs	pub const EFAULT: Errno
+arch/sys-linux-x86-64/src/errno.rs	pub const EINVAL: Errno
+arch/sys-linux-x86-64/src/errno.rs	pub const ENOENT: Errno
+arch/sys-linux-x86-64/src/errno.rs	pub const ENOMEM: Errno
+arch/sys-linux-x86-64/src/errno.rs	pub const ENOTTY: Errno
+arch/sys-linux-x86-64/src/errno.rs	pub const EOPNOTSUPP: Errno
+arch/sys-linux-x86-64/src/errno.rs	pub const EPIPE: Errno
+arch/sys-linux-x86-64/src/errno.rs	pub const EWOULDBLOCK: Errno
+arch/sys-linux-x86-64/src/lib.rs	pub unsafe fn clone_into(
+arch/sys-linux-x86-64/src/net.rs	pub const AF_UNIX: u16
+arch/sys-linux-x86-64/src/net.rs	pub const SOCK_CLOEXEC: usize
+arch/sys-linux-x86-64/src/net.rs	pub const SOCK_STREAM: usize
+arch/sys-linux-x86-64/src/net.rs	pub const UNIX_PATH_MAX: usize
+arch/sys-linux-x86-64/src/raw.rs	pub const ACCEPT: usize
+arch/sys-linux-x86-64/src/raw.rs	pub const BIND: usize
+arch/sys-linux-x86-64/src/raw.rs	pub const CLOCK_GETTIME: usize
+arch/sys-linux-x86-64/src/raw.rs	pub const CLONE: usize
+arch/sys-linux-x86-64/src/raw.rs	pub const CLOSE: usize
+arch/sys-linux-x86-64/src/raw.rs	pub const CONNECT: usize
+arch/sys-linux-x86-64/src/raw.rs	pub const EXIT: usize
+arch/sys-linux-x86-64/src/raw.rs	pub const EXIT_GROUP: usize
+arch/sys-linux-x86-64/src/raw.rs	pub const FUTEX: usize
+arch/sys-linux-x86-64/src/raw.rs	pub const GETTID: usize
+arch/sys-linux-x86-64/src/raw.rs	pub const IOCTL: usize
+arch/sys-linux-x86-64/src/raw.rs	pub const LISTEN: usize
+arch/sys-linux-x86-64/src/raw.rs	pub const MMAP: usize
+arch/sys-linux-x86-64/src/raw.rs	pub const MPROTECT: usize
+arch/sys-linux-x86-64/src/raw.rs	pub const MUNMAP: usize
+arch/sys-linux-x86-64/src/raw.rs	pub const OPENAT: usize
+arch/sys-linux-x86-64/src/raw.rs	pub const READ: usize
+arch/sys-linux-x86-64/src/raw.rs	pub const SENDTO: usize
+arch/sys-linux-x86-64/src/raw.rs	pub const SOCKET: usize
+arch/sys-linux-x86-64/src/raw.rs	pub const UNLINKAT: usize
+arch/sys-linux-x86-64/src/raw.rs	pub const WRITE: usize
+arch/sys-linux-x86-64/src/raw.rs	pub unsafe fn syscall1_noreturn(nr: usize, a1: usize) -> !
+arch/sys-linux-x86-64/src/term.rs	pub const BRKINT: u32
+arch/sys-linux-x86-64/src/term.rs	pub const ECHO: u32
+arch/sys-linux-x86-64/src/term.rs	pub const ECHOE: u32
+arch/sys-linux-x86-64/src/term.rs	pub const ECHOK: u32
+arch/sys-linux-x86-64/src/term.rs	pub const ICANON: u32
+arch/sys-linux-x86-64/src/term.rs	pub const ICRNL: u32
+arch/sys-linux-x86-64/src/term.rs	pub const INPCK: u32
+arch/sys-linux-x86-64/src/term.rs	pub const ISIG: u32
+arch/sys-linux-x86-64/src/term.rs	pub const ISTRIP: u32
+arch/sys-linux-x86-64/src/term.rs	pub const IXON: u32
+arch/sys-linux-x86-64/src/term.rs	pub const NCCS: usize
+arch/sys-linux-x86-64/src/term.rs	pub const OPOST: u32
+arch/sys-linux-x86-64/src/term.rs	pub const TCGETS: usize
+arch/sys-linux-x86-64/src/term.rs	pub const TCSETS: usize
+arch/sys-linux-x86-64/src/term.rs	pub const VMIN: usize
+arch/sys-linux-x86-64/src/term.rs	pub const VTIME: usize
+arch/sys-linux-x86-64/src/wrap.rs	pub const AT_FDCWD: i32
+arch/sys-linux-x86-64/src/wrap.rs	pub const AT_REMOVEDIR: usize
+arch/sys-linux-x86-64/src/wrap.rs	pub const CLOCK_MONOTONIC: usize
+arch/sys-linux-x86-64/src/wrap.rs	pub const CLOCK_REALTIME: usize
+arch/sys-linux-x86-64/src/wrap.rs	pub const CLONE_CHILD_CLEARTID: usize
+arch/sys-linux-x86-64/src/wrap.rs	pub const CLONE_FILES: usize
+arch/sys-linux-x86-64/src/wrap.rs	pub const CLONE_FS: usize
+arch/sys-linux-x86-64/src/wrap.rs	pub const CLONE_PARENT_SETTID: usize
+arch/sys-linux-x86-64/src/wrap.rs	pub const CLONE_SIGHAND: usize
+arch/sys-linux-x86-64/src/wrap.rs	pub const CLONE_SYSVSEM: usize
+arch/sys-linux-x86-64/src/wrap.rs	pub const CLONE_THREAD: usize
+arch/sys-linux-x86-64/src/wrap.rs	pub const CLONE_VM: usize
+arch/sys-linux-x86-64/src/wrap.rs	pub const FUTEX_PRIVATE_FLAG: usize
+arch/sys-linux-x86-64/src/wrap.rs	pub const FUTEX_WAIT: usize
+arch/sys-linux-x86-64/src/wrap.rs	pub const FUTEX_WAKE: usize
+arch/sys-linux-x86-64/src/wrap.rs	pub const MAP_ANONYMOUS: usize
+arch/sys-linux-x86-64/src/wrap.rs	pub const MAP_FAILED: usize
+arch/sys-linux-x86-64/src/wrap.rs	pub const MAP_PRIVATE: usize
+arch/sys-linux-x86-64/src/wrap.rs	pub const MSG_NOSIGNAL: usize
+arch/sys-linux-x86-64/src/wrap.rs	pub const O_CLOEXEC: usize
+arch/sys-linux-x86-64/src/wrap.rs	pub const O_CREAT: usize
+arch/sys-linux-x86-64/src/wrap.rs	pub const O_RDONLY: usize
+arch/sys-linux-x86-64/src/wrap.rs	pub const O_TRUNC: usize
+arch/sys-linux-x86-64/src/wrap.rs	pub const O_WRONLY: usize
+arch/sys-linux-x86-64/src/wrap.rs	pub const PROT_NONE: usize
+arch/sys-linux-x86-64/src/wrap.rs	pub const PROT_READ: usize
+arch/sys-linux-x86-64/src/wrap.rs	pub const PROT_WRITE: usize
+arch/sys-none-aarch64/src/arena.rs	pub const fn capacity() -> usize
+arch/sys-none-aarch64/src/arena.rs	pub fn alloc_pages(len: usize) -> Result<usize, Errno>
+arch/sys-none-aarch64/src/boot_info.rs	pub fn collect_boot_info() -> BootInfo
+arch/sys-none-aarch64/src/color.rs	pub const fn resolve(self) -> u32
+arch/sys-none-aarch64/src/color.rs	pub enum Color
+arch/sys-none-aarch64/src/console.rs	pub fn install(console: Console<'static>)
+arch/sys-none-aarch64/src/console.rs	pub fn new(
+arch/sys-none-aarch64/src/console.rs	pub fn print(&mut self, s: &str)
+arch/sys-none-aarch64/src/console.rs	pub fn screen_grid() -> Option<ScreenGrid<'static>>
+arch/sys-none-aarch64/src/console.rs	pub fn show_cursor(&mut self)
+arch/sys-none-aarch64/src/console.rs	pub fn write_bytes(&mut self, buf: &[u8])
+arch/sys-none-aarch64/src/console.rs	pub struct Console<'g>
+arch/sys-none-aarch64/src/console.rs	pub struct ScreenGrid<'g>(&'g mut [Cell]);
+arch/sys-none-aarch64/src/errno.rs	pub const EADDRINUSE: Errno
+arch/sys-none-aarch64/src/errno.rs	pub const EAGAIN: Errno
+arch/sys-none-aarch64/src/errno.rs	pub const EBADF: Errno
+arch/sys-none-aarch64/src/errno.rs	pub const ECONNREFUSED: Errno
+arch/sys-none-aarch64/src/errno.rs	pub const EFAULT: Errno
+arch/sys-none-aarch64/src/errno.rs	pub const EINVAL: Errno
+arch/sys-none-aarch64/src/errno.rs	pub const ENOENT: Errno
+arch/sys-none-aarch64/src/errno.rs	pub const ENOMEM: Errno
+arch/sys-none-aarch64/src/errno.rs	pub const ENOTTY: Errno
+arch/sys-none-aarch64/src/errno.rs	pub const EOPNOTSUPP: Errno
+arch/sys-none-aarch64/src/errno.rs	pub const EPIPE: Errno
+arch/sys-none-aarch64/src/errno.rs	pub const EWOULDBLOCK: Errno
+arch/sys-none-aarch64/src/escape.rs	pub const fn new() -> Self
+arch/sys-none-aarch64/src/escape.rs	pub enum Action
+arch/sys-none-aarch64/src/escape.rs	pub fn advance(&mut self, byte: u8) -> Option<Action>
+arch/sys-none-aarch64/src/escape.rs	pub fn as_slice(&self) -> &[u16]
+arch/sys-none-aarch64/src/escape.rs	pub struct Parser
+arch/sys-none-aarch64/src/escape.rs	pub struct SgrParams
+arch/sys-none-aarch64/src/fdt/enumerate.rs	pub fn classify(compatible: &str) -> DeviceClass
+arch/sys-none-aarch64/src/fdt/enumerate.rs	pub fn enumerate(fdt: &Fdt<'static>) -> DeviceInventory
+arch/sys-none-aarch64/src/fdt/reader.rs	pub const fn children(&self) -> ChildIter<'a>
+arch/sys-none-aarch64/src/fdt/reader.rs	pub enum FdtError
+arch/sys-none-aarch64/src/fdt/reader.rs	pub fn find_child(&self, name: &str) -> Option<Node<'a>>
+arch/sys-none-aarch64/src/fdt/reader.rs	pub fn find_child_exact(&self, name: &str) -> Option<Node<'a>>
+arch/sys-none-aarch64/src/fdt/reader.rs	pub fn first_compatible(&self) -> Option<&'a str>
+arch/sys-none-aarch64/src/fdt/reader.rs	pub fn first_interrupt_cell(&self) -> Option<u32>
+arch/sys-none-aarch64/src/fdt/reader.rs	pub fn name(&self) -> &'a str
+arch/sys-none-aarch64/src/fdt/reader.rs	pub fn parse(data: &'a [u8]) -> Result<Self, FdtError>
+arch/sys-none-aarch64/src/fdt/reader.rs	pub fn prop_bytes(&self, name: &str) -> Option<&'a [u8]>
+arch/sys-none-aarch64/src/fdt/reader.rs	pub fn reg(&self) -> Option<(u64, u64)>
+arch/sys-none-aarch64/src/fdt/reader.rs	pub fn root(&self) -> Result<Node<'a>, FdtError>
+arch/sys-none-aarch64/src/fdt/reader.rs	pub fn version(&self) -> u32
+arch/sys-none-aarch64/src/fdt/reader.rs	pub struct CellSizes
+arch/sys-none-aarch64/src/fdt/reader.rs	pub struct ChildIter<'a>
+arch/sys-none-aarch64/src/fdt/reader.rs	pub struct Fdt<'a>
+arch/sys-none-aarch64/src/fdt/reader.rs	pub struct Node<'a>
+arch/sys-none-aarch64/src/fonts/jetbrains_mono.rs	pub const CELL_H: u32
+arch/sys-none-aarch64/src/fonts/jetbrains_mono.rs	pub const CELL_W: u32
+arch/sys-none-aarch64/src/fonts/jetbrains_mono.rs	pub const FIRST: u8
+arch/sys-none-aarch64/src/fonts/jetbrains_mono.rs	pub const LAST: u8
+arch/sys-none-aarch64/src/fonts/jetbrains_mono.rs	pub static GLYPHS: [u8; 12288]
+arch/sys-none-aarch64/src/fonts/mod.rs	pub const fn name(&self) -> &'static str
+arch/sys-none-aarch64/src/fonts/mod.rs	pub static JETBRAINS_MONO: Font
+arch/sys-none-aarch64/src/fonts/mod.rs	pub static TERMINUS: Font
+arch/sys-none-aarch64/src/fonts/mod.rs	pub struct Font
+arch/sys-none-aarch64/src/fonts/terminus.rs	pub const CELL_H: u32
+arch/sys-none-aarch64/src/fonts/terminus.rs	pub const CELL_W: u32
+arch/sys-none-aarch64/src/fonts/terminus.rs	pub const FIRST: u8
+arch/sys-none-aarch64/src/fonts/terminus.rs	pub const LAST: u8
+arch/sys-none-aarch64/src/fonts/terminus.rs	pub static GLYPHS: [u8; 12288]
+arch/sys-none-aarch64/src/framebuffer.rs	pub const fn base(&self) -> usize
+arch/sys-none-aarch64/src/framebuffer.rs	pub const fn height(&self) -> u32
+arch/sys-none-aarch64/src/framebuffer.rs	pub const fn pitch(&self) -> u32
+arch/sys-none-aarch64/src/framebuffer.rs	pub const fn width(&self) -> u32
+arch/sys-none-aarch64/src/framebuffer.rs	pub fn arm_memory() -> Option<(u64, u64)>
+arch/sys-none-aarch64/src/framebuffer.rs	pub fn clear(&self, color: u32)
+arch/sys-none-aarch64/src/framebuffer.rs	pub fn init() -> Option<Framebuffer>
+arch/sys-none-aarch64/src/framebuffer.rs	pub fn put_pixel(&self, x: u32, y: u32, color: u32)
+arch/sys-none-aarch64/src/framebuffer.rs	pub fn sdram_clock_hz() -> Option<u64>
+arch/sys-none-aarch64/src/framebuffer.rs	pub struct Framebuffer
+arch/sys-none-aarch64/src/lib.rs	pub const unsafe fn clone_into(
+arch/sys-none-aarch64/src/lib.rs	pub fn collect_device_inventory() -> reovim_kabi_platform::DeviceInventory
+arch/sys-none-aarch64/src/lib.rs	pub static DTB_PTR: core::sync::atomic::AtomicU64
+arch/sys-none-aarch64/src/semihost.rs	pub fn exit(code: i32) -> !
+arch/sys-none-aarch64/src/timer.rs	pub fn counter() -> u64
+arch/sys-none-aarch64/src/timer.rs	pub fn frequency() -> u64
+arch/sys-none-aarch64/src/uart.rs	pub fn write_bytes(buf: &[u8])
+arch/sys-none-aarch64/src/wrap.rs	pub const AT_FDCWD: i32
+arch/sys-none-aarch64/src/wrap.rs	pub const CLOCK_MONOTONIC: usize
+arch/sys-none-aarch64/src/wrap.rs	pub const CLOCK_REALTIME: usize
+arch/sys-none-aarch64/src/wrap.rs	pub const CLONE_CHILD_CLEARTID: usize
+arch/sys-none-aarch64/src/wrap.rs	pub const CLONE_FILES: usize
+arch/sys-none-aarch64/src/wrap.rs	pub const CLONE_FS: usize
+arch/sys-none-aarch64/src/wrap.rs	pub const CLONE_PARENT_SETTID: usize
+arch/sys-none-aarch64/src/wrap.rs	pub const CLONE_SIGHAND: usize
+arch/sys-none-aarch64/src/wrap.rs	pub const CLONE_SYSVSEM: usize
+arch/sys-none-aarch64/src/wrap.rs	pub const CLONE_THREAD: usize
+arch/sys-none-aarch64/src/wrap.rs	pub const CLONE_VM: usize
+arch/sys-none-aarch64/src/wrap.rs	pub const FUTEX_PRIVATE_FLAG: usize
+arch/sys-none-aarch64/src/wrap.rs	pub const FUTEX_WAIT: usize
+arch/sys-none-aarch64/src/wrap.rs	pub const FUTEX_WAKE: usize
+arch/sys-none-aarch64/src/wrap.rs	pub const MAP_ANONYMOUS: usize
+arch/sys-none-aarch64/src/wrap.rs	pub const MAP_FAILED: usize
+arch/sys-none-aarch64/src/wrap.rs	pub const MAP_PRIVATE: usize
+arch/sys-none-aarch64/src/wrap.rs	pub const O_CLOEXEC: usize
+arch/sys-none-aarch64/src/wrap.rs	pub const O_CREAT: usize
+arch/sys-none-aarch64/src/wrap.rs	pub const O_RDONLY: usize
+arch/sys-none-aarch64/src/wrap.rs	pub const O_TRUNC: usize
+arch/sys-none-aarch64/src/wrap.rs	pub const O_WRONLY: usize
+arch/sys-none-aarch64/src/wrap.rs	pub const PROT_NONE: usize
+arch/sys-none-aarch64/src/wrap.rs	pub const PROT_READ: usize
+arch/sys-none-aarch64/src/wrap.rs	pub const PROT_WRITE: usize
+arch/sys-none-aarch64/src/wrap.rs	pub const fn close(_fd: i32) -> Result<usize, Errno>
+arch/sys-none-aarch64/src/wrap.rs	pub const fn gettid() -> i32
+arch/sys-none-aarch64/src/wrap.rs	pub const fn mprotect(_addr: usize, _len: usize, _prot: usize) -> Result<usize, Errno>
+arch/sys-none-aarch64/src/wrap.rs	pub const fn munmap(_addr: usize, _len: usize) -> Result<usize, Errno>
+arch/sys-none-aarch64/src/wrap.rs	pub const fn openat(
+arch/sys-none-aarch64/src/wrap.rs	pub const fn read(fd: i32, _buf: &mut [u8]) -> Result<usize, Errno>
+arch/sys-none-aarch64/src/wrap.rs	pub fn clock_gettime(clockid: usize, tp: &mut Timespec) -> Result<usize, Errno>
+arch/sys-none-aarch64/src/wrap.rs	pub fn exit(code: i32) -> !
+arch/sys-none-aarch64/src/wrap.rs	pub fn exit_group(code: i32) -> !
+arch/sys-none-aarch64/src/wrap.rs	pub fn futex(
+arch/sys-none-aarch64/src/wrap.rs	pub fn mmap(
+arch/sys-none-aarch64/src/wrap.rs	pub fn write(fd: i32, buf: &[u8]) -> Result<usize, Errno>
+arch/sys-none-aarch64/src/wrap.rs	pub struct Timespec
+arch/sys-none-x86-64/src/arena.rs	pub fn alloc_pages(len: usize) -> Result<usize, Errno>
+arch/sys-none-x86-64/src/boot_info.rs	pub fn collect_boot_info() -> BootInfo
+arch/sys-none-x86-64/src/errno.rs	pub const EADDRINUSE: Errno
+arch/sys-none-x86-64/src/errno.rs	pub const EAGAIN: Errno
+arch/sys-none-x86-64/src/errno.rs	pub const EBADF: Errno
+arch/sys-none-x86-64/src/errno.rs	pub const ECONNREFUSED: Errno
+arch/sys-none-x86-64/src/errno.rs	pub const EFAULT: Errno
+arch/sys-none-x86-64/src/errno.rs	pub const EINVAL: Errno
+arch/sys-none-x86-64/src/errno.rs	pub const ENOENT: Errno
+arch/sys-none-x86-64/src/errno.rs	pub const ENOMEM: Errno
+arch/sys-none-x86-64/src/errno.rs	pub const ENOTTY: Errno
+arch/sys-none-x86-64/src/errno.rs	pub const EOPNOTSUPP: Errno
+arch/sys-none-x86-64/src/errno.rs	pub const EPIPE: Errno
+arch/sys-none-x86-64/src/errno.rs	pub const EWOULDBLOCK: Errno
+arch/sys-none-x86-64/src/lib.rs	pub const unsafe fn clone_into(
+arch/sys-none-x86-64/src/lib.rs	pub fn collect_device_inventory() -> reovim_kabi_platform::DeviceInventory
+arch/sys-none-x86-64/src/lib.rs	pub static MULTIBOOT_INFO_PTR: core::sync::atomic::AtomicU32
+arch/sys-none-x86-64/src/semihost.rs	pub fn exit(code: i32) -> !
+arch/sys-none-x86-64/src/timer.rs	pub fn counter() -> u64
+arch/sys-none-x86-64/src/timer.rs	pub fn frequency() -> u64
+arch/sys-none-x86-64/src/uart.rs	pub fn write_bytes(buf: &[u8])
+arch/sys-none-x86-64/src/wrap.rs	pub const AT_FDCWD: i32
+arch/sys-none-x86-64/src/wrap.rs	pub const CLOCK_MONOTONIC: usize
+arch/sys-none-x86-64/src/wrap.rs	pub const CLOCK_REALTIME: usize
+arch/sys-none-x86-64/src/wrap.rs	pub const CLONE_CHILD_CLEARTID: usize
+arch/sys-none-x86-64/src/wrap.rs	pub const CLONE_FILES: usize
+arch/sys-none-x86-64/src/wrap.rs	pub const CLONE_FS: usize
+arch/sys-none-x86-64/src/wrap.rs	pub const CLONE_PARENT_SETTID: usize
+arch/sys-none-x86-64/src/wrap.rs	pub const CLONE_SIGHAND: usize
+arch/sys-none-x86-64/src/wrap.rs	pub const CLONE_SYSVSEM: usize
+arch/sys-none-x86-64/src/wrap.rs	pub const CLONE_THREAD: usize
+arch/sys-none-x86-64/src/wrap.rs	pub const CLONE_VM: usize
+arch/sys-none-x86-64/src/wrap.rs	pub const FUTEX_PRIVATE_FLAG: usize
+arch/sys-none-x86-64/src/wrap.rs	pub const FUTEX_WAIT: usize
+arch/sys-none-x86-64/src/wrap.rs	pub const FUTEX_WAKE: usize
+arch/sys-none-x86-64/src/wrap.rs	pub const MAP_ANONYMOUS: usize
+arch/sys-none-x86-64/src/wrap.rs	pub const MAP_FAILED: usize
+arch/sys-none-x86-64/src/wrap.rs	pub const MAP_PRIVATE: usize
+arch/sys-none-x86-64/src/wrap.rs	pub const O_CLOEXEC: usize
+arch/sys-none-x86-64/src/wrap.rs	pub const O_CREAT: usize
+arch/sys-none-x86-64/src/wrap.rs	pub const O_RDONLY: usize
+arch/sys-none-x86-64/src/wrap.rs	pub const O_TRUNC: usize
+arch/sys-none-x86-64/src/wrap.rs	pub const O_WRONLY: usize
+arch/sys-none-x86-64/src/wrap.rs	pub const PROT_NONE: usize
+arch/sys-none-x86-64/src/wrap.rs	pub const PROT_READ: usize
+arch/sys-none-x86-64/src/wrap.rs	pub const PROT_WRITE: usize
+arch/sys-none-x86-64/src/wrap.rs	pub const fn close(_fd: i32) -> Result<usize, Errno>
+arch/sys-none-x86-64/src/wrap.rs	pub const fn gettid() -> i32
+arch/sys-none-x86-64/src/wrap.rs	pub const fn mprotect(_addr: usize, _len: usize, _prot: usize) -> Result<usize, Errno>
+arch/sys-none-x86-64/src/wrap.rs	pub const fn munmap(_addr: usize, _len: usize) -> Result<usize, Errno>
+arch/sys-none-x86-64/src/wrap.rs	pub const fn openat(
+arch/sys-none-x86-64/src/wrap.rs	pub const fn read(fd: i32, _buf: &mut [u8]) -> Result<usize, Errno>
+arch/sys-none-x86-64/src/wrap.rs	pub fn clock_gettime(clockid: usize, tp: &mut Timespec) -> Result<usize, Errno>
+arch/sys-none-x86-64/src/wrap.rs	pub fn exit(code: i32) -> !
+arch/sys-none-x86-64/src/wrap.rs	pub fn exit_group(code: i32) -> !
+arch/sys-none-x86-64/src/wrap.rs	pub fn futex(
+arch/sys-none-x86-64/src/wrap.rs	pub fn mmap(
+arch/sys-none-x86-64/src/wrap.rs	pub fn write(fd: i32, buf: &[u8]) -> Result<usize, Errno>
+arch/sys-none-x86-64/src/wrap.rs	pub struct Timespec
 lib/depgraph/src/lib.rs	pub fn default_for(root: &Path) -> Result<Self, ProbeError>
 lib/depgraph/src/lib.rs	pub fn validate(&self, path: &Path) -> Result<(), ProbeError>
 lib/depgraph/src/toml.rs	pub enum TomlValue
@@ -253,8 +362,8 @@ lib/ds/src/rwlock.rs	pub fn reader_count(&self) -> u32
 lib/ds/src/rwlock.rs	pub struct RwLockReadGuard<'a, T>
 lib/ds/src/rwlock.rs	pub struct RwLockWriteGuard<'a, T>
 lib/ds/src/seq.rs	pub const FIRST_CAPACITY: usize
-lib/ds/src/shared.rs	pub const fn refcount_overflowed(old: usize) -> bool
 lib/ds/src/shared.rs	pub const MAX_REFCOUNT: usize
+lib/ds/src/shared.rs	pub const fn refcount_overflowed(old: usize) -> bool
 uapi/abi/src/config.rs	pub union ConfigValue
 uapi/abi/src/service.rs	pub const SERVICE_DROP_MAY_CALL_HOSTAPI: u32
 uapi/abi/src/service.rs	pub const SERVICE_HOSTAPI_REENTRANT: u32
@@ -314,37 +423,3 @@ uapi/protocol/src/view.rs	pub struct CarrierIter<'a>
 uapi/protocol/src/view.rs	pub struct DomainEntryIter<'a>
 uapi/protocol/src/view.rs	pub struct RawInputIter<'a>
 uapi/protocol/src/view.rs	pub struct StrListIter<'a>
-arch/src/sys/none_aarch64/framebuffer.rs	pub struct Framebuffer
-arch/src/sys/none_aarch64/framebuffer.rs	pub const fn width(&self) -> u32
-arch/src/sys/none_aarch64/framebuffer.rs	pub const fn height(&self) -> u32
-arch/src/sys/none_aarch64/framebuffer.rs	pub const fn pitch(&self) -> u32
-arch/src/sys/none_aarch64/framebuffer.rs	pub const fn base(&self) -> usize
-arch/src/sys/none_aarch64/framebuffer.rs	pub fn put_pixel(&self, x: u32, y: u32, color: u32)
-arch/src/sys/none_aarch64/framebuffer.rs	pub fn clear(&self, color: u32)
-arch/src/sys/none_aarch64/framebuffer.rs	pub fn init() -> Option<Framebuffer>
-arch/src/sys/none_aarch64/framebuffer.rs	pub fn arm_memory() -> Option<(u64, u64)>
-arch/src/sys/none_aarch64/boot_info.rs	pub fn collect_boot_info() -> BootInfo
-arch/src/sys/none_aarch64/mod.rs	pub fn collect_device_inventory() -> reovim_kabi_platform::DeviceInventory
-arch/src/sys/none_aarch64/console.rs	pub fn print(&mut self, s: &str)
-arch/src/sys/none_aarch64/console.rs	pub fn write_bytes(&mut self, buf: &[u8])
-arch/src/sys/none_x86_64/boot_info.rs	pub fn collect_boot_info() -> BootInfo
-arch/src/sys/none_x86_64/mod.rs	pub fn collect_device_inventory() -> reovim_kabi_platform::DeviceInventory
-arch/src/sys/none_aarch64/console.rs	pub fn install(console: Console<'static>)
-arch/src/sys/none_aarch64/fdt/enumerate.rs	pub fn classify(compatible: &str) -> DeviceClass
-arch/src/sys/none_aarch64/fdt/enumerate.rs	pub fn enumerate(fdt: &Fdt<'static>) -> DeviceInventory
-arch/src/sys/none_aarch64/fdt/reader.rs	pub const fn children(&self) -> ChildIter<'a>
-arch/src/sys/none_aarch64/fdt/reader.rs	pub enum FdtError
-arch/src/sys/none_aarch64/fdt/reader.rs	pub fn find_child_exact(&self, name: &str) -> Option<Node<'a>>
-arch/src/sys/none_aarch64/fdt/reader.rs	pub fn find_child(&self, name: &str) -> Option<Node<'a>>
-arch/src/sys/none_aarch64/fdt/reader.rs	pub fn first_compatible(&self) -> Option<&'a str>
-arch/src/sys/none_aarch64/fdt/reader.rs	pub fn first_interrupt_cell(&self) -> Option<u32>
-arch/src/sys/none_aarch64/fdt/reader.rs	pub fn name(&self) -> &'a str
-arch/src/sys/none_aarch64/fdt/reader.rs	pub fn parse(data: &'a [u8]) -> Result<Self, FdtError>
-arch/src/sys/none_aarch64/fdt/reader.rs	pub fn prop_bytes(&self, name: &str) -> Option<&'a [u8]>
-arch/src/sys/none_aarch64/fdt/reader.rs	pub fn reg(&self) -> Option<(u64, u64)>
-arch/src/sys/none_aarch64/fdt/reader.rs	pub fn root(&self) -> Result<Node<'a>, FdtError>
-arch/src/sys/none_aarch64/fdt/reader.rs	pub fn version(&self) -> u32
-arch/src/sys/none_aarch64/fdt/reader.rs	pub struct CellSizes
-arch/src/sys/none_aarch64/fdt/reader.rs	pub struct ChildIter<'a>
-arch/src/sys/none_aarch64/fdt/reader.rs	pub struct Fdt<'a>
-arch/src/sys/none_aarch64/fdt/reader.rs	pub struct Node<'a>

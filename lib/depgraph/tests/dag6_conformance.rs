@@ -291,8 +291,19 @@ fn arch_asm_confinement() {
     /// Returns `true` when a workspace-relative `/`-separated path is exempt
     /// from the asm-confinement rule.
     fn is_exempt(rel: &str) -> bool {
+        // arch/sys-<target>/src/ — the per-target raw-mechanism crates carved
+        // out of arch (SP01) own all the raw syscall asm, the fused clone
+        // trampoline, and the freestanding wfe/sev/port-I/O asm. The whole crate
+        // `src/` is the legitimate asm home. rel looks like
+        // "arch/sys-linux-x86-64/src/raw.rs".
+        if let Some(after_arch) = rel.strip_prefix("arch/sys-")
+            && after_arch.contains("/src/")
+        {
+            return true;
+        }
         // arch/src/sys/<target>/ — any file inside a per-target backend dir.
-        // rel looks like "arch/src/sys/linux_x86_64/raw.rs".
+        // Retained for the pre-carve-out layout; after SP01 the residual
+        // `arch/src/sys.rs`/`sys/mod.rs` facade carries no asm.
         let sys_backend_prefix = "arch/src/sys/";
         if let Some(after_sys) = rel.strip_prefix(sys_backend_prefix) {
             // Must have at least one more path component after sys/ — i.e.
@@ -348,6 +359,22 @@ fn arch_asm_confinement() {
 
     let mut rs_files: Vec<std::path::PathBuf> = Vec::new();
     collect_rs(&arch_src, &mut rs_files);
+
+    // SP01: the raw asm moved out of arch/src/sys/<target>/ into the per-target
+    // `arch/sys-<target>/src/` crates. Walk them too so the scan covers every
+    // arch-family asm location (their `src/` is exempt as the legitimate home;
+    // anything asm-bearing that ever escaped that zone would still be caught).
+    for sys_crate in [
+        "sys-linux-x86-64",
+        "sys-linux-aarch64",
+        "sys-none-aarch64",
+        "sys-none-x86-64",
+    ] {
+        let sys_src = workspace.join("arch").join(sys_crate).join("src");
+        if sys_src.is_dir() {
+            collect_rs(&sys_src, &mut rs_files);
+        }
+    }
 
     assert!(
         !rs_files.is_empty(),

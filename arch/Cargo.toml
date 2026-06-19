@@ -24,7 +24,15 @@ runtime = []
 # runner, live allocator (fault seam + accounting), threads, and futex backend
 # stay here — so `selftest` propagates to `reovim-lib-ds/selftest` to reach its
 # test-observation surface (testhooks, the growth-ladder constants/helpers).
-selftest = ["reovim-lib-ds/selftest", "reovim-kabi-panic/selftest"]
+# SP07 propagation: the arch selftest bin enumerates the restored arch-sys
+# floor tests, so `selftest` must turn on each target-gated arch-sys crate's
+# `selftest` feature (their `*_tests.rs` modules compile only under it). Cargo
+# silently ignores a feature activation for a target dep absent from the current
+# build graph, so listing all four is correct regardless of the build target.
+# Single-line array: the depgraph's minimal zero-dep TOML reader parses feature
+# arrays line-by-line and does not span multi-line `[ ... ]`. `reovim-testrt`
+# hosts its own current_test()/unknown-label coverage moved from arch in SP07.
+selftest = ["reovim-lib-ds/selftest", "reovim-kabi-panic/selftest", "reovim-testrt/selftest", "reovim-arch-sys-linux-x86-64/selftest", "reovim-arch-sys-linux-aarch64/selftest", "reovim-arch-sys-none-aarch64/selftest", "reovim-arch-sys-none-x86-64/selftest"]
 
 [lints]
 workspace = true
@@ -62,6 +70,32 @@ reovim-uapi-panic = { path = "../uapi/panic" }
 # fixture's post-boot DS exercise and the `selftest`-gated lib/ds integration
 # tests. Both crates stay #![no_std] with zero third-party deps (DAG5/DAG6).
 reovim-lib-ds = { path = "../lib/ds" }
+
+# arch -> lib/testrt: the core-only no_std test runtime carved out of this crate
+# (SP07). arch re-exports it through the `arch::testrt` facade and wires the two
+# injected edges (fd-1 output, `sys::gettid`) onto its `sys` floor, so every
+# existing `reovim_arch::testrt::*` / `arch_test!` consumer compiles unchanged.
+# reovim-testrt is a #![no_std] zero-dep leaf (DAG5/DAG6 preserved).
+reovim-testrt = { path = "../lib/testrt" }
+
+# arch -> arch-sys-{target}: the raw per-target mechanism (syscalls / MMIO /
+# asm / errno vocabulary / freestanding console surface) was carved out of this
+# crate into per-target floor crates (SP01). arch reaches them through the
+# `arch::sys` re-export facade so consumers compile unchanged. Each is a
+# target-cfg-gated path dep — only the selected target's crate enters the graph
+# for a given build. These are downward `arch -> arch-sys` edges; no upward edge.
+# All four stay #![no_std] with at most a kabi/platform leaf dep (DAG5/DAG6).
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
+reovim-arch-sys-linux-x86-64 = { path = "sys-linux-x86-64" }
+
+[target.'cfg(all(target_os = "linux", target_arch = "aarch64"))'.dependencies]
+reovim-arch-sys-linux-aarch64 = { path = "sys-linux-aarch64" }
+
+[target.'cfg(all(target_os = "none", target_arch = "aarch64"))'.dependencies]
+reovim-arch-sys-none-aarch64 = { path = "sys-none-aarch64", features = ["runtime"] }
+
+[target.'cfg(all(target_os = "none", target_arch = "x86_64"))'.dependencies]
+reovim-arch-sys-none-x86-64 = { path = "sys-none-x86-64", features = ["runtime"] }
 
 # No [dev-dependencies] or [build-dependencies].
 # DAG5 (1.2 §9 Dependency Sovereignty): the platform floor reaches the OS
