@@ -59,9 +59,10 @@ pub use errno::{
 ///
 /// Relocated into this raw-mechanism crate (SP01 edge inversion): the boot
 /// pointer is a raw hardware fact and belongs with the machine layer. The
-/// `arch::start` `_start` asm stashes the firmware-provided value here via a
-/// cross-crate `sym reovim_arch_sys_none_aarch64::DTB_PTR` operand, after the
-/// BSS clear and before calling Rust entry. The device-tree reader
+/// `_start` asm in `reovim-arch-floor-none-aarch64` stashes the
+/// firmware-provided value here via a cross-crate
+/// `sym reovim_arch_sys_none_aarch64::DTB_PTR` operand, after the BSS clear
+/// and before calling Rust entry (SP03 floor split). The device-tree reader
 /// ([`dtb_ptr`]) loads it to walk the DTB and enumerate devices. Zero until
 /// stashed, and on any entry with no DTB (QEMU without `-dtb`), which the
 /// reader treats as "no device tree".

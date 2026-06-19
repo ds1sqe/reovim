@@ -32,24 +32,14 @@ pub mod term;
 pub mod thread;
 pub mod time;
 
-// The process entry (`_start`, the `entry!` shim, the exit/profraw shim) is
-// runtime-only: defining the `_start` global symbol in arch's pre-migration
-// libtest builds (bootstrap state 1) clashes with the std runtime's entry.
-#[cfg(feature = "runtime")]
-pub mod start;
-
-// The freestanding mem intrinsics are runtime-only for the same reason:
-// libc already defines memset/memcpy/memmove/memcmp/bcmp in libtest builds.
-#[cfg(feature = "runtime")]
-pub mod mem;
-
-// The minimal LLVM coverage profiler runtime (#785 Phase 5). It defines the
-// `__llvm_profile_runtime` marker and `__llvm_profile_write_file`, so it is
-// compiled only when coverage instrumentation is in effect (`arch_coverage`),
-// where the `__llvm_prf_*` sections exist; it reads the captured env block, so
-// it also needs `runtime`. An ordinary build compiles none of it.
-#[cfg(all(feature = "runtime", arch_coverage))]
-pub mod profiler;
+// The process entry (`_start`/`rust_entry`/`exit_process`/the `entry!` shim),
+// the freestanding mem intrinsics, the LLVM coverage profiler runtime, the
+// `#[panic_handler]` lang item, and `rust_eh_personality` were relocated out of
+// arch into the per-target `reovim-arch-floor-{target}` crates (SP03). arch no
+// longer defines any of those lang items / link symbols; the composition root
+// (apps/* + the fixtures) links the matching floor crate. `arch::panic` keeps
+// only the product-facing registration shims (the kabi/panic forwards). See
+// `arch/src/panic.rs`.
 
 // The no_std test runner (#785 Phase 5): a libtest-free test-collection +
 // reporting mechanism the arch test bins boot through. Compiled under
@@ -88,11 +78,18 @@ pub mod time_tests;
 // L12 pattern for modules that need `super::` access). No additional
 // parent-level declaration is needed here.
 
-// The mem intrinsic tests: runtime-gated (the functions are `#[no_mangle]`
-// symbols that clash with libc in libtest builds; only the arch-selftest
-// binary enables both "selftest" and "runtime").
-#[cfg(all(feature = "selftest", feature = "runtime"))]
-pub mod mem_tests;
+// SP07 park: the mem-intrinsic / panic-path / profiler / start selftests are
+// NOT re-homed into the floor crates this flight. Their source modules
+// (`arch/src/{mem_tests,panic_tests,profiler_tests,start_tests}.rs`) stay in
+// place but are no longer declared — `mem`/`panic-handler`/`profiler`/`start`
+// moved to `reovim-arch-floor-{target}`, and re-homing their unit tests there
+// would force each minimal floor crate to carry a `selftest`-gated
+// `reovim-testrt` dep (DAG5/DAG6 wants the floor minimal). The five mem
+// intrinsics, the panic path, and the `arch_coverage` boot path are exercised
+// at runtime by the SP03 Phase-4 bare-metal fixtures (the boots themselves emit
+// the compiler-lowered mem calls; `panic-{ab13,halt,recover}` assert the
+// handler; the coverage merge proves the profiler). Re-home is tracked in
+// 00-master-plan's deferred list → SP07.
 
 // The `lib/ds` integration selftests. The DS/sync *algorithms* moved to the
 // `reovim-lib-ds` crate (SP03), but the no_std runner, the live allocator (with

@@ -21,6 +21,15 @@ members = [
     "arch/sys-linux-aarch64",
     "arch/sys-none-aarch64",
     "arch/sys-none-x86-64",
+    # Per-target language-floor lang-item crates carved out of reovim-arch
+    # (SP03): `_start`, `#[panic_handler]`, `rust_eh_personality`, the mem
+    # intrinsics, and the `entry!`/`reovim_arch_main` seam. The composition root
+    # (apps/* + the fixtures) links the matching floor crate; `arch` carries no
+    # floor edge (the floor→product crossing is LINK, not import — invariant #1).
+    "arch/floor-linux-x86-64",
+    "arch/floor-linux-aarch64",
+    "arch/floor-none-aarch64",
+    "arch/floor-none-x86-64",
     # POSIX provider (SP02): canonicalizes NATIVE arch primitives into the
     # kabi/platform vtable and installs it (hosted, both Linux arches). Reaches
     # arch's alloc/clock backends + raw syscall floor through a one-way

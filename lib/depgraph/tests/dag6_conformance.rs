@@ -8,10 +8,11 @@
 //!
 //! Also contains: `arch_asm_confinement` — a source-grep probe that enforces
 //! the per-target backend convention from spec 1.2 §10: every `asm!` /
-//! `naked_asm!` token in `arch/src/**/*.rs` must appear in a file under
-//! `arch/src/sys/<target>/` or in `arch/src/start.rs` (the cfg-gated `_start`
-//! entry arms).  Any other location is an architectural boundary violation
-//! (#790).
+//! `naked_asm!` token in the arch family must appear under
+//! `arch/sys-<target>/src/` (the raw syscall primitives + fused clone
+//! trampoline, SP01) or `arch/floor-<target>/src/` (the cfg-gated `_start`
+//! entry arms, SP03).  Any other location is an architectural boundary
+//! violation (#790).
 
 mod common;
 
@@ -268,12 +269,12 @@ fn dag6_cfg_test_exemption_use_std_in_test_mod_does_not_flag() {
     );
 }
 
-// ── Asm-confinement probe: arch/src asm must stay in sys/<target>/ or start.rs ─
+// ── Asm-confinement probe: arch asm stays in arch-sys/* or arch-floor/* ────────
 
 /// Spec 1.2 §10 per-target backend convention: `asm!` and `naked_asm!` may
-/// only appear in files under `arch/src/sys/<target>/` (the raw syscall
-/// primitives and fused clone trampoline) or in `arch/src/start.rs` (the
-/// cfg-gated `_start` entry arms).  Any other location violates the
+/// only appear in files under `arch/sys-<target>/src/` (the raw syscall
+/// primitives and fused clone trampoline, SP01) or `arch/floor-<target>/src/`
+/// (the cfg-gated `_start` entry arms, SP03).  Any other location violates the
 /// asm-confinement boundary.
 ///
 /// The probe walks every `.rs` file under `arch/src/`, reads it line by
@@ -282,9 +283,12 @@ fn dag6_cfg_test_exemption_use_std_in_test_mod_does_not_flag() {
 /// is a hard failure.
 ///
 /// Exempt paths (workspace-relative):
-/// - `arch/src/sys/<anything>/` — any depth inside a per-target backend dir
-/// - `arch/src/start.rs`        — the entry-point module
+/// - `arch/sys-<target>/src/`   — the per-target raw-mechanism crates (SP01)
+/// - `arch/floor-<target>/src/` — the per-target language-floor crates (SP03,
+///   home of the cfg-gated `_start` naked-asm arms relocated from `start.rs`)
+/// - `arch/src/sys/<anything>/` — any depth inside a (residual) backend dir
 #[test]
+#[allow(clippy::too_many_lines)] // flat per-crate asm-path scan; length tracks crate count
 fn arch_asm_confinement() {
     use std::path::Path;
 
@@ -301,6 +305,15 @@ fn arch_asm_confinement() {
         {
             return true;
         }
+        // arch/floor-<target>/src/ — the per-target language-floor crates (SP03)
+        // own the cfg-gated `_start` naked-asm arms relocated from the old
+        // `arch/src/start.rs`. The whole crate `src/` is the legitimate asm
+        // home. rel looks like "arch/floor-none-aarch64/src/lib.rs".
+        if let Some(after_arch) = rel.strip_prefix("arch/floor-")
+            && after_arch.contains("/src/")
+        {
+            return true;
+        }
         // arch/src/sys/<target>/ — any file inside a per-target backend dir.
         // Retained for the pre-carve-out layout; after SP01 the residual
         // `arch/src/sys.rs`/`sys/mod.rs` facade carries no asm.
@@ -312,8 +325,9 @@ fn arch_asm_confinement() {
                 return true;
             }
         }
-        // arch/src/start.rs — the cfg-gated _start entry arms.
-        rel == "arch/src/start.rs"
+        // The old `arch/src/start.rs` asm allowance is gone: `_start` relocated
+        // to `arch/floor-<target>/src/` (SP03), and `start.rs` no longer exists.
+        false
     }
 
     /// Strips a single-line `//`-style comment from a source line, returning
@@ -376,6 +390,23 @@ fn arch_asm_confinement() {
         }
     }
 
+    // SP03: the `_start` naked-asm arms moved out of `arch/src/start.rs` into the
+    // per-target `arch/floor-<target>/src/` language-floor crates. Walk them too
+    // so the scan covers every arch-family asm location (their `src/` is exempt
+    // as the legitimate home; anything asm-bearing that ever escaped that zone
+    // would still be caught).
+    for floor_crate in [
+        "floor-linux-x86-64",
+        "floor-linux-aarch64",
+        "floor-none-aarch64",
+        "floor-none-x86-64",
+    ] {
+        let floor_src = workspace.join("arch").join(floor_crate).join("src");
+        if floor_src.is_dir() {
+            collect_rs(&floor_src, &mut rs_files);
+        }
+    }
+
     assert!(
         !rs_files.is_empty(),
         "arch_asm_confinement: no .rs files found under arch/src — check workspace_root()"
@@ -420,8 +451,8 @@ fn arch_asm_confinement() {
     assert!(
         violations.is_empty(),
         "arch_asm_confinement: asm boundary violated — \
-         `asm!`/`naked_asm!` must be confined to `arch/src/sys/<target>/` \
-         or `arch/src/start.rs`.\n\
+         `asm!`/`naked_asm!` must be confined to `arch/sys-<target>/src/` \
+         or `arch/floor-<target>/src/`.\n\
          Violations:\n{}",
         violations.join("\n")
     );

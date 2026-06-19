@@ -7,6 +7,8 @@ name = "kernel-panic-halt"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-arch-floor-linux-aarch64",
+ "reovim-arch-floor-linux-x86-64",
  "reovim-kernel",
  "reovim-platform-linux-native",
 ]
@@ -16,6 +18,8 @@ name = "kernel-panic-recover"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-arch-floor-linux-aarch64",
+ "reovim-arch-floor-linux-x86-64",
  "reovim-kernel",
  "reovim-platform-linux-native",
 ]
@@ -25,6 +29,8 @@ name = "kernel-selftest"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-arch-floor-linux-aarch64",
+ "reovim-arch-floor-linux-x86-64",
  "reovim-domain-text",
  "reovim-kernel",
  "reovim-platform-linux-native",
@@ -45,6 +51,24 @@ dependencies = [
  "reovim-testrt",
  "reovim-uapi-panic",
  "reovim-uapi-posix",
+]
+
+[[package]]
+name = "reovim-arch-floor-linux-aarch64"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-arch-sys-linux-aarch64",
+ "reovim-kabi-panic",
+ "reovim-uapi-panic",
+]
+
+[[package]]
+name = "reovim-arch-floor-linux-x86-64"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-arch-sys-linux-x86-64",
+ "reovim-kabi-panic",
+ "reovim-uapi-panic",
 ]
 
 [[package]]

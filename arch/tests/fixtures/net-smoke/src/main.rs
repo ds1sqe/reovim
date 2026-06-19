@@ -24,7 +24,12 @@ use reovim_arch::{
     thread::spawn,
 };
 
-reovim_arch::entry!(|_argc, _argv, _envp| {
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use reovim_arch_floor_linux_x86_64::entry;
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+use reovim_arch_floor_linux_aarch64::entry;
+
+entry!(|_argc, _argv, _envp| {
     // Install the platform handle as the closure's first statement, before the
     // UDS round-trip allocates / spawns / does fd ops through it. This fixture
     // is Linux-only — `reovim_arch::net` is `cfg(target_os = "linux")`, so the

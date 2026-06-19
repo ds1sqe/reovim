@@ -1,0 +1,39 @@
+[package]
+name = "reovim-arch-floor-linux-x86-64"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Language floor (x86_64-linux): the per-binary lang items — _start, #[panic_handler], rust_eh_personality, mem intrinsics, the entry!/reovim_arch_main seam"
+publish = false
+
+[features]
+# Gates the lang items (`_start`, `#[panic_handler]`, `rust_eh_personality`,
+# the mem intrinsics, the `entry!` shim). Non-default so a pre-migration
+# libtest build never links a second copy that would clash with std's lang
+# items. The composition root (apps/* + fixtures) opts in. Features are in-repo
+# plumbing, not dependency edges (L9-clean).
+runtime = []
+
+[lints]
+workspace = true
+
+[dependencies]
+# The matching raw per-target mechanism (SP01): supplies `exit_group` / `write`
+# (the panic handler's output + termination floor) and `clock_gettime` /
+# `CLOCK_MONOTONIC` / `Timespec` (the panic line's LOG2 timestamp). The floor
+# names it directly because it cannot dep `arch` (that would close the floor→
+# product airlock — master invariant #8). Core-only leaf (DAG5/DAG6 preserved).
+reovim-arch-sys-linux-x86-64 = { path = "../sys-linux-x86-64" }
+
+# The always-present write-once fault-floor seam (Platform-Contract §3.4): the
+# panic handler reads the registry (disposition, hooks, the AB13 cleanup-context
+# atom) through it. A `#![no_std]` zero-dep leaf (DAG5/DAG6 preserved).
+reovim-kabi-panic = { path = "../../kabi/panic" }
+
+# The canonical `Disposition`/`PanicRecord` value types the handler + the
+# `rust_eh_personality` halt code name. A `#![no_std]` zero-dep leaf.
+reovim-uapi-panic = { path = "../../uapi/panic" }

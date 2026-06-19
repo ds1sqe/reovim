@@ -21,10 +21,20 @@ bench = false
 doctest = false
 
 [dependencies]
-# Path dep on the platform floor with the `runtime` feature so the arch
-# `_start`, the `entry!` shim, and the `#[panic_handler]` lang item link.
-# No `selftest`: this is a demo payload, not a test runner.
+# Path dep on the platform floor with the `runtime` feature for the
+# `arch::sys`/`arch::time` surface this demo names. The lang items (`_start`,
+# the `entry!` shim, `#[panic_handler]`, `mem`) now live in the language-floor
+# crate aliased below. No `selftest`: this is a demo payload, not a test runner.
 reovim-arch = { path = "../../..", features = ["runtime"] }
+
+# The per-target language floor (SP03): supplies `_start` (the EL2→EL1 boot
+# climb), the `entry!` shim, the `#[panic_handler]`, `rust_eh_personality`, and
+# the `mem` intrinsics as LINK symbols (relocated out of arch). The target cfg
+# names its real floor crate directly; `src/main.rs` imports the active one with
+# a cfg-gated `use <floor_crate>::entry;`. This is an aarch64-bare-metal-only demo
+# (it never builds hosted), so only the `none-aarch64` floor crate is linked.
+[target.'cfg(all(target_os = "none", target_arch = "aarch64"))'.dependencies]
+reovim-arch-floor-none-aarch64 = { path = "../../../floor-none-aarch64", features = ["runtime"] }
 
 [lints]
 workspace = true

@@ -39,7 +39,12 @@ reovim_arch::arch_test!(deliberately_fails, {
     reovim_arch::testrt::check_eq(1 + 1, 3);
 });
 
-reovim_arch::entry!(|_argc, _argv, _envp| {
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use reovim_arch_floor_linux_x86_64::entry;
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+use reovim_arch_floor_linux_aarch64::entry;
+
+entry!(|_argc, _argv, _envp| {
     // Install the platform handle as the closure's first statement, before any
     // test reads it. Enabling `reovim-arch/selftest` links arch's `lib_ds_tests`
     // into the shared link-section registry, and those cases allocate + park

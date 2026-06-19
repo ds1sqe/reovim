@@ -53,12 +53,13 @@ pub use errno::{
 ///
 /// Relocated into this raw-mechanism crate (SP01 edge inversion): the boot
 /// pointer is a raw hardware fact and belongs with the machine layer. The
-/// `arch::start` `_start` asm stashes it here in the 32-bit prologue (after the
-/// BSS clear, before the COM1 banner loop reuses `rbx`/`bl`) via a cross-crate
-/// `sym reovim_arch_sys_none_x86_64::MULTIBOOT_INFO_PTR` operand. The x86
-/// boot-info provider ([`boot_info::collect_boot_info`]) reads it to parse the
-/// firmware memory map. Zero until stashed, and on any non-Multiboot entry,
-/// which the reader treats as "no boot info" (empty map).
+/// `_start` asm in `reovim-arch-floor-none-x86-64` stashes it here in the
+/// 32-bit prologue (after the BSS clear, before the COM1 banner loop reuses
+/// `rbx`/`bl`) via a cross-crate
+/// `sym reovim_arch_sys_none_x86_64::MULTIBOOT_INFO_PTR` operand (SP03 floor
+/// split). The x86 boot-info provider ([`boot_info::collect_boot_info`]) reads
+/// it to parse the firmware memory map. Zero until stashed, and on any
+/// non-Multiboot entry, which the reader treats as "no boot info" (empty map).
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
 pub static MULTIBOOT_INFO_PTR: core::sync::atomic::AtomicU32 =
     core::sync::atomic::AtomicU32::new(0);

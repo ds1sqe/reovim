@@ -18,9 +18,10 @@ bench = false
 doctest = false
 
 [dependencies]
-# `runtime` provides _start, panic_handler, allocator lang items.
-# All other crates propagate `runtime` via `reovim-arch/runtime`; enabling it
-# here once unifies them all at the composition root.
+# `runtime` on arch is retained for the `arch::sys`/`arch::alloc`/`arch::time`
+# product surface this app names; the lang items (`_start`, `#[panic_handler]`,
+# the allocator, `mem`) now live in the per-target `reovim-arch-floor-*` crates
+# (SP03), linked via the per-target dep blocks below.
 reovim-arch         = { path = "../../arch", features = ["runtime"] }
 # POSIX provider: builds + installs the kabi/platform vtable (SP02). The
 # composition root owns the install call, so the provider dep lives here, not in
@@ -37,6 +38,22 @@ reovim-server-rt    = { path = "../../editor/lib/server" }
 reovim-domain-text  = { path = "../../editor/domains/text" }
 # uapi types needed to resolve socket path.
 reovim-uapi-abi     = { path = "../../uapi/abi" }
+
+# The per-target language floor (SP03): supplies `_start`, the `entry!` shim
+# (`reovim_arch_main`), the `#[panic_handler]`, `rust_eh_personality`, and the
+# `mem` intrinsics as LINK symbols. Each target cfg names its real floor crate
+# directly (a single dep key cannot map to different source paths across target
+# blocks — Cargo rejects that), and the call site picks the active one with a
+# cfg-gated `use <floor_crate>::entry;` import (mirrors how `arch/Cargo.toml`
+# target-cfg-splits its four `arch-sys-*` deps). `arch` carries NO floor edge —
+# that would close the floor→product airlock (invariant #8); the composition
+# root owns the floor link. This app is host-only (Linux), so only the two Linux
+# floor crates are linked.
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
+reovim-arch-floor-linux-x86-64 = { path = "../../arch/floor-linux-x86-64", features = ["runtime"] }
+
+[target.'cfg(all(target_os = "linux", target_arch = "aarch64"))'.dependencies]
+reovim-arch-floor-linux-aarch64 = { path = "../../arch/floor-linux-aarch64", features = ["runtime"] }
 
 [lints]
 workspace = true

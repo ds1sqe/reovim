@@ -122,7 +122,10 @@ impl Splash {
     }
 }
 
-reovim_arch::entry!(|_argc, _argv, _envp| {
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+use reovim_arch_floor_none_aarch64::entry;
+
+entry!(|_argc, _argv, _envp| {
     // Acquire the framebuffer first; the geometry is captured before the
     // surface is moved into the console so it can be reported in the panel.
     let fb = framebuffer::init();

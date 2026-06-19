@@ -12,7 +12,8 @@
 
 use {
     super::{
-        SetError, get_disposition, get_flush_fd, get_pre_exit_hook, get_ring_tail_provider,
+        SetError, clear_cleanup_context, enter_cleanup_context, get_cleanup_context,
+        get_disposition, get_flush_fd, get_pre_exit_hook, get_ring_tail_provider,
         get_state_record_hook, set_disposition, set_flush_fd, set_pre_exit_hook,
         set_ring_tail_provider, set_state_record_hook,
     },
@@ -215,6 +216,45 @@ fn pre_exit_hook_write_once() {
         get_pre_exit_hook().is_some(),
         "first hook must still be registered after rejected second set"
     );
+}
+
+// ── cleanup-context (AB13): re-settable, not write-once ───────────────────────
+
+/// The cleanup-context atom is the one re-settable fault-floor member (raised /
+/// lowered around a shutdown/drop, not registered once). It owns its static
+/// exclusively, so a single test drives the full lifecycle without inter-test
+/// contention: default-false, enter→true, clear→false, and a store/load
+/// round-trip via the public accessors. The `reset()` clear is asserted under
+/// `selftest` (the feature that exposes it), since `cargo test` without it does
+/// not compile the reset path.
+#[test]
+fn cleanup_context_resettable_round_trip() {
+    // Default: no enter has run yet for this atom (no other test touches it).
+    assert!(!get_cleanup_context(), "cleanup context defaults to false (normal)");
+
+    // enter → get == true.
+    enter_cleanup_context();
+    assert!(get_cleanup_context(), "enter_cleanup_context raises the marker");
+
+    // Re-settable: a second enter is idempotent (not rejected like write-once).
+    enter_cleanup_context();
+    assert!(get_cleanup_context(), "re-entering keeps the marker raised");
+
+    // clear → get == false.
+    clear_cleanup_context();
+    assert!(!get_cleanup_context(), "clear_cleanup_context lowers the marker");
+
+    // clear without a prior enter is safe and leaves it false.
+    clear_cleanup_context();
+    assert!(!get_cleanup_context(), "clear is safe to call when already lowered");
+
+    // reset() also lowers it — proves it is wired into the selftest reset.
+    #[cfg(feature = "selftest")]
+    {
+        enter_cleanup_context();
+        super::reset();
+        assert!(!get_cleanup_context(), "reset() clears the cleanup-context atom");
+    }
 }
 
 // ── minimal-path: seam queryable with zero atoms set ─────────────────────────

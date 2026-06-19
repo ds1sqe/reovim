@@ -26,7 +26,16 @@ reovim_arch::arch_test!(deliberately_fails, {
     reovim_arch::testrt::check_eq(1 + 1, 3);
 });
 
-reovim_arch::entry!(|_argc, _argv, _envp| {
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use reovim_arch_floor_linux_x86_64::entry;
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+use reovim_arch_floor_linux_aarch64::entry;
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+use reovim_arch_floor_none_aarch64::entry;
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+use reovim_arch_floor_none_x86_64::entry;
+
+entry!(|_argc, _argv, _envp| {
     // Install the platform handle as the closure's first statement, before any
     // test reads it (`lib_ds_tests` allocates + parks through the handle). The
     // installer is cfg-split: the real POSIX provider on hosted Linux, the

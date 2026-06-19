@@ -17,7 +17,12 @@ use {
     reovim_lib_ds::{Mutex, Seq},
 };
 
-reovim_arch::entry!(|_argc, _argv, _envp| {
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use reovim_arch_floor_linux_x86_64::entry;
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+use reovim_arch_floor_linux_aarch64::entry;
+
+entry!(|_argc, _argv, _envp| {
     // Install the platform handle as the closure's first statement, before the
     // smoke allocates or spawns through it. This fixture is host-only (it
     // self-skips under system-image mode), so it installs the real POSIX

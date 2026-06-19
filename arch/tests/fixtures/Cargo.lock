@@ -7,6 +7,10 @@ name = "arch-bootcore"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-arch-floor-linux-aarch64",
+ "reovim-arch-floor-linux-x86-64",
+ "reovim-arch-floor-none-aarch64",
+ "reovim-arch-floor-none-x86-64",
  "reovim-kernel",
  "reovim-platform-linux-native",
  "reovim-platform-stub-none",
@@ -17,6 +21,8 @@ name = "arch-fixture-net-smoke"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-arch-floor-linux-aarch64",
+ "reovim-arch-floor-linux-x86-64",
  "reovim-platform-linux-native",
 ]
 
@@ -25,6 +31,8 @@ name = "arch-fixture-panic-ab13"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-arch-floor-linux-aarch64",
+ "reovim-arch-floor-linux-x86-64",
 ]
 
 [[package]]
@@ -32,6 +40,8 @@ name = "arch-fixture-panic-halt"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-arch-floor-linux-aarch64",
+ "reovim-arch-floor-linux-x86-64",
 ]
 
 [[package]]
@@ -39,6 +49,8 @@ name = "arch-fixture-panic-recover"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-arch-floor-linux-aarch64",
+ "reovim-arch-floor-linux-x86-64",
 ]
 
 [[package]]
@@ -46,6 +58,8 @@ name = "arch-fixture-smoke"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-arch-floor-linux-aarch64",
+ "reovim-arch-floor-linux-x86-64",
  "reovim-lib-ds",
  "reovim-platform-linux-native",
 ]
@@ -55,6 +69,10 @@ name = "arch-selftest"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-arch-floor-linux-aarch64",
+ "reovim-arch-floor-linux-x86-64",
+ "reovim-arch-floor-none-aarch64",
+ "reovim-arch-floor-none-x86-64",
  "reovim-platform-linux-native",
  "reovim-platform-stub-none",
 ]
@@ -64,6 +82,7 @@ name = "arch-splash"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-arch-floor-none-aarch64",
 ]
 
 [[package]]
@@ -80,6 +99,42 @@ dependencies = [
  "reovim-testrt",
  "reovim-uapi-panic",
  "reovim-uapi-posix",
+]
+
+[[package]]
+name = "reovim-arch-floor-linux-aarch64"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-arch-sys-linux-aarch64",
+ "reovim-kabi-panic",
+ "reovim-uapi-panic",
+]
+
+[[package]]
+name = "reovim-arch-floor-linux-x86-64"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-arch-sys-linux-x86-64",
+ "reovim-kabi-panic",
+ "reovim-uapi-panic",
+]
+
+[[package]]
+name = "reovim-arch-floor-none-aarch64"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-arch-sys-none-aarch64",
+ "reovim-kabi-panic",
+ "reovim-uapi-panic",
+]
+
+[[package]]
+name = "reovim-arch-floor-none-x86-64"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-arch-sys-none-x86-64",
+ "reovim-kabi-panic",
+ "reovim-uapi-panic",
 ]
 
 [[package]]
@@ -207,6 +262,8 @@ name = "uapi-selftest"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-arch-floor-linux-aarch64",
+ "reovim-arch-floor-linux-x86-64",
  "reovim-platform-linux-native",
  "reovim-uapi-abi",
  "reovim-uapi-driver-macros",

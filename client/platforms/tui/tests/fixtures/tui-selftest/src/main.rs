@@ -24,7 +24,12 @@ reovim_arch::arch_test!(deliberately_fails, {
     reovim_arch::testrt::check_eq(1 + 1, 3);
 });
 
-reovim_arch::entry!(|_argc, _argv, _envp| {
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use reovim_arch_floor_linux_x86_64::entry;
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+use reovim_arch_floor_linux_aarch64::entry;
+
+entry!(|_argc, _argv, _envp| {
     // Install the platform handle before anything reads it. The TUI platform
     // test suite may access the handle during test execution; installing here,
     // as the closure's first statement, matches the no-read-before-install

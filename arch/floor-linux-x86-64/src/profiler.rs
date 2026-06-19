@@ -1,4 +1,5 @@
-//! Arch-owned minimal LLVM coverage profiler runtime (#785 Phase 5).
+//! Floor-owned minimal LLVM coverage profiler runtime (#785 Phase 5; relocated
+//! from `arch/src/profiler.rs` in SP03).
 //!
 //! `-C instrument-coverage` makes the compiler emit per-function counter,
 //! data, name, and (for MC/DC) bitmap arrays into dedicated ELF sections,
@@ -8,13 +9,14 @@
 //! `malloc`/`free`, `getenv`, `atexit`, …) that a `-nodefaultlibs` `no_std`
 //! bin cannot satisfy (the Phase 4 spike failed to link, 2026-06-11).
 //!
-//! This module is that runtime, hand-written over arch syscalls (Linux
-//! `kernel/pgo` precedent): it defines the `__llvm_profile_runtime` marker so
-//! the compiler links *this* instead of compiler-rt, and exports
-//! [`__llvm_profile_write_file`] (the symbol the exit shim calls under
-//! `arch_coverage`) which serializes the raw profile to the path named by
-//! `LLVM_PROFILE_FILE`. The build must pass `-Z no-profiler-runtime` so the
-//! toolchain does not also try to link `profiler_builtins`.
+//! This module is that runtime, hand-written over the floor's arch-sys
+//! syscalls (Linux `kernel/pgo` precedent): it defines the
+//! `__llvm_profile_runtime` marker so the compiler links *this* instead of
+//! compiler-rt, and exports [`__llvm_profile_write_file`] (the symbol the exit
+//! shim and the panic handler call under `arch_coverage`) which serializes the
+//! raw profile to the path named by `LLVM_PROFILE_FILE`. The build must pass
+//! `-Z no-profiler-runtime` so the toolchain does not also try to link
+//! `profiler_builtins`.
 //!
 //! ## Profraw format version
 //!
@@ -34,7 +36,9 @@
 //! never references the LLVM sections, so the floor links without any
 //! instrumentation runtime.
 
-use crate::sys::{AT_FDCWD, O_CLOEXEC, O_CREAT, O_TRUNC, O_WRONLY, close, openat, write};
+use reovim_arch_sys_linux_x86_64::{
+    AT_FDCWD, O_CLOEXEC, O_CREAT, O_TRUNC, O_WRONLY, close, openat, write,
+};
 
 // The LLVM instrumentation sections. The linker synthesizes
 // `__start_<section>` / `__stop_<section>` symbols bracketing each
@@ -153,7 +157,7 @@ fn write_all(fd: i32, buf: &[u8]) -> bool {
 /// field-by-field against a toolchain-emitted profraw on the current nightly).
 ///
 /// The sixteen `u64` fields are emitted little-endian (the only target is
-/// x86_64). Delta semantics mirror compiler-rt's writer: `counters_delta`
+/// `x86_64`). Delta semantics mirror compiler-rt's writer: `counters_delta`
 /// and `bitmap_delta` are the counter/bitmap section starts MINUS the data
 /// section start (the per-record pointers the compiler emits are relative,
 /// and the reader walks them against these section-relative deltas);
@@ -242,11 +246,11 @@ fn profile_path<'a>(env: &'a [&'a [u8]]) -> Option<&'a [u8]> {
 /// Serializes the in-memory coverage profile to `LLVM_PROFILE_FILE` (or the
 /// default path) as a raw-profile file the coverage merge consumes.
 ///
-/// This is the public entry the exit shim calls under `arch_coverage`. It is
-/// `extern "C"` and `no_mangle` so it overrides the toolchain runtime's symbol
-/// of the same name; with `-Z no-profiler-runtime` no other definition exists.
-/// Best-effort: any syscall failure aborts the write silently (there is no
-/// recovery at process exit).
+/// This is the public entry the exit shim + the panic handler call under
+/// `arch_coverage`. It is `extern "C"` and `no_mangle` so it overrides the
+/// toolchain runtime's symbol of the same name; with `-Z no-profiler-runtime`
+/// no other definition exists. Best-effort: any syscall failure aborts the
+/// write silently (there is no recovery at process exit).
 ///
 /// # Safety
 ///
@@ -257,11 +261,11 @@ fn profile_path<'a>(env: &'a [&'a [u8]]) -> Option<&'a [u8]> {
 /// ```ignore
 /// // __llvm_profile_write_file requires arch_coverage + runtime features and
 /// // live __llvm_prf_* linker sections — only callable from an instrumented binary.
-/// unsafe { reovim_arch::profiler::__llvm_profile_write_file() };
+/// unsafe { __llvm_profile_write_file() };
 /// ```
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn __llvm_profile_write_file() -> i32 {
-    let env = crate::start::env_block();
+    let env = crate::env_block();
     let path = profile_path(env).unwrap_or(DEFAULT_PROFILE_PATH);
 
     // SAFETY: the bracket symbols are the linker's section delimiters for the
@@ -358,12 +362,12 @@ unsafe fn write_profile(path: &[u8]) -> bool {
 #[unsafe(no_mangle)]
 #[used]
 #[allow(non_upper_case_globals)]
-pub static __llvm_profile_runtime: i32 = 0;
+pub(crate) static __llvm_profile_runtime: i32 = 0;
 
-// L12 layout (#785 Phase 5): tests live in the sibling file `profiler_tests.rs`,
-// declared as a `#[path]` child so `super::` reaches `write_all`, `write_padding`,
-// and `profile_path`. Gated on the intersection of the three cfg gates that
-// compile this module: selftest + runtime + arch_coverage.
-#[cfg(feature = "selftest")]
-#[path = "profiler_tests.rs"]
-mod tests;
+// SP07 park: the profiler unit tests (`profiler_tests.rs`) are NOT re-homed
+// here. Re-homing them would force this minimal floor crate to carry a
+// `selftest`-gated `reovim-testrt` dep purely for unit tests whose behaviour
+// the SP03 Phase-4 bare-metal fixtures already prove (the `arch_coverage`
+// boot path is exercised by the fixture coverage-merge AC at landing). They
+// stay parked in `arch/src/profiler_tests.rs` until a floor-side selftest
+// harness is justified (00-master-plan deferred list).

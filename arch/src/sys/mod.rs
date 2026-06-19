@@ -12,8 +12,9 @@
 //! Each `arch-sys-{target}` is a downward `arch -> arch-sys` Cargo edge (a
 //! target-cfg-gated path dep in `arch/Cargo.toml`); there is no upward edge.
 //! The boot-pointer statics (`DTB_PTR`, `MULTIBOOT_INFO_PTR`) live in the
-//! `arch-sys-none-*` crates and the `arch::start` `_start` asm names them by
-//! cross-crate `sym` path.
+//! `arch-sys-none-*` crates and the `_start` asm in the matching
+//! `arch-floor-none-{aarch64,x86-64}` crate names them by cross-crate `sym`
+//! path (SP03 floor split).
 
 // ---- backend selection (per-target arch-sys crate) ---------------------------
 

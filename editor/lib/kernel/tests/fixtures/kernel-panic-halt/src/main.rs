@@ -26,7 +26,12 @@
 
 use reovim_kernel::{Init, LauncherArgs};
 
-reovim_arch::entry!(|argc, argv, _envp| {
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use reovim_arch_floor_linux_x86_64::entry;
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+use reovim_arch_floor_linux_aarch64::entry;
+
+entry!(|argc, argv, _envp| {
     // Install the platform handle as the closure's first statement, before
     // `Init::boot()` reads it. The fixture is host-only (native-only pin per
     // `fixtures_exec.rs`), so only the real POSIX provider is needed — no

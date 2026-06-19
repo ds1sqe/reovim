@@ -71,7 +71,16 @@ fn finish(code: i32) -> ! {
     exit_group(code)
 }
 
-reovim_arch::entry!(|_argc, _argv, _envp| {
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use reovim_arch_floor_linux_x86_64::entry;
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+use reovim_arch_floor_linux_aarch64::entry;
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+use reovim_arch_floor_none_aarch64::entry;
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+use reovim_arch_floor_none_x86_64::entry;
+
+entry!(|_argc, _argv, _envp| {
     // Install the platform handle as the closure's first statement, before the
     // kernel boot reads it (the kernel allocates + writes through the handle).
     // The installer is cfg-split: the bare-metal scaffold on `*-unknown-none`

@@ -19,6 +19,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-arch-floor-linux-aarch64"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-arch-sys-linux-aarch64",
+ "reovim-kabi-panic",
+ "reovim-uapi-panic",
+]
+
+[[package]]
+name = "reovim-arch-floor-linux-x86-64"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-arch-sys-linux-x86-64",
+ "reovim-kabi-panic",
+ "reovim-uapi-panic",
+]
+
+[[package]]
 name = "reovim-arch-sys-linux-aarch64"
 version = "0.16.0-dev"
 dependencies = [
@@ -117,6 +135,8 @@ name = "tui-selftest"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-arch-floor-linux-aarch64",
+ "reovim-arch-floor-linux-x86-64",
  "reovim-platform-linux-native",
  "reovim-platform-tui",
 ]

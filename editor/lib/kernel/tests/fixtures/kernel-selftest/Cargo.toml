@@ -48,5 +48,18 @@ reovim-domain-text = { path = "../../../../../../editor/domains/text", features 
 [dependencies.reovim-platform-linux-native]
 path = "../../../../../../platform/linux-native"
 
+# The per-target language floor (SP03): supplies `_start`, the `entry!` shim,
+# the `#[panic_handler]`, `rust_eh_personality`, and the `mem` intrinsics as LINK
+# symbols (relocated out of arch). Each target cfg names its real floor crate
+# directly (a single dep key cannot map to different source paths across target
+# blocks — Cargo rejects that); `src/main.rs` picks the active one with a
+# cfg-gated `use <floor_crate>::entry;` import. This fixture is host-only (Linux),
+# so only the two Linux floor crates are linked.
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
+reovim-arch-floor-linux-x86-64 = { path = "../../../../../../arch/floor-linux-x86-64", features = ["runtime"] }
+
+[target.'cfg(all(target_os = "linux", target_arch = "aarch64"))'.dependencies]
+reovim-arch-floor-linux-aarch64 = { path = "../../../../../../arch/floor-linux-aarch64", features = ["runtime"] }
+
 [lints]
 workspace = true

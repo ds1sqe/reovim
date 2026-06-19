@@ -33,7 +33,12 @@ use {
 static TEXT_HANDLER: TextHandler = TextHandler;
 static TEXT_PROJECTOR: TextProjector = TextProjector;
 
-reovim_arch::entry!(|argc, argv, _envp| {
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use reovim_arch_floor_linux_x86_64::entry;
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+use reovim_arch_floor_linux_aarch64::entry;
+
+entry!(|argc, argv, _envp| {
     // ── Install the platform vtable (SP02, AB12 write-once) ───────────────────
     // The composition root drives the install: this is the first statement of
     // the `entry!` closure, ahead of every `kabi::handle` read (the kernel boot,

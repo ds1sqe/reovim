@@ -133,6 +133,16 @@ pub fn default_category_table() -> Vec<(String, Category)> {
         // classifies Foundation and `is_floor_crate_name` counts it a
         // floor-family name no product may import. Superseded by SP04.
         ("platform/stub-none", Category::Foundation),
+        // arch/floor-* = per-target language-floor lang-item crates (SP03):
+        // `_start`, `#[panic_handler]`, `rust_eh_personality`, the mem
+        // intrinsics, the `entry!`/`reovim_arch_main` seam. Floor tier, same as
+        // arch and arch-sys. The pattern grammar's `*` only matches a whole
+        // trailing component, so each crate path is enumerated explicitly
+        // (mirroring the `arch/sys-*` rows above).
+        ("arch/floor-linux-x86-64", Category::Foundation),
+        ("arch/floor-linux-aarch64", Category::Foundation),
+        ("arch/floor-none-aarch64", Category::Foundation),
+        ("arch/floor-none-x86-64", Category::Foundation),
         ("lib/*", Category::Foundation),
         // kabi/* = down-face contract tier (SP01/SP02); classifies as Foundation
         // because the coarse matrix expresses tier relationships; the finer
@@ -192,6 +202,7 @@ pub fn default_category_table() -> Vec<(String, Category)> {
 /// assert!(grants.get("reovim-uapi-protocol")
 ///     .is_some_and(|v| v.iter().any(|g| g == "reovim-uapi-abi")));
 /// ```
+#[allow(clippy::too_many_lines)] // flat grant table: length tracks edge count, not control-flow
 #[must_use]
 pub fn default_foundation_grants() -> std::collections::BTreeMap<String, Vec<String>> {
     let mut m = std::collections::BTreeMap::new();
@@ -275,6 +286,46 @@ pub fn default_foundation_grants() -> std::collections::BTreeMap<String, Vec<Str
     // sole Foundation edge is the SP07 lib/testrt dep above.
     m.insert("reovim-arch-sys-linux-x86-64".to_owned(), vec!["reovim-testrt".to_owned()]);
     m.insert("reovim-arch-sys-linux-aarch64".to_owned(), vec!["reovim-testrt".to_owned()]);
+    // ── SP03 arch-floor (language floor) grants ──────────────────────────────
+    // Each per-target language-floor crate carries exactly three Foundation
+    // edges: its matching `arch-sys-{target}` (the `exit_group`/`write`/clock
+    // syscall floor + the `DTB_PTR`/`MULTIBOOT_INFO_PTR` boot-pointer statics the
+    // `_start` asm names by `sym`), `kabi/panic` (the registry the relocated
+    // `#[panic_handler]` reads), and `uapi/panic` (the `Disposition`/`PanicRecord`
+    // value types the handler + `rust_eh_personality` name). The floor names NO
+    // `arch` edge — that would close the floor→product airlock (invariant #8).
+    m.insert(
+        "reovim-arch-floor-linux-x86-64".to_owned(),
+        vec![
+            "reovim-arch-sys-linux-x86-64".to_owned(),
+            "reovim-kabi-panic".to_owned(),
+            "reovim-uapi-panic".to_owned(),
+        ],
+    );
+    m.insert(
+        "reovim-arch-floor-linux-aarch64".to_owned(),
+        vec![
+            "reovim-arch-sys-linux-aarch64".to_owned(),
+            "reovim-kabi-panic".to_owned(),
+            "reovim-uapi-panic".to_owned(),
+        ],
+    );
+    m.insert(
+        "reovim-arch-floor-none-aarch64".to_owned(),
+        vec![
+            "reovim-arch-sys-none-aarch64".to_owned(),
+            "reovim-kabi-panic".to_owned(),
+            "reovim-uapi-panic".to_owned(),
+        ],
+    );
+    m.insert(
+        "reovim-arch-floor-none-x86-64".to_owned(),
+        vec![
+            "reovim-arch-sys-none-x86-64".to_owned(),
+            "reovim-kabi-panic".to_owned(),
+            "reovim-uapi-panic".to_owned(),
+        ],
+    );
     // ── SP02 platform-provider grants ───────────────────────────────────────
     // The POSIX provider implements the down-face kabi/platform contract: it
     // names the canonical Fd/OpenFlags/Mode newtypes (uapi/posix) at the slot
@@ -2108,18 +2159,23 @@ fn swapset_group(path: &str) -> Option<String> {
 /// crate below the import airlock no product may name by import.
 ///
 /// The floor family is: `reovim-arch` itself, the per-target raw-mechanism
-/// crates carved out of it (`reovim-arch-sys-*`, SP01), and the platform
-/// providers that canonicalize NATIVE→POSIX above it (`reovim-platform-*`,
-/// SP02). The firewall probe uses this to detect a DIRECT edge to any of them.
+/// crates carved out of it (`reovim-arch-sys-*`, SP01), the platform providers
+/// that canonicalize NATIVE→POSIX above it (`reovim-platform-*`, SP02), and the
+/// per-target language-floor lang-item crates (`reovim-arch-floor-*`, SP03).
+/// The firewall probe uses this to detect a DIRECT edge to any of them.
 #[must_use]
 fn is_floor_crate_name(name: &str) -> bool {
     // `reovim-arch` plus the per-target raw-mechanism crates carved out of it
-    // (SP01: `reovim-arch-sys-{linux,none}-{x86-64,aarch64}`) plus the platform
-    // providers above it (SP02: `reovim-platform-linux-native`). They are all
-    // floor-family crates, so a direct product edge naming any of them is a
-    // floor edge the firewall must detect (fd countdown ruling).
+    // (SP01: `reovim-arch-sys-{linux,none}-{x86-64,aarch64}`), the platform
+    // providers above it (SP02: `reovim-platform-linux-native`), and the
+    // per-target language floors (SP03: `reovim-arch-floor-{linux,none}-{…}`).
+    // They are all floor-family crates, so a direct product edge naming any of
+    // them is a floor edge the firewall must detect (fd countdown ruling).
+    // `reovim-arch-floor-*` is matched before the `reovim-arch-sys-` prefix
+    // check would matter — the two prefixes are disjoint, so order is moot.
     name == "reovim-arch"
         || name.starts_with("reovim-arch-sys-")
+        || name.starts_with("reovim-arch-floor-")
         || name.starts_with("reovim-platform-")
 }
 

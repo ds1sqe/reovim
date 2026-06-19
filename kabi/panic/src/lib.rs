@@ -9,8 +9,8 @@
 //!
 //! ## Atom set
 //!
-//! Five independently-optional write-once slots mirror the registration surface
-//! that `arch/src/panic.rs` currently owns (6.2 §5.2):
+//! Six independently-optional fault-floor slots mirror the registration surface
+//! the AB12 panic handler reads (6.2 §5.2):
 //!
 //! | Atom | Storage | Sentinel | [`uapi/panic`] alias |
 //! |---|---|---|---|
@@ -19,10 +19,18 @@
 //! | state-record hook | `AtomicUsize` | `0` | [`StateRecordHookFn`] |
 //! | disposition | `AtomicU8` | `0` (unset) | — ([`Disposition`] encoded as `u8`) |
 //! | pre-exit hook | `AtomicUsize` | `0` | [`PreExitHookFn`] |
+//! | cleanup-context (AB13) | `AtomicU8` | `0` (normal) | — (re-settable flag) |
 //!
-//! The atoms are independent: none depends on another being set. The handler
-//! reads each independently and falls back to safe defaults (stderr, halt) when
-//! any is unset (6.2 §5.2).
+//! The first five are **write-once** fn-pointer atoms (the first `set_*` wins
+//! via CAS; a second is rejected). The sixth — the AB13 cleanup-context marker
+//! — is the one **re-settable** member: it is raised/lowered around a
+//! shutdown/drop/unregister sequence (`enter_cleanup_context`/
+//! `clear_cleanup_context`), not registered once, so it uses plain `store`/
+//! `load` rather than the write-once CAS. This is why `kabi/panic` has six
+//! atoms but only five write-once setters. The atoms are independent: none
+//! depends on another being set. The handler reads each independently and falls
+//! back to safe defaults (stderr, halt, normal context) when any is unset
+//! (6.2 §5.2).
 //!
 //! ## Write-once contract (6.2 §5.2)
 //!
@@ -64,13 +72,14 @@ pub use reovim_uapi_panic::{
     Disposition, PanicRecord, PreExitHookFn, RingTailProviderFn, StateRecordHookFn,
 };
 
-// ── write-once atomic statics (6.2 §5.2) ─────────────────────────────────────
+// ── fault-floor atomic statics (6.2 §5.2) ────────────────────────────────────
 //
-// Five atoms mirror the full registration surface of `arch/src/panic.rs`.
+// Six atoms mirror the full registration surface the AB12 panic handler reads.
 // They are individually optional — the handler falls back to safe defaults when
 // any is unset. Storing fn pointers as their address in `AtomicUsize` (0 =
-// unregistered) is the same discipline arch uses; a `Disposition` is stored as
-// an encoded `u8` in `AtomicU8` (0 = unregistered).
+// unregistered) is the same discipline arch used; a `Disposition` is stored as
+// an encoded `u8` in `AtomicU8` (0 = unregistered). The first five are
+// write-once; the sixth (the AB13 cleanup-context flag) is re-settable.
 
 /// The LOG7 file-sink fd for the final flush. `-1` = unregistered.
 static FLUSH_FD: AtomicI32 = AtomicI32::new(FLUSH_FD_UNSET);
@@ -86,6 +95,13 @@ static DISPOSITION: AtomicU8 = AtomicU8::new(DISPOSITION_UNSET);
 
 /// The pre-exit hook address. `0` = unregistered.
 static PRE_EXIT_HOOK: AtomicUsize = AtomicUsize::new(0);
+
+/// The AB13 cleanup-context marker. `0` = normal context, `1` = cleanup.
+/// Unlike the five write-once hook atoms this is a re-settable runtime flag
+/// (raised/lowered around a shutdown/drop/unregister), not a one-shot
+/// registration — so it carries no write-once CAS, only Release stores and an
+/// Acquire load (6.2 §AB13).
+static CLEANUP_CONTEXT: AtomicU8 = AtomicU8::new(0);
 
 // ── sentinel constants ────────────────────────────────────────────────────────
 
@@ -359,6 +375,48 @@ pub fn get_pre_exit_hook() -> Option<PreExitHookFn> {
     }
 }
 
+// ── AB13 cleanup-context (re-settable, not write-once) ──────────────────────────
+
+/// Raises the AB13 cleanup-context marker (6.2 §AB13). A panic while this is
+/// set records `rollback = failed`. Release pairs with the handler's Acquire.
+///
+/// ```no_run
+/// // Process-global write — not safe to run in the parallel doctest harness.
+/// use reovim_kabi_panic::{enter_cleanup_context, clear_cleanup_context};
+/// enter_cleanup_context();
+/// // ... perform cleanup ...
+/// clear_cleanup_context();
+/// ```
+pub fn enter_cleanup_context() {
+    CLEANUP_CONTEXT.store(1, Release);
+}
+
+/// Lowers the AB13 cleanup-context marker. Safe to call without a prior enter.
+///
+/// ```no_run
+/// // Process-global write — not safe to run in the parallel doctest harness.
+/// use reovim_kabi_panic::clear_cleanup_context;
+/// clear_cleanup_context(); // safe to call even without a prior enter
+/// ```
+pub fn clear_cleanup_context() {
+    CLEANUP_CONTEXT.store(0, Release);
+}
+
+/// Reads the AB13 cleanup-context marker (Acquire). `true` = a panic now
+/// records `rollback = failed`. No install gate (Platform-Contract §3.4).
+///
+/// ```rust
+/// use reovim_kabi_panic::get_cleanup_context;
+///
+/// // Readable with no kabi/platform installed — the fault-floor seam is
+/// // always present. The value depends on prior enter/clear calls.
+/// let _ = get_cleanup_context();
+/// ```
+#[must_use]
+pub fn get_cleanup_context() -> bool {
+    CLEANUP_CONTEXT.load(Acquire) != 0
+}
+
 // ── shared helper ─────────────────────────────────────────────────────────────
 
 /// Shared write-once CAS for a fn-pointer hook stored as a `usize` address.
@@ -380,9 +438,10 @@ fn set_fn_hook(slot: &AtomicUsize, value: usize) -> Result<(), SetError> {
 /// selftest runner, which executes many panic-path cases in one
 /// single-threaded sequential binary and must restore the registry to a clean
 /// state between cases. It is gated on the `selftest` feature so the production
-/// fault floor carries no reset path. Mirrors what `arch::panic::reset_registry`
-/// did before the atoms were relocated here; arch's `reset_registry` now
-/// forwards to this function (and still resets its own `CLEANUP_CONTEXT` flag).
+/// fault floor carries no reset path. The no_std panic-path selftest runner is
+/// the sole caller; it clears all six atoms (the five write-once hooks AND the
+/// AB13 cleanup-context marker, reset on the last line) between sequential
+/// cases.
 #[cfg(feature = "selftest")]
 pub fn reset() {
     use core::sync::atomic::Ordering::Relaxed;
@@ -391,6 +450,7 @@ pub fn reset() {
     STATE_RECORD_HOOK.store(0, Relaxed);
     DISPOSITION.store(DISPOSITION_UNSET, Relaxed);
     PRE_EXIT_HOOK.store(0, Relaxed);
+    CLEANUP_CONTEXT.store(0, Relaxed);
 }
 
 // L12 layout: tests live in the sibling file `tests.rs`, declared as a
