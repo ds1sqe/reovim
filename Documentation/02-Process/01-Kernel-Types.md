@@ -56,7 +56,7 @@ Math-or-World core. The distinction is **sovereignty**, not kernel-hood:
   Math-layer core renders the editor kernel's truth and normalizes input
   back. Same fractal, same Math layer, non-sovereign.
 
-Crate names: system → `lib/machine-kernel`; editor → `server/lib/kernel`
+Crate names: system → `lib/machine-kernel`; editor → `editor/lib/kernel`
 (this chapter); client → `client-kernel`.
 
 ### 0.2 Editor / system split — by contract, not by privilege

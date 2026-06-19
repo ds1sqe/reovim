@@ -1,7 +1,7 @@
 # 8.1 — Client Layer Model
 
-**Scope.** The closed `clients/lib/subsys/*` contract tier and the
-open `ext/client/{platforms,driver,module,capabilities}/*`
+**Scope.** The closed `client/lib/subsys/*` contract tier and the
+open `client/{platforms,drivers,modules,capabilities}/*`
 implementation tier. Allowed cross-category edges and the role of
 the launcher.
 
@@ -15,15 +15,15 @@ the launcher.
 
 ```
 apps/*
-  └─ ext/client/platforms/<p>/        # platform runtime host
-      └─ clients/lib/subsys/*         # closed client contracts
+  └─ client/platforms/<p>/            # platform runtime host
+      └─ client/lib/subsys/*          # closed client contracts
       └─ runtime-loaded client drivers/modules/capabilities
 ```
 
 ## 2. Subsys contract tier
 
 ```
-clients/lib/subsys/
+client/lib/subsys/
 ├── module          ClientModule trait, ModuleContext, lifecycle
 ├── chrome          ChromeSurface trait, projection cache
 ├── render          RenderTarget trait, render-pipeline contracts
@@ -35,17 +35,17 @@ clients/lib/subsys/
 └── driver-loader   safe wrapper for runtime-loaded drivers
 ```
 
-> **CL1 — Subsys is closed-contract.** `clients/lib/subsys/*` MUST
-> NOT depend on any `ext/client/*`. *Class*: depgraph (CI).
+> **CL1 — Subsys is closed-contract.** `client/lib/subsys/*` MUST
+> NOT depend on any `client/*` open extensions. *Class*: depgraph (CI).
 
 ## 3. Implementation tier
 
 ```
-ext/client/
+client/
 ├── platforms/<p>/         # platform runtime + platform-core
 │                          # (e.g. tui, web, native)
-├── driver/<d>/            # impls of subsys contracts
-├── module/<m>/            # client-side policy modules
+├── drivers/<d>/           # impls of subsys contracts
+├── modules/<m>/           # client-side policy modules
 └── capabilities/<k>/      # capability impls (cell, dom, ...)
 ```
 
@@ -57,7 +57,7 @@ Naming rules:
 - "driver" on the client side means **open extension implementing
   a subsys contract** (same meaning as server).
 - "subsys" means **closed-contract tier**.
-- Flat: `ext/client/<category>/<crate>/`. No platform-nested
+- Flat: `client/<category>/<crate>/`. No platform-nested
   sub-paths.
 - Crate naming: `reovim-client-<tier>-<name>` where `<tier>` is
   `subsys` or `ext`.
@@ -67,34 +67,34 @@ Naming rules:
 Per `01-Architecture/02-Project-Layout-and-DAG.md` §2:
 
 ```
-apps/reovim                → ext/client/platforms/<p>/
-ext/client/platforms/<p>/  → clients/lib/subsys/*/
-ext/client/driver/<d>/     → clients/lib/subsys/*/
-ext/client/driver/<d>/     → ext/client/platforms/<p>/
-ext/client/driver/<d>/     → ext/client/capabilities/<k>/
-ext/client/driver/<d1>/    → ext/client/driver/<d2>/   (sub-DAG)
-ext/client/capabilities/<k>/ → clients/lib/subsys/*/
-ext/client/capabilities/<k1>/ → ext/client/capabilities/<k2>/ (sub-DAG)
-ext/client/module/<m>/     → clients/lib/subsys/*/
-ext/client/module/<m>/     → ext/client/capabilities/<k>/
-ext/client/module/<m>/     → ext/client/platforms/<p>/
-ext/client/module/<m>/     → ext/client/driver/<d>/
-ext/client/module/<m1>/    → ext/client/module/<m2>/   (sub-DAG)
+apps/reovim                → client/platforms/<p>/
+client/platforms/<p>/      → client/lib/subsys/*/
+client/drivers/<d>/        → client/lib/subsys/*/
+client/drivers/<d>/        → client/platforms/<p>/
+client/drivers/<d>/        → client/capabilities/<k>/
+client/drivers/<d1>/       → client/drivers/<d2>/      (sub-DAG)
+client/capabilities/<k>/   → client/lib/subsys/*/
+client/capabilities/<k1>/  → client/capabilities/<k2>/ (sub-DAG)
+client/modules/<m>/        → client/lib/subsys/*/
+client/modules/<m>/        → client/capabilities/<k>/
+client/modules/<m>/        → client/platforms/<p>/
+client/modules/<m>/        → client/drivers/<d>/
+client/modules/<m1>/       → client/modules/<m2>/      (sub-DAG)
 ```
 
 ## 5. Forbidden cross-category edges
 
 ```
-ext/client/platforms/*  → ext/client/driver/*
-ext/client/platforms/*  → ext/client/module/*
-ext/client/platforms/*  → ext/client/capabilities/*
-ext/client/capabilities/* → ext/client/driver/*
-ext/client/capabilities/* → ext/client/module/*
-ext/client/capabilities/* → ext/client/platforms/*
-ext/client/driver/*     → ext/client/module/*
-clients/lib/subsys/*    → ext/client/*
-apps/reovim         → clients/lib/subsys/*
-apps/reovim         → ext/client/{driver,module,capabilities}/*
+client/platforms/*      → client/drivers/*
+client/platforms/*      → client/modules/*
+client/platforms/*      → client/capabilities/*
+client/capabilities/*   → client/drivers/*
+client/capabilities/*   → client/modules/*
+client/capabilities/*   → client/platforms/*
+client/drivers/*        → client/modules/*
+client/lib/subsys/*     → client/*
+apps/reovim         → client/lib/subsys/*
+apps/reovim         → client/{drivers,modules,capabilities}/*
 ```
 
 > **CL9 — Forbidden client cross-category edges.** *Class*:
@@ -143,8 +143,8 @@ apps/reovim         → ext/client/{driver,module,capabilities}/*
 
 | Rule | Fixture |
 |---|---|
-| CL1 | Probe over `clients/lib/subsys/*`; any dep on `ext/client/*` → fail. |
-| CL2 | Crate at `ext/client/<unknown-category>/x` → fail. |
+| CL1 | Probe over `client/lib/subsys/*`; any dep on `client/*` open extensions → fail. |
+| CL2 | Crate at `client/<unknown-category>/x` → fail. |
 | CL3 | Embedded launch shows separate `ClientRuntime` and `Kernel` ownership. |
 | CL4 | Render driver cdylib without `debug` vtable → debug surface not provided by it. |
 | CL5 | Server logs show debug payloads passed through opaque (no framed-protocol field decoding of capability bodies). |

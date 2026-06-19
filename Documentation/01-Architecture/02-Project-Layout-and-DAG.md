@@ -19,24 +19,23 @@ category.
 | Category | Paths | Role |
 |---|---|---|
 | Foundation | `arch/` (→ `arch-sys-*`, `arch-floor-*`), `platform-*`, `lib/*`, `uapi/*`, `kabi/*` | Backend floor and its hard-split families (raw mechanism `arch-sys-*`, lang-item floor `arch-floor-*`, canonicalizing providers `platform-*`; §12), core libraries incl. `lib/ds` DS algorithms, up-face ABI (`uapi/*`), down-face platform/device/panic contracts (`kabi/*`). No upward deps. |
-| Server contracts | `server/lib/subsys/*` | Closed server contracts and safe wrappers. No ext deps. |
-| Server kernel | `server/lib/kernel/*` | Kernel mechanisms. No ext or client deps. |
-| Server runtime | `server/lib/server/*` | Framed-protocol and dispatch glue. |
-| Client contracts | `clients/lib/subsys/*` | Closed client contracts. No ext or platform deps. |
-| Server extensions | `ext/server/{modules,drivers,providers,domain}` | Runtime-loaded server policy/mechanics. |
-| Client extensions | `ext/client/{platforms,driver,module,capabilities}` | Platform runtimes and client open implementations. |
-| System extensions | `ext/system/drivers/*` | Build-time-linked machine drivers, registered via the in-tree `#[used]`-section registry (not runtime-loaded). World side, below the `kabi/device`/`kabi/platform` contracts (T3, §12). Distinct from the runtime-loaded `ext/server/drivers/*`. |
+| Server contracts | `editor/lib/subsys/*` | Closed server contracts and safe wrappers. No ext deps. |
+| Server kernel | `editor/lib/kernel/*` | Kernel mechanisms. No ext or client deps. |
+| Server runtime | `editor/lib/server/*` | Framed-protocol and dispatch glue. |
+| Client contracts | `client/lib/subsys/*` | Closed client contracts. No ext or platform deps. |
+| Server extensions | `editor/{modules,drivers,providers,domains}` | Runtime-loaded server policy/mechanics. |
+| Client extensions | `client/{platforms,drivers,modules,capabilities}` | Platform runtimes and client open implementations. |
+| System extensions | `ext/system/drivers/*` | Build-time-linked machine drivers, registered via the in-tree `#[used]`-section registry (not runtime-loaded). World side, below the `kabi/device`/`kabi/platform` contracts (T3, §12). Distinct from the runtime-loaded `editor/drivers/*`. |
 | Composition roots | `apps/*` | User-facing binaries and app libraries. |
 | Tools | `tools/*` | Dev / test / perf only. Non-shipping. |
 | Archive | `archive/*` | Non-normative heritage. Excluded from depgraph. |
 
-The four `ext/client/<category>/` are: `platforms`, `driver`,
-`module`, `capabilities`. Singular `driver` and `module`; plural
-`capabilities`.
+The four `client/<category>/` are: `platforms`, `drivers`,
+`modules`, `capabilities`. All plural.
 
 **"driver" is three distinct families — qualify it always.**
-`ext/server/drivers/*` (runtime-loaded server-policy cdylibs),
-`ext/client/driver/*` (client open-implementation cdylibs), and
+`editor/drivers/*` (runtime-loaded server-policy cdylibs),
+`client/drivers/*` (client open-implementation cdylibs), and
 `ext/system/drivers/*` (build-time machine drivers, `#[used]`-section). The
 "driver vtable" of `06-ABI/05-Platform-Contract.md` §3.1 refers to the
 runtime-loaded cdylib seam, **not** the build-time system drivers, which
@@ -54,17 +53,17 @@ categories".
 | `lib/ds` | `kabi/*` only — reaches its backend through the boot-installed handle; **never names `arch`** (the `lib/ds ⊄ arch` firewall). Overrides the generic `lib/*` row. |
 | `uapi/*` | `lib/*` only when the dep is target-neutral and ABI-safe; no server/client/ext/apps |
 | `kabi/*` | nothing impl-side — `core` + target-neutral `lib/*` only; declares the down-face contract and owns the platform-handle global static and `AllocError`; **no `kabi → arch`** |
-| `server/lib/subsys/*` | `uapi/*`, `lib/*`, `arch/`, allowed peer subsys edges |
-| `server/lib/kernel/*` | `server/lib/subsys/*`, `uapi/*`, `lib/*`, `arch/` |
-| `server/lib/server/*` | `server/lib/kernel/*`, `server/lib/subsys/*`, `uapi/protocol`, `lib/*` |
-| `clients/lib/subsys/*` | `uapi/*`, `lib/*`, `arch/`, allowed client-subsys DAG edges |
-| `ext/server/*` | `server/lib/subsys/*`, `uapi/*`, `lib/*`; named ext peers per manifest |
-| `ext/client/platforms/*` | `clients/lib/subsys/*`, `uapi/*`, `lib/*` |
-| `ext/client/driver/*` | `clients/lib/subsys/*`, `uapi/*`, `lib/*`, optional platform/capability contracts |
-| `ext/client/module/*` | `clients/lib/subsys/*`, `uapi/*`, `lib/*`, capability contracts; no platform IO except via capabilities |
-| `ext/client/capabilities/*` | `clients/lib/subsys/*`, `uapi/*`, `lib/*`, peer capability sub-DAG |
+| `editor/lib/subsys/*` | `uapi/*`, `lib/*`, `arch/`, allowed peer subsys edges |
+| `editor/lib/kernel/*` | `editor/lib/subsys/*`, `uapi/*`, `lib/*`, `arch/` |
+| `editor/lib/server/*` | `editor/lib/kernel/*`, `editor/lib/subsys/*`, `uapi/protocol`, `lib/*` |
+| `client/lib/subsys/*` | `uapi/*`, `lib/*`, `arch/`, allowed client-subsys DAG edges |
+| `editor/*` | `editor/lib/subsys/*`, `uapi/*`, `lib/*`; named ext peers per manifest |
+| `client/platforms/*` | `client/lib/subsys/*`, `uapi/*`, `lib/*` |
+| `client/drivers/*` | `client/lib/subsys/*`, `uapi/*`, `lib/*`, optional platform/capability contracts |
+| `client/modules/*` | `client/lib/subsys/*`, `uapi/*`, `lib/*`, capability contracts; no platform IO except via capabilities |
+| `client/capabilities/*` | `client/lib/subsys/*`, `uapi/*`, `lib/*`, peer capability sub-DAG |
 | `apps/server` | server runtime/contracts/foundation only; no concrete client extension crates |
-| `apps/tui`, `apps/web` | selected `ext/client/platforms/<p>` plus client contracts/foundation |
+| `apps/tui`, `apps/web` | selected `client/platforms/<p>` plus client contracts/foundation |
 | `apps/cli` | protocol/client CLI support; no server or extension implementation stack |
 | `apps/reovim` | sibling app library targets and selected platform runtime under explicit `embedded-*` feature gates |
 | `tools/*` | any in-repo crate if non-shipping and named in the probe catalog |
@@ -77,10 +76,10 @@ no row grants a third-party crate (`DAG5`, §9).
 | From | Must not depend on |
 |---|---|
 | **Every category** | third-party crates, in any dependency table (`DAG5`, §9) |
-| Foundation | `server/*`, `clients/*`, `ext/*`, `apps/*`, `tools/*` |
+| Foundation | `editor/*`, `client/*`, `ext/*`, `apps/*`, `tools/*` |
 | Server contracts | `ext/*`, `apps/*`, concrete Domain/provider modules |
-| Server kernel | `ext/*`, `apps/*`, `clients/*`, server runtime, concrete Domain/provider modules |
-| Client contracts | `ext/client/*`, `apps/*`, server kernel/runtime internals |
+| Server kernel | `ext/*`, `apps/*`, `client/*`, server runtime, concrete Domain/provider modules |
+| Client contracts | `client/*`, `apps/*`, server kernel/runtime internals |
 | Server extensions | `apps/*`, client platform/runtime crates, server kernel internals |
 | Client extensions | `apps/*`, server kernel/runtime internals, concrete server extension crates |
 | Non-launcher apps | sibling app crates |
@@ -439,15 +438,15 @@ Until then this section is the target the scaffold builds toward, not a gate.
 | kernels depend on the contract, not the floor | `editor-kernel → kabi/platform`; `client-kernel → kabi/platform`; data structures via `lib/ds`; **no** `*-kernel → arch` |
 | one owner of the floor, per mode | impl edges `arch(hosted) → kabi/platform` and `system-kernel → kabi/platform`; plus `system-kernel → arch` |
 | client two-substrate | `client-kernel → uapi/protocol` is the only cross-kernel edge; **no** direct `client-kernel → editor-kernel` |
-| device bridge is a closed contract | `ext/server/domain/* → kabi/device`; provider impls `arch(hosted) → kabi/device` and `system-kernel → kabi/device`; **no** `domain → driver` or `domain → arch` |
+| device bridge is a closed contract | `editor/domains/* → kabi/device`; provider impls `arch(hosted) → kabi/device` and `system-kernel → kabi/device`; **no** `domain → driver` or `domain → arch` |
 | client I/O is capability-mediated | `client-kernel → render`/capability subsys; client I/O drivers bottom out on `kabi/device` (bare metal) or platform fd-I/O (hosted); **no** `client-kernel → arch`, **no** `client-kernel → driver` |
 
 Two of these are already locked under existing rules and need no new
 machinery: "drivers are loaded, not linked" is **DAG4** (§4) — each kernel
 binds drivers by vtable, never by Cargo edge; "no client platform IO except
-via capabilities" is the `ext/client/module/*` row of §2.
+via capabilities" is the `client/modules/*` row of §2.
 
-**Supersession (the one real change to §2).** Row `server/lib/kernel/*` in
+**Supersession (the one real change to §2).** Row `editor/lib/kernel/*` in
 §2 currently grants `→ arch`. When `kabi/platform` lands, that grant is
 **removed**: the editor kernel will name only `kabi/platform` (and `lib/ds`
 for data structures), and a `*-kernel → arch` edge becomes a depgraph

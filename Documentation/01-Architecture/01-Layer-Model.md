@@ -16,16 +16,16 @@ and `08-Client/01-Layer-Model.md` (`CL*`).
 │ COMPOSITION   apps/server, apps/tui, apps/cli, apps/web,        │
 │               apps/reovim (launcher; embedded + subprocess)     │
 ├─────────────────────────────────────────────────────────────────┤
-│ EXT (server)  ext/server/{modules, drivers, providers, domain}  │
-│ EXT (client)  ext/client/{platforms, driver, module,            │
-│                          capabilities}    (flat-category tree)  │
+│ EXT (server)  editor/{modules, drivers, providers, domains}     │
+│ EXT (client)  client/{platforms, drivers, modules,              │
+│                       capabilities}       (flat-category tree)  │
 ├─────────────────────────────────────────────────────────────────┤
-│ RUNTIME       server/lib/server/* (framed protocol, dispatch glue) │
+│ RUNTIME       editor/lib/server/* (framed protocol, dispatch glue) │
 ├─────────────────────────────────────────────────────────────────┤
-│ KERNEL        server/lib/kernel/* (Kernel, registries, scheduler) │
+│ KERNEL        editor/lib/kernel/* (Kernel, registries, scheduler) │
 ├─────────────────────────────────────────────────────────────────┤
-│ CONTRACTS     server/lib/subsys/* (closed server contracts)     │
-│               clients/lib/subsys/* (closed client contracts)    │
+│ CONTRACTS     editor/lib/subsys/* (closed server contracts)     │
+│               client/lib/subsys/* (closed client contracts)     │
 ├─────────────────────────────────────────────────────────────────┤
 │ FOUNDATION    uapi/* · kabi/* · lib/* · platform-* · arch-*     │
 └─────────────────────────────────────────────────────────────────┘

@@ -268,7 +268,7 @@ and go straight through the gated barrier.
 
 - **Substrate (this chapter)** — effect typing, acquire/render split,
   commit barrier semantics, capability traits. Mechanism.
-- **`ext/server/domain/*`** — concrete device Domains (mem, register,
+- **`editor/domains/*`** — concrete device Domains (mem, register,
   GPIO, fuse). Implement the effect-typed contract. The first earned
   Domain (GPIO or mem) ships in 0.16; the rest stay unbuilt until earned.
 - **Client modules** — dangerous-action confirmation UX, live/staleness
@@ -285,7 +285,7 @@ never merge:
 | Role | What it is | Layer | Home |
 |---|---|---|---|
 | Hardware that runs the machine | xHCI + USB enum + HID → input; GPIO MMIO (UART pins, reset, LED) | **World** — system-kernel driver | `ext/system/drivers/{xhci, usb-hid-kbd, gpio, emmc, …}` |
-| Content the user edits | GPIO-as-buffer; register/serial opened as a buffer | **Math-ish** — editor device Domain | `ext/server/domain/{gpio, mem, register}` |
+| Content the user edits | GPIO-as-buffer; register/serial opened as a buffer | **Math-ish** — editor device Domain | `editor/domains/{gpio, mem, register}` |
 
 The **driver** touches MMIO → World, system-kernel-owned, *below* the
 contract. The **Domain** edits a buffer → editor-owned, *above* it. GPIO is
@@ -311,7 +311,7 @@ the capability planes of §6 (Stream / Addressed / Control) plus `effects()`,
 under the same vtable doctrine as the platform handle.
 
 ```text
-Domain (ext/server/domain/gpio)            [Math, above the airlock]
+Domain (editor/domains/gpio)               [Math, above the airlock]
   declares: plane = Addressed, effects = {read: Volatile, write: Triggering}
         │ open(device_ref) → DeviceHandle  (capability-gated; no ambient authority)
         ▼

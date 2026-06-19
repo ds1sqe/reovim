@@ -10,7 +10,7 @@ and the platform-specific config surface.
 
 ## 1. Platform runtime contract
 
-A platform runtime crate at `ext/client/platforms/<p>/` exports:
+A platform runtime crate at `client/platforms/<p>/` exports:
 
 ```rust
 pub fn run(args: PlatformArgs) -> Result<(), PlatformError>;
@@ -32,14 +32,14 @@ The runtime owns:
 
 | Platform | Crate | Status |
 |---|---|---|
-| TUI | `ext/client/platforms/tui/` | Active (#753) |
-| Web | `ext/client/platforms/web/` | Active (#753 Phase E.1) |
-| Native | `ext/client/platforms/native/` | Out of target |
+| TUI | `client/platforms/tui/` | Active (#753) |
+| Web | `client/platforms/web/` | Active (#753 Phase E.1) |
+| Native | `client/platforms/native/` | Out of target |
 
 The first realization (#797) ships the TUI as a single thin crate at
-`ext/client/platforms/tui/`: the UDS carrier, the framed handshake,
+`client/platforms/tui/`: the UDS carrier, the framed handshake,
 and the raw-`termios`/ANSI paint live together until the second
-platform or driver consumer arrives; the 8.1 `clients/lib/subsys/*`
+platform or driver consumer arrives; the 8.1 `client/lib/subsys/*`
 split and the 8.3 cdylib tiers grow out of that crate, not beside it.
 The thin crate is the documented predecessor, not a competing design.
 
@@ -152,7 +152,7 @@ on platform-handle fd-I/O.
 
 | Side | Shipped contract | Live implementors |
 |---|---|---|
-| Output | `RenderProjector` (`server/lib/subsys/domain/src/contract.rs`) | 1 — `TextProjector` (others are test mocks) |
+| Output | `RenderProjector` (`editor/lib/subsys/domain/src/contract.rs`) | 1 — `TextProjector` (others are test mocks) |
 | Input (server-side) | `OnRawInputHandler` | 1 — terminal/termios source |
 | Input (client-side) | **none yet** | — |
 

@@ -33,7 +33,7 @@ RTOS-itself needs a real machine kernel, not just `arch` plus the editor
 kernel. `arch/` stays the smallest unsafe/hardware boundary (no policy);
 `MachineInit`/`MachineKernel` (names open) own the kernel services that are
 too large to hide inside `arch::sys`, then call the existing editor boot as
-a payload. This keeps `server/lib/kernel` from becoming an accidental
+a payload. This keeps `editor/lib/kernel` from becoming an accidental
 operating-system kernel.
 
 | Layer | Owns |

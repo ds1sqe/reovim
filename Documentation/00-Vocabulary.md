@@ -75,12 +75,12 @@ in the chapter that owns them.
 | **Foundation** | `arch/`, `lib/*`, `uapi/*`. No upward deps. |
 | **Platform floor** | `arch/` in its `DAG6` role: the single crate owning the platform FFI (each target's lowest stable boundary, per the 1.2 §10 target-class table), process entry/exit, the panic handler, the allocator, sync primitives, and all heap data structures (1.2 §10). |
 | **Bootstrap state** | A tracked, transitional zero-std exemption recorded in the 1.2 §10 table (libtest in test builds; depgraph/scripts ground tooling). Sequencing necessity, never convenience; ratchets to zero. |
-| **Server contracts** | `server/lib/subsys/*`. Closed; zero ext deps. |
-| **Server kernel** | `server/lib/kernel/*`. Mechanism; no ext or client deps. |
-| **Server runtime** | `server/lib/server/*`. Framed-protocol + dispatch glue. |
-| **Client contracts** | `clients/lib/subsys/*`. Closed; zero ext deps. |
-| **Server extensions** | `ext/server/{modules,drivers,providers,domain}`. Runtime-loaded. |
-| **Client extensions** | `ext/client/{platforms,driver,module,capabilities}`. Flat-category tree. |
+| **Server contracts** | `editor/lib/subsys/*`. Closed; zero ext deps. |
+| **Server kernel** | `editor/lib/kernel/*`. Mechanism; no ext or client deps. |
+| **Server runtime** | `editor/lib/server/*`. Framed-protocol + dispatch glue. |
+| **Client contracts** | `client/lib/subsys/*`. Closed; zero ext deps. |
+| **Server extensions** | `editor/{modules,drivers,providers,domains}`. Runtime-loaded. |
+| **Client extensions** | `client/{platforms,drivers,modules,capabilities}`. Flat-category tree. |
 | **Composition roots** | `apps/*`. Wire layers into bins. |
 | **Tools** | `tools/*`. Dev / test / perf only. Non-shipping. |
 
