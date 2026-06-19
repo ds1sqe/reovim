@@ -255,7 +255,7 @@ impl FileSink {
         // `AlreadySet` means another sink previously registered a fd for this
         // process (multi-sink scenario, or re-open in tests). Silently accept it:
         // the first registered fd wins and is used by the panic handler.
-        let _ = reovim_arch::panic::set_flush_fd(fd);
+        let _ = reovim_kabi_panic::set_flush_fd(fd);
 
         // ── Replay ring head (LOG8) ───────────────────────────────────────────
         //

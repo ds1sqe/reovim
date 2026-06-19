@@ -4,7 +4,7 @@
 //! [`run`] is the `pub fn run(args)` platform contract entry (8.2 §1). It:
 //!
 //! 1. Registers the terminal-restore pre-exit hook via
-//!    [`arch::panic::set_pre_exit_hook`] BEFORE entering raw mode (gap-7,
+//!    [`reovim_kabi_panic::set_pre_exit_hook`] BEFORE entering raw mode (gap-7,
 //!    8.2 §2). The pre-exit hook is a process-global write-once static; if
 //!    already set (e.g. in tests), this step is skipped without error.
 //! 2. Enters raw mode on stdin (`arch::term::RawMode::enter(0)`).
@@ -29,10 +29,8 @@
 //! bidirectional muxing (poll/epoll or a second thread) is deferred.
 
 use {
-    reovim_arch::{
-        panic::set_pre_exit_hook,
-        term::{ENOTTY, RawMode},
-    },
+    reovim_arch::term::{ENOTTY, RawMode},
+    reovim_kabi_panic::set_pre_exit_hook,
     reovim_lib_ds::{
         fs::{read_fd, write_fd},
         net::UnixStream,

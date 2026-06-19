@@ -27,7 +27,7 @@
 //! kernel state escapes (LF13).
 
 use {
-    reovim_arch::panic::{PanicRecord, SetError},
+    reovim_kabi_panic::{PanicRecord, SetError},
     reovim_kabi_platform::{BootInfo, DeviceInventory},
     reovim_lib_ds::{RwLock, Shared},
 };
@@ -83,7 +83,7 @@ use crate::{
 pub struct LauncherArgs {
     /// Panic-handler disposition (sourced from launcher CLI until the config
     /// service exists). Default: `Recover` (6.2 §5).
-    pub disposition: reovim_arch::panic::Disposition,
+    pub disposition: reovim_kabi_panic::Disposition,
 
     /// Log-ring capacity in bytes (LOG6 `log-ring-bytes`). Default: 1 MiB.
     /// The config-driven form lands with the config service.
@@ -115,7 +115,7 @@ impl Default for LauncherArgs {
     /// ```
     fn default() -> Self {
         Self {
-            disposition: reovim_arch::panic::Disposition::Recover,
+            disposition: reovim_kabi_panic::Disposition::Recover,
             log_ring_bytes: 1024 * 1024, // 1 MiB
             boot_info: BootInfo::default(),
             device_inventory: DeviceInventory::default(),
@@ -216,14 +216,14 @@ static STATE_RECORD: AtomicU32 = AtomicU32::new(RECORD_EMPTY);
 ///
 /// ```rust,no_run
 /// // no_run: mutates process-global state — parallel doctests share the process.
-/// use reovim_arch::panic::{Disposition, PanicRecord};
+/// use reovim_kabi_panic::{Disposition, PanicRecord};
 /// use reovim_kernel::init::record_panic_state;
 ///
 /// let rec = PanicRecord { disposition: Disposition::Recover, rollback_failed: false };
 /// record_panic_state(rec);
 /// ```
 pub fn record_panic_state(record: PanicRecord) {
-    use reovim_arch::panic::Disposition;
+    use reovim_kabi_panic::Disposition;
     let mut bits = RECORD_POPULATED;
     if matches!(record.disposition, Disposition::Recover) {
         bits |= 1 << RECORD_DISPOSE_BIT;
@@ -249,7 +249,7 @@ pub fn record_panic_state(record: PanicRecord) {
 /// ```
 #[cfg(feature = "selftest")]
 pub fn last_panic_record() -> Option<PanicRecord> {
-    use reovim_arch::panic::Disposition;
+    use reovim_kabi_panic::Disposition;
     let bits = STATE_RECORD.load(AtomicOrdering::Relaxed);
     if bits & RECORD_POPULATED == 0 {
         return None;
@@ -465,19 +465,19 @@ impl Init {
         // Ring-tail provider: the flush mirror is allocated at compile time
         // (static BSS); `flush::ring_tail` is safe to register before any push.
         register_seam(
-            reovim_arch::panic::set_ring_tail_provider(flush::ring_tail),
+            reovim_kabi_panic::set_ring_tail_provider(flush::ring_tail),
             "ring_tail_provider",
         )?;
         // State-record hook: the boot-core stub records disposition + rollback
         // marker into the process-global STATE_RECORD slot for test inspection.
         // Full persistence is deferred.
         register_seam(
-            reovim_arch::panic::set_state_record_hook(record_panic_state),
+            reovim_kabi_panic::set_state_record_hook(record_panic_state),
             "state_record_hook",
         )?;
         // Disposition: sourced from `LauncherArgs` (spec default `Recover`
         // when the field is absent or unconfigured, 6.2 §5).
-        register_seam(reovim_arch::panic::set_disposition(args.disposition), "disposition")?;
+        register_seam(reovim_kabi_panic::set_disposition(args.disposition), "disposition")?;
 
         // ── Stages 1..7 (structural stubs, OBS1 events) ─────────────────────
         //

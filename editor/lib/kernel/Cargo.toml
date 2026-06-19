@@ -15,16 +15,18 @@ publish = false
 # Tests register via reovim_arch::arch_test! and run on the arch no_std
 # selftest runner. Off in flight builds; the selftest bin enables it.
 # The selftest bin in tests/fixtures/ enables it.
-# Enables arch/selftest so reovim_arch::testrt and arch_test! are available.
-selftest = ["reovim-arch/selftest", "reovim-subsys-domain/selftest"]
+# `dep:reovim-arch` activates the now-OPTIONAL arch dep; `reovim-arch/selftest`
+# enables arch_test!/testrt. The product flight rlib carries no arch edge (SP05a).
+selftest = ["dep:reovim-arch", "reovim-arch/selftest", "reovim-subsys-domain/selftest"]
 
 # Runtime lang items (panic_handler, _start, allocator). Needed by the
 # selftest bin and panic-path fixture bins in server/lib/kernel/tests/fixtures/.
 # Must NOT be enabled in the workspace rlib build (same constraint as arch/).
-runtime = ["reovim-arch/runtime"]
+runtime = ["dep:reovim-arch", "reovim-arch/runtime"]
 
 [dependencies]
-reovim-arch = { path = "../../../arch" }
+reovim-kabi-panic = { path = "../../../kabi/panic" }
+reovim-arch = { path = "../../../arch", optional = true }
 # Portable heap-DS algorithms (Seq/Map/Bytes/Ring/Mutex/RwLock — the kernel's
 # Vec/HashMap/String/Arc/lock analogs). Relocated from `reovim_arch::ds`/
 # `::sync` into `reovim-lib-ds` (SP03); the kernel names lib/ds, never arch's

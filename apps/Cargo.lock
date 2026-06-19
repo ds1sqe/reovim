@@ -107,7 +107,7 @@ dependencies = [
 name = "reovim-kernel"
 version = "0.16.0-dev"
 dependencies = [
- "reovim-arch",
+ "reovim-kabi-panic",
  "reovim-kabi-platform",
  "reovim-lib-ds",
  "reovim-subsys-domain",
@@ -136,6 +136,7 @@ name = "reovim-platform-tui"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-kabi-panic",
  "reovim-lib-ds",
  "reovim-uapi-abi",
  "reovim-uapi-protocol",

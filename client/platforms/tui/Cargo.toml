@@ -17,6 +17,7 @@ selftest = ["reovim-arch/selftest"]
 
 [dependencies]
 reovim-arch         = { path = "../../../arch" }
+reovim-kabi-panic   = { path = "../../../kabi/panic" }
 # Heap-DS algorithms (Seq/Bytes) relocated from `reovim_arch::ds` (SP03).
 reovim-lib-ds       = { path = "../../../lib/ds" }
 reovim-uapi-abi     = { path = "../../../uapi/abi" }

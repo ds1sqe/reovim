@@ -90,25 +90,28 @@ fn pkg_toml_optional_arch_section(name: &str, dep_rel_path: &str) -> String {
 
 // ── 1. Positive control: real workspace ───────────────────────────────────────
 
-/// After SP05 the firewall residual set is EXACTLY `{reovim-kernel,
-/// reovim-platform-tui}`: SP05 routed server-rt's + tui's net/thread through
-/// the `kabi` handle and made the (now test-only) arch dep optional + selftest-
-/// gated in server-rt, subsys-domain, and domain-text, so those three crates'
-/// product builds carry no arch edge. The kernel (panic/time/sys) and tui
-/// (panic/sys/term) keep their arch edges for SP05b/c.
+/// The firewall residual set is EXACTLY `{reovim-platform-tui}` at this stage of
+/// the product-import sever: the kernel's panic seam was re-pointed onto the
+/// `kabi/panic` home and its (now test-only) arch dep made optional + selftest-
+/// gated, so the kernel's product build carries no arch edge and leaves the
+/// residual. tui keeps its arch edge — it still names `arch::term`/`arch::sys`
+/// for raw mode, which the tui termios contract replaces, closing the residual
+/// to the empty set.
 ///
 /// The assertion is `assert_eq!` on the SET of residual crates, not
-/// `is_empty()`: it fails both on an unexpected NEW Math-kernel→arch edge AND
-/// on a stale residual that should have been closed — safe incremental closure
-/// across SP05b/c. The probe MECHANISM (and the optional-skip
-/// precision) is proven by the negative fixtures below.
+/// `is_empty()`: it fails both on an unexpected NEW product→arch edge AND on a
+/// stale residual that should have been closed — safe incremental closure as the
+/// remaining product imports are severed. The probe MECHANISM (and the
+/// optional-skip precision) is proven by the negative fixtures below.
 #[test]
-fn firewall_real_workspace_residual_equals_kernel_and_tui() {
+fn firewall_real_workspace_residual_equals_tui() {
     use std::collections::BTreeSet;
 
-    /// The crate names the firewall is still expected to flag after SP05.
-    /// Order-independent (compared as a set). SP05b/c shrink this further.
-    const EXPECTED_RESIDUAL: &[&str] = &["reovim-kernel", "reovim-platform-tui"];
+    // The crate names the firewall is still expected to flag at this stage of the
+    // product-import sever. Order-independent (compared as a set). The tui entry
+    // closes to the empty set once the tui termios contract replaces its raw-mode
+    // arch import.
+    const EXPECTED_RESIDUAL: &[&str] = &["reovim-platform-tui"];
 
     let root = common::workspace_root();
     let violations = run_firewall_probe(&root).expect("firewall probe must run on real workspace");
@@ -138,9 +141,9 @@ fn firewall_real_workspace_residual_equals_kernel_and_tui() {
     let expected: BTreeSet<&str> = EXPECTED_RESIDUAL.iter().copied().collect();
     assert_eq!(
         residual, expected,
-        "firewall: residual set must equal exactly {{reovim-kernel, \
-         reovim-platform-tui}} after SP05 — a missing entry means a residual \
-         was closed without updating this assertion (update it when SP05b/c land)"
+        "firewall: residual set must equal exactly {{reovim-platform-tui}} \
+         after SP05a — a missing entry means a residual was closed without \
+         updating this assertion (update it when SP05b lands)"
     );
 }
 
