@@ -1,6 +1,6 @@
 //! On-target integration smoke for the device enumerator (04 Phase 2/3 ACs).
 //!
-//! L12 layout: declared in `mod.rs` via
+//! L12 layout: declared in `inventory.rs` via
 //! `#[cfg(feature = "selftest")] #[path = "inventory_smoke_tests.rs"] mod ...;`,
 //! so `super::` reaches `collect_device_inventory`.
 //!

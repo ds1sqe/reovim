@@ -28,14 +28,21 @@
 #![allow(unsafe_code)]
 
 use {
-    reovim_arch::sys::{collect_boot_info, collect_device_inventory, write},
+    reovim_arch::sys::write,
     reovim_kernel::{Init, LauncherArgs},
+    // The device-neutral boot assembly lifted into the system kernel (SP04 04a);
+    // it reads the raw register/mailbox/DTB facts through the §11 impl edge.
+    reovim_system_kernel::{collect_boot_info, collect_device_inventory},
 };
 
 #[cfg(target_arch = "aarch64")]
 use {
     core::arch::asm,
-    reovim_arch::sys::{color::Color, console, fonts, framebuffer},
+    // The framebuffer (VideoCore MMIO) STAYS in the raw-mechanism crate; the
+    // console / fonts / color that render through it lifted into the system
+    // kernel with the rest of the device-neutral library.
+    reovim_arch::sys::framebuffer,
+    reovim_system_kernel::{color::Color, console, fonts},
 };
 
 #[cfg(target_arch = "x86_64")]

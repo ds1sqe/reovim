@@ -24,20 +24,17 @@
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 mod arena;
+// Raw hardware-discovery facts (asm register reads + the mailbox/arena-backed
+// memory map). The device-neutral `BootInfo` assembly that decodes them lifted
+// into `reovim-system-kernel` (SP04 04a); the raw mechanism stays here.
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 mod boot_info;
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
-pub mod color;
-#[cfg(all(target_os = "none", target_arch = "aarch64"))]
-pub mod console;
-#[cfg(all(target_os = "none", target_arch = "aarch64"))]
 pub mod errno;
-#[cfg(all(target_os = "none", target_arch = "aarch64"))]
-pub mod escape;
-#[cfg(all(target_os = "none", target_arch = "aarch64"))]
-mod fdt;
-#[cfg(all(target_os = "none", target_arch = "aarch64"))]
-pub mod fonts;
+// The VideoCore mailbox framebuffer (raw MMIO) STAYS; the `Framebuffer` type is
+// the Q2 seam the system-kernel console consumes by value (SP04 04a). The
+// console / escape parser / color model / fonts that rendered through it lifted
+// into `reovim-system-kernel` along with the FDT reader/enumerator.
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 pub mod framebuffer;
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
@@ -62,87 +59,93 @@ pub use errno::{
 /// `_start` asm in `reovim-arch-floor-none-aarch64` stashes the
 /// firmware-provided value here via a cross-crate
 /// `sym reovim_arch_sys_none_aarch64::DTB_PTR` operand, after the BSS clear
-/// and before calling Rust entry (SP03 floor split). The device-tree reader
-/// ([`dtb_ptr`]) loads it to walk the DTB and enumerate devices. Zero until
-/// stashed, and on any entry with no DTB (QEMU without `-dtb`), which the
-/// reader treats as "no device tree".
+/// and before calling Rust entry (SP03 floor split). The system kernel's
+/// device-inventory assembly reads it through the [`dtb_ptr`] accessor (the FDT
+/// parse + enumerate lifted up in SP04 04a) to walk the DTB. Zero until stashed,
+/// and on any entry with no DTB (QEMU without `-dtb`), which the reader treats as
+/// "no device tree".
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 pub static DTB_PTR: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
 
-// Runtime hardware discovery (RAM / CPU) assembled into a `BootInfo` and pushed
-// into the kernel at entry. Freestanding-only — the Linux backends carry an
-// empty default; the bare-metal payload discovers real facts.
+// ---- raw-fact provider surface for the system kernel's boot-info assembly ----
+//
+// The device-neutral `BootInfo` assembly lifted into `reovim-system-kernel`
+// (SP04 04a). The asm register reads + the mailbox/arena raw mechanism it
+// decodes STAY here (invariant #4, asm confinement); the system kernel reads
+// them through these crate-root accessors (the §11 system-kernel → arch-sys-none
+// impl edge) and maps them into the neutral struct.
+
+/// Reads `CLIDR_EL1`, the cache-level-id register (NATIVE u64).
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
-pub use boot_info::collect_boot_info;
+pub use boot_info::clidr;
+/// Reads `CTR_EL0`, the cache-type register (NATIVE u64).
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+pub use boot_info::ctr;
+/// Queries the `VideoCore` mailbox for the ARM RAM region and stores it as a
+/// `'static` arena-backed memory map (raw MMIO + arena, both stay below).
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+pub use boot_info::discover_memory;
+/// Reads `MIDR_EL1`, the CPU main-id register (NATIVE u64).
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+pub use boot_info::midr;
+/// Reads `MPIDR_EL1`, the multiprocessor-affinity register (NATIVE u64).
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+pub use boot_info::mpidr;
+/// Selects and reads the `CCSIDR_EL1` cache-size register for one cache (the raw
+/// `asm!` selector write + read); the system kernel decodes the returned value.
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+pub use boot_info::read_ccsidr;
+
+/// Reads the generic-timer frequency (`CNTFRQ_EL0`) in Hz — the
+/// `BootInfo.timer_freq_hz` fact the system kernel reads across the impl edge.
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+pub use timer::frequency as timer_frequency;
+
+/// Queries the `VideoCore` mailbox for the SDRAM clock rate in Hz, or `None`
+/// when the firmware does not report it.
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+pub use framebuffer::sdram_clock_hz;
+
+/// Total capacity of the static page arena in bytes (the heap-capacity fact the
+/// boot-info assembly reports).
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+pub use arena::capacity as arena_capacity;
+
+/// Hands out `len` bytes (rounded up to whole pages), page-aligned, from the
+/// static boot arena.
+///
+/// The device enumerator (lifted into the system kernel) allocates its
+/// `'static` `DeviceEntry` storage through this accessor; the arena itself
+/// (raw `.bss` bump mechanism) stays below.
+///
+/// # Errors
+///
+/// `ENOMEM` when the arena cannot fit the request.
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+pub fn arena_alloc_pages(len: usize) -> Result<usize, Errno> {
+    arena::alloc_pages(len)
+}
 
 /// The firmware DTB physical address captured by `_start` at boot, or `0` when
 /// no DTB was passed. Reads the atomic cell the boot asm stashes
 /// ([`DTB_PTR`]) before calling Rust entry.
+///
+/// Public so the system kernel's device-inventory assembly reads the boot fact
+/// through an accessor rather than naming the [`DTB_PTR`] static across the
+/// upward impl edge.
 #[cfg(all(target_os = "none", target_arch = "aarch64", feature = "runtime"))]
-fn dtb_ptr() -> u64 {
+#[must_use]
+pub fn dtb_ptr() -> u64 {
     DTB_PTR.load(core::sync::atomic::Ordering::Relaxed)
 }
 
 /// Returns `0` on non-runtime configurations (hosted builds, tests without
 /// the boot-asm path). The caller treats a zero pointer as "no DTB".
 #[cfg(all(target_os = "none", target_arch = "aarch64", not(feature = "runtime")))]
-fn dtb_ptr() -> u64 {
+#[must_use]
+pub fn dtb_ptr() -> u64 {
     0
 }
-
-/// Reads the firmware DTB captured at boot and enumerates its devices into a
-/// one-shot static [`reovim_kabi_platform::DeviceInventory`] pushed into the
-/// kernel at entry.
-///
-/// Returns the empty default when:
-/// - no DTB was passed (e.g. QEMU without `-dtb`),
-/// - the pointer is zero or the FDT header is unreadable / oversized, or
-/// - the FDT parse fails.
-///
-/// The returned inventory is backed by the boot arena and valid for the
-/// process lifetime.
-#[cfg(all(target_os = "none", target_arch = "aarch64"))]
-#[must_use]
-pub fn collect_device_inventory() -> reovim_kabi_platform::DeviceInventory {
-    const MAX_DTB_BYTES: usize = 1 << 20; // 1 MiB
-    let p = dtb_ptr();
-    if p == 0 {
-        return reovim_kabi_platform::DeviceInventory::default();
-    }
-    let ptr = p as *const u8;
-    // Read totalsize from the FDT header (big-endian u32 at byte offset 4) to
-    // bound the slice before handing it to the parser.
-    // SAFETY: the firmware DTB lives in identity-mapped RAM for the whole
-    // process; the 8-byte header read is within it.
-    let total = unsafe {
-        let hdr = core::slice::from_raw_parts(ptr, 8);
-        u32::from_be_bytes([hdr[4], hdr[5], hdr[6], hdr[7]]) as usize
-    };
-    // Reject absurd sizes before forming the full slice. A valid FDT header is
-    // at least 40 bytes; we cap well above any real DTB but within mapped RAM.
-    if !(40..=MAX_DTB_BYTES).contains(&total) {
-        return reovim_kabi_platform::DeviceInventory::default();
-    }
-    // SAFETY: as above — `total` bytes from the DTB base are within the
-    // process-lifetime, identity-mapped firmware region. The `'static` lifetime
-    // is honest: the firmware RAM is never unmapped and we never write through
-    // this pointer. The enumerator's `compatible: &'static str` slices point
-    // into this same byte range and inherit the same lifetime guarantee.
-    let dtb: &'static [u8] = unsafe { core::slice::from_raw_parts(ptr, total) };
-    let Ok(fdt) = fdt::reader::Fdt::parse(dtb) else {
-        return reovim_kabi_platform::DeviceInventory::default();
-    };
-    fdt::enumerate::enumerate(&fdt)
-}
-
-// On-target device-inventory smoke (SP07): declared at the crate root so
-// `super::` reaches `collect_device_inventory`. The sibling `*_tests.rs` files
-// next to their source modules are declared there (the `#[path]` child pattern);
-// all reach the test runtime through the `reovim-testrt` leaf, not an upward
-// arch-sys -> arch edge.
-#[cfg(all(target_os = "none", target_arch = "aarch64", feature = "selftest"))]
-#[path = "inventory_smoke_tests.rs"]
-mod inventory_smoke_tests;
 
 // The wrapper-level floor this backend owes the facade, realized over
 // hardware (Linux backends satisfy it from the shared `wrap.rs`).

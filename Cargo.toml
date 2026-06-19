@@ -52,6 +52,13 @@ members = [
     # Down-face fault-floor seam: the always-present write-once panic-policy atoms
     # (Platform-Contract §3.4). No install gate — readable before Init::boot.
     "kabi/panic",
+    # World system kernel (SP04): the bare-metal device-neutral library (console
+    # device model, fonts, escape parser, color model, FDT enumerate, boot-info /
+    # device-inventory assembly) lifted from the arch-sys-none-* raw-mechanism
+    # crates. Reaches the raw register/mailbox/DTB facts + the VideoCore
+    # Framebuffer type through the sanctioned system-kernel → arch-sys-none impl
+    # edge (§11); the raw mechanism (asm, MMIO, arena) stays below.
+    "system/lib/kernel",
     "editor/lib/subsys/domain",
     "editor/lib/kernel",
     "editor/lib/server",

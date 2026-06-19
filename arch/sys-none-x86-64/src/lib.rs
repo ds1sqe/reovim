@@ -25,8 +25,6 @@
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
 mod arena;
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
-mod boot_info;
-#[cfg(all(target_os = "none", target_arch = "x86_64"))]
 pub mod errno;
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
 mod semihost;
@@ -37,10 +35,12 @@ mod uart;
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
 mod wrap;
 
-// The sibling `*_tests.rs` files (`arena_tests.rs`, `boot_info_tests.rs`,
-// `errno_tests.rs`, `timer_tests.rs`) are declared next to their source modules
-// (the `#[path]` child pattern), reaching the test runtime through the
-// `reovim-testrt` leaf rather than an upward arch-sys -> arch edge (SP07).
+// The sibling `*_tests.rs` files (`arena_tests.rs`, `errno_tests.rs`,
+// `timer_tests.rs`) are declared next to their source modules (the `#[path]`
+// child pattern), reaching the test runtime through the `reovim-testrt` leaf
+// rather than an upward arch-sys -> arch edge (SP07). The `boot_info_tests.rs`
+// moved up with the whole boot-info assembly into `reovim-system-kernel`
+// (SP04 04a).
 
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
 pub use errno::{
@@ -57,28 +57,60 @@ pub use errno::{
 /// 32-bit prologue (after the BSS clear, before the COM1 banner loop reuses
 /// `rbx`/`bl`) via a cross-crate
 /// `sym reovim_arch_sys_none_x86_64::MULTIBOOT_INFO_PTR` operand (SP03 floor
-/// split). The x86 boot-info provider ([`boot_info::collect_boot_info`]) reads
-/// it to parse the firmware memory map. Zero until stashed, and on any
-/// non-Multiboot entry, which the reader treats as "no boot info" (empty map).
+/// split). The system kernel's x86 boot-info assembly reads it through the
+/// [`multiboot_ptr`] accessor (the boot-info parse lifted up in SP04 04a) to
+/// parse the firmware memory map. Zero until stashed, and on any non-Multiboot
+/// entry, which the reader treats as "no boot info" (empty map).
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
 pub static MULTIBOOT_INFO_PTR: core::sync::atomic::AtomicU32 =
     core::sync::atomic::AtomicU32::new(0);
 
-// Runtime hardware discovery (RAM / CPU) assembled into a `BootInfo` and pushed
-// into the kernel at entry. Freestanding-only — the Linux backends carry an
-// empty default; the bare-metal payload discovers real facts. x86 reads the
-// firmware memory map from the Multiboot1 structure stashed by `_start`.
-#[cfg(all(target_os = "none", target_arch = "x86_64"))]
-pub use boot_info::collect_boot_info;
+// ---- raw-fact provider surface for the system kernel's boot-info assembly ----
+//
+// The device-neutral `BootInfo` assembly (the Multiboot1 mmap parser, the
+// memory-type classifier, the neutral-struct mapping) lifted into
+// `reovim-system-kernel` (SP04 04a). What STAYS here is the raw mechanism it
+// reads through: the boot-stashed Multiboot pointer ([`MULTIBOOT_INFO_PTR`]),
+// the static arena the parsed map is backed by, and the `CPUID`/`RDTSC` asm —
+// the system kernel reaches them via these crate-root accessors (the §11
+// system-kernel → arch-sys-none impl edge) and does the parse + field mapping.
 
-/// x86 freestanding has no device tree; the device inventory is always empty.
-///
-/// Platform-ABI mirror of `none_aarch64::collect_device_inventory` so the
-/// `sys/mod.rs` re-export table is symmetric across both freestanding arches.
+/// The Multiboot1 information-structure pointer stashed by `_start`, or `0` on a
+/// non-Multiboot entry. The system kernel parses the firmware memory map from
+/// the structure this points at.
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
 #[must_use]
-pub fn collect_device_inventory() -> reovim_kabi_platform::DeviceInventory {
-    reovim_kabi_platform::DeviceInventory::default()
+pub fn multiboot_ptr() -> u32 {
+    MULTIBOOT_INFO_PTR.load(core::sync::atomic::Ordering::Relaxed)
+}
+
+/// The processor identifier from `CPUID` leaf 1 (eax — family / model / stepping
+/// / type), the NATIVE value the boot-info assembly maps to `BootInfo.cpu_id`.
+///
+/// The `cpuid` asm stays below; only the leaf-1 eax fact crosses the seam.
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+#[must_use]
+pub fn cpu_id_native() -> u32 {
+    timer::cpuid(1).0
+}
+
+/// The time-stamp-counter frequency in Hz (the `BootInfo.cpu_freq_hz` fact),
+/// derived from the `CPUID` leaf `0x15`/`0x16` reads that stay below.
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+pub use timer::frequency as timer_frequency;
+
+/// Hands out `len` bytes (rounded up to whole pages), page-aligned, from the
+/// static boot arena.
+///
+/// The boot-info assembly backs its parsed `'static` `MemoryRange` map through
+/// this accessor; the arena (raw `.bss` bump) stays below.
+///
+/// # Errors
+///
+/// `ENOMEM` when the arena cannot fit the request.
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+pub fn arena_alloc_pages(len: usize) -> Result<usize, Errno> {
+    arena::alloc_pages(len)
 }
 
 // The wrapper-level floor this backend owes `sys/mod.rs`, realized over

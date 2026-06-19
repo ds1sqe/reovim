@@ -35,6 +35,13 @@ inject-failure = []
 # modules into the arch lib). Together they give this bin the full test suite.
 reovim-arch = { path = "../../..", features = ["runtime", "selftest"] }
 
+# SP04 (04a): the device-neutral library lifted into the system kernel carries
+# its L12 selftests (console/fonts/escape/color/fdt/boot-info/inventory). They
+# register via arch_test! into the shared link section; this pilot links the
+# crate with `selftest` so testrt::run() walks them — restoring the coverage the
+# tests had while they lived in arch-sys-none (no regression across the lift).
+reovim-system-kernel = { path = "../../../../system/lib/kernel", features = ["selftest"] }
+
 # The platform-handle installer this composition root drives, cfg-split by
 # target so exactly one links per build (mutually exclusive — neither
 # double-defines the handle). The selftest reads the handle through

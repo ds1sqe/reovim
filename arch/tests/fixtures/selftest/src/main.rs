@@ -18,6 +18,12 @@
 
 use reovim_arch::testrt;
 
+// Force the system-kernel rlib (and its `arch_test!` registrations for the
+// lifted console/fonts/escape/color/fdt/boot-info/inventory selftests) to link,
+// so `testrt::run()` walks them — they register into the shared link section
+// (SP04 04a: coverage relocated with the code, no regression).
+use reovim_system_kernel as _;
+
 // One deliberately-failing test, present only under `inject-failure`, to
 // demonstrate the runner's non-zero exit on a failing test (fail-fast: the
 // panic handler exits the halt disposition code, failing the bin).

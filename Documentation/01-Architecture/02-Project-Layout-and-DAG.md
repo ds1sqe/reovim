@@ -18,7 +18,7 @@ category.
 
 | Category | Paths | Role |
 |---|---|---|
-| Foundation | `arch/` (→ `arch-sys-*`, `arch-floor-*`), `platform-*`, `lib/*`, `uapi/*`, `kabi/*` | Backend floor and its hard-split families (raw mechanism `arch-sys-*`, lang-item floor `arch-floor-*`, canonicalizing providers `platform-*`; §12), core libraries incl. `lib/ds` DS algorithms, up-face ABI (`uapi/*`), down-face platform/device/panic contracts (`kabi/*`). No upward deps. |
+| Foundation | `arch/` (→ `arch-sys-*`, `arch-floor-*`), `platform-*`, `system/lib/kernel`, `lib/*`, `uapi/*`, `kabi/*` | Backend floor and its hard-split families (raw mechanism `arch-sys-*`, lang-item floor `arch-floor-*`, canonicalizing providers `platform-*`; §12), the World system kernel (`system/lib/kernel`) — the bare-metal device-neutral library + boot assembly that plays the `kabi/platform` provider role in RTOS mode, a contract *implementor* structurally peer to `platform-*` (§11), core libraries incl. `lib/ds` DS algorithms, up-face ABI (`uapi/*`), down-face platform/device/panic contracts (`kabi/*`). No upward deps. |
 | Server contracts | `editor/lib/subsys/*` | Closed server contracts and safe wrappers. No ext deps. |
 | Server kernel | `editor/lib/kernel/*` | Kernel mechanisms. No ext or client deps. |
 | Server runtime | `editor/lib/server/*` | Framed-protocol and dispatch glue. |

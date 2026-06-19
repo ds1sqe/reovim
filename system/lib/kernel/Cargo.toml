@@ -1,0 +1,49 @@
+[package]
+name = "reovim-system-kernel"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "World system kernel: the bare-metal device-neutral library (console device model, fonts, escape parser, color model, FDT enumerate, boot-info/device-inventory assembly) lifted from the arch-sys-none-* raw-mechanism crates"
+publish = false
+
+[features]
+# Mirrors the runtime gate the migrated boot-info assembly inherits from
+# arch-sys-none: the DTB / register / mailbox raw facts are only meaningful on a
+# real freestanding entry. Forwarded to the arch-sys-none-aarch64 backend so its
+# `dtb_ptr` accessor consults the boot-stashed pointer rather than a zero stub.
+runtime = ["reovim-arch-sys-none-aarch64/runtime"]
+# Compiles the per-module sibling test files INTO the lib (L12 layout). Tests
+# declare via arch_test! and reach crate-private items through `super::`,
+# reaching the runner through the reovim-testrt leaf — the same selftest shape
+# the migrated code carried in arch-sys-none. Default builds do not enable it.
+# Forwarded to arch-sys-none-aarch64's selftest gate so the migrated console
+# selftests can build the readable `Framebuffer::over_region` stub surface (the
+# Framebuffer type stays below — the Q2 seam).
+selftest = ["reovim-arch-sys-none-aarch64/selftest"]
+
+[lints]
+workspace = true
+
+[dependencies]
+# The §11 system-kernel → arch-sys-none impl edge (the only new floor edge). The
+# console consumes the VideoCore `Framebuffer` type (raw MMIO, stays below) and
+# the boot-info assembly reads the register/mailbox/DTB raw facts through this
+# crate's accessors; the device enumerator allocates from its static arena.
+reovim-arch-sys-none-aarch64 = { path = "../../../arch/sys-none-aarch64" }
+# The x86 boot-info assembly reads the Multiboot mmap pointer + the TSC/CPUID raw
+# facts through this crate's accessors. Same impl-edge shape as the aarch64 dep.
+reovim-arch-sys-none-x86-64 = { path = "../../../arch/sys-none-x86-64" }
+# The neutral boot-data types the assembly produces (BootInfo / MemoryKind /
+# MemoryRange / DeviceClass / DeviceEntry / DeviceInventory). kabi/platform is a
+# #![no_std] zero-dep leaf, so DAG5/DAG6 are preserved.
+reovim-kabi-platform = { path = "../../../kabi/platform" }
+# The core-only test runtime: the `selftest`-gated `*_tests.rs` modules register
+# through its arch_test! / check / check_eq, reaching the runner via the leaf —
+# the same path the tests used in arch-sys-none. A #![no_std] zero-dep leaf.
+reovim-testrt = { path = "../../../lib/testrt" }
+
+# No [dev-dependencies] or [build-dependencies] (DAG5/DAG6: zero third-party deps).

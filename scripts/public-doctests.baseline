@@ -166,17 +166,6 @@ arch/sys-linux-x86-64/src/wrap.rs	pub const PROT_READ: usize
 arch/sys-linux-x86-64/src/wrap.rs	pub const PROT_WRITE: usize
 arch/sys-none-aarch64/src/arena.rs	pub const fn capacity() -> usize
 arch/sys-none-aarch64/src/arena.rs	pub fn alloc_pages(len: usize) -> Result<usize, Errno>
-arch/sys-none-aarch64/src/boot_info.rs	pub fn collect_boot_info() -> BootInfo
-arch/sys-none-aarch64/src/color.rs	pub const fn resolve(self) -> u32
-arch/sys-none-aarch64/src/color.rs	pub enum Color
-arch/sys-none-aarch64/src/console.rs	pub fn install(console: Console<'static>)
-arch/sys-none-aarch64/src/console.rs	pub fn new(
-arch/sys-none-aarch64/src/console.rs	pub fn print(&mut self, s: &str)
-arch/sys-none-aarch64/src/console.rs	pub fn screen_grid() -> Option<ScreenGrid<'static>>
-arch/sys-none-aarch64/src/console.rs	pub fn show_cursor(&mut self)
-arch/sys-none-aarch64/src/console.rs	pub fn write_bytes(&mut self, buf: &[u8])
-arch/sys-none-aarch64/src/console.rs	pub struct Console<'g>
-arch/sys-none-aarch64/src/console.rs	pub struct ScreenGrid<'g>(&'g mut [Cell]);
 arch/sys-none-aarch64/src/errno.rs	pub const EADDRINUSE: Errno
 arch/sys-none-aarch64/src/errno.rs	pub const EAGAIN: Errno
 arch/sys-none-aarch64/src/errno.rs	pub const EBADF: Errno
@@ -189,44 +178,6 @@ arch/sys-none-aarch64/src/errno.rs	pub const ENOTTY: Errno
 arch/sys-none-aarch64/src/errno.rs	pub const EOPNOTSUPP: Errno
 arch/sys-none-aarch64/src/errno.rs	pub const EPIPE: Errno
 arch/sys-none-aarch64/src/errno.rs	pub const EWOULDBLOCK: Errno
-arch/sys-none-aarch64/src/escape.rs	pub const fn new() -> Self
-arch/sys-none-aarch64/src/escape.rs	pub enum Action
-arch/sys-none-aarch64/src/escape.rs	pub fn advance(&mut self, byte: u8) -> Option<Action>
-arch/sys-none-aarch64/src/escape.rs	pub fn as_slice(&self) -> &[u16]
-arch/sys-none-aarch64/src/escape.rs	pub struct Parser
-arch/sys-none-aarch64/src/escape.rs	pub struct SgrParams
-arch/sys-none-aarch64/src/fdt/enumerate.rs	pub fn classify(compatible: &str) -> DeviceClass
-arch/sys-none-aarch64/src/fdt/enumerate.rs	pub fn enumerate(fdt: &Fdt<'static>) -> DeviceInventory
-arch/sys-none-aarch64/src/fdt/reader.rs	pub const fn children(&self) -> ChildIter<'a>
-arch/sys-none-aarch64/src/fdt/reader.rs	pub enum FdtError
-arch/sys-none-aarch64/src/fdt/reader.rs	pub fn find_child(&self, name: &str) -> Option<Node<'a>>
-arch/sys-none-aarch64/src/fdt/reader.rs	pub fn find_child_exact(&self, name: &str) -> Option<Node<'a>>
-arch/sys-none-aarch64/src/fdt/reader.rs	pub fn first_compatible(&self) -> Option<&'a str>
-arch/sys-none-aarch64/src/fdt/reader.rs	pub fn first_interrupt_cell(&self) -> Option<u32>
-arch/sys-none-aarch64/src/fdt/reader.rs	pub fn name(&self) -> &'a str
-arch/sys-none-aarch64/src/fdt/reader.rs	pub fn parse(data: &'a [u8]) -> Result<Self, FdtError>
-arch/sys-none-aarch64/src/fdt/reader.rs	pub fn prop_bytes(&self, name: &str) -> Option<&'a [u8]>
-arch/sys-none-aarch64/src/fdt/reader.rs	pub fn reg(&self) -> Option<(u64, u64)>
-arch/sys-none-aarch64/src/fdt/reader.rs	pub fn root(&self) -> Result<Node<'a>, FdtError>
-arch/sys-none-aarch64/src/fdt/reader.rs	pub fn version(&self) -> u32
-arch/sys-none-aarch64/src/fdt/reader.rs	pub struct CellSizes
-arch/sys-none-aarch64/src/fdt/reader.rs	pub struct ChildIter<'a>
-arch/sys-none-aarch64/src/fdt/reader.rs	pub struct Fdt<'a>
-arch/sys-none-aarch64/src/fdt/reader.rs	pub struct Node<'a>
-arch/sys-none-aarch64/src/fonts/jetbrains_mono.rs	pub const CELL_H: u32
-arch/sys-none-aarch64/src/fonts/jetbrains_mono.rs	pub const CELL_W: u32
-arch/sys-none-aarch64/src/fonts/jetbrains_mono.rs	pub const FIRST: u8
-arch/sys-none-aarch64/src/fonts/jetbrains_mono.rs	pub const LAST: u8
-arch/sys-none-aarch64/src/fonts/jetbrains_mono.rs	pub static GLYPHS: [u8; 12288]
-arch/sys-none-aarch64/src/fonts/mod.rs	pub const fn name(&self) -> &'static str
-arch/sys-none-aarch64/src/fonts/mod.rs	pub static JETBRAINS_MONO: Font
-arch/sys-none-aarch64/src/fonts/mod.rs	pub static TERMINUS: Font
-arch/sys-none-aarch64/src/fonts/mod.rs	pub struct Font
-arch/sys-none-aarch64/src/fonts/terminus.rs	pub const CELL_H: u32
-arch/sys-none-aarch64/src/fonts/terminus.rs	pub const CELL_W: u32
-arch/sys-none-aarch64/src/fonts/terminus.rs	pub const FIRST: u8
-arch/sys-none-aarch64/src/fonts/terminus.rs	pub const LAST: u8
-arch/sys-none-aarch64/src/fonts/terminus.rs	pub static GLYPHS: [u8; 12288]
 arch/sys-none-aarch64/src/framebuffer.rs	pub const fn base(&self) -> usize
 arch/sys-none-aarch64/src/framebuffer.rs	pub const fn height(&self) -> u32
 arch/sys-none-aarch64/src/framebuffer.rs	pub const fn pitch(&self) -> u32
@@ -238,7 +189,6 @@ arch/sys-none-aarch64/src/framebuffer.rs	pub fn put_pixel(&self, x: u32, y: u32,
 arch/sys-none-aarch64/src/framebuffer.rs	pub fn sdram_clock_hz() -> Option<u64>
 arch/sys-none-aarch64/src/framebuffer.rs	pub struct Framebuffer
 arch/sys-none-aarch64/src/lib.rs	pub const unsafe fn clone_into(
-arch/sys-none-aarch64/src/lib.rs	pub fn collect_device_inventory() -> reovim_kabi_platform::DeviceInventory
 arch/sys-none-aarch64/src/lib.rs	pub static DTB_PTR: core::sync::atomic::AtomicU64
 arch/sys-none-aarch64/src/semihost.rs	pub fn exit(code: i32) -> !
 arch/sys-none-aarch64/src/timer.rs	pub fn counter() -> u64
@@ -283,7 +233,6 @@ arch/sys-none-aarch64/src/wrap.rs	pub fn mmap(
 arch/sys-none-aarch64/src/wrap.rs	pub fn write(fd: i32, buf: &[u8]) -> Result<usize, Errno>
 arch/sys-none-aarch64/src/wrap.rs	pub struct Timespec
 arch/sys-none-x86-64/src/arena.rs	pub fn alloc_pages(len: usize) -> Result<usize, Errno>
-arch/sys-none-x86-64/src/boot_info.rs	pub fn collect_boot_info() -> BootInfo
 arch/sys-none-x86-64/src/errno.rs	pub const EADDRINUSE: Errno
 arch/sys-none-x86-64/src/errno.rs	pub const EAGAIN: Errno
 arch/sys-none-x86-64/src/errno.rs	pub const EBADF: Errno
@@ -297,7 +246,6 @@ arch/sys-none-x86-64/src/errno.rs	pub const EOPNOTSUPP: Errno
 arch/sys-none-x86-64/src/errno.rs	pub const EPIPE: Errno
 arch/sys-none-x86-64/src/errno.rs	pub const EWOULDBLOCK: Errno
 arch/sys-none-x86-64/src/lib.rs	pub const unsafe fn clone_into(
-arch/sys-none-x86-64/src/lib.rs	pub fn collect_device_inventory() -> reovim_kabi_platform::DeviceInventory
 arch/sys-none-x86-64/src/lib.rs	pub static MULTIBOOT_INFO_PTR: core::sync::atomic::AtomicU32
 arch/sys-none-x86-64/src/semihost.rs	pub fn exit(code: i32) -> !
 arch/sys-none-x86-64/src/timer.rs	pub fn counter() -> u64
@@ -421,3 +369,15 @@ uapi/protocol/src/view.rs	pub struct CarrierIter<'a>
 uapi/protocol/src/view.rs	pub struct DomainEntryIter<'a>
 uapi/protocol/src/view.rs	pub struct RawInputIter<'a>
 uapi/protocol/src/view.rs	pub struct StrListIter<'a>
+arch/sys-none-aarch64/src/boot_info.rs	pub fn clidr() -> u64
+arch/sys-none-aarch64/src/boot_info.rs	pub fn ctr() -> u64
+arch/sys-none-aarch64/src/boot_info.rs	pub fn discover_memory() -> &'static [MemoryRange]
+arch/sys-none-aarch64/src/boot_info.rs	pub fn midr() -> u64
+arch/sys-none-aarch64/src/boot_info.rs	pub fn mpidr() -> u64
+arch/sys-none-aarch64/src/boot_info.rs	pub fn read_ccsidr(level: u8, instruction: bool) -> u64
+arch/sys-none-aarch64/src/framebuffer.rs	pub fn over_region(base: usize, width: u32, height: u32, pitch: u32) -> Self
+arch/sys-none-aarch64/src/lib.rs	pub fn arena_alloc_pages(len: usize) -> Result<usize, Errno>
+arch/sys-none-aarch64/src/lib.rs	pub fn dtb_ptr() -> u64
+arch/sys-none-x86-64/src/lib.rs	pub fn arena_alloc_pages(len: usize) -> Result<usize, Errno>
+arch/sys-none-x86-64/src/lib.rs	pub fn cpu_id_native() -> u32
+arch/sys-none-x86-64/src/lib.rs	pub fn multiboot_ptr() -> u32

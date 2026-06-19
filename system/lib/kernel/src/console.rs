@@ -1,6 +1,7 @@
 //! Coverage-blended text console over the `VideoCore` framebuffer.
 //!
-//! [`super::framebuffer::Framebuffer`] exposes only raw pixel stores. This
+//! [`Framebuffer`](reovim_arch_sys_none_aarch64::framebuffer::Framebuffer)
+//! exposes only raw pixel stores. This
 //! module turns that surface into a line-oriented text console so the
 //! bare-metal boot log is legible on the HDMI output, not only on the UART.
 //! It owns a cursor (column/row in glyph cells), renders each printable byte
@@ -16,7 +17,7 @@
 //!
 //! Color and text effects are driven the way a terminal is:
 //! [`Console::print`] feeds the byte stream through a sans-IO
-//! [`escape parser`](super::escape), and the SGR sequences it decodes move the
+//! [`escape parser`](crate::escape), and the SGR sequences it decodes move the
 //! color pen and the text attributes ([`Console::apply_sgr`]). The console is
 //! the *policy* half of that split — it maps SGR codes to [`Color`] pens and
 //! to the rendered attributes (bold, dim, italic, underline, reverse) — while
@@ -36,11 +37,16 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use super::{
+// The VideoCore `Framebuffer` type STAYS in the raw-mechanism crate (it wraps
+// mailbox-allocated MMIO); the console consumes it by value across the §11
+// system-kernel → arch-sys-none impl edge (the Q2 seam). The color model, escape
+// parser, and fonts lifted up here with the console.
+use reovim_arch_sys_none_aarch64::framebuffer::Framebuffer;
+
+use crate::{
     color::Color,
     escape::{Action, Parser},
     fonts::Font,
-    framebuffer::Framebuffer,
 };
 
 /// Blank pixel rows inserted below each text row so lines are not crammed —
@@ -202,7 +208,7 @@ pub fn screen_grid() -> Option<ScreenGrid<'static>> {
 /// The cursor tracks the next cell in glyph units. [`print`](Console::print)
 /// and [`write_bytes`](Console::write_bytes) are the two sinks; both render
 /// printable bytes, interpret `\n`/`\r`, and apply the SGR color sequences the
-/// embedded [`escape parser`](super::escape) decodes from the same byte stream.
+/// embedded [`escape parser`](crate::escape) decodes from the same byte stream.
 pub struct Console<'g> {
     fb: Framebuffer,
     /// The font this console blits through.
@@ -586,8 +592,14 @@ pub fn install(console: Console<'static>) {
 }
 
 /// Writes `buf` to the installed console, if one is present; a no-op otherwise.
-/// Called by the floor's `write` so on-screen output tracks every fd 1/2 write.
-pub(crate) fn write_bytes(buf: &[u8]) {
+///
+/// This is the standing-console sink for the floor's `write` fan-out. The floor
+/// `write` cannot name it directly (that would be a forbidden
+/// arch-sys-none → system-kernel upward edge): the write-sink registry that
+/// installs this as a downward `fn(&[u8])` trampoline is wired in 04b. Until
+/// then the migrated console is fixture-installed via [`install`] and this sink
+/// stands ready for that registry.
+pub fn write_bytes(buf: &[u8]) {
     // SAFETY: single thread of control; the `&mut` borrow does not alias — no
     // other reference into the cell is live during the call.
     if let Some(console) = unsafe { (*CONSOLE.0.get()).as_mut() } {

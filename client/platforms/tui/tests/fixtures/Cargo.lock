@@ -62,7 +62,6 @@ dependencies = [
 name = "reovim-arch-sys-none-x86-64"
 version = "0.16.0-dev"
 dependencies = [
- "reovim-kabi-platform",
  "reovim-testrt",
 ]
 

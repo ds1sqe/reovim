@@ -228,6 +228,89 @@ fn firewall_client_to_system_kernel_trips_probe() {
     );
 }
 
+// ── 3b. system/lib/kernel split: floor-family provider, not the sovereign ─────
+
+/// A product crate naming the real `reovim-system-kernel` at `system/lib/kernel`
+/// must trip the firewall — but for the FLOOR-FAMILY reason (it is the bare-metal
+/// kabi/platform provider, `is_floor_crate_name`), NOT the sovereign-kernel path
+/// reason (`system/kernel`). This locks the `system/lib/kernel` vs `system/kernel`
+/// split fd flagged at countdown: the component-prefix sovereign check
+/// (`path_starts_with(dep_path, "system/kernel")`) does not match
+/// `system/lib/kernel`, so the floor-name predicate is what carries the flag.
+///
+/// A product must name kabi/platform, never the system kernel that implements it
+/// (mode-invariance, invariant #6) — so the violation is correct.
+#[test]
+fn firewall_product_to_system_lib_kernel_trips_as_floor_family() {
+    let td = common::TempDir::new();
+    let root = td.path();
+
+    // The real system kernel at its real path (Foundation floor-family provider).
+    common::write_file(root, "system/lib/kernel/Cargo.toml", &pkg_toml("reovim-system-kernel"));
+    // A product (editor/lib/kernel) directly naming it (forbidden: a product
+    // names kabi/platform, never the provider that implements it).
+    common::write_file(
+        root,
+        "editor/lib/kernel/Cargo.toml",
+        &pkg_toml_with_path_dep(
+            "reovim-editor-kernel",
+            "reovim-system-kernel",
+            "../../../system/lib/kernel",
+        ),
+    );
+    common::write_file(
+        root,
+        "Cargo.toml",
+        &root_workspace_toml(&["system/lib/kernel", "editor/lib/kernel"]),
+    );
+
+    let violations = run_firewall_probe(root).expect("firewall probe must run on fixture");
+    assert!(
+        !violations.is_empty(),
+        "firewall 3b: a product naming the system kernel (system/lib/kernel) must \
+         trip the firewall as a floor-family edge;\n\
+         got zero violations"
+    );
+    let names_both = violations
+        .iter()
+        .any(|v| v.contains("reovim-editor-kernel") && v.contains("reovim-system-kernel"));
+    assert!(
+        names_both,
+        "firewall 3b: the system-kernel violation must name both crates;\n\
+         violations: {violations:?}"
+    );
+}
+
+/// The companion to 3b: a NON-product (Foundation-tier) crate naming the system
+/// kernel must NOT trip the firewall. The firewall guards only `editor/**` and
+/// `client/**` Math kernels; a floor-family consumer (here a synthetic crate at
+/// `arch/`, standing in for the bootcore composition root / arch facade) may
+/// import the provider freely. This proves `system/lib/kernel` is an
+/// importable-Foundation provider, not a globally forbidden name — the positive
+/// half of the split.
+#[test]
+fn firewall_non_product_to_system_lib_kernel_is_allowed() {
+    let td = common::TempDir::new();
+    let root = td.path();
+
+    common::write_file(root, "system/lib/kernel/Cargo.toml", &pkg_toml("reovim-system-kernel"));
+    // A non-product Foundation crate (under `arch/`) naming the system kernel.
+    common::write_file(
+        root,
+        "arch/Cargo.toml",
+        &pkg_toml_with_path_dep("reovim-arch", "reovim-system-kernel", "../system/lib/kernel"),
+    );
+    common::write_file(root, "Cargo.toml", &root_workspace_toml(&["system/lib/kernel", "arch"]));
+
+    let violations = run_firewall_probe(root).expect("firewall probe must run on fixture");
+    assert!(
+        violations.is_empty(),
+        "firewall: a non-product consumer of system/lib/kernel must NOT trip the \
+         firewall (it is an importable-Foundation provider, not a forbidden name);\n\
+         violations: {violations:?}"
+    );
+}
+
 // ── 4. Negative fixture C: editor/modules/vim → editor/drivers/gpu ────────────
 
 /// A synthetic `editor/modules/vim` (`ServerExt`) with a direct dep on

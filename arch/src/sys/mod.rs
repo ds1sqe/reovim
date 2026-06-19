@@ -31,39 +31,19 @@ use reovim_arch_sys_none_aarch64 as target;
 use reovim_arch_sys_none_x86_64 as target;
 
 // The VideoCore mailbox framebuffer is freestanding-only hardware surface
-// (no Linux backend has one), exposed so the bare-metal splash payload can
-// drive it. Same target gate as the backend it lives in.
+// (no Linux backend has one), exposed so the bare-metal payloads can drive it.
+// Same target gate as the backend it lives in. The `Framebuffer` type STAYS in
+// the raw-mechanism crate (the SP04 Q2 seam) — the bootcore / splash fixtures
+// still reach it through this facade by value.
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 pub use target::framebuffer;
 
-// The coverage-blended text console layered over the framebuffer, so the
-// bare-metal boot log renders on the HDMI surface and not only the UART, plus
-// the selectable embedded fonts it blits through. Same target gate as the
-// framebuffer they draw on.
-#[cfg(all(target_os = "none", target_arch = "aarch64"))]
-pub use target::console;
-#[cfg(all(target_os = "none", target_arch = "aarch64"))]
-pub use target::fonts;
-// The terminal color model the console pen resolves through (truecolor +
-// indexed palette). Same target gate as the console that consumes it.
-#[cfg(all(target_os = "none", target_arch = "aarch64"))]
-pub use target::color;
-
-// Runtime hardware discovery: assembles RAM/CPU facts into a `BootInfo` the
-// bare-metal payload pushes into `Init::new`. Freestanding-only hardware
-// surface (the Linux backends have firmware-free defaults), same target gate.
-#[cfg(all(target_os = "none", target_arch = "aarch64"))]
-pub use target::collect_boot_info;
-
-// x86 discovers the same facts from the Multiboot1 memory map (stashed by
-// `_start`) and `CPUID`, feeding the identical neutral `BootInfo`.
-#[cfg(all(target_os = "none", target_arch = "x86_64"))]
-pub use target::collect_boot_info;
-
-// Device inventory: walks the firmware device tree (aarch64) or returns the
-// empty default (x86, no device tree). Same target gate as `collect_boot_info`.
-#[cfg(target_os = "none")]
-pub use target::collect_device_inventory;
+// The device-neutral console / fonts / color device model + the boot-info /
+// device-inventory assembly lifted out of arch-sys-none into
+// `reovim-system-kernel` (SP04 04a). The fixtures name those through the system
+// kernel directly (the §11 system-kernel → arch-sys-none impl edge); the facade
+// no longer re-exports them. The full neutral per-target seam replacement is
+// SP06; this narrowing tracks the device-neutral surface leaving arch-sys-none.
 
 #[cfg(not(any(
     all(target_os = "linux", target_arch = "x86_64"),

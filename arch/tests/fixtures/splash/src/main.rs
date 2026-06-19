@@ -27,7 +27,11 @@
 
 use {
     core::arch::asm,
-    reovim_arch::sys::{color::Color, console, fonts, framebuffer, write},
+    // The framebuffer (VideoCore MMIO) + the raw `write` floor STAY below; the
+    // console / fonts / color the splash renders through lifted into the system
+    // kernel with the device-neutral library (SP04 04a).
+    reovim_arch::sys::{framebuffer, write},
+    reovim_system_kernel::{color::Color, console, fonts},
 };
 
 /// Packs an RGB triple into a `0x00RRGGBB` pixel (matches the requested RGB

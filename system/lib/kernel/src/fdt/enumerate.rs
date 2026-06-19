@@ -17,10 +17,9 @@ use core::mem::size_of;
 
 use reovim_kabi_platform::{DeviceClass, DeviceEntry, DeviceInventory};
 
-use super::{
-    super::arena,
-    reader::{Fdt, Node},
-};
+use reovim_arch_sys_none_aarch64 as backend;
+
+use super::reader::{Fdt, Node};
 
 /// Maximum number of device entries the enumerator will collect.
 ///
@@ -146,9 +145,11 @@ pub fn enumerate(fdt: &Fdt<'static>) -> DeviceInventory {
         return DeviceInventory::default();
     }
 
-    // Allocate arena storage and copy the entries into it.
+    // Allocate arena storage (the floor's static boot arena, reached through the
+    // arch-sys-none-aarch64 accessor — the arena mechanism stays below) and copy
+    // the entries into it.
     let alloc_size = count * size_of::<DeviceEntry>();
-    let Ok(addr) = arena::alloc_pages(alloc_size) else {
+    let Ok(addr) = backend::arena_alloc_pages(alloc_size) else {
         return DeviceInventory::default();
     };
     let ptr = addr as *mut DeviceEntry;

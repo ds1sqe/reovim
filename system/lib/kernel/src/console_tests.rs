@@ -8,14 +8,12 @@
 //! framebuffer.
 
 use {
-    super::{
-        super::{
-            color::Color,
-            fonts::{Font, JETBRAINS_MONO, TERMINUS},
-            framebuffer::Framebuffer,
-        },
-        Cell, Console, RESET_CELL, ScreenGrid, blend, shift_rows_up,
+    super::{Cell, Console, RESET_CELL, ScreenGrid, blend, shift_rows_up},
+    crate::{
+        color::Color,
+        fonts::{Font, JETBRAINS_MONO, TERMINUS},
     },
+    reovim_arch_sys_none_aarch64::framebuffer::Framebuffer,
     reovim_testrt::{self as testrt, arch_test},
 };
 

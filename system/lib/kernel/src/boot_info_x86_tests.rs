@@ -1,16 +1,18 @@
-//! Tests for `boot_info.rs`, compiled into the lib under `selftest`.
+//! Tests for `boot_info_x86.rs`, compiled into the lib under `selftest`.
 //!
-//! L12 layout: declared in `boot_info.rs` via
-//! `#[cfg(feature = "selftest")] #[path = "boot_info_tests.rs"] mod tests;`, so
-//! `super::` reaches the private mmap parser, the type classifier, and the
-//! pointer accessor.
+//! L12 layout: declared in `boot_info_x86.rs` via
+//! `#[cfg(feature = "selftest")] #[path = "boot_info_x86_tests.rs"] mod tests;`,
+//! so `super::` reaches the migrated mmap parser + the type classifier; the
+//! boot-stashed Multiboot pointer is read through the floor's accessor.
 //!
 //! Two tiers: the `parse_*`/`mmap_*`/`kind_*` cases drive the parser over
 //! synthetic byte blobs — deterministic, no hardware. The `boot_info_*` cases
-//! run on the real QEMU machine to prove the stash + live discovery end to end.
+//! run on the real QEMU machine to prove the stash + live discovery end to end
+//! through the floor's raw-fact accessors.
 
 use {
-    super::{FLAG_MMAP, collect_boot_info, kind_of, mmap_region, multiboot_ptr, parse_entries},
+    super::{FLAG_MMAP, collect_boot_info, kind_of, mmap_region, parse_entries},
+    reovim_arch_sys_none_x86_64 as backend,
     reovim_kabi_platform::{MemoryKind, MemoryRange},
     reovim_testrt::{self as testrt, arch_test},
 };
@@ -121,7 +123,7 @@ arch_test!(boot_info_kind_of_maps_all, {
 arch_test!(boot_info_multiboot_ptr_stashed, {
     // End-to-end: QEMU's Multiboot1 loader passes a non-null info pointer in
     // EBX, which `_start` must have stashed (survives the long-mode climb).
-    testrt::check(multiboot_ptr() != 0, "multiboot ptr stashed by _start");
+    testrt::check(backend::multiboot_ptr() != 0, "multiboot ptr stashed by _start");
 });
 
 arch_test!(boot_info_discovers_real_ram, {

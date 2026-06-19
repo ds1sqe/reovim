@@ -5,12 +5,12 @@
 //! to the framebuffer's `0x00RRGGBB` pixel through [`Color::resolve`], so the
 //! console blends through one path regardless of how a color was named.
 //!
-//! This module lives under `none_aarch64/` because the framebuffer console is
-//! its only consumer — nothing else in `arch` deals in cell colors. The
-//! palette is platform-neutral spec data (the xterm 256-color layout) and
-//! carries no platform assumptions, so promoting this module if a second
-//! framebuffer target ever appears is a move, not a rewrite — the same call as
-//! the sibling [`super::fonts`] module.
+//! This module lifted into the system kernel with the framebuffer console — its
+//! only consumer — when the device-neutral library moved up out of the
+//! arch-sys-none raw-mechanism crate (SP04 04a). The palette is platform-neutral
+//! spec data (the xterm 256-color layout) and carries no platform assumptions,
+//! so a second framebuffer target consumes it unchanged — the same as the
+//! sibling [`crate::fonts`] module.
 
 /// A console color: a literal 24-bit truecolor, or an index into the xterm
 /// 256-color palette.

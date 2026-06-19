@@ -107,10 +107,16 @@ pub const CLONE_CHILD_CLEARTID: usize = 0x0020_0000;
 
 /// Writes `buf` to the floor's console for the standard output fds.
 ///
-/// fd 1 and fd 2 coincide on the floor and fan out to two sinks: the PL011 UART
-/// always, and the framebuffer console when a payload has installed one (see
-/// [`super::console::install`]). The UART write is total once started (polled
-/// MMIO cannot short-write), so the full length is always reported.
+/// fd 1 and fd 2 coincide on the floor and write to the PL011 UART, which is
+/// total once started (polled MMIO cannot short-write), so the full length is
+/// always reported.
+///
+/// The framebuffer console moved up into `reovim-system-kernel` (SP04 04a), so
+/// the floor `write` no longer names it directly — that would be a forbidden
+/// arch-sys-none → system-kernel upward edge. The on-screen fan-out is restored
+/// by the write-sink registry (a downward-installed `fn(&[u8])` trampoline the
+/// system kernel installs at boot), wired in 04b; until then fd 1/2 are
+/// UART-only at the floor.
 ///
 /// # Errors
 ///
@@ -119,7 +125,7 @@ pub const CLONE_CHILD_CLEARTID: usize = 0x0020_0000;
 pub fn write(fd: i32, buf: &[u8]) -> Result<usize, Errno> {
     if fd == 1 || fd == 2 {
         super::uart::write_bytes(buf);
-        super::console::write_bytes(buf);
+        // write-sink registry wired in 04b (the lifted console's fan-out).
         Ok(buf.len())
     } else {
         Err(EBADF)

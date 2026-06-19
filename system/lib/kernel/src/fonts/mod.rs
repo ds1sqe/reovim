@@ -1,11 +1,11 @@
 //! Embedded console fonts: platform-neutral glyph-coverage data plus the
 //! [`Font`] descriptor the console blits through.
 //!
-//! This module lives under `none_aarch64/` because the framebuffer console is
-//! its only consumer — nothing else in `arch` rasterizes glyphs. The generated
-//! tables ([`jetbrains_mono`], [`terminus`]) are pure data and carry no
-//! platform assumptions, so promoting this module if a second framebuffer
-//! target ever appears is a move, not a rewrite.
+//! This module lifted into the system kernel with the framebuffer console — its
+//! only consumer — when the device-neutral library moved up out of the
+//! arch-sys-none raw-mechanism crate (SP04 04a). The generated tables
+//! ([`jetbrains_mono`], [`terminus`]) are pure data and carry no platform
+//! assumptions, so a second framebuffer target consumes them unchanged.
 //!
 //! The tables are produced offline by `arch/tests/glyph-rasterizer/` from the
 //! vendored OFL fonts; see each generated file's header for provenance. Both
@@ -48,6 +48,11 @@ const _: () = assert!(
 /// statics below — an external caller cannot construct one with a zero cell
 /// dimension, which keeps the console's cell-count division total without a
 /// runtime check.
+// The glyph-coverage fields + `glyph()` are read only by the console renderer
+// (a `target_os = "none"` path) and the selftest pilot; on a hosted build of
+// this lib they have no consumer. The allow keeps the data table available
+// without a host-only dead-code warning.
+#[allow(dead_code)]
 pub struct Font {
     /// Row-major coverage for `first..=last`, `cell_w * cell_h` bytes/glyph.
     pub(crate) glyphs: &'static [u8],
@@ -73,6 +78,7 @@ impl Font {
     /// Returns the coverage cell for `byte`, or the first cell (space) when
     /// `byte` is outside `first..=last`. The space cell is blank, so
     /// out-of-range bytes render as a gap and the slice index stays in bounds.
+    #[allow(dead_code)] // read only by the none-target console renderer + the selftest pilot
     pub(crate) fn glyph(&self, byte: u8) -> &'static [u8] {
         let cell = (self.cell_w * self.cell_h) as usize;
         let index = if byte >= self.first && byte <= self.last {

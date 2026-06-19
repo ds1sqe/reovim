@@ -189,7 +189,12 @@ impl Framebuffer {
     ///
     /// `base` must point to at least `pitch * height` writable bytes that
     /// outlive the returned handle, and `pitch >= width * 4`.
-    pub(crate) fn over_region(base: usize, width: u32, height: u32, pitch: u32) -> Self {
+    ///
+    /// `pub` (selftest-gated) so the migrated console selftests in
+    /// `reovim-system-kernel` build a readable stub surface across the §11 impl
+    /// edge — the console renderer moved up there (SP04 04a) but the
+    /// `Framebuffer` type STAYS here (the Q2 seam).
+    pub fn over_region(base: usize, width: u32, height: u32, pitch: u32) -> Self {
         Self {
             base,
             width,

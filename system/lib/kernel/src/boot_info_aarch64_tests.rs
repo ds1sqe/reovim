@@ -1,19 +1,22 @@
-//! Tests for `boot_info.rs`, compiled into the lib under `selftest`.
+//! Tests for `boot_info_aarch64.rs`, compiled into the lib under `selftest`.
 //!
-//! L12 layout: declared in `boot_info.rs` via
-//! `#[cfg(feature = "selftest")] #[path = "boot_info_tests.rs"] mod tests;`, so
-//! `super::` reaches the private register decoders and the collector.
+//! L12 layout: declared in `boot_info_aarch64.rs` via
+//! `#[cfg(feature = "selftest")] #[path = "boot_info_aarch64_tests.rs"] mod tests;`,
+//! so `super::` reaches the pure register decoders and the collector that lifted
+//! up with the assembly (SP04 04a).
 //!
 //! Two tiers: the `cache_*`/`min_line_*` cases drive the pure register
 //! decoders over synthetic `CTR`/`CLIDR`/`CCSIDR` values — deterministic, no
 //! hardware. The `boot_info_*` cases run on the real QEMU raspi4b machine to
-//! prove the live register/mailbox discovery end to end.
+//! prove the live register/mailbox discovery end to end through the floor's
+//! raw-fact accessors.
 
 use {
     super::{
-        arena, cache_present, cache_size_bytes, cache_type, collect_boot_info, decode_cache_size,
+        cache_present, cache_size_bytes, cache_type, collect_boot_info, decode_cache_size,
         min_cache_line_bytes,
     },
+    reovim_arch_sys_none_aarch64 as backend,
     reovim_testrt::{self as testrt, arch_test},
 };
 
@@ -59,5 +62,5 @@ arch_test!(boot_info_discovers_real_cache_and_affinity, {
     testrt::check(bi.l1d_bytes != 0, "L1-D size discovered");
     testrt::check(bi.l1i_bytes != 0, "L1-I size discovered");
     testrt::check((bi.cpu_affinity >> 31) & 1 == 1, "MPIDR_EL1[31] RES1 set");
-    testrt::check_eq(bi.heap_total_bytes, arena::capacity() as u64);
+    testrt::check_eq(bi.heap_total_bytes, backend::arena_capacity() as u64);
 });

@@ -149,8 +149,18 @@ pub fn default_category_table() -> Vec<(String, Category)> {
         // airlock invariants (kabi is a leaf, arch → kabi is a granted edge) are
         // enforced by the dedicated probes, not by minting a new category variant.
         ("kabi/*", Category::Foundation),
-        // system/* = future RTOS kernel stub (SP04); Foundation until the interior
-        // lands and a real category is needed.  Revisit when system/ has sub-crates.
+        // system/lib/kernel = the World system kernel (SP04): the bare-metal
+        // device-neutral library + boot assembly lifted from arch-sys-none-*. A
+        // contract IMPLEMENTOR (it implements kabi/platform), structurally peer
+        // to the platform-* providers — Foundation tier, with `is_floor_crate_name`
+        // counting it a floor-family name no product may import. Listed explicitly
+        // (the master-plan SP04 moment the `system/*` stopgap comment marked) so
+        // the classification is exact rather than riding the glob below.
+        ("system/lib/kernel", Category::Foundation),
+        // system/* = the remaining system/ tree (the future World sovereign kernel
+        // + any sibling subsystem crates); Foundation until an interior lands and a
+        // real category is needed. The explicit system/lib/kernel row above takes
+        // precedence for the lifted library; this glob covers everything else.
         ("system/*", Category::Foundation),
         ("uapi/*", Category::Foundation),
         // ── Settled tree paths (SP04 `git mv` binds these) ───────────────────
@@ -260,14 +270,18 @@ pub fn default_foundation_grants() -> std::collections::BTreeMap<String, Vec<Str
         ],
     );
     // ── SP01/SP07 arch-sys grants ───────────────────────────────────────────
-    // The two freestanding crates name the neutral boot-data types in
-    // kabi/platform (BootInfo / MemoryKind / MemoryRange / DeviceClass /
-    // DeviceEntry / DeviceInventory) for boot-info + device-inventory assembly.
-    // All four crates additionally depend on lib/testrt (SP07): their
-    // `selftest`-gated `*_tests.rs` modules register through its arch_test! /
-    // check / check_eq, reaching the runner via the leaf rather than an upward
-    // arch-sys → arch edge. lib/testrt is a Foundation leaf — a permitted
-    // Foundation→Foundation grant.
+    // aarch64-none names the neutral boot-data types in kabi/platform
+    // (BootInfo / MemoryKind / MemoryRange) for the raw-fact memory map its
+    // `discover_memory` assembles below the seam. (The device-neutral BootInfo /
+    // device-inventory ASSEMBLY lifted to reovim-system-kernel in SP04 04a; the
+    // raw register/mailbox facts + discover_memory stay here behind accessors.)
+    // x86-none no longer names kabi/platform — its whole boot-info assembly moved
+    // up; the raw facts it exposes (multiboot_ptr / cpuid / tsc) are NATIVE.
+    // Both crates depend on lib/testrt (SP07): their `selftest`-gated
+    // `*_tests.rs` modules register through its arch_test! / check / check_eq,
+    // reaching the runner via the leaf rather than an upward arch-sys → arch
+    // edge. lib/testrt is a Foundation leaf — a permitted Foundation→Foundation
+    // grant.
     m.insert(
         "reovim-arch-sys-none-aarch64".to_owned(),
         vec![
@@ -275,13 +289,7 @@ pub fn default_foundation_grants() -> std::collections::BTreeMap<String, Vec<Str
             "reovim-testrt".to_owned(),
         ],
     );
-    m.insert(
-        "reovim-arch-sys-none-x86-64".to_owned(),
-        vec![
-            "reovim-kabi-platform".to_owned(),
-            "reovim-testrt".to_owned(),
-        ],
-    );
+    m.insert("reovim-arch-sys-none-x86-64".to_owned(), vec!["reovim-testrt".to_owned()]);
     // The two Linux crates are otherwise core-only (raw syscall layer); their
     // sole Foundation edge is the SP07 lib/testrt dep above.
     m.insert("reovim-arch-sys-linux-x86-64".to_owned(), vec!["reovim-testrt".to_owned()]);
@@ -364,6 +372,26 @@ pub fn default_foundation_grants() -> std::collections::BTreeMap<String, Vec<Str
             // linux-native (SP02 → retired in SP05) — alloc/clock backends +
             // `arch::sys` futex/write. Acyclic via the composition-root install.
             "reovim-arch".to_owned(),
+        ],
+    );
+    // ── SP04 system-kernel grant ─────────────────────────────────────────────
+    // The World system kernel lifts the device-neutral library + boot assembly
+    // out of the arch-sys-none-* crates (SP04 04a). Its only floor edges are the
+    // two freestanding raw-mechanism crates it implements over — the §11
+    // system-kernel → arch-sys-none impl edge (the console consumes the VideoCore
+    // `Framebuffer` type, the boot-info assembly reads the register/mailbox/DTB
+    // raw facts + arena through their accessors), the neutral boot-data types
+    // (kabi/platform), and the core-only test runtime (reovim-testrt) its
+    // `selftest`-gated `*_tests.rs` modules register through. No uapi/posix or
+    // lib/ds edge — the lifted code names neither (verified against the moved
+    // surface in 04a; not granted speculatively). No upward edge back.
+    m.insert(
+        "reovim-system-kernel".to_owned(),
+        vec![
+            "reovim-arch-sys-none-aarch64".to_owned(),
+            "reovim-arch-sys-none-x86-64".to_owned(),
+            "reovim-kabi-platform".to_owned(),
+            "reovim-testrt".to_owned(),
         ],
     );
     m.insert(
@@ -2160,20 +2188,27 @@ fn swapset_group(path: &str) -> Option<String> {
 ///
 /// The floor family is: `reovim-arch` itself, the per-target raw-mechanism
 /// crates carved out of it (`reovim-arch-sys-*`, SP01), the platform providers
-/// that canonicalize NATIVE→POSIX above it (`reovim-platform-*`, SP02), and the
-/// per-target language-floor lang-item crates (`reovim-arch-floor-*`, SP03).
-/// The firewall probe uses this to detect a DIRECT edge to any of them.
+/// that canonicalize NATIVE→POSIX above it (`reovim-platform-*`, SP02), the
+/// per-target language-floor lang-item crates (`reovim-arch-floor-*`, SP03),
+/// and the World system kernel that plays the bare-metal provider role
+/// (`reovim-system-kernel`, SP04). The firewall probe uses this to detect a
+/// DIRECT edge to any of them.
 #[must_use]
 fn is_floor_crate_name(name: &str) -> bool {
     // `reovim-arch` plus the per-target raw-mechanism crates carved out of it
     // (SP01: `reovim-arch-sys-{linux,none}-{x86-64,aarch64}`), the platform
-    // providers above it (SP02: `reovim-platform-linux-native`), and the
-    // per-target language floors (SP03: `reovim-arch-floor-{linux,none}-{…}`).
-    // They are all floor-family crates, so a direct product edge naming any of
-    // them is a floor edge the firewall must detect (fd countdown ruling).
-    // `reovim-arch-floor-*` is matched before the `reovim-arch-sys-` prefix
-    // check would matter — the two prefixes are disjoint, so order is moot.
+    // providers above it (SP02: `reovim-platform-linux-native`), the per-target
+    // language floors (SP03: `reovim-arch-floor-{linux,none}-{…}`), and the
+    // World system kernel (SP04: `reovim-system-kernel`) — bare-metal it IS the
+    // kabi/platform provider, structurally peer to platform-*. They are all
+    // floor-family crates, so a direct product edge naming any of them is a floor
+    // edge the firewall must detect (fd countdown ruling): a product names
+    // kabi/platform, never the system kernel that implements it (mode-invariance,
+    // invariant #6). `reovim-arch-floor-*` is matched before the
+    // `reovim-arch-sys-` prefix check would matter — the two prefixes are
+    // disjoint, so order is moot.
     name == "reovim-arch"
+        || name == "reovim-system-kernel"
         || name.starts_with("reovim-arch-sys-")
         || name.starts_with("reovim-arch-floor-")
         || name.starts_with("reovim-platform-")

@@ -26,6 +26,14 @@ doctest = false
 reovim-arch = { path = "../../..", features = ["runtime"] }
 # The real reovim kernel — this bin boots it on the bare-metal floor.
 reovim-kernel = { path = "../../../../editor/lib/kernel" }
+# The World system kernel (SP04 04a): the device-neutral boot assembly + console
+# device model this payload drives. `runtime` forwards to its arch-sys-none
+# backends so the boot-info accessors read the boot-stashed facts. The boot
+# surface it re-exports (`collect_boot_info` / `collect_device_inventory` /
+# `console` / `fonts` / `color`) is `target_os = "none"`-only, exactly as the old
+# `reovim_arch::sys::*` facade was — so this payload's real targets are the
+# freestanding ones.
+reovim-system-kernel = { path = "../../../../system/lib/kernel", features = ["runtime"] }
 
 # The platform-handle installer this composition root drives, cfg-split by
 # target so exactly one links per build. The kernel boot allocates + writes

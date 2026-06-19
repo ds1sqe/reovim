@@ -80,7 +80,6 @@ dependencies = [
 name = "reovim-arch-sys-none-x86-64"
 version = "0.16.0-dev"
 dependencies = [
- "reovim-kabi-platform",
  "reovim-testrt",
 ]
 
@@ -177,6 +176,16 @@ dependencies = [
  "reovim-arch",
  "reovim-kabi-platform",
  "reovim-lib-ds",
+]
+
+[[package]]
+name = "reovim-system-kernel"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-arch-sys-none-aarch64",
+ "reovim-arch-sys-none-x86-64",
+ "reovim-kabi-platform",
+ "reovim-testrt",
 ]
 
 [[package]]
