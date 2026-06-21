@@ -1,6 +1,0 @@
-[package]
-name = "root-04"
-reovim-version = "^0.15"
-
-[dependencies]
-tool = { version = "^1", path = "tool", features = ["ripgrep", "fzf"] }

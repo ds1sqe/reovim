@@ -28,6 +28,4 @@ These documents represent the intellectual foundation of Reovim's design:
 
 For the normative, up-to-date documentation, see the
 [spec README](../README.md) — `Documentation/` is the single source
-of truth. The v0.15.0 implementation these documents led to is
-preserved under [`archive/`](../../archive/), with its documentation
-at [`archive/docs/`](../../archive/docs/).
+of truth.

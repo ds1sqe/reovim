@@ -1,4 +1,0 @@
-[package]
-name = "shared"
-version = "2.0.0"
-reovim-version = "^0.15"

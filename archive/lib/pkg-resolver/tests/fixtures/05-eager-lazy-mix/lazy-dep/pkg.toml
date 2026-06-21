@@ -1,4 +1,0 @@
-[package]
-name = "lazy-dep"
-version = "0.1.0"
-reovim-version = "^0.15"

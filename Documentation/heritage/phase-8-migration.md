@@ -183,9 +183,3 @@ When updating code or documentation:
 - [ ] Replace `lib/module-macros/` with `shared/module-macros/`
 - [ ] Update crate names in `cargo test -p` commands
 - [ ] Verify paths exist before documenting
-
-## Related Documents
-
-- [Architecture Overview](../../archive/docs/architecture/overview.md) - Current architecture
-- [Module System](../../archive/docs/architecture/modules/overview.md) - Module loading and registry
-- [Driver Layer](../../archive/docs/architecture/drivers/overview.md) - Driver architecture

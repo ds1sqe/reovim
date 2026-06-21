@@ -541,5 +541,3 @@ Patterns and insights discovered during the architecture overhaul:
 
 - [Clean Architecture Proposal](./clean-architecture-proposal.md) - Original 119KB design document
 - [Phase 5 Extraction Strategy](./phase5-extraction.md) - Concept-extraction methodology
-- [Mechanism vs Policy](../../archive/docs/contributing/philosophy/mechanism-vs-policy.md) - Core design principle
-- [Architecture Overview](../../archive/docs/architecture/overview.md) - Current system design

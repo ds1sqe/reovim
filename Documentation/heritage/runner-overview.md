@@ -100,9 +100,3 @@ reovim tui
 ```
 
 See [Server Mode Reference](../../archive/docs/user-guide/server-mode.md) for complete usage.
-
-## Related Documents
-
-- [Server Architecture](../../archive/docs/architecture/server/overview.md) - RPC server details
-- [Client Architecture](../../archive/docs/architecture/client/overview.md) - CLI/TUI clients
-- [Server Mode Reference](../../archive/docs/user-guide/server-mode.md) - Usage guide

@@ -1,9 +1,0 @@
-version = 1
-
-[[package]]
-name = "vim-core"
-version = "1.0.0"
-
-[package.source]
-kind = "local-path"
-path = "/local/vim-core-1.0.0"

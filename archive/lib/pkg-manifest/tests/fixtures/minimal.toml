@@ -1,6 +1,0 @@
-[package]
-name = "minimal-setup"
-reovim-version = "^0.15"
-
-[dependencies]
-vim-core = "1.0"

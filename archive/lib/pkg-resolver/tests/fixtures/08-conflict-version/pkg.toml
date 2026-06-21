@@ -1,7 +1,0 @@
-[package]
-name = "root-08"
-reovim-version = "^0.15"
-
-[dependencies]
-first = { path = "first" }
-second = { path = "second" }

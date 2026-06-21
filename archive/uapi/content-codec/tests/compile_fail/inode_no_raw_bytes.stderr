@@ -1,7 +1,0 @@
-error[E0560]: struct `Inode` has no field named `raw_bytes`
-  --> tests/compile_fail/inode_no_raw_bytes.rs:11:9
-   |
-11 |         raw_bytes: Vec::<u8>::new(),
-   |         ^^^^^^^^^ `Inode` does not have this field
-   |
-   = note: available fields are: `path`
