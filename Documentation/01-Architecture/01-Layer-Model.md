@@ -31,28 +31,42 @@ and `08-Client/01-Layer-Model.md` (`CL*`).
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+**Kernel naming note.** The `KERNEL` tier in this diagram is the
+**editor/server kernel** (`editor/lib/kernel/*`): the Math-layer mechanism
+for sessions, registries, scheduling, and editor state. It is not the
+World-layer **system kernel**. The system-kernel crate lives in Foundation as
+`system/lib/kernel`: it is the bridge from the product-facing `uapi/*` face
+to the machine-facing `kabi/*` face, carrying common World services such as
+boot assembly, console/splash policy, device inventory shaping, and FDT
+policy over caller-supplied facts and surfaces. It is not hardware-specific
+and may not import `arch-*`, `arch-sys-*`, `arch-floor-*`, or `platform-*`.
+
 ### 1.1 Foundation stack (up-face / down-face)
 
-The FOUNDATION tier is itself layered. It is not a flat bag of crates; it
-is a POSIX personality with a contract face pointing up at the product and
-a provider face pointing down at the machine.
+The FOUNDATION tier is itself layered. It is not a flat bag of crates; it has
+two semantic faces and one bridge. The product-facing side imports `uapi/*`.
+Hardware/chip/device-specific code imports `kabi/*`. `system/lib/kernel` is
+the bridge that may name both.
 
 ```
-        ▲ up-face — the product imports the contract
+        ▲ up-face — product/over-layers import `uapi/*`
         │
-  uapi/posix      canonical POSIX values (OpenFlags, Mode, Fd, Errno);
-                  owns the numbers — no reference provider supplies them
+  uapi/posix      canonical product-visible POSIX values
   uapi/abi        module/plugin cdylib ABI surface
   uapi/protocol   framed client↔server protocol surface
   ─────────────── contract line ───────────────
   lib/*           Math: portable algorithm, zero `use reovim_arch*`
+  system/lib/kernel
+                  World bridge: common boot/system assembly, console/FDT/
+                  device policy; imports `uapi/*` up-face and `kabi/*`
+                  down-face; never imports arch/provider crates
   ─────────────── contract line ───────────────
   kabi/platform   machine-services seam   (install-gated PlatformVtable)
   kabi/panic      fault-policy atoms      (always present, no install gate)
   kabi/device     edit-as-buffer seam
         │
-        ▼ down-face — a provider installs the implementation
-  platform-{target}-{strategy}   canonicalizing provider (POSIX trap gate)
+        ▼ down-face — hardware/provider code imports `kabi/*`
+  platform-{target}-{strategy}   provider; target-specific, no direct `uapi/*`
   arch-floor-{target}            lang items (#[panic_handler], _start)
   arch-sys-{target}              raw hardware mechanism (returns NATIVE)
 
@@ -64,10 +78,10 @@ a provider face pointing down at the machine.
 Reading the stack:
 
 - **`uapi/posix` is canonical, not Linux-derived.** It owns the POSIX
-  values; Linux/x86-64 numbers happen to fill them, so the Linux
-  provider's mapping is identity. `uapi/posix` is the portable contract;
-  `uapi/abi` and `uapi/protocol` are the other two up-face surfaces and
-  are unrelated to it.
+  values; Linux/x86-64 numbers may happen to match some of them, but a
+  hardware/provider crate does not import `uapi/posix` directly. The
+  `uapi/*` crates are the portable product face; `system/lib/kernel` bridges
+  those values to the `kabi/*` down-face.
 - **Three down-face seams, one shape.** `kabi/platform` is the
   install-gated machine-services trap gate; `kabi/panic` is the
   always-present fault floor; `kabi/device` is the edit-as-buffer seam.
@@ -76,11 +90,11 @@ Reading the stack:
   for an ops table; an in-tree macro lowers it to the frozen `#[repr(C)]`
   table plus per-slot `HAS_*` presence consts. The trait never becomes a
   runtime `dyn` seam.
-- **Not a HAL.** The provider canonicalizes (impedance-matches the
-  machine's native ABI to the POSIX contract) in one place; `arch-sys-*`
-  returns the machine's NATIVE values and knows nothing of the contract.
-  The split keeps `kabi` above `arch` — providers sit below `kabi`, not
-  beside it.
+- **Not a HAL.** The lower provider satisfies `kabi/*` and may translate
+  native machine facts into provider-facing `kabi` values, but it does not
+  know the product's `uapi/*` vocabulary. The `uapi`↔`kabi` bridge belongs
+  in `system/lib/kernel`. A direct `uapi/posix` import below that bridge is
+  forbidden unless a concrete inescapable case is found and recorded.
 
 ## 2. Boundary contracts
 

@@ -1,13 +1,14 @@
 # 6.5 — Platform Contract
 
-**Scope.** The seam every kernel reaches its substrate through —
-`kabi/platform`. The mechanism/implementation split (the contract
-*declares*, `arch` *implements*), the `#[repr(C)]` platform vtable
-("platform syscall table") of effectful primitives, where the value-type
-layout lives, the boot-time `static` install and its lifecycle relative to
-driver and module vtables, and the bounded value the decoupling buys. The
-dependency-graph edges this contract implies (`kernels → kabi/platform` and
-`→ lib/ds`, never `→ arch`; `arch → kabi`) are normative in
+**Scope.** The down-face seam the system bridge reaches its machine substrate
+through — `kabi/platform`. The mechanism/implementation split (the contract
+*declares*, provider code *implements*), the `#[repr(C)]` platform vtable
+("platform syscall table") of effectful primitives, where the provider-facing
+value-type layout lives, the boot-time `static` install and its lifecycle
+relative to driver and module vtables, and the bounded value the decoupling
+buys. The dependency-graph edges this contract implies (`system/lib/kernel →
+kabi/platform`, upper product code → `uapi/*`, provider code → `kabi/*`,
+never `→ arch` from above the provider) are normative in
 `01-Architecture/02-Project-Layout-and-DAG.md` (§2, §10, §11); this chapter
 describes the contract's *shape*.
 
@@ -33,30 +34,39 @@ conformance rule **AB16** is declared `spec-asserted` in
 
 ## 1. The contract is the airlock, and it points one way
 
-Every kernel — system, editor, client (`02-Process/01-Kernel-Types.md` §0) —
-depends on a stable contract, `kabi/platform`, and **never on `arch`
-directly**. The contract is the line that makes the editing mechanism
-byte-identical across modes (`01-Architecture/06-OS-Modes.md` §0). It does
-not exist for cleanliness; it exists to *guarantee* that invariant. Anything
-that would make a kernel behave differently by mode is, by definition, a leak
-across this line and a bug.
+Upper product code — including the editor and client kernels
+(`02-Process/01-Kernel-Types.md` §0) — depends on the up-face `uapi/*`
+contracts, not on `kabi/platform` and never on `arch`. `system/lib/kernel` is
+the bridge that may name both `uapi/*` and `kabi/*`. Provider code below the
+bridge implements `kabi/platform` and must not import `uapi/*` directly unless
+a concrete inescapable exception is recorded in the DAG chapter.
+
+This split is the line that keeps the editing mechanism byte-identical across
+modes (`01-Architecture/06-OS-Modes.md` §0). It does not exist for
+cleanliness; it exists to *guarantee* that invariant. Anything that makes
+upper product code behave differently by mode is, by definition, a leak across
+this line and a bug.
 
 **Mechanism, not facade.** `kabi/platform` *declares* what a platform must
-provide; `arch` (and, in RTOS mode, the system kernel) *implements* it.
-Dependency flows `arch → kabi`, **never** `kabi → arch` — a contract that
-imported its own implementor would run backward through the airlock. The
-substrate splits by **what a thing is**:
+provide; `platform-*`, freestanding provider code, or other hardware-specific
+providers implement it. Dependency flows provider → `kabi`, **never**
+`kabi → provider`, and never provider → `uapi` by default. A contract that
+imported its own implementor would run backward through the airlock. A lower
+provider that imports the product's `uapi` vocabulary bypasses the system
+bridge. The substrate splits by **what a thing is**:
 
 | Part | What it is | Where it lives | Reached how |
 |---|---|---|---|
-| **Effectful primitives** | services that read the world or schedule — the allocator, `park`/`unpark`, clock, spawn, thread id, device/block I/O | declared in `kabi`, implemented in `arch` | a `#[repr(C)]` vtable, installed at boot (§3) |
+| **Effectful primitives** | services that read the world or schedule — the allocator, `park`/`unpark`, clock, spawn, thread id, device/block I/O | declared in `kabi`, implemented by providers below the bridge | a `#[repr(C)]` vtable, installed at boot (§3) |
 | **Value-type layout + algorithm** | the data structures — `Seq`/`Map`/`Bytes`/`Shared`, the `Mutex`/`RwLock`/`Condvar` state machines | `lib/ds` (Math; `01-Architecture/02` §10) | direct, monomorphic; their *backend* (alloc, park) is reached through the handle |
 
 This is the Math/World airlock applied to the type system: a value's *layout
 and algorithm* are identical on every provider (Math, `lib/ds`); the
-*allocator and park/unpark behind it* are provider-specific (World, `arch`),
-injected at `Init::boot`. There is no re-export of `arch` types anywhere —
-the data structures are `lib/ds`'s own, calling the installed primitives.
+*allocator and park/unpark behind it* are provider-specific (World,
+provider/floor code), installed at boot. There is no re-export of `arch` or
+`uapi` types from `kabi` for provider convenience. Provider-facing slot types
+belong in `kabi`; product-facing values belong in `uapi`; conversion between
+the two belongs in `system/lib/kernel`.
 
 ## 2. The mechanism/value decision rule
 
@@ -87,14 +97,14 @@ seam:
 - **One vtable doctrine.** Drivers and modules already cross their seam via
   `REOVIM_*_VTABLE` (`06-ABI/02-Versioning-and-Vtables.md`). The platform
   seam being the same mechanism unifies the system: platform vtable
-  (kernel↔machine), driver vtable (kernel↔device), module vtable
-  (kernel↔policy).
+  (system bridge↔machine provider), driver vtable (kernel↔device), module
+  vtable (kernel↔policy).
 - **`no_std`-clean** under `DAG6` (1.2 §10) — no `Debug` bound, no
   `Box`/alloc, no fat pointer.
-- **Composes at runtime by construction** — Over-OS installs `arch`'s table;
-  RTOS installs the system kernel's table; *same kernel binary*. This is the
-  mechanical guarantee of the §0 mode invariant (mode-as-swap;
-  `01-Architecture/06-OS-Modes.md` §6).
+- **Composes at runtime by construction** — Over-OS installs a hosted provider
+  table; RTOS installs a freestanding provider table below the system bridge;
+  *same editor/client kernel source*. This is the mechanical guarantee of the
+  §0 mode invariant (mode-as-swap; `01-Architecture/06-OS-Modes.md` §6).
 - **Versioned from day one** — the seam carries a `VtableHeader`
   (`06-ABI/02 §2`), so "the kernel is unchanged when the provider changes" is
   enforced by the same add-only `size_of_self` discipline as the driver ABI
@@ -165,20 +175,23 @@ hooks must exist unconditionally, unlike the install-gated `kabi/platform`
 vtable. Everything else effectful lives in the platform vtable; fault
 disposition lives in `kabi/panic`.
 
-### 3.5 Slot signatures are canonical POSIX types
+### 3.5 Slot signatures are provider-facing `kabi` types
 
-Every effectful slot that carries a POSIX value takes and returns a
-**`uapi/posix` newtype**, never a raw integer: `OpenFlags`, `Mode`, `Fd`,
-`Errno`, and the rest of the canonical set. A bare `i32` flag or `errno`
-must not travel through a slot — the newtype is where `uapi/posix`'s
-canonical-value ownership is enforced *at the ABI*. A provider receives
-already-canonical values and returns canonical results; the NATIVE → POSIX
-impedance match happened in the provider before the value reached the slot
-(`01-Architecture/06-OS-Modes.md` §2.2). This is what lets the editor read
-one personality on every target (OS-Modes §0): the slot type structurally
-forbids a mode-specific integer from leaking up. The `O_*` flag constants
-and the `errno` set that today sit in `lib/ds` move to `uapi/posix` so the
-slot types and the consumer share one canonical source.
+Every effectful slot that carries a POSIX-shaped value takes and returns a
+**`kabi/platform` provider-facing type**, never a product-facing `uapi/posix`
+type and never an untyped integer when a slot-specific newtype exists:
+`PlatformFd`, `PlatformOpenFlags`, `PlatformMode`, `PlatformErrno`, and the
+rest of the provider-facing set. A bare `i32` flag or `errno` must not travel
+through a slot unless the ABI scalar itself is the documented
+`#[repr(transparent)]` carrier.
+
+`uapi/posix` owns the product-visible POSIX vocabulary. `kabi/platform` owns
+the provider-visible slot vocabulary. The bridge between them lives in
+`system/lib/kernel` in RTOS-itself mode, or in the hosted bridge/provider role
+in Over-OS mode. Providers translate NATIVE machine effects to/from `kabi`
+slot values; the bridge translates `kabi` to/from `uapi`. A provider that
+imports `uapi/posix` directly bypasses that bridge and is forbidden unless a
+documented inescapable exception exists.
 
 ### 3.6 Append-only vtable evolution
 
@@ -224,10 +237,11 @@ The mechanism model — `arch → kabi`, no facade re-export — buys, concretel
   paid once per allocation (not per element), and never on the DS fast paths
   (CAS, in-bounds index, non-growing push).
 
-The honest accounting: the contract buys (1) a single edit-point, (2) a
-depgraph-enforceable "kernels name only `kabi::*` + `lib/ds`" firewall, and
-(3) runtime swappability of every World primitive including the allocator.
-That is the real, bounded value.
+The honest accounting: the contract buys (1) a single down-face edit-point,
+(2) a depgraph-enforceable "upper code names `uapi::*`, lower providers name
+`kabi::*`, and only the system bridge names both" firewall, and (3) runtime
+swappability of every World primitive including the allocator. That is the
+real, bounded value.
 
 ## 5. Where it lives
 
@@ -242,11 +256,13 @@ primitives those DS call.
 
 A provider is correct **iff it passes `platform-conformance`** — a
 behavioral fixture suite that operationally *defines* what "same behavior
-across providers" means. There is **no reference provider**: `uapi/posix`
-owns the canonical values and the suite owns the canonical behavior, so the
-Linux provider is not privileged as the oracle. A zero-arch mock
-(`platform-linux-mock`) passes the *same* suite — the proof that "provider"
-is a contract role, not a synonym for the Linux backend. The suite is
+across providers" means. There is **no reference provider**: `kabi/platform`
+owns the provider-facing slot shape and the suite owns the down-face behavior,
+so the Linux provider is not privileged as the oracle. Product-visible
+`uapi/posix` values are checked at the bridge layer, not by letting providers
+import `uapi` directly. A zero-arch mock (`platform-linux-mock`) passes the
+*same* suite — the proof that "provider" is a contract role, not a synonym for
+the Linux backend. The suite is
 **append-only**: adding a fixture tightens the contract and can never
 invalidate a previously conforming provider, so it ships from day one with
 no premature-abstraction risk. The suite is normative now; its fixtures are
@@ -255,9 +271,9 @@ implemented in the 05d sub-plans. The gating rule is **AB16**
 
 ## Open items
 
-1. Does the contract ship as its own crate (`kabi/platform`) from day one, or
-   start as a `platform` module split out when the system kernel must
-   implement against it independently?
+1. Provider-facing slot vocabulary must be audited so lower providers no
+   longer import `uapi/posix` directly; any unavoidable exception must be
+   recorded in `01-Architecture/02-Project-Layout-and-DAG.md`.
 2. Which effectful primitives convert to the handle first. `clock` / `park`
    already have two backends (Linux futex + bare-metal timer/WFI) and lead;
    `alloc` converts in the same DS-split flight — the seam is canonical
@@ -274,7 +290,7 @@ implemented in the 05d sub-plans. The gating rule is **AB16**
 | Header discipline | the platform vtable begins with `VtableHeader`; a provider that grows a slot is read through `size_of_self` by an older kernel (AB3 reuse). |
 | Bootstrap order | the platform vtable is a `static` built without heap; no `lib/ds` DS is constructed before `Init::boot` installs the handle. |
 | No direct `arch` edge | no kernel or `lib/ds` crate names `arch::*`; the depgraph probe rejects `*-kernel → arch` and `lib/ds → arch`. |
-| Canonical slot types | every POSIX-valued slot takes/returns a `uapi/posix` newtype (`OpenFlags`/`Mode`/`Fd`/`Errno`); no raw integer crosses a slot (§3.5). |
+| Provider-facing slot types | every POSIX-shaped slot takes/returns a `kabi/platform` provider-facing type; `uapi/posix` stays above the bridge (§3.5). |
 | Append-only evolution | a new primitive is a nullable tail slot guarded by a `HAS_*` const; an unfilled slot yields `Errno::ENOSYS`; slots are never reordered or removed (AB3, §3.6). |
 | Behavioral conformance | a provider — including the zero-arch `platform-linux-mock` — is valid iff it passes the `platform-conformance` suite; no provider is the reference oracle (AB16, §5.1). |
 | Fault floor always present | the `kabi/panic` hooks are write-once statics installable before `Init::boot` completes; they are not platform-vtable slots (§3.4). |

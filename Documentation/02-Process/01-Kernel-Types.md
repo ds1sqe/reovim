@@ -19,15 +19,17 @@ LF13), `SVC*`.
 ## 0. The three kernels (system · editor · client)
 
 A *kernel* = a mechanism core that loads policy over a stable ABI and
-reaches its substrate through a single seam (`06-ABI/05-Platform-Contract.md`).
+reaches adjacent layers through a stable face. Product-facing kernels use the
+`uapi/*` up-face; the World system kernel bridges that up-face to the
+machine-facing `kabi/*` down-face (`06-ABI/05-Platform-Contract.md`).
 Reovim has three, each the same mechanism/policy/ABI fractal at a different
 altitude:
 
 | Kernel | Mechanism (WHAT) | Policy (its modules) | Substrate below | Corruption layer |
 |---|---|---|---|---|
-| **System** (machine) | sched, IRQ, memory, device model, block, fs, console, power | device drivers, board profiles | `arch/` (hardware) | World |
-| **Editor** (server) | sessions, domains/buffer-algebra, undo-tree, streams, EventBus, state, services | server modules + drivers | platform contract | Math |
-| **Client** | raw-input normalization, frame/cell render, projection/codec, capability slots, module host | client modules + drivers | platform contract **+** wire protocol | Math |
+| **System** (machine) | sched, IRQ, memory, device model, block, fs, console, power; bridge from `uapi/*` to `kabi/*` | device drivers, board profiles | `kabi/*` providers + `arch/` hardware below them | World |
+| **Editor** (server) | sessions, domains/buffer-algebra, undo-tree, streams, EventBus, state, services | server modules + drivers | `uapi/*` system surface | Math |
+| **Client** | raw-input normalization, frame/cell render, projection/codec, capability slots, module host | client modules + drivers | `uapi/*` system surface **+** wire protocol | Math |
 
 Each loads policy one-way (modules → api), exposes mechanism + api over a
 closed subsys of trait contracts, and is extended by drivers that implement
@@ -39,7 +41,7 @@ Two asymmetries are real, not incidental:
   Over-OS mode has two and the host OS plays the system-kernel role
   (`01-Architecture/06-OS-Modes.md`). "Do we split the editor and the
   system?" reduces to "is the system-kernel slot filled?"
-- **The client kernel has more substrates** — the platform contract, its
+- **The client kernel has more substrates** — the up-face system surface, its
   input/output capabilities (`05-View/02-Raw-Input.md`,
   `05-View/03-Projections.md`), *and* the wire protocol. On bare metal the
   client's I/O bottoms out on the system kernel's devices, so the system
@@ -56,13 +58,15 @@ Math-or-World core. The distinction is **sovereignty**, not kernel-hood:
   Math-layer core renders the editor kernel's truth and normalizes input
   back. Same fractal, same Math layer, non-sovereign.
 
-Crate names: system → `lib/machine-kernel`; editor → `editor/lib/kernel`
-(this chapter); client → `client-kernel`.
+Crate names: system → `system/lib/kernel`; editor → `editor/lib/kernel`
+(this chapter); client → `client-kernel` (target name; exact path follows the
+client tree split).
 
 ### 0.2 Editor / system split — by contract, not by privilege
 
-The editor and system kernels are distinct **by contract**: the split *is*
-the platform seam (`06-ABI/05-Platform-Contract.md`). What forces it (any
+The editor and system kernels are distinct **by contract**: the editor stays
+on the `uapi/*` up-face, while the system kernel bridges `uapi/*` to the
+`kabi/*` down-face (`06-ABI/05-Platform-Contract.md`). What forces it (any
 one suffices):
 
 - **Invariance.** The editor kernel must stay platform-invariant. The
@@ -83,7 +87,8 @@ What the split is **not**, for 0.16:
 
 Discipline: **never let the editor kernel grow hardware or mode-varying
 code "temporarily."** Anything that varies by what is underneath goes below
-the contract — `arch`'s hosted role now, the system kernel later.
+the up-face — into the hosted system role or into `system/lib/kernel` plus
+providers in RTOS-itself mode.
 
 The remainder of this chapter details the **editor** kernel's `Init` /
 `Kernel` shapes. The system and client kernels carry their own boot actors
@@ -185,9 +190,10 @@ embedded launcher (1.3) hosts a kernel instance and a client
 runtime in the same process.
 
 > Note (non-normative): `ShardedMap<K, V>` is an in-repo sharded
-> concurrent map realized as a fixed array of `arch/`-provided
-> RwLock-guarded hash-map shards (1.2 §10 platform floor); `K`
-> hashes to select the shard.
+> concurrent map realized by target-neutral `lib/*` algorithms over the
+> installed system/backend primitives. The editor kernel names the `uapi/*`
+> up-face and target-neutral libraries; it does not name `arch` or `kabi`
+> directly.
 
 ## 4. Registries
 
@@ -227,9 +233,9 @@ The two-lock model (`turn_gate` + `state`) replaces the prior
 single-`Mutex<Session>`. See `02-Process/03-Concurrency.md`.
 
 > Note (non-normative): `TurnGate` is an in-repo FIFO fair-queue
-> primitive built over `arch/`-provided sync primitives (condvar +
-> ticket counter); it provides the same acquire/release contract as
-> a FIFO async mutex without a third-party runtime dependency.
+> primitive built over the installed system/backend sync primitives
+> (condvar + ticket counter); it provides the same acquire/release
+> contract as a FIFO async mutex without a third-party runtime dependency.
 
 ## 6. Buffer shape
 

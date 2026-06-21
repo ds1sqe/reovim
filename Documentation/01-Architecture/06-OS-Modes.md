@@ -155,16 +155,17 @@ knowledges each unit of code carries — never by target alone:
 | Family | Knows | Owns | Returns |
 |---|---|---|---|
 | `arch-sys-{target}` | hardware only | the raw machine mechanism (syscalls, MMIO, asm) | the machine's **NATIVE** values |
-| `platform-{target}-{strategy}` | hardware **and** contract | the POSIX trap gate: canonicalize NATIVE → POSIX, install the vtable | canonical `uapi/posix` values |
+| `platform-{target}-{strategy}` | hardware **and** down-face contract | provider gate: adapt NATIVE machine effects to `kabi/*` slot values, install the vtable | provider-facing `kabi` values/results |
 | `arch-floor-{target}` | the language only | lang items: `#[panic_handler]`, `#[global_allocator]`, `_start` | nothing — it crosses to the product at LINK, not import |
 
 The split rule is a function of knowledge: a unit of `arch` code belongs to
 exactly one family by which knowledge it carries. **The `ioctl` borderline**
 makes this concrete — a raw `ioctl` request number and the bytes it moves
 are hardware-only (`arch-sys`); the mapping of an `ioctl` result into a
-POSIX `errno` or a canonical struct is contract knowledge (the provider).
-The impedance match between NATIVE and POSIX lives in exactly one place: the
-provider.
+provider-facing `kabi` result is down-face contract knowledge (the provider);
+the product-visible POSIX meaning belongs above that, in the
+`system/lib/kernel` bridge. The impedance match is split by face:
+NATIVE↔`kabi` in the provider, `kabi`↔`uapi` in the bridge.
 
 **Not a HAL — reconciled with §2.** This split is *not* the HAL §2 forbids.
 A HAL is a uniform abstraction layer the product imports *above* `arch/`;
@@ -202,8 +203,9 @@ power — sovereign, World layer).
 
 The editor and client kernels are **mode-invariant**: they never absorb
 device drivers, board mechanics, or IRQ handling. Device reality stays
-below `arch::sys`; editor and client policy stay above the
-`kabi/platform` seam (`06-ABI/05-Platform-Contract.md`).
+below the `kabi/*` down-face and `arch::sys`; editor and client policy stay
+on the `uapi/*` up-face. The `system/lib/kernel` bridge is the only normal
+crate family that may name both faces (`06-ABI/05-Platform-Contract.md`).
 
 The **system kernel is conditional by mode** (§6): RTOS-itself mode
 carries all three kernels; Over-OS mode has only the editor and client
@@ -240,7 +242,7 @@ carrier while `execve` is absent from `arch/`.)
 **RTOS-itself** has no process launcher. Firmware loads `kernel8.img`, then:
 
 ```text
-Pi firmware -> arch::_start -> machine-kernel boot
+Pi firmware -> arch::_start -> system-kernel bridge boot
   -> boot-profile selection -> editor Init::boot -> console platform runtime
 ```
 
@@ -268,22 +270,28 @@ the editor and the system?"** = "Is the system-kernel slot filled?"
 
 ```
 Over-OS:
-  editor + client → kabi/platform → arch (hosted) → arch sys (host syscalls)
-  device Domains reach hardware via arch-hosted /dev-/ioctl services
-  [system-kernel slot ABSENT — the host OS plays the role]
+  editor + client → uapi/* → hosted system role / bridge
+    → kabi/platform + kabi/device → hosted provider → arch sys (host syscalls)
+  device Domains reach hardware through the up-face device surface, then the
+  hosted bridge/provider reaches /dev-/ioctl services below `kabi`
+  [system/lib/kernel crate ABSENT — the host OS plus hosted bridge fill the role]
 
 RTOS-itself:
-  editor + client → kabi/platform → SYSTEM KERNEL → arch (bare-metal floor)
-  device Domains reach hardware via the system-kernel device service
+  editor + client → uapi/* → system/lib/kernel bridge
+    → kabi/platform + kabi/device → freestanding provider/device code
+    → arch (bare-metal floor)
+  device Domains reach hardware via the up-face device surface; the system
+  bridge maps that to `kabi/device` below
   (04-Domain-Substrate/06-Device-Domains.md §8)
   [system kernel additionally loads device drivers, block, fs, console]
 ```
 
-In Over-OS mode the editor and client kernels reach `kabi/platform`; the
-contract is implemented by `arch` hosted adapters (host syscalls, `/dev`,
-fd-I/O). In RTOS-itself mode the same two kernels reach the same contract;
-the implementor is now the system kernel, which in turn owns `arch` at the
-bare-metal floor and loads device drivers.
+In Over-OS mode the editor and client kernels reach the `uapi/*` up-face; the
+host OS plus hosted bridge/provider fill the system role over host syscalls,
+`/dev`, and fd-I/O. In RTOS-itself mode the same two kernels still reach the
+same up-face; `system/lib/kernel` fills the bridge role and maps common system
+semantics to `kabi/*` providers below. The system kernel does not own `arch`
+by import; raw facts and MMIO stay in provider/floor code.
 
 The composition root (the `reovim` binary / boot image) is the only place
 that wires these: it selects the contract implementor and installs the
@@ -291,22 +299,23 @@ platform vtable at `Init::boot`. Neither the editor kernel nor the client
 kernel sees a mode branch — their code is identical. The mode branch lives
 entirely at the composition root and below the contract.
 
-### 6.1 The POSIX provider per mode
+### 6.1 The uapi↔kabi bridge per mode
 
-The provider that fills the contract carries **graduated substance** by
-target class — the canonical POSIX values are fixed, but how much work it
-takes to produce them varies:
+The bridge/provider pair carries **graduated substance** by target class. The
+product-facing POSIX values are fixed in `uapi/posix`; provider-facing slot
+types live in `kabi/*`. Hardware/provider-specific crates do **not** import
+`uapi/posix` directly unless a documented inescapable exception exists.
 
-| Target class | Provider substance |
+| Target class | Bridge/provider substance |
 |---|---|
-| kernel-ABI (Linux) | **~none** — Linux/x86-64 numbers already fill the `uapi/posix` canonical values, so the mapping is identity and the provider is a thin passthrough. |
-| system-library (Windows/macOS) | **shim** — translate the vendor ABI to canonical POSIX: `errno` remap, handle↔`fd`, open-flag and mode translation. |
-| freestanding (bare metal) | **full** — the system kernel implements POSIX semantics over hardware from scratch; the provider is the largest. |
+| kernel-ABI (Linux) | **thin** — the hosted bridge maps `uapi/posix` to provider-facing `kabi` slot values; the provider maps those to Linux kernel-ABI calls, often identity at the bit level but still not by importing `uapi`. |
+| system-library (Windows/macOS) | **shim** — the hosted bridge/provider pair translates the vendor ABI to the fixed up-face values: errno remap, handle↔fd, open-flag and mode translation. |
+| freestanding (bare metal) | **full** — `system/lib/kernel` implements common POSIX-like system semantics over hardware services, and freestanding providers/device code satisfy `kabi/*` over raw hardware. |
 
-A **zero-arch provider** (`platform-linux-mock`) also fills the contract
-with no machine underneath — it canonicalizes nothing real but passes the
-same behavioral conformance suite, which is what makes "provider" a contract
-role and not a synonym for "the Linux backend."
+A **zero-arch provider** (`platform-linux-mock`) can also satisfy `kabi/*`
+with no machine underneath. It canonicalizes nothing real but passes the same
+behavioral conformance suite, which is what makes "provider" a contract role
+and not a synonym for "the Linux backend."
 
 **Composition is Kbuild-style, not Cargo features.** Each config selects its
 provider through a dedicated per-config composition-root crate — there is no
@@ -336,7 +345,7 @@ append-only evolution, and the macro contract are specified in
 
 | Behaviour | Fixture |
 |---|---|
-| Mode-invariant editor + client kernels | The editor and client kernel crates compile unchanged for both Over-OS and freestanding targets; mode differences appear only below `arch::sys` and in the composition root's vtable selection (`06-ABI/05-Platform-Contract.md`). |
-| System-kernel conditionality | Over-OS mode has no system-kernel crate; `arch` hosted adapters implement `kabi/platform`. RTOS-itself mode has the system kernel implementing the same contract; the editor/client kernel binary is unchanged (`02-Process/01-Kernel-Types.md §0`). |
+| Mode-invariant editor + client kernels | The editor and client kernel crates compile unchanged for both Over-OS and freestanding targets; they name the `uapi/*` up-face, and mode differences appear only in the bridge/provider/floor topology (`06-ABI/05-Platform-Contract.md`). |
+| System-kernel conditionality | Over-OS mode has no `system/lib/kernel` crate; the host OS plus hosted bridge/provider fill the system role. RTOS-itself mode has `system/lib/kernel` bridging `uapi/*` to `kabi/*`; the editor/client kernel binary is unchanged (`02-Process/01-Kernel-Types.md §0`). |
 | Freestanding floor | `aarch64-unknown-none` selftest image boots under QEMU raspi4b: UART write + generic timer + arena alloc + bare-metal entry, via the unchanged `arch_test!` runner. |
 | LaunchPlan parity | A hosted `reovim` invocation and an RTOS `appliance` boot profile resolve to the same `LaunchPlan` fields. |

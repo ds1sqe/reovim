@@ -18,7 +18,7 @@ category.
 
 | Category | Paths | Role |
 |---|---|---|
-| Foundation | `arch/` (→ `arch-sys-*`, `arch-floor-*`), `platform-*`, `system/lib/kernel`, `lib/*`, `uapi/*`, `kabi/*` | Backend floor and its hard-split families (raw mechanism `arch-sys-*`, lang-item floor `arch-floor-*`, canonicalizing providers `platform-*`; §12), the World system kernel (`system/lib/kernel`) — the bare-metal device-neutral library + boot assembly that plays the `kabi/platform` provider role in RTOS mode, a contract *implementor* structurally peer to `platform-*` (§11), core libraries incl. `lib/ds` DS algorithms, up-face ABI (`uapi/*`), down-face platform/device/panic contracts (`kabi/*`). No upward deps. |
+| Foundation | `arch/` (→ `arch-sys-*`, `arch-floor-*`), `platform-*`, `system/lib/kernel`, `lib/*`, `uapi/*`, `kabi/*` | Backend floor and its hard-split families (raw mechanism `arch-sys-*`, lang-item floor `arch-floor-*`, `kabi` providers `platform-*`; §12), the World system-kernel bridge (`system/lib/kernel`) — common boot/system assembly plus console/splash/FDT/device policy over caller-supplied facts and surfaces, the only normal crate family that may name both the product-facing `uapi/*` face and the machine-facing `kabi/*` face; core libraries incl. `lib/ds` DS algorithms, up-face ABI (`uapi/*`), down-face platform/device/panic contracts (`kabi/*`). No upward deps. |
 | Server contracts | `editor/lib/subsys/*` | Closed server contracts and safe wrappers. No ext deps. |
 | Server kernel | `editor/lib/kernel/*` | Kernel mechanisms. No ext or client deps. |
 | Server runtime | `editor/lib/server/*` | Framed-protocol and dispatch glue. |
@@ -41,6 +41,15 @@ The four `client/<category>/` are: `platforms`, `drivers`,
 runtime-loaded cdylib seam, **not** the build-time system drivers, which
 carry no hot-unload or generation fence.
 
+**"kernel" is three distinct families — qualify it always.**
+`editor/lib/kernel/*` is the editor/server Math kernel named by the horizontal
+`KERNEL` tier in `01-Architecture/01-Layer-Model.md`. `client` has its own
+derived Math kernel for projection/input. `system/lib/kernel` is the
+World system-kernel bridge from `uapi/*` to `kabi/*`. A `*-kernel -> arch-*`
+Cargo edge is not a shortcut between these concepts; it is an airlock
+violation. A product/editor/client `*-kernel -> kabi/*` edge is likewise a
+face leak unless it is `system/lib/kernel`.
+
 ## 2. Allowed category edges
 
 Missing edges are forbidden. Each row is "may depend on the listed
@@ -48,15 +57,16 @@ categories".
 
 | From | May depend on |
 |---|---|
-| `arch/` | `kabi/*` (implements the platform handle, §11), `lib/ds` (uses DS algorithms internally); otherwise `core` only — `arch/` is the backend floor (§9/§10) |
-| `lib/*` | `arch/`, peer/lower `lib/*` (per §6 sub-DAG) |
+| `arch/` | `kabi/*` (implements down-face contracts, §11), `lib/ds` (uses DS algorithms internally); otherwise `core` only — `arch/` is the backend floor (§9/§10) |
+| `lib/*` | peer/lower `lib/*` (per §6 sub-DAG), `kabi/*` only for explicitly cataloged backend seams; never `arch` |
 | `lib/ds` | `kabi/*` only — reaches its backend through the boot-installed handle; **never names `arch`** (the `lib/ds ⊄ arch` firewall). Overrides the generic `lib/*` row. |
-| `uapi/*` | `lib/*` only when the dep is target-neutral and ABI-safe; no server/client/ext/apps |
-| `kabi/*` | nothing impl-side — `core` + target-neutral `lib/*` only; declares the down-face contract and owns the platform-handle global static and `AllocError`; **no `kabi → arch`** |
-| `editor/lib/subsys/*` | `uapi/*`, `lib/*`, `arch/`, allowed peer subsys edges |
-| `editor/lib/kernel/*` | `editor/lib/subsys/*`, `uapi/*`, `lib/*`, `arch/` |
+| `uapi/*` | `lib/*` only when the dep is target-neutral and ABI-safe; no `kabi/*`, server/client/ext/apps, or providers |
+| `kabi/*` | nothing impl-side — `core` + target-neutral `lib/*` only; declares the down-face contract and owns provider-facing slot types; **no `kabi → uapi`, no `kabi → arch`** |
+| `system/lib/kernel` | `uapi/*`, `kabi/*`, target-neutral `lib/*`; no arch/provider/editor/client/app deps |
+| `editor/lib/subsys/*` | `uapi/*`, `lib/*`, allowed peer subsys edges; no `kabi/*` or `arch/*` |
+| `editor/lib/kernel/*` | `editor/lib/subsys/*`, `uapi/*`, `lib/*`; no `kabi/*` or `arch/*` |
 | `editor/lib/server/*` | `editor/lib/kernel/*`, `editor/lib/subsys/*`, `uapi/protocol`, `lib/*` |
-| `client/lib/subsys/*` | `uapi/*`, `lib/*`, `arch/`, allowed client-subsys DAG edges |
+| `client/lib/subsys/*` | `uapi/*`, `lib/*`, allowed client-subsys DAG edges; no `kabi/*` or `arch/*` |
 | `editor/*` | `editor/lib/subsys/*`, `uapi/*`, `lib/*`; named ext peers per manifest |
 | `client/platforms/*` | `client/lib/subsys/*`, `uapi/*`, `lib/*` |
 | `client/drivers/*` | `client/lib/subsys/*`, `uapi/*`, `lib/*`, optional platform/capability contracts |
@@ -240,9 +250,11 @@ they do not violate the closed graph.
 **The FFI floor.** Every OS interface — `dlopen`/`dlsym`, sockets and
 UDS, `termios` and terminal ioctls, clocks, file and process
 primitives beyond `std` — is reached through hand-written
-`extern "C"` bindings owned by `arch/`. Higher layers consume `arch/`
-wrappers; no other crate declares foreign OS bindings. `arch/` is the
-single, auditable seam between reovim and the platform.
+`extern "C"` bindings owned by the arch/provider floor
+(`arch-sys-*`, `platform-*`, or a target-specific floor crate). Upper
+product layers consume `uapi/*`; `system/lib/kernel` and hosted bridge
+code translate to `kabi/*`; providers consume `kabi/*` and their raw
+local mechanism. No other crate declares foreign OS bindings.
 
 **Enforcement.** The §5 sovereignty walk (manifest-level) plus the
 resolved-graph gate (lockfile/metadata-level), both fail-closed, both
@@ -344,11 +356,14 @@ injected at `Init::boot`. (Supersedes the prior "`arch/` owns ALL heap
 data structures" rule, which coupled the portable algorithm to the
 World backend.)
 
-The project rule, stated plainly: *the effectful primitive is created at
-`arch/`; the data structure that uses it is created at `lib/ds` against
-the `kabi` contract.* Crates above the floor name `lib/ds` + `kabi`,
-never `arch`; no crate other than `arch/` declares foreign OS bindings
-(§9) or backend primitives.
+The project rule, stated plainly: *the effectful primitive is created below
+the down-face by provider/floor code; the data structure that uses it is
+created at `lib/ds` against the `kabi` contract.* Product crates above the
+bridge name `uapi/*` + target-neutral `lib/*`, not `kabi/*` or `arch`.
+Bridge and backend-library crates may name cataloged `kabi/*` seams, never
+`arch` directly unless they are the provider/floor itself. No crate outside
+the arch/provider floor declares foreign OS bindings (§9) or backend
+primitives.
 
 **`uapi/protocol` is zero-allocation.** The wire-protocol crate
 (7.3 `SP15`) performs no allocation at all — callers provide every
@@ -420,84 +435,92 @@ floor is decomposed into per-target backend modules, cfg-selected from
 The asm-confinement rule is enforced by a source-grep probe in
 `lib/depgraph/tests/` (added #790).
 
-## 11. Kernel / platform seam (candidate edges)
+## 11. Up-face / bridge / down-face seam
 
-The three-kernel model (`02-Process/01-Kernel-Types.md` §0) reaches its
-substrate through two **down-face contracts** in `kabi/` — `kabi/platform`
-(`06-ABI/05-Platform-Contract.md`) and `kabi/device`
-(`04-Domain-Substrate/06-Device-Domains.md` §8). `kabi/` *declares* the
-mechanism; `arch/` and the system kernel *implement* it — dependency flows
-`arch → kabi`, never `kabi → arch` (a contract never depends on its
-implementor; that would run backward through the airlock). The edges below
-are **candidate rules**: they become depgraph-enforced only when the crates
-exist (`kabi/platform`, `kabi/device`, and the system/client kernel crates).
-Until then this section is the target the scaffold builds toward, not a gate.
+The three-kernel model (`02-Process/01-Kernel-Types.md` §0) is split by two
+faces. Product/editor/client code reaches system services through the
+**up-face** `uapi/*` contracts. Hardware/chip/device-specific code satisfies
+the **down-face** `kabi/*` contracts — `kabi/platform`
+(`06-ABI/05-Platform-Contract.md`), `kabi/panic`, and `kabi/device`
+(`04-Domain-Substrate/06-Device-Domains.md` §8). `system/lib/kernel` is the
+bridge allowed to name both faces. It translates common system semantics and
+policy between `uapi/*` and `kabi/*`; it still does not name any arch/provider
+crate.
+
+Provider dependency flows toward `kabi`, never toward `uapi` or product code.
+A direct `uapi/posix` import below `system/lib/kernel` is forbidden by
+default. If a genuinely inescapable case appears, the exception must be
+recorded in this chapter and enforced in the depgraph catalog.
 
 | Target rule | Edge |
 |---|---|
-| kernels depend on the contract, not the floor | `editor-kernel → kabi/platform`; `client-kernel → kabi/platform`; data structures via `lib/ds`; **no** `*-kernel → arch` |
-| one owner of the floor, per mode | impl edges `arch(hosted) → kabi/platform` and `system-kernel → kabi/platform`; plus `system-kernel → arch` |
+| upper kernels depend on the up-face, not the floor | `editor-kernel → uapi/*`; `client-kernel → uapi/*`; data structures via target-neutral `lib/*`; **no** product `*-kernel → kabi`, **no** `*-kernel → arch` |
+| one bridge between faces | `system/lib/kernel → uapi/* + kabi/*`; it owns common system semantics and policy, but **no** `system-kernel → arch` or `system-kernel → platform-*` |
+| providers depend on the down-face only | `platform-*` / hardware-specific device code → `kabi/*` + raw local mechanism; **no** direct `uapi/*` unless a recorded inescapable exception exists |
 | client two-substrate | `client-kernel → uapi/protocol` is the only cross-kernel edge; **no** direct `client-kernel → editor-kernel` |
-| device bridge is a closed contract | `editor/domains/* → kabi/device`; provider impls `arch(hosted) → kabi/device` and `system-kernel → kabi/device`; **no** `domain → driver` or `domain → arch` |
-| client I/O is capability-mediated | `client-kernel → render`/capability subsys; client I/O drivers bottom out on `kabi/device` (bare metal) or platform fd-I/O (hosted); **no** `client-kernel → arch`, **no** `client-kernel → driver` |
+| device bridge is a closed contract | editor domains use an up-face device/domain surface; `system/lib/kernel` and providers expose machine devices through `kabi/device` below the bridge; **no** `domain → driver`, **no** `domain → kabi`, **no** `domain → arch` |
+| client I/O is capability-mediated | `client-kernel → render`/capability subsys on the up-face; bridge/provider code bottoms out on `kabi/device` (bare metal) or hosted fd-I/O; **no** `client-kernel → kabi`, **no** `client-kernel → arch`, **no** `client-kernel → driver` |
 
 Two of these are already locked under existing rules and need no new
 machinery: "drivers are loaded, not linked" is **DAG4** (§4) — each kernel
 binds drivers by vtable, never by Cargo edge; "no client platform IO except
 via capabilities" is the `client/modules/*` row of §2.
 
-**Supersession (the one real change to §2).** Row `editor/lib/kernel/*` in
-§2 currently grants `→ arch`. When `kabi/platform` lands, that grant is
-**removed**: the editor kernel will name only `kabi/platform` (and `lib/ds`
-for data structures), and a `*-kernel → arch` edge becomes a depgraph
-violation. This is deferred, not applied now — flipping it before
-`kabi/platform` exists would forbid a real current edge. The candidate rule
-is recorded here so the supersession is not rediscovered during
-implementation.
+**Supersession (the real change to §2).** Row `editor/lib/kernel/*` no longer
+grants `→ arch`, and it does not gain `→ kabi` as a replacement. The editor
+and client kernels name `uapi/*` plus target-neutral `lib/*`; `system/lib/kernel`
+is the bridge that names `kabi/*`. A `*-kernel → arch*` edge is a depgraph
+violation, and a product/editor/client `*-kernel → kabi/*` edge is a face
+violation.
 
-## 12. The four-tier model and the `arch` firewall (candidate, `DAG7`)
+## 12. The face-tier model and the `arch` firewall (candidate, `DAG7`)
 
-The Foundation tier (§1) resolves into **four dependency tiers**, ordered by
-what each may name. This generalizes the existing edge rules (§2, §10, §11)
-to the post-split `arch-*` / `platform-*` crate families
+The Foundation tier (§1) resolves into dependency tiers ordered by which
+semantic face each crate may name. This generalizes the existing edge rules
+(§2, §10, §11) to the post-split `arch-*` / `platform-*` crate families
 (`01-Architecture/06-OS-Modes.md` §2.2):
 
 | Tier | Crates | May name | Must not name |
 |---|---|---|---|
-| **T1 — Contracts** | `uapi/*`, `kabi/*` | `core`, target-neutral `lib/*` | any `arch-*`, `platform-*` (`DAG7`) |
-| **T2 — Math** | `lib/*` (incl. `lib/ds`) | `core`, `kabi/*`, peer `lib/*` | any `arch-*`, `platform-*` (the `lib/ds ⊄ arch` firewall, §10) |
-| **T3 — Providers + floor** | `arch-sys-*`, `platform-*`, `arch-floor-*`, `ext/system/drivers/*` | `kabi/*` (implements it), `lib/ds`, `core` | upward: no contract, kernel, or app |
-| **T4 — Composition roots** | `apps/*`, boot images | any tier, by mode-selected config | — |
+| **T1 — Up-face contracts** | `uapi/*` | `core`, target-neutral `lib/*` | `kabi/*`, any `arch-*`, any `platform-*`, product implementation crates |
+| **T2 — Product source** | `editor/*`, `client/*`, product `apps/*` | `uapi/*`, target-neutral `lib/*`, local closed contracts per §2 | `kabi/*`, any `arch-*`, any `platform-*` |
+| **T2M — Foundation Math** | `lib/*` | `core`, peer `lib/*`, `kabi/*` only for explicitly cataloged backend seams | any `arch-*`, any `platform-*`, product implementation crates |
+| **T2W — System bridge** | `system/lib/kernel` | `uapi/*`, `kabi/*`, target-neutral `lib/*` | any `arch-*`, any `platform-*`, editor/client/app crates |
+| **T3 — Down-face contracts** | `kabi/*` | `core`, target-neutral `lib/*` | `uapi/*`, any `arch-*`, any `platform-*`, product implementation crates |
+| **T4 — Providers + floor** | `arch-sys-*`, `platform-*`, `arch-floor-*`, `ext/system/drivers/*` | `kabi/*`, raw local mechanism, `lib/ds`, `core` | `uapi/*` by default, upward product/kernel/app crates |
+| **T5 — Composition roots** | boot images and app link roots | may link selected tiers by mode, but source-facing API remains `uapi/*` above the bridge | implicit cross-tier source APIs |
 
 **The arch hard-split (T3).** `arch/` matures into three crate families by
 the three-knowledges rule (OS-Modes §2.2): `arch-sys-*` (raw hardware,
-returns NATIVE), `platform-*` (the canonicalizing provider, the POSIX trap
-gate), and `arch-floor-*` (lang items). `ext/system/drivers/*` are the
+returns NATIVE), `platform-*` (target-specific `kabi` providers), and
+`arch-floor-*` (lang items). `ext/system/drivers/*` are the
 build-time, `#[used]`-section-registered machine drivers a
-`platform-*`/system kernel composes — World side, below `kabi/device`,
-**not** runtime-loaded.
+provider/composition root composes — World side, below `kabi/device`,
+**not** runtime-loaded. `system/lib/kernel` may supply neutral system
+services to that composition, but the raw arch reads/MMIO and vtable install
+stay outside it.
 
-**`DAG7` — the Tier-1 firewall (candidate).** No `uapi/*` or `kabi/*` crate
-names any `arch-*` or `platform-*` crate. This extends the existing
-`no kabi → arch` rule (§11) to the post-split family names: a contract never
-names a provider or a floor, by import. Today
+**`DAG7` — the face firewall (candidate).** No `uapi/*` or `kabi/*` crate
+names any `arch-*` or `platform-*` crate. In addition, `uapi/*` and `kabi/*`
+do not name each other: the former is the product face, the latter is the
+provider face, and `system/lib/kernel` is the bridge. Today
 `lib/depgraph/tests/firewall_probe.rs` asserts only the Tier-2 residual
 (`lib/ds ⊄ arch`); the Tier-1 assertion is **spec-first** — the probe
 extension lands in the 05d sub-plans, exactly as `DAG6` was spec-first
 before its enforcement flight.
 
 **`arch → {}`, stated whole.** Taking §2 (no upward edges), §10
-(`lib/ds ⊄ arch`), §11 (`no *-kernel → arch`), and `DAG7` together: **no
-contract, Math, kernel, or app crate names `arch` by import** — the import
-residual of `arch` in product source is the empty set, panic included.
-Exactly three things cross from the floor to the product at **LINK, not
-import**: `#[panic_handler]`, `#[global_allocator]`, and the
+(`lib/ds ⊄ arch`), §11 (upper code sees `uapi`, lower code sees `kabi`), and
+`DAG7` together: **no contract, Math, kernel, or app crate names `arch` by
+import** — the import residual of `arch` in product source is the empty set,
+panic included. Exactly three things cross from the floor to the product at
+**LINK, not import**: `#[panic_handler]`, `#[global_allocator]`, and the
 `_start → editor-entry` extern symbol
 (`01-Architecture/01-Layer-Model.md` §1.1). Everything else the product
-needs from the machine arrives through a `kabi` contract, never an `arch`
-name. (Resolved-closure still reaches the floor transitively via `lib/ds`'s
-backend; like §11, this is a *direct-import* rule, stated at the strength it
-holds.)
+needs from the machine arrives through `uapi/*` into the system bridge and
+then through `kabi/*` below the bridge, never through an `arch` name.
+(Resolved-closure still reaches the floor transitively via installed handles;
+like §11, this is a *direct-import* rule, stated at the strength it holds.)
 
 ## Open items
 
