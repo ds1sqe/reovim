@@ -27,8 +27,6 @@ pub mod alloc;
 pub mod net;
 pub mod panic;
 pub mod sys;
-#[cfg(target_os = "linux")]
-pub mod term;
 pub mod thread;
 pub mod time;
 
@@ -73,10 +71,11 @@ pub use reovim_testrt::arch_test;
 #[cfg(feature = "selftest")]
 pub mod time_tests;
 
-// arch::net and arch::term have their test modules declared via `#[path]`
-// children inside `net/mod.rs` and `term/mod.rs` respectively (the standard
-// L12 pattern for modules that need `super::` access). No additional
-// parent-level declaration is needed here.
+// arch::net has its test module declared via a `#[path]` child inside
+// `net/mod.rs` (the standard L12 pattern for modules that need `super::`
+// access). No additional parent-level declaration is needed here. (The former
+// `arch::term` RawMode guard moved to the `kabi/platform` termios contract in
+// SP05b; its test module went with it.)
 
 // SP07 park: the mem-intrinsic / panic-path / profiler / start selftests are
 // NOT re-homed into the floor crates this flight. Their source modules

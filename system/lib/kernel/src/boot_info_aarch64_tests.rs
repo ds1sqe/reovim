@@ -5,20 +5,24 @@
 //! so `super::` reaches the pure register decoders and the collector that lifted
 //! up with the assembly (SP04 04a).
 //!
-//! Two tiers: the `cache_*`/`min_line_*` cases drive the pure register
-//! decoders over synthetic `CTR`/`CLIDR`/`CCSIDR` values — deterministic, no
-//! hardware. The `boot_info_*` cases run on the real QEMU raspi4b machine to
-//! prove the live register/mailbox discovery end to end through the floor's
-//! raw-fact accessors.
+//! The cases drive pure register decoders and `BootInfo` shaping over synthetic
+//! facts. Raw hardware discovery now lives in the composition root below this
+//! crate.
 
 use {
     super::{
-        cache_present, cache_size_bytes, cache_type, collect_boot_info, decode_cache_size,
-        min_cache_line_bytes,
+        Aarch64BootFacts, cache_present, cache_size_bytes, cache_type, collect_boot_info,
+        decode_cache_size, min_cache_line_bytes,
     },
-    reovim_arch_sys_none_aarch64 as backend,
+    reovim_kabi_platform::{MemoryKind, MemoryRange},
     reovim_testrt::{self as testrt, arch_test},
 };
+
+static MEMORY: [MemoryRange; 1] = [MemoryRange {
+    base: 0x80000,
+    len: 0x3FF8_0000,
+    kind: MemoryKind::Usable,
+}];
 
 arch_test!(min_line_decodes_dminline, {
     // DminLine (CTR_EL0[19:16]) is log2 of the line size in 4-byte words.
@@ -50,17 +54,33 @@ arch_test!(cache_type_and_presence_from_clidr, {
     testrt::check(cache_present(clidr, 2, false), "L2 unified counts as data/unified");
     testrt::check(!cache_present(clidr, 2, true), "L2 unified is not an I-cache");
     // An absent level (Ctype = 0) yields a zero size through the wrapper.
-    testrt::check_eq(cache_size_bytes(clidr, 3, false), 0u32);
+    testrt::check_eq(cache_size_bytes(clidr, 3, false, 0), 0u32);
 });
 
-arch_test!(boot_info_discovers_real_cache_and_affinity, {
-    // End-to-end on the real raspi4b machine: live register reads yield a real
-    // cache line, non-zero L1 sizes, a well-formed affinity (MPIDR_EL1[31] is
-    // RES1 on ARMv8), and the static arena capacity.
-    let bi = collect_boot_info();
-    testrt::check_eq(bi.cache_line_bytes, 64u32); // Cortex-A72 minimum line
-    testrt::check(bi.l1d_bytes != 0, "L1-D size discovered");
-    testrt::check(bi.l1i_bytes != 0, "L1-I size discovered");
-    testrt::check((bi.cpu_affinity >> 31) & 1 == 1, "MPIDR_EL1[31] RES1 set");
-    testrt::check_eq(bi.heap_total_bytes, backend::arena_capacity() as u64);
+arch_test!(boot_info_shapes_supplied_facts, {
+    let clidr = 3 | (4 << 3);
+    let l1 = 2 | (1 << 3) | (255 << 13);
+    let l2 = 2 | (15 << 3) | (1023 << 13);
+    let bi = collect_boot_info(Aarch64BootFacts {
+        memory: &MEMORY,
+        timer_frequency_hz: 54_000_000,
+        midr: 0x410F_D083,
+        ctr: 0x4 << 16,
+        clidr,
+        l1d_ccsidr: l1,
+        l1i_ccsidr: l1,
+        l2_ccsidr: l2,
+        mpidr: 1 << 31,
+        sdram_clock_hz: Some(400_000_000),
+        heap_total_bytes: 8 * 1024 * 1024,
+    });
+    testrt::check_eq(bi.memory.len(), 1usize);
+    testrt::check_eq(bi.cpu_freq_hz, 54_000_000u64);
+    testrt::check_eq(bi.cache_line_bytes, 64u32);
+    testrt::check_eq(bi.l1d_bytes, 32 * 1024u32);
+    testrt::check_eq(bi.l1i_bytes, 32 * 1024u32);
+    testrt::check_eq(bi.l2_bytes, 1024 * 1024u32);
+    testrt::check_eq(bi.cpu_affinity, 1u64 << 31);
+    testrt::check_eq(bi.mem_freq_hz, 400_000_000u64);
+    testrt::check_eq(bi.heap_total_bytes, 8 * 1024 * 1024u64);
 });

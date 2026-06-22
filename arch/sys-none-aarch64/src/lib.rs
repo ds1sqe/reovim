@@ -30,6 +30,8 @@ mod arena;
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 mod boot_info;
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
+mod device_inventory;
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
 pub mod errno;
 // The VideoCore mailbox framebuffer (raw MMIO) STAYS; the `Framebuffer` type is
 // the Q2 seam the system-kernel console consumes by value (SP04 04a). The
@@ -40,8 +42,8 @@ pub mod framebuffer;
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 mod semihost;
 // The write-once `fn(&[u8])` write-sink registry. The floor `write` fans fd 1/2
-// to an installed callback (in addition to the UART); the system kernel installs
-// its console-renderer trampoline downward at boot (SP04 04b). The console it
+// to an installed callback (in addition to the UART); the boot composition root
+// installs the system-kernel console callback at boot (SP04 04b). The console it
 // renders to lives one tier up, so this registry is the acyclic decoupling — no
 // reverse arch-sys-none → system-kernel edge.
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
@@ -61,11 +63,10 @@ pub use errno::{
 
 /// Installs a `fn(&[u8])` callback as the floor's on-screen write sink (once).
 ///
-/// The §11 system-kernel → arch-sys-none impl edge: the system kernel registers
-/// its console-renderer trampoline here at boot, and the floor `write` fans
-/// fd 1/2 to it from below. The console lives one tier up, so this downward
-/// install (called from below) is what keeps arch-sys-none free of a reverse
-/// upward edge (invariant #2).
+/// The boot composition root registers a system-kernel console callback here at
+/// boot, and the floor `write` fans fd 1/2 to it from below. The console lives
+/// one tier up, so this callback install keeps arch-sys-none free of a reverse
+/// upward edge (invariant #2) without giving system-kernel an arch import.
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 pub use sink::install_write_sink;
 
@@ -76,21 +77,20 @@ pub use sink::install_write_sink;
 /// `_start` asm in `reovim-arch-floor-none-aarch64` stashes the
 /// firmware-provided value here via a cross-crate
 /// `sym reovim_arch_sys_none_aarch64::DTB_PTR` operand, after the BSS clear
-/// and before calling Rust entry (SP03 floor split). The system kernel's
-/// device-inventory assembly reads it through the [`dtb_ptr`] accessor (the FDT
-/// parse + enumerate lifted up in SP04 04a) to walk the DTB. Zero until stashed,
-/// and on any entry with no DTB (QEMU without `-dtb`), which the reader treats as
-/// "no device tree".
+/// and before calling Rust entry (SP03 floor split). The boot composition root
+/// reads it through the [`dtb_ptr`] accessor and passes the resulting DTB slice
+/// into the system-kernel bridge. Zero until stashed, and on any entry with no
+/// DTB (QEMU without `-dtb`), which the bridge treats as "no device tree".
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 pub static DTB_PTR: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
 
-// ---- raw-fact provider surface for the system kernel's boot-info assembly ----
+// ---- raw-fact provider surface for the boot composition root -----------------
 //
 // The device-neutral `BootInfo` assembly lifted into `reovim-system-kernel`
 // (SP04 04a). The asm register reads + the mailbox/arena raw mechanism it
-// decodes STAY here (invariant #4, asm confinement); the system kernel reads
-// them through these crate-root accessors (the §11 system-kernel → arch-sys-none
-// impl edge) and maps them into the neutral struct.
+// decodes STAY here (invariant #4, asm confinement); boot composition roots
+// gather them through these crate-root accessors and pass plain facts into the
+// system-kernel bridge.
 
 /// Reads `CLIDR_EL1`, the cache-level-id register (NATIVE u64).
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
@@ -109,12 +109,19 @@ pub use boot_info::midr;
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 pub use boot_info::mpidr;
 /// Selects and reads the `CCSIDR_EL1` cache-size register for one cache (the raw
-/// `asm!` selector write + read); the system kernel decodes the returned value.
+/// `asm!` selector write + read); the system-kernel bridge decodes the returned
+/// value after the composition root passes it in.
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 pub use boot_info::read_ccsidr;
 
+/// Classifies this target's DTB `compatible` strings into coarse KABI device
+/// classes. The system-kernel bridge owns the DTB walk and neutral inventory
+/// shaping; this target-specific table stays below the bridge.
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+pub use device_inventory::classify_compatible as classify_device_compatible;
+
 /// Reads the generic-timer frequency (`CNTFRQ_EL0`) in Hz — the
-/// `BootInfo.timer_freq_hz` fact the system kernel reads across the impl edge.
+/// `BootInfo.timer_freq_hz` fact the composition root passes into the bridge.
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 pub use timer::frequency as timer_frequency;
 
@@ -131,9 +138,8 @@ pub use arena::capacity as arena_capacity;
 /// Hands out `len` bytes (rounded up to whole pages), page-aligned, from the
 /// static boot arena.
 ///
-/// The device enumerator (lifted into the system kernel) allocates its
-/// `'static` `DeviceEntry` storage through this accessor; the arena itself
-/// (raw `.bss` bump mechanism) stays below.
+/// Boot composition roots may allocate process-lifetime storage through this
+/// accessor; the arena itself (raw `.bss` bump mechanism) stays below.
 ///
 /// # Errors
 ///
@@ -147,9 +153,8 @@ pub fn arena_alloc_pages(len: usize) -> Result<usize, Errno> {
 /// no DTB was passed. Reads the atomic cell the boot asm stashes
 /// ([`DTB_PTR`]) before calling Rust entry.
 ///
-/// Public so the system kernel's device-inventory assembly reads the boot fact
-/// through an accessor rather than naming the [`DTB_PTR`] static across the
-/// upward impl edge.
+/// Public so boot composition roots read the boot fact through an accessor
+/// rather than naming the [`DTB_PTR`] static directly.
 #[cfg(all(target_os = "none", target_arch = "aarch64", feature = "runtime"))]
 #[must_use]
 pub fn dtb_ptr() -> u64 {

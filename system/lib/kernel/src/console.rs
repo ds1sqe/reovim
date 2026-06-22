@@ -1,9 +1,10 @@
-//! Coverage-blended text console over the `VideoCore` framebuffer.
+//! Coverage-blended text console over a caller-supplied pixel surface.
 //!
-//! [`Framebuffer`](reovim_arch_sys_none_aarch64::framebuffer::Framebuffer)
-//! exposes only raw pixel stores. This
-//! module turns that surface into a line-oriented text console so the
-//! bare-metal boot log is legible on the HDMI output, not only on the UART.
+//! The raw framebuffer/MMIO handle stays below this bridge. This module owns the
+//! line-oriented console policy and renders through [`RenderSurface`], a small
+//! callback table installed by the composition root. That keeps pixel storage
+//! and write-sink registration below the kernel while retaining the common SGR,
+//! font, grid, scroll, and blend behavior here.
 //! It owns a cursor (column/row in glyph cells), renders each printable byte
 //! from a selectable [`Font`], and advances/wraps as bytes arrive.
 //!
@@ -36,12 +37,6 @@ use core::{
     cell::UnsafeCell,
     sync::atomic::{AtomicBool, Ordering},
 };
-
-// The VideoCore `Framebuffer` type STAYS in the raw-mechanism crate (it wraps
-// mailbox-allocated MMIO); the console consumes it by value across the §11
-// system-kernel → arch-sys-none impl edge (the Q2 seam). The color model, escape
-// parser, and fonts lifted up here with the console.
-use reovim_arch_sys_none_aarch64::framebuffer::Framebuffer;
 
 use crate::{
     color::Color,
@@ -171,6 +166,63 @@ const RESET_CELL: Cell = Cell::blank(Color::Rgb(0), Color::Rgb(0));
 /// type it wraps is an implementation detail. Pass it to [`Console::new`].
 pub struct ScreenGrid<'g>(&'g mut [Cell]);
 
+/// Callback-backed pixel surface supplied by the provider/composition layer.
+///
+/// `RenderSurface` deliberately carries no framebuffer/MMIO type. The caller
+/// owns the raw surface and promises the callbacks stay valid for the lifetime
+/// of the installed console. The console supplies only pixel coordinates and
+/// resolved `0x00RRGGBB` colors.
+#[derive(Clone, Copy)]
+pub struct RenderSurface {
+    width: u32,
+    height: u32,
+    ctx: usize,
+    put_pixel: fn(usize, u32, u32, u32),
+    clear: fn(usize, u32),
+}
+
+impl RenderSurface {
+    /// Builds a render surface over caller-owned state.
+    #[must_use]
+    pub const fn new(
+        width: u32,
+        height: u32,
+        ctx: usize,
+        put_pixel: fn(usize, u32, u32, u32),
+        clear: fn(usize, u32),
+    ) -> Self {
+        Self {
+            width,
+            height,
+            ctx,
+            put_pixel,
+            clear,
+        }
+    }
+
+    /// Width in pixels.
+    #[must_use]
+    pub const fn width(self) -> u32 {
+        self.width
+    }
+
+    /// Height in pixels.
+    #[must_use]
+    pub const fn height(self) -> u32 {
+        self.height
+    }
+
+    /// Stores one pixel through the caller-supplied surface.
+    pub fn put_pixel(self, x: u32, y: u32, color: u32) {
+        (self.put_pixel)(self.ctx, x, y, color);
+    }
+
+    /// Clears the whole caller-supplied surface.
+    pub fn clear(self, color: u32) {
+        (self.clear)(self.ctx, color);
+    }
+}
+
 /// `.bss`-resident backing for the on-screen console's grid, mirroring the
 /// page arena: fixed-size storage reached only through the single `&mut` that
 /// [`screen_grid`] hands out at most once.
@@ -202,7 +254,7 @@ pub fn screen_grid() -> Option<ScreenGrid<'static>> {
     Some(ScreenGrid(unsafe { &mut *GRID.0.get() }))
 }
 
-/// A line-oriented text console over a [`Framebuffer`], rendering through a
+/// A line-oriented text console over a [`RenderSurface`], rendering through a
 /// selectable [`Font`].
 ///
 /// The cursor tracks the next cell in glyph units. [`print`](Console::print)
@@ -210,7 +262,7 @@ pub fn screen_grid() -> Option<ScreenGrid<'static>> {
 /// printable bytes, interpret `\n`/`\r`, and apply the SGR color sequences the
 /// embedded [`escape parser`](crate::escape) decodes from the same byte stream.
 pub struct Console<'g> {
-    fb: Framebuffer,
+    surface: RenderSurface,
     /// The font this console blits through.
     font: &'static Font,
     /// Cursor column in glyph cells.
@@ -250,7 +302,7 @@ pub struct Console<'g> {
 }
 
 impl<'g> Console<'g> {
-    /// Builds a console over `fb` rendering through `font` with the given
+    /// Builds a console over `surface` rendering through `font` with the given
     /// foreground/background color pens, backed by `grid` for retained screen
     /// content, and clears the whole surface to the background. Both pens also
     /// become the defaults that SGR reset (`0`) and the default-color codes
@@ -265,7 +317,7 @@ impl<'g> Console<'g> {
     /// to its stub surface).
     #[must_use]
     pub fn new(
-        fb: Framebuffer,
+        surface: RenderSurface,
         font: &'static Font,
         fg: Color,
         bg: Color,
@@ -275,17 +327,17 @@ impl<'g> Console<'g> {
         // The backing is at most `GRID_CELLS` (5760); a length beyond `u32`
         // is impossible, so saturating the conversion cannot lose a real value.
         let max_cells = u32::try_from(grid.len()).unwrap_or(u32::MAX);
-        let cols = (fb.width() / font.cell_w).clamp(1, max_cells);
-        let rows = (fb.height() / (font.cell_h + LINE_LEADING)).clamp(1, max_cells / cols);
+        let cols = (surface.width() / font.cell_w).clamp(1, max_cells);
+        let rows = (surface.height() / (font.cell_h + LINE_LEADING)).clamp(1, max_cells / cols);
         // Clear the surface and the in-use cells to the background pen, so the
         // retained grid agrees with the painted surface from the first byte.
-        fb.clear(bg.resolve());
+        surface.clear(bg.resolve());
         let used = (cols * rows) as usize;
         for cell in &mut grid[..used] {
             *cell = Cell::blank(fg, bg);
         }
         Self {
-            fb,
+            surface,
             font,
             col: 0,
             row: 0,
@@ -549,14 +601,14 @@ impl<'g> Console<'g> {
         for gy in 0..cell_h {
             for gx in 0..cell_w {
                 let cov = effective_coverage(coverage, cell_w, cell_h, cell.attrs, gx, gy);
-                self.fb.put_pixel(x0 + gx, y0 + gy, blend(fg, bg, cov));
+                self.surface.put_pixel(x0 + gx, y0 + gy, blend(fg, bg, cov));
             }
         }
         // Underline overlays the finished glyph at full foreground.
         if cell.attrs.contains(Attrs::UNDERLINE) {
             let uy = y0 + cell_h.saturating_sub(UNDERLINE_INSET);
             for gx in 0..cell_w {
-                self.fb.put_pixel(x0 + gx, uy, fg);
+                self.surface.put_pixel(x0 + gx, uy, fg);
             }
         }
     }
@@ -583,8 +635,8 @@ static CONSOLE: ConsoleSink = ConsoleSink(UnsafeCell::new(None));
 /// Parks `console` in the crate-static holder the write-sink trampoline reads.
 ///
 /// Crate-internal: the public entry is [`install_console`], which builds the
-/// `Console`, parks it here, and registers the trampoline into the floor's
-/// write-sink registry. Called once, early, before the first fd 1/2 write.
+/// `Console` and parks it here. The caller installs [`write_bytes`] into its
+/// write-sink registry after this returns.
 pub(crate) fn install(console: Console<'static>) {
     // SAFETY: single thread of control; no live reference into the cell exists
     // across this store.
@@ -593,43 +645,27 @@ pub(crate) fn install(console: Console<'static>) {
     }
 }
 
-/// Builds the standing framebuffer console and wires it into the floor's
-/// fd 1/2 fan-out — the kernel's permanent on-screen sink, installed by the
-/// system kernel rather than by fixture glue.
+/// Builds the standing framebuffer console.
 ///
-/// It builds a [`Console<'static>`] over `fb` (the `VideoCore` `Framebuffer`
-/// raw-MMIO seam that stays below — the Q2 type), rendering through `font` with
-/// the `fg`/`bg` pens over the once-handed-out screen `grid`, parks it in this
-/// crate's [`CONSOLE`] static via [`install`], then registers [`write_bytes`]
-/// as the floor's `fn(&[u8])` write sink (the §11 downward install into
-/// arch-sys-none's
-/// [`install_write_sink`](reovim_arch_sys_none_aarch64::install_write_sink)).
-/// After this the floor `write` fans every fd 1/2 byte to the console from below
-/// through the registry — no `arch-sys-none → system-kernel` edge.
-///
-/// Call once, early — before the kernel's first `write(2,...)` (the
-/// no-read-before-install ordering). The registry install is write-once, so a
-/// stray second call cannot displace the standing console.
+/// It builds a [`Console<'static>`] over `surface`, rendering through `font`
+/// with the `fg`/`bg` pens over the once-handed-out screen `grid`, and parks it
+/// in this crate's [`CONSOLE`] static via [`install`]. The caller then wires the
+/// public [`write_bytes`] trampoline into its own fd 1/2 fan-out.
 pub fn install_console(
-    fb: Framebuffer,
+    surface: RenderSurface,
     font: &'static Font,
     fg: Color,
     bg: Color,
     grid: ScreenGrid<'static>,
 ) {
-    install(Console::new(fb, font, fg, bg, grid));
-    // The trampoline is the free `write_bytes` fn coerced to `fn(&[u8])`: the
-    // floor `write` calls it from below, and it drains into the parked console.
-    reovim_arch_sys_none_aarch64::install_write_sink(write_bytes);
+    install(Console::new(surface, font, fg, bg, grid));
 }
 
 /// Writes `buf` to the installed console, if one is present; a no-op otherwise.
 ///
-/// This is the standing-console sink for the floor's `write` fan-out, and the
-/// `fn(&[u8])` trampoline [`install_console`] registers into the floor's
-/// write-sink registry. The floor `write` cannot name it directly (that would
-/// be a forbidden arch-sys-none → system-kernel upward edge): the registry
-/// holds it as a downward-installed callback and calls it from below.
+/// This is the standing-console sink for the caller's `write` fan-out. The raw
+/// floor cannot name it directly; the composition root installs it downward as
+/// an ordinary function pointer.
 pub fn write_bytes(buf: &[u8]) {
     // SAFETY: single thread of control; the `&mut` borrow does not alias — no
     // other reference into the cell is live during the call.

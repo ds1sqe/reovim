@@ -7,7 +7,7 @@
 //!    [`reovim_kabi_panic::set_pre_exit_hook`] BEFORE entering raw mode (gap-7,
 //!    8.2 §2). The pre-exit hook is a process-global write-once static; if
 //!    already set (e.g. in tests), this step is skipped without error.
-//! 2. Enters raw mode on stdin (`arch::term::RawMode::enter(0)`).
+//! 2. Enters raw mode on stdin (`kabi/platform`'s `RawMode::enter(0)`).
 //! 3. Connects to the server over UDS + completes the Hello/Attach handshake
 //!    via [`carrier::connect_and_handshake`].
 //! 4. Reads the initial `AttachEvent::Projection` notify (SP12).
@@ -29,8 +29,8 @@
 //! bidirectional muxing (poll/epoll or a second thread) is deferred.
 
 use {
-    reovim_arch::term::{ENOTTY, RawMode},
     reovim_kabi_panic::set_pre_exit_hook,
+    reovim_kabi_platform::{ENOTTY, RawMode},
     reovim_lib_ds::{
         fs::{read_fd, write_fd},
         net::UnixStream,
@@ -86,37 +86,22 @@ const STDIN_FD: i32 = 0;
 const STDOUT_FD: i32 = 1;
 
 /// The pre-exit terminal-restore hook registered via
-/// [`arch::panic::set_pre_exit_hook`]. Restores stdin to the saved
-/// cooked-mode termios using a `TCSETS` ioctl via `arch`.
+/// [`reovim_kabi_panic::set_pre_exit_hook`]. Restores stdin to its saved
+/// cooked-mode termios through the `kabi/platform` termios contract.
 ///
-/// This function is registered ONCE before entering raw mode. When the
-/// panic handler fires it calls this hook before writing its output so the
-/// panic line appears in cooked mode.
+/// This function is registered ONCE before entering raw mode. When the panic
+/// handler fires it calls this hook before writing its output so the panic line
+/// appears in cooked mode.
 ///
-/// The function is safe to call multiple times (each call re-issues the
-/// restore ioctl with the saved settings; the second call is a no-op if the
-/// terminal is already cooked).
+/// It is the *second* termios surface, separate from the [`RawMode`] guard: it
+/// fires at panic time, after the guard's `Drop` has already run (under
+/// `panic = "abort"` the guard `Drop` does not run on a panic, so this hook is
+/// the restore path). It routes through [`RawMode::restore_fd`] — the fd-keyed
+/// restore the provider serves from its saved-state table without needing a live
+/// guard. The provider's restore is idempotent, so calling it after a normal
+/// `Drop` already restored is a harmless no-op.
 fn restore_terminal_on_panic() {
-    // Re-enter+drop a RawMode to get access to saved termios is not available
-    // here (we don't have the saved state). Instead we use arch's ioctl to
-    // request a SANE termios via TCSETS with the cooked defaults. The canonical
-    // approach: read current termios and re-enable ICANON+ECHO.
-    //
-    // Since we have no saved reference here, we call tcgetattr + set sane
-    // flags. This is best-effort — the hook is called in a terminal panic
-    // context. Use the arch ioctl directly.
-    use reovim_arch::sys::{
-        ioctl,
-        term::{ECHO, ICANON, TCGETS, TCSETS},
-    };
-    let mut t = reovim_arch::term::Termios::zeroed();
-    // Read current (raw) termios.
-    if ioctl(STDIN_FD, TCGETS, core::ptr::from_mut(&mut t).addr()).is_ok() {
-        // Re-enable canonical mode and echo.
-        t.c_lflag |= ICANON | ECHO;
-        // Apply; ignore errors (best-effort at panic time).
-        let _ = ioctl(STDIN_FD, TCSETS, core::ptr::from_ref(&t).addr());
-    }
+    RawMode::restore_fd(STDIN_FD);
 }
 
 // ── paint helpers ─────────────────────────────────────────────────────────────

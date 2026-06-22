@@ -5,14 +5,12 @@
 //! so `super::` reaches the migrated mmap parser + the type classifier; the
 //! boot-stashed Multiboot pointer is read through the floor's accessor.
 //!
-//! Two tiers: the `parse_*`/`mmap_*`/`kind_*` cases drive the parser over
-//! synthetic byte blobs — deterministic, no hardware. The `boot_info_*` cases
-//! run on the real QEMU machine to prove the stash + live discovery end to end
-//! through the floor's raw-fact accessors.
+//! The cases drive the parser over synthetic byte blobs — deterministic, no
+//! hardware. Raw fact capture now belongs to the composition root below this
+//! crate.
 
 use {
-    super::{FLAG_MMAP, collect_boot_info, kind_of, mmap_region, parse_entries},
-    reovim_arch_sys_none_x86_64 as backend,
+    super::{FLAG_MMAP, kind_of, mmap_region, parse_entries},
     reovim_kabi_platform::{MemoryKind, MemoryRange},
     reovim_testrt::{self as testrt, arch_test},
 };
@@ -118,26 +116,4 @@ arch_test!(boot_info_kind_of_maps_all, {
     testrt::check(kind_of(3) == MemoryKind::Acpi, "3 -> Acpi");
     testrt::check(kind_of(5) == MemoryKind::Unusable, "5 -> Unusable");
     testrt::check(kind_of(99) == MemoryKind::Reserved, "unknown -> Reserved");
-});
-
-arch_test!(boot_info_multiboot_ptr_stashed, {
-    // End-to-end: QEMU's Multiboot1 loader passes a non-null info pointer in
-    // EBX, which `_start` must have stashed (survives the long-mode climb).
-    testrt::check(backend::multiboot_ptr() != 0, "multiboot ptr stashed by _start");
-});
-
-arch_test!(boot_info_discovers_real_ram, {
-    // End-to-end on the real q35 machine: the live mmap parses into >=1 usable
-    // range with nonzero total, and CPUID reports a processor id.
-    let bi = collect_boot_info();
-    testrt::check(!bi.memory.is_empty(), "real mmap parsed >=1 range");
-    let usable: u64 = bi
-        .memory
-        .iter()
-        .filter(|r| r.kind == MemoryKind::Usable)
-        .map(|r| r.len)
-        .sum();
-    testrt::check(usable > 0, "nonzero usable RAM");
-    testrt::check(bi.cpu_id != 0, "cpu_id from CPUID leaf 1");
-    testrt::check_eq(bi.cpu_count, 1u32);
 });

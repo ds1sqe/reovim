@@ -149,13 +149,10 @@ pub fn default_category_table() -> Vec<(String, Category)> {
         // airlock invariants (kabi is a leaf, arch → kabi is a granted edge) are
         // enforced by the dedicated probes, not by minting a new category variant.
         ("kabi/*", Category::Foundation),
-        // system/lib/kernel = the World system kernel (SP04): the bare-metal
-        // device-neutral library + boot assembly lifted from arch-sys-none-*. A
-        // contract IMPLEMENTOR (it implements kabi/platform), structurally peer
-        // to the platform-* providers — Foundation tier, with `is_floor_crate_name`
-        // counting it a floor-family name no product may import. Listed explicitly
-        // (the master-plan SP04 moment the `system/*` stopgap comment marked) so
-        // the classification is exact rather than riding the glob below.
+        // system/lib/kernel = the World system-kernel bridge: common boot data
+        // shaping and console/FDT/splash policy between uapi-facing code above
+        // and kabi/provider facts below. Foundation tier; products still must
+        // not import it directly.
         ("system/lib/kernel", Category::Foundation),
         // system/* = the remaining system/ tree (the future World sovereign kernel
         // + any sibling subsystem crates); Foundation until an interior lands and a
@@ -335,14 +332,13 @@ pub fn default_foundation_grants() -> std::collections::BTreeMap<String, Vec<Str
         ],
     );
     // ── SP02 platform-provider grants ───────────────────────────────────────
-    // The POSIX provider implements the down-face kabi/platform contract: it
-    // names the canonical Fd/OpenFlags/Mode newtypes (uapi/posix) at the slot
-    // boundary and builds + installs the `PlatformVtable` (kabi/platform).
+    // The POSIX provider implements the down-face kabi/platform contract. Slot
+    // vocabulary is named through kabi/platform, not through a direct provider
+    // → uapi/posix edge.
     m.insert(
         "reovim-platform-linux-native".to_owned(),
         vec![
             "reovim-kabi-platform".to_owned(), // provider → kabi/platform (builds + installs the vtable)
-            "reovim-uapi-posix".to_owned(), // provider → uapi/posix (canonical Fd/OpenFlags/Mode at the slots)
             // provider → arch: the ONE-WAY TRANSITIONAL backend edge (SP02 →
             // retired in SP05). The provider names arch's alloc + clock backends
             // (`arch::alloc`, `arch::time`) and the raw `arch::sys` syscall floor.
@@ -356,18 +352,16 @@ pub fn default_foundation_grants() -> std::collections::BTreeMap<String, Vec<Str
         ],
     );
     // The bare-metal selftest handle scaffold (SP02 Phase 4) carries the same
-    // floor-family dep set as linux-native: it builds + installs the
-    // `PlatformVtable` (kabi/platform), names the canonical Fd/OpenFlags/Mode at
-    // its slot boundary (uapi/posix), and reaches arch's alloc + clock backends
-    // and the raw `arch::sys` floor (futex / write) through the SAME ONE-WAY
-    // TRANSITIONAL backend edge (SP02 → retired in SP05). Acyclic — arch never
-    // names the scaffold back; the fixture composition root drives the install.
-    // Superseded by SP04's real freestanding system-kernel provider.
+    // provider dep set as linux-native: it builds + installs the
+    // `PlatformVtable` (kabi/platform), names slot vocabulary through kabi, and
+    // reaches arch's alloc + clock backends and the raw `arch::sys` floor
+    // (futex / write) through the SAME ONE-WAY TRANSITIONAL backend edge
+    // (SP02 → retired in SP05). Acyclic — arch never names the scaffold back;
+    // the fixture composition root drives the install.
     m.insert(
         "reovim-platform-stub-none".to_owned(),
         vec![
             "reovim-kabi-platform".to_owned(), // scaffold → kabi/platform (builds + installs the vtable)
-            "reovim-uapi-posix".to_owned(), // scaffold → uapi/posix (canonical Fd/OpenFlags/Mode at the slots)
             // scaffold → arch: the same one-way transitional backend edge as
             // linux-native (SP02 → retired in SP05) — alloc/clock backends +
             // `arch::sys` futex/write. Acyclic via the composition-root install.
@@ -375,31 +369,14 @@ pub fn default_foundation_grants() -> std::collections::BTreeMap<String, Vec<Str
         ],
     );
     // ── SP04 system-kernel grant ─────────────────────────────────────────────
-    // The World system kernel lifts the device-neutral library + boot assembly
-    // out of the arch-sys-none-* crates (SP04 04a) and stands up the genuine
-    // freestanding `PlatformVtable` provider it installs at boot (SP04 04c).
-    // Its floor edges are the two freestanding raw-mechanism crates it implements
-    // over — the §11 system-kernel → arch-sys-none impl edge (the console
-    // consumes the VideoCore `Framebuffer` type, the boot-info assembly reads the
-    // register/mailbox/DTB raw facts + arena through their accessors, AND the
-    // provider's live slots reach the clock / arena / futex / write backends
-    // there) — the down-face contract it builds + installs (kabi/platform), the
-    // canonical POSIX slot newtypes the provider names at the vtable boundary
-    // (uapi/posix — the lifted library named none of these; the edge enters with
-    // the 04c provider, the sanctioned uapi/posix edge from the SP04 Cargo-edge
-    // map, no longer speculative), and the core-only test runtime (reovim-testrt)
-    // its `selftest`-gated `*_tests.rs` modules register through. No lib/ds edge —
-    // the migrated surface and the provider name neither. No upward edge back:
-    // `file_write` reaches the floor `write`, not the other way. This is the real
-    // freestanding provider that supersedes stub-none for bootcore; stub-none's
-    // own grant STAYS (retained as the bare exit-code selftest scaffold).
+    // The World system-kernel crate is the arch-free bridge: it shapes
+    // caller-supplied raw facts into kabi/platform boot data, owns common
+    // console/FDT/splash policy, and registers selftests through lib/testrt. It
+    // is not a provider and carries no arch/platform/uapi-posix edge.
     m.insert(
         "reovim-system-kernel".to_owned(),
         vec![
-            "reovim-arch-sys-none-aarch64".to_owned(),
-            "reovim-arch-sys-none-x86-64".to_owned(),
             "reovim-kabi-platform".to_owned(),
-            "reovim-uapi-posix".to_owned(), // provider → uapi/posix (canonical Fd/OpenFlags/Mode at the slots)
             "reovim-testrt".to_owned(),
         ],
     );
@@ -2195,25 +2172,21 @@ fn swapset_group(path: &str) -> Option<String> {
 /// Returns `true` when `name` identifies a **floor-family** crate — a Tier-1
 /// crate below the import airlock no product may name by import.
 ///
-/// The floor family is: `reovim-arch` itself, the per-target raw-mechanism
-/// crates carved out of it (`reovim-arch-sys-*`, SP01), the platform providers
-/// that canonicalize NATIVE→POSIX above it (`reovim-platform-*`, SP02), the
-/// per-target language-floor lang-item crates (`reovim-arch-floor-*`, SP03),
-/// and the World system kernel that plays the bare-metal provider role
-/// (`reovim-system-kernel`, SP04). The firewall probe uses this to detect a
-/// DIRECT edge to any of them.
+/// The forbidden direct-import family is: `reovim-arch` itself, the per-target
+/// raw-mechanism crates carved out of it (`reovim-arch-sys-*`, SP01), the
+/// platform providers (`reovim-platform-*`, SP02), the per-target language-floor
+/// lang-item crates (`reovim-arch-floor-*`, SP03), and the World system-kernel
+/// bridge (`reovim-system-kernel`, SP04). The firewall probe uses this to
+/// detect a DIRECT product edge to any of them.
 #[must_use]
 fn is_floor_crate_name(name: &str) -> bool {
     // `reovim-arch` plus the per-target raw-mechanism crates carved out of it
     // (SP01: `reovim-arch-sys-{linux,none}-{x86-64,aarch64}`), the platform
     // providers above it (SP02: `reovim-platform-linux-native`), the per-target
     // language floors (SP03: `reovim-arch-floor-{linux,none}-{…}`), and the
-    // World system kernel (SP04: `reovim-system-kernel`) — bare-metal it IS the
-    // kabi/platform provider, structurally peer to platform-*. They are all
-    // floor-family crates, so a direct product edge naming any of them is a floor
-    // edge the firewall must detect (fd countdown ruling): a product names
-    // kabi/platform, never the system kernel that implements it (mode-invariance,
-    // invariant #6). `reovim-arch-floor-*` is matched before the
+    // system-kernel bridge (SP04: `reovim-system-kernel`). A product names its
+    // uapi/kabi-facing contracts, never these lower implementation/bridge
+    // crates. `reovim-arch-floor-*` is matched before the
     // `reovim-arch-sys-` prefix check would matter — the two prefixes are
     // disjoint, so order is moot.
     name == "reovim-arch"
@@ -2488,12 +2461,14 @@ fn is_selftest_cfg(stripped: &str) -> bool {
 /// (`arch::sys::openat`, …), NOT as the bare `arch::sys::` prefix.
 ///
 /// Deliberately ALLOWED: `arch::sys::ioctl` and the `arch::sys::term::*`
-/// termios surface, plus `arch::term`. Those are the terminal-control /
-/// panic-restore stratum `SP05c` owns — the tui's panic-restore hook still
-/// names `arch::sys::{ioctl, term::…}` and `arch::term::Termios`, which is
-/// correct until `SP05c`. A bare-prefix ban (`arch::sys::`) would flag that
-/// legitimate
-/// edge, so the forbidden set is the specific moved-call names instead.
+/// termios surface. The tui no longer names them — its raw-mode
+/// entry/restore (and the panic hook) route through the `kabi/platform` termios
+/// contract — so the only legitimate consumer of this surface is the
+/// `platform-linux-native` PROVIDER, whose transitional backend edge is retired along with the rest
+/// of the transitional provider→arch edge. The provider is the trap gate, not a
+/// swept product crate, so this probe never sees it; the allowance is kept so a
+/// bare-prefix ban (`arch::sys::`) does not over-match. The forbidden set is the
+/// specific moved-call names instead.
 ///
 /// # Errors
 ///
@@ -2565,7 +2540,7 @@ fn sweep_product_src_for_arch_time_sys(
 /// Scans `text` (a product source file) for `arch::time`/`arch::sys` time+sys
 /// call references outside `#[cfg(test)]` and `#[cfg(feature = "selftest")]`
 /// blocks, ALLOWING the termios `arch::sys::ioctl`/`arch::sys::term` surface
-/// (`SP05c`'s stratum).
+/// (the transitional provider backend edge, retired later; no swept product names it).
 fn check_product_source_for_arch_time_sys(
     file: &Path,
     text: &str,
@@ -2575,7 +2550,8 @@ fn check_product_source_for_arch_time_sys(
     /// The product-forbidden arch time + sys-call paths. The whole `arch::time`
     /// module, and the specific `arch::sys` CALL names SP05 moved behind the
     /// handle — NOT the bare `arch::sys::` prefix (which would flag the
-    /// `SP05c`-owned `arch::sys::ioctl`/`arch::sys::term` termios surface).
+    /// `arch::sys::ioctl`/`arch::sys::term` termios surface the provider still
+    /// names, the edge `SP05c` retires).
     const FORBIDDEN: &[&str] = &[
         "arch::time",
         "reovim_arch::time",

@@ -7,7 +7,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "Test-only bare-metal platform handle scaffold: the freestanding -ENOSYS/sentinel vtable the selftest/bootcore fixtures install (superseded by SP04's real system-kernel provider)"
+description = "Test-only bare-metal platform handle scaffold: the freestanding -ENOSYS/sentinel vtable the selftest/bootcore fixtures install"
 publish = false
 
 [lints]
@@ -28,10 +28,5 @@ reovim-arch = { path = "../../arch" }
 # with no third-party deps, so DAG5/DAG6 hold.
 reovim-kabi-platform = { path = "../../kabi/platform" }
 
-# The canonical POSIX newtypes (Fd/OpenFlags/Mode) the adapter signatures name
-# at the slot boundary, identical to the shape linux-native's adapters carry.
-# A #![no_std] zero-dep leaf (DAG5/DAG6 preserved).
-reovim-uapi-posix = { path = "../../uapi/posix" }
-
 # No [dev-dependencies] or [build-dependencies] (DAG5/DAG6: zero third-party
-# deps). Beyond the three in-repo path deps above, only `core` is consumed.
+# deps). Beyond the two in-repo path deps above, only `core` is consumed.

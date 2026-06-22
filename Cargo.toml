@@ -37,8 +37,8 @@ members = [
     "platform/linux-native",
     # Test-only bare-metal handle scaffold (SP02 Phase 4): the freestanding
     # -ENOSYS/sentinel vtable the selftest/bootcore fixtures install on
-    # *-unknown-none, where linux-native cannot link. Superseded by SP04's real
-    # system-kernel provider. Empty on Linux (cfg(not(target_os = "linux"))).
+    # *-unknown-none, where linux-native cannot link. Empty on Linux
+    # (cfg(not(target_os = "linux"))).
     "platform/stub-none",
     "uapi/abi",
     "uapi/posix",
@@ -52,12 +52,9 @@ members = [
     # Down-face fault-floor seam: the always-present write-once panic-policy atoms
     # (Platform-Contract §3.4). No install gate — readable before Init::boot.
     "kabi/panic",
-    # World system kernel (SP04): the bare-metal device-neutral library (console
-    # device model, fonts, escape parser, color model, FDT enumerate, boot-info /
-    # device-inventory assembly) lifted from the arch-sys-none-* raw-mechanism
-    # crates. Reaches the raw register/mailbox/DTB facts + the VideoCore
-    # Framebuffer type through the sanctioned system-kernel → arch-sys-none impl
-    # edge (§11); the raw mechanism (asm, MMIO, arena) stays below.
+    # World system-kernel bridge: arch-free common console/FDT/splash policy and
+    # boot-info/device-inventory shaping. Raw facts, framebuffer storage, and
+    # provider installs stay in the lower composition/provider layer.
     "system/lib/kernel",
     "editor/lib/subsys/domain",
     "editor/lib/kernel",

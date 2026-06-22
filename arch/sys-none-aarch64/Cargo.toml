@@ -23,10 +23,10 @@ selftest = []
 workspace = true
 
 [dependencies]
-# The freestanding boot-info / device-inventory assembly names the neutral
-# boot-data types (BootInfo / MemoryKind / MemoryRange / DeviceClass /
-# DeviceEntry / DeviceInventory). kabi/platform is a #![no_std] zero-dep leaf,
-# so DAG5/DAG6 are preserved.
+# The freestanding raw-fact surface names neutral KABI boot/device atoms
+# (MemoryKind / MemoryRange / DeviceClass) while keeping board-specific
+# compatible-string classification below the system-kernel bridge.
+# kabi/platform is a #![no_std] zero-dep leaf, so DAG5/DAG6 are preserved.
 reovim-kabi-platform = { path = "../../kabi/platform" }
 
 # The core-only test runtime (SP07): the `selftest`-gated `*_tests.rs` modules

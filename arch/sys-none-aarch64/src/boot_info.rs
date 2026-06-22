@@ -12,10 +12,11 @@
 //!   (`framebuffer::arm_memory`, raw MMIO) and backs the result with the static
 //!   page arena — both raw mechanism that stays below.
 //!
-//! The system kernel reads these through the crate-root raw-fact accessors
-//! (`crate::midr` … `crate::discover_memory`) and maps them into the neutral
-//! struct; the pure register-decode arithmetic (line size, cache geometry, type
-//! presence) is device-neutral and lives up there with the assembly.
+//! Boot composition roots read these through the crate-root raw-fact accessors
+//! (`crate::midr` … `crate::discover_memory`) and pass them into the
+//! system-kernel bridge; the pure register-decode arithmetic (line size, cache
+//! geometry, type presence) is device-neutral and lives up there with the
+//! assembly.
 
 use core::arch::asm;
 
@@ -128,9 +129,9 @@ pub fn read_ccsidr(level: u8, instruction: bool) -> u64 {
 ///
 /// Stays in the raw-mechanism crate: it drives the `VideoCore` mailbox
 /// (`framebuffer::arm_memory`, MMIO) and hands out from the static page arena,
-/// neither of which crosses the floor boundary. The system kernel reads the
-/// assembled slice through the [`super::discover_memory`] accessor and folds it
-/// into `BootInfo.memory`.
+/// neither of which crosses the floor boundary. The boot composition root reads
+/// the assembled slice through the [`super::discover_memory`] accessor and
+/// passes it into the system-kernel bridge.
 #[must_use]
 pub fn discover_memory() -> &'static [MemoryRange] {
     let Some((base, len)) = framebuffer::arm_memory() else {

@@ -1,24 +1,12 @@
-//! x86-64 `BootInfo` assembly, lifted out of `arch-sys-none-x86-64` (SP04 04a).
+//! x86-64 `BootInfo` shaping.
 //!
-//! Like the aarch64 assembly, the kernel is platform-neutral and learns the
-//! machine's facts only from the [`BootInfo`] the boot path hands it at entry.
-//! x86 differs from aarch64 in *where* the memory map comes from: the Multiboot1
-//! bootloader builds an information structure and leaves its pointer in `EBX`,
-//! which `_start` stashes into the floor's `MULTIBOOT_INFO_PTR`. This module
-//! reads that pointer through the [`backend::multiboot_ptr`] accessor, parses the
-//! Multiboot1 mmap into an arena-backed `&'static [MemoryRange]`, and reads the
-//! CPU id / clock through the floor's [`backend::cpu_id_native`] /
-//! [`backend::timer_frequency`] accessors (the `CPUID`/`RDTSC` asm stays below,
-//! invariant #4).
-//!
-//! Nothing here is compiled in or assumed: a missing/zero pointer, or an
-//! information structure without the mmap flag, degrades to an empty map
-//! ("unknown") rather than a wrong number.
+//! The Multiboot pointer, CPUID/TSC facts, and backing storage are supplied by
+//! the provider/composition layer. This module parses the Multiboot1 memory map
+//! and shapes the neutral [`BootInfo`] without importing the raw arch floor.
 
-use {
-    reovim_arch_sys_none_x86_64 as backend,
-    reovim_kabi_platform::{BootInfo, MemoryKind, MemoryRange},
-};
+use reovim_kabi_platform::{BootInfo, MemoryKind};
+
+pub use reovim_kabi_platform::MemoryRange;
 
 /// Multiboot1 `flags` bit 6: the `mmap_length`/`mmap_addr` fields are valid.
 const FLAG_MMAP: u32 = 1 << 6;
@@ -36,6 +24,25 @@ const ENTRY_OFF_LEN: usize = 12;
 const ENTRY_OFF_TYPE: usize = 20;
 /// The bytes needed to read one full mmap entry (`type` field at 20, +4).
 const ENTRY_MIN_BYTES: usize = 24;
+
+/// Default number of `MemoryRange` slots a composition root should reserve for
+/// Multiboot/E820 parsing.
+pub const MEMORY_STORAGE_ENTRIES: usize = 64;
+
+/// Empty `MemoryRange` value for static storage initialization.
+pub const EMPTY_MEMORY_RANGE: MemoryRange = MemoryRange {
+    base: 0,
+    len: 0,
+    kind: MemoryKind::Reserved,
+};
+
+/// Raw x86 boot facts gathered by the provider/composition layer.
+pub struct X86BootFacts {
+    pub multiboot_info_ptr: u32,
+    pub memory_storage: &'static mut [MemoryRange],
+    pub cpu_id: u32,
+    pub timer_frequency_hz: u64,
+}
 
 /// Maps a Multiboot1 memory-type code to the neutral [`MemoryKind`].
 ///
@@ -133,15 +140,11 @@ unsafe fn parse_entries(addr: *const u8, len: usize, out: &mut [MemoryRange]) ->
     count
 }
 
-/// Parses the firmware memory map into an arena-backed `'static` slice.
+/// Parses the firmware memory map into caller-owned static storage.
 ///
 /// Returns an empty map when no Multiboot pointer was stashed, the mmap flag is
-/// clear, the map is empty, or the arena cannot back it — the kernel then
-/// reports memory as unknown rather than reporting a wrong range. The boot
-/// pointer + the arena are the floor's raw facts ([`backend::multiboot_ptr`] /
-/// [`backend::arena_alloc_pages`]); the parse is device-neutral and lives here.
-fn discover_memory() -> &'static [MemoryRange] {
-    let ptr = backend::multiboot_ptr();
+/// clear, the map is empty, or the caller supplied no storage.
+fn discover_memory(ptr: u32, storage: &'static mut [MemoryRange]) -> &'static [MemoryRange] {
     if ptr == 0 {
         return &[];
     }
@@ -152,47 +155,33 @@ fn discover_memory() -> &'static [MemoryRange] {
         return &[];
     };
     let entries = addr as *const u8;
-    // First pass: count entries to size the arena hand-out.
+    if storage.is_empty() {
+        return &[];
+    }
     // SAFETY: the bootloader's mmap_addr/mmap_length describe a readable entry
-    // array (same identity-map precondition as the header above).
-    let count = unsafe { parse_entries(entries, len, &mut []) };
-    if count == 0 {
-        return &[];
-    }
-    let Ok(out_addr) = backend::arena_alloc_pages(count * core::mem::size_of::<MemoryRange>())
-    else {
-        return &[];
-    };
-    let out = out_addr as *mut MemoryRange;
-    // SAFETY: `out_addr` is a page-aligned hand-out from the floor's static
-    // `ARENA`, reserving `count` whole `MemoryRange`s. Page alignment (4096)
-    // exceeds `align_of::<MemoryRange>()`, and the monotonic bump never hands the
-    // same bytes out twice, so the `'static` slice is honest and unaliased. The
-    // second walk writes exactly the `count` slots the first pass counted.
-    unsafe {
-        let slots = core::slice::from_raw_parts_mut(out, count);
-        let written = parse_entries(entries, len, slots);
-        core::slice::from_raw_parts(out.cast_const(), written)
-    }
+    // array (same identity-map precondition as the header above). The parser
+    // writes only up to `storage.len()` entries, and returns the encountered
+    // count; clamp the returned slice to the slots actually present.
+    let written = unsafe { parse_entries(entries, len, storage) }.min(storage.len());
+    &storage[..written]
 }
 
-/// Discovers the machine's hardware facts and assembles them into a [`BootInfo`]
-/// for `Init::new`.
+/// Assembles caller-supplied x86 boot facts into [`BootInfo`].
 ///
-/// RAM comes from the Multiboot1 mmap, the CPU clock from the TSC frequency
-/// probe, and the CPU id from `CPUID` — the last two read through the floor's
-/// NATIVE-value accessors. The floor parks every secondary core at boot, so the
-/// CPU count is the single-core constant `1`.
+/// # Safety
+///
+/// `facts.multiboot_info_ptr`, when nonzero, must point to a readable
+/// Multiboot1 information structure whose mmap region is identity-mapped and
+/// readable for the duration of this call.
 #[must_use]
-pub fn collect_boot_info() -> BootInfo {
+pub unsafe fn collect_boot_info(facts: X86BootFacts) -> BootInfo {
     // CPUID leaf 1 eax is the processor version information (family / model /
     // stepping / type) — an identifying value for the banner, not a per-socket
     // unique id. It already fits the `cpu_id: u32` contract, no narrowing.
-    let cpu_id = backend::cpu_id_native();
     BootInfo {
-        memory: discover_memory(),
-        cpu_freq_hz: backend::timer_frequency(),
-        cpu_id,
+        memory: discover_memory(facts.multiboot_info_ptr, facts.memory_storage),
+        cpu_freq_hz: facts.timer_frequency_hz,
+        cpu_id: facts.cpu_id,
         cpu_count: 1,
         // Cache geometry / affinity / SDRAM clock / heap capacity are not yet
         // discovered on x86 — default them to 0 (honest "unknown") so the target

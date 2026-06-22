@@ -1,32 +1,43 @@
-//! aarch64 `BootInfo` assembly: the device-neutral half of the bare-metal
-//! hardware discovery, lifted out of `arch-sys-none-aarch64` (SP04 04a).
+//! aarch64 `BootInfo` shaping.
 //!
-//! The kernel is platform-neutral and learns the machine's facts only from the
-//! [`BootInfo`] the boot path hands it at entry. This module assembles that
-//! struct from the raw facts the floor exposes through the
-//! `reovim-arch-sys-none-aarch64` accessor surface — the §11
-//! system-kernel → arch-sys-none impl edge:
-//!
-//! - RAM: the `VideoCore` mailbox "get ARM memory" tag, assembled into an
-//!   arena-backed map below ([`backend::discover_memory`]).
-//! - CPU clock: `CNTFRQ_EL0`, the generic-timer frequency
-//!   ([`backend::timer_frequency`]).
-//! - CPU model: `MIDR_EL1`, the main-id register ([`backend::midr`]).
-//! - Cache geometry: `CTR_EL0` (min line), `CLIDR_EL1` + `CCSIDR_EL1` (L1-D /
-//!   L1-I / L2 sizes), decoded by the pure helpers here.
-//! - CPU affinity: `MPIDR_EL1`, the multiprocessor-affinity register
-//!   ([`backend::mpidr`]).
-//! - Memory clock: the mailbox "get clock rate" tag for SDRAM
-//!   ([`backend::sdram_clock_hz`]).
-//! - Heap capacity: the static page-arena size ([`backend::arena_capacity`]).
-//!
-//! Nothing here is compiled in or assumed — every value is read from hardware
-//! through the accessors, and a query that fails degrades to "unknown" (an empty
-//! map / zeroed field) rather than reporting a wrong number. The `asm!` reads
-//! that produce these facts stay in the raw-mechanism crate (invariant #4); this
-//! module carries only the pure decode + neutral-struct assembly.
+//! The raw register/mailbox/arena reads stay below this crate. The composition
+//! root gathers those facts and passes them in as [`Aarch64BootFacts`]; this
+//! module keeps only the pure cache decode and neutral [`BootInfo`] assembly.
 
-use {reovim_arch_sys_none_aarch64 as backend, reovim_kabi_platform::BootInfo};
+use reovim_kabi_platform::{BootInfo, MemoryRange};
+
+/// Raw aarch64 boot facts gathered by the provider/composition layer.
+pub struct Aarch64BootFacts {
+    pub memory: &'static [MemoryRange],
+    pub timer_frequency_hz: u64,
+    pub midr: u64,
+    pub ctr: u64,
+    pub clidr: u64,
+    pub l1d_ccsidr: u64,
+    pub l1i_ccsidr: u64,
+    pub l2_ccsidr: u64,
+    pub mpidr: u64,
+    pub sdram_clock_hz: Option<u64>,
+    pub heap_total_bytes: u64,
+}
+
+impl Default for Aarch64BootFacts {
+    fn default() -> Self {
+        Self {
+            memory: &[],
+            timer_frequency_hz: 0,
+            midr: 0,
+            ctr: 0,
+            clidr: 0,
+            l1d_ccsidr: 0,
+            l1i_ccsidr: 0,
+            l2_ccsidr: 0,
+            mpidr: 0,
+            sdram_clock_hz: None,
+            heap_total_bytes: 0,
+        }
+    }
+}
 
 /// Minimum data cache line size in bytes from `CTR_EL0`.
 ///
@@ -75,44 +86,33 @@ const fn decode_cache_size(ccsidr: u64) -> u32 {
 
 /// Size in bytes of the level's cache of the requested kind, or `0` when that
 /// cache is absent at that level.
-///
-/// The presence check + size decode are pure; the `CCSIDR_EL1` read is the
-/// floor's raw-fact accessor ([`backend::read_ccsidr`]). Reading only the
-/// selected cache's size register (rather than always) keeps the asm reads
-/// minimal — an absent level returns `0` without touching the register.
-fn cache_size_bytes(clidr: u64, level: u8, instruction: bool) -> u32 {
+fn cache_size_bytes(clidr: u64, level: u8, instruction: bool, ccsidr: u64) -> u32 {
     if !cache_present(clidr, level, instruction) {
         return 0;
     }
-    decode_cache_size(backend::read_ccsidr(level, instruction))
+    decode_cache_size(ccsidr)
 }
 
-/// Discovers the machine's hardware facts and assembles them into a [`BootInfo`]
-/// for `Init::new`.
-///
-/// All facts are read from hardware at call time through the
-/// `arch-sys-none-aarch64` raw-fact accessors; the floor parks every secondary
-/// core at boot, so the CPU count is the single-core constant `1`.
+/// Assembles caller-supplied aarch64 boot facts into [`BootInfo`].
 #[must_use]
-pub fn collect_boot_info() -> BootInfo {
+pub fn collect_boot_info(facts: Aarch64BootFacts) -> BootInfo {
     // MIDR_EL1's low 32 bits carry the implementer / variant / architecture /
     // part-num / revision fields; bits 63:32 are architecturally RES0, so
     // narrowing to the `cpu_id: u32` contract loses nothing.
     #[allow(clippy::cast_possible_truncation)]
-    let cpu_id = backend::midr() as u32;
-    let clidr = backend::clidr();
+    let cpu_id = facts.midr as u32;
     BootInfo {
-        memory: backend::discover_memory(),
-        cpu_freq_hz: backend::timer_frequency(),
+        memory: facts.memory,
+        cpu_freq_hz: facts.timer_frequency_hz,
         cpu_id,
         cpu_count: 1,
-        cache_line_bytes: min_cache_line_bytes(backend::ctr()),
-        l1d_bytes: cache_size_bytes(clidr, 1, false),
-        l1i_bytes: cache_size_bytes(clidr, 1, true),
-        l2_bytes: cache_size_bytes(clidr, 2, false),
-        cpu_affinity: backend::mpidr(),
-        mem_freq_hz: backend::sdram_clock_hz().unwrap_or(0),
-        heap_total_bytes: backend::arena_capacity() as u64,
+        cache_line_bytes: min_cache_line_bytes(facts.ctr),
+        l1d_bytes: cache_size_bytes(facts.clidr, 1, false, facts.l1d_ccsidr),
+        l1i_bytes: cache_size_bytes(facts.clidr, 1, true, facts.l1i_ccsidr),
+        l2_bytes: cache_size_bytes(facts.clidr, 2, false, facts.l2_ccsidr),
+        cpu_affinity: facts.mpidr,
+        mem_freq_hz: facts.sdram_clock_hz.unwrap_or(0),
+        heap_total_bytes: facts.heap_total_bytes,
     }
 }
 

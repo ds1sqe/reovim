@@ -16,13 +16,9 @@
 //!
 //! ## Role: the exit-code selftest scaffold
 //!
-//! This is a *scaffold*, not the system kernel's real provider. The genuine
-//! freestanding `reovim-system-kernel` POSIX provider now exists and the real
-//! product path (bootcore) installs it. This crate is RETAINED as the minimal
-//! handle for the bare exit-code selftest fixtures, which want the `-ENOSYS`
-//! scaffold rather than the full console-carrying kernel provider — two distinct
-//! consumers (rule of three). It keeps that bare-metal selftest coverage green
-//! with zero regression.
+//! This is a scaffold provider, not part of the system-kernel bridge. The real
+//! boot composition roots install this vtable, then gather raw facts and pass
+//! shaped data into `reovim-system-kernel`.
 //!
 //! ## Empty on Linux
 //!
@@ -46,8 +42,7 @@
 use core::alloc::Layout;
 
 use {
-    reovim_kabi_platform::{InstallError, PlatformVtable, install},
-    reovim_uapi_posix::{Fd, Mode, OpenFlags},
+    reovim_kabi_platform::{Fd, InstallError, Mode, OpenFlags, PlatformVtable, install},
 };
 
 use reovim_arch::{
@@ -230,6 +225,29 @@ const unsafe extern "C" fn thread_id() -> i64 {
     0
 }
 
+/// `ENOTTY` errno code — "not a typewriter" — the freestanding `term_set_raw`
+/// stub's negative return. Bare metal has no tty, so raw-mode entry always
+/// reports not-a-tty. `ENOTTY` = 25 (Linux errno space).
+const ENOTTY_CODE: i64 = 25;
+
+/// Freestanding set-raw stub: `-ENOTTY` (no tty on bare metal).
+///
+/// # Safety
+///
+/// `unsafe extern "C"` per the vtable ABI. `fd` is a plain scalar, never
+/// dereferenced.
+const unsafe extern "C" fn term_set_raw(_fd: i32) -> i64 {
+    -ENOTTY_CODE
+}
+
+/// Freestanding restore stub: a no-op (nothing was raw, nothing to restore).
+///
+/// # Safety
+///
+/// `unsafe extern "C"` per the vtable ABI. `fd` is a plain scalar, never
+/// dereferenced.
+const unsafe extern "C" fn term_restore(_fd: i32) {}
+
 /// Freestanding file-write adapter: writes up to `len` bytes from `buf` to `fd`
 /// through the floor's byte sink, returning the byte count or a negative errno.
 ///
@@ -279,6 +297,9 @@ static PLATFORM_VTABLE: PlatformVtable = PlatformVtable {
     file_open,
     thread_id,
     file_write,
+    // Termios slots: `-ENOTTY` set-raw + no-op restore (no tty on bare metal).
+    term_set_raw,
+    term_restore,
 };
 
 /// Installs the scaffold's platform vtable as the process-wide handle

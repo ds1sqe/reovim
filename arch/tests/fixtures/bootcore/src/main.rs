@@ -30,38 +30,143 @@
 use {
     reovim_arch::sys::write,
     reovim_kernel::{Init, LauncherArgs},
-    // The device-neutral boot assembly lifted into the system kernel (SP04 04a);
-    // it reads the raw register/mailbox/DTB facts through the §11 impl edge. On
-    // the freestanding targets the system kernel also supplies the platform
-    // vtable installed below (SP04 04c).
-    reovim_system_kernel::{collect_boot_info, collect_device_inventory},
 };
 
-// The freestanding system-kernel platform provider this composition root
-// installs on the bare-metal targets (SP04 04c) — the real product-path
-// successor to the `reovim-platform-stub-none` scaffold. Module-gated to
-// `target_os = "none"`, matching the system kernel's own gate.
-#[cfg(target_os = "none")]
-use reovim_system_kernel::platform as system_platform;
+#[cfg(not(target_os = "linux"))]
+use reovim_platform_stub_none as none_platform;
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
 use {
-    core::arch::asm,
+    core::{arch::asm, cell::UnsafeCell},
     // The framebuffer (VideoCore MMIO) STAYS in the raw-mechanism crate; the
-    // console / fonts / color that render through it lifted into the system
-    // kernel with the rest of the device-neutral library.
+    // console / fonts / color render policy lives in the system-kernel bridge.
     reovim_arch::sys::framebuffer,
-    reovim_system_kernel::{color::Color, console, fonts},
+    reovim_system_kernel::{
+        boot_info_aarch64::{self, Aarch64BootFacts},
+        color::Color,
+        console::{self, RenderSurface},
+        fonts, inventory,
+    },
 };
 
 #[cfg(target_arch = "x86_64")]
 use reovim_arch::sys::exit_group;
 
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+use {
+    core::cell::UnsafeCell,
+    reovim_system_kernel::boot_info_x86::{
+        self, EMPTY_MEMORY_RANGE, MEMORY_STORAGE_ENTRIES, MemoryRange, X86BootFacts,
+    },
+};
+
 /// Packs an RGB triple into a `0x00RRGGBB` pixel (RGB pixel-order tag). Only the
 /// aarch64 framebuffer path uses it.
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
 const fn rgb(r: u8, g: u8, b: u8) -> u32 {
     ((r as u32) << 16) | ((g as u32) << 8) | (b as u32)
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+struct FbStore(UnsafeCell<Option<framebuffer::Framebuffer>>);
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+// SAFETY: the freestanding boot fixture is a single thread of control.
+unsafe impl Sync for FbStore {}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+static FRAMEBUFFER: FbStore = FbStore(UnsafeCell::new(None));
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn fb_put_pixel(_ctx: usize, x: u32, y: u32, color: u32) {
+    // SAFETY: the framebuffer is installed once before the callback is
+    // registered; the boot fixture is single-threaded.
+    if let Some(fb) = unsafe { &*FRAMEBUFFER.0.get() } {
+        fb.put_pixel(x, y, color);
+    }
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn fb_clear(_ctx: usize, color: u32) {
+    // SAFETY: same one-shot framebuffer ownership as `fb_put_pixel`.
+    if let Some(fb) = unsafe { &*FRAMEBUFFER.0.get() } {
+        fb.clear(color);
+    }
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn install_framebuffer_console(fb: framebuffer::Framebuffer, grid: console::ScreenGrid<'static>) {
+    let width = fb.width();
+    let height = fb.height();
+    // SAFETY: one-shot install before any callback use.
+    unsafe {
+        *FRAMEBUFFER.0.get() = Some(fb);
+    }
+    let surface = RenderSurface::new(width, height, 0, fb_put_pixel, fb_clear);
+    console::install_console(
+        surface,
+        &fonts::JETBRAINS_MONO,
+        Color::Rgb(rgb(0xC8, 0xE0, 0xFF)),
+        Color::Rgb(rgb(0x0A, 0x14, 0x28)),
+        grid,
+    );
+    reovim_arch::sys::install_write_sink(console::write_bytes);
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+struct DeviceStore(UnsafeCell<[inventory::DeviceEntry; inventory::DEVICE_STORAGE_ENTRIES]>);
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+// SAFETY: the boot fixture is single-threaded and hands out the storage once.
+unsafe impl Sync for DeviceStore {}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+static DEVICES: DeviceStore = DeviceStore(UnsafeCell::new(
+    [inventory::EMPTY_DEVICE_ENTRY; inventory::DEVICE_STORAGE_ENTRIES],
+));
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn device_storage() -> &'static mut [inventory::DeviceEntry] {
+    // SAFETY: one-shot boot inventory assembly; no aliasing after handoff.
+    unsafe { &mut *DEVICES.0.get() }
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn dtb_bytes() -> &'static [u8] {
+    let ptr = reovim_arch::sys::dtb_ptr();
+    if ptr == 0 {
+        return &[];
+    }
+    let p = ptr as *const u8;
+    // SAFETY: the firmware DTB pointer is identity-mapped and readable for the
+    // process lifetime on this boot target; only the fixed header is read here.
+    let total = unsafe {
+        let hdr = core::slice::from_raw_parts(p, 8);
+        u32::from_be_bytes([hdr[4], hdr[5], hdr[6], hdr[7]]) as usize
+    };
+    if !(40..=inventory::MAX_DTB_BYTES).contains(&total) {
+        return &[];
+    }
+    // SAFETY: `total` was read from the FDT header and capped above before the
+    // full process-lifetime slice is formed.
+    unsafe { core::slice::from_raw_parts(p, total) }
+}
+
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+struct MemoryStore(UnsafeCell<[MemoryRange; MEMORY_STORAGE_ENTRIES]>);
+
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+// SAFETY: the freestanding x86 boot fixture is single-threaded.
+unsafe impl Sync for MemoryStore {}
+
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+static MEMORY: MemoryStore =
+    MemoryStore(UnsafeCell::new([EMPTY_MEMORY_RANGE; MEMORY_STORAGE_ENTRIES]));
+
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+fn memory_storage() -> &'static mut [MemoryRange] {
+    // SAFETY: one-shot boot-info assembly; no aliasing after handoff.
+    unsafe { &mut *MEMORY.0.get() }
 }
 
 /// Ends the run after the kernel has booted.
@@ -87,10 +192,10 @@ fn finish(code: i32) -> ! {
     exit_group(code)
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use reovim_arch_floor_linux_x86_64::entry;
 #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
 use reovim_arch_floor_linux_aarch64::entry;
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use reovim_arch_floor_linux_x86_64::entry;
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 use reovim_arch_floor_none_aarch64::entry;
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
@@ -104,12 +209,10 @@ entry!(|_argc, _argv, _envp| {
     //
     // Step 1: install the platform handle as the closure's first statement,
     // before any handle read. The installer is cfg-split: the freestanding
-    // SYSTEM-KERNEL provider on `*-unknown-none` (this fixture's real target,
-    // where linux-native cannot link — the real product path superseding
-    // stub-none, SP04 04c), the real POSIX provider on a hosted Linux build —
-    // exactly one links per target.
+    // stub-none provider on `*-unknown-none`, the real POSIX provider on a
+    // hosted Linux build — exactly one links per target.
     #[cfg(not(target_os = "linux"))]
-    let _ = system_platform::install_platform();
+    let _ = none_platform::install_platform();
     #[cfg(target_os = "linux")]
     let _ = reovim_platform_linux_native::install_platform();
 
@@ -121,31 +224,75 @@ entry!(|_argc, _argv, _envp| {
     // kernel's own boot action now — no fixture-side `console::install` glue. If
     // the mailbox alloc or the one-shot screen-grid hand-out fails, the floor
     // stays UART-only.
-    #[cfg(target_arch = "aarch64")]
+    #[cfg(all(target_os = "none", target_arch = "aarch64"))]
     if let Some((fb, grid)) = framebuffer::init().zip(console::screen_grid()) {
-        console::install_console(
-            fb,
-            &fonts::JETBRAINS_MONO,
-            Color::Rgb(rgb(0xC8, 0xE0, 0xFF)),
-            Color::Rgb(rgb(0x0A, 0x14, 0x28)),
-            grid,
-        );
+        install_framebuffer_console(fb, grid);
     }
 
     // Name the installed provider in the boot log so the boot proves WHICH
-    // vtable is standing — the freestanding system-kernel provider on bare metal
-    // (the dual-path proof: bootcore installs the system-kernel vtable, not
-    // stub-none), the linux-native provider on a hosted build.
+    // vtable is standing — the freestanding stub-none provider on bare metal,
+    // the linux-native provider on a hosted build.
     #[cfg(not(target_os = "linux"))]
-    let _ = write(1, b"\nreovim kernel boot on bare metal [provider: system-kernel]\n");
+    let _ = write(1, b"\nreovim kernel boot on bare metal [provider: stub-none]\n");
     #[cfg(target_os = "linux")]
     let _ = write(1, b"\nreovim kernel boot on bare metal [provider: linux-native]\n");
 
     // Discover the machine's real hardware facts (RAM / CPU) and push them into
     // the kernel at entry through `LauncherArgs.boot_info`. The boot-tail
     // diagnostics banner prints them on the live console.
-    let boot_info = collect_boot_info();
-    let device_inventory = collect_device_inventory();
+    let boot_info = {
+        #[cfg(target_os = "linux")]
+        {
+            Default::default()
+        }
+        #[cfg(all(target_os = "none", target_arch = "aarch64"))]
+        {
+            boot_info_aarch64::collect_boot_info(Aarch64BootFacts {
+                memory: reovim_arch::sys::discover_memory(),
+                timer_frequency_hz: reovim_arch::sys::timer_frequency(),
+                midr: reovim_arch::sys::midr(),
+                ctr: reovim_arch::sys::ctr(),
+                clidr: reovim_arch::sys::clidr(),
+                l1d_ccsidr: reovim_arch::sys::read_ccsidr(1, false),
+                l1i_ccsidr: reovim_arch::sys::read_ccsidr(1, true),
+                l2_ccsidr: reovim_arch::sys::read_ccsidr(2, false),
+                mpidr: reovim_arch::sys::mpidr(),
+                sdram_clock_hz: reovim_arch::sys::sdram_clock_hz(),
+                heap_total_bytes: reovim_arch::sys::arena_capacity() as u64,
+            })
+        }
+        #[cfg(all(target_os = "none", target_arch = "x86_64"))]
+        {
+            // SAFETY: the floor stashed the Multiboot pointer before entering
+            // Rust; q35 keeps the info structure and mmap identity-mapped here.
+            unsafe {
+                boot_info_x86::collect_boot_info(X86BootFacts {
+                    multiboot_info_ptr: reovim_arch::sys::multiboot_ptr(),
+                    memory_storage: memory_storage(),
+                    cpu_id: reovim_arch::sys::cpu_id_native(),
+                    timer_frequency_hz: reovim_arch::sys::timer_frequency(),
+                })
+            }
+        }
+    };
+    let device_inventory = {
+        #[cfg(target_os = "linux")]
+        {
+            Default::default()
+        }
+        #[cfg(all(target_os = "none", target_arch = "aarch64"))]
+        {
+            inventory::collect_device_inventory(
+                dtb_bytes(),
+                device_storage(),
+                reovim_arch::sys::classify_device_compatible,
+            )
+        }
+        #[cfg(all(target_os = "none", target_arch = "x86_64"))]
+        {
+            boot_info_x86::collect_device_inventory()
+        }
+    };
     let args = LauncherArgs {
         boot_info,
         device_inventory,

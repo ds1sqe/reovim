@@ -1,4 +1,4 @@
-//! The reovim boot splash content (aarch64 bare metal).
+//! The reovim boot splash content.
 //!
 //! The branded splash — the centred `r e o v i m` wordmark, the accent rule,
 //! the identity line, the compact boot panel reporting the proven floor facts,
@@ -6,17 +6,10 @@
 //! 04c). Splash *content* (text, colours, layout) is policy, so it lives here in
 //! the system kernel, not in the raw-mechanism floor below.
 //!
-//! It renders through the **standing console** (04b): every byte is written to
-//! fd 1 via the floor's `write`, which fans it to the PL011 UART *and* — once
-//! [`install_console`](crate::console::install_console) has registered the
-//! framebuffer console trampoline — to the HDMI surface. The accent rule is a
-//! reverse-video SGR span, not direct pixel writes, so every splash pixel stays
-//! inside the console's blit path with no new floor primitive. There is no
-//! second `Console` and no `framebuffer::init` here: the standing console owns
-//! the surface, and the splash reaches it the same way the kernel's boot-stage
-//! log does — through fd 1.
-
-use reovim_arch_sys_none_aarch64::write;
+//! It renders through a caller-supplied byte sink. The composition root usually
+//! points that sink at fd 1 after installing the standing console, so the bytes
+//! fan to UART and framebuffer. The accent rule is a reverse-video SGR span,
+//! not direct pixel writes.
 
 /// Truecolor SGR selecting the brand accent pen (sky blue) — wordmark + rule.
 const ACCENT: &str = "\x1b[38;2;90;210;255m";
@@ -31,20 +24,19 @@ const RESET: &str = "\x1b[0m";
 /// never writes out of bounds.
 const COLS: usize = 160;
 
-/// The splash writer: emits every byte to fd 1, which the floor's `write` fans
-/// to the UART plus the standing framebuffer console (when one is installed).
+/// The splash writer: emits every byte through the caller-supplied sink.
 ///
-/// Zero-sized — the sink is the process-wide fd, not owned state — so the splash
-/// holds no framebuffer or console; the standing console (04b) does. All helpers
-/// are allocation-free (fixed stack buffers + slices of a static blank run), so
-/// the splash needs no heap and no `alloc` crate.
-struct Splash;
+/// The splash holds no framebuffer or console; the standing console does. All
+/// helpers are allocation-free (fixed stack buffers + slices of a static blank
+/// run), so the splash needs no heap and no `alloc` crate.
+struct Splash<W> {
+    write: W,
+}
 
-impl Splash {
-    /// Writes `s` to fd 1. Polled MMIO never short-writes and the console sink
-    /// is total, so the result is ignored.
+impl<W: FnMut(&[u8])> Splash<W> {
+    /// Writes `s` through the injected byte sink.
     fn str(&mut self, s: &str) {
-        let _ = write(1, s.as_bytes());
+        (self.write)(s.as_bytes());
     }
 
     /// Writes `n` as decimal through fd 1, no allocation.
@@ -98,23 +90,20 @@ impl Splash {
     }
 }
 
-/// Renders the branded boot splash through the standing console.
+/// Renders the branded boot splash through the supplied byte sink.
 ///
 /// `geometry` is the framebuffer's `(width, height)` captured by the caller
-/// *before* it handed the surface to
-/// [`install_console`](crate::console::install_console) — `Some` when a display
-/// came up, `None` on the degraded UART-only path (no mailbox framebuffer). The
-/// dimensions only feed the boot panel's reported facts; the splash text routes
-/// through fd 1 either way, so the same call renders to the serial line whether
-/// or not a console is installed.
+/// before it handed the surface to
+/// [`install_console`](crate::console::install_console). The dimensions only
+/// feed the boot panel's reported facts.
 ///
 /// Call once, after the standing console is installed and after the kernel's
 /// boot-stage log has streamed (so the splash sits below it on screen). The
 /// fixed indents below are derived from the 160-column / 36-row surface; a
 /// surface the console clamps smaller only shifts a line, never writes out of
 /// bounds.
-pub fn render(geometry: Option<(u32, u32)>) {
-    let mut splash = Splash;
+pub fn render(geometry: Option<(u32, u32)>, write: impl FnMut(&[u8])) {
+    let mut splash = Splash { write };
 
     if let Some((width, height)) = geometry {
         // Push the splash block toward the vertical centre of the 36-row

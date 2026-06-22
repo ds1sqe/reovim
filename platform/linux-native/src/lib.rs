@@ -51,11 +51,17 @@
 // crate. Every `unsafe` block carries a `// SAFETY:` comment.
 #![allow(unsafe_code)]
 
-use core::alloc::Layout;
+use core::{
+    alloc::Layout,
+    cell::UnsafeCell,
+    sync::atomic::{
+        AtomicBool, AtomicI32,
+        Ordering::{Acquire, Relaxed, Release},
+    },
+};
 
 use {
-    reovim_kabi_platform::{InstallError, PlatformVtable, install},
-    reovim_uapi_posix::{Fd, Mode, OpenFlags},
+    reovim_kabi_platform::{Fd, InstallError, Mode, OpenFlags, PlatformVtable, install},
 };
 
 use reovim_arch::{
@@ -63,9 +69,14 @@ use reovim_arch::{
     sys::{
         AT_FDCWD, Errno, FUTEX_PRIVATE_FLAG, FUTEX_WAIT, FUTEX_WAKE, Timespec,
         accept as sys_accept, bind as sys_bind, close as sys_close, connect as sys_connect, futex,
-        gettid, listen as sys_listen,
+        gettid, ioctl, listen as sys_listen,
         net::{AF_UNIX, SockaddrUn, UNIX_PATH_MAX},
-        openat, read as sys_read, send_nosignal, unix_stream_socket, unlinkat, write as sys_write,
+        openat, read as sys_read, send_nosignal,
+        term::{
+            BRKINT, ECHO, ECHOE, ECHOK, ICANON, ICRNL, INPCK, ISIG, ISTRIP, IXON, OPOST, TCGETS,
+            TCSETS, Termios, VMIN, VTIME,
+        },
+        unix_stream_socket, unlinkat, write as sys_write,
     },
     time::{Instant, realtime},
 };
@@ -608,6 +619,180 @@ unsafe extern "C" fn thread_id() -> i64 {
     i64::from(gettid())
 }
 
+// ── termios contract (SP05b) ──────────────────────────────────────────────────
+//
+// The raw-mode flag policy + the TCGETS/TCSETS ioctls are provider mechanism
+// (master invariant 3): they moved here from the old `arch::term::RawMode`. The
+// contract carries only `(fd) → token`/`(fd) → ()`; the saved `Termios` never
+// crosses it — the provider keys it by fd in a fixed, no-heap table below.
+
+/// Number of concurrently-raw fds the provider can hold saved state for.
+///
+/// The tui rawing exactly one fd (stdin), a handful of slots is ample; the
+/// table is a fixed `static` (no heap, `no_std`) so a coarser-than-needed bound
+/// costs only a few stack-free bytes. An exhausted table refuses with `-ENOTTY`'s
+/// sibling refusal (`term_set_raw` returns the ioctl error path), never panics.
+const TERM_TABLE_SLOTS: usize = 8;
+
+/// A single fd→saved-`Termios` table entry: the fd key plus its saved cooked
+/// settings. `fd == -1` marks the slot free.
+struct TermSlot {
+    /// The raw fd this slot holds saved state for; `-1` when free.
+    fd: AtomicI32,
+    /// The pre-raw `Termios` to restore. Read/written only under the table lock.
+    saved: UnsafeCell<Termios>,
+}
+
+/// The provider-side fd-keyed saved-state table (a `static`, no heap).
+///
+/// `term_set_raw` populates an entry; `term_restore` consumes + clears it. The
+/// table being keyed by fd (not by a guard instance) is what lets the tui panic
+/// hook restore after its `RawMode` guard is gone — and what makes
+/// `term_restore` idempotent (an absent fd is a no-op).
+struct TermTable {
+    /// A spinlock serializing the (rare, boot/teardown-time) table mutations.
+    lock: AtomicBool,
+    /// The fixed slot array.
+    slots: [TermSlot; TERM_TABLE_SLOTS],
+}
+
+// SAFETY: every access to a slot's `UnsafeCell<Termios>` happens while the
+// caller holds `lock` (see `term_lock`/`term_unlock`), so there is never an
+// aliased mutable reference across threads. The `AtomicI32` fd key and the
+// `AtomicBool` lock are `Sync` by construction. The table is only mutated at
+// raw-mode enter/restore (boot + teardown), so contention is effectively nil.
+unsafe impl Sync for TermTable {}
+
+/// The single provider-wide saved-state table.
+static TERM_TABLE: TermTable = TermTable {
+    lock: AtomicBool::new(false),
+    slots: [const {
+        TermSlot {
+            fd: AtomicI32::new(-1),
+            saved: UnsafeCell::new(Termios::zeroed()),
+        }
+    }; TERM_TABLE_SLOTS],
+};
+
+/// Acquires the table spinlock (test-and-set, spin on contention).
+fn term_lock() {
+    while TERM_TABLE
+        .lock
+        .compare_exchange(false, true, Acquire, Relaxed)
+        .is_err()
+    {
+        core::hint::spin_loop();
+    }
+}
+
+/// Releases the table spinlock.
+fn term_unlock() {
+    TERM_TABLE.lock.store(false, Release);
+}
+
+/// The set-raw adapter: reads `fd`'s current termios, applies the raw-mode flag
+/// policy, writes it back immediately, stashes the saved settings keyed by `fd`,
+/// and returns `fd` as the token — or a negative errno (`-ENOTTY` when `fd` is
+/// not a terminal).
+///
+/// The flag policy is byte-identical to the old `arch::term::RawMode::enter`:
+/// clear `BRKINT|ICRNL|INPCK|ISTRIP|IXON` from `c_iflag`, `OPOST` from
+/// `c_oflag`, `ECHO|ECHOE|ECHOK|ICANON|ISIG` from `c_lflag`, set `VMIN=1`,
+/// `VTIME=0`, and apply via `TCSETS` (immediate, no drain).
+///
+/// # Safety
+///
+/// `unsafe extern "C"` per the vtable ABI. `fd` is a plain scalar; a non-tty or
+/// bad fd maps to a negative errno (via the `TCGETS` ioctl), never UB.
+unsafe extern "C" fn term_set_raw(fd: i32) -> i64 {
+    // Read the current termios via TCGETS.
+    let mut saved = Termios::zeroed();
+    if let Err(e) = ioctl(fd, TCGETS, core::ptr::from_mut(&mut saved).addr()) {
+        return neg_errno(e);
+    }
+
+    // Build the raw-mode termios from the saved baseline (byte-identical to the
+    // old `arch::term::RawMode::enter` policy).
+    let mut raw = saved;
+    // Input flags: turn off cooked-mode translations.
+    raw.c_iflag &= !(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+    // Output flags: disable post-processing so \n isn't mapped to \r\n.
+    raw.c_oflag &= !OPOST;
+    // Local flags: disable canonical, echo, and signal-generating chars.
+    raw.c_lflag &= !(ECHO | ECHOE | ECHOK | ICANON | ISIG);
+    // Read control: block until at least 1 byte; no timeout.
+    raw.c_cc[VMIN] = 1;
+    raw.c_cc[VTIME] = 0;
+
+    // Apply raw termios via TCSETS (immediate, no drain).
+    if let Err(e) = ioctl(fd, TCSETS, core::ptr::from_ref(&raw).addr()) {
+        return neg_errno(e);
+    }
+
+    // Stash the saved settings keyed by fd (reuse an existing entry for this fd,
+    // else claim a free slot). A full table refuses with -ENOTTY's refusal — the
+    // raw mode is already applied, so the worst case is a restore that no-ops,
+    // not a corrupted terminal.
+    term_lock();
+    let mut placed = false;
+    let mut free: Option<usize> = None;
+    for (i, slot) in TERM_TABLE.slots.iter().enumerate() {
+        let key = slot.fd.load(Relaxed);
+        if key == fd {
+            // SAFETY: the table lock is held, so this is the unique writer of
+            // this slot's cell; no other thread reads/writes it concurrently.
+            unsafe { *slot.saved.get() = saved };
+            placed = true;
+            break;
+        }
+        if key == -1 && free.is_none() {
+            free = Some(i);
+        }
+    }
+    if !placed && let Some(i) = free {
+        let slot = &TERM_TABLE.slots[i];
+        // SAFETY: the table lock is held; this slot was free (fd == -1), so we
+        // are its unique writer. Write the saved state before publishing the fd.
+        unsafe { *slot.saved.get() = saved };
+        slot.fd.store(fd, Relaxed);
+    }
+    term_unlock();
+
+    i64::from(fd)
+}
+
+/// The restore adapter: restores `fd`'s saved termios (TCSETS) and clears its
+/// table entry. Idempotent — an absent fd is a best-effort no-op, never an error
+/// (the tui panic hook relies on this after the guard `Drop` already restored).
+///
+/// # Safety
+///
+/// `unsafe extern "C"` per the vtable ABI. `fd` is a plain scalar; an unknown
+/// fd is a no-op, never UB.
+unsafe extern "C" fn term_restore(fd: i32) {
+    // Snapshot the saved settings under the lock, then clear the entry, so the
+    // restore ioctl runs outside the lock (it may block briefly).
+    term_lock();
+    let mut found: Option<Termios> = None;
+    for slot in &TERM_TABLE.slots {
+        if slot.fd.load(Relaxed) == fd {
+            // SAFETY: the table lock is held; this is the unique reader of the
+            // slot's cell. Copy the saved value out before clearing the key.
+            found = Some(unsafe { *slot.saved.get() });
+            slot.fd.store(-1, Relaxed);
+            break;
+        }
+    }
+    term_unlock();
+
+    if let Some(saved) = found {
+        // Best-effort restore; ignore errors (the fd may already be closed, or
+        // the process may be tearing down).
+        let _ = ioctl(fd, TCSETS, core::ptr::from_ref(&saved).addr());
+    }
+    // An absent fd: nothing to restore (idempotent no-op).
+}
+
 /// The provider's platform vtable: a `static` of const function pointers (zero
 /// heap to build), the table the boot path installs.
 ///
@@ -630,6 +815,8 @@ static PLATFORM_VTABLE: PlatformVtable = PlatformVtable {
     file_open,
     thread_id,
     file_write,
+    term_set_raw,
+    term_restore,
 };
 
 /// Installs the provider's platform vtable as the process-wide handle

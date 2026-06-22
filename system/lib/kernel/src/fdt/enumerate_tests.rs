@@ -1,55 +1,72 @@
-//! Tests for the pure `classify` function in `enumerate.rs`.
+//! Tests for DTB enumeration with caller-supplied compatible-string
+//! classification.
 //!
 //! L12 layout: declared in `enumerate.rs` via
 //! `#[cfg(feature = "selftest")] #[path = "enumerate_tests.rs"] mod tests;`,
-//! so `super::` reaches the private `classify` function and the imported
-//! `DeviceClass`.
+//! so `super::` reaches the private enumerator helpers.
 //!
-//! These tests cover the classifier only — no arena or live DTB is needed.
-//! The full `enumerate` path is exercised by the on-target bootcore smoke
-//! test the main session runs with a real DTB under QEMU.
+//! These tests cover the bridge behavior only: system-kernel walks the DTB and
+//! applies a classifier supplied from below. Board/chip-specific compatible
+//! tables do not live in this crate.
 
 use {
-    super::classify,
-    reovim_kabi_platform::DeviceClass,
+    super::{EMPTY_DEVICE_ENTRY, enumerate_into},
+    core::cell::UnsafeCell,
+    reovim_kabi_platform::{DeviceClass, DeviceEntry},
     reovim_testrt::{self as testrt, arch_test},
 };
 
-arch_test!(classify_pl011_is_uart, {
-    testrt::check(classify("arm,pl011") == DeviceClass::Uart, "arm,pl011 classifies as Uart");
+use super::super::reader::Fdt;
+
+static FIXTURE: &[u8] = include_bytes!("testdata/reovim-bcm2711.dtb");
+
+struct DeviceStore(UnsafeCell<[DeviceEntry; 8]>);
+
+// SAFETY: the selftest runner is single-threaded and each test takes the store
+// only for the duration of the call.
+unsafe impl Sync for DeviceStore {}
+
+static DEVICES: DeviceStore = DeviceStore(UnsafeCell::new([EMPTY_DEVICE_ENTRY; 8]));
+static UNKNOWN_DEVICES: DeviceStore = DeviceStore(UnsafeCell::new([EMPTY_DEVICE_ENTRY; 8]));
+
+fn storage() -> &'static mut [DeviceEntry] {
+    // SAFETY: single-threaded selftest runner; no stored reference escapes
+    // beyond the inventory value checked by this test.
+    unsafe { &mut *DEVICES.0.get() }
+}
+
+fn unknown_storage() -> &'static mut [DeviceEntry] {
+    // SAFETY: same single-threaded selftest runner constraint as `storage`.
+    unsafe { &mut *UNKNOWN_DEVICES.0.get() }
+}
+
+fn classify_test_compatible(compatible: &str) -> DeviceClass {
+    match compatible {
+        "arm,primecell" => DeviceClass::Uart,
+        _ => DeviceClass::Unknown,
+    }
+}
+
+fn classify_unknown(_: &str) -> DeviceClass {
+    DeviceClass::Unknown
+}
+
+arch_test!(enumerate_uses_caller_supplied_classifier, {
+    let fdt = Fdt::parse(FIXTURE).unwrap_or_else(|e| panic!("parse: {e:?}"));
+    let inventory = enumerate_into(&fdt, storage(), classify_test_compatible);
+
+    let mut has_uart = false;
+    for device in inventory.devices {
+        has_uart |= device.class == DeviceClass::Uart;
+    }
+
+    testrt::check_eq(inventory.devices.len(), 1usize);
+    testrt::check(has_uart, "classifier selected UART from compatible list");
 });
 
-arch_test!(classify_gic400_is_interrupt, {
-    testrt::check(
-        classify("arm,gic-400") == DeviceClass::Interrupt,
-        "arm,gic-400 classifies as Interrupt",
-    );
-});
+arch_test!(enumerate_drops_nodes_classified_unknown, {
+    let fdt = Fdt::parse(FIXTURE).unwrap_or_else(|e| panic!("parse: {e:?}"));
+    let inventory = enumerate_into(&fdt, unknown_storage(), classify_unknown);
 
-arch_test!(classify_bcm2835_mbox_is_mailbox, {
-    testrt::check(
-        classify("brcm,bcm2835-mbox") == DeviceClass::Mailbox,
-        "brcm,bcm2835-mbox classifies as Mailbox",
-    );
-});
-
-arch_test!(classify_emmc2_is_block, {
-    testrt::check(
-        classify("brcm,bcm2711-emmc2") == DeviceClass::Block,
-        "brcm,bcm2711-emmc2 classifies as Block",
-    );
-});
-
-arch_test!(classify_dwc2_usb_is_usb, {
-    testrt::check(
-        classify("brcm,bcm2708-usb") == DeviceClass::Usb,
-        "brcm,bcm2708-usb classifies as Usb",
-    );
-});
-
-arch_test!(classify_unknown_compatible_is_unknown, {
-    testrt::check(
-        classify("totally-unknown") == DeviceClass::Unknown,
-        "unrecognised compatible classifies as Unknown",
-    );
+    testrt::check(inventory.devices.is_empty(), "unknown-only classifier yields empty inventory");
 });

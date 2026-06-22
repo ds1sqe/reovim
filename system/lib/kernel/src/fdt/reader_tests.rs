@@ -15,8 +15,8 @@ use {
 
 // ── Fixture ───────────────────────────────────────────────────────────────────
 
-/// Minimal BCM2711 device tree, original to this repo. Covers the nodes the
-/// Phase 2 enumerator will consume.
+/// Minimal BCM2711 device tree, original to this repo. Covers representative
+/// root, memory, and `/soc` nodes for the parser.
 static FIXTURE: &[u8] = include_bytes!("testdata/reovim-bcm2711.dtb");
 
 // ── Header tests ─────────────────────────────────────────────────────────────

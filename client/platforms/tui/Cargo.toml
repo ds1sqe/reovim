@@ -13,11 +13,22 @@ publish = false
 [features]
 default = []
 # Compile the `*_tests.rs` sibling test modules into this lib (L12.1).
-selftest = ["reovim-arch/selftest"]
+# `dep:reovim-arch` activates the now-OPTIONAL arch dep; `reovim-arch/selftest`
+# enables arch_test!/testrt. The product build carries no arch edge (SP05b): the
+# tui's raw-mode termios surface moved to the `kabi/platform` contract, so the
+# only surviving tui->arch use is the selftest harness (arch_test!/testrt) in the
+# `*_tests.rs` siblings.
+selftest = ["dep:reovim-arch", "reovim-arch/selftest"]
 
 [dependencies]
-reovim-arch         = { path = "../../../arch" }
+# Optional + selftest-gated: the product graph names no arch edge (SP05b). Only
+# the `*_tests.rs` selftest siblings reach `reovim_arch::{arch_test, testrt, sys,
+# alloc::fault}`, behind the `selftest` feature.
+reovim-arch         = { path = "../../../arch", optional = true }
 reovim-kabi-panic   = { path = "../../../kabi/panic" }
+# The down-face platform contract: the RawMode raw-termios guard + ENOTTY (the
+# tui's raw-mode entry/restore, SP05b — replaces the former `arch::term` edge).
+reovim-kabi-platform = { path = "../../../kabi/platform" }
 # Heap-DS algorithms (Seq/Bytes) relocated from `reovim_arch::ds` (SP03).
 reovim-lib-ds       = { path = "../../../lib/ds" }
 reovim-uapi-abi     = { path = "../../../uapi/abi" }

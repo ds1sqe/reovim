@@ -30,6 +30,7 @@
 mod common;
 
 use reovim_depgraph::{
+    toml::{TomlDoc, TomlValue, parse_file},
     run_firewall_probe, run_no_product_arch_net_probe, run_no_product_arch_time_sys_probe,
 };
 
@@ -88,63 +89,76 @@ fn pkg_toml_optional_arch_section(name: &str, dep_rel_path: &str) -> String {
     )
 }
 
+fn dep_names(doc: &TomlDoc) -> Vec<&str> {
+    let mut names = Vec::new();
+    if let Some(deps) = doc.sections.get("dependencies") {
+        names.extend(deps.keys().map(String::as_str));
+    }
+    names.extend(
+        doc.sections
+            .keys()
+            .filter_map(|section| section.strip_prefix("dependencies.")),
+    );
+    names
+}
+
 // ── 1. Positive control: real workspace ───────────────────────────────────────
 
-/// The firewall residual set is EXACTLY `{reovim-platform-tui}` at this stage of
-/// the product-import sever: the kernel's panic seam was re-pointed onto the
-/// `kabi/panic` home and its (now test-only) arch dep made optional + selftest-
-/// gated, so the kernel's product build carries no arch edge and leaves the
-/// residual. tui keeps its arch edge — it still names `arch::term`/`arch::sys`
-/// for raw mode, which the tui termios contract replaces, closing the residual
-/// to the empty set.
+/// The firewall residual set is EMPTY: every product crate's direct `arch` edge
+/// is severed. The kernel's panic seam was re-pointed onto the `kabi/panic`
+/// home and its (now test-only) arch dep made optional + selftest-gated; the
+/// last residual — tui's raw-mode `arch::term`/`arch::sys` edge — was closed by
+/// moving raw-mode entry/restore onto the `kabi/platform` termios contract and
+/// making tui's surviving (selftest-only) arch dep optional + selftest-gated too.
+/// No product build carries an arch edge.
 ///
-/// The assertion is `assert_eq!` on the SET of residual crates, not
-/// `is_empty()`: it fails both on an unexpected NEW product→arch edge AND on a
-/// stale residual that should have been closed — safe incremental closure as the
-/// remaining product imports are severed. The probe MECHANISM (and the
-/// optional-skip precision) is proven by the negative fixtures below.
+/// The assertion is `is_empty()` on the residual: ANY Math-kernel→arch violation
+/// is now a regression (a NEW direct arch edge, or a residual that re-opened).
+/// The probe MECHANISM (and the optional-skip precision that keeps the
+/// selftest-gated arch deps out of the product residual) is proven by the
+/// negative fixtures below.
 #[test]
-fn firewall_real_workspace_residual_equals_tui() {
-    use std::collections::BTreeSet;
-
-    // The crate names the firewall is still expected to flag at this stage of the
-    // product-import sever. Order-independent (compared as a set). The tui entry
-    // closes to the empty set once the tui termios contract replaces its raw-mode
-    // arch import.
-    const EXPECTED_RESIDUAL: &[&str] = &["reovim-platform-tui"];
-
+fn firewall_real_workspace_residual_is_empty() {
     let root = common::workspace_root();
     let violations = run_firewall_probe(&root).expect("firewall probe must run on real workspace");
 
-    // Reduce each violation line to the residual crate it names. A violation
-    // line names exactly one of the expected residual crates when the closure
-    // is correct; an UNEXPECTED line (naming none of them) is recorded as a raw
-    // string so the failure message points at the regression.
-    let mut residual: BTreeSet<&str> = BTreeSet::new();
-    let mut unexpected: Vec<&str> = Vec::new();
-    for v in &violations {
-        match EXPECTED_RESIDUAL.iter().find(|k| v.contains(**k)) {
-            Some(k) => {
-                residual.insert(*k);
-            }
-            None => unexpected.push(v.as_str()),
-        }
+    assert!(
+        violations.is_empty(),
+        "firewall: residual must be empty after SP05b — every product→arch edge \
+         is severed. A violation here is a NEW direct arch edge or a re-opened \
+         residual:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn system_kernel_manifest_has_no_raw_arch_provider_or_posix_deps() {
+    let root = common::workspace_root();
+    let manifest = root.join("system/lib/kernel/Cargo.toml");
+    let doc = parse_file(&manifest).expect("system-kernel manifest must parse");
+    let deps = dep_names(&doc);
+
+    for dep in deps {
+        assert!(
+            !dep.starts_with("reovim-arch")
+                && !dep.starts_with("reovim-platform")
+                && dep != "reovim-uapi-posix",
+            "system-kernel must stay an arch-free bridge; forbidden dep `{dep}` in {}",
+            manifest.display()
+        );
     }
 
-    assert!(
-        unexpected.is_empty(),
-        "firewall: unexpected (non-residual) Math-kernel→arch violations \
-         (a NEW direct arch edge regressed):\n{}",
-        unexpected.join("\n")
-    );
-
-    let expected: BTreeSet<&str> = EXPECTED_RESIDUAL.iter().copied().collect();
-    assert_eq!(
-        residual, expected,
-        "firewall: residual set must equal exactly {{reovim-platform-tui}} \
-         after SP05a — a missing entry means a residual was closed without \
-         updating this assertion (update it when SP05b lands)"
-    );
+    let empty_features = ["runtime", "selftest"];
+    for feature in empty_features {
+        let Some(TomlValue::Array(values)) = doc.sections.get("features").and_then(|s| s.get(feature))
+        else {
+            panic!("system-kernel feature `{feature}` must be present as an empty array");
+        };
+        assert!(
+            values.is_empty(),
+            "system-kernel feature `{feature}` must not forward into arch/provider crates"
+        );
+    }
 }
 
 // ── 2. Negative fixture A: editor/lib/kernel → reovim-arch ───────────────────
@@ -231,27 +245,26 @@ fn firewall_client_to_system_kernel_trips_probe() {
     );
 }
 
-// ── 3b. system/lib/kernel split: floor-family provider, not the sovereign ─────
+// ── 3b. system/lib/kernel split: bridge, not the sovereign ───────────────────
 
 /// A product crate naming the real `reovim-system-kernel` at `system/lib/kernel`
-/// must trip the firewall — but for the FLOOR-FAMILY reason (it is the bare-metal
-/// kabi/platform provider, `is_floor_crate_name`), NOT the sovereign-kernel path
-/// reason (`system/kernel`). This locks the `system/lib/kernel` vs `system/kernel`
-/// split fd flagged at countdown: the component-prefix sovereign check
-/// (`path_starts_with(dep_path, "system/kernel")`) does not match
-/// `system/lib/kernel`, so the floor-name predicate is what carries the flag.
+/// must trip the firewall — but as a direct lower-bridge import, NOT as the
+/// sovereign-kernel path reason (`system/kernel`). This locks the
+/// `system/lib/kernel` vs `system/kernel` split: the component-prefix sovereign
+/// check (`path_starts_with(dep_path, "system/kernel")`) does not match
+/// `system/lib/kernel`, so the forbidden-name predicate carries the flag.
 ///
-/// A product must name kabi/platform, never the system kernel that implements it
-/// (mode-invariance, invariant #6) — so the violation is correct.
+/// A product must name its public contracts, never the system-kernel bridge
+/// directly.
 #[test]
 fn firewall_product_to_system_lib_kernel_trips_as_floor_family() {
     let td = common::TempDir::new();
     let root = td.path();
 
-    // The real system kernel at its real path (Foundation floor-family provider).
+    // The real system-kernel bridge at its real path.
     common::write_file(root, "system/lib/kernel/Cargo.toml", &pkg_toml("reovim-system-kernel"));
     // A product (editor/lib/kernel) directly naming it (forbidden: a product
-    // names kabi/platform, never the provider that implements it).
+    // names public contracts, never the lower bridge directly).
     common::write_file(
         root,
         "editor/lib/kernel/Cargo.toml",
@@ -270,8 +283,8 @@ fn firewall_product_to_system_lib_kernel_trips_as_floor_family() {
     let violations = run_firewall_probe(root).expect("firewall probe must run on fixture");
     assert!(
         !violations.is_empty(),
-        "firewall 3b: a product naming the system kernel (system/lib/kernel) must \
-         trip the firewall as a floor-family edge;\n\
+        "firewall 3b: a product naming the system-kernel bridge (system/lib/kernel) \
+         must trip the firewall;\n\
          got zero violations"
     );
     let names_both = violations
@@ -286,11 +299,10 @@ fn firewall_product_to_system_lib_kernel_trips_as_floor_family() {
 
 /// The companion to 3b: a NON-product (Foundation-tier) crate naming the system
 /// kernel must NOT trip the firewall. The firewall guards only `editor/**` and
-/// `client/**` Math kernels; a floor-family consumer (here a synthetic crate at
+/// `client/**` Math kernels; a Foundation consumer (here a synthetic crate at
 /// `arch/`, standing in for the bootcore composition root / arch facade) may
-/// import the provider freely. This proves `system/lib/kernel` is an
-/// importable-Foundation provider, not a globally forbidden name — the positive
-/// half of the split.
+/// import the bridge. This proves `system/lib/kernel` is an importable
+/// Foundation bridge, not the sovereign kernel path.
 #[test]
 fn firewall_non_product_to_system_lib_kernel_is_allowed() {
     let td = common::TempDir::new();
@@ -309,7 +321,7 @@ fn firewall_non_product_to_system_lib_kernel_is_allowed() {
     assert!(
         violations.is_empty(),
         "firewall: a non-product consumer of system/lib/kernel must NOT trip the \
-         firewall (it is an importable-Foundation provider, not a forbidden name);\n\
+         firewall (it is an importable Foundation bridge, not a forbidden product name);\n\
          violations: {violations:?}"
     );
 }
@@ -391,8 +403,11 @@ fn no_product_arch_net_in_server_rt_and_tui() {
 /// residual.
 ///
 /// The probe deliberately ALLOWS the termios `arch::sys::ioctl`/`arch::sys::term`
-/// surface and `arch::term`: those are `SP05c`'s terminal-control / panic-restore
-/// stratum, which the tui legitimately keeps until `SP05c` empties the residual.
+/// surface: after `SP05b` the tui no longer names it (its raw-mode entry/restore
+/// and panic hook route through the `kabi/platform` termios contract); the only
+/// remaining consumer is the `platform-linux-native` PROVIDER, the trap-gate edge
+/// `SP05c` retires. The provider is not a swept product crate, so this probe
+/// never flags it.
 #[test]
 fn no_product_arch_time_sys_in_kernel_and_tui() {
     let root = common::workspace_root();

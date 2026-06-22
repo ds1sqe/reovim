@@ -28,10 +28,5 @@ reovim-arch = { path = "../../arch" }
 # with no third-party deps, so DAG5/DAG6 hold.
 reovim-kabi-platform = { path = "../../kabi/platform" }
 
-# The canonical POSIX newtypes (Fd/OpenFlags/Mode) the adapter signatures name
-# at the slot boundary; the provider reinterprets their bits onto the raw
-# syscall edge. A #![no_std] zero-dep leaf (DAG5/DAG6 preserved).
-reovim-uapi-posix = { path = "../../uapi/posix" }
-
 # No [dev-dependencies] or [build-dependencies] (DAG5/DAG6: zero third-party
-# deps). Beyond the three in-repo path deps above, only `core` is consumed.
+# deps). Beyond the two in-repo path deps above, only `core` is consumed.

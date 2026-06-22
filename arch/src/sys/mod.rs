@@ -38,12 +38,20 @@ use reovim_arch_sys_none_x86_64 as target;
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 pub use target::framebuffer;
 
-// The device-neutral console / fonts / color device model + the boot-info /
-// device-inventory assembly lifted out of arch-sys-none into
-// `reovim-system-kernel` (SP04 04a). The fixtures name those through the system
-// kernel directly (the §11 system-kernel → arch-sys-none impl edge); the facade
-// no longer re-exports them. The full neutral per-target seam replacement is
-// SP06; this narrowing tracks the device-neutral surface leaving arch-sys-none.
+// Freestanding boot-fact and sink-install surface. Raw mechanism stays in the
+// selected arch-sys crate; composition roots gather these facts through the
+// arch facade and pass plain data into `reovim-system-kernel`.
+#[cfg(target_os = "none")]
+pub use target::install_write_sink;
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+pub use target::{
+    arena_capacity, classify_device_compatible, clidr, ctr, discover_memory, dtb_ptr, midr, mpidr,
+    read_ccsidr, sdram_clock_hz, timer_frequency,
+};
+
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+pub use target::{cpu_id_native, multiboot_ptr, timer_frequency};
 
 #[cfg(not(any(
     all(target_os = "linux", target_arch = "x86_64"),

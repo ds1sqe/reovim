@@ -115,8 +115,8 @@ pub const CLONE_CHILD_CLEARTID: usize = 0x0020_0000;
 /// the floor `write` no longer names it directly — that would be a forbidden
 /// arch-sys-none → system-kernel upward edge. The on-screen fan-out is restored
 /// by the write-sink registry ([`sink::fan_out`]), which calls the `fn(&[u8])`
-/// trampoline the system kernel installs downward at boot, or no-ops when no
-/// display is installed (the exit-code selftest fixtures stay UART-only).
+/// callback installed by the boot composition root, or no-ops when no display
+/// is installed (the exit-code selftest fixtures stay UART-only).
 ///
 /// # Errors
 ///

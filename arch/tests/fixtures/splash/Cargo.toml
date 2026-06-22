@@ -36,10 +36,11 @@ reovim-arch = { path = "../../..", features = ["runtime"] }
 [target.'cfg(all(target_os = "none", target_arch = "aarch64"))'.dependencies]
 reovim-arch-floor-none-aarch64 = { path = "../../../floor-none-aarch64", features = ["runtime"] }
 # The World system kernel (SP04 04a): the console / fonts / color device model
-# this splash renders through, lifted out of arch-sys-none. The framebuffer it
-# draws on STAYS below (named via the arch facade). aarch64-bare-metal-only, like
-# this whole demo. `runtime` forwards to its arch-sys-none-aarch64 backend.
+# this splash renders through. The framebuffer it draws on STAYS below (named
+# via the arch facade). aarch64-bare-metal-only, like this whole demo.
 reovim-system-kernel = { path = "../../../../system/lib/kernel", features = ["runtime"] }
+
+reovim-platform-stub-none = { path = "../../../../platform/stub-none" }
 
 [lints]
 workspace = true

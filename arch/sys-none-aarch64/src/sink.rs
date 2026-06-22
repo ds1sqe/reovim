@@ -5,10 +5,10 @@
 //! up into `reovim-system-kernel` (SP04 04a), so the floor `write` (down here)
 //! can no longer name it — that would be a forbidden arch-sys-none →
 //! system-kernel upward edge (invariant #2). This registry is the acyclic
-//! decoupling: the system kernel installs a console-renderer trampoline
-//! *downward* through [`install_write_sink`] at boot, and the floor `write`
-//! calls it *from below* through [`fan_out`]. No Cargo edge reverses — the same
-//! shape as the kabi/panic write-once atoms.
+//! decoupling: the boot composition root installs a system-kernel
+//! console-renderer callback through [`install_write_sink`] at boot, and the
+//! floor `write` calls it from below through [`fan_out`]. No Cargo edge reverses
+//! — the same shape as the kabi/panic write-once atoms.
 //!
 //! A boot with no display (the exit-code selftest fixtures) never installs a
 //! sink; [`fan_out`] is then a no-op and fd 1/2 stay UART-only.
@@ -31,17 +31,17 @@ static SINK: WriteSink = WriteSink(UnsafeCell::new(None));
 
 /// Installs `f` as the floor's on-screen write sink, **once**.
 ///
-/// The system kernel calls this at boot (before the kernel's first
-/// `write(2,...)`) to register its console-renderer trampoline; the floor
-/// `write` then mirrors every fd 1/2 byte to `f` in addition to the UART. The
-/// install is write-once: a second call after one has succeeded is ignored, so
-/// an already-installed console is never silently displaced (mirroring the
+/// The boot composition root calls this at boot to register a system-kernel
+/// console-renderer callback before the kernel's first `write(2,...)`; the
+/// floor `write` then mirrors every fd 1/2 byte to `f` in addition to the UART.
+/// The install is write-once: a second call after one has succeeded is ignored,
+/// so an already-installed console is never silently displaced (mirroring the
 /// kabi/panic write-once intent).
 ///
 /// # Example
 ///
 /// ```ignore
-/// // The system kernel registers its console-renderer trampoline at boot:
+/// // A boot composition root registers the console callback at boot:
 /// reovim_arch_sys_none_aarch64::install_write_sink(render_to_console);
 /// ```
 pub fn install_write_sink(f: fn(&[u8])) {

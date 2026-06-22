@@ -13,6 +13,7 @@ dependencies = [
  "reovim-arch-floor-none-x86-64",
  "reovim-kernel",
  "reovim-platform-linux-native",
+ "reovim-platform-stub-none",
  "reovim-system-kernel",
 ]
 
@@ -84,6 +85,7 @@ version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
  "reovim-arch-floor-none-aarch64",
+ "reovim-platform-stub-none",
  "reovim-system-kernel",
 ]
 
@@ -207,7 +209,6 @@ version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
  "reovim-kabi-platform",
- "reovim-uapi-posix",
 ]
 
 [[package]]
@@ -216,7 +217,6 @@ version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
  "reovim-kabi-platform",
- "reovim-uapi-posix",
 ]
 
 [[package]]
@@ -231,11 +231,8 @@ dependencies = [
 name = "reovim-system-kernel"
 version = "0.16.0-dev"
 dependencies = [
- "reovim-arch-sys-none-aarch64",
- "reovim-arch-sys-none-x86-64",
  "reovim-kabi-platform",
  "reovim-testrt",
- "reovim-uapi-posix",
 ]
 
 [[package]]

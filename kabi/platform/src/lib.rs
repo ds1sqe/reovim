@@ -64,7 +64,7 @@ use core::{
     },
 };
 
-use reovim_uapi_posix::{Errno, Fd, Mode, OpenFlags};
+pub use reovim_uapi_posix::{Errno, Fd, Mode, OpenFlags};
 
 /// Failure to allocate through the platform's allocator primitive.
 ///
@@ -144,7 +144,8 @@ pub enum DeviceClass {
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct DeviceEntry {
-    /// Coarse device class, derived from the first `compatible` string.
+    /// Coarse device class, derived from the caller-supplied compatible-string
+    /// classifier.
     pub class: DeviceClass,
     /// MMIO base address from the node's `reg` property; `0` when absent.
     pub mmio_base: u64,
@@ -579,6 +580,49 @@ pub type FileWriteFn = unsafe extern "C" fn(fd: Fd, buf: *const u8, len: usize) 
 pub type ThreadSpawnFn =
     unsafe extern "C" fn(entry: unsafe extern "C" fn(*mut u8), arg: *mut u8) -> i64;
 
+/// The set-raw-mode primitive: puts `fd` into raw (cbreak, no-echo) mode and
+/// returns a saved-state token (`>= 0`), or a negative errno (`-ENOTTY` when
+/// `fd` is not a terminal).
+///
+/// The narrow, policy-free half of the SP05 termios contract (the other half is
+/// [`TermRestoreFn`]). The provider owns ALL mechanism: it reads the current
+/// termios, decides which flags to clear (the raw-mode policy), writes the raw
+/// termios, and stashes the saved state keyed by the returned token. No
+/// `Termios` layout and no flag bit crosses the contract — only `(fd) → token`
+/// (master invariant 3: canonicalization/mechanism lives in the provider).
+///
+/// The token is fd-keyed (the token sub-decision): the provider holds the saved
+/// state in a fixed fd→state table and returns the fd as the token, so
+/// [`TermRestoreFn`] restores by fd alone. `-ENOTTY` is the not-a-tty signal a
+/// consumer matches to take its no-raw-mode fallback arm (a pipe/`/dev/null`
+/// stdin, not a terminal).
+///
+/// # Safety
+///
+/// `unsafe extern "C"` per the vtable ABI. `fd` is a plain scalar; the slot
+/// dereferences no memory the caller passes. A non-tty or bad fd maps to a
+/// negative errno, not UB.
+pub type TermSetRawFn = unsafe extern "C" fn(fd: i32) -> i64;
+
+/// The restore-cooked-mode primitive: restores the saved termios for `fd` (the
+/// `term_set_raw` counterpart) and clears the provider's saved-state entry.
+///
+/// **Idempotent**: restoring a `fd` with no live saved entry (already restored,
+/// or never raw) is a best-effort no-op, never an error. This is what makes the
+/// tui panic hook's [`RawMode::restore_fd`] sound even though it runs after the
+/// guard's `Drop` has already restored — a double-restore is harmless because
+/// the second call finds the entry cleared and does nothing.
+///
+/// Fd-keyed (the token sub-decision): `fd` IS the token, so the panic hook
+/// (which fires after the guard is gone) restores without needing the guard's
+/// state — the provider's fd-keyed table still holds the entry.
+///
+/// # Safety
+///
+/// `unsafe extern "C"` per the vtable ABI. `fd` is a plain scalar; the slot
+/// dereferences no memory the caller passes. An unknown fd is a no-op, not UB.
+pub type TermRestoreFn = unsafe extern "C" fn(fd: i32);
+
 /// The platform handle: a `#[repr(C)]` vtable of effectful primitive function
 /// pointers the provider builds and the boot path installs.
 ///
@@ -606,6 +650,11 @@ pub type ThreadSpawnFn =
 /// `file_open` (open a file by path), and `thread_id` (the calling thread's
 /// tid) so the kernel's clock/log-sink/service-registration and the tui's
 /// stdio reach time + file + thread-identity backends through the handle.
+/// The two termios slots (`term_set_raw`/`term_restore`, an AB3 trailing
+/// append) let the tui's raw-mode entry/restore reach a terminal backend
+/// through the handle without naming `arch`: the contract carries only
+/// `(fd) → token`/`(fd) → ()`, the `Termios` layout and the flag policy staying
+/// in the provider (master invariant 3).
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct PlatformVtable {
@@ -645,6 +694,11 @@ pub struct PlatformVtable {
     pub thread_id: ThreadIdFn,
     /// Plain `write(2)` to any fd — file or stdio (SP05; AB3 trailing append).
     pub file_write: FileWriteFn,
+    /// Put an fd into raw mode, returning a saved-state token (AB3
+    /// trailing append).
+    pub term_set_raw: TermSetRawFn,
+    /// Restore an fd's saved termios, idempotently (AB3 trailing append).
+    pub term_restore: TermRestoreFn,
 }
 
 // `PlatformVtable` is `Sync` automatically: it holds only `unsafe extern "C"`
@@ -934,6 +988,42 @@ impl PlatformVtable {
         let ret = unsafe { (self.file_write)(Fd(fd), buf.as_ptr(), buf.len()) };
         map_fd_ret(ret)
     }
+
+    /// Puts `fd` into raw (cbreak, no-echo) mode, returning the saved-state
+    /// token (the fd itself, per the fd-keyed design).
+    ///
+    /// The safe Rust face of the [`term_set_raw`](PlatformVtable::term_set_raw)
+    /// slot: the provider does all the termios mechanism (read, flag policy,
+    /// write, stash the saved state) and returns a token; this maps a
+    /// negative-errno return to [`Errno`]. [`RawMode::enter`] is the RAII
+    /// consumer; products stay safe — the `unsafe extern "C"` call is
+    /// encapsulated here.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Errno`] when raw mode cannot be entered — most importantly
+    /// [`ENOTTY`] when `fd` is not a terminal (the not-a-tty signal a consumer
+    /// matches to take its no-raw-mode fallback arm).
+    pub fn term_set_raw(&self, fd: i32) -> Result<usize, Errno> {
+        // SAFETY: `fd` is a plain scalar; the slot dereferences no caller
+        // memory. A non-tty/bad fd maps to a negative errno, recovered below.
+        let ret = unsafe { (self.term_set_raw)(fd) };
+        map_fd_ret(ret)
+    }
+
+    /// Restores `fd`'s saved termios (the
+    /// [`term_set_raw`](PlatformVtable::term_set_raw) counterpart), idempotently.
+    ///
+    /// The safe Rust face of the [`term_restore`](PlatformVtable::term_restore)
+    /// slot. Restoring an `fd` with no live saved entry is a best-effort no-op
+    /// (never an error), which is why both [`RawMode`]'s `Drop` and the panic
+    /// hook's [`RawMode::restore_fd`] can call it without coordinating: a
+    /// double-restore is harmless.
+    pub fn term_restore(&self, fd: i32) {
+        // SAFETY: `fd` is a plain scalar; the slot dereferences no caller
+        // memory. An unknown fd is a no-op (the idempotency contract).
+        unsafe { (self.term_restore)(fd) }
+    }
 }
 
 /// Narrows a non-negative `usize` (a fd or tid the slot returned) to the `i32`
@@ -942,6 +1032,94 @@ impl PlatformVtable {
 #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 const fn narrow_fd(v: usize) -> i32 {
     v as i32
+}
+
+// ── termios contract ──────────────────────────────────────────────────
+
+/// `ENOTTY` — "not a typewriter": the errno a terminal-control ioctl returns
+/// when the fd is not a terminal.
+///
+/// The not-a-tty signal of the termios contract:
+/// [`term_set_raw`](PlatformVtable::term_set_raw) /
+/// [`RawMode::enter`] return `Err(ENOTTY)` when raw mode is requested on a
+/// non-terminal fd (a pipe or `/dev/null` stdin), and a consumer matches this
+/// arm to continue without raw mode. It lives in `kabi/platform` (not `arch`)
+/// because it is part of the termios slots' Rust-facing contract — the one
+/// errno a consumer must name to discriminate the fallback — mirroring how
+/// [`AllocError`] lives here for the alloc slot. The code is `25` (the Linux
+/// errno-space value shared across the floor's `arch-sys-*` crates).
+pub const ENOTTY: Errno = Errno::from_code(25);
+
+/// A RAII guard that places a terminal fd into raw (cbreak, no-echo) mode and
+/// restores the original settings on `Drop`.
+///
+/// The `kabi/platform`-owned terminal guard the tui names (it no longer reaches
+/// `arch::term`). [`enter`](RawMode::enter) calls the
+/// [`term_set_raw`](PlatformVtable::term_set_raw) slot — the provider does all
+/// the termios mechanism and stashes the saved state keyed by fd — and `Drop`
+/// calls [`term_restore`](PlatformVtable::term_restore). The saved `Termios`
+/// never crosses the contract: the guard holds only the `fd` (which is also the
+/// fd-keyed token).
+///
+/// ## The panic-hook restore path
+///
+/// Under `panic = "abort"` (the workspace profile) `Drop` does not run on a
+/// panic, so a panicking tui would leave the terminal raw. The pre-exit hook
+/// path restores via [`restore_fd`](RawMode::restore_fd) — a fd-keyed restore
+/// that does not need a live guard, because the provider's saved-state table is
+/// keyed by fd. The restore is idempotent, so the hook calling it after a normal
+/// `Drop` already restored is a harmless no-op.
+///
+/// ```no_run
+/// // Entering raw mode requires a real tty (stdin fd 0) — no_run.
+/// use reovim_kabi_platform::RawMode;
+///
+/// let _raw = RawMode::enter(0).expect("stdin is a tty");
+/// // Read raw bytes, paint frames, etc. On drop, cooked mode is restored.
+/// ```
+pub struct RawMode {
+    /// The fd placed into raw mode; also the fd-keyed restore token.
+    fd: i32,
+}
+
+impl RawMode {
+    /// Enters raw mode on `fd`, returning a guard that restores the original
+    /// settings on `Drop`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Errno`] when raw mode cannot be entered — [`ENOTTY`] when `fd`
+    /// is not a terminal (the consumer's fallback signal), or another errno
+    /// (e.g. a bad fd) the provider's terminal read surfaced.
+    pub fn enter(fd: i32) -> Result<Self, Errno> {
+        handle().term_set_raw(fd)?;
+        Ok(Self { fd })
+    }
+
+    /// Restores `fd`'s terminal to cooked mode without a live guard — the
+    /// fd-keyed entry point the panic pre-exit hook calls.
+    ///
+    /// The hook fires after the [`RawMode`] guard's `Drop` has already run (or,
+    /// on an unwind past the guard, before it), so it cannot route through a
+    /// guard instance. Because the provider keys the saved state by fd, this
+    /// thin wrapper over [`term_restore`](PlatformVtable::term_restore) restores
+    /// correctly on its own. It is idempotent: a double-restore (guard `Drop`
+    /// then hook) is a harmless no-op.
+    pub fn restore_fd(fd: i32) {
+        handle().term_restore(fd);
+    }
+}
+
+impl Drop for RawMode {
+    /// Restores the terminal to its saved cooked settings via the
+    /// [`term_restore`](PlatformVtable::term_restore) slot.
+    ///
+    /// Best-effort: the provider's restore is idempotent and infallible from the
+    /// guard's view. Under `panic = "abort"` this `Drop` does not run on a panic
+    /// — the panic hook's [`restore_fd`](RawMode::restore_fd) covers that path.
+    fn drop(&mut self) {
+        handle().term_restore(self.fd);
+    }
 }
 
 /// The error a second [`install`] returns: the handle is already set.
@@ -1027,6 +1205,8 @@ static HANDLE: AtomicPtr<PlatformVtable> = AtomicPtr::new(core::ptr::null_mut())
 ///     let _ = (fd, b, n);
 ///     0
 /// }
+/// unsafe extern "C" fn term_set_raw_stub(fd: i32) -> i64 { let _ = fd; -25 }
+/// unsafe extern "C" fn term_restore_stub(fd: i32) { let _ = fd; }
 ///
 /// static TABLE: PlatformVtable = PlatformVtable {
 ///     clock:        clock_stub,
@@ -1046,6 +1226,8 @@ static HANDLE: AtomicPtr<PlatformVtable> = AtomicPtr::new(core::ptr::null_mut())
 ///     file_open:    file_open_stub,
 ///     thread_id:    thread_id_stub,
 ///     file_write:   file_write_stub,
+///     term_set_raw: term_set_raw_stub,
+///     term_restore: term_restore_stub,
 /// };
 ///
 /// // Boot path: install the platform table once.

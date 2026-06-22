@@ -1,0 +1,29 @@
+//! BCM2711 DTB compatible-string classification.
+//!
+//! The DTB reader and inventory shaper live in `reovim-system-kernel`, but the
+//! table that knows this target's firmware-compatible strings belongs below the
+//! bridge. The table returns only coarse KABI classes; it does not drive devices.
+
+use reovim_kabi_platform::DeviceClass;
+
+/// Maps one BCM2711 / ARM-common DTB `compatible` string to a coarse KABI
+/// [`DeviceClass`].
+///
+/// Storage controllers and USB controllers are only declared present here.
+/// Capacity reads, descriptor walks, and device-specific initialization are
+/// later driver work.
+#[must_use]
+pub fn classify_compatible(compatible: &str) -> DeviceClass {
+    match compatible {
+        "arm,pl011" => DeviceClass::Uart,
+        "arm,gic-400" => DeviceClass::Interrupt,
+        "brcm,bcm2835-mbox" => DeviceClass::Mailbox,
+        "brcm,bcm2711-emmc2" => DeviceClass::Block,
+        "brcm,bcm2708-usb" => DeviceClass::Usb,
+        _ => DeviceClass::Unknown,
+    }
+}
+
+#[cfg(feature = "selftest")]
+#[path = "device_inventory_tests.rs"]
+mod tests;

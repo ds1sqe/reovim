@@ -1,42 +1,37 @@
-//! On-target integration smoke for the device enumerator (04 Phase 2/3 ACs).
+//! Bridge-level smoke for the device-inventory input validation.
 //!
 //! L12 layout: declared in `inventory.rs` via
 //! `#[cfg(feature = "selftest")] #[path = "inventory_smoke_tests.rs"] mod ...;`,
 //! so `super::` reaches `collect_device_inventory`.
 //!
-//! Unlike the pure `classify`/reader cases (synthetic blobs), this runs on the
-//! real machine: in the aarch64 `arch-selftest` QEMU `raspi4b` pilot the
-//! firmware DTB is supplied via `-dtb`, `_start` captures its address, and
-//! `collect_device_inventory` walks it. It proves the asm-capture → reader →
-//! enumerate path end-to-end on real firmware bytes, not a hand-built fixture.
+//! Raw DTB capture is tested by the composition root below this bridge; this
+//! file keeps the bridge honest about malformed/no-DTB inputs.
 
 use {
-    super::collect_device_inventory,
-    reovim_kabi_platform::DeviceClass,
+    super::{DeviceClass, EMPTY_DEVICE_ENTRY, collect_device_inventory},
+    core::cell::UnsafeCell,
     reovim_testrt::{self as testrt, arch_test},
 };
 
-arch_test!(device_inventory_enumerates_real_dtb, {
-    let inventory = collect_device_inventory();
-    let devices = inventory.devices;
-    testrt::check(!devices.is_empty(), "real DTB yields a non-empty inventory");
+struct DeviceStore(UnsafeCell<[super::DeviceEntry; 1]>);
 
-    // PL011 UART at the known BCM2711 bus address. Its compatible list leads
-    // with "arm,pl011-axi" and only carries "arm,pl011" second, so finding it
-    // also proves the enumerator matches against the whole compatible list.
-    let uart = devices.iter().find(|d| d.class == DeviceClass::Uart);
-    testrt::check(uart.is_some(), "inventory contains a PL011 UART");
-    if let Some(u) = uart {
-        testrt::check_eq(u.mmio_base, 0x7e20_1000u64);
-    }
+// SAFETY: the selftest runner is single-threaded and each test takes the store
+// only for the duration of the call.
+unsafe impl Sync for DeviceStore {}
 
-    // Phase 3: the EMMC2 block controller and the USB host controller, each
-    // with a reg-derived non-zero MMIO base (enumerated, not driven).
-    let block = devices.iter().find(|d| d.class == DeviceClass::Block);
-    testrt::check(block.is_some(), "inventory contains an EMMC2 block device");
-    testrt::check(block.is_some_and(|b| b.mmio_base != 0), "block device has a non-zero mmio_base");
+static DEVICES: DeviceStore = DeviceStore(UnsafeCell::new([EMPTY_DEVICE_ENTRY; 1]));
 
-    let usb = devices.iter().find(|d| d.class == DeviceClass::Usb);
-    testrt::check(usb.is_some(), "inventory contains a USB host controller");
-    testrt::check(usb.is_some_and(|u| u.mmio_base != 0), "usb host has a non-zero mmio_base");
+fn storage() -> &'static mut [super::DeviceEntry] {
+    // SAFETY: single-threaded selftest runner; no stored reference escapes
+    // beyond the inventory value checked by this test.
+    unsafe { &mut *DEVICES.0.get() }
+}
+
+fn classify_unknown(_: &str) -> DeviceClass {
+    DeviceClass::Unknown
+}
+
+arch_test!(device_inventory_empty_without_dtb, {
+    let inventory = collect_device_inventory(&[], storage(), classify_unknown);
+    testrt::check(inventory.devices.is_empty(), "empty DTB yields empty inventory");
 });

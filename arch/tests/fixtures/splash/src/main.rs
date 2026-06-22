@@ -1,8 +1,8 @@
 //! Bare-metal aarch64 boot-splash demo (QEMU raspi4b / BCM2711).
 //!
 //! A thin harness around the system kernel's standing boot path: it boots
-//! through the arch `_start`, installs the freestanding system-kernel platform
-//! vtable, stands up the system kernel's framebuffer console as the floor's
+//! through the arch `_start`, installs the freestanding platform vtable, stands
+//! up the system kernel's framebuffer console as the floor's
 //! fd 1/2 write sink (SP04 04b), and lets the system kernel's own boot-splash
 //! module (SP04 04c) paint the branded splash through that standing console. It
 //! then parks in a `wfe` loop forever — it deliberately does NOT semihosting-
@@ -22,11 +22,15 @@
 #![allow(unsafe_code)]
 
 use {
-    core::arch::asm,
+    core::{arch::asm, cell::UnsafeCell},
     // The framebuffer (VideoCore MMIO) STAYS below; the platform vtable, the
     // standing console, and the splash content all live in the system kernel.
     reovim_arch::sys::framebuffer,
-    reovim_system_kernel::{color::Color, console, fonts, platform, splash},
+    reovim_system_kernel::{
+        color::Color,
+        console::{self, RenderSurface},
+        fonts, splash,
+    },
 };
 
 /// Packs an RGB triple into a `0x00RRGGBB` pixel (matches the requested RGB
@@ -40,6 +44,45 @@ const fn rgb(r: u8, g: u8, b: u8) -> u32 {
 /// centring offsets assume.
 const BOOT_FONT: &fonts::Font = &fonts::JETBRAINS_MONO;
 
+struct FbStore(UnsafeCell<Option<framebuffer::Framebuffer>>);
+
+// SAFETY: this splash fixture is a single thread of control.
+unsafe impl Sync for FbStore {}
+
+static FRAMEBUFFER: FbStore = FbStore(UnsafeCell::new(None));
+
+fn fb_put_pixel(_ctx: usize, x: u32, y: u32, color: u32) {
+    // SAFETY: the framebuffer is installed once before callback registration.
+    if let Some(fb) = unsafe { &*FRAMEBUFFER.0.get() } {
+        fb.put_pixel(x, y, color);
+    }
+}
+
+fn fb_clear(_ctx: usize, color: u32) {
+    // SAFETY: same one-shot framebuffer ownership as `fb_put_pixel`.
+    if let Some(fb) = unsafe { &*FRAMEBUFFER.0.get() } {
+        fb.clear(color);
+    }
+}
+
+fn install_framebuffer_console(fb: framebuffer::Framebuffer, grid: console::ScreenGrid<'static>) {
+    let width = fb.width();
+    let height = fb.height();
+    // SAFETY: one-shot install before any callback use.
+    unsafe {
+        *FRAMEBUFFER.0.get() = Some(fb);
+    }
+    let surface = RenderSurface::new(width, height, 0, fb_put_pixel, fb_clear);
+    console::install_console(
+        surface,
+        BOOT_FONT,
+        Color::Rgb(rgb(0xC8, 0xE0, 0xFF)),
+        Color::Rgb(rgb(0x0A, 0x14, 0x28)),
+        grid,
+    );
+    reovim_arch::sys::install_write_sink(console::write_bytes);
+}
+
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 use reovim_arch_floor_none_aarch64::entry;
 
@@ -49,7 +92,7 @@ entry!(|_argc, _argv, _envp| {
     // fd 1, which the vtable's `file_write` slot and the floor `write` route to
     // the UART plus the console — so both the vtable and the console must stand
     // before the first splash byte.
-    let _ = platform::install_platform();
+    let _ = reovim_platform_stub_none::install_platform();
 
     // Acquire the framebuffer and capture its geometry before the surface is
     // moved into the standing console (the console consumes it by value). The
@@ -59,22 +102,14 @@ entry!(|_argc, _argv, _envp| {
     let geometry = fb.as_ref().map(|fb| (fb.width(), fb.height()));
 
     if let Some((fb, grid)) = fb.zip(console::screen_grid()) {
-        // Light text on a dark slate background — legible on an HDMI capture and
-        // unmistakably "ours". The standing console clears the surface to the
-        // background pen and registers its trampoline into the floor's write
-        // sink, so every fd 1/2 byte fans to the framebuffer from here on.
-        console::install_console(
-            fb,
-            BOOT_FONT,
-            Color::Rgb(rgb(0xC8, 0xE0, 0xFF)),
-            Color::Rgb(rgb(0x0A, 0x14, 0x28)),
-            grid,
-        );
+        install_framebuffer_console(fb, grid);
     }
 
     // Render the branded splash through the standing console (UART-only when no
     // framebuffer came up).
-    splash::render(geometry);
+    splash::render(geometry, |buf| {
+        let _ = reovim_arch::sys::write(1, buf);
+    });
 
     loop {
         // SAFETY: `wfe` is an unprivileged hint that parks the core until an

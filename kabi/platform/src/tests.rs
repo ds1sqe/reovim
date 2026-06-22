@@ -12,7 +12,7 @@
 
 use reovim_uapi_posix::{Errno, Fd, Mode, OpenFlags};
 
-use super::{HANDLE, InstallError, PlatformVtable, handle, install};
+use super::{ENOTTY, HANDLE, InstallError, PlatformVtable, RawMode, handle, install};
 
 // ── fixture primitives (a synthetic provider, no arch edge) ──────────────────
 
@@ -106,6 +106,17 @@ unsafe extern "C" fn fixture_file_write(_fd: Fd, _buf: *const u8, len: usize) ->
     len as i64
 }
 
+/// A synthetic `term_set_raw`: "raws" a positive fd by returning it as the
+/// token, and reports `-ENOTTY` (`-25`) for fd `0` so the not-a-tty fallback arm
+/// is exercised.
+unsafe extern "C" fn fixture_term_set_raw(fd: i32) -> i64 {
+    if fd == 0 { -25 } else { i64::from(fd) }
+}
+
+/// A synthetic `term_restore`: a no-op (the fixture holds no real saved state),
+/// exercising the idempotent restore call path.
+unsafe extern "C" fn fixture_term_restore(_fd: i32) {}
+
 /// The synthetic provider's `static` vtable (zero heap to build), the shape an
 /// arch-side `static` takes.
 static FIXTURE_VTABLE: PlatformVtable = PlatformVtable {
@@ -126,6 +137,8 @@ static FIXTURE_VTABLE: PlatformVtable = PlatformVtable {
     file_open: fixture_file_open,
     thread_id: fixture_thread_id,
     file_write: fixture_file_write,
+    term_set_raw: fixture_term_set_raw,
+    term_restore: fixture_term_restore,
 };
 
 /// A no-op C-ABI thread entry for the `thread_spawn` fixture: the synthetic
@@ -202,4 +215,27 @@ fn install_is_write_once_and_handle_reads_through() {
     // file_write (plain `write(2)`, distinct from the socket `fd_write`): the
     // fixture echoes the byte count, proving the separate dispatch path.
     assert_eq!(handle().file_write(11, b"abcd"), Ok(4), "file_write count flows through");
+
+    // SP05b termios slots dispatch through the handle: the fixture returns the
+    // fd as the token for a positive fd, and `-ENOTTY` for fd 0.
+    assert_eq!(handle().term_set_raw(3), Ok(3), "term_set_raw token (= fd) flows through");
+    assert_eq!(
+        handle().term_set_raw(0),
+        Err(ENOTTY),
+        "term_set_raw maps -ENOTTY to the typed not-a-tty error",
+    );
+
+    // The RawMode RAII guard enters via term_set_raw and restores on Drop; the
+    // not-a-tty fd takes the Err(ENOTTY) arm with no guard constructed.
+    {
+        let guard = RawMode::enter(3).expect("a positive fd raws via the fixture");
+        let _ = guard; // restores on drop (the fixture restore is a no-op)
+    }
+    assert_eq!(
+        RawMode::enter(0).err(),
+        Some(ENOTTY),
+        "RawMode::enter surfaces ENOTTY on a non-tty"
+    );
+    // The fd-keyed panic-hook entry point is callable without a guard (idempotent).
+    RawMode::restore_fd(3);
 }

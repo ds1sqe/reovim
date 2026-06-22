@@ -26,24 +26,20 @@ doctest = false
 reovim-arch = { path = "../../..", features = ["runtime"] }
 # The real reovim kernel — this bin boots it on the bare-metal floor.
 reovim-kernel = { path = "../../../../editor/lib/kernel" }
-# The World system kernel (SP04 04a): the device-neutral boot assembly + console
-# device model this payload drives. `runtime` forwards to its arch-sys-none
-# backends so the boot-info accessors read the boot-stashed facts. The boot
-# surface it re-exports (`collect_boot_info` / `collect_device_inventory` /
-# `console` / `fonts` / `color`) is `target_os = "none"`-only, exactly as the old
-# `reovim_arch::sys::*` facade was — so this payload's real targets are the
-# freestanding ones.
+# The World system-kernel bridge: arch-free boot-info/device-inventory shaping,
+# console policy, fonts, color, and FDT enumeration. Raw facts are gathered by
+# this composition root and passed into the bridge as data.
 reovim-system-kernel = { path = "../../../../system/lib/kernel", features = ["runtime"] }
 
 # The platform-handle installer this composition root drives, cfg-split by
 # target so exactly one links per build. The kernel boot allocates + writes
-# through the handle, so it must install first. On the freestanding targets the
-# vtable is the SYSTEM-KERNEL provider (SP04 04c) — the real product path that
-# supersedes `reovim-platform-stub-none` for bootcore — supplied by the
-# `reovim-system-kernel` dep already declared above; no separate stub-none dep.
-# A hosted Linux build gets the real linux-native provider.
+# through the handle, so it must install first. A hosted Linux build gets the
+# real linux-native provider; freestanding builds get the bare-metal stub.
 [target.'cfg(target_os = "linux")'.dependencies]
 reovim-platform-linux-native = { path = "../../../../platform/linux-native" }
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+reovim-platform-stub-none = { path = "../../../../platform/stub-none" }
 
 # The per-target language floor (SP03): supplies `_start`, the `entry!` shim,
 # the `#[panic_handler]`, `rust_eh_personality`, and the `mem` intrinsics as LINK

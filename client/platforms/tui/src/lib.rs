@@ -20,9 +20,10 @@
 //! - [`input`]: raw-byte stdin read + `RawInput` classification.
 //! - [`frame`]: pure ANSI frame composer — `Projection` bytes → ANSI escape
 //!   sequence bytes.
-//! - [`paint`]: raw-`termios` paint loop — enter [`arch::term::RawMode`],
-//!   register the pre-exit terminal-restore callback, read stdin + send
-//!   `SendInput`, receive `AttachEvent::Projection` + paint.
+//! - [`paint`]: raw-`termios` paint loop — enter raw mode via the
+//!   `kabi/platform` `RawMode` guard, register the pre-exit terminal-restore
+//!   callback, read stdin + send `SendInput`, receive
+//!   `AttachEvent::Projection` + paint.
 //! - [`run`]: `pub fn run(args: RunArgs) -> Result<(), RunError>` — the platform
 //!   contract entry (8.2 §1).
 //!
@@ -52,3 +53,7 @@ mod carrier_tests;
 #[cfg(feature = "selftest")]
 #[path = "frame_tests.rs"]
 mod frame_tests;
+
+#[cfg(feature = "selftest")]
+#[path = "paint_tests.rs"]
+mod paint_tests;
