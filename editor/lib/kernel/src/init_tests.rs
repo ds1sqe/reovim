@@ -4,12 +4,26 @@
 //! selftest runner (arch_test! + testrt::run). The kernel-selftest bin in
 //! tests/fixtures/ runs these.
 
-use reovim_arch::arch_test;
+use {reovim_arch::arch_test, reovim_uapi::sched::ClockControl};
 
 use crate::init::{BootError, Init, LauncherArgs};
 
+fn launcher_args_with_test_clock() -> LauncherArgs {
+    let mut args = LauncherArgs::default();
+    args.clock = ClockControl::new(test_monotonic, test_realtime);
+    args
+}
+
+fn test_monotonic() -> i64 {
+    1_000_000
+}
+
+fn test_realtime() -> i64 {
+    946_684_800_000_000_001
+}
+
 arch_test!(launcher_args_default_disposition_is_recover, {
-    use reovim_arch::panic::Disposition;
+    use reovim_uapi::panic::Disposition;
     let args = LauncherArgs::default();
     assert!(
         matches!(args.disposition, Disposition::Recover),
@@ -23,7 +37,7 @@ arch_test!(launcher_args_default_ring_bytes_is_1mib, {
 });
 
 arch_test!(init_new_captures_boot_anchor, {
-    let init = Init::new(LauncherArgs::default());
+    let init = Init::new(launcher_args_with_test_clock());
     // Wall anchor must be after year 2000 (Unix-epoch nanos).
     assert!(init.boot_anchor().wall_anchor > 946_684_800_000_000_000);
 });
@@ -44,32 +58,12 @@ arch_test!(launcher_args_default_boot_info_is_empty, {
     assert_eq!(args.boot_info.cpu_count, 0, "default boot_info has zeroed CPU fields");
 });
 
-arch_test!(launcher_args_boot_info_round_trips_multi_range, {
-    use reovim_kabi_platform::{BootInfo, MemoryKind, MemoryRange};
-
-    // `'static` backing for the slice — the arch payload's arena plays this role
-    // on the floor; a `static` array stands in for it under the test runner.
-    static RANGES: [MemoryRange; 3] = [
-        MemoryRange {
-            base: 0x0,
-            len: 0x4000_0000,
-            kind: MemoryKind::Usable,
-        },
-        MemoryRange {
-            base: 0x4000_0000,
-            len: 0x1000_0000,
-            kind: MemoryKind::Reserved,
-        },
-        MemoryRange {
-            base: 0x5000_0000,
-            len: 0x0010_0000,
-            kind: MemoryKind::Acpi,
-        },
-    ];
+arch_test!(launcher_args_boot_info_round_trips_diagnostic_view, {
+    use reovim_uapi::system::{BootInfo, MemorySummary};
 
     let args = LauncherArgs {
         boot_info: BootInfo {
-            memory: &RANGES,
+            memory: MemorySummary::new(3, 0x4000_0000),
             cpu_freq_hz: 54_000_000,
             cpu_id: 0x410f_d083,
             cpu_count: 1,
@@ -88,12 +82,10 @@ arch_test!(launcher_args_boot_info_round_trips_multi_range, {
     let init = Init::new(args);
     let info = init.args().boot_info;
 
-    // The whole multi-range map survives push-at-entry, byte for byte.
-    assert_eq!(info.memory.len(), 3, "all three ranges survive the round-trip");
-    assert_eq!(info.memory[0].kind, MemoryKind::Usable);
-    assert_eq!(info.memory[1].base, 0x4000_0000);
-    assert_eq!(info.memory[1].kind, MemoryKind::Reserved);
-    assert_eq!(info.memory[2].kind, MemoryKind::Acpi);
+    // The diagnostic view survives push-at-entry, without exposing raw memory
+    // range kinds to editor-kernel.
+    assert_eq!(info.memory.range_count(), 3);
+    assert_eq!(info.memory.usable_bytes(), 0x4000_0000);
     assert_eq!(info.cpu_freq_hz, 54_000_000);
     assert_eq!(info.cpu_id, 0x410f_d083);
     assert_eq!(info.cpu_count, 1);

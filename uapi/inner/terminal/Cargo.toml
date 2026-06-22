@@ -1,0 +1,20 @@
+[package]
+name = "reovim-uapi-terminal"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Terminal and raw-mode product-facing vocabulary — pure uapi definitions"
+publish = false
+
+[features]
+selftest = []
+
+[lints]
+workspace = true
+
+# No [dependencies]: terminal uapi is core-only and does not name POSIX fd,
+# termios, kabi/provider slots, or arch mechanisms.

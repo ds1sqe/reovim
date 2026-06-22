@@ -25,10 +25,9 @@ selftest = ["dep:reovim-arch", "reovim-arch/selftest"]
 # contract tier names no arch symbol (SP05a firewall close).
 reovim-arch = { path = "../../../../arch", optional = true }
 # Heap-DS algorithms (Bytes/Seq — the contract tier's owned buffers) relocated
-# from `reovim_arch::ds` into `reovim-lib-ds` (SP03). `AllocError` is named from
-# the kabi contract directly (master invariant 2: its home is kabi, not arch).
+# from `reovim_arch::ds` into `reovim-lib-ds` (SP03). The domain crate exposes
+# upper-facing contract errors and does not name down-face `kabi/*` types.
 reovim-lib-ds = { path = "../../../../lib/ds" }
-reovim-kabi-platform = { path = "../../../../kabi/platform" }
 
 [lints]
 workspace = true

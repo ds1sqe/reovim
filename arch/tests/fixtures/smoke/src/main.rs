@@ -17,10 +17,10 @@ use {
     reovim_lib_ds::{Mutex, Seq},
 };
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use reovim_arch_floor_linux_x86_64::entry;
 #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
 use reovim_arch_floor_linux_aarch64::entry;
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use reovim_arch_floor_linux_x86_64::entry;
 
 entry!(|_argc, _argv, _envp| {
     // Install the platform handle as the closure's first statement, before the
@@ -28,9 +28,10 @@ entry!(|_argc, _argv, _envp| {
     // self-skips under system-image mode), so it installs the real POSIX
     // provider unconditionally — no bare-metal scaffold branch.
     let _ = reovim_platform_linux_native::install_platform();
+    let _ = reovim_system_kernel::mm::install_lib_ds_alloc_backend();
+    let _ = reovim_system_kernel::sched::install_lib_ds_sync_backend();
 
-    // Allocate a lib/ds DS through the live allocator (reached via the handle
-    // installed above).
+    // Allocate a lib/ds DS through the installed allocator backend.
     let mut seq: Seq<u64> = Seq::new();
     for i in 0..8 {
         if seq.try_push(i).is_err() {

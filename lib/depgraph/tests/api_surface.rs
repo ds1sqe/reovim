@@ -191,7 +191,7 @@ fn violation_display_all_variants() {
 
     // ForbiddenExternalImport (L11 purity probe).
     let forbidden_import = Violation::ForbiddenExternalImport {
-        file: root.join("uapi/protocol/src/lib.rs"),
+        file: root.join("uapi/inner/protocol/src/lib.rs"),
         import: "arch".to_owned(),
     };
     let s = forbidden_import.to_string();
@@ -908,6 +908,12 @@ fn default_foundation_grants_rlib() {
             .get("reovim-uapi-protocol")
             .is_some_and(|v| v.iter().any(|g| g == "reovim-uapi-abi")),
         "uapi/protocol must be granted the uapi/abi dep"
+    );
+    assert!(
+        grants.get("reovim-uapi").is_some_and(|v| {
+            v.iter().any(|g| g == "reovim-uapi-net") && !v.iter().any(|g| g == "reovim-uapi-posix")
+        }),
+        "uapi facade must be granted domain leaf deps but not uapi/posix"
     );
 }
 

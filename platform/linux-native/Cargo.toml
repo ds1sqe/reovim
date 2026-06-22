@@ -7,26 +7,27 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "POSIX provider: canonicalizes NATIVE arch primitives into the kabi/platform vtable and installs it (hosted, both Linux arches)"
+description = "Linux provider: canonicalizes target arch-sys mechanisms into the kabi/platform vtable and installs it (hosted, both Linux arches)"
 publish = false
 
 [lints]
 workspace = true
 
 [dependencies]
-# The one-way transitional backend edge (SP02 → retired in SP05): the provider
-# names arch's alloc + clock backends (`arch::alloc::{alloc,dealloc}`,
-# `arch::time::{Instant,realtime}`) and the raw syscall floor (`arch::sys::*` —
-# futex / socket / fd / mmap / clone_into / openat / gettid + the MAP_*/PROT_*/
-# FUTEX_*/AT_FDCWD constants). It is acyclic because arch never names the
-# provider back — the apps/* composition root drives install, not arch (master
-# invariant 8). reovim-arch is a #![no_std] crate; DAG5/DAG6 are preserved.
-reovim-arch = { path = "../../arch" }
-
 # The down-face contract this crate implements: the `#[repr(C)] PlatformVtable`
 # slots, the write-once `install()` gate, and `map_fd_ret`. A #![no_std] leaf
 # with no third-party deps, so DAG5/DAG6 hold.
 reovim-kabi-platform = { path = "../../kabi/platform" }
 
-# No [dev-dependencies] or [build-dependencies] (DAG5/DAG6: zero third-party
-# deps). Beyond the two in-repo path deps above, only `core` is consumed.
+# No [dev-dependencies] or [build-dependencies] (DAG5/DAG6: zero third-party deps).
+# Beyond the in-repo path deps above/below, only `core` is consumed.
+
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
+# Raw target mechanism for the hosted x86_64 Linux provider. The provider
+# canonicalizes these NATIVE returns into the kabi/platform down-face table.
+reovim-arch-sys-linux-x86-64 = { path = "../../arch/sys-linux-x86-64" }
+
+[target.'cfg(all(target_os = "linux", target_arch = "aarch64"))'.dependencies]
+# Raw target mechanism for the hosted aarch64 Linux provider. The provider
+# canonicalizes these NATIVE returns into the kabi/platform down-face table.
+reovim-arch-sys-linux-aarch64 = { path = "../../arch/sys-linux-aarch64" }

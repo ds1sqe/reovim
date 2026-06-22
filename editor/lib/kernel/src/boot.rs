@@ -19,7 +19,7 @@
 //! while the allocator is absent (the exemption is "before the correlation
 //! allocator exists"; no correlation IDs are present at this layer).
 
-use reovim_uapi_abi::error::LogLevel;
+use reovim_uapi::abi::error::LogLevel;
 
 use crate::{
     BootClock,
@@ -183,7 +183,7 @@ pub(crate) fn run_stage(
 /// use reovim_kernel::BootClock;
 /// use reovim_kernel::boot::run_boot_stages;
 ///
-/// let clock = BootClock::capture();
+/// let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
 /// let bus = DS12EventBus::new();
 /// run_boot_stages(&bus, &clock).expect("boot succeeds");
 /// ```

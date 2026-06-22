@@ -7,7 +7,7 @@
 use {
     crate::{arch_test, testrt},
     core::cell::Cell,
-    reovim_kabi_platform::AllocError,
+    reovim_lib_ds::AllocError,
 };
 
 use reovim_lib_ds::{Seq, seq::FIRST_CAPACITY};

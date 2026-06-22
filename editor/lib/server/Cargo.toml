@@ -16,8 +16,8 @@ publish = false
 # selftest runner. Off in flight builds; the selftest fixture bin enables it.
 # `dep:reovim-arch` activates the now-OPTIONAL arch dep: server-rt's only
 # remaining arch use is the selftest test-infra (arch_test!/testrt), so the
-# product build carries NO arch edge — net/thread route through the kabi
-# handle via lib/ds (SP05a).
+# product build carries NO arch edge. Net routes through injected uapi/inner/net
+# controls; thread spawn routes through injected uapi/inner/sched controls.
 selftest = ["dep:reovim-arch", "reovim-arch/selftest", "reovim-kernel/selftest", "reovim-subsys-domain/selftest"]
 
 # Runtime lang items (panic_handler, _start, allocator). Needed by the
@@ -26,14 +26,13 @@ runtime = ["dep:reovim-arch", "reovim-arch/runtime"]
 
 [dependencies]
 # OPTIONAL: arch is needed only under `selftest`/`runtime` (test-infra +
-# fixture-bin lang items). The product runtime reaches net/thread through the
-# kabi handle (lib/ds), so a flight build links no arch (SP05a firewall close).
+# fixture-bin lang items). Product runtime net/spawn services are injected
+# through uapi controls, so a flight build links no arch.
 reovim-arch          = { path = "../../../arch", optional = true }
 # Heap-DS algorithms (Seq/Shared/Bytes) relocated from `reovim_arch::ds` to
-# `reovim-lib-ds` (SP03); net/thread wrappers added in SP05a.
+# `reovim-lib-ds` (SP03).
 reovim-lib-ds        = { path = "../../../lib/ds" }
-reovim-uapi-abi      = { path = "../../../uapi/abi" }
-reovim-uapi-protocol = { path = "../../../uapi/protocol" }
+reovim-uapi          = { path = "../../../uapi" }
 reovim-subsys-domain = { path = "../subsys/domain" }
 reovim-kernel        = { path = "../kernel" }
 

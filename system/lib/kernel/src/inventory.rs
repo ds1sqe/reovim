@@ -7,14 +7,14 @@ pub use {
     fdt::enumerate::{
         DeviceClassifier, EMPTY_DEVICE_ENTRY, MAX_DEVICE_ENTRIES as DEVICE_STORAGE_ENTRIES,
     },
-    reovim_kabi_platform::{DeviceClass, DeviceEntry},
+    reovim_uapi_system::{DeviceClass, DeviceEntry},
 };
 
 /// Maximum DTB size this bridge accepts from the composition root.
 pub const MAX_DTB_BYTES: usize = 1 << 20; // 1 MiB
 
 /// Enumerates a caller-supplied firmware DTB into a one-shot static
-/// [`reovim_kabi_platform::DeviceInventory`] pushed into the kernel at entry.
+/// [`reovim_uapi_system::DeviceInventory`] pushed into the kernel at entry.
 /// The caller also supplies the board/chip-specific compatible-string
 /// classifier; this bridge only walks and shapes the neutral inventory.
 ///
@@ -30,12 +30,12 @@ pub fn collect_device_inventory(
     dtb: &'static [u8],
     storage: &'static mut [DeviceEntry],
     classify: DeviceClassifier,
-) -> reovim_kabi_platform::DeviceInventory {
+) -> reovim_uapi_system::DeviceInventory {
     if !(40..=MAX_DTB_BYTES).contains(&dtb.len()) {
-        return reovim_kabi_platform::DeviceInventory::default();
+        return reovim_uapi_system::DeviceInventory::default();
     }
     let Ok(fdt) = fdt::reader::Fdt::parse(dtb) else {
-        return reovim_kabi_platform::DeviceInventory::default();
+        return reovim_uapi_system::DeviceInventory::default();
     };
     fdt::enumerate::enumerate_into(&fdt, storage, classify)
 }

@@ -42,7 +42,7 @@ use {
         state::{EditOrigin, RegisterScope, UndoGroupId, ViewSlotFlags, ViewSlotKey},
         stream::{BackpressureCounters, StreamControlClass, StreamControlOp, StreamScheme},
     },
-    reovim_uapi_abi::{AbiVersion, error::LogLevel},
+    reovim_uapi::abi::{AbiVersion, error::LogLevel},
 };
 
 use crate::{
@@ -65,7 +65,7 @@ const STATIC_OWNER_ORDER: u32 = 0;
 ///
 /// ```rust
 /// use reovim_kernel::kernel::KERNEL_ABI_VERSION;
-/// use reovim_uapi_abi::AbiVersion;
+/// use reovim_uapi::abi::AbiVersion;
 ///
 /// assert_eq!(KERNEL_ABI_VERSION.major, 1);
 /// assert_eq!(KERNEL_ABI_VERSION.minor, 0);
@@ -89,7 +89,7 @@ pub const KERNEL_ABI_VERSION: AbiVersion = AbiVersion {
 ///
 /// ```rust
 /// use reovim_kernel::kernel::{KernelAbi, KERNEL_ABI_VERSION};
-/// use reovim_uapi_abi::AbiVersion;
+/// use reovim_uapi::abi::AbiVersion;
 ///
 /// let abi = KernelAbi::new(KERNEL_ABI_VERSION);
 /// assert_eq!(abi.version().major, 1);

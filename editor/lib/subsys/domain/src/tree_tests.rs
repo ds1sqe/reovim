@@ -11,8 +11,8 @@ use crate::{
         SessionId, WindowId,
     },
     tree::{
-        DispatchVerdict, DomainAttachment, DomainScope, FocusEntry, FocusEntrySnapshot,
-        FocusTransition, PendingAttachment,
+        DispatchVerdict, DomainAllocError, DomainAttachment, DomainScope, FocusEntry,
+        FocusEntrySnapshot, FocusTransition, PendingAttachment,
     },
 };
 
@@ -71,6 +71,26 @@ arch_test!(attachment_children_keep_append_order, {
         .expect("alloc");
     assert_eq!(parent.children.as_slice()[0], DomainAttachmentId::new(10));
     assert_eq!(parent.children.as_slice()[1], DomainAttachmentId::new(11));
+});
+
+arch_test!(attachment_child_growth_failure_returns_domain_alloc_error, {
+    let mut parent = DomainAttachment::new(
+        DomainAttachmentId::new(1),
+        BufferId::new(1),
+        domain(1),
+        scope(),
+        None,
+        0,
+        1,
+        0,
+    );
+
+    reovim_arch::alloc::fault::fail_after(0);
+    let result = parent.try_push_child(DomainAttachmentId::new(10));
+    reovim_arch::alloc::fault::reset();
+
+    assert!(matches!(result, Err(DomainAllocError)));
+    assert!(parent.children.is_empty());
 });
 
 arch_test!(focus_entry_helpers_distinguish_pending_and_resolved, {

@@ -21,7 +21,7 @@ use core::{
     },
 };
 
-use reovim_kabi_platform::handle;
+use crate::sync_backend;
 
 /// Lock-word state: free.
 const FREE: u32 = 0;
@@ -156,7 +156,7 @@ impl<T> Mutex<T> {
             // the swap, which re-decides — so the result needs no inspection.
             // The handle's park carries FUTEX_PRIVATE_FLAG (the arch adapter),
             // matching this in-process lock.
-            handle().park(&self.word, CONTENDED);
+            sync_backend::park(&self.word, CONTENDED);
         }
     }
 
@@ -197,7 +197,7 @@ impl<T> Mutex<T> {
             // Wake exactly one waiter (the handle's `unpark`): it will swap
             // CONTENDED back in and either win or re-sleep, keeping the
             // sticky-contended invariant.
-            handle().unpark(&self.word);
+            sync_backend::unpark(&self.word);
         }
     }
 }

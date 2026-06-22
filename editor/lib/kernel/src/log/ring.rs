@@ -38,9 +38,8 @@
 //! and the two do not form a cycle at runtime.
 
 use {
-    reovim_kabi_platform::AllocError,
-    reovim_lib_ds::{Bytes, Mutex, Ring},
-    reovim_uapi_abi::error::LogLevel,
+    reovim_lib_ds::{AllocError, Bytes, Mutex, Ring},
+    reovim_uapi::abi::error::LogLevel,
 };
 
 use crate::{
@@ -83,7 +82,7 @@ pub const MIN_RING_CAPACITY: usize = 2;
 /// ```no_run
 /// use reovim_lib_ds::Bytes;
 /// use reovim_kernel::log::ring::LogEntry;
-/// use reovim_uapi_abi::error::LogLevel;
+/// use reovim_uapi::abi::error::LogLevel;
 ///
 /// let entry = LogEntry {
 ///     level: LogLevel::Info,
@@ -226,10 +225,10 @@ impl LogRing {
     /// use reovim_kernel::log::ring::LogRing;
     /// use reovim_kernel::event_bus::{DS12Event, BootStageFields, EVT_BOOT_STAGE_OK};
     /// use reovim_kernel::BootClock;
-    /// use reovim_uapi_abi::error::LogLevel;
+    /// use reovim_uapi::abi::error::LogLevel;
     ///
     /// let ring = LogRing::try_new(1024 * 1024).unwrap();
-    /// let clock = BootClock::capture();
+    /// let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
     /// let event = DS12Event {
     ///     ts_nanos: clock.elapsed_nanos(),
     ///     level: LogLevel::Info,
@@ -274,7 +273,7 @@ impl LogRing {
     /// use reovim_kernel::log::ring::LogRing;
     /// use reovim_kernel::event_bus::{DS12Event, BootStageFields, EVT_BOOT_STAGE_OK};
     /// use reovim_kernel::BootClock;
-    /// use reovim_uapi_abi::error::LogLevel;
+    /// use reovim_uapi::abi::error::LogLevel;
     ///
     /// let ring = LogRing::try_new(1024 * 1024).unwrap();
     /// let event = DS12Event {

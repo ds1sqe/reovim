@@ -27,7 +27,8 @@ and `08-Client/01-Layer-Model.md` (`CL*`).
 │ CONTRACTS     editor/lib/subsys/* (closed server contracts)     │
 │               client/lib/subsys/* (closed client contracts)     │
 ├─────────────────────────────────────────────────────────────────┤
-│ FOUNDATION    uapi/* · kabi/* · lib/* · platform-* · arch-*     │
+│ FOUNDATION    uapi · uapi/inner/* · kabi/* · lib/* · platform-* │
+│               arch-*                                            │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -44,16 +45,17 @@ and may not import `arch-*`, `arch-sys-*`, `arch-floor-*`, or `platform-*`.
 ### 1.1 Foundation stack (up-face / down-face)
 
 The FOUNDATION tier is itself layered. It is not a flat bag of crates; it has
-two semantic faces and one bridge. The product-facing side imports `uapi/*`.
-Hardware/chip/device-specific code imports `kabi/*`. `system/lib/kernel` is
-the bridge that may name both.
+two semantic faces and one bridge. The product-facing side imports the public
+`uapi` facade (`reovim-uapi`, with modules such as `uapi::net` and
+`uapi::sched`) while the physical leaf crates live under `uapi/inner/*` for
+depgraph precision. Hardware/chip/device-specific code imports `kabi/*`.
+`system/lib/kernel` is the bridge that may name both.
 
 ```
-        ▲ up-face — product/over-layers import `uapi/*`
+        ▲ up-face — product/over-layers import the `uapi` facade
         │
-  uapi/posix      canonical product-visible POSIX values
-  uapi/abi        module/plugin cdylib ABI surface
-  uapi/protocol   framed client↔server protocol surface
+  uapi            public product-facing namespace facade
+  uapi/inner/*    physical leaf crates; depgraph-enforced SSOT surfaces
   ─────────────── contract line ───────────────
   lib/*           Math: portable algorithm, zero `use reovim_arch*`
   system/lib/kernel
@@ -77,11 +79,11 @@ the bridge that may name both.
 
 Reading the stack:
 
-- **`uapi/posix` is canonical, not Linux-derived.** It owns the POSIX
-  values; Linux/x86-64 numbers may happen to match some of them, but a
-  hardware/provider crate does not import `uapi/posix` directly. The
-  `uapi/*` crates are the portable product face; `system/lib/kernel` bridges
-  those values to the `kabi/*` down-face.
+- **There is no public/product POSIX face.** Product-visible semantics live in
+  domain uapi leaves such as `uapi::fs`, `uapi::net`, and `uapi::terminal`.
+  Provider-facing POSIX-shaped scalar ABI lives in `kabi/platform`, where it is
+  part of the down-face slot contract. Hardware/provider crates import `kabi/*`,
+  not `uapi/*`.
 - **Three down-face seams, one shape.** `kabi/platform` is the
   install-gated machine-services trap gate; `kabi/panic` is the
   always-present fault floor; `kabi/device` is the edit-as-buffer seam.
@@ -93,8 +95,8 @@ Reading the stack:
 - **Not a HAL.** The lower provider satisfies `kabi/*` and may translate
   native machine facts into provider-facing `kabi` values, but it does not
   know the product's `uapi/*` vocabulary. The `uapi`↔`kabi` bridge belongs
-  in `system/lib/kernel`. A direct `uapi/posix` import below that bridge is
-  forbidden unless a concrete inescapable case is found and recorded.
+  in `system/lib/kernel`. A direct `uapi/posix` import is forbidden unless a
+  concrete inescapable case is found and recorded.
 
 ## 2. Boundary contracts
 

@@ -10,9 +10,10 @@
 //! would race over the one-shot static. A test fixture provides the vtable; no
 //! arch implementor is named (the contract has no impl-side edge).
 
-use reovim_uapi_posix::{Errno, Fd, Mode, OpenFlags};
-
-use super::{ENOTTY, HANDLE, InstallError, PlatformVtable, RawMode, handle, install};
+use super::{
+    ENOTTY, Errno, Fd, HANDLE, InstallError, Mode, O_APPEND, O_CLOEXEC, O_CREAT, O_RDONLY, O_TRUNC,
+    O_WRONLY, OpenFlags, PlatformVtable, RawMode, handle, install,
+};
 
 // ── fixture primitives (a synthetic provider, no arch edge) ──────────────────
 
@@ -117,6 +118,12 @@ unsafe extern "C" fn fixture_term_set_raw(fd: i32) -> i64 {
 /// exercising the idempotent restore call path.
 unsafe extern "C" fn fixture_term_restore(_fd: i32) {}
 
+/// A synthetic path unlink: succeeds for ordinary paths and reports `-ENOENT`
+/// for the empty path so the safe wrapper's error mapping is exercised.
+unsafe extern "C" fn fixture_path_unlink(_path: *const u8, path_len: usize) -> i64 {
+    if path_len == 0 { -2 } else { 0 }
+}
+
 /// The synthetic provider's `static` vtable (zero heap to build), the shape an
 /// arch-side `static` takes.
 static FIXTURE_VTABLE: PlatformVtable = PlatformVtable {
@@ -139,11 +146,28 @@ static FIXTURE_VTABLE: PlatformVtable = PlatformVtable {
     file_write: fixture_file_write,
     term_set_raw: fixture_term_set_raw,
     term_restore: fixture_term_restore,
+    path_unlink: fixture_path_unlink,
 };
 
 /// A no-op C-ABI thread entry for the `thread_spawn` fixture: the synthetic
 /// provider never invokes it, so the body is unreachable and trivially sound.
 unsafe extern "C" fn noop_entry(_arg: *mut u8) {}
+
+#[test]
+fn open_flag_constants_are_contract_values() {
+    assert_eq!(O_RDONLY.bits(), 0);
+    assert_eq!(O_WRONLY.bits(), 0o1);
+    assert_eq!(O_CREAT.bits(), 0o100);
+    assert_eq!(O_TRUNC.bits(), 0o1000);
+    assert_eq!(O_APPEND.bits(), 0o2000);
+    assert_eq!(O_CLOEXEC.bits(), 0o2_000_000);
+
+    assert_eq!(
+        (O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC).bits(),
+        0o2_002_101,
+        "bridge file-open flags compose as a typed down-face ABI word",
+    );
+}
 
 #[test]
 fn install_is_write_once_and_handle_reads_through() {
@@ -175,7 +199,7 @@ fn install_is_write_once_and_handle_reads_through() {
     let nanos_again = unsafe { (handle().clock)() };
     assert_eq!(nanos_again, 1_234_567_890, "the first table still stands");
 
-    // The SP05 net/thread safe wrappers dispatch through the handle too: the
+    // The net/thread safe wrappers dispatch through the handle too: the
     // synthetic provider's fixed returns flow back as typed results, proving
     // the new slots are wired and the negative-errno mapping is correct.
     assert_eq!(handle().unix_connect(b"/x\0"), Ok(7), "connect fd flows through");
@@ -193,7 +217,7 @@ fn install_is_write_once_and_handle_reads_through() {
     let tid = unsafe { handle().thread_spawn(noop_entry, core::ptr::null_mut()) };
     assert_eq!(tid, Ok(42), "thread tid flows through");
 
-    // The SP05 time + sys safe wrappers dispatch through the handle too.
+    // The time + sys safe wrappers dispatch through the handle too.
     assert_eq!(handle().realtime(), 1_700_000_000_000_000_000, "wall-clock nanos flow through");
     assert_eq!(handle().thread_id(), 1234, "thread id flows through");
     assert_eq!(handle().clock(), 1_234_567_890, "monotonic nanos flow through the safe wrapper");
@@ -216,7 +240,7 @@ fn install_is_write_once_and_handle_reads_through() {
     // fixture echoes the byte count, proving the separate dispatch path.
     assert_eq!(handle().file_write(11, b"abcd"), Ok(4), "file_write count flows through");
 
-    // SP05b termios slots dispatch through the handle: the fixture returns the
+    // The termios slots dispatch through the handle: the fixture returns the
     // fd as the token for a positive fd, and `-ENOTTY` for fd 0.
     assert_eq!(handle().term_set_raw(3), Ok(3), "term_set_raw token (= fd) flows through");
     assert_eq!(
@@ -238,4 +262,8 @@ fn install_is_write_once_and_handle_reads_through() {
     );
     // The fd-keyed panic-hook entry point is callable without a guard (idempotent).
     RawMode::restore_fd(3);
+
+    // path_unlink dispatches through the trailing path-operation slot.
+    assert_eq!(handle().path_unlink(b"/tmp/reovim-kabi.sock\0"), Ok(()));
+    assert_eq!(handle().path_unlink(b""), Err(Errno::from_code(2)));
 }

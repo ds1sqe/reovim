@@ -10,9 +10,8 @@
 //!
 //! ## Coverage
 //!
-//! 1. **Positive control (real tree)** — the current real workspace has no
-//!    `editor/**` or `client/**` crates yet (pre-SP04), so the probe must
-//!    return zero violations vacuously.
+//! 1. **Positive control (real tree)** — the current real workspace's product
+//!    crates must have no direct `arch`, `system/kernel`, or `*/drivers` edges.
 //!
 //! 2. **Negative fixture A** — a synthetic `editor/lib/kernel` crate with a
 //!    direct `reovim-arch` dep must trip exactly one firewall violation.
@@ -30,8 +29,8 @@
 mod common;
 
 use reovim_depgraph::{
-    toml::{TomlDoc, TomlValue, parse_file},
     run_firewall_probe, run_no_product_arch_net_probe, run_no_product_arch_time_sys_probe,
+    toml::{TomlDoc, TomlValue, parse_file},
 };
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -64,9 +63,9 @@ fn pkg_toml_with_path_dep(name: &str, dep_name: &str, dep_rel_path: &str) -> Str
 
 /// Manifest with an OPTIONAL, selftest-gated `reovim-arch` path dep, declared
 /// in the inline-table form (`= { path = "..", optional = true }`) with a
-/// `selftest = ["dep:reovim-arch"]` feature. This is the post-SP05 shape of a
-/// crate whose only arch use is the selftest test-infra — the firewall must
-/// NOT flag it.
+/// `selftest = ["dep:reovim-arch"]` feature. This is the closed-airlock shape
+/// of a crate whose only arch use is the selftest test-infra — the firewall
+/// must NOT flag it.
 #[must_use]
 fn pkg_toml_optional_arch_inline(name: &str, dep_rel_path: &str) -> String {
     format!(
@@ -124,7 +123,7 @@ fn firewall_real_workspace_residual_is_empty() {
 
     assert!(
         violations.is_empty(),
-        "firewall: residual must be empty after SP05b — every product→arch edge \
+        "firewall: residual must be empty — every product→arch edge \
          is severed. A violation here is a NEW direct arch edge or a re-opened \
          residual:\n{}",
         violations.join("\n")
@@ -150,7 +149,8 @@ fn system_kernel_manifest_has_no_raw_arch_provider_or_posix_deps() {
 
     let empty_features = ["runtime", "selftest"];
     for feature in empty_features {
-        let Some(TomlValue::Array(values)) = doc.sections.get("features").and_then(|s| s.get(feature))
+        let Some(TomlValue::Array(values)) =
+            doc.sections.get("features").and_then(|s| s.get(feature))
         else {
             panic!("system-kernel feature `{feature}` must be present as an empty array");
         };
@@ -166,7 +166,7 @@ fn system_kernel_manifest_has_no_raw_arch_provider_or_posix_deps() {
 /// A synthetic `editor/lib/kernel` crate with a direct dep on `reovim-arch`
 /// must trip the firewall probe.
 ///
-/// This is the canonical post-SP04 violation shape: a Math kernel directly
+/// This is the canonical closed-airlock violation shape: a Math kernel directly
 /// naming the World backend.
 #[test]
 fn firewall_editor_kernel_to_arch_trips_probe() {
@@ -373,12 +373,12 @@ fn firewall_editor_module_to_drivers_trips_probe() {
 
 // ── 5b. No product arch::net/thread in server-rt + tui ────
 
-/// After SP05, server-rt's and tui's PRODUCT source (non-`*_tests.rs`,
+/// Server-rt's and tui's PRODUCT source (non-`*_tests.rs`,
 /// `#[cfg(test/selftest)]`-block-skipped) must name no `arch::net`/`arch::thread`/
 /// `reovim_arch::net`/`reovim_arch::thread`: the net transport flows through the
-/// kabi handle (lib/ds), not arch. This is the source-level companion to the
-/// manifest-level firewall close — it catches a bypass the Cargo-edge probe
-/// cannot see.
+/// injected uapi/system services, not arch. This is the source-level companion
+/// to the manifest-level firewall close — it catches a bypass the Cargo-edge
+/// probe cannot see.
 #[test]
 fn no_product_arch_net_in_server_rt_and_tui() {
     let root = common::workspace_root();
@@ -394,20 +394,16 @@ fn no_product_arch_net_in_server_rt_and_tui() {
 
 // ── 5c. No product arch::time/sys time+sys calls in kernel + tui ──
 
-/// After `SP05b`, the kernel's and tui's PRODUCT source (non-`*_tests.rs`,
+/// The kernel's and tui's PRODUCT source (non-`*_tests.rs`,
 /// `#[cfg(test/selftest)]`-block-skipped) must name no `arch::time` and none of
 /// the `arch::sys` time+file+thread-identity call surface (`openat`, `gettid`,
-/// `read`, `write`, `close`): those route through the kabi handle (lib/ds
-/// `time`/`fs`/`thread`), not arch. This is the `SP05b` verifiable deliverable —
-/// the source-level companion to the (UNCHANGED) manifest-level firewall
-/// residual.
+/// `read`, `write`, `close`): those route through injected uapi/system
+/// services, not arch. This is the source-level companion to the manifest-level
+/// firewall residual.
 ///
-/// The probe deliberately ALLOWS the termios `arch::sys::ioctl`/`arch::sys::term`
-/// surface: after `SP05b` the tui no longer names it (its raw-mode entry/restore
-/// and panic hook route through the `kabi/platform` termios contract); the only
-/// remaining consumer is the `platform-linux-native` PROVIDER, the trap-gate edge
-/// `SP05c` retires. The provider is not a swept product crate, so this probe
-/// never flags it.
+/// The probe deliberately matches only the moved call names, not the whole
+/// `arch::sys::` prefix: the tui no longer names the termios surface, and the
+/// provider-side arch facade consumer has been retired.
 #[test]
 fn no_product_arch_time_sys_in_kernel_and_tui() {
     let root = common::workspace_root();
@@ -567,14 +563,14 @@ fn firewall_arch_sys_dep_trips_probe() {
 ///
 /// The firewall is a DIRECT-edge rule.  `lib/ds` is not `arch`, not
 /// `system/kernel`, and not `*/drivers/*` — it is a Foundation lib.  The
-/// transitive path `editor → lib/ds → arch` is the allowed pattern; it flows
-/// through the kabi handle, not a direct kernel → arch edge.
+/// allowed pattern is `editor → lib/ds`, with DS effects supplied separately
+/// through injected uapi/system services rather than direct kernel → arch edges.
 #[test]
 fn firewall_editor_to_lib_ds_is_allowed() {
     let td = common::TempDir::new();
     let root = td.path();
 
-    // lib/ds Foundation crate (future SP03 DS algorithm crate; inert name here).
+    // lib/ds Foundation crate (algorithm crate; inert name here).
     common::write_file(root, "lib/ds/Cargo.toml", &pkg_toml("reovim-lib-ds"));
     // editor/lib/kernel with a dep on lib/ds (allowed: lib/ds is Foundation, not arch).
     common::write_file(

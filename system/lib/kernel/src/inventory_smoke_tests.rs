@@ -8,12 +8,14 @@
 //! file keeps the bridge honest about malformed/no-DTB inputs.
 
 use {
-    super::{DeviceClass, EMPTY_DEVICE_ENTRY, collect_device_inventory},
+    super::{EMPTY_DEVICE_ENTRY, collect_device_inventory},
     core::cell::UnsafeCell,
+    reovim_kabi_platform::DeviceClass,
     reovim_testrt::{self as testrt, arch_test},
+    reovim_uapi_system::DeviceEntry,
 };
 
-struct DeviceStore(UnsafeCell<[super::DeviceEntry; 1]>);
+struct DeviceStore(UnsafeCell<[DeviceEntry; 1]>);
 
 // SAFETY: the selftest runner is single-threaded and each test takes the store
 // only for the duration of the call.
@@ -21,7 +23,7 @@ unsafe impl Sync for DeviceStore {}
 
 static DEVICES: DeviceStore = DeviceStore(UnsafeCell::new([EMPTY_DEVICE_ENTRY; 1]));
 
-fn storage() -> &'static mut [super::DeviceEntry] {
+fn storage() -> &'static mut [DeviceEntry] {
     // SAFETY: single-threaded selftest runner; no stored reference escapes
     // beyond the inventory value checked by this test.
     unsafe { &mut *DEVICES.0.get() }

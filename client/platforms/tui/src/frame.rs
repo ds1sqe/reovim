@@ -48,7 +48,7 @@ pub enum ComposeError {
 }
 
 /// Composes an ANSI frame from `projection_bytes` into a `Seq<u8>` suitable
-/// for writing directly to a raw-`termios` terminal fd.
+/// for writing directly to a raw terminal output fd.
 ///
 /// The output format is:
 /// - `ESC[2J` (erase display) + `ESC[H` (cursor home).

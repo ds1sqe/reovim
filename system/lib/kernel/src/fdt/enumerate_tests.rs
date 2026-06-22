@@ -12,8 +12,9 @@
 use {
     super::{EMPTY_DEVICE_ENTRY, enumerate_into},
     core::cell::UnsafeCell,
-    reovim_kabi_platform::{DeviceClass, DeviceEntry},
+    reovim_kabi_platform::DeviceClass,
     reovim_testrt::{self as testrt, arch_test},
+    reovim_uapi_system::{DeviceClass as UapiDeviceClass, DeviceEntry},
 };
 
 use super::super::reader::Fdt;
@@ -57,7 +58,7 @@ arch_test!(enumerate_uses_caller_supplied_classifier, {
 
     let mut has_uart = false;
     for device in inventory.devices {
-        has_uart |= device.class == DeviceClass::Uart;
+        has_uart |= device.class == UapiDeviceClass::Uart;
     }
 
     testrt::check_eq(inventory.devices.len(), 1usize);

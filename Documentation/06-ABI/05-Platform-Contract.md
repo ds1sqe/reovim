@@ -178,20 +178,21 @@ disposition lives in `kabi/panic`.
 ### 3.5 Slot signatures are provider-facing `kabi` types
 
 Every effectful slot that carries a POSIX-shaped value takes and returns a
-**`kabi/platform` provider-facing type**, never a product-facing `uapi/posix`
-type and never an untyped integer when a slot-specific newtype exists:
-`PlatformFd`, `PlatformOpenFlags`, `PlatformMode`, `PlatformErrno`, and the
-rest of the provider-facing set. A bare `i32` flag or `errno` must not travel
-through a slot unless the ABI scalar itself is the documented
-`#[repr(transparent)]` carrier.
+**`kabi/platform` provider-facing type**, never a product-facing POSIX type
+and never an untyped integer when a slot-specific newtype exists: `Fd`,
+`OpenFlags`, `Mode`, `Errno`, and the rest of the provider-facing set. A bare
+`i32` flag or `errno` must not travel through a slot unless the ABI scalar
+itself is the documented `#[repr(transparent)]` carrier.
 
-`uapi/posix` owns the product-visible POSIX vocabulary. `kabi/platform` owns
-the provider-visible slot vocabulary. The bridge between them lives in
+There is no product-facing POSIX vocabulary crate. Product semantics live in
+domain uapi leaves (`uapi::fs`, `uapi::net`, `uapi::terminal`, etc.).
+`kabi/platform` owns the provider-visible slot vocabulary. The bridge between
+domain uapi semantics and the down-face slot vocabulary lives in
 `system/lib/kernel` in RTOS-itself mode, or in the hosted bridge/provider role
 in Over-OS mode. Providers translate NATIVE machine effects to/from `kabi`
-slot values; the bridge translates `kabi` to/from `uapi`. A provider that
-imports `uapi/posix` directly bypasses that bridge and is forbidden unless a
-documented inescapable exception exists.
+slot values; the bridge translates `kabi` to/from domain `uapi`. A provider
+that imports `uapi/posix` directly bypasses that bridge and is forbidden unless
+a documented inescapable exception exists.
 
 ### 3.6 Append-only vtable evolution
 
@@ -258,11 +259,11 @@ A provider is correct **iff it passes `platform-conformance`** — a
 behavioral fixture suite that operationally *defines* what "same behavior
 across providers" means. There is **no reference provider**: `kabi/platform`
 owns the provider-facing slot shape and the suite owns the down-face behavior,
-so the Linux provider is not privileged as the oracle. Product-visible
-`uapi/posix` values are checked at the bridge layer, not by letting providers
-import `uapi` directly. A zero-arch mock (`platform-linux-mock`) passes the
-*same* suite — the proof that "provider" is a contract role, not a synonym for
-the Linux backend. The suite is
+so the Linux provider is not privileged as the oracle. Product-visible domain
+uapi semantics are checked at the bridge layer, not by letting providers import
+`uapi` directly. A zero-arch mock (`platform-linux-mock`) passes the *same*
+suite — the proof that "provider" is a contract role, not a synonym for the
+Linux backend. The suite is
 **append-only**: adding a fixture tightens the contract and can never
 invalidate a previously conforming provider, so it ships from day one with
 no premature-abstraction risk. The suite is normative now; its fixtures are
@@ -271,8 +272,8 @@ implemented in the 05d sub-plans. The gating rule is **AB16**
 
 ## Open items
 
-1. Provider-facing slot vocabulary must be audited so lower providers no
-   longer import `uapi/posix` directly; any unavoidable exception must be
+1. Provider-facing slot vocabulary must stay owned by `kabi/platform` so lower
+   providers do not import `uapi/posix`; any unavoidable exception must be
    recorded in `01-Architecture/02-Project-Layout-and-DAG.md`.
 2. Which effectful primitives convert to the handle first. `clock` / `park`
    already have two backends (Linux futex + bare-metal timer/WFI) and lead;
@@ -290,7 +291,7 @@ implemented in the 05d sub-plans. The gating rule is **AB16**
 | Header discipline | the platform vtable begins with `VtableHeader`; a provider that grows a slot is read through `size_of_self` by an older kernel (AB3 reuse). |
 | Bootstrap order | the platform vtable is a `static` built without heap; no `lib/ds` DS is constructed before `Init::boot` installs the handle. |
 | No direct `arch` edge | no kernel or `lib/ds` crate names `arch::*`; the depgraph probe rejects `*-kernel → arch` and `lib/ds → arch`. |
-| Provider-facing slot types | every POSIX-shaped slot takes/returns a `kabi/platform` provider-facing type; `uapi/posix` stays above the bridge (§3.5). |
+| Provider-facing slot types | every POSIX-shaped slot takes/returns a `kabi/platform` provider-facing type; product semantics stay in domain uapi leaves (§3.5). |
 | Append-only evolution | a new primitive is a nullable tail slot guarded by a `HAS_*` const; an unfilled slot yields `Errno::ENOSYS`; slots are never reordered or removed (AB3, §3.6). |
 | Behavioral conformance | a provider — including the zero-arch `platform-linux-mock` — is valid iff it passes the `platform-conformance` suite; no provider is the reference oracle (AB16, §5.1). |
 | Fault floor always present | the `kabi/panic` hooks are write-once statics installable before `Init::boot` completes; they are not platform-vtable slots (§3.4). |

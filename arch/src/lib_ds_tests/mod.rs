@@ -3,16 +3,18 @@
 //!
 //! ## Why arch hosts these (not `lib/ds`)
 //!
-//! `lib/ds` is portable Math: it depends on `reovim-kabi-platform` ONLY and may
-//! name no `arch` symbol (master invariant 2, the `lib/ds ⊄ arch` probe). These
+//! `lib/ds` is portable Math: it depends on injected uapi control tables and
+//! names no `arch`, provider, or `kabi` symbol (master invariant 2, the
+//! `lib/ds ⊄ arch` probe). These
 //! tests, however, require arch-owned machinery the algorithm itself never
 //! touches: the no_std test runner (`arch_test!`/`testrt`), the live allocator
 //! with its `live_bytes` accounting and `fault` injection seam, the thread
 //! primitive (`crate::thread`), and the monotonic clock (`crate::time`). So the
 //! tests live here, in arch, and import the types under test from
-//! `reovim_lib_ds::*`. They run AFTER `rust_entry` installs the platform handle,
-//! exercising alloc + a park/unpark cycle through the handle end-to-end — the
-//! SP03 integration smoke.
+//! `reovim_lib_ds::*`. They run AFTER the selftest runner installs the platform
+//! handle, an arch-test allocation backend, and the system-kernel sync backend,
+//! exercising alloc + a park/unpark cycle end-to-end — the SP03/SP05 integration
+//! smoke.
 //!
 //! Each submodule reaches the lib/ds test-observation surface
 //! (`reovim_lib_ds::testhooks`, the `selftest`-gated growth-ladder constants and

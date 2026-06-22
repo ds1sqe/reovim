@@ -25,6 +25,7 @@ use {
             StreamState,
         },
     },
+    reovim_uapi::sched::ThreadControl,
 };
 
 /// Carrier and codec limits enforced by the state substrate.
@@ -323,7 +324,18 @@ impl StateSubstrate {
     /// ```
     #[must_use]
     pub fn new() -> Self {
-        Self::with_limits(KernelStateLimits::default())
+        Self::new_with_thread(ThreadControl::default())
+    }
+
+    /// Creates an empty state substrate with default limits and an explicit
+    /// thread identity control table.
+    ///
+    /// ```rust,no_run
+    /// // no_run: requires arch allocator runtime.
+    /// ```
+    #[must_use]
+    pub fn new_with_thread(thread: ThreadControl) -> Self {
+        Self::with_limits_and_thread(KernelStateLimits::default(), thread)
     }
 
     /// Creates an empty state substrate with explicit limits.
@@ -337,6 +349,17 @@ impl StateSubstrate {
     /// ```
     #[must_use]
     pub const fn with_limits(limits: KernelStateLimits) -> Self {
+        Self::with_limits_and_thread(limits, ThreadControl::noop())
+    }
+
+    /// Creates an empty state substrate with explicit limits and an explicit
+    /// thread identity control table.
+    ///
+    /// ```rust,no_run
+    /// // no_run: requires arch allocator runtime.
+    /// ```
+    #[must_use]
+    pub const fn with_limits_and_thread(limits: KernelStateLimits, thread: ThreadControl) -> Self {
         Self {
             limits,
             buffers: Map::new(),
@@ -344,7 +367,10 @@ impl StateSubstrate {
             view_slots: Map::new(),
             codecs: CodecRegistry::new(limits),
             streams: StreamRegistry::new(limits),
-            service_registry: ServiceRegistry::new(limits.service_lease_timeout_ms),
+            service_registry: ServiceRegistry::new_with_thread(
+                limits.service_lease_timeout_ms,
+                thread,
+            ),
         }
     }
 
@@ -1920,6 +1946,7 @@ pub struct ServiceRegistry {
     leases: Map<ServiceLeaseId, ServiceLease>,
     next_lease_id: u64,
     lease_timeout_ms: u64,
+    thread: ThreadControl,
 }
 
 impl ServiceRegistry {
@@ -1930,11 +1957,23 @@ impl ServiceRegistry {
     /// ```
     #[must_use]
     pub const fn new(lease_timeout_ms: u64) -> Self {
+        Self::new_with_thread(lease_timeout_ms, ThreadControl::noop())
+    }
+
+    /// Creates an empty service registry with an explicit thread identity
+    /// control table.
+    ///
+    /// ```rust,no_run
+    /// // no_run: requires arch allocator runtime.
+    /// ```
+    #[must_use]
+    pub const fn new_with_thread(lease_timeout_ms: u64, thread: ThreadControl) -> Self {
         Self {
             rows: Map::new(),
             leases: Map::new(),
             next_lease_id: 1,
             lease_timeout_ms,
+            thread,
         }
     }
 
@@ -1966,7 +2005,7 @@ impl ServiceRegistry {
         // (< 2^31), so the narrowing to the i32 owner-thread-id field cannot
         // wrap.
         #[allow(clippy::cast_possible_truncation)]
-        let owner_thread_id = reovim_lib_ds::thread::current_id() as i32;
+        let owner_thread_id = self.thread.current_id() as i32;
         self.register_with_thread(meta, owner_generation, owner_thread_id)
     }
 

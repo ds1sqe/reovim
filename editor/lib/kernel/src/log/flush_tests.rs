@@ -29,7 +29,7 @@ use reovim_arch::{
     panic::{Disposition, PanicRecord},
 };
 
-use reovim_uapi_abi::error::LogLevel;
+use reovim_uapi::abi::error::LogLevel;
 
 use crate::{
     event_bus::{BootStageFields, DS12Event, EVT_BOOT_STAGE_OK},

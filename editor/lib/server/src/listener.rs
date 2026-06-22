@@ -22,7 +22,11 @@
 
 use {
     reovim_kernel::Kernel,
-    reovim_lib_ds::{Shared, net::UnixListener, thread::spawn},
+    reovim_lib_ds::Shared,
+    reovim_uapi::{
+        net::{NetControl, UnixListener},
+        sched::{DetachedThreadSpawner, SpawnError},
+    },
 };
 
 use crate::{carrier::run_connection, error::RuntimeError};
@@ -45,7 +49,15 @@ pub(crate) const UNIX_PATH_MAX: usize = 107;
 /// ```rust,no_run
 /// // no_run: requires a live arch runtime + kernel.
 /// ```
-pub fn start_listener(kernel: &Shared<Kernel>, path: &[u8]) -> Result<(), RuntimeError> {
+pub fn start_listener<S>(
+    kernel: &Shared<Kernel>,
+    path: &[u8],
+    net: NetControl,
+    spawner: S,
+) -> Result<(), RuntimeError>
+where
+    S: DetachedThreadSpawner,
+{
     // Unix abstract/pathname sockets cap the path at UNIX_PATH_MAX bytes on
     // Linux. Reject over-long paths before the syscall rather than
     // propagating an opaque errno.
@@ -54,7 +66,7 @@ pub fn start_listener(kernel: &Shared<Kernel>, path: &[u8]) -> Result<(), Runtim
     }
 
     // Bind the UDS listener at `path`.
-    let listener = UnixListener::bind(path).map_err(|e| RuntimeError::Io(e.code()))?;
+    let listener = UnixListener::bind(net, path).map_err(|e| RuntimeError::Io(e.code()))?;
 
     // Clone the kernel handle before moving into the accept-loop closure.
     // Shared::clone is a refcount bump — it never fails.
@@ -62,27 +74,38 @@ pub fn start_listener(kernel: &Shared<Kernel>, path: &[u8]) -> Result<(), Runtim
 
     // Spawn the accept loop on a background thread. The loop runs for the
     // lifetime of the server process.
-    spawn(move || {
-        accept_loop(&listener, &kernel_accept);
-    })
-    .map_err(|_| RuntimeError::Io(-1))?;
+    spawner
+        .spawn_detached(move || {
+            accept_loop(&listener, &kernel_accept, spawner);
+        })
+        .map_err(map_spawn_error)?;
 
     Ok(())
 }
 
+const fn map_spawn_error(error: SpawnError) -> RuntimeError {
+    match error {
+        SpawnError::OutOfMemory => RuntimeError::Alloc,
+        SpawnError::Refused(code) => RuntimeError::Io(code),
+    }
+}
+
 /// Runs the accept loop: blocks on `UnixListener::accept` and spawns one
 /// connection thread per client.
-fn accept_loop(listener: &UnixListener, kernel: &Shared<Kernel>) {
+fn accept_loop<S>(listener: &UnixListener, kernel: &Shared<Kernel>, spawner: S)
+where
+    S: DetachedThreadSpawner,
+{
     loop {
         let Ok(stream) = listener.accept() else {
             return; // listener closed or OS error → exit loop
         };
         // Clone the kernel for this connection's thread.
         let k = Shared::clone(kernel);
-        // Spawn; ignore spawn failures (out-of-memory) — the connection is
-        // dropped and the loop continues. The closure owns the stream so the
-        // fd closes when the connection thread exits.
-        let _ = spawn(move || {
+        // Spawn; ignore spawn failures (out-of-memory or scheduler refusal) —
+        // the connection is dropped and the loop continues. The closure owns
+        // the stream so the fd closes when the connection thread exits.
+        let _ = spawner.spawn_detached(move || {
             run_connection(&stream, &k);
         });
     }

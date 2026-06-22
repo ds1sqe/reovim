@@ -1,9 +1,9 @@
-//! `Map<K, V>` — an open-addressing hash map over the platform allocator.
+//! `Map<K, V>` — an open-addressing hash map over the installed allocator.
 //!
 //! The `HashMap` analog for the zero-std floor. There is no `alloc` crate, so
-//! `Map` obtains its bucket array from the platform allocator (reached through
-//! the boot-installed `kabi` handle) and is fallible where growth can fail
-//! ([`try_insert`](Map::try_insert) surfaces [`AllocError`]).
+//! `Map` obtains its bucket array from the installed allocation backend and is
+//! fallible where growth can fail ([`try_insert`](Map::try_insert) surfaces
+//! [`AllocError`]).
 //!
 //! ## Probing and deletion strategy
 //!
@@ -34,7 +34,7 @@ use core::{
     ptr::NonNull,
 };
 
-use reovim_kabi_platform::{AllocError, handle};
+use crate::alloc_backend::{AllocError, alloc, dealloc};
 
 /// The `FxHash` 64-bit seed constant (widely published; rustc `rustc_hash`,
 /// Firefox `FxHash`). Reimplemented here, no dependency.
@@ -260,7 +260,7 @@ impl<K: Eq + Hash, V> Map<K, V> {
     /// The shared body of [`alloc_buckets`](Self::alloc_buckets).
     fn alloc_buckets_impl(cap: usize) -> Result<NonNull<Bucket<K, V>>, AllocError> {
         let layout = Self::layout_for(cap)?;
-        let raw = handle().alloc(layout)?.cast::<Bucket<K, V>>();
+        let raw = alloc(layout)?.cast::<Bucket<K, V>>();
         // Initialize every slot to `None` so reads are always defined.
         for i in 0..cap {
             // SAFETY: `i < cap`, so the slot is within the fresh allocation and
@@ -349,9 +349,11 @@ impl<K: Eq + Hash, V> Map<K, V> {
         }
         if old_cap != 0 {
             let old_layout = Self::layout_for(old_cap).expect("layout valid at alloc time");
-            // `old_ptr`/`old_layout` name the prior live allocation; its entries
-            // were moved out above, so no element is double-dropped.
-            handle().dealloc(old_ptr.cast(), old_layout);
+            // SAFETY: `old_ptr`/`old_layout` name the prior live allocation;
+            // its entries were moved out above, so no element is double-dropped.
+            unsafe {
+                dealloc(old_ptr.cast(), old_layout);
+            }
         }
         Ok(())
     }
@@ -559,8 +561,10 @@ impl<K, V> Drop for Map<K, V> {
             ));
         }
         let layout = Self::layout_for(self.cap).expect("layout valid at alloc time");
-        // `self.ptr`/`layout` name the live allocation from the last grow; no
-        // bucket is referenced after the drops above.
-        handle().dealloc(self.ptr.cast(), layout);
+        // SAFETY: `self.ptr`/`layout` name the live allocation from the last
+        // grow; no bucket is referenced after the drops above.
+        unsafe {
+            dealloc(self.ptr.cast(), layout);
+        }
     }
 }

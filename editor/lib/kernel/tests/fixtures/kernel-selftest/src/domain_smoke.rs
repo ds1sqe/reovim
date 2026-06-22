@@ -2,8 +2,8 @@
 //!
 //! This module lives in the `kernel-selftest` bin (not in the kernel rlib)
 //! because the text Domain is an ext crate (`ext/server/domain/text`) and the
-//! kernel rlib must NOT depend on ext (core/ext boundary, `CLAUDE.md §Design
-//! Rules`). The bin links `reovim-domain-text` and wires its trait objects into
+//! kernel rlib must NOT depend on ext (core/ext boundary). The bin links
+//! `reovim-domain-text` and wires its trait objects into
 //! the kernel here.
 //!
 //! ## What the smoke proves
@@ -13,11 +13,13 @@
 //! This exercises the full in-kernel dispatch loop before any wire is involved
 //! (Phase 2 AC: integration smoke).
 
-use reovim_arch::arch_test;
-use reovim_domain_text::{TextHandler, TextProjector};
-use reovim_kernel::{
-    Init, LauncherArgs,
-    session::{BufferId, DomainAttachmentId, SessionState, WindowId},
+use {
+    reovim_arch::arch_test,
+    reovim_domain_text::{TextHandler, TextProjector},
+    reovim_kernel::{
+        Init, LauncherArgs,
+        session::{BufferId, DomainAttachmentId, SessionState, WindowId},
+    },
 };
 
 /// Static text Domain singletons. Zero-sized structs; no heap needed.

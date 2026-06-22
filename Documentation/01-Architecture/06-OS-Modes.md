@@ -59,14 +59,15 @@ leak across the line and a bug.
    the input-source path is contract-bound — deferred to
    `08-Client/02-Platform-Runtimes.md`.
 
-**Why the invariant holds by construction.** `kabi/platform` carries
-**canonical POSIX values owned by `uapi/posix`**, not a Linux passthrough.
-Every target's mechanism is canonicalized to those values *below* the line
-by its provider, so the editor above the line observes one personality on
-every machine. The invariant is therefore a tautology, not a discipline:
-there is no mode-specific value left for the editor to observe, because
-canonicalization already happened underneath. The slot types are specified
-in `06-ABI/05-Platform-Contract.md`.
+**Why the invariant holds by construction.** `kabi/platform` carries the
+provider-facing POSIX-shaped scalar ABI, not a product POSIX surface and not a
+Linux passthrough. Every target's mechanism is canonicalized to those
+down-face slot values *below* the line by its provider, while editor-visible
+semantics are exposed above the line through domain uapi leaves such as
+`uapi::fs`, `uapi::net`, and `uapi::terminal`. The invariant is therefore a
+tautology, not a discipline: there is no mode-specific value left for the
+editor to observe. The slot types are specified in
+`06-ABI/05-Platform-Contract.md`.
 
 ## 1. The two modes
 
@@ -163,7 +164,7 @@ exactly one family by which knowledge it carries. **The `ioctl` borderline**
 makes this concrete — a raw `ioctl` request number and the bytes it moves
 are hardware-only (`arch-sys`); the mapping of an `ioctl` result into a
 provider-facing `kabi` result is down-face contract knowledge (the provider);
-the product-visible POSIX meaning belongs above that, in the
+the product-visible domain meaning belongs above that, in the
 `system/lib/kernel` bridge. The impedance match is split by face:
 NATIVE↔`kabi` in the provider, `kabi`↔`uapi` in the bridge.
 
@@ -301,15 +302,15 @@ entirely at the composition root and below the contract.
 
 ### 6.1 The uapi↔kabi bridge per mode
 
-The bridge/provider pair carries **graduated substance** by target class. The
-product-facing POSIX values are fixed in `uapi/posix`; provider-facing slot
-types live in `kabi/*`. Hardware/provider-specific crates do **not** import
-`uapi/posix` directly unless a documented inescapable exception exists.
+The bridge/provider pair carries **graduated substance** by target class.
+Product-facing system semantics live in domain uapi leaves; provider-facing
+slot types live in `kabi/*`. Hardware/provider-specific crates do **not**
+import `uapi/*` directly unless a documented inescapable exception exists.
 
 | Target class | Bridge/provider substance |
 |---|---|
-| kernel-ABI (Linux) | **thin** — the hosted bridge maps `uapi/posix` to provider-facing `kabi` slot values; the provider maps those to Linux kernel-ABI calls, often identity at the bit level but still not by importing `uapi`. |
-| system-library (Windows/macOS) | **shim** — the hosted bridge/provider pair translates the vendor ABI to the fixed up-face values: errno remap, handle↔fd, open-flag and mode translation. |
+| kernel-ABI (Linux) | **thin** — the hosted bridge maps domain uapi requests to provider-facing `kabi` slot values; the provider maps those to Linux kernel-ABI calls, often identity at the bit level but still not by importing `uapi`. |
+| system-library (Windows/macOS) | **shim** — the hosted bridge/provider pair translates the vendor ABI to the fixed down-face slot values and domain uapi semantics: errno remap, handle↔fd, open-flag and mode translation. |
 | freestanding (bare metal) | **full** — `system/lib/kernel` implements common POSIX-like system semantics over hardware services, and freestanding providers/device code satisfy `kabi/*` over raw hardware. |
 
 A **zero-arch provider** (`platform-linux-mock`) can also satisfy `kabi/*`

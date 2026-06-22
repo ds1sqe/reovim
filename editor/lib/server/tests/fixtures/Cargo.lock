@@ -15,7 +15,6 @@ dependencies = [
  "reovim-lib-ds",
  "reovim-testrt",
  "reovim-uapi-panic",
- "reovim-uapi-posix",
 ]
 
 [[package]]
@@ -62,6 +61,7 @@ dependencies = [
 name = "reovim-arch-sys-none-x86-64"
 version = "0.16.0-dev"
 dependencies = [
+ "reovim-kabi-platform",
  "reovim-testrt",
 ]
 
@@ -84,37 +84,32 @@ dependencies = [
 [[package]]
 name = "reovim-kabi-platform"
 version = "0.16.0-dev"
-dependencies = [
- "reovim-uapi-posix",
-]
 
 [[package]]
 name = "reovim-kernel"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
- "reovim-kabi-panic",
- "reovim-kabi-platform",
  "reovim-lib-ds",
  "reovim-subsys-domain",
- "reovim-uapi-abi",
+ "reovim-uapi",
 ]
 
 [[package]]
 name = "reovim-lib-ds"
 version = "0.16.0-dev"
 dependencies = [
- "reovim-kabi-platform",
- "reovim-uapi-posix",
+ "reovim-uapi-mm",
+ "reovim-uapi-sched",
 ]
 
 [[package]]
 name = "reovim-platform-linux-native"
 version = "0.16.0-dev"
 dependencies = [
- "reovim-arch",
+ "reovim-arch-sys-linux-aarch64",
+ "reovim-arch-sys-linux-x86-64",
  "reovim-kabi-platform",
- "reovim-uapi-posix",
 ]
 
 [[package]]
@@ -125,8 +120,7 @@ dependencies = [
  "reovim-kernel",
  "reovim-lib-ds",
  "reovim-subsys-domain",
- "reovim-uapi-abi",
- "reovim-uapi-protocol",
+ "reovim-uapi",
 ]
 
 [[package]]
@@ -134,8 +128,25 @@ name = "reovim-subsys-domain"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-lib-ds",
+]
+
+[[package]]
+name = "reovim-system-kernel"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-kabi-panic",
  "reovim-kabi-platform",
  "reovim-lib-ds",
+ "reovim-testrt",
+ "reovim-uapi-fs",
+ "reovim-uapi-log",
+ "reovim-uapi-mm",
+ "reovim-uapi-net",
+ "reovim-uapi-panic",
+ "reovim-uapi-sched",
+ "reovim-uapi-system",
+ "reovim-uapi-terminal",
 ]
 
 [[package]]
@@ -143,15 +154,46 @@ name = "reovim-testrt"
 version = "0.16.0-dev"
 
 [[package]]
+name = "reovim-uapi"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-uapi-abi",
+ "reovim-uapi-fs",
+ "reovim-uapi-log",
+ "reovim-uapi-mm",
+ "reovim-uapi-net",
+ "reovim-uapi-panic",
+ "reovim-uapi-protocol",
+ "reovim-uapi-sched",
+ "reovim-uapi-system",
+ "reovim-uapi-terminal",
+]
+
+[[package]]
 name = "reovim-uapi-abi"
 version = "0.16.0-dev"
 
 [[package]]
-name = "reovim-uapi-panic"
+name = "reovim-uapi-fs"
 version = "0.16.0-dev"
 
 [[package]]
-name = "reovim-uapi-posix"
+name = "reovim-uapi-log"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-uapi-panic",
+]
+
+[[package]]
+name = "reovim-uapi-mm"
+version = "0.16.0-dev"
+
+[[package]]
+name = "reovim-uapi-net"
+version = "0.16.0-dev"
+
+[[package]]
+name = "reovim-uapi-panic"
 version = "0.16.0-dev"
 
 [[package]]
@@ -160,6 +202,18 @@ version = "0.16.0-dev"
 dependencies = [
  "reovim-uapi-abi",
 ]
+
+[[package]]
+name = "reovim-uapi-sched"
+version = "0.16.0-dev"
+
+[[package]]
+name = "reovim-uapi-system"
+version = "0.16.0-dev"
+
+[[package]]
+name = "reovim-uapi-terminal"
+version = "0.16.0-dev"
 
 [[package]]
 name = "server-selftest"
@@ -174,6 +228,6 @@ dependencies = [
  "reovim-platform-linux-native",
  "reovim-server-rt",
  "reovim-subsys-domain",
- "reovim-uapi-abi",
- "reovim-uapi-protocol",
+ "reovim-system-kernel",
+ "reovim-uapi",
 ]

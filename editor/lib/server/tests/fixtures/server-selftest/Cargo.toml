@@ -32,14 +32,15 @@ reovim-arch      = { path = "../../../../../../arch", features = ["runtime", "se
 reovim-lib-ds    = { path = "../../../../../../lib/ds", features = ["selftest"] }
 # The kernel is needed for the integration smoke (boots kernel).
 reovim-kernel    = { path = "../../../../kernel", features = ["runtime", "selftest"] }
+# System-kernel bridge controls supplied by this fixture composition root.
+reovim-system-kernel = { path = "../../../../../../system/lib/kernel", features = ["selftest"] }
 # The Domain contract tier (DAG2) — its test registrations must be linked.
 reovim-subsys-domain = { path = "../../../../subsys/domain", features = ["selftest"] }
 # The text Domain is registered in the integration smoke (core/ext boundary —
 # the server-rt rlib must NOT dep on this; only the fixture bin links it).
 reovim-domain-text = { path = "../../../../../../editor/domains/text", features = ["selftest"] }
 # The wire types the raw-client smoke builds frames with.
-reovim-uapi-abi      = { path = "../../../../../../uapi/abi" }
-reovim-uapi-protocol = { path = "../../../../../../uapi/protocol" }
+reovim-uapi          = { path = "../../../../../../uapi" }
 
 # The platform-handle installer this composition root drives. The fixture is
 # host-only (native-only pin per `fixtures_exec.rs`), so only the real POSIX

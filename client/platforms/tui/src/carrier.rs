@@ -7,7 +7,7 @@
 //!
 //! ## Handshake sequence
 //!
-//! 1. `connect(path)` → `UnixStream`.
+//! 1. `net.connect_unix(path)` → `UnixStream`.
 //! 2. Send `Hello{proto_major=1, proto_minor=0, caps=[], domain_codecs=[]}`.
 //! 3. Read `HelloAck` — check `protocol_major == 1`; any other reply → error.
 //! 4. Send `Attach{session_name="default", auth=[], caps=[], domain_codecs=[]}`.
@@ -16,15 +16,17 @@
 //! 7. Enter the notify/input loop (`recv_notify_frame`).
 
 use {
-    reovim_lib_ds::{
-        Seq,
-        net::{Errno, UnixStream},
-    },
-    reovim_uapi_abi::FrameHeader,
-    reovim_uapi_protocol::{
-        frame::{HEADER_LEN, read_frame},
-        messages::{Attach, AttachAck, AttachEventProjection, Hello, HelloAck, Message, SendInput},
-        view::{RawInputList, StrList},
+    reovim_lib_ds::Seq,
+    reovim_uapi::{
+        abi::FrameHeader,
+        net::{EBADF, NetControl, NetError, UnixStream},
+        protocol::{
+            frame::{HEADER_LEN, read_frame},
+            messages::{
+                Attach, AttachAck, AttachEventProjection, Hello, HelloAck, Message, SendInput,
+            },
+            view::{RawInputList, StrList},
+        },
     },
 };
 
@@ -136,8 +138,8 @@ const EMPTY_LIST: [u8; 4] = [0x00, 0x00, 0x00, 0x00];
 /// ```no_run
 /// // no_run: requires a live arch runtime + server.
 /// ```
-pub fn connect_and_handshake(path: &[u8]) -> Result<ClientConn, CarrierError> {
-    let stream = UnixStream::connect(path).map_err(|_| CarrierError::Connect)?;
+pub fn connect_and_handshake(net: NetControl, path: &[u8]) -> Result<ClientConn, CarrierError> {
+    let stream = UnixStream::connect(net, path).map_err(|_| CarrierError::Connect)?;
 
     // ── Hello ─────────────────────────────────────────────────────────────────
     let hello = Hello {
@@ -238,14 +240,14 @@ pub fn send_input(
 /// (EBADF is the convention on a zero-byte `read_exact`).
 ///
 /// ```rust
-/// use reovim_lib_ds::net::EBADF;
+/// use reovim_uapi::net::EBADF;
 /// use reovim_platform_tui::carrier::is_disconnect;
 ///
 /// assert!(is_disconnect(EBADF));
 /// ```
 #[must_use]
-pub fn is_disconnect(e: Errno) -> bool {
-    e == reovim_lib_ds::net::EBADF
+pub fn is_disconnect(e: NetError) -> bool {
+    e == EBADF
 }
 
 // L12 layout: tests in sibling carrier_tests.rs, declared in lib.rs.

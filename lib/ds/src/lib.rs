@@ -5,9 +5,9 @@
 //! `Vec`/`String`/`HashMap`/`Arc`/`Mutex`/`RwLock`/`Condvar` analogs. Each owns
 //! raw memory and is fallible where allocation can fail — but unlike the old
 //! `arch::ds`/`arch::sync`, the algorithm reaches its **backend primitive**
-//! (allocator, futex park/unpark) through the boot-installed `kabi` platform
-//! handle, never through `arch` directly. A value's layout + algorithm is
-//! identical on every target; only the injected backend is World.
+//! through installed up-face control tables, never through `arch` or `kabi`
+//! directly. A value's layout + algorithm is identical on every target; only
+//! the injected backend is World.
 //!
 //! - [`Seq`] — growable sequence (`Vec` analog).
 //! - [`Bytes`]/[`Str`] — owned byte/UTF-8 strings.
@@ -15,40 +15,31 @@
 //! - [`Shared`] — atomic-refcount shared reference (`Arc` analog).
 //! - [`Ring`] — bounded ring buffer with oldest-first eviction (LOG6 substrate).
 //! - [`Mutex`]/[`RwLock`]/[`Condvar`] — futex-backed sync primitives, reached
-//!   through the handle's `park`/`unpark`/`unpark_all` wrappers.
-//! - [`net`]/[`thread`] — Unix-domain socket wrappers and a detached
-//!   thread-spawn helper, reached through the handle's net fd-op and
-//!   `thread_spawn` wrappers (SP05). Same Math-over-handle pattern as the
-//!   sync primitives: portable algorithm, World backend injected at boot.
-//! - [`fs`]/[`time`] — file + raw-fd wrappers and monotonic/wall-clock
-//!   readings, reached through the handle's `file_open`/fd-op and
-//!   `clock`/`realtime` wrappers (SP05). The kernel's log sink + boot clock and
-//!   the tui's stdio route through these, not `arch`.
+//!   through the installed [`sync_backend`] control table.
 //!
 //! ## lib/ds is Math (master invariant 2: `lib/ds ⊄ arch`)
 //!
-//! This crate depends on `reovim-kabi-platform` ONLY. It names no `arch`
-//! symbol. `AllocError` is [`reovim_kabi_platform::AllocError`]; the allocator
-//! and futex backends are reached via [`reovim_kabi_platform::handle`]. lib/ds
-//! is portable: the same source compiles for every target, and which provider's
-//! backend it dispatches to is decided at boot by the installed handle.
+//! This crate names no `arch`, provider, or `kabi` symbol. `AllocError` is the
+//! up-face [`reovim_uapi_mm::AllocError`]; allocation dispatches through the
+//! installed [`alloc_backend`] control table, while futex park/unpark dispatch
+//! through [`sync_backend`]. lib/ds is portable: the same source compiles for
+//! every target, and which provider's backend it dispatches to is decided at
+//! boot by installed controls.
 //!
 //! ## Bootstrap prerequisite (no DS before install)
 //!
-//! Every DS operation that allocates or parks reads the `kabi` handle, which is
-//! installed write-once by the boot path (`rust_entry` → arch inits the
-//! allocator heap-free → builds the static vtable → installs the handle). No
-//! `lib/ds` data structure may be constructed before that install. This is a
-//! by-construction boot prerequisite, not a runtime guard: [`handle`] panics on
-//! an unset handle, so a pre-install DS op surfaces as a boot-ordering bug. See
+//! Heap-owning DS operations read the [`alloc_backend`] control table installed
+//! by composition roots. Futex-backed sync primitives read the [`sync_backend`]
+//! control table installed by composition roots. No `lib/ds` data structure may
+//! be constructed before the required backend install. A pre-install allocation
+//! is refused, surfacing as an allocation error and exposing the boot-ordering
+//! bug without naming a lower handle here. See
 //! `Documentation/02-Process/05-Machine-Boot.md` for the boot order.
-//!
-//! [`handle`]: reovim_kabi_platform::handle
 //!
 //! ## Doctest note
 //!
 //! All examples in this crate are marked `no_run`: constructing a `lib/ds`
-//! value allocates through the boot-installed `kabi` platform handle, which a
+//! value allocates through an installed allocation control table, which a
 //! doctest process (no `rust_entry`) has not installed; the runtime behaviour
 //! is exercised by the booted `arch`-hosted selftests.
 #![no_std]
@@ -57,22 +48,20 @@
 // reconstruction) that a `Vec`/`HashMap`/`Arc`/`Mutex` analog needs to manage
 // its own memory. This is DISTINCT from the floor's FFI-boundary unsafe in
 // `{arch, kabi}`: lib/ds touches no OS, no inline asm, no `extern "C"` vtable —
-// every effectful primitive (alloc, park) is reached through the SAFE kabi
-// handle wrappers. lib/ds therefore stays Math (portable algorithm; backend
-// injected via the kabi handle), not World. The allow is scoped to this crate
-// and every `unsafe` block carries a `// SAFETY:` comment; the workspace lint
-// stays `warn` so crates above the floor still flag unsafe.
+// every effectful primitive (alloc, park) is reached through injected up-face
+// controls. lib/ds therefore stays Math (portable algorithm; backend injected
+// at composition), not World. The allow is scoped to this crate and every
+// `unsafe` block carries a `// SAFETY:` comment; the workspace lint stays
+// `warn` so crates above the floor still flag unsafe.
 #![allow(unsafe_code)]
 
+pub mod alloc_backend;
 mod bytes;
 mod condvar;
-pub mod fs;
 mod mutex;
-pub mod net;
 mod ring;
 mod rwlock;
-pub mod thread;
-pub mod time;
+pub mod sync_backend;
 
 // `map`/`seq`/`shared` carry `pub`-under-`selftest` internals
 // (`FIRST_CAPACITY`, `cyclic_in_range`, `MAX_REFCOUNT`, `refcount_overflowed`)
@@ -95,6 +84,7 @@ mod shared;
 pub mod shared;
 
 pub use {
+    alloc_backend::AllocError,
     bytes::{Bytes, BytesWriter, Str},
     condvar::Condvar,
     map::{FxHasher, Map, MapIter},

@@ -72,8 +72,8 @@ pub use {
         StreamOpts, StreamScheme, StreamState,
     },
     tree::{
-        DispatchVerdict, DomainAttachment, DomainScope, FocusChain, FocusEntry, FocusEntrySnapshot,
-        FocusTransition, PendingAttachment,
+        DispatchVerdict, DomainAllocError, DomainAttachment, DomainScope, FocusChain, FocusEntry,
+        FocusEntrySnapshot, FocusTransition, PendingAttachment,
     },
 };
 

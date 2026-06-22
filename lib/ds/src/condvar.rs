@@ -24,9 +24,7 @@
 
 use core::sync::atomic::{AtomicU32, Ordering::Relaxed};
 
-use reovim_kabi_platform::handle;
-
-use crate::mutex::MutexGuard;
+use crate::{mutex::MutexGuard, sync_backend};
 
 /// A condition variable paired with a [`Mutex`](crate::Mutex).
 ///
@@ -107,7 +105,7 @@ impl Condvar {
         // Step 3: sleep while the sequence still equals the captured value. A
         // notify between steps 1 and 2-3 makes the value mismatch, so `park`
         // returns without blocking — the missed-wake window is closed.
-        handle().park(&self.seq, captured);
+        sync_backend::park(&self.seq, captured);
 
         // Re-acquire under the same Acquire/Release contract before returning.
         mutex.lock()
@@ -125,7 +123,7 @@ impl Condvar {
         // observes the changed sequence (and returns) rather than missing the
         // wake.
         self.seq.fetch_add(1, Relaxed);
-        handle().unpark(&self.seq);
+        sync_backend::unpark(&self.seq);
     }
 
     /// Bumps the sequence and wakes all waiters.
@@ -137,7 +135,7 @@ impl Condvar {
     /// ```
     pub fn notify_all(&self) {
         self.seq.fetch_add(1, Relaxed);
-        handle().unpark_all(&self.seq);
+        sync_backend::unpark_all(&self.seq);
     }
 }
 

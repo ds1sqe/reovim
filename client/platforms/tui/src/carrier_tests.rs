@@ -25,8 +25,10 @@
 use {
     crate::carrier::{CarrierError, connect_and_handshake, is_disconnect, recv_notify_frame},
     reovim_arch::arch_test,
-    reovim_lib_ds::net::EBADF,
-    reovim_uapi_protocol::messages::Message,
+    reovim_uapi::{
+        net::{EBADF, ENOENT, NetControl, NetError, SocketHandle},
+        protocol::messages::Message,
+    },
 };
 
 arch_test!(carrier_is_disconnect_true_for_ebadf, {
@@ -34,7 +36,6 @@ arch_test!(carrier_is_disconnect_true_for_ebadf, {
 });
 
 arch_test!(carrier_is_disconnect_false_for_other_error, {
-    use reovim_lib_ds::net::ENOENT;
     reovim_arch::testrt::check(!is_disconnect(ENOENT), "ENOENT is not a disconnect");
 });
 
@@ -46,9 +47,45 @@ use {
         thread::spawn,
     },
     reovim_lib_ds::Seq,
-    reovim_uapi_abi::FrameHeader,
-    reovim_uapi_protocol::frame::HEADER_LEN,
+    reovim_uapi::{abi::FrameHeader, protocol::frame::HEADER_LEN},
 };
+
+fn test_net_control() -> NetControl {
+    NetControl::new(test_connect, test_listen, test_accept, test_read, test_write, test_close)
+}
+
+fn test_connect(path: &[u8]) -> Result<SocketHandle, NetError> {
+    let stream = UnixStream::connect(path).map_err(map_arch_error)?;
+    let handle = SocketHandle::new(stream.fd());
+    core::mem::forget(stream);
+    Ok(handle)
+}
+
+fn test_listen(_: &[u8]) -> Result<SocketHandle, NetError> {
+    Err(NetError::unsupported())
+}
+
+fn test_accept(_: SocketHandle) -> Result<SocketHandle, NetError> {
+    Err(NetError::unsupported())
+}
+
+fn test_read(handle: SocketHandle, buf: &mut [u8]) -> Result<usize, NetError> {
+    reovim_arch::sys::read(handle.raw(), buf).map_err(map_arch_error)
+}
+
+fn test_write(handle: SocketHandle, buf: &[u8]) -> Result<usize, NetError> {
+    reovim_arch::sys::send_nosignal(handle.raw(), buf).map_err(map_arch_error)
+}
+
+fn test_close(handle: SocketHandle) -> Result<(), NetError> {
+    reovim_arch::sys::close(handle.raw())
+        .map(|_| ())
+        .map_err(map_arch_error)
+}
+
+fn map_arch_error(error: reovim_arch::sys::Errno) -> NetError {
+    NetError::new(error.code())
+}
 
 /// Writes a raw framed message to `stream`: 16-byte header (msg_type + body_len)
 /// followed by `body`.
@@ -130,7 +167,7 @@ fn attach_ack_body() -> Seq<u8> {
 // ── wrong reply after Hello → CarrierError::Protocol (line 154-155) ──────────
 
 arch_test!(wrong_reply_to_hello_returns_protocol_error, {
-    use reovim_uapi_protocol::messages::{Message as _, Reject};
+    use reovim_uapi::protocol::messages::{Message as _, Reject};
     let mut sbuf = [0u8; 64];
     let path: &[u8] = reovim_arch::testrt::unique_path(b"/tmp/reovim-tui-ce1-", &mut sbuf);
     let _ = reovim_arch::sys::unlinkat(reovim_arch::sys::AT_FDCWD, path, 0);
@@ -147,7 +184,7 @@ arch_test!(wrong_reply_to_hello_returns_protocol_error, {
     })
     .expect("spawn fake-server");
 
-    let result = connect_and_handshake(path);
+    let result = connect_and_handshake(test_net_control(), path);
     assert_eq!(
         result.err(),
         Some(CarrierError::Protocol),
@@ -159,7 +196,7 @@ arch_test!(wrong_reply_to_hello_returns_protocol_error, {
 // ── HelloAck with wrong major → CarrierError::Protocol (line 158-159) ────────
 
 arch_test!(incompatible_hello_ack_major_returns_protocol_error, {
-    use reovim_uapi_protocol::messages::HelloAck;
+    use reovim_uapi::protocol::messages::HelloAck;
     let mut sbuf = [0u8; 64];
     let path: &[u8] = reovim_arch::testrt::unique_path(b"/tmp/reovim-tui-ce2-", &mut sbuf);
     let _ = reovim_arch::sys::unlinkat(reovim_arch::sys::AT_FDCWD, path, 0);
@@ -175,7 +212,7 @@ arch_test!(incompatible_hello_ack_major_returns_protocol_error, {
     })
     .expect("spawn fake-server");
 
-    let result = connect_and_handshake(path);
+    let result = connect_and_handshake(test_net_control(), path);
     assert_eq!(
         result.err(),
         Some(CarrierError::Protocol),
@@ -187,7 +224,7 @@ arch_test!(incompatible_hello_ack_major_returns_protocol_error, {
 // ── wrong reply after Attach → CarrierError::Protocol (line 175-176) ─────────
 
 arch_test!(wrong_reply_to_attach_returns_protocol_error, {
-    use reovim_uapi_protocol::messages::{HelloAck, Message as _, Reject};
+    use reovim_uapi::protocol::messages::{HelloAck, Message as _, Reject};
     let mut sbuf = [0u8; 64];
     let path: &[u8] = reovim_arch::testrt::unique_path(b"/tmp/reovim-tui-ce3-", &mut sbuf);
     let _ = reovim_arch::sys::unlinkat(reovim_arch::sys::AT_FDCWD, path, 0);
@@ -206,7 +243,7 @@ arch_test!(wrong_reply_to_attach_returns_protocol_error, {
     })
     .expect("spawn fake-server");
 
-    let result = connect_and_handshake(path);
+    let result = connect_and_handshake(test_net_control(), path);
     assert_eq!(
         result.err(),
         Some(CarrierError::Protocol),
@@ -221,7 +258,7 @@ arch_test!(wrong_reply_to_attach_returns_protocol_error, {
 // If the server sends a different tag, it returns CarrierError::Protocol.
 
 arch_test!(wrong_notify_tag_returns_protocol_error, {
-    use reovim_uapi_protocol::messages::{AttachAck, HelloAck, Message as _, SendInput};
+    use reovim_uapi::protocol::messages::{AttachAck, HelloAck, Message as _, SendInput};
     let mut sbuf = [0u8; 64];
     let path: &[u8] = reovim_arch::testrt::unique_path(b"/tmp/reovim-tui-ce4-", &mut sbuf);
     let _ = reovim_arch::sys::unlinkat(reovim_arch::sys::AT_FDCWD, path, 0);
@@ -243,7 +280,7 @@ arch_test!(wrong_notify_tag_returns_protocol_error, {
     .expect("spawn fake-server");
 
     // connect_and_handshake will succeed; then recv_notify_frame is what errors.
-    let conn_result = connect_and_handshake(path);
+    let conn_result = connect_and_handshake(test_net_control(), path);
     if let Ok(conn) = conn_result {
         let notify_result = recv_notify_frame(&conn.stream);
         assert_eq!(

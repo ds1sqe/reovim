@@ -29,6 +29,7 @@ inject-failure = []
 # `selftest`: compiles the TUI platform sibling test modules into the lib.
 reovim-platform-tui = { path = "../../..", features = ["selftest"] }
 reovim-arch         = { path = "../../../../../../arch", features = ["runtime", "selftest"] }
+reovim-system-kernel = { path = "../../../../../../system/lib/kernel" }
 
 # The platform-handle installer this composition root drives. The fixture is
 # host-only (native-only pin per `fixtures_exec.rs`), so only the real POSIX

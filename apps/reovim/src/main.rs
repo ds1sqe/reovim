@@ -30,14 +30,24 @@
 #![allow(unsafe_code)] // entry! expands to #[unsafe(no_mangle)] shim
 
 use {
-    reovim_lib_ds::Shared,
     reovim_domain_text::{TextHandler, TextProjector},
     reovim_kernel::{
         Init, LauncherArgs,
         session::{BufferId, DomainAttachmentId, SessionState, WindowId},
     },
+    reovim_lib_ds::Shared,
     reovim_platform_tui::paint::{RunArgs, run as tui_run},
     reovim_server_rt::start_listener,
+    reovim_system_kernel::{
+        fs::{path_control, raw_fd_control},
+        log::log_sink_control,
+        mm::install_lib_ds_alloc_backend,
+        net::net_control,
+        panic::panic_control,
+        sched::{clock_control, install_lib_ds_sync_backend, thread_control, thread_spawner},
+        terminal::terminal_control,
+    },
+    reovim_uapi::fs::RawFd,
 };
 
 /// Static text Domain singletons (zero-sized structs; no heap needed).
@@ -47,19 +57,21 @@ static TEXT_PROJECTOR: TextProjector = TextProjector;
 /// Default socket path used when no argument is given.
 static DEFAULT_SOCKET: &[u8] = b"/tmp/reovim-launcher.sock\0";
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use reovim_arch_floor_linux_x86_64::entry;
 #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
 use reovim_arch_floor_linux_aarch64::entry;
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use reovim_arch_floor_linux_x86_64::entry;
 
 entry!(|argc, argv, _envp| {
     // ── Install the platform vtable (SP02, AB12 write-once) ───────────────────
     // The composition root drives the install: this is the first statement of
     // the `entry!` closure, ahead of every `kabi::handle` read (the kernel boot,
-    // the socket syscalls), so the no-read-before-install invariant holds. The
-    // result is ignored by construction — this is the sole process entry, so a
-    // second install cannot occur here.
+    // socket bridge, and fs bridge), so the no-read-before-install invariant
+    // holds. The result is ignored by construction — this is the sole process
+    // entry, so a second install cannot occur here.
     let _ = reovim_platform_linux_native::install_platform();
+    let _ = install_lib_ds_alloc_backend();
+    let _ = install_lib_ds_sync_backend();
 
     // ── Resolve the socket path ───────────────────────────────────────────────
     let socket_path: &'static [u8] = if argc >= 2 {
@@ -82,7 +94,14 @@ entry!(|argc, argv, _envp| {
     };
 
     // ── Boot the kernel ───────────────────────────────────────────────────────
-    let kernel = match Init::new(LauncherArgs::default()).boot() {
+    let kernel_args = LauncherArgs {
+        clock: clock_control(),
+        log: log_sink_control(),
+        panic: panic_control(),
+        thread: thread_control(),
+        ..LauncherArgs::default()
+    };
+    let kernel = match Init::new(kernel_args).boot() {
         Ok(k) => k,
         Err(_) => {
             write_stderr(b"reovim: kernel boot failed\n");
@@ -110,9 +129,9 @@ entry!(|argc, argv, _envp| {
 
     // ── Start the UDS listener on a background thread ────────────────────────
     // Unlink any stale socket from a previous run before binding.
-    let _ = reovim_arch::sys::unlinkat(reovim_arch::sys::AT_FDCWD, socket_path, 0);
+    let _ = path_control().unlink(socket_path);
 
-    if start_listener(&kernel, socket_path).is_err() {
+    if start_listener(&kernel, socket_path, net_control(), thread_spawner()).is_err() {
         write_stderr(b"reovim: start_listener failed\n");
         return 1;
     }
@@ -123,10 +142,16 @@ entry!(|argc, argv, _envp| {
     // ── Run the TUI client (blocks until the user quits) ─────────────────────
     // The TUI client connects over the same UDS socket the listener just bound,
     // exercising the real framed carrier end-to-end.
-    let result = tui_run(RunArgs { socket_path });
+    let result = tui_run(RunArgs {
+        socket_path,
+        terminal: terminal_control(),
+        panic: panic_control(),
+        net: net_control(),
+        stdio: raw_fd_control(),
+    });
 
     // ── Clean up the socket path ──────────────────────────────────────────────
-    let _ = reovim_arch::sys::unlinkat(reovim_arch::sys::AT_FDCWD, socket_path, 0);
+    let _ = path_control().unlink(socket_path);
 
     match result {
         Ok(()) => 0,
@@ -138,7 +163,7 @@ entry!(|argc, argv, _envp| {
 fn write_stderr(msg: &[u8]) {
     let mut off = 0;
     while off < msg.len() {
-        match reovim_arch::sys::write(2, &msg[off..]) {
+        match raw_fd_control().write(RawFd::stderr(), &msg[off..]) {
             Ok(0) | Err(_) => break,
             Ok(n) => off += n,
         }

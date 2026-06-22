@@ -14,7 +14,7 @@
 
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-use {reovim_arch::arch_test, reovim_lib_ds::Shared, reovim_uapi_abi::error::LogLevel};
+use {reovim_arch::arch_test, reovim_lib_ds::Shared, reovim_uapi::abi::error::LogLevel};
 
 use crate::{
     BootClock,
@@ -41,7 +41,7 @@ fn test_event(clock: &BootClock, event: &'static str, stage: u8) -> DS12Event {
 
 arch_test!(empty_bus_emit_is_noop, {
     let bus = DS12EventBus::new();
-    let clock = BootClock::capture();
+    let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
     // Must complete without panic or deadlock.
     bus.emit(&test_event(&clock, EVT_BOOT_STAGE_START, 0));
 });
@@ -76,7 +76,7 @@ arch_test!(subscribers_receive_events_in_registration_order, {
     bus.subscribe(record_b).unwrap();
     bus.subscribe(record_c).unwrap();
 
-    let clock = BootClock::capture();
+    let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
     bus.emit(&test_event(&clock, EVT_BOOT_STAGE_START, 0));
 
     // A was registered first — must have the lowest sequence number.
@@ -112,7 +112,7 @@ arch_test!(builtin_slot_fires_before_registered_subscribers, {
     bus.set_builtin(Shared::clone(&ring));
     bus.subscribe(builtin_order_reg_subscriber).unwrap();
 
-    let clock = BootClock::capture();
+    let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
     bus.emit(&test_event(&clock, EVT_BOOT_STAGE_OK, 1));
 
     // The registered subscriber must have been called.
@@ -143,7 +143,7 @@ arch_test!(emit_preserves_event_fields, {
     let bus = DS12EventBus::new();
     bus.subscribe(field_checker).unwrap();
 
-    let clock = BootClock::capture();
+    let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
     let event = DS12Event {
         ts_nanos: clock.elapsed_nanos(),
         level: LogLevel::Error,
@@ -193,7 +193,7 @@ arch_test!(cc6_subscribe_in_callback_does_not_deadlock, {
 
     CC6_BUS.subscribe(cc6_subscribe_from_callback).unwrap();
 
-    let clock = BootClock::capture();
+    let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
     // First emit: cc6_subscribe_from_callback registers cc6_late_subscriber.
     CC6_BUS.emit(&test_event(&clock, EVT_BOOT_STAGE_START, 0));
 
@@ -228,7 +228,7 @@ arch_test!(subscribe_sixty_four_then_capacity_error, {
 
     // Emit once so all 64 noop subscribers actually execute (item 8: noop body
     // must be invoked at least once so the line is covered).
-    let clock = BootClock::capture();
+    let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
     bus.emit(&test_event(&clock, EVT_BOOT_STAGE_OK, 0));
 
     // The 65th subscribe must return SubscribeError::Capacity (event_bus.rs L306).
@@ -249,7 +249,7 @@ arch_test!(event_bus_default_behaves_as_new, {
     // `DS12EventBus` is a static-constructible type (`const fn new()`), but
     // default() is a non-const fn. Ensure it produces a usable, subscriber-free bus.
     let bus = DS12EventBus::default();
-    let clock = BootClock::capture();
+    let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
     // Must complete without panic or deadlock (no subscribers → no-op).
     bus.emit(&test_event(&clock, EVT_BOOT_STAGE_OK, 0));
 });
@@ -279,7 +279,7 @@ arch_test!(event_bus_default_behaves_as_new, {
 arch_test!(emit_noop_filler_is_callable, {
     // Execute the snapshot-filler body directly: live emits never invoke it
     // (only `..n` entries run), so pointer-naming alone leaves it uncovered.
-    let clock = BootClock::capture();
+    let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
     crate::event_bus::emit_noop(&DS12Event {
         ts_nanos: clock.elapsed_nanos(),
         level: LogLevel::Info,
@@ -294,7 +294,7 @@ arch_test!(emit_noop_filler_is_callable, {
 arch_test!(emit_noop_filler_does_not_panic, {
     let bus = DS12EventBus::new();
     // No subscribers registered — all snapshot slots are emit_noop.
-    let clock = BootClock::capture();
+    let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
     let ev = test_event(&clock, EVT_BOOT_STAGE_OK, 0);
     // The emit() call fills the snapshot with emit_noop and invokes none of them
     // (n=0), but the initialiser `[emit_noop as Subscriber; SUBSCRIBER_CAPACITY]`
@@ -320,7 +320,7 @@ arch_test!(shared_event_bus_emit_reaches_subscribers, {
     let bus = Shared::try_new(DS12EventBus::new()).unwrap();
     bus.subscribe(shared_counter).unwrap();
 
-    let clock = BootClock::capture();
+    let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
     bus.emit(&test_event(&clock, EVT_BOOT_STAGE_START, 0));
 
     assert_eq!(

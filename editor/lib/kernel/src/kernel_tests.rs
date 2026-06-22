@@ -4,12 +4,26 @@
 //! selftest runner (arch_test! + testrt::run). The kernel-selftest bin in
 //! tests/fixtures/ runs these.
 
-use reovim_arch::arch_test;
+use {reovim_arch::arch_test, reovim_uapi::sched::ClockControl};
 
 use crate::{
     Init, LauncherArgs,
     kernel::{KERNEL_ABI_VERSION, KernelAbi},
 };
+
+fn launcher_args_with_test_clock() -> LauncherArgs {
+    let mut args = LauncherArgs::default();
+    args.clock = ClockControl::new(test_monotonic, test_realtime);
+    args
+}
+
+fn test_monotonic() -> i64 {
+    1_000_000
+}
+
+fn test_realtime() -> i64 {
+    946_684_800_000_000_001
+}
 
 arch_test!(kernel_abi_version_constant_major_1, {
     assert_eq!(KERNEL_ABI_VERSION.major, 1);
@@ -23,7 +37,7 @@ arch_test!(kernel_abi_new_stores_version, {
 });
 
 arch_test!(kernel_boot_anchor_field_accessible, {
-    let kernel = Init::new(LauncherArgs::default())
+    let kernel = Init::new(launcher_args_with_test_clock())
         .boot()
         .expect("boot succeeds");
     // Boot anchor wall clock is after year 2000 (Unix-epoch nanos).
@@ -73,7 +87,7 @@ arch_test!(kernel_event_bus_emits_after_boot, {
             event_bus::{BootStageFields, DS12Event, EVT_BOOT_STAGE_START},
         },
         core::sync::atomic::{AtomicUsize, Ordering},
-        reovim_uapi_abi::error::LogLevel,
+        reovim_uapi::abi::error::LogLevel,
     };
 
     static POST_BOOT_COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -90,7 +104,7 @@ arch_test!(kernel_event_bus_emits_after_boot, {
     // Subscribe to the bus post-boot and emit a test event.
     kernel.event_bus.subscribe(post_boot_counter).unwrap();
 
-    let clock = BootClock::capture();
+    let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
     kernel.event_bus.emit(&DS12Event {
         ts_nanos: clock.elapsed_nanos(),
         level: LogLevel::Info,

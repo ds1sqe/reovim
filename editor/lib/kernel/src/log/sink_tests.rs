@@ -23,10 +23,14 @@ use {
     reovim_arch::{
         alloc::fault,
         arch_test,
-        sys::{AT_FDCWD, O_CLOEXEC, O_RDONLY, close, openat, read},
+        sys::{AT_FDCWD, O_CLOEXEC, O_CREAT, O_RDONLY, O_WRONLY, close, openat, read, write},
     },
     reovim_lib_ds::Shared,
-    reovim_uapi_abi::error::LogLevel,
+    reovim_uapi::{
+        abi::error::LogLevel,
+        log::{LogSinkControl, LogSinkError, LogSinkHandle},
+        panic::PanicConfigError,
+    },
 };
 
 use crate::{
@@ -36,16 +40,76 @@ use crate::{
     log::{
         ring::LogRing,
         sink::{
-            EVT_LOG_SINK_FAIL, FileSink, SinkOpenError, inject_fd_for_test, reset_for_test,
-            stderr_echo,
+            EVT_LOG_SINK_FAIL, FileSink, SinkOpenError, inject_handle_for_test, install_control,
+            reset_for_test, stderr_echo,
         },
     },
 };
 
+const O_APPEND: usize = 0o2000;
+
+fn test_log_control() -> LogSinkControl {
+    LogSinkControl::new(
+        test_open_log_sink,
+        test_write_log_sink,
+        test_close_log_sink,
+        test_register_panic_flush,
+        test_write_diagnostic,
+    )
+}
+
+fn reset_with_test_log_control() {
+    reset_for_test();
+    install_control(test_log_control());
+}
+
+fn test_open_log_sink(path: &[u8]) -> Result<LogSinkHandle, LogSinkError> {
+    let flags = O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC;
+    openat(AT_FDCWD, path, flags, 0o644)
+        .map(|fd| LogSinkHandle::new(fd as u64))
+        .map_err(|err| LogSinkError::new(err.code()))
+}
+
+fn test_write_log_sink(handle: LogSinkHandle, bytes: &[u8]) -> Result<(), LogSinkError> {
+    let fd = test_handle_to_fd(handle)?;
+    let mut off = 0;
+    while off < bytes.len() {
+        match write(fd, &bytes[off..]) {
+            Ok(0) => return Err(LogSinkError::new(0)),
+            Ok(n) => off += n,
+            Err(err) => return Err(LogSinkError::new(err.code())),
+        }
+    }
+    Ok(())
+}
+
+fn test_close_log_sink(handle: LogSinkHandle) -> Result<(), LogSinkError> {
+    close(test_handle_to_fd(handle)?)
+        .map(|_| ())
+        .map_err(|err| LogSinkError::new(err.code()))
+}
+
+fn test_register_panic_flush(_: LogSinkHandle) -> Result<(), PanicConfigError> {
+    Ok(())
+}
+
+fn test_write_diagnostic(bytes: &[u8]) -> Result<(), LogSinkError> {
+    test_write_log_sink(LogSinkHandle::new(2), bytes)
+}
+
+fn test_handle_to_fd(handle: LogSinkHandle) -> Result<i32, LogSinkError> {
+    let raw = handle.raw();
+    if raw > i32::MAX as u64 {
+        Err(LogSinkError::new(0))
+    } else {
+        Ok(raw as i32)
+    }
+}
+
 // ── EVT_LOG_SINK_FAIL constant ────────────────────────────────────────────────
 
 arch_test!(evt_log_sink_fail_is_correct, {
-    reset_for_test();
+    reset_with_test_log_control();
     assert_eq!(EVT_LOG_SINK_FAIL, "log.sink.fail");
     assert!(EVT_LOG_SINK_FAIL.starts_with("log."));
 });
@@ -53,7 +117,7 @@ arch_test!(evt_log_sink_fail_is_correct, {
 // ── SinkOpenError variants ────────────────────────────────────────────────────
 
 arch_test!(sink_open_error_subscribe_variant, {
-    reset_for_test();
+    reset_with_test_log_control();
     let e = SinkOpenError::Subscribe;
     assert!(matches!(e, SinkOpenError::Subscribe));
 });
@@ -61,7 +125,7 @@ arch_test!(sink_open_error_subscribe_variant, {
 // ── FileSink::new does not open the file ────────────────────────────────────
 
 arch_test!(file_sink_new_does_not_open, {
-    reset_for_test();
+    reset_with_test_log_control();
     // FileSink::new should succeed even for a path that does not exist —
     // the file is not opened until open_and_subscribe.
     let _sink = FileSink::new(b"/nonexistent/path/reovim.log\0");
@@ -71,7 +135,7 @@ arch_test!(file_sink_new_does_not_open, {
 // ── FileSink::set_headless mutates the flag ───────────────────────────────────
 
 arch_test!(file_sink_set_headless, {
-    reset_for_test();
+    reset_with_test_log_control();
     let mut hbuf = [0u8; 64];
     let sink = FileSink::new(reovim_arch::testrt::unique_path(b"/tmp/reovim-headless-", &mut hbuf));
     // Default is headless = true; setting false should not panic.
@@ -82,7 +146,7 @@ arch_test!(file_sink_set_headless, {
 // ── open_and_subscribe on bad path returns SinkOpenError::Open ───────────────
 
 arch_test!(file_sink_open_bad_path_returns_error, {
-    reset_for_test();
+    reset_with_test_log_control();
 
     let ring = Shared::try_new(LogRing::try_new(1024 * 1024).unwrap()).unwrap();
     let mut raw_bus = DS12EventBus::new();
@@ -112,7 +176,7 @@ fn log1_counter(_event: &DS12Event) {
 }
 
 arch_test!(log1_one_to_one_ring_vs_subscriber, {
-    reset_for_test();
+    reset_with_test_log_control();
     LOG1_COUNT.store(0, Ordering::Relaxed);
 
     let ring = Shared::try_new(LogRing::try_new(1024 * 1024).unwrap()).unwrap();
@@ -122,7 +186,7 @@ arch_test!(log1_one_to_one_ring_vs_subscriber, {
     // Register a parallel subscriber that counts events.
     bus.subscribe(log1_counter).unwrap();
 
-    let clock = BootClock::capture();
+    let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
     let n_events = 5_u8;
     for stage in 0..n_events {
         bus.emit(&DS12Event {
@@ -167,7 +231,7 @@ fn smoke_log_path(buf: &mut [u8; 64]) -> &[u8] {
 }
 
 arch_test!(integration_smoke_boot_with_sink, {
-    reset_for_test();
+    reset_with_test_log_control();
 
     let mut smoke_buf = [0u8; 64];
     let smoke_path: &[u8] = smoke_log_path(&mut smoke_buf);
@@ -184,7 +248,10 @@ arch_test!(integration_smoke_boot_with_sink, {
         close(fd as i32).ok();
     }
 
-    let init = Init::new(LauncherArgs::default());
+    let init = Init::new(LauncherArgs {
+        log: test_log_control(),
+        ..LauncherArgs::default()
+    });
     let kernel = init.boot().expect("boot must succeed");
 
     // The ring now has 44 entries: boot stages 1..7 (start+ok each = 14) plus
@@ -251,10 +318,10 @@ arch_test!(integration_smoke_boot_with_sink, {
 // ── Write-failure: sink closes and emits log.sink.fail ───────────────────────
 //
 // Procedure:
-// 1. Open a real tmp file to get a valid fd.
+// 1. Open a real tmp file to get a valid handle.
 // 2. Register a parallel subscriber that counts `log.sink.fail` events.
-// 3. Inject the fd into the global sink via `inject_fd_for_test`.
-// 4. Close the fd externally so the next write fails.
+// 3. Inject the handle into the global sink via `inject_handle_for_test`.
+// 4. Close the handle's backing file externally so the next write fails.
 // 5. Emit one event; the sink's write fails → sink closes → `log.sink.fail`
 //    is emitted → parallel subscriber sees exactly 1 fail event.
 
@@ -267,10 +334,10 @@ fn fail_counter(event: &DS12Event) {
 }
 
 arch_test!(write_failure_closes_sink_and_emits_fail_event, {
-    reset_for_test();
+    reset_with_test_log_control();
     FAIL_COUNT.store(0, Ordering::Relaxed);
 
-    // Open a tmp file and get a valid fd.
+    // Open a tmp file and get a valid fd for the lower test control.
     // O_WRONLY | O_CREAT | O_CLOEXEC (no O_APPEND needed here).
     let mut wbuf = [0u8; 64];
     let tmp_path: &[u8] = reovim_arch::testrt::unique_path(b"/tmp/reovim-writefail-", &mut wbuf);
@@ -285,14 +352,14 @@ arch_test!(write_failure_closes_sink_and_emits_fail_event, {
     let bus = Shared::try_new(raw_bus).unwrap();
     bus.subscribe(fail_counter).unwrap();
 
-    // Inject the fd into the sink so the subscriber callback will write to it.
-    inject_fd_for_test(fd, Shared::clone(&bus));
+    // Inject the handle into the sink so the subscriber callback will write to it.
+    inject_handle_for_test(LogSinkHandle::new(fd as u64), test_log_control(), Shared::clone(&bus));
 
-    // Close the fd externally — next write through the injected fd will fail.
+    // Close the backing fd externally; the next write through the handle fails.
     close(fd).ok();
 
     // Emit one event. The subscriber write fails → sink closes → 1 fail event.
-    let clock = BootClock::capture();
+    let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
     bus.emit(&DS12Event {
         ts_nanos: clock.elapsed_nanos(),
         level: LogLevel::Info,
@@ -316,20 +383,20 @@ arch_test!(write_failure_closes_sink_and_emits_fail_event, {
 //
 // We cannot capture fd-2 output in the selftest runner, so we verify the
 // gate's control-flow logic via `reset_for_test` state transitions:
-// - Before open (fd = None): `stderr_echo` must not panic (write to fd 2).
-// - After open with headless=false: gate must be inactive (no write to fd 2).
+// - Before open (handle = None): `stderr_echo` must not panic.
+// - After open with headless=false: gate must be inactive.
 //   We verify "no panic" in both cases — the write itself is fire-and-forget.
 
 arch_test!(log8_stderr_gate_active_before_open, {
-    reset_for_test();
-    // Sink is not open (fd = None, headless = true by default).
+    reset_with_test_log_control();
+    // Sink is not open (handle = None, headless = true by default).
     // stderr_echo must execute without panic.
     stderr_echo(b"[    0.000001] kernel log8: test\n");
     // If we reach here, the gate path did not panic.
 });
 
 arch_test!(log8_stderr_gate_obeys_headless_flag, {
-    reset_for_test();
+    reset_with_test_log_control();
 
     let ring = Shared::try_new(LogRing::try_new(1024 * 1024).unwrap()).unwrap();
     let mut raw_bus = DS12EventBus::new();
@@ -356,9 +423,9 @@ arch_test!(log8_stderr_gate_obeys_headless_flag, {
 // The subscriber callback calls `render_line` before acquiring the lock. Arm
 // `fail_after(1)` so the ring built-in's Bytes alloc succeeds (attempt 0) but
 // the sink callback's render_line Bytes alloc fails (attempt 1) → the early
-// `return` at L321 executes. No write to the fd must occur and no panic must
+// `return` at L321 executes. No write to the sink must occur and no panic must
 // happen. No `log.sink.fail` is emitted because the render failure returns
-// before touching the fd at all.
+// before touching the sink handle at all.
 
 static SINK_OOM_FAIL_COUNT: core::sync::atomic::AtomicUsize =
     core::sync::atomic::AtomicUsize::new(0);
@@ -370,10 +437,10 @@ fn sink_oom_counter(event: &DS12Event) {
 }
 
 arch_test!(sink_callback_render_oom_silent_drop, {
-    reset_for_test();
+    reset_with_test_log_control();
     SINK_OOM_FAIL_COUNT.store(0, core::sync::atomic::Ordering::Relaxed);
 
-    // Open a real tmp file to back the sink.
+    // Open a real tmp file to back the sink handle.
     let mut obuf = [0u8; 64];
     let tmp_path: &[u8] = reovim_arch::testrt::unique_path(b"/tmp/reovim-sink-oom-", &mut obuf);
     let open_flags =
@@ -386,10 +453,10 @@ arch_test!(sink_callback_render_oom_silent_drop, {
     let bus = Shared::try_new(DS12EventBus::new()).unwrap();
     bus.subscribe(sink_oom_counter).unwrap();
 
-    // Inject the fd so the sink subscriber callback will attempt to render+write.
-    inject_fd_for_test(fd, Shared::clone(&bus));
+    // Inject the handle so the sink subscriber callback will attempt to render+write.
+    inject_handle_for_test(LogSinkHandle::new(fd as u64), test_log_control(), Shared::clone(&bus));
 
-    let clock = BootClock::capture();
+    let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
     let ev = DS12Event {
         ts_nanos: clock.elapsed_nanos(),
         level: LogLevel::Info,
@@ -406,7 +473,7 @@ arch_test!(sink_callback_render_oom_silent_drop, {
     fault::reset();
 
     // No log.sink.fail must have been emitted: the render-OOM path returns
-    // silently before touching the fd (L321 return). The sink remains open.
+    // silently before touching the sink handle (L321 return). The sink remains open.
     let fail_count = SINK_OOM_FAIL_COUNT.load(core::sync::atomic::Ordering::Relaxed);
     assert_eq!(
         fail_count, 0,
@@ -427,7 +494,7 @@ arch_test!(sink_callback_render_oom_silent_drop, {
 fn noop_sub(_e: &DS12Event) {}
 
 arch_test!(sink_open_subscribe_capacity_error, {
-    reset_for_test();
+    reset_with_test_log_control();
 
     let ring = Shared::try_new(LogRing::try_new(1024 * 1024).unwrap()).unwrap();
     let mut raw_bus = DS12EventBus::new();
@@ -454,12 +521,12 @@ arch_test!(sink_open_subscribe_capacity_error, {
     reset_for_test();
 });
 
-// ── Callback early-return when fd is None (sink.rs L334) ─────────────────────
+// ── Callback early-return when handle is None (sink.rs L334) ─────────────────
 //
-// Register the sink subscriber callback on a bus via `inject_fd_for_test`, then
-// call `reset_for_test()` so the sink state has `fd = None, closed = false`
+// Register the sink subscriber callback on a bus via `inject_handle_for_test`,
+// then call `reset_for_test()` so the sink state has `handle = None, closed = false`
 // while the subscriber is still on the bus. Emitting an event must hit the
-// `None`-fd early-return path without panicking and without triggering any
+// `None`-handle early-return path without panicking and without triggering any
 // `log.sink.fail` emission.
 
 static SINK_NONE_FD_FAIL_COUNT: core::sync::atomic::AtomicUsize =
@@ -472,10 +539,10 @@ fn sink_none_fd_fail_counter(event: &DS12Event) {
 }
 
 arch_test!(sink_callback_fd_none_early_return, {
-    reset_for_test();
+    reset_with_test_log_control();
     SINK_NONE_FD_FAIL_COUNT.store(0, core::sync::atomic::Ordering::Relaxed);
 
-    // Open a tmp file to get a valid fd for the inject call.
+    // Open a tmp file to get a valid fd for the handle injected below.
     let tmp_path = b"/tmp/reovim-sink-none-fd-test.log\0";
     let open_flags =
         reovim_arch::sys::O_WRONLY | reovim_arch::sys::O_CREAT | reovim_arch::sys::O_CLOEXEC;
@@ -488,17 +555,17 @@ arch_test!(sink_callback_fd_none_early_return, {
     let bus = Shared::try_new(raw_bus).unwrap();
     bus.subscribe(sink_none_fd_fail_counter).unwrap();
 
-    // Inject fd so the sink subscriber is registered on the bus.
-    inject_fd_for_test(fd, Shared::clone(&bus));
+    // Inject a handle so the sink subscriber is registered on the bus.
+    inject_handle_for_test(LogSinkHandle::new(fd as u64), test_log_control(), Shared::clone(&bus));
 
-    // reset_for_test sets fd = None, closed = false, bus = None — but the
+    // reset_for_test sets handle = None, closed = false, bus = None — but the
     // subscriber callback is still registered on the bus. The next emit will
-    // reach the `None`-fd early-return at sink.rs L334.
+    // reach the `None`-handle early-return at sink.rs L334.
     close(fd).ok();
     reset_for_test();
 
     // Emit: the callback must silently return without writing or panicking.
-    let clock = BootClock::capture();
+    let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
     bus.emit(&DS12Event {
         ts_nanos: clock.elapsed_nanos(),
         level: LogLevel::Info,
@@ -509,9 +576,9 @@ arch_test!(sink_callback_fd_none_early_return, {
         },
     });
 
-    // No log.sink.fail must be emitted: the None-fd path just returns.
+    // No log.sink.fail must be emitted: the None-handle path just returns.
     let fail_count = SINK_NONE_FD_FAIL_COUNT.load(core::sync::atomic::Ordering::Relaxed);
-    assert_eq!(fail_count, 0, "None-fd early-return must not emit log.sink.fail");
+    assert_eq!(fail_count, 0, "None-handle early-return must not emit log.sink.fail");
 
     reset_for_test();
 });

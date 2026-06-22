@@ -16,13 +16,13 @@
 
 [[edge]]
 from   = "reovim-server"
-to     = "reovim-arch"
-reason = "runtime feature provides _start, panic_handler, allocator lang items; composition root is the single activation site"
+to     = "reovim-kernel"
+reason = "composition root boots the kernel via Init::new(LauncherArgs).boot() and calls register_domain + setup_session"
 
 [[edge]]
 from   = "reovim-server"
-to     = "reovim-kernel"
-reason = "composition root boots the kernel via Init::new(LauncherArgs).boot() and calls register_domain + setup_session"
+to     = "reovim-system-kernel"
+reason = "composition root obtains the panic/log control implementation table from system-kernel and passes it into editor-kernel LauncherArgs"
 
 [[edge]]
 from   = "reovim-server"
@@ -36,8 +36,8 @@ reason = "wires TextHandler + TextProjector into the kernel's DomainRouter; core
 
 [[edge]]
 from   = "reovim-server"
-to     = "reovim-uapi-abi"
-reason = "needed for socket-path type surface (Errno etc.) used in the argv NUL-scan"
+to     = "reovim-uapi"
+reason = "uses the public up-face facade for socket-path and borrowed-fd diagnostic vocabulary while system-kernel owns concrete service implementations"
 
 [[edge]]
 from   = "reovim-server"
@@ -55,13 +55,13 @@ reason = "composition root drives the platform vtable install — calls install_
 
 [[edge]]
 from   = "reovim"
-to     = "reovim-arch"
-reason = "runtime feature provides _start, panic_handler, allocator lang items; composition root is the single activation site"
+to     = "reovim-platform-tui"
+reason = "composition root runs the TUI client via tui_run(RunArgs { socket_path }) — the platform runtime entry point"
 
 [[edge]]
 from   = "reovim"
-to     = "reovim-platform-tui"
-reason = "composition root runs the TUI client via tui_run(RunArgs { socket_path }) — the platform runtime entry point"
+to     = "reovim-system-kernel"
+reason = "composition root obtains terminal and panic/log control implementation tables from system-kernel and passes them into TUI RunArgs; TUI depends only on uapi/* controls"
 
 [[edge]]
 from   = "reovim"
@@ -80,8 +80,8 @@ reason = "wires TextHandler + TextProjector into the kernel's DomainRouter; core
 
 [[edge]]
 from   = "reovim"
-to     = "reovim-uapi-abi"
-reason = "needed for socket-path type surface used in argv NUL-scan and socket cleanup"
+to     = "reovim-uapi"
+reason = "uses the public up-face facade for socket-path, borrowed-fd, and path-control vocabulary while system-kernel owns concrete service implementations"
 
 [[edge]]
 from   = "reovim"

@@ -5,10 +5,7 @@
 //! owns storage, locking, and mutation sequencing; this module keeps the shared
 //! data vocabulary in the contract tier.
 
-use {
-    reovim_kabi_platform::AllocError,
-    reovim_lib_ds::{Bytes, Seq},
-};
+use reovim_lib_ds::{Bytes, Seq};
 
 use crate::{
     carrier::PositionCarrier,
@@ -17,6 +14,13 @@ use crate::{
         SessionId, WindowId,
     },
 };
+
+/// Allocation failure while mutating domain contract storage.
+///
+/// The domain contract tier exposes its own upper-facing error vocabulary; the
+/// down-face allocator refusal type stays behind `lib/ds`/`kabi`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DomainAllocError;
 
 /// Attachment scope expressed in the parent Domain's position vocabulary.
 ///
@@ -126,13 +130,13 @@ impl DomainAttachment {
     ///
     /// # Errors
     ///
-    /// Returns [`AllocError`] when the backing child sequence cannot grow.
+    /// Returns [`DomainAllocError`] when the backing child sequence cannot grow.
     ///
     /// ```rust,no_run
     /// // no_run: requires arch allocator runtime for scope carriers.
     /// ```
-    pub fn try_push_child(&mut self, child: DomainAttachmentId) -> Result<(), AllocError> {
-        self.children.try_push(child)
+    pub fn try_push_child(&mut self, child: DomainAttachmentId) -> Result<(), DomainAllocError> {
+        self.children.try_push(child).map_err(|_| DomainAllocError)
     }
 
     /// Returns whether structural detach is allowed by DT11/DT8.

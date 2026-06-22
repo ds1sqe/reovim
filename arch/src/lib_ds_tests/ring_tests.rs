@@ -10,8 +10,7 @@
 use {
     crate::{arch_test, testrt},
     core::cell::Cell,
-    reovim_kabi_platform::AllocError,
-    reovim_lib_ds::{Ring, Seq},
+    reovim_lib_ds::{AllocError, Ring, Seq},
 };
 
 // Helper: collect ring items into a Seq for comparison.

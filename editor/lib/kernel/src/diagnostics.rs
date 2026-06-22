@@ -52,9 +52,8 @@
 use core::fmt::Write as _;
 
 use {
-    reovim_kabi_platform::{BootInfo, MemoryKind},
     reovim_lib_ds::Bytes,
-    reovim_uapi_abi::error::LogLevel,
+    reovim_uapi::{abi::error::LogLevel, system::BootInfo},
 };
 
 use crate::{
@@ -360,13 +359,7 @@ pub(crate) fn usable_memory(boot_info: &BootInfo) -> (u64, bool) {
     if boot_info.memory.is_empty() {
         return (0, false);
     }
-    let usable = boot_info
-        .memory
-        .iter()
-        .filter(|r| matches!(r.kind, MemoryKind::Usable))
-        .map(|r| r.len)
-        .sum();
-    (usable, true)
+    (boot_info.memory.usable_bytes(), true)
 }
 
 // ── Boot-tail entry point ─────────────────────────────────────────────────────
@@ -400,7 +393,7 @@ pub(crate) fn run_at_boot_tail(
 
     let (usable, present) = usable_memory(boot_info);
     probe_start(bus, clock, &mut buf, "mem.map");
-    if let Some(line) = mem_map_msg(&mut buf, "mem.map", boot_info.memory.len()) {
+    if let Some(line) = mem_map_msg(&mut buf, "mem.map", boot_info.memory.range_count()) {
         emit_health(bus, clock, line);
     }
 

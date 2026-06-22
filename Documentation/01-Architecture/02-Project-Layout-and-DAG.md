@@ -448,9 +448,9 @@ policy between `uapi/*` and `kabi/*`; it still does not name any arch/provider
 crate.
 
 Provider dependency flows toward `kabi`, never toward `uapi` or product code.
-A direct `uapi/posix` import below `system/lib/kernel` is forbidden by
-default. If a genuinely inescapable case appears, the exception must be
-recorded in this chapter and enforced in the depgraph catalog.
+A direct `uapi/posix` import is forbidden by default; there is no product POSIX
+face. If a genuinely inescapable case appears, the exception must be recorded
+in this chapter and enforced in the depgraph catalog.
 
 | Target rule | Edge |
 |---|---|

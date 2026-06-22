@@ -39,4 +39,4 @@ reovim-kabi-panic = { path = "../../kabi/panic" }
 
 # The canonical `Disposition`/`PanicRecord` value types the handler + the
 # `rust_eh_personality` halt code name. A `#![no_std]` zero-dep leaf.
-reovim-uapi-panic = { path = "../../uapi/panic" }
+reovim-uapi-panic = { path = "../../uapi/inner/panic" }

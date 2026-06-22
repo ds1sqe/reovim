@@ -15,7 +15,7 @@
 // requires unsafe by nature.
 #![allow(unsafe_code)]
 
-use reovim_arch::testrt;
+use {reovim_arch::testrt, reovim_uapi::panic::Disposition};
 
 // Force the kernel rlib (and its `arch_test!` registrations) to link.
 use reovim_kernel as _;
@@ -39,10 +39,10 @@ reovim_arch::arch_test!(deliberately_fails, {
     reovim_arch::testrt::check_eq(1 + 1, 3);
 });
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use reovim_arch_floor_linux_x86_64::entry;
 #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
 use reovim_arch_floor_linux_aarch64::entry;
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use reovim_arch_floor_linux_x86_64::entry;
 
 entry!(|_argc, _argv, _envp| {
     // Install the platform handle before anything reads it. The kernel boot
@@ -52,15 +52,14 @@ entry!(|_argc, _argv, _envp| {
     // `fixtures_exec.rs`), so only the POSIX provider is needed — no
     // bare-metal scaffold branch.
     let _ = reovim_platform_linux_native::install_platform();
+    let _ = reovim_system_kernel::mm::install_lib_ds_alloc_backend();
+    let _ = reovim_system_kernel::sched::install_lib_ds_sync_backend();
     // Pin the panic disposition to Halt before running any test. The runner is
     // fail-fast: a failing selftest is non-recoverable, so it must exit the
-    // halt code (70), deterministically — independent of test order. Without
-    // this, a kernel-boot test that registers the kernel's runtime
-    // `Disposition::Recover` (write-once, process-global) leaks into a later
-    // test's failure exit, which would otherwise depend on link-section
-    // ordering. The runner owns the process exit policy, so it registers first;
-    // later kernel-boot registrations see `AlreadySet` (tolerated). The result
-    // is ignored: this is the first writer by construction.
-    let _ = reovim_arch::panic::set_disposition(reovim_arch::panic::Disposition::Halt);
+    // halt code (70), deterministically — independent of test order. The runner
+    // owns the process exit policy, so it registers first. The default
+    // `LauncherArgs` used by in-process boot tests carries a no-op panic table,
+    // so those tests do not overwrite this fixture-level process policy.
+    let _ = reovim_system_kernel::panic::panic_control().set_disposition(Disposition::Halt);
     testrt::run()
 });

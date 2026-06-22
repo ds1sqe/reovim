@@ -11,18 +11,21 @@
 //! and the result is pushed into the kernel as part of [`DeviceInventory`]; no
 //! re-enumeration or mutation occurs after that point.
 //!
-//! [`Unknown`]: reovim_kabi_platform::DeviceClass::Unknown
+//! [`Unknown`]: reovim_uapi_system::DeviceClass::Unknown
 
-use reovim_kabi_platform::{DeviceClass, DeviceEntry, DeviceInventory};
+use {
+    reovim_kabi_platform::DeviceClass as KabiDeviceClass,
+    reovim_uapi_system::{DeviceClass, DeviceEntry, DeviceInventory},
+};
 
 use super::reader::{Fdt, Node};
 
-/// Maps one DTB `compatible` string into the coarse KABI device class.
+/// Maps one DTB `compatible` string into the coarse down-face device class.
 ///
 /// Board/chip-specific compatible-string tables live below this bridge and are
 /// passed in by the composition root. Returning [`DeviceClass::Unknown`] keeps
 /// the node out of the resulting inventory.
-pub type DeviceClassifier = fn(&str) -> DeviceClass;
+pub type DeviceClassifier = fn(&str) -> KabiDeviceClass;
 
 /// Maximum number of device entries the enumerator will collect.
 ///
@@ -53,13 +56,24 @@ fn classify_node(node: &Node, classify: DeviceClassifier) -> DeviceClass {
     };
     for s in bytes.split(|&b| b == 0) {
         if let Ok(text) = core::str::from_utf8(s) {
-            let class = classify(text);
+            let class = map_device_class(classify(text));
             if !matches!(class, DeviceClass::Unknown) {
                 return class;
             }
         }
     }
     DeviceClass::Unknown
+}
+
+const fn map_device_class(class: KabiDeviceClass) -> DeviceClass {
+    match class {
+        KabiDeviceClass::Uart => DeviceClass::Uart,
+        KabiDeviceClass::Interrupt => DeviceClass::Interrupt,
+        KabiDeviceClass::Mailbox => DeviceClass::Mailbox,
+        KabiDeviceClass::Block => DeviceClass::Block,
+        KabiDeviceClass::Usb => DeviceClass::Usb,
+        KabiDeviceClass::Unknown => DeviceClass::Unknown,
+    }
 }
 
 /// Attempts to build a [`DeviceEntry`] from a node. Returns `None` when the

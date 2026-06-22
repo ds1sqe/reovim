@@ -39,16 +39,19 @@
 // dead-code diagnostics, no second `PLATFORM_VTABLE` definition).
 #![cfg(not(target_os = "linux"))]
 
-use core::alloc::Layout;
+use core::{alloc::Layout, ptr::NonNull};
 
-use {
-    reovim_kabi_platform::{Fd, InstallError, Mode, OpenFlags, PlatformVtable, install},
-};
+use reovim_kabi_platform::{Fd, InstallError, Mode, OpenFlags, PlatformVtable, install};
 
-use reovim_arch::{
-    alloc::{alloc as arch_alloc, dealloc as arch_dealloc},
-    sys::{Errno, FUTEX_PRIVATE_FLAG, FUTEX_WAIT, FUTEX_WAKE, futex, write as sys_write},
-    time::Instant,
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+use reovim_arch_sys_none_aarch64 as target_sys;
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+use reovim_arch_sys_none_x86_64 as target_sys;
+
+use target_sys::{
+    CLOCK_MONOTONIC, ENOMEM, Errno, FUTEX_PRIVATE_FLAG, FUTEX_WAIT, FUTEX_WAKE, MAP_ANONYMOUS,
+    MAP_PRIVATE, PROT_READ, PROT_WRITE, Timespec, clock_gettime, futex, mmap, munmap,
+    write as sys_write,
 };
 
 /// `FUTEX_WAKE` count meaning "wake everyone".
@@ -60,32 +63,121 @@ use reovim_arch::{
 /// the wake-all count the `lib/ds` `Condvar`/`RwLock` paths request.
 const WAKE_ALL: u32 = 0x7FFF_FFFF; // i32::MAX, expressed unsigned
 
+/// System page size for the freestanding targets this scaffold supports.
+const PAGE_SIZE: usize = 4096;
+/// Nanoseconds in one second.
+const NANOS_PER_SEC: i64 = 1_000_000_000;
+
 /// `ENOSYS` errno code — "function not implemented" — the freestanding stubs'
 /// negative return. `ENOSYS` = 38 (Linux errno space, the shared floor
 /// vocabulary).
 const ENOSYS_CODE: i64 = 38;
+/// `ENOMEM` errno code for failed arena-backed provider allocations.
+const ENOMEM_CODE: i32 = ENOMEM.code();
 
-/// Encodes an arch [`Errno`] as the negative-errno `i64` the fd-op slots
-/// return: `-code` (positive `arch::sys::Errno` → negative `-errno` the FFI ABI
-/// carries; `kabi::map_fd_ret` recovers it consumer-side).
+/// Encodes a target-floor [`Errno`] as the negative-errno `i64` the fd-op slots
+/// return: `-code` (positive target-floor `Errno` -> negative `-errno` the FFI
+/// ABI carries; `kabi::map_fd_ret` recovers it consumer-side).
 const fn neg_errno(e: Errno) -> i64 {
     -(e.code() as i64)
 }
 
-/// The clock adapter: reads arch's monotonic clock and returns whole
+/// Header stored immediately before each provider allocation.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct AllocationHeader {
+    base: usize,
+    map_len: usize,
+}
+
+/// Provider allocation header size in bytes.
+const ALLOC_HEADER_SIZE: usize = core::mem::size_of::<AllocationHeader>();
+
+/// Rounds `len` up to whole pages.
+fn page_round_up(len: usize) -> Option<usize> {
+    len.checked_add(PAGE_SIZE - 1).map(|n| n & !(PAGE_SIZE - 1))
+}
+
+/// Rounds `addr` up to `align`.
+fn align_up(addr: usize, align: usize) -> Option<usize> {
+    debug_assert!(align.is_power_of_two());
+    addr.checked_add(align - 1).map(|n| n & !(align - 1))
+}
+
+/// Allocates a block through the target mmap floor.
+fn alloc_block(layout: Layout) -> Result<NonNull<u8>, i32> {
+    if layout.size() == 0 {
+        return Err(ENOMEM_CODE);
+    }
+    let padded = ALLOC_HEADER_SIZE
+        .checked_add(layout.size())
+        .and_then(|n| n.checked_add(layout.align() - 1))
+        .ok_or(ENOMEM_CODE)?;
+    let map_len = page_round_up(padded).ok_or(ENOMEM_CODE)?;
+    let base = mmap(0, map_len, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0)
+        .map_err(|_| ENOMEM_CODE)?;
+    let Some(start) = base.checked_add(ALLOC_HEADER_SIZE) else {
+        let _ = munmap(base, map_len);
+        return Err(ENOMEM_CODE);
+    };
+    let Some(user_addr) = align_up(start, layout.align()) else {
+        let _ = munmap(base, map_len);
+        return Err(ENOMEM_CODE);
+    };
+    let header_addr = user_addr - ALLOC_HEADER_SIZE;
+    // SAFETY: `base..base + map_len` is a fresh writable mapping. The padded
+    // length reserves room for the header plus any alignment slack before the
+    // user pointer, and `header_addr` remains usize-aligned on the supported
+    // 64-bit targets.
+    unsafe {
+        core::ptr::write(header_addr as *mut AllocationHeader, AllocationHeader { base, map_len });
+    }
+    NonNull::new(user_addr as *mut u8).ok_or(ENOMEM_CODE)
+}
+
+/// Releases a block returned by [`alloc_block`].
+///
+/// # Safety
+///
+/// `ptr` must be a live pointer returned by [`alloc_block`] and not yet freed.
+unsafe fn dealloc_block(ptr: NonNull<u8>) {
+    let header_addr = ptr.as_ptr().addr() - ALLOC_HEADER_SIZE;
+    // SAFETY: the allocation adapter wrote this header immediately before the
+    // returned user pointer, and the caller guarantees the block is still live.
+    let header = unsafe { core::ptr::read(header_addr as *const AllocationHeader) };
+    let _ = munmap(header.base, header.map_len);
+}
+
+/// Converts a target timespec to whole nanoseconds.
+fn timespec_to_nanos(ts: Timespec) -> i64 {
+    ts.tv_sec
+        .saturating_mul(NANOS_PER_SEC)
+        .saturating_add(ts.tv_nsec)
+}
+
+/// Reads a target clock and returns whole nanoseconds.
+fn read_clock_nanos(clock_id: usize) -> i64 {
+    let mut ts = Timespec::default();
+    if clock_gettime(clock_id, &mut ts).is_err() {
+        return 0;
+    }
+    timespec_to_nanos(ts)
+}
+
+/// The clock adapter: reads the target monotonic clock and returns whole
 /// nanoseconds, matching the contract's `ClockFn` ABI.
 ///
 /// # Safety
 ///
 /// `unsafe extern "C"` to share the vtable's one ABI shape; the underlying
-/// `Instant::now` read has no precondition, so this is sound to call anytime.
+/// clock read has no precondition, so this is sound to call anytime.
 unsafe extern "C" fn clock() -> i64 {
-    Instant::now().as_nanos()
+    read_clock_nanos(CLOCK_MONOTONIC)
 }
 
 /// The allocation adapter: reconstructs a `Layout` from `(size, align)` and
-/// calls arch's allocator, returning the raw pointer (null on failure) the
-/// contract's `AllocFn` ABI expects.
+/// maps memory through the target floor, returning the raw pointer (null on
+/// failure) the contract's `AllocFn` ABI expects.
 ///
 /// # Safety
 ///
@@ -99,10 +191,11 @@ unsafe extern "C" fn alloc(size: usize, align: usize) -> *mut u8 {
     // null back to `AllocError`.
     let null = core::ptr::null_mut();
     Layout::from_size_align(size, align)
-        .map_or(null, |layout| arch_alloc(layout).map_or(null, core::ptr::NonNull::as_ptr))
+        .map_or(null, |layout| alloc_block(layout).map_or(null, NonNull::as_ptr))
 }
 
-/// The deallocation adapter: reconstructs the `Layout` and frees through arch.
+/// The deallocation adapter: validates the `Layout` shape and unmaps the
+/// provider-owned block.
 ///
 /// # Safety
 ///
@@ -115,12 +208,12 @@ unsafe extern "C" fn dealloc(ptr: *mut u8, size: usize, align: usize) {
     let Some(nn) = core::ptr::NonNull::new(ptr) else {
         return;
     };
-    let Ok(layout) = Layout::from_size_align(size, align) else {
+    let Ok(_layout) = Layout::from_size_align(size, align) else {
         return;
     };
-    // SAFETY: by the contract `nn`/`layout` are the exact pair a prior `alloc`
-    // returned and the block is still live; arch's `dealloc` upholds the rest.
-    unsafe { arch_dealloc(nn, layout) }
+    // SAFETY: by the contract `nn` is a block a prior `alloc` returned and the
+    // block is still live; the header carries the mapping teardown facts.
+    unsafe { dealloc_block(nn) }
 }
 
 /// The park adapter: futex-waits on `*word` while it equals `expected`.
@@ -219,6 +312,12 @@ const unsafe extern "C" fn file_open(
     -ENOSYS_CODE
 }
 
+/// Freestanding path-unlink stub: `-ENOSYS` (no filesystem floor on bare
+/// metal), the same fallible shape as the other path/fd stubs.
+const unsafe extern "C" fn path_unlink(_path: *const u8, _path_len: usize) -> i64 {
+    -ENOSYS_CODE
+}
+
 /// Freestanding thread-id stub: returns `0`, the single-bare-metal-thread
 /// sentinel (there is one thread of control, identified as id 0).
 const unsafe extern "C" fn thread_id() -> i64 {
@@ -300,6 +399,7 @@ static PLATFORM_VTABLE: PlatformVtable = PlatformVtable {
     // Termios slots: `-ENOTTY` set-raw + no-op restore (no tty on bare metal).
     term_set_raw,
     term_restore,
+    path_unlink,
 };
 
 /// Installs the scaffold's platform vtable as the process-wide handle

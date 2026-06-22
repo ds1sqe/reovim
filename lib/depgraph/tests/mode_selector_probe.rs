@@ -4,23 +4,23 @@
 //!
 //! The provider-presence Cargo feature (the feature that gates whether a
 //! specific platform provider is included in the build) must appear in:
-//! - AT MOST ONE `apps/*` manifest  (0 is legal pre-SP02)
+//! - AT MOST ONE `apps/*` manifest  (0 is legal while direct dependencies bind providers)
 //! - NO non-`apps/*` manifest
 //!
 //! The DAG edge-walker cannot see feature *definitions* (only dep edges), so
 //! this probe reads manifests directly via a targeted grep.
 //!
-//! Pre-SP02 the feature does not exist, so count 0 is the expected result.
-//! SP02, which introduces the feature, must tighten this probe to "exactly one
-//! `apps/*` manifest" in the same commit that adds the feature.
+//! The current workspace binds providers through direct composition-root
+//! dependencies, so count 0 is expected. If a selector feature is introduced,
+//! this probe confines it to one auditable app root.
 //!
 //! The feature name searched for is `PROVIDER_PRESENCE_FEATURE` (see
 //! `lib/depgraph/src/lib.rs`).
 //!
 //! ## Coverage
 //!
-//! 1. **Positive control (real tree)** — the feature does not exist yet
-//!    (pre-SP02), so the probe returns zero violations vacuously.
+//! 1. **Positive control (real tree)** — the selector feature is not used today,
+//!    so the probe returns zero violations.
 //!
 //! 2. **Negative fixture A** — a non-`apps/*` manifest declaring the feature
 //!    must trip the probe.
@@ -29,10 +29,10 @@
 //!    feature (second count) must trip the probe.
 //!
 //! 4. **Positive fixture** — exactly one `apps/*` manifest declaring the
-//!    feature must produce zero violations (valid post-SP02 state).
+//!    feature must produce zero violations.
 //!
 //! 5. **Positive fixture (zero occurrences)** — a workspace with no crate
-//!    declaring the feature produces zero violations (valid pre-SP02 state).
+//!    declaring the feature produces zero violations.
 
 mod common;
 
@@ -66,11 +66,9 @@ fn pkg_toml_with_provider_feature(name: &str) -> String {
 
 // ── 1. Positive control: real workspace ───────────────────────────────────────
 
-/// The real workspace has no provider-presence feature yet (pre-SP02).
-/// The probe must return zero violations vacuously.
-///
-/// This becomes the production enforcement test once SP02 lands the feature
-/// in exactly one `apps/*` manifest.
+/// The real workspace currently binds providers through direct dependencies, so
+/// no provider-presence feature is declared. The probe must return zero
+/// violations.
 #[test]
 fn mode_selector_real_workspace_is_clean() {
     let root = common::workspace_root();
@@ -157,8 +155,7 @@ fn mode_selector_two_apps_crates_trip_probe() {
 /// Exactly one `apps/*` crate declaring the provider-presence feature must
 /// produce zero violations.
 ///
-/// This is the valid post-SP02 state: the composition root is the sole
-/// point where the provider is selected.
+/// The composition root is the sole point where the provider is selected.
 #[test]
 fn mode_selector_single_apps_feature_is_clean() {
     let td = common::TempDir::new();
@@ -184,12 +181,13 @@ fn mode_selector_single_apps_feature_is_clean() {
     );
 }
 
-// ── 5. Positive fixture: zero occurrences (pre-SP02 state) ────────────────────
+// ── 5. Positive fixture: zero occurrences ─────────────────────────────────────
 
 /// A workspace with no crate declaring the provider-presence feature must
 /// produce zero violations.
 ///
-/// This is the current pre-SP02 state.  Count 0 is explicitly allowed.
+/// Count 0 is explicitly allowed; direct provider dependencies bind the chosen
+/// provider in the current workspace.
 #[test]
 fn mode_selector_zero_occurrences_is_clean() {
     let td = common::TempDir::new();

@@ -10,9 +10,9 @@
 
 use reovim_arch::arch_test;
 
-use {
-    reovim_uapi_abi::ErrorCode,
-    reovim_uapi_protocol::{
+use reovim_uapi::{
+    abi::ErrorCode,
+    protocol::{
         messages::{Direction, Hello, HelloAck, Message},
         state::TagInfo,
     },
@@ -20,7 +20,7 @@ use {
 
 use {
     crate::carrier::{classify_tag, reject_reason_to_error},
-    reovim_uapi_protocol::state::RejectReason,
+    reovim_uapi::protocol::state::RejectReason,
 };
 
 arch_test!(classify_hello_tag_is_handshake, {
@@ -33,22 +33,22 @@ arch_test!(classify_hello_ack_tag_is_handshake, {
 
 arch_test!(classify_attach_tag_is_request, {
     // Attach::TAG = 0x0100
-    use reovim_uapi_protocol::messages::Attach;
+    use reovim_uapi::protocol::messages::Attach;
     assert_eq!(classify_tag(Attach::TAG), TagInfo::Known(Direction::Request));
 });
 
 arch_test!(classify_send_input_tag_is_request, {
-    use reovim_uapi_protocol::messages::SendInput;
+    use reovim_uapi::protocol::messages::SendInput;
     assert_eq!(classify_tag(SendInput::TAG), TagInfo::Known(Direction::Request));
 });
 
 arch_test!(classify_attach_ack_tag_is_response, {
-    use reovim_uapi_protocol::messages::AttachAck;
+    use reovim_uapi::protocol::messages::AttachAck;
     assert_eq!(classify_tag(AttachAck::TAG), TagInfo::Known(Direction::Response));
 });
 
 arch_test!(classify_reject_tag_is_error, {
-    use reovim_uapi_protocol::messages::Reject;
+    use reovim_uapi::protocol::messages::Reject;
     assert_eq!(classify_tag(Reject::TAG), TagInfo::Known(Direction::Error));
 });
 

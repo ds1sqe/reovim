@@ -1,0 +1,18 @@
+[package]
+name = "reovim-uapi-log"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Product-facing log sink control vocabulary"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-uapi-panic = { path = "../panic" }
+

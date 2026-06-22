@@ -532,7 +532,7 @@ arch_test!(view_raw_input_list_nonempty_accessors, {
     // IntoIterator for &RawInputList and by value.
     let _ = list.into_iter().count();
 
-    // Exact size_hint contract on this view's iterator (telemetry ask):
+    // Exact size_hint contract on this view's iterator:
     // (left, Some(left)) before and after one step.
     let mut sh = list.iter();
     reovim_arch::testrt::check_eq(sh.size_hint(), (2usize, Some(2usize)));
@@ -555,7 +555,7 @@ arch_test!(view_domain_entry_list_nonempty_accessors, {
     reovim_arch::testrt::check(!list.is_empty(), "DomainEntryList not empty");
     let _ = list.into_iter().count();
 
-    // Exact size_hint contract on this view's iterator (telemetry ask):
+    // Exact size_hint contract on this view's iterator:
     // (left, Some(left)) before and after one step.
     let mut sh = list.iter();
     reovim_arch::testrt::check_eq(sh.size_hint(), (1usize, Some(1usize)));
@@ -576,7 +576,7 @@ arch_test!(view_carrier_list_nonempty_accessors, {
     reovim_arch::testrt::check(!list.is_empty(), "CarrierList not empty");
     let _ = list.into_iter().count();
 
-    // Exact size_hint contract on this view's iterator (telemetry ask):
+    // Exact size_hint contract on this view's iterator:
     // (left, Some(left)) before and after one step.
     let mut sh = list.iter();
     reovim_arch::testrt::check_eq(sh.size_hint(), (1usize, Some(1usize)));

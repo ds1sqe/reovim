@@ -3,8 +3,7 @@
 //! Boots the kernel, registers the text Domain, sets up the single session,
 //! starts the UDS listener, and parks the process. The composition root is the
 //! only place that wires `ext` crates (`reovim-domain-text`) into the kernel —
-//! the kernel crate itself never depends on `ext` (core/ext boundary,
-//! `CLAUDE.md §Design Rules`).
+//! the kernel crate itself never depends on `ext` (core/ext boundary).
 //!
 //! ## Invocation
 //!
@@ -20,32 +19,47 @@
 #![allow(unsafe_code)] // entry! expands to #[unsafe(no_mangle)]
 
 use {
-    reovim_lib_ds::Shared,
     reovim_domain_text::{TextHandler, TextProjector},
     reovim_kernel::{
         Init, LauncherArgs,
         session::{BufferId, DomainAttachmentId, SessionState, WindowId},
     },
+    reovim_lib_ds::Shared,
     reovim_server_rt::start_listener,
+    reovim_system_kernel::{
+        fs::raw_fd_control,
+        log::log_sink_control,
+        mm::install_lib_ds_alloc_backend,
+        net::net_control,
+        panic::panic_control,
+        sched::{
+            clock_control, install_lib_ds_sync_backend, sync_control, thread_control,
+            thread_spawner,
+        },
+    },
+    reovim_uapi::fs::RawFd,
 };
 
 /// Static text Domain singletons. Zero-sized structs; no heap needed.
 static TEXT_HANDLER: TextHandler = TextHandler;
 static TEXT_PROJECTOR: TextProjector = TextProjector;
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use reovim_arch_floor_linux_x86_64::entry;
 #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
 use reovim_arch_floor_linux_aarch64::entry;
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use reovim_arch_floor_linux_x86_64::entry;
 
 entry!(|argc, argv, _envp| {
     // ── Install the platform vtable (SP02, AB12 write-once) ───────────────────
     // The composition root drives the install: this is the first statement of
     // the `entry!` closure, ahead of every `kabi::handle` read (the kernel boot,
-    // the futex/socket syscalls), so the no-read-before-install invariant holds.
+    // scheduler bridge, socket bridge, and fs bridge), so the no-read-before-install
+    // invariant holds.
     // The result is ignored by construction — this is the sole process entry, so
     // a second install cannot occur here.
     let _ = reovim_platform_linux_native::install_platform();
+    let _ = install_lib_ds_alloc_backend();
+    let _ = install_lib_ds_sync_backend();
 
     // ── Parse the socket path from argv[1] ────────────────────────────────────
     // Expect exactly one argument: the UDS socket path (NUL-terminated).
@@ -76,7 +90,14 @@ entry!(|argc, argv, _envp| {
     };
 
     // ── Boot the kernel ───────────────────────────────────────────────────────
-    let kernel = match Init::new(LauncherArgs::default()).boot() {
+    let kernel_args = LauncherArgs {
+        clock: clock_control(),
+        log: log_sink_control(),
+        panic: panic_control(),
+        thread: thread_control(),
+        ..LauncherArgs::default()
+    };
+    let kernel = match Init::new(kernel_args).boot() {
         Ok(k) => k,
         Err(_) => {
             write_stderr(b"reovim-server: kernel boot failed\n");
@@ -103,7 +124,7 @@ entry!(|argc, argv, _envp| {
     kernel.setup_session(state);
 
     // ── Start the UDS listener ────────────────────────────────────────────────
-    if start_listener(&kernel, socket_path).is_err() {
+    if start_listener(&kernel, socket_path, net_control(), thread_spawner()).is_err() {
         write_stderr(b"reovim-server: start_listener failed\n");
         return 1;
     }
@@ -123,24 +144,13 @@ entry!(|argc, argv, _envp| {
 fn park_forever(kernel: &Shared<reovim_kernel::Kernel>) -> i32 {
     // Keep a reference to the kernel alive so it is not dropped.
     let _ = Shared::clone(kernel);
-    // Sleep in 60-second increments via a FUTEX_WAIT on a local word.
-    // The syscall may return early (EINTR from signals); the loop re-parks.
-    // futex(uaddr, FUTEX_WAIT | FUTEX_PRIVATE_FLAG, val, timeout, uaddr2, val3):
-    //   timeout = 0 → block indefinitely (no timeout pointer in this low-level shim).
-    // Use FUTEX_WAIT on a word that never equals the expected value so the futex
-    // sleeps until EINTR (signal delivery re-parks us) or forever.
+    // Park on a local sync word through the system-kernel scheduler bridge. The
+    // lower provider may return early (for example signal delivery), so the
+    // loop re-parks indefinitely.
     let word = core::sync::atomic::AtomicU32::new(0);
-    let addr = ((&word) as *const core::sync::atomic::AtomicU32).addr();
+    let sync = sync_control();
     loop {
-        // FUTEX_WAIT with expected value 0 and no timeout = park until woken.
-        let _ = reovim_arch::sys::futex(
-            addr,
-            reovim_arch::sys::FUTEX_WAIT | reovim_arch::sys::FUTEX_PRIVATE_FLAG,
-            0,
-            0,
-            0,
-            0,
-        );
+        sync.park(&word, 0);
     }
 }
 
@@ -148,7 +158,7 @@ fn park_forever(kernel: &Shared<reovim_kernel::Kernel>) -> i32 {
 fn write_stderr(msg: &[u8]) {
     let mut off = 0;
     while off < msg.len() {
-        match reovim_arch::sys::write(2, &msg[off..]) {
+        match raw_fd_control().write(RawFd::stderr(), &msg[off..]) {
             Ok(0) | Err(_) => break,
             Ok(n) => off += n,
         }

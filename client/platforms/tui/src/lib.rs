@@ -1,7 +1,7 @@
-//! TUI platform runtime — thin UDS client + raw-`termios` ANSI paint (#797 Phase 4).
+//! TUI platform runtime — thin UDS client + raw terminal ANSI paint (#797 Phase 4).
 //!
 //! This is the deliberately THIN single-crate realization documented in 8.2 §2:
-//! the UDS carrier, the framed handshake, and the raw-`termios`/ANSI paint live
+//! the UDS carrier, the framed handshake, and raw terminal/ANSI paint live
 //! together until the second platform or driver consumer arrives. The 8.1
 //! `clients/lib/subsys/*` split grows out of this crate, not beside it (rule of
 //! three — the seam shapes are observed when the second consumer arrives).
@@ -10,8 +10,8 @@
 //!
 //! `ClientExt` may depend on `ClientContracts` + `Foundation`. There are no
 //! `ClientContracts` crates yet (`clients/lib/subsys/` is still empty in v0.16),
-//! so this crate depends on `Foundation` only: `arch`, `uapi/abi`,
-//! `uapi/protocol`.
+//! so this crate depends on `Foundation` only: pure DS containers plus
+//! `uapi/*` vocabulary. The optional `arch` edge is selftest-only.
 //!
 //! ## What this crate owns
 //!
@@ -20,19 +20,21 @@
 //! - [`input`]: raw-byte stdin read + `RawInput` classification.
 //! - [`frame`]: pure ANSI frame composer — `Projection` bytes → ANSI escape
 //!   sequence bytes.
-//! - [`paint`]: raw-`termios` paint loop — enter raw mode via the
-//!   `kabi/platform` `RawMode` guard, register the pre-exit terminal-restore
-//!   callback, read stdin + send `SendInput`, receive
+//! - [`paint`]: raw terminal paint loop — enter raw mode via the up-face
+//!   `uapi/terminal` control table supplied by the composition root, register
+//!   the pre-exit terminal-restore callback via the up-face `uapi/panic`
+//!   control table, read stdin + send `SendInput`, receive
 //!   `AttachEvent::Projection` + paint.
 //! - [`run`]: `pub fn run(args: RunArgs) -> Result<(), RunError>` — the platform
 //!   contract entry (8.2 §1).
 //!
 //! ## Pre-exit terminal-restore (gap-7, 8.2 §2)
 //!
-//! Before entering raw mode the platform runtime registers a terminal-restore
-//! function in [`arch::panic::set_pre_exit_hook`]. If the process panics, the
-//! panic handler calls the hook before rendering its output, so the terminal is
-//! back in cooked mode when the panic line reaches the controlling terminal.
+//! Before entering raw mode the platform runtime registers the supplied
+//! terminal-restore function through the panic/log control table. If the process
+//! panics, the handler calls the hook before rendering its output, so the
+//! terminal is back in cooked mode when the panic line reaches the controlling
+//! terminal.
 #![no_std]
 
 pub mod carrier;

@@ -33,7 +33,7 @@ Requirements:
 
 - Associated GitHub issue
 - Pass `./scripts/check.sh`
-- Follow code standards in [CLAUDE.md](./CLAUDE.md)
+- Follow the documented architecture and testing standards in this repository
 - Update CHANGELOG.md
 
 ## Code Standards

@@ -112,9 +112,10 @@ static FLUSH_LOCK: Mutex<()> = Mutex::new(());
 
 /// Returns the pre-rendered LOG2 ring mirror as a contiguous `'static` slice.
 ///
-/// This is the `RingTailProvider` (`fn() -> &'static [u8]`) registered with
-/// `arch::panic::set_ring_tail_provider` during boot. `arch` writes the returned
-/// slice verbatim ahead of the panic line and never parses entries (9.5 §9.1).
+/// This is the `RingTailProvider` (`fn() -> &'static [u8]`) registered through
+/// the injected panic control table during boot. The lower panic bridge writes
+/// the returned slice verbatim ahead of the panic line and never parses entries
+/// (9.5 §9.1).
 ///
 /// The cursor is loaded with `Acquire`: by the Release/Acquire discipline the
 /// bytes at `0..len` are already visible. No allocation, no lock.

@@ -1,9 +1,9 @@
-//! Phase 3 integration smoke: future-tree fixture exercising all four SP01 probes.
+//! Synthetic integration smoke for the split-tree depgraph probes.
 //!
 //! ## Purpose
 //!
-//! A single synthetic workspace that represents the target post-SP02/SP03/SP04
-//! tree shape, exercised against ALL nine probes (five existing + four new).
+//! A single synthetic workspace that represents the target split-tree shape,
+//! exercised against ALL nine probes (five existing + four new).
 //!
 //! The positive fixture asserts that the future-tree design — with `kabi`,
 //! `lib/ds`, and renamed `editor/` crates — passes every probe.
@@ -13,25 +13,24 @@
 //!
 //! ## Why this matters
 //!
-//! SP01's probe foundation is inert against the current tree (no `editor/`,
-//! `kabi/`, or `lib/ds` crates exist yet).  This fixture proves the
-//! foundation WILL classify and guard the SP02–SP04 target tree correctly,
-//! before any crates are moved.
+//! The probe foundation must classify and guard the split contract/DS/editor
+//! tree shape correctly even before the real workspace fully matches it.
 //!
 //! ## Fixture tree shape
 //!
 //! ```text
 //! arch/           → Foundation (reovim-arch)
-//! kabi/platform/  → Foundation (reovim-kabi-platform)  [SP02 placeholder]
-//! lib/ds/         → Foundation (reovim-lib-ds)          [SP03 placeholder]
-//! editor/lib/kernel/  → ServerKernel (reovim-editor-kernel)  [SP04 rename]
+//! kabi/platform/  → Foundation (reovim-kabi-platform)
+//! uapi/mm/        → Foundation (reovim-uapi-mm)
+//! lib/ds/         → Foundation (reovim-lib-ds)
+//! editor/lib/kernel/  → ServerKernel (reovim-editor-kernel)
 //! apps/server/    → Apps (reovim-server)
 //! ```
 //!
 //! Edges in the POSITIVE fixture:
 //! - `reovim-arch → reovim-kabi-platform`  (granted: arch → kabi)
 //! - `reovim-arch → reovim-lib-ds`         (granted: arch → lib/ds)
-//! - `reovim-lib-ds → reovim-kabi-platform` (granted: lib/ds → kabi)
+//! - `reovim-lib-ds → reovim-uapi-mm`      (granted: lib/ds → uapi/mm)
 //! - `reovim-editor-kernel → reovim-lib-ds` (`ServerKernel` → Foundation: allowed)
 //!
 //! The NEGATIVE mutant adds:
@@ -84,22 +83,26 @@ fn write_positive_fixture(root: &std::path::Path) {
     );
     common::write_file(root, "arch/src/lib.rs", "#![no_std]\n");
 
-    // kabi/platform contract (SP02 placeholder: leaf, no deps).
+    // kabi/platform contract (leaf, no deps).
     common::write_file(root, "kabi/platform/Cargo.toml", &pkg_toml("reovim-kabi-platform"));
     common::write_file(root, "kabi/platform/src/lib.rs", "#![no_std]\n");
 
-    // lib/ds algorithm crate (SP03 placeholder: → kabi only).
+    // uapi/mm contract (leaf, no deps).
+    common::write_file(root, "uapi/mm/Cargo.toml", &pkg_toml("reovim-uapi-mm"));
+    common::write_file(root, "uapi/mm/src/lib.rs", "#![no_std]\n");
+
+    // lib/ds algorithm crate (→ uapi/mm only).
     common::write_file(
         root,
         "lib/ds/Cargo.toml",
         &format!(
-            "{}\n[dependencies]\nreovim-kabi-platform = {{ path = \"../../kabi/platform\" }}\n",
+            "{}\n[dependencies]\nreovim-uapi-mm = {{ path = \"../../uapi/mm\" }}\n",
             pkg_toml("reovim-lib-ds")
         ),
     );
     common::write_file(root, "lib/ds/src/lib.rs", "#![no_std]\n// no arch:: references\n");
 
-    // editor/lib/kernel (SP04 rename placeholder: Math kernel → lib/ds only).
+    // editor/lib/kernel (Math kernel → lib/ds only).
     common::write_file(
         root,
         "editor/lib/kernel/Cargo.toml",
@@ -123,13 +126,13 @@ fn write_positive_fixture(root: &std::path::Path) {
     common::write_file(root, "apps/server/src/main.rs", "#![no_std]\n#![no_main]\n");
 }
 
-/// Returns a `ProbeConfig` with SP01 grants wired and an empty catalog
+/// Returns a `ProbeConfig` with the structural reorg grants wired and an empty catalog
 /// (no composition edges catalogued — we use this only for the DAG probe
 /// to check Foundation/category rules, not Apps composition edges which
 /// are tested separately).
 fn make_config_with_sp01_grants() -> ProbeConfig {
-    // default_foundation_grants() already includes the SP01 grants
-    // (arch → {kabi-platform, lib-ds}, lib-ds → kabi-platform).
+    // default_foundation_grants() already includes the structural reorg grants
+    // (arch → {kabi-platform, lib-ds}, lib-ds → uapi-mm).
     // Use it as-is; no manual extension needed.
     let grants = default_foundation_grants();
 
@@ -160,7 +163,7 @@ fn make_config_with_sp01_grants() -> ProbeConfig {
 
 // ── Positive fixture: future tree passes ALL probes ──────────────────────────
 
-/// The post-SP02/SP03/SP04 target tree must pass every probe:
+/// The target split tree must pass every probe:
 /// - `run_probe` (DAG1–DAG5 with SP01 grants)
 /// - `run_firewall_probe`
 /// - `run_lib_ds_purity_probe`
@@ -178,6 +181,7 @@ fn future_tree_positive_passes_all_probes() {
         &root_workspace_toml(&[
             "arch",
             "kabi/platform",
+            "uapi/mm",
             "lib/ds",
             "editor/lib/kernel",
             "apps/server",
@@ -272,6 +276,7 @@ fn future_tree_mutant_airlock_violation_trips_only_firewall() {
         &root_workspace_toml(&[
             "arch",
             "kabi/platform",
+            "uapi/mm",
             "lib/ds",
             "editor/lib/kernel",
             "apps/server",
@@ -325,18 +330,18 @@ fn future_tree_mutant_airlock_violation_trips_only_firewall() {
     );
 }
 
-// ── Phase 1 AC: integration smoke — SP01 grants + rows accept future tree ────
+// ── Integration smoke: grants + rows accept future tree ──────────────────────
 
-/// Verifies that the SP01 category-table rows + foundation grants correctly
+/// Verifies that the category-table rows + foundation grants correctly
 /// classify the future-tree fixture and that `run_probe` with `UngrantedFoundationEdge`
 /// grants produces zero category/edge violations.
 ///
-/// This is the Phase 1 AC integration smoke: "a fixture writes a synthetic
-/// workspace with arch → kabi + lib/ds → kabi + renamed editor/lib/kernel
+/// This integration smoke writes a synthetic
+/// workspace with arch → kabi + lib/ds → uapi/mm + renamed editor/lib/kernel
 /// crate, runs the existing DAG probe, and asserts zero `UngrantedFoundationEdge`
-/// / `ForbiddenEdge` / classification violations for those edges."
+/// / `ForbiddenEdge` / classification violations for those edges.
 #[test]
-fn phase1_ac_sp01_grants_accept_future_tree_dag_probe() {
+fn structural_grants_accept_future_tree_dag_probe() {
     let td = common::TempDir::new();
     let root = td.path();
     write_positive_fixture(root);
@@ -347,6 +352,7 @@ fn phase1_ac_sp01_grants_accept_future_tree_dag_probe() {
         &root_workspace_toml(&[
             "arch",
             "kabi/platform",
+            "uapi/mm",
             "lib/ds",
             "editor/lib/kernel",
             "apps/server",
@@ -362,13 +368,13 @@ fn phase1_ac_sp01_grants_accept_future_tree_dag_probe() {
             v,
             Violation::UngrantedFoundationEdge { from, to }
                 if (from == "reovim-arch" && (to == "reovim-kabi-platform" || to == "reovim-lib-ds"))
-                || (from == "reovim-lib-ds" && to == "reovim-kabi-platform")
+                || (from == "reovim-lib-ds" && to == "reovim-uapi-mm")
         )
     });
     assert!(
         !has_ungranted,
-        "Phase 1 AC: SP01 grants must eliminate UngrantedFoundationEdge for \
-         arch→{{kabi,lib-ds}} and lib-ds→kabi;\nviolations:\n{}",
+        "structural grants must eliminate UngrantedFoundationEdge for \
+         arch→{{kabi,lib-ds}} and lib-ds→uapi/mm;\nviolations:\n{}",
         report.summary()
     );
 
@@ -382,7 +388,7 @@ fn phase1_ac_sp01_grants_accept_future_tree_dag_probe() {
     });
     assert!(
         !has_forbidden,
-        "Phase 1 AC: editor/lib/kernel → lib/ds must not produce ForbiddenEdge \
+        "editor/lib/kernel → lib/ds must not produce ForbiddenEdge \
          (ServerKernel → Foundation is allowed by §2);\nviolations:\n{}",
         report.summary()
     );
@@ -394,7 +400,7 @@ fn phase1_ac_sp01_grants_accept_future_tree_dag_probe() {
         .any(|v| matches!(v, Violation::UnknownPath { path } if path.starts_with("kabi")));
     assert!(
         !has_kabi_unknown,
-        "Phase 1 AC: kabi/* must classify as Foundation (no UnknownPath);\n\
+        "kabi/* must classify as Foundation (no UnknownPath);\n\
          violations:\n{}",
         report.summary()
     );
@@ -406,7 +412,7 @@ fn phase1_ac_sp01_grants_accept_future_tree_dag_probe() {
         .any(|v| matches!(v, Violation::UnknownPath { path } if path.starts_with("editor")));
     assert!(
         !has_editor_unknown,
-        "Phase 1 AC: editor/lib/kernel must classify as ServerKernel (no UnknownPath);\n\
+        "editor/lib/kernel must classify as ServerKernel (no UnknownPath);\n\
          violations:\n{}",
         report.summary()
     );

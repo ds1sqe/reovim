@@ -4,9 +4,8 @@
 //!
 //! `lib/ds` crates must name no `arch` crate in any Cargo dependency table
 //! AND contain no `arch::` path reference in any source file (outside
-//! `#[cfg(test)]` blocks).  `lib/ds` reaches arch primitives (alloc, park)
-//! ONLY through the `kabi` platform handle — never by naming `arch` directly.
-//! The global handle static and `AllocError` live in `kabi`, not `arch`.
+//! `#[cfg(test)]` blocks).  `lib/ds` reaches allocator/park primitives through
+//! injected uapi control tables — never by naming `arch` directly.
 //!
 //! ## Coverage
 //!
@@ -19,8 +18,8 @@
 //! 3. **Negative fixture B (source `arch::`)** — a synthetic `lib/ds` crate
 //!    with a source file containing `use arch::alloc;` must trip the probe.
 //!
-//! 4. **Positive fixture** — a `lib/ds` crate with a dep on `reovim-kabi-platform`
-//!    and a source file using `kabi::` (not `arch::`) must produce zero violations.
+//! 4. **Positive fixture** — a `lib/ds` crate with a dep on `reovim-uapi-mm`
+//!    and source using no `arch::` path must produce zero violations.
 //!
 //! 5. **cfg(test) exemption** — `arch::` inside a `#[cfg(test)] mod` does NOT
 //!    trip the source-grep rule (test code may reference arch in tests).
@@ -142,44 +141,44 @@ fn lib_ds_purity_source_arch_ref_trips_probe() {
     );
 }
 
-// ── 4. Positive fixture: kabi dep + kabi:: source is allowed ─────────────────
+// ── 4. Positive fixture: uapi/mm dep is allowed ──────────────────────────────
 
-/// A `lib/ds` crate with a dep on `reovim-kabi-platform` (the correct
-/// Foundation peer) and source using `kabi::` paths must produce zero
-/// violations.
+/// A `lib/ds` crate with a dep on `reovim-uapi-mm` and source without `arch::`
+/// paths must produce zero violations.
 ///
-/// This is the intended post-SP02/SP03 shape: lib/ds reaches the allocator
-/// through the kabi handle, not by naming arch directly.
+/// This is the intended post-05-I15b shape: lib/ds reaches the allocator
+/// through an injected up-face control table, not by naming lower faces.
 #[test]
-fn lib_ds_purity_kabi_dep_is_clean() {
+fn lib_ds_purity_uapi_mm_dep_is_clean() {
     let td = common::TempDir::new();
     let root = td.path();
 
-    // kabi/platform crate (future SP02 deliverable; inert name here).
-    common::write_file(root, "kabi/platform/Cargo.toml", &pkg_toml("reovim-kabi-platform"));
-    // lib/ds crate with a dep on kabi (allowed) and kabi:: source (allowed).
+    // uapi/mm crate (injected allocator vocabulary).
+    common::write_file(root, "uapi/mm/Cargo.toml", &pkg_toml("reovim-uapi-mm"));
+    common::write_file(root, "uapi/mm/src/lib.rs", "#![no_std]\n");
+    // lib/ds crate with a dep on uapi/mm (allowed).
     common::write_file(
         root,
         "lib/ds/Cargo.toml",
         &format!(
-            "{}\n[dependencies]\nreovim-kabi-platform = {{ path = \"../../kabi/platform\" }}\n",
+            "{}\n[dependencies]\nreovim-uapi-mm = {{ path = \"../../uapi/mm\" }}\n",
             pkg_toml("reovim-lib-ds")
         ),
     );
     common::write_file(
         root,
         "lib/ds/src/lib.rs",
-        "#![no_std]\n// Uses kabi handle, not arch directly.\n",
+        "#![no_std]\n// Uses injected uapi/mm controls, not arch directly.\n",
     );
 
-    common::write_file(root, "Cargo.toml", &root_workspace_toml(&["kabi/platform", "lib/ds"]));
+    common::write_file(root, "Cargo.toml", &root_workspace_toml(&["uapi/mm", "lib/ds"]));
 
     let violations =
         run_lib_ds_purity_probe(root).expect("lib/ds purity probe must run on positive fixture");
 
     assert!(
         violations.is_empty(),
-        "lib-ds-purity positive fixture: kabi dep must NOT trip the probe;\n\
+        "lib-ds-purity positive fixture: uapi/mm dep must NOT trip the probe;\n\
          violations: {violations:?}"
     );
 }

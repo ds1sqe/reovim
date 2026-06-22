@@ -24,12 +24,15 @@
 // pointers. The allow is scoped to this bin.
 #![allow(unsafe_code)]
 
-use reovim_kernel::{Init, LauncherArgs};
+use {
+    reovim_kernel::{Init, LauncherArgs},
+    reovim_uapi::panic::{Disposition, PanicFlushTarget},
+};
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use reovim_arch_floor_linux_x86_64::entry;
 #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
 use reovim_arch_floor_linux_aarch64::entry;
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use reovim_arch_floor_linux_x86_64::entry;
 
 entry!(|argc, argv, _envp| {
     // Install the platform handle as the closure's first statement, before
@@ -37,16 +40,23 @@ entry!(|argc, argv, _envp| {
     // `fixtures_exec.rs`), so only the real POSIX provider is needed — no
     // bare-metal scaffold branch.
     let _ = reovim_platform_linux_native::install_platform();
+    let _ = reovim_system_kernel::mm::install_lib_ds_alloc_backend();
+    let _ = reovim_system_kernel::sched::install_lib_ds_sync_backend();
     // SAFETY: `argc`/`argv` are the kernel-supplied startup vectors `_start`
     // forwarded: `argv` has `argc` C-string entries then a NULL terminator.
     let Some(fd) = (unsafe { open_sink_from_argv(argc, argv) }) else {
         return 1;
     };
 
-    // Register the flush fd BEFORE booting. `boot()` registers the other
-    // three seam hooks (ring_tail_provider, state_record_hook, disposition).
-    // `set_flush_fd` is a separate hook slot — no conflict.
-    if reovim_arch::panic::set_flush_fd(fd).is_err() {
+    let panic = reovim_system_kernel::panic::panic_control();
+
+    // Register the flush target BEFORE booting. `boot()` registers the other
+    // three panic/log slots (ring_tail_provider, state_record_hook,
+    // disposition). The flush target is a separate slot — no conflict.
+    if panic
+        .set_flush_target(PanicFlushTarget::from_raw_fd(fd))
+        .is_err()
+    {
         return 2;
     }
 
@@ -59,7 +69,8 @@ entry!(|argc, argv, _envp| {
     // populating the flush mirror. The ring content is sufficient for the
     // "a few log lines" AC; no additional emits are needed.
     let args = LauncherArgs {
-        disposition: reovim_arch::panic::Disposition::Halt,
+        disposition: Disposition::Halt,
+        panic,
         ..LauncherArgs::default()
     };
     let _kernel = match Init::new(args).boot() {

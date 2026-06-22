@@ -24,9 +24,9 @@
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 mod arena;
-// Raw hardware-discovery facts (asm register reads + the mailbox/arena-backed
-// memory map). The device-neutral `BootInfo` assembly that decodes them lifted
-// into `reovim-system-kernel` (SP04 04a); the raw mechanism stays here.
+// Hardware-discovery facts (asm register reads + target-specific register
+// decoding + the mailbox/arena-backed memory map). The system-kernel bridge
+// receives already-neutral values; the target register semantics stay here.
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 mod boot_info;
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
@@ -86,11 +86,26 @@ pub static DTB_PTR: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU6
 
 // ---- raw-fact provider surface for the boot composition root -----------------
 //
-// The device-neutral `BootInfo` assembly lifted into `reovim-system-kernel`
-// (SP04 04a). The asm register reads + the mailbox/arena raw mechanism it
-// decodes STAY here (invariant #4, asm confinement); boot composition roots
-// gather them through these crate-root accessors and pass plain facts into the
-// system-kernel bridge.
+// The asm register reads, target-specific register decoding, and mailbox/arena
+// raw mechanism STAY here (invariant #4, asm confinement); boot composition
+// roots gather neutral facts through these crate-root accessors and pass them
+// into the system-kernel bridge.
+
+/// Decoded cache geometry from the target's cache-identification registers.
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+pub use boot_info::Aarch64CacheGeometry;
+
+/// Reads and decodes aarch64 cache geometry into neutral byte counts.
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+pub use boot_info::cache_geometry;
+
+/// Reads `MPIDR_EL1` as the neutral CPU-affinity fact.
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+pub use boot_info::cpu_affinity;
+
+/// Reads and decodes `MIDR_EL1` into the neutral CPU-id fact.
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+pub use boot_info::cpu_id;
 
 /// Reads `CLIDR_EL1`, the cache-level-id register (NATIVE u64).
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
@@ -109,8 +124,8 @@ pub use boot_info::midr;
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 pub use boot_info::mpidr;
 /// Selects and reads the `CCSIDR_EL1` cache-size register for one cache (the raw
-/// `asm!` selector write + read); the system-kernel bridge decodes the returned
-/// value after the composition root passes it in.
+/// `asm!` selector write + read). Normal boot composition should prefer the
+/// neutral [`cache_geometry`] accessor.
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 pub use boot_info::read_ccsidr;
 

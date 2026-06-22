@@ -7,19 +7,19 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "Portable heap-DS algorithms (Seq, Map, Bytes, Mutex, RwLock, Condvar) reaching their allocator/futex backend through the kabi platform handle"
+description = "Portable heap-DS algorithms (Seq, Map, Bytes, Mutex, RwLock, Condvar) reaching allocator/futex backends through injected uapi control tables"
 publish = false
 
 [dependencies]
-# The down-face platform contract. lib/ds reaches its allocator + park/unpark
-# backend through the boot-installed kabi handle; it names NO implementor (no
-# `arch` edge — master invariant 2: lib/ds ⊄ arch).
-reovim-kabi-platform = { path = "../../kabi/platform" }
+# Product-facing memory-management controls. Heap-owning containers use an
+# injected allocation control table instead of calling the down-face platform
+# handle directly.
+reovim-uapi-mm = { path = "../../uapi/inner/mm" }
 
-# The canonical POSIX vocabulary (Errno/OpenFlags/Mode). lib/ds names these
-# newtypes in its fd-op error and file-open surfaces so the fd-op vocabulary
-# has a single home; uapi/posix is a #![no_std] zero-dep leaf (DAG5/DAG6).
-reovim-uapi-posix = { path = "../../uapi/posix" }
+# Product-facing scheduler/sync controls. The futex-backed lock primitives use
+# an injected sync control table instead of calling the down-face platform handle
+# directly.
+reovim-uapi-sched = { path = "../../uapi/inner/sched" }
 
 [lints]
 workspace = true

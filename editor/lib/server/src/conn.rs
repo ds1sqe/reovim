@@ -6,7 +6,7 @@
 //! drives the wire-level handshake and correlation rules; `ConnState` tracks
 //! the higher-level attach status.
 
-use reovim_uapi_protocol::state::{ProtocolState, Role};
+use reovim_uapi::protocol::state::{ProtocolState, Role};
 
 // ── ConnPhase ─────────────────────────────────────────────────────────────────
 

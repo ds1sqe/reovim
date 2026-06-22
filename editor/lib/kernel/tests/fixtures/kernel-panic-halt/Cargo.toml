@@ -25,6 +25,8 @@ doctest = false
 # a test-runner.
 reovim-kernel = { path = "../../..", features = ["runtime"] }
 reovim-arch = { path = "../../../../../../arch", features = ["runtime"] }
+reovim-system-kernel = { path = "../../../../../../system/lib/kernel" }
+reovim-uapi = { path = "../../../../../../uapi" }
 
 # The platform-handle installer this composition root drives. The fixture is
 # host-only (native-only pin per `fixtures_exec.rs`), so only the real POSIX

@@ -12,7 +12,7 @@
 //! - `\n` escaping: embedded newlines in the message are escaped as `\n`.
 //! - Timestamp format: seconds right-aligned min width 5, micros zero-padded 6.
 
-use {reovim_arch::arch_test, reovim_uapi_abi::error::LogLevel};
+use {reovim_arch::arch_test, reovim_uapi::abi::error::LogLevel};
 
 use crate::log::render::{
     EmitterAddress, InstanceAddress, RenderError, RenderInput, boot_stage_message, render_line,

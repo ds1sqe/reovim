@@ -14,19 +14,18 @@ publish = false
 workspace = true
 
 [dependencies]
-# The one-way transitional backend edge (SP02 → retired in SP05), mirroring the
-# linux-native provider: the stub's live slots name arch's alloc + clock
-# backends (`arch::alloc::{alloc,dealloc}`, `arch::time::{Instant,realtime}`)
-# and the raw syscall floor (`arch::sys::*` — futex for park/unpark, `write`
-# for the `file_write` UART sink). It is acyclic because arch never names the
-# stub back — the fixture composition root drives install, not arch (master
-# invariant 8). reovim-arch is a #![no_std] crate; DAG5/DAG6 are preserved.
-reovim-arch = { path = "../../arch" }
-
 # The down-face contract this crate implements: the `#[repr(C)] PlatformVtable`
 # slots, the write-once `install()` gate, and `InstallError`. A #![no_std] leaf
 # with no third-party deps, so DAG5/DAG6 hold.
 reovim-kabi-platform = { path = "../../kabi/platform" }
 
-# No [dev-dependencies] or [build-dependencies] (DAG5/DAG6: zero third-party
-# deps). Beyond the two in-repo path deps above, only `core` is consumed.
+# No [dev-dependencies] or [build-dependencies] (DAG5/DAG6: zero third-party deps).
+# Beyond the in-repo path deps above/below, only `core` is consumed.
+
+[target.'cfg(all(target_os = "none", target_arch = "x86_64"))'.dependencies]
+# Raw target mechanism for the freestanding x86_64 scaffold provider.
+reovim-arch-sys-none-x86-64 = { path = "../../arch/sys-none-x86-64" }
+
+[target.'cfg(all(target_os = "none", target_arch = "aarch64"))'.dependencies]
+# Raw target mechanism for the freestanding aarch64 scaffold provider.
+reovim-arch-sys-none-aarch64 = { path = "../../arch/sys-none-aarch64" }

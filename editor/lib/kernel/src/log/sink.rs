@@ -31,27 +31,19 @@
 //!
 //! ## Early stderr gate (LOG8)
 //!
-//! `stderr_echo` writes a rendered line to fd 2 when the sink is not yet open
-//! (`fd` is `None`) or when the headless flag is set. This is called from
+//! `stderr_echo` writes a rendered line to diagnostic output when the sink is
+//! not yet open or when the headless flag is set. This is called from
 //! `LogRing::push_event` — a one-way ring→sink gate.
 
-use reovim_lib_ds::{
-    Mutex, Shared,
-    fs::{File, O_CLOEXEC, O_CREAT, O_WRONLY, SysError, close_fd, write_fd},
+use {
+    reovim_lib_ds::{Mutex, Shared},
+    reovim_uapi::log::{LogSinkControl, LogSinkError, LogSinkHandle},
 };
 
 use crate::{
     event_bus::{BootStageFields, DS12Event, DS12EventBus, SubscribeError},
     log::render::render_event,
 };
-
-// ── O_APPEND ──────────────────────────────────────────────────────────────────
-//
-// `O_APPEND` (0o2000 / 1024 decimal) is not among the lib/ds open-flag
-// constants the sink imports. Defined locally; matches Linux `x86_64` and
-// `aarch64` (same value on both). When lib/ds `fs` gains the export, replace
-// this with the import.
-const O_APPEND: i32 = 0o2000;
 
 // ── OBS1 event constant (9.5 family) ─────────────────────────────────────────
 
@@ -70,10 +62,12 @@ pub const EVT_LOG_SINK_FAIL: &str = "log.sink.fail";
 
 /// Interior state of the process-global file sink.
 struct SinkState {
-    /// Open file descriptor (`>= 0`), or `None` when not yet opened or after
-    /// a fatal failure.
-    fd: Option<i32>,
-    /// When `true`, rendered lines continue to be written to fd 2 (stderr)
+    /// Open log sink handle, or `None` when not yet opened or after a fatal
+    /// failure.
+    handle: Option<LogSinkHandle>,
+    /// Up-face log sink control table supplied by the composition root.
+    control: LogSinkControl,
+    /// When `true`, rendered lines continue to be written to diagnostic output
     /// after the sink opens (headless-server posture). Placeholder default
     /// `true`; TUI-suppression policy lands with the client phase (Phase E).
     headless: bool,
@@ -90,7 +84,8 @@ impl SinkState {
     /// Const-constructible initial state (sink closed, headless by default).
     const fn initial() -> Self {
         Self {
-            fd: None,
+            handle: None,
+            control: noop_log_sink_control(),
             headless: true,
             closed: false,
             bus: None,
@@ -108,6 +103,44 @@ impl SinkState {
 // test case (selftest-gated).
 
 static SINK: Mutex<SinkState> = Mutex::new(SinkState::initial());
+
+const fn noop_log_sink_control() -> LogSinkControl {
+    LogSinkControl::new(
+        noop_open_log_sink,
+        noop_write_log_sink,
+        noop_close_log_sink,
+        noop_register_panic_flush,
+        noop_write_diagnostic,
+    )
+}
+
+fn noop_open_log_sink(_: &[u8]) -> Result<LogSinkHandle, LogSinkError> {
+    Err(LogSinkError::new(0))
+}
+
+fn noop_write_log_sink(_: LogSinkHandle, _: &[u8]) -> Result<(), LogSinkError> {
+    Ok(())
+}
+
+fn noop_close_log_sink(_: LogSinkHandle) -> Result<(), LogSinkError> {
+    Ok(())
+}
+
+fn noop_register_panic_flush(_: LogSinkHandle) -> Result<(), reovim_uapi::panic::PanicConfigError> {
+    Ok(())
+}
+
+fn noop_write_diagnostic(_: &[u8]) -> Result<(), LogSinkError> {
+    Ok(())
+}
+
+/// Installs the process log sink control table.
+///
+/// Called by `Init::boot` from `LauncherArgs`. Tests that construct a
+/// `FileSink` without booting can call this directly under `selftest`.
+pub(crate) fn install_control(control: LogSinkControl) {
+    SINK.lock().control = control;
+}
 
 // ── FileSink ─────────────────────────────────────────────────────────────────
 
@@ -215,18 +248,10 @@ impl FileSink {
     ) -> Result<(), SinkOpenError> {
         // ── Open the log file ─────────────────────────────────────────────────
         //
-        // O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC
-        // O_APPEND: sequential writes go to end even if another process has
-        // the file open. O_TRUNC is intentionally absent: we replay the ring
-        // head after open so the file contains the full boot history.
-        // Mode 0o644: owner read/write, group/other read.
-        let flags = O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC;
-        let open_result = File::open(&self.path[..self.path_len], flags, 0o644);
-        let fd = match open_result {
-            // Take the raw fd out of the RAII `File`: the sink drives the fd
-            // through a manual lifecycle (it registers it as the panic-flush fd
-            // and closes it on its own failure path), so it owns the close.
-            Ok(file) => file.into_raw_fd(),
+        let control = SINK.lock().control;
+        let open_result = control.open_file_sink(&self.path[..self.path_len]);
+        let handle = match open_result {
+            Ok(handle) => handle,
             Err(errno) => {
                 // Emit log.sink.fail advisory event after returning the error.
                 // We emit here (before return) so the event is visible even if
@@ -236,26 +261,28 @@ impl FileSink {
             }
         };
 
-        // ── Store fd and bus clone in global sink state ───────────────────────
+        // ── Store sink handle and bus clone in global sink state ──────────────
         {
             let mut st = SINK.lock();
-            st.fd = Some(fd);
+            st.handle = Some(handle);
+            st.control = control;
             st.bus = Some(Shared::clone(bus));
             st.closed = false;
         }
 
-        // ── Register the panic-flush fd (AB12, 9.5 §9.1) ─────────────────────
+        // ── Register the panic-flush target (AB12, 9.5 §9.1) ─────────────────
         //
-        // `set_flush_fd` is write-once. We register it here (sink-open time)
-        // rather than at boot because the fd does not exist until the file is
-        // opened. The arch write-once contract prevents correction after the
-        // fact, so we cannot register a placeholder at boot. The default posture
-        // (no fd → panic writes to stderr) is safe until this point.
+        // The target is write-once. We register it here (sink-open time) rather
+        // than at boot because the log sink does not exist until the file is
+        // opened. The write-once contract prevents correction after the fact, so
+        // we cannot register a placeholder at boot. The default posture (no
+        // target → panic writes to stderr) is safe until this point.
         //
-        // `AlreadySet` means another sink previously registered a fd for this
-        // process (multi-sink scenario, or re-open in tests). Silently accept it:
-        // the first registered fd wins and is used by the panic handler.
-        let _ = reovim_kabi_panic::set_flush_fd(fd);
+        // `AlreadyConfigured` means another sink previously registered a target
+        // for this process (multi-sink scenario, or re-open in tests). Silently
+        // accept it: the first registered target wins and is used by the panic
+        // handler.
+        let _ = control.register_panic_flush(handle);
 
         // ── Replay ring head (LOG8) ───────────────────────────────────────────
         //
@@ -263,7 +290,7 @@ impl FileSink {
         // full boot sequence including events emitted before the sink opened.
         // Best-effort: a short write on replay does not abort boot.
         ring.for_each(|entry| {
-            let _ = write_all_to_fd(fd, entry.line.as_slice());
+            let _ = control.write_sink(handle, entry.line.as_slice());
         });
 
         // ── Subscribe to the bus ───────────────────────────────────────────────
@@ -297,11 +324,14 @@ impl FileSink {
 
 impl Drop for FileSink {
     fn drop(&mut self) {
-        // Close the fd if still open. Ignore close errors — we are in Drop
+        // Close the sink if still open. Ignore close errors — we are in Drop
         // and cannot propagate (best-effort teardown).
-        let maybe_fd = SINK.lock().fd.take();
-        if let Some(fd) = maybe_fd {
-            let _ = close_fd(fd);
+        let (control, maybe_handle) = {
+            let mut st = SINK.lock();
+            (st.control, st.handle.take())
+        };
+        if let Some(handle) = maybe_handle {
+            let _ = control.close_sink(handle);
         }
     }
 }
@@ -311,9 +341,9 @@ impl Drop for FileSink {
 /// The DS12 subscriber callback for the file sink.
 ///
 /// Reads the process-global `SINK` state, renders the event as a LOG2 line,
-/// and writes to the file fd and/or stderr. On a write failure: marks the sink
-/// closed (LOG7 non-blocking), drops the lock, then emits one `log.sink.fail`
-/// event via the stored bus clone. Re-entrant emission is safe: CC6
+/// and writes to the file sink and/or diagnostic output. On a write failure:
+/// marks the sink closed (LOG7 non-blocking), drops the lock, then emits one
+/// `log.sink.fail` event via the stored bus clone. Re-entrant emission is safe: CC6
 /// clone-then-invoke holds no lock across callbacks, and the now-closed sink
 /// ignores the re-entrant event.
 fn sink_subscriber_callback(event: &DS12Event) {
@@ -325,7 +355,7 @@ fn sink_subscriber_callback(event: &DS12Event) {
     };
     let bytes = line.as_slice();
 
-    // Acquire the sink lock only to read fd/flags and potentially mark closed.
+    // Acquire the sink lock only to read handle/flags and potentially mark closed.
     let maybe_bus = {
         let mut st = SINK.lock();
 
@@ -333,18 +363,19 @@ fn sink_subscriber_callback(event: &DS12Event) {
         if st.closed {
             return;
         }
-        let Some(fd) = st.fd else {
+        let Some(handle) = st.handle else {
             return;
         };
+        let control = st.control;
 
-        if write_all_to_fd(fd, bytes) {
+        if control.write_sink(handle, bytes).is_ok() {
             None // write succeeded — no failure to report
         } else {
             // Mark closed first (stops future writes), then extract the bus
             // clone so we can emit outside the lock.
             st.closed = true;
-            let _ = close_fd(fd);
-            st.fd = None;
+            let _ = control.close_sink(handle);
+            st.handle = None;
             st.bus.take() // Some(Shared<DS12EventBus>) if available
         }
     };
@@ -357,11 +388,11 @@ fn sink_subscriber_callback(event: &DS12Event) {
 
 // ── Early stderr gate (LOG8) ──────────────────────────────────────────────────
 
-/// Writes a rendered LOG2 line to fd 2 (stderr) when appropriate (LOG8).
+/// Writes a rendered LOG2 line to diagnostic output when appropriate (LOG8).
 ///
 /// Called from `LogRing::push_event` after each append (one-way ring→sink
-/// gate). Writes to fd 2 when:
-/// - the sink has not yet been opened (`fd` is `None`), OR
+/// gate). Writes to diagnostic output when:
+/// - the sink has not yet been opened, OR
 /// - the headless flag is `true` (server posture, stderr mirrors log file).
 ///
 /// Does nothing when the sink is open and headless is `false` (TUI posture).
@@ -374,9 +405,10 @@ fn sink_subscriber_callback(event: &DS12Event) {
 pub fn stderr_echo(line: &[u8]) {
     let st = SINK.lock();
     // Write to stderr when sink is not open yet (early boot) or headless.
-    if st.fd.is_none() || st.headless {
+    if st.handle.is_none() || st.headless {
+        let control = st.control;
         drop(st); // release lock before the write syscall
-        let _ = write_all_to_fd(2, line);
+        let _ = control.write_diagnostic(line);
     }
 }
 
@@ -392,7 +424,7 @@ pub fn stderr_echo(line: &[u8]) {
 fn emit_sink_fail(bus: &DS12EventBus, errno: i32) {
     bus.emit(&DS12Event {
         ts_nanos: 0, // no BootClock available at callback time; 0 is the sentinel
-        level: reovim_uapi_abi::error::LogLevel::Error,
+        level: reovim_uapi::abi::error::LogLevel::Error,
         event: EVT_LOG_SINK_FAIL,
         fields: BootStageFields {
             stage: 0,
@@ -401,31 +433,12 @@ fn emit_sink_fail(bus: &DS12EventBus, errno: i32) {
     });
 }
 
-// ── Write helper ──────────────────────────────────────────────────────────────
-
-/// Writes all of `buf` to `fd`, looping over short writes.
-///
-/// Returns `true` if all bytes were written, `false` on the first error or
-/// zero-byte stall. Best-effort, matching LOG7's non-blocking contract.
-/// Never panics.
-#[must_use]
-fn write_all_to_fd(fd: i32, buf: &[u8]) -> bool {
-    let mut off = 0;
-    while off < buf.len() {
-        match write_fd(fd, &buf[off..]) {
-            Ok(0) | Err(_) => return false,
-            Ok(n) => off += n,
-        }
-    }
-    true
-}
-
 // ── Test helpers (selftest-gated) ─────────────────────────────────────────────
 
 /// Resets the process-global sink to the initial state.
 ///
 /// Must be called at the start of every sink test to ensure tests do not
-/// share state. If a previous test left an fd open it is closed here.
+/// share state. If a previous test left a sink handle open it is closed here.
 ///
 /// Only available under the `selftest` feature (enforced at compile time to
 /// prevent accidental production use).
@@ -436,23 +449,25 @@ fn write_all_to_fd(fd: i32, buf: &[u8]) -> bool {
 #[cfg(feature = "selftest")]
 pub fn reset_for_test() {
     let mut st = SINK.lock();
-    if let Some(fd) = st.fd.take() {
-        let _ = close_fd(fd);
+    if let Some(handle) = st.handle.take() {
+        let _ = st.control.close_sink(handle);
     }
+    st.control = noop_log_sink_control();
     st.headless = true;
     st.closed = false;
     st.bus = None;
 }
 
-/// Injects a pre-opened (but immediately invalidated) fd into the sink state
+/// Injects a pre-opened (but immediately invalidated) sink handle into the sink state
 /// for write-failure testing, and registers the sink subscriber callback on
 /// `bus`.
 ///
-/// Callers open a file, store its fd in the sink via this function, then close
-/// the fd externally so the next write fails. The test can then assert that
-/// the sink transitions to the closed state and emits `log.sink.fail`.
+/// Callers open a file, store its handle in the sink via this function, then
+/// invalidate the underlying sink externally so the next write fails. The test
+/// can then assert that the sink transitions to the closed state and emits
+/// `log.sink.fail`.
 ///
-/// Registering the subscriber on `bus` is necessary because `inject_fd_for_test`
+/// Registering the subscriber on `bus` is necessary because `inject_handle_for_test`
 /// bypasses the normal `open_and_subscribe` path that would call `bus.subscribe`.
 ///
 /// Only available under the `selftest` feature.
@@ -461,10 +476,15 @@ pub fn reset_for_test() {
 /// // no_run: selftest-gated — not available in production builds.
 /// ```
 #[cfg(feature = "selftest")]
-pub fn inject_fd_for_test(fd: i32, bus: Shared<DS12EventBus>) {
+pub fn inject_handle_for_test(
+    handle: LogSinkHandle,
+    control: LogSinkControl,
+    bus: Shared<DS12EventBus>,
+) {
     {
         let mut st = SINK.lock();
-        st.fd = Some(fd);
+        st.handle = Some(handle);
+        st.control = control;
         st.closed = false;
         st.bus = Some(Shared::clone(&bus));
     }
@@ -488,8 +508,8 @@ pub fn inject_fd_for_test(fd: i32, bus: Shared<DS12EventBus>) {
 /// ```
 #[derive(Debug, Clone, Copy)]
 pub enum SinkOpenError {
-    /// The file open through the handle failed.
-    Open(SysError),
+    /// The file open through the log control table failed.
+    Open(LogSinkError),
     /// The bus subscriber capacity was exhausted.
     Subscribe,
 }

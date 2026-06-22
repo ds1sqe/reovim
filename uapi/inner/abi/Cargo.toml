@@ -1,0 +1,25 @@
+[package]
+name = "reovim-uapi-abi"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Frozen #[repr(C)] ABI type catalog (6.2/6.3/6.4) — the single layout authority"
+publish = false
+
+[features]
+# Compiles per-module sibling test files INTO the lib (L12.1 layout).
+# Tests register via arch::testrt arch_test! and run on the no_std selftest
+# runner.  Off in flight builds; the selftest bin enables it explicitly.
+# Phase 5 owns the selftest bin setup.
+selftest = []
+
+[lints]
+workspace = true
+
+# No [dependencies]: uapi/inner/abi is core-only (L9/DAG5 + L10/DAG6).
+# SessionId(Arc<str>) does NOT appear as a crossable field — the catalog
+# exposes an opaque *mut c_void session handle (6.3 §2.1 note).

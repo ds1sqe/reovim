@@ -3,8 +3,8 @@ resolver = "2"
 members = [
     "lib/depgraph",
     # Portable heap-DS algorithms (Seq/Map/Bytes/Mutex/RwLock/Condvar) — Math;
-    # reaches its allocator + futex backend through the kabi handle (SP03,
-    # lib/ds → kabi only, never arch).
+    # reaches allocator + futex backends through injected uapi control tables,
+    # never arch/provider/kabi handles directly.
     "lib/ds",
     # Core-only no_std test runtime carved out of reovim-arch (SP07): the
     # arch_test! distributed-slice collector, fail-fast reporter, and
@@ -40,12 +40,19 @@ members = [
     # *-unknown-none, where linux-native cannot link. Empty on Linux
     # (cfg(not(target_os = "linux"))).
     "platform/stub-none",
-    "uapi/abi",
-    "uapi/posix",
-    "uapi/panic",
-    "uapi/protocol",
-    "uapi/module-macros",
-    "uapi/driver-macros",
+    "uapi",
+    "uapi/inner/abi",
+    "uapi/inner/fs",
+    "uapi/inner/mm",
+    "uapi/inner/net",
+    "uapi/inner/panic",
+    "uapi/inner/log",
+    "uapi/inner/sched",
+    "uapi/inner/system",
+    "uapi/inner/terminal",
+    "uapi/inner/protocol",
+    "uapi/inner/module-macros",
+    "uapi/inner/driver-macros",
     # Down-face platform contract: the #[repr(C)] handle vtable arch implements
     # (SP02, arch → kabi). A leaf — depends on nothing impl-side.
     "kabi/platform",

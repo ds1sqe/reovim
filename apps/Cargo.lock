@@ -6,7 +6,6 @@ version = 4
 name = "reovim"
 version = "0.16.0-dev"
 dependencies = [
- "reovim-arch",
  "reovim-arch-floor-linux-aarch64",
  "reovim-arch-floor-linux-x86-64",
  "reovim-domain-text",
@@ -15,23 +14,8 @@ dependencies = [
  "reovim-platform-linux-native",
  "reovim-platform-tui",
  "reovim-server-rt",
- "reovim-uapi-abi",
-]
-
-[[package]]
-name = "reovim-arch"
-version = "0.16.0-dev"
-dependencies = [
- "reovim-arch-sys-linux-aarch64",
- "reovim-arch-sys-linux-x86-64",
- "reovim-arch-sys-none-aarch64",
- "reovim-arch-sys-none-x86-64",
- "reovim-kabi-panic",
- "reovim-kabi-platform",
- "reovim-lib-ds",
- "reovim-testrt",
- "reovim-uapi-panic",
- "reovim-uapi-posix",
+ "reovim-system-kernel",
+ "reovim-uapi",
 ]
 
 [[package]]
@@ -67,21 +51,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "reovim-arch-sys-none-aarch64"
-version = "0.16.0-dev"
-dependencies = [
- "reovim-kabi-platform",
- "reovim-testrt",
-]
-
-[[package]]
-name = "reovim-arch-sys-none-x86-64"
-version = "0.16.0-dev"
-dependencies = [
- "reovim-testrt",
-]
-
-[[package]]
 name = "reovim-domain-text"
 version = "0.16.0-dev"
 dependencies = [
@@ -99,54 +68,45 @@ dependencies = [
 [[package]]
 name = "reovim-kabi-platform"
 version = "0.16.0-dev"
-dependencies = [
- "reovim-uapi-posix",
-]
 
 [[package]]
 name = "reovim-kernel"
 version = "0.16.0-dev"
 dependencies = [
- "reovim-kabi-panic",
- "reovim-kabi-platform",
  "reovim-lib-ds",
  "reovim-subsys-domain",
- "reovim-uapi-abi",
+ "reovim-uapi",
 ]
 
 [[package]]
 name = "reovim-lib-ds"
 version = "0.16.0-dev"
 dependencies = [
- "reovim-kabi-platform",
- "reovim-uapi-posix",
+ "reovim-uapi-mm",
+ "reovim-uapi-sched",
 ]
 
 [[package]]
 name = "reovim-platform-linux-native"
 version = "0.16.0-dev"
 dependencies = [
- "reovim-arch",
+ "reovim-arch-sys-linux-aarch64",
+ "reovim-arch-sys-linux-x86-64",
  "reovim-kabi-platform",
- "reovim-uapi-posix",
 ]
 
 [[package]]
 name = "reovim-platform-tui"
 version = "0.16.0-dev"
 dependencies = [
- "reovim-kabi-panic",
- "reovim-kabi-platform",
  "reovim-lib-ds",
- "reovim-uapi-abi",
- "reovim-uapi-protocol",
+ "reovim-uapi",
 ]
 
 [[package]]
 name = "reovim-server"
 version = "0.16.0-dev"
 dependencies = [
- "reovim-arch",
  "reovim-arch-floor-linux-aarch64",
  "reovim-arch-floor-linux-x86-64",
  "reovim-domain-text",
@@ -154,7 +114,8 @@ dependencies = [
  "reovim-lib-ds",
  "reovim-platform-linux-native",
  "reovim-server-rt",
- "reovim-uapi-abi",
+ "reovim-system-kernel",
+ "reovim-uapi",
 ]
 
 [[package]]
@@ -164,16 +125,32 @@ dependencies = [
  "reovim-kernel",
  "reovim-lib-ds",
  "reovim-subsys-domain",
- "reovim-uapi-abi",
- "reovim-uapi-protocol",
+ "reovim-uapi",
 ]
 
 [[package]]
 name = "reovim-subsys-domain"
 version = "0.16.0-dev"
 dependencies = [
+ "reovim-lib-ds",
+]
+
+[[package]]
+name = "reovim-system-kernel"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-kabi-panic",
  "reovim-kabi-platform",
  "reovim-lib-ds",
+ "reovim-testrt",
+ "reovim-uapi-fs",
+ "reovim-uapi-log",
+ "reovim-uapi-mm",
+ "reovim-uapi-net",
+ "reovim-uapi-panic",
+ "reovim-uapi-sched",
+ "reovim-uapi-system",
+ "reovim-uapi-terminal",
 ]
 
 [[package]]
@@ -181,15 +158,46 @@ name = "reovim-testrt"
 version = "0.16.0-dev"
 
 [[package]]
+name = "reovim-uapi"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-uapi-abi",
+ "reovim-uapi-fs",
+ "reovim-uapi-log",
+ "reovim-uapi-mm",
+ "reovim-uapi-net",
+ "reovim-uapi-panic",
+ "reovim-uapi-protocol",
+ "reovim-uapi-sched",
+ "reovim-uapi-system",
+ "reovim-uapi-terminal",
+]
+
+[[package]]
 name = "reovim-uapi-abi"
 version = "0.16.0-dev"
 
 [[package]]
-name = "reovim-uapi-panic"
+name = "reovim-uapi-fs"
 version = "0.16.0-dev"
 
 [[package]]
-name = "reovim-uapi-posix"
+name = "reovim-uapi-log"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-uapi-panic",
+]
+
+[[package]]
+name = "reovim-uapi-mm"
+version = "0.16.0-dev"
+
+[[package]]
+name = "reovim-uapi-net"
+version = "0.16.0-dev"
+
+[[package]]
+name = "reovim-uapi-panic"
 version = "0.16.0-dev"
 
 [[package]]
@@ -198,3 +206,15 @@ version = "0.16.0-dev"
 dependencies = [
  "reovim-uapi-abi",
 ]
+
+[[package]]
+name = "reovim-uapi-sched"
+version = "0.16.0-dev"
+
+[[package]]
+name = "reovim-uapi-system"
+version = "0.16.0-dev"
+
+[[package]]
+name = "reovim-uapi-terminal"
+version = "0.16.0-dev"

@@ -1,11 +1,11 @@
 //! `reovim-platform-linux-native` — the POSIX provider (the trap gate).
 //!
 //! This crate is the platform provider for the hosted Linux modes (both
-//! `x86_64` and `aarch64`): it builds a `static` [`PlatformVtable`] from arch's
-//! real primitives (`arch::time`, `arch::alloc`, the `arch::sys` futex/socket/
-//! fd/clone floor) and installs it write-once at boot (AB12). This is the
-//! `platform → kabi` edge — the provider implementing the contract `kabi`
-//! declares.
+//! `x86_64` and `aarch64`): it builds a `static` [`PlatformVtable`] directly
+//! from the target `arch-sys` raw mechanisms (clock, mmap, futex, socket, fd,
+//! clone, termios) and installs it write-once at boot (AB12). This is the
+//! `platform -> kabi` edge: the provider implementing the contract `kabi`
+//! declares without going through the `reovim-arch` facade.
 //!
 //! It is the **POSIX trap gate** of the three-knowledges split (OS-Modes §2.2):
 //! it knows hardware *and* contract, canonicalizes NATIVE→POSIX, and installs
@@ -15,22 +15,19 @@
 //! `.bits()`) and the realtime `Timespec`→i64 flatten live here, the single
 //! canonicalization place (master invariant 3).
 //!
-//! ## The one-way backend edge to `arch` (transitional, SP02 → SP05)
+//! ## Direct target-mechanism edge
 //!
-//! The provider names arch's alloc + clock backends and the raw `arch::sys`
-//! floor through a sanctioned one-way `platform-linux-native → arch` Cargo edge.
-//! It is acyclic: `arch` never imports the provider — the `apps/*` composition
-//! root drives the install (`install_platform()` as the `entry!` closure's first
-//! statement), so the only floor↔provider crossing is `apps/* → provider`
-//! (master invariant 8). The edge is transitional; sub-plan 05 retires it as it
-//! severs product→`arch` and the alloc/clock contract surface settles.
+//! The provider depends on the matching `arch-sys-linux-*` crate for the active
+//! target and owns the small adapters that turn those NATIVE floor results into
+//! the `kabi/platform` table. It names no POSIX up-face crate and no
+//! `reovim-arch` facade.
 //!
 //! ## Zero heap to build
 //!
 //! The vtable is a `static` of const function pointers, so constructing it
-//! allocates nothing. arch's allocator inits heap-free (it is the heap source),
-//! so the install can happen at boot before any allocation, dissolving the
-//! bootstrap chicken-egg (master plan, Bootstrap resolution).
+//! allocates nothing. The provider's allocation slot maps directly with
+//! `mmap`, so the install can happen at boot before any higher allocation,
+//! dissolving the bootstrap chicken-egg (master plan, Bootstrap resolution).
 //!
 //! ## Selftests are parked (SP07)
 //!
@@ -54,31 +51,33 @@
 use core::{
     alloc::Layout,
     cell::UnsafeCell,
+    ptr::NonNull,
     sync::atomic::{
         AtomicBool, AtomicI32,
         Ordering::{Acquire, Relaxed, Release},
     },
 };
 
-use {
-    reovim_kabi_platform::{Fd, InstallError, Mode, OpenFlags, PlatformVtable, install},
-};
+use reovim_kabi_platform::{Fd, InstallError, Mode, OpenFlags, PlatformVtable, install};
 
-use reovim_arch::{
-    alloc::{alloc as arch_alloc, dealloc as arch_dealloc},
-    sys::{
-        AT_FDCWD, Errno, FUTEX_PRIVATE_FLAG, FUTEX_WAIT, FUTEX_WAKE, Timespec,
-        accept as sys_accept, bind as sys_bind, close as sys_close, connect as sys_connect, futex,
-        gettid, ioctl, listen as sys_listen,
-        net::{AF_UNIX, SockaddrUn, UNIX_PATH_MAX},
-        openat, read as sys_read, send_nosignal,
-        term::{
-            BRKINT, ECHO, ECHOE, ECHOK, ICANON, ICRNL, INPCK, ISIG, ISTRIP, IXON, OPOST, TCGETS,
-            TCSETS, Termios, VMIN, VTIME,
-        },
-        unix_stream_socket, unlinkat, write as sys_write,
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+use reovim_arch_sys_linux_aarch64 as target_sys;
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use reovim_arch_sys_linux_x86_64 as target_sys;
+
+use target_sys::{
+    AT_FDCWD, CLOCK_MONOTONIC, CLOCK_REALTIME, CLONE_FILES, CLONE_FS, CLONE_SIGHAND, CLONE_SYSVSEM,
+    CLONE_THREAD, CLONE_VM, EINVAL, ENOMEM, Errno, FUTEX_PRIVATE_FLAG, FUTEX_WAIT, FUTEX_WAKE,
+    MAP_ANONYMOUS, MAP_PRIVATE, PROT_NONE, PROT_READ, PROT_WRITE, Timespec, accept as sys_accept,
+    bind as sys_bind, clock_gettime, clone_into, close as sys_close, connect as sys_connect, exit,
+    futex, gettid, ioctl, listen as sys_listen, mmap, mprotect, munmap,
+    net::{AF_UNIX, SockaddrUn, UNIX_PATH_MAX},
+    openat, read as sys_read, send_nosignal,
+    term::{
+        BRKINT, ECHO, ECHOE, ECHOK, ICANON, ICRNL, INPCK, ISIG, ISTRIP, IXON, OPOST, TCGETS,
+        TCSETS, Termios, VMIN, VTIME,
     },
-    time::{Instant, realtime},
+    unix_stream_socket, unlinkat, write as sys_write,
 };
 
 /// `FUTEX_WAKE` count meaning "wake everyone".
@@ -90,20 +89,111 @@ use reovim_arch::{
 /// the wake-all count the `lib/ds` `Condvar`/`RwLock` paths request.
 const WAKE_ALL: u32 = 0x7FFF_FFFF; // i32::MAX, expressed unsigned
 
-/// The clock adapter: reads arch's monotonic clock and returns whole
+/// System page size for the hosted Linux targets this provider supports.
+const PAGE_SIZE: usize = 4096;
+/// Nanoseconds in one second.
+const NANOS_PER_SEC: i64 = 1_000_000_000;
+
+/// Header stored immediately before each provider allocation.
+///
+/// The public deallocation ABI carries `(ptr, size, align)`, but the mmap
+/// teardown needs the original mapping base/length after the returned pointer
+/// has been alignment-adjusted.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct AllocationHeader {
+    base: usize,
+    map_len: usize,
+}
+
+/// Provider allocation header size in bytes.
+const ALLOC_HEADER_SIZE: usize = core::mem::size_of::<AllocationHeader>();
+
+/// Rounds `len` up to whole pages.
+fn page_round_up(len: usize) -> Option<usize> {
+    len.checked_add(PAGE_SIZE - 1).map(|n| n & !(PAGE_SIZE - 1))
+}
+
+/// Rounds `addr` up to `align`.
+fn align_up(addr: usize, align: usize) -> Option<usize> {
+    debug_assert!(align.is_power_of_two());
+    addr.checked_add(align - 1).map(|n| n & !(align - 1))
+}
+
+/// Allocates a block through the target mmap floor.
+fn alloc_block(layout: Layout) -> Result<NonNull<u8>, i32> {
+    if layout.size() == 0 {
+        return Err(ENOMEM_CODE);
+    }
+    let padded = ALLOC_HEADER_SIZE
+        .checked_add(layout.size())
+        .and_then(|n| n.checked_add(layout.align() - 1))
+        .ok_or(ENOMEM_CODE)?;
+    let map_len = page_round_up(padded).ok_or(ENOMEM_CODE)?;
+    let base = mmap(0, map_len, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0)
+        .map_err(|_| ENOMEM_CODE)?;
+    let Some(start) = base.checked_add(ALLOC_HEADER_SIZE) else {
+        let _ = munmap(base, map_len);
+        return Err(ENOMEM_CODE);
+    };
+    let Some(user_addr) = align_up(start, layout.align()) else {
+        let _ = munmap(base, map_len);
+        return Err(ENOMEM_CODE);
+    };
+    let header_addr = user_addr - ALLOC_HEADER_SIZE;
+    // SAFETY: `base..base + map_len` is a fresh writable mapping. The padded
+    // length reserves room for the header plus any alignment slack before the
+    // user pointer, and `header_addr` remains usize-aligned on the supported
+    // 64-bit targets.
+    unsafe {
+        core::ptr::write(header_addr as *mut AllocationHeader, AllocationHeader { base, map_len });
+    }
+    NonNull::new(user_addr as *mut u8).ok_or(ENOMEM_CODE)
+}
+
+/// Releases a block returned by [`alloc_block`].
+///
+/// # Safety
+///
+/// `ptr` must be a live pointer returned by [`alloc_block`] and not yet freed.
+unsafe fn dealloc_block(ptr: NonNull<u8>) {
+    let header_addr = ptr.as_ptr().addr() - ALLOC_HEADER_SIZE;
+    // SAFETY: the allocation adapter wrote this header immediately before the
+    // returned user pointer, and the caller guarantees the block is still live.
+    let header = unsafe { core::ptr::read(header_addr as *const AllocationHeader) };
+    let _ = munmap(header.base, header.map_len);
+}
+
+/// Converts a target timespec to whole nanoseconds.
+fn timespec_to_nanos(ts: Timespec) -> i64 {
+    ts.tv_sec
+        .saturating_mul(NANOS_PER_SEC)
+        .saturating_add(ts.tv_nsec)
+}
+
+/// Reads a target clock and returns whole nanoseconds.
+fn read_clock_nanos(clock_id: usize) -> i64 {
+    let mut ts = Timespec::default();
+    if clock_gettime(clock_id, &mut ts).is_err() {
+        return 0;
+    }
+    timespec_to_nanos(ts)
+}
+
+/// The clock adapter: reads the target monotonic clock and returns whole
 /// nanoseconds, matching the contract's `ClockFn` ABI.
 ///
 /// # Safety
 ///
 /// `unsafe extern "C"` to share the vtable's one ABI shape; the underlying
-/// `Instant::now` read has no precondition, so this is sound to call anytime.
+/// clock read has no precondition, so this is sound to call anytime.
 unsafe extern "C" fn clock() -> i64 {
-    Instant::now().as_nanos()
+    read_clock_nanos(CLOCK_MONOTONIC)
 }
 
 /// The allocation adapter: reconstructs a `Layout` from `(size, align)` and
-/// calls arch's allocator, returning the raw pointer (null on failure) the
-/// contract's `AllocFn` ABI expects.
+/// maps memory through the target floor, returning the raw pointer (null on
+/// failure) the contract's `AllocFn` ABI expects.
 ///
 /// # Safety
 ///
@@ -117,10 +207,11 @@ unsafe extern "C" fn alloc(size: usize, align: usize) -> *mut u8 {
     // null back to `AllocError`.
     let null = core::ptr::null_mut();
     Layout::from_size_align(size, align)
-        .map_or(null, |layout| arch_alloc(layout).map_or(null, core::ptr::NonNull::as_ptr))
+        .map_or(null, |layout| alloc_block(layout).map_or(null, NonNull::as_ptr))
 }
 
-/// The deallocation adapter: reconstructs the `Layout` and frees through arch.
+/// The deallocation adapter: validates the `Layout` shape and unmaps the
+/// provider-owned block.
 ///
 /// # Safety
 ///
@@ -133,12 +224,12 @@ unsafe extern "C" fn dealloc(ptr: *mut u8, size: usize, align: usize) {
     let Some(nn) = core::ptr::NonNull::new(ptr) else {
         return;
     };
-    let Ok(layout) = Layout::from_size_align(size, align) else {
+    let Ok(_layout) = Layout::from_size_align(size, align) else {
         return;
     };
-    // SAFETY: by the contract `nn`/`layout` are the exact pair a prior `alloc`
-    // returned and the block is still live; arch's `dealloc` upholds the rest.
-    unsafe { arch_dealloc(nn, layout) }
+    // SAFETY: by the contract `nn` is a block a prior `alloc` returned and the
+    // block is still live; the header carries the mapping teardown facts.
+    unsafe { dealloc_block(nn) }
 }
 
 /// The park adapter: futex-waits on `*word` while it equals `expected`.
@@ -191,24 +282,23 @@ unsafe extern "C" fn unpark_all(word: *const u32) {
 
 // ── net + thread fd-op adapters ─────────────────────────────────────────────
 //
-// The socket + `clone` floor the provider names is Linux kernel-ABI surface
-// (the `arch::sys::net::*` / `arch::sys::clone_into` items). The provider is the
-// hosted Linux provider for both Linux arches, so every adapter is realized
-// here; the freestanding `-ENOSYS` stub variants belong to the system kernel
-// (sub-plan 04), not this crate.
+// The socket + `clone` floor the provider names is Linux kernel-ABI surface from
+// the target arch-sys crate. The provider is the hosted Linux provider for both
+// Linux arches, so every adapter is realized here; the freestanding `-ENOSYS`
+// stub variants belong to the system kernel (sub-plan 04), not this crate.
 
 /// `EINVAL` errno code, the negative-return used when a caller's path is
 /// malformed (empty, no NUL, or longer than `UNIX_PATH_MAX - 1`). Derived from
-/// arch's canonical `Errno` so the provider never restates the floor's value.
-const EINVAL_CODE: i32 = reovim_arch::sys::EINVAL.code();
+/// the target floor's canonical `Errno` so the provider never restates it.
+const EINVAL_CODE: i32 = EINVAL.code();
 /// `ENOMEM` errno code, the negative-return used when a thread stack or its
-/// shared block cannot be mapped/allocated. Derived from arch's canonical
-/// `Errno` so the provider never restates the floor's value.
-const ENOMEM_CODE: i32 = reovim_arch::sys::ENOMEM.code();
+/// shared block cannot be mapped/allocated. Derived from the target floor's
+/// canonical `Errno` so the provider never restates it.
+const ENOMEM_CODE: i32 = ENOMEM.code();
 
-/// Encodes an arch [`Errno`] as the negative-errno `i64` the fd-op slots
-/// return: `-code` (positive `arch::sys::Errno` → negative `-errno` the FFI ABI
-/// carries; `kabi::map_fd_ret` recovers it consumer-side).
+/// Encodes a target-floor [`Errno`] as the negative-errno `i64` the fd-op slots
+/// return: `-code` (positive target-floor `Errno` -> negative `-errno` the FFI
+/// ABI carries; `kabi::map_fd_ret` recovers it consumer-side).
 const fn neg_errno(e: Errno) -> i64 {
     -(e.code() as i64)
 }
@@ -309,7 +399,7 @@ unsafe extern "C" fn unix_listen(path: *const u8, path_len: usize) -> i64 {
 #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 unsafe extern "C" fn unix_accept(listener_fd: Fd) -> i64 {
     // A valid accepted fd fits in i32; the narrowing cannot wrap. The canonical
-    // `Fd` newtype maps to the raw `i32` arch's `accept` syscall wrapper takes.
+    // `Fd` newtype maps to the raw `i32` the floor's `accept` wrapper takes.
     match sys_accept(listener_fd.as_i32()) {
         Ok(fd) => i64::from(fd as i32),
         Err(e) => neg_errno(e),
@@ -328,7 +418,7 @@ unsafe extern "C" fn fd_read(fd: Fd, buf: *mut u8, len: usize) -> i64 {
     // SAFETY: caller guarantees `buf` is valid for `len` writable bytes.
     let slice = unsafe { core::slice::from_raw_parts_mut(buf, len) };
     // A byte count never exceeds `isize::MAX`, so the cast cannot wrap. The
-    // canonical `Fd` maps to the raw `i32` arch's `read` wrapper takes.
+    // canonical `Fd` maps to the raw `i32` the floor's `read` wrapper takes.
     match sys_read(fd.as_i32(), slice) {
         Ok(n) => n as i64,
         Err(e) => neg_errno(e),
@@ -348,7 +438,7 @@ unsafe extern "C" fn fd_write(fd: Fd, buf: *const u8, len: usize) -> i64 {
     // SAFETY: caller guarantees `buf` is valid for `len` readable bytes.
     let slice = unsafe { core::slice::from_raw_parts(buf, len) };
     // A byte count never exceeds `isize::MAX`, so the cast cannot wrap. The
-    // canonical `Fd` maps to the raw `i32` arch's `send` wrapper takes.
+    // canonical `Fd` maps to the raw `i32` the floor's `send` wrapper takes.
     match send_nosignal(fd.as_i32(), slice) {
         Ok(n) => n as i64,
         Err(e) => neg_errno(e),
@@ -386,7 +476,7 @@ unsafe extern "C" fn file_write(fd: Fd, buf: *const u8, len: usize) -> i64 {
 /// `unsafe extern "C"` per the vtable ABI. `fd` is a scalar; an already-closed
 /// fd returns a negative errno.
 unsafe extern "C" fn fd_close(fd: Fd) -> i64 {
-    // The canonical `Fd` maps to the raw `i32` arch's `close` wrapper takes.
+    // The canonical `Fd` maps to the raw `i32` the floor's `close` wrapper takes.
     match sys_close(fd.as_i32()) {
         Ok(_) => 0,
         Err(e) => neg_errno(e),
@@ -444,12 +534,8 @@ const SPAWN_MAP_SIZE: usize = SPAWN_PAGE_SIZE + SPAWN_STACK_SIZE;
 /// Unlike `thread::spawn`, NO `CLONE_PARENT_SETTID`/`CLONE_CHILD_CLEARTID`: a
 /// detached thread has no join word, so the kernel neither sets nor clears a
 /// ctid — the parent gets the tid as the `clone` return and never waits on it.
-const SPAWN_CLONE_FLAGS: usize = reovim_arch::sys::CLONE_VM
-    | reovim_arch::sys::CLONE_FS
-    | reovim_arch::sys::CLONE_FILES
-    | reovim_arch::sys::CLONE_SIGHAND
-    | reovim_arch::sys::CLONE_THREAD
-    | reovim_arch::sys::CLONE_SYSVSEM;
+const SPAWN_CLONE_FLAGS: usize =
+    CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_SIGHAND | CLONE_THREAD | CLONE_SYSVSEM;
 
 /// Maps a guarded stack, boxes the `(entry, arg)` pair, and `clone`s a detached
 /// child into [`spawn_trampoline`]. Returns the child tid on success, or a
@@ -460,11 +546,6 @@ const SPAWN_CLONE_FLAGS: usize = reovim_arch::sys::CLONE_VM
 /// `entry`/`arg` must satisfy the [`thread_spawn`] contract: `entry` is a valid
 /// function safe to call with `arg`, and `arg` lives for `entry`'s execution.
 unsafe fn spawn_detached(entry: unsafe extern "C" fn(*mut u8), arg: *mut u8) -> Result<i32, i32> {
-    use reovim_arch::sys::{
-        MAP_ANONYMOUS, MAP_PRIVATE, PROT_NONE, PROT_READ, PROT_WRITE, clone_into, mmap, mprotect,
-        munmap,
-    };
-
     // Map the stack: a low guard page (PROT_NONE) below the usable stack, so a
     // stack overflow traps on the guard rather than corrupting an adjacent map.
     let stack_base =
@@ -475,9 +556,9 @@ unsafe fn spawn_detached(entry: unsafe extern "C" fn(*mut u8), arg: *mut u8) -> 
         return Err(ENOMEM_CODE);
     }
 
-    // Box the (entry, arg) pair through arch's allocator.
+    // Box the (entry, arg) pair through the provider's mmap-backed allocator.
     let pair_layout = Layout::new::<SpawnPair>();
-    let Ok(pair) = arch_alloc(pair_layout) else {
+    let Ok(pair) = alloc_block(pair_layout) else {
         let _ = munmap(stack_base, SPAWN_MAP_SIZE);
         return Err(ENOMEM_CODE);
     };
@@ -519,7 +600,7 @@ unsafe fn spawn_detached(entry: unsafe extern "C" fn(*mut u8), arg: *mut u8) -> 
             // it (the child did not start), so dropping + freeing is sound.
             unsafe {
                 core::ptr::drop_in_place(pair.as_ptr());
-                arch_dealloc(pair.cast(), pair_layout);
+                dealloc_block(pair.cast());
             }
             let _ = munmap(stack_base, SPAWN_MAP_SIZE);
             Err(e.code())
@@ -545,33 +626,31 @@ extern "C" fn spawn_trampoline(pair_ptr: usize) -> ! {
     // SAFETY: `pair` is the live box; we just read its contents out, so freeing
     // it here is the unique teardown (the parent handed ownership to the child).
     unsafe {
-        arch_dealloc(core::ptr::NonNull::new_unchecked(pair.cast()), Layout::new::<SpawnPair>());
+        dealloc_block(core::ptr::NonNull::new_unchecked(pair.cast()));
     }
     // Run the user closure trampoline.
     // SAFETY: `entry`/`arg` satisfy the `thread_spawn` contract (the caller's
     // obligation); `entry` is safe to call with `arg`.
     unsafe { entry(arg) }
     // Exit the THREAD only (not the process). No ctid to clear (detached).
-    reovim_arch::sys::exit(0)
+    exit(0)
 }
 
 // ── time + file + thread-identity adapters ───────────────────────────────────
 
-/// The wall-clock adapter: reads arch's real-time clock and returns whole
+/// The wall-clock adapter: reads the target real-time clock and returns whole
 /// nanoseconds since the Unix epoch, matching the contract's `RealtimeFn` ABI.
 ///
-/// `arch::time::realtime` returns a [`Timespec`]; this flattens it to a single
-/// `i64` nanos value (no `Timespec` repr crosses the contract — the slot is a
-/// scalar return).
+/// The target floor fills a [`Timespec`]; this flattens it to a single `i64`
+/// nanos value (no `Timespec` repr crosses the contract — the slot is a scalar
+/// return).
 ///
 /// # Safety
 ///
 /// `unsafe extern "C"` to share the vtable's one ABI shape; the underlying
-/// `realtime` read has no precondition, so this is sound to call anytime.
+/// real-time clock read has no precondition, so this is sound to call anytime.
 unsafe extern "C" fn realtime_adapter() -> i64 {
-    let Timespec { tv_sec, tv_nsec } = realtime();
-    // tv_sec/tv_nsec are i64; the year-2262 horizon keeps this in range.
-    tv_sec * 1_000_000_000 + tv_nsec
+    read_clock_nanos(CLOCK_REALTIME)
 }
 
 /// The file-open adapter: opens the pathname in `path` (`AT_FDCWD`-relative)
@@ -619,7 +698,25 @@ unsafe extern "C" fn thread_id() -> i64 {
     i64::from(gettid())
 }
 
-// ── termios contract (SP05b) ──────────────────────────────────────────────────
+/// The path-unlink adapter: removes the pathname in `path`
+/// (`AT_FDCWD`-relative, no flags) and returns `0` or a negative errno.
+///
+/// # Safety
+///
+/// `unsafe extern "C"` per the vtable ABI. `path` must point to `path_len`
+/// readable bytes containing a NUL-terminated pathname; a refused unlink maps
+/// to a negative errno rather than UB.
+unsafe extern "C" fn path_unlink(path: *const u8, path_len: usize) -> i64 {
+    // SAFETY: caller guarantees `path` is valid for `path_len` readable bytes;
+    // the slice borrows it for the unlinkat call only.
+    let slice = unsafe { core::slice::from_raw_parts(path, path_len) };
+    match unlinkat(AT_FDCWD, slice, 0) {
+        Ok(_) => 0,
+        Err(e) => neg_errno(e),
+    }
+}
+
+// ── termios contract ──────────────────────────────────────────────────────────
 //
 // The raw-mode flag policy + the TCGETS/TCSETS ioctls are provider mechanism
 // (master invariant 3): they moved here from the old `arch::term::RawMode`. The
@@ -817,6 +914,7 @@ static PLATFORM_VTABLE: PlatformVtable = PlatformVtable {
     file_write,
     term_set_raw,
     term_restore,
+    path_unlink,
 };
 
 /// Installs the provider's platform vtable as the process-wide handle

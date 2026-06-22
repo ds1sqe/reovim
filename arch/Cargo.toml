@@ -46,22 +46,16 @@ workspace = true
 # are preserved — no external crate enters the graph.
 reovim-kabi-platform = { path = "../kabi/platform" }
 
-# arch names the canonical POSIX newtypes (Fd/OpenFlags/Mode) in the fd-op
-# slot implementations it wires into the platform vtable, mapping them to the
-# raw syscall edge it owns. uapi/posix is a #![no_std] zero-dep leaf, so
-# DAG5 (Dependency Sovereignty) and DAG6 (zero-std) are preserved.
-reovim-uapi-posix = { path = "../uapi/posix" }
-
 # arch's panic handler reads the five write-once fault-floor atoms from
 # kabi/panic — the always-present down-face seam (Platform-Contract §3.4): a
 # panic can fire before `Init::boot` completes, so unlike kabi/platform these
 # atoms carry no install gate. arch keeps the `#[panic_handler]` lang item and
 # the render/flush mechanism; the registry lives in kabi/panic and arch reaches
-# it through thin shims. kabi/panic re-exports the uapi/panic value types, but
+# it through thin shims. kabi/panic re-exports the uapi/inner/panic value types, but
 # arch also names `Disposition`/`PanicRecord` directly, so it depends on
-# uapi/panic too. Both are #![no_std] zero-dep leaves (DAG5/DAG6 preserved).
+# uapi/inner/panic too. Both are #![no_std] zero-dep leaves (DAG5/DAG6 preserved).
 reovim-kabi-panic = { path = "../kabi/panic" }
-reovim-uapi-panic = { path = "../uapi/panic" }
+reovim-uapi-panic = { path = "../uapi/inner/panic" }
 
 # arch CONSUMES lib/ds POST-install: the relocated DS/sync algorithms (SP03)
 # route through the boot-installed handle, which arch installs at `rust_entry`.

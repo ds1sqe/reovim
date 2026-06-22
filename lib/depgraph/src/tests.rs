@@ -209,6 +209,14 @@ fn foundation_grants_contains_uapi_protocol_to_abi() {
         proto_grants.iter().any(|g| g == "reovim-uapi-abi"),
         "reovim-uapi-protocol must be granted the reovim-uapi-abi dep"
     );
+    let facade_grants = grants
+        .get("reovim-uapi")
+        .expect("reovim-uapi facade must have a grants entry");
+    assert!(
+        facade_grants.iter().any(|g| g == "reovim-uapi-net")
+            && facade_grants.iter().all(|g| g != "reovim-uapi-posix"),
+        "reovim-uapi facade must expose domain leaves but not reovim-uapi-posix"
+    );
 }
 
 // ── classify tests ────────────────────────────────────────────────────────────
@@ -219,7 +227,8 @@ fn classify_every_category() {
     let cases = [
         ("arch", Category::Foundation),
         ("lib/depgraph", Category::Foundation),
-        ("uapi/protocol", Category::Foundation),
+        ("uapi", Category::Foundation),
+        ("uapi/inner/protocol", Category::Foundation),
         ("editor/lib/subsys/mm", Category::ServerContracts),
         ("editor/lib/kernel/core", Category::ServerKernel),
         ("editor/lib/server/grpc", Category::ServerRuntime),

@@ -19,7 +19,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use {
     reovim_arch::{alloc::fault, arch_test},
     reovim_lib_ds::Shared,
-    reovim_uapi_abi::error::LogLevel,
+    reovim_uapi::abi::error::LogLevel,
 };
 
 use crate::{
@@ -65,7 +65,7 @@ arch_test!(log_ring_try_new_small_capacity_is_min, {
 
 arch_test!(log_ring_push_event_increments_len, {
     let ring = LogRing::try_new(1024 * 1024).unwrap();
-    let clock = BootClock::capture();
+    let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
     assert_eq!(ring.len(), 0);
     ring.push_event(&make_event(&clock, 0));
     assert_eq!(ring.len(), 1);
@@ -75,7 +75,7 @@ arch_test!(log_ring_push_event_increments_len, {
 
 arch_test!(log_ring_push_event_entry_is_nonempty, {
     let ring = LogRing::try_new(1024 * 1024).unwrap();
-    let clock = BootClock::capture();
+    let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
     ring.push_event(&make_event(&clock, 0));
     let mut found = false;
     ring.for_each(|entry| {
@@ -195,7 +195,7 @@ arch_test!(log_ring_builtin_subscriber_captures_events, {
     let mut bus = DS12EventBus::new();
     bus.set_builtin(Shared::clone(&ring));
 
-    let clock = BootClock::capture();
+    let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
     bus.emit(&make_event(&clock, 0));
     bus.emit(&make_event(&clock, 1));
     bus.emit(&make_event(&clock, 2));
@@ -239,7 +239,7 @@ arch_test!(log_ring_for_each_oldest_first, {
 arch_test!(log_ring_is_empty_transitions, {
     let ring = LogRing::try_new(1024 * 1024).unwrap();
     assert!(ring.is_empty());
-    let clock = BootClock::capture();
+    let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
     ring.push_event(&make_event(&clock, 0));
     assert!(!ring.is_empty());
 });
@@ -254,7 +254,7 @@ arch_test!(log_ring_is_empty_transitions, {
 
 arch_test!(push_event_render_oom_silent_drop, {
     let ring = LogRing::try_new(1024 * 1024).unwrap();
-    let clock = BootClock::capture();
+    let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
     // Seed one entry so the ring is non-empty; this alloc succeeds normally.
     ring.push_event(&make_event(&clock, 0));
     assert_eq!(ring.len(), 1);
@@ -308,7 +308,7 @@ arch_test!(push_event_fallback_subsystem_renders_kernel, {
 // ── Boot-stage enrichment (push_event path) ───────────────────────────────────
 
 arch_test!(push_event_renders_enriched_boot_stage_line, {
-    let clock = BootClock::capture();
+    let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
     let ring = LogRing::try_new(1024 * 1024).unwrap();
     // `make_event` emits boot.stage.ok; stage 2 renders as the named, numbered
     // message rather than the bare "boot.stage.ok" event id.

@@ -42,12 +42,14 @@ use {
     // console / fonts / color render policy lives in the system-kernel bridge.
     reovim_arch::sys::framebuffer,
     reovim_system_kernel::{
-        boot_info_aarch64::{self, Aarch64BootFacts},
         color::Color,
         console::{self, RenderSurface},
         fonts, inventory,
     },
 };
+
+#[cfg(target_os = "none")]
+use reovim_system_kernel::boot_info::{self, BootFacts};
 
 #[cfg(target_arch = "x86_64")]
 use reovim_arch::sys::exit_group;
@@ -55,9 +57,7 @@ use reovim_arch::sys::exit_group;
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
 use {
     core::cell::UnsafeCell,
-    reovim_system_kernel::boot_info_x86::{
-        self, EMPTY_MEMORY_RANGE, MEMORY_STORAGE_ENTRIES, MemoryRange, X86BootFacts,
-    },
+    reovim_arch::sys::{EMPTY_MEMORY_RANGE, MEMORY_STORAGE_ENTRIES, MemoryRange},
 };
 
 /// Packs an RGB triple into a `0x00RRGGBB` pixel (RGB pixel-order tag). Only the
@@ -215,6 +215,8 @@ entry!(|_argc, _argv, _envp| {
     let _ = none_platform::install_platform();
     #[cfg(target_os = "linux")]
     let _ = reovim_platform_linux_native::install_platform();
+    let _ = reovim_system_kernel::mm::install_lib_ds_alloc_backend();
+    let _ = reovim_system_kernel::sched::install_lib_ds_sync_backend();
 
     // Step 2 (aarch64): stand up the system kernel's framebuffer console as the
     // floor's fd 1/2 write sink, before the first `write` below. The kernel's
@@ -247,17 +249,18 @@ entry!(|_argc, _argv, _envp| {
         }
         #[cfg(all(target_os = "none", target_arch = "aarch64"))]
         {
-            boot_info_aarch64::collect_boot_info(Aarch64BootFacts {
+            let cache = reovim_arch::sys::cache_geometry();
+            boot_info::collect_boot_info(BootFacts {
                 memory: reovim_arch::sys::discover_memory(),
-                timer_frequency_hz: reovim_arch::sys::timer_frequency(),
-                midr: reovim_arch::sys::midr(),
-                ctr: reovim_arch::sys::ctr(),
-                clidr: reovim_arch::sys::clidr(),
-                l1d_ccsidr: reovim_arch::sys::read_ccsidr(1, false),
-                l1i_ccsidr: reovim_arch::sys::read_ccsidr(1, true),
-                l2_ccsidr: reovim_arch::sys::read_ccsidr(2, false),
-                mpidr: reovim_arch::sys::mpidr(),
-                sdram_clock_hz: reovim_arch::sys::sdram_clock_hz(),
+                cpu_freq_hz: reovim_arch::sys::timer_frequency(),
+                cpu_id: reovim_arch::sys::cpu_id(),
+                cpu_count: 1,
+                cache_line_bytes: cache.cache_line_bytes,
+                l1d_bytes: cache.l1d_bytes,
+                l1i_bytes: cache.l1i_bytes,
+                l2_bytes: cache.l2_bytes,
+                cpu_affinity: reovim_arch::sys::cpu_affinity(),
+                mem_freq_hz: reovim_arch::sys::sdram_clock_hz().unwrap_or(0),
                 heap_total_bytes: reovim_arch::sys::arena_capacity() as u64,
             })
         }
@@ -265,14 +268,14 @@ entry!(|_argc, _argv, _envp| {
         {
             // SAFETY: the floor stashed the Multiboot pointer before entering
             // Rust; q35 keeps the info structure and mmap identity-mapped here.
-            unsafe {
-                boot_info_x86::collect_boot_info(X86BootFacts {
-                    multiboot_info_ptr: reovim_arch::sys::multiboot_ptr(),
-                    memory_storage: memory_storage(),
-                    cpu_id: reovim_arch::sys::cpu_id_native(),
-                    timer_frequency_hz: reovim_arch::sys::timer_frequency(),
-                })
-            }
+            let memory = unsafe { reovim_arch::sys::discover_memory(memory_storage()) };
+            boot_info::collect_boot_info(BootFacts {
+                memory,
+                cpu_id: reovim_arch::sys::cpu_id(),
+                cpu_count: 1,
+                cpu_freq_hz: reovim_arch::sys::timer_frequency(),
+                ..BootFacts::default()
+            })
         }
     };
     let device_inventory = {
@@ -290,12 +293,16 @@ entry!(|_argc, _argv, _envp| {
         }
         #[cfg(all(target_os = "none", target_arch = "x86_64"))]
         {
-            boot_info_x86::collect_device_inventory()
+            Default::default()
         }
     };
     let args = LauncherArgs {
         boot_info,
+        clock: reovim_system_kernel::sched::clock_control(),
         device_inventory,
+        log: reovim_system_kernel::log::log_sink_control(),
+        panic: reovim_system_kernel::panic::panic_control(),
+        thread: reovim_system_kernel::sched::thread_control(),
         ..LauncherArgs::default()
     };
 

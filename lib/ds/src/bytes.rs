@@ -2,8 +2,8 @@
 //!
 //! `Bytes` is a growable owned `[u8]` (the `Vec<u8>` analog); `Str` wraps it
 //! with a maintained UTF-8 invariant (the `String` analog). Both are fallible
-//! on growth, like every floor data structure, allocating through the
-//! boot-installed `kabi` handle.
+//! on growth, like every floor data structure, allocating through the installed
+//! allocation backend.
 //!
 //! [`BytesWriter`] is a fallible [`core::fmt::Write`] seam: formatting flows
 //! into a `Bytes` and a failed push surfaces as `fmt::Error` rather than an
@@ -13,9 +13,7 @@
 
 use core::{fmt, ops::Deref};
 
-use reovim_kabi_platform::AllocError;
-
-use crate::seq::Seq;
+use crate::{alloc_backend::AllocError, seq::Seq};
 
 /// A growable, heap-owning byte string.
 ///

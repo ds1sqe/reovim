@@ -7,16 +7,15 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "TUI platform runtime: thin UDS client + raw-termios ANSI paint (#797 Phase 4)"
+description = "TUI platform runtime: thin UDS client + up-face raw-terminal ANSI paint (#797 Phase 4)"
 publish = false
 
 [features]
 default = []
 # Compile the `*_tests.rs` sibling test modules into this lib (L12.1).
 # `dep:reovim-arch` activates the now-OPTIONAL arch dep; `reovim-arch/selftest`
-# enables arch_test!/testrt. The product build carries no arch edge (SP05b): the
-# tui's raw-mode termios surface moved to the `kabi/platform` contract, so the
-# only surviving tui->arch use is the selftest harness (arch_test!/testrt) in the
+# enables arch_test!/testrt. The product build carries no arch edge: the only
+# surviving tui->arch use is the selftest harness (arch_test!/testrt) in the
 # `*_tests.rs` siblings.
 selftest = ["dep:reovim-arch", "reovim-arch/selftest"]
 
@@ -25,14 +24,12 @@ selftest = ["dep:reovim-arch", "reovim-arch/selftest"]
 # the `*_tests.rs` selftest siblings reach `reovim_arch::{arch_test, testrt, sys,
 # alloc::fault}`, behind the `selftest` feature.
 reovim-arch         = { path = "../../../arch", optional = true }
-reovim-kabi-panic   = { path = "../../../kabi/panic" }
-# The down-face platform contract: the RawMode raw-termios guard + ENOTTY (the
-# tui's raw-mode entry/restore, SP05b — replaces the former `arch::term` edge).
-reovim-kabi-platform = { path = "../../../kabi/platform" }
 # Heap-DS algorithms (Seq/Bytes) relocated from `reovim_arch::ds` (SP03).
 reovim-lib-ds       = { path = "../../../lib/ds" }
-reovim-uapi-abi     = { path = "../../../uapi/abi" }
-reovim-uapi-protocol = { path = "../../../uapi/protocol" }
+# Product-facing uapi namespace. The app composition root supplies concrete
+# implementation tables; TUI never imports lower raw-fd, UDS, terminal, provider,
+# or panic atom surfaces directly.
+reovim-uapi          = { path = "../../../uapi" }
 
 [lints]
 workspace = true

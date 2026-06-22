@@ -1,11 +1,11 @@
-//! `Shared<T>` — an atomic-refcount shared reference over the platform
+//! `Shared<T>` — an atomic-refcount shared reference over the installed
 //! allocator.
 //!
 //! The `Arc` analog for the zero-std floor, **strong counts only** — there is
 //! no weak count. The floor has no weak-reference consumer yet; per the
 //! rule-of-three, the weak side is not built until a real consumer needs it.
 //! There is no `alloc` crate, so the shared box comes from the platform
-//! allocator (reached through the boot-installed `kabi` handle).
+//! allocator backend.
 //!
 //! ## Refcount orderings
 //!
@@ -38,7 +38,7 @@ use core::{
     },
 };
 
-use reovim_kabi_platform::{AllocError, handle};
+use crate::alloc_backend::{AllocError, alloc, dealloc};
 
 /// The strong-count value at which [`Clone`] saturates and leaks rather than
 /// risk overflow. No live program holds this many references.
@@ -112,7 +112,7 @@ impl<T> Shared<T> {
     /// ```
     pub fn try_new(value: T) -> Result<Self, AllocError> {
         let layout = Layout::new::<SharedBox<T>>();
-        let raw = handle().alloc(layout)?.cast::<SharedBox<T>>();
+        let raw = alloc(layout)?.cast::<SharedBox<T>>();
         // SAFETY: `raw` is a fresh, correctly-sized, aligned allocation for
         // `SharedBox<T>`; writing the initial box initializes it.
         unsafe {
@@ -188,9 +188,11 @@ impl<T> Drop for Shared<T> {
             core::ptr::drop_in_place(core::ptr::addr_of_mut!((*self.ptr.as_ptr()).value));
         }
         let layout = Layout::new::<SharedBox<T>>();
-        // The box came from `handle().alloc` with this exact layout and is no
+        // SAFETY: the box came from `alloc` with this exact layout and is no
         // longer referenced (count zero, value dropped).
-        handle().dealloc(self.ptr.cast(), layout);
+        unsafe {
+            dealloc(self.ptr.cast(), layout);
+        }
     }
 }
 

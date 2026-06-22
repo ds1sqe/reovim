@@ -42,6 +42,13 @@ reovim-arch = { path = "../../..", features = ["runtime", "selftest"] }
 # tests had while they lived in arch-sys-none (no regression across the lift).
 reovim-system-kernel = { path = "../../../../system/lib/kernel", features = ["selftest"] }
 
+# The arch-hosted lib/ds selftests use arch's allocator fault hook. Install an
+# arch-test allocation control table directly into lib/ds for this runner rather
+# than the production system-kernel mm bridge, so `reovim_arch::alloc::fault`
+# continues to drive deterministic allocation-failure branches.
+reovim-lib-ds = { path = "../../../../lib/ds" }
+reovim-uapi-mm = { path = "../../../../uapi/inner/mm" }
+
 # The platform-handle installer this composition root drives, cfg-split by
 # target so exactly one links per build (mutually exclusive — neither
 # double-defines the handle). The selftest reads the handle through

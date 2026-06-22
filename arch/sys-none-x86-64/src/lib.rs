@@ -25,6 +25,8 @@
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
 mod arena;
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
+mod boot_info;
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
 pub mod errno;
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
 mod semihost;
@@ -42,12 +44,9 @@ mod uart;
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
 mod wrap;
 
-// The sibling `*_tests.rs` files (`arena_tests.rs`, `errno_tests.rs`,
-// `timer_tests.rs`) are declared next to their source modules (the `#[path]`
-// child pattern), reaching the test runtime through the `reovim-testrt` leaf
-// rather than an upward arch-sys -> arch edge (SP07). The `boot_info_tests.rs`
-// moved up with the whole boot-info assembly into `reovim-system-kernel`
-// (SP04 04a).
+// The sibling `*_tests.rs` files are declared next to their source modules (the
+// `#[path]` child pattern), reaching the test runtime through the
+// `reovim-testrt` leaf rather than an upward arch-sys -> arch edge (SP07).
 
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
 pub use errno::{
@@ -72,27 +71,40 @@ pub use sink::install_write_sink;
 /// 32-bit prologue (after the BSS clear, before the COM1 banner loop reuses
 /// `rbx`/`bl`) via a cross-crate
 /// `sym reovim_arch_sys_none_x86_64::MULTIBOOT_INFO_PTR` operand (SP03 floor
-/// split). The system kernel's x86 boot-info assembly reads it through the
-/// [`multiboot_ptr`] accessor (the boot-info parse lifted up in SP04 04a) to
-/// parse the firmware memory map. Zero until stashed, and on any non-Multiboot
-/// entry, which the reader treats as "no boot info" (empty map).
+/// split). Target-side boot-info parsing reads it through the
+/// [`multiboot_ptr`] accessor before the composition root hands neutral memory
+/// facts to the system-kernel bridge. Zero until stashed, and on any
+/// non-Multiboot entry, which the reader treats as "no boot info" (empty map).
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
 pub static MULTIBOOT_INFO_PTR: core::sync::atomic::AtomicU32 =
     core::sync::atomic::AtomicU32::new(0);
 
-// ---- raw-fact provider surface for the system kernel's boot-info assembly ----
+// ---- boot-fact provider surface for the boot composition root ----------------
 //
-// The device-neutral `BootInfo` assembly (the Multiboot1 mmap parser, the
-// memory-type classifier, the neutral-struct mapping) lifted into
-// `reovim-system-kernel` (SP04 04a). What STAYS here is the raw mechanism it
-// reads through: the boot-stashed Multiboot pointer ([`MULTIBOOT_INFO_PTR`]),
-// the static arena the parsed map is backed by, and the `CPUID`/`RDTSC` asm —
-// the system kernel reaches them via these crate-root accessors (the §11
-// system-kernel → arch-sys-none impl edge) and does the parse + field mapping.
+// The Multiboot1 pointer walk, E820 memory-type interpretation, and CPU/timer
+// raw mechanism STAY here (invariant #4, asm confinement); boot composition
+// roots gather neutral facts through these crate-root accessors and pass them
+// into the system-kernel bridge.
 
-/// The Multiboot1 information-structure pointer stashed by `_start`, or `0` on a
-/// non-Multiboot entry. The system kernel parses the firmware memory map from
-/// the structure this points at.
+/// Empty `MemoryRange` value for static storage initialization.
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+pub use boot_info::EMPTY_MEMORY_RANGE;
+
+/// Default number of `MemoryRange` slots a composition root should reserve for
+/// Multiboot/E820 parsing.
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+pub use boot_info::MEMORY_STORAGE_ENTRIES;
+
+/// Neutral memory-map entry type used by the parsed Multiboot/E820 map.
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+pub use boot_info::MemoryRange;
+
+/// Parses the bootloader memory map into caller-owned static storage.
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+pub use boot_info::discover_memory;
+
+/// The Multiboot1 information-structure pointer stashed by `_start`, or `0` on
+/// a non-Multiboot entry.
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
 #[must_use]
 pub fn multiboot_ptr() -> u32 {
@@ -109,6 +121,19 @@ pub fn cpu_id_native() -> u32 {
     timer::cpuid(1).0
 }
 
+/// The neutral CPU identifier fact for `BootInfo`.
+///
+/// ```rust,ignore
+/// // Target-only: reads CPUID leaf 1 through the x86_64 floor.
+/// let cpu = reovim_arch_sys_none_x86_64::cpu_id();
+/// let _stepping = cpu & 0xf;
+/// ```
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+#[must_use]
+pub fn cpu_id() -> u32 {
+    cpu_id_native()
+}
+
 /// The time-stamp-counter frequency in Hz (the `BootInfo.cpu_freq_hz` fact),
 /// derived from the `CPUID` leaf `0x15`/`0x16` reads that stay below.
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
@@ -117,8 +142,8 @@ pub use timer::frequency as timer_frequency;
 /// Hands out `len` bytes (rounded up to whole pages), page-aligned, from the
 /// static boot arena.
 ///
-/// The boot-info assembly backs its parsed `'static` `MemoryRange` map through
-/// this accessor; the arena (raw `.bss` bump) stays below.
+/// Boot composition roots may allocate process-lifetime storage through this
+/// accessor; the arena itself (raw `.bss` bump mechanism) stays below.
 ///
 /// # Errors
 ///

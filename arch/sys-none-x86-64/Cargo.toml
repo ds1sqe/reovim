@@ -23,6 +23,10 @@ selftest = []
 workspace = true
 
 [dependencies]
+# The freestanding boot parser returns neutral KABI memory-map atoms while
+# keeping Multiboot/E820 parsing below the system-kernel bridge.
+reovim-kabi-platform = { path = "../../kabi/platform" }
+
 # The core-only test runtime (SP07): the `selftest`-gated `*_tests.rs` modules
 # register through its arch_test! macro + check/check_eq, reaching the runner
 # via the leaf rather than an upward arch-sys -> arch edge. reovim-testrt is a

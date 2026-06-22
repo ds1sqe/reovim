@@ -32,17 +32,20 @@
 use {
     reovim_arch::{arch_test, net::UnixStream},
     reovim_domain_text::{TextHandler, TextProjector},
-    reovim_lib_ds::Seq,
     reovim_kernel::{
         Init, LauncherArgs,
         session::{BufferId, DomainAttachmentId, SessionState, WindowId},
     },
+    reovim_lib_ds::Seq,
     reovim_server_rt::start_listener,
-    reovim_uapi_abi::{ErrorCode, FrameHeader},
-    reovim_uapi_protocol::{
-        frame::{HEADER_LEN, read_frame},
-        messages::{Attach, AttachAck, Hello, HelloAck, Message, Reject, SendInput},
-        view::{RawInputList, StrList},
+    reovim_system_kernel::{net::net_control, sched::thread_spawner},
+    reovim_uapi::{
+        abi::{ErrorCode, FrameHeader},
+        protocol::{
+            frame::{HEADER_LEN, read_frame},
+            messages::{Attach, AttachAck, Hello, HelloAck, Message, Reject, SendInput},
+            view::{RawInputList, StrList},
+        },
     },
 };
 
@@ -86,7 +89,8 @@ arch_test!(phase3_integration_smoke_hello_attach_send_input, {
     // thread never drops); unlink first so a TID-reuse re-bind cannot hit
     // EADDRINUSE.
     let _ = reovim_arch::sys::unlinkat(reovim_arch::sys::AT_FDCWD, smoke_path, 0);
-    start_listener(&kernel, smoke_path).expect("start_listener succeeds");
+    start_listener(&kernel, smoke_path, net_control(), thread_spawner())
+        .expect("start_listener succeeds");
 
     // ── 4. Connect the raw test client ────────────────────────────────────────
     // No sleep needed: `connect` succeeds once the socket is bound and
@@ -149,7 +153,7 @@ arch_test!(phase3_integration_smoke_hello_attach_send_input, {
     // ── 10. Send SendInput("x") ───────────────────────────────────────────────
     // Build a RawInputList with one Key input carrying payload b"x".
     // Encoding: [count u32 LE][kind u8][payload_len u32 LE][payload bytes]
-    let raw_input_buf = build_raw_input_list(reovim_uapi_abi::input::RawInputKind::Key, b"x");
+    let raw_input_buf = build_raw_input_list(reovim_uapi::abi::input::RawInputKind::Key, b"x");
     let send_input = SendInput {
         client_id: 1,
         buffer_id: 1,
@@ -211,7 +215,8 @@ fn boot_and_connect(path: &[u8]) -> UnixStream {
     kernel.setup_session(state);
 
     let _ = reovim_arch::sys::unlinkat(reovim_arch::sys::AT_FDCWD, path, 0);
-    start_listener(&kernel, path).expect("start_listener succeeds");
+    start_listener(&kernel, path, net_control(), thread_spawner())
+        .expect("start_listener succeeds");
 
     UnixStream::connect(path).expect("connect succeeds")
 }
@@ -336,7 +341,7 @@ arch_test!(send_input_before_attach_causes_protocol_violation, {
     let _ack = recv_frame_buf(&client);
 
     // Now send SendInput WITHOUT sending Attach first.
-    let raw_input = build_raw_input_list(reovim_uapi_abi::input::RawInputKind::Key, b"x");
+    let raw_input = build_raw_input_list(reovim_uapi::abi::input::RawInputKind::Key, b"x");
     let send_input = SendInput {
         client_id: 1,
         buffer_id: 1,
@@ -550,7 +555,7 @@ fn recv_frame_buf(stream: &UnixStream) -> Seq<u8> {
 
 /// Builds a `RawInputList`-compatible pre-encoded byte buffer for one input.
 /// Layout: `[count u32 LE][kind u8][len u32 LE][payload bytes]`.
-fn build_raw_input_list(kind: reovim_uapi_abi::input::RawInputKind, payload: &[u8]) -> Seq<u8> {
+fn build_raw_input_list(kind: reovim_uapi::abi::input::RawInputKind, payload: &[u8]) -> Seq<u8> {
     let mut buf: Seq<u8> = Seq::new();
     // count = 1
     for b in 1u32.to_le_bytes() {

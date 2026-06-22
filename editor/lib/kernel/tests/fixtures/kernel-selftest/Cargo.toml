@@ -41,6 +41,8 @@ reovim-subsys-domain = { path = "../../../../subsys/domain", features = ["selfte
 # the bin links it here to provide the `&'static dyn` trait objects used in
 # `session_tests.rs` under `cfg(feature = "selftest")`.
 reovim-domain-text = { path = "../../../../../../editor/domains/text", features = ["selftest"] }
+reovim-system-kernel = { path = "../../../../../../system/lib/kernel" }
+reovim-uapi = { path = "../../../../../../uapi" }
 
 # The platform-handle installer this composition root drives. The fixture is
 # host-only (native-only pin per `fixtures_exec.rs`), so only the real POSIX

@@ -11,13 +11,16 @@
 
 use {
     reovim_kernel::Kernel,
-    reovim_lib_ds::{Seq, Shared, net::UnixStream},
-    reovim_uapi_abi::{ErrorCode, FrameHeader},
-    reovim_uapi_protocol::{
-        frame::{HEADER_LEN, read_frame},
-        messages::{Attach, AttachAck, Direction, Hello, HelloAck, Message, Reject, SendInput},
-        state::{Action, RejectReason, TagInfo},
-        view::{DomainEntryList, StrList},
+    reovim_lib_ds::{Seq, Shared},
+    reovim_uapi::{
+        abi::{ErrorCode, FrameHeader},
+        net::UnixStream,
+        protocol::{
+            frame::{HEADER_LEN, read_frame},
+            messages::{Attach, AttachAck, Direction, Hello, HelloAck, Message, Reject, SendInput},
+            state::{Action, RejectReason, TagInfo},
+            view::{DomainEntryList, StrList},
+        },
     },
 };
 

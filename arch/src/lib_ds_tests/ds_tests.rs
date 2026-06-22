@@ -8,10 +8,7 @@
 //! iteration collect) and for `std::sync::Arc` (Mutex sharing). Replaced with
 //! `reovim_lib_ds::Seq` and `reovim_lib_ds::Shared` respectively.
 
-use {
-    reovim_kabi_platform::AllocError,
-    reovim_lib_ds::{Map, Ring, Seq, Shared},
-};
+use reovim_lib_ds::{AllocError, Map, Ring, Seq, Shared};
 
 use crate::{alloc::live_bytes, arch_test, testrt};
 

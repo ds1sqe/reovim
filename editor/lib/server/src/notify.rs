@@ -7,12 +7,15 @@
 //! push default).
 
 use {
-    reovim_lib_ds::{Seq, net::UnixStream},
+    reovim_lib_ds::Seq,
     reovim_subsys_domain::projection::Projection,
-    reovim_uapi_abi::{ErrorCode, FrameHeader},
-    reovim_uapi_protocol::{
-        frame::HEADER_LEN,
-        messages::{AttachEventProjection, Message},
+    reovim_uapi::{
+        abi::{ErrorCode, FrameHeader},
+        net::UnixStream,
+        protocol::{
+            frame::HEADER_LEN,
+            messages::{AttachEventProjection, Message},
+        },
     },
 };
 

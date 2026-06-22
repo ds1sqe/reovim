@@ -67,15 +67,15 @@ in the chapter that owns them.
 | **Sans-IO** | The purity discipline of `uapi/protocol` (SP15): the codec and protocol state machine are pure computation over byte slices — no syscalls, no IO traits, no timers, no allocation. |
 | **Log ring** | Bounded in-memory ring of rendered log lines, retained from boot stage 0; the `dmesg` analog. The ONE log buffer at kernel level — every log path, including the panic-time final flush (9.5 §9.1), goes through it. See `09-Conformance/05-Logging.md`. |
 | **Emitter address** | `kind/CdylibId.vtable` token identifying where in the loaded topology a log line originated; kernel subsystems use a bare name. See `09-Conformance/05-Logging.md` §3. |
-| **Up-face** | The product-facing foundation contract family, `uapi/*`. Editor/client/product code names this face for system-visible semantics. |
-| **Down-face** | The machine/provider-facing foundation contract family, `kabi/*`. Hardware/chip/device/provider code names this face and does not name `uapi/*` directly unless a documented inescapable exception exists. |
+| **Up-face** | The product-facing foundation contract family. Editor/client/product code names the public `reovim-uapi` facade (`uapi::net`, `uapi::sched`, etc.) for system-visible semantics; physical SSOT leaf crates live under `uapi/inner/*` for dependency enforcement. There is no product POSIX face: product semantics live in domain uapi leaves. |
+| **Down-face** | The machine/provider-facing foundation contract family, `kabi/*`. Hardware/chip/device/provider code names this face and does not name `uapi/*` directly unless a documented inescapable exception exists; POSIX-shaped scalar ABI belongs here in `kabi/platform`. |
 | **System-kernel bridge** | `system/lib/kernel`. The World-layer bridge that may name both `uapi/*` and `kabi/*`; owns common system semantics/policy and must not name `arch-*`, `arch-sys-*`, `arch-floor-*`, or `platform-*`. |
 
 ## Architectural categories
 
 | Term | Definition |
 |---|---|
-| **Foundation** | `uapi/*`, `system/lib/kernel`, `kabi/*`, `lib/*`, `platform-*`, and `arch-*` families. No upward deps; up-face code names `uapi`, down-face code names `kabi`, and the system-kernel bridge is the normal bridge between them. |
+| **Foundation** | `uapi`, `uapi/inner/*`, `system/lib/kernel`, `kabi/*`, `lib/*`, `platform-*`, and `arch-*` families. No upward deps; up-face code names the `uapi` facade, down-face code names `kabi`, and the system-kernel bridge is the normal bridge between them. |
 | **Platform floor** | `arch/` / `arch-*` in its `DAG6` role: target-owned raw mechanism and link items at each target's lowest stable boundary, per the 1.2 §10 target-class table. |
 | **Bootstrap state** | A tracked, transitional zero-std exemption recorded in the 1.2 §10 table (libtest in test builds; depgraph/scripts ground tooling). Sequencing necessity, never convenience; ratchets to zero. |
 | **Server contracts** | `editor/lib/subsys/*`. Closed; zero ext deps. |

@@ -2,8 +2,8 @@
 //!
 //! The fixed-capacity circular buffer the LOG6 kernel log ring (and any other
 //! bounded-history consumer) is built on. There is no `alloc` crate, so the
-//! backing storage is a single allocation from the platform allocator (reached
-//! through the boot-installed `kabi` handle), made once at construction.
+//! backing storage is a single allocation from the installed allocation
+//! backend, made once at construction.
 //!
 //! When the ring is full, [`push`](Ring::push) evicts the oldest element and
 //! returns it. The capacity is fixed at construction (a single allocation, no
@@ -20,7 +20,7 @@
 
 use core::{alloc::Layout, ptr::NonNull};
 
-use reovim_kabi_platform::{AllocError, handle};
+use crate::alloc_backend::{AllocError, alloc, dealloc};
 
 /// A bounded ring buffer of `T` with oldest-first eviction.
 ///
@@ -65,7 +65,6 @@ impl<T> Ring<T> {
     ///
     /// ```no_run
     /// use reovim_lib_ds::Ring;
-    /// use reovim_kabi_platform::AllocError;
     /// assert!(Ring::<u32>::try_with_capacity(0).is_err());
     /// let r: Ring<u32> = Ring::try_with_capacity(4).unwrap();
     /// assert_eq!(r.capacity(), 4);
@@ -77,7 +76,7 @@ impl<T> Ring<T> {
             return Err(AllocError);
         }
         let layout = Layout::array::<T>(cap).map_err(|_| AllocError)?;
-        let ptr = handle().alloc(layout)?.cast::<T>();
+        let ptr = alloc(layout)?.cast::<T>();
         Ok(Self {
             ptr,
             head: 0,
@@ -268,9 +267,11 @@ impl<T> Drop for Ring<T> {
         // `cap >= 1`, so the allocation always exists; the layout that
         // succeeded at construction succeeds here.
         let layout = Layout::array::<T>(self.cap).expect("layout valid at alloc time");
-        // `self.ptr`/`layout` name the single live allocation; no element is
-        // referenced after the drops above.
-        handle().dealloc(self.ptr.cast(), layout);
+        // SAFETY: `self.ptr`/`layout` name the single live allocation; no
+        // element is referenced after the drops above.
+        unsafe {
+            dealloc(self.ptr.cast(), layout);
+        }
     }
 }
 

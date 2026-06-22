@@ -150,7 +150,7 @@ impl InstanceAddress {
 ///
 /// ```rust
 /// use reovim_kernel::log::render::{EmitterAddress, InstanceAddress, RenderInput};
-/// use reovim_uapi_abi::error::LogLevel;
+/// use reovim_uapi::abi::error::LogLevel;
 ///
 /// let input = RenderInput {
 ///     ts_nanos: 2_413_000,
@@ -182,7 +182,7 @@ pub struct RenderInput<'a> {
     /// as `\n`").
     pub message: &'a str,
     /// Log level (carried in the ring entry alongside the rendered bytes).
-    pub level: reovim_uapi_abi::error::LogLevel,
+    pub level: reovim_uapi::abi::error::LogLevel,
 }
 
 // ── Render error ─────────────────────────────────────────────────────────────
@@ -232,7 +232,7 @@ pub enum RenderError {
 ///
 /// ```no_run
 /// use reovim_kernel::log::render::{EmitterAddress, InstanceAddress, RenderInput, render_line};
-/// use reovim_uapi_abi::error::LogLevel;
+/// use reovim_uapi::abi::error::LogLevel;
 ///
 /// let input = RenderInput {
 ///     ts_nanos: 2_413_000,   // 2413 µs

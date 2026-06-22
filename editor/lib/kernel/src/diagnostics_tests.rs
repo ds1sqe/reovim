@@ -154,22 +154,10 @@ arch_test!(clock_monotonic_advanced_reports_elapsed_no_fail, {
 });
 
 arch_test!(usable_memory_sums_only_usable_ranges, {
-    use reovim_kabi_platform::{BootInfo, MemoryKind, MemoryRange};
+    use reovim_uapi::system::{BootInfo, MemorySummary};
 
-    static R: [MemoryRange; 2] = [
-        MemoryRange {
-            base: 0,
-            len: 1024 * (1 << 20),
-            kind: MemoryKind::Usable,
-        },
-        MemoryRange {
-            base: 0x4000_0000,
-            len: 256 * (1 << 20),
-            kind: MemoryKind::Reserved,
-        },
-    ];
     let bi = BootInfo {
-        memory: &R,
+        memory: MemorySummary::new(2, 1024 * (1 << 20)),
         cpu_freq_hz: 0,
         cpu_id: 0,
         cpu_count: 1,
@@ -181,7 +169,7 @@ arch_test!(usable_memory_sums_only_usable_ranges, {
 });
 
 arch_test!(empty_boot_info_memory_is_absent, {
-    use reovim_kabi_platform::BootInfo;
+    use reovim_uapi::system::BootInfo;
 
     let (usable, present) = usable_memory(&BootInfo::default());
     assert!(!present, "the empty default map is reported absent");
@@ -283,7 +271,7 @@ arch_test!(heap_total_reports_kib_then_mib, {
 arch_test!(health_event_maps_to_health_subsystem_and_strips_prefix, {
     use {
         crate::event_bus::{BootStageFields, DS12Event},
-        reovim_uapi_abi::error::LogLevel,
+        reovim_uapi::abi::error::LogLevel,
     };
 
     // A health event carries "health.<metric>" in its id; render_event maps the

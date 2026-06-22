@@ -12,6 +12,19 @@ use reovim_kabi_platform::DeviceClass;
 /// Storage controllers and USB controllers are only declared present here.
 /// Capacity reads, descriptor walks, and device-specific initialization are
 /// later driver work.
+///
+/// ```rust,ignore
+/// use reovim_kabi_platform::DeviceClass;
+///
+/// assert_eq!(
+///     reovim_arch_sys_none_aarch64::classify_compatible("arm,pl011"),
+///     DeviceClass::Uart,
+/// );
+/// assert_eq!(
+///     reovim_arch_sys_none_aarch64::classify_compatible("vendor,unknown"),
+///     DeviceClass::Unknown,
+/// );
+/// ```
 #[must_use]
 pub fn classify_compatible(compatible: &str) -> DeviceClass {
     match compatible {

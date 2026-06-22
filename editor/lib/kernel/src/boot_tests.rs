@@ -108,7 +108,7 @@ arch_test!(run_boot_stages_produces_fourteen_events, {
 
     let bus = DS12EventBus::new();
     bus.subscribe(record_event).unwrap();
-    let clock = BootClock::capture();
+    let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
 
     crate::boot::run_boot_stages(&bus, &clock).expect("boot must succeed");
 
@@ -123,7 +123,7 @@ arch_test!(boot_stages_emit_start_then_ok_in_order, {
 
     let bus = DS12EventBus::new();
     bus.subscribe(record_event).unwrap();
-    let clock = BootClock::capture();
+    let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
 
     crate::boot::run_boot_stages(&bus, &clock).expect("boot must succeed");
 
@@ -174,7 +174,7 @@ arch_test!(forced_stage_failure_emits_fail_and_aborts, {
 
     let bus = DS12EventBus::new();
     bus.subscribe(record_event).unwrap();
-    let clock = BootClock::capture();
+    let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
 
     inject_stage_failure(3);
     let result = crate::boot::run_boot_stages(&bus, &clock);
@@ -243,7 +243,7 @@ arch_test!(start_precedes_ok_for_every_stage, {
 
     let bus = DS12EventBus::new();
     bus.subscribe(record_event).unwrap();
-    let clock = BootClock::capture();
+    let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
 
     crate::boot::run_boot_stages(&bus, &clock).unwrap();
 
@@ -271,7 +271,7 @@ arch_test!(successful_boot_has_no_fail_events, {
 
     let bus = DS12EventBus::new();
     bus.subscribe(record_event).unwrap();
-    let clock = BootClock::capture();
+    let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
 
     crate::boot::run_boot_stages(&bus, &clock).unwrap();
 
@@ -302,7 +302,7 @@ arch_test!(run_stage_real_body_err_emits_fail_and_returns_err, {
 
     let bus = DS12EventBus::new();
     bus.subscribe(record_event).unwrap();
-    let clock = BootClock::capture();
+    let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
 
     let result = run_stage(&bus, &clock, 4, Some(failing_body));
 
@@ -338,12 +338,12 @@ arch_test!(record_event_maps_unknown_event_to_kind_unknown, {
 
     let bus = DS12EventBus::new();
     bus.subscribe(record_event).unwrap();
-    let clock = BootClock::capture();
+    let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
 
     // Emit an event that is not boot.stage.{start,ok,fail}.
     bus.emit(&DS12Event {
         ts_nanos: clock.elapsed_nanos(),
-        level: reovim_uapi_abi::error::LogLevel::Info,
+        level: reovim_uapi::abi::error::LogLevel::Info,
         event: "custom.unrecognised",
         fields: crate::event_bus::BootStageFields {
             stage: 77,
@@ -366,7 +366,7 @@ arch_test!(injected_failure_at_every_stage_aborts_boot, {
     for stage in 1..=7u8 {
         reset_recorder();
         let bus = DS12EventBus::new();
-        let clock = BootClock::capture();
+        let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
         inject_stage_failure(stage);
         let result = crate::boot::run_boot_stages(&bus, &clock);
         match result {

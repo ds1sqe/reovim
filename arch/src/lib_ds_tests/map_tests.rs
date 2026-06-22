@@ -11,7 +11,7 @@ use {
         cell::Cell,
         hash::{Hash, Hasher},
     },
-    reovim_kabi_platform::AllocError,
+    reovim_lib_ds::AllocError,
 };
 
 use reovim_lib_ds::{

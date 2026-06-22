@@ -49,7 +49,7 @@ use core::{
     },
 };
 
-use reovim_kabi_platform::handle;
+use crate::sync_backend;
 
 /// High bit of the state word: a writer holds the lock.
 const WRITER: u32 = 1 << 31;
@@ -151,7 +151,7 @@ impl<T> RwLock<T> {
             // loop re-checks.
             #[cfg(feature = "selftest")]
             crate::testhooks::note_rwlock_reader_wait();
-            handle().park(&self.state, s);
+            sync_backend::park(&self.state, s);
         }
     }
 
@@ -187,7 +187,7 @@ impl<T> RwLock<T> {
                 core::hint::spin_loop();
                 continue;
             }
-            handle().park(&self.state, s);
+            sync_backend::park(&self.state, s);
         }
     }
 
@@ -196,7 +196,7 @@ impl<T> RwLock<T> {
         // Release so the next writer sees this reader's writes. If the count
         // reached zero, a writer may be waiting — wake everyone (`unpark_all`).
         if self.state.fetch_sub(1, Release) == 1 {
-            handle().unpark_all(&self.state);
+            sync_backend::unpark_all(&self.state);
         }
     }
 
@@ -205,7 +205,7 @@ impl<T> RwLock<T> {
         // Release publishes the writer's mutations; wake all (`unpark_all`) so a
         // blocked writer or any blocked readers re-check the now-free word.
         self.state.store(0, Release);
-        handle().unpark_all(&self.state);
+        sync_backend::unpark_all(&self.state);
     }
 
     /// The current number of live read guards (selftest observation hook;

@@ -32,7 +32,7 @@
 
 use {
     reovim_lib_ds::{RwLock, Seq, Shared},
-    reovim_uapi_abi::error::LogLevel,
+    reovim_uapi::abi::error::LogLevel,
 };
 
 use crate::log::ring::LogRing;
@@ -106,13 +106,11 @@ pub struct BootStageFields {
 /// # Example
 ///
 /// ```rust,no_run
-/// // no_run: BootClock::capture reads the boot-installed platform handle.
 /// use reovim_kernel::event_bus::{DS12Event, BootStageFields};
-/// use reovim_kernel::LauncherArgs;
 /// use reovim_kernel::BootClock;
-/// use reovim_uapi_abi::error::LogLevel;
+/// use reovim_uapi::abi::error::LogLevel;
 ///
-/// let clock = BootClock::capture();
+/// let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
 /// let event = DS12Event {
 ///     ts_nanos: clock.elapsed_nanos(),
 ///     level: LogLevel::Info,
@@ -208,10 +206,10 @@ pub type Subscriber = fn(&DS12Event);
 /// ```no_run
 /// use reovim_kernel::event_bus::{DS12EventBus, DS12Event, BootStageFields, EVT_BOOT_STAGE_START};
 /// use reovim_kernel::BootClock;
-/// use reovim_uapi_abi::error::LogLevel;
+/// use reovim_uapi::abi::error::LogLevel;
 ///
 /// let bus = DS12EventBus::new();
-/// let clock = BootClock::capture();
+/// let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
 /// let event = DS12Event {
 ///     ts_nanos: clock.elapsed_nanos(),
 ///     level: LogLevel::Info,
@@ -332,7 +330,7 @@ impl DS12EventBus {
     /// ```no_run
     /// use reovim_kernel::event_bus::{DS12EventBus, DS12Event, BootStageFields, EVT_BOOT_STAGE_OK};
     /// use reovim_kernel::BootClock;
-    /// use reovim_uapi_abi::error::LogLevel;
+    /// use reovim_uapi::abi::error::LogLevel;
     /// use core::sync::atomic::{AtomicUsize, Ordering};
     ///
     /// static COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -340,7 +338,7 @@ impl DS12EventBus {
     ///
     /// let bus = DS12EventBus::new();
     /// bus.subscribe(counter).unwrap();
-    /// let clock = BootClock::capture();
+    /// let clock = BootClock::capture(reovim_uapi::sched::ClockControl::default());
     /// let event = DS12Event {
     ///     ts_nanos: clock.elapsed_nanos(),
     ///     level: LogLevel::Info,

@@ -29,8 +29,7 @@
 //! `reovim-domain-text` → `reovim-subsys-domain` (implements the
 //! `OnRawInputHandler` / `RenderProjector` contracts, produces `Projection`).
 //! It has no dependency on the kernel; the kernel depends on the same contract
-//! tier and routes opaque through it (core/ext boundary, `CLAUDE.md §Design
-//! Rules`).
+//! tier and routes opaque through it (core/ext boundary).
 #![no_std]
 
 pub mod handler;

@@ -13,11 +13,7 @@ publish = false
 [lints]
 workspace = true
 
-[dependencies]
-reovim-uapi-posix = { path = "../../uapi/posix" }
-
-# kabi/platform is the down-face CONTRACT tier — a leaf (master invariant 6):
-# it declares the mechanism (#[repr(C)] vtable) and NEVER names an
-# implementor. A dependency on `arch` (or any impl crate) is the cardinal
-# forbidden edge `kabi → arch`. DAG5 (Dependency Sovereignty): only `core`
-# plus the uapi-tier vocabulary crates that live above the floor.
+# No dependencies: kabi/platform is the down-face CONTRACT tier — a leaf
+# (master invariant 6). It declares the mechanism (#[repr(C)] vtable) and NEVER
+# names an implementor or up-face uapi vocabulary. A dependency on `arch` (or
+# any impl crate) is the cardinal forbidden edge `kabi → arch`.

@@ -46,12 +46,16 @@ pub use target::install_write_sink;
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 pub use target::{
-    arena_capacity, classify_device_compatible, clidr, ctr, discover_memory, dtb_ptr, midr, mpidr,
-    read_ccsidr, sdram_clock_hz, timer_frequency,
+    Aarch64CacheGeometry, arena_capacity, cache_geometry, classify_device_compatible, clidr,
+    cpu_affinity, cpu_id, ctr, discover_memory, dtb_ptr, midr, mpidr, read_ccsidr, sdram_clock_hz,
+    timer_frequency,
 };
 
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
-pub use target::{cpu_id_native, multiboot_ptr, timer_frequency};
+pub use target::{
+    EMPTY_MEMORY_RANGE, MEMORY_STORAGE_ENTRIES, MemoryRange, cpu_id, cpu_id_native,
+    discover_memory, multiboot_ptr, timer_frequency,
+};
 
 #[cfg(not(any(
     all(target_os = "linux", target_arch = "x86_64"),

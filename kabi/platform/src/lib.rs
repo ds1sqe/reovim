@@ -64,7 +64,159 @@ use core::{
     },
 };
 
-pub use reovim_uapi_posix::{Errno, Fd, Mode, OpenFlags};
+/// File-open flags word carried by the down-face platform contract.
+///
+/// This is a `#[repr(transparent)]` wrapper over the Linux ABI `i32` flag word.
+/// It lives in `kabi/platform` so providers and the system-kernel bridge do not
+/// import up-face POSIX vocabulary directly.
+///
+/// ```rust
+/// use reovim_kabi_platform::OpenFlags;
+///
+/// assert_eq!(OpenFlags(0o100).bits(), 0o100);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+pub struct OpenFlags(pub i32);
+
+impl OpenFlags {
+    /// Returns the raw flag bit pattern.
+    ///
+    /// ```rust
+    /// use reovim_kabi_platform::OpenFlags;
+    ///
+    /// assert_eq!(OpenFlags(0o2_000_000).bits(), 0o2_000_000);
+    /// ```
+    #[must_use]
+    pub const fn bits(self) -> i32 {
+        self.0
+    }
+}
+
+impl core::ops::BitOr for OpenFlags {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self {
+        Self(self.0 | rhs.0)
+    }
+}
+
+/// Open for reading only.
+pub const O_RDONLY: OpenFlags = OpenFlags(0);
+
+/// Open for writing only.
+pub const O_WRONLY: OpenFlags = OpenFlags(0o1);
+
+/// Create the file if it does not exist.
+pub const O_CREAT: OpenFlags = OpenFlags(0o100);
+
+/// Truncate the file to zero length on open.
+pub const O_TRUNC: OpenFlags = OpenFlags(0o1000);
+
+/// Append writes to the end of the file.
+pub const O_APPEND: OpenFlags = OpenFlags(0o2000);
+
+/// Close the descriptor on exec.
+pub const O_CLOEXEC: OpenFlags = OpenFlags(0o2_000_000);
+
+/// File creation mode carried by the down-face platform contract.
+///
+/// ```rust
+/// use reovim_kabi_platform::Mode;
+///
+/// assert_eq!(Mode(0o644).bits(), 0o644);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+pub struct Mode(pub u32);
+
+impl Mode {
+    /// Returns the raw permission bit pattern.
+    ///
+    /// ```rust
+    /// use reovim_kabi_platform::Mode;
+    ///
+    /// assert_eq!(Mode(0o600).bits(), 0o600);
+    /// ```
+    #[must_use]
+    pub const fn bits(self) -> u32 {
+        self.0
+    }
+}
+
+/// File descriptor scalar carried by the down-face platform contract.
+///
+/// ```rust
+/// use reovim_kabi_platform::Fd;
+///
+/// assert_eq!(Fd(3).as_i32(), 3);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+pub struct Fd(pub i32);
+
+impl Fd {
+    /// Returns the raw file descriptor value.
+    ///
+    /// ```rust
+    /// use reovim_kabi_platform::Fd;
+    ///
+    /// assert_eq!(Fd(5).as_i32(), 5);
+    /// ```
+    #[must_use]
+    pub const fn as_i32(self) -> i32 {
+        self.0
+    }
+}
+
+/// Positive errno code carried by the down-face platform contract.
+///
+/// The vtable ABI returns negative `-errno`; safe wrappers convert that to this
+/// positive diagnostic code.
+///
+/// ```rust
+/// use reovim_kabi_platform::Errno;
+///
+/// assert_eq!(Errno::from_code(2).code(), 2);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+pub struct Errno(pub i32);
+
+impl Errno {
+    /// Builds an errno from a positive code.
+    ///
+    /// ```rust
+    /// use reovim_kabi_platform::Errno;
+    ///
+    /// assert_eq!(Errno::from_code(22).code(), 22);
+    /// ```
+    #[must_use]
+    pub const fn from_code(code: i32) -> Self {
+        Self(code)
+    }
+
+    /// Returns the positive errno code.
+    ///
+    /// ```rust
+    /// use reovim_kabi_platform::Errno;
+    ///
+    /// assert_eq!(Errno(9).code(), 9);
+    /// ```
+    #[must_use]
+    pub const fn code(self) -> i32 {
+        self.0
+    }
+}
+
+const _: () = assert!(core::mem::size_of::<OpenFlags>() == core::mem::size_of::<i32>());
+const _: () = assert!(core::mem::align_of::<OpenFlags>() == core::mem::align_of::<i32>());
+const _: () = assert!(core::mem::size_of::<Mode>() == core::mem::size_of::<u32>());
+const _: () = assert!(core::mem::align_of::<Mode>() == core::mem::align_of::<u32>());
+const _: () = assert!(core::mem::size_of::<Fd>() == core::mem::size_of::<i32>());
+const _: () = assert!(core::mem::align_of::<Fd>() == core::mem::align_of::<i32>());
+const _: () = assert!(core::mem::size_of::<Errno>() == core::mem::size_of::<i32>());
+const _: () = assert!(core::mem::align_of::<Errno>() == core::mem::align_of::<i32>());
 
 /// Failure to allocate through the platform's allocator primitive.
 ///
@@ -152,8 +304,8 @@ pub struct DeviceEntry {
     /// MMIO region length in bytes from the node's `reg` property; `0` when absent.
     pub mmio_len: u64,
     /// Primary interrupt number — the first cell of the `interrupts` property.
-    /// `u32::MAX` when the property is absent or has not been decoded by this
-    /// enumerator phase (Phase 3 may decode more).
+    /// `u32::MAX` when the property is absent or this enumerator does not decode
+    /// it yet.
     pub irq: u32,
     /// Block device capacity in bytes. `0` for non-block devices and for block
     /// devices where the capacity is not derivable from the DTB alone (a driver
@@ -312,11 +464,11 @@ pub struct BootInfo {
 /// typed `Result`. The success value is narrowed to the caller's `usize`
 /// (a byte count or a non-negative fd both fit).
 ///
-/// The error half is the canonical [`Errno`] from `uapi/posix`: the fd-op slots
-/// report a negative-errno return (the Linux raw-syscall convention, FFI-safe
-/// across the `extern "C"` boundary), and the safe wrappers recover the
-/// positive code into the POSIX-vocabulary newtype so consumers match on a
-/// positive code rather than re-deriving the sign.
+/// The error half is the canonical down-face [`Errno`]: the fd-op slots report
+/// a negative-errno return (the Linux raw-syscall convention, FFI-safe across
+/// the `extern "C"` boundary), and the safe wrappers recover the positive code
+/// into the contract newtype so consumers match on a positive code rather than
+/// re-deriving the sign.
 const fn map_fd_ret(ret: i64) -> Result<usize, Errno> {
     if ret < 0 {
         // A negative return encodes `-errno`; recover the positive code. The
@@ -333,9 +485,9 @@ const fn map_fd_ret(ret: i64) -> Result<usize, Errno> {
 /// nanoseconds since an unspecified epoch.
 ///
 /// Monotonic (never steps backward), so the difference of two readings is a
-/// non-negative duration. The SP02 proof slot — the one primitive wired
-/// end-to-end through the handle (provider → vtable → consumer) to prove the
-/// mechanism works before SP03 routes alloc/park through it.
+/// non-negative duration. This was the initial slot wired end-to-end through the
+/// handle (provider → vtable → consumer) before allocation and parking joined the
+/// same mechanism.
 ///
 /// # Safety
 ///
@@ -350,7 +502,7 @@ pub type ClockFn = unsafe extern "C" fn() -> i64;
 ///
 /// Shaped to the C ABI (`*mut u8`, null = failure) rather than carrying a Rust
 /// `Result<NonNull<u8>, AllocError>` across the `extern "C"` boundary, which is
-/// not FFI-safe. The consumer (`lib/ds`, SP03) maps the null return back to
+/// not FFI-safe. The `lib/ds` consumer maps the null return back to
 /// [`AllocError`]. `align` is always a power of two; `size` is non-zero.
 ///
 /// # Safety
@@ -377,8 +529,8 @@ pub type DeallocFn = unsafe extern "C" fn(ptr: *mut u8, size: usize, align: usiz
 /// Futex-shaped (the low-level wait the provider exposes): the kernel
 /// re-checks `*word` against `expected` before sleeping, closing the
 /// lost-wake window. Spurious wakes are permitted — the caller re-checks its
-/// own condition in a loop. SP03 consumes this through the handle to build the
-/// `lib/ds` `Mutex`/`Condvar`; SP02 only declares it.
+/// own condition in a loop. `lib/ds` consumes this through the handle to build
+/// `Mutex` and `Condvar`.
 ///
 /// # Safety
 ///
@@ -417,8 +569,8 @@ pub type UnparkAllFn = unsafe extern "C" fn(word: *const u32);
 /// bytes including the NUL) and returns the connected fd (`>= 0`), or a
 /// negative errno on failure.
 ///
-/// fd-based syscall surface (the SP05 net stratum): the contract carries raw
-/// fds as `i32`, paths as `*const u8` + `usize`, and reports errors as a
+/// The fd-based syscall surface carries raw fds as `i32`, paths as
+/// `*const u8` + `usize`, and reports errors as a
 /// negative errno return — the Linux raw-syscall convention — rather than a
 /// non-FFI-safe `Result`. The consumer (`lib/ds`'s `UnixStream`) maps a
 /// negative return back to a typed error and wraps the fd in a Math type.
@@ -550,8 +702,9 @@ pub type ThreadIdFn = unsafe extern "C" fn() -> i64;
 /// that slot is a stream `send` that suppresses `SIGPIPE` for the socket
 /// carrier, and `send` is valid only on a socket fd. This slot is the ordinary
 /// `write(2)` that works on any fd — a regular file (the kernel log sink), a
-/// pipe, or a tty (the tui's stdout). The two write paths split on the
-/// `lib/ds` module boundary: `net` uses [`FdWriteFn`], `fs` uses this slot.
+/// pipe, or a tty (the tui's stdout). The two write paths split in the
+/// system-kernel bridge: socket writes use [`FdWriteFn`], file/stdout writes
+/// use this slot.
 ///
 /// # Safety
 ///
@@ -563,7 +716,7 @@ pub type FileWriteFn = unsafe extern "C" fn(fd: Fd, buf: *const u8, len: usize) 
 /// `entry(arg)`, returning the new thread id (`>= 0`) or a negative errno.
 ///
 /// pthread_create-shaped: a single C-ABI entry taking one type-erased argument.
-/// The consumer (`lib/ds`'s thread-spawn helper) boxes a Rust closure into a
+/// The consumer (`system/lib/kernel::sched`) boxes a Rust closure into a
 /// provider-allocated block, hands the thin block pointer as `arg`, and
 /// supplies a monomorphized `extern "C"` trampoline as `entry` that reconstructs
 /// and runs the closure. The thread is **detached**: the provider owns the
@@ -584,7 +737,7 @@ pub type ThreadSpawnFn =
 /// returns a saved-state token (`>= 0`), or a negative errno (`-ENOTTY` when
 /// `fd` is not a terminal).
 ///
-/// The narrow, policy-free half of the SP05 termios contract (the other half is
+/// The narrow, policy-free half of the termios contract (the other half is
 /// [`TermRestoreFn`]). The provider owns ALL mechanism: it reads the current
 /// termios, decides which flags to clear (the raw-mode policy), writes the raw
 /// termios, and stashes the saved state keyed by the returned token. No
@@ -623,6 +776,31 @@ pub type TermSetRawFn = unsafe extern "C" fn(fd: i32) -> i64;
 /// dereferences no memory the caller passes. An unknown fd is a no-op, not UB.
 pub type TermRestoreFn = unsafe extern "C" fn(fd: i32);
 
+/// The path-unlink primitive: removes the NUL-terminated pathname `path`
+/// (`path_len` bytes), returning `0` on success or a negative errno.
+///
+/// The contract deliberately carries only the path. Directory-fd and flag
+/// vocabulary stay below the bridge; the current provider maps this to
+/// `AT_FDCWD` + no flags for socket/file cleanup.
+///
+/// # Safety
+///
+/// `unsafe extern "C"` per the vtable ABI. `path` must point to `path_len`
+/// readable bytes containing a NUL-terminated pathname; the provider reads no
+/// further. A missing path maps to a negative errno, not UB.
+///
+/// ```rust
+/// use reovim_kabi_platform::PathUnlinkFn;
+///
+/// unsafe extern "C" fn unlink_stub(path: *const u8, len: usize) -> i64 {
+///     let _ = (path, len);
+///     0
+/// }
+///
+/// let _f: PathUnlinkFn = unlink_stub;
+/// ```
+pub type PathUnlinkFn = unsafe extern "C" fn(path: *const u8, path_len: usize) -> i64;
+
 /// The platform handle: a `#[repr(C)]` vtable of effectful primitive function
 /// pointers the provider builds and the boot path installs.
 ///
@@ -636,69 +814,66 @@ pub type TermRestoreFn = unsafe extern "C" fn(fd: i32);
 ///
 /// ## Slot order is append-only (AB3) and frozen (AB15)
 ///
-/// `#[repr(C)]` freezes the field layout; the order — `clock`, `alloc`,
-/// `dealloc`, `park`, `unpark`, `unpark_all`, then the SP05 net/thread slots
-/// — is append-only. A future primitive is a new trailing field, never a
-/// reorder or removal, so a binary built against an older slot set stays
-/// ABI-compatible. SP02 wired `clock` end-to-end; SP03 wires
-/// `alloc`/`dealloc`/`park`/`unpark`/`unpark_all` through the safe wrappers
-/// below (consumed by `lib/ds`). SP05 appends the net fd-op slots
+/// `#[repr(C)]` freezes the field layout; the order is append-only. A future
+/// primitive is a new trailing field, never a reorder or removal, so a binary
+/// built against an older slot set stays ABI-compatible. The base slots cover
+/// monotonic time, allocation, and parking. The trailing fd-op slots
 /// (`unix_connect`/`unix_listen`/`unix_accept`/`fd_read`/`fd_write`/`fd_close`)
-/// and `thread_spawn` (AB3 trailing append) so `lib/ds` can build
-/// `UnixStream`/`UnixListener` Math types and a detached thread-spawn helper
-/// without naming `arch`. SP05 also appends `realtime` (wall-clock anchor),
-/// `file_open` (open a file by path), and `thread_id` (the calling thread's
-/// tid) so the kernel's clock/log-sink/service-registration and the tui's
-/// stdio reach time + file + thread-identity backends through the handle.
-/// The two termios slots (`term_set_raw`/`term_restore`, an AB3 trailing
-/// append) let the tui's raw-mode entry/restore reach a terminal backend
-/// through the handle without naming `arch`: the contract carries only
-/// `(fd) → token`/`(fd) → ()`, the `Termios` layout and the flag policy staying
-/// in the provider (master invariant 3).
+/// and `thread_spawn` let the system-kernel bridge build UDS and detached
+/// thread-spawn services without naming `arch`. `realtime`, `file_open`,
+/// `thread_id`, and `file_write` let kernel clock/log/service-registration and
+/// tui stdio reach time, file, thread-identity, and plain-write backends through
+/// the handle. The two termios slots (`term_set_raw`/`term_restore`) let the
+/// tui's raw-mode entry/restore reach a terminal backend through the handle:
+/// the contract carries only `(fd) → token`/`(fd) → ()`, with the `Termios`
+/// layout and flag policy staying in the provider (master invariant 3).
+/// `path_unlink` is another trailing slot used by the system-kernel fs bridge
+/// for app-level socket cleanup without exposing `unlinkat` above the bridge.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct PlatformVtable {
-    /// Monotonic clock read (the SP02 end-to-end proof slot).
+    /// Monotonic clock read.
     pub clock: ClockFn,
-    /// Allocate `(size, align)` bytes; null on failure (SP03-consumed).
+    /// Allocate `(size, align)` bytes; null on failure.
     pub alloc: AllocFn,
-    /// Free a block from [`PlatformVtable::alloc`] (SP03-consumed).
+    /// Free a block from [`PlatformVtable::alloc`].
     pub dealloc: DeallocFn,
-    /// Block while `*word == expected` (SP03-consumed).
+    /// Block while `*word == expected`.
     pub park: ParkFn,
-    /// Wake one thread parked on `word` (SP03-consumed).
+    /// Wake one thread parked on `word`.
     pub unpark: UnparkFn,
-    /// Wake every thread parked on `word` (SP03-consumed; AB3 trailing append).
+    /// Wake every thread parked on `word` (AB3 trailing append).
     pub unpark_all: UnparkAllFn,
-    /// Connect a Unix-domain stream socket (SP05; AB3 trailing append).
+    /// Connect a Unix-domain stream socket (AB3 trailing append).
     pub unix_connect: UnixConnectFn,
-    /// Bind + listen a Unix-domain stream socket (SP05; AB3 trailing append).
+    /// Bind + listen a Unix-domain stream socket (AB3 trailing append).
     pub unix_listen: UnixListenFn,
-    /// Accept a connection on a listening fd (SP05; AB3 trailing append).
+    /// Accept a connection on a listening fd (AB3 trailing append).
     pub unix_accept: UnixAcceptFn,
-    /// Read bytes from an fd (SP05; AB3 trailing append).
+    /// Read bytes from an fd (AB3 trailing append).
     pub fd_read: FdReadFn,
-    /// Write bytes to an fd, SIGPIPE-suppressed (SP05; AB3 trailing append).
+    /// Write bytes to an fd, SIGPIPE-suppressed (AB3 trailing append).
     pub fd_write: FdWriteFn,
-    /// Close an fd (SP05; AB3 trailing append).
+    /// Close an fd (AB3 trailing append).
     pub fd_close: FdCloseFn,
-    /// Spawn a detached thread running a C-ABI entry (SP05; AB3 trailing
-    /// append).
+    /// Spawn a detached thread running a C-ABI entry (AB3 trailing append).
     pub thread_spawn: ThreadSpawnFn,
-    /// Read the wall clock in Unix-epoch nanoseconds (SP05; AB3 trailing
-    /// append).
+    /// Read the wall clock in Unix-epoch nanoseconds (AB3 trailing append).
     pub realtime: RealtimeFn,
-    /// Open a file, returning its fd (SP05; AB3 trailing append).
+    /// Open a file, returning its fd (AB3 trailing append).
     pub file_open: FileOpenFn,
-    /// Read the calling thread's kernel thread id (SP05; AB3 trailing append).
+    /// Read the calling thread's kernel thread id (AB3 trailing append).
     pub thread_id: ThreadIdFn,
-    /// Plain `write(2)` to any fd — file or stdio (SP05; AB3 trailing append).
+    /// Plain `write(2)` to any fd — file or stdio (AB3 trailing append).
     pub file_write: FileWriteFn,
     /// Put an fd into raw mode, returning a saved-state token (AB3
     /// trailing append).
     pub term_set_raw: TermSetRawFn,
     /// Restore an fd's saved termios, idempotently (AB3 trailing append).
     pub term_restore: TermRestoreFn,
+    /// Unlink a path relative to the provider's current working directory
+    /// (AB3 trailing append).
+    pub path_unlink: PathUnlinkFn,
 }
 
 // `PlatformVtable` is `Sync` automatically: it holds only `unsafe extern "C"`
@@ -873,7 +1048,7 @@ impl PlatformVtable {
     /// thread id.
     ///
     /// The safe Rust face of the [`thread_spawn`](PlatformVtable::thread_spawn)
-    /// slot. The CALLER (`lib/ds`'s thread-spawn helper) is responsible for
+    /// slot. The CALLER (`system/lib/kernel::sched`) is responsible for
     /// `entry`/`arg` validity — `entry` must be a valid function that runs to
     /// completion given `arg`, and the new thread takes ownership of `arg`.
     /// This method is itself `unsafe` because those obligations cannot be
@@ -1024,6 +1199,74 @@ impl PlatformVtable {
         // memory. An unknown fd is a no-op (the idempotency contract).
         unsafe { (self.term_restore)(fd) }
     }
+
+    /// Unlinks the NUL-terminated `path`.
+    ///
+    /// The safe Rust face of the [`path_unlink`](PlatformVtable::path_unlink)
+    /// slot. The provider decides the native mechanism; the current Linux
+    /// provider maps this to `unlinkat(AT_FDCWD, path, 0)`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Errno`] when the unlink fails (missing path, permission denied,
+    /// malformed pathname).
+    ///
+    /// ```rust
+    /// # use reovim_kabi_platform::{install, Fd, Mode, OpenFlags, PlatformVtable};
+    /// # unsafe extern "C" fn clock() -> i64 { 0 }
+    /// # unsafe extern "C" fn alloc(_: usize, _: usize) -> *mut u8 { core::ptr::null_mut() }
+    /// # unsafe extern "C" fn dealloc(_: *mut u8, _: usize, _: usize) {}
+    /// # unsafe extern "C" fn park(_: *const u32, _: u32) {}
+    /// # unsafe extern "C" fn unpark(_: *const u32) {}
+    /// # unsafe extern "C" fn connect(_: *const u8, _: usize) -> i64 { -1 }
+    /// # unsafe extern "C" fn accept(_: Fd) -> i64 { -1 }
+    /// # unsafe extern "C" fn read(_: Fd, _: *mut u8, _: usize) -> i64 { -1 }
+    /// # unsafe extern "C" fn write(_: Fd, _: *const u8, _: usize) -> i64 { -1 }
+    /// # unsafe extern "C" fn close(_: Fd) -> i64 { 0 }
+    /// # unsafe extern "C" fn spawn(_: unsafe extern "C" fn(*mut u8), _: *mut u8) -> i64 { -1 }
+    /// # unsafe extern "C" fn realtime() -> i64 { 0 }
+    /// # unsafe extern "C" fn file_open(_: *const u8, _: usize, _: OpenFlags, _: Mode) -> i64 { -1 }
+    /// # unsafe extern "C" fn thread_id() -> i64 { 1 }
+    /// # unsafe extern "C" fn term_set_raw(_: i32) -> i64 { -25 }
+    /// # unsafe extern "C" fn term_restore(_: i32) {}
+    /// unsafe extern "C" fn path_unlink(path: *const u8, len: usize) -> i64 {
+    ///     let _ = (path, len);
+    ///     0
+    /// }
+    ///
+    /// static TABLE: PlatformVtable = PlatformVtable {
+    ///     clock,
+    ///     alloc,
+    ///     dealloc,
+    ///     park,
+    ///     unpark,
+    ///     unpark_all: unpark,
+    ///     unix_connect: connect,
+    ///     unix_listen: connect,
+    ///     unix_accept: accept,
+    ///     fd_read: read,
+    ///     fd_write: write,
+    ///     fd_close: close,
+    ///     thread_spawn: spawn,
+    ///     realtime,
+    ///     file_open,
+    ///     thread_id,
+    ///     file_write: write,
+    ///     term_set_raw,
+    ///     term_restore,
+    ///     path_unlink,
+    /// };
+    ///
+    /// install(&TABLE).expect("first install succeeds");
+    /// assert_eq!(reovim_kabi_platform::handle().path_unlink(b"/tmp/x\0"), Ok(()));
+    /// ```
+    pub fn path_unlink(&self, path: &[u8]) -> Result<(), Errno> {
+        // SAFETY: `path` is a live slice borrowed for the call, so the pointer
+        // is valid for `path.len()` readable bytes; the provider reads no
+        // further and maps malformed paths to a negative errno.
+        let ret = unsafe { (self.path_unlink)(path.as_ptr(), path.len()) };
+        map_fd_ret(ret).map(|_| ())
+    }
 }
 
 /// Narrows a non-negative `usize` (a fd or tid the slot returned) to the `i32`
@@ -1163,8 +1406,7 @@ static HANDLE: AtomicPtr<PlatformVtable> = AtomicPtr::new(core::ptr::null_mut())
 /// Returns [`InstallError::AlreadyInstalled`] if a handle is already installed.
 ///
 /// ```no_run
-/// use reovim_kabi_platform::{install, PlatformVtable};
-/// use reovim_uapi_posix::{Fd, Mode, OpenFlags};
+/// use reovim_kabi_platform::{Fd, Mode, OpenFlags, PlatformVtable, install};
 ///
 /// unsafe extern "C" fn clock_stub() -> i64 { 0 }
 /// unsafe extern "C" fn alloc_stub(size: usize, align: usize) -> *mut u8 {
@@ -1207,6 +1449,10 @@ static HANDLE: AtomicPtr<PlatformVtable> = AtomicPtr::new(core::ptr::null_mut())
 /// }
 /// unsafe extern "C" fn term_set_raw_stub(fd: i32) -> i64 { let _ = fd; -25 }
 /// unsafe extern "C" fn term_restore_stub(fd: i32) { let _ = fd; }
+/// unsafe extern "C" fn path_unlink_stub(p: *const u8, n: usize) -> i64 {
+///     let _ = (p, n);
+///     0
+/// }
 ///
 /// static TABLE: PlatformVtable = PlatformVtable {
 ///     clock:        clock_stub,
@@ -1228,6 +1474,7 @@ static HANDLE: AtomicPtr<PlatformVtable> = AtomicPtr::new(core::ptr::null_mut())
 ///     file_write:   file_write_stub,
 ///     term_set_raw: term_set_raw_stub,
 ///     term_restore: term_restore_stub,
+///     path_unlink:  path_unlink_stub,
 /// };
 ///
 /// // Boot path: install the platform table once.

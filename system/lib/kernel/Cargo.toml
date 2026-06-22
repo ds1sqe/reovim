@@ -28,6 +28,37 @@ workspace = true
 # down-face platform contract type vocabulary. The provider implementation stays
 # below this crate.
 reovim-kabi-platform = { path = "../../../kabi/platform" }
+# Always-present panic/fault-floor atom registry. This bridge maps the up-face
+# panic/log control table to these down-face write-once slots.
+reovim-kabi-panic = { path = "../../../kabi/panic" }
+# Existing DS helpers used by system-kernel sync-backend installation and
+# shared boot/runtime data. The sched bridge owns handle-backed time/thread
+# services directly; 05-I15b removes lib/ds' remaining allocator backend edge.
+reovim-lib-ds = { path = "../../../lib/ds" }
+# Product-facing filesystem/borrowed-fd vocabulary. This bridge maps it to
+# down-face platform fd slots without exposing POSIX or kabi details upward.
+reovim-uapi-fs = { path = "../../../uapi/inner/fs" }
+# Product-facing memory-management vocabulary. This bridge maps allocation
+# requests to the down-face platform allocator slots.
+reovim-uapi-mm = { path = "../../../uapi/inner/mm" }
+# Product-facing log sink control vocabulary. This bridge maps it to lower file
+# helpers plus panic flush registration.
+reovim-uapi-log = { path = "../../../uapi/inner/log" }
+# Product-facing local networking/IPC vocabulary. This bridge maps UDS
+# connect/listen/accept/read/write/close to the down-face platform slots.
+reovim-uapi-net = { path = "../../../uapi/inner/net" }
+# Product-facing panic/log configuration vocabulary. This bridge maps it to the
+# down-face panic atoms without exposing `kabi/panic` to upper layers.
+reovim-uapi-panic = { path = "../../../uapi/inner/panic" }
+# Product-facing scheduler/clock/thread identity vocabulary. This bridge maps
+# it to the lower platform scheduler/time slots.
+reovim-uapi-sched = { path = "../../../uapi/inner/sched" }
+# Product-facing boot facts and device inventory vocabulary. This bridge shapes
+# lower boot data into these records before editor-kernel launch.
+reovim-uapi-system = { path = "../../../uapi/inner/system" }
+# Product-facing terminal/raw-mode vocabulary. This bridge maps it to the
+# down-face platform terminal slots without exposing POSIX fd/termios details.
+reovim-uapi-terminal = { path = "../../../uapi/inner/terminal" }
 # The core-only test runtime: the `selftest`-gated `*_tests.rs` modules register
 # through its arch_test! / check / check_eq, reaching the runner via the leaf —
 # a #![no_std] zero-dep leaf.

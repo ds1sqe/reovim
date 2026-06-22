@@ -1,0 +1,26 @@
+[package]
+name = "reovim-uapi"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Product-facing uapi namespace facade"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-uapi-abi = { path = "inner/abi" }
+reovim-uapi-fs = { path = "inner/fs" }
+reovim-uapi-log = { path = "inner/log" }
+reovim-uapi-mm = { path = "inner/mm" }
+reovim-uapi-net = { path = "inner/net" }
+reovim-uapi-panic = { path = "inner/panic" }
+reovim-uapi-protocol = { path = "inner/protocol" }
+reovim-uapi-sched = { path = "inner/sched" }
+reovim-uapi-system = { path = "inner/system" }
+reovim-uapi-terminal = { path = "inner/terminal" }

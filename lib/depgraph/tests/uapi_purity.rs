@@ -2,7 +2,7 @@
 //!
 //! ## Coverage
 //!
-//! 1. **Positive control**: the real `uapi/protocol/src/` directory produces
+//! 1. **Positive control**: the real `uapi/inner/protocol/src/` directory produces
 //!    zero `ForbiddenExternalImport` violations.
 //!
 //! 2. **Negative fixture (a)**: a temp `src/` containing `use arch::foo;`
@@ -28,16 +28,16 @@ mod common;
 use reovim_depgraph::{Violation, run_l11_purity_probe};
 
 // ---------------------------------------------------------------------------
-// 1. Positive control — real uapi/protocol/src must be violation-free
+// 1. Positive control — real uapi/inner/protocol/src must be violation-free
 // ---------------------------------------------------------------------------
 
-/// The real `uapi/protocol/src/` directory must produce zero L11 violations.
+/// The real `uapi/inner/protocol/src/` directory must produce zero L11 violations.
 /// This is the production-enforcement test for L11.
 #[test]
 fn l11_real_uapi_protocol_src_is_clean() {
     let root = common::workspace_root();
-    let src = root.join("uapi").join("protocol").join("src");
-    assert!(src.is_dir(), "L11: uapi/protocol/src must exist at `{}`", src.display());
+    let src = root.join("uapi").join("inner").join("protocol").join("src");
+    assert!(src.is_dir(), "L11: uapi/inner/protocol/src must exist at `{}`", src.display());
     let violations = run_l11_purity_probe(&src).expect("L11 probe must run on real source");
     let forbidden: Vec<_> = violations
         .iter()
@@ -45,7 +45,7 @@ fn l11_real_uapi_protocol_src_is_clean() {
         .collect();
     assert!(
         forbidden.is_empty(),
-        "L11: uapi/protocol/src must have zero ForbiddenExternalImport violations;\n\
+        "L11: uapi/inner/protocol/src must have zero ForbiddenExternalImport violations;\n\
          found: {forbidden:?}"
     );
 }

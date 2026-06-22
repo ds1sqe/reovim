@@ -18,22 +18,20 @@ bench = false
 doctest = false
 
 [dependencies]
-# `runtime` on arch is retained for the `arch::sys` product surface this app
-# names; the lang items (`_start`, `#[panic_handler]`, the allocator, `mem`) now
-# live in the per-target `reovim-arch-floor-*` crates (SP03), linked via the
-# per-target dep blocks below.
-reovim-arch      = { path = "../../arch", features = ["runtime"] }
 # POSIX provider: builds + installs the kabi/platform vtable (SP02). The
 # composition root owns the install call, so the provider dep lives here, not in
 # arch (arch carries no edge to the provider — that would close a cycle).
 reovim-platform-linux-native = { path = "../../platform/linux-native" }
-# Heap-DS algorithms (Shared) relocated from `reovim_arch::ds` (SP03).
+# Heap-DS algorithms (Shared).
 reovim-lib-ds    = { path = "../../lib/ds" }
 reovim-kernel    = { path = "../../editor/lib/kernel" }
 reovim-server-rt = { path = "../../editor/lib/server" }
+# World system-kernel bridge. The composition root obtains up-face panic/log
+# control implementations here and passes them into editor-kernel LauncherArgs.
+reovim-system-kernel = { path = "../../system/lib/kernel" }
 # Text Domain (ext crate; only composition roots link it — core/ext boundary).
 reovim-domain-text = { path = "../../editor/domains/text" }
-reovim-uapi-abi    = { path = "../../uapi/abi" }
+reovim-uapi        = { path = "../../uapi" }
 
 # The per-target language floor (SP03): supplies `_start`, the `entry!` shim
 # (`reovim_arch_main`), the `#[panic_handler]`, `rust_eh_personality`, and the

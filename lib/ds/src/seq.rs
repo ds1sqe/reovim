@@ -1,9 +1,8 @@
 //! `Seq<T>` — a growable sequence owning raw allocator memory.
 //!
 //! The `Vec` analog for the zero-std floor. There is no `alloc` crate, so
-//! `Seq` reaches the platform allocator through the boot-installed `kabi`
-//! handle and is fallible where growth can fail ([`try_push`](Seq::try_push)
-//! surfaces [`AllocError`]).
+//! `Seq` reaches its installed allocation backend and is fallible where growth
+//! can fail ([`try_push`](Seq::try_push) surfaces [`AllocError`]).
 //!
 //! `T` must be non-zero-sized. The floor has no zero-sized-element consumer,
 //! and a non-ZST bound keeps the capacity/pointer arithmetic free of the ZST
@@ -16,7 +15,7 @@ use core::{
     ptr::NonNull,
 };
 
-use reovim_kabi_platform::{AllocError, handle};
+use crate::alloc_backend::{AllocError, alloc, dealloc};
 
 /// The capacity a non-empty `Seq` first grows to. Small, because most floor
 /// sequences are tiny; growth doubles from here.
@@ -32,14 +31,13 @@ pub const FIRST_CAPACITY: usize = 4;
 /// Resizes the allocation at `ptr` (`old` layout) to `new_size` bytes,
 /// preserving the `min(old.size(), new_size)` leading bytes.
 ///
-/// lib/ds-side realloc (SP03 settled decision 1: no `realloc` vtable slot). The
-/// handle exposes only `alloc`/`dealloc`; a grow is `alloc + copy + dealloc`,
-/// the same shape arch's old `realloc` used internally. The returned pointer
-/// may differ from `ptr`.
+/// lib/ds-side realloc: the injected backend exposes only `alloc`/`dealloc`;
+/// a grow is `alloc + copy + dealloc`. The returned pointer may differ from
+/// `ptr`.
 ///
 /// # Safety
 ///
-/// `ptr`/`old` must name a live allocation from a prior `handle().alloc`;
+/// `ptr`/`old` must name a live allocation from a prior backend allocation;
 /// `new_size` is non-zero (the callers guarantee it via a non-zero `Layout`).
 unsafe fn realloc(
     ptr: NonNull<u8>,
@@ -48,7 +46,7 @@ unsafe fn realloc(
 ) -> Result<NonNull<u8>, AllocError> {
     // Keep alignment stable across the grow: the new layout reuses old's align.
     let new_layout = Layout::from_size_align(new_size, old.align()).map_err(|_| AllocError)?;
-    let fresh = handle().alloc(new_layout)?;
+    let fresh = alloc(new_layout)?;
     let copy = if new_size < old.size() {
         new_size
     } else {
@@ -61,7 +59,11 @@ unsafe fn realloc(
         core::ptr::copy_nonoverlapping(ptr.as_ptr(), fresh.as_ptr(), copy);
     }
     // The original allocation is no longer referenced after the copy.
-    handle().dealloc(ptr, old);
+    // SAFETY: `ptr`/`old` name the original live allocation and are not used
+    // after this point.
+    unsafe {
+        dealloc(ptr, old);
+    }
     Ok(fresh)
 }
 
@@ -207,7 +209,7 @@ impl<T> Seq<T> {
         // reserving `isize::MAX/8 + 1` u64 slots), so the Err propagates.
         let new_layout = Self::layout_for(new_cap)?;
         let new_ptr = if self.cap == 0 {
-            handle().alloc(new_layout)?
+            alloc(new_layout)?
         } else {
             // SAFETY: this recomputes, deterministically, the exact layout that
             // succeeded when the current `self.cap` allocation was made (same
@@ -409,6 +411,10 @@ impl<T> Drop for Seq<T> {
         let layout = Self::layout_for(self.cap).expect("layout valid at alloc time");
         // `self.ptr`/`layout` name the live allocation from the last grow; no
         // element is referenced after the drops above.
-        handle().dealloc(self.ptr.cast(), layout);
+        // SAFETY: `self.ptr`/`layout` name the live allocation from the last
+        // grow; no element is referenced after the drops above.
+        unsafe {
+            dealloc(self.ptr.cast(), layout);
+        }
     }
 }
