@@ -34,6 +34,7 @@ missing_image_identity_evidence="$tmp_dir/missing-image-identity.md"
 missing_profile_identity_evidence="$tmp_dir/missing-profile-identity.md"
 missing_identity_checkbox_evidence="$tmp_dir/missing-identity-checkbox.md"
 missing_vfs_namespace_evidence="$tmp_dir/missing-vfs-namespace.md"
+missing_boot_probes_listing_evidence="$tmp_dir/missing-boot-probes-listing.md"
 missing_boot_inventory_evidence="$tmp_dir/missing-boot-inventory.md"
 missing_shell_usability_evidence="$tmp_dir/missing-shell-usability.md"
 missing_typed_command_evidence="$tmp_dir/missing-typed-command.md"
@@ -374,6 +375,7 @@ write_passing_evidence() {
         printf 'input\n'
         printf 'memory\n'
         printf 'mounts\n'
+        printf 'probes\n'
         printf 'proof\n'
         printf 'profile\n'
         printf 'status\n'
@@ -771,6 +773,10 @@ expect_failure "$missing_identity_checkbox_evidence" "missing-identity-checkbox"
 cp "$pass_evidence" "$missing_vfs_namespace_evidence"
 sed -i '\#^reovim-os> ls /boot$#d' "$missing_vfs_namespace_evidence"
 expect_failure "$missing_vfs_namespace_evidence" "missing-vfs-namespace"
+
+cp "$pass_evidence" "$missing_boot_probes_listing_evidence"
+sed -i '/^probes$/d' "$missing_boot_probes_listing_evidence"
+expect_failure "$missing_boot_probes_listing_evidence" "missing-boot-probes-listing"
 
 cp "$pass_evidence" "$missing_boot_inventory_evidence"
 sed -i '\#^reovim-os> cat /boot/devices$#d' "$missing_boot_inventory_evidence"
