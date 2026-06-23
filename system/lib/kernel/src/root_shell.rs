@@ -580,6 +580,8 @@ fn write_boot_input(daemon: &RootDaemon<'_>) {
 fn write_boot_proof(daemon: &RootDaemon<'_>) {
     daemon.write_line("proof:");
     daemon.write_line("commands:");
+    daemon.write_line("  proof");
+    daemon.write_line("  cat /boot/proof");
     daemon.write_line("  help");
     daemon.write_line("  cat /boot/help");
     daemon.write_line("  clear");

@@ -14,6 +14,7 @@ INSTALL_SMOKE_SCRIPT="$TARGET_DIR/test-install-image.sh"
 BOOTFS_CHECK_SCRIPT="$TARGET_DIR/check-bootfs.sh"
 EVIDENCE_TEMPLATE="$TARGET_DIR/evidence-template.md"
 DTB="$ROOT/arch/tests/fixtures/dtb/bcm2711-rpi-4-b.dtb"
+QEMU_PROOF_TIMEOUT_SECONDS="${QEMU_PROOF_TIMEOUT_SECONDS:-60}"
 
 BOOTFS=""
 SKIP_QEMU=0
@@ -272,14 +273,13 @@ if [ "$SKIP_QEMU" -eq 0 ]; then
     if ! command -v qemu-system-aarch64 >/dev/null 2>&1; then
         fail "qemu-system-aarch64 not found; install it or pass --skip-qemu"
     fi
-    if ! command -v timeout >/dev/null 2>&1; then
-        fail "timeout not found; cannot bound QEMU smoke"
-    fi
 
     run_step "boot QEMU raspi4b display/UART/proof smoke"
     qemu_log="$(mktemp)"
+    qemu_input="$(mktemp)"
+    printf 'proof\n' >"$qemu_input"
     set +e
-    printf 'proof\n' | timeout 25s qemu-system-aarch64 \
+    qemu-system-aarch64 \
         -M raspi4b \
         -m 2048 \
         -display none \
@@ -287,9 +287,29 @@ if [ "$SKIP_QEMU" -eq 0 ]; then
         -semihosting \
         -dtb "$DTB" \
         -kernel "$IMAGE" \
-        >"$qemu_log" 2>&1
-    status=$?
+        <"$qemu_input" \
+        >"$qemu_log" 2>&1 &
+    qemu_pid=$!
+    status=124
+    SECONDS=0
+    while [ "$SECONDS" -lt "$QEMU_PROOF_TIMEOUT_SECONDS" ]; do
+        if grep -q '^  cat /log/dmesg$' "$qemu_log"; then
+            status=0
+            break
+        fi
+        if ! kill -0 "$qemu_pid" 2>/dev/null; then
+            wait "$qemu_pid"
+            status=$?
+            break
+        fi
+        sleep 0.2
+    done
+    if kill -0 "$qemu_pid" 2>/dev/null; then
+        kill "$qemu_pid" 2>/dev/null
+        wait "$qemu_pid" 2>/dev/null
+    fi
     set -e
+    rm -f "$qemu_input"
 
     if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then
         cat "$qemu_log" >&2

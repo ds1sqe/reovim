@@ -101,6 +101,8 @@ write_passing_evidence() {
         printf 'reovim-os> proof\n'
         printf 'proof:\n'
         printf 'commands:\n'
+        printf '  proof\n'
+        printf '  cat /boot/proof\n'
         printf '  help\n'
         printf '  cat /boot/help\n'
         printf '  clear\n'
@@ -163,6 +165,8 @@ write_passing_evidence() {
         printf 'reovim-os> cat /boot/proof\n'
         printf 'proof:\n'
         printf 'commands:\n'
+        printf '  proof\n'
+        printf '  cat /boot/proof\n'
         printf '  help\n'
         printf '  cat /boot/help\n'
         printf '  clear\n'
@@ -593,7 +597,7 @@ sed -i '/^proof:$/d' "$missing_proof_evidence"
 expect_failure "$missing_proof_evidence" "missing-proof"
 
 cp "$pass_evidence" "$missing_proof_command_evidence"
-sed -i '/^  probe help$/d' "$missing_proof_command_evidence"
+sed -i '\#^  cat /boot/proof$#d' "$missing_proof_command_evidence"
 expect_failure "$missing_proof_command_evidence" "missing-proof-command"
 
 cp "$pass_evidence" "$missing_proof_identity_evidence"

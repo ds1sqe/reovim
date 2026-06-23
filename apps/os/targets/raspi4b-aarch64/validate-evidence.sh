@@ -206,6 +206,8 @@ require_re '^reovim-os> input$' 'input command in pasted transcript'
 require_re '^reovim-os> cat /boot/input$' 'VFS input command in pasted transcript'
 require_count_at_least '^proof:$' 'proof checklist header' 2
 require_re '^commands:$' 'proof command-list header'
+require_count_at_least '^  proof$' 'proof checklist self command' 2
+require_count_at_least '^  cat /boot/proof$' 'proof checklist VFS proof command' 2
 require_re '^  help$' 'proof checklist help command'
 require_re '^  cat /boot/help$' 'proof checklist VFS help command'
 require_re '^  clear$' 'proof checklist clear command'

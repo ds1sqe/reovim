@@ -768,8 +768,9 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         serial.contains("probe targets:"),
         "probe target help appears in transcript; serial: {serial:?}",
     );
+    let proof_commands = "proof:\ncommands:\n  proof\n  cat /boot/proof\n  help\n  cat /boot/help";
     assert!(
-        serial.contains("proof:\ncommands:\n  help\n  cat /boot/help\n  clear\n  screentest"),
+        serial.contains(proof_commands),
         "proof checklist appears in transcript; serial: {serial:?}",
     );
     assert!(
