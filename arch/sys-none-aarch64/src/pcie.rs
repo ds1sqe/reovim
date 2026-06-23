@@ -1,8 +1,9 @@
 //! BCM2711 PCIe root-complex raw facts and discovery helpers.
 //!
 //! This module stays below the system-kernel bridge. It touches only the
-//! BCM2711 root-complex MMIO block and PCI configuration space; USB
-//! descriptor walking and keyboard input routing are later cuts.
+//! BCM2711 root-complex MMIO block and PCI configuration space; USB/xHCI
+//! enumeration and keyboard input routing live in the lower USB provider and
+//! the OS composition root.
 
 use core::ptr::{read_volatile, write_volatile};
 

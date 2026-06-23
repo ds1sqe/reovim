@@ -33,7 +33,10 @@ use {
     reovim_system_kernel::{
         color::Color,
         console::{self, RenderSurface},
-        input::{BootKeyboardIngest, BootKeyboardInputQueue, BootKeyboardReport},
+        input::{
+            BootKeyboardIngest, BootKeyboardInputQueue, BootKeyboardReport, ConsoleInputByte,
+            read_boot_keyboard_or_fallback,
+        },
         inventory,
     },
 };
@@ -124,10 +127,6 @@ impl UsbKeyboardConsole {
         }
     }
 
-    fn pop_pending(&mut self) -> Option<u8> {
-        self.queue.pop_pending()
-    }
-
     fn pending_remaining(&self) -> usize {
         self.queue.pending_remaining()
     }
@@ -145,14 +144,20 @@ impl UsbKeyboardConsole {
         ingest
     }
 
-    fn poll_next_byte(&mut self) -> Option<u8> {
-        let arch_sys::usb::UsbBootKeyboardPoll::Report(report) =
-            arch_sys::usb::poll_boot_keyboard_report()
-        else {
-            return None;
-        };
-        self.ingest_report(report);
-        self.pop_pending()
+    fn read_byte<PollReport, Fallback>(
+        &mut self,
+        mut poll_report: PollReport,
+        fallback: Fallback,
+    ) -> Option<ConsoleInputByte>
+    where
+        PollReport: FnMut() -> Option<[u8; arch_sys::usb::BOOT_KEYBOARD_REPORT_BYTES]>,
+        Fallback: FnMut() -> Option<u8>,
+    {
+        read_boot_keyboard_or_fallback(
+            &mut self.queue,
+            || poll_report().map(BootKeyboardReport::new),
+            fallback,
+        )
     }
 }
 
@@ -3517,11 +3522,17 @@ fn tty_read_byte() -> Option<u8> {
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 fn read_aarch64_console_byte() -> Option<u8> {
     loop {
-        if let Some(byte) = usb_keyboard_read_byte() {
-            return Some(byte);
-        }
-        if let Some(byte) = arch_sys::try_read_stdin_byte() {
-            return Some(byte);
+        let console = unsafe { &mut *USB_KEYBOARD_CONSOLE.0.get() };
+        match console.read_byte(
+            usb_keyboard_poll_report_if_due,
+            arch_sys::try_read_stdin_byte,
+        ) {
+            Some(ConsoleInputByte::UsbKeyboard(byte)) => {
+                USB_KEYBOARD_READY.store(1, Ordering::Release);
+                return Some(byte);
+            }
+            Some(ConsoleInputByte::Fallback(byte)) => return Some(byte),
+            None => {}
         }
         core::hint::spin_loop();
     }
@@ -3547,18 +3558,17 @@ fn read_fd_stdin_byte() -> Option<u8> {
 }
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
-fn usb_keyboard_read_byte() -> Option<u8> {
+fn usb_keyboard_poll_report_if_due() -> Option<[u8; arch_sys::usb::BOOT_KEYBOARD_REPORT_BYTES]> {
     if USB_KEYBOARD_PROBE_ENABLED.load(Ordering::Acquire) == 0 {
         return None;
-    }
-    let console = unsafe { &mut *USB_KEYBOARD_CONSOLE.0.get() };
-    if let Some(byte) = console.pop_pending() {
-        return Some(byte);
     }
     if !usb_keyboard_poll_due() {
         return None;
     }
-    console.poll_next_byte()
+    match arch_sys::usb::poll_boot_keyboard_report() {
+        arch_sys::usb::UsbBootKeyboardPoll::Report(report) => Some(report),
+        arch_sys::usb::UsbBootKeyboardPoll::Pending(_) => None,
+    }
 }
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]

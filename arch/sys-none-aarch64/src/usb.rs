@@ -1,8 +1,9 @@
 //! BCM2711 USB host-controller raw facts and early probe helpers.
 //!
 //! This module stays below the system-kernel bridge. It reads only native MMIO
-//! controller registers and returns target-local facts; USB enumeration, HID
-//! descriptor walking, and root-shell byte routing are later cuts.
+//! controller registers and returns target-local facts. USB/xHCI enumeration
+//! and HID report polling live here; root-shell byte routing stays above this
+//! raw provider in `apps/os` and `reovim-system-kernel`.
 
 #[cfg(target_arch = "aarch64")]
 use core::arch::asm;

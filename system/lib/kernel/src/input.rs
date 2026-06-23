@@ -113,6 +113,25 @@ pub enum BootKeyboardIngest {
     },
 }
 
+/// One byte selected by the root-console input merge policy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConsoleInputByte {
+    /// Byte decoded from the USB HID boot-keyboard queue.
+    UsbKeyboard(u8),
+    /// Byte returned by the lower-priority fallback input source.
+    Fallback(u8),
+}
+
+impl ConsoleInputByte {
+    /// Returns the selected byte without its source tag.
+    #[must_use]
+    pub const fn byte(self) -> u8 {
+        match self {
+            Self::UsbKeyboard(byte) | Self::Fallback(byte) => byte,
+        }
+    }
+}
+
 /// Small decoded-byte queue for USB HID boot-keyboard input.
 ///
 /// The queue refuses to decode a new report while previous decoded bytes are
@@ -172,6 +191,34 @@ impl Default for BootKeyboardInputQueue {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Reads one root-console byte, preferring USB keyboard input over fallback.
+///
+/// The raw USB poller and fallback source stay outside this common helper. The
+/// helper only owns the neutral merge policy: drain already-decoded keyboard
+/// bytes first, try one new HID report, and then read the fallback source.
+pub fn read_boot_keyboard_or_fallback<PollReport, Fallback>(
+    queue: &mut BootKeyboardInputQueue,
+    mut poll_report: PollReport,
+    mut fallback: Fallback,
+) -> Option<ConsoleInputByte>
+where
+    PollReport: FnMut() -> Option<BootKeyboardReport>,
+    Fallback: FnMut() -> Option<u8>,
+{
+    if let Some(byte) = queue.pop_pending() {
+        return Some(ConsoleInputByte::UsbKeyboard(byte));
+    }
+
+    if let Some(report) = poll_report() {
+        let _ = queue.try_ingest_report(report);
+        if let Some(byte) = queue.pop_pending() {
+            return Some(ConsoleInputByte::UsbKeyboard(byte));
+        }
+    }
+
+    fallback().map(ConsoleInputByte::Fallback)
 }
 
 const MOD_LCTRL: u8 = 1 << 0;

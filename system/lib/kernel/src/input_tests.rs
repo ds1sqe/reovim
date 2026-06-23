@@ -1,7 +1,10 @@
 //! Selftests for common input translation.
 
 use {
-    super::{BootKeyboardDecoder, BootKeyboardIngest, BootKeyboardInputQueue, BootKeyboardReport},
+    super::{
+        BootKeyboardDecoder, BootKeyboardIngest, BootKeyboardInputQueue, BootKeyboardReport,
+        ConsoleInputByte, read_boot_keyboard_or_fallback,
+    },
     reovim_testrt::{self as testrt, arch_test},
 };
 
@@ -119,4 +122,62 @@ arch_test!(hid_boot_keyboard_queue_preserves_pending_bytes, {
         BootKeyboardIngest::Decoded { bytes: 1 },
     );
     testrt::check_eq(queue.pop_pending(), Some(b'c'));
+});
+
+arch_test!(hid_boot_keyboard_merge_prefers_usb_before_fallback, {
+    let mut queue = BootKeyboardInputQueue::new();
+
+    let _ = queue.try_ingest_report(report(0, [0x04, 0, 0, 0, 0, 0]));
+    let mut report_polls = 0usize;
+    let mut fallback_polls = 0usize;
+    let pending = read_boot_keyboard_or_fallback(
+        &mut queue,
+        || {
+            report_polls += 1;
+            None
+        },
+        || {
+            fallback_polls += 1;
+            Some(b'u')
+        },
+    );
+    testrt::check_eq(pending, Some(ConsoleInputByte::UsbKeyboard(b'a')));
+    testrt::check_eq(report_polls, 0usize);
+    testrt::check_eq(fallback_polls, 0usize);
+
+    let next_report = read_boot_keyboard_or_fallback(
+        &mut queue,
+        || Some(report(0, [0x05, 0x06, 0, 0, 0, 0])),
+        || {
+            fallback_polls += 1;
+            Some(b'u')
+        },
+    );
+    testrt::check_eq(next_report, Some(ConsoleInputByte::UsbKeyboard(b'b')));
+    testrt::check_eq(fallback_polls, 0usize);
+
+    let queued = read_boot_keyboard_or_fallback(
+        &mut queue,
+        || None,
+        || {
+            fallback_polls += 1;
+            Some(b'u')
+        },
+    );
+    testrt::check_eq(queued, Some(ConsoleInputByte::UsbKeyboard(b'c')));
+    testrt::check_eq(fallback_polls, 0usize);
+
+    let release_falls_back = read_boot_keyboard_or_fallback(
+        &mut queue,
+        || Some(report(0, [0, 0, 0, 0, 0, 0])),
+        || {
+            fallback_polls += 1;
+            Some(b'u')
+        },
+    );
+    testrt::check_eq(release_falls_back, Some(ConsoleInputByte::Fallback(b'u')));
+    testrt::check_eq(fallback_polls, 1usize);
+
+    let no_sources = read_boot_keyboard_or_fallback(&mut queue, || None, || None);
+    testrt::check_eq(no_sources, None);
 });
