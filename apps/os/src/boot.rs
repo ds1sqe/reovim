@@ -9,9 +9,9 @@ use reovim_arch::sys as arch_sys;
 use reovim_system_kernel::{
     boot::{self, ShellBootConfig, SplashBootConfig},
     console_io,
-    rootd::{BootCheckState, ConsoleInputSummary},
+    rootd::{BootCheckState, ConsoleInputSummary, HardwareProbeResult, WriteFn},
 };
-use reovim_uapi::system::{BootInfo, DeviceInventory};
+use reovim_uapi::system::{BootInfo, DeviceEntry, DeviceInventory};
 #[cfg(feature = "launch-profile")]
 use reovim_system_kernel::rootd::PayloadDescriptor;
 #[cfg(feature = "launch-profile")]
@@ -35,7 +35,6 @@ use {
         console::{self, RenderSurface},
         inventory,
     },
-    reovim_uapi::system::DeviceEntry,
 };
 
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
@@ -230,6 +229,7 @@ pub fn run_shell_profile(profile: BootProfile<'_>) -> ! {
         collect_boot_info,
         collect_device_inventory,
         prepare_shell: Some(prepare_shell_boot),
+        probe_hardware: Some(hardware_probe),
         read_line: tty_read_line,
         write: tty_write,
         console_input: console_input_summary(),
@@ -345,6 +345,220 @@ fn prepare_shell_boot() {
             reovim_system_kernel::console::clear_screen();
         }
     }
+}
+
+fn hardware_probe(target: &str, devices: &[DeviceEntry], write: WriteFn) -> HardwareProbeResult {
+    match target {
+        "pcie" => {
+            probe_pcie(devices, write);
+            HardwareProbeResult::Handled
+        }
+        _ => HardwareProbeResult::UnknownTarget,
+    }
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn probe_pcie(devices: &[DeviceEntry], write: WriteFn) {
+    probe_emit(write, b"probe pcie:\n");
+    if !device_inventory_has(
+        devices,
+        reovim_uapi::system::DeviceClass::Bus,
+        "brcm,bcm2711-pcie",
+    ) {
+        probe_emit(write, b"state=unavailable\n");
+        probe_emit(write, b"reason=device-tree-disabled-or-missing\n");
+        return;
+    }
+
+    let status = arch_sys::pcie::read_builtin_pcie_link_status();
+    probe_emit(write, b"state=present\n");
+    probe_emit(write, b"raw_status=");
+    probe_write_u32_hex(write, status.raw_status);
+    probe_emit(write, b"\nrevision=");
+    probe_write_u32_hex(write, status.revision);
+    probe_emit(write, b"\nroot_complex=");
+    probe_write_bool(write, status.root_complex_mode);
+    probe_emit(write, b"\nphy_link_up=");
+    probe_write_bool(write, status.phy_link_up);
+    probe_emit(write, b"\ndata_link_active=");
+    probe_write_bool(write, status.data_link_active);
+    probe_emit(write, b"\nlink_up=");
+    probe_write_bool(write, status.link_up());
+    probe_emit(write, b"\n");
+
+    if !status.link_up() {
+        probe_emit(write, b"xhci=not-probed\n");
+        probe_emit(write, b"reason=pcie-link-down\n");
+        return;
+    }
+
+    match arch_sys::usb::probe_pcie_xhci_controller() {
+        Some(controller) => {
+            probe_emit(write, b"xhci=present\n");
+            probe_emit(write, b"xhci.bus=");
+            probe_write_u64_dec(write, controller.location.bus as u64);
+            probe_emit(write, b"\nxhci.device=");
+            probe_write_u64_dec(write, controller.location.device as u64);
+            probe_emit(write, b"\nxhci.function=");
+            probe_write_u64_dec(write, controller.location.function as u64);
+            probe_emit(write, b"\nxhci.vendor=");
+            probe_write_u32_hex(write, controller.vendor_id as u32);
+            probe_emit(write, b"\nxhci.device_id=");
+            probe_write_u32_hex(write, controller.device_id as u32);
+            probe_emit(write, b"\nxhci.revision=");
+            probe_write_u64_dec(write, controller.revision_id as u64);
+            probe_emit(write, b"\nxhci.mmio=");
+            if let Some(mmio) = controller.mmio_base {
+                probe_write_u64_hex(write, mmio as u64);
+                probe_emit(write, b"\n");
+                probe_xhci_mmio(mmio, write);
+            } else {
+                probe_emit(write, b"unconfigured");
+                probe_emit(write, b"\n");
+            }
+        }
+        None => {
+            probe_emit(write, b"xhci=not-found\n");
+        }
+    }
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn probe_xhci_mmio(mmio: usize, write: WriteFn) {
+    let Some(caps) = arch_sys::usb::read_xhci_capabilities_at_mmio(mmio) else {
+        probe_emit(write, b"xhci.capabilities=invalid\n");
+        return;
+    };
+
+    probe_emit(write, b"xhci.cap_length=");
+    probe_write_u64_dec(write, caps.cap_length as u64);
+    probe_emit(write, b"\nxhci.hci_version=");
+    probe_write_u32_hex(write, caps.hci_version as u32);
+    probe_emit(write, b"\nxhci.max_slots=");
+    probe_write_u64_dec(write, caps.max_device_slots as u64);
+    probe_emit(write, b"\nxhci.max_interrupters=");
+    probe_write_u64_dec(write, caps.max_interrupters as u64);
+    probe_emit(write, b"\nxhci.max_ports=");
+    probe_write_u64_dec(write, caps.max_ports as u64);
+    probe_emit(write, b"\nxhci.doorbell_offset=");
+    probe_write_u32_hex(write, caps.doorbell_offset);
+    probe_emit(write, b"\nxhci.runtime_offset=");
+    probe_write_u32_hex(write, caps.runtime_register_space_offset);
+
+    let op = arch_sys::usb::read_xhci_operational_snapshot(mmio, caps);
+    probe_emit(write, b"\nxhci.usbcmd=");
+    probe_write_u32_hex(write, op.usb_command);
+    probe_emit(write, b"\nxhci.usbsts=");
+    probe_write_u32_hex(write, op.usb_status);
+    probe_emit(write, b"\nxhci.pagesize=");
+    probe_write_u32_hex(write, op.page_size);
+    probe_emit(write, b"\nxhci.config=");
+    probe_write_u32_hex(write, op.configure);
+    probe_emit(write, b"\nxhci.enabled_slots=");
+    probe_write_u64_dec(write, op.enabled_device_slots as u64);
+    probe_emit(write, b"\n");
+
+    let max_probe_ports = core::cmp::min(caps.max_ports, 8);
+    let mut port = 1u8;
+    while port <= max_probe_ports {
+        if let Some(snapshot) = arch_sys::usb::read_xhci_port_snapshot(mmio, caps, port) {
+            probe_emit(write, b"xhci.port");
+            probe_write_u64_dec(write, snapshot.port as u64);
+            probe_emit(write, b".portsc=");
+            probe_write_u32_hex(write, snapshot.port_status_control);
+            probe_emit(write, b" connected=");
+            probe_write_bool(write, snapshot.connected);
+            probe_emit(write, b" enabled=");
+            probe_write_bool(write, snapshot.enabled);
+            probe_emit(write, b" powered=");
+            probe_write_bool(write, snapshot.powered);
+            probe_emit(write, b" speed=");
+            probe_write_u64_dec(write, snapshot.speed as u64);
+            probe_emit(write, b" link_state=");
+            probe_write_u64_dec(write, snapshot.link_state as u64);
+            probe_emit(write, b"\n");
+        }
+        port += 1;
+    }
+}
+
+#[cfg(not(all(target_os = "none", target_arch = "aarch64")))]
+fn probe_pcie(_devices: &[DeviceEntry], write: WriteFn) {
+    probe_emit(write, b"probe pcie:\n");
+    probe_emit(write, b"state=unsupported-on-this-target\n");
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn device_inventory_has(
+    devices: &[DeviceEntry],
+    class: reovim_uapi::system::DeviceClass,
+    compatible: &str,
+) -> bool {
+    devices
+        .iter()
+        .any(|device| device.class == class && device.compatible == compatible)
+}
+
+fn probe_emit(write: WriteFn, bytes: &[u8]) {
+    write(bytes);
+    reovim_system_kernel::klog::append_bytes(bytes);
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn probe_write_bool(write: WriteFn, value: bool) {
+    probe_emit(write, if value { b"true" } else { b"false" });
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn probe_write_u64_dec(write: WriteFn, mut value: u64) {
+    let mut buf = [0u8; 20];
+    if value == 0 {
+        probe_emit(write, b"0");
+        return;
+    }
+    let mut len = 0usize;
+    while value > 0 {
+        buf[len] = b'0' + (value % 10) as u8;
+        len += 1;
+        value /= 10;
+    }
+    while len > 0 {
+        len -= 1;
+        probe_emit(write, &buf[len..len + 1]);
+    }
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn probe_write_u32_hex(write: WriteFn, value: u32) {
+    probe_write_u64_hex(write, value as u64);
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn probe_write_u64_hex(write: WriteFn, mut value: u64) {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut buf = [0u8; 18];
+    buf[0] = b'0';
+    buf[1] = b'x';
+    if value == 0 {
+        buf[2] = b'0';
+        probe_emit(write, &buf[..3]);
+        return;
+    }
+    let mut len = 0usize;
+    while value > 0 {
+        buf[2 + len] = HEX[(value & 0xf) as usize];
+        len += 1;
+        value >>= 4;
+    }
+    let mut out = [0u8; 18];
+    out[0] = b'0';
+    out[1] = b'x';
+    let mut i = 0usize;
+    while i < len {
+        out[2 + i] = buf[2 + len - 1 - i];
+        i += 1;
+    }
+    probe_emit(write, &out[..2 + len]);
 }
 
 fn tty_write(bytes: &[u8]) {

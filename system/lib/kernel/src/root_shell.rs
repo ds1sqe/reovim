@@ -7,7 +7,7 @@
 use {
     crate::{
         klog,
-        rootd::{PayloadDescriptor, PayloadLaunchResult, RootDaemon},
+        rootd::{HardwareProbeResult, PayloadDescriptor, PayloadLaunchResult, RootDaemon},
         vfs::{self, Directory, File, Node, PathBuf, VfsError},
     },
     reovim_uapi_system::{BootInfo, DeviceEntry},
@@ -529,10 +529,32 @@ fn cmd_launch(daemon: &RootDaemon<'_>, line: &ParsedLine) {
     write_payload_result(daemon, payload, daemon.launch_payload_by_name(payload));
 }
 
+fn cmd_probe(daemon: &RootDaemon<'_>, line: &ParsedLine) {
+    if line.argc == 1 {
+        daemon.write_line("probe: missing target");
+        return;
+    }
+    if line.argc > 2 {
+        daemon.write_line("probe: too many arguments");
+        return;
+    }
+
+    let target = line.args[1].as_str();
+    match daemon.run_hardware_probe(target) {
+        Some(HardwareProbeResult::Handled) => {}
+        Some(HardwareProbeResult::UnknownTarget) => {
+            daemon.write_bytes(b"probe: unknown target: ");
+            daemon.write_bytes(target.as_bytes());
+            daemon.write_bytes(b"\n");
+        }
+        None => daemon.write_line("probe: no lower probe provider"),
+    }
+}
+
 fn cmd_help(daemon: &RootDaemon<'_>) {
     daemon.write_line("reovim root shell");
     daemon.write_line(
-        "commands: help, clear, screentest, pwd, ls, cd, cat, device, dmesg, launch, halt",
+        "commands: help, clear, screentest, pwd, ls, cd, cat, device, dmesg, probe, launch, halt",
     );
     daemon.write_line("reserved: mount, reovim");
 }
@@ -655,6 +677,7 @@ pub fn execute_root_command(
         "cat" => cmd_cat(daemon, session, &parsed),
         "device" => cmd_device(daemon),
         "dmesg" => cmd_dmesg(daemon),
+        "probe" => cmd_probe(daemon, &parsed),
         "launch" => cmd_launch(daemon, &parsed),
         "halt" => {
             cmd_halt(daemon);

@@ -37,6 +37,8 @@ use reovim_arch_sys_none_x86_64 as target;
 // still reach it through this facade by value.
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 pub use target::framebuffer;
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+pub use target::{pcie, usb};
 
 // Freestanding boot-fact and sink-install surface. Raw mechanism stays in the
 // selected arch-sys crate; composition roots gather these facts through the

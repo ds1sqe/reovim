@@ -37,6 +37,9 @@ pub type HaltKernel = fn();
 /// Callback that runs after splash rendering and before checked boot output.
 pub type PrepareShell = fn();
 
+/// Callback that runs a lower-provider hardware probe for a named target.
+pub type HardwareProbe = fn(&str, &[DeviceEntry], WriteFn) -> HardwareProbeResult;
+
 /// Bounded input buffer used by root-shell line reads.
 pub const ROOT_LINE_BYTES: usize = 128;
 
@@ -47,6 +50,15 @@ pub enum BootCheckState {
     Ok,
     /// The check completed, but the path is degraded or already initialized.
     Warn,
+}
+
+/// Result from a lower-provider hardware probe callback.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HardwareProbeResult {
+    /// The provider recognized the target and wrote its report.
+    Handled,
+    /// The provider did not recognize this target.
+    UnknownTarget,
 }
 
 /// Runtime-service installation checks captured before root-daemon entry.
@@ -114,6 +126,8 @@ pub struct RootBootConfig<'a> {
     pub halt: Option<HaltKernel>,
     /// Optional profile hook after splash rendering and before checked boot log.
     pub prepare_shell: Option<PrepareShell>,
+    /// Optional lower-provider hardware probe callback for shell diagnostics.
+    pub probe_hardware: Option<HardwareProbe>,
     /// Line reader callback.
     pub read_line: ReadLine,
     /// Prompt bytes emitted before each input attempt.
@@ -188,6 +202,7 @@ pub struct RootDaemon<'a> {
     payloads: &'a [PayloadDescriptor],
     dmesg: Option<DmesgSnapshot>,
     halt: Option<HaltKernel>,
+    probe_hardware: Option<HardwareProbe>,
     prompt: &'static str,
     console_input: ConsoleInputSummary,
     write: WriteFn,
@@ -202,6 +217,7 @@ impl<'a> RootDaemon<'a> {
         payloads: &'a [PayloadDescriptor],
         dmesg: Option<DmesgSnapshot>,
         halt: Option<HaltKernel>,
+        probe_hardware: Option<HardwareProbe>,
         prompt: &'static str,
         console_input: ConsoleInputSummary,
         write: WriteFn,
@@ -213,6 +229,7 @@ impl<'a> RootDaemon<'a> {
             payloads,
             dmesg,
             halt,
+            probe_hardware,
             prompt,
             console_input,
             write,
@@ -283,6 +300,12 @@ impl<'a> RootDaemon<'a> {
     #[must_use]
     pub const fn dmesg_fn(&self) -> Option<DmesgSnapshot> {
         self.dmesg
+    }
+
+    /// Run a lower-provider hardware probe by target name, if one is installed.
+    pub fn run_hardware_probe(&self, target: &str) -> Option<HardwareProbeResult> {
+        let probe = self.probe_hardware?;
+        Some(probe(target, self.devices, self.write))
     }
 
     /// Executes configured payload launch callback by index.
@@ -568,6 +591,7 @@ pub fn run_root_daemon(cfg: RootBootConfig<'_>) -> ! {
         cfg.payloads,
         cfg.dmesg,
         cfg.halt,
+        cfg.probe_hardware,
         cfg.prompt,
         cfg.console_input,
         cfg.write,

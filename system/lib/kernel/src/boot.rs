@@ -9,8 +9,9 @@ use {
     crate::{
         mm,
         rootd::{
-            BootCheckState, ConsoleInputSummary, DmesgSnapshot, HaltKernel, PayloadDescriptor,
-            PrepareShell, ProfileSummary, ReadLine, RootBootConfig, RuntimeChecks, WriteFn,
+            BootCheckState, ConsoleInputSummary, DmesgSnapshot, HaltKernel, HardwareProbe,
+            PayloadDescriptor, PrepareShell, ProfileSummary, ReadLine, RootBootConfig,
+            RuntimeChecks, WriteFn,
         },
         splash,
     },
@@ -29,6 +30,9 @@ pub type DeviceInventoryProvider = fn() -> DeviceInventory;
 
 /// Callback that runs after splash rendering and before checked boot output.
 pub type PrepareShellCallback = PrepareShell;
+
+/// Callback that runs lower-provider shell hardware probes.
+pub type HardwareProbeCallback = HardwareProbe;
 
 /// Profile for one shell-capable boot entry.
 #[derive(Clone, Copy)]
@@ -81,6 +85,8 @@ pub struct ShellBootConfig<'a> {
     pub write: WriteFn,
     /// Optional shell preparation hook after splash rendering.
     pub prepare_shell: Option<PrepareShellCallback>,
+    /// Optional lower-provider hardware probe callback for shell diagnostics.
+    pub probe_hardware: Option<HardwareProbeCallback>,
     /// Selected console input source and USB-keyboard readiness.
     pub console_input: ConsoleInputSummary,
     /// Profile selected for this boot.
@@ -109,6 +115,7 @@ pub fn run_shell_profile(cfg: ShellBootConfig<'_>) -> ! {
         dmesg: cfg.profile.dmesg,
         halt: cfg.profile.halt,
         prepare_shell: cfg.prepare_shell,
+        probe_hardware: cfg.probe_hardware,
         read_line: cfg.read_line,
         prompt: cfg.profile.prompt,
         write: cfg.write,

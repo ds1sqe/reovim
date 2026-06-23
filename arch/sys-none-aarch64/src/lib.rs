@@ -40,6 +40,8 @@ pub mod errno;
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 pub mod framebuffer;
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
+pub mod pcie;
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
 mod semihost;
 // The write-once `fn(&[u8])` write-sink registry. The floor `write` fans fd 1/2
 // to an installed callback (in addition to the UART); the boot composition root

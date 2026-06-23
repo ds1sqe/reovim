@@ -668,7 +668,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     let exe = build_os_image(
         &[],
         Some(
-            "help\npwd\nls /\ncd /dev\npwd\nls\ncat /boot/profile\ncat /log/dmesg\ndevice\ndmesg\n",
+            "help\npwd\nls /\ncd /dev\npwd\nls\ncat /boot/profile\ncat /log/dmesg\ndevice\nprobe pcie\ndmesg\n",
         ),
         None,
     );
@@ -688,9 +688,17 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     );
     assert!(
         serial.contains(
-            "commands: help, clear, screentest, pwd, ls, cd, cat, device, dmesg, launch, halt"
+            "commands: help, clear, screentest, pwd, ls, cd, cat, device, dmesg, probe, launch, halt"
         ),
         "help vocabulary appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("probe pcie"),
+        "probe command is included in scripted input; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("state=unsupported-on-this-target"),
+        "x86 OS profile reports pcie probe unsupported; serial: {serial:?}",
     );
     assert!(serial.contains("reovim-os> /\n"), "pwd prints root cwd; serial: {serial:?}",);
     assert!(

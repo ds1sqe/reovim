@@ -6,8 +6,8 @@
 use {
     super::{RootShellSession, execute_root_command},
     crate::rootd::{
-        BootCheckState, ConsoleInputSummary, PayloadDescriptor, PayloadLaunchResult,
-        ProfileSummary, RootDaemon,
+        BootCheckState, ConsoleInputSummary, HardwareProbeResult, PayloadDescriptor,
+        PayloadLaunchResult, ProfileSummary, RootDaemon, WriteFn,
     },
     core::cell::UnsafeCell,
     reovim_testrt::{self as testrt, arch_test},
@@ -77,6 +77,7 @@ fn daemon(profile: ProfileSummary, dmesg: Option<fn() -> &'static str>) -> RootD
         sample_payloads(),
         dmesg,
         None,
+        Some(probe_fixture),
         "reovim-os> ",
         ConsoleInputSummary::new(
             "fixture-input",
@@ -161,6 +162,16 @@ fn diagnostics() -> &'static str {
     "boot diagnostics complete"
 }
 
+fn probe_fixture(target: &str, _devices: &[DeviceEntry], write: WriteFn) -> HardwareProbeResult {
+    match target {
+        "fixture" => {
+            write(b"probe fixture:\nstate=ready\n");
+            HardwareProbeResult::Handled
+        }
+        _ => HardwareProbeResult::UnknownTarget,
+    }
+}
+
 fn assert_contains(haystack: &[u8], needle: &[u8]) {
     let mut i = 0usize;
     while i + needle.len() <= haystack.len() {
@@ -180,7 +191,7 @@ arch_test!(root_shell_help, {
     run_command(ProfileSummary::new("shell-only", false), b"help\n", None);
     testrt::check_eq(
         sink_str(),
-        "reovim root shell\ncommands: help, clear, screentest, pwd, ls, cd, cat, device, dmesg, launch, halt\nreserved: mount, reovim\n",
+        "reovim root shell\ncommands: help, clear, screentest, pwd, ls, cd, cat, device, dmesg, probe, launch, halt\nreserved: mount, reovim\n",
     );
 });
 
@@ -292,4 +303,18 @@ arch_test!(root_shell_dmesg_and_unknown_command, {
 
     run_command(ProfileSummary::new("shell-only", false), b"does-not-exist\n", None);
     testrt::check_eq(sink_str(), "error: unknown command, try `help`\n");
+});
+
+arch_test!(root_shell_probe_uses_lower_provider, {
+    run_command(ProfileSummary::new("shell-only", false), b"probe fixture\n", None);
+    testrt::check_eq(sink_str(), "probe fixture:\nstate=ready\n");
+
+    run_command(ProfileSummary::new("shell-only", false), b"probe missing\n", None);
+    testrt::check_eq(sink_str(), "probe: unknown target: missing\n");
+
+    run_command(ProfileSummary::new("shell-only", false), b"probe\n", None);
+    testrt::check_eq(sink_str(), "probe: missing target\n");
+
+    run_command(ProfileSummary::new("shell-only", false), b"probe a b\n", None);
+    testrt::check_eq(sink_str(), "probe: too many arguments\n");
 });
