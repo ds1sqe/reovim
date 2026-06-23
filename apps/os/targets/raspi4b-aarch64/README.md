@@ -43,6 +43,16 @@ seed includes `media_prepare=ok`, the installed `kernel8.img` path, byte count,
 and SHA-256, and the validator compares those installed-media values with the
 seeded image identity. Use this path for the real HDMI plus USB-keyboard proof.
 
+To find mounted Pi 4 boot partition candidates before preparing media:
+
+```sh
+apps/os/targets/raspi4b-aarch64/find-bootfs.sh
+```
+
+The discovery helper is read-only. It scans mounted FAT-like filesystems and
+prints only candidates that pass the same Pi 4 firmware checks as
+`check-bootfs.sh`.
+
 To build and install the image manually onto a mounted Pi 4 boot partition:
 
 ```sh
@@ -76,6 +86,7 @@ For narrower debugging, the aggregate smoke runs these individual checks:
 
 ```sh
 apps/os/targets/raspi4b-aarch64/test-check-bootfs.sh
+apps/os/targets/raspi4b-aarch64/test-find-bootfs.sh
 apps/os/targets/raspi4b-aarch64/test-install-image.sh
 apps/os/targets/raspi4b-aarch64/test-preflight-real-board.sh
 apps/os/targets/raspi4b-aarch64/test-proof-command-list.sh
@@ -83,11 +94,11 @@ apps/os/targets/raspi4b-aarch64/test-prepare-boot-media.sh
 apps/os/targets/raspi4b-aarch64/test-validate-evidence.sh
 ```
 
-The smoke tests verify bootfs readiness checks, dry-run identity output,
-installed image hash, distinct backups after repeated installs, preflight
-evidence generation, proof command and required-fact consistency across the
-runbook/template/generated seed, the full media-prep wrapper, and completed
-evidence validation.
+The smoke tests verify bootfs readiness checks, read-only bootfs discovery,
+dry-run identity output, installed image hash, distinct backups after repeated
+installs, preflight evidence generation, proof command and required-fact
+consistency across the runbook/template/generated seed, the full media-prep
+wrapper, and completed evidence validation.
 
 ## Local Preflight
 

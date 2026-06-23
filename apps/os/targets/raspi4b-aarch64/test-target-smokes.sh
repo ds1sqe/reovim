@@ -12,10 +12,12 @@ printf '==> syntax check Raspberry Pi 4 target scripts\n'
 bash -n \
     "$TARGET_DIR/build-image.sh" \
     "$TARGET_DIR/check-bootfs.sh" \
+    "$TARGET_DIR/find-bootfs.sh" \
     "$TARGET_DIR/install-image.sh" \
     "$TARGET_DIR/preflight-real-board.sh" \
     "$TARGET_DIR/prepare-boot-media.sh" \
     "$TARGET_DIR/test-check-bootfs.sh" \
+    "$TARGET_DIR/test-find-bootfs.sh" \
     "$TARGET_DIR/test-install-image.sh" \
     "$TARGET_DIR/test-preflight-real-board.sh" \
     "$TARGET_DIR/test-prepare-boot-media.sh" \
@@ -26,6 +28,9 @@ bash -n \
 
 printf '==> bootfs readiness smoke\n'
 "$TARGET_DIR/test-check-bootfs.sh"
+
+printf '==> bootfs discovery smoke\n'
+"$TARGET_DIR/test-find-bootfs.sh"
 
 printf '==> installer smoke\n'
 "$TARGET_DIR/test-install-image.sh"
