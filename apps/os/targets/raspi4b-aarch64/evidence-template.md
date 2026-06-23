@@ -101,6 +101,21 @@ Paste the resulting output:
 
 ```
 
+## Shutdown Check
+
+After the command transcript is recorded, type this as the final command from
+the physical USB keyboard:
+
+```text
+halt
+```
+
+Paste the resulting output:
+
+```text
+
+```
+
 ## USB Keyboard Readiness
 
 Required success facts:
@@ -122,6 +137,8 @@ Required success facts:
 - [ ] `dmesg` contains `shell: <command>` and `shell.status=ok` audit lines for the typed commands.
 - [ ] `dmesg` contains `shell.status=error` audit lines for the disabled payload launch commands.
 - [ ] `dmesg` contains the `probe usb-keyboard` output or blocker.
+- [ ] `halt` was typed last and printed `halt: ok`.
+- [ ] No new `reovim-os>` prompt appeared after `halt: ok`.
 
 If unsuccessful, record the exact blocker:
 

@@ -27,6 +27,8 @@ missing_boot_inventory_evidence="$tmp_dir/missing-boot-inventory.md"
 missing_shell_usability_evidence="$tmp_dir/missing-shell-usability.md"
 missing_pcie_probe_evidence="$tmp_dir/missing-pcie-probe.md"
 missing_payload_disabled_evidence="$tmp_dir/missing-payload-disabled.md"
+missing_halt_evidence="$tmp_dir/missing-halt.md"
+prompt_after_halt_evidence="$tmp_dir/prompt-after-halt.md"
 missing_proof_evidence="$tmp_dir/missing-proof.md"
 missing_vfs_proof_evidence="$tmp_dir/missing-vfs-proof.md"
 missing_media_evidence="$tmp_dir/missing-media.md"
@@ -110,6 +112,8 @@ write_passing_evidence() {
         printf '  reovim\n'
         printf '  dmesg\n'
         printf '  cat /log/dmesg\n'
+        printf 'terminal:\n'
+        printf '  halt\n'
         printf 'expected:\n'
         printf '  bootline=absent\n'
         printf '  source=usb-keyboard+uart-fallback\n'
@@ -123,6 +127,7 @@ write_passing_evidence() {
         printf '  launch/reovim disabled in shell-only profile\n'
         printf '  shell.status=ok\n'
         printf '  shell.status=error for disabled payload commands\n'
+        printf '  halt typed last prints halt: ok and stops root daemon\n'
         printf 'reovim-os> cat /boot/proof\n'
         printf 'proof:\n'
         printf 'commands:\n'
@@ -155,6 +160,8 @@ write_passing_evidence() {
         printf '  reovim\n'
         printf '  dmesg\n'
         printf '  cat /log/dmesg\n'
+        printf 'terminal:\n'
+        printf '  halt\n'
         printf 'expected:\n'
         printf '  bootline=absent\n'
         printf '  source=usb-keyboard+uart-fallback\n'
@@ -168,6 +175,7 @@ write_passing_evidence() {
         printf '  launch/reovim disabled in shell-only profile\n'
         printf '  shell.status=ok\n'
         printf '  shell.status=error for disabled payload commands\n'
+        printf '  halt typed last prints halt: ok and stops root daemon\n'
         printf 'reovim-os> help\n'
         printf 'reovim root shell\n'
         printf 'commands: help, clear, screentest, pwd, ls, cd, cat, mount, input, status, proof, device, dmesg, probe, launch, reovim, halt\n'
@@ -356,6 +364,11 @@ write_passing_evidence() {
         printf 'shell.status=ok\n'
         printf 'shell: cat /log/dmesg\n'
         printf '```\n\n'
+        printf '## Shutdown Check\n\n'
+        printf '```text\n'
+        printf 'reovim-os> halt\n'
+        printf 'halt: ok\n'
+        printf '```\n\n'
         printf '## USB Keyboard Readiness\n\n'
         printf 'Required success facts:\n\n'
         printf -- '- [x] A physical USB keypress reached the root shell.\n'
@@ -374,7 +387,9 @@ write_passing_evidence() {
         printf -- '- [x] `launch` / `reovim` report shell-only payload launch disabled.\n'
         printf -- '- [x] `dmesg` contains `shell: <command>` and `shell.status=ok` audit lines for the typed commands.\n'
         printf -- '- [x] `dmesg` contains `shell.status=error` audit lines for the disabled payload launch commands.\n'
-        printf -- '- [x] `dmesg` contains the `probe usb-keyboard` output or blocker.\n\n'
+        printf -- '- [x] `dmesg` contains the `probe usb-keyboard` output or blocker.\n'
+        printf -- '- [x] `halt` was typed last and printed `halt: ok`.\n'
+        printf -- '- [x] No new `reovim-os>` prompt appeared after `halt: ok`.\n\n'
         printf '## Result\n\n'
         printf -- '- [x] PASS: physical USB keyboard proof complete.\n'
         printf -- '- [ ] FAIL: display/UART/scripted evidence only.\n'
@@ -446,6 +461,14 @@ expect_failure "$missing_pcie_probe_evidence" "missing-pcie-probe"
 cp "$pass_evidence" "$missing_payload_disabled_evidence"
 sed -i '/^reovim disabled for this profile$/d' "$missing_payload_disabled_evidence"
 expect_failure "$missing_payload_disabled_evidence" "missing-payload-disabled"
+
+cp "$pass_evidence" "$missing_halt_evidence"
+sed -i '/^halt: ok$/d' "$missing_halt_evidence"
+expect_failure "$missing_halt_evidence" "missing-halt"
+
+cp "$pass_evidence" "$prompt_after_halt_evidence"
+sed -i '/^halt: ok$/a reovim-os> ' "$prompt_after_halt_evidence"
+expect_failure "$prompt_after_halt_evidence" "prompt-after-halt"
 
 cp "$pass_evidence" "$missing_proof_evidence"
 sed -i '/^proof:$/d' "$missing_proof_evidence"

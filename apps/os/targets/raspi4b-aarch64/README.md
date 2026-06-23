@@ -21,7 +21,7 @@ image=apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img
 bytes=<image-size>
 ```
 
-Current expected size is `435900` bytes.
+Current expected size is `436036` bytes.
 
 Copy `apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img` to the Pi
 4 boot partition as `kernel8.img`, using the normal Raspberry Pi firmware
@@ -140,9 +140,10 @@ inventory from `ls /dev` / `device` / `cat /boot/memory` /
 `cat uart0`, `probe help` hardware-target catalog output, read-only PCIe/xHCI
 state from `probe pcie`, `probe usb-keyboard` output, shell-only
 `launch`/`reovim` disabled output, and `dmesg` command/status audit lines
-including the expected disabled-payload `shell.status=error` entries. It is a
-textual guard for completed evidence; it does not replace the physical HDMI
-plus USB-keyboard session.
+including the expected disabled-payload `shell.status=error` entries. It also
+requires the terminal `halt` check to print `halt: ok` with no later root-shell
+prompt. It is a textual guard for completed evidence; it does not replace the
+physical HDMI plus USB-keyboard session.
 
 To smoke-test the validator:
 
@@ -184,7 +185,7 @@ Hardware setup:
 - No `REOVIM_OS_BOOTLINE` in the image environment.
 
 At the `reovim-os>` prompt, type these commands from the physical USB
-keyboard:
+keyboard for the main proof transcript:
 
 ```text
 proof
@@ -220,6 +221,13 @@ dmesg
 cat /log/dmesg
 ```
 
+After recording the main transcript, type this final terminal command from the
+physical USB keyboard:
+
+```text
+halt
+```
+
 Record the full visible output or serial transcript. The key evidence is:
 
 - `proof` prints the physical-input proof checklist from the running OS.
@@ -253,6 +261,8 @@ Record the full visible output or serial transcript. The key evidence is:
   shell-only `launch` and `reovim` disabled paths.
 - The final `cat /log/dmesg` shows the `shell.status=ok` record for the prior
   `dmesg` command, because `dmesg` records its own status after printing.
+- `halt` prints `halt: ok` as the final command and no new `reovim-os>` prompt
+  appears after that line.
 - Final success requires physical USB keyboard input to reach the shell and
   `cat /boot/profile` or `status` to show:
 

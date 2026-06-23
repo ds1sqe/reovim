@@ -597,6 +597,8 @@ fn write_boot_proof(daemon: &RootDaemon<'_>) {
     daemon.write_line("  reovim");
     daemon.write_line("  dmesg");
     daemon.write_line("  cat /log/dmesg");
+    daemon.write_line("terminal:");
+    daemon.write_line("  halt");
     daemon.write_line("expected:");
     daemon.write_line("  bootline=absent");
     daemon.write_line("  source=usb-keyboard+uart-fallback");
@@ -610,6 +612,7 @@ fn write_boot_proof(daemon: &RootDaemon<'_>) {
     daemon.write_line("  launch/reovim disabled in shell-only profile");
     daemon.write_line("  shell.status=ok");
     daemon.write_line("  shell.status=error for disabled payload commands");
+    daemon.write_line("  halt typed last prints halt: ok and stops root daemon");
 }
 
 fn write_boot_status(daemon: &RootDaemon<'_>) {

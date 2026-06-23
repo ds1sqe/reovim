@@ -81,6 +81,8 @@ expect_contains "$evidence" 'cat /boot/image' "evidence command transcript"
 expect_contains "$evidence" 'launch' "evidence launch command"
 expect_contains "$evidence" 'reovim' "evidence reovim command"
 expect_contains "$evidence" 'cat /log/dmesg' "evidence kernel log transcript command"
+expect_contains "$evidence" '## Shutdown Check' "evidence shutdown section"
+expect_contains "$evidence" $'halt\n```' "evidence halt command"
 expect_contains "$evidence" 'probe pcie' "evidence PCIe probe command"
 expect_contains "$evidence" '`status` / `input` report live ready source diagnostics.' "evidence live source fact"
 expect_contains "$evidence" '`cat /boot/status` / `cat /boot/input` report VFS-backed live diagnostics.' "evidence VFS live source fact"
@@ -95,6 +97,8 @@ expect_contains "$evidence" '`device` / `cat /boot/memory` / `cat /boot/devices`
 expect_contains "$evidence" '`cd /dev` / `cat uart0` prove relative VFS device-file access.' "evidence relative device fact"
 expect_contains "$evidence" '`shell.status=ok` audit lines' "evidence status audit fact"
 expect_contains "$evidence" '`shell.status=error` audit lines for the disabled payload launch commands.' "evidence disabled status audit fact"
+expect_contains "$evidence" '`halt` was typed last and printed `halt: ok`.' "evidence halt fact"
+expect_contains "$evidence" 'No new `reovim-os>` prompt appeared after `halt: ok`.' "evidence halt no-prompt fact"
 expect_contains "$evidence" '`usb_keyboard=ready`' "evidence readiness fact"
 
 printf 'preflight evidence smoke ok\n'

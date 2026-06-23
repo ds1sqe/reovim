@@ -94,6 +94,8 @@ require_re '^- \[[xX]\] `launch` / `reovim` report shell-only payload launch dis
 require_re '^- \[[xX]\] `dmesg` contains `shell: <command>` and `shell\.status=ok` audit lines for the typed commands\.$' 'dmesg command/status audit checkbox'
 require_re '^- \[[xX]\] `dmesg` contains `shell\.status=error` audit lines for the disabled payload launch commands\.$' 'dmesg payload-disabled error audit checkbox'
 require_re '^- \[[xX]\] `dmesg` contains the `probe usb-keyboard` output or blocker\.$' 'probe-output dmesg checkbox'
+require_re '^- \[[xX]\] `halt` was typed last and printed `halt: ok`\.$' 'terminal halt checkbox'
+require_re '^- \[[xX]\] No new `reovim-os>` prompt appeared after `halt: ok`\.$' 'terminal halt no-prompt checkbox'
 require_re '^- \[[xX]\] `proof` prints the physical input proof checklist\.$' 'proof checklist checkbox'
 require_re '^- \[[xX]\] `cat /boot/proof` prints the VFS-backed proof pseudo-file\.$' 'VFS proof pseudo-file checkbox'
 require_re '^- \[[xX]\] `help` / `clear` / `screentest` prove the shell help and renderer commands\.$' 'shell help and renderer checkbox'
@@ -189,6 +191,8 @@ require_re '^  probe usb-keyboard$' 'proof checklist USB keyboard command'
 require_re '^  launch$' 'proof checklist launch command'
 require_re '^  reovim$' 'proof checklist reovim command'
 require_re '^  cat /log/dmesg$' 'proof checklist final log command'
+require_re '^terminal:$' 'proof terminal-command header'
+require_re '^  halt$' 'proof terminal halt command'
 require_re '^expected:$' 'proof expected-facts header'
 require_re '^  source=usb-keyboard\+uart-fallback$' 'proof expected source fact'
 require_re '^  usb_keyboard=ready$' 'proof expected readiness fact'
@@ -196,6 +200,7 @@ require_re '^  shell\.status=ok$' 'proof expected shell status fact'
 require_re '^  probe targets include pcie$' 'proof expected PCIe probe fact'
 require_re '^  launch/reovim disabled in shell-only profile$' 'proof expected shell-only launch-disabled fact'
 require_re '^  shell\.status=error for disabled payload commands$' 'proof expected payload-disabled status fact'
+require_re '^  halt typed last prints halt: ok and stops root daemon$' 'proof expected terminal halt fact'
 require_re '^probe targets:$' 'probe help target catalog header'
 require_re '^  pcie$' 'probe help PCIe target'
 require_re '^  usb-keyboard \(alias: keyboard\)$' 'probe help USB keyboard target'
@@ -210,6 +215,8 @@ require_re '^reovim-os> launch$' 'launch command in pasted transcript'
 require_re '^launch disabled for this profile$' 'shell-only launch disabled output'
 require_re '^reovim-os> reovim$' 'reovim command in pasted transcript'
 require_re '^reovim disabled for this profile$' 'shell-only reovim disabled output'
+require_re '^reovim-os> halt$' 'terminal halt command in pasted transcript'
+require_re '^halt: ok$' 'terminal halt output'
 
 require_re '^shell: cat /boot/image$' 'dmesg audit for cat /boot/image'
 require_re '^shell: proof$' 'dmesg audit for proof'
@@ -243,6 +250,15 @@ require_re '^shell: dmesg$' 'dmesg audit for dmesg'
 require_re '^shell: cat /log/dmesg$' 'dmesg audit for cat /log/dmesg'
 require_count_at_least '^shell\.status=ok$' 'successful shell status audit lines' 28
 require_count_at_least '^shell\.status=error$' 'disabled payload error audit lines' 2
+
+if awk '
+    /^halt: ok$/ { seen_halt = 1; next }
+    seen_halt && /^reovim-os>/ { found_prompt = 1 }
+    END { exit found_prompt ? 0 : 1 }
+' "$EVIDENCE"; then
+    printf 'invalid: terminal halt must not print another root shell prompt\n' >&2
+    missing=1
+fi
 
 image_bytes="$(awk '/^- Image bytes: [1-9][0-9]*$/ { print $4; exit }' "$EVIDENCE")"
 media_bytes="$(awk -F= '/^bytes=[1-9][0-9]*$/ { print $2; exit }' "$EVIDENCE")"
