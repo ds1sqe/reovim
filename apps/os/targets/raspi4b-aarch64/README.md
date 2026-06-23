@@ -72,12 +72,14 @@ media:
 ```sh
 apps/os/targets/raspi4b-aarch64/test-check-bootfs.sh
 apps/os/targets/raspi4b-aarch64/test-install-image.sh
+apps/os/targets/raspi4b-aarch64/test-proof-command-list.sh
 apps/os/targets/raspi4b-aarch64/test-prepare-boot-media.sh
 ```
 
 The smoke tests verify bootfs readiness checks, dry-run identity output,
-installed image hash, distinct backups after repeated installs, and the
-full media-prep wrapper.
+installed image hash, distinct backups after repeated installs, proof command
+list consistency across the runbook/template/generated seed, and the full
+media-prep wrapper.
 
 ## Local Preflight
 
