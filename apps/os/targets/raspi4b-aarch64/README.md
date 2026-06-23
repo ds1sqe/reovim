@@ -81,6 +81,14 @@ apps/os/targets/raspi4b-aarch64/preflight-real-board.sh \
 The generated evidence file records the current image path, byte count,
 SHA-256, build/install commands, boot partition path, and preflight result.
 
+To smoke-test the evidence-seed path without QEMU or real media:
+
+```sh
+apps/os/targets/raspi4b-aarch64/test-preflight-real-board.sh
+```
+
+The smoke test verifies the preflight output and generated evidence fields.
+
 ## QEMU Smoke
 
 QEMU raspi4b currently disables the DTB PCIe path used by the Pi 4 VL805 xHCI
