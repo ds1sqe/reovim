@@ -1,15 +1,16 @@
 # 2.5 — Machine Boot
 
 **Scope.** RTOS-itself boot: the system-kernel boot layer that sits between
-`arch::_start` and the editor-core boot, its subsystems, the boot-proof
+`arch::_start` and root-daemon/payload launch, its subsystems, the boot-proof
 model, the device lifecycle, connected-device handling at runtime, and the
 scheduler park/wake seam. Over-OS mode skips this layer — the host OS *is*
 the underlying system role.
 
 **Heritage.** Design-stage. The bare-metal floor and the editor-core
 `EditorInit`/`EditorCore` handoff exist (`#796`/`#797`); the middle machine-boot
-layer is the 0.16 design that makes a single-seat Pi appliance real. Mode
-overview: `01-Architecture/06-OS-Modes.md`.
+layer is the 0.16 design that makes a single-seat Pi appliance real. The
+editor-core handoff is a payload launch, not the proof that the OS booted.
+Mode overview: `01-Architecture/06-OS-Modes.md`.
 
 **Locked rules.** None new (design-stage). `machine.*` event families are
 provisional and must follow LOG2 rendering.
@@ -25,21 +26,23 @@ arch::_start
   -> system-kernel boot
      -> boot-profile selection
      -> IRQ/timer/memory/device/block/fs init
-     -> editor-core boot
-     -> platform runtime launch (tui over hosted OS, console on Pi)
+     -> root daemon
+     -> tty/CLI
+     -> optional payload launch (editor/server/client)
 ```
 
 RTOS-itself needs a real system kernel, not just `arch` plus the editor core.
 `arch/` stays the smallest unsafe/hardware boundary (no policy);
 system-kernel boot owns the services that are too large to hide inside
-`arch::sys`, then calls the existing editor-core boot as a payload. This keeps
-`editor/lib/core` from becoming an
-accidental operating-system kernel.
+`arch::sys`, then starts a root daemon that can launch the editor/server/client
+payload later. This keeps `editor/lib/core` from becoming an accidental
+operating-system kernel and gives the kernel a testable boot success condition
+that does not depend on editor-core `EditorInit::boot`.
 
 | Layer | Owns |
 |---|---|
 | `arch/` platform floor | CPU entry, asm, MMIO primitives, timer registers, UART bytes, memory-map handoff |
-| system kernel | scheduler, IRQ routing, driver model, block cache, filesystem, console device, power/shutdown |
+| system kernel | scheduler, IRQ routing, driver model, block cache, filesystem, console device, tty/root daemon, power/shutdown |
 | editor core | sessions, domains, streams, state, services, view/update scheduling |
 | client/platform runtime | input/render adaptation (hosted terminal vs framebuffer + keyboard) |
 
@@ -72,12 +75,21 @@ appliance:
 7. **Console / TUI substrate.** A framebuffer text console and input
    pipeline producing the same reovim raw-input records — not an ANSI/termios
    emulation (`01-Architecture/06-OS-Modes.md` §5).
+8. **Root daemon + tty.** A first system-kernel supervisor task with a small
+   bash-like Reovim shell. It owns boot-profile targets, service/payload
+   dispatch, and recovery/headless diagnostics. The first implementation must
+   boot to a prompt with no editor-core dependency; editor/server/client launch
+   is a registered payload command supplied by the composition root. Bash-like
+   means familiar prompt, words, built-ins, and future `ls`/`cd` style
+   navigation; it does **not** mean POSIX shell execution or a public POSIX
+   face.
 
 ## 3. Boot proof model
 
 Logging machine facts is not enough; the system-kernel boot layer must **prove**
 required facts before later phases can rely on them. Boot produces a typed
-system boot proof (not a user-facing config) before launching the editor core.
+system boot proof (not a user-facing config) before launching the selected
+payload.
 
 ```text
 arch::_start
@@ -86,7 +98,8 @@ arch::_start
      -> prove required invariants for the selected boot profile
      -> build system boot proof
      -> publish device-inventory messages
-     -> hand system services + proof to editor launch
+     -> start root daemon + tty
+     -> hand system services + proof to the selected payload launch
 ```
 
 Proofs are **profile-gated**:
@@ -94,14 +107,16 @@ Proofs are **profile-gated**:
 | Profile | Required proofs |
 |---|---|
 | `selftest` | CPU mode, stack/BSS, timer, UART/semihost exit |
+| `shell` | CPU mode, timer, tty output, at least one command input path or scripted input harness |
 | `headless-diag` | CPU mode, timer, UART TX/RX or diagnostic output path |
 | `recovery` | console output, ≥1 input path, block read path if storage repair is enabled |
 | `appliance` | timer IRQ, GIC, framebuffer, USB HID keyboard, persistent block/fs, panic output path |
 
 Failure policy:
 
-- A missing **required** proof for the selected profile aborts before
-  editor-core `EditorInit::boot`.
+- A missing **required** proof for the selected profile aborts before the root
+  daemon starts that profile's payload. Diagnostic profiles may still enter a
+  degraded root shell when their own tty/UART proofs pass.
 - Optional devices may enter `Degraded` and still boot if the profile
   allows it.
 - Every degraded/failed optional device emits a structured machine event
@@ -346,7 +361,9 @@ system-kernel mechanism, not a hot-pluggable device.
 
 | Behaviour | Fixture |
 |---|---|
-| Proof gate | `appliance` boot with a missing required proof (e.g. no framebuffer) aborts before editor-core `EditorInit::boot` and emits `machine.proof.fail`. |
+| Proof gate | `appliance` boot with a missing required proof (e.g. no framebuffer) aborts before the root daemon starts the editor/server/client payload and emits `machine.proof.fail`. |
+| Root-daemon independence | A kernel-shell fixture boots to a tty prompt, accepts basic commands (`help`, `device`, `dmesg`, `launch` status), and has no `reovim-editor-core` dependency. |
+| Interactive VNC smoke | The aarch64 framebuffer-console profile can be booted under QEMU VNC; a human or harness types a basic CLI command and observes the prompt/response before any editor payload is launched. |
 | Degraded optional | An optional device entering `Degraded` boots under a profile that allows it and emits the allowing rule. |
 | Generation fence | A keyboard reconnect bumps generation; queued old-generation key events are dropped and modifiers cleared. |
 | Storage loss | State-root storage loss closes new writes (no fake save) and moves persistence to read-only or controlled shutdown per profile. |

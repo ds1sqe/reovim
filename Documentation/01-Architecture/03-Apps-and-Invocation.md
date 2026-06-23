@@ -20,11 +20,19 @@ launcher imposes on transport semantics.
 | `reovim-cli` | One-shot CLI client / control surface. |
 | `reovim-web` | Web client runtime / SSR entry. |
 | `reovim` | Top-level launcher. Embedded-default plus subprocess/external modes. |
+| `reovim-os` | RTOS image composition root. Builds bootable images and per-profile app bundles; not a hosted process binary. |
 
 `reovim-cli ...` is the canonical CLI binary. `reovim cli ...`,
 `reovim pkg ...`, and similar top-level forms MAY exist as launcher
 aliases, but they MUST delegate to the CLI path without importing
 plugin/package implementation logic into the launcher hot path.
+
+`reovim-os` is the planned `apps/os/` composition root for RTOS-itself
+distributions. It selects the floor/provider, root-daemon boot profile, and
+per-arch bundle (shell-only, recovery, appliance), then emits a bootable image
+such as `kernel8.img` for Raspberry Pi 4 or a Multiboot/q35 image for x86_64.
+It is not a user-invoked hosted process and does not move system-kernel policy
+into `apps/`; `apps/os` only wires the image, providers, and payload registry.
 
 ## 2. Composition modes
 
@@ -128,6 +136,12 @@ The rule bodies below are the normative texts.
 > `apps/`. *Class*: kernel-enforced (compile — workspace layout +
 > depgraph).
 
+> **AL1-RTOS — RTOS image is an app composition root.** Bootable RTOS images
+> are composed under `apps/os/`, not under `arch/tests/fixtures`. The arch
+> fixture tree may keep CI proof images, but official per-arch image packaging
+> and app bundle selection belong to the `apps/os` composition root. *Class*:
+> convention + depgraph/manifest scan.
+
 > **AL2 — Bare `reovim` defaults to TUI.** Overridable via the
 > `[default].client` field of the `editor.host` config
 > participation (it selects the transport profile, hence
@@ -223,6 +237,7 @@ discovered from the workspace target directory or
 |---|---|
 | AL-INPROC | Embedded boot uses the in-memory adapter; capability negotiation runs; missing capability rejects the same way subprocess rejects. |
 | AL1/AL6 | Depgraph probe: five composition roots; each bin smoke-boots standalone. |
+| AL1-RTOS | Manifest scan: `apps/os` owns RTOS image profiles and no new official image path lands under `arch/tests/fixtures`. |
 | AL2 | No-flag launch with `[default].client = "cli"` → CLI client selected. |
 | AL5 | Depgraph probe: launcher crate has no package/module/driver deps; grep for manifest parsing in launcher. |
 | AL7 | `reovim file.txt:12:3` opens a buffer named `file.txt:12:3` unless a Domain claims it (AL10); exit codes match vim contract. |

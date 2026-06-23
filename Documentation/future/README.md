@@ -27,6 +27,7 @@ direction, not contract.
 |---|---|
 | [`design-spine.md`](design-spine.md) | The design through-line: via-negativa version sequence beyond 0.16, kernel-as-mathematical-mechanism, the survival / corruption model (radiation, SEU, Mars-safe), the verification horizon, distributed = git, governance ported from Linux, project-level discipline. |
 | [`multi-os-ports.md`](multi-os-ports.md) | Hosted ports to Windows / macOS / Solaris, and the DAG6 "lowest stable boundary per target" amendment they would force. Bare-metal (0.16) has no such tension; these ports are a separate, later track. |
+| [`tty-pty.md`](tty-pty.md) | Future TTY/PTY direction: reserve `tty` for a real system-kernel terminal-device subsystem and use `root_shell` / `console_io` for the current #800 root-daemon shell proof. |
 
 ## Why the radiation / Mars material is here, not in a numbered chapter
 

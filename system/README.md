@@ -8,8 +8,10 @@ only normal bridge from product-facing `uapi/*` to machine-facing `kabi/*`.
 ## Crates
 
 - **`lib/kernel/`** (`reovim-system-kernel`) — arch-free common console, FDT,
-  splash, boot-info, inventory, and service-bridge policy. Raw facts,
-  framebuffer storage, and provider installs stay in the lower
-  composition/provider layer.
+  splash, boot-info, inventory, tty/root-daemon direction, and service-bridge
+  policy. Raw facts, framebuffer storage, and provider installs stay in the
+  lower composition/provider layer. The root daemon is planned as the
+  system-kernel boot supervisor; editor/server/client startup is a payload it
+  launches, not a prerequisite for kernel boot.
 
 The depgraph `system/*` → Foundation category row is active for this crate.

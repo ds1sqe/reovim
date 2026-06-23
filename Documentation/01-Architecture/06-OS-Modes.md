@@ -244,16 +244,34 @@ carrier while `execve` is absent from `arch/`.)
 **RTOS-itself** has no process launcher. Firmware loads `kernel8.img`, then:
 
 ```text
-Pi firmware -> arch::_start -> system-kernel bridge boot
-  -> boot-profile selection -> editor-core EditorInit::boot -> console platform runtime
+Pi firmware -> arch::_start -> provider/composition install
+  -> system-kernel boot -> root daemon -> tty/CLI
+  -> optional boot-profile payload launch
 ```
 
-The RTOS launch unit is a **boot profile**, not a command:
+The RTOS launch unit is a **boot profile**, not a hosted process command. The
+root daemon is systemd-like only in responsibility: it is the first
+system-kernel supervisor task, owns boot-profile selection, exposes the first
+tty/CLI, and dispatches payload launch callbacks registered by the composition
+root. It is not a POSIX pid namespace and it does not make the editor core part
+of machine boot.
+
+The official RTOS image composition root belongs under `apps/` with the other
+app link roots, currently planned as `apps/os/`. It owns per-arch image
+packaging (`kernel8.img`, Multiboot/q35 images, DTB/config assets) and
+per-profile app bundles. `arch/tests/fixtures` remains a CI harness for floor
+proofs, not the distribution home for real OS images.
+
+The first OS-mode proof is therefore **boot to a tty prompt without launching
+the editor**. Editor/server/client startup is a later payload action, either
+auto-started by the `appliance` profile after its proofs pass or started
+interactively from the CLI for VNC/manual testing.
 
 | Profile | Purpose |
 |---|---|
 | `selftest` | Run arch/machine/editor selftests; exit/halt with a diagnostic code. |
-| `appliance` | Normal editor: framebuffer console + USB keyboard + embedded editor core. |
+| `shell` | Kernel-only interactive root-daemon tty; bash-like Reovim shell commands, no editor boot required. |
+| `appliance` | Normal editor appliance: root daemon auto-starts the editor/server/client payload after framebuffer/input/storage proofs pass. |
 | `recovery` | Minimal framebuffer/UART diagnostic shell for storage/config repair. |
 | `headless-diag` | UART-only diagnostics when display or USB is untrustworthy. |
 
@@ -264,6 +282,11 @@ replaces termios/ANSI/UDS with HID input, framebuffer drawing, and an
 in-memory transport. The reusable unit is "reovim renders a cell/frame
 model and consumes normalized raw input," not "TUI writes escape
 sequences." Hosted TUI and Pi console are two backends for that model.
+For #800 OS-mode tests, launching "reovim TUI" inside the RTOS means a
+root-daemon payload that drives the local console/client path. Reusing the
+hosted `client/platforms/tui` crate literally requires a real kernel terminal
+and carrier surface first; until that exists, the RTOS proof should name the
+local console client, not pretend termios/ANSI/UDS exists on bare metal.
 
 ## 6. Mode instantiation
 
@@ -349,5 +372,7 @@ append-only evolution, and the macro contract are specified in
 |---|---|
 | Mode-invariant editor + client cores | The editor and client core crates compile unchanged for both Over-OS and freestanding targets; they name the `uapi/*` up-face, and mode differences appear only in the bridge/provider/floor topology (`06-ABI/05-Platform-Contract.md`). |
 | System-kernel conditionality | Over-OS mode uses `system/lib/kernel` as a hosted bridge while the host OS fills the underlying system role. RTOS-itself mode has `system/lib/kernel` fill the full system-kernel role and bridge `uapi/*` to `kabi/*`; the editor/client core binary is unchanged (`02-Process/01-Kernel-Types.md §0`). |
+| Root-daemon boot independence | RTOS `shell` profile reaches a root-daemon tty/CLI prompt before any editor-core `EditorInit::boot` call; editor/server/client launch is observed only after an explicit or profile-selected payload command. |
+| RTOS image distribution | Official RTOS images and per-arch app bundles are composed under `apps/os/`; `arch/tests/fixtures` may host legacy/CI proof images but is not the product distribution root. |
 | Freestanding floor | `aarch64-unknown-none` selftest image boots under QEMU raspi4b: UART write + generic timer + arena alloc + bare-metal entry, via the unchanged `arch_test!` runner. |
 | LaunchPlan parity | A hosted `reovim` invocation and an RTOS `appliance` boot profile resolve to the same `LaunchPlan` fields. |
