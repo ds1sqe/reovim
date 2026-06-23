@@ -80,7 +80,7 @@ impl MemorySummary {
     }
 }
 
-/// Hardware facts pushed into editor-kernel boot diagnostics.
+/// Hardware facts pushed into editor-core boot diagnostics.
 ///
 /// ```rust
 /// use reovim_uapi_system::{BootInfo, MemorySummary};
@@ -172,7 +172,7 @@ pub struct DeviceEntry {
     pub compatible: &'static str,
 }
 
-/// Static device inventory pushed into editor-kernel launch arguments.
+/// Static device inventory pushed into editor-core launch arguments.
 ///
 /// ```rust
 /// use reovim_uapi_system::DeviceInventory;

@@ -1,6 +1,6 @@
 # 3.1 — State Split
 
-**Scope.** What lives in the Kernel, what lives per-Session, what lives in
+**Scope.** What lives in the editor core, what lives per-session, what lives in
 module-owned opaque state, and the rules for moving state across
 those boundaries.
 
@@ -11,15 +11,15 @@ those boundaries.
 ## 1. Tiers
 
 ```
-Kernel (instance-wide)
+Editor core (instance-wide)
 └─ Session (named editing context, multi-client)
    └─ Window-scoped view (per (client, buffer, window))
       └─ Module-owned view-state (opaque to kernel)
 ```
 
-## 2. Kernel-level
+## 2. Editor-core level
 
-The Kernel owns:
+The editor core owns:
 
 - registries (`Inventory`, `DomainRouter`, `ServiceRegistry`,
   `HandlerRegistry`, `ProjectorRegistry`, `ManifestRegistry`,
@@ -30,7 +30,7 @@ The Kernel owns:
 - force-override map,
 - the session map (sharded `arch/`-provided RwLock).
 
-Kernel state survives session deletes and client disconnects.
+Editor-core state survives session deletes and client disconnects.
 
 ## 3. Session-level
 
@@ -47,9 +47,9 @@ lifetime; deleting the session destroys it.
 
 ## 4. Window-scoped view
 
-For each `(ClientId, BufferId, WindowId)` triple the kernel allocates
+For each `(ClientId, BufferId, WindowId)` triple the editor core allocates
 **view slots** holding module-owned opaque state (see 3.2). The
-kernel knows the slot exists and has a `drop_fn` for it; it does
+editor core knows the slot exists and has a `drop_fn` for it; it does
 not interpret the bytes.
 
 ## 5. Module-owned opaque state
@@ -62,15 +62,15 @@ view_slot_alloc(client_id, buffer_id, window_id,
                 ViewSlotHandle* out)
 ```
 
-The handle is opaque to kernel; the kernel stores `(handle, drop_fn,
+The handle is opaque to the editor core; the editor core stores `(handle, drop_fn,
 owner_cdylib_id)`. Module reads/writes through HostApi by handle.
 
 ## 6. Movement rules
 
 | From → To | Allowed | Notes |
 |---|---|---|
-| Kernel → Session | YES | only at session creation; carries config snapshot for that session |
-| Session → Kernel | NO | session terminates; state goes to disk via persistence |
+| Editor core → Session | YES | only at session creation; carries config snapshot for that session |
+| Session → Editor core | NO | session terminates; state goes to disk via persistence |
 | Session → Window-scope | YES | window open allocates slots |
 | Window-scope → Session | NO | view-state never bubbles back |
 | Module → Module | NO | modules cannot share view-slots; use ServiceRegistry |
@@ -91,7 +91,7 @@ allocated lazily by handler dispatch.
 
 ## Open items
 
-1. Whether Kernel-level state can be quiesced (snapshot for restart
+1. Whether editor-core-level state can be quiesced (snapshot for restart
    without process kill). Out of target.
 2. Per-session resource caps (max buffers, max windows, max
    clients). Currently global; per-session caps may be added.

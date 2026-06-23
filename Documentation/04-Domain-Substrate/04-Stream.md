@@ -110,7 +110,7 @@ returns `Blocked` to the scheme; the scheme is responsible for
 honouring backpressure (sleep / not-ready / Suspend, depending on
 its model).
 
-Caps from `kernel.host.[limits]`:
+Caps from `editor.host.[limits]`:
 
 | Field | Default |
 |---|---|

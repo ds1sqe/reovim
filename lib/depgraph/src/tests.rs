@@ -171,7 +171,7 @@ fn category_table_mirrors_spec_1_2_section_1() {
 
     // Server tier.
     assert!(has("editor/lib/subsys/*", Category::ServerContracts));
-    assert!(has("editor/lib/kernel/*", Category::ServerKernel));
+    assert!(has("editor/lib/core/*", Category::EditorCore));
     // Amended 1.2 §1: editor/lib/server/* = "Framed-protocol and dispatch glue" (ServerRuntime).
     assert!(has("editor/lib/server/*", Category::ServerRuntime));
 
@@ -230,7 +230,7 @@ fn classify_every_category() {
         ("uapi", Category::Foundation),
         ("uapi/inner/protocol", Category::Foundation),
         ("editor/lib/subsys/mm", Category::ServerContracts),
-        ("editor/lib/kernel/core", Category::ServerKernel),
+        ("editor/lib/core/core", Category::EditorCore),
         ("editor/lib/server/grpc", Category::ServerRuntime),
         ("client/lib/subsys/module", Category::ClientContracts),
         ("editor/modules/vim", Category::ServerExt),
@@ -395,9 +395,9 @@ fn check_edge_allowed_matrix_cells_pass() {
     let cases = [
         (Category::ServerContracts, Category::Foundation),
         (Category::ClientContracts, Category::Foundation),
-        (Category::ServerKernel, Category::ServerContracts),
-        (Category::ServerKernel, Category::Foundation),
-        (Category::ServerRuntime, Category::ServerKernel),
+        (Category::EditorCore, Category::ServerContracts),
+        (Category::EditorCore, Category::Foundation),
+        (Category::ServerRuntime, Category::EditorCore),
         (Category::ServerRuntime, Category::ServerContracts),
         (Category::ServerRuntime, Category::Foundation),
         (Category::ServerExt, Category::ServerContracts),
@@ -418,17 +418,17 @@ fn check_edge_allowed_matrix_cells_pass() {
 fn check_edge_forbidden_matrix_cells_fail() {
     let config = empty_config();
     let cases = [
-        (Category::ServerContracts, Category::ServerKernel),
+        (Category::ServerContracts, Category::EditorCore),
         (Category::ServerContracts, Category::ServerContracts),
-        (Category::ServerKernel, Category::ServerRuntime),
-        (Category::ServerKernel, Category::ServerExt),
+        (Category::EditorCore, Category::ServerRuntime),
+        (Category::EditorCore, Category::ServerExt),
         (Category::ServerRuntime, Category::ServerExt),
         (Category::ServerRuntime, Category::Apps),
         (Category::ClientContracts, Category::ClientExt),
         (Category::ClientContracts, Category::ClientContracts),
-        (Category::ServerExt, Category::ServerKernel),
+        (Category::ServerExt, Category::EditorCore),
         (Category::ServerExt, Category::ServerExt),
-        (Category::ClientExt, Category::ServerKernel),
+        (Category::ClientExt, Category::EditorCore),
         (Category::ClientExt, Category::ClientExt),
     ];
     for (from_category, to_category) in cases {
@@ -512,7 +512,7 @@ fn allowlist_suppresses_edge_violations_only() {
         from: "a".to_owned(),
         from_category: Category::ServerExt,
         to: "b".to_owned(),
-        to_category: Category::ServerKernel,
+        to_category: Category::EditorCore,
     };
     assert!(allowlist_match(&edge, &allowlist).is_some());
 
@@ -1096,7 +1096,7 @@ fn category_display_names_are_stable() {
     let all = [
         (Category::Foundation, "foundation"),
         (Category::ServerContracts, "server-contracts"),
-        (Category::ServerKernel, "server-kernel"),
+        (Category::EditorCore, "editor-core"),
         (Category::ServerRuntime, "server-runtime"),
         (Category::ClientContracts, "client-contracts"),
         (Category::ServerExt, "server-ext"),
@@ -1797,18 +1797,18 @@ fn dag6_unreadable_crate_root_fails_closed() {
 fn synthetic_contracts_to_kernel_dep_is_forbidden_edge() {
     let td = TempDir::new();
     let root = td.path();
-    let kernel_dir = root.join("editor/lib/kernel");
+    let kernel_dir = root.join("editor/lib/core");
     std::fs::create_dir_all(&kernel_dir).unwrap();
     std::fs::write(
         kernel_dir.join("Cargo.toml"),
-        "[package]\nname = \"reovim-kernel\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+        "[package]\nname = \"reovim-editor-core\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
     )
     .unwrap();
     let contracts_dir = root.join("editor/lib/subsys/bad");
     std::fs::create_dir_all(&contracts_dir).unwrap();
     std::fs::write(
         contracts_dir.join("Cargo.toml"),
-        "[package]\nname = \"reovim-subsys-bad\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\nreovim-kernel = { path = \"../../kernel\" }\n",
+        "[package]\nname = \"reovim-subsys-bad\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\nreovim-editor-core = { path = \"../../core\" }\n",
     )
     .unwrap();
     let probes_dir = root.join("tools/depgraph-probes");
@@ -1823,7 +1823,7 @@ fn synthetic_contracts_to_kernel_dep_is_forbidden_edge() {
             .violations
             .iter()
             .any(|v| matches!(v, Violation::ForbiddenEdge { from, to, .. }
-                if from == "reovim-subsys-bad" && to == "reovim-kernel")),
+                if from == "reovim-subsys-bad" && to == "reovim-editor-core")),
         "contracts → kernel must be a ForbiddenEdge; got: {}",
         report.summary()
     );

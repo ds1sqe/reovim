@@ -22,7 +22,7 @@ anyway. Also supersedes the earlier *facade* draft of this chapter, in which
 through the airlock (`kabi → arch`) and formed a cycle with the provider edge
 (`arch → kabi`). This chapter goes straight to the mechanism. Vision
 companion: `01-Architecture/06-OS-Modes.md` (modes) and
-`02-Process/01-Kernel-Types.md` (the three kernels this contract serves).
+`02-Process/01-Kernel-Types.md` (kernel/core vocabulary).
 
 **Locked rules.** None new (design-stage). Candidate rules below are
 proposed, not yet gating; they inherit the add-only/versioned discipline
@@ -34,7 +34,7 @@ conformance rule **AB16** is declared `spec-asserted` in
 
 ## 1. The contract is the airlock, and it points one way
 
-Upper product code — including the editor and client kernels
+Upper product code — including the editor and client cores
 (`02-Process/01-Kernel-Types.md` §0) — depends on the up-face `uapi/*`
 contracts, not on `kabi/platform` and never on `arch`. `system/lib/kernel` is
 the bridge that may name both `uapi/*` and `kabi/*`. Provider code below the
@@ -103,7 +103,7 @@ seam:
   `Box`/alloc, no fat pointer.
 - **Composes at runtime by construction** — Over-OS installs a hosted provider
   table; RTOS installs a freestanding provider table below the system bridge;
-  *same editor/client kernel source*. This is the mechanical guarantee of the
+  *same editor/client core source*. This is the mechanical guarantee of the
   §0 mode invariant (mode-as-swap; `01-Architecture/06-OS-Modes.md` §6).
 - **Versioned from day one** — the seam carries a `VtableHeader`
   (`06-ABI/02 §2`), so "the kernel is unchanged when the provider changes" is
@@ -117,7 +117,7 @@ seam:
   is real (see §4) — accepted as the price of the swappability invariant, paid
   once per allocation, never on the DS fast paths.
 
-A generic `Kernel<P>` was the alternative; rejected — it is viral through
+A generic `EditorCore<P>` was the alternative; rejected — it is viral through
 every kernel type and forecloses runtime composition (back to cfg-per-target).
 
 ### 3.1 Lifecycle: same form, different teardown
@@ -155,7 +155,7 @@ the handle installed before it can allocate. It dissolves:
   static arena + direct `mmap`-class syscall), ready before the table is built.
 - Boot order: `_start` → `arch` inits the allocator (heap-free) → build the
   `static` vtable → install it → *only now* may any `lib/ds` DS be constructed.
-- **Invariant:** no `lib/ds` DS op before `Init::boot` installs the handle — a
+- **Invariant:** no `lib/ds` DS op before `EditorInit::boot` installs the handle — a
   by-construction boot-proof prerequisite (`02-Process/05-Machine-Boot.md`),
   not a runtime guard.
 
@@ -170,7 +170,7 @@ they remain **write-once atomic statics**, exactly as today (AB12,
 `06-ABI/02 §5.2`). These are not an exception bolted onto the platform
 vtable — they are a distinct down-face seam, **`kabi/panic`**, the
 always-present fault floor. It carries no install gate: a panic can fire
-before `Init::boot` finishes installing the platform table, so the fault
+before `EditorInit::boot` finishes installing the platform table, so the fault
 hooks must exist unconditionally, unlike the install-gated `kabi/platform`
 vtable. Everything else effectful lives in the platform vtable; fault
 disposition lives in `kabi/panic`.
@@ -287,11 +287,11 @@ implemented in the 05d sub-plans. The gating rule is **AB16**
 |---|---|
 | Mechanism, not re-export | `kabi/platform` names no `arch` symbol; the depgraph probe rejects a `kabi → arch` edge. |
 | DS reach the backend via the handle | a `lib/ds` allocation routes through the installed vtable, not a direct `arch::alloc` call; `lib/ds` names no `arch` symbol. |
-| One binary, two providers | the same kernel binary links an `arch`-hosted table and a system-kernel table with no `cfg` per target; mode is a boot-time table install. |
+| One binary, two providers | the same editor/client core binary links an `arch`-hosted table and a system-kernel table with no `cfg` per target; mode is a boot-time table install. |
 | Header discipline | the platform vtable begins with `VtableHeader`; a provider that grows a slot is read through `size_of_self` by an older kernel (AB3 reuse). |
-| Bootstrap order | the platform vtable is a `static` built without heap; no `lib/ds` DS is constructed before `Init::boot` installs the handle. |
-| No direct `arch` edge | no kernel or `lib/ds` crate names `arch::*`; the depgraph probe rejects `*-kernel → arch` and `lib/ds → arch`. |
+| Bootstrap order | the platform vtable is a `static` built without heap; no `lib/ds` DS is constructed before `EditorInit::boot` installs the handle. |
+| No direct `arch` edge | no product core or `lib/ds` crate names `arch::*`; the depgraph probe rejects product-core `→ arch` and `lib/ds → arch`. |
 | Provider-facing slot types | every POSIX-shaped slot takes/returns a `kabi/platform` provider-facing type; product semantics stay in domain uapi leaves (§3.5). |
 | Append-only evolution | a new primitive is a nullable tail slot guarded by a `HAS_*` const; an unfilled slot yields `Errno::ENOSYS`; slots are never reordered or removed (AB3, §3.6). |
 | Behavioral conformance | a provider — including the zero-arch `platform-linux-mock` — is valid iff it passes the `platform-conformance` suite; no provider is the reference oracle (AB16, §5.1). |
-| Fault floor always present | the `kabi/panic` hooks are write-once statics installable before `Init::boot` completes; they are not platform-vtable slots (§3.4). |
+| Fault floor always present | the `kabi/panic` hooks are write-once statics installable before `EditorInit::boot` completes; they are not platform-vtable slots (§3.4). |

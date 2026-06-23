@@ -4,9 +4,10 @@
 **Date:** 2026-04-28.
 
 This spec preserves the prior architecture and normalises the
-boundaries. Kernel
-remains mechanism; Domains, modules, drivers, and client modules own
-policy. Every byte, pointer, service, config slice, and cdylib
+boundaries. Mechanism remains closed and explicit: the system kernel owns
+World services, while editor/client cores own product mechanism. Domains,
+modules, drivers, and client modules own policy. Every byte, pointer, service,
+config slice, and cdylib
 registry row that crosses a stable boundary gets explicit ownership,
 versioning, validation, resource-limit, and observability rules.
 
@@ -66,11 +67,11 @@ Three structural consequences:
   Post-v1.0, every shipped stable surface is supported forever;
   deprecation is allowed, removal is not. Pre-1.0 is the only
   window for clean breaks — this spec spends it deliberately (AB14).
-- **Kernel ABI is `#[repr(C)]`, opaque handles, primitives, byte
+- **Cdylib ABI is `#[repr(C)]`, opaque handles, primitives, byte
   slices.** No Rust trait objects cross cdylib boundaries.
 - **Domain is an ID, not a trait.** `DomainId(NonZeroU32)`; behaviour
   routes through tables.
-- **Kernel input is key-free.** Keymaps, modes, motions, registers,
+- **Editor-core input is key-free.** Keymaps, modes, motions, registers,
   leaders are Domain/client policy.
 - **Runtime-loaded cdylibs are trusted native code.** This spec hardens
   loading, lifecycle, ABI, and observability — not memory sandboxing.
@@ -86,12 +87,12 @@ Three structural consequences:
 | 1.4 | [`01-Architecture/04-Provenance.md`](01-Architecture/04-Provenance.md) | Spec ownership of generated artefacts |
 | 1.5 | [`01-Architecture/05-Configuration.md`](01-Architecture/05-Configuration.md) | Config service: participants, layers, trust, schemas (`CFG`) |
 | 1.6 | [`01-Architecture/06-OS-Modes.md`](01-Architecture/06-OS-Modes.md) | Over-OS vs RTOS-itself modes, platform floor, launch model |
-| 2.1 | [`02-Process/01-Kernel-Types.md`](02-Process/01-Kernel-Types.md) | `Kernel` and `Init` shapes, registries |
+| 2.1 | [`02-Process/01-Kernel-Types.md`](02-Process/01-Kernel-Types.md) | `EditorInit` / `EditorCore` shapes, registries |
 | 2.2 | [`02-Process/02-Lifecycle.md`](02-Process/02-Lifecycle.md) | Boot, cdylib load/unload, drain ordering (`LF`) |
 | 2.3 | [`02-Process/03-Concurrency.md`](02-Process/03-Concurrency.md) | Turn gate + state lock, RefGuard (`CC`) |
 | 2.4 | [`02-Process/04-Persistence.md`](02-Process/04-Persistence.md) | State persistence and restore |
-| 2.5 | [`02-Process/05-Machine-Boot.md`](02-Process/05-Machine-Boot.md) | RTOS machine kernel: boot proof, device lifecycle, sched seam |
-| 3.1 | [`03-State/01-State-Split.md`](03-State/01-State-Split.md) | Kernel / Session / Module-state boundaries |
+| 2.5 | [`02-Process/05-Machine-Boot.md`](02-Process/05-Machine-Boot.md) | RTOS system-kernel boot: proof, device lifecycle, sched seam |
+| 3.1 | [`03-State/01-State-Split.md`](03-State/01-State-Split.md) | Editor core / Session / Module-state boundaries |
 | 3.2 | [`03-State/02-Module-State.md`](03-State/02-Module-State.md) | View slots, opaque module state |
 | 3.3 | [`03-State/03-Service-Registry.md`](03-State/03-Service-Registry.md) | Service descriptors, leases (`SVC`) |
 | 3.4 | [`03-State/04-Registers.md`](03-State/04-Registers.md) | Register storage |

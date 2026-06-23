@@ -54,7 +54,7 @@ reovim-uapi-panic = { path = "../../../uapi/inner/panic" }
 # it to the lower platform scheduler/time slots.
 reovim-uapi-sched = { path = "../../../uapi/inner/sched" }
 # Product-facing boot facts and device inventory vocabulary. This bridge shapes
-# lower boot data into these records before editor-kernel launch.
+# lower boot data into these records before editor-core launch.
 reovim-uapi-system = { path = "../../../uapi/inner/system" }
 # Product-facing terminal/raw-mode vocabulary. This bridge maps it to the
 # down-face platform terminal slots without exposing POSIX fd/termios details.

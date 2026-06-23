@@ -1,6 +1,6 @@
 # Nested workspace for the server-runtime fixture bins (#797 Phase 3).
 #
-# Mirrors `server/lib/kernel/tests/fixtures/`: `#![no_std] #![no_main]` bins
+# Mirrors `editor/lib/core/tests/fixtures/`: `#![no_std] #![no_main]` bins
 # that enable `reovim-server-rt/runtime` (arch `_start` + `#[panic_handler]`
 # lang items) in their OWN workspace so the parent's `cargo test --workspace`
 # never feature-unifies `runtime` onto the rlib used by libtest builds.

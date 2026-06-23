@@ -1,7 +1,7 @@
 //! Tests for `contract.rs` — `OnRawInputHandler` / `RenderProjector` coverage.
 //!
 //! Registered under the `selftest` feature; runs on the arch no_std selftest
-//! runner via the `kernel-selftest` fixture bin. The traits are abstract, so
+//! runner via the `editor-core-selftest` fixture bin. The traits are abstract, so
 //! the tests define minimal in-test implementations and exercise them through
 //! the trait objects (the same `&dyn` routing path the kernel uses).
 

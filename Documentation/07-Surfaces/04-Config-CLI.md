@@ -84,8 +84,8 @@ $ reovim config set module.vim.leader="\\"
 the override applied (CFG5):
 
 ```
-$ reovim config force-set kernel.host.overrides.disable-runtime-unload=true
-WARN: force-override: kernel.host.overrides.disable-runtime-unload = true (was: false, source: default)
+$ reovim config force-set editor.host.overrides.disable-runtime-unload=true
+WARN: force-override: editor.host.overrides.disable-runtime-unload = true (was: false, source: default)
 ```
 
 ## 6. `sources`

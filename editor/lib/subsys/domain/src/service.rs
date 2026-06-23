@@ -257,7 +257,7 @@ pub struct ServiceLease {
     pub owner_generation: u64,
     /// Monotonic acquisition time in milliseconds.
     pub acquired_at_ms: u64,
-    /// Kernel-wide lease timeout in milliseconds.
+    /// EditorCore-wide lease timeout in milliseconds.
     pub timeout_ms: u64,
 }
 

@@ -23,7 +23,7 @@
 //! kabi/platform/  → Foundation (reovim-kabi-platform)
 //! uapi/mm/        → Foundation (reovim-uapi-mm)
 //! lib/ds/         → Foundation (reovim-lib-ds)
-//! editor/lib/kernel/  → ServerKernel (reovim-editor-kernel)
+//! editor/lib/core/  → EditorCore (reovim-editor-core)
 //! apps/server/    → Apps (reovim-server)
 //! ```
 //!
@@ -31,10 +31,10 @@
 //! - `reovim-arch → reovim-kabi-platform`  (granted: arch → kabi)
 //! - `reovim-arch → reovim-lib-ds`         (granted: arch → lib/ds)
 //! - `reovim-lib-ds → reovim-uapi-mm`      (granted: lib/ds → uapi/mm)
-//! - `reovim-editor-kernel → reovim-lib-ds` (`ServerKernel` → Foundation: allowed)
+//! - `reovim-editor-core → reovim-lib-ds` (`EditorCore` → Foundation: allowed)
 //!
 //! The NEGATIVE mutant adds:
-//! - `reovim-editor-kernel → reovim-arch`  (firewall violation: direct arch dep)
+//! - `reovim-editor-core → reovim-arch`  (firewall violation: direct arch dep)
 //!
 //! Expected result: ONLY the firewall probe trips; all other probes still pass.
 
@@ -102,23 +102,23 @@ fn write_positive_fixture(root: &std::path::Path) {
     );
     common::write_file(root, "lib/ds/src/lib.rs", "#![no_std]\n// no arch:: references\n");
 
-    // editor/lib/kernel (Math kernel → lib/ds only).
+    // editor/lib/core (Math kernel → lib/ds only).
     common::write_file(
         root,
-        "editor/lib/kernel/Cargo.toml",
+        "editor/lib/core/Cargo.toml",
         &format!(
             "{}\n[dependencies]\nreovim-lib-ds = {{ path = \"../../../lib/ds\" }}\n",
-            pkg_toml("reovim-editor-kernel")
+            pkg_toml("reovim-editor-core")
         ),
     );
-    common::write_file(root, "editor/lib/kernel/src/lib.rs", "#![no_std]\n");
+    common::write_file(root, "editor/lib/core/src/lib.rs", "#![no_std]\n");
 
     // apps/server composition root.
     common::write_file(
         root,
         "apps/server/Cargo.toml",
         &format!(
-            "{}\n[dependencies]\nreovim-editor-kernel = {{ path = \"../../editor/lib/kernel\" }}\n\
+            "{}\n[dependencies]\nreovim-editor-core = {{ path = \"../../editor/lib/core\" }}\n\
          reovim-arch = {{ path = \"../../arch\" }}\n",
             pkg_toml("reovim-server")
         ),
@@ -139,15 +139,15 @@ fn make_config_with_sp01_grants() -> ProbeConfig {
     ProbeConfig {
         category_table: default_category_table(),
         foundation_grants: grants,
-        // Catalog must list the apps→kernel + apps→arch composition edges to
+        // Catalog must list the apps→editor-core + apps→arch composition edges to
         // avoid DAG3 violations in the positive fixture.
         catalog: Catalog {
             edge: vec![
                 CatalogEdge {
                     from: "reovim-server".to_owned(),
-                    to: "reovim-editor-kernel".to_owned(),
+                    to: "reovim-editor-core".to_owned(),
                     gate: None,
-                    reason: "top-level composition root wires the editor kernel".to_owned(),
+                    reason: "top-level composition root wires the editor core".to_owned(),
                 },
                 CatalogEdge {
                     from: "reovim-server".to_owned(),
@@ -183,7 +183,7 @@ fn future_tree_positive_passes_all_probes() {
             "kabi/platform",
             "uapi/mm",
             "lib/ds",
-            "editor/lib/kernel",
+            "editor/lib/core",
             "apps/server",
         ]),
     );
@@ -236,16 +236,16 @@ fn future_tree_positive_passes_all_probes() {
 
 // ── Negative mutant: one airlock violation trips ONLY the firewall probe ──────
 
-/// Mutant: add a direct `editor/lib/kernel → arch` edge to the positive fixture.
+/// Mutant: add a direct `editor/lib/core → arch` edge to the positive fixture.
 ///
 /// The firewall probe must trip.  All other probes must remain clean (the
 /// mutant edge is only an architectural-airlock violation, not a DAG1/2/5
-/// violation given a Foundation→ServerKernel `allowed_categories` check is
+/// violation given a Foundation→EditorCore `allowed_categories` check is
 /// the inverse direction).
 ///
 /// Note: `run_probe` also catches this edge as an `UngrantedFoundationEdge`
-/// because `editor/lib/kernel` (`ServerKernel`) → `arch` (Foundation) goes
-/// through `allowed_categories(ServerKernel)` which includes `Foundation` —
+/// because `editor/lib/core` (`EditorCore`) → `arch` (Foundation) goes
+/// through `allowed_categories(EditorCore)` which includes `Foundation` —
 /// so DAG2 passes, but the firewall probe catches it independently as the
 /// direct-edge airlock violation.  We verify that the firewall is the probe
 /// specifically designed for this invariant.
@@ -257,16 +257,16 @@ fn future_tree_mutant_airlock_violation_trips_only_firewall() {
     // Write the positive fixture first.
     write_positive_fixture(root);
 
-    // Mutant: overwrite editor/lib/kernel/Cargo.toml to ADD a direct arch dep.
+    // Mutant: overwrite editor/lib/core/Cargo.toml to ADD a direct arch dep.
     // The positive fixture already has lib/ds dep; this adds the forbidden arch dep.
     common::write_file(
         root,
-        "editor/lib/kernel/Cargo.toml",
+        "editor/lib/core/Cargo.toml",
         &format!(
             "{}\n[dependencies]\n\
              reovim-lib-ds = {{ path = \"../../../lib/ds\" }}\n\
              reovim-arch = {{ path = \"../../../arch\" }}\n",
-            pkg_toml("reovim-editor-kernel")
+            pkg_toml("reovim-editor-core")
         ),
     );
 
@@ -278,7 +278,7 @@ fn future_tree_mutant_airlock_violation_trips_only_firewall() {
             "kabi/platform",
             "uapi/mm",
             "lib/ds",
-            "editor/lib/kernel",
+            "editor/lib/core",
             "apps/server",
         ]),
     );
@@ -292,7 +292,7 @@ fn future_tree_mutant_airlock_violation_trips_only_firewall() {
     );
     let names_violation = fw_violations
         .iter()
-        .any(|v| v.contains("reovim-editor-kernel") && v.contains("reovim-arch"));
+        .any(|v| v.contains("reovim-editor-core") && v.contains("reovim-arch"));
     assert!(
         names_violation,
         "future-tree mutant: firewall violation must name both crates;\n\
@@ -301,7 +301,7 @@ fn future_tree_mutant_airlock_violation_trips_only_firewall() {
 
     // ── Other new probes must still be clean ──────────────────────────────────
 
-    // lib/ds purity is unchanged by adding an arch dep to editor/lib/kernel
+    // lib/ds purity is unchanged by adding an arch dep to editor/lib/core
     // (the purity probe only checks lib/ds crates, not editor crates).
     let ds_violations =
         run_lib_ds_purity_probe(root).expect("lib/ds purity probe must run on mutant");
@@ -337,7 +337,7 @@ fn future_tree_mutant_airlock_violation_trips_only_firewall() {
 /// grants produces zero category/edge violations.
 ///
 /// This integration smoke writes a synthetic
-/// workspace with arch → kabi + lib/ds → uapi/mm + renamed editor/lib/kernel
+/// workspace with arch → kabi + lib/ds → uapi/mm + renamed editor/lib/core
 /// crate, runs the existing DAG probe, and asserts zero `UngrantedFoundationEdge`
 /// / `ForbiddenEdge` / classification violations for those edges.
 #[test]
@@ -354,7 +354,7 @@ fn structural_grants_accept_future_tree_dag_probe() {
             "kabi/platform",
             "uapi/mm",
             "lib/ds",
-            "editor/lib/kernel",
+            "editor/lib/core",
             "apps/server",
         ]),
     );
@@ -378,18 +378,18 @@ fn structural_grants_accept_future_tree_dag_probe() {
         report.summary()
     );
 
-    // No ForbiddenEdge for editor/lib/kernel → lib/ds (ServerKernel → Foundation allowed).
+    // No ForbiddenEdge for editor/lib/core → lib/ds (EditorCore → Foundation allowed).
     let has_forbidden = report.violations.iter().any(|v| {
         matches!(
             v,
             Violation::ForbiddenEdge { from, to, .. }
-                if from == "reovim-editor-kernel" && to == "reovim-lib-ds"
+                if from == "reovim-editor-core" && to == "reovim-lib-ds"
         )
     });
     assert!(
         !has_forbidden,
-        "editor/lib/kernel → lib/ds must not produce ForbiddenEdge \
-         (ServerKernel → Foundation is allowed by §2);\nviolations:\n{}",
+        "editor/lib/core → lib/ds must not produce ForbiddenEdge \
+         (EditorCore → Foundation is allowed by §2);\nviolations:\n{}",
         report.summary()
     );
 
@@ -405,14 +405,14 @@ fn structural_grants_accept_future_tree_dag_probe() {
         report.summary()
     );
 
-    // editor/lib/kernel classifies as ServerKernel (no UnknownPath).
+    // editor/lib/core classifies as EditorCore (no UnknownPath).
     let has_editor_unknown = report
         .violations
         .iter()
         .any(|v| matches!(v, Violation::UnknownPath { path } if path.starts_with("editor")));
     assert!(
         !has_editor_unknown,
-        "editor/lib/kernel must classify as ServerKernel (no UnknownPath);\n\
+        "editor/lib/core must classify as EditorCore (no UnknownPath);\n\
          violations:\n{}",
         report.summary()
     );

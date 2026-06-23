@@ -20,7 +20,7 @@ category.
 |---|---|---|
 | Foundation | `arch/` (→ `arch-sys-*`, `arch-floor-*`), `platform-*`, `system/lib/kernel`, `lib/*`, `uapi/*`, `kabi/*` | Backend floor and its hard-split families (raw mechanism `arch-sys-*`, lang-item floor `arch-floor-*`, `kabi` providers `platform-*`; §12), the World system-kernel bridge (`system/lib/kernel`) — common boot/system assembly plus console/splash/FDT/device policy over caller-supplied facts and surfaces, the only normal crate family that may name both the product-facing `uapi/*` face and the machine-facing `kabi/*` face; core libraries incl. `lib/ds` DS algorithms, up-face ABI (`uapi/*`), down-face platform/device/panic contracts (`kabi/*`). No upward deps. |
 | Server contracts | `editor/lib/subsys/*` | Closed server contracts and safe wrappers. No ext deps. |
-| Server kernel | `editor/lib/kernel/*` | Kernel mechanisms. No ext or client deps. |
+| Editor core | `editor/lib/core/*` today; target `editor/lib/core/*` | Editor Math mechanism: sessions, registries, services, and editor state. No ext or client deps. |
 | Server runtime | `editor/lib/server/*` | Framed-protocol and dispatch glue. |
 | Client contracts | `client/lib/subsys/*` | Closed client contracts. No ext or platform deps. |
 | Server extensions | `editor/{modules,drivers,providers,domains}` | Runtime-loaded server policy/mechanics. |
@@ -41,14 +41,15 @@ The four `client/<category>/` are: `platforms`, `drivers`,
 runtime-loaded cdylib seam, **not** the build-time system drivers, which
 carry no hot-unload or generation fence.
 
-**"kernel" is three distinct families — qualify it always.**
-`editor/lib/kernel/*` is the editor/server Math kernel named by the horizontal
-`KERNEL` tier in `01-Architecture/01-Layer-Model.md`. `client` has its own
-derived Math kernel for projection/input. `system/lib/kernel` is the
-World system-kernel bridge from `uapi/*` to `kabi/*`. A `*-kernel -> arch-*`
-Cargo edge is not a shortcut between these concepts; it is an airlock
-violation. A product/editor/client `*-kernel -> kabi/*` edge is likewise a
-face leak unless it is `system/lib/kernel`.
+**"kernel" is reserved for the system kernel.** The old three-way kernel
+wording is retired by `06a-kernel-vocabulary-cutover.md`: unqualified
+`kernel` in new architecture prose means `system/lib/kernel`, the World bridge
+from `uapi/*` to `kabi/*`. Product-side mechanism roots are **cores**:
+`editor/lib/core/*` is the editor core, and the client side gets a client core
+when that crate hardens. A product core `-> arch-*` Cargo edge is not a
+shortcut between concepts; it is an airlock violation. A product core
+`-> kabi/*` edge is likewise a face leak unless the crate is
+`system/lib/kernel`.
 
 ## 2. Allowed category edges
 
@@ -64,8 +65,8 @@ categories".
 | `kabi/*` | nothing impl-side — `core` + target-neutral `lib/*` only; declares the down-face contract and owns provider-facing slot types; **no `kabi → uapi`, no `kabi → arch`** |
 | `system/lib/kernel` | `uapi/*`, `kabi/*`, target-neutral `lib/*`; no arch/provider/editor/client/app deps |
 | `editor/lib/subsys/*` | `uapi/*`, `lib/*`, allowed peer subsys edges; no `kabi/*` or `arch/*` |
-| `editor/lib/kernel/*` | `editor/lib/subsys/*`, `uapi/*`, `lib/*`; no `kabi/*` or `arch/*` |
-| `editor/lib/server/*` | `editor/lib/kernel/*`, `editor/lib/subsys/*`, `uapi/protocol`, `lib/*` |
+| `editor/lib/core/*` (editor core; target `editor/lib/core/*`) | `editor/lib/subsys/*`, `uapi/*`, `lib/*`; no `kabi/*` or `arch/*` |
+| `editor/lib/server/*` | `editor/lib/core/*`, `editor/lib/subsys/*`, `uapi/protocol`, `lib/*` |
 | `client/lib/subsys/*` | `uapi/*`, `lib/*`, allowed client-subsys DAG edges; no `kabi/*` or `arch/*` |
 | `editor/*` | `editor/lib/subsys/*`, `uapi/*`, `lib/*`; named ext peers per manifest |
 | `client/platforms/*` | `client/lib/subsys/*`, `uapi/*`, `lib/*` |
@@ -88,10 +89,10 @@ no row grants a third-party crate (`DAG5`, §9).
 | **Every category** | third-party crates, in any dependency table (`DAG5`, §9) |
 | Foundation | `editor/*`, `client/*`, `ext/*`, `apps/*`, `tools/*` |
 | Server contracts | `ext/*`, `apps/*`, concrete Domain/provider modules |
-| Server kernel | `ext/*`, `apps/*`, `client/*`, server runtime, concrete Domain/provider modules |
-| Client contracts | `client/*`, `apps/*`, server kernel/runtime internals |
-| Server extensions | `apps/*`, client platform/runtime crates, server kernel internals |
-| Client extensions | `apps/*`, server kernel/runtime internals, concrete server extension crates |
+| Editor core | `ext/*`, `apps/*`, `client/*`, server runtime, concrete Domain/provider modules |
+| Client contracts | `client/*`, `apps/*`, editor-core/server-runtime internals |
+| Server extensions | `apps/*`, client platform/runtime crates, editor-core internals |
+| Client extensions | `apps/*`, editor-core/server-runtime internals, concrete server extension crates |
 | Non-launcher apps | sibling app crates |
 | Launcher | plugin/package implementation logic; direct extension crates except the explicit platform-runtime composition edge |
 
@@ -352,7 +353,7 @@ boot-installed `kabi` platform handle (`06-ABI/05`), never by naming
 `arch`. This is the Math/World airlock applied to the type system: a
 value's *layout and algorithm* are identical on every provider (Math);
 the *allocator and park/unpark behind it* are provider-specific (World),
-injected at `Init::boot`. (Supersedes the prior "`arch/` owns ALL heap
+injected at `EditorInit::boot`. (Supersedes the prior "`arch/` owns ALL heap
 data structures" rule, which coupled the portable algorithm to the
 World backend.)
 
@@ -437,8 +438,8 @@ The asm-confinement rule is enforced by a source-grep probe in
 
 ## 11. Up-face / bridge / down-face seam
 
-The three-kernel model (`02-Process/01-Kernel-Types.md` §0) is split by two
-faces. Product/editor/client code reaches system services through the
+The one-kernel-plus-cores model (`02-Process/01-Kernel-Types.md` §0) is split
+by two faces. Product/editor/client code reaches system services through the
 **up-face** `uapi/*` contracts. Hardware/chip/device-specific code satisfies
 the **down-face** `kabi/*` contracts — `kabi/platform`
 (`06-ABI/05-Platform-Contract.md`), `kabi/panic`, and `kabi/device`
@@ -454,24 +455,24 @@ in this chapter and enforced in the depgraph catalog.
 
 | Target rule | Edge |
 |---|---|
-| upper kernels depend on the up-face, not the floor | `editor-kernel → uapi/*`; `client-kernel → uapi/*`; data structures via target-neutral `lib/*`; **no** product `*-kernel → kabi`, **no** `*-kernel → arch` |
+| product cores depend on the up-face, not the floor | `editor core → uapi/*`; `client core → uapi/*`; data structures via target-neutral `lib/*`; **no** product core → `kabi`, **no** product core → `arch` |
 | one bridge between faces | `system/lib/kernel → uapi/* + kabi/*`; it owns common system semantics and policy, but **no** `system-kernel → arch` or `system-kernel → platform-*` |
 | providers depend on the down-face only | `platform-*` / hardware-specific device code → `kabi/*` + raw local mechanism; **no** direct `uapi/*` unless a recorded inescapable exception exists |
-| client two-substrate | `client-kernel → uapi/protocol` is the only cross-kernel edge; **no** direct `client-kernel → editor-kernel` |
+| client two-substrate | `client core → uapi/protocol` is the only cross-product-core edge; **no** direct `client core → editor core` |
 | device bridge is a closed contract | editor domains use an up-face device/domain surface; `system/lib/kernel` and providers expose machine devices through `kabi/device` below the bridge; **no** `domain → driver`, **no** `domain → kabi`, **no** `domain → arch` |
-| client I/O is capability-mediated | `client-kernel → render`/capability subsys on the up-face; bridge/provider code bottoms out on `kabi/device` (bare metal) or hosted fd-I/O; **no** `client-kernel → kabi`, **no** `client-kernel → arch`, **no** `client-kernel → driver` |
+| client I/O is capability-mediated | `client core → render`/capability subsys on the up-face; bridge/provider code bottoms out on `kabi/device` (bare metal) or hosted fd-I/O; **no** `client core → kabi`, **no** `client core → arch`, **no** `client core → driver` |
 
 Two of these are already locked under existing rules and need no new
 machinery: "drivers are loaded, not linked" is **DAG4** (§4) — each kernel
 binds drivers by vtable, never by Cargo edge; "no client platform IO except
 via capabilities" is the `client/modules/*` row of §2.
 
-**Supersession (the real change to §2).** Row `editor/lib/kernel/*` no longer
+**Supersession (the real change to §2).** Row `editor/lib/core/*` no longer
 grants `→ arch`, and it does not gain `→ kabi` as a replacement. The editor
-and client kernels name `uapi/*` plus target-neutral `lib/*`; `system/lib/kernel`
-is the bridge that names `kabi/*`. A `*-kernel → arch*` edge is a depgraph
-violation, and a product/editor/client `*-kernel → kabi/*` edge is a face
-violation.
+and client cores name `uapi/*` plus target-neutral `lib/*`;
+`system/lib/kernel` is the bridge that names `kabi/*`. A product core
+`→ arch*` edge is a depgraph violation, and a product core `→ kabi/*` edge is
+a face violation.
 
 ## 12. The face-tier model and the `arch` firewall (candidate, `DAG7`)
 

@@ -55,7 +55,7 @@ The rule bodies below are the normative texts.
 
 > **PM5 — Lazy-load placeholder replay is synchronous up to a
 > bounded wait.** Default 150 ms, configured by
-> `kernel.host.[limits].replay-max-wait-ms` (a drain bound like
+> `editor.host.[limits].replay-max-wait-ms` (a drain bound like
 > every other entry in 2.2 §7; `[limits]` is host-class per 1.5
 > §6). If exceeded, the kernel surfaces a transient
 > `module loading: <name>…` notice on the active client; replay
@@ -79,7 +79,7 @@ The rule bodies below are the normative texts.
 > package/client policy, §10.) *Class*: tooling.
 
 > **PM8 — `replay-max-wait` is two-tier.** Global
-> `kernel.host.[limits].replay-max-wait-ms` plus per-package
+> `editor.host.[limits].replay-max-wait-ms` plus per-package
 > `[pkg.<name>] replay-max-wait-ms` in `pkgs.toml`; the package
 > value overrides global. `pkg sync` rejects per-package values
 > outside `50..=60_000` ms with a named diagnostic and a DS12
@@ -96,7 +96,7 @@ The rule bodies below are the normative texts.
 
 **Reshape note (PM1..PM9).** Carried forward with this spec's vocabulary:
 the replay bound's config home moved from the old
-`[ui] replay_max_wait_ms` to `kernel.host.[limits].replay-max-wait-ms`
+`[ui] replay_max_wait_ms` to `editor.host.[limits].replay-max-wait-ms`
 (host-class, kebab per CFG10); the old `LoadError::ReplayMaxWaitOutOfRange`
 named error is now a tooling diagnostic + DS12 event (`pkg sync` is
 tooling, not an ABI surface; AB14 governs the ABI side); PM6's old

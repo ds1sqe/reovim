@@ -43,13 +43,13 @@ state/
 └── mru.toml                              # MRU file list
 ```
 
-State root may be relocated by `kernel.shell.[editor].state-root`
+State root may be relocated by `editor.shell.[editor].state-root`
 (#763).
 
 ## 3. Restore order
 
 ```
-1. Kernel boots; kernel.host + kernel.shell loaded
+1. EditorCore boots; editor.host + editor.shell loaded
 2. lockfile + library-root resolved
 3. Modules + drivers loaded; participant init runs with ConfigSlice
 4. State scan begins:
@@ -84,7 +84,7 @@ State root may be relocated by `kernel.shell.[editor].state-root`
 
 Carriers and attachments whose codecs are not yet registered at
 restore time wait in a queue, bounded by
-`kernel.host.[limits].max-deferred-restore-carriers`.
+`editor.host.[limits].max-deferred-restore-carriers`.
 
 When a `(domain_id, inner_id)` codec registers (cdylib reaches
 Active state), the queue is scanned and matching entries become

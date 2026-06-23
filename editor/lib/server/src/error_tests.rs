@@ -76,7 +76,7 @@ arch_test!(runtime_error_display_dispatch, {
     let mut buf = Bytes::new();
     let _ = core::fmt::write(&mut BytesWriter::new(&mut buf), format_args!("{e}"));
     let got = core::str::from_utf8(buf.as_slice()).unwrap_or("");
-    assert_eq!(got, "kernel dispatch failed", "Dispatch Display mismatch: {got:?}");
+    assert_eq!(got, "editor core dispatch failed", "Dispatch Display mismatch: {got:?}");
 });
 
 arch_test!(runtime_error_display_alloc, {

@@ -20,8 +20,8 @@ use reovim_arch::testrt;
 // Force the server-runtime rlib (and its `arch_test!` registrations) to link.
 use reovim_server_rt as _;
 
-// Force the kernel rlib (and its `arch_test!` registrations) to link.
-use reovim_kernel as _;
+// Force the editor-core rlib (and its `arch_test!` registrations) to link.
+use reovim_editor_core as _;
 
 // Force the Domain contract tier rlib (and its `arch_test!` registrations).
 use reovim_subsys_domain as _;

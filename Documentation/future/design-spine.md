@@ -127,7 +127,7 @@ half:
   abstract-interpretation expertise in hand, the usual cost calculus
   ("a general analyzer is a second 30-year project, don't") flips. Build a
   narrow, fast checker for reovim's *constitution* — the rules no
-  off-the-shelf tool knows ("modules use only `reovim_kernel::api::*`",
+  off-the-shelf tool knows ("modules use only `reovim_editor_core::api::*`",
   "kernel has zero external deps", "platforms don't depend on drivers", and
   above all add-only/change-safe). Linus built `sparse` for exactly this.
   The depgraph probe is already this — a hard rule (blocks merge),

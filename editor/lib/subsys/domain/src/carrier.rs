@@ -11,11 +11,11 @@ use crate::id::DomainId;
 /// Bit reserved for kernel annotation in carrier flags (§4.5 CR2).
 ///
 /// ```rust
-/// use reovim_subsys_domain::carrier::KERNEL_FLAG;
+/// use reovim_subsys_domain::carrier::EDITOR_CORE_FLAG;
 ///
-/// assert_eq!(KERNEL_FLAG, 0x8000);
+/// assert_eq!(EDITOR_CORE_FLAG, 0x8000);
 /// ```
-pub const KERNEL_FLAG: u16 = 0x8000;
+pub const EDITOR_CORE_FLAG: u16 = 0x8000;
 
 /// Header for a position carrier (§4.5 CR1/CR2).
 ///
@@ -136,13 +136,13 @@ impl PositionHeader {
     /// Returns true when the kernel-reserved flag bit is set.
     ///
     /// ```rust
-    /// use reovim_subsys_domain::carrier::{PositionHeader, KERNEL_FLAG};
+    /// use reovim_subsys_domain::carrier::{PositionHeader, EDITOR_CORE_FLAG};
     ///
-    /// assert!(PositionHeader::from_raw_parts(1, 0, KERNEL_FLAG).has_kernel_flag());
+    /// assert!(PositionHeader::from_raw_parts(1, 0, EDITOR_CORE_FLAG).has_editor_core_flag());
     /// ```
     #[must_use]
-    pub const fn has_kernel_flag(self) -> bool {
-        self.flags() & KERNEL_FLAG != 0
+    pub const fn has_editor_core_flag(self) -> bool {
+        self.flags() & EDITOR_CORE_FLAG != 0
     }
 }
 
@@ -231,13 +231,13 @@ impl CursorHeader {
     /// Returns true when the kernel-reserved flag bit is set.
     ///
     /// ```rust
-    /// use reovim_subsys_domain::carrier::{CursorHeader, KERNEL_FLAG};
+    /// use reovim_subsys_domain::carrier::{CursorHeader, EDITOR_CORE_FLAG};
     ///
-    /// assert!(CursorHeader::from_raw_parts(1, 0, KERNEL_FLAG).has_kernel_flag());
+    /// assert!(CursorHeader::from_raw_parts(1, 0, EDITOR_CORE_FLAG).has_editor_core_flag());
     /// ```
     #[must_use]
-    pub const fn has_kernel_flag(self) -> bool {
-        self.flags() & KERNEL_FLAG != 0
+    pub const fn has_editor_core_flag(self) -> bool {
+        self.flags() & EDITOR_CORE_FLAG != 0
     }
 }
 

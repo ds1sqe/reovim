@@ -163,7 +163,7 @@ DS12 events fan out to subscribers (DS4 subscriber capacity).
 Subscribers register a filter (family glob + level threshold) and
 receive a stream.
 
-Subscriber capacity per kernel instance: `kernel.host.[limits].observe-subscriber-capacity`
+Subscriber capacity per kernel instance: `editor.host.[limits].observe-subscriber-capacity`
 (default 64).
 
 ## Open items

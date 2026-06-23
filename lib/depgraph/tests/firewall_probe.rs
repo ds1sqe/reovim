@@ -13,7 +13,7 @@
 //! 1. **Positive control (real tree)** — the current real workspace's product
 //!    crates must have no direct `arch`, `system/kernel`, or `*/drivers` edges.
 //!
-//! 2. **Negative fixture A** — a synthetic `editor/lib/kernel` crate with a
+//! 2. **Negative fixture A** — a synthetic `editor/lib/core` crate with a
 //!    direct `reovim-arch` dep must trip exactly one firewall violation.
 //!
 //! 3. **Negative fixture B** — a synthetic `client/platforms/tui` crate with
@@ -22,7 +22,7 @@
 //! 4. **Negative fixture C** — a synthetic `editor/modules/vim` crate with a
 //!    direct dep on a `*/drivers/*` crate must trip the probe.
 //!
-//! 5. **Positive fixture (transitive allowed)** — `editor/lib/kernel` → `lib/ds`
+//! 5. **Positive fixture (transitive allowed)** — `editor/lib/core` → `lib/ds`
 //!    → `arch` transitive path produces zero firewall violations (the firewall
 //!    is direct-edge only; lib/ds is not arch).
 
@@ -161,9 +161,9 @@ fn system_kernel_manifest_has_no_raw_arch_provider_or_posix_deps() {
     }
 }
 
-// ── 2. Negative fixture A: editor/lib/kernel → reovim-arch ───────────────────
+// ── 2. Negative fixture A: editor/lib/core → reovim-arch ───────────────────
 
-/// A synthetic `editor/lib/kernel` crate with a direct dep on `reovim-arch`
+/// A synthetic `editor/lib/core` crate with a direct dep on `reovim-arch`
 /// must trip the firewall probe.
 ///
 /// This is the canonical closed-airlock violation shape: a Math kernel directly
@@ -175,26 +175,26 @@ fn firewall_editor_kernel_to_arch_trips_probe() {
 
     // arch crate at arch/ (Foundation).
     common::write_file(root, "arch/Cargo.toml", &pkg_toml("reovim-arch"));
-    // editor/lib/kernel crate with a DIRECT dep on arch (forbidden).
+    // editor/lib/core crate with a DIRECT dep on arch (forbidden).
     common::write_file(
         root,
-        "editor/lib/kernel/Cargo.toml",
-        &pkg_toml_with_path_dep("reovim-editor-kernel", "reovim-arch", "../../../arch"),
+        "editor/lib/core/Cargo.toml",
+        &pkg_toml_with_path_dep("reovim-editor-core", "reovim-arch", "../../../arch"),
     );
 
-    common::write_file(root, "Cargo.toml", &root_workspace_toml(&["arch", "editor/lib/kernel"]));
+    common::write_file(root, "Cargo.toml", &root_workspace_toml(&["arch", "editor/lib/core"]));
 
     let violations = run_firewall_probe(root).expect("firewall probe must run on fixture");
 
     assert!(
         !violations.is_empty(),
-        "firewall fixture A: expected a violation for editor/lib/kernel → reovim-arch;\n\
+        "firewall fixture A: expected a violation for editor/lib/core → reovim-arch;\n\
          got zero violations"
     );
     // The violation message must name both crates.
     let names_both = violations
         .iter()
-        .any(|v| v.contains("reovim-editor-kernel") && v.contains("reovim-arch"));
+        .any(|v| v.contains("reovim-editor-core") && v.contains("reovim-arch"));
     assert!(
         names_both,
         "firewall fixture A: violation message should name both crates;\n\
@@ -263,13 +263,13 @@ fn firewall_product_to_system_lib_kernel_trips_as_floor_family() {
 
     // The real system-kernel bridge at its real path.
     common::write_file(root, "system/lib/kernel/Cargo.toml", &pkg_toml("reovim-system-kernel"));
-    // A product (editor/lib/kernel) directly naming it (forbidden: a product
+    // A product (editor/lib/core) directly naming it (forbidden: a product
     // names public contracts, never the lower bridge directly).
     common::write_file(
         root,
-        "editor/lib/kernel/Cargo.toml",
+        "editor/lib/core/Cargo.toml",
         &pkg_toml_with_path_dep(
-            "reovim-editor-kernel",
+            "reovim-editor-core",
             "reovim-system-kernel",
             "../../../system/lib/kernel",
         ),
@@ -277,7 +277,7 @@ fn firewall_product_to_system_lib_kernel_trips_as_floor_family() {
     common::write_file(
         root,
         "Cargo.toml",
-        &root_workspace_toml(&["system/lib/kernel", "editor/lib/kernel"]),
+        &root_workspace_toml(&["system/lib/kernel", "editor/lib/core"]),
     );
 
     let violations = run_firewall_probe(root).expect("firewall probe must run on fixture");
@@ -289,7 +289,7 @@ fn firewall_product_to_system_lib_kernel_trips_as_floor_family() {
     );
     let names_both = violations
         .iter()
-        .any(|v| v.contains("reovim-editor-kernel") && v.contains("reovim-system-kernel"));
+        .any(|v| v.contains("reovim-editor-core") && v.contains("reovim-system-kernel"));
     assert!(
         names_both,
         "firewall 3b: the system-kernel violation must name both crates;\n\
@@ -408,7 +408,7 @@ fn no_product_arch_net_in_server_rt_and_tui() {
 fn no_product_arch_time_sys_in_kernel_and_tui() {
     let root = common::workspace_root();
     let violations =
-        run_no_product_arch_time_sys_probe(&root, &["reovim-kernel", "reovim-platform-tui"])
+        run_no_product_arch_time_sys_probe(&root, &["reovim-editor-core", "reovim-platform-tui"])
             .expect("no-product-arch-time-sys probe must run on real workspace");
     assert!(
         violations.is_empty(),
@@ -559,7 +559,7 @@ fn firewall_arch_sys_dep_trips_probe() {
 
 // ── 7. Positive fixture: transitive via lib/ds is allowed ────────────────────
 
-/// A synthetic `editor/lib/kernel` → `lib/ds` edge must NOT trip the firewall.
+/// A synthetic `editor/lib/core` → `lib/ds` edge must NOT trip the firewall.
 ///
 /// The firewall is a DIRECT-edge rule.  `lib/ds` is not `arch`, not
 /// `system/kernel`, and not `*/drivers/*` — it is a Foundation lib.  The
@@ -572,14 +572,14 @@ fn firewall_editor_to_lib_ds_is_allowed() {
 
     // lib/ds Foundation crate (algorithm crate; inert name here).
     common::write_file(root, "lib/ds/Cargo.toml", &pkg_toml("reovim-lib-ds"));
-    // editor/lib/kernel with a dep on lib/ds (allowed: lib/ds is Foundation, not arch).
+    // editor/lib/core with a dep on lib/ds (allowed: lib/ds is Foundation, not arch).
     common::write_file(
         root,
-        "editor/lib/kernel/Cargo.toml",
-        &pkg_toml_with_path_dep("reovim-editor-kernel", "reovim-lib-ds", "../../../lib/ds"),
+        "editor/lib/core/Cargo.toml",
+        &pkg_toml_with_path_dep("reovim-editor-core", "reovim-lib-ds", "../../../lib/ds"),
     );
 
-    common::write_file(root, "Cargo.toml", &root_workspace_toml(&["lib/ds", "editor/lib/kernel"]));
+    common::write_file(root, "Cargo.toml", &root_workspace_toml(&["lib/ds", "editor/lib/core"]));
 
     let violations = run_firewall_probe(root).expect("firewall probe must run on fixture");
 

@@ -47,7 +47,7 @@ Rollback states:
 ## 3. Bounded drains
 
 > **FAIL3 — Drain operations are bounded.** Every wait carries a
-> timeout from `kernel.host.[limits]`. Timeout behaviour:
+> timeout from `editor.host.[limits]`. Timeout behaviour:
 > - returns a distinct timeout status,
 > - emits a DS12 event with `outcome = timeout`,
 > - transitions the resource to a named post-timeout state.

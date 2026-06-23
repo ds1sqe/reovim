@@ -47,7 +47,7 @@ fn upper_direct_kabi_fixture_trips() {
     let root = td.path();
     common::write_file(
         root,
-        "editor/lib/kernel/Cargo.toml",
+        "editor/lib/core/Cargo.toml",
         "[dependencies]\nreovim-kabi-platform = { path = \"../../../kabi/platform\" }\n",
     );
     common::write_file(
@@ -128,7 +128,7 @@ fn upper_raw_arch_sys_fixture_trips() {
     );
     common::write_file(
         root,
-        "editor/lib/kernel/src/lib.rs",
+        "editor/lib/core/src/lib.rs",
         "fn tick() { let _ = arch::sys::gettid(); }\n",
     );
 

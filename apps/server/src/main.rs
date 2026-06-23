@@ -1,9 +1,9 @@
 //! `reovim-server` — the standalone server composition root (AL1, #797 Phase 4).
 //!
-//! Boots the kernel, registers the text Domain, sets up the single session,
+//! Boots the editor core, registers the text Domain, sets up the single session,
 //! starts the UDS listener, and parks the process. The composition root is the
-//! only place that wires `ext` crates (`reovim-domain-text`) into the kernel —
-//! the kernel crate itself never depends on `ext` (core/ext boundary).
+//! only place that wires `ext` crates (`reovim-domain-text`) into the editor core —
+//! the editor-core crate itself never depends on `ext` (core/ext boundary).
 //!
 //! ## Invocation
 //!
@@ -20,8 +20,8 @@
 
 use {
     reovim_domain_text::{TextHandler, TextProjector},
-    reovim_kernel::{
-        Init, LauncherArgs,
+    reovim_editor_core::{
+        EditorInit, LauncherArgs,
         session::{BufferId, DomainAttachmentId, SessionState, WindowId},
     },
     reovim_lib_ds::Shared,
@@ -52,8 +52,8 @@ use reovim_arch_floor_linux_x86_64::entry;
 entry!(|argc, argv, _envp| {
     // ── Install the platform vtable (SP02, AB12 write-once) ───────────────────
     // The composition root drives the install: this is the first statement of
-    // the `entry!` closure, ahead of every `kabi::handle` read (the kernel boot,
-    // scheduler bridge, socket bridge, and fs bridge), so the no-read-before-install
+    // the `entry!` closure, ahead of every `kabi::handle` read (the editor-core
+    // boot, scheduler bridge, socket bridge, and fs bridge), so the no-read-before-install
     // invariant holds.
     // The result is ignored by construction — this is the sole process entry, so
     // a second install cannot occur here.
@@ -89,24 +89,24 @@ entry!(|argc, argv, _envp| {
         return 1;
     };
 
-    // ── Boot the kernel ───────────────────────────────────────────────────────
-    let kernel_args = LauncherArgs {
+    // ── Boot the editor core ──────────────────────────────────────────────────
+    let editor_core_args = LauncherArgs {
         clock: clock_control(),
         log: log_sink_control(),
         panic: panic_control(),
         thread: thread_control(),
         ..LauncherArgs::default()
     };
-    let kernel = match Init::new(kernel_args).boot() {
+    let editor_core = match EditorInit::new(editor_core_args).boot() {
         Ok(k) => k,
         Err(_) => {
-            write_stderr(b"reovim-server: kernel boot failed\n");
+            write_stderr(b"reovim-server: editor core boot failed\n");
             return 1;
         }
     };
 
     // ── Register the text Domain ──────────────────────────────────────────────
-    let domain_id = match kernel.register_domain("text", &TEXT_HANDLER, &TEXT_PROJECTOR) {
+    let domain_id = match editor_core.register_domain("text", &TEXT_HANDLER, &TEXT_PROJECTOR) {
         Ok(id) => id,
         Err(_) => {
             write_stderr(b"reovim-server: register_domain failed\n");
@@ -121,10 +121,10 @@ entry!(|argc, argv, _envp| {
         BufferId::new(1),
         WindowId::new(1),
     );
-    kernel.setup_session(state);
+    editor_core.setup_session(state);
 
     // ── Start the UDS listener ────────────────────────────────────────────────
-    if start_listener(&kernel, socket_path, net_control(), thread_spawner()).is_err() {
+    if start_listener(&editor_core, socket_path, net_control(), thread_spawner()).is_err() {
         write_stderr(b"reovim-server: start_listener failed\n");
         return 1;
     }
@@ -133,7 +133,7 @@ entry!(|argc, argv, _envp| {
     // The listener accept loop runs on a background thread. The main thread
     // parks here so the process stays alive. A real server would listen for a
     // shutdown signal; the walking skeleton parks indefinitely (kill via signal).
-    park_forever(&kernel)
+    park_forever(&editor_core)
 });
 
 /// Parks the process by sleeping in a tight retry loop.
@@ -141,9 +141,9 @@ entry!(|argc, argv, _envp| {
 /// The walking skeleton has no graceful-shutdown signal yet; the process
 /// is terminated externally (SIGTERM/SIGKILL from the launcher or test harness).
 #[cold]
-fn park_forever(kernel: &Shared<reovim_kernel::Kernel>) -> i32 {
-    // Keep a reference to the kernel alive so it is not dropped.
-    let _ = Shared::clone(kernel);
+fn park_forever(editor_core: &Shared<reovim_editor_core::EditorCore>) -> i32 {
+    // Keep a reference to the editor core alive so it is not dropped.
+    let _ = Shared::clone(editor_core);
     // Park on a local sync word through the system-kernel scheduler bridge. The
     // lower provider may return early (for example signal delivery), so the
     // loop re-parks indefinitely.

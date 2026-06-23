@@ -6,7 +6,7 @@
 //!
 //! ## What the smoke proves
 //!
-//! Boot kernel → register text Domain → `start_listener` → connect raw client
+//! Boot editor core → register text Domain → `start_listener` → connect raw client
 //! → send `Hello` → receive `HelloAck` → send `Attach` → receive `AttachAck` +
 //! initial `Projection` notify → send `SendInput("x")` → receive `Projection`
 //! notify with `"x"` in the content bytes.
@@ -32,8 +32,8 @@
 use {
     reovim_arch::{arch_test, net::UnixStream},
     reovim_domain_text::{TextHandler, TextProjector},
-    reovim_kernel::{
-        Init, LauncherArgs,
+    reovim_editor_core::{
+        EditorInit, LauncherArgs,
         session::{BufferId, DomainAttachmentId, SessionState, WindowId},
     },
     reovim_lib_ds::Seq,
@@ -64,13 +64,13 @@ fn smoke_path(buf: &mut [u8; 64]) -> &[u8] {
 const CLIENT_CAP: usize = 4 * 1024 * 1024;
 
 arch_test!(phase3_integration_smoke_hello_attach_send_input, {
-    // ── 1. Boot the kernel ────────────────────────────────────────────────────
-    let kernel = Init::new(LauncherArgs::default())
+    // ── 1. Boot the editor core ───────────────────────────────────────────────
+    let editor_core = EditorInit::new(LauncherArgs::default())
         .boot()
         .expect("boot succeeds");
 
     // ── 2. Register the text Domain ───────────────────────────────────────────
-    let domain_id = kernel
+    let domain_id = editor_core
         .register_domain("text", &TEXT_HANDLER, &TEXT_PROJECTOR)
         .expect("register_domain succeeds");
 
@@ -80,16 +80,16 @@ arch_test!(phase3_integration_smoke_hello_attach_send_input, {
         BufferId::new(1),
         WindowId::new(1),
     );
-    kernel.setup_session(state);
+    editor_core.setup_session(state);
 
-    // ── 3. Start the listener on the booted kernel ────────────────────────────
+    // ── 3. Start the listener on the booted editor core ──────────────────────
     let mut sbuf = [0u8; 64];
     let smoke_path: &[u8] = smoke_path(&mut sbuf);
     // The socket file survives a previous run's process exit (the listener
     // thread never drops); unlink first so a TID-reuse re-bind cannot hit
     // EADDRINUSE.
     let _ = reovim_arch::sys::unlinkat(reovim_arch::sys::AT_FDCWD, smoke_path, 0);
-    start_listener(&kernel, smoke_path, net_control(), thread_spawner())
+    start_listener(&editor_core, smoke_path, net_control(), thread_spawner())
         .expect("start_listener succeeds");
 
     // ── 4. Connect the raw test client ────────────────────────────────────────
@@ -189,21 +189,21 @@ arch_test!(phase3_integration_smoke_hello_attach_send_input, {
 
 // ── Error-path carrier coverage ──────────────────────────────────────────────
 //
-// Each test boots its own kernel + listener on a TID-unique path to avoid any
+// Each test boots its own editor core + listener on a TID-unique path to avoid any
 // cross-test ordering dependency. The error conditions are provoked by crafting
 // byte sequences that the server must reject.
 
-/// Boots a kernel with the text Domain registered and a session wired up,
+/// Boots an editor core with the text Domain registered and a session wired up,
 /// starts a listener on `path`, and returns the connected client stream.
 ///
 /// The listener runs on a background thread; the client stream is ready to use
 /// immediately (the OS accept-backlog queues the connection).
 fn boot_and_connect(path: &[u8]) -> UnixStream {
-    let kernel = Init::new(LauncherArgs::default())
+    let editor_core = EditorInit::new(LauncherArgs::default())
         .boot()
         .expect("boot succeeds");
 
-    let domain_id = kernel
+    let domain_id = editor_core
         .register_domain("text", &TEXT_HANDLER, &TEXT_PROJECTOR)
         .expect("register_domain succeeds");
     let state = SessionState::new(
@@ -212,10 +212,10 @@ fn boot_and_connect(path: &[u8]) -> UnixStream {
         BufferId::new(1),
         WindowId::new(1),
     );
-    kernel.setup_session(state);
+    editor_core.setup_session(state);
 
     let _ = reovim_arch::sys::unlinkat(reovim_arch::sys::AT_FDCWD, path, 0);
-    start_listener(&kernel, path, net_control(), thread_spawner())
+    start_listener(&editor_core, path, net_control(), thread_spawner())
         .expect("start_listener succeeds");
 
     UnixStream::connect(path).expect("connect succeeds")

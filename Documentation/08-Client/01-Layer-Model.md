@@ -102,15 +102,15 @@ apps/reovim         → client/{drivers,modules,capabilities}/*
 
 ## 6. Platform runtime ownership
 
-> **CL3 — Platform runtimes own client registries.** The Kernel does not
+> **CL3 — Platform runtimes own client registries.** The EditorCore does not
 > own the client-side `ClientRuntime`. In subprocess mode the
 > client process owns its own runtime; in embedded mode the
-> launcher process holds the Kernel and the `ClientRuntime` as
+> launcher process holds the EditorCore and the `ClientRuntime` as
 > separately-rooted structures.
 >
 > *Class*: spec.
 
-> **CL5 — The Kernel routes opaque client traffic; does not decode.**
+> **CL5 — The EditorCore routes opaque client traffic; does not decode.**
 > Server-side has no compile-time knowledge of client capability
 > semantics. *Class*: spec.
 
@@ -145,7 +145,7 @@ apps/reovim         → client/{drivers,modules,capabilities}/*
 |---|---|
 | CL1 | Probe over `client/lib/subsys/*`; any dep on `client/*` open extensions → fail. |
 | CL2 | Crate at `client/<unknown-category>/x` → fail. |
-| CL3 | Embedded launch shows separate `ClientRuntime` and `Kernel` ownership. |
+| CL3 | Embedded launch shows separate `ClientRuntime` and `EditorCore` ownership. |
 | CL4 | Render driver cdylib without `debug` vtable → debug surface not provided by it. |
 | CL5 | Server logs show debug payloads passed through opaque (no framed-protocol field decoding of capability bodies). |
 | CL8 | Inventory listing in embedded mode tags each cdylib server/client. |

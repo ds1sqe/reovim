@@ -111,6 +111,6 @@ domain-neutral byte representation serialized by the runtime (Phase 3).
 | Behaviour | Fixture |
 |---|---|
 | Push default | Input that mutates buffer state emits a projection notification without a client poll. |
-| Opaque style | Kernel stores and transmits `StyleRef` byte-identically; no kernel branch interprets color/theme names. |
+| Opaque style | Editor core stores and transmits `StyleRef` byte-identically; no editor-core branch interprets color/theme names. |
 | Composition | Inner Domain span overrides outer span over the same byte range; overlays append in DT17 order; cursor carriers dedup by CR5 byte equality. |
 | Full resend boundary | Viewport/focus/DomainTable/codec-status change forces a full projection resend, not a diff. |

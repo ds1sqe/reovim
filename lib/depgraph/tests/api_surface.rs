@@ -65,7 +65,7 @@ fn category_display_all_variants() {
     let pairs: &[(Category, &str)] = &[
         (Category::Foundation, "foundation"),
         (Category::ServerContracts, "server-contracts"),
-        (Category::ServerKernel, "server-kernel"),
+        (Category::EditorCore, "editor-core"),
         (Category::ServerRuntime, "server-runtime"),
         (Category::ClientContracts, "client-contracts"),
         (Category::ServerExt, "server-ext"),
@@ -117,7 +117,7 @@ fn violation_display_all_variants() {
         from: "alpha".to_owned(),
         from_category: Category::Foundation,
         to: "beta".to_owned(),
-        to_category: Category::ServerKernel,
+        to_category: Category::EditorCore,
     };
     let s = forbidden.to_string();
     assert!(s.contains("DAG2"), "ForbiddenEdge: {s}");
@@ -782,7 +782,7 @@ fn cataloged_composition_edge_passes() {
     );
 }
 
-/// An allowed non-foundation category edge (`ServerKernel` →
+/// An allowed non-foundation category edge (`EditorCore` →
 /// `ServerContracts` per 1.2 §2) produces no violation.
 #[test]
 fn allowed_category_edge_passes() {
@@ -790,10 +790,10 @@ fn allowed_category_edge_passes() {
     let root = td.path();
     common::write_file(
         root,
-        "editor/lib/kernel/core/Cargo.toml",
+        "editor/lib/core/core/Cargo.toml",
         &format!(
             "{}\n[dependencies]\nreovim-subsys-x = {{ path = \"../../subsys/x\" }}\n",
-            pkg_toml("reovim-kernel-core")
+            pkg_toml("reovim-editor-core")
         ),
     );
     common::write_file(root, "editor/lib/subsys/x/Cargo.toml", &pkg_toml("reovim-subsys-x"));

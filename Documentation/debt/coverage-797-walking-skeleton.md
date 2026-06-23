@@ -35,10 +35,10 @@ sub-line error arms below.
 ### 1. `init.rs` L444, L451 — seam-registration `?` continuations (inherited from #796)
 
 Inherited from coverage-796-kernel-boot-core.md §1 (same class; that ledger
-entry covers L442, L449, L452 for the kernel's own boot seams). The `?`
-continuations on seam-registration calls in kernel `init.rs` cannot be reached
+entry covers L442, L449, L452 for the editor core's own boot seams). The `?`
+continuations on seam-registration calls in editor-core `init.rs` cannot be reached
 in the selftest runner because the arch seams are process-global write-once
-statics; the selftest binary boots the kernel multiple times per process, so
+statics; the selftest binary boots the editor core multiple times per process, so
 `register_seam` silently accepts a second registration under
 `cfg(feature = "selftest")`. The `Err` continuation is excluded by the same
 `cfg` that enables coverage measurement.
@@ -65,7 +65,7 @@ There is no test lane for `#[no_main]` binary crates in the arch selftest
 framework (the selftest fixture pattern applies only to `lib` and `rlib`
 crates; `entry!`-based bins cannot embed selftest registration). The error
 returns and the `DEFAULT_SOCKET` branch are unreachable via the E2E fixture
-because: (a) kernel boot in the fixture never fails (no fault injection at
+because: (a) editor-core boot in the fixture never fails (no fault injection at
 the bin level), (b) the `argc < 2` branch uses the default path in the E2E
 run (which supplies a socket path), and (c) `start_listener` succeeds.
 

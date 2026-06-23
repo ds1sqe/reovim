@@ -1,14 +1,14 @@
-# 2.1 — Kernel and Init Types
+# 2.1 — Editor Core and EditorInit Types
 
-**Scope.** The three-kernel model (§0), then the shapes of `Init`
-(the boot actor) and `Kernel` (the steady-state root), the
-registries, and the per-field locking model **for the editor
-kernel**. Concrete `#[repr(C)]` layouts that cross the ABI boundary
+**Scope.** The one-kernel-plus-cores model (§0), then the shapes of
+`EditorInit` (the boot actor) and `EditorCore` (the steady-state root), the
+registries, and the per-field locking model **for the editor core**. Concrete
+`#[repr(C)]` layouts that cross the ABI boundary
 live in `06-ABI/03-Type-Catalog.md`; this chapter describes the
 in-process Rust shapes.
 
 **Heritage.** The single struct was named `Pid1` until 2026-06; the
-rename split it into the `Init`/`Kernel` pair because the state root
+rename split it into the `EditorInit`/`EditorCore` pair because the state root
 has no process lifetime or action of its own — the boot actor does.
 
 **Locked rules.** None directly; references `CC*`, `LF*` (handoff:
@@ -16,62 +16,59 @@ LF13), `SVC*`.
 
 ---
 
-## 0. The three kernels (system · editor · client)
+## 0. One kernel, two product cores
 
-A *kernel* = a mechanism core that loads policy over a stable ABI and
-reaches adjacent layers through a stable face. Product-facing kernels use the
-`uapi/*` up-face; the World system kernel bridges that up-face to the
-machine-facing `kabi/*` down-face (`06-ABI/05-Platform-Contract.md`).
-Reovim has three, each the same mechanism/policy/ABI fractal at a different
-altitude:
+New architecture prose reserves unqualified **kernel** for the World-layer
+system kernel. The product-facing Math mechanisms are **cores**:
 
-| Kernel | Mechanism (WHAT) | Policy (its modules) | Substrate below | Corruption layer |
+| Component | Mechanism (WHAT) | Policy (its modules) | Substrate below | Corruption layer |
 |---|---|---|---|---|
-| **System** (machine) | sched, IRQ, memory, device model, block, fs, console, power; bridge from `uapi/*` to `kabi/*` | device drivers, board profiles | `kabi/*` providers + `arch/` hardware below them | World |
-| **Editor** (server) | sessions, domains/buffer-algebra, undo-tree, streams, EventBus, state, services | server modules + drivers | `uapi/*` system surface | Math |
-| **Client** | raw-input normalization, frame/cell render, projection/codec, capability slots, module host | client modules + drivers | `uapi/*` system surface **+** wire protocol | Math |
+| **System kernel** | sched, IRQ, memory, device model, block, fs, console, power; bridge from `uapi/*` to `kabi/*` | system drivers, board profiles | `kabi/*` providers + `arch/` hardware below them | World |
+| **Editor core** | sessions, domains/buffer-algebra, undo-tree, streams, EventBus, state, services | server modules + drivers | `uapi/*` system surface | Math |
+| **Client core** | raw-input normalization, frame/cell render, projection/codec, capability slots, module host | client modules + drivers | `uapi/*` system surface **+** wire protocol | Math |
 
-Each loads policy one-way (modules → api), exposes mechanism + api over a
-closed subsys of trait contracts, and is extended by drivers that implement
-those contracts — loaded, never linked (`02-Process/05-Machine-Boot.md`).
+Each follows the same mechanism/policy/ABI fractal: policy flows one-way into
+a mechanism surface, contracts are stable, and drivers/modules are loaded or
+registered through closed seams rather than imported directly. The word
+"kernel" is no longer used for all three because `system/lib/kernel` is now a
+real crate and the ambiguity is operationally expensive.
 
 Two asymmetries are real, not incidental:
 
-- **The system kernel is conditional.** RTOS-itself mode has all three;
-  Over-OS mode has two and the host OS plays the system-kernel role
+- **The full system-kernel role is conditional.** RTOS-itself mode fills the
+  role inside Reovim. Over-OS mode uses the same bridge vocabulary but the
+  host OS provides most system services below it
   (`01-Architecture/06-OS-Modes.md`). "Do we split the editor and the
-  system?" reduces to "is the system-kernel slot filled?"
-- **The client kernel has more substrates** — the up-face system surface, its
+  system?" reduces to "is the full system role filled by Reovim?"
+- **The client core has more substrates** — the up-face system surface, its
   input/output capabilities (`05-View/02-Raw-Input.md`,
   `05-View/03-Projections.md`), *and* the wire protocol. On bare metal the
-  client's I/O bottoms out on the system kernel's devices, so the system
-  kernel sits below **both** the editor and the client.
+  client's I/O bottoms out on system-kernel devices, so the system kernel sits
+  below **both** the editor core and the client core.
 
-### 0.1 Sovereignty (the naming axis)
+### 0.1 Sovereignty
 
-All three are kernels — each has the module/subsys/driver fractal and a
-Math-or-World core. The distinction is **sovereignty**, not kernel-hood:
+The distinction is now **sovereignty**, not shared kernel-hood:
 
-- **Sovereign kernels** own a *truth*: the **system kernel** (machine
-  state) and the **editor kernel** (edit state).
-- **Derived kernel:** the **client kernel** owns *no* truth — its
-  Math-layer core renders the editor kernel's truth and normalizes input
-  back. Same fractal, same Math layer, non-sovereign.
+- **Sovereign components** own a *truth*: the **system kernel** owns machine
+  state; the **editor core** owns edit state.
+- **Derived component:** the **client core** owns *no* truth — it renders the
+  editor core's truth and normalizes input back. Same fractal, same Math
+  layer, non-sovereign.
 
-Crate names: system → `system/lib/kernel`; editor → `editor/lib/kernel`
-(this chapter); client → `client-kernel` (target name; exact path follows the
-client tree split).
+Crate names: system → `system/lib/kernel`; editor core →
+`editor/lib/core` / `reovim-editor-core`; client core path is not hardened yet.
 
 ### 0.2 Editor / system split — by contract, not by privilege
 
-The editor and system kernels are distinct **by contract**: the editor stays
-on the `uapi/*` up-face, while the system kernel bridges `uapi/*` to the
+The editor core and system kernel are distinct **by contract**: the editor
+core stays on the `uapi/*` up-face, while the system kernel bridges `uapi/*` to the
 `kabi/*` down-face (`06-ABI/05-Platform-Contract.md`). What forces it (any
 one suffices):
 
-- **Invariance.** The editor kernel must stay platform-invariant. The
+- **Invariance.** The editor core must stay platform-invariant. The
   moment it holds IRQ/board/device code it changes per target.
-- **Corruption layer.** Editor kernel = **Math** (the formal-verification
+- **Corruption layer.** Editor core = **Math** (the formal-verification
   target); system kernel + `arch` = **World** (hardware-coupled,
   replaceable). Opposite sides of the airlock.
 
@@ -85,46 +82,45 @@ What the split is **not**, for 0.16:
   loop and consumes it. A separate preemptive machine scheduler appears
   only with SMP / multiple payloads — out of 0.16.
 
-Discipline: **never let the editor kernel grow hardware or mode-varying
+Discipline: **never let the editor core grow hardware or mode-varying
 code "temporarily."** Anything that varies by what is underneath goes below
 the up-face — into the hosted system role or into `system/lib/kernel` plus
 providers in RTOS-itself mode.
 
-The remainder of this chapter details the **editor** kernel's `Init` /
-`Kernel` shapes. The system and client kernels carry their own boot actors
-of the same form.
+The remainder of this chapter details the current **editor core**
+`EditorInit` / `EditorCore` shapes.
 
 ## 1. Two types, one handoff
 
 Boot and steady state are different types, not different flags:
 
-- **`Init`** exists only during boot. It exclusively owns the
-  kernel state under construction (`&mut self`, no locks), runs
+- **`EditorInit`** exists only during boot. It exclusively owns the
+  editor-core state under construction (`&mut self`, no locks), runs
   the boot stages (2.2 §1), and is *consumed* by the handoff.
-- **`Kernel`** is the steady-state root. It is inert shared state —
+- **`EditorCore`** is the steady-state root. It is inert shared state —
   registries and maps behind the hostapi — with no run loop of its
-  own. It can only be constructed by `Init::boot` (LF13).
+  own. It can only be constructed by `EditorInit::boot` (LF13).
 
 ```rust
-impl Init {
-    pub fn new(args: LauncherArgs) -> Init;                  // boot stage 0
-    pub fn boot(mut self) -> Result<Arc<Kernel>, BootError>; // stages 1..6,
+impl EditorInit {
+    pub fn new(args: LauncherArgs) -> EditorInit;                  // boot stage 0
+    pub fn boot(mut self) -> Result<Arc<EditorCore>, BootError>; // stages 1..6,
                                                              // then the move
 }
 ```
 
-On success, every retained field moves into `Kernel`, wrapped in
-its per-field lock exactly once; boot-only state dies with `Init`
-(the Linux `__init`-section analog). On failure, `Init` drops
-whole — no partially-constructed kernel state escapes. The
+On success, every retained field moves into `EditorCore`, wrapped in
+its per-field lock exactly once; boot-only state dies with `EditorInit`
+(the Linux `__init`-section analog). On failure, `EditorInit` drops
+whole — no partially-constructed editor-core state escapes. The
 boot/steady-state boundary is the type system, not a runtime stage
 check.
 
-## 2. `Init` shape
+## 2. `EditorInit` shape
 
 ```rust
-pub struct Init {
-    args:            LauncherArgs,      // boot-only; dies with Init
+pub struct EditorInit {
+    args:            LauncherArgs,      // boot-only; dies with EditorInit
     layers:          ConfigLayerStack,  // collapses into EffectiveConfig
     boot_anchor:     BootClock,         // monotonic zero + CLOCK_REALTIME
                                         // anchor, captured in new() (7.5 §4)
@@ -142,12 +138,12 @@ pub struct Init {
 ```
 
 Fields are private: nothing outside the boot path observes an
-`Init`. The `event_bus` is already `Arc` because the log ring and
+`EditorInit`. The `event_bus` is already `Arc` because the log ring and
 early-boot stderr (LOG8) are live from stage 0; it transfers into
-`Kernel` unchanged, so timestamps and ring content are continuous
+`EditorCore` unchanged, so timestamps and ring content are continuous
 across the handoff.
 
-## 3. `Kernel` shape
+## 3. `EditorCore` shape
 
 > **Boot-core subset note.** The struct below is the spec target. The
 > boot-core realization (#778 Phase 2) carries a documented subset —
@@ -158,8 +154,8 @@ across the handoff.
 > consumers.
 
 ```rust
-pub struct Kernel {
-    pub abi:                Arc<KernelAbi>,
+pub struct EditorCore {
+    pub abi:                Arc<EditorCoreAbi>,
     pub config:             Arc<EffectiveConfig>,
     pub boot_anchor:        BootClock,
     pub lockfile:           Arc<Lockfile>,
@@ -183,15 +179,15 @@ pub struct Kernel {
 }
 ```
 
-`Kernel` is shared via `Arc<Kernel>`; per-field locks own
-concurrency. There is no central `Mutex<Kernel>`. One `Init::boot`
-run produces one kernel instance, regardless of OS process — the
-embedded launcher (1.3) hosts a kernel instance and a client
+`EditorCore` is shared via `Arc<EditorCore>`; per-field locks own
+concurrency. There is no central `Mutex<EditorCore>`. One `EditorInit::boot`
+run produces one editor-core instance, regardless of OS process — the
+embedded launcher (1.3) hosts an editor-core instance and a client
 runtime in the same process.
 
 > Note (non-normative): `ShardedMap<K, V>` is an in-repo sharded
 > concurrent map realized by target-neutral `lib/*` algorithms over the
-> installed system/backend primitives. The editor kernel names the `uapi/*`
+> installed system/backend primitives. The editor core names the `uapi/*`
 > up-face and target-neutral libraries; it does not name `arch` or `kabi`
 > directly.
 
@@ -211,9 +207,9 @@ runtime in the same process.
 Every registry row that holds a cdylib pointer carries
 `owner_cdylib_id` (LF8). See per-registry chapters for row shapes.
 
-Boot-time cdylib loads populate these registries through `Init`
+Boot-time cdylib loads populate these registries through `EditorInit`
 under exclusive ownership; runtime load/unload operates on the
-same registries through `Kernel` under the per-field locks. Same
+same registries through `EditorCore` under the per-field locks. Same
 rows, same LF rules — there is no separate boot loader (LF13).
 
 ## 5. Session shape
@@ -268,11 +264,11 @@ pub struct Window {
 
 ## Open items
 
-1. Whether `Inventory` is per kernel instance or per OS process
-   (relevant when the embedded launcher hosts a kernel instance
+1. Whether `Inventory` is per editor-core instance or per OS process
+   (relevant when the embedded launcher hosts an editor-core instance
    alongside a client runtime in one process). Default: per
    instance.
-2. `EffectiveConfig` lifetime — currently bound to the kernel
+2. `EffectiveConfig` lifetime — currently bound to the editor-core
    instance's lifetime; if reload paths arrive
    (lifecycle="reloadable"), this becomes an atomically-swappable
    shared reference (`arch/`-provided; no third-party `ArcSwap`).

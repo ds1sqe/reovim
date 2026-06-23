@@ -71,7 +71,7 @@ DS12 directly (7.2, 9.5 open item 3).
 ## 4. Timestamps
 
 `hostapi_debug_log_ring_read` returns the entries plus the boot
-wall-clock anchor (`CLOCK_REALTIME` captured by `Init::new`, boot stage 0).
+wall-clock anchor (`CLOCK_REALTIME` captured by `EditorInit::new`, boot stage 0).
 `-T` renders `anchor + monotonic_ts` as local wall-clock time.
 
 Caveat (same as `dmesg -T`): the anchor does not track wall-clock

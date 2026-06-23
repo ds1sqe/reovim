@@ -1,7 +1,7 @@
 # 9.5 — Logging
 
 **Scope.** The human-readable rendering of the DS12 stream: the
-canonical line format, the emitter address scheme, the kernel log
+canonical line format, the emitter address scheme, the editor-core log
 ring, the file sink, early-boot output, verbosity flags, and the
 cdylib emission entry point.
 
@@ -33,7 +33,7 @@ debug surface" are all policies layered on the one stream.
 >
 > ```
 > line := "[" ts "]" SP emitter SP address [SP instance] ":" SP message
-> ts   := seconds "." micros   ; monotonic since kernel boot,
+> ts   := seconds "." micros   ; monotonic since editor-core boot,
 >                              ; seconds right-aligned min width 5,
 >                              ; micros zero-padded width 6
 > ```
@@ -52,18 +52,18 @@ Annotated example — a cdylib module event:
    │           │        │             buffer 3, window 1 (§4)
    │           │        └─ emitter address: kind/CdylibId.vtable (§3)
    │           └─ package name from the emitting cdylib's manifest
-   └─ seconds since kernel boot (monotonic clock), microsecond precision
+   └─ seconds since editor-core boot (monotonic clock), microsecond precision
 ```
 
-A kernel-emitted event:
+An editor-core-emitted event:
 
 ```
-[    0.002413] kernel init: boot.stage.ok stage=2 name=config
+[    0.002413] editor-core init: boot.stage.ok stage=2 name=config
    │           │      │     │
    │           │      │     └─ rendered structured event (family.subject
    │           │      │        plus key fields; §5)
-   │           │      └─ kernel subsystem in the address position (§3)
-   │           └─ the kernel itself is the emitter
+   │           │      └─ editor-core subsystem in the address position (§3)
+   │           └─ the editor core itself is the emitter
    └─ early-boot lines exist from stage 0 (§8)
 ```
 
@@ -99,20 +99,20 @@ module/7.2
 | `DriverClient` | `cl-driver` |
 | `CapabilityClient` | `cl-cap` |
 
-Kernel emitters put a bare subsystem name in the address position
+Editor-core emitters put a bare subsystem name in the address position
 (`init`, `dispatch`, `config`, `pkg`, `persist`, `stream`, …). A
-kernel address never contains `/`; a cdylib address always does —
+editor-core address never contains `/`; a cdylib address always does —
 the two are unambiguous.
 
 > **LOG3 — Host-derived emitter identity.** The `emitter` and
-> `address` fields are stamped by the kernel from the dispatch
+> `address` fields are stamped by the editor core from the dispatch
 > context of the emitting call (the RefGuard / turn context, 2.3) or
-> from the kernel subsystem that emitted. A cdylib cannot supply,
+> from the editor-core subsystem that emitted. A cdylib cannot supply,
 > spoof, or suppress its own identity. Like a PCI address, the
 > CdylibId component is enumeration order — stable per process, not
 > a persistent name; the persistent name is the package name in the
 > `emitter` field.
-> *Class*: kernel-enforced.
+> *Class*: editor-core-enforced.
 
 ## 4. Instance address
 
@@ -156,7 +156,7 @@ fields (open item 1).
 > - `target` — dotted module-path-like string (e.g.
 >   `vim_mode.motion.word`),
 > - `message` — UTF-8, at most
->   `kernel.host.[limits].max-log-message-bytes` (default 4096;
+>   `editor.host.[limits].max-log-message-bytes` (default 4096;
 >   longer messages are truncated, never split).
 >
 > The family is exempt from OBS3's closed per-family schema for the
@@ -182,7 +182,7 @@ fields (open item 1).
 > dropped silently).
 >
 > Ext code emits free-form `log.message` only; structured OBS1
-> families are kernel-owned. A structured emission entry point would
+> families are editor-core-owned. A structured emission entry point would
 > be a future additive hostapi, not a change to this one.
 > *Class*: ABI.
 
@@ -190,11 +190,11 @@ fields (open item 1).
 
 ## 8. Log ring
 
-> **LOG6 — Kernel log ring.** The kernel retains a bounded in-memory
+> **LOG6 — Editor-core log ring.** The editor core retains a bounded in-memory
 > ring of rendered LOG2 lines — the `dmesg` analog. Each entry
 > carries its `LogLevel` alongside the rendered line (so readers
 > filter without parsing). Capacity:
-> `kernel.host.[limits].log-ring-bytes` (default 1 MiB); eviction is
+> `editor.host.[limits].log-ring-bytes` (default 1 MiB); eviction is
 > oldest-first, whole entries. The ring is allocated before any
 > cdylib loads and receives every event from boot stage 0 onward,
 > regardless of subscriber or sink state. It is read through the
@@ -202,13 +202,13 @@ fields (open item 1).
 > requires `debug.read`), which returns the entries plus the boot
 > wall-clock anchor (7.5 §4). The user-facing reader is
 > `reovim log` (7.5).
-> *Class*: kernel-enforced.
+> *Class*: editor-core-enforced.
 
 ## 9. File sink
 
 > **LOG7 — File sink.** The host runtime ships one file-backed DS12
 > subscriber writing LOG2 lines. Configuration, under
-> `kernel.host.[log]`:
+> `editor.host.[log]`:
 >
 > | Key | Default | Meaning |
 > |---|---|---|
@@ -229,7 +229,7 @@ fields (open item 1).
 
 On a panic the `arch/` panic handler performs the **final flush**
 (AB12, 6.2 §5 owns when and what): the panic renders as a LOG2
-line into the one kernel log ring (§1 — there is only one log
+line into the one editor-core log ring (§1 — there is only one log
 mechanism and one buffer; a panic does not get a second log), and
 the handler then synchronously flushes the ring tail to this
 sink's target file via raw `arch/` syscalls — the normal LOG7
@@ -272,15 +272,15 @@ gated by the AB12 conformance fixtures (2.3 §Conformance).
 > output then stops for client runtimes that own a terminal (a TUI
 > never writes log lines to its controlling terminal after raw mode
 > begins) and continues for headless server runtimes only if
-> `kernel.host.[log].stderr = true` (default: true for servers,
+> `editor.host.[log].stderr = true` (default: true for servers,
 > false for terminal clients).
 > *Class*: runtime.
 
 ## 11. Verbosity flags
 
 `-v` / `-vv` and `--log <PATH>` are launcher sugar for layer-6 CLI
-config (1.5 §3): `-v` ⇒ `--set kernel.host.log.level=debug`, `-vv` ⇒
-`…=trace`, `--log <PATH>` ⇒ `--set kernel.host.log.path=<PATH>`.
+config (1.5 §3): `-v` ⇒ `--set editor.host.log.level=debug`, `-vv` ⇒
+`…=trace`, `--log <PATH>` ⇒ `--set editor.host.log.path=<PATH>`.
 They introduce no parallel mechanism. Rule `AL11` in 1.3 §8 owns the
 flag surface.
 
@@ -290,7 +290,7 @@ flag surface.
    (vs the default `key=value` rendering). Draft: default rendering
    only; templates are additive later.
 2. Whether `hostapi_log_emit` gains a structured-fields variant for
-   ext code. Draft: no for ABI major 1; kernel-owned families only.
+   ext code. Draft: no for ABI major 1; editor-core-owned families only.
 3. JSON-lines sink variant. Draft: out of scope — JSON consumers
    subscribe to DS12 directly (7.2); the file sink is for humans.
 
@@ -300,7 +300,7 @@ flag surface.
 |---|---|
 | LOG1 | Every sink line pairs 1:1 with an event seen by a parallel DS12 subscriber; no extra lines. |
 | LOG2 | Golden test: fixed event fixtures render byte-identical lines (timestamp width, escaping, instance grammar §4). |
-| LOG3 | Multi-vtable cdylib emits from two vtables → `kind/id.0` and `kind/id.1`; caller-supplied identity in `target` does not alter `emitter`/`address`; kernel event renders a bare subsystem address. |
+| LOG3 | Multi-vtable cdylib emits from two vtables → `kind/id.0` and `kind/id.1`; caller-supplied identity in `target` does not alter `emitter`/`address`; editor-core event renders a bare subsystem address. |
 | LOG4 | `hostapi_log_emit` produces a `log.message` event; oversized message truncates at `max-log-message-bytes`; flood coalesces per OBS rate limits. |
 | LOG5 | Slice ownership: caller frees its buffers after return; host copy survives. `ResourceExhausted` on rate-limit breach. |
 | LOG6 | Ring wraps oldest-first on overflow; `hostapi_debug_log_ring_read` returns the most recent lines; boot-stage-0 lines present before the first cdylib load. |

@@ -21,7 +21,7 @@ pub enum RuntimeError {
     Io(i32),
     /// A protocol-codec error; the inner value is the raw `ErrorCode` i32.
     Protocol(i32),
-    /// A kernel-dispatch error (alloc or missing handler/projector).
+    /// An editor-core dispatch error (alloc or missing handler/projector).
     Dispatch,
     /// Allocation failure inside the runtime.
     Alloc,
@@ -36,7 +36,7 @@ impl fmt::Display for RuntimeError {
         match self {
             Self::Io(errno) => write!(f, "io error (errno {errno})"),
             Self::Protocol(code) => write!(f, "protocol error (code {code})"),
-            Self::Dispatch => f.write_str("kernel dispatch failed"),
+            Self::Dispatch => f.write_str("editor core dispatch failed"),
             Self::Alloc => f.write_str("allocation failed"),
             Self::InvalidPath => f.write_str("listener path invalid"),
             Self::AlreadyAttached => f.write_str("second Attach on one connection (SP1)"),

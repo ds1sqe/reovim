@@ -6,7 +6,7 @@
 //!
 //! Full integration smoke (bind → accept → Hello→Attach→SendInput) lives in
 //! the server-selftest fixture bin rather than inline here, because it
-//! requires an active kernel and UDS connection.
+//! requires an active editor core and UDS connection.
 
 use {
     reovim_arch::arch_test,
@@ -36,14 +36,14 @@ arch_test!(unix_path_max_is_107, {
 });
 
 arch_test!(start_listener_rejects_overlong_path, {
-    use reovim_kernel::{Init, LauncherArgs};
+    use reovim_editor_core::{EditorInit, LauncherArgs};
 
-    let kernel = Init::new(LauncherArgs::default())
+    let editor_core = EditorInit::new(LauncherArgs::default())
         .boot()
         .expect("boot succeeds");
 
     // A 108-byte path — one byte over UNIX_PATH_MAX.
     let long_path = [b'x'; 108];
-    let result = crate::start_listener(&kernel, &long_path, NetControl::noop(), NoopSpawner);
+    let result = crate::start_listener(&editor_core, &long_path, NetControl::noop(), NoopSpawner);
     assert!(matches!(result, Err(RuntimeError::InvalidPath)));
 });

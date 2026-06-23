@@ -1,13 +1,13 @@
 # 2.5 — Machine Boot
 
-**Scope.** RTOS-itself boot: the machine kernel that sits between
-`arch::_start` and the editor `Init::boot`, its subsystems, the boot-proof
+**Scope.** RTOS-itself boot: the system-kernel boot layer that sits between
+`arch::_start` and the editor-core boot, its subsystems, the boot-proof
 model, the device lifecycle, connected-device handling at runtime, and the
 scheduler park/wake seam. Over-OS mode skips this layer — the host OS *is*
-the machine kernel.
+the underlying system role.
 
-**Heritage.** Design-stage. The bare-metal floor and the editor
-`Init`/`Kernel` handoff exist (`#796`/`#797`); the middle machine-boot
+**Heritage.** Design-stage. The bare-metal floor and the editor-core
+`EditorInit`/`EditorCore` handoff exist (`#796`/`#797`); the middle machine-boot
 layer is the 0.16 design that makes a single-seat Pi appliance real. Mode
 overview: `01-Architecture/06-OS-Modes.md`.
 
@@ -22,25 +22,25 @@ The existing boot model is a good floor but is missing a middle layer:
 
 ```text
 arch::_start
-  -> machine-kernel boot
+  -> system-kernel boot
      -> boot-profile selection
      -> IRQ/timer/memory/device/block/fs init
-     -> editor Init::boot
+     -> editor-core boot
      -> platform runtime launch (tui over hosted OS, console on Pi)
 ```
 
-RTOS-itself needs a real machine kernel, not just `arch` plus the editor
-kernel. `arch/` stays the smallest unsafe/hardware boundary (no policy);
-`MachineInit`/`MachineKernel` (names open) own the kernel services that are
-too large to hide inside `arch::sys`, then call the existing editor boot as
-a payload. This keeps `editor/lib/kernel` from becoming an accidental
-operating-system kernel.
+RTOS-itself needs a real system kernel, not just `arch` plus the editor core.
+`arch/` stays the smallest unsafe/hardware boundary (no policy);
+system-kernel boot owns the services that are too large to hide inside
+`arch::sys`, then calls the existing editor-core boot as a payload. This keeps
+`editor/lib/core` from becoming an
+accidental operating-system kernel.
 
 | Layer | Owns |
 |---|---|
 | `arch/` platform floor | CPU entry, asm, MMIO primitives, timer registers, UART bytes, memory-map handoff |
-| machine kernel | scheduler, IRQ routing, driver model, block cache, filesystem, console device, power/shutdown |
-| editor kernel | sessions, domains, streams, state, services, view/update scheduling |
+| system kernel | scheduler, IRQ routing, driver model, block cache, filesystem, console device, power/shutdown |
+| editor core | sessions, domains, streams, state, services, view/update scheduling |
 | client/platform runtime | input/render adaptation (hosted terminal vs framebuffer + keyboard) |
 
 ## 2. Machine-kernel subsystems
@@ -75,19 +75,18 @@ appliance:
 
 ## 3. Boot proof model
 
-Logging machine facts is not enough; the machine kernel must **prove**
+Logging machine facts is not enough; the system-kernel boot layer must **prove**
 required facts before later phases can rely on them. Boot produces a typed
-`MachineProof` (not a user-facing config) before launching the editor
-kernel.
+system boot proof (not a user-facing config) before launching the editor core.
 
 ```text
 arch::_start
-  -> MachineInit
+  -> system-kernel boot
      -> collect raw environment facts
      -> prove required invariants for the selected boot profile
-     -> build MachineProof
+     -> build system boot proof
      -> publish device-inventory messages
-     -> hand MachineKernel + MachineProof to editor launch
+     -> hand system services + proof to editor launch
 ```
 
 Proofs are **profile-gated**:
@@ -102,7 +101,7 @@ Proofs are **profile-gated**:
 Failure policy:
 
 - A missing **required** proof for the selected profile aborts before
-  editor `Init::boot`.
+  editor-core `EditorInit::boot`.
 - Optional devices may enter `Degraded` and still boot if the profile
   allows it.
 - Every degraded/failed optional device emits a structured machine event
@@ -243,7 +242,7 @@ mounted/trusted.
 
 ### 5.3 Trust boundary
 
-The machine kernel can detect and identify connected devices, but trust
+The system kernel can detect and identify connected devices, but trust
 policy is explicit, so "connected-device support" never becomes ambient
 authority: the boot profile may allow/deny classes; an unknown HID keyboard
 may be accepted for input in appliance mode; unknown storage is never
@@ -296,7 +295,7 @@ vocabulary already defined here and in the device model:
 
 On bare metal the IRQ top-half sets those signals; on Over-OS the host
 fd/futex state sets them. **Same face above the airlock** — the
-editor/client kernel never sees an interrupt.
+editor/client core never sees an interrupt.
 
 **Threaded-IRQ: no driver/cdylib code runs in interrupt context.** The
 top-half is a tiny fixed system-kernel routine, never loaded code:
@@ -347,7 +346,7 @@ system-kernel mechanism, not a hot-pluggable device.
 
 | Behaviour | Fixture |
 |---|---|
-| Proof gate | `appliance` boot with a missing required proof (e.g. no framebuffer) aborts before editor `Init::boot` and emits `machine.proof.fail`. |
+| Proof gate | `appliance` boot with a missing required proof (e.g. no framebuffer) aborts before editor-core `EditorInit::boot` and emits `machine.proof.fail`. |
 | Degraded optional | An optional device entering `Degraded` boots under a profile that allows it and emits the allowing rule. |
 | Generation fence | A keyboard reconnect bumps generation; queued old-generation key events are dropped and modifiers cleared. |
 | Storage loss | State-root storage loss closes new writes (no fake save) and moves persistence to read-only or controlled shutdown per profile. |

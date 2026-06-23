@@ -1,7 +1,7 @@
 //! Tests for `projection.rs` — `Projection` + `ProjectionSpan` coverage.
 //!
 //! Registered under the `selftest` feature; runs on the arch no_std selftest
-//! runner via the `kernel-selftest` fixture bin.
+//! runner via the `editor-core-selftest` fixture bin.
 
 use core::num::NonZeroU32;
 

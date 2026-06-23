@@ -11,18 +11,18 @@
 # name in-repo crates — the catalog cannot grant a third-party edge (DAG5).
 
 # ── reovim-server (apps/server/) ─────────────────────────────────────────────
-# Standalone server composition root: boots kernel, registers text Domain,
+# Standalone server composition root: boots editor core, registers text Domain,
 # starts UDS listener, parks the process.
 
 [[edge]]
 from   = "reovim-server"
-to     = "reovim-kernel"
-reason = "composition root boots the kernel via Init::new(LauncherArgs).boot() and calls register_domain + setup_session"
+to     = "reovim-editor-core"
+reason = "composition root boots the editor core via EditorInit::new(LauncherArgs).boot() and calls register_domain + setup_session"
 
 [[edge]]
 from   = "reovim-server"
 to     = "reovim-system-kernel"
-reason = "composition root obtains the panic/log control implementation table from system-kernel and passes it into editor-kernel LauncherArgs"
+reason = "composition root obtains the panic/log control implementation table from system-kernel and passes it into editor-core LauncherArgs"
 
 [[edge]]
 from   = "reovim-server"
@@ -32,7 +32,7 @@ reason = "composition root calls start_listener to bind the UDS socket and start
 [[edge]]
 from   = "reovim-server"
 to     = "reovim-domain-text"
-reason = "wires TextHandler + TextProjector into the kernel's DomainRouter; core/ext boundary: only composition roots link ext crates"
+reason = "wires TextHandler + TextProjector into the editor core's DomainRouter; core/ext boundary: only composition roots link ext crates"
 
 [[edge]]
 from   = "reovim-server"
@@ -42,7 +42,7 @@ reason = "uses the public up-face facade for socket-path and borrowed-fd diagnos
 [[edge]]
 from   = "reovim-server"
 to     = "reovim-lib-ds"
-reason = "composition root constructs Shared<T> handles for kernel wiring; the DS-algorithm tier moved from arch to lib/ds in the reorg, so the edge is now direct"
+reason = "composition root constructs Shared<T> handles for editor-core wiring; the DS-algorithm tier moved from arch to lib/ds in the reorg, so the edge is now direct"
 
 [[edge]]
 from   = "reovim-server"
@@ -65,8 +65,8 @@ reason = "composition root obtains terminal and panic/log control implementation
 
 [[edge]]
 from   = "reovim"
-to     = "reovim-kernel"
-reason = "composition root boots the kernel via Init::new(LauncherArgs).boot() and calls register_domain + setup_session"
+to     = "reovim-editor-core"
+reason = "composition root boots the editor core via EditorInit::new(LauncherArgs).boot() and calls register_domain + setup_session"
 
 [[edge]]
 from   = "reovim"
@@ -76,7 +76,7 @@ reason = "composition root calls start_listener to bind the in-process UDS socke
 [[edge]]
 from   = "reovim"
 to     = "reovim-domain-text"
-reason = "wires TextHandler + TextProjector into the kernel's DomainRouter; core/ext boundary: only composition roots link ext crates"
+reason = "wires TextHandler + TextProjector into the editor core's DomainRouter; core/ext boundary: only composition roots link ext crates"
 
 [[edge]]
 from   = "reovim"
@@ -86,7 +86,7 @@ reason = "uses the public up-face facade for socket-path, borrowed-fd, and path-
 [[edge]]
 from   = "reovim"
 to     = "reovim-lib-ds"
-reason = "composition root constructs Shared<T> handles for kernel wiring; the DS-algorithm tier moved from arch to lib/ds in the reorg, so the edge is now direct"
+reason = "composition root constructs Shared<T> handles for editor-core wiring; the DS-algorithm tier moved from arch to lib/ds in the reorg, so the edge is now direct"
 
 [[edge]]
 from   = "reovim"

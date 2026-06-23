@@ -392,9 +392,9 @@ as `Mouse` growth.
 
 ### 7.3 `Text` / `Paste` payloads
 
-The payload **is** the UTF-8 bytes — no header struct. Kernel
+The payload **is** the UTF-8 bytes — no header struct. The editor core
 validates UTF-8 at ingress and bounds by
-`kernel.host.[limits].max-text-input-bytes`. `Text` is a typed
+`editor.host.[limits].max-text-input-bytes`. `Text` is a typed
 run (bracketed input); `Paste` is an explicit clipboard paste —
 same shape, distinct kind so policy modules can treat paste
 specially (e.g. no keymap interpretation).

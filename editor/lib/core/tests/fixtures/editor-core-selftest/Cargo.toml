@@ -1,0 +1,67 @@
+[package]
+name = "editor-core-selftest"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "no_std editor-core self-test runner: all editor/lib/core *_tests.rs L12 tests on the in-repo runner (#796)"
+publish = false
+
+[[bin]]
+name = "editor-core-selftest"
+path = "src/main.rs"
+# A `#![no_std] #![no_main]` test-runner bin has no libtest harness; disable
+# the test/bench/doc builds so a parent `cargo test` does not link a std
+# harness against it.
+test = false
+bench = false
+doctest = false
+
+[features]
+default = []
+# Adds one deliberately-failing test to verify the runner exits non-zero
+# (mirrors the arch-selftest inject-failure pattern).
+inject-failure = []
+
+[dependencies]
+# `runtime`: provides `_start`, panic handler, testrt runner (via arch).
+# `selftest`: compiles the editor-core sibling test modules into the lib.
+reovim-editor-core = { path = "../../..", features = ["runtime", "selftest"] }
+reovim-arch = { path = "../../../../../../arch", features = ["runtime", "selftest"] }
+# The Domain contract tier (DAG2). Its `*_tests.rs` modules register on the
+# arch testrt slice under `selftest`; linked explicitly here so those tests run
+# in this fixture (the editor core re-exports its types but the test registrations
+# need the crate object linked).
+reovim-subsys-domain = { path = "../../../../subsys/domain", features = ["selftest"] }
+# The text Domain is registered directly in the editor-core-selftest integration smoke
+# (Phase 2, #797). The editor-core crate has NO dep on this crate (core/ext boundary);
+# the bin links it here to provide the `&'static dyn` trait objects used in
+# `session_tests.rs` under `cfg(feature = "selftest")`.
+reovim-domain-text = { path = "../../../../../../editor/domains/text", features = ["selftest"] }
+reovim-system-kernel = { path = "../../../../../../system/lib/kernel" }
+reovim-uapi = { path = "../../../../../../uapi" }
+
+# The platform-handle installer this composition root drives. The fixture is
+# host-only (native-only pin per `fixtures_exec.rs`), so only the real POSIX
+# provider is needed — no bare-metal scaffold branch.
+[dependencies.reovim-platform-linux-native]
+path = "../../../../../../platform/linux-native"
+
+# The per-target language floor (SP03): supplies `_start`, the `entry!` shim,
+# the `#[panic_handler]`, `rust_eh_personality`, and the `mem` intrinsics as LINK
+# symbols (relocated out of arch). Each target cfg names its real floor crate
+# directly (a single dep key cannot map to different source paths across target
+# blocks — Cargo rejects that); `src/main.rs` picks the active one with a
+# cfg-gated `use <floor_crate>::entry;` import. This fixture is host-only (Linux),
+# so only the two Linux floor crates are linked.
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
+reovim-arch-floor-linux-x86-64 = { path = "../../../../../../arch/floor-linux-x86-64", features = ["runtime"] }
+
+[target.'cfg(all(target_os = "linux", target_arch = "aarch64"))'.dependencies]
+reovim-arch-floor-linux-aarch64 = { path = "../../../../../../arch/floor-linux-aarch64", features = ["runtime"] }
+
+[lints]
+workspace = true

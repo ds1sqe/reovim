@@ -65,7 +65,7 @@ on the client side).
 
 Per 1.3 §2:
 
-- **Embedded.** Launcher process holds the Kernel and the platform
+- **Embedded.** Launcher process holds the EditorCore and the platform
   runtime side-by-side; transport is in-memory adapter.
 - **Subprocess.** Launcher forks `reovim-server` and the platform
   binary. Transport is the configured framed-protocol profile.
@@ -81,7 +81,7 @@ the args.
 Each platform may ship its own per-platform config schema (1.5):
 
 - `[platform.tui]` — terminal capabilities, scrollback (a sub-section
-  of `kernel.shell.[ui]` perhaps; or a participant `platform.tui`
+  of `editor.shell.[ui]` perhaps; or a participant `platform.tui`
   with its own schema).
 - `[platform.web]` — bundle preferences, DOM target IDs.
 
@@ -126,7 +126,7 @@ co-implements both.
 ### 6.3 Mode-varying layers
 
 ```
-        client kernel  [Math, mode-invariant]
+        client core  [Math, mode-invariant]
         raw-input pipeline  +  frame/cell render  +  module host
    ┌──────────────┴───────────────┐
    ▼ INPUT capability             ▼ OUTPUT capability

@@ -1,8 +1,8 @@
 # Coverage Ledger — #796 Kernel Boot Core
 
-Scope: `server/lib/kernel` (boot stages, DS12 event bus, log ring/renderer/
+Scope: `editor/lib/core` (boot stages, DS12 event bus, log ring/renderer/
 sink, AB12 seam registration, panic-flush mirror). Flight environment:
-the `kernel-selftest` + `kernel-panic-{halt,recover}` fixture bins on the
+the `editor-core-selftest` + `kernel-panic-{halt,recover}` fixture bins on the
 arch no_std runner, instrumented via the arch-owned profiler runtime
 (`scripts/coverage-fixtures.sh`), merged with `llvm-profdata`.
 
@@ -30,7 +30,7 @@ success under `cfg(feature = "selftest")` — the arch seams are
 process-global write-once statics, and the selftest runner boots the
 kernel repeatedly in one process, so the second boot would otherwise be
 unable to run at all. The production `Err` arm therefore cannot flow in
-the only environment that executes kernel tests: the arm's reachability
+the only environment that executes editor-core tests: the arm's reachability
 is excluded by the same `cfg` that enables measurement.
 
 Covering mechanism that would invalidate this entry: a per-process-reset

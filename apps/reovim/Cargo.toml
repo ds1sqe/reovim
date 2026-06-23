@@ -30,7 +30,7 @@ reovim-platform-tui = { path = "../../client/platforms/tui" }
 # terminal contract by this composition root.
 reovim-system-kernel = { path = "../../system/lib/kernel" }
 # Server-side kernel + runtime.
-reovim-kernel       = { path = "../../editor/lib/kernel" }
+reovim-editor-core       = { path = "../../editor/lib/core" }
 reovim-server-rt    = { path = "../../editor/lib/server" }
 # Text Domain (ext crate; only composition roots link it — core/ext boundary).
 reovim-domain-text  = { path = "../../editor/domains/text" }

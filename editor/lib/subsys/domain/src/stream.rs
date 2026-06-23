@@ -26,7 +26,7 @@ pub enum StreamState {
     Init,
     /// Bytes may flow.
     Running,
-    /// Kernel backpressure is currently blocking new bytes.
+    /// EditorCore backpressure is currently blocking new bytes.
     BackpressureBlocked,
     /// Underlying source ended; buffered bytes may drain.
     Stale,
@@ -75,7 +75,7 @@ impl StreamState {
 pub struct BackpressureCounters {
     /// Bytes accepted by `emit` but not yet applied.
     pub bytes_in_flight: u64,
-    /// Kernel-owned queued bytes.
+    /// EditorCore-owned queued bytes.
     pub bytes_buffered: u64,
     /// Monotonic last-drain time in milliseconds.
     pub last_drain_at_ms: u64,
@@ -149,8 +149,8 @@ pub enum BackpressureBlock {
 pub enum StreamControlClass {
     /// Op `0`, always rejected.
     Invalid,
-    /// Kernel-defined, kind-agnostic protocol op (`1..=100`).
-    Kernel,
+    /// EditorCore-defined, kind-agnostic protocol op (`1..=100`).
+    EditorCore,
     /// Scheme-private op (`101..=255`).
     SchemePrivate,
     /// Reserved for future catalog evolution.
@@ -162,16 +162,16 @@ pub enum StreamControlClass {
 /// ```rust
 /// use reovim_subsys_domain::stream::{StreamControlClass, StreamControlOp};
 ///
-/// assert_eq!(StreamControlOp::new(1).class(), StreamControlClass::Kernel);
+/// assert_eq!(StreamControlOp::new(1).class(), StreamControlClass::EditorCore);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StreamControlOp(u32);
 
 impl StreamControlOp {
-    /// Kernel inspect op.
-    pub const KERNEL_INSPECT: Self = Self(1);
-    /// Kernel drain op.
-    pub const KERNEL_DRAIN: Self = Self(2);
+    /// EditorCore inspect op.
+    pub const EDITOR_CORE_INSPECT: Self = Self(1);
+    /// EditorCore drain op.
+    pub const EDITOR_CORE_DRAIN: Self = Self(2);
 
     /// Wraps a raw op.
     ///
@@ -190,7 +190,7 @@ impl StreamControlOp {
     /// ```rust
     /// use reovim_subsys_domain::stream::StreamControlOp;
     ///
-    /// assert_eq!(StreamControlOp::KERNEL_DRAIN.as_u32(), 2);
+    /// assert_eq!(StreamControlOp::EDITOR_CORE_DRAIN.as_u32(), 2);
     /// ```
     #[must_use]
     pub const fn as_u32(self) -> u32 {
@@ -209,7 +209,7 @@ impl StreamControlOp {
     pub const fn class(self) -> StreamControlClass {
         match self.0 {
             0 => StreamControlClass::Invalid,
-            1..=100 => StreamControlClass::Kernel,
+            1..=100 => StreamControlClass::EditorCore,
             101..=255 => StreamControlClass::SchemePrivate,
             _ => StreamControlClass::Reserved,
         }
@@ -274,7 +274,7 @@ impl StreamOpts {
     }
 }
 
-/// Kernel-side stream handle state (§4.4 §1).
+/// EditorCore-side stream handle state (§4.4 §1).
 ///
 /// ```rust,no_run
 /// // no_run: requires arch allocator runtime for the scheme name.

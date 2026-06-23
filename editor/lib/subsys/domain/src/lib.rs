@@ -3,7 +3,7 @@
 //! This crate holds the contract surface shared between the kernel (which
 //! routes through it) and `ext/server/domain/*` Domains (which implement it).
 //! Per the layer DAG, the contract tier depends only on Foundation
-//! (`reovim-arch`); both `ServerKernel` and `ServerExt` are permitted to
+//! (`reovim-arch`); both `EditorCore` and `ServerExt` are permitted to
 //! depend on `ServerContracts`, but not on each other. Moving these types here
 //! is what lets `reovim-domain-text` drop its kernel dependency without
 //! breaking the kernel ← contract ← ext layering.
@@ -23,8 +23,8 @@
 //! | [`stream`] | stream state, backpressure, scheme/handle metadata |
 //!
 //! The kernel re-exports these at their historical paths
-//! (`reovim_kernel::router::*`, `reovim_kernel::projection::*`,
-//! `reovim_kernel::session::{BufferId, WindowId}`) so existing consumers compile
+//! (`reovim_editor_core::router::*`, `reovim_editor_core::projection::*`,
+//! `reovim_editor_core::session::{BufferId, WindowId}`) so existing consumers compile
 //! unchanged.
 #![no_std]
 
@@ -41,7 +41,8 @@ pub mod tree;
 // Re-export the contract types at the crate root for ergonomic consumption.
 pub use {
     carrier::{
-        CarrierStatus, CursorCarrier, CursorHeader, KERNEL_FLAG, PositionCarrier, PositionHeader,
+        CarrierStatus, CursorCarrier, CursorHeader, EDITOR_CORE_FLAG, PositionCarrier,
+        PositionHeader,
     },
     contract::{OnRawInputHandler, RawInputResult, RenderProjector},
     id::{
@@ -77,7 +78,7 @@ pub use {
     },
 };
 
-// ── L12 sibling test files (kernel-selftest bin runs these) ───────────────────
+// ── L12 sibling test files (editor-core-selftest bin runs these) ───────────────────
 //
 // Tests live in sibling `*_tests.rs` files compiled under the `selftest`
 // feature; there are no inline `#[cfg(test)] mod tests {}` blocks anywhere in

@@ -62,8 +62,8 @@ pub enum Category {
     Foundation,
     /// `editor/lib/subsys/*`
     ServerContracts,
-    /// `editor/lib/kernel/*`
-    ServerKernel,
+    /// `editor/lib/core/*`
+    EditorCore,
     /// `editor/lib/server/*` — Framed-protocol and dispatch glue.
     ServerRuntime,
     /// `client/lib/subsys/*`
@@ -83,7 +83,7 @@ impl fmt::Display for Category {
         let name = match self {
             Self::Foundation => "foundation",
             Self::ServerContracts => "server-contracts",
-            Self::ServerKernel => "server-kernel",
+            Self::EditorCore => "editor-core",
             Self::ServerRuntime => "server-runtime",
             Self::ClientContracts => "client-contracts",
             Self::ServerExt => "server-ext",
@@ -169,9 +169,9 @@ pub fn default_category_table() -> Vec<(String, Category)> {
         // old server/lib/*, ext/server/*, and ext/client/* rows are intentionally
         // absent because they match no crate after the rename.
         ("editor/lib/subsys/*", Category::ServerContracts),
-        // editor/lib/kernel (exact) + wildcard for sub-crates.
-        ("editor/lib/kernel", Category::ServerKernel),
-        ("editor/lib/kernel/*", Category::ServerKernel),
+        // editor/lib/core (exact) + wildcard for sub-crates.
+        ("editor/lib/core", Category::EditorCore),
+        ("editor/lib/core/*", Category::EditorCore),
         // editor/lib/server* and editor/lib/runtime* → ServerRuntime.
         // Wildcard suffix matches server/runtime crates one or more levels deep.
         ("editor/lib/server", Category::ServerRuntime),
@@ -498,7 +498,7 @@ pub struct Crate {
 /// use reovim_depgraph::{DepEntry, DepTable};
 ///
 /// let e = DepEntry {
-///     name: "reovim-kernel".to_owned(),
+///     name: "reovim-editor-core".to_owned(),
 ///     table: DepTable::Dependencies,
 ///     is_path: true,
 ///     is_workspace_true: false,
@@ -739,7 +739,7 @@ impl std::error::Error for ProbeError {}
 /// let catalog = Catalog {
 ///     edge: vec![CatalogEdge {
 ///         from: "reovim".to_owned(),
-///         to: "reovim-kernel".to_owned(),
+///         to: "reovim-editor-core".to_owned(),
 ///         gate: None,
 ///         reason: "top-level compositor".to_owned(),
 ///     }],
@@ -1342,8 +1342,8 @@ pub fn classify(path: &str, table: &[(String, Category)]) -> Result<Category, Vi
         [(_, category)] => Ok(*category),
         many => {
             // Ambiguity is a CATEGORY conflict, not pattern overlap: an exact
-            // entry and its own wildcard (e.g. `editor/lib/kernel` and
-            // `editor/lib/kernel/*`, both server-kernel) agree, and agreement
+            // entry and its own wildcard (e.g. `editor/lib/core` and
+            // `editor/lib/core/*`, both editor-core) agree, and agreement
             // is a classification, not a violation.
             let first = many[0].1;
             if many.iter().all(|(_, c)| *c == first) {
@@ -1371,11 +1371,11 @@ const fn allowed_categories(from: Category) -> &'static [Category] {
     match from {
         Category::Foundation | Category::Apps | Category::Tools => &[],
         Category::ServerContracts | Category::ClientContracts => &[Category::Foundation],
-        Category::ServerKernel | Category::ServerExt => {
+        Category::EditorCore | Category::ServerExt => {
             &[Category::ServerContracts, Category::Foundation]
         }
         Category::ServerRuntime => &[
-            Category::ServerKernel,
+            Category::EditorCore,
             Category::ServerContracts,
             Category::Foundation,
         ],
@@ -2130,7 +2130,7 @@ fn check_source_for_l11_violations(file: &Path, text: &str, violations: &mut Vec
 // ── helpers shared across SP01 probes ────────────────────────────────────────
 
 /// Returns `true` when `path` (workspace-relative, `/`-separated) starts with
-/// the given prefix component(s).  For example, `path_starts_with("editor/lib/kernel/foo", "editor")`
+/// the given prefix component(s).  For example, `path_starts_with("editor/lib/core/foo", "editor")`
 /// returns `true`.
 ///
 /// This is a component-prefix check, not a byte-prefix check, so
@@ -2149,7 +2149,7 @@ fn path_starts_with(path: &str, prefix: &str) -> bool {
 ///
 /// Note: the check is path-component-prefix only — the swap-set directory must
 /// be the SECOND component of a workspace-relative path (e.g. `<root>/<set>/<leaf>`).
-/// A crate at `editor/lib/kernel` is NOT a swap-set leaf by this rule (its second
+/// A crate at `editor/lib/core` is NOT a swap-set leaf by this rule (its second
 /// component is `lib`, a kernel-internal path, not a swap-set dir); only
 /// `editor/`, `client/`, or `system/` swap-sets count.
 #[must_use]

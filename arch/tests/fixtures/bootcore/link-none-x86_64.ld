@@ -10,7 +10,7 @@
  * baked at link time, which the 32-bit prologue relies on (it loads symbol
  * addresses as disp32 immediates before paging is on).
  *
- * Boot-core links the real kernel, so it has no arch_test! section — unlike the
+ * Boot-core links the real editor core, so it has no arch_test! section — unlike the
  * selftest fixture's x86 script, there is no reovim_arch_tests bracket here.
  */
 ENTRY(_start)

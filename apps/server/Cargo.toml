@@ -24,10 +24,10 @@ doctest = false
 reovim-platform-linux-native = { path = "../../platform/linux-native" }
 # Heap-DS algorithms (Shared).
 reovim-lib-ds    = { path = "../../lib/ds" }
-reovim-kernel    = { path = "../../editor/lib/kernel" }
+reovim-editor-core    = { path = "../../editor/lib/core" }
 reovim-server-rt = { path = "../../editor/lib/server" }
 # World system-kernel bridge. The composition root obtains up-face panic/log
-# control implementations here and passes them into editor-kernel LauncherArgs.
+# control implementations here and passes them into editor-core LauncherArgs.
 reovim-system-kernel = { path = "../../system/lib/kernel" }
 # Text Domain (ext crate; only composition roots link it — core/ext boundary).
 reovim-domain-text = { path = "../../editor/domains/text" }

@@ -22,7 +22,8 @@ and `08-Client/01-Layer-Model.md` (`CL*`).
 ├─────────────────────────────────────────────────────────────────┤
 │ RUNTIME       editor/lib/server/* (framed protocol, dispatch glue) │
 ├─────────────────────────────────────────────────────────────────┤
-│ KERNEL        editor/lib/kernel/* (Kernel, registries, scheduler) │
+│ EDITOR CORE   editor/lib/core/* (EditorCore)                   │
+│               registries, sessions, services, editor state       │
 ├─────────────────────────────────────────────────────────────────┤
 │ CONTRACTS     editor/lib/subsys/* (closed server contracts)     │
 │               client/lib/subsys/* (closed client contracts)     │
@@ -32,15 +33,15 @@ and `08-Client/01-Layer-Model.md` (`CL*`).
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**Kernel naming note.** The `KERNEL` tier in this diagram is the
-**editor/server kernel** (`editor/lib/kernel/*`): the Math-layer mechanism
-for sessions, registries, scheduling, and editor state. It is not the
-World-layer **system kernel**. The system-kernel crate lives in Foundation as
-`system/lib/kernel`: it is the bridge from the product-facing `uapi/*` face
-to the machine-facing `kabi/*` face, carrying common World services such as
-boot assembly, console/splash policy, device inventory shaping, and FDT
-policy over caller-supplied facts and surfaces. It is not hardware-specific
-and may not import `arch-*`, `arch-sys-*`, `arch-floor-*`, or `platform-*`.
+**Kernel naming note.** New architecture prose reserves unqualified
+**kernel** for the World-layer **system kernel**. The product Math mechanism
+at `editor/lib/core/*` is the **editor core** (`reovim-editor-core`). The
+system-kernel crate lives in Foundation as `system/lib/kernel`: it is the
+bridge from the product-facing `uapi/*` face to the machine-facing `kabi/*`
+face, carrying common World services such as boot assembly, console/splash
+policy, device inventory shaping, and FDT policy over caller-supplied facts and
+surfaces. It is not hardware-specific and may not import `arch-*`,
+`arch-sys-*`, `arch-floor-*`, or `platform-*`.
 
 ### 1.1 Foundation stack (up-face / down-face)
 
@@ -103,15 +104,15 @@ Reading the stack:
 | Boundary | Surface | Crossing rule |
 |---|---|---|
 | Foundation → Contracts | Rust types, traits | foundation never depends on contracts. |
-| Contracts → Kernel | Rust types, traits | kernel never reaches into ext. |
-| Kernel → Runtime | Rust types | runtime composes kernel; no upward dep. |
-| Kernel/Runtime ↔ Ext (cdylib) | `#[repr(C)]` ABI, opaque handles, primitive bytes | no Rust trait object crosses; see 6.1. |
+| Contracts → Editor core | Rust types, traits | editor core never reaches into ext. |
+| Editor core → Runtime | Rust types | runtime composes editor core; no upward dep. |
+| Editor core/Runtime ↔ Ext (cdylib) | `#[repr(C)]` ABI, opaque handles, primitive bytes | no Rust trait object crosses; see 6.1. |
 | Apps → Sibling apps | only via launcher's `embedded-*` features (see 1.3) | non-launcher apps may not link sibling apps. |
 | Runtime → Tools | forbidden | tools may compose tiers for testing only. |
 
 ## 3. Mechanism vs policy
 
-| Concern | Mechanism (kernel) | Policy (ext) |
+| Concern | Mechanism (editor core) | Policy (ext) |
 |---|---|---|
 | Buffer storage | mm/, scheduler, dispatch, IPC | which Domain mounts where |
 | Input | `RawInput { kind, payload }` framing | keymaps, modes, motions, registers, leaders |
@@ -122,7 +123,7 @@ Reading the stack:
 
 ## 4. What this chapter forbids
 
-- Kernel may not import any ext crate.
+- Editor core may not import any ext crate.
 - Contracts may not import any ext crate.
 - Apps (other than launcher) may not link sibling apps.
 - Tools may not be linked from any shipping crate.

@@ -7,7 +7,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "Bare-metal boot-core: runs the real reovim-kernel Init::boot on the freestanding floor (QEMU raspi4b aarch64 with UART + framebuffer console; QEMU q35 x86_64 Multiboot1, UART-only) and streams the boot-stage log"
+description = "Bare-metal boot-core: runs the real reovim-editor-core EditorInit::boot on the freestanding floor (QEMU raspi4b aarch64 with UART + framebuffer console; QEMU q35 x86_64 Multiboot1, UART-only) and streams the boot-stage log"
 publish = false
 
 [[bin]]
@@ -22,17 +22,17 @@ doctest = false
 
 [dependencies]
 # The platform floor with `runtime` (links `_start`, the `entry!` shim, the
-# `#[panic_handler]` lang item, and the `#[global_allocator]` the kernel needs).
+# `#[panic_handler]` lang item, and the `#[global_allocator]` the editor core needs).
 reovim-arch = { path = "../../..", features = ["runtime"] }
-# The real reovim kernel — this bin boots it on the bare-metal floor.
-reovim-kernel = { path = "../../../../editor/lib/kernel" }
+# The real editor core — this bin boots it on the bare-metal floor.
+reovim-editor-core = { path = "../../../../editor/lib/core" }
 # The World system-kernel bridge: arch-free boot-info/device-inventory shaping,
 # console policy, fonts, color, and FDT enumeration. Raw facts are gathered by
 # this composition root and passed into the bridge as data.
 reovim-system-kernel = { path = "../../../../system/lib/kernel", features = ["runtime"] }
 
 # The platform-handle installer this composition root drives, cfg-split by
-# target so exactly one links per build. The kernel boot allocates + writes
+# target so exactly one links per build. The editor-core boot allocates + writes
 # through the handle, so it must install first. A hosted Linux build gets the
 # real linux-native provider; freestanding builds get the bare-metal stub.
 [target.'cfg(target_os = "linux")'.dependencies]

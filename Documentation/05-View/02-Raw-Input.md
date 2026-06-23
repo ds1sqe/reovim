@@ -116,6 +116,6 @@ Excess returns `ErrorCode::ResourceExhausted` and DS12 emits.
 | Behaviour | Fixture |
 |---|---|
 | Payload layouts | Golden offset/size tests per kind per target triple (6.3 §7; CF4). |
-| Key-free invariant | Kernel source contains no keymap/mode/motion parsing; CI grep + review gate. |
+| Key-free invariant | Editor-core source contains no keymap/mode/motion parsing; CI grep + review gate. |
 | IME pass-through | `Ime` events reach the focused Domain handler unmodified through a keymap module. |
 | JSON boundary | CLI replay round-trips each kind through its JSON schema with byte-identical `#[repr(C)]` records. |

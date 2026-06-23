@@ -1,8 +1,9 @@
 # `system/` — the World system-kernel root
 
-The settled tree carries three kernel roots: `editor/` (the Math editor
-kernel), `client/` (the Math client kernel), and `system/` (the World system
-kernel — KERNEL 1).
+The settled vocabulary reserves **kernel** for this World-layer root.
+Product-side mechanisms are cores: `editor/` carries the editor core and
+`client/` carries client-side platform/core pieces. The system kernel is the
+only normal bridge from product-facing `uapi/*` to machine-facing `kabi/*`.
 
 ## Crates
 

@@ -2,7 +2,7 @@
 
 **Scope.** What constitutes the ABI surface: the boundary every
 runtime-loaded cdylib crosses, what kinds of types are allowed at
-that boundary, what the kernel pins and what it lets the cdylib
+that boundary, what the editor core pins and what it lets the cdylib
 choose.
 
 **Heritage.** #789 static registry loader.
@@ -21,13 +21,13 @@ Two contracts live at the ABI boundary:
   `size_of_self` guard, version gates — 6.2 §2) applies identically
   to both conforming loader realizations:
 
-  1. **Dynamic loader** — `dlopen`-based. The kernel locates the
+  1. **Dynamic loader** — `dlopen`-based. The editor core locates the
      cdylib at the library-root path, calls `dlopen`, reads the
      exported vtable symbol, and applies the 6.2 §2 load rules.
      See 6.2 §2.1.
 
   2. **Static registry** — vtables embedded in a known linker section
-     and walked at boot. The kernel iterates the section to discover
+     and walked at boot. The editor core iterates the section to discover
      and register each module's vtable before any module reaches
      `Active` state. The vtable contract is identical; no `dlopen`
      call is made. The in-tree `arch_test!` distributed-slice pattern
@@ -66,9 +66,9 @@ Two contracts live at the ABI boundary:
 - **`enum` without `#[repr(...)]`** never crosses; tagged unions
   use `#[repr(C, u8)]` or a sibling discriminator.
 
-## 4. Kernel-pinned vs cdylib-chosen
+## 4. Editor-core-pinned vs cdylib-chosen
 
-| Pinned by kernel | Chosen by cdylib |
+| Pinned by editor core | Chosen by cdylib |
 |---|---|
 | `VtableHeader` shape (AB3) | vtable body (after header) |
 | `AbiVersion` major rejection rule | declared `AbiVersion` value |

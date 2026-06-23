@@ -51,7 +51,7 @@ abi  = "1.0"
 
 - **L23**: max view-state size per slot (configured limit).
 - **per-window**: bounded count of slots; cap from
-  `kernel.host.[limits].max-slots-per-window`.
+  `editor.host.[limits].max-slots-per-window`.
 
 Allocation past either cap returns `ResourceExhausted`.
 

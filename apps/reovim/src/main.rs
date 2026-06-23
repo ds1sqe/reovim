@@ -1,16 +1,16 @@
 //! `reovim` — the composition root launcher (#797 Phase 4).
 //!
-//! Boots the server runtime (kernel + text Domain + UDS listener) and the TUI
+//! Boots the server runtime (editor core + text Domain + UDS listener) and the TUI
 //! client in a single process (in-process composition). The real UDS carrier is
 //! exercised end-to-end: the TUI client connects over the socket the server
-//! runtime listens on, exercising the framed protocol over a real kernel UDS.
+//! runtime listens on, exercising the framed protocol over a real UDS carrier.
 //!
 //! ## Deviation from the plan's subprocess language
 //!
 //! The plan (Phase 4, pin-2) specifies subprocess UDS composition (fork/exec
 //! `reovim-server`, then run the TUI). `execve` is not yet in the arch floor
 //! (only `clone`-based threads exist). Rather than adding fork/exec syscalls
-//! out of phase, the launcher uses in-process UDS composition: the kernel +
+//! out of phase, the launcher uses in-process UDS composition: the editor core +
 //! listener boot on a background thread, the TUI client runs on the main
 //! thread and connects over the same UDS socket. The real carrier is exercised
 //! identically; the process boundary is the only difference. The embedded
@@ -31,8 +31,8 @@
 
 use {
     reovim_domain_text::{TextHandler, TextProjector},
-    reovim_kernel::{
-        Init, LauncherArgs,
+    reovim_editor_core::{
+        EditorInit, LauncherArgs,
         session::{BufferId, DomainAttachmentId, SessionState, WindowId},
     },
     reovim_lib_ds::Shared,
@@ -65,7 +65,7 @@ use reovim_arch_floor_linux_x86_64::entry;
 entry!(|argc, argv, _envp| {
     // ── Install the platform vtable (SP02, AB12 write-once) ───────────────────
     // The composition root drives the install: this is the first statement of
-    // the `entry!` closure, ahead of every `kabi::handle` read (the kernel boot,
+    // the `entry!` closure, ahead of every `kabi::handle` read (the editor-core boot,
     // socket bridge, and fs bridge), so the no-read-before-install invariant
     // holds. The result is ignored by construction — this is the sole process
     // entry, so a second install cannot occur here.
@@ -93,24 +93,24 @@ entry!(|argc, argv, _envp| {
         DEFAULT_SOCKET
     };
 
-    // ── Boot the kernel ───────────────────────────────────────────────────────
-    let kernel_args = LauncherArgs {
+    // ── Boot the editor core ──────────────────────────────────────────────────
+    let editor_core_args = LauncherArgs {
         clock: clock_control(),
         log: log_sink_control(),
         panic: panic_control(),
         thread: thread_control(),
         ..LauncherArgs::default()
     };
-    let kernel = match Init::new(kernel_args).boot() {
+    let editor_core = match EditorInit::new(editor_core_args).boot() {
         Ok(k) => k,
         Err(_) => {
-            write_stderr(b"reovim: kernel boot failed\n");
+            write_stderr(b"reovim: editor core boot failed\n");
             return 1;
         }
     };
 
     // ── Register the text Domain ──────────────────────────────────────────────
-    let domain_id = match kernel.register_domain("text", &TEXT_HANDLER, &TEXT_PROJECTOR) {
+    let domain_id = match editor_core.register_domain("text", &TEXT_HANDLER, &TEXT_PROJECTOR) {
         Ok(id) => id,
         Err(_) => {
             write_stderr(b"reovim: register_domain failed\n");
@@ -125,19 +125,19 @@ entry!(|argc, argv, _envp| {
         BufferId::new(1),
         WindowId::new(1),
     );
-    kernel.setup_session(state);
+    editor_core.setup_session(state);
 
     // ── Start the UDS listener on a background thread ────────────────────────
     // Unlink any stale socket from a previous run before binding.
     let _ = path_control().unlink(socket_path);
 
-    if start_listener(&kernel, socket_path, net_control(), thread_spawner()).is_err() {
+    if start_listener(&editor_core, socket_path, net_control(), thread_spawner()).is_err() {
         write_stderr(b"reovim: start_listener failed\n");
         return 1;
     }
 
-    // Keep the kernel alive across the TUI session.
-    let _kernel_ref = Shared::clone(&kernel);
+    // Keep the editor core alive across the TUI session.
+    let _editor_core_ref = Shared::clone(&editor_core);
 
     // ── Run the TUI client (blocks until the user quits) ─────────────────────
     // The TUI client connects over the same UDS socket the listener just bound,

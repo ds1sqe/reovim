@@ -576,7 +576,7 @@ fn testrt_pilot_one_failure_exits_nonzero() {
 #[test]
 fn bootcore_boots_real_kernel_exits_zero() {
     // The first x86 `Init::boot` proof (#788 sub-plan 02): the bootcore payload
-    // boots the REAL reovim kernel on the freestanding floor, the boot-tail
+    // boots the REAL reovim system kernel on the freestanding floor, the boot-tail
     // diagnostics banner prints the Multiboot-discovered RAM, and the bin exits
     // 0 through isa-debug-exit. This is the consumer that exercises the x86
     // BootInfo provider end-to-end — empty-`BootInfo` would print memory as
@@ -594,7 +594,7 @@ fn bootcore_boots_real_kernel_exits_zero() {
     }
     let exe = build_fixture("arch-bootcore");
     let (code, serial) = run_system_image(&exe);
-    assert_eq!(code, 0, "bootcore boots the kernel and exits 0; serial: {serial:?}");
+    assert_eq!(code, 0, "bootcore boots the system kernel and exits 0; serial: {serial:?}");
     assert!(
         serial.contains("kernel booted"),
         "bootcore reached the post-boot line; serial: {serial:?}",

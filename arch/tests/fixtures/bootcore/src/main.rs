@@ -1,10 +1,10 @@
-//! Bare-metal boot-core payload: boots the REAL reovim kernel on the floor.
+//! Bare-metal boot-core payload: boots the REAL reovim editor core on the floor.
 //!
 //! Where the splash payload proves the framebuffer pipeline with a demo, this
-//! payload boots the real kernel on the freestanding floor: it discovers the
-//! machine's hardware facts, pushes them into [`Init::boot`] through
-//! [`LauncherArgs`], and lets the kernel's boot-stage log stream to the console
-//! live (UART, plus the framebuffer on aarch64). This is the `Init` -> `Kernel`
+//! payload boots the real editor core on the freestanding floor: it discovers the
+//! machine's hardware facts, pushes them into [`EditorInit::boot`] through
+//! [`LauncherArgs`], and lets the editor core's boot-stage log stream to the console
+//! live (UART, plus the framebuffer on aarch64). This is the `EditorInit` -> `EditorCore`
 //! handoff running on bare metal instead of a hosted harness — the real-runtime
 //! proof of life on the floor.
 //!
@@ -29,7 +29,7 @@
 
 use {
     reovim_arch::sys::write,
-    reovim_kernel::{Init, LauncherArgs},
+    reovim_editor_core::{EditorInit, LauncherArgs},
 };
 
 #[cfg(not(target_os = "linux"))]
@@ -169,7 +169,7 @@ fn memory_storage() -> &'static mut [MemoryRange] {
     unsafe { &mut *MEMORY.0.get() }
 }
 
-/// Ends the run after the kernel has booted.
+/// Ends the run after the editor core has booted.
 ///
 /// aarch64 parks the core in a `wfe` loop so the rendered framebuffer surface
 /// persists for a QEMU screendump. x86 is UART-only — nothing to persist — so it
@@ -202,9 +202,9 @@ use reovim_arch_floor_none_aarch64::entry;
 use reovim_arch_floor_none_x86_64::entry;
 
 entry!(|_argc, _argv, _envp| {
-    // Boot ordering — vtable-install → console-install → (kernel boot →) render —
+    // Boot ordering — vtable-install → console-install → (editor-core boot →) render —
     // enforces the no-read-before-install invariant: every `kabi::handle` read
-    // (the kernel's allocs + writes) and every fd 1/2 write runs only after the
+    // (the editor core's allocs + writes) and every fd 1/2 write runs only after the
     // handle and the console sink are standing.
     //
     // Step 1: install the platform handle as the closure's first statement,
@@ -219,11 +219,11 @@ entry!(|_argc, _argv, _envp| {
     let _ = reovim_system_kernel::sched::install_lib_ds_sync_backend();
 
     // Step 2 (aarch64): stand up the system kernel's framebuffer console as the
-    // floor's fd 1/2 write sink, before the first `write` below. The kernel's
+    // floor's fd 1/2 write sink, before the first `write` below. The editor core's
     // boot-stage log (its own fd-2 stderr echo included) then renders on the
     // HDMI surface as well as the UART, drawn through the JetBrains Mono coverage
     // font over the console's retained-content grid. The install is the system
-    // kernel's own boot action now — no fixture-side `console::install` glue. If
+    // system kernel's own boot action now — no fixture-side `console::install` glue. If
     // the mailbox alloc or the one-shot screen-grid hand-out fails, the floor
     // stays UART-only.
     #[cfg(all(target_os = "none", target_arch = "aarch64"))]
@@ -235,12 +235,12 @@ entry!(|_argc, _argv, _envp| {
     // vtable is standing — the freestanding stub-none provider on bare metal,
     // the linux-native provider on a hosted build.
     #[cfg(not(target_os = "linux"))]
-    let _ = write(1, b"\nreovim kernel boot on bare metal [provider: stub-none]\n");
+    let _ = write(1, b"\nreovim editor-core boot on bare metal [provider: stub-none]\n");
     #[cfg(target_os = "linux")]
-    let _ = write(1, b"\nreovim kernel boot on bare metal [provider: linux-native]\n");
+    let _ = write(1, b"\nreovim editor-core boot on bare metal [provider: linux-native]\n");
 
     // Discover the machine's real hardware facts (RAM / CPU) and push them into
-    // the kernel at entry through `LauncherArgs.boot_info`. The boot-tail
+    // the editor core at entry through `LauncherArgs.boot_info`. The boot-tail
     // diagnostics banner prints them on the live console.
     let boot_info = {
         #[cfg(target_os = "linux")]
@@ -306,14 +306,14 @@ entry!(|_argc, _argv, _envp| {
         ..LauncherArgs::default()
     };
 
-    // Boot the REAL reovim kernel on the freestanding floor. Its boot-stage log
-    // streams to the console live via the kernel's own stderr echo (fd 2 ->
+    // Boot the REAL reovim editor core on the freestanding floor. Its boot-stage log
+    // streams to the console live via the editor core's own stderr echo (fd 2 ->
     // file_write -> the floor's write fan-out) — no manual ring drain.
-    let Ok(_kernel) = Init::new(args).boot() else {
-        let _ = write(1, b"kernel boot FAILED\n");
+    let Ok(_editor_core) = EditorInit::new(args).boot() else {
+        let _ = write(1, b"editor core boot FAILED\n");
         finish(70);
     };
 
-    let _ = write(1, b"kernel booted\n");
+    let _ = write(1, b"editor core booted\n");
     finish(0);
 });

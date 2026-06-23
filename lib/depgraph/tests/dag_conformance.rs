@@ -64,8 +64,8 @@ fn dag1_unknown_path_crate_produces_unknown_path_violation() {
 
 // ── DAG2: ForbiddenEdge ───────────────────────────────────────────────────────
 
-/// DAG2: `lib/alpha` (Foundation) → `editor/lib/kernel/beta` (`ServerKernel`)
-/// is a forbidden edge: Foundation may not depend on `ServerKernel`.
+/// DAG2: `lib/alpha` (Foundation) → `editor/lib/core/beta` (`EditorCore`)
+/// is a forbidden edge: Foundation may not depend on `EditorCore`.
 /// Spec 1.2 §2: Foundation has no allowed outbound categories.
 #[test]
 fn dag2_lib_to_server_kernel_produces_forbidden_edge_violation() {
@@ -74,18 +74,18 @@ fn dag2_lib_to_server_kernel_produces_forbidden_edge_violation() {
     common::write_file(
         root,
         "Cargo.toml",
-        &root_workspace_toml(r#""lib/alpha", "editor/lib/kernel/beta""#),
+        &root_workspace_toml(r#""lib/alpha", "editor/lib/core/beta""#),
     );
-    // lib/alpha depends on editor/lib/kernel/beta (forbidden: Foundation → ServerKernel).
+    // lib/alpha depends on editor/lib/core/beta (forbidden: Foundation → EditorCore).
     common::write_file(
         root,
         "lib/alpha/Cargo.toml",
         &format!(
-            "{}\n[dependencies]\nbeta = {{ path = \"../../editor/lib/kernel/beta\" }}\n",
+            "{}\n[dependencies]\nbeta = {{ path = \"../../editor/lib/core/beta\" }}\n",
             pkg_toml("alpha")
         ),
     );
-    common::write_file(root, "editor/lib/kernel/beta/Cargo.toml", &pkg_toml("beta"));
+    common::write_file(root, "editor/lib/core/beta/Cargo.toml", &pkg_toml("beta"));
 
     let config = empty_config();
     let report = run_probe(root, &config).expect("probe must run");

@@ -75,6 +75,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-editor-core"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-lib-ds",
+ "reovim-subsys-domain",
+ "reovim-uapi",
+]
+
+[[package]]
 name = "reovim-kabi-panic"
 version = "0.16.0-dev"
 dependencies = [
@@ -84,16 +94,6 @@ dependencies = [
 [[package]]
 name = "reovim-kabi-platform"
 version = "0.16.0-dev"
-
-[[package]]
-name = "reovim-kernel"
-version = "0.16.0-dev"
-dependencies = [
- "reovim-arch",
- "reovim-lib-ds",
- "reovim-subsys-domain",
- "reovim-uapi",
-]
 
 [[package]]
 name = "reovim-lib-ds"
@@ -117,7 +117,7 @@ name = "reovim-server-rt"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
- "reovim-kernel",
+ "reovim-editor-core",
  "reovim-lib-ds",
  "reovim-subsys-domain",
  "reovim-uapi",
@@ -223,7 +223,7 @@ dependencies = [
  "reovim-arch-floor-linux-aarch64",
  "reovim-arch-floor-linux-x86-64",
  "reovim-domain-text",
- "reovim-kernel",
+ "reovim-editor-core",
  "reovim-lib-ds",
  "reovim-platform-linux-native",
  "reovim-server-rt",

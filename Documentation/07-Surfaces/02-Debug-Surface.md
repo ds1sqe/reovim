@@ -203,7 +203,7 @@ Decoding happens at the client capability boundary, not the server.
    is fixed in §5.1; the full session-capability vocabulary
    belongs to 7.3.
 2. Whether drive operations are rate-limited at the transport level.
-   Default: yes, configurable in `kernel.host.[limits]`.
+   Default: yes, configurable in `editor.host.[limits]`.
 3. Replay of recorded debug streams — out of target as a feature,
    but the schema must not foreclose it.
 

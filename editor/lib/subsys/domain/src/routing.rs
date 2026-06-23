@@ -2,8 +2,8 @@
 //!
 //! This module contains the in-process data contracts for manifests,
 //! handler/projector identifiers, DT10 priority validation, and DT17
-//! deterministic ordering metadata. Kernel-owned maps and dispatch loops live
-//! in `reovim-kernel`; these types are the shared surface those maps store.
+//! deterministic ordering metadata. EditorCore-owned maps and dispatch loops live
+//! in `reovim-editor-core`; these types are the shared surface those maps store.
 
 use reovim_lib_ds::{Bytes, Seq};
 

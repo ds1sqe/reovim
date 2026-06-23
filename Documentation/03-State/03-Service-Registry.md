@@ -92,7 +92,7 @@ Unregister:
   but row remains hidden.
 
 Lease and unregister timeouts are kernel-wide in v0.16:
-`kernel.host.[limits].service-lease-timeout-ms`. Per-service timeout
+`editor.host.[limits].service-lease-timeout-ms`. Per-service timeout
 configuration would require service-specific schema parsing inside the
 registry and is out of target.
 

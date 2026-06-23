@@ -114,8 +114,8 @@ bodies — the body is opaque bytes to the carrier.
 > to the server. The connection IS the client identity (no separate
 > create or login). The default and fastest transport is a Unix-domain
 > stream socket at the path resolved from
-> `kernel.host.[transport].socket-path`. A TCP listener at
-> `kernel.host.[transport].listen-addr` is the opt-in remote transport
+> `editor.host.[transport].socket-path`. A TCP listener at
+> `editor.host.[transport].listen-addr` is the opt-in remote transport
 > (SEC2 auth applies). The protocol is byte-identical on both. *Class*:
 > kernel-enforced (runtime).
 
@@ -144,7 +144,7 @@ header followed by exactly `body_len` body bytes:
 > correlation_id: u64)`, all little-endian, followed by exactly
 > `body_len` body bytes. A reader frames the stream by reading 16
 > bytes, then `body_len` bytes. `body_len` MUST NOT exceed
-> `kernel.host.[limits].wire-max-frame-bytes`; a larger declared length
+> `editor.host.[limits].wire-max-frame-bytes`; a larger declared length
 > is a protocol violation and the connection is closed with a reject
 > frame (§9). *Class*: kernel-enforced (runtime).
 
@@ -396,7 +396,7 @@ A `DomainEntry` is a nested struct (CR9):
 `AttachEvent::DomainTableDelta` carries `added` / `removed` lists on
 codec register/unregister. A client lacking a local codec for a
 `(domain_name, inner_id)` follows the CR10 fallback. Entry count is
-bounded by `kernel.host.[limits].max-domain-table-entries` (CR17 —
+bounded by `editor.host.[limits].max-domain-table-entries` (CR17 —
 the carrier-tier cap, not a transport rename).
 
 
@@ -484,7 +484,7 @@ on a malformed `Hello`) and closes. No other frame may precede the
 
 Per-connection window flow control governs the server→client notify
 stream and client→server input. Limits live under
-`kernel.host.[limits].wire-*` (transport-neutral keys; see the
+`editor.host.[limits].wire-*` (transport-neutral keys; see the
 heritage note below). The server applies CR-style flow control on
 notify-frame output (the `wire-recv-window-bytes` window); the client
 input side is

@@ -6,7 +6,8 @@ use {reovim_arch::arch_test, reovim_lib_ds::Bytes};
 
 use crate::{
     carrier::{
-        CarrierStatus, CursorCarrier, CursorHeader, KERNEL_FLAG, PositionCarrier, PositionHeader,
+        CarrierStatus, CursorCarrier, CursorHeader, EDITOR_CORE_FLAG, PositionCarrier,
+        PositionHeader,
     },
     id::DomainId,
 };
@@ -20,8 +21,8 @@ arch_test!(position_header_little_endian_layout, {
 });
 
 arch_test!(cursor_header_detects_kernel_flag, {
-    let h = CursorHeader::from_raw_parts(1, 0, KERNEL_FLAG);
-    assert!(h.has_kernel_flag());
+    let h = CursorHeader::from_raw_parts(1, 0, EDITOR_CORE_FLAG);
+    assert!(h.has_editor_core_flag());
 });
 
 arch_test!(typed_header_constructors_use_domain_id, {

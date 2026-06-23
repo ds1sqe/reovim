@@ -16,8 +16,8 @@ const DIAGNOSTIC_FD: i32 = 2;
 
 /// Returns the up-face log-sink control table backed by this bridge.
 ///
-/// Composition roots pass this value into editor/kernel launch arguments so
-/// the editor kernel does not import raw file helpers or `kabi/panic`.
+/// Composition roots pass this value into editor-core launch arguments so
+/// the editor core does not import raw file helpers or `kabi/panic`.
 ///
 /// ```rust,no_run
 /// use reovim_system_kernel::log::log_sink_control;

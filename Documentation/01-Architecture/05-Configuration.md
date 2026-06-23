@@ -14,7 +14,7 @@ env-var encoding. The ABI surface (`ConfigSlice`) lives in
 
 ## 1. Mental model
 
-The kernel is a **config service**. It holds no opinion about what
+The editor core owns the product **config service**. It holds no opinion about what
 any participant's config means. It owns:
 
 - discovering participants (artefacts that declare a config schema),
@@ -26,15 +26,15 @@ any participant's config means. It owns:
 - exposing introspection (`reovim config dump`) with per-field
   source and per-field redaction.
 
-Mechanism vs policy: the kernel owns the machinery. Each participant
+Mechanism vs policy: the editor core owns the machinery. Each participant
 owns the policy.
 
 ## 2. Participants
 
 | Kind | Namespace | Loaded at | Trust default |
 |---|---|---|---|
-| kernel/host | top-level `[transport]`, `[limits]`, `[overrides]` | `Init::boot` (L21 stage 2) | host (no project overlay) |
-| kernel/shell | top-level `[ui]`, `[editor]`, `[files]`, `[default]` | `Init::boot` (L21 stage 2) | shell (project overlay OK) |
+| editor/host | top-level `[transport]`, `[limits]`, `[overrides]` | `EditorInit::boot` (L21 stage 2) | host (no project overlay) |
+| editor/shell | top-level `[ui]`, `[editor]`, `[files]`, `[default]` | `EditorInit::boot` (L21 stage 2) | shell (project overlay OK) |
 | module | `module.<name>` | cdylib load (PM3) | per-section in schema |
 | driver | `driver.<kind>.<name>` | cdylib load (driver-load) | per-section in schema |
 | package set | `pkgs` | PM4 path | participant-owned |
@@ -78,7 +78,7 @@ A field MUST be host-class if it can:
 - change network registries, mirror URLs, fetch endpoints;
 - hold or redirect authentication material (credentials, tokens, certs);
 - change the transport surface (port, socket path, listener address);
-- disable kernel safety knobs (`[overrides]`).
+- disable editor-core safety knobs (`[overrides]`).
 
 A schema that marks any of the above as `shell` or `module-private`
 fails schema validation at load with `IllegalTrustClass`.
@@ -86,13 +86,13 @@ fails schema validation at load with `IllegalTrustClass`.
 Conformance fixture: a schema with a "command-string" field declared
 `trust = "shell"` MUST fail load.
 
-## 6. Kernel host vs shell (AL9 reshape)
+## 6. EditorCore host vs shell (AL9 reshape)
 
-The kernel itself is two participants:
+The editor core has two built-in participants:
 
-- `kernel.host` — `[transport]`, `[limits]`, `[overrides]`, plus
+- `editor.host` — `[transport]`, `[limits]`, `[overrides]`, plus
   `[default].client` (selects transport profile, so host).
-- `kernel.shell` — `[ui]`, `[editor]`, `[files]` (excluding
+- `editor.shell` — `[ui]`, `[editor]`, `[files]` (excluding
   `default.client`).
 
 Files at `${root}/host.toml` and `${root}/shell.toml` for system,
@@ -104,7 +104,7 @@ A project-layer `host.toml` is rejected at file scan with WARN
 
 ## 7. Force override
 
-Three forms, all at kernel boot time:
+Three forms, all at editor-core boot time:
 
 ```
 reovim --force-set <namespace>.<field>=<value> [...]
@@ -175,7 +175,7 @@ Vocabulary table:
 
 List/table bounds (required for `list<*>` and `table<*,*>`):
 `max-len`, `elem-max`, `max-entries`, `max-key-bytes`,
-`max-value-bytes`. Without explicit bounds, kernel caps from §11
+`max-value-bytes`. Without explicit bounds, editor-core caps from §11
 apply.
 
 `__meta` is reserved across the vocabulary.
@@ -183,15 +183,15 @@ apply.
 ## 9. Bootstrap order
 
 ```
-A. Discover and validate kernel.host. Defaults from built-in schema;
+A. Discover and validate editor.host. Defaults from built-in schema;
    layers 2..7 read in order. host config is required to:
    - resolve library root (§5 in 1.3),
    - resolve auth/transport profile,
    - resolve runtime caps for the rest of the stack.
 
-B. Discover and validate kernel.shell. Same.
+B. Discover and validate editor.shell. Same.
 
-C. Apply force-overrides into a kernel-side override map; log WARN.
+C. Apply force-overrides into an editor-core override map; log WARN.
 
 D. Resolve PM lockfile and discover modules/drivers from library root.
 
@@ -202,7 +202,7 @@ F. For each driver, same. Failure: driver tombstoned.
 G. Start the runtime.
 ```
 
-`CFG9` locks the bootstrap order: kernel.host materialises before
+`CFG9` locks the bootstrap order: editor.host materialises before
 any other participant.
 
 ## 10. Env-var encoding
@@ -240,7 +240,7 @@ env-sourced field (7.4 §7), so users never construct it by hand.
 > Schema names match `[a-z0-9-]+` per segment; the encoding is
 > exactly the four steps above; decode(encode(x)) == x for every
 > legal field path. No alternative or legacy encoding exists.
-> *Class*: kernel-enforced + CI round-trip fixture.
+> *Class*: editor-core-enforced + CI round-trip fixture.
 
 
 ## 11. Bounded resources
@@ -265,7 +265,7 @@ limits are clamped.
 For each cdylib at load time:
 
 1. Read symbols (4 required + optional `MIGRATE_FROM`).
-2. Check `REOVIM_CONFIG_ABI_VERSION` against kernel pinned version.
+2. Check `REOVIM_CONFIG_ABI_VERSION` against the editor-core pinned version.
    Mismatch → `IncompatibleConfigAbi`.
 3. Parse schema; validate vocabulary, threat model (§5),
    name regex. Any failure → `SchemaInvalid`.
@@ -325,7 +325,7 @@ having an empty schema and receives no slice.
 | Loosen range | NO | YES | none |
 | Change `trust` | YES | NO | participant-supplied |
 | Change `type` | YES | NO | participant-supplied |
-| Change `secret` | NO | YES | none (kernel applies redaction) |
+| Change `secret` | NO | YES | none (editor core applies redaction) |
 | Change `lifecycle` | NO | YES | none |
 
 ## 15. User-file metadata
@@ -352,12 +352,12 @@ schema_version = "2.0"
 profile = "256-color"
 ```
 
-If `__meta` is absent, kernel assumes user file targets the current
+If `__meta` is absent, the editor core assumes user file targets the current
 schema version; mismatch is detected at validation.
 
 ## 16. Project-root resolver
 
-For v1, project-layer directory is the launcher's `cwd` at kernel
+For v1, project-layer directory is the launcher's `cwd` at editor-core
 startup. This is provisional.
 
 > The project-root directory used to resolve layer 4 is determined
@@ -387,49 +387,49 @@ Storage in `ConfigSlice` is unredacted — participant sees real value.
 > config-bearing cdylib exports the symbols in §12 step 1. Loader
 > rejects on missing/malformed schema, ABI mismatch, threat-model
 > violation, or namespace conflict before participant init runs.
-> *Class*: kernel-enforced.
+> *Class*: editor-core-enforced.
 
 > **CFG2 — Schema defaults are authoritative.** The schema's
 > per-field `default` is the single source of truth. There is no
 > separate defaults blob symbol.
-> *Class*: kernel-enforced.
+> *Class*: editor-core-enforced.
 
 > **CFG3 — Seven-layer precedence is global.** Order: defaults,
 > system, user, project, env, CLI, force. No participant may
 > change it.
-> *Class*: kernel-enforced.
+> *Class*: editor-core-enforced.
 
 > **CFG4 — Project overlay is schema-gated.** Project-file
 > participation applies only to fields with
 > `project_overlay = true`. A project file containing a host-class
 > section fails parse with `IllegalProjectHostSection`.
-> *Class*: kernel-enforced.
+> *Class*: editor-core-enforced.
 
 > **CFG5 — Force override sits at top, logs and redacts.** §7
 > properties.
-> *Class*: kernel-enforced.
+> *Class*: editor-core-enforced.
 
 > **CFG6 — `ConfigSlice` is normalised KVP.** See
 > `06-ABI/04-Config-Slice.md`.
 > *Class*: ABI / runtime.
 
 > **CFG7 — Secret fields redacted by default everywhere.** §17.
-> *Class*: kernel-enforced.
+> *Class*: editor-core-enforced.
 
 > **CFG8 — Threat-model fields MUST be host-class.** §5. A schema
 > that violates the rule fails load with `IllegalTrustClass`.
-> *Class*: kernel-enforced.
+> *Class*: editor-core-enforced.
 
-> **CFG9 — Bootstrap host config materialises first.** §9. `Init`
-> resolves `kernel.host` (and the host-only minimum needed for
+> **CFG9 — Bootstrap host config materialises first.** §9. `EditorInit`
+> resolves `editor.host` (and the host-only minimum needed for
 > library-root and auth) before any module/driver discovery.
-> *Class*: kernel-enforced.
+> *Class*: editor-core-enforced.
 
 > **CFG10 — Env-var encoding is the reversible kebab grammar.**
 > Body in §10. All config field and namespace names use
 > kebab-case (`[a-z0-9-]+`) everywhere in the spec and
 > implementation; no snake_case config keys exist.
-> *Class*: kernel-enforced + CI round-trip fixture.
+> *Class*: editor-core-enforced + CI round-trip fixture.
 
 ## Open items
 
@@ -437,7 +437,7 @@ Storage in `ConfigSlice` is unredacted — participant sees real value.
    reversible kebab grammar locked as CFG10; percent-encoding
    rejected; all spec field names swept to kebab-case.
 2. Reloadable lifecycle for v1.x — schema attribute reserved but
-   v1 honors `boot` only. When does the kernel gain reload paths?
+   v1 honors `boot` only. When does the editor core gain reload paths?
 3. Whether `pkgs` namespace fully participates in the layer stack
    or remains gated solely by PM4. Current §2 says it participates;
    confirm against `07-Surfaces/01-Package-Manager.md` rules.
@@ -453,7 +453,7 @@ Storage in `ConfigSlice` is unredacted — participant sees real value.
 | CFG3 | Layer fixtures cover every step; force wins over CLI; CLI wins over env; etc. |
 | CFG4 | Project file with `[transport]` section (host class) → `IllegalProjectHostSection`. |
 | CFG5 | `--force-set` of an `[overrides]` field → applied + WARN logged. |
-| CFG6 | Round-trip: kernel constructs slice; participant accessor reads same values. |
+| CFG6 | Round-trip: editor core constructs slice; participant accessor reads same values. |
 | CFG7 | `secret = true` field shows `<redacted>` in `dump`; `--unsafe-show-secrets` reveals + WARN. |
 | CFG8 | Schema with shell-class command-string field → load rejected. |
 | CFG9 | Host config sentinel (e.g. `[runtime].library-root`) read before any module discovery in trace order. |

@@ -12,16 +12,16 @@
 //!
 //! ## Boot stage 6 wiring (gap-2)
 //!
-//! Stage 6 in `kernel/src/boot.rs` is a structural stub that emits
+//! Stage 6 in `editor/lib/core/src/boot.rs` is a structural stub that emits
 //! `boot.stage.{start,ok}` and performs no policy work. The composition root
-//! fills the stage-6 body by calling [`start_listener`] AFTER `Init::boot`
-//! returns, keeping the `ServerKernel → ServerRuntime` dependency direction
-//! illegal (the kernel crate does not import this crate; only the composition
+//! fills the stage-6 body by calling [`start_listener`] AFTER `EditorInit::boot`
+//! returns, keeping the `EditorCore → ServerRuntime` dependency direction
+//! illegal (the editor-core crate does not import this crate; only the composition
 //! root imports both and wires them). Gap-2 is confirmed; the stub rule permits
 //! a later phase to fill the body.
 
 use {
-    reovim_kernel::Kernel,
+    reovim_editor_core::EditorCore,
     reovim_lib_ds::Shared,
     reovim_uapi::{
         net::{NetControl, UnixListener},
@@ -47,10 +47,10 @@ pub(crate) const UNIX_PATH_MAX: usize = 107;
 /// and [`RuntimeError::Io`] when `bind` or the accept-loop thread spawn fails.
 ///
 /// ```rust,no_run
-/// // no_run: requires a live arch runtime + kernel.
+/// // no_run: requires a live arch runtime + editor core.
 /// ```
 pub fn start_listener<S>(
-    kernel: &Shared<Kernel>,
+    editor_core: &Shared<EditorCore>,
     path: &[u8],
     net: NetControl,
     spawner: S,
@@ -68,15 +68,15 @@ where
     // Bind the UDS listener at `path`.
     let listener = UnixListener::bind(net, path).map_err(|e| RuntimeError::Io(e.code()))?;
 
-    // Clone the kernel handle before moving into the accept-loop closure.
+    // Clone the editor-core handle before moving into the accept-loop closure.
     // Shared::clone is a refcount bump — it never fails.
-    let kernel_accept = Shared::clone(kernel);
+    let editor_core_accept = Shared::clone(editor_core);
 
     // Spawn the accept loop on a background thread. The loop runs for the
     // lifetime of the server process.
     spawner
         .spawn_detached(move || {
-            accept_loop(&listener, &kernel_accept, spawner);
+            accept_loop(&listener, &editor_core_accept, spawner);
         })
         .map_err(map_spawn_error)?;
 
@@ -92,7 +92,7 @@ const fn map_spawn_error(error: SpawnError) -> RuntimeError {
 
 /// Runs the accept loop: blocks on `UnixListener::accept` and spawns one
 /// connection thread per client.
-fn accept_loop<S>(listener: &UnixListener, kernel: &Shared<Kernel>, spawner: S)
+fn accept_loop<S>(listener: &UnixListener, editor_core: &Shared<EditorCore>, spawner: S)
 where
     S: DetachedThreadSpawner,
 {
@@ -100,13 +100,13 @@ where
         let Ok(stream) = listener.accept() else {
             return; // listener closed or OS error → exit loop
         };
-        // Clone the kernel for this connection's thread.
-        let k = Shared::clone(kernel);
+        // Clone the editor core for this connection's thread.
+        let core = Shared::clone(editor_core);
         // Spawn; ignore spawn failures (out-of-memory or scheduler refusal) —
         // the connection is dropped and the loop continues. The closure owns
         // the stream so the fd closes when the connection thread exits.
         let _ = spawner.spawn_detached(move || {
-            run_connection(&stream, &k);
+            run_connection(&stream, &core);
         });
     }
 }

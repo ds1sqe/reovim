@@ -13,20 +13,20 @@ stage 4"; #789 static registry loader (LF17).
 
 ## 1. Boot stages
 
-Boot runs inside `Init` (2.1): stage 0 is `Init::new`; stages 1..6
-run inside `Init::boot`; stage 7 begins at the handoff, when
-`boot()` moves ownership into `Arc<Kernel>`.
+Boot runs inside `EditorInit` (2.1): stage 0 is `EditorInit::new`; stages 1..6
+run inside `EditorInit::boot`; stage 7 begins at the handoff, when
+`boot()` moves ownership into `Arc<EditorCore>`.
 
 ```
-stage 0: Init::new  — argv parse, force-override scan, env scan;
+stage 0: EditorInit::new  — argv parse, force-override scan, env scan;
                       boot clock + log ring allocated (LOG6)
-stage 1: kernel.host config materialised (CFG9)
-stage 2: kernel.shell config materialised; runtime caps loaded
+stage 1: editor.host config materialised (CFG9)
+stage 2: editor.shell config materialised; runtime caps loaded
 stage 3: lockfile + library-root resolution; PM verify
 stage 4: module discovery; per-module load (§3..§5)
 stage 5: driver discovery; per-driver load (same)
 stage 6: framed-protocol runtime / in-memory adapter started
-stage 7: handoff — Init::boot returns Arc<Kernel>; serving
+stage 7: handoff — EditorInit::boot returns Arc<EditorCore>; serving
 ```
 
 **Structural-stub realization.** A boot stage's realized invariant is
@@ -39,14 +39,14 @@ numbers are therefore stable across the rebuild, which the LOG/OBS
 goldens depend on.
 
 > **LF13 — Boot is exclusive-ownership; steady state begins at the
-> Init→Kernel handoff.** Stages 0..6 run inside `Init` under
+> EditorInit→EditorCore handoff.** Stages 0..6 run inside `EditorInit` under
 > `&mut self` — no locks, no concurrent observers. No hostapi
 > call, dispatch, or subscriber can exist before `boot()` returns,
-> because `Kernel` has no other constructor; after the handoff,
-> `Init` is consumed, so lock-free boot-style mutation is
+> because `EditorCore` has no other constructor; after the handoff,
+> `EditorInit` is consumed, so lock-free boot-style mutation is
 > unreachable. Boot-only state (`args`, raw config layers) is
-> dropped at the handoff. On boot failure `Init` drops whole —
-> no partially-constructed kernel state escapes. Boot-time cdylib
+> dropped at the handoff. On boot failure `EditorInit` drops whole —
+> no partially-constructed editor-core state escapes. Boot-time cdylib
 > loads are the boot subset of LF1..LF11 operating on the same
 > `Inventory` — there is no separate boot loader.
 > *Class*: compile (typestate) + runtime.
@@ -74,7 +74,7 @@ a generation re-check (§4).
 > transitions in this chapter therefore name the **recorded**
 > outcome, not a live in-process transition: the `arch/` panic
 > handler records the target state in the persisted state (2.4)
-> and flushes the panic line through the one kernel log ring (9.5
+> and flushes the panic line through the one editor-core log ring (9.5
 > §9.1), and a `recover` restart materialises it — the restored
 > inventory
 > shows the owner as `TombstonedFailedUnload` / `Panicked` /
@@ -228,7 +228,7 @@ Row kinds tracked:
 ## 7. Drain bounds
 
 Every drain wait is bounded by a configured timeout from
-`kernel.host.[limits]`:
+`editor.host.[limits]`:
 
 | Wait | Limit field | Default |
 |---|---|---|
@@ -293,7 +293,7 @@ restore order was designed against it.
 ## 9. Shutdown
 
 Shutdown is the mirror of boot with no mirror type: there is no
-`Fini`. Steady state ends *inside* `Kernel` — an action, not a
+`Fini`. Steady state ends *inside* `EditorCore` — an action, not a
 handoff — because there is nothing left to move ownership to.
 
 > **LF14 — Shutdown triggers.** Three sanctioned triggers, all
@@ -301,7 +301,7 @@ handoff — because there is nothing left to move ownership to.
 >
 > 1. **OS signal** — first `SIGTERM` or `SIGINT` delivery;
 > 2. **composition root** — the embedding binary calls
->    `Kernel::shutdown()` directly (the embedded launcher does this
+>    `EditorCore::shutdown()` directly (the embedded launcher does this
 >    when its client runtime exits, 1.3);
 > 3. **debug drive** — `hostapi_debug_drive_shutdown` (7.2 §4),
 >    gated on `debug.mutate` and audited like every drive op.
@@ -331,7 +331,7 @@ handoff — because there is nothing left to move ownership to.
 >          the DT17 load order, mirrored)
 > phase 5  shutdown.ok | shutdown.fail emitted; file sink flushed
 >          and closed (LOG7)
-> phase 6  release the last Arc<Kernel>; field-order Drop; exit
+> phase 6  release the last Arc<EditorCore>; field-order Drop; exit
 > ```
 >
 > The load-bearing edge is **phase 2 before phase 4**: every
@@ -450,8 +450,8 @@ is superseded, not contradicted.
 | LF10 | Cdylib without `dlclose_safe`: unload runs steps 1-6, library stays mapped. |
 | LF11 | Init fails after partial registrations; verify all rolled back before tombstone. |
 | LF12 | Detach-trace fixture: two-Domain chain, window close → steps 1..5 leaf-first; `OnPersistSave` returning an error → `persistence.save.fail` emitted, detach completes; buffer-close with two windows → window sequences before buffer handlers. (Panic-path coverage lives in the AB12 disposition fixtures, 2.3 §Conformance.) |
-| LF13 | Compile probe: `Kernel` has no public constructor other than `Init::boot`; compile-fail fixture: using `Init` after `boot()` is rejected (moved value). Boot-failure fixture: `boot()` error → no serving socket, no kernel observable, boot-stage `fail` event in the ring. |
-| LF14 | Per-trigger fixtures: `SIGTERM`, embedded `Kernel::shutdown()`, drive op → `shutdown.start` with matching `source`; drive op without `debug.mutate` → `PermissionDenied`. |
+| LF13 | Compile probe: `EditorCore` has no public constructor other than `EditorInit::boot`; compile-fail fixture: using `EditorInit` after `boot()` is rejected (moved value). Boot-failure fixture: `boot()` error → no serving socket, no editor core observable, boot-stage `fail` event in the ring. |
+| LF14 | Per-trigger fixtures: `SIGTERM`, embedded `EditorCore::shutdown()`, drive op → `shutdown.start` with matching `source`; drive op without `debug.mutate` → `PermissionDenied`. |
 | LF15 | Shutdown-trace fixture: phase order holds; every persist handler runs while its owner is `Active` (inventory state in trace); `Attach` after phase 0 → `UNAVAILABLE`; unload order is reverse-lockfile. |
 | LF16 | Second signal mid-drain → `shutdown.forced`, exit 2, no cdylib call after escalation in trace; deadline expiry behaves identically; session torn by escalation restores its previous state at next boot (PS1). |
 | CC15 | Race fixture: unload begins between row lookup and pointer read; verify guard release without invocation. |

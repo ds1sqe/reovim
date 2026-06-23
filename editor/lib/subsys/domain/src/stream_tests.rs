@@ -39,7 +39,7 @@ arch_test!(backpressure_counters_report_first_blocking_cap, {
 
 arch_test!(stream_control_ops_follow_s5_partition, {
     assert_eq!(StreamControlOp::new(0).class(), StreamControlClass::Invalid);
-    assert_eq!(StreamControlOp::KERNEL_INSPECT.class(), StreamControlClass::Kernel);
+    assert_eq!(StreamControlOp::EDITOR_CORE_INSPECT.class(), StreamControlClass::EditorCore);
     assert_eq!(StreamControlOp::new(101).class(), StreamControlClass::SchemePrivate);
     assert_eq!(StreamControlOp::new(256).class(), StreamControlClass::Reserved);
 });

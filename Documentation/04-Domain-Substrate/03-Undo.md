@@ -64,7 +64,7 @@ hostapi_undo_group_close (BufferId);
 ```
 
 Auto-close conditions:
-- group exceeds `kernel.host.[limits].max-edits-per-group`,
+- group exceeds `editor.host.[limits].max-edits-per-group`,
 - group exceeds `max-undo-group-age-ms` since open,
 - buffer detach.
 

@@ -249,7 +249,7 @@ pub enum RegisterScope {
     Client,
     /// Per-session persisted register.
     Session,
-    /// Kernel-global persisted register.
+    /// EditorCore-global persisted register.
     System,
 }
 

@@ -1,7 +1,7 @@
 //! Projection notify push — encodes a `Projection` and sends it as an
 //! `AttachEvent::Projection` (tag `0x0304`, notify, SP12, §7.4).
 //!
-//! After each successful `SendInput` → kernel dispatch the server pushes the
+//! After each successful `SendInput` → editor-core dispatch the server pushes the
 //! resulting `Projection` to the attached client with `correlation_id == 0`
 //! (SP11, notify direction). The push model is used (§5.3 walking-skeleton
 //! push default).

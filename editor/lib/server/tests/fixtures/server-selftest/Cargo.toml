@@ -30,8 +30,8 @@ reovim-server-rt = { path = "../../..", features = ["runtime", "selftest"] }
 reovim-arch      = { path = "../../../../../../arch", features = ["runtime", "selftest"] }
 # Heap-DS algorithms (Seq) the runtime smoke uses (SP03 relocation).
 reovim-lib-ds    = { path = "../../../../../../lib/ds", features = ["selftest"] }
-# The kernel is needed for the integration smoke (boots kernel).
-reovim-kernel    = { path = "../../../../kernel", features = ["runtime", "selftest"] }
+# The editor core is needed for the integration smoke (boots EditorInit).
+reovim-editor-core    = { path = "../../../../core", features = ["runtime", "selftest"] }
 # System-kernel bridge controls supplied by this fixture composition root.
 reovim-system-kernel = { path = "../../../../../../system/lib/kernel", features = ["selftest"] }
 # The Domain contract tier (DAG2) — its test registrations must be linked.

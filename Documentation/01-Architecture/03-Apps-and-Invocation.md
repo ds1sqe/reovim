@@ -15,7 +15,7 @@ launcher imposes on transport semantics.
 
 | Binary | Role |
 |---|---|
-| `reovim-server` | Server runtime. Owns the Kernel and server registries. |
+| `reovim-server` | Server runtime. Owns the editor core and server registries. |
 | `reovim-tui` | TUI client runtime. |
 | `reovim-cli` | One-shot CLI client / control surface. |
 | `reovim-web` | Web client runtime / SSR entry. |
@@ -45,7 +45,7 @@ Cargo wiring:
 
 `reovim --subprocess` (or default if embedded-* features absent)
 forks `reovim-server` and the selected client binary, connecting
-them over the configured transport from `kernel.host` config.
+them over the configured transport from `editor.host` config.
 
 ### 2.3 External
 
@@ -109,7 +109,7 @@ Search-path priority for runtime discovery:
 
 1. `--library-root <path>` CLI flag.
 2. `$REOVIM_LIBRARY_ROOT` env var.
-3. `kernel.host` config field `[runtime].library-root` (if set).
+3. `editor.host` config field `[runtime].library-root` (if set).
 4. Platform default:
    - Linux: `$XDG_DATA_HOME/reovim/library/` then `/usr/lib/reovim/library/`.
    - macOS: `~/Library/Application Support/Reovim/library/` then `/Library/Application Support/Reovim/library/`.
@@ -129,7 +129,7 @@ The rule bodies below are the normative texts.
 > depgraph).
 
 > **AL2 — Bare `reovim` defaults to TUI.** Overridable via the
-> `[default].client` field of the `kernel.host` config
+> `[default].client` field of the `editor.host` config
 > participation (it selects the transport profile, hence
 > host-class; 1.5 §6). *Class*: spec-asserted.
 
@@ -160,17 +160,17 @@ The rule bodies below are the normative texts.
 > the *invoking* user's `pkgs.toml` even when running under a
 > different UID (the sudoedit shape). *Class*: spec-asserted.
 
-> **AL9 (reshaped) — The kernel's own configuration is two config
+> **AL9 (reshaped) — The editor core's own configuration is two config
 > participations.** The prior flat `config.toml` tables (`[ui]`,
-> `[limits]`, …) are superseded by the `kernel.host` (privileged)
-> and `kernel.shell` (user-class) participations in the 1.5 config
+> `[limits]`, …) are superseded by the `editor.host` (privileged)
+> and `editor.shell` (user-class) participations in the 1.5 config
 > service, schema'd and layered per CFG1..CFG10. Out-of-range host
 > values still fail boot (CFG9). Body: `05-Configuration.md` §6.
 > *Class*: spec-asserted.
 
 > **AL10 — Domain-pluggable positional-arg dispatch.** The
 > launcher passes each raw arg to
-> `Kernel::resolve_positional_arg(raw, cwd)`; the kernel walks
+> `EditorCore::resolve_positional_arg(raw, cwd)`; the editor core walks
 > Domains' `OnPositionalArg` handlers in `(band, priority)` order
 > with the DT17 tie-break; the first `PositionalClaim` wins. If
 > every handler returns `Pass`, the generic fallback is
@@ -180,7 +180,7 @@ The rule bodies below are the normative texts.
 
 **Reshape note (AL1..AL10).** Carried forward with this spec's vocabulary.
 Config homes moved into the 1.5 layer stack: AL2's
-`[default].client` is `kernel.host` (transport-selecting), AL4's
+`[default].client` is `editor.host` (transport-selecting), AL4's
 system-vs-user split became layers 2/3, and AL9 is the one body
 reshape — flat `config.toml` tables superseded by the schema'd
 participations (CFG namespace). AL10 gains the DT17 tie-break for
@@ -198,9 +198,9 @@ discovered from the workspace target directory or
 
 > **AL11 — Logging flags are layer-6 sugar.** Every bin accepts:
 >
-> - `-v` ⇒ `--set kernel.host.log.level=debug`,
-> - `-vv` ⇒ `--set kernel.host.log.level=trace`,
-> - `--log <PATH>` ⇒ `--set kernel.host.log.path=<PATH>`.
+> - `-v` ⇒ `--set editor.host.log.level=debug`,
+> - `-vv` ⇒ `--set editor.host.log.level=trace`,
+> - `--log <PATH>` ⇒ `--set editor.host.log.path=<PATH>`.
 >
 > The flags desugar to layer-6 CLI config (1.5 §3) before the layer
 > stack merges; they introduce no mechanism beside the 9.5 sink keys
@@ -212,7 +212,7 @@ discovered from the workspace target directory or
 1. ~~Detach lifecycle ordering~~ — resolved (2.2 §8, LF12,);
    identical sequence in embedded and subprocess modes
    (AL-INPROC requires it).
-2. Which `kernel.host` fields are required at boot before any
+2. Which `editor.host` fields are required at boot before any
    participant loads (forwarded to `01-Architecture/05-Configuration.md` §9).
 3. `$REOVIM_LIBRARY_ROOT` precedence vs CLI flag — current spec
    says CLI wins; confirm against §5.
@@ -227,6 +227,6 @@ discovered from the workspace target directory or
 | AL5 | Depgraph probe: launcher crate has no package/module/driver deps; grep for manifest parsing in launcher. |
 | AL7 | `reovim file.txt:12:3` opens a buffer named `file.txt:12:3` unless a Domain claims it (AL10); exit codes match vim contract. |
 | AL8 | Editor-mode under `sudo -e` shape reads invoking user's `pkgs.toml` (fixture with two UIDs). |
-| AL9 | Out-of-range `kernel.host` value → boot fails with named diagnostic (CFG9). |
+| AL9 | Out-of-range `editor.host` value → boot fails with named diagnostic (CFG9). |
 | AL10 | Domain claims `path:LINE:COL`; with no claiming Domain, generic attach; launcher source contains no suffix parser (CI grep). |
-| AL11 | `-v` boots with sink level debug; `--log <PATH>` redirects the sink; `--force-set kernel.host.log.level=info` beats `-vv` (layer 7 > 6). |
+| AL11 | `-v` boots with sink level debug; `--log <PATH>` redirects the sink; `--force-set editor.host.log.level=info` beats `-vv` (layer 7 > 6). |

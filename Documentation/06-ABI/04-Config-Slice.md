@@ -1,7 +1,7 @@
 # 6.4 — ConfigSlice ABI
 
 **Scope.** The exact wire format for the merged + validated config
-that the kernel hands to each participant. Lifetime, ownership,
+that the editor core hands to each participant. Lifetime, ownership,
 encoding rules, version surface, compound-value strategy.
 
 **Heritage.** the q3-config-system RFC v2 §9 (folded with
@@ -14,12 +14,12 @@ referenced.
 
 ## 1. Goals
 
-- One ABI shape used by every participant kind (kernel, module,
+- One ABI shape used by every participant kind (editor core, module,
   driver).
 - C-callable; no Rust-only types.
-- Validated by kernel before construction; participant performs
+- Validated by the editor core before construction; participant performs
   typed extraction.
-- Kernel-owned, init-call-lifetime; participant copies what it
+- Editor-core-owned, init-call-lifetime; participant copies what it
   retains.
 - Independent ABI version (`REOVIM_CONFIG_ABI_VERSION`) from
   participant schema version.
@@ -153,16 +153,16 @@ replacing it (AB15).
 
 ## 9. Locked properties
 
-> **CFG6 — `ConfigSlice` is normalised KVP, kernel-owned,
+> **CFG6 — `ConfigSlice` is normalised KVP, editor-core-owned,
 > init-lifetime unless copied.**
 >
 > - `entries` is in schema-declared order.
 > - String/path/enum/canonical-toml bytes are valid for the
 >   lifetime of the participant's init call.
-> - Strings/enums/canonical-toml are UTF-8-validated by the kernel.
+> - Strings/enums/canonical-toml are UTF-8-validated by the editor core.
 > - Paths are opaque OS bytes.
 > - Total-byte cap from 1.5 §11 enforced before slice construction.
-> - Kernel owns; participant must not free, must not mutate.
+> - Editor core owns; participant must not free, must not mutate.
 > - `source` byte records origin layer.
 > - `flags` bit 0x01 marks `secret` fields (redacted in user-facing
 >   output; participant sees true value).

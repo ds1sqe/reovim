@@ -182,7 +182,7 @@ No pointer crosses without one of the three.
 >    marker through the persisted state (2.4), so the restart reads
 >    state, never parses logs;
 > 4. terminates the process per the boot-only config
->    `kernel.host.[panic].disposition`:
+>    `editor.host.[panic].disposition`:
 >    - `recover` (default) — exit with the restart-requested
 >      status; the supervising launcher (1.3) restarts the server,
 >      which restores from persistence (PS1/PS2) and

@@ -1,0 +1,38 @@
+[package]
+name = "reovim-editor-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Editor core — EditorInit/EditorCore typestate, boot-stage driver, BootClock (2.1, 2.2, LF13)"
+publish = false
+
+[features]
+# Compiles per-module sibling test files INTO the lib (L12.1 layout).
+# Tests register via reovim_arch::arch_test! and run on the arch no_std
+# selftest runner. Off in flight builds; the selftest bin enables it.
+# The selftest bin in tests/fixtures/ enables it.
+# `dep:reovim-arch` activates the now-OPTIONAL arch dep; `reovim-arch/selftest`
+# enables arch_test!/testrt. The product flight rlib carries no arch edge (SP05a).
+selftest = ["dep:reovim-arch", "reovim-arch/selftest", "reovim-subsys-domain/selftest"]
+
+# Runtime lang items (panic_handler, _start, allocator). Needed by the
+# selftest bin and panic-path fixture bins in editor/lib/core/tests/fixtures/.
+# Must NOT be enabled in the workspace rlib build (same constraint as arch/).
+runtime = ["dep:reovim-arch", "reovim-arch/runtime"]
+
+[dependencies]
+reovim-arch = { path = "../../../arch", optional = true }
+# Portable heap-DS algorithms (Seq/Map/Bytes/Ring/Mutex/RwLock — the editor core's
+# Vec/HashMap/String/Arc/lock analogs). Relocated from `reovim_arch::ds`/
+# `::sync` into `reovim-lib-ds` (SP03); the editor core names lib/ds, never arch's
+# (now-gone) ds/sync modules.
+reovim-lib-ds = { path = "../../../lib/ds" }
+reovim-uapi = { path = "../../../uapi" }
+reovim-subsys-domain = { path = "../subsys/domain" }
+
+[lints]
+workspace = true

@@ -11,7 +11,7 @@ dependencies = [
  "reovim-arch-floor-linux-x86-64",
  "reovim-arch-floor-none-aarch64",
  "reovim-arch-floor-none-x86-64",
- "reovim-kernel",
+ "reovim-editor-core",
  "reovim-platform-linux-native",
  "reovim-platform-stub-none",
  "reovim-system-kernel",
@@ -185,7 +185,7 @@ name = "reovim-kabi-platform"
 version = "0.16.0-dev"
 
 [[package]]
-name = "reovim-kernel"
+name = "reovim-editor-core"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-lib-ds",

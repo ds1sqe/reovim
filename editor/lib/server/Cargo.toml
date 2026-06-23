@@ -18,7 +18,7 @@ publish = false
 # remaining arch use is the selftest test-infra (arch_test!/testrt), so the
 # product build carries NO arch edge. Net routes through injected uapi/inner/net
 # controls; thread spawn routes through injected uapi/inner/sched controls.
-selftest = ["dep:reovim-arch", "reovim-arch/selftest", "reovim-kernel/selftest", "reovim-subsys-domain/selftest"]
+selftest = ["dep:reovim-arch", "reovim-arch/selftest", "reovim-editor-core/selftest", "reovim-subsys-domain/selftest"]
 
 # Runtime lang items (panic_handler, _start, allocator). Needed by the
 # server-selftest fixture bin. Must NOT be enabled in the workspace rlib build.
@@ -34,7 +34,7 @@ reovim-arch          = { path = "../../../arch", optional = true }
 reovim-lib-ds        = { path = "../../../lib/ds" }
 reovim-uapi          = { path = "../../../uapi" }
 reovim-subsys-domain = { path = "../subsys/domain" }
-reovim-kernel        = { path = "../kernel" }
+reovim-editor-core        = { path = "../core" }
 
 [lints]
 workspace = true

@@ -4,8 +4,8 @@
 (hosted on an existing OS) and **RTOS-itself** (the single-purpose runtime
 on bare metal) — the mode-invariance invariant that keeps the editing
 mechanism byte-identical across modes, the platform-floor doctrine that
-keeps them one codebase, the three-kernel model as it instantiates per
-mode, and the unified launch model.
+keeps them one codebase, the one-kernel-plus-cores model as it instantiates
+per mode, and the unified launch model.
 
 **Heritage.** Design-stage. 0.16's thesis is "environment is not a host":
 the freestanding/bare-metal target is the 0.16 goal, and the bare-metal
@@ -16,7 +16,7 @@ ports (Windows/macOS/Solaris) are a separate later track —
 **Locked rules.** None new (design-stage). DAG6 governs the platform floor
 (`01-Architecture/02-Project-Layout-and-DAG.md`).
 
-**Related chapters.** Three-kernel model: `02-Process/01-Kernel-Types.md §0`.
+**Related chapters.** EditorCore/core vocabulary: `02-Process/01-Kernel-Types.md §0`.
 Platform contract seam: `06-ABI/05-Platform-Contract.md`. Device-domain
 bridge: `04-Domain-Substrate/06-Device-Domains.md §8`. Client input
 deferral: `08-Client/02-Platform-Runtimes.md`.
@@ -30,7 +30,7 @@ Linux/Windows or freestanding on bare metal.** This is the chapter's
 thesis; every design decision below is downstream of it.
 
 - **Above the contract (invariant — must not change a line by mode):**
-  the editor kernel — domains, undo-tree, streams, buffer algebra, and
+  the editor core — domains, undo-tree, streams, buffer algebra, and
   the device-Domain effect/stage/commit semantics — plus the client's
   editing-facing model — normalized raw-input → commands, the frame/cell
   render model. Same code, same behavior, same UX on every target.
@@ -85,10 +85,10 @@ editor to observe. The slot types are specified in
    no process model to emulate unless a real need forces one; the first goal
    is a reliable single-seat editor appliance.
 
-**Shared invariant — the editor and client kernels do not fork by mode.**
-Both modes feed the same protocol/state/domain machinery; the system kernel
-is conditional (present in RTOS-itself, absent in Over-OS where the host OS
-plays that role — see §6 and `02-Process/01-Kernel-Types.md §0`). The
+**Shared invariant — the editor core and client core do not fork by mode.**
+Both modes feed the same protocol/state/domain machinery. The full
+system-kernel role is conditional: in RTOS-itself Reovim owns it; in Over-OS
+the host OS provides most system services below the hosted bridge. The
 difference lives *below* the `kabi/platform` contract boundary:
 
 | Concern | Over-OS | RTOS-itself |
@@ -193,34 +193,35 @@ Bare metal has no libc tension. The system-library class forces the DAG6
 "lowest stable boundary" amendment — deferred to `future/multi-os-ports.md`
 until an OS port is scheduled.
 
-## 4. The three kernels by mode
+## 4. One kernel plus product cores by mode
 
-The reovim runtime has three kernels (`02-Process/01-Kernel-Types.md §0`):
-the **editor kernel** (sessions, domains, streams, state, scheduling —
-sovereign, Math layer), the **client kernel** (raw-input normalization,
-frame/cell render, projection/codec — derived, Math layer), and the
+The reovim runtime has one true kernel and two product cores
+(`02-Process/01-Kernel-Types.md §0`): the **editor core** (sessions, domains,
+streams, state, scheduling — sovereign, Math layer), the **client core**
+(raw-input normalization, frame/cell render, projection/codec — derived, Math
+layer), and the
 **system kernel** (sched, IRQ, memory, device model, block, fs, console,
 power — sovereign, World layer).
 
-The editor and client kernels are **mode-invariant**: they never absorb
-device drivers, board mechanics, or IRQ handling. Device reality stays
-below the `kabi/*` down-face and `arch::sys`; editor and client policy stay
-on the `uapi/*` up-face. The `system/lib/kernel` bridge is the only normal
-crate family that may name both faces (`06-ABI/05-Platform-Contract.md`).
+The editor and client cores are **mode-invariant**: they never absorb device
+drivers, board mechanics, or IRQ handling. Device reality stays below the
+`kabi/*` down-face and `arch::sys`; editor and client policy stay on the
+`uapi/*` up-face. The `system/lib/kernel` bridge is the only normal crate
+family that may name both faces (`06-ABI/05-Platform-Contract.md`).
 
-The **system kernel is conditional by mode** (§6): RTOS-itself mode
-carries all three kernels; Over-OS mode has only the editor and client
-kernels, with the host OS playing the system-kernel role. RTOS-itself
-additionally needs the system kernel for scheduler/IRQ routing/driver
-model/block cache/filesystem/console/power — too large to hide inside
-`arch::sys`. Its boot sequence, proof model, and device lifecycle are
-specified in `02-Process/05-Machine-Boot.md`. The system kernel does not
-live in the editor-kernel crate.
+The **full system-kernel role is conditional by mode** (§6): RTOS-itself mode
+carries Reovim's system kernel as the owner of scheduler/IRQ routing/driver
+model/block cache/filesystem/console/power. Over-OS mode still uses
+`system/lib/kernel` as the common `uapi`↔`kabi` bridge crate for product
+services, but the host OS supplies the underlying system role below the
+provider. The boot sequence, proof model, and device lifecycle of the full
+RTOS role are specified in `02-Process/05-Machine-Boot.md`. The system kernel
+does not live in the editor-core crate.
 
 ## 5. Launch model
 
 Both modes converge on one semantic launch contract — a `LaunchPlan`:
-selected editor-kernel config, selected client platform, transport kind,
+selected editor-core config, selected client platform, transport kind,
 module-registry kind, persistence root. Only the *physical* launch
 mechanism differs.
 
@@ -244,7 +245,7 @@ carrier while `execve` is absent from `arch/`.)
 
 ```text
 Pi firmware -> arch::_start -> system-kernel bridge boot
-  -> boot-profile selection -> editor Init::boot -> console platform runtime
+  -> boot-profile selection -> editor-core EditorInit::boot -> console platform runtime
 ```
 
 The RTOS launch unit is a **boot profile**, not a command:
@@ -252,7 +253,7 @@ The RTOS launch unit is a **boot profile**, not a command:
 | Profile | Purpose |
 |---|---|
 | `selftest` | Run arch/machine/editor selftests; exit/halt with a diagnostic code. |
-| `appliance` | Normal editor: framebuffer console + USB keyboard + embedded editor kernel. |
+| `appliance` | Normal editor: framebuffer console + USB keyboard + embedded editor core. |
 | `recovery` | Minimal framebuffer/UART diagnostic shell for storage/config repair. |
 | `headless-diag` | UART-only diagnostics when display or USB is untrustworthy. |
 
@@ -266,8 +267,8 @@ sequences." Hosted TUI and Pi console are two backends for that model.
 
 ## 6. Mode instantiation
 
-The mode-invariance invariant (§0) collapses to one question: **"Do we split
-the editor and the system?"** = "Is the system-kernel slot filled?"
+The mode-invariance invariant (§0) collapses to one question: **"Does Reovim
+own the full system role?"**
 
 ```
 Over-OS:
@@ -275,7 +276,7 @@ Over-OS:
     → kabi/platform + kabi/device → hosted provider → arch sys (host syscalls)
   device Domains reach hardware through the up-face device surface, then the
   hosted bridge/provider reaches /dev-/ioctl services below `kabi`
-  [system/lib/kernel crate ABSENT — the host OS plus hosted bridge fill the role]
+  [full RTOS system-kernel role absent — host OS fills the underlying system]
 
 RTOS-itself:
   editor + client → uapi/* → system/lib/kernel bridge
@@ -287,17 +288,17 @@ RTOS-itself:
   [system kernel additionally loads device drivers, block, fs, console]
 ```
 
-In Over-OS mode the editor and client kernels reach the `uapi/*` up-face; the
+In Over-OS mode the editor and client cores reach the `uapi/*` up-face; the
 host OS plus hosted bridge/provider fill the system role over host syscalls,
-`/dev`, and fd-I/O. In RTOS-itself mode the same two kernels still reach the
-same up-face; `system/lib/kernel` fills the bridge role and maps common system
-semantics to `kabi/*` providers below. The system kernel does not own `arch`
-by import; raw facts and MMIO stay in provider/floor code.
+`/dev`, and fd-I/O. In RTOS-itself mode the same two cores still reach the
+same up-face; `system/lib/kernel` also owns the full system-kernel role and
+maps common system semantics to `kabi/*` providers below. The system kernel
+does not own `arch` by import; raw facts and MMIO stay in provider/floor code.
 
 The composition root (the `reovim` binary / boot image) is the only place
 that wires these: it selects the contract implementor and installs the
-platform vtable at `Init::boot`. Neither the editor kernel nor the client
-kernel sees a mode branch — their code is identical. The mode branch lives
+platform vtable at editor boot. Neither the editor core nor the client
+core sees a mode branch — their code is identical. The mode branch lives
 entirely at the composition root and below the contract.
 
 ### 6.1 The uapi↔kabi bridge per mode
@@ -346,7 +347,7 @@ append-only evolution, and the macro contract are specified in
 
 | Behaviour | Fixture |
 |---|---|
-| Mode-invariant editor + client kernels | The editor and client kernel crates compile unchanged for both Over-OS and freestanding targets; they name the `uapi/*` up-face, and mode differences appear only in the bridge/provider/floor topology (`06-ABI/05-Platform-Contract.md`). |
-| System-kernel conditionality | Over-OS mode has no `system/lib/kernel` crate; the host OS plus hosted bridge/provider fill the system role. RTOS-itself mode has `system/lib/kernel` bridging `uapi/*` to `kabi/*`; the editor/client kernel binary is unchanged (`02-Process/01-Kernel-Types.md §0`). |
+| Mode-invariant editor + client cores | The editor and client core crates compile unchanged for both Over-OS and freestanding targets; they name the `uapi/*` up-face, and mode differences appear only in the bridge/provider/floor topology (`06-ABI/05-Platform-Contract.md`). |
+| System-kernel conditionality | Over-OS mode uses `system/lib/kernel` as a hosted bridge while the host OS fills the underlying system role. RTOS-itself mode has `system/lib/kernel` fill the full system-kernel role and bridge `uapi/*` to `kabi/*`; the editor/client core binary is unchanged (`02-Process/01-Kernel-Types.md §0`). |
 | Freestanding floor | `aarch64-unknown-none` selftest image boots under QEMU raspi4b: UART write + generic timer + arena alloc + bare-metal entry, via the unchanged `arch_test!` runner. |
 | LaunchPlan parity | A hosted `reovim` invocation and an RTOS `appliance` boot profile resolve to the same `LaunchPlan` fields. |

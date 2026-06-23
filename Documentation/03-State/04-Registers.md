@@ -35,7 +35,7 @@ pub struct RegisterStore {
     // per-session (lives in Session)
     session_regs:  HashMap<RegisterId, CursorCarrier>,
 
-    // global (lives in Kernel)
+    // global (lives in EditorCore)
     system_regs:   HashMap<RegisterId, CursorCarrier>,
 }
 ```
@@ -64,7 +64,7 @@ kernel never translates register content between Domains.
 
 | Cap | Field |
 |---|---|
-| Per-client register count | `kernel.host.[limits].max-client-registers` |
+| Per-client register count | `editor.host.[limits].max-client-registers` |
 | Per-session register count | `max-session-registers` |
 | Per-system register count | `max-system-registers` |
 | Per-register carrier bytes | reuses `max-cursor-carrier-bytes` (4.5 §6) |

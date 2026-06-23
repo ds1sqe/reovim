@@ -54,7 +54,7 @@ specced, not folklore:
    unlock Session state
 3. acquire RefGuard for each cdylib row to be invoked
    - generation re-check (CC15)
-4. invoke cdylib slots — kernel holds NO Kernel/Session lock here
+4. invoke cdylib slots — kernel holds NO EditorCore/Session lock here
 5. collect HandlerOutput / kernel mutation commands
 6. release RefGuards
 7. lock Session state
@@ -63,7 +63,7 @@ specced, not folklore:
 8. release session turn_gate
 ```
 
-> **CC14 — No normal Kernel/Session lock held across cdylib slot
+> **CC14 — No normal EditorCore/Session lock held across cdylib slot
 > invocation.** *Class*: spec-asserted, runtime tests with lock
 > instrumentation.
 
@@ -94,7 +94,7 @@ the type catalog with its lock behaviour.
 > sequencing).
 > *Class*: runtime.
 
-## 4. Kernel lock tiers
+## 4. EditorCore lock tiers
 
 Lock acquisition order is total. A higher tier may not acquire a
 lower tier already held. Tier labels are `T1..T13` — deliberately
@@ -189,7 +189,7 @@ kernel:
    covers slot misbehaviour).
 3. counts toward the per-cdylib slot-timeout threshold gate, with
    namespaced limit `slot-timeout-threshold-count` /
-   `slot-timeout-threshold-window-ms` from `kernel.host.[limits]`.
+   `slot-timeout-threshold-window-ms` from `editor.host.[limits]`.
 
 (Threshold gate retained, re-scoped under `DAG6`: it
 counts slot timeouts only — repeated in-process panics cannot
@@ -224,13 +224,13 @@ restated bodies.)
 
 The rule bodies below are the normative texts.
 
-> **CC1 — `Kernel` is `Send + Sync`, shared as `Arc<Kernel>`** across
+> **CC1 — `EditorCore` is `Send + Sync`, shared as `Arc<EditorCore>`** across
 > the server runtime's worker threads (`arch/`-threaded,
 > thread-per-connection). There is no central actor task and no
-> Kernel mailbox. *Class*: kernel-enforced (compile).
+> EditorCore mailbox. *Class*: kernel-enforced (compile).
 
-> **CC2 — Per-field locks on Kernel; no global kernel lock.** Each
-> lockable Kernel field is its own tier in the §4 table (T1..T12);
+> **CC2 — Per-field locks on EditorCore; no global kernel lock.** Each
+> lockable EditorCore field is its own tier in the §4 table (T1..T12);
 > sessions live in a sharded map (T12) with per-session state
 > innermost (T13); shutdown is signalled by a cancellation token,
 > not a lock. *Class*: kernel-enforced (compile).
@@ -270,19 +270,19 @@ The rule bodies below are the normative texts.
 > need pairing rely on the DT14 snapshot record (CC17), not on
 > completion order. *Class*: spec-asserted.
 
-> **CC9 — Cdylibs never receive `Arc<Kernel>`.** All cdylib→kernel
+> **CC9 — Cdylibs never receive `Arc<EditorCore>`.** All cdylib→kernel
 > traffic goes through `HostApi` (6.1 §6). *Class*:
 > kernel-enforced (compile).
 
-> **CC10 — Kernel shutdown lock and Drop discipline.** The full
+> **CC10 — EditorCore shutdown lock and Drop discipline.** The full
 > phase sequence, triggers, and escalation are LF14..LF16
 > (2.2 §9): cancel intake → notify clients → per-session
 > detach/persist (LF12, leaf-first) → drain connection tasks →
 > drain fan-out tasks → LF unload per loaded cdylib (reverse
-> lockfile order) → release the last `Arc<Kernel>` → field-order
+> lockfile order) → release the last `Arc<EditorCore>` → field-order
 > Drop. CC10 owns the concurrency half: no T1..T13 lock is held
 > across a phase boundary, and Drop runs single-threaded after the
-> last `Arc<Kernel>` releases.
+> last `Arc<EditorCore>` releases.
 > *Class*: kernel-enforced (runtime).
 
 > **CC11 — Runtime `dlclose` is permitted once the LF unload
@@ -334,11 +334,11 @@ the order is total and violations are bugs.
 
 | Rule | Fixture |
 |---|---|
-| CC1 | Compile probe: `Kernel: Send + Sync` static assertion; no actor-task spawn in kernel construction. |
+| CC1 | Compile probe: `EditorCore: Send + Sync` static assertion; no actor-task spawn in kernel construction. |
 | CC5/CC6 | Handler registered during another handler's dispatch → no deadlock (lock not held across invoke). |
 | CC7 | Lock instrumentation: acquire `sessions` then `domains` → ordering violation detected in test build. |
 | CC8 | Two observers on one edit → both run; completion order varies across runs (non-determinism asserted, pairing via snapshot). |
-| CC9 | Compile probe: no `Arc<Kernel>` (or `Kernel` reference) type appears in any `extern "C"` signature in `uapi/`. |
+| CC9 | Compile probe: no `Arc<EditorCore>` (or `EditorCore` reference) type appears in any `extern "C"` signature in `uapi/`. |
 | CC10 | Shutdown trace: cancel precedes connection drain precedes fan-out drain precedes per-cdylib unload. |
 | CC12 | Slot invocation observed holding a guard; guard count returns to zero after the call. |
 | CC13 | Serialized cdylib: two concurrent slot calls run sequentially; non-serialized cdylib: concurrently. |

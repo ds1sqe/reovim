@@ -10,7 +10,7 @@
 //! disconnect (zero-byte read).
 
 use {
-    reovim_kernel::Kernel,
+    reovim_editor_core::EditorCore,
     reovim_lib_ds::{Seq, Shared},
     reovim_uapi::{
         abi::{ErrorCode, FrameHeader},
@@ -45,19 +45,19 @@ const EMPTY_DOMAIN_LIST: [u8; 4] = [0x00, 0x00, 0x00, 0x00];
 // ── run_connection ────────────────────────────────────────────────────────────
 
 /// Runs the framed carrier loop on `stream`, dispatching each frame through
-/// `kernel`, until the connection closes or an unrecoverable error occurs.
+/// `editor_core`, until the connection closes or an unrecoverable error occurs.
 ///
 /// This is the per-connection thread body called by the listener.
 ///
 /// ```rust,no_run
 /// // no_run: requires a live arch runtime + UDS connection.
 /// ```
-pub fn run_connection(stream: &UnixStream, kernel: &Shared<Kernel>) {
+pub fn run_connection(stream: &UnixStream, editor_core: &Shared<EditorCore>) {
     let mut state = ConnState::new();
     loop {
         match recv_frame(stream) {
             Ok(buf) => {
-                if dispatch_frame(stream, &mut state, kernel, &buf).is_err() {
+                if dispatch_frame(stream, &mut state, editor_core, &buf).is_err() {
                     return; // protocol error or I/O failure → close
                 }
             }
@@ -110,7 +110,7 @@ fn recv_frame(stream: &UnixStream) -> Result<Seq<u8>, RuntimeError> {
 fn dispatch_frame(
     stream: &UnixStream,
     state: &mut ConnState,
-    kernel: &Shared<Kernel>,
+    editor_core: &Shared<EditorCore>,
     buf: &Seq<u8>,
 ) -> Result<(), RuntimeError> {
     let frame = read_frame(buf.as_slice(), WIRE_MAX_FRAME_BYTES)
@@ -142,8 +142,8 @@ fn dispatch_frame(
     }
 
     match frame.header.msg_type {
-        Attach::TAG => handle_attach(stream, state, kernel, frame.body),
-        SendInput::TAG => handle_send_input(stream, state, kernel, frame.body),
+        Attach::TAG => handle_attach(stream, state, editor_core, frame.body),
+        SendInput::TAG => handle_send_input(stream, state, editor_core, frame.body),
         _ => {
             // Unknown request accepted by the state machine → ignore
             // (server-role unknown requests are rejected by the state
@@ -192,7 +192,7 @@ fn handle_hello(
 fn handle_attach(
     stream: &UnixStream,
     state: &mut ConnState,
-    kernel: &Shared<Kernel>,
+    editor_core: &Shared<EditorCore>,
     body: &[u8],
 ) -> Result<(), RuntimeError> {
     let _attach = Attach::decode(body).map_err(|e| RuntimeError::Protocol(e as i32))?;
@@ -216,7 +216,7 @@ fn handle_attach(
 
     // Push the initial Projection (SP12: after AttachAck the notify stream
     // is active). The initial state is whatever the session currently holds.
-    let projection = kernel
+    let projection = editor_core
         .dispatch_input(&[])
         .map_err(|_| RuntimeError::Dispatch)?;
     push_projection(stream, &projection)
@@ -225,11 +225,11 @@ fn handle_attach(
 // ── handle_send_input ────────────────────────────────────────────────────────
 
 /// Processes a `SendInput` frame: decodes it, enforces the attached guard,
-/// dispatches through the kernel, and pushes the resulting `Projection`.
+/// dispatches through the editor core, and pushes the resulting `Projection`.
 fn handle_send_input(
     stream: &UnixStream,
     state: &ConnState,
-    kernel: &Shared<Kernel>,
+    editor_core: &Shared<EditorCore>,
     body: &[u8],
 ) -> Result<(), RuntimeError> {
     let msg = SendInput::decode(body).map_err(|e| RuntimeError::Protocol(e as i32))?;
@@ -245,7 +245,7 @@ fn handle_send_input(
     // batch dispatches an empty slice.
     let payload: &[u8] = msg.inputs.iter().next().map_or(&[], |item| item.payload);
 
-    let projection = kernel
+    let projection = editor_core
         .dispatch_input(payload)
         .map_err(|_| RuntimeError::Dispatch)?;
 

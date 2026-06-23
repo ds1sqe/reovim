@@ -206,7 +206,7 @@ A single-Domain realization may carry a **`DomainRouter` SUBSET**:
 manifest, codec maps, or positional-arg dispatch. The §2 full struct
 is the spec target; it is grown when the second Domain (a second
 concrete consumer) arrives. This mirrors the #796 monotonic-subset
-pattern for `Kernel` (rule of three).
+pattern for `EditorCore` (rule of three).
 
 ## Conformance
 
