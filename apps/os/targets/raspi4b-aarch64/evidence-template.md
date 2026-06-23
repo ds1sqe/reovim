@@ -85,6 +85,7 @@ Required success facts:
 - [ ] A physical USB keypress reached the root shell.
 - [ ] `input=usb-keyboard+uart-fallback`
 - [ ] `usb_keyboard=ready`
+- [ ] `status` / `input` report live ready source diagnostics.
 - [ ] `probe help` lists `usb-keyboard` and `xhci-read-keyboard-report`.
 - [ ] `dmesg` contains `shell: <command>` and `shell.status=ok` audit lines for the typed commands.
 - [ ] `dmesg` contains the `probe usb-keyboard` output or blocker.

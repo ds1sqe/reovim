@@ -62,6 +62,7 @@ expect_contains "$evidence" '- [ ] `REOVIM_OS_BOOTLINE` unset on booted image.' 
 expect_contains "$evidence" "- [ ] physical USB keyboard" "evidence physical keyboard checkbox"
 expect_contains "$evidence" 'cat /boot/image' "evidence command transcript"
 expect_contains "$evidence" 'cat /log/dmesg' "evidence kernel log transcript command"
+expect_contains "$evidence" '`status` / `input` report live ready source diagnostics.' "evidence live source fact"
 expect_contains "$evidence" '`probe help` lists `usb-keyboard` and `xhci-read-keyboard-report`.' "evidence probe help fact"
 expect_contains "$evidence" '`shell.status=ok` audit lines' "evidence status audit fact"
 expect_contains "$evidence" '`usb_keyboard=ready`' "evidence readiness fact"

@@ -20,6 +20,7 @@ missing_setup_evidence="$tmp_dir/missing-setup.md"
 missing_audit_evidence="$tmp_dir/missing-audit.md"
 missing_status_evidence="$tmp_dir/missing-status.md"
 missing_probe_help_evidence="$tmp_dir/missing-probe-help.md"
+missing_live_source_evidence="$tmp_dir/missing-live-source.md"
 missing_media_evidence="$tmp_dir/missing-media.md"
 media_byte_mismatch_evidence="$tmp_dir/media-byte-mismatch.md"
 media_sha_mismatch_evidence="$tmp_dir/media-sha-mismatch.md"
@@ -74,10 +75,18 @@ write_passing_evidence() {
         printf 'bootline=absent\n'
         printf 'reovim-os> status\n'
         printf 'input=usb-keyboard+uart-fallback\n'
+        printf 'source_state=ready\n'
+        printf 'input_mode=live\n'
         printf 'usb_keyboard=ready\n'
+        printf 'usb_keyboard_probe=enabled\n'
+        printf 'usb_keyboard_poll_interval_ms=5\n'
         printf 'reovim-os> input\n'
         printf 'source=usb-keyboard+uart-fallback\n'
+        printf 'source_state=ready\n'
+        printf 'mode=live\n'
         printf 'usb_keyboard=ready\n'
+        printf 'usb_keyboard_probe=enabled\n'
+        printf 'usb_keyboard_poll_interval_ms=5\n'
         printf 'reovim-os> probe help\n'
         printf 'probe targets:\n'
         printf '  usb-keyboard (alias: keyboard)\n'
@@ -115,6 +124,7 @@ write_passing_evidence() {
         printf -- '- [x] A physical USB keypress reached the root shell.\n'
         printf -- '- [x] `input=usb-keyboard+uart-fallback`\n'
         printf -- '- [x] `usb_keyboard=ready`\n'
+        printf -- '- [x] `status` / `input` report live ready source diagnostics.\n'
         printf -- '- [x] `probe help` lists `usb-keyboard` and `xhci-read-keyboard-report`.\n'
         printf -- '- [x] `dmesg` contains `shell: <command>` and `shell.status=ok` audit lines for the typed commands.\n'
         printf -- '- [x] `dmesg` contains the `probe usb-keyboard` output or blocker.\n\n'
@@ -161,6 +171,10 @@ expect_failure "$missing_status_evidence" "missing-status"
 cp "$pass_evidence" "$missing_probe_help_evidence"
 sed -i '/^  usb-keyboard (alias: keyboard)$/d' "$missing_probe_help_evidence"
 expect_failure "$missing_probe_help_evidence" "missing-probe-help"
+
+cp "$pass_evidence" "$missing_live_source_evidence"
+sed -i '/^source=usb-keyboard+uart-fallback$/d' "$missing_live_source_evidence"
+expect_failure "$missing_live_source_evidence" "missing-live-source"
 
 cp "$pass_evidence" "$missing_media_evidence"
 sed -i '/^media_prepare=ok$/d' "$missing_media_evidence"

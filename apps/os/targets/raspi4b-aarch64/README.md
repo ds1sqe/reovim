@@ -128,7 +128,8 @@ apps/os/targets/raspi4b-aarch64/validate-evidence.sh \
 The validator rejects checked display-only, UART, bootline-script, or FAIL
 labels. It also requires checked HDMI-display and physical-keyboard setup,
 physical-keyboard PASS labels, no-bootline image facts, installed-media
-identity from `prepare-boot-media.sh`, USB-keyboard readiness,
+identity from `prepare-boot-media.sh`, USB-keyboard readiness, live
+source diagnostics from `status` / `input`,
 `probe help` keyboard-target catalog output, `probe usb-keyboard` output, and
 `dmesg` command/status audit lines. It is a textual guard for completed
 evidence; it does not replace the physical HDMI plus USB-keyboard session.
@@ -189,8 +190,10 @@ cat /log/dmesg
 Record the full visible output or serial transcript. The key evidence is:
 
 - `cat /boot/image` shows `target=aarch64-unknown-none` and `bootline=absent`.
-- `status` / `input` show whether the USB probe is enabled and whether decoded
-  bytes are pending.
+- `status` / `input` show live ready source diagnostics:
+  `source=usb-keyboard+uart-fallback`, `source_state=ready`, `mode=live`,
+  `usb_keyboard_probe=enabled`, and a nonzero
+  `usb_keyboard_poll_interval_ms`.
 - `probe help` lists `usb-keyboard` and `xhci-read-keyboard-report`, proving
   the hardware probe path was discoverable from the shell.
 - `probe usb-keyboard` either records a precise lower-provider blocker or queues
