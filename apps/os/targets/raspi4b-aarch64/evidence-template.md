@@ -66,7 +66,9 @@ proof
 cat /boot/proof
 cat /boot/image
 status
+cat /boot/status
 input
+cat /boot/input
 probe help
 probe usb-keyboard
 cat /boot/profile
@@ -90,6 +92,7 @@ Required success facts:
 - [ ] `input=usb-keyboard+uart-fallback`
 - [ ] `usb_keyboard=ready`
 - [ ] `status` / `input` report live ready source diagnostics.
+- [ ] `cat /boot/status` / `cat /boot/input` report VFS-backed live diagnostics.
 - [ ] `probe help` lists `usb-keyboard` and `xhci-read-keyboard-report`.
 - [ ] `dmesg` contains `shell: <command>` and `shell.status=ok` audit lines for the typed commands.
 - [ ] `dmesg` contains the `probe usb-keyboard` output or blocker.

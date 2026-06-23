@@ -183,7 +183,9 @@ proof
 cat /boot/proof
 cat /boot/image
 status
+cat /boot/status
 input
+cat /boot/input
 probe help
 probe usb-keyboard
 cat /boot/profile
@@ -200,6 +202,8 @@ Record the full visible output or serial transcript. The key evidence is:
   `source=usb-keyboard+uart-fallback`, `source_state=ready`, `mode=live`,
   `usb_keyboard_probe=enabled`, and a nonzero
   `usb_keyboard_poll_interval_ms`.
+- `cat /boot/status` / `cat /boot/input` show the same live diagnostics
+  through the kernel VFS.
 - `probe help` lists `usb-keyboard` and `xhci-read-keyboard-report`, proving
   the hardware probe path was discoverable from the shell.
 - `probe usb-keyboard` either records a precise lower-provider blocker or queues

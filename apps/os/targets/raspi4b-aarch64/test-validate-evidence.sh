@@ -21,6 +21,7 @@ missing_audit_evidence="$tmp_dir/missing-audit.md"
 missing_status_evidence="$tmp_dir/missing-status.md"
 missing_probe_help_evidence="$tmp_dir/missing-probe-help.md"
 missing_live_source_evidence="$tmp_dir/missing-live-source.md"
+missing_vfs_live_source_evidence="$tmp_dir/missing-vfs-live-source.md"
 missing_proof_evidence="$tmp_dir/missing-proof.md"
 missing_vfs_proof_evidence="$tmp_dir/missing-vfs-proof.md"
 missing_media_evidence="$tmp_dir/missing-media.md"
@@ -124,7 +125,21 @@ write_passing_evidence() {
         printf 'usb_keyboard=ready\n'
         printf 'usb_keyboard_probe=enabled\n'
         printf 'usb_keyboard_poll_interval_ms=5\n'
+        printf 'reovim-os> cat /boot/status\n'
+        printf 'input=usb-keyboard+uart-fallback\n'
+        printf 'source_state=ready\n'
+        printf 'input_mode=live\n'
+        printf 'usb_keyboard=ready\n'
+        printf 'usb_keyboard_probe=enabled\n'
+        printf 'usb_keyboard_poll_interval_ms=5\n'
         printf 'reovim-os> input\n'
+        printf 'source=usb-keyboard+uart-fallback\n'
+        printf 'source_state=ready\n'
+        printf 'mode=live\n'
+        printf 'usb_keyboard=ready\n'
+        printf 'usb_keyboard_probe=enabled\n'
+        printf 'usb_keyboard_poll_interval_ms=5\n'
+        printf 'reovim-os> cat /boot/input\n'
         printf 'source=usb-keyboard+uart-fallback\n'
         printf 'source_state=ready\n'
         printf 'mode=live\n'
@@ -153,7 +168,11 @@ write_passing_evidence() {
         printf 'shell.status=ok\n'
         printf 'shell: status\n'
         printf 'shell.status=ok\n'
+        printf 'shell: cat /boot/status\n'
+        printf 'shell.status=ok\n'
         printf 'shell: input\n'
+        printf 'shell.status=ok\n'
+        printf 'shell: cat /boot/input\n'
         printf 'shell.status=ok\n'
         printf 'shell: probe help\n'
         printf 'shell.status=ok\n'
@@ -175,6 +194,7 @@ write_passing_evidence() {
         printf -- '- [x] `input=usb-keyboard+uart-fallback`\n'
         printf -- '- [x] `usb_keyboard=ready`\n'
         printf -- '- [x] `status` / `input` report live ready source diagnostics.\n'
+        printf -- '- [x] `cat /boot/status` / `cat /boot/input` report VFS-backed live diagnostics.\n'
         printf -- '- [x] `probe help` lists `usb-keyboard` and `xhci-read-keyboard-report`.\n'
         printf -- '- [x] `dmesg` contains `shell: <command>` and `shell.status=ok` audit lines for the typed commands.\n'
         printf -- '- [x] `dmesg` contains the `probe usb-keyboard` output or blocker.\n\n'
@@ -225,6 +245,10 @@ expect_failure "$missing_probe_help_evidence" "missing-probe-help"
 cp "$pass_evidence" "$missing_live_source_evidence"
 sed -i '/^source=usb-keyboard+uart-fallback$/d' "$missing_live_source_evidence"
 expect_failure "$missing_live_source_evidence" "missing-live-source"
+
+cp "$pass_evidence" "$missing_vfs_live_source_evidence"
+sed -i '\#^reovim-os> cat /boot/status$#d' "$missing_vfs_live_source_evidence"
+expect_failure "$missing_vfs_live_source_evidence" "missing-vfs-live-source"
 
 cp "$pass_evidence" "$missing_proof_evidence"
 sed -i '/^proof:$/d' "$missing_proof_evidence"

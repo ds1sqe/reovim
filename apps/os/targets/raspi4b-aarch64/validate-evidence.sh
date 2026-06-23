@@ -87,6 +87,7 @@ require_re '^- \[[xX]\] A physical USB keypress reached the root shell\.$' 'phys
 require_re '^- \[[xX]\] `input=usb-keyboard\+uart-fallback`$' 'USB keyboard input-source checkbox'
 require_re '^- \[[xX]\] `usb_keyboard=ready`$' 'USB keyboard readiness checkbox'
 require_re '^- \[[xX]\] `status` / `input` report live ready source diagnostics\.$' 'live source diagnostics checkbox'
+require_re '^- \[[xX]\] `cat /boot/status` / `cat /boot/input` report VFS-backed live diagnostics\.$' 'VFS live diagnostics checkbox'
 require_re '^- \[[xX]\] `probe help` lists `usb-keyboard` and `xhci-read-keyboard-report`\.$' 'probe help catalog checkbox'
 require_re '^- \[[xX]\] `dmesg` contains `shell: <command>` and `shell\.status=ok` audit lines for the typed commands\.$' 'dmesg command/status audit checkbox'
 require_re '^- \[[xX]\] `dmesg` contains the `probe usb-keyboard` output or blocker\.$' 'probe-output dmesg checkbox'
@@ -110,6 +111,8 @@ require_re '^usb_keyboard_probe=enabled$' 'USB keyboard probe-enabled line'
 require_re '^usb_keyboard_poll_interval_ms=[1-9][0-9]*$' 'nonzero USB keyboard poll interval line'
 require_re '^reovim-os> proof$' 'proof command in pasted transcript'
 require_re '^reovim-os> cat /boot/proof$' 'VFS proof command in pasted transcript'
+require_re '^reovim-os> cat /boot/status$' 'VFS status command in pasted transcript'
+require_re '^reovim-os> cat /boot/input$' 'VFS input command in pasted transcript'
 require_count_at_least '^proof:$' 'proof checklist header' 2
 require_re '^commands:$' 'proof command-list header'
 require_re '^  cat /boot/image$' 'proof checklist image command'
@@ -129,13 +132,15 @@ require_re '^shell: cat /boot/image$' 'dmesg audit for cat /boot/image'
 require_re '^shell: proof$' 'dmesg audit for proof'
 require_re '^shell: cat /boot/proof$' 'dmesg audit for VFS proof'
 require_re '^shell: status$' 'dmesg audit for status'
+require_re '^shell: cat /boot/status$' 'dmesg audit for VFS status'
 require_re '^shell: input$' 'dmesg audit for input'
+require_re '^shell: cat /boot/input$' 'dmesg audit for VFS input'
 require_re '^shell: probe help$' 'dmesg audit for probe help'
 require_re '^shell: probe usb-keyboard$' 'dmesg audit for probe usb-keyboard'
 require_re '^shell: cat /boot/profile$' 'dmesg audit for cat /boot/profile'
 require_re '^shell: dmesg$' 'dmesg audit for dmesg'
 require_re '^shell: cat /log/dmesg$' 'dmesg audit for cat /log/dmesg'
-require_count_at_least '^shell\.status=ok$' 'successful shell status audit lines' 9
+require_count_at_least '^shell\.status=ok$' 'successful shell status audit lines' 11
 
 image_bytes="$(awk '/^- Image bytes: [1-9][0-9]*$/ { print $4; exit }' "$EVIDENCE")"
 media_bytes="$(awk -F= '/^bytes=[1-9][0-9]*$/ { print $2; exit }' "$EVIDENCE")"
