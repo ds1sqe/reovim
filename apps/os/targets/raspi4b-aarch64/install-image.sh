@@ -39,6 +39,22 @@ warn() {
     printf 'warning: %s\n' "$*" >&2
 }
 
+backup_path_for() {
+    local dest="$1"
+    local base
+    local candidate
+    local index
+
+    base="$dest.bak-$(date -u +%Y%m%dT%H%M%SZ)"
+    candidate="$base"
+    index=1
+    while [ -e "$candidate" ]; do
+        candidate="$base.$index"
+        index=$((index + 1))
+    done
+    printf '%s\n' "$candidate"
+}
+
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --build)
@@ -102,7 +118,7 @@ done
 DEST="$BOOT_DIR/kernel8.img"
 BACKUP_PATH=""
 if [ -e "$DEST" ] && [ "$BACKUP" -eq 1 ]; then
-    BACKUP_PATH="$DEST.bak-$(date -u +%Y%m%dT%H%M%SZ)"
+    BACKUP_PATH="$(backup_path_for "$DEST")"
 fi
 
 bytes="$(wc -c <"$IMAGE" | tr -d ' ')"

@@ -40,6 +40,16 @@ on the boot partition, the helper saves a timestamped backup before replacing
 it, then prints the installed image byte count and SHA-256 for the evidence
 template.
 
+To smoke-test the installer against a temporary directory instead of real
+media:
+
+```sh
+apps/os/targets/raspi4b-aarch64/test-install-image.sh
+```
+
+The smoke test verifies dry-run identity output, installed image hash, and
+distinct backups after repeated installs.
+
 ## QEMU Smoke
 
 QEMU raspi4b currently disables the DTB PCIe path used by the Pi 4 VL805 xHCI
