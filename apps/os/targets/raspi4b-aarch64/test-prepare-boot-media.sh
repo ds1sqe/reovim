@@ -64,6 +64,10 @@ if find "$tmp_root" -maxdepth 1 -name '.*.tmp.*' | grep -q .; then
     printf 'error: unexpected temporary evidence file remained\n' >&2
     exit 1
 fi
+if find "$tmp_root" -maxdepth 1 -name '.*.prepared.*' | grep -q .; then
+    printf 'error: unexpected prepared evidence file remained\n' >&2
+    exit 1
+fi
 
 expect_contains "$prepare_output" "preflight=ok" "preflight status"
 expect_contains "$prepare_output" "bootfs=ok" "bootfs status"
@@ -74,6 +78,17 @@ expect_contains "$prepare_output" "sha256=$source_sha" "installed sha"
 expect_contains "$prepare_output" "evidence_seed=$tmp_evidence" "evidence path"
 
 evidence="$(cat "$tmp_evidence")"
+media_section_count="$(grep -c '^## Media Preparation$' "$tmp_evidence")"
+if [ "$media_section_count" -ne 1 ]; then
+    printf 'error: expected one media preparation section, found %s\n' "$media_section_count" >&2
+    exit 1
+fi
+media_line="$(grep -n '^## Media Preparation$' "$tmp_evidence" | cut -d: -f1)"
+boot_line="$(grep -n '^## Boot Evidence$' "$tmp_evidence" | cut -d: -f1)"
+if [ "$media_line" -ge "$boot_line" ]; then
+    printf 'error: media preparation section must appear before boot evidence\n' >&2
+    exit 1
+fi
 expect_contains "$evidence" "- Image SHA-256: $source_sha" "evidence image sha"
 expect_contains "$evidence" "- Preflight result: preflight=ok qemu_smoke=skipped" "evidence preflight result"
 expect_contains "$evidence" "- Boot partition path: $tmp_bootfs" "evidence bootfs"

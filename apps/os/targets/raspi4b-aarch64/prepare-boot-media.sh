@@ -16,6 +16,7 @@ EVIDENCE_OUT=""
 SKIP_QEMU=0
 NO_BACKUP=0
 tmp_evidence=""
+tmp_prepared_evidence=""
 
 usage() {
     cat <<'USAGE'
@@ -42,6 +43,9 @@ fail() {
 cleanup() {
     if [ -n "$tmp_evidence" ] && [ -e "$tmp_evidence" ]; then
         rm -f "$tmp_evidence"
+    fi
+    if [ -n "$tmp_prepared_evidence" ] && [ -e "$tmp_prepared_evidence" ]; then
+        rm -f "$tmp_prepared_evidence"
     fi
 }
 trap cleanup EXIT
@@ -128,21 +132,45 @@ if [ "$source_sha" != "$installed_sha" ]; then
 fi
 
 bytes="$(wc -c <"$installed" | tr -d ' ')"
-{
-    printf '\n## Media Preparation\n\n'
-    printf 'Required media facts:\n\n'
-    printf -- '- [x] `media_prepare=ok`\n'
-    printf -- '- [x] installed `kernel8.img` SHA-256 matches image SHA-256.\n'
-    printf -- '- [x] installed `kernel8.img` byte count matches image byte count.\n\n'
-    printf 'Paste the media-prep result:\n\n'
-    printf '```text\n'
-    printf 'media_prepare=ok\n'
-    printf 'bootfs=%s\n' "$bootfs_abs"
-    printf 'installed=%s\n' "$installed"
-    printf 'bytes=%s\n' "$bytes"
-    printf 'sha256=%s\n' "$installed_sha"
-    printf '```\n'
-} >>"$tmp_evidence"
+tmp_prepared_evidence="$evidence_parent/.${evidence_base}.prepared.$$"
+awk \
+    -v bootfs="$bootfs_abs" \
+    -v installed="$installed" \
+    -v bytes="$bytes" \
+    -v sha256="$installed_sha" '
+function write_media_section() {
+    print "";
+    print "## Media Preparation";
+    print "";
+    print "Required media facts:";
+    print "";
+    print "- [x] `media_prepare=ok`";
+    print "- [x] installed `kernel8.img` SHA-256 matches image SHA-256.";
+    print "- [x] installed `kernel8.img` byte count matches image byte count.";
+    print "";
+    print "Paste the media-prep result:";
+    print "";
+    print "```text";
+    print "media_prepare=ok";
+    print "bootfs=" bootfs;
+    print "installed=" installed;
+    print "bytes=" bytes;
+    print "sha256=" sha256;
+    print "```";
+}
+/^## Boot Evidence$/ && !inserted {
+    write_media_section();
+    inserted = 1;
+}
+{ print }
+END {
+    if (!inserted) {
+        write_media_section();
+    }
+}
+' "$tmp_evidence" >"$tmp_prepared_evidence"
+mv "$tmp_prepared_evidence" "$tmp_evidence"
+tmp_prepared_evidence=""
 
 mv "$tmp_evidence" "$EVIDENCE_OUT"
 tmp_evidence=""
