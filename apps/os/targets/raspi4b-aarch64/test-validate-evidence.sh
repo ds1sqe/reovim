@@ -25,6 +25,7 @@ missing_vfs_live_source_evidence="$tmp_dir/missing-vfs-live-source.md"
 missing_vfs_namespace_evidence="$tmp_dir/missing-vfs-namespace.md"
 missing_boot_inventory_evidence="$tmp_dir/missing-boot-inventory.md"
 missing_shell_usability_evidence="$tmp_dir/missing-shell-usability.md"
+missing_pcie_probe_evidence="$tmp_dir/missing-pcie-probe.md"
 missing_proof_evidence="$tmp_dir/missing-proof.md"
 missing_vfs_proof_evidence="$tmp_dir/missing-vfs-proof.md"
 missing_media_evidence="$tmp_dir/missing-media.md"
@@ -101,6 +102,7 @@ write_passing_evidence() {
         printf '  input\n'
         printf '  cat /boot/input\n'
         printf '  probe help\n'
+        printf '  probe pcie\n'
         printf '  probe usb-keyboard\n'
         printf '  cat /boot/profile\n'
         printf '  dmesg\n'
@@ -112,6 +114,7 @@ write_passing_evidence() {
         printf '  mode=live\n'
         printf '  usb_keyboard=ready\n'
         printf '  usb_keyboard_probe=enabled\n'
+        printf '  probe targets include pcie\n'
         printf '  probe targets include usb-keyboard\n'
         printf '  probe targets include xhci-read-keyboard-report\n'
         printf '  shell.status=ok\n'
@@ -140,6 +143,7 @@ write_passing_evidence() {
         printf '  input\n'
         printf '  cat /boot/input\n'
         printf '  probe help\n'
+        printf '  probe pcie\n'
         printf '  probe usb-keyboard\n'
         printf '  cat /boot/profile\n'
         printf '  dmesg\n'
@@ -151,6 +155,7 @@ write_passing_evidence() {
         printf '  mode=live\n'
         printf '  usb_keyboard=ready\n'
         printf '  usb_keyboard_probe=enabled\n'
+        printf '  probe targets include pcie\n'
         printf '  probe targets include usb-keyboard\n'
         printf '  probe targets include xhci-read-keyboard-report\n'
         printf '  shell.status=ok\n'
@@ -252,8 +257,18 @@ write_passing_evidence() {
         printf 'usb_keyboard_poll_interval_ms=5\n'
         printf 'reovim-os> probe help\n'
         printf 'probe targets:\n'
+        printf '  pcie\n'
         printf '  usb-keyboard (alias: keyboard)\n'
         printf '  xhci-read-keyboard-report (alias: usb-keyboard-read-report)\n'
+        printf 'reovim-os> probe pcie\n'
+        printf 'probe pcie:\n'
+        printf 'state=present\n'
+        printf 'raw_status=0x00000001\n'
+        printf 'root_complex=true\n'
+        printf 'link_up=true\n'
+        printf 'xhci=present\n'
+        printf 'xhci.vendor=0x00001106\n'
+        printf 'xhci.device_id=0x00003483\n'
         printf 'reovim-os> probe usb-keyboard\n'
         printf 'probe usb-keyboard:\n'
         printf 'state=report-pending\n'
@@ -312,6 +327,8 @@ write_passing_evidence() {
         printf 'shell.status=ok\n'
         printf 'shell: probe help\n'
         printf 'shell.status=ok\n'
+        printf 'shell: probe pcie\n'
+        printf 'shell.status=ok\n'
         printf 'shell: probe usb-keyboard\n'
         printf 'shell.status=ok\n'
         printf 'shell: cat /boot/profile\n'
@@ -335,7 +352,8 @@ write_passing_evidence() {
         printf -- '- [x] `usb_keyboard=ready`\n'
         printf -- '- [x] `status` / `input` report live ready source diagnostics.\n'
         printf -- '- [x] `cat /boot/status` / `cat /boot/input` report VFS-backed live diagnostics.\n'
-        printf -- '- [x] `probe help` lists `usb-keyboard` and `xhci-read-keyboard-report`.\n'
+        printf -- '- [x] `probe help` lists `pcie`, `usb-keyboard`, and `xhci-read-keyboard-report`.\n'
+        printf -- '- [x] `probe pcie` reports the read-only PCIe/xHCI state.\n'
         printf -- '- [x] `dmesg` contains `shell: <command>` and `shell.status=ok` audit lines for the typed commands.\n'
         printf -- '- [x] `dmesg` contains the `probe usb-keyboard` output or blocker.\n\n'
         printf '## Result\n\n'
@@ -401,6 +419,10 @@ expect_failure "$missing_boot_inventory_evidence" "missing-boot-inventory"
 cp "$pass_evidence" "$missing_shell_usability_evidence"
 sed -i '/^screen test:$/d' "$missing_shell_usability_evidence"
 expect_failure "$missing_shell_usability_evidence" "missing-shell-usability"
+
+cp "$pass_evidence" "$missing_pcie_probe_evidence"
+sed -i '\#^reovim-os> probe pcie$#d' "$missing_pcie_probe_evidence"
+expect_failure "$missing_pcie_probe_evidence" "missing-pcie-probe"
 
 cp "$pass_evidence" "$missing_proof_evidence"
 sed -i '/^proof:$/d' "$missing_proof_evidence"

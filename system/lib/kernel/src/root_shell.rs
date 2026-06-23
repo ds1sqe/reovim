@@ -590,6 +590,7 @@ fn write_boot_proof(daemon: &RootDaemon<'_>) {
     daemon.write_line("  input");
     daemon.write_line("  cat /boot/input");
     daemon.write_line("  probe help");
+    daemon.write_line("  probe pcie");
     daemon.write_line("  probe usb-keyboard");
     daemon.write_line("  cat /boot/profile");
     daemon.write_line("  dmesg");
@@ -601,6 +602,7 @@ fn write_boot_proof(daemon: &RootDaemon<'_>) {
     daemon.write_line("  mode=live");
     daemon.write_line("  usb_keyboard=ready");
     daemon.write_line("  usb_keyboard_probe=enabled");
+    daemon.write_line("  probe targets include pcie");
     daemon.write_line("  probe targets include usb-keyboard");
     daemon.write_line("  probe targets include xhci-read-keyboard-report");
     daemon.write_line("  shell.status=ok");

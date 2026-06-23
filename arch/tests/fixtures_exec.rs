@@ -781,8 +781,16 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "proof checklist expected facts appear; serial: {serial:?}",
     );
     assert!(
+        serial.contains("probe targets include pcie"),
+        "proof checklist names read-only PCIe probe; serial: {serial:?}",
+    );
+    assert!(
         serial.contains("probe targets include xhci-read-keyboard-report"),
         "proof checklist names keyboard report probe; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("  probe help\n  probe pcie\n  probe usb-keyboard"),
+        "proof checklist includes read-only PCIe probe; serial: {serial:?}",
     );
     assert!(
         serial.contains("xhci-read-keyboard-report (alias: usb-keyboard-read-report)"),

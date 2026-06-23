@@ -99,6 +99,8 @@ expect_contains "$evidence" "\`cat /boot/proof\` prints the VFS-backed proof pse
 expect_contains "$evidence" "cat /boot/status" "evidence VFS status command"
 expect_contains "$evidence" "cat /boot/input" "evidence VFS input command"
 expect_contains "$evidence" "\`cat /boot/status\` / \`cat /boot/input\` report VFS-backed live diagnostics." "evidence VFS live diagnostics fact"
+expect_contains "$evidence" "probe pcie" "evidence PCIe probe command"
+expect_contains "$evidence" "\`probe pcie\` reports the read-only PCIe/xHCI state." "evidence PCIe probe fact"
 expect_contains "$evidence" "## Media Preparation" "evidence media section"
 expect_contains "$evidence" "- [x] \`media_prepare=ok\`" "evidence media status checkbox"
 expect_contains "$evidence" "- [x] installed \`kernel8.img\` SHA-256 matches image SHA-256." "evidence install hash checkbox"

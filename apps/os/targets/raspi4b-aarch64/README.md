@@ -21,7 +21,7 @@ image=apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img
 bytes=<image-size>
 ```
 
-Current expected size is `435620` bytes.
+Current expected size is `435708` bytes.
 
 Copy `apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img` to the Pi
 4 boot partition as `kernel8.img`, using the normal Raspberry Pi firmware
@@ -137,10 +137,10 @@ shell help/renderer evidence from `help` / `clear` / `screentest`, VFS
 namespace evidence from `pwd` / `ls` / `mount` / `cat /boot/mounts`, boot
 inventory from `ls /dev` / `device` / `cat /boot/memory` /
 `cat /boot/devices`, relative device-file access from `cd /dev` /
-`cat uart0`, `probe help` keyboard-target catalog output, `probe usb-keyboard`
-output, and `dmesg` command/status audit lines. It is a textual guard for
-completed evidence; it does not replace the physical HDMI plus USB-keyboard
-session.
+`cat uart0`, `probe help` hardware-target catalog output, read-only PCIe/xHCI
+state from `probe pcie`, `probe usb-keyboard` output, and `dmesg`
+command/status audit lines. It is a textual guard for completed evidence; it
+does not replace the physical HDMI plus USB-keyboard session.
 
 To smoke-test the validator:
 
@@ -209,6 +209,7 @@ cat /boot/status
 input
 cat /boot/input
 probe help
+probe pcie
 probe usb-keyboard
 cat /boot/profile
 dmesg
@@ -234,8 +235,11 @@ Record the full visible output or serial transcript. The key evidence is:
   `usb_keyboard_poll_interval_ms`.
 - `cat /boot/status` / `cat /boot/input` show the same live diagnostics
   through the kernel VFS.
-- `probe help` lists `usb-keyboard` and `xhci-read-keyboard-report`, proving
-  the hardware probe path was discoverable from the shell.
+- `probe help` lists `pcie`, `usb-keyboard`, and
+  `xhci-read-keyboard-report`, proving the hardware probe paths were
+  discoverable from the shell.
+- `probe pcie` reports the read-only PCIe/root-complex and xHCI discovery
+  state without running active xHCI start/enumeration transitions.
 - `probe usb-keyboard` either records a precise lower-provider blocker or queues
   decoded bytes without consuming shell input.
 - `dmesg` includes the command audit lines and probe output.

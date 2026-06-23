@@ -412,6 +412,7 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"  cd /\n");
     assert_contains(sink_bytes(), b"  cat /boot/image\n");
     assert_contains(sink_bytes(), b"  cat /boot/status\n");
+    assert_contains(sink_bytes(), b"  probe pcie\n");
     assert_contains(sink_bytes(), b"  probe usb-keyboard\n");
     assert_contains(sink_bytes(), b"  cat /boot/input\n");
     assert_contains(sink_bytes(), b"  cat /log/dmesg\n");
@@ -422,6 +423,7 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     run_session_command(&mut session, b"proof\n");
     assert_contains(sink_bytes(), b"proof:\n");
     assert_contains(sink_bytes(), b"expected:\n");
+    assert_contains(sink_bytes(), b"  probe targets include pcie\n");
     assert_contains(sink_bytes(), b"  probe targets include xhci-read-keyboard-report\n");
 
     run_session_command(&mut session, b"proof extra\n");

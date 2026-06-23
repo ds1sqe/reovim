@@ -86,6 +86,7 @@ cat /boot/status
 input
 cat /boot/input
 probe help
+probe pcie
 probe usb-keyboard
 cat /boot/profile
 dmesg
@@ -113,7 +114,8 @@ Required success facts:
 - [ ] `usb_keyboard=ready`
 - [ ] `status` / `input` report live ready source diagnostics.
 - [ ] `cat /boot/status` / `cat /boot/input` report VFS-backed live diagnostics.
-- [ ] `probe help` lists `usb-keyboard` and `xhci-read-keyboard-report`.
+- [ ] `probe help` lists `pcie`, `usb-keyboard`, and `xhci-read-keyboard-report`.
+- [ ] `probe pcie` reports the read-only PCIe/xHCI state.
 - [ ] `dmesg` contains `shell: <command>` and `shell.status=ok` audit lines for the typed commands.
 - [ ] `dmesg` contains the `probe usb-keyboard` output or blocker.
 
