@@ -79,6 +79,7 @@ cat /boot/memory
 cat /boot/devices
 cd /dev
 pwd
+ls
 cat uart0
 cd /
 cat /boot/image
@@ -128,7 +129,7 @@ Required success facts:
 - [ ] `help` / `clear` / `screentest` prove the shell help and renderer commands.
 - [ ] `pwd` / `ls` / `mount` report the kernel VFS namespace and mounts.
 - [ ] `device` / `cat /boot/memory` / `cat /boot/devices` report boot inventory.
-- [ ] `cd /dev` / `cat uart0` prove relative VFS device-file access.
+- [ ] `cd /dev` / `ls` / `cat uart0` prove relative VFS device-file access.
 - [ ] `input=usb-keyboard+uart-fallback`
 - [ ] `usb_keyboard=ready`
 - [ ] `status` / `input` report live ready source diagnostics.

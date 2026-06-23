@@ -415,6 +415,7 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"  cat /boot/memory\n");
     assert_contains(sink_bytes(), b"  cat /boot/devices\n");
     assert_contains(sink_bytes(), b"  cd /dev\n");
+    assert_contains(sink_bytes(), b"  ls\n");
     assert_contains(sink_bytes(), b"  cat uart0\n");
     assert_contains(sink_bytes(), b"  cd /\n");
     assert_contains(sink_bytes(), b"  cat /boot/image\n");

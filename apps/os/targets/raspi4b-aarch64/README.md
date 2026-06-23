@@ -21,7 +21,7 @@ image=apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img
 bytes=<image-size>
 ```
 
-Current expected size is `436324` bytes.
+Current expected size is `436340` bytes.
 
 Copy `apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img` to the Pi
 4 boot partition as `kernel8.img`, using the normal Raspberry Pi firmware
@@ -137,7 +137,7 @@ the VFS-backed help catalog from `cat /boot/help`, shell help/renderer
 evidence from `help` / `clear` / `screentest`, VFS namespace evidence from
 `pwd` / `ls` / `mount` / `cat /boot/mounts`, boot inventory from `ls /dev` /
 `device` / `cat /boot/memory` /
-`cat /boot/devices`, relative device-file access from `cd /dev` /
+`cat /boot/devices`, relative device-file access from `cd /dev` / `ls` /
 `cat uart0`, `probe help` hardware-target catalog output, read-only PCIe/xHCI
 state from `probe pcie`, `probe usb-keyboard` output, shell-only
 `launch`/`reovim` disabled output, and `dmesg` command/status audit lines
@@ -206,6 +206,7 @@ cat /boot/memory
 cat /boot/devices
 cd /dev
 pwd
+ls
 cat uart0
 cd /
 cat /boot/image
@@ -241,8 +242,8 @@ Record the full visible output or serial transcript. The key evidence is:
   VFS namespace and pseudo-filesystem mount table.
 - `ls /dev`, `device`, `cat /boot/memory`, and `cat /boot/devices` show the
   device namespace plus boot memory and device inventory facts.
-- `cd /dev`, `pwd`, `cat uart0`, and `cd /` prove session cwd and relative
-  VFS pseudo-device access.
+- `cd /dev`, `pwd`, `ls`, `cat uart0`, and `cd /` prove session cwd and
+  relative VFS pseudo-device access.
 - `cat /boot/image` shows `target=aarch64-unknown-none` and `bootline=absent`.
 - `status` / `input` show live ready source diagnostics:
   `source=usb-keyboard+uart-fallback`, `source_state=ready`, `mode=live`,

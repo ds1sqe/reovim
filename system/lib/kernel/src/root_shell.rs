@@ -585,6 +585,7 @@ fn write_boot_proof(daemon: &RootDaemon<'_>) {
     daemon.write_line("  cat /boot/devices");
     daemon.write_line("  cd /dev");
     daemon.write_line("  pwd");
+    daemon.write_line("  ls");
     daemon.write_line("  cat uart0");
     daemon.write_line("  cd /");
     daemon.write_line("  cat /boot/image");

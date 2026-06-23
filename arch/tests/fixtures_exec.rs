@@ -785,7 +785,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "proof checklist includes boot inventory commands; serial: {serial:?}",
     );
     assert!(
-        serial.contains("  cd /dev\n  pwd\n  cat uart0\n  cd /"),
+        serial.contains("  cd /dev\n  pwd\n  ls\n  cat uart0\n  cd /"),
         "proof checklist includes relative device access commands; serial: {serial:?}",
     );
     assert!(
