@@ -24,6 +24,7 @@ missing_live_source_evidence="$tmp_dir/missing-live-source.md"
 missing_vfs_live_source_evidence="$tmp_dir/missing-vfs-live-source.md"
 missing_image_identity_evidence="$tmp_dir/missing-image-identity.md"
 missing_profile_identity_evidence="$tmp_dir/missing-profile-identity.md"
+missing_identity_checkbox_evidence="$tmp_dir/missing-identity-checkbox.md"
 missing_vfs_namespace_evidence="$tmp_dir/missing-vfs-namespace.md"
 missing_boot_inventory_evidence="$tmp_dir/missing-boot-inventory.md"
 missing_shell_usability_evidence="$tmp_dir/missing-shell-usability.md"
@@ -83,8 +84,13 @@ write_passing_evidence() {
         printf 'launch_profile_feature=disabled\n'
         printf '```\n\n'
         printf 'Required facts:\n\n'
+        printf -- '- [x] `package=reovim-os`\n'
+        printf -- '- [x] `/boot/image` reports a `version=` line.\n'
         printf -- '- [x] `target=aarch64-unknown-none`\n'
+        printf -- '- [x] `selected_profile=shell-only`\n'
+        printf -- '- [x] `profile_request=shell-only`\n'
         printf -- '- [x] `bootline=absent`\n'
+        printf -- '- [x] `launch_profile_feature=disabled`\n'
         printf -- '- [x] shell prompt reached: `reovim-os>`\n'
         printf -- '- [x] input source is recorded honestly\n'
         printf -- '- [x] QEMU/VNC/HDMI display was not counted as keyboard input\n\n'
@@ -422,6 +428,7 @@ write_passing_evidence() {
         printf -- '- [x] `cat /boot/status` / `cat /boot/input` report VFS-backed live diagnostics.\n'
         printf -- '- [x] `probe help` lists `pcie`, `usb-keyboard`, and `xhci-read-keyboard-report`.\n'
         printf -- '- [x] `probe pcie` reports the read-only PCIe/xHCI state.\n'
+        printf -- '- [x] `cat /boot/profile` reports `profile=shell-only`, `launch=disabled`, `payloads=0`, and `input_mode=live`.\n'
         printf -- '- [x] `launch` / `reovim` report shell-only payload launch disabled.\n'
         printf -- '- [x] `dmesg` contains `shell: <command>` and `shell.status=ok` audit lines for the typed commands.\n'
         printf -- '- [x] `dmesg` contains `shell.status=error` audit lines for the disabled payload launch commands.\n'
@@ -487,6 +494,10 @@ expect_failure "$missing_image_identity_evidence" "missing-image-identity"
 cp "$pass_evidence" "$missing_profile_identity_evidence"
 sed -i '/^profile=shell-only$/d' "$missing_profile_identity_evidence"
 expect_failure "$missing_profile_identity_evidence" "missing-profile-identity"
+
+cp "$pass_evidence" "$missing_identity_checkbox_evidence"
+sed -i '/^- \[x\] `selected_profile=shell-only`$/d' "$missing_identity_checkbox_evidence"
+expect_failure "$missing_identity_checkbox_evidence" "missing-identity-checkbox"
 
 cp "$pass_evidence" "$missing_vfs_namespace_evidence"
 sed -i '\#^reovim-os> ls /boot$#d' "$missing_vfs_namespace_evidence"

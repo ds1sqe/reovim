@@ -52,6 +52,7 @@ Paste the boot report or serial transcript excerpt:
 Required facts:
 
 - [ ] `package=reovim-os`
+- [ ] `/boot/image` reports a `version=` line.
 - [ ] `target=aarch64-unknown-none`
 - [ ] `selected_profile=shell-only`
 - [ ] `profile_request=shell-only`

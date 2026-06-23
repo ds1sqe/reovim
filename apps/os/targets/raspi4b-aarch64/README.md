@@ -245,7 +245,7 @@ Record the full visible output or serial transcript. The key evidence is:
   device namespace plus boot memory and device inventory facts.
 - `cd /dev`, `pwd`, `ls`, `cat uart0`, and `cd /` prove session cwd and
   relative VFS pseudo-device access.
-- `cat /boot/image` shows `package=reovim-os`,
+- `cat /boot/image` shows `package=reovim-os`, a `version=` line,
   `target=aarch64-unknown-none`, `selected_profile=shell-only`,
   `profile_request=shell-only`, `bootline=absent`, and
   `launch_profile_feature=disabled`.
