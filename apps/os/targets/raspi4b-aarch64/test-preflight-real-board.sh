@@ -61,6 +61,8 @@ expect_contains "$evidence" "- [ ] Physical USB keyboard attached before boot." 
 expect_contains "$evidence" '- [ ] `REOVIM_OS_BOOTLINE` unset on booted image.' "evidence bootline setup checkbox"
 expect_contains "$evidence" "- [ ] physical USB keyboard" "evidence physical keyboard checkbox"
 expect_contains "$evidence" 'cat /boot/image' "evidence command transcript"
+expect_contains "$evidence" 'cat /log/dmesg' "evidence kernel log transcript command"
+expect_contains "$evidence" '`shell.status=ok` audit lines' "evidence status audit fact"
 expect_contains "$evidence" '`usb_keyboard=ready`' "evidence readiness fact"
 
 printf 'preflight evidence smoke ok\n'

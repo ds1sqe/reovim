@@ -37,6 +37,19 @@ require_re() {
     fi
 }
 
+require_count_at_least() {
+    local pattern="$1"
+    local label="$2"
+    local minimum="$3"
+    local count
+
+    count="$(grep -Ec -- "$pattern" "$EVIDENCE" || true)"
+    if [ "$count" -lt "$minimum" ]; then
+        printf 'missing: %s (found %s, need %s)\n' "$label" "$count" "$minimum" >&2
+        missing=1
+    fi
+}
+
 forbid_re() {
     local pattern="$1"
     local label="$2"
@@ -73,7 +86,7 @@ require_re '^- \[[xX]\] QEMU/VNC/HDMI display was not counted as keyboard input$
 require_re '^- \[[xX]\] A physical USB keypress reached the root shell\.$' 'physical keypress reached shell checkbox'
 require_re '^- \[[xX]\] `input=usb-keyboard\+uart-fallback`$' 'USB keyboard input-source checkbox'
 require_re '^- \[[xX]\] `usb_keyboard=ready`$' 'USB keyboard readiness checkbox'
-require_re '^- \[[xX]\] `dmesg` contains `shell: <command>` audit lines for the typed commands\.$' 'dmesg command-audit checkbox'
+require_re '^- \[[xX]\] `dmesg` contains `shell: <command>` and `shell\.status=ok` audit lines for the typed commands\.$' 'dmesg command/status audit checkbox'
 require_re '^- \[[xX]\] `dmesg` contains the `probe usb-keyboard` output or blocker\.$' 'probe-output dmesg checkbox'
 
 require_re '^reovim-os>' 'root shell prompt in pasted transcript'
@@ -95,6 +108,8 @@ require_re '^shell: probe help$' 'dmesg audit for probe help'
 require_re '^shell: probe usb-keyboard$' 'dmesg audit for probe usb-keyboard'
 require_re '^shell: cat /boot/profile$' 'dmesg audit for cat /boot/profile'
 require_re '^shell: dmesg$' 'dmesg audit for dmesg'
+require_re '^shell: cat /log/dmesg$' 'dmesg audit for cat /log/dmesg'
+require_count_at_least '^shell\.status=ok$' 'successful shell status audit lines' 7
 
 image_bytes="$(awk '/^- Image bytes: [1-9][0-9]*$/ { print $4; exit }' "$EVIDENCE")"
 media_bytes="$(awk -F= '/^bytes=[1-9][0-9]*$/ { print $2; exit }' "$EVIDENCE")"

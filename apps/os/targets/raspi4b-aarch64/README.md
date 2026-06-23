@@ -129,9 +129,9 @@ The validator rejects checked display-only, UART, bootline-script, or FAIL
 labels. It also requires checked HDMI-display and physical-keyboard setup,
 physical-keyboard PASS labels, no-bootline image facts, installed-media
 identity from `prepare-boot-media.sh`, USB-keyboard readiness,
-`probe usb-keyboard` output, and `dmesg` command audit lines. It is a textual
-guard for completed evidence; it does not replace the physical HDMI plus
-USB-keyboard session.
+`probe usb-keyboard` output, and `dmesg` command/status audit lines. It is a
+textual guard for completed evidence; it does not replace the physical HDMI
+plus USB-keyboard session.
 
 To smoke-test the validator:
 
@@ -183,6 +183,7 @@ probe help
 probe usb-keyboard
 cat /boot/profile
 dmesg
+cat /log/dmesg
 ```
 
 Record the full visible output or serial transcript. The key evidence is:
@@ -193,6 +194,8 @@ Record the full visible output or serial transcript. The key evidence is:
 - `probe usb-keyboard` either records a precise lower-provider blocker or queues
   decoded bytes without consuming shell input.
 - `dmesg` includes the command audit lines and probe output.
+- The final `cat /log/dmesg` shows the `shell.status=ok` record for the prior
+  `dmesg` command, because `dmesg` records its own status after printing.
 - Final success requires physical USB keyboard input to reach the shell and
   `cat /boot/profile` or `status` to show:
 

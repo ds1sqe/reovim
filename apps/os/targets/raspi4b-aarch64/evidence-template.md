@@ -69,6 +69,7 @@ probe help
 probe usb-keyboard
 cat /boot/profile
 dmesg
+cat /log/dmesg
 ```
 
 Paste the resulting output:
@@ -84,7 +85,7 @@ Required success facts:
 - [ ] A physical USB keypress reached the root shell.
 - [ ] `input=usb-keyboard+uart-fallback`
 - [ ] `usb_keyboard=ready`
-- [ ] `dmesg` contains `shell: <command>` audit lines for the typed commands.
+- [ ] `dmesg` contains `shell: <command>` and `shell.status=ok` audit lines for the typed commands.
 - [ ] `dmesg` contains the `probe usb-keyboard` output or blocker.
 
 If unsuccessful, record the exact blocker:
