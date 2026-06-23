@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+# Prepare Raspberry Pi 4 boot media for the #800 physical-board proof.
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
+TARGET_DIR="$ROOT/apps/os/targets/raspi4b-aarch64"
+TARGET="aarch64-unknown-none"
+PACKAGE="reovim-os"
+IMAGE="$ROOT/apps/target/$TARGET/debug/$PACKAGE.kernel8.img"
+PREFLIGHT_SCRIPT="$TARGET_DIR/preflight-real-board.sh"
+INSTALL_SCRIPT="$TARGET_DIR/install-image.sh"
+
+BOOTFS=""
+EVIDENCE_OUT=""
+SKIP_QEMU=0
+NO_BACKUP=0
+tmp_evidence=""
+
+usage() {
+    cat <<'USAGE'
+Usage: apps/os/targets/raspi4b-aarch64/prepare-boot-media.sh --bootfs DIR --evidence FILE [options]
+
+Options:
+  --bootfs DIR    Mounted Raspberry Pi 4 FAT boot partition.
+  --evidence FILE Final evidence seed path to create after install verifies.
+  --skip-qemu     Skip the local aarch64 QEMU smoke.
+  --no-backup     Replace kernel8.img without saving a timestamped backup.
+  -h, --help      Show this help text.
+
+Runs preflight, installs the exact built kernel8.img, verifies the installed
+image hash, then publishes the evidence seed for the physical HDMI + USB
+keyboard session. This script does not format or mount media.
+USAGE
+}
+
+fail() {
+    printf 'error: %s\n' "$*" >&2
+    exit 2
+}
+
+cleanup() {
+    if [ -n "$tmp_evidence" ] && [ -e "$tmp_evidence" ]; then
+        rm -f "$tmp_evidence"
+    fi
+}
+trap cleanup EXIT
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --bootfs)
+            shift
+            if [ "$#" -eq 0 ]; then
+                fail "--bootfs needs a directory"
+            fi
+            BOOTFS="$1"
+            ;;
+        --evidence)
+            shift
+            if [ "$#" -eq 0 ]; then
+                fail "--evidence needs an output file"
+            fi
+            EVIDENCE_OUT="$1"
+            ;;
+        --skip-qemu)
+            SKIP_QEMU=1
+            ;;
+        --no-backup)
+            NO_BACKUP=1
+            ;;
+        -h | --help)
+            usage
+            exit 0
+            ;;
+        -*)
+            fail "unknown argument: $1"
+            ;;
+        *)
+            fail "unexpected positional argument: $1"
+            ;;
+    esac
+    shift
+done
+
+if [ -z "$BOOTFS" ]; then
+    fail "--bootfs is required"
+fi
+if [ -z "$EVIDENCE_OUT" ]; then
+    fail "--evidence is required"
+fi
+if [ -e "$EVIDENCE_OUT" ]; then
+    fail "evidence output already exists: $EVIDENCE_OUT"
+fi
+
+evidence_parent="$(dirname "$EVIDENCE_OUT")"
+evidence_base="$(basename "$EVIDENCE_OUT")"
+if [ ! -d "$evidence_parent" ]; then
+    fail "evidence output directory does not exist: $evidence_parent"
+fi
+tmp_evidence="$evidence_parent/.${evidence_base}.tmp.$$"
+if [ -e "$tmp_evidence" ]; then
+    fail "temporary evidence path already exists: $tmp_evidence"
+fi
+
+preflight_args=(--bootfs "$BOOTFS" --evidence "$tmp_evidence")
+if [ "$SKIP_QEMU" -eq 1 ]; then
+    preflight_args+=(--skip-qemu)
+fi
+
+"$PREFLIGHT_SCRIPT" "${preflight_args[@]}"
+
+install_args=()
+if [ "$NO_BACKUP" -eq 1 ]; then
+    install_args+=(--no-backup)
+fi
+"$INSTALL_SCRIPT" "${install_args[@]}" "$BOOTFS"
+
+bootfs_abs="$(cd "$BOOTFS" && pwd -P)"
+installed="$bootfs_abs/kernel8.img"
+if [ ! -s "$installed" ]; then
+    fail "installed kernel8.img missing or empty: $installed"
+fi
+
+source_sha="$(sha256sum "$IMAGE" | awk '{ print $1 }')"
+installed_sha="$(sha256sum "$installed" | awk '{ print $1 }')"
+if [ "$source_sha" != "$installed_sha" ]; then
+    fail "installed kernel8.img SHA mismatch: expected $source_sha got $installed_sha"
+fi
+
+mv "$tmp_evidence" "$EVIDENCE_OUT"
+tmp_evidence=""
+
+bytes="$(wc -c <"$installed" | tr -d ' ')"
+printf 'media_prepare=ok\n'
+printf 'bootfs=%s\n' "$bootfs_abs"
+printf 'installed=%s\n' "$installed"
+printf 'bytes=%s\n' "$bytes"
+printf 'sha256=%s\n' "$installed_sha"
+printf 'evidence_seed=%s\n' "$EVIDENCE_OUT"
+printf 'next=boot Pi 4 with HDMI and physical USB keyboard, then fill evidence\n'

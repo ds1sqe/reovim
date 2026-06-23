@@ -12,6 +12,7 @@ machine = "raspi4b"
 [artifact]
 image = "kernel8.img"
 format = "elf-binary"
+prepare = "prepare-boot-media.sh"
 
 [boot]
 default_profile = "shell-only"

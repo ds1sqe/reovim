@@ -28,7 +28,20 @@ Copy `apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img` to the Pi
 files and DTB for the board. Keep `REOVIM_OS_BOOTLINE` unset for real-machine
 input proof; a bootline script is only a deterministic test harness.
 
-To build and install the image onto a mounted Pi 4 boot partition:
+To run the full local media-prep path against a mounted Pi 4 boot partition:
+
+```sh
+apps/os/targets/raspi4b-aarch64/prepare-boot-media.sh \
+  --bootfs /path/to/bootfs \
+  --evidence tmp/raspi4b-usb-keyboard-evidence.md
+```
+
+The media-prep helper runs preflight, installs the exact built `kernel8.img`,
+verifies the installed image SHA-256 against the built image, and only then
+publishes the evidence seed for the physical session. Use this path for the
+real HDMI plus USB-keyboard proof.
+
+To build and install the image manually onto a mounted Pi 4 boot partition:
 
 ```sh
 apps/os/targets/raspi4b-aarch64/install-image.sh --build /path/to/bootfs
@@ -57,10 +70,12 @@ media:
 ```sh
 apps/os/targets/raspi4b-aarch64/test-check-bootfs.sh
 apps/os/targets/raspi4b-aarch64/test-install-image.sh
+apps/os/targets/raspi4b-aarch64/test-prepare-boot-media.sh
 ```
 
 The smoke tests verify bootfs readiness checks, dry-run identity output,
-installed image hash, and distinct backups after repeated installs.
+installed image hash, distinct backups after repeated installs, and the
+full media-prep wrapper.
 
 ## Local Preflight
 
@@ -82,7 +97,7 @@ apps/os/targets/raspi4b-aarch64/preflight-real-board.sh --bootfs /path/to/bootfs
 QEMU preflight output remains display/UART evidence only; it is not physical
 USB keyboard proof.
 
-To write a prefilled evidence seed after preflight passes:
+To write a prefilled evidence seed after preflight passes without installing:
 
 ```sh
 apps/os/targets/raspi4b-aarch64/preflight-real-board.sh \
