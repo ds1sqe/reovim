@@ -9,20 +9,19 @@ board evidence belongs here and in the #800 flight log.
 Default shell-only image:
 
 ```sh
-env -u REOVIM_OS_BOOTLINE -u REOVIM_OS_PROFILE \
-  cargo build --manifest-path apps/Cargo.toml \
-  -p reovim-os \
-  --target aarch64-unknown-none
-
-~/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-objcopy \
-  -O binary \
-  apps/target/aarch64-unknown-none/debug/reovim-os \
-  apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img
-
-wc -c apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img
+apps/os/targets/raspi4b-aarch64/build-image.sh
 ```
 
-Current expected size at the time this runbook was added is `433788` bytes.
+The helper unsets `REOVIM_OS_BOOTLINE` and `REOVIM_OS_PROFILE`, builds
+`reovim-os` for `aarch64-unknown-none`, converts the ELF to raw
+`kernel8.img` bytes using rustup's `llvm-objcopy`, and prints:
+
+```text
+image=apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img
+bytes=<image-size>
+```
+
+Current expected size at the time this helper was added is `433788` bytes.
 
 Copy `apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img` to the Pi
 4 boot partition as `kernel8.img`, using the normal Raspberry Pi firmware
