@@ -454,6 +454,22 @@ fn hardware_probe(target: &str, devices: &[DeviceEntry], write: WriteFn) -> Hard
             probe_xhci_read_config_descriptor(devices, write);
             HardwareProbeResult::Handled
         }
+        "xhci-set-configuration" | "usb-keyboard-set-configuration" => {
+            probe_xhci_set_configuration(devices, write);
+            HardwareProbeResult::Handled
+        }
+        "xhci-configure-endpoint" | "usb-keyboard-configure-endpoint" => {
+            probe_xhci_configure_endpoint(devices, write);
+            HardwareProbeResult::Handled
+        }
+        "xhci-set-hid-protocol" | "usb-keyboard-set-hid-protocol" => {
+            probe_xhci_set_hid_protocol(devices, write);
+            HardwareProbeResult::Handled
+        }
+        "xhci-read-keyboard-report" | "usb-keyboard-read-report" => {
+            probe_xhci_read_keyboard_report(devices, write);
+            HardwareProbeResult::Handled
+        }
         _ => HardwareProbeResult::UnknownTarget,
     }
 }
@@ -607,6 +623,10 @@ fn probe_xhci_memory_plan(caps: arch_sys::usb::XhciCapabilities, write: WriteFn)
             probe_write_u64_hex(write, plan.command_ring_control);
             probe_emit(write, b"\nxhci.memory.event_ring=");
             probe_write_u64_hex(write, plan.event_ring);
+            probe_emit(write, b"\nxhci.memory.control_endpoint_ring=");
+            probe_write_u64_hex(write, plan.control_endpoint_ring);
+            probe_emit(write, b"\nxhci.memory.interrupt_in_endpoint_ring=");
+            probe_write_u64_hex(write, plan.interrupt_in_endpoint_ring);
             probe_emit(write, b"\nxhci.memory.erst=");
             probe_write_u64_hex(write, plan.event_ring_segment_table);
             probe_emit(write, b"\nxhci.memory.erdp=");
@@ -2169,6 +2189,637 @@ fn probe_xhci_read_config_descriptor(devices: &[DeviceEntry], write: WriteFn) {
 }
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn probe_xhci_set_configuration(devices: &[DeviceEntry], write: WriteFn) {
+    probe_emit(write, b"probe xhci-set-configuration:\n");
+    if !device_inventory_has(
+        devices,
+        reovim_uapi::system::DeviceClass::Bus,
+        "brcm,bcm2711-pcie",
+    ) {
+        probe_emit(write, b"state=unavailable\n");
+        probe_emit(write, b"reason=device-tree-disabled-or-missing\n");
+        return;
+    }
+
+    let report = arch_sys::usb::set_configuration_on_pcie_xhci_controller();
+    probe_emit(write, b"state=");
+    probe_emit(write, probe_xhci_set_configuration_status_name(report.status));
+    probe_emit(write, b"\nconfig_descriptor.state=");
+    probe_emit(
+        write,
+        probe_xhci_read_config_descriptor_status_name(report.configuration.status),
+    );
+    probe_emit(write, b"\nconfig_header.state=");
+    probe_emit(
+        write,
+        probe_xhci_read_config_descriptor_header_status_name(report.configuration.header.status),
+    );
+    probe_emit(write, b"\ndevice_descriptor.state=");
+    probe_emit(
+        write,
+        probe_xhci_read_device_descriptor_status_name(
+            report.configuration.header.device_descriptor.status,
+        ),
+    );
+    probe_emit(write, b"\nset_address.state=");
+    probe_emit(
+        write,
+        probe_xhci_set_address_status_name(
+            report
+                .configuration
+                .header
+                .device_descriptor
+                .set_address
+                .status,
+        ),
+    );
+    probe_emit(write, b"\nslot_id=");
+    probe_write_u64_dec(write, report.slot_id as u64);
+    probe_emit(write, b"\nendpoint_id=");
+    probe_write_u64_dec(write, report.endpoint_id as u64);
+    probe_emit(write, b"\ndoorbell=");
+    probe_write_u32_hex(write, report.doorbell);
+    probe_emit(write, b"\nconfiguration.value=");
+    probe_write_u64_dec(write, report.configuration_value as u64);
+    probe_emit(write, b"\nboot_keyboard.interface=");
+    probe_write_u64_dec(write, report.interface_number as u64);
+    probe_emit(write, b"\nboot_keyboard.endpoint.address=");
+    probe_write_u32_hex(write, report.endpoint_address as u32);
+    probe_emit(write, b"\nsetup.trb_pointer=");
+    probe_write_u64_hex(write, report.setup_trb_pointer);
+    probe_emit(write, b"\nstatus.trb_pointer=");
+    probe_write_u64_hex(write, report.status_trb_pointer);
+    probe_emit(write, b"\n");
+    probe_xhci_trb(write, b"setup", report.setup_trb);
+    probe_xhci_trb(write, b"status", report.status_trb);
+
+    match report.status {
+        arch_sys::usb::XhciSetConfigurationStatus::ConfigurationDescriptorFailed(status) => {
+            probe_emit(write, b"config_descriptor.failure=");
+            probe_emit(write, probe_xhci_read_config_descriptor_status_name(status));
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciSetConfigurationStatus::BootKeyboardNotReadyToConfigure => {
+            probe_emit(write, b"boot_keyboard.ready_to_configure=false\n");
+        }
+        arch_sys::usb::XhciSetConfigurationStatus::UnexpectedEventType {
+            trb_type,
+            completion_code,
+        } => {
+            probe_emit(write, b"event.trb_type=");
+            probe_write_u64_dec(write, trb_type as u64);
+            probe_emit(write, b"\nevent.completion_code=");
+            probe_write_u64_dec(write, completion_code as u64);
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciSetConfigurationStatus::TransferPointerMismatch {
+            expected,
+            actual,
+            completion_code,
+            slot_id,
+            endpoint_id,
+        } => {
+            probe_emit(write, b"event.expected_trb_pointer=");
+            probe_write_u64_hex(write, expected);
+            probe_emit(write, b"\nevent.actual_trb_pointer=");
+            probe_write_u64_hex(write, actual);
+            probe_emit(write, b"\nevent.completion_code=");
+            probe_write_u64_dec(write, completion_code as u64);
+            probe_emit(write, b"\nevent.slot_id=");
+            probe_write_u64_dec(write, slot_id as u64);
+            probe_emit(write, b"\nevent.endpoint_id=");
+            probe_write_u64_dec(write, endpoint_id as u64);
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciSetConfigurationStatus::SlotIdMismatch {
+            expected,
+            actual,
+            completion_code,
+        } => {
+            probe_emit(write, b"event.expected_slot_id=");
+            probe_write_u64_dec(write, expected as u64);
+            probe_emit(write, b"\nevent.actual_slot_id=");
+            probe_write_u64_dec(write, actual as u64);
+            probe_emit(write, b"\nevent.completion_code=");
+            probe_write_u64_dec(write, completion_code as u64);
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciSetConfigurationStatus::EndpointIdMismatch {
+            expected,
+            actual,
+            completion_code,
+        } => {
+            probe_emit(write, b"event.expected_endpoint_id=");
+            probe_write_u64_dec(write, expected as u64);
+            probe_emit(write, b"\nevent.actual_endpoint_id=");
+            probe_write_u64_dec(write, actual as u64);
+            probe_emit(write, b"\nevent.completion_code=");
+            probe_write_u64_dec(write, completion_code as u64);
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciSetConfigurationStatus::TransferFailed {
+            completion_code,
+            residual_length,
+            slot_id,
+            endpoint_id,
+        } => {
+            probe_emit(write, b"event.completion_code=");
+            probe_write_u64_dec(write, completion_code as u64);
+            probe_emit(write, b"\nevent.residual_length=");
+            probe_write_u64_dec(write, residual_length as u64);
+            probe_emit(write, b"\nevent.slot_id=");
+            probe_write_u64_dec(write, slot_id as u64);
+            probe_emit(write, b"\nevent.endpoint_id=");
+            probe_write_u64_dec(write, endpoint_id as u64);
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciSetConfigurationStatus::ConfigurationSet {
+            slot_id,
+            configuration_value,
+            interface_number,
+            endpoint_address,
+        } => {
+            probe_emit(write, b"configuration.set=true\nconfiguration.slot_id=");
+            probe_write_u64_dec(write, slot_id as u64);
+            probe_emit(write, b"\nconfiguration.value=");
+            probe_write_u64_dec(write, configuration_value as u64);
+            probe_emit(write, b"\nboot_keyboard.interface=");
+            probe_write_u64_dec(write, interface_number as u64);
+            probe_emit(write, b"\nboot_keyboard.endpoint.address=");
+            probe_write_u32_hex(write, endpoint_address as u32);
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciSetConfigurationStatus::StartEvidenceUnavailable
+        | arch_sys::usb::XhciSetConfigurationStatus::TransferTimedOut => {}
+    }
+
+    if let Some(event) = report.event {
+        probe_xhci_transfer_event(write, event);
+    }
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn probe_xhci_configure_endpoint(devices: &[DeviceEntry], write: WriteFn) {
+    probe_emit(write, b"probe xhci-configure-endpoint:\n");
+    if !device_inventory_has(
+        devices,
+        reovim_uapi::system::DeviceClass::Bus,
+        "brcm,bcm2711-pcie",
+    ) {
+        probe_emit(write, b"state=unavailable\n");
+        probe_emit(write, b"reason=device-tree-disabled-or-missing\n");
+        return;
+    }
+
+    let report = arch_sys::usb::configure_keyboard_endpoint_on_pcie_xhci_controller();
+    probe_emit(write, b"state=");
+    probe_emit(write, probe_xhci_configure_endpoint_status_name(report.status));
+    probe_emit(write, b"\nset_configuration.state=");
+    probe_emit(
+        write,
+        probe_xhci_set_configuration_status_name(report.set_configuration.status),
+    );
+    probe_emit(write, b"\nconfig_descriptor.state=");
+    probe_emit(
+        write,
+        probe_xhci_read_config_descriptor_status_name(
+            report.set_configuration.configuration.status,
+        ),
+    );
+    probe_emit(write, b"\ncommand.trb_pointer=");
+    probe_write_u64_hex(write, report.command_trb_pointer);
+    probe_emit(write, b"\ncommand.doorbell=");
+    probe_write_u32_hex(write, report.doorbell);
+    probe_emit(write, b"\n");
+    probe_xhci_trb(write, b"command", report.command_trb);
+
+    if let Some(contexts) = report.contexts {
+        probe_emit(write, b"context.input=");
+        probe_write_u64_hex(write, contexts.input_context);
+        probe_emit(write, b"\ncontext.output=");
+        probe_write_u64_hex(write, contexts.output_device_context);
+        probe_emit(write, b"\ncontext.interrupt_ring=");
+        probe_write_u64_hex(write, contexts.interrupt_in_endpoint_ring);
+        probe_emit(write, b"\ncontext.drop_flags=");
+        probe_write_u32_hex(write, contexts.drop_context_flags);
+        probe_emit(write, b"\ncontext.add_flags=");
+        probe_write_u32_hex(write, contexts.add_context_flags);
+        probe_emit(write, b"\ncontext.endpoint_id=");
+        probe_write_u64_dec(write, contexts.endpoint_id as u64);
+        probe_emit(write, b"\ncontext.endpoint_index=");
+        probe_write_u64_dec(write, contexts.endpoint_context_index as u64);
+        probe_emit(write, b"\ncontext.endpoint_address=");
+        probe_write_u32_hex(write, contexts.endpoint_address as u32);
+        probe_emit(write, b"\ncontext.endpoint_number=");
+        probe_write_u64_dec(write, contexts.endpoint_number as u64);
+        probe_emit(write, b"\ncontext.interval=");
+        probe_write_u64_dec(write, contexts.interval as u64);
+        probe_emit(write, b"\ncontext.interval_encoded=");
+        probe_write_u64_dec(write, contexts.interval_encoded as u64);
+        probe_emit(write, b"\ncontext.max_packet_size=");
+        probe_write_u64_dec(write, contexts.max_packet_size as u64);
+        probe_emit(write, b"\ncontext.max_esit_payload=");
+        probe_write_u64_dec(write, contexts.max_esit_payload as u64);
+        probe_emit(write, b"\ncontext.slot0=");
+        probe_write_u32_hex(write, contexts.slot_context[0]);
+        probe_emit(write, b"\ncontext.slot1=");
+        probe_write_u32_hex(write, contexts.slot_context[1]);
+        probe_emit(write, b"\ncontext.endpoint0=");
+        probe_write_u32_hex(write, contexts.endpoint_context[0]);
+        probe_emit(write, b"\ncontext.endpoint1=");
+        probe_write_u32_hex(write, contexts.endpoint_context[1]);
+        probe_emit(write, b"\ncontext.endpoint_dequeue_lo=");
+        probe_write_u32_hex(write, contexts.endpoint_context[2]);
+        probe_emit(write, b"\ncontext.endpoint_dequeue_hi=");
+        probe_write_u32_hex(write, contexts.endpoint_context[3]);
+        probe_emit(write, b"\ncontext.endpoint_avg_trb_len=");
+        probe_write_u32_hex(write, contexts.endpoint_context[4]);
+        probe_emit(write, b"\n");
+    }
+
+    match report.status {
+        arch_sys::usb::XhciConfigureEndpointStatus::SetConfigurationFailed(status) => {
+            probe_emit(write, b"set_configuration.failure=");
+            probe_emit(write, probe_xhci_set_configuration_status_name(status));
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciConfigureEndpointStatus::EndpointIdOutOfRange {
+            endpoint_address,
+            endpoint_id,
+        } => {
+            probe_emit(write, b"endpoint.address=");
+            probe_write_u32_hex(write, endpoint_address as u32);
+            probe_emit(write, b"\nendpoint.id=");
+            probe_write_u64_dec(write, endpoint_id as u64);
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciConfigureEndpointStatus::UnexpectedEventType {
+            trb_type,
+            completion_code,
+        } => {
+            probe_emit(write, b"event.trb_type=");
+            probe_write_u64_dec(write, trb_type as u64);
+            probe_emit(write, b"\nevent.completion_code=");
+            probe_write_u64_dec(write, completion_code as u64);
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciConfigureEndpointStatus::CommandPointerMismatch {
+            expected,
+            actual,
+            completion_code,
+            slot_id,
+        } => {
+            probe_emit(write, b"event.expected_command_trb_pointer=");
+            probe_write_u64_hex(write, expected);
+            probe_emit(write, b"\nevent.actual_command_trb_pointer=");
+            probe_write_u64_hex(write, actual);
+            probe_emit(write, b"\nevent.completion_code=");
+            probe_write_u64_dec(write, completion_code as u64);
+            probe_emit(write, b"\nevent.slot_id=");
+            probe_write_u64_dec(write, slot_id as u64);
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciConfigureEndpointStatus::SlotIdMismatch {
+            expected,
+            actual,
+            completion_code,
+        } => {
+            probe_emit(write, b"event.expected_slot_id=");
+            probe_write_u64_dec(write, expected as u64);
+            probe_emit(write, b"\nevent.actual_slot_id=");
+            probe_write_u64_dec(write, actual as u64);
+            probe_emit(write, b"\nevent.completion_code=");
+            probe_write_u64_dec(write, completion_code as u64);
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciConfigureEndpointStatus::CommandFailed {
+            completion_code,
+            slot_id,
+        } => {
+            probe_emit(write, b"event.completion_code=");
+            probe_write_u64_dec(write, completion_code as u64);
+            probe_emit(write, b"\nevent.slot_id=");
+            probe_write_u64_dec(write, slot_id as u64);
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciConfigureEndpointStatus::EndpointConfigured {
+            slot_id,
+            endpoint_id,
+            endpoint_address,
+            max_packet_size,
+            interval_encoded,
+        } => {
+            probe_emit(write, b"endpoint.configured=true\nendpoint.slot_id=");
+            probe_write_u64_dec(write, slot_id as u64);
+            probe_emit(write, b"\nendpoint.id=");
+            probe_write_u64_dec(write, endpoint_id as u64);
+            probe_emit(write, b"\nendpoint.address=");
+            probe_write_u32_hex(write, endpoint_address as u32);
+            probe_emit(write, b"\nendpoint.max_packet_size=");
+            probe_write_u64_dec(write, max_packet_size as u64);
+            probe_emit(write, b"\nendpoint.interval_encoded=");
+            probe_write_u64_dec(write, interval_encoded as u64);
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciConfigureEndpointStatus::BootKeyboardEndpointUnavailable
+        | arch_sys::usb::XhciConfigureEndpointStatus::StartEvidenceUnavailable
+        | arch_sys::usb::XhciConfigureEndpointStatus::CommandTimedOut => {}
+    }
+
+    if let Some(event) = report.event {
+        probe_xhci_command_completion_event(write, event);
+    }
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn probe_xhci_set_hid_protocol(devices: &[DeviceEntry], write: WriteFn) {
+    probe_emit(write, b"probe xhci-set-hid-protocol:\n");
+    if !device_inventory_has(
+        devices,
+        reovim_uapi::system::DeviceClass::Bus,
+        "brcm,bcm2711-pcie",
+    ) {
+        probe_emit(write, b"state=unavailable\n");
+        probe_emit(write, b"reason=device-tree-disabled-or-missing\n");
+        return;
+    }
+
+    let report = arch_sys::usb::set_hid_boot_protocol_on_pcie_xhci_controller();
+    probe_emit(write, b"state=");
+    probe_emit(write, probe_xhci_set_hid_protocol_status_name(report.status));
+    probe_emit(write, b"\nconfigure_endpoint.state=");
+    probe_emit(
+        write,
+        probe_xhci_configure_endpoint_status_name(report.configure_endpoint.status),
+    );
+    probe_emit(write, b"\nset_configuration.state=");
+    probe_emit(
+        write,
+        probe_xhci_set_configuration_status_name(
+            report.configure_endpoint.set_configuration.status,
+        ),
+    );
+    probe_emit(write, b"\nslot_id=");
+    probe_write_u64_dec(write, report.slot_id as u64);
+    probe_emit(write, b"\nendpoint_id=");
+    probe_write_u64_dec(write, report.endpoint_id as u64);
+    probe_emit(write, b"\ndoorbell=");
+    probe_write_u32_hex(write, report.doorbell);
+    probe_emit(write, b"\nhid.interface=");
+    probe_write_u64_dec(write, report.interface_number as u64);
+    probe_emit(write, b"\nhid.protocol=");
+    probe_write_u64_dec(write, report.protocol as u64);
+    probe_emit(write, b"\nsetup.trb_pointer=");
+    probe_write_u64_hex(write, report.setup_trb_pointer);
+    probe_emit(write, b"\nstatus.trb_pointer=");
+    probe_write_u64_hex(write, report.status_trb_pointer);
+    probe_emit(write, b"\n");
+    probe_xhci_trb(write, b"setup", report.setup_trb);
+    probe_xhci_trb(write, b"status", report.status_trb);
+
+    match report.status {
+        arch_sys::usb::XhciSetHidProtocolStatus::ConfigureEndpointFailed(status) => {
+            probe_emit(write, b"configure_endpoint.failure=");
+            probe_emit(write, probe_xhci_configure_endpoint_status_name(status));
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciSetHidProtocolStatus::UnexpectedEventType {
+            trb_type,
+            completion_code,
+        } => {
+            probe_emit(write, b"event.trb_type=");
+            probe_write_u64_dec(write, trb_type as u64);
+            probe_emit(write, b"\nevent.completion_code=");
+            probe_write_u64_dec(write, completion_code as u64);
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciSetHidProtocolStatus::TransferPointerMismatch {
+            expected,
+            actual,
+            completion_code,
+            slot_id,
+            endpoint_id,
+        } => {
+            probe_emit(write, b"event.expected_trb_pointer=");
+            probe_write_u64_hex(write, expected);
+            probe_emit(write, b"\nevent.actual_trb_pointer=");
+            probe_write_u64_hex(write, actual);
+            probe_emit(write, b"\nevent.completion_code=");
+            probe_write_u64_dec(write, completion_code as u64);
+            probe_emit(write, b"\nevent.slot_id=");
+            probe_write_u64_dec(write, slot_id as u64);
+            probe_emit(write, b"\nevent.endpoint_id=");
+            probe_write_u64_dec(write, endpoint_id as u64);
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciSetHidProtocolStatus::SlotIdMismatch {
+            expected,
+            actual,
+            completion_code,
+        } => {
+            probe_emit(write, b"event.expected_slot_id=");
+            probe_write_u64_dec(write, expected as u64);
+            probe_emit(write, b"\nevent.actual_slot_id=");
+            probe_write_u64_dec(write, actual as u64);
+            probe_emit(write, b"\nevent.completion_code=");
+            probe_write_u64_dec(write, completion_code as u64);
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciSetHidProtocolStatus::EndpointIdMismatch {
+            expected,
+            actual,
+            completion_code,
+        } => {
+            probe_emit(write, b"event.expected_endpoint_id=");
+            probe_write_u64_dec(write, expected as u64);
+            probe_emit(write, b"\nevent.actual_endpoint_id=");
+            probe_write_u64_dec(write, actual as u64);
+            probe_emit(write, b"\nevent.completion_code=");
+            probe_write_u64_dec(write, completion_code as u64);
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciSetHidProtocolStatus::TransferFailed {
+            completion_code,
+            residual_length,
+            slot_id,
+            endpoint_id,
+        } => {
+            probe_emit(write, b"event.completion_code=");
+            probe_write_u64_dec(write, completion_code as u64);
+            probe_emit(write, b"\nevent.residual_length=");
+            probe_write_u64_dec(write, residual_length as u64);
+            probe_emit(write, b"\nevent.slot_id=");
+            probe_write_u64_dec(write, slot_id as u64);
+            probe_emit(write, b"\nevent.endpoint_id=");
+            probe_write_u64_dec(write, endpoint_id as u64);
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciSetHidProtocolStatus::BootProtocolSet {
+            slot_id,
+            interface_number,
+            protocol,
+        } => {
+            probe_emit(write, b"hid.boot_protocol=true\nhid.slot_id=");
+            probe_write_u64_dec(write, slot_id as u64);
+            probe_emit(write, b"\nhid.interface=");
+            probe_write_u64_dec(write, interface_number as u64);
+            probe_emit(write, b"\nhid.protocol=");
+            probe_write_u64_dec(write, protocol as u64);
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciSetHidProtocolStatus::BootKeyboardInterfaceUnavailable
+        | arch_sys::usb::XhciSetHidProtocolStatus::StartEvidenceUnavailable
+        | arch_sys::usb::XhciSetHidProtocolStatus::TransferTimedOut => {}
+    }
+
+    if let Some(event) = report.event {
+        probe_xhci_transfer_event(write, event);
+    }
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn probe_xhci_read_keyboard_report(devices: &[DeviceEntry], write: WriteFn) {
+    probe_emit(write, b"probe xhci-read-keyboard-report:\n");
+    if !device_inventory_has(
+        devices,
+        reovim_uapi::system::DeviceClass::Bus,
+        "brcm,bcm2711-pcie",
+    ) {
+        probe_emit(write, b"state=unavailable\n");
+        probe_emit(write, b"reason=device-tree-disabled-or-missing\n");
+        return;
+    }
+
+    let report = arch_sys::usb::read_boot_keyboard_report_on_pcie_xhci_controller();
+    probe_emit(write, b"state=");
+    probe_emit(write, probe_xhci_read_keyboard_report_status_name(report.status));
+    probe_emit(write, b"\nset_hid_protocol.state=");
+    probe_emit(
+        write,
+        probe_xhci_set_hid_protocol_status_name(report.set_hid_protocol.status),
+    );
+    probe_emit(write, b"\nconfigure_endpoint.state=");
+    probe_emit(
+        write,
+        probe_xhci_configure_endpoint_status_name(
+            report.set_hid_protocol.configure_endpoint.status,
+        ),
+    );
+    probe_emit(write, b"\nslot_id=");
+    probe_write_u64_dec(write, report.slot_id as u64);
+    probe_emit(write, b"\nendpoint_id=");
+    probe_write_u64_dec(write, report.endpoint_id as u64);
+    probe_emit(write, b"\ndoorbell=");
+    probe_write_u32_hex(write, report.doorbell);
+    probe_emit(write, b"\nnormal.trb_pointer=");
+    probe_write_u64_hex(write, report.normal_trb_pointer);
+    probe_emit(write, b"\nreport.buffer=");
+    probe_write_u64_hex(write, report.report_buffer);
+    probe_emit(write, b"\n");
+    probe_xhci_trb(write, b"normal", report.normal_trb);
+
+    match report.status {
+        arch_sys::usb::XhciReadBootKeyboardReportStatus::SetHidProtocolFailed(status) => {
+            probe_emit(write, b"set_hid_protocol.failure=");
+            probe_emit(write, probe_xhci_set_hid_protocol_status_name(status));
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciReadBootKeyboardReportStatus::UnexpectedEventType {
+            trb_type,
+            completion_code,
+        } => {
+            probe_emit(write, b"event.trb_type=");
+            probe_write_u64_dec(write, trb_type as u64);
+            probe_emit(write, b"\nevent.completion_code=");
+            probe_write_u64_dec(write, completion_code as u64);
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciReadBootKeyboardReportStatus::TransferPointerMismatch {
+            expected,
+            actual,
+            completion_code,
+            slot_id,
+            endpoint_id,
+        } => {
+            probe_emit(write, b"event.expected_trb_pointer=");
+            probe_write_u64_hex(write, expected);
+            probe_emit(write, b"\nevent.actual_trb_pointer=");
+            probe_write_u64_hex(write, actual);
+            probe_emit(write, b"\nevent.completion_code=");
+            probe_write_u64_dec(write, completion_code as u64);
+            probe_emit(write, b"\nevent.slot_id=");
+            probe_write_u64_dec(write, slot_id as u64);
+            probe_emit(write, b"\nevent.endpoint_id=");
+            probe_write_u64_dec(write, endpoint_id as u64);
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciReadBootKeyboardReportStatus::SlotIdMismatch {
+            expected,
+            actual,
+            completion_code,
+        } => {
+            probe_emit(write, b"event.expected_slot_id=");
+            probe_write_u64_dec(write, expected as u64);
+            probe_emit(write, b"\nevent.actual_slot_id=");
+            probe_write_u64_dec(write, actual as u64);
+            probe_emit(write, b"\nevent.completion_code=");
+            probe_write_u64_dec(write, completion_code as u64);
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciReadBootKeyboardReportStatus::EndpointIdMismatch {
+            expected,
+            actual,
+            completion_code,
+        } => {
+            probe_emit(write, b"event.expected_endpoint_id=");
+            probe_write_u64_dec(write, expected as u64);
+            probe_emit(write, b"\nevent.actual_endpoint_id=");
+            probe_write_u64_dec(write, actual as u64);
+            probe_emit(write, b"\nevent.completion_code=");
+            probe_write_u64_dec(write, completion_code as u64);
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciReadBootKeyboardReportStatus::TransferFailed {
+            completion_code,
+            residual_length,
+            slot_id,
+            endpoint_id,
+        } => {
+            probe_emit(write, b"event.completion_code=");
+            probe_write_u64_dec(write, completion_code as u64);
+            probe_emit(write, b"\nevent.residual_length=");
+            probe_write_u64_dec(write, residual_length as u64);
+            probe_emit(write, b"\nevent.slot_id=");
+            probe_write_u64_dec(write, slot_id as u64);
+            probe_emit(write, b"\nevent.endpoint_id=");
+            probe_write_u64_dec(write, endpoint_id as u64);
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciReadBootKeyboardReportStatus::ReportReady {
+            slot_id,
+            endpoint_id,
+            length,
+        } => {
+            probe_emit(write, b"report.ready=true\nreport.slot_id=");
+            probe_write_u64_dec(write, slot_id as u64);
+            probe_emit(write, b"\nreport.endpoint_id=");
+            probe_write_u64_dec(write, endpoint_id as u64);
+            probe_emit(write, b"\nreport.length=");
+            probe_write_u64_dec(write, length as u64);
+            probe_emit(write, b"\n");
+            probe_report_bytes(write, &report.report);
+        }
+        arch_sys::usb::XhciReadBootKeyboardReportStatus::BootKeyboardEndpointUnavailable
+        | arch_sys::usb::XhciReadBootKeyboardReportStatus::StartEvidenceUnavailable
+        | arch_sys::usb::XhciReadBootKeyboardReportStatus::TransferTimedOut => {}
+    }
+
+    if let Some(event) = report.event {
+        probe_xhci_transfer_event(write, event);
+    }
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
 fn probe_xhci_set_address_status_name(
     status: arch_sys::usb::XhciSetAddressStatus,
 ) -> &'static [u8] {
@@ -2311,6 +2962,142 @@ fn probe_xhci_read_config_descriptor_status_name(
 }
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn probe_xhci_set_configuration_status_name(
+    status: arch_sys::usb::XhciSetConfigurationStatus,
+) -> &'static [u8] {
+    match status {
+        arch_sys::usb::XhciSetConfigurationStatus::ConfigurationDescriptorFailed(_) => {
+            b"config-descriptor-failed"
+        }
+        arch_sys::usb::XhciSetConfigurationStatus::BootKeyboardNotReadyToConfigure => {
+            b"boot-keyboard-not-ready-to-configure"
+        }
+        arch_sys::usb::XhciSetConfigurationStatus::StartEvidenceUnavailable => {
+            b"start-evidence-unavailable"
+        }
+        arch_sys::usb::XhciSetConfigurationStatus::TransferTimedOut => b"transfer-timeout",
+        arch_sys::usb::XhciSetConfigurationStatus::UnexpectedEventType { .. } => {
+            b"unexpected-event-type"
+        }
+        arch_sys::usb::XhciSetConfigurationStatus::TransferPointerMismatch { .. } => {
+            b"transfer-pointer-mismatch"
+        }
+        arch_sys::usb::XhciSetConfigurationStatus::SlotIdMismatch { .. } => {
+            b"slot-id-mismatch"
+        }
+        arch_sys::usb::XhciSetConfigurationStatus::EndpointIdMismatch { .. } => {
+            b"endpoint-id-mismatch"
+        }
+        arch_sys::usb::XhciSetConfigurationStatus::TransferFailed { .. } => b"transfer-failed",
+        arch_sys::usb::XhciSetConfigurationStatus::ConfigurationSet { .. } => {
+            b"configuration-set"
+        }
+    }
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn probe_xhci_configure_endpoint_status_name(
+    status: arch_sys::usb::XhciConfigureEndpointStatus,
+) -> &'static [u8] {
+    match status {
+        arch_sys::usb::XhciConfigureEndpointStatus::SetConfigurationFailed(_) => {
+            b"set-configuration-failed"
+        }
+        arch_sys::usb::XhciConfigureEndpointStatus::BootKeyboardEndpointUnavailable => {
+            b"boot-keyboard-endpoint-unavailable"
+        }
+        arch_sys::usb::XhciConfigureEndpointStatus::StartEvidenceUnavailable => {
+            b"start-evidence-unavailable"
+        }
+        arch_sys::usb::XhciConfigureEndpointStatus::EndpointIdOutOfRange { .. } => {
+            b"endpoint-id-out-of-range"
+        }
+        arch_sys::usb::XhciConfigureEndpointStatus::CommandTimedOut => b"command-timeout",
+        arch_sys::usb::XhciConfigureEndpointStatus::UnexpectedEventType { .. } => {
+            b"unexpected-event-type"
+        }
+        arch_sys::usb::XhciConfigureEndpointStatus::CommandPointerMismatch { .. } => {
+            b"command-pointer-mismatch"
+        }
+        arch_sys::usb::XhciConfigureEndpointStatus::SlotIdMismatch { .. } => {
+            b"slot-id-mismatch"
+        }
+        arch_sys::usb::XhciConfigureEndpointStatus::CommandFailed { .. } => b"command-failed",
+        arch_sys::usb::XhciConfigureEndpointStatus::EndpointConfigured { .. } => {
+            b"endpoint-configured"
+        }
+    }
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn probe_xhci_set_hid_protocol_status_name(
+    status: arch_sys::usb::XhciSetHidProtocolStatus,
+) -> &'static [u8] {
+    match status {
+        arch_sys::usb::XhciSetHidProtocolStatus::ConfigureEndpointFailed(_) => {
+            b"configure-endpoint-failed"
+        }
+        arch_sys::usb::XhciSetHidProtocolStatus::BootKeyboardInterfaceUnavailable => {
+            b"boot-keyboard-interface-unavailable"
+        }
+        arch_sys::usb::XhciSetHidProtocolStatus::StartEvidenceUnavailable => {
+            b"start-evidence-unavailable"
+        }
+        arch_sys::usb::XhciSetHidProtocolStatus::TransferTimedOut => b"transfer-timeout",
+        arch_sys::usb::XhciSetHidProtocolStatus::UnexpectedEventType { .. } => {
+            b"unexpected-event-type"
+        }
+        arch_sys::usb::XhciSetHidProtocolStatus::TransferPointerMismatch { .. } => {
+            b"transfer-pointer-mismatch"
+        }
+        arch_sys::usb::XhciSetHidProtocolStatus::SlotIdMismatch { .. } => b"slot-id-mismatch",
+        arch_sys::usb::XhciSetHidProtocolStatus::EndpointIdMismatch { .. } => {
+            b"endpoint-id-mismatch"
+        }
+        arch_sys::usb::XhciSetHidProtocolStatus::TransferFailed { .. } => b"transfer-failed",
+        arch_sys::usb::XhciSetHidProtocolStatus::BootProtocolSet { .. } => {
+            b"boot-protocol-set"
+        }
+    }
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn probe_xhci_read_keyboard_report_status_name(
+    status: arch_sys::usb::XhciReadBootKeyboardReportStatus,
+) -> &'static [u8] {
+    match status {
+        arch_sys::usb::XhciReadBootKeyboardReportStatus::SetHidProtocolFailed(_) => {
+            b"set-hid-protocol-failed"
+        }
+        arch_sys::usb::XhciReadBootKeyboardReportStatus::BootKeyboardEndpointUnavailable => {
+            b"boot-keyboard-endpoint-unavailable"
+        }
+        arch_sys::usb::XhciReadBootKeyboardReportStatus::StartEvidenceUnavailable => {
+            b"start-evidence-unavailable"
+        }
+        arch_sys::usb::XhciReadBootKeyboardReportStatus::TransferTimedOut => {
+            b"transfer-timeout"
+        }
+        arch_sys::usb::XhciReadBootKeyboardReportStatus::UnexpectedEventType { .. } => {
+            b"unexpected-event-type"
+        }
+        arch_sys::usb::XhciReadBootKeyboardReportStatus::TransferPointerMismatch { .. } => {
+            b"transfer-pointer-mismatch"
+        }
+        arch_sys::usb::XhciReadBootKeyboardReportStatus::SlotIdMismatch { .. } => {
+            b"slot-id-mismatch"
+        }
+        arch_sys::usb::XhciReadBootKeyboardReportStatus::EndpointIdMismatch { .. } => {
+            b"endpoint-id-mismatch"
+        }
+        arch_sys::usb::XhciReadBootKeyboardReportStatus::TransferFailed { .. } => {
+            b"transfer-failed"
+        }
+        arch_sys::usb::XhciReadBootKeyboardReportStatus::ReportReady { .. } => b"report-ready",
+    }
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
 fn probe_xhci_trb(write: WriteFn, label: &[u8], trb: [u32; 4]) {
     probe_emit(write, label);
     probe_emit(write, b".trb0=");
@@ -2338,6 +3125,19 @@ fn probe_descriptor_bytes(write: WriteFn, descriptor: &[u8]) {
         probe_write_u64_dec(write, index as u64);
         probe_emit(write, b"=");
         probe_write_u32_hex(write, descriptor[index] as u32);
+        probe_emit(write, b"\n");
+        index += 1;
+    }
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn probe_report_bytes(write: WriteFn, report: &[u8]) {
+    let mut index = 0usize;
+    while index < report.len() {
+        probe_emit(write, b"report.byte");
+        probe_write_u64_dec(write, index as u64);
+        probe_emit(write, b"=");
+        probe_write_u32_hex(write, report[index] as u32);
         probe_emit(write, b"\n");
         index += 1;
     }
@@ -2455,6 +3255,30 @@ fn probe_xhci_read_config_descriptor_header(_devices: &[DeviceEntry], write: Wri
 #[cfg(not(all(target_os = "none", target_arch = "aarch64")))]
 fn probe_xhci_read_config_descriptor(_devices: &[DeviceEntry], write: WriteFn) {
     probe_emit(write, b"probe xhci-read-config-descriptor:\n");
+    probe_emit(write, b"state=unsupported-on-this-target\n");
+}
+
+#[cfg(not(all(target_os = "none", target_arch = "aarch64")))]
+fn probe_xhci_set_configuration(_devices: &[DeviceEntry], write: WriteFn) {
+    probe_emit(write, b"probe xhci-set-configuration:\n");
+    probe_emit(write, b"state=unsupported-on-this-target\n");
+}
+
+#[cfg(not(all(target_os = "none", target_arch = "aarch64")))]
+fn probe_xhci_configure_endpoint(_devices: &[DeviceEntry], write: WriteFn) {
+    probe_emit(write, b"probe xhci-configure-endpoint:\n");
+    probe_emit(write, b"state=unsupported-on-this-target\n");
+}
+
+#[cfg(not(all(target_os = "none", target_arch = "aarch64")))]
+fn probe_xhci_set_hid_protocol(_devices: &[DeviceEntry], write: WriteFn) {
+    probe_emit(write, b"probe xhci-set-hid-protocol:\n");
+    probe_emit(write, b"state=unsupported-on-this-target\n");
+}
+
+#[cfg(not(all(target_os = "none", target_arch = "aarch64")))]
+fn probe_xhci_read_keyboard_report(_devices: &[DeviceEntry], write: WriteFn) {
+    probe_emit(write, b"probe xhci-read-keyboard-report:\n");
     probe_emit(write, b"state=unsupported-on-this-target\n");
 }
 

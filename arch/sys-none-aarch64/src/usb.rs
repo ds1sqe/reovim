@@ -59,11 +59,13 @@ const XHCI_TRB_COMPLETION_CODE_SHIFT: u32 = 24;
 const XHCI_ENABLE_SLOT_SLOT_TYPE_SHIFT: u32 = 16;
 const XHCI_ENABLE_SLOT_SLOT_TYPE_MASK: u8 = 0x1f;
 const XHCI_TRB_TYPE_LINK: u8 = 6;
+const XHCI_TRB_TYPE_NORMAL: u8 = 1;
 const XHCI_TRB_TYPE_SETUP_STAGE: u8 = 2;
 const XHCI_TRB_TYPE_DATA_STAGE: u8 = 3;
 const XHCI_TRB_TYPE_STATUS_STAGE: u8 = 4;
 const XHCI_TRB_TYPE_ENABLE_SLOT: u8 = 9;
 const XHCI_TRB_TYPE_ADDRESS_DEVICE: u8 = 11;
+const XHCI_TRB_TYPE_CONFIGURE_ENDPOINT: u8 = 12;
 const XHCI_TRB_TYPE_TRANSFER_EVENT: u8 = 32;
 const XHCI_TRB_TYPE_COMMAND_COMPLETION_EVENT: u8 = 33;
 const XHCI_TRB_COMPLETION_SUCCESS: u8 = 1;
@@ -79,6 +81,7 @@ const XHCI_TRB_TRANSFER_LENGTH_MASK: u32 = 0x1_ffff;
 const XHCI_TRANSFER_EVENT_LENGTH_MASK: u32 = 0x00ff_ffff;
 const XHCI_TRANSFER_EVENT_ENDPOINT_ID_SHIFT: u32 = 16;
 const XHCI_SETUP_TRT_SHIFT: u32 = 16;
+const XHCI_SETUP_TRT_NO_DATA_STAGE: u8 = 0;
 const XHCI_SETUP_TRT_IN_DATA_STAGE: u8 = 3;
 
 const XHCI_USBCMD_RUN_STOP: u32 = 1 << 0;
@@ -100,6 +103,8 @@ pub const XHCI_COMMAND_RING_TRBS: usize = 64;
 pub const XHCI_EVENT_RING_TRBS: usize = 64;
 /// Number of TRBs in the default control endpoint transfer-ring segment.
 pub const XHCI_CONTROL_ENDPOINT_RING_TRBS: usize = 64;
+/// Number of TRBs in the first HID interrupt-IN endpoint transfer-ring segment.
+pub const XHCI_INTERRUPT_IN_ENDPOINT_RING_TRBS: usize = 64;
 /// Number of Event Ring Segment Table entries prepared by the early provider.
 pub const XHCI_EVENT_RING_SEGMENT_TABLE_ENTRIES: usize = 1;
 /// Maximum scratchpad buffers backed by static early-driver storage.
@@ -114,20 +119,31 @@ const XHCI_ADDRESS_DEVICE_EVENT_INDEX: usize = 1;
 const XHCI_ADDRESS_DEVICE_BLOCK_SET_ADDRESS_REQUEST: bool = true;
 const XHCI_SET_ADDRESS_COMMAND_INDEX: usize = 2;
 const XHCI_SET_ADDRESS_EVENT_INDEX: usize = 3;
+const XHCI_CONFIGURE_ENDPOINT_COMMAND_INDEX: usize = 3;
+const XHCI_CONFIGURE_ENDPOINT_EVENT_INDEX: usize = 8;
+const XHCI_SET_HID_PROTOCOL_EVENT_INDEX: usize = 9;
+const XHCI_BOOT_KEYBOARD_REPORT_EVENT_INDEX: usize = 10;
+const XHCI_INTERRUPT_IN_REPORT_TRB_INDEX: usize = 0;
 const XHCI_GET_DESCRIPTOR_EVENT_INDEX: usize = 2;
 const XHCI_READ_DEVICE_DESCRIPTOR_EVENT_INDEX: usize = 4;
 const XHCI_READ_CONFIGURATION_DESCRIPTOR_HEADER_EVENT_INDEX: usize = 5;
 const XHCI_READ_CONFIGURATION_DESCRIPTOR_EVENT_INDEX: usize = 6;
+const XHCI_SET_CONFIGURATION_EVENT_INDEX: usize = 7;
 const XHCI_EP0_DESCRIPTOR_PREFIX_TRB_INDEX: usize = 0;
 const XHCI_EP0_DEVICE_DESCRIPTOR_TRB_INDEX: usize = 3;
 const XHCI_EP0_CONFIGURATION_DESCRIPTOR_HEADER_TRB_INDEX: usize = 6;
 const XHCI_EP0_CONFIGURATION_DESCRIPTOR_TRB_INDEX: usize = 9;
+const XHCI_EP0_SET_CONFIGURATION_TRB_INDEX: usize = 12;
+const XHCI_EP0_SET_HID_PROTOCOL_TRB_INDEX: usize = 14;
 const XHCI_DEVICE_DESCRIPTOR_PREFIX_BYTES: usize = 8;
 const USB_DEVICE_DESCRIPTOR_BYTES: usize = 18;
 const USB_CONFIGURATION_DESCRIPTOR_HEADER_BYTES: usize = 9;
 const USB_CONFIGURATION_DESCRIPTOR_MAX_BYTES: usize = 256;
+const USB_REQUEST_TYPE_HOST_TO_DEVICE_STANDARD_DEVICE: u8 = 0x00;
+const USB_REQUEST_TYPE_HOST_TO_DEVICE_CLASS_INTERFACE: u8 = 0x21;
 const USB_REQUEST_TYPE_DEVICE_TO_HOST_STANDARD_DEVICE: u8 = 0x80;
 const USB_REQUEST_GET_DESCRIPTOR: u8 = 6;
+const USB_REQUEST_SET_CONFIGURATION: u8 = 9;
 const USB_DESCRIPTOR_TYPE_DEVICE: u8 = 1;
 const USB_DESCRIPTOR_TYPE_CONFIGURATION: u8 = 2;
 const USB_DESCRIPTOR_TYPE_INTERFACE: u8 = 4;
@@ -135,6 +151,8 @@ const USB_DESCRIPTOR_TYPE_ENDPOINT: u8 = 5;
 const USB_CLASS_HID: u8 = 0x03;
 const USB_HID_SUBCLASS_BOOT: u8 = 0x01;
 const USB_HID_PROTOCOL_KEYBOARD: u8 = 0x01;
+const USB_HID_REQUEST_SET_PROTOCOL: u8 = 11;
+const USB_HID_BOOT_PROTOCOL: u8 = 0;
 const USB_ENDPOINT_DIRECTION_IN: u8 = 0x80;
 const USB_ENDPOINT_TRANSFER_TYPE_INTERRUPT: u8 = 0x03;
 const XHCI_HCCPARAMS1_CONTEXT_SIZE: u32 = 1 << 2;
@@ -155,13 +173,18 @@ const XHCI_INPUT_ADD_EP0_CONTEXT: u32 = 1 << 1;
 const XHCI_SLOT_CONTEXT_SPEED_SHIFT: u32 = 20;
 const XHCI_SLOT_CONTEXT_CONTEXT_ENTRIES_SHIFT: u32 = 27;
 const XHCI_SLOT_CONTEXT_ROOT_HUB_PORT_SHIFT: u32 = 16;
+const XHCI_ENDPOINT_DCI_MAX: u8 = 31;
+const XHCI_EP_CONTEXT_INTERVAL_SHIFT: u32 = 16;
 const XHCI_EP_CONTEXT_CERR_SHIFT: u32 = 1;
 const XHCI_EP_CONTEXT_TYPE_SHIFT: u32 = 3;
 const XHCI_EP_CONTEXT_MAX_PACKET_SIZE_SHIFT: u32 = 16;
+const XHCI_EP_CONTEXT_MAX_ESIT_PAYLOAD_SHIFT: u32 = 16;
 const XHCI_EP_CONTEXT_TYPE_CONTROL: u8 = 4;
+const XHCI_EP_CONTEXT_TYPE_INTERRUPT_IN: u8 = 7;
 const XHCI_EP_CONTEXT_CERR_DEFAULT: u8 = 3;
 const XHCI_EP_CONTEXT_DCS: u64 = 1;
 const XHCI_CONTROL_AVERAGE_TRB_LENGTH: u16 = 8;
+const XHCI_INTERRUPT_AVERAGE_TRB_LENGTH: u16 = 8;
 
 /// Read-only xHCI capability-register snapshot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -325,6 +348,8 @@ pub struct XhciDriverMemoryPlan {
     pub output_device_context: u64,
     /// Transfer ring for default control endpoint 0.
     pub control_endpoint_ring: u64,
+    /// Transfer ring for the first HID interrupt-IN endpoint.
+    pub interrupt_in_endpoint_ring: u64,
 }
 
 /// Result of building an early xHCI driver-memory plan.
@@ -1430,6 +1455,509 @@ impl XhciReadConfigurationDescriptorReport {
     }
 }
 
+/// Status from the manual USB SET_CONFIGURATION control transfer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum XhciSetConfigurationStatus {
+    /// The full Configuration descriptor checkpoint did not complete.
+    ConfigurationDescriptorFailed(XhciReadConfigurationDescriptorStatus),
+    /// The descriptor tree did not contain a HID boot-keyboard interrupt-IN endpoint.
+    BootKeyboardNotReadyToConfigure,
+    /// Required controller-start evidence was missing.
+    StartEvidenceUnavailable,
+    /// No Transfer Event reached the expected event-ring entry.
+    TransferTimedOut,
+    /// A cycle-valid event arrived, but it was not a transfer event.
+    UnexpectedEventType {
+        /// Event TRB type field.
+        trb_type: u8,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+    },
+    /// The transfer event did not point at the Status Stage TRB.
+    TransferPointerMismatch {
+        /// Expected Status Stage TRB pointer.
+        expected: u64,
+        /// Actual pointer reported by the event.
+        actual: u64,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+        /// Slot ID carried by the event.
+        slot_id: u8,
+        /// Endpoint ID carried by the event.
+        endpoint_id: u8,
+    },
+    /// The transfer event reported a different Slot ID.
+    SlotIdMismatch {
+        /// Expected target slot ID.
+        expected: u8,
+        /// Actual Slot ID carried by the event.
+        actual: u8,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+    },
+    /// The transfer event reported a different Endpoint ID.
+    EndpointIdMismatch {
+        /// Expected endpoint ID.
+        expected: u8,
+        /// Actual Endpoint ID carried by the event.
+        actual: u8,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+    },
+    /// The transfer completed with a non-success code.
+    TransferFailed {
+        /// xHCI completion code.
+        completion_code: u8,
+        /// Residual bytes not transferred for the generating TRB.
+        residual_length: u32,
+        /// Slot ID carried by the event.
+        slot_id: u8,
+        /// Endpoint ID carried by the event.
+        endpoint_id: u8,
+    },
+    /// SET_CONFIGURATION completed for the boot-keyboard configuration.
+    ConfigurationSet {
+        /// Assigned xHCI slot ID.
+        slot_id: u8,
+        /// USB configuration value sent in the setup packet.
+        configuration_value: u8,
+        /// HID boot-keyboard interface number selected from descriptors.
+        interface_number: u8,
+        /// Interrupt-IN endpoint address advertised by that interface.
+        endpoint_address: u8,
+    },
+}
+
+/// Evidence returned by the manual USB SET_CONFIGURATION control transfer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct XhciSetConfigurationReport {
+    /// Full Configuration descriptor report produced before this transfer.
+    pub configuration: XhciReadConfigurationDescriptorReport,
+    /// Final transfer status.
+    pub status: XhciSetConfigurationStatus,
+    /// xHCI slot ID targeted by the transfer.
+    pub slot_id: u8,
+    /// xHCI endpoint ID targeted by the transfer.
+    pub endpoint_id: u8,
+    /// Doorbell value written to the device slot.
+    pub doorbell: u32,
+    /// USB configuration value sent in the setup packet.
+    pub configuration_value: u8,
+    /// HID boot-keyboard interface number selected from descriptors.
+    pub interface_number: u8,
+    /// Interrupt-IN endpoint address advertised by that interface.
+    pub endpoint_address: u8,
+    /// Setup Stage TRB pointer.
+    pub setup_trb_pointer: u64,
+    /// Status Stage TRB pointer.
+    pub status_trb_pointer: u64,
+    /// Raw Setup Stage TRB written by software.
+    pub setup_trb: [u32; 4],
+    /// Raw Status Stage TRB written by software.
+    pub status_trb: [u32; 4],
+    /// Transfer event observed for the Status Stage TRB, if one arrived.
+    pub event: Option<XhciTransferEvent>,
+}
+
+impl XhciSetConfigurationReport {
+    const fn new(
+        configuration: XhciReadConfigurationDescriptorReport,
+        status: XhciSetConfigurationStatus,
+    ) -> Self {
+        Self {
+            configuration,
+            status,
+            slot_id: 0,
+            endpoint_id: XHCI_DOORBELL_CONTROL_EP0 as u8,
+            doorbell: XHCI_DOORBELL_CONTROL_EP0,
+            configuration_value: 0,
+            interface_number: 0,
+            endpoint_address: 0,
+            setup_trb_pointer: 0,
+            status_trb_pointer: 0,
+            setup_trb: [0; 4],
+            status_trb: [0; 4],
+            event: None,
+        }
+    }
+}
+
+/// Static context values prepared for a manual Configure Endpoint command.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct XhciConfigureEndpointContexts {
+    /// Input Context base address used by the command.
+    pub input_context: u64,
+    /// Output Device Context address stored in the DCBAA slot entry.
+    pub output_device_context: u64,
+    /// Interrupt-IN endpoint transfer-ring base address.
+    pub interrupt_in_endpoint_ring: u64,
+    /// Drop Context flags dword.
+    pub drop_context_flags: u32,
+    /// Add Context flags dword.
+    pub add_context_flags: u32,
+    /// xHCI endpoint ID / DCI for the interrupt-IN endpoint.
+    pub endpoint_id: u8,
+    /// Input Context index where the endpoint context is written.
+    pub endpoint_context_index: u8,
+    /// Raw USB endpoint address.
+    pub endpoint_address: u8,
+    /// Endpoint number.
+    pub endpoint_number: u8,
+    /// Raw USB `bInterval` value.
+    pub interval: u8,
+    /// xHCI Interval field encoded from the USB speed and `bInterval`.
+    pub interval_encoded: u8,
+    /// Normalized endpoint max-packet size used in the endpoint context.
+    pub max_packet_size: u16,
+    /// Max ESIT payload used for the interrupt endpoint.
+    pub max_esit_payload: u16,
+    /// DCI 0 Slot Context dwords prepared in the Input Context.
+    pub slot_context: [u32; 4],
+    /// Interrupt-IN Endpoint Context dwords prepared in the Input Context.
+    pub endpoint_context: [u32; 5],
+}
+
+/// Status from the manual xHCI Configure Endpoint command for the keyboard endpoint.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum XhciConfigureEndpointStatus {
+    /// SET_CONFIGURATION did not complete successfully.
+    SetConfigurationFailed(XhciSetConfigurationStatus),
+    /// The HID boot-keyboard endpoint was unavailable in descriptor evidence.
+    BootKeyboardEndpointUnavailable,
+    /// Required controller-start evidence was missing.
+    StartEvidenceUnavailable,
+    /// The endpoint address cannot be represented as an xHCI endpoint ID.
+    EndpointIdOutOfRange {
+        /// Raw USB endpoint address.
+        endpoint_address: u8,
+        /// Computed xHCI endpoint ID / DCI.
+        endpoint_id: u8,
+    },
+    /// No Command Completion Event reached the expected event-ring entry.
+    CommandTimedOut,
+    /// A cycle-valid event arrived, but it was not a command-completion event.
+    UnexpectedEventType {
+        /// Event TRB type field.
+        trb_type: u8,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+    },
+    /// The completion event did not point back at the Configure Endpoint command TRB.
+    CommandPointerMismatch {
+        /// Expected command TRB pointer.
+        expected: u64,
+        /// Actual pointer reported by the event.
+        actual: u64,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+        /// Slot ID carried by the event.
+        slot_id: u8,
+    },
+    /// The completion event pointed at this command but returned another Slot ID.
+    SlotIdMismatch {
+        /// Expected target slot ID.
+        expected: u8,
+        /// Actual Slot ID carried by the event.
+        actual: u8,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+    },
+    /// The command completed with a non-success code.
+    CommandFailed {
+        /// xHCI completion code.
+        completion_code: u8,
+        /// Slot ID carried by the event.
+        slot_id: u8,
+    },
+    /// Configure Endpoint completed and the interrupt-IN endpoint is known to xHC.
+    EndpointConfigured {
+        /// Assigned xHCI slot ID.
+        slot_id: u8,
+        /// xHCI endpoint ID / DCI.
+        endpoint_id: u8,
+        /// Raw USB endpoint address.
+        endpoint_address: u8,
+        /// Normalized endpoint max-packet size.
+        max_packet_size: u16,
+        /// xHCI Interval field.
+        interval_encoded: u8,
+    },
+}
+
+/// Evidence returned by the manual xHCI Configure Endpoint command.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct XhciConfigureEndpointReport {
+    /// SET_CONFIGURATION report produced before issuing Configure Endpoint.
+    pub set_configuration: XhciSetConfigurationReport,
+    /// Final Configure Endpoint command status.
+    pub status: XhciConfigureEndpointStatus,
+    /// Configure Endpoint command TRB pointer.
+    pub command_trb_pointer: u64,
+    /// Raw Configure Endpoint command TRB written by software.
+    pub command_trb: [u32; 4],
+    /// Doorbell value written to doorbell 0.
+    pub doorbell: u32,
+    /// Contexts and transfer-ring pointers prepared for the command.
+    pub contexts: Option<XhciConfigureEndpointContexts>,
+    /// Command-completion event observed for Configure Endpoint, if one arrived.
+    pub event: Option<XhciCommandCompletionEvent>,
+}
+
+impl XhciConfigureEndpointReport {
+    const fn new(
+        set_configuration: XhciSetConfigurationReport,
+        status: XhciConfigureEndpointStatus,
+    ) -> Self {
+        Self {
+            set_configuration,
+            status,
+            command_trb_pointer: 0,
+            command_trb: [0; 4],
+            doorbell: XHCI_DOORBELL_COMMAND,
+            contexts: None,
+            event: None,
+        }
+    }
+}
+
+/// Status from the manual HID SET_PROTOCOL(Boot) control transfer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum XhciSetHidProtocolStatus {
+    /// Configure Endpoint did not complete successfully.
+    ConfigureEndpointFailed(XhciConfigureEndpointStatus),
+    /// The HID boot-keyboard interface was unavailable in descriptor evidence.
+    BootKeyboardInterfaceUnavailable,
+    /// Required controller-start evidence was missing.
+    StartEvidenceUnavailable,
+    /// No Transfer Event reached the expected event-ring entry.
+    TransferTimedOut,
+    /// A cycle-valid event arrived, but it was not a transfer event.
+    UnexpectedEventType {
+        /// Event TRB type field.
+        trb_type: u8,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+    },
+    /// The transfer event did not point at the Status Stage TRB.
+    TransferPointerMismatch {
+        /// Expected Status Stage TRB pointer.
+        expected: u64,
+        /// Actual pointer reported by the event.
+        actual: u64,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+        /// Slot ID carried by the event.
+        slot_id: u8,
+        /// Endpoint ID carried by the event.
+        endpoint_id: u8,
+    },
+    /// The transfer event reported a different Slot ID.
+    SlotIdMismatch {
+        /// Expected target slot ID.
+        expected: u8,
+        /// Actual Slot ID carried by the event.
+        actual: u8,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+    },
+    /// The transfer event reported a different Endpoint ID.
+    EndpointIdMismatch {
+        /// Expected endpoint ID.
+        expected: u8,
+        /// Actual Endpoint ID carried by the event.
+        actual: u8,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+    },
+    /// The transfer completed with a non-success code.
+    TransferFailed {
+        /// xHCI completion code.
+        completion_code: u8,
+        /// Residual bytes not transferred for the generating TRB.
+        residual_length: u32,
+        /// Slot ID carried by the event.
+        slot_id: u8,
+        /// Endpoint ID carried by the event.
+        endpoint_id: u8,
+    },
+    /// SET_PROTOCOL(Boot) completed for the boot-keyboard interface.
+    BootProtocolSet {
+        /// Assigned xHCI slot ID.
+        slot_id: u8,
+        /// HID interface number targeted by the request.
+        interface_number: u8,
+        /// HID protocol value, zero for boot protocol.
+        protocol: u8,
+    },
+}
+
+/// Evidence returned by the manual HID SET_PROTOCOL(Boot) control transfer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct XhciSetHidProtocolReport {
+    /// Configure Endpoint report produced before issuing SET_PROTOCOL.
+    pub configure_endpoint: XhciConfigureEndpointReport,
+    /// Final transfer status.
+    pub status: XhciSetHidProtocolStatus,
+    /// xHCI slot ID targeted by the transfer.
+    pub slot_id: u8,
+    /// xHCI endpoint ID targeted by the transfer.
+    pub endpoint_id: u8,
+    /// Doorbell value written to the device slot.
+    pub doorbell: u32,
+    /// HID interface number targeted by SET_PROTOCOL.
+    pub interface_number: u8,
+    /// HID protocol value, zero for boot protocol.
+    pub protocol: u8,
+    /// Setup Stage TRB pointer.
+    pub setup_trb_pointer: u64,
+    /// Status Stage TRB pointer.
+    pub status_trb_pointer: u64,
+    /// Raw Setup Stage TRB written by software.
+    pub setup_trb: [u32; 4],
+    /// Raw Status Stage TRB written by software.
+    pub status_trb: [u32; 4],
+    /// Transfer event observed for the Status Stage TRB, if one arrived.
+    pub event: Option<XhciTransferEvent>,
+}
+
+impl XhciSetHidProtocolReport {
+    const fn new(
+        configure_endpoint: XhciConfigureEndpointReport,
+        status: XhciSetHidProtocolStatus,
+    ) -> Self {
+        Self {
+            configure_endpoint,
+            status,
+            slot_id: 0,
+            endpoint_id: XHCI_DOORBELL_CONTROL_EP0 as u8,
+            doorbell: XHCI_DOORBELL_CONTROL_EP0,
+            interface_number: 0,
+            protocol: USB_HID_BOOT_PROTOCOL,
+            setup_trb_pointer: 0,
+            status_trb_pointer: 0,
+            setup_trb: [0; 4],
+            status_trb: [0; 4],
+            event: None,
+        }
+    }
+}
+
+/// Status from the manual HID boot-keyboard interrupt-IN report read.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum XhciReadBootKeyboardReportStatus {
+    /// HID SET_PROTOCOL(Boot) did not complete successfully.
+    SetHidProtocolFailed(XhciSetHidProtocolStatus),
+    /// The configured interrupt-IN endpoint context was unavailable.
+    BootKeyboardEndpointUnavailable,
+    /// Required controller-start evidence was missing.
+    StartEvidenceUnavailable,
+    /// No Transfer Event reached the expected event-ring entry.
+    TransferTimedOut,
+    /// A cycle-valid event arrived, but it was not a transfer event.
+    UnexpectedEventType {
+        /// Event TRB type field.
+        trb_type: u8,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+    },
+    /// The transfer event did not point at the Normal TRB.
+    TransferPointerMismatch {
+        /// Expected Normal TRB pointer.
+        expected: u64,
+        /// Actual pointer reported by the event.
+        actual: u64,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+        /// Slot ID carried by the event.
+        slot_id: u8,
+        /// Endpoint ID carried by the event.
+        endpoint_id: u8,
+    },
+    /// The transfer event reported a different Slot ID.
+    SlotIdMismatch {
+        /// Expected target slot ID.
+        expected: u8,
+        /// Actual Slot ID carried by the event.
+        actual: u8,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+    },
+    /// The transfer event reported a different Endpoint ID.
+    EndpointIdMismatch {
+        /// Expected endpoint ID.
+        expected: u8,
+        /// Actual Endpoint ID carried by the event.
+        actual: u8,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+    },
+    /// The interrupt-IN transfer completed with a non-success code.
+    TransferFailed {
+        /// xHCI completion code.
+        completion_code: u8,
+        /// Residual bytes not transferred for the generating TRB.
+        residual_length: u32,
+        /// Slot ID carried by the event.
+        slot_id: u8,
+        /// Endpoint ID carried by the event.
+        endpoint_id: u8,
+    },
+    /// One raw 8-byte HID boot-keyboard report is available.
+    ReportReady {
+        /// Assigned xHCI slot ID.
+        slot_id: u8,
+        /// Interrupt-IN xHCI endpoint ID / DCI.
+        endpoint_id: u8,
+        /// Number of report bytes requested.
+        length: u8,
+    },
+}
+
+/// Evidence returned by the manual HID boot-keyboard interrupt-IN report read.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct XhciReadBootKeyboardReport {
+    /// HID SET_PROTOCOL(Boot) report produced before queuing interrupt-IN.
+    pub set_hid_protocol: XhciSetHidProtocolReport,
+    /// Final transfer status.
+    pub status: XhciReadBootKeyboardReportStatus,
+    /// xHCI slot ID targeted by the transfer.
+    pub slot_id: u8,
+    /// Interrupt-IN xHCI endpoint ID / DCI.
+    pub endpoint_id: u8,
+    /// Doorbell value written to the device slot.
+    pub doorbell: u32,
+    /// Normal TRB pointer queued on the interrupt-IN transfer ring.
+    pub normal_trb_pointer: u64,
+    /// Raw Normal TRB written by software.
+    pub normal_trb: [u32; 4],
+    /// DMA buffer address used for the boot-keyboard report.
+    pub report_buffer: u64,
+    /// Raw HID boot-keyboard report bytes.
+    pub report: [u8; BOOT_KEYBOARD_REPORT_BYTES],
+    /// Transfer event observed for the Normal TRB, if one arrived.
+    pub event: Option<XhciTransferEvent>,
+}
+
+impl XhciReadBootKeyboardReport {
+    const fn new(
+        set_hid_protocol: XhciSetHidProtocolReport,
+        status: XhciReadBootKeyboardReportStatus,
+    ) -> Self {
+        Self {
+            set_hid_protocol,
+            status,
+            slot_id: 0,
+            endpoint_id: 0,
+            doorbell: 0,
+            normal_trb_pointer: 0,
+            normal_trb: [0; 4],
+            report_buffer: 0,
+            report: [0; BOOT_KEYBOARD_REPORT_BYTES],
+            event: None,
+        }
+    }
+}
+
 /// Nonblocking boot-keyboard provider poll result.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UsbBootKeyboardPoll {
@@ -2428,6 +2956,539 @@ pub fn read_configuration_descriptor_on_pcie_xhci_controller()
     report
 }
 
+/// Issues SET_CONFIGURATION for the discovered HID boot-keyboard configuration.
+///
+/// This checkpoint changes the USB device configuration, but still does not
+/// configure the xHCI interrupt endpoint context, issue HID class requests, poll
+/// interrupt-IN, or claim keyboard readiness.
+pub fn set_configuration_on_pcie_xhci_controller() -> XhciSetConfigurationReport {
+    let configuration = read_configuration_descriptor_on_pcie_xhci_controller();
+    let slot_id = match configuration.status {
+        XhciReadConfigurationDescriptorStatus::ConfigurationDescriptorReady {
+            slot_id,
+            boot_keyboard_ready_to_configure,
+            ..
+        } if boot_keyboard_ready_to_configure => slot_id,
+        XhciReadConfigurationDescriptorStatus::ConfigurationDescriptorReady { .. } => {
+            return XhciSetConfigurationReport::new(
+                configuration,
+                XhciSetConfigurationStatus::BootKeyboardNotReadyToConfigure,
+            );
+        }
+        status => {
+            return XhciSetConfigurationReport::new(
+                configuration,
+                XhciSetConfigurationStatus::ConfigurationDescriptorFailed(status),
+            );
+        }
+    };
+
+    let Some(fields) = configuration.fields else {
+        return XhciSetConfigurationReport::new(
+            configuration,
+            XhciSetConfigurationStatus::BootKeyboardNotReadyToConfigure,
+        );
+    };
+    let Some(keyboard) = fields.boot_keyboard else {
+        return XhciSetConfigurationReport::new(
+            configuration,
+            XhciSetConfigurationStatus::BootKeyboardNotReadyToConfigure,
+        );
+    };
+    let Some(endpoint) = keyboard.interrupt_in_endpoint else {
+        return XhciSetConfigurationReport::new(
+            configuration,
+            XhciSetConfigurationStatus::BootKeyboardNotReadyToConfigure,
+        );
+    };
+
+    let (Some(mmio), Some(caps), Some(plan)) = (
+        configuration
+            .header
+            .device_descriptor
+            .set_address
+            .descriptor
+            .address
+            .enable
+            .start
+            .mmio_base,
+        configuration
+            .header
+            .device_descriptor
+            .set_address
+            .descriptor
+            .address
+            .enable
+            .start
+            .capabilities,
+        configuration
+            .header
+            .device_descriptor
+            .set_address
+            .descriptor
+            .address
+            .enable
+            .start
+            .memory,
+    ) else {
+        return XhciSetConfigurationReport::new(
+            configuration,
+            XhciSetConfigurationStatus::StartEvidenceUnavailable,
+        );
+    };
+
+    let (setup_trb_pointer, status_trb_pointer) =
+        xhci_ep0_no_data_control_trb_pointers(XHCI_EP0_SET_CONFIGURATION_TRB_INDEX);
+    let setup = XhciSetupPacket {
+        bm_request_type: USB_REQUEST_TYPE_HOST_TO_DEVICE_STANDARD_DEVICE,
+        b_request: USB_REQUEST_SET_CONFIGURATION,
+        w_value: fields.header.configuration_value as u16,
+        w_index: 0,
+        w_length: 0,
+    };
+    let setup_trb = xhci_setup_stage_no_data_trb(setup);
+    let status_trb = xhci_status_stage_trb(true);
+
+    write_xhci_ep0_no_data_control_transfer(
+        plan,
+        XHCI_EP0_SET_CONFIGURATION_TRB_INDEX,
+        setup_trb,
+        status_trb,
+    );
+
+    let mut report = XhciSetConfigurationReport {
+        configuration,
+        status: XhciSetConfigurationStatus::TransferTimedOut,
+        slot_id,
+        endpoint_id: XHCI_DOORBELL_CONTROL_EP0 as u8,
+        doorbell: XHCI_DOORBELL_CONTROL_EP0,
+        configuration_value: fields.header.configuration_value,
+        interface_number: keyboard.interface_number,
+        endpoint_address: endpoint.address,
+        setup_trb_pointer,
+        status_trb_pointer,
+        setup_trb,
+        status_trb,
+        event: None,
+    };
+
+    compiler_fence(Ordering::SeqCst);
+    write_mmio_u32(
+        mmio + caps.doorbell_offset as usize + (slot_id as usize * core::mem::size_of::<u32>()),
+        XHCI_DOORBELL_CONTROL_EP0,
+    );
+
+    if let Some(event) = wait_for_xhci_transfer_event(plan, XHCI_SET_CONFIGURATION_EVENT_INDEX) {
+        acknowledge_xhci_event(
+            mmio,
+            caps,
+            plan.event_ring + ((XHCI_SET_CONFIGURATION_EVENT_INDEX + 1) * XHCI_TRB_BYTES) as u64,
+        );
+        report.event = Some(event);
+        report.status = classify_set_configuration_transfer_event(
+            status_trb_pointer,
+            slot_id,
+            XHCI_DOORBELL_CONTROL_EP0 as u8,
+            fields.header.configuration_value,
+            keyboard.interface_number,
+            endpoint.address,
+            event,
+        );
+    }
+
+    report
+}
+
+/// Issues Configure Endpoint for the discovered HID boot-keyboard interrupt-IN endpoint.
+///
+/// This checkpoint teaches xHC about the interrupt-IN endpoint transfer ring.
+/// It still does not queue interrupt-IN Normal TRBs, issue HID class requests,
+/// return keyboard reports, or claim keyboard readiness.
+pub fn configure_keyboard_endpoint_on_pcie_xhci_controller() -> XhciConfigureEndpointReport {
+    let set_configuration = set_configuration_on_pcie_xhci_controller();
+    let slot_id = match set_configuration.status {
+        XhciSetConfigurationStatus::ConfigurationSet { slot_id, .. } => slot_id,
+        status => {
+            return XhciConfigureEndpointReport::new(
+                set_configuration,
+                XhciConfigureEndpointStatus::SetConfigurationFailed(status),
+            );
+        }
+    };
+
+    let Some(fields) = set_configuration.configuration.fields else {
+        return XhciConfigureEndpointReport::new(
+            set_configuration,
+            XhciConfigureEndpointStatus::BootKeyboardEndpointUnavailable,
+        );
+    };
+    let Some(keyboard) = fields.boot_keyboard else {
+        return XhciConfigureEndpointReport::new(
+            set_configuration,
+            XhciConfigureEndpointStatus::BootKeyboardEndpointUnavailable,
+        );
+    };
+    let Some(endpoint) = keyboard.interrupt_in_endpoint else {
+        return XhciConfigureEndpointReport::new(
+            set_configuration,
+            XhciConfigureEndpointStatus::BootKeyboardEndpointUnavailable,
+        );
+    };
+    let Some(port) = set_configuration
+        .configuration
+        .header
+        .device_descriptor
+        .set_address
+        .descriptor
+        .address
+        .enable
+        .connected_port
+    else {
+        return XhciConfigureEndpointReport::new(
+            set_configuration,
+            XhciConfigureEndpointStatus::StartEvidenceUnavailable,
+        );
+    };
+
+    let (Some(mmio), Some(caps), Some(plan)) = (
+        set_configuration
+            .configuration
+            .header
+            .device_descriptor
+            .set_address
+            .descriptor
+            .address
+            .enable
+            .start
+            .mmio_base,
+        set_configuration
+            .configuration
+            .header
+            .device_descriptor
+            .set_address
+            .descriptor
+            .address
+            .enable
+            .start
+            .capabilities,
+        set_configuration
+            .configuration
+            .header
+            .device_descriptor
+            .set_address
+            .descriptor
+            .address
+            .enable
+            .start
+            .memory,
+    ) else {
+        return XhciConfigureEndpointReport::new(
+            set_configuration,
+            XhciConfigureEndpointStatus::StartEvidenceUnavailable,
+        );
+    };
+
+    let endpoint_id = xhci_endpoint_id(endpoint);
+    if endpoint_id == 0 || endpoint_id > XHCI_ENDPOINT_DCI_MAX {
+        return XhciConfigureEndpointReport::new(
+            set_configuration,
+            XhciConfigureEndpointStatus::EndpointIdOutOfRange {
+                endpoint_address: endpoint.address,
+                endpoint_id,
+            },
+        );
+    }
+
+    let contexts = xhci_configure_keyboard_endpoint_contexts(plan, port, endpoint, endpoint_id);
+    write_xhci_configure_endpoint_contexts(plan, slot_id, contexts);
+
+    let command_trb_pointer = XHCI_COMMAND_RING.trb_addr(XHCI_CONFIGURE_ENDPOINT_COMMAND_INDEX);
+    let command_trb = xhci_configure_endpoint_command_trb(contexts.input_context, slot_id);
+    XHCI_COMMAND_RING.set_trb(XHCI_CONFIGURE_ENDPOINT_COMMAND_INDEX, command_trb);
+    dma_clean_range(command_trb_pointer, XHCI_TRB_BYTES);
+
+    let mut report = XhciConfigureEndpointReport {
+        set_configuration,
+        status: XhciConfigureEndpointStatus::CommandTimedOut,
+        command_trb_pointer,
+        command_trb,
+        doorbell: XHCI_DOORBELL_COMMAND,
+        contexts: Some(contexts),
+        event: None,
+    };
+
+    compiler_fence(Ordering::SeqCst);
+    write_mmio_u32(mmio + caps.doorbell_offset as usize, XHCI_DOORBELL_COMMAND);
+
+    if let Some(event) =
+        wait_for_xhci_command_completion_event(plan, XHCI_CONFIGURE_ENDPOINT_EVENT_INDEX)
+    {
+        acknowledge_xhci_event(
+            mmio,
+            caps,
+            plan.event_ring + ((XHCI_CONFIGURE_ENDPOINT_EVENT_INDEX + 1) * XHCI_TRB_BYTES) as u64,
+        );
+        report.event = Some(event);
+        report.status = classify_configure_endpoint_event(
+            command_trb_pointer,
+            slot_id,
+            contexts.endpoint_id,
+            contexts.endpoint_address,
+            contexts.max_packet_size,
+            contexts.interval_encoded,
+            event,
+        );
+    }
+
+    report
+}
+
+/// Issues HID SET_PROTOCOL(Boot) for the configured boot-keyboard interface.
+///
+/// This checkpoint switches the HID interface to boot protocol mode. It still
+/// does not queue interrupt-IN Normal TRBs, return keyboard reports, or claim
+/// keyboard readiness.
+pub fn set_hid_boot_protocol_on_pcie_xhci_controller() -> XhciSetHidProtocolReport {
+    let configure_endpoint = configure_keyboard_endpoint_on_pcie_xhci_controller();
+    let slot_id = match configure_endpoint.status {
+        XhciConfigureEndpointStatus::EndpointConfigured { slot_id, .. } => slot_id,
+        status => {
+            return XhciSetHidProtocolReport::new(
+                configure_endpoint,
+                XhciSetHidProtocolStatus::ConfigureEndpointFailed(status),
+            );
+        }
+    };
+
+    let Some(fields) = configure_endpoint.set_configuration.configuration.fields else {
+        return XhciSetHidProtocolReport::new(
+            configure_endpoint,
+            XhciSetHidProtocolStatus::BootKeyboardInterfaceUnavailable,
+        );
+    };
+    let Some(keyboard) = fields.boot_keyboard else {
+        return XhciSetHidProtocolReport::new(
+            configure_endpoint,
+            XhciSetHidProtocolStatus::BootKeyboardInterfaceUnavailable,
+        );
+    };
+
+    let (Some(mmio), Some(caps), Some(plan)) = (
+        configure_endpoint
+            .set_configuration
+            .configuration
+            .header
+            .device_descriptor
+            .set_address
+            .descriptor
+            .address
+            .enable
+            .start
+            .mmio_base,
+        configure_endpoint
+            .set_configuration
+            .configuration
+            .header
+            .device_descriptor
+            .set_address
+            .descriptor
+            .address
+            .enable
+            .start
+            .capabilities,
+        configure_endpoint
+            .set_configuration
+            .configuration
+            .header
+            .device_descriptor
+            .set_address
+            .descriptor
+            .address
+            .enable
+            .start
+            .memory,
+    ) else {
+        return XhciSetHidProtocolReport::new(
+            configure_endpoint,
+            XhciSetHidProtocolStatus::StartEvidenceUnavailable,
+        );
+    };
+
+    let (setup_trb_pointer, status_trb_pointer) =
+        xhci_ep0_no_data_control_trb_pointers(XHCI_EP0_SET_HID_PROTOCOL_TRB_INDEX);
+    let setup = XhciSetupPacket {
+        bm_request_type: USB_REQUEST_TYPE_HOST_TO_DEVICE_CLASS_INTERFACE,
+        b_request: USB_HID_REQUEST_SET_PROTOCOL,
+        w_value: USB_HID_BOOT_PROTOCOL as u16,
+        w_index: keyboard.interface_number as u16,
+        w_length: 0,
+    };
+    let setup_trb = xhci_setup_stage_no_data_trb(setup);
+    let status_trb = xhci_status_stage_trb(true);
+
+    write_xhci_ep0_no_data_control_transfer(
+        plan,
+        XHCI_EP0_SET_HID_PROTOCOL_TRB_INDEX,
+        setup_trb,
+        status_trb,
+    );
+
+    let mut report = XhciSetHidProtocolReport {
+        configure_endpoint,
+        status: XhciSetHidProtocolStatus::TransferTimedOut,
+        slot_id,
+        endpoint_id: XHCI_DOORBELL_CONTROL_EP0 as u8,
+        doorbell: XHCI_DOORBELL_CONTROL_EP0,
+        interface_number: keyboard.interface_number,
+        protocol: USB_HID_BOOT_PROTOCOL,
+        setup_trb_pointer,
+        status_trb_pointer,
+        setup_trb,
+        status_trb,
+        event: None,
+    };
+
+    compiler_fence(Ordering::SeqCst);
+    write_mmio_u32(
+        mmio + caps.doorbell_offset as usize + (slot_id as usize * core::mem::size_of::<u32>()),
+        XHCI_DOORBELL_CONTROL_EP0,
+    );
+
+    if let Some(event) = wait_for_xhci_transfer_event(plan, XHCI_SET_HID_PROTOCOL_EVENT_INDEX) {
+        acknowledge_xhci_event(
+            mmio,
+            caps,
+            plan.event_ring + ((XHCI_SET_HID_PROTOCOL_EVENT_INDEX + 1) * XHCI_TRB_BYTES) as u64,
+        );
+        report.event = Some(event);
+        report.status = classify_set_hid_protocol_transfer_event(
+            status_trb_pointer,
+            slot_id,
+            XHCI_DOORBELL_CONTROL_EP0 as u8,
+            keyboard.interface_number,
+            USB_HID_BOOT_PROTOCOL,
+            event,
+        );
+    }
+
+    report
+}
+
+/// Queues one HID boot-keyboard interrupt-IN transfer and returns the raw report.
+///
+/// This is the first checkpoint that can produce the actual 8-byte keyboard
+/// report. It remains an explicit manual transition; the root-shell polling path
+/// still needs a stateful provider before boot readiness can change.
+pub fn read_boot_keyboard_report_on_pcie_xhci_controller() -> XhciReadBootKeyboardReport {
+    let set_hid_protocol = set_hid_boot_protocol_on_pcie_xhci_controller();
+    let slot_id = match set_hid_protocol.status {
+        XhciSetHidProtocolStatus::BootProtocolSet { slot_id, .. } => slot_id,
+        status => {
+            return XhciReadBootKeyboardReport::new(
+                set_hid_protocol,
+                XhciReadBootKeyboardReportStatus::SetHidProtocolFailed(status),
+            );
+        }
+    };
+    let Some(contexts) = set_hid_protocol.configure_endpoint.contexts else {
+        return XhciReadBootKeyboardReport::new(
+            set_hid_protocol,
+            XhciReadBootKeyboardReportStatus::BootKeyboardEndpointUnavailable,
+        );
+    };
+
+    let (Some(mmio), Some(caps), Some(plan)) = (
+        set_hid_protocol
+            .configure_endpoint
+            .set_configuration
+            .configuration
+            .header
+            .device_descriptor
+            .set_address
+            .descriptor
+            .address
+            .enable
+            .start
+            .mmio_base,
+        set_hid_protocol
+            .configure_endpoint
+            .set_configuration
+            .configuration
+            .header
+            .device_descriptor
+            .set_address
+            .descriptor
+            .address
+            .enable
+            .start
+            .capabilities,
+        set_hid_protocol
+            .configure_endpoint
+            .set_configuration
+            .configuration
+            .header
+            .device_descriptor
+            .set_address
+            .descriptor
+            .address
+            .enable
+            .start
+            .memory,
+    ) else {
+        return XhciReadBootKeyboardReport::new(
+            set_hid_protocol,
+            XhciReadBootKeyboardReportStatus::StartEvidenceUnavailable,
+        );
+    };
+
+    let report_buffer = XHCI_BOOT_KEYBOARD_REPORT.addr();
+    XHCI_BOOT_KEYBOARD_REPORT.zero();
+    dma_clean_range(report_buffer, BOOT_KEYBOARD_REPORT_BYTES);
+
+    let normal_trb_pointer =
+        XHCI_INTERRUPT_IN_ENDPOINT_RING.trb_addr(XHCI_INTERRUPT_IN_REPORT_TRB_INDEX);
+    let normal_trb = xhci_normal_transfer_trb(report_buffer, BOOT_KEYBOARD_REPORT_BYTES as u32);
+    write_xhci_interrupt_in_transfer(plan, XHCI_INTERRUPT_IN_REPORT_TRB_INDEX, normal_trb);
+
+    let mut report = XhciReadBootKeyboardReport {
+        set_hid_protocol,
+        status: XhciReadBootKeyboardReportStatus::TransferTimedOut,
+        slot_id,
+        endpoint_id: contexts.endpoint_id,
+        doorbell: contexts.endpoint_id as u32,
+        normal_trb_pointer,
+        normal_trb,
+        report_buffer,
+        report: [0; BOOT_KEYBOARD_REPORT_BYTES],
+        event: None,
+    };
+
+    compiler_fence(Ordering::SeqCst);
+    write_mmio_u32(
+        mmio + caps.doorbell_offset as usize + (slot_id as usize * core::mem::size_of::<u32>()),
+        contexts.endpoint_id as u32,
+    );
+
+    if let Some(event) = wait_for_xhci_transfer_event(plan, XHCI_BOOT_KEYBOARD_REPORT_EVENT_INDEX) {
+        acknowledge_xhci_event(
+            mmio,
+            caps,
+            plan.event_ring + ((XHCI_BOOT_KEYBOARD_REPORT_EVENT_INDEX + 1) * XHCI_TRB_BYTES) as u64,
+        );
+        dma_invalidate_range(report_buffer, BOOT_KEYBOARD_REPORT_BYTES);
+        report.report = XHCI_BOOT_KEYBOARD_REPORT.read();
+        report.event = Some(event);
+        report.status = classify_boot_keyboard_report_transfer_event(
+            normal_trb_pointer,
+            slot_id,
+            contexts.endpoint_id,
+            event,
+        );
+    }
+
+    report
+}
+
 /// Polls the lower USB boot-keyboard provider without blocking.
 ///
 /// The current implementation reaches the real PCIe/xHCI discovery and port
@@ -2614,10 +3675,12 @@ pub fn prepare_xhci_driver_memory(caps: XhciCapabilities) -> XhciDriverMemorySta
     XHCI_INPUT_CONTEXT.zero();
     XHCI_OUTPUT_DEVICE_CONTEXT.zero();
     XHCI_CONTROL_ENDPOINT_RING.zero();
+    XHCI_INTERRUPT_IN_ENDPOINT_RING.zero();
     XHCI_DEVICE_DESCRIPTOR_PREFIX.zero();
     XHCI_DEVICE_DESCRIPTOR.zero();
     XHCI_CONFIGURATION_DESCRIPTOR_HEADER.zero();
     XHCI_CONFIGURATION_DESCRIPTOR.zero();
+    XHCI_BOOT_KEYBOARD_REPORT.zero();
 
     if plan.scratchpad_buffers > 0 {
         let mut index = 0usize;
@@ -2827,13 +3890,21 @@ struct XhciSetupPacket {
 }
 
 fn xhci_setup_stage_trb(setup: XhciSetupPacket) -> [u32; 4] {
+    xhci_setup_stage_trb_with_transfer_type(setup, XHCI_SETUP_TRT_IN_DATA_STAGE)
+}
+
+fn xhci_setup_stage_no_data_trb(setup: XhciSetupPacket) -> [u32; 4] {
+    xhci_setup_stage_trb_with_transfer_type(setup, XHCI_SETUP_TRT_NO_DATA_STAGE)
+}
+
+fn xhci_setup_stage_trb_with_transfer_type(setup: XhciSetupPacket, transfer_type: u8) -> [u32; 4] {
     [
         setup.bm_request_type as u32
             | ((setup.b_request as u32) << 8)
             | ((setup.w_value as u32) << 16),
         setup.w_index as u32 | ((setup.w_length as u32) << 16),
         XHCI_DEVICE_DESCRIPTOR_PREFIX_BYTES as u32,
-        ((XHCI_SETUP_TRT_IN_DATA_STAGE as u32) << XHCI_SETUP_TRT_SHIFT)
+        ((transfer_type as u32) << XHCI_SETUP_TRT_SHIFT)
             | ((XHCI_TRB_TYPE_SETUP_STAGE as u32) << XHCI_TRB_TYPE_SHIFT)
             | XHCI_TRB_IDT
             | XHCI_TRB_CYCLE,
@@ -2847,6 +3918,15 @@ fn xhci_data_stage_trb(data_buffer: u64, length: u32, input: bool) -> [u32; 4] {
         (data_buffer >> 32) as u32,
         length & XHCI_TRB_TRANSFER_LENGTH_MASK,
         direction | ((XHCI_TRB_TYPE_DATA_STAGE as u32) << XHCI_TRB_TYPE_SHIFT) | XHCI_TRB_CYCLE,
+    ]
+}
+
+fn xhci_normal_transfer_trb(data_buffer: u64, length: u32) -> [u32; 4] {
+    [
+        data_buffer as u32,
+        (data_buffer >> 32) as u32,
+        length & XHCI_TRB_TRANSFER_LENGTH_MASK,
+        ((XHCI_TRB_TYPE_NORMAL as u32) << XHCI_TRB_TYPE_SHIFT) | XHCI_TRB_IOC | XHCI_TRB_CYCLE,
     ]
 }
 
@@ -2871,6 +3951,13 @@ fn xhci_ep0_control_trb_pointers(base_index: usize) -> (u64, u64, u64) {
     )
 }
 
+fn xhci_ep0_no_data_control_trb_pointers(base_index: usize) -> (u64, u64) {
+    (
+        XHCI_CONTROL_ENDPOINT_RING.trb_addr(base_index),
+        XHCI_CONTROL_ENDPOINT_RING.trb_addr(base_index + 1),
+    )
+}
+
 fn write_xhci_ep0_control_transfer(
     plan: XhciDriverMemoryPlan,
     base_index: usize,
@@ -2884,6 +3971,35 @@ fn write_xhci_ep0_control_transfer(
     XHCI_CONTROL_ENDPOINT_RING
         .set_trb(XHCI_CONTROL_ENDPOINT_RING_TRBS - 1, xhci_link_trb(plan.control_endpoint_ring));
     dma_clean_range(plan.control_endpoint_ring, XHCI_CONTROL_ENDPOINT_RING_TRBS * XHCI_TRB_BYTES);
+}
+
+fn write_xhci_ep0_no_data_control_transfer(
+    plan: XhciDriverMemoryPlan,
+    base_index: usize,
+    setup_trb: [u32; 4],
+    status_trb: [u32; 4],
+) {
+    XHCI_CONTROL_ENDPOINT_RING.set_trb(base_index, setup_trb);
+    XHCI_CONTROL_ENDPOINT_RING.set_trb(base_index + 1, status_trb);
+    XHCI_CONTROL_ENDPOINT_RING
+        .set_trb(XHCI_CONTROL_ENDPOINT_RING_TRBS - 1, xhci_link_trb(plan.control_endpoint_ring));
+    dma_clean_range(plan.control_endpoint_ring, XHCI_CONTROL_ENDPOINT_RING_TRBS * XHCI_TRB_BYTES);
+}
+
+fn write_xhci_interrupt_in_transfer(
+    plan: XhciDriverMemoryPlan,
+    trb_index: usize,
+    normal_trb: [u32; 4],
+) {
+    XHCI_INTERRUPT_IN_ENDPOINT_RING.set_trb(trb_index, normal_trb);
+    XHCI_INTERRUPT_IN_ENDPOINT_RING.set_trb(
+        XHCI_INTERRUPT_IN_ENDPOINT_RING_TRBS - 1,
+        xhci_link_trb(plan.interrupt_in_endpoint_ring),
+    );
+    dma_clean_range(
+        plan.interrupt_in_endpoint_ring,
+        XHCI_INTERRUPT_IN_ENDPOINT_RING_TRBS * XHCI_TRB_BYTES,
+    );
 }
 
 fn xhci_address_device_command_trb(
@@ -2904,6 +4020,18 @@ fn xhci_address_device_command_trb(
         ((slot_id as u32) << 24)
             | ((XHCI_TRB_TYPE_ADDRESS_DEVICE as u32) << XHCI_TRB_TYPE_SHIFT)
             | bsr
+            | XHCI_TRB_CYCLE,
+    ]
+}
+
+fn xhci_configure_endpoint_command_trb(input_context: u64, slot_id: u8) -> [u32; 4] {
+    let pointer = input_context & !0xf;
+    [
+        pointer as u32,
+        (pointer >> 32) as u32,
+        0,
+        ((slot_id as u32) << 24)
+            | ((XHCI_TRB_TYPE_CONFIGURE_ENDPOINT as u32) << XHCI_TRB_TYPE_SHIFT)
             | XHCI_TRB_CYCLE,
     ]
 }
@@ -3015,6 +4143,149 @@ fn write_xhci_address_device_contexts(
     dma_clean_range(plan.input_context, XHCI_CONTEXT_PAGE_BYTES);
     dma_clean_range(plan.output_device_context, XHCI_CONTEXT_PAGE_BYTES);
     dma_clean_range(plan.control_endpoint_ring, XHCI_CONTROL_ENDPOINT_RING_TRBS * XHCI_TRB_BYTES);
+}
+
+fn xhci_configure_keyboard_endpoint_contexts(
+    plan: XhciDriverMemoryPlan,
+    port: XhciPortSnapshot,
+    endpoint: UsbEndpointDescriptor,
+    endpoint_id: u8,
+) -> XhciConfigureEndpointContexts {
+    let endpoint_dequeue_pointer = plan.interrupt_in_endpoint_ring | XHCI_EP_CONTEXT_DCS;
+    let interval_encoded = xhci_interrupt_endpoint_interval(port.speed, endpoint.interval);
+    let max_packet_size = xhci_endpoint_max_packet_size(endpoint);
+    let max_esit_payload = max_packet_size;
+    XhciConfigureEndpointContexts {
+        input_context: plan.input_context,
+        output_device_context: plan.output_device_context,
+        interrupt_in_endpoint_ring: plan.interrupt_in_endpoint_ring,
+        drop_context_flags: 0,
+        add_context_flags: XHCI_INPUT_ADD_SLOT_CONTEXT | (1u32 << endpoint_id),
+        endpoint_id,
+        endpoint_context_index: xhci_input_context_index_from_dci(endpoint_id),
+        endpoint_address: endpoint.address,
+        endpoint_number: endpoint.endpoint_number,
+        interval: endpoint.interval,
+        interval_encoded,
+        max_packet_size,
+        max_esit_payload,
+        slot_context: [
+            ((port.speed as u32) << XHCI_SLOT_CONTEXT_SPEED_SHIFT)
+                | ((endpoint_id as u32) << XHCI_SLOT_CONTEXT_CONTEXT_ENTRIES_SHIFT),
+            (port.port as u32) << XHCI_SLOT_CONTEXT_ROOT_HUB_PORT_SHIFT,
+            0,
+            0,
+        ],
+        endpoint_context: [
+            (interval_encoded as u32) << XHCI_EP_CONTEXT_INTERVAL_SHIFT,
+            ((max_packet_size as u32) << XHCI_EP_CONTEXT_MAX_PACKET_SIZE_SHIFT)
+                | ((XHCI_EP_CONTEXT_TYPE_INTERRUPT_IN as u32) << XHCI_EP_CONTEXT_TYPE_SHIFT)
+                | ((XHCI_EP_CONTEXT_CERR_DEFAULT as u32) << XHCI_EP_CONTEXT_CERR_SHIFT),
+            endpoint_dequeue_pointer as u32,
+            (endpoint_dequeue_pointer >> 32) as u32,
+            (XHCI_INTERRUPT_AVERAGE_TRB_LENGTH as u32)
+                | ((max_esit_payload as u32) << XHCI_EP_CONTEXT_MAX_ESIT_PAYLOAD_SHIFT),
+        ],
+    }
+}
+
+fn write_xhci_configure_endpoint_contexts(
+    plan: XhciDriverMemoryPlan,
+    slot_id: u8,
+    contexts: XhciConfigureEndpointContexts,
+) {
+    XHCI_INPUT_CONTEXT.zero();
+    XHCI_INTERRUPT_IN_ENDPOINT_RING.zero();
+    XHCI_INTERRUPT_IN_ENDPOINT_RING.set_trb(
+        XHCI_INTERRUPT_IN_ENDPOINT_RING_TRBS - 1,
+        xhci_link_trb(plan.interrupt_in_endpoint_ring),
+    );
+    XHCI_DCBAA.set(slot_id as usize, plan.output_device_context);
+
+    XHCI_INPUT_CONTEXT.set_u32(
+        xhci_context_dword_offset(plan.context_size_bytes, 0, XHCI_INPUT_CONTEXT_DROP_FLAGS_DWORD),
+        contexts.drop_context_flags,
+    );
+    XHCI_INPUT_CONTEXT.set_u32(
+        xhci_context_dword_offset(plan.context_size_bytes, 0, XHCI_INPUT_CONTEXT_ADD_FLAGS_DWORD),
+        contexts.add_context_flags,
+    );
+
+    let mut index = 0usize;
+    while index < contexts.slot_context.len() {
+        XHCI_INPUT_CONTEXT.set_u32(
+            xhci_context_dword_offset(
+                plan.context_size_bytes,
+                XHCI_INPUT_CONTEXT_SLOT_INDEX,
+                index,
+            ),
+            contexts.slot_context[index],
+        );
+        index += 1;
+    }
+
+    index = 0;
+    while index < contexts.endpoint_context.len() {
+        XHCI_INPUT_CONTEXT.set_u32(
+            xhci_context_dword_offset(
+                plan.context_size_bytes,
+                contexts.endpoint_context_index as usize,
+                index,
+            ),
+            contexts.endpoint_context[index],
+        );
+        index += 1;
+    }
+
+    dma_clean_range(plan.dcbaa, XHCI_MAX_DEVICE_CONTEXT_POINTERS * core::mem::size_of::<u64>());
+    dma_clean_range(plan.input_context, XHCI_CONTEXT_PAGE_BYTES);
+    dma_clean_range(
+        plan.interrupt_in_endpoint_ring,
+        XHCI_INTERRUPT_IN_ENDPOINT_RING_TRBS * XHCI_TRB_BYTES,
+    );
+}
+
+fn xhci_endpoint_id(endpoint: UsbEndpointDescriptor) -> u8 {
+    if endpoint.endpoint_number == 0 {
+        return 0;
+    }
+    let direction = if endpoint.direction_in { 1 } else { 0 };
+    endpoint
+        .endpoint_number
+        .saturating_mul(2)
+        .saturating_add(direction)
+}
+
+const fn xhci_input_context_index_from_dci(dci: u8) -> u8 {
+    dci + 1
+}
+
+fn xhci_endpoint_max_packet_size(endpoint: UsbEndpointDescriptor) -> u16 {
+    endpoint.max_packet_size & 0x07ff
+}
+
+fn xhci_interrupt_endpoint_interval(port_speed: u8, interval: u8) -> u8 {
+    if interval == 0 {
+        return 0;
+    }
+    match port_speed {
+        1 | 2 => ceil_log2_u16((interval as u16).saturating_mul(8)).min(15),
+        3..=15 => interval.saturating_sub(1).min(15),
+        _ => interval.saturating_sub(1).min(15),
+    }
+}
+
+fn ceil_log2_u16(value: u16) -> u8 {
+    if value <= 1 {
+        return 0;
+    }
+    let mut power = 1u16;
+    let mut log = 0u8;
+    while power < value {
+        power = power.saturating_mul(2);
+        log += 1;
+    }
+    log
 }
 
 const fn xhci_context_dword_offset(
@@ -3432,6 +4703,207 @@ fn classify_read_configuration_descriptor_transfer_event(
     }
 }
 
+fn classify_set_configuration_transfer_event(
+    expected_status_trb_pointer: u64,
+    expected_slot_id: u8,
+    expected_endpoint_id: u8,
+    configuration_value: u8,
+    interface_number: u8,
+    endpoint_address: u8,
+    event: XhciTransferEvent,
+) -> XhciSetConfigurationStatus {
+    if event.trb_type != XHCI_TRB_TYPE_TRANSFER_EVENT {
+        return XhciSetConfigurationStatus::UnexpectedEventType {
+            trb_type: event.trb_type,
+            completion_code: event.completion_code,
+        };
+    }
+    if event.trb_pointer != expected_status_trb_pointer {
+        return XhciSetConfigurationStatus::TransferPointerMismatch {
+            expected: expected_status_trb_pointer,
+            actual: event.trb_pointer,
+            completion_code: event.completion_code,
+            slot_id: event.slot_id,
+            endpoint_id: event.endpoint_id,
+        };
+    }
+    if event.slot_id != expected_slot_id {
+        return XhciSetConfigurationStatus::SlotIdMismatch {
+            expected: expected_slot_id,
+            actual: event.slot_id,
+            completion_code: event.completion_code,
+        };
+    }
+    if event.endpoint_id != expected_endpoint_id {
+        return XhciSetConfigurationStatus::EndpointIdMismatch {
+            expected: expected_endpoint_id,
+            actual: event.endpoint_id,
+            completion_code: event.completion_code,
+        };
+    }
+    if event.completion_code != XHCI_TRB_COMPLETION_SUCCESS {
+        return XhciSetConfigurationStatus::TransferFailed {
+            completion_code: event.completion_code,
+            residual_length: event.transfer_length,
+            slot_id: event.slot_id,
+            endpoint_id: event.endpoint_id,
+        };
+    }
+    XhciSetConfigurationStatus::ConfigurationSet {
+        slot_id: event.slot_id,
+        configuration_value,
+        interface_number,
+        endpoint_address,
+    }
+}
+
+fn classify_configure_endpoint_event(
+    expected_command_trb_pointer: u64,
+    expected_slot_id: u8,
+    endpoint_id: u8,
+    endpoint_address: u8,
+    max_packet_size: u16,
+    interval_encoded: u8,
+    event: XhciCommandCompletionEvent,
+) -> XhciConfigureEndpointStatus {
+    if event.trb_type != XHCI_TRB_TYPE_COMMAND_COMPLETION_EVENT {
+        return XhciConfigureEndpointStatus::UnexpectedEventType {
+            trb_type: event.trb_type,
+            completion_code: event.completion_code,
+        };
+    }
+    if event.command_trb_pointer != expected_command_trb_pointer {
+        return XhciConfigureEndpointStatus::CommandPointerMismatch {
+            expected: expected_command_trb_pointer,
+            actual: event.command_trb_pointer,
+            completion_code: event.completion_code,
+            slot_id: event.slot_id,
+        };
+    }
+    if event.slot_id != expected_slot_id {
+        return XhciConfigureEndpointStatus::SlotIdMismatch {
+            expected: expected_slot_id,
+            actual: event.slot_id,
+            completion_code: event.completion_code,
+        };
+    }
+    if event.completion_code != XHCI_TRB_COMPLETION_SUCCESS {
+        return XhciConfigureEndpointStatus::CommandFailed {
+            completion_code: event.completion_code,
+            slot_id: event.slot_id,
+        };
+    }
+    XhciConfigureEndpointStatus::EndpointConfigured {
+        slot_id: event.slot_id,
+        endpoint_id,
+        endpoint_address,
+        max_packet_size,
+        interval_encoded,
+    }
+}
+
+fn classify_set_hid_protocol_transfer_event(
+    expected_status_trb_pointer: u64,
+    expected_slot_id: u8,
+    expected_endpoint_id: u8,
+    interface_number: u8,
+    protocol: u8,
+    event: XhciTransferEvent,
+) -> XhciSetHidProtocolStatus {
+    if event.trb_type != XHCI_TRB_TYPE_TRANSFER_EVENT {
+        return XhciSetHidProtocolStatus::UnexpectedEventType {
+            trb_type: event.trb_type,
+            completion_code: event.completion_code,
+        };
+    }
+    if event.trb_pointer != expected_status_trb_pointer {
+        return XhciSetHidProtocolStatus::TransferPointerMismatch {
+            expected: expected_status_trb_pointer,
+            actual: event.trb_pointer,
+            completion_code: event.completion_code,
+            slot_id: event.slot_id,
+            endpoint_id: event.endpoint_id,
+        };
+    }
+    if event.slot_id != expected_slot_id {
+        return XhciSetHidProtocolStatus::SlotIdMismatch {
+            expected: expected_slot_id,
+            actual: event.slot_id,
+            completion_code: event.completion_code,
+        };
+    }
+    if event.endpoint_id != expected_endpoint_id {
+        return XhciSetHidProtocolStatus::EndpointIdMismatch {
+            expected: expected_endpoint_id,
+            actual: event.endpoint_id,
+            completion_code: event.completion_code,
+        };
+    }
+    if event.completion_code != XHCI_TRB_COMPLETION_SUCCESS {
+        return XhciSetHidProtocolStatus::TransferFailed {
+            completion_code: event.completion_code,
+            residual_length: event.transfer_length,
+            slot_id: event.slot_id,
+            endpoint_id: event.endpoint_id,
+        };
+    }
+    XhciSetHidProtocolStatus::BootProtocolSet {
+        slot_id: event.slot_id,
+        interface_number,
+        protocol,
+    }
+}
+
+fn classify_boot_keyboard_report_transfer_event(
+    expected_normal_trb_pointer: u64,
+    expected_slot_id: u8,
+    expected_endpoint_id: u8,
+    event: XhciTransferEvent,
+) -> XhciReadBootKeyboardReportStatus {
+    if event.trb_type != XHCI_TRB_TYPE_TRANSFER_EVENT {
+        return XhciReadBootKeyboardReportStatus::UnexpectedEventType {
+            trb_type: event.trb_type,
+            completion_code: event.completion_code,
+        };
+    }
+    if event.trb_pointer != expected_normal_trb_pointer {
+        return XhciReadBootKeyboardReportStatus::TransferPointerMismatch {
+            expected: expected_normal_trb_pointer,
+            actual: event.trb_pointer,
+            completion_code: event.completion_code,
+            slot_id: event.slot_id,
+            endpoint_id: event.endpoint_id,
+        };
+    }
+    if event.slot_id != expected_slot_id {
+        return XhciReadBootKeyboardReportStatus::SlotIdMismatch {
+            expected: expected_slot_id,
+            actual: event.slot_id,
+            completion_code: event.completion_code,
+        };
+    }
+    if event.endpoint_id != expected_endpoint_id {
+        return XhciReadBootKeyboardReportStatus::EndpointIdMismatch {
+            expected: expected_endpoint_id,
+            actual: event.endpoint_id,
+            completion_code: event.completion_code,
+        };
+    }
+    if event.completion_code != XHCI_TRB_COMPLETION_SUCCESS {
+        return XhciReadBootKeyboardReportStatus::TransferFailed {
+            completion_code: event.completion_code,
+            residual_length: event.transfer_length,
+            slot_id: event.slot_id,
+            endpoint_id: event.endpoint_id,
+        };
+    }
+    XhciReadBootKeyboardReportStatus::ReportReady {
+        slot_id: event.slot_id,
+        endpoint_id: event.endpoint_id,
+        length: BOOT_KEYBOARD_REPORT_BYTES as u8,
+    }
+}
+
 fn parse_usb_configuration_descriptor_tree(
     descriptor: [u8; USB_CONFIGURATION_DESCRIPTOR_MAX_BYTES],
     total_length: u16,
@@ -3597,6 +5069,10 @@ fn clean_xhci_driver_memory_for_device(plan: XhciDriverMemoryPlan) {
     dma_clean_range(plan.input_context, XHCI_CONTEXT_PAGE_BYTES);
     dma_clean_range(plan.output_device_context, XHCI_CONTEXT_PAGE_BYTES);
     dma_clean_range(plan.control_endpoint_ring, XHCI_CONTROL_ENDPOINT_RING_TRBS * XHCI_TRB_BYTES);
+    dma_clean_range(
+        plan.interrupt_in_endpoint_ring,
+        XHCI_INTERRUPT_IN_ENDPOINT_RING_TRBS * XHCI_TRB_BYTES,
+    );
     if plan.scratchpad_buffers > 0 {
         dma_clean_range(
             plan.scratchpad_array,
@@ -3705,6 +5181,7 @@ fn build_xhci_driver_memory_plan(caps: XhciCapabilities) -> XhciDriverMemoryPlan
         input_context: XHCI_INPUT_CONTEXT.addr(),
         output_device_context: XHCI_OUTPUT_DEVICE_CONTEXT.addr(),
         control_endpoint_ring: XHCI_CONTROL_ENDPOINT_RING.addr(),
+        interrupt_in_endpoint_ring: XHCI_INTERRUPT_IN_ENDPOINT_RING.addr(),
     }
 }
 
@@ -3891,6 +5368,8 @@ static XHCI_COMMAND_RING: XhciTrbRing<XHCI_COMMAND_RING_TRBS> = XhciTrbRing::new
 static XHCI_EVENT_RING: XhciTrbRing<XHCI_EVENT_RING_TRBS> = XhciTrbRing::new();
 static XHCI_CONTROL_ENDPOINT_RING: XhciTrbRing<XHCI_CONTROL_ENDPOINT_RING_TRBS> =
     XhciTrbRing::new();
+static XHCI_INTERRUPT_IN_ENDPOINT_RING: XhciTrbRing<XHCI_INTERRUPT_IN_ENDPOINT_RING_TRBS> =
+    XhciTrbRing::new();
 static XHCI_ERST: XhciAlignedU64<{ XHCI_EVENT_RING_SEGMENT_TABLE_ENTRIES * 2 }> =
     XhciAlignedU64::new();
 static XHCI_SCRATCHPAD_ARRAY: XhciAlignedU64<XHCI_STATIC_SCRATCHPAD_BUFFERS> =
@@ -3906,6 +5385,8 @@ static XHCI_CONFIGURATION_DESCRIPTOR_HEADER: XhciAlignedBytes<
     USB_CONFIGURATION_DESCRIPTOR_HEADER_BYTES,
 > = XhciAlignedBytes::new();
 static XHCI_CONFIGURATION_DESCRIPTOR: XhciAlignedBytes<USB_CONFIGURATION_DESCRIPTOR_MAX_BYTES> =
+    XhciAlignedBytes::new();
+static XHCI_BOOT_KEYBOARD_REPORT: XhciAlignedBytes<BOOT_KEYBOARD_REPORT_BYTES> =
     XhciAlignedBytes::new();
 
 #[cfg(feature = "selftest")]

@@ -4,18 +4,24 @@ use {
     super::{
         BCM2711_DWC2_BUS_BASE, BCM2711_DWC2_MMIO_BASE, BCM2711_XHCI_BUS_BASE,
         BCM2711_XHCI_MMIO_BASE, PcieXhciController, USB_CONFIGURATION_DESCRIPTOR_MAX_BYTES,
-        UsbBootKeyboardPending, UsbBootKeyboardPoll, XHCI_CONTROL_ENDPOINT_RING_TRBS,
-        XHCI_EP0_CONFIGURATION_DESCRIPTOR_HEADER_TRB_INDEX,
+        UsbBootKeyboardPending, UsbBootKeyboardPoll, UsbEndpointDescriptor,
+        XHCI_CONTROL_ENDPOINT_RING_TRBS, XHCI_EP0_CONFIGURATION_DESCRIPTOR_HEADER_TRB_INDEX,
         XHCI_EP0_CONFIGURATION_DESCRIPTOR_TRB_INDEX, XHCI_EP0_DESCRIPTOR_PREFIX_TRB_INDEX,
-        XHCI_EP0_DEVICE_DESCRIPTOR_TRB_INDEX, XHCI_EVENT_RING_TRBS, XHCI_STATIC_SCRATCHPAD_BUFFERS,
-        XhciAddressDeviceStatus, XhciControllerStartStatus, XhciDeviceDescriptorProbeStatus,
-        XhciDriverMemoryStatus, XhciEnableSlotStatus, XhciReadConfigurationDescriptorHeaderStatus,
+        XHCI_EP0_DEVICE_DESCRIPTOR_TRB_INDEX, XHCI_EP0_SET_CONFIGURATION_TRB_INDEX,
+        XHCI_EP0_SET_HID_PROTOCOL_TRB_INDEX, XHCI_EVENT_RING_TRBS,
+        XHCI_INTERRUPT_IN_ENDPOINT_RING_TRBS, XHCI_STATIC_SCRATCHPAD_BUFFERS,
+        XhciAddressDeviceStatus, XhciConfigureEndpointStatus, XhciControllerStartStatus,
+        XhciDeviceDescriptorProbeStatus, XhciDriverMemoryStatus, XhciEnableSlotStatus,
+        XhciReadBootKeyboardReportStatus, XhciReadConfigurationDescriptorHeaderStatus,
         XhciReadConfigurationDescriptorStatus, XhciReadDeviceDescriptorStatus,
-        XhciSetAddressStatus, XhciSetupPacket, classify_address_device_event,
+        XhciSetAddressStatus, XhciSetConfigurationStatus, XhciSetHidProtocolStatus,
+        XhciSetupPacket, classify_address_device_event,
+        classify_boot_keyboard_report_transfer_event, classify_configure_endpoint_event,
         classify_device_descriptor_transfer_event, classify_enable_slot_event,
         classify_read_configuration_descriptor_header_transfer_event,
         classify_read_configuration_descriptor_transfer_event,
         classify_read_device_descriptor_transfer_event, classify_set_address_event,
+        classify_set_configuration_transfer_event, classify_set_hid_protocol_transfer_event,
         decode_xhci_capabilities, decode_xhci_command_completion_event,
         decode_xhci_operational_snapshot, decode_xhci_port_snapshot,
         decode_xhci_supported_protocol, decode_xhci_transfer_event,
@@ -23,8 +29,11 @@ use {
         parse_usb_device_descriptor, prepare_xhci_driver_memory, protocol_covers_port,
         usb_descriptor_endpoint0_max_packet_size, xhci_address_device_command_trb,
         xhci_address_device_contexts, xhci_address_device_contexts_with_max_packet_size,
+        xhci_configure_endpoint_command_trb, xhci_configure_keyboard_endpoint_contexts,
         xhci_controller_start_registers, xhci_data_stage_trb, xhci_enable_slot_command_trb,
-        xhci_ep0_control_trb_pointers, xhci_extended_capability_offset, xhci_setup_stage_trb,
+        xhci_endpoint_id, xhci_ep0_control_trb_pointers, xhci_ep0_no_data_control_trb_pointers,
+        xhci_extended_capability_offset, xhci_interrupt_endpoint_interval,
+        xhci_normal_transfer_trb, xhci_setup_stage_no_data_trb, xhci_setup_stage_trb,
         xhci_status_stage_trb,
     },
     crate::pcie::{PciConfigHeader, PciLocation},
@@ -351,6 +360,15 @@ arch_test!(xhci_address_device_command_trb_sets_pointer_bsr_type_and_slot, {
     testrt::check_eq(set_address[3], (3u32 << 24) | (11u32 << 10) | 1);
 });
 
+arch_test!(xhci_configure_endpoint_command_trb_sets_pointer_type_and_slot, {
+    let trb = xhci_configure_endpoint_command_trb(0x0000_0002_0000_2008, 6);
+
+    testrt::check_eq(trb[0], 0x0000_2000u32);
+    testrt::check_eq(trb[1], 0x0000_0002u32);
+    testrt::check_eq(trb[2], 0u32);
+    testrt::check_eq(trb[3], (6u32 << 24) | (12u32 << 10) | 1);
+});
+
 arch_test!(xhci_address_device_contexts_prepare_slot_and_endpoint_zero, {
     let caps =
         decode_xhci_capabilities(0x0100_0040, (4 << 24) | (1 << 8) | 8, 0, 0, 0x1000, 0x2000)
@@ -388,6 +406,56 @@ arch_test!(xhci_address_device_contexts_prepare_slot_and_endpoint_zero, {
     let super_speed =
         xhci_address_device_contexts(plan, decode_xhci_port_snapshot(1, (4 << 10) | 1));
     testrt::check_eq(super_speed.endpoint0_max_packet_size, 512u16);
+});
+
+arch_test!(xhci_configure_endpoint_contexts_prepare_hid_interrupt_in_endpoint, {
+    let caps =
+        decode_xhci_capabilities(0x0100_0040, (4 << 24) | (1 << 8) | 8, 0, 0, 0x1000, 0x2000)
+            .unwrap_or_else(|| panic!("valid xHCI capability registers decode"));
+    let XhciDriverMemoryStatus::Ready(plan) = prepare_xhci_driver_memory(caps) else {
+        testrt::check(false, "static xHCI memory is sufficient");
+        return;
+    };
+
+    let endpoint = UsbEndpointDescriptor {
+        address: 0x81,
+        endpoint_number: 1,
+        direction_in: true,
+        attributes: 3,
+        transfer_type: 3,
+        max_packet_size: 0x0808,
+        interval: 10,
+    };
+    let port = decode_xhci_port_snapshot(4, (1 << 10) | 1);
+    let endpoint_id = xhci_endpoint_id(endpoint);
+    let contexts = xhci_configure_keyboard_endpoint_contexts(plan, port, endpoint, endpoint_id);
+
+    testrt::check_eq(endpoint_id, 3u8);
+    testrt::check_eq(contexts.input_context, plan.input_context);
+    testrt::check_eq(contexts.output_device_context, plan.output_device_context);
+    testrt::check_eq(contexts.interrupt_in_endpoint_ring, plan.interrupt_in_endpoint_ring);
+    testrt::check_eq(contexts.drop_context_flags, 0u32);
+    testrt::check_eq(contexts.add_context_flags, 0x9u32);
+    testrt::check_eq(contexts.endpoint_id, 3u8);
+    testrt::check_eq(contexts.endpoint_context_index, 4u8);
+    testrt::check_eq(contexts.endpoint_address, 0x81u8);
+    testrt::check_eq(contexts.endpoint_number, 1u8);
+    testrt::check_eq(contexts.interval, 10u8);
+    testrt::check_eq(contexts.interval_encoded, 7u8);
+    testrt::check_eq(contexts.max_packet_size, 8u16);
+    testrt::check_eq(contexts.max_esit_payload, 8u16);
+    testrt::check_eq(contexts.slot_context[0], (1u32 << 20) | (3u32 << 27));
+    testrt::check_eq(contexts.slot_context[1], 4u32 << 16);
+    testrt::check_eq(contexts.endpoint_context[0], 7u32 << 16);
+    testrt::check_eq(contexts.endpoint_context[1], (8u32 << 16) | (7u32 << 3) | (3u32 << 1));
+    testrt::check_eq(contexts.endpoint_context[2], (plan.interrupt_in_endpoint_ring | 1) as u32);
+    testrt::check_eq(
+        contexts.endpoint_context[3],
+        ((plan.interrupt_in_endpoint_ring | 1) >> 32) as u32,
+    );
+    testrt::check_eq(contexts.endpoint_context[4], (8u32 << 16) | 8);
+
+    testrt::check_eq(xhci_interrupt_endpoint_interval(3, 10), 9u8);
 });
 
 arch_test!(xhci_address_device_event_classifier_names_success_and_failures, {
@@ -488,6 +556,56 @@ arch_test!(xhci_get_descriptor_control_trbs_encode_setup_data_and_status_ioc, {
     testrt::check_eq(status_trb[1], 0u32);
     testrt::check_eq(status_trb[2], 0u32);
     testrt::check_eq(status_trb[3], (4u32 << 10) | (1u32 << 5) | 1);
+});
+
+arch_test!(xhci_set_configuration_control_trbs_encode_no_data_status_in, {
+    let setup = XhciSetupPacket {
+        bm_request_type: 0x00,
+        b_request: 9,
+        w_value: 1,
+        w_index: 0,
+        w_length: 0,
+    };
+
+    let setup_trb = xhci_setup_stage_no_data_trb(setup);
+    testrt::check_eq(setup_trb[0], 0x0001_0900u32);
+    testrt::check_eq(setup_trb[1], 0u32);
+    testrt::check_eq(setup_trb[2], 8u32);
+    testrt::check_eq(setup_trb[3], (2u32 << 10) | (1u32 << 6) | 1);
+
+    let status_trb = xhci_status_stage_trb(true);
+    testrt::check_eq(status_trb[0], 0u32);
+    testrt::check_eq(status_trb[1], 0u32);
+    testrt::check_eq(status_trb[2], 0u32);
+    testrt::check_eq(status_trb[3], (1u32 << 16) | (4u32 << 10) | (1u32 << 5) | 1);
+});
+
+arch_test!(xhci_set_hid_protocol_control_trbs_encode_class_interface_request, {
+    let setup = XhciSetupPacket {
+        bm_request_type: 0x21,
+        b_request: 11,
+        w_value: 0,
+        w_index: 2,
+        w_length: 0,
+    };
+
+    let setup_trb = xhci_setup_stage_no_data_trb(setup);
+    testrt::check_eq(setup_trb[0], 0x0000_0b21u32);
+    testrt::check_eq(setup_trb[1], 0x0000_0002u32);
+    testrt::check_eq(setup_trb[2], 8u32);
+    testrt::check_eq(setup_trb[3], (2u32 << 10) | (1u32 << 6) | 1);
+
+    let status_trb = xhci_status_stage_trb(true);
+    testrt::check_eq(status_trb[3], (1u32 << 16) | (4u32 << 10) | (1u32 << 5) | 1);
+});
+
+arch_test!(xhci_interrupt_in_normal_trb_encodes_buffer_length_and_ioc, {
+    let normal_trb = xhci_normal_transfer_trb(0x0000_0002_0000_0080, 8);
+
+    testrt::check_eq(normal_trb[0], 0x0000_0080u32);
+    testrt::check_eq(normal_trb[1], 0x0000_0002u32);
+    testrt::check_eq(normal_trb[2], 8u32);
+    testrt::check_eq(normal_trb[3], (1u32 << 10) | (1u32 << 5) | 1);
 });
 
 arch_test!(xhci_transfer_event_decode_extracts_pointer_residual_endpoint_and_slot, {
@@ -793,6 +911,10 @@ arch_test!(xhci_ep0_control_transfer_indices_advance_by_triplet, {
         xhci_ep0_control_trb_pointers(XHCI_EP0_CONFIGURATION_DESCRIPTOR_HEADER_TRB_INDEX);
     let (config_tree_setup, config_tree_data, config_tree_status) =
         xhci_ep0_control_trb_pointers(XHCI_EP0_CONFIGURATION_DESCRIPTOR_TRB_INDEX);
+    let (set_config_setup, set_config_status) =
+        xhci_ep0_no_data_control_trb_pointers(XHCI_EP0_SET_CONFIGURATION_TRB_INDEX);
+    let (set_hid_protocol_setup, set_hid_protocol_status) =
+        xhci_ep0_no_data_control_trb_pointers(XHCI_EP0_SET_HID_PROTOCOL_TRB_INDEX);
 
     testrt::check_eq(device_setup - prefix_setup, 3u64 * 16);
     testrt::check_eq(device_data - prefix_data, 3u64 * 16);
@@ -803,6 +925,10 @@ arch_test!(xhci_ep0_control_transfer_indices_advance_by_triplet, {
     testrt::check_eq(config_tree_setup - config_setup, 3u64 * 16);
     testrt::check_eq(config_tree_data - config_data, 3u64 * 16);
     testrt::check_eq(config_tree_status - config_status, 3u64 * 16);
+    testrt::check_eq(set_config_setup - config_tree_status, 16u64);
+    testrt::check_eq(set_config_status - set_config_setup, 16u64);
+    testrt::check_eq(set_hid_protocol_setup - set_config_status, 16u64);
+    testrt::check_eq(set_hid_protocol_status - set_hid_protocol_setup, 16u64);
 });
 
 arch_test!(usb_configuration_descriptor_header_parser_extracts_standard_fields, {
@@ -1024,6 +1150,256 @@ arch_test!(xhci_read_configuration_descriptor_classifier_names_success_and_failu
     }
 });
 
+arch_test!(xhci_set_configuration_classifier_names_success_and_failures, {
+    let success = decode_xhci_transfer_event([
+        0x0000_8000,
+        0,
+        1u32 << 24,
+        (11u32 << 24) | (1u32 << 16) | (32u32 << 10) | 1,
+    ]);
+    match classify_set_configuration_transfer_event(0x8000, 11, 1, 1, 0, 0x81, success) {
+        XhciSetConfigurationStatus::ConfigurationSet {
+            slot_id,
+            configuration_value,
+            interface_number,
+            endpoint_address,
+        } => {
+            testrt::check_eq(slot_id, 11u8);
+            testrt::check_eq(configuration_value, 1u8);
+            testrt::check_eq(interface_number, 0u8);
+            testrt::check_eq(endpoint_address, 0x81u8);
+        }
+        _ => testrt::check(false, "successful SET_CONFIGURATION is reported"),
+    }
+
+    let wrong_endpoint = decode_xhci_transfer_event([
+        0x0000_8000,
+        0,
+        1u32 << 24,
+        (11u32 << 24) | (2u32 << 16) | (32u32 << 10) | 1,
+    ]);
+    match classify_set_configuration_transfer_event(0x8000, 11, 1, 1, 0, 0x81, wrong_endpoint) {
+        XhciSetConfigurationStatus::EndpointIdMismatch {
+            expected,
+            actual,
+            completion_code,
+        } => {
+            testrt::check_eq(expected, 1u8);
+            testrt::check_eq(actual, 2u8);
+            testrt::check_eq(completion_code, 1u8);
+        }
+        _ => testrt::check(false, "wrong endpoint ID is reported"),
+    }
+
+    let failed = decode_xhci_transfer_event([
+        0x0000_8000,
+        0,
+        (13u32 << 24) | 5,
+        (11u32 << 24) | (1u32 << 16) | (32u32 << 10) | 1,
+    ]);
+    match classify_set_configuration_transfer_event(0x8000, 11, 1, 1, 0, 0x81, failed) {
+        XhciSetConfigurationStatus::TransferFailed {
+            completion_code,
+            residual_length,
+            slot_id,
+            endpoint_id,
+        } => {
+            testrt::check_eq(completion_code, 13u8);
+            testrt::check_eq(residual_length, 5u32);
+            testrt::check_eq(slot_id, 11u8);
+            testrt::check_eq(endpoint_id, 1u8);
+        }
+        _ => testrt::check(false, "failed SET_CONFIGURATION is reported"),
+    }
+});
+
+arch_test!(xhci_configure_endpoint_classifier_names_success_and_failures, {
+    let success = decode_xhci_command_completion_event([
+        0x0000_9000,
+        0,
+        1u32 << 24,
+        (12u32 << 24) | (33u32 << 10) | 1,
+    ]);
+    match classify_configure_endpoint_event(0x9000, 12, 3, 0x81, 8, 7, success) {
+        XhciConfigureEndpointStatus::EndpointConfigured {
+            slot_id,
+            endpoint_id,
+            endpoint_address,
+            max_packet_size,
+            interval_encoded,
+        } => {
+            testrt::check_eq(slot_id, 12u8);
+            testrt::check_eq(endpoint_id, 3u8);
+            testrt::check_eq(endpoint_address, 0x81u8);
+            testrt::check_eq(max_packet_size, 8u16);
+            testrt::check_eq(interval_encoded, 7u8);
+        }
+        _ => testrt::check(false, "successful Configure Endpoint is reported"),
+    }
+
+    let wrong_slot = decode_xhci_command_completion_event([
+        0x0000_9000,
+        0,
+        1u32 << 24,
+        (10u32 << 24) | (33u32 << 10) | 1,
+    ]);
+    match classify_configure_endpoint_event(0x9000, 12, 3, 0x81, 8, 7, wrong_slot) {
+        XhciConfigureEndpointStatus::SlotIdMismatch {
+            expected,
+            actual,
+            completion_code,
+        } => {
+            testrt::check_eq(expected, 12u8);
+            testrt::check_eq(actual, 10u8);
+            testrt::check_eq(completion_code, 1u8);
+        }
+        _ => testrt::check(false, "wrong slot ID is reported"),
+    }
+
+    let failed = decode_xhci_command_completion_event([
+        0x0000_9000,
+        0,
+        5u32 << 24,
+        (12u32 << 24) | (33u32 << 10) | 1,
+    ]);
+    match classify_configure_endpoint_event(0x9000, 12, 3, 0x81, 8, 7, failed) {
+        XhciConfigureEndpointStatus::CommandFailed {
+            completion_code,
+            slot_id,
+        } => {
+            testrt::check_eq(completion_code, 5u8);
+            testrt::check_eq(slot_id, 12u8);
+        }
+        _ => testrt::check(false, "failed Configure Endpoint is reported"),
+    }
+});
+
+arch_test!(xhci_set_hid_protocol_classifier_names_success_and_failures, {
+    let success = decode_xhci_transfer_event([
+        0x0000_a000,
+        0,
+        1u32 << 24,
+        (13u32 << 24) | (1u32 << 16) | (32u32 << 10) | 1,
+    ]);
+    match classify_set_hid_protocol_transfer_event(0xa000, 13, 1, 2, 0, success) {
+        XhciSetHidProtocolStatus::BootProtocolSet {
+            slot_id,
+            interface_number,
+            protocol,
+        } => {
+            testrt::check_eq(slot_id, 13u8);
+            testrt::check_eq(interface_number, 2u8);
+            testrt::check_eq(protocol, 0u8);
+        }
+        _ => testrt::check(false, "successful SET_PROTOCOL is reported"),
+    }
+
+    let wrong_endpoint = decode_xhci_transfer_event([
+        0x0000_a000,
+        0,
+        1u32 << 24,
+        (13u32 << 24) | (2u32 << 16) | (32u32 << 10) | 1,
+    ]);
+    match classify_set_hid_protocol_transfer_event(0xa000, 13, 1, 2, 0, wrong_endpoint) {
+        XhciSetHidProtocolStatus::EndpointIdMismatch {
+            expected,
+            actual,
+            completion_code,
+        } => {
+            testrt::check_eq(expected, 1u8);
+            testrt::check_eq(actual, 2u8);
+            testrt::check_eq(completion_code, 1u8);
+        }
+        _ => testrt::check(false, "wrong endpoint ID is reported"),
+    }
+
+    let failed = decode_xhci_transfer_event([
+        0x0000_a000,
+        0,
+        (13u32 << 24) | 6,
+        (13u32 << 24) | (1u32 << 16) | (32u32 << 10) | 1,
+    ]);
+    match classify_set_hid_protocol_transfer_event(0xa000, 13, 1, 2, 0, failed) {
+        XhciSetHidProtocolStatus::TransferFailed {
+            completion_code,
+            residual_length,
+            slot_id,
+            endpoint_id,
+        } => {
+            testrt::check_eq(completion_code, 13u8);
+            testrt::check_eq(residual_length, 6u32);
+            testrt::check_eq(slot_id, 13u8);
+            testrt::check_eq(endpoint_id, 1u8);
+        }
+        _ => testrt::check(false, "failed SET_PROTOCOL is reported"),
+    }
+});
+
+arch_test!(xhci_boot_keyboard_report_classifier_names_success_and_failures, {
+    let success = decode_xhci_transfer_event([
+        0x0000_b000,
+        0,
+        1u32 << 24,
+        (14u32 << 24) | (3u32 << 16) | (32u32 << 10) | 1,
+    ]);
+    match classify_boot_keyboard_report_transfer_event(0xb000, 14, 3, success) {
+        XhciReadBootKeyboardReportStatus::ReportReady {
+            slot_id,
+            endpoint_id,
+            length,
+        } => {
+            testrt::check_eq(slot_id, 14u8);
+            testrt::check_eq(endpoint_id, 3u8);
+            testrt::check_eq(length, 8u8);
+        }
+        _ => testrt::check(false, "successful boot-keyboard report is reported"),
+    }
+
+    let wrong_pointer = decode_xhci_transfer_event([
+        0x0000_c000,
+        0,
+        1u32 << 24,
+        (14u32 << 24) | (3u32 << 16) | (32u32 << 10) | 1,
+    ]);
+    match classify_boot_keyboard_report_transfer_event(0xb000, 14, 3, wrong_pointer) {
+        XhciReadBootKeyboardReportStatus::TransferPointerMismatch {
+            expected,
+            actual,
+            completion_code,
+            slot_id,
+            endpoint_id,
+        } => {
+            testrt::check_eq(expected, 0xb000u64);
+            testrt::check_eq(actual, 0xc000u64);
+            testrt::check_eq(completion_code, 1u8);
+            testrt::check_eq(slot_id, 14u8);
+            testrt::check_eq(endpoint_id, 3u8);
+        }
+        _ => testrt::check(false, "wrong TRB pointer is reported"),
+    }
+
+    let failed = decode_xhci_transfer_event([
+        0x0000_b000,
+        0,
+        (13u32 << 24) | 8,
+        (14u32 << 24) | (3u32 << 16) | (32u32 << 10) | 1,
+    ]);
+    match classify_boot_keyboard_report_transfer_event(0xb000, 14, 3, failed) {
+        XhciReadBootKeyboardReportStatus::TransferFailed {
+            completion_code,
+            residual_length,
+            slot_id,
+            endpoint_id,
+        } => {
+            testrt::check_eq(completion_code, 13u8);
+            testrt::check_eq(residual_length, 8u32);
+            testrt::check_eq(slot_id, 14u8);
+            testrt::check_eq(endpoint_id, 3u8);
+        }
+        _ => testrt::check(false, "failed boot-keyboard report transfer is reported"),
+    }
+});
+
 arch_test!(xhci_driver_memory_plan_prepares_aligned_static_tables, {
     let caps =
         decode_xhci_capabilities(0x0100_0040, (4 << 24) | (1 << 8) | 8, 2 << 27, 0, 0x1000, 0x2000)
@@ -1051,7 +1427,9 @@ arch_test!(xhci_driver_memory_plan_prepares_aligned_static_tables, {
     testrt::check_eq(plan.input_context & 0xfff, 0u64);
     testrt::check_eq(plan.output_device_context & 0xfff, 0u64);
     testrt::check_eq(plan.control_endpoint_ring & 0x3f, 0u64);
+    testrt::check_eq(plan.interrupt_in_endpoint_ring & 0x3f, 0u64);
     testrt::check_eq(XHCI_CONTROL_ENDPOINT_RING_TRBS, 64usize);
+    testrt::check_eq(XHCI_INTERRUPT_IN_ENDPOINT_RING_TRBS, 64usize);
 
     let too_many = decode_xhci_capabilities(
         0x0100_0040,

@@ -668,7 +668,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     let exe = build_os_image(
         &[],
         Some(
-            "help\npwd\nls /\ncd /dev\npwd\nls\ncat /boot/profile\ncat /log/dmesg\ndevice\nprobe pcie\nprobe usb-keyboard\nprobe xhci-start\nprobe xhci-enable-slot\nprobe xhci-address-device\nprobe xhci-get-device-descriptor\nprobe xhci-set-address\nprobe xhci-read-device-descriptor\nprobe xhci-read-config-descriptor-header\nprobe xhci-read-config-descriptor\ndmesg\n",
+            "help\npwd\nls /\ncd /dev\npwd\nls\ncat /boot/profile\ncat /log/dmesg\ndevice\nprobe pcie\nprobe usb-keyboard\nprobe xhci-start\nprobe xhci-enable-slot\nprobe xhci-address-device\nprobe xhci-get-device-descriptor\nprobe xhci-set-address\nprobe xhci-read-device-descriptor\nprobe xhci-read-config-descriptor-header\nprobe xhci-read-config-descriptor\nprobe xhci-set-configuration\nprobe xhci-configure-endpoint\nprobe xhci-set-hid-protocol\nprobe xhci-read-keyboard-report\ndmesg\n",
         ),
         None,
     );
@@ -737,6 +737,22 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     assert!(
         serial.contains("probe xhci-read-config-descriptor:\nstate=unsupported-on-this-target"),
         "x86 OS profile reports xhci-read-config-descriptor probe unsupported; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("probe xhci-set-configuration:\nstate=unsupported-on-this-target"),
+        "x86 OS profile reports xhci-set-configuration probe unsupported; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("probe xhci-configure-endpoint:\nstate=unsupported-on-this-target"),
+        "x86 OS profile reports xhci-configure-endpoint probe unsupported; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("probe xhci-set-hid-protocol:\nstate=unsupported-on-this-target"),
+        "x86 OS profile reports xhci-set-hid-protocol probe unsupported; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("probe xhci-read-keyboard-report:\nstate=unsupported-on-this-target"),
+        "x86 OS profile reports xhci-read-keyboard-report probe unsupported; serial: {serial:?}",
     );
     assert!(serial.contains("reovim-os> /\n"), "pwd prints root cwd; serial: {serial:?}",);
     assert!(
