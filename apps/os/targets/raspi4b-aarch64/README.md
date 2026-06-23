@@ -173,8 +173,9 @@ Hardware setup:
 - Optional UART serial console attached for logs; UART input is fallback only.
 - No `REOVIM_OS_BOOTLINE` in the image environment.
 
-At the `reovim-os>` prompt, type these commands from the physical USB
-keyboard:
+At the `reovim-os>` prompt, type `proof` or `cat /boot/proof` from the
+physical USB keyboard to print the in-OS checklist. Then type these commands
+from the physical USB keyboard:
 
 ```text
 cat /boot/image

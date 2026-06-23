@@ -253,7 +253,7 @@ arch_test!(root_shell_help, {
     run_command(ProfileSummary::new("shell-only", false), b"help\n", None);
     testrt::check_eq(
         sink_str(),
-        "reovim root shell\ncommands: help, clear, screentest, pwd, ls, cd, cat, mount, input, status, device, dmesg, probe, launch, reovim, halt\nusage: help [command]\n",
+        "reovim root shell\ncommands: help, clear, screentest, pwd, ls, cd, cat, mount, input, status, proof, device, dmesg, probe, launch, reovim, halt\nusage: help [command]\n",
     );
 
     run_command(ProfileSummary::new("shell-only", false), b"help input\n", None);
@@ -261,6 +261,9 @@ arch_test!(root_shell_help, {
 
     run_command(ProfileSummary::new("shell-only", false), b"help status\n", None);
     testrt::check_eq(sink_str(), "status - print boot and input summary\n");
+
+    run_command(ProfileSummary::new("shell-only", false), b"help proof\n", None);
+    testrt::check_eq(sink_str(), "proof - print physical input proof checklist\n");
 
     run_command(ProfileSummary::new("shell-only", false), b"help probe\n", None);
     testrt::check_eq(sink_str(), "probe target - run lower hardware probe; try `probe help`\n");
@@ -357,6 +360,7 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"input\n");
     assert_contains(sink_bytes(), b"memory\n");
     assert_contains(sink_bytes(), b"mounts\n");
+    assert_contains(sink_bytes(), b"proof\n");
     assert_contains(sink_bytes(), b"profile\n");
     assert_contains(sink_bytes(), b"status\n");
 
@@ -388,6 +392,23 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"usb_keyboard=unavailable\n");
     assert_contains(sink_bytes(), b"usb_keyboard_poll_interval_ms=0\n");
     assert_contains(sink_bytes(), b"manual_next=probe-help\n");
+
+    run_session_command(&mut session, b"cat /boot/proof\n");
+    assert_contains(sink_bytes(), b"proof:\n");
+    assert_contains(sink_bytes(), b"  cat /boot/image\n");
+    assert_contains(sink_bytes(), b"  probe usb-keyboard\n");
+    assert_contains(sink_bytes(), b"  cat /log/dmesg\n");
+    assert_contains(sink_bytes(), b"  source=usb-keyboard+uart-fallback\n");
+    assert_contains(sink_bytes(), b"  usb_keyboard=ready\n");
+    assert_contains(sink_bytes(), b"  shell.status=ok\n");
+
+    run_session_command(&mut session, b"proof\n");
+    assert_contains(sink_bytes(), b"proof:\n");
+    assert_contains(sink_bytes(), b"expected:\n");
+    assert_contains(sink_bytes(), b"  probe targets include xhci-read-keyboard-report\n");
+
+    run_session_command(&mut session, b"proof extra\n");
+    testrt::check_eq(sink_str(), "proof: too many arguments\n");
 
     run_session_command(&mut session, b"status\n");
     assert_contains(sink_bytes(), b"package=reovim-os\n");

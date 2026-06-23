@@ -668,7 +668,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     let exe = build_os_image(
         &[],
         Some(
-            "help\nhelp clear\nhelp screentest\nhelp input\nhelp status\nhelp probe\nclear\nscreentest\npwd\nls /\ncd /dev\npwd\nls\ncat /boot/profile\ncat /boot/image\ninput\ncat /boot/input\nstatus\ncat /boot/status\nmount\ncat /boot/mounts\ncat /log/dmesg\ndevice\nprobe help\nprobe pcie\nprobe usb-keyboard\nprobe xhci-start\nprobe xhci-enable-slot\nprobe xhci-address-device\nprobe xhci-get-device-descriptor\nprobe xhci-set-address\nprobe xhci-read-device-descriptor\nprobe xhci-read-config-descriptor-header\nprobe xhci-read-config-descriptor\nprobe xhci-set-configuration\nprobe xhci-configure-endpoint\nprobe xhci-set-hid-protocol\nprobe xhci-read-keyboard-report\ndmesg\ncat /log/dmesg\n",
+            "help\nhelp clear\nhelp screentest\nhelp input\nhelp status\nhelp proof\nhelp probe\nclear\nscreentest\npwd\nls /\ncd /dev\npwd\nls\ncat /boot/profile\ncat /boot/image\ninput\ncat /boot/input\nstatus\ncat /boot/status\nproof\ncat /boot/proof\nmount\ncat /boot/mounts\ncat /log/dmesg\ndevice\nprobe help\nprobe pcie\nprobe usb-keyboard\nprobe xhci-start\nprobe xhci-enable-slot\nprobe xhci-address-device\nprobe xhci-get-device-descriptor\nprobe xhci-set-address\nprobe xhci-read-device-descriptor\nprobe xhci-read-config-descriptor-header\nprobe xhci-read-config-descriptor\nprobe xhci-set-configuration\nprobe xhci-configure-endpoint\nprobe xhci-set-hid-protocol\nprobe xhci-read-keyboard-report\ndmesg\ncat /log/dmesg\n",
         ),
         None,
     );
@@ -688,7 +688,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     );
     assert!(
         serial.contains(
-            "commands: help, clear, screentest, pwd, ls, cd, cat, mount, input, status, device, dmesg, probe, launch, reovim, halt"
+            "commands: help, clear, screentest, pwd, ls, cd, cat, mount, input, status, proof, device, dmesg, probe, launch, reovim, halt"
         ),
         "help vocabulary appears; serial: {serial:?}",
     );
@@ -711,6 +711,10 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     assert!(
         serial.contains("status - print boot and input summary"),
         "status help appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("proof - print physical input proof checklist"),
+        "proof help appears; serial: {serial:?}",
     );
     assert!(
         serial.contains("probe target - run lower hardware probe; try `probe help`"),
@@ -751,6 +755,18 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     assert!(
         serial.contains("probe targets:"),
         "probe target help appears in transcript; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("proof:\ncommands:\n  cat /boot/image"),
+        "proof checklist appears in transcript; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("expected:\n  bootline=absent"),
+        "proof checklist expected facts appear; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("probe targets include xhci-read-keyboard-report"),
+        "proof checklist names keyboard report probe; serial: {serial:?}",
     );
     assert!(
         serial.contains("xhci-read-keyboard-report (alias: usb-keyboard-read-report)"),

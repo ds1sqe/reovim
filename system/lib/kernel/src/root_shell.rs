@@ -433,6 +433,7 @@ fn write_directory(daemon: &RootDaemon<'_>, directory: Directory) {
             daemon.write_line("input");
             daemon.write_line("memory");
             daemon.write_line("mounts");
+            daemon.write_line("proof");
             daemon.write_line("profile");
             daemon.write_line("status");
         }
@@ -493,6 +494,7 @@ fn write_file(daemon: &RootDaemon<'_>, file: File) {
         File::BootProfile => write_boot_profile(daemon),
         File::BootImage => write_boot_image(daemon),
         File::BootInput => write_boot_input(daemon),
+        File::BootProof => write_boot_proof(daemon),
         File::BootStatus => write_boot_status(daemon),
         File::BootMemory => write_boot_memory(daemon),
         File::BootDevices => write_boot_devices(daemon),
@@ -561,6 +563,29 @@ fn write_boot_input(daemon: &RootDaemon<'_>) {
     daemon.write_bytes(b"\nusb_keyboard_poll_interval_ms=");
     write_u64_dec(daemon, input.usb_keyboard_poll_interval_ms as u64);
     daemon.write_bytes(b"\n");
+}
+
+fn write_boot_proof(daemon: &RootDaemon<'_>) {
+    daemon.write_line("proof:");
+    daemon.write_line("commands:");
+    daemon.write_line("  cat /boot/image");
+    daemon.write_line("  status");
+    daemon.write_line("  input");
+    daemon.write_line("  probe help");
+    daemon.write_line("  probe usb-keyboard");
+    daemon.write_line("  cat /boot/profile");
+    daemon.write_line("  dmesg");
+    daemon.write_line("  cat /log/dmesg");
+    daemon.write_line("expected:");
+    daemon.write_line("  bootline=absent");
+    daemon.write_line("  source=usb-keyboard+uart-fallback");
+    daemon.write_line("  source_state=ready");
+    daemon.write_line("  mode=live");
+    daemon.write_line("  usb_keyboard=ready");
+    daemon.write_line("  usb_keyboard_probe=enabled");
+    daemon.write_line("  probe targets include usb-keyboard");
+    daemon.write_line("  probe targets include xhci-read-keyboard-report");
+    daemon.write_line("  shell.status=ok");
 }
 
 fn write_boot_status(daemon: &RootDaemon<'_>) {
@@ -780,7 +805,7 @@ fn cmd_help(daemon: &RootDaemon<'_>, line: &ParsedLine) -> RootCommandStatus {
     if line.argc == 1 {
         daemon.write_line("reovim root shell");
         daemon.write_line(
-            "commands: help, clear, screentest, pwd, ls, cd, cat, mount, input, status, device, dmesg, probe, launch, reovim, halt",
+            "commands: help, clear, screentest, pwd, ls, cd, cat, mount, input, status, proof, device, dmesg, probe, launch, reovim, halt",
         );
         daemon.write_line("usage: help [command]");
         return RootCommandStatus::Ok;
@@ -798,6 +823,7 @@ fn cmd_help(daemon: &RootDaemon<'_>, line: &ParsedLine) -> RootCommandStatus {
         "mount" => daemon.write_line("mount - print kernel VFS mount table"),
         "input" => daemon.write_line("input - print live console input diagnostics"),
         "status" => daemon.write_line("status - print boot and input summary"),
+        "proof" => daemon.write_line("proof - print physical input proof checklist"),
         "device" => daemon.write_line("device - print boot memory and device inventory"),
         "dmesg" => daemon.write_line("dmesg - print retained kernel log"),
         "probe" => daemon.write_line("probe target - run lower hardware probe; try `probe help`"),
@@ -873,6 +899,15 @@ fn cmd_status(daemon: &RootDaemon<'_>, line: &ParsedLine) -> RootCommandStatus {
         return RootCommandStatus::Error;
     }
     write_boot_status(daemon);
+    RootCommandStatus::Ok
+}
+
+fn cmd_proof(daemon: &RootDaemon<'_>, line: &ParsedLine) -> RootCommandStatus {
+    if line.argc > 1 {
+        daemon.write_line("proof: too many arguments");
+        return RootCommandStatus::Error;
+    }
+    write_boot_proof(daemon);
     RootCommandStatus::Ok
 }
 
@@ -978,6 +1013,7 @@ pub(crate) fn execute_root_command(
         "mount" => cmd_mount(daemon, &parsed),
         "input" => cmd_input(daemon, &parsed),
         "status" => cmd_status(daemon, &parsed),
+        "proof" => cmd_proof(daemon, &parsed),
         "device" => cmd_device(daemon),
         "dmesg" => cmd_dmesg(daemon),
         "probe" => cmd_probe(daemon, &parsed),
