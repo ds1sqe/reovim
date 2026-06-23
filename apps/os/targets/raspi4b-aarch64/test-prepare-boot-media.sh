@@ -11,7 +11,9 @@ PREPARE_SCRIPT="$ROOT/apps/os/targets/raspi4b-aarch64/prepare-boot-media.sh"
 
 tmp_root="$(mktemp -d)"
 tmp_bootfs="$tmp_root/bootfs"
+tmp_bootfs_no_backup="$tmp_root/bootfs-no-backup"
 tmp_evidence="$tmp_root/evidence.md"
+tmp_evidence_no_backup="$tmp_root/evidence-no-backup.md"
 existing_evidence="$tmp_root/existing.md"
 cleanup() {
     rm -rf "$tmp_root"
@@ -19,11 +21,16 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir "$tmp_bootfs"
+mkdir "$tmp_bootfs_no_backup"
 : >"$existing_evidence"
 
 printf 'firmware-start\n' >"$tmp_bootfs/start4.elf"
 printf 'firmware-fixup\n' >"$tmp_bootfs/fixup4.dat"
 printf 'firmware-dtb\n' >"$tmp_bootfs/bcm2711-rpi-4-b.dtb"
+printf 'firmware-start\n' >"$tmp_bootfs_no_backup/start4.elf"
+printf 'firmware-fixup\n' >"$tmp_bootfs_no_backup/fixup4.dat"
+printf 'firmware-dtb\n' >"$tmp_bootfs_no_backup/bcm2711-rpi-4-b.dtb"
+printf 'old-kernel\n' >"$tmp_bootfs_no_backup/kernel8.img"
 
 expect_contains() {
     local haystack="$1"
@@ -51,13 +58,28 @@ prepare_output="$("$PREPARE_SCRIPT" --skip-qemu --bootfs "$tmp_bootfs" --evidenc
 source_bytes="$(wc -c <"$IMAGE" | tr -d ' ')"
 source_sha="$(sha256sum "$IMAGE" | awk '{ print $1 }')"
 installed_sha="$(sha256sum "$tmp_bootfs/kernel8.img" | awk '{ print $1 }')"
+no_backup_output="$("$PREPARE_SCRIPT" --skip-qemu --no-backup --bootfs "$tmp_bootfs_no_backup" --evidence "$tmp_evidence_no_backup")"
+no_backup_sha="$(sha256sum "$tmp_bootfs_no_backup/kernel8.img" | awk '{ print $1 }')"
 
 if [ "$source_sha" != "$installed_sha" ]; then
     printf 'error: installed kernel8.img SHA mismatch: expected %s got %s\n' "$source_sha" "$installed_sha" >&2
     exit 1
 fi
+if [ "$source_sha" != "$no_backup_sha" ]; then
+    printf 'error: no-backup installed kernel8.img SHA mismatch: expected %s got %s\n' "$source_sha" "$no_backup_sha" >&2
+    exit 1
+fi
 if [ ! -s "$tmp_evidence" ]; then
     printf 'error: evidence seed was not published: %s\n' "$tmp_evidence" >&2
+    exit 1
+fi
+if [ ! -s "$tmp_evidence_no_backup" ]; then
+    printf 'error: no-backup evidence seed was not published: %s\n' "$tmp_evidence_no_backup" >&2
+    exit 1
+fi
+if find "$tmp_bootfs_no_backup" -maxdepth 1 -name 'kernel8.img.bak-*' | grep -q .; then
+    printf 'error: no-backup prepare created a kernel8.img backup\n' >&2
+    find "$tmp_bootfs_no_backup" -maxdepth 1 -type f -printf '%f\n' >&2
     exit 1
 fi
 if find "$tmp_root" -maxdepth 1 -name '.*.tmp.*' | grep -q .; then
@@ -76,8 +98,12 @@ expect_contains "$prepare_output" "installed=$tmp_bootfs/kernel8.img" "install p
 expect_contains "$prepare_output" "media_prepare=ok" "media prepare status"
 expect_contains "$prepare_output" "sha256=$source_sha" "installed sha"
 expect_contains "$prepare_output" "evidence_seed=$tmp_evidence" "evidence path"
+expect_contains "$no_backup_output" "media_prepare=ok" "no-backup media prepare status"
+expect_contains "$no_backup_output" "sha256=$source_sha" "no-backup installed sha"
+expect_contains "$no_backup_output" "evidence_seed=$tmp_evidence_no_backup" "no-backup evidence path"
 
 evidence="$(cat "$tmp_evidence")"
+no_backup_evidence="$(cat "$tmp_evidence_no_backup")"
 media_section_count="$(grep -c '^## Media Preparation$' "$tmp_evidence")"
 if [ "$media_section_count" -ne 1 ]; then
     printf 'error: expected one media preparation section, found %s\n' "$media_section_count" >&2
@@ -93,6 +119,9 @@ expect_contains "$evidence" "- Image SHA-256: $source_sha" "evidence image sha"
 expect_contains "$evidence" "- Image install command: apps/os/targets/raspi4b-aarch64/install-image.sh $tmp_bootfs" "evidence actual install command"
 expect_contains "$evidence" "- Preflight command: apps/os/targets/raspi4b-aarch64/preflight-real-board.sh --bootfs $tmp_bootfs --evidence $tmp_root/.evidence.md.tmp." "evidence actual preflight command"
 expect_contains "$evidence" "--skip-qemu" "evidence qemu skip argument"
+expect_contains "$no_backup_evidence" "- Image install command: apps/os/targets/raspi4b-aarch64/install-image.sh --no-backup $tmp_bootfs_no_backup" "no-backup evidence actual install command"
+expect_contains "$no_backup_evidence" "- Preflight command: apps/os/targets/raspi4b-aarch64/preflight-real-board.sh --bootfs $tmp_bootfs_no_backup --evidence $tmp_root/.evidence-no-backup.md.tmp." "no-backup evidence actual preflight command"
+expect_contains "$no_backup_evidence" "--skip-qemu" "no-backup evidence qemu skip argument"
 expect_contains "$evidence" "- Preflight result: preflight=ok qemu_smoke=skipped" "evidence preflight result"
 expect_contains "$evidence" "- Boot partition path: $tmp_bootfs" "evidence bootfs"
 expect_contains "$evidence" "- [ ] \`package=reovim-os\`" "evidence package fact"
