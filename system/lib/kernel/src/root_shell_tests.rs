@@ -279,6 +279,9 @@ arch_test!(root_shell_clear_and_screentest, {
     run_command(ProfileSummary::new("shell-only", false), b"clear\n", None);
     testrt::check_eq(sink_str(), "\x1b[2J\x1b[H");
 
+    run_command(ProfileSummary::new("shell-only", false), b"clear now\n", None);
+    testrt::check_eq(sink_str(), "clear: too many arguments\n");
+
     run_command(ProfileSummary::new("shell-only", false), b"screentest\n", None);
     assert_contains(sink_bytes(), b"screen test:\n");
     assert_contains(sink_bytes(), b"target: framebuffer/serial tty renderer subset");
@@ -301,6 +304,9 @@ arch_test!(root_shell_clear_and_screentest, {
     assert_contains(sink_bytes(), b"bs: AB\x08 \x08C (should read AC)\n");
     assert_contains(sink_bytes(), b"wrap:");
     assert_contains(sink_bytes(), b"  done\n");
+
+    run_command(ProfileSummary::new("shell-only", false), b"screentest extra\n", None);
+    testrt::check_eq(sink_str(), "screentest: too many arguments\n");
 });
 
 arch_test!(root_shell_launch_mount_and_reovim, {
@@ -477,6 +483,9 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"devices:\n");
     assert_contains(sink_bytes(), b"- [0] uart compat=arm,pl011 mmio=0x1000/0x100 irq=12\n");
 
+    run_session_command(&mut session, b"device extra\n");
+    testrt::check_eq(sink_str(), "device: too many arguments\n");
+
     run_session_command(&mut session, b"cat /boot/memory\n");
     assert_contains(sink_bytes(), b"ranges=1\n");
     assert_contains(sink_bytes(), b"usable_bytes=4096\n");
@@ -543,6 +552,9 @@ arch_test!(root_shell_dmesg_and_unknown_command, {
     run_command(ProfileSummary::new("shell-only", false), b"dmesg\n", None);
     testrt::check_eq(sink_str(), "dmesg:\nshell: dmesg\n");
 
+    run_command(ProfileSummary::new("shell-only", false), b"dmesg extra\n", None);
+    testrt::check_eq(sink_str(), "dmesg: too many arguments\n");
+
     crate::klog::reset();
     crate::klog::append_line("rootd: boot report");
     run_command_preserving_log(ProfileSummary::new("shell-only", false), b"dmesg\n", None);
@@ -592,6 +604,17 @@ arch_test!(root_shell_halt_logs_status_before_callback, {
     let _ = crate::klog::write_to(sink_write);
     assert_contains(sink_bytes(), b"shell: halt\n");
     assert_contains(sink_bytes(), b"shell.status=halt\n");
+
+    crate::klog::reset();
+    sink_clear();
+    let should_halt = daemon.run_command_line(&mut session, b"halt now\n");
+    testrt::check(!should_halt, "halt with arguments must not stop the daemon");
+    testrt::check_eq(sink_str(), "halt: too many arguments\n");
+
+    sink_clear();
+    let _ = crate::klog::write_to(sink_write);
+    assert_contains(sink_bytes(), b"shell: halt now\n");
+    assert_contains(sink_bytes(), b"shell.status=error\n");
 });
 
 arch_test!(root_shell_probe_uses_lower_provider, {

@@ -315,7 +315,11 @@ fn write_device_name(daemon: &RootDaemon<'_>, devices: &[DeviceEntry], index: us
     write_u64_dec(daemon, ordinal as u64);
 }
 
-fn cmd_device(daemon: &RootDaemon<'_>) -> RootCommandStatus {
+fn cmd_device(daemon: &RootDaemon<'_>, line: &ParsedLine) -> RootCommandStatus {
+    if line.argc > 1 {
+        daemon.write_line("device: too many arguments");
+        return RootCommandStatus::Error;
+    }
     write_memory_summary(daemon, daemon.boot_info());
     daemon.write_bytes(b"devices:\n");
     let devices = daemon.devices();
@@ -327,7 +331,11 @@ fn cmd_device(daemon: &RootDaemon<'_>) -> RootCommandStatus {
     RootCommandStatus::Ok
 }
 
-fn cmd_dmesg(daemon: &RootDaemon<'_>) -> RootCommandStatus {
+fn cmd_dmesg(daemon: &RootDaemon<'_>, line: &ParsedLine) -> RootCommandStatus {
+    if line.argc > 1 {
+        daemon.write_line("dmesg: too many arguments");
+        return RootCommandStatus::Error;
+    }
     daemon.write_line("dmesg:");
     write_log_dmesg(daemon);
     RootCommandStatus::Ok
@@ -876,13 +884,21 @@ fn write_help_catalog(daemon: &RootDaemon<'_>) {
     daemon.write_line("usage: help [command]");
 }
 
-fn cmd_clear(daemon: &RootDaemon<'_>) -> RootCommandStatus {
+fn cmd_clear(daemon: &RootDaemon<'_>, line: &ParsedLine) -> RootCommandStatus {
+    if line.argc > 1 {
+        daemon.write_line("clear: too many arguments");
+        return RootCommandStatus::Error;
+    }
     crate::console::clear_screen();
     daemon.write_bytes(b"\x1b[2J\x1b[H");
     RootCommandStatus::Ok
 }
 
-fn cmd_screentest(daemon: &RootDaemon<'_>) -> RootCommandStatus {
+fn cmd_screentest(daemon: &RootDaemon<'_>, line: &ParsedLine) -> RootCommandStatus {
+    if line.argc > 1 {
+        daemon.write_line("screentest: too many arguments");
+        return RootCommandStatus::Error;
+    }
     daemon.write_line("screen test:");
     daemon.write_line("  target: framebuffer/serial tty renderer subset");
     daemon.write_bytes(b"  fg16: \x1b[30;47mblack\x1b[0m \x1b[31mred\x1b[0m \x1b[32mgreen\x1b[0m \x1b[33myellow\x1b[0m \x1b[34mblue\x1b[0m \x1b[35mmagenta\x1b[0m \x1b[36mcyan\x1b[0m \x1b[37mwhite\x1b[0m\n");
@@ -906,7 +922,11 @@ fn cmd_screentest(daemon: &RootDaemon<'_>) -> RootCommandStatus {
     RootCommandStatus::Ok
 }
 
-fn cmd_halt(daemon: &RootDaemon<'_>) -> RootCommandStatus {
+fn cmd_halt(daemon: &RootDaemon<'_>, line: &ParsedLine) -> RootCommandStatus {
+    if line.argc > 1 {
+        daemon.write_line("halt: too many arguments");
+        return RootCommandStatus::Error;
+    }
     daemon.write_line("halt: ok");
     RootCommandStatus::Halt
 }
@@ -1040,8 +1060,8 @@ pub(crate) fn execute_root_command(
     let command = parsed.args[0].as_str();
     let status = match command {
         "help" => cmd_help(daemon, &parsed),
-        "clear" => cmd_clear(daemon),
-        "screentest" => cmd_screentest(daemon),
+        "clear" => cmd_clear(daemon, &parsed),
+        "screentest" => cmd_screentest(daemon, &parsed),
         "pwd" => cmd_pwd(daemon, session, &parsed),
         "ls" => cmd_ls(daemon, session, &parsed),
         "cd" => cmd_cd(daemon, session, &parsed),
@@ -1050,12 +1070,12 @@ pub(crate) fn execute_root_command(
         "input" => cmd_input(daemon, &parsed),
         "status" => cmd_status(daemon, &parsed),
         "proof" => cmd_proof(daemon, &parsed),
-        "device" => cmd_device(daemon),
-        "dmesg" => cmd_dmesg(daemon),
+        "device" => cmd_device(daemon, &parsed),
+        "dmesg" => cmd_dmesg(daemon, &parsed),
         "probe" => cmd_probe(daemon, &parsed),
         "launch" => cmd_launch(daemon, &parsed),
         "reovim" => cmd_reovim(daemon, &parsed),
-        "halt" => cmd_halt(daemon),
+        "halt" => cmd_halt(daemon, &parsed),
         _ => {
             daemon.write_line("error: unknown command, try `help`");
             RootCommandStatus::Error
