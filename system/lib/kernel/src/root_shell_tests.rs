@@ -414,17 +414,22 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"  cat /boot/status\n");
     assert_contains(sink_bytes(), b"  probe pcie\n");
     assert_contains(sink_bytes(), b"  probe usb-keyboard\n");
+    assert_contains(sink_bytes(), b"  launch\n");
+    assert_contains(sink_bytes(), b"  reovim\n");
     assert_contains(sink_bytes(), b"  cat /boot/input\n");
     assert_contains(sink_bytes(), b"  cat /log/dmesg\n");
     assert_contains(sink_bytes(), b"  source=usb-keyboard+uart-fallback\n");
     assert_contains(sink_bytes(), b"  usb_keyboard=ready\n");
+    assert_contains(sink_bytes(), b"  launch/reovim disabled in shell-only profile\n");
     assert_contains(sink_bytes(), b"  shell.status=ok\n");
+    assert_contains(sink_bytes(), b"  shell.status=error for disabled payload commands\n");
 
     run_session_command(&mut session, b"proof\n");
     assert_contains(sink_bytes(), b"proof:\n");
     assert_contains(sink_bytes(), b"expected:\n");
     assert_contains(sink_bytes(), b"  probe targets include pcie\n");
     assert_contains(sink_bytes(), b"  probe targets include xhci-read-keyboard-report\n");
+    assert_contains(sink_bytes(), b"  launch/reovim disabled in shell-only profile\n");
 
     run_session_command(&mut session, b"proof extra\n");
     testrt::check_eq(sink_str(), "proof: too many arguments\n");

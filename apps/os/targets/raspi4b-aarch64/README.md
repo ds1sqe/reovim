@@ -21,7 +21,7 @@ image=apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img
 bytes=<image-size>
 ```
 
-Current expected size is `435708` bytes.
+Current expected size is `435900` bytes.
 
 Copy `apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img` to the Pi
 4 boot partition as `kernel8.img`, using the normal Raspberry Pi firmware
@@ -138,9 +138,11 @@ namespace evidence from `pwd` / `ls` / `mount` / `cat /boot/mounts`, boot
 inventory from `ls /dev` / `device` / `cat /boot/memory` /
 `cat /boot/devices`, relative device-file access from `cd /dev` /
 `cat uart0`, `probe help` hardware-target catalog output, read-only PCIe/xHCI
-state from `probe pcie`, `probe usb-keyboard` output, and `dmesg`
-command/status audit lines. It is a textual guard for completed evidence; it
-does not replace the physical HDMI plus USB-keyboard session.
+state from `probe pcie`, `probe usb-keyboard` output, shell-only
+`launch`/`reovim` disabled output, and `dmesg` command/status audit lines
+including the expected disabled-payload `shell.status=error` entries. It is a
+textual guard for completed evidence; it does not replace the physical HDMI
+plus USB-keyboard session.
 
 To smoke-test the validator:
 
@@ -212,6 +214,8 @@ probe help
 probe pcie
 probe usb-keyboard
 cat /boot/profile
+launch
+reovim
 dmesg
 cat /log/dmesg
 ```
@@ -242,7 +246,11 @@ Record the full visible output or serial transcript. The key evidence is:
   state without running active xHCI start/enumeration transitions.
 - `probe usb-keyboard` either records a precise lower-provider blocker or queues
   decoded bytes without consuming shell input.
+- `launch` and `reovim` report disabled launch in the shell-only image; this
+  proves boot does not depend on editor/server payload startup.
 - `dmesg` includes the command audit lines and probe output.
+- The final `cat /log/dmesg` includes `shell.status=error` for the intentional
+  shell-only `launch` and `reovim` disabled paths.
 - The final `cat /log/dmesg` shows the `shell.status=ok` record for the prior
   `dmesg` command, because `dmesg` records its own status after printing.
 - Final success requires physical USB keyboard input to reach the shell and

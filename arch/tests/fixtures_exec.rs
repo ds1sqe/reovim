@@ -668,7 +668,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     let exe = build_os_image(
         &[],
         Some(
-            "help\nhelp clear\nhelp screentest\nhelp input\nhelp status\nhelp proof\nhelp probe\nclear\nscreentest\npwd\nls /\ncd /dev\npwd\nls\ncat /boot/profile\ncat /boot/image\ninput\ncat /boot/input\nstatus\ncat /boot/status\nproof\ncat /boot/proof\nmount\ncat /boot/mounts\ncat /log/dmesg\ndevice\nprobe help\nprobe pcie\nprobe usb-keyboard\nprobe xhci-start\nprobe xhci-enable-slot\nprobe xhci-address-device\nprobe xhci-get-device-descriptor\nprobe xhci-set-address\nprobe xhci-read-device-descriptor\nprobe xhci-read-config-descriptor-header\nprobe xhci-read-config-descriptor\nprobe xhci-set-configuration\nprobe xhci-configure-endpoint\nprobe xhci-set-hid-protocol\nprobe xhci-read-keyboard-report\ndmesg\ncat /log/dmesg\n",
+            "help\nhelp clear\nhelp screentest\nhelp input\nhelp status\nhelp proof\nhelp probe\nclear\nscreentest\npwd\nls /\ncd /dev\npwd\nls\ncat /boot/profile\ncat /boot/image\ninput\ncat /boot/input\nstatus\ncat /boot/status\nproof\ncat /boot/proof\nmount\ncat /boot/mounts\ncat /log/dmesg\ndevice\nprobe help\nprobe pcie\nprobe usb-keyboard\nprobe xhci-start\nprobe xhci-enable-slot\nprobe xhci-address-device\nprobe xhci-get-device-descriptor\nprobe xhci-set-address\nprobe xhci-read-device-descriptor\nprobe xhci-read-config-descriptor-header\nprobe xhci-read-config-descriptor\nprobe xhci-set-configuration\nprobe xhci-configure-endpoint\nprobe xhci-set-hid-protocol\nprobe xhci-read-keyboard-report\nlaunch\nreovim\ndmesg\ncat /log/dmesg\n",
         ),
         None,
     );
@@ -793,6 +793,14 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "proof checklist includes read-only PCIe probe; serial: {serial:?}",
     );
     assert!(
+        serial.contains("  launch\n  reovim"),
+        "proof checklist includes shell-only payload checks; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("launch/reovim disabled in shell-only profile"),
+        "proof checklist names shell-only payload-disabled expectation; serial: {serial:?}",
+    );
+    assert!(
         serial.contains("xhci-read-keyboard-report (alias: usb-keyboard-read-report)"),
         "probe target help includes keyboard report checkpoint; serial: {serial:?}",
     );
@@ -887,6 +895,14 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         serial.contains("probe xhci-read-keyboard-report:\nstate=unsupported-on-this-target"),
         "x86 OS profile reports xhci-read-keyboard-report probe unsupported; serial: {serial:?}",
     );
+    assert!(
+        serial.contains("reovim-os> launch disabled for this profile"),
+        "shell-only OS profile refuses generic payload launch; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("reovim-os> reovim disabled for this profile"),
+        "shell-only OS profile refuses reovim alias launch; serial: {serial:?}",
+    );
     assert!(serial.contains("reovim-os> /\n"), "pwd prints root cwd; serial: {serial:?}",);
     assert!(
         serial.contains("reovim-os> boot\ndev\nlog"),
@@ -929,6 +945,10 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "cat /log/dmesg prints shell command status entries; serial: {serial:?}",
     );
     assert!(
+        serial.contains("shell: launch\nshell.status=error\nshell: reovim\nshell.status=error"),
+        "cat /log/dmesg prints shell-only payload-disabled audit entries; serial: {serial:?}",
+    );
+    assert!(
         serial.contains("boot_info:"),
         "device command prints boot info; serial: {serial:?}",
     );
@@ -946,6 +966,12 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     assert!(
         final_dmesg.contains("probe xhci-read-keyboard-report:\nstate=unsupported-on-this-target"),
         "final dmesg preserves keyboard report probe output; serial: {serial:?}",
+    );
+    assert!(
+        final_dmesg.contains(
+            "shell: launch\nshell.status=error\nshell: reovim\nshell.status=error\nshell: dmesg"
+        ),
+        "final log read preserves shell-only payload-disabled audit before dmesg; serial: {serial:?}",
     );
     assert!(
         final_dmesg.contains("shell: dmesg\nshell.status=ok\nshell: cat /log/dmesg"),

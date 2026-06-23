@@ -593,6 +593,8 @@ fn write_boot_proof(daemon: &RootDaemon<'_>) {
     daemon.write_line("  probe pcie");
     daemon.write_line("  probe usb-keyboard");
     daemon.write_line("  cat /boot/profile");
+    daemon.write_line("  launch");
+    daemon.write_line("  reovim");
     daemon.write_line("  dmesg");
     daemon.write_line("  cat /log/dmesg");
     daemon.write_line("expected:");
@@ -605,7 +607,9 @@ fn write_boot_proof(daemon: &RootDaemon<'_>) {
     daemon.write_line("  probe targets include pcie");
     daemon.write_line("  probe targets include usb-keyboard");
     daemon.write_line("  probe targets include xhci-read-keyboard-report");
+    daemon.write_line("  launch/reovim disabled in shell-only profile");
     daemon.write_line("  shell.status=ok");
+    daemon.write_line("  shell.status=error for disabled payload commands");
 }
 
 fn write_boot_status(daemon: &RootDaemon<'_>) {

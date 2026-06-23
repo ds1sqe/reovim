@@ -89,6 +89,8 @@ probe help
 probe pcie
 probe usb-keyboard
 cat /boot/profile
+launch
+reovim
 dmesg
 cat /log/dmesg
 ```
@@ -116,7 +118,9 @@ Required success facts:
 - [ ] `cat /boot/status` / `cat /boot/input` report VFS-backed live diagnostics.
 - [ ] `probe help` lists `pcie`, `usb-keyboard`, and `xhci-read-keyboard-report`.
 - [ ] `probe pcie` reports the read-only PCIe/xHCI state.
+- [ ] `launch` / `reovim` report shell-only payload launch disabled.
 - [ ] `dmesg` contains `shell: <command>` and `shell.status=ok` audit lines for the typed commands.
+- [ ] `dmesg` contains `shell.status=error` audit lines for the disabled payload launch commands.
 - [ ] `dmesg` contains the `probe usb-keyboard` output or blocker.
 
 If unsuccessful, record the exact blocker:

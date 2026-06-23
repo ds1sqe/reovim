@@ -26,6 +26,7 @@ missing_vfs_namespace_evidence="$tmp_dir/missing-vfs-namespace.md"
 missing_boot_inventory_evidence="$tmp_dir/missing-boot-inventory.md"
 missing_shell_usability_evidence="$tmp_dir/missing-shell-usability.md"
 missing_pcie_probe_evidence="$tmp_dir/missing-pcie-probe.md"
+missing_payload_disabled_evidence="$tmp_dir/missing-payload-disabled.md"
 missing_proof_evidence="$tmp_dir/missing-proof.md"
 missing_vfs_proof_evidence="$tmp_dir/missing-vfs-proof.md"
 missing_media_evidence="$tmp_dir/missing-media.md"
@@ -105,6 +106,8 @@ write_passing_evidence() {
         printf '  probe pcie\n'
         printf '  probe usb-keyboard\n'
         printf '  cat /boot/profile\n'
+        printf '  launch\n'
+        printf '  reovim\n'
         printf '  dmesg\n'
         printf '  cat /log/dmesg\n'
         printf 'expected:\n'
@@ -117,7 +120,9 @@ write_passing_evidence() {
         printf '  probe targets include pcie\n'
         printf '  probe targets include usb-keyboard\n'
         printf '  probe targets include xhci-read-keyboard-report\n'
+        printf '  launch/reovim disabled in shell-only profile\n'
         printf '  shell.status=ok\n'
+        printf '  shell.status=error for disabled payload commands\n'
         printf 'reovim-os> cat /boot/proof\n'
         printf 'proof:\n'
         printf 'commands:\n'
@@ -146,6 +151,8 @@ write_passing_evidence() {
         printf '  probe pcie\n'
         printf '  probe usb-keyboard\n'
         printf '  cat /boot/profile\n'
+        printf '  launch\n'
+        printf '  reovim\n'
         printf '  dmesg\n'
         printf '  cat /log/dmesg\n'
         printf 'expected:\n'
@@ -158,7 +165,9 @@ write_passing_evidence() {
         printf '  probe targets include pcie\n'
         printf '  probe targets include usb-keyboard\n'
         printf '  probe targets include xhci-read-keyboard-report\n'
+        printf '  launch/reovim disabled in shell-only profile\n'
         printf '  shell.status=ok\n'
+        printf '  shell.status=error for disabled payload commands\n'
         printf 'reovim-os> help\n'
         printf 'reovim root shell\n'
         printf 'commands: help, clear, screentest, pwd, ls, cd, cat, mount, input, status, proof, device, dmesg, probe, launch, reovim, halt\n'
@@ -277,6 +286,10 @@ write_passing_evidence() {
         printf 'reovim-os> cat /boot/profile\n'
         printf 'input=usb-keyboard+uart-fallback\n'
         printf 'usb_keyboard=ready\n'
+        printf 'reovim-os> launch\n'
+        printf 'launch disabled for this profile\n'
+        printf 'reovim-os> reovim\n'
+        printf 'reovim disabled for this profile\n'
         printf 'reovim-os> dmesg\n'
         printf 'dmesg:\n'
         printf 'shell: proof\n'
@@ -333,6 +346,10 @@ write_passing_evidence() {
         printf 'shell.status=ok\n'
         printf 'shell: cat /boot/profile\n'
         printf 'shell.status=ok\n'
+        printf 'shell: launch\n'
+        printf 'shell.status=error\n'
+        printf 'shell: reovim\n'
+        printf 'shell.status=error\n'
         printf 'shell: dmesg\n'
         printf 'reovim-os> cat /log/dmesg\n'
         printf 'shell: dmesg\n'
@@ -354,7 +371,9 @@ write_passing_evidence() {
         printf -- '- [x] `cat /boot/status` / `cat /boot/input` report VFS-backed live diagnostics.\n'
         printf -- '- [x] `probe help` lists `pcie`, `usb-keyboard`, and `xhci-read-keyboard-report`.\n'
         printf -- '- [x] `probe pcie` reports the read-only PCIe/xHCI state.\n'
+        printf -- '- [x] `launch` / `reovim` report shell-only payload launch disabled.\n'
         printf -- '- [x] `dmesg` contains `shell: <command>` and `shell.status=ok` audit lines for the typed commands.\n'
+        printf -- '- [x] `dmesg` contains `shell.status=error` audit lines for the disabled payload launch commands.\n'
         printf -- '- [x] `dmesg` contains the `probe usb-keyboard` output or blocker.\n\n'
         printf '## Result\n\n'
         printf -- '- [x] PASS: physical USB keyboard proof complete.\n'
@@ -423,6 +442,10 @@ expect_failure "$missing_shell_usability_evidence" "missing-shell-usability"
 cp "$pass_evidence" "$missing_pcie_probe_evidence"
 sed -i '\#^reovim-os> probe pcie$#d' "$missing_pcie_probe_evidence"
 expect_failure "$missing_pcie_probe_evidence" "missing-pcie-probe"
+
+cp "$pass_evidence" "$missing_payload_disabled_evidence"
+sed -i '/^reovim disabled for this profile$/d' "$missing_payload_disabled_evidence"
+expect_failure "$missing_payload_disabled_evidence" "missing-payload-disabled"
 
 cp "$pass_evidence" "$missing_proof_evidence"
 sed -i '/^proof:$/d' "$missing_proof_evidence"
