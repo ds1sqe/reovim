@@ -159,6 +159,7 @@ require_re '^screen test:$' 'screentest header'
 require_re 'idx-fg:' 'screentest indexed-color row'
 require_re 'rgb-bg:' 'screentest truecolor-background row'
 require_re 'attrs:' 'screentest attribute row'
+require_re 'el: clean' 'screentest erase-line row'
 require_count_at_least '^reovim-os> pwd$' 'pwd commands in pasted transcript' 2
 require_re '^/$' 'pwd root output'
 require_re '^reovim-os> ls /$' 'root ls command in pasted transcript'

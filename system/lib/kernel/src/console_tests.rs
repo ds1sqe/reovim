@@ -608,3 +608,39 @@ arch_test!(console_backspace_space_backspace_erases_previous_cell, {
     testrt::check_eq(console.grid[0].ch, b'A');
     testrt::check_eq(console.grid[1].ch, b'C');
 });
+
+arch_test!(console_csi_k_erases_stale_carriage_return_text, {
+    // A countdown/status redraw often prints a shorter replacement after CR.
+    // CSI K must clear the retained cells and repaint the framebuffer so the
+    // old suffix cannot remain as ghost text.
+    let mut buf = [0u32; 48 * 16];
+    let mut surface = StubSurface::new(buf.as_mut_ptr(), 48, 16, 48 * 4);
+    let mut grid = [RESET_CELL; 6];
+    let mut console = Console::new(
+        surface.render_surface(),
+        &TERMINUS,
+        Color::Rgb(FG),
+        Color::Rgb(BG),
+        ScreenGrid(&mut grid),
+    );
+    console.print("abcdef\rxy\x1b[K");
+
+    testrt::check_eq(console.grid[0].ch, b'x');
+    testrt::check_eq(console.grid[1].ch, b'y');
+    let mut col = 2usize;
+    while col < 6 {
+        testrt::check_eq(console.grid[col].ch, b' ');
+        col += 1;
+    }
+
+    let mut erased_cell_is_background = true;
+    for y in 0..16 {
+        for x in 16..24 {
+            erased_cell_is_background &= buf[y * 48 + x] == BG;
+        }
+    }
+    testrt::check(
+        erased_cell_is_background,
+        "cell after shorter redraw is repainted to background",
+    );
+});

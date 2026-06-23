@@ -967,6 +967,7 @@ fn cmd_screentest(daemon: &RootDaemon<'_>, line: &ParsedLine) -> RootCommandStat
     daemon.write_bytes(b"  attrs: \x1b[1mbold\x1b[22m \x1b[2mdim\x1b[22m \x1b[3mitalic\x1b[23m \x1b[4munderline\x1b[24m \x1b[7mreverse\x1b[27m \x1b[1;4mbold+underline\x1b[0m normal\n");
     daemon.write_bytes(b"  reset: \x1b[31mred\x1b[39m default-fg \x1b[48;2;48;48;48mgray-bg\x1b[49m default-bg \x1b[1;7mbold-rev\x1b[0m plain\n");
     daemon.write_bytes(b"  cr: left-side-should-vanish\r  cr: overwritten\n");
+    daemon.write_bytes(b"  el: stale suffix should vanish\r  el: clean\x1b[K\n");
     daemon.write_bytes(b"  bs: AB\x08 \x08C (should read AC)\n");
     daemon.write_bytes(b"  wrap: 0123456789abcdefghijklmnopqrstuvwxyz 0123456789abcdefghijklmnopqrstuvwxyz 0123456789abcdefghijklmnopqrstuvwxyz 0123456789abcdefghijklmnopqrstuvwxyz 0123456789abcdefghijklmnopqrstuvwxyz end\n");
     daemon.write_line("  done");

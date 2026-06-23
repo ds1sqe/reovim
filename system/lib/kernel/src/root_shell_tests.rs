@@ -302,6 +302,7 @@ arch_test!(root_shell_clear_and_screentest, {
     assert_contains(sink_bytes(), b"bold+underline");
     assert_contains(sink_bytes(), b"reset:");
     assert_contains(sink_bytes(), b"cr: overwritten\n");
+    assert_contains(sink_bytes(), b"el: clean\x1b[K\n");
     assert_contains(sink_bytes(), b"bs: AB\x08 \x08C (should read AC)\n");
     assert_contains(sink_bytes(), b"wrap:");
     assert_contains(sink_bytes(), b"  done\n");

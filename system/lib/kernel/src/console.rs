@@ -30,8 +30,9 @@
 //! the retained content up one row — repainting from its cell grid, since the
 //! framebuffer cannot be read back — rather than wrapping over the top, and a
 //! reverse-video block ([`Console::show_cursor`]) marks the write head. CSI
-//! cursor-addressing and erase finals stay out of scope: they are parsed and
-//! dropped.
+//! erase-line (`K`) is supported for redraws that rewrite shorter text after a
+//! carriage return; other cursor-addressing and erase finals stay out of scope
+//! and are parsed then dropped.
 
 use core::{
     cell::UnsafeCell,
@@ -40,7 +41,7 @@ use core::{
 
 use crate::{
     color::Color,
-    escape::{Action, Parser},
+    escape::{Action, LineEraseMode, Parser},
     fonts::Font,
 };
 
@@ -469,6 +470,28 @@ impl<'g> Console<'g> {
                 }
             }
             Action::Sgr(params) => self.apply_sgr(params.as_slice()),
+            Action::EraseLine(mode) => self.erase_line(mode),
+        }
+    }
+
+    /// Erases cells on the current row according to CSI `K` semantics.
+    ///
+    /// The framebuffer is write-only, so each cleared cell is also updated in
+    /// the retained grid before it is re-blitted with the current background.
+    fn erase_line(&mut self, mode: LineEraseMode) {
+        self.wrap_pending = false;
+        let (start, end) = match mode {
+            LineEraseMode::ToEnd => (self.col, self.cols),
+            LineEraseMode::ToStart => (0, self.col.saturating_add(1).min(self.cols)),
+            LineEraseMode::All => (0, self.cols),
+        };
+        let blank = Cell::blank(self.fg, self.bg);
+        let mut col = start;
+        while col < end {
+            let index = self.idx(col, self.row);
+            self.grid[index] = blank;
+            self.blit_cell(col, self.row, &blank);
+            col += 1;
         }
     }
 

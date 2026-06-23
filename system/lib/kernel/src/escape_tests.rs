@@ -6,7 +6,7 @@
 //! console consumes it, with nothing to mock.
 
 use {
-    super::{Action, Parser},
+    super::{Action, LineEraseMode, Parser},
     reovim_testrt::{self as testrt, arch_test},
 };
 
@@ -88,6 +88,50 @@ arch_test!(escape_csi_non_sgr_final_is_noop, {
         testrt::check(parser.advance(byte).is_none(), "no action through a non-SGR CSI");
     }
     testrt::check(is_print(parser.advance(b'X'), b'X'), "ground resumes after a non-SGR CSI");
+});
+
+arch_test!(escape_csi_erase_line_modes, {
+    let mut parser = Parser::new();
+    for &byte in b"\x1b[K" {
+        if byte != b'K' {
+            testrt::check(parser.advance(byte).is_none(), "erase-line prefix pends");
+        } else {
+            testrt::check(
+                matches!(parser.advance(byte), Some(Action::EraseLine(LineEraseMode::ToEnd))),
+                "ESC[K erases to end of line",
+            );
+        }
+    }
+
+    let mut parser = Parser::new();
+    for &byte in b"\x1b[1K" {
+        if byte != b'K' {
+            testrt::check(parser.advance(byte).is_none(), "erase-line prefix pends");
+        } else {
+            testrt::check(
+                matches!(parser.advance(byte), Some(Action::EraseLine(LineEraseMode::ToStart))),
+                "ESC[1K erases to start of line",
+            );
+        }
+    }
+
+    let mut parser = Parser::new();
+    for &byte in b"\x1b[2K" {
+        if byte != b'K' {
+            testrt::check(parser.advance(byte).is_none(), "erase-line prefix pends");
+        } else {
+            testrt::check(
+                matches!(parser.advance(byte), Some(Action::EraseLine(LineEraseMode::All))),
+                "ESC[2K erases the whole line",
+            );
+        }
+    }
+
+    let mut parser = Parser::new();
+    for &byte in b"\x1b[3K" {
+        testrt::check(parser.advance(byte).is_none(), "unsupported erase-line mode is swallowed");
+    }
+    testrt::check(is_print(parser.advance(b'X'), b'X'), "ground resumes after unsupported K");
 });
 
 arch_test!(escape_csi_private_marker_is_swallowed, {

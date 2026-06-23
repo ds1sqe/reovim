@@ -12,11 +12,13 @@
 //! stream and keeps the mechanism/policy split on the module boundary.
 //!
 //! Scope is the subset the boot console needs. CSI SGR (`… m`) sequences are
-//! decoded into their numeric parameters; every other CSI final byte (cursor
-//! moves, erases) is recognized and consumed as a no-op, since the console has
-//! no cursor addressing yet, and a non-`[` escape is dropped. Critically, the
-//! parser never leaks a control byte into the printable stream — an
-//! unsupported or malformed CSI is swallowed, not rendered as stray text.
+//! decoded into their numeric parameters, and CSI `K` line erases are surfaced
+//! as typed actions so the framebuffer can clear stale cells during carriage-
+//! return updates. Other CSI finals are recognized and consumed as no-ops,
+//! since the console has no cursor addressing yet, and a non-`[` escape is
+//! dropped. Critically, the parser never leaks a control byte into the
+//! printable stream — an unsupported or malformed CSI is swallowed, not
+//! rendered as stray text.
 
 /// Maximum number of CSI numeric parameters retained from one sequence. The
 /// widest SGR the console acts on is `38;2;r;g;b` (five), so sixteen is ample;
@@ -87,6 +89,19 @@ pub enum Action {
     Backspace,
     /// A complete `ESC [ … m`: apply these SGR parameters to the pen.
     Sgr(SgrParams),
+    /// A complete `ESC [ … K`: erase cells on the current line.
+    EraseLine(LineEraseMode),
+}
+
+/// CSI `K` erase-line mode.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LineEraseMode {
+    /// `ESC[K` / `ESC[0K`: erase from cursor through the end of the line.
+    ToEnd,
+    /// `ESC[1K`: erase from the start of the line through the cursor.
+    ToStart,
+    /// `ESC[2K`: erase the whole current line.
+    All,
 }
 
 /// A sans-IO ANSI/VT escape-sequence parser. Fed one byte at a time via
@@ -167,9 +182,10 @@ impl Parser {
     }
 
     /// Collecting a CSI: digits accumulate, `;` starts the next parameter, a
-    /// final byte (`0x40..=0x7E`) ends the sequence — `m` yields the SGR, any
-    /// other final is a recognized-but-unsupported control consumed silently.
-    /// An intermediate or private-marker byte diverts to [`State::CsiIgnore`].
+    /// final byte (`0x40..=0x7E`) ends the sequence. `m` yields SGR, `K` yields
+    /// erase-line for supported modes, and any other final is a recognized-but-
+    /// unsupported control consumed silently. An intermediate or private-marker
+    /// byte diverts to [`State::CsiIgnore`].
     fn csi(&mut self, byte: u8) -> Option<Action> {
         match byte {
             b'0'..=b'9' => {
@@ -182,10 +198,10 @@ impl Parser {
             }
             0x40..=0x7E => {
                 self.state = State::Ground;
-                if byte == b'm' {
-                    Some(Action::Sgr(self.params))
-                } else {
-                    None
+                match byte {
+                    b'm' => Some(Action::Sgr(self.params)),
+                    b'K' => self.erase_line_action(),
+                    _ => None,
                 }
             }
             _ => {
@@ -193,6 +209,16 @@ impl Parser {
                 None
             }
         }
+    }
+
+    fn erase_line_action(&self) -> Option<Action> {
+        let mode = match self.params.as_slice() {
+            [] | [0] => LineEraseMode::ToEnd,
+            [1] => LineEraseMode::ToStart,
+            [2] => LineEraseMode::All,
+            _ => return None,
+        };
+        Some(Action::EraseLine(mode))
     }
 
     /// Inside an unsupported CSI: swallow bytes until the final one, then drop

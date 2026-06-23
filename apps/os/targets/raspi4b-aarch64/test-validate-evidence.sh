@@ -243,6 +243,7 @@ write_passing_evidence() {
         printf '  idx-fg: idx21 idx46 idx51 idx93 idx160 idx196 idx201 idx226\n'
         printf '  rgb-bg: warm green sky violet\n'
         printf '  attrs: bold dim italic underline reverse bold+underline normal\n'
+        printf '  el: clean\n'
         printf '  done\n'
         printf 'reovim-os> pwd\n'
         printf '/\n'
