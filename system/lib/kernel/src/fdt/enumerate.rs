@@ -65,6 +65,14 @@ fn classify_node(node: &Node, classify: DeviceClassifier) -> DeviceClass {
     DeviceClass::Unknown
 }
 
+fn node_is_available(node: &Node) -> bool {
+    let Some(bytes) = node.prop_bytes("status") else {
+        return true;
+    };
+    let nul = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+    matches!(&bytes[..nul], b"okay" | b"ok")
+}
+
 const fn map_device_class(class: KabiDeviceClass) -> DeviceClass {
     match class {
         KabiDeviceClass::Uart => DeviceClass::Uart,
@@ -72,6 +80,7 @@ const fn map_device_class(class: KabiDeviceClass) -> DeviceClass {
         KabiDeviceClass::Mailbox => DeviceClass::Mailbox,
         KabiDeviceClass::Block => DeviceClass::Block,
         KabiDeviceClass::Usb => DeviceClass::Usb,
+        KabiDeviceClass::Bus => DeviceClass::Bus,
         KabiDeviceClass::Unknown => DeviceClass::Unknown,
     }
 }
@@ -79,6 +88,9 @@ const fn map_device_class(class: KabiDeviceClass) -> DeviceClass {
 /// Attempts to build a [`DeviceEntry`] from a node. Returns `None` when the
 /// node has no recognisable compatible string (class == Unknown).
 fn entry_from_node(node: &Node<'static>, classify: DeviceClassifier) -> Option<DeviceEntry> {
+    if !node_is_available(node) {
+        return None;
+    }
     let class = classify_node(node, classify);
     if matches!(class, DeviceClass::Unknown) {
         return None;

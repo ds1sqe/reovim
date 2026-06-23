@@ -69,6 +69,37 @@ impl RuntimeChecks {
     }
 }
 
+/// Summary of the console input path selected by the composition root.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ConsoleInputSummary {
+    /// Provider-visible source name, for example `pl011-uart`.
+    pub source: &'static str,
+    /// Whether the selected source is live/manual or a scripted harness.
+    pub mode: &'static str,
+    /// Readiness of the selected source.
+    pub source_state: BootCheckState,
+    /// Readiness of the physical USB keyboard provider.
+    pub usb_keyboard: BootCheckState,
+}
+
+impl ConsoleInputSummary {
+    /// Builds a fixed console-input summary for boot reporting.
+    #[must_use]
+    pub const fn new(
+        source: &'static str,
+        mode: &'static str,
+        source_state: BootCheckState,
+        usb_keyboard: BootCheckState,
+    ) -> Self {
+        Self {
+            source,
+            mode,
+            source_state,
+            usb_keyboard,
+        }
+    }
+}
+
 /// Boot-time launch configuration for the root daemon shell.
 pub struct RootBootConfig<'a> {
     /// Normalized boot summary for `boot` output and diagnostics.
@@ -95,6 +126,8 @@ pub struct RootBootConfig<'a> {
     pub profile: ProfileSummary,
     /// Runtime-service installation checks.
     pub runtime_checks: RuntimeChecks,
+    /// Selected console input source and USB-keyboard readiness.
+    pub console_input: ConsoleInputSummary,
 }
 
 /// Descriptor for a launchable payload available to the root daemon.
@@ -156,6 +189,7 @@ pub struct RootDaemon<'a> {
     dmesg: Option<DmesgSnapshot>,
     halt: Option<HaltKernel>,
     prompt: &'static str,
+    console_input: ConsoleInputSummary,
     write: WriteFn,
 }
 
@@ -169,6 +203,7 @@ impl<'a> RootDaemon<'a> {
         dmesg: Option<DmesgSnapshot>,
         halt: Option<HaltKernel>,
         prompt: &'static str,
+        console_input: ConsoleInputSummary,
         write: WriteFn,
     ) -> Self {
         Self {
@@ -179,6 +214,7 @@ impl<'a> RootDaemon<'a> {
             dmesg,
             halt,
             prompt,
+            console_input,
             write,
         }
     }
@@ -199,6 +235,12 @@ impl<'a> RootDaemon<'a> {
     #[must_use]
     pub const fn prompt(&self) -> &'static str {
         self.prompt
+    }
+
+    /// Console input source selected for this boot.
+    #[must_use]
+    pub const fn console_input(&self) -> ConsoleInputSummary {
+        self.console_input
     }
 
     /// Runs one shell input line through the root parser and command set.
@@ -346,6 +388,38 @@ fn write_boot_status_with_count(
     klog::append_bytes(b"\n");
 }
 
+const fn input_state_word(state: BootCheckState) -> &'static [u8] {
+    match state {
+        BootCheckState::Ok => b"ready",
+        BootCheckState::Warn => b"unavailable",
+    }
+}
+
+const fn usb_keyboard_message(state: BootCheckState) -> &'static [u8] {
+    match state {
+        BootCheckState::Ok => b"USB keyboard input provider ready.",
+        BootCheckState::Warn => b"USB keyboard input provider unavailable.",
+    }
+}
+
+fn write_console_input_detail(write: WriteFn, input: ConsoleInputSummary) {
+    write(b"         input=");
+    write(input.source.as_bytes());
+    write(b" mode=");
+    write(input.mode.as_bytes());
+    write(b" usb_keyboard=");
+    write(input_state_word(input.usb_keyboard));
+    write(b"\n");
+
+    klog::append_bytes(b"input=");
+    klog::append_bytes(input.source.as_bytes());
+    klog::append_bytes(b" mode=");
+    klog::append_bytes(input.mode.as_bytes());
+    klog::append_bytes(b" usb_keyboard=");
+    klog::append_bytes(input_state_word(input.usb_keyboard));
+    klog::append_bytes(b"\n");
+}
+
 const fn memory_check(info: BootInfo) -> BootCheckState {
     if info.memory.range_count() > 0 && info.memory.usable_bytes() > 0 {
         BootCheckState::Ok
@@ -430,6 +504,17 @@ fn write_boot_log(cfg: &RootBootConfig<'_>) {
         cfg.devices.len(),
         b" devices.",
     );
+    write_boot_status_line(
+        cfg.write,
+        cfg.console_input.source_state,
+        b"Selected console input source.",
+    );
+    write_console_input_detail(cfg.write, cfg.console_input);
+    write_boot_status_line(
+        cfg.write,
+        cfg.console_input.usb_keyboard,
+        usb_keyboard_message(cfg.console_input.usb_keyboard),
+    );
     write_boot_status_line(cfg.write, BootCheckState::Ok, b"Selected boot profile.");
     (cfg.write)(b"         profile=");
     (cfg.write)(cfg.profile.name.as_bytes());
@@ -484,6 +569,7 @@ pub fn run_root_daemon(cfg: RootBootConfig<'_>) -> ! {
         cfg.dmesg,
         cfg.halt,
         cfg.prompt,
+        cfg.console_input,
         cfg.write,
     );
 

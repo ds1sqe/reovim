@@ -6,7 +6,7 @@ use {
     reovim_uapi_system::{DeviceClass, DeviceEntry},
 };
 
-const DEVICES: [DeviceEntry; 3] = [
+const DEVICES: [DeviceEntry; 4] = [
     DeviceEntry {
         class: DeviceClass::Uart,
         mmio_base: 0x1000,
@@ -31,6 +31,14 @@ const DEVICES: [DeviceEntry; 3] = [
         capacity_bytes: 4096,
         compatible: "virtio,mmio",
     },
+    DeviceEntry {
+        class: DeviceClass::Bus,
+        mmio_base: 0x4000,
+        mmio_len: 0x1000,
+        irq: 4,
+        capacity_bytes: 0,
+        compatible: "brcm,bcm2711-pcie",
+    },
 ];
 
 arch_test!(vfs_normalizes_absolute_and_relative_paths, {
@@ -51,6 +59,7 @@ arch_test!(vfs_looks_up_static_and_device_nodes, {
     testrt::check_eq(lookup("/dev/uart0", &DEVICES), Ok(Node::File(File::DevDevice(0))));
     testrt::check_eq(lookup("/dev/uart1", &DEVICES), Ok(Node::File(File::DevDevice(1))));
     testrt::check_eq(lookup("/dev/block0", &DEVICES), Ok(Node::File(File::DevDevice(2))));
+    testrt::check_eq(lookup("/dev/bus0", &DEVICES), Ok(Node::File(File::DevDevice(3))));
     testrt::check_eq(lookup("/dev/uart0/more", &DEVICES), Err(VfsError::NotDirectory));
     testrt::check_eq(lookup("/missing", &DEVICES), Err(VfsError::NotFound));
 });
@@ -59,4 +68,5 @@ arch_test!(vfs_device_names_are_class_ordinals, {
     testrt::check_eq(device_name_parts(&DEVICES, 0), ("uart", 0));
     testrt::check_eq(device_name_parts(&DEVICES, 1), ("uart", 1));
     testrt::check_eq(device_name_parts(&DEVICES, 2), ("block", 0));
+    testrt::check_eq(device_name_parts(&DEVICES, 3), ("bus", 0));
 });

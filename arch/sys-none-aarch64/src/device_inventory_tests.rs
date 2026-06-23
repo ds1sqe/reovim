@@ -12,6 +12,8 @@ arch_test!(classifies_bcm2711_compatible_strings, {
     testrt::check_eq(classify_compatible("brcm,bcm2835-mbox"), DeviceClass::Mailbox);
     testrt::check_eq(classify_compatible("brcm,bcm2711-emmc2"), DeviceClass::Block);
     testrt::check_eq(classify_compatible("brcm,bcm2708-usb"), DeviceClass::Usb);
+    testrt::check_eq(classify_compatible("generic-xhci"), DeviceClass::Usb);
+    testrt::check_eq(classify_compatible("brcm,bcm2711-pcie"), DeviceClass::Bus);
 });
 
 arch_test!(leaves_unknown_compatible_unclassified, {

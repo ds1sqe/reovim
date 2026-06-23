@@ -415,6 +415,13 @@ fn write_boot_profile(daemon: &RootDaemon<'_>) {
     write_u64_dec(daemon, daemon.payloads().len() as u64);
     daemon.write_bytes(b"\nprompt=");
     daemon.write_bytes(daemon.prompt().as_bytes());
+    let input = daemon.console_input();
+    daemon.write_bytes(b"\ninput=");
+    daemon.write_bytes(input.source.as_bytes());
+    daemon.write_bytes(b"\ninput_mode=");
+    daemon.write_bytes(input.mode.as_bytes());
+    daemon.write_bytes(b"\nusb_keyboard=");
+    daemon.write_bytes(input_state_word(input.usb_keyboard));
     daemon.write_bytes(b"\n");
 }
 
@@ -458,6 +465,13 @@ fn path_basename(path: &str) -> &str {
         start -= 1;
     }
     &path[start..]
+}
+
+fn input_state_word(state: crate::rootd::BootCheckState) -> &'static [u8] {
+    match state {
+        crate::rootd::BootCheckState::Ok => b"ready",
+        crate::rootd::BootCheckState::Warn => b"unavailable",
+    }
 }
 
 fn write_payload_list(daemon: &RootDaemon<'_>, payloads: &[PayloadDescriptor]) {

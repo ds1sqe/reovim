@@ -43,6 +43,16 @@ Keyboard input is separate. Do not call the HDMI/VNC framebuffer proof
 This keeps raw USB/DWC/HID transport below the bridge while letting the system
 kernel own reusable input policy.
 
+Current OS images report the selected input path in the boot report and in
+`cat /boot/profile`:
+
+- a no-bootline aarch64 image should report `input=pl011-uart`,
+  `input_mode=live`, and `usb_keyboard=unavailable`;
+- a scripted smoke image should report `input=bootline-script` and
+  `input_mode=scripted-test-harness`;
+- `usb_keyboard=ready` is reserved for the later lower USB provider that
+  actually polls HID reports and feeds `system/lib/kernel::input`.
+
 ## Future TTY Shape
 
 A real Reovim TTY subsystem would live in `system/lib/kernel` and represent a

@@ -5,7 +5,10 @@
 
 use {
     super::{RootShellSession, execute_root_command},
-    crate::rootd::{PayloadDescriptor, PayloadLaunchResult, ProfileSummary, RootDaemon},
+    crate::rootd::{
+        BootCheckState, ConsoleInputSummary, PayloadDescriptor, PayloadLaunchResult,
+        ProfileSummary, RootDaemon,
+    },
     core::cell::UnsafeCell,
     reovim_testrt::{self as testrt, arch_test},
     reovim_uapi_system::{BootInfo, DeviceClass, DeviceEntry},
@@ -75,6 +78,12 @@ fn daemon(profile: ProfileSummary, dmesg: Option<fn() -> &'static str>) -> RootD
         dmesg,
         None,
         "reovim-os> ",
+        ConsoleInputSummary::new(
+            "fixture-input",
+            "fixture",
+            BootCheckState::Ok,
+            BootCheckState::Warn,
+        ),
         sink_write,
     );
     daemon
@@ -236,6 +245,8 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"profile=shell-only\n");
     assert_contains(sink_bytes(), b"launch=disabled\n");
     assert_contains(sink_bytes(), b"payloads=2\n");
+    assert_contains(sink_bytes(), b"input=fixture-input\n");
+    assert_contains(sink_bytes(), b"usb_keyboard=unavailable\n");
 
     run_session_command(&mut session, b"cd /dev\n");
     testrt::check_eq(sink_str(), "");

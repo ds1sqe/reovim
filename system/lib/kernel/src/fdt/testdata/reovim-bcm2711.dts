@@ -71,5 +71,11 @@
 			reg = <0x7e980000 0x10000>;
 			interrupts = <0x00 0x09 0x04>;
 		};
+
+		xhci@7e9c0000 {
+			compatible = "generic-xhci";
+			reg = <0x7e9c0000 0x100000>;
+			status = "disabled";
+		};
 	};
 };

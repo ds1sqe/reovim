@@ -9,9 +9,9 @@ use reovim_kabi_platform::DeviceClass;
 /// Maps one BCM2711 / ARM-common DTB `compatible` string to a coarse KABI
 /// [`DeviceClass`].
 ///
-/// Storage controllers and USB controllers are only declared present here.
-/// Capacity reads, descriptor walks, and device-specific initialization are
-/// later driver work.
+/// Bus roots, storage controllers, and USB controllers are only declared
+/// present here. Capacity reads, descriptor walks, and device-specific
+/// initialization are later driver work.
 ///
 /// ```rust,ignore
 /// use reovim_kabi_platform::DeviceClass;
@@ -33,6 +33,8 @@ pub fn classify_compatible(compatible: &str) -> DeviceClass {
         "brcm,bcm2835-mbox" => DeviceClass::Mailbox,
         "brcm,bcm2711-emmc2" => DeviceClass::Block,
         "brcm,bcm2708-usb" => DeviceClass::Usb,
+        "generic-xhci" => DeviceClass::Usb,
+        "brcm,bcm2711-pcie" => DeviceClass::Bus,
         _ => DeviceClass::Unknown,
     }
 }

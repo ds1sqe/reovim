@@ -706,6 +706,14 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "cat /boot/profile prints profile pseudo file; serial: {serial:?}",
     );
     assert!(
+        serial.contains("input=bootline-script"),
+        "boot profile names scripted input harness; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("usb_keyboard=unavailable"),
+        "boot profile names missing USB keyboard provider; serial: {serial:?}",
+    );
+    assert!(
         serial.contains("rootd: boot report"),
         "cat /log/dmesg prints kernel boot log; serial: {serial:?}",
     );

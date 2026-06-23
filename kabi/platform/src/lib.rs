@@ -267,6 +267,8 @@ pub enum DeviceClass {
     Block = 3,
     /// A USB host controller or device.
     Usb = 4,
+    /// A bus/root complex that can host child devices (for example PCIe).
+    Bus = 5,
     /// A device whose compatible string was not recognised by the enumerator.
     Unknown = 255,
 }

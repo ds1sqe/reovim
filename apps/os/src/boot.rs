@@ -9,6 +9,7 @@ use reovim_arch::sys as arch_sys;
 use reovim_system_kernel::{
     boot::{self, ShellBootConfig, SplashBootConfig},
     console_io,
+    rootd::{BootCheckState, ConsoleInputSummary},
 };
 use reovim_uapi::system::{BootInfo, DeviceInventory};
 #[cfg(feature = "launch-profile")]
@@ -231,6 +232,7 @@ pub fn run_shell_profile(profile: BootProfile<'_>) -> ! {
         prepare_shell: Some(prepare_shell_boot),
         read_line: tty_read_line,
         write: tty_write,
+        console_input: console_input_summary(),
         profile,
     })
 }
@@ -365,6 +367,56 @@ fn tty_read_byte() -> Option<u8> {
     match arch_sys::read(0, &mut byte) {
         Ok(1) => Some(byte[0]),
         _ => None,
+    }
+}
+
+fn console_input_summary() -> ConsoleInputSummary {
+    #[cfg(target_os = "linux")]
+    {
+        ConsoleInputSummary::new(
+            "host-stdin",
+            "live",
+            BootCheckState::Ok,
+            BootCheckState::Warn,
+        )
+    }
+
+    #[cfg(all(target_os = "none", target_arch = "aarch64"))]
+    {
+        if BOOTLINE_SCRIPT.is_some() {
+            ConsoleInputSummary::new(
+                "bootline-script",
+                "scripted-test-harness",
+                BootCheckState::Warn,
+                BootCheckState::Warn,
+            )
+        } else {
+            ConsoleInputSummary::new(
+                "pl011-uart",
+                "live",
+                BootCheckState::Ok,
+                BootCheckState::Warn,
+            )
+        }
+    }
+
+    #[cfg(all(target_os = "none", target_arch = "x86_64"))]
+    {
+        if BOOTLINE_SCRIPT.is_some() {
+            ConsoleInputSummary::new(
+                "bootline-script",
+                "scripted-test-harness",
+                BootCheckState::Warn,
+                BootCheckState::Warn,
+            )
+        } else {
+            ConsoleInputSummary::new(
+                "com1-uart",
+                "live",
+                BootCheckState::Ok,
+                BootCheckState::Warn,
+            )
+        }
     }
 }
 

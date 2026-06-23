@@ -137,6 +137,8 @@ pub enum DeviceClass {
     Block,
     /// USB controller or device.
     Usb,
+    /// Bus/root complex that can host child devices.
+    Bus,
     /// Unrecognized device class.
     Unknown,
 }

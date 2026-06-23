@@ -126,6 +126,13 @@ Development/diagnostic modes do **not** silently weaken appliance proofs —
 they are explicit profiles. `appliance` refuses to boot the editor UI
 without framebuffer + USB keyboard + persistent store.
 
+Current #800 shell-only images are diagnostic, not appliance profiles. They
+may boot with HDMI/framebuffer output plus PL011 UART input, and they must
+state that explicitly in the boot report and `/boot/profile`. A bootline
+script is a deterministic test harness, not a live input proof. Until a lower
+USB host/HID provider exists, `usb_keyboard=unavailable` is the honest status
+for real-machine manual notes.
+
 ## 4. Device lifecycle
 
 A small explicit state machine; avoid Linux-scale hotplug first.

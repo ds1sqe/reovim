@@ -53,6 +53,8 @@ mod timer;
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 mod uart;
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
+pub mod usb;
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
 mod wrap;
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]

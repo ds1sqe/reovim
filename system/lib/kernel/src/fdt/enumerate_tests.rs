@@ -52,6 +52,13 @@ fn classify_unknown(_: &str) -> DeviceClass {
     DeviceClass::Unknown
 }
 
+fn classify_disabled_xhci(compatible: &str) -> DeviceClass {
+    match compatible {
+        "generic-xhci" => DeviceClass::Usb,
+        _ => DeviceClass::Unknown,
+    }
+}
+
 arch_test!(enumerate_uses_caller_supplied_classifier, {
     let fdt = Fdt::parse(FIXTURE).unwrap_or_else(|e| panic!("parse: {e:?}"));
     let inventory = enumerate_into(&fdt, storage(), classify_test_compatible);
@@ -70,4 +77,11 @@ arch_test!(enumerate_drops_nodes_classified_unknown, {
     let inventory = enumerate_into(&fdt, unknown_storage(), classify_unknown);
 
     testrt::check(inventory.devices.is_empty(), "unknown-only classifier yields empty inventory");
+});
+
+arch_test!(enumerate_skips_disabled_nodes, {
+    let fdt = Fdt::parse(FIXTURE).unwrap_or_else(|e| panic!("parse: {e:?}"));
+    let inventory = enumerate_into(&fdt, unknown_storage(), classify_disabled_xhci);
+
+    testrt::check(inventory.devices.is_empty(), "disabled nodes are not present devices");
 });

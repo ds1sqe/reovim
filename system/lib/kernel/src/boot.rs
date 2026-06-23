@@ -9,8 +9,8 @@ use {
     crate::{
         mm,
         rootd::{
-            BootCheckState, DmesgSnapshot, HaltKernel, PayloadDescriptor, PrepareShell,
-            ProfileSummary, ReadLine, RootBootConfig, RuntimeChecks, WriteFn,
+            BootCheckState, ConsoleInputSummary, DmesgSnapshot, HaltKernel, PayloadDescriptor,
+            PrepareShell, ProfileSummary, ReadLine, RootBootConfig, RuntimeChecks, WriteFn,
         },
         splash,
     },
@@ -81,6 +81,8 @@ pub struct ShellBootConfig<'a> {
     pub write: WriteFn,
     /// Optional shell preparation hook after splash rendering.
     pub prepare_shell: Option<PrepareShellCallback>,
+    /// Selected console input source and USB-keyboard readiness.
+    pub console_input: ConsoleInputSummary,
     /// Profile selected for this boot.
     pub profile: BootProfile<'a>,
 }
@@ -113,6 +115,7 @@ pub fn run_shell_profile(cfg: ShellBootConfig<'_>) -> ! {
         splash_geometry: runtime.splash_geometry,
         profile: ProfileSummary::new(cfg.profile.name, cfg.profile.launch_enabled),
         runtime_checks: runtime.checks,
+        console_input: cfg.console_input,
     })
 }
 

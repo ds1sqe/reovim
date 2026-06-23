@@ -250,6 +250,7 @@ pub const fn device_class_name(class: DeviceClass) -> &'static str {
         DeviceClass::Mailbox => "mailbox",
         DeviceClass::Block => "block",
         DeviceClass::Usb => "usb",
+        DeviceClass::Bus => "bus",
         DeviceClass::Unknown => "unknown",
     }
 }
