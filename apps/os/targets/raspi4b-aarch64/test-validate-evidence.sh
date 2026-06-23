@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+# Smoke-test the Raspberry Pi 4 physical evidence validator.
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
+TARGET_DIR="$ROOT/apps/os/targets/raspi4b-aarch64"
+VALIDATOR="$TARGET_DIR/validate-evidence.sh"
+TEMPLATE="$TARGET_DIR/evidence-template.md"
+
+tmp_dir="$(mktemp -d)"
+cleanup() {
+    rm -rf "$tmp_dir"
+}
+trap cleanup EXIT
+
+pass_evidence="$tmp_dir/pass.md"
+display_only_evidence="$tmp_dir/display-only.md"
+missing_audit_evidence="$tmp_dir/missing-audit.md"
+validator_output="$tmp_dir/validator.out"
+
+write_passing_evidence() {
+    local output="$1"
+
+    {
+        printf '# Raspberry Pi 4 USB Keyboard Evidence\n\n'
+        printf '## Session\n\n'
+        printf -- '- Preflight result: preflight=ok qemu_smoke=passed\n'
+        printf -- '- Evidence label:\n'
+        printf '  - [ ] display-only\n'
+        printf '  - [ ] UART input\n'
+        printf '  - [ ] bootline-script\n'
+        printf '  - [x] physical USB keyboard\n\n'
+        printf '## Boot Evidence\n\n'
+        printf '```text\n'
+        printf 'reovim-os> cat /boot/image\n'
+        printf 'package=reovim-os\n'
+        printf 'target=aarch64-unknown-none\n'
+        printf 'bootline=absent\n'
+        printf '```\n\n'
+        printf 'Required facts:\n\n'
+        printf -- '- [x] `target=aarch64-unknown-none`\n'
+        printf -- '- [x] `bootline=absent`\n'
+        printf -- '- [x] shell prompt reached: `reovim-os>`\n'
+        printf -- '- [x] input source is recorded honestly\n'
+        printf -- '- [x] QEMU/VNC/HDMI display was not counted as keyboard input\n\n'
+        printf '## Command Transcript\n\n'
+        printf '```text\n'
+        printf 'reovim-os> cat /boot/image\n'
+        printf 'target=aarch64-unknown-none\n'
+        printf 'bootline=absent\n'
+        printf 'reovim-os> status\n'
+        printf 'input=usb-keyboard+uart-fallback\n'
+        printf 'usb_keyboard=ready\n'
+        printf 'reovim-os> input\n'
+        printf 'source=usb-keyboard+uart-fallback\n'
+        printf 'usb_keyboard=ready\n'
+        printf 'reovim-os> probe help\n'
+        printf 'probe targets:\n'
+        printf '  usb-keyboard (alias: keyboard)\n'
+        printf 'reovim-os> probe usb-keyboard\n'
+        printf 'probe usb-keyboard:\n'
+        printf 'state=report-pending\n'
+        printf 'slot_id=1\n'
+        printf 'endpoint_id=3\n'
+        printf 'reovim-os> cat /boot/profile\n'
+        printf 'input=usb-keyboard+uart-fallback\n'
+        printf 'usb_keyboard=ready\n'
+        printf 'reovim-os> dmesg\n'
+        printf 'dmesg:\n'
+        printf 'shell: cat /boot/image\n'
+        printf 'shell: status\n'
+        printf 'shell: input\n'
+        printf 'shell: probe help\n'
+        printf 'shell: probe usb-keyboard\n'
+        printf 'shell: cat /boot/profile\n'
+        printf 'shell: dmesg\n'
+        printf '```\n\n'
+        printf '## USB Keyboard Readiness\n\n'
+        printf 'Required success facts:\n\n'
+        printf -- '- [x] A physical USB keypress reached the root shell.\n'
+        printf -- '- [x] `input=usb-keyboard+uart-fallback`\n'
+        printf -- '- [x] `usb_keyboard=ready`\n'
+        printf -- '- [x] `dmesg` contains `shell: <command>` audit lines for the typed commands.\n'
+        printf -- '- [x] `dmesg` contains the `probe usb-keyboard` output or blocker.\n\n'
+        printf '## Result\n\n'
+        printf -- '- [x] PASS: physical USB keyboard proof complete.\n'
+        printf -- '- [ ] FAIL: display/UART/scripted evidence only.\n'
+    } >"$output"
+}
+
+expect_failure() {
+    local file="$1"
+    local label="$2"
+
+    if "$VALIDATOR" "$file" >"$tmp_dir/$label.out" 2>"$tmp_dir/$label.err"; then
+        printf 'error: validator accepted %s evidence\n' "$label" >&2
+        cat "$tmp_dir/$label.out" >&2
+        exit 1
+    fi
+}
+
+write_passing_evidence "$pass_evidence"
+"$VALIDATOR" "$pass_evidence" >"$validator_output"
+grep -q '^evidence=pass$' "$validator_output"
+grep -q "^file=$pass_evidence$" "$validator_output"
+
+expect_failure "$TEMPLATE" "template"
+
+cp "$pass_evidence" "$display_only_evidence"
+sed -i 's/^  - \[ \] display-only$/  - [x] display-only/' "$display_only_evidence"
+expect_failure "$display_only_evidence" "display-only"
+
+cp "$pass_evidence" "$missing_audit_evidence"
+sed -i '/^shell: dmesg$/d' "$missing_audit_evidence"
+expect_failure "$missing_audit_evidence" "missing-audit"
+
+printf 'evidence validator smoke ok\n'

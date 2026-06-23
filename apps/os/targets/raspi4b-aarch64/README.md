@@ -89,6 +89,25 @@ apps/os/targets/raspi4b-aarch64/test-preflight-real-board.sh
 
 The smoke test verifies the preflight output and generated evidence fields.
 
+After the real-board session, validate the completed physical proof file:
+
+```sh
+apps/os/targets/raspi4b-aarch64/validate-evidence.sh \
+  tmp/raspi4b-usb-keyboard-evidence.md
+```
+
+The validator rejects checked display-only, UART, bootline-script, or FAIL
+labels. It also requires physical-keyboard PASS labels, no-bootline image
+facts, USB-keyboard readiness, `probe usb-keyboard` output, and `dmesg` command
+audit lines. It is a textual guard for completed evidence; it does not replace
+the physical HDMI plus USB-keyboard session.
+
+To smoke-test the validator:
+
+```sh
+apps/os/targets/raspi4b-aarch64/test-validate-evidence.sh
+```
+
 ## QEMU Smoke
 
 QEMU raspi4b currently disables the DTB PCIe path used by the Pi 4 VL805 xHCI
