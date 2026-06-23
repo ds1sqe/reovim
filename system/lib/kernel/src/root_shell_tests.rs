@@ -398,8 +398,12 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"  pwd\n");
     assert_contains(sink_bytes(), b"  ls /\n");
     assert_contains(sink_bytes(), b"  ls /boot\n");
+    assert_contains(sink_bytes(), b"  ls /dev\n");
     assert_contains(sink_bytes(), b"  mount\n");
     assert_contains(sink_bytes(), b"  cat /boot/mounts\n");
+    assert_contains(sink_bytes(), b"  device\n");
+    assert_contains(sink_bytes(), b"  cat /boot/memory\n");
+    assert_contains(sink_bytes(), b"  cat /boot/devices\n");
     assert_contains(sink_bytes(), b"  cat /boot/image\n");
     assert_contains(sink_bytes(), b"  cat /boot/status\n");
     assert_contains(sink_bytes(), b"  probe usb-keyboard\n");
@@ -435,6 +439,24 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     run_session_command(&mut session, b"cat /boot/mounts\n");
     assert_contains(sink_bytes(), b"kernel on / type rootfs (ro,pseudo)\n");
     assert_contains(sink_bytes(), b"devices on /dev type devfs (ro,pseudo)\n");
+
+    run_session_command(&mut session, b"ls /dev\n");
+    testrt::check_eq(sink_str(), "uart0\n");
+
+    run_session_command(&mut session, b"device\n");
+    assert_contains(sink_bytes(), b"boot_info:\n");
+    assert_contains(sink_bytes(), b"  ranges=1\n");
+    assert_contains(sink_bytes(), b"  usable_bytes=4096\n");
+    assert_contains(sink_bytes(), b"devices:\n");
+    assert_contains(sink_bytes(), b"- [0] uart compat=arm,pl011 mmio=0x1000/0x100 irq=12\n");
+
+    run_session_command(&mut session, b"cat /boot/memory\n");
+    assert_contains(sink_bytes(), b"ranges=1\n");
+    assert_contains(sink_bytes(), b"usable_bytes=4096\n");
+    assert_contains(sink_bytes(), b"cpu_count=2\n");
+
+    run_session_command(&mut session, b"cat /boot/devices\n");
+    assert_contains(sink_bytes(), b"- [0] uart compat=arm,pl011 mmio=0x1000/0x100 irq=12\n");
 
     run_session_command(&mut session, b"cd /dev\n");
     testrt::check_eq(sink_str(), "");

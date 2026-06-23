@@ -23,6 +23,7 @@ missing_probe_help_evidence="$tmp_dir/missing-probe-help.md"
 missing_live_source_evidence="$tmp_dir/missing-live-source.md"
 missing_vfs_live_source_evidence="$tmp_dir/missing-vfs-live-source.md"
 missing_vfs_namespace_evidence="$tmp_dir/missing-vfs-namespace.md"
+missing_boot_inventory_evidence="$tmp_dir/missing-boot-inventory.md"
 missing_proof_evidence="$tmp_dir/missing-proof.md"
 missing_vfs_proof_evidence="$tmp_dir/missing-vfs-proof.md"
 missing_media_evidence="$tmp_dir/missing-media.md"
@@ -80,11 +81,17 @@ write_passing_evidence() {
         printf '  pwd\n'
         printf '  ls /\n'
         printf '  ls /boot\n'
+        printf '  ls /dev\n'
         printf '  mount\n'
         printf '  cat /boot/mounts\n'
+        printf '  device\n'
+        printf '  cat /boot/memory\n'
+        printf '  cat /boot/devices\n'
         printf '  cat /boot/image\n'
         printf '  status\n'
+        printf '  cat /boot/status\n'
         printf '  input\n'
+        printf '  cat /boot/input\n'
         printf '  probe help\n'
         printf '  probe usb-keyboard\n'
         printf '  cat /boot/profile\n'
@@ -106,11 +113,17 @@ write_passing_evidence() {
         printf '  pwd\n'
         printf '  ls /\n'
         printf '  ls /boot\n'
+        printf '  ls /dev\n'
         printf '  mount\n'
         printf '  cat /boot/mounts\n'
+        printf '  device\n'
+        printf '  cat /boot/memory\n'
+        printf '  cat /boot/devices\n'
         printf '  cat /boot/image\n'
         printf '  status\n'
+        printf '  cat /boot/status\n'
         printf '  input\n'
+        printf '  cat /boot/input\n'
         printf '  probe help\n'
         printf '  probe usb-keyboard\n'
         printf '  cat /boot/profile\n'
@@ -141,6 +154,8 @@ write_passing_evidence() {
         printf 'proof\n'
         printf 'profile\n'
         printf 'status\n'
+        printf 'reovim-os> ls /dev\n'
+        printf 'uart0\n'
         printf 'reovim-os> mount\n'
         printf 'kernel on / type rootfs (ro,pseudo)\n'
         printf 'boot on /boot type bootfs (ro,pseudo)\n'
@@ -151,6 +166,25 @@ write_passing_evidence() {
         printf 'boot on /boot type bootfs (ro,pseudo)\n'
         printf 'devices on /dev type devfs (ro,pseudo)\n'
         printf 'klog on /log type logfs (ro,pseudo)\n'
+        printf 'reovim-os> device\n'
+        printf 'boot_info:\n'
+        printf '  ranges=1\n'
+        printf '  usable_bytes=4096\n'
+        printf '  cpu_count=1\n'
+        printf '  heap_total_bytes=0\n'
+        printf '  cpu_freq_hz=0\n'
+        printf '  mem_freq_hz=0\n'
+        printf '  cache_line_bytes=64\n'
+        printf 'devices:\n'
+        printf -- '- [0] uart compat=arm,pl011 mmio=0x1000/0x100 irq=12\n'
+        printf 'reovim-os> cat /boot/memory\n'
+        printf 'ranges=1\n'
+        printf 'usable_bytes=4096\n'
+        printf 'cpu_count=1\n'
+        printf 'heap_total_bytes=0\n'
+        printf 'cache_line_bytes=64\n'
+        printf 'reovim-os> cat /boot/devices\n'
+        printf -- '- [0] uart compat=arm,pl011 mmio=0x1000/0x100 irq=12\n'
         printf 'reovim-os> cat /boot/image\n'
         printf 'target=aarch64-unknown-none\n'
         printf 'bootline=absent\n'
@@ -206,9 +240,17 @@ write_passing_evidence() {
         printf 'shell.status=ok\n'
         printf 'shell: ls /boot\n'
         printf 'shell.status=ok\n'
+        printf 'shell: ls /dev\n'
+        printf 'shell.status=ok\n'
         printf 'shell: mount\n'
         printf 'shell.status=ok\n'
         printf 'shell: cat /boot/mounts\n'
+        printf 'shell.status=ok\n'
+        printf 'shell: device\n'
+        printf 'shell.status=ok\n'
+        printf 'shell: cat /boot/memory\n'
+        printf 'shell.status=ok\n'
+        printf 'shell: cat /boot/devices\n'
         printf 'shell.status=ok\n'
         printf 'shell: cat /boot/image\n'
         printf 'shell.status=ok\n'
@@ -238,6 +280,7 @@ write_passing_evidence() {
         printf -- '- [x] `proof` prints the physical input proof checklist.\n'
         printf -- '- [x] `cat /boot/proof` prints the VFS-backed proof pseudo-file.\n'
         printf -- '- [x] `pwd` / `ls` / `mount` report the kernel VFS namespace and mounts.\n'
+        printf -- '- [x] `device` / `cat /boot/memory` / `cat /boot/devices` report boot inventory.\n'
         printf -- '- [x] `input=usb-keyboard+uart-fallback`\n'
         printf -- '- [x] `usb_keyboard=ready`\n'
         printf -- '- [x] `status` / `input` report live ready source diagnostics.\n'
@@ -300,6 +343,10 @@ expect_failure "$missing_vfs_live_source_evidence" "missing-vfs-live-source"
 cp "$pass_evidence" "$missing_vfs_namespace_evidence"
 sed -i '\#^reovim-os> ls /boot$#d' "$missing_vfs_namespace_evidence"
 expect_failure "$missing_vfs_namespace_evidence" "missing-vfs-namespace"
+
+cp "$pass_evidence" "$missing_boot_inventory_evidence"
+sed -i '\#^reovim-os> cat /boot/devices$#d' "$missing_boot_inventory_evidence"
+expect_failure "$missing_boot_inventory_evidence" "missing-boot-inventory"
 
 cp "$pass_evidence" "$missing_proof_evidence"
 sed -i '/^proof:$/d' "$missing_proof_evidence"

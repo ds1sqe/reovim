@@ -761,8 +761,12 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "proof checklist appears in transcript; serial: {serial:?}",
     );
     assert!(
-        serial.contains("  mount\n  cat /boot/mounts\n  cat /boot/image"),
-        "proof checklist includes VFS mount commands; serial: {serial:?}",
+        serial.contains("  ls /dev\n  mount\n  cat /boot/mounts"),
+        "proof checklist includes VFS namespace commands; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("  device\n  cat /boot/memory\n  cat /boot/devices"),
+        "proof checklist includes boot inventory commands; serial: {serial:?}",
     );
     assert!(
         serial.contains("expected:\n  bootline=absent"),

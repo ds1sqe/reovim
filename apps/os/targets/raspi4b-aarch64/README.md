@@ -21,7 +21,7 @@ image=apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img
 bytes=<image-size>
 ```
 
-Current expected size is `435276` bytes.
+Current expected size is `435412` bytes.
 
 Copy `apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img` to the Pi
 4 boot partition as `kernel8.img`, using the normal Raspberry Pi firmware
@@ -131,10 +131,14 @@ The validator rejects checked display-only, UART, bootline-script, or FAIL
 labels. It also requires checked HDMI-display and physical-keyboard setup,
 physical-keyboard PASS labels, no-bootline image facts, installed-media
 identity from `prepare-boot-media.sh`, USB-keyboard readiness, live
-source diagnostics from `status` / `input`, the in-OS `proof` checklist,
-`probe help` keyboard-target catalog output, `probe usb-keyboard` output, and
-`dmesg` command/status audit lines. It is a textual guard for completed
-evidence; it does not replace the physical HDMI plus USB-keyboard session.
+source diagnostics from `status` / `input`, VFS-backed live diagnostics from
+`cat /boot/status` / `cat /boot/input`, the in-OS `proof` checklist,
+VFS namespace evidence from `pwd` / `ls` / `mount` / `cat /boot/mounts`,
+boot inventory from `ls /dev` / `device` / `cat /boot/memory` /
+`cat /boot/devices`, `probe help` keyboard-target catalog output,
+`probe usb-keyboard` output, and `dmesg` command/status audit lines. It is a
+textual guard for completed evidence; it does not replace the physical HDMI
+plus USB-keyboard session.
 
 To smoke-test the validator:
 
@@ -184,8 +188,12 @@ cat /boot/proof
 pwd
 ls /
 ls /boot
+ls /dev
 mount
 cat /boot/mounts
+device
+cat /boot/memory
+cat /boot/devices
 cat /boot/image
 status
 cat /boot/status
@@ -204,6 +212,8 @@ Record the full visible output or serial transcript. The key evidence is:
 - `cat /boot/proof` prints the same checklist through the kernel VFS.
 - `pwd`, `ls /`, `ls /boot`, `mount`, and `cat /boot/mounts` show the root
   VFS namespace and pseudo-filesystem mount table.
+- `ls /dev`, `device`, `cat /boot/memory`, and `cat /boot/devices` show the
+  device namespace plus boot memory and device inventory facts.
 - `cat /boot/image` shows `target=aarch64-unknown-none` and `bootline=absent`.
 - `status` / `input` show live ready source diagnostics:
   `source=usb-keyboard+uart-fallback`, `source_state=ready`, `mode=live`,

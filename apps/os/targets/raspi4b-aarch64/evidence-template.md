@@ -67,8 +67,12 @@ cat /boot/proof
 pwd
 ls /
 ls /boot
+ls /dev
 mount
 cat /boot/mounts
+device
+cat /boot/memory
+cat /boot/devices
 cat /boot/image
 status
 cat /boot/status
@@ -95,6 +99,7 @@ Required success facts:
 - [ ] `proof` prints the physical input proof checklist.
 - [ ] `cat /boot/proof` prints the VFS-backed proof pseudo-file.
 - [ ] `pwd` / `ls` / `mount` report the kernel VFS namespace and mounts.
+- [ ] `device` / `cat /boot/memory` / `cat /boot/devices` report boot inventory.
 - [ ] `input=usb-keyboard+uart-fallback`
 - [ ] `usb_keyboard=ready`
 - [ ] `status` / `input` report live ready source diagnostics.
