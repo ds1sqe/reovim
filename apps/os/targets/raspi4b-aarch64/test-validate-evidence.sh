@@ -40,6 +40,7 @@ missing_proof_command_evidence="$tmp_dir/missing-proof-command.md"
 missing_proof_identity_evidence="$tmp_dir/missing-proof-identity.md"
 missing_vfs_help_evidence="$tmp_dir/missing-vfs-help.md"
 missing_vfs_proof_evidence="$tmp_dir/missing-vfs-proof.md"
+missing_final_log_sequence_evidence="$tmp_dir/missing-final-log-sequence.md"
 missing_media_evidence="$tmp_dir/missing-media.md"
 media_byte_mismatch_evidence="$tmp_dir/media-byte-mismatch.md"
 media_sha_mismatch_evidence="$tmp_dir/media-sha-mismatch.md"
@@ -611,6 +612,22 @@ expect_failure "$missing_vfs_help_evidence" "missing-vfs-help"
 cp "$pass_evidence" "$missing_vfs_proof_evidence"
 sed -i '\#^reovim-os> cat /boot/proof$#d' "$missing_vfs_proof_evidence"
 expect_failure "$missing_vfs_proof_evidence" "missing-vfs-proof"
+
+awk '
+    /^shell: dmesg$/ {
+        print
+        next_line = ""
+        if (getline next_line > 0 && next_line == "shell.status=ok") {
+            next
+        }
+        if (next_line != "") {
+            print next_line
+        }
+        next
+    }
+    { print }
+' "$pass_evidence" >"$missing_final_log_sequence_evidence"
+expect_failure "$missing_final_log_sequence_evidence" "missing-final-log-sequence"
 
 cp "$pass_evidence" "$missing_media_evidence"
 sed -i '/^media_prepare=ok$/d' "$missing_media_evidence"

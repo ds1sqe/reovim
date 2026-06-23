@@ -320,6 +320,17 @@ require_re '^shell: launch$' 'dmesg audit for launch'
 require_re '^shell: reovim$' 'dmesg audit for reovim'
 require_re '^shell: dmesg$' 'dmesg audit for dmesg'
 require_re '^shell: cat /log/dmesg$' 'dmesg audit for cat /log/dmesg'
+if ! awk '
+    /^shell: dmesg$/ { state = 1; next }
+    state == 1 && /^shell\.status=ok$/ { state = 2; next }
+    state == 1 { state = 0 }
+    state == 2 && /^shell: cat \/log\/dmesg$/ { found = 1; next }
+    state == 2 { state = 0 }
+    END { exit found ? 0 : 1 }
+' "$EVIDENCE"; then
+    printf 'missing: final log read preserves dmesg status before its own audit\n' >&2
+    missing=1
+fi
 require_count_at_least '^shell\.status=ok$' 'successful shell status audit lines' 30
 require_count_at_least '^shell\.status=error$' 'disabled payload error audit lines' 2
 
