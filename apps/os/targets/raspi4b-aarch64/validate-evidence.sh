@@ -50,6 +50,31 @@ require_count_at_least() {
     fi
 }
 
+require_usb_source_for_shell_command() {
+    local command="$1"
+    local label="$2"
+    if ! awk -v command="$command" '
+        /^input\.line_source=usb-keyboard usb_bytes=[1-9][0-9]* fallback_bytes=0 line_bytes=[1-9][0-9]*$/ {
+            usb_line = 1
+            next
+        }
+        $0 == "shell: " command {
+            if (usb_line) {
+                found = 1
+            }
+            usb_line = 0
+            next
+        }
+        {
+            usb_line = 0
+        }
+        END { exit found ? 0 : 1 }
+    ' "$EVIDENCE"; then
+        printf 'missing: USB-keyboard line-source immediately before %s\n' "$label" >&2
+        missing=1
+    fi
+}
+
 require_count_exact() {
     local pattern="$1"
     local label="$2"
@@ -107,6 +132,7 @@ require_re '^- \[[xX]\] `input=usb-keyboard\+uart-fallback`$' 'USB keyboard inpu
 require_re '^- \[[xX]\] `usb_keyboard=ready`$' 'USB keyboard readiness checkbox'
 require_re '^- \[[xX]\] `usb_keyboard_last_poll=report-ready`$' 'USB keyboard lower report-ready checkbox'
 require_re '^- \[[xX]\] `dmesg` contains `input\.usb_keyboard=ready source=usb-keyboard\+uart-fallback last_poll=report-ready`\.$' 'USB keyboard readiness dmesg checkbox'
+require_re '^- \[[xX]\] `dmesg` pairs `input\.line_source=usb-keyboard` with `fallback_bytes=0` immediately before typed command audit lines\.$' 'USB keyboard line-source dmesg checkbox'
 require_re '^- \[[xX]\] `manual_next=type-shell-command`$' 'manual next type-command checkbox'
 require_re '^- \[[xX]\] `status` / `cat /boot/status` report image/profile identity and live ready source diagnostics\.$' 'status identity/live diagnostics checkbox'
 require_re '^- \[[xX]\] `input` / `cat /boot/input` report live input diagnostics\.$' 'input live diagnostics checkbox'
@@ -374,6 +400,7 @@ require_re '^  usb_keyboard=ready$' 'proof expected readiness fact'
 require_re '^  usb_keyboard_probe=enabled$' 'proof expected probe-enabled fact'
 require_re '^  usb_keyboard_last_poll=report-ready$' 'proof expected report-ready fact'
 require_re '^  dmesg contains input\.usb_keyboard=ready source=usb-keyboard\+uart-fallback last_poll=report-ready$' 'proof expected readiness dmesg fact'
+require_re '^  dmesg pairs input\.line_source=usb-keyboard usb_bytes>0 fallback_bytes=0 line_bytes>0 before shell:<command>$' 'proof expected line-source dmesg fact'
 require_re '^  manual_next=type-shell-command$' 'proof expected manual next fact'
 require_re '^  shell\.status=ok$' 'proof expected shell status fact'
 require_re '^  detailed help catalog available through /boot/help$' 'proof expected VFS help fact'
@@ -417,6 +444,61 @@ require_re '^reovim-os> dmesg$' 'dmesg command in pasted transcript'
 require_re '^reovim-os> cat /log/dmesg$' 'VFS dmesg command in pasted transcript'
 require_re '^reovim-os> halt$' 'terminal halt command in pasted transcript'
 require_re '^halt: ok$' 'terminal halt output'
+
+require_count_at_least '^input\.line_source=usb-keyboard usb_bytes=[1-9][0-9]* fallback_bytes=0 line_bytes=[1-9][0-9]*$' 'USB-keyboard line-source audit lines' 30
+
+require_usb_source_for_shell_command 'cat /boot/image' 'shell: cat /boot/image'
+require_usb_source_for_shell_command 'proof' 'shell: proof'
+require_usb_source_for_shell_command 'cat /boot/proof' 'shell: cat /boot/proof'
+require_usb_source_for_shell_command 'help' 'shell: help'
+require_usb_source_for_shell_command 'help clear' 'shell: help clear'
+require_usb_source_for_shell_command 'help screentest' 'shell: help screentest'
+require_usb_source_for_shell_command 'help input' 'shell: help input'
+require_usb_source_for_shell_command 'help proof' 'shell: help proof'
+require_usb_source_for_shell_command 'help pwd' 'shell: help pwd'
+require_usb_source_for_shell_command 'help ls' 'shell: help ls'
+require_usb_source_for_shell_command 'help cd' 'shell: help cd'
+require_usb_source_for_shell_command 'help cat' 'shell: help cat'
+require_usb_source_for_shell_command 'help mount' 'shell: help mount'
+require_usb_source_for_shell_command 'help device' 'shell: help device'
+require_usb_source_for_shell_command 'help dmesg' 'shell: help dmesg'
+require_usb_source_for_shell_command 'cat /boot/help' 'shell: cat /boot/help'
+require_usb_source_for_shell_command 'clear' 'shell: clear'
+require_usb_source_for_shell_command 'screentest' 'shell: screentest'
+require_usb_source_for_shell_command 'pwd' 'shell: pwd'
+require_usb_source_for_shell_command 'ls /' 'shell: ls /'
+require_usb_source_for_shell_command 'ls /boot' 'shell: ls /boot'
+require_usb_source_for_shell_command 'ls /dev' 'shell: ls /dev'
+require_usb_source_for_shell_command 'ls /log' 'shell: ls /log'
+require_usb_source_for_shell_command 'mount' 'shell: mount'
+require_usb_source_for_shell_command 'cat /boot/mounts' 'shell: cat /boot/mounts'
+require_usb_source_for_shell_command 'device' 'shell: device'
+require_usb_source_for_shell_command 'cat /boot/memory' 'shell: cat /boot/memory'
+require_usb_source_for_shell_command 'cat /boot/devices' 'shell: cat /boot/devices'
+require_usb_source_for_shell_command 'cd /dev' 'shell: cd /dev'
+require_usb_source_for_shell_command 'ls' 'shell: ls'
+require_usb_source_for_shell_command 'cat uart0' 'shell: cat uart0'
+require_usb_source_for_shell_command 'cd /' 'shell: cd /'
+require_usb_source_for_shell_command 'help status' 'shell: help status'
+require_usb_source_for_shell_command 'help probe' 'shell: help probe'
+require_usb_source_for_shell_command 'help launch' 'shell: help launch'
+require_usb_source_for_shell_command 'help reovim' 'shell: help reovim'
+require_usb_source_for_shell_command 'help halt' 'shell: help halt'
+require_usb_source_for_shell_command 'status' 'shell: status'
+require_usb_source_for_shell_command 'cat /boot/status' 'shell: cat /boot/status'
+require_usb_source_for_shell_command 'input' 'shell: input'
+require_usb_source_for_shell_command 'cat /boot/input' 'shell: cat /boot/input'
+require_usb_source_for_shell_command 'probe help' 'shell: probe help'
+require_usb_source_for_shell_command 'cat /boot/probes' 'shell: cat /boot/probes'
+require_usb_source_for_shell_command 'probe pcie' 'shell: probe pcie'
+require_usb_source_for_shell_command 'probe usb-keyboard' 'shell: probe usb-keyboard'
+require_usb_source_for_shell_command 'cat /boot/profile' 'shell: cat /boot/profile'
+require_usb_source_for_shell_command 'launch' 'shell: launch'
+require_usb_source_for_shell_command 'reovim' 'shell: reovim'
+require_usb_source_for_shell_command 'dmesg --stats' 'shell: dmesg --stats'
+require_usb_source_for_shell_command 'cat /log/stats' 'shell: cat /log/stats'
+require_usb_source_for_shell_command 'dmesg' 'shell: dmesg'
+require_usb_source_for_shell_command 'cat /log/dmesg' 'shell: cat /log/dmesg'
 
 require_re '^shell: cat /boot/image$' 'dmesg audit for cat /boot/image'
 require_re '^shell: proof$' 'dmesg audit for proof'
@@ -474,8 +556,11 @@ if ! awk '
     /^shell: dmesg$/ { state = 1; next }
     state == 1 && /^shell\.status=ok$/ { state = 2; next }
     state == 1 { state = 0 }
+    state == 2 && /^input\.line_source=usb-keyboard usb_bytes=[1-9][0-9]* fallback_bytes=0 line_bytes=[1-9][0-9]*$/ { state = 3; next }
     state == 2 && /^shell: cat \/log\/dmesg$/ { found = 1; next }
     state == 2 { state = 0 }
+    state == 3 && /^shell: cat \/log\/dmesg$/ { found = 1; next }
+    state == 3 { state = 0 }
     END { exit found ? 0 : 1 }
 ' "$EVIDENCE"; then
     printf 'missing: final log read preserves dmesg status before its own audit\n' >&2

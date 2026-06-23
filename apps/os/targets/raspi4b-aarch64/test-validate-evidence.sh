@@ -29,6 +29,8 @@ missing_remaining_command_help_evidence="$tmp_dir/missing-remaining-command-help
 missing_live_source_evidence="$tmp_dir/missing-live-source.md"
 missing_last_poll_evidence="$tmp_dir/missing-last-poll.md"
 missing_ready_log_evidence="$tmp_dir/missing-ready-log.md"
+missing_line_source_evidence="$tmp_dir/missing-line-source.md"
+unpaired_line_source_evidence="$tmp_dir/unpaired-line-source.md"
 missing_manual_next_evidence="$tmp_dir/missing-manual-next.md"
 missing_vfs_live_source_evidence="$tmp_dir/missing-vfs-live-source.md"
 missing_image_identity_evidence="$tmp_dir/missing-image-identity.md"
@@ -49,6 +51,7 @@ missing_proof_command_evidence="$tmp_dir/missing-proof-command.md"
 missing_proof_identity_evidence="$tmp_dir/missing-proof-identity.md"
 missing_proof_screentest_fact_evidence="$tmp_dir/missing-proof-screentest-fact.md"
 missing_proof_ready_log_fact_evidence="$tmp_dir/missing-proof-ready-log-fact.md"
+missing_proof_line_source_fact_evidence="$tmp_dir/missing-proof-line-source-fact.md"
 missing_proof_no_wrap_marker_fact_evidence="$tmp_dir/missing-proof-no-wrap-marker-fact.md"
 missing_vfs_help_evidence="$tmp_dir/missing-vfs-help.md"
 missing_vfs_help_detail_evidence="$tmp_dir/missing-vfs-help-detail.md"
@@ -203,6 +206,7 @@ write_passing_evidence() {
         printf '  usb_keyboard_probe=enabled\n'
         printf '  usb_keyboard_last_poll=report-ready\n'
         printf '  dmesg contains input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready\n'
+        printf '  dmesg pairs input.line_source=usb-keyboard usb_bytes>0 fallback_bytes=0 line_bytes>0 before shell:<command>\n'
         printf '  manual_next=type-shell-command\n'
         printf '  detailed help catalog available through /boot/help\n'
         printf '  screentest includes erase-line mode diagnostics\n'
@@ -294,6 +298,7 @@ write_passing_evidence() {
         printf '  usb_keyboard_probe=enabled\n'
         printf '  usb_keyboard_last_poll=report-ready\n'
         printf '  dmesg contains input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready\n'
+        printf '  dmesg pairs input.line_source=usb-keyboard usb_bytes>0 fallback_bytes=0 line_bytes>0 before shell:<command>\n'
         printf '  manual_next=type-shell-command\n'
         printf '  detailed help catalog available through /boot/help\n'
         printf '  screentest includes erase-line mode diagnostics\n'
@@ -548,112 +553,166 @@ write_passing_evidence() {
         printf 'reovim-os> dmesg\n'
         printf 'dmesg:\n'
         printf 'input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: proof\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: cat /boot/proof\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: help\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: help clear\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: help screentest\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: help input\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: help proof\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: help pwd\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: help ls\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: help cd\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: help cat\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: help mount\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: help device\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: help dmesg\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: help status\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: help probe\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: help launch\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: help reovim\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: help halt\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: cat /boot/help\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: clear\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: screentest\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: pwd\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: ls /\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: ls /boot\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: ls /dev\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: ls /log\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: mount\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: cat /boot/mounts\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: device\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: cat /boot/memory\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: cat /boot/devices\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: cd /dev\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: pwd\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: ls\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: cat uart0\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: cd /\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: cat /boot/image\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: status\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: cat /boot/status\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: input\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: cat /boot/input\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: probe help\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: cat /boot/probes\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: probe pcie\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: probe usb-keyboard\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: cat /boot/profile\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: launch\n'
         printf 'shell.status=error\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: reovim\n'
         printf 'shell.status=error\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: dmesg --stats\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: cat /log/stats\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: dmesg\n'
         printf 'reovim-os> cat /log/dmesg\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: dmesg\n'
         printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: cat /log/dmesg\n'
         printf '```\n\n'
         printf '## Shutdown Check\n\n'
@@ -680,6 +739,7 @@ write_passing_evidence() {
         printf -- '- [x] `usb_keyboard=ready`\n'
         printf -- '- [x] `usb_keyboard_last_poll=report-ready`\n'
         printf -- '- [x] `dmesg` contains `input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready`.\n'
+        printf -- '- [x] `dmesg` pairs `input.line_source=usb-keyboard` with `fallback_bytes=0` immediately before typed command audit lines.\n'
         printf -- '- [x] `manual_next=type-shell-command`\n'
         printf -- '- [x] `status` / `cat /boot/status` report image/profile identity and live ready source diagnostics.\n'
         printf -- '- [x] `input` / `cat /boot/input` report live input diagnostics.\n'
@@ -774,6 +834,25 @@ expect_failure "$missing_last_poll_evidence" "missing-last-poll"
 cp "$pass_evidence" "$missing_ready_log_evidence"
 sed -i '/^input\.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready$/d' "$missing_ready_log_evidence"
 expect_failure "$missing_ready_log_evidence" "missing-ready-log"
+
+cp "$pass_evidence" "$missing_line_source_evidence"
+sed -i '/^input\.line_source=usb-keyboard usb_bytes=[1-9][0-9]* fallback_bytes=0 line_bytes=[1-9][0-9]*$/d' "$missing_line_source_evidence"
+expect_failure "$missing_line_source_evidence" "missing-line-source"
+
+awk '
+    /^input\.usb_keyboard=ready source=usb-keyboard\+uart-fallback last_poll=report-ready$/ {
+        print
+        for (i = 0; i < 30; i++) {
+            print "input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5"
+        }
+        next
+    }
+    /^input\.line_source=usb-keyboard usb_bytes=[1-9][0-9]* fallback_bytes=0 line_bytes=[1-9][0-9]*$/ {
+        next
+    }
+    { print }
+' "$pass_evidence" >"$unpaired_line_source_evidence"
+expect_failure "$unpaired_line_source_evidence" "unpaired-line-source"
 
 cp "$pass_evidence" "$missing_manual_next_evidence"
 sed -i '/^manual_next=type-shell-command$/d' "$missing_manual_next_evidence"
@@ -874,6 +953,10 @@ expect_failure "$missing_proof_screentest_fact_evidence" "missing-proof-screente
 cp "$pass_evidence" "$missing_proof_ready_log_fact_evidence"
 sed -i '/^  dmesg contains input\.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready$/d' "$missing_proof_ready_log_fact_evidence"
 expect_failure "$missing_proof_ready_log_fact_evidence" "missing-proof-ready-log-fact"
+
+cp "$pass_evidence" "$missing_proof_line_source_fact_evidence"
+sed -i '/^  dmesg pairs input\.line_source=usb-keyboard usb_bytes>0 fallback_bytes=0 line_bytes>0 before shell:<command>$/d' "$missing_proof_line_source_fact_evidence"
+expect_failure "$missing_proof_line_source_fact_evidence" "missing-proof-line-source-fact"
 
 cp "$pass_evidence" "$missing_proof_no_wrap_marker_fact_evidence"
 sed -i '/^  retained dmesg has no \[klog\] dropped_bytes marker$/d' "$missing_proof_no_wrap_marker_fact_evidence"

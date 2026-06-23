@@ -604,6 +604,10 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
         sink_bytes(),
         b"  dmesg contains input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready\n",
     );
+    assert_contains(
+        sink_bytes(),
+        b"  dmesg pairs input.line_source=usb-keyboard usb_bytes>0 fallback_bytes=0 line_bytes>0 before shell:<command>\n",
+    );
     assert_contains(sink_bytes(), b"  manual_next=type-shell-command\n");
     assert_contains(sink_bytes(), b"  detailed help catalog available through /boot/help\n");
     assert_contains(sink_bytes(), b"  screentest includes erase-line mode diagnostics\n");
@@ -649,6 +653,10 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(
         sink_bytes(),
         b"  dmesg contains input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready\n",
+    );
+    assert_contains(
+        sink_bytes(),
+        b"  dmesg pairs input.line_source=usb-keyboard usb_bytes>0 fallback_bytes=0 line_bytes>0 before shell:<command>\n",
     );
     assert_contains(sink_bytes(), b"  probe catalog available through /boot/probes\n");
     assert_contains(sink_bytes(), b"  launch/reovim disabled in shell-only profile\n");

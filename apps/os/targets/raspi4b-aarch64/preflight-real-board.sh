@@ -11,6 +11,7 @@ IMAGE="$ROOT/apps/target/$TARGET/debug/$PACKAGE.kernel8.img"
 BUILD_SCRIPT="$TARGET_DIR/build-image.sh"
 INSTALL_SCRIPT="$TARGET_DIR/install-image.sh"
 INSTALL_SMOKE_SCRIPT="$TARGET_DIR/test-install-image.sh"
+PREPARE_SCRIPT="$TARGET_DIR/prepare-boot-media.sh"
 BOOTFS_CHECK_SCRIPT="$TARGET_DIR/check-bootfs.sh"
 EVIDENCE_TEMPLATE="$TARGET_DIR/evidence-template.md"
 DTB="$ROOT/arch/tests/fixtures/dtb/bcm2711-rpi-4-b.dtb"
@@ -128,6 +129,7 @@ write_evidence_seed() {
         printf -- '- Image SHA-256: %s\n' "$sha256_value"
         printf -- '- Image build command: %s\n' "${BUILD_SCRIPT#$ROOT/}"
         printf -- '- Image install command: %s --build %s\n' "${INSTALL_SCRIPT#$ROOT/}" "$bootfs_value"
+        printf -- '- Media preparation command: %s --bootfs %s --evidence <final-evidence-file>\n' "${PREPARE_SCRIPT#$ROOT/}" "$bootfs_value"
         printf -- '- Boot partition path: %s\n' "$bootfs_value"
         printf -- '- Preflight command: %s\n' "${TARGET_DIR#$ROOT/}/preflight-real-board.sh"
         printf -- '- Preflight result: preflight=ok qemu_smoke=%s\n' "$qemu_value"
@@ -244,6 +246,7 @@ write_evidence_seed() {
         printf -- '- [ ] `usb_keyboard=ready`\n'
         printf -- '- [ ] `usb_keyboard_last_poll=report-ready`\n'
         printf -- '- [ ] `dmesg` contains `input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready`.\n'
+        printf -- '- [ ] `dmesg` pairs `input.line_source=usb-keyboard` with `fallback_bytes=0` immediately before typed command audit lines.\n'
         printf -- '- [ ] `manual_next=type-shell-command`\n'
         printf -- '- [ ] `status` / `cat /boot/status` report image/profile identity and live ready source diagnostics.\n'
         printf -- '- [ ] `input` / `cat /boot/input` report live input diagnostics.\n'
@@ -522,7 +525,9 @@ printf 'bytes=%s\n' "$bytes"
 printf 'sha256=%s\n' "$sha256"
 printf 'qemu_smoke=%s\n' "$qemu_status"
 printf 'install_command=%s --build %s\n' "${INSTALL_SCRIPT#$ROOT/}" "$install_bootfs"
+printf 'media_prepare_command=%s --bootfs %s --evidence <final-evidence-file>\n' "${PREPARE_SCRIPT#$ROOT/}" "$install_bootfs"
 printf 'evidence_template=%s\n' "${EVIDENCE_TEMPLATE#$ROOT/}"
+printf 'next=run prepare-boot-media without --skip-qemu before physical proof\n'
 
 if [ -n "$EVIDENCE_OUT" ]; then
     write_evidence_seed "$EVIDENCE_OUT" "$bytes" "$sha256" "$qemu_status"

@@ -21,7 +21,7 @@ image=apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img
 bytes=<image-size>
 ```
 
-Current expected size is `447092` bytes.
+Current expected size is `448428` bytes.
 
 Copy `apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img` to the Pi
 4 boot partition as `kernel8.img`, using the normal Raspberry Pi firmware
@@ -131,10 +131,11 @@ apps/os/targets/raspi4b-aarch64/preflight-real-board.sh
 
 The preflight builds the no-bootline image, runs the installer smoke, boots the
 aarch64 QEMU display/UART/proof smoke, and prints the image byte count,
-SHA-256, install command, and evidence-template path. The QEMU smoke pipes the
-`proof` command over UART to the exact no-bootline image and requires the
-root-shell checklist output. If the boot partition is already mounted, pass it
-for bootfs validation plus an installer dry-run:
+SHA-256, low-level install command, preferred `prepare-boot-media.sh` command,
+next action, and evidence-template path. The QEMU smoke pipes the `proof`
+command over UART to the exact no-bootline image and requires the root-shell
+checklist output. If the boot partition is already mounted, pass it for bootfs
+validation plus an installer dry-run:
 
 ```sh
 apps/os/targets/raspi4b-aarch64/preflight-real-board.sh --bootfs /path/to/bootfs
@@ -152,7 +153,8 @@ apps/os/targets/raspi4b-aarch64/preflight-real-board.sh \
 ```
 
 The generated evidence file records the current image path, byte count,
-SHA-256, build/install commands, boot partition path, and preflight result.
+SHA-256, build/install commands, the preferred media-preparation command, boot
+partition path, and preflight result.
 This is a preflight-only seed; final physical proof still needs
 `prepare-boot-media.sh` to add installed-media identity before
 `validate-evidence.sh` can pass.
@@ -180,9 +182,11 @@ identity from `prepare-boot-media.sh`, shell-only image identity from
 USB-keyboard readiness, the lower `usb_keyboard_last_poll=report-ready`
 diagnostic, the retained
 `input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready`
-kernel-log transition, identity plus live source diagnostics from `status` /
-`cat /boot/status`, live input diagnostics from `input` / `cat /boot/input`,
-the in-OS `proof` checklist, the VFS-backed detailed help catalog from
+kernel-log transition, retained `input.line_source=usb-keyboard` audit lines
+with `fallback_bytes=0` immediately before typed command audit rows, identity
+plus live source diagnostics from `status` / `cat /boot/status`, live input
+diagnostics from `input` / `cat /boot/input`, the in-OS `proof` checklist, the
+VFS-backed detailed help catalog from
 `cat /boot/help`, log-stat discoverability from `help dmesg` / `ls /log`,
 targeted input/proof/status/probe guidance from `help input` / `help proof` /
 `help status` / `help probe`, remaining operator command guidance from
@@ -376,6 +380,9 @@ Record the full visible output or serial transcript. The key evidence is:
 - `dmesg` includes the command audit lines, probe output, and the
   `input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready`
   transition.
+- `dmesg` pairs `input.line_source=usb-keyboard` rows with
+  `fallback_bytes=0` immediately before typed command audit rows, proving UART
+  fallback did not carry the shell transcript.
 - The final `cat /log/dmesg` includes `shell.status=error` for the intentional
   shell-only `launch` and `reovim` disabled paths.
 - The final `cat /log/dmesg` shows the `shell.status=ok` record for the prior

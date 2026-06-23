@@ -178,6 +178,12 @@ static USB_KEYBOARD_LAST_POLL_STATE: AtomicUsize = AtomicUsize::new(USB_KEYBOARD
 static USB_KEYBOARD_LOGGED_POLL_STATE: AtomicUsize = AtomicUsize::new(USB_KEYBOARD_POLL_LOG_UNSET);
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
+static CONSOLE_LINE_USB_BYTES: AtomicUsize = AtomicUsize::new(0);
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+static CONSOLE_LINE_FALLBACK_BYTES: AtomicUsize = AtomicUsize::new(0);
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
 const USB_KEYBOARD_POLL_NANOS: usize = 5_000_000;
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 const USB_KEYBOARD_POLL_INTERVAL_MS: usize = USB_KEYBOARD_POLL_NANOS / 1_000_000;
@@ -3589,7 +3595,15 @@ fn tty_read_line(line: &mut [u8]) -> usize {
         }
     }
 
-    console_io::read_line(line, tty_read_byte, tty_write)
+    #[cfg(all(target_os = "none", target_arch = "aarch64"))]
+    reset_aarch64_line_input_audit();
+
+    let len = console_io::read_line(line, tty_read_byte, tty_write);
+
+    #[cfg(all(target_os = "none", target_arch = "aarch64"))]
+    log_aarch64_line_input_audit(len);
+
+    len
 }
 
 fn tty_read_byte() -> Option<u8> {
@@ -3619,12 +3633,60 @@ fn read_aarch64_console_byte() -> Option<u8> {
         ) {
             Some(ConsoleInputByte::UsbKeyboard(byte)) => {
                 mark_usb_keyboard_ready();
+                note_aarch64_usb_line_byte();
                 return Some(byte);
             }
-            Some(ConsoleInputByte::Fallback(byte)) => return Some(byte),
+            Some(ConsoleInputByte::Fallback(byte)) => {
+                note_aarch64_fallback_line_byte();
+                return Some(byte);
+            }
             None => {}
         }
         core::hint::spin_loop();
+    }
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn reset_aarch64_line_input_audit() {
+    CONSOLE_LINE_USB_BYTES.store(0, Ordering::Relaxed);
+    CONSOLE_LINE_FALLBACK_BYTES.store(0, Ordering::Relaxed);
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn note_aarch64_usb_line_byte() {
+    CONSOLE_LINE_USB_BYTES.fetch_add(1, Ordering::Relaxed);
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn note_aarch64_fallback_line_byte() {
+    CONSOLE_LINE_FALLBACK_BYTES.fetch_add(1, Ordering::Relaxed);
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn log_aarch64_line_input_audit(line_len: usize) {
+    let usb_bytes = CONSOLE_LINE_USB_BYTES.load(Ordering::Relaxed);
+    let fallback_bytes = CONSOLE_LINE_FALLBACK_BYTES.load(Ordering::Relaxed);
+    reovim_system_kernel::klog::append_bytes(b"input.line_source=");
+    reovim_system_kernel::klog::append_bytes(aarch64_line_source_word(usb_bytes, fallback_bytes));
+    reovim_system_kernel::klog::append_bytes(b" usb_bytes=");
+    reovim_system_kernel::klog::append_usize_dec(usb_bytes);
+    reovim_system_kernel::klog::append_bytes(b" fallback_bytes=");
+    reovim_system_kernel::klog::append_usize_dec(fallback_bytes);
+    reovim_system_kernel::klog::append_bytes(b" line_bytes=");
+    reovim_system_kernel::klog::append_usize_dec(line_len);
+    reovim_system_kernel::klog::append_bytes(b"\n");
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+const fn aarch64_line_source_word(usb_bytes: usize, fallback_bytes: usize) -> &'static [u8] {
+    if usb_bytes > 0 && fallback_bytes == 0 {
+        b"usb-keyboard"
+    } else if fallback_bytes > 0 && usb_bytes == 0 {
+        b"uart-fallback"
+    } else if usb_bytes > 0 && fallback_bytes > 0 {
+        b"mixed"
+    } else {
+        b"empty"
     }
 }
 

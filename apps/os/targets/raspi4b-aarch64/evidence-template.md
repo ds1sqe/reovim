@@ -165,6 +165,7 @@ Required success facts:
 - [ ] `usb_keyboard=ready`
 - [ ] `usb_keyboard_last_poll=report-ready`
 - [ ] `dmesg` contains `input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready`.
+- [ ] `dmesg` pairs `input.line_source=usb-keyboard` with `fallback_bytes=0` immediately before typed command audit lines.
 - [ ] `manual_next=type-shell-command`
 - [ ] `status` / `cat /boot/status` report image/profile identity and live ready source diagnostics.
 - [ ] `input` / `cat /boot/input` report live input diagnostics.

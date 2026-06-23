@@ -698,6 +698,9 @@ fn write_boot_proof(daemon: &RootDaemon<'_>) {
     daemon.write_line(
         "  dmesg contains input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready",
     );
+    daemon.write_line(
+        "  dmesg pairs input.line_source=usb-keyboard usb_bytes>0 fallback_bytes=0 line_bytes>0 before shell:<command>",
+    );
     daemon.write_line("  manual_next=type-shell-command");
     daemon.write_line("  detailed help catalog available through /boot/help");
     daemon.write_line("  screentest includes erase-line mode diagnostics");
