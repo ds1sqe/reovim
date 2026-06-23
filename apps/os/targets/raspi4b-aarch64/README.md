@@ -93,6 +93,11 @@ usb_keyboard=ready
 Do not count HDMI framebuffer output, QEMU/VNC display, bootline scripting, or
 UART-typed commands as USB keyboard proof.
 
+Use `evidence-template.md` to record the session result. The template keeps
+display-only, UART input, bootline-script, and physical USB keyboard evidence
+separate, and it marks the exact facts needed before #800 can call the
+real-machine keyboard proof complete.
+
 ## Evidence Labels
 
 Use these labels in the #800 flight log:
