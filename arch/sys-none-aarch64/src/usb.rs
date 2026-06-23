@@ -4,6 +4,8 @@
 //! controller registers and returns target-local facts; USB enumeration, HID
 //! descriptor walking, and root-shell byte routing are later cuts.
 
+#[cfg(target_arch = "aarch64")]
+use core::arch::asm;
 use core::{
     cell::UnsafeCell,
     ptr::{read_volatile, write_volatile},
@@ -49,6 +51,19 @@ const XHCI_INTR_ERSTSZ: usize = 0x08;
 const XHCI_INTR_ERSTBA: usize = 0x10;
 const XHCI_INTR_ERDP: usize = 0x18;
 
+const XHCI_TRB_BYTES: usize = 16;
+const XHCI_TRB_CYCLE: u32 = 1 << 0;
+const XHCI_TRB_TYPE_SHIFT: u32 = 10;
+const XHCI_TRB_TYPE_MASK: u32 = 0x3f;
+const XHCI_TRB_COMPLETION_CODE_SHIFT: u32 = 24;
+const XHCI_ENABLE_SLOT_SLOT_TYPE_SHIFT: u32 = 16;
+const XHCI_ENABLE_SLOT_SLOT_TYPE_MASK: u8 = 0x1f;
+const XHCI_TRB_TYPE_ENABLE_SLOT: u8 = 9;
+const XHCI_TRB_TYPE_COMMAND_COMPLETION_EVENT: u8 = 33;
+const XHCI_TRB_COMPLETION_SUCCESS: u8 = 1;
+const XHCI_DOORBELL_COMMAND: u32 = 0;
+const XHCI_ERDP_EVENT_HANDLER_BUSY: u64 = 1 << 3;
+
 const XHCI_USBCMD_RUN_STOP: u32 = 1 << 0;
 const XHCI_USBCMD_HOST_CONTROLLER_RESET: u32 = 1 << 1;
 const XHCI_USBCMD_INTERRUPTER_ENABLE: u32 = 1 << 2;
@@ -75,9 +90,14 @@ pub const XHCI_PAGE_BYTES: usize = 4096;
 
 const XHCI_MAX_DEVICE_CONTEXT_POINTERS: usize = 256;
 const XHCI_HCCPARAMS1_CONTEXT_SIZE: u32 = 1 << 2;
+const XHCI_HCCPARAMS1_XECP_SHIFT: u32 = 16;
 const XHCI_START_WAIT_SPINS: usize = 1_000_000;
+const XHCI_COMMAND_WAIT_SPINS: usize = 2_000_000;
+const XHCI_DMA_CACHE_LINE_BYTES: usize = 64;
 const XHCI_REQUIRED_PCI_COMMAND_BITS: u16 =
     pcie::PCI_COMMAND_MEMORY_SPACE | pcie::PCI_COMMAND_BUS_MASTER;
+const XHCI_EXT_CAP_ID_SUPPORTED_PROTOCOL: u8 = 2;
+const XHCI_EXT_CAP_MAX_STEPS: usize = 32;
 
 /// Read-only xHCI capability-register snapshot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -166,6 +186,29 @@ pub struct XhciPortSnapshot {
     pub speed: u8,
     /// Port Reset bit.
     pub reset_active: bool,
+}
+
+/// Read-only xHCI Supported Protocol extended-capability snapshot.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct XhciSupportedProtocol {
+    /// MMIO offset of this xHCI extended capability from controller base.
+    pub offset: u32,
+    /// Four-byte protocol name string.
+    pub name: [u8; 4],
+    /// BCD major revision from the capability header.
+    pub major_revision: u8,
+    /// BCD minor revision from the capability header.
+    pub minor_revision: u8,
+    /// First one-based root-hub port covered by this protocol.
+    pub compatible_port_offset: u8,
+    /// Number of consecutive root-hub ports covered by this protocol.
+    pub compatible_port_count: u8,
+    /// Protocol-defined field from offset 08h.
+    pub protocol_defined: u16,
+    /// Number of Protocol Speed ID dwords that follow the base structure.
+    pub protocol_speed_id_count: u8,
+    /// Slot Type value to put in an Enable Slot command for this protocol.
+    pub protocol_slot_type: u8,
 }
 
 /// xHCI controller discovered behind the BCM2711 PCIe root complex.
@@ -296,6 +339,10 @@ pub struct XhciControllerStartReport {
     pub pcie_command_before: Option<u16>,
     /// PCI command register after enabling Memory Space/Bus Master, if known.
     pub pcie_command_after: Option<u16>,
+    /// ARM-physical MMIO base used by the transition, if discovered.
+    pub mmio_base: Option<usize>,
+    /// Capability snapshot used by the transition, if decoded.
+    pub capabilities: Option<XhciCapabilities>,
     /// Operational-register snapshot before changing xHCI state, if available.
     pub before: Option<XhciOperationalSnapshot>,
     /// Operational-register snapshot after the last transition step, if available.
@@ -312,10 +359,111 @@ impl XhciControllerStartReport {
             status,
             pcie_command_before: None,
             pcie_command_after: None,
+            mmio_base: None,
+            capabilities: None,
             before: None,
             after: None,
             memory: None,
             registers: None,
+        }
+    }
+}
+
+/// Decoded xHCI Command Completion Event TRB.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct XhciCommandCompletionEvent {
+    /// Raw TRB dwords as DMA-written by the xHC.
+    pub raw: [u32; 4],
+    /// Command TRB pointer reported by the completion event.
+    pub command_trb_pointer: u64,
+    /// xHCI completion code.
+    pub completion_code: u8,
+    /// Event TRB type field.
+    pub trb_type: u8,
+    /// Event ring cycle bit.
+    pub cycle: bool,
+    /// Slot ID assigned by the completed command, if any.
+    pub slot_id: u8,
+}
+
+/// Status from issuing the first manual xHCI Enable Slot command.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum XhciEnableSlotStatus {
+    /// Controller start failed before a command could be issued.
+    ControllerStartFailed(XhciControllerStartStatus),
+    /// The start report was internally incomplete.
+    StartEvidenceUnavailable,
+    /// The controller did not remain in a running state after start.
+    ControllerNotRunning,
+    /// No Command Completion Event reached event-ring entry zero.
+    CommandTimedOut,
+    /// A cycle-valid event arrived, but it was not a command-completion event.
+    UnexpectedEventType {
+        /// Event TRB type field.
+        trb_type: u8,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+    },
+    /// The completion event did not point back at the Enable Slot command TRB.
+    CommandPointerMismatch {
+        /// Expected command TRB pointer.
+        expected: u64,
+        /// Actual pointer reported by the event.
+        actual: u64,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+        /// Slot ID carried by the event.
+        slot_id: u8,
+    },
+    /// The command completed with a non-success code or no assigned slot.
+    CommandFailed {
+        /// xHCI completion code.
+        completion_code: u8,
+        /// Slot ID carried by the event.
+        slot_id: u8,
+    },
+    /// Enable Slot completed successfully and returned an assigned slot ID.
+    SlotEnabled {
+        /// Assigned xHCI slot ID.
+        slot_id: u8,
+    },
+}
+
+/// Evidence returned by the first manual xHCI Enable Slot command.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct XhciEnableSlotReport {
+    /// Controller-start report produced before issuing the command.
+    pub start: XhciControllerStartReport,
+    /// Final command status.
+    pub status: XhciEnableSlotStatus,
+    /// Address of the command TRB written into the command ring.
+    pub command_trb_pointer: u64,
+    /// Connected root port used to choose the protocol Slot Type, if found.
+    pub connected_port: Option<XhciPortSnapshot>,
+    /// Supported Protocol capability selected for the connected port, if found.
+    pub protocol: Option<XhciSupportedProtocol>,
+    /// Slot Type value encoded in the command TRB.
+    pub slot_type: u8,
+    /// Raw Enable Slot command TRB written by software.
+    pub command_trb: [u32; 4],
+    /// Doorbell value written to doorbell 0.
+    pub doorbell: u32,
+    /// First command-completion event observed, if one arrived.
+    pub event: Option<XhciCommandCompletionEvent>,
+}
+
+impl XhciEnableSlotReport {
+    const fn new(start: XhciControllerStartReport, status: XhciEnableSlotStatus) -> Self {
+        Self {
+            start,
+            status,
+            command_trb_pointer: 0,
+            connected_port: None,
+            protocol: None,
+            slot_type: 0,
+            command_trb: [0; 4],
+            doorbell: XHCI_DOORBELL_COMMAND,
+            event: None,
         }
     }
 }
@@ -444,6 +592,36 @@ pub fn read_xhci_port_snapshot(
     Some(decode_xhci_port_snapshot(port, portsc))
 }
 
+/// Reads the xHCI Supported Protocol capability that covers a root-hub port.
+#[must_use]
+pub fn read_xhci_supported_protocol_for_port(
+    base: usize,
+    caps: XhciCapabilities,
+    port: u8,
+) -> Option<XhciSupportedProtocol> {
+    let mut offset = xhci_extended_capability_offset(caps)?;
+    let mut steps = 0usize;
+    while steps < XHCI_EXT_CAP_MAX_STEPS {
+        let header = read_mmio_u32(base + offset);
+        let capability_id = (header & 0xff) as u8;
+        if capability_id == XHCI_EXT_CAP_ID_SUPPORTED_PROTOCOL {
+            if let Some(protocol) = read_xhci_supported_protocol_at(base, offset as u32, header) {
+                if protocol_covers_port(protocol, port) {
+                    return Some(protocol);
+                }
+            }
+        }
+
+        let next = ((header >> 8) & 0xff) as usize;
+        if next == 0 {
+            return None;
+        }
+        offset += next * core::mem::size_of::<u32>();
+        steps += 1;
+    }
+    None
+}
+
 /// Probes for the Pi 4 PCIe-attached xHCI controller.
 ///
 /// This discovers an xHCI PCI function and any already configured BAR0 MMIO
@@ -475,6 +653,7 @@ pub fn start_pcie_xhci_controller() -> XhciControllerStartReport {
         report.status = XhciControllerStartStatus::ControllerBarUnconfigured;
         return report;
     };
+    report.mmio_base = Some(mmio);
 
     let Some(command_after) =
         pcie::enable_external_command_bits(header.location, XHCI_REQUIRED_PCI_COMMAND_BITS)
@@ -492,6 +671,7 @@ pub fn start_pcie_xhci_controller() -> XhciControllerStartReport {
         report.status = XhciControllerStartStatus::InvalidXhciCapabilities;
         return report;
     };
+    report.capabilities = Some(caps);
 
     let plan = match prepare_xhci_driver_memory(caps) {
         XhciDriverMemoryStatus::Ready(plan) => plan,
@@ -547,6 +727,7 @@ pub fn start_pcie_xhci_controller() -> XhciControllerStartReport {
 
     let registers = xhci_controller_start_registers(plan);
     report.registers = Some(registers);
+    clean_xhci_driver_memory_for_device(plan);
     compiler_fence(Ordering::SeqCst);
     write_xhci_start_registers(mmio, caps, registers);
 
@@ -569,6 +750,75 @@ pub fn start_pcie_xhci_controller() -> XhciControllerStartReport {
     }
 
     report.status = XhciControllerStartStatus::Started;
+    report
+}
+
+/// Starts the PCIe xHCI controller, issues Enable Slot, and reads completion.
+///
+/// This is still a manual diagnostics transition. It does not address a device,
+/// enumerate descriptors, configure endpoints, poll interrupt-IN transfers, or
+/// claim USB keyboard readiness.
+pub fn enable_slot_on_pcie_xhci_controller() -> XhciEnableSlotReport {
+    let start = start_pcie_xhci_controller();
+    if start.status != XhciControllerStartStatus::Started {
+        return XhciEnableSlotReport::new(
+            start,
+            XhciEnableSlotStatus::ControllerStartFailed(start.status),
+        );
+    }
+
+    let (Some(mmio), Some(caps), Some(plan), Some(after)) =
+        (start.mmio_base, start.capabilities, start.memory, start.after)
+    else {
+        return XhciEnableSlotReport::new(start, XhciEnableSlotStatus::StartEvidenceUnavailable);
+    };
+
+    if !after.run_stop || after.halted {
+        return XhciEnableSlotReport::new(start, XhciEnableSlotStatus::ControllerNotRunning);
+    }
+
+    let connected_port = first_connected_xhci_port(mmio, caps);
+    let protocol = connected_port
+        .and_then(|port| read_xhci_supported_protocol_for_port(mmio, caps, port.port));
+    let slot_type = protocol
+        .map(|protocol| protocol.protocol_slot_type)
+        .unwrap_or(0);
+
+    let command_trb_pointer = XHCI_COMMAND_RING.trb_addr(0);
+    let command_trb = xhci_enable_slot_command_trb(slot_type);
+    XHCI_COMMAND_RING.set_trb(0, command_trb);
+    dma_clean_range(command_trb_pointer, XHCI_TRB_BYTES);
+
+    let mut report = XhciEnableSlotReport {
+        start,
+        status: XhciEnableSlotStatus::CommandTimedOut,
+        command_trb_pointer,
+        connected_port,
+        protocol,
+        slot_type,
+        command_trb,
+        doorbell: XHCI_DOORBELL_COMMAND,
+        event: None,
+    };
+
+    compiler_fence(Ordering::SeqCst);
+    write_mmio_u32(mmio + caps.doorbell_offset as usize, XHCI_DOORBELL_COMMAND);
+
+    let mut spins = 0usize;
+    while spins < XHCI_COMMAND_WAIT_SPINS {
+        dma_invalidate_range(plan.event_ring, XHCI_TRB_BYTES);
+        let event = decode_xhci_command_completion_event(XHCI_EVENT_RING.read_trb(0));
+        if event.cycle {
+            acknowledge_xhci_event(mmio, caps, plan.event_ring + XHCI_TRB_BYTES as u64);
+            report.event = Some(event);
+            report.status = classify_enable_slot_event(command_trb_pointer, event);
+            return report;
+        }
+
+        core::hint::spin_loop();
+        spins += 1;
+    }
+
     report
 }
 
@@ -670,6 +920,60 @@ fn decode_xhci_capabilities(
             32
         },
     })
+}
+
+fn xhci_extended_capability_offset(caps: XhciCapabilities) -> Option<usize> {
+    let dword_offset = (caps.hcc_params1 >> XHCI_HCCPARAMS1_XECP_SHIFT) as usize;
+    if dword_offset == 0 {
+        return None;
+    }
+    Some(dword_offset * core::mem::size_of::<u32>())
+}
+
+fn read_xhci_supported_protocol_at(
+    base: usize,
+    offset: u32,
+    header: u32,
+) -> Option<XhciSupportedProtocol> {
+    let protocol = decode_xhci_supported_protocol(
+        offset,
+        header,
+        read_mmio_u32(base + offset as usize + 0x04),
+        read_mmio_u32(base + offset as usize + 0x08),
+        read_mmio_u32(base + offset as usize + 0x0c),
+    );
+    if protocol.compatible_port_offset == 0 || protocol.compatible_port_count == 0 {
+        return None;
+    }
+    Some(protocol)
+}
+
+fn decode_xhci_supported_protocol(
+    offset: u32,
+    header: u32,
+    name: u32,
+    port_range: u32,
+    slot_type: u32,
+) -> XhciSupportedProtocol {
+    XhciSupportedProtocol {
+        offset,
+        name: name.to_le_bytes(),
+        major_revision: (header >> 24) as u8,
+        minor_revision: ((header >> 16) & 0xff) as u8,
+        compatible_port_offset: (port_range & 0xff) as u8,
+        compatible_port_count: ((port_range >> 8) & 0xff) as u8,
+        protocol_defined: ((port_range >> 16) & 0x0fff) as u16,
+        protocol_speed_id_count: ((port_range >> 28) & 0x0f) as u8,
+        protocol_slot_type: (slot_type & 0x1f) as u8,
+    }
+}
+
+fn protocol_covers_port(protocol: XhciSupportedProtocol, port: u8) -> bool {
+    let first = protocol.compatible_port_offset;
+    let Some(last) = first.checked_add(protocol.compatible_port_count.saturating_sub(1)) else {
+        return false;
+    };
+    first <= port && port <= last
 }
 
 /// Returns the static xHCI memory layout that would be used for controller
@@ -839,9 +1143,152 @@ fn write_xhci_start_registers(
     write_mmio_u32(intr0 + XHCI_INTR_IMAN, registers.interrupter_management);
     write_mmio_u32(intr0 + XHCI_INTR_IMOD, registers.interrupter_moderation);
     write_mmio_u32(intr0 + XHCI_INTR_ERSTSZ, registers.event_ring_segment_table_size);
-    write_mmio_u64(intr0 + XHCI_INTR_ERDP, registers.event_ring_dequeue_pointer);
     write_mmio_u64(intr0 + XHCI_INTR_ERSTBA, registers.event_ring_segment_table_base_address);
+    write_mmio_u64(intr0 + XHCI_INTR_ERDP, registers.event_ring_dequeue_pointer);
     write_mmio_u32(op_base + XHCI_OP_USBCMD, registers.usb_command);
+}
+
+fn acknowledge_xhci_event(base: usize, caps: XhciCapabilities, event_dequeue_pointer: u64) {
+    let op_base = xhci_operational_base(base, caps);
+    let intr0 = xhci_runtime_base(base, caps) + XHCI_RUNTIME_INTERRUPTER0;
+    write_mmio_u64(intr0 + XHCI_INTR_ERDP, event_dequeue_pointer | XHCI_ERDP_EVENT_HANDLER_BUSY);
+    write_mmio_u32(op_base + XHCI_OP_USBSTS, XHCI_USBSTS_EVENT_INTERRUPT);
+}
+
+fn xhci_enable_slot_command_trb(slot_type: u8) -> [u32; 4] {
+    [
+        0,
+        0,
+        0,
+        ((slot_type & XHCI_ENABLE_SLOT_SLOT_TYPE_MASK) as u32) << XHCI_ENABLE_SLOT_SLOT_TYPE_SHIFT
+            | ((XHCI_TRB_TYPE_ENABLE_SLOT as u32) << XHCI_TRB_TYPE_SHIFT)
+            | XHCI_TRB_CYCLE,
+    ]
+}
+
+fn decode_xhci_command_completion_event(raw: [u32; 4]) -> XhciCommandCompletionEvent {
+    XhciCommandCompletionEvent {
+        raw,
+        command_trb_pointer: (((raw[1] as u64) << 32) | raw[0] as u64) & !0xf,
+        completion_code: (raw[2] >> XHCI_TRB_COMPLETION_CODE_SHIFT) as u8,
+        trb_type: ((raw[3] >> XHCI_TRB_TYPE_SHIFT) & XHCI_TRB_TYPE_MASK) as u8,
+        cycle: raw[3] & XHCI_TRB_CYCLE != 0,
+        slot_id: (raw[3] >> 24) as u8,
+    }
+}
+
+fn classify_enable_slot_event(
+    expected_command_trb_pointer: u64,
+    event: XhciCommandCompletionEvent,
+) -> XhciEnableSlotStatus {
+    if event.trb_type != XHCI_TRB_TYPE_COMMAND_COMPLETION_EVENT {
+        return XhciEnableSlotStatus::UnexpectedEventType {
+            trb_type: event.trb_type,
+            completion_code: event.completion_code,
+        };
+    }
+    if event.command_trb_pointer != expected_command_trb_pointer {
+        return XhciEnableSlotStatus::CommandPointerMismatch {
+            expected: expected_command_trb_pointer,
+            actual: event.command_trb_pointer,
+            completion_code: event.completion_code,
+            slot_id: event.slot_id,
+        };
+    }
+    if event.completion_code != XHCI_TRB_COMPLETION_SUCCESS || event.slot_id == 0 {
+        return XhciEnableSlotStatus::CommandFailed {
+            completion_code: event.completion_code,
+            slot_id: event.slot_id,
+        };
+    }
+    XhciEnableSlotStatus::SlotEnabled {
+        slot_id: event.slot_id,
+    }
+}
+
+fn clean_xhci_driver_memory_for_device(plan: XhciDriverMemoryPlan) {
+    dma_clean_range(plan.dcbaa, XHCI_MAX_DEVICE_CONTEXT_POINTERS * core::mem::size_of::<u64>());
+    dma_clean_range(plan.command_ring, XHCI_COMMAND_RING_TRBS * XHCI_TRB_BYTES);
+    dma_clean_range(plan.event_ring, XHCI_EVENT_RING_TRBS * XHCI_TRB_BYTES);
+    dma_clean_range(
+        plan.event_ring_segment_table,
+        XHCI_EVENT_RING_SEGMENT_TABLE_ENTRIES * 2 * core::mem::size_of::<u64>(),
+    );
+    if plan.scratchpad_buffers == 0 {
+        return;
+    }
+    dma_clean_range(
+        plan.scratchpad_array,
+        plan.scratchpad_buffers as usize * core::mem::size_of::<u64>(),
+    );
+    let mut index = 0usize;
+    while index < plan.scratchpad_buffers as usize {
+        dma_clean_range(XHCI_SCRATCHPAD_PAGES.page_addr(index), XHCI_PAGE_BYTES);
+        index += 1;
+    }
+}
+
+fn dma_clean_range(addr: u64, len: usize) {
+    dma_cache_range(addr, len, clean_cache_line);
+    dsb_sy();
+}
+
+fn dma_invalidate_range(addr: u64, len: usize) {
+    dma_cache_range(addr, len, invalidate_cache_line);
+    dsb_sy();
+}
+
+fn dma_cache_range(addr: u64, len: usize, op: fn(usize)) {
+    if len == 0 {
+        return;
+    }
+    let start = (addr as usize) & !(XHCI_DMA_CACHE_LINE_BYTES - 1);
+    let end =
+        (addr as usize + len + XHCI_DMA_CACHE_LINE_BYTES - 1) & !(XHCI_DMA_CACHE_LINE_BYTES - 1);
+    let mut line = start;
+    while line < end {
+        op(line);
+        line += XHCI_DMA_CACHE_LINE_BYTES;
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+fn clean_cache_line(addr: usize) {
+    // SAFETY: `dc cvac` is the architected aarch64 cache-clean-by-VA operation.
+    unsafe {
+        asm!("dc cvac, {addr}", addr = in(reg) addr, options(nostack, preserves_flags));
+    }
+}
+
+#[cfg(not(target_arch = "aarch64"))]
+fn clean_cache_line(_addr: usize) {
+    compiler_fence(Ordering::SeqCst);
+}
+
+#[cfg(target_arch = "aarch64")]
+fn invalidate_cache_line(addr: usize) {
+    // SAFETY: `dc ivac` is the architected aarch64 cache-invalidate-by-VA operation.
+    unsafe {
+        asm!("dc ivac, {addr}", addr = in(reg) addr, options(nostack, preserves_flags));
+    }
+}
+
+#[cfg(not(target_arch = "aarch64"))]
+fn invalidate_cache_line(_addr: usize) {
+    compiler_fence(Ordering::SeqCst);
+}
+
+#[cfg(target_arch = "aarch64")]
+fn dsb_sy() {
+    // SAFETY: `dsb sy` orders CPU cache maintenance and device-visible memory.
+    unsafe {
+        asm!("dsb sy", options(nostack, preserves_flags));
+    }
+}
+
+#[cfg(not(target_arch = "aarch64"))]
+fn dsb_sy() {
+    compiler_fence(Ordering::SeqCst);
 }
 
 const fn decode_xhci_scratchpad_count(hcs_params2: u32) -> u16 {
@@ -944,6 +1391,10 @@ impl<const N: usize> XhciTrbRing<N> {
         self.0.get() as *mut [u32; 4] as usize as u64
     }
 
+    fn trb_addr(&self, index: usize) -> u64 {
+        self.addr() + (index * XHCI_TRB_BYTES) as u64
+    }
+
     fn zero(&self) {
         let trbs = unsafe { &mut *self.0.get() };
         let mut index = 0usize;
@@ -951,6 +1402,16 @@ impl<const N: usize> XhciTrbRing<N> {
             trbs[index] = [0; 4];
             index += 1;
         }
+    }
+
+    fn set_trb(&self, index: usize, value: [u32; 4]) {
+        let trbs = unsafe { &mut *self.0.get() };
+        trbs[index] = value;
+    }
+
+    fn read_trb(&self, index: usize) -> [u32; 4] {
+        let trbs = unsafe { &*self.0.get() };
+        trbs[index]
     }
 }
 

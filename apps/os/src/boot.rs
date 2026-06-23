@@ -425,6 +425,10 @@ fn hardware_probe(target: &str, devices: &[DeviceEntry], write: WriteFn) -> Hard
             probe_xhci_start(devices, write);
             HardwareProbeResult::Handled
         }
+        "xhci-enable-slot" | "usb-keyboard-enable-slot" => {
+            probe_xhci_enable_slot(devices, write);
+            HardwareProbeResult::Handled
+        }
         _ => HardwareProbeResult::UnknownTarget,
     }
 }
@@ -865,6 +869,173 @@ fn probe_xhci_start_registers(
     probe_emit(write, b"\n");
 }
 
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn probe_xhci_enable_slot(devices: &[DeviceEntry], write: WriteFn) {
+    probe_emit(write, b"probe xhci-enable-slot:\n");
+    if !device_inventory_has(
+        devices,
+        reovim_uapi::system::DeviceClass::Bus,
+        "brcm,bcm2711-pcie",
+    ) {
+        probe_emit(write, b"state=unavailable\n");
+        probe_emit(write, b"reason=device-tree-disabled-or-missing\n");
+        return;
+    }
+
+    let report = arch_sys::usb::enable_slot_on_pcie_xhci_controller();
+    probe_emit(write, b"state=");
+    probe_emit(write, probe_xhci_enable_slot_status_name(report.status));
+    probe_emit(write, b"\nstart.state=");
+    probe_emit(write, probe_xhci_start_status_name(report.start.status));
+    probe_emit(write, b"\ncommand.trb_pointer=");
+    probe_write_u64_hex(write, report.command_trb_pointer);
+    if let Some(port) = report.connected_port {
+        probe_emit(write, b"\nport=");
+        probe_write_u64_dec(write, port.port as u64);
+        probe_emit(write, b"\nport.speed=");
+        probe_write_u64_dec(write, port.speed as u64);
+        probe_emit(write, b"\nport.link_state=");
+        probe_write_u64_dec(write, port.link_state as u64);
+    }
+    if let Some(protocol) = report.protocol {
+        probe_emit(write, b"\nprotocol.offset=");
+        probe_write_u32_hex(write, protocol.offset);
+        probe_emit(write, b"\nprotocol.name=");
+        probe_emit(write, &protocol.name);
+        probe_emit(write, b"\nprotocol.revision_major=");
+        probe_write_u64_dec(write, protocol.major_revision as u64);
+        probe_emit(write, b"\nprotocol.revision_minor=");
+        probe_write_u64_dec(write, protocol.minor_revision as u64);
+        probe_emit(write, b"\nprotocol.port_offset=");
+        probe_write_u64_dec(write, protocol.compatible_port_offset as u64);
+        probe_emit(write, b"\nprotocol.port_count=");
+        probe_write_u64_dec(write, protocol.compatible_port_count as u64);
+        probe_emit(write, b"\nprotocol.psic=");
+        probe_write_u64_dec(write, protocol.protocol_speed_id_count as u64);
+        probe_emit(write, b"\nprotocol.slot_type=");
+        probe_write_u64_dec(write, protocol.protocol_slot_type as u64);
+    }
+    probe_emit(write, b"\ncommand.slot_type=");
+    probe_write_u64_dec(write, report.slot_type as u64);
+    probe_emit(write, b"\ncommand.trb0=");
+    probe_write_u32_hex(write, report.command_trb[0]);
+    probe_emit(write, b"\ncommand.trb1=");
+    probe_write_u32_hex(write, report.command_trb[1]);
+    probe_emit(write, b"\ncommand.trb2=");
+    probe_write_u32_hex(write, report.command_trb[2]);
+    probe_emit(write, b"\ncommand.trb3=");
+    probe_write_u32_hex(write, report.command_trb[3]);
+    probe_emit(write, b"\ncommand.doorbell=");
+    probe_write_u32_hex(write, report.doorbell);
+    probe_emit(write, b"\n");
+
+    match report.status {
+        arch_sys::usb::XhciEnableSlotStatus::ControllerStartFailed(status) => {
+            probe_emit(write, b"start.failure=");
+            probe_emit(write, probe_xhci_start_status_name(status));
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciEnableSlotStatus::CommandPointerMismatch {
+            expected,
+            actual,
+            completion_code,
+            slot_id,
+        } => {
+            probe_emit(write, b"event.expected_command_trb_pointer=");
+            probe_write_u64_hex(write, expected);
+            probe_emit(write, b"\nevent.actual_command_trb_pointer=");
+            probe_write_u64_hex(write, actual);
+            probe_emit(write, b"\nevent.completion_code=");
+            probe_write_u64_dec(write, completion_code as u64);
+            probe_emit(write, b"\nevent.slot_id=");
+            probe_write_u64_dec(write, slot_id as u64);
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciEnableSlotStatus::UnexpectedEventType {
+            trb_type,
+            completion_code,
+        } => {
+            probe_emit(write, b"event.trb_type=");
+            probe_write_u64_dec(write, trb_type as u64);
+            probe_emit(write, b"\nevent.completion_code=");
+            probe_write_u64_dec(write, completion_code as u64);
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciEnableSlotStatus::CommandFailed {
+            completion_code,
+            slot_id,
+        } => {
+            probe_emit(write, b"event.completion_code=");
+            probe_write_u64_dec(write, completion_code as u64);
+            probe_emit(write, b"\nevent.slot_id=");
+            probe_write_u64_dec(write, slot_id as u64);
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciEnableSlotStatus::SlotEnabled { slot_id } => {
+            probe_emit(write, b"slot_id=");
+            probe_write_u64_dec(write, slot_id as u64);
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciEnableSlotStatus::StartEvidenceUnavailable
+        | arch_sys::usb::XhciEnableSlotStatus::ControllerNotRunning
+        | arch_sys::usb::XhciEnableSlotStatus::CommandTimedOut => {}
+    }
+
+    if let Some(event) = report.event {
+        probe_xhci_command_completion_event(write, event);
+    }
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn probe_xhci_enable_slot_status_name(
+    status: arch_sys::usb::XhciEnableSlotStatus,
+) -> &'static [u8] {
+    match status {
+        arch_sys::usb::XhciEnableSlotStatus::ControllerStartFailed(_) => {
+            b"controller-start-failed"
+        }
+        arch_sys::usb::XhciEnableSlotStatus::StartEvidenceUnavailable => {
+            b"start-evidence-unavailable"
+        }
+        arch_sys::usb::XhciEnableSlotStatus::ControllerNotRunning => b"controller-not-running",
+        arch_sys::usb::XhciEnableSlotStatus::CommandTimedOut => b"command-timeout",
+        arch_sys::usb::XhciEnableSlotStatus::UnexpectedEventType { .. } => {
+            b"unexpected-event-type"
+        }
+        arch_sys::usb::XhciEnableSlotStatus::CommandPointerMismatch { .. } => {
+            b"command-pointer-mismatch"
+        }
+        arch_sys::usb::XhciEnableSlotStatus::CommandFailed { .. } => b"command-failed",
+        arch_sys::usb::XhciEnableSlotStatus::SlotEnabled { .. } => b"slot-enabled",
+    }
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn probe_xhci_command_completion_event(
+    write: WriteFn,
+    event: arch_sys::usb::XhciCommandCompletionEvent,
+) {
+    probe_emit(write, b"event.raw0=");
+    probe_write_u32_hex(write, event.raw[0]);
+    probe_emit(write, b"\nevent.raw1=");
+    probe_write_u32_hex(write, event.raw[1]);
+    probe_emit(write, b"\nevent.raw2=");
+    probe_write_u32_hex(write, event.raw[2]);
+    probe_emit(write, b"\nevent.raw3=");
+    probe_write_u32_hex(write, event.raw[3]);
+    probe_emit(write, b"\nevent.command_trb_pointer=");
+    probe_write_u64_hex(write, event.command_trb_pointer);
+    probe_emit(write, b"\nevent.completion_code=");
+    probe_write_u64_dec(write, event.completion_code as u64);
+    probe_emit(write, b"\nevent.trb_type=");
+    probe_write_u64_dec(write, event.trb_type as u64);
+    probe_emit(write, b"\nevent.cycle=");
+    probe_write_bool(write, event.cycle);
+    probe_emit(write, b"\nevent.slot_id=");
+    probe_write_u64_dec(write, event.slot_id as u64);
+    probe_emit(write, b"\n");
+}
+
 #[cfg(not(all(target_os = "none", target_arch = "aarch64")))]
 fn probe_pcie(_devices: &[DeviceEntry], write: WriteFn) {
     probe_emit(write, b"probe pcie:\n");
@@ -880,6 +1051,12 @@ fn probe_usb_keyboard(_devices: &[DeviceEntry], write: WriteFn) {
 #[cfg(not(all(target_os = "none", target_arch = "aarch64")))]
 fn probe_xhci_start(_devices: &[DeviceEntry], write: WriteFn) {
     probe_emit(write, b"probe xhci-start:\n");
+    probe_emit(write, b"state=unsupported-on-this-target\n");
+}
+
+#[cfg(not(all(target_os = "none", target_arch = "aarch64")))]
+fn probe_xhci_enable_slot(_devices: &[DeviceEntry], write: WriteFn) {
+    probe_emit(write, b"probe xhci-enable-slot:\n");
     probe_emit(write, b"state=unsupported-on-this-target\n");
 }
 

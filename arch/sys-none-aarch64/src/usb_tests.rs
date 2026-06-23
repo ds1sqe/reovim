@@ -5,8 +5,12 @@ use {
         BCM2711_DWC2_BUS_BASE, BCM2711_DWC2_MMIO_BASE, BCM2711_XHCI_BUS_BASE,
         BCM2711_XHCI_MMIO_BASE, PcieXhciController, UsbBootKeyboardPending, UsbBootKeyboardPoll,
         XHCI_EVENT_RING_TRBS, XHCI_STATIC_SCRATCHPAD_BUFFERS, XhciControllerStartStatus,
-        XhciDriverMemoryStatus, decode_xhci_capabilities, decode_xhci_operational_snapshot,
-        decode_xhci_port_snapshot, prepare_xhci_driver_memory, xhci_controller_start_registers,
+        XhciDriverMemoryStatus, XhciEnableSlotStatus, classify_enable_slot_event,
+        decode_xhci_capabilities, decode_xhci_command_completion_event,
+        decode_xhci_operational_snapshot, decode_xhci_port_snapshot,
+        decode_xhci_supported_protocol, prepare_xhci_driver_memory, protocol_covers_port,
+        xhci_controller_start_registers, xhci_enable_slot_command_trb,
+        xhci_extended_capability_offset,
     },
     crate::pcie::{PciConfigHeader, PciLocation},
     reovim_testrt::{self as testrt, arch_test},
@@ -36,6 +40,7 @@ arch_test!(xhci_capability_decode_extracts_controller_shape, {
     testrt::check_eq(caps.max_interrupters, 2u16);
     testrt::check_eq(caps.max_ports, 4u8);
     testrt::check_eq(caps.hcc_params1, 0x0000_0001u32);
+    testrt::check_eq(xhci_extended_capability_offset(caps), None);
     testrt::check_eq(caps.hcs_params2, (2 << 27) | (1 << 26) | (3 << 4));
     testrt::check_eq(caps.doorbell_offset, 0x1000u32);
     testrt::check_eq(caps.runtime_register_space_offset, 0x2020u32);
@@ -47,6 +52,20 @@ arch_test!(xhci_capability_decode_extracts_controller_shape, {
     let wide_contexts = decode_xhci_capabilities(0x0100_0040, (1 << 24) | 1, 0, 1 << 2, 0, 0)
         .unwrap_or_else(|| panic!("valid 64-byte-context controller decodes"));
     testrt::check_eq(wide_contexts.context_size_bytes, 64u8);
+});
+
+arch_test!(xhci_extended_capability_offset_decodes_hccparams1_xecp, {
+    let caps = decode_xhci_capabilities(
+        0x0100_0040,
+        (4 << 24) | (1 << 8) | 8,
+        0,
+        0x0068_0000,
+        0x1000,
+        0x2000,
+    )
+    .unwrap_or_else(|| panic!("valid xHCI capability registers decode"));
+
+    testrt::check_eq(xhci_extended_capability_offset(caps), Some(0x1a0usize));
 });
 
 arch_test!(xhci_capability_decode_rejects_absent_or_invalid_blocks, {
@@ -185,6 +204,124 @@ arch_test!(usb_boot_keyboard_poll_names_provider_blockers, {
             testrt::check_eq(link_state, 1u8);
         }
         _ => testrt::check(false, "poll reports enumeration blocker"),
+    }
+});
+
+arch_test!(xhci_enable_slot_command_trb_sets_cycle_type_and_slot_type, {
+    let default_slot = xhci_enable_slot_command_trb(0);
+    testrt::check_eq(default_slot[0], 0u32);
+    testrt::check_eq(default_slot[1], 0u32);
+    testrt::check_eq(default_slot[2], 0u32);
+    testrt::check_eq(default_slot[3], (9u32 << 10) | 1);
+
+    let typed_slot = xhci_enable_slot_command_trb(0x23);
+    testrt::check_eq(typed_slot[3], (3u32 << 16) | (9u32 << 10) | 1);
+});
+
+arch_test!(xhci_supported_protocol_decode_extracts_port_range_and_slot_type, {
+    let protocol = decode_xhci_supported_protocol(
+        0x1a0,
+        (3u32 << 24) | (0x10u32 << 16) | 2,
+        u32::from_le_bytes(*b"USB "),
+        (4u32 << 28) | (0x012u32 << 16) | (3u32 << 8) | 2,
+        0x1f,
+    );
+
+    testrt::check_eq(protocol.offset, 0x1a0u32);
+    testrt::check_eq(protocol.name, *b"USB ");
+    testrt::check_eq(protocol.major_revision, 3u8);
+    testrt::check_eq(protocol.minor_revision, 0x10u8);
+    testrt::check_eq(protocol.compatible_port_offset, 2u8);
+    testrt::check_eq(protocol.compatible_port_count, 3u8);
+    testrt::check_eq(protocol.protocol_defined, 0x012u16);
+    testrt::check_eq(protocol.protocol_speed_id_count, 4u8);
+    testrt::check_eq(protocol.protocol_slot_type, 31u8);
+    testrt::check(!protocol_covers_port(protocol, 1), "port before range is rejected");
+    testrt::check(protocol_covers_port(protocol, 2), "first compatible port is covered");
+    testrt::check(protocol_covers_port(protocol, 4), "last compatible port is covered");
+    testrt::check(!protocol_covers_port(protocol, 5), "port after range is rejected");
+
+    let trb = xhci_enable_slot_command_trb(protocol.protocol_slot_type);
+    testrt::check_eq(trb[3], (31u32 << 16) | (9u32 << 10) | 1);
+});
+
+arch_test!(xhci_command_completion_event_decode_extracts_pointer_status_and_slot, {
+    let raw = [
+        0x0000_1008,
+        0x0000_0002,
+        1u32 << 24,
+        (7u32 << 24) | (33u32 << 10) | 1,
+    ];
+
+    let event = decode_xhci_command_completion_event(raw);
+
+    testrt::check_eq(event.raw, raw);
+    testrt::check_eq(event.command_trb_pointer, 0x0000_0002_0000_1000u64);
+    testrt::check_eq(event.completion_code, 1u8);
+    testrt::check_eq(event.trb_type, 33u8);
+    testrt::check(event.cycle, "event cycle bit is set");
+    testrt::check_eq(event.slot_id, 7u8);
+});
+
+arch_test!(xhci_enable_slot_event_classifier_names_success_and_failures, {
+    let success = decode_xhci_command_completion_event([
+        0x0000_1000,
+        0,
+        1u32 << 24,
+        (4u32 << 24) | (33u32 << 10) | 1,
+    ]);
+    match classify_enable_slot_event(0x1000, success) {
+        XhciEnableSlotStatus::SlotEnabled { slot_id } => {
+            testrt::check_eq(slot_id, 4u8);
+        }
+        _ => testrt::check(false, "successful completion enables a slot"),
+    }
+
+    let failed =
+        decode_xhci_command_completion_event([0x0000_1000, 0, 5u32 << 24, (33u32 << 10) | 1]);
+    match classify_enable_slot_event(0x1000, failed) {
+        XhciEnableSlotStatus::CommandFailed {
+            completion_code,
+            slot_id,
+        } => {
+            testrt::check_eq(completion_code, 5u8);
+            testrt::check_eq(slot_id, 0u8);
+        }
+        _ => testrt::check(false, "failed completion keeps slot unavailable"),
+    }
+
+    let wrong_type =
+        decode_xhci_command_completion_event([0x0000_1000, 0, 1u32 << 24, (32u32 << 10) | 1]);
+    match classify_enable_slot_event(0x1000, wrong_type) {
+        XhciEnableSlotStatus::UnexpectedEventType {
+            trb_type,
+            completion_code,
+        } => {
+            testrt::check_eq(trb_type, 32u8);
+            testrt::check_eq(completion_code, 1u8);
+        }
+        _ => testrt::check(false, "wrong event type is reported"),
+    }
+
+    let wrong_pointer = decode_xhci_command_completion_event([
+        0x0000_2000,
+        0,
+        1u32 << 24,
+        (2u32 << 24) | (33u32 << 10) | 1,
+    ]);
+    match classify_enable_slot_event(0x1000, wrong_pointer) {
+        XhciEnableSlotStatus::CommandPointerMismatch {
+            expected,
+            actual,
+            completion_code,
+            slot_id,
+        } => {
+            testrt::check_eq(expected, 0x1000u64);
+            testrt::check_eq(actual, 0x2000u64);
+            testrt::check_eq(completion_code, 1u8);
+            testrt::check_eq(slot_id, 2u8);
+        }
+        _ => testrt::check(false, "wrong command pointer is reported"),
     }
 });
 

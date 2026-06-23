@@ -668,7 +668,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     let exe = build_os_image(
         &[],
         Some(
-            "help\npwd\nls /\ncd /dev\npwd\nls\ncat /boot/profile\ncat /log/dmesg\ndevice\nprobe pcie\nprobe usb-keyboard\nprobe xhci-start\ndmesg\n",
+            "help\npwd\nls /\ncd /dev\npwd\nls\ncat /boot/profile\ncat /log/dmesg\ndevice\nprobe pcie\nprobe usb-keyboard\nprobe xhci-start\nprobe xhci-enable-slot\ndmesg\n",
         ),
         None,
     );
@@ -707,6 +707,10 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     assert!(
         serial.contains("probe xhci-start:\nstate=unsupported-on-this-target"),
         "x86 OS profile reports xhci-start probe unsupported; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("probe xhci-enable-slot:\nstate=unsupported-on-this-target"),
+        "x86 OS profile reports xhci-enable-slot probe unsupported; serial: {serial:?}",
     );
     assert!(serial.contains("reovim-os> /\n"), "pwd prints root cwd; serial: {serial:?}",);
     assert!(
