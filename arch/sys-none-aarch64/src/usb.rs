@@ -58,11 +58,28 @@ const XHCI_TRB_TYPE_MASK: u32 = 0x3f;
 const XHCI_TRB_COMPLETION_CODE_SHIFT: u32 = 24;
 const XHCI_ENABLE_SLOT_SLOT_TYPE_SHIFT: u32 = 16;
 const XHCI_ENABLE_SLOT_SLOT_TYPE_MASK: u8 = 0x1f;
+const XHCI_TRB_TYPE_LINK: u8 = 6;
+const XHCI_TRB_TYPE_SETUP_STAGE: u8 = 2;
+const XHCI_TRB_TYPE_DATA_STAGE: u8 = 3;
+const XHCI_TRB_TYPE_STATUS_STAGE: u8 = 4;
 const XHCI_TRB_TYPE_ENABLE_SLOT: u8 = 9;
+const XHCI_TRB_TYPE_ADDRESS_DEVICE: u8 = 11;
+const XHCI_TRB_TYPE_TRANSFER_EVENT: u8 = 32;
 const XHCI_TRB_TYPE_COMMAND_COMPLETION_EVENT: u8 = 33;
 const XHCI_TRB_COMPLETION_SUCCESS: u8 = 1;
 const XHCI_DOORBELL_COMMAND: u32 = 0;
+const XHCI_DOORBELL_CONTROL_EP0: u32 = 1;
+const XHCI_LINK_TRB_TOGGLE_CYCLE: u32 = 1 << 1;
+const XHCI_ADDRESS_DEVICE_BLOCK_SET_ADDRESS_REQUEST_BIT: u32 = 1 << 9;
 const XHCI_ERDP_EVENT_HANDLER_BUSY: u64 = 1 << 3;
+const XHCI_TRB_IOC: u32 = 1 << 5;
+const XHCI_TRB_IDT: u32 = 1 << 6;
+const XHCI_TRB_DIR_IN: u32 = 1 << 16;
+const XHCI_TRB_TRANSFER_LENGTH_MASK: u32 = 0x1_ffff;
+const XHCI_TRANSFER_EVENT_LENGTH_MASK: u32 = 0x00ff_ffff;
+const XHCI_TRANSFER_EVENT_ENDPOINT_ID_SHIFT: u32 = 16;
+const XHCI_SETUP_TRT_SHIFT: u32 = 16;
+const XHCI_SETUP_TRT_IN_DATA_STAGE: u8 = 3;
 
 const XHCI_USBCMD_RUN_STOP: u32 = 1 << 0;
 const XHCI_USBCMD_HOST_CONTROLLER_RESET: u32 = 1 << 1;
@@ -81,6 +98,8 @@ pub const BOOT_KEYBOARD_REPORT_BYTES: usize = 8;
 pub const XHCI_COMMAND_RING_TRBS: usize = 64;
 /// Number of TRBs in the first event-ring segment.
 pub const XHCI_EVENT_RING_TRBS: usize = 64;
+/// Number of TRBs in the default control endpoint transfer-ring segment.
+pub const XHCI_CONTROL_ENDPOINT_RING_TRBS: usize = 64;
 /// Number of Event Ring Segment Table entries prepared by the early provider.
 pub const XHCI_EVENT_RING_SEGMENT_TABLE_ENTRIES: usize = 1;
 /// Maximum scratchpad buffers backed by static early-driver storage.
@@ -89,6 +108,20 @@ pub const XHCI_STATIC_SCRATCHPAD_BUFFERS: usize = 8;
 pub const XHCI_PAGE_BYTES: usize = 4096;
 
 const XHCI_MAX_DEVICE_CONTEXT_POINTERS: usize = 256;
+const XHCI_CONTEXT_PAGE_BYTES: usize = 4096;
+const XHCI_ADDRESS_DEVICE_COMMAND_INDEX: usize = 1;
+const XHCI_ADDRESS_DEVICE_EVENT_INDEX: usize = 1;
+const XHCI_ADDRESS_DEVICE_BLOCK_SET_ADDRESS_REQUEST: bool = true;
+const XHCI_SET_ADDRESS_COMMAND_INDEX: usize = 2;
+const XHCI_SET_ADDRESS_EVENT_INDEX: usize = 3;
+const XHCI_GET_DESCRIPTOR_EVENT_INDEX: usize = 2;
+const XHCI_EP0_SETUP_TRB_INDEX: usize = 0;
+const XHCI_EP0_DATA_TRB_INDEX: usize = 1;
+const XHCI_EP0_STATUS_TRB_INDEX: usize = 2;
+const XHCI_DEVICE_DESCRIPTOR_PREFIX_BYTES: usize = 8;
+const USB_REQUEST_TYPE_DEVICE_TO_HOST_STANDARD_DEVICE: u8 = 0x80;
+const USB_REQUEST_GET_DESCRIPTOR: u8 = 6;
+const USB_DESCRIPTOR_TYPE_DEVICE: u8 = 1;
 const XHCI_HCCPARAMS1_CONTEXT_SIZE: u32 = 1 << 2;
 const XHCI_HCCPARAMS1_XECP_SHIFT: u32 = 16;
 const XHCI_START_WAIT_SPINS: usize = 1_000_000;
@@ -98,6 +131,22 @@ const XHCI_REQUIRED_PCI_COMMAND_BITS: u16 =
     pcie::PCI_COMMAND_MEMORY_SPACE | pcie::PCI_COMMAND_BUS_MASTER;
 const XHCI_EXT_CAP_ID_SUPPORTED_PROTOCOL: u8 = 2;
 const XHCI_EXT_CAP_MAX_STEPS: usize = 32;
+const XHCI_INPUT_CONTEXT_DROP_FLAGS_DWORD: usize = 0;
+const XHCI_INPUT_CONTEXT_ADD_FLAGS_DWORD: usize = 1;
+const XHCI_INPUT_CONTEXT_SLOT_INDEX: usize = 1;
+const XHCI_INPUT_CONTEXT_EP0_INDEX: usize = 2;
+const XHCI_INPUT_ADD_SLOT_CONTEXT: u32 = 1 << 0;
+const XHCI_INPUT_ADD_EP0_CONTEXT: u32 = 1 << 1;
+const XHCI_SLOT_CONTEXT_SPEED_SHIFT: u32 = 20;
+const XHCI_SLOT_CONTEXT_CONTEXT_ENTRIES_SHIFT: u32 = 27;
+const XHCI_SLOT_CONTEXT_ROOT_HUB_PORT_SHIFT: u32 = 16;
+const XHCI_EP_CONTEXT_CERR_SHIFT: u32 = 1;
+const XHCI_EP_CONTEXT_TYPE_SHIFT: u32 = 3;
+const XHCI_EP_CONTEXT_MAX_PACKET_SIZE_SHIFT: u32 = 16;
+const XHCI_EP_CONTEXT_TYPE_CONTROL: u8 = 4;
+const XHCI_EP_CONTEXT_CERR_DEFAULT: u8 = 3;
+const XHCI_EP_CONTEXT_DCS: u64 = 1;
+const XHCI_CONTROL_AVERAGE_TRB_LENGTH: u16 = 8;
 
 /// Read-only xHCI capability-register snapshot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -255,6 +304,12 @@ pub struct XhciDriverMemoryPlan {
     pub max_slots_enabled: u8,
     /// Size in bytes of each xHCI context structure.
     pub context_size_bytes: u8,
+    /// Input Context base address for the first manual Address Device command.
+    pub input_context: u64,
+    /// Output Device Context base address for the first enabled slot.
+    pub output_device_context: u64,
+    /// Transfer ring for default control endpoint 0.
+    pub control_endpoint_ring: u64,
 }
 
 /// Result of building an early xHCI driver-memory plan.
@@ -386,6 +441,29 @@ pub struct XhciCommandCompletionEvent {
     pub slot_id: u8,
 }
 
+/// Decoded xHCI Transfer Event TRB.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct XhciTransferEvent {
+    /// Raw TRB dwords as DMA-written by the xHC.
+    pub raw: [u32; 4],
+    /// Transfer TRB pointer reported by the event.
+    pub trb_pointer: u64,
+    /// Residual bytes not transferred for the generating TRB.
+    pub transfer_length: u32,
+    /// xHCI completion code.
+    pub completion_code: u8,
+    /// Event TRB type field.
+    pub trb_type: u8,
+    /// Event ring cycle bit.
+    pub cycle: bool,
+    /// Whether the event uses Event Data instead of a TRB pointer.
+    pub event_data: bool,
+    /// xHCI endpoint ID that produced the event.
+    pub endpoint_id: u8,
+    /// xHCI slot ID that produced the event.
+    pub slot_id: u8,
+}
+
 /// Status from issuing the first manual xHCI Enable Slot command.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum XhciEnableSlotStatus {
@@ -463,6 +541,348 @@ impl XhciEnableSlotReport {
             slot_type: 0,
             command_trb: [0; 4],
             doorbell: XHCI_DOORBELL_COMMAND,
+            event: None,
+        }
+    }
+}
+
+/// Static context values prepared for the first manual Address Device command.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct XhciAddressDeviceContexts {
+    /// Input Context base address used by the command.
+    pub input_context: u64,
+    /// Output Device Context address stored in the DCBAA slot entry.
+    pub output_device_context: u64,
+    /// Default control endpoint transfer-ring base address.
+    pub control_endpoint_ring: u64,
+    /// Drop Context flags dword.
+    pub drop_context_flags: u32,
+    /// Add Context flags dword.
+    pub add_context_flags: u32,
+    /// DCI 0 Slot Context dwords prepared in the Input Context.
+    pub slot_context: [u32; 4],
+    /// DCI 1 Endpoint 0 Context dwords prepared in the Input Context.
+    pub endpoint0_context: [u32; 5],
+    /// Default control endpoint max packet size selected from port speed.
+    pub endpoint0_max_packet_size: u16,
+}
+
+/// Status from issuing the first manual xHCI Address Device command.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum XhciAddressDeviceStatus {
+    /// Enable Slot did not complete successfully.
+    EnableSlotFailed(XhciEnableSlotStatus),
+    /// Enable Slot succeeded, but the Slot ID was unusable for the DCBAA.
+    SlotIdOutOfRange {
+        /// Slot ID returned by Enable Slot.
+        slot_id: u8,
+        /// Maximum slot ID this provider can back.
+        max_supported: u8,
+    },
+    /// No connected root port was available to build the input context.
+    NoConnectedRootPort,
+    /// Required controller-start evidence was missing.
+    StartEvidenceUnavailable,
+    /// No Command Completion Event reached event-ring entry one.
+    CommandTimedOut,
+    /// A cycle-valid event arrived, but it was not a command-completion event.
+    UnexpectedEventType {
+        /// Event TRB type field.
+        trb_type: u8,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+    },
+    /// The completion event did not point back at the Address Device command TRB.
+    CommandPointerMismatch {
+        /// Expected command TRB pointer.
+        expected: u64,
+        /// Actual pointer reported by the event.
+        actual: u64,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+        /// Slot ID carried by the event.
+        slot_id: u8,
+    },
+    /// The completion event pointed at this command but returned another Slot ID.
+    SlotIdMismatch {
+        /// Expected target slot ID.
+        expected: u8,
+        /// Actual Slot ID carried by the event.
+        actual: u8,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+    },
+    /// The command completed with a non-success code.
+    CommandFailed {
+        /// xHCI completion code.
+        completion_code: u8,
+        /// Slot ID carried by the event.
+        slot_id: u8,
+    },
+    /// Address Device with BSR=1 completed and endpoint 0 is ready.
+    DefaultControlEndpointReady {
+        /// Assigned xHCI slot ID.
+        slot_id: u8,
+    },
+}
+
+/// Evidence returned by the first manual Address Device command.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct XhciAddressDeviceReport {
+    /// Enable Slot report produced before issuing Address Device.
+    pub enable: XhciEnableSlotReport,
+    /// Final Address Device command status.
+    pub status: XhciAddressDeviceStatus,
+    /// Address Device command TRB pointer.
+    pub command_trb_pointer: u64,
+    /// Raw Address Device command TRB written by software.
+    pub command_trb: [u32; 4],
+    /// Doorbell value written to doorbell 0.
+    pub doorbell: u32,
+    /// Whether the command was issued with BSR=1.
+    pub block_set_address_request: bool,
+    /// Contexts and transfer-ring pointers prepared for the command.
+    pub contexts: Option<XhciAddressDeviceContexts>,
+    /// Command-completion event observed for Address Device, if one arrived.
+    pub event: Option<XhciCommandCompletionEvent>,
+}
+
+impl XhciAddressDeviceReport {
+    const fn new(enable: XhciEnableSlotReport, status: XhciAddressDeviceStatus) -> Self {
+        Self {
+            enable,
+            status,
+            command_trb_pointer: 0,
+            command_trb: [0; 4],
+            doorbell: XHCI_DOORBELL_COMMAND,
+            block_set_address_request: XHCI_ADDRESS_DEVICE_BLOCK_SET_ADDRESS_REQUEST,
+            contexts: None,
+            event: None,
+        }
+    }
+}
+
+/// Status from the first manual EP0 GET_DESCRIPTOR(Device) transfer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum XhciDeviceDescriptorProbeStatus {
+    /// Address Device did not reach default-control-endpoint readiness.
+    AddressDeviceFailed(XhciAddressDeviceStatus),
+    /// Required controller-start evidence was missing.
+    StartEvidenceUnavailable,
+    /// No Transfer Event reached the expected event-ring entry.
+    TransferTimedOut,
+    /// A cycle-valid event arrived, but it was not a transfer event.
+    UnexpectedEventType {
+        /// Event TRB type field.
+        trb_type: u8,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+    },
+    /// The transfer event did not point at the Status Stage TRB.
+    TransferPointerMismatch {
+        /// Expected Status Stage TRB pointer.
+        expected: u64,
+        /// Actual pointer reported by the event.
+        actual: u64,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+        /// Slot ID carried by the event.
+        slot_id: u8,
+        /// Endpoint ID carried by the event.
+        endpoint_id: u8,
+    },
+    /// The transfer event reported a different Slot ID.
+    SlotIdMismatch {
+        /// Expected target slot ID.
+        expected: u8,
+        /// Actual Slot ID carried by the event.
+        actual: u8,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+    },
+    /// The transfer event reported a different Endpoint ID.
+    EndpointIdMismatch {
+        /// Expected endpoint ID.
+        expected: u8,
+        /// Actual Endpoint ID carried by the event.
+        actual: u8,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+    },
+    /// The transfer completed with a non-success code.
+    TransferFailed {
+        /// xHCI completion code.
+        completion_code: u8,
+        /// Residual bytes not transferred for the generating TRB.
+        residual_length: u32,
+        /// Slot ID carried by the event.
+        slot_id: u8,
+        /// Endpoint ID carried by the event.
+        endpoint_id: u8,
+    },
+    /// The first bytes of the USB Device Descriptor are in the report buffer.
+    DescriptorPrefixReady {
+        /// Assigned xHCI slot ID.
+        slot_id: u8,
+        /// Number of descriptor bytes requested.
+        length: u8,
+    },
+}
+
+/// Evidence returned by the first manual EP0 GET_DESCRIPTOR(Device) transfer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct XhciDeviceDescriptorProbeReport {
+    /// Address Device report produced before queuing the control transfer.
+    pub address: XhciAddressDeviceReport,
+    /// Final transfer status.
+    pub status: XhciDeviceDescriptorProbeStatus,
+    /// xHCI slot ID targeted by the transfer.
+    pub slot_id: u8,
+    /// xHCI endpoint ID targeted by the transfer.
+    pub endpoint_id: u8,
+    /// Doorbell value written to the device slot.
+    pub doorbell: u32,
+    /// Setup Stage TRB pointer.
+    pub setup_trb_pointer: u64,
+    /// Data Stage TRB pointer.
+    pub data_trb_pointer: u64,
+    /// Status Stage TRB pointer.
+    pub status_trb_pointer: u64,
+    /// Raw Setup Stage TRB written by software.
+    pub setup_trb: [u32; 4],
+    /// Raw Data Stage TRB written by software.
+    pub data_trb: [u32; 4],
+    /// Raw Status Stage TRB written by software.
+    pub status_trb: [u32; 4],
+    /// DMA buffer address used for descriptor bytes.
+    pub descriptor_buffer: u64,
+    /// Descriptor bytes captured after a successful transfer.
+    pub descriptor: [u8; XHCI_DEVICE_DESCRIPTOR_PREFIX_BYTES],
+    /// Transfer event observed for the Status Stage TRB, if one arrived.
+    pub event: Option<XhciTransferEvent>,
+}
+
+impl XhciDeviceDescriptorProbeReport {
+    const fn new(
+        address: XhciAddressDeviceReport,
+        status: XhciDeviceDescriptorProbeStatus,
+    ) -> Self {
+        Self {
+            address,
+            status,
+            slot_id: 0,
+            endpoint_id: XHCI_DOORBELL_CONTROL_EP0 as u8,
+            doorbell: XHCI_DOORBELL_CONTROL_EP0,
+            setup_trb_pointer: 0,
+            data_trb_pointer: 0,
+            status_trb_pointer: 0,
+            setup_trb: [0; 4],
+            data_trb: [0; 4],
+            status_trb: [0; 4],
+            descriptor_buffer: 0,
+            descriptor: [0; XHCI_DEVICE_DESCRIPTOR_PREFIX_BYTES],
+            event: None,
+        }
+    }
+}
+
+/// Status from the manual Address Device command with BSR=0.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum XhciSetAddressStatus {
+    /// The descriptor-prefix probe did not complete successfully.
+    DescriptorPrefixFailed(XhciDeviceDescriptorProbeStatus),
+    /// Required controller-start evidence was missing.
+    StartEvidenceUnavailable,
+    /// Descriptor bytes were not a minimally valid USB Device Descriptor prefix.
+    InvalidDescriptorPrefix {
+        /// USB descriptor bLength byte.
+        length: u8,
+        /// USB descriptor bDescriptorType byte.
+        descriptor_type: u8,
+        /// Raw bMaxPacketSize0 byte.
+        max_packet_size0: u8,
+        /// Raw bcdUSB field.
+        bcd_usb: u16,
+    },
+    /// No Command Completion Event reached the expected event-ring entry.
+    CommandTimedOut,
+    /// A cycle-valid event arrived, but it was not a command-completion event.
+    UnexpectedEventType {
+        /// Event TRB type field.
+        trb_type: u8,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+    },
+    /// The completion event did not point back at the Address Device command TRB.
+    CommandPointerMismatch {
+        /// Expected command TRB pointer.
+        expected: u64,
+        /// Actual pointer reported by the event.
+        actual: u64,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+        /// Slot ID carried by the event.
+        slot_id: u8,
+    },
+    /// The completion event pointed at this command but returned another Slot ID.
+    SlotIdMismatch {
+        /// Expected target slot ID.
+        expected: u8,
+        /// Actual Slot ID carried by the event.
+        actual: u8,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+    },
+    /// The command completed with a non-success code.
+    CommandFailed {
+        /// xHCI completion code.
+        completion_code: u8,
+        /// Slot ID carried by the event.
+        slot_id: u8,
+    },
+    /// Address Device with BSR=0 completed and the slot is addressed.
+    Addressed {
+        /// Assigned xHCI slot ID.
+        slot_id: u8,
+        /// Endpoint 0 max-packet size used in the command context.
+        endpoint0_max_packet_size: u16,
+    },
+}
+
+/// Evidence returned by the manual Address Device command with BSR=0.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct XhciSetAddressReport {
+    /// Descriptor-prefix report produced before issuing BSR=0.
+    pub descriptor: XhciDeviceDescriptorProbeReport,
+    /// Final set-address command status.
+    pub status: XhciSetAddressStatus,
+    /// Address Device command TRB pointer.
+    pub command_trb_pointer: u64,
+    /// Raw Address Device command TRB written by software.
+    pub command_trb: [u32; 4],
+    /// Doorbell value written to doorbell 0.
+    pub doorbell: u32,
+    /// Contexts and transfer-ring pointers prepared for the command.
+    pub contexts: Option<XhciAddressDeviceContexts>,
+    /// Endpoint 0 max-packet size decoded from the descriptor prefix.
+    pub endpoint0_max_packet_size: u16,
+    /// Command-completion event observed for Address Device, if one arrived.
+    pub event: Option<XhciCommandCompletionEvent>,
+}
+
+impl XhciSetAddressReport {
+    const fn new(
+        descriptor: XhciDeviceDescriptorProbeReport,
+        status: XhciSetAddressStatus,
+    ) -> Self {
+        Self {
+            descriptor,
+            status,
+            command_trb_pointer: 0,
+            command_trb: [0; 4],
+            doorbell: XHCI_DOORBELL_COMMAND,
+            contexts: None,
+            endpoint0_max_packet_size: 0,
             event: None,
         }
     }
@@ -822,6 +1242,282 @@ pub fn enable_slot_on_pcie_xhci_controller() -> XhciEnableSlotReport {
     report
 }
 
+/// Starts xHCI, enables one slot, issues Address Device with BSR=1, and reads completion.
+///
+/// BSR=1 deliberately blocks the USB SET_ADDRESS request. This only asks the
+/// xHC to install the slot/default-control-endpoint contexts and move the slot
+/// into the Default state, which is the next manual bring-up checkpoint before
+/// descriptor requests and HID interface selection.
+pub fn address_device_on_pcie_xhci_controller() -> XhciAddressDeviceReport {
+    let enable = enable_slot_on_pcie_xhci_controller();
+    let slot_id = match enable.status {
+        XhciEnableSlotStatus::SlotEnabled { slot_id } => slot_id,
+        status => {
+            return XhciAddressDeviceReport::new(
+                enable,
+                XhciAddressDeviceStatus::EnableSlotFailed(status),
+            );
+        }
+    };
+
+    let (Some(mmio), Some(caps), Some(plan)) =
+        (enable.start.mmio_base, enable.start.capabilities, enable.start.memory)
+    else {
+        return XhciAddressDeviceReport::new(
+            enable,
+            XhciAddressDeviceStatus::StartEvidenceUnavailable,
+        );
+    };
+
+    if slot_id == 0
+        || slot_id > caps.max_device_slots
+        || slot_id as usize >= XHCI_MAX_DEVICE_CONTEXT_POINTERS
+    {
+        return XhciAddressDeviceReport::new(
+            enable,
+            XhciAddressDeviceStatus::SlotIdOutOfRange {
+                slot_id,
+                max_supported: caps
+                    .max_device_slots
+                    .min((XHCI_MAX_DEVICE_CONTEXT_POINTERS - 1) as u8),
+            },
+        );
+    }
+
+    let Some(port) = enable.connected_port else {
+        return XhciAddressDeviceReport::new(enable, XhciAddressDeviceStatus::NoConnectedRootPort);
+    };
+
+    let contexts = xhci_address_device_contexts(plan, port);
+    write_xhci_address_device_contexts(plan, slot_id, contexts, true);
+
+    let command_trb_pointer = XHCI_COMMAND_RING.trb_addr(XHCI_ADDRESS_DEVICE_COMMAND_INDEX);
+    let command_trb = xhci_address_device_command_trb(
+        contexts.input_context,
+        slot_id,
+        XHCI_ADDRESS_DEVICE_BLOCK_SET_ADDRESS_REQUEST,
+    );
+    XHCI_COMMAND_RING.set_trb(XHCI_ADDRESS_DEVICE_COMMAND_INDEX, command_trb);
+    dma_clean_range(command_trb_pointer, XHCI_TRB_BYTES);
+
+    let mut report = XhciAddressDeviceReport {
+        enable,
+        status: XhciAddressDeviceStatus::CommandTimedOut,
+        command_trb_pointer,
+        command_trb,
+        doorbell: XHCI_DOORBELL_COMMAND,
+        block_set_address_request: XHCI_ADDRESS_DEVICE_BLOCK_SET_ADDRESS_REQUEST,
+        contexts: Some(contexts),
+        event: None,
+    };
+
+    compiler_fence(Ordering::SeqCst);
+    write_mmio_u32(mmio + caps.doorbell_offset as usize, XHCI_DOORBELL_COMMAND);
+
+    if let Some(event) =
+        wait_for_xhci_command_completion_event(plan, XHCI_ADDRESS_DEVICE_EVENT_INDEX)
+    {
+        acknowledge_xhci_event(
+            mmio,
+            caps,
+            plan.event_ring + ((XHCI_ADDRESS_DEVICE_EVENT_INDEX + 1) * XHCI_TRB_BYTES) as u64,
+        );
+        report.event = Some(event);
+        report.status = classify_address_device_event(command_trb_pointer, slot_id, event);
+    }
+
+    report
+}
+
+/// Issues a manual EP0 GET_DESCRIPTOR(Device) transfer after Address Device.
+///
+/// This is a diagnostic step toward HID enumeration. It reads only the first
+/// eight descriptor bytes needed to learn the real EP0 max-packet size; it does
+/// not SET_ADDRESS, configure interfaces, poll interrupt endpoints, or claim
+/// keyboard readiness.
+pub fn get_device_descriptor_prefix_on_pcie_xhci_controller() -> XhciDeviceDescriptorProbeReport {
+    let address = address_device_on_pcie_xhci_controller();
+    let slot_id = match address.status {
+        XhciAddressDeviceStatus::DefaultControlEndpointReady { slot_id } => slot_id,
+        status => {
+            return XhciDeviceDescriptorProbeReport::new(
+                address,
+                XhciDeviceDescriptorProbeStatus::AddressDeviceFailed(status),
+            );
+        }
+    };
+
+    let (Some(mmio), Some(caps), Some(plan)) = (
+        address.enable.start.mmio_base,
+        address.enable.start.capabilities,
+        address.enable.start.memory,
+    ) else {
+        return XhciDeviceDescriptorProbeReport::new(
+            address,
+            XhciDeviceDescriptorProbeStatus::StartEvidenceUnavailable,
+        );
+    };
+
+    let setup_trb_pointer = XHCI_CONTROL_ENDPOINT_RING.trb_addr(XHCI_EP0_SETUP_TRB_INDEX);
+    let data_trb_pointer = XHCI_CONTROL_ENDPOINT_RING.trb_addr(XHCI_EP0_DATA_TRB_INDEX);
+    let status_trb_pointer = XHCI_CONTROL_ENDPOINT_RING.trb_addr(XHCI_EP0_STATUS_TRB_INDEX);
+    let descriptor_buffer = XHCI_DEVICE_DESCRIPTOR_PREFIX.addr();
+
+    XHCI_DEVICE_DESCRIPTOR_PREFIX.zero();
+    let setup = XhciSetupPacket {
+        bm_request_type: USB_REQUEST_TYPE_DEVICE_TO_HOST_STANDARD_DEVICE,
+        b_request: USB_REQUEST_GET_DESCRIPTOR,
+        w_value: (USB_DESCRIPTOR_TYPE_DEVICE as u16) << 8,
+        w_index: 0,
+        w_length: XHCI_DEVICE_DESCRIPTOR_PREFIX_BYTES as u16,
+    };
+    let setup_trb = xhci_setup_stage_trb(setup);
+    let data_trb =
+        xhci_data_stage_trb(descriptor_buffer, XHCI_DEVICE_DESCRIPTOR_PREFIX_BYTES as u32, true);
+    let status_trb = xhci_status_stage_trb(false);
+
+    XHCI_CONTROL_ENDPOINT_RING.set_trb(XHCI_EP0_SETUP_TRB_INDEX, setup_trb);
+    XHCI_CONTROL_ENDPOINT_RING.set_trb(XHCI_EP0_DATA_TRB_INDEX, data_trb);
+    XHCI_CONTROL_ENDPOINT_RING.set_trb(XHCI_EP0_STATUS_TRB_INDEX, status_trb);
+    XHCI_CONTROL_ENDPOINT_RING
+        .set_trb(XHCI_CONTROL_ENDPOINT_RING_TRBS - 1, xhci_link_trb(plan.control_endpoint_ring));
+    dma_clean_range(plan.control_endpoint_ring, XHCI_CONTROL_ENDPOINT_RING_TRBS * XHCI_TRB_BYTES);
+    dma_clean_range(descriptor_buffer, XHCI_DEVICE_DESCRIPTOR_PREFIX_BYTES);
+
+    let mut report = XhciDeviceDescriptorProbeReport {
+        address,
+        status: XhciDeviceDescriptorProbeStatus::TransferTimedOut,
+        slot_id,
+        endpoint_id: XHCI_DOORBELL_CONTROL_EP0 as u8,
+        doorbell: XHCI_DOORBELL_CONTROL_EP0,
+        setup_trb_pointer,
+        data_trb_pointer,
+        status_trb_pointer,
+        setup_trb,
+        data_trb,
+        status_trb,
+        descriptor_buffer,
+        descriptor: [0; XHCI_DEVICE_DESCRIPTOR_PREFIX_BYTES],
+        event: None,
+    };
+
+    compiler_fence(Ordering::SeqCst);
+    write_mmio_u32(
+        mmio + caps.doorbell_offset as usize + (slot_id as usize * core::mem::size_of::<u32>()),
+        XHCI_DOORBELL_CONTROL_EP0,
+    );
+
+    if let Some(event) = wait_for_xhci_transfer_event(plan, XHCI_GET_DESCRIPTOR_EVENT_INDEX) {
+        acknowledge_xhci_event(
+            mmio,
+            caps,
+            plan.event_ring + ((XHCI_GET_DESCRIPTOR_EVENT_INDEX + 1) * XHCI_TRB_BYTES) as u64,
+        );
+        dma_invalidate_range(descriptor_buffer, XHCI_DEVICE_DESCRIPTOR_PREFIX_BYTES);
+        report.descriptor = XHCI_DEVICE_DESCRIPTOR_PREFIX.read();
+        report.event = Some(event);
+        report.status = classify_device_descriptor_transfer_event(
+            status_trb_pointer,
+            slot_id,
+            XHCI_DOORBELL_CONTROL_EP0 as u8,
+            event,
+        );
+    }
+
+    report
+}
+
+/// Issues Address Device with BSR=0 after reading the descriptor prefix.
+///
+/// This is the checkpoint where xHC sends the USB SET_ADDRESS request and moves
+/// the slot from Default to Addressed. It still does not read full
+/// configuration descriptors, configure endpoints, or claim keyboard readiness.
+pub fn set_address_on_pcie_xhci_controller() -> XhciSetAddressReport {
+    let descriptor = get_device_descriptor_prefix_on_pcie_xhci_controller();
+    let slot_id = match descriptor.status {
+        XhciDeviceDescriptorProbeStatus::DescriptorPrefixReady { slot_id, .. } => slot_id,
+        status => {
+            return XhciSetAddressReport::new(
+                descriptor,
+                XhciSetAddressStatus::DescriptorPrefixFailed(status),
+            );
+        }
+    };
+
+    let (Some(mmio), Some(caps), Some(plan)) = (
+        descriptor.address.enable.start.mmio_base,
+        descriptor.address.enable.start.capabilities,
+        descriptor.address.enable.start.memory,
+    ) else {
+        return XhciSetAddressReport::new(
+            descriptor,
+            XhciSetAddressStatus::StartEvidenceUnavailable,
+        );
+    };
+
+    let Some(endpoint0_max_packet_size) =
+        usb_descriptor_endpoint0_max_packet_size(descriptor.descriptor)
+    else {
+        return XhciSetAddressReport::new(
+            descriptor,
+            XhciSetAddressStatus::InvalidDescriptorPrefix {
+                length: descriptor.descriptor[0],
+                descriptor_type: descriptor.descriptor[1],
+                max_packet_size0: descriptor.descriptor[7],
+                bcd_usb: u16::from_le_bytes([descriptor.descriptor[2], descriptor.descriptor[3]]),
+            },
+        );
+    };
+
+    let Some(port) = descriptor.address.enable.connected_port else {
+        return XhciSetAddressReport::new(
+            descriptor,
+            XhciSetAddressStatus::StartEvidenceUnavailable,
+        );
+    };
+
+    let contexts =
+        xhci_address_device_contexts_with_max_packet_size(plan, port, endpoint0_max_packet_size);
+    write_xhci_address_device_contexts(plan, slot_id, contexts, false);
+
+    let command_trb_pointer = XHCI_COMMAND_RING.trb_addr(XHCI_SET_ADDRESS_COMMAND_INDEX);
+    let command_trb = xhci_address_device_command_trb(contexts.input_context, slot_id, false);
+    XHCI_COMMAND_RING.set_trb(XHCI_SET_ADDRESS_COMMAND_INDEX, command_trb);
+    dma_clean_range(command_trb_pointer, XHCI_TRB_BYTES);
+
+    let mut report = XhciSetAddressReport {
+        descriptor,
+        status: XhciSetAddressStatus::CommandTimedOut,
+        command_trb_pointer,
+        command_trb,
+        doorbell: XHCI_DOORBELL_COMMAND,
+        contexts: Some(contexts),
+        endpoint0_max_packet_size,
+        event: None,
+    };
+
+    compiler_fence(Ordering::SeqCst);
+    write_mmio_u32(mmio + caps.doorbell_offset as usize, XHCI_DOORBELL_COMMAND);
+
+    if let Some(event) = wait_for_xhci_command_completion_event(plan, XHCI_SET_ADDRESS_EVENT_INDEX)
+    {
+        acknowledge_xhci_event(
+            mmio,
+            caps,
+            plan.event_ring + ((XHCI_SET_ADDRESS_EVENT_INDEX + 1) * XHCI_TRB_BYTES) as u64,
+        );
+        report.event = Some(event);
+        report.status = classify_set_address_event(
+            command_trb_pointer,
+            slot_id,
+            endpoint0_max_packet_size,
+            event,
+        );
+    }
+
+    report
+}
+
 /// Polls the lower USB boot-keyboard provider without blocking.
 ///
 /// The current implementation reaches the real PCIe/xHCI discovery and port
@@ -1005,6 +1701,9 @@ pub fn prepare_xhci_driver_memory(caps: XhciCapabilities) -> XhciDriverMemorySta
     XHCI_ERST.zero();
     XHCI_SCRATCHPAD_ARRAY.zero();
     XHCI_SCRATCHPAD_PAGES.zero();
+    XHCI_INPUT_CONTEXT.zero();
+    XHCI_OUTPUT_DEVICE_CONTEXT.zero();
+    XHCI_CONTROL_ENDPOINT_RING.zero();
 
     if plan.scratchpad_buffers > 0 {
         let mut index = 0usize;
@@ -1155,6 +1854,44 @@ fn acknowledge_xhci_event(base: usize, caps: XhciCapabilities, event_dequeue_poi
     write_mmio_u32(op_base + XHCI_OP_USBSTS, XHCI_USBSTS_EVENT_INTERRUPT);
 }
 
+fn wait_for_xhci_command_completion_event(
+    plan: XhciDriverMemoryPlan,
+    event_index: usize,
+) -> Option<XhciCommandCompletionEvent> {
+    let event_addr = plan.event_ring + (event_index * XHCI_TRB_BYTES) as u64;
+    let mut spins = 0usize;
+    while spins < XHCI_COMMAND_WAIT_SPINS {
+        dma_invalidate_range(event_addr, XHCI_TRB_BYTES);
+        let event = decode_xhci_command_completion_event(XHCI_EVENT_RING.read_trb(event_index));
+        if event.cycle {
+            return Some(event);
+        }
+
+        core::hint::spin_loop();
+        spins += 1;
+    }
+    None
+}
+
+fn wait_for_xhci_transfer_event(
+    plan: XhciDriverMemoryPlan,
+    event_index: usize,
+) -> Option<XhciTransferEvent> {
+    let event_addr = plan.event_ring + (event_index * XHCI_TRB_BYTES) as u64;
+    let mut spins = 0usize;
+    while spins < XHCI_COMMAND_WAIT_SPINS {
+        dma_invalidate_range(event_addr, XHCI_TRB_BYTES);
+        let event = decode_xhci_transfer_event(XHCI_EVENT_RING.read_trb(event_index));
+        if event.cycle {
+            return Some(event);
+        }
+
+        core::hint::spin_loop();
+        spins += 1;
+    }
+    None
+}
+
 fn xhci_enable_slot_command_trb(slot_type: u8) -> [u32; 4] {
     [
         0,
@@ -1166,6 +1903,191 @@ fn xhci_enable_slot_command_trb(slot_type: u8) -> [u32; 4] {
     ]
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct XhciSetupPacket {
+    bm_request_type: u8,
+    b_request: u8,
+    w_value: u16,
+    w_index: u16,
+    w_length: u16,
+}
+
+fn xhci_setup_stage_trb(setup: XhciSetupPacket) -> [u32; 4] {
+    [
+        setup.bm_request_type as u32
+            | ((setup.b_request as u32) << 8)
+            | ((setup.w_value as u32) << 16),
+        setup.w_index as u32 | ((setup.w_length as u32) << 16),
+        XHCI_DEVICE_DESCRIPTOR_PREFIX_BYTES as u32,
+        ((XHCI_SETUP_TRT_IN_DATA_STAGE as u32) << XHCI_SETUP_TRT_SHIFT)
+            | ((XHCI_TRB_TYPE_SETUP_STAGE as u32) << XHCI_TRB_TYPE_SHIFT)
+            | XHCI_TRB_IDT
+            | XHCI_TRB_CYCLE,
+    ]
+}
+
+fn xhci_data_stage_trb(data_buffer: u64, length: u32, input: bool) -> [u32; 4] {
+    let direction = if input { XHCI_TRB_DIR_IN } else { 0 };
+    [
+        data_buffer as u32,
+        (data_buffer >> 32) as u32,
+        length & XHCI_TRB_TRANSFER_LENGTH_MASK,
+        direction | ((XHCI_TRB_TYPE_DATA_STAGE as u32) << XHCI_TRB_TYPE_SHIFT) | XHCI_TRB_CYCLE,
+    ]
+}
+
+fn xhci_status_stage_trb(input: bool) -> [u32; 4] {
+    let direction = if input { XHCI_TRB_DIR_IN } else { 0 };
+    [
+        0,
+        0,
+        0,
+        direction
+            | ((XHCI_TRB_TYPE_STATUS_STAGE as u32) << XHCI_TRB_TYPE_SHIFT)
+            | XHCI_TRB_IOC
+            | XHCI_TRB_CYCLE,
+    ]
+}
+
+fn xhci_address_device_command_trb(
+    input_context: u64,
+    slot_id: u8,
+    block_set_address_request: bool,
+) -> [u32; 4] {
+    let pointer = input_context & !0xf;
+    let bsr = if block_set_address_request {
+        XHCI_ADDRESS_DEVICE_BLOCK_SET_ADDRESS_REQUEST_BIT
+    } else {
+        0
+    };
+    [
+        pointer as u32,
+        (pointer >> 32) as u32,
+        0,
+        ((slot_id as u32) << 24)
+            | ((XHCI_TRB_TYPE_ADDRESS_DEVICE as u32) << XHCI_TRB_TYPE_SHIFT)
+            | bsr
+            | XHCI_TRB_CYCLE,
+    ]
+}
+
+fn xhci_link_trb(ring_addr: u64) -> [u32; 4] {
+    [
+        ring_addr as u32,
+        (ring_addr >> 32) as u32,
+        0,
+        ((XHCI_TRB_TYPE_LINK as u32) << XHCI_TRB_TYPE_SHIFT) | XHCI_LINK_TRB_TOGGLE_CYCLE,
+    ]
+}
+
+fn xhci_address_device_contexts(
+    plan: XhciDriverMemoryPlan,
+    port: XhciPortSnapshot,
+) -> XhciAddressDeviceContexts {
+    let endpoint0_max_packet_size = xhci_default_control_max_packet_size(port.speed);
+    xhci_address_device_contexts_with_max_packet_size(plan, port, endpoint0_max_packet_size)
+}
+
+fn xhci_address_device_contexts_with_max_packet_size(
+    plan: XhciDriverMemoryPlan,
+    port: XhciPortSnapshot,
+    endpoint0_max_packet_size: u16,
+) -> XhciAddressDeviceContexts {
+    let endpoint0_dequeue_pointer = plan.control_endpoint_ring | XHCI_EP_CONTEXT_DCS;
+    XhciAddressDeviceContexts {
+        input_context: plan.input_context,
+        output_device_context: plan.output_device_context,
+        control_endpoint_ring: plan.control_endpoint_ring,
+        drop_context_flags: 0,
+        add_context_flags: XHCI_INPUT_ADD_SLOT_CONTEXT | XHCI_INPUT_ADD_EP0_CONTEXT,
+        slot_context: [
+            ((port.speed as u32) << XHCI_SLOT_CONTEXT_SPEED_SHIFT)
+                | (1 << XHCI_SLOT_CONTEXT_CONTEXT_ENTRIES_SHIFT),
+            (port.port as u32) << XHCI_SLOT_CONTEXT_ROOT_HUB_PORT_SHIFT,
+            0,
+            0,
+        ],
+        endpoint0_context: [
+            0,
+            ((endpoint0_max_packet_size as u32) << XHCI_EP_CONTEXT_MAX_PACKET_SIZE_SHIFT)
+                | ((XHCI_EP_CONTEXT_TYPE_CONTROL as u32) << XHCI_EP_CONTEXT_TYPE_SHIFT)
+                | ((XHCI_EP_CONTEXT_CERR_DEFAULT as u32) << XHCI_EP_CONTEXT_CERR_SHIFT),
+            endpoint0_dequeue_pointer as u32,
+            (endpoint0_dequeue_pointer >> 32) as u32,
+            XHCI_CONTROL_AVERAGE_TRB_LENGTH as u32,
+        ],
+        endpoint0_max_packet_size,
+    }
+}
+
+fn xhci_default_control_max_packet_size(port_speed: u8) -> u16 {
+    match port_speed {
+        3 => 64,
+        4..=15 => 512,
+        _ => 8,
+    }
+}
+
+fn write_xhci_address_device_contexts(
+    plan: XhciDriverMemoryPlan,
+    slot_id: u8,
+    contexts: XhciAddressDeviceContexts,
+    clear_output_device_context: bool,
+) {
+    XHCI_INPUT_CONTEXT.zero();
+    if clear_output_device_context {
+        XHCI_OUTPUT_DEVICE_CONTEXT.zero();
+    }
+    XHCI_CONTROL_ENDPOINT_RING.zero();
+    XHCI_CONTROL_ENDPOINT_RING
+        .set_trb(XHCI_CONTROL_ENDPOINT_RING_TRBS - 1, xhci_link_trb(plan.control_endpoint_ring));
+    XHCI_DCBAA.set(slot_id as usize, plan.output_device_context);
+
+    XHCI_INPUT_CONTEXT.set_u32(
+        xhci_context_dword_offset(plan.context_size_bytes, 0, XHCI_INPUT_CONTEXT_DROP_FLAGS_DWORD),
+        contexts.drop_context_flags,
+    );
+    XHCI_INPUT_CONTEXT.set_u32(
+        xhci_context_dword_offset(plan.context_size_bytes, 0, XHCI_INPUT_CONTEXT_ADD_FLAGS_DWORD),
+        contexts.add_context_flags,
+    );
+
+    let mut index = 0usize;
+    while index < contexts.slot_context.len() {
+        XHCI_INPUT_CONTEXT.set_u32(
+            xhci_context_dword_offset(
+                plan.context_size_bytes,
+                XHCI_INPUT_CONTEXT_SLOT_INDEX,
+                index,
+            ),
+            contexts.slot_context[index],
+        );
+        index += 1;
+    }
+
+    index = 0;
+    while index < contexts.endpoint0_context.len() {
+        XHCI_INPUT_CONTEXT.set_u32(
+            xhci_context_dword_offset(plan.context_size_bytes, XHCI_INPUT_CONTEXT_EP0_INDEX, index),
+            contexts.endpoint0_context[index],
+        );
+        index += 1;
+    }
+
+    dma_clean_range(plan.dcbaa, XHCI_MAX_DEVICE_CONTEXT_POINTERS * core::mem::size_of::<u64>());
+    dma_clean_range(plan.input_context, XHCI_CONTEXT_PAGE_BYTES);
+    dma_clean_range(plan.output_device_context, XHCI_CONTEXT_PAGE_BYTES);
+    dma_clean_range(plan.control_endpoint_ring, XHCI_CONTROL_ENDPOINT_RING_TRBS * XHCI_TRB_BYTES);
+}
+
+const fn xhci_context_dword_offset(
+    context_size_bytes: u8,
+    context_index: usize,
+    dword: usize,
+) -> usize {
+    (context_index * context_size_bytes as usize) + (dword * core::mem::size_of::<u32>())
+}
+
 fn decode_xhci_command_completion_event(raw: [u32; 4]) -> XhciCommandCompletionEvent {
     XhciCommandCompletionEvent {
         raw,
@@ -1173,6 +2095,20 @@ fn decode_xhci_command_completion_event(raw: [u32; 4]) -> XhciCommandCompletionE
         completion_code: (raw[2] >> XHCI_TRB_COMPLETION_CODE_SHIFT) as u8,
         trb_type: ((raw[3] >> XHCI_TRB_TYPE_SHIFT) & XHCI_TRB_TYPE_MASK) as u8,
         cycle: raw[3] & XHCI_TRB_CYCLE != 0,
+        slot_id: (raw[3] >> 24) as u8,
+    }
+}
+
+fn decode_xhci_transfer_event(raw: [u32; 4]) -> XhciTransferEvent {
+    XhciTransferEvent {
+        raw,
+        trb_pointer: (((raw[1] as u64) << 32) | raw[0] as u64) & !0xf,
+        transfer_length: raw[2] & XHCI_TRANSFER_EVENT_LENGTH_MASK,
+        completion_code: (raw[2] >> XHCI_TRB_COMPLETION_CODE_SHIFT) as u8,
+        trb_type: ((raw[3] >> XHCI_TRB_TYPE_SHIFT) & XHCI_TRB_TYPE_MASK) as u8,
+        cycle: raw[3] & XHCI_TRB_CYCLE != 0,
+        event_data: raw[3] & (1 << 2) != 0,
+        endpoint_id: ((raw[3] >> XHCI_TRANSFER_EVENT_ENDPOINT_ID_SHIFT) & 0x1f) as u8,
         slot_id: (raw[3] >> 24) as u8,
     }
 }
@@ -1206,6 +2142,150 @@ fn classify_enable_slot_event(
     }
 }
 
+fn classify_address_device_event(
+    expected_command_trb_pointer: u64,
+    expected_slot_id: u8,
+    event: XhciCommandCompletionEvent,
+) -> XhciAddressDeviceStatus {
+    if event.trb_type != XHCI_TRB_TYPE_COMMAND_COMPLETION_EVENT {
+        return XhciAddressDeviceStatus::UnexpectedEventType {
+            trb_type: event.trb_type,
+            completion_code: event.completion_code,
+        };
+    }
+    if event.command_trb_pointer != expected_command_trb_pointer {
+        return XhciAddressDeviceStatus::CommandPointerMismatch {
+            expected: expected_command_trb_pointer,
+            actual: event.command_trb_pointer,
+            completion_code: event.completion_code,
+            slot_id: event.slot_id,
+        };
+    }
+    if event.slot_id != expected_slot_id {
+        return XhciAddressDeviceStatus::SlotIdMismatch {
+            expected: expected_slot_id,
+            actual: event.slot_id,
+            completion_code: event.completion_code,
+        };
+    }
+    if event.completion_code != XHCI_TRB_COMPLETION_SUCCESS {
+        return XhciAddressDeviceStatus::CommandFailed {
+            completion_code: event.completion_code,
+            slot_id: event.slot_id,
+        };
+    }
+    XhciAddressDeviceStatus::DefaultControlEndpointReady {
+        slot_id: event.slot_id,
+    }
+}
+
+fn classify_set_address_event(
+    expected_command_trb_pointer: u64,
+    expected_slot_id: u8,
+    endpoint0_max_packet_size: u16,
+    event: XhciCommandCompletionEvent,
+) -> XhciSetAddressStatus {
+    if event.trb_type != XHCI_TRB_TYPE_COMMAND_COMPLETION_EVENT {
+        return XhciSetAddressStatus::UnexpectedEventType {
+            trb_type: event.trb_type,
+            completion_code: event.completion_code,
+        };
+    }
+    if event.command_trb_pointer != expected_command_trb_pointer {
+        return XhciSetAddressStatus::CommandPointerMismatch {
+            expected: expected_command_trb_pointer,
+            actual: event.command_trb_pointer,
+            completion_code: event.completion_code,
+            slot_id: event.slot_id,
+        };
+    }
+    if event.slot_id != expected_slot_id {
+        return XhciSetAddressStatus::SlotIdMismatch {
+            expected: expected_slot_id,
+            actual: event.slot_id,
+            completion_code: event.completion_code,
+        };
+    }
+    if event.completion_code != XHCI_TRB_COMPLETION_SUCCESS {
+        return XhciSetAddressStatus::CommandFailed {
+            completion_code: event.completion_code,
+            slot_id: event.slot_id,
+        };
+    }
+    XhciSetAddressStatus::Addressed {
+        slot_id: event.slot_id,
+        endpoint0_max_packet_size,
+    }
+}
+
+fn classify_device_descriptor_transfer_event(
+    expected_status_trb_pointer: u64,
+    expected_slot_id: u8,
+    expected_endpoint_id: u8,
+    event: XhciTransferEvent,
+) -> XhciDeviceDescriptorProbeStatus {
+    if event.trb_type != XHCI_TRB_TYPE_TRANSFER_EVENT {
+        return XhciDeviceDescriptorProbeStatus::UnexpectedEventType {
+            trb_type: event.trb_type,
+            completion_code: event.completion_code,
+        };
+    }
+    if event.trb_pointer != expected_status_trb_pointer {
+        return XhciDeviceDescriptorProbeStatus::TransferPointerMismatch {
+            expected: expected_status_trb_pointer,
+            actual: event.trb_pointer,
+            completion_code: event.completion_code,
+            slot_id: event.slot_id,
+            endpoint_id: event.endpoint_id,
+        };
+    }
+    if event.slot_id != expected_slot_id {
+        return XhciDeviceDescriptorProbeStatus::SlotIdMismatch {
+            expected: expected_slot_id,
+            actual: event.slot_id,
+            completion_code: event.completion_code,
+        };
+    }
+    if event.endpoint_id != expected_endpoint_id {
+        return XhciDeviceDescriptorProbeStatus::EndpointIdMismatch {
+            expected: expected_endpoint_id,
+            actual: event.endpoint_id,
+            completion_code: event.completion_code,
+        };
+    }
+    if event.completion_code != XHCI_TRB_COMPLETION_SUCCESS {
+        return XhciDeviceDescriptorProbeStatus::TransferFailed {
+            completion_code: event.completion_code,
+            residual_length: event.transfer_length,
+            slot_id: event.slot_id,
+            endpoint_id: event.endpoint_id,
+        };
+    }
+    XhciDeviceDescriptorProbeStatus::DescriptorPrefixReady {
+        slot_id: event.slot_id,
+        length: XHCI_DEVICE_DESCRIPTOR_PREFIX_BYTES as u8,
+    }
+}
+
+fn usb_descriptor_endpoint0_max_packet_size(
+    descriptor: [u8; XHCI_DEVICE_DESCRIPTOR_PREFIX_BYTES],
+) -> Option<u16> {
+    let length = descriptor[0];
+    let descriptor_type = descriptor[1];
+    let bcd_usb = u16::from_le_bytes([descriptor[2], descriptor[3]]);
+    let raw = descriptor[7];
+    if length < XHCI_DEVICE_DESCRIPTOR_PREFIX_BYTES as u8
+        || descriptor_type != USB_DESCRIPTOR_TYPE_DEVICE
+    {
+        return None;
+    }
+    match raw {
+        8 | 16 | 32 | 64 => Some(raw as u16),
+        9 if bcd_usb >= 0x0300 => Some(512),
+        _ => None,
+    }
+}
+
 fn clean_xhci_driver_memory_for_device(plan: XhciDriverMemoryPlan) {
     dma_clean_range(plan.dcbaa, XHCI_MAX_DEVICE_CONTEXT_POINTERS * core::mem::size_of::<u64>());
     dma_clean_range(plan.command_ring, XHCI_COMMAND_RING_TRBS * XHCI_TRB_BYTES);
@@ -1214,17 +2294,19 @@ fn clean_xhci_driver_memory_for_device(plan: XhciDriverMemoryPlan) {
         plan.event_ring_segment_table,
         XHCI_EVENT_RING_SEGMENT_TABLE_ENTRIES * 2 * core::mem::size_of::<u64>(),
     );
-    if plan.scratchpad_buffers == 0 {
-        return;
-    }
-    dma_clean_range(
-        plan.scratchpad_array,
-        plan.scratchpad_buffers as usize * core::mem::size_of::<u64>(),
-    );
-    let mut index = 0usize;
-    while index < plan.scratchpad_buffers as usize {
-        dma_clean_range(XHCI_SCRATCHPAD_PAGES.page_addr(index), XHCI_PAGE_BYTES);
-        index += 1;
+    dma_clean_range(plan.input_context, XHCI_CONTEXT_PAGE_BYTES);
+    dma_clean_range(plan.output_device_context, XHCI_CONTEXT_PAGE_BYTES);
+    dma_clean_range(plan.control_endpoint_ring, XHCI_CONTROL_ENDPOINT_RING_TRBS * XHCI_TRB_BYTES);
+    if plan.scratchpad_buffers > 0 {
+        dma_clean_range(
+            plan.scratchpad_array,
+            plan.scratchpad_buffers as usize * core::mem::size_of::<u64>(),
+        );
+        let mut index = 0usize;
+        while index < plan.scratchpad_buffers as usize {
+            dma_clean_range(XHCI_SCRATCHPAD_PAGES.page_addr(index), XHCI_PAGE_BYTES);
+            index += 1;
+        }
     }
 }
 
@@ -1320,6 +2402,9 @@ fn build_xhci_driver_memory_plan(caps: XhciCapabilities) -> XhciDriverMemoryPlan
         scratchpad_buffers: caps.max_scratchpad_buffers,
         max_slots_enabled: caps.max_device_slots,
         context_size_bytes: caps.context_size_bytes,
+        input_context: XHCI_INPUT_CONTEXT.addr(),
+        output_device_context: XHCI_OUTPUT_DEVICE_CONTEXT.addr(),
+        control_endpoint_ring: XHCI_CONTROL_ENDPOINT_RING.addr(),
     }
 }
 
@@ -1416,6 +2501,68 @@ impl<const N: usize> XhciTrbRing<N> {
 }
 
 #[repr(C, align(4096))]
+struct XhciContextPage(UnsafeCell<[u8; XHCI_CONTEXT_PAGE_BYTES]>);
+
+unsafe impl Sync for XhciContextPage {}
+
+impl XhciContextPage {
+    const fn new() -> Self {
+        Self(UnsafeCell::new([0; XHCI_CONTEXT_PAGE_BYTES]))
+    }
+
+    fn addr(&self) -> u64 {
+        self.0.get() as *mut u8 as usize as u64
+    }
+
+    fn zero(&self) {
+        let bytes = unsafe { &mut *self.0.get() };
+        let mut index = 0usize;
+        while index < bytes.len() {
+            bytes[index] = 0;
+            index += 1;
+        }
+    }
+
+    fn set_u32(&self, byte_offset: usize, value: u32) {
+        let bytes = unsafe { &mut *self.0.get() };
+        let raw = value.to_le_bytes();
+        bytes[byte_offset] = raw[0];
+        bytes[byte_offset + 1] = raw[1];
+        bytes[byte_offset + 2] = raw[2];
+        bytes[byte_offset + 3] = raw[3];
+    }
+}
+
+#[repr(C, align(64))]
+struct XhciAlignedBytes<const N: usize>(UnsafeCell<[u8; N]>);
+
+unsafe impl<const N: usize> Sync for XhciAlignedBytes<N> {}
+
+impl<const N: usize> XhciAlignedBytes<N> {
+    const fn new() -> Self {
+        Self(UnsafeCell::new([0; N]))
+    }
+
+    fn addr(&self) -> u64 {
+        self.0.get() as *mut u8 as usize as u64
+    }
+
+    fn zero(&self) {
+        let bytes = unsafe { &mut *self.0.get() };
+        let mut index = 0usize;
+        while index < N {
+            bytes[index] = 0;
+            index += 1;
+        }
+    }
+
+    fn read(&self) -> [u8; N] {
+        let bytes = unsafe { &*self.0.get() };
+        *bytes
+    }
+}
+
+#[repr(C, align(4096))]
 struct XhciScratchpadPages(UnsafeCell<[u8; XHCI_PAGE_BYTES * XHCI_STATIC_SCRATCHPAD_BUFFERS]>);
 
 unsafe impl Sync for XhciScratchpadPages {}
@@ -1442,11 +2589,17 @@ impl XhciScratchpadPages {
 static XHCI_DCBAA: XhciAlignedU64<XHCI_MAX_DEVICE_CONTEXT_POINTERS> = XhciAlignedU64::new();
 static XHCI_COMMAND_RING: XhciTrbRing<XHCI_COMMAND_RING_TRBS> = XhciTrbRing::new();
 static XHCI_EVENT_RING: XhciTrbRing<XHCI_EVENT_RING_TRBS> = XhciTrbRing::new();
+static XHCI_CONTROL_ENDPOINT_RING: XhciTrbRing<XHCI_CONTROL_ENDPOINT_RING_TRBS> =
+    XhciTrbRing::new();
 static XHCI_ERST: XhciAlignedU64<{ XHCI_EVENT_RING_SEGMENT_TABLE_ENTRIES * 2 }> =
     XhciAlignedU64::new();
 static XHCI_SCRATCHPAD_ARRAY: XhciAlignedU64<XHCI_STATIC_SCRATCHPAD_BUFFERS> =
     XhciAlignedU64::new();
 static XHCI_SCRATCHPAD_PAGES: XhciScratchpadPages = XhciScratchpadPages::new();
+static XHCI_INPUT_CONTEXT: XhciContextPage = XhciContextPage::new();
+static XHCI_OUTPUT_DEVICE_CONTEXT: XhciContextPage = XhciContextPage::new();
+static XHCI_DEVICE_DESCRIPTOR_PREFIX: XhciAlignedBytes<XHCI_DEVICE_DESCRIPTOR_PREFIX_BYTES> =
+    XhciAlignedBytes::new();
 
 #[cfg(feature = "selftest")]
 #[path = "usb_tests.rs"]

@@ -4,13 +4,18 @@ use {
     super::{
         BCM2711_DWC2_BUS_BASE, BCM2711_DWC2_MMIO_BASE, BCM2711_XHCI_BUS_BASE,
         BCM2711_XHCI_MMIO_BASE, PcieXhciController, UsbBootKeyboardPending, UsbBootKeyboardPoll,
-        XHCI_EVENT_RING_TRBS, XHCI_STATIC_SCRATCHPAD_BUFFERS, XhciControllerStartStatus,
-        XhciDriverMemoryStatus, XhciEnableSlotStatus, classify_enable_slot_event,
-        decode_xhci_capabilities, decode_xhci_command_completion_event,
-        decode_xhci_operational_snapshot, decode_xhci_port_snapshot,
-        decode_xhci_supported_protocol, prepare_xhci_driver_memory, protocol_covers_port,
-        xhci_controller_start_registers, xhci_enable_slot_command_trb,
-        xhci_extended_capability_offset,
+        XHCI_CONTROL_ENDPOINT_RING_TRBS, XHCI_EVENT_RING_TRBS, XHCI_STATIC_SCRATCHPAD_BUFFERS,
+        XhciAddressDeviceStatus, XhciControllerStartStatus, XhciDeviceDescriptorProbeStatus,
+        XhciDriverMemoryStatus, XhciEnableSlotStatus, XhciSetAddressStatus, XhciSetupPacket,
+        classify_address_device_event, classify_device_descriptor_transfer_event,
+        classify_enable_slot_event, classify_set_address_event, decode_xhci_capabilities,
+        decode_xhci_command_completion_event, decode_xhci_operational_snapshot,
+        decode_xhci_port_snapshot, decode_xhci_supported_protocol, decode_xhci_transfer_event,
+        prepare_xhci_driver_memory, protocol_covers_port, usb_descriptor_endpoint0_max_packet_size,
+        xhci_address_device_command_trb, xhci_address_device_contexts,
+        xhci_address_device_contexts_with_max_packet_size, xhci_controller_start_registers,
+        xhci_data_stage_trb, xhci_enable_slot_command_trb, xhci_extended_capability_offset,
+        xhci_setup_stage_trb, xhci_status_stage_trb,
     },
     crate::pcie::{PciConfigHeader, PciLocation},
     reovim_testrt::{self as testrt, arch_test},
@@ -325,6 +330,352 @@ arch_test!(xhci_enable_slot_event_classifier_names_success_and_failures, {
     }
 });
 
+arch_test!(xhci_address_device_command_trb_sets_pointer_bsr_type_and_slot, {
+    let blocked = xhci_address_device_command_trb(0x0000_0002_0000_1008, 7, true);
+    testrt::check_eq(blocked[0], 0x0000_1000u32);
+    testrt::check_eq(blocked[1], 0x0000_0002u32);
+    testrt::check_eq(blocked[2], 0u32);
+    testrt::check_eq(blocked[3], (7u32 << 24) | (11u32 << 10) | (1u32 << 9) | 1);
+
+    let set_address = xhci_address_device_command_trb(0x0000_1000, 3, false);
+    testrt::check_eq(set_address[3], (3u32 << 24) | (11u32 << 10) | 1);
+});
+
+arch_test!(xhci_address_device_contexts_prepare_slot_and_endpoint_zero, {
+    let caps =
+        decode_xhci_capabilities(0x0100_0040, (4 << 24) | (1 << 8) | 8, 0, 0, 0x1000, 0x2000)
+            .unwrap_or_else(|| panic!("valid xHCI capability registers decode"));
+    let XhciDriverMemoryStatus::Ready(plan) = prepare_xhci_driver_memory(caps) else {
+        testrt::check(false, "static xHCI memory is sufficient");
+        return;
+    };
+
+    let high_speed_port = decode_xhci_port_snapshot(2, (3 << 10) | 1);
+    let contexts = xhci_address_device_contexts(plan, high_speed_port);
+
+    testrt::check_eq(contexts.input_context, plan.input_context);
+    testrt::check_eq(contexts.output_device_context, plan.output_device_context);
+    testrt::check_eq(contexts.control_endpoint_ring, plan.control_endpoint_ring);
+    testrt::check_eq(contexts.drop_context_flags, 0u32);
+    testrt::check_eq(contexts.add_context_flags, 0x3u32);
+    testrt::check_eq(contexts.slot_context[0], (3u32 << 20) | (1u32 << 27));
+    testrt::check_eq(contexts.slot_context[1], 2u32 << 16);
+    testrt::check_eq(contexts.slot_context[2], 0u32);
+    testrt::check_eq(contexts.slot_context[3], 0u32);
+    testrt::check_eq(contexts.endpoint0_max_packet_size, 64u16);
+    testrt::check_eq(contexts.endpoint0_context[0], 0u32);
+    testrt::check_eq(contexts.endpoint0_context[1], (64u32 << 16) | (4u32 << 3) | (3u32 << 1));
+    testrt::check_eq(contexts.endpoint0_context[2], (plan.control_endpoint_ring | 1) as u32);
+    testrt::check_eq(
+        contexts.endpoint0_context[3],
+        ((plan.control_endpoint_ring | 1) >> 32) as u32,
+    );
+    testrt::check_eq(contexts.endpoint0_context[4], 8u32);
+
+    let full_speed =
+        xhci_address_device_contexts(plan, decode_xhci_port_snapshot(1, (1 << 10) | 1));
+    testrt::check_eq(full_speed.endpoint0_max_packet_size, 8u16);
+    let super_speed =
+        xhci_address_device_contexts(plan, decode_xhci_port_snapshot(1, (4 << 10) | 1));
+    testrt::check_eq(super_speed.endpoint0_max_packet_size, 512u16);
+});
+
+arch_test!(xhci_address_device_event_classifier_names_success_and_failures, {
+    let success = decode_xhci_command_completion_event([
+        0x0000_2000,
+        0,
+        1u32 << 24,
+        (5u32 << 24) | (33u32 << 10) | 1,
+    ]);
+    match classify_address_device_event(0x2000, 5, success) {
+        XhciAddressDeviceStatus::DefaultControlEndpointReady { slot_id } => {
+            testrt::check_eq(slot_id, 5u8);
+        }
+        _ => testrt::check(false, "successful completion prepares endpoint zero"),
+    }
+
+    let failed = decode_xhci_command_completion_event([
+        0x0000_2000,
+        0,
+        5u32 << 24,
+        (5u32 << 24) | (33u32 << 10) | 1,
+    ]);
+    match classify_address_device_event(0x2000, 5, failed) {
+        XhciAddressDeviceStatus::CommandFailed {
+            completion_code,
+            slot_id,
+        } => {
+            testrt::check_eq(completion_code, 5u8);
+            testrt::check_eq(slot_id, 5u8);
+        }
+        _ => testrt::check(false, "failed completion is reported"),
+    }
+
+    let wrong_slot = decode_xhci_command_completion_event([
+        0x0000_2000,
+        0,
+        1u32 << 24,
+        (4u32 << 24) | (33u32 << 10) | 1,
+    ]);
+    match classify_address_device_event(0x2000, 5, wrong_slot) {
+        XhciAddressDeviceStatus::SlotIdMismatch {
+            expected,
+            actual,
+            completion_code,
+        } => {
+            testrt::check_eq(expected, 5u8);
+            testrt::check_eq(actual, 4u8);
+            testrt::check_eq(completion_code, 1u8);
+        }
+        _ => testrt::check(false, "wrong slot ID is reported"),
+    }
+
+    let wrong_pointer = decode_xhci_command_completion_event([
+        0x0000_3000,
+        0,
+        1u32 << 24,
+        (5u32 << 24) | (33u32 << 10) | 1,
+    ]);
+    match classify_address_device_event(0x2000, 5, wrong_pointer) {
+        XhciAddressDeviceStatus::CommandPointerMismatch {
+            expected,
+            actual,
+            completion_code,
+            slot_id,
+        } => {
+            testrt::check_eq(expected, 0x2000u64);
+            testrt::check_eq(actual, 0x3000u64);
+            testrt::check_eq(completion_code, 1u8);
+            testrt::check_eq(slot_id, 5u8);
+        }
+        _ => testrt::check(false, "wrong command pointer is reported"),
+    }
+});
+
+arch_test!(xhci_get_descriptor_control_trbs_encode_setup_data_and_status_ioc, {
+    let setup = XhciSetupPacket {
+        bm_request_type: 0x80,
+        b_request: 6,
+        w_value: 1 << 8,
+        w_index: 0,
+        w_length: 8,
+    };
+
+    let setup_trb = xhci_setup_stage_trb(setup);
+    testrt::check_eq(setup_trb[0], 0x0100_0680u32);
+    testrt::check_eq(setup_trb[1], 0x0008_0000u32);
+    testrt::check_eq(setup_trb[2], 8u32);
+    testrt::check_eq(setup_trb[3], (3u32 << 16) | (2u32 << 10) | (1u32 << 6) | 1);
+
+    let data_trb = xhci_data_stage_trb(0x0000_0002_0000_0040, 8, true);
+    testrt::check_eq(data_trb[0], 0x0000_0040u32);
+    testrt::check_eq(data_trb[1], 0x0000_0002u32);
+    testrt::check_eq(data_trb[2], 8u32);
+    testrt::check_eq(data_trb[3], (1u32 << 16) | (3u32 << 10) | 1);
+
+    let status_trb = xhci_status_stage_trb(false);
+    testrt::check_eq(status_trb[0], 0u32);
+    testrt::check_eq(status_trb[1], 0u32);
+    testrt::check_eq(status_trb[2], 0u32);
+    testrt::check_eq(status_trb[3], (4u32 << 10) | (1u32 << 5) | 1);
+});
+
+arch_test!(xhci_transfer_event_decode_extracts_pointer_residual_endpoint_and_slot, {
+    let raw = [
+        0x0000_3008,
+        0x0000_0002,
+        (1u32 << 24) | 4,
+        (6u32 << 24) | (1u32 << 16) | (32u32 << 10) | 1,
+    ];
+
+    let event = decode_xhci_transfer_event(raw);
+
+    testrt::check_eq(event.raw, raw);
+    testrt::check_eq(event.trb_pointer, 0x0000_0002_0000_3000u64);
+    testrt::check_eq(event.transfer_length, 4u32);
+    testrt::check_eq(event.completion_code, 1u8);
+    testrt::check_eq(event.trb_type, 32u8);
+    testrt::check(event.cycle, "event cycle bit is set");
+    testrt::check(!event.event_data, "event carries a TRB pointer");
+    testrt::check_eq(event.endpoint_id, 1u8);
+    testrt::check_eq(event.slot_id, 6u8);
+});
+
+arch_test!(xhci_device_descriptor_transfer_classifier_names_success_and_failures, {
+    let success = decode_xhci_transfer_event([
+        0x0000_3000,
+        0,
+        1u32 << 24,
+        (6u32 << 24) | (1u32 << 16) | (32u32 << 10) | 1,
+    ]);
+    match classify_device_descriptor_transfer_event(0x3000, 6, 1, success) {
+        XhciDeviceDescriptorProbeStatus::DescriptorPrefixReady { slot_id, length } => {
+            testrt::check_eq(slot_id, 6u8);
+            testrt::check_eq(length, 8u8);
+        }
+        _ => testrt::check(false, "successful transfer exposes descriptor prefix"),
+    }
+
+    let failed = decode_xhci_transfer_event([
+        0x0000_3000,
+        0,
+        (13u32 << 24) | 2,
+        (6u32 << 24) | (1u32 << 16) | (32u32 << 10) | 1,
+    ]);
+    match classify_device_descriptor_transfer_event(0x3000, 6, 1, failed) {
+        XhciDeviceDescriptorProbeStatus::TransferFailed {
+            completion_code,
+            residual_length,
+            slot_id,
+            endpoint_id,
+        } => {
+            testrt::check_eq(completion_code, 13u8);
+            testrt::check_eq(residual_length, 2u32);
+            testrt::check_eq(slot_id, 6u8);
+            testrt::check_eq(endpoint_id, 1u8);
+        }
+        _ => testrt::check(false, "failed transfer is reported"),
+    }
+
+    let wrong_pointer = decode_xhci_transfer_event([
+        0x0000_4000,
+        0,
+        1u32 << 24,
+        (6u32 << 24) | (1u32 << 16) | (32u32 << 10) | 1,
+    ]);
+    match classify_device_descriptor_transfer_event(0x3000, 6, 1, wrong_pointer) {
+        XhciDeviceDescriptorProbeStatus::TransferPointerMismatch {
+            expected,
+            actual,
+            completion_code,
+            slot_id,
+            endpoint_id,
+        } => {
+            testrt::check_eq(expected, 0x3000u64);
+            testrt::check_eq(actual, 0x4000u64);
+            testrt::check_eq(completion_code, 1u8);
+            testrt::check_eq(slot_id, 6u8);
+            testrt::check_eq(endpoint_id, 1u8);
+        }
+        _ => testrt::check(false, "wrong TRB pointer is reported"),
+    }
+
+    let wrong_endpoint = decode_xhci_transfer_event([
+        0x0000_3000,
+        0,
+        1u32 << 24,
+        (6u32 << 24) | (2u32 << 16) | (32u32 << 10) | 1,
+    ]);
+    match classify_device_descriptor_transfer_event(0x3000, 6, 1, wrong_endpoint) {
+        XhciDeviceDescriptorProbeStatus::EndpointIdMismatch {
+            expected,
+            actual,
+            completion_code,
+        } => {
+            testrt::check_eq(expected, 1u8);
+            testrt::check_eq(actual, 2u8);
+            testrt::check_eq(completion_code, 1u8);
+        }
+        _ => testrt::check(false, "wrong endpoint ID is reported"),
+    }
+});
+
+arch_test!(usb_descriptor_endpoint0_max_packet_size_decodes_usb2_and_usb3_prefixes, {
+    testrt::check_eq(
+        usb_descriptor_endpoint0_max_packet_size([18, 1, 0x00, 0x02, 0, 0, 0, 64]),
+        Some(64u16),
+    );
+    testrt::check_eq(
+        usb_descriptor_endpoint0_max_packet_size([18, 1, 0x00, 0x03, 0, 0, 0, 9]),
+        Some(512u16),
+    );
+    testrt::check_eq(
+        usb_descriptor_endpoint0_max_packet_size([7, 1, 0x00, 0x02, 0, 0, 0, 64]),
+        None,
+    );
+    testrt::check_eq(
+        usb_descriptor_endpoint0_max_packet_size([18, 2, 0x00, 0x02, 0, 0, 0, 64]),
+        None,
+    );
+    testrt::check_eq(
+        usb_descriptor_endpoint0_max_packet_size([18, 1, 0x00, 0x02, 0, 0, 0, 9]),
+        None,
+    );
+});
+
+arch_test!(xhci_address_device_contexts_can_use_descriptor_max_packet_size, {
+    let caps =
+        decode_xhci_capabilities(0x0100_0040, (4 << 24) | (1 << 8) | 8, 0, 0, 0x1000, 0x2000)
+            .unwrap_or_else(|| panic!("valid xHCI capability registers decode"));
+    let XhciDriverMemoryStatus::Ready(plan) = prepare_xhci_driver_memory(caps) else {
+        testrt::check(false, "static xHCI memory is sufficient");
+        return;
+    };
+
+    let contexts = xhci_address_device_contexts_with_max_packet_size(
+        plan,
+        decode_xhci_port_snapshot(2, (3 << 10) | 1),
+        16,
+    );
+    testrt::check_eq(contexts.endpoint0_max_packet_size, 16u16);
+    testrt::check_eq(contexts.endpoint0_context[1], (16u32 << 16) | (4u32 << 3) | (3u32 << 1));
+});
+
+arch_test!(xhci_set_address_event_classifier_names_success_and_failures, {
+    let success = decode_xhci_command_completion_event([
+        0x0000_4000,
+        0,
+        1u32 << 24,
+        (7u32 << 24) | (33u32 << 10) | 1,
+    ]);
+    match classify_set_address_event(0x4000, 7, 64, success) {
+        XhciSetAddressStatus::Addressed {
+            slot_id,
+            endpoint0_max_packet_size,
+        } => {
+            testrt::check_eq(slot_id, 7u8);
+            testrt::check_eq(endpoint0_max_packet_size, 64u16);
+        }
+        _ => testrt::check(false, "successful BSR=0 command addresses the slot"),
+    }
+
+    let failed = decode_xhci_command_completion_event([
+        0x0000_4000,
+        0,
+        5u32 << 24,
+        (7u32 << 24) | (33u32 << 10) | 1,
+    ]);
+    match classify_set_address_event(0x4000, 7, 64, failed) {
+        XhciSetAddressStatus::CommandFailed {
+            completion_code,
+            slot_id,
+        } => {
+            testrt::check_eq(completion_code, 5u8);
+            testrt::check_eq(slot_id, 7u8);
+        }
+        _ => testrt::check(false, "failed BSR=0 command is reported"),
+    }
+
+    let wrong_slot = decode_xhci_command_completion_event([
+        0x0000_4000,
+        0,
+        1u32 << 24,
+        (6u32 << 24) | (33u32 << 10) | 1,
+    ]);
+    match classify_set_address_event(0x4000, 7, 64, wrong_slot) {
+        XhciSetAddressStatus::SlotIdMismatch {
+            expected,
+            actual,
+            completion_code,
+        } => {
+            testrt::check_eq(expected, 7u8);
+            testrt::check_eq(actual, 6u8);
+            testrt::check_eq(completion_code, 1u8);
+        }
+        _ => testrt::check(false, "wrong slot ID is reported"),
+    }
+});
+
 arch_test!(xhci_driver_memory_plan_prepares_aligned_static_tables, {
     let caps =
         decode_xhci_capabilities(0x0100_0040, (4 << 24) | (1 << 8) | 8, 2 << 27, 0, 0x1000, 0x2000)
@@ -341,6 +692,7 @@ arch_test!(xhci_driver_memory_plan_prepares_aligned_static_tables, {
     testrt::check_eq(plan.scratchpad_buffers, 2u16);
     testrt::check_eq(plan.event_ring_segment_table_entries, 1u16);
     testrt::check_eq(plan.event_ring_trbs, XHCI_EVENT_RING_TRBS as u16);
+    testrt::check_eq(plan.command_ring_trbs, 64u16);
     testrt::check_eq(plan.command_ring_control, plan.command_ring | 1);
     testrt::check_eq(plan.event_ring_dequeue_pointer, plan.event_ring);
     testrt::check_eq(plan.dcbaa & 0x3f, 0u64);
@@ -348,6 +700,10 @@ arch_test!(xhci_driver_memory_plan_prepares_aligned_static_tables, {
     testrt::check_eq(plan.event_ring & 0x3f, 0u64);
     testrt::check_eq(plan.event_ring_segment_table & 0x3f, 0u64);
     testrt::check_eq(plan.scratchpad_array & 0x3f, 0u64);
+    testrt::check_eq(plan.input_context & 0xfff, 0u64);
+    testrt::check_eq(plan.output_device_context & 0xfff, 0u64);
+    testrt::check_eq(plan.control_endpoint_ring & 0x3f, 0u64);
+    testrt::check_eq(XHCI_CONTROL_ENDPOINT_RING_TRBS, 64usize);
 
     let too_many = decode_xhci_capabilities(
         0x0100_0040,
