@@ -40,6 +40,9 @@ pub type PrepareShell = fn();
 /// Callback that runs a lower-provider hardware probe for a named target.
 pub type HardwareProbe = fn(&str, &[DeviceEntry], WriteFn) -> HardwareProbeResult;
 
+/// Callback that derives a live console-input summary from the boot-time base.
+pub type ConsoleInputStatus = fn(ConsoleInputSummary) -> ConsoleInputSummary;
+
 /// Bounded input buffer used by root-shell line reads.
 pub const ROOT_LINE_BYTES: usize = 128;
 
@@ -128,6 +131,8 @@ pub struct RootBootConfig<'a> {
     pub prepare_shell: Option<PrepareShell>,
     /// Optional lower-provider hardware probe callback for shell diagnostics.
     pub probe_hardware: Option<HardwareProbe>,
+    /// Optional live console-input status callback for `/boot/profile`.
+    pub console_input_status: Option<ConsoleInputStatus>,
     /// Line reader callback.
     pub read_line: ReadLine,
     /// Prompt bytes emitted before each input attempt.
@@ -203,6 +208,7 @@ pub struct RootDaemon<'a> {
     dmesg: Option<DmesgSnapshot>,
     halt: Option<HaltKernel>,
     probe_hardware: Option<HardwareProbe>,
+    console_input_status: Option<ConsoleInputStatus>,
     prompt: &'static str,
     console_input: ConsoleInputSummary,
     write: WriteFn,
@@ -218,6 +224,7 @@ impl<'a> RootDaemon<'a> {
         dmesg: Option<DmesgSnapshot>,
         halt: Option<HaltKernel>,
         probe_hardware: Option<HardwareProbe>,
+        console_input_status: Option<ConsoleInputStatus>,
         prompt: &'static str,
         console_input: ConsoleInputSummary,
         write: WriteFn,
@@ -230,6 +237,7 @@ impl<'a> RootDaemon<'a> {
             dmesg,
             halt,
             probe_hardware,
+            console_input_status,
             prompt,
             console_input,
             write,
@@ -256,7 +264,10 @@ impl<'a> RootDaemon<'a> {
 
     /// Console input source selected for this boot.
     #[must_use]
-    pub const fn console_input(&self) -> ConsoleInputSummary {
+    pub fn console_input(&self) -> ConsoleInputSummary {
+        if let Some(status) = self.console_input_status {
+            return status(self.console_input);
+        }
         self.console_input
     }
 
@@ -592,6 +603,7 @@ pub fn run_root_daemon(cfg: RootBootConfig<'_>) -> ! {
         cfg.dmesg,
         cfg.halt,
         cfg.probe_hardware,
+        cfg.console_input_status,
         cfg.prompt,
         cfg.console_input,
         cfg.write,

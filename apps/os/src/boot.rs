@@ -139,16 +139,24 @@ impl UsbKeyboardConsole {
         None
     }
 
+    fn ingest_report(&mut self, report: [u8; arch_sys::usb::BOOT_KEYBOARD_REPORT_BYTES]) -> usize {
+        self.pending_len = self
+            .decoder
+            .decode_report(BootKeyboardReport::new(report), &mut self.pending);
+        if self.pending_len > 0 {
+            USB_KEYBOARD_READY.store(1, Ordering::Release);
+        }
+        self.pending_cursor = 0;
+        self.pending_len
+    }
+
     fn poll_next_byte(&mut self) -> Option<u8> {
         let arch_sys::usb::UsbBootKeyboardPoll::Report(report) =
             arch_sys::usb::poll_boot_keyboard_report()
         else {
             return None;
         };
-        self.pending_len = self
-            .decoder
-            .decode_report(BootKeyboardReport::new(report), &mut self.pending);
-        self.pending_cursor = 0;
+        self.ingest_report(report);
         self.pop_pending()
     }
 }
@@ -165,6 +173,9 @@ static USB_KEYBOARD_PROBE_ENABLED: AtomicUsize = AtomicUsize::new(0);
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 static USB_KEYBOARD_LAST_POLL_NANOS: AtomicUsize = AtomicUsize::new(0);
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+static USB_KEYBOARD_READY: AtomicUsize = AtomicUsize::new(0);
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 const USB_KEYBOARD_POLL_NANOS: usize = 5_000_000;
@@ -292,6 +303,7 @@ pub fn run_shell_profile(profile: BootProfile<'_>) -> ! {
         collect_device_inventory,
         prepare_shell: Some(prepare_shell_boot),
         probe_hardware: Some(hardware_probe),
+        console_input_status: Some(console_input_status),
         read_line: tty_read_line,
         write: tty_write,
         console_input: console_input_summary(),
@@ -667,9 +679,13 @@ fn probe_usb_keyboard(devices: &[DeviceEntry], write: WriteFn) {
     }
 
     match arch_sys::usb::poll_boot_keyboard_report() {
-        arch_sys::usb::UsbBootKeyboardPoll::Report(_) => {
+        arch_sys::usb::UsbBootKeyboardPoll::Report(report) => {
+            let decoded = unsafe { &mut *USB_KEYBOARD_CONSOLE.0.get() }.ingest_report(report);
             probe_emit(write, b"state=report-ready\n");
             probe_emit(write, b"report_bytes=8\n");
+            probe_emit(write, b"decoded_bytes=");
+            probe_write_u64_dec(write, decoded as u64);
+            probe_emit(write, b"\n");
         }
         arch_sys::usb::UsbBootKeyboardPoll::Pending(pending) => {
             probe_usb_keyboard_pending(write, pending);
@@ -737,6 +753,49 @@ fn probe_usb_keyboard_pending(write: WriteFn, pending: arch_sys::usb::UsbBootKey
             probe_write_u64_dec(write, speed as u64);
             probe_emit(write, b"\nlink_state=");
             probe_write_u64_dec(write, link_state as u64);
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::UsbBootKeyboardPending::ReportPending {
+            slot_id,
+            endpoint_id,
+            transfer_trb_index,
+            event_index,
+        } => {
+            probe_emit(write, b"state=report-pending\n");
+            probe_emit(write, b"slot_id=");
+            probe_write_u64_dec(write, slot_id as u64);
+            probe_emit(write, b"\nendpoint_id=");
+            probe_write_u64_dec(write, endpoint_id as u64);
+            probe_emit(write, b"\ntransfer_trb_index=");
+            probe_write_u64_dec(write, transfer_trb_index as u64);
+            probe_emit(write, b"\nevent_index=");
+            probe_write_u64_dec(write, event_index as u64);
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::UsbBootKeyboardPending::EnumerationFailed => {
+            probe_emit(write, b"state=unavailable\n");
+            probe_emit(write, b"reason=hid-enumeration-failed\n");
+        }
+        arch_sys::usb::UsbBootKeyboardPending::ReportEventMismatch => {
+            probe_emit(write, b"state=unavailable\n");
+            probe_emit(write, b"reason=keyboard-report-event-mismatch\n");
+        }
+        arch_sys::usb::UsbBootKeyboardPending::ReportTransferFailed {
+            completion_code,
+            residual_length,
+            slot_id,
+            endpoint_id,
+        } => {
+            probe_emit(write, b"state=unavailable\n");
+            probe_emit(write, b"reason=keyboard-report-transfer-failed\n");
+            probe_emit(write, b"completion_code=");
+            probe_write_u64_dec(write, completion_code as u64);
+            probe_emit(write, b"\nresidual_length=");
+            probe_write_u64_dec(write, residual_length as u64);
+            probe_emit(write, b"\nslot_id=");
+            probe_write_u64_dec(write, slot_id as u64);
+            probe_emit(write, b"\nendpoint_id=");
+            probe_write_u64_dec(write, endpoint_id as u64);
             probe_emit(write, b"\n");
         }
     }
@@ -3506,6 +3565,22 @@ fn console_input_summary() -> ConsoleInputSummary {
             )
         }
     }
+}
+
+fn console_input_status(base: ConsoleInputSummary) -> ConsoleInputSummary {
+    #[cfg(all(target_os = "none", target_arch = "aarch64"))]
+    {
+        if BOOTLINE_SCRIPT.is_none() && USB_KEYBOARD_READY.load(Ordering::Acquire) != 0 {
+            return ConsoleInputSummary::new(
+                "usb-keyboard+uart-fallback",
+                "live",
+                BootCheckState::Ok,
+                BootCheckState::Ok,
+            );
+        }
+    }
+
+    base
 }
 
 #[cfg(target_os = "none")]

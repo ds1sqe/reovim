@@ -105,6 +105,8 @@ pub const XHCI_EVENT_RING_TRBS: usize = 64;
 pub const XHCI_CONTROL_ENDPOINT_RING_TRBS: usize = 64;
 /// Number of TRBs in the first HID interrupt-IN endpoint transfer-ring segment.
 pub const XHCI_INTERRUPT_IN_ENDPOINT_RING_TRBS: usize = 64;
+/// Number of data TRB slots before the interrupt-IN ring's Link TRB.
+const XHCI_INTERRUPT_IN_ENDPOINT_DATA_TRBS: usize = XHCI_INTERRUPT_IN_ENDPOINT_RING_TRBS - 1;
 /// Number of Event Ring Segment Table entries prepared by the early provider.
 pub const XHCI_EVENT_RING_SEGMENT_TABLE_ENTRIES: usize = 1;
 /// Maximum scratchpad buffers backed by static early-driver storage.
@@ -135,6 +137,7 @@ const XHCI_EP0_CONFIGURATION_DESCRIPTOR_HEADER_TRB_INDEX: usize = 6;
 const XHCI_EP0_CONFIGURATION_DESCRIPTOR_TRB_INDEX: usize = 9;
 const XHCI_EP0_SET_CONFIGURATION_TRB_INDEX: usize = 12;
 const XHCI_EP0_SET_HID_PROTOCOL_TRB_INDEX: usize = 14;
+const USB_BOOT_KEYBOARD_RETRY_POLLS: usize = 200;
 const XHCI_DEVICE_DESCRIPTOR_PREFIX_BYTES: usize = 8;
 const USB_DEVICE_DESCRIPTOR_BYTES: usize = 18;
 const USB_CONFIGURATION_DESCRIPTOR_HEADER_BYTES: usize = 9;
@@ -2006,6 +2009,223 @@ pub enum UsbBootKeyboardPending {
         /// Raw xHCI port-link-state field.
         link_state: u8,
     },
+    /// The retained provider is waiting for the queued interrupt-IN transfer
+    /// to complete.
+    ReportPending {
+        /// Assigned xHCI slot ID.
+        slot_id: u8,
+        /// Interrupt-IN xHCI endpoint ID / DCI.
+        endpoint_id: u8,
+        /// Interrupt-IN transfer-ring TRB index currently owned by the xHC.
+        transfer_trb_index: u8,
+        /// Event-ring index expected for the completion event.
+        event_index: u8,
+    },
+    /// HID enumeration/setup failed before the provider reached report polling.
+    EnumerationFailed,
+    /// The interrupt-IN report event arrived but did not match the queued
+    /// transfer.
+    ReportEventMismatch,
+    /// The interrupt-IN report transfer completed with an xHCI failure code.
+    ReportTransferFailed {
+        /// xHCI completion code.
+        completion_code: u8,
+        /// Residual bytes not transferred for the generating TRB.
+        residual_length: u32,
+        /// Slot ID carried by the event.
+        slot_id: u8,
+        /// Endpoint ID carried by the event.
+        endpoint_id: u8,
+    },
+}
+
+struct UsbBootKeyboardProviderStore(UnsafeCell<UsbBootKeyboardProvider>);
+
+unsafe impl Sync for UsbBootKeyboardProviderStore {}
+
+static USB_BOOT_KEYBOARD_PROVIDER: UsbBootKeyboardProviderStore =
+    UsbBootKeyboardProviderStore(UnsafeCell::new(UsbBootKeyboardProvider::new()));
+
+struct UsbBootKeyboardProvider {
+    state: UsbBootKeyboardProviderState,
+}
+
+impl UsbBootKeyboardProvider {
+    const fn new() -> Self {
+        Self {
+            state: UsbBootKeyboardProviderState::Uninitialized,
+        }
+    }
+
+    fn poll(&mut self) -> UsbBootKeyboardPoll {
+        match self.state {
+            UsbBootKeyboardProviderState::Uninitialized => {
+                self.state = initialize_boot_keyboard_provider();
+            }
+            UsbBootKeyboardProviderState::RetryLater {
+                pending,
+                polls_remaining,
+            } => {
+                if polls_remaining > 0 {
+                    self.state = UsbBootKeyboardProviderState::RetryLater {
+                        pending,
+                        polls_remaining: polls_remaining - 1,
+                    };
+                    return UsbBootKeyboardPoll::Pending(pending);
+                }
+                self.state = initialize_boot_keyboard_provider();
+            }
+            UsbBootKeyboardProviderState::Ready(_) => {}
+        }
+
+        if let UsbBootKeyboardProviderState::RetryLater { pending, .. } = self.state {
+            return UsbBootKeyboardPoll::Pending(pending);
+        }
+
+        let UsbBootKeyboardProviderState::Ready(mut state) = self.state else {
+            return UsbBootKeyboardPoll::Pending(UsbBootKeyboardPending::EnumerationFailed);
+        };
+        let poll = state.poll();
+        self.state = match poll {
+            UsbBootKeyboardPoll::Pending(pending @ UsbBootKeyboardPending::ReportEventMismatch)
+            | UsbBootKeyboardPoll::Pending(
+                pending @ UsbBootKeyboardPending::ReportTransferFailed { .. },
+            ) => UsbBootKeyboardProviderState::retry_later(pending),
+            _ => UsbBootKeyboardProviderState::Ready(state),
+        };
+        poll
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum UsbBootKeyboardProviderState {
+    Uninitialized,
+    RetryLater {
+        pending: UsbBootKeyboardPending,
+        polls_remaining: usize,
+    },
+    Ready(XhciBootKeyboardProvider),
+}
+
+impl UsbBootKeyboardProviderState {
+    const fn retry_later(pending: UsbBootKeyboardPending) -> Self {
+        Self::RetryLater {
+            pending,
+            polls_remaining: USB_BOOT_KEYBOARD_RETRY_POLLS,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct XhciBootKeyboardProvider {
+    mmio: usize,
+    caps: XhciCapabilities,
+    plan: XhciDriverMemoryPlan,
+    slot_id: u8,
+    endpoint_id: u8,
+    event_index: usize,
+    event_cycle: bool,
+    next_transfer_trb_index: usize,
+    transfer_cycle: bool,
+    transfer_pending: bool,
+    pending_transfer_trb_index: usize,
+    normal_trb_pointer: u64,
+}
+
+impl XhciBootKeyboardProvider {
+    fn poll(&mut self) -> UsbBootKeyboardPoll {
+        if !self.transfer_pending {
+            self.queue_interrupt_in_transfer();
+        }
+
+        let Some(event) = poll_xhci_transfer_event(self.plan, self.event_index, self.event_cycle)
+        else {
+            return UsbBootKeyboardPoll::Pending(UsbBootKeyboardPending::ReportPending {
+                slot_id: self.slot_id,
+                endpoint_id: self.endpoint_id,
+                transfer_trb_index: self.pending_transfer_trb_index as u8,
+                event_index: self.event_index as u8,
+            });
+        };
+
+        acknowledge_xhci_event(
+            self.mmio,
+            self.caps,
+            xhci_event_dequeue_pointer_after(self.plan, self.event_index),
+        );
+        self.advance_event_index();
+        self.transfer_pending = false;
+
+        let status = classify_boot_keyboard_report_transfer_event(
+            self.normal_trb_pointer,
+            self.slot_id,
+            self.endpoint_id,
+            event,
+        );
+        match status {
+            XhciReadBootKeyboardReportStatus::ReportReady { .. } => {
+                dma_invalidate_range(XHCI_BOOT_KEYBOARD_REPORT.addr(), BOOT_KEYBOARD_REPORT_BYTES);
+                UsbBootKeyboardPoll::Report(XHCI_BOOT_KEYBOARD_REPORT.read())
+            }
+            XhciReadBootKeyboardReportStatus::TransferFailed {
+                completion_code,
+                residual_length,
+                slot_id,
+                endpoint_id,
+            } => UsbBootKeyboardPoll::Pending(UsbBootKeyboardPending::ReportTransferFailed {
+                completion_code,
+                residual_length,
+                slot_id,
+                endpoint_id,
+            }),
+            _ => UsbBootKeyboardPoll::Pending(UsbBootKeyboardPending::ReportEventMismatch),
+        }
+    }
+
+    fn queue_interrupt_in_transfer(&mut self) {
+        if self.next_transfer_trb_index >= XHCI_INTERRUPT_IN_ENDPOINT_DATA_TRBS {
+            self.next_transfer_trb_index = 0;
+            self.transfer_cycle = !self.transfer_cycle;
+        }
+
+        let trb_index = self.next_transfer_trb_index;
+        let report_buffer = XHCI_BOOT_KEYBOARD_REPORT.addr();
+        XHCI_BOOT_KEYBOARD_REPORT.zero();
+        dma_clean_range(report_buffer, BOOT_KEYBOARD_REPORT_BYTES);
+
+        self.normal_trb_pointer = XHCI_INTERRUPT_IN_ENDPOINT_RING.trb_addr(trb_index);
+        let normal_trb = xhci_normal_transfer_trb_with_cycle(
+            report_buffer,
+            BOOT_KEYBOARD_REPORT_BYTES as u32,
+            self.transfer_cycle,
+        );
+        write_xhci_interrupt_in_transfer_with_cycle(
+            self.plan,
+            trb_index,
+            normal_trb,
+            self.transfer_cycle,
+        );
+
+        self.pending_transfer_trb_index = trb_index;
+        self.transfer_pending = true;
+        self.next_transfer_trb_index += 1;
+
+        compiler_fence(Ordering::SeqCst);
+        write_mmio_u32(
+            self.mmio
+                + self.caps.doorbell_offset as usize
+                + (self.slot_id as usize * core::mem::size_of::<u32>()),
+            self.endpoint_id as u32,
+        );
+    }
+
+    fn advance_event_index(&mut self) {
+        self.event_index += 1;
+        if self.event_index >= self.plan.event_ring_trbs as usize {
+            self.event_index = 0;
+            self.event_cycle = !self.event_cycle;
+        }
+    }
 }
 
 impl PcieXhciController {
@@ -3489,51 +3709,340 @@ pub fn read_boot_keyboard_report_on_pcie_xhci_controller() -> XhciReadBootKeyboa
     report
 }
 
-/// Polls the lower USB boot-keyboard provider without blocking.
+/// Polls the retained lower USB boot-keyboard provider.
 ///
-/// The current implementation reaches the real PCIe/xHCI discovery and port
-/// status path, then reports the first blocker before HID enumeration. It does
-/// not claim keyboard readiness until a later cut installs descriptor walking
-/// and interrupt-IN transfer polling that can return [`UsbBootKeyboardPoll::Report`].
+/// The first call attempts the manual xHCI/HID setup sequence and stores the
+/// resulting controller/endpoint state. Once setup succeeds, later calls only
+/// queue or poll the HID interrupt-IN transfer ring and never rerun descriptor
+/// enumeration. Setup failures are retried after a bounded poll backoff so a
+/// slow controller or late keyboard attach does not require a reboot.
 #[must_use]
 pub fn poll_boot_keyboard_report() -> UsbBootKeyboardPoll {
+    let provider = unsafe { &mut *USB_BOOT_KEYBOARD_PROVIDER.0.get() };
+    provider.poll()
+}
+
+fn initialize_boot_keyboard_provider() -> UsbBootKeyboardProviderState {
     let Some(controller) = probe_pcie_xhci_controller() else {
-        return UsbBootKeyboardPoll::Pending(UsbBootKeyboardPending::NoPcieXhciController);
-    };
-    let Some(mmio) = controller.mmio_base else {
-        return UsbBootKeyboardPoll::Pending(UsbBootKeyboardPending::ControllerBarUnconfigured);
-    };
-    let Some(caps) = read_xhci_capabilities_at_mmio(mmio) else {
-        return UsbBootKeyboardPoll::Pending(UsbBootKeyboardPending::InvalidXhciCapabilities);
-    };
-    let op = read_xhci_operational_snapshot(mmio, caps);
-    if op.controller_not_ready {
-        return UsbBootKeyboardPoll::Pending(UsbBootKeyboardPending::ControllerNotReady);
-    }
-    if op.reset_active {
-        return UsbBootKeyboardPoll::Pending(UsbBootKeyboardPending::ControllerResetInProgress);
-    }
-    if op.host_system_error {
-        return UsbBootKeyboardPoll::Pending(UsbBootKeyboardPending::HostSystemError);
-    }
-    let Some(port) = first_connected_xhci_port(mmio, caps) else {
-        return UsbBootKeyboardPoll::Pending(UsbBootKeyboardPending::NoConnectedRootPort);
-    };
-    if xhci_needs_driver_memory(op) {
-        return UsbBootKeyboardPoll::Pending(
-            UsbBootKeyboardPending::NeedsControllerInitialization {
-                max_slots: caps.max_device_slots,
-                port: port.port,
-                speed: port.speed,
-                link_state: port.link_state,
-            },
+        return UsbBootKeyboardProviderState::retry_later(
+            UsbBootKeyboardPending::NoPcieXhciController,
         );
-    }
-    UsbBootKeyboardPoll::Pending(UsbBootKeyboardPending::NeedsEnumeration {
-        port: port.port,
-        speed: port.speed,
-        link_state: port.link_state,
+    };
+    let Some(_mmio) = controller.mmio_base else {
+        return UsbBootKeyboardProviderState::retry_later(
+            UsbBootKeyboardPending::ControllerBarUnconfigured,
+        );
+    };
+
+    let set_hid_protocol = set_hid_boot_protocol_on_pcie_xhci_controller();
+    let slot_id = match set_hid_protocol.status {
+        XhciSetHidProtocolStatus::BootProtocolSet { slot_id, .. } => slot_id,
+        _ => {
+            return UsbBootKeyboardProviderState::retry_later(
+                usb_boot_keyboard_pending_from_set_hid_protocol_status(set_hid_protocol.status),
+            );
+        }
+    };
+    let Some(contexts) = set_hid_protocol.configure_endpoint.contexts else {
+        return UsbBootKeyboardProviderState::retry_later(
+            UsbBootKeyboardPending::EnumerationFailed,
+        );
+    };
+    let (Some(mmio), Some(caps), Some(plan)) = (
+        set_hid_protocol
+            .configure_endpoint
+            .set_configuration
+            .configuration
+            .header
+            .device_descriptor
+            .set_address
+            .descriptor
+            .address
+            .enable
+            .start
+            .mmio_base,
+        set_hid_protocol
+            .configure_endpoint
+            .set_configuration
+            .configuration
+            .header
+            .device_descriptor
+            .set_address
+            .descriptor
+            .address
+            .enable
+            .start
+            .capabilities,
+        set_hid_protocol
+            .configure_endpoint
+            .set_configuration
+            .configuration
+            .header
+            .device_descriptor
+            .set_address
+            .descriptor
+            .address
+            .enable
+            .start
+            .memory,
+    ) else {
+        return UsbBootKeyboardProviderState::retry_later(
+            UsbBootKeyboardPending::EnumerationFailed,
+        );
+    };
+
+    UsbBootKeyboardProviderState::Ready(XhciBootKeyboardProvider {
+        mmio,
+        caps,
+        plan,
+        slot_id,
+        endpoint_id: contexts.endpoint_id,
+        event_index: XHCI_BOOT_KEYBOARD_REPORT_EVENT_INDEX,
+        event_cycle: true,
+        next_transfer_trb_index: XHCI_INTERRUPT_IN_REPORT_TRB_INDEX,
+        transfer_cycle: true,
+        transfer_pending: false,
+        pending_transfer_trb_index: XHCI_INTERRUPT_IN_REPORT_TRB_INDEX,
+        normal_trb_pointer: 0,
     })
+}
+
+fn usb_boot_keyboard_pending_from_set_hid_protocol_status(
+    status: XhciSetHidProtocolStatus,
+) -> UsbBootKeyboardPending {
+    match status {
+        XhciSetHidProtocolStatus::ConfigureEndpointFailed(status) => {
+            usb_boot_keyboard_pending_from_configure_endpoint_status(status)
+        }
+        XhciSetHidProtocolStatus::BootKeyboardInterfaceUnavailable => {
+            UsbBootKeyboardPending::EnumerationFailed
+        }
+        XhciSetHidProtocolStatus::StartEvidenceUnavailable
+        | XhciSetHidProtocolStatus::TransferTimedOut
+        | XhciSetHidProtocolStatus::UnexpectedEventType { .. }
+        | XhciSetHidProtocolStatus::TransferPointerMismatch { .. }
+        | XhciSetHidProtocolStatus::SlotIdMismatch { .. }
+        | XhciSetHidProtocolStatus::EndpointIdMismatch { .. }
+        | XhciSetHidProtocolStatus::TransferFailed { .. }
+        | XhciSetHidProtocolStatus::BootProtocolSet { .. } => {
+            UsbBootKeyboardPending::EnumerationFailed
+        }
+    }
+}
+
+fn usb_boot_keyboard_pending_from_configure_endpoint_status(
+    status: XhciConfigureEndpointStatus,
+) -> UsbBootKeyboardPending {
+    match status {
+        XhciConfigureEndpointStatus::SetConfigurationFailed(status) => {
+            usb_boot_keyboard_pending_from_set_configuration_status(status)
+        }
+        XhciConfigureEndpointStatus::BootKeyboardEndpointUnavailable
+        | XhciConfigureEndpointStatus::StartEvidenceUnavailable
+        | XhciConfigureEndpointStatus::EndpointIdOutOfRange { .. }
+        | XhciConfigureEndpointStatus::CommandTimedOut
+        | XhciConfigureEndpointStatus::UnexpectedEventType { .. }
+        | XhciConfigureEndpointStatus::CommandPointerMismatch { .. }
+        | XhciConfigureEndpointStatus::SlotIdMismatch { .. }
+        | XhciConfigureEndpointStatus::CommandFailed { .. }
+        | XhciConfigureEndpointStatus::EndpointConfigured { .. } => {
+            UsbBootKeyboardPending::EnumerationFailed
+        }
+    }
+}
+
+fn usb_boot_keyboard_pending_from_set_configuration_status(
+    status: XhciSetConfigurationStatus,
+) -> UsbBootKeyboardPending {
+    match status {
+        XhciSetConfigurationStatus::ConfigurationDescriptorFailed(status) => {
+            usb_boot_keyboard_pending_from_configuration_descriptor_status(status)
+        }
+        XhciSetConfigurationStatus::BootKeyboardNotReadyToConfigure
+        | XhciSetConfigurationStatus::StartEvidenceUnavailable
+        | XhciSetConfigurationStatus::TransferTimedOut
+        | XhciSetConfigurationStatus::UnexpectedEventType { .. }
+        | XhciSetConfigurationStatus::TransferPointerMismatch { .. }
+        | XhciSetConfigurationStatus::SlotIdMismatch { .. }
+        | XhciSetConfigurationStatus::EndpointIdMismatch { .. }
+        | XhciSetConfigurationStatus::TransferFailed { .. }
+        | XhciSetConfigurationStatus::ConfigurationSet { .. } => {
+            UsbBootKeyboardPending::EnumerationFailed
+        }
+    }
+}
+
+fn usb_boot_keyboard_pending_from_configuration_descriptor_status(
+    status: XhciReadConfigurationDescriptorStatus,
+) -> UsbBootKeyboardPending {
+    match status {
+        XhciReadConfigurationDescriptorStatus::HeaderFailed(status) => {
+            usb_boot_keyboard_pending_from_configuration_header_status(status)
+        }
+        XhciReadConfigurationDescriptorStatus::ConfigurationTooLarge { .. }
+        | XhciReadConfigurationDescriptorStatus::StartEvidenceUnavailable
+        | XhciReadConfigurationDescriptorStatus::TransferTimedOut
+        | XhciReadConfigurationDescriptorStatus::UnexpectedEventType { .. }
+        | XhciReadConfigurationDescriptorStatus::TransferPointerMismatch { .. }
+        | XhciReadConfigurationDescriptorStatus::SlotIdMismatch { .. }
+        | XhciReadConfigurationDescriptorStatus::EndpointIdMismatch { .. }
+        | XhciReadConfigurationDescriptorStatus::TransferFailed { .. }
+        | XhciReadConfigurationDescriptorStatus::InvalidConfigurationDescriptor { .. }
+        | XhciReadConfigurationDescriptorStatus::ConfigurationDescriptorReady { .. } => {
+            UsbBootKeyboardPending::EnumerationFailed
+        }
+    }
+}
+
+fn usb_boot_keyboard_pending_from_configuration_header_status(
+    status: XhciReadConfigurationDescriptorHeaderStatus,
+) -> UsbBootKeyboardPending {
+    match status {
+        XhciReadConfigurationDescriptorHeaderStatus::DeviceDescriptorFailed(status) => {
+            usb_boot_keyboard_pending_from_device_descriptor_status(status)
+        }
+        XhciReadConfigurationDescriptorHeaderStatus::StartEvidenceUnavailable
+        | XhciReadConfigurationDescriptorHeaderStatus::TransferTimedOut
+        | XhciReadConfigurationDescriptorHeaderStatus::UnexpectedEventType { .. }
+        | XhciReadConfigurationDescriptorHeaderStatus::TransferPointerMismatch { .. }
+        | XhciReadConfigurationDescriptorHeaderStatus::SlotIdMismatch { .. }
+        | XhciReadConfigurationDescriptorHeaderStatus::EndpointIdMismatch { .. }
+        | XhciReadConfigurationDescriptorHeaderStatus::TransferFailed { .. }
+        | XhciReadConfigurationDescriptorHeaderStatus::InvalidConfigurationDescriptorHeader {
+            ..
+        }
+        | XhciReadConfigurationDescriptorHeaderStatus::ConfigurationDescriptorHeaderReady {
+            ..
+        } => UsbBootKeyboardPending::EnumerationFailed,
+    }
+}
+
+fn usb_boot_keyboard_pending_from_device_descriptor_status(
+    status: XhciReadDeviceDescriptorStatus,
+) -> UsbBootKeyboardPending {
+    match status {
+        XhciReadDeviceDescriptorStatus::SetAddressFailed(status) => {
+            usb_boot_keyboard_pending_from_set_address_status(status)
+        }
+        XhciReadDeviceDescriptorStatus::StartEvidenceUnavailable
+        | XhciReadDeviceDescriptorStatus::TransferTimedOut
+        | XhciReadDeviceDescriptorStatus::UnexpectedEventType { .. }
+        | XhciReadDeviceDescriptorStatus::TransferPointerMismatch { .. }
+        | XhciReadDeviceDescriptorStatus::SlotIdMismatch { .. }
+        | XhciReadDeviceDescriptorStatus::EndpointIdMismatch { .. }
+        | XhciReadDeviceDescriptorStatus::TransferFailed { .. }
+        | XhciReadDeviceDescriptorStatus::InvalidDeviceDescriptor { .. }
+        | XhciReadDeviceDescriptorStatus::DeviceDescriptorReady { .. } => {
+            UsbBootKeyboardPending::EnumerationFailed
+        }
+    }
+}
+
+fn usb_boot_keyboard_pending_from_set_address_status(
+    status: XhciSetAddressStatus,
+) -> UsbBootKeyboardPending {
+    match status {
+        XhciSetAddressStatus::DescriptorPrefixFailed(status) => {
+            usb_boot_keyboard_pending_from_descriptor_prefix_status(status)
+        }
+        XhciSetAddressStatus::StartEvidenceUnavailable
+        | XhciSetAddressStatus::InvalidDescriptorPrefix { .. }
+        | XhciSetAddressStatus::CommandTimedOut
+        | XhciSetAddressStatus::UnexpectedEventType { .. }
+        | XhciSetAddressStatus::CommandPointerMismatch { .. }
+        | XhciSetAddressStatus::SlotIdMismatch { .. }
+        | XhciSetAddressStatus::CommandFailed { .. }
+        | XhciSetAddressStatus::Addressed { .. } => UsbBootKeyboardPending::EnumerationFailed,
+    }
+}
+
+fn usb_boot_keyboard_pending_from_descriptor_prefix_status(
+    status: XhciDeviceDescriptorProbeStatus,
+) -> UsbBootKeyboardPending {
+    match status {
+        XhciDeviceDescriptorProbeStatus::AddressDeviceFailed(status) => {
+            usb_boot_keyboard_pending_from_address_device_status(status)
+        }
+        XhciDeviceDescriptorProbeStatus::StartEvidenceUnavailable
+        | XhciDeviceDescriptorProbeStatus::TransferTimedOut
+        | XhciDeviceDescriptorProbeStatus::UnexpectedEventType { .. }
+        | XhciDeviceDescriptorProbeStatus::TransferPointerMismatch { .. }
+        | XhciDeviceDescriptorProbeStatus::SlotIdMismatch { .. }
+        | XhciDeviceDescriptorProbeStatus::EndpointIdMismatch { .. }
+        | XhciDeviceDescriptorProbeStatus::TransferFailed { .. }
+        | XhciDeviceDescriptorProbeStatus::DescriptorPrefixReady { .. } => {
+            UsbBootKeyboardPending::EnumerationFailed
+        }
+    }
+}
+
+fn usb_boot_keyboard_pending_from_address_device_status(
+    status: XhciAddressDeviceStatus,
+) -> UsbBootKeyboardPending {
+    match status {
+        XhciAddressDeviceStatus::EnableSlotFailed(status) => {
+            usb_boot_keyboard_pending_from_enable_slot_status(status)
+        }
+        XhciAddressDeviceStatus::NoConnectedRootPort => UsbBootKeyboardPending::NoConnectedRootPort,
+        XhciAddressDeviceStatus::SlotIdOutOfRange { .. }
+        | XhciAddressDeviceStatus::StartEvidenceUnavailable
+        | XhciAddressDeviceStatus::CommandTimedOut
+        | XhciAddressDeviceStatus::UnexpectedEventType { .. }
+        | XhciAddressDeviceStatus::CommandPointerMismatch { .. }
+        | XhciAddressDeviceStatus::SlotIdMismatch { .. }
+        | XhciAddressDeviceStatus::CommandFailed { .. }
+        | XhciAddressDeviceStatus::DefaultControlEndpointReady { .. } => {
+            UsbBootKeyboardPending::EnumerationFailed
+        }
+    }
+}
+
+fn usb_boot_keyboard_pending_from_enable_slot_status(
+    status: XhciEnableSlotStatus,
+) -> UsbBootKeyboardPending {
+    match status {
+        XhciEnableSlotStatus::ControllerStartFailed(status) => {
+            usb_boot_keyboard_pending_from_controller_start_status(status)
+        }
+        XhciEnableSlotStatus::StartEvidenceUnavailable
+        | XhciEnableSlotStatus::ControllerNotRunning
+        | XhciEnableSlotStatus::CommandTimedOut
+        | XhciEnableSlotStatus::UnexpectedEventType { .. }
+        | XhciEnableSlotStatus::CommandPointerMismatch { .. }
+        | XhciEnableSlotStatus::CommandFailed { .. }
+        | XhciEnableSlotStatus::SlotEnabled { .. } => UsbBootKeyboardPending::EnumerationFailed,
+    }
+}
+
+fn usb_boot_keyboard_pending_from_controller_start_status(
+    status: XhciControllerStartStatus,
+) -> UsbBootKeyboardPending {
+    match status {
+        XhciControllerStartStatus::NoPcieXhciController => {
+            UsbBootKeyboardPending::NoPcieXhciController
+        }
+        XhciControllerStartStatus::ControllerBarUnconfigured => {
+            UsbBootKeyboardPending::ControllerBarUnconfigured
+        }
+        XhciControllerStartStatus::InvalidXhciCapabilities => {
+            UsbBootKeyboardPending::InvalidXhciCapabilities
+        }
+        XhciControllerStartStatus::ControllerNotReadyTimedOut
+        | XhciControllerStartStatus::PostResetControllerNotReadyTimedOut => {
+            UsbBootKeyboardPending::ControllerNotReady
+        }
+        XhciControllerStartStatus::ResetTimedOut => {
+            UsbBootKeyboardPending::ControllerResetInProgress
+        }
+        XhciControllerStartStatus::HostSystemErrorAfterStart => {
+            UsbBootKeyboardPending::HostSystemError
+        }
+        XhciControllerStartStatus::PciCommandEnableFailed
+        | XhciControllerStartStatus::DriverMemoryUnavailable { .. }
+        | XhciControllerStartStatus::StopTimedOut
+        | XhciControllerStartStatus::StartTimedOut
+        | XhciControllerStartStatus::Started => UsbBootKeyboardPending::EnumerationFailed,
+    }
 }
 
 unsafe fn read_xhci_capabilities_at(base: usize) -> Option<XhciCapabilities> {
@@ -3752,12 +4261,6 @@ fn first_connected_xhci_port(base: usize, caps: XhciCapabilities) -> Option<Xhci
     None
 }
 
-fn xhci_needs_driver_memory(op: XhciOperationalSnapshot) -> bool {
-    op.enabled_device_slots == 0
-        || op.command_ring_control == 0
-        || op.device_context_base_address_array_pointer == 0
-}
-
 const fn xhci_operational_base(base: usize, caps: XhciCapabilities) -> usize {
     base + caps.cap_length as usize
 }
@@ -3869,6 +4372,28 @@ fn wait_for_xhci_transfer_event(
     None
 }
 
+fn poll_xhci_transfer_event(
+    plan: XhciDriverMemoryPlan,
+    event_index: usize,
+    expected_cycle: bool,
+) -> Option<XhciTransferEvent> {
+    let event_addr = plan.event_ring + (event_index * XHCI_TRB_BYTES) as u64;
+    dma_invalidate_range(event_addr, XHCI_TRB_BYTES);
+    let event = decode_xhci_transfer_event(XHCI_EVENT_RING.read_trb(event_index));
+    if event.cycle == expected_cycle && event.trb_type != 0 {
+        return Some(event);
+    }
+    None
+}
+
+fn xhci_event_dequeue_pointer_after(plan: XhciDriverMemoryPlan, event_index: usize) -> u64 {
+    let next_index = event_index + 1;
+    if next_index >= plan.event_ring_trbs as usize {
+        return plan.event_ring;
+    }
+    plan.event_ring + (next_index * XHCI_TRB_BYTES) as u64
+}
+
 fn xhci_enable_slot_command_trb(slot_type: u8) -> [u32; 4] {
     [
         0,
@@ -3922,11 +4447,16 @@ fn xhci_data_stage_trb(data_buffer: u64, length: u32, input: bool) -> [u32; 4] {
 }
 
 fn xhci_normal_transfer_trb(data_buffer: u64, length: u32) -> [u32; 4] {
+    xhci_normal_transfer_trb_with_cycle(data_buffer, length, true)
+}
+
+fn xhci_normal_transfer_trb_with_cycle(data_buffer: u64, length: u32, cycle: bool) -> [u32; 4] {
+    let cycle_bit = if cycle { XHCI_TRB_CYCLE } else { 0 };
     [
         data_buffer as u32,
         (data_buffer >> 32) as u32,
         length & XHCI_TRB_TRANSFER_LENGTH_MASK,
-        ((XHCI_TRB_TYPE_NORMAL as u32) << XHCI_TRB_TYPE_SHIFT) | XHCI_TRB_IOC | XHCI_TRB_CYCLE,
+        ((XHCI_TRB_TYPE_NORMAL as u32) << XHCI_TRB_TYPE_SHIFT) | XHCI_TRB_IOC | cycle_bit,
     ]
 }
 
@@ -3991,10 +4521,19 @@ fn write_xhci_interrupt_in_transfer(
     trb_index: usize,
     normal_trb: [u32; 4],
 ) {
+    write_xhci_interrupt_in_transfer_with_cycle(plan, trb_index, normal_trb, true);
+}
+
+fn write_xhci_interrupt_in_transfer_with_cycle(
+    plan: XhciDriverMemoryPlan,
+    trb_index: usize,
+    normal_trb: [u32; 4],
+    cycle: bool,
+) {
     XHCI_INTERRUPT_IN_ENDPOINT_RING.set_trb(trb_index, normal_trb);
     XHCI_INTERRUPT_IN_ENDPOINT_RING.set_trb(
         XHCI_INTERRUPT_IN_ENDPOINT_RING_TRBS - 1,
-        xhci_link_trb(plan.interrupt_in_endpoint_ring),
+        xhci_link_trb_with_cycle(plan.interrupt_in_endpoint_ring, cycle),
     );
     dma_clean_range(
         plan.interrupt_in_endpoint_ring,
@@ -4037,11 +4576,18 @@ fn xhci_configure_endpoint_command_trb(input_context: u64, slot_id: u8) -> [u32;
 }
 
 fn xhci_link_trb(ring_addr: u64) -> [u32; 4] {
+    xhci_link_trb_with_cycle(ring_addr, true)
+}
+
+fn xhci_link_trb_with_cycle(ring_addr: u64, cycle: bool) -> [u32; 4] {
+    let cycle_bit = if cycle { XHCI_TRB_CYCLE } else { 0 };
     [
         ring_addr as u32,
         (ring_addr >> 32) as u32,
         0,
-        ((XHCI_TRB_TYPE_LINK as u32) << XHCI_TRB_TYPE_SHIFT) | XHCI_LINK_TRB_TOGGLE_CYCLE,
+        ((XHCI_TRB_TYPE_LINK as u32) << XHCI_TRB_TYPE_SHIFT)
+            | XHCI_LINK_TRB_TOGGLE_CYCLE
+            | cycle_bit,
     ]
 }
 

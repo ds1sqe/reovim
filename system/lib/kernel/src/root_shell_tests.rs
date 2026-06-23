@@ -6,8 +6,8 @@
 use {
     super::{RootShellSession, execute_root_command},
     crate::rootd::{
-        BootCheckState, ConsoleInputSummary, HardwareProbeResult, PayloadDescriptor,
-        PayloadLaunchResult, ProfileSummary, RootDaemon, WriteFn,
+        BootCheckState, ConsoleInputStatus, ConsoleInputSummary, HardwareProbeResult,
+        PayloadDescriptor, PayloadLaunchResult, ProfileSummary, RootDaemon, WriteFn,
     },
     core::cell::UnsafeCell,
     reovim_testrt::{self as testrt, arch_test},
@@ -70,6 +70,14 @@ fn sink_str() -> &'static str {
 }
 
 fn daemon(profile: ProfileSummary, dmesg: Option<fn() -> &'static str>) -> RootDaemon<'static> {
+    daemon_with_input_status(profile, dmesg, None)
+}
+
+fn daemon_with_input_status(
+    profile: ProfileSummary,
+    dmesg: Option<fn() -> &'static str>,
+    input_status: Option<ConsoleInputStatus>,
+) -> RootDaemon<'static> {
     let daemon = RootDaemon::new(
         profile,
         sample_boot_info(),
@@ -78,6 +86,7 @@ fn daemon(profile: ProfileSummary, dmesg: Option<fn() -> &'static str>) -> RootD
         dmesg,
         None,
         Some(probe_fixture),
+        input_status,
         "reovim-os> ",
         ConsoleInputSummary::new(
             "fixture-input",
@@ -88,6 +97,15 @@ fn daemon(profile: ProfileSummary, dmesg: Option<fn() -> &'static str>) -> RootD
         sink_write,
     );
     daemon
+}
+
+fn ready_input_status(_base: ConsoleInputSummary) -> ConsoleInputSummary {
+    ConsoleInputSummary::new(
+        "usb-keyboard+uart-fallback",
+        "live",
+        BootCheckState::Ok,
+        BootCheckState::Ok,
+    )
 }
 
 fn run_command(profile: ProfileSummary, line: &[u8], dmesg: Option<fn() -> &'static str>) {
@@ -278,6 +296,21 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     run_session_command(&mut session, b"cat /log/dmesg\n");
     assert_contains(sink_bytes(), b"boot diagnostics complete\n");
     assert_contains(sink_bytes(), b"external diagnostics:\nboot diagnostics complete\n");
+});
+
+arch_test!(root_shell_boot_profile_uses_live_console_input_status, {
+    sink_clear();
+    let daemon = daemon_with_input_status(
+        ProfileSummary::new("shell-only", false),
+        Some(diagnostics),
+        Some(ready_input_status),
+    );
+    let mut session = RootShellSession::new();
+    let _ = execute_root_command(&daemon, &mut session, b"cat /boot/profile\n");
+
+    assert_contains(sink_bytes(), b"input=usb-keyboard+uart-fallback\n");
+    assert_contains(sink_bytes(), b"input_mode=live\n");
+    assert_contains(sink_bytes(), b"usb_keyboard=ready\n");
 });
 
 arch_test!(root_shell_dmesg_and_unknown_command, {

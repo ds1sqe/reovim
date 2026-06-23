@@ -3,13 +3,14 @@
 use {
     super::{
         BCM2711_DWC2_BUS_BASE, BCM2711_DWC2_MMIO_BASE, BCM2711_XHCI_BUS_BASE,
-        BCM2711_XHCI_MMIO_BASE, PcieXhciController, USB_CONFIGURATION_DESCRIPTOR_MAX_BYTES,
-        UsbBootKeyboardPending, UsbBootKeyboardPoll, UsbEndpointDescriptor,
-        XHCI_CONTROL_ENDPOINT_RING_TRBS, XHCI_EP0_CONFIGURATION_DESCRIPTOR_HEADER_TRB_INDEX,
+        BCM2711_XHCI_MMIO_BASE, PcieXhciController, USB_BOOT_KEYBOARD_RETRY_POLLS,
+        USB_CONFIGURATION_DESCRIPTOR_MAX_BYTES, UsbBootKeyboardPending, UsbBootKeyboardPoll,
+        UsbBootKeyboardProviderState, UsbEndpointDescriptor, XHCI_CONTROL_ENDPOINT_RING_TRBS,
+        XHCI_EP0_CONFIGURATION_DESCRIPTOR_HEADER_TRB_INDEX,
         XHCI_EP0_CONFIGURATION_DESCRIPTOR_TRB_INDEX, XHCI_EP0_DESCRIPTOR_PREFIX_TRB_INDEX,
         XHCI_EP0_DEVICE_DESCRIPTOR_TRB_INDEX, XHCI_EP0_SET_CONFIGURATION_TRB_INDEX,
         XHCI_EP0_SET_HID_PROTOCOL_TRB_INDEX, XHCI_EVENT_RING_TRBS,
-        XHCI_INTERRUPT_IN_ENDPOINT_RING_TRBS, XHCI_STATIC_SCRATCHPAD_BUFFERS,
+        XHCI_INTERRUPT_IN_ENDPOINT_RING_TRBS, XHCI_STATIC_SCRATCHPAD_BUFFERS, XHCI_TRB_BYTES,
         XhciAddressDeviceStatus, XhciConfigureEndpointStatus, XhciControllerStartStatus,
         XhciDeviceDescriptorProbeStatus, XhciDriverMemoryStatus, XhciEnableSlotStatus,
         XhciReadBootKeyboardReportStatus, XhciReadConfigurationDescriptorHeaderStatus,
@@ -27,13 +28,16 @@ use {
         decode_xhci_supported_protocol, decode_xhci_transfer_event,
         parse_usb_configuration_descriptor_header, parse_usb_configuration_descriptor_tree,
         parse_usb_device_descriptor, prepare_xhci_driver_memory, protocol_covers_port,
+        usb_boot_keyboard_pending_from_address_device_status,
+        usb_boot_keyboard_pending_from_controller_start_status,
         usb_descriptor_endpoint0_max_packet_size, xhci_address_device_command_trb,
         xhci_address_device_contexts, xhci_address_device_contexts_with_max_packet_size,
         xhci_configure_endpoint_command_trb, xhci_configure_keyboard_endpoint_contexts,
         xhci_controller_start_registers, xhci_data_stage_trb, xhci_enable_slot_command_trb,
         xhci_endpoint_id, xhci_ep0_control_trb_pointers, xhci_ep0_no_data_control_trb_pointers,
-        xhci_extended_capability_offset, xhci_interrupt_endpoint_interval,
-        xhci_normal_transfer_trb, xhci_setup_stage_no_data_trb, xhci_setup_stage_trb,
+        xhci_event_dequeue_pointer_after, xhci_extended_capability_offset,
+        xhci_interrupt_endpoint_interval, xhci_link_trb_with_cycle, xhci_normal_transfer_trb,
+        xhci_normal_transfer_trb_with_cycle, xhci_setup_stage_no_data_trb, xhci_setup_stage_trb,
         xhci_status_stage_trb,
     },
     crate::pcie::{PciConfigHeader, PciLocation},
@@ -229,6 +233,159 @@ arch_test!(usb_boot_keyboard_poll_names_provider_blockers, {
         }
         _ => testrt::check(false, "poll reports enumeration blocker"),
     }
+
+    let pending = UsbBootKeyboardPoll::Pending(UsbBootKeyboardPending::ReportPending {
+        slot_id: 2,
+        endpoint_id: 3,
+        transfer_trb_index: 5,
+        event_index: 12,
+    });
+
+    match pending {
+        UsbBootKeyboardPoll::Pending(UsbBootKeyboardPending::ReportPending {
+            slot_id,
+            endpoint_id,
+            transfer_trb_index,
+            event_index,
+        }) => {
+            testrt::check_eq(slot_id, 2u8);
+            testrt::check_eq(endpoint_id, 3u8);
+            testrt::check_eq(transfer_trb_index, 5u8);
+            testrt::check_eq(event_index, 12u8);
+        }
+        _ => testrt::check(false, "poll reports retained transfer state"),
+    }
+
+    let failed = UsbBootKeyboardPoll::Pending(UsbBootKeyboardPending::ReportTransferFailed {
+        completion_code: 13,
+        residual_length: 8,
+        slot_id: 2,
+        endpoint_id: 3,
+    });
+
+    match failed {
+        UsbBootKeyboardPoll::Pending(UsbBootKeyboardPending::ReportTransferFailed {
+            completion_code,
+            residual_length,
+            slot_id,
+            endpoint_id,
+        }) => {
+            testrt::check_eq(completion_code, 13u8);
+            testrt::check_eq(residual_length, 8u32);
+            testrt::check_eq(slot_id, 2u8);
+            testrt::check_eq(endpoint_id, 3u8);
+        }
+        _ => testrt::check(false, "poll reports retained transfer failure"),
+    }
+});
+
+arch_test!(usb_keyboard_provider_retry_state_keeps_original_reason, {
+    let state =
+        UsbBootKeyboardProviderState::retry_later(UsbBootKeyboardPending::NoPcieXhciController);
+
+    match state {
+        UsbBootKeyboardProviderState::RetryLater {
+            pending,
+            polls_remaining,
+        } => {
+            testrt::check_eq(pending, UsbBootKeyboardPending::NoPcieXhciController);
+            testrt::check_eq(polls_remaining, USB_BOOT_KEYBOARD_RETRY_POLLS);
+        }
+        _ => testrt::check(false, "keyboard setup failures enter retry state"),
+    }
+});
+
+arch_test!(usb_keyboard_setup_status_maps_high_signal_blockers, {
+    testrt::check_eq(
+        usb_boot_keyboard_pending_from_controller_start_status(
+            XhciControllerStartStatus::NoPcieXhciController,
+        ),
+        UsbBootKeyboardPending::NoPcieXhciController,
+    );
+    testrt::check_eq(
+        usb_boot_keyboard_pending_from_controller_start_status(
+            XhciControllerStartStatus::ControllerBarUnconfigured,
+        ),
+        UsbBootKeyboardPending::ControllerBarUnconfigured,
+    );
+    testrt::check_eq(
+        usb_boot_keyboard_pending_from_controller_start_status(
+            XhciControllerStartStatus::InvalidXhciCapabilities,
+        ),
+        UsbBootKeyboardPending::InvalidXhciCapabilities,
+    );
+    testrt::check_eq(
+        usb_boot_keyboard_pending_from_controller_start_status(
+            XhciControllerStartStatus::ControllerNotReadyTimedOut,
+        ),
+        UsbBootKeyboardPending::ControllerNotReady,
+    );
+    testrt::check_eq(
+        usb_boot_keyboard_pending_from_controller_start_status(
+            XhciControllerStartStatus::ResetTimedOut,
+        ),
+        UsbBootKeyboardPending::ControllerResetInProgress,
+    );
+    testrt::check_eq(
+        usb_boot_keyboard_pending_from_controller_start_status(
+            XhciControllerStartStatus::HostSystemErrorAfterStart,
+        ),
+        UsbBootKeyboardPending::HostSystemError,
+    );
+    testrt::check_eq(
+        usb_boot_keyboard_pending_from_address_device_status(
+            XhciAddressDeviceStatus::NoConnectedRootPort,
+        ),
+        UsbBootKeyboardPending::NoConnectedRootPort,
+    );
+});
+
+arch_test!(xhci_interrupt_transfer_trbs_encode_cycle_bits, {
+    let trb_on = xhci_normal_transfer_trb_with_cycle(0x1234_5000, 8, true);
+    let trb_off = xhci_normal_transfer_trb_with_cycle(0x1234_5000, 8, false);
+
+    testrt::check_eq(trb_on[0], trb_off[0]);
+    testrt::check_eq(trb_on[1], trb_off[1]);
+    testrt::check_eq(trb_on[2], trb_off[2]);
+    testrt::check_eq(trb_on[3] & !1, trb_off[3] & !1);
+    testrt::check_eq(trb_on[3] & 1, 1u32);
+    testrt::check_eq(trb_off[3] & 1, 0u32);
+
+    let link_on = xhci_link_trb_with_cycle(0x2000_0000, true);
+    let link_off = xhci_link_trb_with_cycle(0x2000_0000, false);
+
+    testrt::check_eq(link_on[0], link_off[0]);
+    testrt::check_eq(link_on[1], link_off[1]);
+    testrt::check_eq(link_on[2], link_off[2]);
+    testrt::check_eq(link_on[3] & !1, link_off[3] & !1);
+    testrt::check_eq(link_on[3] & 1, 1u32);
+    testrt::check_eq(link_off[3] & 1, 0u32);
+    testrt::check(link_on[3] & (1 << 1) != 0, "link TRB toggles cycle");
+});
+
+arch_test!(xhci_event_dequeue_pointer_advances_and_wraps, {
+    let caps = decode_xhci_capabilities(
+        0x0100_0040,
+        (4 << 24) | (2 << 8) | 8,
+        (1 << 26) | (3 << 4),
+        0,
+        0x1000,
+        0x2000,
+    )
+    .unwrap_or_else(|| panic!("valid xHCI capability registers decode"));
+    let plan = match prepare_xhci_driver_memory(caps) {
+        XhciDriverMemoryStatus::Ready(plan) => plan,
+        _ => panic!("static xHCI memory supports this controller"),
+    };
+
+    testrt::check_eq(
+        xhci_event_dequeue_pointer_after(plan, 10),
+        plan.event_ring + (11 * XHCI_TRB_BYTES) as u64,
+    );
+    testrt::check_eq(
+        xhci_event_dequeue_pointer_after(plan, XHCI_EVENT_RING_TRBS - 1),
+        plan.event_ring,
+    );
 });
 
 arch_test!(xhci_enable_slot_command_trb_sets_cycle_type_and_slot_type, {
