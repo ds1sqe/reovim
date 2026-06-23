@@ -21,7 +21,7 @@ image=apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img
 bytes=<image-size>
 ```
 
-Current expected size is `437636` bytes.
+Current expected size is `437860` bytes.
 
 Copy `apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img` to the Pi
 4 boot partition as `kernel8.img`, using the normal Raspberry Pi firmware
@@ -249,12 +249,12 @@ Record the full visible output or serial transcript. The key evidence is:
   `target=aarch64-unknown-none`, `selected_profile=shell-only`,
   `profile_request=shell-only`, `bootline=absent`, and
   `launch_profile_feature=disabled`.
-- `status` / `input` show live ready source diagnostics:
-  `source=usb-keyboard+uart-fallback`, `source_state=ready`, `mode=live`,
-  `usb_keyboard_probe=enabled`, and a nonzero
+- `status` repeats the image/profile identity facts and shows live ready source
+  diagnostics: `source=usb-keyboard+uart-fallback`, `source_state=ready`,
+  `mode=live`, `usb_keyboard_probe=enabled`, and a nonzero
   `usb_keyboard_poll_interval_ms`.
-- `cat /boot/status` / `cat /boot/input` show the same live diagnostics
-  through the kernel VFS.
+- `cat /boot/status` shows the same status summary through the kernel VFS, and
+  `cat /boot/input` shows the live input diagnostics through the kernel VFS.
 - `probe help` lists `pcie`, `usb-keyboard`, and
   `xhci-read-keyboard-report`, proving the hardware probe paths were
   discoverable from the shell.

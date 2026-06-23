@@ -667,10 +667,18 @@ fn write_boot_status(daemon: &RootDaemon<'_>) {
     let input = daemon.console_input();
     daemon.write_bytes(b"package=");
     daemon.write_bytes(image.package.as_bytes());
+    daemon.write_bytes(b"\nversion=");
+    daemon.write_bytes(image.version.as_bytes());
     daemon.write_bytes(b"\ntarget=");
     daemon.write_bytes(image.target.as_bytes());
+    daemon.write_bytes(b"\nselected_profile=");
+    daemon.write_bytes(image.selected_profile.as_bytes());
+    daemon.write_bytes(b"\nprofile_request=");
+    daemon.write_bytes(image.profile_request.as_bytes());
     daemon.write_bytes(b"\nbootline=");
     daemon.write_bytes(image.bootline.as_bytes());
+    daemon.write_bytes(b"\nlaunch_profile_feature=");
+    daemon.write_bytes(image.launch_profile_feature.as_bytes());
     daemon.write_bytes(b"\nprofile=");
     daemon.write_bytes(daemon.profile_name().as_bytes());
     daemon.write_bytes(b"\nlaunch=");
@@ -679,6 +687,8 @@ fn write_boot_status(daemon: &RootDaemon<'_>) {
     } else {
         b"disabled"
     });
+    daemon.write_bytes(b"\npayloads=");
+    write_u64_dec(daemon, daemon.payloads().len() as u64);
     daemon.write_bytes(b"\ninput=");
     daemon.write_bytes(input.source.as_bytes());
     daemon.write_bytes(b"\nsource_state=");

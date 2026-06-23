@@ -475,6 +475,11 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
 
     run_session_command(&mut session, b"status\n");
     assert_contains(sink_bytes(), b"package=reovim-os\n");
+    assert_contains(sink_bytes(), b"version=test\n");
+    assert_contains(sink_bytes(), b"selected_profile=shell-only\n");
+    assert_contains(sink_bytes(), b"profile_request=shell-only\n");
+    assert_contains(sink_bytes(), b"launch_profile_feature=disabled\n");
+    assert_contains(sink_bytes(), b"payloads=3\n");
     assert_contains(sink_bytes(), b"manual_next=probe-help\n");
 
     run_session_command(&mut session, b"status extra\n");
@@ -560,6 +565,12 @@ arch_test!(root_shell_boot_profile_uses_live_console_input_status, {
 
     sink_clear();
     let _ = execute_root_command(&daemon, &mut session, b"cat /boot/status\n");
+    assert_contains(sink_bytes(), b"package=reovim-os\n");
+    assert_contains(sink_bytes(), b"version=test\n");
+    assert_contains(sink_bytes(), b"selected_profile=shell-only\n");
+    assert_contains(sink_bytes(), b"profile_request=shell-only\n");
+    assert_contains(sink_bytes(), b"launch_profile_feature=disabled\n");
+    assert_contains(sink_bytes(), b"payloads=3\n");
     assert_contains(sink_bytes(), b"input=usb-keyboard+uart-fallback\n");
     assert_contains(sink_bytes(), b"source_state=ready\n");
     assert_contains(sink_bytes(), b"usb_keyboard=ready\n");
