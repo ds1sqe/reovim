@@ -17,9 +17,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-: >"$tmp_bootfs/start4.elf"
-: >"$tmp_bootfs/fixup4.dat"
-: >"$tmp_bootfs/bcm2711-rpi-4-b.dtb"
+printf 'firmware-start\n' >"$tmp_bootfs/start4.elf"
+printf 'firmware-fixup\n' >"$tmp_bootfs/fixup4.dat"
+printf 'firmware-dtb\n' >"$tmp_bootfs/bcm2711-rpi-4-b.dtb"
 
 preflight_output="$("$PREFLIGHT_SCRIPT" --skip-qemu --bootfs "$tmp_bootfs" --evidence "$tmp_evidence")"
 
@@ -40,6 +40,7 @@ expect_contains() {
 source_sha="$(sha256sum "$IMAGE" | awk '{ print $1 }')"
 
 expect_contains "$preflight_output" "preflight=ok" "preflight status"
+expect_contains "$preflight_output" "bootfs=ok" "bootfs check status"
 expect_contains "$preflight_output" "qemu_smoke=skipped" "skipped qemu status"
 expect_contains "$preflight_output" "sha256=$source_sha" "image sha"
 expect_contains "$preflight_output" "evidence_seed=$tmp_evidence" "evidence path"

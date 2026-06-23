@@ -20,9 +20,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-: >"$tmp_bootfs/start4.elf"
-: >"$tmp_bootfs/fixup4.dat"
-: >"$tmp_bootfs/bcm2711-rpi-4-b.dtb"
+printf 'firmware-start\n' >"$tmp_bootfs/start4.elf"
+printf 'firmware-fixup\n' >"$tmp_bootfs/fixup4.dat"
+printf 'firmware-dtb\n' >"$tmp_bootfs/bcm2711-rpi-4-b.dtb"
 
 source_sha="$(sha256sum "$IMAGE" | awk '{ print $1 }')"
 

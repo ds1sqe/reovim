@@ -11,6 +11,7 @@ IMAGE="$ROOT/apps/target/$TARGET/debug/$PACKAGE.kernel8.img"
 BUILD_SCRIPT="$TARGET_DIR/build-image.sh"
 INSTALL_SCRIPT="$TARGET_DIR/install-image.sh"
 INSTALL_SMOKE_SCRIPT="$TARGET_DIR/test-install-image.sh"
+BOOTFS_CHECK_SCRIPT="$TARGET_DIR/check-bootfs.sh"
 EVIDENCE_TEMPLATE="$TARGET_DIR/evidence-template.md"
 DTB="$ROOT/arch/tests/fixtures/dtb/bcm2711-rpi-4-b.dtb"
 
@@ -183,11 +184,12 @@ cd "$ROOT"
 require_file "$BUILD_SCRIPT"
 require_file "$INSTALL_SCRIPT"
 require_file "$INSTALL_SMOKE_SCRIPT"
+require_file "$BOOTFS_CHECK_SCRIPT"
 require_file "$EVIDENCE_TEMPLATE"
 require_file "$DTB"
 
 run_step "syntax check target helper scripts"
-for script in "$BUILD_SCRIPT" "$INSTALL_SCRIPT" "$INSTALL_SMOKE_SCRIPT"; do
+for script in "$BUILD_SCRIPT" "$INSTALL_SCRIPT" "$INSTALL_SMOKE_SCRIPT" "$BOOTFS_CHECK_SCRIPT"; do
     bash -n "$script"
 done
 
@@ -198,6 +200,9 @@ run_step "smoke-test boot-partition installer without real media"
 "$INSTALL_SMOKE_SCRIPT"
 
 if [ -n "$BOOTFS" ]; then
+    run_step "check mounted Raspberry Pi 4 boot partition"
+    "$BOOTFS_CHECK_SCRIPT" "$BOOTFS"
+
     run_step "dry-run installer against mounted boot partition"
     "$INSTALL_SCRIPT" --dry-run "$BOOTFS"
 fi

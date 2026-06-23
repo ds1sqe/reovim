@@ -34,6 +34,17 @@ To build and install the image onto a mounted Pi 4 boot partition:
 apps/os/targets/raspi4b-aarch64/install-image.sh --build /path/to/bootfs
 ```
 
+To check the mounted boot partition before installing:
+
+```sh
+apps/os/targets/raspi4b-aarch64/check-bootfs.sh /path/to/bootfs
+```
+
+The checker requires non-empty Pi 4 boot firmware files:
+`start4.elf`, `fixup4.dat`, and `bcm2711-rpi-4-b.dtb`. It prints the
+bootfs path, firmware byte counts, and the existing `kernel8.img` identity
+when present.
+
 The install helper only copies `kernel8.img`; it does not format media, mount
 media, or install Raspberry Pi firmware files. If `kernel8.img` already exists
 on the boot partition, the helper saves a timestamped backup before replacing
@@ -44,11 +55,12 @@ To smoke-test the installer against a temporary directory instead of real
 media:
 
 ```sh
+apps/os/targets/raspi4b-aarch64/test-check-bootfs.sh
 apps/os/targets/raspi4b-aarch64/test-install-image.sh
 ```
 
-The smoke test verifies dry-run identity output, installed image hash, and
-distinct backups after repeated installs.
+The smoke tests verify bootfs readiness checks, dry-run identity output,
+installed image hash, and distinct backups after repeated installs.
 
 ## Local Preflight
 
@@ -61,7 +73,7 @@ apps/os/targets/raspi4b-aarch64/preflight-real-board.sh
 The preflight builds the no-bootline image, runs the installer smoke, boots the
 aarch64 QEMU display/UART smoke, and prints the image byte count, SHA-256,
 install command, and evidence-template path. If the boot partition is already
-mounted, pass it for an installer dry-run:
+mounted, pass it for bootfs validation plus an installer dry-run:
 
 ```sh
 apps/os/targets/raspi4b-aarch64/preflight-real-board.sh --bootfs /path/to/bootfs
