@@ -21,7 +21,7 @@ image=apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img
 bytes=<image-size>
 ```
 
-Current expected size is `435412` bytes.
+Current expected size is `435620` bytes.
 
 Copy `apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img` to the Pi
 4 boot partition as `kernel8.img`, using the normal Raspberry Pi firmware
@@ -133,12 +133,14 @@ physical-keyboard PASS labels, no-bootline image facts, installed-media
 identity from `prepare-boot-media.sh`, USB-keyboard readiness, live
 source diagnostics from `status` / `input`, VFS-backed live diagnostics from
 `cat /boot/status` / `cat /boot/input`, the in-OS `proof` checklist,
-VFS namespace evidence from `pwd` / `ls` / `mount` / `cat /boot/mounts`,
-boot inventory from `ls /dev` / `device` / `cat /boot/memory` /
-`cat /boot/devices`, `probe help` keyboard-target catalog output,
-`probe usb-keyboard` output, and `dmesg` command/status audit lines. It is a
-textual guard for completed evidence; it does not replace the physical HDMI
-plus USB-keyboard session.
+shell help/renderer evidence from `help` / `clear` / `screentest`, VFS
+namespace evidence from `pwd` / `ls` / `mount` / `cat /boot/mounts`, boot
+inventory from `ls /dev` / `device` / `cat /boot/memory` /
+`cat /boot/devices`, relative device-file access from `cd /dev` /
+`cat uart0`, `probe help` keyboard-target catalog output, `probe usb-keyboard`
+output, and `dmesg` command/status audit lines. It is a textual guard for
+completed evidence; it does not replace the physical HDMI plus USB-keyboard
+session.
 
 To smoke-test the validator:
 
@@ -185,6 +187,9 @@ keyboard:
 ```text
 proof
 cat /boot/proof
+help
+clear
+screentest
 pwd
 ls /
 ls /boot
@@ -194,6 +199,10 @@ cat /boot/mounts
 device
 cat /boot/memory
 cat /boot/devices
+cd /dev
+pwd
+cat uart0
+cd /
 cat /boot/image
 status
 cat /boot/status
@@ -210,10 +219,14 @@ Record the full visible output or serial transcript. The key evidence is:
 
 - `proof` prints the physical-input proof checklist from the running OS.
 - `cat /boot/proof` prints the same checklist through the kernel VFS.
+- `help`, `clear`, and `screentest` prove the shell help path and framebuffer
+  renderer diagnostics are reachable from the physical keyboard session.
 - `pwd`, `ls /`, `ls /boot`, `mount`, and `cat /boot/mounts` show the root
   VFS namespace and pseudo-filesystem mount table.
 - `ls /dev`, `device`, `cat /boot/memory`, and `cat /boot/devices` show the
   device namespace plus boot memory and device inventory facts.
+- `cd /dev`, `pwd`, `cat uart0`, and `cd /` prove session cwd and relative
+  VFS pseudo-device access.
 - `cat /boot/image` shows `target=aarch64-unknown-none` and `bootline=absent`.
 - `status` / `input` show live ready source diagnostics:
   `source=usb-keyboard+uart-fallback`, `source_state=ready`, `mode=live`,

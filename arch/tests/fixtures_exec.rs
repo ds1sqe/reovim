@@ -757,8 +757,12 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "probe target help appears in transcript; serial: {serial:?}",
     );
     assert!(
-        serial.contains("proof:\ncommands:\n  pwd\n  ls /\n  ls /boot"),
+        serial.contains("proof:\ncommands:\n  help\n  clear\n  screentest"),
         "proof checklist appears in transcript; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("  pwd\n  ls /\n  ls /boot"),
+        "proof checklist includes root namespace commands; serial: {serial:?}",
     );
     assert!(
         serial.contains("  ls /dev\n  mount\n  cat /boot/mounts"),
@@ -767,6 +771,10 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     assert!(
         serial.contains("  device\n  cat /boot/memory\n  cat /boot/devices"),
         "proof checklist includes boot inventory commands; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("  cd /dev\n  pwd\n  cat uart0\n  cd /"),
+        "proof checklist includes relative device access commands; serial: {serial:?}",
     );
     assert!(
         serial.contains("expected:\n  bootline=absent"),

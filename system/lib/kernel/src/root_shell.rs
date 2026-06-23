@@ -568,6 +568,9 @@ fn write_boot_input(daemon: &RootDaemon<'_>) {
 fn write_boot_proof(daemon: &RootDaemon<'_>) {
     daemon.write_line("proof:");
     daemon.write_line("commands:");
+    daemon.write_line("  help");
+    daemon.write_line("  clear");
+    daemon.write_line("  screentest");
     daemon.write_line("  pwd");
     daemon.write_line("  ls /");
     daemon.write_line("  ls /boot");
@@ -577,6 +580,10 @@ fn write_boot_proof(daemon: &RootDaemon<'_>) {
     daemon.write_line("  device");
     daemon.write_line("  cat /boot/memory");
     daemon.write_line("  cat /boot/devices");
+    daemon.write_line("  cd /dev");
+    daemon.write_line("  pwd");
+    daemon.write_line("  cat uart0");
+    daemon.write_line("  cd /");
     daemon.write_line("  cat /boot/image");
     daemon.write_line("  status");
     daemon.write_line("  cat /boot/status");
