@@ -80,6 +80,7 @@ expect_contains "$evidence" "- Boot partition path: $tmp_bootfs" "evidence bootf
 expect_contains "$evidence" "## Media Preparation" "evidence media section"
 expect_contains "$evidence" "- [x] \`media_prepare=ok\`" "evidence media status checkbox"
 expect_contains "$evidence" "- [x] installed \`kernel8.img\` SHA-256 matches image SHA-256." "evidence install hash checkbox"
+expect_contains "$evidence" "- [x] installed \`kernel8.img\` byte count matches image byte count." "evidence install byte checkbox"
 expect_contains "$evidence" "media_prepare=ok" "evidence media status"
 expect_contains "$evidence" "installed=$tmp_bootfs/kernel8.img" "evidence installed path"
 expect_contains "$evidence" "bytes=$source_bytes" "evidence installed bytes"

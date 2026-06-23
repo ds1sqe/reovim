@@ -18,6 +18,8 @@ pass_evidence="$tmp_dir/pass.md"
 display_only_evidence="$tmp_dir/display-only.md"
 missing_audit_evidence="$tmp_dir/missing-audit.md"
 missing_media_evidence="$tmp_dir/missing-media.md"
+media_byte_mismatch_evidence="$tmp_dir/media-byte-mismatch.md"
+media_sha_mismatch_evidence="$tmp_dir/media-sha-mismatch.md"
 validator_output="$tmp_dir/validator.out"
 
 write_passing_evidence() {
@@ -26,6 +28,8 @@ write_passing_evidence() {
     {
         printf '# Raspberry Pi 4 USB Keyboard Evidence\n\n'
         printf '## Session\n\n'
+        printf -- '- Image bytes: 433788\n'
+        printf -- '- Image SHA-256: abeccca617486102d57d9e25b93f8c59c463003f2f7584b69a3faae5d6ba15b2\n'
         printf -- '- Preflight result: preflight=ok qemu_smoke=passed\n'
         printf -- '- Evidence label:\n'
         printf '  - [ ] display-only\n'
@@ -35,7 +39,8 @@ write_passing_evidence() {
         printf '## Media Preparation\n\n'
         printf 'Required media facts:\n\n'
         printf -- '- [x] `media_prepare=ok`\n'
-        printf -- '- [x] installed `kernel8.img` SHA-256 matches image SHA-256.\n\n'
+        printf -- '- [x] installed `kernel8.img` SHA-256 matches image SHA-256.\n'
+        printf -- '- [x] installed `kernel8.img` byte count matches image byte count.\n\n'
         printf '```text\n'
         printf 'media_prepare=ok\n'
         printf 'bootfs=/media/pi-boot\n'
@@ -130,5 +135,13 @@ expect_failure "$missing_audit_evidence" "missing-audit"
 cp "$pass_evidence" "$missing_media_evidence"
 sed -i '/^media_prepare=ok$/d' "$missing_media_evidence"
 expect_failure "$missing_media_evidence" "missing-media"
+
+cp "$pass_evidence" "$media_byte_mismatch_evidence"
+sed -i 's/^- Image bytes: 433788$/- Image bytes: 433787/' "$media_byte_mismatch_evidence"
+expect_failure "$media_byte_mismatch_evidence" "media-byte-mismatch"
+
+cp "$pass_evidence" "$media_sha_mismatch_evidence"
+sed -i 's/^sha256=abeccca617486102d57d9e25b93f8c59c463003f2f7584b69a3faae5d6ba15b2$/sha256=0000000000000000000000000000000000000000000000000000000000000000/' "$media_sha_mismatch_evidence"
+expect_failure "$media_sha_mismatch_evidence" "media-sha-mismatch"
 
 printf 'evidence validator smoke ok\n'

@@ -52,9 +52,12 @@ forbid_re '^  - \[[xX]\] UART input$' 'UART input evidence label is checked'
 forbid_re '^  - \[[xX]\] bootline-script$' 'bootline-script evidence label is checked'
 forbid_re '^- \[[xX]\] FAIL: display/UART/scripted evidence only\.$' 'FAIL result is checked'
 
+require_re '^- Image bytes: [1-9][0-9]*$' 'seeded image byte count'
+require_re '^- Image SHA-256: [0-9a-f]{64}$' 'seeded image SHA-256'
 require_re '^- Preflight result: preflight=ok' 'preflight result passed'
 require_re '^- \[[xX]\] `media_prepare=ok`$' 'media-prep status checkbox'
 require_re '^- \[[xX]\] installed `kernel8\.img` SHA-256 matches image SHA-256\.$' 'installed image SHA checkbox'
+require_re '^- \[[xX]\] installed `kernel8\.img` byte count matches image byte count\.$' 'installed image byte-count checkbox'
 require_re '^  - \[[xX]\] physical USB keyboard$' 'physical USB keyboard evidence label'
 require_re '^- \[[xX]\] PASS: physical USB keyboard proof complete\.$' 'physical USB keyboard PASS result'
 
@@ -89,6 +92,20 @@ require_re '^shell: probe help$' 'dmesg audit for probe help'
 require_re '^shell: probe usb-keyboard$' 'dmesg audit for probe usb-keyboard'
 require_re '^shell: cat /boot/profile$' 'dmesg audit for cat /boot/profile'
 require_re '^shell: dmesg$' 'dmesg audit for dmesg'
+
+image_bytes="$(awk '/^- Image bytes: [1-9][0-9]*$/ { print $4; exit }' "$EVIDENCE")"
+media_bytes="$(awk -F= '/^bytes=[1-9][0-9]*$/ { print $2; exit }' "$EVIDENCE")"
+if [ -n "$image_bytes" ] && [ -n "$media_bytes" ] && [ "$image_bytes" != "$media_bytes" ]; then
+    printf 'mismatch: image bytes %s != installed bytes %s\n' "$image_bytes" "$media_bytes" >&2
+    missing=1
+fi
+
+image_sha="$(awk '/^- Image SHA-256: [0-9a-f]{64}$/ { print $4; exit }' "$EVIDENCE")"
+media_sha="$(awk -F= '/^sha256=[0-9a-f]{64}$/ { print $2; exit }' "$EVIDENCE")"
+if [ -n "$image_sha" ] && [ -n "$media_sha" ] && [ "$image_sha" != "$media_sha" ]; then
+    printf 'mismatch: image SHA-256 %s != installed SHA-256 %s\n' "$image_sha" "$media_sha" >&2
+    missing=1
+fi
 
 if [ "$missing" -ne 0 ]; then
     exit 1

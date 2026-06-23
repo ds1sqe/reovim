@@ -40,7 +40,8 @@ The media-prep helper runs preflight, installs the exact built `kernel8.img`,
 verifies the installed image SHA-256 against the built image, and only then
 publishes the evidence seed for the physical session. The published evidence
 seed includes `media_prepare=ok`, the installed `kernel8.img` path, byte count,
-and SHA-256. Use this path for the real HDMI plus USB-keyboard proof.
+and SHA-256, and the validator compares those installed-media values with the
+seeded image identity. Use this path for the real HDMI plus USB-keyboard proof.
 
 To build and install the image manually onto a mounted Pi 4 boot partition:
 

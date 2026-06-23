@@ -33,6 +33,7 @@ Required media facts:
 
 - [ ] `media_prepare=ok`
 - [ ] installed `kernel8.img` SHA-256 matches image SHA-256.
+- [ ] installed `kernel8.img` byte count matches image byte count.
 
 Paste the media-prep result from `prepare-boot-media.sh`:
 
