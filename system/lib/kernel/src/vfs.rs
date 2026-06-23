@@ -94,6 +94,52 @@ pub enum Directory {
     Log,
 }
 
+/// One mounted namespace in the kernel VFS.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MountEntry {
+    /// Stable source label shown by the root shell.
+    pub source: &'static str,
+    /// Absolute mount target.
+    pub target: &'static str,
+    /// Kernel-local filesystem kind.
+    pub fs_type: &'static str,
+    /// Readable mount flags.
+    pub flags: &'static str,
+}
+
+const MOUNT_TABLE: [MountEntry; 4] = [
+    MountEntry {
+        source: "kernel",
+        target: "/",
+        fs_type: "rootfs",
+        flags: "ro,pseudo",
+    },
+    MountEntry {
+        source: "boot",
+        target: "/boot",
+        fs_type: "bootfs",
+        flags: "ro,pseudo",
+    },
+    MountEntry {
+        source: "devices",
+        target: "/dev",
+        fs_type: "devfs",
+        flags: "ro,pseudo",
+    },
+    MountEntry {
+        source: "klog",
+        target: "/log",
+        fs_type: "logfs",
+        flags: "ro,pseudo",
+    },
+];
+
+/// Returns the static mount table that backs the root-shell namespace.
+#[must_use]
+pub const fn mounts() -> &'static [MountEntry] {
+    &MOUNT_TABLE
+}
+
 /// Read-only file or pseudo-device nodes in the kernel VFS.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum File {
@@ -103,6 +149,8 @@ pub enum File {
     BootMemory,
     /// `/boot/devices`.
     BootDevices,
+    /// `/boot/mounts`.
+    BootMounts,
     /// `/log/dmesg`.
     LogDmesg,
     /// `/dev/{class}{ordinal}`.
@@ -155,6 +203,7 @@ pub fn lookup(path: &str, devices: &[DeviceEntry]) -> Result<Node, VfsError> {
         "/boot/profile" => return Ok(Node::File(File::BootProfile)),
         "/boot/memory" => return Ok(Node::File(File::BootMemory)),
         "/boot/devices" => return Ok(Node::File(File::BootDevices)),
+        "/boot/mounts" => return Ok(Node::File(File::BootMounts)),
         "/log/dmesg" => return Ok(Node::File(File::LogDmesg)),
         _ => {}
     }
@@ -175,6 +224,7 @@ pub fn lookup(path: &str, devices: &[DeviceEntry]) -> Result<Node, VfsError> {
         "/boot/profile/",
         "/boot/memory/",
         "/boot/devices/",
+        "/boot/mounts/",
         "/log/dmesg/",
     ] {
         if path.starts_with(file) {

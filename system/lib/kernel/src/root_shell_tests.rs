@@ -139,7 +139,12 @@ const SAMPLE_DEVICES: [DeviceEntry; 1] = [DeviceEntry {
     compatible: "arm,pl011",
 }];
 
-const SAMPLE_PAYLOADS: [PayloadDescriptor; 2] = [
+const SAMPLE_PAYLOADS: [PayloadDescriptor; 3] = [
+    PayloadDescriptor {
+        name: "reovim",
+        summary: "default reovim payload",
+        launch: Some(launch_reovim),
+    },
     PayloadDescriptor {
         name: "editor-smoke",
         summary: "editor smoke payload",
@@ -166,6 +171,10 @@ fn sample_devices() -> &'static [DeviceEntry] {
 
 fn sample_payloads() -> &'static [PayloadDescriptor] {
     &SAMPLE_PAYLOADS
+}
+
+fn launch_reovim() -> PayloadLaunchResult {
+    PayloadLaunchResult::Ready
 }
 
 fn launch_editor() -> PayloadLaunchResult {
@@ -209,7 +218,7 @@ arch_test!(root_shell_help, {
     run_command(ProfileSummary::new("shell-only", false), b"help\n", None);
     testrt::check_eq(
         sink_str(),
-        "reovim root shell\ncommands: help, clear, screentest, pwd, ls, cd, cat, device, dmesg, probe, launch, halt\nreserved: mount, reovim\n",
+        "reovim root shell\ncommands: help, clear, screentest, pwd, ls, cd, cat, mount, device, dmesg, probe, launch, reovim, halt\n",
     );
 });
 
@@ -241,11 +250,11 @@ arch_test!(root_shell_clear_and_screentest, {
     assert_contains(sink_bytes(), b"  done\n");
 });
 
-arch_test!(root_shell_launch_and_reserved, {
+arch_test!(root_shell_launch_mount_and_reserved, {
     run_command(ProfileSummary::new("appliance", true), b"launch\n", None);
     assert_contains(
         sink_bytes(),
-        b"launch: available payloads:\n  editor-smoke: editor smoke payload\n  server-smoke: server smoke payload\n",
+        b"launch: available payloads:\n  reovim: default reovim payload\n  editor-smoke: editor smoke payload\n  server-smoke: server smoke payload\n",
     );
 
     run_command(ProfileSummary::new("appliance", true), b"launch editor-smoke\n", None);
@@ -255,7 +264,22 @@ arch_test!(root_shell_launch_and_reserved, {
     testrt::check_eq(sink_str(), "launch disabled for this profile\n");
 
     run_command(ProfileSummary::new("appliance", true), b"mount\n", None);
-    testrt::check_eq(sink_str(), "reserved: supported after mount/payload-alias rollout\n");
+    assert_contains(sink_bytes(), b"kernel on / type rootfs (ro,pseudo)\n");
+    assert_contains(sink_bytes(), b"boot on /boot type bootfs (ro,pseudo)\n");
+    assert_contains(sink_bytes(), b"devices on /dev type devfs (ro,pseudo)\n");
+    assert_contains(sink_bytes(), b"klog on /log type logfs (ro,pseudo)\n");
+
+    run_command(ProfileSummary::new("appliance", true), b"mount extra\n", None);
+    testrt::check_eq(sink_str(), "mount: too many arguments\n");
+
+    run_command(ProfileSummary::new("appliance", true), b"reovim\n", None);
+    testrt::check_eq(sink_str(), "reovim: payload.ready\n");
+
+    run_command(ProfileSummary::new("shell-only", false), b"reovim\n", None);
+    testrt::check_eq(sink_str(), "reovim disabled for this profile\n");
+
+    run_command(ProfileSummary::new("appliance", true), b"reovim extra\n", None);
+    testrt::check_eq(sink_str(), "reovim: too many arguments\n");
 });
 
 arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
@@ -273,9 +297,13 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     run_session_command(&mut session, b"cat /boot/profile\n");
     assert_contains(sink_bytes(), b"profile=shell-only\n");
     assert_contains(sink_bytes(), b"launch=disabled\n");
-    assert_contains(sink_bytes(), b"payloads=2\n");
+    assert_contains(sink_bytes(), b"payloads=3\n");
     assert_contains(sink_bytes(), b"input=fixture-input\n");
     assert_contains(sink_bytes(), b"usb_keyboard=unavailable\n");
+
+    run_session_command(&mut session, b"cat /boot/mounts\n");
+    assert_contains(sink_bytes(), b"kernel on / type rootfs (ro,pseudo)\n");
+    assert_contains(sink_bytes(), b"devices on /dev type devfs (ro,pseudo)\n");
 
     run_session_command(&mut session, b"cd /dev\n");
     testrt::check_eq(sink_str(), "");

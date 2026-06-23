@@ -349,6 +349,7 @@ fn write_directory(daemon: &RootDaemon<'_>, directory: Directory) {
         Directory::Boot => {
             daemon.write_line("devices");
             daemon.write_line("memory");
+            daemon.write_line("mounts");
             daemon.write_line("profile");
         }
         Directory::Dev => {
@@ -397,6 +398,7 @@ fn write_file(daemon: &RootDaemon<'_>, file: File) {
         File::BootProfile => write_boot_profile(daemon),
         File::BootMemory => write_boot_memory(daemon),
         File::BootDevices => write_boot_devices(daemon),
+        File::BootMounts => write_mount_table(daemon),
         File::LogDmesg => write_log_dmesg(daemon),
         File::DevDevice(index) => write_device_row(daemon, &daemon.devices()[index], index),
     }
@@ -440,6 +442,19 @@ fn write_boot_devices(daemon: &RootDaemon<'_>) {
     while index < devices.len() {
         write_device_row(daemon, &devices[index], index);
         index += 1;
+    }
+}
+
+fn write_mount_table(daemon: &RootDaemon<'_>) {
+    for mount in vfs::mounts() {
+        daemon.write_bytes(mount.source.as_bytes());
+        daemon.write_bytes(b" on ");
+        daemon.write_bytes(mount.target.as_bytes());
+        daemon.write_bytes(b" type ");
+        daemon.write_bytes(mount.fs_type.as_bytes());
+        daemon.write_bytes(b" (");
+        daemon.write_bytes(mount.flags.as_bytes());
+        daemon.write_bytes(b")\n");
     }
 }
 
@@ -496,6 +511,10 @@ fn write_payload_result(daemon: &RootDaemon<'_>, payload_name: &str, result: Pay
     daemon.write_bytes(b"launch ");
     daemon.write_bytes(payload_name.as_bytes());
     daemon.write_bytes(b": ");
+    write_payload_status(daemon, result);
+}
+
+fn write_payload_status(daemon: &RootDaemon<'_>, result: PayloadLaunchResult) {
     match result {
         PayloadLaunchResult::Ready => daemon.write_bytes(b"payload.ready"),
         PayloadLaunchResult::NotConfigured => daemon.write_bytes(b"payload.not_configured"),
@@ -554,9 +573,8 @@ fn cmd_probe(daemon: &RootDaemon<'_>, line: &ParsedLine) {
 fn cmd_help(daemon: &RootDaemon<'_>) {
     daemon.write_line("reovim root shell");
     daemon.write_line(
-        "commands: help, clear, screentest, pwd, ls, cd, cat, device, dmesg, probe, launch, halt",
+        "commands: help, clear, screentest, pwd, ls, cd, cat, mount, device, dmesg, probe, launch, reovim, halt",
     );
-    daemon.write_line("reserved: mount, reovim");
 }
 
 fn cmd_clear(daemon: &RootDaemon<'_>) {
@@ -590,6 +608,28 @@ fn cmd_screentest(daemon: &RootDaemon<'_>) {
 fn cmd_halt(daemon: &RootDaemon<'_>) {
     daemon.write_line("halt: ok");
     daemon.halt_kernel();
+}
+
+fn cmd_mount(daemon: &RootDaemon<'_>, line: &ParsedLine) {
+    if line.argc > 1 {
+        daemon.write_line("mount: too many arguments");
+        return;
+    }
+    write_mount_table(daemon);
+}
+
+fn cmd_reovim(daemon: &RootDaemon<'_>, line: &ParsedLine) {
+    if line.argc > 1 {
+        daemon.write_line("reovim: too many arguments");
+        return;
+    }
+    if !daemon.launch_enabled() {
+        daemon.write_line("reovim disabled for this profile");
+        return;
+    }
+
+    daemon.write_bytes(b"reovim: ");
+    write_payload_status(daemon, daemon.launch_payload_by_name("reovim"));
 }
 
 fn u64_to_dec(mut value: u64, out: &mut [u8]) -> usize {
@@ -675,16 +715,15 @@ pub fn execute_root_command(
         "ls" => cmd_ls(daemon, session, &parsed),
         "cd" => cmd_cd(daemon, session, &parsed),
         "cat" => cmd_cat(daemon, session, &parsed),
+        "mount" => cmd_mount(daemon, &parsed),
         "device" => cmd_device(daemon),
         "dmesg" => cmd_dmesg(daemon),
         "probe" => cmd_probe(daemon, &parsed),
         "launch" => cmd_launch(daemon, &parsed),
+        "reovim" => cmd_reovim(daemon, &parsed),
         "halt" => {
             cmd_halt(daemon);
             return true;
-        }
-        "mount" | "reovim" => {
-            daemon.write_line("reserved: supported after mount/payload-alias rollout")
         }
         _ => daemon.write_line("error: unknown command, try `help`"),
     }

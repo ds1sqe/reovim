@@ -1,7 +1,7 @@
 //! Selftests for common input translation.
 
 use {
-    super::{BootKeyboardDecoder, BootKeyboardReport},
+    super::{BootKeyboardDecoder, BootKeyboardIngest, BootKeyboardInputQueue, BootKeyboardReport},
     reovim_testrt::{self as testrt, arch_test},
 };
 
@@ -95,4 +95,28 @@ arch_test!(hid_boot_keyboard_ignores_error_rollover_report, {
     let good = decode(&mut decoder, 0, [0x04, 0, 0, 0, 0, 0]);
     testrt::check_eq(good[0], b'a');
     testrt::check_eq(good[7], 1);
+});
+
+arch_test!(hid_boot_keyboard_queue_preserves_pending_bytes, {
+    let mut queue = BootKeyboardInputQueue::new();
+
+    testrt::check_eq(
+        queue.try_ingest_report(report(0, [0x04, 0x05, 0, 0, 0, 0])),
+        BootKeyboardIngest::Decoded { bytes: 2 },
+    );
+    testrt::check_eq(queue.pop_pending(), Some(b'a'));
+    testrt::check_eq(queue.pending_remaining(), 1usize);
+
+    testrt::check_eq(
+        queue.try_ingest_report(report(0, [0x06, 0, 0, 0, 0, 0])),
+        BootKeyboardIngest::Backlogged { pending_bytes: 1 },
+    );
+    testrt::check_eq(queue.pop_pending(), Some(b'b'));
+    testrt::check_eq(queue.pop_pending(), None);
+
+    testrt::check_eq(
+        queue.try_ingest_report(report(0, [0x06, 0, 0, 0, 0, 0])),
+        BootKeyboardIngest::Decoded { bytes: 1 },
+    );
+    testrt::check_eq(queue.pop_pending(), Some(b'c'));
 });

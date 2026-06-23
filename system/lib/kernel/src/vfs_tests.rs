@@ -1,7 +1,7 @@
 //! Selftests for the bounded kernel VFS namespace.
 
 use {
-    super::{Directory, File, Node, VfsError, device_name_parts, lookup, normalize},
+    super::{Directory, File, Node, VfsError, device_name_parts, lookup, mounts, normalize},
     reovim_testrt::{self as testrt, arch_test},
     reovim_uapi_system::{DeviceClass, DeviceEntry},
 };
@@ -56,6 +56,7 @@ arch_test!(vfs_normalizes_absolute_and_relative_paths, {
 arch_test!(vfs_looks_up_static_and_device_nodes, {
     testrt::check_eq(lookup("/", &DEVICES), Ok(Node::Directory(Directory::Root)));
     testrt::check_eq(lookup("/boot/profile", &DEVICES), Ok(Node::File(File::BootProfile)));
+    testrt::check_eq(lookup("/boot/mounts", &DEVICES), Ok(Node::File(File::BootMounts)));
     testrt::check_eq(lookup("/dev/uart0", &DEVICES), Ok(Node::File(File::DevDevice(0))));
     testrt::check_eq(lookup("/dev/uart1", &DEVICES), Ok(Node::File(File::DevDevice(1))));
     testrt::check_eq(lookup("/dev/block0", &DEVICES), Ok(Node::File(File::DevDevice(2))));
@@ -69,4 +70,15 @@ arch_test!(vfs_device_names_are_class_ordinals, {
     testrt::check_eq(device_name_parts(&DEVICES, 1), ("uart", 1));
     testrt::check_eq(device_name_parts(&DEVICES, 2), ("block", 0));
     testrt::check_eq(device_name_parts(&DEVICES, 3), ("bus", 0));
+});
+
+arch_test!(vfs_mount_table_names_kernel_pseudo_namespaces, {
+    let table = mounts();
+
+    testrt::check_eq(table.len(), 4usize);
+    testrt::check_eq(table[0].target, "/");
+    testrt::check_eq(table[0].fs_type, "rootfs");
+    testrt::check_eq(table[1].target, "/boot");
+    testrt::check_eq(table[2].target, "/dev");
+    testrt::check_eq(table[3].target, "/log");
 });

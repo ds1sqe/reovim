@@ -33,7 +33,7 @@ use {
     reovim_system_kernel::{
         color::Color,
         console::{self, RenderSurface},
-        input::{BootKeyboardDecoder, BootKeyboardReport},
+        input::{BootKeyboardIngest, BootKeyboardInputQueue, BootKeyboardReport},
         inventory,
     },
 };
@@ -113,41 +113,36 @@ struct UsbKeyboardStore(UnsafeCell<UsbKeyboardConsole>);
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 struct UsbKeyboardConsole {
-    decoder: BootKeyboardDecoder,
-    pending: [u8; 8],
-    pending_len: usize,
-    pending_cursor: usize,
+    queue: BootKeyboardInputQueue,
 }
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 impl UsbKeyboardConsole {
     const fn new() -> Self {
         Self {
-            decoder: BootKeyboardDecoder::new(),
-            pending: [0u8; 8],
-            pending_len: 0,
-            pending_cursor: 0,
+            queue: BootKeyboardInputQueue::new(),
         }
     }
 
     fn pop_pending(&mut self) -> Option<u8> {
-        if self.pending_cursor < self.pending_len {
-            let byte = self.pending[self.pending_cursor];
-            self.pending_cursor += 1;
-            return Some(byte);
-        }
-        None
+        self.queue.pop_pending()
     }
 
-    fn ingest_report(&mut self, report: [u8; arch_sys::usb::BOOT_KEYBOARD_REPORT_BYTES]) -> usize {
-        self.pending_len = self
-            .decoder
-            .decode_report(BootKeyboardReport::new(report), &mut self.pending);
-        if self.pending_len > 0 {
-            USB_KEYBOARD_READY.store(1, Ordering::Release);
+    fn pending_remaining(&self) -> usize {
+        self.queue.pending_remaining()
+    }
+
+    fn ingest_report(
+        &mut self,
+        report: [u8; arch_sys::usb::BOOT_KEYBOARD_REPORT_BYTES],
+    ) -> BootKeyboardIngest {
+        let ingest = self.queue.try_ingest_report(BootKeyboardReport::new(report));
+        if let BootKeyboardIngest::Decoded { bytes } = ingest {
+            if bytes > 0 {
+                USB_KEYBOARD_READY.store(1, Ordering::Release);
+            }
         }
-        self.pending_cursor = 0;
-        self.pending_len
+        ingest
     }
 
     fn poll_next_byte(&mut self) -> Option<u8> {
@@ -239,6 +234,11 @@ pub const fn launch_profile() -> BootProfile<'static> {
         "launch",
         true,
         &[
+            PayloadDescriptor {
+                name: "reovim",
+                summary: "reovim editor-core payload",
+                launch: Some(editor_smoke_payload),
+            },
             PayloadDescriptor {
                 name: "editor-smoke",
                 summary: "editor-core smoke boot",
@@ -678,14 +678,33 @@ fn probe_usb_keyboard(devices: &[DeviceEntry], write: WriteFn) {
         return;
     }
 
+    let console = unsafe { &mut *USB_KEYBOARD_CONSOLE.0.get() };
+    let pending = console.pending_remaining();
+    if pending > 0 {
+        probe_emit(write, b"state=decoded-pending\n");
+        probe_emit(write, b"decoded_bytes=");
+        probe_write_u64_dec(write, pending as u64);
+        probe_emit(write, b"\n");
+        return;
+    }
+
     match arch_sys::usb::poll_boot_keyboard_report() {
         arch_sys::usb::UsbBootKeyboardPoll::Report(report) => {
-            let decoded = unsafe { &mut *USB_KEYBOARD_CONSOLE.0.get() }.ingest_report(report);
-            probe_emit(write, b"state=report-ready\n");
-            probe_emit(write, b"report_bytes=8\n");
-            probe_emit(write, b"decoded_bytes=");
-            probe_write_u64_dec(write, decoded as u64);
-            probe_emit(write, b"\n");
+            match console.ingest_report(report) {
+                BootKeyboardIngest::Decoded { bytes } => {
+                    probe_emit(write, b"state=report-ready\n");
+                    probe_emit(write, b"report_bytes=8\n");
+                    probe_emit(write, b"decoded_bytes=");
+                    probe_write_u64_dec(write, bytes as u64);
+                    probe_emit(write, b"\n");
+                }
+                BootKeyboardIngest::Backlogged { pending_bytes } => {
+                    probe_emit(write, b"state=decoded-pending\n");
+                    probe_emit(write, b"decoded_bytes=");
+                    probe_write_u64_dec(write, pending_bytes as u64);
+                    probe_emit(write, b"\n");
+                }
+            }
         }
         arch_sys::usb::UsbBootKeyboardPoll::Pending(pending) => {
             probe_usb_keyboard_pending(write, pending);

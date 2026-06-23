@@ -98,6 +98,82 @@ impl Default for BootKeyboardDecoder {
     }
 }
 
+/// Result of attempting to feed a HID report into the console byte queue.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BootKeyboardIngest {
+    /// The report was decoded; the value is the number of newly queued bytes.
+    Decoded {
+        /// Number of decoded console bytes.
+        bytes: usize,
+    },
+    /// Existing decoded bytes must be consumed before another report is fed.
+    Backlogged {
+        /// Number of queued bytes still waiting for the shell.
+        pending_bytes: usize,
+    },
+}
+
+/// Small decoded-byte queue for USB HID boot-keyboard input.
+///
+/// The queue refuses to decode a new report while previous decoded bytes are
+/// still pending. This preserves shell input when diagnostics poll the same
+/// hardware path as normal line input.
+pub struct BootKeyboardInputQueue {
+    decoder: BootKeyboardDecoder,
+    pending: [u8; BOOT_KEYBOARD_REPORT_BYTES],
+    pending_len: usize,
+    pending_cursor: usize,
+}
+
+impl BootKeyboardInputQueue {
+    /// Starts with an empty queue and a fresh HID decoder.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            decoder: BootKeyboardDecoder::new(),
+            pending: [0u8; BOOT_KEYBOARD_REPORT_BYTES],
+            pending_len: 0,
+            pending_cursor: 0,
+        }
+    }
+
+    /// Returns the number of decoded bytes not yet read.
+    #[must_use]
+    pub const fn pending_remaining(&self) -> usize {
+        self.pending_len.saturating_sub(self.pending_cursor)
+    }
+
+    /// Pops one decoded byte, if any.
+    pub fn pop_pending(&mut self) -> Option<u8> {
+        if self.pending_cursor < self.pending_len {
+            let byte = self.pending[self.pending_cursor];
+            self.pending_cursor += 1;
+            return Some(byte);
+        }
+        None
+    }
+
+    /// Decodes a new report only when no decoded bytes are still pending.
+    pub fn try_ingest_report(&mut self, report: BootKeyboardReport) -> BootKeyboardIngest {
+        let pending_bytes = self.pending_remaining();
+        if pending_bytes > 0 {
+            return BootKeyboardIngest::Backlogged { pending_bytes };
+        }
+
+        self.pending_len = self.decoder.decode_report(report, &mut self.pending);
+        self.pending_cursor = 0;
+        BootKeyboardIngest::Decoded {
+            bytes: self.pending_len,
+        }
+    }
+}
+
+impl Default for BootKeyboardInputQueue {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 const MOD_LCTRL: u8 = 1 << 0;
 const MOD_LSHIFT: u8 = 1 << 1;
 const MOD_RCTRL: u8 = 1 << 4;
