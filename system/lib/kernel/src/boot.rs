@@ -39,7 +39,7 @@ pub struct BootProfile<'a> {
     pub launch_enabled: bool,
     /// Payload registry available to the boot profile.
     pub payloads: &'a [PayloadDescriptor],
-    /// Optional boot diagnostics snapshot provider.
+    /// Optional extra diagnostics snapshot provider.
     pub dmesg: Option<DmesgSnapshot>,
     /// Optional halt callback after shell exit.
     pub halt: Option<HaltKernel>,

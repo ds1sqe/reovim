@@ -656,7 +656,7 @@ fn bootcore_boots_real_kernel_exits_zero() {
 fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     // The first proof from the official distribution root (`apps/os`): the
     // kernel-only shell handles scripted input and prints a deterministic root
-    // shell transcript (help/device/dmesg) before exiting.
+    // shell transcript before exiting.
     let Some(target) = fixture_target() else {
         return;
     };
@@ -665,7 +665,13 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     }
 
     let _guard = os_image_lock();
-    let exe = build_os_image(&[], Some("help\ndevice\ndmesg\n"), None);
+    let exe = build_os_image(
+        &[],
+        Some(
+            "help\npwd\nls /\ncd /dev\npwd\nls\ncat /boot/profile\ncat /log/dmesg\ndevice\ndmesg\n",
+        ),
+        None,
+    );
     let (code, serial) = run_system_image(&exe);
     assert_eq!(code, 0, "reovim-os shell profile exits 0; serial: {serial:?}");
     assert!(
@@ -681,16 +687,39 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "help output appears in transcript; serial: {serial:?}",
     );
     assert!(
-        serial.contains("commands: help, clear, screentest, device, dmesg, launch, halt"),
+        serial.contains(
+            "commands: help, clear, screentest, pwd, ls, cd, cat, device, dmesg, launch, halt"
+        ),
         "help vocabulary appears; serial: {serial:?}",
+    );
+    assert!(serial.contains("reovim-os> /\n"), "pwd prints root cwd; serial: {serial:?}",);
+    assert!(
+        serial.contains("reovim-os> boot\ndev\nlog"),
+        "ls / prints root namespace; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("reovim-os> reovim-os> /dev"),
+        "cd /dev updates cwd; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("profile=shell-only"),
+        "cat /boot/profile prints profile pseudo file; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("rootd: boot report"),
+        "cat /log/dmesg prints kernel boot log; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("shell: pwd"),
+        "cat /log/dmesg prints shell command log entries; serial: {serial:?}",
     );
     assert!(
         serial.contains("boot_info:"),
         "device command prints boot info; serial: {serial:?}",
     );
     assert!(
-        serial.contains("dmesg: (no diagnostics source)"),
-        "dmesg prints stable fallback; serial: {serial:?}",
+        serial.contains("dmesg:\nrootd: boot start"),
+        "dmesg prints kernel log source; serial: {serial:?}",
     );
 }
 

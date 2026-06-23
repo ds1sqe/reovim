@@ -4,7 +4,7 @@
 //! instantiated from static fixtures with a callback writer.
 
 use {
-    super::execute_root_command,
+    super::{RootShellSession, execute_root_command},
     crate::rootd::{PayloadDescriptor, PayloadLaunchResult, ProfileSummary, RootDaemon},
     core::cell::UnsafeCell,
     reovim_testrt::{self as testrt, arch_test},
@@ -66,8 +66,7 @@ fn sink_str() -> &'static str {
     unsafe { core::str::from_utf8_unchecked(sink_bytes()) }
 }
 
-fn run_command(profile: ProfileSummary, line: &[u8], dmesg: Option<fn() -> &'static str>) {
-    sink_clear();
+fn daemon(profile: ProfileSummary, dmesg: Option<fn() -> &'static str>) -> RootDaemon<'static> {
     let daemon = RootDaemon::new(
         profile,
         sample_boot_info(),
@@ -78,7 +77,29 @@ fn run_command(profile: ProfileSummary, line: &[u8], dmesg: Option<fn() -> &'sta
         "reovim-os> ",
         sink_write,
     );
-    let _ = execute_root_command(&daemon, line);
+    daemon
+}
+
+fn run_command(profile: ProfileSummary, line: &[u8], dmesg: Option<fn() -> &'static str>) {
+    crate::klog::reset();
+    run_command_preserving_log(profile, line, dmesg);
+}
+
+fn run_command_preserving_log(
+    profile: ProfileSummary,
+    line: &[u8],
+    dmesg: Option<fn() -> &'static str>,
+) {
+    sink_clear();
+    let daemon = daemon(profile, dmesg);
+    let mut session = RootShellSession::new();
+    let _ = execute_root_command(&daemon, &mut session, line);
+}
+
+fn run_session_command(session: &mut RootShellSession, line: &[u8]) {
+    sink_clear();
+    let daemon = daemon(ProfileSummary::new("shell-only", false), Some(diagnostics));
+    let _ = execute_root_command(&daemon, session, line);
 }
 
 const SAMPLE_DEVICES: [DeviceEntry; 1] = [DeviceEntry {
@@ -150,7 +171,7 @@ arch_test!(root_shell_help, {
     run_command(ProfileSummary::new("shell-only", false), b"help\n", None);
     testrt::check_eq(
         sink_str(),
-        "reovim root shell\ncommands: help, clear, screentest, device, dmesg, launch, halt\nreserved: ls, cd, pwd, cat, mount, reovim\n",
+        "reovim root shell\ncommands: help, clear, screentest, pwd, ls, cd, cat, device, dmesg, launch, halt\nreserved: mount, reovim\n",
     );
 });
 
@@ -195,16 +216,68 @@ arch_test!(root_shell_launch_and_reserved, {
     run_command(ProfileSummary::new("shell-only", false), b"launch editor-smoke\n", None);
     testrt::check_eq(sink_str(), "launch disabled for this profile\n");
 
-    run_command(ProfileSummary::new("appliance", true), b"ls\n", None);
-    testrt::check_eq(sink_str(), "reserved: supported after VFS/current-directory rollout\n");
+    run_command(ProfileSummary::new("appliance", true), b"mount\n", None);
+    testrt::check_eq(sink_str(), "reserved: supported after mount/payload-alias rollout\n");
+});
+
+arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
+    crate::klog::reset();
+    let mut session = RootShellSession::new();
+
+    run_session_command(&mut session, b"pwd\n");
+    testrt::check_eq(sink_str(), "/\n");
+
+    run_session_command(&mut session, b"ls /\n");
+    assert_contains(sink_bytes(), b"boot\n");
+    assert_contains(sink_bytes(), b"dev\n");
+    assert_contains(sink_bytes(), b"log\n");
+
+    run_session_command(&mut session, b"cat /boot/profile\n");
+    assert_contains(sink_bytes(), b"profile=shell-only\n");
+    assert_contains(sink_bytes(), b"launch=disabled\n");
+    assert_contains(sink_bytes(), b"payloads=2\n");
+
+    run_session_command(&mut session, b"cd /dev\n");
+    testrt::check_eq(sink_str(), "");
+
+    run_session_command(&mut session, b"pwd\n");
+    testrt::check_eq(sink_str(), "/dev\n");
+
+    run_session_command(&mut session, b"ls\n");
+    testrt::check_eq(sink_str(), "uart0\n");
+
+    run_session_command(&mut session, b"cat uart0\n");
+    assert_contains(sink_bytes(), b"uart compat=arm,pl011");
+
+    run_session_command(&mut session, b"cd /boot/profile\n");
+    testrt::check_eq(sink_str(), "cd: /boot/profile: not a directory\n");
+
+    crate::klog::append_line("boot diagnostics complete");
+    run_session_command(&mut session, b"cat /log/dmesg\n");
+    assert_contains(sink_bytes(), b"boot diagnostics complete\n");
+    assert_contains(sink_bytes(), b"external diagnostics:\nboot diagnostics complete\n");
 });
 
 arch_test!(root_shell_dmesg_and_unknown_command, {
     run_command(ProfileSummary::new("shell-only", false), b"dmesg\n", None);
-    testrt::check_eq(sink_str(), "dmesg: (no diagnostics source)\n");
+    testrt::check_eq(sink_str(), "dmesg:\n(kernel log empty)\n");
 
-    run_command(ProfileSummary::new("shell-only", false), b"dmesg\n", Some(diagnostics));
-    testrt::check_eq(sink_str(), "dmesg:\nboot diagnostics complete\n");
+    crate::klog::reset();
+    crate::klog::append_line("rootd: boot report");
+    run_command_preserving_log(ProfileSummary::new("shell-only", false), b"dmesg\n", None);
+    testrt::check_eq(sink_str(), "dmesg:\nrootd: boot report\n");
+
+    crate::klog::reset();
+    crate::klog::append_line("rootd: boot report");
+    run_command_preserving_log(
+        ProfileSummary::new("shell-only", false),
+        b"dmesg\n",
+        Some(diagnostics),
+    );
+    testrt::check_eq(
+        sink_str(),
+        "dmesg:\nrootd: boot report\nexternal diagnostics:\nboot diagnostics complete\n",
+    );
 
     run_command(ProfileSummary::new("shell-only", false), b"does-not-exist\n", None);
     testrt::check_eq(sink_str(), "error: unknown command, try `help`\n");

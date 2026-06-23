@@ -5,12 +5,47 @@
 //! injected console write callback in `rootd`.
 
 use {
-    crate::rootd::{PayloadDescriptor, PayloadLaunchResult, RootDaemon, device_class_name},
+    crate::{
+        klog,
+        rootd::{PayloadDescriptor, PayloadLaunchResult, RootDaemon},
+        vfs::{self, Directory, File, Node, PathBuf, VfsError},
+    },
     reovim_uapi_system::{BootInfo, DeviceEntry},
 };
 
 const MAX_ARGS: usize = 8;
 const MAX_TOKEN_BYTES: usize = 64;
+
+/// Mutable root-shell state carried across command dispatch.
+pub struct RootShellSession {
+    cwd: PathBuf,
+}
+
+impl RootShellSession {
+    /// Starts a shell session at `/`.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            cwd: PathBuf::root(),
+        }
+    }
+
+    /// Current working directory.
+    #[must_use]
+    pub fn cwd(&self) -> &str {
+        self.cwd.as_str()
+    }
+
+    fn set_cwd(&mut self, cwd: PathBuf) {
+        self.cwd = cwd;
+    }
+}
+
+impl Default for RootShellSession {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum ParseStatus {
@@ -181,6 +216,22 @@ fn write_kv_num(daemon: &RootDaemon<'_>, key: &str, value: u64) {
     daemon.write_bytes(b"\n");
 }
 
+fn write_path_error(daemon: &RootDaemon<'_>, command: &str, path: &str, error: VfsError) {
+    daemon.write_bytes(command.as_bytes());
+    daemon.write_bytes(b": ");
+    if !path.is_empty() {
+        daemon.write_bytes(path.as_bytes());
+        daemon.write_bytes(b": ");
+    }
+    match error {
+        VfsError::EmptyPath => daemon.write_bytes(b"empty path"),
+        VfsError::TooLong => daemon.write_bytes(b"path too long"),
+        VfsError::NotFound => daemon.write_bytes(b"no such file or directory"),
+        VfsError::NotDirectory => daemon.write_bytes(b"not a directory"),
+    }
+    daemon.write_bytes(b"\n");
+}
+
 fn write_memory_summary(daemon: &RootDaemon<'_>, info: BootInfo) {
     daemon.write_line("boot_info:");
     write_kv_num(daemon, "  ranges", info.memory.range_count() as u64);
@@ -196,7 +247,7 @@ fn write_device_row(daemon: &RootDaemon<'_>, device: &DeviceEntry, index: usize)
     daemon.write_bytes(b"- [");
     write_u64_dec(daemon, index as u64);
     daemon.write_bytes(b"] ");
-    daemon.write_bytes(device_class_name(device.class).as_bytes());
+    daemon.write_bytes(vfs::device_class_name(device.class).as_bytes());
     daemon.write_bytes(b" compat=");
     daemon.write_bytes(device.compatible.as_bytes());
     daemon.write_bytes(b" mmio=");
@@ -206,6 +257,12 @@ fn write_device_row(daemon: &RootDaemon<'_>, device: &DeviceEntry, index: usize)
     daemon.write_bytes(b" irq=");
     write_u64_dec(daemon, device.irq as u64);
     daemon.write_bytes(b"\n");
+}
+
+fn write_device_name(daemon: &RootDaemon<'_>, devices: &[DeviceEntry], index: usize) {
+    let (class, ordinal) = vfs::device_name_parts(devices, index);
+    daemon.write_bytes(class.as_bytes());
+    write_u64_dec(daemon, ordinal as u64);
 }
 
 fn cmd_device(daemon: &RootDaemon<'_>) {
@@ -220,12 +277,187 @@ fn cmd_device(daemon: &RootDaemon<'_>) {
 }
 
 fn cmd_dmesg(daemon: &RootDaemon<'_>) {
-    if let Some(snapshot) = daemon.dmesg_fn() {
-        daemon.write_line("dmesg:");
-        daemon.write_line(snapshot());
+    daemon.write_line("dmesg:");
+    write_log_dmesg(daemon);
+}
+
+fn cmd_pwd(daemon: &RootDaemon<'_>, session: &RootShellSession, line: &ParsedLine) {
+    if line.argc > 1 {
+        daemon.write_line("pwd: too many arguments");
         return;
     }
-    daemon.write_line("dmesg: (no diagnostics source)");
+    daemon.write_line(session.cwd());
+}
+
+fn cmd_cd(daemon: &RootDaemon<'_>, session: &mut RootShellSession, line: &ParsedLine) {
+    if line.argc > 2 {
+        daemon.write_line("cd: too many arguments");
+        return;
+    }
+    let target = if line.argc == 1 {
+        "/"
+    } else {
+        line.args[1].as_str()
+    };
+    let path = match vfs::normalize(session.cwd(), target) {
+        Ok(path) => path,
+        Err(error) => {
+            write_path_error(daemon, "cd", target, error);
+            return;
+        }
+    };
+    match vfs::lookup(path.as_str(), daemon.devices()) {
+        Ok(Node::Directory(_)) => session.set_cwd(path),
+        Ok(Node::File(_)) => write_path_error(daemon, "cd", target, VfsError::NotDirectory),
+        Err(error) => write_path_error(daemon, "cd", target, error),
+    }
+}
+
+fn cmd_ls(daemon: &RootDaemon<'_>, session: &RootShellSession, line: &ParsedLine) {
+    if line.argc > 2 {
+        daemon.write_line("ls: too many arguments");
+        return;
+    }
+    let target = if line.argc == 1 {
+        session.cwd()
+    } else {
+        line.args[1].as_str()
+    };
+    let path = match vfs::normalize(session.cwd(), target) {
+        Ok(path) => path,
+        Err(error) => {
+            write_path_error(daemon, "ls", target, error);
+            return;
+        }
+    };
+    match vfs::lookup(path.as_str(), daemon.devices()) {
+        Ok(Node::Directory(directory)) => write_directory(daemon, directory),
+        Ok(Node::File(_)) => {
+            daemon.write_line(path_basename(path.as_str()));
+        }
+        Err(error) => write_path_error(daemon, "ls", target, error),
+    }
+}
+
+fn write_directory(daemon: &RootDaemon<'_>, directory: Directory) {
+    match directory {
+        Directory::Root => {
+            daemon.write_line("boot");
+            daemon.write_line("dev");
+            daemon.write_line("log");
+        }
+        Directory::Boot => {
+            daemon.write_line("devices");
+            daemon.write_line("memory");
+            daemon.write_line("profile");
+        }
+        Directory::Dev => {
+            let devices = daemon.devices();
+            let mut index = 0usize;
+            while index < devices.len() {
+                write_device_name(daemon, devices, index);
+                daemon.write_bytes(b"\n");
+                index += 1;
+            }
+        }
+        Directory::Log => daemon.write_line("dmesg"),
+    }
+}
+
+fn cmd_cat(daemon: &RootDaemon<'_>, session: &RootShellSession, line: &ParsedLine) {
+    if line.argc == 1 {
+        daemon.write_line("cat: missing path");
+        return;
+    }
+
+    let mut index = 1usize;
+    while index < line.argc {
+        let target = line.args[index].as_str();
+        let path = match vfs::normalize(session.cwd(), target) {
+            Ok(path) => path,
+            Err(error) => {
+                write_path_error(daemon, "cat", target, error);
+                index += 1;
+                continue;
+            }
+        };
+        match vfs::lookup(path.as_str(), daemon.devices()) {
+            Ok(Node::File(file)) => write_file(daemon, file),
+            Ok(Node::Directory(_)) => {
+                write_path_error(daemon, "cat", target, VfsError::NotDirectory)
+            }
+            Err(error) => write_path_error(daemon, "cat", target, error),
+        }
+        index += 1;
+    }
+}
+
+fn write_file(daemon: &RootDaemon<'_>, file: File) {
+    match file {
+        File::BootProfile => write_boot_profile(daemon),
+        File::BootMemory => write_boot_memory(daemon),
+        File::BootDevices => write_boot_devices(daemon),
+        File::LogDmesg => write_log_dmesg(daemon),
+        File::DevDevice(index) => write_device_row(daemon, &daemon.devices()[index], index),
+    }
+}
+
+fn write_boot_profile(daemon: &RootDaemon<'_>) {
+    daemon.write_bytes(b"profile=");
+    daemon.write_bytes(daemon.profile_name().as_bytes());
+    daemon.write_bytes(b"\nlaunch=");
+    daemon.write_bytes(if daemon.launch_enabled() {
+        b"enabled"
+    } else {
+        b"disabled"
+    });
+    daemon.write_bytes(b"\npayloads=");
+    write_u64_dec(daemon, daemon.payloads().len() as u64);
+    daemon.write_bytes(b"\nprompt=");
+    daemon.write_bytes(daemon.prompt().as_bytes());
+    daemon.write_bytes(b"\n");
+}
+
+fn write_boot_memory(daemon: &RootDaemon<'_>) {
+    let info = daemon.boot_info();
+    write_kv_num(daemon, "ranges", info.memory.range_count() as u64);
+    write_kv_num(daemon, "usable_bytes", info.memory.usable_bytes());
+    write_kv_num(daemon, "cpu_count", info.cpu_count as u64);
+    write_kv_num(daemon, "heap_total_bytes", info.heap_total_bytes);
+    write_kv_num(daemon, "cache_line_bytes", info.cache_line_bytes as u64);
+}
+
+fn write_boot_devices(daemon: &RootDaemon<'_>) {
+    let devices = daemon.devices();
+    let mut index = 0usize;
+    while index < devices.len() {
+        write_device_row(daemon, &devices[index], index);
+        index += 1;
+    }
+}
+
+fn write_log_dmesg(daemon: &RootDaemon<'_>) {
+    let wrote_kernel_log = klog::write_to(|bytes| daemon.write_bytes(bytes));
+    if let Some(snapshot) = daemon.dmesg_fn() {
+        if wrote_kernel_log {
+            daemon.write_line("external diagnostics:");
+        }
+        daemon.write_line(snapshot());
+    } else if !wrote_kernel_log {
+        daemon.write_line("(kernel log empty)");
+    }
+}
+
+fn path_basename(path: &str) -> &str {
+    let bytes = path.as_bytes();
+    let mut start = bytes.len();
+    while start > 0 {
+        if bytes[start - 1] == b'/' {
+            break;
+        }
+        start -= 1;
+    }
+    &path[start..]
 }
 
 fn write_payload_list(daemon: &RootDaemon<'_>, payloads: &[PayloadDescriptor]) {
@@ -285,8 +517,10 @@ fn cmd_launch(daemon: &RootDaemon<'_>, line: &ParsedLine) {
 
 fn cmd_help(daemon: &RootDaemon<'_>) {
     daemon.write_line("reovim root shell");
-    daemon.write_line("commands: help, clear, screentest, device, dmesg, launch, halt");
-    daemon.write_line("reserved: ls, cd, pwd, cat, mount, reovim");
+    daemon.write_line(
+        "commands: help, clear, screentest, pwd, ls, cd, cat, device, dmesg, launch, halt",
+    );
+    daemon.write_line("reserved: mount, reovim");
 }
 
 fn cmd_clear(daemon: &RootDaemon<'_>) {
@@ -372,7 +606,11 @@ fn u64_to_hex(mut value: u64, out: &mut [u8]) -> usize {
 /// Execute one root-daemon line from the attached input source.
 ///
 /// Returns `true` when the command requests halting the daemon.
-pub fn execute_root_command(daemon: &RootDaemon<'_>, line: &[u8]) -> bool {
+pub fn execute_root_command(
+    daemon: &RootDaemon<'_>,
+    session: &mut RootShellSession,
+    line: &[u8],
+) -> bool {
     let (parsed, status) = tokenize(line);
 
     match status {
@@ -397,6 +635,10 @@ pub fn execute_root_command(daemon: &RootDaemon<'_>, line: &[u8]) -> bool {
         "help" => cmd_help(daemon),
         "clear" => cmd_clear(daemon),
         "screentest" => cmd_screentest(daemon),
+        "pwd" => cmd_pwd(daemon, session, &parsed),
+        "ls" => cmd_ls(daemon, session, &parsed),
+        "cd" => cmd_cd(daemon, session, &parsed),
+        "cat" => cmd_cat(daemon, session, &parsed),
         "device" => cmd_device(daemon),
         "dmesg" => cmd_dmesg(daemon),
         "launch" => cmd_launch(daemon, &parsed),
@@ -404,8 +646,8 @@ pub fn execute_root_command(daemon: &RootDaemon<'_>, line: &[u8]) -> bool {
             cmd_halt(daemon);
             return true;
         }
-        "ls" | "cd" | "pwd" | "cat" | "mount" | "reovim" => {
-            daemon.write_line("reserved: supported after VFS/current-directory rollout");
+        "mount" | "reovim" => {
+            daemon.write_line("reserved: supported after mount/payload-alias rollout")
         }
         _ => daemon.write_line("error: unknown command, try `help`"),
     }

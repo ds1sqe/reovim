@@ -17,8 +17,31 @@ Keep the 0.16 names narrow:
 | `terminal` | Product-facing logical terminal/raw-mode vocabulary and its bridge to hosted provider slots. |
 | `root_shell` | Root-daemon command surface: prompt, parser, built-ins, payload launch commands. |
 | `console_io` | Line/input/output adapter between the root shell and the available console surfaces. |
+| `input` | Common translation for physical input reports into console bytes/events; raw device polling stays below. |
 | `tty` | Future system-kernel terminal-device subsystem. Not the first root shell. |
 | `pty` | Future virtual terminal pair used when a process/client/harness needs a terminal endpoint without physical hardware. |
+
+## Real-Machine Console Cut
+
+The real-machine target is HDMI display plus USB keyboard. The current display
+side already flows through the framebuffer console: the lower aarch64 provider
+installs a framebuffer surface, and `system/lib/kernel::console` renders text
+to it while UART remains the serial log path.
+
+Keyboard input is separate. Do not call the HDMI/VNC framebuffer proof
+"interactive" until a physical input provider exists. The intended split is:
+
+- lower USB/board code owns the host controller, device enumeration,
+  interrupt-IN polling, and any board-specific reset/power sequencing;
+- `system/lib/kernel::input` owns common report translation, starting with USB
+  HID boot-keyboard 8-byte reports into root-console bytes;
+- `system/lib/kernel::console_io` remains the line discipline over the byte
+  source and writer callbacks;
+- `apps/os` selects and wires the available byte source. Serial UART may remain
+  the fallback, but USB keyboard must be named separately in manual evidence.
+
+This keeps raw USB/DWC/HID transport below the bridge while letting the system
+kernel own reusable input policy.
 
 ## Future TTY Shape
 

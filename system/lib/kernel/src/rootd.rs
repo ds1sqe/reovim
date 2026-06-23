@@ -5,7 +5,11 @@
 //! client implementation.
 
 use {
-    crate::{root_shell::execute_root_command, splash},
+    crate::{
+        klog,
+        root_shell::{RootShellSession, execute_root_command},
+        splash, vfs,
+    },
     reovim_uapi_system::{BootInfo, DeviceClass, DeviceEntry},
 };
 
@@ -18,7 +22,7 @@ pub const MAX_PAYLOADS: usize = 8;
 /// Callback that emits output bytes through the active console/stdout sink.
 pub type WriteFn = fn(&[u8]);
 
-/// Callback that returns an optional root-boot diagnostics snapshot for `dmesg`.
+/// Callback that returns optional extra diagnostics appended after kernel log.
 pub type DmesgSnapshot = fn() -> &'static str;
 
 /// Callback that attempts to launch a registered payload.
@@ -73,7 +77,7 @@ pub struct RootBootConfig<'a> {
     pub devices: &'a [DeviceEntry],
     /// Registered payload descriptors for `launch`.
     pub payloads: &'a [PayloadDescriptor],
-    /// Optional root shell boot fact output.
+    /// Optional extra diagnostics output.
     pub dmesg: Option<DmesgSnapshot>,
     /// Optional callback to stop firmware execution.
     pub halt: Option<HaltKernel>,
@@ -201,8 +205,8 @@ impl<'a> RootDaemon<'a> {
     ///
     /// Returned `false` means the daemon should remain alive and accept
     /// additional input. `true` means execution reaches the halt path.
-    pub fn run_command_line(&self, line: &[u8]) -> bool {
-        execute_root_command(self, line)
+    pub fn run_command_line(&self, session: &mut RootShellSession, line: &[u8]) -> bool {
+        execute_root_command(self, session, line)
     }
 
     /// Emits the boot-level command prompt.
@@ -227,13 +231,13 @@ impl<'a> RootDaemon<'a> {
         self.devices
     }
 
-    /// Snapshot of boot diagnostics for `dmesg`.
+    /// Snapshot of boot diagnostics for pseudo files and commands.
     #[must_use]
     pub const fn boot_info(&self) -> BootInfo {
         self.boot_info
     }
 
-    /// Returns the configured boot diagnostics snapshot.
+    /// Returns the configured extra diagnostics snapshot.
     #[must_use]
     pub const fn dmesg_fn(&self) -> Option<DmesgSnapshot> {
         self.dmesg
@@ -306,11 +310,21 @@ const fn status_label(state: BootCheckState) -> &'static [u8] {
     }
 }
 
+const fn status_log_label(state: BootCheckState) -> &'static [u8] {
+    match state {
+        BootCheckState::Ok => b"[  OK  ] ",
+        BootCheckState::Warn => b"[ WARN ] ",
+    }
+}
+
 fn write_boot_status_line(write: WriteFn, state: BootCheckState, message: &[u8]) {
     let status = status_label(state);
     write(status);
     write(message);
     write(b"\n");
+    klog::append_bytes(status_log_label(state));
+    klog::append_bytes(message);
+    klog::append_bytes(b"\n");
 }
 
 fn write_boot_status_with_count(
@@ -325,6 +339,11 @@ fn write_boot_status_with_count(
     write_usize_dec(write, count);
     write(suffix);
     write(b"\n");
+    klog::append_bytes(status_log_label(state));
+    klog::append_bytes(message);
+    klog::append_usize_dec(count);
+    klog::append_bytes(suffix);
+    klog::append_bytes(b"\n");
 }
 
 const fn memory_check(info: BootInfo) -> BootCheckState {
@@ -352,6 +371,7 @@ const fn device_check(devices: &[DeviceEntry]) -> BootCheckState {
 }
 
 fn write_boot_log(cfg: &RootBootConfig<'_>) {
+    klog::append_line("rootd: boot report");
     (cfg.write)(b"\n");
     (cfg.write)(TITLE);
     (cfg.write)(b"\n\n");
@@ -367,6 +387,11 @@ fn write_boot_log(cfg: &RootBootConfig<'_>) {
             (cfg.write)(b"x");
             write_usize_dec(cfg.write, height as usize);
             (cfg.write)(b"x32\n");
+            klog::append_bytes(b"geometry=");
+            klog::append_usize_dec(width as usize);
+            klog::append_bytes(b"x");
+            klog::append_usize_dec(height as usize);
+            klog::append_bytes(b"x32\n");
         }
         None => write_boot_status_line(
             cfg.write,
@@ -409,8 +434,12 @@ fn write_boot_log(cfg: &RootBootConfig<'_>) {
     (cfg.write)(b"         profile=");
     (cfg.write)(cfg.profile.name.as_bytes());
     (cfg.write)(b" launch=");
+    klog::append_bytes(b"profile=");
+    klog::append_bytes(cfg.profile.name.as_bytes());
+    klog::append_bytes(b" launch=");
     if cfg.profile.launch_enabled {
         (cfg.write)(b"enabled\n");
+        klog::append_bytes(b"enabled\n");
         write_boot_status_with_count(
             cfg.write,
             if cfg.payloads.is_empty() {
@@ -424,6 +453,7 @@ fn write_boot_log(cfg: &RootBootConfig<'_>) {
         );
     } else {
         (cfg.write)(b"disabled\n");
+        klog::append_bytes(b"disabled\n");
     }
     write_boot_status_line(cfg.write, BootCheckState::Ok, b"Reached target root shell.");
 }
@@ -437,6 +467,8 @@ fn write_boot_log(cfg: &RootBootConfig<'_>) {
 /// callback must return `0` on EOF or fatal read errors so this loop can exit
 /// deterministically in test or host simulation builds.
 pub fn run_root_daemon(cfg: RootBootConfig<'_>) -> ! {
+    klog::reset();
+    klog::append_line("rootd: boot start");
     // The shell policy prints a branded splash before interactive control.
     splash::render(cfg.splash_geometry, cfg.write);
     if let Some(prepare_shell) = cfg.prepare_shell {
@@ -456,16 +488,23 @@ pub fn run_root_daemon(cfg: RootBootConfig<'_>) -> ! {
     );
 
     (cfg.write)(b"reovim system kernel shell ready\n");
+    klog::append_line("rootd: shell ready");
     daemon.write_prompt();
 
     let mut line = [0u8; ROOT_LINE_BYTES];
+    let mut session = RootShellSession::new();
     loop {
         let len = (cfg.read_line)(&mut line);
         if len == 0 {
+            klog::append_line("rootd: input eof");
             break;
         }
 
-        if daemon.run_command_line(&line[..len]) {
+        klog::append_bytes(b"shell: ");
+        klog::append_bytes(&line[..len]);
+        klog::append_bytes(b"\n");
+        if daemon.run_command_line(&mut session, &line[..len]) {
+            klog::append_line("rootd: halt requested");
             break;
         }
 
@@ -473,6 +512,7 @@ pub fn run_root_daemon(cfg: RootBootConfig<'_>) -> ! {
     }
 
     if let Some(halt) = cfg.halt {
+        klog::append_line("rootd: halt callback");
         halt();
     }
 
@@ -487,12 +527,5 @@ pub fn run_root_daemon(cfg: RootBootConfig<'_>) -> ! {
 /// Human-readable class names used by `device` output.
 #[must_use]
 pub const fn device_class_name(class: DeviceClass) -> &'static str {
-    match class {
-        DeviceClass::Uart => "uart",
-        DeviceClass::Interrupt => "interrupt",
-        DeviceClass::Mailbox => "mailbox",
-        DeviceClass::Block => "block",
-        DeviceClass::Usb => "usb",
-        DeviceClass::Unknown => "unknown",
-    }
+    vfs::device_class_name(class)
 }

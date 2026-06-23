@@ -26,7 +26,9 @@ pub mod escape;
 pub mod fdt;
 pub mod fonts;
 pub mod fs;
+pub mod input;
 pub mod inventory;
+pub mod klog;
 pub mod log;
 pub mod mm;
 pub mod net;
@@ -36,6 +38,7 @@ pub mod rootd;
 pub mod sched;
 pub mod splash;
 pub mod terminal;
+pub mod vfs;
 
 // ── device-neutral boot-surface re-exports ───────────────────────────────────
 //
