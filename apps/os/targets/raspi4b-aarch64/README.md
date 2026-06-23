@@ -77,14 +77,17 @@ For narrower debugging, the aggregate smoke runs these individual checks:
 ```sh
 apps/os/targets/raspi4b-aarch64/test-check-bootfs.sh
 apps/os/targets/raspi4b-aarch64/test-install-image.sh
+apps/os/targets/raspi4b-aarch64/test-preflight-real-board.sh
 apps/os/targets/raspi4b-aarch64/test-proof-command-list.sh
 apps/os/targets/raspi4b-aarch64/test-prepare-boot-media.sh
+apps/os/targets/raspi4b-aarch64/test-validate-evidence.sh
 ```
 
 The smoke tests verify bootfs readiness checks, dry-run identity output,
-installed image hash, distinct backups after repeated installs, proof command
-and required-fact consistency across the runbook/template/generated seed, and
-the full media-prep wrapper.
+installed image hash, distinct backups after repeated installs, preflight
+evidence generation, proof command and required-fact consistency across the
+runbook/template/generated seed, the full media-prep wrapper, and completed
+evidence validation.
 
 ## Local Preflight
 
