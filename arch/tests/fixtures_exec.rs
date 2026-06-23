@@ -665,13 +665,61 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     }
 
     let _guard = os_image_lock();
-    let exe = build_os_image(
-        &[],
-        Some(
-            "help\ncat /boot/help\nhelp clear\nhelp screentest\nhelp input\nhelp status\nhelp proof\nhelp probe\nclear\nscreentest\npwd\nls /\ncd /dev\npwd\nls\ncat /boot/profile\ncat /boot/image\ninput\ncat /boot/input\nstatus\ncat /boot/status\nproof\ncat /boot/proof\nmount\ncat /boot/mounts\ncat /log/dmesg\ndevice\nprobe help\nprobe pcie\nprobe usb-keyboard\nprobe xhci-start\nprobe xhci-enable-slot\nprobe xhci-address-device\nprobe xhci-get-device-descriptor\nprobe xhci-set-address\nprobe xhci-read-device-descriptor\nprobe xhci-read-config-descriptor-header\nprobe xhci-read-config-descriptor\nprobe xhci-set-configuration\nprobe xhci-configure-endpoint\nprobe xhci-set-hid-protocol\nprobe xhci-read-keyboard-report\nlaunch\nreovim\ndmesg\ncat /log/dmesg\nhalt\n",
-        ),
-        None,
+    let bootline = concat!(
+        "help clear\n",
+        "help screentest\n",
+        "help input\n",
+        "help status\n",
+        "help proof\n",
+        "help probe\n",
+        "probe xhci-start\n",
+        "probe xhci-enable-slot\n",
+        "probe xhci-address-device\n",
+        "probe xhci-get-device-descriptor\n",
+        "probe xhci-set-address\n",
+        "probe xhci-read-device-descriptor\n",
+        "probe xhci-read-config-descriptor-header\n",
+        "probe xhci-read-config-descriptor\n",
+        "probe xhci-set-configuration\n",
+        "probe xhci-configure-endpoint\n",
+        "probe xhci-set-hid-protocol\n",
+        "probe xhci-read-keyboard-report\n",
+        "proof\n",
+        "cat /boot/proof\n",
+        "help\n",
+        "cat /boot/help\n",
+        "clear\n",
+        "screentest\n",
+        "pwd\n",
+        "ls /\n",
+        "ls /boot\n",
+        "ls /dev\n",
+        "mount\n",
+        "cat /boot/mounts\n",
+        "device\n",
+        "cat /boot/memory\n",
+        "cat /boot/devices\n",
+        "cd /dev\n",
+        "pwd\n",
+        "ls\n",
+        "cat uart0\n",
+        "cd /\n",
+        "cat /boot/image\n",
+        "status\n",
+        "cat /boot/status\n",
+        "input\n",
+        "cat /boot/input\n",
+        "probe help\n",
+        "probe pcie\n",
+        "probe usb-keyboard\n",
+        "cat /boot/profile\n",
+        "launch\n",
+        "reovim\n",
+        "dmesg\n",
+        "cat /log/dmesg\n",
+        "halt\n",
     );
+    let exe = build_os_image(&[], Some(bootline), None);
     let (code, serial) = run_system_image(&exe);
     assert_eq!(code, 0, "reovim-os shell profile exits 0; serial: {serial:?}");
     assert!(
@@ -988,6 +1036,18 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     assert!(
         serial.contains("shell: screentest"),
         "cat /log/dmesg prints screentest command audit; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("shell: cat /boot/memory"),
+        "cat /log/dmesg prints VFS memory command audit; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("shell: cat /boot/devices"),
+        "cat /log/dmesg prints VFS devices command audit; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("shell: cat uart0"),
+        "cat /log/dmesg prints relative device command audit; serial: {serial:?}",
     );
     assert!(
         serial.contains("shell.status=ok"),
