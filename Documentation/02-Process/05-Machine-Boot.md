@@ -129,9 +129,11 @@ without framebuffer + USB keyboard + persistent store.
 Current #800 shell-only images are diagnostic, not appliance profiles. They
 may boot with HDMI/framebuffer output plus PL011 UART input, and they must
 state that explicitly in the boot report and `/boot/profile`. A bootline
-script is a deterministic test harness, not a live input proof. Until a lower
-USB host/HID provider exists, `usb_keyboard=unavailable` is the honest status
-for real-machine manual notes.
+script is a deterministic test harness, not a live input proof. The lower
+USB/xHCI/HID path may be present as a provider, but `usb_keyboard=ready` is
+honest only after a physical HID boot-keyboard report reaches the root shell
+through the common input decoder. Before that proof, real-machine manual notes
+must report `usb_keyboard=unavailable`.
 
 ## 4. Device lifecycle
 

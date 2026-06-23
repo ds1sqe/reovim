@@ -50,8 +50,9 @@ Current OS images report the selected input path in the boot report and in
   `input_mode=live`, and `usb_keyboard=unavailable`;
 - a scripted smoke image should report `input=bootline-script` and
   `input_mode=scripted-test-harness`;
-- `usb_keyboard=ready` is reserved for the later lower USB provider that
-  actually polls HID reports and feeds `system/lib/kernel::input`.
+- `usb_keyboard=ready` is reserved for the point where a lower USB provider
+  reads a physical HID boot-keyboard report and that report reaches
+  `system/lib/kernel::input` on the normal root-shell input path.
 
 ## Future TTY Shape
 
