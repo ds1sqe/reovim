@@ -6,8 +6,9 @@
 use {
     super::{RootShellSession, execute_root_command},
     crate::rootd::{
-        BootCheckState, ConsoleInputStatus, ConsoleInputSummary, HardwareProbeResult,
-        PayloadDescriptor, PayloadLaunchResult, ProfileSummary, RootDaemon, WriteFn,
+        BootCheckState, BootImageSummary, ConsoleInputStatus, ConsoleInputSummary,
+        HardwareProbeResult, PayloadDescriptor, PayloadLaunchResult, ProfileSummary, RootDaemon,
+        WriteFn,
     },
     core::cell::UnsafeCell,
     reovim_testrt::{self as testrt, arch_test},
@@ -88,6 +89,7 @@ fn daemon_with_input_status(
         Some(probe_fixture),
         input_status,
         "reovim-os> ",
+        sample_boot_image(),
         ConsoleInputSummary::new(
             "fixture-input",
             "fixture",
@@ -100,11 +102,14 @@ fn daemon_with_input_status(
 }
 
 fn ready_input_status(_base: ConsoleInputSummary) -> ConsoleInputSummary {
-    ConsoleInputSummary::new(
+    ConsoleInputSummary::with_usb_state(
         "usb-keyboard+uart-fallback",
         "live",
         BootCheckState::Ok,
         BootCheckState::Ok,
+        2,
+        true,
+        5,
     )
 }
 
@@ -173,6 +178,18 @@ fn sample_payloads() -> &'static [PayloadDescriptor] {
     &SAMPLE_PAYLOADS
 }
 
+fn sample_boot_image() -> BootImageSummary {
+    BootImageSummary::new(
+        "reovim-os",
+        "test",
+        "fixture-target",
+        "shell-only",
+        "shell-only",
+        "absent",
+        "disabled",
+    )
+}
+
 fn launch_reovim() -> PayloadLaunchResult {
     PayloadLaunchResult::Ready
 }
@@ -218,7 +235,7 @@ arch_test!(root_shell_help, {
     run_command(ProfileSummary::new("shell-only", false), b"help\n", None);
     testrt::check_eq(
         sink_str(),
-        "reovim root shell\ncommands: help, clear, screentest, pwd, ls, cd, cat, mount, device, dmesg, probe, launch, reovim, halt\n",
+        "reovim root shell\ncommands: help, clear, screentest, pwd, ls, cd, cat, mount, input, device, dmesg, probe, launch, reovim, halt\n",
     );
 });
 
@@ -250,7 +267,7 @@ arch_test!(root_shell_clear_and_screentest, {
     assert_contains(sink_bytes(), b"  done\n");
 });
 
-arch_test!(root_shell_launch_mount_and_reserved, {
+arch_test!(root_shell_launch_mount_and_reovim, {
     run_command(ProfileSummary::new("appliance", true), b"launch\n", None);
     assert_contains(
         sink_bytes(),
@@ -301,6 +318,40 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"input=fixture-input\n");
     assert_contains(sink_bytes(), b"usb_keyboard=unavailable\n");
 
+    run_session_command(&mut session, b"ls /boot\n");
+    assert_contains(sink_bytes(), b"devices\n");
+    assert_contains(sink_bytes(), b"image\n");
+    assert_contains(sink_bytes(), b"input\n");
+    assert_contains(sink_bytes(), b"memory\n");
+    assert_contains(sink_bytes(), b"mounts\n");
+    assert_contains(sink_bytes(), b"profile\n");
+
+    run_session_command(&mut session, b"cat /boot/image\n");
+    assert_contains(sink_bytes(), b"package=reovim-os\n");
+    assert_contains(sink_bytes(), b"version=test\n");
+    assert_contains(sink_bytes(), b"target=fixture-target\n");
+    assert_contains(sink_bytes(), b"selected_profile=shell-only\n");
+    assert_contains(sink_bytes(), b"profile_request=shell-only\n");
+    assert_contains(sink_bytes(), b"bootline=absent\n");
+    assert_contains(sink_bytes(), b"launch_profile_feature=disabled\n");
+
+    run_session_command(&mut session, b"cat /boot/input\n");
+    assert_contains(sink_bytes(), b"source=fixture-input\n");
+    assert_contains(sink_bytes(), b"source_state=ready\n");
+    assert_contains(sink_bytes(), b"mode=fixture\n");
+    assert_contains(sink_bytes(), b"usb_keyboard=unavailable\n");
+    assert_contains(sink_bytes(), b"usb_keyboard_pending_bytes=0\n");
+    assert_contains(sink_bytes(), b"usb_keyboard_probe=disabled\n");
+    assert_contains(sink_bytes(), b"usb_keyboard_poll_interval_ms=0\n");
+
+    run_session_command(&mut session, b"input\n");
+    assert_contains(sink_bytes(), b"source=fixture-input\n");
+    assert_contains(sink_bytes(), b"usb_keyboard_pending_bytes=0\n");
+    assert_contains(sink_bytes(), b"usb_keyboard_probe=disabled\n");
+
+    run_session_command(&mut session, b"input extra\n");
+    testrt::check_eq(sink_str(), "input: too many arguments\n");
+
     run_session_command(&mut session, b"cat /boot/mounts\n");
     assert_contains(sink_bytes(), b"kernel on / type rootfs (ro,pseudo)\n");
     assert_contains(sink_bytes(), b"devices on /dev type devfs (ro,pseudo)\n");
@@ -339,6 +390,16 @@ arch_test!(root_shell_boot_profile_uses_live_console_input_status, {
     assert_contains(sink_bytes(), b"input=usb-keyboard+uart-fallback\n");
     assert_contains(sink_bytes(), b"input_mode=live\n");
     assert_contains(sink_bytes(), b"usb_keyboard=ready\n");
+
+    sink_clear();
+    let _ = execute_root_command(&daemon, &mut session, b"cat /boot/input\n");
+    assert_contains(sink_bytes(), b"source=usb-keyboard+uart-fallback\n");
+    assert_contains(sink_bytes(), b"source_state=ready\n");
+    assert_contains(sink_bytes(), b"mode=live\n");
+    assert_contains(sink_bytes(), b"usb_keyboard=ready\n");
+    assert_contains(sink_bytes(), b"usb_keyboard_pending_bytes=2\n");
+    assert_contains(sink_bytes(), b"usb_keyboard_probe=enabled\n");
+    assert_contains(sink_bytes(), b"usb_keyboard_poll_interval_ms=5\n");
 });
 
 arch_test!(root_shell_dmesg_and_unknown_command, {
@@ -374,7 +435,7 @@ arch_test!(root_shell_probe_uses_lower_provider, {
     testrt::check_eq(sink_str(), "probe: unknown target: missing\n");
 
     run_command(ProfileSummary::new("shell-only", false), b"probe\n", None);
-    testrt::check_eq(sink_str(), "probe: missing target\n");
+    testrt::check_eq(sink_str(), "probe: missing target, try `probe help`\n");
 
     run_command(ProfileSummary::new("shell-only", false), b"probe a b\n", None);
     testrt::check_eq(sink_str(), "probe: too many arguments\n");

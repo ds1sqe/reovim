@@ -145,6 +145,10 @@ pub const fn mounts() -> &'static [MountEntry] {
 pub enum File {
     /// `/boot/profile`.
     BootProfile,
+    /// `/boot/image`.
+    BootImage,
+    /// `/boot/input`.
+    BootInput,
     /// `/boot/memory`.
     BootMemory,
     /// `/boot/devices`.
@@ -201,6 +205,8 @@ pub fn lookup(path: &str, devices: &[DeviceEntry]) -> Result<Node, VfsError> {
         "/dev" => return Ok(Node::Directory(Directory::Dev)),
         "/log" => return Ok(Node::Directory(Directory::Log)),
         "/boot/profile" => return Ok(Node::File(File::BootProfile)),
+        "/boot/image" => return Ok(Node::File(File::BootImage)),
+        "/boot/input" => return Ok(Node::File(File::BootInput)),
         "/boot/memory" => return Ok(Node::File(File::BootMemory)),
         "/boot/devices" => return Ok(Node::File(File::BootDevices)),
         "/boot/mounts" => return Ok(Node::File(File::BootMounts)),
@@ -222,6 +228,8 @@ pub fn lookup(path: &str, devices: &[DeviceEntry]) -> Result<Node, VfsError> {
 
     for file in [
         "/boot/profile/",
+        "/boot/image/",
+        "/boot/input/",
         "/boot/memory/",
         "/boot/devices/",
         "/boot/mounts/",

@@ -348,6 +348,8 @@ fn write_directory(daemon: &RootDaemon<'_>, directory: Directory) {
         }
         Directory::Boot => {
             daemon.write_line("devices");
+            daemon.write_line("image");
+            daemon.write_line("input");
             daemon.write_line("memory");
             daemon.write_line("mounts");
             daemon.write_line("profile");
@@ -396,6 +398,8 @@ fn cmd_cat(daemon: &RootDaemon<'_>, session: &RootShellSession, line: &ParsedLin
 fn write_file(daemon: &RootDaemon<'_>, file: File) {
     match file {
         File::BootProfile => write_boot_profile(daemon),
+        File::BootImage => write_boot_image(daemon),
+        File::BootInput => write_boot_input(daemon),
         File::BootMemory => write_boot_memory(daemon),
         File::BootDevices => write_boot_devices(daemon),
         File::BootMounts => write_mount_table(daemon),
@@ -424,6 +428,44 @@ fn write_boot_profile(daemon: &RootDaemon<'_>) {
     daemon.write_bytes(input.mode.as_bytes());
     daemon.write_bytes(b"\nusb_keyboard=");
     daemon.write_bytes(input_state_word(input.usb_keyboard));
+    daemon.write_bytes(b"\n");
+}
+
+fn write_boot_image(daemon: &RootDaemon<'_>) {
+    let image = daemon.boot_image();
+    daemon.write_bytes(b"package=");
+    daemon.write_bytes(image.package.as_bytes());
+    daemon.write_bytes(b"\nversion=");
+    daemon.write_bytes(image.version.as_bytes());
+    daemon.write_bytes(b"\ntarget=");
+    daemon.write_bytes(image.target.as_bytes());
+    daemon.write_bytes(b"\nselected_profile=");
+    daemon.write_bytes(image.selected_profile.as_bytes());
+    daemon.write_bytes(b"\nprofile_request=");
+    daemon.write_bytes(image.profile_request.as_bytes());
+    daemon.write_bytes(b"\nbootline=");
+    daemon.write_bytes(image.bootline.as_bytes());
+    daemon.write_bytes(b"\nlaunch_profile_feature=");
+    daemon.write_bytes(image.launch_profile_feature.as_bytes());
+    daemon.write_bytes(b"\n");
+}
+
+fn write_boot_input(daemon: &RootDaemon<'_>) {
+    let input = daemon.console_input();
+    daemon.write_bytes(b"source=");
+    daemon.write_bytes(input.source.as_bytes());
+    daemon.write_bytes(b"\nsource_state=");
+    daemon.write_bytes(input_state_word(input.source_state));
+    daemon.write_bytes(b"\nmode=");
+    daemon.write_bytes(input.mode.as_bytes());
+    daemon.write_bytes(b"\nusb_keyboard=");
+    daemon.write_bytes(input_state_word(input.usb_keyboard));
+    daemon.write_bytes(b"\nusb_keyboard_pending_bytes=");
+    write_u64_dec(daemon, input.usb_keyboard_pending_bytes as u64);
+    daemon.write_bytes(b"\nusb_keyboard_probe=");
+    write_bool_word(daemon, input.usb_keyboard_probe_enabled);
+    daemon.write_bytes(b"\nusb_keyboard_poll_interval_ms=");
+    write_u64_dec(daemon, input.usb_keyboard_poll_interval_ms as u64);
     daemon.write_bytes(b"\n");
 }
 
@@ -523,6 +565,10 @@ fn write_payload_status(daemon: &RootDaemon<'_>, result: PayloadLaunchResult) {
     daemon.write_bytes(b"\n");
 }
 
+fn write_bool_word(daemon: &RootDaemon<'_>, value: bool) {
+    daemon.write_bytes(if value { b"enabled" } else { b"disabled" });
+}
+
 fn cmd_launch(daemon: &RootDaemon<'_>, line: &ParsedLine) {
     if !daemon.launch_enabled() {
         daemon.write_line("launch disabled for this profile");
@@ -550,7 +596,7 @@ fn cmd_launch(daemon: &RootDaemon<'_>, line: &ParsedLine) {
 
 fn cmd_probe(daemon: &RootDaemon<'_>, line: &ParsedLine) {
     if line.argc == 1 {
-        daemon.write_line("probe: missing target");
+        daemon.write_line("probe: missing target, try `probe help`");
         return;
     }
     if line.argc > 2 {
@@ -573,7 +619,7 @@ fn cmd_probe(daemon: &RootDaemon<'_>, line: &ParsedLine) {
 fn cmd_help(daemon: &RootDaemon<'_>) {
     daemon.write_line("reovim root shell");
     daemon.write_line(
-        "commands: help, clear, screentest, pwd, ls, cd, cat, mount, device, dmesg, probe, launch, reovim, halt",
+        "commands: help, clear, screentest, pwd, ls, cd, cat, mount, input, device, dmesg, probe, launch, reovim, halt",
     );
 }
 
@@ -616,6 +662,14 @@ fn cmd_mount(daemon: &RootDaemon<'_>, line: &ParsedLine) {
         return;
     }
     write_mount_table(daemon);
+}
+
+fn cmd_input(daemon: &RootDaemon<'_>, line: &ParsedLine) {
+    if line.argc > 1 {
+        daemon.write_line("input: too many arguments");
+        return;
+    }
+    write_boot_input(daemon);
 }
 
 fn cmd_reovim(daemon: &RootDaemon<'_>, line: &ParsedLine) {
@@ -716,6 +770,7 @@ pub fn execute_root_command(
         "cd" => cmd_cd(daemon, session, &parsed),
         "cat" => cmd_cat(daemon, session, &parsed),
         "mount" => cmd_mount(daemon, &parsed),
+        "input" => cmd_input(daemon, &parsed),
         "device" => cmd_device(daemon),
         "dmesg" => cmd_dmesg(daemon),
         "probe" => cmd_probe(daemon, &parsed),

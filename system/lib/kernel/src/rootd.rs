@@ -84,6 +84,49 @@ impl RuntimeChecks {
     }
 }
 
+/// Compile-time image identity supplied by the composition root.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BootImageSummary {
+    /// Cargo package name for the boot image.
+    pub package: &'static str,
+    /// Cargo package version for the boot image.
+    pub version: &'static str,
+    /// Rust target triple used to build the image.
+    pub target: &'static str,
+    /// Profile selected for this boot.
+    pub selected_profile: &'static str,
+    /// Build-time profile request before fallback policy.
+    pub profile_request: &'static str,
+    /// Whether `REOVIM_OS_BOOTLINE` was compiled into the image.
+    pub bootline: &'static str,
+    /// Whether the launch-profile feature was enabled at build time.
+    pub launch_profile_feature: &'static str,
+}
+
+impl BootImageSummary {
+    /// Builds static image identity for root-shell diagnostics.
+    #[must_use]
+    pub const fn new(
+        package: &'static str,
+        version: &'static str,
+        target: &'static str,
+        selected_profile: &'static str,
+        profile_request: &'static str,
+        bootline: &'static str,
+        launch_profile_feature: &'static str,
+    ) -> Self {
+        Self {
+            package,
+            version,
+            target,
+            selected_profile,
+            profile_request,
+            bootline,
+            launch_profile_feature,
+        }
+    }
+}
+
 /// Summary of the console input path selected by the composition root.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ConsoleInputSummary {
@@ -95,6 +138,12 @@ pub struct ConsoleInputSummary {
     pub source_state: BootCheckState,
     /// Readiness of the physical USB keyboard provider.
     pub usb_keyboard: BootCheckState,
+    /// Decoded USB keyboard bytes waiting for the line discipline.
+    pub usb_keyboard_pending_bytes: usize,
+    /// Whether the composition root enabled USB keyboard probing.
+    pub usb_keyboard_probe_enabled: bool,
+    /// Minimum interval between lower USB keyboard hardware polls.
+    pub usb_keyboard_poll_interval_ms: usize,
 }
 
 impl ConsoleInputSummary {
@@ -106,11 +155,48 @@ impl ConsoleInputSummary {
         source_state: BootCheckState,
         usb_keyboard: BootCheckState,
     ) -> Self {
+        Self::with_usb_pending_bytes(source, mode, source_state, usb_keyboard, 0)
+    }
+
+    /// Builds a console-input summary with live USB queue state.
+    #[must_use]
+    pub const fn with_usb_pending_bytes(
+        source: &'static str,
+        mode: &'static str,
+        source_state: BootCheckState,
+        usb_keyboard: BootCheckState,
+        usb_keyboard_pending_bytes: usize,
+    ) -> Self {
+        Self::with_usb_state(
+            source,
+            mode,
+            source_state,
+            usb_keyboard,
+            usb_keyboard_pending_bytes,
+            false,
+            0,
+        )
+    }
+
+    /// Builds a console-input summary with live USB provider state.
+    #[must_use]
+    pub const fn with_usb_state(
+        source: &'static str,
+        mode: &'static str,
+        source_state: BootCheckState,
+        usb_keyboard: BootCheckState,
+        usb_keyboard_pending_bytes: usize,
+        usb_keyboard_probe_enabled: bool,
+        usb_keyboard_poll_interval_ms: usize,
+    ) -> Self {
         Self {
             source,
             mode,
             source_state,
             usb_keyboard,
+            usb_keyboard_pending_bytes,
+            usb_keyboard_probe_enabled,
+            usb_keyboard_poll_interval_ms,
         }
     }
 }
@@ -141,6 +227,8 @@ pub struct RootBootConfig<'a> {
     pub write: WriteFn,
     /// Optional framebuffer/terminal geometry for splash rendering.
     pub splash_geometry: Option<(u32, u32)>,
+    /// Compile-time image identity for `/boot/image`.
+    pub boot_image: BootImageSummary,
     /// Root profile and launch policy.
     pub profile: ProfileSummary,
     /// Runtime-service installation checks.
@@ -210,6 +298,7 @@ pub struct RootDaemon<'a> {
     probe_hardware: Option<HardwareProbe>,
     console_input_status: Option<ConsoleInputStatus>,
     prompt: &'static str,
+    boot_image: BootImageSummary,
     console_input: ConsoleInputSummary,
     write: WriteFn,
 }
@@ -226,6 +315,7 @@ impl<'a> RootDaemon<'a> {
         probe_hardware: Option<HardwareProbe>,
         console_input_status: Option<ConsoleInputStatus>,
         prompt: &'static str,
+        boot_image: BootImageSummary,
         console_input: ConsoleInputSummary,
         write: WriteFn,
     ) -> Self {
@@ -239,6 +329,7 @@ impl<'a> RootDaemon<'a> {
             probe_hardware,
             console_input_status,
             prompt,
+            boot_image,
             console_input,
             write,
         }
@@ -260,6 +351,12 @@ impl<'a> RootDaemon<'a> {
     #[must_use]
     pub const fn prompt(&self) -> &'static str {
         self.prompt
+    }
+
+    /// Compile-time image identity selected by the composition root.
+    #[must_use]
+    pub const fn boot_image(&self) -> BootImageSummary {
+        self.boot_image
     }
 
     /// Console input source selected for this boot.
@@ -605,6 +702,7 @@ pub fn run_root_daemon(cfg: RootBootConfig<'_>) -> ! {
         cfg.probe_hardware,
         cfg.console_input_status,
         cfg.prompt,
+        cfg.boot_image,
         cfg.console_input,
         cfg.write,
     );

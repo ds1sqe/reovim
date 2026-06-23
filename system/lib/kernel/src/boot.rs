@@ -9,9 +9,9 @@ use {
     crate::{
         mm,
         rootd::{
-            BootCheckState, ConsoleInputStatus, ConsoleInputSummary, DmesgSnapshot, HaltKernel,
-            HardwareProbe, PayloadDescriptor, PrepareShell, ProfileSummary, ReadLine,
-            RootBootConfig, RuntimeChecks, WriteFn,
+            BootCheckState, BootImageSummary, ConsoleInputStatus, ConsoleInputSummary,
+            DmesgSnapshot, HaltKernel, HardwareProbe, PayloadDescriptor, PrepareShell,
+            ProfileSummary, ReadLine, RootBootConfig, RuntimeChecks, WriteFn,
         },
         splash,
     },
@@ -94,6 +94,8 @@ pub struct ShellBootConfig<'a> {
     pub console_input_status: Option<ConsoleInputStatusCallback>,
     /// Selected console input source and USB-keyboard readiness.
     pub console_input: ConsoleInputSummary,
+    /// Compile-time image identity for root-shell diagnostics.
+    pub boot_image: BootImageSummary,
     /// Profile selected for this boot.
     pub profile: BootProfile<'a>,
 }
@@ -126,6 +128,7 @@ pub fn run_shell_profile(cfg: ShellBootConfig<'_>) -> ! {
         prompt: cfg.profile.prompt,
         write: cfg.write,
         splash_geometry: runtime.splash_geometry,
+        boot_image: cfg.boot_image,
         profile: ProfileSummary::new(cfg.profile.name, cfg.profile.launch_enabled),
         runtime_checks: runtime.checks,
         console_input: cfg.console_input,

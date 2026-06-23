@@ -9,7 +9,7 @@ use reovim_arch::sys as arch_sys;
 use reovim_system_kernel::{
     boot::{self, ShellBootConfig, SplashBootConfig},
     console_io,
-    rootd::{BootCheckState, ConsoleInputSummary, HardwareProbeResult, WriteFn},
+    rootd::{BootCheckState, BootImageSummary, ConsoleInputSummary, HardwareProbeResult, WriteFn},
 };
 use reovim_uapi::system::{BootInfo, DeviceEntry, DeviceInventory};
 #[cfg(feature = "launch-profile")]
@@ -174,6 +174,8 @@ static USB_KEYBOARD_READY: AtomicUsize = AtomicUsize::new(0);
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 const USB_KEYBOARD_POLL_NANOS: usize = 5_000_000;
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+const USB_KEYBOARD_POLL_INTERVAL_MS: usize = USB_KEYBOARD_POLL_NANOS / 1_000_000;
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 fn device_storage() -> &'static mut [DeviceEntry] {
@@ -307,6 +309,7 @@ pub fn run_shell_profile(profile: BootProfile<'_>) -> ! {
         read_line: tty_read_line,
         write: tty_write,
         console_input: console_input_summary(),
+        boot_image: boot_image_summary(profile),
         profile,
     })
 }
@@ -425,6 +428,10 @@ fn prepare_shell_boot() {
 
 fn hardware_probe(target: &str, devices: &[DeviceEntry], write: WriteFn) -> HardwareProbeResult {
     match target {
+        "help" | "list" => {
+            probe_help(write);
+            HardwareProbeResult::Handled
+        }
         "pcie" => {
             probe_pcie(devices, write);
             HardwareProbeResult::Handled
@@ -484,6 +491,48 @@ fn hardware_probe(target: &str, devices: &[DeviceEntry], write: WriteFn) -> Hard
         }
         _ => HardwareProbeResult::UnknownTarget,
     }
+}
+
+fn probe_help(write: WriteFn) {
+    probe_emit(write, b"probe targets:\n");
+    probe_emit(write, b"  pcie\n");
+    probe_emit(write, b"  usb-keyboard (alias: keyboard)\n");
+    probe_emit(write, b"  xhci-start (alias: usb-keyboard-start)\n");
+    probe_emit(write, b"  xhci-enable-slot (alias: usb-keyboard-enable-slot)\n");
+    probe_emit(write, b"  xhci-address-device (alias: usb-keyboard-address-device)\n");
+    probe_emit(
+        write,
+        b"  xhci-get-device-descriptor (alias: usb-keyboard-get-device-descriptor)\n",
+    );
+    probe_emit(write, b"  xhci-set-address (alias: usb-keyboard-set-address)\n");
+    probe_emit(
+        write,
+        b"  xhci-read-device-descriptor (alias: usb-keyboard-read-device-descriptor)\n",
+    );
+    probe_emit(
+        write,
+        b"  xhci-read-config-descriptor-header (alias: usb-keyboard-read-config-descriptor-header)\n",
+    );
+    probe_emit(
+        write,
+        b"  xhci-read-config-descriptor (alias: usb-keyboard-read-config-descriptor)\n",
+    );
+    probe_emit(
+        write,
+        b"  xhci-set-configuration (alias: usb-keyboard-set-configuration)\n",
+    );
+    probe_emit(
+        write,
+        b"  xhci-configure-endpoint (alias: usb-keyboard-configure-endpoint)\n",
+    );
+    probe_emit(
+        write,
+        b"  xhci-set-hid-protocol (alias: usb-keyboard-set-hid-protocol)\n",
+    );
+    probe_emit(
+        write,
+        b"  xhci-read-keyboard-report (alias: usb-keyboard-read-report)\n",
+    );
 }
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
@@ -3589,20 +3638,110 @@ fn console_input_summary() -> ConsoleInputSummary {
 fn console_input_status(base: ConsoleInputSummary) -> ConsoleInputSummary {
     #[cfg(all(target_os = "none", target_arch = "aarch64"))]
     {
+        let probe_enabled = USB_KEYBOARD_PROBE_ENABLED.load(Ordering::Acquire) != 0;
+        let pending = unsafe { &*USB_KEYBOARD_CONSOLE.0.get() }.pending_remaining();
         if BOOTLINE_SCRIPT.is_none() && USB_KEYBOARD_READY.load(Ordering::Acquire) != 0 {
-            return ConsoleInputSummary::new(
+            return ConsoleInputSummary::with_usb_state(
                 "usb-keyboard+uart-fallback",
                 "live",
                 BootCheckState::Ok,
                 BootCheckState::Ok,
+                pending,
+                probe_enabled,
+                USB_KEYBOARD_POLL_INTERVAL_MS,
             );
         }
+        return ConsoleInputSummary::with_usb_state(
+            base.source,
+            base.mode,
+            base.source_state,
+            base.usb_keyboard,
+            pending,
+            probe_enabled,
+            USB_KEYBOARD_POLL_INTERVAL_MS,
+        );
     }
 
-    base
+    #[cfg(not(all(target_os = "none", target_arch = "aarch64")))]
+    {
+        base
+    }
+}
+
+fn boot_image_summary(profile: BootProfile<'_>) -> BootImageSummary {
+    BootImageSummary::new(
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+        target_triple(),
+        profile.name,
+        profile_request(),
+        bootline_state(),
+        launch_profile_feature_state(),
+    )
+}
+
+fn target_triple() -> &'static str {
+    #[cfg(all(target_os = "none", target_arch = "aarch64"))]
+    {
+        "aarch64-unknown-none"
+    }
+    #[cfg(all(target_os = "none", target_arch = "x86_64"))]
+    {
+        "x86_64-unknown-none"
+    }
+    #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+    {
+        "aarch64-unknown-linux-gnu"
+    }
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    {
+        "x86_64-unknown-linux-gnu"
+    }
+    #[cfg(not(any(
+        all(target_os = "none", target_arch = "aarch64"),
+        all(target_os = "none", target_arch = "x86_64"),
+        all(target_os = "linux", target_arch = "aarch64"),
+        all(target_os = "linux", target_arch = "x86_64")
+    )))]
+    {
+        "unknown"
+    }
+}
+
+fn profile_request() -> &'static str {
+    #[cfg(feature = "launch-profile")]
+    {
+        option_env!("REOVIM_OS_PROFILE").unwrap_or("shell-only")
+    }
+    #[cfg(not(feature = "launch-profile"))]
+    {
+        "shell-only"
+    }
+}
+
+fn bootline_state() -> &'static str {
+    if BOOTLINE_SCRIPT.is_some() {
+        "present"
+    } else {
+        "absent"
+    }
+}
+
+const fn launch_profile_feature_state() -> &'static str {
+    #[cfg(feature = "launch-profile")]
+    {
+        "enabled"
+    }
+    #[cfg(not(feature = "launch-profile"))]
+    {
+        "disabled"
+    }
 }
 
 #[cfg(target_os = "none")]
+const BOOTLINE_SCRIPT: Option<&str> = option_env!("REOVIM_OS_BOOTLINE");
+
+#[cfg(not(target_os = "none"))]
 const BOOTLINE_SCRIPT: Option<&str> = option_env!("REOVIM_OS_BOOTLINE");
 
 #[cfg(target_os = "none")]
