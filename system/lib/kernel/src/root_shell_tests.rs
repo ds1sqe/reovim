@@ -786,7 +786,7 @@ arch_test!(root_shell_status_reports_specific_manual_next_probe, {
         (pcie_blocker_input_status, b"manual_next=probe-pcie\n"),
         (controller_init_input_status, b"manual_next=probe-xhci-start\n"),
         (enumeration_input_status, b"manual_next=probe-xhci-read-keyboard-report\n"),
-        (report_pending_input_status, b"manual_next=probe-usb-keyboard\n"),
+        (report_pending_input_status, b"manual_next=press-usb-key\n"),
         (decoded_pending_input_status, b"manual_next=type-shell-command\n"),
     ];
 

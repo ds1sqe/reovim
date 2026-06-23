@@ -884,7 +884,8 @@ fn manual_next_step(input: crate::rootd::ConsoleInputSummary) -> &'static [u8] {
                 b"probe-xhci-read-keyboard-report"
             }
             "decoded-pending" | "report-ready" => b"type-shell-command",
-            "report-pending" | "not-polled" | "unknown" => b"probe-usb-keyboard",
+            "report-pending" => b"press-usb-key",
+            "not-polled" | "unknown" => b"probe-usb-keyboard",
             _ => b"probe-usb-keyboard",
         }
     } else {

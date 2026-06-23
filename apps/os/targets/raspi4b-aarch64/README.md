@@ -21,7 +21,7 @@ image=apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img
 bytes=<image-size>
 ```
 
-Current expected size is `447044` bytes.
+Current expected size is `447092` bytes.
 
 Copy `apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img` to the Pi
 4 boot partition as `kernel8.img`, using the normal Raspberry Pi firmware
@@ -346,9 +346,10 @@ Record the full visible output or serial transcript. The key evidence is:
   `usb_keyboard_poll_interval_ms`. It also shows
   `usb_keyboard_last_poll=report-ready` so the proof names the lower
   interrupt-IN report path that made the keyboard ready. If the keyboard is
-  not ready yet, `manual_next` points at the next probe checkpoint, such as
-  `probe-pcie`, `probe-xhci-start`, `probe-xhci-read-keyboard-report`, or
-  `probe-usb-keyboard`. In the successful physical proof it must end at
+  not ready yet, `manual_next` points at the next action, such as
+  `probe-pcie`, `probe-xhci-start`, `probe-xhci-read-keyboard-report`,
+  `probe-usb-keyboard`, or `press-usb-key` when an interrupt-IN report
+  transfer is already queued. In the successful physical proof it must end at
   `manual_next=type-shell-command`.
 - `help status` names the `manual_next` summary path, and `help probe` points
   at both `probe help` and `cat /boot/probes`.
