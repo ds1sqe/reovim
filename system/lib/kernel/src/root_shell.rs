@@ -332,8 +332,16 @@ fn cmd_device(daemon: &RootDaemon<'_>, line: &ParsedLine) -> RootCommandStatus {
 }
 
 fn cmd_dmesg(daemon: &RootDaemon<'_>, line: &ParsedLine) -> RootCommandStatus {
-    if line.argc > 1 {
+    if line.argc > 2 {
         daemon.write_line("dmesg: too many arguments");
+        return RootCommandStatus::Error;
+    }
+    if line.argc == 2 {
+        if line.args[1].as_str() == "--stats" {
+            write_log_stats(daemon);
+            return RootCommandStatus::Ok;
+        }
+        daemon.write_line("dmesg: unknown option");
         return RootCommandStatus::Error;
     }
     daemon.write_line("dmesg:");
@@ -455,7 +463,10 @@ fn write_directory(daemon: &RootDaemon<'_>, directory: Directory) {
                 index += 1;
             }
         }
-        Directory::Log => daemon.write_line("dmesg"),
+        Directory::Log => {
+            daemon.write_line("dmesg");
+            daemon.write_line("stats");
+        }
     }
 }
 
@@ -510,6 +521,7 @@ fn write_file(daemon: &RootDaemon<'_>, file: File) {
         File::BootDevices => write_boot_devices(daemon),
         File::BootMounts => write_mount_table(daemon),
         File::LogDmesg => write_log_dmesg(daemon),
+        File::LogStats => write_log_stats(daemon),
         File::DevDevice(index) => write_device_row(daemon, &daemon.devices()[index], index),
     }
 }
@@ -583,6 +595,7 @@ fn write_boot_proof(daemon: &RootDaemon<'_>) {
     daemon.write_line("  proof");
     daemon.write_line("  cat /boot/proof");
     daemon.write_line("  help");
+    daemon.write_line("  help dmesg");
     daemon.write_line("  cat /boot/help");
     daemon.write_line("  clear");
     daemon.write_line("  screentest");
@@ -590,6 +603,7 @@ fn write_boot_proof(daemon: &RootDaemon<'_>) {
     daemon.write_line("  ls /");
     daemon.write_line("  ls /boot");
     daemon.write_line("  ls /dev");
+    daemon.write_line("  ls /log");
     daemon.write_line("  mount");
     daemon.write_line("  cat /boot/mounts");
     daemon.write_line("  device");
@@ -611,6 +625,8 @@ fn write_boot_proof(daemon: &RootDaemon<'_>) {
     daemon.write_line("  cat /boot/profile");
     daemon.write_line("  launch");
     daemon.write_line("  reovim");
+    daemon.write_line("  dmesg --stats");
+    daemon.write_line("  cat /log/stats");
     daemon.write_line("  dmesg");
     daemon.write_line("  cat /log/dmesg");
     daemon.write_line("terminal:");
@@ -628,6 +644,7 @@ fn write_boot_proof(daemon: &RootDaemon<'_>) {
     daemon.write_line("  usb_keyboard_last_poll=report-ready");
     daemon.write_line("  help catalog available through /boot/help");
     daemon.write_line("  screentest includes erase-line mode diagnostics");
+    daemon.write_line("  kernel log stats available through /log/stats");
     daemon.write_line("  probe targets include pcie");
     daemon.write_line("  probe targets include usb-keyboard");
     daemon.write_line("  probe targets include xhci-read-keyboard-report");
@@ -757,6 +774,16 @@ fn write_log_dmesg(daemon: &RootDaemon<'_>) {
     } else if !wrote_kernel_log {
         daemon.write_line("(kernel log empty)");
     }
+}
+
+fn write_log_stats(daemon: &RootDaemon<'_>) {
+    daemon.write_bytes(b"capacity_bytes=");
+    write_u64_dec(daemon, klog::CAPACITY as u64);
+    daemon.write_bytes(b"\nretained_bytes=");
+    write_u64_dec(daemon, klog::len() as u64);
+    daemon.write_bytes(b"\ndropped_bytes=");
+    write_u64_dec(daemon, klog::dropped_bytes() as u64);
+    daemon.write_bytes(b"\n");
 }
 
 fn path_basename(path: &str) -> &str {
@@ -916,7 +943,7 @@ fn cmd_help(daemon: &RootDaemon<'_>, line: &ParsedLine) -> RootCommandStatus {
         "status" => daemon.write_line("status - print boot and input summary"),
         "proof" => daemon.write_line("proof - print physical input proof checklist"),
         "device" => daemon.write_line("device - print boot memory and device inventory"),
-        "dmesg" => daemon.write_line("dmesg - print retained kernel log"),
+        "dmesg" => daemon.write_line("dmesg [--stats] - print retained kernel log or ring stats"),
         "probe" => daemon.write_line("probe target - run lower hardware probe; try `probe help`"),
         "launch" => daemon.write_line("launch [payload] - list or run registered payloads"),
         "reovim" => daemon.write_line("reovim - run the default reovim payload alias"),

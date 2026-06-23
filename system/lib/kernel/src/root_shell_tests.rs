@@ -275,6 +275,9 @@ arch_test!(root_shell_help, {
     run_command(ProfileSummary::new("shell-only", false), b"help probe\n", None);
     testrt::check_eq(sink_str(), "probe target - run lower hardware probe; try `probe help`\n");
 
+    run_command(ProfileSummary::new("shell-only", false), b"help dmesg\n", None);
+    testrt::check_eq(sink_str(), "dmesg [--stats] - print retained kernel log or ring stats\n");
+
     run_command(ProfileSummary::new("shell-only", false), b"help missing\n", None);
     testrt::check_eq(sink_str(), "help: unknown command: missing\n");
 
@@ -424,6 +427,7 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"  proof\n");
     assert_contains(sink_bytes(), b"  cat /boot/proof\n");
     assert_contains(sink_bytes(), b"  help\n");
+    assert_contains(sink_bytes(), b"  help dmesg\n");
     assert_contains(sink_bytes(), b"  cat /boot/help\n");
     assert_contains(sink_bytes(), b"  clear\n");
     assert_contains(sink_bytes(), b"  screentest\n");
@@ -431,6 +435,7 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"  ls /\n");
     assert_contains(sink_bytes(), b"  ls /boot\n");
     assert_contains(sink_bytes(), b"  ls /dev\n");
+    assert_contains(sink_bytes(), b"  ls /log\n");
     assert_contains(sink_bytes(), b"  mount\n");
     assert_contains(sink_bytes(), b"  cat /boot/mounts\n");
     assert_contains(sink_bytes(), b"  device\n");
@@ -449,6 +454,8 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"  cat /boot/profile\n");
     assert_contains(sink_bytes(), b"  launch\n");
     assert_contains(sink_bytes(), b"  reovim\n");
+    assert_contains(sink_bytes(), b"  dmesg --stats\n");
+    assert_contains(sink_bytes(), b"  cat /log/stats\n");
     assert_contains(sink_bytes(), b"  dmesg\n");
     assert_contains(sink_bytes(), b"  cat /log/dmesg\n");
     assert_contains(sink_bytes(), b"terminal:\n");
@@ -472,6 +479,7 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"  usb_keyboard_last_poll=report-ready\n");
     assert_contains(sink_bytes(), b"  help catalog available through /boot/help\n");
     assert_contains(sink_bytes(), b"  screentest includes erase-line mode diagnostics\n");
+    assert_contains(sink_bytes(), b"  kernel log stats available through /log/stats\n");
     assert_contains(sink_bytes(), b"  probe targets include usb-keyboard\n");
     assert_contains(sink_bytes(), b"  probe targets include xhci-read-keyboard-report\n");
     assert_contains(sink_bytes(), b"  launch/reovim disabled in shell-only profile\n");
@@ -483,10 +491,12 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"proof:\n");
     assert_contains(sink_bytes(), b"  proof\n");
     assert_contains(sink_bytes(), b"  cat /boot/proof\n");
+    assert_contains(sink_bytes(), b"  help dmesg\n");
     assert_contains(sink_bytes(), b"expected:\n");
     assert_contains(sink_bytes(), b"  probe targets include pcie\n");
     assert_contains(sink_bytes(), b"  probe targets include xhci-read-keyboard-report\n");
     assert_contains(sink_bytes(), b"  help catalog available through /boot/help\n");
+    assert_contains(sink_bytes(), b"  kernel log stats available through /log/stats\n");
     assert_contains(sink_bytes(), b"  launch/reovim disabled in shell-only profile\n");
     assert_contains(sink_bytes(), b"  halt typed last prints halt: ok and stops root daemon\n");
 
@@ -557,6 +567,14 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     run_session_command(&mut session, b"cat /log/dmesg\n");
     assert_contains(sink_bytes(), b"boot diagnostics complete\n");
     assert_contains(sink_bytes(), b"external diagnostics:\nboot diagnostics complete\n");
+
+    run_session_command(&mut session, b"ls /log\n");
+    testrt::check_eq(sink_str(), "dmesg\nstats\n");
+
+    run_session_command(&mut session, b"cat /log/stats\n");
+    assert_contains(sink_bytes(), b"capacity_bytes=8192\n");
+    assert_contains(sink_bytes(), b"retained_bytes=");
+    assert_contains(sink_bytes(), b"dropped_bytes=0\n");
 });
 
 arch_test!(root_shell_boot_profile_uses_live_console_input_status, {
@@ -605,7 +623,15 @@ arch_test!(root_shell_dmesg_and_unknown_command, {
     testrt::check_eq(sink_str(), "dmesg:\nshell: dmesg\n");
 
     run_command(ProfileSummary::new("shell-only", false), b"dmesg extra\n", None);
+    testrt::check_eq(sink_str(), "dmesg: unknown option\n");
+
+    run_command(ProfileSummary::new("shell-only", false), b"dmesg a b\n", None);
     testrt::check_eq(sink_str(), "dmesg: too many arguments\n");
+
+    run_command(ProfileSummary::new("shell-only", false), b"dmesg --stats\n", None);
+    assert_contains(sink_bytes(), b"capacity_bytes=8192\n");
+    assert_contains(sink_bytes(), b"retained_bytes=");
+    assert_contains(sink_bytes(), b"dropped_bytes=0\n");
 
     crate::klog::reset();
     crate::klog::append_line("rootd: boot report");

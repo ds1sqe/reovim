@@ -672,6 +672,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "help status\n",
         "help proof\n",
         "help probe\n",
+        "help dmesg\n",
         "probe xhci-start\n",
         "probe xhci-enable-slot\n",
         "probe xhci-address-device\n",
@@ -694,6 +695,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "ls /\n",
         "ls /boot\n",
         "ls /dev\n",
+        "ls /log\n",
         "mount\n",
         "cat /boot/mounts\n",
         "device\n",
@@ -715,6 +717,8 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "cat /boot/profile\n",
         "launch\n",
         "reovim\n",
+        "dmesg --stats\n",
+        "cat /log/stats\n",
         "dmesg\n",
         "cat /log/dmesg\n",
         "halt\n",
@@ -781,6 +785,10 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "probe help appears; serial: {serial:?}",
     );
     assert!(
+        serial.contains("dmesg [--stats] - print retained kernel log or ring stats"),
+        "dmesg help appears; serial: {serial:?}",
+    );
+    assert!(
         serial.contains("usb_keyboard_pending_bytes=0"),
         "input diagnostics appear in transcript; serial: {serial:?}",
     );
@@ -820,22 +828,23 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         serial.contains("probe targets:"),
         "probe target help appears in transcript; serial: {serial:?}",
     );
-    let proof_commands = "proof:\ncommands:\n  proof\n  cat /boot/proof\n  help\n  cat /boot/help";
+    let proof_commands =
+        "proof:\ncommands:\n  proof\n  cat /boot/proof\n  help\n  help dmesg\n  cat /boot/help";
     assert!(
         serial.contains(proof_commands),
         "proof checklist appears in transcript; serial: {serial:?}",
     );
     assert!(
-        serial.contains("  help\n  cat /boot/help\n  clear"),
-        "proof checklist includes VFS help command; serial: {serial:?}",
+        serial.contains("  help\n  help dmesg\n  cat /boot/help\n  clear"),
+        "proof checklist includes targeted dmesg and VFS help; serial: {serial:?}",
     );
     assert!(
         serial.contains("  pwd\n  ls /\n  ls /boot"),
         "proof checklist includes root namespace commands; serial: {serial:?}",
     );
     assert!(
-        serial.contains("  ls /dev\n  mount\n  cat /boot/mounts"),
-        "proof checklist includes VFS namespace commands; serial: {serial:?}",
+        serial.contains("  ls /dev\n  ls /log\n  mount\n  cat /boot/mounts"),
+        "proof checklist includes VFS namespace and log listing; serial: {serial:?}",
     );
     assert!(
         serial.contains("  device\n  cat /boot/memory\n  cat /boot/devices"),
@@ -882,12 +891,20 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "proof checklist names screentest erase-mode expectation; serial: {serial:?}",
     );
     assert!(
+        serial.contains("kernel log stats available through /log/stats"),
+        "proof checklist names log stats expectation; serial: {serial:?}",
+    );
+    assert!(
         serial.contains("  probe help\n  probe pcie\n  probe usb-keyboard"),
         "proof checklist includes read-only PCIe probe; serial: {serial:?}",
     );
     assert!(
         serial.contains("  launch\n  reovim"),
         "proof checklist includes shell-only payload checks; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("  dmesg --stats\n  cat /log/stats\n  dmesg\n  cat /log/dmesg"),
+        "proof checklist includes log stats and dmesg commands; serial: {serial:?}",
     );
     assert!(
         serial.contains("terminal:\n  halt"),
@@ -945,6 +962,22 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     assert!(
         serial.contains("klog on /log type logfs (ro,pseudo)"),
         "mount table includes klog namespace; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("reovim-os> dmesg\nstats"),
+        "ls /log prints log namespace files; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("capacity_bytes=8192"),
+        "log stats report klog ring capacity; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("retained_bytes="),
+        "log stats report retained klog bytes; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("dropped_bytes=0"),
+        "log stats report dropped klog bytes; serial: {serial:?}",
     );
     assert!(
         serial.contains("probe pcie"),
@@ -1066,6 +1099,10 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "cat /log/dmesg prints VFS devices command audit; serial: {serial:?}",
     );
     assert!(
+        serial.contains("shell: ls /log"),
+        "cat /log/dmesg prints log namespace listing audit; serial: {serial:?}",
+    );
+    assert!(
         serial.contains("shell: cat uart0"),
         "cat /log/dmesg prints relative device command audit; serial: {serial:?}",
     );
@@ -1076,6 +1113,14 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     assert!(
         serial.contains("shell: launch\nshell.status=error\nshell: reovim\nshell.status=error"),
         "cat /log/dmesg prints shell-only payload-disabled audit entries; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("shell: dmesg --stats"),
+        "cat /log/dmesg prints dmesg stats command audit; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("shell: cat /log/stats"),
+        "cat /log/dmesg prints VFS log stats command audit; serial: {serial:?}",
     );
     assert!(
         serial.contains("boot_info:"),
@@ -1103,8 +1148,10 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "final log read preserves shell-only payload-disabled audit before dmesg; serial: {serial:?}",
     );
     assert!(
-        final_dmesg.contains("shell: dmesg\nshell.status=ok\nshell: cat /log/dmesg"),
-        "final log read exposes dmesg status before its own command audit; serial: {serial:?}",
+        final_dmesg.contains(
+            "shell: dmesg --stats\nshell.status=ok\nshell: cat /log/stats\nshell.status=ok\nshell: dmesg\nshell.status=ok\nshell: cat /log/dmesg"
+        ),
+        "final log read exposes log stats and dmesg status before its own command audit; serial: {serial:?}",
     );
     assert!(
         serial.contains("reovim-os> halt: ok\n"),

@@ -163,6 +163,8 @@ pub enum File {
     BootMounts,
     /// `/log/dmesg`.
     LogDmesg,
+    /// `/log/stats`.
+    LogStats,
     /// `/dev/{class}{ordinal}`.
     DevDevice(usize),
 }
@@ -220,6 +222,7 @@ pub fn lookup(path: &str, devices: &[DeviceEntry]) -> Result<Node, VfsError> {
         "/boot/devices" => return Ok(Node::File(File::BootDevices)),
         "/boot/mounts" => return Ok(Node::File(File::BootMounts)),
         "/log/dmesg" => return Ok(Node::File(File::LogDmesg)),
+        "/log/stats" => return Ok(Node::File(File::LogStats)),
         _ => {}
     }
 
@@ -246,6 +249,7 @@ pub fn lookup(path: &str, devices: &[DeviceEntry]) -> Result<Node, VfsError> {
         "/boot/devices/",
         "/boot/mounts/",
         "/log/dmesg/",
+        "/log/stats/",
     ] {
         if path.starts_with(file) {
             return Err(VfsError::NotDirectory);

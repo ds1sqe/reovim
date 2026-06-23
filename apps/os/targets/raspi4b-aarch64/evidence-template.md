@@ -71,6 +71,7 @@ Type these commands from the physical USB keyboard for final acceptance:
 proof
 cat /boot/proof
 help
+help dmesg
 cat /boot/help
 clear
 screentest
@@ -78,6 +79,7 @@ pwd
 ls /
 ls /boot
 ls /dev
+ls /log
 mount
 cat /boot/mounts
 device
@@ -99,6 +101,8 @@ probe usb-keyboard
 cat /boot/profile
 launch
 reovim
+dmesg --stats
+cat /log/stats
 dmesg
 cat /log/dmesg
 ```
@@ -132,6 +136,7 @@ Required success facts:
 - [ ] `proof` prints the physical input proof checklist.
 - [ ] `cat /boot/proof` prints the VFS-backed proof pseudo-file.
 - [ ] `cat /boot/help` prints the VFS-backed help catalog.
+- [ ] `help dmesg` / `ls /log` make kernel log stats discoverable.
 - [ ] `help` / `clear` / `screentest` prove shell help and erase-line mode diagnostics.
 - [ ] `pwd` / `ls` / `mount` report the kernel VFS namespace and mounts.
 - [ ] `device` / `cat /boot/memory` / `cat /boot/devices` report boot inventory.
@@ -145,6 +150,7 @@ Required success facts:
 - [ ] `probe pcie` reports the read-only PCIe/xHCI state.
 - [ ] `cat /boot/profile` reports `profile=shell-only`, `launch=disabled`, `payloads=0`, and `input_mode=live`.
 - [ ] `launch` / `reovim` report shell-only payload launch disabled.
+- [ ] `dmesg --stats` / `cat /log/stats` report kernel log ring stats.
 - [ ] `dmesg` contains `shell: <command>` and `shell.status=ok` audit lines for the typed commands.
 - [ ] `dmesg` contains `shell.status=error` audit lines for the disabled payload launch commands.
 - [ ] `dmesg` contains the `probe usb-keyboard` output or blocker.

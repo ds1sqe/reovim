@@ -43,6 +43,8 @@ missing_vfs_help_evidence="$tmp_dir/missing-vfs-help.md"
 missing_vfs_proof_evidence="$tmp_dir/missing-vfs-proof.md"
 missing_final_log_sequence_evidence="$tmp_dir/missing-final-log-sequence.md"
 missing_screentest_erase_modes_evidence="$tmp_dir/missing-screentest-erase-modes.md"
+missing_log_stats_evidence="$tmp_dir/missing-log-stats.md"
+missing_log_discovery_evidence="$tmp_dir/missing-log-discovery.md"
 preflight_only_evidence="$tmp_dir/preflight-only.md"
 missing_media_evidence="$tmp_dir/missing-media.md"
 media_byte_mismatch_evidence="$tmp_dir/media-byte-mismatch.md"
@@ -108,6 +110,7 @@ write_passing_evidence() {
         printf '  proof\n'
         printf '  cat /boot/proof\n'
         printf '  help\n'
+        printf '  help dmesg\n'
         printf '  cat /boot/help\n'
         printf '  clear\n'
         printf '  screentest\n'
@@ -115,6 +118,7 @@ write_passing_evidence() {
         printf '  ls /\n'
         printf '  ls /boot\n'
         printf '  ls /dev\n'
+        printf '  ls /log\n'
         printf '  mount\n'
         printf '  cat /boot/mounts\n'
         printf '  device\n'
@@ -136,6 +140,8 @@ write_passing_evidence() {
         printf '  cat /boot/profile\n'
         printf '  launch\n'
         printf '  reovim\n'
+        printf '  dmesg --stats\n'
+        printf '  cat /log/stats\n'
         printf '  dmesg\n'
         printf '  cat /log/dmesg\n'
         printf 'terminal:\n'
@@ -160,6 +166,7 @@ write_passing_evidence() {
         printf '  usb_keyboard_last_poll=report-ready\n'
         printf '  help catalog available through /boot/help\n'
         printf '  screentest includes erase-line mode diagnostics\n'
+        printf '  kernel log stats available through /log/stats\n'
         printf '  probe targets include pcie\n'
         printf '  probe targets include usb-keyboard\n'
         printf '  probe targets include xhci-read-keyboard-report\n'
@@ -173,6 +180,7 @@ write_passing_evidence() {
         printf '  proof\n'
         printf '  cat /boot/proof\n'
         printf '  help\n'
+        printf '  help dmesg\n'
         printf '  cat /boot/help\n'
         printf '  clear\n'
         printf '  screentest\n'
@@ -180,6 +188,7 @@ write_passing_evidence() {
         printf '  ls /\n'
         printf '  ls /boot\n'
         printf '  ls /dev\n'
+        printf '  ls /log\n'
         printf '  mount\n'
         printf '  cat /boot/mounts\n'
         printf '  device\n'
@@ -201,6 +210,8 @@ write_passing_evidence() {
         printf '  cat /boot/profile\n'
         printf '  launch\n'
         printf '  reovim\n'
+        printf '  dmesg --stats\n'
+        printf '  cat /log/stats\n'
         printf '  dmesg\n'
         printf '  cat /log/dmesg\n'
         printf 'terminal:\n'
@@ -225,6 +236,7 @@ write_passing_evidence() {
         printf '  usb_keyboard_last_poll=report-ready\n'
         printf '  help catalog available through /boot/help\n'
         printf '  screentest includes erase-line mode diagnostics\n'
+        printf '  kernel log stats available through /log/stats\n'
         printf '  probe targets include pcie\n'
         printf '  probe targets include usb-keyboard\n'
         printf '  probe targets include xhci-read-keyboard-report\n'
@@ -236,6 +248,8 @@ write_passing_evidence() {
         printf 'reovim root shell\n'
         printf 'commands: help, clear, screentest, pwd, ls, cd, cat, mount, input, status, proof, device, dmesg, probe, launch, reovim, halt\n'
         printf 'usage: help [command]\n'
+        printf 'reovim-os> help dmesg\n'
+        printf 'dmesg [--stats] - print retained kernel log or ring stats\n'
         printf 'reovim-os> cat /boot/help\n'
         printf 'reovim root shell\n'
         printf 'commands: help, clear, screentest, pwd, ls, cd, cat, mount, input, status, proof, device, dmesg, probe, launch, reovim, halt\n'
@@ -270,6 +284,9 @@ write_passing_evidence() {
         printf 'status\n'
         printf 'reovim-os> ls /dev\n'
         printf 'uart0\n'
+        printf 'reovim-os> ls /log\n'
+        printf 'dmesg\n'
+        printf 'stats\n'
         printf 'reovim-os> mount\n'
         printf 'kernel on / type rootfs (ro,pseudo)\n'
         printf 'boot on /boot type bootfs (ro,pseudo)\n'
@@ -398,6 +415,14 @@ write_passing_evidence() {
         printf 'launch disabled for this profile\n'
         printf 'reovim-os> reovim\n'
         printf 'reovim disabled for this profile\n'
+        printf 'reovim-os> dmesg --stats\n'
+        printf 'capacity_bytes=8192\n'
+        printf 'retained_bytes=2048\n'
+        printf 'dropped_bytes=0\n'
+        printf 'reovim-os> cat /log/stats\n'
+        printf 'capacity_bytes=8192\n'
+        printf 'retained_bytes=2100\n'
+        printf 'dropped_bytes=0\n'
         printf 'reovim-os> dmesg\n'
         printf 'dmesg:\n'
         printf 'shell: proof\n'
@@ -405,6 +430,8 @@ write_passing_evidence() {
         printf 'shell: cat /boot/proof\n'
         printf 'shell.status=ok\n'
         printf 'shell: help\n'
+        printf 'shell.status=ok\n'
+        printf 'shell: help dmesg\n'
         printf 'shell.status=ok\n'
         printf 'shell: cat /boot/help\n'
         printf 'shell.status=ok\n'
@@ -419,6 +446,8 @@ write_passing_evidence() {
         printf 'shell: ls /boot\n'
         printf 'shell.status=ok\n'
         printf 'shell: ls /dev\n'
+        printf 'shell.status=ok\n'
+        printf 'shell: ls /log\n'
         printf 'shell.status=ok\n'
         printf 'shell: mount\n'
         printf 'shell.status=ok\n'
@@ -462,6 +491,10 @@ write_passing_evidence() {
         printf 'shell.status=error\n'
         printf 'shell: reovim\n'
         printf 'shell.status=error\n'
+        printf 'shell: dmesg --stats\n'
+        printf 'shell.status=ok\n'
+        printf 'shell: cat /log/stats\n'
+        printf 'shell.status=ok\n'
         printf 'shell: dmesg\n'
         printf 'reovim-os> cat /log/dmesg\n'
         printf 'shell: dmesg\n'
@@ -479,6 +512,7 @@ write_passing_evidence() {
         printf -- '- [x] `proof` prints the physical input proof checklist.\n'
         printf -- '- [x] `cat /boot/proof` prints the VFS-backed proof pseudo-file.\n'
         printf -- '- [x] `cat /boot/help` prints the VFS-backed help catalog.\n'
+        printf -- '- [x] `help dmesg` / `ls /log` make kernel log stats discoverable.\n'
         printf -- '- [x] `help` / `clear` / `screentest` prove shell help and erase-line mode diagnostics.\n'
         printf -- '- [x] `pwd` / `ls` / `mount` report the kernel VFS namespace and mounts.\n'
         printf -- '- [x] `device` / `cat /boot/memory` / `cat /boot/devices` report boot inventory.\n'
@@ -492,6 +526,7 @@ write_passing_evidence() {
         printf -- '- [x] `probe pcie` reports the read-only PCIe/xHCI state.\n'
         printf -- '- [x] `cat /boot/profile` reports `profile=shell-only`, `launch=disabled`, `payloads=0`, and `input_mode=live`.\n'
         printf -- '- [x] `launch` / `reovim` report shell-only payload launch disabled.\n'
+        printf -- '- [x] `dmesg --stats` / `cat /log/stats` report kernel log ring stats.\n'
         printf -- '- [x] `dmesg` contains `shell: <command>` and `shell.status=ok` audit lines for the typed commands.\n'
         printf -- '- [x] `dmesg` contains `shell.status=error` audit lines for the disabled payload launch commands.\n'
         printf -- '- [x] `dmesg` contains the `probe usb-keyboard` output or blocker.\n'
@@ -580,6 +615,14 @@ expect_failure "$missing_shell_usability_evidence" "missing-shell-usability"
 cp "$pass_evidence" "$missing_screentest_erase_modes_evidence"
 sed -i '/^  el1: clean-left$/d; /^  el2: clean-all$/d' "$missing_screentest_erase_modes_evidence"
 expect_failure "$missing_screentest_erase_modes_evidence" "missing-screentest-erase-modes"
+
+cp "$pass_evidence" "$missing_log_stats_evidence"
+sed -i '/^capacity_bytes=8192$/d' "$missing_log_stats_evidence"
+expect_failure "$missing_log_stats_evidence" "missing-log-stats"
+
+cp "$pass_evidence" "$missing_log_discovery_evidence"
+sed -i '\#^reovim-os> ls /log$#d' "$missing_log_discovery_evidence"
+expect_failure "$missing_log_discovery_evidence" "missing-log-discovery"
 
 cp "$pass_evidence" "$missing_typed_command_evidence"
 sed -i '\#^reovim-os> status$#d' "$missing_typed_command_evidence"

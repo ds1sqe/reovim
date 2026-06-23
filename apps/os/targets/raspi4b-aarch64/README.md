@@ -21,7 +21,7 @@ image=apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img
 bytes=<image-size>
 ```
 
-Current expected size is `441876` bytes.
+Current expected size is `442836` bytes.
 
 Copy `apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img` to the Pi
 4 boot partition as `kernel8.img`, using the normal Raspberry Pi firmware
@@ -219,6 +219,7 @@ keyboard for the main proof transcript:
 proof
 cat /boot/proof
 help
+help dmesg
 cat /boot/help
 clear
 screentest
@@ -226,6 +227,7 @@ pwd
 ls /
 ls /boot
 ls /dev
+ls /log
 mount
 cat /boot/mounts
 device
@@ -247,6 +249,8 @@ probe usb-keyboard
 cat /boot/profile
 launch
 reovim
+dmesg --stats
+cat /log/stats
 dmesg
 cat /log/dmesg
 ```
@@ -263,6 +267,8 @@ Record the full visible output or serial transcript. The key evidence is:
 - `proof` prints the physical-input proof checklist from the running OS.
 - `cat /boot/proof` prints the same checklist through the kernel VFS.
 - `cat /boot/help` prints the root-shell help catalog through the kernel VFS.
+- `help dmesg` and `ls /log` show that the log namespace and log-stat command
+  path are discoverable from the running shell.
 - `help`, `clear`, and `screentest` prove the shell help path and framebuffer
   erase-line mode diagnostics, including erase-to-end, erase-to-start, and
   whole-line erase redraw checks, are reachable from the physical keyboard
@@ -296,6 +302,8 @@ Record the full visible output or serial transcript. The key evidence is:
   `payloads=0`, `input_mode=live`, and the `reovim-os>` prompt identity.
 - `launch` and `reovim` report disabled launch in the shell-only image; this
   proves boot does not depend on editor/server payload startup.
+- `dmesg --stats` and `cat /log/stats` report kernel log ring capacity,
+  retained bytes, and dropped bytes through command and VFS paths.
 - `dmesg` includes the command audit lines and probe output.
 - The final `cat /log/dmesg` includes `shell.status=error` for the intentional
   shell-only `launch` and `reovim` disabled paths.

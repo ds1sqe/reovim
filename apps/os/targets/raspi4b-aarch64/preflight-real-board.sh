@@ -14,7 +14,7 @@ INSTALL_SMOKE_SCRIPT="$TARGET_DIR/test-install-image.sh"
 BOOTFS_CHECK_SCRIPT="$TARGET_DIR/check-bootfs.sh"
 EVIDENCE_TEMPLATE="$TARGET_DIR/evidence-template.md"
 DTB="$ROOT/arch/tests/fixtures/dtb/bcm2711-rpi-4-b.dtb"
-QEMU_PROOF_TIMEOUT_SECONDS="${QEMU_PROOF_TIMEOUT_SECONDS:-60}"
+QEMU_PROOF_TIMEOUT_SECONDS="${QEMU_PROOF_TIMEOUT_SECONDS:-120}"
 
 BOOTFS=""
 SKIP_QEMU=0
@@ -161,6 +161,7 @@ write_evidence_seed() {
         printf 'proof\n'
         printf 'cat /boot/proof\n'
         printf 'help\n'
+        printf 'help dmesg\n'
         printf 'cat /boot/help\n'
         printf 'clear\n'
         printf 'screentest\n'
@@ -168,6 +169,7 @@ write_evidence_seed() {
         printf 'ls /\n'
         printf 'ls /boot\n'
         printf 'ls /dev\n'
+        printf 'ls /log\n'
         printf 'mount\n'
         printf 'cat /boot/mounts\n'
         printf 'device\n'
@@ -189,6 +191,8 @@ write_evidence_seed() {
         printf 'cat /boot/profile\n'
         printf 'launch\n'
         printf 'reovim\n'
+        printf 'dmesg --stats\n'
+        printf 'cat /log/stats\n'
         printf 'dmesg\n'
         printf 'cat /log/dmesg\n'
         printf '```\n\n'
@@ -208,6 +212,7 @@ write_evidence_seed() {
         printf -- '- [ ] `proof` prints the physical input proof checklist.\n'
         printf -- '- [ ] `cat /boot/proof` prints the VFS-backed proof pseudo-file.\n'
         printf -- '- [ ] `cat /boot/help` prints the VFS-backed help catalog.\n'
+        printf -- '- [ ] `help dmesg` / `ls /log` make kernel log stats discoverable.\n'
         printf -- '- [ ] `help` / `clear` / `screentest` prove shell help and erase-line mode diagnostics.\n'
         printf -- '- [ ] `pwd` / `ls` / `mount` report the kernel VFS namespace and mounts.\n'
         printf -- '- [ ] `device` / `cat /boot/memory` / `cat /boot/devices` report boot inventory.\n'
@@ -221,6 +226,7 @@ write_evidence_seed() {
         printf -- '- [ ] `probe pcie` reports the read-only PCIe/xHCI state.\n'
         printf -- '- [ ] `cat /boot/profile` reports `profile=shell-only`, `launch=disabled`, `payloads=0`, and `input_mode=live`.\n'
         printf -- '- [ ] `launch` / `reovim` report shell-only payload launch disabled.\n'
+        printf -- '- [ ] `dmesg --stats` / `cat /log/stats` report kernel log ring stats.\n'
         printf -- '- [ ] `dmesg` contains `shell: <command>` and `shell.status=ok` audit lines for the typed commands.\n'
         printf -- '- [ ] `dmesg` contains `shell.status=error` audit lines for the disabled payload launch commands.\n'
         printf -- '- [ ] `dmesg` contains the `probe usb-keyboard` output or blocker.\n'
@@ -293,7 +299,7 @@ if [ "$SKIP_QEMU" -eq 0 ]; then
     status=124
     SECONDS=0
     while [ "$SECONDS" -lt "$QEMU_PROOF_TIMEOUT_SECONDS" ]; do
-        if grep -q '^  cat /log/dmesg$' "$qemu_log"; then
+        if grep -q '^  halt typed last prints halt: ok and stops root daemon$' "$qemu_log"; then
             status=0
             break
         fi
@@ -345,6 +351,31 @@ if [ "$SKIP_QEMU" -eq 0 ]; then
         cat "$qemu_log" >&2
         rm -f "$qemu_log"
         fail "QEMU smoke proof checklist did not include the VFS proof command"
+    fi
+    if ! grep -q '^  help dmesg$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include targeted dmesg help"
+    fi
+    if ! grep -q '^  ls /log$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include log namespace listing"
+    fi
+    if ! grep -q '^  dmesg --stats$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include dmesg stats command"
+    fi
+    if ! grep -q '^  cat /log/stats$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include VFS log stats command"
+    fi
+    if ! grep -q '^  kernel log stats available through /log/stats$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include log stats expected fact"
     fi
     if ! grep -q '^  cat /log/dmesg$' "$qemu_log"; then
         cat "$qemu_log" >&2
