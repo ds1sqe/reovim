@@ -3,8 +3,9 @@
 use {
     super::{
         BCM2711_PCIE_BUS_BASE, BCM2711_PCIE_MEM_BUS_BASE, BCM2711_PCIE_MEM_CPU_BASE,
-        BCM2711_PCIE_MEM_LEN, BCM2711_PCIE_MMIO_BASE, BCM2711_PCIE_MMIO_LEN, PciConfigHeader,
-        PciLocation, decode_pcie_link_status, pci_memory_bar_base, pcie_bus_memory_to_cpu,
+        BCM2711_PCIE_MEM_LEN, BCM2711_PCIE_MMIO_BASE, BCM2711_PCIE_MMIO_LEN,
+        PCI_COMMAND_BUS_MASTER, PCI_COMMAND_MEMORY_SPACE, PciConfigHeader, PciLocation,
+        decode_pcie_link_status, pci_memory_bar_base, pcie_bus_memory_to_cpu,
         pcie_external_config_index,
     },
     reovim_testrt::{self as testrt, arch_test},
@@ -71,10 +72,19 @@ arch_test!(pci_header_identifies_xhci_and_bar_location, {
     testrt::check(header.is_xhci(), "class/subclass/prog-if names xHCI");
     testrt::check_eq(header.bar0_bus_memory_base(), Some(0xc001_0000u64));
     testrt::check_eq(header.bar0_cpu_memory_base(), Some(0x6_0001_0000usize));
+    testrt::check(!header.memory_space_enabled(), "memory space starts disabled");
+    testrt::check(!header.bus_master_enabled(), "bus master starts disabled");
 
     let not_xhci = PciConfigHeader {
         prog_if: 0x20,
         ..header
     };
     testrt::check(!not_xhci.is_xhci(), "EHCI prog-if is not xHCI");
+
+    let enabled = PciConfigHeader {
+        command: PCI_COMMAND_MEMORY_SPACE | PCI_COMMAND_BUS_MASTER,
+        ..header
+    };
+    testrt::check(enabled.memory_space_enabled(), "memory space bit decodes");
+    testrt::check(enabled.bus_master_enabled(), "bus master bit decodes");
 });

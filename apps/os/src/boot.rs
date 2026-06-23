@@ -421,6 +421,10 @@ fn hardware_probe(target: &str, devices: &[DeviceEntry], write: WriteFn) -> Hard
             probe_usb_keyboard(devices, write);
             HardwareProbeResult::Handled
         }
+        "xhci-start" | "usb-keyboard-start" => {
+            probe_xhci_start(devices, write);
+            HardwareProbeResult::Handled
+        }
         _ => HardwareProbeResult::UnknownTarget,
     }
 }
@@ -689,6 +693,178 @@ fn probe_usb_keyboard_pending(write: WriteFn, pending: arch_sys::usb::UsbBootKey
     }
 }
 
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn probe_xhci_start(devices: &[DeviceEntry], write: WriteFn) {
+    probe_emit(write, b"probe xhci-start:\n");
+    if !device_inventory_has(
+        devices,
+        reovim_uapi::system::DeviceClass::Bus,
+        "brcm,bcm2711-pcie",
+    ) {
+        probe_emit(write, b"state=unavailable\n");
+        probe_emit(write, b"reason=device-tree-disabled-or-missing\n");
+        return;
+    }
+
+    let report = arch_sys::usb::start_pcie_xhci_controller();
+    probe_emit(write, b"state=");
+    probe_emit(write, probe_xhci_start_status_name(report.status));
+    probe_emit(write, b"\n");
+    if let arch_sys::usb::XhciControllerStartStatus::DriverMemoryUnavailable {
+        requested,
+        supported,
+    } = report.status
+    {
+        probe_emit(write, b"scratchpads.requested=");
+        probe_write_u64_dec(write, requested as u64);
+        probe_emit(write, b"\nscratchpads.supported=");
+        probe_write_u64_dec(write, supported as u64);
+        probe_emit(write, b"\n");
+    }
+    if let Some(command) = report.pcie_command_before {
+        probe_emit(write, b"pcie.command.before=");
+        probe_write_u32_hex(write, command as u32);
+        probe_emit(write, b"\n");
+    }
+    if let Some(command) = report.pcie_command_after {
+        probe_emit(write, b"pcie.command.after=");
+        probe_write_u32_hex(write, command as u32);
+        probe_emit(write, b"\n");
+    }
+    if let Some(before) = report.before {
+        probe_xhci_snapshot(write, b"before", before);
+    }
+    if let Some(plan) = report.memory {
+        probe_xhci_start_memory(write, plan);
+    }
+    if let Some(registers) = report.registers {
+        probe_xhci_start_registers(write, registers);
+    }
+    if let Some(after) = report.after {
+        probe_xhci_snapshot(write, b"after", after);
+    }
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn probe_xhci_start_status_name(
+    status: arch_sys::usb::XhciControllerStartStatus,
+) -> &'static [u8] {
+    match status {
+        arch_sys::usb::XhciControllerStartStatus::NoPcieXhciController => {
+            b"no-pcie-xhci-controller"
+        }
+        arch_sys::usb::XhciControllerStartStatus::ControllerBarUnconfigured => {
+            b"xhci-bar-unconfigured"
+        }
+        arch_sys::usb::XhciControllerStartStatus::PciCommandEnableFailed => {
+            b"pci-command-enable-failed"
+        }
+        arch_sys::usb::XhciControllerStartStatus::InvalidXhciCapabilities => {
+            b"xhci-capabilities-invalid"
+        }
+        arch_sys::usb::XhciControllerStartStatus::DriverMemoryUnavailable { .. } => {
+            b"driver-memory-unavailable"
+        }
+        arch_sys::usb::XhciControllerStartStatus::ControllerNotReadyTimedOut => {
+            b"controller-not-ready-timeout"
+        }
+        arch_sys::usb::XhciControllerStartStatus::StopTimedOut => b"stop-timeout",
+        arch_sys::usb::XhciControllerStartStatus::ResetTimedOut => b"reset-timeout",
+        arch_sys::usb::XhciControllerStartStatus::PostResetControllerNotReadyTimedOut => {
+            b"post-reset-controller-not-ready-timeout"
+        }
+        arch_sys::usb::XhciControllerStartStatus::HostSystemErrorAfterStart => {
+            b"host-system-error-after-start"
+        }
+        arch_sys::usb::XhciControllerStartStatus::StartTimedOut => b"start-timeout",
+        arch_sys::usb::XhciControllerStartStatus::Started => b"started",
+    }
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn probe_xhci_snapshot(
+    write: WriteFn,
+    label: &[u8],
+    snapshot: arch_sys::usb::XhciOperationalSnapshot,
+) {
+    probe_emit(write, b"xhci.");
+    probe_emit(write, label);
+    probe_emit(write, b".usbcmd=");
+    probe_write_u32_hex(write, snapshot.usb_command);
+    probe_emit(write, b"\nxhci.");
+    probe_emit(write, label);
+    probe_emit(write, b".usbsts=");
+    probe_write_u32_hex(write, snapshot.usb_status);
+    probe_emit(write, b"\nxhci.");
+    probe_emit(write, label);
+    probe_emit(write, b".running=");
+    probe_write_bool(write, snapshot.run_stop);
+    probe_emit(write, b"\nxhci.");
+    probe_emit(write, label);
+    probe_emit(write, b".halted=");
+    probe_write_bool(write, snapshot.halted);
+    probe_emit(write, b"\nxhci.");
+    probe_emit(write, label);
+    probe_emit(write, b".reset_active=");
+    probe_write_bool(write, snapshot.reset_active);
+    probe_emit(write, b"\nxhci.");
+    probe_emit(write, label);
+    probe_emit(write, b".controller_not_ready=");
+    probe_write_bool(write, snapshot.controller_not_ready);
+    probe_emit(write, b"\nxhci.");
+    probe_emit(write, label);
+    probe_emit(write, b".host_system_error=");
+    probe_write_bool(write, snapshot.host_system_error);
+    probe_emit(write, b"\nxhci.");
+    probe_emit(write, label);
+    probe_emit(write, b".enabled_slots=");
+    probe_write_u64_dec(write, snapshot.enabled_device_slots as u64);
+    probe_emit(write, b"\n");
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn probe_xhci_start_memory(write: WriteFn, plan: arch_sys::usb::XhciDriverMemoryPlan) {
+    probe_emit(write, b"xhci.start.memory.dcbaa=");
+    probe_write_u64_hex(write, plan.dcbaa);
+    probe_emit(write, b"\nxhci.start.memory.crcr=");
+    probe_write_u64_hex(write, plan.command_ring_control);
+    probe_emit(write, b"\nxhci.start.memory.erst=");
+    probe_write_u64_hex(write, plan.event_ring_segment_table);
+    probe_emit(write, b"\nxhci.start.memory.erdp=");
+    probe_write_u64_hex(write, plan.event_ring_dequeue_pointer);
+    probe_emit(write, b"\nxhci.start.memory.max_slots=");
+    probe_write_u64_dec(write, plan.max_slots_enabled as u64);
+    probe_emit(write, b"\n");
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn probe_xhci_start_registers(
+    write: WriteFn,
+    registers: arch_sys::usb::XhciControllerStartRegisters,
+) {
+    probe_emit(write, b"xhci.start.register.dcbaap=");
+    probe_write_u64_hex(write, registers.device_context_base_address_array_pointer);
+    probe_emit(write, b"\nxhci.start.register.crcr=");
+    probe_write_u64_hex(write, registers.command_ring_control);
+    probe_emit(write, b"\nxhci.start.register.config=");
+    probe_write_u32_hex(write, registers.configure);
+    probe_emit(write, b"\nxhci.start.register.iman=");
+    probe_write_u32_hex(write, registers.interrupter_management);
+    probe_emit(write, b"\nxhci.start.register.imod=");
+    probe_write_u32_hex(write, registers.interrupter_moderation);
+    probe_emit(write, b"\nxhci.start.register.erstsz=");
+    probe_write_u32_hex(write, registers.event_ring_segment_table_size);
+    probe_emit(write, b"\nxhci.start.register.erstba=");
+    probe_write_u64_hex(write, registers.event_ring_segment_table_base_address);
+    probe_emit(write, b"\nxhci.start.register.erdp=");
+    probe_write_u64_hex(write, registers.event_ring_dequeue_pointer);
+    probe_emit(write, b"\nxhci.start.register.usbsts_clear=");
+    probe_write_u32_hex(write, registers.usb_status_clear);
+    probe_emit(write, b"\nxhci.start.register.usbcmd=");
+    probe_write_u32_hex(write, registers.usb_command);
+    probe_emit(write, b"\n");
+}
+
 #[cfg(not(all(target_os = "none", target_arch = "aarch64")))]
 fn probe_pcie(_devices: &[DeviceEntry], write: WriteFn) {
     probe_emit(write, b"probe pcie:\n");
@@ -698,6 +874,12 @@ fn probe_pcie(_devices: &[DeviceEntry], write: WriteFn) {
 #[cfg(not(all(target_os = "none", target_arch = "aarch64")))]
 fn probe_usb_keyboard(_devices: &[DeviceEntry], write: WriteFn) {
     probe_emit(write, b"probe usb-keyboard:\n");
+    probe_emit(write, b"state=unsupported-on-this-target\n");
+}
+
+#[cfg(not(all(target_os = "none", target_arch = "aarch64")))]
+fn probe_xhci_start(_devices: &[DeviceEntry], write: WriteFn) {
+    probe_emit(write, b"probe xhci-start:\n");
     probe_emit(write, b"state=unsupported-on-this-target\n");
 }
 

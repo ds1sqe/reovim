@@ -35,6 +35,11 @@ const PCI_CLASS_SERIAL_BUS: u8 = 0x0c;
 const PCI_SUBCLASS_USB: u8 = 0x03;
 const PCI_PROG_IF_XHCI: u8 = 0x30;
 
+/// PCI Command register Memory Space bit.
+pub const PCI_COMMAND_MEMORY_SPACE: u16 = 1 << 1;
+/// PCI Command register Bus Master bit.
+pub const PCI_COMMAND_BUS_MASTER: u16 = 1 << 2;
+
 /// Snapshot of the BCM2711 root-complex link status registers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PcieLinkStatus {
@@ -128,6 +133,18 @@ impl PciConfigHeader {
             && self.prog_if == PCI_PROG_IF_XHCI
     }
 
+    /// Whether the endpoint can respond to memory-space BAR accesses.
+    #[must_use]
+    pub const fn memory_space_enabled(self) -> bool {
+        self.command & PCI_COMMAND_MEMORY_SPACE != 0
+    }
+
+    /// Whether the endpoint is allowed to initiate DMA transactions.
+    #[must_use]
+    pub const fn bus_master_enabled(self) -> bool {
+        self.command & PCI_COMMAND_BUS_MASTER != 0
+    }
+
     /// Endpoint BAR0 memory address in PCIe bus address space.
     #[must_use]
     pub const fn bar0_bus_memory_base(self) -> Option<u64> {
@@ -182,6 +199,19 @@ pub fn read_external_config_header(location: PciLocation) -> Option<PciConfigHea
     read_external_config_header_at(BCM2711_PCIE_MMIO_BASE, location)
 }
 
+/// Sets PCI Command bits for one external endpoint and returns the new command
+/// register value.
+///
+/// The helper writes only the Command half of the Command/Status dword. The
+/// Status half is written as zero so write-one-to-clear status bits are not
+/// accidentally acknowledged.
+pub fn enable_external_command_bits(location: PciLocation, bits: u16) -> Option<u16> {
+    if !read_builtin_pcie_link_status().link_up() {
+        return None;
+    }
+    enable_external_command_bits_at(BCM2711_PCIE_MMIO_BASE, location, bits)
+}
+
 fn read_external_config_header_at(base: usize, location: PciLocation) -> Option<PciConfigHeader> {
     write_mmio_u32(base + PCIE_EXT_CFG_INDEX, pcie_external_config_index(location));
 
@@ -206,6 +236,22 @@ fn read_external_config_header_at(base: usize, location: PciLocation) -> Option<
         bar0: read_mmio_u32(base + PCIE_EXT_CFG_DATA + 0x10),
         bar1: read_mmio_u32(base + PCIE_EXT_CFG_DATA + 0x14),
     })
+}
+
+fn enable_external_command_bits_at(base: usize, location: PciLocation, bits: u16) -> Option<u16> {
+    write_mmio_u32(base + PCIE_EXT_CFG_INDEX, pcie_external_config_index(location));
+
+    let id = read_mmio_u32(base + PCIE_EXT_CFG_DATA);
+    if (id & 0xffff) as u16 == PCI_VENDOR_ID_ABSENT {
+        return None;
+    }
+
+    let command_status = read_mmio_u32(base + PCIE_EXT_CFG_DATA + 0x04);
+    let command = (command_status & 0xffff) as u16;
+    let updated = command | bits;
+    write_mmio_u32(base + PCIE_EXT_CFG_DATA + 0x04, updated as u32);
+
+    Some((read_mmio_u32(base + PCIE_EXT_CFG_DATA + 0x04) & 0xffff) as u16)
 }
 
 /// Scans the first two downstream PCI bus numbers for an xHCI function.

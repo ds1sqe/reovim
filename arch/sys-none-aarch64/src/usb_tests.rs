@@ -4,9 +4,9 @@ use {
     super::{
         BCM2711_DWC2_BUS_BASE, BCM2711_DWC2_MMIO_BASE, BCM2711_XHCI_BUS_BASE,
         BCM2711_XHCI_MMIO_BASE, PcieXhciController, UsbBootKeyboardPending, UsbBootKeyboardPoll,
-        XHCI_EVENT_RING_TRBS, XHCI_STATIC_SCRATCHPAD_BUFFERS, XhciDriverMemoryStatus,
-        decode_xhci_capabilities, decode_xhci_operational_snapshot, decode_xhci_port_snapshot,
-        prepare_xhci_driver_memory,
+        XHCI_EVENT_RING_TRBS, XHCI_STATIC_SCRATCHPAD_BUFFERS, XhciControllerStartStatus,
+        XhciDriverMemoryStatus, decode_xhci_capabilities, decode_xhci_operational_snapshot,
+        decode_xhci_port_snapshot, prepare_xhci_driver_memory, xhci_controller_start_registers,
     },
     crate::pcie::{PciConfigHeader, PciLocation},
     reovim_testrt::{self as testrt, arch_test},
@@ -231,5 +231,49 @@ arch_test!(xhci_driver_memory_plan_prepares_aligned_static_tables, {
             testrt::check_eq(supported, XHCI_STATIC_SCRATCHPAD_BUFFERS as u16);
         }
         _ => testrt::check(false, "too many scratchpads is refused"),
+    }
+});
+
+arch_test!(xhci_controller_start_registers_map_memory_plan_to_mmio_values, {
+    let caps =
+        decode_xhci_capabilities(0x0100_0040, (4 << 24) | (1 << 8) | 8, 0, 0, 0x1000, 0x2000)
+            .unwrap_or_else(|| panic!("valid xHCI capability registers decode"));
+    let XhciDriverMemoryStatus::Ready(plan) = prepare_xhci_driver_memory(caps) else {
+        testrt::check(false, "static xHCI memory is sufficient");
+        return;
+    };
+
+    let registers = xhci_controller_start_registers(plan);
+
+    testrt::check_eq(registers.device_context_base_address_array_pointer, plan.dcbaa);
+    testrt::check_eq(registers.command_ring_control, plan.command_ring_control);
+    testrt::check_eq(registers.configure, plan.max_slots_enabled as u32);
+    testrt::check_eq(registers.interrupter_management, 0u32);
+    testrt::check_eq(registers.interrupter_moderation, 0u32);
+    testrt::check_eq(
+        registers.event_ring_segment_table_size,
+        plan.event_ring_segment_table_entries as u32,
+    );
+    testrt::check_eq(
+        registers.event_ring_segment_table_base_address,
+        plan.event_ring_segment_table,
+    );
+    testrt::check_eq(registers.event_ring_dequeue_pointer, plan.event_ring_dequeue_pointer);
+    testrt::check_eq(registers.usb_status_clear, (1 << 2) | (1 << 3) | (1 << 4));
+    testrt::check_eq(registers.usb_command, 1u32);
+
+    let unavailable = XhciControllerStartStatus::DriverMemoryUnavailable {
+        requested: 9,
+        supported: XHCI_STATIC_SCRATCHPAD_BUFFERS as u16,
+    };
+    match unavailable {
+        XhciControllerStartStatus::DriverMemoryUnavailable {
+            requested,
+            supported,
+        } => {
+            testrt::check_eq(requested, 9u16);
+            testrt::check_eq(supported, XHCI_STATIC_SCRATCHPAD_BUFFERS as u16);
+        }
+        _ => testrt::check(false, "driver memory blocker carries scratchpad counts"),
     }
 });

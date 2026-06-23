@@ -4,7 +4,11 @@
 //! controller registers and returns target-local facts; USB enumeration, HID
 //! descriptor walking, and root-shell byte routing are later cuts.
 
-use core::{cell::UnsafeCell, ptr::read_volatile};
+use core::{
+    cell::UnsafeCell,
+    ptr::{read_volatile, write_volatile},
+    sync::atomic::{Ordering, compiler_fence},
+};
 
 use crate::pcie::{self, PciConfigHeader, PciLocation};
 
@@ -38,6 +42,12 @@ const XHCI_OP_DCBAAP: usize = 0x30;
 const XHCI_OP_CONFIG: usize = 0x38;
 const XHCI_OP_PORTS_BASE: usize = 0x400;
 const XHCI_PORT_REGISTER_STRIDE: usize = 0x10;
+const XHCI_RUNTIME_INTERRUPTER0: usize = 0x20;
+const XHCI_INTR_IMAN: usize = 0x00;
+const XHCI_INTR_IMOD: usize = 0x04;
+const XHCI_INTR_ERSTSZ: usize = 0x08;
+const XHCI_INTR_ERSTBA: usize = 0x10;
+const XHCI_INTR_ERDP: usize = 0x18;
 
 const XHCI_USBCMD_RUN_STOP: u32 = 1 << 0;
 const XHCI_USBCMD_HOST_CONTROLLER_RESET: u32 = 1 << 1;
@@ -65,6 +75,9 @@ pub const XHCI_PAGE_BYTES: usize = 4096;
 
 const XHCI_MAX_DEVICE_CONTEXT_POINTERS: usize = 256;
 const XHCI_HCCPARAMS1_CONTEXT_SIZE: u32 = 1 << 2;
+const XHCI_START_WAIT_SPINS: usize = 1_000_000;
+const XHCI_REQUIRED_PCI_COMMAND_BITS: u16 =
+    pcie::PCI_COMMAND_MEMORY_SPACE | pcie::PCI_COMMAND_BUS_MASTER;
 
 /// Read-only xHCI capability-register snapshot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -215,6 +228,98 @@ pub enum XhciDriverMemoryStatus {
     },
 }
 
+/// Register values written by the explicit xHCI controller-start transition.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct XhciControllerStartRegisters {
+    /// Value written to DCBAAP.
+    pub device_context_base_address_array_pointer: u64,
+    /// Value written to CRCR.
+    pub command_ring_control: u64,
+    /// Value written to CONFIG.
+    pub configure: u32,
+    /// Value written to runtime interrupter 0 IMAN.
+    pub interrupter_management: u32,
+    /// Value written to runtime interrupter 0 IMOD.
+    pub interrupter_moderation: u32,
+    /// Value written to runtime interrupter 0 ERSTSZ.
+    pub event_ring_segment_table_size: u32,
+    /// Value written to runtime interrupter 0 ERSTBA.
+    pub event_ring_segment_table_base_address: u64,
+    /// Value written to runtime interrupter 0 ERDP.
+    pub event_ring_dequeue_pointer: u64,
+    /// RW1C status bits cleared before starting.
+    pub usb_status_clear: u32,
+    /// Value written to USBCMD to start the controller.
+    pub usb_command: u32,
+}
+
+/// Status from the explicit xHCI controller-start transition.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum XhciControllerStartStatus {
+    /// No PCIe-attached xHCI function was discovered.
+    NoPcieXhciController,
+    /// The xHCI PCI function exists, but BAR0 is not configured.
+    ControllerBarUnconfigured,
+    /// The xHCI PCI command bits required for MMIO/DMA could not be enabled.
+    PciCommandEnableFailed,
+    /// The discovered BAR does not expose valid xHCI capability registers.
+    InvalidXhciCapabilities,
+    /// Static early-driver memory cannot satisfy the controller's scratchpad request.
+    DriverMemoryUnavailable {
+        /// Number of scratchpads reported by HCSPARAMS2.
+        requested: u16,
+        /// Number of static scratchpad buffers available.
+        supported: u16,
+    },
+    /// Controller Not Ready stayed asserted before MMIO programming.
+    ControllerNotReadyTimedOut,
+    /// Run/Stop could not be cleared to reach HCHalted.
+    StopTimedOut,
+    /// Host Controller Reset did not clear.
+    ResetTimedOut,
+    /// Controller Not Ready stayed asserted after reset.
+    PostResetControllerNotReadyTimedOut,
+    /// The controller reported Host System Error after start.
+    HostSystemErrorAfterStart,
+    /// Run/Stop did not reach the running state after programming registers.
+    StartTimedOut,
+    /// Registers were programmed and the controller reported running.
+    Started,
+}
+
+/// Evidence returned by the explicit xHCI controller-start transition.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct XhciControllerStartReport {
+    /// Final transition status.
+    pub status: XhciControllerStartStatus,
+    /// PCI command register before enabling Memory Space/Bus Master, if known.
+    pub pcie_command_before: Option<u16>,
+    /// PCI command register after enabling Memory Space/Bus Master, if known.
+    pub pcie_command_after: Option<u16>,
+    /// Operational-register snapshot before changing xHCI state, if available.
+    pub before: Option<XhciOperationalSnapshot>,
+    /// Operational-register snapshot after the last transition step, if available.
+    pub after: Option<XhciOperationalSnapshot>,
+    /// Static memory plan used for the transition, if available.
+    pub memory: Option<XhciDriverMemoryPlan>,
+    /// Register values written during start, if MMIO programming was reached.
+    pub registers: Option<XhciControllerStartRegisters>,
+}
+
+impl XhciControllerStartReport {
+    const fn new(status: XhciControllerStartStatus) -> Self {
+        Self {
+            status,
+            pcie_command_before: None,
+            pcie_command_after: None,
+            before: None,
+            after: None,
+            memory: None,
+            registers: None,
+        }
+    }
+}
+
 /// Nonblocking boot-keyboard provider poll result.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UsbBootKeyboardPoll {
@@ -310,7 +415,7 @@ pub fn read_xhci_operational_snapshot(
     base: usize,
     caps: XhciCapabilities,
 ) -> XhciOperationalSnapshot {
-    let op_base = base + caps.cap_length as usize;
+    let op_base = xhci_operational_base(base, caps);
     decode_xhci_operational_snapshot(
         read_mmio_u32(op_base + XHCI_OP_USBCMD),
         read_mmio_u32(op_base + XHCI_OP_USBSTS),
@@ -332,7 +437,7 @@ pub fn read_xhci_port_snapshot(
     if port == 0 || port > caps.max_ports {
         return None;
     }
-    let op_base = base + caps.cap_length as usize;
+    let op_base = xhci_operational_base(base, caps);
     let portsc = read_mmio_u32(
         op_base + XHCI_OP_PORTS_BASE + ((port as usize - 1) * XHCI_PORT_REGISTER_STRIDE),
     );
@@ -348,6 +453,123 @@ pub fn read_xhci_port_snapshot(
 pub fn probe_pcie_xhci_controller() -> Option<PcieXhciController> {
     let header = pcie::read_first_xhci_config_header()?;
     PcieXhciController::from_config_header(header)
+}
+
+/// Performs the first explicit PCIe xHCI controller-start transition.
+///
+/// This is intentionally not called by passive probing. It enables the PCI
+/// function's Memory Space and Bus Master command bits, prepares static
+/// driver-owned xHCI memory, halts/resets the xHC, programs DCBAAP/CRCR/CONFIG
+/// and primary event-ring registers, then sets Run/Stop. It does not ring the
+/// command doorbell, issue Enable Slot, enumerate descriptors, or report USB
+/// keyboard readiness.
+pub fn start_pcie_xhci_controller() -> XhciControllerStartReport {
+    let Some(header) = pcie::read_first_xhci_config_header() else {
+        return XhciControllerStartReport::new(XhciControllerStartStatus::NoPcieXhciController);
+    };
+
+    let mut report = XhciControllerStartReport::new(XhciControllerStartStatus::Started);
+    report.pcie_command_before = Some(header.command);
+
+    let Some(mmio) = header.bar0_cpu_memory_base() else {
+        report.status = XhciControllerStartStatus::ControllerBarUnconfigured;
+        return report;
+    };
+
+    let Some(command_after) =
+        pcie::enable_external_command_bits(header.location, XHCI_REQUIRED_PCI_COMMAND_BITS)
+    else {
+        report.status = XhciControllerStartStatus::PciCommandEnableFailed;
+        return report;
+    };
+    report.pcie_command_after = Some(command_after);
+    if command_after & XHCI_REQUIRED_PCI_COMMAND_BITS != XHCI_REQUIRED_PCI_COMMAND_BITS {
+        report.status = XhciControllerStartStatus::PciCommandEnableFailed;
+        return report;
+    }
+
+    let Some(caps) = read_xhci_capabilities_at_mmio(mmio) else {
+        report.status = XhciControllerStartStatus::InvalidXhciCapabilities;
+        return report;
+    };
+
+    let plan = match prepare_xhci_driver_memory(caps) {
+        XhciDriverMemoryStatus::Ready(plan) => plan,
+        XhciDriverMemoryStatus::TooManyScratchpads {
+            requested,
+            supported,
+        } => {
+            report.status = XhciControllerStartStatus::DriverMemoryUnavailable {
+                requested,
+                supported,
+            };
+            return report;
+        }
+    };
+    report.memory = Some(plan);
+
+    let mut current = read_xhci_operational_snapshot(mmio, caps);
+    report.before = Some(current);
+    if current.controller_not_ready {
+        let Some(ready) = wait_for_xhci(mmio, caps, |op| !op.controller_not_ready) else {
+            report.status = XhciControllerStartStatus::ControllerNotReadyTimedOut;
+            report.after = Some(read_xhci_operational_snapshot(mmio, caps));
+            return report;
+        };
+        current = ready;
+    }
+
+    if current.run_stop || !current.halted {
+        write_mmio_u32(xhci_operational_base(mmio, caps) + XHCI_OP_USBCMD, 0);
+        let Some(_stopped) = wait_for_xhci(mmio, caps, |op| op.halted) else {
+            report.status = XhciControllerStartStatus::StopTimedOut;
+            report.after = Some(read_xhci_operational_snapshot(mmio, caps));
+            return report;
+        };
+    }
+
+    write_mmio_u32(
+        xhci_operational_base(mmio, caps) + XHCI_OP_USBCMD,
+        XHCI_USBCMD_HOST_CONTROLLER_RESET,
+    );
+    let Some(reset_done) = wait_for_xhci(mmio, caps, |op| !op.reset_active) else {
+        report.status = XhciControllerStartStatus::ResetTimedOut;
+        report.after = Some(read_xhci_operational_snapshot(mmio, caps));
+        return report;
+    };
+    if reset_done.controller_not_ready {
+        let Some(_ready) = wait_for_xhci(mmio, caps, |op| !op.controller_not_ready) else {
+            report.status = XhciControllerStartStatus::PostResetControllerNotReadyTimedOut;
+            report.after = Some(read_xhci_operational_snapshot(mmio, caps));
+            return report;
+        };
+    }
+
+    let registers = xhci_controller_start_registers(plan);
+    report.registers = Some(registers);
+    compiler_fence(Ordering::SeqCst);
+    write_xhci_start_registers(mmio, caps, registers);
+
+    let Some(after) =
+        wait_for_xhci(mmio, caps, |op| op.host_system_error || (op.run_stop && !op.halted))
+    else {
+        report.status = XhciControllerStartStatus::StartTimedOut;
+        report.after = Some(read_xhci_operational_snapshot(mmio, caps));
+        return report;
+    };
+
+    report.after = Some(after);
+    if after.host_system_error {
+        report.status = XhciControllerStartStatus::HostSystemErrorAfterStart;
+        return report;
+    }
+    if !after.run_stop || after.halted {
+        report.status = XhciControllerStartStatus::StartTimedOut;
+        return report;
+    }
+
+    report.status = XhciControllerStartStatus::Started;
+    report
 }
 
 /// Polls the lower USB boot-keyboard provider without blocking.
@@ -556,6 +778,72 @@ fn xhci_needs_driver_memory(op: XhciOperationalSnapshot) -> bool {
         || op.device_context_base_address_array_pointer == 0
 }
 
+const fn xhci_operational_base(base: usize, caps: XhciCapabilities) -> usize {
+    base + caps.cap_length as usize
+}
+
+const fn xhci_runtime_base(base: usize, caps: XhciCapabilities) -> usize {
+    base + caps.runtime_register_space_offset as usize
+}
+
+fn wait_for_xhci<F>(
+    base: usize,
+    caps: XhciCapabilities,
+    mut predicate: F,
+) -> Option<XhciOperationalSnapshot>
+where
+    F: FnMut(XhciOperationalSnapshot) -> bool,
+{
+    let mut spins = 0usize;
+    while spins < XHCI_START_WAIT_SPINS {
+        let snapshot = read_xhci_operational_snapshot(base, caps);
+        if predicate(snapshot) {
+            return Some(snapshot);
+        }
+        core::hint::spin_loop();
+        spins += 1;
+    }
+    None
+}
+
+fn xhci_controller_start_registers(plan: XhciDriverMemoryPlan) -> XhciControllerStartRegisters {
+    XhciControllerStartRegisters {
+        device_context_base_address_array_pointer: plan.dcbaa,
+        command_ring_control: plan.command_ring_control,
+        configure: plan.max_slots_enabled as u32,
+        interrupter_management: 0,
+        interrupter_moderation: 0,
+        event_ring_segment_table_size: plan.event_ring_segment_table_entries as u32,
+        event_ring_segment_table_base_address: plan.event_ring_segment_table,
+        event_ring_dequeue_pointer: plan.event_ring_dequeue_pointer,
+        usb_status_clear: XHCI_USBSTS_HOST_SYSTEM_ERROR
+            | XHCI_USBSTS_EVENT_INTERRUPT
+            | XHCI_USBSTS_PORT_CHANGE_DETECT,
+        usb_command: XHCI_USBCMD_RUN_STOP,
+    }
+}
+
+fn write_xhci_start_registers(
+    base: usize,
+    caps: XhciCapabilities,
+    registers: XhciControllerStartRegisters,
+) {
+    let op_base = xhci_operational_base(base, caps);
+    let intr0 = xhci_runtime_base(base, caps) + XHCI_RUNTIME_INTERRUPTER0;
+
+    write_mmio_u32(op_base + XHCI_OP_USBSTS, registers.usb_status_clear);
+    write_mmio_u64(op_base + XHCI_OP_DCBAAP, registers.device_context_base_address_array_pointer);
+    write_mmio_u64(op_base + XHCI_OP_CRCR, registers.command_ring_control);
+    write_mmio_u32(op_base + XHCI_OP_CONFIG, registers.configure);
+
+    write_mmio_u32(intr0 + XHCI_INTR_IMAN, registers.interrupter_management);
+    write_mmio_u32(intr0 + XHCI_INTR_IMOD, registers.interrupter_moderation);
+    write_mmio_u32(intr0 + XHCI_INTR_ERSTSZ, registers.event_ring_segment_table_size);
+    write_mmio_u64(intr0 + XHCI_INTR_ERDP, registers.event_ring_dequeue_pointer);
+    write_mmio_u64(intr0 + XHCI_INTR_ERSTBA, registers.event_ring_segment_table_base_address);
+    write_mmio_u32(op_base + XHCI_OP_USBCMD, registers.usb_command);
+}
+
 const fn decode_xhci_scratchpad_count(hcs_params2: u32) -> u16 {
     let hi = ((hcs_params2 >> 21) & 0x1f) as u16;
     let lo = ((hcs_params2 >> 27) & 0x1f) as u16;
@@ -598,6 +886,19 @@ fn read_mmio_u64(addr: usize) -> u64 {
     let lo = read_mmio_u32(addr) as u64;
     let hi = read_mmio_u32(addr + 4) as u64;
     lo | (hi << 32)
+}
+
+fn write_mmio_u32(addr: usize, value: u32) {
+    // SAFETY: callers pass native MMIO register addresses; volatile access is
+    // the required mechanism for device registers.
+    unsafe {
+        write_volatile(addr as *mut u32, value);
+    }
+}
+
+fn write_mmio_u64(addr: usize, value: u64) {
+    write_mmio_u32(addr, value as u32);
+    write_mmio_u32(addr + 4, (value >> 32) as u32);
 }
 
 #[repr(C, align(64))]
