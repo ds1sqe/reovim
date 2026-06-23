@@ -15,6 +15,8 @@ unless the input source is `physical USB keyboard` and the shell reports
 - Image build command:
 - Image install command:
 - Boot partition path:
+- Preflight command:
+- Preflight result:
 - Evidence label:
   - [ ] display-only
   - [ ] UART input

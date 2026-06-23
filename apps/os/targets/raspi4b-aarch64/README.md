@@ -70,6 +70,17 @@ apps/os/targets/raspi4b-aarch64/preflight-real-board.sh --bootfs /path/to/bootfs
 QEMU preflight output remains display/UART evidence only; it is not physical
 USB keyboard proof.
 
+To write a prefilled evidence seed after preflight passes:
+
+```sh
+apps/os/targets/raspi4b-aarch64/preflight-real-board.sh \
+  --bootfs /path/to/bootfs \
+  --evidence tmp/raspi4b-usb-keyboard-evidence.md
+```
+
+The generated evidence file records the current image path, byte count,
+SHA-256, build/install commands, boot partition path, and preflight result.
+
 ## QEMU Smoke
 
 QEMU raspi4b currently disables the DTB PCIe path used by the Pi 4 VL805 xHCI
