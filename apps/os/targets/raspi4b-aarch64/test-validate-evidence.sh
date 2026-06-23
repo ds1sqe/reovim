@@ -56,6 +56,7 @@ missing_vfs_probe_catalog_evidence="$tmp_dir/missing-vfs-probe-catalog.md"
 missing_final_log_sequence_evidence="$tmp_dir/missing-final-log-sequence.md"
 missing_screentest_erase_modes_evidence="$tmp_dir/missing-screentest-erase-modes.md"
 missing_log_stats_evidence="$tmp_dir/missing-log-stats.md"
+nonzero_dropped_log_stats_evidence="$tmp_dir/nonzero-dropped-log-stats.md"
 missing_log_discovery_evidence="$tmp_dir/missing-log-discovery.md"
 preflight_only_evidence="$tmp_dir/preflight-only.md"
 missing_media_evidence="$tmp_dir/missing-media.md"
@@ -197,6 +198,7 @@ write_passing_evidence() {
         printf '  detailed help catalog available through /boot/help\n'
         printf '  screentest includes erase-line mode diagnostics\n'
         printf '  kernel log stats available through /log/stats\n'
+        printf '  kernel log dropped_bytes=0\n'
         printf '  probe catalog available through /boot/probes\n'
         printf '  probe targets include pcie\n'
         printf '  probe targets include usb-keyboard\n'
@@ -286,6 +288,7 @@ write_passing_evidence() {
         printf '  detailed help catalog available through /boot/help\n'
         printf '  screentest includes erase-line mode diagnostics\n'
         printf '  kernel log stats available through /log/stats\n'
+        printf '  kernel log dropped_bytes=0\n'
         printf '  probe catalog available through /boot/probes\n'
         printf '  probe targets include pcie\n'
         printf '  probe targets include usb-keyboard\n'
@@ -524,11 +527,11 @@ write_passing_evidence() {
         printf 'reovim-os> reovim\n'
         printf 'reovim disabled for this profile\n'
         printf 'reovim-os> dmesg --stats\n'
-        printf 'capacity_bytes=8192\n'
+        printf 'capacity_bytes=32768\n'
         printf 'retained_bytes=2048\n'
         printf 'dropped_bytes=0\n'
         printf 'reovim-os> cat /log/stats\n'
-        printf 'capacity_bytes=8192\n'
+        printf 'capacity_bytes=32768\n'
         printf 'retained_bytes=2100\n'
         printf 'dropped_bytes=0\n'
         printf 'reovim-os> dmesg\n'
@@ -674,7 +677,7 @@ write_passing_evidence() {
         printf -- '- [x] `probe pcie` reports the read-only PCIe/xHCI state.\n'
         printf -- '- [x] `cat /boot/profile` reports `profile=shell-only`, `launch=disabled`, `payloads=0`, and `input_mode=live`.\n'
         printf -- '- [x] `launch` / `reovim` report shell-only payload launch disabled.\n'
-        printf -- '- [x] `dmesg --stats` / `cat /log/stats` report kernel log ring stats.\n'
+        printf -- '- [x] `dmesg --stats` / `cat /log/stats` report kernel log ring stats with `dropped_bytes=0`.\n'
         printf -- '- [x] `dmesg` contains `shell: <command>` and `shell.status=ok` audit lines for the typed commands.\n'
         printf -- '- [x] `dmesg` contains `shell.status=error` audit lines for the disabled payload launch commands.\n'
         printf -- '- [x] `dmesg` contains the `probe usb-keyboard` output or blocker.\n'
@@ -801,8 +804,12 @@ sed -i '/^  el1: clean-left$/d; /^  el2: clean-all$/d' "$missing_screentest_eras
 expect_failure "$missing_screentest_erase_modes_evidence" "missing-screentest-erase-modes"
 
 cp "$pass_evidence" "$missing_log_stats_evidence"
-sed -i '/^capacity_bytes=8192$/d' "$missing_log_stats_evidence"
+sed -i '/^capacity_bytes=32768$/d' "$missing_log_stats_evidence"
 expect_failure "$missing_log_stats_evidence" "missing-log-stats"
+
+cp "$pass_evidence" "$nonzero_dropped_log_stats_evidence"
+sed -i '0,/^dropped_bytes=0$/s//dropped_bytes=1/' "$nonzero_dropped_log_stats_evidence"
+expect_failure "$nonzero_dropped_log_stats_evidence" "nonzero-dropped-log-stats"
 
 cp "$pass_evidence" "$missing_log_discovery_evidence"
 sed -i '\#^reovim-os> ls /log$#d' "$missing_log_discovery_evidence"

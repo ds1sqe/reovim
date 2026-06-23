@@ -21,7 +21,7 @@ image=apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img
 bytes=<image-size>
 ```
 
-Current expected size is `446836` bytes.
+Current expected size is `446980` bytes.
 
 Copy `apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img` to the Pi
 4 boot partition as `kernel8.img`, using the normal Raspberry Pi firmware
@@ -107,11 +107,13 @@ apps/os/targets/raspi4b-aarch64/test-prepare-boot-media.sh
 apps/os/targets/raspi4b-aarch64/test-validate-evidence.sh
 ```
 
-The smoke tests verify bootfs readiness checks, read-only bootfs discovery,
-dry-run identity output, installed image hash, distinct backups after repeated
-installs, preflight evidence generation, proof command and required-fact
-consistency across the runbook/template/generated seed, the full media-prep
-wrapper, and completed evidence validation.
+The smoke tests build a fresh no-bootline image first, verify this README's
+current expected image size matches the built image, then verify bootfs
+readiness checks, read-only bootfs discovery, dry-run identity output,
+installed image hash, distinct backups after repeated installs, preflight
+evidence generation, proof command and required-fact consistency across the
+runbook/template/generated seed, the full media-prep wrapper, and completed
+evidence validation.
 
 ## Local Preflight
 
@@ -330,9 +332,9 @@ Record the full visible output or serial transcript. The key evidence is:
   `target=aarch64-unknown-none`, `selected_profile=shell-only`,
   `profile_request=shell-only`, `bootline=absent`, and
   `launch_profile_feature=disabled`.
-- `status` repeats the image/profile identity facts and shows live ready source
-  diagnostics: `source=usb-keyboard+uart-fallback`, `source_state=ready`,
-  `mode=live`, `usb_keyboard_probe=enabled`, and a nonzero
+- `status` repeats the image/profile identity facts and shows live ready input
+  diagnostics: `input=usb-keyboard+uart-fallback`, `source_state=ready`,
+  `input_mode=live`, `usb_keyboard_probe=enabled`, and a nonzero
   `usb_keyboard_poll_interval_ms`. It also shows
   `usb_keyboard_last_poll=report-ready` so the proof names the lower
   interrupt-IN report path that made the keyboard ready. If the keyboard is
@@ -343,7 +345,8 @@ Record the full visible output or serial transcript. The key evidence is:
 - `help status` names the `manual_next` summary path, and `help probe` points
   at both `probe help` and `cat /boot/probes`.
 - `cat /boot/status` shows the same status summary through the kernel VFS, and
-  `cat /boot/input` shows the live input diagnostics through the kernel VFS.
+  `cat /boot/input` shows the live input diagnostics through the kernel VFS,
+  including `source=usb-keyboard+uart-fallback` and `mode=live`.
 - `probe help` lists `pcie`, `usb-keyboard`, and
   `xhci-read-keyboard-report`, proving the hardware probe paths were
   discoverable from the shell.
@@ -358,7 +361,7 @@ Record the full visible output or serial transcript. The key evidence is:
 - `launch` and `reovim` report disabled launch in the shell-only image; this
   proves boot does not depend on editor/server payload startup.
 - `dmesg --stats` and `cat /log/stats` report kernel log ring capacity,
-  retained bytes, and dropped bytes through command and VFS paths.
+  retained bytes, and `dropped_bytes=0` through command and VFS paths.
 - `dmesg` includes the command audit lines, probe output, and the
   `input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready`
   transition.

@@ -249,7 +249,7 @@ write_evidence_seed() {
         printf -- '- [ ] `probe pcie` reports the read-only PCIe/xHCI state.\n'
         printf -- '- [ ] `cat /boot/profile` reports `profile=shell-only`, `launch=disabled`, `payloads=0`, and `input_mode=live`.\n'
         printf -- '- [ ] `launch` / `reovim` report shell-only payload launch disabled.\n'
-        printf -- '- [ ] `dmesg --stats` / `cat /log/stats` report kernel log ring stats.\n'
+        printf -- '- [ ] `dmesg --stats` / `cat /log/stats` report kernel log ring stats with `dropped_bytes=0`.\n'
         printf -- '- [ ] `dmesg` contains `shell: <command>` and `shell.status=ok` audit lines for the typed commands.\n'
         printf -- '- [ ] `dmesg` contains `shell.status=error` audit lines for the disabled payload launch commands.\n'
         printf -- '- [ ] `dmesg` contains the `probe usb-keyboard` output or blocker.\n'
@@ -479,6 +479,11 @@ if [ "$SKIP_QEMU" -eq 0 ]; then
         cat "$qemu_log" >&2
         rm -f "$qemu_log"
         fail "QEMU smoke proof checklist did not include log stats expected fact"
+    fi
+    if ! grep -q '^  kernel log dropped_bytes=0$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include zero dropped log bytes expected fact"
     fi
     if ! grep -q '^  probe catalog available through /boot/probes$' "$qemu_log"; then
         cat "$qemu_log" >&2

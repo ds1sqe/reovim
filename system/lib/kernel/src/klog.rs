@@ -10,7 +10,7 @@ use core::{
 };
 
 /// Bytes retained in the kernel log ring.
-pub const CAPACITY: usize = 8192;
+pub const CAPACITY: usize = 32768;
 
 struct KernelLog {
     buf: [u8; CAPACITY],

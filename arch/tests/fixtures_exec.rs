@@ -952,6 +952,10 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "proof checklist names log stats expectation; serial: {serial:?}",
     );
     assert!(
+        serial.contains("kernel log dropped_bytes=0"),
+        "proof checklist names zero dropped log bytes expectation; serial: {serial:?}",
+    );
+    assert!(
         serial.contains("probe catalog available through /boot/probes"),
         "proof checklist names VFS probe catalog expectation; serial: {serial:?}",
     );
@@ -1029,7 +1033,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "ls /log prints log namespace files; serial: {serial:?}",
     );
     assert!(
-        serial.contains("capacity_bytes=8192"),
+        serial.contains("capacity_bytes=32768"),
         "log stats report klog ring capacity; serial: {serial:?}",
     );
     assert!(
@@ -1217,6 +1221,12 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     let final_dmesg = serial
         .rsplit_once("dmesg:\nrootd: boot start")
         .map_or("", |(_, tail)| tail);
+    assert!(
+        !final_dmesg.contains("probe pcie:\nprobe pcie:")
+            && !final_dmesg
+                .contains("state=unsupported-on-this-target\nstate=unsupported-on-this-target"),
+        "final dmesg does not duplicate probe fragments; serial: {serial:?}",
+    );
     assert!(
         final_dmesg.contains("probe pcie:\nstate=unsupported-on-this-target"),
         "final dmesg preserves provider probe output; serial: {serial:?}",

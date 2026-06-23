@@ -133,7 +133,7 @@ expect_contains "$evidence" '`help device` / `help launch` / `help reovim` / `he
 expect_contains "$evidence" '`pwd` / `ls` / `mount` report the kernel VFS namespace and mounts.' "evidence VFS namespace fact"
 expect_contains "$evidence" '`device` / `cat /boot/memory` / `cat /boot/devices` report boot inventory.' "evidence boot inventory fact"
 expect_contains "$evidence" '`cd /dev` / `ls` / `cat uart0` prove relative VFS device-file access.' "evidence relative device fact"
-expect_contains "$evidence" '`dmesg --stats` / `cat /log/stats` report kernel log ring stats.' "evidence log stats fact"
+expect_contains "$evidence" '`dmesg --stats` / `cat /log/stats` report kernel log ring stats with `dropped_bytes=0`.' "evidence log stats fact"
 expect_contains "$evidence" '`shell.status=ok` audit lines' "evidence status audit fact"
 expect_contains "$evidence" '`shell.status=error` audit lines for the disabled payload launch commands.' "evidence disabled status audit fact"
 expect_contains "$evidence" '`halt` was typed last and printed `halt: ok`.' "evidence halt fact"

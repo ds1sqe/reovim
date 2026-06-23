@@ -608,6 +608,7 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"  detailed help catalog available through /boot/help\n");
     assert_contains(sink_bytes(), b"  screentest includes erase-line mode diagnostics\n");
     assert_contains(sink_bytes(), b"  kernel log stats available through /log/stats\n");
+    assert_contains(sink_bytes(), b"  kernel log dropped_bytes=0\n");
     assert_contains(sink_bytes(), b"  probe catalog available through /boot/probes\n");
     assert_contains(sink_bytes(), b"  probe targets include usb-keyboard\n");
     assert_contains(sink_bytes(), b"  probe targets include xhci-read-keyboard-report\n");
@@ -642,6 +643,7 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"  probe targets include xhci-read-keyboard-report\n");
     assert_contains(sink_bytes(), b"  detailed help catalog available through /boot/help\n");
     assert_contains(sink_bytes(), b"  kernel log stats available through /log/stats\n");
+    assert_contains(sink_bytes(), b"  kernel log dropped_bytes=0\n");
     assert_contains(
         sink_bytes(),
         b"  dmesg contains input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready\n",
@@ -731,7 +733,7 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     testrt::check_eq(sink_str(), "dmesg\nstats\n");
 
     run_session_command(&mut session, b"cat /log/stats\n");
-    assert_contains(sink_bytes(), b"capacity_bytes=8192\n");
+    assert_contains(sink_bytes(), b"capacity_bytes=32768\n");
     assert_contains(sink_bytes(), b"retained_bytes=");
     assert_contains(sink_bytes(), b"dropped_bytes=0\n");
 });
@@ -812,7 +814,7 @@ arch_test!(root_shell_dmesg_and_unknown_command, {
     testrt::check_eq(sink_str(), "dmesg: too many arguments\n");
 
     run_command(ProfileSummary::new("shell-only", false), b"dmesg --stats\n", None);
-    assert_contains(sink_bytes(), b"capacity_bytes=8192\n");
+    assert_contains(sink_bytes(), b"capacity_bytes=32768\n");
     assert_contains(sink_bytes(), b"retained_bytes=");
     assert_contains(sink_bytes(), b"dropped_bytes=0\n");
 
