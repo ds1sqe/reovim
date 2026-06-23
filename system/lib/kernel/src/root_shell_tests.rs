@@ -308,6 +308,9 @@ arch_test!(root_shell_help, {
     run_command(ProfileSummary::new("shell-only", false), b"help input\n", None);
     testrt::check_eq(sink_str(), "input - print live console input diagnostics\n");
 
+    run_command(ProfileSummary::new("shell-only", false), b"help clear\n", None);
+    testrt::check_eq(sink_str(), "clear - clear framebuffer console and terminal\n");
+
     run_command(ProfileSummary::new("shell-only", false), b"help screentest\n", None);
     testrt::check_eq(
         sink_str(),
@@ -328,6 +331,18 @@ arch_test!(root_shell_help, {
 
     run_command(ProfileSummary::new("shell-only", false), b"help dmesg\n", None);
     testrt::check_eq(sink_str(), "dmesg [--stats] - print retained kernel log or ring stats\n");
+
+    run_command(ProfileSummary::new("shell-only", false), b"help device\n", None);
+    testrt::check_eq(sink_str(), "device - print boot memory and device inventory\n");
+
+    run_command(ProfileSummary::new("shell-only", false), b"help launch\n", None);
+    testrt::check_eq(sink_str(), "launch [payload] - list or run registered payloads\n");
+
+    run_command(ProfileSummary::new("shell-only", false), b"help reovim\n", None);
+    testrt::check_eq(sink_str(), "reovim - run the default reovim payload alias\n");
+
+    run_command(ProfileSummary::new("shell-only", false), b"help halt\n", None);
+    testrt::check_eq(sink_str(), "halt - request root daemon shutdown\n");
 
     run_command(ProfileSummary::new("shell-only", false), b"help missing\n", None);
     testrt::check_eq(sink_str(), "help: unknown command: missing\n");
@@ -385,6 +400,9 @@ arch_test!(root_shell_launch_mount_and_reovim, {
     run_command(ProfileSummary::new("appliance", true), b"launch editor-smoke\n", None);
     testrt::check_eq(sink_str(), "launch editor-smoke: payload.ready\n");
 
+    run_command(ProfileSummary::new("appliance", true), b"launch \"\"\n", None);
+    testrt::check_eq(sink_str(), "launch: no payload name\n");
+
     run_command(ProfileSummary::new("shell-only", false), b"launch editor-smoke\n", None);
     testrt::check_eq(sink_str(), "launch disabled for this profile\n");
 
@@ -426,6 +444,18 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"input=fixture-input\n");
     assert_contains(sink_bytes(), b"usb_keyboard=unavailable\n");
 
+    run_session_command(&mut session, b"cat \"/boot/profile\"\n");
+    assert_contains(sink_bytes(), b"profile=shell-only\n");
+
+    run_session_command(&mut session, b"cat \"\"\n");
+    testrt::check_eq(sink_str(), "cat: empty path\n");
+
+    run_session_command(&mut session, b"ls \"\"\n");
+    testrt::check_eq(sink_str(), "ls: empty path\n");
+
+    run_session_command(&mut session, b"cd \"\"\n");
+    testrt::check_eq(sink_str(), "cd: empty path\n");
+
     run_session_command(&mut session, b"ls /boot\n");
     assert_contains(sink_bytes(), b"devices\n");
     assert_contains(sink_bytes(), b"help\n");
@@ -442,6 +472,31 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"reovim root shell\n");
     assert_contains(sink_bytes(), b"commands: help, clear, screentest");
     assert_contains(sink_bytes(), b"usage: help [command]\n");
+    assert_contains(sink_bytes(), b"details:\n");
+    assert_contains(sink_bytes(), b"  help [command] - show command help\n");
+    assert_contains(sink_bytes(), b"  clear - clear framebuffer console and terminal\n");
+    assert_contains(sink_bytes(), b"  screentest - print renderer diagnostics\n");
+    assert_contains(
+        sink_bytes(),
+        b"    required rows: el: clean, el1: clean-left, el2: clean-all\n",
+    );
+    assert_contains(sink_bytes(), b"  pwd - print current kernel VFS directory\n");
+    assert_contains(sink_bytes(), b"  ls [path] - list a kernel VFS directory\n");
+    assert_contains(sink_bytes(), b"  cd [path] - change current kernel VFS directory\n");
+    assert_contains(sink_bytes(), b"  cat path... - print kernel VFS pseudo files\n");
+    assert_contains(sink_bytes(), b"  mount - print kernel VFS mount table\n");
+    assert_contains(sink_bytes(), b"  input - print live console input diagnostics\n");
+    assert_contains(sink_bytes(), b"  status - print boot, input, and manual_next summary\n");
+    assert_contains(sink_bytes(), b"  proof - print physical input proof checklist\n");
+    assert_contains(sink_bytes(), b"  device - print boot memory and device inventory\n");
+    assert_contains(sink_bytes(), b"  dmesg [--stats] - print retained kernel log or ring stats\n");
+    assert_contains(
+        sink_bytes(),
+        b"  probe target - run lower hardware probe; try `probe help` or `cat /boot/probes`\n",
+    );
+    assert_contains(sink_bytes(), b"  launch [payload] - list or run registered payloads\n");
+    assert_contains(sink_bytes(), b"  reovim - run the default reovim payload alias\n");
+    assert_contains(sink_bytes(), b"  halt - request root daemon shutdown\n");
 
     run_session_command(&mut session, b"cat /boot/image\n");
     assert_contains(sink_bytes(), b"package=reovim-os\n");
@@ -479,6 +534,7 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"  proof\n");
     assert_contains(sink_bytes(), b"  cat /boot/proof\n");
     assert_contains(sink_bytes(), b"  help\n");
+    assert_contains(sink_bytes(), b"  help clear\n");
     assert_contains(sink_bytes(), b"  help screentest\n");
     assert_contains(sink_bytes(), b"  help input\n");
     assert_contains(sink_bytes(), b"  help proof\n");
@@ -487,9 +543,13 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"  help cd\n");
     assert_contains(sink_bytes(), b"  help cat\n");
     assert_contains(sink_bytes(), b"  help mount\n");
+    assert_contains(sink_bytes(), b"  help device\n");
     assert_contains(sink_bytes(), b"  help dmesg\n");
     assert_contains(sink_bytes(), b"  help status\n");
     assert_contains(sink_bytes(), b"  help probe\n");
+    assert_contains(sink_bytes(), b"  help launch\n");
+    assert_contains(sink_bytes(), b"  help reovim\n");
+    assert_contains(sink_bytes(), b"  help halt\n");
     assert_contains(sink_bytes(), b"  cat /boot/help\n");
     assert_contains(sink_bytes(), b"  clear\n");
     assert_contains(sink_bytes(), b"  screentest\n");
@@ -541,7 +601,7 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"  usb_keyboard_probe=enabled\n");
     assert_contains(sink_bytes(), b"  usb_keyboard_last_poll=report-ready\n");
     assert_contains(sink_bytes(), b"  manual_next=type-shell-command\n");
-    assert_contains(sink_bytes(), b"  help catalog available through /boot/help\n");
+    assert_contains(sink_bytes(), b"  detailed help catalog available through /boot/help\n");
     assert_contains(sink_bytes(), b"  screentest includes erase-line mode diagnostics\n");
     assert_contains(sink_bytes(), b"  kernel log stats available through /log/stats\n");
     assert_contains(sink_bytes(), b"  probe catalog available through /boot/probes\n");
@@ -556,6 +616,7 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"proof:\n");
     assert_contains(sink_bytes(), b"  proof\n");
     assert_contains(sink_bytes(), b"  cat /boot/proof\n");
+    assert_contains(sink_bytes(), b"  help clear\n");
     assert_contains(sink_bytes(), b"  help screentest\n");
     assert_contains(sink_bytes(), b"  help input\n");
     assert_contains(sink_bytes(), b"  help proof\n");
@@ -564,14 +625,18 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"  help cd\n");
     assert_contains(sink_bytes(), b"  help cat\n");
     assert_contains(sink_bytes(), b"  help mount\n");
+    assert_contains(sink_bytes(), b"  help device\n");
     assert_contains(sink_bytes(), b"  help dmesg\n");
     assert_contains(sink_bytes(), b"  help status\n");
     assert_contains(sink_bytes(), b"  help probe\n");
+    assert_contains(sink_bytes(), b"  help launch\n");
+    assert_contains(sink_bytes(), b"  help reovim\n");
+    assert_contains(sink_bytes(), b"  help halt\n");
     assert_contains(sink_bytes(), b"  cat /boot/probes\n");
     assert_contains(sink_bytes(), b"expected:\n");
     assert_contains(sink_bytes(), b"  probe targets include pcie\n");
     assert_contains(sink_bytes(), b"  probe targets include xhci-read-keyboard-report\n");
-    assert_contains(sink_bytes(), b"  help catalog available through /boot/help\n");
+    assert_contains(sink_bytes(), b"  detailed help catalog available through /boot/help\n");
     assert_contains(sink_bytes(), b"  kernel log stats available through /log/stats\n");
     assert_contains(sink_bytes(), b"  probe catalog available through /boot/probes\n");
     assert_contains(sink_bytes(), b"  launch/reovim disabled in shell-only profile\n");
@@ -630,6 +695,9 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"  fixture\n");
     assert_contains(sink_bytes(), b"  usb-keyboard\n");
     assert_contains(sink_bytes(), b"  xhci-read-keyboard-report\n");
+
+    run_session_command(&mut session, b"cat /boot/probes/extra\n");
+    testrt::check_eq(sink_str(), "cat: /boot/probes/extra: not a directory\n");
 
     run_session_command(&mut session, b"cd /dev\n");
     testrt::check_eq(sink_str(), "");
@@ -765,6 +833,21 @@ arch_test!(root_shell_dmesg_and_unknown_command, {
     let _ = daemon.run_command_line(&mut session, b"cat /log/dmesg\n");
     assert_contains(sink_bytes(), b"shell: does-not-exist\n");
     assert_contains(sink_bytes(), b"shell.status=error\n");
+});
+
+arch_test!(root_shell_rejects_unterminated_quotes, {
+    run_command(ProfileSummary::new("shell-only", false), b"cat \"/boot/profile\n", None);
+    testrt::check_eq(sink_str(), "error: unterminated quote\n");
+
+    sink_clear();
+    let daemon = daemon(ProfileSummary::new("shell-only", false), None);
+    let mut session = RootShellSession::new();
+    let _ = daemon.run_command_line(&mut session, b"cat /log/dmesg\n");
+    assert_contains(sink_bytes(), b"shell: cat \"/boot/profile\n");
+    assert_contains(sink_bytes(), b"shell.status=error\n");
+
+    run_command(ProfileSummary::new("shell-only", false), b"cat '/boot/profile\n", None);
+    testrt::check_eq(sink_str(), "error: unterminated quote\n");
 });
 
 arch_test!(root_shell_halt_logs_status_before_callback, {

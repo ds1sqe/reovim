@@ -71,6 +71,7 @@ Type these commands from the physical USB keyboard for final acceptance:
 proof
 cat /boot/proof
 help
+help clear
 help screentest
 help input
 help proof
@@ -79,9 +80,13 @@ help ls
 help cd
 help cat
 help mount
+help device
 help dmesg
 help status
 help probe
+help launch
+help reovim
+help halt
 cat /boot/help
 clear
 screentest
@@ -146,12 +151,13 @@ Required success facts:
 - [ ] A physical USB keypress reached the root shell.
 - [ ] `proof` prints the physical input proof checklist.
 - [ ] `cat /boot/proof` prints the VFS-backed proof pseudo-file.
-- [ ] `cat /boot/help` prints the VFS-backed help catalog.
+- [ ] `cat /boot/help` prints the VFS-backed detailed help catalog.
 - [ ] `help dmesg` / `ls /log` make kernel log stats discoverable.
 - [ ] `help input` / `help proof` make live input diagnostics and the proof checklist self-describing.
 - [ ] `help status` / `help probe` make `manual_next` and probe catalog discovery self-describing.
 - [ ] `help pwd` / `help ls` / `help cd` / `help cat` / `help mount` make VFS navigation self-describing.
-- [ ] `help` / `help screentest` / `clear` / `screentest` prove shell help and erase-line mode diagnostics.
+- [ ] `help` / `help clear` / `help screentest` / `clear` / `screentest` prove shell help and erase-line mode diagnostics.
+- [ ] `help device` / `help launch` / `help reovim` / `help halt` make boot inventory, payload, and shutdown commands self-describing.
 - [ ] `pwd` / `ls` / `mount` report the kernel VFS namespace and mounts.
 - [ ] `device` / `cat /boot/memory` / `cat /boot/devices` report boot inventory.
 - [ ] `cd /dev` / `ls` / `cat uart0` prove relative VFS device-file access.

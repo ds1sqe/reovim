@@ -161,6 +161,7 @@ write_evidence_seed() {
         printf 'proof\n'
         printf 'cat /boot/proof\n'
         printf 'help\n'
+        printf 'help clear\n'
         printf 'help screentest\n'
         printf 'help input\n'
         printf 'help proof\n'
@@ -169,9 +170,13 @@ write_evidence_seed() {
         printf 'help cd\n'
         printf 'help cat\n'
         printf 'help mount\n'
+        printf 'help device\n'
         printf 'help dmesg\n'
         printf 'help status\n'
         printf 'help probe\n'
+        printf 'help launch\n'
+        printf 'help reovim\n'
+        printf 'help halt\n'
         printf 'cat /boot/help\n'
         printf 'clear\n'
         printf 'screentest\n'
@@ -222,12 +227,13 @@ write_evidence_seed() {
         printf -- '- [ ] A physical USB keypress reached the root shell.\n'
         printf -- '- [ ] `proof` prints the physical input proof checklist.\n'
         printf -- '- [ ] `cat /boot/proof` prints the VFS-backed proof pseudo-file.\n'
-        printf -- '- [ ] `cat /boot/help` prints the VFS-backed help catalog.\n'
+        printf -- '- [ ] `cat /boot/help` prints the VFS-backed detailed help catalog.\n'
         printf -- '- [ ] `help dmesg` / `ls /log` make kernel log stats discoverable.\n'
         printf -- '- [ ] `help input` / `help proof` make live input diagnostics and the proof checklist self-describing.\n'
         printf -- '- [ ] `help status` / `help probe` make `manual_next` and probe catalog discovery self-describing.\n'
         printf -- '- [ ] `help pwd` / `help ls` / `help cd` / `help cat` / `help mount` make VFS navigation self-describing.\n'
-        printf -- '- [ ] `help` / `help screentest` / `clear` / `screentest` prove shell help and erase-line mode diagnostics.\n'
+        printf -- '- [ ] `help` / `help clear` / `help screentest` / `clear` / `screentest` prove shell help and erase-line mode diagnostics.\n'
+        printf -- '- [ ] `help device` / `help launch` / `help reovim` / `help halt` make boot inventory, payload, and shutdown commands self-describing.\n'
         printf -- '- [ ] `pwd` / `ls` / `mount` report the kernel VFS namespace and mounts.\n'
         printf -- '- [ ] `device` / `cat /boot/memory` / `cat /boot/devices` report boot inventory.\n'
         printf -- '- [ ] `cd /dev` / `ls` / `cat uart0` prove relative VFS device-file access.\n'
@@ -373,6 +379,11 @@ if [ "$SKIP_QEMU" -eq 0 ]; then
         rm -f "$qemu_log"
         fail "QEMU smoke proof checklist did not include targeted dmesg help"
     fi
+    if ! grep -q '^  help clear$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include targeted clear help"
+    fi
     if ! grep -q '^  help screentest$' "$qemu_log"; then
         cat "$qemu_log" >&2
         rm -f "$qemu_log"
@@ -413,6 +424,11 @@ if [ "$SKIP_QEMU" -eq 0 ]; then
         rm -f "$qemu_log"
         fail "QEMU smoke proof checklist did not include targeted mount help"
     fi
+    if ! grep -q '^  help device$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include targeted device help"
+    fi
     if ! grep -q '^  help status$' "$qemu_log"; then
         cat "$qemu_log" >&2
         rm -f "$qemu_log"
@@ -422,6 +438,21 @@ if [ "$SKIP_QEMU" -eq 0 ]; then
         cat "$qemu_log" >&2
         rm -f "$qemu_log"
         fail "QEMU smoke proof checklist did not include targeted probe help"
+    fi
+    if ! grep -q '^  help launch$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include targeted launch help"
+    fi
+    if ! grep -q '^  help reovim$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include targeted reovim help"
+    fi
+    if ! grep -q '^  help halt$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include targeted halt help"
     fi
     if ! grep -q '^  ls /log$' "$qemu_log"; then
         cat "$qemu_log" >&2

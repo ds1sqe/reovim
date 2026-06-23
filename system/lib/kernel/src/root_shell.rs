@@ -15,6 +15,25 @@ use {
 
 const MAX_ARGS: usize = 8;
 const MAX_TOKEN_BYTES: usize = 64;
+const HELP_COMMANDS: [&str; 17] = [
+    "help",
+    "clear",
+    "screentest",
+    "pwd",
+    "ls",
+    "cd",
+    "cat",
+    "mount",
+    "input",
+    "status",
+    "proof",
+    "device",
+    "dmesg",
+    "probe",
+    "launch",
+    "reovim",
+    "halt",
+];
 
 /// Mutable root-shell state carried across command dispatch.
 pub struct RootShellSession {
@@ -53,6 +72,7 @@ enum ParseStatus {
     Ok,
     TooLong,
     TooMany,
+    UnclosedQuote,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -116,6 +136,7 @@ impl RootCommandResult {
 struct Arg {
     bytes: [u8; MAX_TOKEN_BYTES],
     len: usize,
+    present: bool,
 }
 
 impl Arg {
@@ -123,11 +144,13 @@ impl Arg {
         Self {
             bytes: [0u8; MAX_TOKEN_BYTES],
             len: 0,
+            present: false,
         }
     }
 
     fn clear(&mut self) {
         self.len = 0;
+        self.present = false;
     }
 
     fn push_byte(&mut self, byte: u8, status: &mut ParseStatus) {
@@ -135,8 +158,13 @@ impl Arg {
             *status = ParseStatus::TooLong;
             return;
         }
+        self.present = true;
         self.bytes[self.len] = byte;
         self.len += 1;
+    }
+
+    fn mark_present(&mut self) {
+        self.present = true;
     }
 
     fn as_str(&self) -> &str {
@@ -164,7 +192,7 @@ impl ParsedLine {
 }
 
 fn push_arg(args: &mut ParsedLine, arg: &mut Arg, status: &mut ParseStatus) {
-    if arg.len == 0 {
+    if !arg.present {
         return;
     }
     if args.argc >= MAX_ARGS {
@@ -196,12 +224,14 @@ fn tokenize(input: &[u8]) -> (ParsedLine, ParseStatus) {
                     push_arg(&mut line, &mut current, &mut status);
                 }
                 b'\'' => {
+                    current.mark_present();
                     quote = QuoteState::Single;
                     if status == ParseStatus::Empty {
                         status = ParseStatus::Ok;
                     }
                 }
                 b'"' => {
+                    current.mark_present();
                     quote = QuoteState::Double;
                     if status == ParseStatus::Empty {
                         status = ParseStatus::Ok;
@@ -235,6 +265,11 @@ fn tokenize(input: &[u8]) -> (ParsedLine, ParseStatus) {
         }
 
         i += 1;
+    }
+
+    match quote {
+        QuoteState::None => {}
+        QuoteState::Single | QuoteState::Double => status = ParseStatus::UnclosedQuote,
     }
 
     if status == ParseStatus::Empty && current.len > 0 {
@@ -512,7 +547,7 @@ fn cmd_cat(
 
 fn write_file(daemon: &RootDaemon<'_>, file: File) {
     match file {
-        File::BootHelp => write_help_catalog(daemon),
+        File::BootHelp => write_detailed_help_catalog(daemon),
         File::BootProfile => write_boot_profile(daemon),
         File::BootImage => write_boot_image(daemon),
         File::BootInput => write_boot_input(daemon),
@@ -597,6 +632,7 @@ fn write_boot_proof(daemon: &RootDaemon<'_>) {
     daemon.write_line("  proof");
     daemon.write_line("  cat /boot/proof");
     daemon.write_line("  help");
+    daemon.write_line("  help clear");
     daemon.write_line("  help screentest");
     daemon.write_line("  help input");
     daemon.write_line("  help proof");
@@ -605,9 +641,13 @@ fn write_boot_proof(daemon: &RootDaemon<'_>) {
     daemon.write_line("  help cd");
     daemon.write_line("  help cat");
     daemon.write_line("  help mount");
+    daemon.write_line("  help device");
     daemon.write_line("  help dmesg");
     daemon.write_line("  help status");
     daemon.write_line("  help probe");
+    daemon.write_line("  help launch");
+    daemon.write_line("  help reovim");
+    daemon.write_line("  help halt");
     daemon.write_line("  cat /boot/help");
     daemon.write_line("  clear");
     daemon.write_line("  screentest");
@@ -656,7 +696,7 @@ fn write_boot_proof(daemon: &RootDaemon<'_>) {
     daemon.write_line("  usb_keyboard_probe=enabled");
     daemon.write_line("  usb_keyboard_last_poll=report-ready");
     daemon.write_line("  manual_next=type-shell-command");
-    daemon.write_line("  help catalog available through /boot/help");
+    daemon.write_line("  detailed help catalog available through /boot/help");
     daemon.write_line("  screentest includes erase-line mode diagnostics");
     daemon.write_line("  kernel log stats available through /log/stats");
     daemon.write_line("  probe catalog available through /boot/probes");
@@ -973,35 +1013,11 @@ fn cmd_help(daemon: &RootDaemon<'_>, line: &ParsedLine) -> RootCommandStatus {
     }
 
     let command = line.args[1].as_str();
-    match command {
-        "help" => daemon.write_line("help [command] - show command help"),
-        "clear" => daemon.write_line("clear - clear framebuffer console and terminal"),
-        "screentest" => {
-            daemon.write_line("screentest - print renderer diagnostics");
-            daemon.write_line("  required rows: el: clean, el1: clean-left, el2: clean-all");
-        }
-        "pwd" => daemon.write_line("pwd - print current kernel VFS directory"),
-        "ls" => daemon.write_line("ls [path] - list a kernel VFS directory"),
-        "cd" => daemon.write_line("cd [path] - change current kernel VFS directory"),
-        "cat" => daemon.write_line("cat path... - print kernel VFS pseudo files"),
-        "mount" => daemon.write_line("mount - print kernel VFS mount table"),
-        "input" => daemon.write_line("input - print live console input diagnostics"),
-        "status" => daemon.write_line("status - print boot, input, and manual_next summary"),
-        "proof" => daemon.write_line("proof - print physical input proof checklist"),
-        "device" => daemon.write_line("device - print boot memory and device inventory"),
-        "dmesg" => daemon.write_line("dmesg [--stats] - print retained kernel log or ring stats"),
-        "probe" => daemon.write_line(
-            "probe target - run lower hardware probe; try `probe help` or `cat /boot/probes`",
-        ),
-        "launch" => daemon.write_line("launch [payload] - list or run registered payloads"),
-        "reovim" => daemon.write_line("reovim - run the default reovim payload alias"),
-        "halt" => daemon.write_line("halt - request root daemon shutdown"),
-        _ => {
-            daemon.write_bytes(b"help: unknown command: ");
-            daemon.write_bytes(command.as_bytes());
-            daemon.write_bytes(b"\n");
-            return RootCommandStatus::Error;
-        }
+    if !write_command_help(daemon, command, b"") {
+        daemon.write_bytes(b"help: unknown command: ");
+        daemon.write_bytes(command.as_bytes());
+        daemon.write_bytes(b"\n");
+        return RootCommandStatus::Error;
     }
     RootCommandStatus::Ok
 }
@@ -1012,6 +1028,67 @@ fn write_help_catalog(daemon: &RootDaemon<'_>) {
         "commands: help, clear, screentest, pwd, ls, cd, cat, mount, input, status, proof, device, dmesg, probe, launch, reovim, halt",
     );
     daemon.write_line("usage: help [command]");
+}
+
+fn write_detailed_help_catalog(daemon: &RootDaemon<'_>) {
+    write_help_catalog(daemon);
+    daemon.write_line("details:");
+    let mut index = 0usize;
+    while index < HELP_COMMANDS.len() {
+        let _ = write_command_help(daemon, HELP_COMMANDS[index], b"  ");
+        index += 1;
+    }
+}
+
+fn write_command_help(daemon: &RootDaemon<'_>, command: &str, prefix: &[u8]) -> bool {
+    match command {
+        "help" => write_help_line(daemon, prefix, "help [command] - show command help"),
+        "clear" => {
+            write_help_line(daemon, prefix, "clear - clear framebuffer console and terminal")
+        }
+        "screentest" => {
+            write_help_line(daemon, prefix, "screentest - print renderer diagnostics");
+            daemon.write_bytes(if prefix.is_empty() { b"  " } else { b"    " });
+            daemon.write_line("required rows: el: clean, el1: clean-left, el2: clean-all");
+        }
+        "pwd" => write_help_line(daemon, prefix, "pwd - print current kernel VFS directory"),
+        "ls" => write_help_line(daemon, prefix, "ls [path] - list a kernel VFS directory"),
+        "cd" => write_help_line(daemon, prefix, "cd [path] - change current kernel VFS directory"),
+        "cat" => write_help_line(daemon, prefix, "cat path... - print kernel VFS pseudo files"),
+        "mount" => write_help_line(daemon, prefix, "mount - print kernel VFS mount table"),
+        "input" => write_help_line(daemon, prefix, "input - print live console input diagnostics"),
+        "status" => {
+            write_help_line(daemon, prefix, "status - print boot, input, and manual_next summary")
+        }
+        "proof" => write_help_line(daemon, prefix, "proof - print physical input proof checklist"),
+        "device" => {
+            write_help_line(daemon, prefix, "device - print boot memory and device inventory")
+        }
+        "dmesg" => write_help_line(
+            daemon,
+            prefix,
+            "dmesg [--stats] - print retained kernel log or ring stats",
+        ),
+        "probe" => write_help_line(
+            daemon,
+            prefix,
+            "probe target - run lower hardware probe; try `probe help` or `cat /boot/probes`",
+        ),
+        "launch" => {
+            write_help_line(daemon, prefix, "launch [payload] - list or run registered payloads")
+        }
+        "reovim" => {
+            write_help_line(daemon, prefix, "reovim - run the default reovim payload alias")
+        }
+        "halt" => write_help_line(daemon, prefix, "halt - request root daemon shutdown"),
+        _ => return false,
+    }
+    true
+}
+
+fn write_help_line(daemon: &RootDaemon<'_>, prefix: &[u8], line: &str) {
+    daemon.write_bytes(prefix);
+    daemon.write_line(line);
 }
 
 fn cmd_clear(daemon: &RootDaemon<'_>, line: &ParsedLine) -> RootCommandStatus {
@@ -1181,6 +1258,10 @@ pub(crate) fn execute_root_command(
         }
         ParseStatus::TooMany => {
             daemon.write_line("error: too many arguments");
+            return RootCommandResult::new(RootCommandStatus::Error);
+        }
+        ParseStatus::UnclosedQuote => {
+            daemon.write_line("error: unterminated quote");
             return RootCommandResult::new(RootCommandStatus::Error);
         }
         ParseStatus::Ok => {}

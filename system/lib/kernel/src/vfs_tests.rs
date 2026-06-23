@@ -64,6 +64,7 @@ arch_test!(vfs_looks_up_static_and_device_nodes, {
     testrt::check_eq(lookup("/boot/mounts", &DEVICES), Ok(Node::File(File::BootMounts)));
     testrt::check_eq(lookup("/log/dmesg", &DEVICES), Ok(Node::File(File::LogDmesg)));
     testrt::check_eq(lookup("/log/stats", &DEVICES), Ok(Node::File(File::LogStats)));
+    testrt::check_eq(lookup("/boot/probes/extra", &DEVICES), Err(VfsError::NotDirectory));
     testrt::check_eq(lookup("/dev/uart0", &DEVICES), Ok(Node::File(File::DevDevice(0))));
     testrt::check_eq(lookup("/dev/uart1", &DEVICES), Ok(Node::File(File::DevDevice(1))));
     testrt::check_eq(lookup("/dev/block0", &DEVICES), Ok(Node::File(File::DevDevice(2))));

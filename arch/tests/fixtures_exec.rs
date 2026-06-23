@@ -688,6 +688,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "proof\n",
         "cat /boot/proof\n",
         "help\n",
+        "help clear\n",
         "help screentest\n",
         "help input\n",
         "help proof\n",
@@ -696,9 +697,13 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "help cd\n",
         "help cat\n",
         "help mount\n",
+        "help device\n",
         "help dmesg\n",
         "help status\n",
         "help probe\n",
+        "help launch\n",
+        "help reovim\n",
+        "help halt\n",
         "cat /boot/help\n",
         "clear\n",
         "screentest\n",
@@ -769,6 +774,11 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "VFS help pseudo-file prints help usage; serial: {serial:?}",
     );
     assert!(
+        serial.contains("details:\n  help [command] - show command help")
+            && serial.contains("  halt - request root daemon shutdown"),
+        "VFS help pseudo-file prints detailed command catalog; serial: {serial:?}",
+    );
+    assert!(
         serial.contains("clear - clear framebuffer console and terminal"),
         "clear help appears; serial: {serial:?}",
     );
@@ -801,6 +811,22 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     assert!(
         serial.contains("dmesg [--stats] - print retained kernel log or ring stats"),
         "dmesg help appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("device - print boot memory and device inventory"),
+        "device help appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("launch [payload] - list or run registered payloads"),
+        "launch help appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("reovim - run the default reovim payload alias"),
+        "reovim help appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("halt - request root daemon shutdown"),
+        "halt help appears; serial: {serial:?}",
     );
     assert!(
         serial.contains("usb_keyboard_pending_bytes=0"),
@@ -842,14 +868,14 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         serial.contains("probe targets:"),
         "probe target help appears in transcript; serial: {serial:?}",
     );
-    let proof_commands = "proof:\ncommands:\n  proof\n  cat /boot/proof\n  help\n  help screentest\n  help input\n  help proof\n  help pwd\n  help ls\n  help cd\n  help cat\n  help mount\n  help dmesg\n  help status\n  help probe\n  cat /boot/help";
+    let proof_commands = "proof:\ncommands:\n  proof\n  cat /boot/proof\n  help\n  help clear\n  help screentest\n  help input\n  help proof\n  help pwd\n  help ls\n  help cd\n  help cat\n  help mount\n  help device\n  help dmesg\n  help status\n  help probe\n  help launch\n  help reovim\n  help halt\n  cat /boot/help";
     assert!(
         serial.contains(proof_commands),
         "proof checklist appears in transcript; serial: {serial:?}",
     );
     assert!(
         serial.contains(
-            "  help\n  help screentest\n  help input\n  help proof\n  help pwd\n  help ls\n  help cd\n  help cat\n  help mount\n  help dmesg\n  help status\n  help probe\n  cat /boot/help\n  clear"
+            "  help\n  help clear\n  help screentest\n  help input\n  help proof\n  help pwd\n  help ls\n  help cd\n  help cat\n  help mount\n  help device\n  help dmesg\n  help status\n  help probe\n  help launch\n  help reovim\n  help halt\n  cat /boot/help\n  clear"
         ),
         "proof checklist includes targeted help and VFS help; serial: {serial:?}",
     );
@@ -895,7 +921,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     );
     assert!(
         serial.contains(
-            "  help screentest\n  help input\n  help proof\n  help pwd\n  help ls\n  help cd\n  help cat\n  help mount\n  help dmesg\n  help status\n  help probe\n  cat /boot/help"
+            "  help clear\n  help screentest\n  help input\n  help proof\n  help pwd\n  help ls\n  help cd\n  help cat\n  help mount\n  help device\n  help dmesg\n  help status\n  help probe\n  help launch\n  help reovim\n  help halt\n  cat /boot/help"
         ),
         "proof checklist includes targeted help commands; serial: {serial:?}",
     );
@@ -908,8 +934,8 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "proof checklist names keyboard report probe; serial: {serial:?}",
     );
     assert!(
-        serial.contains("help catalog available through /boot/help"),
-        "proof checklist names VFS help catalog expectation; serial: {serial:?}",
+        serial.contains("detailed help catalog available through /boot/help"),
+        "proof checklist names detailed VFS help catalog expectation; serial: {serial:?}",
     );
     assert!(
         serial.contains("screentest includes erase-line mode diagnostics"),
@@ -1152,7 +1178,8 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "cat /log/dmesg prints VFS log stats command audit; serial: {serial:?}",
     );
     assert!(
-        serial.contains("shell: help\nshell.status=ok\nshell: help screentest")
+        serial.contains("shell: help\nshell.status=ok\nshell: help clear")
+            && serial.contains("shell: help clear\nshell.status=ok\nshell: help screentest")
             && serial.contains("shell: help screentest\nshell.status=ok\nshell: help input")
             && serial.contains("shell: help input\nshell.status=ok\nshell: help proof")
             && serial.contains("shell: help proof\nshell.status=ok\nshell: help pwd")
@@ -1160,12 +1187,17 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
             && serial.contains("shell: help ls\nshell.status=ok\nshell: help cd")
             && serial.contains("shell: help cd\nshell.status=ok\nshell: help cat")
             && serial.contains("shell: help cat\nshell.status=ok\nshell: help mount")
-            && serial.contains("shell: help mount\nshell.status=ok\nshell: help dmesg"),
+            && serial.contains("shell: help mount\nshell.status=ok\nshell: help device"),
         "cat /log/dmesg prints targeted screentest help command audit; serial: {serial:?}",
     );
     assert!(
-        serial.contains("shell: help status\nshell.status=ok\nshell: help proof")
-            && serial.contains("shell: help probe\nshell.status=ok\nshell: help dmesg"),
+        serial.contains("shell: help device\nshell.status=ok\nshell: help dmesg")
+            && serial.contains("shell: help dmesg\nshell.status=ok\nshell: help status")
+            && serial.contains("shell: help status\nshell.status=ok\nshell: help probe")
+            && serial.contains("shell: help probe\nshell.status=ok\nshell: help launch")
+            && serial.contains("shell: help launch\nshell.status=ok\nshell: help reovim")
+            && serial.contains("shell: help reovim\nshell.status=ok\nshell: help halt")
+            && serial.contains("shell: help halt\nshell.status=ok\nshell: cat /boot/help"),
         "cat /log/dmesg prints targeted help command audits; serial: {serial:?}",
     );
     assert!(

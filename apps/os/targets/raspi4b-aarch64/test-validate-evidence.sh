@@ -25,6 +25,7 @@ missing_targeted_input_help_evidence="$tmp_dir/missing-targeted-input-help.md"
 missing_targeted_proof_help_evidence="$tmp_dir/missing-targeted-proof-help.md"
 missing_targeted_vfs_help_evidence="$tmp_dir/missing-targeted-vfs-help.md"
 missing_targeted_help_evidence="$tmp_dir/missing-targeted-help.md"
+missing_remaining_command_help_evidence="$tmp_dir/missing-remaining-command-help.md"
 missing_live_source_evidence="$tmp_dir/missing-live-source.md"
 missing_last_poll_evidence="$tmp_dir/missing-last-poll.md"
 missing_manual_next_evidence="$tmp_dir/missing-manual-next.md"
@@ -46,6 +47,7 @@ missing_proof_command_evidence="$tmp_dir/missing-proof-command.md"
 missing_proof_identity_evidence="$tmp_dir/missing-proof-identity.md"
 missing_proof_screentest_fact_evidence="$tmp_dir/missing-proof-screentest-fact.md"
 missing_vfs_help_evidence="$tmp_dir/missing-vfs-help.md"
+missing_vfs_help_detail_evidence="$tmp_dir/missing-vfs-help-detail.md"
 missing_vfs_proof_evidence="$tmp_dir/missing-vfs-proof.md"
 missing_vfs_probe_catalog_evidence="$tmp_dir/missing-vfs-probe-catalog.md"
 missing_final_log_sequence_evidence="$tmp_dir/missing-final-log-sequence.md"
@@ -117,6 +119,7 @@ write_passing_evidence() {
         printf '  proof\n'
         printf '  cat /boot/proof\n'
         printf '  help\n'
+        printf '  help clear\n'
         printf '  help screentest\n'
         printf '  help input\n'
         printf '  help proof\n'
@@ -125,9 +128,13 @@ write_passing_evidence() {
         printf '  help cd\n'
         printf '  help cat\n'
         printf '  help mount\n'
+        printf '  help device\n'
         printf '  help dmesg\n'
         printf '  help status\n'
         printf '  help probe\n'
+        printf '  help launch\n'
+        printf '  help reovim\n'
+        printf '  help halt\n'
         printf '  cat /boot/help\n'
         printf '  clear\n'
         printf '  screentest\n'
@@ -183,7 +190,7 @@ write_passing_evidence() {
         printf '  usb_keyboard_probe=enabled\n'
         printf '  usb_keyboard_last_poll=report-ready\n'
         printf '  manual_next=type-shell-command\n'
-        printf '  help catalog available through /boot/help\n'
+        printf '  detailed help catalog available through /boot/help\n'
         printf '  screentest includes erase-line mode diagnostics\n'
         printf '  kernel log stats available through /log/stats\n'
         printf '  probe catalog available through /boot/probes\n'
@@ -200,6 +207,7 @@ write_passing_evidence() {
         printf '  proof\n'
         printf '  cat /boot/proof\n'
         printf '  help\n'
+        printf '  help clear\n'
         printf '  help screentest\n'
         printf '  help input\n'
         printf '  help proof\n'
@@ -208,9 +216,13 @@ write_passing_evidence() {
         printf '  help cd\n'
         printf '  help cat\n'
         printf '  help mount\n'
+        printf '  help device\n'
         printf '  help dmesg\n'
         printf '  help status\n'
         printf '  help probe\n'
+        printf '  help launch\n'
+        printf '  help reovim\n'
+        printf '  help halt\n'
         printf '  cat /boot/help\n'
         printf '  clear\n'
         printf '  screentest\n'
@@ -266,7 +278,7 @@ write_passing_evidence() {
         printf '  usb_keyboard_probe=enabled\n'
         printf '  usb_keyboard_last_poll=report-ready\n'
         printf '  manual_next=type-shell-command\n'
-        printf '  help catalog available through /boot/help\n'
+        printf '  detailed help catalog available through /boot/help\n'
         printf '  screentest includes erase-line mode diagnostics\n'
         printf '  kernel log stats available through /log/stats\n'
         printf '  probe catalog available through /boot/probes\n'
@@ -281,6 +293,8 @@ write_passing_evidence() {
         printf 'reovim root shell\n'
         printf 'commands: help, clear, screentest, pwd, ls, cd, cat, mount, input, status, proof, device, dmesg, probe, launch, reovim, halt\n'
         printf 'usage: help [command]\n'
+        printf 'reovim-os> help clear\n'
+        printf 'clear - clear framebuffer console and terminal\n'
         printf 'reovim-os> help screentest\n'
         printf 'screentest - print renderer diagnostics\n'
         printf '  required rows: el: clean, el1: clean-left, el2: clean-all\n'
@@ -298,16 +312,43 @@ write_passing_evidence() {
         printf 'cat path... - print kernel VFS pseudo files\n'
         printf 'reovim-os> help mount\n'
         printf 'mount - print kernel VFS mount table\n'
+        printf 'reovim-os> help device\n'
+        printf 'device - print boot memory and device inventory\n'
         printf 'reovim-os> help dmesg\n'
         printf 'dmesg [--stats] - print retained kernel log or ring stats\n'
         printf 'reovim-os> help status\n'
         printf 'status - print boot, input, and manual_next summary\n'
         printf 'reovim-os> help probe\n'
         printf 'probe target - run lower hardware probe; try `probe help` or `cat /boot/probes`\n'
+        printf 'reovim-os> help launch\n'
+        printf 'launch [payload] - list or run registered payloads\n'
+        printf 'reovim-os> help reovim\n'
+        printf 'reovim - run the default reovim payload alias\n'
+        printf 'reovim-os> help halt\n'
+        printf 'halt - request root daemon shutdown\n'
         printf 'reovim-os> cat /boot/help\n'
         printf 'reovim root shell\n'
         printf 'commands: help, clear, screentest, pwd, ls, cd, cat, mount, input, status, proof, device, dmesg, probe, launch, reovim, halt\n'
         printf 'usage: help [command]\n'
+        printf 'details:\n'
+        printf '  help [command] - show command help\n'
+        printf '  clear - clear framebuffer console and terminal\n'
+        printf '  screentest - print renderer diagnostics\n'
+        printf '    required rows: el: clean, el1: clean-left, el2: clean-all\n'
+        printf '  pwd - print current kernel VFS directory\n'
+        printf '  ls [path] - list a kernel VFS directory\n'
+        printf '  cd [path] - change current kernel VFS directory\n'
+        printf '  cat path... - print kernel VFS pseudo files\n'
+        printf '  mount - print kernel VFS mount table\n'
+        printf '  input - print live console input diagnostics\n'
+        printf '  status - print boot, input, and manual_next summary\n'
+        printf '  proof - print physical input proof checklist\n'
+        printf '  device - print boot memory and device inventory\n'
+        printf '  dmesg [--stats] - print retained kernel log or ring stats\n'
+        printf '  probe target - run lower hardware probe; try `probe help` or `cat /boot/probes`\n'
+        printf '  launch [payload] - list or run registered payloads\n'
+        printf '  reovim - run the default reovim payload alias\n'
+        printf '  halt - request root daemon shutdown\n'
         printf 'reovim-os> clear\n'
         printf '\033[2J\033[H'
         printf 'reovim-os> screentest\n'
@@ -492,6 +533,8 @@ write_passing_evidence() {
         printf 'shell.status=ok\n'
         printf 'shell: help\n'
         printf 'shell.status=ok\n'
+        printf 'shell: help clear\n'
+        printf 'shell.status=ok\n'
         printf 'shell: help screentest\n'
         printf 'shell.status=ok\n'
         printf 'shell: help input\n'
@@ -508,11 +551,19 @@ write_passing_evidence() {
         printf 'shell.status=ok\n'
         printf 'shell: help mount\n'
         printf 'shell.status=ok\n'
+        printf 'shell: help device\n'
+        printf 'shell.status=ok\n'
         printf 'shell: help dmesg\n'
         printf 'shell.status=ok\n'
         printf 'shell: help status\n'
         printf 'shell.status=ok\n'
         printf 'shell: help probe\n'
+        printf 'shell.status=ok\n'
+        printf 'shell: help launch\n'
+        printf 'shell.status=ok\n'
+        printf 'shell: help reovim\n'
+        printf 'shell.status=ok\n'
+        printf 'shell: help halt\n'
         printf 'shell.status=ok\n'
         printf 'shell: cat /boot/help\n'
         printf 'shell.status=ok\n'
@@ -594,12 +645,13 @@ write_passing_evidence() {
         printf -- '- [x] A physical USB keypress reached the root shell.\n'
         printf -- '- [x] `proof` prints the physical input proof checklist.\n'
         printf -- '- [x] `cat /boot/proof` prints the VFS-backed proof pseudo-file.\n'
-        printf -- '- [x] `cat /boot/help` prints the VFS-backed help catalog.\n'
+        printf -- '- [x] `cat /boot/help` prints the VFS-backed detailed help catalog.\n'
         printf -- '- [x] `help dmesg` / `ls /log` make kernel log stats discoverable.\n'
         printf -- '- [x] `help input` / `help proof` make live input diagnostics and the proof checklist self-describing.\n'
         printf -- '- [x] `help status` / `help probe` make `manual_next` and probe catalog discovery self-describing.\n'
         printf -- '- [x] `help pwd` / `help ls` / `help cd` / `help cat` / `help mount` make VFS navigation self-describing.\n'
-        printf -- '- [x] `help` / `help screentest` / `clear` / `screentest` prove shell help and erase-line mode diagnostics.\n'
+        printf -- '- [x] `help` / `help clear` / `help screentest` / `clear` / `screentest` prove shell help and erase-line mode diagnostics.\n'
+        printf -- '- [x] `help device` / `help launch` / `help reovim` / `help halt` make boot inventory, payload, and shutdown commands self-describing.\n'
         printf -- '- [x] `pwd` / `ls` / `mount` report the kernel VFS namespace and mounts.\n'
         printf -- '- [x] `device` / `cat /boot/memory` / `cat /boot/devices` report boot inventory.\n'
         printf -- '- [x] `cd /dev` / `ls` / `cat uart0` prove relative VFS device-file access.\n'
@@ -683,6 +735,10 @@ expect_failure "$missing_targeted_vfs_help_evidence" "missing-targeted-vfs-help"
 cp "$pass_evidence" "$missing_targeted_help_evidence"
 sed -i '\#^reovim-os> help status$#d' "$missing_targeted_help_evidence"
 expect_failure "$missing_targeted_help_evidence" "missing-targeted-help"
+
+cp "$pass_evidence" "$missing_remaining_command_help_evidence"
+sed -i '\#^reovim-os> help launch$#d' "$missing_remaining_command_help_evidence"
+expect_failure "$missing_remaining_command_help_evidence" "missing-remaining-command-help"
 
 cp "$pass_evidence" "$missing_live_source_evidence"
 sed -i '/^source=usb-keyboard+uart-fallback$/d' "$missing_live_source_evidence"
@@ -779,6 +835,10 @@ expect_failure "$missing_proof_screentest_fact_evidence" "missing-proof-screente
 cp "$pass_evidence" "$missing_vfs_help_evidence"
 sed -i '\#^reovim-os> cat /boot/help$#d' "$missing_vfs_help_evidence"
 expect_failure "$missing_vfs_help_evidence" "missing-vfs-help"
+
+cp "$pass_evidence" "$missing_vfs_help_detail_evidence"
+sed -i '\#^  launch \[payload\] - list or run registered payloads$#d' "$missing_vfs_help_detail_evidence"
+expect_failure "$missing_vfs_help_detail_evidence" "missing-vfs-help-detail"
 
 cp "$pass_evidence" "$missing_vfs_proof_evidence"
 sed -i '\#^reovim-os> cat /boot/proof$#d' "$missing_vfs_proof_evidence"

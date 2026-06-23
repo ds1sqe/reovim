@@ -247,6 +247,7 @@ pub fn lookup(path: &str, devices: &[DeviceEntry]) -> Result<Node, VfsError> {
         "/boot/image/",
         "/boot/input/",
         "/boot/proof/",
+        "/boot/probes/",
         "/boot/status/",
         "/boot/memory/",
         "/boot/devices/",
