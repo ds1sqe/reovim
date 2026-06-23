@@ -28,6 +28,18 @@ Copy `apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img` to the Pi
 files and DTB for the board. Keep `REOVIM_OS_BOOTLINE` unset for real-machine
 input proof; a bootline script is only a deterministic test harness.
 
+To build and install the image onto a mounted Pi 4 boot partition:
+
+```sh
+apps/os/targets/raspi4b-aarch64/install-image.sh --build /path/to/bootfs
+```
+
+The install helper only copies `kernel8.img`; it does not format media, mount
+media, or install Raspberry Pi firmware files. If `kernel8.img` already exists
+on the boot partition, the helper saves a timestamped backup before replacing
+it, then prints the installed image byte count and SHA-256 for the evidence
+template.
+
 ## QEMU Smoke
 
 QEMU raspi4b currently disables the DTB PCIe path used by the Pi 4 VL805 xHCI

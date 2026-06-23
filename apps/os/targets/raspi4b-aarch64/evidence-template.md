@@ -11,7 +11,10 @@ unless the input source is `physical USB keyboard` and the shell reports
 - Board:
 - Image path:
 - Image bytes:
+- Image SHA-256:
 - Image build command:
+- Image install command:
+- Boot partition path:
 - Evidence label:
   - [ ] display-only
   - [ ] UART input
