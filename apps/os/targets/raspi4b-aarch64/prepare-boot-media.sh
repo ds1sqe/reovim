@@ -127,10 +127,25 @@ if [ "$source_sha" != "$installed_sha" ]; then
     fail "installed kernel8.img SHA mismatch: expected $source_sha got $installed_sha"
 fi
 
+bytes="$(wc -c <"$installed" | tr -d ' ')"
+{
+    printf '\n## Media Preparation\n\n'
+    printf 'Required media facts:\n\n'
+    printf -- '- [x] `media_prepare=ok`\n'
+    printf -- '- [x] installed `kernel8.img` SHA-256 matches image SHA-256.\n\n'
+    printf 'Paste the media-prep result:\n\n'
+    printf '```text\n'
+    printf 'media_prepare=ok\n'
+    printf 'bootfs=%s\n' "$bootfs_abs"
+    printf 'installed=%s\n' "$installed"
+    printf 'bytes=%s\n' "$bytes"
+    printf 'sha256=%s\n' "$installed_sha"
+    printf '```\n'
+} >>"$tmp_evidence"
+
 mv "$tmp_evidence" "$EVIDENCE_OUT"
 tmp_evidence=""
 
-bytes="$(wc -c <"$installed" | tr -d ' ')"
 printf 'media_prepare=ok\n'
 printf 'bootfs=%s\n' "$bootfs_abs"
 printf 'installed=%s\n' "$installed"

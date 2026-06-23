@@ -27,6 +27,19 @@ unless the input source is `physical USB keyboard` and the shell reports
 - UART serial console attached:
 - `REOVIM_OS_BOOTLINE` unset:
 
+## Media Preparation
+
+Required media facts:
+
+- [ ] `media_prepare=ok`
+- [ ] installed `kernel8.img` SHA-256 matches image SHA-256.
+
+Paste the media-prep result from `prepare-boot-media.sh`:
+
+```text
+
+```
+
 ## Boot Evidence
 
 Paste the boot report or serial transcript excerpt:

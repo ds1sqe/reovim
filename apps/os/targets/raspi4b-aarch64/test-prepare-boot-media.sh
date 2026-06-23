@@ -48,6 +48,7 @@ if "$PREPARE_SCRIPT" --skip-qemu --bootfs "$tmp_bootfs" --evidence "$existing_ev
 fi
 
 prepare_output="$("$PREPARE_SCRIPT" --skip-qemu --bootfs "$tmp_bootfs" --evidence "$tmp_evidence")"
+source_bytes="$(wc -c <"$IMAGE" | tr -d ' ')"
 source_sha="$(sha256sum "$IMAGE" | awk '{ print $1 }')"
 installed_sha="$(sha256sum "$tmp_bootfs/kernel8.img" | awk '{ print $1 }')"
 
@@ -76,6 +77,13 @@ evidence="$(cat "$tmp_evidence")"
 expect_contains "$evidence" "- Image SHA-256: $source_sha" "evidence image sha"
 expect_contains "$evidence" "- Preflight result: preflight=ok qemu_smoke=skipped" "evidence preflight result"
 expect_contains "$evidence" "- Boot partition path: $tmp_bootfs" "evidence bootfs"
+expect_contains "$evidence" "## Media Preparation" "evidence media section"
+expect_contains "$evidence" "- [x] \`media_prepare=ok\`" "evidence media status checkbox"
+expect_contains "$evidence" "- [x] installed \`kernel8.img\` SHA-256 matches image SHA-256." "evidence install hash checkbox"
+expect_contains "$evidence" "media_prepare=ok" "evidence media status"
+expect_contains "$evidence" "installed=$tmp_bootfs/kernel8.img" "evidence installed path"
+expect_contains "$evidence" "bytes=$source_bytes" "evidence installed bytes"
+expect_contains "$evidence" "sha256=$source_sha" "evidence installed sha"
 
 printf 'boot media prepare smoke ok\n'
 printf 'sha256=%s\n' "$source_sha"

@@ -17,6 +17,7 @@ trap cleanup EXIT
 pass_evidence="$tmp_dir/pass.md"
 display_only_evidence="$tmp_dir/display-only.md"
 missing_audit_evidence="$tmp_dir/missing-audit.md"
+missing_media_evidence="$tmp_dir/missing-media.md"
 validator_output="$tmp_dir/validator.out"
 
 write_passing_evidence() {
@@ -31,6 +32,17 @@ write_passing_evidence() {
         printf '  - [ ] UART input\n'
         printf '  - [ ] bootline-script\n'
         printf '  - [x] physical USB keyboard\n\n'
+        printf '## Media Preparation\n\n'
+        printf 'Required media facts:\n\n'
+        printf -- '- [x] `media_prepare=ok`\n'
+        printf -- '- [x] installed `kernel8.img` SHA-256 matches image SHA-256.\n\n'
+        printf '```text\n'
+        printf 'media_prepare=ok\n'
+        printf 'bootfs=/media/pi-boot\n'
+        printf 'installed=/media/pi-boot/kernel8.img\n'
+        printf 'bytes=433788\n'
+        printf 'sha256=abeccca617486102d57d9e25b93f8c59c463003f2f7584b69a3faae5d6ba15b2\n'
+        printf '```\n\n'
         printf '## Boot Evidence\n\n'
         printf '```text\n'
         printf 'reovim-os> cat /boot/image\n'
@@ -114,5 +126,9 @@ expect_failure "$display_only_evidence" "display-only"
 cp "$pass_evidence" "$missing_audit_evidence"
 sed -i '/^shell: dmesg$/d' "$missing_audit_evidence"
 expect_failure "$missing_audit_evidence" "missing-audit"
+
+cp "$pass_evidence" "$missing_media_evidence"
+sed -i '/^media_prepare=ok$/d' "$missing_media_evidence"
+expect_failure "$missing_media_evidence" "missing-media"
 
 printf 'evidence validator smoke ok\n'

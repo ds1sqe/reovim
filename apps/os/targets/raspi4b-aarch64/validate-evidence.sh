@@ -53,6 +53,8 @@ forbid_re '^  - \[[xX]\] bootline-script$' 'bootline-script evidence label is ch
 forbid_re '^- \[[xX]\] FAIL: display/UART/scripted evidence only\.$' 'FAIL result is checked'
 
 require_re '^- Preflight result: preflight=ok' 'preflight result passed'
+require_re '^- \[[xX]\] `media_prepare=ok`$' 'media-prep status checkbox'
+require_re '^- \[[xX]\] installed `kernel8\.img` SHA-256 matches image SHA-256\.$' 'installed image SHA checkbox'
 require_re '^  - \[[xX]\] physical USB keyboard$' 'physical USB keyboard evidence label'
 require_re '^- \[[xX]\] PASS: physical USB keyboard proof complete\.$' 'physical USB keyboard PASS result'
 
@@ -69,6 +71,10 @@ require_re '^- \[[xX]\] `dmesg` contains `shell: <command>` audit lines for the 
 require_re '^- \[[xX]\] `dmesg` contains the `probe usb-keyboard` output or blocker\.$' 'probe-output dmesg checkbox'
 
 require_re '^reovim-os>' 'root shell prompt in pasted transcript'
+require_re '^media_prepare=ok$' 'media-prep result line'
+require_re '^installed=.+/kernel8\.img$' 'installed kernel8.img path line'
+require_re '^bytes=[1-9][0-9]*$' 'installed kernel8.img byte count line'
+require_re '^sha256=[0-9a-f]{64}$' 'installed kernel8.img SHA-256 line'
 require_re '^target=aarch64-unknown-none$' 'cat /boot/image target line'
 require_re '^bootline=absent$' 'cat /boot/image bootline line'
 require_re '^input=usb-keyboard\+uart-fallback$' 'live USB keyboard input line'

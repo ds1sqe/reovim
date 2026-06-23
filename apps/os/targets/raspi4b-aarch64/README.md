@@ -38,8 +38,9 @@ apps/os/targets/raspi4b-aarch64/prepare-boot-media.sh \
 
 The media-prep helper runs preflight, installs the exact built `kernel8.img`,
 verifies the installed image SHA-256 against the built image, and only then
-publishes the evidence seed for the physical session. Use this path for the
-real HDMI plus USB-keyboard proof.
+publishes the evidence seed for the physical session. The published evidence
+seed includes `media_prepare=ok`, the installed `kernel8.img` path, byte count,
+and SHA-256. Use this path for the real HDMI plus USB-keyboard proof.
 
 To build and install the image manually onto a mounted Pi 4 boot partition:
 
@@ -125,9 +126,10 @@ apps/os/targets/raspi4b-aarch64/validate-evidence.sh \
 
 The validator rejects checked display-only, UART, bootline-script, or FAIL
 labels. It also requires physical-keyboard PASS labels, no-bootline image
-facts, USB-keyboard readiness, `probe usb-keyboard` output, and `dmesg` command
-audit lines. It is a textual guard for completed evidence; it does not replace
-the physical HDMI plus USB-keyboard session.
+facts, installed-media identity from `prepare-boot-media.sh`, USB-keyboard
+readiness, `probe usb-keyboard` output, and `dmesg` command audit lines. It is
+a textual guard for completed evidence; it does not replace the physical HDMI
+plus USB-keyboard session.
 
 To smoke-test the validator:
 
