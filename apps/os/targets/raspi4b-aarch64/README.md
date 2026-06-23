@@ -66,8 +66,13 @@ on the boot partition, the helper saves a timestamped backup before replacing
 it, then prints the installed image byte count and SHA-256 for the evidence
 template.
 
-To smoke-test the installer against a temporary directory instead of real
-media:
+To run every no-real-media Pi 4 target smoke before touching real media:
+
+```sh
+apps/os/targets/raspi4b-aarch64/test-target-smokes.sh
+```
+
+For narrower debugging, the aggregate smoke runs these individual checks:
 
 ```sh
 apps/os/targets/raspi4b-aarch64/test-check-bootfs.sh
