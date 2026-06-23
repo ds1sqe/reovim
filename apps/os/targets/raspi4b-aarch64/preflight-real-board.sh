@@ -166,6 +166,7 @@ write_evidence_seed() {
         printf -- '- [ ] A physical USB keypress reached the root shell.\n'
         printf -- '- [ ] `input=usb-keyboard+uart-fallback`\n'
         printf -- '- [ ] `usb_keyboard=ready`\n'
+        printf -- '- [ ] `probe help` lists `usb-keyboard` and `xhci-read-keyboard-report`.\n'
         printf -- '- [ ] `dmesg` contains `shell: <command>` and `shell.status=ok` audit lines for the typed commands.\n'
         printf -- '- [ ] `dmesg` contains the `probe usb-keyboard` output or blocker.\n\n'
         printf 'If unsuccessful, record the exact blocker:\n\n'

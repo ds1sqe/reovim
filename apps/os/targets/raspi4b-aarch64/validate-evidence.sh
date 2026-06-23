@@ -86,6 +86,7 @@ require_re '^- \[[xX]\] QEMU/VNC/HDMI display was not counted as keyboard input$
 require_re '^- \[[xX]\] A physical USB keypress reached the root shell\.$' 'physical keypress reached shell checkbox'
 require_re '^- \[[xX]\] `input=usb-keyboard\+uart-fallback`$' 'USB keyboard input-source checkbox'
 require_re '^- \[[xX]\] `usb_keyboard=ready`$' 'USB keyboard readiness checkbox'
+require_re '^- \[[xX]\] `probe help` lists `usb-keyboard` and `xhci-read-keyboard-report`\.$' 'probe help catalog checkbox'
 require_re '^- \[[xX]\] `dmesg` contains `shell: <command>` and `shell\.status=ok` audit lines for the typed commands\.$' 'dmesg command/status audit checkbox'
 require_re '^- \[[xX]\] `dmesg` contains the `probe usb-keyboard` output or blocker\.$' 'probe-output dmesg checkbox'
 
@@ -98,6 +99,9 @@ require_re '^target=aarch64-unknown-none$' 'cat /boot/image target line'
 require_re '^bootline=absent$' 'cat /boot/image bootline line'
 require_re '^input=usb-keyboard\+uart-fallback$' 'live USB keyboard input line'
 require_re '^usb_keyboard=ready$' 'live USB keyboard readiness line'
+require_re '^probe targets:$' 'probe help target catalog header'
+require_re '^  usb-keyboard \(alias: keyboard\)$' 'probe help USB keyboard target'
+require_re '^  xhci-read-keyboard-report \(alias: usb-keyboard-read-report\)$' 'probe help keyboard report target'
 require_re '^probe usb-keyboard:$' 'probe usb-keyboard output header'
 require_re '^state=(report-ready|decoded-pending|report-pending)$' 'USB keyboard probe ready/pending state'
 
