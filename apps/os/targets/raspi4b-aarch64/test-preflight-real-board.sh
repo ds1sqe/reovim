@@ -62,6 +62,9 @@ expect_contains "$evidence" '- [ ] `REOVIM_OS_BOOTLINE` unset on booted image.' 
 expect_contains "$evidence" "- [ ] physical USB keyboard" "evidence physical keyboard checkbox"
 expect_contains "$evidence" 'proof' "evidence proof command"
 expect_contains "$evidence" 'cat /boot/proof' "evidence VFS proof command"
+expect_contains "$evidence" 'pwd' "evidence pwd command"
+expect_contains "$evidence" 'ls /boot' "evidence boot ls command"
+expect_contains "$evidence" 'cat /boot/mounts' "evidence VFS mounts command"
 expect_contains "$evidence" 'cat /boot/status' "evidence VFS status command"
 expect_contains "$evidence" 'cat /boot/input' "evidence VFS input command"
 expect_contains "$evidence" 'cat /boot/image' "evidence command transcript"
@@ -71,6 +74,7 @@ expect_contains "$evidence" '`cat /boot/status` / `cat /boot/input` report VFS-b
 expect_contains "$evidence" '`probe help` lists `usb-keyboard` and `xhci-read-keyboard-report`.' "evidence probe help fact"
 expect_contains "$evidence" '`proof` prints the physical input proof checklist.' "evidence proof fact"
 expect_contains "$evidence" '`cat /boot/proof` prints the VFS-backed proof pseudo-file.' "evidence VFS proof fact"
+expect_contains "$evidence" '`pwd` / `ls` / `mount` report the kernel VFS namespace and mounts.' "evidence VFS namespace fact"
 expect_contains "$evidence" '`shell.status=ok` audit lines' "evidence status audit fact"
 expect_contains "$evidence" '`usb_keyboard=ready`' "evidence readiness fact"
 

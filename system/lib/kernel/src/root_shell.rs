@@ -568,9 +568,16 @@ fn write_boot_input(daemon: &RootDaemon<'_>) {
 fn write_boot_proof(daemon: &RootDaemon<'_>) {
     daemon.write_line("proof:");
     daemon.write_line("commands:");
+    daemon.write_line("  pwd");
+    daemon.write_line("  ls /");
+    daemon.write_line("  ls /boot");
+    daemon.write_line("  mount");
+    daemon.write_line("  cat /boot/mounts");
     daemon.write_line("  cat /boot/image");
     daemon.write_line("  status");
+    daemon.write_line("  cat /boot/status");
     daemon.write_line("  input");
+    daemon.write_line("  cat /boot/input");
     daemon.write_line("  probe help");
     daemon.write_line("  probe usb-keyboard");
     daemon.write_line("  cat /boot/profile");

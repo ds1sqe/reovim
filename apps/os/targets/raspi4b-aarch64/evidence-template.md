@@ -64,6 +64,11 @@ Type these commands from the physical USB keyboard for final acceptance:
 ```text
 proof
 cat /boot/proof
+pwd
+ls /
+ls /boot
+mount
+cat /boot/mounts
 cat /boot/image
 status
 cat /boot/status
@@ -89,6 +94,7 @@ Required success facts:
 - [ ] A physical USB keypress reached the root shell.
 - [ ] `proof` prints the physical input proof checklist.
 - [ ] `cat /boot/proof` prints the VFS-backed proof pseudo-file.
+- [ ] `pwd` / `ls` / `mount` report the kernel VFS namespace and mounts.
 - [ ] `input=usb-keyboard+uart-fallback`
 - [ ] `usb_keyboard=ready`
 - [ ] `status` / `input` report live ready source diagnostics.

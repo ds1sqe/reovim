@@ -757,8 +757,12 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "probe target help appears in transcript; serial: {serial:?}",
     );
     assert!(
-        serial.contains("proof:\ncommands:\n  cat /boot/image"),
+        serial.contains("proof:\ncommands:\n  pwd\n  ls /\n  ls /boot"),
         "proof checklist appears in transcript; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("  mount\n  cat /boot/mounts\n  cat /boot/image"),
+        "proof checklist includes VFS mount commands; serial: {serial:?}",
     );
     assert!(
         serial.contains("expected:\n  bootline=absent"),

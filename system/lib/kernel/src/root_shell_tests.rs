@@ -395,8 +395,15 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
 
     run_session_command(&mut session, b"cat /boot/proof\n");
     assert_contains(sink_bytes(), b"proof:\n");
+    assert_contains(sink_bytes(), b"  pwd\n");
+    assert_contains(sink_bytes(), b"  ls /\n");
+    assert_contains(sink_bytes(), b"  ls /boot\n");
+    assert_contains(sink_bytes(), b"  mount\n");
+    assert_contains(sink_bytes(), b"  cat /boot/mounts\n");
     assert_contains(sink_bytes(), b"  cat /boot/image\n");
+    assert_contains(sink_bytes(), b"  cat /boot/status\n");
     assert_contains(sink_bytes(), b"  probe usb-keyboard\n");
+    assert_contains(sink_bytes(), b"  cat /boot/input\n");
     assert_contains(sink_bytes(), b"  cat /log/dmesg\n");
     assert_contains(sink_bytes(), b"  source=usb-keyboard+uart-fallback\n");
     assert_contains(sink_bytes(), b"  usb_keyboard=ready\n");

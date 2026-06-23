@@ -21,7 +21,7 @@ image=apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img
 bytes=<image-size>
 ```
 
-Current expected size is `435036` bytes.
+Current expected size is `435276` bytes.
 
 Copy `apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img` to the Pi
 4 boot partition as `kernel8.img`, using the normal Raspberry Pi firmware
@@ -181,6 +181,11 @@ keyboard:
 ```text
 proof
 cat /boot/proof
+pwd
+ls /
+ls /boot
+mount
+cat /boot/mounts
 cat /boot/image
 status
 cat /boot/status
@@ -197,6 +202,8 @@ Record the full visible output or serial transcript. The key evidence is:
 
 - `proof` prints the physical-input proof checklist from the running OS.
 - `cat /boot/proof` prints the same checklist through the kernel VFS.
+- `pwd`, `ls /`, `ls /boot`, `mount`, and `cat /boot/mounts` show the root
+  VFS namespace and pseudo-filesystem mount table.
 - `cat /boot/image` shows `target=aarch64-unknown-none` and `bootline=absent`.
 - `status` / `input` show live ready source diagnostics:
   `source=usb-keyboard+uart-fallback`, `source_state=ready`, `mode=live`,
