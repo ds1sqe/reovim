@@ -789,8 +789,20 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "proof checklist includes relative device access commands; serial: {serial:?}",
     );
     assert!(
-        serial.contains("expected:\n  bootline=absent"),
-        "proof checklist expected facts appear; serial: {serial:?}",
+        serial.contains("expected:\n  package=reovim-os"),
+        "proof checklist image facts appear; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("  bootline=absent"),
+        "proof checklist bootline fact appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("  profile=shell-only\n  launch=disabled"),
+        "proof checklist profile facts appear; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("  input_mode=live"),
+        "proof checklist profile input mode appears; serial: {serial:?}",
     );
     assert!(
         serial.contains("probe targets include pcie"),

@@ -612,10 +612,13 @@ fn write_boot_proof(daemon: &RootDaemon<'_>) {
     daemon.write_line("terminal:");
     daemon.write_line("  halt");
     daemon.write_line("expected:");
+    write_boot_proof_image_facts(daemon);
+    write_boot_proof_profile_facts(daemon);
     daemon.write_line("  bootline=absent");
     daemon.write_line("  source=usb-keyboard+uart-fallback");
     daemon.write_line("  source_state=ready");
     daemon.write_line("  mode=live");
+    daemon.write_line("  input_mode=live");
     daemon.write_line("  usb_keyboard=ready");
     daemon.write_line("  usb_keyboard_probe=enabled");
     daemon.write_line("  help catalog available through /boot/help");
@@ -626,6 +629,37 @@ fn write_boot_proof(daemon: &RootDaemon<'_>) {
     daemon.write_line("  shell.status=ok");
     daemon.write_line("  shell.status=error for disabled payload commands");
     daemon.write_line("  halt typed last prints halt: ok and stops root daemon");
+}
+
+fn write_boot_proof_image_facts(daemon: &RootDaemon<'_>) {
+    let image = daemon.boot_image();
+    daemon.write_bytes(b"  package=");
+    daemon.write_bytes(image.package.as_bytes());
+    daemon.write_bytes(b"\n  version=");
+    daemon.write_bytes(image.version.as_bytes());
+    daemon.write_bytes(b"\n  target=");
+    daemon.write_bytes(image.target.as_bytes());
+    daemon.write_bytes(b"\n  selected_profile=");
+    daemon.write_bytes(image.selected_profile.as_bytes());
+    daemon.write_bytes(b"\n  profile_request=");
+    daemon.write_bytes(image.profile_request.as_bytes());
+    daemon.write_bytes(b"\n  launch_profile_feature=");
+    daemon.write_bytes(image.launch_profile_feature.as_bytes());
+    daemon.write_bytes(b"\n");
+}
+
+fn write_boot_proof_profile_facts(daemon: &RootDaemon<'_>) {
+    daemon.write_bytes(b"  profile=");
+    daemon.write_bytes(daemon.profile_name().as_bytes());
+    daemon.write_bytes(b"\n  launch=");
+    daemon.write_bytes(if daemon.launch_enabled() {
+        b"enabled"
+    } else {
+        b"disabled"
+    });
+    daemon.write_bytes(b"\n  payloads=");
+    write_u64_dec(daemon, daemon.payloads().len() as u64);
+    daemon.write_bytes(b"\n");
 }
 
 fn write_boot_status(daemon: &RootDaemon<'_>) {

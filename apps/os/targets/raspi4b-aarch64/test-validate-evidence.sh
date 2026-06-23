@@ -36,6 +36,7 @@ missing_halt_evidence="$tmp_dir/missing-halt.md"
 prompt_after_halt_evidence="$tmp_dir/prompt-after-halt.md"
 missing_proof_evidence="$tmp_dir/missing-proof.md"
 missing_proof_command_evidence="$tmp_dir/missing-proof-command.md"
+missing_proof_identity_evidence="$tmp_dir/missing-proof-identity.md"
 missing_vfs_help_evidence="$tmp_dir/missing-vfs-help.md"
 missing_vfs_proof_evidence="$tmp_dir/missing-vfs-proof.md"
 missing_media_evidence="$tmp_dir/missing-media.md"
@@ -133,10 +134,20 @@ write_passing_evidence() {
         printf 'terminal:\n'
         printf '  halt\n'
         printf 'expected:\n'
+        printf '  package=reovim-os\n'
+        printf '  version=0.16.0-dev\n'
+        printf '  target=aarch64-unknown-none\n'
+        printf '  selected_profile=shell-only\n'
+        printf '  profile_request=shell-only\n'
+        printf '  launch_profile_feature=disabled\n'
+        printf '  profile=shell-only\n'
+        printf '  launch=disabled\n'
+        printf '  payloads=0\n'
         printf '  bootline=absent\n'
         printf '  source=usb-keyboard+uart-fallback\n'
         printf '  source_state=ready\n'
         printf '  mode=live\n'
+        printf '  input_mode=live\n'
         printf '  usb_keyboard=ready\n'
         printf '  usb_keyboard_probe=enabled\n'
         printf '  help catalog available through /boot/help\n'
@@ -184,10 +195,20 @@ write_passing_evidence() {
         printf 'terminal:\n'
         printf '  halt\n'
         printf 'expected:\n'
+        printf '  package=reovim-os\n'
+        printf '  version=0.16.0-dev\n'
+        printf '  target=aarch64-unknown-none\n'
+        printf '  selected_profile=shell-only\n'
+        printf '  profile_request=shell-only\n'
+        printf '  launch_profile_feature=disabled\n'
+        printf '  profile=shell-only\n'
+        printf '  launch=disabled\n'
+        printf '  payloads=0\n'
         printf '  bootline=absent\n'
         printf '  source=usb-keyboard+uart-fallback\n'
         printf '  source_state=ready\n'
         printf '  mode=live\n'
+        printf '  input_mode=live\n'
         printf '  usb_keyboard=ready\n'
         printf '  usb_keyboard_probe=enabled\n'
         printf '  help catalog available through /boot/help\n'
@@ -542,6 +563,10 @@ expect_failure "$missing_proof_evidence" "missing-proof"
 cp "$pass_evidence" "$missing_proof_command_evidence"
 sed -i '/^  probe help$/d' "$missing_proof_command_evidence"
 expect_failure "$missing_proof_command_evidence" "missing-proof-command"
+
+cp "$pass_evidence" "$missing_proof_identity_evidence"
+sed -i '/^  selected_profile=shell-only$/d' "$missing_proof_identity_evidence"
+expect_failure "$missing_proof_identity_evidence" "missing-proof-identity"
 
 cp "$pass_evidence" "$missing_vfs_help_evidence"
 sed -i '\#^reovim-os> cat /boot/help$#d' "$missing_vfs_help_evidence"
