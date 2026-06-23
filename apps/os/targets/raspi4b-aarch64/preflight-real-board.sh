@@ -336,6 +336,16 @@ if [ "$SKIP_QEMU" -eq 0 ]; then
         rm -f "$qemu_log"
         fail "QEMU smoke did not print the proof checklist"
     fi
+    if ! grep -q '^  proof$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include the proof command"
+    fi
+    if ! grep -q '^  cat /boot/proof$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include the VFS proof command"
+    fi
     if ! grep -q '^  cat /log/dmesg$' "$qemu_log"; then
         cat "$qemu_log" >&2
         rm -f "$qemu_log"
