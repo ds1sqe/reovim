@@ -6,11 +6,14 @@
 use {
     super::{RootShellSession, execute_root_command},
     crate::rootd::{
-        BootCheckState, BootImageSummary, ConsoleInputStatus, ConsoleInputSummary,
+        BootCheckState, BootImageSummary, ConsoleInputStatus, ConsoleInputSummary, HaltKernel,
         HardwareProbeResult, PayloadDescriptor, PayloadLaunchResult, ProfileSummary, RootDaemon,
         WriteFn,
     },
-    core::cell::UnsafeCell,
+    core::{
+        cell::UnsafeCell,
+        sync::atomic::{AtomicUsize, Ordering},
+    },
     reovim_testrt::{self as testrt, arch_test},
     reovim_uapi_system::{BootInfo, DeviceClass, DeviceEntry},
 };
@@ -30,6 +33,8 @@ static SINK: StaticSink = StaticSink {
     buf: UnsafeCell::new([0u8; SINK_CAPACITY]),
     len: UnsafeCell::new(0),
 };
+
+static HALT_CALLS: AtomicUsize = AtomicUsize::new(0);
 
 fn sink_write(bytes: &[u8]) {
     // SAFETY: The runner is single-threaded and the sink is cleared between
@@ -79,13 +84,22 @@ fn daemon_with_input_status(
     dmesg: Option<fn() -> &'static str>,
     input_status: Option<ConsoleInputStatus>,
 ) -> RootDaemon<'static> {
+    daemon_with_input_status_and_halt(profile, dmesg, input_status, None)
+}
+
+fn daemon_with_input_status_and_halt(
+    profile: ProfileSummary,
+    dmesg: Option<fn() -> &'static str>,
+    input_status: Option<ConsoleInputStatus>,
+    halt: Option<HaltKernel>,
+) -> RootDaemon<'static> {
     let daemon = RootDaemon::new(
         profile,
         sample_boot_info(),
         sample_devices(),
         sample_payloads(),
         dmesg,
-        None,
+        halt,
         Some(probe_fixture),
         input_status,
         "reovim-os> ",
@@ -126,13 +140,13 @@ fn run_command_preserving_log(
     sink_clear();
     let daemon = daemon(profile, dmesg);
     let mut session = RootShellSession::new();
-    let _ = execute_root_command(&daemon, &mut session, line);
+    let _ = daemon.run_command_line(&mut session, line);
 }
 
 fn run_session_command(session: &mut RootShellSession, line: &[u8]) {
     sink_clear();
     let daemon = daemon(ProfileSummary::new("shell-only", false), Some(diagnostics));
-    let _ = execute_root_command(&daemon, session, line);
+    let _ = daemon.run_command_line(session, line);
 }
 
 const SAMPLE_DEVICES: [DeviceEntry; 1] = [DeviceEntry {
@@ -216,6 +230,10 @@ fn probe_fixture(target: &str, _devices: &[DeviceEntry], write: WriteFn) -> Hard
     }
 }
 
+fn halt_fixture() {
+    HALT_CALLS.fetch_add(1, Ordering::Relaxed);
+}
+
 fn assert_contains(haystack: &[u8], needle: &[u8]) {
     let mut i = 0usize;
     while i + needle.len() <= haystack.len() {
@@ -235,8 +253,23 @@ arch_test!(root_shell_help, {
     run_command(ProfileSummary::new("shell-only", false), b"help\n", None);
     testrt::check_eq(
         sink_str(),
-        "reovim root shell\ncommands: help, clear, screentest, pwd, ls, cd, cat, mount, input, device, dmesg, probe, launch, reovim, halt\n",
+        "reovim root shell\ncommands: help, clear, screentest, pwd, ls, cd, cat, mount, input, status, device, dmesg, probe, launch, reovim, halt\nusage: help [command]\n",
     );
+
+    run_command(ProfileSummary::new("shell-only", false), b"help input\n", None);
+    testrt::check_eq(sink_str(), "input - print live console input diagnostics\n");
+
+    run_command(ProfileSummary::new("shell-only", false), b"help status\n", None);
+    testrt::check_eq(sink_str(), "status - print boot and input summary\n");
+
+    run_command(ProfileSummary::new("shell-only", false), b"help probe\n", None);
+    testrt::check_eq(sink_str(), "probe target - run lower hardware probe; try `probe help`\n");
+
+    run_command(ProfileSummary::new("shell-only", false), b"help missing\n", None);
+    testrt::check_eq(sink_str(), "help: unknown command: missing\n");
+
+    run_command(ProfileSummary::new("shell-only", false), b"help a b\n", None);
+    testrt::check_eq(sink_str(), "help: too many arguments\n");
 });
 
 arch_test!(root_shell_clear_and_screentest, {
@@ -325,6 +358,7 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"memory\n");
     assert_contains(sink_bytes(), b"mounts\n");
     assert_contains(sink_bytes(), b"profile\n");
+    assert_contains(sink_bytes(), b"status\n");
 
     run_session_command(&mut session, b"cat /boot/image\n");
     assert_contains(sink_bytes(), b"package=reovim-os\n");
@@ -343,6 +377,24 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"usb_keyboard_pending_bytes=0\n");
     assert_contains(sink_bytes(), b"usb_keyboard_probe=disabled\n");
     assert_contains(sink_bytes(), b"usb_keyboard_poll_interval_ms=0\n");
+
+    run_session_command(&mut session, b"cat /boot/status\n");
+    assert_contains(sink_bytes(), b"package=reovim-os\n");
+    assert_contains(sink_bytes(), b"target=fixture-target\n");
+    assert_contains(sink_bytes(), b"bootline=absent\n");
+    assert_contains(sink_bytes(), b"profile=shell-only\n");
+    assert_contains(sink_bytes(), b"input=fixture-input\n");
+    assert_contains(sink_bytes(), b"source_state=ready\n");
+    assert_contains(sink_bytes(), b"usb_keyboard=unavailable\n");
+    assert_contains(sink_bytes(), b"usb_keyboard_poll_interval_ms=0\n");
+    assert_contains(sink_bytes(), b"manual_next=probe-help\n");
+
+    run_session_command(&mut session, b"status\n");
+    assert_contains(sink_bytes(), b"package=reovim-os\n");
+    assert_contains(sink_bytes(), b"manual_next=probe-help\n");
+
+    run_session_command(&mut session, b"status extra\n");
+    testrt::check_eq(sink_str(), "status: too many arguments\n");
 
     run_session_command(&mut session, b"input\n");
     assert_contains(sink_bytes(), b"source=fixture-input\n");
@@ -400,16 +452,24 @@ arch_test!(root_shell_boot_profile_uses_live_console_input_status, {
     assert_contains(sink_bytes(), b"usb_keyboard_pending_bytes=2\n");
     assert_contains(sink_bytes(), b"usb_keyboard_probe=enabled\n");
     assert_contains(sink_bytes(), b"usb_keyboard_poll_interval_ms=5\n");
+
+    sink_clear();
+    let _ = execute_root_command(&daemon, &mut session, b"cat /boot/status\n");
+    assert_contains(sink_bytes(), b"input=usb-keyboard+uart-fallback\n");
+    assert_contains(sink_bytes(), b"source_state=ready\n");
+    assert_contains(sink_bytes(), b"usb_keyboard=ready\n");
+    assert_contains(sink_bytes(), b"usb_keyboard_poll_interval_ms=5\n");
+    assert_contains(sink_bytes(), b"manual_next=type-shell-command\n");
 });
 
 arch_test!(root_shell_dmesg_and_unknown_command, {
     run_command(ProfileSummary::new("shell-only", false), b"dmesg\n", None);
-    testrt::check_eq(sink_str(), "dmesg:\n(kernel log empty)\n");
+    testrt::check_eq(sink_str(), "dmesg:\nshell: dmesg\n");
 
     crate::klog::reset();
     crate::klog::append_line("rootd: boot report");
     run_command_preserving_log(ProfileSummary::new("shell-only", false), b"dmesg\n", None);
-    testrt::check_eq(sink_str(), "dmesg:\nrootd: boot report\n");
+    testrt::check_eq(sink_str(), "dmesg:\nrootd: boot report\nshell: dmesg\n");
 
     crate::klog::reset();
     crate::klog::append_line("rootd: boot report");
@@ -420,11 +480,41 @@ arch_test!(root_shell_dmesg_and_unknown_command, {
     );
     testrt::check_eq(
         sink_str(),
-        "dmesg:\nrootd: boot report\nexternal diagnostics:\nboot diagnostics complete\n",
+        "dmesg:\nrootd: boot report\nshell: dmesg\nexternal diagnostics:\nboot diagnostics complete\n",
     );
 
     run_command(ProfileSummary::new("shell-only", false), b"does-not-exist\n", None);
     testrt::check_eq(sink_str(), "error: unknown command, try `help`\n");
+    sink_clear();
+    let daemon = daemon(ProfileSummary::new("shell-only", false), None);
+    let mut session = RootShellSession::new();
+    let _ = daemon.run_command_line(&mut session, b"cat /log/dmesg\n");
+    assert_contains(sink_bytes(), b"shell: does-not-exist\n");
+    assert_contains(sink_bytes(), b"shell.status=error\n");
+});
+
+arch_test!(root_shell_halt_logs_status_before_callback, {
+    crate::klog::reset();
+    sink_clear();
+    HALT_CALLS.store(0, Ordering::Relaxed);
+    let daemon = daemon_with_input_status_and_halt(
+        ProfileSummary::new("shell-only", false),
+        None,
+        None,
+        Some(halt_fixture),
+    );
+    let mut session = RootShellSession::new();
+
+    let should_halt = daemon.run_command_line(&mut session, b"halt\n");
+
+    testrt::check(should_halt, "halt command requests daemon shutdown");
+    testrt::check_eq(sink_str(), "halt: ok\n");
+    testrt::check_eq(HALT_CALLS.load(Ordering::Relaxed), 0usize);
+
+    sink_clear();
+    let _ = crate::klog::write_to(sink_write);
+    assert_contains(sink_bytes(), b"shell: halt\n");
+    assert_contains(sink_bytes(), b"shell.status=halt\n");
 });
 
 arch_test!(root_shell_probe_uses_lower_provider, {

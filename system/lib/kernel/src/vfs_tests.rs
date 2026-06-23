@@ -58,6 +58,7 @@ arch_test!(vfs_looks_up_static_and_device_nodes, {
     testrt::check_eq(lookup("/boot/profile", &DEVICES), Ok(Node::File(File::BootProfile)));
     testrt::check_eq(lookup("/boot/image", &DEVICES), Ok(Node::File(File::BootImage)));
     testrt::check_eq(lookup("/boot/input", &DEVICES), Ok(Node::File(File::BootInput)));
+    testrt::check_eq(lookup("/boot/status", &DEVICES), Ok(Node::File(File::BootStatus)));
     testrt::check_eq(lookup("/boot/mounts", &DEVICES), Ok(Node::File(File::BootMounts)));
     testrt::check_eq(lookup("/dev/uart0", &DEVICES), Ok(Node::File(File::DevDevice(0))));
     testrt::check_eq(lookup("/dev/uart1", &DEVICES), Ok(Node::File(File::DevDevice(1))));

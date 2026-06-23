@@ -62,6 +62,56 @@ enum QuoteState {
     Double,
 }
 
+/// Root-shell command execution status for kernel audit logging.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RootCommandStatus {
+    /// The line carried no executable command.
+    Empty,
+    /// The command completed normally.
+    Ok,
+    /// The command was rejected or reported a command-level failure.
+    Error,
+    /// The command requested root-daemon shutdown.
+    Halt,
+}
+
+impl RootCommandStatus {
+    /// Stable text used in `klog` records.
+    #[must_use]
+    pub const fn as_bytes(self) -> &'static [u8] {
+        match self {
+            Self::Empty => b"empty",
+            Self::Ok => b"ok",
+            Self::Error => b"error",
+            Self::Halt => b"halt",
+        }
+    }
+}
+
+/// Result from executing one root-shell line.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct RootCommandResult {
+    status: RootCommandStatus,
+}
+
+impl RootCommandResult {
+    const fn new(status: RootCommandStatus) -> Self {
+        Self { status }
+    }
+
+    /// Returns the command status.
+    #[must_use]
+    pub const fn status(self) -> RootCommandStatus {
+        self.status
+    }
+
+    /// Whether this command requested root-daemon shutdown.
+    #[must_use]
+    pub const fn should_halt(self) -> bool {
+        matches!(self.status, RootCommandStatus::Halt)
+    }
+}
+
 #[derive(Clone, Copy)]
 struct Arg {
     bytes: [u8; MAX_TOKEN_BYTES],
@@ -265,7 +315,7 @@ fn write_device_name(daemon: &RootDaemon<'_>, devices: &[DeviceEntry], index: us
     write_u64_dec(daemon, ordinal as u64);
 }
 
-fn cmd_device(daemon: &RootDaemon<'_>) {
+fn cmd_device(daemon: &RootDaemon<'_>) -> RootCommandStatus {
     write_memory_summary(daemon, daemon.boot_info());
     daemon.write_bytes(b"devices:\n");
     let devices = daemon.devices();
@@ -274,25 +324,36 @@ fn cmd_device(daemon: &RootDaemon<'_>) {
         write_device_row(daemon, &devices[index], index);
         index += 1;
     }
+    RootCommandStatus::Ok
 }
 
-fn cmd_dmesg(daemon: &RootDaemon<'_>) {
+fn cmd_dmesg(daemon: &RootDaemon<'_>) -> RootCommandStatus {
     daemon.write_line("dmesg:");
     write_log_dmesg(daemon);
+    RootCommandStatus::Ok
 }
 
-fn cmd_pwd(daemon: &RootDaemon<'_>, session: &RootShellSession, line: &ParsedLine) {
+fn cmd_pwd(
+    daemon: &RootDaemon<'_>,
+    session: &RootShellSession,
+    line: &ParsedLine,
+) -> RootCommandStatus {
     if line.argc > 1 {
         daemon.write_line("pwd: too many arguments");
-        return;
+        return RootCommandStatus::Error;
     }
     daemon.write_line(session.cwd());
+    RootCommandStatus::Ok
 }
 
-fn cmd_cd(daemon: &RootDaemon<'_>, session: &mut RootShellSession, line: &ParsedLine) {
+fn cmd_cd(
+    daemon: &RootDaemon<'_>,
+    session: &mut RootShellSession,
+    line: &ParsedLine,
+) -> RootCommandStatus {
     if line.argc > 2 {
         daemon.write_line("cd: too many arguments");
-        return;
+        return RootCommandStatus::Error;
     }
     let target = if line.argc == 1 {
         "/"
@@ -303,20 +364,33 @@ fn cmd_cd(daemon: &RootDaemon<'_>, session: &mut RootShellSession, line: &Parsed
         Ok(path) => path,
         Err(error) => {
             write_path_error(daemon, "cd", target, error);
-            return;
+            return RootCommandStatus::Error;
         }
     };
     match vfs::lookup(path.as_str(), daemon.devices()) {
-        Ok(Node::Directory(_)) => session.set_cwd(path),
-        Ok(Node::File(_)) => write_path_error(daemon, "cd", target, VfsError::NotDirectory),
-        Err(error) => write_path_error(daemon, "cd", target, error),
+        Ok(Node::Directory(_)) => {
+            session.set_cwd(path);
+            RootCommandStatus::Ok
+        }
+        Ok(Node::File(_)) => {
+            write_path_error(daemon, "cd", target, VfsError::NotDirectory);
+            RootCommandStatus::Error
+        }
+        Err(error) => {
+            write_path_error(daemon, "cd", target, error);
+            RootCommandStatus::Error
+        }
     }
 }
 
-fn cmd_ls(daemon: &RootDaemon<'_>, session: &RootShellSession, line: &ParsedLine) {
+fn cmd_ls(
+    daemon: &RootDaemon<'_>,
+    session: &RootShellSession,
+    line: &ParsedLine,
+) -> RootCommandStatus {
     if line.argc > 2 {
         daemon.write_line("ls: too many arguments");
-        return;
+        return RootCommandStatus::Error;
     }
     let target = if line.argc == 1 {
         session.cwd()
@@ -327,15 +401,22 @@ fn cmd_ls(daemon: &RootDaemon<'_>, session: &RootShellSession, line: &ParsedLine
         Ok(path) => path,
         Err(error) => {
             write_path_error(daemon, "ls", target, error);
-            return;
+            return RootCommandStatus::Error;
         }
     };
     match vfs::lookup(path.as_str(), daemon.devices()) {
-        Ok(Node::Directory(directory)) => write_directory(daemon, directory),
+        Ok(Node::Directory(directory)) => {
+            write_directory(daemon, directory);
+            RootCommandStatus::Ok
+        }
         Ok(Node::File(_)) => {
             daemon.write_line(path_basename(path.as_str()));
+            RootCommandStatus::Ok
         }
-        Err(error) => write_path_error(daemon, "ls", target, error),
+        Err(error) => {
+            write_path_error(daemon, "ls", target, error);
+            RootCommandStatus::Error
+        }
     }
 }
 
@@ -353,6 +434,7 @@ fn write_directory(daemon: &RootDaemon<'_>, directory: Directory) {
             daemon.write_line("memory");
             daemon.write_line("mounts");
             daemon.write_line("profile");
+            daemon.write_line("status");
         }
         Directory::Dev => {
             let devices = daemon.devices();
@@ -367,12 +449,17 @@ fn write_directory(daemon: &RootDaemon<'_>, directory: Directory) {
     }
 }
 
-fn cmd_cat(daemon: &RootDaemon<'_>, session: &RootShellSession, line: &ParsedLine) {
+fn cmd_cat(
+    daemon: &RootDaemon<'_>,
+    session: &RootShellSession,
+    line: &ParsedLine,
+) -> RootCommandStatus {
     if line.argc == 1 {
         daemon.write_line("cat: missing path");
-        return;
+        return RootCommandStatus::Error;
     }
 
+    let mut status = RootCommandStatus::Ok;
     let mut index = 1usize;
     while index < line.argc {
         let target = line.args[index].as_str();
@@ -380,6 +467,7 @@ fn cmd_cat(daemon: &RootDaemon<'_>, session: &RootShellSession, line: &ParsedLin
             Ok(path) => path,
             Err(error) => {
                 write_path_error(daemon, "cat", target, error);
+                status = RootCommandStatus::Error;
                 index += 1;
                 continue;
             }
@@ -387,12 +475,17 @@ fn cmd_cat(daemon: &RootDaemon<'_>, session: &RootShellSession, line: &ParsedLin
         match vfs::lookup(path.as_str(), daemon.devices()) {
             Ok(Node::File(file)) => write_file(daemon, file),
             Ok(Node::Directory(_)) => {
-                write_path_error(daemon, "cat", target, VfsError::NotDirectory)
+                write_path_error(daemon, "cat", target, VfsError::NotDirectory);
+                status = RootCommandStatus::Error;
             }
-            Err(error) => write_path_error(daemon, "cat", target, error),
+            Err(error) => {
+                write_path_error(daemon, "cat", target, error);
+                status = RootCommandStatus::Error;
+            }
         }
         index += 1;
     }
+    status
 }
 
 fn write_file(daemon: &RootDaemon<'_>, file: File) {
@@ -400,6 +493,7 @@ fn write_file(daemon: &RootDaemon<'_>, file: File) {
         File::BootProfile => write_boot_profile(daemon),
         File::BootImage => write_boot_image(daemon),
         File::BootInput => write_boot_input(daemon),
+        File::BootStatus => write_boot_status(daemon),
         File::BootMemory => write_boot_memory(daemon),
         File::BootDevices => write_boot_devices(daemon),
         File::BootMounts => write_mount_table(daemon),
@@ -469,6 +563,42 @@ fn write_boot_input(daemon: &RootDaemon<'_>) {
     daemon.write_bytes(b"\n");
 }
 
+fn write_boot_status(daemon: &RootDaemon<'_>) {
+    let image = daemon.boot_image();
+    let input = daemon.console_input();
+    daemon.write_bytes(b"package=");
+    daemon.write_bytes(image.package.as_bytes());
+    daemon.write_bytes(b"\ntarget=");
+    daemon.write_bytes(image.target.as_bytes());
+    daemon.write_bytes(b"\nbootline=");
+    daemon.write_bytes(image.bootline.as_bytes());
+    daemon.write_bytes(b"\nprofile=");
+    daemon.write_bytes(daemon.profile_name().as_bytes());
+    daemon.write_bytes(b"\nlaunch=");
+    daemon.write_bytes(if daemon.launch_enabled() {
+        b"enabled"
+    } else {
+        b"disabled"
+    });
+    daemon.write_bytes(b"\ninput=");
+    daemon.write_bytes(input.source.as_bytes());
+    daemon.write_bytes(b"\nsource_state=");
+    daemon.write_bytes(input_state_word(input.source_state));
+    daemon.write_bytes(b"\ninput_mode=");
+    daemon.write_bytes(input.mode.as_bytes());
+    daemon.write_bytes(b"\nusb_keyboard=");
+    daemon.write_bytes(input_state_word(input.usb_keyboard));
+    daemon.write_bytes(b"\nusb_keyboard_probe=");
+    write_bool_word(daemon, input.usb_keyboard_probe_enabled);
+    daemon.write_bytes(b"\nusb_keyboard_poll_interval_ms=");
+    write_u64_dec(daemon, input.usb_keyboard_poll_interval_ms as u64);
+    daemon.write_bytes(b"\nusb_keyboard_pending_bytes=");
+    write_u64_dec(daemon, input.usb_keyboard_pending_bytes as u64);
+    daemon.write_bytes(b"\nmanual_next=");
+    daemon.write_bytes(manual_next_step(input));
+    daemon.write_bytes(b"\n");
+}
+
 fn write_boot_memory(daemon: &RootDaemon<'_>) {
     let info = daemon.boot_info();
     write_kv_num(daemon, "ranges", info.memory.range_count() as u64);
@@ -531,6 +661,16 @@ fn input_state_word(state: crate::rootd::BootCheckState) -> &'static [u8] {
     }
 }
 
+fn manual_next_step(input: crate::rootd::ConsoleInputSummary) -> &'static [u8] {
+    if input.usb_keyboard == crate::rootd::BootCheckState::Ok {
+        b"type-shell-command"
+    } else if input.usb_keyboard_probe_enabled {
+        b"probe-usb-keyboard"
+    } else {
+        b"probe-help"
+    }
+}
+
 fn write_payload_list(daemon: &RootDaemon<'_>, payloads: &[PayloadDescriptor]) {
     if payloads.is_empty() {
         daemon.write_line("launch: no payloads registered");
@@ -569,66 +709,118 @@ fn write_bool_word(daemon: &RootDaemon<'_>, value: bool) {
     daemon.write_bytes(if value { b"enabled" } else { b"disabled" });
 }
 
-fn cmd_launch(daemon: &RootDaemon<'_>, line: &ParsedLine) {
+fn payload_result_status(result: PayloadLaunchResult) -> RootCommandStatus {
+    match result {
+        PayloadLaunchResult::Ready => RootCommandStatus::Ok,
+        PayloadLaunchResult::NotConfigured | PayloadLaunchResult::Failed => {
+            RootCommandStatus::Error
+        }
+    }
+}
+
+fn cmd_launch(daemon: &RootDaemon<'_>, line: &ParsedLine) -> RootCommandStatus {
     if !daemon.launch_enabled() {
         daemon.write_line("launch disabled for this profile");
-        return;
+        return RootCommandStatus::Error;
     }
 
     if line.argc == 1 {
         write_payload_list(daemon, daemon.payloads());
-        return;
+        return RootCommandStatus::Ok;
     }
 
     if line.argc > 2 {
         daemon.write_line("launch: too many arguments");
-        return;
+        return RootCommandStatus::Error;
     }
 
     let payload = line.args[1].as_str();
     if payload.is_empty() {
         daemon.write_line("launch: no payload name");
-        return;
+        return RootCommandStatus::Error;
     }
 
-    write_payload_result(daemon, payload, daemon.launch_payload_by_name(payload));
+    let result = daemon.launch_payload_by_name(payload);
+    write_payload_result(daemon, payload, result);
+    payload_result_status(result)
 }
 
-fn cmd_probe(daemon: &RootDaemon<'_>, line: &ParsedLine) {
+fn cmd_probe(daemon: &RootDaemon<'_>, line: &ParsedLine) -> RootCommandStatus {
     if line.argc == 1 {
         daemon.write_line("probe: missing target, try `probe help`");
-        return;
+        return RootCommandStatus::Error;
     }
     if line.argc > 2 {
         daemon.write_line("probe: too many arguments");
-        return;
+        return RootCommandStatus::Error;
     }
 
     let target = line.args[1].as_str();
     match daemon.run_hardware_probe(target) {
-        Some(HardwareProbeResult::Handled) => {}
+        Some(HardwareProbeResult::Handled) => RootCommandStatus::Ok,
         Some(HardwareProbeResult::UnknownTarget) => {
             daemon.write_bytes(b"probe: unknown target: ");
             daemon.write_bytes(target.as_bytes());
             daemon.write_bytes(b"\n");
+            RootCommandStatus::Error
         }
-        None => daemon.write_line("probe: no lower probe provider"),
+        None => {
+            daemon.write_line("probe: no lower probe provider");
+            RootCommandStatus::Error
+        }
     }
 }
 
-fn cmd_help(daemon: &RootDaemon<'_>) {
-    daemon.write_line("reovim root shell");
-    daemon.write_line(
-        "commands: help, clear, screentest, pwd, ls, cd, cat, mount, input, device, dmesg, probe, launch, reovim, halt",
-    );
+fn cmd_help(daemon: &RootDaemon<'_>, line: &ParsedLine) -> RootCommandStatus {
+    if line.argc > 2 {
+        daemon.write_line("help: too many arguments");
+        return RootCommandStatus::Error;
+    }
+
+    if line.argc == 1 {
+        daemon.write_line("reovim root shell");
+        daemon.write_line(
+            "commands: help, clear, screentest, pwd, ls, cd, cat, mount, input, status, device, dmesg, probe, launch, reovim, halt",
+        );
+        daemon.write_line("usage: help [command]");
+        return RootCommandStatus::Ok;
+    }
+
+    let command = line.args[1].as_str();
+    match command {
+        "help" => daemon.write_line("help [command] - show command help"),
+        "clear" => daemon.write_line("clear - clear framebuffer console and terminal"),
+        "screentest" => daemon.write_line("screentest - print renderer diagnostics"),
+        "pwd" => daemon.write_line("pwd - print current kernel VFS directory"),
+        "ls" => daemon.write_line("ls [path] - list a kernel VFS directory"),
+        "cd" => daemon.write_line("cd [path] - change current kernel VFS directory"),
+        "cat" => daemon.write_line("cat path... - print kernel VFS pseudo files"),
+        "mount" => daemon.write_line("mount - print kernel VFS mount table"),
+        "input" => daemon.write_line("input - print live console input diagnostics"),
+        "status" => daemon.write_line("status - print boot and input summary"),
+        "device" => daemon.write_line("device - print boot memory and device inventory"),
+        "dmesg" => daemon.write_line("dmesg - print retained kernel log"),
+        "probe" => daemon.write_line("probe target - run lower hardware probe; try `probe help`"),
+        "launch" => daemon.write_line("launch [payload] - list or run registered payloads"),
+        "reovim" => daemon.write_line("reovim - run the default reovim payload alias"),
+        "halt" => daemon.write_line("halt - request root daemon shutdown"),
+        _ => {
+            daemon.write_bytes(b"help: unknown command: ");
+            daemon.write_bytes(command.as_bytes());
+            daemon.write_bytes(b"\n");
+            return RootCommandStatus::Error;
+        }
+    }
+    RootCommandStatus::Ok
 }
 
-fn cmd_clear(daemon: &RootDaemon<'_>) {
+fn cmd_clear(daemon: &RootDaemon<'_>) -> RootCommandStatus {
     crate::console::clear_screen();
     daemon.write_bytes(b"\x1b[2J\x1b[H");
+    RootCommandStatus::Ok
 }
 
-fn cmd_screentest(daemon: &RootDaemon<'_>) {
+fn cmd_screentest(daemon: &RootDaemon<'_>) -> RootCommandStatus {
     daemon.write_line("screen test:");
     daemon.write_line("  target: framebuffer/serial tty renderer subset");
     daemon.write_bytes(b"  fg16: \x1b[30;47mblack\x1b[0m \x1b[31mred\x1b[0m \x1b[32mgreen\x1b[0m \x1b[33myellow\x1b[0m \x1b[34mblue\x1b[0m \x1b[35mmagenta\x1b[0m \x1b[36mcyan\x1b[0m \x1b[37mwhite\x1b[0m\n");
@@ -649,41 +841,55 @@ fn cmd_screentest(daemon: &RootDaemon<'_>) {
     daemon.write_bytes(b"  bs: AB\x08 \x08C (should read AC)\n");
     daemon.write_bytes(b"  wrap: 0123456789abcdefghijklmnopqrstuvwxyz 0123456789abcdefghijklmnopqrstuvwxyz 0123456789abcdefghijklmnopqrstuvwxyz 0123456789abcdefghijklmnopqrstuvwxyz 0123456789abcdefghijklmnopqrstuvwxyz end\n");
     daemon.write_line("  done");
+    RootCommandStatus::Ok
 }
 
-fn cmd_halt(daemon: &RootDaemon<'_>) {
+fn cmd_halt(daemon: &RootDaemon<'_>) -> RootCommandStatus {
     daemon.write_line("halt: ok");
-    daemon.halt_kernel();
+    RootCommandStatus::Halt
 }
 
-fn cmd_mount(daemon: &RootDaemon<'_>, line: &ParsedLine) {
+fn cmd_mount(daemon: &RootDaemon<'_>, line: &ParsedLine) -> RootCommandStatus {
     if line.argc > 1 {
         daemon.write_line("mount: too many arguments");
-        return;
+        return RootCommandStatus::Error;
     }
     write_mount_table(daemon);
+    RootCommandStatus::Ok
 }
 
-fn cmd_input(daemon: &RootDaemon<'_>, line: &ParsedLine) {
+fn cmd_input(daemon: &RootDaemon<'_>, line: &ParsedLine) -> RootCommandStatus {
     if line.argc > 1 {
         daemon.write_line("input: too many arguments");
-        return;
+        return RootCommandStatus::Error;
     }
     write_boot_input(daemon);
+    RootCommandStatus::Ok
 }
 
-fn cmd_reovim(daemon: &RootDaemon<'_>, line: &ParsedLine) {
+fn cmd_status(daemon: &RootDaemon<'_>, line: &ParsedLine) -> RootCommandStatus {
+    if line.argc > 1 {
+        daemon.write_line("status: too many arguments");
+        return RootCommandStatus::Error;
+    }
+    write_boot_status(daemon);
+    RootCommandStatus::Ok
+}
+
+fn cmd_reovim(daemon: &RootDaemon<'_>, line: &ParsedLine) -> RootCommandStatus {
     if line.argc > 1 {
         daemon.write_line("reovim: too many arguments");
-        return;
+        return RootCommandStatus::Error;
     }
     if !daemon.launch_enabled() {
         daemon.write_line("reovim disabled for this profile");
-        return;
+        return RootCommandStatus::Error;
     }
 
     daemon.write_bytes(b"reovim: ");
-    write_payload_status(daemon, daemon.launch_payload_by_name("reovim"));
+    let result = daemon.launch_payload_by_name("reovim");
+    write_payload_status(daemon, result);
+    payload_result_status(result)
 }
 
 fn u64_to_dec(mut value: u64, out: &mut [u8]) -> usize {
@@ -735,34 +941,34 @@ fn u64_to_hex(mut value: u64, out: &mut [u8]) -> usize {
 
 /// Execute one root-daemon line from the attached input source.
 ///
-/// Returns `true` when the command requests halting the daemon.
-pub fn execute_root_command(
+/// Returns the command status, including whether the line requested halt.
+pub(crate) fn execute_root_command(
     daemon: &RootDaemon<'_>,
     session: &mut RootShellSession,
     line: &[u8],
-) -> bool {
+) -> RootCommandResult {
     let (parsed, status) = tokenize(line);
 
     match status {
-        ParseStatus::Empty => return false,
+        ParseStatus::Empty => return RootCommandResult::new(RootCommandStatus::Empty),
         ParseStatus::TooLong => {
             daemon.write_line("error: command token too long");
-            return false;
+            return RootCommandResult::new(RootCommandStatus::Error);
         }
         ParseStatus::TooMany => {
             daemon.write_line("error: too many arguments");
-            return false;
+            return RootCommandResult::new(RootCommandStatus::Error);
         }
         ParseStatus::Ok => {}
     }
 
     if parsed.argc == 0 {
-        return false;
+        return RootCommandResult::new(RootCommandStatus::Empty);
     }
 
     let command = parsed.args[0].as_str();
-    match command {
-        "help" => cmd_help(daemon),
+    let status = match command {
+        "help" => cmd_help(daemon, &parsed),
         "clear" => cmd_clear(daemon),
         "screentest" => cmd_screentest(daemon),
         "pwd" => cmd_pwd(daemon, session, &parsed),
@@ -771,19 +977,20 @@ pub fn execute_root_command(
         "cat" => cmd_cat(daemon, session, &parsed),
         "mount" => cmd_mount(daemon, &parsed),
         "input" => cmd_input(daemon, &parsed),
+        "status" => cmd_status(daemon, &parsed),
         "device" => cmd_device(daemon),
         "dmesg" => cmd_dmesg(daemon),
         "probe" => cmd_probe(daemon, &parsed),
         "launch" => cmd_launch(daemon, &parsed),
         "reovim" => cmd_reovim(daemon, &parsed),
-        "halt" => {
-            cmd_halt(daemon);
-            return true;
+        "halt" => cmd_halt(daemon),
+        _ => {
+            daemon.write_line("error: unknown command, try `help`");
+            RootCommandStatus::Error
         }
-        _ => daemon.write_line("error: unknown command, try `help`"),
-    }
+    };
 
-    false
+    RootCommandResult::new(status)
 }
 
 #[cfg(feature = "selftest")]

@@ -373,7 +373,10 @@ impl<'a> RootDaemon<'a> {
     /// Returned `false` means the daemon should remain alive and accept
     /// additional input. `true` means execution reaches the halt path.
     pub fn run_command_line(&self, session: &mut RootShellSession, line: &[u8]) -> bool {
-        execute_root_command(self, session, line)
+        append_shell_command_log(line);
+        let result = execute_root_command(self, session, line);
+        append_shell_result_log(result.status());
+        result.should_halt()
     }
 
     /// Emits the boot-level command prompt.
@@ -457,6 +460,34 @@ impl<'a> RootDaemon<'a> {
             halt();
         }
     }
+}
+
+fn trim_line_end(bytes: &[u8]) -> &[u8] {
+    let mut end = bytes.len();
+    while end > 0 {
+        match bytes[end - 1] {
+            b'\n' | b'\r' => end -= 1,
+            _ => break,
+        }
+    }
+    &bytes[..end]
+}
+
+fn append_shell_command_log(line: &[u8]) {
+    let command = trim_line_end(line);
+    klog::append_bytes(b"shell: ");
+    if command.is_empty() {
+        klog::append_bytes(b"<empty>");
+    } else {
+        klog::append_bytes(command);
+    }
+    klog::append_bytes(b"\n");
+}
+
+fn append_shell_result_log(status: crate::root_shell::RootCommandStatus) {
+    klog::append_bytes(b"shell.status=");
+    klog::append_bytes(status.as_bytes());
+    klog::append_bytes(b"\n");
 }
 
 fn write_usize_dec(write: WriteFn, value: usize) {
@@ -720,9 +751,6 @@ pub fn run_root_daemon(cfg: RootBootConfig<'_>) -> ! {
             break;
         }
 
-        klog::append_bytes(b"shell: ");
-        klog::append_bytes(&line[..len]);
-        klog::append_bytes(b"\n");
         if daemon.run_command_line(&mut session, &line[..len]) {
             klog::append_line("rootd: halt requested");
             break;
