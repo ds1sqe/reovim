@@ -132,7 +132,8 @@ labels. It also requires checked HDMI-display and physical-keyboard setup,
 physical-keyboard PASS labels, no-bootline image facts, installed-media
 identity from `prepare-boot-media.sh`, shell-only image identity from
 `cat /boot/image`, shell-only profile identity from `cat /boot/profile`,
-USB-keyboard readiness, identity plus live source diagnostics from `status` /
+USB-keyboard readiness, the lower `usb_keyboard_last_poll=report-ready`
+diagnostic, identity plus live source diagnostics from `status` /
 `cat /boot/status`, live input diagnostics from `input` / `cat /boot/input`,
 the in-OS `proof` checklist, the VFS-backed help catalog from
 `cat /boot/help`, shell help/renderer evidence from `help` / `clear` /
@@ -275,13 +276,18 @@ Record the full visible output or serial transcript. The key evidence is:
   `dmesg` command, because `dmesg` records its own status after printing.
 - `halt` prints `halt: ok` as the final command and no new `reovim-os>` prompt
   appears after that line.
-- Final success requires physical USB keyboard input to reach the shell and
-  `cat /boot/profile` or `status` to show:
+- Final success requires physical USB keyboard input to reach the shell.
+  `cat /boot/profile` must show:
 
 ```text
 input=usb-keyboard+uart-fallback
 input_mode=live
 usb_keyboard=ready
+```
+
+  `status`, `/boot/status`, `input`, or `/boot/input` must also show:
+
+```text
 usb_keyboard_last_poll=report-ready
 ```
 

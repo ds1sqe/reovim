@@ -116,7 +116,8 @@ write_evidence_seed() {
         printf '# Raspberry Pi 4 USB Keyboard Evidence\n\n'
         printf 'Use this file for the #800 real-machine proof. The proof is incomplete\n'
         printf 'unless HDMI output is observed, input source is `physical USB keyboard`,\n'
-        printf 'and the shell reports `usb_keyboard=ready`.\n\n'
+        printf 'and the shell reports `usb_keyboard=ready` plus\n'
+        printf '`usb_keyboard_last_poll=report-ready`.\n\n'
         printf '## Session\n\n'
         printf -- '- Date: %s\n' "$date_utc"
         printf -- '- Operator:\n'

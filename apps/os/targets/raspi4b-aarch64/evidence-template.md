@@ -2,7 +2,8 @@
 
 Use this template for the #800 real-machine proof. The proof is incomplete
 unless HDMI output is observed, input source is `physical USB keyboard`, and
-the shell reports `usb_keyboard=ready`.
+the shell reports `usb_keyboard=ready` plus
+`usb_keyboard_last_poll=report-ready`.
 
 ## Session
 
