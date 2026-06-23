@@ -65,6 +65,7 @@ Type these commands from the physical USB keyboard for final acceptance:
 proof
 cat /boot/proof
 help
+cat /boot/help
 clear
 screentest
 pwd
@@ -123,6 +124,7 @@ Required success facts:
 - [ ] A physical USB keypress reached the root shell.
 - [ ] `proof` prints the physical input proof checklist.
 - [ ] `cat /boot/proof` prints the VFS-backed proof pseudo-file.
+- [ ] `cat /boot/help` prints the VFS-backed help catalog.
 - [ ] `help` / `clear` / `screentest` prove the shell help and renderer commands.
 - [ ] `pwd` / `ls` / `mount` report the kernel VFS namespace and mounts.
 - [ ] `device` / `cat /boot/memory` / `cat /boot/devices` report boot inventory.

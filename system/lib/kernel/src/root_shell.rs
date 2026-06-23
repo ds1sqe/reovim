@@ -429,6 +429,7 @@ fn write_directory(daemon: &RootDaemon<'_>, directory: Directory) {
         }
         Directory::Boot => {
             daemon.write_line("devices");
+            daemon.write_line("help");
             daemon.write_line("image");
             daemon.write_line("input");
             daemon.write_line("memory");
@@ -491,6 +492,7 @@ fn cmd_cat(
 
 fn write_file(daemon: &RootDaemon<'_>, file: File) {
     match file {
+        File::BootHelp => write_help_catalog(daemon),
         File::BootProfile => write_boot_profile(daemon),
         File::BootImage => write_boot_image(daemon),
         File::BootInput => write_boot_input(daemon),
@@ -569,6 +571,7 @@ fn write_boot_proof(daemon: &RootDaemon<'_>) {
     daemon.write_line("proof:");
     daemon.write_line("commands:");
     daemon.write_line("  help");
+    daemon.write_line("  cat /boot/help");
     daemon.write_line("  clear");
     daemon.write_line("  screentest");
     daemon.write_line("  pwd");
@@ -606,6 +609,7 @@ fn write_boot_proof(daemon: &RootDaemon<'_>) {
     daemon.write_line("  mode=live");
     daemon.write_line("  usb_keyboard=ready");
     daemon.write_line("  usb_keyboard_probe=enabled");
+    daemon.write_line("  help catalog available through /boot/help");
     daemon.write_line("  probe targets include pcie");
     daemon.write_line("  probe targets include usb-keyboard");
     daemon.write_line("  probe targets include xhci-read-keyboard-report");
@@ -830,11 +834,7 @@ fn cmd_help(daemon: &RootDaemon<'_>, line: &ParsedLine) -> RootCommandStatus {
     }
 
     if line.argc == 1 {
-        daemon.write_line("reovim root shell");
-        daemon.write_line(
-            "commands: help, clear, screentest, pwd, ls, cd, cat, mount, input, status, proof, device, dmesg, probe, launch, reovim, halt",
-        );
-        daemon.write_line("usage: help [command]");
+        write_help_catalog(daemon);
         return RootCommandStatus::Ok;
     }
 
@@ -865,6 +865,14 @@ fn cmd_help(daemon: &RootDaemon<'_>, line: &ParsedLine) -> RootCommandStatus {
         }
     }
     RootCommandStatus::Ok
+}
+
+fn write_help_catalog(daemon: &RootDaemon<'_>) {
+    daemon.write_line("reovim root shell");
+    daemon.write_line(
+        "commands: help, clear, screentest, pwd, ls, cd, cat, mount, input, status, proof, device, dmesg, probe, launch, reovim, halt",
+    );
+    daemon.write_line("usage: help [command]");
 }
 
 fn cmd_clear(daemon: &RootDaemon<'_>) -> RootCommandStatus {

@@ -356,6 +356,7 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
 
     run_session_command(&mut session, b"ls /boot\n");
     assert_contains(sink_bytes(), b"devices\n");
+    assert_contains(sink_bytes(), b"help\n");
     assert_contains(sink_bytes(), b"image\n");
     assert_contains(sink_bytes(), b"input\n");
     assert_contains(sink_bytes(), b"memory\n");
@@ -363,6 +364,11 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"proof\n");
     assert_contains(sink_bytes(), b"profile\n");
     assert_contains(sink_bytes(), b"status\n");
+
+    run_session_command(&mut session, b"cat /boot/help\n");
+    assert_contains(sink_bytes(), b"reovim root shell\n");
+    assert_contains(sink_bytes(), b"commands: help, clear, screentest");
+    assert_contains(sink_bytes(), b"usage: help [command]\n");
 
     run_session_command(&mut session, b"cat /boot/image\n");
     assert_contains(sink_bytes(), b"package=reovim-os\n");
@@ -396,6 +402,7 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     run_session_command(&mut session, b"cat /boot/proof\n");
     assert_contains(sink_bytes(), b"proof:\n");
     assert_contains(sink_bytes(), b"  help\n");
+    assert_contains(sink_bytes(), b"  cat /boot/help\n");
     assert_contains(sink_bytes(), b"  clear\n");
     assert_contains(sink_bytes(), b"  screentest\n");
     assert_contains(sink_bytes(), b"  pwd\n");
@@ -422,6 +429,7 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"  halt\n");
     assert_contains(sink_bytes(), b"  source=usb-keyboard+uart-fallback\n");
     assert_contains(sink_bytes(), b"  usb_keyboard=ready\n");
+    assert_contains(sink_bytes(), b"  help catalog available through /boot/help\n");
     assert_contains(sink_bytes(), b"  launch/reovim disabled in shell-only profile\n");
     assert_contains(sink_bytes(), b"  shell.status=ok\n");
     assert_contains(sink_bytes(), b"  shell.status=error for disabled payload commands\n");
@@ -432,6 +440,7 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"expected:\n");
     assert_contains(sink_bytes(), b"  probe targets include pcie\n");
     assert_contains(sink_bytes(), b"  probe targets include xhci-read-keyboard-report\n");
+    assert_contains(sink_bytes(), b"  help catalog available through /boot/help\n");
     assert_contains(sink_bytes(), b"  launch/reovim disabled in shell-only profile\n");
     assert_contains(sink_bytes(), b"  halt typed last prints halt: ok and stops root daemon\n");
 

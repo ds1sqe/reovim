@@ -21,7 +21,7 @@ image=apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img
 bytes=<image-size>
 ```
 
-Current expected size is `436036` bytes.
+Current expected size is `436324` bytes.
 
 Copy `apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img` to the Pi
 4 boot partition as `kernel8.img`, using the normal Raspberry Pi firmware
@@ -133,9 +133,10 @@ physical-keyboard PASS labels, no-bootline image facts, installed-media
 identity from `prepare-boot-media.sh`, USB-keyboard readiness, live
 source diagnostics from `status` / `input`, VFS-backed live diagnostics from
 `cat /boot/status` / `cat /boot/input`, the in-OS `proof` checklist,
-shell help/renderer evidence from `help` / `clear` / `screentest`, VFS
-namespace evidence from `pwd` / `ls` / `mount` / `cat /boot/mounts`, boot
-inventory from `ls /dev` / `device` / `cat /boot/memory` /
+the VFS-backed help catalog from `cat /boot/help`, shell help/renderer
+evidence from `help` / `clear` / `screentest`, VFS namespace evidence from
+`pwd` / `ls` / `mount` / `cat /boot/mounts`, boot inventory from `ls /dev` /
+`device` / `cat /boot/memory` /
 `cat /boot/devices`, relative device-file access from `cd /dev` /
 `cat uart0`, `probe help` hardware-target catalog output, read-only PCIe/xHCI
 state from `probe pcie`, `probe usb-keyboard` output, shell-only
@@ -191,6 +192,7 @@ keyboard for the main proof transcript:
 proof
 cat /boot/proof
 help
+cat /boot/help
 clear
 screentest
 pwd
@@ -232,6 +234,7 @@ Record the full visible output or serial transcript. The key evidence is:
 
 - `proof` prints the physical-input proof checklist from the running OS.
 - `cat /boot/proof` prints the same checklist through the kernel VFS.
+- `cat /boot/help` prints the root-shell help catalog through the kernel VFS.
 - `help`, `clear`, and `screentest` prove the shell help path and framebuffer
   renderer diagnostics are reachable from the physical keyboard session.
 - `pwd`, `ls /`, `ls /boot`, `mount`, and `cat /boot/mounts` show the root

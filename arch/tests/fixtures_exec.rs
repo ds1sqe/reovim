@@ -668,7 +668,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     let exe = build_os_image(
         &[],
         Some(
-            "help\nhelp clear\nhelp screentest\nhelp input\nhelp status\nhelp proof\nhelp probe\nclear\nscreentest\npwd\nls /\ncd /dev\npwd\nls\ncat /boot/profile\ncat /boot/image\ninput\ncat /boot/input\nstatus\ncat /boot/status\nproof\ncat /boot/proof\nmount\ncat /boot/mounts\ncat /log/dmesg\ndevice\nprobe help\nprobe pcie\nprobe usb-keyboard\nprobe xhci-start\nprobe xhci-enable-slot\nprobe xhci-address-device\nprobe xhci-get-device-descriptor\nprobe xhci-set-address\nprobe xhci-read-device-descriptor\nprobe xhci-read-config-descriptor-header\nprobe xhci-read-config-descriptor\nprobe xhci-set-configuration\nprobe xhci-configure-endpoint\nprobe xhci-set-hid-protocol\nprobe xhci-read-keyboard-report\nlaunch\nreovim\ndmesg\ncat /log/dmesg\nhalt\n",
+            "help\ncat /boot/help\nhelp clear\nhelp screentest\nhelp input\nhelp status\nhelp proof\nhelp probe\nclear\nscreentest\npwd\nls /\ncd /dev\npwd\nls\ncat /boot/profile\ncat /boot/image\ninput\ncat /boot/input\nstatus\ncat /boot/status\nproof\ncat /boot/proof\nmount\ncat /boot/mounts\ncat /log/dmesg\ndevice\nprobe help\nprobe pcie\nprobe usb-keyboard\nprobe xhci-start\nprobe xhci-enable-slot\nprobe xhci-address-device\nprobe xhci-get-device-descriptor\nprobe xhci-set-address\nprobe xhci-read-device-descriptor\nprobe xhci-read-config-descriptor-header\nprobe xhci-read-config-descriptor\nprobe xhci-set-configuration\nprobe xhci-configure-endpoint\nprobe xhci-set-hid-protocol\nprobe xhci-read-keyboard-report\nlaunch\nreovim\ndmesg\ncat /log/dmesg\nhalt\n",
         ),
         None,
     );
@@ -687,6 +687,10 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "help output appears in transcript; serial: {serial:?}",
     );
     assert!(
+        serial.matches("reovim root shell").count() >= 2,
+        "help catalog appears through command and VFS; serial: {serial:?}",
+    );
+    assert!(
         serial.contains(
             "commands: help, clear, screentest, pwd, ls, cd, cat, mount, input, status, proof, device, dmesg, probe, launch, reovim, halt"
         ),
@@ -695,6 +699,10 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     assert!(
         serial.contains("usage: help [command]"),
         "help usage appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.matches("usage: help [command]").count() >= 2,
+        "VFS help pseudo-file prints help usage; serial: {serial:?}",
     );
     assert!(
         serial.contains("clear - clear framebuffer console and terminal"),
@@ -757,8 +765,12 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "probe target help appears in transcript; serial: {serial:?}",
     );
     assert!(
-        serial.contains("proof:\ncommands:\n  help\n  clear\n  screentest"),
+        serial.contains("proof:\ncommands:\n  help\n  cat /boot/help\n  clear\n  screentest"),
         "proof checklist appears in transcript; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("  help\n  cat /boot/help\n  clear"),
+        "proof checklist includes VFS help command; serial: {serial:?}",
     );
     assert!(
         serial.contains("  pwd\n  ls /\n  ls /boot"),
@@ -787,6 +799,10 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     assert!(
         serial.contains("probe targets include xhci-read-keyboard-report"),
         "proof checklist names keyboard report probe; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("help catalog available through /boot/help"),
+        "proof checklist names VFS help catalog expectation; serial: {serial:?}",
     );
     assert!(
         serial.contains("  probe help\n  probe pcie\n  probe usb-keyboard"),
@@ -923,6 +939,10 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     assert!(
         serial.contains("profile=shell-only"),
         "cat /boot/profile prints profile pseudo file; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("shell: cat /boot/help"),
+        "cat /log/dmesg prints VFS help command audit; serial: {serial:?}",
     );
     assert!(
         serial.contains("input=bootline-script"),

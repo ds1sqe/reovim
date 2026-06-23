@@ -143,6 +143,8 @@ pub const fn mounts() -> &'static [MountEntry] {
 /// Read-only file or pseudo-device nodes in the kernel VFS.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum File {
+    /// `/boot/help`.
+    BootHelp,
     /// `/boot/profile`.
     BootProfile,
     /// `/boot/image`.
@@ -208,6 +210,7 @@ pub fn lookup(path: &str, devices: &[DeviceEntry]) -> Result<Node, VfsError> {
         "/boot" => return Ok(Node::Directory(Directory::Boot)),
         "/dev" => return Ok(Node::Directory(Directory::Dev)),
         "/log" => return Ok(Node::Directory(Directory::Log)),
+        "/boot/help" => return Ok(Node::File(File::BootHelp)),
         "/boot/profile" => return Ok(Node::File(File::BootProfile)),
         "/boot/image" => return Ok(Node::File(File::BootImage)),
         "/boot/input" => return Ok(Node::File(File::BootInput)),
@@ -234,6 +237,7 @@ pub fn lookup(path: &str, devices: &[DeviceEntry]) -> Result<Node, VfsError> {
 
     for file in [
         "/boot/profile/",
+        "/boot/help/",
         "/boot/image/",
         "/boot/input/",
         "/boot/proof/",
