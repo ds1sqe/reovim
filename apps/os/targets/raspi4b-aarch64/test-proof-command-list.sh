@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke-test that Pi 4 physical proof command lists stay in sync.
+# Smoke-test that Pi 4 physical proof operator surfaces stay in sync.
 
 set -euo pipefail
 
@@ -40,6 +40,24 @@ extract_command_block() {
     fi
 }
 
+extract_checkbox_block() {
+    local source="$1"
+    local anchor="$2"
+    local output="$3"
+
+    awk -v anchor="$anchor" '
+        index($0, anchor) { seen_anchor = 1; next }
+        seen_anchor && /^- \[ \]/ { in_block = 1 }
+        in_block && /^$/ { exit }
+        in_block { print }
+    ' "$source" >"$output"
+
+    if [ ! -s "$output" ]; then
+        printf 'error: empty checkbox block extracted from %s using anchor %s\n' "$source" "$anchor" >&2
+        exit 1
+    fi
+}
+
 expect_same() {
     local expected="$1"
     local actual="$2"
@@ -66,8 +84,49 @@ extract_command_block \
     "$tmp_evidence" \
     "Type these commands from the physical USB keyboard for final acceptance:" \
     "$tmp_root/seed.commands"
+extract_command_block \
+    "$TEMPLATE" \
+    "the physical USB keyboard:" \
+    "$tmp_root/template.halt"
+extract_command_block \
+    "$README" \
+    "physical USB keyboard:" \
+    "$tmp_root/readme.halt"
+extract_command_block \
+    "$tmp_evidence" \
+    "the physical USB keyboard:" \
+    "$tmp_root/seed.halt"
+extract_checkbox_block \
+    "$TEMPLATE" \
+    "Required facts:" \
+    "$tmp_root/template.boot-facts"
+extract_checkbox_block \
+    "$tmp_evidence" \
+    "Required facts:" \
+    "$tmp_root/seed.boot-facts"
+extract_checkbox_block \
+    "$TEMPLATE" \
+    "Required success facts:" \
+    "$tmp_root/template.success-facts"
+extract_checkbox_block \
+    "$tmp_evidence" \
+    "Required success facts:" \
+    "$tmp_root/seed.success-facts"
+extract_checkbox_block \
+    "$TEMPLATE" \
+    "## Result" \
+    "$tmp_root/template.result"
+extract_checkbox_block \
+    "$tmp_evidence" \
+    "## Result" \
+    "$tmp_root/seed.result"
 
 expect_same "$tmp_root/template.commands" "$tmp_root/readme.commands" "README.md"
 expect_same "$tmp_root/template.commands" "$tmp_root/seed.commands" "generated evidence seed"
+expect_same "$tmp_root/template.halt" "$tmp_root/readme.halt" "README.md halt command"
+expect_same "$tmp_root/template.halt" "$tmp_root/seed.halt" "generated evidence seed halt command"
+expect_same "$tmp_root/template.boot-facts" "$tmp_root/seed.boot-facts" "generated evidence seed boot facts"
+expect_same "$tmp_root/template.success-facts" "$tmp_root/seed.success-facts" "generated evidence seed success facts"
+expect_same "$tmp_root/template.result" "$tmp_root/seed.result" "generated evidence seed result labels"
 
-printf 'proof command list smoke ok\n'
+printf 'proof contract smoke ok\n'
