@@ -63,6 +63,7 @@ Type these commands from the physical USB keyboard for final acceptance:
 
 ```text
 proof
+cat /boot/proof
 cat /boot/image
 status
 input
@@ -85,6 +86,7 @@ Required success facts:
 
 - [ ] A physical USB keypress reached the root shell.
 - [ ] `proof` prints the physical input proof checklist.
+- [ ] `cat /boot/proof` prints the VFS-backed proof pseudo-file.
 - [ ] `input=usb-keyboard+uart-fallback`
 - [ ] `usb_keyboard=ready`
 - [ ] `status` / `input` report live ready source diagnostics.

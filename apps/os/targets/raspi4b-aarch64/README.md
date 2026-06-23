@@ -180,6 +180,7 @@ keyboard:
 
 ```text
 proof
+cat /boot/proof
 cat /boot/image
 status
 input
@@ -193,6 +194,7 @@ cat /log/dmesg
 Record the full visible output or serial transcript. The key evidence is:
 
 - `proof` prints the physical-input proof checklist from the running OS.
+- `cat /boot/proof` prints the same checklist through the kernel VFS.
 - `cat /boot/image` shows `target=aarch64-unknown-none` and `bootline=absent`.
 - `status` / `input` show live ready source diagnostics:
   `source=usb-keyboard+uart-fallback`, `source_state=ready`, `mode=live`,
