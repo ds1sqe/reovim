@@ -133,10 +133,16 @@ fi
 
 bytes="$(wc -c <"$installed" | tr -d ' ')"
 tmp_prepared_evidence="$evidence_parent/.${evidence_base}.prepared.$$"
+if [ "$NO_BACKUP" -eq 1 ]; then
+    install_command="${INSTALL_SCRIPT#$ROOT/} --no-backup $bootfs_abs"
+else
+    install_command="${INSTALL_SCRIPT#$ROOT/} $bootfs_abs"
+fi
 awk \
     -v bootfs="$bootfs_abs" \
     -v installed="$installed" \
     -v bytes="$bytes" \
+    -v install_command="$install_command" \
     -v sha256="$installed_sha" '
 function write_media_section() {
     print "";
@@ -161,6 +167,10 @@ function write_media_section() {
 /^## Boot Evidence$/ && !inserted {
     write_media_section();
     inserted = 1;
+}
+/^- Image install command:/ {
+    print "- Image install command: " install_command;
+    next;
 }
 { print }
 END {

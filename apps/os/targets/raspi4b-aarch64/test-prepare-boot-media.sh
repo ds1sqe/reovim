@@ -90,6 +90,7 @@ if [ "$media_line" -ge "$boot_line" ]; then
     exit 1
 fi
 expect_contains "$evidence" "- Image SHA-256: $source_sha" "evidence image sha"
+expect_contains "$evidence" "- Image install command: apps/os/targets/raspi4b-aarch64/install-image.sh $tmp_bootfs" "evidence actual install command"
 expect_contains "$evidence" "- Preflight result: preflight=ok qemu_smoke=skipped" "evidence preflight result"
 expect_contains "$evidence" "- Boot partition path: $tmp_bootfs" "evidence bootfs"
 expect_contains "$evidence" "- [ ] \`package=reovim-os\`" "evidence package fact"
