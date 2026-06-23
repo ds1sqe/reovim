@@ -21,6 +21,7 @@ missing_audit_evidence="$tmp_dir/missing-audit.md"
 missing_status_evidence="$tmp_dir/missing-status.md"
 missing_probe_help_evidence="$tmp_dir/missing-probe-help.md"
 missing_live_source_evidence="$tmp_dir/missing-live-source.md"
+missing_proof_evidence="$tmp_dir/missing-proof.md"
 missing_media_evidence="$tmp_dir/missing-media.md"
 media_byte_mismatch_evidence="$tmp_dir/media-byte-mismatch.md"
 media_sha_mismatch_evidence="$tmp_dir/media-sha-mismatch.md"
@@ -70,6 +71,27 @@ write_passing_evidence() {
         printf -- '- [x] QEMU/VNC/HDMI display was not counted as keyboard input\n\n'
         printf '## Command Transcript\n\n'
         printf '```text\n'
+        printf 'reovim-os> proof\n'
+        printf 'proof:\n'
+        printf 'commands:\n'
+        printf '  cat /boot/image\n'
+        printf '  status\n'
+        printf '  input\n'
+        printf '  probe help\n'
+        printf '  probe usb-keyboard\n'
+        printf '  cat /boot/profile\n'
+        printf '  dmesg\n'
+        printf '  cat /log/dmesg\n'
+        printf 'expected:\n'
+        printf '  bootline=absent\n'
+        printf '  source=usb-keyboard+uart-fallback\n'
+        printf '  source_state=ready\n'
+        printf '  mode=live\n'
+        printf '  usb_keyboard=ready\n'
+        printf '  usb_keyboard_probe=enabled\n'
+        printf '  probe targets include usb-keyboard\n'
+        printf '  probe targets include xhci-read-keyboard-report\n'
+        printf '  shell.status=ok\n'
         printf 'reovim-os> cat /boot/image\n'
         printf 'target=aarch64-unknown-none\n'
         printf 'bootline=absent\n'
@@ -101,6 +123,8 @@ write_passing_evidence() {
         printf 'usb_keyboard=ready\n'
         printf 'reovim-os> dmesg\n'
         printf 'dmesg:\n'
+        printf 'shell: proof\n'
+        printf 'shell.status=ok\n'
         printf 'shell: cat /boot/image\n'
         printf 'shell.status=ok\n'
         printf 'shell: status\n'
@@ -122,6 +146,7 @@ write_passing_evidence() {
         printf '## USB Keyboard Readiness\n\n'
         printf 'Required success facts:\n\n'
         printf -- '- [x] A physical USB keypress reached the root shell.\n'
+        printf -- '- [x] `proof` prints the physical input proof checklist.\n'
         printf -- '- [x] `input=usb-keyboard+uart-fallback`\n'
         printf -- '- [x] `usb_keyboard=ready`\n'
         printf -- '- [x] `status` / `input` report live ready source diagnostics.\n'
@@ -175,6 +200,10 @@ expect_failure "$missing_probe_help_evidence" "missing-probe-help"
 cp "$pass_evidence" "$missing_live_source_evidence"
 sed -i '/^source=usb-keyboard+uart-fallback$/d' "$missing_live_source_evidence"
 expect_failure "$missing_live_source_evidence" "missing-live-source"
+
+cp "$pass_evidence" "$missing_proof_evidence"
+sed -i '/^proof:$/d' "$missing_proof_evidence"
+expect_failure "$missing_proof_evidence" "missing-proof"
 
 cp "$pass_evidence" "$missing_media_evidence"
 sed -i '/^media_prepare=ok$/d' "$missing_media_evidence"

@@ -90,6 +90,7 @@ require_re '^- \[[xX]\] `status` / `input` report live ready source diagnostics\
 require_re '^- \[[xX]\] `probe help` lists `usb-keyboard` and `xhci-read-keyboard-report`\.$' 'probe help catalog checkbox'
 require_re '^- \[[xX]\] `dmesg` contains `shell: <command>` and `shell\.status=ok` audit lines for the typed commands\.$' 'dmesg command/status audit checkbox'
 require_re '^- \[[xX]\] `dmesg` contains the `probe usb-keyboard` output or blocker\.$' 'probe-output dmesg checkbox'
+require_re '^- \[[xX]\] `proof` prints the physical input proof checklist\.$' 'proof checklist checkbox'
 
 require_re '^reovim-os>' 'root shell prompt in pasted transcript'
 require_re '^media_prepare=ok$' 'media-prep result line'
@@ -106,6 +107,16 @@ require_re '^input_mode=live$' 'status/profile live-mode line'
 require_re '^usb_keyboard=ready$' 'live USB keyboard readiness line'
 require_re '^usb_keyboard_probe=enabled$' 'USB keyboard probe-enabled line'
 require_re '^usb_keyboard_poll_interval_ms=[1-9][0-9]*$' 'nonzero USB keyboard poll interval line'
+require_re '^reovim-os> proof$' 'proof command in pasted transcript'
+require_re '^proof:$' 'proof checklist header'
+require_re '^commands:$' 'proof command-list header'
+require_re '^  cat /boot/image$' 'proof checklist image command'
+require_re '^  probe usb-keyboard$' 'proof checklist USB keyboard command'
+require_re '^  cat /log/dmesg$' 'proof checklist final log command'
+require_re '^expected:$' 'proof expected-facts header'
+require_re '^  source=usb-keyboard\+uart-fallback$' 'proof expected source fact'
+require_re '^  usb_keyboard=ready$' 'proof expected readiness fact'
+require_re '^  shell\.status=ok$' 'proof expected shell status fact'
 require_re '^probe targets:$' 'probe help target catalog header'
 require_re '^  usb-keyboard \(alias: keyboard\)$' 'probe help USB keyboard target'
 require_re '^  xhci-read-keyboard-report \(alias: usb-keyboard-read-report\)$' 'probe help keyboard report target'
@@ -113,6 +124,7 @@ require_re '^probe usb-keyboard:$' 'probe usb-keyboard output header'
 require_re '^state=(report-ready|decoded-pending|report-pending)$' 'USB keyboard probe ready/pending state'
 
 require_re '^shell: cat /boot/image$' 'dmesg audit for cat /boot/image'
+require_re '^shell: proof$' 'dmesg audit for proof'
 require_re '^shell: status$' 'dmesg audit for status'
 require_re '^shell: input$' 'dmesg audit for input'
 require_re '^shell: probe help$' 'dmesg audit for probe help'
@@ -120,7 +132,7 @@ require_re '^shell: probe usb-keyboard$' 'dmesg audit for probe usb-keyboard'
 require_re '^shell: cat /boot/profile$' 'dmesg audit for cat /boot/profile'
 require_re '^shell: dmesg$' 'dmesg audit for dmesg'
 require_re '^shell: cat /log/dmesg$' 'dmesg audit for cat /log/dmesg'
-require_count_at_least '^shell\.status=ok$' 'successful shell status audit lines' 7
+require_count_at_least '^shell\.status=ok$' 'successful shell status audit lines' 8
 
 image_bytes="$(awk '/^- Image bytes: [1-9][0-9]*$/ { print $4; exit }' "$EVIDENCE")"
 media_bytes="$(awk -F= '/^bytes=[1-9][0-9]*$/ { print $2; exit }' "$EVIDENCE")"

@@ -21,7 +21,7 @@ image=apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img
 bytes=<image-size>
 ```
 
-Current expected size at the time this helper was added is `433788` bytes.
+Current expected size is `435036` bytes.
 
 Copy `apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img` to the Pi
 4 boot partition as `kernel8.img`, using the normal Raspberry Pi firmware
@@ -129,7 +129,7 @@ The validator rejects checked display-only, UART, bootline-script, or FAIL
 labels. It also requires checked HDMI-display and physical-keyboard setup,
 physical-keyboard PASS labels, no-bootline image facts, installed-media
 identity from `prepare-boot-media.sh`, USB-keyboard readiness, live
-source diagnostics from `status` / `input`,
+source diagnostics from `status` / `input`, the in-OS `proof` checklist,
 `probe help` keyboard-target catalog output, `probe usb-keyboard` output, and
 `dmesg` command/status audit lines. It is a textual guard for completed
 evidence; it does not replace the physical HDMI plus USB-keyboard session.
@@ -173,11 +173,11 @@ Hardware setup:
 - Optional UART serial console attached for logs; UART input is fallback only.
 - No `REOVIM_OS_BOOTLINE` in the image environment.
 
-At the `reovim-os>` prompt, type `proof` or `cat /boot/proof` from the
-physical USB keyboard to print the in-OS checklist. Then type these commands
-from the physical USB keyboard:
+At the `reovim-os>` prompt, type these commands from the physical USB
+keyboard:
 
 ```text
+proof
 cat /boot/image
 status
 input
@@ -190,6 +190,7 @@ cat /log/dmesg
 
 Record the full visible output or serial transcript. The key evidence is:
 
+- `proof` prints the physical-input proof checklist from the running OS.
 - `cat /boot/image` shows `target=aarch64-unknown-none` and `bootline=absent`.
 - `status` / `input` show live ready source diagnostics:
   `source=usb-keyboard+uart-fallback`, `source_state=ready`, `mode=live`,
