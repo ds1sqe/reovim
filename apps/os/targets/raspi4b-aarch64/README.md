@@ -50,6 +50,26 @@ apps/os/targets/raspi4b-aarch64/test-install-image.sh
 The smoke test verifies dry-run identity output, installed image hash, and
 distinct backups after repeated installs.
 
+## Local Preflight
+
+Before writing real boot media, run the target preflight:
+
+```sh
+apps/os/targets/raspi4b-aarch64/preflight-real-board.sh
+```
+
+The preflight builds the no-bootline image, runs the installer smoke, boots the
+aarch64 QEMU display/UART smoke, and prints the image byte count, SHA-256,
+install command, and evidence-template path. If the boot partition is already
+mounted, pass it for an installer dry-run:
+
+```sh
+apps/os/targets/raspi4b-aarch64/preflight-real-board.sh --bootfs /path/to/bootfs
+```
+
+QEMU preflight output remains display/UART evidence only; it is not physical
+USB keyboard proof.
+
 ## QEMU Smoke
 
 QEMU raspi4b currently disables the DTB PCIe path used by the Pi 4 VL805 xHCI
