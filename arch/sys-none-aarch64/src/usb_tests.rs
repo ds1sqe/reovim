@@ -3,19 +3,29 @@
 use {
     super::{
         BCM2711_DWC2_BUS_BASE, BCM2711_DWC2_MMIO_BASE, BCM2711_XHCI_BUS_BASE,
-        BCM2711_XHCI_MMIO_BASE, PcieXhciController, UsbBootKeyboardPending, UsbBootKeyboardPoll,
-        XHCI_CONTROL_ENDPOINT_RING_TRBS, XHCI_EVENT_RING_TRBS, XHCI_STATIC_SCRATCHPAD_BUFFERS,
+        BCM2711_XHCI_MMIO_BASE, PcieXhciController, USB_CONFIGURATION_DESCRIPTOR_MAX_BYTES,
+        UsbBootKeyboardPending, UsbBootKeyboardPoll, XHCI_CONTROL_ENDPOINT_RING_TRBS,
+        XHCI_EP0_CONFIGURATION_DESCRIPTOR_HEADER_TRB_INDEX,
+        XHCI_EP0_CONFIGURATION_DESCRIPTOR_TRB_INDEX, XHCI_EP0_DESCRIPTOR_PREFIX_TRB_INDEX,
+        XHCI_EP0_DEVICE_DESCRIPTOR_TRB_INDEX, XHCI_EVENT_RING_TRBS, XHCI_STATIC_SCRATCHPAD_BUFFERS,
         XhciAddressDeviceStatus, XhciControllerStartStatus, XhciDeviceDescriptorProbeStatus,
-        XhciDriverMemoryStatus, XhciEnableSlotStatus, XhciSetAddressStatus, XhciSetupPacket,
-        classify_address_device_event, classify_device_descriptor_transfer_event,
-        classify_enable_slot_event, classify_set_address_event, decode_xhci_capabilities,
-        decode_xhci_command_completion_event, decode_xhci_operational_snapshot,
-        decode_xhci_port_snapshot, decode_xhci_supported_protocol, decode_xhci_transfer_event,
-        prepare_xhci_driver_memory, protocol_covers_port, usb_descriptor_endpoint0_max_packet_size,
-        xhci_address_device_command_trb, xhci_address_device_contexts,
-        xhci_address_device_contexts_with_max_packet_size, xhci_controller_start_registers,
-        xhci_data_stage_trb, xhci_enable_slot_command_trb, xhci_extended_capability_offset,
-        xhci_setup_stage_trb, xhci_status_stage_trb,
+        XhciDriverMemoryStatus, XhciEnableSlotStatus, XhciReadConfigurationDescriptorHeaderStatus,
+        XhciReadConfigurationDescriptorStatus, XhciReadDeviceDescriptorStatus,
+        XhciSetAddressStatus, XhciSetupPacket, classify_address_device_event,
+        classify_device_descriptor_transfer_event, classify_enable_slot_event,
+        classify_read_configuration_descriptor_header_transfer_event,
+        classify_read_configuration_descriptor_transfer_event,
+        classify_read_device_descriptor_transfer_event, classify_set_address_event,
+        decode_xhci_capabilities, decode_xhci_command_completion_event,
+        decode_xhci_operational_snapshot, decode_xhci_port_snapshot,
+        decode_xhci_supported_protocol, decode_xhci_transfer_event,
+        parse_usb_configuration_descriptor_header, parse_usb_configuration_descriptor_tree,
+        parse_usb_device_descriptor, prepare_xhci_driver_memory, protocol_covers_port,
+        usb_descriptor_endpoint0_max_packet_size, xhci_address_device_command_trb,
+        xhci_address_device_contexts, xhci_address_device_contexts_with_max_packet_size,
+        xhci_controller_start_registers, xhci_data_stage_trb, xhci_enable_slot_command_trb,
+        xhci_ep0_control_trb_pointers, xhci_extended_capability_offset, xhci_setup_stage_trb,
+        xhci_status_stage_trb,
     },
     crate::pcie::{PciConfigHeader, PciLocation},
     reovim_testrt::{self as testrt, arch_test},
@@ -673,6 +683,344 @@ arch_test!(xhci_set_address_event_classifier_names_success_and_failures, {
             testrt::check_eq(completion_code, 1u8);
         }
         _ => testrt::check(false, "wrong slot ID is reported"),
+    }
+});
+
+arch_test!(usb_device_descriptor_parser_extracts_standard_fields, {
+    let raw = [
+        18, 1, 0x00, 0x02, 0, 0, 0, 64, 0x34, 0x12, 0x78, 0x56, 0x00, 0x01, 1, 2, 3, 1,
+    ];
+
+    let fields =
+        parse_usb_device_descriptor(raw).unwrap_or_else(|| panic!("valid Device Descriptor"));
+
+    testrt::check_eq(fields.length, 18u8);
+    testrt::check_eq(fields.descriptor_type, 1u8);
+    testrt::check_eq(fields.bcd_usb, 0x0200u16);
+    testrt::check_eq(fields.device_class, 0u8);
+    testrt::check_eq(fields.device_subclass, 0u8);
+    testrt::check_eq(fields.device_protocol, 0u8);
+    testrt::check_eq(fields.max_packet_size0, 64u8);
+    testrt::check_eq(fields.vendor_id, 0x1234u16);
+    testrt::check_eq(fields.product_id, 0x5678u16);
+    testrt::check_eq(fields.bcd_device, 0x0100u16);
+    testrt::check_eq(fields.manufacturer_index, 1u8);
+    testrt::check_eq(fields.product_index, 2u8);
+    testrt::check_eq(fields.serial_number_index, 3u8);
+    testrt::check_eq(fields.num_configurations, 1u8);
+
+    let mut wrong_length = raw;
+    wrong_length[0] = 17;
+    testrt::check(
+        parse_usb_device_descriptor(wrong_length).is_none(),
+        "wrong Device Descriptor length is rejected",
+    );
+
+    let mut wrong_type = raw;
+    wrong_type[1] = 2;
+    testrt::check(
+        parse_usb_device_descriptor(wrong_type).is_none(),
+        "wrong descriptor type is rejected",
+    );
+});
+
+arch_test!(xhci_read_device_descriptor_classifier_names_success_and_failures, {
+    let descriptor = [
+        18, 1, 0x00, 0x02, 0, 0, 0, 64, 0x34, 0x12, 0x78, 0x56, 0x00, 0x01, 1, 2, 3, 1,
+    ];
+    let success = decode_xhci_transfer_event([
+        0x0000_5000,
+        0,
+        1u32 << 24,
+        (8u32 << 24) | (1u32 << 16) | (32u32 << 10) | 1,
+    ]);
+    match classify_read_device_descriptor_transfer_event(0x5000, 8, 1, descriptor, success) {
+        XhciReadDeviceDescriptorStatus::DeviceDescriptorReady {
+            slot_id,
+            vendor_id,
+            product_id,
+            num_configurations,
+        } => {
+            testrt::check_eq(slot_id, 8u8);
+            testrt::check_eq(vendor_id, 0x1234u16);
+            testrt::check_eq(product_id, 0x5678u16);
+            testrt::check_eq(num_configurations, 1u8);
+        }
+        _ => testrt::check(false, "successful transfer exposes full Device Descriptor"),
+    }
+
+    let mut invalid = descriptor;
+    invalid[0] = 0;
+    match classify_read_device_descriptor_transfer_event(0x5000, 8, 1, invalid, success) {
+        XhciReadDeviceDescriptorStatus::InvalidDeviceDescriptor {
+            length,
+            descriptor_type,
+        } => {
+            testrt::check_eq(length, 0u8);
+            testrt::check_eq(descriptor_type, 1u8);
+        }
+        _ => testrt::check(false, "malformed descriptor is reported"),
+    }
+
+    let failed = decode_xhci_transfer_event([
+        0x0000_5000,
+        0,
+        (13u32 << 24) | 2,
+        (8u32 << 24) | (1u32 << 16) | (32u32 << 10) | 1,
+    ]);
+    match classify_read_device_descriptor_transfer_event(0x5000, 8, 1, descriptor, failed) {
+        XhciReadDeviceDescriptorStatus::TransferFailed {
+            completion_code,
+            residual_length,
+            slot_id,
+            endpoint_id,
+        } => {
+            testrt::check_eq(completion_code, 13u8);
+            testrt::check_eq(residual_length, 2u32);
+            testrt::check_eq(slot_id, 8u8);
+            testrt::check_eq(endpoint_id, 1u8);
+        }
+        _ => testrt::check(false, "failed transfer is reported"),
+    }
+});
+
+arch_test!(xhci_ep0_control_transfer_indices_advance_by_triplet, {
+    let (prefix_setup, prefix_data, prefix_status) =
+        xhci_ep0_control_trb_pointers(XHCI_EP0_DESCRIPTOR_PREFIX_TRB_INDEX);
+    let (device_setup, device_data, device_status) =
+        xhci_ep0_control_trb_pointers(XHCI_EP0_DEVICE_DESCRIPTOR_TRB_INDEX);
+    let (config_setup, config_data, config_status) =
+        xhci_ep0_control_trb_pointers(XHCI_EP0_CONFIGURATION_DESCRIPTOR_HEADER_TRB_INDEX);
+    let (config_tree_setup, config_tree_data, config_tree_status) =
+        xhci_ep0_control_trb_pointers(XHCI_EP0_CONFIGURATION_DESCRIPTOR_TRB_INDEX);
+
+    testrt::check_eq(device_setup - prefix_setup, 3u64 * 16);
+    testrt::check_eq(device_data - prefix_data, 3u64 * 16);
+    testrt::check_eq(device_status - prefix_status, 3u64 * 16);
+    testrt::check_eq(config_setup - device_setup, 3u64 * 16);
+    testrt::check_eq(config_data - device_data, 3u64 * 16);
+    testrt::check_eq(config_status - device_status, 3u64 * 16);
+    testrt::check_eq(config_tree_setup - config_setup, 3u64 * 16);
+    testrt::check_eq(config_tree_data - config_data, 3u64 * 16);
+    testrt::check_eq(config_tree_status - config_status, 3u64 * 16);
+});
+
+arch_test!(usb_configuration_descriptor_header_parser_extracts_standard_fields, {
+    let raw = [9, 2, 34, 0, 1, 1, 0, 0x80, 50];
+
+    let fields = parse_usb_configuration_descriptor_header(raw)
+        .unwrap_or_else(|| panic!("valid Configuration Descriptor header"));
+
+    testrt::check_eq(fields.length, 9u8);
+    testrt::check_eq(fields.descriptor_type, 2u8);
+    testrt::check_eq(fields.total_length, 34u16);
+    testrt::check_eq(fields.num_interfaces, 1u8);
+    testrt::check_eq(fields.configuration_value, 1u8);
+    testrt::check_eq(fields.configuration_index, 0u8);
+    testrt::check_eq(fields.attributes, 0x80u8);
+    testrt::check_eq(fields.max_power, 50u8);
+
+    let mut wrong_length = raw;
+    wrong_length[0] = 8;
+    testrt::check(
+        parse_usb_configuration_descriptor_header(wrong_length).is_none(),
+        "wrong Configuration Descriptor header length is rejected",
+    );
+
+    let mut wrong_type = raw;
+    wrong_type[1] = 1;
+    testrt::check(
+        parse_usb_configuration_descriptor_header(wrong_type).is_none(),
+        "wrong descriptor type is rejected",
+    );
+
+    let too_short_tree = [9, 2, 8, 0, 1, 1, 0, 0x80, 50];
+    testrt::check(
+        parse_usb_configuration_descriptor_header(too_short_tree).is_none(),
+        "wTotalLength smaller than header is rejected",
+    );
+});
+
+arch_test!(
+    xhci_read_configuration_descriptor_header_classifier_names_success_and_failures,
+    {
+        let descriptor = [9, 2, 34, 0, 1, 1, 0, 0x80, 50];
+        let success = decode_xhci_transfer_event([
+            0x0000_6000,
+            0,
+            1u32 << 24,
+            (9u32 << 24) | (1u32 << 16) | (32u32 << 10) | 1,
+        ]);
+        match classify_read_configuration_descriptor_header_transfer_event(
+            0x6000, 9, 1, descriptor, success,
+        ) {
+            XhciReadConfigurationDescriptorHeaderStatus::ConfigurationDescriptorHeaderReady {
+                slot_id,
+                total_length,
+                num_interfaces,
+                configuration_value,
+            } => {
+                testrt::check_eq(slot_id, 9u8);
+                testrt::check_eq(total_length, 34u16);
+                testrt::check_eq(num_interfaces, 1u8);
+                testrt::check_eq(configuration_value, 1u8);
+            }
+            _ => {
+                testrt::check(false, "successful transfer exposes Configuration Descriptor header")
+            }
+        }
+
+        let invalid = [9, 2, 8, 0, 1, 1, 0, 0x80, 50];
+        match classify_read_configuration_descriptor_header_transfer_event(
+            0x6000, 9, 1, invalid, success,
+        ) {
+            XhciReadConfigurationDescriptorHeaderStatus::InvalidConfigurationDescriptorHeader {
+                length,
+                descriptor_type,
+                total_length,
+            } => {
+                testrt::check_eq(length, 9u8);
+                testrt::check_eq(descriptor_type, 2u8);
+                testrt::check_eq(total_length, 8u16);
+            }
+            _ => testrt::check(false, "malformed configuration header is reported"),
+        }
+
+        let failed = decode_xhci_transfer_event([
+            0x0000_6000,
+            0,
+            (13u32 << 24) | 3,
+            (9u32 << 24) | (1u32 << 16) | (32u32 << 10) | 1,
+        ]);
+        match classify_read_configuration_descriptor_header_transfer_event(
+            0x6000, 9, 1, descriptor, failed,
+        ) {
+            XhciReadConfigurationDescriptorHeaderStatus::TransferFailed {
+                completion_code,
+                residual_length,
+                slot_id,
+                endpoint_id,
+            } => {
+                testrt::check_eq(completion_code, 13u8);
+                testrt::check_eq(residual_length, 3u32);
+                testrt::check_eq(slot_id, 9u8);
+                testrt::check_eq(endpoint_id, 1u8);
+            }
+            _ => testrt::check(false, "failed transfer is reported"),
+        }
+    }
+);
+
+arch_test!(usb_configuration_descriptor_tree_finds_boot_keyboard_endpoint, {
+    let raw = [
+        9, 2, 34, 0, 1, 1, 0, 0x80, 50, 9, 4, 0, 0, 1, 3, 1, 1, 0, 9, 0x21, 0x11, 0x01, 0, 1, 0x22,
+        63, 0, 7, 5, 0x81, 3, 8, 0, 10,
+    ];
+    let mut descriptor = [0u8; USB_CONFIGURATION_DESCRIPTOR_MAX_BYTES];
+    let mut index = 0usize;
+    while index < raw.len() {
+        descriptor[index] = raw[index];
+        index += 1;
+    }
+
+    let tree = parse_usb_configuration_descriptor_tree(descriptor, raw.len() as u16)
+        .unwrap_or_else(|| panic!("valid HID boot keyboard descriptor tree"));
+
+    testrt::check_eq(tree.header.total_length, 34u16);
+    testrt::check_eq(tree.header.num_interfaces, 1u8);
+    testrt::check_eq(tree.descriptor_count, 4u8);
+    let keyboard = tree
+        .boot_keyboard
+        .unwrap_or_else(|| panic!("boot keyboard interface present"));
+    testrt::check_eq(keyboard.interface_number, 0u8);
+    testrt::check_eq(keyboard.alternate_setting, 0u8);
+    testrt::check_eq(keyboard.endpoint_count, 1u8);
+    let endpoint = keyboard
+        .interrupt_in_endpoint
+        .unwrap_or_else(|| panic!("interrupt-IN endpoint present"));
+    testrt::check_eq(endpoint.address, 0x81u8);
+    testrt::check_eq(endpoint.endpoint_number, 1u8);
+    testrt::check(endpoint.direction_in, "endpoint direction is IN");
+    testrt::check_eq(endpoint.transfer_type, 3u8);
+    testrt::check_eq(endpoint.max_packet_size, 8u16);
+    testrt::check_eq(endpoint.interval, 10u8);
+
+    descriptor[9] = 0;
+    testrt::check(
+        parse_usb_configuration_descriptor_tree(descriptor, raw.len() as u16).is_none(),
+        "zero-length child descriptor is rejected",
+    );
+});
+
+arch_test!(xhci_read_configuration_descriptor_classifier_names_success_and_failures, {
+    let raw = [
+        9, 2, 34, 0, 1, 1, 0, 0x80, 50, 9, 4, 0, 0, 1, 3, 1, 1, 0, 9, 0x21, 0x11, 0x01, 0, 1, 0x22,
+        63, 0, 7, 5, 0x81, 3, 8, 0, 10,
+    ];
+    let mut descriptor = [0u8; USB_CONFIGURATION_DESCRIPTOR_MAX_BYTES];
+    let mut index = 0usize;
+    while index < raw.len() {
+        descriptor[index] = raw[index];
+        index += 1;
+    }
+
+    let success = decode_xhci_transfer_event([
+        0x0000_7000,
+        0,
+        1u32 << 24,
+        (10u32 << 24) | (1u32 << 16) | (32u32 << 10) | 1,
+    ]);
+    match classify_read_configuration_descriptor_transfer_event(
+        0x7000,
+        10,
+        1,
+        descriptor,
+        raw.len() as u16,
+        success,
+    ) {
+        XhciReadConfigurationDescriptorStatus::ConfigurationDescriptorReady {
+            slot_id,
+            total_length,
+            num_interfaces,
+            boot_keyboard_ready_to_configure,
+        } => {
+            testrt::check_eq(slot_id, 10u8);
+            testrt::check_eq(total_length, 34u16);
+            testrt::check_eq(num_interfaces, 1u8);
+            testrt::check(
+                boot_keyboard_ready_to_configure,
+                "boot keyboard interface has interrupt-IN endpoint",
+            );
+        }
+        _ => testrt::check(false, "successful transfer exposes Configuration descriptor tree"),
+    }
+
+    let failed = decode_xhci_transfer_event([
+        0x0000_7000,
+        0,
+        (13u32 << 24) | 4,
+        (10u32 << 24) | (1u32 << 16) | (32u32 << 10) | 1,
+    ]);
+    match classify_read_configuration_descriptor_transfer_event(
+        0x7000,
+        10,
+        1,
+        descriptor,
+        raw.len() as u16,
+        failed,
+    ) {
+        XhciReadConfigurationDescriptorStatus::TransferFailed {
+            completion_code,
+            residual_length,
+            slot_id,
+            endpoint_id,
+        } => {
+            testrt::check_eq(completion_code, 13u8);
+            testrt::check_eq(residual_length, 4u32);
+            testrt::check_eq(slot_id, 10u8);
+            testrt::check_eq(endpoint_id, 1u8);
+        }
+        _ => testrt::check(false, "failed transfer is reported"),
     }
 });
 

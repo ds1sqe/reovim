@@ -668,7 +668,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     let exe = build_os_image(
         &[],
         Some(
-            "help\npwd\nls /\ncd /dev\npwd\nls\ncat /boot/profile\ncat /log/dmesg\ndevice\nprobe pcie\nprobe usb-keyboard\nprobe xhci-start\nprobe xhci-enable-slot\nprobe xhci-address-device\nprobe xhci-get-device-descriptor\nprobe xhci-set-address\ndmesg\n",
+            "help\npwd\nls /\ncd /dev\npwd\nls\ncat /boot/profile\ncat /log/dmesg\ndevice\nprobe pcie\nprobe usb-keyboard\nprobe xhci-start\nprobe xhci-enable-slot\nprobe xhci-address-device\nprobe xhci-get-device-descriptor\nprobe xhci-set-address\nprobe xhci-read-device-descriptor\nprobe xhci-read-config-descriptor-header\nprobe xhci-read-config-descriptor\ndmesg\n",
         ),
         None,
     );
@@ -723,6 +723,20 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     assert!(
         serial.contains("probe xhci-set-address:\nstate=unsupported-on-this-target"),
         "x86 OS profile reports xhci-set-address probe unsupported; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("probe xhci-read-device-descriptor:\nstate=unsupported-on-this-target"),
+        "x86 OS profile reports xhci-read-device-descriptor probe unsupported; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "probe xhci-read-config-descriptor-header:\nstate=unsupported-on-this-target"
+        ),
+        "x86 OS profile reports xhci-read-config-descriptor-header probe unsupported; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("probe xhci-read-config-descriptor:\nstate=unsupported-on-this-target"),
+        "x86 OS profile reports xhci-read-config-descriptor probe unsupported; serial: {serial:?}",
     );
     assert!(serial.contains("reovim-os> /\n"), "pwd prints root cwd; serial: {serial:?}",);
     assert!(

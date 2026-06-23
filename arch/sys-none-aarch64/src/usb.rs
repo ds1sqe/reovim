@@ -115,13 +115,28 @@ const XHCI_ADDRESS_DEVICE_BLOCK_SET_ADDRESS_REQUEST: bool = true;
 const XHCI_SET_ADDRESS_COMMAND_INDEX: usize = 2;
 const XHCI_SET_ADDRESS_EVENT_INDEX: usize = 3;
 const XHCI_GET_DESCRIPTOR_EVENT_INDEX: usize = 2;
-const XHCI_EP0_SETUP_TRB_INDEX: usize = 0;
-const XHCI_EP0_DATA_TRB_INDEX: usize = 1;
-const XHCI_EP0_STATUS_TRB_INDEX: usize = 2;
+const XHCI_READ_DEVICE_DESCRIPTOR_EVENT_INDEX: usize = 4;
+const XHCI_READ_CONFIGURATION_DESCRIPTOR_HEADER_EVENT_INDEX: usize = 5;
+const XHCI_READ_CONFIGURATION_DESCRIPTOR_EVENT_INDEX: usize = 6;
+const XHCI_EP0_DESCRIPTOR_PREFIX_TRB_INDEX: usize = 0;
+const XHCI_EP0_DEVICE_DESCRIPTOR_TRB_INDEX: usize = 3;
+const XHCI_EP0_CONFIGURATION_DESCRIPTOR_HEADER_TRB_INDEX: usize = 6;
+const XHCI_EP0_CONFIGURATION_DESCRIPTOR_TRB_INDEX: usize = 9;
 const XHCI_DEVICE_DESCRIPTOR_PREFIX_BYTES: usize = 8;
+const USB_DEVICE_DESCRIPTOR_BYTES: usize = 18;
+const USB_CONFIGURATION_DESCRIPTOR_HEADER_BYTES: usize = 9;
+const USB_CONFIGURATION_DESCRIPTOR_MAX_BYTES: usize = 256;
 const USB_REQUEST_TYPE_DEVICE_TO_HOST_STANDARD_DEVICE: u8 = 0x80;
 const USB_REQUEST_GET_DESCRIPTOR: u8 = 6;
 const USB_DESCRIPTOR_TYPE_DEVICE: u8 = 1;
+const USB_DESCRIPTOR_TYPE_CONFIGURATION: u8 = 2;
+const USB_DESCRIPTOR_TYPE_INTERFACE: u8 = 4;
+const USB_DESCRIPTOR_TYPE_ENDPOINT: u8 = 5;
+const USB_CLASS_HID: u8 = 0x03;
+const USB_HID_SUBCLASS_BOOT: u8 = 0x01;
+const USB_HID_PROTOCOL_KEYBOARD: u8 = 0x01;
+const USB_ENDPOINT_DIRECTION_IN: u8 = 0x80;
+const USB_ENDPOINT_TRANSFER_TYPE_INTERRUPT: u8 = 0x03;
 const XHCI_HCCPARAMS1_CONTEXT_SIZE: u32 = 1 << 2;
 const XHCI_HCCPARAMS1_XECP_SHIFT: u32 = 16;
 const XHCI_START_WAIT_SPINS: usize = 1_000_000;
@@ -888,6 +903,533 @@ impl XhciSetAddressReport {
     }
 }
 
+/// Parsed USB Device Descriptor fields.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UsbDeviceDescriptor {
+    /// Descriptor length byte.
+    pub length: u8,
+    /// Descriptor type byte.
+    pub descriptor_type: u8,
+    /// USB specification release in BCD.
+    pub bcd_usb: u16,
+    /// Device class code.
+    pub device_class: u8,
+    /// Device subclass code.
+    pub device_subclass: u8,
+    /// Device protocol code.
+    pub device_protocol: u8,
+    /// Endpoint 0 max-packet-size byte as encoded by USB.
+    pub max_packet_size0: u8,
+    /// Vendor ID.
+    pub vendor_id: u16,
+    /// Product ID.
+    pub product_id: u16,
+    /// Device release in BCD.
+    pub bcd_device: u16,
+    /// String descriptor index for manufacturer.
+    pub manufacturer_index: u8,
+    /// String descriptor index for product.
+    pub product_index: u8,
+    /// String descriptor index for serial number.
+    pub serial_number_index: u8,
+    /// Number of available configurations.
+    pub num_configurations: u8,
+}
+
+/// Status from the manual full USB Device Descriptor read.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum XhciReadDeviceDescriptorStatus {
+    /// The BSR=0 Address Device checkpoint did not complete successfully.
+    SetAddressFailed(XhciSetAddressStatus),
+    /// Required controller-start evidence was missing.
+    StartEvidenceUnavailable,
+    /// No Transfer Event reached the expected event-ring entry.
+    TransferTimedOut,
+    /// A cycle-valid event arrived, but it was not a transfer event.
+    UnexpectedEventType {
+        /// Event TRB type field.
+        trb_type: u8,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+    },
+    /// The transfer event did not point at the Status Stage TRB.
+    TransferPointerMismatch {
+        /// Expected Status Stage TRB pointer.
+        expected: u64,
+        /// Actual pointer reported by the event.
+        actual: u64,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+        /// Slot ID carried by the event.
+        slot_id: u8,
+        /// Endpoint ID carried by the event.
+        endpoint_id: u8,
+    },
+    /// The transfer event reported a different Slot ID.
+    SlotIdMismatch {
+        /// Expected target slot ID.
+        expected: u8,
+        /// Actual Slot ID carried by the event.
+        actual: u8,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+    },
+    /// The transfer event reported a different Endpoint ID.
+    EndpointIdMismatch {
+        /// Expected endpoint ID.
+        expected: u8,
+        /// Actual Endpoint ID carried by the event.
+        actual: u8,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+    },
+    /// The transfer completed with a non-success code.
+    TransferFailed {
+        /// xHCI completion code.
+        completion_code: u8,
+        /// Residual bytes not transferred for the generating TRB.
+        residual_length: u32,
+        /// Slot ID carried by the event.
+        slot_id: u8,
+        /// Endpoint ID carried by the event.
+        endpoint_id: u8,
+    },
+    /// Descriptor bytes returned, but did not decode as a full Device Descriptor.
+    InvalidDeviceDescriptor {
+        /// Descriptor length byte.
+        length: u8,
+        /// Descriptor type byte.
+        descriptor_type: u8,
+    },
+    /// The full USB Device Descriptor is available in the report.
+    DeviceDescriptorReady {
+        /// Assigned xHCI slot ID.
+        slot_id: u8,
+        /// Vendor ID from the descriptor.
+        vendor_id: u16,
+        /// Product ID from the descriptor.
+        product_id: u16,
+        /// Number of available configurations.
+        num_configurations: u8,
+    },
+}
+
+/// Evidence returned by the manual full USB Device Descriptor read.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct XhciReadDeviceDescriptorReport {
+    /// Set-address report produced before queuing the control transfer.
+    pub set_address: XhciSetAddressReport,
+    /// Final transfer status.
+    pub status: XhciReadDeviceDescriptorStatus,
+    /// xHCI slot ID targeted by the transfer.
+    pub slot_id: u8,
+    /// xHCI endpoint ID targeted by the transfer.
+    pub endpoint_id: u8,
+    /// Doorbell value written to the device slot.
+    pub doorbell: u32,
+    /// Setup Stage TRB pointer.
+    pub setup_trb_pointer: u64,
+    /// Data Stage TRB pointer.
+    pub data_trb_pointer: u64,
+    /// Status Stage TRB pointer.
+    pub status_trb_pointer: u64,
+    /// Raw Setup Stage TRB written by software.
+    pub setup_trb: [u32; 4],
+    /// Raw Data Stage TRB written by software.
+    pub data_trb: [u32; 4],
+    /// Raw Status Stage TRB written by software.
+    pub status_trb: [u32; 4],
+    /// DMA buffer address used for descriptor bytes.
+    pub descriptor_buffer: u64,
+    /// Raw full USB Device Descriptor bytes.
+    pub descriptor: [u8; USB_DEVICE_DESCRIPTOR_BYTES],
+    /// Parsed descriptor fields, if valid.
+    pub fields: Option<UsbDeviceDescriptor>,
+    /// Transfer event observed for the Status Stage TRB, if one arrived.
+    pub event: Option<XhciTransferEvent>,
+}
+
+impl XhciReadDeviceDescriptorReport {
+    const fn new(
+        set_address: XhciSetAddressReport,
+        status: XhciReadDeviceDescriptorStatus,
+    ) -> Self {
+        Self {
+            set_address,
+            status,
+            slot_id: 0,
+            endpoint_id: XHCI_DOORBELL_CONTROL_EP0 as u8,
+            doorbell: XHCI_DOORBELL_CONTROL_EP0,
+            setup_trb_pointer: 0,
+            data_trb_pointer: 0,
+            status_trb_pointer: 0,
+            setup_trb: [0; 4],
+            data_trb: [0; 4],
+            status_trb: [0; 4],
+            descriptor_buffer: 0,
+            descriptor: [0; USB_DEVICE_DESCRIPTOR_BYTES],
+            fields: None,
+            event: None,
+        }
+    }
+}
+
+/// Parsed USB Configuration Descriptor header fields.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UsbConfigurationDescriptorHeader {
+    /// Descriptor length byte.
+    pub length: u8,
+    /// Descriptor type byte.
+    pub descriptor_type: u8,
+    /// Total bytes in this configuration's descriptor tree.
+    pub total_length: u16,
+    /// Number of interfaces in this configuration.
+    pub num_interfaces: u8,
+    /// Configuration value used by SET_CONFIGURATION.
+    pub configuration_value: u8,
+    /// String descriptor index for this configuration.
+    pub configuration_index: u8,
+    /// Raw bmAttributes byte.
+    pub attributes: u8,
+    /// Max bus power draw in 2 mA units.
+    pub max_power: u8,
+}
+
+/// Status from the manual Configuration Descriptor header read.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum XhciReadConfigurationDescriptorHeaderStatus {
+    /// The full Device Descriptor checkpoint did not complete successfully.
+    DeviceDescriptorFailed(XhciReadDeviceDescriptorStatus),
+    /// Required controller-start evidence was missing.
+    StartEvidenceUnavailable,
+    /// No Transfer Event reached the expected event-ring entry.
+    TransferTimedOut,
+    /// A cycle-valid event arrived, but it was not a transfer event.
+    UnexpectedEventType {
+        /// Event TRB type field.
+        trb_type: u8,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+    },
+    /// The transfer event did not point at the Status Stage TRB.
+    TransferPointerMismatch {
+        /// Expected Status Stage TRB pointer.
+        expected: u64,
+        /// Actual pointer reported by the event.
+        actual: u64,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+        /// Slot ID carried by the event.
+        slot_id: u8,
+        /// Endpoint ID carried by the event.
+        endpoint_id: u8,
+    },
+    /// The transfer event reported a different Slot ID.
+    SlotIdMismatch {
+        /// Expected target slot ID.
+        expected: u8,
+        /// Actual Slot ID carried by the event.
+        actual: u8,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+    },
+    /// The transfer event reported a different Endpoint ID.
+    EndpointIdMismatch {
+        /// Expected endpoint ID.
+        expected: u8,
+        /// Actual Endpoint ID carried by the event.
+        actual: u8,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+    },
+    /// The transfer completed with a non-success code.
+    TransferFailed {
+        /// xHCI completion code.
+        completion_code: u8,
+        /// Residual bytes not transferred for the generating TRB.
+        residual_length: u32,
+        /// Slot ID carried by the event.
+        slot_id: u8,
+        /// Endpoint ID carried by the event.
+        endpoint_id: u8,
+    },
+    /// Descriptor bytes returned, but did not decode as a Configuration header.
+    InvalidConfigurationDescriptorHeader {
+        /// Descriptor length byte.
+        length: u8,
+        /// Descriptor type byte.
+        descriptor_type: u8,
+        /// Raw wTotalLength value.
+        total_length: u16,
+    },
+    /// The Configuration Descriptor header is available in the report.
+    ConfigurationDescriptorHeaderReady {
+        /// Assigned xHCI slot ID.
+        slot_id: u8,
+        /// Total bytes in this configuration's descriptor tree.
+        total_length: u16,
+        /// Number of interfaces in this configuration.
+        num_interfaces: u8,
+        /// Configuration value used by SET_CONFIGURATION.
+        configuration_value: u8,
+    },
+}
+
+/// Evidence returned by the manual Configuration Descriptor header read.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct XhciReadConfigurationDescriptorHeaderReport {
+    /// Full Device Descriptor report produced before queuing this transfer.
+    pub device_descriptor: XhciReadDeviceDescriptorReport,
+    /// Final transfer status.
+    pub status: XhciReadConfigurationDescriptorHeaderStatus,
+    /// xHCI slot ID targeted by the transfer.
+    pub slot_id: u8,
+    /// xHCI endpoint ID targeted by the transfer.
+    pub endpoint_id: u8,
+    /// Doorbell value written to the device slot.
+    pub doorbell: u32,
+    /// Setup Stage TRB pointer.
+    pub setup_trb_pointer: u64,
+    /// Data Stage TRB pointer.
+    pub data_trb_pointer: u64,
+    /// Status Stage TRB pointer.
+    pub status_trb_pointer: u64,
+    /// Raw Setup Stage TRB written by software.
+    pub setup_trb: [u32; 4],
+    /// Raw Data Stage TRB written by software.
+    pub data_trb: [u32; 4],
+    /// Raw Status Stage TRB written by software.
+    pub status_trb: [u32; 4],
+    /// DMA buffer address used for descriptor bytes.
+    pub descriptor_buffer: u64,
+    /// Raw 9-byte USB Configuration Descriptor header.
+    pub descriptor: [u8; USB_CONFIGURATION_DESCRIPTOR_HEADER_BYTES],
+    /// Parsed descriptor fields, if valid.
+    pub fields: Option<UsbConfigurationDescriptorHeader>,
+    /// Transfer event observed for the Status Stage TRB, if one arrived.
+    pub event: Option<XhciTransferEvent>,
+}
+
+impl XhciReadConfigurationDescriptorHeaderReport {
+    const fn new(
+        device_descriptor: XhciReadDeviceDescriptorReport,
+        status: XhciReadConfigurationDescriptorHeaderStatus,
+    ) -> Self {
+        Self {
+            device_descriptor,
+            status,
+            slot_id: 0,
+            endpoint_id: XHCI_DOORBELL_CONTROL_EP0 as u8,
+            doorbell: XHCI_DOORBELL_CONTROL_EP0,
+            setup_trb_pointer: 0,
+            data_trb_pointer: 0,
+            status_trb_pointer: 0,
+            setup_trb: [0; 4],
+            data_trb: [0; 4],
+            status_trb: [0; 4],
+            descriptor_buffer: 0,
+            descriptor: [0; USB_CONFIGURATION_DESCRIPTOR_HEADER_BYTES],
+            fields: None,
+            event: None,
+        }
+    }
+}
+
+/// Parsed USB endpoint descriptor facts relevant to boot-keyboard input.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UsbEndpointDescriptor {
+    /// Raw endpoint address byte.
+    pub address: u8,
+    /// Endpoint number.
+    pub endpoint_number: u8,
+    /// Whether the endpoint direction is IN.
+    pub direction_in: bool,
+    /// Raw bmAttributes byte.
+    pub attributes: u8,
+    /// Transfer type bits from bmAttributes.
+    pub transfer_type: u8,
+    /// Maximum packet size.
+    pub max_packet_size: u16,
+    /// Polling interval.
+    pub interval: u8,
+}
+
+/// Parsed HID boot-keyboard interface candidate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UsbHidBootKeyboardInterface {
+    /// Interface number.
+    pub interface_number: u8,
+    /// Alternate setting.
+    pub alternate_setting: u8,
+    /// Number of endpoints advertised by the interface descriptor.
+    pub endpoint_count: u8,
+    /// Interface protocol byte, expected to be keyboard.
+    pub protocol: u8,
+    /// Interrupt-IN endpoint for boot-keyboard reports, if found.
+    pub interrupt_in_endpoint: Option<UsbEndpointDescriptor>,
+}
+
+/// Parsed USB Configuration descriptor tree summary.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UsbConfigurationDescriptorTree {
+    /// Parsed Configuration Descriptor header.
+    pub header: UsbConfigurationDescriptorHeader,
+    /// Number of descriptor records walked in the tree.
+    pub descriptor_count: u8,
+    /// First HID boot-keyboard interface candidate, if present.
+    pub boot_keyboard: Option<UsbHidBootKeyboardInterface>,
+}
+
+/// Status from the manual full Configuration descriptor tree read.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum XhciReadConfigurationDescriptorStatus {
+    /// The Configuration Descriptor header checkpoint did not complete.
+    HeaderFailed(XhciReadConfigurationDescriptorHeaderStatus),
+    /// The reported `wTotalLength` exceeds this early static buffer.
+    ConfigurationTooLarge {
+        /// Reported total length.
+        total_length: u16,
+        /// Maximum static buffer size supported by this probe.
+        max_supported: u16,
+    },
+    /// Required controller-start evidence was missing.
+    StartEvidenceUnavailable,
+    /// No Transfer Event reached the expected event-ring entry.
+    TransferTimedOut,
+    /// A cycle-valid event arrived, but it was not a transfer event.
+    UnexpectedEventType {
+        /// Event TRB type field.
+        trb_type: u8,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+    },
+    /// The transfer event did not point at the Status Stage TRB.
+    TransferPointerMismatch {
+        /// Expected Status Stage TRB pointer.
+        expected: u64,
+        /// Actual pointer reported by the event.
+        actual: u64,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+        /// Slot ID carried by the event.
+        slot_id: u8,
+        /// Endpoint ID carried by the event.
+        endpoint_id: u8,
+    },
+    /// The transfer event reported a different Slot ID.
+    SlotIdMismatch {
+        /// Expected target slot ID.
+        expected: u8,
+        /// Actual Slot ID carried by the event.
+        actual: u8,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+    },
+    /// The transfer event reported a different Endpoint ID.
+    EndpointIdMismatch {
+        /// Expected endpoint ID.
+        expected: u8,
+        /// Actual Endpoint ID carried by the event.
+        actual: u8,
+        /// xHCI completion code carried by the event.
+        completion_code: u8,
+    },
+    /// The transfer completed with a non-success code.
+    TransferFailed {
+        /// xHCI completion code.
+        completion_code: u8,
+        /// Residual bytes not transferred for the generating TRB.
+        residual_length: u32,
+        /// Slot ID carried by the event.
+        slot_id: u8,
+        /// Endpoint ID carried by the event.
+        endpoint_id: u8,
+    },
+    /// The descriptor tree could not be walked safely.
+    InvalidConfigurationDescriptor {
+        /// Offset of the invalid record.
+        offset: u16,
+        /// Descriptor length byte at that offset.
+        length: u8,
+        /// Descriptor type byte at that offset.
+        descriptor_type: u8,
+    },
+    /// The full Configuration descriptor tree is available in the report.
+    ConfigurationDescriptorReady {
+        /// Assigned xHCI slot ID.
+        slot_id: u8,
+        /// Total bytes in this configuration's descriptor tree.
+        total_length: u16,
+        /// Number of interfaces in this configuration.
+        num_interfaces: u8,
+        /// Whether a HID boot-keyboard interface with interrupt-IN endpoint was found.
+        boot_keyboard_ready_to_configure: bool,
+    },
+}
+
+/// Evidence returned by the manual full Configuration descriptor tree read.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct XhciReadConfigurationDescriptorReport {
+    /// Header report produced before queuing this transfer.
+    pub header: XhciReadConfigurationDescriptorHeaderReport,
+    /// Final transfer status.
+    pub status: XhciReadConfigurationDescriptorStatus,
+    /// xHCI slot ID targeted by the transfer.
+    pub slot_id: u8,
+    /// xHCI endpoint ID targeted by the transfer.
+    pub endpoint_id: u8,
+    /// Doorbell value written to the device slot.
+    pub doorbell: u32,
+    /// Setup Stage TRB pointer.
+    pub setup_trb_pointer: u64,
+    /// Data Stage TRB pointer.
+    pub data_trb_pointer: u64,
+    /// Status Stage TRB pointer.
+    pub status_trb_pointer: u64,
+    /// Raw Setup Stage TRB written by software.
+    pub setup_trb: [u32; 4],
+    /// Raw Data Stage TRB written by software.
+    pub data_trb: [u32; 4],
+    /// Raw Status Stage TRB written by software.
+    pub status_trb: [u32; 4],
+    /// DMA buffer address used for descriptor bytes.
+    pub descriptor_buffer: u64,
+    /// Number of valid descriptor bytes in `descriptor`.
+    pub descriptor_length: u16,
+    /// Raw USB Configuration descriptor tree bytes.
+    pub descriptor: [u8; USB_CONFIGURATION_DESCRIPTOR_MAX_BYTES],
+    /// Parsed descriptor tree summary, if valid.
+    pub fields: Option<UsbConfigurationDescriptorTree>,
+    /// Transfer event observed for the Status Stage TRB, if one arrived.
+    pub event: Option<XhciTransferEvent>,
+}
+
+impl XhciReadConfigurationDescriptorReport {
+    const fn new(
+        header: XhciReadConfigurationDescriptorHeaderReport,
+        status: XhciReadConfigurationDescriptorStatus,
+    ) -> Self {
+        Self {
+            header,
+            status,
+            slot_id: 0,
+            endpoint_id: XHCI_DOORBELL_CONTROL_EP0 as u8,
+            doorbell: XHCI_DOORBELL_CONTROL_EP0,
+            setup_trb_pointer: 0,
+            data_trb_pointer: 0,
+            status_trb_pointer: 0,
+            setup_trb: [0; 4],
+            data_trb: [0; 4],
+            status_trb: [0; 4],
+            descriptor_buffer: 0,
+            descriptor_length: 0,
+            descriptor: [0; USB_CONFIGURATION_DESCRIPTOR_MAX_BYTES],
+            fields: None,
+            event: None,
+        }
+    }
+}
+
 /// Nonblocking boot-keyboard provider poll result.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UsbBootKeyboardPoll {
@@ -1358,9 +1900,8 @@ pub fn get_device_descriptor_prefix_on_pcie_xhci_controller() -> XhciDeviceDescr
         );
     };
 
-    let setup_trb_pointer = XHCI_CONTROL_ENDPOINT_RING.trb_addr(XHCI_EP0_SETUP_TRB_INDEX);
-    let data_trb_pointer = XHCI_CONTROL_ENDPOINT_RING.trb_addr(XHCI_EP0_DATA_TRB_INDEX);
-    let status_trb_pointer = XHCI_CONTROL_ENDPOINT_RING.trb_addr(XHCI_EP0_STATUS_TRB_INDEX);
+    let (setup_trb_pointer, data_trb_pointer, status_trb_pointer) =
+        xhci_ep0_control_trb_pointers(XHCI_EP0_DESCRIPTOR_PREFIX_TRB_INDEX);
     let descriptor_buffer = XHCI_DEVICE_DESCRIPTOR_PREFIX.addr();
 
     XHCI_DEVICE_DESCRIPTOR_PREFIX.zero();
@@ -1376,12 +1917,13 @@ pub fn get_device_descriptor_prefix_on_pcie_xhci_controller() -> XhciDeviceDescr
         xhci_data_stage_trb(descriptor_buffer, XHCI_DEVICE_DESCRIPTOR_PREFIX_BYTES as u32, true);
     let status_trb = xhci_status_stage_trb(false);
 
-    XHCI_CONTROL_ENDPOINT_RING.set_trb(XHCI_EP0_SETUP_TRB_INDEX, setup_trb);
-    XHCI_CONTROL_ENDPOINT_RING.set_trb(XHCI_EP0_DATA_TRB_INDEX, data_trb);
-    XHCI_CONTROL_ENDPOINT_RING.set_trb(XHCI_EP0_STATUS_TRB_INDEX, status_trb);
-    XHCI_CONTROL_ENDPOINT_RING
-        .set_trb(XHCI_CONTROL_ENDPOINT_RING_TRBS - 1, xhci_link_trb(plan.control_endpoint_ring));
-    dma_clean_range(plan.control_endpoint_ring, XHCI_CONTROL_ENDPOINT_RING_TRBS * XHCI_TRB_BYTES);
+    write_xhci_ep0_control_transfer(
+        plan,
+        XHCI_EP0_DESCRIPTOR_PREFIX_TRB_INDEX,
+        setup_trb,
+        data_trb,
+        status_trb,
+    );
     dma_clean_range(descriptor_buffer, XHCI_DEVICE_DESCRIPTOR_PREFIX_BYTES);
 
     let mut report = XhciDeviceDescriptorProbeReport {
@@ -1511,6 +2053,374 @@ pub fn set_address_on_pcie_xhci_controller() -> XhciSetAddressReport {
             command_trb_pointer,
             slot_id,
             endpoint0_max_packet_size,
+            event,
+        );
+    }
+
+    report
+}
+
+/// Reads the full USB Device Descriptor after SET_ADDRESS.
+///
+/// This is the next manual enumeration checkpoint. It reports the standard
+/// Device Descriptor fields needed before reading Configuration descriptors,
+/// selecting a HID boot-keyboard interface, and polling interrupt-IN reports.
+pub fn read_device_descriptor_on_pcie_xhci_controller() -> XhciReadDeviceDescriptorReport {
+    let set_address = set_address_on_pcie_xhci_controller();
+    let slot_id = match set_address.status {
+        XhciSetAddressStatus::Addressed { slot_id, .. } => slot_id,
+        status => {
+            return XhciReadDeviceDescriptorReport::new(
+                set_address,
+                XhciReadDeviceDescriptorStatus::SetAddressFailed(status),
+            );
+        }
+    };
+
+    let (Some(mmio), Some(caps), Some(plan)) = (
+        set_address.descriptor.address.enable.start.mmio_base,
+        set_address.descriptor.address.enable.start.capabilities,
+        set_address.descriptor.address.enable.start.memory,
+    ) else {
+        return XhciReadDeviceDescriptorReport::new(
+            set_address,
+            XhciReadDeviceDescriptorStatus::StartEvidenceUnavailable,
+        );
+    };
+
+    let (setup_trb_pointer, data_trb_pointer, status_trb_pointer) =
+        xhci_ep0_control_trb_pointers(XHCI_EP0_DEVICE_DESCRIPTOR_TRB_INDEX);
+    let descriptor_buffer = XHCI_DEVICE_DESCRIPTOR.addr();
+
+    XHCI_DEVICE_DESCRIPTOR.zero();
+    let setup = XhciSetupPacket {
+        bm_request_type: USB_REQUEST_TYPE_DEVICE_TO_HOST_STANDARD_DEVICE,
+        b_request: USB_REQUEST_GET_DESCRIPTOR,
+        w_value: (USB_DESCRIPTOR_TYPE_DEVICE as u16) << 8,
+        w_index: 0,
+        w_length: USB_DEVICE_DESCRIPTOR_BYTES as u16,
+    };
+    let setup_trb = xhci_setup_stage_trb(setup);
+    let data_trb = xhci_data_stage_trb(descriptor_buffer, USB_DEVICE_DESCRIPTOR_BYTES as u32, true);
+    let status_trb = xhci_status_stage_trb(false);
+
+    write_xhci_ep0_control_transfer(
+        plan,
+        XHCI_EP0_DEVICE_DESCRIPTOR_TRB_INDEX,
+        setup_trb,
+        data_trb,
+        status_trb,
+    );
+    dma_clean_range(descriptor_buffer, USB_DEVICE_DESCRIPTOR_BYTES);
+
+    let mut report = XhciReadDeviceDescriptorReport {
+        set_address,
+        status: XhciReadDeviceDescriptorStatus::TransferTimedOut,
+        slot_id,
+        endpoint_id: XHCI_DOORBELL_CONTROL_EP0 as u8,
+        doorbell: XHCI_DOORBELL_CONTROL_EP0,
+        setup_trb_pointer,
+        data_trb_pointer,
+        status_trb_pointer,
+        setup_trb,
+        data_trb,
+        status_trb,
+        descriptor_buffer,
+        descriptor: [0; USB_DEVICE_DESCRIPTOR_BYTES],
+        fields: None,
+        event: None,
+    };
+
+    compiler_fence(Ordering::SeqCst);
+    write_mmio_u32(
+        mmio + caps.doorbell_offset as usize + (slot_id as usize * core::mem::size_of::<u32>()),
+        XHCI_DOORBELL_CONTROL_EP0,
+    );
+
+    if let Some(event) = wait_for_xhci_transfer_event(plan, XHCI_READ_DEVICE_DESCRIPTOR_EVENT_INDEX)
+    {
+        acknowledge_xhci_event(
+            mmio,
+            caps,
+            plan.event_ring
+                + ((XHCI_READ_DEVICE_DESCRIPTOR_EVENT_INDEX + 1) * XHCI_TRB_BYTES) as u64,
+        );
+        dma_invalidate_range(descriptor_buffer, USB_DEVICE_DESCRIPTOR_BYTES);
+        report.descriptor = XHCI_DEVICE_DESCRIPTOR.read();
+        report.fields = parse_usb_device_descriptor(report.descriptor);
+        report.event = Some(event);
+        report.status = classify_read_device_descriptor_transfer_event(
+            status_trb_pointer,
+            slot_id,
+            XHCI_DOORBELL_CONTROL_EP0 as u8,
+            report.descriptor,
+            event,
+        );
+    }
+
+    report
+}
+
+/// Reads the 9-byte USB Configuration Descriptor header after the Device Descriptor.
+///
+/// This checkpoint discovers `wTotalLength`, which bounds the later full
+/// Configuration descriptor tree read used to find HID boot-keyboard
+/// interfaces and interrupt-IN endpoints.
+pub fn read_configuration_descriptor_header_on_pcie_xhci_controller()
+-> XhciReadConfigurationDescriptorHeaderReport {
+    let device_descriptor = read_device_descriptor_on_pcie_xhci_controller();
+    let slot_id = match device_descriptor.status {
+        XhciReadDeviceDescriptorStatus::DeviceDescriptorReady { slot_id, .. } => slot_id,
+        status => {
+            return XhciReadConfigurationDescriptorHeaderReport::new(
+                device_descriptor,
+                XhciReadConfigurationDescriptorHeaderStatus::DeviceDescriptorFailed(status),
+            );
+        }
+    };
+
+    let (Some(mmio), Some(caps), Some(plan)) = (
+        device_descriptor
+            .set_address
+            .descriptor
+            .address
+            .enable
+            .start
+            .mmio_base,
+        device_descriptor
+            .set_address
+            .descriptor
+            .address
+            .enable
+            .start
+            .capabilities,
+        device_descriptor
+            .set_address
+            .descriptor
+            .address
+            .enable
+            .start
+            .memory,
+    ) else {
+        return XhciReadConfigurationDescriptorHeaderReport::new(
+            device_descriptor,
+            XhciReadConfigurationDescriptorHeaderStatus::StartEvidenceUnavailable,
+        );
+    };
+
+    let (setup_trb_pointer, data_trb_pointer, status_trb_pointer) =
+        xhci_ep0_control_trb_pointers(XHCI_EP0_CONFIGURATION_DESCRIPTOR_HEADER_TRB_INDEX);
+    let descriptor_buffer = XHCI_CONFIGURATION_DESCRIPTOR_HEADER.addr();
+
+    XHCI_CONFIGURATION_DESCRIPTOR_HEADER.zero();
+    let setup = XhciSetupPacket {
+        bm_request_type: USB_REQUEST_TYPE_DEVICE_TO_HOST_STANDARD_DEVICE,
+        b_request: USB_REQUEST_GET_DESCRIPTOR,
+        w_value: (USB_DESCRIPTOR_TYPE_CONFIGURATION as u16) << 8,
+        w_index: 0,
+        w_length: USB_CONFIGURATION_DESCRIPTOR_HEADER_BYTES as u16,
+    };
+    let setup_trb = xhci_setup_stage_trb(setup);
+    let data_trb = xhci_data_stage_trb(
+        descriptor_buffer,
+        USB_CONFIGURATION_DESCRIPTOR_HEADER_BYTES as u32,
+        true,
+    );
+    let status_trb = xhci_status_stage_trb(false);
+
+    write_xhci_ep0_control_transfer(
+        plan,
+        XHCI_EP0_CONFIGURATION_DESCRIPTOR_HEADER_TRB_INDEX,
+        setup_trb,
+        data_trb,
+        status_trb,
+    );
+    dma_clean_range(descriptor_buffer, USB_CONFIGURATION_DESCRIPTOR_HEADER_BYTES);
+
+    let mut report = XhciReadConfigurationDescriptorHeaderReport {
+        device_descriptor,
+        status: XhciReadConfigurationDescriptorHeaderStatus::TransferTimedOut,
+        slot_id,
+        endpoint_id: XHCI_DOORBELL_CONTROL_EP0 as u8,
+        doorbell: XHCI_DOORBELL_CONTROL_EP0,
+        setup_trb_pointer,
+        data_trb_pointer,
+        status_trb_pointer,
+        setup_trb,
+        data_trb,
+        status_trb,
+        descriptor_buffer,
+        descriptor: [0; USB_CONFIGURATION_DESCRIPTOR_HEADER_BYTES],
+        fields: None,
+        event: None,
+    };
+
+    compiler_fence(Ordering::SeqCst);
+    write_mmio_u32(
+        mmio + caps.doorbell_offset as usize + (slot_id as usize * core::mem::size_of::<u32>()),
+        XHCI_DOORBELL_CONTROL_EP0,
+    );
+
+    if let Some(event) =
+        wait_for_xhci_transfer_event(plan, XHCI_READ_CONFIGURATION_DESCRIPTOR_HEADER_EVENT_INDEX)
+    {
+        acknowledge_xhci_event(
+            mmio,
+            caps,
+            plan.event_ring
+                + ((XHCI_READ_CONFIGURATION_DESCRIPTOR_HEADER_EVENT_INDEX + 1) * XHCI_TRB_BYTES)
+                    as u64,
+        );
+        dma_invalidate_range(descriptor_buffer, USB_CONFIGURATION_DESCRIPTOR_HEADER_BYTES);
+        report.descriptor = XHCI_CONFIGURATION_DESCRIPTOR_HEADER.read();
+        report.fields = parse_usb_configuration_descriptor_header(report.descriptor);
+        report.event = Some(event);
+        report.status = classify_read_configuration_descriptor_header_transfer_event(
+            status_trb_pointer,
+            slot_id,
+            XHCI_DOORBELL_CONTROL_EP0 as u8,
+            report.descriptor,
+            event,
+        );
+    }
+
+    report
+}
+
+/// Reads and walks the full USB Configuration descriptor tree.
+///
+/// This checkpoint still does not set a configuration, issue HID class
+/// requests, or poll interrupt-IN. It identifies whether the attached device
+/// advertises a HID boot-keyboard interface and interrupt-IN endpoint that the
+/// next bring-up cuts can configure.
+pub fn read_configuration_descriptor_on_pcie_xhci_controller()
+-> XhciReadConfigurationDescriptorReport {
+    let header = read_configuration_descriptor_header_on_pcie_xhci_controller();
+    let (slot_id, total_length) = match header.status {
+        XhciReadConfigurationDescriptorHeaderStatus::ConfigurationDescriptorHeaderReady {
+            slot_id,
+            total_length,
+            ..
+        } => (slot_id, total_length),
+        status => {
+            return XhciReadConfigurationDescriptorReport::new(
+                header,
+                XhciReadConfigurationDescriptorStatus::HeaderFailed(status),
+            );
+        }
+    };
+
+    if total_length as usize > USB_CONFIGURATION_DESCRIPTOR_MAX_BYTES {
+        return XhciReadConfigurationDescriptorReport::new(
+            header,
+            XhciReadConfigurationDescriptorStatus::ConfigurationTooLarge {
+                total_length,
+                max_supported: USB_CONFIGURATION_DESCRIPTOR_MAX_BYTES as u16,
+            },
+        );
+    }
+
+    let (Some(mmio), Some(caps), Some(plan)) = (
+        header
+            .device_descriptor
+            .set_address
+            .descriptor
+            .address
+            .enable
+            .start
+            .mmio_base,
+        header
+            .device_descriptor
+            .set_address
+            .descriptor
+            .address
+            .enable
+            .start
+            .capabilities,
+        header
+            .device_descriptor
+            .set_address
+            .descriptor
+            .address
+            .enable
+            .start
+            .memory,
+    ) else {
+        return XhciReadConfigurationDescriptorReport::new(
+            header,
+            XhciReadConfigurationDescriptorStatus::StartEvidenceUnavailable,
+        );
+    };
+
+    let (setup_trb_pointer, data_trb_pointer, status_trb_pointer) =
+        xhci_ep0_control_trb_pointers(XHCI_EP0_CONFIGURATION_DESCRIPTOR_TRB_INDEX);
+    let descriptor_buffer = XHCI_CONFIGURATION_DESCRIPTOR.addr();
+
+    XHCI_CONFIGURATION_DESCRIPTOR.zero();
+    let setup = XhciSetupPacket {
+        bm_request_type: USB_REQUEST_TYPE_DEVICE_TO_HOST_STANDARD_DEVICE,
+        b_request: USB_REQUEST_GET_DESCRIPTOR,
+        w_value: (USB_DESCRIPTOR_TYPE_CONFIGURATION as u16) << 8,
+        w_index: 0,
+        w_length: total_length,
+    };
+    let setup_trb = xhci_setup_stage_trb(setup);
+    let data_trb = xhci_data_stage_trb(descriptor_buffer, total_length as u32, true);
+    let status_trb = xhci_status_stage_trb(false);
+
+    write_xhci_ep0_control_transfer(
+        plan,
+        XHCI_EP0_CONFIGURATION_DESCRIPTOR_TRB_INDEX,
+        setup_trb,
+        data_trb,
+        status_trb,
+    );
+    dma_clean_range(descriptor_buffer, total_length as usize);
+
+    let mut report = XhciReadConfigurationDescriptorReport {
+        header,
+        status: XhciReadConfigurationDescriptorStatus::TransferTimedOut,
+        slot_id,
+        endpoint_id: XHCI_DOORBELL_CONTROL_EP0 as u8,
+        doorbell: XHCI_DOORBELL_CONTROL_EP0,
+        setup_trb_pointer,
+        data_trb_pointer,
+        status_trb_pointer,
+        setup_trb,
+        data_trb,
+        status_trb,
+        descriptor_buffer,
+        descriptor_length: total_length,
+        descriptor: [0; USB_CONFIGURATION_DESCRIPTOR_MAX_BYTES],
+        fields: None,
+        event: None,
+    };
+
+    compiler_fence(Ordering::SeqCst);
+    write_mmio_u32(
+        mmio + caps.doorbell_offset as usize + (slot_id as usize * core::mem::size_of::<u32>()),
+        XHCI_DOORBELL_CONTROL_EP0,
+    );
+
+    if let Some(event) =
+        wait_for_xhci_transfer_event(plan, XHCI_READ_CONFIGURATION_DESCRIPTOR_EVENT_INDEX)
+    {
+        acknowledge_xhci_event(
+            mmio,
+            caps,
+            plan.event_ring
+                + ((XHCI_READ_CONFIGURATION_DESCRIPTOR_EVENT_INDEX + 1) * XHCI_TRB_BYTES) as u64,
+        );
+        dma_invalidate_range(descriptor_buffer, total_length as usize);
+        report.descriptor = XHCI_CONFIGURATION_DESCRIPTOR.read();
+        report.fields = parse_usb_configuration_descriptor_tree(report.descriptor, total_length);
+        report.event = Some(event);
+        report.status = classify_read_configuration_descriptor_transfer_event(
+            status_trb_pointer,
+            slot_id,
+            XHCI_DOORBELL_CONTROL_EP0 as u8,
+            report.descriptor,
+            total_length,
             event,
         );
     }
@@ -1704,6 +2614,10 @@ pub fn prepare_xhci_driver_memory(caps: XhciCapabilities) -> XhciDriverMemorySta
     XHCI_INPUT_CONTEXT.zero();
     XHCI_OUTPUT_DEVICE_CONTEXT.zero();
     XHCI_CONTROL_ENDPOINT_RING.zero();
+    XHCI_DEVICE_DESCRIPTOR_PREFIX.zero();
+    XHCI_DEVICE_DESCRIPTOR.zero();
+    XHCI_CONFIGURATION_DESCRIPTOR_HEADER.zero();
+    XHCI_CONFIGURATION_DESCRIPTOR.zero();
 
     if plan.scratchpad_buffers > 0 {
         let mut index = 0usize;
@@ -1947,6 +2861,29 @@ fn xhci_status_stage_trb(input: bool) -> [u32; 4] {
             | XHCI_TRB_IOC
             | XHCI_TRB_CYCLE,
     ]
+}
+
+fn xhci_ep0_control_trb_pointers(base_index: usize) -> (u64, u64, u64) {
+    (
+        XHCI_CONTROL_ENDPOINT_RING.trb_addr(base_index),
+        XHCI_CONTROL_ENDPOINT_RING.trb_addr(base_index + 1),
+        XHCI_CONTROL_ENDPOINT_RING.trb_addr(base_index + 2),
+    )
+}
+
+fn write_xhci_ep0_control_transfer(
+    plan: XhciDriverMemoryPlan,
+    base_index: usize,
+    setup_trb: [u32; 4],
+    data_trb: [u32; 4],
+    status_trb: [u32; 4],
+) {
+    XHCI_CONTROL_ENDPOINT_RING.set_trb(base_index, setup_trb);
+    XHCI_CONTROL_ENDPOINT_RING.set_trb(base_index + 1, data_trb);
+    XHCI_CONTROL_ENDPOINT_RING.set_trb(base_index + 2, status_trb);
+    XHCI_CONTROL_ENDPOINT_RING
+        .set_trb(XHCI_CONTROL_ENDPOINT_RING_TRBS - 1, xhci_link_trb(plan.control_endpoint_ring));
+    dma_clean_range(plan.control_endpoint_ring, XHCI_CONTROL_ENDPOINT_RING_TRBS * XHCI_TRB_BYTES);
 }
 
 fn xhci_address_device_command_trb(
@@ -2265,6 +3202,369 @@ fn classify_device_descriptor_transfer_event(
         slot_id: event.slot_id,
         length: XHCI_DEVICE_DESCRIPTOR_PREFIX_BYTES as u8,
     }
+}
+
+fn classify_read_device_descriptor_transfer_event(
+    expected_status_trb_pointer: u64,
+    expected_slot_id: u8,
+    expected_endpoint_id: u8,
+    descriptor: [u8; USB_DEVICE_DESCRIPTOR_BYTES],
+    event: XhciTransferEvent,
+) -> XhciReadDeviceDescriptorStatus {
+    if event.trb_type != XHCI_TRB_TYPE_TRANSFER_EVENT {
+        return XhciReadDeviceDescriptorStatus::UnexpectedEventType {
+            trb_type: event.trb_type,
+            completion_code: event.completion_code,
+        };
+    }
+    if event.trb_pointer != expected_status_trb_pointer {
+        return XhciReadDeviceDescriptorStatus::TransferPointerMismatch {
+            expected: expected_status_trb_pointer,
+            actual: event.trb_pointer,
+            completion_code: event.completion_code,
+            slot_id: event.slot_id,
+            endpoint_id: event.endpoint_id,
+        };
+    }
+    if event.slot_id != expected_slot_id {
+        return XhciReadDeviceDescriptorStatus::SlotIdMismatch {
+            expected: expected_slot_id,
+            actual: event.slot_id,
+            completion_code: event.completion_code,
+        };
+    }
+    if event.endpoint_id != expected_endpoint_id {
+        return XhciReadDeviceDescriptorStatus::EndpointIdMismatch {
+            expected: expected_endpoint_id,
+            actual: event.endpoint_id,
+            completion_code: event.completion_code,
+        };
+    }
+    if event.completion_code != XHCI_TRB_COMPLETION_SUCCESS {
+        return XhciReadDeviceDescriptorStatus::TransferFailed {
+            completion_code: event.completion_code,
+            residual_length: event.transfer_length,
+            slot_id: event.slot_id,
+            endpoint_id: event.endpoint_id,
+        };
+    }
+    let Some(fields) = parse_usb_device_descriptor(descriptor) else {
+        return XhciReadDeviceDescriptorStatus::InvalidDeviceDescriptor {
+            length: descriptor[0],
+            descriptor_type: descriptor[1],
+        };
+    };
+    XhciReadDeviceDescriptorStatus::DeviceDescriptorReady {
+        slot_id: event.slot_id,
+        vendor_id: fields.vendor_id,
+        product_id: fields.product_id,
+        num_configurations: fields.num_configurations,
+    }
+}
+
+fn parse_usb_device_descriptor(
+    descriptor: [u8; USB_DEVICE_DESCRIPTOR_BYTES],
+) -> Option<UsbDeviceDescriptor> {
+    if descriptor[0] != USB_DEVICE_DESCRIPTOR_BYTES as u8
+        || descriptor[1] != USB_DESCRIPTOR_TYPE_DEVICE
+    {
+        return None;
+    }
+    Some(UsbDeviceDescriptor {
+        length: descriptor[0],
+        descriptor_type: descriptor[1],
+        bcd_usb: u16::from_le_bytes([descriptor[2], descriptor[3]]),
+        device_class: descriptor[4],
+        device_subclass: descriptor[5],
+        device_protocol: descriptor[6],
+        max_packet_size0: descriptor[7],
+        vendor_id: u16::from_le_bytes([descriptor[8], descriptor[9]]),
+        product_id: u16::from_le_bytes([descriptor[10], descriptor[11]]),
+        bcd_device: u16::from_le_bytes([descriptor[12], descriptor[13]]),
+        manufacturer_index: descriptor[14],
+        product_index: descriptor[15],
+        serial_number_index: descriptor[16],
+        num_configurations: descriptor[17],
+    })
+}
+
+fn classify_read_configuration_descriptor_header_transfer_event(
+    expected_status_trb_pointer: u64,
+    expected_slot_id: u8,
+    expected_endpoint_id: u8,
+    descriptor: [u8; USB_CONFIGURATION_DESCRIPTOR_HEADER_BYTES],
+    event: XhciTransferEvent,
+) -> XhciReadConfigurationDescriptorHeaderStatus {
+    if event.trb_type != XHCI_TRB_TYPE_TRANSFER_EVENT {
+        return XhciReadConfigurationDescriptorHeaderStatus::UnexpectedEventType {
+            trb_type: event.trb_type,
+            completion_code: event.completion_code,
+        };
+    }
+    if event.trb_pointer != expected_status_trb_pointer {
+        return XhciReadConfigurationDescriptorHeaderStatus::TransferPointerMismatch {
+            expected: expected_status_trb_pointer,
+            actual: event.trb_pointer,
+            completion_code: event.completion_code,
+            slot_id: event.slot_id,
+            endpoint_id: event.endpoint_id,
+        };
+    }
+    if event.slot_id != expected_slot_id {
+        return XhciReadConfigurationDescriptorHeaderStatus::SlotIdMismatch {
+            expected: expected_slot_id,
+            actual: event.slot_id,
+            completion_code: event.completion_code,
+        };
+    }
+    if event.endpoint_id != expected_endpoint_id {
+        return XhciReadConfigurationDescriptorHeaderStatus::EndpointIdMismatch {
+            expected: expected_endpoint_id,
+            actual: event.endpoint_id,
+            completion_code: event.completion_code,
+        };
+    }
+    if event.completion_code != XHCI_TRB_COMPLETION_SUCCESS {
+        return XhciReadConfigurationDescriptorHeaderStatus::TransferFailed {
+            completion_code: event.completion_code,
+            residual_length: event.transfer_length,
+            slot_id: event.slot_id,
+            endpoint_id: event.endpoint_id,
+        };
+    }
+    let Some(fields) = parse_usb_configuration_descriptor_header(descriptor) else {
+        return XhciReadConfigurationDescriptorHeaderStatus::InvalidConfigurationDescriptorHeader {
+            length: descriptor[0],
+            descriptor_type: descriptor[1],
+            total_length: u16::from_le_bytes([descriptor[2], descriptor[3]]),
+        };
+    };
+    XhciReadConfigurationDescriptorHeaderStatus::ConfigurationDescriptorHeaderReady {
+        slot_id: event.slot_id,
+        total_length: fields.total_length,
+        num_interfaces: fields.num_interfaces,
+        configuration_value: fields.configuration_value,
+    }
+}
+
+fn parse_usb_configuration_descriptor_header(
+    descriptor: [u8; USB_CONFIGURATION_DESCRIPTOR_HEADER_BYTES],
+) -> Option<UsbConfigurationDescriptorHeader> {
+    let total_length = u16::from_le_bytes([descriptor[2], descriptor[3]]);
+    if descriptor[0] != USB_CONFIGURATION_DESCRIPTOR_HEADER_BYTES as u8
+        || descriptor[1] != USB_DESCRIPTOR_TYPE_CONFIGURATION
+        || total_length < USB_CONFIGURATION_DESCRIPTOR_HEADER_BYTES as u16
+    {
+        return None;
+    }
+    Some(UsbConfigurationDescriptorHeader {
+        length: descriptor[0],
+        descriptor_type: descriptor[1],
+        total_length,
+        num_interfaces: descriptor[4],
+        configuration_value: descriptor[5],
+        configuration_index: descriptor[6],
+        attributes: descriptor[7],
+        max_power: descriptor[8],
+    })
+}
+
+fn classify_read_configuration_descriptor_transfer_event(
+    expected_status_trb_pointer: u64,
+    expected_slot_id: u8,
+    expected_endpoint_id: u8,
+    descriptor: [u8; USB_CONFIGURATION_DESCRIPTOR_MAX_BYTES],
+    total_length: u16,
+    event: XhciTransferEvent,
+) -> XhciReadConfigurationDescriptorStatus {
+    if event.trb_type != XHCI_TRB_TYPE_TRANSFER_EVENT {
+        return XhciReadConfigurationDescriptorStatus::UnexpectedEventType {
+            trb_type: event.trb_type,
+            completion_code: event.completion_code,
+        };
+    }
+    if event.trb_pointer != expected_status_trb_pointer {
+        return XhciReadConfigurationDescriptorStatus::TransferPointerMismatch {
+            expected: expected_status_trb_pointer,
+            actual: event.trb_pointer,
+            completion_code: event.completion_code,
+            slot_id: event.slot_id,
+            endpoint_id: event.endpoint_id,
+        };
+    }
+    if event.slot_id != expected_slot_id {
+        return XhciReadConfigurationDescriptorStatus::SlotIdMismatch {
+            expected: expected_slot_id,
+            actual: event.slot_id,
+            completion_code: event.completion_code,
+        };
+    }
+    if event.endpoint_id != expected_endpoint_id {
+        return XhciReadConfigurationDescriptorStatus::EndpointIdMismatch {
+            expected: expected_endpoint_id,
+            actual: event.endpoint_id,
+            completion_code: event.completion_code,
+        };
+    }
+    if event.completion_code != XHCI_TRB_COMPLETION_SUCCESS {
+        return XhciReadConfigurationDescriptorStatus::TransferFailed {
+            completion_code: event.completion_code,
+            residual_length: event.transfer_length,
+            slot_id: event.slot_id,
+            endpoint_id: event.endpoint_id,
+        };
+    }
+    let Some(fields) = parse_usb_configuration_descriptor_tree(descriptor, total_length) else {
+        return XhciReadConfigurationDescriptorStatus::InvalidConfigurationDescriptor {
+            offset: usb_configuration_descriptor_invalid_offset(descriptor, total_length),
+            length: usb_configuration_descriptor_invalid_length(descriptor, total_length),
+            descriptor_type: usb_configuration_descriptor_invalid_type(descriptor, total_length),
+        };
+    };
+    XhciReadConfigurationDescriptorStatus::ConfigurationDescriptorReady {
+        slot_id: event.slot_id,
+        total_length: fields.header.total_length,
+        num_interfaces: fields.header.num_interfaces,
+        boot_keyboard_ready_to_configure: fields
+            .boot_keyboard
+            .and_then(|keyboard| keyboard.interrupt_in_endpoint)
+            .is_some(),
+    }
+}
+
+fn parse_usb_configuration_descriptor_tree(
+    descriptor: [u8; USB_CONFIGURATION_DESCRIPTOR_MAX_BYTES],
+    total_length: u16,
+) -> Option<UsbConfigurationDescriptorTree> {
+    let total = total_length as usize;
+    if total < USB_CONFIGURATION_DESCRIPTOR_HEADER_BYTES
+        || total > USB_CONFIGURATION_DESCRIPTOR_MAX_BYTES
+    {
+        return None;
+    }
+
+    let header = parse_usb_configuration_descriptor_header([
+        descriptor[0],
+        descriptor[1],
+        descriptor[2],
+        descriptor[3],
+        descriptor[4],
+        descriptor[5],
+        descriptor[6],
+        descriptor[7],
+        descriptor[8],
+    ])?;
+    if header.total_length != total_length {
+        return None;
+    }
+
+    let mut offset = 0usize;
+    let mut descriptor_count = 0u8;
+    let mut boot_keyboard: Option<UsbHidBootKeyboardInterface> = None;
+    let mut active_boot_interface = false;
+
+    while offset < total {
+        if offset + 2 > total {
+            return None;
+        }
+        let length = descriptor[offset] as usize;
+        let descriptor_type = descriptor[offset + 1];
+        if length < 2 || offset + length > total {
+            return None;
+        }
+
+        descriptor_count = descriptor_count.saturating_add(1);
+        if descriptor_type == USB_DESCRIPTOR_TYPE_INTERFACE && length >= 9 {
+            let candidate = descriptor[offset + 5] == USB_CLASS_HID
+                && descriptor[offset + 6] == USB_HID_SUBCLASS_BOOT
+                && descriptor[offset + 7] == USB_HID_PROTOCOL_KEYBOARD;
+            active_boot_interface = candidate;
+            if candidate && boot_keyboard.is_none() {
+                boot_keyboard = Some(UsbHidBootKeyboardInterface {
+                    interface_number: descriptor[offset + 2],
+                    alternate_setting: descriptor[offset + 3],
+                    endpoint_count: descriptor[offset + 4],
+                    protocol: descriptor[offset + 7],
+                    interrupt_in_endpoint: None,
+                });
+            }
+        } else if descriptor_type == USB_DESCRIPTOR_TYPE_ENDPOINT && length >= 7 {
+            if active_boot_interface {
+                let endpoint = UsbEndpointDescriptor {
+                    address: descriptor[offset + 2],
+                    endpoint_number: descriptor[offset + 2] & 0x0f,
+                    direction_in: descriptor[offset + 2] & USB_ENDPOINT_DIRECTION_IN != 0,
+                    attributes: descriptor[offset + 3],
+                    transfer_type: descriptor[offset + 3] & 0x03,
+                    max_packet_size: u16::from_le_bytes([
+                        descriptor[offset + 4],
+                        descriptor[offset + 5],
+                    ]),
+                    interval: descriptor[offset + 6],
+                };
+                if endpoint.direction_in
+                    && endpoint.transfer_type == USB_ENDPOINT_TRANSFER_TYPE_INTERRUPT
+                {
+                    if let Some(mut keyboard) = boot_keyboard {
+                        if keyboard.interrupt_in_endpoint.is_none() {
+                            keyboard.interrupt_in_endpoint = Some(endpoint);
+                            boot_keyboard = Some(keyboard);
+                        }
+                    }
+                }
+            }
+        }
+
+        offset += length;
+    }
+
+    if offset != total {
+        return None;
+    }
+
+    Some(UsbConfigurationDescriptorTree {
+        header,
+        descriptor_count,
+        boot_keyboard,
+    })
+}
+
+fn usb_configuration_descriptor_invalid_offset(
+    descriptor: [u8; USB_CONFIGURATION_DESCRIPTOR_MAX_BYTES],
+    total_length: u16,
+) -> u16 {
+    let total = (total_length as usize).min(USB_CONFIGURATION_DESCRIPTOR_MAX_BYTES);
+    let mut offset = 0usize;
+    while offset < total {
+        if offset + 2 > total {
+            return offset as u16;
+        }
+        let length = descriptor[offset] as usize;
+        if length < 2 || offset + length > total {
+            return offset as u16;
+        }
+        offset += length;
+    }
+    0
+}
+
+fn usb_configuration_descriptor_invalid_length(
+    descriptor: [u8; USB_CONFIGURATION_DESCRIPTOR_MAX_BYTES],
+    total_length: u16,
+) -> u8 {
+    let offset = usb_configuration_descriptor_invalid_offset(descriptor, total_length) as usize;
+    descriptor[offset]
+}
+
+fn usb_configuration_descriptor_invalid_type(
+    descriptor: [u8; USB_CONFIGURATION_DESCRIPTOR_MAX_BYTES],
+    total_length: u16,
+) -> u8 {
+    let offset = usb_configuration_descriptor_invalid_offset(descriptor, total_length) as usize;
+    if offset + 1 >= USB_CONFIGURATION_DESCRIPTOR_MAX_BYTES {
+        return 0;
+    }
+    descriptor[offset + 1]
 }
 
 fn usb_descriptor_endpoint0_max_packet_size(
@@ -2599,6 +3899,13 @@ static XHCI_SCRATCHPAD_PAGES: XhciScratchpadPages = XhciScratchpadPages::new();
 static XHCI_INPUT_CONTEXT: XhciContextPage = XhciContextPage::new();
 static XHCI_OUTPUT_DEVICE_CONTEXT: XhciContextPage = XhciContextPage::new();
 static XHCI_DEVICE_DESCRIPTOR_PREFIX: XhciAlignedBytes<XHCI_DEVICE_DESCRIPTOR_PREFIX_BYTES> =
+    XhciAlignedBytes::new();
+static XHCI_DEVICE_DESCRIPTOR: XhciAlignedBytes<USB_DEVICE_DESCRIPTOR_BYTES> =
+    XhciAlignedBytes::new();
+static XHCI_CONFIGURATION_DESCRIPTOR_HEADER: XhciAlignedBytes<
+    USB_CONFIGURATION_DESCRIPTOR_HEADER_BYTES,
+> = XhciAlignedBytes::new();
+static XHCI_CONFIGURATION_DESCRIPTOR: XhciAlignedBytes<USB_CONFIGURATION_DESCRIPTOR_MAX_BYTES> =
     XhciAlignedBytes::new();
 
 #[cfg(feature = "selftest")]
