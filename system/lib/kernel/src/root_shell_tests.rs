@@ -609,6 +609,7 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"  screentest includes erase-line mode diagnostics\n");
     assert_contains(sink_bytes(), b"  kernel log stats available through /log/stats\n");
     assert_contains(sink_bytes(), b"  kernel log dropped_bytes=0\n");
+    assert_contains(sink_bytes(), b"  retained dmesg has no [klog] dropped_bytes marker\n");
     assert_contains(sink_bytes(), b"  probe catalog available through /boot/probes\n");
     assert_contains(sink_bytes(), b"  probe targets include usb-keyboard\n");
     assert_contains(sink_bytes(), b"  probe targets include xhci-read-keyboard-report\n");
@@ -644,6 +645,7 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"  detailed help catalog available through /boot/help\n");
     assert_contains(sink_bytes(), b"  kernel log stats available through /log/stats\n");
     assert_contains(sink_bytes(), b"  kernel log dropped_bytes=0\n");
+    assert_contains(sink_bytes(), b"  retained dmesg has no [klog] dropped_bytes marker\n");
     assert_contains(
         sink_bytes(),
         b"  dmesg contains input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready\n",

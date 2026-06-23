@@ -956,6 +956,10 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "proof checklist names zero dropped log bytes expectation; serial: {serial:?}",
     );
     assert!(
+        serial.contains("retained dmesg has no [klog] dropped_bytes marker"),
+        "proof checklist names retained dmesg no-wrap marker expectation; serial: {serial:?}",
+    );
+    assert!(
         serial.contains("probe catalog available through /boot/probes"),
         "proof checklist names VFS probe catalog expectation; serial: {serial:?}",
     );

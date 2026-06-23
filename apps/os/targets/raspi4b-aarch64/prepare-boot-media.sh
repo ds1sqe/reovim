@@ -26,7 +26,7 @@ Usage: apps/os/targets/raspi4b-aarch64/prepare-boot-media.sh --bootfs DIR --evid
 Options:
   --bootfs DIR    Mounted Raspberry Pi 4 FAT boot partition, or "auto".
   --evidence FILE Final evidence seed path to create after install verifies.
-  --skip-qemu     Skip the local aarch64 QEMU smoke.
+  --skip-qemu     Skip the local aarch64 QEMU smoke for helper smokes only.
   --no-backup     Replace kernel8.img without saving a timestamped backup.
   -h, --help      Show this help text.
 
@@ -233,4 +233,9 @@ printf 'installed=%s\n' "$installed"
 printf 'bytes=%s\n' "$bytes"
 printf 'sha256=%s\n' "$installed_sha"
 printf 'evidence_seed=%s\n' "$EVIDENCE_OUT"
-printf 'next=boot Pi 4 with HDMI and physical USB keyboard, then fill evidence\n'
+if [ "$SKIP_QEMU" -eq 1 ]; then
+    printf 'warning=completed evidence validation requires qemu_smoke=passed; rerun without --skip-qemu before physical proof\n'
+    printf 'next=rerun prepare-boot-media without --skip-qemu before physical proof\n'
+else
+    printf 'next=boot Pi 4 with HDMI and physical USB keyboard, then fill evidence\n'
+fi

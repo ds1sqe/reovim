@@ -49,6 +49,7 @@ missing_proof_command_evidence="$tmp_dir/missing-proof-command.md"
 missing_proof_identity_evidence="$tmp_dir/missing-proof-identity.md"
 missing_proof_screentest_fact_evidence="$tmp_dir/missing-proof-screentest-fact.md"
 missing_proof_ready_log_fact_evidence="$tmp_dir/missing-proof-ready-log-fact.md"
+missing_proof_no_wrap_marker_fact_evidence="$tmp_dir/missing-proof-no-wrap-marker-fact.md"
 missing_vfs_help_evidence="$tmp_dir/missing-vfs-help.md"
 missing_vfs_help_detail_evidence="$tmp_dir/missing-vfs-help-detail.md"
 missing_vfs_proof_evidence="$tmp_dir/missing-vfs-proof.md"
@@ -57,11 +58,19 @@ missing_final_log_sequence_evidence="$tmp_dir/missing-final-log-sequence.md"
 missing_screentest_erase_modes_evidence="$tmp_dir/missing-screentest-erase-modes.md"
 missing_log_stats_evidence="$tmp_dir/missing-log-stats.md"
 nonzero_dropped_log_stats_evidence="$tmp_dir/nonzero-dropped-log-stats.md"
+nonzero_dropped_log_marker_evidence="$tmp_dir/nonzero-dropped-log-marker.md"
 missing_log_discovery_evidence="$tmp_dir/missing-log-discovery.md"
 preflight_only_evidence="$tmp_dir/preflight-only.md"
+skipped_qemu_evidence="$tmp_dir/skipped-qemu.md"
+skipped_qemu_warning_evidence="$tmp_dir/skipped-qemu-warning.md"
 missing_media_evidence="$tmp_dir/missing-media.md"
 media_byte_mismatch_evidence="$tmp_dir/media-byte-mismatch.md"
 media_sha_mismatch_evidence="$tmp_dir/media-sha-mismatch.md"
+duplicate_image_byte_evidence="$tmp_dir/duplicate-image-byte.md"
+duplicate_media_sha_evidence="$tmp_dir/duplicate-media-sha.md"
+duplicate_preflight_result_evidence="$tmp_dir/duplicate-preflight-result.md"
+duplicate_malformed_preflight_result_evidence="$tmp_dir/duplicate-malformed-preflight-result.md"
+duplicate_installed_path_evidence="$tmp_dir/duplicate-installed-path.md"
 validator_output="$tmp_dir/validator.out"
 
 write_passing_evidence() {
@@ -199,6 +208,7 @@ write_passing_evidence() {
         printf '  screentest includes erase-line mode diagnostics\n'
         printf '  kernel log stats available through /log/stats\n'
         printf '  kernel log dropped_bytes=0\n'
+        printf '  retained dmesg has no [klog] dropped_bytes marker\n'
         printf '  probe catalog available through /boot/probes\n'
         printf '  probe targets include pcie\n'
         printf '  probe targets include usb-keyboard\n'
@@ -289,6 +299,7 @@ write_passing_evidence() {
         printf '  screentest includes erase-line mode diagnostics\n'
         printf '  kernel log stats available through /log/stats\n'
         printf '  kernel log dropped_bytes=0\n'
+        printf '  retained dmesg has no [klog] dropped_bytes marker\n'
         printf '  probe catalog available through /boot/probes\n'
         printf '  probe targets include pcie\n'
         printf '  probe targets include usb-keyboard\n'
@@ -678,6 +689,7 @@ write_passing_evidence() {
         printf -- '- [x] `cat /boot/profile` reports `profile=shell-only`, `launch=disabled`, `payloads=0`, and `input_mode=live`.\n'
         printf -- '- [x] `launch` / `reovim` report shell-only payload launch disabled.\n'
         printf -- '- [x] `dmesg --stats` / `cat /log/stats` report kernel log ring stats with `dropped_bytes=0`.\n'
+        printf -- '- [x] `dmesg` has no `[klog] dropped_bytes=` retained-log wrap marker.\n'
         printf -- '- [x] `dmesg` contains `shell: <command>` and `shell.status=ok` audit lines for the typed commands.\n'
         printf -- '- [x] `dmesg` contains `shell.status=error` audit lines for the disabled payload launch commands.\n'
         printf -- '- [x] `dmesg` contains the `probe usb-keyboard` output or blocker.\n'
@@ -811,6 +823,10 @@ cp "$pass_evidence" "$nonzero_dropped_log_stats_evidence"
 sed -i '0,/^dropped_bytes=0$/s//dropped_bytes=1/' "$nonzero_dropped_log_stats_evidence"
 expect_failure "$nonzero_dropped_log_stats_evidence" "nonzero-dropped-log-stats"
 
+cp "$pass_evidence" "$nonzero_dropped_log_marker_evidence"
+sed -i '/^dmesg:$/a [klog] dropped_bytes=1' "$nonzero_dropped_log_marker_evidence"
+expect_failure "$nonzero_dropped_log_marker_evidence" "nonzero-dropped-log-marker"
+
 cp "$pass_evidence" "$missing_log_discovery_evidence"
 sed -i '\#^reovim-os> ls /log$#d' "$missing_log_discovery_evidence"
 expect_failure "$missing_log_discovery_evidence" "missing-log-discovery"
@@ -859,6 +875,10 @@ cp "$pass_evidence" "$missing_proof_ready_log_fact_evidence"
 sed -i '/^  dmesg contains input\.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready$/d' "$missing_proof_ready_log_fact_evidence"
 expect_failure "$missing_proof_ready_log_fact_evidence" "missing-proof-ready-log-fact"
 
+cp "$pass_evidence" "$missing_proof_no_wrap_marker_fact_evidence"
+sed -i '/^  retained dmesg has no \[klog\] dropped_bytes marker$/d' "$missing_proof_no_wrap_marker_fact_evidence"
+expect_failure "$missing_proof_no_wrap_marker_fact_evidence" "missing-proof-no-wrap-marker-fact"
+
 cp "$pass_evidence" "$missing_vfs_help_evidence"
 sed -i '\#^reovim-os> cat /boot/help$#d' "$missing_vfs_help_evidence"
 expect_failure "$missing_vfs_help_evidence" "missing-vfs-help"
@@ -903,6 +923,14 @@ awk '
 ' "$pass_evidence" >"$preflight_only_evidence"
 expect_failure "$preflight_only_evidence" "preflight-only"
 
+cp "$pass_evidence" "$skipped_qemu_evidence"
+sed -i 's/^- Preflight result: preflight=ok qemu_smoke=passed$/- Preflight result: preflight=ok qemu_smoke=skipped/' "$skipped_qemu_evidence"
+expect_failure "$skipped_qemu_evidence" "skipped-qemu"
+
+cp "$pass_evidence" "$skipped_qemu_warning_evidence"
+sed -i '/^- Preflight result: preflight=ok qemu_smoke=passed$/a - Preflight warning: completed evidence requires qemu_smoke=passed; rerun without --skip-qemu before physical proof.' "$skipped_qemu_warning_evidence"
+expect_failure "$skipped_qemu_warning_evidence" "skipped-qemu-warning"
+
 cp "$pass_evidence" "$missing_media_evidence"
 sed -i '/^media_prepare=ok$/d' "$missing_media_evidence"
 expect_failure "$missing_media_evidence" "missing-media"
@@ -914,5 +942,25 @@ expect_failure "$media_byte_mismatch_evidence" "media-byte-mismatch"
 cp "$pass_evidence" "$media_sha_mismatch_evidence"
 sed -i 's/^sha256=abeccca617486102d57d9e25b93f8c59c463003f2f7584b69a3faae5d6ba15b2$/sha256=0000000000000000000000000000000000000000000000000000000000000000/' "$media_sha_mismatch_evidence"
 expect_failure "$media_sha_mismatch_evidence" "media-sha-mismatch"
+
+cp "$pass_evidence" "$duplicate_image_byte_evidence"
+sed -i '/^- Image bytes: 433788$/a - Image bytes: 433787' "$duplicate_image_byte_evidence"
+expect_failure "$duplicate_image_byte_evidence" "duplicate-image-byte"
+
+cp "$pass_evidence" "$duplicate_media_sha_evidence"
+sed -i '/^sha256=abeccca617486102d57d9e25b93f8c59c463003f2f7584b69a3faae5d6ba15b2$/a sha256=0000000000000000000000000000000000000000000000000000000000000000' "$duplicate_media_sha_evidence"
+expect_failure "$duplicate_media_sha_evidence" "duplicate-media-sha"
+
+cp "$pass_evidence" "$duplicate_preflight_result_evidence"
+sed -i '/^- Preflight result: preflight=ok qemu_smoke=passed$/a - Preflight result: preflight=ok qemu_smoke=skipped' "$duplicate_preflight_result_evidence"
+expect_failure "$duplicate_preflight_result_evidence" "duplicate-preflight-result"
+
+cp "$pass_evidence" "$duplicate_malformed_preflight_result_evidence"
+sed -i '/^- Preflight result: preflight=ok qemu_smoke=passed$/a - Preflight result: preflight=unknown' "$duplicate_malformed_preflight_result_evidence"
+expect_failure "$duplicate_malformed_preflight_result_evidence" "duplicate-malformed-preflight-result"
+
+cp "$pass_evidence" "$duplicate_installed_path_evidence"
+sed -i '\#^installed=/media/pi-boot/kernel8.img$#a installed=/media/other-pi-boot/kernel8.img' "$duplicate_installed_path_evidence"
+expect_failure "$duplicate_installed_path_evidence" "duplicate-installed-path"
 
 printf 'evidence validator smoke ok\n'

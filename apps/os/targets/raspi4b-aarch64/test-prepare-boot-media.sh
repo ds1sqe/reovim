@@ -80,6 +80,21 @@ expect_contains() {
     esac
 }
 
+expect_not_contains() {
+    local haystack="$1"
+    local needle="$2"
+    local label="$3"
+
+    case "$haystack" in
+        *"$needle"*)
+            printf 'error: unexpected %s: %s\n' "$label" "$needle" >&2
+            printf '%s\n' "$haystack" >&2
+            exit 1
+            ;;
+        *) ;;
+    esac
+}
+
 if "$PREPARE_SCRIPT" --skip-qemu --bootfs "$tmp_bootfs" --evidence "$existing_evidence" \
     >"$tmp_bootfs/existing.out" 2>"$tmp_bootfs/existing.err"; then
     printf 'error: prepare script overwrote existing evidence\n' >&2
@@ -170,13 +185,20 @@ expect_contains "$prepare_output" "installed=$tmp_bootfs/kernel8.img" "install p
 expect_contains "$prepare_output" "media_prepare=ok" "media prepare status"
 expect_contains "$prepare_output" "sha256=$source_sha" "installed sha"
 expect_contains "$prepare_output" "evidence_seed=$tmp_evidence" "evidence path"
+expect_contains "$prepare_output" "warning=completed evidence validation requires qemu_smoke=passed; rerun without --skip-qemu before physical proof" "skip-qemu completion warning"
+expect_contains "$prepare_output" "next=rerun prepare-boot-media without --skip-qemu before physical proof" "skip-qemu next action"
+expect_not_contains "$prepare_output" "next=boot Pi 4 with HDMI and physical USB keyboard, then fill evidence" "physical-proof next action after skipped qemu"
 expect_contains "$no_backup_output" "media_prepare=ok" "no-backup media prepare status"
 expect_contains "$no_backup_output" "sha256=$source_sha" "no-backup installed sha"
 expect_contains "$no_backup_output" "evidence_seed=$tmp_evidence_no_backup" "no-backup evidence path"
+expect_contains "$no_backup_output" "warning=completed evidence validation requires qemu_smoke=passed; rerun without --skip-qemu before physical proof" "no-backup skip-qemu completion warning"
+expect_contains "$no_backup_output" "next=rerun prepare-boot-media without --skip-qemu before physical proof" "no-backup skip-qemu next action"
 expect_contains "$auto_output" "media_prepare=ok" "auto media prepare status"
 expect_contains "$auto_output" "bootfs=$tmp_bootfs_auto" "auto resolved bootfs"
 expect_contains "$auto_output" "sha256=$source_sha" "auto installed sha"
 expect_contains "$auto_output" "evidence_seed=$tmp_evidence_auto" "auto evidence path"
+expect_contains "$auto_output" "warning=completed evidence validation requires qemu_smoke=passed; rerun without --skip-qemu before physical proof" "auto skip-qemu completion warning"
+expect_contains "$auto_output" "next=rerun prepare-boot-media without --skip-qemu before physical proof" "auto skip-qemu next action"
 
 evidence="$(cat "$tmp_evidence")"
 no_backup_evidence="$(cat "$tmp_evidence_no_backup")"
@@ -196,6 +218,7 @@ expect_contains "$evidence" "- Image SHA-256: $source_sha" "evidence image sha"
 expect_contains "$evidence" "- Image install command: apps/os/targets/raspi4b-aarch64/install-image.sh $tmp_bootfs" "evidence actual install command"
 expect_contains "$evidence" "- Preflight command: apps/os/targets/raspi4b-aarch64/preflight-real-board.sh --bootfs $tmp_bootfs --evidence $tmp_root/.evidence.md.tmp." "evidence actual preflight command"
 expect_contains "$evidence" "--skip-qemu" "evidence qemu skip argument"
+expect_contains "$evidence" "- Preflight warning: completed evidence requires qemu_smoke=passed; rerun without --skip-qemu before physical proof." "evidence skipped-qemu warning"
 expect_contains "$no_backup_evidence" "- Image install command: apps/os/targets/raspi4b-aarch64/install-image.sh --no-backup $tmp_bootfs_no_backup" "no-backup evidence actual install command"
 expect_contains "$no_backup_evidence" "- Preflight command: apps/os/targets/raspi4b-aarch64/preflight-real-board.sh --bootfs $tmp_bootfs_no_backup --evidence $tmp_root/.evidence-no-backup.md.tmp." "no-backup evidence actual preflight command"
 expect_contains "$no_backup_evidence" "--skip-qemu" "no-backup evidence qemu skip argument"
@@ -273,6 +296,7 @@ expect_contains "$evidence" "\`probe pcie\` reports the read-only PCIe/xHCI stat
 expect_contains "$evidence" "\`cat /boot/profile\` reports \`profile=shell-only\`, \`launch=disabled\`, \`payloads=0\`, and \`input_mode=live\`." "evidence profile identity fact"
 expect_contains "$evidence" "\`launch\` / \`reovim\` report shell-only payload launch disabled." "evidence shell-only launch-disabled fact"
 expect_contains "$evidence" "\`dmesg --stats\` / \`cat /log/stats\` report kernel log ring stats with \`dropped_bytes=0\`." "evidence log stats fact"
+expect_contains "$evidence" "\`dmesg\` has no \`[klog] dropped_bytes=\` retained-log wrap marker." "evidence retained dmesg no-wrap-marker fact"
 expect_contains "$evidence" "\`shell.status=error\` audit lines for the disabled payload launch commands." "evidence disabled status audit fact"
 expect_contains "$evidence" "\`halt\` was typed last and printed \`halt: ok\`." "evidence halt fact"
 expect_contains "$evidence" "No new \`reovim-os>\` prompt appeared after \`halt: ok\`." "evidence halt no-prompt fact"

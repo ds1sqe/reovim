@@ -131,6 +131,9 @@ write_evidence_seed() {
         printf -- '- Boot partition path: %s\n' "$bootfs_value"
         printf -- '- Preflight command: %s\n' "${TARGET_DIR#$ROOT/}/preflight-real-board.sh"
         printf -- '- Preflight result: preflight=ok qemu_smoke=%s\n' "$qemu_value"
+        if [ "$qemu_value" != "passed" ]; then
+            printf -- '- Preflight warning: completed evidence requires qemu_smoke=passed; rerun without --skip-qemu before physical proof.\n'
+        fi
         printf -- '- Evidence label:\n'
         printf '  - [ ] display-only\n'
         printf '  - [ ] UART input\n'
@@ -250,6 +253,7 @@ write_evidence_seed() {
         printf -- '- [ ] `cat /boot/profile` reports `profile=shell-only`, `launch=disabled`, `payloads=0`, and `input_mode=live`.\n'
         printf -- '- [ ] `launch` / `reovim` report shell-only payload launch disabled.\n'
         printf -- '- [ ] `dmesg --stats` / `cat /log/stats` report kernel log ring stats with `dropped_bytes=0`.\n'
+        printf -- '- [ ] `dmesg` has no `[klog] dropped_bytes=` retained-log wrap marker.\n'
         printf -- '- [ ] `dmesg` contains `shell: <command>` and `shell.status=ok` audit lines for the typed commands.\n'
         printf -- '- [ ] `dmesg` contains `shell.status=error` audit lines for the disabled payload launch commands.\n'
         printf -- '- [ ] `dmesg` contains the `probe usb-keyboard` output or blocker.\n'
@@ -484,6 +488,11 @@ if [ "$SKIP_QEMU" -eq 0 ]; then
         cat "$qemu_log" >&2
         rm -f "$qemu_log"
         fail "QEMU smoke proof checklist did not include zero dropped log bytes expected fact"
+    fi
+    if ! grep -q '^  retained dmesg has no \[klog\] dropped_bytes marker$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include retained dmesg no-wrap-marker expected fact"
     fi
     if ! grep -q '^  probe catalog available through /boot/probes$' "$qemu_log"; then
         cat "$qemu_log" >&2

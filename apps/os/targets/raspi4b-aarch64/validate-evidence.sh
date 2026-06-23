@@ -50,6 +50,19 @@ require_count_at_least() {
     fi
 }
 
+require_count_exact() {
+    local pattern="$1"
+    local label="$2"
+    local expected="$3"
+    local count
+
+    count="$(grep -Ec -- "$pattern" "$EVIDENCE" || true)"
+    if [ "$count" -ne "$expected" ]; then
+        printf 'invalid: %s (found %s, need %s)\n' "$label" "$count" "$expected" >&2
+        missing=1
+    fi
+}
+
 forbid_re() {
     local pattern="$1"
     local label="$2"
@@ -64,10 +77,11 @@ forbid_re '^  - \[[xX]\] display-only$' 'display-only evidence label is checked'
 forbid_re '^  - \[[xX]\] UART input$' 'UART input evidence label is checked'
 forbid_re '^  - \[[xX]\] bootline-script$' 'bootline-script evidence label is checked'
 forbid_re '^- \[[xX]\] FAIL: display/UART/scripted evidence only\.$' 'FAIL result is checked'
+forbid_re '^- Preflight warning:' 'preflight warning row remains in completed evidence'
 
 require_re '^- Image bytes: [1-9][0-9]*$' 'seeded image byte count'
 require_re '^- Image SHA-256: [0-9a-f]{64}$' 'seeded image SHA-256'
-require_re '^- Preflight result: preflight=ok' 'preflight result passed'
+require_re '^- Preflight result: preflight=ok qemu_smoke=passed$' 'preflight QEMU proof smoke passed'
 require_re '^- \[[xX]\] HDMI display attached before boot\.$' 'HDMI display attached checkbox'
 require_re '^- \[[xX]\] Physical USB keyboard attached before boot\.$' 'physical USB keyboard attached checkbox'
 require_re '^- \[[xX]\] `REOVIM_OS_BOOTLINE` unset on booted image\.$' 'bootline unset setup checkbox'
@@ -102,6 +116,7 @@ require_re '^- \[[xX]\] `probe pcie` reports the read-only PCIe/xHCI state\.$' '
 require_re '^- \[[xX]\] `cat /boot/profile` reports `profile=shell-only`, `launch=disabled`, `payloads=0`, and `input_mode=live`\.$' 'profile identity checkbox'
 require_re '^- \[[xX]\] `launch` / `reovim` report shell-only payload launch disabled\.$' 'shell-only launch-disabled checkbox'
 require_re '^- \[[xX]\] `dmesg --stats` / `cat /log/stats` report kernel log ring stats with `dropped_bytes=0`\.$' 'klog stats checkbox'
+require_re '^- \[[xX]\] `dmesg` has no `\[klog\] dropped_bytes=` retained-log wrap marker\.$' 'retained dmesg no-wrap-marker checkbox'
 require_re '^- \[[xX]\] `dmesg` contains `shell: <command>` and `shell\.status=ok` audit lines for the typed commands\.$' 'dmesg command/status audit checkbox'
 require_re '^- \[[xX]\] `dmesg` contains `shell\.status=error` audit lines for the disabled payload launch commands\.$' 'dmesg payload-disabled error audit checkbox'
 require_re '^- \[[xX]\] `dmesg` contains the `probe usb-keyboard` output or blocker\.$' 'probe-output dmesg checkbox'
@@ -122,9 +137,18 @@ require_re '^- \[[xX]\] `cd /dev` / `ls` / `cat uart0` prove relative VFS device
 
 require_re '^reovim-os>' 'root shell prompt in pasted transcript'
 require_re '^media_prepare=ok$' 'media-prep result line'
+require_re '^bootfs=.+$' 'media-prep bootfs path line'
 require_re '^installed=.+/kernel8\.img$' 'installed kernel8.img path line'
 require_re '^bytes=[1-9][0-9]*$' 'installed kernel8.img byte count line'
 require_re '^sha256=[0-9a-f]{64}$' 'installed kernel8.img SHA-256 line'
+require_count_exact '^- Preflight result:' 'single preflight result line' 1
+require_count_exact '^media_prepare=' 'single media-prep result line' 1
+require_count_exact '^bootfs=' 'single media-prep bootfs path line' 1
+require_count_exact '^installed=' 'single installed kernel8.img path line' 1
+require_count_exact '^- Image bytes:' 'single seeded image byte-count line' 1
+require_count_exact '^- Image SHA-256:' 'single seeded image SHA-256 line' 1
+require_count_exact '^bytes=' 'single installed image byte-count line' 1
+require_count_exact '^sha256=' 'single installed image SHA-256 line' 1
 require_re '^package=reovim-os$' 'cat /boot/image package line'
 require_re '^version=[0-9A-Za-z.+_-]+$' 'cat /boot/image version line'
 require_re '^target=aarch64-unknown-none$' 'cat /boot/image target line'
@@ -356,6 +380,7 @@ require_re '^  detailed help catalog available through /boot/help$' 'proof expec
 require_re '^  screentest includes erase-line mode diagnostics$' 'proof expected screentest erase-mode fact'
 require_re '^  kernel log stats available through /log/stats$' 'proof expected log stats fact'
 require_re '^  kernel log dropped_bytes=0$' 'proof expected zero dropped log bytes fact'
+require_re '^  retained dmesg has no \[klog\] dropped_bytes marker$' 'proof expected retained dmesg no-wrap-marker fact'
 require_re '^  probe catalog available through /boot/probes$' 'proof expected VFS probe catalog fact'
 require_re '^  probe targets include pcie$' 'proof expected PCIe probe fact'
 require_re '^  probe targets include usb-keyboard$' 'proof expected USB keyboard probe fact'
@@ -387,6 +412,7 @@ require_re '^capacity_bytes=[1-9][0-9]*$' 'klog stats capacity line'
 require_re '^retained_bytes=[1-9][0-9]*$' 'klog stats retained-bytes line'
 require_re '^dropped_bytes=0$' 'klog stats zero dropped-bytes line'
 forbid_re '^dropped_bytes=[1-9][0-9]*$' 'nonzero klog dropped bytes'
+forbid_re '^\[klog\] dropped_bytes=[1-9][0-9]*$' 'wrapped dmesg dropped bytes marker'
 require_re '^reovim-os> dmesg$' 'dmesg command in pasted transcript'
 require_re '^reovim-os> cat /log/dmesg$' 'VFS dmesg command in pasted transcript'
 require_re '^reovim-os> halt$' 'terminal halt command in pasted transcript'

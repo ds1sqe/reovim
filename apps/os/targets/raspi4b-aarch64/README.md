@@ -21,7 +21,7 @@ image=apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img
 bytes=<image-size>
 ```
 
-Current expected size is `446980` bytes.
+Current expected size is `447044` bytes.
 
 Copy `apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img` to the Pi
 4 boot partition as `kernel8.img`, using the normal Raspberry Pi firmware
@@ -54,6 +54,8 @@ publishes the evidence seed for the physical session. The published evidence
 seed includes `media_prepare=ok`, the installed `kernel8.img` path, byte count,
 and SHA-256, and the validator compares those installed-media values with the
 seeded image identity. Use this path for the real HDMI plus USB-keyboard proof.
+Do not use `--skip-qemu` for final proof preparation: it is a helper-smoke mode
+only, and completed evidence with `qemu_smoke=skipped` is rejected.
 
 To find mounted Pi 4 boot partition candidates before preparing media:
 
@@ -362,6 +364,8 @@ Record the full visible output or serial transcript. The key evidence is:
   proves boot does not depend on editor/server payload startup.
 - `dmesg --stats` and `cat /log/stats` report kernel log ring capacity,
   retained bytes, and `dropped_bytes=0` through command and VFS paths.
+- `dmesg` and `cat /log/dmesg` do not print a
+  `[klog] dropped_bytes=` retained-log wrap marker.
 - `dmesg` includes the command audit lines, probe output, and the
   `input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready`
   transition.
