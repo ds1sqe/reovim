@@ -132,6 +132,9 @@ apps/os/targets/raspi4b-aarch64/preflight-real-board.sh \
 
 The generated evidence file records the current image path, byte count,
 SHA-256, build/install commands, boot partition path, and preflight result.
+This is a preflight-only seed; final physical proof still needs
+`prepare-boot-media.sh` to add installed-media identity before
+`validate-evidence.sh` can pass.
 
 To smoke-test the evidence-seed path without QEMU or real media:
 
@@ -167,7 +170,8 @@ shell-only `launch`/`reovim` disabled output, and `dmesg` command/status audit
 lines including the expected disabled-payload `shell.status=error` entries. It also
 requires the terminal `halt` check to print `halt: ok` with no later root-shell
 prompt. It is a textual guard for completed evidence; it does not replace the
-physical HDMI plus USB-keyboard session.
+physical HDMI plus USB-keyboard session, and it rejects preflight-only seeds
+that have not gone through media preparation.
 
 To smoke-test the validator:
 

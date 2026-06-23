@@ -41,6 +41,7 @@ missing_proof_identity_evidence="$tmp_dir/missing-proof-identity.md"
 missing_vfs_help_evidence="$tmp_dir/missing-vfs-help.md"
 missing_vfs_proof_evidence="$tmp_dir/missing-vfs-proof.md"
 missing_final_log_sequence_evidence="$tmp_dir/missing-final-log-sequence.md"
+preflight_only_evidence="$tmp_dir/preflight-only.md"
 missing_media_evidence="$tmp_dir/missing-media.md"
 media_byte_mismatch_evidence="$tmp_dir/media-byte-mismatch.md"
 media_sha_mismatch_evidence="$tmp_dir/media-sha-mismatch.md"
@@ -629,6 +630,18 @@ awk '
     { print }
 ' "$pass_evidence" >"$missing_final_log_sequence_evidence"
 expect_failure "$missing_final_log_sequence_evidence" "missing-final-log-sequence"
+
+awk '
+    /^## Media Preparation$/ {
+        skip = 1
+        next
+    }
+    /^## Boot Evidence$/ {
+        skip = 0
+    }
+    !skip { print }
+' "$pass_evidence" >"$preflight_only_evidence"
+expect_failure "$preflight_only_evidence" "preflight-only"
 
 cp "$pass_evidence" "$missing_media_evidence"
 sed -i '/^media_prepare=ok$/d' "$missing_media_evidence"
