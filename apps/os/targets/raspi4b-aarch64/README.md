@@ -126,11 +126,12 @@ apps/os/targets/raspi4b-aarch64/validate-evidence.sh \
 ```
 
 The validator rejects checked display-only, UART, bootline-script, or FAIL
-labels. It also requires physical-keyboard PASS labels, no-bootline image
-facts, installed-media identity from `prepare-boot-media.sh`, USB-keyboard
-readiness, `probe usb-keyboard` output, and `dmesg` command audit lines. It is
-a textual guard for completed evidence; it does not replace the physical HDMI
-plus USB-keyboard session.
+labels. It also requires checked HDMI-display and physical-keyboard setup,
+physical-keyboard PASS labels, no-bootline image facts, installed-media
+identity from `prepare-boot-media.sh`, USB-keyboard readiness,
+`probe usb-keyboard` output, and `dmesg` command audit lines. It is a textual
+guard for completed evidence; it does not replace the physical HDMI plus
+USB-keyboard session.
 
 To smoke-test the validator:
 

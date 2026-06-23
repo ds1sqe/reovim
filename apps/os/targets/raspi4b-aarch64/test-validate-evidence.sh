@@ -16,6 +16,7 @@ trap cleanup EXIT
 
 pass_evidence="$tmp_dir/pass.md"
 display_only_evidence="$tmp_dir/display-only.md"
+missing_setup_evidence="$tmp_dir/missing-setup.md"
 missing_audit_evidence="$tmp_dir/missing-audit.md"
 missing_media_evidence="$tmp_dir/missing-media.md"
 media_byte_mismatch_evidence="$tmp_dir/media-byte-mismatch.md"
@@ -31,6 +32,9 @@ write_passing_evidence() {
         printf -- '- Image bytes: 433788\n'
         printf -- '- Image SHA-256: abeccca617486102d57d9e25b93f8c59c463003f2f7584b69a3faae5d6ba15b2\n'
         printf -- '- Preflight result: preflight=ok qemu_smoke=passed\n'
+        printf -- '- [x] HDMI display attached before boot.\n'
+        printf -- '- [x] Physical USB keyboard attached before boot.\n'
+        printf -- '- [x] `REOVIM_OS_BOOTLINE` unset on booted image.\n'
         printf -- '- Evidence label:\n'
         printf '  - [ ] display-only\n'
         printf '  - [ ] UART input\n'
@@ -127,6 +131,10 @@ expect_failure "$TEMPLATE" "template"
 cp "$pass_evidence" "$display_only_evidence"
 sed -i 's/^  - \[ \] display-only$/  - [x] display-only/' "$display_only_evidence"
 expect_failure "$display_only_evidence" "display-only"
+
+cp "$pass_evidence" "$missing_setup_evidence"
+sed -i '/^- \[x\] HDMI display attached before boot\.$/d' "$missing_setup_evidence"
+expect_failure "$missing_setup_evidence" "missing-setup"
 
 cp "$pass_evidence" "$missing_audit_evidence"
 sed -i '/^shell: dmesg$/d' "$missing_audit_evidence"

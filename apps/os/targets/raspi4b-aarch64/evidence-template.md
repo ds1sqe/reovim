@@ -1,8 +1,8 @@
 # Raspberry Pi 4 USB Keyboard Evidence Template
 
 Use this template for the #800 real-machine proof. The proof is incomplete
-unless the input source is `physical USB keyboard` and the shell reports
-`usb_keyboard=ready`.
+unless HDMI output is observed, input source is `physical USB keyboard`, and
+the shell reports `usb_keyboard=ready`.
 
 ## Session
 
@@ -22,10 +22,10 @@ unless the input source is `physical USB keyboard` and the shell reports
   - [ ] UART input
   - [ ] bootline-script
   - [ ] physical USB keyboard
-- HDMI display attached before boot:
-- Physical USB keyboard attached before boot:
+- [ ] HDMI display attached before boot.
+- [ ] Physical USB keyboard attached before boot.
+- [ ] `REOVIM_OS_BOOTLINE` unset on booted image.
 - UART serial console attached:
-- `REOVIM_OS_BOOTLINE` unset:
 
 ## Media Preparation
 
