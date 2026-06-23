@@ -130,18 +130,43 @@ pub fn write(fd: i32, buf: &[u8]) -> Result<usize, Errno> {
     }
 }
 
-/// Reports end-of-input for fd 0.
+/// Reads bytes from COM1 for fd 0.
 ///
-/// The selftest payload consumes no input, so the UART's receive side is
-/// left unwired and stdin is permanently at EOF — the `Ok(0)` shape, which
-/// keeps read-loop callers terminating instead of erroring.
+/// The first byte blocks until serial input arrives. After that, any bytes
+/// already pending in the UART FIFO are drained into `buf`, stopping early at a
+/// line ending. This keeps interactive shell input live while still preserving
+/// normal short-read behavior for callers that pass a larger buffer.
 ///
 /// # Errors
 ///
 /// `EBADF` for any other fd: nothing else can be open ([`openat`] never
 /// succeeds).
-pub const fn read(fd: i32, _buf: &mut [u8]) -> Result<usize, Errno> {
-    if fd == 0 { Ok(0) } else { Err(EBADF) }
+pub fn read(fd: i32, buf: &mut [u8]) -> Result<usize, Errno> {
+    if fd != 0 {
+        return Err(EBADF);
+    }
+    if buf.is_empty() {
+        return Ok(0);
+    }
+
+    let first = super::uart::read_byte();
+    buf[0] = first;
+    let mut len = 1usize;
+    if first == b'\n' || first == b'\r' {
+        return Ok(len);
+    }
+
+    while len < buf.len() {
+        let Some(byte) = super::uart::try_read_byte() else {
+            break;
+        };
+        buf[len] = byte;
+        len += 1;
+        if byte == b'\n' || byte == b'\r' {
+            break;
+        }
+    }
+    Ok(len)
 }
 
 /// Refuses: no fd here is closeable.

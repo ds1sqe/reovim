@@ -681,7 +681,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "help output appears in transcript; serial: {serial:?}",
     );
     assert!(
-        serial.contains("commands: help, device, dmesg, launch, halt"),
+        serial.contains("commands: help, clear, screentest, device, dmesg, launch, halt"),
         "help vocabulary appears; serial: {serial:?}",
     );
     assert!(

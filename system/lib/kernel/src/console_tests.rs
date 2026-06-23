@@ -588,3 +588,23 @@ arch_test!(console_cursor_block_shows_then_restores_on_write, {
     testrt::check(restored, "printing past the cursor erases the block (cell restored)");
     testrt::check(glyph_drawn, "the new glyph is painted where the cursor was");
 });
+
+arch_test!(console_backspace_space_backspace_erases_previous_cell, {
+    // The line editor echoes erase as BS SP BS. The console must interpret the
+    // backspaces as cursor movement so the space lands over the previous glyph
+    // and the next printable byte reuses that same cell.
+    let mut buf = [0u32; 16 * 16];
+    let mut surface = StubSurface::new(buf.as_mut_ptr(), 16, 16, 16 * 4);
+    let mut grid = [RESET_CELL; 2];
+    let mut console = Console::new(
+        surface.render_surface(),
+        &TERMINUS,
+        Color::Rgb(FG),
+        Color::Rgb(BG),
+        ScreenGrid(&mut grid),
+    );
+    console.print("AB\x08 \x08C");
+
+    testrt::check_eq(console.grid[0].ch, b'A');
+    testrt::check_eq(console.grid[1].ch, b'C');
+});

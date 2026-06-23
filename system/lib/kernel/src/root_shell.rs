@@ -285,8 +285,36 @@ fn cmd_launch(daemon: &RootDaemon<'_>, line: &ParsedLine) {
 
 fn cmd_help(daemon: &RootDaemon<'_>) {
     daemon.write_line("reovim root shell");
-    daemon.write_line("commands: help, device, dmesg, launch, halt");
+    daemon.write_line("commands: help, clear, screentest, device, dmesg, launch, halt");
     daemon.write_line("reserved: ls, cd, pwd, cat, mount, reovim");
+}
+
+fn cmd_clear(daemon: &RootDaemon<'_>) {
+    crate::console::clear_screen();
+    daemon.write_bytes(b"\x1b[2J\x1b[H");
+}
+
+fn cmd_screentest(daemon: &RootDaemon<'_>) {
+    daemon.write_line("screen test:");
+    daemon.write_line("  target: framebuffer/serial tty renderer subset");
+    daemon.write_bytes(b"  fg16: \x1b[30;47mblack\x1b[0m \x1b[31mred\x1b[0m \x1b[32mgreen\x1b[0m \x1b[33myellow\x1b[0m \x1b[34mblue\x1b[0m \x1b[35mmagenta\x1b[0m \x1b[36mcyan\x1b[0m \x1b[37mwhite\x1b[0m\n");
+    daemon.write_bytes(
+        b"  fg16+: \x1b[90mgray\x1b[0m \x1b[91mbr-red\x1b[0m \x1b[92mbr-green\x1b[0m \x1b[93mbr-yellow\x1b[0m \x1b[94mbr-blue\x1b[0m \x1b[95mbr-magenta\x1b[0m \x1b[96mbr-cyan\x1b[0m \x1b[97;40mbr-white\x1b[0m\n",
+    );
+    daemon.write_bytes(b"  bg16: \x1b[37;40m 40 \x1b[0m \x1b[30;41m 41 \x1b[0m \x1b[30;42m 42 \x1b[0m \x1b[30;43m 43 \x1b[0m \x1b[37;44m 44 \x1b[0m \x1b[30;45m 45 \x1b[0m \x1b[30;46m 46 \x1b[0m \x1b[30;47m 47 \x1b[0m\n");
+    daemon.write_bytes(
+        b"  bg16+: \x1b[30;100m 100 \x1b[0m \x1b[30;101m 101 \x1b[0m \x1b[30;102m 102 \x1b[0m \x1b[30;103m 103 \x1b[0m \x1b[30;104m 104 \x1b[0m \x1b[30;105m 105 \x1b[0m \x1b[30;106m 106 \x1b[0m \x1b[30;107m 107 \x1b[0m\n",
+    );
+    daemon.write_bytes(b"  idx-fg: \x1b[38;5;21midx21\x1b[0m \x1b[38;5;46midx46\x1b[0m \x1b[38;5;51midx51\x1b[0m \x1b[38;5;93midx93\x1b[0m \x1b[38;5;160midx160\x1b[0m \x1b[38;5;196midx196\x1b[0m \x1b[38;5;201midx201\x1b[0m \x1b[38;5;226midx226\x1b[0m\n");
+    daemon.write_bytes(b"  idx-bg: \x1b[48;5;21m 21 \x1b[0m \x1b[48;5;46m 46 \x1b[0m \x1b[48;5;51m 51 \x1b[0m \x1b[48;5;93m 93 \x1b[0m \x1b[48;5;160m 160 \x1b[0m \x1b[48;5;196m 196 \x1b[0m \x1b[48;5;201m 201 \x1b[0m \x1b[48;5;226m 226 \x1b[0m\n");
+    daemon.write_bytes(b"  rgb-fg: \x1b[38;2;255;92;87mwarm\x1b[0m \x1b[38;2;114;214;86mgreen\x1b[0m \x1b[38;2;35;132;255msky\x1b[0m \x1b[38;2;190;120;255mviolet\x1b[0m \x1b[38;2;255;255;255;48;2;0;0;0mwhite-on-black\x1b[0m\n");
+    daemon.write_bytes(b"  rgb-bg: \x1b[48;2;255;92;87m  warm  \x1b[0m \x1b[48;2;114;214;86m  green  \x1b[0m \x1b[48;2;35;132;255m  sky  \x1b[0m \x1b[48;2;190;120;255m  violet  \x1b[0m\n");
+    daemon.write_bytes(b"  attrs: \x1b[1mbold\x1b[22m \x1b[2mdim\x1b[22m \x1b[3mitalic\x1b[23m \x1b[4munderline\x1b[24m \x1b[7mreverse\x1b[27m \x1b[1;4mbold+underline\x1b[0m normal\n");
+    daemon.write_bytes(b"  reset: \x1b[31mred\x1b[39m default-fg \x1b[48;2;48;48;48mgray-bg\x1b[49m default-bg \x1b[1;7mbold-rev\x1b[0m plain\n");
+    daemon.write_bytes(b"  cr: left-side-should-vanish\r  cr: overwritten\n");
+    daemon.write_bytes(b"  bs: AB\x08 \x08C (should read AC)\n");
+    daemon.write_bytes(b"  wrap: 0123456789abcdefghijklmnopqrstuvwxyz 0123456789abcdefghijklmnopqrstuvwxyz 0123456789abcdefghijklmnopqrstuvwxyz 0123456789abcdefghijklmnopqrstuvwxyz 0123456789abcdefghijklmnopqrstuvwxyz end\n");
+    daemon.write_line("  done");
 }
 
 fn cmd_halt(daemon: &RootDaemon<'_>) {
@@ -367,6 +395,8 @@ pub fn execute_root_command(daemon: &RootDaemon<'_>, line: &[u8]) -> bool {
     let command = parsed.args[0].as_str();
     match command {
         "help" => cmd_help(daemon),
+        "clear" => cmd_clear(daemon),
+        "screentest" => cmd_screentest(daemon),
         "device" => cmd_device(daemon),
         "dmesg" => cmd_dmesg(daemon),
         "launch" => cmd_launch(daemon, &parsed),

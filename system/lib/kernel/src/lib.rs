@@ -21,6 +21,7 @@ pub mod boot;
 pub mod boot_info;
 pub mod color;
 pub mod console;
+pub mod console_io;
 pub mod escape;
 pub mod fdt;
 pub mod fonts;

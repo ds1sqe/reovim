@@ -6,7 +6,10 @@
 #![allow(unsafe_code)]
 
 use reovim_arch::sys as arch_sys;
-use reovim_system_kernel::boot::{self, ShellBootConfig, SplashBootConfig};
+use reovim_system_kernel::{
+    boot::{self, ShellBootConfig, SplashBootConfig},
+    console_io,
+};
 use reovim_uapi::system::{BootInfo, DeviceInventory};
 #[cfg(feature = "launch-profile")]
 use reovim_system_kernel::rootd::PayloadDescriptor;
@@ -347,13 +350,21 @@ fn tty_write(bytes: &[u8]) {
 }
 
 fn tty_read_line(line: &mut [u8]) -> usize {
-    if let Some(len) = consume_bootline(line) {
-        return len;
+    #[cfg(target_os = "none")]
+    {
+        if BOOTLINE_SCRIPT.is_some() {
+            return consume_bootline(line).unwrap_or(0);
+        }
     }
 
-    match arch_sys::read(0, line) {
-        Ok(len) => len,
-        Err(_) => 0,
+    console_io::read_line(line, tty_read_byte, tty_write)
+}
+
+fn tty_read_byte() -> Option<u8> {
+    let mut byte = [0u8; 1];
+    match arch_sys::read(0, &mut byte) {
+        Ok(1) => Some(byte[0]),
+        _ => None,
     }
 }
 

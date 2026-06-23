@@ -461,6 +461,13 @@ impl<'g> Console<'g> {
                 self.wrap_pending = false;
                 self.col = 0;
             }
+            Action::Backspace => {
+                if self.wrap_pending {
+                    self.wrap_pending = false;
+                } else if self.col > 0 {
+                    self.col -= 1;
+                }
+            }
             Action::Sgr(params) => self.apply_sgr(params.as_slice()),
         }
     }

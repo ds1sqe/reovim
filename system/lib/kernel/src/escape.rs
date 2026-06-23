@@ -82,6 +82,9 @@ pub enum Action {
     LineFeed,
     /// `\r`: return to column zero.
     CarriageReturn,
+    /// `\b`: move one cell left without erasing. Terminal erase sequences use
+    /// backspace-space-backspace, so erase policy stays in the writer.
+    Backspace,
     /// A complete `ESC [ … m`: apply these SGR parameters to the pen.
     Sgr(SgrParams),
 }
@@ -143,6 +146,7 @@ impl Parser {
             }
             b'\n' => Some(Action::LineFeed),
             b'\r' => Some(Action::CarriageReturn),
+            b'\x08' => Some(Action::Backspace),
             _ => Some(Action::Print(byte)),
         }
     }

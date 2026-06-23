@@ -11,8 +11,10 @@ use {
     reovim_uapi_system::{BootInfo, DeviceClass, DeviceEntry},
 };
 
+const SINK_CAPACITY: usize = 4096;
+
 struct StaticSink {
-    buf: UnsafeCell<[u8; 512]>,
+    buf: UnsafeCell<[u8; SINK_CAPACITY]>,
     len: UnsafeCell<usize>,
 }
 
@@ -21,7 +23,7 @@ struct StaticSink {
 unsafe impl Sync for StaticSink {}
 
 static SINK: StaticSink = StaticSink {
-    buf: UnsafeCell::new([0u8; 512]),
+    buf: UnsafeCell::new([0u8; SINK_CAPACITY]),
     len: UnsafeCell::new(0),
 };
 
@@ -53,7 +55,7 @@ fn sink_bytes() -> &'static [u8] {
     // single-threaded; callers consume it synchronously inside the same test.
     unsafe {
         let len = *SINK.len.get();
-        let ptr = SINK.buf.get() as *const [u8; 512];
+        let ptr = SINK.buf.get() as *const [u8; SINK_CAPACITY];
         let buf = &*ptr;
         &buf[..len]
     }
@@ -148,8 +150,36 @@ arch_test!(root_shell_help, {
     run_command(ProfileSummary::new("shell-only", false), b"help\n", None);
     testrt::check_eq(
         sink_str(),
-        "reovim root shell\ncommands: help, device, dmesg, launch, halt\nreserved: ls, cd, pwd, cat, mount, reovim\n",
+        "reovim root shell\ncommands: help, clear, screentest, device, dmesg, launch, halt\nreserved: ls, cd, pwd, cat, mount, reovim\n",
     );
+});
+
+arch_test!(root_shell_clear_and_screentest, {
+    run_command(ProfileSummary::new("shell-only", false), b"clear\n", None);
+    testrt::check_eq(sink_str(), "\x1b[2J\x1b[H");
+
+    run_command(ProfileSummary::new("shell-only", false), b"screentest\n", None);
+    assert_contains(sink_bytes(), b"screen test:\n");
+    assert_contains(sink_bytes(), b"target: framebuffer/serial tty renderer subset");
+    assert_contains(sink_bytes(), b"fg16:");
+    assert_contains(sink_bytes(), b"fg16+:");
+    assert_contains(sink_bytes(), b"bg16:");
+    assert_contains(sink_bytes(), b"idx-fg:");
+    assert_contains(sink_bytes(), b"\x1b[38;5;196midx196");
+    assert_contains(sink_bytes(), b"idx-bg:");
+    assert_contains(sink_bytes(), b"rgb-fg:");
+    assert_contains(sink_bytes(), b"rgb-bg:");
+    assert_contains(sink_bytes(), b"\x1b[48;2;35;132;255m  sky");
+    assert_contains(sink_bytes(), b"attrs:");
+    assert_contains(sink_bytes(), b"bold");
+    assert_contains(sink_bytes(), b"italic");
+    assert_contains(sink_bytes(), b"reverse");
+    assert_contains(sink_bytes(), b"bold+underline");
+    assert_contains(sink_bytes(), b"reset:");
+    assert_contains(sink_bytes(), b"cr: overwritten\n");
+    assert_contains(sink_bytes(), b"bs: AB\x08 \x08C (should read AC)\n");
+    assert_contains(sink_bytes(), b"wrap:");
+    assert_contains(sink_bytes(), b"  done\n");
 });
 
 arch_test!(root_shell_launch_and_reserved, {

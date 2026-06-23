@@ -41,6 +41,7 @@ arch_test!(escape_ground_prints_and_controls, {
         matches!(parser.advance(b'\r'), Some(Action::CarriageReturn)),
         "\\r is a carriage return",
     );
+    testrt::check(matches!(parser.advance(b'\x08'), Some(Action::Backspace)), "\\b is a backspace");
 });
 
 arch_test!(escape_non_csi_escape_is_dropped, {
