@@ -21,7 +21,7 @@ image=apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img
 bytes=<image-size>
 ```
 
-Current expected size is `440972` bytes.
+Current expected size is `441876` bytes.
 
 Copy `apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img` to the Pi
 4 boot partition as `kernel8.img`, using the normal Raspberry Pi firmware
@@ -160,8 +160,8 @@ USB-keyboard readiness, the lower `usb_keyboard_last_poll=report-ready`
 diagnostic, identity plus live source diagnostics from `status` /
 `cat /boot/status`, live input diagnostics from `input` / `cat /boot/input`,
 the in-OS `proof` checklist, the VFS-backed help catalog from
-`cat /boot/help`, shell help/renderer evidence from `help` / `clear` /
-`screentest`, VFS namespace evidence from `pwd` / `ls` / `mount` /
+`cat /boot/help`, shell help and erase-line mode diagnostics from `help` /
+`clear` / `screentest`, VFS namespace evidence from `pwd` / `ls` / `mount` /
 `cat /boot/mounts`, boot inventory from `ls /dev` / `device` /
 `cat /boot/memory` / `cat /boot/devices`, relative device-file access from
 `cd /dev` / `ls` / `cat uart0`, `probe help` hardware-target catalog output,
@@ -264,7 +264,9 @@ Record the full visible output or serial transcript. The key evidence is:
 - `cat /boot/proof` prints the same checklist through the kernel VFS.
 - `cat /boot/help` prints the root-shell help catalog through the kernel VFS.
 - `help`, `clear`, and `screentest` prove the shell help path and framebuffer
-  renderer diagnostics are reachable from the physical keyboard session.
+  erase-line mode diagnostics, including erase-to-end, erase-to-start, and
+  whole-line erase redraw checks, are reachable from the physical keyboard
+  session.
 - `pwd`, `ls /`, `ls /boot`, `mount`, and `cat /boot/mounts` show the root
   VFS namespace and pseudo-filesystem mount table.
 - `ls /dev`, `device`, `cat /boot/memory`, and `cat /boot/devices` show the

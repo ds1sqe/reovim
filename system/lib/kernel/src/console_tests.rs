@@ -644,3 +644,43 @@ arch_test!(console_csi_k_erases_stale_carriage_return_text, {
         "cell after shorter redraw is repainted to background",
     );
 });
+
+arch_test!(console_csi_k_erases_start_of_line_through_cursor, {
+    let mut buf = [0u32; 64 * 16];
+    let mut surface = StubSurface::new(buf.as_mut_ptr(), 64, 16, 64 * 4);
+    let mut grid = [RESET_CELL; 8];
+    let mut console = Console::new(
+        surface.render_surface(),
+        &TERMINUS,
+        Color::Rgb(FG),
+        Color::Rgb(BG),
+        ScreenGrid(&mut grid),
+    );
+    console.print("abcdef\x1b[1K");
+
+    let mut col = 0usize;
+    while col <= 6 {
+        testrt::check_eq(console.grid[col].ch, b' ');
+        col += 1;
+    }
+});
+
+arch_test!(console_csi_k_erases_whole_line, {
+    let mut buf = [0u32; 64 * 16];
+    let mut surface = StubSurface::new(buf.as_mut_ptr(), 64, 16, 64 * 4);
+    let mut grid = [RESET_CELL; 8];
+    let mut console = Console::new(
+        surface.render_surface(),
+        &TERMINUS,
+        Color::Rgb(FG),
+        Color::Rgb(BG),
+        ScreenGrid(&mut grid),
+    );
+    console.print("abcdef\x1b[2K");
+
+    let mut col = 0usize;
+    while col < 8 {
+        testrt::check_eq(console.grid[col].ch, b' ');
+        col += 1;
+    }
+});

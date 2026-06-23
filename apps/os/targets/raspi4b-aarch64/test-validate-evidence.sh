@@ -38,9 +38,11 @@ prompt_after_halt_evidence="$tmp_dir/prompt-after-halt.md"
 missing_proof_evidence="$tmp_dir/missing-proof.md"
 missing_proof_command_evidence="$tmp_dir/missing-proof-command.md"
 missing_proof_identity_evidence="$tmp_dir/missing-proof-identity.md"
+missing_proof_screentest_fact_evidence="$tmp_dir/missing-proof-screentest-fact.md"
 missing_vfs_help_evidence="$tmp_dir/missing-vfs-help.md"
 missing_vfs_proof_evidence="$tmp_dir/missing-vfs-proof.md"
 missing_final_log_sequence_evidence="$tmp_dir/missing-final-log-sequence.md"
+missing_screentest_erase_modes_evidence="$tmp_dir/missing-screentest-erase-modes.md"
 preflight_only_evidence="$tmp_dir/preflight-only.md"
 missing_media_evidence="$tmp_dir/missing-media.md"
 media_byte_mismatch_evidence="$tmp_dir/media-byte-mismatch.md"
@@ -157,6 +159,7 @@ write_passing_evidence() {
         printf '  usb_keyboard_probe=enabled\n'
         printf '  usb_keyboard_last_poll=report-ready\n'
         printf '  help catalog available through /boot/help\n'
+        printf '  screentest includes erase-line mode diagnostics\n'
         printf '  probe targets include pcie\n'
         printf '  probe targets include usb-keyboard\n'
         printf '  probe targets include xhci-read-keyboard-report\n'
@@ -221,6 +224,7 @@ write_passing_evidence() {
         printf '  usb_keyboard_probe=enabled\n'
         printf '  usb_keyboard_last_poll=report-ready\n'
         printf '  help catalog available through /boot/help\n'
+        printf '  screentest includes erase-line mode diagnostics\n'
         printf '  probe targets include pcie\n'
         printf '  probe targets include usb-keyboard\n'
         printf '  probe targets include xhci-read-keyboard-report\n'
@@ -245,6 +249,8 @@ write_passing_evidence() {
         printf '  rgb-bg: warm green sky violet\n'
         printf '  attrs: bold dim italic underline reverse bold+underline normal\n'
         printf '  el: clean\n'
+        printf '  el1: clean-left\n'
+        printf '  el2: clean-all\n'
         printf '  done\n'
         printf 'reovim-os> pwd\n'
         printf '/\n'
@@ -473,7 +479,7 @@ write_passing_evidence() {
         printf -- '- [x] `proof` prints the physical input proof checklist.\n'
         printf -- '- [x] `cat /boot/proof` prints the VFS-backed proof pseudo-file.\n'
         printf -- '- [x] `cat /boot/help` prints the VFS-backed help catalog.\n'
-        printf -- '- [x] `help` / `clear` / `screentest` prove the shell help and renderer commands.\n'
+        printf -- '- [x] `help` / `clear` / `screentest` prove shell help and erase-line mode diagnostics.\n'
         printf -- '- [x] `pwd` / `ls` / `mount` report the kernel VFS namespace and mounts.\n'
         printf -- '- [x] `device` / `cat /boot/memory` / `cat /boot/devices` report boot inventory.\n'
         printf -- '- [x] `cd /dev` / `ls` / `cat uart0` prove relative VFS device-file access.\n'
@@ -571,6 +577,10 @@ cp "$pass_evidence" "$missing_shell_usability_evidence"
 sed -i '/^screen test:$/d' "$missing_shell_usability_evidence"
 expect_failure "$missing_shell_usability_evidence" "missing-shell-usability"
 
+cp "$pass_evidence" "$missing_screentest_erase_modes_evidence"
+sed -i '/^  el1: clean-left$/d; /^  el2: clean-all$/d' "$missing_screentest_erase_modes_evidence"
+expect_failure "$missing_screentest_erase_modes_evidence" "missing-screentest-erase-modes"
+
 cp "$pass_evidence" "$missing_typed_command_evidence"
 sed -i '\#^reovim-os> status$#d' "$missing_typed_command_evidence"
 expect_failure "$missing_typed_command_evidence" "missing-typed-command"
@@ -606,6 +616,10 @@ expect_failure "$missing_proof_command_evidence" "missing-proof-command"
 cp "$pass_evidence" "$missing_proof_identity_evidence"
 sed -i '/^  selected_profile=shell-only$/d' "$missing_proof_identity_evidence"
 expect_failure "$missing_proof_identity_evidence" "missing-proof-identity"
+
+cp "$pass_evidence" "$missing_proof_screentest_fact_evidence"
+sed -i '/^  screentest includes erase-line mode diagnostics$/d' "$missing_proof_screentest_fact_evidence"
+expect_failure "$missing_proof_screentest_fact_evidence" "missing-proof-screentest-fact"
 
 cp "$pass_evidence" "$missing_vfs_help_evidence"
 sed -i '\#^reovim-os> cat /boot/help$#d' "$missing_vfs_help_evidence"

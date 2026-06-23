@@ -260,6 +260,12 @@ arch_test!(root_shell_help, {
     run_command(ProfileSummary::new("shell-only", false), b"help input\n", None);
     testrt::check_eq(sink_str(), "input - print live console input diagnostics\n");
 
+    run_command(ProfileSummary::new("shell-only", false), b"help screentest\n", None);
+    testrt::check_eq(
+        sink_str(),
+        "screentest - print renderer diagnostics\n  required rows: el: clean, el1: clean-left, el2: clean-all\n",
+    );
+
     run_command(ProfileSummary::new("shell-only", false), b"help status\n", None);
     testrt::check_eq(sink_str(), "status - print boot and input summary\n");
 
@@ -303,6 +309,10 @@ arch_test!(root_shell_clear_and_screentest, {
     assert_contains(sink_bytes(), b"reset:");
     assert_contains(sink_bytes(), b"cr: overwritten\n");
     assert_contains(sink_bytes(), b"el: clean\x1b[K\n");
+    assert_contains(sink_bytes(), b"el1: clean-left\n");
+    assert_contains(sink_bytes(), b"\x1b[1K\r");
+    assert_contains(sink_bytes(), b"el2: clean-all\n");
+    assert_contains(sink_bytes(), b"\x1b[2K\r");
     assert_contains(sink_bytes(), b"bs: AB\x08 \x08C (should read AC)\n");
     assert_contains(sink_bytes(), b"wrap:");
     assert_contains(sink_bytes(), b"  done\n");
@@ -461,6 +471,7 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"  usb_keyboard_probe=enabled\n");
     assert_contains(sink_bytes(), b"  usb_keyboard_last_poll=report-ready\n");
     assert_contains(sink_bytes(), b"  help catalog available through /boot/help\n");
+    assert_contains(sink_bytes(), b"  screentest includes erase-line mode diagnostics\n");
     assert_contains(sink_bytes(), b"  probe targets include usb-keyboard\n");
     assert_contains(sink_bytes(), b"  probe targets include xhci-read-keyboard-report\n");
     assert_contains(sink_bytes(), b"  launch/reovim disabled in shell-only profile\n");

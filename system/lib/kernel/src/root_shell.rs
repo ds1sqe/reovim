@@ -627,6 +627,7 @@ fn write_boot_proof(daemon: &RootDaemon<'_>) {
     daemon.write_line("  usb_keyboard_probe=enabled");
     daemon.write_line("  usb_keyboard_last_poll=report-ready");
     daemon.write_line("  help catalog available through /boot/help");
+    daemon.write_line("  screentest includes erase-line mode diagnostics");
     daemon.write_line("  probe targets include pcie");
     daemon.write_line("  probe targets include usb-keyboard");
     daemon.write_line("  probe targets include xhci-read-keyboard-report");
@@ -902,7 +903,10 @@ fn cmd_help(daemon: &RootDaemon<'_>, line: &ParsedLine) -> RootCommandStatus {
     match command {
         "help" => daemon.write_line("help [command] - show command help"),
         "clear" => daemon.write_line("clear - clear framebuffer console and terminal"),
-        "screentest" => daemon.write_line("screentest - print renderer diagnostics"),
+        "screentest" => {
+            daemon.write_line("screentest - print renderer diagnostics");
+            daemon.write_line("  required rows: el: clean, el1: clean-left, el2: clean-all");
+        }
         "pwd" => daemon.write_line("pwd - print current kernel VFS directory"),
         "ls" => daemon.write_line("ls [path] - list a kernel VFS directory"),
         "cd" => daemon.write_line("cd [path] - change current kernel VFS directory"),
@@ -968,6 +972,8 @@ fn cmd_screentest(daemon: &RootDaemon<'_>, line: &ParsedLine) -> RootCommandStat
     daemon.write_bytes(b"  reset: \x1b[31mred\x1b[39m default-fg \x1b[48;2;48;48;48mgray-bg\x1b[49m default-bg \x1b[1;7mbold-rev\x1b[0m plain\n");
     daemon.write_bytes(b"  cr: left-side-should-vanish\r  cr: overwritten\n");
     daemon.write_bytes(b"  el: stale suffix should vanish\r  el: clean\x1b[K\n");
+    daemon.write_bytes(b"  el1: prefix should vanish\x1b[1K\r  el1: clean-left\n");
+    daemon.write_bytes(b"  el2: whole line should vanish\x1b[2K\r  el2: clean-all\n");
     daemon.write_bytes(b"  bs: AB\x08 \x08C (should read AC)\n");
     daemon.write_bytes(b"  wrap: 0123456789abcdefghijklmnopqrstuvwxyz 0123456789abcdefghijklmnopqrstuvwxyz 0123456789abcdefghijklmnopqrstuvwxyz 0123456789abcdefghijklmnopqrstuvwxyz 0123456789abcdefghijklmnopqrstuvwxyz end\n");
     daemon.write_line("  done");

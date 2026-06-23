@@ -132,7 +132,7 @@ Required success facts:
 - [ ] `proof` prints the physical input proof checklist.
 - [ ] `cat /boot/proof` prints the VFS-backed proof pseudo-file.
 - [ ] `cat /boot/help` prints the VFS-backed help catalog.
-- [ ] `help` / `clear` / `screentest` prove the shell help and renderer commands.
+- [ ] `help` / `clear` / `screentest` prove shell help and erase-line mode diagnostics.
 - [ ] `pwd` / `ls` / `mount` report the kernel VFS namespace and mounts.
 - [ ] `device` / `cat /boot/memory` / `cat /boot/devices` report boot inventory.
 - [ ] `cd /dev` / `ls` / `cat uart0` prove relative VFS device-file access.

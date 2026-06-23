@@ -80,12 +80,40 @@ arch_test!(console_io_backspace_edits_buffer_and_echoes_erase, {
     testrt::check_eq(output(), b"ab\x08 \x08c\n");
 });
 
+arch_test!(console_io_ctrl_u_clears_current_line, {
+    reset(b"bad\x15help\n");
+    let mut line = [0u8; 16];
+    let len = read_line(&mut line, read_byte, write_bytes);
+    testrt::check_eq(&line[..len], b"help");
+    testrt::check_eq(output(), b"bad\x08 \x08\x08 \x08\x08 \x08help\n");
+});
+
+arch_test!(console_io_ctrl_c_cancels_line_without_consuming_next_command, {
+    reset(b"bad\x03help\n");
+    let mut line = [0u8; 16];
+    let len = read_line(&mut line, read_byte, write_bytes);
+    testrt::check_eq(&line[..len], b"\n");
+    testrt::check_eq(output(), b"bad^C\n");
+
+    let next_len = read_line(&mut line, read_byte, write_bytes);
+    testrt::check_eq(&line[..next_len], b"help");
+    testrt::check_eq(output(), b"bad^C\nhelp\n");
+});
+
 arch_test!(console_io_tab_normalizes_to_space, {
     reset(b"cd\t/dev\n");
     let mut line = [0u8; 16];
     let len = read_line(&mut line, read_byte, write_bytes);
     testrt::check_eq(&line[..len], b"cd /dev");
     testrt::check_eq(output(), b"cd /dev\n");
+});
+
+arch_test!(console_io_ignores_terminal_csi_input_sequences, {
+    reset(b"dm\x1b[Ae\x1bODs\x1b[1;5Dg\n");
+    let mut line = [0u8; 16];
+    let len = read_line(&mut line, read_byte, write_bytes);
+    testrt::check_eq(&line[..len], b"dmesg");
+    testrt::check_eq(output(), b"dmesg\n");
 });
 
 arch_test!(console_io_empty_enter_is_not_eof, {

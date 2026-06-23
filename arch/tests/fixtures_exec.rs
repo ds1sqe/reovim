@@ -761,6 +761,10 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "screentest help appears; serial: {serial:?}",
     );
     assert!(
+        serial.contains("required rows: el: clean, el1: clean-left, el2: clean-all"),
+        "screentest help names required erase rows; serial: {serial:?}",
+    );
+    assert!(
         serial.contains("input - print live console input diagnostics"),
         "input help appears; serial: {serial:?}",
     );
@@ -874,6 +878,10 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "proof checklist names VFS help catalog expectation; serial: {serial:?}",
     );
     assert!(
+        serial.contains("screentest includes erase-line mode diagnostics"),
+        "proof checklist names screentest erase-mode expectation; serial: {serial:?}",
+    );
+    assert!(
         serial.contains("  probe help\n  probe pcie\n  probe usb-keyboard"),
         "proof checklist includes read-only PCIe probe; serial: {serial:?}",
     );
@@ -918,6 +926,18 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "screentest prints truecolor background row; serial: {serial:?}",
     );
     assert!(serial.contains("attrs:"), "screentest prints attribute row; serial: {serial:?}",);
+    assert!(
+        serial.contains("el: clean"),
+        "screentest prints erase-to-end row; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("el1: clean-left"),
+        "screentest prints erase-to-start row; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("el2: clean-all"),
+        "screentest prints erase-all row; serial: {serial:?}",
+    );
     assert!(
         serial.contains("kernel on / type rootfs (ro,pseudo)"),
         "mount table appears in transcript; serial: {serial:?}",

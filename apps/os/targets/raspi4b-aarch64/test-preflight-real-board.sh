@@ -101,7 +101,7 @@ expect_contains "$evidence" '`launch` / `reovim` report shell-only payload launc
 expect_contains "$evidence" '`proof` prints the physical input proof checklist.' "evidence proof fact"
 expect_contains "$evidence" '`cat /boot/proof` prints the VFS-backed proof pseudo-file.' "evidence VFS proof fact"
 expect_contains "$evidence" '`cat /boot/help` prints the VFS-backed help catalog.' "evidence VFS help fact"
-expect_contains "$evidence" '`help` / `clear` / `screentest` prove the shell help and renderer commands.' "evidence shell usability fact"
+expect_contains "$evidence" '`help` / `clear` / `screentest` prove shell help and erase-line mode diagnostics.' "evidence shell usability fact"
 expect_contains "$evidence" '`pwd` / `ls` / `mount` report the kernel VFS namespace and mounts.' "evidence VFS namespace fact"
 expect_contains "$evidence" '`device` / `cat /boot/memory` / `cat /boot/devices` report boot inventory.' "evidence boot inventory fact"
 expect_contains "$evidence" '`cd /dev` / `ls` / `cat uart0` prove relative VFS device-file access.' "evidence relative device fact"

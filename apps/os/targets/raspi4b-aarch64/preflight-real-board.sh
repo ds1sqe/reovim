@@ -208,7 +208,7 @@ write_evidence_seed() {
         printf -- '- [ ] `proof` prints the physical input proof checklist.\n'
         printf -- '- [ ] `cat /boot/proof` prints the VFS-backed proof pseudo-file.\n'
         printf -- '- [ ] `cat /boot/help` prints the VFS-backed help catalog.\n'
-        printf -- '- [ ] `help` / `clear` / `screentest` prove the shell help and renderer commands.\n'
+        printf -- '- [ ] `help` / `clear` / `screentest` prove shell help and erase-line mode diagnostics.\n'
         printf -- '- [ ] `pwd` / `ls` / `mount` report the kernel VFS namespace and mounts.\n'
         printf -- '- [ ] `device` / `cat /boot/memory` / `cat /boot/devices` report boot inventory.\n'
         printf -- '- [ ] `cd /dev` / `ls` / `cat uart0` prove relative VFS device-file access.\n'
