@@ -240,6 +240,7 @@ write_evidence_seed() {
         printf -- '- [ ] `input=usb-keyboard+uart-fallback`\n'
         printf -- '- [ ] `usb_keyboard=ready`\n'
         printf -- '- [ ] `usb_keyboard_last_poll=report-ready`\n'
+        printf -- '- [ ] `dmesg` contains `input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready`.\n'
         printf -- '- [ ] `manual_next=type-shell-command`\n'
         printf -- '- [ ] `status` / `cat /boot/status` report image/profile identity and live ready source diagnostics.\n'
         printf -- '- [ ] `input` / `cat /boot/input` report live input diagnostics.\n'

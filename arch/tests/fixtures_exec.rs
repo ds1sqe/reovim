@@ -916,6 +916,12 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "proof checklist names the lower report-ready fact; serial: {serial:?}",
     );
     assert!(
+        serial.contains(
+            "  dmesg contains input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready",
+        ),
+        "proof checklist names the retained USB readiness log; serial: {serial:?}",
+    );
+    assert!(
         serial.contains("  manual_next=type-shell-command"),
         "proof checklist names successful manual next step; serial: {serial:?}",
     );

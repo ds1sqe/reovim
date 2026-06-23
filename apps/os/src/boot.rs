@@ -135,13 +135,7 @@ impl UsbKeyboardConsole {
         &mut self,
         report: [u8; arch_sys::usb::BOOT_KEYBOARD_REPORT_BYTES],
     ) -> BootKeyboardIngest {
-        let ingest = self.queue.try_ingest_report(BootKeyboardReport::new(report));
-        if let BootKeyboardIngest::Decoded { bytes } = ingest {
-            if bytes > 0 {
-                USB_KEYBOARD_READY.store(1, Ordering::Release);
-            }
-        }
-        ingest
+        self.queue.try_ingest_report(BootKeyboardReport::new(report))
     }
 
     fn read_byte<PollReport, Fallback>(
@@ -181,9 +175,14 @@ static USB_KEYBOARD_READY: AtomicUsize = AtomicUsize::new(0);
 static USB_KEYBOARD_LAST_POLL_STATE: AtomicUsize = AtomicUsize::new(USB_KEYBOARD_POLL_NOT_POLLED);
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
+static USB_KEYBOARD_LOGGED_POLL_STATE: AtomicUsize = AtomicUsize::new(USB_KEYBOARD_POLL_LOG_UNSET);
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
 const USB_KEYBOARD_POLL_NANOS: usize = 5_000_000;
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 const USB_KEYBOARD_POLL_INTERVAL_MS: usize = USB_KEYBOARD_POLL_NANOS / 1_000_000;
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+const USB_KEYBOARD_POLL_LOG_UNSET: usize = usize::MAX;
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 const USB_KEYBOARD_POLL_NOT_POLLED: usize = 0;
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
@@ -766,7 +765,7 @@ fn probe_usb_keyboard(devices: &[DeviceEntry], write: WriteFn) {
         reovim_uapi::system::DeviceClass::Bus,
         "brcm,bcm2711-pcie",
     ) {
-        USB_KEYBOARD_LAST_POLL_STATE.store(USB_KEYBOARD_POLL_DTB_MISSING, Ordering::Release);
+        store_usb_keyboard_poll_state(USB_KEYBOARD_POLL_DTB_MISSING);
         probe_emit(write, b"state=unavailable\n");
         probe_emit(write, b"reason=device-tree-disabled-or-missing\n");
         return;
@@ -775,7 +774,7 @@ fn probe_usb_keyboard(devices: &[DeviceEntry], write: WriteFn) {
     let console = unsafe { &mut *USB_KEYBOARD_CONSOLE.0.get() };
     let pending = console.pending_remaining();
     if pending > 0 {
-        USB_KEYBOARD_LAST_POLL_STATE.store(USB_KEYBOARD_POLL_DECODED_PENDING, Ordering::Release);
+        store_usb_keyboard_poll_state(USB_KEYBOARD_POLL_DECODED_PENDING);
         probe_emit(write, b"state=decoded-pending\n");
         probe_emit(write, b"decoded_bytes=");
         probe_write_u64_dec(write, pending as u64);
@@ -787,8 +786,10 @@ fn probe_usb_keyboard(devices: &[DeviceEntry], write: WriteFn) {
         arch_sys::usb::UsbBootKeyboardPoll::Report(report) => {
             match console.ingest_report(report) {
                 BootKeyboardIngest::Decoded { bytes } => {
-                    USB_KEYBOARD_LAST_POLL_STATE
-                        .store(USB_KEYBOARD_POLL_REPORT_READY, Ordering::Release);
+                    store_usb_keyboard_poll_state(USB_KEYBOARD_POLL_REPORT_READY);
+                    if bytes > 0 {
+                        mark_usb_keyboard_ready();
+                    }
                     probe_emit(write, b"state=report-ready\n");
                     probe_emit(write, b"report_bytes=8\n");
                     probe_emit(write, b"decoded_bytes=");
@@ -796,8 +797,10 @@ fn probe_usb_keyboard(devices: &[DeviceEntry], write: WriteFn) {
                     probe_emit(write, b"\n");
                 }
                 BootKeyboardIngest::Backlogged { pending_bytes } => {
-                    USB_KEYBOARD_LAST_POLL_STATE
-                        .store(USB_KEYBOARD_POLL_DECODED_PENDING, Ordering::Release);
+                    store_usb_keyboard_poll_state(USB_KEYBOARD_POLL_DECODED_PENDING);
+                    if pending_bytes > 0 {
+                        mark_usb_keyboard_ready();
+                    }
                     probe_emit(write, b"state=decoded-pending\n");
                     probe_emit(write, b"decoded_bytes=");
                     probe_write_u64_dec(write, pending_bytes as u64);
@@ -806,10 +809,7 @@ fn probe_usb_keyboard(devices: &[DeviceEntry], write: WriteFn) {
             }
         }
         arch_sys::usb::UsbBootKeyboardPoll::Pending(pending) => {
-            USB_KEYBOARD_LAST_POLL_STATE.store(
-                usb_keyboard_poll_state_from_pending(pending),
-                Ordering::Release,
-            );
+            store_usb_keyboard_poll_state(usb_keyboard_poll_state_from_pending(pending));
             probe_usb_keyboard_pending(write, pending);
         }
     }
@@ -3618,7 +3618,7 @@ fn read_aarch64_console_byte() -> Option<u8> {
             arch_sys::try_read_stdin_byte,
         ) {
             Some(ConsoleInputByte::UsbKeyboard(byte)) => {
-                USB_KEYBOARD_READY.store(1, Ordering::Release);
+                mark_usb_keyboard_ready();
                 return Some(byte);
             }
             Some(ConsoleInputByte::Fallback(byte)) => return Some(byte),
@@ -3650,7 +3650,7 @@ fn read_fd_stdin_byte() -> Option<u8> {
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 fn usb_keyboard_poll_report_if_due() -> Option<[u8; arch_sys::usb::BOOT_KEYBOARD_REPORT_BYTES]> {
     if USB_KEYBOARD_PROBE_ENABLED.load(Ordering::Acquire) == 0 {
-        USB_KEYBOARD_LAST_POLL_STATE.store(USB_KEYBOARD_POLL_PROBE_DISABLED, Ordering::Release);
+        store_usb_keyboard_poll_state(USB_KEYBOARD_POLL_PROBE_DISABLED);
         return None;
     }
     if !usb_keyboard_poll_due() {
@@ -3658,14 +3658,11 @@ fn usb_keyboard_poll_report_if_due() -> Option<[u8; arch_sys::usb::BOOT_KEYBOARD
     }
     match arch_sys::usb::poll_boot_keyboard_report() {
         arch_sys::usb::UsbBootKeyboardPoll::Report(report) => {
-            USB_KEYBOARD_LAST_POLL_STATE.store(USB_KEYBOARD_POLL_REPORT_READY, Ordering::Release);
+            store_usb_keyboard_poll_state(USB_KEYBOARD_POLL_REPORT_READY);
             Some(report)
         }
         arch_sys::usb::UsbBootKeyboardPoll::Pending(pending) => {
-            USB_KEYBOARD_LAST_POLL_STATE.store(
-                usb_keyboard_poll_state_from_pending(pending),
-                Ordering::Release,
-            );
+            store_usb_keyboard_poll_state(usb_keyboard_poll_state_from_pending(pending));
             None
         }
     }
@@ -3679,6 +3676,9 @@ fn configure_usb_keyboard_probe(devices: &[DeviceEntry]) {
         "brcm,bcm2711-pcie",
     );
     USB_KEYBOARD_PROBE_ENABLED.store(enabled as usize, Ordering::Release);
+    USB_KEYBOARD_READY.store(0, Ordering::Release);
+    USB_KEYBOARD_LAST_POLL_NANOS.store(0, Ordering::Release);
+    USB_KEYBOARD_LOGGED_POLL_STATE.store(USB_KEYBOARD_POLL_LOG_UNSET, Ordering::Release);
     USB_KEYBOARD_LAST_POLL_STATE.store(
         if enabled {
             USB_KEYBOARD_POLL_NOT_POLLED
@@ -3704,8 +3704,35 @@ fn usb_keyboard_poll_due() -> bool {
 }
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn mark_usb_keyboard_ready() {
+    if USB_KEYBOARD_READY.swap(1, Ordering::AcqRel) == 0 {
+        reovim_system_kernel::klog::append_bytes(
+            b"input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=",
+        );
+        reovim_system_kernel::klog::append_bytes(usb_keyboard_last_poll_word().as_bytes());
+        reovim_system_kernel::klog::append_bytes(b"\n");
+    }
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn store_usb_keyboard_poll_state(state: usize) {
+    USB_KEYBOARD_LAST_POLL_STATE.store(state, Ordering::Release);
+    let previous = USB_KEYBOARD_LOGGED_POLL_STATE.swap(state, Ordering::AcqRel);
+    if previous != state && state != USB_KEYBOARD_POLL_NOT_POLLED {
+        reovim_system_kernel::klog::append_bytes(b"input.usb_keyboard_poll=");
+        reovim_system_kernel::klog::append_bytes(usb_keyboard_poll_word(state).as_bytes());
+        reovim_system_kernel::klog::append_bytes(b"\n");
+    }
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
 fn usb_keyboard_last_poll_word() -> &'static str {
-    match USB_KEYBOARD_LAST_POLL_STATE.load(Ordering::Acquire) {
+    usb_keyboard_poll_word(USB_KEYBOARD_LAST_POLL_STATE.load(Ordering::Acquire))
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+const fn usb_keyboard_poll_word(state: usize) -> &'static str {
+    match state {
         USB_KEYBOARD_POLL_NOT_POLLED => "not-polled",
         USB_KEYBOARD_POLL_PROBE_DISABLED => "probe-disabled",
         USB_KEYBOARD_POLL_DTB_MISSING => "device-tree-disabled-or-missing",

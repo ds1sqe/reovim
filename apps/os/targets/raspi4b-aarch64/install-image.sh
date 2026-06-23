@@ -111,7 +111,10 @@ fi
 
 for firmware in start4.elf fixup4.dat bcm2711-rpi-4-b.dtb; do
     if [ ! -e "$BOOT_DIR/$firmware" ]; then
-        warn "missing expected Raspberry Pi 4 firmware file: $firmware"
+        fail "missing expected Raspberry Pi 4 firmware file: $firmware"
+    fi
+    if [ ! -s "$BOOT_DIR/$firmware" ]; then
+        fail "expected Raspberry Pi 4 firmware file is empty: $firmware"
     fi
 done
 

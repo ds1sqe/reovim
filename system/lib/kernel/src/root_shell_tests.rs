@@ -600,6 +600,10 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"  usb_keyboard=ready\n");
     assert_contains(sink_bytes(), b"  usb_keyboard_probe=enabled\n");
     assert_contains(sink_bytes(), b"  usb_keyboard_last_poll=report-ready\n");
+    assert_contains(
+        sink_bytes(),
+        b"  dmesg contains input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready\n",
+    );
     assert_contains(sink_bytes(), b"  manual_next=type-shell-command\n");
     assert_contains(sink_bytes(), b"  detailed help catalog available through /boot/help\n");
     assert_contains(sink_bytes(), b"  screentest includes erase-line mode diagnostics\n");
@@ -638,6 +642,10 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"  probe targets include xhci-read-keyboard-report\n");
     assert_contains(sink_bytes(), b"  detailed help catalog available through /boot/help\n");
     assert_contains(sink_bytes(), b"  kernel log stats available through /log/stats\n");
+    assert_contains(
+        sink_bytes(),
+        b"  dmesg contains input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready\n",
+    );
     assert_contains(sink_bytes(), b"  probe catalog available through /boot/probes\n");
     assert_contains(sink_bytes(), b"  launch/reovim disabled in shell-only profile\n");
     assert_contains(sink_bytes(), b"  halt typed last prints halt: ok and stops root daemon\n");

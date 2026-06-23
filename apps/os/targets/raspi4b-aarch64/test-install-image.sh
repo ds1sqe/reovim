@@ -15,16 +15,61 @@ if [ ! -s "$IMAGE" ]; then
 fi
 
 tmp_bootfs="$(mktemp -d)"
+tmp_missing_bootfs="$(mktemp -d)"
+tmp_empty_bootfs="$(mktemp -d)"
 cleanup() {
     rm -rf "$tmp_bootfs"
+    rm -rf "$tmp_missing_bootfs"
+    rm -rf "$tmp_empty_bootfs"
 }
 trap cleanup EXIT
 
 printf 'firmware-start\n' >"$tmp_bootfs/start4.elf"
 printf 'firmware-fixup\n' >"$tmp_bootfs/fixup4.dat"
 printf 'firmware-dtb\n' >"$tmp_bootfs/bcm2711-rpi-4-b.dtb"
+printf 'firmware-start\n' >"$tmp_empty_bootfs/start4.elf"
+: >"$tmp_empty_bootfs/fixup4.dat"
+printf 'firmware-dtb\n' >"$tmp_empty_bootfs/bcm2711-rpi-4-b.dtb"
 
 source_sha="$(sha256sum "$IMAGE" | awk '{ print $1 }')"
+
+if "$INSTALL_SCRIPT" --dry-run "$tmp_missing_bootfs" \
+    >"$tmp_missing_bootfs/install.out" 2>"$tmp_missing_bootfs/install.err"; then
+    printf 'error: install-image accepted missing Pi 4 firmware files\n' >&2
+    cat "$tmp_missing_bootfs/install.out" >&2
+    exit 1
+fi
+case "$(cat "$tmp_missing_bootfs/install.err")" in
+    *"missing expected Raspberry Pi 4 firmware file"*) ;;
+    *)
+        printf 'error: missing-firmware failure did not explain the firmware gap\n' >&2
+        cat "$tmp_missing_bootfs/install.err" >&2
+        exit 1
+        ;;
+esac
+if [ -e "$tmp_missing_bootfs/kernel8.img" ]; then
+    printf 'error: install-image wrote kernel8.img after missing firmware failure\n' >&2
+    exit 1
+fi
+
+if "$INSTALL_SCRIPT" --dry-run "$tmp_empty_bootfs" \
+    >"$tmp_empty_bootfs/install.out" 2>"$tmp_empty_bootfs/install.err"; then
+    printf 'error: install-image accepted an empty Pi 4 firmware file\n' >&2
+    cat "$tmp_empty_bootfs/install.out" >&2
+    exit 1
+fi
+case "$(cat "$tmp_empty_bootfs/install.err")" in
+    *"expected Raspberry Pi 4 firmware file is empty"*) ;;
+    *)
+        printf 'error: empty-firmware failure did not explain the firmware gap\n' >&2
+        cat "$tmp_empty_bootfs/install.err" >&2
+        exit 1
+        ;;
+esac
+if [ -e "$tmp_empty_bootfs/kernel8.img" ]; then
+    printf 'error: install-image wrote kernel8.img after empty firmware failure\n' >&2
+    exit 1
+fi
 
 dry_run="$("$INSTALL_SCRIPT" --dry-run "$tmp_bootfs")"
 case "$dry_run" in

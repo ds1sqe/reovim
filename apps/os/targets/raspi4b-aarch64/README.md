@@ -21,7 +21,7 @@ image=apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img
 bytes=<image-size>
 ```
 
-Current expected size is `446412` bytes.
+Current expected size is `446836` bytes.
 
 Copy `apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img` to the Pi
 4 boot partition as `kernel8.img`, using the normal Raspberry Pi firmware
@@ -83,10 +83,11 @@ bootfs path, firmware byte counts, and the existing `kernel8.img` identity
 when present.
 
 The install helper only copies `kernel8.img`; it does not format media, mount
-media, or install Raspberry Pi firmware files. If `kernel8.img` already exists
-on the boot partition, the helper saves a timestamped backup before replacing
-it, then prints the installed image byte count and SHA-256 for the evidence
-template.
+media, or install Raspberry Pi firmware files. It refuses to install when the
+required Pi 4 firmware files are missing or empty, matching the bootfs checker.
+If `kernel8.img` already exists on the boot partition, the helper saves a
+timestamped backup before replacing it, then prints the installed image byte
+count and SHA-256 for the evidence template.
 
 To run every no-real-media Pi 4 target smoke before touching real media:
 
@@ -169,7 +170,9 @@ physical-keyboard PASS labels, no-bootline image facts, installed-media
 identity from `prepare-boot-media.sh`, shell-only image identity from
 `cat /boot/image`, shell-only profile identity from `cat /boot/profile`,
 USB-keyboard readiness, the lower `usb_keyboard_last_poll=report-ready`
-diagnostic, identity plus live source diagnostics from `status` /
+diagnostic, the retained
+`input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready`
+kernel-log transition, identity plus live source diagnostics from `status` /
 `cat /boot/status`, live input diagnostics from `input` / `cat /boot/input`,
 the in-OS `proof` checklist, the VFS-backed detailed help catalog from
 `cat /boot/help`, log-stat discoverability from `help dmesg` / `ls /log`,
@@ -356,7 +359,9 @@ Record the full visible output or serial transcript. The key evidence is:
   proves boot does not depend on editor/server payload startup.
 - `dmesg --stats` and `cat /log/stats` report kernel log ring capacity,
   retained bytes, and dropped bytes through command and VFS paths.
-- `dmesg` includes the command audit lines and probe output.
+- `dmesg` includes the command audit lines, probe output, and the
+  `input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready`
+  transition.
 - The final `cat /log/dmesg` includes `shell.status=error` for the intentional
   shell-only `launch` and `reovim` disabled paths.
 - The final `cat /log/dmesg` shows the `shell.status=ok` record for the prior

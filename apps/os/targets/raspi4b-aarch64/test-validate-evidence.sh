@@ -28,6 +28,7 @@ missing_targeted_help_evidence="$tmp_dir/missing-targeted-help.md"
 missing_remaining_command_help_evidence="$tmp_dir/missing-remaining-command-help.md"
 missing_live_source_evidence="$tmp_dir/missing-live-source.md"
 missing_last_poll_evidence="$tmp_dir/missing-last-poll.md"
+missing_ready_log_evidence="$tmp_dir/missing-ready-log.md"
 missing_manual_next_evidence="$tmp_dir/missing-manual-next.md"
 missing_vfs_live_source_evidence="$tmp_dir/missing-vfs-live-source.md"
 missing_image_identity_evidence="$tmp_dir/missing-image-identity.md"
@@ -47,6 +48,7 @@ missing_proof_evidence="$tmp_dir/missing-proof.md"
 missing_proof_command_evidence="$tmp_dir/missing-proof-command.md"
 missing_proof_identity_evidence="$tmp_dir/missing-proof-identity.md"
 missing_proof_screentest_fact_evidence="$tmp_dir/missing-proof-screentest-fact.md"
+missing_proof_ready_log_fact_evidence="$tmp_dir/missing-proof-ready-log-fact.md"
 missing_vfs_help_evidence="$tmp_dir/missing-vfs-help.md"
 missing_vfs_help_detail_evidence="$tmp_dir/missing-vfs-help-detail.md"
 missing_vfs_proof_evidence="$tmp_dir/missing-vfs-proof.md"
@@ -190,6 +192,7 @@ write_passing_evidence() {
         printf '  usb_keyboard=ready\n'
         printf '  usb_keyboard_probe=enabled\n'
         printf '  usb_keyboard_last_poll=report-ready\n'
+        printf '  dmesg contains input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready\n'
         printf '  manual_next=type-shell-command\n'
         printf '  detailed help catalog available through /boot/help\n'
         printf '  screentest includes erase-line mode diagnostics\n'
@@ -278,6 +281,7 @@ write_passing_evidence() {
         printf '  usb_keyboard=ready\n'
         printf '  usb_keyboard_probe=enabled\n'
         printf '  usb_keyboard_last_poll=report-ready\n'
+        printf '  dmesg contains input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready\n'
         printf '  manual_next=type-shell-command\n'
         printf '  detailed help catalog available through /boot/help\n'
         printf '  screentest includes erase-line mode diagnostics\n'
@@ -529,6 +533,7 @@ write_passing_evidence() {
         printf 'dropped_bytes=0\n'
         printf 'reovim-os> dmesg\n'
         printf 'dmesg:\n'
+        printf 'input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready\n'
         printf 'shell: proof\n'
         printf 'shell.status=ok\n'
         printf 'shell: cat /boot/proof\n'
@@ -660,6 +665,7 @@ write_passing_evidence() {
         printf -- '- [x] `input=usb-keyboard+uart-fallback`\n'
         printf -- '- [x] `usb_keyboard=ready`\n'
         printf -- '- [x] `usb_keyboard_last_poll=report-ready`\n'
+        printf -- '- [x] `dmesg` contains `input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready`.\n'
         printf -- '- [x] `manual_next=type-shell-command`\n'
         printf -- '- [x] `status` / `cat /boot/status` report image/profile identity and live ready source diagnostics.\n'
         printf -- '- [x] `input` / `cat /boot/input` report live input diagnostics.\n'
@@ -750,6 +756,10 @@ cp "$pass_evidence" "$missing_last_poll_evidence"
 sed -i '/^usb_keyboard_last_poll=report-ready$/d' "$missing_last_poll_evidence"
 expect_failure "$missing_last_poll_evidence" "missing-last-poll"
 
+cp "$pass_evidence" "$missing_ready_log_evidence"
+sed -i '/^input\.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready$/d' "$missing_ready_log_evidence"
+expect_failure "$missing_ready_log_evidence" "missing-ready-log"
+
 cp "$pass_evidence" "$missing_manual_next_evidence"
 sed -i '/^manual_next=type-shell-command$/d' "$missing_manual_next_evidence"
 expect_failure "$missing_manual_next_evidence" "missing-manual-next"
@@ -837,6 +847,10 @@ expect_failure "$missing_proof_identity_evidence" "missing-proof-identity"
 cp "$pass_evidence" "$missing_proof_screentest_fact_evidence"
 sed -i '/^  screentest includes erase-line mode diagnostics$/d' "$missing_proof_screentest_fact_evidence"
 expect_failure "$missing_proof_screentest_fact_evidence" "missing-proof-screentest-fact"
+
+cp "$pass_evidence" "$missing_proof_ready_log_fact_evidence"
+sed -i '/^  dmesg contains input\.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready$/d' "$missing_proof_ready_log_fact_evidence"
+expect_failure "$missing_proof_ready_log_fact_evidence" "missing-proof-ready-log-fact"
 
 cp "$pass_evidence" "$missing_vfs_help_evidence"
 sed -i '\#^reovim-os> cat /boot/help$#d' "$missing_vfs_help_evidence"
