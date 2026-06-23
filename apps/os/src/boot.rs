@@ -178,9 +178,48 @@ static USB_KEYBOARD_LAST_POLL_NANOS: AtomicUsize = AtomicUsize::new(0);
 static USB_KEYBOARD_READY: AtomicUsize = AtomicUsize::new(0);
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
+static USB_KEYBOARD_LAST_POLL_STATE: AtomicUsize = AtomicUsize::new(USB_KEYBOARD_POLL_NOT_POLLED);
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
 const USB_KEYBOARD_POLL_NANOS: usize = 5_000_000;
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 const USB_KEYBOARD_POLL_INTERVAL_MS: usize = USB_KEYBOARD_POLL_NANOS / 1_000_000;
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+const USB_KEYBOARD_POLL_NOT_POLLED: usize = 0;
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+const USB_KEYBOARD_POLL_PROBE_DISABLED: usize = 1;
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+const USB_KEYBOARD_POLL_DTB_MISSING: usize = 2;
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+const USB_KEYBOARD_POLL_DECODED_PENDING: usize = 3;
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+const USB_KEYBOARD_POLL_REPORT_READY: usize = 4;
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+const USB_KEYBOARD_POLL_CONTROLLER_NOT_READY: usize = 5;
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+const USB_KEYBOARD_POLL_RESET_IN_PROGRESS: usize = 6;
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+const USB_KEYBOARD_POLL_HOST_SYSTEM_ERROR: usize = 7;
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+const USB_KEYBOARD_POLL_NO_PCIE_XHCI: usize = 8;
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+const USB_KEYBOARD_POLL_BAR_UNCONFIGURED: usize = 9;
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+const USB_KEYBOARD_POLL_INVALID_CAPS: usize = 10;
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+const USB_KEYBOARD_POLL_NO_CONNECTED_PORT: usize = 11;
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+const USB_KEYBOARD_POLL_NEEDS_CONTROLLER_INIT: usize = 12;
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+const USB_KEYBOARD_POLL_NEEDS_ENUMERATION: usize = 13;
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+const USB_KEYBOARD_POLL_REPORT_PENDING: usize = 14;
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+const USB_KEYBOARD_POLL_ENUMERATION_FAILED: usize = 15;
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+const USB_KEYBOARD_POLL_REPORT_EVENT_MISMATCH: usize = 16;
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+const USB_KEYBOARD_POLL_REPORT_TRANSFER_FAILED: usize = 17;
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 fn device_storage() -> &'static mut [DeviceEntry] {
@@ -727,6 +766,7 @@ fn probe_usb_keyboard(devices: &[DeviceEntry], write: WriteFn) {
         reovim_uapi::system::DeviceClass::Bus,
         "brcm,bcm2711-pcie",
     ) {
+        USB_KEYBOARD_LAST_POLL_STATE.store(USB_KEYBOARD_POLL_DTB_MISSING, Ordering::Release);
         probe_emit(write, b"state=unavailable\n");
         probe_emit(write, b"reason=device-tree-disabled-or-missing\n");
         return;
@@ -735,6 +775,7 @@ fn probe_usb_keyboard(devices: &[DeviceEntry], write: WriteFn) {
     let console = unsafe { &mut *USB_KEYBOARD_CONSOLE.0.get() };
     let pending = console.pending_remaining();
     if pending > 0 {
+        USB_KEYBOARD_LAST_POLL_STATE.store(USB_KEYBOARD_POLL_DECODED_PENDING, Ordering::Release);
         probe_emit(write, b"state=decoded-pending\n");
         probe_emit(write, b"decoded_bytes=");
         probe_write_u64_dec(write, pending as u64);
@@ -746,6 +787,8 @@ fn probe_usb_keyboard(devices: &[DeviceEntry], write: WriteFn) {
         arch_sys::usb::UsbBootKeyboardPoll::Report(report) => {
             match console.ingest_report(report) {
                 BootKeyboardIngest::Decoded { bytes } => {
+                    USB_KEYBOARD_LAST_POLL_STATE
+                        .store(USB_KEYBOARD_POLL_REPORT_READY, Ordering::Release);
                     probe_emit(write, b"state=report-ready\n");
                     probe_emit(write, b"report_bytes=8\n");
                     probe_emit(write, b"decoded_bytes=");
@@ -753,6 +796,8 @@ fn probe_usb_keyboard(devices: &[DeviceEntry], write: WriteFn) {
                     probe_emit(write, b"\n");
                 }
                 BootKeyboardIngest::Backlogged { pending_bytes } => {
+                    USB_KEYBOARD_LAST_POLL_STATE
+                        .store(USB_KEYBOARD_POLL_DECODED_PENDING, Ordering::Release);
                     probe_emit(write, b"state=decoded-pending\n");
                     probe_emit(write, b"decoded_bytes=");
                     probe_write_u64_dec(write, pending_bytes as u64);
@@ -761,7 +806,52 @@ fn probe_usb_keyboard(devices: &[DeviceEntry], write: WriteFn) {
             }
         }
         arch_sys::usb::UsbBootKeyboardPoll::Pending(pending) => {
+            USB_KEYBOARD_LAST_POLL_STATE.store(
+                usb_keyboard_poll_state_from_pending(pending),
+                Ordering::Release,
+            );
             probe_usb_keyboard_pending(write, pending);
+        }
+    }
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn usb_keyboard_poll_state_from_pending(pending: arch_sys::usb::UsbBootKeyboardPending) -> usize {
+    match pending {
+        arch_sys::usb::UsbBootKeyboardPending::ControllerNotReady => {
+            USB_KEYBOARD_POLL_CONTROLLER_NOT_READY
+        }
+        arch_sys::usb::UsbBootKeyboardPending::ControllerResetInProgress => {
+            USB_KEYBOARD_POLL_RESET_IN_PROGRESS
+        }
+        arch_sys::usb::UsbBootKeyboardPending::HostSystemError => USB_KEYBOARD_POLL_HOST_SYSTEM_ERROR,
+        arch_sys::usb::UsbBootKeyboardPending::NoPcieXhciController => USB_KEYBOARD_POLL_NO_PCIE_XHCI,
+        arch_sys::usb::UsbBootKeyboardPending::ControllerBarUnconfigured => {
+            USB_KEYBOARD_POLL_BAR_UNCONFIGURED
+        }
+        arch_sys::usb::UsbBootKeyboardPending::InvalidXhciCapabilities => {
+            USB_KEYBOARD_POLL_INVALID_CAPS
+        }
+        arch_sys::usb::UsbBootKeyboardPending::NoConnectedRootPort => {
+            USB_KEYBOARD_POLL_NO_CONNECTED_PORT
+        }
+        arch_sys::usb::UsbBootKeyboardPending::NeedsControllerInitialization { .. } => {
+            USB_KEYBOARD_POLL_NEEDS_CONTROLLER_INIT
+        }
+        arch_sys::usb::UsbBootKeyboardPending::NeedsEnumeration { .. } => {
+            USB_KEYBOARD_POLL_NEEDS_ENUMERATION
+        }
+        arch_sys::usb::UsbBootKeyboardPending::ReportPending { .. } => {
+            USB_KEYBOARD_POLL_REPORT_PENDING
+        }
+        arch_sys::usb::UsbBootKeyboardPending::EnumerationFailed => {
+            USB_KEYBOARD_POLL_ENUMERATION_FAILED
+        }
+        arch_sys::usb::UsbBootKeyboardPending::ReportEventMismatch => {
+            USB_KEYBOARD_POLL_REPORT_EVENT_MISMATCH
+        }
+        arch_sys::usb::UsbBootKeyboardPending::ReportTransferFailed { .. } => {
+            USB_KEYBOARD_POLL_REPORT_TRANSFER_FAILED
         }
     }
 }
@@ -3560,14 +3650,24 @@ fn read_fd_stdin_byte() -> Option<u8> {
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 fn usb_keyboard_poll_report_if_due() -> Option<[u8; arch_sys::usb::BOOT_KEYBOARD_REPORT_BYTES]> {
     if USB_KEYBOARD_PROBE_ENABLED.load(Ordering::Acquire) == 0 {
+        USB_KEYBOARD_LAST_POLL_STATE.store(USB_KEYBOARD_POLL_PROBE_DISABLED, Ordering::Release);
         return None;
     }
     if !usb_keyboard_poll_due() {
         return None;
     }
     match arch_sys::usb::poll_boot_keyboard_report() {
-        arch_sys::usb::UsbBootKeyboardPoll::Report(report) => Some(report),
-        arch_sys::usb::UsbBootKeyboardPoll::Pending(_) => None,
+        arch_sys::usb::UsbBootKeyboardPoll::Report(report) => {
+            USB_KEYBOARD_LAST_POLL_STATE.store(USB_KEYBOARD_POLL_REPORT_READY, Ordering::Release);
+            Some(report)
+        }
+        arch_sys::usb::UsbBootKeyboardPoll::Pending(pending) => {
+            USB_KEYBOARD_LAST_POLL_STATE.store(
+                usb_keyboard_poll_state_from_pending(pending),
+                Ordering::Release,
+            );
+            None
+        }
     }
 }
 
@@ -3579,6 +3679,14 @@ fn configure_usb_keyboard_probe(devices: &[DeviceEntry]) {
         "brcm,bcm2711-pcie",
     );
     USB_KEYBOARD_PROBE_ENABLED.store(enabled as usize, Ordering::Release);
+    USB_KEYBOARD_LAST_POLL_STATE.store(
+        if enabled {
+            USB_KEYBOARD_POLL_NOT_POLLED
+        } else {
+            USB_KEYBOARD_POLL_PROBE_DISABLED
+        },
+        Ordering::Release,
+    );
 }
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
@@ -3593,6 +3701,31 @@ fn usb_keyboard_poll_due() -> bool {
     }
     USB_KEYBOARD_LAST_POLL_NANOS.store(now, Ordering::Release);
     true
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn usb_keyboard_last_poll_word() -> &'static str {
+    match USB_KEYBOARD_LAST_POLL_STATE.load(Ordering::Acquire) {
+        USB_KEYBOARD_POLL_NOT_POLLED => "not-polled",
+        USB_KEYBOARD_POLL_PROBE_DISABLED => "probe-disabled",
+        USB_KEYBOARD_POLL_DTB_MISSING => "device-tree-disabled-or-missing",
+        USB_KEYBOARD_POLL_DECODED_PENDING => "decoded-pending",
+        USB_KEYBOARD_POLL_REPORT_READY => "report-ready",
+        USB_KEYBOARD_POLL_CONTROLLER_NOT_READY => "xhci-controller-not-ready",
+        USB_KEYBOARD_POLL_RESET_IN_PROGRESS => "xhci-reset-in-progress",
+        USB_KEYBOARD_POLL_HOST_SYSTEM_ERROR => "xhci-host-system-error",
+        USB_KEYBOARD_POLL_NO_PCIE_XHCI => "no-pcie-xhci-controller",
+        USB_KEYBOARD_POLL_BAR_UNCONFIGURED => "xhci-bar-unconfigured",
+        USB_KEYBOARD_POLL_INVALID_CAPS => "xhci-capabilities-invalid",
+        USB_KEYBOARD_POLL_NO_CONNECTED_PORT => "no-connected-root-port",
+        USB_KEYBOARD_POLL_NEEDS_CONTROLLER_INIT => "needs-controller-init",
+        USB_KEYBOARD_POLL_NEEDS_ENUMERATION => "needs-enumeration",
+        USB_KEYBOARD_POLL_REPORT_PENDING => "report-pending",
+        USB_KEYBOARD_POLL_ENUMERATION_FAILED => "hid-enumeration-failed",
+        USB_KEYBOARD_POLL_REPORT_EVENT_MISMATCH => "keyboard-report-event-mismatch",
+        USB_KEYBOARD_POLL_REPORT_TRANSFER_FAILED => "keyboard-report-transfer-failed",
+        _ => "unknown",
+    }
 }
 
 fn console_input_summary() -> ConsoleInputSummary {
@@ -3651,7 +3784,7 @@ fn console_input_status(base: ConsoleInputSummary) -> ConsoleInputSummary {
         let probe_enabled = USB_KEYBOARD_PROBE_ENABLED.load(Ordering::Acquire) != 0;
         let pending = unsafe { &*USB_KEYBOARD_CONSOLE.0.get() }.pending_remaining();
         if BOOTLINE_SCRIPT.is_none() && USB_KEYBOARD_READY.load(Ordering::Acquire) != 0 {
-            return ConsoleInputSummary::with_usb_state(
+            return ConsoleInputSummary::with_usb_diagnostics(
                 "usb-keyboard+uart-fallback",
                 "live",
                 BootCheckState::Ok,
@@ -3659,9 +3792,10 @@ fn console_input_status(base: ConsoleInputSummary) -> ConsoleInputSummary {
                 pending,
                 probe_enabled,
                 USB_KEYBOARD_POLL_INTERVAL_MS,
+                usb_keyboard_last_poll_word(),
             );
         }
-        return ConsoleInputSummary::with_usb_state(
+        return ConsoleInputSummary::with_usb_diagnostics(
             base.source,
             base.mode,
             base.source_state,
@@ -3669,6 +3803,7 @@ fn console_input_status(base: ConsoleInputSummary) -> ConsoleInputSummary {
             pending,
             probe_enabled,
             USB_KEYBOARD_POLL_INTERVAL_MS,
+            usb_keyboard_last_poll_word(),
         );
     }
 

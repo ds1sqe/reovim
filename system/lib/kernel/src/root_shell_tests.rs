@@ -116,7 +116,7 @@ fn daemon_with_input_status_and_halt(
 }
 
 fn ready_input_status(_base: ConsoleInputSummary) -> ConsoleInputSummary {
-    ConsoleInputSummary::with_usb_state(
+    ConsoleInputSummary::with_usb_diagnostics(
         "usb-keyboard+uart-fallback",
         "live",
         BootCheckState::Ok,
@@ -124,6 +124,7 @@ fn ready_input_status(_base: ConsoleInputSummary) -> ConsoleInputSummary {
         2,
         true,
         5,
+        "report-ready",
     )
 }
 
@@ -393,6 +394,7 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"usb_keyboard_pending_bytes=0\n");
     assert_contains(sink_bytes(), b"usb_keyboard_probe=disabled\n");
     assert_contains(sink_bytes(), b"usb_keyboard_poll_interval_ms=0\n");
+    assert_contains(sink_bytes(), b"usb_keyboard_last_poll=not-polled\n");
 
     run_session_command(&mut session, b"cat /boot/status\n");
     assert_contains(sink_bytes(), b"package=reovim-os\n");
@@ -403,6 +405,7 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"source_state=ready\n");
     assert_contains(sink_bytes(), b"usb_keyboard=unavailable\n");
     assert_contains(sink_bytes(), b"usb_keyboard_poll_interval_ms=0\n");
+    assert_contains(sink_bytes(), b"usb_keyboard_last_poll=not-polled\n");
     assert_contains(sink_bytes(), b"manual_next=probe-help\n");
 
     run_session_command(&mut session, b"cat /boot/proof\n");
@@ -453,6 +456,7 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"  input_mode=live\n");
     assert_contains(sink_bytes(), b"  usb_keyboard=ready\n");
     assert_contains(sink_bytes(), b"  usb_keyboard_probe=enabled\n");
+    assert_contains(sink_bytes(), b"  usb_keyboard_last_poll=report-ready\n");
     assert_contains(sink_bytes(), b"  help catalog available through /boot/help\n");
     assert_contains(sink_bytes(), b"  probe targets include usb-keyboard\n");
     assert_contains(sink_bytes(), b"  probe targets include xhci-read-keyboard-report\n");
@@ -562,6 +566,7 @@ arch_test!(root_shell_boot_profile_uses_live_console_input_status, {
     assert_contains(sink_bytes(), b"usb_keyboard_pending_bytes=2\n");
     assert_contains(sink_bytes(), b"usb_keyboard_probe=enabled\n");
     assert_contains(sink_bytes(), b"usb_keyboard_poll_interval_ms=5\n");
+    assert_contains(sink_bytes(), b"usb_keyboard_last_poll=report-ready\n");
 
     sink_clear();
     let _ = execute_root_command(&daemon, &mut session, b"cat /boot/status\n");
@@ -575,6 +580,7 @@ arch_test!(root_shell_boot_profile_uses_live_console_input_status, {
     assert_contains(sink_bytes(), b"source_state=ready\n");
     assert_contains(sink_bytes(), b"usb_keyboard=ready\n");
     assert_contains(sink_bytes(), b"usb_keyboard_poll_interval_ms=5\n");
+    assert_contains(sink_bytes(), b"usb_keyboard_last_poll=report-ready\n");
     assert_contains(sink_bytes(), b"manual_next=type-shell-command\n");
 });
 

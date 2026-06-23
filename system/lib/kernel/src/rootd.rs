@@ -144,6 +144,8 @@ pub struct ConsoleInputSummary {
     pub usb_keyboard_probe_enabled: bool,
     /// Minimum interval between lower USB keyboard hardware polls.
     pub usb_keyboard_poll_interval_ms: usize,
+    /// Last lower USB keyboard poll/probe state visible to the composition root.
+    pub usb_keyboard_last_poll: &'static str,
 }
 
 impl ConsoleInputSummary {
@@ -189,6 +191,30 @@ impl ConsoleInputSummary {
         usb_keyboard_probe_enabled: bool,
         usb_keyboard_poll_interval_ms: usize,
     ) -> Self {
+        Self::with_usb_diagnostics(
+            source,
+            mode,
+            source_state,
+            usb_keyboard,
+            usb_keyboard_pending_bytes,
+            usb_keyboard_probe_enabled,
+            usb_keyboard_poll_interval_ms,
+            "not-polled",
+        )
+    }
+
+    /// Builds a console-input summary with full live USB provider diagnostics.
+    #[must_use]
+    pub const fn with_usb_diagnostics(
+        source: &'static str,
+        mode: &'static str,
+        source_state: BootCheckState,
+        usb_keyboard: BootCheckState,
+        usb_keyboard_pending_bytes: usize,
+        usb_keyboard_probe_enabled: bool,
+        usb_keyboard_poll_interval_ms: usize,
+        usb_keyboard_last_poll: &'static str,
+    ) -> Self {
         Self {
             source,
             mode,
@@ -197,6 +223,7 @@ impl ConsoleInputSummary {
             usb_keyboard_pending_bytes,
             usb_keyboard_probe_enabled,
             usb_keyboard_poll_interval_ms,
+            usb_keyboard_last_poll,
         }
     }
 }
@@ -571,6 +598,8 @@ fn write_console_input_detail(write: WriteFn, input: ConsoleInputSummary) {
     write(input.mode.as_bytes());
     write(b" usb_keyboard=");
     write(input_state_word(input.usb_keyboard));
+    write(b" last_poll=");
+    write(input.usb_keyboard_last_poll.as_bytes());
     write(b"\n");
 
     klog::append_bytes(b"input=");
@@ -579,6 +608,8 @@ fn write_console_input_detail(write: WriteFn, input: ConsoleInputSummary) {
     klog::append_bytes(input.mode.as_bytes());
     klog::append_bytes(b" usb_keyboard=");
     klog::append_bytes(input_state_word(input.usb_keyboard));
+    klog::append_bytes(b" last_poll=");
+    klog::append_bytes(input.usb_keyboard_last_poll.as_bytes());
     klog::append_bytes(b"\n");
 }
 

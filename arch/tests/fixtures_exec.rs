@@ -761,6 +761,10 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "boot status includes USB poll interval; serial: {serial:?}",
     );
     assert!(
+        serial.contains("usb_keyboard_last_poll=not-polled"),
+        "boot status includes USB last-poll diagnostics; serial: {serial:?}",
+    );
+    assert!(
         serial.contains("probe targets:"),
         "probe target help appears in transcript; serial: {serial:?}",
     );
@@ -803,6 +807,10 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     assert!(
         serial.contains("  input_mode=live"),
         "proof checklist profile input mode appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("  usb_keyboard_last_poll=report-ready"),
+        "proof checklist names the lower report-ready fact; serial: {serial:?}",
     );
     assert!(
         serial.contains("probe targets include pcie"),

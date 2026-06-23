@@ -21,6 +21,7 @@ missing_audit_evidence="$tmp_dir/missing-audit.md"
 missing_status_evidence="$tmp_dir/missing-status.md"
 missing_probe_help_evidence="$tmp_dir/missing-probe-help.md"
 missing_live_source_evidence="$tmp_dir/missing-live-source.md"
+missing_last_poll_evidence="$tmp_dir/missing-last-poll.md"
 missing_vfs_live_source_evidence="$tmp_dir/missing-vfs-live-source.md"
 missing_image_identity_evidence="$tmp_dir/missing-image-identity.md"
 missing_profile_identity_evidence="$tmp_dir/missing-profile-identity.md"
@@ -150,6 +151,7 @@ write_passing_evidence() {
         printf '  input_mode=live\n'
         printf '  usb_keyboard=ready\n'
         printf '  usb_keyboard_probe=enabled\n'
+        printf '  usb_keyboard_last_poll=report-ready\n'
         printf '  help catalog available through /boot/help\n'
         printf '  probe targets include pcie\n'
         printf '  probe targets include usb-keyboard\n'
@@ -211,6 +213,7 @@ write_passing_evidence() {
         printf '  input_mode=live\n'
         printf '  usb_keyboard=ready\n'
         printf '  usb_keyboard_probe=enabled\n'
+        printf '  usb_keyboard_last_poll=report-ready\n'
         printf '  help catalog available through /boot/help\n'
         printf '  probe targets include pcie\n'
         printf '  probe targets include usb-keyboard\n'
@@ -316,6 +319,7 @@ write_passing_evidence() {
         printf 'usb_keyboard=ready\n'
         printf 'usb_keyboard_probe=enabled\n'
         printf 'usb_keyboard_poll_interval_ms=5\n'
+        printf 'usb_keyboard_last_poll=report-ready\n'
         printf 'reovim-os> cat /boot/status\n'
         printf 'package=reovim-os\n'
         printf 'version=0.16.0-dev\n'
@@ -333,6 +337,7 @@ write_passing_evidence() {
         printf 'usb_keyboard=ready\n'
         printf 'usb_keyboard_probe=enabled\n'
         printf 'usb_keyboard_poll_interval_ms=5\n'
+        printf 'usb_keyboard_last_poll=report-ready\n'
         printf 'reovim-os> input\n'
         printf 'source=usb-keyboard+uart-fallback\n'
         printf 'source_state=ready\n'
@@ -340,6 +345,7 @@ write_passing_evidence() {
         printf 'usb_keyboard=ready\n'
         printf 'usb_keyboard_probe=enabled\n'
         printf 'usb_keyboard_poll_interval_ms=5\n'
+        printf 'usb_keyboard_last_poll=report-ready\n'
         printf 'reovim-os> cat /boot/input\n'
         printf 'source=usb-keyboard+uart-fallback\n'
         printf 'source_state=ready\n'
@@ -347,6 +353,7 @@ write_passing_evidence() {
         printf 'usb_keyboard=ready\n'
         printf 'usb_keyboard_probe=enabled\n'
         printf 'usb_keyboard_poll_interval_ms=5\n'
+        printf 'usb_keyboard_last_poll=report-ready\n'
         printf 'reovim-os> probe help\n'
         printf 'probe targets:\n'
         printf '  pcie\n'
@@ -465,6 +472,7 @@ write_passing_evidence() {
         printf -- '- [x] `cd /dev` / `ls` / `cat uart0` prove relative VFS device-file access.\n'
         printf -- '- [x] `input=usb-keyboard+uart-fallback`\n'
         printf -- '- [x] `usb_keyboard=ready`\n'
+        printf -- '- [x] `usb_keyboard_last_poll=report-ready`\n'
         printf -- '- [x] `status` / `cat /boot/status` report image/profile identity and live ready source diagnostics.\n'
         printf -- '- [x] `input` / `cat /boot/input` report live input diagnostics.\n'
         printf -- '- [x] `probe help` lists `pcie`, `usb-keyboard`, and `xhci-read-keyboard-report`.\n'
@@ -523,6 +531,10 @@ expect_failure "$missing_probe_help_evidence" "missing-probe-help"
 cp "$pass_evidence" "$missing_live_source_evidence"
 sed -i '/^source=usb-keyboard+uart-fallback$/d' "$missing_live_source_evidence"
 expect_failure "$missing_live_source_evidence" "missing-live-source"
+
+cp "$pass_evidence" "$missing_last_poll_evidence"
+sed -i '/^usb_keyboard_last_poll=report-ready$/d' "$missing_last_poll_evidence"
+expect_failure "$missing_last_poll_evidence" "missing-last-poll"
 
 cp "$pass_evidence" "$missing_vfs_live_source_evidence"
 sed -i '\#^reovim-os> cat /boot/status$#d' "$missing_vfs_live_source_evidence"

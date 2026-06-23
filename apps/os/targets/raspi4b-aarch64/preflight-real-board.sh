@@ -212,6 +212,7 @@ write_evidence_seed() {
         printf -- '- [ ] `cd /dev` / `ls` / `cat uart0` prove relative VFS device-file access.\n'
         printf -- '- [ ] `input=usb-keyboard+uart-fallback`\n'
         printf -- '- [ ] `usb_keyboard=ready`\n'
+        printf -- '- [ ] `usb_keyboard_last_poll=report-ready`\n'
         printf -- '- [ ] `status` / `cat /boot/status` report image/profile identity and live ready source diagnostics.\n'
         printf -- '- [ ] `input` / `cat /boot/input` report live input diagnostics.\n'
         printf -- '- [ ] `probe help` lists `pcie`, `usb-keyboard`, and `xhci-read-keyboard-report`.\n'

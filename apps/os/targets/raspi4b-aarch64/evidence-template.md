@@ -137,6 +137,7 @@ Required success facts:
 - [ ] `cd /dev` / `ls` / `cat uart0` prove relative VFS device-file access.
 - [ ] `input=usb-keyboard+uart-fallback`
 - [ ] `usb_keyboard=ready`
+- [ ] `usb_keyboard_last_poll=report-ready`
 - [ ] `status` / `cat /boot/status` report image/profile identity and live ready source diagnostics.
 - [ ] `input` / `cat /boot/input` report live input diagnostics.
 - [ ] `probe help` lists `pcie`, `usb-keyboard`, and `xhci-read-keyboard-report`.

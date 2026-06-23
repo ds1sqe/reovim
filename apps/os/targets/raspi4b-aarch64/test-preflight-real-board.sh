@@ -91,6 +91,7 @@ expect_contains "$evidence" 'cat /log/dmesg' "evidence kernel log transcript com
 expect_contains "$evidence" '## Shutdown Check' "evidence shutdown section"
 expect_contains "$evidence" $'halt\n```' "evidence halt command"
 expect_contains "$evidence" 'probe pcie' "evidence PCIe probe command"
+expect_contains "$evidence" '`usb_keyboard_last_poll=report-ready`' "evidence USB report-ready fact"
 expect_contains "$evidence" '`status` / `cat /boot/status` report image/profile identity and live ready source diagnostics.' "evidence status identity/live source fact"
 expect_contains "$evidence" '`input` / `cat /boot/input` report live input diagnostics.' "evidence input live diagnostics fact"
 expect_contains "$evidence" '`probe help` lists `pcie`, `usb-keyboard`, and `xhci-read-keyboard-report`.' "evidence probe help fact"

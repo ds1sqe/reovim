@@ -572,6 +572,8 @@ fn write_boot_input(daemon: &RootDaemon<'_>) {
     write_bool_word(daemon, input.usb_keyboard_probe_enabled);
     daemon.write_bytes(b"\nusb_keyboard_poll_interval_ms=");
     write_u64_dec(daemon, input.usb_keyboard_poll_interval_ms as u64);
+    daemon.write_bytes(b"\nusb_keyboard_last_poll=");
+    daemon.write_bytes(input.usb_keyboard_last_poll.as_bytes());
     daemon.write_bytes(b"\n");
 }
 
@@ -621,6 +623,7 @@ fn write_boot_proof(daemon: &RootDaemon<'_>) {
     daemon.write_line("  input_mode=live");
     daemon.write_line("  usb_keyboard=ready");
     daemon.write_line("  usb_keyboard_probe=enabled");
+    daemon.write_line("  usb_keyboard_last_poll=report-ready");
     daemon.write_line("  help catalog available through /boot/help");
     daemon.write_line("  probe targets include pcie");
     daemon.write_line("  probe targets include usb-keyboard");
@@ -703,6 +706,8 @@ fn write_boot_status(daemon: &RootDaemon<'_>) {
     write_u64_dec(daemon, input.usb_keyboard_poll_interval_ms as u64);
     daemon.write_bytes(b"\nusb_keyboard_pending_bytes=");
     write_u64_dec(daemon, input.usb_keyboard_pending_bytes as u64);
+    daemon.write_bytes(b"\nusb_keyboard_last_poll=");
+    daemon.write_bytes(input.usb_keyboard_last_poll.as_bytes());
     daemon.write_bytes(b"\nmanual_next=");
     daemon.write_bytes(manual_next_step(input));
     daemon.write_bytes(b"\n");
