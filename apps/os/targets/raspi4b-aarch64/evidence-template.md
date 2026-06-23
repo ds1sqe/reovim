@@ -137,8 +137,8 @@ Required success facts:
 - [ ] `cd /dev` / `ls` / `cat uart0` prove relative VFS device-file access.
 - [ ] `input=usb-keyboard+uart-fallback`
 - [ ] `usb_keyboard=ready`
-- [ ] `status` / `input` report live ready source diagnostics.
-- [ ] `cat /boot/status` / `cat /boot/input` report VFS-backed live diagnostics.
+- [ ] `status` / `cat /boot/status` report image/profile identity and live ready source diagnostics.
+- [ ] `input` / `cat /boot/input` report live input diagnostics.
 - [ ] `probe help` lists `pcie`, `usb-keyboard`, and `xhci-read-keyboard-report`.
 - [ ] `probe pcie` reports the read-only PCIe/xHCI state.
 - [ ] `cat /boot/profile` reports `profile=shell-only`, `launch=disabled`, `payloads=0`, and `input_mode=live`.

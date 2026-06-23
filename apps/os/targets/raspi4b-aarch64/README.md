@@ -132,8 +132,8 @@ labels. It also requires checked HDMI-display and physical-keyboard setup,
 physical-keyboard PASS labels, no-bootline image facts, installed-media
 identity from `prepare-boot-media.sh`, shell-only image identity from
 `cat /boot/image`, shell-only profile identity from `cat /boot/profile`,
-USB-keyboard readiness, live source diagnostics from `status` / `input`,
-VFS-backed live diagnostics from `cat /boot/status` / `cat /boot/input`,
+USB-keyboard readiness, identity plus live source diagnostics from `status` /
+`cat /boot/status`, live input diagnostics from `input` / `cat /boot/input`,
 the in-OS `proof` checklist, the VFS-backed help catalog from
 `cat /boot/help`, shell help/renderer evidence from `help` / `clear` /
 `screentest`, VFS namespace evidence from `pwd` / `ls` / `mount` /
