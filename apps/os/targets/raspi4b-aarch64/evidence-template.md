@@ -51,8 +51,12 @@ Paste the boot report or serial transcript excerpt:
 
 Required facts:
 
+- [ ] `package=reovim-os`
 - [ ] `target=aarch64-unknown-none`
+- [ ] `selected_profile=shell-only`
+- [ ] `profile_request=shell-only`
 - [ ] `bootline=absent`
+- [ ] `launch_profile_feature=disabled`
 - [ ] shell prompt reached: `reovim-os>`
 - [ ] input source is recorded honestly
 - [ ] QEMU/VNC/HDMI display was not counted as keyboard input
@@ -136,6 +140,7 @@ Required success facts:
 - [ ] `cat /boot/status` / `cat /boot/input` report VFS-backed live diagnostics.
 - [ ] `probe help` lists `pcie`, `usb-keyboard`, and `xhci-read-keyboard-report`.
 - [ ] `probe pcie` reports the read-only PCIe/xHCI state.
+- [ ] `cat /boot/profile` reports `profile=shell-only`, `launch=disabled`, `payloads=0`, and `input_mode=live`.
 - [ ] `launch` / `reovim` report shell-only payload launch disabled.
 - [ ] `dmesg` contains `shell: <command>` and `shell.status=ok` audit lines for the typed commands.
 - [ ] `dmesg` contains `shell.status=error` audit lines for the disabled payload launch commands.

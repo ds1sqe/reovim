@@ -130,18 +130,19 @@ apps/os/targets/raspi4b-aarch64/validate-evidence.sh \
 The validator rejects checked display-only, UART, bootline-script, or FAIL
 labels. It also requires checked HDMI-display and physical-keyboard setup,
 physical-keyboard PASS labels, no-bootline image facts, installed-media
-identity from `prepare-boot-media.sh`, USB-keyboard readiness, live
-source diagnostics from `status` / `input`, VFS-backed live diagnostics from
-`cat /boot/status` / `cat /boot/input`, the in-OS `proof` checklist,
-the VFS-backed help catalog from `cat /boot/help`, shell help/renderer
-evidence from `help` / `clear` / `screentest`, VFS namespace evidence from
-`pwd` / `ls` / `mount` / `cat /boot/mounts`, boot inventory from `ls /dev` /
-`device` / `cat /boot/memory` /
-`cat /boot/devices`, relative device-file access from `cd /dev` / `ls` /
-`cat uart0`, `probe help` hardware-target catalog output, read-only PCIe/xHCI
-state from `probe pcie`, `probe usb-keyboard` output, shell-only
-`launch`/`reovim` disabled output, and `dmesg` command/status audit lines
-including the expected disabled-payload `shell.status=error` entries. It also
+identity from `prepare-boot-media.sh`, shell-only image identity from
+`cat /boot/image`, shell-only profile identity from `cat /boot/profile`,
+USB-keyboard readiness, live source diagnostics from `status` / `input`,
+VFS-backed live diagnostics from `cat /boot/status` / `cat /boot/input`,
+the in-OS `proof` checklist, the VFS-backed help catalog from
+`cat /boot/help`, shell help/renderer evidence from `help` / `clear` /
+`screentest`, VFS namespace evidence from `pwd` / `ls` / `mount` /
+`cat /boot/mounts`, boot inventory from `ls /dev` / `device` /
+`cat /boot/memory` / `cat /boot/devices`, relative device-file access from
+`cd /dev` / `ls` / `cat uart0`, `probe help` hardware-target catalog output,
+read-only PCIe/xHCI state from `probe pcie`, `probe usb-keyboard` output,
+shell-only `launch`/`reovim` disabled output, and `dmesg` command/status audit
+lines including the expected disabled-payload `shell.status=error` entries. It also
 requires the terminal `halt` check to print `halt: ok` with no later root-shell
 prompt. It is a textual guard for completed evidence; it does not replace the
 physical HDMI plus USB-keyboard session.
@@ -244,7 +245,10 @@ Record the full visible output or serial transcript. The key evidence is:
   device namespace plus boot memory and device inventory facts.
 - `cd /dev`, `pwd`, `ls`, `cat uart0`, and `cd /` prove session cwd and
   relative VFS pseudo-device access.
-- `cat /boot/image` shows `target=aarch64-unknown-none` and `bootline=absent`.
+- `cat /boot/image` shows `package=reovim-os`,
+  `target=aarch64-unknown-none`, `selected_profile=shell-only`,
+  `profile_request=shell-only`, `bootline=absent`, and
+  `launch_profile_feature=disabled`.
 - `status` / `input` show live ready source diagnostics:
   `source=usb-keyboard+uart-fallback`, `source_state=ready`, `mode=live`,
   `usb_keyboard_probe=enabled`, and a nonzero
@@ -258,6 +262,8 @@ Record the full visible output or serial transcript. The key evidence is:
   state without running active xHCI start/enumeration transitions.
 - `probe usb-keyboard` either records a precise lower-provider blocker or queues
   decoded bytes without consuming shell input.
+- `cat /boot/profile` shows `profile=shell-only`, `launch=disabled`,
+  `payloads=0`, `input_mode=live`, and the `reovim-os>` prompt identity.
 - `launch` and `reovim` report disabled launch in the shell-only image; this
   proves boot does not depend on editor/server payload startup.
 - `dmesg` includes the command audit lines and probe output.
@@ -272,6 +278,7 @@ Record the full visible output or serial transcript. The key evidence is:
 
 ```text
 input=usb-keyboard+uart-fallback
+input_mode=live
 usb_keyboard=ready
 ```
 

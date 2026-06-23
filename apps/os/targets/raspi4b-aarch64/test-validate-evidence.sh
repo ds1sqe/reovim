@@ -22,6 +22,8 @@ missing_status_evidence="$tmp_dir/missing-status.md"
 missing_probe_help_evidence="$tmp_dir/missing-probe-help.md"
 missing_live_source_evidence="$tmp_dir/missing-live-source.md"
 missing_vfs_live_source_evidence="$tmp_dir/missing-vfs-live-source.md"
+missing_image_identity_evidence="$tmp_dir/missing-image-identity.md"
+missing_profile_identity_evidence="$tmp_dir/missing-profile-identity.md"
 missing_vfs_namespace_evidence="$tmp_dir/missing-vfs-namespace.md"
 missing_boot_inventory_evidence="$tmp_dir/missing-boot-inventory.md"
 missing_shell_usability_evidence="$tmp_dir/missing-shell-usability.md"
@@ -73,8 +75,12 @@ write_passing_evidence() {
         printf '```text\n'
         printf 'reovim-os> cat /boot/image\n'
         printf 'package=reovim-os\n'
+        printf 'version=0.16.0-dev\n'
         printf 'target=aarch64-unknown-none\n'
+        printf 'selected_profile=shell-only\n'
+        printf 'profile_request=shell-only\n'
         printf 'bootline=absent\n'
+        printf 'launch_profile_feature=disabled\n'
         printf '```\n\n'
         printf 'Required facts:\n\n'
         printf -- '- [x] `target=aarch64-unknown-none`\n'
@@ -259,8 +265,13 @@ write_passing_evidence() {
         printf -- '- [0] uart compat=arm,pl011 mmio=0x1000/0x100 irq=12\n'
         printf 'reovim-os> cd /\n'
         printf 'reovim-os> cat /boot/image\n'
+        printf 'package=reovim-os\n'
+        printf 'version=0.16.0-dev\n'
         printf 'target=aarch64-unknown-none\n'
+        printf 'selected_profile=shell-only\n'
+        printf 'profile_request=shell-only\n'
         printf 'bootline=absent\n'
+        printf 'launch_profile_feature=disabled\n'
         printf 'reovim-os> status\n'
         printf 'input=usb-keyboard+uart-fallback\n'
         printf 'source_state=ready\n'
@@ -309,7 +320,12 @@ write_passing_evidence() {
         printf 'slot_id=1\n'
         printf 'endpoint_id=3\n'
         printf 'reovim-os> cat /boot/profile\n'
+        printf 'profile=shell-only\n'
+        printf 'launch=disabled\n'
+        printf 'payloads=0\n'
+        printf 'prompt=reovim-os> \n'
         printf 'input=usb-keyboard+uart-fallback\n'
+        printf 'input_mode=live\n'
         printf 'usb_keyboard=ready\n'
         printf 'reovim-os> launch\n'
         printf 'launch disabled for this profile\n'
@@ -463,6 +479,14 @@ expect_failure "$missing_live_source_evidence" "missing-live-source"
 cp "$pass_evidence" "$missing_vfs_live_source_evidence"
 sed -i '\#^reovim-os> cat /boot/status$#d' "$missing_vfs_live_source_evidence"
 expect_failure "$missing_vfs_live_source_evidence" "missing-vfs-live-source"
+
+cp "$pass_evidence" "$missing_image_identity_evidence"
+sed -i '/^selected_profile=shell-only$/d' "$missing_image_identity_evidence"
+expect_failure "$missing_image_identity_evidence" "missing-image-identity"
+
+cp "$pass_evidence" "$missing_profile_identity_evidence"
+sed -i '/^profile=shell-only$/d' "$missing_profile_identity_evidence"
+expect_failure "$missing_profile_identity_evidence" "missing-profile-identity"
 
 cp "$pass_evidence" "$missing_vfs_namespace_evidence"
 sed -i '\#^reovim-os> ls /boot$#d' "$missing_vfs_namespace_evidence"
