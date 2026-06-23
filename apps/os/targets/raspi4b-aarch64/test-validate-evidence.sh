@@ -22,6 +22,7 @@ missing_status_evidence="$tmp_dir/missing-status.md"
 missing_probe_help_evidence="$tmp_dir/missing-probe-help.md"
 missing_live_source_evidence="$tmp_dir/missing-live-source.md"
 missing_last_poll_evidence="$tmp_dir/missing-last-poll.md"
+missing_manual_next_evidence="$tmp_dir/missing-manual-next.md"
 missing_vfs_live_source_evidence="$tmp_dir/missing-vfs-live-source.md"
 missing_image_identity_evidence="$tmp_dir/missing-image-identity.md"
 missing_profile_identity_evidence="$tmp_dir/missing-profile-identity.md"
@@ -41,6 +42,7 @@ missing_proof_identity_evidence="$tmp_dir/missing-proof-identity.md"
 missing_proof_screentest_fact_evidence="$tmp_dir/missing-proof-screentest-fact.md"
 missing_vfs_help_evidence="$tmp_dir/missing-vfs-help.md"
 missing_vfs_proof_evidence="$tmp_dir/missing-vfs-proof.md"
+missing_vfs_probe_catalog_evidence="$tmp_dir/missing-vfs-probe-catalog.md"
 missing_final_log_sequence_evidence="$tmp_dir/missing-final-log-sequence.md"
 missing_screentest_erase_modes_evidence="$tmp_dir/missing-screentest-erase-modes.md"
 missing_log_stats_evidence="$tmp_dir/missing-log-stats.md"
@@ -135,6 +137,7 @@ write_passing_evidence() {
         printf '  input\n'
         printf '  cat /boot/input\n'
         printf '  probe help\n'
+        printf '  cat /boot/probes\n'
         printf '  probe pcie\n'
         printf '  probe usb-keyboard\n'
         printf '  cat /boot/profile\n'
@@ -164,9 +167,11 @@ write_passing_evidence() {
         printf '  usb_keyboard=ready\n'
         printf '  usb_keyboard_probe=enabled\n'
         printf '  usb_keyboard_last_poll=report-ready\n'
+        printf '  manual_next=type-shell-command\n'
         printf '  help catalog available through /boot/help\n'
         printf '  screentest includes erase-line mode diagnostics\n'
         printf '  kernel log stats available through /log/stats\n'
+        printf '  probe catalog available through /boot/probes\n'
         printf '  probe targets include pcie\n'
         printf '  probe targets include usb-keyboard\n'
         printf '  probe targets include xhci-read-keyboard-report\n'
@@ -205,6 +210,7 @@ write_passing_evidence() {
         printf '  input\n'
         printf '  cat /boot/input\n'
         printf '  probe help\n'
+        printf '  cat /boot/probes\n'
         printf '  probe pcie\n'
         printf '  probe usb-keyboard\n'
         printf '  cat /boot/profile\n'
@@ -234,9 +240,11 @@ write_passing_evidence() {
         printf '  usb_keyboard=ready\n'
         printf '  usb_keyboard_probe=enabled\n'
         printf '  usb_keyboard_last_poll=report-ready\n'
+        printf '  manual_next=type-shell-command\n'
         printf '  help catalog available through /boot/help\n'
         printf '  screentest includes erase-line mode diagnostics\n'
         printf '  kernel log stats available through /log/stats\n'
+        printf '  probe catalog available through /boot/probes\n'
         printf '  probe targets include pcie\n'
         printf '  probe targets include usb-keyboard\n'
         printf '  probe targets include xhci-read-keyboard-report\n'
@@ -350,6 +358,7 @@ write_passing_evidence() {
         printf 'usb_keyboard_probe=enabled\n'
         printf 'usb_keyboard_poll_interval_ms=5\n'
         printf 'usb_keyboard_last_poll=report-ready\n'
+        printf 'manual_next=type-shell-command\n'
         printf 'reovim-os> cat /boot/status\n'
         printf 'package=reovim-os\n'
         printf 'version=0.16.0-dev\n'
@@ -368,6 +377,7 @@ write_passing_evidence() {
         printf 'usb_keyboard_probe=enabled\n'
         printf 'usb_keyboard_poll_interval_ms=5\n'
         printf 'usb_keyboard_last_poll=report-ready\n'
+        printf 'manual_next=type-shell-command\n'
         printf 'reovim-os> input\n'
         printf 'source=usb-keyboard+uart-fallback\n'
         printf 'source_state=ready\n'
@@ -385,6 +395,11 @@ write_passing_evidence() {
         printf 'usb_keyboard_poll_interval_ms=5\n'
         printf 'usb_keyboard_last_poll=report-ready\n'
         printf 'reovim-os> probe help\n'
+        printf 'probe targets:\n'
+        printf '  pcie\n'
+        printf '  usb-keyboard (alias: keyboard)\n'
+        printf '  xhci-read-keyboard-report (alias: usb-keyboard-read-report)\n'
+        printf 'reovim-os> cat /boot/probes\n'
         printf 'probe targets:\n'
         printf '  pcie\n'
         printf '  usb-keyboard (alias: keyboard)\n'
@@ -481,6 +496,8 @@ write_passing_evidence() {
         printf 'shell.status=ok\n'
         printf 'shell: probe help\n'
         printf 'shell.status=ok\n'
+        printf 'shell: cat /boot/probes\n'
+        printf 'shell.status=ok\n'
         printf 'shell: probe pcie\n'
         printf 'shell.status=ok\n'
         printf 'shell: probe usb-keyboard\n'
@@ -520,8 +537,10 @@ write_passing_evidence() {
         printf -- '- [x] `input=usb-keyboard+uart-fallback`\n'
         printf -- '- [x] `usb_keyboard=ready`\n'
         printf -- '- [x] `usb_keyboard_last_poll=report-ready`\n'
+        printf -- '- [x] `manual_next=type-shell-command`\n'
         printf -- '- [x] `status` / `cat /boot/status` report image/profile identity and live ready source diagnostics.\n'
         printf -- '- [x] `input` / `cat /boot/input` report live input diagnostics.\n'
+        printf -- '- [x] `cat /boot/probes` prints the VFS-backed probe catalog.\n'
         printf -- '- [x] `probe help` lists `pcie`, `usb-keyboard`, and `xhci-read-keyboard-report`.\n'
         printf -- '- [x] `probe pcie` reports the read-only PCIe/xHCI state.\n'
         printf -- '- [x] `cat /boot/profile` reports `profile=shell-only`, `launch=disabled`, `payloads=0`, and `input_mode=live`.\n'
@@ -583,6 +602,10 @@ expect_failure "$missing_live_source_evidence" "missing-live-source"
 cp "$pass_evidence" "$missing_last_poll_evidence"
 sed -i '/^usb_keyboard_last_poll=report-ready$/d' "$missing_last_poll_evidence"
 expect_failure "$missing_last_poll_evidence" "missing-last-poll"
+
+cp "$pass_evidence" "$missing_manual_next_evidence"
+sed -i '/^manual_next=type-shell-command$/d' "$missing_manual_next_evidence"
+expect_failure "$missing_manual_next_evidence" "missing-manual-next"
 
 cp "$pass_evidence" "$missing_vfs_live_source_evidence"
 sed -i '\#^reovim-os> cat /boot/status$#d' "$missing_vfs_live_source_evidence"
@@ -671,6 +694,10 @@ expect_failure "$missing_vfs_help_evidence" "missing-vfs-help"
 cp "$pass_evidence" "$missing_vfs_proof_evidence"
 sed -i '\#^reovim-os> cat /boot/proof$#d' "$missing_vfs_proof_evidence"
 expect_failure "$missing_vfs_proof_evidence" "missing-vfs-proof"
+
+cp "$pass_evidence" "$missing_vfs_probe_catalog_evidence"
+sed -i '\#^reovim-os> cat /boot/probes$#d' "$missing_vfs_probe_catalog_evidence"
+expect_failure "$missing_vfs_probe_catalog_evidence" "missing-vfs-probe-catalog"
 
 awk '
     /^shell: dmesg$/ {

@@ -96,6 +96,7 @@ cat /boot/status
 input
 cat /boot/input
 probe help
+cat /boot/probes
 probe pcie
 probe usb-keyboard
 cat /boot/profile
@@ -144,8 +145,10 @@ Required success facts:
 - [ ] `input=usb-keyboard+uart-fallback`
 - [ ] `usb_keyboard=ready`
 - [ ] `usb_keyboard_last_poll=report-ready`
+- [ ] `manual_next=type-shell-command`
 - [ ] `status` / `cat /boot/status` report image/profile identity and live ready source diagnostics.
 - [ ] `input` / `cat /boot/input` report live input diagnostics.
+- [ ] `cat /boot/probes` prints the VFS-backed probe catalog.
 - [ ] `probe help` lists `pcie`, `usb-keyboard`, and `xhci-read-keyboard-report`.
 - [ ] `probe pcie` reports the read-only PCIe/xHCI state.
 - [ ] `cat /boot/profile` reports `profile=shell-only`, `launch=disabled`, `payloads=0`, and `input_mode=live`.

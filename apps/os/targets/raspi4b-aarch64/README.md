@@ -21,7 +21,7 @@ image=apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img
 bytes=<image-size>
 ```
 
-Current expected size is `442836` bytes.
+Current expected size is `444668` bytes.
 
 Copy `apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img` to the Pi
 4 boot partition as `kernel8.img`, using the normal Raspberry Pi firmware
@@ -35,6 +35,18 @@ apps/os/targets/raspi4b-aarch64/prepare-boot-media.sh \
   --bootfs /path/to/bootfs \
   --evidence tmp/raspi4b-usb-keyboard-evidence.md
 ```
+
+If exactly one mounted Pi 4 boot partition candidate is present, the wrapper
+can discover it through the same read-only bootfs helper:
+
+```sh
+apps/os/targets/raspi4b-aarch64/prepare-boot-media.sh \
+  --bootfs auto \
+  --evidence tmp/raspi4b-usb-keyboard-evidence.md
+```
+
+Auto-discovery stops before preflight/install when no candidate or multiple
+candidates are found; pass an explicit `--bootfs DIR` in that case.
 
 The media-prep helper runs preflight, installs the exact built `kernel8.img`,
 verifies the installed image SHA-256 against the built image, and only then
@@ -160,14 +172,17 @@ USB-keyboard readiness, the lower `usb_keyboard_last_poll=report-ready`
 diagnostic, identity plus live source diagnostics from `status` /
 `cat /boot/status`, live input diagnostics from `input` / `cat /boot/input`,
 the in-OS `proof` checklist, the VFS-backed help catalog from
-`cat /boot/help`, shell help and erase-line mode diagnostics from `help` /
-`clear` / `screentest`, VFS namespace evidence from `pwd` / `ls` / `mount` /
+`cat /boot/help`, log-stat discoverability from `help dmesg` / `ls /log`,
+shell help and erase-line mode diagnostics from `help` / `clear` /
+`screentest`, VFS namespace evidence from `pwd` / `ls` / `mount` /
 `cat /boot/mounts`, boot inventory from `ls /dev` / `device` /
 `cat /boot/memory` / `cat /boot/devices`, relative device-file access from
-`cd /dev` / `ls` / `cat uart0`, `probe help` hardware-target catalog output,
-read-only PCIe/xHCI state from `probe pcie`, `probe usb-keyboard` output,
-shell-only `launch`/`reovim` disabled output, and `dmesg` command/status audit
-lines including the expected disabled-payload `shell.status=error` entries. It also
+`cd /dev` / `ls` / `cat uart0`, hardware-target catalog output from
+`probe help` / `cat /boot/probes`, read-only PCIe/xHCI state from
+`probe pcie`, `probe usb-keyboard` output, shell-only `launch`/`reovim`
+disabled output, kernel log ring stats from `dmesg --stats` /
+`cat /log/stats`, and `dmesg` command/status audit lines including the
+expected disabled-payload `shell.status=error` entries. It also
 requires the terminal `halt` check to print `halt: ok` with no later root-shell
 prompt. It is a textual guard for completed evidence; it does not replace the
 physical HDMI plus USB-keyboard session, and it rejects preflight-only seeds
@@ -244,6 +259,7 @@ cat /boot/status
 input
 cat /boot/input
 probe help
+cat /boot/probes
 probe pcie
 probe usb-keyboard
 cat /boot/profile
@@ -288,12 +304,18 @@ Record the full visible output or serial transcript. The key evidence is:
   `mode=live`, `usb_keyboard_probe=enabled`, and a nonzero
   `usb_keyboard_poll_interval_ms`. It also shows
   `usb_keyboard_last_poll=report-ready` so the proof names the lower
-  interrupt-IN report path that made the keyboard ready.
+  interrupt-IN report path that made the keyboard ready. If the keyboard is
+  not ready yet, `manual_next` points at the next probe checkpoint, such as
+  `probe-pcie`, `probe-xhci-start`, `probe-xhci-read-keyboard-report`, or
+  `probe-usb-keyboard`. In the successful physical proof it must end at
+  `manual_next=type-shell-command`.
 - `cat /boot/status` shows the same status summary through the kernel VFS, and
   `cat /boot/input` shows the live input diagnostics through the kernel VFS.
 - `probe help` lists `pcie`, `usb-keyboard`, and
   `xhci-read-keyboard-report`, proving the hardware probe paths were
   discoverable from the shell.
+- `cat /boot/probes` prints the same hardware-target catalog through the
+  kernel VFS.
 - `probe pcie` reports the read-only PCIe/root-complex and xHCI discovery
   state without running active xHCI start/enumeration transitions.
 - `probe usb-keyboard` either records a precise lower-provider blocker or queues
@@ -324,6 +346,7 @@ usb_keyboard=ready
 
 ```text
 usb_keyboard_last_poll=report-ready
+manual_next=type-shell-command
 ```
 
 Do not count HDMI framebuffer output, QEMU/VNC display, bootline scripting, or

@@ -10,6 +10,7 @@ PACKAGE="reovim-os"
 IMAGE="$ROOT/apps/target/$TARGET/debug/$PACKAGE.kernel8.img"
 PREFLIGHT_SCRIPT="$TARGET_DIR/preflight-real-board.sh"
 INSTALL_SCRIPT="$TARGET_DIR/install-image.sh"
+FIND_SCRIPT="${REOVIM_FIND_BOOTFS_SCRIPT:-$TARGET_DIR/find-bootfs.sh}"
 
 BOOTFS=""
 EVIDENCE_OUT=""
@@ -23,7 +24,7 @@ usage() {
 Usage: apps/os/targets/raspi4b-aarch64/prepare-boot-media.sh --bootfs DIR --evidence FILE [options]
 
 Options:
-  --bootfs DIR    Mounted Raspberry Pi 4 FAT boot partition.
+  --bootfs DIR    Mounted Raspberry Pi 4 FAT boot partition, or "auto".
   --evidence FILE Final evidence seed path to create after install verifies.
   --skip-qemu     Skip the local aarch64 QEMU smoke.
   --no-backup     Replace kernel8.img without saving a timestamped backup.
@@ -32,6 +33,9 @@ Options:
 Runs preflight, installs the exact built kernel8.img, verifies the installed
 image hash, then publishes the evidence seed for the physical HDMI + USB
 keyboard session. This script does not format or mount media.
+
+With --bootfs auto, the script uses find-bootfs.sh and proceeds only when
+exactly one Raspberry Pi 4 boot partition candidate is found.
 USAGE
 }
 
@@ -49,6 +53,32 @@ cleanup() {
     fi
 }
 trap cleanup EXIT
+
+resolve_auto_bootfs() {
+    local output line
+    local -a candidates=()
+
+    if ! output="$("$FIND_SCRIPT" 2>&1)"; then
+        fail "auto bootfs discovery failed: $output"
+    fi
+
+    while IFS= read -r line; do
+        case "$line" in
+            bootfs_candidate=*) candidates+=("${line#bootfs_candidate=}") ;;
+            *) ;;
+        esac
+    done <<<"$output"
+
+    if [ "${#candidates[@]}" -eq 0 ]; then
+        fail "auto bootfs discovery found no candidates"
+    fi
+    if [ "${#candidates[@]}" -gt 1 ]; then
+        printf '%s\n' "$output" >&2
+        fail "auto bootfs discovery found multiple candidates; pass --bootfs DIR"
+    fi
+
+    BOOTFS="${candidates[0]}"
+}
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -88,6 +118,9 @@ done
 
 if [ -z "$BOOTFS" ]; then
     fail "--bootfs is required"
+fi
+if [ "$BOOTFS" = "auto" ]; then
+    resolve_auto_bootfs
 fi
 if [ -z "$EVIDENCE_OUT" ]; then
     fail "--evidence is required"

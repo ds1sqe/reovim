@@ -712,6 +712,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "input\n",
         "cat /boot/input\n",
         "probe help\n",
+        "cat /boot/probes\n",
         "probe pcie\n",
         "probe usb-keyboard\n",
         "cat /boot/profile\n",
@@ -781,7 +782,9 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "proof help appears; serial: {serial:?}",
     );
     assert!(
-        serial.contains("probe target - run lower hardware probe; try `probe help`"),
+        serial.contains(
+            "probe target - run lower hardware probe; try `probe help` or `cat /boot/probes`"
+        ),
         "probe help appears; serial: {serial:?}",
     );
     assert!(
@@ -875,6 +878,10 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "proof checklist names the lower report-ready fact; serial: {serial:?}",
     );
     assert!(
+        serial.contains("  manual_next=type-shell-command"),
+        "proof checklist names successful manual next step; serial: {serial:?}",
+    );
+    assert!(
         serial.contains("probe targets include pcie"),
         "proof checklist names read-only PCIe probe; serial: {serial:?}",
     );
@@ -895,8 +902,12 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "proof checklist names log stats expectation; serial: {serial:?}",
     );
     assert!(
-        serial.contains("  probe help\n  probe pcie\n  probe usb-keyboard"),
-        "proof checklist includes read-only PCIe probe; serial: {serial:?}",
+        serial.contains("probe catalog available through /boot/probes"),
+        "proof checklist names VFS probe catalog expectation; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("  probe help\n  cat /boot/probes\n  probe pcie\n  probe usb-keyboard"),
+        "proof checklist includes VFS probe catalog and read-only PCIe probe; serial: {serial:?}",
     );
     assert!(
         serial.contains("  launch\n  reovim"),
@@ -1140,6 +1151,13 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     assert!(
         final_dmesg.contains("probe xhci-read-keyboard-report:\nstate=unsupported-on-this-target"),
         "final dmesg preserves keyboard report probe output; serial: {serial:?}",
+    );
+    assert!(
+        final_dmesg.contains("shell: cat /boot/probes\nprobe targets:\n  pcie")
+            && final_dmesg.contains(
+                "xhci-read-keyboard-report (alias: usb-keyboard-read-report)\nshell.status=ok\nshell: probe pcie"
+            ),
+        "final dmesg preserves VFS probe catalog audit; serial: {serial:?}",
     );
     assert!(
         final_dmesg.contains(

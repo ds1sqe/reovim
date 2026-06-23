@@ -153,6 +153,8 @@ pub enum File {
     BootInput,
     /// `/boot/proof`.
     BootProof,
+    /// `/boot/probes`.
+    BootProbes,
     /// `/boot/status`.
     BootStatus,
     /// `/boot/memory`.
@@ -217,6 +219,7 @@ pub fn lookup(path: &str, devices: &[DeviceEntry]) -> Result<Node, VfsError> {
         "/boot/image" => return Ok(Node::File(File::BootImage)),
         "/boot/input" => return Ok(Node::File(File::BootInput)),
         "/boot/proof" => return Ok(Node::File(File::BootProof)),
+        "/boot/probes" => return Ok(Node::File(File::BootProbes)),
         "/boot/status" => return Ok(Node::File(File::BootStatus)),
         "/boot/memory" => return Ok(Node::File(File::BootMemory)),
         "/boot/devices" => return Ok(Node::File(File::BootDevices)),

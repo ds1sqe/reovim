@@ -186,6 +186,7 @@ write_evidence_seed() {
         printf 'input\n'
         printf 'cat /boot/input\n'
         printf 'probe help\n'
+        printf 'cat /boot/probes\n'
         printf 'probe pcie\n'
         printf 'probe usb-keyboard\n'
         printf 'cat /boot/profile\n'
@@ -220,8 +221,10 @@ write_evidence_seed() {
         printf -- '- [ ] `input=usb-keyboard+uart-fallback`\n'
         printf -- '- [ ] `usb_keyboard=ready`\n'
         printf -- '- [ ] `usb_keyboard_last_poll=report-ready`\n'
+        printf -- '- [ ] `manual_next=type-shell-command`\n'
         printf -- '- [ ] `status` / `cat /boot/status` report image/profile identity and live ready source diagnostics.\n'
         printf -- '- [ ] `input` / `cat /boot/input` report live input diagnostics.\n'
+        printf -- '- [ ] `cat /boot/probes` prints the VFS-backed probe catalog.\n'
         printf -- '- [ ] `probe help` lists `pcie`, `usb-keyboard`, and `xhci-read-keyboard-report`.\n'
         printf -- '- [ ] `probe pcie` reports the read-only PCIe/xHCI state.\n'
         printf -- '- [ ] `cat /boot/profile` reports `profile=shell-only`, `launch=disabled`, `payloads=0`, and `input_mode=live`.\n'
@@ -362,6 +365,11 @@ if [ "$SKIP_QEMU" -eq 0 ]; then
         rm -f "$qemu_log"
         fail "QEMU smoke proof checklist did not include log namespace listing"
     fi
+    if ! grep -q '^  cat /boot/probes$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include VFS probe catalog"
+    fi
     if ! grep -q '^  dmesg --stats$' "$qemu_log"; then
         cat "$qemu_log" >&2
         rm -f "$qemu_log"
@@ -376,6 +384,11 @@ if [ "$SKIP_QEMU" -eq 0 ]; then
         cat "$qemu_log" >&2
         rm -f "$qemu_log"
         fail "QEMU smoke proof checklist did not include log stats expected fact"
+    fi
+    if ! grep -q '^  probe catalog available through /boot/probes$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include VFS probe catalog expected fact"
     fi
     if ! grep -q '^  cat /log/dmesg$' "$qemu_log"; then
         cat "$qemu_log" >&2

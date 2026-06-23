@@ -450,6 +450,7 @@ fn write_directory(daemon: &RootDaemon<'_>, directory: Directory) {
             daemon.write_line("input");
             daemon.write_line("memory");
             daemon.write_line("mounts");
+            daemon.write_line("probes");
             daemon.write_line("proof");
             daemon.write_line("profile");
             daemon.write_line("status");
@@ -516,6 +517,7 @@ fn write_file(daemon: &RootDaemon<'_>, file: File) {
         File::BootImage => write_boot_image(daemon),
         File::BootInput => write_boot_input(daemon),
         File::BootProof => write_boot_proof(daemon),
+        File::BootProbes => write_probe_catalog(daemon),
         File::BootStatus => write_boot_status(daemon),
         File::BootMemory => write_boot_memory(daemon),
         File::BootDevices => write_boot_devices(daemon),
@@ -620,6 +622,7 @@ fn write_boot_proof(daemon: &RootDaemon<'_>) {
     daemon.write_line("  input");
     daemon.write_line("  cat /boot/input");
     daemon.write_line("  probe help");
+    daemon.write_line("  cat /boot/probes");
     daemon.write_line("  probe pcie");
     daemon.write_line("  probe usb-keyboard");
     daemon.write_line("  cat /boot/profile");
@@ -642,9 +645,11 @@ fn write_boot_proof(daemon: &RootDaemon<'_>) {
     daemon.write_line("  usb_keyboard=ready");
     daemon.write_line("  usb_keyboard_probe=enabled");
     daemon.write_line("  usb_keyboard_last_poll=report-ready");
+    daemon.write_line("  manual_next=type-shell-command");
     daemon.write_line("  help catalog available through /boot/help");
     daemon.write_line("  screentest includes erase-line mode diagnostics");
     daemon.write_line("  kernel log stats available through /log/stats");
+    daemon.write_line("  probe catalog available through /boot/probes");
     daemon.write_line("  probe targets include pcie");
     daemon.write_line("  probe targets include usb-keyboard");
     daemon.write_line("  probe targets include xhci-read-keyboard-report");
@@ -809,7 +814,24 @@ fn manual_next_step(input: crate::rootd::ConsoleInputSummary) -> &'static [u8] {
     if input.usb_keyboard == crate::rootd::BootCheckState::Ok {
         b"type-shell-command"
     } else if input.usb_keyboard_probe_enabled {
-        b"probe-usb-keyboard"
+        match input.usb_keyboard_last_poll {
+            "device-tree-disabled-or-missing"
+            | "xhci-controller-not-ready"
+            | "xhci-reset-in-progress"
+            | "xhci-host-system-error"
+            | "no-pcie-xhci-controller"
+            | "xhci-bar-unconfigured"
+            | "xhci-capabilities-invalid"
+            | "no-connected-root-port" => b"probe-pcie",
+            "needs-controller-init" => b"probe-xhci-start",
+            "needs-enumeration" | "hid-enumeration-failed" => b"probe-xhci-read-keyboard-report",
+            "keyboard-report-event-mismatch" | "keyboard-report-transfer-failed" => {
+                b"probe-xhci-read-keyboard-report"
+            }
+            "decoded-pending" | "report-ready" => b"type-shell-command",
+            "report-pending" | "not-polled" | "unknown" => b"probe-usb-keyboard",
+            _ => b"probe-usb-keyboard",
+        }
     } else {
         b"probe-help"
     }
@@ -915,6 +937,20 @@ fn cmd_probe(daemon: &RootDaemon<'_>, line: &ParsedLine) -> RootCommandStatus {
     }
 }
 
+fn write_probe_catalog(daemon: &RootDaemon<'_>) {
+    match daemon.run_hardware_probe("help") {
+        Some(HardwareProbeResult::Handled) => {}
+        Some(HardwareProbeResult::UnknownTarget) => {
+            daemon.write_line("probe targets:");
+            daemon.write_line("  unknown");
+        }
+        None => {
+            daemon.write_line("probe targets:");
+            daemon.write_line("  none");
+        }
+    }
+}
+
 fn cmd_help(daemon: &RootDaemon<'_>, line: &ParsedLine) -> RootCommandStatus {
     if line.argc > 2 {
         daemon.write_line("help: too many arguments");
@@ -944,7 +980,9 @@ fn cmd_help(daemon: &RootDaemon<'_>, line: &ParsedLine) -> RootCommandStatus {
         "proof" => daemon.write_line("proof - print physical input proof checklist"),
         "device" => daemon.write_line("device - print boot memory and device inventory"),
         "dmesg" => daemon.write_line("dmesg [--stats] - print retained kernel log or ring stats"),
-        "probe" => daemon.write_line("probe target - run lower hardware probe; try `probe help`"),
+        "probe" => daemon.write_line(
+            "probe target - run lower hardware probe; try `probe help` or `cat /boot/probes`",
+        ),
         "launch" => daemon.write_line("launch [payload] - list or run registered payloads"),
         "reovim" => daemon.write_line("reovim - run the default reovim payload alias"),
         "halt" => daemon.write_line("halt - request root daemon shutdown"),

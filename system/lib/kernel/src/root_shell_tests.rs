@@ -128,6 +128,48 @@ fn ready_input_status(_base: ConsoleInputSummary) -> ConsoleInputSummary {
     )
 }
 
+fn usb_probe_status(last_poll: &'static str) -> ConsoleInputSummary {
+    ConsoleInputSummary::with_usb_diagnostics(
+        "pl011-uart",
+        "live",
+        BootCheckState::Ok,
+        BootCheckState::Warn,
+        0,
+        true,
+        5,
+        last_poll,
+    )
+}
+
+fn pcie_blocker_input_status(_base: ConsoleInputSummary) -> ConsoleInputSummary {
+    usb_probe_status("no-connected-root-port")
+}
+
+fn controller_init_input_status(_base: ConsoleInputSummary) -> ConsoleInputSummary {
+    usb_probe_status("needs-controller-init")
+}
+
+fn enumeration_input_status(_base: ConsoleInputSummary) -> ConsoleInputSummary {
+    usb_probe_status("needs-enumeration")
+}
+
+fn report_pending_input_status(_base: ConsoleInputSummary) -> ConsoleInputSummary {
+    usb_probe_status("report-pending")
+}
+
+fn decoded_pending_input_status(_base: ConsoleInputSummary) -> ConsoleInputSummary {
+    ConsoleInputSummary::with_usb_diagnostics(
+        "usb-keyboard+uart-fallback",
+        "live",
+        BootCheckState::Ok,
+        BootCheckState::Warn,
+        2,
+        true,
+        5,
+        "decoded-pending",
+    )
+}
+
 fn run_command(profile: ProfileSummary, line: &[u8], dmesg: Option<fn() -> &'static str>) {
     crate::klog::reset();
     run_command_preserving_log(profile, line, dmesg);
@@ -223,6 +265,12 @@ fn diagnostics() -> &'static str {
 
 fn probe_fixture(target: &str, _devices: &[DeviceEntry], write: WriteFn) -> HardwareProbeResult {
     match target {
+        "help" | "list" => {
+            write(
+                b"probe targets:\n  fixture\n  pcie\n  usb-keyboard\n  xhci-read-keyboard-report\n",
+            );
+            HardwareProbeResult::Handled
+        }
         "fixture" => {
             write(b"probe fixture:\nstate=ready\n");
             HardwareProbeResult::Handled
@@ -273,7 +321,10 @@ arch_test!(root_shell_help, {
     testrt::check_eq(sink_str(), "proof - print physical input proof checklist\n");
 
     run_command(ProfileSummary::new("shell-only", false), b"help probe\n", None);
-    testrt::check_eq(sink_str(), "probe target - run lower hardware probe; try `probe help`\n");
+    testrt::check_eq(
+        sink_str(),
+        "probe target - run lower hardware probe; try `probe help` or `cat /boot/probes`\n",
+    );
 
     run_command(ProfileSummary::new("shell-only", false), b"help dmesg\n", None);
     testrt::check_eq(sink_str(), "dmesg [--stats] - print retained kernel log or ring stats\n");
@@ -382,6 +433,7 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"input\n");
     assert_contains(sink_bytes(), b"memory\n");
     assert_contains(sink_bytes(), b"mounts\n");
+    assert_contains(sink_bytes(), b"probes\n");
     assert_contains(sink_bytes(), b"proof\n");
     assert_contains(sink_bytes(), b"profile\n");
     assert_contains(sink_bytes(), b"status\n");
@@ -449,6 +501,7 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"  input\n");
     assert_contains(sink_bytes(), b"  cat /boot/input\n");
     assert_contains(sink_bytes(), b"  probe help\n");
+    assert_contains(sink_bytes(), b"  cat /boot/probes\n");
     assert_contains(sink_bytes(), b"  probe pcie\n");
     assert_contains(sink_bytes(), b"  probe usb-keyboard\n");
     assert_contains(sink_bytes(), b"  cat /boot/profile\n");
@@ -477,9 +530,12 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"  usb_keyboard=ready\n");
     assert_contains(sink_bytes(), b"  usb_keyboard_probe=enabled\n");
     assert_contains(sink_bytes(), b"  usb_keyboard_last_poll=report-ready\n");
+    assert_contains(sink_bytes(), b"  manual_next=type-shell-command\n");
     assert_contains(sink_bytes(), b"  help catalog available through /boot/help\n");
     assert_contains(sink_bytes(), b"  screentest includes erase-line mode diagnostics\n");
     assert_contains(sink_bytes(), b"  kernel log stats available through /log/stats\n");
+    assert_contains(sink_bytes(), b"  manual_next=type-shell-command\n");
+    assert_contains(sink_bytes(), b"  probe catalog available through /boot/probes\n");
     assert_contains(sink_bytes(), b"  probe targets include usb-keyboard\n");
     assert_contains(sink_bytes(), b"  probe targets include xhci-read-keyboard-report\n");
     assert_contains(sink_bytes(), b"  launch/reovim disabled in shell-only profile\n");
@@ -492,11 +548,13 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"  proof\n");
     assert_contains(sink_bytes(), b"  cat /boot/proof\n");
     assert_contains(sink_bytes(), b"  help dmesg\n");
+    assert_contains(sink_bytes(), b"  cat /boot/probes\n");
     assert_contains(sink_bytes(), b"expected:\n");
     assert_contains(sink_bytes(), b"  probe targets include pcie\n");
     assert_contains(sink_bytes(), b"  probe targets include xhci-read-keyboard-report\n");
     assert_contains(sink_bytes(), b"  help catalog available through /boot/help\n");
     assert_contains(sink_bytes(), b"  kernel log stats available through /log/stats\n");
+    assert_contains(sink_bytes(), b"  probe catalog available through /boot/probes\n");
     assert_contains(sink_bytes(), b"  launch/reovim disabled in shell-only profile\n");
     assert_contains(sink_bytes(), b"  halt typed last prints halt: ok and stops root daemon\n");
 
@@ -547,6 +605,12 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
 
     run_session_command(&mut session, b"cat /boot/devices\n");
     assert_contains(sink_bytes(), b"- [0] uart compat=arm,pl011 mmio=0x1000/0x100 irq=12\n");
+
+    run_session_command(&mut session, b"cat /boot/probes\n");
+    assert_contains(sink_bytes(), b"probe targets:\n");
+    assert_contains(sink_bytes(), b"  fixture\n");
+    assert_contains(sink_bytes(), b"  usb-keyboard\n");
+    assert_contains(sink_bytes(), b"  xhci-read-keyboard-report\n");
 
     run_session_command(&mut session, b"cd /dev\n");
     testrt::check_eq(sink_str(), "");
@@ -616,6 +680,30 @@ arch_test!(root_shell_boot_profile_uses_live_console_input_status, {
     assert_contains(sink_bytes(), b"usb_keyboard_poll_interval_ms=5\n");
     assert_contains(sink_bytes(), b"usb_keyboard_last_poll=report-ready\n");
     assert_contains(sink_bytes(), b"manual_next=type-shell-command\n");
+});
+
+arch_test!(root_shell_status_reports_specific_manual_next_probe, {
+    let cases: &[(ConsoleInputStatus, &[u8])] = &[
+        (pcie_blocker_input_status, b"manual_next=probe-pcie\n"),
+        (controller_init_input_status, b"manual_next=probe-xhci-start\n"),
+        (enumeration_input_status, b"manual_next=probe-xhci-read-keyboard-report\n"),
+        (report_pending_input_status, b"manual_next=probe-usb-keyboard\n"),
+        (decoded_pending_input_status, b"manual_next=type-shell-command\n"),
+    ];
+
+    let mut index = 0usize;
+    while index < cases.len() {
+        sink_clear();
+        let daemon = daemon_with_input_status(
+            ProfileSummary::new("shell-only", false),
+            Some(diagnostics),
+            Some(cases[index].0),
+        );
+        let mut session = RootShellSession::new();
+        let _ = execute_root_command(&daemon, &mut session, b"cat /boot/status\n");
+        assert_contains(sink_bytes(), cases[index].1);
+        index += 1;
+    }
 });
 
 arch_test!(root_shell_dmesg_and_unknown_command, {
