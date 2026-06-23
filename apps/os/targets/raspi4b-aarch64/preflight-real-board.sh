@@ -161,7 +161,17 @@ write_evidence_seed() {
         printf 'proof\n'
         printf 'cat /boot/proof\n'
         printf 'help\n'
+        printf 'help screentest\n'
+        printf 'help input\n'
+        printf 'help proof\n'
+        printf 'help pwd\n'
+        printf 'help ls\n'
+        printf 'help cd\n'
+        printf 'help cat\n'
+        printf 'help mount\n'
         printf 'help dmesg\n'
+        printf 'help status\n'
+        printf 'help probe\n'
         printf 'cat /boot/help\n'
         printf 'clear\n'
         printf 'screentest\n'
@@ -214,7 +224,10 @@ write_evidence_seed() {
         printf -- '- [ ] `cat /boot/proof` prints the VFS-backed proof pseudo-file.\n'
         printf -- '- [ ] `cat /boot/help` prints the VFS-backed help catalog.\n'
         printf -- '- [ ] `help dmesg` / `ls /log` make kernel log stats discoverable.\n'
-        printf -- '- [ ] `help` / `clear` / `screentest` prove shell help and erase-line mode diagnostics.\n'
+        printf -- '- [ ] `help input` / `help proof` make live input diagnostics and the proof checklist self-describing.\n'
+        printf -- '- [ ] `help status` / `help probe` make `manual_next` and probe catalog discovery self-describing.\n'
+        printf -- '- [ ] `help pwd` / `help ls` / `help cd` / `help cat` / `help mount` make VFS navigation self-describing.\n'
+        printf -- '- [ ] `help` / `help screentest` / `clear` / `screentest` prove shell help and erase-line mode diagnostics.\n'
         printf -- '- [ ] `pwd` / `ls` / `mount` report the kernel VFS namespace and mounts.\n'
         printf -- '- [ ] `device` / `cat /boot/memory` / `cat /boot/devices` report boot inventory.\n'
         printf -- '- [ ] `cd /dev` / `ls` / `cat uart0` prove relative VFS device-file access.\n'
@@ -359,6 +372,56 @@ if [ "$SKIP_QEMU" -eq 0 ]; then
         cat "$qemu_log" >&2
         rm -f "$qemu_log"
         fail "QEMU smoke proof checklist did not include targeted dmesg help"
+    fi
+    if ! grep -q '^  help screentest$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include targeted screentest help"
+    fi
+    if ! grep -q '^  help input$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include targeted input help"
+    fi
+    if ! grep -q '^  help proof$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include targeted proof help"
+    fi
+    if ! grep -q '^  help pwd$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include targeted pwd help"
+    fi
+    if ! grep -q '^  help ls$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include targeted ls help"
+    fi
+    if ! grep -q '^  help cd$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include targeted cd help"
+    fi
+    if ! grep -q '^  help cat$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include targeted cat help"
+    fi
+    if ! grep -q '^  help mount$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include targeted mount help"
+    fi
+    if ! grep -q '^  help status$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include targeted status help"
+    fi
+    if ! grep -q '^  help probe$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include targeted probe help"
     fi
     if ! grep -q '^  ls /log$' "$qemu_log"; then
         cat "$qemu_log" >&2

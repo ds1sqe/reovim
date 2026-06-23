@@ -21,7 +21,7 @@ image=apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img
 bytes=<image-size>
 ```
 
-Current expected size is `444668` bytes.
+Current expected size is `445012` bytes.
 
 Copy `apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img` to the Pi
 4 boot partition as `kernel8.img`, using the normal Raspberry Pi firmware
@@ -173,8 +173,11 @@ diagnostic, identity plus live source diagnostics from `status` /
 `cat /boot/status`, live input diagnostics from `input` / `cat /boot/input`,
 the in-OS `proof` checklist, the VFS-backed help catalog from
 `cat /boot/help`, log-stat discoverability from `help dmesg` / `ls /log`,
-shell help and erase-line mode diagnostics from `help` / `clear` /
-`screentest`, VFS namespace evidence from `pwd` / `ls` / `mount` /
+targeted input/proof/status/probe guidance from `help input` / `help proof` /
+`help status` / `help probe`, shell help and erase-line mode diagnostics from
+`help` / `help screentest` / `clear` / `screentest`, VFS namespace evidence
+from `help pwd` / `help ls` / `help cd` / `help cat` / `help mount` /
+`pwd` / `ls` / `mount` /
 `cat /boot/mounts`, boot inventory from `ls /dev` / `device` /
 `cat /boot/memory` / `cat /boot/devices`, relative device-file access from
 `cd /dev` / `ls` / `cat uart0`, hardware-target catalog output from
@@ -234,7 +237,17 @@ keyboard for the main proof transcript:
 proof
 cat /boot/proof
 help
+help screentest
+help input
+help proof
+help pwd
+help ls
+help cd
+help cat
+help mount
 help dmesg
+help status
+help probe
 cat /boot/help
 clear
 screentest
@@ -285,10 +298,14 @@ Record the full visible output or serial transcript. The key evidence is:
 - `cat /boot/help` prints the root-shell help catalog through the kernel VFS.
 - `help dmesg` and `ls /log` show that the log namespace and log-stat command
   path are discoverable from the running shell.
-- `help`, `clear`, and `screentest` prove the shell help path and framebuffer
-  erase-line mode diagnostics, including erase-to-end, erase-to-start, and
-  whole-line erase redraw checks, are reachable from the physical keyboard
-  session.
+- `help`, `help screentest`, `clear`, and `screentest` prove the shell help
+  path and framebuffer erase-line mode diagnostics, including erase-to-end,
+  erase-to-start, and whole-line erase redraw checks, are reachable from the
+  physical keyboard session.
+- `help input` names the live input diagnostics command, and `help proof`
+  names the running proof checklist command.
+- `help pwd`, `help ls`, `help cd`, `help cat`, and `help mount` name the VFS
+  navigation and pseudo-file commands before the proof uses them.
 - `pwd`, `ls /`, `ls /boot`, `mount`, and `cat /boot/mounts` show the root
   VFS namespace and pseudo-filesystem mount table.
 - `ls /dev`, `device`, `cat /boot/memory`, and `cat /boot/devices` show the
@@ -309,6 +326,8 @@ Record the full visible output or serial transcript. The key evidence is:
   `probe-pcie`, `probe-xhci-start`, `probe-xhci-read-keyboard-report`, or
   `probe-usb-keyboard`. In the successful physical proof it must end at
   `manual_next=type-shell-command`.
+- `help status` names the `manual_next` summary path, and `help probe` points
+  at both `probe help` and `cat /boot/probes`.
 - `cat /boot/status` shows the same status summary through the kernel VFS, and
   `cat /boot/input` shows the live input diagnostics through the kernel VFS.
 - `probe help` lists `pcie`, `usb-keyboard`, and

@@ -315,7 +315,7 @@ arch_test!(root_shell_help, {
     );
 
     run_command(ProfileSummary::new("shell-only", false), b"help status\n", None);
-    testrt::check_eq(sink_str(), "status - print boot and input summary\n");
+    testrt::check_eq(sink_str(), "status - print boot, input, and manual_next summary\n");
 
     run_command(ProfileSummary::new("shell-only", false), b"help proof\n", None);
     testrt::check_eq(sink_str(), "proof - print physical input proof checklist\n");
@@ -479,7 +479,17 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"  proof\n");
     assert_contains(sink_bytes(), b"  cat /boot/proof\n");
     assert_contains(sink_bytes(), b"  help\n");
+    assert_contains(sink_bytes(), b"  help screentest\n");
+    assert_contains(sink_bytes(), b"  help input\n");
+    assert_contains(sink_bytes(), b"  help proof\n");
+    assert_contains(sink_bytes(), b"  help pwd\n");
+    assert_contains(sink_bytes(), b"  help ls\n");
+    assert_contains(sink_bytes(), b"  help cd\n");
+    assert_contains(sink_bytes(), b"  help cat\n");
+    assert_contains(sink_bytes(), b"  help mount\n");
     assert_contains(sink_bytes(), b"  help dmesg\n");
+    assert_contains(sink_bytes(), b"  help status\n");
+    assert_contains(sink_bytes(), b"  help probe\n");
     assert_contains(sink_bytes(), b"  cat /boot/help\n");
     assert_contains(sink_bytes(), b"  clear\n");
     assert_contains(sink_bytes(), b"  screentest\n");
@@ -534,7 +544,6 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"  help catalog available through /boot/help\n");
     assert_contains(sink_bytes(), b"  screentest includes erase-line mode diagnostics\n");
     assert_contains(sink_bytes(), b"  kernel log stats available through /log/stats\n");
-    assert_contains(sink_bytes(), b"  manual_next=type-shell-command\n");
     assert_contains(sink_bytes(), b"  probe catalog available through /boot/probes\n");
     assert_contains(sink_bytes(), b"  probe targets include usb-keyboard\n");
     assert_contains(sink_bytes(), b"  probe targets include xhci-read-keyboard-report\n");
@@ -547,7 +556,17 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"proof:\n");
     assert_contains(sink_bytes(), b"  proof\n");
     assert_contains(sink_bytes(), b"  cat /boot/proof\n");
+    assert_contains(sink_bytes(), b"  help screentest\n");
+    assert_contains(sink_bytes(), b"  help input\n");
+    assert_contains(sink_bytes(), b"  help proof\n");
+    assert_contains(sink_bytes(), b"  help pwd\n");
+    assert_contains(sink_bytes(), b"  help ls\n");
+    assert_contains(sink_bytes(), b"  help cd\n");
+    assert_contains(sink_bytes(), b"  help cat\n");
+    assert_contains(sink_bytes(), b"  help mount\n");
     assert_contains(sink_bytes(), b"  help dmesg\n");
+    assert_contains(sink_bytes(), b"  help status\n");
+    assert_contains(sink_bytes(), b"  help probe\n");
     assert_contains(sink_bytes(), b"  cat /boot/probes\n");
     assert_contains(sink_bytes(), b"expected:\n");
     assert_contains(sink_bytes(), b"  probe targets include pcie\n");

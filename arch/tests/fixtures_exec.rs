@@ -688,6 +688,17 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "proof\n",
         "cat /boot/proof\n",
         "help\n",
+        "help screentest\n",
+        "help input\n",
+        "help proof\n",
+        "help pwd\n",
+        "help ls\n",
+        "help cd\n",
+        "help cat\n",
+        "help mount\n",
+        "help dmesg\n",
+        "help status\n",
+        "help probe\n",
         "cat /boot/help\n",
         "clear\n",
         "screentest\n",
@@ -774,7 +785,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "input help appears; serial: {serial:?}",
     );
     assert!(
-        serial.contains("status - print boot and input summary"),
+        serial.contains("status - print boot, input, and manual_next summary"),
         "status help appears; serial: {serial:?}",
     );
     assert!(
@@ -831,15 +842,16 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         serial.contains("probe targets:"),
         "probe target help appears in transcript; serial: {serial:?}",
     );
-    let proof_commands =
-        "proof:\ncommands:\n  proof\n  cat /boot/proof\n  help\n  help dmesg\n  cat /boot/help";
+    let proof_commands = "proof:\ncommands:\n  proof\n  cat /boot/proof\n  help\n  help screentest\n  help input\n  help proof\n  help pwd\n  help ls\n  help cd\n  help cat\n  help mount\n  help dmesg\n  help status\n  help probe\n  cat /boot/help";
     assert!(
         serial.contains(proof_commands),
         "proof checklist appears in transcript; serial: {serial:?}",
     );
     assert!(
-        serial.contains("  help\n  help dmesg\n  cat /boot/help\n  clear"),
-        "proof checklist includes targeted dmesg and VFS help; serial: {serial:?}",
+        serial.contains(
+            "  help\n  help screentest\n  help input\n  help proof\n  help pwd\n  help ls\n  help cd\n  help cat\n  help mount\n  help dmesg\n  help status\n  help probe\n  cat /boot/help\n  clear"
+        ),
+        "proof checklist includes targeted help and VFS help; serial: {serial:?}",
     );
     assert!(
         serial.contains("  pwd\n  ls /\n  ls /boot"),
@@ -880,6 +892,12 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     assert!(
         serial.contains("  manual_next=type-shell-command"),
         "proof checklist names successful manual next step; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "  help screentest\n  help input\n  help proof\n  help pwd\n  help ls\n  help cd\n  help cat\n  help mount\n  help dmesg\n  help status\n  help probe\n  cat /boot/help"
+        ),
+        "proof checklist includes targeted help commands; serial: {serial:?}",
     );
     assert!(
         serial.contains("probe targets include pcie"),
@@ -1132,6 +1150,23 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     assert!(
         serial.contains("shell: cat /log/stats"),
         "cat /log/dmesg prints VFS log stats command audit; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("shell: help\nshell.status=ok\nshell: help screentest")
+            && serial.contains("shell: help screentest\nshell.status=ok\nshell: help input")
+            && serial.contains("shell: help input\nshell.status=ok\nshell: help proof")
+            && serial.contains("shell: help proof\nshell.status=ok\nshell: help pwd")
+            && serial.contains("shell: help pwd\nshell.status=ok\nshell: help ls")
+            && serial.contains("shell: help ls\nshell.status=ok\nshell: help cd")
+            && serial.contains("shell: help cd\nshell.status=ok\nshell: help cat")
+            && serial.contains("shell: help cat\nshell.status=ok\nshell: help mount")
+            && serial.contains("shell: help mount\nshell.status=ok\nshell: help dmesg"),
+        "cat /log/dmesg prints targeted screentest help command audit; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("shell: help status\nshell.status=ok\nshell: help proof")
+            && serial.contains("shell: help probe\nshell.status=ok\nshell: help dmesg"),
+        "cat /log/dmesg prints targeted help command audits; serial: {serial:?}",
     );
     assert!(
         serial.contains("boot_info:"),

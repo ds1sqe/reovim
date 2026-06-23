@@ -597,7 +597,17 @@ fn write_boot_proof(daemon: &RootDaemon<'_>) {
     daemon.write_line("  proof");
     daemon.write_line("  cat /boot/proof");
     daemon.write_line("  help");
+    daemon.write_line("  help screentest");
+    daemon.write_line("  help input");
+    daemon.write_line("  help proof");
+    daemon.write_line("  help pwd");
+    daemon.write_line("  help ls");
+    daemon.write_line("  help cd");
+    daemon.write_line("  help cat");
+    daemon.write_line("  help mount");
     daemon.write_line("  help dmesg");
+    daemon.write_line("  help status");
+    daemon.write_line("  help probe");
     daemon.write_line("  cat /boot/help");
     daemon.write_line("  clear");
     daemon.write_line("  screentest");
@@ -976,7 +986,7 @@ fn cmd_help(daemon: &RootDaemon<'_>, line: &ParsedLine) -> RootCommandStatus {
         "cat" => daemon.write_line("cat path... - print kernel VFS pseudo files"),
         "mount" => daemon.write_line("mount - print kernel VFS mount table"),
         "input" => daemon.write_line("input - print live console input diagnostics"),
-        "status" => daemon.write_line("status - print boot and input summary"),
+        "status" => daemon.write_line("status - print boot, input, and manual_next summary"),
         "proof" => daemon.write_line("proof - print physical input proof checklist"),
         "device" => daemon.write_line("device - print boot memory and device inventory"),
         "dmesg" => daemon.write_line("dmesg [--stats] - print retained kernel log or ring stats"),
