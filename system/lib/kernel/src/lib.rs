@@ -17,6 +17,7 @@
 // storage and stores callback contexts for the boot console.
 #![allow(unsafe_code)]
 
+pub mod boot;
 pub mod boot_info;
 pub mod color;
 pub mod console;
@@ -29,6 +30,8 @@ pub mod log;
 pub mod mm;
 pub mod net;
 pub mod panic;
+pub mod root_shell;
+pub mod rootd;
 pub mod sched;
 pub mod splash;
 pub mod terminal;

@@ -28,6 +28,8 @@
 //!   The value is whitespace-split so multi-word runners with flags work.
 //!   `qemu-user` forwards the guest exit code as its own exit code, so no
 //!   assertion changes are needed.
+//! - **`REOVIM_OS_BOOTLINE`** (build time only): newline-separated commands fed to
+//!   `reovim-os` via `option_env!` for deterministic shell-transcript tests.
 //!
 //! `ARCH_FIXTURE_TARGET` without `ARCH_FIXTURE_RUNNER` is valid only when the
 //! host can execute the target binaries natively (e.g. same ISA, different
@@ -39,6 +41,11 @@
 //! ARCH_FIXTURE_TARGET=aarch64-unknown-linux-gnu \
 //! ARCH_FIXTURE_RUNNER=qemu-aarch64 \
 //!     cargo test -p reovim-arch --test fixtures_exec
+//! # OS shell transcript: build-time scripted input
+//! REOVIM_OS_BOOTLINE='help\ndevice\ndmesg\n' \
+//! ARCH_FIXTURE_TARGET=x86_64-unknown-none \
+//! ARCH_FIXTURE_RUNNER=qemu-system-x86_64 \
+//!     cargo test -p reovim-arch --test fixtures_exec os_shell_profile_transcript_on_x86_target_boots_and_prints_cli
 //! ```
 //!
 //! # System-image mode (bare metal)
@@ -126,6 +133,13 @@ fn uapi_selftest_lock() -> std::sync::MutexGuard<'static, ()> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
+fn os_image_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 // ---------------------------------------------------------------------------
 // Env var helpers
 // ---------------------------------------------------------------------------
@@ -192,15 +206,33 @@ fn build_fixture(pkg: &str) -> PathBuf {
 ///
 /// See [`build_fixture`] for the `ARCH_FIXTURE_TARGET` contract.
 fn build_fixture_features(pkg: &str, features: &[&str]) -> PathBuf {
-    // `CARGO_MANIFEST_DIR` is `arch/` (the crate under test); the nested
-    // fixture workspace lives at `arch/tests/fixtures/`. Run the build with
-    // that directory as the CWD so cargo resolves the nested workspace
-    // `Cargo.toml`. Each fixture's `build.rs` emits the `-nostartfiles` link
-    // arg the arch `_start` needs (build-script link args survive a `RUSTFLAGS`
-    // override, unlike `.cargo/config.toml` rustflags).
-    let fixtures_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("fixtures");
+    let fixtures_dir = fixtures_workspace_dir();
+    build_workspace_binary_with_env(&fixtures_dir, pkg, features, &[])
+}
+
+/// Builds `reovim-os` for a scripted root shell transcript and returns the
+/// built executable. This uses the same JSON output parsing contract and target
+/// env handling as `build_fixture`.
+fn build_os_image(features: &[&str], bootline: Option<&str>, os_profile: Option<&str>) -> PathBuf {
+    let apps_dir = apps_workspace_dir();
+    let mut envs: Vec<(&str, &str)> = Vec::new();
+    if let Some(script) = bootline {
+        envs.push(("REOVIM_OS_BOOTLINE", script));
+    }
+    if let Some(profile) = os_profile {
+        envs.push(("REOVIM_OS_PROFILE", profile));
+    }
+    build_workspace_binary_with_env(&apps_dir, "reovim-os", features, &envs)
+}
+
+/// Builds one package in the specified nested Cargo workspace and returns the
+/// built executable path.
+fn build_workspace_binary_with_env(
+    workspace_dir: &Path,
+    pkg: &str,
+    features: &[&str],
+    envs: &[(&str, &str)],
+) -> PathBuf {
     let mut args = vec![
         "build".to_owned(),
         "--package".to_owned(),
@@ -215,13 +247,16 @@ fn build_fixture_features(pkg: &str, features: &[&str]) -> PathBuf {
         args.push("--features".to_owned());
         args.push(features.join(","));
     }
-    let output = Command::new(env!("CARGO"))
-        .current_dir(&fixtures_dir)
+    let mut command = Command::new(env!("CARGO"));
+    command
+        .current_dir(workspace_dir)
         .args(&args)
-        .stderr(Stdio::inherit())
-        .output()
-        .expect("cargo build runs");
-    assert!(output.status.success(), "fixture {pkg} builds");
+        .stderr(Stdio::inherit());
+    for (key, value) in envs {
+        command.env(key, value);
+    }
+    let output = command.output().expect("cargo build runs");
+    assert!(output.status.success(), "package {pkg} builds");
 
     // Each JSON line is a build message; the `compiler-artifact` for the bin
     // target carries `"executable":"<path>"`. Find the last one for `pkg`.
@@ -234,6 +269,22 @@ fn build_fixture_features(pkg: &str, features: &[&str]) -> PathBuf {
         .next_back()
         .unwrap_or_else(|| panic!("no executable artifact for {pkg}"));
     PathBuf::from(exe)
+}
+
+fn fixtures_workspace_dir() -> PathBuf {
+    // `CARGO_MANIFEST_DIR` is `arch/`; the nested fixture workspace lives at
+    // `arch/tests/fixtures/`.
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+}
+
+fn apps_workspace_dir() -> PathBuf {
+    // `CARGO_MANIFEST_DIR` is `arch/`; app composition crates live under `apps/`
+    // one directory up.
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("apps")
 }
 
 /// Extracts the `"executable":"..."` value from one cargo JSON message line,
@@ -575,13 +626,9 @@ fn testrt_pilot_one_failure_exits_nonzero() {
 
 #[test]
 fn bootcore_boots_real_kernel_exits_zero() {
-    // The first x86 `Init::boot` proof (#788 sub-plan 02): the bootcore payload
-    // boots the REAL reovim system kernel on the freestanding floor, the boot-tail
-    // diagnostics banner prints the Multiboot-discovered RAM, and the bin exits
-    // 0 through isa-debug-exit. This is the consumer that exercises the x86
-    // BootInfo provider end-to-end — empty-`BootInfo` would print memory as
-    // "unknown", so a real "MiB" figure proves the provider fed `Init` real
-    // facts.
+    // The first x86 root-daemon proof: the bootcore payload enters the system
+    // kernel shell path on the freestanding floor and exits 0 through
+    // isa-debug-exit.
     //
     // x86-only: the aarch64 bootcore parks (`wfe`) to persist its framebuffer
     // for a manual screendump, so it never exits — running it here would time
@@ -596,12 +643,83 @@ fn bootcore_boots_real_kernel_exits_zero() {
     let (code, serial) = run_system_image(&exe);
     assert_eq!(code, 0, "bootcore boots the system kernel and exits 0; serial: {serial:?}");
     assert!(
-        serial.contains("kernel booted"),
-        "bootcore reached the post-boot line; serial: {serial:?}",
+        serial.contains("system kernel shell ready"),
+        "bootcore reached root-daemon boot path; serial: {serial:?}",
     );
     assert!(
-        serial.contains("MiB"),
-        "boot banner reports discovered RAM in MiB, not unknown; serial: {serial:?}",
+        serial.contains("reovim-os> "),
+        "bootcore printed shell prompt for shell-only profile; serial: {serial:?}",
+    );
+}
+
+#[test]
+fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
+    // The first proof from the official distribution root (`apps/os`): the
+    // kernel-only shell handles scripted input and prints a deterministic root
+    // shell transcript (help/device/dmesg) before exiting.
+    let Some(target) = fixture_target() else {
+        return;
+    };
+    if !target.starts_with("x86_64") {
+        return;
+    }
+
+    let _guard = os_image_lock();
+    let exe = build_os_image(&[], Some("help\ndevice\ndmesg\n"), None);
+    let (code, serial) = run_system_image(&exe);
+    assert_eq!(code, 0, "reovim-os shell profile exits 0; serial: {serial:?}");
+    assert!(
+        serial.contains("system kernel shell ready"),
+        "shell-only os profile reached root-daemon shell path; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("reovim-os> reovim root shell"),
+        "shell prompt + help output appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("reovim root shell"),
+        "help output appears in transcript; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("commands: help, device, dmesg, launch, halt"),
+        "help vocabulary appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("boot_info:"),
+        "device command prints boot info; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("dmesg: (no diagnostics source)"),
+        "dmesg prints stable fallback; serial: {serial:?}",
+    );
+}
+
+#[test]
+fn os_launch_profile_transcript_on_x86_target_launches_editor_smoke() {
+    // The phase-4 proof from the official launch profile: a scripted root shell
+    // launches the editor-core smoke payload and returns `payload.ready`.
+    let Some(target) = fixture_target() else {
+        return;
+    };
+    if !target.starts_with("x86_64") {
+        return;
+    }
+
+    let _guard = os_image_lock();
+    let exe =
+        build_os_image(&["launch-profile"], Some("launch editor-smoke\nhelp\n"), Some("launch"));
+    let (code, serial) = run_system_image(&exe);
+    assert_eq!(
+        code, 0,
+        "reovim-os launch profile exits 0 after editor smoke path; serial: {serial:?}"
+    );
+    assert!(
+        serial.contains("launch editor-smoke: payload.ready"),
+        "editor-smoke launch command succeeded; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("reovim root shell"),
+        "help output still available after payload launch; serial: {serial:?}",
     );
 }
 

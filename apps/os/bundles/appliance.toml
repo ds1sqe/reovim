@@ -1,0 +1,15 @@
+# Appliance RTOS app bundle.
+#
+# Shell-only launchability proof is in scope now; editor/server/client launch is
+# intentionally not registered in this initial version.
+
+name = "appliance"
+description = "Kernel-only appliance bootstrap profile (no linked editor/server/client payload yet)."
+
+# Official OS composition entry crate.
+profile = "shell-only"
+packages = [
+  "reovim-os",
+]
+
+payloads = []

@@ -1,0 +1,26 @@
+# Q35 x86_64 RTOS image target manifest.
+#
+# Official ownership: distribution packaging for `apps/os` lives here, not under
+# `arch/tests/fixtures`.
+
+[target]
+name = "q35-x86_64"
+arch = "x86_64"
+triple = "x86_64-unknown-none"
+machine = "q35"
+
+[artifact]
+image = "kernel-mb32.elf"
+format = "elf32-i386"
+
+[boot]
+default_profile = "shell-only"
+kernel_boot_args = []
+
+[profiles.shell]
+name = "shell-only"
+boot_only = true
+
+[profiles.launch]
+name = "launch"
+boot_only = true

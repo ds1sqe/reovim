@@ -26,12 +26,29 @@
 #![allow(unsafe_code)]
 
 use reovim_arch::testrt;
+use core::{alloc::Layout, ptr::NonNull};
+use reovim_uapi_mm::{AllocControl, AllocError};
 
 mod cf5_crosscheck;
 mod codec_goldens;
 mod edge_cases;
 mod layout_goldens;
 mod macro_smoke;
+
+fn uapi_selftest_alloc(layout: Layout) -> Result<NonNull<u8>, AllocError> {
+    reovim_arch::alloc::alloc(layout).map_err(|_| AllocError)
+}
+
+fn uapi_selftest_dealloc(ptr: NonNull<u8>, layout: Layout) {
+    // SAFETY: pointer and layout originate from this fixture's paired
+    // arch allocator backend.
+    unsafe { reovim_arch::alloc::dealloc(ptr, layout) }
+}
+
+fn install_arch_test_alloc_backend()
+-> Result<(), reovim_lib_ds::alloc_backend::AllocBackendInstallError> {
+    reovim_lib_ds::alloc_backend::install(AllocControl::new(uapi_selftest_alloc, uapi_selftest_dealloc))
+}
 
 // One deliberately-failing test, present only under `inject-failure`.
 #[cfg(feature = "inject-failure")]
@@ -52,7 +69,7 @@ entry!(|_argc, _argv, _envp| {
     // (it self-skips under system-image mode), so it installs the real POSIX
     // provider unconditionally — no bare-metal scaffold branch.
     let _ = reovim_platform_linux_native::install_platform();
-    let _ = reovim_system_kernel::mm::install_lib_ds_alloc_backend();
+    let _ = install_arch_test_alloc_backend();
     let _ = reovim_system_kernel::sched::install_lib_ds_sync_backend();
     testrt::run()
 });

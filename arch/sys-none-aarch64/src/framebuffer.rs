@@ -172,10 +172,22 @@ impl Framebuffer {
 
     /// Fills the whole surface with a single color.
     pub fn clear(&self, color: u32) {
-        for y in 0..self.height {
-            for x in 0..self.width {
-                self.put_pixel(x, y, color);
+        for y in 0..self.height as usize {
+            let row = (self.base + y * self.pitch as usize) as *mut u32;
+            for x in 0..self.width as usize {
+                // SAFETY: `row` is inside the framebuffer row selected by
+                // `y`, and `x < width` keeps the store inside the visible
+                // 32bpp region. This is the same address range as `put_pixel`,
+                // without per-pixel bounds checks and repeated pitch math.
+                unsafe {
+                    write_volatile(row.add(x), color);
+                }
             }
+        }
+        // Ensure the clear reaches the device-observed surface before callers
+        // start drawing the next boot screen.
+        unsafe {
+            asm!("dsb sy", options(nostack, preserves_flags));
         }
     }
 }

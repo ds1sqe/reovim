@@ -30,11 +30,13 @@ inject-failure = []
 # `runtime`: provides `_start`, panic handler, testrt runner.
 # `selftest`: compiles the uapi sibling test modules into the crates.
 reovim-arch = { path = "../../../../arch", features = ["runtime", "selftest"] }
+reovim-lib-ds = { path = "../../../../lib/ds" }
 reovim-uapi-abi = { path = "../../../../uapi/inner/abi", features = ["selftest"] }
 reovim-uapi-protocol = { path = "../../../../uapi/inner/protocol", features = ["selftest"] }
 reovim-uapi-module-macros = { path = "../../../../uapi/inner/module-macros", features = ["selftest"] }
 reovim-uapi-driver-macros = { path = "../../../../uapi/inner/driver-macros", features = ["selftest"] }
 reovim-system-kernel = { path = "../../../../system/lib/kernel" }
+reovim-uapi-mm = { path = "../../../../uapi/inner/mm" }
 
 # The platform-handle installer this composition root drives. Enabling
 # `reovim-arch/selftest` compiles arch's `lib_ds_tests` into the link-section

@@ -1,0 +1,26 @@
+# Raspberry Pi 4 RTOS image target manifest.
+#
+# Official ownership: distribution packaging for `apps/os` lives here, not under
+# `arch/tests/fixtures`.
+
+[target]
+name = "raspi4b-aarch64"
+arch = "aarch64"
+triple = "aarch64-unknown-none"
+machine = "raspi4b"
+
+[artifact]
+image = "kernel8.img"
+format = "elf-binary"
+
+[boot]
+default_profile = "shell-only"
+kernel_boot_args = []
+
+[profiles.shell]
+name = "shell-only"
+boot_only = true
+
+[profiles.launch]
+name = "launch"
+boot_only = true

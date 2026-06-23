@@ -1,0 +1,7 @@
+# Bare-metal x86_64 apps: force static layout (non-PIE) for floor entrypoint.
+#
+# The x86_64-unknown-none floor uses absolute-addressing sequences (e.g.
+# `_start` load/stores against link-time symbols). The default PIE model emits
+# relocations the floor's static assumptions cannot satisfy.
+[target.x86_64-unknown-none]
+rustflags = ["-C", "relocation-model=static", "-C", "link-args=-no-pie"]

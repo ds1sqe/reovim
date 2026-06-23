@@ -12,7 +12,7 @@
 # Cargo.toml).
 [workspace]
 resolver = "2"
-members = ["server", "reovim"]
+members = ["os", "reovim", "server"]
 
 [workspace.package]
 version = "0.16.0-dev"
@@ -33,7 +33,7 @@ panic = "abort"
 [workspace.lints.rust]
 warnings = "deny"
 unsafe_code = "warn"
-unexpected_cfgs = { level = "warn", check-cfg = ["cfg(coverage_nightly)", "cfg(arch_coverage)"] }
+unexpected_cfgs = { level = "warn" }
 
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }

@@ -1,0 +1,51 @@
+[package]
+name = "reovim-os"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "reovim RTOS image composition root: boot to a kernel-only root shell"
+publish = false
+
+[[bin]]
+name = "reovim-os"
+path = "src/main.rs"
+test = false
+bench = false
+doctest = false
+
+[dependencies]
+reovim-arch = { path = "../../arch", features = ["runtime"] }
+reovim-system-kernel = { path = "../../system/lib/kernel", features = ["runtime"] }
+reovim-uapi = { path = "../../uapi" }
+reovim-editor-core = { path = "../../editor/lib/core", optional = true }
+reovim-server-rt = { path = "../../editor/lib/server", optional = true }
+reovim-lib-ds = { path = "../../lib/ds", optional = true }
+
+[features]
+default = ["shell-only-profile"]
+shell-only-profile = []
+launch-profile = ["reovim-editor-core", "reovim-server-rt", "reovim-lib-ds"]
+
+# The per-target language floor (SP03): supplies _start, the `entry!` shim,
+# the `[panic_handler]`, and `mem` intrinsics as LINK symbols.
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
+reovim-arch-floor-linux-x86-64 = { path = "../../arch/floor-linux-x86-64", features = ["runtime"] }
+[target.'cfg(all(target_os = "linux", target_arch = "aarch64"))'.dependencies]
+reovim-arch-floor-linux-aarch64 = { path = "../../arch/floor-linux-aarch64", features = ["runtime"] }
+[target.'cfg(all(target_os = "none", target_arch = "aarch64"))'.dependencies]
+reovim-arch-floor-none-aarch64 = { path = "../../arch/floor-none-aarch64", features = ["runtime"] }
+[target.'cfg(all(target_os = "none", target_arch = "x86_64"))'.dependencies]
+reovim-arch-floor-none-x86-64 = { path = "../../arch/floor-none-x86-64", features = ["runtime"] }
+
+[lints]
+workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+reovim-platform-linux-native = { path = "../../platform/linux-native" }
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+reovim-platform-stub-none = { path = "../../platform/stub-none" }

@@ -47,10 +47,11 @@ use crate::{
 /// Blank pixel rows inserted below each text row so lines are not crammed —
 /// it matters most for a full-cell bitmap font (Terminus), where glyphs touch
 /// the cell edges; an anti-aliased font already carries some intrinsic leading
-/// inside its cell. The blit paints only a cell's glyph rows, so these gap
-/// rows keep the background the initial clear set — including after a scroll,
-/// which repaints glyphs from the grid but never writes the gaps. Four pixels
-/// suits the embedded 8x16 fonts; reviewed and kept at that.
+/// inside its cell. The blit paints both glyph rows and these gap rows as one
+/// visual cell, so the leading pixels are repainted with the cell background
+/// on every blit, so row refreshes and carriage-return overwrites cannot leave
+/// old pixels in the gap. Four pixels suits the embedded 8x16 fonts; reviewed
+/// and kept at that.
 const LINE_LEADING: u32 = 4;
 
 /// Foreground coverage for the dim attribute (SGR 2): the foreground is
@@ -374,6 +375,25 @@ impl<'g> Console<'g> {
         self.feed(buf);
     }
 
+    /// Clears the visible console and retained grid to the default background,
+    /// then moves the cursor back to the top-left cell.
+    pub fn clear_screen(&mut self) {
+        self.hide_cursor();
+        self.surface.clear(self.default_bg.resolve());
+        let used = (self.cols * self.rows) as usize;
+        for cell in &mut self.grid[..used] {
+            *cell = Cell::blank(self.default_fg, self.default_bg);
+        }
+        self.col = 0;
+        self.row = 0;
+        self.wrap_pending = false;
+        self.cursor_shown = false;
+        self.fg = self.default_fg;
+        self.bg = self.default_bg;
+        self.attrs = Attrs::none();
+        self.parser = Parser::new();
+    }
+
     /// Shared sink behind [`print`](Self::print) and
     /// [`write_bytes`](Self::write_bytes): erases any shown block cursor, then
     /// feeds each byte through the escape parser and applies the decoded
@@ -589,8 +609,9 @@ impl<'g> Console<'g> {
         let coverage = self.font.glyph(cell.ch);
         let cell_w = self.font.cell_w;
         let cell_h = self.font.cell_h;
+        let row_h = cell_h + LINE_LEADING;
         let x0 = col * cell_w;
-        let y0 = row * (cell_h + LINE_LEADING);
+        let y0 = row * row_h;
         let (mut fg, mut bg) = (cell.fg.resolve(), cell.bg.resolve());
         if cell.attrs.contains(Attrs::REVERSE) {
             core::mem::swap(&mut fg, &mut bg);
@@ -609,6 +630,11 @@ impl<'g> Console<'g> {
             let uy = y0 + cell_h.saturating_sub(UNDERLINE_INSET);
             for gx in 0..cell_w {
                 self.surface.put_pixel(x0 + gx, uy, fg);
+            }
+        }
+        for gy in cell_h..row_h {
+            for gx in 0..cell_w {
+                self.surface.put_pixel(x0 + gx, y0 + gy, bg);
             }
         }
     }
@@ -671,6 +697,17 @@ pub fn write_bytes(buf: &[u8]) {
     // other reference into the cell is live during the call.
     if let Some(console) = unsafe { (*CONSOLE.0.get()).as_mut() } {
         console.write_bytes(buf);
+    }
+}
+
+/// Clears the installed framebuffer console, if present.
+///
+/// UART/serial output is intentionally unaffected. This is a display operation
+/// for local-console boot UX, not a log truncation primitive.
+pub fn clear_screen() {
+    // SAFETY: same single-threaded console ownership as [`write_bytes`].
+    if let Some(console) = unsafe { (*CONSOLE.0.get()).as_mut() } {
+        console.clear_screen();
     }
 }
 

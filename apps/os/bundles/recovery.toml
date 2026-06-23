@@ -1,0 +1,16 @@
+# Recovery RTOS app bundle.
+#
+# Kept in the distribution manifest for future bundle expansion; the current
+# proof remains kernel-only and intentionally does not register editor/server
+# payloads in this profile.
+
+name = "recovery"
+description = "Kernel-only recovery bundle for serviceability proofs."
+
+# Official OS composition entry crate.
+profile = "shell-only"
+packages = [
+  "reovim-os",
+]
+
+payloads = []

@@ -283,6 +283,29 @@ arch_test!(console_effect_reverse_swaps_pens, {
     testrt::check(reversed.iter().any(|&p| p == BG), "reverse paints the glyph in the bg pen");
 });
 
+arch_test!(console_effect_reverse_paints_row_leading, {
+    // Console rows are 16 glyph pixels plus 4 leading pixels. A visual cell
+    // repaint owns both parts; otherwise reverse-video splash bars can leave
+    // old pixels behind during refresh/scroll.
+    let mut buf = [0u32; 8 * 20];
+    let mut surface = StubSurface::new(buf.as_mut_ptr(), 8, 20, 8 * 4);
+    let mut grid = [RESET_CELL; 1];
+    let mut console = Console::new(
+        surface.render_surface(),
+        &TERMINUS,
+        Color::Rgb(FG),
+        Color::Rgb(BG),
+        ScreenGrid(&mut grid),
+    );
+    console.print("\x1b[7m ");
+
+    let leading_is_reverse_bg = (16..20).all(|y| (0..8).all(|x| buf[y * 8 + x] == FG));
+    testrt::check(
+        leading_is_reverse_bg,
+        "reverse-video repaint fills row-leading pixels with the effective background",
+    );
+});
+
 arch_test!(console_effect_dim_halves_foreground, {
     // Dim composites the foreground over the background at half coverage, so
     // the ink resolves to exactly that blend and no full-intensity fg remains.

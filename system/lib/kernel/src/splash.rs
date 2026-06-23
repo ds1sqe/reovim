@@ -1,10 +1,10 @@
 //! The reovim boot splash content.
 //!
 //! The branded splash — the centred `r e o v i m` wordmark, the accent rule,
-//! the identity line, the compact boot panel reporting the proven floor facts,
-//! and the one-line SGR diagnostics — lifted out of the splash fixture (SP04
-//! 04c). Splash *content* (text, colours, layout) is policy, so it lives here in
-//! the system kernel, not in the raw-mechanism floor below.
+//! identity line, compact boot panel reporting the proven floor facts, and
+//! one-line renderer diagnostic — lifted out of the splash fixture (SP04 04c).
+//! Splash *content* (text, colours, layout) is policy, so it lives here in the
+//! system kernel, not in the raw-mechanism floor below.
 //!
 //! It renders through a caller-supplied byte sink. The composition root usually
 //! points that sink at fd 1 after installing the standing console, so the bytes
@@ -147,10 +147,9 @@ pub fn render(geometry: Option<(u32, u32)>, write: impl FnMut(&[u8])) {
 
         splash.blank(1);
 
-        // Diagnostics line: keeps one compact real-machine exercise of the SGR
-        // parser+blit (truecolor + indexed colour + bold + reverse) on screen.
-        // The escape bytes break visible-width centring, so this sits at a
-        // fixed indent under the panel.
+        // One compact real-machine exercise of the SGR parser + blit. Keep it
+        // on the splash because manual VNC smoke uses it as a visual render
+        // proof before the framebuffer is cleared for the checked boot report.
         splash.spaces(60);
         splash.str(
             "render: \x1b[38;2;255;92;87mtruecolor \x1b[38;5;46mindexed \

@@ -92,3 +92,35 @@ reason = "composition root constructs Shared<T> handles for editor-core wiring; 
 from   = "reovim"
 to     = "reovim-platform-linux-native"
 reason = "composition root drives the platform vtable install — calls install_platform() as the entry! closure's first statement (SP02 moved this off arch's rust_entry self-call to keep platform->arch one-way and acyclic)"
+
+# ── reovim-os (apps/os/) ─────────────────────────────────────────────────────
+
+[[edge]]
+from   = "reovim-os"
+to     = "reovim-arch"
+reason = "composition root wires architecture facade callbacks for console/systime/fact collection and payload launch shell bootstrap"
+
+[[edge]]
+from   = "reovim-os"
+to     = "reovim-system-kernel"
+reason = "composition root uses system-kernel root-daemon boot and control-table surfaces for OS image startup"
+
+[[edge]]
+from   = "reovim-os"
+to     = "reovim-uapi"
+reason = "composition root references uapi-facing boot/profile types and shell diagnostics vocabulary"
+
+[[edge]]
+from   = "reovim-os"
+to     = "reovim-editor-core"
+reason = "launch-profile feature can register editor-smoke payload and run EditorInit::boot via composition callback"
+
+[[edge]]
+from   = "reovim-os"
+to     = "reovim-server-rt"
+reason = "launch-profile feature can register server-smoke payload and start the server runtime listener"
+
+[[edge]]
+from   = "reovim-os"
+to     = "reovim-lib-ds"
+reason = "launch-profile path needs editor-core launch scaffolding primitives and shared runtime handles when enabled"

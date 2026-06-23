@@ -1,0 +1,12 @@
+# shell-only OS boot profile bundle
+name = "shell-only"
+description = "Kernel-only proof profile: system-kernel shell + tty."
+
+# Official OS composition entry crate.
+profile = "shell-only"
+packages = [
+  "reovim-os",
+]
+
+# No editor/server/client payloads are launched from this profile.
+payloads = []

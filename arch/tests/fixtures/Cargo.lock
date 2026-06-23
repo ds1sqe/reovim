@@ -6,15 +6,11 @@ version = 4
 name = "arch-bootcore"
 version = "0.16.0-dev"
 dependencies = [
- "reovim-arch",
  "reovim-arch-floor-linux-aarch64",
  "reovim-arch-floor-linux-x86-64",
  "reovim-arch-floor-none-aarch64",
  "reovim-arch-floor-none-x86-64",
- "reovim-editor-core",
- "reovim-platform-linux-native",
- "reovim-platform-stub-none",
- "reovim-system-kernel",
+ "reovim-os",
 ]
 
 [[package]]
@@ -86,10 +82,11 @@ dependencies = [
 name = "arch-splash"
 version = "0.16.0-dev"
 dependencies = [
- "reovim-arch",
+ "reovim-arch-floor-linux-aarch64",
+ "reovim-arch-floor-linux-x86-64",
  "reovim-arch-floor-none-aarch64",
- "reovim-platform-stub-none",
- "reovim-system-kernel",
+ "reovim-arch-floor-none-x86-64",
+ "reovim-os",
 ]
 
 [[package]]
@@ -185,20 +182,26 @@ name = "reovim-kabi-platform"
 version = "0.16.0-dev"
 
 [[package]]
-name = "reovim-editor-core"
-version = "0.16.0-dev"
-dependencies = [
- "reovim-lib-ds",
- "reovim-subsys-domain",
- "reovim-uapi",
-]
-
-[[package]]
 name = "reovim-lib-ds"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-uapi-mm",
  "reovim-uapi-sched",
+]
+
+[[package]]
+name = "reovim-os"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-arch-floor-linux-aarch64",
+ "reovim-arch-floor-linux-x86-64",
+ "reovim-arch-floor-none-aarch64",
+ "reovim-arch-floor-none-x86-64",
+ "reovim-platform-linux-native",
+ "reovim-platform-stub-none",
+ "reovim-system-kernel",
+ "reovim-uapi",
 ]
 
 [[package]]
@@ -217,13 +220,6 @@ dependencies = [
  "reovim-arch-sys-none-aarch64",
  "reovim-arch-sys-none-x86-64",
  "reovim-kabi-platform",
-]
-
-[[package]]
-name = "reovim-subsys-domain"
-version = "0.16.0-dev"
-dependencies = [
- "reovim-lib-ds",
 ]
 
 [[package]]
@@ -325,10 +321,12 @@ dependencies = [
  "reovim-arch",
  "reovim-arch-floor-linux-aarch64",
  "reovim-arch-floor-linux-x86-64",
+ "reovim-lib-ds",
  "reovim-platform-linux-native",
  "reovim-system-kernel",
  "reovim-uapi-abi",
  "reovim-uapi-driver-macros",
+ "reovim-uapi-mm",
  "reovim-uapi-module-macros",
  "reovim-uapi-protocol",
 ]

@@ -19,6 +19,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-arch"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-arch-sys-linux-aarch64",
+ "reovim-arch-sys-linux-x86-64",
+ "reovim-arch-sys-none-aarch64",
+ "reovim-arch-sys-none-x86-64",
+ "reovim-kabi-panic",
+ "reovim-kabi-platform",
+ "reovim-lib-ds",
+ "reovim-testrt",
+ "reovim-uapi-panic",
+]
+
+[[package]]
 name = "reovim-arch-floor-linux-aarch64"
 version = "0.16.0-dev"
 dependencies = [
@@ -37,6 +52,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-arch-floor-none-aarch64"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-arch-sys-none-aarch64",
+ "reovim-kabi-panic",
+ "reovim-uapi-panic",
+]
+
+[[package]]
+name = "reovim-arch-floor-none-x86-64"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-arch-sys-none-x86-64",
+ "reovim-kabi-panic",
+ "reovim-uapi-panic",
+]
+
+[[package]]
 name = "reovim-arch-sys-linux-aarch64"
 version = "0.16.0-dev"
 dependencies = [
@@ -47,6 +80,22 @@ dependencies = [
 name = "reovim-arch-sys-linux-x86-64"
 version = "0.16.0-dev"
 dependencies = [
+ "reovim-testrt",
+]
+
+[[package]]
+name = "reovim-arch-sys-none-aarch64"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-kabi-platform",
+ "reovim-testrt",
+]
+
+[[package]]
+name = "reovim-arch-sys-none-x86-64"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-kabi-platform",
  "reovim-testrt",
 ]
 
@@ -87,11 +136,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-os"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-arch-floor-linux-aarch64",
+ "reovim-arch-floor-linux-x86-64",
+ "reovim-arch-floor-none-aarch64",
+ "reovim-arch-floor-none-x86-64",
+ "reovim-editor-core",
+ "reovim-lib-ds",
+ "reovim-platform-linux-native",
+ "reovim-platform-stub-none",
+ "reovim-server-rt",
+ "reovim-system-kernel",
+ "reovim-uapi",
+]
+
+[[package]]
 name = "reovim-platform-linux-native"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-arch-sys-linux-aarch64",
  "reovim-arch-sys-linux-x86-64",
+ "reovim-kabi-platform",
+]
+
+[[package]]
+name = "reovim-platform-stub-none"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-arch-sys-none-aarch64",
+ "reovim-arch-sys-none-x86-64",
  "reovim-kabi-platform",
 ]
 
