@@ -138,11 +138,16 @@ if [ "$NO_BACKUP" -eq 1 ]; then
 else
     install_command="${INSTALL_SCRIPT#$ROOT/} $bootfs_abs"
 fi
+preflight_command="${PREFLIGHT_SCRIPT#$ROOT/} --bootfs $bootfs_abs --evidence $tmp_evidence"
+if [ "$SKIP_QEMU" -eq 1 ]; then
+    preflight_command="$preflight_command --skip-qemu"
+fi
 awk \
     -v bootfs="$bootfs_abs" \
     -v installed="$installed" \
     -v bytes="$bytes" \
     -v install_command="$install_command" \
+    -v preflight_command="$preflight_command" \
     -v sha256="$installed_sha" '
 function write_media_section() {
     print "";
@@ -170,6 +175,10 @@ function write_media_section() {
 }
 /^- Image install command:/ {
     print "- Image install command: " install_command;
+    next;
+}
+/^- Preflight command:/ {
+    print "- Preflight command: " preflight_command;
     next;
 }
 { print }
