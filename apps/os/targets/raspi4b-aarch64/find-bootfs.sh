@@ -67,6 +67,7 @@ scan_mounted_fat() {
 
     if [ "$found" -ne 0 ]; then
         printf 'no mounted Raspberry Pi 4 bootfs candidates found\n' >&2
+        printf 'next=mount the Pi 4 boot partition or pass candidate DIR paths explicitly\n' >&2
     fi
 
     return "$found"
@@ -86,6 +87,7 @@ if [ "$#" -gt 0 ]; then
     done
     if [ "$found" -ne 0 ]; then
         printf 'no Raspberry Pi 4 bootfs candidates found\n' >&2
+        printf 'next=pass a mounted Pi 4 boot partition containing start4.elf, fixup4.dat, and bcm2711-rpi-4-b.dtb\n' >&2
     fi
     exit "$found"
 fi

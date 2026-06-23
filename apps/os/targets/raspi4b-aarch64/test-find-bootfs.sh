@@ -53,5 +53,9 @@ if "$FIND_SCRIPT" "$bad" >"$tmp_root/bad.out" 2>"$tmp_root/bad.err"; then
     cat "$tmp_root/bad.out" >&2
     exit 1
 fi
+expect_contains \
+    "$(cat "$tmp_root/bad.err")" \
+    "next=pass a mounted Pi 4 boot partition containing start4.elf, fixup4.dat, and bcm2711-rpi-4-b.dtb" \
+    "bad explicit candidate next action"
 
 printf 'bootfs discovery smoke ok\n'

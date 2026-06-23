@@ -61,6 +61,7 @@ FIND
 cat >"$tmp_find_none" <<'FIND'
 #!/usr/bin/env bash
 printf 'no mounted Raspberry Pi 4 bootfs candidates found\n' >&2
+printf 'next=mount the Pi 4 boot partition or pass candidate DIR paths explicitly\n' >&2
 exit 1
 FIND
 chmod +x "$tmp_find_one" "$tmp_find_many" "$tmp_find_none"
@@ -135,6 +136,7 @@ if REOVIM_FIND_BOOTFS_SCRIPT="$tmp_find_none" \
     exit 1
 fi
 expect_contains "$(cat "$tmp_root/auto-none.err")" "auto bootfs discovery failed" "auto no candidates failure"
+expect_contains "$(cat "$tmp_root/auto-none.err")" "next=mount the Pi 4 boot partition or pass candidate DIR paths explicitly" "auto no candidates next action"
 if [ -e "$tmp_evidence_auto_none" ]; then
     printf 'error: missing-candidate auto discovery published evidence\n' >&2
     exit 1

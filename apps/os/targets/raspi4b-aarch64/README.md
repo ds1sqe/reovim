@@ -55,7 +55,8 @@ seed includes `media_prepare=ok`, the installed `kernel8.img` path, byte count,
 and SHA-256, and the validator compares those installed-media values with the
 seeded image identity. Use this path for the real HDMI plus USB-keyboard proof.
 Do not use `--skip-qemu` for final proof preparation: it is a helper-smoke mode
-only, and completed evidence with `qemu_smoke=skipped` is rejected.
+only, and completed evidence with `qemu_smoke=skipped` or a remaining
+`Preflight warning:` row is rejected.
 
 To find mounted Pi 4 boot partition candidates before preparing media:
 
@@ -65,7 +66,10 @@ apps/os/targets/raspi4b-aarch64/find-bootfs.sh
 
 The discovery helper is read-only. It scans mounted FAT-like filesystems and
 prints only candidates that pass the same Pi 4 firmware checks as
-`check-bootfs.sh`.
+`check-bootfs.sh`. If it prints
+`next=mount the Pi 4 boot partition or pass candidate DIR paths explicitly`,
+mount the Pi 4 boot partition or rerun the helper with explicit candidate
+paths before running media preparation.
 
 To build and install the image manually onto a mounted Pi 4 boot partition:
 
@@ -198,7 +202,9 @@ expected disabled-payload `shell.status=error` entries. It also
 requires the terminal `halt` check to print `halt: ok` with no later root-shell
 prompt. It is a textual guard for completed evidence; it does not replace the
 physical HDMI plus USB-keyboard session, and it rejects preflight-only seeds
-that have not gone through media preparation.
+that have not gone through media preparation. It also rejects skipped-QEMU
+helper seeds that still contain a `Preflight warning:` row, even if the
+preflight result line was edited afterward.
 
 To smoke-test the validator:
 
