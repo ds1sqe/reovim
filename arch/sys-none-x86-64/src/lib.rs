@@ -62,6 +62,13 @@ pub use errno::{
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
 pub use sink::install_write_sink;
 
+/// Reads one pending stdin byte without blocking.
+///
+/// OS-mode composition roots use this to keep the root console input loop
+/// shaped like the aarch64 USB-keyboard/UART merge path.
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+pub use uart::try_read_byte as try_read_stdin_byte;
+
 /// The Multiboot1 information-structure pointer the bootloader leaves in `EBX`
 /// at entry.
 ///

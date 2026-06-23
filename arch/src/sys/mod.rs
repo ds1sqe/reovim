@@ -45,6 +45,8 @@ pub use target::{pcie, usb};
 // arch facade and pass plain data into `reovim-system-kernel`.
 #[cfg(target_os = "none")]
 pub use target::install_write_sink;
+#[cfg(target_os = "none")]
+pub use target::try_read_stdin_byte;
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 pub use target::{

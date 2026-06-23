@@ -74,6 +74,14 @@ pub use errno::{
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 pub use sink::install_write_sink;
 
+/// Reads one pending stdin byte without blocking.
+///
+/// This is the composition-root input merge primitive: OS-mode can poll future
+/// device-input providers and UART in one loop instead of blocking inside the
+/// fd-style [`read`] wrapper.
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+pub use uart::try_read_byte as try_read_stdin_byte;
+
 /// The firmware-provided flattened-device-tree (DTB) physical address.
 ///
 /// Relocated into this raw-mechanism crate (SP01 edge inversion): the boot

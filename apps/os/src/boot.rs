@@ -33,6 +33,7 @@ use {
     reovim_system_kernel::{
         color::Color,
         console::{self, RenderSurface},
+        input::{BootKeyboardDecoder, BootKeyboardReport},
         inventory,
     },
 };
@@ -106,6 +107,67 @@ static DEVICES: DeviceStore = DeviceStore(UnsafeCell::new([inventory::EMPTY_DEVI
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 unsafe impl Sync for DeviceStore {}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+struct UsbKeyboardStore(UnsafeCell<UsbKeyboardConsole>);
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+struct UsbKeyboardConsole {
+    decoder: BootKeyboardDecoder,
+    pending: [u8; 8],
+    pending_len: usize,
+    pending_cursor: usize,
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+impl UsbKeyboardConsole {
+    const fn new() -> Self {
+        Self {
+            decoder: BootKeyboardDecoder::new(),
+            pending: [0u8; 8],
+            pending_len: 0,
+            pending_cursor: 0,
+        }
+    }
+
+    fn pop_pending(&mut self) -> Option<u8> {
+        if self.pending_cursor < self.pending_len {
+            let byte = self.pending[self.pending_cursor];
+            self.pending_cursor += 1;
+            return Some(byte);
+        }
+        None
+    }
+
+    fn poll_next_byte(&mut self) -> Option<u8> {
+        let arch_sys::usb::UsbBootKeyboardPoll::Report(report) =
+            arch_sys::usb::poll_boot_keyboard_report()
+        else {
+            return None;
+        };
+        self.pending_len = self
+            .decoder
+            .decode_report(BootKeyboardReport::new(report), &mut self.pending);
+        self.pending_cursor = 0;
+        self.pop_pending()
+    }
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+static USB_KEYBOARD_CONSOLE: UsbKeyboardStore =
+    UsbKeyboardStore(UnsafeCell::new(UsbKeyboardConsole::new()));
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+unsafe impl Sync for UsbKeyboardStore {}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+static USB_KEYBOARD_PROBE_ENABLED: AtomicUsize = AtomicUsize::new(0);
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+static USB_KEYBOARD_LAST_POLL_NANOS: AtomicUsize = AtomicUsize::new(0);
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+const USB_KEYBOARD_POLL_NANOS: usize = 5_000_000;
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 fn device_storage() -> &'static mut [DeviceEntry] {
@@ -325,11 +387,13 @@ fn collect_device_inventory() -> DeviceInventory {
     }
     #[cfg(all(target_os = "none", target_arch = "aarch64"))]
     {
-        inventory::collect_device_inventory(
+        let inventory = inventory::collect_device_inventory(
             dtb_bytes(),
             device_storage(),
             arch_sys::classify_device_compatible,
-        )
+        );
+        configure_usb_keyboard_probe(inventory.devices);
+        inventory
     }
     #[cfg(all(target_os = "none", target_arch = "x86_64"))]
     {
@@ -351,6 +415,10 @@ fn hardware_probe(target: &str, devices: &[DeviceEntry], write: WriteFn) -> Hard
     match target {
         "pcie" => {
             probe_pcie(devices, write);
+            HardwareProbeResult::Handled
+        }
+        "keyboard" | "usb-keyboard" => {
+            probe_usb_keyboard(devices, write);
             HardwareProbeResult::Handled
         }
         _ => HardwareProbeResult::UnknownTarget,
@@ -456,7 +524,18 @@ fn probe_xhci_mmio(mmio: usize, write: WriteFn) {
     probe_write_u32_hex(write, op.configure);
     probe_emit(write, b"\nxhci.enabled_slots=");
     probe_write_u64_dec(write, op.enabled_device_slots as u64);
+    probe_emit(write, b"\nxhci.running=");
+    probe_write_bool(write, op.run_stop);
+    probe_emit(write, b"\nxhci.halted=");
+    probe_write_bool(write, op.halted);
+    probe_emit(write, b"\nxhci.reset_active=");
+    probe_write_bool(write, op.reset_active);
+    probe_emit(write, b"\nxhci.controller_not_ready=");
+    probe_write_bool(write, op.controller_not_ready);
+    probe_emit(write, b"\nxhci.host_system_error=");
+    probe_write_bool(write, op.host_system_error);
     probe_emit(write, b"\n");
+    probe_xhci_memory_plan(caps, write);
 
     let max_probe_ports = core::cmp::min(caps.max_ports, 8);
     let mut port = 1u8;
@@ -482,9 +561,143 @@ fn probe_xhci_mmio(mmio: usize, write: WriteFn) {
     }
 }
 
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn probe_xhci_memory_plan(caps: arch_sys::usb::XhciCapabilities, write: WriteFn) {
+    match arch_sys::usb::xhci_driver_memory_plan(caps) {
+        arch_sys::usb::XhciDriverMemoryStatus::Ready(plan) => {
+            probe_emit(write, b"xhci.memory=planned\n");
+            probe_emit(write, b"xhci.memory.dcbaa=");
+            probe_write_u64_hex(write, plan.dcbaa);
+            probe_emit(write, b"\nxhci.memory.command_ring=");
+            probe_write_u64_hex(write, plan.command_ring);
+            probe_emit(write, b"\nxhci.memory.crcr=");
+            probe_write_u64_hex(write, plan.command_ring_control);
+            probe_emit(write, b"\nxhci.memory.event_ring=");
+            probe_write_u64_hex(write, plan.event_ring);
+            probe_emit(write, b"\nxhci.memory.erst=");
+            probe_write_u64_hex(write, plan.event_ring_segment_table);
+            probe_emit(write, b"\nxhci.memory.erdp=");
+            probe_write_u64_hex(write, plan.event_ring_dequeue_pointer);
+            probe_emit(write, b"\nxhci.memory.max_slots=");
+            probe_write_u64_dec(write, plan.max_slots_enabled as u64);
+            probe_emit(write, b"\nxhci.memory.context_size=");
+            probe_write_u64_dec(write, plan.context_size_bytes as u64);
+            probe_emit(write, b"\nxhci.memory.scratchpads=");
+            probe_write_u64_dec(write, plan.scratchpad_buffers as u64);
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::XhciDriverMemoryStatus::TooManyScratchpads {
+            requested,
+            supported,
+        } => {
+            probe_emit(write, b"xhci.memory=insufficient\n");
+            probe_emit(write, b"xhci.memory.scratchpads.requested=");
+            probe_write_u64_dec(write, requested as u64);
+            probe_emit(write, b"\nxhci.memory.scratchpads.supported=");
+            probe_write_u64_dec(write, supported as u64);
+            probe_emit(write, b"\n");
+        }
+    }
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn probe_usb_keyboard(devices: &[DeviceEntry], write: WriteFn) {
+    probe_emit(write, b"probe usb-keyboard:\n");
+    if !device_inventory_has(
+        devices,
+        reovim_uapi::system::DeviceClass::Bus,
+        "brcm,bcm2711-pcie",
+    ) {
+        probe_emit(write, b"state=unavailable\n");
+        probe_emit(write, b"reason=device-tree-disabled-or-missing\n");
+        return;
+    }
+
+    match arch_sys::usb::poll_boot_keyboard_report() {
+        arch_sys::usb::UsbBootKeyboardPoll::Report(_) => {
+            probe_emit(write, b"state=report-ready\n");
+            probe_emit(write, b"report_bytes=8\n");
+        }
+        arch_sys::usb::UsbBootKeyboardPoll::Pending(pending) => {
+            probe_usb_keyboard_pending(write, pending);
+        }
+    }
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn probe_usb_keyboard_pending(write: WriteFn, pending: arch_sys::usb::UsbBootKeyboardPending) {
+    match pending {
+        arch_sys::usb::UsbBootKeyboardPending::ControllerNotReady => {
+            probe_emit(write, b"state=unavailable\n");
+            probe_emit(write, b"reason=xhci-controller-not-ready\n");
+        }
+        arch_sys::usb::UsbBootKeyboardPending::ControllerResetInProgress => {
+            probe_emit(write, b"state=unavailable\n");
+            probe_emit(write, b"reason=xhci-reset-in-progress\n");
+        }
+        arch_sys::usb::UsbBootKeyboardPending::HostSystemError => {
+            probe_emit(write, b"state=unavailable\n");
+            probe_emit(write, b"reason=xhci-host-system-error\n");
+        }
+        arch_sys::usb::UsbBootKeyboardPending::NoPcieXhciController => {
+            probe_emit(write, b"state=unavailable\n");
+            probe_emit(write, b"reason=no-pcie-xhci-controller\n");
+        }
+        arch_sys::usb::UsbBootKeyboardPending::ControllerBarUnconfigured => {
+            probe_emit(write, b"state=unavailable\n");
+            probe_emit(write, b"reason=xhci-bar-unconfigured\n");
+        }
+        arch_sys::usb::UsbBootKeyboardPending::InvalidXhciCapabilities => {
+            probe_emit(write, b"state=unavailable\n");
+            probe_emit(write, b"reason=xhci-capabilities-invalid\n");
+        }
+        arch_sys::usb::UsbBootKeyboardPending::NoConnectedRootPort => {
+            probe_emit(write, b"state=unavailable\n");
+            probe_emit(write, b"reason=no-connected-root-port\n");
+        }
+        arch_sys::usb::UsbBootKeyboardPending::NeedsControllerInitialization {
+            max_slots,
+            port,
+            speed,
+            link_state,
+        } => {
+            probe_emit(write, b"state=needs-controller-init\n");
+            probe_emit(write, b"max_slots=");
+            probe_write_u64_dec(write, max_slots as u64);
+            probe_emit(write, b"\nport=");
+            probe_write_u64_dec(write, port as u64);
+            probe_emit(write, b"\nspeed=");
+            probe_write_u64_dec(write, speed as u64);
+            probe_emit(write, b"\nlink_state=");
+            probe_write_u64_dec(write, link_state as u64);
+            probe_emit(write, b"\n");
+        }
+        arch_sys::usb::UsbBootKeyboardPending::NeedsEnumeration {
+            port,
+            speed,
+            link_state,
+        } => {
+            probe_emit(write, b"state=needs-enumeration\n");
+            probe_emit(write, b"port=");
+            probe_write_u64_dec(write, port as u64);
+            probe_emit(write, b"\nspeed=");
+            probe_write_u64_dec(write, speed as u64);
+            probe_emit(write, b"\nlink_state=");
+            probe_write_u64_dec(write, link_state as u64);
+            probe_emit(write, b"\n");
+        }
+    }
+}
+
 #[cfg(not(all(target_os = "none", target_arch = "aarch64")))]
 fn probe_pcie(_devices: &[DeviceEntry], write: WriteFn) {
     probe_emit(write, b"probe pcie:\n");
+    probe_emit(write, b"state=unsupported-on-this-target\n");
+}
+
+#[cfg(not(all(target_os = "none", target_arch = "aarch64")))]
+fn probe_usb_keyboard(_devices: &[DeviceEntry], write: WriteFn) {
+    probe_emit(write, b"probe usb-keyboard:\n");
     probe_emit(write, b"state=unsupported-on-this-target\n");
 }
 
@@ -577,11 +790,91 @@ fn tty_read_line(line: &mut [u8]) -> usize {
 }
 
 fn tty_read_byte() -> Option<u8> {
+    #[cfg(all(target_os = "none", target_arch = "aarch64"))]
+    {
+        return read_aarch64_console_byte();
+    }
+
+    #[cfg(all(target_os = "none", target_arch = "x86_64"))]
+    {
+        return read_none_console_byte();
+    }
+
+    #[cfg(not(target_os = "none"))]
+    {
+        return read_fd_stdin_byte();
+    }
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn read_aarch64_console_byte() -> Option<u8> {
+    loop {
+        if let Some(byte) = usb_keyboard_read_byte() {
+            return Some(byte);
+        }
+        if let Some(byte) = arch_sys::try_read_stdin_byte() {
+            return Some(byte);
+        }
+        core::hint::spin_loop();
+    }
+}
+
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+fn read_none_console_byte() -> Option<u8> {
+    loop {
+        if let Some(byte) = arch_sys::try_read_stdin_byte() {
+            return Some(byte);
+        }
+        core::hint::spin_loop();
+    }
+}
+
+#[cfg(not(target_os = "none"))]
+fn read_fd_stdin_byte() -> Option<u8> {
     let mut byte = [0u8; 1];
     match arch_sys::read(0, &mut byte) {
         Ok(1) => Some(byte[0]),
         _ => None,
     }
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn usb_keyboard_read_byte() -> Option<u8> {
+    if USB_KEYBOARD_PROBE_ENABLED.load(Ordering::Acquire) == 0 {
+        return None;
+    }
+    let console = unsafe { &mut *USB_KEYBOARD_CONSOLE.0.get() };
+    if let Some(byte) = console.pop_pending() {
+        return Some(byte);
+    }
+    if !usb_keyboard_poll_due() {
+        return None;
+    }
+    console.poll_next_byte()
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn configure_usb_keyboard_probe(devices: &[DeviceEntry]) {
+    let enabled = device_inventory_has(
+        devices,
+        reovim_uapi::system::DeviceClass::Bus,
+        "brcm,bcm2711-pcie",
+    );
+    USB_KEYBOARD_PROBE_ENABLED.store(enabled as usize, Ordering::Release);
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn usb_keyboard_poll_due() -> bool {
+    let Some(now) = monotonic_nanos() else {
+        return true;
+    };
+    let now = now as usize;
+    let last = USB_KEYBOARD_LAST_POLL_NANOS.load(Ordering::Acquire);
+    if last != 0 && now.wrapping_sub(last) < USB_KEYBOARD_POLL_NANOS {
+        return false;
+    }
+    USB_KEYBOARD_LAST_POLL_NANOS.store(now, Ordering::Release);
+    true
 }
 
 fn console_input_summary() -> ConsoleInputSummary {
