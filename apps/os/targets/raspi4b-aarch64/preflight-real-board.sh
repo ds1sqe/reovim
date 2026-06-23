@@ -32,7 +32,8 @@ Options:
 
 Runs the local checks that should pass before writing real Raspberry Pi 4 boot
 media: no-bootline image build, installer smoke, optional installer dry-run,
-and a QEMU display/UART smoke. QEMU output is not physical USB keyboard proof.
+and a QEMU display/UART/proof smoke. QEMU output is not physical USB keyboard
+proof.
 USAGE
 }
 
@@ -223,10 +224,10 @@ if [ "$SKIP_QEMU" -eq 0 ]; then
         fail "timeout not found; cannot bound QEMU smoke"
     fi
 
-    run_step "boot QEMU raspi4b display/UART smoke"
+    run_step "boot QEMU raspi4b display/UART/proof smoke"
     qemu_log="$(mktemp)"
     set +e
-    timeout 8s qemu-system-aarch64 \
+    printf 'proof\n' | timeout 25s qemu-system-aarch64 \
         -M raspi4b \
         -m 2048 \
         -display none \
@@ -252,6 +253,21 @@ if [ "$SKIP_QEMU" -eq 0 ]; then
         cat "$qemu_log" >&2
         rm -f "$qemu_log"
         fail "QEMU smoke did not report PL011 UART input"
+    fi
+    if ! grep -q '^reovim-os> proof$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke did not echo the proof command"
+    fi
+    if ! grep -q '^proof:$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke did not print the proof checklist"
+    fi
+    if ! grep -q '^  cat /log/dmesg$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include the final log command"
     fi
     qemu_status="passed"
     rm -f "$qemu_log"
