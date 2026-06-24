@@ -463,6 +463,55 @@ fn assert_contains(haystack: &[u8], needle: &[u8]) {
     testrt::check(false, "expected output chunk");
 }
 
+fn find_subslice_from(haystack: &[u8], needle: &[u8], start: usize) -> Option<usize> {
+    let mut i = start;
+    while i + needle.len() <= haystack.len() {
+        let mut match_len = 0usize;
+        while match_len < needle.len() && haystack[i + match_len] == needle[match_len] {
+            match_len += 1;
+        }
+        if match_len == needle.len() {
+            return Some(i);
+        }
+        i += 1;
+    }
+    None
+}
+
+fn assert_proof_commands_match_budget_transcript(output: &[u8]) {
+    let Some(mut pos) = find_subslice_from(output, b"commands:\n", 0) else {
+        testrt::check(false, "proof output has commands section");
+        return;
+    };
+    pos += b"commands:\n".len();
+
+    let Some(end) = find_subslice_from(output, b"terminal:\n", pos) else {
+        testrt::check(false, "proof output has terminal section");
+        return;
+    };
+
+    let mut index = 0usize;
+    while index < PHYSICAL_PROOF_COMMANDS.len() {
+        if pos + 2 > end {
+            testrt::check(false, "proof output has enough command rows");
+            return;
+        }
+        testrt::check_eq(&output[pos..pos + 2], b"  ");
+        pos += 2;
+
+        let command = PHYSICAL_PROOF_COMMANDS[index];
+        if pos + command.len() > end {
+            testrt::check(false, "proof command row is complete");
+            return;
+        }
+        testrt::check_eq(&output[pos..pos + command.len()], command);
+        pos += command.len();
+        index += 1;
+    }
+
+    testrt::check_eq(pos, end);
+}
+
 arch_test!(root_shell_help, {
     run_command(ProfileSummary::new("shell-only", false), b"help\n", None);
     testrt::check_eq(
@@ -588,6 +637,11 @@ arch_test!(root_shell_launch_mount_and_reovim, {
 
     run_command(ProfileSummary::new("appliance", true), b"reovim extra\n", None);
     testrt::check_eq(sink_str(), "reovim: too many arguments\n");
+});
+
+arch_test!(root_shell_physical_proof_commands_match_budget_transcript, {
+    run_command(ProfileSummary::new("shell-only", false), b"proof\n", None);
+    assert_proof_commands_match_budget_transcript(sink_bytes());
 });
 
 arch_test!(root_shell_physical_proof_klog_budget_keeps_no_wrap, {
