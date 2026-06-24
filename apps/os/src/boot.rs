@@ -774,6 +774,7 @@ fn probe_usb_keyboard(devices: &[DeviceEntry], write: WriteFn) {
         store_usb_keyboard_poll_state(USB_KEYBOARD_POLL_DTB_MISSING);
         probe_emit(write, b"state=unavailable\n");
         probe_emit(write, b"reason=device-tree-disabled-or-missing\n");
+        probe_usb_keyboard_manual_next(write, USB_KEYBOARD_POLL_DTB_MISSING);
         return;
     }
 
@@ -785,6 +786,7 @@ fn probe_usb_keyboard(devices: &[DeviceEntry], write: WriteFn) {
         probe_emit(write, b"decoded_bytes=");
         probe_write_u64_dec(write, pending as u64);
         probe_emit(write, b"\n");
+        probe_usb_keyboard_manual_next(write, USB_KEYBOARD_POLL_DECODED_PENDING);
         return;
     }
 
@@ -801,6 +803,7 @@ fn probe_usb_keyboard(devices: &[DeviceEntry], write: WriteFn) {
                     probe_emit(write, b"decoded_bytes=");
                     probe_write_u64_dec(write, bytes as u64);
                     probe_emit(write, b"\n");
+                    probe_usb_keyboard_manual_next(write, USB_KEYBOARD_POLL_REPORT_READY);
                 }
                 BootKeyboardIngest::Backlogged { pending_bytes } => {
                     store_usb_keyboard_poll_state(USB_KEYBOARD_POLL_DECODED_PENDING);
@@ -811,12 +814,15 @@ fn probe_usb_keyboard(devices: &[DeviceEntry], write: WriteFn) {
                     probe_emit(write, b"decoded_bytes=");
                     probe_write_u64_dec(write, pending_bytes as u64);
                     probe_emit(write, b"\n");
+                    probe_usb_keyboard_manual_next(write, USB_KEYBOARD_POLL_DECODED_PENDING);
                 }
             }
         }
         arch_sys::usb::UsbBootKeyboardPoll::Pending(pending) => {
-            store_usb_keyboard_poll_state(usb_keyboard_poll_state_from_pending(pending));
+            let state = usb_keyboard_poll_state_from_pending(pending);
+            store_usb_keyboard_poll_state(state);
             probe_usb_keyboard_pending(write, pending);
+            probe_usb_keyboard_manual_next(write, state);
         }
     }
 }
@@ -968,6 +974,13 @@ fn probe_usb_keyboard_pending(write: WriteFn, pending: arch_sys::usb::UsbBootKey
             probe_emit(write, b"\n");
         }
     }
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+fn probe_usb_keyboard_manual_next(write: WriteFn, poll_state: usize) {
+    probe_emit(write, b"manual_next=");
+    probe_emit(write, usb_keyboard_manual_next_from_poll_state(poll_state));
+    probe_emit(write, b"\n");
 }
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
@@ -3814,6 +3827,31 @@ const fn usb_keyboard_poll_word(state: usize) -> &'static str {
         USB_KEYBOARD_POLL_REPORT_EVENT_MISMATCH => "keyboard-report-event-mismatch",
         USB_KEYBOARD_POLL_REPORT_TRANSFER_FAILED => "keyboard-report-transfer-failed",
         _ => "unknown",
+    }
+}
+
+#[cfg(all(target_os = "none", target_arch = "aarch64"))]
+const fn usb_keyboard_manual_next_from_poll_state(state: usize) -> &'static [u8] {
+    match state {
+        USB_KEYBOARD_POLL_DTB_MISSING
+        | USB_KEYBOARD_POLL_CONTROLLER_NOT_READY
+        | USB_KEYBOARD_POLL_RESET_IN_PROGRESS
+        | USB_KEYBOARD_POLL_HOST_SYSTEM_ERROR
+        | USB_KEYBOARD_POLL_NO_PCIE_XHCI
+        | USB_KEYBOARD_POLL_BAR_UNCONFIGURED
+        | USB_KEYBOARD_POLL_INVALID_CAPS
+        | USB_KEYBOARD_POLL_NO_CONNECTED_PORT => b"probe-pcie",
+        USB_KEYBOARD_POLL_NEEDS_CONTROLLER_INIT => b"probe-xhci-start",
+        USB_KEYBOARD_POLL_NEEDS_ENUMERATION
+        | USB_KEYBOARD_POLL_ENUMERATION_FAILED
+        | USB_KEYBOARD_POLL_REPORT_EVENT_MISMATCH
+        | USB_KEYBOARD_POLL_REPORT_TRANSFER_FAILED => b"probe-xhci-read-keyboard-report",
+        USB_KEYBOARD_POLL_REPORT_PENDING => b"press-usb-key",
+        USB_KEYBOARD_POLL_DECODED_PENDING | USB_KEYBOARD_POLL_REPORT_READY => {
+            b"type-shell-command"
+        }
+        USB_KEYBOARD_POLL_NOT_POLLED | USB_KEYBOARD_POLL_PROBE_DISABLED => b"probe-usb-keyboard",
+        _ => b"probe-usb-keyboard",
     }
 }
 

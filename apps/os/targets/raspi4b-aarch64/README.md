@@ -21,7 +21,7 @@ image=apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img
 bytes=<image-size>
 ```
 
-Current expected size is `448428` bytes.
+Current expected size is `449076` bytes.
 
 Copy `apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img` to the Pi
 4 boot partition as `kernel8.img`, using the normal Raspberry Pi firmware
@@ -374,7 +374,9 @@ Record the full visible output or serial transcript. The key evidence is:
 - `probe pcie` reports the read-only PCIe/root-complex and xHCI discovery
   state without running active xHCI start/enumeration transitions.
 - `probe usb-keyboard` either records a precise lower-provider blocker or queues
-  decoded bytes without consuming shell input.
+  decoded bytes without consuming shell input. It also prints `manual_next=...`
+  with the same next-action vocabulary as `status`, so the operator can stay
+  in the probe flow while bringing up the physical keyboard.
 - `cat /boot/profile` shows `profile=shell-only`, `launch=disabled`,
   `payloads=0`, `input_mode=live`, and the `reovim-os>` prompt identity.
 - `launch` and `reovim` report disabled launch in the shell-only image; this
