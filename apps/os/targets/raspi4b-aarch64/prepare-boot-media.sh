@@ -171,6 +171,13 @@ if [ "$NO_BACKUP" -eq 1 ]; then
 else
     install_command="${INSTALL_SCRIPT#$ROOT/} $bootfs_abs"
 fi
+media_prepare_command="${TARGET_DIR#$ROOT/}/prepare-boot-media.sh --bootfs $bootfs_abs --evidence $EVIDENCE_OUT"
+if [ "$SKIP_QEMU" -eq 1 ]; then
+    media_prepare_command="$media_prepare_command --skip-qemu"
+fi
+if [ "$NO_BACKUP" -eq 1 ]; then
+    media_prepare_command="$media_prepare_command --no-backup"
+fi
 preflight_command="${PREFLIGHT_SCRIPT#$ROOT/} --bootfs $bootfs_abs --evidence $tmp_evidence"
 if [ "$SKIP_QEMU" -eq 1 ]; then
     preflight_command="$preflight_command --skip-qemu"
@@ -180,6 +187,7 @@ awk \
     -v installed="$installed" \
     -v bytes="$bytes" \
     -v install_command="$install_command" \
+    -v media_prepare_command="$media_prepare_command" \
     -v preflight_command="$preflight_command" \
     -v sha256="$installed_sha" '
 function write_media_section() {
@@ -208,6 +216,14 @@ function write_media_section() {
 }
 /^- Image install command:/ {
     print "- Image install command: " install_command;
+    next;
+}
+/^- Media preparation command:/ {
+    print "- Media preparation command: " media_prepare_command;
+    next;
+}
+/^- Boot partition path:/ {
+    print "- Boot partition path: " bootfs;
     next;
 }
 /^- Preflight command:/ {

@@ -32,6 +32,9 @@ bash -n \
     "$TARGET_DIR/test-validate-evidence.sh" \
     "$TARGET_DIR/validate-evidence.sh"
 
+printf '==> system-kernel no_std selftest smoke\n'
+cargo test -p reovim-arch --test fixtures_exec testrt_pilot_all_pass_exits_zero -- --exact
+
 printf '==> bootfs readiness smoke\n'
 "$TARGET_DIR/test-check-bootfs.sh"
 

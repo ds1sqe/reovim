@@ -103,9 +103,13 @@ forbid_re '^  - \[[xX]\] UART input$' 'UART input evidence label is checked'
 forbid_re '^  - \[[xX]\] bootline-script$' 'bootline-script evidence label is checked'
 forbid_re '^- \[[xX]\] FAIL: display/UART/scripted evidence only\.$' 'FAIL result is checked'
 forbid_re '^- Preflight warning:' 'preflight warning row remains in completed evidence'
+forbid_re '<final-evidence-file>' 'placeholder final evidence path remains'
+forbid_re '--skip-qemu' 'skipped-QEMU command argument remains'
 
 require_re '^- Image bytes: [1-9][0-9]*$' 'seeded image byte count'
 require_re '^- Image SHA-256: [0-9a-f]{64}$' 'seeded image SHA-256'
+require_re '^- Media preparation command: apps/os/targets/raspi4b-aarch64/prepare-boot-media\.sh --bootfs .+ --evidence .+$' 'actual media-preparation command'
+require_re '^- Boot partition path: .+$' 'boot partition path'
 require_re '^- Preflight result: preflight=ok qemu_smoke=passed$' 'preflight QEMU proof smoke passed'
 require_re '^- \[[xX]\] HDMI display attached before boot\.$' 'HDMI display attached checkbox'
 require_re '^- \[[xX]\] Physical USB keyboard attached before boot\.$' 'physical USB keyboard attached checkbox'
@@ -168,6 +172,8 @@ require_re '^installed=.+/kernel8\.img$' 'installed kernel8.img path line'
 require_re '^bytes=[1-9][0-9]*$' 'installed kernel8.img byte count line'
 require_re '^sha256=[0-9a-f]{64}$' 'installed kernel8.img SHA-256 line'
 require_count_exact '^- Preflight result:' 'single preflight result line' 1
+require_count_exact '^- Media preparation command:' 'single media-preparation command line' 1
+require_count_exact '^- Boot partition path:' 'single boot partition path line' 1
 require_count_exact '^media_prepare=' 'single media-prep result line' 1
 require_count_exact '^bootfs=' 'single media-prep bootfs path line' 1
 require_count_exact '^installed=' 'single installed kernel8.img path line' 1
@@ -590,6 +596,40 @@ media_sha="$(awk -F= '/^sha256=[0-9a-f]{64}$/ { print $2; exit }' "$EVIDENCE")"
 if [ -n "$image_sha" ] && [ -n "$media_sha" ] && [ "$image_sha" != "$media_sha" ]; then
     printf 'mismatch: image SHA-256 %s != installed SHA-256 %s\n' "$image_sha" "$media_sha" >&2
     missing=1
+fi
+
+media_command_bootfs="$(
+    awk '
+        /^- Media preparation command: apps\/os\/targets\/raspi4b-aarch64\/prepare-boot-media\.sh / {
+            for (i = 1; i <= NF; i++) {
+                if ($i == "--bootfs") {
+                    print $(i + 1)
+                    exit
+                }
+            }
+        }
+    ' "$EVIDENCE"
+)"
+session_bootfs="$(awk -F': ' '/^- Boot partition path: .+$/ { print $2; exit }' "$EVIDENCE")"
+media_bootfs="$(awk -F= '/^bootfs=.+$/ { print $2; exit }' "$EVIDENCE")"
+installed_path="$(awk -F= '/^installed=.+\/kernel8\.img$/ { print $2; exit }' "$EVIDENCE")"
+if [ -n "$media_command_bootfs" ] && [ -n "$media_bootfs" ] && [ "$media_command_bootfs" != "$media_bootfs" ]; then
+    printf 'mismatch: media command bootfs %s != media result bootfs %s\n' "$media_command_bootfs" "$media_bootfs" >&2
+    missing=1
+fi
+if [ -n "$session_bootfs" ] && [ -n "$media_bootfs" ] && [ "$session_bootfs" != "$media_bootfs" ]; then
+    printf 'mismatch: session boot partition path %s != media result bootfs %s\n' "$session_bootfs" "$media_bootfs" >&2
+    missing=1
+fi
+if [ -n "$media_bootfs" ] && [ -n "$installed_path" ]; then
+    case "$media_bootfs" in
+        */) expected_installed="${media_bootfs}kernel8.img" ;;
+        *) expected_installed="$media_bootfs/kernel8.img" ;;
+    esac
+    if [ "$installed_path" != "$expected_installed" ]; then
+        printf 'mismatch: installed path %s != expected %s\n' "$installed_path" "$expected_installed" >&2
+        missing=1
+    fi
 fi
 
 if [ "$missing" -ne 0 ]; then

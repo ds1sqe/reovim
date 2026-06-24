@@ -15,6 +15,7 @@ the shell reports `usb_keyboard=ready` plus
 - Image SHA-256:
 - Image build command:
 - Image install command:
+- Media preparation command:
 - Boot partition path:
 - Preflight command:
 - Preflight result:

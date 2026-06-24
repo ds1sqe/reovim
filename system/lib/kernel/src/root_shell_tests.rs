@@ -192,6 +192,94 @@ fn run_session_command(session: &mut RootShellSession, line: &[u8]) {
     let _ = daemon.run_command_line(session, line);
 }
 
+fn physical_proof_daemon() -> RootDaemon<'static> {
+    RootDaemon::new(
+        ProfileSummary::new("shell-only", false),
+        sample_boot_info(),
+        sample_devices(),
+        sample_payloads(),
+        Some(diagnostics),
+        None,
+        Some(probe_budget_fixture),
+        Some(ready_input_status),
+        "reovim-os> ",
+        sample_boot_image(),
+        ConsoleInputSummary::new(
+            "usb-keyboard+uart-fallback",
+            "live",
+            BootCheckState::Ok,
+            BootCheckState::Ok,
+        ),
+        sink_write,
+    )
+}
+
+const USB_LINE_SOURCE_AUDIT: &[u8] =
+    b"input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n";
+
+const PHYSICAL_PROOF_COMMANDS: &[&[u8]] = &[
+    b"proof\n",
+    b"cat /boot/proof\n",
+    b"help\n",
+    b"help clear\n",
+    b"help screentest\n",
+    b"help input\n",
+    b"help proof\n",
+    b"help pwd\n",
+    b"help ls\n",
+    b"help cd\n",
+    b"help cat\n",
+    b"help mount\n",
+    b"help device\n",
+    b"help dmesg\n",
+    b"help status\n",
+    b"help probe\n",
+    b"help launch\n",
+    b"help reovim\n",
+    b"help halt\n",
+    b"cat /boot/help\n",
+    b"clear\n",
+    b"screentest\n",
+    b"pwd\n",
+    b"ls /\n",
+    b"ls /boot\n",
+    b"ls /dev\n",
+    b"ls /log\n",
+    b"mount\n",
+    b"cat /boot/mounts\n",
+    b"device\n",
+    b"cat /boot/memory\n",
+    b"cat /boot/devices\n",
+    b"cd /dev\n",
+    b"pwd\n",
+    b"ls\n",
+    b"cat uart0\n",
+    b"cd /\n",
+    b"cat /boot/image\n",
+    b"status\n",
+    b"cat /boot/status\n",
+    b"input\n",
+    b"cat /boot/input\n",
+    b"probe help\n",
+    b"cat /boot/probes\n",
+    b"probe pcie\n",
+    b"probe usb-keyboard\n",
+    b"cat /boot/profile\n",
+    b"launch\n",
+    b"reovim\n",
+    b"dmesg --stats\n",
+    b"cat /log/stats\n",
+    b"dmesg\n",
+    b"cat /log/dmesg\n",
+];
+
+fn run_physical_proof_command(session: &mut RootShellSession, line: &[u8]) {
+    sink_clear();
+    crate::klog::append_bytes(USB_LINE_SOURCE_AUDIT);
+    let daemon = physical_proof_daemon();
+    let _ = daemon.run_command_line(session, line);
+}
+
 const SAMPLE_DEVICES: [DeviceEntry; 1] = [DeviceEntry {
     class: DeviceClass::Uart,
     mmio_base: 0x1000,
@@ -277,6 +365,83 @@ fn probe_fixture(target: &str, _devices: &[DeviceEntry], write: WriteFn) -> Hard
         }
         _ => HardwareProbeResult::UnknownTarget,
     }
+}
+
+fn probe_budget_fixture(
+    target: &str,
+    _devices: &[DeviceEntry],
+    write: WriteFn,
+) -> HardwareProbeResult {
+    match target {
+        "help" | "list" => {
+            probe_budget_emit(write, b"probe targets:\n");
+            probe_budget_emit(write, b"  pcie\n");
+            probe_budget_emit(write, b"  usb-keyboard (alias: keyboard)\n");
+            probe_budget_emit(
+                write,
+                b"  xhci-read-keyboard-report (alias: usb-keyboard-read-report)\n",
+            );
+            HardwareProbeResult::Handled
+        }
+        "pcie" => {
+            probe_budget_emit(write, b"probe pcie:\n");
+            probe_budget_emit(write, b"state=present\n");
+            probe_budget_emit(write, b"raw_status=0x00000000\nrevision=0x00000000\n");
+            probe_budget_emit(write, b"root_complex=true\nphy_link_up=true\n");
+            probe_budget_emit(write, b"data_link_active=true\nlink_up=true\n");
+            probe_budget_emit(write, b"xhci=present\n");
+            probe_budget_emit(write, b"xhci.bus=1\nxhci.device=0\nxhci.function=0\n");
+            probe_budget_emit(write, b"xhci.vendor=0x00001106\nxhci.device_id=0x00003483\n");
+            probe_budget_emit(write, b"xhci.revision=1\nxhci.mmio=0x600000000\n");
+            probe_budget_emit(write, b"xhci.cap_length=64\nxhci.hci_version=0x00000100\n");
+            probe_budget_emit(write, b"xhci.max_slots=32\nxhci.max_interrupters=8\n");
+            probe_budget_emit(write, b"xhci.max_ports=5\nxhci.doorbell_offset=0x00001000\n");
+            probe_budget_emit(write, b"xhci.runtime_offset=0x00002000\n");
+            probe_budget_emit(write, b"xhci.usbcmd=0x00000001\nxhci.usbsts=0x00000000\n");
+            probe_budget_emit(write, b"xhci.pagesize=0x00000001\nxhci.config=0x00000020\n");
+            probe_budget_emit(write, b"xhci.enabled_slots=1\nxhci.running=true\n");
+            probe_budget_emit(write, b"xhci.halted=false\nxhci.reset_active=false\n");
+            probe_budget_emit(write, b"xhci.controller_not_ready=false\n");
+            probe_budget_emit(write, b"xhci.host_system_error=false\n");
+            probe_budget_emit(write, b"xhci.memory=planned\n");
+            probe_budget_emit(write, b"xhci.memory.dcbaa=0x0000000000100000\n");
+            probe_budget_emit(write, b"xhci.memory.command_ring=0x0000000000101000\n");
+            probe_budget_emit(write, b"xhci.memory.crcr=0x0000000000101001\n");
+            probe_budget_emit(write, b"xhci.memory.event_ring=0x0000000000102000\n");
+            probe_budget_emit(write, b"xhci.memory.control_endpoint_ring=0x0000000000103000\n");
+            probe_budget_emit(
+                write,
+                b"xhci.memory.interrupt_in_endpoint_ring=0x0000000000104000\n",
+            );
+            probe_budget_emit(write, b"xhci.memory.erst=0x0000000000105000\n");
+            probe_budget_emit(write, b"xhci.memory.erdp=0x0000000000102000\n");
+            probe_budget_emit(write, b"xhci.memory.max_slots=32\n");
+            probe_budget_emit(write, b"xhci.memory.context_size=32\n");
+            probe_budget_emit(write, b"xhci.memory.scratchpads=0\n");
+            probe_budget_emit(
+                write,
+                b"xhci.port1.portsc=0x00000203 connected=true enabled=true powered=true speed=2 link_state=0\n",
+            );
+            probe_budget_emit(
+                write,
+                b"xhci.port2.portsc=0x000002a0 connected=false enabled=false powered=true speed=0 link_state=5\n",
+            );
+            HardwareProbeResult::Handled
+        }
+        "usb-keyboard" => {
+            probe_budget_emit(write, b"probe usb-keyboard:\n");
+            probe_budget_emit(write, b"state=report-ready\n");
+            probe_budget_emit(write, b"report_bytes=8\n");
+            probe_budget_emit(write, b"decoded_bytes=1\n");
+            HardwareProbeResult::Handled
+        }
+        _ => HardwareProbeResult::UnknownTarget,
+    }
+}
+
+fn probe_budget_emit(write: WriteFn, bytes: &[u8]) {
+    write(bytes);
+    crate::klog::append_bytes(bytes);
 }
 
 fn halt_fixture() {
@@ -423,6 +588,43 @@ arch_test!(root_shell_launch_mount_and_reovim, {
 
     run_command(ProfileSummary::new("appliance", true), b"reovim extra\n", None);
     testrt::check_eq(sink_str(), "reovim: too many arguments\n");
+});
+
+arch_test!(root_shell_physical_proof_klog_budget_keeps_no_wrap, {
+    crate::klog::reset();
+    crate::klog::append_bytes(
+        b"rootd: boot report\n\
+          [  OK  ] Initialized framebuffer console.\n\
+          geometry=1280x720x32\n\
+          [  OK  ] Installed allocator backend.\n\
+          [  OK  ] Installed scheduler/sync backend.\n\
+          [  OK  ] Discovered 1 memory ranges.\n\
+          [  OK  ] Detected 1 CPUs.\n\
+          [  OK  ] Enumerated 9 devices.\n\
+          [  OK  ] Selected console input source.\n\
+          input=usb-keyboard+uart-fallback mode=live usb_keyboard=ready last_poll=report-ready\n\
+          [  OK  ] USB keyboard input provider ready.\n\
+          [  OK  ] Selected boot profile.\n\
+          profile=shell-only launch=disabled\n\
+          [  OK  ] Reached target root shell.\n",
+    );
+    crate::klog::append_bytes(
+        b"input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready\n",
+    );
+
+    let mut session = RootShellSession::new();
+    let mut index = 0usize;
+    while index < PHYSICAL_PROOF_COMMANDS.len() {
+        run_physical_proof_command(&mut session, PHYSICAL_PROOF_COMMANDS[index]);
+        index += 1;
+    }
+
+    let retained = crate::klog::len();
+    testrt::check_eq(crate::klog::dropped_bytes(), 0usize);
+    testrt::check(
+        retained < (crate::klog::CAPACITY * 3) / 4,
+        "physical proof kernel log keeps headroom",
+    );
 });
 
 arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {

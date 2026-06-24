@@ -65,15 +65,21 @@ nonzero_dropped_log_marker_evidence="$tmp_dir/nonzero-dropped-log-marker.md"
 missing_log_discovery_evidence="$tmp_dir/missing-log-discovery.md"
 preflight_only_evidence="$tmp_dir/preflight-only.md"
 skipped_qemu_evidence="$tmp_dir/skipped-qemu.md"
+skipped_qemu_command_evidence="$tmp_dir/skipped-qemu-command.md"
 skipped_qemu_warning_evidence="$tmp_dir/skipped-qemu-warning.md"
 missing_media_evidence="$tmp_dir/missing-media.md"
 media_byte_mismatch_evidence="$tmp_dir/media-byte-mismatch.md"
 media_sha_mismatch_evidence="$tmp_dir/media-sha-mismatch.md"
+media_command_bootfs_mismatch_evidence="$tmp_dir/media-command-bootfs-mismatch.md"
+session_bootfs_mismatch_evidence="$tmp_dir/session-bootfs-mismatch.md"
+installed_path_mismatch_evidence="$tmp_dir/installed-path-mismatch.md"
 duplicate_image_byte_evidence="$tmp_dir/duplicate-image-byte.md"
 duplicate_media_sha_evidence="$tmp_dir/duplicate-media-sha.md"
 duplicate_preflight_result_evidence="$tmp_dir/duplicate-preflight-result.md"
 duplicate_malformed_preflight_result_evidence="$tmp_dir/duplicate-malformed-preflight-result.md"
 duplicate_installed_path_evidence="$tmp_dir/duplicate-installed-path.md"
+duplicate_media_command_evidence="$tmp_dir/duplicate-media-command.md"
+placeholder_media_command_evidence="$tmp_dir/placeholder-media-command.md"
 validator_output="$tmp_dir/validator.out"
 
 write_passing_evidence() {
@@ -84,6 +90,8 @@ write_passing_evidence() {
         printf '## Session\n\n'
         printf -- '- Image bytes: 433788\n'
         printf -- '- Image SHA-256: abeccca617486102d57d9e25b93f8c59c463003f2f7584b69a3faae5d6ba15b2\n'
+        printf -- '- Media preparation command: apps/os/targets/raspi4b-aarch64/prepare-boot-media.sh --bootfs /media/pi-boot --evidence /tmp/raspi4b-proof.md\n'
+        printf -- '- Boot partition path: /media/pi-boot\n'
         printf -- '- Preflight result: preflight=ok qemu_smoke=passed\n'
         printf -- '- [x] HDMI display attached before boot.\n'
         printf -- '- [x] Physical USB keyboard attached before boot.\n'
@@ -1010,6 +1018,10 @@ cp "$pass_evidence" "$skipped_qemu_evidence"
 sed -i 's/^- Preflight result: preflight=ok qemu_smoke=passed$/- Preflight result: preflight=ok qemu_smoke=skipped/' "$skipped_qemu_evidence"
 expect_failure "$skipped_qemu_evidence" "skipped-qemu"
 
+cp "$pass_evidence" "$skipped_qemu_command_evidence"
+sed -i 's#^- Media preparation command: apps/os/targets/raspi4b-aarch64/prepare-boot-media.sh --bootfs /media/pi-boot --evidence /tmp/raspi4b-proof.md$#- Media preparation command: apps/os/targets/raspi4b-aarch64/prepare-boot-media.sh --bootfs /media/pi-boot --evidence /tmp/raspi4b-proof.md --skip-qemu#' "$skipped_qemu_command_evidence"
+expect_failure "$skipped_qemu_command_evidence" "skipped-qemu-command"
+
 cp "$pass_evidence" "$skipped_qemu_warning_evidence"
 sed -i '/^- Preflight result: preflight=ok qemu_smoke=passed$/a - Preflight warning: completed evidence requires qemu_smoke=passed; rerun without --skip-qemu before physical proof.' "$skipped_qemu_warning_evidence"
 expect_failure "$skipped_qemu_warning_evidence" "skipped-qemu-warning"
@@ -1018,6 +1030,10 @@ cp "$pass_evidence" "$missing_media_evidence"
 sed -i '/^media_prepare=ok$/d' "$missing_media_evidence"
 expect_failure "$missing_media_evidence" "missing-media"
 
+cp "$pass_evidence" "$placeholder_media_command_evidence"
+sed -i 's#^- Media preparation command: apps/os/targets/raspi4b-aarch64/prepare-boot-media.sh --bootfs /media/pi-boot --evidence /tmp/raspi4b-proof.md$#- Media preparation command: apps/os/targets/raspi4b-aarch64/prepare-boot-media.sh --bootfs /media/pi-boot --evidence <final-evidence-file>#' "$placeholder_media_command_evidence"
+expect_failure "$placeholder_media_command_evidence" "placeholder-media-command"
+
 cp "$pass_evidence" "$media_byte_mismatch_evidence"
 sed -i 's/^- Image bytes: 433788$/- Image bytes: 433787/' "$media_byte_mismatch_evidence"
 expect_failure "$media_byte_mismatch_evidence" "media-byte-mismatch"
@@ -1025,6 +1041,18 @@ expect_failure "$media_byte_mismatch_evidence" "media-byte-mismatch"
 cp "$pass_evidence" "$media_sha_mismatch_evidence"
 sed -i 's/^sha256=abeccca617486102d57d9e25b93f8c59c463003f2f7584b69a3faae5d6ba15b2$/sha256=0000000000000000000000000000000000000000000000000000000000000000/' "$media_sha_mismatch_evidence"
 expect_failure "$media_sha_mismatch_evidence" "media-sha-mismatch"
+
+cp "$pass_evidence" "$media_command_bootfs_mismatch_evidence"
+sed -i 's#^- Media preparation command: apps/os/targets/raspi4b-aarch64/prepare-boot-media.sh --bootfs /media/pi-boot --evidence /tmp/raspi4b-proof.md$#- Media preparation command: apps/os/targets/raspi4b-aarch64/prepare-boot-media.sh --bootfs /media/other-pi-boot --evidence /tmp/raspi4b-proof.md#' "$media_command_bootfs_mismatch_evidence"
+expect_failure "$media_command_bootfs_mismatch_evidence" "media-command-bootfs-mismatch"
+
+cp "$pass_evidence" "$session_bootfs_mismatch_evidence"
+sed -i 's#^- Boot partition path: /media/pi-boot$#- Boot partition path: /media/other-pi-boot#' "$session_bootfs_mismatch_evidence"
+expect_failure "$session_bootfs_mismatch_evidence" "session-bootfs-mismatch"
+
+cp "$pass_evidence" "$installed_path_mismatch_evidence"
+sed -i 's#^installed=/media/pi-boot/kernel8.img$#installed=/media/other-pi-boot/kernel8.img#' "$installed_path_mismatch_evidence"
+expect_failure "$installed_path_mismatch_evidence" "installed-path-mismatch"
 
 cp "$pass_evidence" "$duplicate_image_byte_evidence"
 sed -i '/^- Image bytes: 433788$/a - Image bytes: 433787' "$duplicate_image_byte_evidence"
@@ -1045,5 +1073,9 @@ expect_failure "$duplicate_malformed_preflight_result_evidence" "duplicate-malfo
 cp "$pass_evidence" "$duplicate_installed_path_evidence"
 sed -i '\#^installed=/media/pi-boot/kernel8.img$#a installed=/media/other-pi-boot/kernel8.img' "$duplicate_installed_path_evidence"
 expect_failure "$duplicate_installed_path_evidence" "duplicate-installed-path"
+
+cp "$pass_evidence" "$duplicate_media_command_evidence"
+sed -i '/^- Media preparation command: apps\/os\/targets\/raspi4b-aarch64\/prepare-boot-media.sh --bootfs \/media\/pi-boot --evidence \/tmp\/raspi4b-proof.md$/a - Media preparation command: apps/os/targets/raspi4b-aarch64/prepare-boot-media.sh --bootfs /media/other-pi-boot --evidence /tmp/other-proof.md' "$duplicate_media_command_evidence"
+expect_failure "$duplicate_media_command_evidence" "duplicate-media-command"
 
 printf 'evidence validator smoke ok\n'

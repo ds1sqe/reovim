@@ -51,12 +51,16 @@ candidates are found; pass an explicit `--bootfs DIR` in that case.
 The media-prep helper runs preflight, installs the exact built `kernel8.img`,
 verifies the installed image SHA-256 against the built image, and only then
 publishes the evidence seed for the physical session. The published evidence
-seed includes `media_prepare=ok`, the installed `kernel8.img` path, byte count,
-and SHA-256, and the validator compares those installed-media values with the
-seeded image identity. Use this path for the real HDMI plus USB-keyboard proof.
+seed includes the actual `prepare-boot-media.sh` command, `media_prepare=ok`,
+the installed `kernel8.img` path, byte count, and SHA-256, and the validator
+compares those installed-media values with the seeded image identity. It also
+requires the recorded media-prep command, boot partition path, and installed
+`kernel8.img` path to describe the same bootfs. Use this path for the real
+HDMI plus USB-keyboard proof.
 Do not use `--skip-qemu` for final proof preparation: it is a helper-smoke mode
-only, and completed evidence with `qemu_smoke=skipped` or a remaining
-`Preflight warning:` row is rejected.
+only, and completed evidence with `qemu_smoke=skipped`, a recorded
+`--skip-qemu` command argument, or a remaining `Preflight warning:` row is
+rejected.
 
 To find mounted Pi 4 boot partition candidates before preparing media:
 
@@ -104,6 +108,7 @@ apps/os/targets/raspi4b-aarch64/test-target-smokes.sh
 For narrower debugging, the aggregate smoke runs these individual checks:
 
 ```sh
+cargo test -p reovim-arch --test fixtures_exec testrt_pilot_all_pass_exits_zero -- --exact
 apps/os/targets/raspi4b-aarch64/test-check-bootfs.sh
 apps/os/targets/raspi4b-aarch64/test-find-bootfs.sh
 apps/os/targets/raspi4b-aarch64/test-install-image.sh
@@ -113,13 +118,13 @@ apps/os/targets/raspi4b-aarch64/test-prepare-boot-media.sh
 apps/os/targets/raspi4b-aarch64/test-validate-evidence.sh
 ```
 
-The smoke tests build a fresh no-bootline image first, verify this README's
-current expected image size matches the built image, then verify bootfs
-readiness checks, read-only bootfs discovery, dry-run identity output,
-installed image hash, distinct backups after repeated installs, preflight
-evidence generation, proof command and required-fact consistency across the
-runbook/template/generated seed, the full media-prep wrapper, and completed
-evidence validation.
+The smoke tests run the no_std system-kernel selftest fixture, build a fresh
+no-bootline image, verify this README's current expected image size matches
+the built image, then verify bootfs readiness checks, read-only bootfs
+discovery, dry-run identity output, installed image hash, distinct backups
+after repeated installs, preflight evidence generation, proof command and
+required-fact consistency across the runbook/template/generated seed, the full
+media-prep wrapper, and completed evidence validation.
 
 ## Local Preflight
 
@@ -156,7 +161,8 @@ The generated evidence file records the current image path, byte count,
 SHA-256, build/install commands, the preferred media-preparation command, boot
 partition path, and preflight result.
 This is a preflight-only seed; final physical proof still needs
-`prepare-boot-media.sh` to add installed-media identity before
+`prepare-boot-media.sh` to rewrite that media-preparation command with the
+actual final evidence path and add installed-media identity before
 `validate-evidence.sh` can pass.
 
 To smoke-test the evidence-seed path without QEMU or real media:
