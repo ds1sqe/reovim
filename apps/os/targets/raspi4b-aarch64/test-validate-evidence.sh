@@ -32,6 +32,9 @@ missing_ready_log_evidence="$tmp_dir/missing-ready-log.md"
 missing_line_source_evidence="$tmp_dir/missing-line-source.md"
 unpaired_line_source_evidence="$tmp_dir/unpaired-line-source.md"
 missing_manual_next_evidence="$tmp_dir/missing-manual-next.md"
+missing_probe_manual_next_evidence="$tmp_dir/missing-probe-manual-next.md"
+missing_probe_manual_next_checkbox_evidence="$tmp_dir/missing-probe-manual-next-checkbox.md"
+missing_retained_probe_manual_next_evidence="$tmp_dir/missing-retained-probe-manual-next.md"
 missing_vfs_live_source_evidence="$tmp_dir/missing-vfs-live-source.md"
 missing_image_identity_evidence="$tmp_dir/missing-image-identity.md"
 missing_profile_identity_evidence="$tmp_dir/missing-profile-identity.md"
@@ -52,7 +55,9 @@ missing_proof_identity_evidence="$tmp_dir/missing-proof-identity.md"
 missing_proof_screentest_fact_evidence="$tmp_dir/missing-proof-screentest-fact.md"
 missing_proof_ready_log_fact_evidence="$tmp_dir/missing-proof-ready-log-fact.md"
 missing_proof_line_source_fact_evidence="$tmp_dir/missing-proof-line-source-fact.md"
+missing_proof_probe_manual_next_fact_evidence="$tmp_dir/missing-proof-probe-manual-next-fact.md"
 missing_proof_no_wrap_marker_fact_evidence="$tmp_dir/missing-proof-no-wrap-marker-fact.md"
+missing_proof_retained_probe_output_fact_evidence="$tmp_dir/missing-proof-retained-probe-output-fact.md"
 missing_vfs_help_evidence="$tmp_dir/missing-vfs-help.md"
 missing_vfs_help_detail_evidence="$tmp_dir/missing-vfs-help-detail.md"
 missing_vfs_proof_evidence="$tmp_dir/missing-vfs-proof.md"
@@ -216,11 +221,13 @@ write_passing_evidence() {
         printf '  dmesg contains input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready\n'
         printf '  dmesg pairs input.line_source=usb-keyboard usb_bytes>0 fallback_bytes=0 line_bytes>0 before shell:<command>\n'
         printf '  manual_next=type-shell-command\n'
+        printf '  probe usb-keyboard reports manual_next=type-shell-command\n'
         printf '  detailed help catalog available through /boot/help\n'
         printf '  screentest includes erase-line mode diagnostics\n'
         printf '  kernel log stats available through /log/stats\n'
         printf '  kernel log dropped_bytes=0\n'
         printf '  retained dmesg has no [klog] dropped_bytes marker\n'
+        printf '  retained dmesg includes probe usb-keyboard manual_next output\n'
         printf '  probe catalog available through /boot/probes\n'
         printf '  probe targets include pcie\n'
         printf '  probe targets include usb-keyboard\n'
@@ -308,11 +315,13 @@ write_passing_evidence() {
         printf '  dmesg contains input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready\n'
         printf '  dmesg pairs input.line_source=usb-keyboard usb_bytes>0 fallback_bytes=0 line_bytes>0 before shell:<command>\n'
         printf '  manual_next=type-shell-command\n'
+        printf '  probe usb-keyboard reports manual_next=type-shell-command\n'
         printf '  detailed help catalog available through /boot/help\n'
         printf '  screentest includes erase-line mode diagnostics\n'
         printf '  kernel log stats available through /log/stats\n'
         printf '  kernel log dropped_bytes=0\n'
         printf '  retained dmesg has no [klog] dropped_bytes marker\n'
+        printf '  retained dmesg includes probe usb-keyboard manual_next output\n'
         printf '  probe catalog available through /boot/probes\n'
         printf '  probe targets include pcie\n'
         printf '  probe targets include usb-keyboard\n'
@@ -535,9 +544,10 @@ write_passing_evidence() {
         printf 'xhci.device_id=0x00003483\n'
         printf 'reovim-os> probe usb-keyboard\n'
         printf 'probe usb-keyboard:\n'
-        printf 'state=report-pending\n'
-        printf 'slot_id=1\n'
-        printf 'endpoint_id=3\n'
+        printf 'state=report-ready\n'
+        printf 'report_bytes=8\n'
+        printf 'decoded_bytes=1\n'
+        printf 'manual_next=type-shell-command\n'
         printf 'reovim-os> cat /boot/profile\n'
         printf 'profile=shell-only\n'
         printf 'launch=disabled\n'
@@ -698,6 +708,11 @@ write_passing_evidence() {
         printf 'shell.status=ok\n'
         printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: probe usb-keyboard\n'
+        printf 'probe usb-keyboard:\n'
+        printf 'state=report-ready\n'
+        printf 'report_bytes=8\n'
+        printf 'decoded_bytes=1\n'
+        printf 'manual_next=type-shell-command\n'
         printf 'shell.status=ok\n'
         printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: cat /boot/profile\n'
@@ -749,6 +764,7 @@ write_passing_evidence() {
         printf -- '- [x] `dmesg` contains `input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready`.\n'
         printf -- '- [x] `dmesg` pairs `input.line_source=usb-keyboard` with `fallback_bytes=0` immediately before typed command audit lines.\n'
         printf -- '- [x] `manual_next=type-shell-command`\n'
+        printf -- '- [x] `probe usb-keyboard` reports `manual_next=type-shell-command`.\n'
         printf -- '- [x] `status` / `cat /boot/status` report image/profile identity and live ready source diagnostics.\n'
         printf -- '- [x] `input` / `cat /boot/input` report live input diagnostics.\n'
         printf -- '- [x] `cat /boot/probes` prints the VFS-backed probe catalog.\n'
@@ -760,7 +776,7 @@ write_passing_evidence() {
         printf -- '- [x] `dmesg` has no `[klog] dropped_bytes=` retained-log wrap marker.\n'
         printf -- '- [x] `dmesg` contains `shell: <command>` and `shell.status=ok` audit lines for the typed commands.\n'
         printf -- '- [x] `dmesg` contains `shell.status=error` audit lines for the disabled payload launch commands.\n'
-        printf -- '- [x] `dmesg` contains the `probe usb-keyboard` output or blocker.\n'
+        printf -- '- [x] `dmesg` contains the retained `probe usb-keyboard` output with `manual_next=type-shell-command`.\n'
         printf -- '- [x] `halt` was typed last and printed `halt: ok`.\n'
         printf -- '- [x] No new `reovim-os>` prompt appeared after `halt: ok`.\n\n'
         printf '## Result\n\n'
@@ -866,6 +882,31 @@ cp "$pass_evidence" "$missing_manual_next_evidence"
 sed -i '/^manual_next=type-shell-command$/d' "$missing_manual_next_evidence"
 expect_failure "$missing_manual_next_evidence" "missing-manual-next"
 
+cp "$pass_evidence" "$missing_probe_manual_next_evidence"
+awk '
+    /^probe usb-keyboard:$/ { in_probe = 1; print; next }
+    in_probe && /^manual_next=type-shell-command$/ { in_probe = 0; next }
+    in_probe && /^reovim-os>/ { in_probe = 0 }
+    { print }
+' "$missing_probe_manual_next_evidence" >"$tmp_dir/remove-probe-manual-next.md"
+mv "$tmp_dir/remove-probe-manual-next.md" "$missing_probe_manual_next_evidence"
+expect_failure "$missing_probe_manual_next_evidence" "missing-probe-manual-next"
+
+cp "$pass_evidence" "$missing_probe_manual_next_checkbox_evidence"
+sed -i '/^- \[x\] `probe usb-keyboard` reports `manual_next=type-shell-command`\.$/d' "$missing_probe_manual_next_checkbox_evidence"
+expect_failure "$missing_probe_manual_next_checkbox_evidence" "missing-probe-manual-next-checkbox"
+
+cp "$pass_evidence" "$missing_retained_probe_manual_next_evidence"
+awk '
+    /^reovim-os> dmesg$/ { in_log = 1; print; next }
+    in_log && /^probe usb-keyboard:$/ { in_probe = 1; print; next }
+    in_log && in_probe && /^manual_next=type-shell-command$/ { in_probe = 0; next }
+    in_log && in_probe && /^shell: / { in_probe = 0 }
+    { print }
+' "$missing_retained_probe_manual_next_evidence" >"$tmp_dir/remove-retained-probe-manual-next.md"
+mv "$tmp_dir/remove-retained-probe-manual-next.md" "$missing_retained_probe_manual_next_evidence"
+expect_failure "$missing_retained_probe_manual_next_evidence" "missing-retained-probe-manual-next"
+
 cp "$pass_evidence" "$missing_vfs_live_source_evidence"
 sed -i '\#^reovim-os> cat /boot/status$#d' "$missing_vfs_live_source_evidence"
 expect_failure "$missing_vfs_live_source_evidence" "missing-vfs-live-source"
@@ -966,9 +1007,17 @@ cp "$pass_evidence" "$missing_proof_line_source_fact_evidence"
 sed -i '/^  dmesg pairs input\.line_source=usb-keyboard usb_bytes>0 fallback_bytes=0 line_bytes>0 before shell:<command>$/d' "$missing_proof_line_source_fact_evidence"
 expect_failure "$missing_proof_line_source_fact_evidence" "missing-proof-line-source-fact"
 
+cp "$pass_evidence" "$missing_proof_probe_manual_next_fact_evidence"
+sed -i '/^  probe usb-keyboard reports manual_next=type-shell-command$/d' "$missing_proof_probe_manual_next_fact_evidence"
+expect_failure "$missing_proof_probe_manual_next_fact_evidence" "missing-proof-probe-manual-next-fact"
+
 cp "$pass_evidence" "$missing_proof_no_wrap_marker_fact_evidence"
 sed -i '/^  retained dmesg has no \[klog\] dropped_bytes marker$/d' "$missing_proof_no_wrap_marker_fact_evidence"
 expect_failure "$missing_proof_no_wrap_marker_fact_evidence" "missing-proof-no-wrap-marker-fact"
+
+cp "$pass_evidence" "$missing_proof_retained_probe_output_fact_evidence"
+sed -i '/^  retained dmesg includes probe usb-keyboard manual_next output$/d' "$missing_proof_retained_probe_output_fact_evidence"
+expect_failure "$missing_proof_retained_probe_output_fact_evidence" "missing-proof-retained-probe-output-fact"
 
 cp "$pass_evidence" "$missing_vfs_help_evidence"
 sed -i '\#^reovim-os> cat /boot/help$#d' "$missing_vfs_help_evidence"

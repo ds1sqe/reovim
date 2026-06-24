@@ -75,6 +75,37 @@ require_usb_source_for_shell_command() {
     fi
 }
 
+require_probe_usb_keyboard_manual_next() {
+    if ! awk '
+        /^probe usb-keyboard:$/ { in_probe = 1; next }
+        in_probe && /^manual_next=type-shell-command$/ { found = 1; in_probe = 0; next }
+        in_probe && /^reovim-os>/ { in_probe = 0 }
+        END { exit found ? 0 : 1 }
+    ' "$EVIDENCE"; then
+        printf 'missing: probe usb-keyboard manual_next type-command line\n' >&2
+        missing=1
+    fi
+}
+
+require_retained_probe_usb_keyboard_manual_next() {
+    if ! awk '
+        /^reovim-os> dmesg$/ { in_log = 1; next }
+        /^reovim-os> cat \/log\/dmesg$/ { in_log = 1; next }
+        in_log && /^```$/ { in_log = 0; in_probe = 0; next }
+        in_log && /^probe usb-keyboard:$/ { in_probe = 1; next }
+        in_log && in_probe && /^manual_next=type-shell-command$/ {
+            found = 1
+            in_probe = 0
+            next
+        }
+        in_log && in_probe && /^shell: / { in_probe = 0 }
+        END { exit found ? 0 : 1 }
+    ' "$EVIDENCE"; then
+        printf 'missing: retained dmesg probe usb-keyboard manual_next output\n' >&2
+        missing=1
+    fi
+}
+
 require_count_exact() {
     local pattern="$1"
     local label="$2"
@@ -138,6 +169,7 @@ require_re '^- \[[xX]\] `usb_keyboard_last_poll=report-ready`$' 'USB keyboard lo
 require_re '^- \[[xX]\] `dmesg` contains `input\.usb_keyboard=ready source=usb-keyboard\+uart-fallback last_poll=report-ready`\.$' 'USB keyboard readiness dmesg checkbox'
 require_re '^- \[[xX]\] `dmesg` pairs `input\.line_source=usb-keyboard` with `fallback_bytes=0` immediately before typed command audit lines\.$' 'USB keyboard line-source dmesg checkbox'
 require_re '^- \[[xX]\] `manual_next=type-shell-command`$' 'manual next type-command checkbox'
+require_re '^- \[[xX]\] `probe usb-keyboard` reports `manual_next=type-shell-command`\.$' 'probe manual next type-command checkbox'
 require_re '^- \[[xX]\] `status` / `cat /boot/status` report image/profile identity and live ready source diagnostics\.$' 'status identity/live diagnostics checkbox'
 require_re '^- \[[xX]\] `input` / `cat /boot/input` report live input diagnostics\.$' 'input live diagnostics checkbox'
 require_re '^- \[[xX]\] `cat /boot/probes` prints the VFS-backed probe catalog\.$' 'VFS probe catalog checkbox'
@@ -149,7 +181,7 @@ require_re '^- \[[xX]\] `dmesg --stats` / `cat /log/stats` report kernel log rin
 require_re '^- \[[xX]\] `dmesg` has no `\[klog\] dropped_bytes=` retained-log wrap marker\.$' 'retained dmesg no-wrap-marker checkbox'
 require_re '^- \[[xX]\] `dmesg` contains `shell: <command>` and `shell\.status=ok` audit lines for the typed commands\.$' 'dmesg command/status audit checkbox'
 require_re '^- \[[xX]\] `dmesg` contains `shell\.status=error` audit lines for the disabled payload launch commands\.$' 'dmesg payload-disabled error audit checkbox'
-require_re '^- \[[xX]\] `dmesg` contains the `probe usb-keyboard` output or blocker\.$' 'probe-output dmesg checkbox'
+require_re '^- \[[xX]\] `dmesg` contains the retained `probe usb-keyboard` output with `manual_next=type-shell-command`\.$' 'retained probe-output dmesg checkbox'
 require_re '^- \[[xX]\] `halt` was typed last and printed `halt: ok`\.$' 'terminal halt checkbox'
 require_re '^- \[[xX]\] No new `reovim-os>` prompt appeared after `halt: ok`\.$' 'terminal halt no-prompt checkbox'
 require_re '^- \[[xX]\] `proof` prints the physical input proof checklist\.$' 'proof checklist checkbox'
@@ -408,12 +440,14 @@ require_re '^  usb_keyboard_last_poll=report-ready$' 'proof expected report-read
 require_re '^  dmesg contains input\.usb_keyboard=ready source=usb-keyboard\+uart-fallback last_poll=report-ready$' 'proof expected readiness dmesg fact'
 require_re '^  dmesg pairs input\.line_source=usb-keyboard usb_bytes>0 fallback_bytes=0 line_bytes>0 before shell:<command>$' 'proof expected line-source dmesg fact'
 require_re '^  manual_next=type-shell-command$' 'proof expected manual next fact'
+require_re '^  probe usb-keyboard reports manual_next=type-shell-command$' 'proof expected probe manual next fact'
 require_re '^  shell\.status=ok$' 'proof expected shell status fact'
 require_re '^  detailed help catalog available through /boot/help$' 'proof expected VFS help fact'
 require_re '^  screentest includes erase-line mode diagnostics$' 'proof expected screentest erase-mode fact'
 require_re '^  kernel log stats available through /log/stats$' 'proof expected log stats fact'
 require_re '^  kernel log dropped_bytes=0$' 'proof expected zero dropped log bytes fact'
 require_re '^  retained dmesg has no \[klog\] dropped_bytes marker$' 'proof expected retained dmesg no-wrap-marker fact'
+require_re '^  retained dmesg includes probe usb-keyboard manual_next output$' 'proof expected retained probe output fact'
 require_re '^  probe catalog available through /boot/probes$' 'proof expected VFS probe catalog fact'
 require_re '^  probe targets include pcie$' 'proof expected PCIe probe fact'
 require_re '^  probe targets include usb-keyboard$' 'proof expected USB keyboard probe fact'
@@ -434,6 +468,7 @@ require_re '^xhci=present$' 'PCIe xHCI present state'
 require_re '^reovim-os> probe usb-keyboard$' 'USB keyboard probe command in pasted transcript'
 require_re '^probe usb-keyboard:$' 'probe usb-keyboard output header'
 require_re '^state=(report-ready|decoded-pending|report-pending)$' 'USB keyboard probe ready/pending state'
+require_probe_usb_keyboard_manual_next
 require_re '^reovim-os> cat /boot/profile$' 'VFS profile command in pasted transcript'
 require_re '^reovim-os> launch$' 'launch command in pasted transcript'
 require_re '^launch disabled for this profile$' 'shell-only launch disabled output'
@@ -448,6 +483,7 @@ forbid_re '^dropped_bytes=[1-9][0-9]*$' 'nonzero klog dropped bytes'
 forbid_re '^\[klog\] dropped_bytes=[1-9][0-9]*$' 'wrapped dmesg dropped bytes marker'
 require_re '^reovim-os> dmesg$' 'dmesg command in pasted transcript'
 require_re '^reovim-os> cat /log/dmesg$' 'VFS dmesg command in pasted transcript'
+require_retained_probe_usb_keyboard_manual_next
 require_re '^reovim-os> halt$' 'terminal halt command in pasted transcript'
 require_re '^halt: ok$' 'terminal halt output'
 

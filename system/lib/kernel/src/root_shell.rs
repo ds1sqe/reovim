@@ -702,11 +702,13 @@ fn write_boot_proof(daemon: &RootDaemon<'_>) {
         "  dmesg pairs input.line_source=usb-keyboard usb_bytes>0 fallback_bytes=0 line_bytes>0 before shell:<command>",
     );
     daemon.write_line("  manual_next=type-shell-command");
+    daemon.write_line("  probe usb-keyboard reports manual_next=type-shell-command");
     daemon.write_line("  detailed help catalog available through /boot/help");
     daemon.write_line("  screentest includes erase-line mode diagnostics");
     daemon.write_line("  kernel log stats available through /log/stats");
     daemon.write_line("  kernel log dropped_bytes=0");
     daemon.write_line("  retained dmesg has no [klog] dropped_bytes marker");
+    daemon.write_line("  retained dmesg includes probe usb-keyboard manual_next output");
     daemon.write_line("  probe catalog available through /boot/probes");
     daemon.write_line("  probe targets include pcie");
     daemon.write_line("  probe targets include usb-keyboard");

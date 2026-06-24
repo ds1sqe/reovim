@@ -21,7 +21,7 @@ image=apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img
 bytes=<image-size>
 ```
 
-Current expected size is `449076` bytes.
+Current expected size is `449244` bytes.
 
 Copy `apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img` to the Pi
 4 boot partition as `kernel8.img`, using the normal Raspberry Pi firmware
@@ -205,8 +205,9 @@ shell help and erase-line mode diagnostics from `help` / `help clear` /
 `cat /boot/memory` / `cat /boot/devices`, relative device-file access from
 `cd /dev` / `ls` / `cat uart0`, hardware-target catalog output from
 `probe help` / `cat /boot/probes`, read-only PCIe/xHCI state from
-`probe pcie`, `probe usb-keyboard` output, shell-only `launch`/`reovim`
-disabled output, kernel log ring stats from `dmesg --stats` /
+`probe pcie`, live and retained `probe usb-keyboard` output including
+`manual_next=type-shell-command`, shell-only `launch`/`reovim` disabled output,
+kernel log ring stats from `dmesg --stats` /
 `cat /log/stats`, and `dmesg` command/status audit lines including the
 expected disabled-payload `shell.status=error` entries. It also
 requires the terminal `halt` check to print `halt: ok` with no later root-shell
@@ -376,7 +377,8 @@ Record the full visible output or serial transcript. The key evidence is:
 - `probe usb-keyboard` either records a precise lower-provider blocker or queues
   decoded bytes without consuming shell input. It also prints `manual_next=...`
   with the same next-action vocabulary as `status`, so the operator can stay
-  in the probe flow while bringing up the physical keyboard.
+  in the probe flow while bringing up the physical keyboard. In completed
+  evidence, this probe block must report `manual_next=type-shell-command`.
 - `cat /boot/profile` shows `profile=shell-only`, `launch=disabled`,
   `payloads=0`, `input_mode=live`, and the `reovim-os>` prompt identity.
 - `launch` and `reovim` report disabled launch in the shell-only image; this
@@ -385,7 +387,8 @@ Record the full visible output or serial transcript. The key evidence is:
   retained bytes, and `dropped_bytes=0` through command and VFS paths.
 - `dmesg` and `cat /log/dmesg` do not print a
   `[klog] dropped_bytes=` retained-log wrap marker.
-- `dmesg` includes the command audit lines, probe output, and the
+- `dmesg` includes the command audit lines, the retained `probe usb-keyboard`
+  output with `manual_next=type-shell-command`, and the
   `input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready`
   transition.
 - `dmesg` pairs `input.line_source=usb-keyboard` rows with
@@ -412,6 +415,10 @@ usb_keyboard=ready
 usb_keyboard_last_poll=report-ready
 manual_next=type-shell-command
 ```
+
+  The `probe usb-keyboard` output block must also include
+  `manual_next=type-shell-command`; a generic status-only line is not enough
+  for completed physical-keyboard evidence.
 
 Do not count HDMI framebuffer output, QEMU/VNC display, bootline scripting, or
 UART-typed commands as USB keyboard proof.

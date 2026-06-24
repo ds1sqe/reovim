@@ -168,6 +168,7 @@ Required success facts:
 - [ ] `dmesg` contains `input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready`.
 - [ ] `dmesg` pairs `input.line_source=usb-keyboard` with `fallback_bytes=0` immediately before typed command audit lines.
 - [ ] `manual_next=type-shell-command`
+- [ ] `probe usb-keyboard` reports `manual_next=type-shell-command`.
 - [ ] `status` / `cat /boot/status` report image/profile identity and live ready source diagnostics.
 - [ ] `input` / `cat /boot/input` report live input diagnostics.
 - [ ] `cat /boot/probes` prints the VFS-backed probe catalog.
@@ -179,7 +180,7 @@ Required success facts:
 - [ ] `dmesg` has no `[klog] dropped_bytes=` retained-log wrap marker.
 - [ ] `dmesg` contains `shell: <command>` and `shell.status=ok` audit lines for the typed commands.
 - [ ] `dmesg` contains `shell.status=error` audit lines for the disabled payload launch commands.
-- [ ] `dmesg` contains the `probe usb-keyboard` output or blocker.
+- [ ] `dmesg` contains the retained `probe usb-keyboard` output with `manual_next=type-shell-command`.
 - [ ] `halt` was typed last and printed `halt: ok`.
 - [ ] No new `reovim-os>` prompt appeared after `halt: ok`.
 
