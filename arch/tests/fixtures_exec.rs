@@ -1808,9 +1808,10 @@ fn os_exec_bundle_profile_on_x86_target_runs_block_bundle_bin() {
     let bootline = concat!(
         "cat /boot/profile\n",
         "ls /bin\n",
+        "bundle-ok\n",
+        "ls /bin\n",
         "cat /bin/bundle-ok\n",
         "help bundle-ok\n",
-        "bundle-ok\n",
         "proc execs\n",
         "proc sources\n",
         "cat /proc/syscalls\n",
@@ -1827,17 +1828,17 @@ fn os_exec_bundle_profile_on_x86_target_runs_block_bundle_bin() {
     assert!(
         serial.contains("reovim-os> help\nclear\nscreentest")
             && serial.contains("halt\nbundle-ok\n"),
-        "exec-bundle profile exposes the profile-local /bin descriptor; serial: {serial:?}",
+        "exec-bundle profile exposes the provider-discovered /bin descriptor after admission; serial: {serial:?}",
     );
     assert!(
         serial.contains(
-            "program=bundle-ok\npath=/bin/bundle-ok\nsummary=prove block-bundle /bin admission\ntype=bin\nloader=source-image\nentry_fn=bin_bundle_ok"
+            "program=bundle-ok\npath=/bin/bundle-ok\nsummary=provider-discovered /bin program\ntype=bin\nloader=source-image\nentry_fn=bin_bundle_ok"
         ),
         "cat /bin/bundle-ok prints descriptor metadata; serial: {serial:?}",
     );
     assert!(
-        serial.contains("bundle-ok - prove block-bundle /bin admission"),
-        "help sees the profile-local /bin descriptor; serial: {serial:?}",
+        serial.contains("bundle-ok - provider-discovered /bin program"),
+        "help sees the provider-discovered /bin descriptor; serial: {serial:?}",
     );
     assert!(
         serial.contains("reovim-os> bundle-bin.ok\n"),

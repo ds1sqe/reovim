@@ -518,7 +518,7 @@ pub const fn shell_only_profile() -> BootProfile<'static> {
 }
 
 /// x86-only profile that proves `/bin` admission from the exec-bundle block
-/// provider without changing the normal shell-only operator program set.
+/// provider without shipping the proof bin in the image catalog.
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
 pub const fn exec_bundle_profile() -> BootProfile<'static> {
     BootProfile::new(
@@ -526,7 +526,7 @@ pub const fn exec_bundle_profile() -> BootProfile<'static> {
         false,
         &[],
         &[],
-        bin::exec_bundle_programs(),
+        bin::programs(),
         bin::program_sources(),
         bin::write_vfs_file,
         bin::write_program_help,

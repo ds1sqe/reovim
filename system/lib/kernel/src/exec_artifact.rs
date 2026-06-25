@@ -148,7 +148,7 @@ pub fn load_bin(
     argv0: &str,
 ) -> Result<Option<LoadedBinArtifact>, ExecArtifactLoadError> {
     let Some((_, descriptor)) = program::resolve_argv0(programs, argv0) else {
-        return load_media_discovered_bin(programs, source_store, argv0);
+        return load_provider_discovered_bin(programs, source_store, argv0);
     };
 
     let image = Some(bin_image(descriptor));
@@ -272,19 +272,27 @@ pub fn load_payload(
     Ok(None)
 }
 
-fn load_media_discovered_bin(
+fn load_provider_discovered_bin(
     programs: &'static [ProgramDescriptor],
     source_store: ExecutableSourceStore,
     argv0: &str,
 ) -> Result<Option<LoadedBinArtifact>, ExecArtifactLoadError> {
-    if block::source_media_status().is_none() {
-        return Ok(None);
-    }
-
     let mut path = [0u8; program::MAX_MEDIA_PROGRAM_PATH_BYTES];
     let Some(expected_path) = program::media_program_path_from_argv0(argv0, &mut path) else {
         return Ok(None);
     };
+
+    if block::exec_bundle_status().is_some() {
+        match load_discovered_block_bundle(programs, source_store, argv0, expected_path) {
+            Ok(Some(artifact)) => return Ok(Some(artifact)),
+            Ok(None) => {}
+            Err(error) => return Err(error),
+        }
+    }
+
+    if block::source_media_status().is_none() {
+        return Ok(None);
+    }
 
     let mut artifact_bytes = [0u8; MAX_SOURCE_MEDIA_ARTIFACT_BYTES];
     let read = source_media::read_checked_artifact(
@@ -296,31 +304,89 @@ fn load_media_discovered_bin(
     .map_err(|kind| ExecArtifactLoadError::new(kind, None, ExecArtifactOrigin::None))?;
     let origin = source_media_origin(read.format);
 
-    let descriptor = program::install_media_program(expected_path).map_err(|_| {
-        ExecArtifactLoadError::new(
-            ExecArtifactLoadErrorKind::SourceMediaInstallFailed,
-            None,
-            origin,
-        )
-    })?;
+    let descriptor = install_discovered_bin_source(
+        expected_path,
+        read.artifact.source_bytes,
+        origin,
+        ExecArtifactLoadErrorKind::SourceMediaInstallFailed,
+    )?;
+    load_installed_discovered_bin(programs, source_store, argv0, descriptor, origin).map(Some)
+}
+
+fn load_discovered_block_bundle(
+    programs: &'static [ProgramDescriptor],
+    source_store: ExecutableSourceStore,
+    argv0: &str,
+    expected_path: &str,
+) -> Result<Option<LoadedBinArtifact>, ExecArtifactLoadError> {
+    let mut artifact_bytes = [0u8; MAX_SOURCE_MEDIA_ARTIFACT_BYTES];
+    let read = match exec_bundle::read_checked_artifact(
+        SourceArtifactNamespace::Bin,
+        expected_path,
+        &mut artifact_bytes,
+    ) {
+        Ok(read) => read,
+        Err(exec_bundle::ExecBundleReadError::Unavailable) => return Ok(None),
+        Err(error) => {
+            return Err(ExecArtifactLoadError::new(
+                exec_bundle_error_kind(error),
+                None,
+                ExecArtifactOrigin::BlockBundle,
+            ));
+        }
+    };
+
+    let descriptor = install_discovered_bin_source(
+        expected_path,
+        read.artifact.source_bytes,
+        ExecArtifactOrigin::BlockBundle,
+        ExecArtifactLoadErrorKind::BlockBundleInstallFailed,
+    )?;
+    load_installed_discovered_bin(
+        programs,
+        source_store,
+        argv0,
+        descriptor,
+        ExecArtifactOrigin::BlockBundle,
+    )
+    .map(Some)
+}
+
+fn install_discovered_bin_source(
+    expected_path: &str,
+    source_bytes: &[u8],
+    origin: ExecArtifactOrigin,
+    install_error: ExecArtifactLoadErrorKind,
+) -> Result<&'static ProgramDescriptor, ExecArtifactLoadError> {
+    let descriptor = program::install_media_program(expected_path)
+        .map_err(|_| ExecArtifactLoadError::new(install_error, None, origin))?;
     let image = Some(bin_image(descriptor));
     source_store::install_source(
         SourceArtifactNamespace::Bin,
         descriptor.image.source_path(),
-        read.artifact.source_bytes,
+        source_bytes,
     )
-    .map_err(|_| {
-        ExecArtifactLoadError::new(
-            ExecArtifactLoadErrorKind::SourceMediaInstallFailed,
-            image,
-            origin,
-        )
-    })?;
+    .map_err(|_| ExecArtifactLoadError::new(install_error, image, origin))?;
+    Ok(descriptor)
+}
 
+fn load_installed_discovered_bin(
+    programs: &'static [ProgramDescriptor],
+    source_store: ExecutableSourceStore,
+    argv0: &str,
+    descriptor: &'static ProgramDescriptor,
+    origin: ExecArtifactOrigin,
+) -> Result<LoadedBinArtifact, ExecArtifactLoadError> {
+    let image = Some(bin_image(descriptor));
     match program::load_argv0(programs, source_store, argv0) {
-        Ok(Some(program)) => Ok(Some(LoadedBinArtifact { program, origin })),
+        Ok(Some(program)) => Ok(LoadedBinArtifact { program, origin }),
         Ok(None) | Err(ProgramLoadError::SourceNotFound) => Err(ExecArtifactLoadError::new(
-            ExecArtifactLoadErrorKind::SourceMediaInstallFailed,
+            match origin {
+                ExecArtifactOrigin::BlockBundle => {
+                    ExecArtifactLoadErrorKind::BlockBundleInstallFailed
+                }
+                _ => ExecArtifactLoadErrorKind::SourceMediaInstallFailed,
+            },
             image,
             origin,
         )),

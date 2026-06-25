@@ -629,6 +629,53 @@ arch_test!(exec_loader_loads_missing_bin_source_from_exec_bundle_catalog, {
     clear_source_media();
 });
 
+arch_test!(exec_loader_discovers_bin_descriptor_from_exec_bundle, {
+    proc::reset();
+    reset();
+    reset_installed_sources();
+    clear_exec_bundle();
+    clear_source_media();
+    install_exec_bundle(EXEC_BUNDLE_BIN_CATALOG);
+
+    let loaded = load_bin_program(&[], program_store(&[]), "nosource")
+        .expect("exec-bundle-discovered /bin descriptor loads");
+    testrt::check_eq(loaded.descriptor.name, "nosource");
+    testrt::check_eq(loaded.descriptor.path, "/bin/nosource");
+    testrt::check_eq(loaded.descriptor.summary, "provider-discovered /bin program");
+    testrt::check_eq(loaded.descriptor.entry_name, "bin_nosource");
+    testrt::check_eq(loaded.source_path, "/bin/nosource");
+    testrt::check_eq(loaded.source_bytes(), MEDIA_BIN_SOURCE);
+
+    let installed = program_store(&[])
+        .find_program("/bin/nosource")
+        .expect("dynamic exec-bundle bin installed source overlay");
+    testrt::check_eq(installed.bytes, MEDIA_BIN_SOURCE);
+
+    let by_path = load_bin_program(&[], program_store(&[]), "/bin/nosource")
+        .expect("exec-bundle-discovered /bin descriptor reloads by absolute path");
+    testrt::check_eq(by_path.descriptor.entry_name, "bin_nosource");
+
+    let mut records = [EMPTY_EXEC_LOAD_RECORD; super::MAX_EXEC_LOAD_RECORDS];
+    let count = snapshot_loads(&mut records);
+    testrt::check_eq(count, 2usize);
+    testrt::check_eq(records[0].argv0(), "nosource");
+    testrt::check_eq(records[0].status, ExecLoadStatus::Ok);
+    testrt::check_eq(records[0].reason, ExecLoadReason::Loaded);
+    testrt::check_eq(records[0].kind, ExecLoadKind::Bin);
+    testrt::check_eq(records[0].origin, ExecArtifactOrigin::BlockBundle);
+    testrt::check_eq(records[0].path, "/bin/nosource");
+    testrt::check_eq(records[0].source_path, "/bin/nosource");
+    testrt::check_eq(records[0].entry_name, "bin_nosource");
+    testrt::check_eq(records[1].argv0(), "/bin/nosource");
+    testrt::check_eq(records[1].reason, ExecLoadReason::Loaded);
+    testrt::check_eq(records[1].origin, ExecArtifactOrigin::InstalledOverlay);
+
+    reset_installed_sources();
+    clear_exec_bundle();
+    clear_source_media();
+    reset();
+});
+
 arch_test!(exec_loader_loads_missing_bin_source_from_source_media_catalog, {
     proc::reset();
     reset();
@@ -673,7 +720,7 @@ arch_test!(exec_loader_discovers_bin_descriptor_from_source_media, {
         .expect("media-discovered /bin descriptor loads from source media");
     testrt::check_eq(loaded.descriptor.name, "media-bin");
     testrt::check_eq(loaded.descriptor.path, "/bin/media-bin");
-    testrt::check_eq(loaded.descriptor.summary, "source media program");
+    testrt::check_eq(loaded.descriptor.summary, "provider-discovered /bin program");
     testrt::check_eq(loaded.descriptor.entry_name, "bin_media_bin");
     testrt::check_eq(loaded.source_path, "/bin/media-bin");
     testrt::check_eq(loaded.source_bytes(), MEDIA_BIN_SOURCE);

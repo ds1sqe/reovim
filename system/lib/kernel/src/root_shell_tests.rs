@@ -1484,13 +1484,13 @@ arch_test!(root_shell_executes_media_discovered_bin, {
 
     sink_clear();
     let _ = daemon.run_shell_line(&mut session, b"help media-bin\n");
-    testrt::check_eq(sink_str(), "media-bin - source media program\n");
+    testrt::check_eq(sink_str(), "media-bin - provider-discovered /bin program\n");
 
     sink_clear();
     let _ = daemon.run_shell_line(&mut session, b"cat /bin/media-bin\n");
     assert_contains(sink_bytes(), b"program=media-bin\n");
     assert_contains(sink_bytes(), b"path=/bin/media-bin\n");
-    assert_contains(sink_bytes(), b"summary=source media program\n");
+    assert_contains(sink_bytes(), b"summary=provider-discovered /bin program\n");
     assert_contains(sink_bytes(), b"entry_fn=bin_media_bin\n");
 
     reset_installed_sources();

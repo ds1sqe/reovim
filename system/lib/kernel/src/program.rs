@@ -32,7 +32,7 @@ const MEDIA_PROGRAM_ID_BASE: usize = 10_000;
 const MAX_MEDIA_PROGRAM_NAME_BYTES: usize = 32;
 pub(crate) const MAX_MEDIA_PROGRAM_PATH_BYTES: usize = MAX_MEDIA_PROGRAM_NAME_BYTES + 5;
 const MAX_MEDIA_PROGRAM_ENTRY_BYTES: usize = MAX_MEDIA_PROGRAM_NAME_BYTES + 4;
-const MEDIA_PROGRAM_SUMMARY: &str = "source media program";
+const MEDIA_PROGRAM_SUMMARY: &str = "provider-discovered /bin program";
 
 /// Borrowed argv for one image-program invocation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
