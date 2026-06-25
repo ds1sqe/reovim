@@ -11,7 +11,7 @@ use {
             self, ExecArtifactImage, ExecArtifactKind, ExecArtifactLoadError,
             ExecArtifactLoadErrorKind, ExecArtifactOrigin,
         },
-        proc::{self, ProcessHandle, ProcessState, SHELL_PID},
+        proc::{self, ProcessHandle, ProcessState, ROOTD_PID, SHELL_PID},
         program::{self, LoadedProgram, ProgramArgvBuffer, ProgramDescriptor, ProgramStatus},
         rootd::{LoadedPayloadProgram, PayloadDescriptor, PayloadLaunchResult},
         source_store::ExecutableSourceStore,
@@ -850,7 +850,34 @@ pub fn spawn_bin_program_with_stdin(
     argv: ProgramArgvBuffer,
     stdin: &[u8],
 ) -> ProcessHandle {
-    let handle = proc::spawn_program(SHELL_PID, program);
+    let handle = spawn_bin_program_for_parent(SHELL_PID, SHELL_PID, program, argv, stdin);
+    handle
+}
+
+/// Starts a rootd-owned `/bin` exec request and leaves it pending for scheduler dispatch.
+#[must_use]
+pub fn spawn_rootd_bin_program_with_stdin(
+    program: LoadedProgram,
+    argv: ProgramArgvBuffer,
+    stdin: &[u8],
+) -> ProcessHandle {
+    spawn_bin_program_for_parent(ROOTD_PID, ROOTD_PID, program, argv, stdin)
+}
+
+fn spawn_bin_program_for_parent(
+    parent_pid: usize,
+    parent_task_id: usize,
+    program: LoadedProgram,
+    argv: ProgramArgvBuffer,
+    stdin: &[u8],
+) -> ProcessHandle {
+    let handle = proc::spawn_child(
+        parent_pid,
+        parent_task_id,
+        program.descriptor.path,
+        program.image_kind.as_str(),
+        program.descriptor.entry_name,
+    );
     with_exec(|exec| {
         exec.store_pending_program(PendingProgramInvocation::new(handle, program, argv, stdin));
     });

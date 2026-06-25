@@ -370,6 +370,28 @@ pub fn reset() {
     with_table(ProcessTable::reset);
 }
 
+/// Rebinds the reserved shell-session process to the active shell image.
+pub fn install_shell_session(
+    program_path: &'static str,
+    loader: &'static str,
+    entry_name: &'static str,
+) {
+    with_table(|table| {
+        table.records[1] = ProcessRecord {
+            pid: SHELL_PID,
+            parent_pid: ROOTD_PID,
+            task_id: SHELL_PID,
+            state: ProcessState::Running,
+            block_reason: BlockReason::None,
+            program_path,
+            loader,
+            entry_name,
+            exit_code: 0,
+        };
+    });
+    sched::install_shell_session_task(program_path);
+}
+
 /// Creates a ready process record for an image-packaged program.
 #[must_use]
 pub fn spawn_program(parent_pid: usize, program: LoadedProgram) -> ProcessHandle {

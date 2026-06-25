@@ -58,9 +58,11 @@ SECTIONS
         __bss_end = .;
     }
 
-    /* Boot stack: 512 KiB above BSS, full-descending from __stack_top. */
+    /* Boot stack: 2 MiB above BSS, full-descending from __stack_top.
+     * The selftest image links stack-heavy kernel fixtures; keep the floor
+     * stack comfortably above retained .bss globals such as platform HANDLE. */
     . = ALIGN(16);
-    . += 0x80000;
+    . += 0x200000;
     __stack_top = .;
 
     /DISCARD/ : {

@@ -454,6 +454,15 @@ pub fn reset_kernel_scheduler() {
     with_kernel_tasks(KernelTaskTable::reset);
 }
 
+/// Rebinds the reserved shell-session task to the active shell image.
+pub fn install_shell_session_task(entry: &'static str) {
+    with_kernel_tasks(|tasks| {
+        tasks.records[1] = KernelTaskRecord::kernel(2, 2, 1, entry);
+        tasks.current_task_id = 2;
+        tasks.remove_ready(2);
+    });
+}
+
 /// Registers a ready task for an image-packaged program.
 #[must_use]
 pub fn register_program_task(

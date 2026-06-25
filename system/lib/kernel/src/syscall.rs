@@ -1203,6 +1203,20 @@ pub fn exec_bin_from_shell_with_stdin(
     ctx
 }
 
+/// Starts a rootd-owned `/bin` exec request with a bounded initial stdin payload.
+#[must_use]
+pub fn exec_bin_from_rootd_with_stdin(
+    program: LoadedProgram,
+    argv: ProgramArgvBuffer,
+    stdin: &[u8],
+) -> SyscallContext {
+    let handle = exec::spawn_rootd_bin_program_with_stdin(program, argv, stdin);
+    let ctx = SyscallContext::from_process(handle);
+    record_context(ctx, SyscallOp::ExecLoad, SyscallStatus::Ok);
+    record_context(ctx, SyscallOp::ExecSpawn, SyscallStatus::Ok);
+    ctx
+}
+
 /// Loads argv0 through exec and starts a root-shell `/bin` exec request.
 pub fn exec_bin_from_shell_argv0(
     programs: &'static [ProgramDescriptor],
@@ -1217,6 +1231,42 @@ pub fn exec_bin_from_shell_argv0(
         }
     };
     exec_bin_from_shell_argv_with_stdin(programs, source_store, argv, &[])
+}
+
+/// Loads argv0 through exec and starts a rootd-owned `/bin` exec request.
+pub fn exec_bin_from_rootd_argv0(
+    programs: &'static [ProgramDescriptor],
+    source_store: ExecutableSourceStore,
+    argv0: &str,
+) -> Result<SyscallContext, exec::ExecLoadError> {
+    let argv = match ProgramArgvBuffer::from_argv0(argv0) {
+        Ok(argv) => argv,
+        Err(_) => {
+            record_syscall(None, SyscallOp::ExecLoad, SyscallStatus::Error);
+            return Err(exec::ExecLoadError::EmptyArgv0);
+        }
+    };
+    exec_bin_from_rootd_argv_with_stdin(programs, source_store, argv, &[])
+}
+
+fn exec_bin_from_rootd_argv_with_stdin(
+    programs: &'static [ProgramDescriptor],
+    source_store: ExecutableSourceStore,
+    argv: ProgramArgvBuffer,
+    stdin: &[u8],
+) -> Result<SyscallContext, exec::ExecLoadError> {
+    let Some(argv0) = argv.argv0() else {
+        record_syscall(None, SyscallOp::ExecLoad, SyscallStatus::Error);
+        return Err(exec::ExecLoadError::EmptyArgv0);
+    };
+    let program = match exec::load_bin_program(programs, source_store, argv0) {
+        Ok(program) => program,
+        Err(error) => {
+            record_syscall(None, SyscallOp::ExecLoad, SyscallStatus::Error);
+            return Err(error);
+        }
+    };
+    Ok(exec_bin_from_rootd_with_stdin(program, argv, stdin))
 }
 
 /// Loads argv[0] through exec and starts a root-shell `/bin` exec request.

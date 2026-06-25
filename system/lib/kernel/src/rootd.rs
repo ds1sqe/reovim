@@ -868,7 +868,7 @@ impl<'a> RootDaemon<'a> {
     fn run_boot_init(&self, session: &mut RootShellSession) -> ProgramStatus {
         klog::append_line("rootd: start /bin/init");
         let target =
-            match syscall::exec_bin_from_shell_argv0(self.programs, self.source_store(), "init") {
+            match syscall::exec_bin_from_rootd_argv0(self.programs, self.source_store(), "init") {
                 Ok(target) => target,
                 Err(error) => {
                     self.write_exec_load_error(error);
@@ -894,7 +894,7 @@ impl<'a> RootDaemon<'a> {
         klog::append_bytes(program.as_bytes());
         klog::append_bytes(b"\n");
         let target =
-            match syscall::exec_bin_from_shell_argv0(self.programs, self.source_store(), program) {
+            match syscall::exec_bin_from_rootd_argv0(self.programs, self.source_store(), program) {
                 Ok(target) => target,
                 Err(error) => {
                     self.write_exec_load_error(error);
@@ -905,6 +905,14 @@ impl<'a> RootDaemon<'a> {
         let status = self.run_pending_programs_until(session, target, None);
         match status {
             ProgramStatus::Ok | ProgramStatus::ExitCode(0) => {
+                proc::install_shell_session(target.program_path, target.loader, target.entry_name);
+                klog::append_bytes(b"shell_session.owner=");
+                klog::append_bytes(target.program_path.as_bytes());
+                klog::append_bytes(b" loader=");
+                klog::append_bytes(target.loader.as_bytes());
+                klog::append_bytes(b" entry_fn=");
+                klog::append_bytes(target.entry_name.as_bytes());
+                klog::append_bytes(b"\n");
                 klog::append_line("shell_target.status=ok")
             }
             ProgramStatus::Halt => klog::append_line("shell_target.status=halt"),

@@ -21,7 +21,7 @@ image=apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img
 bytes=<image-size>
 ```
 
-Current expected size is `881020` bytes.
+Current expected size is `882604` bytes.
 
 Copy `apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img` to the Pi
 4 boot partition as `kernel8.img`, using the normal Raspberry Pi firmware
@@ -140,7 +140,7 @@ The preflight builds the no-bootline image, runs the installer smoke, boots the
 aarch64 QEMU display/UART/proof smoke, and prints the image byte count,
 SHA-256, low-level install command, preferred `prepare-boot-media.sh` command,
 next action, and evidence-template path. The QEMU smoke pipes the `proof`
-command over UART to the exact no-bootline image and requires the root-shell
+command over UART to the exact no-bootline image and requires the in-OS proof
 checklist output. If the boot partition is already mounted, pass it for bootfs
 validation plus an installer dry-run:
 
@@ -214,8 +214,8 @@ kernel log ring stats from `dmesg --stats` /
 `loader=source-image entry_fn=bin_proof` and
 `loader=source-image entry_fn=bin_proc`, and `dmesg` command/status audit
 lines including the expected disabled-payload `shell.status=error` entries. It also
-requires the terminal `halt` check to print `halt: ok` with no later root-shell
-prompt. It is a textual guard for completed evidence; it does not replace the
+requires the terminal `halt` check to print `halt: ok` with no later
+`reovim-os>` prompt. It is a textual guard for completed evidence; it does not replace the
 physical HDMI plus USB-keyboard session, and it rejects preflight-only seeds
 that have not gone through media preparation. It also rejects skipped-QEMU
 helper seeds that still contain a `Preflight warning:` row, even if the
@@ -339,7 +339,7 @@ Record the full visible output or serial transcript. The key evidence is:
 
 - `proof` prints the physical-input proof checklist from the running OS.
 - `cat /boot/proof` prints the same checklist through the kernel VFS.
-- `cat /boot/help` prints the root-shell detailed help catalog through the
+- `cat /boot/help` prints the shell detailed help catalog through the
   kernel VFS.
 - `help dmesg` and `ls /log` show that the log namespace and log-stat command
   path are discoverable from the running shell.

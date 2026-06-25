@@ -1463,12 +1463,15 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     assert!(
         serial.contains("processes:\n- pid=1 ppid=0 task=1 state=running path=rootd")
             && serial.contains("path=rootd exit=0 loader=kernel entry_fn=rootd_main")
+            && serial.contains("pid=2 ppid=1 task=2 state=running path=/bin/sh")
+            && serial.contains("path=/bin/sh exit=0 loader=source-image entry_fn=bin_sh")
             && serial.contains("state=running path=/bin/cat")
             && serial.contains("loader=source-image entry_fn=bin_cat"),
         "cat /proc/processes prints root and current program process; serial: {serial:?}",
     );
     assert!(
         serial.contains("tasks:\n- task=1 pid=1 parent_task=0 state=running entry=rootd")
+            && serial.contains("task=2 pid=2 parent_task=1 state=running entry=/bin/sh")
             && serial.contains("state=running entry=/bin/cat"),
         "cat /proc/tasks prints root and current program task; serial: {serial:?}",
     );

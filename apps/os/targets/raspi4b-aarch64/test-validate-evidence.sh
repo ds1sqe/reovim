@@ -654,7 +654,7 @@ write_passing_evidence() {
         printf 'reovim-os> proc\n'
         printf 'processes:\n'
         printf -- '- pid=1 ppid=0 task=1 state=running path=rootd exit=0 loader=kernel entry_fn=rootd_main\n'
-        printf -- '- pid=2 ppid=1 task=2 state=running path=root-shell exit=0 loader=kernel entry_fn=root_shell\n'
+        printf -- '- pid=2 ppid=1 task=2 state=running path=/bin/sh exit=0 loader=source-image entry_fn=bin_sh\n'
         printf -- '- pid=73 ppid=2 task=73 state=running path=/bin/proc exit=0 loader=source-image entry_fn=bin_proc\n'
         printf 'reovim-os> dmesg\n'
         printf 'dmesg:\n'

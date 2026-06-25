@@ -4,8 +4,9 @@ use {
     super::{
         EMPTY_PROCESS_RECORD, EMPTY_WAIT_RECORD, MAX_PROCESSES, MAX_WAITS, ProcessRecord,
         ProcessState, ROOTD_PID, SHELL_PID, begin_wait, block_process, cancel_wait,
-        dispatch_next_ready_process, exit_process, finish_wait, reset, run_process, snapshot,
-        snapshot_waits, spawn_child, spawn_program, wake_process, yield_process,
+        dispatch_next_ready_process, exit_process, finish_wait, install_shell_session, reset,
+        run_process, snapshot, snapshot_waits, spawn_child, spawn_program, wake_process,
+        yield_process,
     },
     crate::{
         program,
@@ -59,6 +60,28 @@ fn loaded_program(index: usize) -> program::LoadedProgram {
 }
 
 arch_test!(proc_program_task_lifecycle_moves_ready_running_blocked_exited, {
+    reset();
+
+    install_shell_session("/bin/sh", "source-image", "bin_sh");
+
+    let shell = process_record(SHELL_PID);
+    testrt::check_eq(shell.pid, SHELL_PID);
+    testrt::check_eq(shell.parent_pid, ROOTD_PID);
+    testrt::check_eq(shell.task_id, SHELL_PID);
+    testrt::check_eq(shell.state, ProcessState::Running);
+    testrt::check_eq(shell.program_path, "/bin/sh");
+    testrt::check_eq(shell.loader, "source-image");
+    testrt::check_eq(shell.entry_name, "bin_sh");
+
+    let task = task_record(SHELL_PID);
+    testrt::check_eq(task.process_id, SHELL_PID);
+    testrt::check_eq(task.parent_task_id, ROOTD_PID);
+    testrt::check_eq(task.state, KernelTaskState::Running);
+    testrt::check_eq(task.entry, "/bin/sh");
+
+    let scheduler = sched::snapshot_scheduler();
+    testrt::check_eq(scheduler.current_task_id, SHELL_PID);
+
     reset();
 
     let handle = spawn_program(SHELL_PID, loaded_program(0));
