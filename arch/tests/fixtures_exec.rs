@@ -718,6 +718,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "ls /\n",
         "ls /bin\n",
         "cat /bin/help\n",
+        "cat /bin/init\n",
         "cat /bin/clear\n",
         "cat /bin/screentest\n",
         "cat /bin/pwd\n",
@@ -823,7 +824,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     );
     assert!(
         serial.contains(
-            "/bin programs: help, clear, screentest, pwd, ls, cd, cat, read, mount, input, status, proof, device, dmesg, dump, sched, proc, probe, launch, reovim, halt"
+            "/bin programs: help, init, clear, screentest, pwd, ls, cd, cat, read, mount, input, status, proof, device, dmesg, dump, sched, proc, probe, launch, reovim, halt"
         ),
         "help program vocabulary appears; serial: {serial:?}",
     );
@@ -1253,15 +1254,28 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "ls / prints root namespace; serial: {serial:?}",
     );
     assert!(
-        serial.contains("reovim-os> help\nclear\nscreentest")
+        serial.contains("reovim-os> help\ninit\nclear\nscreentest")
             && serial.contains("probe\nlaunch\nreovim\nhalt\n"),
         "ls /bin prints image program namespace; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("init: userland services ready")
+            && serial.contains("[  OK  ]\u{1b}[0m Started /bin/init.")
+            && serial.contains("exec.path=/bin/init")
+            && serial.contains("loader=source-image entry_fn=bin_init"),
+        "boot runs /bin/init through exec and scheduler before shell ready; serial: {serial:?}",
     );
     assert!(
         serial.contains(
             "program=help\npath=/bin/help\nsummary=show /bin program help\ntype=bin\nloader=source-image\nentry_fn=bin_help"
         ),
         "cat /bin/help prints program descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "program=init\npath=/bin/init\nsummary=start userland session services\ntype=bin\nloader=source-image\nentry_fn=bin_init"
+        ),
+        "cat /bin/init prints source-image program descriptor; serial: {serial:?}",
     );
     assert!(
         serial.contains(
@@ -1413,6 +1427,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     );
     assert!(
         serial.contains("sources:\n")
+            && serial.contains("namespace=bin path=/bin/init loader=source-image bytes=")
             && serial.contains("namespace=bin path=/bin/help loader=source-image bytes=")
             && serial.contains("namespace=bin path=/bin/proc loader=source-image bytes="),
         "source-store table exposes /bin source artifacts; serial: {serial:?}",
@@ -1838,7 +1853,7 @@ fn os_exec_bundle_profile_on_x86_target_runs_block_bundle_bin() {
         "first ls /bin exposes preinstalled bundle-ok descriptor before proc media and exec; serial: {serial:?}",
     );
     assert!(
-        serial.contains("reovim-os> help\nclear\nscreentest")
+        serial.contains("reovim-os> help\ninit\nclear\nscreentest")
             && serial.contains("halt\nbundle-ok\n"),
         "exec-bundle profile exposes the provider-discovered /bin descriptor after admission; serial: {serial:?}",
     );

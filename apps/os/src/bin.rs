@@ -19,28 +19,30 @@ use {
 };
 
 const BIN_HELP: usize = 0;
-const BIN_CLEAR: usize = 1;
-const BIN_SCREENTEST: usize = 2;
-const BIN_PWD: usize = 3;
-const BIN_LS: usize = 4;
-const BIN_CD: usize = 5;
-const BIN_CAT: usize = 6;
-const BIN_READ: usize = 7;
-const BIN_MOUNT: usize = 8;
-const BIN_INPUT: usize = 9;
-const BIN_STATUS: usize = 10;
-const BIN_PROOF: usize = 11;
-const BIN_DEVICE: usize = 12;
-const BIN_DMESG: usize = 13;
-const BIN_DUMP: usize = 14;
-const BIN_SCHED: usize = 15;
-const BIN_PROC: usize = 16;
-const BIN_PROBE: usize = 17;
-const BIN_LAUNCH: usize = 18;
-const BIN_REOVIM: usize = 19;
-const BIN_HALT: usize = 20;
+const BIN_INIT: usize = 1;
+const BIN_CLEAR: usize = 2;
+const BIN_SCREENTEST: usize = 3;
+const BIN_PWD: usize = 4;
+const BIN_LS: usize = 5;
+const BIN_CD: usize = 6;
+const BIN_CAT: usize = 7;
+const BIN_READ: usize = 8;
+const BIN_MOUNT: usize = 9;
+const BIN_INPUT: usize = 10;
+const BIN_STATUS: usize = 11;
+const BIN_PROOF: usize = 12;
+const BIN_DEVICE: usize = 13;
+const BIN_DMESG: usize = 14;
+const BIN_DUMP: usize = 15;
+const BIN_SCHED: usize = 16;
+const BIN_PROC: usize = 17;
+const BIN_PROBE: usize = 18;
+const BIN_LAUNCH: usize = 19;
+const BIN_REOVIM: usize = 20;
+const BIN_HALT: usize = 21;
 
 const BIN_HELP_SOURCE_BYTES: &[u8] = include_bytes!("../bins/help.rvs");
+const BIN_INIT_SOURCE_BYTES: &[u8] = include_bytes!("../bins/init.rvs");
 const BIN_PWD_SOURCE_BYTES: &[u8] = include_bytes!("../bins/pwd.rvs");
 const BIN_CLEAR_SOURCE_BYTES: &[u8] = include_bytes!("../bins/clear.rvs");
 const BIN_SCREENTEST_SOURCE_BYTES: &[u8] = include_bytes!("../bins/screentest.rvs");
@@ -92,7 +94,7 @@ const fn source_bytes_bin_artifact(
 }
 
 /// Static `/bin` program catalog shipped by the current `reovim-os` image.
-pub const BIN_PROGRAMS: [ProgramDescriptor; 21] = [
+pub const BIN_PROGRAMS: [ProgramDescriptor; 22] = [
     source_bytes_bin_program(
         BIN_HELP,
         "help",
@@ -100,6 +102,14 @@ pub const BIN_PROGRAMS: [ProgramDescriptor; 21] = [
         "show /bin program help",
         "bin_help",
         BIN_HELP_SOURCE_BYTES,
+    ),
+    source_bytes_bin_program(
+        BIN_INIT,
+        "init",
+        "/bin/init",
+        "start userland session services",
+        "bin_init",
+        BIN_INIT_SOURCE_BYTES,
     ),
     source_bytes_bin_program(
         BIN_CLEAR,
@@ -264,8 +274,9 @@ pub const BIN_PROGRAMS: [ProgramDescriptor; 21] = [
 ];
 
 /// Static `/bin` source artifact store shipped by the current `reovim-os` image.
-pub const BIN_PROGRAM_SOURCES: [ProgramSourceArtifact; 21] = [
+pub const BIN_PROGRAM_SOURCES: [ProgramSourceArtifact; 22] = [
     source_bytes_bin_artifact("/bin/help", BIN_HELP_SOURCE_BYTES),
+    source_bytes_bin_artifact("/bin/init", BIN_INIT_SOURCE_BYTES),
     source_bytes_bin_artifact("/bin/clear", BIN_CLEAR_SOURCE_BYTES),
     source_bytes_bin_artifact("/bin/screentest", BIN_SCREENTEST_SOURCE_BYTES),
     source_bytes_bin_artifact("/bin/pwd", BIN_PWD_SOURCE_BYTES),
@@ -549,6 +560,7 @@ fn write_program_help_entry(
 ) {
     match program.id {
         BIN_HELP => write_help_line(syscalls, prefix, "help [program] - show program help"),
+        BIN_INIT => write_help_line(syscalls, prefix, "init - start userland session services"),
         BIN_CLEAR => {
             write_help_line(syscalls, prefix, "clear - clear framebuffer console and terminal")
         }

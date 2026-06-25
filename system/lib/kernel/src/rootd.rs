@@ -865,6 +865,26 @@ impl<'a> RootDaemon<'a> {
         ProgramStatus::Error
     }
 
+    fn run_boot_init(&self, session: &mut RootShellSession) -> ProgramStatus {
+        klog::append_line("rootd: start /bin/init");
+        let target =
+            match syscall::exec_bin_from_shell_argv0(self.programs, self.source_store(), "init") {
+                Ok(target) => target,
+                Err(error) => {
+                    self.write_exec_load_error(error);
+                    klog::append_line("init.status=error");
+                    return ProgramStatus::Error;
+                }
+            };
+        let status = self.run_pending_programs_until(session, target, None);
+        match status {
+            ProgramStatus::Ok | ProgramStatus::ExitCode(0) => klog::append_line("init.status=ok"),
+            ProgramStatus::Halt => klog::append_line("init.status=halt"),
+            _ => klog::append_line("init.status=error"),
+        }
+        status
+    }
+
     /// Emits the boot-level shell prompt.
     pub fn write_prompt(&self) {
         (self.write)(self.prompt.as_bytes());
@@ -1312,6 +1332,34 @@ pub fn run_root_daemon(cfg: RootBootConfig<'_>) -> ! {
         cfg.console_input,
         cfg.write,
     );
+    let mut session = RootShellSession::new();
+    let init_status = daemon.run_boot_init(&mut session);
+    match init_status {
+        ProgramStatus::Ok | ProgramStatus::ExitCode(0) => {
+            write_boot_status_line(cfg.write, BootCheckState::Ok, b"Started /bin/init.");
+        }
+        ProgramStatus::Halt => {
+            write_boot_status_line(cfg.write, BootCheckState::Warn, b"/bin/init requested halt.");
+            if let Some(halt) = cfg.halt {
+                klog::append_line("rootd: halt callback");
+                klog::append_event_with_source_context(
+                    "rootd",
+                    "boot",
+                    "info",
+                    "halt-callback",
+                    0,
+                    0,
+                );
+                halt();
+            }
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+        _ => {
+            write_boot_status_line(cfg.write, BootCheckState::Warn, b"/bin/init failed.");
+        }
+    }
 
     (cfg.write)(b"reovim system kernel shell ready\n");
     klog::append_line("rootd: shell ready");
@@ -1319,7 +1367,6 @@ pub fn run_root_daemon(cfg: RootBootConfig<'_>) -> ! {
     daemon.write_prompt();
 
     let mut line = [0u8; ROOT_LINE_BYTES];
-    let mut session = RootShellSession::new();
     loop {
         let len = (cfg.read_line)(&mut line);
         if len == 0 {

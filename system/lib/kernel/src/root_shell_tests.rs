@@ -667,7 +667,7 @@ fn missing_chunk_message(needle: &[u8]) -> &'static str {
     if needle == b"reovim root shell\n" {
         return "missing boot help title";
     }
-    if needle == b"/bin programs: help, clear, screentest" {
+    if needle == b"/bin programs: help, init, clear, screentest" {
         return "missing /bin-backed help program list";
     }
     if needle == b"namespace: /bin\n" {
@@ -787,8 +787,11 @@ arch_test!(root_shell_help, {
     run_shell_line_fixture(ProfileSummary::new("shell-only", false), b"help\n", None);
     testrt::check_eq(
         sink_str(),
-        "reovim root shell\n/bin programs: help, clear, screentest, pwd, ls, cd, cat, read, mount, input, status, proof, device, dmesg, dump, sched, proc, probe, launch, reovim, halt\nnamespace: /bin\nusage: help [program]\n",
+        "reovim root shell\n/bin programs: help, init, clear, screentest, pwd, ls, cd, cat, read, mount, input, status, proof, device, dmesg, dump, sched, proc, probe, launch, reovim, halt\nnamespace: /bin\nusage: help [program]\n",
     );
+
+    run_shell_line_fixture(ProfileSummary::new("shell-only", false), b"help init\n", None);
+    testrt::check_eq(sink_str(), "init - start userland session services\n");
 
     run_shell_line_fixture(ProfileSummary::new("shell-only", false), b"help input\n", None);
     testrt::check_eq(sink_str(), "input - print live console input diagnostics\n");
@@ -2065,7 +2068,7 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
 
     run_session_shell_line(&mut session, b"cat /boot/help\n");
     assert_contains(sink_bytes(), b"reovim root shell\n");
-    assert_contains(sink_bytes(), b"/bin programs: help, clear, screentest");
+    assert_contains(sink_bytes(), b"/bin programs: help, init, clear, screentest");
     assert_contains(sink_bytes(), b"namespace: /bin\n");
     assert_contains(sink_bytes(), b"usage: help [program]\n");
     assert_contains(sink_bytes(), b"details:\n");

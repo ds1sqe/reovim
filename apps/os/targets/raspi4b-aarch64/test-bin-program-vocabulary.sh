@@ -13,6 +13,7 @@ trap cleanup EXIT
 flight_log_current_status=""
 expected_bins=(
     help
+    init
     clear
     screentest
     pwd

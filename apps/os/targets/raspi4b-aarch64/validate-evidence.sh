@@ -294,12 +294,13 @@ require_re '^reovim-os> help halt$' 'targeted halt help command in pasted transc
 require_re '^halt - request root daemon shutdown$' 'targeted halt help output'
 require_re '^reovim-os> cat /boot/help$' 'VFS help command in pasted transcript'
 require_count_at_least '^reovim root shell$' 'help root-shell banner through command and VFS' 2
-require_re '^/bin programs: help, clear, screentest, pwd, ls, cd, cat, read, mount, input, status, proof, device, dmesg, dump, sched, proc, probe, launch, reovim, halt$' 'help /bin program catalog'
-require_count_at_least '^/bin programs: help, clear, screentest, pwd, ls, cd, cat, read, mount, input, status, proof, device, dmesg, dump, sched, proc, probe, launch, reovim, halt$' 'help /bin program catalog through command and VFS' 2
+require_re '^/bin programs: help, init, clear, screentest, pwd, ls, cd, cat, read, mount, input, status, proof, device, dmesg, dump, sched, proc, probe, launch, reovim, halt$' 'help /bin program catalog'
+require_count_at_least '^/bin programs: help, init, clear, screentest, pwd, ls, cd, cat, read, mount, input, status, proof, device, dmesg, dump, sched, proc, probe, launch, reovim, halt$' 'help /bin program catalog through command and VFS' 2
 require_count_at_least '^namespace: /bin$' 'help namespace through command and VFS' 2
 require_count_at_least '^usage: help \[program\]$' 'help usage through command and VFS' 2
 require_re '^details:$' 'VFS help detailed catalog header'
 require_re '^  help \[program\] - show program help$' 'VFS help detailed help row'
+require_re '^  init - start userland session services$' 'VFS help detailed init row'
 require_re '^  clear - clear framebuffer console and terminal$' 'VFS help detailed clear row'
 require_re '^  screentest - print renderer diagnostics$' 'VFS help detailed screentest row'
 require_re '^    required rows: el: clean, el1: clean-left, el2: clean-all$' 'VFS help detailed screentest rows'
