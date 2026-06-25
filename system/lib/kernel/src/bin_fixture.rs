@@ -43,7 +43,7 @@ const BIN_HALT: usize = 21;
 
 const BIN_HELP_SOURCE_BYTES: &[u8] =
     b"reovim-source-v1\nreject-argc-greater 2 help: too many arguments\nwrite-help-arg1-or-catalog\n";
-const BIN_INIT_SOURCE_BYTES: &[u8] = b"reovim-source-v1\nreject-argc-greater 1 init: too many arguments\nwrite-stdout-hex 696e69743a20757365726c616e642073657276696365732072656164790a\n";
+const BIN_INIT_SOURCE_BYTES: &[u8] = b"reovim-source-v1\nreject-argc-greater 1 init: too many arguments\nrequest-root-shell\nwrite-stdout-hex 696e69743a20757365726c616e642073657276696365732072656164790a\n";
 const BIN_CLEAR_SOURCE_BYTES: &[u8] =
     b"reovim-source-v1\nreject-argc-greater 1 clear: too many arguments\nclear-console\nwrite-stdout-hex 1b5b324a1b5b48\n";
 const BIN_SCREENTEST_SOURCE_BYTES: &[u8] = concat!(

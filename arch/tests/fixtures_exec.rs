@@ -1260,10 +1260,13 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     );
     assert!(
         serial.contains("init: userland services ready")
+            && serial.contains("Reached target /bin/init.")
             && serial.contains("[  OK  ]\u{1b}[0m Started /bin/init.")
+            && serial.contains("Reached target root shell.")
             && serial.contains("exec.path=/bin/init")
+            && serial.contains("op=session-shell-start status=ok")
             && serial.contains("loader=source-image entry_fn=bin_init"),
-        "boot runs /bin/init through exec and scheduler before shell ready; serial: {serial:?}",
+        "boot runs /bin/init through exec/scheduler/syscall before shell ready; serial: {serial:?}",
     );
     assert!(
         serial.contains(

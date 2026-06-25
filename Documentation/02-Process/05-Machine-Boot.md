@@ -28,6 +28,7 @@ arch::_start
      -> IRQ/timer/memory/device/block/fs init
      -> root daemon
      -> /bin/init through exec/process/scheduler/syscall
+     -> /bin/init requests shell/session startup through typed syscall
      -> tty/CLI
      -> optional payload launch (editor/server/client)
 ```
@@ -77,14 +78,17 @@ appliance:
    pipeline producing the same reovim raw-input records — not an ANSI/termios
    emulation (`01-Architecture/06-OS-Modes.md` §5).
 8. **Root daemon + init + tty.** A first system-kernel supervisor task starts a
-   userland `/bin/init` through exec/process/scheduler/syscall, then exposes a
-   small bash-like Reovim shell for recovery and diagnostics. Rootd owns
+   userland `/bin/init` through exec/process/scheduler/syscall. Rootd exposes a
+   small bash-like Reovim shell for recovery and diagnostics only after
+   `/bin/init` requests shell/session startup through the typed
+   `session-shell-start` syscall; an init that exits without that request
+   leaves boot stopped instead of implicitly entering the shell. Rootd owns
    boot-profile targets, service/payload dispatch, and recovery/headless
-   diagnostics. The current `/bin/init` is the first userland handoff proof; a
-   later cut should move shell/session startup under init instead of rootd
-   owning the interactive loop. The first implementation must boot to a prompt
-   with no editor-core dependency; editor/server/client launch is a registered
-   payload program supplied by the composition root. Bash-like
+   diagnostics. The current `/bin/init` owns the first shell/session policy
+   handoff, but it is not yet `/bin/sh` or a service manager. The first
+   implementation must boot to a prompt with no editor-core dependency;
+   editor/server/client launch is a registered payload program supplied by the
+   composition root. Bash-like
    means familiar prompt, words, and `/bin` programs such as `ls` and `cd`; it
    does **not** mean a second executable implementation inside the shell,
    POSIX shell execution, or a public POSIX face. The system kernel owns only
@@ -217,6 +221,7 @@ arch::_start
      -> publish device-inventory messages
      -> start root daemon
      -> exec /bin/init
+     -> /bin/init requests shell/session start
      -> start tty shell
      -> hand system services + proof to the selected payload launch
 ```
@@ -507,7 +512,7 @@ system-kernel mechanism, not a hot-pluggable device.
 | Behaviour | Fixture |
 |---|---|
 | Proof gate | `appliance` boot with a missing required proof (e.g. no framebuffer) aborts before the root daemon starts the editor/server/client payload and emits `machine.proof.fail`. |
-| Root-daemon independence | A kernel-shell fixture starts `/bin/init` through exec/process/scheduler/syscall, boots to a tty prompt, accepts basic `/bin` programs (`/bin/help`, `/bin/device`, `/bin/dmesg`, `/bin/launch` status), and has no `reovim-editor-core` dependency. |
+| Root-daemon independence | A kernel-shell fixture starts `/bin/init` through exec/process/scheduler/syscall, proves init requested shell/session startup through `session-shell-start`, boots to a tty prompt, accepts basic `/bin` programs (`/bin/help`, `/bin/device`, `/bin/dmesg`, `/bin/launch` status), and has no `reovim-editor-core` dependency. |
 | Interactive VNC smoke | The aarch64 framebuffer-console profile can be booted under QEMU VNC; a human or harness types a basic `/bin` program and observes the prompt/response before any editor payload is launched. |
 | Degraded optional | An optional device entering `Degraded` boots under a profile that allows it and emits the allowing rule. |
 | Generation fence | A keyboard reconnect bumps generation; queued old-generation key events are dropped and modifiers cleared. |

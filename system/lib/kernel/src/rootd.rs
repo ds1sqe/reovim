@@ -1283,7 +1283,19 @@ fn write_boot_log(cfg: &RootBootConfig<'_>) {
         (cfg.write)(b"disabled\n");
         klog::append_bytes(b"disabled\n");
     }
-    write_boot_status_line(cfg.write, BootCheckState::Ok, b"Reached target root shell.");
+    write_boot_status_line(cfg.write, BootCheckState::Ok, b"Reached target /bin/init.");
+}
+
+fn halt_or_park_after_boot_stop(halt: Option<HaltKernel>) -> ! {
+    if let Some(halt) = halt {
+        klog::append_line("rootd: halt callback");
+        klog::append_event_with_source_context("rootd", "boot", "info", "halt-callback", 0, 0);
+        halt();
+    }
+
+    loop {
+        core::hint::spin_loop();
+    }
 }
 
 /// Boots the root daemon shell and never returns.
@@ -1335,29 +1347,26 @@ pub fn run_root_daemon(cfg: RootBootConfig<'_>) -> ! {
     let mut session = RootShellSession::new();
     let init_status = daemon.run_boot_init(&mut session);
     match init_status {
-        ProgramStatus::Ok | ProgramStatus::ExitCode(0) => {
+        ProgramStatus::Ok | ProgramStatus::ExitCode(0) if session.shell_start_requested() => {
             write_boot_status_line(cfg.write, BootCheckState::Ok, b"Started /bin/init.");
+            write_boot_status_line(cfg.write, BootCheckState::Ok, b"Reached target root shell.");
+        }
+        ProgramStatus::Ok | ProgramStatus::ExitCode(0) => {
+            write_boot_status_line(
+                cfg.write,
+                BootCheckState::Warn,
+                b"/bin/init did not request root shell.",
+            );
+            klog::append_line("init.shell_start=missing");
+            halt_or_park_after_boot_stop(cfg.halt);
         }
         ProgramStatus::Halt => {
             write_boot_status_line(cfg.write, BootCheckState::Warn, b"/bin/init requested halt.");
-            if let Some(halt) = cfg.halt {
-                klog::append_line("rootd: halt callback");
-                klog::append_event_with_source_context(
-                    "rootd",
-                    "boot",
-                    "info",
-                    "halt-callback",
-                    0,
-                    0,
-                );
-                halt();
-            }
-            loop {
-                core::hint::spin_loop();
-            }
+            halt_or_park_after_boot_stop(cfg.halt);
         }
         _ => {
             write_boot_status_line(cfg.write, BootCheckState::Warn, b"/bin/init failed.");
+            halt_or_park_after_boot_stop(cfg.halt);
         }
     }
 

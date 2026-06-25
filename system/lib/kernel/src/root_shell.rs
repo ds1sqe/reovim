@@ -17,6 +17,7 @@ const MAX_TOKEN_BYTES: usize = 64;
 /// Mutable root-shell state carried across program dispatch.
 pub struct RootShellSession {
     cwd: PathBuf,
+    shell_start_requested: bool,
 }
 
 impl RootShellSession {
@@ -25,6 +26,7 @@ impl RootShellSession {
     pub const fn new() -> Self {
         Self {
             cwd: PathBuf::root(),
+            shell_start_requested: false,
         }
     }
 
@@ -36,6 +38,16 @@ impl RootShellSession {
 
     pub(crate) fn set_cwd(&mut self, cwd: PathBuf) {
         self.cwd = cwd;
+    }
+
+    pub(crate) fn request_shell_start(&mut self) {
+        self.shell_start_requested = true;
+    }
+
+    /// Whether `/bin/init` requested root-shell/session startup.
+    #[must_use]
+    pub const fn shell_start_requested(&self) -> bool {
+        self.shell_start_requested
     }
 }
 

@@ -260,6 +260,8 @@ pub enum SyscallOp {
     SessionCwdGet,
     /// Current working directory update.
     SessionCwdSet,
+    /// Root shell/session startup request from init.
+    SessionShellStart,
     /// VFS path normalization.
     VfsNormalize,
     /// VFS path lookup.
@@ -363,6 +365,7 @@ impl SyscallOp {
             Self::WaitEnd => "wait-end",
             Self::SessionCwdGet => "session-cwd-get",
             Self::SessionCwdSet => "session-cwd-set",
+            Self::SessionShellStart => "session-shell-start",
             Self::VfsNormalize => "vfs-normalize",
             Self::VfsLookup => "vfs-lookup",
             Self::VfsOpen => "vfs-open",
@@ -1569,6 +1572,31 @@ impl<'daemon, 'session, 'rootd> ProgramSyscalls<'daemon, 'session, 'rootd> {
     pub fn set_cwd(&mut self, path: PathBuf) {
         self.session.set_cwd(path);
         self.record(SyscallOp::SessionCwdSet, SyscallStatus::Ok);
+    }
+
+    /// Requests startup of the root shell/session.
+    pub fn request_shell_start(&mut self) {
+        self.session.request_shell_start();
+        self.record(SyscallOp::SessionShellStart, SyscallStatus::Ok);
+        if let Some(ctx) = self.current {
+            klog::append_bytes(b"syscall path=");
+            klog::append_bytes(ctx.program_path.as_bytes());
+            klog::append_bytes(b" op=");
+            klog::append_bytes(SyscallOp::SessionShellStart.as_str().as_bytes());
+            klog::append_bytes(b" status=ok loader=");
+            klog::append_bytes(ctx.loader.as_bytes());
+            klog::append_bytes(b" entry_fn=");
+            klog::append_bytes(ctx.entry_name.as_bytes());
+            klog::append_bytes(b"\n");
+            klog::append_event_with_source_context(
+                "process",
+                "syscall",
+                "info",
+                "session-shell-start",
+                ctx.pid,
+                ctx.task_id,
+            );
+        }
     }
 
     /// Normalizes a path against the current shell session cwd.

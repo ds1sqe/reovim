@@ -283,6 +283,7 @@ const SOURCE_BYTES_OP_WRITE_DEVICE_INVENTORY: &[u8] = b"write-device-inventory";
 const SOURCE_BYTES_OP_WRITE_BOOT_INPUT: &[u8] = b"write-boot-input";
 const SOURCE_BYTES_OP_WRITE_BOOT_STATUS: &[u8] = b"write-boot-status";
 const SOURCE_BYTES_OP_WRITE_BOOT_PROOF: &[u8] = b"write-boot-proof";
+const SOURCE_BYTES_OP_REQUEST_ROOT_SHELL: &[u8] = b"request-root-shell";
 const SOURCE_BYTES_OP_WRITE_KERNEL_LOG_VIEW: &[u8] = b"write-kernel-log-view";
 const SOURCE_BYTES_OP_WRITE_KERNEL_LOG_STATS: &[u8] = b"write-kernel-log-stats";
 const SOURCE_BYTES_OP_WRITE_DUMP_STATUS: &[u8] = b"write-dump-status";
@@ -991,6 +992,7 @@ fn validate_source_byte_op(line: &'static [u8]) -> bool {
         || line == SOURCE_BYTES_OP_WRITE_BOOT_INPUT
         || line == SOURCE_BYTES_OP_WRITE_BOOT_STATUS
         || line == SOURCE_BYTES_OP_WRITE_BOOT_PROOF
+        || line == SOURCE_BYTES_OP_REQUEST_ROOT_SHELL
         || line == SOURCE_BYTES_OP_WRITE_KERNEL_LOG_VIEW
         || line == SOURCE_BYTES_OP_WRITE_KERNEL_LOG_STATS
         || line == SOURCE_BYTES_OP_WRITE_DUMP_STATUS
@@ -1648,6 +1650,11 @@ fn run_source_byte_op(
 
     if line == SOURCE_BYTES_OP_WRITE_BOOT_PROOF {
         syscalls.write_boot_proof();
+        return Some(ProgramStatus::Ok);
+    }
+
+    if line == SOURCE_BYTES_OP_REQUEST_ROOT_SHELL {
+        syscalls.request_shell_start();
         return Some(ProgramStatus::Ok);
     }
 

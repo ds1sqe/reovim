@@ -1982,7 +1982,13 @@ arch_test!(root_shell_physical_proof_klog_budget_keeps_no_wrap, {
           [  OK  ] USB keyboard input provider ready.\n\
           [  OK  ] Selected boot profile.\n\
           profile=shell-only launch=disabled\n\
+          [  OK  ] Reached target /bin/init.\n\
+          init: userland services ready\n\
+          [  OK  ] Started /bin/init.\n\
           [  OK  ] Reached target root shell.\n",
+    );
+    crate::klog::append_bytes(
+        b"syscall path=/bin/init op=session-shell-start status=ok loader=source-image entry_fn=bin_init\n",
     );
     crate::klog::append_bytes(
         b"input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready\n",
