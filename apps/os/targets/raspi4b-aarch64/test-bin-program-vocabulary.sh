@@ -14,6 +14,7 @@ flight_log_current_status=""
 expected_bins=(
     help
     init
+    sh
     clear
     screentest
     pwd

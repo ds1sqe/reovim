@@ -20,30 +20,32 @@ use {
 
 const BIN_HELP: usize = 0;
 const BIN_INIT: usize = 1;
-const BIN_CLEAR: usize = 2;
-const BIN_SCREENTEST: usize = 3;
-const BIN_PWD: usize = 4;
-const BIN_LS: usize = 5;
-const BIN_CD: usize = 6;
-const BIN_CAT: usize = 7;
-const BIN_READ: usize = 8;
-const BIN_MOUNT: usize = 9;
-const BIN_INPUT: usize = 10;
-const BIN_STATUS: usize = 11;
-const BIN_PROOF: usize = 12;
-const BIN_DEVICE: usize = 13;
-const BIN_DMESG: usize = 14;
-const BIN_DUMP: usize = 15;
-const BIN_SCHED: usize = 16;
-const BIN_PROC: usize = 17;
-const BIN_PROBE: usize = 18;
-const BIN_LAUNCH: usize = 19;
-const BIN_REOVIM: usize = 20;
-const BIN_HALT: usize = 21;
+const BIN_SH: usize = 2;
+const BIN_CLEAR: usize = 3;
+const BIN_SCREENTEST: usize = 4;
+const BIN_PWD: usize = 5;
+const BIN_LS: usize = 6;
+const BIN_CD: usize = 7;
+const BIN_CAT: usize = 8;
+const BIN_READ: usize = 9;
+const BIN_MOUNT: usize = 10;
+const BIN_INPUT: usize = 11;
+const BIN_STATUS: usize = 12;
+const BIN_PROOF: usize = 13;
+const BIN_DEVICE: usize = 14;
+const BIN_DMESG: usize = 15;
+const BIN_DUMP: usize = 16;
+const BIN_SCHED: usize = 17;
+const BIN_PROC: usize = 18;
+const BIN_PROBE: usize = 19;
+const BIN_LAUNCH: usize = 20;
+const BIN_REOVIM: usize = 21;
+const BIN_HALT: usize = 22;
 
 const BIN_HELP_SOURCE_BYTES: &[u8] =
     b"reovim-source-v1\nreject-argc-greater 2 help: too many arguments\nwrite-help-arg1-or-catalog\n";
-const BIN_INIT_SOURCE_BYTES: &[u8] = b"reovim-source-v1\nreject-argc-greater 1 init: too many arguments\nrequest-root-shell\nwrite-stdout-hex 696e69743a20757365726c616e642073657276696365732072656164790a\n";
+const BIN_INIT_SOURCE_BYTES: &[u8] = b"reovim-source-v1\nreject-argc-greater 1 init: too many arguments\nrequest-shell-target /bin/sh\nwrite-stdout-hex 696e69743a20757365726c616e642073657276696365732072656164790a\n";
+const BIN_SH_SOURCE_BYTES: &[u8] = b"reovim-source-v1\nreject-argc-greater 1 sh: too many arguments\nrequest-root-shell\nwrite-stdout-hex 72656f76696d2073797374656d206b65726e656c207368656c6c2072656164790a\n";
 const BIN_CLEAR_SOURCE_BYTES: &[u8] =
     b"reovim-source-v1\nreject-argc-greater 1 clear: too many arguments\nclear-console\nwrite-stdout-hex 1b5b324a1b5b48\n";
 const BIN_SCREENTEST_SOURCE_BYTES: &[u8] = concat!(
@@ -136,7 +138,7 @@ const fn source_bytes_bin_artifact(
 }
 
 /// Static `/bin` program catalog used by system-kernel selftests.
-pub const BIN_PROGRAMS: [ProgramDescriptor; 22] = [
+pub const BIN_PROGRAMS: [ProgramDescriptor; 23] = [
     source_bytes_bin_program(
         BIN_HELP,
         "help",
@@ -152,6 +154,14 @@ pub const BIN_PROGRAMS: [ProgramDescriptor; 22] = [
         "start userland session services",
         "bin_init",
         BIN_INIT_SOURCE_BYTES,
+    ),
+    source_bytes_bin_program(
+        BIN_SH,
+        "sh",
+        "/bin/sh",
+        "run interactive root shell",
+        "bin_sh",
+        BIN_SH_SOURCE_BYTES,
     ),
     source_bytes_bin_program(
         BIN_CLEAR,
@@ -316,9 +326,10 @@ pub const BIN_PROGRAMS: [ProgramDescriptor; 22] = [
 ];
 
 /// Static `/bin` source artifact store used by system-kernel selftests.
-pub const BIN_PROGRAM_SOURCES: [ProgramSourceArtifact; 22] = [
+pub const BIN_PROGRAM_SOURCES: [ProgramSourceArtifact; 23] = [
     source_bytes_bin_artifact("/bin/help", BIN_HELP_SOURCE_BYTES),
     source_bytes_bin_artifact("/bin/init", BIN_INIT_SOURCE_BYTES),
+    source_bytes_bin_artifact("/bin/sh", BIN_SH_SOURCE_BYTES),
     source_bytes_bin_artifact("/bin/clear", BIN_CLEAR_SOURCE_BYTES),
     source_bytes_bin_artifact("/bin/screentest", BIN_SCREENTEST_SOURCE_BYTES),
     source_bytes_bin_artifact("/bin/pwd", BIN_PWD_SOURCE_BYTES),
@@ -603,6 +614,7 @@ fn write_program_help_entry(
     match program.id {
         BIN_HELP => write_help_line(syscalls, prefix, "help [program] - show program help"),
         BIN_INIT => write_help_line(syscalls, prefix, "init - start userland session services"),
+        BIN_SH => write_help_line(syscalls, prefix, "sh - run interactive root shell"),
         BIN_CLEAR => {
             write_help_line(syscalls, prefix, "clear - clear framebuffer console and terminal")
         }

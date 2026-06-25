@@ -21,7 +21,7 @@ image=apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img
 bytes=<image-size>
 ```
 
-Current expected size is `877812` bytes.
+Current expected size is `881020` bytes.
 
 Copy `apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img` to the Pi
 4 boot partition as `kernel8.img`, using the normal Raspberry Pi firmware

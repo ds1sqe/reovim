@@ -283,6 +283,7 @@ const SOURCE_BYTES_OP_WRITE_DEVICE_INVENTORY: &[u8] = b"write-device-inventory";
 const SOURCE_BYTES_OP_WRITE_BOOT_INPUT: &[u8] = b"write-boot-input";
 const SOURCE_BYTES_OP_WRITE_BOOT_STATUS: &[u8] = b"write-boot-status";
 const SOURCE_BYTES_OP_WRITE_BOOT_PROOF: &[u8] = b"write-boot-proof";
+const SOURCE_BYTES_OP_REQUEST_SHELL_TARGET: &[u8] = b"request-shell-target ";
 const SOURCE_BYTES_OP_REQUEST_ROOT_SHELL: &[u8] = b"request-root-shell";
 const SOURCE_BYTES_OP_WRITE_KERNEL_LOG_VIEW: &[u8] = b"write-kernel-log-view";
 const SOURCE_BYTES_OP_WRITE_KERNEL_LOG_STATS: &[u8] = b"write-kernel-log-stats";
@@ -975,6 +976,24 @@ fn validate_reject_argc_greater_unless_arg1(line: &[u8]) -> bool {
     allow_start < offset && offset < line.len()
 }
 
+fn validate_request_shell_target(line: &[u8]) -> bool {
+    let program = &line[SOURCE_BYTES_OP_REQUEST_SHELL_TARGET.len()..];
+    if program.is_empty() || program.len() > MAX_PROGRAM_ARG_BYTES {
+        return false;
+    }
+    if core::str::from_utf8(program).is_err() {
+        return false;
+    }
+    let mut index = 0usize;
+    while index < program.len() {
+        if matches!(program[index], b' ' | b'\t' | b'\r' | b'\n') {
+            return false;
+        }
+        index += 1;
+    }
+    true
+}
+
 fn validate_source_byte_op(line: &'static [u8]) -> bool {
     if line.is_empty() {
         return true;
@@ -1033,6 +1052,10 @@ fn validate_source_byte_op(line: &'static [u8]) -> bool {
 
     if line.starts_with(SOURCE_BYTES_OP_LAUNCH_PAYLOAD_NAME) {
         return core::str::from_utf8(&line[SOURCE_BYTES_OP_LAUNCH_PAYLOAD_NAME.len()..]).is_ok();
+    }
+
+    if line.starts_with(SOURCE_BYTES_OP_REQUEST_SHELL_TARGET) {
+        return validate_request_shell_target(line);
     }
 
     if line.starts_with(SOURCE_BYTES_OP_WRITE_STDOUT_HEX) {
@@ -1650,6 +1673,13 @@ fn run_source_byte_op(
 
     if line == SOURCE_BYTES_OP_WRITE_BOOT_PROOF {
         syscalls.write_boot_proof();
+        return Some(ProgramStatus::Ok);
+    }
+
+    if line.starts_with(SOURCE_BYTES_OP_REQUEST_SHELL_TARGET) {
+        let program =
+            core::str::from_utf8(&line[SOURCE_BYTES_OP_REQUEST_SHELL_TARGET.len()..]).ok()?;
+        syscalls.request_shell_target(program);
         return Some(ProgramStatus::Ok);
     }
 

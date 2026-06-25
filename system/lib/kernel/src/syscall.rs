@@ -260,7 +260,9 @@ pub enum SyscallOp {
     SessionCwdGet,
     /// Current working directory update.
     SessionCwdSet,
-    /// Root shell/session startup request from init.
+    /// Shell/session target request from init.
+    SessionShellTarget,
+    /// Interactive shell/session startup request from the shell target.
     SessionShellStart,
     /// VFS path normalization.
     VfsNormalize,
@@ -365,6 +367,7 @@ impl SyscallOp {
             Self::WaitEnd => "wait-end",
             Self::SessionCwdGet => "session-cwd-get",
             Self::SessionCwdSet => "session-cwd-set",
+            Self::SessionShellTarget => "session-shell-target",
             Self::SessionShellStart => "session-shell-start",
             Self::VfsNormalize => "vfs-normalize",
             Self::VfsLookup => "vfs-lookup",
@@ -1574,7 +1577,34 @@ impl<'daemon, 'session, 'rootd> ProgramSyscalls<'daemon, 'session, 'rootd> {
         self.record(SyscallOp::SessionCwdSet, SyscallStatus::Ok);
     }
 
-    /// Requests startup of the root shell/session.
+    /// Requests the `/bin` path used for the shell/session target.
+    pub fn request_shell_target(&mut self, program: &'static str) {
+        self.session.request_shell_target(program);
+        self.record(SyscallOp::SessionShellTarget, SyscallStatus::Ok);
+        if let Some(ctx) = self.current {
+            klog::append_bytes(b"syscall path=");
+            klog::append_bytes(ctx.program_path.as_bytes());
+            klog::append_bytes(b" op=");
+            klog::append_bytes(SyscallOp::SessionShellTarget.as_str().as_bytes());
+            klog::append_bytes(b" status=ok target=");
+            klog::append_bytes(program.as_bytes());
+            klog::append_bytes(b" loader=");
+            klog::append_bytes(ctx.loader.as_bytes());
+            klog::append_bytes(b" entry_fn=");
+            klog::append_bytes(ctx.entry_name.as_bytes());
+            klog::append_bytes(b"\n");
+            klog::append_event_with_source_context(
+                "process",
+                "syscall",
+                "info",
+                "session-shell-target",
+                ctx.pid,
+                ctx.task_id,
+            );
+        }
+    }
+
+    /// Requests startup of the interactive root shell/session loop.
     pub fn request_shell_start(&mut self) {
         self.session.request_shell_start();
         self.record(SyscallOp::SessionShellStart, SyscallStatus::Ok);

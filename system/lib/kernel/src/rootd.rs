@@ -885,6 +885,34 @@ impl<'a> RootDaemon<'a> {
         status
     }
 
+    fn run_boot_shell_target(
+        &self,
+        session: &mut RootShellSession,
+        program: &'static str,
+    ) -> ProgramStatus {
+        klog::append_bytes(b"rootd: start shell target ");
+        klog::append_bytes(program.as_bytes());
+        klog::append_bytes(b"\n");
+        let target =
+            match syscall::exec_bin_from_shell_argv0(self.programs, self.source_store(), program) {
+                Ok(target) => target,
+                Err(error) => {
+                    self.write_exec_load_error(error);
+                    klog::append_line("shell_target.status=error");
+                    return ProgramStatus::Error;
+                }
+            };
+        let status = self.run_pending_programs_until(session, target, None);
+        match status {
+            ProgramStatus::Ok | ProgramStatus::ExitCode(0) => {
+                klog::append_line("shell_target.status=ok")
+            }
+            ProgramStatus::Halt => klog::append_line("shell_target.status=halt"),
+            _ => klog::append_line("shell_target.status=error"),
+        }
+        status
+    }
+
     /// Emits the boot-level shell prompt.
     pub fn write_prompt(&self) {
         (self.write)(self.prompt.as_bytes());
@@ -1105,6 +1133,26 @@ fn write_boot_status_line(write: WriteFn, state: BootCheckState, message: &[u8])
     write(b"\n");
     klog::append_bytes(status_log_label(state));
     klog::append_bytes(message);
+    klog::append_bytes(b"\n");
+}
+
+fn write_boot_status_with_program(
+    write: WriteFn,
+    state: BootCheckState,
+    prefix: &[u8],
+    program: &str,
+    suffix: &[u8],
+) {
+    let status = status_label(state);
+    write(status);
+    write(prefix);
+    write(program.as_bytes());
+    write(suffix);
+    write(b"\n");
+    klog::append_bytes(status_log_label(state));
+    klog::append_bytes(prefix);
+    klog::append_bytes(program.as_bytes());
+    klog::append_bytes(suffix);
     klog::append_bytes(b"\n");
 }
 
@@ -1346,19 +1394,21 @@ pub fn run_root_daemon(cfg: RootBootConfig<'_>) -> ! {
     );
     let mut session = RootShellSession::new();
     let init_status = daemon.run_boot_init(&mut session);
-    match init_status {
-        ProgramStatus::Ok | ProgramStatus::ExitCode(0) if session.shell_start_requested() => {
-            write_boot_status_line(cfg.write, BootCheckState::Ok, b"Started /bin/init.");
-            write_boot_status_line(cfg.write, BootCheckState::Ok, b"Reached target root shell.");
-        }
+    let shell_target = match init_status {
         ProgramStatus::Ok | ProgramStatus::ExitCode(0) => {
-            write_boot_status_line(
-                cfg.write,
-                BootCheckState::Warn,
-                b"/bin/init did not request root shell.",
-            );
-            klog::append_line("init.shell_start=missing");
-            halt_or_park_after_boot_stop(cfg.halt);
+            write_boot_status_line(cfg.write, BootCheckState::Ok, b"Started /bin/init.");
+            match session.shell_target_requested() {
+                Some(program) => program,
+                None => {
+                    write_boot_status_line(
+                        cfg.write,
+                        BootCheckState::Warn,
+                        b"/bin/init did not request shell target.",
+                    );
+                    klog::append_line("init.shell_target=missing");
+                    halt_or_park_after_boot_stop(cfg.halt);
+                }
+            }
         }
         ProgramStatus::Halt => {
             write_boot_status_line(cfg.write, BootCheckState::Warn, b"/bin/init requested halt.");
@@ -1368,9 +1418,60 @@ pub fn run_root_daemon(cfg: RootBootConfig<'_>) -> ! {
             write_boot_status_line(cfg.write, BootCheckState::Warn, b"/bin/init failed.");
             halt_or_park_after_boot_stop(cfg.halt);
         }
+    };
+
+    write_boot_status_with_program(
+        cfg.write,
+        BootCheckState::Ok,
+        b"Reached target ",
+        shell_target,
+        b".",
+    );
+    let shell_status = daemon.run_boot_shell_target(&mut session, shell_target);
+    match shell_status {
+        ProgramStatus::Ok | ProgramStatus::ExitCode(0) if session.shell_start_requested() => {
+            write_boot_status_with_program(
+                cfg.write,
+                BootCheckState::Ok,
+                b"Started ",
+                shell_target,
+                b".",
+            );
+            write_boot_status_line(cfg.write, BootCheckState::Ok, b"Reached target root shell.");
+        }
+        ProgramStatus::Ok | ProgramStatus::ExitCode(0) => {
+            write_boot_status_with_program(
+                cfg.write,
+                BootCheckState::Warn,
+                b"",
+                shell_target,
+                b" did not request root shell.",
+            );
+            klog::append_line("shell_target.shell_start=missing");
+            halt_or_park_after_boot_stop(cfg.halt);
+        }
+        ProgramStatus::Halt => {
+            write_boot_status_with_program(
+                cfg.write,
+                BootCheckState::Warn,
+                b"",
+                shell_target,
+                b" requested halt.",
+            );
+            halt_or_park_after_boot_stop(cfg.halt);
+        }
+        _ => {
+            write_boot_status_with_program(
+                cfg.write,
+                BootCheckState::Warn,
+                b"",
+                shell_target,
+                b" failed.",
+            );
+            halt_or_park_after_boot_stop(cfg.halt);
+        }
     }
 
-    (cfg.write)(b"reovim system kernel shell ready\n");
     klog::append_line("rootd: shell ready");
     klog::append_event_with_source_context("rootd", "boot", "info", "shell-ready", 0, 0);
     daemon.write_prompt();

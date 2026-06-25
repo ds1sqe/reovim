@@ -691,6 +691,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "proof\n",
         "cat /boot/proof\n",
         "help\n",
+        "help sh\n",
         "help clear\n",
         "help screentest\n",
         "help input\n",
@@ -719,6 +720,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "ls /bin\n",
         "cat /bin/help\n",
         "cat /bin/init\n",
+        "cat /bin/sh\n",
         "cat /bin/clear\n",
         "cat /bin/screentest\n",
         "cat /bin/pwd\n",
@@ -824,7 +826,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     );
     assert!(
         serial.contains(
-            "/bin programs: help, init, clear, screentest, pwd, ls, cd, cat, read, mount, input, status, proof, device, dmesg, dump, sched, proc, probe, launch, reovim, halt"
+            "/bin programs: help, init, sh, clear, screentest, pwd, ls, cd, cat, read, mount, input, status, proof, device, dmesg, dump, sched, proc, probe, launch, reovim, halt"
         ),
         "help program vocabulary appears; serial: {serial:?}",
     );
@@ -1254,7 +1256,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "ls / prints root namespace; serial: {serial:?}",
     );
     assert!(
-        serial.contains("reovim-os> help\ninit\nclear\nscreentest")
+        serial.contains("reovim-os> help\ninit\nsh\nclear\nscreentest")
             && serial.contains("probe\nlaunch\nreovim\nhalt\n"),
         "ls /bin prints image program namespace; serial: {serial:?}",
     );
@@ -1262,11 +1264,16 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         serial.contains("init: userland services ready")
             && serial.contains("Reached target /bin/init.")
             && serial.contains("[  OK  ]\u{1b}[0m Started /bin/init.")
+            && serial.contains("Reached target /bin/sh.")
+            && serial.contains("[  OK  ]\u{1b}[0m Started /bin/sh.")
             && serial.contains("Reached target root shell.")
             && serial.contains("exec.path=/bin/init")
+            && serial.contains("op=session-shell-target status=ok target=/bin/sh")
+            && serial.contains("loader=source-image entry_fn=bin_init")
+            && serial.contains("exec.path=/bin/sh")
             && serial.contains("op=session-shell-start status=ok")
-            && serial.contains("loader=source-image entry_fn=bin_init"),
-        "boot runs /bin/init through exec/scheduler/syscall before shell ready; serial: {serial:?}",
+            && serial.contains("loader=source-image entry_fn=bin_sh"),
+        "boot runs /bin/init and /bin/sh through exec/scheduler/syscall before shell ready; serial: {serial:?}",
     );
     assert!(
         serial.contains(
@@ -1279,6 +1286,12 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
             "program=init\npath=/bin/init\nsummary=start userland session services\ntype=bin\nloader=source-image\nentry_fn=bin_init"
         ),
         "cat /bin/init prints source-image program descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "program=sh\npath=/bin/sh\nsummary=run interactive root shell\ntype=bin\nloader=source-image\nentry_fn=bin_sh"
+        ),
+        "cat /bin/sh prints source-image program descriptor; serial: {serial:?}",
     );
     assert!(
         serial.contains(
@@ -1431,6 +1444,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     assert!(
         serial.contains("sources:\n")
             && serial.contains("namespace=bin path=/bin/init loader=source-image bytes=")
+            && serial.contains("namespace=bin path=/bin/sh loader=source-image bytes=")
             && serial.contains("namespace=bin path=/bin/help loader=source-image bytes=")
             && serial.contains("namespace=bin path=/bin/proc loader=source-image bytes="),
         "source-store table exposes /bin source artifacts; serial: {serial:?}",
@@ -1856,7 +1870,7 @@ fn os_exec_bundle_profile_on_x86_target_runs_block_bundle_bin() {
         "first ls /bin exposes preinstalled bundle-ok descriptor before proc media and exec; serial: {serial:?}",
     );
     assert!(
-        serial.contains("reovim-os> help\ninit\nclear\nscreentest")
+        serial.contains("reovim-os> help\ninit\nsh\nclear\nscreentest")
             && serial.contains("halt\nbundle-ok\n"),
         "exec-bundle profile exposes the provider-discovered /bin descriptor after admission; serial: {serial:?}",
     );

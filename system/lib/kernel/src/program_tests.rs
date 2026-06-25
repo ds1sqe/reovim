@@ -72,7 +72,12 @@ arch_test!(program_loader_resolves_bin_name_and_absolute_path, {
     check_source_image(
         "init",
         "/bin/init",
-        b"reovim-source-v1\nreject-argc-greater 1 init: too many arguments\nrequest-root-shell\nwrite-stdout-hex 696e69743a20757365726c616e642073657276696365732072656164790a\n",
+        b"reovim-source-v1\nreject-argc-greater 1 init: too many arguments\nrequest-shell-target /bin/sh\nwrite-stdout-hex 696e69743a20757365726c616e642073657276696365732072656164790a\n",
+    );
+    check_source_image(
+        "sh",
+        "/bin/sh",
+        b"reovim-source-v1\nreject-argc-greater 1 sh: too many arguments\nrequest-root-shell\nwrite-stdout-hex 72656f76696d2073797374656d206b65726e656c207368656c6c2072656164790a\n",
     );
     check_source_image(
         "pwd",
