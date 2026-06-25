@@ -21,14 +21,11 @@ doctest = false
 reovim-arch = { path = "../../arch", features = ["runtime"] }
 reovim-system-kernel = { path = "../../system/lib/kernel", features = ["runtime"] }
 reovim-uapi = { path = "../../uapi" }
-reovim-editor-core = { path = "../../editor/lib/core", optional = true }
-reovim-server-rt = { path = "../../editor/lib/server", optional = true }
-reovim-lib-ds = { path = "../../lib/ds", optional = true }
 
 [features]
 default = ["shell-only-profile"]
 shell-only-profile = []
-launch-profile = ["reovim-editor-core", "reovim-server-rt", "reovim-lib-ds"]
+launch-profile = []
 
 # The per-target language floor (SP03): supplies _start, the `entry!` shim,
 # the `[panic_handler]`, and `mem` intrinsics as LINK symbols.

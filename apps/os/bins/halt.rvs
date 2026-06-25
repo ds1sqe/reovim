@@ -1,0 +1,4 @@
+reovim-source-v1
+reject-argc-greater 1 halt: too many arguments
+write-stdout-hex 68616c743a206f6b0a
+exit-status halt

@@ -1,0 +1,8 @@
+reovim-source-v1
+reject-argc-greater 2 dmesg: too many arguments
+dispatch-arg1 dmesg: unknown option
+default
+write-kernel-log-view
+case --stats
+write-kernel-log-stats
+end-dispatch-arg1

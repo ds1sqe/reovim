@@ -252,9 +252,55 @@ Pi firmware -> arch::_start -> provider/composition install
 The RTOS launch unit is a **boot profile**, not a hosted process command. The
 root daemon is systemd-like only in responsibility: it is the first
 system-kernel supervisor task, owns boot-profile selection, exposes the first
-tty/CLI, and dispatches payload launch callbacks registered by the composition
-root. It is not a POSIX pid namespace and it does not make the editor core part
-of machine boot.
+tty/CLI, and launches descriptor-resolved payload source images behind
+process-visible `/payload/*` lifecycle records with explicit ready/running/exit
+state bookkeeping, bounded scheduler queue state exposed through
+`/proc/scheduler`, parent/child wait records exposed through `/proc/waits`,
+spawn-only `/bin` child admission through `/bin/proc spawn PROGRAM [ARG...]`,
+retained process wait-by-pid through `/bin/proc wait PID`,
+Reovim standard stream descriptors attached to each `/bin` process (`stdin=0`,
+`stdout=1`, `stderr=2`), descriptor-shaped `fd-write` syscall rows for stderr
+and rejected writes, descriptor-shaped `fd-read` rows for stdin EOF/probe
+behavior, bounded pending-exec stdin payloads, a run-to-completion single-pipe
+producer path, a separate `/bin/read` program over the current root-console
+line callback through `tty-read-line`, and no second executable class outside
+`/bin` for stateful operator programs such as `cd`; those still resolve as
+`/bin/*` programs.
+Current `/bin` and payload descriptors name loader-visible source-store paths,
+while image-owned source tables carry the default byte-backed source artifacts.
+A bounded runtime-installed source overlay is checked before those image tables,
+and `/proc/sources` plus `/bin/proc sources` report `origin=image|installed`.
+`/bin/proc install-bin NAME ok|error` and
+`/bin/proc install-payload NAME ready|failed` cross a typed `source-install`
+syscall and write status-only source images into that overlay for `/bin/*` and
+`/payload/*` descriptors. `/bin/proc install-bin-media NAME` and
+`/bin/proc install-payload-media NAME` first cross a typed `source-media-read`
+syscall against the kernel source-media block target, verify a bounded
+`reovim-source-media-v1` envelope against the requested namespace/path plus
+payload length/checksum, and then write only the enclosed source bytes into the
+same overlay. This is the program-facing install path for current source
+artifacts. Exec admission also uses the same checked source-media envelope as
+an on-demand fallback when a descriptor resolves but its source artifact is
+missing. Offset zero may contain a bounded `reovim-source-media-catalog-v1`
+whose entries point at checked source artifacts elsewhere on the same block
+target; without a catalog, exec falls back to the offset-zero checked artifact.
+Successful fallback records `reason=loaded-source-media`. This is not yet
+FAT/SD-card filesystem loading.
+Missing source artifacts fail exec admission as `source-not-found`, and
+malformed artifacts fail as `invalid-image`. The current launch-profile payload
+bodies are byte-backed source artifacts that return explicit source-image
+status results; the x86 launch profile also proves an installed
+`/payload/server-smoke` source override. Real editor/server payload execution
+still waits for media-backed program loading and a broader payload syscall
+contract.
+Live children of an exited `/bin` parent are adopted by rootd in process and
+scheduler records, matching the root-supervisor model instead of leaving
+orphans under a completed program.
+`/proc/self` / `/bin/proc self` current-process proof through a typed
+`process-self` syscall. Loader/source plus `entry_fn` metadata appear on
+process and syscall rows.
+It is not a POSIX pid namespace and it does not make the editor core part of
+machine boot.
 
 The official RTOS image composition root belongs under `apps/` with the other
 app link roots, currently planned as `apps/os/`. It owns per-arch image
@@ -270,7 +316,7 @@ interactively from the CLI for VNC/manual testing.
 | Profile | Purpose |
 |---|---|
 | `selftest` | Run arch/machine/editor selftests; exit/halt with a diagnostic code. |
-| `shell` | Kernel-only interactive root-daemon tty; bash-like Reovim shell commands, no editor boot required. |
+| `shell` | Kernel-only interactive root-daemon tty; bash-like Reovim `/bin` programs, no editor boot required. |
 | `appliance` | Normal editor appliance: root daemon auto-starts the editor/server/client payload after framebuffer/input/storage proofs pass. |
 | `recovery` | Minimal framebuffer/UART diagnostic shell for storage/config repair. |
 | `headless-diag` | UART-only diagnostics when display or USB is untrustworthy. |

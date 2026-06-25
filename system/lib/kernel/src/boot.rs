@@ -8,10 +8,12 @@
 use {
     crate::{
         mm,
+        program::{ProgramDescriptor, ProgramSourceArtifact},
         rootd::{
             BootCheckState, BootImageSummary, ConsoleInputStatus, ConsoleInputSummary,
-            DmesgSnapshot, HaltKernel, HardwareProbe, PayloadDescriptor, PrepareShell,
-            ProfileSummary, ReadLine, RootBootConfig, RuntimeChecks, WriteFn,
+            DmesgSnapshot, HaltKernel, HardwareProbe, PayloadDescriptor, PayloadSourceArtifact,
+            PrepareShell, ProfileSummary, ProgramHelpWriter, ReadLine, RootBootConfig,
+            RuntimeChecks, VfsFileWriter, WriteFn,
         },
         splash,
     },
@@ -46,6 +48,16 @@ pub struct BootProfile<'a> {
     pub launch_enabled: bool,
     /// Payload registry available to the boot profile.
     pub payloads: &'a [PayloadDescriptor],
+    /// Payload source artifacts available to the executable loader.
+    pub payload_sources: &'static [PayloadSourceArtifact],
+    /// `/bin` program registry supplied by the OS image.
+    pub programs: &'static [ProgramDescriptor],
+    /// `/bin` source artifacts available to the executable loader.
+    pub program_sources: &'static [ProgramSourceArtifact],
+    /// VFS pseudo-file renderer supplied by the OS image.
+    pub vfs_file_writer: VfsFileWriter,
+    /// `/bin/help` renderer supplied by the OS image.
+    pub program_help_writer: ProgramHelpWriter,
     /// Optional extra diagnostics snapshot provider.
     pub dmesg: Option<DmesgSnapshot>,
     /// Optional halt callback after shell exit.
@@ -59,6 +71,11 @@ impl<'a> BootProfile<'a> {
         name: &'static str,
         launch_enabled: bool,
         payloads: &'a [PayloadDescriptor],
+        payload_sources: &'static [PayloadSourceArtifact],
+        programs: &'static [ProgramDescriptor],
+        program_sources: &'static [ProgramSourceArtifact],
+        vfs_file_writer: VfsFileWriter,
+        program_help_writer: ProgramHelpWriter,
         dmesg: Option<DmesgSnapshot>,
         halt: Option<HaltKernel>,
         prompt: &'static str,
@@ -67,6 +84,11 @@ impl<'a> BootProfile<'a> {
             name,
             launch_enabled,
             payloads,
+            payload_sources,
+            programs,
+            program_sources,
+            vfs_file_writer,
+            program_help_writer,
             dmesg,
             halt,
             prompt,
@@ -119,6 +141,11 @@ pub fn run_shell_profile(cfg: ShellBootConfig<'_>) -> ! {
         boot_info: (cfg.collect_boot_info)(),
         devices: (cfg.collect_device_inventory)().devices,
         payloads: cfg.profile.payloads,
+        payload_sources: cfg.profile.payload_sources,
+        programs: cfg.profile.programs,
+        program_sources: cfg.profile.program_sources,
+        vfs_file_writer: cfg.profile.vfs_file_writer,
+        program_help_writer: cfg.profile.program_help_writer,
         dmesg: cfg.profile.dmesg,
         halt: cfg.profile.halt,
         prepare_shell: cfg.prepare_shell,

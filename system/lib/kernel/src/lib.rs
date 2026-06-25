@@ -17,12 +17,15 @@
 // storage and stores callback contexts for the boot console.
 #![allow(unsafe_code)]
 
+pub mod block;
 pub mod boot;
 pub mod boot_info;
 pub mod color;
 pub mod console;
 pub mod console_io;
+pub mod dump;
 pub mod escape;
+pub mod exec;
 pub mod fdt;
 pub mod fonts;
 pub mod fs;
@@ -33,12 +36,19 @@ pub mod log;
 pub mod mm;
 pub mod net;
 pub mod panic;
+pub mod proc;
+pub mod program;
 pub mod root_shell;
 pub mod rootd;
 pub mod sched;
+pub mod source_store;
 pub mod splash;
+pub mod syscall;
 pub mod terminal;
 pub mod vfs;
+
+#[cfg(feature = "selftest")]
+pub(crate) mod bin_fixture;
 
 // ── device-neutral boot-surface re-exports ───────────────────────────────────
 //

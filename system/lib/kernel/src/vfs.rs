@@ -3,7 +3,10 @@
 //! This is not a public POSIX face. It is a small, read-only kernel namespace
 //! over boot facts, device inventory, and diagnostics supplied to `rootd`.
 
-use reovim_uapi_system::{DeviceClass, DeviceEntry};
+use {
+    crate::program::{self, ProgramDescriptor},
+    reovim_uapi_system::{DeviceClass, DeviceEntry},
+};
 
 /// Maximum absolute path bytes carried by root-shell session state.
 pub const MAX_PATH_BYTES: usize = 128;
@@ -86,12 +89,18 @@ impl PathBuf {
 pub enum Directory {
     /// `/`.
     Root,
+    /// `/bin`.
+    Bin,
     /// `/boot`.
     Boot,
     /// `/dev`.
     Dev,
+    /// `/dump`.
+    Dump,
     /// `/log`.
     Log,
+    /// `/proc`.
+    Proc,
 }
 
 /// One mounted namespace in the kernel VFS.
@@ -107,12 +116,18 @@ pub struct MountEntry {
     pub flags: &'static str,
 }
 
-const MOUNT_TABLE: [MountEntry; 4] = [
+const MOUNT_TABLE: [MountEntry; 7] = [
     MountEntry {
         source: "kernel",
         target: "/",
         fs_type: "rootfs",
         flags: "ro,pseudo",
+    },
+    MountEntry {
+        source: "programs",
+        target: "/bin",
+        fs_type: "binfs",
+        flags: "ro,static",
     },
     MountEntry {
         source: "boot",
@@ -127,9 +142,21 @@ const MOUNT_TABLE: [MountEntry; 4] = [
         flags: "ro,pseudo",
     },
     MountEntry {
+        source: "dump",
+        target: "/dump",
+        fs_type: "dumpfs",
+        flags: "ro,pseudo",
+    },
+    MountEntry {
         source: "klog",
         target: "/log",
         fs_type: "logfs",
+        flags: "ro,pseudo",
+    },
+    MountEntry {
+        source: "processes",
+        target: "/proc",
+        fs_type: "procfs",
         flags: "ro,pseudo",
     },
 ];
@@ -143,6 +170,8 @@ pub const fn mounts() -> &'static [MountEntry] {
 /// Read-only file or pseudo-device nodes in the kernel VFS.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum File {
+    /// `/bin/{program}`.
+    BinProgram(usize),
     /// `/boot/help`.
     BootHelp,
     /// `/boot/profile`.
@@ -165,8 +194,32 @@ pub enum File {
     BootMounts,
     /// `/log/dmesg`.
     LogDmesg,
+    /// `/log/events`.
+    LogEvents,
     /// `/log/stats`.
     LogStats,
+    /// `/dump/status`.
+    DumpStatus,
+    /// `/dump/snapshot`.
+    DumpSnapshot,
+    /// `/proc/processes`.
+    ProcProcesses,
+    /// `/proc/execs`.
+    ProcExecs,
+    /// `/proc/pending`.
+    ProcPending,
+    /// `/proc/self`.
+    ProcSelf,
+    /// `/proc/scheduler`.
+    ProcScheduler,
+    /// `/proc/sources`.
+    ProcSources,
+    /// `/proc/syscalls`.
+    ProcSyscalls,
+    /// `/proc/tasks`.
+    ProcTasks,
+    /// `/proc/waits`.
+    ProcWaits,
     /// `/dev/{class}{ordinal}`.
     DevDevice(usize),
 }
@@ -208,12 +261,19 @@ fn push_components(out: &mut PathBuf, path: &[u8]) -> Result<(), VfsError> {
 }
 
 /// Resolves a normalized absolute path against the current root namespace.
-pub fn lookup(path: &str, devices: &[DeviceEntry]) -> Result<Node, VfsError> {
+pub fn lookup(
+    path: &str,
+    devices: &[DeviceEntry],
+    programs: &'static [ProgramDescriptor],
+) -> Result<Node, VfsError> {
     match path {
         "/" => return Ok(Node::Directory(Directory::Root)),
+        "/bin" => return Ok(Node::Directory(Directory::Bin)),
         "/boot" => return Ok(Node::Directory(Directory::Boot)),
         "/dev" => return Ok(Node::Directory(Directory::Dev)),
+        "/dump" => return Ok(Node::Directory(Directory::Dump)),
         "/log" => return Ok(Node::Directory(Directory::Log)),
+        "/proc" => return Ok(Node::Directory(Directory::Proc)),
         "/boot/help" => return Ok(Node::File(File::BootHelp)),
         "/boot/profile" => return Ok(Node::File(File::BootProfile)),
         "/boot/image" => return Ok(Node::File(File::BootImage)),
@@ -224,9 +284,33 @@ pub fn lookup(path: &str, devices: &[DeviceEntry]) -> Result<Node, VfsError> {
         "/boot/memory" => return Ok(Node::File(File::BootMemory)),
         "/boot/devices" => return Ok(Node::File(File::BootDevices)),
         "/boot/mounts" => return Ok(Node::File(File::BootMounts)),
+        "/dump/status" => return Ok(Node::File(File::DumpStatus)),
+        "/dump/snapshot" => return Ok(Node::File(File::DumpSnapshot)),
         "/log/dmesg" => return Ok(Node::File(File::LogDmesg)),
+        "/log/events" => return Ok(Node::File(File::LogEvents)),
         "/log/stats" => return Ok(Node::File(File::LogStats)),
+        "/proc/processes" => return Ok(Node::File(File::ProcProcesses)),
+        "/proc/execs" => return Ok(Node::File(File::ProcExecs)),
+        "/proc/pending" => return Ok(Node::File(File::ProcPending)),
+        "/proc/self" => return Ok(Node::File(File::ProcSelf)),
+        "/proc/scheduler" => return Ok(Node::File(File::ProcScheduler)),
+        "/proc/sources" => return Ok(Node::File(File::ProcSources)),
+        "/proc/syscalls" => return Ok(Node::File(File::ProcSyscalls)),
+        "/proc/tasks" => return Ok(Node::File(File::ProcTasks)),
+        "/proc/waits" => return Ok(Node::File(File::ProcWaits)),
         _ => {}
+    }
+
+    if let Some(rest) = path.strip_prefix("/bin/") {
+        let (name, tail) = split_first(rest);
+        if let Some((index, _program)) = program::find_by_bin_name(programs, name) {
+            return if tail.is_empty() {
+                Ok(Node::File(File::BinProgram(index)))
+            } else {
+                Err(VfsError::NotDirectory)
+            };
+        }
+        return Err(VfsError::NotFound);
     }
 
     if let Some(rest) = path.strip_prefix("/dev/") {
@@ -252,8 +336,20 @@ pub fn lookup(path: &str, devices: &[DeviceEntry]) -> Result<Node, VfsError> {
         "/boot/memory/",
         "/boot/devices/",
         "/boot/mounts/",
+        "/dump/status/",
+        "/dump/snapshot/",
         "/log/dmesg/",
+        "/log/events/",
         "/log/stats/",
+        "/proc/processes/",
+        "/proc/execs/",
+        "/proc/pending/",
+        "/proc/self/",
+        "/proc/scheduler/",
+        "/proc/sources/",
+        "/proc/syscalls/",
+        "/proc/tasks/",
+        "/proc/waits/",
     ] {
         if path.starts_with(file) {
             return Err(VfsError::NotDirectory);

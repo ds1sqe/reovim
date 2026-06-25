@@ -174,9 +174,13 @@ write_evidence_seed() {
         printf 'help ls\n'
         printf 'help cd\n'
         printf 'help cat\n'
+        printf 'help read\n'
         printf 'help mount\n'
         printf 'help device\n'
         printf 'help dmesg\n'
+        printf 'help dump\n'
+        printf 'help sched\n'
+        printf 'help proc\n'
         printf 'help status\n'
         printf 'help probe\n'
         printf 'help launch\n'
@@ -213,7 +217,12 @@ write_evidence_seed() {
         printf 'launch\n'
         printf 'reovim\n'
         printf 'dmesg --stats\n'
+        printf 'dump status\n'
+        printf 'dump snapshot\n'
+        printf 'dump sync\n'
         printf 'cat /log/stats\n'
+        printf 'cat /log/events\n'
+        printf 'proc\n'
         printf 'dmesg\n'
         printf 'cat /log/dmesg\n'
         printf '```\n\n'
@@ -236,9 +245,9 @@ write_evidence_seed() {
         printf -- '- [ ] `help dmesg` / `ls /log` make kernel log stats discoverable.\n'
         printf -- '- [ ] `help input` / `help proof` make live input diagnostics and the proof checklist self-describing.\n'
         printf -- '- [ ] `help status` / `help probe` make `manual_next` and probe catalog discovery self-describing.\n'
-        printf -- '- [ ] `help pwd` / `help ls` / `help cd` / `help cat` / `help mount` make VFS navigation self-describing.\n'
+        printf -- '- [ ] `help pwd` / `help ls` / `help cd` / `help cat` / `help read` / `help mount` make VFS navigation and TTY line reads self-describing.\n'
         printf -- '- [ ] `help` / `help clear` / `help screentest` / `clear` / `screentest` prove shell help and erase-line mode diagnostics.\n'
-        printf -- '- [ ] `help device` / `help launch` / `help reovim` / `help halt` make boot inventory, payload, and shutdown commands self-describing.\n'
+        printf -- '- [ ] `help device` / `help launch` / `help reovim` / `help halt` make boot inventory, payload, and shutdown `/bin` programs self-describing.\n'
         printf -- '- [ ] `pwd` / `ls` / `mount` report the kernel VFS namespace and mounts.\n'
         printf -- '- [ ] `device` / `cat /boot/memory` / `cat /boot/devices` report boot inventory.\n'
         printf -- '- [ ] `cd /dev` / `ls` / `cat uart0` prove relative VFS device-file access.\n'
@@ -257,6 +266,10 @@ write_evidence_seed() {
         printf -- '- [ ] `cat /boot/profile` reports `profile=shell-only`, `launch=disabled`, `payloads=0`, and `input_mode=live`.\n'
         printf -- '- [ ] `launch` / `reovim` report shell-only payload launch disabled.\n'
         printf -- '- [ ] `dmesg --stats` / `cat /log/stats` report kernel log ring stats with `dropped_bytes=0`.\n'
+        printf -- '- [ ] `dump status` / `dump snapshot` / `dump sync` expose dump state, image identity, boot/device/proof/panic sections, and fail-closed persistence state.\n'
+        printf -- '- [ ] `cat /log/events` reports structured kernel events with process/task identity.\n'
+        printf -- '- [ ] `proc` reports the live process table through a `/bin` process-management program.\n'
+        printf -- '- [ ] `proc` reports `loader=source-image entry_fn=bin_proc` for the running `/bin/proc` process.\n'
         printf -- '- [ ] `dmesg` has no `[klog] dropped_bytes=` retained-log wrap marker.\n'
         printf -- '- [ ] `dmesg` contains `shell: <command>` and `shell.status=ok` audit lines for the typed commands.\n'
         printf -- '- [ ] `dmesg` contains `shell.status=error` audit lines for the disabled payload launch commands.\n'
@@ -388,6 +401,21 @@ if [ "$SKIP_QEMU" -eq 0 ]; then
         rm -f "$qemu_log"
         fail "QEMU smoke proof checklist did not include targeted dmesg help"
     fi
+    if ! grep -q '^  help dump$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include targeted dump help"
+    fi
+    if ! grep -q '^  help sched$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include targeted sched help"
+    fi
+    if ! grep -q '^  help proc$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include targeted proc help"
+    fi
     if ! grep -q '^  help clear$' "$qemu_log"; then
         cat "$qemu_log" >&2
         rm -f "$qemu_log"
@@ -427,6 +455,11 @@ if [ "$SKIP_QEMU" -eq 0 ]; then
         cat "$qemu_log" >&2
         rm -f "$qemu_log"
         fail "QEMU smoke proof checklist did not include targeted cat help"
+    fi
+    if ! grep -q '^  help read$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include targeted read help"
     fi
     if ! grep -q '^  help mount$' "$qemu_log"; then
         cat "$qemu_log" >&2
@@ -478,15 +511,55 @@ if [ "$SKIP_QEMU" -eq 0 ]; then
         rm -f "$qemu_log"
         fail "QEMU smoke proof checklist did not include dmesg stats command"
     fi
+    if ! grep -q '^  dump status$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include dump status command"
+    fi
+    if ! grep -q '^  dump snapshot$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include dump snapshot command"
+    fi
+    if ! grep -q '^  dump sync$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include dump sync command"
+    fi
     if ! grep -q '^  cat /log/stats$' "$qemu_log"; then
         cat "$qemu_log" >&2
         rm -f "$qemu_log"
         fail "QEMU smoke proof checklist did not include VFS log stats command"
     fi
+    if ! grep -q '^  cat /log/events$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include VFS log events command"
+    fi
+    if ! grep -q '^  proc$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include proc command"
+    fi
     if ! grep -q '^  kernel log stats available through /log/stats$' "$qemu_log"; then
         cat "$qemu_log" >&2
         rm -f "$qemu_log"
         fail "QEMU smoke proof checklist did not include log stats expected fact"
+    fi
+    if ! grep -q '^  kernel structured events available through /log/events$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include log events expected fact"
+    fi
+    if ! grep -q '^  dump status available through /bin/dump$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include dump status expected fact"
+    fi
+    if ! grep -q '^  dump sync fails closed until persistent storage is available$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include dump sync fail-closed expected fact"
     fi
     if ! grep -q '^  kernel log dropped_bytes=0$' "$qemu_log"; then
         cat "$qemu_log" >&2

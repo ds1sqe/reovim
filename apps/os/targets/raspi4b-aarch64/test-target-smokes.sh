@@ -16,6 +16,7 @@ fail() {
 
 printf '==> syntax check Raspberry Pi 4 target scripts\n'
 bash -n \
+    "$TARGET_DIR/analyze-dump.sh" \
     "$TARGET_DIR/build-image.sh" \
     "$TARGET_DIR/check-bootfs.sh" \
     "$TARGET_DIR/find-bootfs.sh" \
@@ -23,6 +24,8 @@ bash -n \
     "$TARGET_DIR/preflight-real-board.sh" \
     "$TARGET_DIR/prepare-boot-media.sh" \
     "$TARGET_DIR/test-check-bootfs.sh" \
+    "$TARGET_DIR/test-analyze-dump.sh" \
+    "$TARGET_DIR/test-bin-program-vocabulary.sh" \
     "$TARGET_DIR/test-find-bootfs.sh" \
     "$TARGET_DIR/test-install-image.sh" \
     "$TARGET_DIR/test-preflight-real-board.sh" \
@@ -37,6 +40,12 @@ cargo test -p reovim-arch --test fixtures_exec testrt_pilot_all_pass_exits_zero 
 
 printf '==> bootfs readiness smoke\n'
 "$TARGET_DIR/test-check-bootfs.sh"
+
+printf '==> dump analyzer smoke\n'
+"$TARGET_DIR/test-analyze-dump.sh"
+
+printf '==> bin program vocabulary smoke\n'
+"$TARGET_DIR/test-bin-program-vocabulary.sh"
 
 printf '==> bootfs discovery smoke\n'
 "$TARGET_DIR/test-find-bootfs.sh"

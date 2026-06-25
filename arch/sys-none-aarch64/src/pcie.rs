@@ -164,7 +164,7 @@ impl PciConfigHeader {
 
 /// Reads the BCM2711 root-complex link status.
 #[must_use]
-pub fn read_builtin_pcie_link_status() -> PcieLinkStatus {
+pub fn read_root_complex_link_status() -> PcieLinkStatus {
     read_pcie_link_status_at(BCM2711_PCIE_MMIO_BASE)
 }
 
@@ -194,7 +194,7 @@ fn decode_pcie_link_status(raw_status: u32, revision: u32) -> PcieLinkStatus {
 /// config-space index register before reading the config data window.
 #[must_use]
 pub fn read_external_config_header(location: PciLocation) -> Option<PciConfigHeader> {
-    if !read_builtin_pcie_link_status().link_up() {
+    if !read_root_complex_link_status().link_up() {
         return None;
     }
     read_external_config_header_at(BCM2711_PCIE_MMIO_BASE, location)
@@ -207,7 +207,7 @@ pub fn read_external_config_header(location: PciLocation) -> Option<PciConfigHea
 /// Status half is written as zero so write-one-to-clear status bits are not
 /// accidentally acknowledged.
 pub fn enable_external_command_bits(location: PciLocation, bits: u16) -> Option<u16> {
-    if !read_builtin_pcie_link_status().link_up() {
+    if !read_root_complex_link_status().link_up() {
         return None;
     }
     enable_external_command_bits_at(BCM2711_PCIE_MMIO_BASE, location, bits)

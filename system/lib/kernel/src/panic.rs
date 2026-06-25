@@ -5,12 +5,16 @@
 //! always-present `kabi/panic` write-once fault-floor atoms.
 
 use {
+    crate::dump,
+    core::sync::atomic::{AtomicUsize, Ordering},
     reovim_kabi_panic::SetError,
     reovim_uapi_panic::{
-        Disposition, PanicConfigError, PanicControl, PanicFlushTarget, PreExitHookFn,
+        Disposition, PanicConfigError, PanicControl, PanicFlushTarget, PanicRecord, PreExitHookFn,
         RingTailProviderFn, StateRecordHookFn,
     },
 };
+
+static FORWARDED_STATE_RECORD_HOOK: AtomicUsize = AtomicUsize::new(0);
 
 /// Returns the up-face panic/log control table backed by this bridge.
 ///
@@ -62,7 +66,21 @@ pub fn set_ring_tail_provider(provider: RingTailProviderFn) -> Result<(), PanicC
 /// Returns [`PanicConfigError::AlreadyConfigured`] when a hook was already
 /// registered.
 pub fn set_state_record_hook(hook: StateRecordHookFn) -> Result<(), PanicConfigError> {
-    map_set_result(reovim_kabi_panic::set_state_record_hook(hook))
+    let addr = (hook as *const ()).addr();
+    if FORWARDED_STATE_RECORD_HOOK
+        .compare_exchange(0, addr, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return Err(PanicConfigError::AlreadyConfigured);
+    }
+
+    match map_set_result(reovim_kabi_panic::set_state_record_hook(record_and_forward_panic_state)) {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            FORWARDED_STATE_RECORD_HOOK.store(0, Ordering::Release);
+            Err(error)
+        }
+    }
 }
 
 /// Configures the panic flush target.
@@ -94,4 +112,30 @@ pub(crate) const fn map_set_result(result: Result<(), SetError>) -> Result<(), P
         Ok(()) => Ok(()),
         Err(SetError::AlreadySet) => Err(PanicConfigError::AlreadyConfigured),
     }
+}
+
+fn record_and_forward_panic_state(record: PanicRecord) {
+    dump::record_panic_state(record);
+    if let Some(hook) = forwarded_state_record_hook() {
+        hook(record);
+    }
+}
+
+fn forwarded_state_record_hook() -> Option<StateRecordHookFn> {
+    match FORWARDED_STATE_RECORD_HOOK.load(Ordering::Acquire) {
+        0 => None,
+        // SAFETY: the address was written by `set_state_record_hook` from a
+        // `StateRecordHookFn`, and reset only on failed KABI registration.
+        addr => Some(unsafe { core::mem::transmute::<usize, StateRecordHookFn>(addr) }),
+    }
+}
+
+#[cfg(feature = "selftest")]
+pub(crate) fn reset_forwarded_state_record_hook_for_tests() {
+    FORWARDED_STATE_RECORD_HOOK.store(0, Ordering::Release);
+}
+
+#[cfg(feature = "selftest")]
+pub(crate) fn record_and_forward_panic_state_for_tests(record: PanicRecord) {
+    record_and_forward_panic_state(record);
 }

@@ -1,0 +1,5 @@
+reovim-source-v1
+reject-argc-greater 1 reovim: too many arguments
+require-launch-enabled reovim disabled for this profile
+write-stdout-hex 72656f76696d3a20
+launch-payload-name reovim

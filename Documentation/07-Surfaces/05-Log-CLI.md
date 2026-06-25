@@ -64,9 +64,9 @@ is already plain LOG2 text — `grep` it directly.
 > Decorated output is presentation, never a parsing target.
 > *Class*: conformance.
 
-There is no built-in pattern filter; `grep` composes (do one thing
-well). There is no JSON mode; structured consumers subscribe to
-DS12 directly (7.2, 9.5 open item 3).
+There is no log-owned pattern filter; an external filter composes (do one
+thing well). There is no JSON mode; structured consumers subscribe to DS12
+directly (7.2, 9.5 open item 3).
 
 ## 4. Timestamps
 

@@ -1,0 +1,4 @@
+reovim-source-v1
+reject-argc-greater 1 clear: too many arguments
+clear-console
+write-stdout-hex 1b5b324a1b5b48

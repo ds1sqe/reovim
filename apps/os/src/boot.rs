@@ -5,6 +5,8 @@
 //! is delegated to `reovim-system-kernel`.
 #![allow(unsafe_code)]
 
+use crate::bin;
+
 use reovim_arch::sys as arch_sys;
 use reovim_system_kernel::{
     boot::{self, ShellBootConfig, SplashBootConfig},
@@ -15,15 +17,65 @@ use reovim_uapi::system::{BootInfo, DeviceEntry, DeviceInventory};
 #[cfg(feature = "launch-profile")]
 use reovim_system_kernel::rootd::PayloadDescriptor;
 #[cfg(feature = "launch-profile")]
-use reovim_system_kernel::rootd::PayloadLaunchResult;
+use reovim_system_kernel::rootd::PayloadImage;
 #[cfg(feature = "launch-profile")]
-use reovim_system_kernel::{
-    fs::path_control,
-    log::log_sink_control,
-    net::net_control,
-    panic::panic_control,
-    sched::{clock_control, thread_control, thread_spawner},
-};
+use reovim_system_kernel::rootd::PayloadImageKind;
+#[cfg(feature = "launch-profile")]
+use reovim_system_kernel::rootd::PayloadSourceArtifact;
+
+#[cfg(feature = "launch-profile")]
+const PAYLOAD_REOVIM_SOURCE_BYTES: &[u8] = include_bytes!("../payloads/reovim.rvp");
+#[cfg(feature = "launch-profile")]
+const PAYLOAD_EDITOR_SMOKE_SOURCE_BYTES: &[u8] = include_bytes!("../payloads/editor-smoke.rvp");
+#[cfg(feature = "launch-profile")]
+const PAYLOAD_SERVER_SMOKE_SOURCE_BYTES: &[u8] = include_bytes!("../payloads/server-smoke.rvp");
+#[cfg(all(feature = "launch-profile", target_os = "none", target_arch = "x86_64"))]
+const X86_INSTALLED_SERVER_SMOKE_SOURCE_BYTES: &[u8] =
+    b"reovim-payload-source-v1\nexit-status ready\n";
+
+#[cfg(feature = "launch-profile")]
+const LAUNCH_PAYLOADS: [PayloadDescriptor; 3] = [
+    PayloadDescriptor {
+        name: "reovim",
+        path: "/payload/reovim",
+        summary: "reovim editor-core payload",
+        entry_name: "payload_reovim",
+        image: PayloadImage::SourcePath("/payload/reovim"),
+    },
+    PayloadDescriptor {
+        name: "editor-smoke",
+        path: "/payload/editor-smoke",
+        summary: "editor-core smoke boot",
+        entry_name: "payload_editor_smoke",
+        image: PayloadImage::SourcePath("/payload/editor-smoke"),
+    },
+    PayloadDescriptor {
+        name: "server-smoke",
+        path: "/payload/server-smoke",
+        summary: "server-runtime smoke launch",
+        entry_name: "payload_server_smoke",
+        image: PayloadImage::SourcePath("/payload/server-smoke"),
+    },
+];
+
+#[cfg(feature = "launch-profile")]
+const LAUNCH_PAYLOAD_SOURCES: [PayloadSourceArtifact; 3] = [
+    PayloadSourceArtifact {
+        path: "/payload/reovim",
+        kind: PayloadImageKind::SourceImage,
+        bytes: PAYLOAD_REOVIM_SOURCE_BYTES,
+    },
+    PayloadSourceArtifact {
+        path: "/payload/editor-smoke",
+        kind: PayloadImageKind::SourceImage,
+        bytes: PAYLOAD_EDITOR_SMOKE_SOURCE_BYTES,
+    },
+    PayloadSourceArtifact {
+        path: "/payload/server-smoke",
+        kind: PayloadImageKind::SourceImage,
+        bytes: PAYLOAD_SERVER_SMOKE_SOURCE_BYTES,
+    },
+];
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 use {
@@ -264,90 +316,114 @@ fn memory_storage() -> &'static mut [MemoryRange] {
     unsafe { &mut *MEMORY.0.get() }
 }
 
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+struct DiagnosticDumpStore {
+    bytes: UnsafeCell<[u8; reovim_system_kernel::dump::MAX_DUMP_ARTIFACT_BYTES]>,
+    len: AtomicUsize,
+}
+
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+static DIAGNOSTIC_DUMP: DiagnosticDumpStore = DiagnosticDumpStore {
+    bytes: UnsafeCell::new([0u8; reovim_system_kernel::dump::MAX_DUMP_ARTIFACT_BYTES]),
+    len: AtomicUsize::new(0),
+};
+
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+unsafe impl Sync for DiagnosticDumpStore {}
+
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+fn diagnostic_dump_write(offset: usize, bytes: &[u8]) -> bool {
+    if offset != 0 || bytes.len() > reovim_system_kernel::dump::MAX_DUMP_ARTIFACT_BYTES {
+        return false;
+    }
+    // SAFETY: the dump service calls this through the single diagnostic block slot.
+    unsafe {
+        let out = &mut *DIAGNOSTIC_DUMP.bytes.get();
+        out[..bytes.len()].copy_from_slice(bytes);
+    }
+    DIAGNOSTIC_DUMP.len.store(bytes.len(), Ordering::Release);
+    true
+}
+
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+fn diagnostic_dump_read(offset: usize, out: &mut [u8]) -> usize {
+    if offset != 0 {
+        return 0;
+    }
+    let len = DIAGNOSTIC_DUMP.len.load(Ordering::Acquire);
+    let copy_len = core::cmp::min(len, out.len());
+    // SAFETY: the dump service calls this through the single diagnostic block slot.
+    unsafe {
+        let bytes = &*DIAGNOSTIC_DUMP.bytes.get();
+        out[..copy_len].copy_from_slice(&bytes[..copy_len]);
+    }
+    copy_len
+}
+
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+fn install_x86_diagnostic_dump_sink() {
+    DIAGNOSTIC_DUMP.len.store(0, Ordering::Release);
+    reovim_system_kernel::dump::install_sink(reovim_system_kernel::dump::DumpSink::new(
+        "qemu-diagnostic-dump0",
+        reovim_system_kernel::dump::MAX_DUMP_ARTIFACT_BYTES,
+        diagnostic_dump_write,
+        diagnostic_dump_read,
+    ));
+}
+
+#[cfg(all(feature = "launch-profile", target_os = "none", target_arch = "x86_64"))]
+fn install_x86_launch_profile_sources() {
+    let _ = reovim_system_kernel::source_store::install_source(
+        reovim_system_kernel::source_store::SourceArtifactNamespace::Payload,
+        "/payload/server-smoke",
+        X86_INSTALLED_SERVER_SMOKE_SOURCE_BYTES,
+    );
+}
+
 /// First-stage shell-only profile: no payload launch and no editor import.
 pub const fn shell_only_profile() -> BootProfile<'static> {
     BootProfile::new(
         "shell-only",
         false,
         &[],
+        &[],
+        bin::programs(),
+        bin::program_sources(),
+        bin::write_vfs_file,
+        bin::write_program_help,
         None,
         Some(halt_kernel),
         "reovim-os> ",
     )
 }
 
-/// Optional launch-capable phase-4 entry profile. Payload callbacks are provided
-/// as static descriptors so the root daemon can launch only when enabled by a
-/// composition feature.
+/// Optional launch-capable phase-4 entry profile. Payload source images are
+/// static byte artifacts owned by the OS image source store.
 #[cfg(feature = "launch-profile")]
 pub const fn launch_profile() -> BootProfile<'static> {
     BootProfile::new(
         "launch",
         true,
-        &[
-            PayloadDescriptor {
-                name: "reovim",
-                summary: "reovim editor-core payload",
-                launch: Some(editor_smoke_payload),
-            },
-            PayloadDescriptor {
-                name: "editor-smoke",
-                summary: "editor-core smoke boot",
-                launch: Some(editor_smoke_payload),
-            },
-            PayloadDescriptor {
-                name: "server-smoke",
-                summary: "server-runtime smoke launch",
-                launch: Some(server_smoke_payload),
-            },
-        ],
+        &LAUNCH_PAYLOADS,
+        &LAUNCH_PAYLOAD_SOURCES,
+        bin::programs(),
+        bin::program_sources(),
+        bin::write_vfs_file,
+        bin::write_program_help,
         None,
         Some(halt_kernel),
         "reovim-os> ",
     )
 }
 
-#[cfg(feature = "launch-profile")]
-fn editor_launcher_args() -> reovim_editor_core::LauncherArgs {
-    reovim_editor_core::LauncherArgs {
-        panic: panic_control(),
-        log: log_sink_control(),
-        clock: clock_control(),
-        thread: thread_control(),
-        ..reovim_editor_core::LauncherArgs::default()
-    }
-}
-
-#[cfg(feature = "launch-profile")]
-fn editor_smoke_payload() -> PayloadLaunchResult {
-    match reovim_editor_core::EditorInit::new(editor_launcher_args()).boot() {
-        Ok(_) => PayloadLaunchResult::Ready,
-        Err(_) => PayloadLaunchResult::Failed,
-    }
-}
-
-#[cfg(feature = "launch-profile")]
-fn server_smoke_payload() -> PayloadLaunchResult {
-    let editor_core = match reovim_editor_core::EditorInit::new(editor_launcher_args()).boot() {
-        Ok(core) => core,
-        Err(_) => {
-            return PayloadLaunchResult::Failed;
-        }
-    };
-
-    let _ = path_control().unlink(SERVER_SMOKE_SOCKET_PATH);
-    match reovim_server_rt::start_listener(&editor_core, SERVER_SMOKE_SOCKET_PATH, net_control(), thread_spawner())
-    {
-        Ok(()) => PayloadLaunchResult::Ready,
-        Err(_) => PayloadLaunchResult::Failed,
-    }
-}
-
-#[cfg(feature = "launch-profile")]
-static SERVER_SMOKE_SOCKET_PATH: &[u8] = b"/tmp/reovim-server-os.sock\0";
-
 /// Boot wrapper that binds this composition root's provider-specific callbacks.
 pub fn run_shell_profile(profile: BootProfile<'_>) -> ! {
+    reovim_system_kernel::source_store::reset_installed_sources();
+    #[cfg(all(feature = "launch-profile", target_os = "none", target_arch = "x86_64"))]
+    if profile.launch_enabled {
+        install_x86_launch_profile_sources();
+    }
+
     run_root_daemon_boot(ShellBootConfig {
         install_runtime_services: install_runtime_services,
         collect_boot_info,
@@ -385,6 +461,9 @@ fn install_runtime_services() -> Option<(u32, u32)> {
     let _ = reovim_platform_stub_none::install_platform();
     #[cfg(target_os = "linux")]
     let _ = reovim_platform_linux_native::install_platform();
+
+    #[cfg(all(target_os = "none", target_arch = "x86_64"))]
+    install_x86_diagnostic_dump_sink();
 
     #[cfg(all(target_os = "none", target_arch = "aarch64"))]
     {
@@ -597,7 +676,7 @@ fn probe_pcie(devices: &[DeviceEntry], write: WriteFn) {
         return;
     }
 
-    let status = arch_sys::pcie::read_builtin_pcie_link_status();
+    let status = arch_sys::pcie::read_root_complex_link_status();
     probe_emit(write, b"state=present\n");
     probe_emit(write, b"raw_status=");
     probe_write_u32_hex(write, status.raw_status);

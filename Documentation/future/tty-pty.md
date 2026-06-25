@@ -4,8 +4,8 @@
 goal.
 
 The current #800 root-daemon shell should not be named `tty`. It is a
-kernel-owned console shell: a prompt, line parser, and built-ins running over
-the available console/input surfaces. Calling it `tty` would imply more
+kernel-owned console shell: a prompt and line parser running `/bin` programs
+over the available console/input surfaces. Calling it `tty` would imply more
 contract than exists today: terminal devices, line discipline, raw/cooked
 mode, carrier state, PTY pairs, and possibly POSIX-shaped expectations.
 
@@ -15,7 +15,7 @@ Keep the 0.16 names narrow:
 |---|---|
 | `console` | Concrete boot/display surface: UART text, framebuffer text, and later keyboard input. |
 | `terminal` | Product-facing logical terminal/raw-mode vocabulary and its bridge to hosted provider slots. |
-| `root_shell` | Root-daemon command surface: prompt, parser, built-ins, payload launch commands. |
+| `root_shell` | Root-daemon `/bin` program surface: prompt, parser, exec frontend. |
 | `console_io` | Line/input/output adapter between the root shell and the available console surfaces. |
 | `input` | Common translation for physical input reports into console bytes/events; raw device polling stays below. |
 | `tty` | Future system-kernel terminal-device subsystem. Not the first root shell. |
@@ -53,6 +53,11 @@ Current OS images report the selected input path in the boot report and in
 - `usb_keyboard=ready` is reserved for the point where a lower USB provider
   reads a physical HID boot-keyboard report and that report reaches
   `system/lib/kernel::input` on the normal root-shell input path.
+
+The current `/bin/read` proof remains in that narrow root-console category. It
+reads one line from the same root-daemon line callback and records a typed
+line-read syscall; it is not a reusable TTY device subsystem, PTY carrier, or
+POSIX terminal contract.
 
 ## Future TTY Shape
 

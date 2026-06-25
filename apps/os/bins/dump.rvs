@@ -1,0 +1,13 @@
+reovim-source-v1
+reject-argc-greater 2 dump: too many arguments
+dispatch-arg1 dump: unknown subcommand
+default
+write-dump-status
+case status
+write-dump-status
+case snapshot
+write-dump-snapshot
+case sync
+write-dump-sync
+exit-status error
+end-dispatch-arg1

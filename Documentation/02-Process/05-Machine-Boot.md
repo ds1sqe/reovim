@@ -79,10 +79,122 @@ appliance:
    bash-like Reovim shell. It owns boot-profile targets, service/payload
    dispatch, and recovery/headless diagnostics. The first implementation must
    boot to a prompt with no editor-core dependency; editor/server/client launch
-   is a registered payload command supplied by the composition root. Bash-like
-   means familiar prompt, words, built-ins, and future `ls`/`cd` style
-   navigation; it does **not** mean POSIX shell execution or a public POSIX
-   face.
+   is a registered payload program supplied by the composition root. Bash-like
+   means familiar prompt, words, and `/bin` programs such as `ls` and `cd`; it
+   does **not** mean a second executable implementation inside the shell,
+   POSIX shell execution, or a public POSIX face. The system kernel owns only
+   the `/bin` descriptor, exec, VFS, process, scheduler, and syscall ABI; the
+   concrete `/bin` catalog and program bodies are installed by the
+   `reovim-os` image. Every operator-visible executable must resolve through an
+   image `/bin` descriptor before it can run; prompt parsing must not become a
+   separate executable implementation path.
+   `/bin` programs receive Reovim standard stream descriptors (`stdin=0`,
+   `stdout=1`, `stderr=2`); output goes through a descriptor-shaped fd write
+   path, and stderr/rejected writes retain `fd-write` rows even though today's
+   framebuffer/serial console sink still renders stderr beside stdout. Stdin
+   also goes through descriptor-shaped `fd-read`; current shell-launched
+   programs receive an empty stdin buffer and therefore read EOF unless a pipe
+   or scheduled exec payload seeds stdin. The first pipe source now exists as a
+   bounded run-to-completion shell pipe: the left side still resolves as a
+   `/bin` program, its stdout is captured through the syscall write path, and
+   the right side receives that capture as its pending exec stdin. `/bin/cat`
+   reads stdin when no paths are passed, so `pwd | cat` is the ordinary pipe
+   proof while `/bin/input` remains the read-diagnostic program. Interactive
+   line input is separate from fd 0 for now: `/bin/read` consumes one current
+   root-console line through a typed `tty-read-line` syscall. Even
+   stateful navigation such as `cd` resolves as `/bin/cd` and changes session
+   state only through typed kernel services; it is not a second executable path
+   outside `/bin`.
+
+   Current launch-capable images record payload source images as child
+   process/task lifecycles such as `/payload/reovim` or
+   `/payload/editor-smoke`, with explicit `ready -> running -> exited|failed`
+   bookkeeping, FIFO scheduler dispatch records visible through
+   `/proc/syscalls`, scheduler state visible through `/proc/scheduler`,
+   parent wait records visible through `/proc/waits`, and retained
+   `wait.start` / `payload.start` / `payload.exit` / `wait.end` audit rows.
+   Scheduled payload execution also emits a child-context `payload-run`
+   syscall row, separate from the parent `/bin/launch` or `/bin/reovim`
+   `payload-launch` request.
+   Process and syscall rows include loader, source-kind, and `entry_fn` metadata, and
+   `/proc/self` plus `/bin/proc self` expose the current program record
+   through a typed `process-self` syscall. `/bin` programs and launch-profile
+   payloads now both use descriptor identity plus loader-visible source-store
+   paths: descriptors name `/bin/*` or `/payload/*`, while image source tables
+   own the default byte-backed source artifacts. A bounded runtime-installed
+   source overlay is checked before those image tables, and `/proc/sources`
+   plus `/bin/proc sources` report `origin=image|installed`.
+   `/bin/proc install-bin NAME ok|error` and
+   `/bin/proc install-payload NAME ready|failed` cross a typed
+   `source-install` syscall and write status-only source images into that
+   overlay for `/bin/*` and `/payload/*` descriptors. `/bin/proc
+   install-bin-media NAME` and `/bin/proc install-payload-media NAME` first
+   read a bounded `reovim-source-media-v1` artifact envelope from the kernel
+   source-media block target, verify namespace/path/length/checksum against the
+   requested descriptor, and then write the enclosed source bytes into the same
+   overlay. This is an admission-path proof for current source loading, not a
+   FAT/SD-card filesystem loader. Exec admission also uses the checked
+   source-media envelope as an on-demand fallback when a descriptor resolves
+   but its source artifact is missing. If offset zero contains a bounded
+   `reovim-source-media-catalog-v1`, exec selects the matching catalog entry
+   and reads the checked artifact at that entry's block offset; if no catalog
+   is present, it falls back to the offset-zero checked artifact. The retained
+   exec-load row records `reason=loaded-source-media` when that fallback succeeds.
+   Live and dump evidence
+   carries source-image loader metadata, and `/proc/execs` records executable
+   class as `kind=bin` or `kind=payload`. Exec admission resolves the descriptor
+   source path, records `status=error reason=source-not-found`
+   for missing artifacts, and validates byte-backed source-image headers and
+   bounded op syntax before scheduler/process admission; malformed `/bin` or
+   payload artifacts stay in `/proc/execs` as
+   `status=error reason=invalid-image` and do not become pending work. Current
+   payload source bodies are byte-only artifacts that return explicit
+   source-image status results. The x86 launch profile proves an installed
+   `/payload/server-smoke` source override; real editor/server payload
+   execution waits for block-backed executable loading and fuller scheduler
+   semantics.
+
+   Image `/bin` programs can also spawn another `/bin` child through typed
+   spawn and exec/spawn/wait syscalls. `/bin/proc exec PROGRAM [ARG...]`
+   blocks the parent on a wait record: the parent `/bin/proc` process builds
+   child argv, the exec service retains that argv in pending invocation state,
+   the scheduler dispatches older ready `/bin` or payload work before the
+   waited child when FIFO order requires it, and `/proc/execs`,
+   `/proc/syscalls`, `/proc/waits`, and retained `wait.start` /
+   `exec.path=...` / `wait.end` audit rows prove the lifecycle. `/bin/proc
+   spawn PROGRAM [ARG...]` admits the child into the same pending exec and
+   scheduler-ready state without waiting; no_std and x86 transcript coverage
+   prove the child remains ready across shell inputs and runs before a later
+   just-entered command when FIFO order selects it. When the spawning `/bin`
+   process exits before that child runs, rootd adopts the live child in both
+   process and scheduler task records, so pending work never retains an exited
+   parent. `/bin/proc wait PID` waits on a retained Reovim process by PID,
+   including a child that rootd has adopted after the spawning `/bin` process
+   exited. It records typed `wait-begin` / `wait-end` rows and completes
+   against ready or already-completed retained work; it is not POSIX
+   `waitpid`. `/bin/proc block PROGRAM [ARG...]` creates the same child but moves
+   it to `blocked` immediately; the child stays retained but absent from the
+   ready queue until `/bin/proc wake PID` transitions it back to ready. The
+   focused no_std and x86 transcript proof checks the blocked child, the
+   `process-block` / `process-wake` syscall rows, and FIFO execution after
+   wake. `/bin/proc kill PID` terminates retained ready/blocked children
+   through a typed `process-kill` syscall, discards their pending executable
+   image, records a failed process exit, and proves the killed child does not
+   later dispatch. `/bin/proc pending` and `/proc/pending` expose retained
+   pending executable invocations, so blocked or waiting executable images are
+   visible before dispatch and disappear after kill cleanup. `/proc/execs` is the
+   executable-admission table: it records `argv0`, load status/reason, resolved
+   path, `source=`, loader, and `entry_fn` metadata for bounded source-image
+   loads today and future media-backed loads later.
+
+   Scheduler yield is cooperative and explicit. In a normal shell transcript
+   with no other ready work, `/bin/sched yield` reports `yielded=false`,
+   `status=no-peer`, and the selected pid/task while recording a handled
+   `yield-now` syscall. When another pending image is ready, the syscall reports
+   `status=yielded`, dispatches that scheduler-selected task to completion, and
+   then resumes the yielding process; no_std coverage proves this with an older
+   `/bin/pwd` process. Non-running processes are rejected before yield can
+   requeue them.
 
 ## 3. Boot proof model
 
@@ -134,6 +246,23 @@ USB/xHCI/HID path may be present as a provider, but `usb_keyboard=ready` is
 honest only after a physical HID boot-keyboard report reaches the root shell
 through the common input decoder. Before that proof, real-machine manual notes
 must report `usb_keyboard=unavailable`.
+
+Current dump proof is also explicit about its boundary. `/bin/dump status` and
+`/bin/dump snapshot` expose a `reovim-dump-v1` in-memory snapshot with
+boot/session identity, image package/version/target/profile identity,
+process/exec-load/task/syscall/log counts, storage capacity status, and a
+checksum. The system-kernel `block` service now owns the diagnostic block
+target abstraction used by dump sync. The x86 QEMU image installs
+`qemu-diagnostic-dump0`, so its transcript proves a checked write plus
+read-back verification through `/bin/dump sync`. The Pi 4 image still installs
+no real SD/FAT target, so its dump sync path remains fail-closed until a real
+block/fs or removable-media target exists. The host `analyze-dump.sh` tool can
+validate a saved snapshot text and reject checksum, wrong-image, or dropped-log
+failures. This is not persistent Pi SD-card proof until `dump sync` writes a
+checked artifact to card storage and reads it back.
+Dump artifacts also carry `pending_exec_records` plus a `pending:` table so
+post-poweroff analysis can distinguish loaded/admitted images from images still
+waiting for scheduler dispatch.
 
 ## 4. Device lifecycle
 
@@ -371,8 +500,8 @@ system-kernel mechanism, not a hot-pluggable device.
 | Behaviour | Fixture |
 |---|---|
 | Proof gate | `appliance` boot with a missing required proof (e.g. no framebuffer) aborts before the root daemon starts the editor/server/client payload and emits `machine.proof.fail`. |
-| Root-daemon independence | A kernel-shell fixture boots to a tty prompt, accepts basic commands (`help`, `device`, `dmesg`, `launch` status), and has no `reovim-editor-core` dependency. |
-| Interactive VNC smoke | The aarch64 framebuffer-console profile can be booted under QEMU VNC; a human or harness types a basic CLI command and observes the prompt/response before any editor payload is launched. |
+| Root-daemon independence | A kernel-shell fixture boots to a tty prompt, accepts basic `/bin` programs (`/bin/help`, `/bin/device`, `/bin/dmesg`, `/bin/launch` status), and has no `reovim-editor-core` dependency. |
+| Interactive VNC smoke | The aarch64 framebuffer-console profile can be booted under QEMU VNC; a human or harness types a basic `/bin` program and observes the prompt/response before any editor payload is launched. |
 | Degraded optional | An optional device entering `Degraded` boots under a profile that allows it and emits the allowing rule. |
 | Generation fence | A keyboard reconnect bumps generation; queued old-generation key events are dropped and modifiers cleared. |
 | Storage loss | State-root storage loss closes new writes (no fake save) and moves persistence to read-only or controlled shutdown per profile. |

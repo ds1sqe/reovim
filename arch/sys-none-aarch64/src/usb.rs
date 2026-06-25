@@ -22,11 +22,11 @@ pub const BCM2711_DWC2_MMIO_BASE: usize = 0xfe98_0000;
 /// BCM2711 DWC2/OTG MMIO window length.
 pub const BCM2711_DWC2_MMIO_LEN: usize = 0x1_0000;
 
-/// BCM2711 built-in xHCI bus address from the firmware DTB.
+/// BCM2711 integrated xHCI bus address from the firmware DTB.
 pub const BCM2711_XHCI_BUS_BASE: u64 = 0x7e9c_0000;
-/// BCM2711 built-in xHCI ARM-physical MMIO base.
+/// BCM2711 integrated xHCI ARM-physical MMIO base.
 pub const BCM2711_XHCI_MMIO_BASE: usize = 0xfe9c_0000;
-/// BCM2711 built-in xHCI MMIO window length.
+/// BCM2711 integrated xHCI MMIO window length.
 pub const BCM2711_XHCI_MMIO_LEN: usize = 0x10_0000;
 
 const XHCI_CAP_HCIVERSION: usize = 0x00;
@@ -2246,14 +2246,14 @@ impl PcieXhciController {
     }
 }
 
-/// Reads the BCM2711 built-in xHCI capability registers.
+/// Reads the BCM2711 integrated xHCI capability registers.
 ///
 /// Returns `None` when the register block does not look like an xHCI
 /// controller. This is an early probe only; it does not start the controller or
 /// imply a keyboard is attached.
 #[must_use]
-pub fn read_builtin_xhci_capabilities() -> Option<XhciCapabilities> {
-    // SAFETY: the address is the BCM2711 built-in xHCI MMIO window translated
+pub fn read_integrated_xhci_capabilities() -> Option<XhciCapabilities> {
+    // SAFETY: the address is the BCM2711 integrated xHCI MMIO window translated
     // from the firmware DTB bus address into the ARM-physical peripheral map.
     unsafe { read_xhci_capabilities_at(BCM2711_XHCI_MMIO_BASE) }
 }

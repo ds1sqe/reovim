@@ -6,12 +6,548 @@
 //! service helpers upward.
 
 use {
-    core::{alloc::Layout, sync::atomic::AtomicU32},
+    core::{
+        alloc::Layout,
+        cell::UnsafeCell,
+        sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering},
+    },
     reovim_kabi_platform::handle,
     reovim_uapi_sched::{
         ClockControl, DetachedThreadSpawner, SpawnError, SyncControl, ThreadControl,
     },
 };
+
+/// Maximum retained kernel task records.
+pub const MAX_KERNEL_TASKS: usize = 32;
+
+/// Kernel scheduler-visible task lifecycle state.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KernelTaskState {
+    /// Slot is unused.
+    Empty,
+    /// Task can run.
+    Ready,
+    /// Task is currently running.
+    Running,
+    /// Task is waiting for a kernel condition.
+    Blocked,
+    /// Task exited successfully.
+    Exited,
+    /// Task failed.
+    Failed,
+    /// Task requested halt.
+    Halted,
+}
+
+impl KernelTaskState {
+    /// Stable diagnostic word.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Empty => "empty",
+            Self::Ready => "ready",
+            Self::Running => "running",
+            Self::Blocked => "blocked",
+            Self::Exited => "exited",
+            Self::Failed => "failed",
+            Self::Halted => "halted",
+        }
+    }
+}
+
+/// Scheduler-visible reason for a blocked task.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BlockReason {
+    /// Task is not blocked.
+    None,
+    /// Task is explicitly blocked by an operator/process-control request.
+    Operator,
+    /// Task is waiting for a child process to complete.
+    WaitChild,
+}
+
+impl BlockReason {
+    /// Stable diagnostic word.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Operator => "operator",
+            Self::WaitChild => "wait-child",
+        }
+    }
+}
+
+/// Retained scheduler task record.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct KernelTaskRecord {
+    /// Task identifier.
+    pub task_id: usize,
+    /// Owning process identifier.
+    pub process_id: usize,
+    /// Parent task identifier.
+    pub parent_task_id: usize,
+    /// Task state.
+    pub state: KernelTaskState,
+    /// Reason when the task is blocked.
+    pub block_reason: BlockReason,
+    /// Number of times the scheduler dispatched this task.
+    pub run_count: usize,
+    /// Explicit scheduler ticks charged to this task while running.
+    pub runtime_ticks: usize,
+    /// Scheduler-visible entry name.
+    pub entry: &'static str,
+}
+
+impl KernelTaskRecord {
+    /// Empty task-table slot.
+    #[must_use]
+    pub const fn empty() -> Self {
+        Self {
+            task_id: 0,
+            process_id: 0,
+            parent_task_id: 0,
+            state: KernelTaskState::Empty,
+            block_reason: BlockReason::None,
+            run_count: 0,
+            runtime_ticks: 0,
+            entry: "",
+        }
+    }
+
+    const fn kernel(
+        task_id: usize,
+        process_id: usize,
+        parent_task_id: usize,
+        entry: &'static str,
+    ) -> Self {
+        Self {
+            task_id,
+            process_id,
+            parent_task_id,
+            state: KernelTaskState::Running,
+            block_reason: BlockReason::None,
+            run_count: 1,
+            runtime_ticks: 0,
+            entry,
+        }
+    }
+}
+
+/// Empty task record used for bounded snapshots.
+pub const EMPTY_KERNEL_TASK_RECORD: KernelTaskRecord = KernelTaskRecord::empty();
+
+/// Snapshot of the bounded scheduler run queue.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SchedulerSnapshot {
+    /// Scheduler-selected running task.
+    pub current_task_id: usize,
+    /// Number of retained ready-queue entries.
+    pub ready_len: usize,
+    /// Ready queue task IDs in FIFO order.
+    pub ready_queue: [usize; MAX_KERNEL_TASKS],
+    /// Number of explicit task dispatches.
+    pub dispatch_count: usize,
+    /// Number of cooperative yields.
+    pub yield_count: usize,
+    /// Number of explicit scheduler ticks.
+    pub tick_count: usize,
+}
+
+impl SchedulerSnapshot {
+    const fn empty() -> Self {
+        Self {
+            current_task_id: 0,
+            ready_len: 0,
+            ready_queue: [0; MAX_KERNEL_TASKS],
+            dispatch_count: 0,
+            yield_count: 0,
+            tick_count: 0,
+        }
+    }
+
+    /// Returns the next ready task, if any.
+    #[must_use]
+    pub const fn next_ready_task_id(self) -> usize {
+        if self.ready_len == 0 {
+            0
+        } else {
+            self.ready_queue[0]
+        }
+    }
+}
+
+struct KernelTaskTable {
+    records: [KernelTaskRecord; MAX_KERNEL_TASKS],
+    ready_queue: [usize; MAX_KERNEL_TASKS],
+    ready_len: usize,
+    current_task_id: usize,
+    dispatch_count: usize,
+    yield_count: usize,
+    tick_count: usize,
+}
+
+impl KernelTaskTable {
+    const fn new() -> Self {
+        let mut records = [KernelTaskRecord::empty(); MAX_KERNEL_TASKS];
+        records[0] = KernelTaskRecord::kernel(1, 1, 0, "rootd");
+        records[1] = KernelTaskRecord::kernel(2, 2, 1, "root-shell");
+        Self {
+            records,
+            ready_queue: [0; MAX_KERNEL_TASKS],
+            ready_len: 0,
+            current_task_id: 2,
+            dispatch_count: 0,
+            yield_count: 0,
+            tick_count: 0,
+        }
+    }
+
+    fn reset(&mut self) {
+        self.records = [KernelTaskRecord::empty(); MAX_KERNEL_TASKS];
+        self.records[0] = KernelTaskRecord::kernel(1, 1, 0, "rootd");
+        self.records[1] = KernelTaskRecord::kernel(2, 2, 1, "root-shell");
+        self.ready_queue = [0; MAX_KERNEL_TASKS];
+        self.ready_len = 0;
+        self.current_task_id = 2;
+        self.dispatch_count = 0;
+        self.yield_count = 0;
+        self.tick_count = 0;
+    }
+
+    fn write_program(&mut self, record: KernelTaskRecord) {
+        let slot = 2 + ((record.task_id.saturating_sub(3)) % (MAX_KERNEL_TASKS - 2));
+        if self.records[slot].state == KernelTaskState::Ready {
+            self.remove_ready(self.records[slot].task_id);
+        }
+        self.records[slot] = record;
+    }
+
+    fn update(
+        &mut self,
+        task_id: usize,
+        state: KernelTaskState,
+        block_reason: BlockReason,
+    ) -> Option<KernelTaskRecord> {
+        let mut index = 0usize;
+        while index < self.records.len() {
+            if self.records[index].task_id == task_id {
+                self.records[index].state = state;
+                self.records[index].block_reason = block_reason;
+                return Some(self.records[index]);
+            }
+            index += 1;
+        }
+        None
+    }
+
+    fn reparent(&mut self, task_id: usize, parent_task_id: usize) -> Option<KernelTaskRecord> {
+        let mut index = 0usize;
+        while index < self.records.len() {
+            if self.records[index].task_id == task_id {
+                self.records[index].parent_task_id = parent_task_id;
+                return Some(self.records[index]);
+            }
+            index += 1;
+        }
+        None
+    }
+
+    fn find(&self, task_id: usize) -> Option<KernelTaskRecord> {
+        let mut index = 0usize;
+        while index < self.records.len() {
+            if self.records[index].task_id == task_id {
+                return Some(self.records[index]);
+            }
+            index += 1;
+        }
+        None
+    }
+
+    fn ready_contains(&self, task_id: usize) -> bool {
+        let mut index = 0usize;
+        while index < self.ready_len {
+            if self.ready_queue[index] == task_id {
+                return true;
+            }
+            index += 1;
+        }
+        false
+    }
+
+    fn enqueue_ready(&mut self, task_id: usize) {
+        if task_id == 0 || self.ready_len >= self.ready_queue.len() || self.ready_contains(task_id)
+        {
+            return;
+        }
+        self.ready_queue[self.ready_len] = task_id;
+        self.ready_len += 1;
+    }
+
+    fn remove_ready(&mut self, task_id: usize) {
+        let mut index = 0usize;
+        while index < self.ready_len {
+            if self.ready_queue[index] == task_id {
+                let mut move_index = index;
+                while move_index + 1 < self.ready_len {
+                    self.ready_queue[move_index] = self.ready_queue[move_index + 1];
+                    move_index += 1;
+                }
+                self.ready_len -= 1;
+                self.ready_queue[self.ready_len] = 0;
+                return;
+            }
+            index += 1;
+        }
+    }
+
+    fn pop_ready(&mut self) -> Option<usize> {
+        if self.ready_len == 0 {
+            return None;
+        }
+        let task_id = self.ready_queue[0];
+        self.remove_ready(task_id);
+        Some(task_id)
+    }
+
+    fn dispatch(&mut self, task_id: usize) -> Option<KernelTaskRecord> {
+        self.remove_ready(task_id);
+        let record = self.update(task_id, KernelTaskState::Running, BlockReason::None)?;
+        let mut index = 0usize;
+        while index < self.records.len() {
+            if self.records[index].task_id == task_id {
+                self.records[index].run_count = self.records[index].run_count.saturating_add(1);
+                break;
+            }
+            index += 1;
+        }
+        let record = self.find(task_id).unwrap_or(record);
+        if self.current_task_id != task_id {
+            self.dispatch_count = self.dispatch_count.saturating_add(1);
+        }
+        self.current_task_id = task_id;
+        Some(record)
+    }
+
+    fn dispatch_next_ready(&mut self) -> Option<KernelTaskRecord> {
+        let task_id = self.pop_ready()?;
+        self.dispatch(task_id)
+    }
+
+    fn complete(&mut self, task_id: usize, state: KernelTaskState) {
+        self.remove_ready(task_id);
+        let Some(record) = self.update(task_id, state, BlockReason::None) else {
+            return;
+        };
+        if self.current_task_id == task_id {
+            self.current_task_id = record.parent_task_id;
+        }
+    }
+
+    fn block(&mut self, task_id: usize, reason: BlockReason) {
+        self.remove_ready(task_id);
+        let Some(record) = self.update(task_id, KernelTaskState::Blocked, reason) else {
+            return;
+        };
+        if self.current_task_id == task_id {
+            self.current_task_id = record.parent_task_id;
+        }
+    }
+
+    fn wake(&mut self, task_id: usize) -> Option<KernelTaskRecord> {
+        let record = self.update(task_id, KernelTaskState::Ready, BlockReason::None)?;
+        self.enqueue_ready(task_id);
+        Some(record)
+    }
+
+    fn yield_task(&mut self, task_id: usize) -> Option<usize> {
+        let record = self.find(task_id)?;
+        if record.state != KernelTaskState::Running {
+            return Some(self.current_task_id);
+        }
+
+        self.yield_count = self.yield_count.saturating_add(1);
+        self.update(task_id, KernelTaskState::Ready, BlockReason::None);
+        self.enqueue_ready(task_id);
+
+        if let Some(next_task_id) = self.pop_ready() {
+            let _ = self.dispatch(next_task_id);
+            return Some(next_task_id);
+        }
+
+        let _ = self.dispatch(task_id);
+        Some(task_id)
+    }
+
+    fn tick(&mut self, task_id: usize) -> Option<KernelTaskRecord> {
+        let mut index = 0usize;
+        while index < self.records.len() {
+            if self.records[index].task_id == task_id {
+                if self.records[index].state != KernelTaskState::Running {
+                    return None;
+                }
+                self.records[index].runtime_ticks =
+                    self.records[index].runtime_ticks.saturating_add(1);
+                self.tick_count = self.tick_count.saturating_add(1);
+                return Some(self.records[index]);
+            }
+            index += 1;
+        }
+        None
+    }
+
+    fn snapshot_scheduler(&self) -> SchedulerSnapshot {
+        let mut snapshot = SchedulerSnapshot::empty();
+        snapshot.current_task_id = self.current_task_id;
+        snapshot.ready_len = self.ready_len;
+        snapshot.dispatch_count = self.dispatch_count;
+        snapshot.yield_count = self.yield_count;
+        snapshot.tick_count = self.tick_count;
+        let mut index = 0usize;
+        while index < self.ready_len {
+            snapshot.ready_queue[index] = self.ready_queue[index];
+            index += 1;
+        }
+        snapshot
+    }
+}
+
+struct KernelTaskCell(UnsafeCell<KernelTaskTable>);
+
+// SAFETY: access is serialized by `TASK_LOCK`.
+unsafe impl Sync for KernelTaskCell {}
+
+static TASKS: KernelTaskCell = KernelTaskCell(UnsafeCell::new(KernelTaskTable::new()));
+static TASK_LOCK: AtomicBool = AtomicBool::new(false);
+static NEXT_TASK_ID: AtomicUsize = AtomicUsize::new(3);
+
+struct TaskGuard;
+
+impl TaskGuard {
+    fn acquire() -> Self {
+        while TASK_LOCK
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            core::hint::spin_loop();
+        }
+        Self
+    }
+}
+
+impl Drop for TaskGuard {
+    fn drop(&mut self) {
+        TASK_LOCK.store(false, Ordering::Release);
+    }
+}
+
+fn with_kernel_tasks<R>(f: impl FnOnce(&mut KernelTaskTable) -> R) -> R {
+    let _guard = TaskGuard::acquire();
+    // SAFETY: `TASK_LOCK` serializes access to the task table.
+    let tasks = unsafe { &mut *TASKS.0.get() };
+    f(tasks)
+}
+
+/// Resets scheduler bookkeeping to rootd plus root shell.
+pub fn reset_kernel_scheduler() {
+    NEXT_TASK_ID.store(3, Ordering::Release);
+    with_kernel_tasks(KernelTaskTable::reset);
+}
+
+/// Registers a ready task for an image-packaged program.
+#[must_use]
+pub fn register_program_task(
+    process_id: usize,
+    parent_task_id: usize,
+    entry: &'static str,
+) -> usize {
+    let task_id = NEXT_TASK_ID.fetch_add(1, Ordering::AcqRel);
+    with_kernel_tasks(|tasks| {
+        tasks.write_program(KernelTaskRecord {
+            task_id,
+            process_id,
+            parent_task_id,
+            state: KernelTaskState::Ready,
+            block_reason: BlockReason::None,
+            run_count: 0,
+            runtime_ticks: 0,
+            entry,
+        });
+        tasks.enqueue_ready(task_id);
+    });
+    task_id
+}
+
+/// Marks a task as running.
+pub fn run_kernel_task(task_id: usize) {
+    with_kernel_tasks(|tasks| {
+        let _ = tasks.dispatch(task_id);
+    });
+}
+
+/// Dispatches the next ready task in FIFO scheduler order.
+#[must_use]
+pub fn dispatch_next_ready_task() -> Option<KernelTaskRecord> {
+    with_kernel_tasks(KernelTaskTable::dispatch_next_ready)
+}
+
+/// Marks a task as blocked.
+pub fn block_kernel_task(task_id: usize, reason: BlockReason) {
+    with_kernel_tasks(|tasks| tasks.block(task_id, reason));
+}
+
+/// Wakes a blocked task and makes it ready.
+pub fn wake_kernel_task(task_id: usize) {
+    with_kernel_tasks(|tasks| {
+        let _ = tasks.wake(task_id);
+    });
+}
+
+/// Cooperatively yields from the current task to the next ready task.
+#[must_use]
+pub fn yield_kernel_task(task_id: usize) -> Option<usize> {
+    with_kernel_tasks(|tasks| tasks.yield_task(task_id))
+}
+
+/// Records one scheduler tick against a running task.
+#[must_use]
+pub fn tick_kernel_task(task_id: usize) -> Option<KernelTaskRecord> {
+    with_kernel_tasks(|tasks| tasks.tick(task_id))
+}
+
+/// Completes a task record.
+pub fn complete_kernel_task(task_id: usize, state: KernelTaskState) {
+    with_kernel_tasks(|tasks| tasks.complete(task_id, state));
+}
+
+/// Reparents a task to a new supervisor task.
+pub fn reparent_kernel_task(task_id: usize, parent_task_id: usize) {
+    with_kernel_tasks(|tasks| {
+        let _ = tasks.reparent(task_id, parent_task_id);
+    });
+}
+
+/// Copies retained scheduler task records into `out`, returning the count.
+pub fn snapshot_kernel_tasks(out: &mut [KernelTaskRecord]) -> usize {
+    with_kernel_tasks(|tasks| {
+        let mut written = 0usize;
+        let mut index = 0usize;
+        while index < tasks.records.len() && written < out.len() {
+            if tasks.records[index].state != KernelTaskState::Empty {
+                out[written] = tasks.records[index];
+                written += 1;
+            }
+            index += 1;
+        }
+        written
+    })
+}
+
+/// Returns scheduler run-queue metadata.
+#[must_use]
+pub fn snapshot_scheduler() -> SchedulerSnapshot {
+    with_kernel_tasks(|tasks| tasks.snapshot_scheduler())
+}
 
 /// Returns the up-face clock control table backed by this bridge.
 ///

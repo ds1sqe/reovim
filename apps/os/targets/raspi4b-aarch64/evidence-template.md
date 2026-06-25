@@ -80,9 +80,13 @@ help pwd
 help ls
 help cd
 help cat
+help read
 help mount
 help device
 help dmesg
+help dump
+help sched
+help proc
 help status
 help probe
 help launch
@@ -119,7 +123,12 @@ cat /boot/profile
 launch
 reovim
 dmesg --stats
+dump status
+dump snapshot
+dump sync
 cat /log/stats
+cat /log/events
+proc
 dmesg
 cat /log/dmesg
 ```
@@ -156,9 +165,9 @@ Required success facts:
 - [ ] `help dmesg` / `ls /log` make kernel log stats discoverable.
 - [ ] `help input` / `help proof` make live input diagnostics and the proof checklist self-describing.
 - [ ] `help status` / `help probe` make `manual_next` and probe catalog discovery self-describing.
-- [ ] `help pwd` / `help ls` / `help cd` / `help cat` / `help mount` make VFS navigation self-describing.
+- [ ] `help pwd` / `help ls` / `help cd` / `help cat` / `help read` / `help mount` make VFS navigation and TTY line reads self-describing.
 - [ ] `help` / `help clear` / `help screentest` / `clear` / `screentest` prove shell help and erase-line mode diagnostics.
-- [ ] `help device` / `help launch` / `help reovim` / `help halt` make boot inventory, payload, and shutdown commands self-describing.
+- [ ] `help device` / `help launch` / `help reovim` / `help halt` make boot inventory, payload, and shutdown `/bin` programs self-describing.
 - [ ] `pwd` / `ls` / `mount` report the kernel VFS namespace and mounts.
 - [ ] `device` / `cat /boot/memory` / `cat /boot/devices` report boot inventory.
 - [ ] `cd /dev` / `ls` / `cat uart0` prove relative VFS device-file access.
@@ -177,6 +186,10 @@ Required success facts:
 - [ ] `cat /boot/profile` reports `profile=shell-only`, `launch=disabled`, `payloads=0`, and `input_mode=live`.
 - [ ] `launch` / `reovim` report shell-only payload launch disabled.
 - [ ] `dmesg --stats` / `cat /log/stats` report kernel log ring stats with `dropped_bytes=0`.
+- [ ] `dump status` / `dump snapshot` / `dump sync` expose dump state, image identity, boot/device/proof/panic sections, and fail-closed persistence state.
+- [ ] `cat /log/events` reports structured kernel events with process/task identity.
+- [ ] `proc` reports the live process table through a `/bin` process-management program.
+- [ ] `proc` reports `loader=source-image entry_fn=bin_proc` for the running `/bin/proc` process.
 - [ ] `dmesg` has no `[klog] dropped_bytes=` retained-log wrap marker.
 - [ ] `dmesg` contains `shell: <command>` and `shell.status=ok` audit lines for the typed commands.
 - [ ] `dmesg` contains `shell.status=error` audit lines for the disabled payload launch commands.
@@ -185,6 +198,27 @@ Required success facts:
 - [ ] No new `reovim-os>` prompt appeared after `halt: ok`.
 
 If unsuccessful, record the exact blocker:
+
+```text
+
+```
+
+## Dump Analysis
+
+Current `dump sync` is expected to fail closed with
+`reason=no-persistent-dump-sink`. If a `dump snapshot` transcript, copied dump
+artifact, or mounted bootfs directory is available on this workstation,
+validate it with:
+
+```text
+apps/os/targets/raspi4b-aarch64/analyze-dump.sh --expect-package reovim-os --expect-target aarch64-unknown-none --expect-profile shell-only --require-zero-drops <dump-file-or-mounted-bootfs>
+```
+
+Mounted bootfs directory analysis requires exactly one supported artifact path:
+`reovim-dump-v1.txt`, `reovim-dump.txt`, `reovim/dump-v1.txt`, or
+`reovim/dump.txt`.
+
+Paste analyzer output, if available:
 
 ```text
 

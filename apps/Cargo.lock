@@ -144,11 +144,8 @@ dependencies = [
  "reovim-arch-floor-linux-x86-64",
  "reovim-arch-floor-none-aarch64",
  "reovim-arch-floor-none-x86-64",
- "reovim-editor-core",
- "reovim-lib-ds",
  "reovim-platform-linux-native",
  "reovim-platform-stub-none",
- "reovim-server-rt",
  "reovim-system-kernel",
  "reovim-uapi",
 ]

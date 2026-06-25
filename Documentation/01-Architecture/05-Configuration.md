@@ -88,7 +88,7 @@ Conformance fixture: a schema with a "command-string" field declared
 
 ## 6. EditorCore host vs shell (AL9 reshape)
 
-The editor core has two built-in participants:
+The editor core has two packaged participants:
 
 - `editor.host` — `[transport]`, `[limits]`, `[overrides]`, plus
   `[default].client` (selects transport profile, so host).
@@ -183,7 +183,7 @@ apply.
 ## 9. Bootstrap order
 
 ```
-A. Discover and validate editor.host. Defaults from built-in schema;
+A. Discover and validate editor.host. Defaults from packaged schema;
    layers 2..7 read in order. host config is required to:
    - resolve library root (§5 in 1.3),
    - resolve auth/transport profile,

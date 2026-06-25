@@ -37,13 +37,14 @@ missing_probe_manual_next_checkbox_evidence="$tmp_dir/missing-probe-manual-next-
 missing_retained_probe_manual_next_evidence="$tmp_dir/missing-retained-probe-manual-next.md"
 missing_vfs_live_source_evidence="$tmp_dir/missing-vfs-live-source.md"
 missing_image_identity_evidence="$tmp_dir/missing-image-identity.md"
+missing_dump_identity_evidence="$tmp_dir/missing-dump-identity.md"
 missing_profile_identity_evidence="$tmp_dir/missing-profile-identity.md"
 missing_identity_checkbox_evidence="$tmp_dir/missing-identity-checkbox.md"
 missing_vfs_namespace_evidence="$tmp_dir/missing-vfs-namespace.md"
 missing_boot_probes_listing_evidence="$tmp_dir/missing-boot-probes-listing.md"
 missing_boot_inventory_evidence="$tmp_dir/missing-boot-inventory.md"
 missing_shell_usability_evidence="$tmp_dir/missing-shell-usability.md"
-missing_typed_command_evidence="$tmp_dir/missing-typed-command.md"
+missing_typed_program_evidence="$tmp_dir/missing-typed-program.md"
 missing_profile_prompt_evidence="$tmp_dir/missing-profile-prompt.md"
 missing_pcie_probe_evidence="$tmp_dir/missing-pcie-probe.md"
 missing_payload_disabled_evidence="$tmp_dir/missing-payload-disabled.md"
@@ -144,7 +145,7 @@ write_passing_evidence() {
         printf '```text\n'
         printf 'reovim-os> proof\n'
         printf 'proof:\n'
-        printf 'commands:\n'
+        printf '/bin programs:\n'
         printf '  proof\n'
         printf '  cat /boot/proof\n'
         printf '  help\n'
@@ -156,9 +157,13 @@ write_passing_evidence() {
         printf '  help ls\n'
         printf '  help cd\n'
         printf '  help cat\n'
+        printf '  help read\n'
         printf '  help mount\n'
         printf '  help device\n'
         printf '  help dmesg\n'
+        printf '  help dump\n'
+        printf '  help sched\n'
+        printf '  help proc\n'
         printf '  help status\n'
         printf '  help probe\n'
         printf '  help launch\n'
@@ -195,7 +200,12 @@ write_passing_evidence() {
         printf '  launch\n'
         printf '  reovim\n'
         printf '  dmesg --stats\n'
+        printf '  dump status\n'
+        printf '  dump snapshot\n'
+        printf '  dump sync\n'
         printf '  cat /log/stats\n'
+        printf '  cat /log/events\n'
+        printf '  proc\n'
         printf '  dmesg\n'
         printf '  cat /log/dmesg\n'
         printf 'terminal:\n'
@@ -225,6 +235,9 @@ write_passing_evidence() {
         printf '  detailed help catalog available through /boot/help\n'
         printf '  screentest includes erase-line mode diagnostics\n'
         printf '  kernel log stats available through /log/stats\n'
+        printf '  kernel structured events available through /log/events\n'
+        printf '  dump status available through /bin/dump\n'
+        printf '  dump sync fails closed until persistent storage is available\n'
         printf '  kernel log dropped_bytes=0\n'
         printf '  retained dmesg has no [klog] dropped_bytes marker\n'
         printf '  retained dmesg includes probe usb-keyboard manual_next output\n'
@@ -234,11 +247,11 @@ write_passing_evidence() {
         printf '  probe targets include xhci-read-keyboard-report\n'
         printf '  launch/reovim disabled in shell-only profile\n'
         printf '  shell.status=ok\n'
-        printf '  shell.status=error for disabled payload commands\n'
+        printf '  shell.status=error for disabled payload programs\n'
         printf '  halt typed last prints halt: ok and stops root daemon\n'
         printf 'reovim-os> cat /boot/proof\n'
         printf 'proof:\n'
-        printf 'commands:\n'
+        printf '/bin programs:\n'
         printf '  proof\n'
         printf '  cat /boot/proof\n'
         printf '  help\n'
@@ -250,9 +263,13 @@ write_passing_evidence() {
         printf '  help ls\n'
         printf '  help cd\n'
         printf '  help cat\n'
+        printf '  help read\n'
         printf '  help mount\n'
         printf '  help device\n'
         printf '  help dmesg\n'
+        printf '  help dump\n'
+        printf '  help sched\n'
+        printf '  help proc\n'
         printf '  help status\n'
         printf '  help probe\n'
         printf '  help launch\n'
@@ -289,7 +306,12 @@ write_passing_evidence() {
         printf '  launch\n'
         printf '  reovim\n'
         printf '  dmesg --stats\n'
+        printf '  dump status\n'
+        printf '  dump snapshot\n'
+        printf '  dump sync\n'
         printf '  cat /log/stats\n'
+        printf '  cat /log/events\n'
+        printf '  proc\n'
         printf '  dmesg\n'
         printf '  cat /log/dmesg\n'
         printf 'terminal:\n'
@@ -319,6 +341,9 @@ write_passing_evidence() {
         printf '  detailed help catalog available through /boot/help\n'
         printf '  screentest includes erase-line mode diagnostics\n'
         printf '  kernel log stats available through /log/stats\n'
+        printf '  kernel structured events available through /log/events\n'
+        printf '  dump status available through /bin/dump\n'
+        printf '  dump sync fails closed until persistent storage is available\n'
         printf '  kernel log dropped_bytes=0\n'
         printf '  retained dmesg has no [klog] dropped_bytes marker\n'
         printf '  retained dmesg includes probe usb-keyboard manual_next output\n'
@@ -328,12 +353,13 @@ write_passing_evidence() {
         printf '  probe targets include xhci-read-keyboard-report\n'
         printf '  launch/reovim disabled in shell-only profile\n'
         printf '  shell.status=ok\n'
-        printf '  shell.status=error for disabled payload commands\n'
+        printf '  shell.status=error for disabled payload programs\n'
         printf '  halt typed last prints halt: ok and stops root daemon\n'
         printf 'reovim-os> help\n'
         printf 'reovim root shell\n'
-        printf 'commands: help, clear, screentest, pwd, ls, cd, cat, mount, input, status, proof, device, dmesg, probe, launch, reovim, halt\n'
-        printf 'usage: help [command]\n'
+        printf '/bin programs: help, clear, screentest, pwd, ls, cd, cat, read, mount, input, status, proof, device, dmesg, dump, sched, proc, probe, launch, reovim, halt\n'
+        printf 'namespace: /bin\n'
+        printf 'usage: help [program]\n'
         printf 'reovim-os> help clear\n'
         printf 'clear - clear framebuffer console and terminal\n'
         printf 'reovim-os> help screentest\n'
@@ -350,13 +376,21 @@ write_passing_evidence() {
         printf 'reovim-os> help cd\n'
         printf 'cd [path] - change current kernel VFS directory\n'
         printf 'reovim-os> help cat\n'
-        printf 'cat path... - print kernel VFS pseudo files\n'
+        printf 'cat [path...] - print stdin or kernel VFS pseudo files\n'
+        printf 'reovim-os> help read\n'
+        printf 'read - read one TTY line\n'
         printf 'reovim-os> help mount\n'
         printf 'mount - print kernel VFS mount table\n'
         printf 'reovim-os> help device\n'
         printf 'device - print boot memory and device inventory\n'
         printf 'reovim-os> help dmesg\n'
         printf 'dmesg [--stats] - print retained kernel log or ring stats\n'
+        printf 'reovim-os> help dump\n'
+        printf 'dump [status|snapshot|sync] - inspect or flush kernel dump state\n'
+        printf 'reovim-os> help sched\n'
+        printf 'sched [status|tick|yield] - inspect scheduler state, tick, or yield current task\n'
+        printf 'reovim-os> help proc\n'
+        printf 'proc [processes|execs|pending|self|sources|tasks|waits|syscalls|scheduler|exec PROGRAM [ARG...]|spawn PROGRAM [ARG...]|block PROGRAM [ARG...]|wait PID|wake PID|kill PID|install-bin NAME ok|error|install-payload NAME ready|failed|install-bin-media NAME|install-payload-media NAME] - inspect process state\n'
         printf 'reovim-os> help status\n'
         printf 'status - print boot, input, and manual_next summary\n'
         printf 'reovim-os> help probe\n'
@@ -369,23 +403,28 @@ write_passing_evidence() {
         printf 'halt - request root daemon shutdown\n'
         printf 'reovim-os> cat /boot/help\n'
         printf 'reovim root shell\n'
-        printf 'commands: help, clear, screentest, pwd, ls, cd, cat, mount, input, status, proof, device, dmesg, probe, launch, reovim, halt\n'
-        printf 'usage: help [command]\n'
+        printf '/bin programs: help, clear, screentest, pwd, ls, cd, cat, read, mount, input, status, proof, device, dmesg, dump, sched, proc, probe, launch, reovim, halt\n'
+        printf 'namespace: /bin\n'
+        printf 'usage: help [program]\n'
         printf 'details:\n'
-        printf '  help [command] - show command help\n'
+        printf '  help [program] - show program help\n'
         printf '  clear - clear framebuffer console and terminal\n'
         printf '  screentest - print renderer diagnostics\n'
         printf '    required rows: el: clean, el1: clean-left, el2: clean-all\n'
         printf '  pwd - print current kernel VFS directory\n'
         printf '  ls [path] - list a kernel VFS directory\n'
         printf '  cd [path] - change current kernel VFS directory\n'
-        printf '  cat path... - print kernel VFS pseudo files\n'
+        printf '  cat [path...] - print stdin or kernel VFS pseudo files\n'
+        printf '  read - read one TTY line\n'
         printf '  mount - print kernel VFS mount table\n'
         printf '  input - print live console input diagnostics\n'
         printf '  status - print boot, input, and manual_next summary\n'
         printf '  proof - print physical input proof checklist\n'
         printf '  device - print boot memory and device inventory\n'
         printf '  dmesg [--stats] - print retained kernel log or ring stats\n'
+        printf '  dump [status|snapshot|sync] - inspect or flush kernel dump state\n'
+        printf '  sched [status|tick|yield] - inspect scheduler state, tick, or yield current task\n'
+        printf '  proc [processes|execs|pending|self|sources|tasks|waits|syscalls|scheduler|exec PROGRAM [ARG...]|spawn PROGRAM [ARG...]|block PROGRAM [ARG...]|wait PID|wake PID|kill PID|install-bin NAME ok|error|install-payload NAME ready|failed|install-bin-media NAME|install-payload-media NAME] - inspect process state\n'
         printf '  probe target - run lower hardware probe; try `probe help` or `cat /boot/probes`\n'
         printf '  launch [payload] - list or run registered payloads\n'
         printf '  reovim - run the default reovim payload alias\n'
@@ -561,13 +600,61 @@ write_passing_evidence() {
         printf 'reovim-os> reovim\n'
         printf 'reovim disabled for this profile\n'
         printf 'reovim-os> dmesg --stats\n'
-        printf 'capacity_bytes=32768\n'
+        printf 'capacity_bytes=65536\n'
         printf 'retained_bytes=2048\n'
         printf 'dropped_bytes=0\n'
+        printf 'retained_events=42\n'
+        printf 'reovim-os> dump status\n'
+        printf 'format=reovim-dump-v1\n'
+        printf 'boot_id=1\n'
+        printf 'session_id=1\n'
+        printf 'identity_source=rootd-volatile\n'
+        printf 'package=reovim-os\n'
+        printf 'version=0.16.0-dev\n'
+        printf 'target=aarch64-unknown-none\n'
+        printf 'selected_profile=shell-only\n'
+        printf 'profile_request=shell-only\n'
+        printf 'bootline=absent\n'
+        printf 'launch_profile_feature=disabled\n'
+        printf 'persistent=unavailable\n'
+        printf 'storage=none\n'
+        printf 'syscall_records=42\n'
+        printf 'reovim-os> dump snapshot\n'
+        printf 'dump:\n'
+        printf 'reovim-dump-v1\n'
+        printf 'boot_id=1\n'
+        printf 'session_id=1\n'
+        printf 'identity_source=rootd-volatile\n'
+        printf 'package=reovim-os\n'
+        printf 'version=0.16.0-dev\n'
+        printf 'target=aarch64-unknown-none\n'
+        printf 'selected_profile=shell-only\n'
+        printf 'profile_request=shell-only\n'
+        printf 'bootline=absent\n'
+        printf 'launch_profile_feature=disabled\n'
+        printf 'persistent=unavailable\n'
+        printf 'storage=none\n'
+        printf 'checksum=12345\n'
+        printf 'syscalls:\n'
+        printf 'reovim-os> dump sync\n'
+        printf 'dump sync:\n'
+        printf 'persistent=unavailable\n'
+        printf 'storage=none\n'
+        printf 'status=not-written\n'
+        printf 'reason=no-persistent-dump-sink\n'
         printf 'reovim-os> cat /log/stats\n'
-        printf 'capacity_bytes=32768\n'
+        printf 'capacity_bytes=65536\n'
         printf 'retained_bytes=2100\n'
         printf 'dropped_bytes=0\n'
+        printf 'retained_events=43\n'
+        printf 'reovim-os> cat /log/events\n'
+        printf 'events:\n'
+        printf -- '- seq=1 component=proc severity=info kind=program-exit pid=3 task=3\n'
+        printf 'reovim-os> proc\n'
+        printf 'processes:\n'
+        printf -- '- pid=1 ppid=0 task=1 state=running path=rootd exit=0 loader=kernel entry_fn=rootd_main\n'
+        printf -- '- pid=2 ppid=1 task=2 state=running path=root-shell exit=0 loader=kernel entry_fn=root_shell\n'
+        printf -- '- pid=73 ppid=2 task=73 state=running path=/bin/proc exit=0 loader=source-image entry_fn=bin_proc\n'
         printf 'reovim-os> dmesg\n'
         printf 'dmesg:\n'
         printf 'input.usb_keyboard=ready source=usb-keyboard+uart-fallback last_poll=report-ready\n'
@@ -605,6 +692,9 @@ write_passing_evidence() {
         printf 'shell: help cat\n'
         printf 'shell.status=ok\n'
         printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
+        printf 'shell: help read\n'
+        printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: help mount\n'
         printf 'shell.status=ok\n'
         printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
@@ -612,6 +702,15 @@ write_passing_evidence() {
         printf 'shell.status=ok\n'
         printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: help dmesg\n'
+        printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
+        printf 'shell: help dump\n'
+        printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
+        printf 'shell: help sched\n'
+        printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
+        printf 'shell: help proc\n'
         printf 'shell.status=ok\n'
         printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: help status\n'
@@ -727,7 +826,22 @@ write_passing_evidence() {
         printf 'shell: dmesg --stats\n'
         printf 'shell.status=ok\n'
         printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
+        printf 'shell: dump status\n'
+        printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
+        printf 'shell: dump snapshot\n'
+        printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
+        printf 'shell: dump sync\n'
+        printf 'shell.status=error\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: cat /log/stats\n'
+        printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
+        printf 'shell: cat /log/events\n'
+        printf 'shell.status=ok\n'
+        printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
+        printf 'shell: proc\n'
         printf 'shell.status=ok\n'
         printf 'input.line_source=usb-keyboard usb_bytes=6 fallback_bytes=0 line_bytes=5\n'
         printf 'shell: dmesg\n'
@@ -752,9 +866,9 @@ write_passing_evidence() {
         printf -- '- [x] `help dmesg` / `ls /log` make kernel log stats discoverable.\n'
         printf -- '- [x] `help input` / `help proof` make live input diagnostics and the proof checklist self-describing.\n'
         printf -- '- [x] `help status` / `help probe` make `manual_next` and probe catalog discovery self-describing.\n'
-        printf -- '- [x] `help pwd` / `help ls` / `help cd` / `help cat` / `help mount` make VFS navigation self-describing.\n'
+        printf -- '- [x] `help pwd` / `help ls` / `help cd` / `help cat` / `help read` / `help mount` make VFS navigation and TTY line reads self-describing.\n'
         printf -- '- [x] `help` / `help clear` / `help screentest` / `clear` / `screentest` prove shell help and erase-line mode diagnostics.\n'
-        printf -- '- [x] `help device` / `help launch` / `help reovim` / `help halt` make boot inventory, payload, and shutdown commands self-describing.\n'
+        printf -- '- [x] `help device` / `help launch` / `help reovim` / `help halt` make boot inventory, payload, and shutdown `/bin` programs self-describing.\n'
         printf -- '- [x] `pwd` / `ls` / `mount` report the kernel VFS namespace and mounts.\n'
         printf -- '- [x] `device` / `cat /boot/memory` / `cat /boot/devices` report boot inventory.\n'
         printf -- '- [x] `cd /dev` / `ls` / `cat uart0` prove relative VFS device-file access.\n'
@@ -773,6 +887,10 @@ write_passing_evidence() {
         printf -- '- [x] `cat /boot/profile` reports `profile=shell-only`, `launch=disabled`, `payloads=0`, and `input_mode=live`.\n'
         printf -- '- [x] `launch` / `reovim` report shell-only payload launch disabled.\n'
         printf -- '- [x] `dmesg --stats` / `cat /log/stats` report kernel log ring stats with `dropped_bytes=0`.\n'
+        printf -- '- [x] `dump status` / `dump snapshot` / `dump sync` expose dump state, image identity, boot/device/proof/panic sections, and fail-closed persistence state.\n'
+        printf -- '- [x] `cat /log/events` reports structured kernel events with process/task identity.\n'
+        printf -- '- [x] `proc` reports the live process table through a `/bin` process-management program.\n'
+        printf -- '- [x] `proc` reports `loader=source-image entry_fn=bin_proc` for the running `/bin/proc` process.\n'
         printf -- '- [x] `dmesg` has no `[klog] dropped_bytes=` retained-log wrap marker.\n'
         printf -- '- [x] `dmesg` contains `shell: <command>` and `shell.status=ok` audit lines for the typed commands.\n'
         printf -- '- [x] `dmesg` contains `shell.status=error` audit lines for the disabled payload launch commands.\n'
@@ -915,6 +1033,17 @@ cp "$pass_evidence" "$missing_image_identity_evidence"
 sed -i '/^selected_profile=shell-only$/d' "$missing_image_identity_evidence"
 expect_failure "$missing_image_identity_evidence" "missing-image-identity"
 
+cp "$pass_evidence" "$missing_dump_identity_evidence"
+awk '
+    /^reovim-os> dump status$/ { in_dump = 1; print; next }
+    /^reovim-os> dump snapshot$/ { in_dump = 1; print; next }
+    /^reovim-os> dump sync$/ { in_dump = 0; print; next }
+    in_dump && /^package=reovim-os$/ { next }
+    { print }
+' "$missing_dump_identity_evidence" >"$tmp_dir/remove-dump-identity.md"
+mv "$tmp_dir/remove-dump-identity.md" "$missing_dump_identity_evidence"
+expect_failure "$missing_dump_identity_evidence" "missing-dump-identity"
+
 cp "$pass_evidence" "$missing_profile_identity_evidence"
 sed -i '/^profile=shell-only$/d' "$missing_profile_identity_evidence"
 expect_failure "$missing_profile_identity_evidence" "missing-profile-identity"
@@ -944,7 +1073,7 @@ sed -i '/^  el1: clean-left$/d; /^  el2: clean-all$/d' "$missing_screentest_eras
 expect_failure "$missing_screentest_erase_modes_evidence" "missing-screentest-erase-modes"
 
 cp "$pass_evidence" "$missing_log_stats_evidence"
-sed -i '/^capacity_bytes=32768$/d' "$missing_log_stats_evidence"
+sed -i '/^capacity_bytes=65536$/d' "$missing_log_stats_evidence"
 expect_failure "$missing_log_stats_evidence" "missing-log-stats"
 
 cp "$pass_evidence" "$nonzero_dropped_log_stats_evidence"
@@ -959,9 +1088,9 @@ cp "$pass_evidence" "$missing_log_discovery_evidence"
 sed -i '\#^reovim-os> ls /log$#d' "$missing_log_discovery_evidence"
 expect_failure "$missing_log_discovery_evidence" "missing-log-discovery"
 
-cp "$pass_evidence" "$missing_typed_command_evidence"
-sed -i '\#^reovim-os> status$#d' "$missing_typed_command_evidence"
-expect_failure "$missing_typed_command_evidence" "missing-typed-command"
+cp "$pass_evidence" "$missing_typed_program_evidence"
+sed -i '\#^reovim-os> status$#d' "$missing_typed_program_evidence"
+expect_failure "$missing_typed_program_evidence" "missing-typed-program"
 
 cp "$pass_evidence" "$missing_profile_prompt_evidence"
 sed -i '\#^reovim-os> cat /boot/profile$#d' "$missing_profile_prompt_evidence"

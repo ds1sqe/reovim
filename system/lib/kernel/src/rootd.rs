@@ -6,9 +6,16 @@
 
 use {
     crate::{
-        klog,
-        root_shell::{RootShellSession, execute_root_command},
-        splash, vfs,
+        klog, proc,
+        program::{MAX_PROGRAM_STDIN_BYTES, ProgramDescriptor, ProgramStatus},
+        root_shell::{
+            RootShellSession, ShellLineError, execute_loaded_program_argv, parse_program_argv,
+            split_pipeline,
+        },
+        source_store::ExecutableSourceStore,
+        splash,
+        syscall::{self, ProgramStdoutCapture},
+        vfs,
     },
     reovim_uapi_system::{BootInfo, DeviceClass, DeviceEntry},
 };
@@ -25,9 +32,6 @@ pub type WriteFn = fn(&[u8]);
 /// Callback that returns optional extra diagnostics appended after kernel log.
 pub type DmesgSnapshot = fn() -> &'static str;
 
-/// Callback that attempts to launch a registered payload.
-pub type LaunchPayload = fn() -> PayloadLaunchResult;
-
 /// Input callback for the interactive root shell line reader.
 pub type ReadLine = fn(&mut [u8]) -> usize;
 
@@ -42,6 +46,18 @@ pub type HardwareProbe = fn(&str, &[DeviceEntry], WriteFn) -> HardwareProbeResul
 
 /// Callback that derives a live console-input summary from the boot-time base.
 pub type ConsoleInputStatus = fn(ConsoleInputSummary) -> ConsoleInputSummary;
+
+/// Callback that renders one image-owned VFS pseudo-file through program syscalls.
+pub type VfsFileWriter = for<'daemon, 'session, 'rootd> fn(
+    vfs::File,
+    &mut syscall::ProgramSyscalls<'daemon, 'session, 'rootd>,
+);
+
+/// Callback that renders image-owned `/bin/help` output.
+pub type ProgramHelpWriter = for<'program_name, 'daemon, 'session, 'rootd> fn(
+    Option<&'program_name str>,
+    &mut syscall::ProgramSyscalls<'daemon, 'session, 'rootd>,
+) -> ProgramStatus;
 
 /// Bounded input buffer used by root-shell line reads.
 pub const ROOT_LINE_BYTES: usize = 128;
@@ -236,6 +252,16 @@ pub struct RootBootConfig<'a> {
     pub devices: &'a [DeviceEntry],
     /// Registered payload descriptors for `launch`.
     pub payloads: &'a [PayloadDescriptor],
+    /// Payload source artifacts available to the executable loader.
+    pub payload_sources: &'static [PayloadSourceArtifact],
+    /// Registered `/bin` program descriptors for shell exec.
+    pub programs: &'static [ProgramDescriptor],
+    /// `/bin` source artifacts available to the executable loader.
+    pub program_sources: &'static [crate::program::ProgramSourceArtifact],
+    /// Image-owned VFS pseudo-file renderer.
+    pub vfs_file_writer: VfsFileWriter,
+    /// Image-owned `/bin/help` renderer.
+    pub program_help_writer: ProgramHelpWriter,
     /// Optional extra diagnostics output.
     pub dmesg: Option<DmesgSnapshot>,
     /// Optional callback to stop firmware execution.
@@ -268,20 +294,144 @@ pub struct RootBootConfig<'a> {
 pub struct PayloadDescriptor {
     /// Canonical payload name, e.g. `editor-smoke` or `server-smoke`.
     pub name: &'static str,
+    /// Process-visible payload path.
+    pub path: &'static str,
     /// One-line payload description shown by `launch`.
     pub summary: &'static str,
-    /// Optional launch callback; shells keep this as a registration seam only.
-    pub launch: Option<LaunchPayload>,
+    /// Stable name for the payload entry point.
+    pub entry_name: &'static str,
+    /// Executable payload body.
+    pub image: PayloadImage,
 }
 
-/// Result from a launch callback.
+impl PayloadDescriptor {
+    /// Source kind for this payload image.
+    #[must_use]
+    pub const fn image_kind(&self) -> PayloadImageKind {
+        self.image.kind()
+    }
+}
+
+/// Source kind for a launchable payload image.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PayloadImageKind {
+    /// Payload body is interpreted from a bounded Reovim source image.
+    SourceImage,
+}
+
+impl PayloadImageKind {
+    /// Stable diagnostic word.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::SourceImage => "source-image",
+        }
+    }
+}
+
+/// Executable body for a launchable payload.
+#[derive(Clone, Copy, Debug)]
+pub enum PayloadImage {
+    /// Payload source bytes are loaded from a source store path.
+    SourcePath(&'static str),
+}
+
+impl PayloadImage {
+    /// Source kind for this payload body.
+    #[must_use]
+    pub const fn kind(self) -> PayloadImageKind {
+        match self {
+            Self::SourcePath(_) => PayloadImageKind::SourceImage,
+        }
+    }
+
+    /// Source-store path for this payload body.
+    #[must_use]
+    pub const fn source_path(self) -> &'static str {
+        match self {
+            Self::SourcePath(path) => path,
+        }
+    }
+}
+
+/// Payload source artifact available to the executable loader.
+#[derive(Clone, Copy, Debug)]
+pub struct PayloadSourceArtifact {
+    /// Loader-visible artifact path.
+    pub path: &'static str,
+    /// Encoded source kind.
+    pub kind: PayloadImageKind,
+    /// Encoded payload source bytes.
+    pub bytes: &'static [u8],
+}
+
+/// Source-store failure while loading a resolved payload descriptor.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PayloadLoadError {
+    /// Descriptor source path was not present in the source store.
+    SourceNotFound,
+    /// Source bytes failed loader validation.
+    InvalidImage,
+}
+
+/// Loaded payload object retained while waiting for scheduler dispatch.
+#[derive(Clone, Copy, Debug)]
+pub struct LoadedPayloadProgram {
+    /// Index in the root profile payload catalog.
+    pub catalog_index: usize,
+    /// Canonical payload name.
+    pub name: &'static str,
+    /// Process-visible payload path.
+    pub path: &'static str,
+    /// One-line payload description.
+    pub summary: &'static str,
+    /// Stable name for the payload entry point.
+    pub entry_name: &'static str,
+    /// Source kind for this payload image.
+    pub image_kind: PayloadImageKind,
+    /// Loader-visible artifact path that supplied the executable bytes.
+    pub source_path: &'static str,
+    source_bytes: &'static [u8],
+}
+
+impl LoadedPayloadProgram {
+    pub(crate) fn from_descriptor(
+        catalog_index: usize,
+        descriptor: &PayloadDescriptor,
+        source_store: ExecutableSourceStore,
+    ) -> Result<Self, PayloadLoadError> {
+        let source_path = descriptor.image.source_path();
+        let Some(source) = source_store.find_payload(source_path) else {
+            return Err(PayloadLoadError::SourceNotFound);
+        };
+        if source.kind != descriptor.image_kind() || !validate_payload_source_image(source.bytes) {
+            return Err(PayloadLoadError::InvalidImage);
+        }
+        Ok(Self {
+            catalog_index,
+            name: descriptor.name,
+            path: descriptor.path,
+            summary: descriptor.summary,
+            entry_name: descriptor.entry_name,
+            image_kind: descriptor.image_kind(),
+            source_path,
+            source_bytes: source.bytes,
+        })
+    }
+
+    pub(crate) const fn source_bytes(&self) -> &'static [u8] {
+        self.source_bytes
+    }
+}
+
+/// Result from executing a payload source image.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PayloadLaunchResult {
     /// Launch path completed and payload is ready.
     Ready,
-    /// Callback not configured.
+    /// Payload launch is not configured for the current profile or catalog.
     NotConfigured,
-    /// Callback returned an internal failure.
+    /// Payload source execution failed.
     Failed,
 }
 
@@ -293,6 +443,143 @@ impl core::fmt::Display for PayloadLaunchResult {
             Self::Failed => out.write_str("payload.failed"),
         }
     }
+}
+
+/// Installable payload-source exit status accepted by program syscalls.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PayloadSourceInstallStatus {
+    /// Install a payload source that reports ready.
+    Ready,
+    /// Install a payload source that reports failed.
+    Failed,
+}
+
+impl PayloadSourceInstallStatus {
+    /// Stable diagnostic word.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Ready => "ready",
+            Self::Failed => "failed",
+        }
+    }
+
+    /// Encoded payload source image for this status.
+    #[must_use]
+    pub const fn source_bytes(self) -> &'static [u8] {
+        match self {
+            Self::Ready => PAYLOAD_SOURCE_READY_IMAGE,
+            Self::Failed => PAYLOAD_SOURCE_FAILED_IMAGE,
+        }
+    }
+}
+
+const PAYLOAD_SOURCE_MAGIC: &[u8] = b"reovim-payload-source-v1";
+const PAYLOAD_SOURCE_OP_EXIT_STATUS: &[u8] = b"exit-status ";
+const PAYLOAD_SOURCE_MAX_OPS: usize = 16;
+const PAYLOAD_SOURCE_READY_IMAGE: &[u8] = b"reovim-payload-source-v1\nexit-status ready\n";
+const PAYLOAD_SOURCE_FAILED_IMAGE: &[u8] = b"reovim-payload-source-v1\nexit-status failed\n";
+
+fn next_payload_source_line(bytes: &'static [u8], offset: usize) -> Option<(&'static [u8], usize)> {
+    if offset >= bytes.len() {
+        return None;
+    }
+
+    let mut end = offset;
+    while end < bytes.len() && bytes[end] != b'\n' {
+        end += 1;
+    }
+
+    let mut next = end;
+    if next < bytes.len() && bytes[next] == b'\n' {
+        next += 1;
+    }
+
+    let mut line = &bytes[offset..end];
+    if line.last() == Some(&b'\r') {
+        line = &line[..line.len() - 1];
+    }
+
+    Some((line, next))
+}
+
+fn parse_payload_source_status(value: &[u8]) -> Option<PayloadLaunchResult> {
+    match value {
+        b"ready" => Some(PayloadLaunchResult::Ready),
+        b"not-configured" => Some(PayloadLaunchResult::NotConfigured),
+        b"failed" => Some(PayloadLaunchResult::Failed),
+        _ => None,
+    }
+}
+
+fn validate_payload_source_op(line: &'static [u8]) -> bool {
+    if line.is_empty() {
+        return true;
+    }
+
+    if line.starts_with(PAYLOAD_SOURCE_OP_EXIT_STATUS) {
+        return parse_payload_source_status(&line[PAYLOAD_SOURCE_OP_EXIT_STATUS.len()..]).is_some();
+    }
+
+    false
+}
+
+fn validate_payload_source_image(bytes: &'static [u8]) -> bool {
+    let Some((header, mut offset)) = next_payload_source_line(bytes, 0) else {
+        return false;
+    };
+    if header != PAYLOAD_SOURCE_MAGIC {
+        return false;
+    }
+
+    let mut ops = 0usize;
+    while let Some((line, next)) = next_payload_source_line(bytes, offset) {
+        ops += 1;
+        if ops > PAYLOAD_SOURCE_MAX_OPS || !validate_payload_source_op(line) {
+            return false;
+        }
+        offset = next;
+    }
+
+    true
+}
+
+fn run_payload_source_op(line: &'static [u8]) -> Option<PayloadLaunchResult> {
+    if line.is_empty() {
+        return Some(PayloadLaunchResult::Ready);
+    }
+
+    if line.starts_with(PAYLOAD_SOURCE_OP_EXIT_STATUS) {
+        return parse_payload_source_status(&line[PAYLOAD_SOURCE_OP_EXIT_STATUS.len()..]);
+    }
+
+    None
+}
+
+fn run_payload_source_image(bytes: &'static [u8]) -> PayloadLaunchResult {
+    let Some((header, mut offset)) = next_payload_source_line(bytes, 0) else {
+        return PayloadLaunchResult::Failed;
+    };
+    if header != PAYLOAD_SOURCE_MAGIC {
+        return PayloadLaunchResult::Failed;
+    }
+
+    let mut ops = 0usize;
+    while let Some((line, next)) = next_payload_source_line(bytes, offset) {
+        ops += 1;
+        if ops > PAYLOAD_SOURCE_MAX_OPS {
+            return PayloadLaunchResult::Failed;
+        }
+        let Some(result) = run_payload_source_op(line) else {
+            return PayloadLaunchResult::Failed;
+        };
+        if result != PayloadLaunchResult::Ready {
+            return result;
+        }
+        offset = next;
+    }
+
+    PayloadLaunchResult::Ready
 }
 
 /// A fixed, copyable kernel-side profile summary used by the root shell.
@@ -320,10 +607,16 @@ pub struct RootDaemon<'a> {
     boot_info: BootInfo,
     devices: &'a [DeviceEntry],
     payloads: &'a [PayloadDescriptor],
+    payload_sources: &'static [PayloadSourceArtifact],
+    programs: &'static [ProgramDescriptor],
+    program_sources: &'static [crate::program::ProgramSourceArtifact],
+    vfs_file_writer: VfsFileWriter,
+    program_help_writer: ProgramHelpWriter,
     dmesg: Option<DmesgSnapshot>,
     halt: Option<HaltKernel>,
     probe_hardware: Option<HardwareProbe>,
     console_input_status: Option<ConsoleInputStatus>,
+    read_line: ReadLine,
     prompt: &'static str,
     boot_image: BootImageSummary,
     console_input: ConsoleInputSummary,
@@ -337,10 +630,16 @@ impl<'a> RootDaemon<'a> {
         boot_info: BootInfo,
         devices: &'a [DeviceEntry],
         payloads: &'a [PayloadDescriptor],
+        payload_sources: &'static [PayloadSourceArtifact],
+        programs: &'static [ProgramDescriptor],
+        program_sources: &'static [crate::program::ProgramSourceArtifact],
+        vfs_file_writer: VfsFileWriter,
+        program_help_writer: ProgramHelpWriter,
         dmesg: Option<DmesgSnapshot>,
         halt: Option<HaltKernel>,
         probe_hardware: Option<HardwareProbe>,
         console_input_status: Option<ConsoleInputStatus>,
+        read_line: ReadLine,
         prompt: &'static str,
         boot_image: BootImageSummary,
         console_input: ConsoleInputSummary,
@@ -351,10 +650,16 @@ impl<'a> RootDaemon<'a> {
             boot_info,
             devices,
             payloads,
+            payload_sources,
+            programs,
+            program_sources,
+            vfs_file_writer,
+            program_help_writer,
             dmesg,
             halt,
             probe_hardware,
             console_input_status,
+            read_line,
             prompt,
             boot_image,
             console_input,
@@ -368,7 +673,7 @@ impl<'a> RootDaemon<'a> {
         self.profile.name
     }
 
-    /// Returns whether this profile allows `launch` callbacks.
+    /// Returns whether this profile allows payload launches.
     #[must_use]
     pub const fn launch_enabled(&self) -> bool {
         self.profile.launch_enabled
@@ -395,18 +700,172 @@ impl<'a> RootDaemon<'a> {
         self.console_input
     }
 
-    /// Runs one shell input line through the root parser and command set.
+    /// Reads one line from the active TTY input callback.
+    pub fn read_tty_line(&self, out: &mut [u8]) -> usize {
+        (self.read_line)(out)
+    }
+
+    /// Runs one shell input line through parser, exec admission, and scheduler dispatch.
     ///
     /// Returned `false` means the daemon should remain alive and accept
     /// additional input. `true` means execution reaches the halt path.
-    pub fn run_command_line(&self, session: &mut RootShellSession, line: &[u8]) -> bool {
-        append_shell_command_log(line);
-        let result = execute_root_command(self, session, line);
-        append_shell_result_log(result.status());
-        result.should_halt()
+    pub fn run_shell_line(&self, session: &mut RootShellSession, line: &[u8]) -> bool {
+        append_shell_line_log(line);
+        let status = match split_pipeline(line) {
+            Ok(Some((left, right))) => self.run_pipeline(session, left, right),
+            Ok(None) => self.run_single_shell_line(session, line),
+            Err(error) => {
+                self.write_line(error.message());
+                ProgramStatus::Error
+            }
+        };
+        append_shell_result_log(status);
+        matches!(status, ProgramStatus::Halt)
     }
 
-    /// Emits the boot-level command prompt.
+    fn run_single_shell_line(&self, session: &mut RootShellSession, line: &[u8]) -> ProgramStatus {
+        match parse_program_argv(line) {
+            Ok(None) => ProgramStatus::Empty,
+            Err(error) => {
+                self.write_line(error.message());
+                ProgramStatus::Error
+            }
+            Ok(Some(argv)) => {
+                match syscall::exec_bin_from_shell_argv_with_stdin(
+                    self.programs,
+                    self.source_store(),
+                    argv,
+                    &[],
+                ) {
+                    Ok(target) => self.run_pending_programs_until(session, target, None),
+                    Err(error) => {
+                        self.write_exec_load_error(error);
+                        ProgramStatus::Error
+                    }
+                }
+            }
+        }
+    }
+
+    fn run_pipeline(
+        &self,
+        session: &mut RootShellSession,
+        producer_line: &[u8],
+        consumer_line: &[u8],
+    ) -> ProgramStatus {
+        let capture = ProgramStdoutCapture::new();
+        let producer = match self.exec_pipeline_stage(producer_line, &[]) {
+            Ok(ctx) => ctx,
+            Err(status) => return status,
+        };
+        let producer_status = self.run_pending_programs_until(session, producer, Some(&capture));
+        if !matches!(producer_status, ProgramStatus::Ok) {
+            return producer_status;
+        }
+
+        let mut stdin = [0u8; MAX_PROGRAM_STDIN_BYTES];
+        let stdin_len = capture.copy_into(&mut stdin);
+        let consumer = match self.exec_pipeline_stage(consumer_line, &stdin[..stdin_len]) {
+            Ok(ctx) => ctx,
+            Err(status) => return status,
+        };
+        self.run_pending_programs_until(session, consumer, None)
+    }
+
+    fn exec_pipeline_stage(
+        &self,
+        line: &[u8],
+        stdin: &[u8],
+    ) -> Result<syscall::SyscallContext, ProgramStatus> {
+        match parse_program_argv(line) {
+            Ok(None) => {
+                self.write_line(ShellLineError::InvalidPipe.message());
+                Err(ProgramStatus::Error)
+            }
+            Err(error) => {
+                self.write_line(error.message());
+                Err(ProgramStatus::Error)
+            }
+            Ok(Some(argv)) => {
+                match syscall::exec_bin_from_shell_argv_with_stdin(
+                    self.programs,
+                    self.source_store(),
+                    argv,
+                    stdin,
+                ) {
+                    Ok(target) => Ok(target),
+                    Err(error) => {
+                        self.write_exec_load_error(error);
+                        Err(ProgramStatus::Error)
+                    }
+                }
+            }
+        }
+    }
+
+    fn write_exec_load_error(&self, error: crate::exec::ExecLoadError) {
+        match error {
+            crate::exec::ExecLoadError::InvalidImage => {
+                self.write_line("error: invalid /bin program image");
+            }
+            crate::exec::ExecLoadError::SourceNotFound => {
+                self.write_line("error: missing /bin program source");
+            }
+            crate::exec::ExecLoadError::EmptyArgv0 | crate::exec::ExecLoadError::NotFound => {
+                self.write_line("error: unknown /bin program, try `help`");
+            }
+        }
+    }
+
+    fn run_pending_programs_until(
+        &self,
+        session: &mut RootShellSession,
+        target: syscall::SyscallContext,
+        target_stdout_capture: Option<&ProgramStdoutCapture>,
+    ) -> ProgramStatus {
+        let mut steps = 0usize;
+        while steps < crate::sched::MAX_KERNEL_TASKS {
+            let Some(ctx) = syscall::dispatch_next_ready_program() else {
+                self.write_line("error: scheduler did not dispatch program");
+                return ProgramStatus::Error;
+            };
+            let status = match syscall::take_pending_exec(ctx.pid) {
+                Some(pending) => {
+                    let pending_ctx = syscall::SyscallContext::from_process(pending.handle());
+                    let stdout_capture = if ctx.pid == target.pid {
+                        target_stdout_capture
+                    } else {
+                        None
+                    };
+                    execute_loaded_program_argv(
+                        self,
+                        session,
+                        pending.program(),
+                        pending.argv(),
+                        pending.stdin(),
+                        stdout_capture,
+                        Some(pending_ctx),
+                    )
+                    .status()
+                }
+                None => {
+                    self.write_line("error: scheduler selected process without program image");
+                    ProgramStatus::Error
+                }
+            };
+            syscall::exit_current(ctx, status);
+            append_exec_log(ctx, status);
+            if matches!(status, ProgramStatus::Halt) || ctx.pid == target.pid {
+                return status;
+            }
+            steps += 1;
+        }
+
+        self.write_line("error: scheduler dispatch budget exhausted");
+        ProgramStatus::Error
+    }
+
+    /// Emits the boot-level shell prompt.
     pub fn write_prompt(&self) {
         (self.write)(self.prompt.as_bytes());
     }
@@ -428,7 +887,37 @@ impl<'a> RootDaemon<'a> {
         self.devices
     }
 
-    /// Snapshot of boot diagnostics for pseudo files and commands.
+    /// `/bin` program catalog supplied by the OS image.
+    #[must_use]
+    pub const fn programs(&self) -> &'static [ProgramDescriptor] {
+        self.programs
+    }
+
+    /// `/bin` source artifacts supplied by the OS image.
+    #[must_use]
+    pub const fn program_sources(&self) -> &'static [crate::program::ProgramSourceArtifact] {
+        self.program_sources
+    }
+
+    /// Executable source-store view supplied by the OS image.
+    #[must_use]
+    pub const fn source_store(&self) -> ExecutableSourceStore {
+        ExecutableSourceStore::new(self.program_sources, self.payload_sources)
+    }
+
+    /// VFS pseudo-file renderer supplied by the OS image.
+    #[must_use]
+    pub const fn vfs_file_writer(&self) -> VfsFileWriter {
+        self.vfs_file_writer
+    }
+
+    /// `/bin/help` renderer supplied by the OS image.
+    #[must_use]
+    pub const fn program_help_writer(&self) -> ProgramHelpWriter {
+        self.program_help_writer
+    }
+
+    /// Snapshot of boot diagnostics for pseudo files and `/bin` programs.
     #[must_use]
     pub const fn boot_info(&self) -> BootInfo {
         self.boot_info
@@ -446,39 +935,63 @@ impl<'a> RootDaemon<'a> {
         Some(probe(target, self.devices, self.write))
     }
 
-    /// Executes configured payload launch callback by index.
-    pub fn launch_payload_by_index(&self, index: usize) -> PayloadLaunchResult {
-        if !self.profile.launch_enabled {
-            return PayloadLaunchResult::NotConfigured;
-        }
-
-        let Some(payload) = self.payloads.get(index) else {
-            return PayloadLaunchResult::NotConfigured;
-        };
-        let Some(launch) = payload.launch else {
-            return PayloadLaunchResult::NotConfigured;
-        };
-        launch()
-    }
-
-    /// Executes configured payload launch callback by payload name.
-    pub fn launch_payload_by_name(&self, name: &str) -> PayloadLaunchResult {
-        if !self.profile.launch_enabled {
-            return PayloadLaunchResult::NotConfigured;
-        }
-
+    /// Returns the payload descriptor index and descriptor by name.
+    pub fn payload_by_name(&self, name: &str) -> Option<(usize, &'a PayloadDescriptor)> {
         for (index, payload) in self.payloads.iter().enumerate() {
             if payload.name == name {
-                return self.launch_payload_by_index(index);
+                return Some((index, payload));
             }
         }
-        PayloadLaunchResult::NotConfigured
+        None
     }
 
-    /// Payload catalog for command output.
+    /// Loads a payload program by catalog index.
+    pub fn load_payload_by_index(&self, index: usize) -> Option<LoadedPayloadProgram> {
+        let payload = self.payloads.get(index)?;
+        LoadedPayloadProgram::from_descriptor(index, payload, self.source_store()).ok()
+    }
+
+    /// Loads a payload program by name.
+    pub fn load_payload_by_name(&self, name: &str) -> Option<LoadedPayloadProgram> {
+        let (index, payload) = self.payload_by_name(name)?;
+        LoadedPayloadProgram::from_descriptor(index, payload, self.source_store()).ok()
+    }
+
+    /// Executes a loaded payload program.
+    pub fn run_loaded_payload(&self, payload: LoadedPayloadProgram) -> PayloadLaunchResult {
+        if !self.profile.launch_enabled {
+            return PayloadLaunchResult::NotConfigured;
+        }
+
+        run_payload_source_image(payload.source_bytes())
+    }
+
+    /// Executes a configured payload by index.
+    pub fn launch_payload_by_index(&self, index: usize) -> PayloadLaunchResult {
+        let Some(payload) = self.load_payload_by_index(index) else {
+            return PayloadLaunchResult::NotConfigured;
+        };
+        self.run_loaded_payload(payload)
+    }
+
+    /// Executes a configured payload by payload name.
+    pub fn launch_payload_by_name(&self, name: &str) -> PayloadLaunchResult {
+        let Some(payload) = self.load_payload_by_name(name) else {
+            return PayloadLaunchResult::NotConfigured;
+        };
+        self.run_loaded_payload(payload)
+    }
+
+    /// Payload catalog for `/bin/launch` output.
     #[must_use]
     pub const fn payloads(&self) -> &'a [PayloadDescriptor] {
         self.payloads
+    }
+
+    /// Payload source artifacts supplied by the OS image.
+    #[must_use]
+    pub const fn payload_sources(&self) -> &'static [PayloadSourceArtifact] {
+        self.payload_sources
     }
 
     /// Triggers the kernel halt callback.
@@ -500,21 +1013,38 @@ fn trim_line_end(bytes: &[u8]) -> &[u8] {
     &bytes[..end]
 }
 
-fn append_shell_command_log(line: &[u8]) {
-    let command = trim_line_end(line);
+fn append_shell_line_log(line: &[u8]) {
+    let entered_line = trim_line_end(line);
     klog::append_bytes(b"shell: ");
-    if command.is_empty() {
+    if entered_line.is_empty() {
         klog::append_bytes(b"<empty>");
     } else {
-        klog::append_bytes(command);
+        klog::append_bytes(entered_line);
     }
     klog::append_bytes(b"\n");
 }
 
-fn append_shell_result_log(status: crate::root_shell::RootCommandStatus) {
+fn append_shell_result_log(status: ProgramStatus) {
     klog::append_bytes(b"shell.status=");
     klog::append_bytes(status.as_bytes());
     klog::append_bytes(b"\n");
+}
+
+fn append_exec_log(ctx: syscall::SyscallContext, status: ProgramStatus) {
+    klog::append_bytes(b"exec.path=");
+    klog::append_bytes(ctx.program_path.as_bytes());
+    klog::append_bytes(b" pid=");
+    klog::append_usize_dec(ctx.pid);
+    klog::append_bytes(b" task=");
+    klog::append_usize_dec(ctx.task_id);
+    klog::append_bytes(b" status=");
+    klog::append_bytes(status.as_bytes());
+    klog::append_bytes(b" loader=");
+    klog::append_bytes(ctx.loader.as_bytes());
+    klog::append_bytes(b" entry_fn=");
+    klog::append_bytes(ctx.entry_name.as_bytes());
+    klog::append_bytes(b"\n");
+    klog::append_event_with_context("proc", "info", "program-exit", ctx.pid, ctx.task_id);
 }
 
 fn write_usize_dec(write: WriteFn, value: usize) {
@@ -739,14 +1269,22 @@ fn write_boot_log(cfg: &RootBootConfig<'_>) {
 /// Boots the root daemon shell and never returns.
 ///
 /// The kernel owns this execution point for RTOS mode: splash, shell
-/// bootstrap, line loop, and command dispatch, with all policy in one place.
+/// bootstrap, line loop, and `/bin` program dispatch.
 ///
 /// The `read_line` callback is caller-owned and architecture-specific. The
 /// callback must return `0` on EOF or fatal read errors so this loop can exit
 /// deterministically in test or host simulation builds.
 pub fn run_root_daemon(cfg: RootBootConfig<'_>) -> ! {
     klog::reset();
+    klog::install_identity(klog::DiagnosticIdentity {
+        boot_id: 1,
+        session_id: 1,
+        identity_source: "rootd-volatile",
+    });
+    proc::reset();
+    syscall::reset();
     klog::append_line("rootd: boot start");
+    klog::append_event_with_source_context("rootd", "boot", "info", "boot-start", 0, 0);
     // The shell policy prints a branded splash before interactive control.
     splash::render(cfg.splash_geometry, cfg.write);
     if let Some(prepare_shell) = cfg.prepare_shell {
@@ -759,10 +1297,16 @@ pub fn run_root_daemon(cfg: RootBootConfig<'_>) -> ! {
         cfg.boot_info,
         cfg.devices,
         cfg.payloads,
+        cfg.payload_sources,
+        cfg.programs,
+        cfg.program_sources,
+        cfg.vfs_file_writer,
+        cfg.program_help_writer,
         cfg.dmesg,
         cfg.halt,
         cfg.probe_hardware,
         cfg.console_input_status,
+        cfg.read_line,
         cfg.prompt,
         cfg.boot_image,
         cfg.console_input,
@@ -771,6 +1315,7 @@ pub fn run_root_daemon(cfg: RootBootConfig<'_>) -> ! {
 
     (cfg.write)(b"reovim system kernel shell ready\n");
     klog::append_line("rootd: shell ready");
+    klog::append_event_with_source_context("rootd", "boot", "info", "shell-ready", 0, 0);
     daemon.write_prompt();
 
     let mut line = [0u8; ROOT_LINE_BYTES];
@@ -779,11 +1324,13 @@ pub fn run_root_daemon(cfg: RootBootConfig<'_>) -> ! {
         let len = (cfg.read_line)(&mut line);
         if len == 0 {
             klog::append_line("rootd: input eof");
+            klog::append_event_with_source_context("rootd", "input", "warn", "eof", 0, 0);
             break;
         }
 
-        if daemon.run_command_line(&mut session, &line[..len]) {
+        if daemon.run_shell_line(&mut session, &line[..len]) {
             klog::append_line("rootd: halt requested");
+            klog::append_event_with_source_context("rootd", "boot", "info", "halt-requested", 0, 0);
             break;
         }
 
@@ -792,6 +1339,7 @@ pub fn run_root_daemon(cfg: RootBootConfig<'_>) -> ! {
 
     if let Some(halt) = cfg.halt {
         klog::append_line("rootd: halt callback");
+        klog::append_event_with_source_context("rootd", "boot", "info", "halt-callback", 0, 0);
         halt();
     }
 

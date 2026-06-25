@@ -8,7 +8,7 @@ TARGET_DIR="$ROOT/apps/os/targets/raspi4b-aarch64"
 PREFLIGHT_SCRIPT="$TARGET_DIR/preflight-real-board.sh"
 README="$TARGET_DIR/README.md"
 TEMPLATE="$TARGET_DIR/evidence-template.md"
-ROOT_SHELL="$ROOT/system/lib/kernel/src/root_shell.rs"
+PROOF_FORMATTER="$ROOT/system/lib/kernel/src/syscall.rs"
 VALIDATOR="$TARGET_DIR/validate-evidence.sh"
 
 tmp_root="$(mktemp -d)"
@@ -60,61 +60,61 @@ extract_checkbox_block() {
     fi
 }
 
-extract_kernel_proof_commands() {
+extract_os_bin_proof_commands() {
     local source="$1"
     local output="$2"
 
     awk '
-        /fn write_boot_proof\(daemon:/ { in_func = 1 }
-        in_func && /daemon\.write_line\("commands:"\)/ { in_commands = 1; next }
-        in_commands && /daemon\.write_line\("terminal:"\)/ { exit }
-        in_commands && /daemon\.write_line\("  [^"]*"\);/ {
+        /fn write_boot_proof\(/ { in_func = 1 }
+        in_func && /\.stdout_line\("\/bin programs:"\)/ { in_commands = 1; next }
+        in_commands && /\.stdout_line\("terminal:"\)/ { exit }
+        in_commands && /\.stdout_line\("  [^"]*"\);/ {
             line = $0
-            sub(/^.*daemon\.write_line\("  /, "", line)
+            sub(/^.*\.stdout_line\("  /, "", line)
             sub(/"\);.*$/, "", line)
             print line
         }
     ' "$source" >"$output"
 
     if [ ! -s "$output" ]; then
-        printf 'error: empty kernel proof command list extracted from %s\n' "$source" >&2
+        printf 'error: empty OS /bin proof program list extracted from %s\n' "$source" >&2
         exit 1
     fi
 }
 
-extract_kernel_proof_halt() {
+extract_os_bin_proof_halt() {
     local source="$1"
     local output="$2"
 
     awk '
-        /fn write_boot_proof\(daemon:/ { in_func = 1 }
-        in_func && /daemon\.write_line\("terminal:"\)/ { in_terminal = 1; next }
-        in_terminal && /daemon\.write_line\("expected:"\)/ { exit }
-        in_terminal && /daemon\.write_line\("  [^"]*"\);/ {
+        /fn write_boot_proof\(/ { in_func = 1 }
+        in_func && /\.stdout_line\("terminal:"\)/ { in_terminal = 1; next }
+        in_terminal && /\.stdout_line\("expected:"\)/ { exit }
+        in_terminal && /\.stdout_line\("  [^"]*"\);/ {
             line = $0
-            sub(/^.*daemon\.write_line\("  /, "", line)
+            sub(/^.*\.stdout_line\("  /, "", line)
             sub(/"\);.*$/, "", line)
             print line
         }
     ' "$source" >"$output"
 
     if [ ! -s "$output" ]; then
-        printf 'error: empty kernel proof halt command extracted from %s\n' "$source" >&2
+        printf 'error: empty OS /bin proof halt command extracted from %s\n' "$source" >&2
         exit 1
     fi
 }
 
-extract_kernel_static_expected_facts() {
+extract_os_bin_static_expected_facts() {
     local source="$1"
     local output="$2"
 
     awk '
-        /fn write_boot_proof\(daemon:/ { in_func = 1 }
-        in_func && /daemon\.write_line\("expected:"\)/ { in_expected = 1; next }
+        /fn write_boot_proof\(/ { in_func = 1 }
+        in_func && /\.stdout_line\("expected:"\)/ { in_expected = 1; next }
         in_expected && /^}/ { exit }
-        in_expected && /daemon\.write_line\("  [^"]*"\);/ {
+        in_expected && /\.stdout_line\("  [^"]*"\);/ {
             line = $0
-            sub(/^.*daemon\.write_line\("  /, "", line)
+            sub(/^.*\.stdout_line\("  /, "", line)
             sub(/"\);.*$/, "", line)
             print line
         }
@@ -127,7 +127,7 @@ extract_kernel_static_expected_facts() {
     ' "$source" | LC_ALL=C sort -u >"$output"
 
     if [ ! -s "$output" ]; then
-        printf 'error: empty kernel proof expected-fact list extracted from %s\n' "$source" >&2
+        printf 'error: empty OS /bin proof expected-fact list extracted from %s\n' "$source" >&2
         exit 1
     fi
 }
@@ -169,7 +169,7 @@ extract_validator_usb_source_commands() {
     ' "$source" | LC_ALL=C sort -u >"$output"
 
     if [ ! -s "$output" ]; then
-        printf 'error: empty validator USB-source command list extracted from %s\n' "$source" >&2
+        printf 'error: empty validator USB-source /bin program command-line list extracted from %s\n' "$source" >&2
         exit 1
     fi
 }
@@ -188,7 +188,7 @@ extract_validator_dmesg_audit_commands() {
     ' "$source" | LC_ALL=C sort -u >"$output"
 
     if [ ! -s "$output" ]; then
-        printf 'error: empty validator dmesg-audit command list extracted from %s\n' "$source" >&2
+        printf 'error: empty validator dmesg-audit /bin program command-line list extracted from %s\n' "$source" >&2
         exit 1
     fi
 }
@@ -207,7 +207,7 @@ extract_validator_prompt_commands() {
     ' "$source" | LC_ALL=C sort -u >"$output"
 
     if [ ! -s "$output" ]; then
-        printf 'error: empty validator prompt command list extracted from %s\n' "$source" >&2
+        printf 'error: empty validator prompt /bin program command-line list extracted from %s\n' "$source" >&2
         exit 1
     fi
 }
@@ -218,7 +218,7 @@ sort_unique_lines() {
 
     LC_ALL=C sort -u "$source" >"$output"
     if [ ! -s "$output" ]; then
-        printf 'error: empty sorted command list extracted from %s\n' "$source" >&2
+        printf 'error: empty sorted /bin program command-line list extracted from %s\n' "$source" >&2
         exit 1
     fi
 }
@@ -230,7 +230,7 @@ sort_unique_combined_lines() {
 
     cat "$first" "$second" | LC_ALL=C sort -u >"$output"
     if [ ! -s "$output" ]; then
-        printf 'error: empty combined command list extracted from %s and %s\n' "$first" "$second" >&2
+        printf 'error: empty combined /bin program command-line list extracted from %s and %s\n' "$first" "$second" >&2
         exit 1
     fi
 }
@@ -241,7 +241,7 @@ expect_same() {
     local label="$3"
 
     if ! cmp -s "$expected" "$actual"; then
-        printf 'error: proof command list drifted in %s\n' "$label" >&2
+        printf 'error: proof /bin program command-line list drifted in %s\n' "$label" >&2
         diff -u "$expected" "$actual" >&2 || true
         exit 1
     fi
@@ -273,14 +273,14 @@ extract_command_block \
     "$tmp_evidence" \
     "the physical USB keyboard:" \
     "$tmp_root/seed.halt"
-extract_kernel_proof_commands \
-    "$ROOT_SHELL" \
+extract_os_bin_proof_commands \
+    "$PROOF_FORMATTER" \
     "$tmp_root/kernel.commands"
-extract_kernel_proof_halt \
-    "$ROOT_SHELL" \
+extract_os_bin_proof_halt \
+    "$PROOF_FORMATTER" \
     "$tmp_root/kernel.halt"
-extract_kernel_static_expected_facts \
-    "$ROOT_SHELL" \
+extract_os_bin_static_expected_facts \
+    "$PROOF_FORMATTER" \
     "$tmp_root/kernel.static-expected"
 extract_validator_static_expected_facts \
     "$VALIDATOR" \
@@ -328,7 +328,7 @@ extract_checkbox_block \
 
 expect_same "$tmp_root/template.commands" "$tmp_root/readme.commands" "README.md"
 expect_same "$tmp_root/template.commands" "$tmp_root/seed.commands" "generated evidence seed"
-expect_same "$tmp_root/template.commands" "$tmp_root/kernel.commands" "system-kernel /boot/proof commands"
+expect_same "$tmp_root/template.commands" "$tmp_root/kernel.commands" "system-kernel /boot/proof /bin programs"
 expect_same "$tmp_root/template.commands-plus-halt.unique" "$tmp_root/validator.prompt.commands" "validate-evidence prompt command guards"
 expect_same "$tmp_root/template.commands.unique" "$tmp_root/validator.usb-source.commands" "validate-evidence USB-source command guards"
 expect_same "$tmp_root/template.commands.unique" "$tmp_root/validator.dmesg-audit.commands" "validate-evidence dmesg audit command guards"
