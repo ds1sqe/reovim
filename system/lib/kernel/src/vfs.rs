@@ -22,6 +22,12 @@ pub enum VfsError {
     NotFound,
     /// Traversal tried to enter a file-like node.
     NotDirectory,
+    /// A VFS file read buffer is already in use by this process.
+    Busy,
+    /// The generated file content exceeded the bounded read buffer.
+    FileTooLarge,
+    /// A descriptor-shaped file read or write failed after open.
+    Io,
 }
 
 /// A bounded normalized absolute path.
@@ -170,7 +176,7 @@ pub const fn mounts() -> &'static [MountEntry] {
 /// Read-only file or pseudo-device nodes in the kernel VFS.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum File {
-    /// `/bin/{program}`.
+    /// `/bin/{program}` by stable program descriptor ID.
     BinProgram(usize),
     /// `/boot/help`.
     BootHelp,
@@ -208,6 +214,8 @@ pub enum File {
     ProcExecs,
     /// `/proc/pending`.
     ProcPending,
+    /// `/proc/media`.
+    ProcMedia,
     /// `/proc/self`.
     ProcSelf,
     /// `/proc/scheduler`.
@@ -292,6 +300,7 @@ pub fn lookup(
         "/proc/processes" => return Ok(Node::File(File::ProcProcesses)),
         "/proc/execs" => return Ok(Node::File(File::ProcExecs)),
         "/proc/pending" => return Ok(Node::File(File::ProcPending)),
+        "/proc/media" => return Ok(Node::File(File::ProcMedia)),
         "/proc/self" => return Ok(Node::File(File::ProcSelf)),
         "/proc/scheduler" => return Ok(Node::File(File::ProcScheduler)),
         "/proc/sources" => return Ok(Node::File(File::ProcSources)),
@@ -303,9 +312,9 @@ pub fn lookup(
 
     if let Some(rest) = path.strip_prefix("/bin/") {
         let (name, tail) = split_first(rest);
-        if let Some((index, _program)) = program::find_by_bin_name(programs, name) {
+        if let Some((_index, program)) = program::find_by_bin_name(programs, name) {
             return if tail.is_empty() {
-                Ok(Node::File(File::BinProgram(index)))
+                Ok(Node::File(File::BinProgram(program.id)))
             } else {
                 Err(VfsError::NotDirectory)
             };
@@ -344,6 +353,7 @@ pub fn lookup(
         "/proc/processes/",
         "/proc/execs/",
         "/proc/pending/",
+        "/proc/media/",
         "/proc/self/",
         "/proc/scheduler/",
         "/proc/sources/",

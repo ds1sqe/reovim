@@ -88,6 +88,7 @@ const SOURCE_MEDIA_BIN_NOSOURCE: usize = 1;
 const SOURCE_MEDIA_PAYLOAD_MISSING: usize = 2;
 const SOURCE_MEDIA_BIN_WRONG_PATH: usize = 3;
 const SOURCE_MEDIA_BIN_CATALOG: usize = 4;
+const SOURCE_MEDIA_BIN_DYNAMIC: usize = 5;
 const SOURCE_MEDIA_CATALOG_ARTIFACT_OFFSET: usize = 256;
 static SOURCE_MEDIA_KIND: AtomicUsize = AtomicUsize::new(SOURCE_MEDIA_NONE);
 
@@ -223,6 +224,9 @@ fn source_media_read(offset: usize, out: &mut [u8]) -> usize {
         SOURCE_MEDIA_BIN_WRONG_PATH => {
             (b"bin".as_slice(), b"/bin/other".as_slice(), MEDIA_BIN_SOURCE)
         }
+        SOURCE_MEDIA_BIN_DYNAMIC => {
+            (b"bin".as_slice(), b"/bin/media-bin".as_slice(), MEDIA_BIN_SOURCE)
+        }
         _ => return 0,
     };
     source_media_encode(out, namespace, path, source)
@@ -264,6 +268,8 @@ fn payload_store(sources: &'static [PayloadSourceArtifact]) -> ExecutableSourceS
 arch_test!(exec_loader_resolves_bin_argv0, {
     proc::reset();
     reset();
+    reset_installed_sources();
+    clear_source_media();
 
     let help = load_bin_program(crate::bin_fixture::programs(), bin_store(), "help")
         .expect("help loads by basename");
@@ -460,6 +466,49 @@ arch_test!(exec_loader_loads_missing_bin_source_from_source_media_catalog, {
 
     reset_installed_sources();
     clear_source_media();
+});
+
+arch_test!(exec_loader_discovers_bin_descriptor_from_source_media, {
+    proc::reset();
+    reset();
+    reset_installed_sources();
+    clear_source_media();
+    install_source_media(SOURCE_MEDIA_BIN_DYNAMIC);
+
+    let loaded = load_bin_program(&[], program_store(&[]), "media-bin")
+        .expect("media-discovered /bin descriptor loads from source media");
+    testrt::check_eq(loaded.descriptor.name, "media-bin");
+    testrt::check_eq(loaded.descriptor.path, "/bin/media-bin");
+    testrt::check_eq(loaded.descriptor.summary, "source media program");
+    testrt::check_eq(loaded.descriptor.entry_name, "bin_media_bin");
+    testrt::check_eq(loaded.source_path, "/bin/media-bin");
+    testrt::check_eq(loaded.source_bytes(), MEDIA_BIN_SOURCE);
+
+    let installed = program_store(&[])
+        .find_program("/bin/media-bin")
+        .expect("dynamic media bin installed source overlay");
+    testrt::check_eq(installed.bytes, MEDIA_BIN_SOURCE);
+
+    let by_path = load_bin_program(&[], program_store(&[]), "/bin/media-bin")
+        .expect("media-discovered /bin descriptor reloads by absolute path");
+    testrt::check_eq(by_path.descriptor.entry_name, "bin_media_bin");
+
+    let mut records = [EMPTY_EXEC_LOAD_RECORD; super::MAX_EXEC_LOAD_RECORDS];
+    let count = snapshot_loads(&mut records);
+    testrt::check_eq(count, 2usize);
+    testrt::check_eq(records[0].argv0(), "media-bin");
+    testrt::check_eq(records[0].status, ExecLoadStatus::Ok);
+    testrt::check_eq(records[0].reason, ExecLoadReason::LoadedFromSourceMedia);
+    testrt::check_eq(records[0].kind, ExecLoadKind::Bin);
+    testrt::check_eq(records[0].path, "/bin/media-bin");
+    testrt::check_eq(records[0].source_path, "/bin/media-bin");
+    testrt::check_eq(records[0].entry_name, "bin_media_bin");
+    testrt::check_eq(records[1].argv0(), "/bin/media-bin");
+    testrt::check_eq(records[1].reason, ExecLoadReason::Loaded);
+
+    reset_installed_sources();
+    clear_source_media();
+    reset();
 });
 
 arch_test!(exec_loader_rejects_source_media_path_mismatch_at_admission, {

@@ -740,6 +740,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "cat /bin/halt\n",
         "ls /proc\n",
         "cat /proc/execs\n",
+        "cat /proc/media\n",
         "cat /proc/pending\n",
         "cat /proc/self\n",
         "cat /proc/processes\n",
@@ -750,6 +751,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "sched yield\n",
         "proc\n",
         "proc self\n",
+        "proc media\n",
         "proc sources\n",
         "proc exec pwd\n",
         "proc exec cat /boot/profile\n",
@@ -838,7 +840,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
             && serial
                 .contains("  sched [status|tick|yield] - inspect scheduler state, tick, or yield current task")
             && serial.contains(
-                "  proc [processes|execs|pending|self|sources|tasks|waits|syscalls|scheduler|exec PROGRAM [ARG...]|spawn PROGRAM [ARG...]|block PROGRAM [ARG...]|wait PID|wake PID|kill PID|install-bin NAME ok|error|install-payload NAME ready|failed|install-bin-media NAME|install-payload-media NAME] - inspect process state"
+                "  proc [processes|execs|media|pending|self|sources|tasks|waits|syscalls|scheduler|exec PROGRAM [ARG...]|spawn PROGRAM [ARG...]|block PROGRAM [ARG...]|wait PID|wake PID|kill PID|install-bin NAME ok|error|install-payload NAME ready|failed|install-bin-media NAME|install-payload-media NAME] - inspect process state"
             )
             && serial.contains("  cat [path...] - print stdin or kernel VFS pseudo files")
             && serial.contains("  read - read one TTY line")
@@ -895,7 +897,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     );
     assert!(
         serial.contains(
-            "proc [processes|execs|pending|self|sources|tasks|waits|syscalls|scheduler|exec PROGRAM [ARG...]|spawn PROGRAM [ARG...]|block PROGRAM [ARG...]|wait PID|wake PID|kill PID|install-bin NAME ok|error|install-payload NAME ready|failed|install-bin-media NAME|install-payload-media NAME] - inspect process state"
+            "proc [processes|execs|media|pending|self|sources|tasks|waits|syscalls|scheduler|exec PROGRAM [ARG...]|spawn PROGRAM [ARG...]|block PROGRAM [ARG...]|wait PID|wake PID|kill PID|install-bin NAME ok|error|install-payload NAME ready|failed|install-bin-media NAME|install-payload-media NAME] - inspect process state"
         ),
         "proc help appears; serial: {serial:?}",
     );
@@ -1387,7 +1389,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     );
     assert!(
         serial.contains(
-            "reovim-os> execs\npending\nprocesses\nself\nscheduler\nsources\nsyscalls\ntasks\nwaits\n"
+            "reovim-os> execs\nmedia\npending\nprocesses\nself\nscheduler\nsources\nsyscalls\ntasks\nwaits\n"
         ),
         "ls /proc prints process namespace; serial: {serial:?}",
     );
@@ -1402,6 +1404,12 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     assert!(
         serial.contains("reovim-os> pending:\n"),
         "cat /proc/pending prints pending executable table; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("source-media:\n")
+            && serial.contains("storage=none\nstorage_capacity_bytes=0\nroot_bytes=0")
+            && serial.contains("status=unavailable\nreason=source-media-unavailable"),
+        "source-media table reports unavailable media in default x86 boot; serial: {serial:?}",
     );
     assert!(
         serial.contains("sources:\n")
@@ -1494,6 +1502,8 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
             && serial.contains("op=scheduler-dispatch status=ok")
             && serial.contains("op=vfs-normalize status=ok")
             && serial.contains("op=vfs-lookup status=ok")
+            && serial.contains("op=source-media-snapshot status=ok")
+            && serial.contains("op=source-media-read status=unavailable")
             && serial.contains("op=snapshot-source-store status=ok")
             && serial.contains("op=snapshot-syscalls status=ok")
             && serial.contains("op=tty-read-line status=ok")

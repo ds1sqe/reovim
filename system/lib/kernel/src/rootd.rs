@@ -759,7 +759,7 @@ impl<'a> RootDaemon<'a> {
             Err(status) => return status,
         };
         let producer_status = self.run_pending_programs_until(session, producer, Some(&capture));
-        if !matches!(producer_status, ProgramStatus::Ok) {
+        if !producer_status.is_success() {
             return producer_status;
         }
 

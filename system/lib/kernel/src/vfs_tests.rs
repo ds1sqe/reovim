@@ -61,6 +61,7 @@ arch_test!(vfs_normalizes_absolute_and_relative_paths, {
 });
 
 arch_test!(vfs_looks_up_static_and_device_nodes, {
+    crate::program::reset_media_programs();
     testrt::check_eq(lookup("/", &DEVICES), Ok(Node::Directory(Directory::Root)));
     testrt::check_eq(lookup("/bin", &DEVICES), Ok(Node::Directory(Directory::Bin)));
     testrt::check_eq(lookup("/bin/help", &DEVICES), Ok(Node::File(File::BinProgram(0))));
@@ -79,6 +80,7 @@ arch_test!(vfs_looks_up_static_and_device_nodes, {
     testrt::check_eq(lookup("/log/stats", &DEVICES), Ok(Node::File(File::LogStats)));
     testrt::check_eq(lookup("/proc", &DEVICES), Ok(Node::Directory(Directory::Proc)));
     testrt::check_eq(lookup("/proc/execs", &DEVICES), Ok(Node::File(File::ProcExecs)));
+    testrt::check_eq(lookup("/proc/media", &DEVICES), Ok(Node::File(File::ProcMedia)));
     testrt::check_eq(lookup("/proc/pending", &DEVICES), Ok(Node::File(File::ProcPending)));
     testrt::check_eq(lookup("/proc/processes", &DEVICES), Ok(Node::File(File::ProcProcesses)));
     testrt::check_eq(lookup("/proc/self", &DEVICES), Ok(Node::File(File::ProcSelf)));
@@ -95,6 +97,20 @@ arch_test!(vfs_looks_up_static_and_device_nodes, {
     testrt::check_eq(lookup("/dev/bus0", &DEVICES), Ok(Node::File(File::DevDevice(3))));
     testrt::check_eq(lookup("/dev/uart0/more", &DEVICES), Err(VfsError::NotDirectory));
     testrt::check_eq(lookup("/missing", &DEVICES), Err(VfsError::NotFound));
+});
+
+arch_test!(vfs_looks_up_media_discovered_bin_nodes, {
+    crate::program::reset_media_programs();
+    let descriptor = crate::program::install_media_program("/bin/media-bin")
+        .expect("media program descriptor installs");
+
+    testrt::check_eq(
+        lookup("/bin/media-bin", &DEVICES),
+        Ok(Node::File(File::BinProgram(descriptor.id))),
+    );
+    testrt::check_eq(lookup("/bin/media-bin/extra", &DEVICES), Err(VfsError::NotDirectory));
+
+    crate::program::reset_media_programs();
 });
 
 arch_test!(vfs_device_names_are_class_ordinals, {

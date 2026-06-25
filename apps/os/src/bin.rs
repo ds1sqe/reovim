@@ -338,6 +338,7 @@ pub fn write_vfs_file(file: File, syscalls: &mut ProgramSyscalls<'_, '_, '_>) {
         File::LogEvents => write_event_table(syscalls),
         File::LogStats => syscalls.write_kernel_log_stats(),
         File::ProcExecs => syscalls.write_exec_load_table(),
+        File::ProcMedia => syscalls.write_source_media_table(),
         File::ProcPending => syscalls.write_pending_exec_table(),
         File::ProcProcesses => syscalls.write_process_table(),
         File::ProcSelf => syscalls.write_current_process(),
@@ -354,8 +355,8 @@ pub fn write_vfs_file(file: File, syscalls: &mut ProgramSyscalls<'_, '_, '_>) {
     }
 }
 
-fn write_program_file(syscalls: &ProgramSyscalls<'_, '_, '_>, index: usize) {
-    let Some(entry) = syscalls.programs().get(index) else {
+fn write_program_file(syscalls: &ProgramSyscalls<'_, '_, '_>, id: usize) {
+    let Some((_, entry)) = kernel_program::find_by_id(syscalls.programs(), id) else {
         syscalls.stdout_line("program metadata unavailable");
         return;
     };
@@ -506,6 +507,18 @@ fn write_program_names(syscalls: &ProgramSyscalls<'_, '_, '_>) {
         syscalls.stdout_bytes(programs[index].name.as_bytes());
         index += 1;
     }
+    let mut media_programs = [None; kernel_program::MAX_MEDIA_PROGRAMS];
+    let count = kernel_program::snapshot_media_programs(&mut media_programs);
+    index = 0;
+    while index < count {
+        if let Some(program) = media_programs[index] {
+            if !programs.is_empty() || index > 0 {
+                syscalls.stdout_bytes(b", ");
+            }
+            syscalls.stdout_bytes(program.name.as_bytes());
+        }
+        index += 1;
+    }
     syscalls.stdout_bytes(b"\n");
 }
 
@@ -516,6 +529,15 @@ fn write_detailed_help_catalog(syscalls: &ProgramSyscalls<'_, '_, '_>) {
     let programs = syscalls.programs();
     while index < programs.len() {
         write_program_help_entry(syscalls, &programs[index], b"  ");
+        index += 1;
+    }
+    let mut media_programs = [None; kernel_program::MAX_MEDIA_PROGRAMS];
+    let count = kernel_program::snapshot_media_programs(&mut media_programs);
+    index = 0;
+    while index < count {
+        if let Some(program) = media_programs[index] {
+            write_program_help_entry(syscalls, program, b"  ");
+        }
         index += 1;
     }
 }
@@ -583,7 +605,7 @@ fn write_program_help_entry(
         BIN_PROC => write_help_line(
             syscalls,
             prefix,
-            "proc [processes|execs|pending|self|sources|tasks|waits|syscalls|scheduler|exec PROGRAM [ARG...]|spawn PROGRAM [ARG...]|block PROGRAM [ARG...]|wait PID|wake PID|kill PID|install-bin NAME ok|error|install-payload NAME ready|failed|install-bin-media NAME|install-payload-media NAME] - inspect process state",
+            "proc [processes|execs|media|pending|self|sources|tasks|waits|syscalls|scheduler|exec PROGRAM [ARG...]|spawn PROGRAM [ARG...]|block PROGRAM [ARG...]|wait PID|wake PID|kill PID|install-bin NAME ok|error|install-payload NAME ready|failed|install-bin-media NAME|install-payload-media NAME] - inspect process state",
         ),
         BIN_PROBE => write_help_line(
             syscalls,

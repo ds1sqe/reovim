@@ -7,7 +7,7 @@
 
 use {
     crate::{
-        block, dump, exec, klog,
+        dump, exec, klog,
         proc::{self, ProcessHandle, ProcessRecord, WaitRecord},
         program::{
             self, BinSourceInstallStatus, LoadedProgram, MAX_PROGRAM_PIPE_BYTES,
@@ -20,10 +20,12 @@ use {
             PayloadSourceInstallStatus, RootDaemon,
         },
         sched::{self, KernelTaskRecord, SchedulerSnapshot},
+        source_media,
         source_store::{
-            self, EMPTY_SOURCE_ARTIFACT_RECORD, ExecutableSourceStore, MAX_SOURCE_ARTIFACT_RECORDS,
-            MAX_SOURCE_MEDIA_ARTIFACT_BYTES, SourceArtifactNamespace, SourceArtifactRecord,
-            SourceInstallError,
+            self, EMPTY_SOURCE_ARTIFACT_RECORD, EMPTY_SOURCE_MEDIA_CATALOG_ENTRY,
+            ExecutableSourceStore, MAX_SOURCE_ARTIFACT_RECORDS, MAX_SOURCE_MEDIA_ARTIFACT_BYTES,
+            MAX_SOURCE_MEDIA_CATALOG_BYTES, MAX_SOURCE_MEDIA_CATALOG_RECORDS,
+            SourceArtifactNamespace, SourceArtifactRecord, SourceInstallError,
         },
         vfs::{self, Directory, Node, PathBuf, VfsError},
     },
@@ -36,10 +38,107 @@ use {
 
 pub use crate::program::ProgramArgv;
 
+/// First non-stdio descriptor exposed by the current program ABI.
+pub const PROGRAM_VFS_FILE_FD: usize = 3;
+/// Maximum bytes readable from one opened VFS pseudo-file.
+pub const MAX_PROGRAM_VFS_FILE_BYTES: usize = dump::MAX_DUMP_ARTIFACT_BYTES;
+
 /// Bounded stdout capture used to feed one scheduled program's output into a
 /// later program's stdin.
 pub struct ProgramStdoutCapture {
     cell: UnsafeCell<ProgramStdoutCaptureState>,
+}
+
+struct ProgramVfsFileBuffer {
+    cell: UnsafeCell<ProgramVfsFileBufferState>,
+}
+
+// SAFETY: mutable access is serialized by `PROGRAM_VFS_FILE_BUFFER_LOCK`.
+unsafe impl Sync for ProgramVfsFileBuffer {}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ProgramVfsFileBufferState {
+    bytes: [u8; MAX_PROGRAM_VFS_FILE_BYTES],
+    len: usize,
+    truncated: bool,
+}
+
+impl ProgramVfsFileBufferState {
+    const fn empty() -> Self {
+        Self {
+            bytes: [0u8; MAX_PROGRAM_VFS_FILE_BYTES],
+            len: 0,
+            truncated: false,
+        }
+    }
+}
+
+impl ProgramVfsFileBuffer {
+    const fn new() -> Self {
+        Self {
+            cell: UnsafeCell::new(ProgramVfsFileBufferState::empty()),
+        }
+    }
+
+    fn reset(&self) {
+        // SAFETY: the global file-buffer lock is held while this buffer is in use.
+        unsafe {
+            *self.cell.get() = ProgramVfsFileBufferState::empty();
+        }
+    }
+
+    fn write(&self, bytes: &[u8]) -> usize {
+        // SAFETY: the global file-buffer lock is held while this buffer is in use.
+        let state = unsafe { &mut *self.cell.get() };
+        let mut written = 0usize;
+        while written < bytes.len() && state.len < state.bytes.len() {
+            state.bytes[state.len] = bytes[written];
+            state.len += 1;
+            written += 1;
+        }
+        if written < bytes.len() {
+            state.truncated = true;
+        }
+        written
+    }
+
+    fn len(&self) -> usize {
+        // SAFETY: immutable read while the owning program handle holds the lock.
+        unsafe { (*self.cell.get()).len }
+    }
+
+    fn truncated(&self) -> bool {
+        // SAFETY: immutable read while the owning program handle holds the lock.
+        unsafe { (*self.cell.get()).truncated }
+    }
+
+    fn read_at(&self, cursor: usize, out: &mut [u8]) -> usize {
+        // SAFETY: immutable read while the owning program handle holds the lock.
+        let state = unsafe { &*self.cell.get() };
+        let mut written = 0usize;
+        while written < out.len() && cursor + written < state.len {
+            out[written] = state.bytes[cursor + written];
+            written += 1;
+        }
+        written
+    }
+}
+
+static PROGRAM_VFS_FILE_BUFFER: ProgramVfsFileBuffer = ProgramVfsFileBuffer::new();
+static PROGRAM_VFS_FILE_BUFFER_LOCK: AtomicBool = AtomicBool::new(false);
+
+fn acquire_program_vfs_file_buffer() -> Option<NonNull<ProgramVfsFileBuffer>> {
+    if PROGRAM_VFS_FILE_BUFFER_LOCK
+        .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+        .is_err()
+    {
+        return None;
+    }
+    Some(NonNull::from(&PROGRAM_VFS_FILE_BUFFER))
+}
+
+fn release_program_vfs_file_buffer() {
+    PROGRAM_VFS_FILE_BUFFER_LOCK.store(false, Ordering::Release);
 }
 
 // SAFETY: capture state is mutated only by the synchronous program dispatch
@@ -116,7 +215,11 @@ impl ProgramStdoutCapture {
 }
 
 /// Maximum retained typed syscall dispatch records.
-pub const MAX_SYSCALL_RECORDS: usize = 128;
+///
+/// Operator transcripts can walk many pseudo-files through descriptor-shaped
+/// `open`/`read`/`close`; keep enough history for lifecycle and domain rows to
+/// survive alongside those fd records.
+pub const MAX_SYSCALL_RECORDS: usize = 256;
 
 /// System-kernel syscall operation recorded for `/bin` programs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -131,6 +234,8 @@ pub enum SyscallOp {
     FdWrite,
     /// Program read from a file descriptor.
     FdRead,
+    /// Program closed a file descriptor.
+    FdClose,
     /// Child payload process spawn.
     SpawnChild,
     /// Process transitioned to running.
@@ -159,6 +264,8 @@ pub enum SyscallOp {
     VfsNormalize,
     /// VFS path lookup.
     VfsLookup,
+    /// VFS file open request.
+    VfsOpen,
     /// VFS directory listing or file-name query.
     VfsList,
     /// VFS file/pseudo-file read.
@@ -207,6 +314,8 @@ pub enum SyscallOp {
     SourceInstall,
     /// Executable source bytes read from source media.
     SourceMediaRead,
+    /// Executable source-media manifest snapshot query.
+    SourceMediaSnapshot,
     /// Process wait-table snapshot query.
     SnapshotWaits,
     /// Scheduler task table snapshot query.
@@ -237,6 +346,7 @@ impl SyscallOp {
             Self::StdioAttach => "stdio-attach",
             Self::FdWrite => "fd-write",
             Self::FdRead => "fd-read",
+            Self::FdClose => "fd-close",
             Self::SpawnChild => "spawn-child",
             Self::ProcessRun => "process-run",
             Self::ProcessSelf => "process-self",
@@ -251,6 +361,7 @@ impl SyscallOp {
             Self::SessionCwdSet => "session-cwd-set",
             Self::VfsNormalize => "vfs-normalize",
             Self::VfsLookup => "vfs-lookup",
+            Self::VfsOpen => "vfs-open",
             Self::VfsList => "vfs-list",
             Self::VfsRead => "vfs-read",
             Self::VfsMounts => "vfs-mounts",
@@ -275,6 +386,7 @@ impl SyscallOp {
             Self::SnapshotSourceStore => "snapshot-source-store",
             Self::SourceInstall => "source-install",
             Self::SourceMediaRead => "source-media-read",
+            Self::SourceMediaSnapshot => "source-media-snapshot",
             Self::SnapshotWaits => "snapshot-waits",
             Self::SnapshotTasks => "snapshot-tasks",
             Self::SchedulerSnapshot => "scheduler-snapshot",
@@ -470,6 +582,13 @@ fn record_context(ctx: SyscallContext, op: SyscallOp, status: SyscallStatus) {
 const fn process_exit_syscall_status(status: ProgramStatus) -> SyscallStatus {
     match status {
         ProgramStatus::Error => SyscallStatus::Error,
+        ProgramStatus::ExitCode(code) => {
+            if code == 0 {
+                SyscallStatus::Ok
+            } else {
+                SyscallStatus::Error
+            }
+        }
         ProgramStatus::Empty | ProgramStatus::Ok | ProgramStatus::Halt => SyscallStatus::Ok,
     }
 }
@@ -1006,6 +1125,25 @@ impl ProgramStdinBuffer {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ProgramVfsFdState {
+    open: bool,
+    cursor: usize,
+    len: usize,
+    read_recorded: bool,
+}
+
+impl ProgramVfsFdState {
+    const fn closed() -> Self {
+        Self {
+            open: false,
+            cursor: 0,
+            len: 0,
+            read_recorded: false,
+        }
+    }
+}
+
 /// Syscall context for one running image program.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SyscallContext {
@@ -1128,6 +1266,9 @@ pub struct ProgramSyscalls<'daemon, 'session, 'rootd> {
     stdio: ProgramStdio,
     stdin: ProgramStdinBuffer,
     stdout_capture: Option<NonNull<ProgramStdoutCapture>>,
+    vfs_file: ProgramVfsFdState,
+    vfs_read_buffer: Option<NonNull<ProgramVfsFileBuffer>>,
+    vfs_render_capture: Option<NonNull<ProgramVfsFileBuffer>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1195,6 +1336,9 @@ impl<'daemon, 'session, 'rootd> ProgramSyscalls<'daemon, 'session, 'rootd> {
             stdio: ProgramStdio::standard(),
             stdin: ProgramStdinBuffer::from_bytes(stdin),
             stdout_capture: stdout_capture.map(NonNull::from),
+            vfs_file: ProgramVfsFdState::closed(),
+            vfs_read_buffer: None,
+            vfs_render_capture: None,
         }
     }
 
@@ -1265,6 +1409,11 @@ impl<'daemon, 'session, 'rootd> ProgramSyscalls<'daemon, 'session, 'rootd> {
     /// `fd-write` rows because they are operator-visible diagnostics.
     pub fn write_fd(&self, fd: usize, bytes: &[u8]) -> Result<usize, ProgramIoError> {
         if fd == self.stdout().fd {
+            if let Some(capture) = self.vfs_render_capture {
+                // SAFETY: the VFS file buffer lock is held by this syscall
+                // handle during rendering.
+                return Ok(unsafe { capture.as_ref() }.write(bytes));
+            }
             if let Some(capture) = self.stdout_capture {
                 // SAFETY: the capture pointer is created from a live reference
                 // in the same synchronous dispatch frame as this syscall
@@ -1284,6 +1433,8 @@ impl<'daemon, 'session, 'rootd> ProgramSyscalls<'daemon, 'session, 'rootd> {
 
         let error = if fd == self.stdin().fd {
             ProgramIoError::NotWritable
+        } else if fd == PROGRAM_VFS_FILE_FD && self.vfs_file.open {
+            ProgramIoError::NotWritable
         } else {
             ProgramIoError::BadFd
         };
@@ -1294,6 +1445,14 @@ impl<'daemon, 'session, 'rootd> ProgramSyscalls<'daemon, 'session, 'rootd> {
     /// Writes one line to a Reovim program fd.
     pub fn write_fd_line(&self, fd: usize, line: &str) -> Result<usize, ProgramIoError> {
         if fd == self.stdout().fd {
+            if let Some(capture) = self.vfs_render_capture {
+                // SAFETY: the VFS file buffer lock is held by this syscall
+                // handle during rendering.
+                let capture = unsafe { capture.as_ref() };
+                let mut written = capture.write(line.as_bytes());
+                written += capture.write(b"\n");
+                return Ok(written);
+            }
             if let Some(capture) = self.stdout_capture {
                 // SAFETY: same dispatch-frame lifetime as `write_fd`.
                 let capture = unsafe { capture.as_ref() };
@@ -1312,11 +1471,20 @@ impl<'daemon, 'session, 'rootd> ProgramSyscalls<'daemon, 'session, 'rootd> {
 
         let error = if fd == self.stdin().fd {
             ProgramIoError::NotWritable
+        } else if fd == PROGRAM_VFS_FILE_FD && self.vfs_file.open {
+            ProgramIoError::NotWritable
         } else {
             ProgramIoError::BadFd
         };
         self.record(SyscallOp::FdWrite, SyscallStatus::Error);
         Err(error)
+    }
+
+    fn record_vfs_fd_read_once(&mut self) {
+        if !self.vfs_file.read_recorded {
+            self.vfs_file.read_recorded = true;
+            self.record(SyscallOp::FdRead, SyscallStatus::Ok);
+        }
     }
 
     /// Reads bytes from a Reovim program fd.
@@ -1332,6 +1500,21 @@ impl<'daemon, 'session, 'rootd> ProgramSyscalls<'daemon, 'session, 'rootd> {
             self.record(SyscallOp::FdRead, SyscallStatus::Ok);
             return Ok(read);
         }
+        if fd == PROGRAM_VFS_FILE_FD && self.vfs_file.open {
+            let Some(buffer) = self.vfs_read_buffer else {
+                self.record(SyscallOp::FdRead, SyscallStatus::Error);
+                return Err(ProgramIoError::BadFd);
+            };
+            if self.vfs_file.cursor >= self.vfs_file.len {
+                self.record_vfs_fd_read_once();
+                return Ok(0);
+            }
+            // SAFETY: the open VFS fd owns the global file-buffer lock until close.
+            let read = unsafe { buffer.as_ref() }.read_at(self.vfs_file.cursor, out);
+            self.vfs_file.cursor = self.vfs_file.cursor.saturating_add(read);
+            self.record_vfs_fd_read_once();
+            return Ok(read);
+        }
 
         let error = if fd == self.stdout().fd || fd == self.stderr().fd {
             ProgramIoError::NotReadable
@@ -1340,6 +1523,21 @@ impl<'daemon, 'session, 'rootd> ProgramSyscalls<'daemon, 'session, 'rootd> {
         };
         self.record(SyscallOp::FdRead, SyscallStatus::Error);
         Err(error)
+    }
+
+    /// Closes an open Reovim program fd.
+    pub fn close_fd(&mut self, fd: usize) -> Result<(), ProgramIoError> {
+        if fd == PROGRAM_VFS_FILE_FD && self.vfs_file.open {
+            self.vfs_file = ProgramVfsFdState::closed();
+            self.vfs_read_buffer = None;
+            self.vfs_render_capture = None;
+            release_program_vfs_file_buffer();
+            self.record(SyscallOp::FdClose, SyscallStatus::Ok);
+            return Ok(());
+        }
+
+        self.record(SyscallOp::FdClose, SyscallStatus::Error);
+        Err(ProgramIoError::BadFd)
     }
 
     /// Reads one interactive TTY line through the root-daemon line callback.
@@ -1408,22 +1606,80 @@ impl<'daemon, 'session, 'rootd> ProgramSyscalls<'daemon, 'session, 'rootd> {
         }
     }
 
-    /// Reads a kernel VFS pseudo-file and writes its content to stdout.
-    pub fn write_vfs_file_path(&mut self, target: &str) -> Result<(), VfsError> {
-        let path = self.normalize_path(target)?;
+    /// Opens a kernel VFS pseudo-file for descriptor-shaped reads.
+    pub fn open_vfs_file_path(&mut self, target: &str) -> Result<usize, VfsError> {
+        if self.vfs_file.open {
+            self.record(SyscallOp::VfsOpen, SyscallStatus::Error);
+            return Err(VfsError::Busy);
+        }
+
+        let path = match self.normalize_path(target) {
+            Ok(path) => path,
+            Err(error) => {
+                self.record(SyscallOp::VfsOpen, SyscallStatus::Error);
+                return Err(error);
+            }
+        };
         match self.lookup_path(path.as_str()) {
             Ok(Node::File(file)) => {
-                self.record(SyscallOp::VfsRead, SyscallStatus::Ok);
+                let Some(buffer) = acquire_program_vfs_file_buffer() else {
+                    self.record(SyscallOp::VfsOpen, SyscallStatus::Error);
+                    return Err(VfsError::Busy);
+                };
+                // SAFETY: acquiring the buffer lock grants exclusive access.
+                unsafe { buffer.as_ref() }.reset();
+                self.vfs_render_capture = Some(buffer);
                 (self.daemon.vfs_file_writer())(file, self);
-                Ok(())
+                self.vfs_render_capture = None;
+                // SAFETY: the buffer remains locked and owned by this handle.
+                let buffer_ref = unsafe { buffer.as_ref() };
+                if buffer_ref.truncated() {
+                    release_program_vfs_file_buffer();
+                    self.record(SyscallOp::VfsOpen, SyscallStatus::Error);
+                    self.record(SyscallOp::VfsRead, SyscallStatus::Error);
+                    return Err(VfsError::FileTooLarge);
+                }
+                self.vfs_file = ProgramVfsFdState {
+                    open: true,
+                    cursor: 0,
+                    len: buffer_ref.len(),
+                    read_recorded: false,
+                };
+                self.vfs_read_buffer = Some(buffer);
+                self.record(SyscallOp::VfsOpen, SyscallStatus::Ok);
+                self.record(SyscallOp::VfsRead, SyscallStatus::Ok);
+                Ok(PROGRAM_VFS_FILE_FD)
             }
             Ok(Node::Directory(_)) => {
-                self.record(SyscallOp::VfsRead, SyscallStatus::Error);
+                self.record(SyscallOp::VfsOpen, SyscallStatus::Error);
                 Err(VfsError::NotDirectory)
             }
             Err(error) => {
-                self.record(SyscallOp::VfsRead, SyscallStatus::Error);
+                self.record(SyscallOp::VfsOpen, SyscallStatus::Error);
                 Err(error)
+            }
+        }
+    }
+
+    /// Reads a kernel VFS pseudo-file and writes its content to stdout.
+    pub fn write_vfs_file_path(&mut self, target: &str) -> Result<(), VfsError> {
+        let fd = self.open_vfs_file_path(target)?;
+        let mut buffer = [0u8; 64];
+        loop {
+            let read = match self.read_fd(fd, &mut buffer) {
+                Ok(read) => read,
+                Err(_) => {
+                    let _ = self.close_fd(fd);
+                    return Err(VfsError::Io);
+                }
+            };
+            if read == 0 {
+                let _ = self.close_fd(fd);
+                return Ok(());
+            }
+            if self.write_fd(self.stdout().fd, &buffer[..read]).is_err() {
+                let _ = self.close_fd(fd);
+                return Err(VfsError::Io);
             }
         }
     }
@@ -2052,49 +2308,41 @@ impl<'daemon, 'session, 'rootd> ProgramSyscalls<'daemon, 'session, 'rootd> {
         }
     }
 
-    fn read_source_media_bytes(
-        &mut self,
-        out: &mut [u8; MAX_SOURCE_MEDIA_ARTIFACT_BYTES],
-    ) -> Result<block::BlockIoResult, ProgramSourceInstallError> {
-        let read = block::read_source_media_artifact(out);
-        if !read.available {
-            self.record(SyscallOp::SourceMediaRead, SyscallStatus::Unavailable);
-            return Err(ProgramSourceInstallError::SourceMediaUnavailable);
-        }
-        if !read.ok || read.bytes == 0 {
-            self.record(SyscallOp::SourceMediaRead, SyscallStatus::Error);
-            return Err(ProgramSourceInstallError::SourceMediaReadFailed);
-        }
-        self.record(SyscallOp::SourceMediaRead, SyscallStatus::Ok);
-        Ok(read)
-    }
-
     fn read_checked_source_media_artifact<'a>(
         &mut self,
         expected_namespace: SourceArtifactNamespace,
         expected_path: &'static str,
         out: &'a mut [u8; MAX_SOURCE_MEDIA_ARTIFACT_BYTES],
-    ) -> Result<
-        (block::BlockIoResult, source_store::SourceMediaArtifact<'a>),
-        ProgramSourceInstallError,
-    > {
-        let read = self.read_source_media_bytes(out)?;
-        let artifact = match source_store::parse_source_media_artifact(&out[..read.bytes]) {
-            Ok(artifact) => artifact,
-            Err(_error) => {
-                self.record(SyscallOp::SourceInstall, SyscallStatus::Error);
-                return Err(ProgramSourceInstallError::SourceMediaInvalid);
+    ) -> Result<source_media::SourceMediaArtifactRead<'a>, ProgramSourceInstallError> {
+        match source_media::read_checked_artifact(expected_namespace, expected_path, out) {
+            Ok(read) => {
+                self.record(SyscallOp::SourceMediaRead, SyscallStatus::Ok);
+                Ok(read)
             }
-        };
-        if artifact.namespace != expected_namespace {
-            self.record(SyscallOp::SourceInstall, SyscallStatus::Error);
-            return Err(ProgramSourceInstallError::SourceMediaNamespaceMismatch);
+            Err(source_media::SourceMediaReadError::Unavailable) => {
+                self.record(SyscallOp::SourceMediaRead, SyscallStatus::Unavailable);
+                Err(ProgramSourceInstallError::SourceMediaUnavailable)
+            }
+            Err(source_media::SourceMediaReadError::ReadFailed) => {
+                self.record(SyscallOp::SourceMediaRead, SyscallStatus::Error);
+                Err(ProgramSourceInstallError::SourceMediaReadFailed)
+            }
+            Err(source_media::SourceMediaReadError::Invalid) => {
+                self.record(SyscallOp::SourceMediaRead, SyscallStatus::Ok);
+                self.record(SyscallOp::SourceInstall, SyscallStatus::Error);
+                Err(ProgramSourceInstallError::SourceMediaInvalid)
+            }
+            Err(source_media::SourceMediaReadError::NamespaceMismatch) => {
+                self.record(SyscallOp::SourceMediaRead, SyscallStatus::Ok);
+                self.record(SyscallOp::SourceInstall, SyscallStatus::Error);
+                Err(ProgramSourceInstallError::SourceMediaNamespaceMismatch)
+            }
+            Err(source_media::SourceMediaReadError::PathMismatch) => {
+                self.record(SyscallOp::SourceMediaRead, SyscallStatus::Ok);
+                self.record(SyscallOp::SourceInstall, SyscallStatus::Error);
+                Err(ProgramSourceInstallError::SourceMediaPathMismatch)
+            }
         }
-        if artifact.path != expected_path {
-            self.record(SyscallOp::SourceInstall, SyscallStatus::Error);
-            return Err(ProgramSourceInstallError::SourceMediaPathMismatch);
-        }
-        Ok((read, artifact))
     }
 
     /// Installs source bytes for a `/bin` descriptor from the source-media block target.
@@ -2113,7 +2361,7 @@ impl<'daemon, 'session, 'rootd> ProgramSyscalls<'daemon, 'session, 'rootd> {
         };
         let path = descriptor.image.source_path();
         let mut bytes = [0u8; MAX_SOURCE_MEDIA_ARTIFACT_BYTES];
-        let (read, artifact) = self.read_checked_source_media_artifact(
+        let media = self.read_checked_source_media_artifact(
             SourceArtifactNamespace::Bin,
             path,
             &mut bytes,
@@ -2122,7 +2370,7 @@ impl<'daemon, 'session, 'rootd> ProgramSyscalls<'daemon, 'session, 'rootd> {
         match source_store::install_source(
             SourceArtifactNamespace::Bin,
             path,
-            artifact.source_bytes,
+            media.artifact.source_bytes,
         ) {
             Ok(()) => {
                 self.record(SyscallOp::SourceInstall, SyscallStatus::Ok);
@@ -2130,11 +2378,11 @@ impl<'daemon, 'session, 'rootd> ProgramSyscalls<'daemon, 'session, 'rootd> {
                     name: descriptor.name,
                     namespace: SourceArtifactNamespace::Bin,
                     path,
-                    storage: read.storage,
-                    storage_capacity_bytes: read.capacity_bytes,
-                    artifact_bytes_len: read.bytes,
-                    bytes_len: artifact.source_bytes.len(),
-                    checksum: artifact.checksum,
+                    storage: media.read.storage,
+                    storage_capacity_bytes: media.read.capacity_bytes,
+                    artifact_bytes_len: media.artifact_bytes_len,
+                    bytes_len: media.artifact.source_bytes.len(),
+                    checksum: media.artifact.checksum,
                 })
             }
             Err(error) => {
@@ -2198,7 +2446,7 @@ impl<'daemon, 'session, 'rootd> ProgramSyscalls<'daemon, 'session, 'rootd> {
         };
         let path = payload.image.source_path();
         let mut bytes = [0u8; MAX_SOURCE_MEDIA_ARTIFACT_BYTES];
-        let (read, artifact) = self.read_checked_source_media_artifact(
+        let media = self.read_checked_source_media_artifact(
             SourceArtifactNamespace::Payload,
             path,
             &mut bytes,
@@ -2207,7 +2455,7 @@ impl<'daemon, 'session, 'rootd> ProgramSyscalls<'daemon, 'session, 'rootd> {
         match source_store::install_source(
             SourceArtifactNamespace::Payload,
             path,
-            artifact.source_bytes,
+            media.artifact.source_bytes,
         ) {
             Ok(()) => {
                 self.record(SyscallOp::SourceInstall, SyscallStatus::Ok);
@@ -2215,11 +2463,11 @@ impl<'daemon, 'session, 'rootd> ProgramSyscalls<'daemon, 'session, 'rootd> {
                     name: payload.name,
                     namespace: SourceArtifactNamespace::Payload,
                     path,
-                    storage: read.storage,
-                    storage_capacity_bytes: read.capacity_bytes,
-                    artifact_bytes_len: read.bytes,
-                    bytes_len: artifact.source_bytes.len(),
-                    checksum: artifact.checksum,
+                    storage: media.read.storage,
+                    storage_capacity_bytes: media.read.capacity_bytes,
+                    artifact_bytes_len: media.artifact_bytes_len,
+                    bytes_len: media.artifact.source_bytes.len(),
+                    checksum: media.artifact.checksum,
                 })
             }
             Err(error) => {
@@ -2796,6 +3044,107 @@ impl<'daemon, 'session, 'rootd> ProgramSyscalls<'daemon, 'session, 'rootd> {
         }
     }
 
+    /// Writes executable source-media status and manifest rows to stdout.
+    pub fn write_source_media_table(&self) {
+        self.record(SyscallOp::SourceMediaSnapshot, SyscallStatus::Ok);
+        self.stdout_line("source-media:");
+        let mut bytes = [0u8; MAX_SOURCE_MEDIA_CATALOG_BYTES];
+        let mut entries = [EMPTY_SOURCE_MEDIA_CATALOG_ENTRY; MAX_SOURCE_MEDIA_CATALOG_RECORDS];
+        let snapshot = source_media::snapshot_root(&mut bytes, &mut entries);
+        let read = match snapshot {
+            source_media::SourceMediaSnapshot::Unavailable { read }
+            | source_media::SourceMediaSnapshot::ReadError { read }
+            | source_media::SourceMediaSnapshot::Catalog { read, .. }
+            | source_media::SourceMediaSnapshot::Artifact { read, .. }
+            | source_media::SourceMediaSnapshot::InvalidCatalog { read, .. }
+            | source_media::SourceMediaSnapshot::InvalidArtifact { read, .. } => read,
+        };
+        let read_status = match snapshot {
+            source_media::SourceMediaSnapshot::Unavailable { .. } => SyscallStatus::Unavailable,
+            source_media::SourceMediaSnapshot::ReadError { .. } => SyscallStatus::Error,
+            source_media::SourceMediaSnapshot::Catalog { .. }
+            | source_media::SourceMediaSnapshot::Artifact { .. }
+            | source_media::SourceMediaSnapshot::InvalidCatalog { .. }
+            | source_media::SourceMediaSnapshot::InvalidArtifact { .. } => SyscallStatus::Ok,
+        };
+        self.record(SyscallOp::SourceMediaRead, read_status);
+
+        self.stdout_bytes(b"storage=");
+        self.stdout_bytes(read.storage.as_bytes());
+        self.stdout_bytes(b"\nstorage_capacity_bytes=");
+        self.write_u64_dec(read.capacity_bytes as u64);
+        self.stdout_bytes(b"\nroot_bytes=");
+        self.write_u64_dec(read.bytes as u64);
+        match snapshot {
+            source_media::SourceMediaSnapshot::Unavailable { .. } => {
+                self.stdout_bytes(b"\nstatus=unavailable\nreason=source-media-unavailable\n");
+                return;
+            }
+            source_media::SourceMediaSnapshot::ReadError { read } => {
+                self.stdout_bytes(b"\nstatus=read-error\nreason=");
+                self.stdout_bytes(read.reason.as_bytes());
+                self.stdout_bytes(b"\n");
+                return;
+            }
+            _ => {}
+        }
+
+        match snapshot {
+            source_media::SourceMediaSnapshot::Catalog {
+                count, truncated, ..
+            } => {
+                self.stdout_bytes(b"\nstatus=ok\nformat=catalog\nentries=");
+                self.write_u64_dec(count as u64);
+                self.stdout_bytes(b"\ntruncated=");
+                self.stdout_bytes(if truncated { b"true" } else { b"false" });
+                self.stdout_bytes(b"\n");
+                let mut index = 0usize;
+                while index < count {
+                    let entry = entries[index];
+                    self.stdout_bytes(b"- namespace=");
+                    self.stdout_bytes(entry.namespace.as_str().as_bytes());
+                    self.stdout_bytes(b" path=");
+                    self.stdout_bytes(entry.path.as_bytes());
+                    self.stdout_bytes(b" offset=");
+                    self.write_u64_dec(entry.offset as u64);
+                    self.stdout_bytes(b" artifact_bytes=");
+                    self.write_u64_dec(entry.artifact_bytes_len as u64);
+                    self.stdout_bytes(b" checksum=");
+                    self.write_u64_dec(entry.checksum as u64);
+                    self.stdout_bytes(b"\n");
+                    index += 1;
+                }
+            }
+            source_media::SourceMediaSnapshot::Artifact { artifact, .. } => {
+                self.stdout_bytes(b"\nstatus=ok\nformat=artifact\nentries=1\n");
+                self.stdout_bytes(b"truncated=false\n");
+                self.stdout_bytes(b"- namespace=");
+                self.stdout_bytes(artifact.namespace.as_str().as_bytes());
+                self.stdout_bytes(b" path=");
+                self.stdout_bytes(artifact.path.as_bytes());
+                self.stdout_bytes(b" offset=0 artifact_bytes=");
+                self.write_u64_dec(read.bytes as u64);
+                self.stdout_bytes(b" bytes=");
+                self.write_u64_dec(artifact.source_bytes.len() as u64);
+                self.stdout_bytes(b" checksum=");
+                self.write_u64_dec(artifact.checksum as u64);
+                self.stdout_bytes(b"\n");
+            }
+            source_media::SourceMediaSnapshot::InvalidCatalog { error, .. } => {
+                self.stdout_bytes(b"\nstatus=invalid\nformat=catalog\nreason=");
+                self.stdout_bytes(error.as_str().as_bytes());
+                self.stdout_bytes(b"\n");
+            }
+            source_media::SourceMediaSnapshot::InvalidArtifact { error, .. } => {
+                self.stdout_bytes(b"\nstatus=invalid\nformat=artifact\nreason=");
+                self.stdout_bytes(error.as_str().as_bytes());
+                self.stdout_bytes(b"\n");
+            }
+            source_media::SourceMediaSnapshot::Unavailable { .. }
+            | source_media::SourceMediaSnapshot::ReadError { .. } => {}
+        }
+    }
+
     /// Writes retained scheduler task records to stdout.
     pub fn write_task_table(&self) {
         let mut records = [sched::EMPTY_KERNEL_TASK_RECORD; sched::MAX_KERNEL_TASKS];
@@ -3108,6 +3457,15 @@ impl<'daemon, 'session, 'rootd> ProgramSyscalls<'daemon, 'session, 'rootd> {
                 for entry in self.programs() {
                     self.stdout_line(entry.name);
                 }
+                let mut media_programs = [None; program::MAX_MEDIA_PROGRAMS];
+                let count = program::snapshot_media_programs(&mut media_programs);
+                let mut index = 0usize;
+                while index < count {
+                    if let Some(entry) = media_programs[index] {
+                        self.stdout_line(entry.name);
+                    }
+                    index += 1;
+                }
             }
             Directory::Boot => {
                 self.stdout_line("devices");
@@ -3141,6 +3499,7 @@ impl<'daemon, 'session, 'rootd> ProgramSyscalls<'daemon, 'session, 'rootd> {
             }
             Directory::Proc => {
                 self.stdout_line("execs");
+                self.stdout_line("media");
                 self.stdout_line("pending");
                 self.stdout_line("processes");
                 self.stdout_line("self");
@@ -3329,6 +3688,17 @@ impl<'daemon, 'session, 'rootd> ProgramSyscalls<'daemon, 'session, 'rootd> {
     pub fn clear_console(&self) {
         crate::console::clear_screen();
         self.record(SyscallOp::TtyClear, SyscallStatus::Ok);
+    }
+}
+
+impl Drop for ProgramSyscalls<'_, '_, '_> {
+    fn drop(&mut self) {
+        if self.vfs_file.open {
+            self.vfs_file = ProgramVfsFdState::closed();
+            self.vfs_read_buffer = None;
+            self.vfs_render_capture = None;
+            release_program_vfs_file_buffer();
+        }
     }
 }
 

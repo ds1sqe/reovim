@@ -14,9 +14,9 @@ use {
             ProgramStatus,
         },
         rootd::{LoadedPayloadProgram, PayloadDescriptor, PayloadLaunchResult, PayloadLoadError},
+        source_media,
         source_store::{
-            self, ExecutableSourceStore, MAX_SOURCE_MEDIA_ARTIFACT_BYTES,
-            MAX_SOURCE_MEDIA_CATALOG_BYTES, SourceArtifactNamespace,
+            self, ExecutableSourceStore, MAX_SOURCE_MEDIA_ARTIFACT_BYTES, SourceArtifactNamespace,
         },
     },
     core::{
@@ -328,7 +328,6 @@ const fn payload_descriptor_image(
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SourceMediaAdmissionError {
-    NoCatalog,
     Unavailable,
     ReadFailed,
     Invalid,
@@ -339,7 +338,6 @@ enum SourceMediaAdmissionError {
 impl SourceMediaAdmissionError {
     const fn reason(self) -> ExecLoadReason {
         match self {
-            Self::NoCatalog => ExecLoadReason::SourceNotFound,
             Self::Unavailable | Self::ReadFailed => ExecLoadReason::SourceNotFound,
             Self::Invalid => ExecLoadReason::SourceMediaInvalid,
             Self::Mismatch => ExecLoadReason::SourceMediaMismatch,
@@ -350,102 +348,72 @@ impl SourceMediaAdmissionError {
     const fn error(self) -> ExecLoadError {
         match self {
             Self::Invalid => ExecLoadError::InvalidImage,
-            Self::NoCatalog
-            | Self::Unavailable
-            | Self::ReadFailed
-            | Self::Mismatch
-            | Self::InstallFailed => ExecLoadError::SourceNotFound,
+            Self::Unavailable | Self::ReadFailed | Self::Mismatch | Self::InstallFailed => {
+                ExecLoadError::SourceNotFound
+            }
         }
     }
 }
 
-fn install_checked_source_media_artifact(
-    namespace: SourceArtifactNamespace,
-    expected_path: &'static str,
-    artifact_bytes: &[u8],
-) -> Result<(), SourceMediaAdmissionError> {
-    let artifact = source_store::parse_source_media_artifact(artifact_bytes)
-        .map_err(|_| SourceMediaAdmissionError::Invalid)?;
-    if artifact.namespace != namespace || artifact.path != expected_path {
-        return Err(SourceMediaAdmissionError::Mismatch);
-    }
-    source_store::install_source(namespace, expected_path, artifact.source_bytes)
-        .map_err(|_| SourceMediaAdmissionError::InstallFailed)
-}
-
-fn install_matching_source_media_from_catalog(
-    namespace: SourceArtifactNamespace,
-    expected_path: &'static str,
-) -> Result<(), SourceMediaAdmissionError> {
-    let mut catalog = [0u8; MAX_SOURCE_MEDIA_CATALOG_BYTES];
-    let read = block::read_source_media_artifact(&mut catalog);
-    if !read.available {
-        return Err(SourceMediaAdmissionError::Unavailable);
-    }
-    if !read.ok || read.bytes == 0 {
-        return Err(SourceMediaAdmissionError::ReadFailed);
-    }
-    let entry = match source_store::find_source_media_catalog_entry(
-        &catalog[..read.bytes],
-        namespace,
-        expected_path,
-    ) {
-        Ok(entry) => entry,
-        Err(source_store::SourceMediaCatalogError::MissingMagic) => {
-            return Err(SourceMediaAdmissionError::NoCatalog);
+impl From<source_media::SourceMediaReadError> for SourceMediaAdmissionError {
+    fn from(error: source_media::SourceMediaReadError) -> Self {
+        match error {
+            source_media::SourceMediaReadError::Unavailable => Self::Unavailable,
+            source_media::SourceMediaReadError::ReadFailed => Self::ReadFailed,
+            source_media::SourceMediaReadError::Invalid => Self::Invalid,
+            source_media::SourceMediaReadError::NamespaceMismatch
+            | source_media::SourceMediaReadError::PathMismatch => Self::Mismatch,
         }
-        Err(source_store::SourceMediaCatalogError::NotFound) => {
-            return Err(SourceMediaAdmissionError::Mismatch);
-        }
-        Err(_) => return Err(SourceMediaAdmissionError::Invalid),
-    };
-    if entry.artifact_bytes_len > MAX_SOURCE_MEDIA_ARTIFACT_BYTES {
-        return Err(SourceMediaAdmissionError::Invalid);
     }
-
-    let mut bytes = [0u8; MAX_SOURCE_MEDIA_ARTIFACT_BYTES];
-    let read = block::read_source_media_artifact_at(entry.offset, &mut bytes);
-    if !read.available {
-        return Err(SourceMediaAdmissionError::Unavailable);
-    }
-    if !read.ok || read.bytes == 0 {
-        return Err(SourceMediaAdmissionError::ReadFailed);
-    }
-    if read.bytes < entry.artifact_bytes_len {
-        return Err(SourceMediaAdmissionError::ReadFailed);
-    }
-    let artifact_bytes = &bytes[..entry.artifact_bytes_len];
-    if source_store::source_media_checksum32(artifact_bytes) != entry.checksum {
-        return Err(SourceMediaAdmissionError::Invalid);
-    }
-    install_checked_source_media_artifact(namespace, expected_path, artifact_bytes)
-}
-
-fn install_matching_source_media_single(
-    namespace: SourceArtifactNamespace,
-    expected_path: &'static str,
-) -> Result<(), SourceMediaAdmissionError> {
-    let mut bytes = [0u8; MAX_SOURCE_MEDIA_ARTIFACT_BYTES];
-    let read = block::read_source_media_artifact(&mut bytes);
-    if !read.available {
-        return Err(SourceMediaAdmissionError::Unavailable);
-    }
-    if !read.ok || read.bytes == 0 {
-        return Err(SourceMediaAdmissionError::ReadFailed);
-    }
-    install_checked_source_media_artifact(namespace, expected_path, &bytes[..read.bytes])
 }
 
 fn install_matching_source_media(
     namespace: SourceArtifactNamespace,
     expected_path: &'static str,
 ) -> Result<(), SourceMediaAdmissionError> {
-    match install_matching_source_media_from_catalog(namespace, expected_path) {
-        Ok(()) => Ok(()),
-        Err(SourceMediaAdmissionError::NoCatalog) => {
-            install_matching_source_media_single(namespace, expected_path)
+    let mut bytes = [0u8; MAX_SOURCE_MEDIA_ARTIFACT_BYTES];
+    let read = source_media::read_checked_artifact(namespace, expected_path, &mut bytes)
+        .map_err(SourceMediaAdmissionError::from)?;
+    source_store::install_source(namespace, expected_path, read.artifact.source_bytes)
+        .map_err(|_| SourceMediaAdmissionError::InstallFailed)
+}
+
+fn load_media_discovered_bin_program(
+    programs: &'static [ProgramDescriptor],
+    source_store: ExecutableSourceStore,
+    argv0: &str,
+) -> Result<Option<LoadedProgram>, SourceMediaAdmissionError> {
+    if block::source_media_status().is_none() {
+        return Ok(None);
+    }
+
+    let mut path = [0u8; program::MAX_MEDIA_PROGRAM_PATH_BYTES];
+    let Some(expected_path) = program::media_program_path_from_argv0(argv0, &mut path) else {
+        return Ok(None);
+    };
+
+    let mut artifact_bytes = [0u8; MAX_SOURCE_MEDIA_ARTIFACT_BYTES];
+    let artifact = source_media::read_checked_artifact(
+        SourceArtifactNamespace::Bin,
+        expected_path,
+        &mut artifact_bytes,
+    )
+    .map_err(SourceMediaAdmissionError::from)?;
+    let descriptor = program::install_media_program(expected_path)
+        .map_err(|_| SourceMediaAdmissionError::InstallFailed)?;
+    source_store::install_source(
+        SourceArtifactNamespace::Bin,
+        descriptor.image.source_path(),
+        artifact.artifact.source_bytes,
+    )
+    .map_err(|_| SourceMediaAdmissionError::InstallFailed)?;
+
+    match program::load_argv0(programs, source_store, argv0) {
+        Ok(Some(program)) => Ok(Some(program)),
+        Ok(None) | Err(ProgramLoadError::SourceNotFound) => {
+            Err(SourceMediaAdmissionError::InstallFailed)
         }
-        Err(error) => Err(error),
+        Err(ProgramLoadError::InvalidImage) => Err(SourceMediaAdmissionError::Invalid),
     }
 }
 
@@ -468,6 +436,26 @@ pub fn load_bin_program(
     let program = match program::load_argv0(programs, source_store, argv0) {
         Ok(Some(program)) => program,
         Ok(None) => {
+            match load_media_discovered_bin_program(programs, source_store, argv0) {
+                Ok(Some(program)) => {
+                    with_exec(|exec| {
+                        exec.record_load(
+                            argv0,
+                            ExecLoadStatus::Ok,
+                            ExecLoadReason::LoadedFromSourceMedia,
+                            Some(LoadedExecImage::Bin(program)),
+                        );
+                    });
+                    return Ok(program);
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    with_exec(|exec| {
+                        exec.record_load(argv0, ExecLoadStatus::Error, error.reason(), None);
+                    });
+                    return Err(error.error());
+                }
+            }
             with_exec(|exec| {
                 exec.record_load(argv0, ExecLoadStatus::Error, ExecLoadReason::NotFound, None);
             });
@@ -1000,6 +988,7 @@ fn with_exec<R>(f: impl FnOnce(&mut ExecState) -> R) -> R {
 /// Clears pending executable image queues.
 pub fn reset() {
     with_exec(ExecState::reset);
+    program::reset_media_programs();
 }
 
 /// Copies retained executable load/admission records into `out`.
@@ -1101,6 +1090,8 @@ pub(crate) fn complete_program(pid: usize, status: ProgramStatus) {
         ProgramStatus::Empty => (ProcessState::Exited, 0),
         ProgramStatus::Ok => (ProcessState::Exited, 0),
         ProgramStatus::Error => (ProcessState::Failed, 1),
+        ProgramStatus::ExitCode(0) => (ProcessState::Exited, 0),
+        ProgramStatus::ExitCode(code) => (ProcessState::Failed, code),
         ProgramStatus::Halt => (ProcessState::Halted, 0),
     };
     proc::exit_process(pid, state, exit_code);

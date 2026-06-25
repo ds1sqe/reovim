@@ -27,6 +27,8 @@ pub const MAX_INSTALLED_SOURCE_BYTES: usize = 256;
 pub const MAX_SOURCE_MEDIA_ARTIFACT_BYTES: usize = MAX_INSTALLED_SOURCE_BYTES + 256;
 /// Maximum bytes in one block-backed source-media catalog.
 pub const MAX_SOURCE_MEDIA_CATALOG_BYTES: usize = 512;
+/// Maximum source-media catalog entries rendered in one diagnostic snapshot.
+pub const MAX_SOURCE_MEDIA_CATALOG_RECORDS: usize = 8;
 
 const SOURCE_MEDIA_MAGIC: &[u8] = b"reovim-source-media-v1";
 const SOURCE_MEDIA_NAMESPACE_PREFIX: &[u8] = b"namespace=";
@@ -221,6 +223,16 @@ pub struct SourceMediaCatalogEntry<'a> {
     pub checksum: u32,
 }
 
+/// Empty source-media catalog entry used for bounded snapshots.
+pub const EMPTY_SOURCE_MEDIA_CATALOG_ENTRY: SourceMediaCatalogEntry<'static> =
+    SourceMediaCatalogEntry {
+        namespace: SourceArtifactNamespace::Bin,
+        path: "",
+        offset: 0,
+        artifact_bytes_len: 0,
+        checksum: 0,
+    };
+
 /// Parsed block-backed source-media artifact.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SourceMediaArtifact<'a> {
@@ -349,6 +361,43 @@ pub fn find_source_media_catalog_entry<'a>(
         }
     }
     Err(SourceMediaCatalogError::NotFound)
+}
+
+/// Snapshots checked source-media catalog entries into `out`.
+///
+/// The returned boolean reports whether additional valid entries existed after
+/// the bounded output buffer filled. Malformed entries still fail the snapshot
+/// even after truncation so diagnostics do not hide a corrupt manifest tail.
+pub fn snapshot_source_media_catalog_entries<'a>(
+    bytes: &'a [u8],
+    out: &mut [SourceMediaCatalogEntry<'a>],
+) -> Result<(usize, bool), SourceMediaCatalogError> {
+    let body = parse_source_media_catalog_body(bytes)?;
+    let mut offset = 0usize;
+    let mut written = 0usize;
+    let mut truncated = false;
+    while offset < body.len() {
+        let Some((line, next)) = next_source_media_line(body, offset) else {
+            break;
+        };
+        offset = next;
+        if line.is_empty() {
+            continue;
+        }
+        if line.len() < SOURCE_MEDIA_ENTRY_PREFIX.len()
+            || &line[..SOURCE_MEDIA_ENTRY_PREFIX.len()] != SOURCE_MEDIA_ENTRY_PREFIX
+        {
+            return Err(SourceMediaCatalogError::InvalidEntry);
+        }
+        let entry = parse_source_media_catalog_entry(&line[SOURCE_MEDIA_ENTRY_PREFIX.len()..])?;
+        if written < out.len() {
+            out[written] = entry;
+            written += 1;
+        } else {
+            truncated = true;
+        }
+    }
+    Ok((written, truncated))
 }
 
 fn parse_source_media_catalog_body(bytes: &[u8]) -> Result<&[u8], SourceMediaCatalogError> {

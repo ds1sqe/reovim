@@ -363,9 +363,15 @@ const SAMPLE_PAYLOAD_FAILED_SOURCE_BYTES: &[u8] = b"reovim-payload-source-v1\nex
 const SAMPLE_MEDIA_BIN_SOURCE_BYTES: &[u8] =
     b"reovim-source-v1\nwrite-stdout-hex 6d656469612d62696e2e6f6b0a\nexit-status ok\n";
 const SAMPLE_MEDIA_PAYLOAD_SOURCE_BYTES: &[u8] = b"reovim-payload-source-v1\nexit-status ready\n";
+const SAMPLE_BIN_EXIT_CODE_ZERO_SOURCE_BYTES: &[u8] =
+    b"reovim-source-v1\nwrite-stdout-hex 657869742d636f64652d300a\nexit-code 0\n";
+const SAMPLE_BIN_EXIT_CODE_SEVEN_SOURCE_BYTES: &[u8] =
+    b"reovim-source-v1\nwrite-stdout-hex 657869742d636f64652d370a\nexit-code 7\n";
+const SAMPLE_BIN_INVALID_EXIT_CODE_SOURCE_BYTES: &[u8] = b"reovim-source-v1\nexit-code 256\n";
 const SOURCE_MEDIA_BIN: usize = 1;
 const SOURCE_MEDIA_PAYLOAD: usize = 2;
 const SOURCE_MEDIA_BIN_WRONG_PATH: usize = 3;
+const SOURCE_MEDIA_DYNAMIC_BIN: usize = 4;
 static SOURCE_MEDIA_KIND: AtomicUsize = AtomicUsize::new(0);
 
 fn source_media_write(_offset: usize, _bytes: &[u8]) -> bool {
@@ -430,6 +436,9 @@ fn source_media_read(offset: usize, out: &mut [u8]) -> usize {
     let (namespace, path, bytes) = match SOURCE_MEDIA_KIND.load(Ordering::Relaxed) {
         SOURCE_MEDIA_BIN => {
             (b"bin".as_slice(), b"/bin/pwd".as_slice(), SAMPLE_MEDIA_BIN_SOURCE_BYTES)
+        }
+        SOURCE_MEDIA_DYNAMIC_BIN => {
+            (b"bin".as_slice(), b"/bin/media-bin".as_slice(), SAMPLE_MEDIA_BIN_SOURCE_BYTES)
         }
         SOURCE_MEDIA_PAYLOAD => (
             b"payload".as_slice(),
@@ -655,8 +664,23 @@ fn assert_syscall_record(
 }
 
 fn missing_chunk_message(needle: &[u8]) -> &'static str {
+    if needle == b"reovim root shell\n" {
+        return "missing boot help title";
+    }
     if needle == b"/bin programs: help, clear, screentest" {
         return "missing /bin-backed help program list";
+    }
+    if needle == b"namespace: /bin\n" {
+        return "missing boot help namespace row";
+    }
+    if needle == b"usage: help [program]\n" {
+        return "missing boot help usage row";
+    }
+    if needle == b"details:\n" {
+        return "missing boot help details row";
+    }
+    if needle == b"  cat [path...] - print stdin or kernel VFS pseudo files\n" {
+        return "missing boot help cat entry";
     }
     if needle == b"reovim-dump-v1\n" {
         return "missing dump format";
@@ -814,7 +838,7 @@ arch_test!(root_shell_help, {
     run_shell_line_fixture(ProfileSummary::new("shell-only", false), b"help proc\n", None);
     testrt::check_eq(
         sink_str(),
-        "proc [processes|execs|pending|self|sources|tasks|waits|syscalls|scheduler|exec PROGRAM [ARG...]|spawn PROGRAM [ARG...]|block PROGRAM [ARG...]|wait PID|wake PID|kill PID|install-bin NAME ok|error|install-payload NAME ready|failed|install-bin-media NAME|install-payload-media NAME] - inspect process state\n",
+        "proc [processes|execs|media|pending|self|sources|tasks|waits|syscalls|scheduler|exec PROGRAM [ARG...]|spawn PROGRAM [ARG...]|block PROGRAM [ARG...]|wait PID|wake PID|kill PID|install-bin NAME ok|error|install-payload NAME ready|failed|install-bin-media NAME|install-payload-media NAME] - inspect process state\n",
     );
 
     run_shell_line_fixture(ProfileSummary::new("shell-only", false), b"help device\n", None);
@@ -1213,10 +1237,122 @@ arch_test!(root_shell_proc_installs_bin_source_through_syscall_overlay, {
     reset_installed_sources();
 });
 
+arch_test!(root_shell_source_image_exit_code_sets_process_status, {
+    crate::klog::reset();
+    crate::proc::reset();
+    crate::syscall::reset();
+    reset_installed_sources();
+    testrt::check_eq(
+        install_source(
+            SourceArtifactNamespace::Bin,
+            "/bin/pwd",
+            SAMPLE_BIN_EXIT_CODE_SEVEN_SOURCE_BYTES,
+        ),
+        Ok(()),
+    );
+    sink_clear();
+
+    let daemon = daemon(ProfileSummary::new("shell-only", false), None);
+    let mut session = RootShellSession::new();
+    let halted = daemon.run_shell_line(&mut session, b"pwd\n");
+
+    testrt::check_eq(halted, false);
+    testrt::check_eq(sink_str(), "exit-code-7\n");
+    let process = crate::proc::process(3).expect("exit-code process remains retained");
+    testrt::check_eq(process.state, crate::proc::ProcessState::Failed);
+    testrt::check_eq(process.exit_code, 7);
+    assert_syscall_record(
+        "/bin/pwd",
+        crate::syscall::SyscallOp::ProcessExit,
+        crate::syscall::SyscallStatus::Error,
+    );
+
+    sink_clear();
+    let _ = crate::klog::write_to(sink_write);
+    assert_contains(
+        sink_bytes(),
+        b"exec.path=/bin/pwd pid=3 task=3 status=exit-code loader=source-image entry_fn=bin_pwd\n",
+    );
+
+    reset_installed_sources();
+});
+
+arch_test!(root_shell_source_image_exit_code_zero_is_pipeline_success, {
+    crate::klog::reset();
+    crate::proc::reset();
+    crate::syscall::reset();
+    reset_installed_sources();
+    testrt::check_eq(
+        install_source(
+            SourceArtifactNamespace::Bin,
+            "/bin/pwd",
+            SAMPLE_BIN_EXIT_CODE_ZERO_SOURCE_BYTES,
+        ),
+        Ok(()),
+    );
+    sink_clear();
+
+    let daemon = daemon(ProfileSummary::new("shell-only", false), None);
+    let mut session = RootShellSession::new();
+    let halted = daemon.run_shell_line(&mut session, b"pwd | cat\n");
+
+    testrt::check_eq(halted, false);
+    testrt::check_eq(sink_str(), "exit-code-0\n");
+    let producer = crate::proc::process(3).expect("pipeline producer remains retained");
+    testrt::check_eq(producer.state, crate::proc::ProcessState::Exited);
+    testrt::check_eq(producer.exit_code, 0);
+    let consumer = crate::proc::process(4).expect("pipeline consumer remains retained");
+    testrt::check_eq(consumer.state, crate::proc::ProcessState::Exited);
+    assert_syscall_record(
+        "/bin/pwd",
+        crate::syscall::SyscallOp::ProcessExit,
+        crate::syscall::SyscallStatus::Ok,
+    );
+    assert_syscall_record(
+        "/bin/cat",
+        crate::syscall::SyscallOp::ProcessExit,
+        crate::syscall::SyscallStatus::Ok,
+    );
+
+    reset_installed_sources();
+});
+
+arch_test!(root_shell_rejects_invalid_source_image_exit_code_before_spawn, {
+    crate::klog::reset();
+    crate::proc::reset();
+    crate::syscall::reset();
+    reset_installed_sources();
+    testrt::check_eq(
+        install_source(
+            SourceArtifactNamespace::Bin,
+            "/bin/pwd",
+            SAMPLE_BIN_INVALID_EXIT_CODE_SOURCE_BYTES,
+        ),
+        Ok(()),
+    );
+    sink_clear();
+
+    let daemon = daemon(ProfileSummary::new("shell-only", false), None);
+    let mut session = RootShellSession::new();
+    let halted = daemon.run_shell_line(&mut session, b"pwd\n");
+
+    testrt::check_eq(halted, false);
+    testrt::check_eq(sink_str(), "error: invalid /bin program image\n");
+    testrt::check(crate::proc::process(3).is_none(), "invalid image does not spawn a process");
+    assert_syscall_record(
+        "",
+        crate::syscall::SyscallOp::ExecLoad,
+        crate::syscall::SyscallStatus::Error,
+    );
+
+    reset_installed_sources();
+});
+
 arch_test!(root_shell_proc_installs_bin_source_from_source_media, {
     crate::klog::reset();
     crate::proc::reset();
     crate::syscall::reset();
+    crate::exec::reset();
     reset_installed_sources();
     clear_source_media();
     install_source_media(SOURCE_MEDIA_BIN);
@@ -1258,6 +1394,107 @@ arch_test!(root_shell_proc_installs_bin_source_from_source_media, {
 
     reset_installed_sources();
     clear_source_media();
+});
+
+arch_test!(root_shell_proc_reports_source_media_manifest, {
+    crate::klog::reset();
+    crate::proc::reset();
+    crate::syscall::reset();
+    reset_installed_sources();
+    clear_source_media();
+    install_source_media(SOURCE_MEDIA_BIN);
+    sink_clear();
+
+    let daemon = daemon(ProfileSummary::new("shell-only", false), None);
+    let mut session = RootShellSession::new();
+    let _ = daemon.run_shell_line(&mut session, b"proc media\n");
+    assert_contains(sink_bytes(), b"source-media:\n");
+    assert_contains(sink_bytes(), b"storage=selftest-source-media0\n");
+    assert_contains(sink_bytes(), b"storage_capacity_bytes=512\n");
+    assert_contains(sink_bytes(), b"root_bytes=");
+    assert_contains(sink_bytes(), b"\nstatus=ok\nformat=artifact\nentries=1\n");
+    assert_contains(sink_bytes(), b"truncated=false\n");
+    assert_contains(sink_bytes(), b"- namespace=bin path=/bin/pwd offset=0 artifact_bytes=");
+    assert_contains(sink_bytes(), b" bytes=76 checksum=1469418292\n");
+    assert_syscall_record(
+        "/bin/proc",
+        crate::syscall::SyscallOp::SourceMediaSnapshot,
+        crate::syscall::SyscallStatus::Ok,
+    );
+    assert_syscall_record(
+        "/bin/proc",
+        crate::syscall::SyscallOp::SourceMediaRead,
+        crate::syscall::SyscallStatus::Ok,
+    );
+
+    sink_clear();
+    let _ = daemon.run_shell_line(&mut session, b"cat /proc/media\n");
+    assert_contains(sink_bytes(), b"source-media:\n");
+    assert_contains(sink_bytes(), b"format=artifact\n");
+    assert_contains(sink_bytes(), b"path=/bin/pwd");
+    assert_syscall_record(
+        "/bin/cat",
+        crate::syscall::SyscallOp::SourceMediaSnapshot,
+        crate::syscall::SyscallStatus::Ok,
+    );
+
+    reset_installed_sources();
+    clear_source_media();
+});
+
+arch_test!(root_shell_executes_media_discovered_bin, {
+    crate::klog::reset();
+    crate::proc::reset();
+    crate::syscall::reset();
+    crate::exec::reset();
+    reset_installed_sources();
+    clear_source_media();
+    install_source_media(SOURCE_MEDIA_DYNAMIC_BIN);
+    sink_clear();
+
+    let daemon = daemon(ProfileSummary::new("shell-only", false), None);
+    let mut session = RootShellSession::new();
+    let _ = daemon.run_shell_line(&mut session, b"media-bin\n");
+    testrt::check_eq(sink_str(), "media-bin.ok\n");
+
+    let mut loads = [crate::exec::EMPTY_EXEC_LOAD_RECORD; crate::exec::MAX_EXEC_LOAD_RECORDS];
+    let count = crate::exec::snapshot_loads(&mut loads);
+    testrt::check_eq(count, 1usize);
+    testrt::check_eq(loads[0].argv0(), "media-bin");
+    testrt::check_eq(loads[0].status, crate::exec::ExecLoadStatus::Ok);
+    testrt::check_eq(loads[0].reason, crate::exec::ExecLoadReason::LoadedFromSourceMedia);
+    testrt::check_eq(loads[0].path, "/bin/media-bin");
+    testrt::check_eq(loads[0].source_path, "/bin/media-bin");
+    testrt::check_eq(loads[0].entry_name, "bin_media_bin");
+    assert_syscall_record(
+        "/bin/media-bin",
+        crate::syscall::SyscallOp::ProcessExit,
+        crate::syscall::SyscallStatus::Ok,
+    );
+
+    sink_clear();
+    let _ = daemon.run_shell_line(&mut session, b"ls /bin\n");
+    assert_contains(sink_bytes(), b"media-bin\n");
+
+    sink_clear();
+    let _ = daemon.run_shell_line(&mut session, b"help\n");
+    assert_contains(sink_bytes(), b"/bin programs: ");
+    assert_contains(sink_bytes(), b", media-bin\n");
+
+    sink_clear();
+    let _ = daemon.run_shell_line(&mut session, b"help media-bin\n");
+    testrt::check_eq(sink_str(), "media-bin - source media program\n");
+
+    sink_clear();
+    let _ = daemon.run_shell_line(&mut session, b"cat /bin/media-bin\n");
+    assert_contains(sink_bytes(), b"program=media-bin\n");
+    assert_contains(sink_bytes(), b"path=/bin/media-bin\n");
+    assert_contains(sink_bytes(), b"summary=source media program\n");
+    assert_contains(sink_bytes(), b"entry_fn=bin_media_bin\n");
+
+    reset_installed_sources();
+    clear_source_media();
+    crate::exec::reset();
 });
 
 arch_test!(root_shell_proc_installs_payload_source_from_source_media, {
@@ -1785,6 +2022,21 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"payloads=3\n");
     assert_contains(sink_bytes(), b"input=fixture-input\n");
     assert_contains(sink_bytes(), b"usb_keyboard=unavailable\n");
+    assert_syscall_record(
+        "/bin/cat",
+        crate::syscall::SyscallOp::VfsOpen,
+        crate::syscall::SyscallStatus::Ok,
+    );
+    assert_syscall_record(
+        "/bin/cat",
+        crate::syscall::SyscallOp::FdRead,
+        crate::syscall::SyscallStatus::Ok,
+    );
+    assert_syscall_record(
+        "/bin/cat",
+        crate::syscall::SyscallOp::FdClose,
+        crate::syscall::SyscallStatus::Ok,
+    );
 
     run_session_shell_line(&mut session, b"cat \"/boot/profile\"\n");
     assert_contains(sink_bytes(), b"profile=shell-only\n");
@@ -1844,7 +2096,7 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     );
     assert_contains(
         sink_bytes(),
-        b"  proc [processes|execs|pending|self|sources|tasks|waits|syscalls|scheduler|exec PROGRAM [ARG...]|spawn PROGRAM [ARG...]|block PROGRAM [ARG...]|wait PID|wake PID|kill PID|install-bin NAME ok|error|install-payload NAME ready|failed|install-bin-media NAME|install-payload-media NAME] - inspect process state\n",
+        b"  proc [processes|execs|media|pending|self|sources|tasks|waits|syscalls|scheduler|exec PROGRAM [ARG...]|spawn PROGRAM [ARG...]|block PROGRAM [ARG...]|wait PID|wake PID|kill PID|install-bin NAME ok|error|install-payload NAME ready|failed|install-bin-media NAME|install-payload-media NAME] - inspect process state\n",
     );
     assert_contains(
         sink_bytes(),
@@ -2250,7 +2502,7 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     run_session_shell_line(&mut session, b"ls /proc\n");
     testrt::check_eq(
         sink_str(),
-        "execs\npending\nprocesses\nself\nscheduler\nsources\nsyscalls\ntasks\nwaits\n",
+        "execs\nmedia\npending\nprocesses\nself\nscheduler\nsources\nsyscalls\ntasks\nwaits\n",
     );
 
     run_session_shell_line(&mut session, b"cat /proc/sources\n");
@@ -2308,6 +2560,7 @@ arch_test!(root_shell_vfs_pwd_ls_cd_and_cat, {
     assert_contains(sink_bytes(), b"path=/bin/cat op=scheduler-dispatch status=ok");
     assert_contains(sink_bytes(), b"path=/bin/cat op=vfs-normalize status=ok");
     assert_contains(sink_bytes(), b"path=/bin/cat op=vfs-lookup status=ok");
+    assert_contains(sink_bytes(), b"path=/bin/cat op=vfs-open status=ok");
     assert_contains(sink_bytes(), b"path=/bin/cat op=vfs-read status=ok");
     assert_contains(sink_bytes(), b"path=/bin/cat op=process-self status=ok");
     assert_contains(sink_bytes(), b"path=/bin/cat op=dump-status status=ok");
@@ -3250,6 +3503,42 @@ arch_test!(program_syscalls_fd_io_uses_standard_descriptor_table, {
     testrt::check_eq(seeded.read_fd(0, &mut read_buf), Ok(3usize));
     testrt::check_eq(&read_buf[..3], b"abc");
     testrt::check_eq(seeded.read_fd(0, &mut read_buf), Ok(0usize));
+
+    let fd = seeded
+        .open_vfs_file_path("/boot/profile")
+        .expect("boot profile opens as a VFS fd");
+    testrt::check_eq(fd, crate::syscall::PROGRAM_VFS_FILE_FD);
+    let mut file_buf = [0u8; 16];
+    let read = seeded
+        .read_fd(fd, &mut file_buf)
+        .expect("opened VFS fd reads bytes");
+    testrt::check_eq(read, 16usize);
+    testrt::check_eq(&file_buf[..8], b"profile=");
+    testrt::check_eq(
+        seeded.write_fd(fd, b"nope").err(),
+        Some(crate::syscall::ProgramIoError::NotWritable),
+    );
+    testrt::check_eq(seeded.close_fd(fd), Ok(()));
+    testrt::check_eq(
+        seeded.read_fd(fd, &mut file_buf).err(),
+        Some(crate::syscall::ProgramIoError::BadFd),
+    );
+    testrt::check_eq(seeded.close_fd(fd).err(), Some(crate::syscall::ProgramIoError::BadFd));
+    assert_syscall_record(
+        "",
+        crate::syscall::SyscallOp::VfsOpen,
+        crate::syscall::SyscallStatus::Ok,
+    );
+    assert_syscall_record(
+        "",
+        crate::syscall::SyscallOp::VfsRead,
+        crate::syscall::SyscallStatus::Ok,
+    );
+    assert_syscall_record(
+        "",
+        crate::syscall::SyscallOp::FdClose,
+        crate::syscall::SyscallStatus::Ok,
+    );
 
     testrt::check_eq(
         seeded.read_fd(1, &mut read_buf).err(),

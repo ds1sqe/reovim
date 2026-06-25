@@ -41,6 +41,7 @@ pub mod program;
 pub mod root_shell;
 pub mod rootd;
 pub mod sched;
+pub mod source_media;
 pub mod source_store;
 pub mod splash;
 pub mod syscall;

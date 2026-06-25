@@ -96,7 +96,7 @@ const BIN_DUMP_SOURCE_BYTES: &[u8] =
 const BIN_SCHED_SOURCE_BYTES: &[u8] =
     b"reovim-source-v1\nreject-argc-greater 2 sched: too many arguments\ndispatch-arg1 sched: unknown subcommand\ndefault\nwrite-scheduler-state\ncase status\nwrite-scheduler-state\ncase tick\nwrite-scheduler-tick\nwrite-scheduler-state\ncase yield\nwrite-scheduler-yield\nwrite-scheduler-state\nend-dispatch-arg1\n";
 const BIN_PROC_SOURCE_BYTES: &[u8] =
-    b"reovim-source-v1\nreject-argc-greater-unless-arg1 2 exec,spawn,block,wait,wake,kill,install-bin,install-payload,install-bin-media,install-payload-media proc: too many arguments\ndispatch-arg1 proc: unknown subcommand\ndefault\nwrite-process-table\ncase processes\nwrite-process-table\ncase execs\nwrite-exec-load-table\ncase pending\nwrite-pending-exec-table\ncase self\nwrite-process-self\ncase sources\nwrite-source-store-table\ncase tasks\nwrite-task-table\ncase waits\nwrite-wait-table\ncase syscalls\nwrite-syscall-table\ncase scheduler\nwrite-scheduler-state\ncase exec\nproc-exec-argv-tail\ncase spawn\nproc-spawn-argv-tail\ncase block\nproc-block-argv-tail\ncase wait\nproc-wait-pid-arg2\ncase wake\nproc-wake-pid-arg2\ncase kill\nproc-kill-pid-arg2\ncase install-bin\nproc-install-bin-arg2-arg3\ncase install-payload\nproc-install-payload-arg2-arg3\ncase install-bin-media\nproc-install-bin-media-arg2\ncase install-payload-media\nproc-install-payload-media-arg2\nend-dispatch-arg1\n";
+    b"reovim-source-v1\nreject-argc-greater-unless-arg1 2 exec,spawn,block,wait,wake,kill,install-bin,install-payload,install-bin-media,install-payload-media proc: too many arguments\ndispatch-arg1 proc: unknown subcommand\ndefault\nwrite-process-table\ncase processes\nwrite-process-table\ncase execs\nwrite-exec-load-table\ncase media\nwrite-source-media-table\ncase pending\nwrite-pending-exec-table\ncase self\nwrite-process-self\ncase sources\nwrite-source-store-table\ncase tasks\nwrite-task-table\ncase waits\nwrite-wait-table\ncase syscalls\nwrite-syscall-table\ncase scheduler\nwrite-scheduler-state\ncase exec\nproc-exec-argv-tail\ncase spawn\nproc-spawn-argv-tail\ncase block\nproc-block-argv-tail\ncase wait\nproc-wait-pid-arg2\ncase wake\nproc-wake-pid-arg2\ncase kill\nproc-kill-pid-arg2\ncase install-bin\nproc-install-bin-arg2-arg3\ncase install-payload\nproc-install-payload-arg2-arg3\ncase install-bin-media\nproc-install-bin-media-arg2\ncase install-payload-media\nproc-install-payload-media-arg2\nend-dispatch-arg1\n";
 const BIN_PROBE_SOURCE_BYTES: &[u8] =
     b"reovim-source-v1\nreject-argc-greater 2 probe: too many arguments\nrun-provider-probe-arg1\n";
 const BIN_LAUNCH_SOURCE_BYTES: &[u8] =
@@ -380,6 +380,7 @@ pub fn write_vfs_file(file: File, syscalls: &mut ProgramSyscalls<'_, '_, '_>) {
         File::LogEvents => write_event_table(syscalls),
         File::LogStats => syscalls.write_kernel_log_stats(),
         File::ProcExecs => syscalls.write_exec_load_table(),
+        File::ProcMedia => syscalls.write_source_media_table(),
         File::ProcPending => syscalls.write_pending_exec_table(),
         File::ProcProcesses => syscalls.write_process_table(),
         File::ProcSelf => syscalls.write_current_process(),
@@ -396,8 +397,8 @@ pub fn write_vfs_file(file: File, syscalls: &mut ProgramSyscalls<'_, '_, '_>) {
     }
 }
 
-fn write_program_file(syscalls: &ProgramSyscalls<'_, '_, '_>, index: usize) {
-    let Some(entry) = syscalls.programs().get(index) else {
+fn write_program_file(syscalls: &ProgramSyscalls<'_, '_, '_>, id: usize) {
+    let Some((_, entry)) = kernel_program::find_by_id(syscalls.programs(), id) else {
         syscalls.stdout_line("program metadata unavailable");
         return;
     };
@@ -548,6 +549,18 @@ fn write_program_names(syscalls: &ProgramSyscalls<'_, '_, '_>) {
         syscalls.stdout_bytes(programs[index].name.as_bytes());
         index += 1;
     }
+    let mut media_programs = [None; kernel_program::MAX_MEDIA_PROGRAMS];
+    let count = kernel_program::snapshot_media_programs(&mut media_programs);
+    index = 0;
+    while index < count {
+        if let Some(program) = media_programs[index] {
+            if !programs.is_empty() || index > 0 {
+                syscalls.stdout_bytes(b", ");
+            }
+            syscalls.stdout_bytes(program.name.as_bytes());
+        }
+        index += 1;
+    }
     syscalls.stdout_bytes(b"\n");
 }
 
@@ -558,6 +571,15 @@ fn write_detailed_help_catalog(syscalls: &ProgramSyscalls<'_, '_, '_>) {
     let programs = syscalls.programs();
     while index < programs.len() {
         write_program_help_entry(syscalls, &programs[index], b"  ");
+        index += 1;
+    }
+    let mut media_programs = [None; kernel_program::MAX_MEDIA_PROGRAMS];
+    let count = kernel_program::snapshot_media_programs(&mut media_programs);
+    index = 0;
+    while index < count {
+        if let Some(program) = media_programs[index] {
+            write_program_help_entry(syscalls, program, b"  ");
+        }
         index += 1;
     }
 }
@@ -619,7 +641,7 @@ fn write_program_help_entry(
         BIN_PROC => write_help_line(
             syscalls,
             prefix,
-            "proc [processes|execs|pending|self|sources|tasks|waits|syscalls|scheduler|exec PROGRAM [ARG...]|spawn PROGRAM [ARG...]|block PROGRAM [ARG...]|wait PID|wake PID|kill PID|install-bin NAME ok|error|install-payload NAME ready|failed|install-bin-media NAME|install-payload-media NAME] - inspect process state",
+            "proc [processes|execs|media|pending|self|sources|tasks|waits|syscalls|scheduler|exec PROGRAM [ARG...]|spawn PROGRAM [ARG...]|block PROGRAM [ARG...]|wait PID|wake PID|kill PID|install-bin NAME ok|error|install-payload NAME ready|failed|install-bin-media NAME|install-payload-media NAME] - inspect process state",
         ),
         BIN_PROBE => write_help_line(
             syscalls,

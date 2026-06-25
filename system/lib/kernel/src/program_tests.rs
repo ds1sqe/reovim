@@ -3,7 +3,7 @@
 use {
     super::{
         LoadedProgram, MAX_PROGRAM_ARG_BYTES, MAX_PROGRAM_ARGS, ProgramArgvBuffer,
-        ProgramArgvBuildError, ProgramDescriptor, ProgramImageKind, load_argv0,
+        ProgramArgvBuildError, ProgramDescriptor, ProgramImageKind, ProgramStatus, load_argv0,
     },
     crate::{
         source_store::ExecutableSourceStore,
@@ -165,7 +165,7 @@ arch_test!(program_loader_resolves_bin_name_and_absolute_path, {
     check_source_image(
         "proc",
         "/bin/proc",
-        b"reovim-source-v1\nreject-argc-greater-unless-arg1 2 exec,spawn,block,wait,wake,kill,install-bin,install-payload,install-bin-media,install-payload-media proc: too many arguments\ndispatch-arg1 proc: unknown subcommand\ndefault\nwrite-process-table\ncase processes\nwrite-process-table\ncase execs\nwrite-exec-load-table\ncase pending\nwrite-pending-exec-table\ncase self\nwrite-process-self\ncase sources\nwrite-source-store-table\ncase tasks\nwrite-task-table\ncase waits\nwrite-wait-table\ncase syscalls\nwrite-syscall-table\ncase scheduler\nwrite-scheduler-state\ncase exec\nproc-exec-argv-tail\ncase spawn\nproc-spawn-argv-tail\ncase block\nproc-block-argv-tail\ncase wait\nproc-wait-pid-arg2\ncase wake\nproc-wake-pid-arg2\ncase kill\nproc-kill-pid-arg2\ncase install-bin\nproc-install-bin-arg2-arg3\ncase install-payload\nproc-install-payload-arg2-arg3\ncase install-bin-media\nproc-install-bin-media-arg2\ncase install-payload-media\nproc-install-payload-media-arg2\nend-dispatch-arg1\n",
+        b"reovim-source-v1\nreject-argc-greater-unless-arg1 2 exec,spawn,block,wait,wake,kill,install-bin,install-payload,install-bin-media,install-payload-media proc: too many arguments\ndispatch-arg1 proc: unknown subcommand\ndefault\nwrite-process-table\ncase processes\nwrite-process-table\ncase execs\nwrite-exec-load-table\ncase media\nwrite-source-media-table\ncase pending\nwrite-pending-exec-table\ncase self\nwrite-process-self\ncase sources\nwrite-source-store-table\ncase tasks\nwrite-task-table\ncase waits\nwrite-wait-table\ncase syscalls\nwrite-syscall-table\ncase scheduler\nwrite-scheduler-state\ncase exec\nproc-exec-argv-tail\ncase spawn\nproc-spawn-argv-tail\ncase block\nproc-block-argv-tail\ncase wait\nproc-wait-pid-arg2\ncase wake\nproc-wake-pid-arg2\ncase kill\nproc-kill-pid-arg2\ncase install-bin\nproc-install-bin-arg2-arg3\ncase install-payload\nproc-install-payload-arg2-arg3\ncase install-bin-media\nproc-install-bin-media-arg2\ncase install-payload-media\nproc-install-payload-media-arg2\nend-dispatch-arg1\n",
     );
     check_source_image(
         "probe",
@@ -232,6 +232,14 @@ arch_test!(program_argv_buffer_rejects_overflow, {
     let long = unsafe { core::str::from_utf8_unchecked(&long) };
     let mut argv = ProgramArgvBuffer::empty();
     testrt::check_eq(argv.push(long).err(), Some(ProgramArgvBuildError::ArgTooLong));
+});
+
+arch_test!(program_status_exit_code_reports_numeric_success_and_failure, {
+    testrt::check_eq(ProgramStatus::ExitCode(0).as_bytes(), b"exit-code");
+    testrt::check_eq(ProgramStatus::ExitCode(0).exit_code(), 0);
+    testrt::check(ProgramStatus::ExitCode(0).is_success(), "zero exit code is success");
+    testrt::check_eq(ProgramStatus::ExitCode(7).exit_code(), 7);
+    testrt::check(!ProgramStatus::ExitCode(7).is_success(), "nonzero exit code is failure");
 });
 
 arch_test!(program_catalog_exposes_only_bin_program_entries, {

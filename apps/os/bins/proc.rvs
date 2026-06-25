@@ -7,6 +7,8 @@ case processes
 write-process-table
 case execs
 write-exec-load-table
+case media
+write-source-media-table
 case pending
 write-pending-exec-table
 case self

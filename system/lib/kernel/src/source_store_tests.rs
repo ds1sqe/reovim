@@ -2,11 +2,12 @@
 
 use {
     super::{
-        EMPTY_SOURCE_ARTIFACT_RECORD, ExecutableSourceStore, MAX_INSTALLED_SOURCE_BYTES,
-        MAX_SOURCE_ARTIFACT_RECORDS, SourceArtifactNamespace, SourceArtifactOrigin,
-        SourceInstallError, SourceMediaArtifactError, SourceMediaCatalogError,
-        find_source_media_catalog_entry, install_source, parse_source_media_artifact,
-        reset_installed_sources, source_media_checksum32,
+        EMPTY_SOURCE_ARTIFACT_RECORD, EMPTY_SOURCE_MEDIA_CATALOG_ENTRY, ExecutableSourceStore,
+        MAX_INSTALLED_SOURCE_BYTES, MAX_SOURCE_ARTIFACT_RECORDS, MAX_SOURCE_MEDIA_CATALOG_RECORDS,
+        SourceArtifactNamespace, SourceArtifactOrigin, SourceInstallError,
+        SourceMediaArtifactError, SourceMediaCatalogError, find_source_media_catalog_entry,
+        install_source, parse_source_media_artifact, reset_installed_sources,
+        snapshot_source_media_catalog_entries, source_media_checksum32,
     },
     crate::{
         bin_fixture,
@@ -170,6 +171,14 @@ arch_test!(source_store_finds_checked_source_media_catalog_entry, {
     testrt::check_eq(entry.offset, 128usize);
     testrt::check_eq(entry.artifact_bytes_len, VALID_BIN_MEDIA_ARTIFACT.len());
     testrt::check_eq(entry.checksum, source_media_checksum32(VALID_BIN_MEDIA_ARTIFACT));
+
+    let mut records = [EMPTY_SOURCE_MEDIA_CATALOG_ENTRY; MAX_SOURCE_MEDIA_CATALOG_RECORDS];
+    let (count, truncated) =
+        snapshot_source_media_catalog_entries(VALID_BIN_MEDIA_CATALOG, &mut records)
+            .expect("valid catalog snapshots");
+    testrt::check_eq(count, 1usize);
+    testrt::check(!truncated, "single-entry source-media catalog is not truncated");
+    testrt::check_eq(records[0], entry);
 });
 
 arch_test!(source_store_rejects_bad_or_missing_source_media_catalog_entry, {

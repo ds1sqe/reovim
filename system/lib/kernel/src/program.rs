@@ -5,9 +5,16 @@
 //! owned by the shell or this crate: the OS image supplies a `/bin`
 //! descriptor slice during boot.
 
-use crate::{
-    rootd::PayloadSourceInstallStatus, source_store::ExecutableSourceStore,
-    syscall::ProgramSyscalls,
+use {
+    crate::{
+        rootd::PayloadSourceInstallStatus, source_store::ExecutableSourceStore,
+        syscall::ProgramSyscalls,
+    },
+    core::{
+        cell::UnsafeCell,
+        slice,
+        sync::atomic::{AtomicBool, Ordering},
+    },
 };
 
 /// Maximum bytes attached to one program's initial stdin buffer.
@@ -18,6 +25,14 @@ pub const MAX_PROGRAM_PIPE_BYTES: usize = MAX_PROGRAM_STDIN_BYTES;
 pub const MAX_PROGRAM_ARGS: usize = 8;
 /// Maximum bytes in one argv token.
 pub const MAX_PROGRAM_ARG_BYTES: usize = 64;
+/// Maximum media-discovered `/bin` descriptors retained by exec.
+pub const MAX_MEDIA_PROGRAMS: usize = 4;
+
+const MEDIA_PROGRAM_ID_BASE: usize = 10_000;
+const MAX_MEDIA_PROGRAM_NAME_BYTES: usize = 32;
+pub(crate) const MAX_MEDIA_PROGRAM_PATH_BYTES: usize = MAX_MEDIA_PROGRAM_NAME_BYTES + 5;
+const MAX_MEDIA_PROGRAM_ENTRY_BYTES: usize = MAX_MEDIA_PROGRAM_NAME_BYTES + 4;
+const MEDIA_PROGRAM_SUMMARY: &str = "source media program";
 
 /// Borrowed argv for one image-program invocation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -195,6 +210,8 @@ pub enum ProgramStatus {
     Ok,
     /// The program was rejected or reported a failure.
     Error,
+    /// The program returned a numeric Reovim exit code.
+    ExitCode(i32),
     /// The program requested root-daemon shutdown.
     Halt,
 }
@@ -207,7 +224,28 @@ impl ProgramStatus {
             Self::Empty => b"empty",
             Self::Ok => b"ok",
             Self::Error => b"error",
+            Self::ExitCode(_) => b"exit-code",
             Self::Halt => b"halt",
+        }
+    }
+
+    /// Numeric process exit code represented by this program status.
+    #[must_use]
+    pub const fn exit_code(self) -> i32 {
+        match self {
+            Self::Empty | Self::Ok | Self::Halt => 0,
+            Self::Error => 1,
+            Self::ExitCode(code) => code,
+        }
+    }
+
+    /// Whether this status counts as successful completion.
+    #[must_use]
+    pub const fn is_success(self) -> bool {
+        match self {
+            Self::Ok => true,
+            Self::Empty | Self::Error | Self::Halt => false,
+            Self::ExitCode(code) => code == 0,
         }
     }
 }
@@ -258,6 +296,7 @@ const SOURCE_BYTES_OP_WRITE_EXEC_LOAD_TABLE: &[u8] = b"write-exec-load-table";
 const SOURCE_BYTES_OP_WRITE_PENDING_EXEC_TABLE: &[u8] = b"write-pending-exec-table";
 const SOURCE_BYTES_OP_WRITE_PROCESS_SELF: &[u8] = b"write-process-self";
 const SOURCE_BYTES_OP_WRITE_SOURCE_STORE_TABLE: &[u8] = b"write-source-store-table";
+const SOURCE_BYTES_OP_WRITE_SOURCE_MEDIA_TABLE: &[u8] = b"write-source-media-table";
 const SOURCE_BYTES_OP_WRITE_TASK_TABLE: &[u8] = b"write-task-table";
 const SOURCE_BYTES_OP_WRITE_WAIT_TABLE: &[u8] = b"write-wait-table";
 const SOURCE_BYTES_OP_WRITE_SYSCALL_TABLE: &[u8] = b"write-syscall-table";
@@ -278,6 +317,7 @@ const SOURCE_BYTES_OP_LAUNCH_PAYLOAD_NAME: &[u8] = b"launch-payload-name ";
 const SOURCE_BYTES_OP_CLEAR_CONSOLE: &[u8] = b"clear-console";
 const SOURCE_BYTES_OP_WRITE_STDOUT_HEX: &[u8] = b"write-stdout-hex ";
 const SOURCE_BYTES_OP_EXIT_STATUS: &[u8] = b"exit-status ";
+const SOURCE_BYTES_OP_EXIT_CODE: &[u8] = b"exit-code ";
 const SOURCE_BYTES_OP_DISPATCH_ARG1: &[u8] = b"dispatch-arg1 ";
 const SOURCE_BYTES_DISPATCH_DEFAULT: &[u8] = b"default";
 const SOURCE_BYTES_DISPATCH_CASE: &[u8] = b"case ";
@@ -380,6 +420,325 @@ impl ProgramDescriptor {
     }
 }
 
+/// Failure while installing a media-discovered `/bin` descriptor.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MediaProgramInstallError {
+    /// The media path is not a single-component `/bin/<name>` path.
+    InvalidPath,
+    /// The `/bin` basename does not fit the bounded descriptor table.
+    NameTooLong,
+    /// All bounded media descriptor slots are occupied.
+    NoSlot,
+}
+
+#[derive(Clone, Copy)]
+struct MediaProgramSlot {
+    name: [u8; MAX_MEDIA_PROGRAM_NAME_BYTES],
+    name_len: usize,
+    path: [u8; MAX_MEDIA_PROGRAM_PATH_BYTES],
+    path_len: usize,
+    entry_name: [u8; MAX_MEDIA_PROGRAM_ENTRY_BYTES],
+    entry_name_len: usize,
+    descriptor: ProgramDescriptor,
+    occupied: bool,
+}
+
+impl MediaProgramSlot {
+    const fn empty() -> Self {
+        Self {
+            name: [0u8; MAX_MEDIA_PROGRAM_NAME_BYTES],
+            name_len: 0,
+            path: [0u8; MAX_MEDIA_PROGRAM_PATH_BYTES],
+            path_len: 0,
+            entry_name: [0u8; MAX_MEDIA_PROGRAM_ENTRY_BYTES],
+            entry_name_len: 0,
+            descriptor: ProgramDescriptor {
+                id: 0,
+                name: "",
+                path: "",
+                summary: "",
+                image: ProgramImage::SourcePath(""),
+                entry_name: "",
+            },
+            occupied: false,
+        }
+    }
+
+    fn clear(&mut self) {
+        *self = Self::empty();
+    }
+
+    fn write(&mut self, index: usize, path: &str) -> Result<(), MediaProgramInstallError> {
+        let name = media_program_name_from_path(path)?;
+        if name.len() > self.name.len() {
+            return Err(MediaProgramInstallError::NameTooLong);
+        }
+        if path.len() > self.path.len() {
+            return Err(MediaProgramInstallError::NameTooLong);
+        }
+
+        self.name_len = name.len();
+        self.name[..self.name_len].copy_from_slice(name.as_bytes());
+        self.path_len = path.len();
+        self.path[..self.path_len].copy_from_slice(path.as_bytes());
+        self.entry_name_len = write_media_entry_name(name, &mut self.entry_name)?;
+
+        let name = slot_str(self.name.as_ptr(), self.name_len);
+        let path = slot_str(self.path.as_ptr(), self.path_len);
+        let entry_name = slot_str(self.entry_name.as_ptr(), self.entry_name_len);
+        self.descriptor = ProgramDescriptor {
+            id: MEDIA_PROGRAM_ID_BASE + index,
+            name,
+            path,
+            summary: MEDIA_PROGRAM_SUMMARY,
+            image: ProgramImage::SourcePath(path),
+            entry_name,
+        };
+        self.occupied = true;
+        Ok(())
+    }
+}
+
+struct MediaProgramTable {
+    slots: [MediaProgramSlot; MAX_MEDIA_PROGRAMS],
+}
+
+impl MediaProgramTable {
+    const fn new() -> Self {
+        Self {
+            slots: [MediaProgramSlot::empty(); MAX_MEDIA_PROGRAMS],
+        }
+    }
+
+    fn reset(&mut self) {
+        let mut index = 0usize;
+        while index < self.slots.len() {
+            self.slots[index].clear();
+            index += 1;
+        }
+    }
+
+    fn find_path(&self, path: &str) -> Option<usize> {
+        let mut index = 0usize;
+        while index < self.slots.len() {
+            if self.slots[index].occupied && self.slots[index].descriptor.path == path {
+                return Some(index);
+            }
+            index += 1;
+        }
+        None
+    }
+
+    fn find_name(&self, name: &str) -> Option<usize> {
+        let mut index = 0usize;
+        while index < self.slots.len() {
+            if self.slots[index].occupied && self.slots[index].descriptor.name == name {
+                return Some(index);
+            }
+            index += 1;
+        }
+        None
+    }
+
+    fn install(&mut self, path: &str) -> Result<usize, MediaProgramInstallError> {
+        if let Some(index) = self.find_path(path) {
+            return Ok(index);
+        }
+        let mut index = 0usize;
+        while index < self.slots.len() {
+            if !self.slots[index].occupied {
+                self.slots[index].write(index, path)?;
+                return Ok(index);
+            }
+            index += 1;
+        }
+        Err(MediaProgramInstallError::NoSlot)
+    }
+}
+
+struct MediaProgramCell(UnsafeCell<MediaProgramTable>);
+
+// SAFETY: mutable access is serialized by `MEDIA_PROGRAM_LOCK`.
+unsafe impl Sync for MediaProgramCell {}
+
+static MEDIA_PROGRAMS: MediaProgramCell =
+    MediaProgramCell(UnsafeCell::new(MediaProgramTable::new()));
+static MEDIA_PROGRAM_LOCK: AtomicBool = AtomicBool::new(false);
+
+struct MediaProgramGuard;
+
+impl MediaProgramGuard {
+    fn acquire() -> Self {
+        while MEDIA_PROGRAM_LOCK
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            core::hint::spin_loop();
+        }
+        Self
+    }
+}
+
+impl Drop for MediaProgramGuard {
+    fn drop(&mut self) {
+        MEDIA_PROGRAM_LOCK.store(false, Ordering::Release);
+    }
+}
+
+fn with_media_programs<R>(f: impl FnOnce(&mut MediaProgramTable) -> R) -> R {
+    let _guard = MediaProgramGuard::acquire();
+    // SAFETY: `MEDIA_PROGRAM_LOCK` serializes access to the media descriptor table.
+    let table = unsafe { &mut *MEDIA_PROGRAMS.0.get() };
+    f(table)
+}
+
+fn media_program_descriptor(index: usize) -> &'static ProgramDescriptor {
+    // SAFETY: media descriptor slots live for the program lifetime. Tests reset
+    // between isolated cases; loaded programs must not outlive a reset.
+    unsafe { &(*MEDIA_PROGRAMS.0.get()).slots[index].descriptor }
+}
+
+fn slot_str(ptr: *const u8, len: usize) -> &'static str {
+    // SAFETY: callers only pass bytes previously copied from Rust `str` values
+    // or ASCII-generated entry names into static media descriptor storage.
+    unsafe { core::str::from_utf8_unchecked(slice::from_raw_parts(ptr, len)) }
+}
+
+fn media_program_name_from_path(path: &str) -> Result<&str, MediaProgramInstallError> {
+    let Some(name) = path.strip_prefix("/bin/") else {
+        return Err(MediaProgramInstallError::InvalidPath);
+    };
+    if name.is_empty() || name.as_bytes().contains(&b'/') {
+        return Err(MediaProgramInstallError::InvalidPath);
+    }
+    let mut index = 0usize;
+    let bytes = name.as_bytes();
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if !(byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_') {
+            return Err(MediaProgramInstallError::InvalidPath);
+        }
+        index += 1;
+    }
+    Ok(name)
+}
+
+fn write_media_entry_name(
+    name: &str,
+    out: &mut [u8; MAX_MEDIA_PROGRAM_ENTRY_BYTES],
+) -> Result<usize, MediaProgramInstallError> {
+    if name.len() + 4 > out.len() {
+        return Err(MediaProgramInstallError::NameTooLong);
+    }
+    out[0] = b'b';
+    out[1] = b'i';
+    out[2] = b'n';
+    out[3] = b'_';
+    let mut index = 0usize;
+    while index < name.len() {
+        let byte = name.as_bytes()[index];
+        out[index + 4] = if byte == b'-' { b'_' } else { byte };
+        index += 1;
+    }
+    Ok(name.len() + 4)
+}
+
+/// Clears media-discovered `/bin` descriptors.
+pub fn reset_media_programs() {
+    with_media_programs(MediaProgramTable::reset);
+}
+
+/// Builds a checked `/bin/<name>` media path from an argv0 token.
+///
+/// Absolute argv0 values must already be under `/bin`; basename argv0 values
+/// are converted to `/bin/<argv0>`.
+pub fn media_program_path_from_argv0<'a>(
+    argv0: &str,
+    out: &'a mut [u8; MAX_MEDIA_PROGRAM_PATH_BYTES],
+) -> Option<&'a str> {
+    let len = if argv0.as_bytes().first() == Some(&b'/') {
+        if argv0.len() > out.len() {
+            return None;
+        }
+        out[..argv0.len()].copy_from_slice(argv0.as_bytes());
+        argv0.len()
+    } else {
+        let prefix = b"/bin/";
+        if prefix.len() + argv0.len() > out.len() {
+            return None;
+        }
+        out[..prefix.len()].copy_from_slice(prefix);
+        out[prefix.len()..prefix.len() + argv0.len()].copy_from_slice(argv0.as_bytes());
+        prefix.len() + argv0.len()
+    };
+    // SAFETY: bytes were copied from Rust `str` values plus the ASCII `/bin/` prefix.
+    let path = unsafe { core::str::from_utf8_unchecked(&out[..len]) };
+    if media_program_name_from_path(path).is_err() {
+        return None;
+    }
+    Some(path)
+}
+
+/// Installs or returns a media-discovered `/bin` descriptor.
+pub fn install_media_program(
+    path: &str,
+) -> Result<&'static ProgramDescriptor, MediaProgramInstallError> {
+    let index = with_media_programs(|programs| programs.install(path))?;
+    Ok(media_program_descriptor(index))
+}
+
+fn find_media_by_bin_basename(name: &str) -> Option<(usize, &'static ProgramDescriptor)> {
+    let index = with_media_programs(|programs| programs.find_name(name))?;
+    Some((MEDIA_PROGRAM_ID_BASE + index, media_program_descriptor(index)))
+}
+
+fn find_media_by_path(path: &str) -> Option<(usize, &'static ProgramDescriptor)> {
+    let index = with_media_programs(|programs| programs.find_path(path))?;
+    Some((MEDIA_PROGRAM_ID_BASE + index, media_program_descriptor(index)))
+}
+
+fn find_media_by_id(id: usize) -> Option<(usize, &'static ProgramDescriptor)> {
+    if id < MEDIA_PROGRAM_ID_BASE {
+        return None;
+    }
+    let index = id - MEDIA_PROGRAM_ID_BASE;
+    if index >= MAX_MEDIA_PROGRAMS {
+        return None;
+    }
+    let exists = with_media_programs(|programs| programs.slots[index].occupied);
+    if exists {
+        Some((id, media_program_descriptor(index)))
+    } else {
+        None
+    }
+}
+
+/// Snapshots currently installed media-discovered `/bin` descriptors.
+///
+/// Image descriptors remain supplied by the active OS image. This helper
+/// exposes the bounded runtime descriptor extension so `/bin`, help, and VFS
+/// surfaces do not hide source-media-admitted executables.
+pub fn snapshot_media_programs(out: &mut [Option<&'static ProgramDescriptor>]) -> usize {
+    let count = with_media_programs(|programs| {
+        let mut written = 0usize;
+        let mut index = 0usize;
+        while index < programs.slots.len() && written < out.len() {
+            if programs.slots[index].occupied {
+                out[written] = Some(media_program_descriptor(index));
+                written += 1;
+            }
+            index += 1;
+        }
+        written
+    });
+    let mut index = count;
+    while index < out.len() {
+        out[index] = None;
+        index += 1;
+    }
+    count
+}
+
 /// Loaded executable object handed from the shell frontend to proc/syscall.
 #[derive(Clone, Copy, Debug)]
 pub struct LoadedProgram {
@@ -421,7 +780,7 @@ pub fn find_by_path(
         }
         index += 1;
     }
-    None
+    find_media_by_path(path)
 }
 
 /// Finds a program by basename inside `/bin`.
@@ -430,7 +789,23 @@ pub fn find_by_bin_name(
     programs: &'static [ProgramDescriptor],
     name: &str,
 ) -> Option<(usize, &'static ProgramDescriptor)> {
-    find_by_bin_basename(programs, name)
+    find_by_bin_basename(programs, name).or_else(|| find_media_by_bin_basename(name))
+}
+
+/// Finds a program by stable descriptor identifier.
+#[must_use]
+pub fn find_by_id(
+    programs: &'static [ProgramDescriptor],
+    id: usize,
+) -> Option<(usize, &'static ProgramDescriptor)> {
+    let mut index = 0usize;
+    while index < programs.len() {
+        if programs[index].id == id {
+            return Some((index, &programs[index]));
+        }
+        index += 1;
+    }
+    find_media_by_id(id)
 }
 
 /// Resolves argv[0] as either an absolute program path or a `/bin` basename.
@@ -551,6 +926,15 @@ fn parse_source_status(value: &[u8]) -> Option<ProgramStatus> {
     }
 }
 
+fn parse_source_exit_code(value: &[u8]) -> Option<i32> {
+    let mut offset = 0usize;
+    let code = parse_source_usize(value, &mut offset)?;
+    if offset != value.len() || code > 255 {
+        return None;
+    }
+    Some(code as i32)
+}
+
 fn source_hex_is_valid(encoded: &[u8]) -> bool {
     if encoded.len() % 2 != 0 {
         return false;
@@ -620,6 +1004,7 @@ fn validate_source_byte_op(line: &'static [u8]) -> bool {
         || line == SOURCE_BYTES_OP_WRITE_PENDING_EXEC_TABLE
         || line == SOURCE_BYTES_OP_WRITE_PROCESS_SELF
         || line == SOURCE_BYTES_OP_WRITE_SOURCE_STORE_TABLE
+        || line == SOURCE_BYTES_OP_WRITE_SOURCE_MEDIA_TABLE
         || line == SOURCE_BYTES_OP_WRITE_TASK_TABLE
         || line == SOURCE_BYTES_OP_WRITE_WAIT_TABLE
         || line == SOURCE_BYTES_OP_WRITE_SYSCALL_TABLE
@@ -654,6 +1039,10 @@ fn validate_source_byte_op(line: &'static [u8]) -> bool {
 
     if line.starts_with(SOURCE_BYTES_OP_EXIT_STATUS) {
         return parse_source_status(&line[SOURCE_BYTES_OP_EXIT_STATUS.len()..]).is_some();
+    }
+
+    if line.starts_with(SOURCE_BYTES_OP_EXIT_CODE) {
+        return parse_source_exit_code(&line[SOURCE_BYTES_OP_EXIT_CODE.len()..]).is_some();
     }
 
     if line.starts_with(SOURCE_BYTES_OP_REJECT_ARGC_GREATER) {
@@ -1340,6 +1729,11 @@ fn run_source_byte_op(
         return Some(ProgramStatus::Ok);
     }
 
+    if line == SOURCE_BYTES_OP_WRITE_SOURCE_MEDIA_TABLE {
+        syscalls.write_source_media_table();
+        return Some(ProgramStatus::Ok);
+    }
+
     if line == SOURCE_BYTES_OP_WRITE_TASK_TABLE {
         syscalls.write_task_table();
         return Some(ProgramStatus::Ok);
@@ -1431,6 +1825,12 @@ fn run_source_byte_op(
 
     if line.starts_with(SOURCE_BYTES_OP_EXIT_STATUS) {
         return parse_source_status(&line[SOURCE_BYTES_OP_EXIT_STATUS.len()..]);
+    }
+
+    if line.starts_with(SOURCE_BYTES_OP_EXIT_CODE) {
+        return Some(ProgramStatus::ExitCode(parse_source_exit_code(
+            &line[SOURCE_BYTES_OP_EXIT_CODE.len()..],
+        )?));
     }
 
     if line.starts_with(SOURCE_BYTES_OP_REJECT_ARGC_GREATER) {
@@ -1537,13 +1937,41 @@ fn run_source_stdin_or_vfs_files_argv_tail(
     let mut index = 1usize;
     while index < argv.argc() {
         let target = argv.arg(index).unwrap_or("");
-        if let Err(error) = syscalls.write_vfs_file_path(target) {
+        if let Err(error) = run_source_copy_vfs_file_to_stdout(target, syscalls) {
             write_source_path_error(syscalls, "cat", target, error);
             status = ProgramStatus::Error;
         }
         index += 1;
     }
     status
+}
+
+fn run_source_copy_vfs_file_to_stdout(
+    target: &str,
+    syscalls: &mut ProgramSyscalls<'_, '_, '_>,
+) -> Result<(), crate::vfs::VfsError> {
+    let fd = syscalls.open_vfs_file_path(target)?;
+    let mut buffer = [0u8; 64];
+    loop {
+        let read = match syscalls.read_fd(fd, &mut buffer) {
+            Ok(read) => read,
+            Err(_) => {
+                let _ = syscalls.close_fd(fd);
+                return Err(crate::vfs::VfsError::Io);
+            }
+        };
+        if read == 0 {
+            let _ = syscalls.close_fd(fd);
+            return Ok(());
+        }
+        if syscalls
+            .write_fd(syscalls.stdout().fd, &buffer[..read])
+            .is_err()
+        {
+            let _ = syscalls.close_fd(fd);
+            return Err(crate::vfs::VfsError::Io);
+        }
+    }
 }
 
 fn run_source_copy_stdin_to_stdout(syscalls: &mut ProgramSyscalls<'_, '_, '_>) -> ProgramStatus {
@@ -1707,6 +2135,9 @@ fn write_source_path_error(
         crate::vfs::VfsError::TooLong => syscalls.stderr_bytes(b"path too long"),
         crate::vfs::VfsError::NotFound => syscalls.stderr_bytes(b"no such file or directory"),
         crate::vfs::VfsError::NotDirectory => syscalls.stderr_bytes(b"not a directory"),
+        crate::vfs::VfsError::Busy => syscalls.stderr_bytes(b"file busy"),
+        crate::vfs::VfsError::FileTooLarge => syscalls.stderr_bytes(b"file too large"),
+        crate::vfs::VfsError::Io => syscalls.stderr_bytes(b"I/O error"),
     }
     syscalls.stderr_bytes(b"\n");
 }
