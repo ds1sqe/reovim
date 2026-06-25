@@ -12,6 +12,9 @@ use crate::{
     },
 };
 
+/// Maximum executable-bundle catalog entries rendered in one diagnostic snapshot.
+pub const MAX_EXEC_BUNDLE_CATALOG_RECORDS: usize = 8;
+
 const EXEC_BUNDLE_MAGIC: &[u8] = b"reovim-exec-bundle-v1";
 const EXEC_BUNDLE_CATALOG_MAGIC: &[u8] = b"reovim-exec-bundle-catalog-v1";
 const EXEC_BUNDLE_NAMESPACE_PREFIX: &[u8] = b"namespace=";
@@ -135,6 +138,46 @@ pub struct ExecBundleCatalogEntry<'a> {
     pub checksum: u32,
 }
 
+/// Empty executable-bundle catalog entry used for bounded snapshots.
+pub const EMPTY_EXEC_BUNDLE_CATALOG_ENTRY: ExecBundleCatalogEntry<'static> =
+    ExecBundleCatalogEntry {
+        namespace: SourceArtifactNamespace::Bin,
+        path: "",
+        offset: 0,
+        artifact_bytes_len: 0,
+        checksum: 0,
+    };
+
+/// Root executable-bundle snapshot result.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExecBundleSnapshot<'a> {
+    /// No executable-bundle target is installed.
+    Unavailable { read: BlockIoResult },
+    /// The executable-bundle target returned a failed or empty root read.
+    ReadError { read: BlockIoResult },
+    /// Offset zero contains a checked executable-bundle catalog.
+    Catalog {
+        read: BlockIoResult,
+        count: usize,
+        truncated: bool,
+    },
+    /// Offset zero contains one checked executable-bundle artifact.
+    Artifact {
+        read: BlockIoResult,
+        artifact: ExecBundleArtifact<'a>,
+    },
+    /// Offset zero looked like a catalog but failed validation.
+    InvalidCatalog {
+        read: BlockIoResult,
+        error: ExecBundleCatalogError,
+    },
+    /// Offset zero was not a catalog and failed single-artifact validation.
+    InvalidArtifact {
+        read: BlockIoResult,
+        error: ExecBundleArtifactError,
+    },
+}
+
 /// How a checked executable bundle artifact was selected.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ExecBundleArtifactFormat {
@@ -181,6 +224,37 @@ pub struct ExecBundleArtifactRead<'a> {
     pub artifact_bytes_len: usize,
     /// Parsed checked artifact.
     pub artifact: ExecBundleArtifact<'a>,
+}
+
+/// Snapshots the executable-bundle root object at offset zero.
+///
+/// Catalog entry paths stored in `entries` borrow from `root`, so callers must
+/// keep both buffers live while rendering the snapshot.
+pub fn snapshot_root<'a>(
+    root: &'a mut [u8; MAX_SOURCE_MEDIA_CATALOG_BYTES],
+    entries: &mut [ExecBundleCatalogEntry<'a>],
+) -> ExecBundleSnapshot<'a> {
+    let read = block::read_exec_bundle_artifact(root);
+    if !read.available {
+        return ExecBundleSnapshot::Unavailable { read };
+    }
+    if !read.ok || read.bytes == 0 {
+        return ExecBundleSnapshot::ReadError { read };
+    }
+
+    let root_bytes = &root[..read.bytes];
+    match snapshot_exec_bundle_catalog_entries(root_bytes, entries) {
+        Ok((count, truncated)) => ExecBundleSnapshot::Catalog {
+            read,
+            count,
+            truncated,
+        },
+        Err(ExecBundleCatalogError::MissingMagic) => match parse_exec_bundle_artifact(root_bytes) {
+            Ok(artifact) => ExecBundleSnapshot::Artifact { read, artifact },
+            Err(error) => ExecBundleSnapshot::InvalidArtifact { read, error },
+        },
+        Err(error) => ExecBundleSnapshot::InvalidCatalog { read, error },
+    }
 }
 
 /// Reads and validates one executable bundle artifact by namespace and path.
@@ -337,6 +411,39 @@ pub fn parse_exec_bundle_artifact(
         source_bytes: body,
         checksum,
     })
+}
+
+/// Snapshots checked executable-bundle catalog entries into `entries`.
+pub fn snapshot_exec_bundle_catalog_entries<'a>(
+    bytes: &'a [u8],
+    entries: &mut [ExecBundleCatalogEntry<'a>],
+) -> Result<(usize, bool), ExecBundleCatalogError> {
+    let body = parse_exec_bundle_catalog_body(bytes)?;
+    let mut offset = 0usize;
+    let mut count = 0usize;
+    let mut truncated = false;
+    while offset < body.len() {
+        let Some((line, next)) = next_line(body, offset) else {
+            break;
+        };
+        offset = next;
+        if line.is_empty() {
+            continue;
+        }
+        if line.len() < EXEC_BUNDLE_ENTRY_PREFIX.len()
+            || &line[..EXEC_BUNDLE_ENTRY_PREFIX.len()] != EXEC_BUNDLE_ENTRY_PREFIX
+        {
+            return Err(ExecBundleCatalogError::InvalidEntry);
+        }
+        let entry = parse_exec_bundle_catalog_entry(&line[EXEC_BUNDLE_ENTRY_PREFIX.len()..])?;
+        if count < entries.len() {
+            entries[count] = entry;
+        } else {
+            truncated = true;
+        }
+        count += 1;
+    }
+    Ok((core::cmp::min(count, entries.len()), truncated))
 }
 
 /// Finds a checked executable bundle catalog entry for `namespace` and `path`.

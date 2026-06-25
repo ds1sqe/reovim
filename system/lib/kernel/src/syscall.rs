@@ -7,7 +7,7 @@
 
 use {
     crate::{
-        dump, exec, klog,
+        dump, exec, exec_bundle, klog,
         proc::{self, ProcessHandle, ProcessRecord, WaitRecord},
         program::{
             self, BinSourceInstallStatus, LoadedProgram, MAX_PROGRAM_PIPE_BYTES,
@@ -316,6 +316,10 @@ pub enum SyscallOp {
     SourceMediaRead,
     /// Executable source-media manifest snapshot query.
     SourceMediaSnapshot,
+    /// Executable bundle bytes read from the provider bundle.
+    ExecBundleRead,
+    /// Executable bundle manifest snapshot query.
+    ExecBundleSnapshot,
     /// Process wait-table snapshot query.
     SnapshotWaits,
     /// Scheduler task table snapshot query.
@@ -387,6 +391,8 @@ impl SyscallOp {
             Self::SourceInstall => "source-install",
             Self::SourceMediaRead => "source-media-read",
             Self::SourceMediaSnapshot => "source-media-snapshot",
+            Self::ExecBundleRead => "exec-bundle-read",
+            Self::ExecBundleSnapshot => "exec-bundle-snapshot",
             Self::SnapshotWaits => "snapshot-waits",
             Self::SnapshotTasks => "snapshot-tasks",
             Self::SchedulerSnapshot => "scheduler-snapshot",
@@ -3080,12 +3086,14 @@ impl<'daemon, 'session, 'rootd> ProgramSyscalls<'daemon, 'session, 'rootd> {
         match snapshot {
             source_media::SourceMediaSnapshot::Unavailable { .. } => {
                 self.stdout_bytes(b"\nstatus=unavailable\nreason=source-media-unavailable\n");
+                self.write_exec_bundle_table();
                 return;
             }
             source_media::SourceMediaSnapshot::ReadError { read } => {
                 self.stdout_bytes(b"\nstatus=read-error\nreason=");
                 self.stdout_bytes(read.reason.as_bytes());
                 self.stdout_bytes(b"\n");
+                self.write_exec_bundle_table();
                 return;
             }
             _ => {}
@@ -3144,6 +3152,108 @@ impl<'daemon, 'session, 'rootd> ProgramSyscalls<'daemon, 'session, 'rootd> {
             }
             source_media::SourceMediaSnapshot::Unavailable { .. }
             | source_media::SourceMediaSnapshot::ReadError { .. } => {}
+        }
+        self.write_exec_bundle_table();
+    }
+
+    fn write_exec_bundle_table(&self) {
+        self.record(SyscallOp::ExecBundleSnapshot, SyscallStatus::Ok);
+        self.stdout_line("exec-bundle:");
+        let mut bytes = [0u8; MAX_SOURCE_MEDIA_CATALOG_BYTES];
+        let mut entries = [exec_bundle::EMPTY_EXEC_BUNDLE_CATALOG_ENTRY;
+            exec_bundle::MAX_EXEC_BUNDLE_CATALOG_RECORDS];
+        let snapshot = exec_bundle::snapshot_root(&mut bytes, &mut entries);
+        let read = match snapshot {
+            exec_bundle::ExecBundleSnapshot::Unavailable { read }
+            | exec_bundle::ExecBundleSnapshot::ReadError { read }
+            | exec_bundle::ExecBundleSnapshot::Catalog { read, .. }
+            | exec_bundle::ExecBundleSnapshot::Artifact { read, .. }
+            | exec_bundle::ExecBundleSnapshot::InvalidCatalog { read, .. }
+            | exec_bundle::ExecBundleSnapshot::InvalidArtifact { read, .. } => read,
+        };
+        let read_status = match snapshot {
+            exec_bundle::ExecBundleSnapshot::Unavailable { .. } => SyscallStatus::Unavailable,
+            exec_bundle::ExecBundleSnapshot::ReadError { .. } => SyscallStatus::Error,
+            exec_bundle::ExecBundleSnapshot::Catalog { .. }
+            | exec_bundle::ExecBundleSnapshot::Artifact { .. }
+            | exec_bundle::ExecBundleSnapshot::InvalidCatalog { .. }
+            | exec_bundle::ExecBundleSnapshot::InvalidArtifact { .. } => SyscallStatus::Ok,
+        };
+        self.record(SyscallOp::ExecBundleRead, read_status);
+
+        self.stdout_bytes(b"storage=");
+        self.stdout_bytes(read.storage.as_bytes());
+        self.stdout_bytes(b"\nstorage_capacity_bytes=");
+        self.write_u64_dec(read.capacity_bytes as u64);
+        self.stdout_bytes(b"\nroot_bytes=");
+        self.write_u64_dec(read.bytes as u64);
+        match snapshot {
+            exec_bundle::ExecBundleSnapshot::Unavailable { .. } => {
+                self.stdout_bytes(b"\nstatus=unavailable\nreason=exec-bundle-unavailable\n");
+                return;
+            }
+            exec_bundle::ExecBundleSnapshot::ReadError { read } => {
+                self.stdout_bytes(b"\nstatus=read-error\nreason=");
+                self.stdout_bytes(read.reason.as_bytes());
+                self.stdout_bytes(b"\n");
+                return;
+            }
+            _ => {}
+        }
+
+        match snapshot {
+            exec_bundle::ExecBundleSnapshot::Catalog {
+                count, truncated, ..
+            } => {
+                self.stdout_bytes(b"\nstatus=ok\nformat=catalog\nentries=");
+                self.write_u64_dec(count as u64);
+                self.stdout_bytes(b"\ntruncated=");
+                self.stdout_bytes(if truncated { b"true" } else { b"false" });
+                self.stdout_bytes(b"\n");
+                let mut index = 0usize;
+                while index < count {
+                    let entry = entries[index];
+                    self.stdout_bytes(b"- namespace=");
+                    self.stdout_bytes(entry.namespace.as_str().as_bytes());
+                    self.stdout_bytes(b" path=");
+                    self.stdout_bytes(entry.path.as_bytes());
+                    self.stdout_bytes(b" offset=");
+                    self.write_u64_dec(entry.offset as u64);
+                    self.stdout_bytes(b" artifact_bytes=");
+                    self.write_u64_dec(entry.artifact_bytes_len as u64);
+                    self.stdout_bytes(b" checksum=");
+                    self.write_u64_dec(entry.checksum as u64);
+                    self.stdout_bytes(b"\n");
+                    index += 1;
+                }
+            }
+            exec_bundle::ExecBundleSnapshot::Artifact { artifact, .. } => {
+                self.stdout_bytes(b"\nstatus=ok\nformat=artifact\nentries=1\n");
+                self.stdout_bytes(b"truncated=false\n");
+                self.stdout_bytes(b"- namespace=");
+                self.stdout_bytes(artifact.namespace.as_str().as_bytes());
+                self.stdout_bytes(b" path=");
+                self.stdout_bytes(artifact.path.as_bytes());
+                self.stdout_bytes(b" offset=0 artifact_bytes=");
+                self.write_u64_dec(read.bytes as u64);
+                self.stdout_bytes(b" bytes=");
+                self.write_u64_dec(artifact.source_bytes.len() as u64);
+                self.stdout_bytes(b" checksum=");
+                self.write_u64_dec(artifact.checksum as u64);
+                self.stdout_bytes(b"\n");
+            }
+            exec_bundle::ExecBundleSnapshot::InvalidCatalog { error, .. } => {
+                self.stdout_bytes(b"\nstatus=invalid\nformat=catalog\nreason=");
+                self.stdout_bytes(error.as_str().as_bytes());
+                self.stdout_bytes(b"\n");
+            }
+            exec_bundle::ExecBundleSnapshot::InvalidArtifact { error, .. } => {
+                self.stdout_bytes(b"\nstatus=invalid\nformat=artifact\nreason=");
+                self.stdout_bytes(error.as_str().as_bytes());
+                self.stdout_bytes(b"\n");
+            }
+            exec_bundle::ExecBundleSnapshot::Unavailable { .. }
+            | exec_bundle::ExecBundleSnapshot::ReadError { .. } => {}
         }
     }
 

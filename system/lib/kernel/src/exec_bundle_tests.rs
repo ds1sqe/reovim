@@ -2,14 +2,16 @@
 
 use {
     super::{
-        ExecBundleArtifactError, ExecBundleArtifactFormat, ExecBundleCatalogError,
-        ExecBundleReadError, find_exec_bundle_catalog_entry, parse_exec_bundle_artifact,
-        read_checked_artifact,
+        EMPTY_EXEC_BUNDLE_CATALOG_ENTRY, ExecBundleArtifactError, ExecBundleArtifactFormat,
+        ExecBundleCatalogError, ExecBundleReadError, ExecBundleSnapshot,
+        MAX_EXEC_BUNDLE_CATALOG_RECORDS, find_exec_bundle_catalog_entry,
+        parse_exec_bundle_artifact, read_checked_artifact, snapshot_root,
     },
     crate::{
         block::{BlockDevice, clear_exec_bundle_device_for_tests, install_exec_bundle_device},
         source_store::{
-            MAX_SOURCE_MEDIA_ARTIFACT_BYTES, SourceArtifactNamespace, source_media_checksum32,
+            MAX_SOURCE_MEDIA_ARTIFACT_BYTES, MAX_SOURCE_MEDIA_CATALOG_BYTES,
+            SourceArtifactNamespace, source_media_checksum32,
         },
     },
     core::sync::atomic::{AtomicUsize, Ordering},
@@ -177,6 +179,50 @@ arch_test!(exec_bundle_reads_catalog_artifact, {
     testrt::check_eq(read.artifact.namespace, SourceArtifactNamespace::Bin);
     testrt::check_eq(read.artifact.path, "/bin/nosource");
     testrt::check_eq(read.artifact.source_bytes, BUNDLE_BIN_SOURCE);
+    clear_bundle();
+});
+
+arch_test!(exec_bundle_snapshots_root_artifact, {
+    clear_bundle();
+    install_bundle(EXEC_BUNDLE_BIN);
+    let mut root = [0u8; MAX_SOURCE_MEDIA_CATALOG_BYTES];
+    let mut entries = [EMPTY_EXEC_BUNDLE_CATALOG_ENTRY; MAX_EXEC_BUNDLE_CATALOG_RECORDS];
+    match snapshot_root(&mut root, &mut entries) {
+        ExecBundleSnapshot::Artifact { read, artifact } => {
+            testrt::check_eq(read.storage, "selftest-exec-bundle0");
+            testrt::check_eq(artifact.namespace, SourceArtifactNamespace::Bin);
+            testrt::check_eq(artifact.path, "/bin/nosource");
+            testrt::check_eq(artifact.source_bytes, BUNDLE_BIN_SOURCE);
+        }
+        _ => testrt::check(false, "single exec-bundle artifact should snapshot as artifact"),
+    }
+    clear_bundle();
+});
+
+arch_test!(exec_bundle_snapshots_catalog_entries, {
+    clear_bundle();
+    install_bundle(EXEC_BUNDLE_CATALOG);
+    let mut root = [0u8; MAX_SOURCE_MEDIA_CATALOG_BYTES];
+    let mut entries = [EMPTY_EXEC_BUNDLE_CATALOG_ENTRY; MAX_EXEC_BUNDLE_CATALOG_RECORDS];
+    match snapshot_root(&mut root, &mut entries) {
+        ExecBundleSnapshot::Catalog {
+            read,
+            count,
+            truncated,
+        } => {
+            testrt::check_eq(read.storage, "selftest-exec-bundle0");
+            testrt::check_eq(count, 1usize);
+            testrt::check(!truncated, "single exec-bundle catalog entry is not truncated");
+            testrt::check_eq(entries[0].namespace, SourceArtifactNamespace::Bin);
+            testrt::check_eq(entries[0].path, "/bin/nosource");
+            testrt::check_eq(entries[0].offset, EXEC_BUNDLE_CATALOG_OFFSET);
+            testrt::check(
+                entries[0].artifact_bytes_len > BUNDLE_BIN_SOURCE.len(),
+                "entry records envelope bytes",
+            );
+        }
+        _ => testrt::check(false, "exec-bundle catalog should snapshot as catalog"),
+    }
     clear_bundle();
 });
 

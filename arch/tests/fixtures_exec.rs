@@ -1808,6 +1808,7 @@ fn os_exec_bundle_profile_on_x86_target_runs_block_bundle_bin() {
     let bootline = concat!(
         "cat /boot/profile\n",
         "ls /bin\n",
+        "proc media\n",
         "bundle-ok\n",
         "ls /bin\n",
         "cat /bin/bundle-ok\n",
@@ -1824,6 +1825,13 @@ fn os_exec_bundle_profile_on_x86_target_runs_block_bundle_bin() {
     assert!(
         serial.contains("profile=exec-bundle\nlaunch=disabled"),
         "exec-bundle profile was selected; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("exec-bundle:\n")
+            && serial.contains("storage=qemu-exec-bundle0\n")
+            && serial.contains("status=ok\nformat=catalog\nentries=1\n")
+            && serial.contains("- namespace=bin path=/bin/bundle-ok offset="),
+        "proc media exposes the exec-bundle catalog before bundle-ok exec; serial: {serial:?}",
     );
     assert!(
         serial.contains("reovim-os> help\nclear\nscreentest")
