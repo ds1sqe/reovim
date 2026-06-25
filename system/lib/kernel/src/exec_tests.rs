@@ -11,10 +11,10 @@ use {
             BlockDevice, clear_exec_bundle_device_for_tests, clear_source_media_device_for_tests,
             install_exec_bundle_device, install_source_media_device,
         },
-        exec_artifact::ExecArtifactOrigin,
+        exec_artifact::{ExecArtifactOrigin, install_exec_bundle_bin_descriptors},
         proc,
         program::{
-            ProgramArgvBuffer, ProgramDescriptor, ProgramImage, ProgramImageKind,
+            self, ProgramArgvBuffer, ProgramDescriptor, ProgramImage, ProgramImageKind,
             ProgramSourceArtifact,
         },
         rootd::{PayloadDescriptor, PayloadImage, PayloadImageKind, PayloadSourceArtifact},
@@ -627,6 +627,45 @@ arch_test!(exec_loader_loads_missing_bin_source_from_exec_bundle_catalog, {
     reset_installed_sources();
     clear_exec_bundle();
     clear_source_media();
+});
+
+arch_test!(exec_bundle_catalog_preinstalls_bin_descriptor_without_source_bytes, {
+    proc::reset();
+    reset();
+    reset_installed_sources();
+    clear_exec_bundle();
+    clear_source_media();
+    install_exec_bundle(EXEC_BUNDLE_BIN_CATALOG);
+
+    let install = install_exec_bundle_bin_descriptors();
+    testrt::check(install.available, "exec bundle catalog was available");
+    testrt::check_eq(install.installed, 1usize);
+    testrt::check(!install.truncated, "single bundle descriptor is not truncated");
+
+    let descriptor = program::resolve_argv0(&[], "nosource")
+        .expect("preinstalled exec-bundle descriptor resolves before exec")
+        .1;
+    testrt::check_eq(descriptor.path, "/bin/nosource");
+    testrt::check_eq(descriptor.entry_name, "bin_nosource");
+    testrt::check(
+        program_store(&[]).find_program("/bin/nosource").is_none(),
+        "descriptor preinstall does not install source bytes",
+    );
+
+    let loaded = load_bin_program(&[], program_store(&[]), "nosource")
+        .expect("preinstalled descriptor still loads from exec bundle");
+    testrt::check_eq(loaded.source_bytes(), MEDIA_BIN_SOURCE);
+
+    let mut records = [EMPTY_EXEC_LOAD_RECORD; super::MAX_EXEC_LOAD_RECORDS];
+    let count = snapshot_loads(&mut records);
+    testrt::check_eq(count, 1usize);
+    testrt::check_eq(records[0].origin, ExecArtifactOrigin::BlockBundle);
+    testrt::check_eq(records[0].path, "/bin/nosource");
+
+    reset_installed_sources();
+    clear_exec_bundle();
+    clear_source_media();
+    reset();
 });
 
 arch_test!(exec_loader_discovers_bin_descriptor_from_exec_bundle, {

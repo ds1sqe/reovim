@@ -10,8 +10,8 @@ use crate::{
     rootd::{LoadedPayloadProgram, PayloadDescriptor, PayloadLoadError},
     source_media,
     source_store::{
-        self, ExecutableSourceStore, MAX_SOURCE_MEDIA_ARTIFACT_BYTES, SourceArtifactNamespace,
-        SourceArtifactOrigin,
+        self, ExecutableSourceStore, MAX_SOURCE_MEDIA_ARTIFACT_BYTES,
+        MAX_SOURCE_MEDIA_CATALOG_BYTES, SourceArtifactNamespace, SourceArtifactOrigin,
     },
 };
 
@@ -93,6 +93,27 @@ pub struct LoadedPayloadArtifact {
     pub payload: LoadedPayloadProgram,
     /// Provider that supplied the admitted bytes.
     pub origin: ExecArtifactOrigin,
+}
+
+/// Summary of runtime `/bin` descriptors discovered from an executable bundle.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ExecBundleDescriptorInstall {
+    /// Bundle root was present and structurally usable.
+    pub available: bool,
+    /// Number of `/bin` descriptors installed or already present.
+    pub installed: usize,
+    /// Whether the catalog had more entries than the bounded snapshot held.
+    pub truncated: bool,
+}
+
+impl ExecBundleDescriptorInstall {
+    const fn unavailable() -> Self {
+        Self {
+            available: false,
+            installed: 0,
+            truncated: false,
+        }
+    }
 }
 
 /// Provider-level failure while resolving executable bytes.
@@ -270,6 +291,58 @@ pub fn load_payload(
         index += 1;
     }
     Ok(None)
+}
+
+/// Installs bounded runtime `/bin` descriptors named by the executable-bundle root.
+///
+/// This exposes provider-backed `/bin` names before first execution. It does
+/// not install source bytes; exec admission still re-reads and validates the
+/// selected artifact envelope before a process can run.
+pub fn install_exec_bundle_bin_descriptors() -> ExecBundleDescriptorInstall {
+    let mut root = [0u8; MAX_SOURCE_MEDIA_CATALOG_BYTES];
+    let mut entries = [exec_bundle::EMPTY_EXEC_BUNDLE_CATALOG_ENTRY;
+        exec_bundle::MAX_EXEC_BUNDLE_CATALOG_RECORDS];
+    match exec_bundle::snapshot_root(&mut root, &mut entries) {
+        exec_bundle::ExecBundleSnapshot::Catalog {
+            count, truncated, ..
+        } => {
+            let mut installed = 0usize;
+            let mut index = 0usize;
+            while index < count {
+                if entries[index].namespace == SourceArtifactNamespace::Bin
+                    && program::install_media_program(entries[index].path).is_ok()
+                {
+                    installed += 1;
+                }
+                index += 1;
+            }
+            ExecBundleDescriptorInstall {
+                available: true,
+                installed,
+                truncated,
+            }
+        }
+        exec_bundle::ExecBundleSnapshot::Artifact { artifact, .. } => {
+            let installed = if artifact.namespace == SourceArtifactNamespace::Bin
+                && program::install_media_program(artifact.path).is_ok()
+            {
+                1
+            } else {
+                0
+            };
+            ExecBundleDescriptorInstall {
+                available: true,
+                installed,
+                truncated: false,
+            }
+        }
+        exec_bundle::ExecBundleSnapshot::Unavailable { .. }
+        | exec_bundle::ExecBundleSnapshot::ReadError { .. }
+        | exec_bundle::ExecBundleSnapshot::InvalidCatalog { .. }
+        | exec_bundle::ExecBundleSnapshot::InvalidArtifact { .. } => {
+            ExecBundleDescriptorInstall::unavailable()
+        }
+    }
 }
 
 fn load_provider_discovered_bin(

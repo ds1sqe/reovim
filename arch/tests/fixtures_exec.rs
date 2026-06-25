@@ -1834,6 +1834,10 @@ fn os_exec_bundle_profile_on_x86_target_runs_block_bundle_bin() {
         "proc media exposes the exec-bundle catalog before bundle-ok exec; serial: {serial:?}",
     );
     assert!(
+        serial.contains("halt\nbundle-ok\nreovim-os> source-media:\n"),
+        "first ls /bin exposes preinstalled bundle-ok descriptor before proc media and exec; serial: {serial:?}",
+    );
+    assert!(
         serial.contains("reovim-os> help\nclear\nscreentest")
             && serial.contains("halt\nbundle-ok\n"),
         "exec-bundle profile exposes the provider-discovered /bin descriptor after admission; serial: {serial:?}",

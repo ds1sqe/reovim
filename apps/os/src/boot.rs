@@ -558,6 +558,7 @@ pub const fn launch_profile() -> BootProfile<'static> {
 /// Boot wrapper that binds this composition root's provider-specific callbacks.
 pub fn run_shell_profile(profile: BootProfile<'_>) -> ! {
     reovim_system_kernel::source_store::reset_installed_sources();
+    reovim_system_kernel::program::reset_media_programs();
     #[cfg(all(feature = "launch-profile", target_os = "none", target_arch = "x86_64"))]
     if profile.launch_enabled {
         install_x86_launch_profile_sources();
@@ -688,6 +689,8 @@ fn collect_device_inventory() -> DeviceInventory {
 }
 
 fn prepare_shell_boot() {
+    let _ = reovim_system_kernel::exec_artifact::install_exec_bundle_bin_descriptors();
+
     #[cfg(all(target_os = "none", target_arch = "aarch64"))]
     {
         if BOOTLINE_SCRIPT.is_some() {
