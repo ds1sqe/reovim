@@ -894,6 +894,22 @@ impl ExecutableSourceStore {
         count
     }
 
+    /// Returns the current origin for a `/bin` source artifact path.
+    #[must_use]
+    pub fn program_origin(self, path: &'static str) -> Option<SourceArtifactOrigin> {
+        if installed_source_index(SourceArtifactNamespace::Bin, path).is_some() {
+            return Some(SourceArtifactOrigin::Installed);
+        }
+        let mut index = 0usize;
+        while index < self.program_sources.len() {
+            if self.program_sources[index].path == path {
+                return Some(SourceArtifactOrigin::Image);
+            }
+            index += 1;
+        }
+        None
+    }
+
     /// Finds a `/bin` source artifact by loader-visible path.
     #[must_use]
     pub fn find_program(self, path: &'static str) -> Option<ProgramSourceArtifact> {
@@ -908,6 +924,22 @@ impl ExecutableSourceStore {
         while index < self.program_sources.len() {
             if self.program_sources[index].path == path {
                 return Some(self.program_sources[index]);
+            }
+            index += 1;
+        }
+        None
+    }
+
+    /// Returns the current origin for a payload source artifact path.
+    #[must_use]
+    pub fn payload_origin(self, path: &'static str) -> Option<SourceArtifactOrigin> {
+        if installed_source_index(SourceArtifactNamespace::Payload, path).is_some() {
+            return Some(SourceArtifactOrigin::Installed);
+        }
+        let mut index = 0usize;
+        while index < self.payload_sources.len() {
+            if self.payload_sources[index].path == path {
+                return Some(SourceArtifactOrigin::Image);
             }
             index += 1;
         }

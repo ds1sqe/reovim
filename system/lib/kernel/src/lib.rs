@@ -26,6 +26,8 @@ pub mod console_io;
 pub mod dump;
 pub mod escape;
 pub mod exec;
+pub mod exec_artifact;
+pub mod exec_bundle;
 pub mod fdt;
 pub mod fonts;
 pub mod fs;

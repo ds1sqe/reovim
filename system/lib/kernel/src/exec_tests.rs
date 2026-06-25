@@ -7,7 +7,11 @@ use {
         spawn_bin_program_with_stdin, take_pending_program,
     },
     crate::{
-        block::{BlockDevice, clear_source_media_device_for_tests, install_source_media_device},
+        block::{
+            BlockDevice, clear_exec_bundle_device_for_tests, clear_source_media_device_for_tests,
+            install_exec_bundle_device, install_source_media_device,
+        },
+        exec_artifact::ExecArtifactOrigin,
         proc,
         program::{
             ProgramArgvBuffer, ProgramDescriptor, ProgramImage, ProgramImageKind,
@@ -91,6 +95,12 @@ const SOURCE_MEDIA_BIN_CATALOG: usize = 4;
 const SOURCE_MEDIA_BIN_DYNAMIC: usize = 5;
 const SOURCE_MEDIA_CATALOG_ARTIFACT_OFFSET: usize = 256;
 static SOURCE_MEDIA_KIND: AtomicUsize = AtomicUsize::new(SOURCE_MEDIA_NONE);
+const EXEC_BUNDLE_NONE: usize = 0;
+const EXEC_BUNDLE_BIN_NOSOURCE: usize = 1;
+const EXEC_BUNDLE_PAYLOAD_MISSING: usize = 2;
+const EXEC_BUNDLE_BIN_CATALOG: usize = 3;
+const EXEC_BUNDLE_CATALOG_ARTIFACT_OFFSET: usize = 256;
+static EXEC_BUNDLE_KIND: AtomicUsize = AtomicUsize::new(EXEC_BUNDLE_NONE);
 
 const MEDIA_BIN_SOURCE: &[u8] = b"reovim-source-v1\nexit-status ok\n";
 const MEDIA_PAYLOAD_SOURCE: &[u8] = b"reovim-payload-source-v1\nexit-status ready\n";
@@ -247,6 +257,108 @@ fn clear_source_media() {
     clear_source_media_device_for_tests();
 }
 
+fn exec_bundle_encode(out: &mut [u8], namespace: &[u8], path: &[u8], source: &[u8]) -> usize {
+    let mut len = 0usize;
+    let checksum = source_media_checksum32(source) as usize;
+    if !source_media_copy(out, &mut len, b"reovim-exec-bundle-v1\nnamespace=")
+        || !source_media_copy(out, &mut len, namespace)
+        || !source_media_copy(out, &mut len, b"\npath=")
+        || !source_media_copy(out, &mut len, path)
+        || !source_media_copy(out, &mut len, b"\nbytes=")
+        || !source_media_copy_usize(out, &mut len, source.len())
+        || !source_media_copy(out, &mut len, b"\nchecksum=")
+        || !source_media_copy_usize(out, &mut len, checksum)
+        || !source_media_copy(out, &mut len, b"\n")
+        || !source_media_copy(out, &mut len, source)
+    {
+        return 0;
+    }
+    len
+}
+
+fn exec_bundle_catalog_encode(
+    out: &mut [u8],
+    namespace: &[u8],
+    path: &[u8],
+    source: &[u8],
+    artifact_offset: usize,
+) -> usize {
+    let mut artifact = [0u8; MAX_SOURCE_MEDIA_ARTIFACT_BYTES];
+    let artifact_len = exec_bundle_encode(&mut artifact, namespace, path, source);
+    let artifact_checksum = source_media_checksum32(&artifact[..artifact_len]) as usize;
+
+    let mut body = [0u8; 192];
+    let mut body_len = 0usize;
+    if !source_media_copy(&mut body, &mut body_len, b"entry namespace=")
+        || !source_media_copy(&mut body, &mut body_len, namespace)
+        || !source_media_copy(&mut body, &mut body_len, b" path=")
+        || !source_media_copy(&mut body, &mut body_len, path)
+        || !source_media_copy(&mut body, &mut body_len, b" offset=")
+        || !source_media_copy_usize(&mut body, &mut body_len, artifact_offset)
+        || !source_media_copy(&mut body, &mut body_len, b" bytes=")
+        || !source_media_copy_usize(&mut body, &mut body_len, artifact_len)
+        || !source_media_copy(&mut body, &mut body_len, b" checksum=")
+        || !source_media_copy_usize(&mut body, &mut body_len, artifact_checksum)
+        || !source_media_copy(&mut body, &mut body_len, b"\n")
+    {
+        return 0;
+    }
+
+    let checksum = source_media_checksum32(&body[..body_len]) as usize;
+    let mut len = 0usize;
+    if !source_media_copy(out, &mut len, b"reovim-exec-bundle-catalog-v1\nbytes=")
+        || !source_media_copy_usize(out, &mut len, body_len)
+        || !source_media_copy(out, &mut len, b"\nchecksum=")
+        || !source_media_copy_usize(out, &mut len, checksum)
+        || !source_media_copy(out, &mut len, b"\n")
+        || !source_media_copy(out, &mut len, &body[..body_len])
+    {
+        return 0;
+    }
+    len
+}
+
+fn exec_bundle_write(_offset: usize, _bytes: &[u8]) -> bool {
+    false
+}
+
+fn exec_bundle_read(offset: usize, out: &mut [u8]) -> usize {
+    match EXEC_BUNDLE_KIND.load(Ordering::Relaxed) {
+        EXEC_BUNDLE_BIN_NOSOURCE if offset == 0 => {
+            exec_bundle_encode(out, b"bin", b"/bin/nosource", MEDIA_BIN_SOURCE)
+        }
+        EXEC_BUNDLE_PAYLOAD_MISSING if offset == 0 => {
+            exec_bundle_encode(out, b"payload", b"/payload/missing-source", MEDIA_PAYLOAD_SOURCE)
+        }
+        EXEC_BUNDLE_BIN_CATALOG if offset == 0 => exec_bundle_catalog_encode(
+            out,
+            b"bin",
+            b"/bin/nosource",
+            MEDIA_BIN_SOURCE,
+            EXEC_BUNDLE_CATALOG_ARTIFACT_OFFSET,
+        ),
+        EXEC_BUNDLE_BIN_CATALOG if offset == EXEC_BUNDLE_CATALOG_ARTIFACT_OFFSET => {
+            exec_bundle_encode(out, b"bin", b"/bin/nosource", MEDIA_BIN_SOURCE)
+        }
+        _ => 0,
+    }
+}
+
+fn install_exec_bundle(kind: usize) {
+    EXEC_BUNDLE_KIND.store(kind, Ordering::Relaxed);
+    install_exec_bundle_device(BlockDevice::new(
+        "exec-test-bundle0",
+        MAX_SOURCE_MEDIA_ARTIFACT_BYTES,
+        exec_bundle_write,
+        exec_bundle_read,
+    ));
+}
+
+fn clear_exec_bundle() {
+    EXEC_BUNDLE_KIND.store(EXEC_BUNDLE_NONE, Ordering::Relaxed);
+    clear_exec_bundle_device_for_tests();
+}
+
 fn argv1(arg0: &str) -> ProgramArgvBuffer {
     let mut argv = ProgramArgvBuffer::empty();
     argv.push(arg0).expect("test argv0 fits");
@@ -301,6 +413,7 @@ arch_test!(exec_loader_resolves_bin_argv0, {
     testrt::check_eq(records[0].status, ExecLoadStatus::Ok);
     testrt::check_eq(records[0].reason, ExecLoadReason::Loaded);
     testrt::check_eq(records[0].kind, ExecLoadKind::Bin);
+    testrt::check_eq(records[0].origin, ExecArtifactOrigin::ImageLinked);
     testrt::check_eq(records[0].path, "/bin/help");
     testrt::check_eq(records[0].loader, help.descriptor.image_kind().as_str());
     testrt::check_eq(records[0].source_path, "/bin/help");
@@ -309,14 +422,17 @@ arch_test!(exec_loader_resolves_bin_argv0, {
     testrt::check_eq(records[2].status, ExecLoadStatus::Error);
     testrt::check_eq(records[2].reason, ExecLoadReason::EmptyArgv0);
     testrt::check_eq(records[2].kind, ExecLoadKind::None);
+    testrt::check_eq(records[2].origin, ExecArtifactOrigin::None);
     testrt::check_eq(records[3].argv0(), "missing");
     testrt::check_eq(records[3].status, ExecLoadStatus::Error);
     testrt::check_eq(records[3].reason, ExecLoadReason::NotFound);
     testrt::check_eq(records[3].kind, ExecLoadKind::None);
+    testrt::check_eq(records[3].origin, ExecArtifactOrigin::None);
     testrt::check_eq(records[4].argv0(), "/boot/help");
     testrt::check_eq(records[4].status, ExecLoadStatus::Error);
     testrt::check_eq(records[4].reason, ExecLoadReason::NotFound);
     testrt::check_eq(records[4].kind, ExecLoadKind::None);
+    testrt::check_eq(records[4].origin, ExecArtifactOrigin::None);
 });
 
 arch_test!(exec_loader_records_source_image_programs, {
@@ -341,6 +457,7 @@ arch_test!(exec_loader_records_source_image_programs, {
     testrt::check_eq(records[0].status, ExecLoadStatus::Ok);
     testrt::check_eq(records[0].reason, ExecLoadReason::Loaded);
     testrt::check_eq(records[0].kind, ExecLoadKind::Bin);
+    testrt::check_eq(records[0].origin, ExecArtifactOrigin::ImageLinked);
     testrt::check_eq(records[0].path, "/bin/pwd");
     testrt::check_eq(records[0].loader, "source-image");
     testrt::check_eq(records[0].source_path, "/bin/pwd");
@@ -349,6 +466,7 @@ arch_test!(exec_loader_records_source_image_programs, {
     testrt::check_eq(records[1].status, ExecLoadStatus::Ok);
     testrt::check_eq(records[1].reason, ExecLoadReason::Loaded);
     testrt::check_eq(records[1].kind, ExecLoadKind::Bin);
+    testrt::check_eq(records[1].origin, ExecArtifactOrigin::ImageLinked);
     testrt::check_eq(records[1].path, "/bin/clear");
     testrt::check_eq(records[1].loader, "source-image");
     testrt::check_eq(records[1].source_path, "/bin/clear");
@@ -372,6 +490,7 @@ arch_test!(exec_loader_rejects_invalid_bin_source_image_at_admission, {
     testrt::check_eq(records[0].status, ExecLoadStatus::Error);
     testrt::check_eq(records[0].reason, ExecLoadReason::InvalidImage);
     testrt::check_eq(records[0].kind, ExecLoadKind::Bin);
+    testrt::check_eq(records[0].origin, ExecArtifactOrigin::ImageLinked);
     testrt::check_eq(records[0].path, "/bin/badbin");
     testrt::check_eq(records[0].loader, "source-image");
     testrt::check_eq(records[0].source_path, "/bin/badbin");
@@ -396,6 +515,7 @@ arch_test!(exec_loader_rejects_missing_bin_source_at_admission, {
     testrt::check_eq(records[0].status, ExecLoadStatus::Error);
     testrt::check_eq(records[0].reason, ExecLoadReason::SourceNotFound);
     testrt::check_eq(records[0].kind, ExecLoadKind::Bin);
+    testrt::check_eq(records[0].origin, ExecArtifactOrigin::None);
     testrt::check_eq(records[0].path, "/bin/nosource");
     testrt::check_eq(records[0].loader, "source-image");
     testrt::check_eq(records[0].source_path, "/bin/nosource");
@@ -408,6 +528,7 @@ arch_test!(exec_loader_loads_missing_bin_source_from_source_media, {
     proc::reset();
     reset();
     reset_installed_sources();
+    clear_exec_bundle();
     clear_source_media();
     install_source_media(SOURCE_MEDIA_BIN_NOSOURCE);
 
@@ -429,10 +550,82 @@ arch_test!(exec_loader_loads_missing_bin_source_from_source_media, {
     testrt::check_eq(records[0].status, ExecLoadStatus::Ok);
     testrt::check_eq(records[0].reason, ExecLoadReason::LoadedFromSourceMedia);
     testrt::check_eq(records[0].kind, ExecLoadKind::Bin);
+    testrt::check_eq(records[0].origin, ExecArtifactOrigin::SourceMediaSingle);
     testrt::check_eq(records[0].path, "/bin/nosource");
     testrt::check_eq(records[0].source_path, "/bin/nosource");
 
     reset_installed_sources();
+    clear_exec_bundle();
+    clear_source_media();
+});
+
+arch_test!(exec_loader_loads_missing_bin_source_from_exec_bundle, {
+    proc::reset();
+    reset();
+    reset_installed_sources();
+    clear_exec_bundle();
+    clear_source_media();
+    install_exec_bundle(EXEC_BUNDLE_BIN_NOSOURCE);
+
+    let loaded = load_bin_program(&MISSING_SOURCE_PROGRAMS, program_store(&[]), "nosource")
+        .expect("missing source loads from matching executable bundle");
+    testrt::check_eq(loaded.descriptor.path, "/bin/nosource");
+    testrt::check_eq(loaded.source_path, "/bin/nosource");
+    testrt::check_eq(loaded.source_bytes(), MEDIA_BIN_SOURCE);
+
+    let installed = program_store(&[])
+        .find_program("/bin/nosource")
+        .expect("exec bundle installed source overlay");
+    testrt::check_eq(installed.bytes, MEDIA_BIN_SOURCE);
+
+    let mut records = [EMPTY_EXEC_LOAD_RECORD; super::MAX_EXEC_LOAD_RECORDS];
+    let count = snapshot_loads(&mut records);
+    testrt::check_eq(count, 1usize);
+    testrt::check_eq(records[0].argv0(), "nosource");
+    testrt::check_eq(records[0].status, ExecLoadStatus::Ok);
+    testrt::check_eq(records[0].reason, ExecLoadReason::Loaded);
+    testrt::check_eq(records[0].kind, ExecLoadKind::Bin);
+    testrt::check_eq(records[0].origin, ExecArtifactOrigin::BlockBundle);
+    testrt::check_eq(records[0].path, "/bin/nosource");
+    testrt::check_eq(records[0].source_path, "/bin/nosource");
+
+    reset_installed_sources();
+    clear_exec_bundle();
+    clear_source_media();
+});
+
+arch_test!(exec_loader_loads_missing_bin_source_from_exec_bundle_catalog, {
+    proc::reset();
+    reset();
+    reset_installed_sources();
+    clear_exec_bundle();
+    clear_source_media();
+    install_exec_bundle(EXEC_BUNDLE_BIN_CATALOG);
+
+    let loaded = load_bin_program(&MISSING_SOURCE_PROGRAMS, program_store(&[]), "nosource")
+        .expect("missing source loads from matching executable bundle catalog");
+    testrt::check_eq(loaded.descriptor.path, "/bin/nosource");
+    testrt::check_eq(loaded.source_path, "/bin/nosource");
+    testrt::check_eq(loaded.source_bytes(), MEDIA_BIN_SOURCE);
+
+    let installed = program_store(&[])
+        .find_program("/bin/nosource")
+        .expect("exec bundle catalog installed source overlay");
+    testrt::check_eq(installed.bytes, MEDIA_BIN_SOURCE);
+
+    let mut records = [EMPTY_EXEC_LOAD_RECORD; super::MAX_EXEC_LOAD_RECORDS];
+    let count = snapshot_loads(&mut records);
+    testrt::check_eq(count, 1usize);
+    testrt::check_eq(records[0].argv0(), "nosource");
+    testrt::check_eq(records[0].status, ExecLoadStatus::Ok);
+    testrt::check_eq(records[0].reason, ExecLoadReason::Loaded);
+    testrt::check_eq(records[0].kind, ExecLoadKind::Bin);
+    testrt::check_eq(records[0].origin, ExecArtifactOrigin::BlockBundle);
+    testrt::check_eq(records[0].path, "/bin/nosource");
+    testrt::check_eq(records[0].source_path, "/bin/nosource");
+
+    reset_installed_sources();
+    clear_exec_bundle();
     clear_source_media();
 });
 
@@ -461,6 +654,7 @@ arch_test!(exec_loader_loads_missing_bin_source_from_source_media_catalog, {
     testrt::check_eq(records[0].status, ExecLoadStatus::Ok);
     testrt::check_eq(records[0].reason, ExecLoadReason::LoadedFromSourceMedia);
     testrt::check_eq(records[0].kind, ExecLoadKind::Bin);
+    testrt::check_eq(records[0].origin, ExecArtifactOrigin::SourceMediaCatalog);
     testrt::check_eq(records[0].path, "/bin/nosource");
     testrt::check_eq(records[0].source_path, "/bin/nosource");
 
@@ -500,11 +694,13 @@ arch_test!(exec_loader_discovers_bin_descriptor_from_source_media, {
     testrt::check_eq(records[0].status, ExecLoadStatus::Ok);
     testrt::check_eq(records[0].reason, ExecLoadReason::LoadedFromSourceMedia);
     testrt::check_eq(records[0].kind, ExecLoadKind::Bin);
+    testrt::check_eq(records[0].origin, ExecArtifactOrigin::SourceMediaSingle);
     testrt::check_eq(records[0].path, "/bin/media-bin");
     testrt::check_eq(records[0].source_path, "/bin/media-bin");
     testrt::check_eq(records[0].entry_name, "bin_media_bin");
     testrt::check_eq(records[1].argv0(), "/bin/media-bin");
     testrt::check_eq(records[1].reason, ExecLoadReason::Loaded);
+    testrt::check_eq(records[1].origin, ExecArtifactOrigin::InstalledOverlay);
 
     reset_installed_sources();
     clear_source_media();
@@ -534,6 +730,7 @@ arch_test!(exec_loader_rejects_source_media_path_mismatch_at_admission, {
     testrt::check_eq(records[0].status, ExecLoadStatus::Error);
     testrt::check_eq(records[0].reason, ExecLoadReason::SourceMediaMismatch);
     testrt::check_eq(records[0].kind, ExecLoadKind::Bin);
+    testrt::check_eq(records[0].origin, ExecArtifactOrigin::None);
     testrt::check_eq(records[0].path, "/bin/nosource");
     testrt::check_eq(records[0].source_path, "/bin/nosource");
 
@@ -570,6 +767,7 @@ arch_test!(exec_loader_records_payload_admission, {
     testrt::check_eq(records[0].status, ExecLoadStatus::Ok);
     testrt::check_eq(records[0].reason, ExecLoadReason::Loaded);
     testrt::check_eq(records[0].kind, ExecLoadKind::Payload);
+    testrt::check_eq(records[0].origin, ExecArtifactOrigin::ImageLinked);
     testrt::check_eq(records[0].path, "/payload/editor-smoke");
     testrt::check_eq(records[0].loader, "source-image");
     testrt::check_eq(records[0].source_path, "/payload/editor-smoke");
@@ -578,10 +776,12 @@ arch_test!(exec_loader_records_payload_admission, {
     testrt::check_eq(records[1].status, ExecLoadStatus::Error);
     testrt::check_eq(records[1].reason, ExecLoadReason::EmptyArgv0);
     testrt::check_eq(records[1].kind, ExecLoadKind::None);
+    testrt::check_eq(records[1].origin, ExecArtifactOrigin::None);
     testrt::check_eq(records[2].argv0(), "missing");
     testrt::check_eq(records[2].status, ExecLoadStatus::Error);
     testrt::check_eq(records[2].reason, ExecLoadReason::NotFound);
     testrt::check_eq(records[2].kind, ExecLoadKind::None);
+    testrt::check_eq(records[2].origin, ExecArtifactOrigin::None);
 });
 
 arch_test!(exec_loader_uses_installed_payload_source_before_image_source, {
@@ -610,6 +810,7 @@ arch_test!(exec_loader_uses_installed_payload_source_before_image_source, {
     testrt::check_eq(records[0].status, ExecLoadStatus::Error);
     testrt::check_eq(records[0].reason, ExecLoadReason::InvalidImage);
     testrt::check_eq(records[0].kind, ExecLoadKind::Payload);
+    testrt::check_eq(records[0].origin, ExecArtifactOrigin::InstalledOverlay);
     testrt::check_eq(records[0].path, "/payload/editor-smoke");
     testrt::check_eq(records[0].source_path, "/payload/editor-smoke");
     testrt::check_eq(records[0].entry_name, "payload_editor_smoke");
@@ -638,6 +839,7 @@ arch_test!(exec_loader_rejects_invalid_payload_source_image_at_admission, {
     testrt::check_eq(records[0].status, ExecLoadStatus::Error);
     testrt::check_eq(records[0].reason, ExecLoadReason::InvalidImage);
     testrt::check_eq(records[0].kind, ExecLoadKind::Payload);
+    testrt::check_eq(records[0].origin, ExecArtifactOrigin::ImageLinked);
     testrt::check_eq(records[0].path, "/payload/badpayload");
     testrt::check_eq(records[0].loader, "source-image");
     testrt::check_eq(records[0].source_path, "/payload/badpayload");
@@ -662,6 +864,7 @@ arch_test!(exec_loader_rejects_missing_payload_source_at_admission, {
     testrt::check_eq(records[0].status, ExecLoadStatus::Error);
     testrt::check_eq(records[0].reason, ExecLoadReason::SourceNotFound);
     testrt::check_eq(records[0].kind, ExecLoadKind::Payload);
+    testrt::check_eq(records[0].origin, ExecArtifactOrigin::None);
     testrt::check_eq(records[0].path, "/payload/missing-source");
     testrt::check_eq(records[0].loader, "source-image");
     testrt::check_eq(records[0].source_path, "/payload/missing-source");
@@ -674,6 +877,7 @@ arch_test!(exec_loader_loads_missing_payload_source_from_source_media, {
     proc::reset();
     reset();
     reset_installed_sources();
+    clear_exec_bundle();
     clear_source_media();
     install_source_media(SOURCE_MEDIA_PAYLOAD_MISSING);
 
@@ -695,10 +899,47 @@ arch_test!(exec_loader_loads_missing_payload_source_from_source_media, {
     testrt::check_eq(records[0].status, ExecLoadStatus::Ok);
     testrt::check_eq(records[0].reason, ExecLoadReason::LoadedFromSourceMedia);
     testrt::check_eq(records[0].kind, ExecLoadKind::Payload);
+    testrt::check_eq(records[0].origin, ExecArtifactOrigin::SourceMediaSingle);
     testrt::check_eq(records[0].path, "/payload/missing-source");
     testrt::check_eq(records[0].source_path, "/payload/missing-source");
 
     reset_installed_sources();
+    clear_exec_bundle();
+    clear_source_media();
+});
+
+arch_test!(exec_loader_loads_missing_payload_source_from_exec_bundle, {
+    proc::reset();
+    reset();
+    reset_installed_sources();
+    clear_exec_bundle();
+    clear_source_media();
+    install_exec_bundle(EXEC_BUNDLE_PAYLOAD_MISSING);
+
+    let payload =
+        load_payload_by_name(&MISSING_SOURCE_PAYLOADS, payload_store(&[]), "missing-source")
+            .expect("missing payload source loads from matching executable bundle");
+    testrt::check_eq(payload.path, "/payload/missing-source");
+    testrt::check_eq(payload.source_path, "/payload/missing-source");
+
+    let installed = payload_store(&[])
+        .find_payload("/payload/missing-source")
+        .expect("exec bundle installed payload overlay");
+    testrt::check_eq(installed.bytes, MEDIA_PAYLOAD_SOURCE);
+
+    let mut records = [EMPTY_EXEC_LOAD_RECORD; super::MAX_EXEC_LOAD_RECORDS];
+    let count = snapshot_loads(&mut records);
+    testrt::check_eq(count, 1usize);
+    testrt::check_eq(records[0].argv0(), "missing-source");
+    testrt::check_eq(records[0].status, ExecLoadStatus::Ok);
+    testrt::check_eq(records[0].reason, ExecLoadReason::Loaded);
+    testrt::check_eq(records[0].kind, ExecLoadKind::Payload);
+    testrt::check_eq(records[0].origin, ExecArtifactOrigin::BlockBundle);
+    testrt::check_eq(records[0].path, "/payload/missing-source");
+    testrt::check_eq(records[0].source_path, "/payload/missing-source");
+
+    reset_installed_sources();
+    clear_exec_bundle();
     clear_source_media();
 });
 

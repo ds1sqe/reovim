@@ -127,7 +127,7 @@ HEADER
         printf 'processes:\n'
         printf -- '- pid=1 ppid=0 task=1 state=running path=rootd exit=0 loader=kernel entry_fn=rootd_main\n'
         printf 'execs:\n'
-        printf -- '- seq=1 argv0=proc status=ok reason=loaded path=/bin/proc source=/bin/proc loader=source-image entry_fn=bin_proc truncated=false kind=bin\n'
+        printf -- '- seq=1 argv0=proc status=ok reason=loaded path=/bin/proc source=/bin/proc loader=source-image entry_fn=bin_proc truncated=false kind=bin origin=image-linked\n'
         printf 'pending:\n'
         printf -- '- pid=4 ppid=1 task=4 path=/bin/pwd loader=source-image entry_fn=bin_pwd kind=bin stdin_bytes=0\n'
         printf 'scheduler:\n'

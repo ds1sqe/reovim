@@ -1,9 +1,9 @@
 //! Minimal block-device service for kernel diagnostics.
 //!
 //! This is the first system-kernel block boundary used by persistent dump and
-//! executable source-media work. It deliberately models only explicit callback
-//! targets today; real media enumeration, partitions, filesystems, barriers,
-//! and removable-device policy belong in later cuts.
+//! executable source-media and executable-bundle work. It deliberately models
+//! only explicit callback targets today; real media enumeration, partitions,
+//! filesystems, barriers, and removable-device policy belong in later cuts.
 
 use core::{
     cell::UnsafeCell,
@@ -83,6 +83,7 @@ unsafe impl Sync for DeviceCell {}
 
 static DIAGNOSTIC_DEVICE: DeviceCell = DeviceCell(UnsafeCell::new(None));
 static SOURCE_MEDIA_DEVICE: DeviceCell = DeviceCell(UnsafeCell::new(None));
+static EXEC_BUNDLE_DEVICE: DeviceCell = DeviceCell(UnsafeCell::new(None));
 static DEVICE_LOCK: AtomicBool = AtomicBool::new(false);
 
 struct DeviceGuard;
@@ -120,12 +121,20 @@ fn with_source_media_device<R>(f: impl FnOnce(&mut Option<BlockDevice>) -> R) ->
     with_device(&SOURCE_MEDIA_DEVICE, f)
 }
 
+fn with_exec_bundle_device<R>(f: impl FnOnce(&mut Option<BlockDevice>) -> R) -> R {
+    with_device(&EXEC_BUNDLE_DEVICE, f)
+}
+
 fn installed_diagnostic_device() -> Option<BlockDevice> {
     with_diagnostic_device(|slot| *slot)
 }
 
 fn installed_source_media_device() -> Option<BlockDevice> {
     with_source_media_device(|slot| *slot)
+}
+
+fn installed_exec_bundle_device() -> Option<BlockDevice> {
+    with_exec_bundle_device(|slot| *slot)
 }
 
 /// Installs the diagnostic block target used by persistent dump sync.
@@ -138,6 +147,11 @@ pub fn install_source_media_device(device: BlockDevice) {
     with_source_media_device(|slot| *slot = Some(device));
 }
 
+/// Installs the executable-bundle block target used by exec artifact loading.
+pub fn install_exec_bundle_device(device: BlockDevice) {
+    with_exec_bundle_device(|slot| *slot = Some(device));
+}
+
 /// Clears the diagnostic block target for isolated no_std selftests.
 #[cfg(feature = "selftest")]
 pub fn clear_diagnostic_device_for_tests() {
@@ -148,6 +162,12 @@ pub fn clear_diagnostic_device_for_tests() {
 #[cfg(feature = "selftest")]
 pub fn clear_source_media_device_for_tests() {
     with_source_media_device(|slot| *slot = None);
+}
+
+/// Clears the executable-bundle block target for isolated no_std selftests.
+#[cfg(feature = "selftest")]
+pub fn clear_exec_bundle_device_for_tests() {
+    with_exec_bundle_device(|slot| *slot = None);
 }
 
 /// Returns the currently installed diagnostic block target status.
@@ -163,6 +183,15 @@ pub fn diagnostic_status() -> Option<BlockStatus> {
 #[must_use]
 pub fn source_media_status() -> Option<BlockStatus> {
     installed_source_media_device().map(|device| BlockStatus {
+        label: device.label,
+        capacity_bytes: device.capacity_bytes,
+    })
+}
+
+/// Returns the currently installed executable-bundle target status.
+#[must_use]
+pub fn exec_bundle_status() -> Option<BlockStatus> {
+    installed_exec_bundle_device().map(|device| BlockStatus {
         label: device.label,
         capacity_bytes: device.capacity_bytes,
     })
@@ -259,6 +288,18 @@ pub fn read_source_media_artifact(out: &mut [u8]) -> BlockIoResult {
 #[must_use]
 pub fn read_source_media_artifact_at(offset: usize, out: &mut [u8]) -> BlockIoResult {
     read_artifact_at(installed_source_media_device(), offset, out)
+}
+
+/// Reads one executable bundle artifact from the installed exec-bundle target.
+#[must_use]
+pub fn read_exec_bundle_artifact(out: &mut [u8]) -> BlockIoResult {
+    read_exec_bundle_artifact_at(0, out)
+}
+
+/// Reads executable bundle bytes from a byte offset.
+#[must_use]
+pub fn read_exec_bundle_artifact_at(offset: usize, out: &mut [u8]) -> BlockIoResult {
+    read_artifact_at(installed_exec_bundle_device(), offset, out)
 }
 
 #[cfg(feature = "selftest")]

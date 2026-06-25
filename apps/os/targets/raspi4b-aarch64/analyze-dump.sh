@@ -308,7 +308,7 @@ for section in boot devices proof panic events processes execs pending scheduler
 done
 
 if [ "$exec_load_records" -gt 0 ]; then
-    grep -Eq '^- seq=[0-9]+ .* path=[^ ]+ source=[^ ]+ loader=[^ ]+ entry_fn=[^ ]+ .* kind=(bin|payload)$' "$dump_file" \
+    grep -Eq '^- seq=[0-9]+ .* path=[^ ]+ source=[^ ]+ loader=[^ ]+ entry_fn=[^ ]+ .* kind=(bin|payload) origin=(image-linked|installed-overlay|source-media-catalog|source-media-single|block-bundle|none)$' "$dump_file" \
         || fail "missing exec source path row"
 fi
 

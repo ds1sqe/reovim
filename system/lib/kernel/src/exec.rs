@@ -7,17 +7,14 @@
 
 use {
     crate::{
-        block,
+        exec_artifact::{
+            self, ExecArtifactImage, ExecArtifactKind, ExecArtifactLoadError,
+            ExecArtifactLoadErrorKind, ExecArtifactOrigin,
+        },
         proc::{self, ProcessHandle, ProcessState, SHELL_PID},
-        program::{
-            self, LoadedProgram, ProgramArgvBuffer, ProgramDescriptor, ProgramLoadError,
-            ProgramStatus,
-        },
-        rootd::{LoadedPayloadProgram, PayloadDescriptor, PayloadLaunchResult, PayloadLoadError},
-        source_media,
-        source_store::{
-            self, ExecutableSourceStore, MAX_SOURCE_MEDIA_ARTIFACT_BYTES, SourceArtifactNamespace,
-        },
+        program::{self, LoadedProgram, ProgramArgvBuffer, ProgramDescriptor, ProgramStatus},
+        rootd::{LoadedPayloadProgram, PayloadDescriptor, PayloadLaunchResult},
+        source_store::ExecutableSourceStore,
     },
     core::{
         cell::UnsafeCell,
@@ -117,6 +114,12 @@ pub enum ExecLoadReason {
     SourceMediaMismatch,
     /// Source media matched but could not be installed into the source overlay.
     SourceMediaInstallFailed,
+    /// Executable bundle was present but did not contain a valid checked artifact.
+    BlockBundleInvalid,
+    /// Executable bundle contained a different namespace or path.
+    BlockBundleMismatch,
+    /// Executable bundle matched but could not be installed into the source overlay.
+    BlockBundleInstallFailed,
 }
 
 impl ExecLoadReason {
@@ -134,6 +137,9 @@ impl ExecLoadReason {
             Self::SourceMediaInvalid => "source-media-invalid",
             Self::SourceMediaMismatch => "source-media-mismatch",
             Self::SourceMediaInstallFailed => "source-media-install-failed",
+            Self::BlockBundleInvalid => "block-bundle-invalid",
+            Self::BlockBundleMismatch => "block-bundle-mismatch",
+            Self::BlockBundleInstallFailed => "block-bundle-install-failed",
         }
     }
 }
@@ -157,6 +163,8 @@ pub struct ExecLoadRecord {
     pub entry_name: &'static str,
     /// Executable namespace for this admission attempt.
     pub kind: ExecLoadKind,
+    /// Provider that supplied the executable bytes, when resolved.
+    pub origin: ExecArtifactOrigin,
     /// Load/admission status.
     pub status: ExecLoadStatus,
     /// Load/admission reason.
@@ -177,6 +185,7 @@ impl ExecLoadRecord {
             source_path: "",
             entry_name: "",
             kind: ExecLoadKind::None,
+            origin: ExecArtifactOrigin::None,
             status: ExecLoadStatus::Empty,
             reason: ExecLoadReason::None,
         }
@@ -259,6 +268,19 @@ enum LoadedExecImage {
 }
 
 impl LoadedExecImage {
+    const fn from_artifact_image(image: ExecArtifactImage) -> Self {
+        Self::Descriptor {
+            path: image.path,
+            loader: image.loader,
+            source_path: image.source_path,
+            entry_name: image.entry_name,
+            kind: match image.kind {
+                ExecArtifactKind::Bin => ExecLoadKind::Bin,
+                ExecArtifactKind::Payload => ExecLoadKind::Payload,
+            },
+        }
+    }
+
     const fn path(self) -> &'static str {
         match self {
             Self::Bin(program) => program.descriptor.path,
@@ -300,128 +322,52 @@ impl LoadedExecImage {
     }
 }
 
-const fn descriptor_image(
-    descriptor: &ProgramDescriptor,
-    source_path: &'static str,
-) -> LoadedExecImage {
-    LoadedExecImage::Descriptor {
-        path: descriptor.path,
-        loader: descriptor.image_kind().as_str(),
-        source_path,
-        entry_name: descriptor.entry_name,
-        kind: ExecLoadKind::Bin,
+const fn reason_for_origin(origin: ExecArtifactOrigin) -> ExecLoadReason {
+    if origin.is_source_media() {
+        ExecLoadReason::LoadedFromSourceMedia
+    } else {
+        ExecLoadReason::Loaded
     }
 }
 
-const fn payload_descriptor_image(
-    descriptor: &PayloadDescriptor,
-    source_path: &'static str,
-) -> LoadedExecImage {
-    LoadedExecImage::Descriptor {
-        path: descriptor.path,
-        loader: descriptor.image_kind().as_str(),
-        source_path,
-        entry_name: descriptor.entry_name,
-        kind: ExecLoadKind::Payload,
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum SourceMediaAdmissionError {
-    Unavailable,
-    ReadFailed,
-    Invalid,
-    Mismatch,
-    InstallFailed,
-}
-
-impl SourceMediaAdmissionError {
-    const fn reason(self) -> ExecLoadReason {
-        match self {
-            Self::Unavailable | Self::ReadFailed => ExecLoadReason::SourceNotFound,
-            Self::Invalid => ExecLoadReason::SourceMediaInvalid,
-            Self::Mismatch => ExecLoadReason::SourceMediaMismatch,
-            Self::InstallFailed => ExecLoadReason::SourceMediaInstallFailed,
+const fn reason_for_artifact_error(error: ExecArtifactLoadErrorKind) -> ExecLoadReason {
+    match error {
+        ExecArtifactLoadErrorKind::SourceNotFound => ExecLoadReason::SourceNotFound,
+        ExecArtifactLoadErrorKind::InvalidImage => ExecLoadReason::InvalidImage,
+        ExecArtifactLoadErrorKind::SourceMediaInvalid => ExecLoadReason::SourceMediaInvalid,
+        ExecArtifactLoadErrorKind::SourceMediaMismatch => ExecLoadReason::SourceMediaMismatch,
+        ExecArtifactLoadErrorKind::SourceMediaInstallFailed => {
+            ExecLoadReason::SourceMediaInstallFailed
         }
-    }
-
-    const fn error(self) -> ExecLoadError {
-        match self {
-            Self::Invalid => ExecLoadError::InvalidImage,
-            Self::Unavailable | Self::ReadFailed | Self::Mismatch | Self::InstallFailed => {
-                ExecLoadError::SourceNotFound
-            }
+        ExecArtifactLoadErrorKind::BlockBundleInvalid => ExecLoadReason::BlockBundleInvalid,
+        ExecArtifactLoadErrorKind::BlockBundleMismatch => ExecLoadReason::BlockBundleMismatch,
+        ExecArtifactLoadErrorKind::BlockBundleInstallFailed => {
+            ExecLoadReason::BlockBundleInstallFailed
         }
     }
 }
 
-impl From<source_media::SourceMediaReadError> for SourceMediaAdmissionError {
-    fn from(error: source_media::SourceMediaReadError) -> Self {
-        match error {
-            source_media::SourceMediaReadError::Unavailable => Self::Unavailable,
-            source_media::SourceMediaReadError::ReadFailed => Self::ReadFailed,
-            source_media::SourceMediaReadError::Invalid => Self::Invalid,
-            source_media::SourceMediaReadError::NamespaceMismatch
-            | source_media::SourceMediaReadError::PathMismatch => Self::Mismatch,
-        }
+const fn exec_error_for_artifact_error(error: ExecArtifactLoadErrorKind) -> ExecLoadError {
+    match error {
+        ExecArtifactLoadErrorKind::InvalidImage
+        | ExecArtifactLoadErrorKind::SourceMediaInvalid
+        | ExecArtifactLoadErrorKind::BlockBundleInvalid => ExecLoadError::InvalidImage,
+        ExecArtifactLoadErrorKind::SourceNotFound
+        | ExecArtifactLoadErrorKind::SourceMediaMismatch
+        | ExecArtifactLoadErrorKind::SourceMediaInstallFailed
+        | ExecArtifactLoadErrorKind::BlockBundleMismatch
+        | ExecArtifactLoadErrorKind::BlockBundleInstallFailed => ExecLoadError::SourceNotFound,
     }
 }
 
-fn install_matching_source_media(
-    namespace: SourceArtifactNamespace,
-    expected_path: &'static str,
-) -> Result<(), SourceMediaAdmissionError> {
-    let mut bytes = [0u8; MAX_SOURCE_MEDIA_ARTIFACT_BYTES];
-    let read = source_media::read_checked_artifact(namespace, expected_path, &mut bytes)
-        .map_err(SourceMediaAdmissionError::from)?;
-    source_store::install_source(namespace, expected_path, read.artifact.source_bytes)
-        .map_err(|_| SourceMediaAdmissionError::InstallFailed)
-}
-
-fn load_media_discovered_bin_program(
-    programs: &'static [ProgramDescriptor],
-    source_store: ExecutableSourceStore,
-    argv0: &str,
-) -> Result<Option<LoadedProgram>, SourceMediaAdmissionError> {
-    if block::source_media_status().is_none() {
-        return Ok(None);
-    }
-
-    let mut path = [0u8; program::MAX_MEDIA_PROGRAM_PATH_BYTES];
-    let Some(expected_path) = program::media_program_path_from_argv0(argv0, &mut path) else {
-        return Ok(None);
-    };
-
-    let mut artifact_bytes = [0u8; MAX_SOURCE_MEDIA_ARTIFACT_BYTES];
-    let artifact = source_media::read_checked_artifact(
-        SourceArtifactNamespace::Bin,
-        expected_path,
-        &mut artifact_bytes,
-    )
-    .map_err(SourceMediaAdmissionError::from)?;
-    let descriptor = program::install_media_program(expected_path)
-        .map_err(|_| SourceMediaAdmissionError::InstallFailed)?;
-    source_store::install_source(
-        SourceArtifactNamespace::Bin,
-        descriptor.image.source_path(),
-        artifact.artifact.source_bytes,
-    )
-    .map_err(|_| SourceMediaAdmissionError::InstallFailed)?;
-
-    match program::load_argv0(programs, source_store, argv0) {
-        Ok(Some(program)) => Ok(Some(program)),
-        Ok(None) | Err(ProgramLoadError::SourceNotFound) => {
-            Err(SourceMediaAdmissionError::InstallFailed)
-        }
-        Err(ProgramLoadError::InvalidImage) => Err(SourceMediaAdmissionError::Invalid),
-    }
+fn image_for_artifact_error(error: ExecArtifactLoadError) -> Option<LoadedExecImage> {
+    error.image.map(LoadedExecImage::from_artifact_image)
 }
 
 /// Loads argv0 through the kernel `/bin` exec service.
 ///
-/// Today this resolves the image-supplied `/bin` catalog. Keeping the load
-/// operation here gives later media-backed images the same owner as pending
-/// executable admission and scheduler dispatch.
+/// Today this asks the artifact resolver for source bytes, then records exec
+/// admission here with the same owner as pending dispatch.
 pub fn load_bin_program(
     programs: &'static [ProgramDescriptor],
     source_store: ExecutableSourceStore,
@@ -429,110 +375,56 @@ pub fn load_bin_program(
 ) -> Result<LoadedProgram, ExecLoadError> {
     if argv0.is_empty() {
         with_exec(|exec| {
-            exec.record_load(argv0, ExecLoadStatus::Error, ExecLoadReason::EmptyArgv0, None);
+            exec.record_load(
+                argv0,
+                ExecLoadStatus::Error,
+                ExecLoadReason::EmptyArgv0,
+                None,
+                ExecArtifactOrigin::None,
+            );
         });
         return Err(ExecLoadError::EmptyArgv0);
     }
-    let program = match program::load_argv0(programs, source_store, argv0) {
-        Ok(Some(program)) => program,
-        Ok(None) => {
-            match load_media_discovered_bin_program(programs, source_store, argv0) {
-                Ok(Some(program)) => {
-                    with_exec(|exec| {
-                        exec.record_load(
-                            argv0,
-                            ExecLoadStatus::Ok,
-                            ExecLoadReason::LoadedFromSourceMedia,
-                            Some(LoadedExecImage::Bin(program)),
-                        );
-                    });
-                    return Ok(program);
-                }
-                Ok(None) => {}
-                Err(error) => {
-                    with_exec(|exec| {
-                        exec.record_load(argv0, ExecLoadStatus::Error, error.reason(), None);
-                    });
-                    return Err(error.error());
-                }
-            }
+    match exec_artifact::load_bin(programs, source_store, argv0) {
+        Ok(Some(artifact)) => {
             with_exec(|exec| {
-                exec.record_load(argv0, ExecLoadStatus::Error, ExecLoadReason::NotFound, None);
+                exec.record_load(
+                    argv0,
+                    ExecLoadStatus::Ok,
+                    reason_for_origin(artifact.origin),
+                    Some(LoadedExecImage::Bin(artifact.program)),
+                    artifact.origin,
+                );
             });
-            return Err(ExecLoadError::NotFound);
+            Ok(artifact.program)
         }
-        Err(ProgramLoadError::SourceNotFound) => {
-            let resolved = program::resolve_argv0(programs, argv0);
-            let image = resolved.map(|(_, descriptor)| {
-                descriptor_image(descriptor, descriptor.image.source_path())
-            });
-            if let Some((_, descriptor)) = resolved {
-                match install_matching_source_media(
-                    SourceArtifactNamespace::Bin,
-                    descriptor.image.source_path(),
-                ) {
-                    Ok(()) => match program::load_argv0(programs, source_store, argv0) {
-                        Ok(Some(program)) => {
-                            with_exec(|exec| {
-                                exec.record_load(
-                                    argv0,
-                                    ExecLoadStatus::Ok,
-                                    ExecLoadReason::LoadedFromSourceMedia,
-                                    Some(LoadedExecImage::Bin(program)),
-                                );
-                            });
-                            return Ok(program);
-                        }
-                        Ok(None) | Err(ProgramLoadError::SourceNotFound) => {}
-                        Err(ProgramLoadError::InvalidImage) => {
-                            with_exec(|exec| {
-                                exec.record_load(
-                                    argv0,
-                                    ExecLoadStatus::Error,
-                                    ExecLoadReason::InvalidImage,
-                                    image,
-                                );
-                            });
-                            return Err(ExecLoadError::InvalidImage);
-                        }
-                    },
-                    Err(error) => {
-                        with_exec(|exec| {
-                            exec.record_load(argv0, ExecLoadStatus::Error, error.reason(), image);
-                        });
-                        return Err(error.error());
-                    }
-                }
-            }
+        Ok(None) => {
             with_exec(|exec| {
                 exec.record_load(
                     argv0,
                     ExecLoadStatus::Error,
-                    ExecLoadReason::SourceNotFound,
-                    image,
+                    ExecLoadReason::NotFound,
+                    None,
+                    ExecArtifactOrigin::None,
                 );
             });
-            return Err(ExecLoadError::SourceNotFound);
+            Err(ExecLoadError::NotFound)
         }
-        Err(ProgramLoadError::InvalidImage) => {
-            let image = program::resolve_argv0(programs, argv0).map(|(_, descriptor)| {
-                descriptor_image(descriptor, descriptor.image.source_path())
-            });
+        Err(error) => {
+            let reason = reason_for_artifact_error(error.kind);
+            let exec_error = exec_error_for_artifact_error(error.kind);
             with_exec(|exec| {
-                exec.record_load(argv0, ExecLoadStatus::Error, ExecLoadReason::InvalidImage, image);
+                exec.record_load(
+                    argv0,
+                    ExecLoadStatus::Error,
+                    reason,
+                    image_for_artifact_error(error),
+                    error.origin,
+                );
             });
-            return Err(ExecLoadError::InvalidImage);
+            Err(exec_error)
         }
-    };
-    with_exec(|exec| {
-        exec.record_load(
-            argv0,
-            ExecLoadStatus::Ok,
-            ExecLoadReason::Loaded,
-            Some(LoadedExecImage::Bin(program)),
-        );
-    });
-    Ok(program)
+    }
 }
 
 /// Loads a payload through the kernel exec service.
@@ -546,115 +438,57 @@ pub fn load_payload_by_name(
 ) -> Result<LoadedPayloadProgram, ExecLoadError> {
     if name.is_empty() {
         with_exec(|exec| {
-            exec.record_load(name, ExecLoadStatus::Error, ExecLoadReason::EmptyArgv0, None);
+            exec.record_load(
+                name,
+                ExecLoadStatus::Error,
+                ExecLoadReason::EmptyArgv0,
+                None,
+                ExecArtifactOrigin::None,
+            );
         });
         return Err(ExecLoadError::EmptyArgv0);
     }
 
-    let mut index = 0usize;
-    while index < payloads.len() {
-        if payloads[index].name == name {
-            let payload = match LoadedPayloadProgram::from_descriptor(
-                index,
-                &payloads[index],
-                source_store,
-            ) {
-                Ok(payload) => payload,
-                Err(PayloadLoadError::SourceNotFound) => {
-                    let image = Some(payload_descriptor_image(
-                        &payloads[index],
-                        payloads[index].image.source_path(),
-                    ));
-                    match install_matching_source_media(
-                        SourceArtifactNamespace::Payload,
-                        payloads[index].image.source_path(),
-                    ) {
-                        Ok(()) => match LoadedPayloadProgram::from_descriptor(
-                            index,
-                            &payloads[index],
-                            source_store,
-                        ) {
-                            Ok(payload) => {
-                                with_exec(|exec| {
-                                    exec.record_load(
-                                        name,
-                                        ExecLoadStatus::Ok,
-                                        ExecLoadReason::LoadedFromSourceMedia,
-                                        Some(LoadedExecImage::Payload(payload)),
-                                    );
-                                });
-                                return Ok(payload);
-                            }
-                            Err(PayloadLoadError::SourceNotFound) => {}
-                            Err(PayloadLoadError::InvalidImage) => {
-                                with_exec(|exec| {
-                                    exec.record_load(
-                                        name,
-                                        ExecLoadStatus::Error,
-                                        ExecLoadReason::InvalidImage,
-                                        image,
-                                    );
-                                });
-                                return Err(ExecLoadError::InvalidImage);
-                            }
-                        },
-                        Err(error) => {
-                            with_exec(|exec| {
-                                exec.record_load(
-                                    name,
-                                    ExecLoadStatus::Error,
-                                    error.reason(),
-                                    image,
-                                );
-                            });
-                            return Err(error.error());
-                        }
-                    }
-                    with_exec(|exec| {
-                        exec.record_load(
-                            name,
-                            ExecLoadStatus::Error,
-                            ExecLoadReason::SourceNotFound,
-                            Some(payload_descriptor_image(
-                                &payloads[index],
-                                payloads[index].image.source_path(),
-                            )),
-                        );
-                    });
-                    return Err(ExecLoadError::SourceNotFound);
-                }
-                Err(PayloadLoadError::InvalidImage) => {
-                    with_exec(|exec| {
-                        exec.record_load(
-                            name,
-                            ExecLoadStatus::Error,
-                            ExecLoadReason::InvalidImage,
-                            Some(payload_descriptor_image(
-                                &payloads[index],
-                                payloads[index].image.source_path(),
-                            )),
-                        );
-                    });
-                    return Err(ExecLoadError::InvalidImage);
-                }
-            };
+    match exec_artifact::load_payload(payloads, source_store, name) {
+        Ok(Some(artifact)) => {
             with_exec(|exec| {
                 exec.record_load(
                     name,
                     ExecLoadStatus::Ok,
-                    ExecLoadReason::Loaded,
-                    Some(LoadedExecImage::Payload(payload)),
+                    reason_for_origin(artifact.origin),
+                    Some(LoadedExecImage::Payload(artifact.payload)),
+                    artifact.origin,
                 );
             });
-            return Ok(payload);
+            Ok(artifact.payload)
         }
-        index += 1;
+        Ok(None) => {
+            with_exec(|exec| {
+                exec.record_load(
+                    name,
+                    ExecLoadStatus::Error,
+                    ExecLoadReason::NotFound,
+                    None,
+                    ExecArtifactOrigin::None,
+                );
+            });
+            Err(ExecLoadError::NotFound)
+        }
+        Err(error) => {
+            let reason = reason_for_artifact_error(error.kind);
+            let exec_error = exec_error_for_artifact_error(error.kind);
+            with_exec(|exec| {
+                exec.record_load(
+                    name,
+                    ExecLoadStatus::Error,
+                    reason,
+                    image_for_artifact_error(error),
+                    error.origin,
+                );
+            });
+            Err(exec_error)
+        }
     }
-
-    with_exec(|exec| {
-        exec.record_load(name, ExecLoadStatus::Error, ExecLoadReason::NotFound, None);
-    });
-    Err(ExecLoadError::NotFound)
 }
 
 /// Pending `/bin` program invocation selected later by the scheduler.
@@ -813,6 +647,7 @@ impl ExecState {
         status: ExecLoadStatus,
         reason: ExecLoadReason,
         image: Option<LoadedExecImage>,
+        origin: ExecArtifactOrigin,
     ) {
         let seq = self.next_load_seq;
         self.next_load_seq = self.next_load_seq.saturating_add(1);
@@ -822,6 +657,7 @@ impl ExecState {
         record.write_argv0(argv0);
         record.status = status;
         record.reason = reason;
+        record.origin = origin;
         if let Some(image) = image {
             record.path = image.path();
             record.loader = image.loader();

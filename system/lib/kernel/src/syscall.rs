@@ -2987,6 +2987,8 @@ impl<'daemon, 'session, 'rootd> ProgramSyscalls<'daemon, 'session, 'rootd> {
             self.write_true_false_word(record.argv0_truncated);
             self.stdout_bytes(b" kind=");
             self.stdout_bytes(record.kind.as_str().as_bytes());
+            self.stdout_bytes(b" origin=");
+            self.stdout_bytes(record.origin.as_str().as_bytes());
             self.stdout_bytes(b"\n");
             index += 1;
         }

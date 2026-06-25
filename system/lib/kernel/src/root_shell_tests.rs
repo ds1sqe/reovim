@@ -1463,6 +1463,7 @@ arch_test!(root_shell_executes_media_discovered_bin, {
     testrt::check_eq(loads[0].argv0(), "media-bin");
     testrt::check_eq(loads[0].status, crate::exec::ExecLoadStatus::Ok);
     testrt::check_eq(loads[0].reason, crate::exec::ExecLoadReason::LoadedFromSourceMedia);
+    testrt::check_eq(loads[0].origin, crate::exec_artifact::ExecArtifactOrigin::SourceMediaSingle);
     testrt::check_eq(loads[0].path, "/bin/media-bin");
     testrt::check_eq(loads[0].source_path, "/bin/media-bin");
     testrt::check_eq(loads[0].entry_name, "bin_media_bin");

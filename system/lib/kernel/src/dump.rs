@@ -1081,6 +1081,8 @@ fn write_exec_load_table(writer: &mut TextWriter<'_>) -> Result<(), DumpEncodeEr
         })?;
         writer.bytes(b" kind=")?;
         writer.bytes(record.kind.as_str().as_bytes())?;
+        writer.bytes(b" origin=")?;
+        writer.bytes(record.origin.as_str().as_bytes())?;
         writer.nl()?;
         index += 1;
     }

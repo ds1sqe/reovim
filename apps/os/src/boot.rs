@@ -32,6 +32,11 @@ const PAYLOAD_SERVER_SMOKE_SOURCE_BYTES: &[u8] = include_bytes!("../payloads/ser
 #[cfg(all(feature = "launch-profile", target_os = "none", target_arch = "x86_64"))]
 const X86_INSTALLED_SERVER_SMOKE_SOURCE_BYTES: &[u8] =
     b"reovim-payload-source-v1\nexit-status ready\n";
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+const X86_EXEC_BUNDLE_BIN_SOURCE_BYTES: &[u8] =
+    b"reovim-source-v1\nwrite-stdout-hex 62756e646c652d62696e2e6f6b0a\nexit-status ok\n";
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+const X86_EXEC_BUNDLE_ARTIFACT_OFFSET: usize = 256;
 
 #[cfg(feature = "launch-profile")]
 const LAUNCH_PAYLOADS: [PayloadDescriptor; 3] = [
@@ -380,6 +385,121 @@ fn install_x86_launch_profile_sources() {
     );
 }
 
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+fn copy_bundle_bytes(out: &mut [u8], len: &mut usize, bytes: &[u8]) -> bool {
+    if *len + bytes.len() > out.len() {
+        return false;
+    }
+    out[*len..*len + bytes.len()].copy_from_slice(bytes);
+    *len += bytes.len();
+    true
+}
+
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+fn copy_bundle_usize(out: &mut [u8], len: &mut usize, mut value: usize) -> bool {
+    let mut digits = [0u8; 20];
+    let mut digit_count = 0usize;
+    if value == 0 {
+        digits[0] = b'0';
+        digit_count = 1;
+    } else {
+        while value > 0 {
+            digits[digit_count] = b'0' + (value % 10) as u8;
+            value /= 10;
+            digit_count += 1;
+        }
+    }
+    while digit_count > 0 {
+        digit_count -= 1;
+        if !copy_bundle_bytes(out, len, &digits[digit_count..digit_count + 1]) {
+            return false;
+        }
+    }
+    true
+}
+
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+fn encode_x86_exec_bundle_artifact(out: &mut [u8]) -> usize {
+    let mut len = 0usize;
+    let checksum = reovim_system_kernel::source_store::source_media_checksum32(
+        X86_EXEC_BUNDLE_BIN_SOURCE_BYTES,
+    ) as usize;
+    if !copy_bundle_bytes(out, &mut len, b"reovim-exec-bundle-v1\nnamespace=bin\npath=/bin/bundle-ok\nbytes=")
+        || !copy_bundle_usize(out, &mut len, X86_EXEC_BUNDLE_BIN_SOURCE_BYTES.len())
+        || !copy_bundle_bytes(out, &mut len, b"\nchecksum=")
+        || !copy_bundle_usize(out, &mut len, checksum)
+        || !copy_bundle_bytes(out, &mut len, b"\n")
+        || !copy_bundle_bytes(out, &mut len, X86_EXEC_BUNDLE_BIN_SOURCE_BYTES)
+    {
+        return 0;
+    }
+    len
+}
+
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+fn encode_x86_exec_bundle_catalog(out: &mut [u8]) -> usize {
+    let mut artifact =
+        [0u8; reovim_system_kernel::source_store::MAX_SOURCE_MEDIA_ARTIFACT_BYTES];
+    let artifact_len = encode_x86_exec_bundle_artifact(&mut artifact);
+    let artifact_checksum =
+        reovim_system_kernel::source_store::source_media_checksum32(&artifact[..artifact_len])
+            as usize;
+
+    let mut body = [0u8; 192];
+    let mut body_len = 0usize;
+    if !copy_bundle_bytes(&mut body, &mut body_len, b"entry namespace=bin path=/bin/bundle-ok offset=")
+        || !copy_bundle_usize(&mut body, &mut body_len, X86_EXEC_BUNDLE_ARTIFACT_OFFSET)
+        || !copy_bundle_bytes(&mut body, &mut body_len, b" bytes=")
+        || !copy_bundle_usize(&mut body, &mut body_len, artifact_len)
+        || !copy_bundle_bytes(&mut body, &mut body_len, b" checksum=")
+        || !copy_bundle_usize(&mut body, &mut body_len, artifact_checksum)
+        || !copy_bundle_bytes(&mut body, &mut body_len, b"\n")
+    {
+        return 0;
+    }
+
+    let checksum =
+        reovim_system_kernel::source_store::source_media_checksum32(&body[..body_len]) as usize;
+    let mut len = 0usize;
+    if !copy_bundle_bytes(out, &mut len, b"reovim-exec-bundle-catalog-v1\nbytes=")
+        || !copy_bundle_usize(out, &mut len, body_len)
+        || !copy_bundle_bytes(out, &mut len, b"\nchecksum=")
+        || !copy_bundle_usize(out, &mut len, checksum)
+        || !copy_bundle_bytes(out, &mut len, b"\n")
+        || !copy_bundle_bytes(out, &mut len, &body[..body_len])
+    {
+        return 0;
+    }
+    len
+}
+
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+fn x86_exec_bundle_write(_offset: usize, _bytes: &[u8]) -> bool {
+    false
+}
+
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+fn x86_exec_bundle_read(offset: usize, out: &mut [u8]) -> usize {
+    match offset {
+        0 => encode_x86_exec_bundle_catalog(out),
+        X86_EXEC_BUNDLE_ARTIFACT_OFFSET => encode_x86_exec_bundle_artifact(out),
+        _ => 0,
+    }
+}
+
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+fn install_x86_exec_bundle_source() {
+    reovim_system_kernel::block::install_exec_bundle_device(
+        reovim_system_kernel::block::BlockDevice::new(
+            "qemu-exec-bundle0",
+            reovim_system_kernel::source_store::MAX_SOURCE_MEDIA_ARTIFACT_BYTES
+                + X86_EXEC_BUNDLE_ARTIFACT_OFFSET,
+            x86_exec_bundle_write,
+            x86_exec_bundle_read,
+        ),
+    );
+}
+
 /// First-stage shell-only profile: no payload launch and no editor import.
 pub const fn shell_only_profile() -> BootProfile<'static> {
     BootProfile::new(
@@ -388,6 +508,25 @@ pub const fn shell_only_profile() -> BootProfile<'static> {
         &[],
         &[],
         bin::programs(),
+        bin::program_sources(),
+        bin::write_vfs_file,
+        bin::write_program_help,
+        None,
+        Some(halt_kernel),
+        "reovim-os> ",
+    )
+}
+
+/// x86-only profile that proves `/bin` admission from the exec-bundle block
+/// provider without changing the normal shell-only operator program set.
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+pub const fn exec_bundle_profile() -> BootProfile<'static> {
+    BootProfile::new(
+        "exec-bundle",
+        false,
+        &[],
+        &[],
+        bin::exec_bundle_programs(),
         bin::program_sources(),
         bin::write_vfs_file,
         bin::write_program_help,
@@ -422,6 +561,10 @@ pub fn run_shell_profile(profile: BootProfile<'_>) -> ! {
     #[cfg(all(feature = "launch-profile", target_os = "none", target_arch = "x86_64"))]
     if profile.launch_enabled {
         install_x86_launch_profile_sources();
+    }
+    #[cfg(all(target_os = "none", target_arch = "x86_64"))]
+    if profile.name == "exec-bundle" {
+        install_x86_exec_bundle_source();
     }
 
     run_root_daemon_boot(ShellBootConfig {

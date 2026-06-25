@@ -2,10 +2,12 @@
 
 use {
     super::{
-        BlockDevice, clear_diagnostic_device_for_tests, clear_source_media_device_for_tests,
-        diagnostic_status, install_diagnostic_device, install_source_media_device,
-        read_diagnostic_artifact, read_source_media_artifact, read_source_media_artifact_at,
-        source_media_status, write_diagnostic_artifact,
+        BlockDevice, clear_diagnostic_device_for_tests, clear_exec_bundle_device_for_tests,
+        clear_source_media_device_for_tests, diagnostic_status, exec_bundle_status,
+        install_diagnostic_device, install_exec_bundle_device, install_source_media_device,
+        read_diagnostic_artifact, read_exec_bundle_artifact, read_exec_bundle_artifact_at,
+        read_source_media_artifact, read_source_media_artifact_at, source_media_status,
+        write_diagnostic_artifact,
     },
     core::{cell::UnsafeCell, sync::atomic::AtomicUsize},
     reovim_testrt::{self as testrt, arch_test},
@@ -117,6 +119,51 @@ arch_test!(diagnostic_block_target_writes_and_reads_artifact, {
     testrt::check_eq(&readback[..8], b"artifact");
 
     clear_diagnostic_device_for_tests();
+});
+
+arch_test!(exec_bundle_target_reads_artifact_separately_from_other_sinks, {
+    use core::sync::atomic::Ordering;
+
+    clear_diagnostic_device_for_tests();
+    clear_source_media_device_for_tests();
+    clear_exec_bundle_device_for_tests();
+    reset_buffer();
+    testrt::check(exec_bundle_status().is_none(), "no exec-bundle target initially");
+
+    install_exec_bundle_device(BlockDevice::new(
+        "selftest-exec-bundle0",
+        TEST_BLOCK_CAPACITY,
+        block_write,
+        block_read,
+    ));
+    let status = exec_bundle_status().expect("exec-bundle target installed");
+    testrt::check_eq(status.label, "selftest-exec-bundle0");
+    testrt::check_eq(status.capacity_bytes, TEST_BLOCK_CAPACITY);
+
+    let write = block_write(0, b"reovim-exec-bundle-v1\n");
+    testrt::check(write, "seed exec-bundle bytes");
+
+    let mut readback = [0u8; TEST_BLOCK_CAPACITY];
+    let read = read_exec_bundle_artifact(&mut readback);
+    testrt::check_eq(read.available, true);
+    testrt::check_eq(read.storage, "selftest-exec-bundle0");
+    testrt::check_eq(read.bytes, b"reovim-exec-bundle-v1\n".len());
+    testrt::check_eq(read.ok, true);
+    testrt::check_eq(read.reason, "read-ok");
+    testrt::check_eq(BLOCK_BUFFER.last_read_offset.load(Ordering::Relaxed), 0usize);
+
+    let read = read_exec_bundle_artifact_at(8, &mut readback);
+    testrt::check_eq(read.available, true);
+    testrt::check_eq(read.storage, "selftest-exec-bundle0");
+    testrt::check_eq(read.ok, true);
+    testrt::check_eq(read.reason, "read-ok");
+    testrt::check_eq(BLOCK_BUFFER.last_read_offset.load(Ordering::Relaxed), 8usize);
+
+    let diagnostic_read = read_diagnostic_artifact(&mut readback);
+    testrt::check_eq(diagnostic_read.available, false);
+    testrt::check_eq(diagnostic_read.reason, "no-diagnostic-block-device");
+
+    clear_exec_bundle_device_for_tests();
 });
 
 arch_test!(diagnostic_block_target_rejects_oversized_artifact, {

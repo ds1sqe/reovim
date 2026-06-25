@@ -1796,6 +1796,79 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
 }
 
 #[test]
+fn os_exec_bundle_profile_on_x86_target_runs_block_bundle_bin() {
+    let Some(target) = fixture_target() else {
+        return;
+    };
+    if !target.starts_with("x86_64") {
+        return;
+    }
+
+    let _guard = os_image_lock();
+    let bootline = concat!(
+        "cat /boot/profile\n",
+        "ls /bin\n",
+        "cat /bin/bundle-ok\n",
+        "help bundle-ok\n",
+        "bundle-ok\n",
+        "proc execs\n",
+        "proc sources\n",
+        "cat /proc/syscalls\n",
+        "dmesg\n",
+        "halt\n",
+    );
+    let exe = build_os_image(&[], Some(bootline), Some("exec-bundle"));
+    let (code, serial) = run_system_image(&exe);
+    assert_eq!(code, 0, "exec-bundle profile exits 0; serial: {serial:?}");
+    assert!(
+        serial.contains("profile=exec-bundle\nlaunch=disabled"),
+        "exec-bundle profile was selected; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("reovim-os> help\nclear\nscreentest")
+            && serial.contains("halt\nbundle-ok\n"),
+        "exec-bundle profile exposes the profile-local /bin descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "program=bundle-ok\npath=/bin/bundle-ok\nsummary=prove block-bundle /bin admission\ntype=bin\nloader=source-image\nentry_fn=bin_bundle_ok"
+        ),
+        "cat /bin/bundle-ok prints descriptor metadata; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("bundle-ok - prove block-bundle /bin admission"),
+        "help sees the profile-local /bin descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("reovim-os> bundle-bin.ok\n"),
+        "block-bundle-loaded /bin body executed; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "argv0=bundle-ok status=ok reason=loaded path=/bin/bundle-ok source=/bin/bundle-ok loader=source-image entry_fn=bin_bundle_ok truncated=false kind=bin origin=block-bundle"
+        ),
+        "/proc/execs records block-bundle executable provenance; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("namespace=bin path=/bin/bundle-ok loader=source-image bytes=")
+            && serial.contains("origin=installed"),
+        "/proc/sources shows the loaded bundle bytes installed into the executable overlay; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("path=/bin/bundle-ok op=process-run status=ok")
+            && serial.contains("path=/bin/bundle-ok op=stdio-attach status=ok")
+            && serial.contains("path=/bin/bundle-ok op=process-exit status=ok"),
+        "/proc/syscalls records the running block-bundle program's typed syscall path; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("shell: bundle-ok\n")
+            && serial.contains("exec.path=/bin/bundle-ok")
+            && serial.contains("loader=source-image entry_fn=bin_bundle_ok"),
+        "dmesg records the block-bundle-backed /bin execution; serial: {serial:?}",
+    );
+}
+
+#[test]
 fn os_proc_block_wake_transcript_on_x86_target_runs_woken_child() {
     let Some(target) = fixture_target() else {
         return;

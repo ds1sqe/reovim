@@ -39,6 +39,8 @@ const BIN_PROBE: usize = 17;
 const BIN_LAUNCH: usize = 18;
 const BIN_REOVIM: usize = 19;
 const BIN_HALT: usize = 20;
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+const BIN_BUNDLE_OK: usize = 21;
 
 const BIN_HELP_SOURCE_BYTES: &[u8] = include_bytes!("../bins/help.rvs");
 const BIN_PWD_SOURCE_BYTES: &[u8] = include_bytes!("../bins/pwd.rvs");
@@ -69,6 +71,24 @@ const fn source_bytes_bin_program(
     summary: &'static str,
     entry_name: &'static str,
     _bytes: &'static [u8],
+) -> ProgramDescriptor {
+    ProgramDescriptor {
+        id,
+        name,
+        path,
+        summary,
+        image: ProgramImage::SourcePath(path),
+        entry_name,
+    }
+}
+
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+const fn source_path_bin_program(
+    id: usize,
+    name: &'static str,
+    path: &'static str,
+    summary: &'static str,
+    entry_name: &'static str,
 ) -> ProgramDescriptor {
     ProgramDescriptor {
         id,
@@ -288,10 +308,49 @@ pub const BIN_PROGRAM_SOURCES: [ProgramSourceArtifact; 21] = [
     source_bytes_bin_artifact("/bin/halt", BIN_HALT_SOURCE_BYTES),
 ];
 
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+pub const EXEC_BUNDLE_PROOF_PROGRAMS: [ProgramDescriptor; 22] = [
+    BIN_PROGRAMS[0],
+    BIN_PROGRAMS[1],
+    BIN_PROGRAMS[2],
+    BIN_PROGRAMS[3],
+    BIN_PROGRAMS[4],
+    BIN_PROGRAMS[5],
+    BIN_PROGRAMS[6],
+    BIN_PROGRAMS[7],
+    BIN_PROGRAMS[8],
+    BIN_PROGRAMS[9],
+    BIN_PROGRAMS[10],
+    BIN_PROGRAMS[11],
+    BIN_PROGRAMS[12],
+    BIN_PROGRAMS[13],
+    BIN_PROGRAMS[14],
+    BIN_PROGRAMS[15],
+    BIN_PROGRAMS[16],
+    BIN_PROGRAMS[17],
+    BIN_PROGRAMS[18],
+    BIN_PROGRAMS[19],
+    BIN_PROGRAMS[20],
+    source_path_bin_program(
+        BIN_BUNDLE_OK,
+        "bundle-ok",
+        "/bin/bundle-ok",
+        "prove block-bundle /bin admission",
+        "bin_bundle_ok",
+    ),
+];
+
 /// Returns the `/bin` program catalog for this image.
 #[must_use]
 pub const fn programs() -> &'static [ProgramDescriptor] {
     &BIN_PROGRAMS
+}
+
+/// Returns the x86 proof profile catalog with one block-bundle-backed `/bin`.
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+#[must_use]
+pub const fn exec_bundle_programs() -> &'static [ProgramDescriptor] {
+    &EXEC_BUNDLE_PROOF_PROGRAMS
 }
 
 /// Returns the `/bin` source artifact store for this image.
