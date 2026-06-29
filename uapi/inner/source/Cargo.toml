@@ -1,0 +1,17 @@
+[package]
+name = "reovim-uapi-source"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Product-facing executable source-install syscall vocabulary"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-uapi-syscall = { path = "../syscall" }

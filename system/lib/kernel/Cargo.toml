@@ -38,6 +38,9 @@ reovim-lib-ds = { path = "../../../lib/ds" }
 # Product-facing filesystem/borrowed-fd vocabulary. This bridge maps it to
 # down-face platform fd slots without exposing POSIX or kabi details upward.
 reovim-uapi-fs = { path = "../../../uapi/inner/fs" }
+# Product-facing diagnostic dump control vocabulary. This bridge dispatches
+# dump sync controls while status/snapshot content remains fd-readable.
+reovim-uapi-dump = { path = "../../../uapi/inner/dump" }
 # Product-facing memory-management vocabulary. This bridge maps allocation
 # requests to the down-face platform allocator slots.
 reovim-uapi-mm = { path = "../../../uapi/inner/mm" }
@@ -50,9 +53,24 @@ reovim-uapi-net = { path = "../../../uapi/inner/net" }
 # Product-facing panic/log configuration vocabulary. This bridge maps it to the
 # down-face panic atoms without exposing `kabi/panic` to upper layers.
 reovim-uapi-panic = { path = "../../../uapi/inner/panic" }
+# Product-facing process syscall vocabulary. This bridge dispatches process
+# domain requests such as raw linked-bin exit to kernel process state.
+reovim-uapi-process = { path = "../../../uapi/inner/process" }
 # Product-facing scheduler/clock/thread identity vocabulary. This bridge maps
 # it to the lower platform scheduler/time slots.
 reovim-uapi-sched = { path = "../../../uapi/inner/sched" }
+# Product-facing shell session vocabulary. This bridge dispatches session
+# startup and line-discipline controls while session snapshots stay fd-readable.
+reovim-uapi-session = { path = "../../../uapi/inner/session" }
+# Product-facing service lifecycle vocabulary. This bridge dispatches service
+# domain lifecycle controls while table snapshots remain fd-readable.
+reovim-uapi-service = { path = "../../../uapi/inner/service" }
+# Product-facing executable source-install vocabulary. This bridge dispatches
+# source-domain controls while source/media snapshots remain fd-readable.
+reovim-uapi-source = { path = "../../../uapi/inner/source" }
+# Raw Reovim syscall transport vocabulary. This bridge dispatches transport
+# scalars to existing kernel objects while domain semantics stay in uapi leaves.
+reovim-uapi-syscall = { path = "../../../uapi/inner/syscall" }
 # Product-facing boot facts and device inventory vocabulary. This bridge shapes
 # lower boot data into these records before editor-core launch.
 reovim-uapi-system = { path = "../../../uapi/inner/system" }

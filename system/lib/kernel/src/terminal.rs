@@ -132,7 +132,7 @@ pub fn enter_raw_mode(request: RawModeRequest) -> Result<RawModeGuard, TerminalE
     })
 }
 
-fn enter_raw_mode_token(request: RawModeRequest) -> Result<RawModeToken, TerminalError> {
+pub(crate) fn enter_raw_mode_token(request: RawModeRequest) -> Result<RawModeToken, TerminalError> {
     let guard = enter_raw_mode(request)?;
     let token = guard.token();
     core::mem::forget(guard);

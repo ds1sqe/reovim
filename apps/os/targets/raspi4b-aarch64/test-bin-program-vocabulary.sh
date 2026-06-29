@@ -2,6 +2,7 @@
 # Guard the root-shell executable surface: operator input resolves to /bin programs.
 
 set -euo pipefail
+shopt -s nullglob
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 TMP_DIR="$(mktemp -d)"
@@ -34,7 +35,91 @@ expected_bins=(
     probe
     launch
     reovim
+    hello
     halt
+    ps
+    kill
+    wake
+    block
+    spawn
+    sleep
+    wait
+    wait-ticks
+    exec
+    service-stop
+    service-start
+    service-restart
+    session
+    services
+    tasks
+    waits
+    syscalls
+    continuations
+    execs
+    pending
+    sources
+    media
+    self
+    install-bin
+    install-payload
+    install-bin-media
+    install-payload-media
+)
+
+source_image_bins=()
+
+linked_bins=(
+    help
+    init
+    sh
+    clear
+    screentest
+    ls
+    pwd
+    cd
+    cat
+    read
+    mount
+    device
+    input
+    status
+    proof
+    dmesg
+    dump
+    sched
+    proc
+    probe
+    launch
+    reovim
+    hello
+    halt
+    ps
+    kill
+    wake
+    block
+    spawn
+    sleep
+    wait
+    wait-ticks
+    exec
+    service-stop
+    service-start
+    service-restart
+    session
+    services
+    tasks
+    waits
+    syscalls
+    continuations
+    execs
+    pending
+    sources
+    media
+    self
+    install-bin
+    install-payload
+    install-bin-media
+    install-payload-media
 )
 
 files=(
@@ -48,6 +133,9 @@ files=(
     "$ROOT/system/lib/kernel/src/proc.rs"
     "$ROOT/system/lib/kernel/src/proc_tests.rs"
     "$ROOT/system/lib/kernel/src/sched.rs"
+    "$ROOT/system/lib/kernel/src/exec_artifact.rs"
+    "$ROOT/system/lib/kernel/src/exec_body.rs"
+    "$ROOT/system/lib/kernel/src/exec_body_tests.rs"
     "$ROOT/system/lib/kernel/src/source_store.rs"
     "$ROOT/system/lib/kernel/src/source_store_tests.rs"
     "$ROOT/system/lib/kernel/src/syscall.rs"
@@ -105,7 +193,7 @@ fi
 
 stale_loader_re='loader=static-image entry_fn=bin_[A-Za-z0-9_]+'
 if rg -n "$stale_loader_re" "${files[@]}"; then
-    printf 'error: stale /bin loader metadata found; image /bin programs must report source-image\n' >&2
+    printf 'error: stale /bin loader metadata found; image /bin programs must report source-image, reovim-exec-body, or linked-bin\n' >&2
     exit 1
 fi
 
@@ -119,6 +207,9 @@ active_model_files=(
     "$ROOT/system/lib/kernel/src/rootd.rs"
     "$ROOT/system/lib/kernel/src/exec_tests.rs"
     "$ROOT/system/lib/kernel/src/exec.rs"
+    "$ROOT/system/lib/kernel/src/exec_artifact.rs"
+    "$ROOT/system/lib/kernel/src/exec_body.rs"
+    "$ROOT/system/lib/kernel/src/exec_body_tests.rs"
     "$ROOT/system/lib/kernel/src/source_store.rs"
     "$ROOT/system/lib/kernel/src/source_store_tests.rs"
     "$ROOT/system/lib/kernel/src/syscall.rs"
@@ -192,22 +283,43 @@ then
 fi
 
 for bin_name in "${expected_bins[@]}"; do
-    source_file="$ROOT/apps/os/bins/$bin_name.rvs"
-    if [ ! -f "$source_file" ]; then
-        printf 'error: operator program %s is missing its /bin source artifact %s\n' "$bin_name" "$source_file" >&2
-        exit 1
-    fi
-
     if ! rg -q "\"/bin/$bin_name\"" "$ROOT/apps/os/src/bin.rs"; then
         printf 'error: operator program %s is missing from the reovim-os /bin catalog\n' "$bin_name" >&2
         exit 1
     fi
+done
 
-    if ! rg -q "source_bytes_bin_artifact\\(\"/bin/$bin_name\"" "$ROOT/apps/os/src/bin.rs"; then
-        printf 'error: operator program %s is missing from the reovim-os /bin source store\n' "$bin_name" >&2
+for bin_name in "${source_image_bins[@]}"; do
+    source_file="$ROOT/apps/os/bins/$bin_name.rvs"
+    if [ ! -f "$source_file" ]; then
+        printf 'error: source-image operator program %s is missing its /bin source artifact %s\n' "$bin_name" "$source_file" >&2
         exit 1
     fi
 
+    if ! rg -U -q "source_bytes_bin_artifact\\(\\s*\"/bin/$bin_name\"" "$ROOT/apps/os/src/bin.rs"; then
+        printf 'error: source-image operator program %s is missing from the reovim-os /bin source store\n' "$bin_name" >&2
+        exit 1
+    fi
+done
+
+for bin_name in "${linked_bins[@]}"; do
+    if [ -f "$ROOT/apps/os/bins/$bin_name.rvs" ]; then
+        printf 'error: linked operator program %s must not have a source-image artifact\n' "$bin_name" >&2
+        exit 1
+    fi
+
+    if rg -U -q "source_bytes_bin_artifact\\(\\s*\"/bin/$bin_name\"" "$ROOT/apps/os/src/bin.rs"; then
+        printf 'error: linked operator program %s must not be in the source-image store\n' "$bin_name" >&2
+        exit 1
+    fi
+
+    if ! rg -q "ProgramImage::Linked" "$ROOT/apps/os/src/bin.rs"; then
+        printf 'error: linked operator program %s is missing a linked image descriptor\n' "$bin_name" >&2
+        exit 1
+    fi
+done
+
+for bin_name in "${expected_bins[@]}"; do
     if ! rg -q "\"program=$bin_name" "$ROOT/arch/tests/fixtures_exec.rs"; then
         printf 'error: operator program %s has no /bin descriptor proof in the x86 transcript\n' "$bin_name" >&2
         exit 1
@@ -232,18 +344,18 @@ then
     exit 1
 fi
 
-opcode_source_re='ProgramSource(Image|Op|Arg1Case)|ProgramImage::Source\(|ProgramImage::SourceBytes|ProgramImage::Static|ProgramEntry|StaticImage'
+opcode_source_re='ProgramSource(Image|Op|Arg1Case)|ProgramImage::Source\(|ProgramImage::SourceBytes|ProgramImage::Static|StaticProgramEntry|StaticImage'
 if rg -n "$opcode_source_re" \
     "$ROOT/system/lib/kernel/src/program.rs" \
     "$ROOT/system/lib/kernel/src/program_tests.rs" \
     "$ROOT/system/lib/kernel/src/bin_fixture.rs" \
     "$ROOT/apps/os/src/bin.rs"
 then
-    printf 'error: stale /bin image API found; /bin descriptors must point at source-store artifacts\n' >&2
+    printf 'error: stale /bin image API found; /bin descriptors must use source-store artifacts or linked-bin entries\n' >&2
     exit 1
 fi
 
-payload_callback_image_re='PayloadSourceImage|PayloadImage::SourceBytes|PayloadImage::CompositionRootCallback|PayloadImageKind::CompositionRootCallback|composition-root-callback'
+payload_callback_image_re='PayloadImage::SourceBytes|PayloadImage::CompositionRootCallback|PayloadImageKind::CompositionRootCallback|composition-root-callback'
 if rg -n "$payload_callback_image_re" \
     "$ROOT/system/lib/kernel/src/rootd.rs" \
     "$ROOT/system/lib/kernel/src/exec.rs" \

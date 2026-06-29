@@ -23,11 +23,11 @@ const PAYLOAD_SOURCE: PayloadSourceArtifact = PayloadSourceArtifact {
 };
 const INSTALLED_PAYLOAD_SOURCE: &[u8] = b"reovim-payload-source-v1\nexit-status failed\n";
 const INSTALLED_BIN_SOURCE: &[u8] = b"reovim-source-v1\nexit-status ok\n";
-const VALID_BIN_MEDIA_ARTIFACT: &[u8] = b"reovim-source-media-v1\nnamespace=bin\npath=/bin/help\nbytes=32\nchecksum=4238279016\nreovim-source-v1\nexit-status ok\n";
-const BAD_MEDIA_CHECKSUM_ARTIFACT: &[u8] = b"reovim-source-media-v1\nnamespace=bin\npath=/bin/help\nbytes=32\nchecksum=1\nreovim-source-v1\nexit-status ok\n";
-const BAD_MEDIA_LENGTH_ARTIFACT: &[u8] = b"reovim-source-media-v1\nnamespace=bin\npath=/bin/help\nbytes=31\nchecksum=4238279016\nreovim-source-v1\nexit-status ok\n";
-const VALID_BIN_MEDIA_CATALOG: &[u8] = b"reovim-source-media-catalog-v1\nbytes=76\nchecksum=423259209\nentry namespace=bin path=/bin/help offset=128 bytes=113 checksum=2587877191\n";
-const BAD_MEDIA_CATALOG_CHECKSUM: &[u8] = b"reovim-source-media-catalog-v1\nbytes=76\nchecksum=1\nentry namespace=bin path=/bin/help offset=128 bytes=113 checksum=2587877191\n";
+const VALID_BIN_MEDIA_ARTIFACT: &[u8] = b"reovim-source-media-v1\nnamespace=bin\npath=/bin/proc\nbytes=32\nchecksum=4238279016\nreovim-source-v1\nexit-status ok\n";
+const BAD_MEDIA_CHECKSUM_ARTIFACT: &[u8] = b"reovim-source-media-v1\nnamespace=bin\npath=/bin/proc\nbytes=32\nchecksum=1\nreovim-source-v1\nexit-status ok\n";
+const BAD_MEDIA_LENGTH_ARTIFACT: &[u8] = b"reovim-source-media-v1\nnamespace=bin\npath=/bin/proc\nbytes=31\nchecksum=4238279016\nreovim-source-v1\nexit-status ok\n";
+const VALID_BIN_MEDIA_CATALOG: &[u8] = b"reovim-source-media-catalog-v1\nbytes=75\nchecksum=1265195378\nentry namespace=bin path=/bin/proc offset=128 bytes=113 checksum=870821216\n";
+const BAD_MEDIA_CATALOG_CHECKSUM: &[u8] = b"reovim-source-media-catalog-v1\nbytes=75\nchecksum=1\nentry namespace=bin path=/bin/proc offset=128 bytes=113 checksum=870821216\n";
 
 arch_test!(source_store_finds_bin_and_payload_artifacts_by_path, {
     reset_installed_sources();
@@ -35,9 +35,10 @@ arch_test!(source_store_finds_bin_and_payload_artifacts_by_path, {
     testrt::check_eq(store.program_count(), bin_fixture::program_sources().len());
     testrt::check_eq(store.payload_count(), 1usize);
 
-    let help = store.find_program("/bin/help").expect("help source exists");
-    testrt::check_eq(help.path, "/bin/help");
-    testrt::check(help.bytes.starts_with(b"reovim-source-v1\n"), "help source has header");
+    testrt::check(
+        store.find_program("/bin/proc").is_none(),
+        "linked image proc has no image source artifact",
+    );
     testrt::check(store.find_program("/payload/test").is_none(), "payload not visible as /bin");
 
     let payload = store
@@ -48,25 +49,16 @@ arch_test!(source_store_finds_bin_and_payload_artifacts_by_path, {
         payload.bytes.starts_with(b"reovim-payload-source-v1\n"),
         "payload source has header",
     );
-    testrt::check(store.find_payload("/bin/help").is_none(), "bin not visible as payload");
+    testrt::check(store.find_payload("/bin/proc").is_none(), "bin not visible as payload");
 
     let mut records = [EMPTY_SOURCE_ARTIFACT_RECORD; MAX_SOURCE_ARTIFACT_RECORDS];
     let count = store.snapshot(&mut records);
-    testrt::check_eq(count, bin_fixture::program_sources().len() + 1usize);
-    testrt::check_eq(records[0].namespace, SourceArtifactNamespace::Bin);
-    testrt::check_eq(records[0].path, "/bin/help");
+    testrt::check_eq(count, 1usize);
+    testrt::check_eq(records[0].namespace, SourceArtifactNamespace::Payload);
+    testrt::check_eq(records[0].path, "/payload/test");
     testrt::check_eq(records[0].loader, "source-image");
-    testrt::check(records[0].bytes_len > 0, "bin source has bytes");
-    testrt::check_eq(
-        records[bin_fixture::program_sources().len()].namespace,
-        SourceArtifactNamespace::Payload,
-    );
-    testrt::check_eq(records[bin_fixture::program_sources().len()].path, "/payload/test");
-    testrt::check_eq(records[bin_fixture::program_sources().len()].loader, "source-image");
-    testrt::check_eq(
-        records[bin_fixture::program_sources().len()].origin,
-        SourceArtifactOrigin::Image,
-    );
+    testrt::check(records[0].bytes_len > 0, "payload source has bytes");
+    testrt::check_eq(records[0].origin, SourceArtifactOrigin::Image);
     reset_installed_sources();
 });
 
@@ -77,19 +69,19 @@ arch_test!(source_store_installed_sources_override_image_sources, {
         Ok(()),
     );
     testrt::check_eq(
-        install_source(SourceArtifactNamespace::Bin, "/bin/help", INSTALLED_BIN_SOURCE),
+        install_source(SourceArtifactNamespace::Bin, "/bin/proc", INSTALLED_BIN_SOURCE),
         Ok(()),
     );
 
     let store = ExecutableSourceStore::new(bin_fixture::program_sources(), &[PAYLOAD_SOURCE]);
-    testrt::check_eq(store.program_count(), bin_fixture::program_sources().len());
+    testrt::check_eq(store.program_count(), 1usize);
     testrt::check_eq(store.payload_count(), 1usize);
 
-    let help = store
-        .find_program("/bin/help")
-        .expect("installed help source exists");
-    testrt::check_eq(help.path, "/bin/help");
-    testrt::check_eq(help.bytes, INSTALLED_BIN_SOURCE);
+    let proc = store
+        .find_program("/bin/proc")
+        .expect("installed proc source exists");
+    testrt::check_eq(proc.path, "/bin/proc");
+    testrt::check_eq(proc.bytes, INSTALLED_BIN_SOURCE);
 
     let payload = store
         .find_payload("/payload/test")
@@ -99,27 +91,27 @@ arch_test!(source_store_installed_sources_override_image_sources, {
 
     let mut records = [EMPTY_SOURCE_ARTIFACT_RECORD; MAX_SOURCE_ARTIFACT_RECORDS];
     let count = store.snapshot(&mut records);
-    testrt::check_eq(count, bin_fixture::program_sources().len() + 1usize);
+    testrt::check_eq(count, 2usize);
     testrt::check_eq(records[0].namespace, SourceArtifactNamespace::Payload);
     testrt::check_eq(records[0].path, "/payload/test");
     testrt::check_eq(records[0].origin, SourceArtifactOrigin::Installed);
     testrt::check_eq(records[1].namespace, SourceArtifactNamespace::Bin);
-    testrt::check_eq(records[1].path, "/bin/help");
+    testrt::check_eq(records[1].path, "/bin/proc");
     testrt::check_eq(records[1].origin, SourceArtifactOrigin::Installed);
 
     let mut index = 0usize;
-    let mut help_records = 0usize;
+    let mut proc_records = 0usize;
     let mut payload_records = 0usize;
     while index < count {
-        if records[index].path == "/bin/help" {
-            help_records += 1;
+        if records[index].path == "/bin/proc" {
+            proc_records += 1;
         }
         if records[index].path == "/payload/test" {
             payload_records += 1;
         }
         index += 1;
     }
-    testrt::check_eq(help_records, 1usize);
+    testrt::check_eq(proc_records, 1usize);
     testrt::check_eq(payload_records, 1usize);
     reset_installed_sources();
 });
@@ -143,7 +135,7 @@ arch_test!(source_store_parses_checked_source_media_artifact, {
     let parsed = parse_source_media_artifact(VALID_BIN_MEDIA_ARTIFACT)
         .expect("valid source-media artifact parses");
     testrt::check_eq(parsed.namespace, SourceArtifactNamespace::Bin);
-    testrt::check_eq(parsed.path, "/bin/help");
+    testrt::check_eq(parsed.path, "/bin/proc");
     testrt::check_eq(parsed.source_bytes, INSTALLED_BIN_SOURCE);
     testrt::check_eq(parsed.checksum, source_media_checksum32(INSTALLED_BIN_SOURCE));
 });
@@ -163,11 +155,11 @@ arch_test!(source_store_finds_checked_source_media_catalog_entry, {
     let entry = find_source_media_catalog_entry(
         VALID_BIN_MEDIA_CATALOG,
         SourceArtifactNamespace::Bin,
-        "/bin/help",
+        "/bin/proc",
     )
     .expect("valid catalog entry found");
     testrt::check_eq(entry.namespace, SourceArtifactNamespace::Bin);
-    testrt::check_eq(entry.path, "/bin/help");
+    testrt::check_eq(entry.path, "/bin/proc");
     testrt::check_eq(entry.offset, 128usize);
     testrt::check_eq(entry.artifact_bytes_len, VALID_BIN_MEDIA_ARTIFACT.len());
     testrt::check_eq(entry.checksum, source_media_checksum32(VALID_BIN_MEDIA_ARTIFACT));
@@ -194,7 +186,7 @@ arch_test!(source_store_rejects_bad_or_missing_source_media_catalog_entry, {
         find_source_media_catalog_entry(
             BAD_MEDIA_CATALOG_CHECKSUM,
             SourceArtifactNamespace::Bin,
-            "/bin/help",
+            "/bin/proc",
         ),
         Err(SourceMediaCatalogError::ChecksumMismatch),
     );

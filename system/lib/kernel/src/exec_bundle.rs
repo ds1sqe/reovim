@@ -49,7 +49,7 @@ pub enum ExecBundleArtifactError {
     BodyLengthMismatch,
     /// The declared checksum does not match the artifact body.
     ChecksumMismatch,
-    /// The source payload is larger than the runtime executable cache admits.
+    /// The executable payload is larger than the runtime executable cache admits.
     SourceTooLarge,
 }
 
@@ -398,7 +398,7 @@ pub fn parse_exec_bundle_artifact(
     if body.len() != declared_len {
         return Err(ExecBundleArtifactError::BodyLengthMismatch);
     }
-    if body.len() > source_store::MAX_INSTALLED_SOURCE_BYTES {
+    if body.len() > MAX_SOURCE_MEDIA_ARTIFACT_BYTES {
         return Err(ExecBundleArtifactError::SourceTooLarge);
     }
     if source_store::source_media_checksum32(body) != checksum {

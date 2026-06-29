@@ -5,7 +5,10 @@
 
 #![no_std]
 
-use core::sync::atomic::AtomicU32;
+use {
+    core::sync::atomic::AtomicU32,
+    reovim_uapi_syscall::{RawSyscall, SyscallArgs, SyscallError, SyscallNr},
+};
 
 /// Failure to spawn a detached thread through an injected scheduler service.
 ///
@@ -21,6 +24,128 @@ pub enum SpawnError {
     /// The lower scheduler refused the spawn. The code is diagnostic only and
     /// is intentionally not interpreted by this up-face crate.
     Refused(i32),
+}
+
+/// Product-facing scheduler syscall error.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+pub struct SchedulerError(i32);
+
+impl SchedulerError {
+    /// The current process blocked with retained replayable syscall state.
+    pub const BUSY: Self = Self(SyscallError::BUSY.code());
+
+    /// Builds a scheduler error from a bridge/provider code.
+    #[must_use]
+    pub const fn new(code: i32) -> Self {
+        Self(code)
+    }
+
+    /// Returns the diagnostic bridge/provider code.
+    #[must_use]
+    pub const fn code(self) -> i32 {
+        self.0
+    }
+}
+
+/// Bounded scheduler tick count for cooperative sleeps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+pub struct SchedulerTicks(usize);
+
+impl SchedulerTicks {
+    /// Builds a scheduler tick duration.
+    #[must_use]
+    pub const fn new(raw: usize) -> Self {
+        Self(raw)
+    }
+
+    /// Returns the raw Reovim scheduler tick count.
+    #[must_use]
+    pub const fn raw(self) -> usize {
+        self.0
+    }
+
+    /// Returns whether the duration has no ticks.
+    #[must_use]
+    pub const fn is_zero(self) -> bool {
+        self.0 == 0
+    }
+}
+
+/// Scheduler control backed by the raw Reovim syscall transport.
+///
+/// This adapter keeps scheduler semantics in `uapi::sched`: callers request
+/// cooperative yield or sleep, and only this wrapper packs raw syscall numbers
+/// and scalar arguments.
+#[derive(Debug, Clone, Copy)]
+pub struct SyscallSchedulerControl {
+    raw: RawSyscall,
+}
+
+impl SyscallSchedulerControl {
+    /// Creates a scheduler control adapter over the raw syscall transport.
+    #[must_use]
+    pub const fn new(raw: RawSyscall) -> Self {
+        Self { raw }
+    }
+
+    /// Cooperatively yields the current process.
+    ///
+    /// Returns `true` when another ready process ran before the caller resumed,
+    /// and `false` when no peer was ready.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchedulerError`] when there is no current process, the current
+    /// process is not running, or the raw transport reports failure.
+    pub fn yield_now(self) -> Result<bool, SchedulerError> {
+        self.raw
+            .invoke(SyscallNr::YIELD_NOW, SyscallArgs::EMPTY)
+            .decode()
+            .and_then(|value| match value {
+                0 => Ok(false),
+                1 => Ok(true),
+                _ => Err(SyscallError::INVALID_ARGUMENT),
+            })
+            .map_err(scheduler_error_from_syscall)
+    }
+
+    /// Sleeps the current process for a bounded number of scheduler ticks.
+    ///
+    /// The returned value is the global scheduler tick count observed after the
+    /// process wakes and resumes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchedulerError`] when `ticks` is zero, there is no current
+    /// process, the current process is not running, or the raw transport reports
+    /// failure.
+    pub fn sleep_for_ticks(self, ticks: SchedulerTicks) -> Result<usize, SchedulerError> {
+        if ticks.is_zero() {
+            return Err(scheduler_error_from_syscall(SyscallError::INVALID_ARGUMENT));
+        }
+        self.raw
+            .invoke(SyscallNr::SLEEP, SyscallArgs::new([ticks.raw(), 0, 0, 0, 0, 0]))
+            .decode()
+            .map_err(scheduler_error_from_syscall)
+    }
+
+    /// Charges one explicit scheduler tick to the current running process.
+    ///
+    /// The returned value is the global scheduler tick count observed after the
+    /// tick is charged and any due sleeping processes are woken.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchedulerError`] when there is no current process, the current
+    /// process is not running, or the raw transport reports failure.
+    pub fn tick_current(self) -> Result<usize, SchedulerError> {
+        self.raw
+            .invoke(SyscallNr::SCHED_TICK, SyscallArgs::EMPTY)
+            .decode()
+            .map_err(scheduler_error_from_syscall)
+    }
 }
 
 /// Product-facing detached thread spawner.
@@ -380,6 +505,10 @@ impl Default for ThreadControl {
     fn default() -> Self {
         Self::noop()
     }
+}
+
+fn scheduler_error_from_syscall(error: SyscallError) -> SchedulerError {
+    SchedulerError::new(error.code())
 }
 
 const fn noop_i64() -> i64 {

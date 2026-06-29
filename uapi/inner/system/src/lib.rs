@@ -6,6 +6,8 @@
 
 #![no_std]
 
+use reovim_uapi_syscall::{RawSyscall, SyscallArgs, SyscallError, SyscallNr};
+
 /// Memory-map facts needed by boot diagnostics.
 ///
 /// This intentionally carries the diagnostic view of memory, not the raw
@@ -185,4 +187,88 @@ pub struct DeviceEntry {
 pub struct DeviceInventory {
     /// Enumerated device entries.
     pub devices: &'static [DeviceEntry],
+}
+
+/// Product-facing system-control refusal reason.
+///
+/// These errors describe Reovim system-control semantics, not POSIX errno
+/// values. The bridge maps raw transport failures into this vocabulary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SystemError {
+    /// This target or kernel build does not support the requested operation.
+    Unsupported,
+    /// The requested lower-provider probe target is unknown.
+    UnknownTarget,
+    /// The request arguments or state were invalid for the current operation.
+    InvalidRequest,
+    /// The operation requires a current process context and none exists.
+    NoCurrentProcess,
+    /// The requested system-control operation is already in progress.
+    Busy,
+    /// The bridge reported a non-specific failure.
+    Failed,
+}
+
+/// System control backed by the raw Reovim syscall transport.
+///
+/// This adapter keeps system-control semantics in `uapi::system`; only this
+/// wrapper packs raw syscall numbers and scalar arguments.
+#[derive(Debug, Clone, Copy)]
+pub struct SyscallSystemControl {
+    raw: RawSyscall,
+}
+
+impl SyscallSystemControl {
+    /// Creates a system-control adapter over the raw syscall transport.
+    #[must_use]
+    pub const fn new(raw: RawSyscall) -> Self {
+        Self { raw }
+    }
+
+    /// Requests root/system shutdown for the current process.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SystemError`] when no current process context exists or the raw
+    /// syscall transport rejects the halt request.
+    pub fn halt(self) -> Result<(), SystemError> {
+        self.raw
+            .invoke(SyscallNr::SYSTEM_HALT, SyscallArgs::EMPTY)
+            .decode()
+            .map(|_| ())
+            .map_err(system_error_from_syscall)
+    }
+
+    /// Runs a lower-provider probe target for diagnostics.
+    ///
+    /// This is a typed system-domain control over the raw transport. The
+    /// provider owns the target catalog and output format below the bridge;
+    /// callers only pass the target name and receive success or refusal.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SystemError`] when no current process context exists, the
+    /// provider is unavailable, the target is unknown, or the raw transport
+    /// rejects the request.
+    pub fn probe(self, target: &str) -> Result<(), SystemError> {
+        self.raw
+            .invoke(
+                SyscallNr::PROVIDER_PROBE,
+                SyscallArgs::new([target.as_ptr().addr(), target.len(), 0, 0, 0, 0]),
+            )
+            .decode()
+            .map(|_| ())
+            .map_err(system_error_from_syscall)
+    }
+}
+
+fn system_error_from_syscall(error: SyscallError) -> SystemError {
+    match error {
+        SyscallError::UNSUPPORTED => SystemError::Unsupported,
+        SyscallError::NOT_FOUND => SystemError::UnknownTarget,
+        SyscallError::INVALID_ARGUMENT => SystemError::InvalidRequest,
+        SyscallError::NO_CURRENT_PROCESS => SystemError::NoCurrentProcess,
+        SyscallError::BUSY => SystemError::Busy,
+        _ => SystemError::Failed,
+    }
 }

@@ -209,13 +209,91 @@ fn foundation_grants_contains_uapi_protocol_to_abi() {
         proto_grants.iter().any(|g| g == "reovim-uapi-abi"),
         "reovim-uapi-protocol must be granted the reovim-uapi-abi dep"
     );
+    let fs_grants = grants
+        .get("reovim-uapi-fs")
+        .expect("reovim-uapi-fs must have a grants entry");
+    assert!(
+        fs_grants.iter().any(|g| g == "reovim-uapi-syscall"),
+        "reovim-uapi-fs must be granted the raw syscall transport dep"
+    );
+    let dump_grants = grants
+        .get("reovim-uapi-dump")
+        .expect("reovim-uapi-dump must have a grants entry");
+    assert!(
+        dump_grants.iter().any(|g| g == "reovim-uapi-syscall"),
+        "reovim-uapi-dump must be granted the raw syscall transport dep"
+    );
+    let process_grants = grants
+        .get("reovim-uapi-process")
+        .expect("reovim-uapi-process must have a grants entry");
+    assert!(
+        process_grants.iter().any(|g| g == "reovim-uapi-syscall"),
+        "reovim-uapi-process must be granted the raw syscall transport dep"
+    );
+    let sched_grants = grants
+        .get("reovim-uapi-sched")
+        .expect("reovim-uapi-sched must have a grants entry");
+    assert!(
+        sched_grants.iter().any(|g| g == "reovim-uapi-syscall"),
+        "reovim-uapi-sched must be granted the raw syscall transport dep"
+    );
+    let session_grants = grants
+        .get("reovim-uapi-session")
+        .expect("reovim-uapi-session must have a grants entry");
+    assert!(
+        session_grants.iter().any(|g| g == "reovim-uapi-syscall"),
+        "reovim-uapi-session must be granted the raw syscall transport dep"
+    );
+    let service_grants = grants
+        .get("reovim-uapi-service")
+        .expect("reovim-uapi-service must have a grants entry");
+    assert!(
+        service_grants.iter().any(|g| g == "reovim-uapi-syscall"),
+        "reovim-uapi-service must be granted the raw syscall transport dep"
+    );
+    let source_grants = grants
+        .get("reovim-uapi-source")
+        .expect("reovim-uapi-source must have a grants entry");
+    assert!(
+        source_grants.iter().any(|g| g == "reovim-uapi-syscall"),
+        "reovim-uapi-source must be granted the raw syscall transport dep"
+    );
+    let system_grants = grants
+        .get("reovim-system-kernel")
+        .expect("reovim-system-kernel must have a grants entry");
+    assert!(
+        system_grants.iter().any(|g| g == "reovim-uapi-syscall"),
+        "system kernel must be granted the raw syscall transport dep"
+    );
+    assert!(
+        system_grants.iter().any(|g| g == "reovim-uapi-process"),
+        "system kernel must be granted the process uapi dep"
+    );
+    assert!(
+        system_grants.iter().any(|g| g == "reovim-uapi-service"),
+        "system kernel must be granted the service uapi dep"
+    );
+    assert!(
+        system_grants.iter().any(|g| g == "reovim-uapi-session"),
+        "system kernel must be granted the session uapi dep"
+    );
+    assert!(
+        system_grants.iter().any(|g| g == "reovim-uapi-source"),
+        "system kernel must be granted the source uapi dep"
+    );
     let facade_grants = grants
         .get("reovim-uapi")
         .expect("reovim-uapi facade must have a grants entry");
     assert!(
         facade_grants.iter().any(|g| g == "reovim-uapi-net")
+            && facade_grants.iter().any(|g| g == "reovim-uapi-dump")
+            && facade_grants.iter().any(|g| g == "reovim-uapi-process")
+            && facade_grants.iter().any(|g| g == "reovim-uapi-session")
+            && facade_grants.iter().any(|g| g == "reovim-uapi-service")
+            && facade_grants.iter().any(|g| g == "reovim-uapi-source")
+            && facade_grants.iter().any(|g| g == "reovim-uapi-syscall")
             && facade_grants.iter().all(|g| g != "reovim-uapi-posix"),
-        "reovim-uapi facade must expose domain leaves but not reovim-uapi-posix"
+        "reovim-uapi facade must expose domain leaves and raw syscall transport but not reovim-uapi-posix"
     );
 }
 

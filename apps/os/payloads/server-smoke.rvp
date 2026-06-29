@@ -1,2 +1,4 @@
 reovim-payload-source-v1
-exit-status failed
+service-ready server
+exec-bin pwd
+exit-status ready

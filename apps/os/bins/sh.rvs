@@ -1,4 +1,0 @@
-reovim-source-v1
-reject-argc-greater 1 sh: too many arguments
-request-root-shell
-write-stdout-hex 72656f76696d2073797374656d206b65726e656c207368656c6c2072656164790a

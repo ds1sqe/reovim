@@ -179,12 +179,18 @@ dependencies = [
  "reovim-kabi-platform",
  "reovim-lib-ds",
  "reovim-testrt",
+ "reovim-uapi-dump",
  "reovim-uapi-fs",
  "reovim-uapi-log",
  "reovim-uapi-mm",
  "reovim-uapi-net",
  "reovim-uapi-panic",
+ "reovim-uapi-process",
  "reovim-uapi-sched",
+ "reovim-uapi-service",
+ "reovim-uapi-session",
+ "reovim-uapi-source",
+ "reovim-uapi-syscall",
  "reovim-uapi-system",
  "reovim-uapi-terminal",
 ]
@@ -202,13 +208,19 @@ name = "reovim-uapi"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-uapi-abi",
+ "reovim-uapi-dump",
  "reovim-uapi-fs",
  "reovim-uapi-log",
  "reovim-uapi-mm",
  "reovim-uapi-net",
  "reovim-uapi-panic",
+ "reovim-uapi-process",
  "reovim-uapi-protocol",
  "reovim-uapi-sched",
+ "reovim-uapi-service",
+ "reovim-uapi-session",
+ "reovim-uapi-source",
+ "reovim-uapi-syscall",
  "reovim-uapi-system",
  "reovim-uapi-terminal",
 ]
@@ -225,8 +237,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-uapi-dump"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-uapi-syscall",
+]
+
+[[package]]
 name = "reovim-uapi-fs"
 version = "0.16.0-dev"
+dependencies = [
+ "reovim-uapi-syscall",
+]
 
 [[package]]
 name = "reovim-uapi-log"
@@ -255,6 +277,13 @@ name = "reovim-uapi-panic"
 version = "0.16.0-dev"
 
 [[package]]
+name = "reovim-uapi-process"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-uapi-syscall",
+]
+
+[[package]]
 name = "reovim-uapi-protocol"
 version = "0.16.0-dev"
 dependencies = [
@@ -264,11 +293,45 @@ dependencies = [
 [[package]]
 name = "reovim-uapi-sched"
 version = "0.16.0-dev"
+dependencies = [
+ "reovim-uapi-syscall",
+]
+
+[[package]]
+name = "reovim-uapi-service"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-uapi-syscall",
+]
+
+[[package]]
+name = "reovim-uapi-session"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-uapi-syscall",
+]
+
+[[package]]
+name = "reovim-uapi-source"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-uapi-syscall",
+]
+
+[[package]]
+name = "reovim-uapi-syscall"
+version = "0.16.0-dev"
 
 [[package]]
 name = "reovim-uapi-system"
 version = "0.16.0-dev"
+dependencies = [
+ "reovim-uapi-syscall",
+]
 
 [[package]]
 name = "reovim-uapi-terminal"
 version = "0.16.0-dev"
+dependencies = [
+ "reovim-uapi-syscall",
+]

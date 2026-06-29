@@ -5,6 +5,15 @@ unless HDMI output is observed, input source is `physical USB keyboard`, and
 the shell reports `usb_keyboard=ready` plus
 `usb_keyboard_last_poll=report-ready`.
 
+Current board note, 2026-06-25: the physical Pi 4 display check did not show
+the Reovim framebuffer. The only visible display-side information was the
+display's own 640x480 debug-RGB/status diagnostic; there was no Reovim splash,
+boot report, shell prompt, or framebuffer text. Treat that as no usable OS
+framebuffer output, not as a rendered low-resolution console or proof that
+Reovim configured a 640x480 framebuffer. Do not infer HDMI timing, negotiated
+display mode, or OS framebuffer mode from the 640x480 readout; it is only the
+display's fallback/debug state.
+
 ## Session
 
 - Date:
@@ -91,6 +100,8 @@ help status
 help probe
 help launch
 help reovim
+help hello
+hello
 help halt
 cat /boot/help
 clear
@@ -167,7 +178,7 @@ Required success facts:
 - [ ] `help status` / `help probe` make `manual_next` and probe catalog discovery self-describing.
 - [ ] `help pwd` / `help ls` / `help cd` / `help cat` / `help read` / `help mount` make VFS navigation and TTY line reads self-describing.
 - [ ] `help` / `help clear` / `help screentest` / `clear` / `screentest` prove shell help and erase-line mode diagnostics.
-- [ ] `help device` / `help launch` / `help reovim` / `help halt` make boot inventory, payload, and shutdown `/bin` programs self-describing.
+- [ ] `help device` / `help launch` / `help reovim` / `help hello` / `help halt` make boot inventory, payload, linked-bin, and shutdown `/bin` programs self-describing.
 - [ ] `pwd` / `ls` / `mount` report the kernel VFS namespace and mounts.
 - [ ] `device` / `cat /boot/memory` / `cat /boot/devices` report boot inventory.
 - [ ] `cd /dev` / `ls` / `cat uart0` prove relative VFS device-file access.
@@ -186,12 +197,15 @@ Required success facts:
 - [ ] `cat /boot/profile` reports `profile=shell-only`, `launch=disabled`, `payloads=0`, and `input_mode=live`.
 - [ ] `launch` / `reovim` report shell-only payload launch disabled.
 - [ ] `dmesg --stats` / `cat /log/stats` report kernel log ring stats with `dropped_bytes=0`.
-- [ ] `dump status` / `dump snapshot` / `dump sync` expose dump state, image identity, boot/device/proof/panic sections, and fail-closed persistence state.
+- [ ] `dump status` / `dump snapshot` / `dump sync` expose dump state, image identity, boot/device/proof/panic sections, retained last-sync state, and fail-closed persistence state.
+- [ ] `halt` attempts dump sync before root daemon shutdown.
 - [ ] `cat /log/events` reports structured kernel events with process/task identity.
 - [ ] `proc` reports the live process table through a `/bin` process-management program.
-- [ ] `proc` reports `loader=source-image entry_fn=bin_proc` for the running `/bin/proc` process.
+- [ ] `proc` reports `loader=linked-bin entry_fn=bin_proc` for the running `/bin/proc` process.
 - [ ] `dmesg` has no `[klog] dropped_bytes=` retained-log wrap marker.
 - [ ] `dmesg` contains `shell: <command>` and `shell.status=ok` audit lines for the typed commands.
+- [ ] `dmesg` contains `shell.session path=/bin/sh loader=linked-bin entry_fn=bin_sh line=<command>` audit lines for the typed commands.
+- [ ] `dmesg` contains `exec.parent path=/bin/<command> ... ppid=2 ... parent_task=2` audit lines for shell-launched `/bin` programs.
 - [ ] `dmesg` contains `shell.status=error` audit lines for the disabled payload launch commands.
 - [ ] `dmesg` contains the retained `probe usb-keyboard` output with `manual_next=type-shell-command`.
 - [ ] `halt` was typed last and printed `halt: ok`.
@@ -214,9 +228,26 @@ validate it with:
 apps/os/targets/raspi4b-aarch64/analyze-dump.sh --expect-package reovim-os --expect-target aarch64-unknown-none --expect-profile shell-only --require-zero-drops <dump-file-or-mounted-bootfs>
 ```
 
+For post-poweroff persistence proof from saved media, add
+`--require-persistent-proof`; do not use that flag for a copied live
+`dump snapshot` transcript.
+
+For the copied live `dump snapshot` inside this evidence file, extract and
+analyze the artifact with:
+
+```text
+apps/os/targets/raspi4b-aarch64/extract-dump-from-evidence.sh --output tmp/raspi4b-live-dump.txt --analyze <evidence-file>
+```
+
+The extractor reports `source=live-transcript` and
+`persistent_sd_proof=false`; that is copied live evidence, not post-poweroff
+SD-card persistence proof.
+
 Mounted bootfs directory analysis requires exactly one supported artifact path:
 `reovim-dump-v1.txt`, `reovim-dump.txt`, `reovim/dump-v1.txt`, or
-`reovim/dump.txt`.
+`reovim/dump.txt`. If `syscall_continuation_records` is nonzero, analyzer
+success also proves a parseable `continuations:` row with explicit
+`memory=` policy and a structured `syscall-continue-blocked` event row.
 
 Paste analyzer output, if available:
 

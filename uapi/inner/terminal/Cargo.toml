@@ -16,5 +16,5 @@ selftest = []
 [lints]
 workspace = true
 
-# No [dependencies]: terminal uapi is core-only and does not name POSIX fd,
-# termios, kabi/provider slots, or arch mechanisms.
+[dependencies]
+reovim-uapi-syscall = { path = "../syscall" }

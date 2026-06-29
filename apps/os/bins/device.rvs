@@ -1,4 +1,0 @@
-reovim-source-v1
-reject-argc-greater 1 device: too many arguments
-write-boot-info-summary
-write-device-inventory

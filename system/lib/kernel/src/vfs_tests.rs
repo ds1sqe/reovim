@@ -79,18 +79,38 @@ arch_test!(vfs_looks_up_static_and_device_nodes, {
     testrt::check_eq(lookup("/log/events", &DEVICES), Ok(Node::File(File::LogEvents)));
     testrt::check_eq(lookup("/log/stats", &DEVICES), Ok(Node::File(File::LogStats)));
     testrt::check_eq(lookup("/proc", &DEVICES), Ok(Node::Directory(Directory::Proc)));
+    testrt::check_eq(
+        lookup("/proc/continuations", &DEVICES),
+        Ok(Node::File(File::ProcContinuations)),
+    );
     testrt::check_eq(lookup("/proc/execs", &DEVICES), Ok(Node::File(File::ProcExecs)));
+    testrt::check_eq(
+        lookup("/proc/address-spaces", &DEVICES),
+        Ok(Node::File(File::ProcAddressSpaces)),
+    );
+    testrt::check_eq(lookup("/proc/page-tables", &DEVICES), Ok(Node::File(File::ProcPageTables)));
+    testrt::check_eq(lookup("/proc/pages", &DEVICES), Ok(Node::File(File::ProcPages)));
+    testrt::check_eq(
+        lookup("/proc/memory-objects", &DEVICES),
+        Ok(Node::File(File::ProcMemoryObjects)),
+    );
     testrt::check_eq(lookup("/proc/media", &DEVICES), Ok(Node::File(File::ProcMedia)));
     testrt::check_eq(lookup("/proc/pending", &DEVICES), Ok(Node::File(File::ProcPending)));
     testrt::check_eq(lookup("/proc/processes", &DEVICES), Ok(Node::File(File::ProcProcesses)));
     testrt::check_eq(lookup("/proc/self", &DEVICES), Ok(Node::File(File::ProcSelf)));
+    testrt::check_eq(lookup("/proc/session", &DEVICES), Ok(Node::File(File::ProcSession)));
+    testrt::check_eq(lookup("/proc/services", &DEVICES), Ok(Node::File(File::ProcServices)));
     testrt::check_eq(lookup("/proc/scheduler", &DEVICES), Ok(Node::File(File::ProcScheduler)));
     testrt::check_eq(lookup("/proc/sources", &DEVICES), Ok(Node::File(File::ProcSources)));
     testrt::check_eq(lookup("/proc/syscalls", &DEVICES), Ok(Node::File(File::ProcSyscalls)));
     testrt::check_eq(lookup("/proc/tasks", &DEVICES), Ok(Node::File(File::ProcTasks)));
     testrt::check_eq(lookup("/proc/waits", &DEVICES), Ok(Node::File(File::ProcWaits)));
+    testrt::check_eq(lookup("/dev/tty", &DEVICES), Ok(Node::File(File::DevTty)));
+    testrt::check_eq(lookup("/dev/tty/more", &DEVICES), Err(VfsError::NotDirectory));
     testrt::check_eq(lookup("/bin/help/extra", &DEVICES), Err(VfsError::NotDirectory));
     testrt::check_eq(lookup("/boot/probes/extra", &DEVICES), Err(VfsError::NotDirectory));
+    testrt::check_eq(lookup("/proc/session/extra", &DEVICES), Err(VfsError::NotDirectory));
+    testrt::check_eq(lookup("/proc/address-spaces/extra", &DEVICES), Err(VfsError::NotDirectory));
     testrt::check_eq(lookup("/dev/uart0", &DEVICES), Ok(Node::File(File::DevDevice(0))));
     testrt::check_eq(lookup("/dev/uart1", &DEVICES), Ok(Node::File(File::DevDevice(1))));
     testrt::check_eq(lookup("/dev/block0", &DEVICES), Ok(Node::File(File::DevDevice(2))));

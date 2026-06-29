@@ -7,14 +7,23 @@
 
 use {
     crate::{
-        rootd::PayloadSourceInstallStatus, source_store::ExecutableSourceStore,
-        syscall::ProgramSyscalls,
+        exec_body::{self, ExecBodyInnerFormat},
+        proc,
+        root_shell::RootShellSession,
+        rootd, sched,
+        source_store::ExecutableSourceStore,
+        syscall::{ProgramSyscalls, SyscallContext},
     },
     core::{
         cell::UnsafeCell,
+        ptr::NonNull,
         slice,
         sync::atomic::{AtomicBool, Ordering},
     },
+    reovim_uapi_fs::{FsError, OpenAtDir, OpenFlags, RawFd, SyscallFdControl},
+    reovim_uapi_process::{ExitCode, ProcessArg, ProcessEnv, ProcessError, SyscallProcessControl},
+    reovim_uapi_sched::{SchedulerError, SchedulerTicks, SyscallSchedulerControl},
+    reovim_uapi_syscall::{RawSyscall, SyscallArgs, SyscallError, SyscallNr, SyscallRet},
 };
 
 /// Maximum bytes attached to one program's initial stdin buffer.
@@ -25,6 +34,12 @@ pub const MAX_PROGRAM_PIPE_BYTES: usize = MAX_PROGRAM_STDIN_BYTES;
 pub const MAX_PROGRAM_ARGS: usize = 8;
 /// Maximum bytes in one argv token.
 pub const MAX_PROGRAM_ARG_BYTES: usize = 64;
+/// Maximum environment entries passed to one image program.
+pub const MAX_PROGRAM_ENVS: usize = 8;
+/// Maximum bytes in one environment variable name.
+pub const MAX_PROGRAM_ENV_NAME_BYTES: usize = 32;
+/// Maximum bytes in one environment variable value.
+pub const MAX_PROGRAM_ENV_VALUE_BYTES: usize = 64;
 /// Maximum media-discovered `/bin` descriptors retained by exec.
 pub const MAX_MEDIA_PROGRAMS: usize = 4;
 
@@ -201,6 +216,252 @@ impl ProgramArgvBuffer {
     }
 }
 
+/// Borrowed environment variable for one image-program invocation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ProgramEnvVar<'a> {
+    name: &'a str,
+    value: &'a str,
+}
+
+impl<'a> ProgramEnvVar<'a> {
+    const fn empty() -> Self {
+        Self {
+            name: "",
+            value: "",
+        }
+    }
+
+    const fn new(name: &'a str, value: &'a str) -> Self {
+        Self { name, value }
+    }
+}
+
+/// Borrowed environment for one image-program invocation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ProgramEnv<'a> {
+    vars: [ProgramEnvVar<'a>; MAX_PROGRAM_ENVS],
+    envc: usize,
+}
+
+impl<'a> ProgramEnv<'a> {
+    /// Creates an empty environment.
+    #[must_use]
+    pub const fn empty() -> Self {
+        Self {
+            vars: [ProgramEnvVar::empty(); MAX_PROGRAM_ENVS],
+            envc: 0,
+        }
+    }
+
+    /// Appends one environment entry.
+    pub(crate) fn push(&mut self, name: &'a str, value: &'a str) -> bool {
+        if self.envc >= self.vars.len() {
+            return false;
+        }
+        self.vars[self.envc] = ProgramEnvVar::new(name, value);
+        self.envc += 1;
+        true
+    }
+
+    /// Number of environment entries.
+    #[must_use]
+    pub const fn envc(&self) -> usize {
+        self.envc
+    }
+
+    /// Returns the first value matching `name`.
+    #[must_use]
+    pub fn get(&self, name: &str) -> Option<&'a str> {
+        let mut index = 0usize;
+        while index < self.envc {
+            let var = self.vars[index];
+            if var.name == name {
+                return Some(var.value);
+            }
+            index += 1;
+        }
+        None
+    }
+}
+
+/// Error while building an owned environment buffer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProgramEnvBuildError {
+    /// The environment buffer already contains the maximum number of entries.
+    TooManyVars,
+    /// The variable name is empty or contains unsupported bytes.
+    InvalidName,
+    /// One variable name exceeded [`MAX_PROGRAM_ENV_NAME_BYTES`].
+    NameTooLong,
+    /// One variable value exceeded [`MAX_PROGRAM_ENV_VALUE_BYTES`].
+    ValueTooLong,
+}
+
+impl ProgramEnvBuildError {
+    /// Stable diagnostic word.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::TooManyVars => "too-many-vars",
+            Self::InvalidName => "invalid-name",
+            Self::NameTooLong => "name-too-long",
+            Self::ValueTooLong => "value-too-long",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ProgramEnvEntry {
+    name: [u8; MAX_PROGRAM_ENV_NAME_BYTES],
+    name_len: usize,
+    value: [u8; MAX_PROGRAM_ENV_VALUE_BYTES],
+    value_len: usize,
+}
+
+impl ProgramEnvEntry {
+    const fn empty() -> Self {
+        Self {
+            name: [0u8; MAX_PROGRAM_ENV_NAME_BYTES],
+            name_len: 0,
+            value: [0u8; MAX_PROGRAM_ENV_VALUE_BYTES],
+            value_len: 0,
+        }
+    }
+
+    fn write(&mut self, name: &str, value: &str) -> Result<(), ProgramEnvBuildError> {
+        if !program_env_name_is_valid(name.as_bytes()) {
+            return Err(ProgramEnvBuildError::InvalidName);
+        }
+        if name.len() > self.name.len() {
+            return Err(ProgramEnvBuildError::NameTooLong);
+        }
+        if value.len() > self.value.len() {
+            return Err(ProgramEnvBuildError::ValueTooLong);
+        }
+        self.name_len = 0;
+        let name_bytes = name.as_bytes();
+        while self.name_len < name_bytes.len() {
+            self.name[self.name_len] = name_bytes[self.name_len];
+            self.name_len += 1;
+        }
+        self.value_len = 0;
+        let value_bytes = value.as_bytes();
+        while self.value_len < value_bytes.len() {
+            self.value[self.value_len] = value_bytes[self.value_len];
+            self.value_len += 1;
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str {
+        // Environment names are validated as ASCII before storage.
+        unsafe { core::str::from_utf8_unchecked(&self.name[..self.name_len]) }
+    }
+
+    fn value(&self) -> &str {
+        // Environment values originate from shell tokens, already represented as `str`.
+        unsafe { core::str::from_utf8_unchecked(&self.value[..self.value_len]) }
+    }
+}
+
+/// Owned, bounded environment payload retained across exec admission.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ProgramEnvBuffer {
+    vars: [ProgramEnvEntry; MAX_PROGRAM_ENVS],
+    envc: usize,
+}
+
+impl ProgramEnvBuffer {
+    /// Creates an empty owned environment buffer.
+    #[must_use]
+    pub const fn empty() -> Self {
+        Self {
+            vars: [ProgramEnvEntry::empty(); MAX_PROGRAM_ENVS],
+            envc: 0,
+        }
+    }
+
+    /// Appends one environment variable.
+    pub fn push(&mut self, name: &str, value: &str) -> Result<(), ProgramEnvBuildError> {
+        if self.envc >= self.vars.len() {
+            return Err(ProgramEnvBuildError::TooManyVars);
+        }
+        self.vars[self.envc].write(name, value)?;
+        self.envc += 1;
+        Ok(())
+    }
+
+    /// Number of environment entries.
+    #[must_use]
+    pub const fn envc(&self) -> usize {
+        self.envc
+    }
+
+    /// Returns the first value matching `name`.
+    #[must_use]
+    pub fn get(&self, name: &str) -> Option<&str> {
+        let mut index = 0usize;
+        while index < self.envc {
+            if self.vars[index].name() == name {
+                return Some(self.vars[index].value());
+            }
+            index += 1;
+        }
+        None
+    }
+
+    /// Returns the variable name at `index`.
+    #[must_use]
+    pub fn name(&self, index: usize) -> Option<&str> {
+        if index < self.envc {
+            Some(self.vars[index].name())
+        } else {
+            None
+        }
+    }
+
+    /// Returns the variable value at `index`.
+    #[must_use]
+    pub fn value(&self, index: usize) -> Option<&str> {
+        if index < self.envc {
+            Some(self.vars[index].value())
+        } else {
+            None
+        }
+    }
+
+    /// Creates a borrowed environment view for synchronous program entry.
+    #[must_use]
+    pub fn borrowed(&self) -> ProgramEnv<'_> {
+        let mut env = ProgramEnv::empty();
+        let mut index = 0usize;
+        while index < self.envc {
+            let var = &self.vars[index];
+            let _ = env.push(var.name(), var.value());
+            index += 1;
+        }
+        env
+    }
+}
+
+/// Returns whether an environment variable name is accepted by the shell/entry ABI.
+#[must_use]
+pub fn program_env_name_is_valid(name: &[u8]) -> bool {
+    if name.is_empty() || name.len() > MAX_PROGRAM_ENV_NAME_BYTES {
+        return false;
+    }
+    let mut index = 0usize;
+    while index < name.len() {
+        let byte = name[index];
+        let ok = byte == b'_' || byte.is_ascii_alphanumeric();
+        if !ok || (index == 0 && byte.is_ascii_digit()) {
+            return false;
+        }
+        index += 1;
+    }
+    true
+}
+
 /// Execution status returned by one `/bin` program.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProgramStatus {
@@ -212,6 +473,10 @@ pub enum ProgramStatus {
     Error,
     /// The program returned a numeric Reovim exit code.
     ExitCode(i32),
+    /// The current image was replaced by another program image.
+    Replaced,
+    /// The process is blocked with retained syscall state.
+    Blocked,
     /// The program requested root-daemon shutdown.
     Halt,
 }
@@ -225,6 +490,8 @@ impl ProgramStatus {
             Self::Ok => b"ok",
             Self::Error => b"error",
             Self::ExitCode(_) => b"exit-code",
+            Self::Replaced => b"replaced",
+            Self::Blocked => b"blocked",
             Self::Halt => b"halt",
         }
     }
@@ -233,9 +500,10 @@ impl ProgramStatus {
     #[must_use]
     pub const fn exit_code(self) -> i32 {
         match self {
-            Self::Empty | Self::Ok | Self::Halt => 0,
+            Self::Empty | Self::Ok | Self::Blocked | Self::Halt => 0,
             Self::Error => 1,
             Self::ExitCode(code) => code,
+            Self::Replaced => 0,
         }
     }
 
@@ -243,8 +511,8 @@ impl ProgramStatus {
     #[must_use]
     pub const fn is_success(self) -> bool {
         match self {
-            Self::Ok => true,
-            Self::Empty | Self::Error | Self::Halt => false,
+            Self::Ok | Self::Replaced => true,
+            Self::Empty | Self::Error | Self::Blocked | Self::Halt => false,
             Self::ExitCode(code) => code == 0,
         }
     }
@@ -255,6 +523,10 @@ impl ProgramStatus {
 pub enum ProgramImageKind {
     /// Program body is interpreted from a bounded Reovim source image.
     SourceImage,
+    /// Program body is a checked Reovim executable wrapper.
+    ReovimExecBody,
+    /// Program body is linked into the OS image as real code.
+    LinkedBin,
 }
 
 impl ProgramImageKind {
@@ -263,9 +535,18 @@ impl ProgramImageKind {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::SourceImage => "source-image",
+            Self::ReovimExecBody => "reovim-exec-body",
+            Self::LinkedBin => "linked-bin",
         }
     }
 }
+
+/// Linked `/bin` entry point.
+///
+/// The entry receives borrowed argv plus the raw syscall transport hook. Real
+/// program semantics should be reached through domain uapi wrappers over that
+/// hook, not by calling [`ProgramSyscalls`] convenience methods directly.
+pub type LinkedProgramEntry = for<'argv> fn(&ProgramArgv<'argv>, RawSyscall) -> ProgramStatus;
 
 const SOURCE_BYTES_MAGIC: &[u8] = b"reovim-source-v1";
 const SOURCE_BYTES_OP_REJECT_ARGC_GREATER: &[u8] = b"reject-argc-greater ";
@@ -283,7 +564,9 @@ const SOURCE_BYTES_OP_WRITE_DEVICE_INVENTORY: &[u8] = b"write-device-inventory";
 const SOURCE_BYTES_OP_WRITE_BOOT_INPUT: &[u8] = b"write-boot-input";
 const SOURCE_BYTES_OP_WRITE_BOOT_STATUS: &[u8] = b"write-boot-status";
 const SOURCE_BYTES_OP_WRITE_BOOT_PROOF: &[u8] = b"write-boot-proof";
+const SOURCE_BYTES_OP_REQUEST_SERVICE: &[u8] = b"request-service ";
 const SOURCE_BYTES_OP_REQUEST_SHELL_TARGET: &[u8] = b"request-shell-target ";
+const SOURCE_BYTES_OP_REQUEST_LINE_DISCIPLINE: &[u8] = b"request-line-discipline ";
 const SOURCE_BYTES_OP_REQUEST_ROOT_SHELL: &[u8] = b"request-root-shell";
 const SOURCE_BYTES_OP_WRITE_KERNEL_LOG_VIEW: &[u8] = b"write-kernel-log-view";
 const SOURCE_BYTES_OP_WRITE_KERNEL_LOG_STATS: &[u8] = b"write-kernel-log-stats";
@@ -293,7 +576,10 @@ const SOURCE_BYTES_OP_WRITE_DUMP_SYNC: &[u8] = b"write-dump-sync";
 const SOURCE_BYTES_OP_WRITE_SCHEDULER_STATE: &[u8] = b"write-scheduler-state";
 const SOURCE_BYTES_OP_WRITE_SCHEDULER_TICK: &[u8] = b"write-scheduler-tick";
 const SOURCE_BYTES_OP_WRITE_SCHEDULER_YIELD: &[u8] = b"write-scheduler-yield";
+const SOURCE_BYTES_OP_WRITE_SCHEDULER_SLEEP_ARG2: &[u8] = b"write-scheduler-sleep-arg2";
 const SOURCE_BYTES_OP_WRITE_PROCESS_TABLE: &[u8] = b"write-process-table";
+const SOURCE_BYTES_OP_WRITE_SESSION_STATE: &[u8] = b"write-session-state";
+const SOURCE_BYTES_OP_WRITE_SERVICE_TABLE: &[u8] = b"write-service-table";
 const SOURCE_BYTES_OP_WRITE_EXEC_LOAD_TABLE: &[u8] = b"write-exec-load-table";
 const SOURCE_BYTES_OP_WRITE_PENDING_EXEC_TABLE: &[u8] = b"write-pending-exec-table";
 const SOURCE_BYTES_OP_WRITE_PROCESS_SELF: &[u8] = b"write-process-self";
@@ -302,17 +588,6 @@ const SOURCE_BYTES_OP_WRITE_SOURCE_MEDIA_TABLE: &[u8] = b"write-source-media-tab
 const SOURCE_BYTES_OP_WRITE_TASK_TABLE: &[u8] = b"write-task-table";
 const SOURCE_BYTES_OP_WRITE_WAIT_TABLE: &[u8] = b"write-wait-table";
 const SOURCE_BYTES_OP_WRITE_SYSCALL_TABLE: &[u8] = b"write-syscall-table";
-const SOURCE_BYTES_OP_PROC_EXEC_ARGV_TAIL: &[u8] = b"proc-exec-argv-tail";
-const SOURCE_BYTES_OP_PROC_SPAWN_ARGV_TAIL: &[u8] = b"proc-spawn-argv-tail";
-const SOURCE_BYTES_OP_PROC_BLOCK_ARGV_TAIL: &[u8] = b"proc-block-argv-tail";
-const SOURCE_BYTES_OP_PROC_WAIT_PID_ARG2: &[u8] = b"proc-wait-pid-arg2";
-const SOURCE_BYTES_OP_PROC_WAKE_PID_ARG2: &[u8] = b"proc-wake-pid-arg2";
-const SOURCE_BYTES_OP_PROC_KILL_PID_ARG2: &[u8] = b"proc-kill-pid-arg2";
-const SOURCE_BYTES_OP_PROC_INSTALL_BIN_ARG2_ARG3: &[u8] = b"proc-install-bin-arg2-arg3";
-const SOURCE_BYTES_OP_PROC_INSTALL_PAYLOAD_ARG2_ARG3: &[u8] = b"proc-install-payload-arg2-arg3";
-const SOURCE_BYTES_OP_PROC_INSTALL_BIN_MEDIA_ARG2: &[u8] = b"proc-install-bin-media-arg2";
-const SOURCE_BYTES_OP_PROC_INSTALL_PAYLOAD_MEDIA_ARG2: &[u8] = b"proc-install-payload-media-arg2";
-const SOURCE_BYTES_OP_RUN_PROVIDER_PROBE_ARG1: &[u8] = b"run-provider-probe-arg1";
 const SOURCE_BYTES_OP_REQUIRE_LAUNCH_ENABLED: &[u8] = b"require-launch-enabled ";
 const SOURCE_BYTES_OP_LAUNCH_PAYLOAD_ARG1_OR_LIST: &[u8] = b"launch-payload-arg1-or-list";
 const SOURCE_BYTES_OP_LAUNCH_PAYLOAD_NAME: &[u8] = b"launch-payload-name ";
@@ -325,12 +600,34 @@ const SOURCE_BYTES_DISPATCH_DEFAULT: &[u8] = b"default";
 const SOURCE_BYTES_DISPATCH_CASE: &[u8] = b"case ";
 const SOURCE_BYTES_END_DISPATCH_ARG1: &[u8] = b"end-dispatch-arg1";
 const SOURCE_BYTES_MAX_OPS: usize = 64;
+const BIN_UAPI_BODY_MAGIC: &[u8] = b"reovim-bin-uapi-v1";
+const BIN_UAPI_OP_OPEN_READONLY_WRITE_STDOUT_ENV_OR_ARG1_OR: &[u8] =
+    b"open-readonly-write-stdout-env-or-arg1-or ";
+const BIN_UAPI_OP_OPEN_READONLY_WRITE_STDOUT_ARG1_OR: &[u8] =
+    b"open-readonly-write-stdout-arg1-or ";
+const BIN_UAPI_OP_OPEN_READONLY_WRITE_STDOUT: &[u8] = b"open-readonly-write-stdout ";
+const BIN_UAPI_OP_EXEC_BIN_ENV: &[u8] = b"exec-bin-env ";
+const BIN_UAPI_OP_SLEEP_TICKS: &[u8] = b"sleep-ticks ";
+const BIN_UAPI_OP_SPAWN_SLEEP_BIN_ENV: &[u8] = b"spawn-sleep-bin-env ";
+const BIN_UAPI_OP_SPAWN_BIN_ENV: &[u8] = b"spawn-bin-env ";
+const BIN_UAPI_OP_SPAWN_WAIT_BIN_ENV: &[u8] = b"spawn-wait-bin-env ";
+const BIN_UAPI_OP_SPAWN_WAIT_BIN: &[u8] = b"spawn-wait-bin ";
+const BIN_UAPI_OP_SCHEDULER_TICK: &[u8] = b"scheduler-tick";
+const BIN_UAPI_OP_YIELD_NOW: &[u8] = b"yield-now";
+const BIN_UAPI_OP_WRITE_STDOUT_HEX: &[u8] = b"write-stdout-hex ";
+const BIN_UAPI_OP_EXIT_STATUS: &[u8] = b"exit-status ";
+const BIN_UAPI_OP_EXIT_CODE: &[u8] = b"exit-code ";
+const BIN_UAPI_MAX_OPS: usize = 32;
+const BIN_UAPI_MAX_PATH_BYTES: usize = MAX_PROGRAM_ARG_BYTES;
+const MAX_BIN_UAPI_RESUME_FRAMES: usize = proc::MAX_PROCESSES;
 
 /// Executable body reference attached to one `/bin` descriptor.
 #[derive(Clone, Copy, Debug)]
 pub enum ProgramImage {
     /// Program source bytes are loaded from a source store path.
     SourcePath(&'static str),
+    /// Program entry is linked into the OS image as code.
+    Linked(LinkedProgramEntry),
 }
 
 impl ProgramImage {
@@ -339,6 +636,7 @@ impl ProgramImage {
     pub const fn kind(self) -> ProgramImageKind {
         match self {
             Self::SourcePath(_) => ProgramImageKind::SourceImage,
+            Self::Linked(_) => ProgramImageKind::LinkedBin,
         }
     }
 
@@ -347,6 +645,16 @@ impl ProgramImage {
     pub const fn source_path(self) -> &'static str {
         match self {
             Self::SourcePath(path) => path,
+            Self::Linked(_) => "",
+        }
+    }
+
+    /// Linked entry function, when this image is linked code.
+    #[must_use]
+    pub const fn linked_entry(self) -> Option<LinkedProgramEntry> {
+        match self {
+            Self::SourcePath(_) => None,
+            Self::Linked(entry) => Some(entry),
         }
     }
 }
@@ -420,7 +728,25 @@ impl ProgramDescriptor {
     pub const fn image_kind(self) -> ProgramImageKind {
         self.image.kind()
     }
+
+    /// Loader-visible source/artifact path for diagnostics.
+    #[must_use]
+    pub const fn source_path(self) -> &'static str {
+        match self.image {
+            ProgramImage::SourcePath(path) => path,
+            ProgramImage::Linked(_) => self.path,
+        }
+    }
 }
+
+static EMPTY_PROGRAM_DESCRIPTOR: ProgramDescriptor = ProgramDescriptor {
+    id: 0,
+    name: "",
+    path: "",
+    summary: "",
+    image: ProgramImage::SourcePath(""),
+    entry_name: "",
+};
 
 /// Failure while installing a media-discovered `/bin` descriptor.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -753,6 +1079,7 @@ pub struct LoadedProgram {
     /// Loader-visible artifact path that supplied the executable bytes.
     pub source_path: &'static str,
     source_bytes: &'static [u8],
+    linked_entry: Option<LinkedProgramEntry>,
 }
 
 fn find_by_bin_basename(
@@ -832,6 +1159,92 @@ pub enum ProgramLoadError {
     InvalidImage,
 }
 
+struct LinkedRawSyscallCell(UnsafeCell<Option<NonNull<()>>>);
+
+// SAFETY: mutable access is serialized by `LINKED_RAW_SYSCALL_LOCK`.
+unsafe impl Sync for LinkedRawSyscallCell {}
+
+static LINKED_RAW_SYSCALLS: LinkedRawSyscallCell = LinkedRawSyscallCell(UnsafeCell::new(None));
+static LINKED_RAW_SYSCALL_LOCK: AtomicBool = AtomicBool::new(false);
+
+struct LinkedRawSyscallGuard {
+    previous: Option<NonNull<()>>,
+    owns_lock: bool,
+}
+
+impl LinkedRawSyscallGuard {
+    fn enter(syscalls: &mut ProgramSyscalls<'_, '_, '_>) -> Option<Self> {
+        if LINKED_RAW_SYSCALL_LOCK
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok()
+        {
+            // SAFETY: the lock is held until this outer guard drops, and linked
+            // entries execute synchronously inside the current program dispatch
+            // frame.
+            unsafe {
+                *LINKED_RAW_SYSCALLS.0.get() = Some(NonNull::from(syscalls).cast());
+            }
+            return Some(Self {
+                previous: None,
+                owns_lock: true,
+            });
+        }
+
+        // A linked program may run another linked child while handling a raw
+        // syscall (for example, timed wait dispatching a woken child). Permit
+        // that nested install only for the same rootd/session execution scope
+        // and restore the parent handle when the child returns.
+        // SAFETY: when the lock is held, the cell either contains the current
+        // synchronous linked syscall handle or `None` while an outer guard is
+        // unwinding. We never release the lock for nested entries.
+        let previous = unsafe { *LINKED_RAW_SYSCALLS.0.get() };
+        let previous_ptr = previous?;
+        // SAFETY: the pointer was installed by an active guard and the lock is
+        // still held by that guard's synchronous call chain.
+        let previous_syscalls = unsafe {
+            &*(previous_ptr.as_ptr() as *const ProgramSyscalls<'static, 'static, 'static>)
+        };
+        if !previous_syscalls.shares_linked_syscall_scope(syscalls) {
+            return None;
+        }
+        // SAFETY: the parent guard owns the lock; this nested guard only swaps
+        // the active handle until it drops.
+        unsafe {
+            *LINKED_RAW_SYSCALLS.0.get() = Some(NonNull::from(syscalls).cast());
+        }
+        Some(Self {
+            previous,
+            owns_lock: false,
+        })
+    }
+}
+
+impl Drop for LinkedRawSyscallGuard {
+    fn drop(&mut self) {
+        // SAFETY: outer guards exclusively own the lock; nested guards only
+        // restore the previous handle under that lock.
+        unsafe {
+            *LINKED_RAW_SYSCALLS.0.get() = self.previous;
+        }
+        if self.owns_lock {
+            LINKED_RAW_SYSCALL_LOCK.store(false, Ordering::Release);
+        }
+    }
+}
+
+fn linked_raw_syscall(nr: SyscallNr, args: SyscallArgs) -> SyscallRet {
+    // SAFETY: reads the pointer installed by `LinkedRawSyscallGuard`. The
+    // pointed syscall handle is valid only for the synchronous entry call.
+    let Some(ptr) = (unsafe { *LINKED_RAW_SYSCALLS.0.get() }) else {
+        return SyscallRet::failure(SyscallError::NO_CURRENT_PROCESS);
+    };
+    // SAFETY: `LinkedRawSyscallGuard::enter` stored a live `ProgramSyscalls`
+    // pointer and holds the lock for the full duration of this call path.
+    let syscalls =
+        unsafe { &mut *(ptr.as_ptr() as *mut ProgramSyscalls<'static, 'static, 'static>) };
+    syscalls.dispatch_raw_syscall(nr, args)
+}
+
 /// Loads argv[0] as either an absolute `/bin` path or a `/bin` basename.
 pub fn load_argv0(
     programs: &'static [ProgramDescriptor],
@@ -841,6 +1254,17 @@ pub fn load_argv0(
     let Some((catalog_index, descriptor)) = resolve_argv0(programs, argv0) else {
         return Ok(None);
     };
+    if let Some(entry) = descriptor.image.linked_entry() {
+        return Ok(Some(LoadedProgram {
+            catalog_index,
+            descriptor,
+            image_kind: descriptor.image_kind(),
+            source_path: descriptor.source_path(),
+            source_bytes: &[],
+            linked_entry: Some(entry),
+        }));
+    }
+
     let source_path = descriptor.image.source_path();
     let Some(source) = source_store.find_program(source_path) else {
         return Err(ProgramLoadError::SourceNotFound);
@@ -854,13 +1278,89 @@ pub fn load_argv0(
         image_kind: descriptor.image_kind(),
         source_path,
         source_bytes: source.bytes,
+        linked_entry: None,
     }))
+}
+
+/// Loads argv[0] from exec-owned provider bytes instead of the source overlay.
+pub(crate) fn load_argv0_source_bytes(
+    programs: &'static [ProgramDescriptor],
+    argv0: &str,
+    source_bytes: &'static [u8],
+) -> Result<Option<LoadedProgram>, ProgramLoadError> {
+    let Some((catalog_index, descriptor)) = resolve_argv0(programs, argv0) else {
+        return Ok(None);
+    };
+    load_descriptor_source_bytes(catalog_index, descriptor, source_bytes).map(Some)
+}
+
+/// Loads argv[0] from a checked exec-owned executable body.
+pub(crate) fn load_argv0_exec_body_bytes(
+    programs: &'static [ProgramDescriptor],
+    argv0: &str,
+    exec_body_bytes: &'static [u8],
+) -> Result<Option<LoadedProgram>, ProgramLoadError> {
+    let Some((catalog_index, descriptor)) = resolve_argv0(programs, argv0) else {
+        return Ok(None);
+    };
+    load_descriptor_exec_body_bytes(catalog_index, descriptor, exec_body_bytes).map(Some)
+}
+
+pub(crate) fn load_descriptor_source_bytes(
+    catalog_index: usize,
+    descriptor: &'static ProgramDescriptor,
+    source_bytes: &'static [u8],
+) -> Result<LoadedProgram, ProgramLoadError> {
+    if descriptor.image_kind() != ProgramImageKind::SourceImage
+        || !validate_source_bytes(source_bytes)
+    {
+        return Err(ProgramLoadError::InvalidImage);
+    }
+    Ok(LoadedProgram {
+        catalog_index,
+        descriptor,
+        image_kind: descriptor.image_kind(),
+        source_path: descriptor.source_path(),
+        source_bytes,
+        linked_entry: None,
+    })
+}
+
+pub(crate) fn load_descriptor_exec_body_bytes(
+    catalog_index: usize,
+    descriptor: &'static ProgramDescriptor,
+    exec_body_bytes: &'static [u8],
+) -> Result<LoadedProgram, ProgramLoadError> {
+    let Ok(body) = exec_body::parse_exec_body(exec_body_bytes) else {
+        return Err(ProgramLoadError::InvalidImage);
+    };
+    if descriptor.image_kind() != ProgramImageKind::SourceImage || !validate_bin_exec_body(body) {
+        return Err(ProgramLoadError::InvalidImage);
+    }
+    Ok(LoadedProgram {
+        catalog_index,
+        descriptor,
+        image_kind: ProgramImageKind::ReovimExecBody,
+        source_path: descriptor.source_path(),
+        source_bytes: exec_body_bytes,
+        linked_entry: None,
+    })
 }
 
 /// Validates a loaded `/bin` program image before process admission.
 #[must_use]
 pub fn validate_loaded_program(program: LoadedProgram) -> bool {
-    validate_source_bytes(program.source_bytes)
+    match program.image_kind {
+        ProgramImageKind::SourceImage => validate_source_bytes(program.source_bytes),
+        ProgramImageKind::ReovimExecBody => {
+            matches!(
+                exec_body::parse_exec_body(program.source_bytes),
+                Ok(body)
+                    if validate_bin_exec_body(body)
+            )
+        }
+        ProgramImageKind::LinkedBin => program.linked_entry.is_some(),
+    }
 }
 
 impl LoadedProgram {
@@ -868,6 +1368,414 @@ impl LoadedProgram {
     #[must_use]
     pub const fn source_bytes(self) -> &'static [u8] {
         self.source_bytes
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct BinUapiResumeFrame {
+    pid: usize,
+    context: SyscallContext,
+    program: LoadedProgram,
+    argv: ProgramArgvBuffer,
+    env: ProgramEnvBuffer,
+    stdin: [u8; MAX_PROGRAM_STDIN_BYTES],
+    stdin_len: usize,
+    write_byte: u8,
+    offset: usize,
+    action: BinUapiResumeAction,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BinUapiResumeAction {
+    ContinueFromOffset,
+    ContinueFileCopyAfterRead { file_fd: i32 },
+    ContinueFileCopyAfterWrite { file_fd: i32 },
+    ExitWithWaitStatus,
+}
+
+impl BinUapiResumeFrame {
+    const fn empty() -> Self {
+        Self {
+            pid: 0,
+            context: SyscallContext {
+                pid: 0,
+                task_id: 0,
+                program_path: "",
+                loader: "",
+                entry_name: "",
+            },
+            program: LoadedProgram {
+                catalog_index: 0,
+                descriptor: &EMPTY_PROGRAM_DESCRIPTOR,
+                image_kind: ProgramImageKind::SourceImage,
+                source_path: "",
+                source_bytes: &[],
+                linked_entry: None,
+            },
+            argv: ProgramArgvBuffer::empty(),
+            env: ProgramEnvBuffer::empty(),
+            stdin: [0u8; MAX_PROGRAM_STDIN_BYTES],
+            stdin_len: 0,
+            write_byte: 0,
+            offset: 0,
+            action: BinUapiResumeAction::ContinueFromOffset,
+        }
+    }
+
+    const fn is_empty(self) -> bool {
+        self.pid == 0
+    }
+
+    fn new(
+        context: SyscallContext,
+        program: LoadedProgram,
+        argv: ProgramArgvBuffer,
+        env: ProgramEnvBuffer,
+        stdin: &[u8],
+        offset: usize,
+        action: BinUapiResumeAction,
+    ) -> Self {
+        let mut frame = Self {
+            pid: context.pid,
+            context,
+            program,
+            argv,
+            env,
+            stdin: [0u8; MAX_PROGRAM_STDIN_BYTES],
+            stdin_len: 0,
+            write_byte: 0,
+            offset,
+            action,
+        };
+        while frame.stdin_len < stdin.len() && frame.stdin_len < frame.stdin.len() {
+            frame.stdin[frame.stdin_len] = stdin[frame.stdin_len];
+            frame.stdin_len += 1;
+        }
+        frame
+    }
+
+    fn stdin(&self) -> &[u8] {
+        &self.stdin[..self.stdin_len]
+    }
+}
+
+struct BinUapiResumeFrameTable {
+    frames: [BinUapiResumeFrame; MAX_BIN_UAPI_RESUME_FRAMES],
+}
+
+impl BinUapiResumeFrameTable {
+    const fn new() -> Self {
+        Self {
+            frames: [BinUapiResumeFrame::empty(); MAX_BIN_UAPI_RESUME_FRAMES],
+        }
+    }
+
+    fn reset(&mut self) {
+        self.frames = [BinUapiResumeFrame::empty(); MAX_BIN_UAPI_RESUME_FRAMES];
+    }
+
+    fn slot_index(&self, pid: usize) -> Option<usize> {
+        if pid == 0 {
+            return None;
+        }
+        let mut index = 0usize;
+        while index < self.frames.len() {
+            if self.frames[index].pid == pid {
+                return Some(index);
+            }
+            index += 1;
+        }
+        None
+    }
+
+    fn reclaim_stale(&mut self) {
+        let mut index = 0usize;
+        while index < self.frames.len() {
+            let frame = self.frames[index];
+            if !frame.is_empty()
+                && !matches!(
+                    proc::process(frame.pid),
+                    Some(process)
+                        if matches!(
+                            process.state,
+                            proc::ProcessState::Ready
+                                | proc::ProcessState::Running
+                                | proc::ProcessState::Blocked
+                        )
+                )
+            {
+                self.frames[index] = BinUapiResumeFrame::empty();
+            }
+            index += 1;
+        }
+    }
+
+    fn free_slot(&mut self) -> Option<usize> {
+        self.reclaim_stale();
+        let mut index = 0usize;
+        while index < self.frames.len() {
+            if self.frames[index].is_empty() {
+                return Some(index);
+            }
+            index += 1;
+        }
+        None
+    }
+
+    fn store(&mut self, frame: BinUapiResumeFrame) -> bool {
+        if self.slot_index(frame.pid).is_some() {
+            return false;
+        }
+        let Some(slot) = self.free_slot() else {
+            return false;
+        };
+        self.frames[slot] = frame;
+        true
+    }
+
+    fn store_byte(&mut self, mut frame: BinUapiResumeFrame, byte: u8) -> Option<*mut u8> {
+        if self.slot_index(frame.pid).is_some() {
+            return None;
+        }
+        let slot = self.free_slot()?;
+        frame.write_byte = byte;
+        self.frames[slot] = frame;
+        Some(&mut self.frames[slot].write_byte as *mut u8)
+    }
+
+    fn take(&mut self, pid: usize) -> Option<BinUapiResumeFrame> {
+        let slot = self.slot_index(pid)?;
+        let frame = self.frames[slot];
+        self.frames[slot] = BinUapiResumeFrame::empty();
+        Some(frame)
+    }
+
+    fn release(&mut self, pid: usize) {
+        if let Some(slot) = self.slot_index(pid) {
+            self.frames[slot] = BinUapiResumeFrame::empty();
+        }
+    }
+}
+
+struct BinUapiResumeFrameCell(UnsafeCell<BinUapiResumeFrameTable>);
+
+// SAFETY: mutable access is serialized by `BIN_UAPI_RESUME_FRAME_LOCK`.
+unsafe impl Sync for BinUapiResumeFrameCell {}
+
+static BIN_UAPI_RESUME_FRAMES: BinUapiResumeFrameCell =
+    BinUapiResumeFrameCell(UnsafeCell::new(BinUapiResumeFrameTable::new()));
+static BIN_UAPI_RESUME_FRAME_LOCK: AtomicBool = AtomicBool::new(false);
+
+struct BinUapiResumeFrameGuard;
+
+impl BinUapiResumeFrameGuard {
+    fn acquire() -> Self {
+        while BIN_UAPI_RESUME_FRAME_LOCK
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            core::hint::spin_loop();
+        }
+        Self
+    }
+}
+
+impl Drop for BinUapiResumeFrameGuard {
+    fn drop(&mut self) {
+        BIN_UAPI_RESUME_FRAME_LOCK.store(false, Ordering::Release);
+    }
+}
+
+fn with_bin_uapi_resume_frames<R>(f: impl FnOnce(&mut BinUapiResumeFrameTable) -> R) -> R {
+    let _guard = BinUapiResumeFrameGuard::acquire();
+    // SAFETY: `BIN_UAPI_RESUME_FRAME_LOCK` serializes access.
+    let frames = unsafe { &mut *BIN_UAPI_RESUME_FRAMES.0.get() };
+    f(frames)
+}
+
+pub(crate) fn reset_bin_uapi_resume_frames() {
+    with_bin_uapi_resume_frames(BinUapiResumeFrameTable::reset);
+}
+
+pub(crate) fn release_bin_uapi_resume_frame(pid: usize) {
+    with_bin_uapi_resume_frames(|frames| frames.release(pid));
+}
+
+fn store_bin_uapi_resume_frame(
+    context: SyscallContext,
+    program: LoadedProgram,
+    argv: ProgramArgvBuffer,
+    env: ProgramEnvBuffer,
+    stdin: &[u8],
+    offset: usize,
+    action: BinUapiResumeAction,
+) -> bool {
+    with_bin_uapi_resume_frames(|frames| {
+        frames.store(BinUapiResumeFrame::new(context, program, argv, env, stdin, offset, action))
+    })
+}
+
+fn store_bin_uapi_write_byte_frame(
+    context: SyscallContext,
+    program: LoadedProgram,
+    argv: ProgramArgvBuffer,
+    env: ProgramEnvBuffer,
+    stdin: &[u8],
+    offset: usize,
+    byte: u8,
+    action: BinUapiResumeAction,
+) -> Option<&'static [u8]> {
+    let ptr = with_bin_uapi_resume_frames(|frames| {
+        frames.store_byte(
+            BinUapiResumeFrame::new(context, program, argv, env, stdin, offset, action),
+            byte,
+        )
+    })?;
+    // SAFETY: `ptr` points into the static resume-frame table. The slot is
+    // retained until the raw write succeeds, errors, or the process exits.
+    Some(unsafe { core::slice::from_raw_parts(ptr as *const u8, 1) })
+}
+
+fn store_bin_uapi_read_byte_frame(
+    context: SyscallContext,
+    program: LoadedProgram,
+    argv: ProgramArgvBuffer,
+    env: ProgramEnvBuffer,
+    stdin: &[u8],
+    offset: usize,
+    file: RawFd,
+) -> Option<&'static mut [u8]> {
+    let ptr = with_bin_uapi_resume_frames(|frames| {
+        frames.store_byte(
+            BinUapiResumeFrame::new(
+                context,
+                program,
+                argv,
+                env,
+                stdin,
+                offset,
+                BinUapiResumeAction::ContinueFileCopyAfterRead {
+                    file_fd: file.raw(),
+                },
+            ),
+            0,
+        )
+    })?;
+    // SAFETY: `ptr` points into the static resume-frame table. The slot is
+    // retained until the raw read succeeds, errors, or the process exits.
+    Some(unsafe { core::slice::from_raw_parts_mut(ptr, 1) })
+}
+
+fn take_bin_uapi_resume_frame(pid: usize) -> Option<BinUapiResumeFrame> {
+    with_bin_uapi_resume_frames(|frames| frames.take(pid))
+}
+
+pub(crate) fn resume_bin_uapi_frame(
+    daemon: &rootd::RootDaemon<'_>,
+    session: &mut RootShellSession,
+    ctx: SyscallContext,
+    continuation_ret: SyscallRet,
+) -> Option<ProgramStatus> {
+    let frame = take_bin_uapi_resume_frame(ctx.pid)?;
+    let resumed_ctx = match crate::syscall::resume_user_frame_process(frame.context) {
+        Some(ctx) => ctx,
+        None => return Some(ProgramStatus::Error),
+    };
+    let mut syscalls =
+        ProgramSyscalls::new_with_stdin(daemon, session, Some(resumed_ctx), frame.stdin());
+    match frame.action {
+        BinUapiResumeAction::ContinueFromOffset => Some(run_loaded_program_from_offset(
+            frame.program,
+            &frame.argv,
+            &frame.env,
+            frame.stdin(),
+            &mut syscalls,
+            frame.offset,
+        )),
+        BinUapiResumeAction::ContinueFileCopyAfterRead { file_fd } => {
+            let code = match continuation_ret.decode() {
+                Ok(code) => code,
+                _ => return Some(ProgramStatus::Error),
+            };
+            let status = {
+                let Some(_guard) = LinkedRawSyscallGuard::enter(&mut syscalls) else {
+                    return Some(ProgramStatus::Error);
+                };
+                resume_bin_uapi_file_copy_after_read(
+                    SyscallFdControl::new(RawSyscall::new(linked_raw_syscall)),
+                    resumed_ctx,
+                    frame.program,
+                    &frame.argv,
+                    &frame.env,
+                    frame.stdin(),
+                    frame.offset,
+                    RawFd::new(file_fd),
+                    frame.write_byte,
+                    code,
+                )
+            };
+            if status == ProgramStatus::Ok {
+                Some(run_loaded_program_from_offset(
+                    frame.program,
+                    &frame.argv,
+                    &frame.env,
+                    frame.stdin(),
+                    &mut syscalls,
+                    frame.offset,
+                ))
+            } else {
+                Some(status)
+            }
+        }
+        BinUapiResumeAction::ContinueFileCopyAfterWrite { file_fd } => {
+            let code = match continuation_ret.decode() {
+                Ok(code) => code,
+                _ => return Some(ProgramStatus::Error),
+            };
+            if code != 1 {
+                return Some(ProgramStatus::Error);
+            }
+            let status = {
+                let Some(_guard) = LinkedRawSyscallGuard::enter(&mut syscalls) else {
+                    return Some(ProgramStatus::Error);
+                };
+                exec_body_uapi_copy_opened_file(
+                    SyscallFdControl::new(RawSyscall::new(linked_raw_syscall)),
+                    Some(resumed_ctx),
+                    frame.program,
+                    &frame.argv,
+                    &frame.env,
+                    frame.stdin(),
+                    frame.offset,
+                    RawFd::new(file_fd),
+                )
+            };
+            if status == ProgramStatus::Ok {
+                Some(run_loaded_program_from_offset(
+                    frame.program,
+                    &frame.argv,
+                    &frame.env,
+                    frame.stdin(),
+                    &mut syscalls,
+                    frame.offset,
+                ))
+            } else {
+                Some(status)
+            }
+        }
+        BinUapiResumeAction::ExitWithWaitStatus => {
+            let code = match continuation_ret.decode() {
+                Ok(code) if code <= u8::MAX as usize => code as u8,
+                _ => return Some(ProgramStatus::Error),
+            };
+            let Some(_guard) = LinkedRawSyscallGuard::enter(&mut syscalls) else {
+                return Some(ProgramStatus::Error);
+            };
+            Some(exec_body_uapi_exit(
+                SyscallProcessControl::new(RawSyscall::new(linked_raw_syscall)),
+                code,
+            ))
+        }
     }
 }
 
@@ -994,6 +1902,50 @@ fn validate_request_shell_target(line: &[u8]) -> bool {
     true
 }
 
+fn parse_service_request(line: &'static [u8]) -> Option<(&'static str, &'static str)> {
+    let rest = &line[SOURCE_BYTES_OP_REQUEST_SERVICE.len()..];
+    let split = rest.iter().position(|&byte| byte == b' ')?;
+    if split == 0 || split + 1 >= rest.len() {
+        return None;
+    }
+    let name = &rest[..split];
+    let target = &rest[split + 1..];
+    if name.len() > MAX_PROGRAM_ARG_BYTES || target.len() > MAX_PROGRAM_ARG_BYTES {
+        return None;
+    }
+    if target
+        .iter()
+        .any(|&byte| byte == b' ' || byte == b'\t' || byte == b'\r' || byte == b'\n')
+    {
+        return None;
+    }
+    let name = core::str::from_utf8(name).ok()?;
+    let target = core::str::from_utf8(target).ok()?;
+    Some((name, target))
+}
+
+fn parse_line_discipline_request(line: &'static [u8]) -> Option<(&'static str, &'static str)> {
+    let rest = &line[SOURCE_BYTES_OP_REQUEST_LINE_DISCIPLINE.len()..];
+    let split = rest.iter().position(|&byte| byte == b' ')?;
+    if split == 0 || split + 1 >= rest.len() {
+        return None;
+    }
+    let discipline = &rest[..split];
+    let pipe_mode = &rest[split + 1..];
+    if pipe_mode
+        .iter()
+        .any(|&byte| byte == b' ' || byte == b'\t' || byte == b'\r' || byte == b'\n')
+    {
+        return None;
+    }
+    if discipline != b"argv-v1" || pipe_mode != b"single-pipe" {
+        return None;
+    }
+    let discipline = core::str::from_utf8(discipline).ok()?;
+    let pipe_mode = core::str::from_utf8(pipe_mode).ok()?;
+    Some((discipline, pipe_mode))
+}
+
 fn validate_source_byte_op(line: &'static [u8]) -> bool {
     if line.is_empty() {
         return true;
@@ -1020,7 +1972,10 @@ fn validate_source_byte_op(line: &'static [u8]) -> bool {
         || line == SOURCE_BYTES_OP_WRITE_SCHEDULER_STATE
         || line == SOURCE_BYTES_OP_WRITE_SCHEDULER_TICK
         || line == SOURCE_BYTES_OP_WRITE_SCHEDULER_YIELD
+        || line == SOURCE_BYTES_OP_WRITE_SCHEDULER_SLEEP_ARG2
         || line == SOURCE_BYTES_OP_WRITE_PROCESS_TABLE
+        || line == SOURCE_BYTES_OP_WRITE_SESSION_STATE
+        || line == SOURCE_BYTES_OP_WRITE_SERVICE_TABLE
         || line == SOURCE_BYTES_OP_WRITE_EXEC_LOAD_TABLE
         || line == SOURCE_BYTES_OP_WRITE_PENDING_EXEC_TABLE
         || line == SOURCE_BYTES_OP_WRITE_PROCESS_SELF
@@ -1029,17 +1984,6 @@ fn validate_source_byte_op(line: &'static [u8]) -> bool {
         || line == SOURCE_BYTES_OP_WRITE_TASK_TABLE
         || line == SOURCE_BYTES_OP_WRITE_WAIT_TABLE
         || line == SOURCE_BYTES_OP_WRITE_SYSCALL_TABLE
-        || line == SOURCE_BYTES_OP_PROC_EXEC_ARGV_TAIL
-        || line == SOURCE_BYTES_OP_PROC_SPAWN_ARGV_TAIL
-        || line == SOURCE_BYTES_OP_PROC_BLOCK_ARGV_TAIL
-        || line == SOURCE_BYTES_OP_PROC_WAIT_PID_ARG2
-        || line == SOURCE_BYTES_OP_PROC_WAKE_PID_ARG2
-        || line == SOURCE_BYTES_OP_PROC_KILL_PID_ARG2
-        || line == SOURCE_BYTES_OP_PROC_INSTALL_BIN_ARG2_ARG3
-        || line == SOURCE_BYTES_OP_PROC_INSTALL_PAYLOAD_ARG2_ARG3
-        || line == SOURCE_BYTES_OP_PROC_INSTALL_BIN_MEDIA_ARG2
-        || line == SOURCE_BYTES_OP_PROC_INSTALL_PAYLOAD_MEDIA_ARG2
-        || line == SOURCE_BYTES_OP_RUN_PROVIDER_PROBE_ARG1
         || line == SOURCE_BYTES_OP_LAUNCH_PAYLOAD_ARG1_OR_LIST
         || line == SOURCE_BYTES_OP_WRITE_HELP_ARG1_OR_CATALOG
     {
@@ -1056,6 +2000,14 @@ fn validate_source_byte_op(line: &'static [u8]) -> bool {
 
     if line.starts_with(SOURCE_BYTES_OP_REQUEST_SHELL_TARGET) {
         return validate_request_shell_target(line);
+    }
+
+    if line.starts_with(SOURCE_BYTES_OP_REQUEST_SERVICE) {
+        return parse_service_request(line).is_some();
+    }
+
+    if line.starts_with(SOURCE_BYTES_OP_REQUEST_LINE_DISCIPLINE) {
+        return parse_line_discipline_request(line).is_some();
     }
 
     if line.starts_with(SOURCE_BYTES_OP_WRITE_STDOUT_HEX) {
@@ -1139,6 +2091,252 @@ fn validate_source_bytes(bytes: &'static [u8]) -> bool {
     true
 }
 
+fn validate_bin_exec_body(body: exec_body::ExecBody<'static>) -> bool {
+    match body.inner {
+        ExecBodyInnerFormat::BinSourceImage => validate_source_bytes(body.bytes),
+        ExecBodyInnerFormat::BinUapiV1 => validate_bin_uapi_body(body.bytes),
+        ExecBodyInnerFormat::PayloadSourceImage => false,
+    }
+}
+
+fn next_bin_uapi_line(bytes: &[u8], offset: usize) -> Option<(&[u8], usize)> {
+    if offset >= bytes.len() {
+        return None;
+    }
+
+    let mut end = offset;
+    while end < bytes.len() && bytes[end] != b'\n' {
+        end += 1;
+    }
+
+    let mut next = end;
+    if next < bytes.len() && bytes[next] == b'\n' {
+        next += 1;
+    }
+
+    let mut line = &bytes[offset..end];
+    if line.last() == Some(&b'\r') {
+        line = &line[..line.len() - 1];
+    }
+
+    Some((line, next))
+}
+
+fn validate_bin_uapi_body_op(line: &[u8]) -> bool {
+    if line.is_empty() {
+        return true;
+    }
+    if line.starts_with(BIN_UAPI_OP_OPEN_READONLY_WRITE_STDOUT_ENV_OR_ARG1_OR) {
+        let Some((name, path)) = split_bin_uapi_env_or(
+            &line[BIN_UAPI_OP_OPEN_READONLY_WRITE_STDOUT_ENV_OR_ARG1_OR.len()..],
+        ) else {
+            return false;
+        };
+        return program_env_name_is_valid(name) && validate_bin_uapi_path(path);
+    }
+    if line.starts_with(BIN_UAPI_OP_OPEN_READONLY_WRITE_STDOUT_ARG1_OR) {
+        return validate_bin_uapi_path(
+            &line[BIN_UAPI_OP_OPEN_READONLY_WRITE_STDOUT_ARG1_OR.len()..],
+        );
+    }
+    if line.starts_with(BIN_UAPI_OP_OPEN_READONLY_WRITE_STDOUT) {
+        return validate_bin_uapi_path(&line[BIN_UAPI_OP_OPEN_READONLY_WRITE_STDOUT.len()..]);
+    }
+    if line.starts_with(BIN_UAPI_OP_EXEC_BIN_ENV) {
+        return parse_bin_uapi_process_env_and_args(&line[BIN_UAPI_OP_EXEC_BIN_ENV.len()..])
+            .is_some();
+    }
+    if line.starts_with(BIN_UAPI_OP_SLEEP_TICKS) {
+        return parse_bin_uapi_ticks(&line[BIN_UAPI_OP_SLEEP_TICKS.len()..]).is_some();
+    }
+    if line.starts_with(BIN_UAPI_OP_SPAWN_SLEEP_BIN_ENV) {
+        return parse_bin_uapi_sleep_ticks_env_and_args(
+            &line[BIN_UAPI_OP_SPAWN_SLEEP_BIN_ENV.len()..],
+        )
+        .is_some();
+    }
+    if line.starts_with(BIN_UAPI_OP_SPAWN_BIN_ENV) {
+        return parse_bin_uapi_process_env_and_args(&line[BIN_UAPI_OP_SPAWN_BIN_ENV.len()..])
+            .is_some();
+    }
+    if line.starts_with(BIN_UAPI_OP_SPAWN_WAIT_BIN_ENV) {
+        return parse_bin_uapi_process_env_and_args(&line[BIN_UAPI_OP_SPAWN_WAIT_BIN_ENV.len()..])
+            .is_some();
+    }
+    if line.starts_with(BIN_UAPI_OP_SPAWN_WAIT_BIN) {
+        return parse_bin_uapi_process_args(&line[BIN_UAPI_OP_SPAWN_WAIT_BIN.len()..]).is_some();
+    }
+    if line == BIN_UAPI_OP_SCHEDULER_TICK {
+        return true;
+    }
+    if line == BIN_UAPI_OP_YIELD_NOW {
+        return true;
+    }
+    if line.starts_with(BIN_UAPI_OP_WRITE_STDOUT_HEX) {
+        return source_hex_is_valid(&line[BIN_UAPI_OP_WRITE_STDOUT_HEX.len()..]);
+    }
+    if line.starts_with(BIN_UAPI_OP_EXIT_STATUS) {
+        return matches!(&line[BIN_UAPI_OP_EXIT_STATUS.len()..], b"ok" | b"error");
+    }
+    if line.starts_with(BIN_UAPI_OP_EXIT_CODE) {
+        return parse_source_exit_code(&line[BIN_UAPI_OP_EXIT_CODE.len()..]).is_some();
+    }
+    false
+}
+
+fn validate_bin_uapi_path(path: &[u8]) -> bool {
+    if path.is_empty()
+        || path.len() > BIN_UAPI_MAX_PATH_BYTES
+        || core::str::from_utf8(path).is_err()
+    {
+        return false;
+    }
+
+    let mut index = 0usize;
+    while index < path.len() {
+        if matches!(path[index], b' ' | b'\t' | b'\r' | b'\n') {
+            return false;
+        }
+        index += 1;
+    }
+
+    true
+}
+
+fn parse_bin_uapi_process_args(bytes: &[u8]) -> Option<([ProcessArg; MAX_PROGRAM_ARGS], usize)> {
+    let empty = ProcessArg::from_str("");
+    let mut args = [empty; MAX_PROGRAM_ARGS];
+    let mut argc = 0usize;
+    let mut offset = 0usize;
+
+    while offset < bytes.len() {
+        while offset < bytes.len() && bytes[offset] == b' ' {
+            offset += 1;
+        }
+        if offset >= bytes.len() {
+            break;
+        }
+        if argc >= MAX_PROGRAM_ARGS {
+            return None;
+        }
+
+        let start = offset;
+        while offset < bytes.len() && bytes[offset] != b' ' {
+            if matches!(bytes[offset], b'\t' | b'\r' | b'\n') {
+                return None;
+            }
+            offset += 1;
+        }
+        let len = offset - start;
+        if len == 0 || len > MAX_PROGRAM_ARG_BYTES {
+            return None;
+        }
+        let text = core::str::from_utf8(&bytes[start..offset]).ok()?;
+        args[argc] = ProcessArg::from_str(text);
+        argc += 1;
+    }
+
+    if argc == 0 { None } else { Some((args, argc)) }
+}
+
+fn take_bin_uapi_token(bytes: &[u8]) -> Option<(&[u8], &[u8])> {
+    let mut offset = 0usize;
+    while offset < bytes.len() && bytes[offset] == b' ' {
+        offset += 1;
+    }
+    if offset >= bytes.len() {
+        return None;
+    }
+
+    let start = offset;
+    while offset < bytes.len() && bytes[offset] != b' ' {
+        if matches!(bytes[offset], b'\t' | b'\r' | b'\n') {
+            return None;
+        }
+        offset += 1;
+    }
+    if offset == start {
+        return None;
+    }
+    Some((&bytes[start..offset], &bytes[offset..]))
+}
+
+fn parse_bin_uapi_ticks(bytes: &[u8]) -> Option<usize> {
+    let ticks = parse_source_usize_bytes(bytes)?;
+    if ticks == 0 || ticks > sched::MAX_KERNEL_TASKS {
+        return None;
+    }
+    Some(ticks)
+}
+
+fn parse_bin_uapi_process_env_and_args(
+    bytes: &[u8],
+) -> Option<(ProcessEnv, [ProcessArg; MAX_PROGRAM_ARGS], usize)> {
+    let (name, rest) = take_bin_uapi_token(bytes)?;
+    if !program_env_name_is_valid(name) {
+        return None;
+    }
+    let (value, argv_bytes) = take_bin_uapi_token(rest)?;
+    if value.len() > MAX_PROGRAM_ENV_VALUE_BYTES {
+        return None;
+    }
+
+    let name = core::str::from_utf8(name).ok()?;
+    let value = core::str::from_utf8(value).ok()?;
+    let (args, argc) = parse_bin_uapi_process_args(argv_bytes)?;
+    Some((ProcessEnv::from_pair(name, value), args, argc))
+}
+
+fn parse_bin_uapi_sleep_ticks_env_and_args(
+    bytes: &[u8],
+) -> Option<(usize, ProcessEnv, [ProcessArg; MAX_PROGRAM_ARGS], usize)> {
+    let (ticks, rest) = take_bin_uapi_token(bytes)?;
+    let ticks = parse_source_usize_bytes(ticks)?;
+    if ticks == 0 || ticks > sched::MAX_KERNEL_TASKS {
+        return None;
+    }
+    let (env, args, argc) = parse_bin_uapi_process_env_and_args(rest)?;
+    Some((ticks, env, args, argc))
+}
+
+fn split_bin_uapi_env_or(line: &[u8]) -> Option<(&[u8], &[u8])> {
+    let mut split = 0usize;
+    while split < line.len() && line[split] != b' ' && line[split] != b'\t' {
+        split += 1;
+    }
+    if split == 0 || split >= line.len() {
+        return None;
+    }
+    let mut path = split;
+    while path < line.len() && matches!(line[path], b' ' | b'\t') {
+        path += 1;
+    }
+    if path >= line.len() {
+        return None;
+    }
+    Some((&line[..split], &line[path..]))
+}
+
+fn validate_bin_uapi_body(bytes: &[u8]) -> bool {
+    let Some((header, mut offset)) = next_bin_uapi_line(bytes, 0) else {
+        return false;
+    };
+    if header != BIN_UAPI_BODY_MAGIC {
+        return false;
+    }
+
+    let mut ops = 0usize;
+    while let Some((line, next)) = next_bin_uapi_line(bytes, offset) {
+        ops += 1;
+        if ops > BIN_UAPI_MAX_OPS || !validate_bin_uapi_body_op(line) {
+            return false;
+        }
+        offset = next;
+    }
+
+    true
+}
+
 fn parse_source_usize_bytes(bytes: &[u8]) -> Option<usize> {
     if bytes.is_empty() {
         return None;
@@ -1155,22 +2353,6 @@ fn parse_source_usize_bytes(bytes: &[u8]) -> Option<usize> {
         index += 1;
     }
     Some(value)
-}
-
-fn parse_payload_source_install_status(value: &str) -> Option<PayloadSourceInstallStatus> {
-    match value.as_bytes() {
-        b"ready" => Some(PayloadSourceInstallStatus::Ready),
-        b"failed" => Some(PayloadSourceInstallStatus::Failed),
-        _ => None,
-    }
-}
-
-fn parse_bin_source_install_status(value: &str) -> Option<BinSourceInstallStatus> {
-    match value.as_bytes() {
-        b"ok" => Some(BinSourceInstallStatus::Ok),
-        b"error" => Some(BinSourceInstallStatus::Error),
-        _ => None,
-    }
 }
 
 fn source_arg1_matches_csv(argv: &ProgramArgv<'_>, csv: &[u8]) -> bool {
@@ -1230,384 +2412,52 @@ fn source_write_u64_dec(syscalls: &mut ProgramSyscalls<'_, '_, '_>, mut value: u
     }
 }
 
-fn build_source_tail_argv(
-    argv: &ProgramArgv<'_>,
-    start: usize,
-    error_prefix: &[u8],
-    missing_message: &str,
-    syscalls: &mut ProgramSyscalls<'_, '_, '_>,
-) -> Option<ProgramArgvBuffer> {
-    if argv.argc() == start {
-        syscalls.stderr_line(missing_message);
-        return None;
-    }
-
-    let mut child_argv = ProgramArgvBuffer::empty();
-    let mut index = start;
-    while index < argv.argc() {
-        if let Err(error) = child_argv.push(argv.arg(index).unwrap_or("")) {
-            syscalls.stderr_bytes(error_prefix);
-            syscalls.stderr_line(error.as_str());
-            return None;
-        }
-        index += 1;
-    }
-    Some(child_argv)
-}
-
-fn run_proc_exec_tail(
+fn run_source_scheduler_sleep_arg2(
     argv: &ProgramArgv<'_>,
     syscalls: &mut ProgramSyscalls<'_, '_, '_>,
 ) -> ProgramStatus {
-    let Some(child_argv) =
-        build_source_tail_argv(argv, 2, b"proc exec: ", "proc exec: missing program", syscalls)
-    else {
-        return ProgramStatus::Error;
-    };
-
-    match syscalls.exec_program_argv_and_wait(child_argv) {
-        Ok(status) => status,
-        Err(error) => {
-            syscalls.stderr_bytes(b"proc exec: ");
-            syscalls.stderr_line(error.as_str());
-            ProgramStatus::Error
-        }
-    }
-}
-
-fn run_proc_spawn_tail(
-    argv: &ProgramArgv<'_>,
-    syscalls: &mut ProgramSyscalls<'_, '_, '_>,
-) -> ProgramStatus {
-    let Some(child_argv) =
-        build_source_tail_argv(argv, 2, b"proc spawn: ", "proc spawn: missing program", syscalls)
-    else {
-        return ProgramStatus::Error;
-    };
-
-    match syscalls.spawn_program_argv(child_argv) {
-        Ok(child) => {
-            syscalls.stdout_line("proc spawn:");
-            syscalls.stdout_bytes(b"pid=");
-            source_write_u64_dec(syscalls, child.pid as u64);
-            syscalls.stdout_bytes(b"\npath=");
-            syscalls.stdout_bytes(child.program_path.as_bytes());
-            syscalls.stdout_bytes(b"\nstate=ready\n");
-            ProgramStatus::Ok
-        }
-        Err(error) => {
-            syscalls.stderr_bytes(b"proc spawn: ");
-            syscalls.stderr_line(error.as_str());
-            ProgramStatus::Error
-        }
-    }
-}
-
-fn run_proc_block_tail(
-    argv: &ProgramArgv<'_>,
-    syscalls: &mut ProgramSyscalls<'_, '_, '_>,
-) -> ProgramStatus {
-    let Some(child_argv) =
-        build_source_tail_argv(argv, 2, b"proc block: ", "proc block: missing program", syscalls)
-    else {
-        return ProgramStatus::Error;
-    };
-
-    match syscalls.spawn_blocked_program_argv(child_argv) {
-        Ok(child) => {
-            syscalls.stdout_line("proc block:");
-            syscalls.stdout_bytes(b"pid=");
-            source_write_u64_dec(syscalls, child.pid as u64);
-            syscalls.stdout_bytes(b"\npath=");
-            syscalls.stdout_bytes(child.program_path.as_bytes());
-            syscalls.stdout_bytes(b"\nstate=blocked\n");
-            ProgramStatus::Ok
-        }
-        Err(error) => {
-            syscalls.stderr_bytes(b"proc block: ");
-            syscalls.stderr_line(error.as_str());
-            ProgramStatus::Error
-        }
-    }
-}
-
-fn run_proc_wake_pid_arg2(
-    argv: &ProgramArgv<'_>,
-    syscalls: &mut ProgramSyscalls<'_, '_, '_>,
-) -> ProgramStatus {
-    let Some(pid_text) = argv.arg(2) else {
-        syscalls.stderr_line("proc wake: missing pid");
+    let Some(ticks_text) = argv.arg(2) else {
+        syscalls.stderr_line("sched sleep: missing ticks");
         return ProgramStatus::Error;
     };
     if argv.argc() > 3 {
-        syscalls.stderr_line("proc wake: too many arguments");
+        syscalls.stderr_line("sched: too many arguments");
         return ProgramStatus::Error;
     }
 
-    let Some(pid) = parse_source_usize_bytes(pid_text.as_bytes()) else {
-        syscalls.stderr_line("proc wake: invalid pid");
+    let Some(ticks) = parse_source_usize_bytes(ticks_text.as_bytes()) else {
+        syscalls.stderr_line("sched sleep: invalid ticks");
         return ProgramStatus::Error;
     };
-
-    match syscalls.wake_process_by_pid(pid) {
-        Ok(handle) => {
-            syscalls.stdout_line("proc wake:");
-            syscalls.stdout_bytes(b"pid=");
-            source_write_u64_dec(syscalls, handle.pid as u64);
-            syscalls.stdout_bytes(b"\npath=");
-            syscalls.stdout_bytes(handle.program_path.as_bytes());
-            syscalls.stdout_bytes(b"\nstate=ready\n");
-            ProgramStatus::Ok
-        }
-        Err(error) => {
-            syscalls.stderr_bytes(b"proc wake: ");
-            syscalls.stderr_line(error.as_str());
-            ProgramStatus::Error
-        }
-    }
-}
-
-fn run_proc_wait_pid_arg2(
-    argv: &ProgramArgv<'_>,
-    syscalls: &mut ProgramSyscalls<'_, '_, '_>,
-) -> ProgramStatus {
-    let Some(pid_text) = argv.arg(2) else {
-        syscalls.stderr_line("proc wait: missing pid");
-        return ProgramStatus::Error;
-    };
-    if argv.argc() > 3 {
-        syscalls.stderr_line("proc wait: too many arguments");
+    if ticks == 0 || ticks > sched::MAX_KERNEL_TASKS {
+        syscalls.stderr_line("sched sleep: invalid ticks");
         return ProgramStatus::Error;
     }
 
-    let Some(pid) = parse_source_usize_bytes(pid_text.as_bytes()) else {
-        syscalls.stderr_line("proc wait: invalid pid");
-        return ProgramStatus::Error;
-    };
+    let result = syscalls.sleep_current_for_ticks_result(ticks);
+    syscalls.stdout_line("sched sleep:");
+    syscalls.stdout_bytes(b"slept=");
+    syscalls.stdout_bytes(if result.slept { b"true" } else { b"false" });
+    syscalls.stdout_bytes(b"\nstatus=");
+    syscalls.stdout_bytes(result.status.as_str().as_bytes());
+    syscalls.stdout_bytes(b"\npid=");
+    source_write_u64_dec(syscalls, result.pid as u64);
+    syscalls.stdout_bytes(b"\ntask=");
+    source_write_u64_dec(syscalls, result.task_id as u64);
+    syscalls.stdout_bytes(b"\nwake_tick=");
+    source_write_u64_dec(syscalls, result.wake_tick as u64);
+    syscalls.stdout_bytes(b"\ntick_count=");
+    source_write_u64_dec(syscalls, result.tick_count as u64);
+    syscalls.stdout_bytes(b"\ndispatched=");
+    source_write_u64_dec(syscalls, result.dispatched_count as u64);
+    syscalls.stdout_bytes(b"\nwoken=");
+    source_write_u64_dec(syscalls, result.woken_count as u64);
+    syscalls.stdout_bytes(b"\n");
 
-    match syscalls.wait_process_by_pid(pid) {
-        Ok(wait) => {
-            syscalls.stdout_line("proc wait:");
-            syscalls.stdout_bytes(b"pid=");
-            source_write_u64_dec(syscalls, wait.child_pid as u64);
-            syscalls.stdout_bytes(b"\nstate=");
-            syscalls.stdout_bytes(wait.child_state.as_str().as_bytes());
-            syscalls.stdout_bytes(b"\nexit=");
-            source_write_u64_dec(syscalls, wait.exit_code as u64);
-            syscalls.stdout_bytes(b"\ncompleted=");
-            if wait.completed {
-                syscalls.stdout_bytes(b"true\n");
-            } else {
-                syscalls.stdout_bytes(b"false\n");
-            }
-            ProgramStatus::Ok
-        }
-        Err(error) => {
-            syscalls.stderr_bytes(b"proc wait: ");
-            syscalls.stderr_line(error.as_str());
-            ProgramStatus::Error
-        }
-    }
-}
-
-fn run_proc_kill_pid_arg2(
-    argv: &ProgramArgv<'_>,
-    syscalls: &mut ProgramSyscalls<'_, '_, '_>,
-) -> ProgramStatus {
-    let Some(pid_text) = argv.arg(2) else {
-        syscalls.stderr_line("proc kill: missing pid");
-        return ProgramStatus::Error;
-    };
-    if argv.argc() > 3 {
-        syscalls.stderr_line("proc kill: too many arguments");
-        return ProgramStatus::Error;
-    }
-
-    let Some(pid) = parse_source_usize_bytes(pid_text.as_bytes()) else {
-        syscalls.stderr_line("proc kill: invalid pid");
-        return ProgramStatus::Error;
-    };
-
-    match syscalls.kill_process_by_pid(pid) {
-        Ok(handle) => {
-            syscalls.stdout_line("proc kill:");
-            syscalls.stdout_bytes(b"pid=");
-            source_write_u64_dec(syscalls, handle.pid as u64);
-            syscalls.stdout_bytes(b"\npath=");
-            syscalls.stdout_bytes(handle.program_path.as_bytes());
-            syscalls.stdout_bytes(b"\nstate=failed\n");
-            ProgramStatus::Ok
-        }
-        Err(error) => {
-            syscalls.stderr_bytes(b"proc kill: ");
-            syscalls.stderr_line(error.as_str());
-            ProgramStatus::Error
-        }
-    }
-}
-
-fn run_proc_install_payload_arg2_arg3(
-    argv: &ProgramArgv<'_>,
-    syscalls: &mut ProgramSyscalls<'_, '_, '_>,
-) -> ProgramStatus {
-    let Some(name) = argv.arg(2) else {
-        syscalls.stderr_line("proc install-payload: missing payload");
-        return ProgramStatus::Error;
-    };
-    let Some(status_text) = argv.arg(3) else {
-        syscalls.stderr_line("proc install-payload: missing status");
-        return ProgramStatus::Error;
-    };
-    if argv.argc() > 4 {
-        syscalls.stderr_line("proc install-payload: too many arguments");
-        return ProgramStatus::Error;
-    }
-
-    let Some(status) = parse_payload_source_install_status(status_text) else {
-        syscalls.stderr_line("proc install-payload: invalid status");
-        return ProgramStatus::Error;
-    };
-
-    match syscalls.install_payload_source_by_name(name, status) {
-        Ok(record) => {
-            syscalls.stdout_line("proc install-payload:");
-            syscalls.stdout_bytes(b"name=");
-            syscalls.stdout_bytes(record.name.as_bytes());
-            syscalls.stdout_bytes(b"\nnamespace=payload\npath=");
-            syscalls.stdout_bytes(record.path.as_bytes());
-            syscalls.stdout_bytes(b"\nstatus=");
-            syscalls.stdout_bytes(record.status.as_str().as_bytes());
-            syscalls.stdout_bytes(b"\nbytes=");
-            source_write_u64_dec(syscalls, record.bytes_len as u64);
-            syscalls.stdout_bytes(b"\norigin=installed\n");
-            ProgramStatus::Ok
-        }
-        Err(error) => {
-            syscalls.stderr_bytes(b"proc install-payload: ");
-            syscalls.stderr_line(error.as_str());
-            ProgramStatus::Error
-        }
-    }
-}
-
-fn run_proc_install_bin_arg2_arg3(
-    argv: &ProgramArgv<'_>,
-    syscalls: &mut ProgramSyscalls<'_, '_, '_>,
-) -> ProgramStatus {
-    let Some(name) = argv.arg(2) else {
-        syscalls.stderr_line("proc install-bin: missing program");
-        return ProgramStatus::Error;
-    };
-    let Some(status_text) = argv.arg(3) else {
-        syscalls.stderr_line("proc install-bin: missing status");
-        return ProgramStatus::Error;
-    };
-    if argv.argc() > 4 {
-        syscalls.stderr_line("proc install-bin: too many arguments");
-        return ProgramStatus::Error;
-    }
-
-    let Some(status) = parse_bin_source_install_status(status_text) else {
-        syscalls.stderr_line("proc install-bin: invalid status");
-        return ProgramStatus::Error;
-    };
-
-    match syscalls.install_bin_source_by_name(name, status) {
-        Ok(record) => {
-            syscalls.stdout_line("proc install-bin:");
-            syscalls.stdout_bytes(b"name=");
-            syscalls.stdout_bytes(record.name.as_bytes());
-            syscalls.stdout_bytes(b"\nnamespace=bin\npath=");
-            syscalls.stdout_bytes(record.path.as_bytes());
-            syscalls.stdout_bytes(b"\nstatus=");
-            syscalls.stdout_bytes(record.status.as_str().as_bytes());
-            syscalls.stdout_bytes(b"\nbytes=");
-            source_write_u64_dec(syscalls, record.bytes_len as u64);
-            syscalls.stdout_bytes(b"\norigin=installed\n");
-            ProgramStatus::Ok
-        }
-        Err(error) => {
-            syscalls.stderr_bytes(b"proc install-bin: ");
-            syscalls.stderr_line(error.as_str());
-            ProgramStatus::Error
-        }
-    }
-}
-
-fn write_source_media_install_record(
-    prefix: &str,
-    record: crate::syscall::SourceMediaInstallRecord,
-    syscalls: &mut ProgramSyscalls<'_, '_, '_>,
-) {
-    syscalls.stdout_line(prefix);
-    syscalls.stdout_bytes(b"name=");
-    syscalls.stdout_bytes(record.name.as_bytes());
-    syscalls.stdout_bytes(b"\nnamespace=");
-    syscalls.stdout_bytes(record.namespace.as_str().as_bytes());
-    syscalls.stdout_bytes(b"\npath=");
-    syscalls.stdout_bytes(record.path.as_bytes());
-    syscalls.stdout_bytes(b"\nstorage=");
-    syscalls.stdout_bytes(record.storage.as_bytes());
-    syscalls.stdout_bytes(b"\nstorage_capacity_bytes=");
-    source_write_u64_dec(syscalls, record.storage_capacity_bytes as u64);
-    syscalls.stdout_bytes(b"\nartifact_bytes=");
-    source_write_u64_dec(syscalls, record.artifact_bytes_len as u64);
-    syscalls.stdout_bytes(b"\nbytes=");
-    source_write_u64_dec(syscalls, record.bytes_len as u64);
-    syscalls.stdout_bytes(b"\nchecksum=");
-    source_write_u64_dec(syscalls, record.checksum as u64);
-    syscalls.stdout_bytes(b"\norigin=installed\nsource=source-media\n");
-}
-
-fn run_proc_install_bin_media_arg2(
-    argv: &ProgramArgv<'_>,
-    syscalls: &mut ProgramSyscalls<'_, '_, '_>,
-) -> ProgramStatus {
-    let Some(name) = argv.arg(2) else {
-        syscalls.stderr_line("proc install-bin-media: missing program");
-        return ProgramStatus::Error;
-    };
-    if argv.argc() > 3 {
-        syscalls.stderr_line("proc install-bin-media: too many arguments");
-        return ProgramStatus::Error;
-    }
-
-    match syscalls.install_bin_source_from_media_by_name(name) {
-        Ok(record) => {
-            write_source_media_install_record("proc install-bin-media:", record, syscalls);
-            ProgramStatus::Ok
-        }
-        Err(error) => {
-            syscalls.stderr_bytes(b"proc install-bin-media: ");
-            syscalls.stderr_line(error.as_str());
-            ProgramStatus::Error
-        }
-    }
-}
-
-fn run_proc_install_payload_media_arg2(
-    argv: &ProgramArgv<'_>,
-    syscalls: &mut ProgramSyscalls<'_, '_, '_>,
-) -> ProgramStatus {
-    let Some(name) = argv.arg(2) else {
-        syscalls.stderr_line("proc install-payload-media: missing payload");
-        return ProgramStatus::Error;
-    };
-    if argv.argc() > 3 {
-        syscalls.stderr_line("proc install-payload-media: too many arguments");
-        return ProgramStatus::Error;
-    }
-
-    match syscalls.install_payload_source_from_media_by_name(name) {
-        Ok(record) => {
-            write_source_media_install_record("proc install-payload-media:", record, syscalls);
-            ProgramStatus::Ok
-        }
-        Err(error) => {
-            syscalls.stderr_bytes(b"proc install-payload-media: ");
-            syscalls.stderr_line(error.as_str());
-            ProgramStatus::Error
-        }
+    if result.status == crate::syscall::SchedulerSleepStatus::Ok {
+        ProgramStatus::Ok
+    } else {
+        ProgramStatus::Error
     }
 }
 
@@ -1683,6 +2533,20 @@ fn run_source_byte_op(
         return Some(ProgramStatus::Ok);
     }
 
+    if line.starts_with(SOURCE_BYTES_OP_REQUEST_SERVICE) {
+        let (name, target) = parse_service_request(line)?;
+        return Some(match syscalls.request_init_service(name, target) {
+            Ok(_) => ProgramStatus::Ok,
+            Err(_) => ProgramStatus::Error,
+        });
+    }
+
+    if line.starts_with(SOURCE_BYTES_OP_REQUEST_LINE_DISCIPLINE) {
+        let (line_discipline, pipe_mode) = parse_line_discipline_request(line)?;
+        syscalls.request_shell_line_discipline(line_discipline, pipe_mode);
+        return Some(ProgramStatus::Ok);
+    }
+
     if line == SOURCE_BYTES_OP_REQUEST_ROOT_SHELL {
         syscalls.request_shell_start();
         return Some(ProgramStatus::Ok);
@@ -1741,8 +2605,22 @@ fn run_source_byte_op(
         return Some(ProgramStatus::Ok);
     }
 
+    if line == SOURCE_BYTES_OP_WRITE_SCHEDULER_SLEEP_ARG2 {
+        return Some(run_source_scheduler_sleep_arg2(argv, syscalls));
+    }
+
     if line == SOURCE_BYTES_OP_WRITE_PROCESS_TABLE {
         syscalls.write_process_table();
+        return Some(ProgramStatus::Ok);
+    }
+
+    if line == SOURCE_BYTES_OP_WRITE_SESSION_STATE {
+        syscalls.write_session_state();
+        return Some(ProgramStatus::Ok);
+    }
+
+    if line == SOURCE_BYTES_OP_WRITE_SERVICE_TABLE {
+        syscalls.write_service_table();
         return Some(ProgramStatus::Ok);
     }
 
@@ -1786,50 +2664,6 @@ fn run_source_byte_op(
         return Some(ProgramStatus::Ok);
     }
 
-    if line == SOURCE_BYTES_OP_PROC_EXEC_ARGV_TAIL {
-        return Some(run_proc_exec_tail(argv, syscalls));
-    }
-
-    if line == SOURCE_BYTES_OP_PROC_SPAWN_ARGV_TAIL {
-        return Some(run_proc_spawn_tail(argv, syscalls));
-    }
-
-    if line == SOURCE_BYTES_OP_PROC_BLOCK_ARGV_TAIL {
-        return Some(run_proc_block_tail(argv, syscalls));
-    }
-
-    if line == SOURCE_BYTES_OP_PROC_WAIT_PID_ARG2 {
-        return Some(run_proc_wait_pid_arg2(argv, syscalls));
-    }
-
-    if line == SOURCE_BYTES_OP_PROC_WAKE_PID_ARG2 {
-        return Some(run_proc_wake_pid_arg2(argv, syscalls));
-    }
-
-    if line == SOURCE_BYTES_OP_PROC_KILL_PID_ARG2 {
-        return Some(run_proc_kill_pid_arg2(argv, syscalls));
-    }
-
-    if line == SOURCE_BYTES_OP_PROC_INSTALL_BIN_ARG2_ARG3 {
-        return Some(run_proc_install_bin_arg2_arg3(argv, syscalls));
-    }
-
-    if line == SOURCE_BYTES_OP_PROC_INSTALL_PAYLOAD_ARG2_ARG3 {
-        return Some(run_proc_install_payload_arg2_arg3(argv, syscalls));
-    }
-
-    if line == SOURCE_BYTES_OP_PROC_INSTALL_BIN_MEDIA_ARG2 {
-        return Some(run_proc_install_bin_media_arg2(argv, syscalls));
-    }
-
-    if line == SOURCE_BYTES_OP_PROC_INSTALL_PAYLOAD_MEDIA_ARG2 {
-        return Some(run_proc_install_payload_media_arg2(argv, syscalls));
-    }
-
-    if line == SOURCE_BYTES_OP_RUN_PROVIDER_PROBE_ARG1 {
-        return Some(run_provider_probe_arg1(argv, syscalls));
-    }
-
     if line == SOURCE_BYTES_OP_LAUNCH_PAYLOAD_ARG1_OR_LIST {
         return Some(run_source_launch_payload_arg1_or_list(argv, syscalls));
     }
@@ -1851,6 +2685,7 @@ fn run_source_byte_op(
     if line.starts_with(SOURCE_BYTES_OP_LAUNCH_PAYLOAD_NAME) {
         return Some(run_source_launch_payload_name(
             &line[SOURCE_BYTES_OP_LAUNCH_PAYLOAD_NAME.len()..],
+            argv,
             syscalls,
         )?);
     }
@@ -2046,30 +2881,6 @@ fn run_source_write_tty_line(syscalls: &mut ProgramSyscalls<'_, '_, '_>) -> Prog
     ProgramStatus::Ok
 }
 
-fn run_provider_probe_arg1(
-    argv: &ProgramArgv<'_>,
-    syscalls: &mut ProgramSyscalls<'_, '_, '_>,
-) -> ProgramStatus {
-    let Some(target) = argv.arg(1) else {
-        syscalls.stderr_line("probe: missing target, try `probe help`");
-        return ProgramStatus::Error;
-    };
-
-    match syscalls.run_hardware_probe(target) {
-        Some(crate::rootd::HardwareProbeResult::Handled) => ProgramStatus::Ok,
-        Some(crate::rootd::HardwareProbeResult::UnknownTarget) => {
-            syscalls.stderr_bytes(b"probe: unknown target: ");
-            syscalls.stderr_bytes(target.as_bytes());
-            syscalls.stderr_bytes(b"\n");
-            ProgramStatus::Error
-        }
-        None => {
-            syscalls.stderr_line("probe: no lower probe provider");
-            ProgramStatus::Error
-        }
-    }
-}
-
 fn run_source_launch_payload_arg1_or_list(
     argv: &ProgramArgv<'_>,
     syscalls: &mut ProgramSyscalls<'_, '_, '_>,
@@ -2079,18 +2890,17 @@ fn run_source_launch_payload_arg1_or_list(
         return ProgramStatus::Ok;
     }
 
-    if argv.argc() > 2 {
-        syscalls.stderr_line("launch: too many arguments");
-        return ProgramStatus::Error;
-    }
-
     let payload = argv.arg(1).unwrap_or("");
     if payload.is_empty() {
         syscalls.stderr_line("launch: no payload name");
         return ProgramStatus::Error;
     }
 
-    let result = syscalls.launch_payload_by_name(payload);
+    let Some(payload_argv) = payload_argv_from_name_and_tail(payload, argv, 2) else {
+        syscalls.stderr_line("launch: invalid payload argv");
+        return ProgramStatus::Error;
+    };
+    let result = syscalls.launch_payload_argv(payload_argv);
     syscalls.stdout_bytes(b"launch ");
     syscalls.stdout_bytes(payload.as_bytes());
     syscalls.stdout_bytes(b": ");
@@ -2100,19 +2910,41 @@ fn run_source_launch_payload_arg1_or_list(
 
 fn run_source_launch_payload_name(
     payload_name: &[u8],
+    argv: &ProgramArgv<'_>,
     syscalls: &mut ProgramSyscalls<'_, '_, '_>,
 ) -> Option<ProgramStatus> {
     let Ok(payload_name) = core::str::from_utf8(payload_name) else {
         return None;
     };
-    let result = syscalls.launch_payload_by_name(payload_name);
+    let Some(payload_argv) = payload_argv_from_name_and_tail(payload_name, argv, 1) else {
+        syscalls.stderr_line("payload launch: invalid argv");
+        return Some(ProgramStatus::Error);
+    };
+    let result = syscalls.launch_payload_argv(payload_argv);
     write_source_payload_status(syscalls, result);
     Some(payload_result_status(result))
 }
 
+fn payload_argv_from_name_and_tail(
+    name: &str,
+    argv: &ProgramArgv<'_>,
+    tail_start: usize,
+) -> Option<ProgramArgvBuffer> {
+    let mut payload_argv = ProgramArgvBuffer::empty();
+    payload_argv.push(name).ok()?;
+    let mut index = tail_start;
+    while index < argv.argc() {
+        payload_argv.push(argv.arg(index)?).ok()?;
+        index += 1;
+    }
+    Some(payload_argv)
+}
+
 fn write_source_payload_list(syscalls: &ProgramSyscalls<'_, '_, '_>) {
     let payloads = syscalls.payloads();
-    if payloads.is_empty() {
+    let mut media_payloads = [None; rootd::MAX_MEDIA_PAYLOADS];
+    let media_payload_count = rootd::snapshot_media_payloads(&mut media_payloads);
+    if payloads.is_empty() && media_payload_count == 0 {
         syscalls.stdout_line("launch: no payloads registered");
         return;
     }
@@ -2131,6 +2963,21 @@ fn write_source_payload_list(syscalls: &ProgramSyscalls<'_, '_, '_>) {
         syscalls.stdout_bytes(b"\n");
         index += 1;
     }
+    index = 0;
+    while index < media_payload_count {
+        if let Some(payload) = media_payloads[index] {
+            syscalls.stdout_bytes(b"  ");
+            syscalls.stdout_bytes(payload.name.as_bytes());
+            syscalls.stdout_bytes(b": ");
+            syscalls.stdout_bytes(payload.summary.as_bytes());
+            syscalls.stdout_bytes(b" loader=");
+            syscalls.stdout_bytes(payload.image_kind().as_str().as_bytes());
+            syscalls.stdout_bytes(b" entry_fn=");
+            syscalls.stdout_bytes(payload.entry_name.as_bytes());
+            syscalls.stdout_bytes(b"\n");
+        }
+        index += 1;
+    }
 }
 
 fn write_source_payload_status(
@@ -2139,19 +2986,46 @@ fn write_source_payload_status(
 ) {
     match result {
         crate::rootd::PayloadLaunchResult::Ready => syscalls.stdout_bytes(b"payload.ready"),
+        crate::rootd::PayloadLaunchResult::Resident => syscalls.stdout_bytes(b"payload.resident"),
         crate::rootd::PayloadLaunchResult::NotConfigured => {
             syscalls.stdout_bytes(b"payload.not_configured")
         }
         crate::rootd::PayloadLaunchResult::Failed => syscalls.stdout_bytes(b"payload.failed"),
+        crate::rootd::PayloadLaunchResult::ExitCode(code) => {
+            syscalls.stdout_bytes(b"payload.exit_code(");
+            write_source_u32_dec(syscalls, code as u32);
+            syscalls.stdout_bytes(b")");
+        }
     }
     syscalls.stdout_bytes(b"\n");
 }
 
 fn payload_result_status(result: crate::rootd::PayloadLaunchResult) -> ProgramStatus {
     match result {
-        crate::rootd::PayloadLaunchResult::Ready => ProgramStatus::Ok,
+        crate::rootd::PayloadLaunchResult::Ready | crate::rootd::PayloadLaunchResult::Resident => {
+            ProgramStatus::Ok
+        }
         crate::rootd::PayloadLaunchResult::NotConfigured
         | crate::rootd::PayloadLaunchResult::Failed => ProgramStatus::Error,
+        crate::rootd::PayloadLaunchResult::ExitCode(code) => ProgramStatus::ExitCode(code as i32),
+    }
+}
+
+fn write_source_u32_dec(syscalls: &ProgramSyscalls<'_, '_, '_>, mut value: u32) {
+    let mut buf = [0u8; 10];
+    let mut len = 0usize;
+    loop {
+        buf[len] = b'0' + (value % 10) as u8;
+        len += 1;
+        value /= 10;
+        if value == 0 {
+            break;
+        }
+    }
+
+    while len > 0 {
+        len -= 1;
+        syscalls.stdout_bytes(&buf[len..len + 1]);
     }
 }
 
@@ -2172,6 +3046,7 @@ fn write_source_path_error(
         crate::vfs::VfsError::TooLong => syscalls.stderr_bytes(b"path too long"),
         crate::vfs::VfsError::NotFound => syscalls.stderr_bytes(b"no such file or directory"),
         crate::vfs::VfsError::NotDirectory => syscalls.stderr_bytes(b"not a directory"),
+        crate::vfs::VfsError::NotWritable => syscalls.stderr_bytes(b"not writable"),
         crate::vfs::VfsError::Busy => syscalls.stderr_bytes(b"file busy"),
         crate::vfs::VfsError::FileTooLarge => syscalls.stderr_bytes(b"file too large"),
         crate::vfs::VfsError::Io => syscalls.stderr_bytes(b"I/O error"),
@@ -2236,6 +3111,842 @@ fn run_source_arg1_dispatch(
     None
 }
 
+fn exec_body_uapi_write_all(fd_control: SyscallFdControl, fd: RawFd, bytes: &[u8]) -> bool {
+    let mut offset = 0usize;
+    while offset < bytes.len() {
+        let remaining = bytes.len() - offset;
+        let Ok(written) = fd_control.write(fd, &bytes[offset..]) else {
+            return false;
+        };
+        if written == 0 || written > remaining {
+            return false;
+        }
+        offset += written;
+    }
+    true
+}
+
+fn exec_body_uapi_stderr_line(fd_control: SyscallFdControl, line: &[u8]) {
+    let _ = exec_body_uapi_write_all(fd_control, RawFd::stderr(), line);
+    let _ = exec_body_uapi_write_all(fd_control, RawFd::stderr(), b"\n");
+}
+
+fn store_bin_uapi_write_byte_continue_frame(
+    current: Option<SyscallContext>,
+    program: LoadedProgram,
+    argv: &ProgramArgvBuffer,
+    env: &ProgramEnvBuffer,
+    stdin: &[u8],
+    resume_offset: usize,
+    byte: u8,
+) -> Option<&'static [u8]> {
+    let current = current?;
+    store_bin_uapi_write_byte_frame(
+        current,
+        program,
+        *argv,
+        *env,
+        stdin,
+        resume_offset,
+        byte,
+        BinUapiResumeAction::ContinueFromOffset,
+    )
+}
+
+fn write_bin_uapi_stdout_hex(
+    encoded: &[u8],
+    fd_control: SyscallFdControl,
+    current: Option<SyscallContext>,
+    program: LoadedProgram,
+    argv: &ProgramArgvBuffer,
+    env: &ProgramEnvBuffer,
+    stdin: &[u8],
+    resume_offset: usize,
+) -> ProgramStatus {
+    if encoded.len() % 2 != 0 {
+        return ProgramStatus::Error;
+    }
+
+    let mut index = 0usize;
+    while index < encoded.len() {
+        let Some(high) = parse_source_hex_digit(encoded[index]) else {
+            return ProgramStatus::Error;
+        };
+        let Some(low) = parse_source_hex_digit(encoded[index + 1]) else {
+            return ProgramStatus::Error;
+        };
+        let Some(byte) = store_bin_uapi_write_byte_continue_frame(
+            current,
+            program,
+            argv,
+            env,
+            stdin,
+            resume_offset,
+            (high << 4) | low,
+        ) else {
+            return ProgramStatus::Error;
+        };
+        match fd_control.write(RawFd::stdout(), byte) {
+            Ok(1) => {
+                if let Some(current) = current {
+                    release_bin_uapi_resume_frame(current.pid);
+                }
+            }
+            Ok(_) => {
+                if let Some(current) = current {
+                    release_bin_uapi_resume_frame(current.pid);
+                }
+                return ProgramStatus::Error;
+            }
+            Err(FsError::BUSY) => return ProgramStatus::Blocked,
+            Err(_) => {
+                if let Some(current) = current {
+                    release_bin_uapi_resume_frame(current.pid);
+                }
+                return ProgramStatus::Error;
+            }
+        }
+        index += 2;
+    }
+
+    ProgramStatus::Ok
+}
+
+fn close_bin_uapi_file_copy(fd_control: SyscallFdControl, file: RawFd) -> ProgramStatus {
+    if fd_control.close(file).is_ok() {
+        ProgramStatus::Ok
+    } else {
+        ProgramStatus::Error
+    }
+}
+
+fn exec_body_uapi_write_file_copy_byte(
+    fd_control: SyscallFdControl,
+    current: SyscallContext,
+    program: LoadedProgram,
+    argv: &ProgramArgvBuffer,
+    env: &ProgramEnvBuffer,
+    stdin: &[u8],
+    resume_offset: usize,
+    file: RawFd,
+    byte: u8,
+) -> ProgramStatus {
+    let Some(bytes) = store_bin_uapi_write_byte_frame(
+        current,
+        program,
+        *argv,
+        *env,
+        stdin,
+        resume_offset,
+        byte,
+        BinUapiResumeAction::ContinueFileCopyAfterWrite {
+            file_fd: file.raw(),
+        },
+    ) else {
+        let _ = fd_control.close(file);
+        return ProgramStatus::Error;
+    };
+
+    match fd_control.write(RawFd::stdout(), bytes) {
+        Ok(1) => {
+            release_bin_uapi_resume_frame(current.pid);
+            ProgramStatus::Ok
+        }
+        Ok(_) => {
+            release_bin_uapi_resume_frame(current.pid);
+            let _ = fd_control.close(file);
+            ProgramStatus::Error
+        }
+        Err(FsError::BUSY) => ProgramStatus::Blocked,
+        Err(_) => {
+            release_bin_uapi_resume_frame(current.pid);
+            let _ = fd_control.close(file);
+            ProgramStatus::Error
+        }
+    }
+}
+
+fn resume_bin_uapi_file_copy_after_read(
+    fd_control: SyscallFdControl,
+    current: SyscallContext,
+    program: LoadedProgram,
+    argv: &ProgramArgvBuffer,
+    env: &ProgramEnvBuffer,
+    stdin: &[u8],
+    resume_offset: usize,
+    file: RawFd,
+    byte: u8,
+    read: usize,
+) -> ProgramStatus {
+    match read {
+        0 => close_bin_uapi_file_copy(fd_control, file),
+        1 => {
+            let status = exec_body_uapi_write_file_copy_byte(
+                fd_control,
+                current,
+                program,
+                argv,
+                env,
+                stdin,
+                resume_offset,
+                file,
+                byte,
+            );
+            if status == ProgramStatus::Ok {
+                exec_body_uapi_copy_opened_file(
+                    fd_control,
+                    Some(current),
+                    program,
+                    argv,
+                    env,
+                    stdin,
+                    resume_offset,
+                    file,
+                )
+            } else {
+                status
+            }
+        }
+        _ => {
+            let _ = fd_control.close(file);
+            ProgramStatus::Error
+        }
+    }
+}
+
+fn exec_body_uapi_copy_opened_file_without_frame(
+    fd_control: SyscallFdControl,
+    file: RawFd,
+) -> ProgramStatus {
+    let mut buf = [0u8; 32];
+    loop {
+        let Ok(read) = fd_control.read(file, &mut buf) else {
+            let _ = fd_control.close(file);
+            return ProgramStatus::Error;
+        };
+        if read == 0 {
+            return close_bin_uapi_file_copy(fd_control, file);
+        }
+        if !exec_body_uapi_write_all(fd_control, RawFd::stdout(), &buf[..read]) {
+            let _ = fd_control.close(file);
+            return ProgramStatus::Error;
+        }
+    }
+}
+
+fn exec_body_uapi_copy_opened_file(
+    fd_control: SyscallFdControl,
+    current: Option<SyscallContext>,
+    program: LoadedProgram,
+    argv: &ProgramArgvBuffer,
+    env: &ProgramEnvBuffer,
+    stdin: &[u8],
+    resume_offset: usize,
+    file: RawFd,
+) -> ProgramStatus {
+    let Some(current) = current else {
+        return exec_body_uapi_copy_opened_file_without_frame(fd_control, file);
+    };
+
+    loop {
+        let Some(out) = store_bin_uapi_read_byte_frame(
+            current,
+            program,
+            *argv,
+            *env,
+            stdin,
+            resume_offset,
+            file,
+        ) else {
+            let _ = fd_control.close(file);
+            return ProgramStatus::Error;
+        };
+        let read = fd_control.read(file, out);
+        match read {
+            Ok(0) => {
+                release_bin_uapi_resume_frame(current.pid);
+                return close_bin_uapi_file_copy(fd_control, file);
+            }
+            Ok(1) => {
+                let Some(frame) = take_bin_uapi_resume_frame(current.pid) else {
+                    let _ = fd_control.close(file);
+                    return ProgramStatus::Error;
+                };
+                let status = exec_body_uapi_write_file_copy_byte(
+                    fd_control,
+                    current,
+                    program,
+                    argv,
+                    env,
+                    stdin,
+                    resume_offset,
+                    file,
+                    frame.write_byte,
+                );
+                match status {
+                    ProgramStatus::Ok => continue,
+                    _ => return status,
+                }
+            }
+            Ok(_) => {
+                release_bin_uapi_resume_frame(current.pid);
+                let _ = fd_control.close(file);
+                return ProgramStatus::Error;
+            }
+            Err(FsError::BUSY) => return ProgramStatus::Blocked,
+            Err(_) => {
+                release_bin_uapi_resume_frame(current.pid);
+                let _ = fd_control.close(file);
+                return ProgramStatus::Error;
+            }
+        }
+    }
+}
+
+fn exec_body_uapi_open_readonly_write_stdout(
+    fd_control: SyscallFdControl,
+    current: Option<SyscallContext>,
+    program: LoadedProgram,
+    argv: &ProgramArgvBuffer,
+    env: &ProgramEnvBuffer,
+    stdin: &[u8],
+    resume_offset: usize,
+    path: &[u8],
+) -> ProgramStatus {
+    let Ok(file) = fd_control.open_at(OpenAtDir::session_cwd(), path, OpenFlags::read_only())
+    else {
+        return ProgramStatus::Error;
+    };
+
+    exec_body_uapi_copy_opened_file(
+        fd_control,
+        current,
+        program,
+        argv,
+        env,
+        stdin,
+        resume_offset,
+        file,
+    )
+}
+
+fn exec_body_uapi_exit(process: SyscallProcessControl, code: u8) -> ProgramStatus {
+    if process.exit(ExitCode::new(code)).is_err() {
+        return ProgramStatus::Error;
+    }
+    if code == 0 {
+        ProgramStatus::Ok
+    } else {
+        ProgramStatus::ExitCode(code as i32)
+    }
+}
+
+fn exec_body_uapi_spawn_wait_bin(
+    fd: SyscallFdControl,
+    process: SyscallProcessControl,
+    current: Option<SyscallContext>,
+    program: LoadedProgram,
+    argv_buf: &ProgramArgvBuffer,
+    env_buf: &ProgramEnvBuffer,
+    stdin: &[u8],
+    resume_offset: usize,
+    argv_bytes: &[u8],
+) -> ProgramStatus {
+    let Some((args, argc)) = parse_bin_uapi_process_args(argv_bytes) else {
+        exec_body_uapi_stderr_line(fd, b"error: invalid executable body");
+        return ProgramStatus::Error;
+    };
+
+    let pid = match process.spawn(&args[..argc]) {
+        Ok(pid) => pid,
+        Err(ProcessError::BUSY) => return ProgramStatus::Blocked,
+        Err(_) => {
+            exec_body_uapi_stderr_line(fd, b"error: executable body spawn failed");
+            return ProgramStatus::Error;
+        }
+    };
+
+    let Some(current) = current else {
+        exec_body_uapi_stderr_line(fd, b"error: executable body wait missing process");
+        return ProgramStatus::Error;
+    };
+    if !store_bin_uapi_resume_frame(
+        current,
+        program,
+        *argv_buf,
+        *env_buf,
+        stdin,
+        resume_offset,
+        BinUapiResumeAction::ExitWithWaitStatus,
+    ) {
+        exec_body_uapi_stderr_line(fd, b"error: executable body wait frame full");
+        return ProgramStatus::Error;
+    }
+    match process.wait(pid) {
+        Ok(code) => {
+            release_bin_uapi_resume_frame(current.pid);
+            exec_body_uapi_exit(process, code.raw())
+        }
+        Err(ProcessError::BUSY) => ProgramStatus::Blocked,
+        Err(_) => {
+            release_bin_uapi_resume_frame(current.pid);
+            exec_body_uapi_stderr_line(fd, b"error: executable body wait failed");
+            ProgramStatus::Error
+        }
+    }
+}
+
+fn exec_body_uapi_spawn_wait_bin_env(
+    fd: SyscallFdControl,
+    process: SyscallProcessControl,
+    current: Option<SyscallContext>,
+    program: LoadedProgram,
+    argv_buf: &ProgramArgvBuffer,
+    env_buf: &ProgramEnvBuffer,
+    stdin: &[u8],
+    resume_offset: usize,
+    line: &[u8],
+) -> ProgramStatus {
+    let Some((env, args, argc)) = parse_bin_uapi_process_env_and_args(line) else {
+        exec_body_uapi_stderr_line(fd, b"error: invalid executable body");
+        return ProgramStatus::Error;
+    };
+    let envs = [env];
+
+    let pid = match process.spawn_with_env(&args[..argc], &envs) {
+        Ok(pid) => pid,
+        Err(ProcessError::BUSY) => return ProgramStatus::Blocked,
+        Err(_) => {
+            exec_body_uapi_stderr_line(fd, b"error: executable body spawn failed");
+            return ProgramStatus::Error;
+        }
+    };
+
+    let Some(current) = current else {
+        exec_body_uapi_stderr_line(fd, b"error: executable body wait missing process");
+        return ProgramStatus::Error;
+    };
+    if !store_bin_uapi_resume_frame(
+        current,
+        program,
+        *argv_buf,
+        *env_buf,
+        stdin,
+        resume_offset,
+        BinUapiResumeAction::ExitWithWaitStatus,
+    ) {
+        exec_body_uapi_stderr_line(fd, b"error: executable body wait frame full");
+        return ProgramStatus::Error;
+    }
+    match process.wait(pid) {
+        Ok(code) => {
+            release_bin_uapi_resume_frame(current.pid);
+            exec_body_uapi_exit(process, code.raw())
+        }
+        Err(ProcessError::BUSY) => ProgramStatus::Blocked,
+        Err(_) => {
+            release_bin_uapi_resume_frame(current.pid);
+            exec_body_uapi_stderr_line(fd, b"error: executable body wait failed");
+            ProgramStatus::Error
+        }
+    }
+}
+
+fn exec_body_uapi_spawn_bin_env(
+    fd: SyscallFdControl,
+    process: SyscallProcessControl,
+    line: &[u8],
+) -> ProgramStatus {
+    let Some((env, args, argc)) = parse_bin_uapi_process_env_and_args(line) else {
+        exec_body_uapi_stderr_line(fd, b"error: invalid executable body");
+        return ProgramStatus::Error;
+    };
+    let envs = [env];
+
+    match process.spawn_with_env(&args[..argc], &envs) {
+        Ok(_) => ProgramStatus::Ok,
+        Err(ProcessError::BUSY) => ProgramStatus::Blocked,
+        Err(_) => {
+            exec_body_uapi_stderr_line(fd, b"error: executable body spawn failed");
+            ProgramStatus::Error
+        }
+    }
+}
+
+fn exec_body_uapi_spawn_sleep_bin_env(
+    fd: SyscallFdControl,
+    process: SyscallProcessControl,
+    line: &[u8],
+) -> ProgramStatus {
+    let Some((ticks, env, args, argc)) = parse_bin_uapi_sleep_ticks_env_and_args(line) else {
+        exec_body_uapi_stderr_line(fd, b"error: invalid executable body");
+        return ProgramStatus::Error;
+    };
+    let envs = [env];
+
+    match process.spawn_sleeping_with_env(&args[..argc], &envs, ticks) {
+        Ok(_) => ProgramStatus::Ok,
+        Err(ProcessError::BUSY) => ProgramStatus::Blocked,
+        Err(_) => {
+            exec_body_uapi_stderr_line(fd, b"error: executable body sleep spawn failed");
+            ProgramStatus::Error
+        }
+    }
+}
+
+fn exec_body_uapi_exec_bin_env(
+    fd: SyscallFdControl,
+    process: SyscallProcessControl,
+    line: &[u8],
+) -> ProgramStatus {
+    let Some((env, args, argc)) = parse_bin_uapi_process_env_and_args(line) else {
+        exec_body_uapi_stderr_line(fd, b"error: invalid executable body");
+        return ProgramStatus::Error;
+    };
+    let envs = [env];
+
+    match process.execve_with_env(&args[..argc], &envs) {
+        Ok(_) => ProgramStatus::Replaced,
+        Err(ProcessError::BUSY) => ProgramStatus::Blocked,
+        Err(ProcessError::NOT_FOUND) => {
+            exec_body_uapi_stderr_line(fd, b"error: executable body exec not found");
+            ProgramStatus::Error
+        }
+        Err(ProcessError::INVALID_IMAGE) => {
+            exec_body_uapi_stderr_line(fd, b"error: executable body exec invalid image");
+            ProgramStatus::Error
+        }
+        Err(_) => {
+            exec_body_uapi_stderr_line(fd, b"error: executable body exec failed");
+            ProgramStatus::Error
+        }
+    }
+}
+
+fn exec_body_uapi_scheduler_tick(
+    fd: SyscallFdControl,
+    sched: SyscallSchedulerControl,
+) -> ProgramStatus {
+    match sched.tick_current() {
+        Ok(_) => ProgramStatus::Ok,
+        Err(error) if error == SchedulerError::BUSY => ProgramStatus::Blocked,
+        Err(_) => {
+            exec_body_uapi_stderr_line(fd, b"error: executable body scheduler tick failed");
+            ProgramStatus::Error
+        }
+    }
+}
+
+fn exec_body_uapi_sleep_ticks(
+    fd: SyscallFdControl,
+    sched: SyscallSchedulerControl,
+    current: Option<SyscallContext>,
+    program: LoadedProgram,
+    argv: &ProgramArgvBuffer,
+    env: &ProgramEnvBuffer,
+    stdin: &[u8],
+    resume_offset: usize,
+    line: &[u8],
+) -> ProgramStatus {
+    let Some(ticks) = parse_bin_uapi_ticks(line) else {
+        exec_body_uapi_stderr_line(fd, b"error: invalid executable body");
+        return ProgramStatus::Error;
+    };
+    let Some(current) = current else {
+        exec_body_uapi_stderr_line(fd, b"error: executable body sleep missing process");
+        return ProgramStatus::Error;
+    };
+    if !store_bin_uapi_resume_frame(
+        current,
+        program,
+        *argv,
+        *env,
+        stdin,
+        resume_offset,
+        BinUapiResumeAction::ContinueFromOffset,
+    ) {
+        exec_body_uapi_stderr_line(fd, b"error: executable body sleep frame full");
+        return ProgramStatus::Error;
+    }
+
+    match sched.sleep_for_ticks(SchedulerTicks::new(ticks)) {
+        Ok(_) => {
+            release_bin_uapi_resume_frame(current.pid);
+            ProgramStatus::Ok
+        }
+        Err(error) if error == SchedulerError::BUSY => ProgramStatus::Blocked,
+        Err(_) => {
+            release_bin_uapi_resume_frame(current.pid);
+            exec_body_uapi_stderr_line(fd, b"error: executable body sleep failed");
+            ProgramStatus::Error
+        }
+    }
+}
+
+fn exec_body_uapi_yield_now(fd: SyscallFdControl, sched: SyscallSchedulerControl) -> ProgramStatus {
+    match sched.yield_now() {
+        Ok(_) => ProgramStatus::Ok,
+        Err(error) if error == SchedulerError::BUSY => ProgramStatus::Blocked,
+        Err(_) => {
+            exec_body_uapi_stderr_line(fd, b"error: executable body yield failed");
+            ProgramStatus::Error
+        }
+    }
+}
+
+fn run_bin_uapi_body(
+    bytes: &[u8],
+    program: LoadedProgram,
+    argv_buf: &ProgramArgvBuffer,
+    env_buf: &ProgramEnvBuffer,
+    stdin: &[u8],
+    raw: RawSyscall,
+    current: Option<SyscallContext>,
+    start_offset: usize,
+) -> ProgramStatus {
+    let argv = argv_buf.borrowed();
+    let env = env_buf.borrowed();
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let sched = SyscallSchedulerControl::new(raw);
+    let mut offset = if start_offset == 0 {
+        let Some((header, offset)) = next_bin_uapi_line(bytes, 0) else {
+            exec_body_uapi_stderr_line(fd, b"error: invalid executable body");
+            return ProgramStatus::Error;
+        };
+        if header != BIN_UAPI_BODY_MAGIC {
+            exec_body_uapi_stderr_line(fd, b"error: invalid executable body");
+            return ProgramStatus::Error;
+        }
+        offset
+    } else if start_offset <= bytes.len() {
+        start_offset
+    } else {
+        exec_body_uapi_stderr_line(fd, b"error: invalid executable body");
+        return ProgramStatus::Error;
+    };
+
+    let mut ops = 0usize;
+    while let Some((line, next)) = next_bin_uapi_line(bytes, offset) {
+        ops += 1;
+        if ops > BIN_UAPI_MAX_OPS {
+            exec_body_uapi_stderr_line(fd, b"error: executable body too large");
+            return ProgramStatus::Error;
+        }
+        if line.is_empty() {
+            offset = next;
+            continue;
+        }
+        if line.starts_with(BIN_UAPI_OP_OPEN_READONLY_WRITE_STDOUT_ENV_OR_ARG1_OR) {
+            let Some((name, default_path)) = split_bin_uapi_env_or(
+                &line[BIN_UAPI_OP_OPEN_READONLY_WRITE_STDOUT_ENV_OR_ARG1_OR.len()..],
+            ) else {
+                exec_body_uapi_stderr_line(fd, b"error: invalid executable body");
+                return ProgramStatus::Error;
+            };
+            let Ok(name) = core::str::from_utf8(name) else {
+                exec_body_uapi_stderr_line(fd, b"error: invalid executable body");
+                return ProgramStatus::Error;
+            };
+            let path = env
+                .get(name)
+                .or_else(|| argv.arg(1))
+                .map_or(default_path, |value| value.as_bytes());
+            if !program_env_name_is_valid(name.as_bytes()) || !validate_bin_uapi_path(path) {
+                exec_body_uapi_stderr_line(fd, b"error: executable body fd copy failed");
+                return ProgramStatus::Error;
+            }
+            let status = exec_body_uapi_open_readonly_write_stdout(
+                fd, current, program, argv_buf, env_buf, stdin, next, path,
+            );
+            if status == ProgramStatus::Error {
+                exec_body_uapi_stderr_line(fd, b"error: executable body fd copy failed");
+            }
+            if status != ProgramStatus::Ok {
+                return status;
+            }
+            offset = next;
+            continue;
+        }
+        if line.starts_with(BIN_UAPI_OP_OPEN_READONLY_WRITE_STDOUT_ARG1_OR) {
+            let default_path = &line[BIN_UAPI_OP_OPEN_READONLY_WRITE_STDOUT_ARG1_OR.len()..];
+            let path = argv.arg(1).map_or(default_path, |arg| arg.as_bytes());
+            if !validate_bin_uapi_path(path) {
+                exec_body_uapi_stderr_line(fd, b"error: executable body fd copy failed");
+                return ProgramStatus::Error;
+            }
+            let status = exec_body_uapi_open_readonly_write_stdout(
+                fd, current, program, argv_buf, env_buf, stdin, next, path,
+            );
+            if status == ProgramStatus::Error {
+                exec_body_uapi_stderr_line(fd, b"error: executable body fd copy failed");
+            }
+            if status != ProgramStatus::Ok {
+                return status;
+            }
+            offset = next;
+            continue;
+        }
+        if line.starts_with(BIN_UAPI_OP_OPEN_READONLY_WRITE_STDOUT) {
+            let path = &line[BIN_UAPI_OP_OPEN_READONLY_WRITE_STDOUT.len()..];
+            if !validate_bin_uapi_path(path) {
+                exec_body_uapi_stderr_line(fd, b"error: executable body fd copy failed");
+                return ProgramStatus::Error;
+            }
+            let status = exec_body_uapi_open_readonly_write_stdout(
+                fd, current, program, argv_buf, env_buf, stdin, next, path,
+            );
+            if status == ProgramStatus::Error {
+                exec_body_uapi_stderr_line(fd, b"error: executable body fd copy failed");
+            }
+            if status != ProgramStatus::Ok {
+                return status;
+            }
+            offset = next;
+            continue;
+        }
+        if line.starts_with(BIN_UAPI_OP_EXEC_BIN_ENV) {
+            return exec_body_uapi_exec_bin_env(
+                fd,
+                process,
+                &line[BIN_UAPI_OP_EXEC_BIN_ENV.len()..],
+            );
+        }
+        if line.starts_with(BIN_UAPI_OP_SLEEP_TICKS) {
+            let status = exec_body_uapi_sleep_ticks(
+                fd,
+                sched,
+                current,
+                program,
+                argv_buf,
+                env_buf,
+                stdin,
+                next,
+                &line[BIN_UAPI_OP_SLEEP_TICKS.len()..],
+            );
+            if status != ProgramStatus::Ok {
+                return status;
+            }
+            offset = next;
+            continue;
+        }
+        if line.starts_with(BIN_UAPI_OP_SPAWN_SLEEP_BIN_ENV) {
+            let status = exec_body_uapi_spawn_sleep_bin_env(
+                fd,
+                process,
+                &line[BIN_UAPI_OP_SPAWN_SLEEP_BIN_ENV.len()..],
+            );
+            if status != ProgramStatus::Ok {
+                return status;
+            }
+            offset = next;
+            continue;
+        }
+        if line.starts_with(BIN_UAPI_OP_SPAWN_BIN_ENV) {
+            let status =
+                exec_body_uapi_spawn_bin_env(fd, process, &line[BIN_UAPI_OP_SPAWN_BIN_ENV.len()..]);
+            if status != ProgramStatus::Ok {
+                return status;
+            }
+            offset = next;
+            continue;
+        }
+        if line.starts_with(BIN_UAPI_OP_SPAWN_WAIT_BIN_ENV) {
+            let status = exec_body_uapi_spawn_wait_bin_env(
+                fd,
+                process,
+                current,
+                program,
+                argv_buf,
+                env_buf,
+                stdin,
+                next,
+                &line[BIN_UAPI_OP_SPAWN_WAIT_BIN_ENV.len()..],
+            );
+            if status != ProgramStatus::Ok {
+                return status;
+            }
+            offset = next;
+            continue;
+        }
+        if line.starts_with(BIN_UAPI_OP_SPAWN_WAIT_BIN) {
+            let status = exec_body_uapi_spawn_wait_bin(
+                fd,
+                process,
+                current,
+                program,
+                argv_buf,
+                env_buf,
+                stdin,
+                next,
+                &line[BIN_UAPI_OP_SPAWN_WAIT_BIN.len()..],
+            );
+            if status != ProgramStatus::Ok {
+                return status;
+            }
+            offset = next;
+            continue;
+        }
+        if line == BIN_UAPI_OP_SCHEDULER_TICK {
+            let status = exec_body_uapi_scheduler_tick(fd, sched);
+            if status != ProgramStatus::Ok {
+                return status;
+            }
+            offset = next;
+            continue;
+        }
+        if line == BIN_UAPI_OP_YIELD_NOW {
+            let status = exec_body_uapi_yield_now(fd, sched);
+            if status != ProgramStatus::Ok {
+                return status;
+            }
+            offset = next;
+            continue;
+        }
+        if line.starts_with(BIN_UAPI_OP_WRITE_STDOUT_HEX) {
+            let status = write_bin_uapi_stdout_hex(
+                &line[BIN_UAPI_OP_WRITE_STDOUT_HEX.len()..],
+                fd,
+                current,
+                program,
+                argv_buf,
+                env_buf,
+                stdin,
+                next,
+            );
+            if status == ProgramStatus::Error {
+                exec_body_uapi_stderr_line(fd, b"error: executable body write failed");
+            }
+            if status != ProgramStatus::Ok {
+                return status;
+            }
+            offset = next;
+            continue;
+        }
+        if line.starts_with(BIN_UAPI_OP_EXIT_STATUS) {
+            return match &line[BIN_UAPI_OP_EXIT_STATUS.len()..] {
+                b"ok" => exec_body_uapi_exit(process, ExitCode::SUCCESS.raw()),
+                b"error" => exec_body_uapi_exit(process, ExitCode::FAILURE.raw()),
+                _ => {
+                    exec_body_uapi_stderr_line(fd, b"error: invalid executable body");
+                    ProgramStatus::Error
+                }
+            };
+        }
+        if line.starts_with(BIN_UAPI_OP_EXIT_CODE) {
+            let Some(code) = parse_source_exit_code(&line[BIN_UAPI_OP_EXIT_CODE.len()..]) else {
+                exec_body_uapi_stderr_line(fd, b"error: invalid executable body");
+                return ProgramStatus::Error;
+            };
+            return exec_body_uapi_exit(process, code as u8);
+        }
+        exec_body_uapi_stderr_line(fd, b"error: invalid executable body");
+        return ProgramStatus::Error;
+    }
+
+    ProgramStatus::Ok
+}
+
 fn run_source_bytes(
     bytes: &'static [u8],
     argv: &ProgramArgv<'_>,
@@ -2287,14 +3998,74 @@ fn run_source_bytes(
     ProgramStatus::Ok
 }
 
+fn run_loaded_program_from_offset(
+    program: LoadedProgram,
+    argv_buf: &ProgramArgvBuffer,
+    env_buf: &ProgramEnvBuffer,
+    stdin: &[u8],
+    syscalls: &mut ProgramSyscalls<'_, '_, '_>,
+    start_offset: usize,
+) -> ProgramStatus {
+    let _stdio = syscalls.stdio();
+    let argv = argv_buf.borrowed();
+    match program.image_kind {
+        ProgramImageKind::SourceImage => run_source_bytes(program.source_bytes(), &argv, syscalls),
+        ProgramImageKind::ReovimExecBody => {
+            let Ok(body) = exec_body::parse_exec_body(program.source_bytes()) else {
+                syscalls.stderr_line("error: invalid executable body");
+                return ProgramStatus::Error;
+            };
+            match body.inner {
+                ExecBodyInnerFormat::BinSourceImage => {
+                    run_source_bytes(body.bytes, &argv, syscalls)
+                }
+                ExecBodyInnerFormat::BinUapiV1 => {
+                    let Some(_guard) = LinkedRawSyscallGuard::enter(syscalls) else {
+                        syscalls.stderr_line("error: executable body syscall backend busy");
+                        return ProgramStatus::Error;
+                    };
+                    let returned = run_bin_uapi_body(
+                        body.bytes,
+                        program,
+                        argv_buf,
+                        env_buf,
+                        stdin,
+                        RawSyscall::new(linked_raw_syscall),
+                        syscalls.current_context(),
+                        start_offset,
+                    );
+                    syscalls.take_raw_exit_status().unwrap_or(returned)
+                }
+                ExecBodyInnerFormat::PayloadSourceImage => {
+                    syscalls.stderr_line("error: invalid executable body");
+                    ProgramStatus::Error
+                }
+            }
+        }
+        ProgramImageKind::LinkedBin => {
+            let Some(entry) = program.linked_entry else {
+                syscalls.stderr_line("error: invalid linked image");
+                return ProgramStatus::Error;
+            };
+            let Some(_guard) = LinkedRawSyscallGuard::enter(syscalls) else {
+                syscalls.stderr_line("error: linked syscall backend busy");
+                return ProgramStatus::Error;
+            };
+            let returned = entry(&argv, RawSyscall::new(linked_raw_syscall));
+            syscalls.take_raw_exit_status().unwrap_or(returned)
+        }
+    }
+}
+
 /// Runs one loaded `/bin` program through the typed syscall handle.
 pub(crate) fn run_loaded_program(
     program: LoadedProgram,
-    argv: &ProgramArgv<'_>,
+    argv: &ProgramArgvBuffer,
+    env: &ProgramEnvBuffer,
+    stdin: &[u8],
     syscalls: &mut ProgramSyscalls<'_, '_, '_>,
 ) -> ProgramStatus {
-    let _stdio = syscalls.stdio();
-    run_source_bytes(program.source_bytes(), argv, syscalls)
+    run_loaded_program_from_offset(program, argv, env, stdin, syscalls, 0)
 }
 
 #[cfg(feature = "selftest")]

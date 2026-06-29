@@ -417,7 +417,11 @@ fn objcopy_multiboot_elf32(elf: &Path) -> PathBuf {
 /// had to be killed. Stdout is redirected to a file rather than a pipe so a
 /// chatty boot log (the full test runner) cannot deadlock against an unread
 /// pipe buffer while we poll for the timeout.
-fn run_with_timeout(mut cmd: Command, serial_path: &Path) -> i32 {
+fn run_with_timeout(cmd: Command, serial_path: &Path) -> i32 {
+    run_with_timeout_with_duration(cmd, serial_path, BOOT_TIMEOUT)
+}
+
+fn run_with_timeout_with_duration(mut cmd: Command, serial_path: &Path, timeout: Duration) -> i32 {
     let sink = File::create(serial_path).expect("create serial sink");
     let mut child = cmd
         .stdout(Stdio::from(sink))
@@ -431,7 +435,7 @@ fn run_with_timeout(mut cmd: Command, serial_path: &Path) -> i32 {
                 .code()
                 .expect("emulator exited with a code, not a signal");
         }
-        if start.elapsed() >= BOOT_TIMEOUT {
+        if start.elapsed() >= timeout {
             let _ = child.kill();
             let _ = child.wait();
             return BOOT_TIMEOUT_CODE;
@@ -459,6 +463,10 @@ fn run_with_timeout(mut cmd: Command, serial_path: &Path) -> i32 {
 /// Both paths bind `-serial stdio` to the console the floor writes to and run
 /// headless under [`run_with_timeout`].
 fn run_system_image(exe: &Path) -> (i32, String) {
+    run_system_image_with_timeout(exe, BOOT_TIMEOUT)
+}
+
+fn run_system_image_with_timeout(exe: &Path, timeout: Duration) -> (i32, String) {
     let runner = fixture_runner();
     assert!(
         !runner.is_empty(),
@@ -510,7 +518,11 @@ fn run_system_image(exe: &Path) -> (i32, String) {
     let mut serial_path = exe.as_os_str().to_owned();
     serial_path.push(".serial.log");
     let serial_path = PathBuf::from(serial_path);
-    let raw = run_with_timeout(cmd, &serial_path);
+    let raw = if is_x86 {
+        run_with_timeout_with_duration(cmd, &serial_path, timeout)
+    } else {
+        run_with_timeout(cmd, &serial_path)
+    };
     let serial = std::fs::read_to_string(&serial_path).unwrap_or_default();
     let _ = std::fs::remove_file(&serial_path);
 
@@ -676,6 +688,28 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "help dump\n",
         "help sched\n",
         "help proc\n",
+        "help ps\n",
+        "help kill\n",
+        "help wake\n",
+        "help block\n",
+        "help spawn\n",
+        "help sleep\n",
+        "help wait\n",
+        "help wait-ticks\n",
+        "help exec\n",
+        "help service-stop\n",
+        "help service-start\n",
+        "help service-restart\n",
+        "help session\n",
+        "help services\n",
+        "help tasks\n",
+        "help waits\n",
+        "help syscalls\n",
+        "help execs\n",
+        "help pending\n",
+        "help sources\n",
+        "help media\n",
+        "help self\n",
         "probe xhci-start\n",
         "probe xhci-enable-slot\n",
         "probe xhci-address-device\n",
@@ -711,7 +745,31 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "help probe\n",
         "help launch\n",
         "help reovim\n",
+        "help hello\n",
+        "hello\n",
         "help halt\n",
+        "help ps\n",
+        "help kill\n",
+        "help wake\n",
+        "help block\n",
+        "help spawn\n",
+        "help sleep\n",
+        "help wait\n",
+        "help wait-ticks\n",
+        "help exec\n",
+        "help service-stop\n",
+        "help service-start\n",
+        "help service-restart\n",
+        "help session\n",
+        "help services\n",
+        "help tasks\n",
+        "help waits\n",
+        "help syscalls\n",
+        "help execs\n",
+        "help pending\n",
+        "help sources\n",
+        "help media\n",
+        "help self\n",
         "cat /boot/help\n",
         "clear\n",
         "screentest\n",
@@ -740,30 +798,75 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "cat /bin/probe\n",
         "cat /bin/launch\n",
         "cat /bin/reovim\n",
+        "cat /bin/hello\n",
         "cat /bin/halt\n",
+        "cat /bin/ps\n",
+        "cat /bin/kill\n",
+        "cat /bin/wake\n",
+        "cat /bin/block\n",
+        "cat /bin/spawn\n",
+        "cat /bin/sleep\n",
+        "cat /bin/wait\n",
+        "cat /bin/wait-ticks\n",
+        "cat /bin/exec\n",
+        "cat /bin/service-stop\n",
+        "cat /bin/service-start\n",
+        "cat /bin/service-restart\n",
+        "cat /bin/session\n",
+        "cat /bin/services\n",
+        "cat /bin/tasks\n",
+        "cat /bin/waits\n",
+        "cat /bin/syscalls\n",
+        "cat /bin/continuations\n",
+        "cat /bin/execs\n",
+        "cat /bin/pending\n",
+        "cat /bin/sources\n",
+        "cat /bin/media\n",
+        "cat /bin/self\n",
+        "cat /bin/install-bin\n",
+        "cat /bin/install-payload\n",
+        "cat /bin/install-bin-media\n",
+        "cat /bin/install-payload-media\n",
         "ls /proc\n",
         "cat /proc/execs\n",
+        "execs\n",
         "cat /proc/media\n",
+        "media\n",
         "cat /proc/pending\n",
+        "pending\n",
         "cat /proc/self\n",
+        "self\n",
+        "cat /proc/session\n",
+        "session\n",
+        "cat /proc/services\n",
+        "services\n",
         "cat /proc/processes\n",
+        "ps\n",
         "cat /proc/tasks\n",
+        "tasks\n",
         "cat /proc/scheduler\n",
         "cat /proc/sources\n",
+        "sources\n",
         "sched tick\n",
         "sched yield\n",
+        "sched sleep 1\n",
         "proc\n",
         "proc self\n",
+        "proc session\n",
         "proc media\n",
         "proc sources\n",
-        "proc exec pwd\n",
-        "proc exec cat /boot/profile\n",
-        "proc spawn pwd\n",
+        "exec pwd\n",
+        "exec cat /boot/profile\n",
+        "spawn pwd\n",
         "pwd\n",
         "read\n",
         "scripted tty line\n",
         "cat /proc/syscalls\n",
+        "syscalls\n",
+        "cat /proc/continuations\n",
+        "continuations\n",
         "cat /proc/waits\n",
+        "waits\n",
         "ls /dump\n",
         "cat /dump/status\n",
         "cat /dump/snapshot\n",
@@ -806,7 +909,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "halt\n",
     );
     let exe = build_os_image(&[], Some(bootline), None);
-    let (code, serial) = run_system_image(&exe);
+    let (code, serial) = run_system_image_with_timeout(&exe, Duration::from_secs(180));
     assert_eq!(code, 0, "reovim-os shell profile exits 0; serial: {serial:?}");
     assert!(
         serial.contains("system kernel shell ready"),
@@ -826,7 +929,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     );
     assert!(
         serial.contains(
-            "/bin programs: help, init, sh, clear, screentest, pwd, ls, cd, cat, read, mount, input, status, proof, device, dmesg, dump, sched, proc, probe, launch, reovim, halt"
+            "/bin programs: help, init, sh, clear, screentest, pwd, ls, cd, cat, read, mount, input, status, proof, device, dmesg, dump, sched, proc, probe, launch, reovim, hello, halt, ps, kill, wake, block, spawn, sleep, wait, wait-ticks, exec, service-stop, service-start, service-restart, session, services, tasks, waits, syscalls, continuations, execs, pending, sources, media, self"
         ),
         "help program vocabulary appears; serial: {serial:?}",
     );
@@ -841,13 +944,52 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     assert!(
         serial.contains("details:\n  help [program] - show program help")
             && serial
-                .contains("  sched [status|tick|yield] - inspect scheduler state, tick, or yield current task")
+                .contains("  sched [status|tick|yield|sleep TICKS] - inspect scheduler state, tick, yield, or sleep current task")
             && serial.contains(
-                "  proc [processes|execs|media|pending|self|sources|tasks|waits|syscalls|scheduler|exec PROGRAM [ARG...]|spawn PROGRAM [ARG...]|block PROGRAM [ARG...]|wait PID|wake PID|kill PID|install-bin NAME ok|error|install-payload NAME ready|failed|install-bin-media NAME|install-payload-media NAME] - inspect process state"
+                "  proc [processes|execs|address-spaces|page-tables|pages|memory-objects|media|pending|self|session|services|sources|tasks|waits|syscalls|continuations|scheduler] - inspect process state"
             )
             && serial.contains("  cat [path...] - print stdin or kernel VFS pseudo files")
             && serial.contains("  read - read one TTY line")
-            && serial.contains("  halt - request root daemon shutdown"),
+            && serial.contains("  hello - print a linked-bin syscall proof")
+            && serial.contains("  halt - request root daemon shutdown")
+            && serial.contains("  ps - print retained process table")
+            && serial.contains("  kill PID - terminate a retained ready or blocked process")
+            && serial.contains("  wake PID - wake an operator-blocked process")
+            && serial.contains(
+                "  block [NAME=VALUE ...] PROGRAM [ARG...] - spawn a retained blocked process"
+            )
+            && serial.contains(
+                "  spawn [NAME=VALUE ...] PROGRAM [ARG...] - spawn a retained ready process"
+            )
+            && serial.contains(
+                "  sleep TICKS [NAME=VALUE ...] PROGRAM [ARG...] - spawn a retained process blocked until scheduler ticks"
+            )
+            && serial.contains("  wait PID - wait for a retained process")
+            && serial.contains(
+                "  wait-ticks TICKS PID - wait with scheduler ticks for a retained process"
+            )
+            && serial.contains(
+                "  exec [NAME=VALUE ...] PROGRAM [ARG...] - replace current process image"
+            )
+            && serial.contains(
+                "  service-stop NAME - stop a retained resident service"
+            )
+            && serial.contains(
+                "  service-start NAME - start a retained payload service"
+            )
+            && serial.contains(
+                "  service-restart NAME - restart a retained payload service"
+            )
+            && serial.contains("  session - print active shell session state")
+            && serial.contains("  services - print retained service table")
+            && serial.contains("  tasks - print retained task table")
+            && serial.contains("  waits - print retained wait table")
+            && serial.contains("  syscalls - print retained syscall trace")
+            && serial.contains("  execs - print executable admission table")
+            && serial.contains("  pending - print pending executable table")
+            && serial.contains("  sources - print executable source table")
+            && serial.contains("  media - print executable media status")
+            && serial.contains("  self - print current process state"),
         "VFS help pseudo-file prints detailed program catalog; serial: {serial:?}",
     );
     assert!(
@@ -894,31 +1036,132 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     );
     assert!(
         serial.contains(
-            "sched [status|tick|yield] - inspect scheduler state, tick, or yield current task"
+            "sched [status|tick|yield|sleep TICKS] - inspect scheduler state, tick, yield, or sleep current task"
         ),
         "sched help appears; serial: {serial:?}",
     );
     assert!(
         serial.contains(
-            "proc [processes|execs|media|pending|self|sources|tasks|waits|syscalls|scheduler|exec PROGRAM [ARG...]|spawn PROGRAM [ARG...]|block PROGRAM [ARG...]|wait PID|wake PID|kill PID|install-bin NAME ok|error|install-payload NAME ready|failed|install-bin-media NAME|install-payload-media NAME] - inspect process state"
+            "proc [processes|execs|address-spaces|page-tables|pages|memory-objects|media|pending|self|session|services|sources|tasks|waits|syscalls|continuations|scheduler] - inspect process state"
         ),
         "proc help appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("hello - print a linked-bin syscall proof"),
+        "hello help appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("hello from linked bin"),
+        "linked hello bin runs through transcript; serial: {serial:?}",
     );
     assert!(
         serial.contains("device - print boot memory and device inventory"),
         "device help appears; serial: {serial:?}",
     );
     assert!(
-        serial.contains("launch [payload] - list or run registered payloads"),
+        serial.contains(
+            "launch [NAME=VALUE ...] [payload] [arg...] - list or run registered payloads"
+        ),
         "launch help appears; serial: {serial:?}",
     );
     assert!(
-        serial.contains("reovim - run the default reovim payload alias"),
+        serial.contains("reovim [NAME=VALUE ...] [arg...] - run the default reovim payload alias"),
         "reovim help appears; serial: {serial:?}",
     );
     assert!(
         serial.contains("halt - request root daemon shutdown"),
         "halt help appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("ps - print retained process table"),
+        "ps help appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("kill PID - terminate a retained ready or blocked process"),
+        "kill help appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("wake PID - wake an operator-blocked process"),
+        "wake help appears; serial: {serial:?}",
+    );
+    assert!(
+        serial
+            .contains("block [NAME=VALUE ...] PROGRAM [ARG...] - spawn a retained blocked process"),
+        "block help appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("spawn [NAME=VALUE ...] PROGRAM [ARG...] - spawn a retained ready process"),
+        "spawn help appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("wait PID - wait for a retained process"),
+        "wait help appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "sleep TICKS [NAME=VALUE ...] PROGRAM [ARG...] - spawn a retained process blocked until scheduler ticks"
+        ),
+        "sleep help appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("wait-ticks TICKS PID - wait with scheduler ticks for a retained process"),
+        "wait-ticks help appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("exec [NAME=VALUE ...] PROGRAM [ARG...] - replace current process image"),
+        "exec help appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("service-stop NAME - stop a retained resident service"),
+        "service-stop help appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("service-start NAME - start a retained payload service"),
+        "service-start help appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("service-restart NAME - restart a retained payload service"),
+        "service-restart help appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("session - print active shell session state"),
+        "session help appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("services - print retained service table"),
+        "services help appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("tasks - print retained task table"),
+        "tasks help appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("waits - print retained wait table"),
+        "waits help appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("syscalls - print retained syscall trace"),
+        "syscalls help appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("execs - print executable admission table"),
+        "execs help appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("pending - print pending executable table"),
+        "pending help appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("sources - print executable source table"),
+        "sources help appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("media - print executable media status"),
+        "media help appears; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("self - print current process state"),
+        "self help appears; serial: {serial:?}",
     );
     assert!(
         serial.contains("usb_keyboard_pending_bytes=0"),
@@ -964,14 +1207,14 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         serial.contains("probe targets:"),
         "probe target help appears in transcript; serial: {serial:?}",
     );
-    let proof_commands = "proof:\n/bin programs:\n  proof\n  cat /boot/proof\n  help\n  help clear\n  help screentest\n  help input\n  help proof\n  help pwd\n  help ls\n  help cd\n  help cat\n  help read\n  help mount\n  help device\n  help dmesg\n  help dump\n  help sched\n  help proc\n  help status\n  help probe\n  help launch\n  help reovim\n  help halt\n  cat /boot/help";
+    let proof_commands = "proof:\n/bin programs:\n  proof\n  cat /boot/proof\n  help\n  help clear\n  help screentest\n  help input\n  help proof\n  help pwd\n  help ls\n  help cd\n  help cat\n  help read\n  help mount\n  help device\n  help dmesg\n  help dump\n  help sched\n  help proc\n  help status\n  help probe\n  help launch\n  help reovim\n  help hello\n  hello\n  help halt\n  cat /boot/help";
     assert!(
         serial.contains(proof_commands),
         "proof checklist appears in transcript; serial: {serial:?}",
     );
     assert!(
         serial.contains(
-            "  help\n  help clear\n  help screentest\n  help input\n  help proof\n  help pwd\n  help ls\n  help cd\n  help cat\n  help read\n  help mount\n  help device\n  help dmesg\n  help dump\n  help sched\n  help proc\n  help status\n  help probe\n  help launch\n  help reovim\n  help halt\n  cat /boot/help\n  clear"
+            "  help\n  help clear\n  help screentest\n  help input\n  help proof\n  help pwd\n  help ls\n  help cd\n  help cat\n  help read\n  help mount\n  help device\n  help dmesg\n  help dump\n  help sched\n  help proc\n  help status\n  help probe\n  help launch\n  help reovim\n  help hello\n  hello\n  help halt\n  cat /boot/help\n  clear"
         ),
         "proof checklist includes targeted help and VFS help; serial: {serial:?}",
     );
@@ -1023,7 +1266,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     );
     assert!(
         serial.contains(
-            "  help clear\n  help screentest\n  help input\n  help proof\n  help pwd\n  help ls\n  help cd\n  help cat\n  help read\n  help mount\n  help device\n  help dmesg\n  help dump\n  help sched\n  help proc\n  help status\n  help probe\n  help launch\n  help reovim\n  help halt\n  cat /boot/help"
+            "  help clear\n  help screentest\n  help input\n  help proof\n  help pwd\n  help ls\n  help cd\n  help cat\n  help read\n  help mount\n  help device\n  help dmesg\n  help dump\n  help sched\n  help proc\n  help status\n  help probe\n  help launch\n  help reovim\n  help hello\n  hello\n  help halt\n  cat /boot/help"
         ),
         "proof checklist includes targeted help commands; serial: {serial:?}",
     );
@@ -1058,6 +1301,10 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     assert!(
         serial.contains("dump sync fails closed until persistent storage is available"),
         "proof checklist names dump sync fail-closed expectation; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("halt attempts dump sync before root daemon shutdown"),
+        "proof checklist names halt dump-sync expectation; serial: {serial:?}",
     );
     assert!(
         serial.contains("kernel log dropped_bytes=0"),
@@ -1164,9 +1411,10 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         serial.contains("reovim-os> events:\n- seq=")
             && serial.contains("boot=1")
             && serial.contains("session=1")
-            && serial.contains("source=rootd")
-            && serial.contains("component=boot")
+            && serial.contains("source=process")
+            && serial.contains("component=sched")
             && serial.contains("component=proc")
+            && serial.contains("kind=scheduler-dispatch")
             && serial.contains("kind=program-exit")
             && serial.contains("pid=")
             && serial.contains("task="),
@@ -1257,7 +1505,9 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     );
     assert!(
         serial.contains("reovim-os> help\ninit\nsh\nclear\nscreentest")
-            && serial.contains("probe\nlaunch\nreovim\nhalt\n"),
+            && serial.contains(
+                "probe\nlaunch\nreovim\nhello\nhalt\nps\nkill\nwake\nblock\nspawn\nsleep\nwait\nwait-ticks\nexec\nservice-stop\nservice-start\nservice-restart\nsession\nservices\ntasks\nwaits\nsyscalls\ncontinuations\nexecs\npending\nsources\nmedia\nself\n"
+            ),
         "ls /bin prints image program namespace; serial: {serial:?}",
     );
     assert!(
@@ -1266,74 +1516,68 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
             && serial.contains("[  OK  ]\u{1b}[0m Started /bin/init.")
             && serial.contains("Reached target /bin/sh.")
             && serial.contains("[  OK  ]\u{1b}[0m Started /bin/sh.")
-            && serial.contains("Reached target root shell.")
-            && serial.contains("exec.path=/bin/init")
-            && serial.contains("op=session-shell-target status=ok target=/bin/sh")
-            && serial.contains("loader=source-image entry_fn=bin_init")
-            && serial.contains("exec.path=/bin/sh")
-            && serial.contains("op=session-shell-start status=ok")
-            && serial.contains("loader=source-image entry_fn=bin_sh"),
-        "boot runs /bin/init and /bin/sh through exec/scheduler/syscall before shell ready; serial: {serial:?}",
+            && serial.contains("Reached target root shell."),
+        "boot visibly reaches /bin/init, /bin/sh, and root shell targets; serial: {serial:?}",
     );
     assert!(
         serial.contains(
-            "program=help\npath=/bin/help\nsummary=show /bin program help\ntype=bin\nloader=source-image\nentry_fn=bin_help"
+            "program=help\npath=/bin/help\nsummary=show /bin program help\ntype=bin\nloader=linked-bin\nentry_fn=bin_help"
         ),
-        "cat /bin/help prints program descriptor; serial: {serial:?}",
+        "cat /bin/help prints linked-bin program descriptor; serial: {serial:?}",
     );
     assert!(
         serial.contains(
-            "program=init\npath=/bin/init\nsummary=start userland session services\ntype=bin\nloader=source-image\nentry_fn=bin_init"
+            "program=init\npath=/bin/init\nsummary=start userland session services\ntype=bin\nloader=linked-bin\nentry_fn=bin_init"
         ),
-        "cat /bin/init prints source-image program descriptor; serial: {serial:?}",
+        "cat /bin/init prints linked-bin program descriptor; serial: {serial:?}",
     );
     assert!(
         serial.contains(
-            "program=sh\npath=/bin/sh\nsummary=run interactive root shell\ntype=bin\nloader=source-image\nentry_fn=bin_sh"
+            "program=sh\npath=/bin/sh\nsummary=run interactive root shell\ntype=bin\nloader=linked-bin\nentry_fn=bin_sh"
         ),
-        "cat /bin/sh prints source-image program descriptor; serial: {serial:?}",
+        "cat /bin/sh prints linked-bin program descriptor; serial: {serial:?}",
     );
     assert!(
         serial.contains(
-            "program=clear\npath=/bin/clear\nsummary=clear framebuffer console and terminal\ntype=bin\nloader=source-image\nentry_fn=bin_clear"
+            "program=clear\npath=/bin/clear\nsummary=clear framebuffer console and terminal\ntype=bin\nloader=linked-bin\nentry_fn=bin_clear"
         ),
-        "cat /bin/clear prints source-image program descriptor; serial: {serial:?}",
+        "cat /bin/clear prints linked-bin program descriptor; serial: {serial:?}",
     );
     assert!(
         serial.contains(
-            "program=screentest\npath=/bin/screentest\nsummary=print renderer diagnostics\ntype=bin\nloader=source-image\nentry_fn=bin_screentest"
+            "program=screentest\npath=/bin/screentest\nsummary=print renderer diagnostics\ntype=bin\nloader=linked-bin\nentry_fn=bin_screentest"
         ),
-        "cat /bin/screentest prints source-image program descriptor; serial: {serial:?}",
+        "cat /bin/screentest prints linked-bin program descriptor; serial: {serial:?}",
     );
     assert!(
         serial.contains(
-            "program=pwd\npath=/bin/pwd\nsummary=print current kernel VFS directory\ntype=bin\nloader=source-image\nentry_fn=bin_pwd"
+            "program=pwd\npath=/bin/pwd\nsummary=print current kernel VFS directory\ntype=bin\nloader=linked-bin\nentry_fn=bin_pwd"
         ),
         "cat /bin/pwd prints source-image program descriptor; serial: {serial:?}",
     );
     assert!(
         serial.contains(
-            "program=ls\npath=/bin/ls\nsummary=list a kernel VFS directory\ntype=bin\nloader=source-image\nentry_fn=bin_ls"
+            "program=ls\npath=/bin/ls\nsummary=list a kernel VFS directory\ntype=bin\nloader=linked-bin\nentry_fn=bin_ls"
         ),
-        "cat /bin/ls prints source-image program descriptor; serial: {serial:?}",
+        "cat /bin/ls prints linked-bin program descriptor; serial: {serial:?}",
     );
     assert!(
         serial.contains(
-            "program=cd\npath=/bin/cd\nsummary=change current kernel VFS directory\ntype=bin\nloader=source-image\nentry_fn=bin_cd"
+            "program=cd\npath=/bin/cd\nsummary=change current kernel VFS directory\ntype=bin\nloader=linked-bin\nentry_fn=bin_cd"
         ),
-        "cat /bin/cd prints source-image program descriptor; serial: {serial:?}",
+        "cat /bin/cd prints linked-bin program descriptor; serial: {serial:?}",
     );
     assert!(
         serial.contains(
-            "program=cat\npath=/bin/cat\nsummary=print stdin or kernel VFS pseudo files\ntype=bin\nloader=source-image\nentry_fn=bin_cat"
+            "program=cat\npath=/bin/cat\nsummary=print stdin or kernel VFS pseudo files\ntype=bin\nloader=linked-bin\nentry_fn=bin_cat"
         ),
-        "cat /bin/cat prints source-image program descriptor; serial: {serial:?}",
+        "cat /bin/cat prints linked-bin program descriptor; serial: {serial:?}",
     );
     assert!(
         serial.contains(
-            "program=read\npath=/bin/read\nsummary=read one TTY line\ntype=bin\nloader=source-image\nentry_fn=bin_read"
+            "program=read\npath=/bin/read\nsummary=read one TTY line\ntype=bin\nloader=linked-bin\nentry_fn=bin_read"
         ),
-        "cat /bin/read prints source-image program descriptor; serial: {serial:?}",
+        "cat /bin/read prints linked-bin program descriptor; serial: {serial:?}",
     );
     assert!(
         serial.contains("reovim-os> scripted tty line\n"),
@@ -1341,85 +1585,253 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     );
     assert!(
         serial.contains(
-            "program=mount\npath=/bin/mount\nsummary=print kernel VFS mount table\ntype=bin\nloader=source-image\nentry_fn=bin_mount"
+            "program=mount\npath=/bin/mount\nsummary=print kernel VFS mount table\ntype=bin\nloader=linked-bin\nentry_fn=bin_mount"
         ),
-        "cat /bin/mount prints source-image program descriptor; serial: {serial:?}",
+        "cat /bin/mount prints linked-bin program descriptor; serial: {serial:?}",
     );
     assert!(
         serial.contains(
-            "program=device\npath=/bin/device\nsummary=print boot memory and device inventory\ntype=bin\nloader=source-image\nentry_fn=bin_device"
+            "program=device\npath=/bin/device\nsummary=print boot memory and device inventory\ntype=bin\nloader=linked-bin\nentry_fn=bin_device"
         ),
-        "cat /bin/device prints source-image program descriptor; serial: {serial:?}",
+        "cat /bin/device prints linked-bin program descriptor; serial: {serial:?}",
     );
     assert!(
         serial.contains(
-            "program=input\npath=/bin/input\nsummary=print live console input diagnostics\ntype=bin\nloader=source-image\nentry_fn=bin_input"
+            "program=input\npath=/bin/input\nsummary=print live console input diagnostics\ntype=bin\nloader=linked-bin\nentry_fn=bin_input"
         ),
-        "cat /bin/input prints source-image program descriptor; serial: {serial:?}",
+        "cat /bin/input prints linked-bin program descriptor; serial: {serial:?}",
     );
     assert!(
         serial.contains(
-            "program=status\npath=/bin/status\nsummary=print boot, input, and manual_next summary\ntype=bin\nloader=source-image\nentry_fn=bin_status"
+            "program=status\npath=/bin/status\nsummary=print boot, input, and manual_next summary\ntype=bin\nloader=linked-bin\nentry_fn=bin_status"
         ),
-        "cat /bin/status prints source-image program descriptor; serial: {serial:?}",
+        "cat /bin/status prints linked-bin program descriptor; serial: {serial:?}",
     );
     assert!(
         serial.contains(
-            "program=proof\npath=/bin/proof\nsummary=print physical input proof checklist\ntype=bin\nloader=source-image\nentry_fn=bin_proof"
+            "program=proof\npath=/bin/proof\nsummary=print physical input proof checklist\ntype=bin\nloader=linked-bin\nentry_fn=bin_proof"
         ),
-        "cat /bin/proof prints source-image program descriptor; serial: {serial:?}",
+        "cat /bin/proof prints linked-bin program descriptor; serial: {serial:?}",
     );
     assert!(
         serial.contains(
-            "program=dmesg\npath=/bin/dmesg\nsummary=print retained kernel log or ring stats\ntype=bin\nloader=source-image\nentry_fn=bin_dmesg"
+            "program=dmesg\npath=/bin/dmesg\nsummary=print retained kernel log or ring stats\ntype=bin\nloader=linked-bin\nentry_fn=bin_dmesg"
         ),
-        "cat /bin/dmesg prints source-image program descriptor; serial: {serial:?}",
+        "cat /bin/dmesg prints linked-bin program descriptor; serial: {serial:?}",
     );
     assert!(
         serial.contains(
-            "program=dump\npath=/bin/dump\nsummary=inspect or flush kernel dump state\ntype=bin\nloader=source-image\nentry_fn=bin_dump"
+            "program=dump\npath=/bin/dump\nsummary=inspect or flush kernel dump state\ntype=bin\nloader=linked-bin\nentry_fn=bin_dump"
         ),
-        "cat /bin/dump prints source-image program descriptor; serial: {serial:?}",
+        "cat /bin/dump prints linked-bin program descriptor; serial: {serial:?}",
     );
     assert!(
         serial.contains(
-            "program=sched\npath=/bin/sched\nsummary=inspect scheduler state, tick, or yield\ntype=bin\nloader=source-image\nentry_fn=bin_sched"
+            "program=sched\npath=/bin/sched\nsummary=inspect scheduler state, tick, yield, or sleep\ntype=bin\nloader=linked-bin\nentry_fn=bin_sched"
         ),
-        "cat /bin/sched prints source-image program descriptor; serial: {serial:?}",
+        "cat /bin/sched prints linked-bin program descriptor; serial: {serial:?}",
     );
     assert!(
         serial.contains(
-            "program=proc\npath=/bin/proc\nsummary=inspect process state\ntype=bin\nloader=source-image\nentry_fn=bin_proc"
+            "program=proc\npath=/bin/proc\nsummary=inspect process state\ntype=bin\nloader=linked-bin\nentry_fn=bin_proc"
         ),
-        "cat /bin/proc prints source-image program descriptor; serial: {serial:?}",
+        "cat /bin/proc prints linked-bin program descriptor; serial: {serial:?}",
     );
     assert!(
         serial.contains(
-            "program=probe\npath=/bin/probe\nsummary=run a lower hardware probe\ntype=bin\nloader=source-image\nentry_fn=bin_probe"
+            "program=probe\npath=/bin/probe\nsummary=run a lower hardware probe\ntype=bin\nloader=linked-bin\nentry_fn=bin_probe"
         ),
-        "cat /bin/probe prints source-image program descriptor; serial: {serial:?}",
+        "cat /bin/probe prints linked-bin program descriptor; serial: {serial:?}",
     );
     assert!(
         serial.contains(
-            "program=launch\npath=/bin/launch\nsummary=list or run registered payloads\ntype=bin\nloader=source-image\nentry_fn=bin_launch"
+            "program=launch\npath=/bin/launch\nsummary=list or run registered payloads\ntype=bin\nloader=linked-bin\nentry_fn=bin_launch"
         ),
-        "cat /bin/launch prints source-image program descriptor; serial: {serial:?}",
+        "cat /bin/launch prints linked-bin program descriptor; serial: {serial:?}",
     );
     assert!(
         serial.contains(
-            "program=reovim\npath=/bin/reovim\nsummary=run the default reovim payload alias\ntype=bin\nloader=source-image\nentry_fn=bin_reovim"
+            "program=reovim\npath=/bin/reovim\nsummary=run the default reovim payload alias\ntype=bin\nloader=linked-bin\nentry_fn=bin_reovim"
         ),
-        "cat /bin/reovim prints source-image program descriptor; serial: {serial:?}",
+        "cat /bin/reovim prints linked-bin program descriptor; serial: {serial:?}",
     );
     assert!(
         serial.contains(
-            "program=halt\npath=/bin/halt\nsummary=request root daemon shutdown\ntype=bin\nloader=source-image\nentry_fn=bin_halt"
+            "program=hello\npath=/bin/hello\nsummary=print a linked-bin syscall proof\ntype=bin\nloader=linked-bin\nentry_fn=bin_hello"
         ),
-        "cat /bin/halt prints source-image program descriptor; serial: {serial:?}",
+        "cat /bin/hello prints linked-bin program descriptor; serial: {serial:?}",
     );
     assert!(
         serial.contains(
-            "reovim-os> execs\nmedia\npending\nprocesses\nself\nscheduler\nsources\nsyscalls\ntasks\nwaits\n"
+            "program=halt\npath=/bin/halt\nsummary=request root daemon shutdown\ntype=bin\nloader=linked-bin\nentry_fn=bin_halt"
+        ),
+        "cat /bin/halt prints linked-bin program descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "program=ps\npath=/bin/ps\nsummary=print retained process table\ntype=bin\nloader=linked-bin\nentry_fn=bin_ps"
+        ),
+        "cat /bin/ps prints linked-bin program descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "program=kill\npath=/bin/kill\nsummary=terminate a retained ready or blocked process\ntype=bin\nloader=linked-bin\nentry_fn=bin_kill"
+        ),
+        "cat /bin/kill prints linked-bin program descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "program=wake\npath=/bin/wake\nsummary=wake an operator-blocked process\ntype=bin\nloader=linked-bin\nentry_fn=bin_wake"
+        ),
+        "cat /bin/wake prints linked-bin program descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "program=block\npath=/bin/block\nsummary=spawn a retained blocked process\ntype=bin\nloader=linked-bin\nentry_fn=bin_block"
+        ),
+        "cat /bin/block prints linked-bin program descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "program=spawn\npath=/bin/spawn\nsummary=spawn a retained ready process\ntype=bin\nloader=linked-bin\nentry_fn=bin_spawn"
+        ),
+        "cat /bin/spawn prints linked-bin program descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "program=sleep\npath=/bin/sleep\nsummary=spawn a retained process blocked until scheduler ticks\ntype=bin\nloader=linked-bin\nentry_fn=bin_sleep"
+        ),
+        "cat /bin/sleep prints linked-bin program descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "program=wait\npath=/bin/wait\nsummary=wait for a retained process\ntype=bin\nloader=linked-bin\nentry_fn=bin_wait"
+        ),
+        "cat /bin/wait prints linked-bin program descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "program=wait-ticks\npath=/bin/wait-ticks\nsummary=wait for a retained process with scheduler ticks\ntype=bin\nloader=linked-bin\nentry_fn=bin_wait_ticks"
+        ),
+        "cat /bin/wait-ticks prints linked-bin program descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "program=service-stop\npath=/bin/service-stop\nsummary=stop a retained resident service\ntype=bin\nloader=linked-bin\nentry_fn=bin_service_stop"
+        ),
+        "cat /bin/service-stop prints linked-bin program descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "program=service-start\npath=/bin/service-start\nsummary=start a retained payload service\ntype=bin\nloader=linked-bin\nentry_fn=bin_service_start"
+        ),
+        "cat /bin/service-start prints linked-bin program descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "program=service-restart\npath=/bin/service-restart\nsummary=restart a retained payload service\ntype=bin\nloader=linked-bin\nentry_fn=bin_service_restart"
+        ),
+        "cat /bin/service-restart prints linked-bin program descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "program=session\npath=/bin/session\nsummary=print active shell session state\ntype=bin\nloader=linked-bin\nentry_fn=bin_session"
+        ),
+        "cat /bin/session prints linked-bin program descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "program=services\npath=/bin/services\nsummary=print retained service table\ntype=bin\nloader=linked-bin\nentry_fn=bin_services"
+        ),
+        "cat /bin/services prints linked-bin program descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "program=tasks\npath=/bin/tasks\nsummary=print retained task table\ntype=bin\nloader=linked-bin\nentry_fn=bin_tasks"
+        ),
+        "cat /bin/tasks prints linked-bin program descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "program=waits\npath=/bin/waits\nsummary=print retained wait table\ntype=bin\nloader=linked-bin\nentry_fn=bin_waits"
+        ),
+        "cat /bin/waits prints linked-bin program descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "program=syscalls\npath=/bin/syscalls\nsummary=print retained syscall trace\ntype=bin\nloader=linked-bin\nentry_fn=bin_syscalls"
+        ),
+        "cat /bin/syscalls prints linked-bin program descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "program=continuations\npath=/bin/continuations\nsummary=print active syscall continuations\ntype=bin\nloader=linked-bin\nentry_fn=bin_continuations"
+        ),
+        "cat /bin/continuations prints linked-bin program descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "program=exec\npath=/bin/exec\nsummary=replace current process image\ntype=bin\nloader=linked-bin\nentry_fn=bin_exec"
+        ),
+        "cat /bin/exec prints linked-bin program descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "program=execs\npath=/bin/execs\nsummary=print executable admission table\ntype=bin\nloader=linked-bin\nentry_fn=bin_execs"
+        ),
+        "cat /bin/execs prints linked-bin program descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "program=pending\npath=/bin/pending\nsummary=print pending executable table\ntype=bin\nloader=linked-bin\nentry_fn=bin_pending"
+        ),
+        "cat /bin/pending prints linked-bin program descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "program=sources\npath=/bin/sources\nsummary=print executable source table\ntype=bin\nloader=linked-bin\nentry_fn=bin_sources"
+        ),
+        "cat /bin/sources prints linked-bin program descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "program=media\npath=/bin/media\nsummary=print executable media status\ntype=bin\nloader=linked-bin\nentry_fn=bin_media"
+        ),
+        "cat /bin/media prints linked-bin program descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "program=self\npath=/bin/self\nsummary=print current process state\ntype=bin\nloader=linked-bin\nentry_fn=bin_self"
+        ),
+        "cat /bin/self prints linked-bin program descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "program=install-bin\npath=/bin/install-bin\nsummary=install a status-only /bin source image\ntype=bin\nloader=linked-bin\nentry_fn=bin_install_bin"
+        ),
+        "cat /bin/install-bin prints linked-bin program descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "program=install-payload\npath=/bin/install-payload\nsummary=install a status-only payload source image\ntype=bin\nloader=linked-bin\nentry_fn=bin_install_payload"
+        ),
+        "cat /bin/install-payload prints linked-bin program descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "program=install-bin-media\npath=/bin/install-bin-media\nsummary=install a /bin source image from source media\ntype=bin\nloader=linked-bin\nentry_fn=bin_install_bin_media"
+        ),
+        "cat /bin/install-bin-media prints linked-bin program descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "program=install-payload-media\npath=/bin/install-payload-media\nsummary=install a payload source image from source media\ntype=bin\nloader=linked-bin\nentry_fn=bin_install_payload_media"
+        ),
+        "cat /bin/install-payload-media prints linked-bin program descriptor; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "reovim-os> address-spaces\ncontinuations\nexecs\nmedia\nmemory-objects\npage-tables\npages\npending\nprocesses\nself\nsession\nservices\nscheduler\nsources\nsyscalls\ntasks\nwaits\n"
         ),
         "ls /proc prints process namespace; serial: {serial:?}",
     );
@@ -1427,13 +1839,25 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         serial.contains("reovim-os> execs:\n")
             && serial.contains("argv0=cat status=ok reason=loaded path=/bin/cat")
             && serial.contains("path=/bin/cat source=/bin/cat")
-            && serial.contains("loader=source-image entry_fn=bin_cat")
+            && serial.contains("loader=linked-bin entry_fn=bin_cat")
             && serial.contains("truncated=false kind=bin"),
         "cat /proc/execs prints executable admission rows; serial: {serial:?}",
     );
     assert!(
+        serial.contains("reovim-os> execs:\n")
+            && serial.contains("argv0=execs status=ok reason=loaded path=/bin/execs")
+            && serial.contains("path=/bin/execs source=/bin/execs")
+            && serial.contains("loader=linked-bin entry_fn=bin_execs"),
+        "/bin/execs reads /proc/execs through fd syscalls; serial: {serial:?}",
+    );
+    assert!(
         serial.contains("reovim-os> pending:\n"),
         "cat /proc/pending prints pending executable table; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("reovim-os> pending:\n")
+            && serial.contains("loader=linked-bin entry_fn=bin_pending"),
+        "/bin/pending reads /proc/pending through fd syscalls; serial: {serial:?}",
     );
     assert!(
         serial.contains("source-media:\n")
@@ -1442,32 +1866,61 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "source-media table reports unavailable media in default x86 boot; serial: {serial:?}",
     );
     assert!(
-        serial.contains("sources:\n")
-            && serial.contains("namespace=bin path=/bin/init loader=source-image bytes=")
-            && serial.contains("namespace=bin path=/bin/sh loader=source-image bytes=")
-            && serial.contains("namespace=bin path=/bin/help loader=source-image bytes=")
-            && serial.contains("namespace=bin path=/bin/proc loader=source-image bytes="),
-        "source-store table exposes /bin source artifacts; serial: {serial:?}",
+        serial.contains("reovim-os> source-media:\n")
+            && serial.contains("loader=linked-bin entry_fn=bin_media"),
+        "/bin/media reads /proc/media through fd syscalls; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("sources:\n"),
+        "source-store table exposes payload source artifacts; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("reovim-os> sources:\n"),
+        "/bin/proc sources prints executable source artifacts through /proc/sources; serial: {serial:?}",
     );
     assert!(
         serial.contains("reovim-os> sources:\n")
-            && serial.contains("namespace=bin path=/bin/cat loader=source-image bytes="),
-        "/bin/proc sources prints executable source artifacts; serial: {serial:?}",
+            && serial.contains("loader=linked-bin entry_fn=bin_sources"),
+        "/bin/sources reads /proc/sources through fd syscalls; serial: {serial:?}",
     );
     assert!(
         serial.contains("reovim-os> self:\n")
             && serial.contains("state=running path=/bin/cat")
-            && serial.contains("loader=source-image entry_fn=bin_cat"),
+            && serial.contains("loader=linked-bin entry_fn=bin_cat"),
         "cat /proc/self prints current /bin/cat process; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("reovim-os> self:\n")
+            && serial.contains("loader=linked-bin entry_fn=bin_self"),
+        "/bin/self reads /proc/self through fd syscalls; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("reovim-os> session:\n")
+            && serial.contains("owner_path=/bin/sh")
+            && serial.contains("line_loop_host=rootd")
+            && serial.contains("loader=linked-bin entry_fn=bin_session"),
+        "/bin/session reads /proc/session through fd syscalls; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("reovim-os> services:\n")
+            && serial.contains("name=shell target=/bin/sh state=started reason=running")
+            && serial.contains("loader=linked-bin entry_fn=bin_services"),
+        "/bin/services reads /proc/services through fd syscalls; serial: {serial:?}",
     );
     assert!(
         serial.contains("processes:\n- pid=1 ppid=0 task=1 state=running path=rootd")
             && serial.contains("path=rootd exit=0 loader=kernel entry_fn=rootd_main")
             && serial.contains("pid=2 ppid=1 task=2 state=running path=/bin/sh")
-            && serial.contains("path=/bin/sh exit=0 loader=source-image entry_fn=bin_sh")
+            && serial.contains("path=/bin/sh exit=0 loader=linked-bin entry_fn=bin_sh")
             && serial.contains("state=running path=/bin/cat")
-            && serial.contains("loader=source-image entry_fn=bin_cat"),
+            && serial.contains("loader=linked-bin entry_fn=bin_cat"),
         "cat /proc/processes prints root and current program process; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("reovim-os> processes:\n")
+            && serial.contains("state=running path=/bin/ps")
+            && serial.contains("loader=linked-bin entry_fn=bin_ps"),
+        "/bin/ps reads /proc/processes through fd syscalls; serial: {serial:?}",
     );
     assert!(
         serial.contains("tasks:\n- task=1 pid=1 parent_task=0 state=running entry=rootd")
@@ -1476,59 +1929,92 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "cat /proc/tasks prints root and current program task; serial: {serial:?}",
     );
     assert!(
+        serial.contains("reovim-os> tasks:\n")
+            && serial.contains("state=running entry=/bin/tasks")
+            && serial.contains("loader=linked-bin entry_fn=bin_tasks"),
+        "/bin/tasks reads /proc/tasks through fd syscalls; serial: {serial:?}",
+    );
+    assert!(
         serial.contains("scheduler:\ncurrent_task=")
+            && serial.contains("current_pid=")
             && serial.contains("ready_queue_len=0")
+            && serial.contains("next_ready_pid=0")
             && serial.contains("dispatch_count=")
             && serial.contains("yield_count=")
             && serial.contains("tick_count="),
         "cat /proc/scheduler prints scheduler state; serial: {serial:?}",
     );
     assert!(
-        serial.contains("reovim-os> sched tick:\nticked=true\nstatus=ok\ntask=")
-            && serial.contains("task_ticks=1")
+        serial.contains("reovim-os> sched tick:\nticked=true\nstatus=ok\ntick_count=1")
             && serial.contains("scheduler:\n")
             && serial.contains("tick_count=1"),
         "/bin/sched records an explicit scheduler tick; serial: {serial:?}",
     );
     assert!(
-        serial.contains("reovim-os> sched yield:\nyielded=false\nstatus=no-peer\nselected_pid=")
-            && serial.contains("selected_task=")
+        serial.contains("reovim-os> sched yield:\nyielded=false\nstatus=no-peer\n")
             && serial.contains("scheduler:\n")
             && serial.contains("yield_count=1"),
         "/bin/sched reports no peer task when yielding from the shell transcript; serial: {serial:?}",
     );
     assert!(
+        serial.contains("shell: sched sleep 1\n"),
+        "/bin/sched sleep 1 is accepted by shell; serial: {serial:?}",
+    );
+    assert!(
         serial.contains("reovim-os> processes:\n")
             && serial.contains("state=running path=/bin/proc")
-            && serial.contains("loader=source-image entry_fn=bin_proc"),
+            && serial.contains("loader=linked-bin entry_fn=bin_proc"),
         "/bin/proc prints process state through typed syscalls; serial: {serial:?}",
     );
     assert!(
         serial.contains("reovim-os> self:\n")
             && serial.contains("state=running path=/bin/proc")
-            && serial.contains("loader=source-image entry_fn=bin_proc"),
+            && serial.contains("loader=linked-bin entry_fn=bin_proc"),
         "/bin/proc self prints current process through typed syscall; serial: {serial:?}",
     );
     assert!(
-        serial.contains("shell: proc exec pwd\n")
-            && serial.contains("wait.start parent_pid=")
-            && serial.contains("exec.path=/bin/pwd")
-            && serial.contains("loader=source-image entry_fn=bin_pwd"),
-        "/bin/proc exec spawns and waits for /bin/pwd child; serial: {serial:?}",
+        serial.contains("reovim-os> session:\n"),
+        "/bin/proc session prints a session header through typed syscall; serial: {serial:?}",
     );
     assert!(
-        serial.contains("shell: proc exec cat /boot/profile\n")
+        serial.contains("owner_path=/bin/sh\nowner_loader=linked-bin\n"),
+        "/bin/proc session prints shell owner path and loader; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("owner_entry_fn=bin_sh\nowner_pid=2\nowner_task=2\n"),
+        "/bin/proc session prints shell owner entry and identity; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("shell_target=/bin/sh\nshell_started=true\n"),
+        "/bin/proc session prints requested shell target and start state; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("line_discipline=argv-v1\npipe_mode=single-pipe\n"),
+        "/bin/proc session prints requested shell line discipline; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("line_loop_host=rootd\nprompt=reovim-os> \n"),
+        "/bin/proc session prints the current rootd line-loop host; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("shell: exec pwd\n")
+            && serial.contains("op=exec-replace status=ok")
+            && serial.contains("exec.path=/bin/pwd")
+            && serial.contains("loader=linked-bin entry_fn=bin_pwd"),
+        "/bin/exec replaces itself with /bin/pwd; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("shell: exec cat /boot/profile\n")
             && serial.contains("exec.path=/bin/cat")
             && serial.contains("profile=shell-only")
             && serial.contains("launch=disabled"),
-        "/bin/proc exec forwards argv to /bin/cat child; serial: {serial:?}",
+        "/bin/exec forwards argv to /bin/cat replacement; serial: {serial:?}",
     );
     assert!(
-        serial.contains("shell: proc spawn pwd\n")
-            && serial.contains("proc spawn:\n")
-            && serial.contains("state=ready\n")
-            && serial.contains("shell: pwd\n"),
-        "/bin/proc spawn leaves a ready /bin child before later scheduler dispatch; serial: {serial:?}",
+        serial.contains("shell: spawn pwd\n")
+            && serial.contains("process.adopt old_parent_pid=")
+            && serial.contains("exec.path=/bin/spawn"),
+        "rootd idle dispatch runs a linked-spawned /bin child before later input; serial: {serial:?}",
     );
     assert!(
         serial.contains("syscalls:\n")
@@ -1542,12 +2028,22 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
             && serial.contains("op=snapshot-source-store status=ok")
             && serial.contains("op=snapshot-syscalls status=ok")
             && serial.contains("op=tty-read-line status=ok")
-            && serial.contains("loader=source-image entry_fn=bin_proc"),
+            && serial.contains("loader=linked-bin entry_fn=bin_proc"),
         "cat /proc/syscalls prints typed syscall dispatch records; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("reovim-os> syscalls:\n")
+            && serial.contains("loader=linked-bin entry_fn=bin_syscalls"),
+        "/bin/syscalls reads /proc/syscalls through fd syscalls; serial: {serial:?}",
     );
     assert!(
         serial.contains("waits:\n") && serial.contains("child_state=exited exit=0 completed=true"),
         "cat /proc/waits prints completed child wait namespace; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("reovim-os> waits:\n")
+            && serial.contains("loader=linked-bin entry_fn=bin_waits"),
+        "/bin/waits reads /proc/waits through fd syscalls; serial: {serial:?}",
     );
     assert!(
         serial.contains("reovim-os> snapshot\nstatus\n"),
@@ -1565,11 +2061,14 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
             && serial.contains("panic_state=none")
             && serial.contains("persistent=available\nstorage=qemu-diagnostic-dump0")
             && serial.contains("storage_capacity_bytes=65536")
+            && serial.contains("last_sync_attempted=false")
+            && serial.contains("last_sync_reason=never-synced")
             && serial.contains("reovim-dump-v1\n")
             && serial.contains("checksum=")
             && serial.contains("boot:\n")
             && serial.contains("devices:\n")
             && serial.contains("proof:\nstate=operator-required")
+            && serial.contains("dump-sync:\n")
             && serial.contains("panic:\nstate=none")
             && serial.contains("events:\n")
             && serial.contains("pending:\n")
@@ -1593,12 +2092,11 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "cat /log/dmesg prints program exec audit paths; serial: {serial:?}",
     );
     assert!(
-        serial.contains(
-            "event seq=1 component=boot severity=info kind=boot-start boot=1 session=1 source=rootd"
-        ) && serial.contains(
-            "component=proc severity=info kind=program-exit boot=1 session=1 source=process"
-        ),
-        "cat /log/dmesg prints structured boot and process events; serial: {serial:?}",
+        serial.contains("event seq=")
+            && serial.contains(
+                "component=proc severity=info kind=program-exit boot=1 session=1 source=process",
+            ),
+        "cat /log/dmesg prints retained structured process events; serial: {serial:?}",
     );
     assert!(
         serial.contains("input=bootline-script"),
@@ -1609,8 +2107,8 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "boot profile names missing USB keyboard provider; serial: {serial:?}",
     );
     assert!(
-        serial.contains("rootd: boot report"),
-        "cat /log/dmesg prints kernel boot log; serial: {serial:?}",
+        serial.contains("boot report"),
+        "early transcript includes the visible boot report before retained log wrapping; serial: {serial:?}",
     );
     assert!(
         serial.contains("shell: pwd"),
@@ -1619,20 +2117,20 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     assert!(
         serial.contains("shell: clear")
             && serial.contains("exec.path=/bin/clear")
-            && serial.contains("loader=source-image entry_fn=bin_clear"),
-        "cat /log/dmesg prints source-image clear command audit; serial: {serial:?}",
+            && serial.contains("loader=linked-bin entry_fn=bin_clear"),
+        "cat /log/dmesg prints linked-bin clear command audit; serial: {serial:?}",
     );
     assert!(
         serial.contains("shell: screentest")
             && serial.contains("exec.path=/bin/screentest")
-            && serial.contains("loader=source-image entry_fn=bin_screentest"),
-        "cat /log/dmesg prints source-image screentest command audit; serial: {serial:?}",
+            && serial.contains("loader=linked-bin entry_fn=bin_screentest"),
+        "cat /log/dmesg prints linked-bin screentest command audit; serial: {serial:?}",
     );
     assert!(
         serial.contains("shell: mount")
             && serial.contains("exec.path=/bin/mount")
-            && serial.contains("loader=source-image entry_fn=bin_mount"),
-        "cat /log/dmesg prints source-image mount command audit; serial: {serial:?}",
+            && serial.contains("loader=linked-bin entry_fn=bin_mount"),
+        "cat /log/dmesg prints linked-bin mount command audit; serial: {serial:?}",
     );
     assert!(
         serial.contains("shell: cat /boot/memory"),
@@ -1645,14 +2143,14 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     assert!(
         serial.contains("shell: device")
             && serial.contains("exec.path=/bin/device")
-            && serial.contains("loader=source-image entry_fn=bin_device"),
-        "cat /log/dmesg prints source-image device command audit; serial: {serial:?}",
+            && serial.contains("loader=linked-bin entry_fn=bin_device"),
+        "cat /log/dmesg prints linked-bin device command audit; serial: {serial:?}",
     );
     assert!(
         serial.contains("shell: input")
             && serial.contains("exec.path=/bin/input")
-            && serial.contains("loader=source-image entry_fn=bin_input"),
-        "cat /log/dmesg prints source-image input command audit; serial: {serial:?}",
+            && serial.contains("loader=linked-bin entry_fn=bin_input"),
+        "cat /log/dmesg prints linked-bin input command audit; serial: {serial:?}",
     );
     assert!(
         serial.contains("shell: ls /log"),
@@ -1677,14 +2175,15 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     assert!(
         serial.contains("shell: dmesg --stats")
             && serial.contains("exec.path=/bin/dmesg")
-            && serial.contains("loader=source-image entry_fn=bin_dmesg"),
+            && serial.contains("loader=linked-bin entry_fn=bin_dmesg"),
         "cat /log/dmesg prints dmesg stats command audit; serial: {serial:?}",
     );
     assert!(
         serial.contains("shell: dump status")
             && serial.contains("exec.path=/bin/dump")
-            && serial.contains("loader=source-image entry_fn=bin_dump")
+            && serial.contains("loader=linked-bin entry_fn=bin_dump")
             && serial.contains("shell: dump sync")
+            && serial.contains("attempted=true")
             && serial.contains("status=written")
             && serial.contains("verified=true")
             && serial.contains("reason=written-readback-ok"),
@@ -1715,11 +2214,57 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "shell: help dump\n",
         "shell: help sched\n",
         "shell: help proc\n",
+        "shell: help ps\n",
+        "shell: help kill\n",
+        "shell: help wake\n",
+        "shell: help block\n",
+        "shell: help spawn\n",
+        "shell: help sleep\n",
+        "shell: help wait\n",
+        "shell: help wait-ticks\n",
+        "shell: help exec\n",
+        "shell: help service-stop\n",
+        "shell: help service-start\n",
+        "shell: help service-restart\n",
+        "shell: help session\n",
+        "shell: help services\n",
+        "shell: help tasks\n",
+        "shell: help waits\n",
+        "shell: help syscalls\n",
+        "shell: help execs\n",
+        "shell: help pending\n",
+        "shell: help sources\n",
+        "shell: help media\n",
+        "shell: help self\n",
         "shell: help status\n",
         "shell: help probe\n",
         "shell: help launch\n",
         "shell: help reovim\n",
+        "shell: help hello\n",
+        "shell: hello\n",
         "shell: help halt\n",
+        "shell: help ps\n",
+        "shell: help kill\n",
+        "shell: help wake\n",
+        "shell: help block\n",
+        "shell: help spawn\n",
+        "shell: help sleep\n",
+        "shell: help wait\n",
+        "shell: help wait-ticks\n",
+        "shell: help exec\n",
+        "shell: help service-stop\n",
+        "shell: help service-start\n",
+        "shell: help service-restart\n",
+        "shell: help session\n",
+        "shell: help services\n",
+        "shell: help tasks\n",
+        "shell: help waits\n",
+        "shell: help syscalls\n",
+        "shell: help execs\n",
+        "shell: help pending\n",
+        "shell: help sources\n",
+        "shell: help media\n",
+        "shell: help self\n",
     ] {
         assert!(
             serial.contains(command),
@@ -1733,6 +2278,12 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
     assert!(
         serial.contains("shell: sched yield\n") && serial.contains("exec.path=/bin/sched"),
         "cat /log/dmesg prints /bin/sched yield audit; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("shell: sched sleep 1\n")
+            && serial.contains("op=process-sleep status=ok")
+            && serial.contains("op=process-wake status=ok"),
+        "cat /log/dmesg prints /bin/sched sleep/wake audit; serial: {serial:?}",
     );
     assert!(
         serial.contains("shell: pwd | cat\n") && serial.contains("exec.path=/bin/cat"),
@@ -1749,16 +2300,21 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "cat /log/dmesg prints /bin/proc audit; serial: {serial:?}",
     );
     assert!(
-        serial.contains("shell: proc exec pwd\n") && serial.contains("exec.path=/bin/pwd"),
-        "cat /log/dmesg prints program child exec audit; serial: {serial:?}",
+        serial.contains("shell: ps\n")
+            && serial.contains("exec.path=/bin/ps")
+            && serial.contains("loader=linked-bin entry_fn=bin_ps"),
+        "cat /log/dmesg prints /bin/ps audit; serial: {serial:?}",
     );
     assert!(
-        serial.contains("shell: proc exec cat /boot/profile\n")
-            && serial.contains("exec.path=/bin/cat"),
-        "cat /log/dmesg prints argv child exec audit; serial: {serial:?}",
+        serial.contains("shell: exec pwd\n") && serial.contains("exec.path=/bin/pwd"),
+        "cat /log/dmesg prints program exec-replace audit; serial: {serial:?}",
     );
     assert!(
-        serial.contains("shell: proc spawn pwd\n") && serial.contains("exec.path=/bin/pwd"),
+        serial.contains("shell: exec cat /boot/profile\n") && serial.contains("exec.path=/bin/cat"),
+        "cat /log/dmesg prints argv exec-replace audit; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("shell: spawn pwd\n") && serial.contains("exec.path=/bin/pwd"),
         "cat /log/dmesg prints spawned /bin child audit; serial: {serial:?}",
     );
     assert!(
@@ -1770,11 +2326,11 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "device command prints boot info; serial: {serial:?}",
     );
     assert!(
-        serial.contains("dmesg:\nrootd: boot start"),
-        "dmesg prints kernel log source; serial: {serial:?}",
+        serial.contains("reovim-os> dmesg:\n") && serial.contains("shell: dmesg\n"),
+        "dmesg prints retained kernel log source; serial: {serial:?}",
     );
     let final_dmesg = serial
-        .rsplit_once("dmesg:\nrootd: boot start")
+        .rsplit_once("reovim-os> dmesg:\n")
         .map_or("", |(_, tail)| tail);
     assert!(
         !final_dmesg.contains("probe pcie:\nprobe pcie:")
@@ -1812,7 +2368,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
             && final_dmesg.contains("shell: dump snapshot")
             && final_dmesg.contains("shell: dump sync")
             && final_dmesg.contains("exec.path=/bin/dump")
-            && final_dmesg.contains("loader=source-image entry_fn=bin_dump")
+            && final_dmesg.contains("loader=linked-bin entry_fn=bin_dump")
             && final_dmesg.contains("shell: cat /log/stats")
             && final_dmesg.contains("shell: cat /log/events")
             && final_dmesg.contains("exec.path=/bin/cat")
@@ -1864,17 +2420,23 @@ fn os_exec_bundle_profile_on_x86_target_runs_block_bundle_bin() {
     assert!(
         serial.contains("exec-bundle:\n")
             && serial.contains("storage=qemu-exec-bundle0\n")
-            && serial.contains("status=ok\nformat=catalog\nentries=1\n")
-            && serial.contains("- namespace=bin path=/bin/bundle-ok offset="),
+            && serial.contains("status=ok\nformat=catalog\nentries=3\n")
+            && serial.contains("- namespace=bin path=/bin/bundle-ok offset=")
+            && serial.contains("- namespace=payload path=/payload/reovim offset=")
+            && serial.contains("- namespace=payload path=/payload/server-smoke offset="),
         "proc media exposes the exec-bundle catalog before bundle-ok exec; serial: {serial:?}",
     );
     assert!(
-        serial.contains("halt\nbundle-ok\nreovim-os> source-media:\n"),
+        serial.contains(
+            "sleep\nwait\nwait-ticks\nexec\nservice-stop\nservice-start\nservice-restart\nsession\nservices\ntasks\nwaits\nsyscalls\nexecs\npending\nsources\nmedia\nself\nbundle-ok\nreovim-os> source-media:\n"
+        ),
         "first ls /bin exposes preinstalled bundle-ok descriptor before proc media and exec; serial: {serial:?}",
     );
     assert!(
         serial.contains("reovim-os> help\ninit\nsh\nclear\nscreentest")
-            && serial.contains("halt\nbundle-ok\n"),
+            && serial.contains(
+                "sleep\nwait\nwait-ticks\nexec\nservice-stop\nservice-start\nservice-restart\nsession\nservices\ntasks\nwaits\nsyscalls\nexecs\npending\nsources\nmedia\nself\nbundle-ok\n"
+            ),
         "exec-bundle profile exposes the provider-discovered /bin descriptor after admission; serial: {serial:?}",
     );
     assert!(
@@ -1917,7 +2479,7 @@ fn os_exec_bundle_profile_on_x86_target_runs_block_bundle_bin() {
 }
 
 #[test]
-fn os_proc_block_wake_transcript_on_x86_target_runs_woken_child() {
+fn os_bundle_launch_profile_on_x86_target_runs_block_bundle_reovim_payload() {
     let Some(target) = fixture_target() else {
         return;
     };
@@ -1927,8 +2489,220 @@ fn os_proc_block_wake_transcript_on_x86_target_runs_woken_child() {
 
     let _guard = os_image_lock();
     let bootline = concat!(
-        "proc block pwd\n",
-        "proc wake 4\n",
+        "cat /boot/profile\n",
+        "launch\n",
+        "reovim\n",
+        "launch\n",
+        "proc media\n",
+        "proc execs\n",
+        "proc sources\n",
+        "proc services\n",
+        "cat /proc/syscalls\n",
+        "dmesg\n",
+        "halt\n",
+    );
+    let exe = build_os_image(&["launch-profile"], Some(bootline), Some("bundle-launch"));
+    let (code, serial) = run_system_image(&exe);
+    assert_eq!(code, 0, "bundle-launch profile exits 0; serial: {serial:?}");
+    assert!(
+        serial.contains("profile=bundle-launch\nlaunch=enabled"),
+        "bundle-launch profile was selected; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("payloads=0"),
+        "bundle-launch profile starts without image payload descriptors; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "launch: available payloads:\n  reovim: provider-discovered /payload program loader=source-image entry_fn=payload_reovim"
+        ) && serial.contains(
+            "  server-smoke: provider-discovered /payload program loader=source-image entry_fn=payload_server_smoke"
+        ),
+        "launch catalog exposes preinstalled provider payload descriptors before launch; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "reovim-os> reovim: bundle-reovim.start\nbundle-server.start\n/\nbundle-server.start\n/\n/\nservices:\n"
+        ) && serial.contains("name=reovim target=/payload/reovim state=started reason=running")
+            && serial.contains("processes:\n")
+            && serial.contains("state=running path=/payload/reovim")
+            && serial.contains("payload.ready\n"),
+        "/bin/reovim runs the provider-bundled payload, nested provider server payload wait paths, and their /bin children; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("exec-bundle:\n")
+            && serial.contains("storage=qemu-exec-bundle0\n")
+            && serial.contains("status=ok\nformat=catalog\nentries=3\n")
+            && serial.contains("- namespace=payload path=/payload/reovim offset=")
+            && serial.contains("- namespace=payload path=/payload/server-smoke offset="),
+        "proc media exposes bundled payload entries; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "argv0=reovim status=ok reason=loaded path=/payload/reovim source=/payload/reovim loader=source-image entry_fn=payload_reovim truncated=false kind=payload origin=block-bundle"
+        ) && serial.contains(
+            "argv0=server-smoke status=ok reason=loaded path=/payload/server-smoke source=/payload/server-smoke loader=source-image entry_fn=payload_server_smoke truncated=false kind=payload origin=block-bundle"
+        ),
+        "/proc/execs records block-bundle payload provenance for parent and server payloads; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("namespace=payload path=/payload/reovim loader=source-image bytes=")
+            && serial.contains(
+                "namespace=payload path=/payload/server-smoke loader=source-image bytes="
+            )
+            && serial.contains("origin=installed"),
+        "/proc/sources shows the loaded provider payload bytes installed into the executable overlay; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("name=reovim target=/payload/reovim state=exited reason=process-exited")
+            && serial.contains(
+                "name=server target=/payload/server-smoke state=exited reason=process-exited"
+            ),
+        "/proc/services records provider payload terminal readiness rows; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("path=/payload/reovim op=payload-run status=ok")
+            && serial.contains("path=/payload/reovim op=payload-launch status=ok")
+            && serial.contains("path=/payload/reovim op=service-ready status=ok")
+            && serial.contains("path=/payload/reovim op=snapshot-services status=ok")
+            && serial.contains("path=/payload/reovim op=snapshot-processes status=ok")
+            && serial.contains("path=/payload/reovim op=boot-profile status=ok")
+            && serial.contains("path=/payload/reovim op=console-input status=ok")
+            && serial.contains("path=/payload/reovim op=payload-catalog status=ok")
+            && serial.contains("path=/payload/reovim op=device-catalog status=ok")
+            && serial.contains("path=/payload/reovim op=snapshot-exec-loads status=ok")
+            && serial.contains("path=/payload/reovim op=snapshot-pending-execs status=ok")
+            && serial.contains("path=/payload/reovim op=snapshot-source-store status=ok")
+            && serial.contains("path=/payload/reovim op=scheduler-snapshot status=ok")
+            && serial.contains("path=/payload/reovim op=snapshot-tasks status=ok")
+            && serial.contains("path=/payload/reovim op=snapshot-waits status=ok")
+            && serial.contains("path=/payload/reovim op=snapshot-syscalls status=ok")
+            && serial.contains("path=/payload/server-smoke op=service-ready status=ok")
+            && serial.contains("path=/payload/reovim op=service-exited status=ok")
+            && serial.contains("path=/payload/server-smoke op=service-exited status=ok")
+            && serial.contains("path=/payload/server-smoke op=payload-run status=ok")
+            && serial.contains("path=/bin/pwd op=process-exit status=ok"),
+        "/proc/syscalls records provider payload execution, service terminal state, nested provider payload launch, and child /bin processes; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("payload.start path=/payload/reovim")
+            && serial.contains("payload.start path=/payload/server-smoke")
+            && serial.contains("loader=source-image entry_fn=payload_reovim")
+            && serial.contains("loader=source-image entry_fn=payload_server_smoke")
+            && serial.contains("exec.parent path=/bin/pwd"),
+        "dmesg records nested provider payload lifecycle and child /bin parentage; serial: {serial:?}",
+    );
+}
+
+#[test]
+fn os_linked_spawn_transcript_on_x86_target_runs_ready_child() {
+    let Some(target) = fixture_target() else {
+        return;
+    };
+    if !target.starts_with("x86_64") {
+        return;
+    }
+
+    let _guard = os_image_lock();
+    let bootline = concat!("spawn pwd\n", "pwd\n", "cat /proc/syscalls\n", "dmesg\n", "halt\n");
+    let exe = build_os_image(&[], Some(bootline), None);
+    let (code, serial) = run_system_image(&exe);
+    assert_eq!(code, 0, "linked spawn transcript exits 0; serial: {serial:?}");
+    assert!(
+        serial.contains("reovim-os> spawn:\npid=6\npath=/bin/pwd\nstate=ready\n/\n"),
+        "/bin/spawn leaves child ready and rootd idle dispatch runs it before the next prompt; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("reovim-os> spawn:\npid=6\npath=/bin/pwd\nstate=ready\n/\nreovim-os> /\n"),
+        "ready child /bin/pwd runs before later shell /bin/pwd; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("op=spawn-child status=ok")
+            && serial.contains("op=process-adopt status=ok")
+            && serial.contains("exec.path=/bin/spawn")
+            && serial.contains("loader=linked-bin entry_fn=bin_spawn")
+            && serial.contains("exec.path=/bin/pwd"),
+        "linked-spawn syscall and exec records are retained; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "process.adopt old_parent_pid=5 new_parent_pid=1 child_pid=6 child_task=6 path=/bin/pwd\n"
+        )
+            && serial.contains("component=proc severity=info kind=process-adopt")
+            && serial.contains("component=sched severity=info kind=scheduler-dispatch"),
+        "linked-spawn adoption and dispatch events are retained; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("exec.path=/bin/pwd pid=6 task=6 status=ok")
+            && serial.contains("exec.path=/bin/pwd pid=7 task=7 status=ok"),
+        "both spawned and later /bin/pwd executions are audited; serial: {serial:?}",
+    );
+}
+
+#[test]
+fn os_linked_wake_transcript_on_x86_target_runs_woken_child() {
+    let Some(target) = fixture_target() else {
+        return;
+    };
+    if !target.starts_with("x86_64") {
+        return;
+    }
+
+    let _guard = os_image_lock();
+    let bootline =
+        concat!("block pwd\n", "wake 6\n", "pwd\n", "cat /proc/syscalls\n", "dmesg\n", "halt\n");
+    let exe = build_os_image(&[], Some(bootline), None);
+    let (code, serial) = run_system_image(&exe);
+    assert_eq!(code, 0, "linked wake transcript exits 0; serial: {serial:?}");
+    assert!(
+        serial.contains("reovim-os> block:\npid=6\npath=/bin/pwd\nstate=blocked\n"),
+        "/bin/block leaves child blocked; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("reovim-os> wake:\npid=6\npath=/bin/pwd\nstate=ready\n"),
+        "/bin/wake makes blocked child ready; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("op=process-block status=ok")
+            && serial.contains("op=process-wake status=ok")
+            && serial.contains("exec.path=/bin/block")
+            && serial.contains("loader=linked-bin entry_fn=bin_block")
+            && serial.contains("exec.path=/bin/wake")
+            && serial.contains("loader=linked-bin entry_fn=bin_wake"),
+        "linked-block/linked-wake syscall records are retained; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("component=proc severity=info kind=process-block")
+            && serial.contains("component=proc severity=info kind=process-wake")
+            && serial.contains("component=sched severity=info kind=scheduler-dispatch"),
+        "process-control scheduler events are retained; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("reovim-os> /\n/\n"),
+        "woken child /bin/pwd runs before later shell /bin/pwd; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("exec.path=/bin/pwd pid=6 task=6 status=ok")
+            && serial.contains("exec.path=/bin/pwd pid=8 task=8 status=ok"),
+        "both woken and later /bin/pwd executions are audited; serial: {serial:?}",
+    );
+}
+
+#[test]
+fn os_linked_sleep_transcript_on_x86_target_wakes_child_on_tick() {
+    let Some(target) = fixture_target() else {
+        return;
+    };
+    if !target.starts_with("x86_64") {
+        return;
+    }
+
+    let _guard = os_image_lock();
+    let bootline = concat!(
+        "sleep 2 pwd\n",
+        "sched tick\n",
+        "proc tasks\n",
+        "sched tick\n",
         "pwd\n",
         "cat /proc/syscalls\n",
         "dmesg\n",
@@ -1936,33 +2710,57 @@ fn os_proc_block_wake_transcript_on_x86_target_runs_woken_child() {
     );
     let exe = build_os_image(&[], Some(bootline), None);
     let (code, serial) = run_system_image(&exe);
-    assert_eq!(code, 0, "proc block/wake transcript exits 0; serial: {serial:?}");
+    assert_eq!(code, 0, "linked sleep transcript exits 0; serial: {serial:?}");
     assert!(
-        serial.contains("reovim-os> proc block:\npid=4\npath=/bin/pwd\nstate=blocked\n"),
-        "/bin/proc block leaves child blocked; serial: {serial:?}",
+        serial.contains(
+            "reovim-os> sleep:\npid=6\npath=/bin/pwd\nstate=blocked\nblock=sleep\nwake_tick=2\n"
+        ),
+        "/bin/sleep leaves child blocked on a tick deadline; serial: {serial:?}",
     );
     assert!(
-        serial.contains("reovim-os> proc wake:\npid=4\npath=/bin/pwd\nstate=ready\n"),
-        "/bin/proc wake makes blocked child ready; serial: {serial:?}",
+        serial.contains("reovim-os> sched tick:\nticked=true\nstatus=ok")
+            && serial.contains("tick_count=1")
+            && serial.contains("scheduler:\n"),
+        "first scheduler tick does not wake the linked sleep child early; serial: {serial:?}",
     );
     assert!(
-        serial.contains("op=process-block status=ok")
-            && serial.contains("op=process-wake status=ok"),
-        "process block/wake syscall records are retained; serial: {serial:?}",
+        serial.contains(
+            "task=6 pid=6 parent_task=1 state=blocked entry=/bin/pwd block=sleep wake_tick=2"
+        ),
+        "/bin/proc tasks exposes the linked sleeping child deadline; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("tick_count=2") && serial.contains("op=process-wake status=ok"),
+        "second scheduler tick wakes the linked sleep child; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("path=/bin/sleep op=exec-load status=ok")
+            && serial.contains("path=/bin/pwd op=process-sleep status=ok")
+            && serial.contains("path=/bin/pwd op=process-wake status=ok")
+            && serial.contains("path=/bin/sched op=scheduler-tick status=ok")
+            && serial.contains("loader=linked-bin entry_fn=bin_sleep"),
+        "linked sleep syscall records include exec, sleep, tick, and wake; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("component=proc severity=info kind=process-sleep")
+            && serial.contains("component=proc severity=info kind=process-wake")
+            && serial.contains("component=sched severity=info kind=scheduler-dispatch"),
+        "linked sleep/wake scheduler events are retained; serial: {serial:?}",
     );
     assert!(
         serial.contains("reovim-os> /\n/\n"),
-        "woken child /bin/pwd runs before later shell /bin/pwd; serial: {serial:?}",
+        "tick-woken linked sleep child /bin/pwd runs before later shell /bin/pwd; serial: {serial:?}",
     );
     assert!(
-        serial.contains("exec.path=/bin/pwd pid=4 task=4 status=ok")
-            && serial.contains("exec.path=/bin/pwd pid=6 task=6 status=ok"),
-        "both woken and later /bin/pwd executions are audited; serial: {serial:?}",
+        serial.contains("exec.path=/bin/sleep pid=5 task=5 status=ok")
+            && serial.contains("exec.path=/bin/pwd pid=6 task=6 status=ok")
+            && serial.contains("exec.path=/bin/pwd pid=10 task=10 status=ok"),
+        "linked sleep parent, slept child, and later /bin/pwd executions are audited; serial: {serial:?}",
     );
 }
 
 #[test]
-fn os_proc_wait_transcript_on_x86_target_waits_for_spawned_child() {
+fn os_linked_wait_ticks_transcript_on_x86_target_waits_for_sleeping_child() {
     let Some(target) = fixture_target() else {
         return;
     };
@@ -1972,8 +2770,10 @@ fn os_proc_wait_transcript_on_x86_target_waits_for_spawned_child() {
 
     let _guard = os_image_lock();
     let bootline = concat!(
-        "proc spawn pwd\n",
-        "proc wait 4\n",
+        "sleep 2 pwd\n",
+        "wait-ticks 2 6\n",
+        "cat /proc/processes\n",
+        "cat /proc/tasks\n",
         "cat /proc/waits\n",
         "cat /proc/syscalls\n",
         "dmesg\n",
@@ -1981,38 +2781,56 @@ fn os_proc_wait_transcript_on_x86_target_waits_for_spawned_child() {
     );
     let exe = build_os_image(&[], Some(bootline), None);
     let (code, serial) = run_system_image(&exe);
-    assert_eq!(code, 0, "proc wait transcript exits 0; serial: {serial:?}");
+    assert_eq!(code, 0, "linked wait-ticks transcript exits 0; serial: {serial:?}");
     assert!(
-        serial.contains("reovim-os> proc spawn:\npid=4\npath=/bin/pwd\nstate=ready\n"),
-        "/bin/proc spawn leaves child ready for retained wait; serial: {serial:?}",
+        serial.contains(
+            "reovim-os> sleep:\npid=6\npath=/bin/pwd\nstate=blocked\nblock=sleep\nwake_tick=2\n"
+        ),
+        "/bin/sleep leaves child blocked on a tick deadline; serial: {serial:?}",
     );
     assert!(
-        serial.contains("reovim-os> /\nproc wait:\npid=4\nstate=exited\nexit=0\ncompleted=true\n"),
-        "/bin/proc wait observes the retained child completion; serial: {serial:?}",
+        serial.contains(
+            "reovim-os> /\nwait-ticks:\npid=6\nstate=exited\nexit=0\ncompleted=true\ntimed_out=false\ntick_count=2\n"
+        ),
+        "/bin/wait-ticks wakes and waits for the sleeping child; serial: {serial:?}",
     );
     assert!(
-        serial.contains("- parent_pid=5 child_pid=4 child_state=exited exit=0 completed=true\n"),
-        "/proc/waits retains the completed wait; serial: {serial:?}",
+        serial.contains("- parent_pid=7 child_pid=6 child_state=exited exit=0 completed=true\n"),
+        "/proc/waits retains the completed timed wait; serial: {serial:?}",
     );
     assert!(
-        serial.contains("path=/bin/proc op=wait-begin status=ok")
-            && serial.contains("path=/bin/proc op=wait-end status=ok"),
-        "wait begin/end syscall records are retained; serial: {serial:?}",
+        serial.contains("pid=6 ppid=1 task=6 state=reaped path=/bin/pwd")
+            && serial.contains("task=6 pid=6 parent_task=1 state=reaped entry=/bin/pwd"),
+        "process/task tables mark the waited sleeping child as reaped; serial: {serial:?}",
     );
     assert!(
-        serial.contains("wait.start parent_pid=5 parent_task=5 child_pid=4 child_task=4\n")
-            && serial.contains("wait.end parent_pid=5 child_pid=4 child_state=exited exit=0\n"),
-        "wait lifecycle is present in dmesg; serial: {serial:?}",
+        serial.contains("path=/bin/wait-ticks op=wait-begin status=ok")
+            && serial.contains("path=/bin/wait-ticks op=scheduler-tick status=ok")
+            && serial.contains("path=/bin/pwd op=process-wake status=ok")
+            && serial.contains("path=/bin/wait-ticks op=wait-end status=ok")
+            && serial.contains("loader=linked-bin entry_fn=bin_wait_ticks"),
+        "linked wait-ticks syscall records include wait, tick, wake, and completion; serial: {serial:?}",
     );
     assert!(
-        serial.contains("exec.path=/bin/pwd pid=4 task=4 status=ok")
-            && serial.contains("exec.path=/bin/proc pid=5 task=5 status=ok"),
-        "spawned child and wait program executions are audited; serial: {serial:?}",
+        serial.contains("wait.start parent_pid=7 parent_task=7 child_pid=6 child_task=6\n")
+            && serial.contains(
+                "component=proc severity=info kind=process-wake boot=1 session=1 source=process pid=6 task=6"
+            )
+            && serial.contains(
+                "component=sched severity=info kind=scheduler-dispatch boot=1 session=1 source=process pid=6 task=6"
+            )
+            && serial.contains("wait.end parent_pid=7 child_pid=6 child_state=exited exit=0\n"),
+        "linked wait-ticks lifecycle is retained in dmesg; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("exec.path=/bin/pwd pid=6 task=6 status=ok")
+            && serial.contains("exec.path=/bin/wait-ticks pid=7 task=7 status=ok"),
+        "slept child and linked wait-ticks program executions are audited; serial: {serial:?}",
     );
 }
 
 #[test]
-fn os_proc_kill_transcript_on_x86_target_terminates_blocked_child() {
+fn os_linked_wait_transcript_on_x86_target_waits_for_spawned_child() {
     let Some(target) = fixture_target() else {
         return;
     };
@@ -2022,9 +2840,75 @@ fn os_proc_kill_transcript_on_x86_target_terminates_blocked_child() {
 
     let _guard = os_image_lock();
     let bootline = concat!(
-        "proc block pwd\n",
+        "spawn pwd\n",
+        "wait 6\n",
+        "cat /proc/processes\n",
+        "cat /proc/tasks\n",
+        "cat /proc/waits\n",
+        "cat /proc/syscalls\n",
+        "dmesg\n",
+        "halt\n"
+    );
+    let exe = build_os_image(&[], Some(bootline), None);
+    let (code, serial) = run_system_image(&exe);
+    assert_eq!(code, 0, "linked wait transcript exits 0; serial: {serial:?}");
+    assert!(
+        serial.contains("reovim-os> spawn:\npid=6\npath=/bin/pwd\nstate=ready\n/\n"),
+        "/bin/spawn leaves child ready and rootd idle dispatch runs it before the next prompt; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("reovim-os> wait:\npid=6\nstate=exited\nexit=0\ncompleted=true\n"),
+        "/bin/wait observes the retained child completion; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("- parent_pid=7 child_pid=6 child_state=exited exit=0 completed=true\n"),
+        "/proc/waits retains the linked wait completion; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("pid=6 ppid=1 task=6 state=reaped path=/bin/pwd"),
+        "/proc/processes marks the linked-waited child as reaped; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("task=6 pid=6 parent_task=1 state=reaped entry=/bin/pwd"),
+        "/proc/tasks marks the linked-waited child task as reaped; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("path=/bin/wait op=wait-begin status=ok")
+            && serial.contains("path=/bin/wait op=wait-end status=ok")
+            && serial.contains("loader=linked-bin entry_fn=bin_wait")
+            && serial.contains("path=/bin/pwd op=process-adopt status=ok"),
+        "linked wait begin/end plus process adoption syscall records are retained; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "process.adopt old_parent_pid=5 new_parent_pid=1 child_pid=6 child_task=6 path=/bin/pwd\n"
+        )
+            && serial.contains("component=proc severity=info kind=process-adopt")
+            && serial.contains("wait.start parent_pid=7 parent_task=7 child_pid=6 child_task=6\n")
+            && serial.contains("wait.end parent_pid=7 child_pid=6 child_state=exited exit=0\n"),
+        "linked adoption and wait lifecycle are present in dmesg; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("exec.path=/bin/pwd pid=6 task=6 status=ok")
+            && serial.contains("exec.path=/bin/wait pid=7 task=7 status=ok"),
+        "spawned child and linked wait program executions are audited; serial: {serial:?}",
+    );
+}
+
+#[test]
+fn os_linked_kill_transcript_on_x86_target_terminates_blocked_child() {
+    let Some(target) = fixture_target() else {
+        return;
+    };
+    if !target.starts_with("x86_64") {
+        return;
+    }
+
+    let _guard = os_image_lock();
+    let bootline = concat!(
+        "block pwd\n",
         "proc pending\n",
-        "proc kill 4\n",
+        "kill 6\n",
         "proc pending\n",
         "pwd\n",
         "cat /proc/syscalls\n",
@@ -2033,18 +2917,18 @@ fn os_proc_kill_transcript_on_x86_target_terminates_blocked_child() {
     );
     let exe = build_os_image(&[], Some(bootline), None);
     let (code, serial) = run_system_image(&exe);
-    assert_eq!(code, 0, "proc kill transcript exits 0; serial: {serial:?}");
+    assert_eq!(code, 0, "linked kill transcript exits 0; serial: {serial:?}");
     assert!(
-        serial.contains("reovim-os> proc block:\npid=4\npath=/bin/pwd\nstate=blocked\n"),
-        "/bin/proc block leaves child blocked; serial: {serial:?}",
+        serial.contains("reovim-os> block:\npid=6\npath=/bin/pwd\nstate=blocked\n"),
+        "/bin/block leaves child blocked; serial: {serial:?}",
     );
     assert!(
-        serial.contains("reovim-os> proc kill:\npid=4\npath=/bin/pwd\nstate=failed\n"),
-        "/bin/proc kill fails the blocked child; serial: {serial:?}",
+        serial.contains("reovim-os> kill:\npid=6\npath=/bin/pwd\nstate=failed\n"),
+        "/bin/kill fails the blocked child; serial: {serial:?}",
     );
     assert!(
         serial.contains(
-            "reovim-os> pending:\n- pid=4 ppid=1 task=4 path=/bin/pwd loader=source-image entry_fn=bin_pwd kind=bin stdin_bytes=0\n"
+            "reovim-os> pending:\n- pid=6 ppid=1 task=6 path=/bin/pwd loader=linked-bin entry_fn=bin_pwd kind=bin stdin_bytes=0\n"
         ),
         "/bin/proc pending exposes the blocked child before kill; serial: {serial:?}",
     );
@@ -2055,8 +2939,17 @@ fn os_proc_kill_transcript_on_x86_target_terminates_blocked_child() {
     assert!(
         serial.contains("op=process-block status=ok")
             && serial.contains("op=process-kill status=ok")
+            && serial.contains("exec.path=/bin/block")
+            && serial.contains("loader=linked-bin entry_fn=bin_block")
+            && serial.contains("exec.path=/bin/kill")
+            && serial.contains("loader=linked-bin entry_fn=bin_kill")
             && serial.contains("op=process-exit status=error"),
-        "process block/kill syscall records are retained; serial: {serial:?}",
+        "linked-block/linked-kill syscall records are retained; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("component=proc severity=info kind=process-block")
+            && serial.contains("component=proc severity=info kind=process-kill"),
+        "process block/kill events are retained; serial: {serial:?}",
     );
     assert!(
         serial.contains("reovim-os> /\nreovim-os> syscalls:")
@@ -2064,8 +2957,8 @@ fn os_proc_kill_transcript_on_x86_target_terminates_blocked_child() {
         "killed child does not run before later shell /bin/pwd; serial: {serial:?}",
     );
     assert!(
-        serial.contains("exec.path=/bin/pwd pid=4 task=4 status=error")
-            && serial.contains("exec.path=/bin/pwd pid=8 task=8 status=ok"),
+        serial.contains("exec.path=/bin/pwd pid=6 task=6 status=error")
+            && serial.contains("exec.path=/bin/pwd pid=10 task=10 status=ok"),
         "killed and later /bin/pwd executions are audited; serial: {serial:?}",
     );
 }
@@ -2073,8 +2966,13 @@ fn os_proc_kill_transcript_on_x86_target_terminates_blocked_child() {
 #[test]
 fn os_launch_profile_transcript_on_x86_target_launches_editor_smoke() {
     // The phase-4 proof from the official launch profile: a scripted root shell
-    // launches image-linked and installed-source payloads and returns
-    // `payload.ready`.
+    // launches image-linked and installed-source payloads. The image-linked
+    // payload writes through its own stdout, queries its own process record,
+    // launches and waits on the server payload, waits on a spawned server
+    // payload by retained PID, feeds stdin into a real `/bin/cat` child, runs a
+    // bounded child pipe, spawns a sleeping real `/bin/ls /boot` child, ticks
+    // the scheduler to wake it, yields so that child runs with argv, then
+    // resumes before returning `payload.ready`.
     let Some(target) = fixture_target() else {
         return;
     };
@@ -2086,7 +2984,7 @@ fn os_launch_profile_transcript_on_x86_target_launches_editor_smoke() {
     let exe = build_os_image(
         &["launch-profile"],
         Some(
-            "launch editor-smoke\nlaunch server-smoke\ncat /proc/sources\ncat /proc/execs\ncat /proc/processes\ncat /proc/tasks\ncat /proc/waits\ncat /proc/syscalls\ncat /log/dmesg\nhelp\n",
+            "launch editor-smoke\nlaunch server-smoke\ncat /proc/sources\ncat /proc/execs\ncat /proc/processes\ncat /proc/tasks\ncat /proc/waits\nproc services\ncat /proc/syscalls\ncat /log/dmesg\nhelp\n",
         ),
         Some("launch"),
     );
@@ -2096,12 +2994,24 @@ fn os_launch_profile_transcript_on_x86_target_launches_editor_smoke() {
         "reovim-os launch profile exits 0 after editor smoke path; serial: {serial:?}"
     );
     assert!(
-        serial.contains("launch editor-smoke: payload.ready"),
-        "editor-smoke launch command succeeded; serial: {serial:?}",
+        serial.contains("reovim-os> editor-smoke.start\nservices:\n")
+            && serial.contains(
+                "name=editor target=/payload/editor-smoke state=started reason=running"
+            )
+            && serial.contains("processes:\n")
+            && serial.contains("/\n/\nself:\n")
+            && serial.contains("state=running path=/payload/editor-smoke")
+            && serial.contains("loader=source-image entry_fn=payload_editor_smoke")
+            && serial.contains("profile=launch\nlaunch=enabled\n")
+            && serial.contains("devices:\n")
+            && serial.contains(
+                "editor-smoke.child.stdin\n/\neditor-smoke.pipe.done\n/\ndevices\nhelp\nimage\ninput\nmemory\nmounts\npayloads\nprobes\nproof\nprofile\nstatus\neditor-smoke.sleep.resumed\nlaunch editor-smoke: payload.ready"
+            ),
+        "editor-smoke launch wrote payload stdout, launched and retained-PID waited on the server payload, queried process-self, read VFS, fed child stdin, ran a child pipe, waited on a spawned child PID, ticked/yielded to a sleeping argv-bearing /bin child, then resumed before succeeding; serial: {serial:?}",
     );
     assert!(
-        serial.contains("launch server-smoke: payload.ready"),
-        "server-smoke launch uses installed x86 source overlay; serial: {serial:?}",
+        serial.contains("reovim-os> /\nlaunch server-smoke: payload.ready"),
+        "server-smoke launch uses installed x86 source overlay and runs a /bin child; serial: {serial:?}",
     );
     assert!(
         serial.contains("namespace=payload path=/payload/server-smoke loader=source-image bytes=")
@@ -2120,16 +3030,24 @@ fn os_launch_profile_transcript_on_x86_target_launches_editor_smoke() {
         "server-smoke installed payload admission is retained in /proc/execs; serial: {serial:?}",
     );
     assert!(
-        serial.contains("path=/payload/editor-smoke exit=0"),
-        "editor-smoke payload process is retained in /proc/processes; serial: {serial:?}",
+        serial.contains("state=reaped path=/payload/editor-smoke exit=0"),
+        "editor-smoke payload process is retained as reaped in /proc/processes; serial: {serial:?}",
     );
     assert!(
-        serial.contains("entry=/payload/editor-smoke"),
-        "editor-smoke payload task is retained in /proc/tasks; serial: {serial:?}",
+        serial.contains("state=reaped entry=/payload/editor-smoke"),
+        "editor-smoke payload task is retained as reaped in /proc/tasks; serial: {serial:?}",
     );
     assert!(
         serial.contains("child_state=exited exit=0 completed=true"),
         "editor-smoke payload wait is retained in /proc/waits; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "name=editor target=/payload/editor-smoke state=exited reason=process-exited"
+        ) && serial.contains(
+            "name=server target=/payload/server-smoke state=exited reason=process-exited"
+        ),
+        "payload terminal service rows are visible through /proc/services; serial: {serial:?}",
     );
     assert!(
         serial.contains(
@@ -2138,11 +3056,78 @@ fn os_launch_profile_transcript_on_x86_target_launches_editor_smoke() {
         "editor-smoke payload execution is visible in /proc/syscalls; serial: {serial:?}",
     );
     assert!(
+        serial.contains("path=/payload/editor-smoke op=service-ready status=ok")
+            && serial.contains("path=/payload/editor-smoke op=snapshot-services status=ok")
+            && serial.contains("path=/payload/editor-smoke op=snapshot-processes status=ok")
+            && serial.contains("path=/payload/editor-smoke op=boot-profile status=ok")
+            && serial.contains("path=/payload/editor-smoke op=console-input status=ok")
+            && serial.contains("path=/payload/editor-smoke op=payload-catalog status=ok")
+            && serial.contains("path=/payload/editor-smoke op=device-catalog status=ok")
+            && serial.contains("path=/payload/server-smoke op=service-ready status=ok")
+            && serial.contains("path=/payload/editor-smoke op=service-exited status=ok")
+            && serial.contains("path=/payload/server-smoke op=service-exited status=ok"),
+        "payload service-ready and service-exited syscalls are visible in /proc/syscalls; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("path=/payload/editor-smoke op=wait-begin status=ok")
+            && serial.contains("path=/payload/editor-smoke op=wait-end status=ok"),
+        "editor-smoke payload wait operation is visible in /proc/syscalls; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("path=/payload/editor-smoke op=payload-launch status=ok")
+            && serial.contains(
+                "path=/payload/server-smoke op=payload-run status=ok loader=source-image entry_fn=payload_server_smoke"
+            ),
+        "nested server payload launch is visible in /proc/syscalls; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains(
+            "path=/payload/editor-smoke op=vfs-open status=ok loader=source-image entry_fn=payload_editor_smoke"
+        ) && serial.contains(
+            "path=/payload/editor-smoke op=fd-read status=ok loader=source-image entry_fn=payload_editor_smoke"
+        ) && serial.contains(
+            "path=/payload/editor-smoke op=fd-close status=ok loader=source-image entry_fn=payload_editor_smoke"
+        ),
+        "payload VFS file read is attributed to the editor-smoke child; serial: {serial:?}",
+    );
+    assert!(
         serial.contains("payload.start path=/payload/editor-smoke")
             && serial.contains("payload.exit path=/payload/editor-smoke")
+            && serial.contains("payload.start path=/payload/server-smoke")
+            && serial.contains("payload.exit path=/payload/server-smoke")
             && serial.contains("wait.start parent_pid=")
             && serial.contains("wait.end parent_pid="),
-        "retained dmesg includes payload lifecycle rows; serial: {serial:?}",
+        "retained dmesg includes nested payload lifecycle rows; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("path=/bin/ls op=exec-load status=ok")
+            && serial.contains("path=/bin/ls op=process-sleep status=ok")
+            && serial.contains("path=/payload/editor-smoke op=scheduler-tick status=ok")
+            && serial.contains("path=/bin/ls op=process-wake status=ok")
+            && serial.contains("path=/payload/editor-smoke op=yield-now status=ok")
+            && serial.contains("path=/bin/ls op=scheduler-dispatch status=ok")
+            && serial.contains("path=/bin/ls op=process-exit status=ok")
+            && serial.contains("exec.parent path=/bin/ls")
+            && serial.contains("path=/bin/ls exit=0")
+            && serial.contains(
+                "argc=2 argv0=ls argv0_truncated=false argv1=/boot argv1_truncated=false"
+            ),
+        "payload source sleep/tick/yield operation runs and audits a real argv-bearing /bin child; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("path=/bin/cat op=exec-load status=ok")
+            && serial.contains("path=/bin/cat op=fd-read status=ok")
+            && serial.contains("path=/bin/cat op=process-exit status=ok")
+            && serial.contains("exec.parent path=/bin/cat")
+            && serial.contains("path=/bin/cat exit=0")
+            && serial.contains("argc=1 argv0=cat argv0_truncated=false"),
+        "payload source child-stdin exec operation feeds and audits a real /bin/cat child through fd-read and visible stdout; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("editor-smoke.pipe.done")
+            && serial.contains("path=/bin/pwd op=exec-load status=ok")
+            && serial.contains("path=/bin/pwd op=process-exit status=ok"),
+        "payload source pipe runs a producer /bin child before the consumer reads captured stdin; serial: {serial:?}",
     );
     assert!(
         serial.contains(

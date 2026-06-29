@@ -9,10 +9,13 @@
 #![allow(unsafe_code)]
 
 #[cfg(feature = "launch-profile")]
-use reovim_os::boot::launch_profile;
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+use reovim_os::boot::bundle_launch_profile;
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
 use reovim_os::boot::exec_bundle_profile;
-use reovim_os::boot::{run_shell_profile, shell_only_profile, BootProfile};
+#[cfg(feature = "launch-profile")]
+use reovim_os::boot::launch_profile;
+use reovim_os::boot::{BootProfile, run_shell_profile, shell_only_profile};
 
 #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
 use reovim_arch_floor_linux_aarch64::entry;
@@ -43,6 +46,8 @@ fn resolve_profile() -> BootProfile<'static> {
 fn resolve_profile() -> BootProfile<'static> {
     match option_env!("REOVIM_OS_PROFILE").unwrap_or("shell-only") {
         #[cfg(all(target_os = "none", target_arch = "x86_64"))]
+        "bundle-launch" => bundle_launch_profile(),
+        #[cfg(all(target_os = "none", target_arch = "x86_64"))]
         "exec-bundle" => exec_bundle_profile(),
         "launch" => launch_profile(),
         "shell-only" => shell_or_exec_bundle_profile(),
@@ -50,6 +55,4 @@ fn resolve_profile() -> BootProfile<'static> {
     }
 }
 
-entry!(|_argc, _argv, _envp| {
-    run_shell_profile(resolve_profile())
-});
+entry!(|_argc, _argv, _envp| { run_shell_profile(resolve_profile()) });

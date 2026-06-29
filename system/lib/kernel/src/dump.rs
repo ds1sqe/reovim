@@ -5,8 +5,11 @@
 //! will flush to removable media.
 
 use {
-    crate::{block, exec, klog, proc, sched, syscall},
-    core::sync::atomic::{AtomicUsize, Ordering},
+    crate::{block, exec, klog, mm, proc, sched, service, syscall},
+    core::{
+        cell::UnsafeCell,
+        sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+    },
     reovim_uapi_panic::{Disposition, PanicRecord},
     reovim_uapi_system::{BootInfo, DeviceClass, DeviceEntry},
 };
@@ -14,7 +17,7 @@ use {
 /// Maximum bytes needed by the current dump snapshot header.
 pub const MAX_SNAPSHOT_HEADER_BYTES: usize = 1536;
 /// Maximum bytes in one bounded dump artifact.
-pub const MAX_DUMP_ARTIFACT_BYTES: usize = 65536;
+pub const MAX_DUMP_ARTIFACT_BYTES: usize = 192 * 1024;
 /// Maximum device inventory rows retained in one bounded dump artifact.
 pub const MAX_DUMP_DEVICE_RECORDS: usize = 16;
 
@@ -142,12 +145,16 @@ pub struct DumpStatus {
     pub storage: &'static str,
     /// Total bytes exposed by the persistent storage target, or zero.
     pub storage_capacity_bytes: usize,
+    /// Last dump sync attempt retained in memory.
+    pub last_sync: DumpSyncStatus,
     /// Retained kernel-log metadata.
     pub klog: klog::Stats,
     /// Retained structured kernel event records.
     pub event_records: usize,
     /// Retained process records.
     pub process_records: usize,
+    /// Retained init-service records.
+    pub service_records: usize,
     /// Retained executable load/admission records.
     pub exec_load_records: usize,
     /// Retained pending executable invocation records.
@@ -158,6 +165,8 @@ pub struct DumpStatus {
     pub task_records: usize,
     /// Retained typed syscall dispatch records.
     pub syscall_records: usize,
+    /// Active retained raw syscall continuations.
+    pub syscall_continuation_records: usize,
 }
 
 /// Boot image identity copied into dump snapshots.
@@ -212,6 +221,8 @@ impl DumpImageIdentity {
 /// Result from an attempted persistent dump flush.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DumpSyncStatus {
+    /// Whether this status came from an actual sync attempt.
+    pub attempted: bool,
     /// Whether a persistent sink was available.
     pub persistent_available: bool,
     /// Stable storage target label.
@@ -312,6 +323,8 @@ pub struct ParsedSnapshotHeader<'a> {
     pub event_records: usize,
     /// Process records retained.
     pub process_records: usize,
+    /// Init-service records retained.
+    pub service_records: usize,
     /// Executable load/admission records retained.
     pub exec_load_records: usize,
     /// Pending executable invocation records retained.
@@ -322,8 +335,94 @@ pub struct ParsedSnapshotHeader<'a> {
     pub task_records: usize,
     /// Syscall records retained.
     pub syscall_records: usize,
+    /// Active retained syscall continuation records.
+    pub syscall_continuation_records: usize,
+    /// Whether a dump sync has been attempted before this snapshot.
+    pub last_sync_attempted: bool,
+    /// Whether persistence was available during the last sync attempt.
+    pub last_sync_persistent_available: bool,
+    /// Stable storage target label for the last sync attempt.
+    pub last_sync_storage: &'a str,
+    /// Total bytes exposed by the last sync target, or zero.
+    pub last_sync_storage_capacity_bytes: usize,
+    /// Whether the last sync wrote bytes.
+    pub last_sync_written: bool,
+    /// Bytes written by the last sync attempt.
+    pub last_sync_bytes_written: usize,
+    /// Header checksum reported by the last sync attempt.
+    pub last_sync_checksum: u32,
+    /// Whether the last sync read-back verification succeeded.
+    pub last_sync_verified: bool,
+    /// Stable reason reported by the last sync attempt.
+    pub last_sync_reason: &'a str,
     /// Header checksum.
     pub checksum: u32,
+}
+
+const NEVER_SYNCED_STATUS: DumpSyncStatus = DumpSyncStatus {
+    attempted: false,
+    persistent_available: false,
+    storage: "none",
+    storage_capacity_bytes: 0,
+    written: false,
+    bytes_written: 0,
+    checksum: 0,
+    verified: false,
+    reason: "never-synced",
+};
+
+struct LastSyncCell(UnsafeCell<DumpSyncStatus>);
+
+// SAFETY: access is serialized by `LAST_SYNC_LOCK`.
+unsafe impl Sync for LastSyncCell {}
+
+static LAST_SYNC: LastSyncCell = LastSyncCell(UnsafeCell::new(NEVER_SYNCED_STATUS));
+static LAST_SYNC_LOCK: AtomicBool = AtomicBool::new(false);
+
+struct LastSyncGuard;
+
+impl LastSyncGuard {
+    fn acquire() -> Self {
+        while LAST_SYNC_LOCK
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            core::hint::spin_loop();
+        }
+        Self
+    }
+}
+
+impl Drop for LastSyncGuard {
+    fn drop(&mut self) {
+        LAST_SYNC_LOCK.store(false, Ordering::Release);
+    }
+}
+
+fn with_last_sync<R>(f: impl FnOnce(&mut DumpSyncStatus) -> R) -> R {
+    let _guard = LastSyncGuard::acquire();
+    // SAFETY: `LAST_SYNC_LOCK` serializes access to the retained status.
+    let status = unsafe { &mut *LAST_SYNC.0.get() };
+    f(status)
+}
+
+fn snapshot_last_sync() -> DumpSyncStatus {
+    with_last_sync(|status| *status)
+}
+
+fn record_last_sync(status: DumpSyncStatus) {
+    with_last_sync(|slot| *slot = status);
+}
+
+fn finish_sync(status: DumpSyncStatus) -> DumpSyncStatus {
+    record_last_sync(status);
+    status
+}
+
+/// Clears retained sync status for isolated no_std selftests.
+#[cfg(feature = "selftest")]
+pub fn reset_last_sync_for_tests() {
+    record_last_sync(NEVER_SYNCED_STATUS);
 }
 
 /// Installs a persistent dump sink.
@@ -335,6 +434,7 @@ pub fn install_sink(sink: DumpSink) {
 #[cfg(feature = "selftest")]
 pub fn clear_sink_for_tests() {
     block::clear_diagnostic_device_for_tests();
+    reset_last_sync_for_tests();
 }
 
 /// Returns the current in-memory dump status.
@@ -362,7 +462,10 @@ pub fn status_with_context(
     let mut events = [klog::EMPTY_EVENT_RECORD; klog::MAX_EVENTS];
     let mut exec_loads = [exec::EMPTY_EXEC_LOAD_RECORD; exec::MAX_EXEC_LOAD_RECORDS];
     let mut pending_execs = [exec::EMPTY_PENDING_EXEC_RECORD; exec::MAX_PENDING_EXEC_RECORDS];
+    let mut services = [service::EMPTY_SERVICE_RECORD; service::MAX_SERVICES];
     let mut syscalls = [syscall::EMPTY_SYSCALL_RECORD; syscall::MAX_SYSCALL_RECORDS];
+    let mut continuations =
+        [syscall::EMPTY_SYSCALL_CONTINUATION_RECORD; syscall::MAX_SYSCALL_CONTINUATION_RECORDS];
     let klog_stats = klog::stats();
     let sink = block::diagnostic_status();
     let panic_record = snapshot_panic_record();
@@ -390,14 +493,17 @@ pub fn status_with_context(
         persistent_available: sink.is_some(),
         storage: sink.map_or("none", |sink| sink.label),
         storage_capacity_bytes: sink.map_or(0, |sink| sink.capacity_bytes),
+        last_sync: snapshot_last_sync(),
         klog: klog_stats,
         event_records: klog::snapshot_events(&mut events),
         process_records: proc::snapshot(&mut processes),
+        service_records: service::snapshot(&mut services),
         exec_load_records: exec::snapshot_loads(&mut exec_loads),
         pending_exec_records: exec::snapshot_pending(&mut pending_execs),
         wait_records: proc::snapshot_waits(&mut waits),
         task_records: sched::snapshot_kernel_tasks(&mut tasks),
         syscall_records: syscall::snapshot_syscalls(&mut syscalls),
+        syscall_continuation_records: syscall::snapshot_syscall_continuations(&mut continuations),
     }
 }
 
@@ -420,8 +526,9 @@ pub fn sync_with_context(
     boot_info: BootInfo,
     devices: &[DeviceEntry],
 ) -> DumpSyncStatus {
-    let Some(sink) = block::diagnostic_status() else {
-        return DumpSyncStatus {
+    let Some(sink_device) = block::diagnostic_device_snapshot() else {
+        return finish_sync(DumpSyncStatus {
+            attempted: true,
             persistent_available: false,
             storage: "none",
             storage_capacity_bytes: 0,
@@ -430,43 +537,77 @@ pub fn sync_with_context(
             checksum: 0,
             verified: false,
             reason: "no-persistent-dump-sink",
+        });
+    };
+    let sink = block::BlockStatus {
+        label: sink_device.label,
+        capacity_bytes: sink_device.capacity_bytes,
+    };
+
+    let (artifact, checksum) = match encode_context_artifact(sink, image, boot_info, devices) {
+        Ok(encoded) => encoded,
+        Err(status) => return finish_sync(status),
+    };
+    let first_sync = write_and_verify_artifact(sink_device, &artifact, checksum);
+    if !first_sync.written || !first_sync.verified {
+        return finish_sync(first_sync);
+    }
+
+    record_last_sync(first_sync);
+    let (final_artifact, final_checksum) =
+        match encode_context_artifact(sink, image, boot_info, devices) {
+            Ok(encoded) => encoded,
+            Err(status) => return finish_sync(status),
         };
-    };
+    finish_sync(write_and_verify_artifact(sink_device, &final_artifact, final_checksum))
+}
 
-    let artifact = match encode_status_artifact(status_with_context(image, boot_info, devices)) {
-        Ok(artifact) => artifact,
-        Err(_) => {
-            return DumpSyncStatus {
-                persistent_available: true,
-                storage: sink.label,
-                storage_capacity_bytes: sink.capacity_bytes,
-                written: false,
-                bytes_written: 0,
-                checksum: 0,
-                verified: false,
-                reason: "encode-error",
-            };
-        }
-    };
-    let checksum = match parse_snapshot_header_prefix(artifact.as_bytes()) {
-        Ok(parsed) => parsed.checksum,
-        Err(_) => {
-            return DumpSyncStatus {
-                persistent_available: true,
-                storage: sink.label,
-                storage_capacity_bytes: sink.capacity_bytes,
-                written: false,
-                bytes_written: 0,
-                checksum: 0,
-                verified: false,
-                reason: "encode-error",
-            };
-        }
-    };
+fn encode_context_artifact(
+    sink: block::BlockStatus,
+    image: DumpImageIdentity,
+    boot_info: BootInfo,
+    devices: &[DeviceEntry],
+) -> Result<(DumpArtifact, u32), DumpSyncStatus> {
+    let mut status = status_with_context(image, boot_info, devices);
+    status.persistent_available = true;
+    status.storage = sink.label;
+    status.storage_capacity_bytes = sink.capacity_bytes;
+    let artifact = encode_status_artifact(status).map_err(|_| DumpSyncStatus {
+        attempted: true,
+        persistent_available: true,
+        storage: sink.label,
+        storage_capacity_bytes: sink.capacity_bytes,
+        written: false,
+        bytes_written: 0,
+        checksum: 0,
+        verified: false,
+        reason: "encode-error",
+    })?;
+    let checksum = parse_snapshot_header_prefix(artifact.as_bytes())
+        .map_err(|_| DumpSyncStatus {
+            attempted: true,
+            persistent_available: true,
+            storage: sink.label,
+            storage_capacity_bytes: sink.capacity_bytes,
+            written: false,
+            bytes_written: 0,
+            checksum: 0,
+            verified: false,
+            reason: "encode-error",
+        })?
+        .checksum;
+    Ok((artifact, checksum))
+}
 
-    let write = block::write_diagnostic_artifact(artifact.as_bytes());
+fn write_and_verify_artifact(
+    sink: block::BlockDevice,
+    artifact: &DumpArtifact,
+    checksum: u32,
+) -> DumpSyncStatus {
+    let write = block::write_selected_diagnostic_artifact(sink, artifact.as_bytes());
     if !write.ok {
         return DumpSyncStatus {
+            attempted: true,
             persistent_available: true,
             storage: write.storage,
             storage_capacity_bytes: write.capacity_bytes,
@@ -479,9 +620,10 @@ pub fn sync_with_context(
     }
 
     let mut readback = [0u8; MAX_DUMP_ARTIFACT_BYTES];
-    let read = block::read_diagnostic_artifact(&mut readback);
+    let read = block::read_selected_diagnostic_artifact(sink, &mut readback);
     if !read.ok {
         return DumpSyncStatus {
+            attempted: true,
             persistent_available: true,
             storage: read.storage,
             storage_capacity_bytes: read.capacity_bytes,
@@ -494,6 +636,7 @@ pub fn sync_with_context(
     }
     if read.bytes != artifact.len {
         return DumpSyncStatus {
+            attempted: true,
             persistent_available: true,
             storage: read.storage,
             storage_capacity_bytes: read.capacity_bytes,
@@ -507,6 +650,7 @@ pub fn sync_with_context(
     let read_len = read.bytes;
     if &readback[..read_len] != artifact.as_bytes() {
         return DumpSyncStatus {
+            attempted: true,
             persistent_available: true,
             storage: read.storage,
             storage_capacity_bytes: read.capacity_bytes,
@@ -519,6 +663,7 @@ pub fn sync_with_context(
     }
     if parse_snapshot_header_prefix(&readback[..read_len]).is_err() {
         return DumpSyncStatus {
+            attempted: true,
             persistent_available: true,
             storage: read.storage,
             storage_capacity_bytes: read.capacity_bytes,
@@ -531,6 +676,7 @@ pub fn sync_with_context(
     }
 
     DumpSyncStatus {
+        attempted: true,
         persistent_available: true,
         storage: read.storage,
         storage_capacity_bytes: read.capacity_bytes,
@@ -586,16 +732,44 @@ pub fn encode_status_header(status: DumpStatus) -> Result<SnapshotHeader, DumpEn
         )?;
         writer.key_str(b"storage", status.storage)?;
         writer.key_usize(b"storage_capacity_bytes", status.storage_capacity_bytes)?;
+        writer.key_bool(b"last_sync_attempted", status.last_sync.attempted)?;
+        writer.key_str(
+            b"last_sync_persistent",
+            if status.last_sync.persistent_available {
+                "available"
+            } else {
+                "unavailable"
+            },
+        )?;
+        writer.key_str(b"last_sync_storage", status.last_sync.storage)?;
+        writer.key_usize(
+            b"last_sync_storage_capacity_bytes",
+            status.last_sync.storage_capacity_bytes,
+        )?;
+        writer.key_str(
+            b"last_sync_status",
+            if status.last_sync.written {
+                "written"
+            } else {
+                "not-written"
+            },
+        )?;
+        writer.key_usize(b"last_sync_bytes", status.last_sync.bytes_written)?;
+        writer.key_usize(b"last_sync_checksum", status.last_sync.checksum as usize)?;
+        writer.key_bool(b"last_sync_verified", status.last_sync.verified)?;
+        writer.key_str(b"last_sync_reason", status.last_sync.reason)?;
         writer.key_usize(b"klog_retained_bytes", status.klog.retained_bytes)?;
         writer.key_usize(b"klog_dropped_bytes", status.klog.dropped_bytes)?;
         writer.key_usize(b"klog_next_event_seq", status.klog.next_event_seq)?;
         writer.key_usize(b"event_records", status.event_records)?;
         writer.key_usize(b"process_records", status.process_records)?;
+        writer.key_usize(b"service_records", status.service_records)?;
         writer.key_usize(b"exec_load_records", status.exec_load_records)?;
         writer.key_usize(b"pending_exec_records", status.pending_exec_records)?;
         writer.key_usize(b"wait_records", status.wait_records)?;
         writer.key_usize(b"task_records", status.task_records)?;
         writer.key_usize(b"syscall_records", status.syscall_records)?;
+        writer.key_usize(b"syscall_continuation_records", status.syscall_continuation_records)?;
         header.len = writer.finish();
     }
     let checksum = checksum32(header.as_bytes());
@@ -626,13 +800,20 @@ pub fn encode_status_artifact(status: DumpStatus) -> Result<DumpArtifact, DumpEn
         write_boot_table(&mut writer, status)?;
         write_device_table(&mut writer, status)?;
         write_proof_table(&mut writer, status)?;
+        write_dump_sync_table(&mut writer, status)?;
         write_panic_table(&mut writer, status)?;
         write_event_table(&mut writer)?;
         write_process_table(&mut writer)?;
+        write_address_space_table(&mut writer)?;
+        write_address_space_page_table_table(&mut writer)?;
+        write_address_space_page_table_entry_table(&mut writer)?;
+        write_address_space_object_table(&mut writer)?;
+        write_service_table(&mut writer)?;
         write_exec_load_table(&mut writer)?;
         write_pending_exec_table(&mut writer)?;
         write_scheduler_state(&mut writer)?;
         write_syscall_table(&mut writer)?;
+        write_syscall_continuation_table(&mut writer)?;
         write_task_table(&mut writer)?;
         write_wait_table(&mut writer)?;
         artifact.len = writer.finish();
@@ -732,6 +913,41 @@ fn parse_snapshot_header_inner(
     let (storage_capacity_bytes, next) =
         parse_next_usize(bytes, offset, b"storage_capacity_bytes")?;
     offset = next;
+    let (last_sync_attempted, next) = parse_next_bool(bytes, offset, b"last_sync_attempted")?;
+    offset = next;
+    let (last_sync_persistent, next) = parse_next_str(bytes, offset, b"last_sync_persistent")?;
+    offset = next;
+    let last_sync_persistent_available = match last_sync_persistent {
+        "available" => true,
+        "unavailable" => false,
+        _ => return Err(DumpParseError::BadLine),
+    };
+    let (last_sync_storage, next) = parse_next_str(bytes, offset, b"last_sync_storage")?;
+    if last_sync_storage.is_empty() {
+        return Err(DumpParseError::BadLine);
+    }
+    offset = next;
+    let (last_sync_storage_capacity_bytes, next) =
+        parse_next_usize(bytes, offset, b"last_sync_storage_capacity_bytes")?;
+    offset = next;
+    let (last_sync_status, next) = parse_next_str(bytes, offset, b"last_sync_status")?;
+    offset = next;
+    let last_sync_written = match last_sync_status {
+        "written" => true,
+        "not-written" => false,
+        _ => return Err(DumpParseError::BadLine),
+    };
+    let (last_sync_bytes_written, next) = parse_next_usize(bytes, offset, b"last_sync_bytes")?;
+    offset = next;
+    let (last_sync_checksum, next) = parse_next_usize(bytes, offset, b"last_sync_checksum")?;
+    offset = next;
+    let (last_sync_verified, next) = parse_next_bool(bytes, offset, b"last_sync_verified")?;
+    offset = next;
+    let (last_sync_reason, next) = parse_next_str(bytes, offset, b"last_sync_reason")?;
+    if last_sync_reason.is_empty() {
+        return Err(DumpParseError::BadLine);
+    }
+    offset = next;
     let (klog_retained_bytes, next) = parse_next_usize(bytes, offset, b"klog_retained_bytes")?;
     offset = next;
     let (klog_dropped_bytes, next) = parse_next_usize(bytes, offset, b"klog_dropped_bytes")?;
@@ -742,6 +958,8 @@ fn parse_snapshot_header_inner(
     offset = next;
     let (process_records, next) = parse_next_usize(bytes, offset, b"process_records")?;
     offset = next;
+    let (service_records, next) = parse_next_usize(bytes, offset, b"service_records")?;
+    offset = next;
     let (exec_load_records, next) = parse_next_usize(bytes, offset, b"exec_load_records")?;
     offset = next;
     let (pending_exec_records, next) = parse_next_usize(bytes, offset, b"pending_exec_records")?;
@@ -751,6 +969,9 @@ fn parse_snapshot_header_inner(
     let (task_records, next) = parse_next_usize(bytes, offset, b"task_records")?;
     offset = next;
     let (syscall_records, next) = parse_next_usize(bytes, offset, b"syscall_records")?;
+    offset = next;
+    let (syscall_continuation_records, next) =
+        parse_next_usize(bytes, offset, b"syscall_continuation_records")?;
     offset = next;
 
     let checksum_offset = offset;
@@ -789,11 +1010,22 @@ fn parse_snapshot_header_inner(
             klog_next_event_seq,
             event_records,
             process_records,
+            service_records,
             exec_load_records,
             pending_exec_records,
             wait_records,
             task_records,
             syscall_records,
+            syscall_continuation_records,
+            last_sync_attempted,
+            last_sync_persistent_available,
+            last_sync_storage,
+            last_sync_storage_capacity_bytes,
+            last_sync_written,
+            last_sync_bytes_written,
+            last_sync_checksum: last_sync_checksum as u32,
+            last_sync_verified,
+            last_sync_reason,
             checksum: checksum as u32,
         },
         next,
@@ -844,6 +1076,10 @@ impl<'a> TextWriter<'a> {
         self.bytes(b"=")?;
         self.usize(value)?;
         self.nl()
+    }
+
+    fn key_bool(&mut self, key: &[u8], value: bool) -> Result<(), DumpEncodeError> {
+        self.key_str(key, if value { "true" } else { "false" })
     }
 
     fn key_u64(&mut self, key: &[u8], value: u64) -> Result<(), DumpEncodeError> {
@@ -942,6 +1178,62 @@ fn write_proof_table(
     writer.bytes(status.storage.as_bytes())?;
     writer.bytes(b"\ndump_storage_capacity_bytes=")?;
     writer.usize(status.storage_capacity_bytes)?;
+    writer.bytes(b"\nlast_dump_sync_attempted=")?;
+    writer.bytes(if status.last_sync.attempted {
+        b"true"
+    } else {
+        b"false"
+    })?;
+    writer.bytes(b"\nlast_dump_sync_status=")?;
+    writer.bytes(if status.last_sync.written {
+        b"written"
+    } else {
+        b"not-written"
+    })?;
+    writer.bytes(b"\nlast_dump_sync_reason=")?;
+    writer.bytes(status.last_sync.reason.as_bytes())?;
+    writer.nl()
+}
+
+fn write_dump_sync_table(
+    writer: &mut TextWriter<'_>,
+    status: DumpStatus,
+) -> Result<(), DumpEncodeError> {
+    writer.bytes(b"dump-sync:\n")?;
+    writer.bytes(b"attempted=")?;
+    writer.bytes(if status.last_sync.attempted {
+        b"true"
+    } else {
+        b"false"
+    })?;
+    writer.bytes(b"\npersistent=")?;
+    writer.bytes(if status.last_sync.persistent_available {
+        b"available"
+    } else {
+        b"unavailable"
+    })?;
+    writer.bytes(b"\nstorage=")?;
+    writer.bytes(status.last_sync.storage.as_bytes())?;
+    writer.bytes(b"\nstorage_capacity_bytes=")?;
+    writer.usize(status.last_sync.storage_capacity_bytes)?;
+    writer.bytes(b"\nstatus=")?;
+    writer.bytes(if status.last_sync.written {
+        b"written"
+    } else {
+        b"not-written"
+    })?;
+    writer.bytes(b"\nbytes=")?;
+    writer.usize(status.last_sync.bytes_written)?;
+    writer.bytes(b"\nsync_checksum=")?;
+    writer.usize(status.last_sync.checksum as usize)?;
+    writer.bytes(b"\nverified=")?;
+    writer.bytes(if status.last_sync.verified {
+        b"true"
+    } else {
+        b"false"
+    })?;
+    writer.bytes(b"\nreason=")?;
+    writer.bytes(status.last_sync.reason.as_bytes())?;
     writer.nl()
 }
 
@@ -1044,6 +1336,322 @@ fn write_process_table(writer: &mut TextWriter<'_>) -> Result<(), DumpEncodeErro
         writer.bytes(record.entry_name.as_bytes())?;
         writer.bytes(b" block=")?;
         writer.bytes(record.block_reason.as_str().as_bytes())?;
+        writer.bytes(b" argc=")?;
+        writer.usize(record.argc)?;
+        writer.bytes(b" argv0=")?;
+        writer.bytes(record.argv0().as_bytes())?;
+        writer.bytes(b" argv0_truncated=")?;
+        writer.bytes(if record.argv_was_truncated(0) {
+            b"true"
+        } else {
+            b"false"
+        })?;
+        writer.bytes(b" argv1=")?;
+        writer.bytes(record.argv1().as_bytes())?;
+        writer.bytes(b" argv1_truncated=")?;
+        writer.bytes(if record.argv_was_truncated(1) {
+            b"true"
+        } else {
+            b"false"
+        })?;
+        let mut argv_index = 2usize;
+        while argv_index < record.argc && argv_index < proc::MAX_PROCESS_ARGS {
+            writer.bytes(b" argv")?;
+            writer.usize(argv_index)?;
+            writer.bytes(b"=")?;
+            writer.bytes(record.argv(argv_index).as_bytes())?;
+            writer.bytes(b" argv")?;
+            writer.usize(argv_index)?;
+            writer.bytes(b"_truncated=")?;
+            writer.bytes(if record.argv_was_truncated(argv_index) {
+                b"true"
+            } else {
+                b"false"
+            })?;
+            argv_index += 1;
+        }
+        writer.bytes(b" envc=")?;
+        writer.usize(record.envc)?;
+        let mut env_index = 0usize;
+        while env_index < record.envc && env_index < proc::MAX_PROCESS_ENVS {
+            writer.bytes(b" env")?;
+            writer.usize(env_index)?;
+            writer.bytes(b"_name=")?;
+            writer.bytes(record.env_name(env_index).as_bytes())?;
+            writer.bytes(b" env")?;
+            writer.usize(env_index)?;
+            writer.bytes(b"_value=")?;
+            writer.bytes(record.env_value(env_index).as_bytes())?;
+            writer.bytes(b" env")?;
+            writer.usize(env_index)?;
+            writer.bytes(b"_truncated=")?;
+            writer.bytes(if record.env_was_truncated(env_index) {
+                b"true"
+            } else {
+                b"false"
+            })?;
+            env_index += 1;
+        }
+        writer.bytes(b" address_space=")?;
+        writer.usize(record.address_space_id)?;
+        let address_space = mm::address_space(record.address_space_id);
+        writer.bytes(b" address_space_state=")?;
+        let address_space_state = address_space.map_or("missing", |space| space.state.as_str());
+        writer.bytes(address_space_state.as_bytes())?;
+        writer.bytes(b" address_space_source=")?;
+        writer.bytes(
+            address_space
+                .map_or("", |space| space.source_path)
+                .as_bytes(),
+        )?;
+        writer.bytes(b" address_space_text_bytes=")?;
+        writer.usize(address_space.map_or(0, |space| space.text_bytes))?;
+        writer.bytes(b" address_space_text_checksum=")?;
+        writer.usize(address_space.map_or(0, |space| space.text_checksum as usize))?;
+        writer.bytes(b" address_space_stack_bytes=")?;
+        writer.usize(address_space.map_or(0, |space| space.stack_bytes))?;
+        writer.bytes(b" address_space_regions=")?;
+        writer.usize(address_space.map_or(0, |space| space.region_count))?;
+        writer.bytes(b" address_space_page_table=")?;
+        writer.usize(address_space.map_or(0, |space| space.page_table_id))?;
+        writer.bytes(b" address_space_mapped_pages=")?;
+        writer.usize(address_space.map_or(0, |space| space.mapped_pages))?;
+        writer.bytes(b" address_space_text_pages=")?;
+        writer.usize(address_space.map_or(0, |space| space.text_pages))?;
+        writer.bytes(b" address_space_stack_pages=")?;
+        writer.usize(address_space.map_or(0, |space| space.stack_pages))?;
+        writer.bytes(b" address_space_text_start=")?;
+        writer.usize(address_space.map_or(0, |space| space.text_start))?;
+        writer.bytes(b" address_space_text_end=")?;
+        writer.usize(address_space.map_or(0, |space| space.text_end))?;
+        writer.bytes(b" address_space_text_flags=")?;
+        writer.usize(address_space.map_or(0, |space| space.text_flags as usize))?;
+        writer.bytes(b" address_space_stack_start=")?;
+        writer.usize(address_space.map_or(0, |space| space.stack_start))?;
+        writer.bytes(b" address_space_stack_end=")?;
+        writer.usize(address_space.map_or(0, |space| space.stack_end))?;
+        writer.bytes(b" address_space_stack_flags=")?;
+        writer.usize(address_space.map_or(0, |space| space.stack_flags as usize))?;
+        writer.bytes(b" artifact_body_format=")?;
+        writer.bytes(record.artifact_body_format.as_str().as_bytes())?;
+        writer.bytes(b" artifact_body_inner=")?;
+        writer.bytes(record.artifact_body_inner_format.as_str().as_bytes())?;
+        writer.bytes(b" image_generation=")?;
+        writer.usize(record.image_generation)?;
+        writer.nl()?;
+        index += 1;
+    }
+    Ok(())
+}
+
+fn write_address_space_table(writer: &mut TextWriter<'_>) -> Result<(), DumpEncodeError> {
+    let mut records = [mm::EMPTY_ADDRESS_SPACE_RECORD; mm::MAX_ADDRESS_SPACE_RECORDS];
+    let count = mm::snapshot_address_spaces(&mut records);
+    writer.bytes(b"address-spaces:\n")?;
+    let mut index = 0usize;
+    while index < count {
+        let record = records[index];
+        writer.bytes(b"- id=")?;
+        writer.usize(record.id)?;
+        writer.bytes(b" owner_pid=")?;
+        writer.usize(record.owner_pid)?;
+        writer.bytes(b" image_generation=")?;
+        writer.usize(record.image_generation)?;
+        writer.bytes(b" state=")?;
+        writer.bytes(record.state.as_str().as_bytes())?;
+        writer.bytes(b" path=")?;
+        writer.bytes(record.program_path.as_bytes())?;
+        writer.bytes(b" loader=")?;
+        writer.bytes(record.loader.as_bytes())?;
+        writer.bytes(b" entry_fn=")?;
+        writer.bytes(record.entry_name.as_bytes())?;
+        writer.bytes(b" source=")?;
+        writer.bytes(record.source_path.as_bytes())?;
+        writer.bytes(b" text_bytes=")?;
+        writer.usize(record.text_bytes)?;
+        writer.bytes(b" text_checksum=")?;
+        writer.usize(record.text_checksum as usize)?;
+        writer.bytes(b" stack_bytes=")?;
+        writer.usize(record.stack_bytes)?;
+        writer.bytes(b" regions=")?;
+        writer.usize(record.region_count)?;
+        writer.bytes(b" text_start=")?;
+        writer.usize(record.text_start)?;
+        writer.bytes(b" text_end=")?;
+        writer.usize(record.text_end)?;
+        writer.bytes(b" text_flags=")?;
+        writer.usize(record.text_flags as usize)?;
+        writer.bytes(b" stack_start=")?;
+        writer.usize(record.stack_start)?;
+        writer.bytes(b" stack_end=")?;
+        writer.usize(record.stack_end)?;
+        writer.bytes(b" stack_flags=")?;
+        writer.usize(record.stack_flags as usize)?;
+        writer.bytes(b" page_table=")?;
+        writer.usize(record.page_table_id)?;
+        writer.bytes(b" mapped_pages=")?;
+        writer.usize(record.mapped_pages)?;
+        writer.bytes(b" text_pages=")?;
+        writer.usize(record.text_pages)?;
+        writer.bytes(b" stack_pages=")?;
+        writer.usize(record.stack_pages)?;
+        writer.nl()?;
+        index += 1;
+    }
+    Ok(())
+}
+
+fn write_address_space_page_table_table(
+    writer: &mut TextWriter<'_>,
+) -> Result<(), DumpEncodeError> {
+    let mut records =
+        [mm::EMPTY_ADDRESS_SPACE_PAGE_TABLE_RECORD; mm::MAX_ADDRESS_SPACE_PAGE_TABLE_RECORDS];
+    let count = mm::snapshot_address_space_page_tables(&mut records);
+    writer.bytes(b"address-space-page-tables:\n")?;
+    let mut index = 0usize;
+    while index < count {
+        let record = records[index];
+        writer.bytes(b"- id=")?;
+        writer.usize(record.id)?;
+        writer.bytes(b" address_space=")?;
+        writer.usize(record.address_space_id)?;
+        writer.bytes(b" owner_pid=")?;
+        writer.usize(record.owner_pid)?;
+        writer.bytes(b" image_generation=")?;
+        writer.usize(record.image_generation)?;
+        writer.bytes(b" state=")?;
+        writer.bytes(record.state.as_str().as_bytes())?;
+        writer.bytes(b" root_table=")?;
+        writer.usize(record.root_table_id)?;
+        writer.bytes(b" source=")?;
+        writer.bytes(record.source_path.as_bytes())?;
+        writer.bytes(b" mapped_pages=")?;
+        writer.usize(record.mapped_pages)?;
+        writer.bytes(b" text_pages=")?;
+        writer.usize(record.text_pages)?;
+        writer.bytes(b" stack_pages=")?;
+        writer.usize(record.stack_pages)?;
+        writer.bytes(b" text_flags=")?;
+        writer.usize(record.text_flags as usize)?;
+        writer.bytes(b" stack_flags=")?;
+        writer.usize(record.stack_flags as usize)?;
+        writer.nl()?;
+        index += 1;
+    }
+    Ok(())
+}
+
+fn write_address_space_page_table_entry_table(
+    writer: &mut TextWriter<'_>,
+) -> Result<(), DumpEncodeError> {
+    let mut records = [mm::EMPTY_ADDRESS_SPACE_PAGE_RECORD; mm::MAX_ADDRESS_SPACE_PAGE_RECORDS];
+    let count = mm::snapshot_address_space_pages(&mut records);
+    writer.bytes(b"address-space-pages:\n")?;
+    let mut index = 0usize;
+    while index < count {
+        let record = records[index];
+        writer.bytes(b"- id=")?;
+        writer.usize(record.id)?;
+        writer.bytes(b" address_space=")?;
+        writer.usize(record.address_space_id)?;
+        writer.bytes(b" page_table=")?;
+        writer.usize(record.page_table_id)?;
+        writer.bytes(b" owner_pid=")?;
+        writer.usize(record.owner_pid)?;
+        writer.bytes(b" image_generation=")?;
+        writer.usize(record.image_generation)?;
+        writer.bytes(b" state=")?;
+        writer.bytes(record.state.as_str().as_bytes())?;
+        writer.bytes(b" kind=")?;
+        writer.bytes(record.kind.as_str().as_bytes())?;
+        writer.bytes(b" backing=")?;
+        writer.bytes(record.backing.as_str().as_bytes())?;
+        writer.bytes(b" source=")?;
+        writer.bytes(record.source_path.as_bytes())?;
+        writer.bytes(b" page_index=")?;
+        writer.usize(record.page_index)?;
+        writer.bytes(b" virtual_start=")?;
+        writer.usize(record.virtual_start)?;
+        writer.bytes(b" virtual_end=")?;
+        writer.usize(record.virtual_end)?;
+        writer.bytes(b" bytes=")?;
+        writer.usize(record.bytes)?;
+        writer.bytes(b" source_offset=")?;
+        writer.usize(record.source_offset)?;
+        writer.bytes(b" flags=")?;
+        writer.usize(record.flags as usize)?;
+        writer.nl()?;
+        index += 1;
+    }
+    Ok(())
+}
+
+fn write_address_space_object_table(writer: &mut TextWriter<'_>) -> Result<(), DumpEncodeError> {
+    let mut records = [mm::EMPTY_ADDRESS_SPACE_OBJECT_RECORD; mm::MAX_ADDRESS_SPACE_OBJECT_RECORDS];
+    let count = mm::snapshot_address_space_objects(&mut records);
+    writer.bytes(b"address-space-objects:\n")?;
+    let mut index = 0usize;
+    while index < count {
+        let record = records[index];
+        writer.bytes(b"- id=")?;
+        writer.usize(record.id)?;
+        writer.bytes(b" address_space=")?;
+        writer.usize(record.address_space_id)?;
+        writer.bytes(b" owner_pid=")?;
+        writer.usize(record.owner_pid)?;
+        writer.bytes(b" image_generation=")?;
+        writer.usize(record.image_generation)?;
+        writer.bytes(b" state=")?;
+        writer.bytes(record.state.as_str().as_bytes())?;
+        writer.bytes(b" kind=")?;
+        writer.bytes(record.kind.as_str().as_bytes())?;
+        writer.bytes(b" backing=")?;
+        writer.bytes(record.backing.as_str().as_bytes())?;
+        writer.bytes(b" source=")?;
+        writer.bytes(record.source_path.as_bytes())?;
+        writer.bytes(b" start=")?;
+        writer.usize(record.start)?;
+        writer.bytes(b" end=")?;
+        writer.usize(record.end)?;
+        writer.bytes(b" bytes=")?;
+        writer.usize(record.bytes)?;
+        writer.bytes(b" checksum=")?;
+        writer.usize(record.checksum as usize)?;
+        writer.bytes(b" flags=")?;
+        writer.usize(record.flags as usize)?;
+        writer.bytes(b" page_count=")?;
+        writer.usize(record.page_count)?;
+        writer.nl()?;
+        index += 1;
+    }
+    Ok(())
+}
+
+fn write_service_table(writer: &mut TextWriter<'_>) -> Result<(), DumpEncodeError> {
+    let mut records = [service::EMPTY_SERVICE_RECORD; service::MAX_SERVICES];
+    let count = service::snapshot(&mut records);
+    writer.bytes(b"services:\n")?;
+    let mut index = 0usize;
+    while index < count {
+        let record = records[index];
+        writer.bytes(b"- seq=")?;
+        writer.usize(record.seq)?;
+        writer.bytes(b" name=")?;
+        writer.bytes(record.name.as_bytes())?;
+        writer.bytes(b" target=")?;
+        writer.bytes(record.target.as_bytes())?;
+        writer.bytes(b" state=")?;
+        writer.bytes(record.state.as_str().as_bytes())?;
+        writer.bytes(b" reason=")?;
+        writer.bytes(record.reason.as_str().as_bytes())?;
+        writer.bytes(b" owner_pid=")?;
+        writer.usize(record.owner_pid)?;
+        writer.bytes(b" owner_task=")?;
+        writer.usize(record.owner_task_id)?;
+        writer.bytes(b" service_pid=")?;
+        writer.usize(record.service_pid)?;
+        writer.bytes(b" service_task=")?;
+        writer.usize(record.service_task_id)?;
         writer.nl()?;
         index += 1;
     }
@@ -1083,6 +1691,18 @@ fn write_exec_load_table(writer: &mut TextWriter<'_>) -> Result<(), DumpEncodeEr
         writer.bytes(record.kind.as_str().as_bytes())?;
         writer.bytes(b" origin=")?;
         writer.bytes(record.origin.as_str().as_bytes())?;
+        writer.bytes(b" artifact_format=")?;
+        writer.bytes(record.artifact_format.as_str().as_bytes())?;
+        writer.bytes(b" artifact_body_format=")?;
+        writer.bytes(record.artifact_body_format.as_str().as_bytes())?;
+        writer.bytes(b" artifact_body_inner=")?;
+        writer.bytes(record.artifact_body_inner_format.as_str().as_bytes())?;
+        writer.bytes(b" artifact_bytes=")?;
+        writer.usize(record.artifact_bytes_len)?;
+        writer.bytes(b" artifact_body_bytes=")?;
+        writer.usize(record.artifact_body_bytes_len)?;
+        writer.bytes(b" artifact_checksum=")?;
+        writer.usize(record.artifact_checksum as usize)?;
         writer.nl()?;
         index += 1;
     }
@@ -1110,6 +1730,10 @@ fn write_pending_exec_table(writer: &mut TextWriter<'_>) -> Result<(), DumpEncod
         writer.bytes(record.entry_name.as_bytes())?;
         writer.bytes(b" kind=")?;
         writer.bytes(record.kind.as_str().as_bytes())?;
+        writer.bytes(b" artifact_body_format=")?;
+        writer.bytes(record.artifact_body_format.as_str().as_bytes())?;
+        writer.bytes(b" artifact_body_inner=")?;
+        writer.bytes(record.artifact_body_inner_format.as_str().as_bytes())?;
         writer.bytes(b" stdin_bytes=")?;
         writer.usize(record.stdin_len)?;
         writer.nl()?;
@@ -1122,10 +1746,14 @@ fn write_scheduler_state(writer: &mut TextWriter<'_>) -> Result<(), DumpEncodeEr
     let snapshot = sched::snapshot_scheduler();
     writer.bytes(b"scheduler:\ncurrent_task=")?;
     writer.usize(snapshot.current_task_id)?;
+    writer.bytes(b"\ncurrent_pid=")?;
+    writer.usize(snapshot.current_process_id)?;
     writer.bytes(b"\nready_queue_len=")?;
     writer.usize(snapshot.ready_len)?;
     writer.bytes(b"\nnext_ready_task=")?;
     writer.usize(snapshot.next_ready_task_id())?;
+    writer.bytes(b"\nnext_ready_pid=")?;
+    writer.usize(snapshot.next_ready_process_id())?;
     writer.bytes(b"\ndispatch_count=")?;
     writer.usize(snapshot.dispatch_count)?;
     writer.bytes(b"\nyield_count=")?;
@@ -1137,6 +1765,8 @@ fn write_scheduler_state(writer: &mut TextWriter<'_>) -> Result<(), DumpEncodeEr
     while index < snapshot.ready_len {
         writer.bytes(b"- task=")?;
         writer.usize(snapshot.ready_queue[index])?;
+        writer.bytes(b" pid=")?;
+        writer.usize(snapshot.ready_process_queue[index])?;
         writer.nl()?;
         index += 1;
     }
@@ -1172,6 +1802,48 @@ fn write_syscall_table(writer: &mut TextWriter<'_>) -> Result<(), DumpEncodeErro
     Ok(())
 }
 
+fn write_syscall_continuation_table(writer: &mut TextWriter<'_>) -> Result<(), DumpEncodeError> {
+    let mut records =
+        [syscall::EMPTY_SYSCALL_CONTINUATION_RECORD; syscall::MAX_SYSCALL_CONTINUATION_RECORDS];
+    let count = syscall::snapshot_syscall_continuations(&mut records);
+    writer.bytes(b"continuations:\n")?;
+    let mut index = 0usize;
+    while index < count {
+        let record = records[index];
+        writer.bytes(b"- pid=")?;
+        writer.usize(record.process_id)?;
+        writer.bytes(b" task=")?;
+        writer.usize(record.task_id)?;
+        writer.bytes(b" path=")?;
+        writer.bytes(record.program_path.as_bytes())?;
+        writer.bytes(b" nr=")?;
+        writer.usize(record.nr.raw() as usize)?;
+        writer.bytes(b" op=")?;
+        writer.bytes(record.op.as_str().as_bytes())?;
+        writer.bytes(b" memory=")?;
+        writer.bytes(record.memory.as_str().as_bytes())?;
+        writer.bytes(b" a0=")?;
+        writer.usize(record.args.a0)?;
+        writer.bytes(b" a1=")?;
+        writer.usize(record.args.a1)?;
+        writer.bytes(b" a2=")?;
+        writer.usize(record.args.a2)?;
+        writer.bytes(b" a3=")?;
+        writer.usize(record.args.a3)?;
+        writer.bytes(b" a4=")?;
+        writer.usize(record.args.a4)?;
+        writer.bytes(b" a5=")?;
+        writer.usize(record.args.a5)?;
+        writer.bytes(b" loader=")?;
+        writer.bytes(record.loader.as_bytes())?;
+        writer.bytes(b" entry_fn=")?;
+        writer.bytes(record.entry_name.as_bytes())?;
+        writer.nl()?;
+        index += 1;
+    }
+    Ok(())
+}
+
 fn write_task_table(writer: &mut TextWriter<'_>) -> Result<(), DumpEncodeError> {
     let mut records = [sched::EMPTY_KERNEL_TASK_RECORD; sched::MAX_KERNEL_TASKS];
     let count = sched::snapshot_kernel_tasks(&mut records);
@@ -1191,6 +1863,8 @@ fn write_task_table(writer: &mut TextWriter<'_>) -> Result<(), DumpEncodeError> 
         writer.bytes(record.entry.as_bytes())?;
         writer.bytes(b" block=")?;
         writer.bytes(record.block_reason.as_str().as_bytes())?;
+        writer.bytes(b" wake_tick=")?;
+        writer.usize(record.wake_tick)?;
         writer.bytes(b" runs=")?;
         writer.usize(record.run_count)?;
         writer.bytes(b" ticks=")?;
@@ -1258,6 +1932,19 @@ fn parse_next_str<'a>(
     let value = line_value(line, key)?;
     let value = core::str::from_utf8(value).map_err(|_| DumpParseError::BadLine)?;
     Ok((value, next))
+}
+
+fn parse_next_bool(
+    bytes: &[u8],
+    offset: usize,
+    key: &[u8],
+) -> Result<(bool, usize), DumpParseError> {
+    let (value, next) = parse_next_str(bytes, offset, key)?;
+    match value {
+        "true" => Ok((true, next)),
+        "false" => Ok((false, next)),
+        _ => Err(DumpParseError::BadLine),
+    }
 }
 
 fn line_value<'a>(line: &'a [u8], key: &[u8]) -> Result<&'a [u8], DumpParseError> {

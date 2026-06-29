@@ -111,7 +111,7 @@ extract_os_bin_static_expected_facts() {
     awk '
         /fn write_boot_proof\(/ { in_func = 1 }
         in_func && /\.stdout_line\("expected:"\)/ { in_expected = 1; next }
-        in_expected && /^}/ { exit }
+        in_expected && /^[[:space:]]*}/ { exit }
         in_expected && /\.stdout_line\("  [^"]*"\);/ {
             line = $0
             sub(/^.*\.stdout_line\("  /, "", line)

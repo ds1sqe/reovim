@@ -9,7 +9,10 @@ use {
         read_source_media_artifact, read_source_media_artifact_at, source_media_status,
         write_diagnostic_artifact,
     },
-    core::{cell::UnsafeCell, sync::atomic::AtomicUsize},
+    core::{
+        cell::UnsafeCell,
+        sync::atomic::{AtomicBool, AtomicUsize},
+    },
     reovim_testrt::{self as testrt, arch_test},
 };
 
@@ -20,6 +23,8 @@ struct BlockBuffer {
     len: AtomicUsize,
     last_write_offset: AtomicUsize,
     last_read_offset: AtomicUsize,
+    flush_count: AtomicUsize,
+    flush_ok: AtomicBool,
 }
 
 // SAFETY: selftests run single-threaded; atomics/UnsafeCell model the
@@ -31,6 +36,8 @@ static BLOCK_BUFFER: BlockBuffer = BlockBuffer {
     len: AtomicUsize::new(0),
     last_write_offset: AtomicUsize::new(usize::MAX),
     last_read_offset: AtomicUsize::new(usize::MAX),
+    flush_count: AtomicUsize::new(0),
+    flush_ok: AtomicBool::new(true),
 };
 
 fn reset_buffer() {
@@ -43,6 +50,8 @@ fn reset_buffer() {
     BLOCK_BUFFER
         .last_read_offset
         .store(usize::MAX, Ordering::Relaxed);
+    BLOCK_BUFFER.flush_count.store(0, Ordering::Relaxed);
+    BLOCK_BUFFER.flush_ok.store(true, Ordering::Relaxed);
     // SAFETY: selftest execution is single-threaded.
     unsafe {
         (*BLOCK_BUFFER.bytes.get()).fill(0);
@@ -65,6 +74,13 @@ fn block_write(offset: usize, bytes: &[u8]) -> bool {
         .store(offset, Ordering::Relaxed);
     BLOCK_BUFFER.len.store(bytes.len(), Ordering::Relaxed);
     true
+}
+
+fn block_flush() -> bool {
+    use core::sync::atomic::Ordering;
+
+    BLOCK_BUFFER.flush_count.fetch_add(1, Ordering::Relaxed);
+    BLOCK_BUFFER.flush_ok.load(Ordering::Relaxed)
 }
 
 fn block_read(offset: usize, out: &mut [u8]) -> usize {
@@ -90,11 +106,12 @@ arch_test!(diagnostic_block_target_writes_and_reads_artifact, {
     reset_buffer();
     testrt::check(diagnostic_status().is_none(), "no diagnostic block target initially");
 
-    install_diagnostic_device(BlockDevice::new(
+    install_diagnostic_device(BlockDevice::new_with_flush(
         "selftest-block0",
         TEST_BLOCK_CAPACITY,
         block_write,
         block_read,
+        block_flush,
     ));
     let status = diagnostic_status().expect("diagnostic block target installed");
     testrt::check_eq(status.label, "selftest-block0");
@@ -108,6 +125,7 @@ arch_test!(diagnostic_block_target_writes_and_reads_artifact, {
     testrt::check_eq(write.ok, true);
     testrt::check_eq(write.reason, "write-ok");
     testrt::check_eq(BLOCK_BUFFER.last_write_offset.load(Ordering::Relaxed), 0usize);
+    testrt::check_eq(BLOCK_BUFFER.flush_count.load(Ordering::Relaxed), 1usize);
 
     let mut readback = [0u8; TEST_BLOCK_CAPACITY];
     let read = read_diagnostic_artifact(&mut readback);
@@ -117,6 +135,58 @@ arch_test!(diagnostic_block_target_writes_and_reads_artifact, {
     testrt::check_eq(read.reason, "read-ok");
     testrt::check_eq(BLOCK_BUFFER.last_read_offset.load(Ordering::Relaxed), 0usize);
     testrt::check_eq(&readback[..8], b"artifact");
+
+    clear_diagnostic_device_for_tests();
+});
+
+arch_test!(diagnostic_block_target_rejects_writes_without_flush, {
+    use core::sync::atomic::Ordering;
+
+    clear_diagnostic_device_for_tests();
+    reset_buffer();
+    install_diagnostic_device(BlockDevice::new(
+        "unflushed-block",
+        TEST_BLOCK_CAPACITY,
+        block_write,
+        block_read,
+    ));
+
+    let write = write_diagnostic_artifact(b"artifact");
+    testrt::check_eq(write.available, true);
+    testrt::check_eq(write.storage, "unflushed-block");
+    testrt::check_eq(write.capacity_bytes, TEST_BLOCK_CAPACITY);
+    testrt::check_eq(write.bytes, 0usize);
+    testrt::check_eq(write.ok, false);
+    testrt::check_eq(write.reason, "flush-unavailable");
+    testrt::check_eq(BLOCK_BUFFER.last_write_offset.load(Ordering::Relaxed), usize::MAX);
+    testrt::check_eq(BLOCK_BUFFER.flush_count.load(Ordering::Relaxed), 0usize);
+
+    clear_diagnostic_device_for_tests();
+});
+
+arch_test!(diagnostic_block_target_fails_closed_when_flush_fails, {
+    use core::sync::atomic::Ordering;
+
+    clear_diagnostic_device_for_tests();
+    reset_buffer();
+    BLOCK_BUFFER.flush_ok.store(false, Ordering::Relaxed);
+    install_diagnostic_device(BlockDevice::new_with_flush(
+        "failing-flush-block",
+        TEST_BLOCK_CAPACITY,
+        block_write,
+        block_read,
+        block_flush,
+    ));
+
+    let write = write_diagnostic_artifact(b"artifact");
+    testrt::check_eq(write.available, true);
+    testrt::check_eq(write.storage, "failing-flush-block");
+    testrt::check_eq(write.capacity_bytes, TEST_BLOCK_CAPACITY);
+    testrt::check_eq(write.bytes, 8usize);
+    testrt::check_eq(write.ok, false);
+    testrt::check_eq(write.reason, "flush-failed");
+    testrt::check_eq(BLOCK_BUFFER.last_write_offset.load(Ordering::Relaxed), 0usize);
+    testrt::check_eq(BLOCK_BUFFER.flush_count.load(Ordering::Relaxed), 1usize);
 
     clear_diagnostic_device_for_tests();
 });

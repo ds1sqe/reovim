@@ -3,7 +3,9 @@
 //! This is the first system-kernel block boundary used by persistent dump and
 //! executable source-media and executable-bundle work. It deliberately models
 //! only explicit callback targets today; real media enumeration, partitions,
-//! filesystems, barriers, and removable-device policy belong in later cuts.
+//! filesystems, and removable-device policy belong in later cuts. Diagnostic
+//! writes still require an explicit flush callback so persistence proof cannot
+//! be confused with a cached write.
 
 use core::{
     cell::UnsafeCell,
@@ -21,6 +23,8 @@ pub struct BlockDevice {
     pub write: fn(offset: usize, bytes: &[u8]) -> bool,
     /// Read bytes at byte offset into `out`, returning copied bytes.
     pub read: fn(offset: usize, out: &mut [u8]) -> usize,
+    /// Flushes prior writes through the target's durability boundary.
+    pub flush: Option<fn() -> bool>,
 }
 
 impl BlockDevice {
@@ -37,6 +41,25 @@ impl BlockDevice {
             capacity_bytes,
             write,
             read,
+            flush: None,
+        }
+    }
+
+    /// Builds a callback-backed block device that can prove write durability.
+    #[must_use]
+    pub const fn new_with_flush(
+        label: &'static str,
+        capacity_bytes: usize,
+        write: fn(offset: usize, bytes: &[u8]) -> bool,
+        read: fn(offset: usize, out: &mut [u8]) -> usize,
+        flush: fn() -> bool,
+    ) -> Self {
+        Self {
+            label,
+            capacity_bytes,
+            write,
+            read,
+            flush: Some(flush),
         }
     }
 }
@@ -129,6 +152,12 @@ fn installed_diagnostic_device() -> Option<BlockDevice> {
     with_diagnostic_device(|slot| *slot)
 }
 
+/// Returns a copy of the installed diagnostic target for one kernel operation.
+#[must_use]
+pub(crate) fn diagnostic_device_snapshot() -> Option<BlockDevice> {
+    installed_diagnostic_device()
+}
+
 fn installed_source_media_device() -> Option<BlockDevice> {
     with_source_media_device(|slot| *slot)
 }
@@ -211,6 +240,16 @@ fn write_artifact(device: Option<BlockDevice>, bytes: &[u8]) -> BlockIoResult {
             reason: "write-out-of-range",
         };
     }
+    let Some(flush) = device.flush else {
+        return BlockIoResult {
+            available: true,
+            storage: device.label,
+            capacity_bytes: device.capacity_bytes,
+            bytes: 0,
+            ok: false,
+            reason: "flush-unavailable",
+        };
+    };
     if !(device.write)(0, bytes) {
         return BlockIoResult {
             available: true,
@@ -219,6 +258,16 @@ fn write_artifact(device: Option<BlockDevice>, bytes: &[u8]) -> BlockIoResult {
             bytes: 0,
             ok: false,
             reason: "write-failed",
+        };
+    }
+    if !flush() {
+        return BlockIoResult {
+            available: true,
+            storage: device.label,
+            capacity_bytes: device.capacity_bytes,
+            bytes: bytes.len(),
+            ok: false,
+            reason: "flush-failed",
         };
     }
     BlockIoResult {
@@ -272,10 +321,28 @@ pub fn write_diagnostic_artifact(bytes: &[u8]) -> BlockIoResult {
     write_artifact(installed_diagnostic_device(), bytes)
 }
 
+/// Writes a diagnostic artifact to an already selected target.
+#[must_use]
+pub(crate) fn write_selected_diagnostic_artifact(
+    device: BlockDevice,
+    bytes: &[u8],
+) -> BlockIoResult {
+    write_artifact(Some(device), bytes)
+}
+
 /// Reads the last diagnostic artifact from offset zero.
 #[must_use]
 pub fn read_diagnostic_artifact(out: &mut [u8]) -> BlockIoResult {
     read_artifact_at(installed_diagnostic_device(), 0, out)
+}
+
+/// Reads a diagnostic artifact from an already selected target.
+#[must_use]
+pub(crate) fn read_selected_diagnostic_artifact(
+    device: BlockDevice,
+    out: &mut [u8],
+) -> BlockIoResult {
+    read_artifact_at(Some(device), 0, out)
 }
 
 /// Reads one executable source artifact from the installed source-media target.

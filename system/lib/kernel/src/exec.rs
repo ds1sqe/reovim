@@ -9,11 +9,15 @@ use {
     crate::{
         exec_artifact::{
             self, ExecArtifactImage, ExecArtifactKind, ExecArtifactLoadError,
-            ExecArtifactLoadErrorKind, ExecArtifactOrigin,
+            ExecArtifactLoadErrorKind, ExecArtifactMetadata, ExecArtifactOrigin,
         },
-        proc::{self, ProcessHandle, ProcessState, ROOTD_PID, SHELL_PID},
-        program::{self, LoadedProgram, ProgramArgvBuffer, ProgramDescriptor, ProgramStatus},
-        rootd::{LoadedPayloadProgram, PayloadDescriptor, PayloadLaunchResult},
+        mm,
+        proc::{self, ProcessAdoptionSnapshot, ProcessHandle, ProcessState, ROOTD_PID, SHELL_PID},
+        program::{
+            self, LoadedProgram, ProgramArgvBuffer, ProgramDescriptor, ProgramEnvBuffer,
+            ProgramStatus,
+        },
+        rootd::{self, LoadedPayloadProgram, PayloadDescriptor, PayloadLaunchResult},
         source_store::ExecutableSourceStore,
     },
     core::{
@@ -43,6 +47,8 @@ pub enum ExecLoadError {
     SourceNotFound,
     /// The resolved executable image failed loader validation.
     InvalidImage,
+    /// The executable image loaded, but bounded exec admission had no slot.
+    ProcessAdmissionFailed,
 }
 
 /// Result status retained for one executable load/admission attempt.
@@ -165,6 +171,18 @@ pub struct ExecLoadRecord {
     pub kind: ExecLoadKind,
     /// Provider that supplied the executable bytes, when resolved.
     pub origin: ExecArtifactOrigin,
+    /// Checked artifact envelope format.
+    pub artifact_format: exec_artifact::ExecArtifactFormat,
+    /// Executable body format.
+    pub artifact_body_format: exec_artifact::ExecArtifactBodyFormat,
+    /// Inner checked executable body format.
+    pub artifact_body_inner_format: exec_artifact::ExecArtifactBodyInnerFormat,
+    /// Checked artifact envelope byte count.
+    pub artifact_bytes_len: usize,
+    /// Executable body byte count admitted by the loader.
+    pub artifact_body_bytes_len: usize,
+    /// Checksum of admitted executable body bytes.
+    pub artifact_checksum: u32,
     /// Load/admission status.
     pub status: ExecLoadStatus,
     /// Load/admission reason.
@@ -186,6 +204,12 @@ impl ExecLoadRecord {
             entry_name: "",
             kind: ExecLoadKind::None,
             origin: ExecArtifactOrigin::None,
+            artifact_format: exec_artifact::ExecArtifactFormat::None,
+            artifact_body_format: exec_artifact::ExecArtifactBodyFormat::None,
+            artifact_body_inner_format: exec_artifact::ExecArtifactBodyInnerFormat::None,
+            artifact_bytes_len: 0,
+            artifact_body_bytes_len: 0,
+            artifact_checksum: 0,
             status: ExecLoadStatus::Empty,
             reason: ExecLoadReason::None,
         }
@@ -230,6 +254,10 @@ pub struct PendingExecRecord {
     pub entry_name: &'static str,
     /// Executable namespace.
     pub kind: ExecLoadKind,
+    /// Executable body format retained with this pending invocation.
+    pub artifact_body_format: exec_artifact::ExecArtifactBodyFormat,
+    /// Inner checked executable body format retained with this pending invocation.
+    pub artifact_body_inner_format: exec_artifact::ExecArtifactBodyInnerFormat,
     /// Initial stdin bytes retained for pending `/bin` invocations.
     pub stdin_len: usize,
 }
@@ -246,6 +274,8 @@ impl PendingExecRecord {
             loader: "",
             entry_name: "",
             kind: ExecLoadKind::None,
+            artifact_body_format: exec_artifact::ExecArtifactBodyFormat::None,
+            artifact_body_inner_format: exec_artifact::ExecArtifactBodyInnerFormat::None,
             stdin_len: 0,
         }
     }
@@ -360,6 +390,14 @@ const fn exec_error_for_artifact_error(error: ExecArtifactLoadErrorKind) -> Exec
     }
 }
 
+fn address_space_image_for_payload(payload: LoadedPayloadProgram) -> mm::AddressSpaceImage {
+    mm::AddressSpaceImage::source(
+        payload.source_path,
+        payload.source_bytes().len(),
+        crate::source_store::source_media_checksum32(payload.source_bytes()),
+    )
+}
+
 fn image_for_artifact_error(error: ExecArtifactLoadError) -> Option<LoadedExecImage> {
     error.image.map(LoadedExecImage::from_artifact_image)
 }
@@ -381,6 +419,7 @@ pub fn load_bin_program(
                 ExecLoadReason::EmptyArgv0,
                 None,
                 ExecArtifactOrigin::None,
+                ExecArtifactMetadata::empty(),
             );
         });
         return Err(ExecLoadError::EmptyArgv0);
@@ -394,6 +433,7 @@ pub fn load_bin_program(
                     reason_for_origin(artifact.origin),
                     Some(LoadedExecImage::Bin(artifact.program)),
                     artifact.origin,
+                    artifact.metadata,
                 );
             });
             Ok(artifact.program)
@@ -406,6 +446,7 @@ pub fn load_bin_program(
                     ExecLoadReason::NotFound,
                     None,
                     ExecArtifactOrigin::None,
+                    ExecArtifactMetadata::empty(),
                 );
             });
             Err(ExecLoadError::NotFound)
@@ -420,6 +461,7 @@ pub fn load_bin_program(
                     reason,
                     image_for_artifact_error(error),
                     error.origin,
+                    error.metadata,
                 );
             });
             Err(exec_error)
@@ -444,6 +486,7 @@ pub fn load_payload_by_name(
                 ExecLoadReason::EmptyArgv0,
                 None,
                 ExecArtifactOrigin::None,
+                ExecArtifactMetadata::empty(),
             );
         });
         return Err(ExecLoadError::EmptyArgv0);
@@ -458,6 +501,7 @@ pub fn load_payload_by_name(
                     reason_for_origin(artifact.origin),
                     Some(LoadedExecImage::Payload(artifact.payload)),
                     artifact.origin,
+                    artifact.metadata,
                 );
             });
             Ok(artifact.payload)
@@ -470,6 +514,7 @@ pub fn load_payload_by_name(
                     ExecLoadReason::NotFound,
                     None,
                     ExecArtifactOrigin::None,
+                    ExecArtifactMetadata::empty(),
                 );
             });
             Err(ExecLoadError::NotFound)
@@ -484,6 +529,7 @@ pub fn load_payload_by_name(
                     reason,
                     image_for_artifact_error(error),
                     error.origin,
+                    error.metadata,
                 );
             });
             Err(exec_error)
@@ -497,6 +543,7 @@ pub struct PendingProgramInvocation {
     handle: ProcessHandle,
     program: LoadedProgram,
     argv: ProgramArgvBuffer,
+    env: ProgramEnvBuffer,
     stdin: [u8; MAX_PENDING_EXEC_STDIN_BYTES],
     stdin_len: usize,
 }
@@ -506,12 +553,14 @@ impl PendingProgramInvocation {
         handle: ProcessHandle,
         program: LoadedProgram,
         argv: ProgramArgvBuffer,
+        env: ProgramEnvBuffer,
         stdin: &[u8],
     ) -> Self {
         let mut pending = Self {
             handle,
             program,
             argv,
+            env,
             stdin: [0u8; MAX_PENDING_EXEC_STDIN_BYTES],
             stdin_len: 0,
         };
@@ -538,6 +587,12 @@ impl PendingProgramInvocation {
     #[must_use]
     pub const fn argv(&self) -> &ProgramArgvBuffer {
         &self.argv
+    }
+
+    /// Owned env selected at exec admission.
+    #[must_use]
+    pub const fn env(&self) -> &ProgramEnvBuffer {
+        &self.env
     }
 
     /// Initial stdin payload attached to this invocation.
@@ -617,6 +672,29 @@ impl PendingPayloadSlot {
     }
 }
 
+const fn process_state_allows_pending_reclaim(state: ProcessState) -> bool {
+    match state {
+        ProcessState::Empty
+        | ProcessState::Exited
+        | ProcessState::Failed
+        | ProcessState::Halted
+        | ProcessState::Reaped => true,
+        ProcessState::New | ProcessState::Ready | ProcessState::Running | ProcessState::Blocked => {
+            false
+        }
+    }
+}
+
+fn pending_pid_reclaimable(pid: usize) -> bool {
+    if pid == 0 {
+        return true;
+    }
+    match proc::process(pid) {
+        Some(record) => process_state_allows_pending_reclaim(record.state),
+        None => true,
+    }
+}
+
 struct ExecState {
     pending_programs: [PendingProgramSlot; MAX_PENDING_EXEC_INVOCATIONS],
     pending_payloads: [PendingPayloadSlot; MAX_PENDING_EXEC_INVOCATIONS],
@@ -648,6 +726,7 @@ impl ExecState {
         reason: ExecLoadReason,
         image: Option<LoadedExecImage>,
         origin: ExecArtifactOrigin,
+        metadata: ExecArtifactMetadata,
     ) {
         let seq = self.next_load_seq;
         self.next_load_seq = self.next_load_seq.saturating_add(1);
@@ -658,6 +737,12 @@ impl ExecState {
         record.status = status;
         record.reason = reason;
         record.origin = origin;
+        record.artifact_format = metadata.format;
+        record.artifact_body_format = metadata.body_format;
+        record.artifact_body_inner_format = metadata.body_inner_format;
+        record.artifact_bytes_len = metadata.artifact_bytes_len;
+        record.artifact_body_bytes_len = metadata.body_bytes_len;
+        record.artifact_checksum = metadata.checksum;
         if let Some(image) = image {
             record.path = image.path();
             record.loader = image.loader();
@@ -693,6 +778,8 @@ impl ExecState {
             if let Some(pending) = self.pending_programs[index].pending {
                 let handle = pending.handle;
                 let parent_pid = proc::process(handle.pid).map_or(0, |record| record.parent_pid);
+                let (body_format, body_inner_format) =
+                    exec_artifact::program_body_formats(pending.program);
                 out[written] = PendingExecRecord {
                     pid: handle.pid,
                     parent_pid,
@@ -701,6 +788,8 @@ impl ExecState {
                     loader: handle.loader,
                     entry_name: handle.entry_name,
                     kind: ExecLoadKind::Bin,
+                    artifact_body_format: body_format,
+                    artifact_body_inner_format: body_inner_format,
                     stdin_len: pending.stdin_len,
                 };
                 written += 1;
@@ -712,14 +801,20 @@ impl ExecState {
         while index < self.pending_payloads.len() && written < out.len() {
             if let Some(pending) = self.pending_payloads[index].pending {
                 let child = pending.child;
+                let parent_pid =
+                    proc::process(child.pid).map_or(pending.parent.pid, |record| record.parent_pid);
+                let (body_format, body_inner_format) =
+                    exec_artifact::payload_body_formats(pending.payload);
                 out[written] = PendingExecRecord {
                     pid: child.pid,
-                    parent_pid: pending.parent.pid,
+                    parent_pid,
                     task_id: child.task_id,
                     path: child.program_path,
                     loader: child.loader,
                     entry_name: child.entry_name,
                     kind: ExecLoadKind::Payload,
+                    artifact_body_format: body_format,
+                    artifact_body_inner_format: body_inner_format,
                     stdin_len: 0,
                 };
                 written += 1;
@@ -729,18 +824,80 @@ impl ExecState {
         written
     }
 
-    fn store_pending_program(&mut self, pending: PendingProgramInvocation) {
+    fn reclaim_reclaimable_pending_programs(&mut self) {
+        let mut index = 0usize;
+        while index < self.pending_programs.len() {
+            if let Some(pending) = self.pending_programs[index].pending {
+                if pending_pid_reclaimable(pending.handle.pid) {
+                    self.pending_programs[index] = PendingProgramSlot::empty();
+                }
+            }
+            index += 1;
+        }
+    }
+
+    fn reclaim_reclaimable_pending_payloads(&mut self) {
+        let mut index = 0usize;
+        while index < self.pending_payloads.len() {
+            if let Some(pending) = self.pending_payloads[index].pending {
+                if pending_pid_reclaimable(pending.child.pid) {
+                    self.pending_payloads[index] = PendingPayloadSlot::empty();
+                }
+            }
+            index += 1;
+        }
+    }
+
+    fn has_pending_program_capacity(&mut self) -> bool {
+        self.reclaim_reclaimable_pending_programs();
+        let mut index = 0usize;
+        while index < self.pending_programs.len() {
+            if self.pending_programs[index].pending.is_none() {
+                return true;
+            }
+            index += 1;
+        }
+        false
+    }
+
+    fn has_pending_program_capacity_for_pid(&mut self, pid: usize) -> bool {
+        self.reclaim_reclaimable_pending_programs();
+        let mut index = 0usize;
+        while index < self.pending_programs.len() {
+            match self.pending_programs[index].pending {
+                Some(pending) if pending.handle.pid == pid => return true,
+                None => return true,
+                Some(_) => {}
+            }
+            index += 1;
+        }
+        false
+    }
+
+    fn has_pending_payload_capacity(&mut self) -> bool {
+        self.reclaim_reclaimable_pending_payloads();
+        let mut index = 0usize;
+        while index < self.pending_payloads.len() {
+            if self.pending_payloads[index].pending.is_none() {
+                return true;
+            }
+            index += 1;
+        }
+        false
+    }
+
+    fn store_pending_program(&mut self, pending: PendingProgramInvocation) -> bool {
+        let _ = self.take_pending_program(pending.handle.pid);
+        self.reclaim_reclaimable_pending_programs();
         let mut index = 0usize;
         while index < self.pending_programs.len() {
             if self.pending_programs[index].pending.is_none() {
                 self.pending_programs[index].write(pending);
-                return;
+                return true;
             }
             index += 1;
         }
-
-        let slot = pending.handle.pid % self.pending_programs.len();
-        self.pending_programs[slot].write(pending);
+        false
     }
 
     fn take_pending_program(&mut self, pid: usize) -> Option<PendingProgramInvocation> {
@@ -757,18 +914,18 @@ impl ExecState {
         None
     }
 
-    fn store_pending_payload(&mut self, pending: PendingPayloadInvocation) {
+    fn store_pending_payload(&mut self, pending: PendingPayloadInvocation) -> bool {
+        let _ = self.take_pending_payload(pending.child.pid);
+        self.reclaim_reclaimable_pending_payloads();
         let mut index = 0usize;
         while index < self.pending_payloads.len() {
             if self.pending_payloads[index].pending.is_none() {
                 self.pending_payloads[index].write(pending);
-                return;
+                return true;
             }
             index += 1;
         }
-
-        let slot = pending.child.pid % self.pending_payloads.len();
-        self.pending_payloads[slot].write(pending);
+        false
     }
 
     fn take_pending_payload(&mut self, pid: usize) -> Option<PendingPayloadInvocation> {
@@ -824,7 +981,9 @@ fn with_exec<R>(f: impl FnOnce(&mut ExecState) -> R) -> R {
 /// Clears pending executable image queues.
 pub fn reset() {
     with_exec(ExecState::reset);
+    exec_artifact::reset_cached_artifact_bodies();
     program::reset_media_programs();
+    rootd::reset_media_payloads();
 }
 
 /// Copies retained executable load/admission records into `out`.
@@ -850,8 +1009,36 @@ pub fn spawn_bin_program_with_stdin(
     argv: ProgramArgvBuffer,
     stdin: &[u8],
 ) -> ProcessHandle {
-    let handle = spawn_bin_program_for_parent(SHELL_PID, SHELL_PID, program, argv, stdin);
-    handle
+    try_spawn_bin_program_with_stdin(program, argv, stdin)
+        .expect("root-shell program admission has a free exec slot")
+}
+
+/// Tries to start a root-shell `/bin` exec request with bounded stdin.
+#[must_use]
+pub fn try_spawn_bin_program_with_stdin(
+    program: LoadedProgram,
+    argv: ProgramArgvBuffer,
+    stdin: &[u8],
+) -> Option<ProcessHandle> {
+    spawn_bin_program_for_parent(
+        SHELL_PID,
+        SHELL_PID,
+        program,
+        argv,
+        ProgramEnvBuffer::empty(),
+        stdin,
+    )
+}
+
+/// Tries to start a root-shell `/bin` exec request with bounded env and stdin.
+#[must_use]
+pub fn try_spawn_bin_program_with_env_and_stdin(
+    program: LoadedProgram,
+    argv: ProgramArgvBuffer,
+    env: ProgramEnvBuffer,
+    stdin: &[u8],
+) -> Option<ProcessHandle> {
+    spawn_bin_program_for_parent(SHELL_PID, SHELL_PID, program, argv, env, stdin)
 }
 
 /// Starts a rootd-owned `/bin` exec request and leaves it pending for scheduler dispatch.
@@ -861,7 +1048,25 @@ pub fn spawn_rootd_bin_program_with_stdin(
     argv: ProgramArgvBuffer,
     stdin: &[u8],
 ) -> ProcessHandle {
-    spawn_bin_program_for_parent(ROOTD_PID, ROOTD_PID, program, argv, stdin)
+    try_spawn_rootd_bin_program_with_stdin(program, argv, stdin)
+        .expect("rootd program admission has a free exec slot")
+}
+
+/// Tries to start a rootd-owned `/bin` exec request.
+#[must_use]
+pub fn try_spawn_rootd_bin_program_with_stdin(
+    program: LoadedProgram,
+    argv: ProgramArgvBuffer,
+    stdin: &[u8],
+) -> Option<ProcessHandle> {
+    spawn_bin_program_for_parent(
+        ROOTD_PID,
+        ROOTD_PID,
+        program,
+        argv,
+        ProgramEnvBuffer::empty(),
+        stdin,
+    )
 }
 
 fn spawn_bin_program_for_parent(
@@ -869,19 +1074,34 @@ fn spawn_bin_program_for_parent(
     parent_task_id: usize,
     program: LoadedProgram,
     argv: ProgramArgvBuffer,
+    env: ProgramEnvBuffer,
     stdin: &[u8],
-) -> ProcessHandle {
-    let handle = proc::spawn_child(
+) -> Option<ProcessHandle> {
+    if !with_exec(|exec| exec.has_pending_program_capacity()) {
+        return None;
+    }
+    let (artifact_body_format, artifact_body_inner_format) =
+        exec_artifact::program_body_formats(program);
+    let handle = proc::spawn_child_with_program_argv_env_mapped(
         parent_pid,
         parent_task_id,
         program.descriptor.path,
         program.image_kind.as_str(),
         program.descriptor.entry_name,
-    );
-    with_exec(|exec| {
-        exec.store_pending_program(PendingProgramInvocation::new(handle, program, argv, stdin));
-    });
-    handle
+        proc::address_space_image_for_program(program),
+        &argv,
+        &env,
+        program.descriptor.name,
+        artifact_body_format,
+        artifact_body_inner_format,
+    )?;
+    if !with_exec(|exec| {
+        exec.store_pending_program(PendingProgramInvocation::new(handle, program, argv, env, stdin))
+    }) {
+        let _ = proc::exit_process(handle.pid, ProcessState::Failed, 1);
+        return None;
+    }
+    Some(handle)
 }
 
 /// Starts a child `/bin` exec request and leaves it pending for scheduler dispatch.
@@ -892,33 +1112,174 @@ pub fn spawn_program_child_with_stdin(
     argv: ProgramArgvBuffer,
     stdin: &[u8],
 ) -> ProcessHandle {
-    let child = proc::spawn_child(
+    try_spawn_program_child_with_stdin(parent, program, argv, stdin)
+        .expect("child program admission has a free exec slot")
+}
+
+/// Tries to start a child `/bin` exec request.
+#[must_use]
+pub fn try_spawn_program_child_with_stdin(
+    parent: ProcessHandle,
+    program: LoadedProgram,
+    argv: ProgramArgvBuffer,
+    stdin: &[u8],
+) -> Option<ProcessHandle> {
+    try_spawn_program_child_with_env_and_stdin(
+        parent,
+        program,
+        argv,
+        ProgramEnvBuffer::empty(),
+        stdin,
+    )
+}
+
+/// Tries to start a child `/bin` exec request with bounded env.
+#[must_use]
+pub fn try_spawn_program_child_with_env_and_stdin(
+    parent: ProcessHandle,
+    program: LoadedProgram,
+    argv: ProgramArgvBuffer,
+    env: ProgramEnvBuffer,
+    stdin: &[u8],
+) -> Option<ProcessHandle> {
+    if !with_exec(|exec| exec.has_pending_program_capacity()) {
+        return None;
+    }
+    let (artifact_body_format, artifact_body_inner_format) =
+        exec_artifact::program_body_formats(program);
+    let child = proc::spawn_child_with_program_argv_env_mapped(
         parent.pid,
         parent.task_id,
         program.descriptor.path,
         program.image_kind.as_str(),
         program.descriptor.entry_name,
-    );
-    with_exec(|exec| {
-        exec.store_pending_program(PendingProgramInvocation::new(child, program, argv, stdin));
-    });
-    child
+        proc::address_space_image_for_program(program),
+        &argv,
+        &env,
+        program.descriptor.name,
+        artifact_body_format,
+        artifact_body_inner_format,
+    )?;
+    if !with_exec(|exec| {
+        exec.store_pending_program(PendingProgramInvocation::new(child, program, argv, env, stdin))
+    }) {
+        let _ = proc::exit_process(child.pid, ProcessState::Failed, 1);
+        return None;
+    }
+    Some(child)
+}
+
+/// Replaces an existing process with a loaded `/bin` image and leaves it pending.
+#[must_use]
+pub fn replace_bin_program(
+    current: ProcessHandle,
+    program: LoadedProgram,
+    argv: ProgramArgvBuffer,
+    stdin: &[u8],
+) -> Option<ProcessHandle> {
+    replace_bin_program_with_env(current, program, argv, ProgramEnvBuffer::empty(), stdin)
+}
+
+/// Replaces an existing process with a loaded `/bin` image and retained env.
+#[must_use]
+pub fn replace_bin_program_with_env(
+    current: ProcessHandle,
+    program: LoadedProgram,
+    argv: ProgramArgvBuffer,
+    env: ProgramEnvBuffer,
+    stdin: &[u8],
+) -> Option<ProcessHandle> {
+    if !with_exec(|exec| exec.has_pending_program_capacity_for_pid(current.pid)) {
+        return None;
+    }
+    let (artifact_body_format, artifact_body_inner_format) =
+        exec_artifact::program_body_formats(program);
+    let handle = proc::replace_program_image_env_mapped(
+        current.pid,
+        program.descriptor.path,
+        program.image_kind.as_str(),
+        program.descriptor.entry_name,
+        proc::address_space_image_for_program(program),
+        &argv,
+        &env,
+        program.descriptor.name,
+        artifact_body_format,
+        artifact_body_inner_format,
+    )?;
+    if !with_exec(|exec| {
+        exec.store_pending_program(PendingProgramInvocation::new(handle, program, argv, env, stdin))
+    }) {
+        let _ = proc::exit_process(handle.pid, ProcessState::Failed, 1);
+        return None;
+    }
+    Some(handle)
 }
 
 /// Spawns a payload child and leaves its loaded image pending for dispatch.
 #[must_use]
 pub fn spawn_payload_child(parent: ProcessHandle, payload: LoadedPayloadProgram) -> ProcessHandle {
-    let child = proc::spawn_child(
+    let argv = ProgramArgvBuffer::from_argv0(payload.name).unwrap_or_else(|_| {
+        let mut fallback = ProgramArgvBuffer::empty();
+        let _ = fallback.push(payload.path);
+        fallback
+    });
+    spawn_payload_child_with_argv(parent, payload, argv)
+}
+
+/// Spawns a payload child with admitted argv metadata.
+#[must_use]
+pub fn spawn_payload_child_with_argv(
+    parent: ProcessHandle,
+    payload: LoadedPayloadProgram,
+    argv: ProgramArgvBuffer,
+) -> ProcessHandle {
+    try_spawn_payload_child_with_argv(parent, payload, argv)
+        .expect("payload admission has a free exec slot")
+}
+
+/// Tries to spawn a payload child with admitted argv metadata.
+#[must_use]
+pub fn try_spawn_payload_child_with_argv(
+    parent: ProcessHandle,
+    payload: LoadedPayloadProgram,
+    argv: ProgramArgvBuffer,
+) -> Option<ProcessHandle> {
+    try_spawn_payload_child_with_argv_env(parent, payload, argv, ProgramEnvBuffer::empty())
+}
+
+/// Tries to spawn a payload child with admitted argv/env metadata.
+#[must_use]
+pub fn try_spawn_payload_child_with_argv_env(
+    parent: ProcessHandle,
+    payload: LoadedPayloadProgram,
+    argv: ProgramArgvBuffer,
+    env: ProgramEnvBuffer,
+) -> Option<ProcessHandle> {
+    if !with_exec(|exec| exec.has_pending_payload_capacity()) {
+        return None;
+    }
+    let (artifact_body_format, artifact_body_inner_format) =
+        exec_artifact::payload_body_formats(payload);
+    let child = proc::spawn_child_with_program_argv_env_mapped(
         parent.pid,
         parent.task_id,
         payload.path,
         payload.image_kind.as_str(),
         payload.entry_name,
-    );
-    with_exec(|exec| {
-        exec.store_pending_payload(PendingPayloadInvocation::new(parent, child, payload));
-    });
-    child
+        address_space_image_for_payload(payload),
+        &argv,
+        &env,
+        payload.name,
+        artifact_body_format,
+        artifact_body_inner_format,
+    )?;
+    if !with_exec(|exec| {
+        exec.store_pending_payload(PendingPayloadInvocation::new(parent, child, payload))
+    }) {
+        let _ = proc::exit_process(child.pid, ProcessState::Failed, 1);
+        return None;
+    }
+    Some(child)
 }
 
 /// Dispatches the next scheduler-ready process.
@@ -948,27 +1309,32 @@ pub fn discard_pending_payload(pid: usize) {
 }
 
 /// Completes a program process.
-pub(crate) fn complete_program(pid: usize, status: ProgramStatus) {
+pub(crate) fn complete_program(pid: usize, status: ProgramStatus) -> ProcessAdoptionSnapshot {
     let (state, exit_code) = match status {
+        ProgramStatus::Blocked => return ProcessAdoptionSnapshot::empty(),
         ProgramStatus::Empty => (ProcessState::Exited, 0),
         ProgramStatus::Ok => (ProcessState::Exited, 0),
         ProgramStatus::Error => (ProcessState::Failed, 1),
         ProgramStatus::ExitCode(0) => (ProcessState::Exited, 0),
         ProgramStatus::ExitCode(code) => (ProcessState::Failed, code),
+        ProgramStatus::Replaced => (ProcessState::Exited, 0),
         ProgramStatus::Halt => (ProcessState::Halted, 0),
     };
-    proc::exit_process(pid, state, exit_code);
+    proc::exit_process(pid, state, exit_code)
 }
 
 /// Completes a payload child process.
-pub fn complete_payload(pid: usize, result: PayloadLaunchResult) {
+pub fn complete_payload(pid: usize, result: PayloadLaunchResult) -> ProcessAdoptionSnapshot {
     let (state, exit_code) = match result {
         PayloadLaunchResult::Ready => (ProcessState::Exited, 0),
+        PayloadLaunchResult::Resident => return ProcessAdoptionSnapshot::empty(),
         PayloadLaunchResult::NotConfigured | PayloadLaunchResult::Failed => {
             (ProcessState::Failed, 1)
         }
+        PayloadLaunchResult::ExitCode(0) => (ProcessState::Exited, 0),
+        PayloadLaunchResult::ExitCode(code) => (ProcessState::Failed, code as i32),
     };
-    proc::exit_process(pid, state, exit_code);
+    proc::exit_process(pid, state, exit_code)
 }
 
 #[cfg(feature = "selftest")]

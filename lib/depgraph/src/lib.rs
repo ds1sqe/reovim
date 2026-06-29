@@ -224,13 +224,19 @@ pub fn default_foundation_grants() -> std::collections::BTreeMap<String, Vec<Str
         "reovim-uapi".to_owned(),
         vec![
             "reovim-uapi-abi".to_owned(),
+            "reovim-uapi-dump".to_owned(),
             "reovim-uapi-fs".to_owned(),
             "reovim-uapi-log".to_owned(),
             "reovim-uapi-mm".to_owned(),
             "reovim-uapi-net".to_owned(),
             "reovim-uapi-panic".to_owned(),
+            "reovim-uapi-process".to_owned(),
             "reovim-uapi-protocol".to_owned(),
             "reovim-uapi-sched".to_owned(),
+            "reovim-uapi-session".to_owned(),
+            "reovim-uapi-service".to_owned(),
+            "reovim-uapi-source".to_owned(),
+            "reovim-uapi-syscall".to_owned(),
             "reovim-uapi-system".to_owned(),
             "reovim-uapi-terminal".to_owned(),
         ],
@@ -238,6 +244,33 @@ pub fn default_foundation_grants() -> std::collections::BTreeMap<String, Vec<Str
     // uapi/protocol depends on uapi/abi for ErrorCode, FrameHeader, RawInput,
     // and the carrier headers (Phase 1 of #786).
     m.insert("reovim-uapi-protocol".to_owned(), vec!["reovim-uapi-abi".to_owned()]);
+    // uapi/fs owns product-facing fd wrappers; they lower through the raw
+    // syscall transport without making syscall a second semantic API.
+    m.insert("reovim-uapi-fs".to_owned(), vec!["reovim-uapi-syscall".to_owned()]);
+    // uapi/dump owns diagnostic dump-domain controls; they lower through the
+    // raw syscall transport without making syscall a second semantic API.
+    m.insert("reovim-uapi-dump".to_owned(), vec!["reovim-uapi-syscall".to_owned()]);
+    // uapi/process owns process-domain wrappers; they lower through the raw
+    // syscall transport without making syscall a second semantic API.
+    m.insert("reovim-uapi-process".to_owned(), vec!["reovim-uapi-syscall".to_owned()]);
+    // uapi/sched owns scheduler-domain wrappers; they lower through the raw
+    // syscall transport without making syscall a second semantic API.
+    m.insert("reovim-uapi-sched".to_owned(), vec!["reovim-uapi-syscall".to_owned()]);
+    // uapi/session owns shell-session wrappers; they lower through the raw
+    // syscall transport without making syscall a second semantic API.
+    m.insert("reovim-uapi-session".to_owned(), vec!["reovim-uapi-syscall".to_owned()]);
+    // uapi/service owns service-domain lifecycle controls; they lower through
+    // the raw syscall transport without making syscall a second semantic API.
+    m.insert("reovim-uapi-service".to_owned(), vec!["reovim-uapi-syscall".to_owned()]);
+    // uapi/source owns source-domain install controls; they lower through the
+    // raw syscall transport without making syscall a second semantic API.
+    m.insert("reovim-uapi-source".to_owned(), vec!["reovim-uapi-syscall".to_owned()]);
+    // uapi/system owns typed system-control wrappers; they lower through the
+    // raw syscall transport without making syscall a second semantic API.
+    m.insert("reovim-uapi-system".to_owned(), vec!["reovim-uapi-syscall".to_owned()]);
+    // uapi/terminal owns typed terminal-domain controls; they lower through
+    // the raw syscall transport without exposing a generic ioctl surface.
+    m.insert("reovim-uapi-terminal".to_owned(), vec!["reovim-uapi-syscall".to_owned()]);
     // uapi/log names the panic configuration result type for registering a log
     // sink as the panic flush target; both are up-face vocabulary crates.
     m.insert("reovim-uapi-log".to_owned(), vec!["reovim-uapi-panic".to_owned()]);
@@ -395,11 +428,17 @@ pub fn default_foundation_grants() -> std::collections::BTreeMap<String, Vec<Str
             "reovim-kabi-platform".to_owned(),
             "reovim-lib-ds".to_owned(),
             "reovim-uapi-fs".to_owned(),
+            "reovim-uapi-dump".to_owned(),
             "reovim-uapi-mm".to_owned(),
             "reovim-uapi-log".to_owned(),
             "reovim-uapi-net".to_owned(),
             "reovim-uapi-panic".to_owned(),
+            "reovim-uapi-process".to_owned(),
             "reovim-uapi-sched".to_owned(),
+            "reovim-uapi-session".to_owned(),
+            "reovim-uapi-service".to_owned(),
+            "reovim-uapi-source".to_owned(),
+            "reovim-uapi-syscall".to_owned(),
             "reovim-uapi-system".to_owned(),
             "reovim-uapi-terminal".to_owned(),
             "reovim-testrt".to_owned(),

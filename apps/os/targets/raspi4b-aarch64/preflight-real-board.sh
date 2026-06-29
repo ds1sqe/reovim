@@ -14,6 +14,7 @@ INSTALL_SMOKE_SCRIPT="$TARGET_DIR/test-install-image.sh"
 PREPARE_SCRIPT="$TARGET_DIR/prepare-boot-media.sh"
 BOOTFS_CHECK_SCRIPT="$TARGET_DIR/check-bootfs.sh"
 EVIDENCE_TEMPLATE="$TARGET_DIR/evidence-template.md"
+DUMP_EXTRACT_SCRIPT="$TARGET_DIR/extract-dump-from-evidence.sh"
 DTB="$ROOT/arch/tests/fixtures/dtb/bcm2711-rpi-4-b.dtb"
 QEMU_PROOF_TIMEOUT_SECONDS="${QEMU_PROOF_TIMEOUT_SECONDS:-240}"
 
@@ -185,6 +186,8 @@ write_evidence_seed() {
         printf 'help probe\n'
         printf 'help launch\n'
         printf 'help reovim\n'
+        printf 'help hello\n'
+        printf 'hello\n'
         printf 'help halt\n'
         printf 'cat /boot/help\n'
         printf 'clear\n'
@@ -247,7 +250,7 @@ write_evidence_seed() {
         printf -- '- [ ] `help status` / `help probe` make `manual_next` and probe catalog discovery self-describing.\n'
         printf -- '- [ ] `help pwd` / `help ls` / `help cd` / `help cat` / `help read` / `help mount` make VFS navigation and TTY line reads self-describing.\n'
         printf -- '- [ ] `help` / `help clear` / `help screentest` / `clear` / `screentest` prove shell help and erase-line mode diagnostics.\n'
-        printf -- '- [ ] `help device` / `help launch` / `help reovim` / `help halt` make boot inventory, payload, and shutdown `/bin` programs self-describing.\n'
+        printf -- '- [ ] `help device` / `help launch` / `help reovim` / `help hello` / `help halt` make boot inventory, payload, linked-bin, and shutdown `/bin` programs self-describing.\n'
         printf -- '- [ ] `pwd` / `ls` / `mount` report the kernel VFS namespace and mounts.\n'
         printf -- '- [ ] `device` / `cat /boot/memory` / `cat /boot/devices` report boot inventory.\n'
         printf -- '- [ ] `cd /dev` / `ls` / `cat uart0` prove relative VFS device-file access.\n'
@@ -266,17 +269,41 @@ write_evidence_seed() {
         printf -- '- [ ] `cat /boot/profile` reports `profile=shell-only`, `launch=disabled`, `payloads=0`, and `input_mode=live`.\n'
         printf -- '- [ ] `launch` / `reovim` report shell-only payload launch disabled.\n'
         printf -- '- [ ] `dmesg --stats` / `cat /log/stats` report kernel log ring stats with `dropped_bytes=0`.\n'
-        printf -- '- [ ] `dump status` / `dump snapshot` / `dump sync` expose dump state, image identity, boot/device/proof/panic sections, and fail-closed persistence state.\n'
+        printf -- '- [ ] `dump status` / `dump snapshot` / `dump sync` expose dump state, image identity, boot/device/proof/panic sections, retained last-sync state, and fail-closed persistence state.\n'
+        printf -- '- [ ] `halt` attempts dump sync before root daemon shutdown.\n'
         printf -- '- [ ] `cat /log/events` reports structured kernel events with process/task identity.\n'
         printf -- '- [ ] `proc` reports the live process table through a `/bin` process-management program.\n'
-        printf -- '- [ ] `proc` reports `loader=source-image entry_fn=bin_proc` for the running `/bin/proc` process.\n'
+        printf -- '- [ ] `proc` reports `loader=linked-bin entry_fn=bin_proc` for the running `/bin/proc` process.\n'
         printf -- '- [ ] `dmesg` has no `[klog] dropped_bytes=` retained-log wrap marker.\n'
         printf -- '- [ ] `dmesg` contains `shell: <command>` and `shell.status=ok` audit lines for the typed commands.\n'
+        printf -- '- [ ] `dmesg` contains `shell.session path=/bin/sh loader=linked-bin entry_fn=bin_sh line=<command>` audit lines for the typed commands.\n'
+        printf -- '- [ ] `dmesg` contains `exec.parent path=/bin/<command> ... ppid=2 ... parent_task=2` audit lines for shell-launched `/bin` programs.\n'
         printf -- '- [ ] `dmesg` contains `shell.status=error` audit lines for the disabled payload launch commands.\n'
         printf -- '- [ ] `dmesg` contains the retained `probe usb-keyboard` output with `manual_next=type-shell-command`.\n'
         printf -- '- [ ] `halt` was typed last and printed `halt: ok`.\n'
         printf -- '- [ ] No new `reovim-os>` prompt appeared after `halt: ok`.\n\n'
         printf 'If unsuccessful, record the exact blocker:\n\n'
+        printf '```text\n\n```\n\n'
+        printf '## Dump Analysis\n\n'
+        printf 'Current `dump sync` is expected to fail closed with\n'
+        printf '`reason=no-persistent-dump-sink`. If a `dump snapshot` transcript,\n'
+        printf 'copied dump artifact, or mounted bootfs directory is available on this\n'
+        printf 'workstation, validate it with:\n\n'
+        printf '```text\n'
+        printf 'apps/os/targets/raspi4b-aarch64/analyze-dump.sh --expect-package reovim-os --expect-target aarch64-unknown-none --expect-profile shell-only --require-zero-drops <dump-file-or-mounted-bootfs>\n'
+        printf '```\n\n'
+        printf 'For the copied live `dump snapshot` inside this evidence file, extract and\n'
+        printf 'analyze the artifact with:\n\n'
+        printf '```text\n'
+        printf 'apps/os/targets/raspi4b-aarch64/extract-dump-from-evidence.sh --output tmp/raspi4b-live-dump.txt --analyze <evidence-file>\n'
+        printf '```\n\n'
+        printf 'The extractor reports `source=live-transcript` and\n'
+        printf '`persistent_sd_proof=false`; that is copied live evidence, not\n'
+        printf 'post-poweroff SD-card persistence proof.\n\n'
+        printf 'Mounted bootfs directory analysis requires exactly one supported artifact\n'
+        printf 'path: `reovim-dump-v1.txt`, `reovim-dump.txt`, `reovim/dump-v1.txt`, or\n'
+        printf '`reovim/dump.txt`.\n\n'
+        printf 'Paste analyzer output, if available:\n\n'
         printf '```text\n\n```\n\n'
         printf '## Result\n\n'
         printf -- '- [ ] PASS: physical USB keyboard proof complete.\n'
@@ -296,6 +323,7 @@ require_file "$INSTALL_SCRIPT"
 require_file "$INSTALL_SMOKE_SCRIPT"
 require_file "$BOOTFS_CHECK_SCRIPT"
 require_file "$EVIDENCE_TEMPLATE"
+require_file "$DUMP_EXTRACT_SCRIPT"
 require_file "$DTB"
 
 run_step "syntax check target helper scripts"
@@ -415,6 +443,16 @@ if [ "$SKIP_QEMU" -eq 0 ]; then
         cat "$qemu_log" >&2
         rm -f "$qemu_log"
         fail "QEMU smoke proof checklist did not include targeted proc help"
+    fi
+    if ! grep -q '^  help hello$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include targeted hello help"
+    fi
+    if ! grep -q '^  hello$' "$qemu_log"; then
+        cat "$qemu_log" >&2
+        rm -f "$qemu_log"
+        fail "QEMU smoke proof checklist did not include linked hello command"
     fi
     if ! grep -q '^  help clear$' "$qemu_log"; then
         cat "$qemu_log" >&2

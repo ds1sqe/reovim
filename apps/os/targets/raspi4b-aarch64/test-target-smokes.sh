@@ -19,10 +19,12 @@ bash -n \
     "$TARGET_DIR/analyze-dump.sh" \
     "$TARGET_DIR/build-image.sh" \
     "$TARGET_DIR/check-bootfs.sh" \
+    "$TARGET_DIR/extract-dump-from-evidence.sh" \
     "$TARGET_DIR/find-bootfs.sh" \
     "$TARGET_DIR/install-image.sh" \
     "$TARGET_DIR/preflight-real-board.sh" \
     "$TARGET_DIR/prepare-boot-media.sh" \
+    "$TARGET_DIR/test-extract-dump-from-evidence.sh" \
     "$TARGET_DIR/test-check-bootfs.sh" \
     "$TARGET_DIR/test-analyze-dump.sh" \
     "$TARGET_DIR/test-bin-program-vocabulary.sh" \
@@ -43,6 +45,9 @@ printf '==> bootfs readiness smoke\n'
 
 printf '==> dump analyzer smoke\n'
 "$TARGET_DIR/test-analyze-dump.sh"
+
+printf '==> dump evidence extractor smoke\n'
+"$TARGET_DIR/test-extract-dump-from-evidence.sh"
 
 printf '==> bin program vocabulary smoke\n'
 "$TARGET_DIR/test-bin-program-vocabulary.sh"

@@ -1,3 +1,0 @@
-reovim-source-v1
-reject-argc-greater 1 pwd: too many arguments
-write-cwd-line

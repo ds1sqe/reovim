@@ -15,6 +15,8 @@
 //! - [`TerminalControl`] — callable up-face raw-mode operations.
 #![no_std]
 
+use reovim_uapi_syscall::{RawSyscall, SyscallArgs, SyscallError, SyscallNr};
+
 /// Logical terminal endpoint id.
 ///
 /// Values are product-facing endpoint identifiers, not POSIX file descriptors.
@@ -392,5 +394,113 @@ impl TerminalControl {
     /// ```
     pub fn restore_primary_input_raw_mode(self) {
         (self.restore_primary_input_raw_mode_fn)();
+    }
+}
+
+/// Terminal control backed by the raw Reovim syscall transport.
+///
+/// This adapter keeps terminal semantics in `uapi::terminal`: callers name
+/// logical terminal endpoints, while only this lowest wrapper layer packs raw
+/// syscall numbers and scalar arguments.
+#[derive(Debug, Clone, Copy)]
+pub struct SyscallTerminalControl {
+    raw: RawSyscall,
+}
+
+impl SyscallTerminalControl {
+    /// Creates a terminal-control adapter over the raw syscall transport.
+    #[must_use]
+    pub const fn new(raw: RawSyscall) -> Self {
+        Self { raw }
+    }
+
+    /// Clears a logical terminal endpoint.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TerminalError`] when the raw syscall transport reports
+    /// failure or the target endpoint cannot be cleared.
+    pub fn clear(self, terminal: TerminalId) -> Result<(), TerminalError> {
+        self.raw
+            .invoke(
+                SyscallNr::TERMINAL_CLEAR,
+                SyscallArgs::new([terminal.raw() as usize, 0, 0, 0, 0, 0]),
+            )
+            .decode()
+            .map(|_| ())
+            .map_err(terminal_error_from_syscall)
+    }
+
+    /// Clears the primary output endpoint.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TerminalError`] when the target endpoint cannot be cleared.
+    pub fn clear_primary_output(self) -> Result<(), TerminalError> {
+        self.clear(PRIMARY_OUTPUT)
+    }
+
+    /// Enters raw mode for a logical terminal endpoint.
+    ///
+    /// The returned token is opaque product-facing state. Callers pass it back
+    /// to [`restore_raw_mode`](Self::restore_raw_mode); they must not infer a
+    /// POSIX fd, termios snapshot, or provider detail from it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TerminalError`] when the endpoint is not a terminal, the
+    /// target is unknown, or the active kernel cannot provide raw mode.
+    pub fn enter_raw_mode(self, request: RawModeRequest) -> Result<RawModeToken, TerminalError> {
+        self.raw
+            .invoke(
+                SyscallNr::TERMINAL_RAW_ENTER,
+                SyscallArgs::new([request.terminal.raw() as usize, 0, 0, 0, 0, 0]),
+            )
+            .decode()
+            .map(|token| RawModeToken::new(token as u64))
+            .map_err(terminal_error_from_syscall)
+    }
+
+    /// Restores raw mode from a token returned by
+    /// [`enter_raw_mode`](Self::enter_raw_mode).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TerminalError`] when the token cannot be represented by the
+    /// active bridge or the kernel rejects the restore request.
+    pub fn restore_raw_mode(self, token: RawModeToken) -> Result<(), TerminalError> {
+        let raw_token = usize::try_from(token.raw()).map_err(|_| TerminalError::InvalidTarget)?;
+        self.raw
+            .invoke(SyscallNr::TERMINAL_RAW_RESTORE, SyscallArgs::new([raw_token, 0, 0, 0, 0, 0]))
+            .decode()
+            .map(|_| ())
+            .map_err(terminal_error_from_syscall)
+    }
+
+    /// Best-effort restore for the primary input endpoint.
+    ///
+    /// This mirrors the panic-hook shape in [`TerminalControl`], but reports
+    /// transport failure to syscall-backed callers.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TerminalError`] when the active kernel rejects the request.
+    pub fn restore_primary_input_raw_mode(self) -> Result<(), TerminalError> {
+        self.raw
+            .invoke(SyscallNr::TERMINAL_RAW_RESTORE_PRIMARY, SyscallArgs::EMPTY)
+            .decode()
+            .map(|_| ())
+            .map_err(terminal_error_from_syscall)
+    }
+}
+
+fn terminal_error_from_syscall(error: SyscallError) -> TerminalError {
+    match error {
+        SyscallError::UNSUPPORTED => TerminalError::Unsupported,
+        SyscallError::INVALID_ARGUMENT => TerminalError::InvalidTarget,
+        SyscallError::BAD_DESCRIPTOR | SyscallError::NOT_WRITABLE => TerminalError::NotTerminal,
+        SyscallError::BUSY => TerminalError::Busy,
+        SyscallError::PROTECTED_PROCESS => TerminalError::PermissionDenied,
+        _ => TerminalError::Unsupported,
     }
 }

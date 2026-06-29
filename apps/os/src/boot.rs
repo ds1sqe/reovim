@@ -7,13 +7,6 @@
 
 use crate::bin;
 
-use reovim_arch::sys as arch_sys;
-use reovim_system_kernel::{
-    boot::{self, ShellBootConfig, SplashBootConfig},
-    console_io,
-    rootd::{BootCheckState, BootImageSummary, ConsoleInputSummary, HardwareProbeResult, WriteFn},
-};
-use reovim_uapi::system::{BootInfo, DeviceEntry, DeviceInventory};
 #[cfg(feature = "launch-profile")]
 use reovim_system_kernel::rootd::PayloadDescriptor;
 #[cfg(feature = "launch-profile")]
@@ -22,6 +15,17 @@ use reovim_system_kernel::rootd::PayloadImage;
 use reovim_system_kernel::rootd::PayloadImageKind;
 #[cfg(feature = "launch-profile")]
 use reovim_system_kernel::rootd::PayloadSourceArtifact;
+use {
+    reovim_arch::sys as arch_sys,
+    reovim_system_kernel::{
+        boot::{self, ShellBootConfig, SplashBootConfig},
+        console_io,
+        rootd::{
+            BootCheckState, BootImageSummary, ConsoleInputSummary, HardwareProbeResult, WriteFn,
+        },
+    },
+    reovim_uapi::system::{BootInfo, DeviceEntry, DeviceInventory},
+};
 
 #[cfg(feature = "launch-profile")]
 const PAYLOAD_REOVIM_SOURCE_BYTES: &[u8] = include_bytes!("../payloads/reovim.rvp");
@@ -31,12 +35,22 @@ const PAYLOAD_EDITOR_SMOKE_SOURCE_BYTES: &[u8] = include_bytes!("../payloads/edi
 const PAYLOAD_SERVER_SMOKE_SOURCE_BYTES: &[u8] = include_bytes!("../payloads/server-smoke.rvp");
 #[cfg(all(feature = "launch-profile", target_os = "none", target_arch = "x86_64"))]
 const X86_INSTALLED_SERVER_SMOKE_SOURCE_BYTES: &[u8] =
-    b"reovim-payload-source-v1\nexit-status ready\n";
+    b"reovim-payload-source-v1\nservice-ready server\nexec-bin pwd\nexit-status ready\n";
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
 const X86_EXEC_BUNDLE_BIN_SOURCE_BYTES: &[u8] =
     b"reovim-source-v1\nwrite-stdout-hex 62756e646c652d62696e2e6f6b0a\nexit-status ok\n";
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
+const X86_EXEC_BUNDLE_REOVIM_PAYLOAD_SOURCE_BYTES: &[u8] =
+    b"reovim-payload-source-v1\nwrite-stdout-hex 62756e646c652d72656f76696d2e73746172740a\nservice-ready reovim\nexec-payload server-smoke\nspawn-wait-payload server-smoke\nspawn-kill-payload server-smoke\nexec-bin pwd\nwrite-service-table\nwrite-process-table\nwrite-boot-profile\nwrite-device-table\nwrite-exec-table\nwrite-pending-exec-table\nwrite-source-table\nwrite-scheduler-state\nwrite-task-table\nwrite-wait-table\nwrite-syscall-table\nexit-status ready\n";
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+const X86_EXEC_BUNDLE_SERVER_SMOKE_PAYLOAD_SOURCE_BYTES: &[u8] =
+    b"reovim-payload-source-v1\nwrite-stdout-hex 62756e646c652d7365727665722e73746172740a\nservice-ready server\nexec-bin pwd\nexit-status ready\n";
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
 const X86_EXEC_BUNDLE_ARTIFACT_OFFSET: usize = 256;
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+const X86_EXEC_BUNDLE_PAYLOAD_ARTIFACT_OFFSET: usize = 768;
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+const X86_EXEC_BUNDLE_SERVER_PAYLOAD_ARTIFACT_OFFSET: usize = 1280;
 
 #[cfg(feature = "launch-profile")]
 const LAUNCH_PAYLOADS: [PayloadDescriptor; 3] = [
@@ -84,9 +98,9 @@ const LAUNCH_PAYLOAD_SOURCES: [PayloadSourceArtifact; 3] = [
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 use {
-    core::cell::UnsafeCell,
-    core::arch::asm,
     arch_sys::framebuffer,
+    core::arch::asm,
+    core::cell::UnsafeCell,
     reovim_system_kernel::{
         color::Color,
         console::{self, RenderSurface},
@@ -138,10 +152,7 @@ fn fb_clear(_ctx: usize, color: u32) {
 }
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
-fn install_framebuffer_console(
-    fb: framebuffer::Framebuffer,
-    grid: console::ScreenGrid<'static>,
-) {
+fn install_framebuffer_console(fb: framebuffer::Framebuffer, grid: console::ScreenGrid<'static>) {
     let width = fb.width();
     let height = fb.height();
     // SAFETY: this store is one-shot and static for the boot image.
@@ -163,7 +174,9 @@ fn install_framebuffer_console(
 struct DeviceStore(UnsafeCell<[DeviceEntry; inventory::DEVICE_STORAGE_ENTRIES]>);
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
-static DEVICES: DeviceStore = DeviceStore(UnsafeCell::new([inventory::EMPTY_DEVICE_ENTRY; inventory::DEVICE_STORAGE_ENTRIES]));
+static DEVICES: DeviceStore = DeviceStore(UnsafeCell::new(
+    [inventory::EMPTY_DEVICE_ENTRY; inventory::DEVICE_STORAGE_ENTRIES],
+));
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 unsafe impl Sync for DeviceStore {}
@@ -192,7 +205,8 @@ impl UsbKeyboardConsole {
         &mut self,
         report: [u8; arch_sys::usb::BOOT_KEYBOARD_REPORT_BYTES],
     ) -> BootKeyboardIngest {
-        self.queue.try_ingest_report(BootKeyboardReport::new(report))
+        self.queue
+            .try_ingest_report(BootKeyboardReport::new(report))
     }
 
     fn read_byte<PollReport, Fallback>(
@@ -311,7 +325,8 @@ fn dtb_bytes() -> &'static [u8] {
 struct MemoryStore(UnsafeCell<[MemoryRange; MEMORY_STORAGE_ENTRIES]>);
 
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
-static MEMORY: MemoryStore = MemoryStore(UnsafeCell::new([EMPTY_MEMORY_RANGE; MEMORY_STORAGE_ENTRIES]));
+static MEMORY: MemoryStore =
+    MemoryStore(UnsafeCell::new([EMPTY_MEMORY_RANGE; MEMORY_STORAGE_ENTRIES]));
 
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
 unsafe impl Sync for MemoryStore {}
@@ -366,13 +381,19 @@ fn diagnostic_dump_read(offset: usize, out: &mut [u8]) -> usize {
 }
 
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
+fn diagnostic_dump_flush() -> bool {
+    true
+}
+
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
 fn install_x86_diagnostic_dump_sink() {
     DIAGNOSTIC_DUMP.len.store(0, Ordering::Release);
-    reovim_system_kernel::dump::install_sink(reovim_system_kernel::dump::DumpSink::new(
+    reovim_system_kernel::dump::install_sink(reovim_system_kernel::dump::DumpSink::new_with_flush(
         "qemu-diagnostic-dump0",
         reovim_system_kernel::dump::MAX_DUMP_ARTIFACT_BYTES,
         diagnostic_dump_write,
         diagnostic_dump_read,
+        diagnostic_dump_flush,
     ));
 }
 
@@ -419,17 +440,25 @@ fn copy_bundle_usize(out: &mut [u8], len: &mut usize, mut value: usize) -> bool 
 }
 
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
-fn encode_x86_exec_bundle_artifact(out: &mut [u8]) -> usize {
+fn encode_x86_exec_bundle_artifact(
+    out: &mut [u8],
+    namespace: &[u8],
+    path: &[u8],
+    source_bytes: &[u8],
+) -> usize {
     let mut len = 0usize;
-    let checksum = reovim_system_kernel::source_store::source_media_checksum32(
-        X86_EXEC_BUNDLE_BIN_SOURCE_BYTES,
-    ) as usize;
-    if !copy_bundle_bytes(out, &mut len, b"reovim-exec-bundle-v1\nnamespace=bin\npath=/bin/bundle-ok\nbytes=")
-        || !copy_bundle_usize(out, &mut len, X86_EXEC_BUNDLE_BIN_SOURCE_BYTES.len())
+    let checksum =
+        reovim_system_kernel::source_store::source_media_checksum32(source_bytes) as usize;
+    if !copy_bundle_bytes(out, &mut len, b"reovim-exec-bundle-v1\nnamespace=")
+        || !copy_bundle_bytes(out, &mut len, namespace)
+        || !copy_bundle_bytes(out, &mut len, b"\npath=")
+        || !copy_bundle_bytes(out, &mut len, path)
+        || !copy_bundle_bytes(out, &mut len, b"\nbytes=")
+        || !copy_bundle_usize(out, &mut len, source_bytes.len())
         || !copy_bundle_bytes(out, &mut len, b"\nchecksum=")
         || !copy_bundle_usize(out, &mut len, checksum)
         || !copy_bundle_bytes(out, &mut len, b"\n")
-        || !copy_bundle_bytes(out, &mut len, X86_EXEC_BUNDLE_BIN_SOURCE_BYTES)
+        || !copy_bundle_bytes(out, &mut len, source_bytes)
     {
         return 0;
     }
@@ -438,21 +467,80 @@ fn encode_x86_exec_bundle_artifact(out: &mut [u8]) -> usize {
 
 #[cfg(all(target_os = "none", target_arch = "x86_64"))]
 fn encode_x86_exec_bundle_catalog(out: &mut [u8]) -> usize {
-    let mut artifact =
+    let mut bin_artifact =
         [0u8; reovim_system_kernel::source_store::MAX_SOURCE_MEDIA_ARTIFACT_BYTES];
-    let artifact_len = encode_x86_exec_bundle_artifact(&mut artifact);
-    let artifact_checksum =
-        reovim_system_kernel::source_store::source_media_checksum32(&artifact[..artifact_len])
-            as usize;
+    let bin_artifact_len = encode_x86_exec_bundle_artifact(
+        &mut bin_artifact,
+        b"bin",
+        b"/bin/bundle-ok",
+        X86_EXEC_BUNDLE_BIN_SOURCE_BYTES,
+    );
+    let bin_artifact_checksum = reovim_system_kernel::source_store::source_media_checksum32(
+        &bin_artifact[..bin_artifact_len],
+    ) as usize;
 
-    let mut body = [0u8; 192];
+    let mut payload_artifact =
+        [0u8; reovim_system_kernel::source_store::MAX_SOURCE_MEDIA_ARTIFACT_BYTES];
+    let payload_artifact_len = encode_x86_exec_bundle_artifact(
+        &mut payload_artifact,
+        b"payload",
+        b"/payload/reovim",
+        X86_EXEC_BUNDLE_REOVIM_PAYLOAD_SOURCE_BYTES,
+    );
+    let payload_artifact_checksum = reovim_system_kernel::source_store::source_media_checksum32(
+        &payload_artifact[..payload_artifact_len],
+    ) as usize;
+
+    let mut server_payload_artifact =
+        [0u8; reovim_system_kernel::source_store::MAX_SOURCE_MEDIA_ARTIFACT_BYTES];
+    let server_payload_artifact_len = encode_x86_exec_bundle_artifact(
+        &mut server_payload_artifact,
+        b"payload",
+        b"/payload/server-smoke",
+        X86_EXEC_BUNDLE_SERVER_SMOKE_PAYLOAD_SOURCE_BYTES,
+    );
+    let server_payload_artifact_checksum =
+        reovim_system_kernel::source_store::source_media_checksum32(
+            &server_payload_artifact[..server_payload_artifact_len],
+        ) as usize;
+
+    let mut body = [0u8; 512];
     let mut body_len = 0usize;
-    if !copy_bundle_bytes(&mut body, &mut body_len, b"entry namespace=bin path=/bin/bundle-ok offset=")
-        || !copy_bundle_usize(&mut body, &mut body_len, X86_EXEC_BUNDLE_ARTIFACT_OFFSET)
+    if !copy_bundle_bytes(
+        &mut body,
+        &mut body_len,
+        b"entry namespace=bin path=/bin/bundle-ok offset=",
+    ) || !copy_bundle_usize(&mut body, &mut body_len, X86_EXEC_BUNDLE_ARTIFACT_OFFSET)
         || !copy_bundle_bytes(&mut body, &mut body_len, b" bytes=")
-        || !copy_bundle_usize(&mut body, &mut body_len, artifact_len)
+        || !copy_bundle_usize(&mut body, &mut body_len, bin_artifact_len)
         || !copy_bundle_bytes(&mut body, &mut body_len, b" checksum=")
-        || !copy_bundle_usize(&mut body, &mut body_len, artifact_checksum)
+        || !copy_bundle_usize(&mut body, &mut body_len, bin_artifact_checksum)
+        || !copy_bundle_bytes(&mut body, &mut body_len, b"\n")
+        || !copy_bundle_bytes(
+            &mut body,
+            &mut body_len,
+            b"entry namespace=payload path=/payload/reovim offset=",
+        )
+        || !copy_bundle_usize(&mut body, &mut body_len, X86_EXEC_BUNDLE_PAYLOAD_ARTIFACT_OFFSET)
+        || !copy_bundle_bytes(&mut body, &mut body_len, b" bytes=")
+        || !copy_bundle_usize(&mut body, &mut body_len, payload_artifact_len)
+        || !copy_bundle_bytes(&mut body, &mut body_len, b" checksum=")
+        || !copy_bundle_usize(&mut body, &mut body_len, payload_artifact_checksum)
+        || !copy_bundle_bytes(&mut body, &mut body_len, b"\n")
+        || !copy_bundle_bytes(
+            &mut body,
+            &mut body_len,
+            b"entry namespace=payload path=/payload/server-smoke offset=",
+        )
+        || !copy_bundle_usize(
+            &mut body,
+            &mut body_len,
+            X86_EXEC_BUNDLE_SERVER_PAYLOAD_ARTIFACT_OFFSET,
+        )
+        || !copy_bundle_bytes(&mut body, &mut body_len, b" bytes=")
+        || !copy_bundle_usize(&mut body, &mut body_len, server_payload_artifact_len)
+        || !copy_bundle_bytes(&mut body, &mut body_len, b" checksum=")
+        || !copy_bundle_usize(&mut body, &mut body_len, server_payload_artifact_checksum)
         || !copy_bundle_bytes(&mut body, &mut body_len, b"\n")
     {
         return 0;
@@ -482,7 +570,24 @@ fn x86_exec_bundle_write(_offset: usize, _bytes: &[u8]) -> bool {
 fn x86_exec_bundle_read(offset: usize, out: &mut [u8]) -> usize {
     match offset {
         0 => encode_x86_exec_bundle_catalog(out),
-        X86_EXEC_BUNDLE_ARTIFACT_OFFSET => encode_x86_exec_bundle_artifact(out),
+        X86_EXEC_BUNDLE_ARTIFACT_OFFSET => encode_x86_exec_bundle_artifact(
+            out,
+            b"bin",
+            b"/bin/bundle-ok",
+            X86_EXEC_BUNDLE_BIN_SOURCE_BYTES,
+        ),
+        X86_EXEC_BUNDLE_PAYLOAD_ARTIFACT_OFFSET => encode_x86_exec_bundle_artifact(
+            out,
+            b"payload",
+            b"/payload/reovim",
+            X86_EXEC_BUNDLE_REOVIM_PAYLOAD_SOURCE_BYTES,
+        ),
+        X86_EXEC_BUNDLE_SERVER_PAYLOAD_ARTIFACT_OFFSET => encode_x86_exec_bundle_artifact(
+            out,
+            b"payload",
+            b"/payload/server-smoke",
+            X86_EXEC_BUNDLE_SERVER_SMOKE_PAYLOAD_SOURCE_BYTES,
+        ),
         _ => 0,
     }
 }
@@ -493,7 +598,7 @@ fn install_x86_exec_bundle_source() {
         reovim_system_kernel::block::BlockDevice::new(
             "qemu-exec-bundle0",
             reovim_system_kernel::source_store::MAX_SOURCE_MEDIA_ARTIFACT_BYTES
-                + X86_EXEC_BUNDLE_ARTIFACT_OFFSET,
+                + X86_EXEC_BUNDLE_SERVER_PAYLOAD_ARTIFACT_OFFSET,
             x86_exec_bundle_write,
             x86_exec_bundle_read,
         ),
@@ -536,6 +641,25 @@ pub const fn exec_bundle_profile() -> BootProfile<'static> {
     )
 }
 
+/// x86-only launch profile that proves the default `reovim` payload can be
+/// admitted from the exec-bundle provider instead of the image payload table.
+#[cfg(all(feature = "launch-profile", target_os = "none", target_arch = "x86_64"))]
+pub const fn bundle_launch_profile() -> BootProfile<'static> {
+    BootProfile::new(
+        "bundle-launch",
+        true,
+        &[],
+        &[],
+        bin::programs(),
+        bin::program_sources(),
+        bin::write_vfs_file,
+        bin::write_program_help,
+        None,
+        Some(halt_kernel),
+        "reovim-os> ",
+    )
+}
+
 /// Optional launch-capable phase-4 entry profile. Payload source images are
 /// static byte artifacts owned by the OS image source store.
 #[cfg(feature = "launch-profile")]
@@ -560,16 +684,16 @@ pub fn run_shell_profile(profile: BootProfile<'_>) -> ! {
     reovim_system_kernel::source_store::reset_installed_sources();
     reovim_system_kernel::program::reset_media_programs();
     #[cfg(all(feature = "launch-profile", target_os = "none", target_arch = "x86_64"))]
-    if profile.launch_enabled {
+    if profile.name == "launch" {
         install_x86_launch_profile_sources();
     }
     #[cfg(all(target_os = "none", target_arch = "x86_64"))]
-    if profile.name == "exec-bundle" {
+    if profile.name == "exec-bundle" || profile.name == "bundle-launch" {
         install_x86_exec_bundle_source();
     }
 
     run_root_daemon_boot(ShellBootConfig {
-        install_runtime_services: install_runtime_services,
+        install_runtime_services,
         collect_boot_info,
         collect_device_inventory,
         prepare_shell: Some(prepare_shell_boot),
@@ -690,6 +814,7 @@ fn collect_device_inventory() -> DeviceInventory {
 
 fn prepare_shell_boot() {
     let _ = reovim_system_kernel::exec_artifact::install_exec_bundle_bin_descriptors();
+    let _ = reovim_system_kernel::exec_artifact::install_exec_bundle_payload_descriptors();
 
     #[cfg(all(target_os = "none", target_arch = "aarch64"))]
     {
@@ -738,8 +863,7 @@ fn hardware_probe(target: &str, devices: &[DeviceEntry], write: WriteFn) -> Hard
             probe_xhci_read_device_descriptor(devices, write);
             HardwareProbeResult::Handled
         }
-        "xhci-read-config-descriptor-header"
-        | "usb-keyboard-read-config-descriptor-header" => {
+        "xhci-read-config-descriptor-header" | "usb-keyboard-read-config-descriptor-header" => {
             probe_xhci_read_config_descriptor_header(devices, write);
             HardwareProbeResult::Handled
         }
@@ -791,32 +915,16 @@ fn probe_help(write: WriteFn) {
         write,
         b"  xhci-read-config-descriptor (alias: usb-keyboard-read-config-descriptor)\n",
     );
-    probe_emit(
-        write,
-        b"  xhci-set-configuration (alias: usb-keyboard-set-configuration)\n",
-    );
-    probe_emit(
-        write,
-        b"  xhci-configure-endpoint (alias: usb-keyboard-configure-endpoint)\n",
-    );
-    probe_emit(
-        write,
-        b"  xhci-set-hid-protocol (alias: usb-keyboard-set-hid-protocol)\n",
-    );
-    probe_emit(
-        write,
-        b"  xhci-read-keyboard-report (alias: usb-keyboard-read-report)\n",
-    );
+    probe_emit(write, b"  xhci-set-configuration (alias: usb-keyboard-set-configuration)\n");
+    probe_emit(write, b"  xhci-configure-endpoint (alias: usb-keyboard-configure-endpoint)\n");
+    probe_emit(write, b"  xhci-set-hid-protocol (alias: usb-keyboard-set-hid-protocol)\n");
+    probe_emit(write, b"  xhci-read-keyboard-report (alias: usb-keyboard-read-report)\n");
 }
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 fn probe_pcie(devices: &[DeviceEntry], write: WriteFn) {
     probe_emit(write, b"probe pcie:\n");
-    if !device_inventory_has(
-        devices,
-        reovim_uapi::system::DeviceClass::Bus,
-        "brcm,bcm2711-pcie",
-    ) {
+    if !device_inventory_has(devices, reovim_uapi::system::DeviceClass::Bus, "brcm,bcm2711-pcie") {
         probe_emit(write, b"state=unavailable\n");
         probe_emit(write, b"reason=device-tree-disabled-or-missing\n");
         return;
@@ -991,11 +1099,7 @@ fn probe_xhci_memory_plan(caps: arch_sys::usb::XhciCapabilities, write: WriteFn)
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 fn probe_usb_keyboard(devices: &[DeviceEntry], write: WriteFn) {
     probe_emit(write, b"probe usb-keyboard:\n");
-    if !device_inventory_has(
-        devices,
-        reovim_uapi::system::DeviceClass::Bus,
-        "brcm,bcm2711-pcie",
-    ) {
+    if !device_inventory_has(devices, reovim_uapi::system::DeviceClass::Bus, "brcm,bcm2711-pcie") {
         store_usb_keyboard_poll_state(USB_KEYBOARD_POLL_DTB_MISSING);
         probe_emit(write, b"state=unavailable\n");
         probe_emit(write, b"reason=device-tree-disabled-or-missing\n");
@@ -1016,33 +1120,31 @@ fn probe_usb_keyboard(devices: &[DeviceEntry], write: WriteFn) {
     }
 
     match arch_sys::usb::poll_boot_keyboard_report() {
-        arch_sys::usb::UsbBootKeyboardPoll::Report(report) => {
-            match console.ingest_report(report) {
-                BootKeyboardIngest::Decoded { bytes } => {
-                    store_usb_keyboard_poll_state(USB_KEYBOARD_POLL_REPORT_READY);
-                    if bytes > 0 {
-                        mark_usb_keyboard_ready();
-                    }
-                    probe_emit(write, b"state=report-ready\n");
-                    probe_emit(write, b"report_bytes=8\n");
-                    probe_emit(write, b"decoded_bytes=");
-                    probe_write_u64_dec(write, bytes as u64);
-                    probe_emit(write, b"\n");
-                    probe_usb_keyboard_manual_next(write, USB_KEYBOARD_POLL_REPORT_READY);
+        arch_sys::usb::UsbBootKeyboardPoll::Report(report) => match console.ingest_report(report) {
+            BootKeyboardIngest::Decoded { bytes } => {
+                store_usb_keyboard_poll_state(USB_KEYBOARD_POLL_REPORT_READY);
+                if bytes > 0 {
+                    mark_usb_keyboard_ready();
                 }
-                BootKeyboardIngest::Backlogged { pending_bytes } => {
-                    store_usb_keyboard_poll_state(USB_KEYBOARD_POLL_DECODED_PENDING);
-                    if pending_bytes > 0 {
-                        mark_usb_keyboard_ready();
-                    }
-                    probe_emit(write, b"state=decoded-pending\n");
-                    probe_emit(write, b"decoded_bytes=");
-                    probe_write_u64_dec(write, pending_bytes as u64);
-                    probe_emit(write, b"\n");
-                    probe_usb_keyboard_manual_next(write, USB_KEYBOARD_POLL_DECODED_PENDING);
-                }
+                probe_emit(write, b"state=report-ready\n");
+                probe_emit(write, b"report_bytes=8\n");
+                probe_emit(write, b"decoded_bytes=");
+                probe_write_u64_dec(write, bytes as u64);
+                probe_emit(write, b"\n");
+                probe_usb_keyboard_manual_next(write, USB_KEYBOARD_POLL_REPORT_READY);
             }
-        }
+            BootKeyboardIngest::Backlogged { pending_bytes } => {
+                store_usb_keyboard_poll_state(USB_KEYBOARD_POLL_DECODED_PENDING);
+                if pending_bytes > 0 {
+                    mark_usb_keyboard_ready();
+                }
+                probe_emit(write, b"state=decoded-pending\n");
+                probe_emit(write, b"decoded_bytes=");
+                probe_write_u64_dec(write, pending_bytes as u64);
+                probe_emit(write, b"\n");
+                probe_usb_keyboard_manual_next(write, USB_KEYBOARD_POLL_DECODED_PENDING);
+            }
+        },
         arch_sys::usb::UsbBootKeyboardPoll::Pending(pending) => {
             let state = usb_keyboard_poll_state_from_pending(pending);
             store_usb_keyboard_poll_state(state);
@@ -1061,8 +1163,12 @@ fn usb_keyboard_poll_state_from_pending(pending: arch_sys::usb::UsbBootKeyboardP
         arch_sys::usb::UsbBootKeyboardPending::ControllerResetInProgress => {
             USB_KEYBOARD_POLL_RESET_IN_PROGRESS
         }
-        arch_sys::usb::UsbBootKeyboardPending::HostSystemError => USB_KEYBOARD_POLL_HOST_SYSTEM_ERROR,
-        arch_sys::usb::UsbBootKeyboardPending::NoPcieXhciController => USB_KEYBOARD_POLL_NO_PCIE_XHCI,
+        arch_sys::usb::UsbBootKeyboardPending::HostSystemError => {
+            USB_KEYBOARD_POLL_HOST_SYSTEM_ERROR
+        }
+        arch_sys::usb::UsbBootKeyboardPending::NoPcieXhciController => {
+            USB_KEYBOARD_POLL_NO_PCIE_XHCI
+        }
         arch_sys::usb::UsbBootKeyboardPending::ControllerBarUnconfigured => {
             USB_KEYBOARD_POLL_BAR_UNCONFIGURED
         }
@@ -1211,11 +1317,7 @@ fn probe_usb_keyboard_manual_next(write: WriteFn, poll_state: usize) {
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 fn probe_xhci_start(devices: &[DeviceEntry], write: WriteFn) {
     probe_emit(write, b"probe xhci-start:\n");
-    if !device_inventory_has(
-        devices,
-        reovim_uapi::system::DeviceClass::Bus,
-        "brcm,bcm2711-pcie",
-    ) {
+    if !device_inventory_has(devices, reovim_uapi::system::DeviceClass::Bus, "brcm,bcm2711-pcie") {
         probe_emit(write, b"state=unavailable\n");
         probe_emit(write, b"reason=device-tree-disabled-or-missing\n");
         return;
@@ -1261,9 +1363,7 @@ fn probe_xhci_start(devices: &[DeviceEntry], write: WriteFn) {
 }
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
-fn probe_xhci_start_status_name(
-    status: arch_sys::usb::XhciControllerStartStatus,
-) -> &'static [u8] {
+fn probe_xhci_start_status_name(status: arch_sys::usb::XhciControllerStartStatus) -> &'static [u8] {
     match status {
         arch_sys::usb::XhciControllerStartStatus::NoPcieXhciController => {
             b"no-pcie-xhci-controller"
@@ -1383,11 +1483,7 @@ fn probe_xhci_start_registers(
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 fn probe_xhci_enable_slot(devices: &[DeviceEntry], write: WriteFn) {
     probe_emit(write, b"probe xhci-enable-slot:\n");
-    if !device_inventory_has(
-        devices,
-        reovim_uapi::system::DeviceClass::Bus,
-        "brcm,bcm2711-pcie",
-    ) {
+    if !device_inventory_has(devices, reovim_uapi::system::DeviceClass::Bus, "brcm,bcm2711-pcie") {
         probe_emit(write, b"state=unavailable\n");
         probe_emit(write, b"reason=device-tree-disabled-or-missing\n");
         return;
@@ -1502,17 +1598,13 @@ fn probe_xhci_enable_slot_status_name(
     status: arch_sys::usb::XhciEnableSlotStatus,
 ) -> &'static [u8] {
     match status {
-        arch_sys::usb::XhciEnableSlotStatus::ControllerStartFailed(_) => {
-            b"controller-start-failed"
-        }
+        arch_sys::usb::XhciEnableSlotStatus::ControllerStartFailed(_) => b"controller-start-failed",
         arch_sys::usb::XhciEnableSlotStatus::StartEvidenceUnavailable => {
             b"start-evidence-unavailable"
         }
         arch_sys::usb::XhciEnableSlotStatus::ControllerNotRunning => b"controller-not-running",
         arch_sys::usb::XhciEnableSlotStatus::CommandTimedOut => b"command-timeout",
-        arch_sys::usb::XhciEnableSlotStatus::UnexpectedEventType { .. } => {
-            b"unexpected-event-type"
-        }
+        arch_sys::usb::XhciEnableSlotStatus::UnexpectedEventType { .. } => b"unexpected-event-type",
         arch_sys::usb::XhciEnableSlotStatus::CommandPointerMismatch { .. } => {
             b"command-pointer-mismatch"
         }
@@ -1524,11 +1616,7 @@ fn probe_xhci_enable_slot_status_name(
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 fn probe_xhci_address_device(devices: &[DeviceEntry], write: WriteFn) {
     probe_emit(write, b"probe xhci-address-device:\n");
-    if !device_inventory_has(
-        devices,
-        reovim_uapi::system::DeviceClass::Bus,
-        "brcm,bcm2711-pcie",
-    ) {
+    if !device_inventory_has(devices, reovim_uapi::system::DeviceClass::Bus, "brcm,bcm2711-pcie") {
         probe_emit(write, b"state=unavailable\n");
         probe_emit(write, b"reason=device-tree-disabled-or-missing\n");
         return;
@@ -1699,11 +1787,7 @@ fn probe_xhci_address_device_status_name(
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 fn probe_xhci_get_device_descriptor(devices: &[DeviceEntry], write: WriteFn) {
     probe_emit(write, b"probe xhci-get-device-descriptor:\n");
-    if !device_inventory_has(
-        devices,
-        reovim_uapi::system::DeviceClass::Bus,
-        "brcm,bcm2711-pcie",
-    ) {
+    if !device_inventory_has(devices, reovim_uapi::system::DeviceClass::Bus, "brcm,bcm2711-pcie") {
         probe_emit(write, b"state=unavailable\n");
         probe_emit(write, b"reason=device-tree-disabled-or-missing\n");
         return;
@@ -1715,15 +1799,9 @@ fn probe_xhci_get_device_descriptor(devices: &[DeviceEntry], write: WriteFn) {
     probe_emit(write, b"\naddress.state=");
     probe_emit(write, probe_xhci_address_device_status_name(report.address.status));
     probe_emit(write, b"\nenable.state=");
-    probe_emit(
-        write,
-        probe_xhci_enable_slot_status_name(report.address.enable.status),
-    );
+    probe_emit(write, probe_xhci_enable_slot_status_name(report.address.enable.status));
     probe_emit(write, b"\nstart.state=");
-    probe_emit(
-        write,
-        probe_xhci_start_status_name(report.address.enable.start.status),
-    );
+    probe_emit(write, probe_xhci_start_status_name(report.address.enable.start.status));
     probe_emit(write, b"\nslot_id=");
     probe_write_u64_dec(write, report.slot_id as u64);
     probe_emit(write, b"\nendpoint_id=");
@@ -1821,8 +1899,7 @@ fn probe_xhci_get_device_descriptor(devices: &[DeviceEntry], write: WriteFn) {
             probe_emit(write, b"\n");
         }
         arch_sys::usb::XhciDeviceDescriptorProbeStatus::DescriptorPrefixReady {
-            length,
-            ..
+            length, ..
         } => {
             probe_emit(write, b"descriptor.length=");
             probe_write_u64_dec(write, length as u64);
@@ -1862,9 +1939,7 @@ fn probe_xhci_device_descriptor_status_name(
         arch_sys::usb::XhciDeviceDescriptorProbeStatus::EndpointIdMismatch { .. } => {
             b"endpoint-id-mismatch"
         }
-        arch_sys::usb::XhciDeviceDescriptorProbeStatus::TransferFailed { .. } => {
-            b"transfer-failed"
-        }
+        arch_sys::usb::XhciDeviceDescriptorProbeStatus::TransferFailed { .. } => b"transfer-failed",
         arch_sys::usb::XhciDeviceDescriptorProbeStatus::DescriptorPrefixReady { .. } => {
             b"descriptor-prefix-ready"
         }
@@ -1874,11 +1949,7 @@ fn probe_xhci_device_descriptor_status_name(
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 fn probe_xhci_set_address(devices: &[DeviceEntry], write: WriteFn) {
     probe_emit(write, b"probe xhci-set-address:\n");
-    if !device_inventory_has(
-        devices,
-        reovim_uapi::system::DeviceClass::Bus,
-        "brcm,bcm2711-pcie",
-    ) {
+    if !device_inventory_has(devices, reovim_uapi::system::DeviceClass::Bus, "brcm,bcm2711-pcie") {
         probe_emit(write, b"state=unavailable\n");
         probe_emit(write, b"reason=device-tree-disabled-or-missing\n");
         return;
@@ -1888,15 +1959,9 @@ fn probe_xhci_set_address(devices: &[DeviceEntry], write: WriteFn) {
     probe_emit(write, b"state=");
     probe_emit(write, probe_xhci_set_address_status_name(report.status));
     probe_emit(write, b"\ndescriptor.state=");
-    probe_emit(
-        write,
-        probe_xhci_device_descriptor_status_name(report.descriptor.status),
-    );
+    probe_emit(write, probe_xhci_device_descriptor_status_name(report.descriptor.status));
     probe_emit(write, b"\naddress.state=");
-    probe_emit(
-        write,
-        probe_xhci_address_device_status_name(report.descriptor.address.status),
-    );
+    probe_emit(write, probe_xhci_address_device_status_name(report.descriptor.address.status));
     probe_emit(write, b"\nenable.state=");
     probe_emit(
         write,
@@ -2038,11 +2103,7 @@ fn probe_xhci_set_address(devices: &[DeviceEntry], write: WriteFn) {
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 fn probe_xhci_read_device_descriptor(devices: &[DeviceEntry], write: WriteFn) {
     probe_emit(write, b"probe xhci-read-device-descriptor:\n");
-    if !device_inventory_has(
-        devices,
-        reovim_uapi::system::DeviceClass::Bus,
-        "brcm,bcm2711-pcie",
-    ) {
+    if !device_inventory_has(devices, reovim_uapi::system::DeviceClass::Bus, "brcm,bcm2711-pcie") {
         probe_emit(write, b"state=unavailable\n");
         probe_emit(write, b"reason=device-tree-disabled-or-missing\n");
         return;
@@ -2050,15 +2111,9 @@ fn probe_xhci_read_device_descriptor(devices: &[DeviceEntry], write: WriteFn) {
 
     let report = arch_sys::usb::read_device_descriptor_on_pcie_xhci_controller();
     probe_emit(write, b"state=");
-    probe_emit(
-        write,
-        probe_xhci_read_device_descriptor_status_name(report.status),
-    );
+    probe_emit(write, probe_xhci_read_device_descriptor_status_name(report.status));
     probe_emit(write, b"\nset_address.state=");
-    probe_emit(
-        write,
-        probe_xhci_set_address_status_name(report.set_address.status),
-    );
+    probe_emit(write, probe_xhci_set_address_status_name(report.set_address.status));
     probe_emit(write, b"\ndescriptor_prefix.state=");
     probe_emit(
         write,
@@ -2232,11 +2287,7 @@ fn probe_xhci_read_device_descriptor(devices: &[DeviceEntry], write: WriteFn) {
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 fn probe_xhci_read_config_descriptor_header(devices: &[DeviceEntry], write: WriteFn) {
     probe_emit(write, b"probe xhci-read-config-descriptor-header:\n");
-    if !device_inventory_has(
-        devices,
-        reovim_uapi::system::DeviceClass::Bus,
-        "brcm,bcm2711-pcie",
-    ) {
+    if !device_inventory_has(devices, reovim_uapi::system::DeviceClass::Bus, "brcm,bcm2711-pcie") {
         probe_emit(write, b"state=unavailable\n");
         probe_emit(write, b"reason=device-tree-disabled-or-missing\n");
         return;
@@ -2244,10 +2295,7 @@ fn probe_xhci_read_config_descriptor_header(devices: &[DeviceEntry], write: Writ
 
     let report = arch_sys::usb::read_configuration_descriptor_header_on_pcie_xhci_controller();
     probe_emit(write, b"state=");
-    probe_emit(
-        write,
-        probe_xhci_read_config_descriptor_header_status_name(report.status),
-    );
+    probe_emit(write, probe_xhci_read_config_descriptor_header_status_name(report.status));
     probe_emit(write, b"\ndevice_descriptor.state=");
     probe_emit(
         write,
@@ -2450,11 +2498,7 @@ fn probe_xhci_read_config_descriptor_header(devices: &[DeviceEntry], write: Writ
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 fn probe_xhci_read_config_descriptor(devices: &[DeviceEntry], write: WriteFn) {
     probe_emit(write, b"probe xhci-read-config-descriptor:\n");
-    if !device_inventory_has(
-        devices,
-        reovim_uapi::system::DeviceClass::Bus,
-        "brcm,bcm2711-pcie",
-    ) {
+    if !device_inventory_has(devices, reovim_uapi::system::DeviceClass::Bus, "brcm,bcm2711-pcie") {
         probe_emit(write, b"state=unavailable\n");
         probe_emit(write, b"reason=device-tree-disabled-or-missing\n");
         return;
@@ -2657,11 +2701,7 @@ fn probe_xhci_read_config_descriptor(devices: &[DeviceEntry], write: WriteFn) {
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 fn probe_xhci_set_configuration(devices: &[DeviceEntry], write: WriteFn) {
     probe_emit(write, b"probe xhci-set-configuration:\n");
-    if !device_inventory_has(
-        devices,
-        reovim_uapi::system::DeviceClass::Bus,
-        "brcm,bcm2711-pcie",
-    ) {
+    if !device_inventory_has(devices, reovim_uapi::system::DeviceClass::Bus, "brcm,bcm2711-pcie") {
         probe_emit(write, b"state=unavailable\n");
         probe_emit(write, b"reason=device-tree-disabled-or-missing\n");
         return;
@@ -2827,11 +2867,7 @@ fn probe_xhci_set_configuration(devices: &[DeviceEntry], write: WriteFn) {
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 fn probe_xhci_configure_endpoint(devices: &[DeviceEntry], write: WriteFn) {
     probe_emit(write, b"probe xhci-configure-endpoint:\n");
-    if !device_inventory_has(
-        devices,
-        reovim_uapi::system::DeviceClass::Bus,
-        "brcm,bcm2711-pcie",
-    ) {
+    if !device_inventory_has(devices, reovim_uapi::system::DeviceClass::Bus, "brcm,bcm2711-pcie") {
         probe_emit(write, b"state=unavailable\n");
         probe_emit(write, b"reason=device-tree-disabled-or-missing\n");
         return;
@@ -2841,10 +2877,7 @@ fn probe_xhci_configure_endpoint(devices: &[DeviceEntry], write: WriteFn) {
     probe_emit(write, b"state=");
     probe_emit(write, probe_xhci_configure_endpoint_status_name(report.status));
     probe_emit(write, b"\nset_configuration.state=");
-    probe_emit(
-        write,
-        probe_xhci_set_configuration_status_name(report.set_configuration.status),
-    );
+    probe_emit(write, probe_xhci_set_configuration_status_name(report.set_configuration.status));
     probe_emit(write, b"\nconfig_descriptor.state=");
     probe_emit(
         write,
@@ -3000,11 +3033,7 @@ fn probe_xhci_configure_endpoint(devices: &[DeviceEntry], write: WriteFn) {
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 fn probe_xhci_set_hid_protocol(devices: &[DeviceEntry], write: WriteFn) {
     probe_emit(write, b"probe xhci-set-hid-protocol:\n");
-    if !device_inventory_has(
-        devices,
-        reovim_uapi::system::DeviceClass::Bus,
-        "brcm,bcm2711-pcie",
-    ) {
+    if !device_inventory_has(devices, reovim_uapi::system::DeviceClass::Bus, "brcm,bcm2711-pcie") {
         probe_emit(write, b"state=unavailable\n");
         probe_emit(write, b"reason=device-tree-disabled-or-missing\n");
         return;
@@ -3146,11 +3175,7 @@ fn probe_xhci_set_hid_protocol(devices: &[DeviceEntry], write: WriteFn) {
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 fn probe_xhci_read_keyboard_report(devices: &[DeviceEntry], write: WriteFn) {
     probe_emit(write, b"probe xhci-read-keyboard-report:\n");
-    if !device_inventory_has(
-        devices,
-        reovim_uapi::system::DeviceClass::Bus,
-        "brcm,bcm2711-pcie",
-    ) {
+    if !device_inventory_has(devices, reovim_uapi::system::DeviceClass::Bus, "brcm,bcm2711-pcie") {
         probe_emit(write, b"state=unavailable\n");
         probe_emit(write, b"reason=device-tree-disabled-or-missing\n");
         return;
@@ -3160,10 +3185,7 @@ fn probe_xhci_read_keyboard_report(devices: &[DeviceEntry], write: WriteFn) {
     probe_emit(write, b"state=");
     probe_emit(write, probe_xhci_read_keyboard_report_status_name(report.status));
     probe_emit(write, b"\nset_hid_protocol.state=");
-    probe_emit(
-        write,
-        probe_xhci_set_hid_protocol_status_name(report.set_hid_protocol.status),
-    );
+    probe_emit(write, probe_xhci_set_hid_protocol_status_name(report.set_hid_protocol.status));
     probe_emit(write, b"\nconfigure_endpoint.state=");
     probe_emit(
         write,
@@ -3300,9 +3322,7 @@ fn probe_xhci_set_address_status_name(
             b"invalid-descriptor-prefix"
         }
         arch_sys::usb::XhciSetAddressStatus::CommandTimedOut => b"command-timeout",
-        arch_sys::usb::XhciSetAddressStatus::UnexpectedEventType { .. } => {
-            b"unexpected-event-type"
-        }
+        arch_sys::usb::XhciSetAddressStatus::UnexpectedEventType { .. } => b"unexpected-event-type",
         arch_sys::usb::XhciSetAddressStatus::CommandPointerMismatch { .. } => {
             b"command-pointer-mismatch"
         }
@@ -3317,9 +3337,7 @@ fn probe_xhci_read_device_descriptor_status_name(
     status: arch_sys::usb::XhciReadDeviceDescriptorStatus,
 ) -> &'static [u8] {
     match status {
-        arch_sys::usb::XhciReadDeviceDescriptorStatus::SetAddressFailed(_) => {
-            b"set-address-failed"
-        }
+        arch_sys::usb::XhciReadDeviceDescriptorStatus::SetAddressFailed(_) => b"set-address-failed",
         arch_sys::usb::XhciReadDeviceDescriptorStatus::StartEvidenceUnavailable => {
             b"start-evidence-unavailable"
         }
@@ -3330,15 +3348,11 @@ fn probe_xhci_read_device_descriptor_status_name(
         arch_sys::usb::XhciReadDeviceDescriptorStatus::TransferPointerMismatch { .. } => {
             b"transfer-pointer-mismatch"
         }
-        arch_sys::usb::XhciReadDeviceDescriptorStatus::SlotIdMismatch { .. } => {
-            b"slot-id-mismatch"
-        }
+        arch_sys::usb::XhciReadDeviceDescriptorStatus::SlotIdMismatch { .. } => b"slot-id-mismatch",
         arch_sys::usb::XhciReadDeviceDescriptorStatus::EndpointIdMismatch { .. } => {
             b"endpoint-id-mismatch"
         }
-        arch_sys::usb::XhciReadDeviceDescriptorStatus::TransferFailed { .. } => {
-            b"transfer-failed"
-        }
+        arch_sys::usb::XhciReadDeviceDescriptorStatus::TransferFailed { .. } => b"transfer-failed",
         arch_sys::usb::XhciReadDeviceDescriptorStatus::InvalidDeviceDescriptor { .. } => {
             b"invalid-device-descriptor"
         }
@@ -3406,9 +3420,9 @@ fn probe_xhci_read_config_descriptor_status_name(
         arch_sys::usb::XhciReadConfigurationDescriptorStatus::UnexpectedEventType { .. } => {
             b"unexpected-event-type"
         }
-        arch_sys::usb::XhciReadConfigurationDescriptorStatus::TransferPointerMismatch { .. } => {
-            b"transfer-pointer-mismatch"
-        }
+        arch_sys::usb::XhciReadConfigurationDescriptorStatus::TransferPointerMismatch {
+            ..
+        } => b"transfer-pointer-mismatch",
         arch_sys::usb::XhciReadConfigurationDescriptorStatus::SlotIdMismatch { .. } => {
             b"slot-id-mismatch"
         }
@@ -3448,16 +3462,12 @@ fn probe_xhci_set_configuration_status_name(
         arch_sys::usb::XhciSetConfigurationStatus::TransferPointerMismatch { .. } => {
             b"transfer-pointer-mismatch"
         }
-        arch_sys::usb::XhciSetConfigurationStatus::SlotIdMismatch { .. } => {
-            b"slot-id-mismatch"
-        }
+        arch_sys::usb::XhciSetConfigurationStatus::SlotIdMismatch { .. } => b"slot-id-mismatch",
         arch_sys::usb::XhciSetConfigurationStatus::EndpointIdMismatch { .. } => {
             b"endpoint-id-mismatch"
         }
         arch_sys::usb::XhciSetConfigurationStatus::TransferFailed { .. } => b"transfer-failed",
-        arch_sys::usb::XhciSetConfigurationStatus::ConfigurationSet { .. } => {
-            b"configuration-set"
-        }
+        arch_sys::usb::XhciSetConfigurationStatus::ConfigurationSet { .. } => b"configuration-set",
     }
 }
 
@@ -3485,9 +3495,7 @@ fn probe_xhci_configure_endpoint_status_name(
         arch_sys::usb::XhciConfigureEndpointStatus::CommandPointerMismatch { .. } => {
             b"command-pointer-mismatch"
         }
-        arch_sys::usb::XhciConfigureEndpointStatus::SlotIdMismatch { .. } => {
-            b"slot-id-mismatch"
-        }
+        arch_sys::usb::XhciConfigureEndpointStatus::SlotIdMismatch { .. } => b"slot-id-mismatch",
         arch_sys::usb::XhciConfigureEndpointStatus::CommandFailed { .. } => b"command-failed",
         arch_sys::usb::XhciConfigureEndpointStatus::EndpointConfigured { .. } => {
             b"endpoint-configured"
@@ -3521,9 +3529,7 @@ fn probe_xhci_set_hid_protocol_status_name(
             b"endpoint-id-mismatch"
         }
         arch_sys::usb::XhciSetHidProtocolStatus::TransferFailed { .. } => b"transfer-failed",
-        arch_sys::usb::XhciSetHidProtocolStatus::BootProtocolSet { .. } => {
-            b"boot-protocol-set"
-        }
+        arch_sys::usb::XhciSetHidProtocolStatus::BootProtocolSet { .. } => b"boot-protocol-set",
     }
 }
 
@@ -3541,9 +3547,7 @@ fn probe_xhci_read_keyboard_report_status_name(
         arch_sys::usb::XhciReadBootKeyboardReportStatus::StartEvidenceUnavailable => {
             b"start-evidence-unavailable"
         }
-        arch_sys::usb::XhciReadBootKeyboardReportStatus::TransferTimedOut => {
-            b"transfer-timeout"
-        }
+        arch_sys::usb::XhciReadBootKeyboardReportStatus::TransferTimedOut => b"transfer-timeout",
         arch_sys::usb::XhciReadBootKeyboardReportStatus::UnexpectedEventType { .. } => {
             b"unexpected-event-type"
         }
@@ -3865,10 +3869,7 @@ fn tty_read_byte() -> Option<u8> {
 fn read_aarch64_console_byte() -> Option<u8> {
     loop {
         let console = unsafe { &mut *USB_KEYBOARD_CONSOLE.0.get() };
-        match console.read_byte(
-            usb_keyboard_poll_report_if_due,
-            arch_sys::try_read_stdin_byte,
-        ) {
+        match console.read_byte(usb_keyboard_poll_report_if_due, arch_sys::try_read_stdin_byte) {
             Some(ConsoleInputByte::UsbKeyboard(byte)) => {
                 mark_usb_keyboard_ready();
                 note_aarch64_usb_line_byte();
@@ -3970,11 +3971,8 @@ fn usb_keyboard_poll_report_if_due() -> Option<[u8; arch_sys::usb::BOOT_KEYBOARD
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 fn configure_usb_keyboard_probe(devices: &[DeviceEntry]) {
-    let enabled = device_inventory_has(
-        devices,
-        reovim_uapi::system::DeviceClass::Bus,
-        "brcm,bcm2711-pcie",
-    );
+    let enabled =
+        device_inventory_has(devices, reovim_uapi::system::DeviceClass::Bus, "brcm,bcm2711-pcie");
     USB_KEYBOARD_PROBE_ENABLED.store(enabled as usize, Ordering::Release);
     USB_KEYBOARD_READY.store(0, Ordering::Release);
     USB_KEYBOARD_LAST_POLL_NANOS.store(0, Ordering::Release);
@@ -4072,9 +4070,7 @@ const fn usb_keyboard_manual_next_from_poll_state(state: usize) -> &'static [u8]
         | USB_KEYBOARD_POLL_REPORT_EVENT_MISMATCH
         | USB_KEYBOARD_POLL_REPORT_TRANSFER_FAILED => b"probe-xhci-read-keyboard-report",
         USB_KEYBOARD_POLL_REPORT_PENDING => b"press-usb-key",
-        USB_KEYBOARD_POLL_DECODED_PENDING | USB_KEYBOARD_POLL_REPORT_READY => {
-            b"type-shell-command"
-        }
+        USB_KEYBOARD_POLL_DECODED_PENDING | USB_KEYBOARD_POLL_REPORT_READY => b"type-shell-command",
         USB_KEYBOARD_POLL_NOT_POLLED | USB_KEYBOARD_POLL_PROBE_DISABLED => b"probe-usb-keyboard",
         _ => b"probe-usb-keyboard",
     }
@@ -4083,12 +4079,7 @@ const fn usb_keyboard_manual_next_from_poll_state(state: usize) -> &'static [u8]
 fn console_input_summary() -> ConsoleInputSummary {
     #[cfg(target_os = "linux")]
     {
-        ConsoleInputSummary::new(
-            "host-stdin",
-            "live",
-            BootCheckState::Ok,
-            BootCheckState::Warn,
-        )
+        ConsoleInputSummary::new("host-stdin", "live", BootCheckState::Ok, BootCheckState::Warn)
     }
 
     #[cfg(all(target_os = "none", target_arch = "aarch64"))]
@@ -4101,12 +4092,7 @@ fn console_input_summary() -> ConsoleInputSummary {
                 BootCheckState::Warn,
             )
         } else {
-            ConsoleInputSummary::new(
-                "pl011-uart",
-                "live",
-                BootCheckState::Ok,
-                BootCheckState::Warn,
-            )
+            ConsoleInputSummary::new("pl011-uart", "live", BootCheckState::Ok, BootCheckState::Warn)
         }
     }
 
@@ -4120,12 +4106,7 @@ fn console_input_summary() -> ConsoleInputSummary {
                 BootCheckState::Warn,
             )
         } else {
-            ConsoleInputSummary::new(
-                "com1-uart",
-                "live",
-                BootCheckState::Ok,
-                BootCheckState::Warn,
-            )
+            ConsoleInputSummary::new("com1-uart", "live", BootCheckState::Ok, BootCheckState::Warn)
         }
     }
 }
@@ -4364,11 +4345,6 @@ fn monotonic_nanos() -> Option<u64> {
     let sec = u64::try_from(ts.tv_sec).ok()?;
     let nsec = u64::try_from(ts.tv_nsec).ok()?;
     sec.checked_mul(1_000_000_000)?.checked_add(nsec)
-}
-
-#[cfg(not(target_os = "none"))]
-fn consume_bootline(_line: &mut [u8]) -> Option<usize> {
-    None
 }
 
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]

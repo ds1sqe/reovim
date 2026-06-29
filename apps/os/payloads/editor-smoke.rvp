@@ -1,2 +1,20 @@
 reovim-payload-source-v1
+write-stdout-hex 656469746f722d736d6f6b652e73746172740a
+service-ready editor
+write-service-table
+write-process-table
+exec-payload server-smoke
+spawn-wait-payload server-smoke
+spawn-kill-payload server-smoke
+write-process-self
+write-boot-profile
+write-device-table
+exec-bin-stdin-hex 656469746f722d736d6f6b652e6368696c642e737464696e0a cat
+pipe-bin pwd -- cat
+write-stdout-hex 656469746f722d736d6f6b652e706970652e646f6e650a
+spawn-wait-bin pwd
+sleep-bin 1 ls /boot
+scheduler-tick
+yield-now
+write-stdout-hex 656469746f722d736d6f6b652e736c6565702e726573756d65640a
 exit-status ready

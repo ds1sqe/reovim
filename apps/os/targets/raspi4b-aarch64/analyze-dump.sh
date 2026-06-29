@@ -12,6 +12,9 @@ Options:
   --expect-target TRIPLE  Require target=TRIPLE.
   --expect-profile NAME   Require selected_profile=NAME.
   --require-zero-drops    Reject dumps with klog_dropped_bytes != 0.
+  --require-persistent-proof
+                         Reject dumps that do not report available storage and
+                         a retained checked dump-sync result.
   -h, --help              Show this help.
 
 The input may be the raw `dump snapshot` transcript, a file whose first dump
@@ -33,6 +36,7 @@ expect_package=""
 expect_target=""
 expect_profile=""
 require_zero_drops=0
+require_persistent_proof=0
 input_path=""
 dump_file=""
 
@@ -55,6 +59,10 @@ while [ "$#" -gt 0 ]; do
             ;;
         --require-zero-drops)
             require_zero_drops=1
+            shift
+            ;;
+        --require-persistent-proof)
+            require_persistent_proof=1
             shift
             ;;
         -h|--help)
@@ -216,16 +224,27 @@ panic_records="$(value_for panic_records)" || fail "missing panic_records"
 persistent="$(value_for persistent)" || fail "missing persistent"
 storage="$(value_for storage)" || fail "missing storage"
 storage_capacity_bytes="$(value_for storage_capacity_bytes)" || fail "missing storage_capacity_bytes"
+last_sync_attempted="$(value_for last_sync_attempted)" || fail "missing last_sync_attempted"
+last_sync_persistent="$(value_for last_sync_persistent)" || fail "missing last_sync_persistent"
+last_sync_storage="$(value_for last_sync_storage)" || fail "missing last_sync_storage"
+last_sync_storage_capacity_bytes="$(value_for last_sync_storage_capacity_bytes)" || fail "missing last_sync_storage_capacity_bytes"
+last_sync_status="$(value_for last_sync_status)" || fail "missing last_sync_status"
+last_sync_bytes="$(value_for last_sync_bytes)" || fail "missing last_sync_bytes"
+last_sync_checksum="$(value_for last_sync_checksum)" || fail "missing last_sync_checksum"
+last_sync_verified="$(value_for last_sync_verified)" || fail "missing last_sync_verified"
+last_sync_reason="$(value_for last_sync_reason)" || fail "missing last_sync_reason"
 klog_retained_bytes="$(value_for klog_retained_bytes)" || fail "missing klog_retained_bytes"
 klog_dropped_bytes="$(value_for klog_dropped_bytes)" || fail "missing klog_dropped_bytes"
 klog_next_event_seq="$(value_for klog_next_event_seq)" || fail "missing klog_next_event_seq"
 event_records="$(value_for event_records)" || fail "missing event_records"
 process_records="$(value_for process_records)" || fail "missing process_records"
+service_records="$(value_for service_records)" || fail "missing service_records"
 exec_load_records="$(value_for exec_load_records)" || fail "missing exec_load_records"
 pending_exec_records="$(value_for pending_exec_records)" || fail "missing pending_exec_records"
 wait_records="$(value_for wait_records)" || fail "missing wait_records"
 task_records="$(value_for task_records)" || fail "missing task_records"
 syscall_records="$(value_for syscall_records)" || fail "missing syscall_records"
+syscall_continuation_records="$(value_for syscall_continuation_records)" || fail "missing syscall_continuation_records"
 expected_checksum="$(value_for checksum)" || fail "missing checksum"
 actual_checksum="$(checksum32 "$checksum_payload")"
 
@@ -243,12 +262,17 @@ for key_value in \
     "panic_records:$panic_records" \
     "event_records:$event_records" \
     "process_records:$process_records" \
+    "service_records:$service_records" \
     "exec_load_records:$exec_load_records" \
     "pending_exec_records:$pending_exec_records" \
     "wait_records:$wait_records" \
     "task_records:$task_records" \
     "syscall_records:$syscall_records" \
+    "syscall_continuation_records:$syscall_continuation_records" \
     "storage_capacity_bytes:$storage_capacity_bytes" \
+    "last_sync_storage_capacity_bytes:$last_sync_storage_capacity_bytes" \
+    "last_sync_bytes:$last_sync_bytes" \
+    "last_sync_checksum:$last_sync_checksum" \
     "checksum:$expected_checksum"
 do
     require_number "${key_value%%:*}" "${key_value#*:}"
@@ -265,18 +289,49 @@ for key_value in \
     "launch_profile_feature:$launch_profile_feature" \
     "proof_state:$proof_state" \
     "panic_state:$panic_state" \
-    "storage:$storage"
+    "storage:$storage" \
+    "last_sync_storage:$last_sync_storage" \
+    "last_sync_reason:$last_sync_reason"
 do
     require_text "${key_value%%:*}" "${key_value#*:}"
 done
 
 [ "$persistent" = "available" ] || [ "$persistent" = "unavailable" ] \
     || fail "persistent must be available or unavailable: $persistent"
+[ "$last_sync_attempted" = "true" ] || [ "$last_sync_attempted" = "false" ] \
+    || fail "last_sync_attempted must be true or false: $last_sync_attempted"
+[ "$last_sync_persistent" = "available" ] || [ "$last_sync_persistent" = "unavailable" ] \
+    || fail "last_sync_persistent must be available or unavailable: $last_sync_persistent"
+[ "$last_sync_status" = "written" ] || [ "$last_sync_status" = "not-written" ] \
+    || fail "last_sync_status must be written or not-written: $last_sync_status"
+[ "$last_sync_verified" = "true" ] || [ "$last_sync_verified" = "false" ] \
+    || fail "last_sync_verified must be true or false: $last_sync_verified"
 if [ "$persistent" = "unavailable" ] && [ "$storage" != "none" ]; then
     fail "unavailable dump persistence must report storage=none"
 fi
 if [ "$persistent" = "unavailable" ] && [ "$storage_capacity_bytes" != "0" ]; then
     fail "unavailable dump persistence must report storage_capacity_bytes=0"
+fi
+if [ "$last_sync_attempted" = "false" ] && [ "$last_sync_reason" != "never-synced" ]; then
+    fail "unattempted last sync must report reason=never-synced"
+fi
+if [ "$last_sync_persistent" = "unavailable" ] && [ "$last_sync_storage" != "none" ]; then
+    fail "unavailable last sync must report storage=none"
+fi
+if [ "$last_sync_persistent" = "unavailable" ] && [ "$last_sync_storage_capacity_bytes" != "0" ]; then
+    fail "unavailable last sync must report last_sync_storage_capacity_bytes=0"
+fi
+if [ "$last_sync_attempted" = "true" ] && [ "$last_sync_status" = "written" ]; then
+    [ "$last_sync_persistent" = "available" ] \
+        || fail "written last sync must report last_sync_persistent=available"
+    [ "$last_sync_verified" = "true" ] \
+        || fail "written last sync must report last_sync_verified=true"
+    [ "$last_sync_reason" = "written-readback-ok" ] \
+        || fail "written last sync must report reason=written-readback-ok"
+    [ "$last_sync_bytes" -gt 0 ] \
+        || fail "written last sync must report nonzero last_sync_bytes"
+    [ "$last_sync_checksum" -gt 0 ] \
+        || fail "written last sync must report nonzero last_sync_checksum"
 fi
 [ "$panic_state" = "none" ] || [ "$panic_state" = "recorded" ] \
     || fail "panic_state must be none or recorded: $panic_state"
@@ -303,13 +358,36 @@ if [ "$require_zero_drops" -eq 1 ] && [ "$klog_dropped_bytes" != "0" ]; then
     fail "dropped log bytes present: $klog_dropped_bytes"
 fi
 
-for section in boot devices proof panic events processes execs pending scheduler syscalls tasks waits; do
+persistent_dump_proof=false
+if [ "$persistent" = "available" ] \
+    && [ "$storage" != "none" ] \
+    && [ "$storage_capacity_bytes" -gt 0 ] \
+    && [ "$last_sync_attempted" = "true" ] \
+    && [ "$last_sync_persistent" = "available" ] \
+    && [ "$last_sync_status" = "written" ] \
+    && [ "$last_sync_verified" = "true" ] \
+    && [ "$last_sync_reason" = "written-readback-ok" ] \
+    && [ "$last_sync_bytes" -gt 0 ] \
+    && [ "$last_sync_checksum" -gt 0 ]; then
+    persistent_dump_proof=true
+fi
+if [ "$require_persistent_proof" -eq 1 ] && [ "$persistent_dump_proof" != "true" ]; then
+    fail "persistent dump proof is not satisfied"
+fi
+
+for section in boot devices proof dump-sync panic events processes services execs pending scheduler syscalls continuations tasks waits; do
     require_section "$section"
 done
 
 if [ "$exec_load_records" -gt 0 ]; then
     grep -Eq '^- seq=[0-9]+ .* path=[^ ]+ source=[^ ]+ loader=[^ ]+ entry_fn=[^ ]+ .* kind=(bin|payload) origin=(image-linked|installed-overlay|source-media-catalog|source-media-single|block-bundle|none)$' "$dump_file" \
         || fail "missing exec source path row"
+fi
+if [ "$syscall_continuation_records" -gt 0 ]; then
+    grep -Eq '^- pid=[0-9]+ task=[0-9]+ path=[^ ]+ nr=[0-9]+ op=[^ ]+ memory=(none|raw-read-buffer|raw-write-buffer|raw-wait-report) .* loader=[^ ]+ entry_fn=[^ ]+$' "$dump_file" \
+        || fail "missing active syscall continuation row"
+    grep -Eq '^- seq=[0-9]+ boot=[0-9]+ session=[0-9]+ source=process component=syscall severity=info kind=syscall-continue-blocked pid=[0-9]+ task=[0-9]+$' "$dump_file" \
+        || fail "missing active syscall continuation event row"
 fi
 
 printf 'dump_analysis=ok\n'
@@ -336,14 +414,26 @@ printf 'panic_records=%s\n' "$panic_records"
 printf 'persistent=%s\n' "$persistent"
 printf 'storage=%s\n' "$storage"
 printf 'storage_capacity_bytes=%s\n' "$storage_capacity_bytes"
+printf 'persistent_dump_proof=%s\n' "$persistent_dump_proof"
+printf 'last_sync_attempted=%s\n' "$last_sync_attempted"
+printf 'last_sync_persistent=%s\n' "$last_sync_persistent"
+printf 'last_sync_storage=%s\n' "$last_sync_storage"
+printf 'last_sync_storage_capacity_bytes=%s\n' "$last_sync_storage_capacity_bytes"
+printf 'last_sync_status=%s\n' "$last_sync_status"
+printf 'last_sync_bytes=%s\n' "$last_sync_bytes"
+printf 'last_sync_checksum=%s\n' "$last_sync_checksum"
+printf 'last_sync_verified=%s\n' "$last_sync_verified"
+printf 'last_sync_reason=%s\n' "$last_sync_reason"
 printf 'klog_retained_bytes=%s\n' "$klog_retained_bytes"
 printf 'klog_dropped_bytes=%s\n' "$klog_dropped_bytes"
 printf 'klog_next_event_seq=%s\n' "$klog_next_event_seq"
 printf 'event_records=%s\n' "$event_records"
 printf 'process_records=%s\n' "$process_records"
+printf 'service_records=%s\n' "$service_records"
 printf 'exec_load_records=%s\n' "$exec_load_records"
 printf 'pending_exec_records=%s\n' "$pending_exec_records"
 printf 'wait_records=%s\n' "$wait_records"
 printf 'task_records=%s\n' "$task_records"
 printf 'syscall_records=%s\n' "$syscall_records"
+printf 'syscall_continuation_records=%s\n' "$syscall_continuation_records"
 printf 'checksum=%s\n' "$expected_checksum"

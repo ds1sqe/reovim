@@ -15,12 +15,18 @@ workspace = true
 
 [dependencies]
 reovim-uapi-abi = { path = "inner/abi" }
+reovim-uapi-dump = { path = "inner/dump" }
 reovim-uapi-fs = { path = "inner/fs" }
 reovim-uapi-log = { path = "inner/log" }
 reovim-uapi-mm = { path = "inner/mm" }
 reovim-uapi-net = { path = "inner/net" }
 reovim-uapi-panic = { path = "inner/panic" }
+reovim-uapi-process = { path = "inner/process" }
 reovim-uapi-protocol = { path = "inner/protocol" }
 reovim-uapi-sched = { path = "inner/sched" }
+reovim-uapi-session = { path = "inner/session" }
+reovim-uapi-service = { path = "inner/service" }
+reovim-uapi-source = { path = "inner/source" }
+reovim-uapi-syscall = { path = "inner/syscall" }
 reovim-uapi-system = { path = "inner/system" }
 reovim-uapi-terminal = { path = "inner/terminal" }

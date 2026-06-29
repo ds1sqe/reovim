@@ -910,10 +910,89 @@ fn default_foundation_grants_rlib() {
         "uapi/protocol must be granted the uapi/abi dep"
     );
     assert!(
+        grants
+            .get("reovim-uapi-fs")
+            .is_some_and(|v| v.iter().any(|g| g == "reovim-uapi-syscall")),
+        "uapi/fs must be granted the raw syscall transport dep"
+    );
+    assert!(
+        grants
+            .get("reovim-uapi-dump")
+            .is_some_and(|v| v.iter().any(|g| g == "reovim-uapi-syscall")),
+        "uapi/dump must be granted the raw syscall transport dep"
+    );
+    assert!(
+        grants
+            .get("reovim-uapi-process")
+            .is_some_and(|v| v.iter().any(|g| g == "reovim-uapi-syscall")),
+        "uapi/process must be granted the raw syscall transport dep"
+    );
+    assert!(
+        grants
+            .get("reovim-uapi-sched")
+            .is_some_and(|v| v.iter().any(|g| g == "reovim-uapi-syscall")),
+        "uapi/sched must be granted the raw syscall transport dep"
+    );
+    assert!(
+        grants
+            .get("reovim-uapi-session")
+            .is_some_and(|v| v.iter().any(|g| g == "reovim-uapi-syscall")),
+        "uapi/session must be granted the raw syscall transport dep"
+    );
+    assert!(
+        grants
+            .get("reovim-uapi-service")
+            .is_some_and(|v| v.iter().any(|g| g == "reovim-uapi-syscall")),
+        "uapi/service must be granted the raw syscall transport dep"
+    );
+    assert!(
+        grants
+            .get("reovim-uapi-source")
+            .is_some_and(|v| v.iter().any(|g| g == "reovim-uapi-syscall")),
+        "uapi/source must be granted the raw syscall transport dep"
+    );
+    assert!(
+        grants
+            .get("reovim-system-kernel")
+            .is_some_and(|v| v.iter().any(|g| g == "reovim-uapi-syscall")),
+        "system kernel must be granted the raw syscall transport dep"
+    );
+    assert!(
+        grants
+            .get("reovim-system-kernel")
+            .is_some_and(|v| v.iter().any(|g| g == "reovim-uapi-process")),
+        "system kernel must be granted the process uapi dep"
+    );
+    assert!(
+        grants
+            .get("reovim-system-kernel")
+            .is_some_and(|v| v.iter().any(|g| g == "reovim-uapi-service")),
+        "system kernel must be granted the service uapi dep"
+    );
+    assert!(
+        grants
+            .get("reovim-system-kernel")
+            .is_some_and(|v| v.iter().any(|g| g == "reovim-uapi-session")),
+        "system kernel must be granted the session uapi dep"
+    );
+    assert!(
+        grants
+            .get("reovim-system-kernel")
+            .is_some_and(|v| v.iter().any(|g| g == "reovim-uapi-source")),
+        "system kernel must be granted the source uapi dep"
+    );
+    assert!(
         grants.get("reovim-uapi").is_some_and(|v| {
-            v.iter().any(|g| g == "reovim-uapi-net") && !v.iter().any(|g| g == "reovim-uapi-posix")
+            v.iter().any(|g| g == "reovim-uapi-net")
+                && v.iter().any(|g| g == "reovim-uapi-dump")
+                && v.iter().any(|g| g == "reovim-uapi-process")
+                && v.iter().any(|g| g == "reovim-uapi-session")
+                && v.iter().any(|g| g == "reovim-uapi-service")
+                && v.iter().any(|g| g == "reovim-uapi-source")
+                && v.iter().any(|g| g == "reovim-uapi-syscall")
+                && !v.iter().any(|g| g == "reovim-uapi-posix")
         }),
-        "uapi facade must be granted domain leaf deps but not uapi/posix"
+        "uapi facade must be granted domain leaf deps and raw syscall transport but not uapi/posix"
     );
 }
 

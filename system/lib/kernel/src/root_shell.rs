@@ -5,7 +5,10 @@
 //! exec/syscall path.
 
 use crate::{
-    program::{self, LoadedProgram, ProgramArgvBuffer, ProgramStatus},
+    program::{
+        self, LoadedProgram, ProgramArgvBuffer, ProgramEnvBuffer, ProgramStatus,
+        program_env_name_is_valid,
+    },
     rootd::RootDaemon,
     syscall::{ProgramStdoutCapture, ProgramSyscalls, SyscallContext},
     vfs::PathBuf,
@@ -19,6 +22,12 @@ pub struct RootShellSession {
     cwd: PathBuf,
     shell_target_requested: Option<&'static str>,
     shell_start_requested: bool,
+    line_discipline_requested: bool,
+    line_discipline: &'static str,
+    pipe_mode: &'static str,
+    owner_path: &'static str,
+    owner_loader: &'static str,
+    owner_entry_name: &'static str,
 }
 
 impl RootShellSession {
@@ -29,6 +38,12 @@ impl RootShellSession {
             cwd: PathBuf::root(),
             shell_target_requested: None,
             shell_start_requested: false,
+            line_discipline_requested: false,
+            line_discipline: "none",
+            pipe_mode: "none",
+            owner_path: "root-shell",
+            owner_loader: "kernel",
+            owner_entry_name: "root_shell",
         }
     }
 
@@ -46,8 +61,29 @@ impl RootShellSession {
         self.shell_start_requested = true;
     }
 
+    pub(crate) fn request_line_discipline(
+        &mut self,
+        line_discipline: &'static str,
+        pipe_mode: &'static str,
+    ) {
+        self.line_discipline_requested = true;
+        self.line_discipline = line_discipline;
+        self.pipe_mode = pipe_mode;
+    }
+
     pub(crate) fn request_shell_target(&mut self, program: &'static str) {
         self.shell_target_requested = Some(program);
+    }
+
+    pub(crate) fn install_shell_owner(
+        &mut self,
+        program_path: &'static str,
+        loader: &'static str,
+        entry_name: &'static str,
+    ) {
+        self.owner_path = program_path;
+        self.owner_loader = loader;
+        self.owner_entry_name = entry_name;
     }
 
     /// `/bin` program requested by `/bin/init` as the shell/session target.
@@ -60,6 +96,42 @@ impl RootShellSession {
     #[must_use]
     pub const fn shell_start_requested(&self) -> bool {
         self.shell_start_requested
+    }
+
+    /// Whether the shell target selected the interactive command-line discipline.
+    #[must_use]
+    pub const fn line_discipline_requested(&self) -> bool {
+        self.line_discipline_requested
+    }
+
+    /// Command-line parser/discipline requested by the shell target.
+    #[must_use]
+    pub const fn line_discipline(&self) -> &'static str {
+        self.line_discipline
+    }
+
+    /// Pipeline mode requested by the shell target.
+    #[must_use]
+    pub const fn pipe_mode(&self) -> &'static str {
+        self.pipe_mode
+    }
+
+    /// Executable path currently owning the interactive shell session.
+    #[must_use]
+    pub const fn owner_path(&self) -> &'static str {
+        self.owner_path
+    }
+
+    /// Loader/source kind for the executable that owns the shell session.
+    #[must_use]
+    pub const fn owner_loader(&self) -> &'static str {
+        self.owner_loader
+    }
+
+    /// Stable entry name for the executable that owns the shell session.
+    #[must_use]
+    pub const fn owner_entry_name(&self) -> &'static str {
+        self.owner_entry_name
     }
 }
 
@@ -89,6 +161,31 @@ enum QuoteState {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct ProgramLineResult {
     status: ProgramStatus,
+}
+
+/// Owned `/bin` argv/env entry payload.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ProgramInvocation {
+    argv: ProgramArgvBuffer,
+    env: ProgramEnvBuffer,
+}
+
+impl ProgramInvocation {
+    pub(crate) const fn new(argv: ProgramArgvBuffer, env: ProgramEnvBuffer) -> Self {
+        Self { argv, env }
+    }
+
+    /// Returns admitted argv.
+    #[must_use]
+    pub const fn argv(&self) -> &ProgramArgvBuffer {
+        &self.argv
+    }
+
+    /// Returns admitted env.
+    #[must_use]
+    pub const fn env(&self) -> &ProgramEnvBuffer {
+        &self.env
+    }
 }
 
 impl ProgramLineResult {
@@ -343,11 +440,11 @@ fn run_program(
     session: &mut RootShellSession,
     program: LoadedProgram,
     argv: &ProgramArgvBuffer,
+    env: &ProgramEnvBuffer,
     stdin: &[u8],
     stdout_capture: Option<&ProgramStdoutCapture>,
     current: Option<SyscallContext>,
 ) -> ProgramStatus {
-    let argv = argv.borrowed();
     let mut syscalls = ProgramSyscalls::new_with_stdin_and_stdout_capture(
         daemon,
         session,
@@ -355,22 +452,54 @@ fn run_program(
         stdin,
         stdout_capture,
     );
-    program::run_loaded_program(program, &argv, &mut syscalls)
+    program::run_loaded_program(program, argv, env, stdin, &mut syscalls)
 }
 
-fn program_argv_buffer(parsed: &ParsedLine) -> Result<ProgramArgvBuffer, ShellLineError> {
+fn split_env_assignment(token: &str) -> Option<(&str, &str)> {
+    let bytes = token.as_bytes();
+    let mut split = 0usize;
+    while split < bytes.len() && bytes[split] != b'=' {
+        split += 1;
+    }
+    if split == 0 || split >= bytes.len() {
+        return None;
+    }
+    let name = &bytes[..split];
+    if !program_env_name_is_valid(name) {
+        return None;
+    }
+    Some((&token[..split], &token[split + 1..]))
+}
+
+fn program_invocation(parsed: &ParsedLine) -> Result<Option<ProgramInvocation>, ShellLineError> {
+    let mut env = ProgramEnvBuffer::empty();
+    let mut first_argv = 0usize;
+    while first_argv < parsed.argc {
+        let token = parsed.args[first_argv].as_str();
+        let Some((name, value)) = split_env_assignment(token) else {
+            break;
+        };
+        env.push(name, value).map_err(|_| ShellLineError::TooLong)?;
+        first_argv += 1;
+    }
+    if first_argv >= parsed.argc {
+        return Ok(None);
+    }
+
     let mut argv = ProgramArgvBuffer::empty();
-    let mut index = 0usize;
+    let mut index = first_argv;
     while index < parsed.argc {
         argv.push(parsed.args[index].as_str())
             .map_err(|_| ShellLineError::TooLong)?;
         index += 1;
     }
-    Ok(argv)
+    Ok(Some(ProgramInvocation::new(argv, env)))
 }
 
-/// Parses a root-shell input line into an owned program argv buffer.
-pub(crate) fn parse_program_argv(line: &[u8]) -> Result<Option<ProgramArgvBuffer>, ShellLineError> {
+/// Parses a root-shell input line into owned argv plus leading env assignments.
+pub(crate) fn parse_program_invocation(
+    line: &[u8],
+) -> Result<Option<ProgramInvocation>, ShellLineError> {
     let (parsed, status) = tokenize(line);
 
     match status {
@@ -385,7 +514,7 @@ pub(crate) fn parse_program_argv(line: &[u8]) -> Result<Option<ProgramArgvBuffer
         return Ok(None);
     }
 
-    program_argv_buffer(&parsed).map(Some)
+    program_invocation(&parsed)
 }
 
 fn execute_loaded_program_from_argv(
@@ -393,11 +522,12 @@ fn execute_loaded_program_from_argv(
     session: &mut RootShellSession,
     program: LoadedProgram,
     argv: &ProgramArgvBuffer,
+    env: &ProgramEnvBuffer,
     stdin: &[u8],
     stdout_capture: Option<&ProgramStdoutCapture>,
     current: Option<SyscallContext>,
 ) -> ProgramLineResult {
-    let status = run_program(daemon, session, program, argv, stdin, stdout_capture, current);
+    let status = run_program(daemon, session, program, argv, env, stdin, stdout_capture, current);
     ProgramLineResult::new(status)
 }
 
@@ -407,6 +537,7 @@ pub(crate) fn execute_loaded_program_argv(
     session: &mut RootShellSession,
     program: LoadedProgram,
     argv: &ProgramArgvBuffer,
+    env: &ProgramEnvBuffer,
     stdin: &[u8],
     stdout_capture: Option<&ProgramStdoutCapture>,
     current: Option<SyscallContext>,
@@ -415,7 +546,16 @@ pub(crate) fn execute_loaded_program_argv(
         return ProgramLineResult::new(ProgramStatus::Empty);
     }
 
-    execute_loaded_program_from_argv(daemon, session, program, argv, stdin, stdout_capture, current)
+    execute_loaded_program_from_argv(
+        daemon,
+        session,
+        program,
+        argv,
+        env,
+        stdin,
+        stdout_capture,
+        current,
+    )
 }
 
 #[cfg(feature = "selftest")]

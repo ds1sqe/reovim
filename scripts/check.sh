@@ -71,12 +71,19 @@ run_tests() { cargo test --workspace; }
 run_doc_tests() { cargo test --workspace --doc; }
 run_test_layout() { "$ROOT/scripts/check-test-layout.sh" --check; }
 run_public_doctests() { "$ROOT/scripts/check-public-doctests.sh" --check; }
+run_large_files() { "$ROOT/scripts/check-large-files.sh"; }
 
 cd "$ROOT"
 
 echo "==> test-layout (L12)"
 if ! run_test_layout; then
     echo "check.sh: test-layout FAILED (inline #[cfg(test)] mod tests blocks found)" >&2
+    exit 1
+fi
+
+echo "==> large-files (L12)"
+if ! run_large_files; then
+    echo "check.sh: large-files FAILED (apps/os source line caps exceeded)" >&2
     exit 1
 fi
 

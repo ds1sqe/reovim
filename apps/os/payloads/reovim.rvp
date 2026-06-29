@@ -1,2 +1,15 @@
 reovim-payload-source-v1
+service-ready reovim
+exec-payload server-smoke
+write-service-table
+write-process-table
+write-boot-profile
+write-device-table
+write-exec-table
+write-pending-exec-table
+write-source-table
+write-scheduler-state
+write-task-table
+write-wait-table
+write-syscall-table
 exit-status ready

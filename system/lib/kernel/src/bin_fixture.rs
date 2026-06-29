@@ -6,16 +6,34 @@
 
 use {
     crate::{
-        klog,
         program::{
-            self as kernel_program, ProgramDescriptor, ProgramImage, ProgramImageKind,
-            ProgramSourceArtifact, ProgramStatus,
+            self as kernel_program, LinkedProgramEntry, MAX_PROGRAM_ARGS, MAX_PROGRAM_ENVS,
+            ProgramArgv, ProgramDescriptor, ProgramImage, ProgramSourceArtifact, ProgramStatus,
         },
-        rootd::{BootCheckState, HardwareProbeResult},
+        rootd::ROOT_LINE_BYTES,
         syscall::ProgramSyscalls,
         vfs::{self, File},
     },
-    reovim_uapi_system::DeviceEntry,
+    reovim_uapi_dump::{DumpSyncReport, SyscallDumpControl},
+    reovim_uapi_fs::{FsError, OpenAtDir, OpenFlags, RawFd, SyscallFdControl},
+    reovim_uapi_process::{
+        ExitCode, ProcessArg, ProcessControlReport, ProcessEnv, ProcessError, ProcessId,
+        ProcessSleepReport, ProcessStateCode, ProcessTimedWaitReport, ProcessWaitReport,
+        SyscallProcessControl,
+    },
+    reovim_uapi_sched::{SchedulerError, SchedulerTicks, SyscallSchedulerControl},
+    reovim_uapi_service::{
+        ServiceControlReport, ServiceControlResultCode, ServiceError, ServiceReasonCode,
+        ServiceStateCode, SyscallServiceControl,
+    },
+    reovim_uapi_session::SyscallSessionControl,
+    reovim_uapi_source::{
+        SourceError, SourceInstallOriginCode, SourceInstallReport, SourceInstallStatusCode,
+        SourceNamespaceCode, SyscallSourceControl,
+    },
+    reovim_uapi_syscall::RawSyscall,
+    reovim_uapi_system::{SyscallSystemControl, SystemError},
+    reovim_uapi_terminal::SyscallTerminalControl,
 };
 
 const BIN_HELP: usize = 0;
@@ -40,317 +58,3376 @@ const BIN_PROC: usize = 18;
 const BIN_PROBE: usize = 19;
 const BIN_LAUNCH: usize = 20;
 const BIN_REOVIM: usize = 21;
-const BIN_HALT: usize = 22;
+const BIN_HELLO: usize = 22;
+const BIN_HALT: usize = 23;
+const BIN_PS: usize = 24;
+const BIN_KILL: usize = 25;
+const BIN_WAKE: usize = 26;
+const BIN_BLOCK: usize = 27;
+const BIN_SPAWN: usize = 28;
+const BIN_SLEEP: usize = 29;
+const BIN_WAIT: usize = 30;
+const BIN_WAIT_TICKS: usize = 31;
+const BIN_EXEC: usize = 32;
+const BIN_SERVICE_STOP: usize = 33;
+const BIN_SERVICE_START: usize = 34;
+const BIN_SERVICE_RESTART: usize = 35;
+const BIN_SESSION: usize = 36;
+const BIN_SERVICES: usize = 37;
+const BIN_TASKS: usize = 38;
+const BIN_WAITS: usize = 39;
+const BIN_SYSCALLS: usize = 40;
+const BIN_CONTINUATIONS: usize = 41;
+const BIN_EXECS: usize = 42;
+const BIN_PENDING: usize = 43;
+const BIN_SOURCES: usize = 44;
+const BIN_MEDIA: usize = 45;
+const BIN_SELF: usize = 46;
+const BIN_INSTALL_BIN: usize = 47;
+const BIN_INSTALL_PAYLOAD: usize = 48;
+const BIN_INSTALL_BIN_MEDIA: usize = 49;
+const BIN_INSTALL_PAYLOAD_MEDIA: usize = 50;
 
-const BIN_HELP_SOURCE_BYTES: &[u8] =
-    b"reovim-source-v1\nreject-argc-greater 2 help: too many arguments\nwrite-help-arg1-or-catalog\n";
-const BIN_INIT_SOURCE_BYTES: &[u8] = b"reovim-source-v1\nreject-argc-greater 1 init: too many arguments\nrequest-shell-target /bin/sh\nwrite-stdout-hex 696e69743a20757365726c616e642073657276696365732072656164790a\n";
-const BIN_SH_SOURCE_BYTES: &[u8] = b"reovim-source-v1\nreject-argc-greater 1 sh: too many arguments\nrequest-root-shell\nwrite-stdout-hex 72656f76696d2073797374656d206b65726e656c207368656c6c2072656164790a\n";
-const BIN_CLEAR_SOURCE_BYTES: &[u8] =
-    b"reovim-source-v1\nreject-argc-greater 1 clear: too many arguments\nclear-console\nwrite-stdout-hex 1b5b324a1b5b48\n";
-const BIN_SCREENTEST_SOURCE_BYTES: &[u8] = concat!(
-    "reovim-source-v1\n",
-    "reject-argc-greater 1 screentest: too many arguments\n",
-    "write-stdout-hex 73637265656e20746573743a0a\n",
-    "write-stdout-hex 20207461726765743a206672616d656275666665722f73657269616c207474792072656e6465726572207375627365740a\n",
-    "write-stdout-hex 2020666731363a201b5b33303b34376d626c61636b1b5b306d201b5b33316d7265641b5b306d201b5b33326d677265656e1b5b306d201b5b33336d79656c6c6f771b5b306d201b5b33346d626c75651b5b306d201b5b33356d6d6167656e74611b5b306d201b5b33366d6379616e1b5b306d201b5b33376d77686974651b5b306d0a\n",
-    "write-stdout-hex 2020666731362b3a201b5b39306d677261791b5b306d201b5b39316d62722d7265641b5b306d201b5b39326d62722d677265656e1b5b306d201b5b39336d62722d79656c6c6f771b5b306d201b5b39346d62722d626c75651b5b306d201b5b39356d62722d6d6167656e74611b5b306d201b5b39366d62722d6379616e1b5b306d201b5b39373b34306d62722d77686974651b5b306d0a\n",
-    "write-stdout-hex 2020626731363a201b5b33373b34306d203430201b5b306d201b5b33303b34316d203431201b5b306d201b5b33303b34326d203432201b5b306d201b5b33303b34336d203433201b5b306d201b5b33373b34346d203434201b5b306d201b5b33303b34356d203435201b5b306d201b5b33303b34366d203436201b5b306d201b5b33303b34376d203437201b5b306d0a\n",
-    "write-stdout-hex 2020626731362b3a201b5b33303b3130306d20313030201b5b306d201b5b33303b3130316d20313031201b5b306d201b5b33303b3130326d20313032201b5b306d201b5b33303b3130336d20313033201b5b306d201b5b33303b3130346d20313034201b5b306d201b5b33303b3130356d20313035201b5b306d201b5b33303b3130366d20313036201b5b306d201b5b33303b3130376d20313037201b5b306d0a\n",
-    "write-stdout-hex 20206964782d66673a201b5b33383b353b32316d69647832311b5b306d201b5b33383b353b34366d69647834361b5b306d201b5b33383b353b35316d69647835311b5b306d201b5b33383b353b39336d69647839331b5b306d201b5b33383b353b3136306d6964783136301b5b306d201b5b33383b353b3139366d6964783139361b5b306d201b5b33383b353b3230316d6964783230311b5b306d201b5b33383b353b3232366d6964783232361b5b306d0a\n",
-    "write-stdout-hex 20206964782d62673a201b5b34383b353b32316d203231201b5b306d201b5b34383b353b34366d203436201b5b306d201b5b34383b353b35316d203531201b5b306d201b5b34383b353b39336d203933201b5b306d201b5b34383b353b3136306d20313630201b5b306d201b5b34383b353b3139366d20313936201b5b306d201b5b34383b353b3230316d20323031201b5b306d201b5b34383b353b3232366d20323236201b5b306d0a\n",
-    "write-stdout-hex 20207267622d66673a201b5b33383b323b3235353b39323b38376d7761726d1b5b306d201b5b33383b323b3131343b3231343b38366d677265656e1b5b306d201b5b33383b323b33353b3133323b3235356d736b791b5b306d201b5b33383b323b3139303b3132303b3235356d76696f6c65741b5b306d201b5b33383b323b3235353b3235353b3235353b34383b323b303b303b306d77686974652d6f6e2d626c61636b1b5b306d0a\n",
-    "write-stdout-hex 20207267622d62673a201b5b34383b323b3235353b39323b38376d20207761726d20201b5b306d201b5b34383b323b3131343b3231343b38366d2020677265656e20201b5b306d201b5b34383b323b33353b3133323b3235356d2020736b7920201b5b306d201b5b34383b323b3139303b3132303b3235356d202076696f6c657420201b5b306d0a\n",
-    "write-stdout-hex 202061747472733a201b5b316d626f6c641b5b32326d201b5b326d64696d1b5b32326d201b5b336d6974616c69631b5b32336d201b5b346d756e6465726c696e651b5b32346d201b5b376d726576657273651b5b32376d201b5b313b346d626f6c642b756e6465726c696e651b5b306d206e6f726d616c0a\n",
-    "write-stdout-hex 202072657365743a201b5b33316d7265641b5b33396d2064656661756c742d6667201b5b34383b323b34383b34383b34386d677261792d62671b5b34396d2064656661756c742d6267201b5b313b376d626f6c642d7265761b5b306d20706c61696e0a\n",
-    "write-stdout-hex 202063723a206c6566742d736964652d73686f756c642d76616e6973680d202063723a206f7665727772697474656e0a\n",
-    "write-stdout-hex 2020656c3a207374616c65207375666669782073686f756c642076616e6973680d2020656c3a20636c65616e1b5b4b0a\n",
-    "write-stdout-hex 2020656c313a207072656669782073686f756c642076616e6973681b5b314b0d2020656c313a20636c65616e2d6c6566740a\n",
-    "write-stdout-hex 2020656c323a2077686f6c65206c696e652073686f756c642076616e6973681b5b324b0d2020656c323a20636c65616e2d616c6c0a\n",
-    "write-stdout-hex 202062733a20414208200843202873686f756c642072656164204143290a\n",
-    "write-stdout-hex 2020777261703a20303132333435363738396162636465666768696a6b6c6d6e6f707172737475767778797a20303132333435363738396162636465666768696a6b6c6d6e6f707172737475767778797a20303132333435363738396162636465666768696a6b6c6d6e6f707172737475767778797a20303132333435363738396162636465666768696a6b6c6d6e6f707172737475767778797a20303132333435363738396162636465666768696a6b6c6d6e6f707172737475767778797a20656e640a\n",
-    "write-stdout-hex 2020646f6e650a\n",
+const BIN_SCREENTEST_OUTPUT: &[u8] = concat!(
+    "screen test:\n",
+    "  target: framebuffer/serial tty renderer subset\n",
+    "  fg16: \x1b[30;47mblack\x1b[0m \x1b[31mred\x1b[0m \x1b[32mgreen\x1b[0m \x1b[33myellow\x1b[0m \x1b[34mblue\x1b[0m \x1b[35mmagenta\x1b[0m \x1b[36mcyan\x1b[0m \x1b[37mwhite\x1b[0m\n",
+    "  fg16+: \x1b[90mgray\x1b[0m \x1b[91mbr-red\x1b[0m \x1b[92mbr-green\x1b[0m \x1b[93mbr-yellow\x1b[0m \x1b[94mbr-blue\x1b[0m \x1b[95mbr-magenta\x1b[0m \x1b[96mbr-cyan\x1b[0m \x1b[97;40mbr-white\x1b[0m\n",
+    "  bg16: \x1b[37;40m 40 \x1b[0m \x1b[30;41m 41 \x1b[0m \x1b[30;42m 42 \x1b[0m \x1b[30;43m 43 \x1b[0m \x1b[37;44m 44 \x1b[0m \x1b[30;45m 45 \x1b[0m \x1b[30;46m 46 \x1b[0m \x1b[30;47m 47 \x1b[0m\n",
+    "  bg16+: \x1b[30;100m 100 \x1b[0m \x1b[30;101m 101 \x1b[0m \x1b[30;102m 102 \x1b[0m \x1b[30;103m 103 \x1b[0m \x1b[30;104m 104 \x1b[0m \x1b[30;105m 105 \x1b[0m \x1b[30;106m 106 \x1b[0m \x1b[30;107m 107 \x1b[0m\n",
+    "  idx-fg: \x1b[38;5;21midx21\x1b[0m \x1b[38;5;46midx46\x1b[0m \x1b[38;5;51midx51\x1b[0m \x1b[38;5;93midx93\x1b[0m \x1b[38;5;160midx160\x1b[0m \x1b[38;5;196midx196\x1b[0m \x1b[38;5;201midx201\x1b[0m \x1b[38;5;226midx226\x1b[0m\n",
+    "  idx-bg: \x1b[48;5;21m 21 \x1b[0m \x1b[48;5;46m 46 \x1b[0m \x1b[48;5;51m 51 \x1b[0m \x1b[48;5;93m 93 \x1b[0m \x1b[48;5;160m 160 \x1b[0m \x1b[48;5;196m 196 \x1b[0m \x1b[48;5;201m 201 \x1b[0m \x1b[48;5;226m 226 \x1b[0m\n",
+    "  rgb-fg: \x1b[38;2;255;92;87mwarm\x1b[0m \x1b[38;2;114;214;86mgreen\x1b[0m \x1b[38;2;35;132;255msky\x1b[0m \x1b[38;2;190;120;255mviolet\x1b[0m \x1b[38;2;255;255;255;48;2;0;0;0mwhite-on-black\x1b[0m\n",
+    "  rgb-bg: \x1b[48;2;255;92;87m  warm  \x1b[0m \x1b[48;2;114;214;86m  green  \x1b[0m \x1b[48;2;35;132;255m  sky  \x1b[0m \x1b[48;2;190;120;255m  violet  \x1b[0m\n",
+    "  attrs: \x1b[1mbold\x1b[22m \x1b[2mdim\x1b[22m \x1b[3mitalic\x1b[23m \x1b[4munderline\x1b[24m \x1b[7mreverse\x1b[27m \x1b[1;4mbold+underline\x1b[0m normal\n",
+    "  reset: \x1b[31mred\x1b[39m default-fg \x1b[48;2;48;48;48mgray-bg\x1b[49m default-bg \x1b[1;7mbold-rev\x1b[0m plain\n",
+    "  cr: left-side-should-vanish\r  cr: overwritten\n",
+    "  el: stale suffix should vanish\r  el: clean\x1b[K\n",
+    "  el1: prefix should vanish\x1b[1K\r  el1: clean-left\n",
+    "  el2: whole line should vanish\x1b[2K\r  el2: clean-all\n",
+    "  bs: AB\x08 \x08C (should read AC)\n",
+    "  wrap: 0123456789abcdefghijklmnopqrstuvwxyz 0123456789abcdefghijklmnopqrstuvwxyz 0123456789abcdefghijklmnopqrstuvwxyz 0123456789abcdefghijklmnopqrstuvwxyz 0123456789abcdefghijklmnopqrstuvwxyz end\n",
+    "  done\n",
 )
 .as_bytes();
-const BIN_PWD_SOURCE_BYTES: &[u8] =
-    b"reovim-source-v1\nreject-argc-greater 1 pwd: too many arguments\nwrite-cwd-line\n";
-const BIN_LS_SOURCE_BYTES: &[u8] =
-    b"reovim-source-v1\nreject-argc-greater 2 ls: too many arguments\nwrite-vfs-listing-arg1-or-cwd\n";
-const BIN_CD_SOURCE_BYTES: &[u8] =
-    b"reovim-source-v1\nreject-argc-greater 2 cd: too many arguments\nset-cwd-arg1-or-root\n";
-const BIN_CAT_SOURCE_BYTES: &[u8] = b"reovim-source-v1\nwrite-stdin-or-vfs-files-argv-tail\n";
-const BIN_READ_SOURCE_BYTES: &[u8] =
-    b"reovim-source-v1\nreject-argc-greater 1 read: too many arguments\nwrite-tty-line\n";
-const BIN_MOUNT_SOURCE_BYTES: &[u8] =
-    b"reovim-source-v1\nreject-argc-greater 1 mount: too many arguments\nwrite-mount-table\n";
-const BIN_DEVICE_SOURCE_BYTES: &[u8] =
-    b"reovim-source-v1\nreject-argc-greater 1 device: too many arguments\nwrite-boot-info-summary\nwrite-device-inventory\n";
-const BIN_INPUT_SOURCE_BYTES: &[u8] =
-    b"reovim-source-v1\nreject-argc-greater 1 input: too many arguments\nwrite-boot-input\n";
-const BIN_STATUS_SOURCE_BYTES: &[u8] =
-    b"reovim-source-v1\nreject-argc-greater 1 status: too many arguments\nwrite-boot-status\n";
-const BIN_PROOF_SOURCE_BYTES: &[u8] =
-    b"reovim-source-v1\nreject-argc-greater 1 proof: too many arguments\nwrite-boot-proof\n";
-const BIN_HALT_SOURCE_BYTES: &[u8] =
-    b"reovim-source-v1\nreject-argc-greater 1 halt: too many arguments\nwrite-stdout-hex 68616c743a206f6b0a\nexit-status halt\n";
-const BIN_DMESG_SOURCE_BYTES: &[u8] =
-    b"reovim-source-v1\nreject-argc-greater 2 dmesg: too many arguments\ndispatch-arg1 dmesg: unknown option\ndefault\nwrite-kernel-log-view\ncase --stats\nwrite-kernel-log-stats\nend-dispatch-arg1\n";
-const BIN_DUMP_SOURCE_BYTES: &[u8] =
-    b"reovim-source-v1\nreject-argc-greater 2 dump: too many arguments\ndispatch-arg1 dump: unknown subcommand\ndefault\nwrite-dump-status\ncase status\nwrite-dump-status\ncase snapshot\nwrite-dump-snapshot\ncase sync\nwrite-dump-sync\nexit-status error\nend-dispatch-arg1\n";
-const BIN_SCHED_SOURCE_BYTES: &[u8] =
-    b"reovim-source-v1\nreject-argc-greater 2 sched: too many arguments\ndispatch-arg1 sched: unknown subcommand\ndefault\nwrite-scheduler-state\ncase status\nwrite-scheduler-state\ncase tick\nwrite-scheduler-tick\nwrite-scheduler-state\ncase yield\nwrite-scheduler-yield\nwrite-scheduler-state\nend-dispatch-arg1\n";
-const BIN_PROC_SOURCE_BYTES: &[u8] =
-    b"reovim-source-v1\nreject-argc-greater-unless-arg1 2 exec,spawn,block,wait,wake,kill,install-bin,install-payload,install-bin-media,install-payload-media proc: too many arguments\ndispatch-arg1 proc: unknown subcommand\ndefault\nwrite-process-table\ncase processes\nwrite-process-table\ncase execs\nwrite-exec-load-table\ncase media\nwrite-source-media-table\ncase pending\nwrite-pending-exec-table\ncase self\nwrite-process-self\ncase sources\nwrite-source-store-table\ncase tasks\nwrite-task-table\ncase waits\nwrite-wait-table\ncase syscalls\nwrite-syscall-table\ncase scheduler\nwrite-scheduler-state\ncase exec\nproc-exec-argv-tail\ncase spawn\nproc-spawn-argv-tail\ncase block\nproc-block-argv-tail\ncase wait\nproc-wait-pid-arg2\ncase wake\nproc-wake-pid-arg2\ncase kill\nproc-kill-pid-arg2\ncase install-bin\nproc-install-bin-arg2-arg3\ncase install-payload\nproc-install-payload-arg2-arg3\ncase install-bin-media\nproc-install-bin-media-arg2\ncase install-payload-media\nproc-install-payload-media-arg2\nend-dispatch-arg1\n";
-const BIN_PROBE_SOURCE_BYTES: &[u8] =
-    b"reovim-source-v1\nreject-argc-greater 2 probe: too many arguments\nrun-provider-probe-arg1\n";
-const BIN_LAUNCH_SOURCE_BYTES: &[u8] =
-    b"reovim-source-v1\nrequire-launch-enabled launch disabled for this profile\nlaunch-payload-arg1-or-list\n";
-const BIN_REOVIM_SOURCE_BYTES: &[u8] =
-    b"reovim-source-v1\nreject-argc-greater 1 reovim: too many arguments\nrequire-launch-enabled reovim disabled for this profile\nwrite-stdout-hex 72656f76696d3a20\nlaunch-payload-name reovim\n";
-
-const fn source_bytes_bin_program(
+const fn linked_bin_program(
     id: usize,
     name: &'static str,
     path: &'static str,
     summary: &'static str,
     entry_name: &'static str,
-    _bytes: &'static [u8],
+    entry: LinkedProgramEntry,
 ) -> ProgramDescriptor {
     ProgramDescriptor {
         id,
         name,
         path,
         summary,
-        image: ProgramImage::SourcePath(path),
+        image: ProgramImage::Linked(entry),
         entry_name,
     }
 }
 
-const fn source_bytes_bin_artifact(
-    path: &'static str,
-    bytes: &'static [u8],
-) -> ProgramSourceArtifact {
-    ProgramSourceArtifact {
-        path,
-        kind: ProgramImageKind::SourceImage,
-        bytes,
-    }
-}
-
 /// Static `/bin` program catalog used by system-kernel selftests.
-pub const BIN_PROGRAMS: [ProgramDescriptor; 23] = [
-    source_bytes_bin_program(
+pub const BIN_PROGRAMS: [ProgramDescriptor; 51] = [
+    linked_bin_program(
         BIN_HELP,
         "help",
         "/bin/help",
         "show /bin program help",
         "bin_help",
-        BIN_HELP_SOURCE_BYTES,
+        bin_help,
     ),
-    source_bytes_bin_program(
+    linked_bin_program(
         BIN_INIT,
         "init",
         "/bin/init",
         "start userland session services",
         "bin_init",
-        BIN_INIT_SOURCE_BYTES,
+        bin_init,
     ),
-    source_bytes_bin_program(
-        BIN_SH,
-        "sh",
-        "/bin/sh",
-        "run interactive root shell",
-        "bin_sh",
-        BIN_SH_SOURCE_BYTES,
-    ),
-    source_bytes_bin_program(
+    linked_bin_program(BIN_SH, "sh", "/bin/sh", "run interactive root shell", "bin_sh", bin_sh),
+    linked_bin_program(
         BIN_CLEAR,
         "clear",
         "/bin/clear",
         "clear framebuffer console and terminal",
         "bin_clear",
-        BIN_CLEAR_SOURCE_BYTES,
+        bin_clear,
     ),
-    source_bytes_bin_program(
+    linked_bin_program(
         BIN_SCREENTEST,
         "screentest",
         "/bin/screentest",
         "print renderer diagnostics",
         "bin_screentest",
-        BIN_SCREENTEST_SOURCE_BYTES,
+        bin_screentest,
     ),
-    source_bytes_bin_program(
+    linked_bin_program(
         BIN_PWD,
         "pwd",
         "/bin/pwd",
         "print current kernel VFS directory",
         "bin_pwd",
-        BIN_PWD_SOURCE_BYTES,
+        bin_pwd,
     ),
-    source_bytes_bin_program(
-        BIN_LS,
-        "ls",
-        "/bin/ls",
-        "list a kernel VFS directory",
-        "bin_ls",
-        BIN_LS_SOURCE_BYTES,
-    ),
-    source_bytes_bin_program(
+    linked_bin_program(BIN_LS, "ls", "/bin/ls", "list a kernel VFS directory", "bin_ls", bin_ls),
+    linked_bin_program(
         BIN_CD,
         "cd",
         "/bin/cd",
         "change current kernel VFS directory",
         "bin_cd",
-        BIN_CD_SOURCE_BYTES,
+        bin_cd,
     ),
-    source_bytes_bin_program(
+    linked_bin_program(
         BIN_CAT,
         "cat",
         "/bin/cat",
         "print stdin or kernel VFS pseudo files",
         "bin_cat",
-        BIN_CAT_SOURCE_BYTES,
+        bin_cat,
     ),
-    source_bytes_bin_program(
-        BIN_READ,
-        "read",
-        "/bin/read",
-        "read one TTY line",
-        "bin_read",
-        BIN_READ_SOURCE_BYTES,
-    ),
-    source_bytes_bin_program(
+    linked_bin_program(BIN_READ, "read", "/bin/read", "read one TTY line", "bin_read", bin_read),
+    linked_bin_program(
         BIN_MOUNT,
         "mount",
         "/bin/mount",
         "print kernel VFS mount table",
         "bin_mount",
-        BIN_MOUNT_SOURCE_BYTES,
+        bin_mount,
     ),
-    source_bytes_bin_program(
+    linked_bin_program(
         BIN_INPUT,
         "input",
         "/bin/input",
         "print live console input diagnostics",
         "bin_input",
-        BIN_INPUT_SOURCE_BYTES,
+        bin_input,
     ),
-    source_bytes_bin_program(
+    linked_bin_program(
         BIN_STATUS,
         "status",
         "/bin/status",
         "print boot, input, and manual_next summary",
         "bin_status",
-        BIN_STATUS_SOURCE_BYTES,
+        bin_status,
     ),
-    source_bytes_bin_program(
+    linked_bin_program(
         BIN_PROOF,
         "proof",
         "/bin/proof",
         "print physical input proof checklist",
         "bin_proof",
-        BIN_PROOF_SOURCE_BYTES,
+        bin_proof,
     ),
-    source_bytes_bin_program(
+    linked_bin_program(
         BIN_DEVICE,
         "device",
         "/bin/device",
         "print boot memory and device inventory",
         "bin_device",
-        BIN_DEVICE_SOURCE_BYTES,
+        bin_device,
     ),
-    source_bytes_bin_program(
+    linked_bin_program(
         BIN_DMESG,
         "dmesg",
         "/bin/dmesg",
         "print retained kernel log or ring stats",
         "bin_dmesg",
-        BIN_DMESG_SOURCE_BYTES,
+        bin_dmesg,
     ),
-    source_bytes_bin_program(
+    linked_bin_program(
         BIN_DUMP,
         "dump",
         "/bin/dump",
         "inspect or flush kernel dump state",
         "bin_dump",
-        BIN_DUMP_SOURCE_BYTES,
+        bin_dump,
     ),
-    source_bytes_bin_program(
+    linked_bin_program(
         BIN_SCHED,
         "sched",
         "/bin/sched",
-        "inspect scheduler state, tick, or yield",
+        "inspect scheduler state, tick, yield, or sleep",
         "bin_sched",
-        BIN_SCHED_SOURCE_BYTES,
+        bin_sched,
     ),
-    source_bytes_bin_program(
+    linked_bin_program(
         BIN_PROC,
         "proc",
         "/bin/proc",
         "inspect process state",
         "bin_proc",
-        BIN_PROC_SOURCE_BYTES,
+        bin_proc,
     ),
-    source_bytes_bin_program(
+    linked_bin_program(
         BIN_PROBE,
         "probe",
         "/bin/probe",
         "run a lower hardware probe",
         "bin_probe",
-        BIN_PROBE_SOURCE_BYTES,
+        bin_probe,
     ),
-    source_bytes_bin_program(
+    linked_bin_program(
         BIN_LAUNCH,
         "launch",
         "/bin/launch",
         "list or run registered payloads",
         "bin_launch",
-        BIN_LAUNCH_SOURCE_BYTES,
+        bin_launch,
     ),
-    source_bytes_bin_program(
+    linked_bin_program(
         BIN_REOVIM,
         "reovim",
         "/bin/reovim",
         "run the default reovim payload alias",
         "bin_reovim",
-        BIN_REOVIM_SOURCE_BYTES,
+        bin_reovim,
     ),
-    source_bytes_bin_program(
+    linked_bin_program(
+        BIN_HELLO,
+        "hello",
+        "/bin/hello",
+        "print a linked-bin syscall proof",
+        "bin_hello",
+        bin_hello,
+    ),
+    linked_bin_program(
         BIN_HALT,
         "halt",
         "/bin/halt",
         "request root daemon shutdown",
         "bin_halt",
-        BIN_HALT_SOURCE_BYTES,
+        bin_halt,
+    ),
+    linked_bin_program(BIN_PS, "ps", "/bin/ps", "print retained process table", "bin_ps", bin_ps),
+    linked_bin_program(
+        BIN_KILL,
+        "kill",
+        "/bin/kill",
+        "terminate a retained ready or blocked process",
+        "bin_kill",
+        bin_kill,
+    ),
+    linked_bin_program(
+        BIN_WAKE,
+        "wake",
+        "/bin/wake",
+        "wake an operator-blocked process",
+        "bin_wake",
+        bin_wake,
+    ),
+    linked_bin_program(
+        BIN_BLOCK,
+        "block",
+        "/bin/block",
+        "spawn a retained blocked process",
+        "bin_block",
+        bin_block,
+    ),
+    linked_bin_program(
+        BIN_SPAWN,
+        "spawn",
+        "/bin/spawn",
+        "spawn a retained ready process",
+        "bin_spawn",
+        bin_spawn,
+    ),
+    linked_bin_program(
+        BIN_SLEEP,
+        "sleep",
+        "/bin/sleep",
+        "spawn a retained process blocked until scheduler ticks",
+        "bin_sleep",
+        bin_sleep,
+    ),
+    linked_bin_program(
+        BIN_WAIT,
+        "wait",
+        "/bin/wait",
+        "wait for a retained process",
+        "bin_wait",
+        bin_wait,
+    ),
+    linked_bin_program(
+        BIN_WAIT_TICKS,
+        "wait-ticks",
+        "/bin/wait-ticks",
+        "wait for a retained process with scheduler ticks",
+        "bin_wait_ticks",
+        bin_wait_ticks,
+    ),
+    linked_bin_program(
+        BIN_EXEC,
+        "exec",
+        "/bin/exec",
+        "replace current process image",
+        "bin_exec",
+        bin_exec,
+    ),
+    linked_bin_program(
+        BIN_SERVICE_STOP,
+        "service-stop",
+        "/bin/service-stop",
+        "stop a retained resident service",
+        "bin_service_stop",
+        bin_service_stop,
+    ),
+    linked_bin_program(
+        BIN_SERVICE_START,
+        "service-start",
+        "/bin/service-start",
+        "start a retained payload service",
+        "bin_service_start",
+        bin_service_start,
+    ),
+    linked_bin_program(
+        BIN_SERVICE_RESTART,
+        "service-restart",
+        "/bin/service-restart",
+        "restart a retained payload service",
+        "bin_service_restart",
+        bin_service_restart,
+    ),
+    linked_bin_program(
+        BIN_SESSION,
+        "session",
+        "/bin/session",
+        "print active shell session state",
+        "bin_session",
+        bin_session,
+    ),
+    linked_bin_program(
+        BIN_SERVICES,
+        "services",
+        "/bin/services",
+        "print retained service table",
+        "bin_services",
+        bin_services,
+    ),
+    linked_bin_program(
+        BIN_TASKS,
+        "tasks",
+        "/bin/tasks",
+        "print retained task table",
+        "bin_tasks",
+        bin_tasks,
+    ),
+    linked_bin_program(
+        BIN_WAITS,
+        "waits",
+        "/bin/waits",
+        "print retained wait table",
+        "bin_waits",
+        bin_waits,
+    ),
+    linked_bin_program(
+        BIN_SYSCALLS,
+        "syscalls",
+        "/bin/syscalls",
+        "print retained syscall trace",
+        "bin_syscalls",
+        bin_syscalls,
+    ),
+    linked_bin_program(
+        BIN_CONTINUATIONS,
+        "continuations",
+        "/bin/continuations",
+        "print active syscall continuations",
+        "bin_continuations",
+        bin_continuations,
+    ),
+    linked_bin_program(
+        BIN_EXECS,
+        "execs",
+        "/bin/execs",
+        "print executable admission table",
+        "bin_execs",
+        bin_execs,
+    ),
+    linked_bin_program(
+        BIN_PENDING,
+        "pending",
+        "/bin/pending",
+        "print pending executable table",
+        "bin_pending",
+        bin_pending,
+    ),
+    linked_bin_program(
+        BIN_SOURCES,
+        "sources",
+        "/bin/sources",
+        "print executable source table",
+        "bin_sources",
+        bin_sources,
+    ),
+    linked_bin_program(
+        BIN_MEDIA,
+        "media",
+        "/bin/media",
+        "print executable media status",
+        "bin_media",
+        bin_media,
+    ),
+    linked_bin_program(
+        BIN_SELF,
+        "self",
+        "/bin/self",
+        "print current process state",
+        "bin_self",
+        bin_self,
+    ),
+    linked_bin_program(
+        BIN_INSTALL_BIN,
+        "install-bin",
+        "/bin/install-bin",
+        "install a status-only /bin source image",
+        "bin_install_bin",
+        bin_install_bin,
+    ),
+    linked_bin_program(
+        BIN_INSTALL_PAYLOAD,
+        "install-payload",
+        "/bin/install-payload",
+        "install a status-only payload source image",
+        "bin_install_payload",
+        bin_install_payload,
+    ),
+    linked_bin_program(
+        BIN_INSTALL_BIN_MEDIA,
+        "install-bin-media",
+        "/bin/install-bin-media",
+        "install a /bin source image from source media",
+        "bin_install_bin_media",
+        bin_install_bin_media,
+    ),
+    linked_bin_program(
+        BIN_INSTALL_PAYLOAD_MEDIA,
+        "install-payload-media",
+        "/bin/install-payload-media",
+        "install a payload source image from source media",
+        "bin_install_payload_media",
+        bin_install_payload_media,
     ),
 ];
 
 /// Static `/bin` source artifact store used by system-kernel selftests.
-pub const BIN_PROGRAM_SOURCES: [ProgramSourceArtifact; 23] = [
-    source_bytes_bin_artifact("/bin/help", BIN_HELP_SOURCE_BYTES),
-    source_bytes_bin_artifact("/bin/init", BIN_INIT_SOURCE_BYTES),
-    source_bytes_bin_artifact("/bin/sh", BIN_SH_SOURCE_BYTES),
-    source_bytes_bin_artifact("/bin/clear", BIN_CLEAR_SOURCE_BYTES),
-    source_bytes_bin_artifact("/bin/screentest", BIN_SCREENTEST_SOURCE_BYTES),
-    source_bytes_bin_artifact("/bin/pwd", BIN_PWD_SOURCE_BYTES),
-    source_bytes_bin_artifact("/bin/ls", BIN_LS_SOURCE_BYTES),
-    source_bytes_bin_artifact("/bin/cd", BIN_CD_SOURCE_BYTES),
-    source_bytes_bin_artifact("/bin/cat", BIN_CAT_SOURCE_BYTES),
-    source_bytes_bin_artifact("/bin/read", BIN_READ_SOURCE_BYTES),
-    source_bytes_bin_artifact("/bin/mount", BIN_MOUNT_SOURCE_BYTES),
-    source_bytes_bin_artifact("/bin/input", BIN_INPUT_SOURCE_BYTES),
-    source_bytes_bin_artifact("/bin/status", BIN_STATUS_SOURCE_BYTES),
-    source_bytes_bin_artifact("/bin/proof", BIN_PROOF_SOURCE_BYTES),
-    source_bytes_bin_artifact("/bin/device", BIN_DEVICE_SOURCE_BYTES),
-    source_bytes_bin_artifact("/bin/dmesg", BIN_DMESG_SOURCE_BYTES),
-    source_bytes_bin_artifact("/bin/dump", BIN_DUMP_SOURCE_BYTES),
-    source_bytes_bin_artifact("/bin/sched", BIN_SCHED_SOURCE_BYTES),
-    source_bytes_bin_artifact("/bin/proc", BIN_PROC_SOURCE_BYTES),
-    source_bytes_bin_artifact("/bin/probe", BIN_PROBE_SOURCE_BYTES),
-    source_bytes_bin_artifact("/bin/launch", BIN_LAUNCH_SOURCE_BYTES),
-    source_bytes_bin_artifact("/bin/reovim", BIN_REOVIM_SOURCE_BYTES),
-    source_bytes_bin_artifact("/bin/halt", BIN_HALT_SOURCE_BYTES),
-];
+pub const BIN_PROGRAM_SOURCES: [ProgramSourceArtifact; 0] = [];
+
+const LINKED_HELP_LINE_BYTES: usize = 1024;
+
+fn bin_init(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let service = SyscallServiceControl::new(raw);
+    let ok = if argv.argc() > 1 {
+        let _ = fd.write(RawFd::stderr(), b"init: too many arguments\n");
+        false
+    } else if service.request("shell", "/bin/sh").is_err() {
+        let _ = fd.write(RawFd::stderr(), b"init: service request failed\n");
+        false
+    } else {
+        linked_write_all(fd, RawFd::stdout(), b"init: userland services ready\n")
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_sh(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let session = SyscallSessionControl::new(raw);
+    let ok = if argv.argc() > 1 {
+        let _ = fd.write(RawFd::stderr(), b"sh: too many arguments\n");
+        false
+    } else if session
+        .request_line_discipline("argv-v1", "single-pipe")
+        .is_err()
+    {
+        let _ = fd.write(RawFd::stderr(), b"sh: line discipline request failed\n");
+        false
+    } else if session.request_shell_start().is_err() {
+        let _ = fd.write(RawFd::stderr(), b"sh: shell start request failed\n");
+        false
+    } else {
+        linked_write_all(fd, RawFd::stdout(), b"reovim system kernel shell ready\n")
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_help(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let ok = if argv.argc() > 2 {
+        let _ = fd.write(RawFd::stderr(), b"help: too many arguments\n");
+        false
+    } else if argv.argc() == 1 {
+        linked_help_catalog(fd)
+    } else {
+        linked_help_entry(fd, argv.arg(1).unwrap_or(""))
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_clear(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let terminal = SyscallTerminalControl::new(raw);
+    let ok = if argv.argc() > 1 {
+        let _ = fd.write(RawFd::stderr(), b"clear: too many arguments\n");
+        false
+    } else {
+        match terminal.clear_primary_output() {
+            Ok(()) => linked_write_tty_output(fd, b"clear", b"\x1b[2J\x1b[H"),
+            Err(_) => {
+                let _ = fd.write(RawFd::stderr(), b"clear: terminal clear failed\n");
+                false
+            }
+        }
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_hello(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    if argv.argc() > 1 {
+        let message = b"hello: too many arguments\n";
+        let _ = fd.write(RawFd::stderr(), message);
+        return ProgramStatus::Error;
+    }
+
+    let message = b"hello from linked bin\n";
+    if matches!(fd.write(RawFd::stdout(), message), Ok(written) if written == message.len()) {
+        let _ = process.exit(ExitCode::SUCCESS);
+    }
+    ProgramStatus::Error
+}
+
+fn bin_halt(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let system = SyscallSystemControl::new(raw);
+    if argv.argc() > 1 {
+        let _ = fd.write(RawFd::stderr(), b"halt: too many arguments\n");
+        let _ = process.exit(ExitCode::FAILURE);
+        return ProgramStatus::Error;
+    }
+
+    if !linked_write_all(fd, RawFd::stdout(), b"halt: ok\n") {
+        let _ = process.exit(ExitCode::FAILURE);
+        return ProgramStatus::Error;
+    }
+    if system.halt().is_err() {
+        let _ = fd.write(RawFd::stderr(), b"halt: request failed\n");
+        let _ = process.exit(ExitCode::FAILURE);
+    }
+    ProgramStatus::Error
+}
+
+fn bin_probe(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let system = SyscallSystemControl::new(raw);
+    if argv.argc() > 2 {
+        let _ = fd.write(RawFd::stderr(), b"probe: too many arguments\n");
+        let _ = process.exit(ExitCode::FAILURE);
+        return ProgramStatus::Error;
+    }
+
+    let Some(target) = argv.arg(1) else {
+        let _ = fd.write(RawFd::stderr(), b"probe: missing target, try `probe help`\n");
+        let _ = process.exit(ExitCode::FAILURE);
+        return ProgramStatus::Error;
+    };
+
+    let ok = match system.probe(target) {
+        Ok(()) => true,
+        Err(SystemError::UnknownTarget) => {
+            let _ = fd.write(RawFd::stderr(), b"probe: unknown target: ");
+            let _ = fd.write(RawFd::stderr(), target.as_bytes());
+            let _ = fd.write(RawFd::stderr(), b"\n");
+            false
+        }
+        Err(SystemError::Unsupported) => {
+            let _ = fd.write(RawFd::stderr(), b"probe: no lower probe provider\n");
+            false
+        }
+        Err(_) => {
+            let _ = fd.write(RawFd::stderr(), b"probe: request failed\n");
+            false
+        }
+    };
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_reovim(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let payload = match linked_implicit_child_invocation(argv, 1, "reovim") {
+        Ok(payload) => payload,
+        Err(LinkedChildInvocationError::TooManyArguments) => {
+            let _ = fd.write(RawFd::stderr(), b"reovim: too many arguments\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        }
+        Err(LinkedChildInvocationError::TooManyEnvVars) => {
+            let _ = fd.write(RawFd::stderr(), b"reovim: too many env vars\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        }
+        Err(LinkedChildInvocationError::MissingProgram) => unreachable!(),
+    };
+
+    let child = match process.spawn_payload_with_env(payload.argv(), payload.env()) {
+        Ok(child) => child,
+        Err(ProcessError::UNSUPPORTED) => {
+            let _ = fd.write(RawFd::stdout(), b"reovim disabled for this profile\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        }
+        Err(ProcessError::NOT_FOUND) => {
+            let _ = fd.write(RawFd::stdout(), b"reovim: payload.not_configured\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        }
+        Err(ProcessError::INVALID_IMAGE) => {
+            let _ = fd.write(RawFd::stdout(), b"reovim: payload.failed\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        }
+        Err(_) => {
+            let _ = fd.write(RawFd::stdout(), b"reovim: payload.failed\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        }
+    };
+
+    if !linked_write_all(fd, RawFd::stdout(), b"reovim: ") {
+        let _ = process.exit(ExitCode::FAILURE);
+        return ProgramStatus::Error;
+    }
+
+    match process.wait(child) {
+        Ok(code) => linked_reovim_exit_with_payload_status(fd, process, code),
+        Err(ProcessError::BUSY) => ProgramStatus::Blocked,
+        Err(_) => {
+            let _ = fd.write(RawFd::stdout(), b"payload.failed\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            ProgramStatus::Error
+        }
+    }
+}
+
+fn bin_launch(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    match linked_launch_enabled(fd) {
+        Some(true) => {}
+        Some(false) => {
+            let _ = fd.write(RawFd::stderr(), b"launch disabled for this profile\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        }
+        None => {
+            let _ = fd.write(RawFd::stderr(), b"launch: profile read failed\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        }
+    }
+
+    if argv.argc() == 1 {
+        let ok = linked_copy_path_to_stdout(fd, b"/boot/payloads", b"launch");
+        let _ = process.exit(if ok {
+            ExitCode::SUCCESS
+        } else {
+            ExitCode::FAILURE
+        });
+        return ProgramStatus::Error;
+    }
+
+    let child = match linked_child_invocation(argv, 1) {
+        Ok(child) => child,
+        Err(LinkedChildInvocationError::MissingProgram) => {
+            let _ = fd.write(RawFd::stderr(), b"launch: no payload name\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        }
+        Err(LinkedChildInvocationError::TooManyArguments) => {
+            let _ = fd.write(RawFd::stderr(), b"launch: invalid payload argv\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        }
+        Err(LinkedChildInvocationError::TooManyEnvVars) => {
+            let _ = fd.write(RawFd::stderr(), b"launch: too many env vars\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        }
+    };
+
+    let payload = linked_program_name_after_env(argv, 1).unwrap_or("");
+    if payload.is_empty() {
+        let _ = fd.write(RawFd::stderr(), b"launch: no payload name\n");
+        let _ = process.exit(ExitCode::FAILURE);
+        return ProgramStatus::Error;
+    }
+
+    let child = match process.spawn_payload_with_env(child.argv(), child.env()) {
+        Ok(child) => child,
+        Err(ProcessError::UNSUPPORTED) => {
+            let _ = fd.write(RawFd::stderr(), b"launch disabled for this profile\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        }
+        Err(ProcessError::NOT_FOUND) => {
+            let _ = linked_write_launch_payload_status(fd, payload, b"payload.not_configured");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        }
+        Err(ProcessError::INVALID_IMAGE) => {
+            let _ = linked_write_launch_payload_status(fd, payload, b"payload.failed");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        }
+        Err(_) => {
+            let _ = linked_write_launch_payload_status(fd, payload, b"payload.failed");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        }
+    };
+
+    match process.wait_ready_report(child) {
+        Ok(report) => linked_launch_exit_with_payload_report(fd, process, payload, report),
+        Err(ProcessError::BUSY) => ProgramStatus::Blocked,
+        Err(_) => {
+            let _ = linked_write_launch_payload_status(fd, payload, b"payload.failed");
+            let _ = process.exit(ExitCode::FAILURE);
+            ProgramStatus::Error
+        }
+    }
+}
+
+fn bin_pwd(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    if argv.argc() > 1 {
+        let _ = fd.write(RawFd::stderr(), b"pwd: too many arguments\n");
+        let _ = process.exit(ExitCode::FAILURE);
+        return ProgramStatus::Error;
+    }
+
+    let mut cwd = [0u8; vfs::MAX_PATH_BYTES];
+    let ok = match fd.get_cwd(&mut cwd) {
+        Ok(len) => {
+            matches!(fd.write(RawFd::stdout(), &cwd[..len]), Ok(written) if written == len)
+                && matches!(fd.write(RawFd::stdout(), b"\n"), Ok(1))
+        }
+        Err(_) => {
+            let _ = fd.write(RawFd::stderr(), b"pwd: getcwd failed\n");
+            false
+        }
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_cd(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    if argv.argc() > 2 {
+        let _ = fd.write(RawFd::stderr(), b"cd: too many arguments\n");
+        let _ = process.exit(ExitCode::FAILURE);
+        return ProgramStatus::Error;
+    }
+
+    let target = if argv.argc() == 1 {
+        "/"
+    } else {
+        argv.arg(1).unwrap_or("")
+    };
+    let ok = if target.is_empty() {
+        let _ = fd.write(RawFd::stderr(), b"cd: empty path\n");
+        false
+    } else {
+        match fd.chdir(target.as_bytes()) {
+            Ok(()) => true,
+            Err(error) => {
+                linked_write_path_error(fd, b"cd", target, error);
+                false
+            }
+        }
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_ls(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    if argv.argc() > 2 {
+        let _ = fd.write(RawFd::stderr(), b"ls: too many arguments\n");
+        let _ = process.exit(ExitCode::FAILURE);
+        return ProgramStatus::Error;
+    }
+
+    let target = if argv.argc() == 1 {
+        "."
+    } else {
+        argv.arg(1).unwrap_or("")
+    };
+    let ok = if target.is_empty() {
+        let _ = fd.write(RawFd::stderr(), b"ls: empty path\n");
+        false
+    } else {
+        linked_ls_target(fd, target)
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_cat(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let status = if argv.argc() == 1 {
+        linked_cat_copy_fd(fd, RawFd::stdin())
+    } else {
+        let mut ok = true;
+        let mut index = 1usize;
+        while index < argv.argc() {
+            let target = argv.arg(index).unwrap_or("");
+            if target.is_empty() {
+                let _ = fd.write(RawFd::stderr(), b"cat: empty path\n");
+                ok = false;
+                index += 1;
+                continue;
+            }
+            match fd.open_at(OpenAtDir::session_cwd(), target.as_bytes(), OpenFlags::READ_ONLY) {
+                Ok(opened) => {
+                    match linked_cat_copy_fd(fd, opened) {
+                        LinkedCopyStatus::Ok => {}
+                        LinkedCopyStatus::Blocked => {
+                            let _ = fd.close(opened);
+                            return ProgramStatus::Blocked;
+                        }
+                        LinkedCopyStatus::Error => {
+                            ok = false;
+                        }
+                    }
+                    let _ = fd.close(opened);
+                }
+                Err(error) => {
+                    linked_write_path_error(fd, b"cat", target, error);
+                    ok = false;
+                }
+            }
+            index += 1;
+        }
+        if ok {
+            LinkedCopyStatus::Ok
+        } else {
+            LinkedCopyStatus::Error
+        }
+    };
+
+    if status == LinkedCopyStatus::Blocked {
+        return ProgramStatus::Blocked;
+    }
+
+    let _ = process.exit(if status == LinkedCopyStatus::Ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_read(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let ok = if argv.argc() > 1 {
+        let _ = fd.write(RawFd::stderr(), b"read: too many arguments\n");
+        false
+    } else {
+        linked_read_tty_line(fd)
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_mount(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let ok = if argv.argc() > 1 {
+        let _ = fd.write(RawFd::stderr(), b"mount: too many arguments\n");
+        false
+    } else {
+        linked_copy_path_to_stdout(fd, b"/boot/mounts", b"mount")
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_input(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let ok = if argv.argc() > 1 {
+        let _ = fd.write(RawFd::stderr(), b"input: too many arguments\n");
+        false
+    } else {
+        linked_copy_path_to_stdout(fd, b"/boot/input", b"input")
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_proof(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let ok = if argv.argc() > 1 {
+        let _ = fd.write(RawFd::stderr(), b"proof: too many arguments\n");
+        false
+    } else {
+        linked_copy_path_to_stdout(fd, b"/boot/proof", b"proof")
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_device(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let ok = if argv.argc() > 1 {
+        let _ = fd.write(RawFd::stderr(), b"device: too many arguments\n");
+        false
+    } else {
+        linked_write_all(fd, RawFd::stdout(), b"boot_info:\n")
+            && linked_copy_path_to_stdout_with_line_prefix(fd, b"/boot/memory", b"device", b"  ")
+            && linked_write_all(fd, RawFd::stdout(), b"devices:\n")
+            && linked_copy_path_to_stdout(fd, b"/boot/devices", b"device")
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_status(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let ok = if argv.argc() > 1 {
+        let _ = fd.write(RawFd::stderr(), b"status: too many arguments\n");
+        false
+    } else {
+        linked_copy_path_to_stdout(fd, b"/boot/status", b"status")
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_dmesg(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let ok = if argv.argc() > 2 {
+        let _ = fd.write(RawFd::stderr(), b"dmesg: too many arguments\n");
+        false
+    } else {
+        match argv.arg(1) {
+            None => linked_copy_path_to_stdout(fd, b"/log/dmesg", b"dmesg"),
+            Some("--stats") => linked_copy_path_to_stdout(fd, b"/log/stats", b"dmesg"),
+            Some(_) => {
+                let _ = fd.write(RawFd::stderr(), b"dmesg: unknown option\n");
+                false
+            }
+        }
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_dump(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let dump = SyscallDumpControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+
+    let ok = if argv.argc() > 2 {
+        let _ = fd.write(RawFd::stderr(), b"dump: too many arguments\n");
+        false
+    } else {
+        match argv.arg(1) {
+            None | Some("status") => linked_copy_path_to_stdout(fd, b"/dump/status", b"dump"),
+            Some("snapshot") => linked_copy_path_to_stdout(fd, b"/dump/snapshot", b"dump"),
+            Some("sync") => linked_dump_sync(fd, dump),
+            Some(_) => {
+                let _ = fd.write(RawFd::stderr(), b"dump: unknown subcommand\n");
+                false
+            }
+        }
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_sched(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let sched = SyscallSchedulerControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+
+    let ok = match argv.arg(1) {
+        None | Some("status") => {
+            if argv.argc() > 2 {
+                let _ = fd.write(RawFd::stderr(), b"sched: too many arguments\n");
+                false
+            } else {
+                linked_sched_write_status(fd)
+            }
+        }
+        Some("tick") => {
+            if argv.argc() > 2 {
+                let _ = fd.write(RawFd::stderr(), b"sched: too many arguments\n");
+                false
+            } else {
+                linked_sched_tick(fd, sched) && linked_sched_write_status(fd)
+            }
+        }
+        Some("yield") => {
+            if argv.argc() > 2 {
+                let _ = fd.write(RawFd::stderr(), b"sched: too many arguments\n");
+                false
+            } else {
+                linked_sched_yield(fd, sched) && linked_sched_write_status(fd)
+            }
+        }
+        Some("sleep") => {
+            if argv.argc() > 3 {
+                let _ = fd.write(RawFd::stderr(), b"sched: too many arguments\n");
+                false
+            } else {
+                let Some(ticks) = argv.arg(2) else {
+                    let _ = fd.write(RawFd::stderr(), b"sched sleep: missing ticks\n");
+                    let _ = process.exit(ExitCode::FAILURE);
+                    return ProgramStatus::Error;
+                };
+                let Some(ticks) = linked_parse_usize(ticks) else {
+                    let _ = fd.write(RawFd::stderr(), b"sched sleep: invalid ticks\n");
+                    let _ = process.exit(ExitCode::FAILURE);
+                    return ProgramStatus::Error;
+                };
+                if ticks == 0 {
+                    let _ = fd.write(RawFd::stderr(), b"sched sleep: invalid ticks\n");
+                    false
+                } else {
+                    match linked_sched_sleep(fd, sched, ticks) {
+                        LinkedSchedSleepStatus::Ok => linked_sched_write_status(fd),
+                        LinkedSchedSleepStatus::Blocked => return ProgramStatus::Blocked,
+                        LinkedSchedSleepStatus::Error => false,
+                    }
+                }
+            }
+        }
+        Some(_) => {
+            let _ = fd.write(RawFd::stderr(), b"sched: unknown subcommand\n");
+            false
+        }
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_proc(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+
+    let ok = if argv.argc() > 2 {
+        let _ = fd.write(RawFd::stderr(), b"proc: too many arguments\n");
+        false
+    } else {
+        match argv.arg(1) {
+            None | Some("processes") => linked_copy_path_to_stdout(fd, b"/proc/processes", b"proc"),
+            Some("execs") => linked_copy_path_to_stdout(fd, b"/proc/execs", b"proc"),
+            Some("address-spaces") => {
+                linked_copy_path_to_stdout(fd, b"/proc/address-spaces", b"proc")
+            }
+            Some("page-tables") => linked_copy_path_to_stdout(fd, b"/proc/page-tables", b"proc"),
+            Some("pages") => linked_copy_path_to_stdout(fd, b"/proc/pages", b"proc"),
+            Some("memory-objects") => {
+                linked_copy_path_to_stdout(fd, b"/proc/memory-objects", b"proc")
+            }
+            Some("media") => linked_copy_path_to_stdout(fd, b"/proc/media", b"proc"),
+            Some("pending") => linked_copy_path_to_stdout(fd, b"/proc/pending", b"proc"),
+            Some("self") => match process.self_report() {
+                Ok(report) => linked_write_process_control_report(fd, b"self", &report),
+                Err(ProcessError::BUSY) => return ProgramStatus::Blocked,
+                Err(_) => {
+                    let _ = fd.write(RawFd::stderr(), b"proc self: unavailable\n");
+                    false
+                }
+            },
+            Some("session") => linked_copy_path_to_stdout(fd, b"/proc/session", b"proc"),
+            Some("services") => linked_copy_path_to_stdout(fd, b"/proc/services", b"proc"),
+            Some("sources") => linked_copy_path_to_stdout(fd, b"/proc/sources", b"proc"),
+            Some("tasks") => linked_copy_path_to_stdout(fd, b"/proc/tasks", b"proc"),
+            Some("waits") => linked_copy_path_to_stdout(fd, b"/proc/waits", b"proc"),
+            Some("syscalls") => linked_copy_path_to_stdout(fd, b"/proc/syscalls", b"proc"),
+            Some("continuations") => {
+                linked_copy_path_to_stdout(fd, b"/proc/continuations", b"proc")
+            }
+            Some("scheduler") => linked_copy_path_to_stdout(fd, b"/proc/scheduler", b"proc"),
+            Some(_) => {
+                let _ = fd.write(RawFd::stderr(), b"proc: unknown subcommand\n");
+                false
+            }
+        }
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_ps(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let ok = if argv.argc() > 1 {
+        let _ = fd.write(RawFd::stderr(), b"ps: too many arguments\n");
+        false
+    } else {
+        linked_copy_path_to_stdout(fd, b"/proc/processes", b"ps")
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_session(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let ok = if argv.argc() > 1 {
+        let _ = fd.write(RawFd::stderr(), b"session: too many arguments\n");
+        false
+    } else {
+        linked_copy_path_to_stdout(fd, b"/proc/session", b"session")
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_services(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let ok = if argv.argc() > 1 {
+        let _ = fd.write(RawFd::stderr(), b"services: too many arguments\n");
+        false
+    } else {
+        linked_copy_path_to_stdout(fd, b"/proc/services", b"services")
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_tasks(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let ok = if argv.argc() > 1 {
+        let _ = fd.write(RawFd::stderr(), b"tasks: too many arguments\n");
+        false
+    } else {
+        linked_copy_path_to_stdout(fd, b"/proc/tasks", b"tasks")
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_waits(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let ok = if argv.argc() > 1 {
+        let _ = fd.write(RawFd::stderr(), b"waits: too many arguments\n");
+        false
+    } else {
+        linked_copy_path_to_stdout(fd, b"/proc/waits", b"waits")
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_syscalls(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let ok = if argv.argc() > 1 {
+        let _ = fd.write(RawFd::stderr(), b"syscalls: too many arguments\n");
+        false
+    } else {
+        linked_copy_path_to_stdout(fd, b"/proc/syscalls", b"syscalls")
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_continuations(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let ok = if argv.argc() > 1 {
+        let _ = fd.write(RawFd::stderr(), b"continuations: too many arguments\n");
+        false
+    } else {
+        linked_copy_path_to_stdout(fd, b"/proc/continuations", b"continuations")
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_screentest(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let ok = if argv.argc() > 1 {
+        let _ = fd.write(RawFd::stderr(), b"screentest: too many arguments\n");
+        false
+    } else {
+        linked_write_tty_output(fd, b"screentest", BIN_SCREENTEST_OUTPUT)
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_execs(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let ok = if argv.argc() > 1 {
+        let _ = fd.write(RawFd::stderr(), b"execs: too many arguments\n");
+        false
+    } else {
+        linked_copy_path_to_stdout(fd, b"/proc/execs", b"execs")
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_pending(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let ok = if argv.argc() > 1 {
+        let _ = fd.write(RawFd::stderr(), b"pending: too many arguments\n");
+        false
+    } else {
+        linked_copy_path_to_stdout(fd, b"/proc/pending", b"pending")
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_sources(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let ok = if argv.argc() > 1 {
+        let _ = fd.write(RawFd::stderr(), b"sources: too many arguments\n");
+        false
+    } else {
+        linked_copy_path_to_stdout(fd, b"/proc/sources", b"sources")
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_media(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let ok = if argv.argc() > 1 {
+        let _ = fd.write(RawFd::stderr(), b"media: too many arguments\n");
+        false
+    } else {
+        linked_copy_path_to_stdout(fd, b"/proc/media", b"media")
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_self(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let ok = if argv.argc() > 1 {
+        let _ = fd.write(RawFd::stderr(), b"self: too many arguments\n");
+        false
+    } else {
+        match process.self_report() {
+            Ok(report) => linked_write_process_control_report(fd, b"self", &report),
+            Err(ProcessError::BUSY) => return ProgramStatus::Blocked,
+            Err(_) => {
+                let _ = fd.write(RawFd::stderr(), b"self: unavailable\n");
+                false
+            }
+        }
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_install_bin(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let source = SyscallSourceControl::new(raw);
+    let ok = if argv.argc() > 3 {
+        let _ = fd.write(RawFd::stderr(), b"install-bin: too many arguments\n");
+        false
+    } else {
+        let Some(name) = argv.arg(1) else {
+            let _ = fd.write(RawFd::stderr(), b"install-bin: missing program\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        };
+        let Some(status_text) = argv.arg(2) else {
+            let _ = fd.write(RawFd::stderr(), b"install-bin: missing status\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        };
+        let Some(status) = linked_parse_bin_source_install_status(status_text) else {
+            let _ = fd.write(RawFd::stderr(), b"install-bin: invalid status\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        };
+        match source.install_bin_status(name, status) {
+            Ok(report) => linked_write_source_install_report(fd, b"install-bin", &report),
+            Err(error) => {
+                linked_write_source_error(fd, b"install-bin", error, b"program-not-found");
+                false
+            }
+        }
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_install_payload(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let source = SyscallSourceControl::new(raw);
+    let ok = if argv.argc() > 3 {
+        let _ = fd.write(RawFd::stderr(), b"install-payload: too many arguments\n");
+        false
+    } else {
+        let Some(name) = argv.arg(1) else {
+            let _ = fd.write(RawFd::stderr(), b"install-payload: missing payload\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        };
+        let Some(status_text) = argv.arg(2) else {
+            let _ = fd.write(RawFd::stderr(), b"install-payload: missing status\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        };
+        let Some(status) = linked_parse_payload_source_install_status(status_text) else {
+            let _ = fd.write(RawFd::stderr(), b"install-payload: invalid status\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        };
+        match source.install_payload_status(name, status) {
+            Ok(report) => linked_write_source_install_report(fd, b"install-payload", &report),
+            Err(error) => {
+                linked_write_source_error(fd, b"install-payload", error, b"payload-not-found");
+                false
+            }
+        }
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_install_bin_media(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let source = SyscallSourceControl::new(raw);
+    let ok = if argv.argc() > 2 {
+        let _ = fd.write(RawFd::stderr(), b"install-bin-media: too many arguments\n");
+        false
+    } else {
+        let Some(name) = argv.arg(1) else {
+            let _ = fd.write(RawFd::stderr(), b"install-bin-media: missing program\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        };
+        match source.install_bin_media(name) {
+            Ok(report) => linked_write_source_install_report(fd, b"install-bin-media", &report),
+            Err(error) => {
+                linked_write_source_error(fd, b"install-bin-media", error, b"program-not-found");
+                false
+            }
+        }
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_install_payload_media(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let source = SyscallSourceControl::new(raw);
+    let ok = if argv.argc() > 2 {
+        let _ = fd.write(RawFd::stderr(), b"install-payload-media: too many arguments\n");
+        false
+    } else {
+        let Some(name) = argv.arg(1) else {
+            let _ = fd.write(RawFd::stderr(), b"install-payload-media: missing payload\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        };
+        match source.install_payload_media(name) {
+            Ok(report) => linked_write_source_install_report(fd, b"install-payload-media", &report),
+            Err(error) => {
+                linked_write_source_error(
+                    fd,
+                    b"install-payload-media",
+                    error,
+                    b"payload-not-found",
+                );
+                false
+            }
+        }
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_kill(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let ok = if argv.argc() > 2 {
+        let _ = fd.write(RawFd::stderr(), b"kill: too many arguments\n");
+        false
+    } else {
+        let Some(pid) = argv.arg(1) else {
+            let _ = fd.write(RawFd::stderr(), b"kill: missing pid\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        };
+        let Some(pid) = linked_parse_usize(pid) else {
+            let _ = fd.write(RawFd::stderr(), b"kill: invalid pid\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        };
+        match process.kill_report(ProcessId::new(pid)) {
+            Ok(report) => linked_write_process_control_report(fd, b"kill", &report),
+            Err(_) => {
+                let _ = fd.write(RawFd::stderr(), b"kill: failed\n");
+                false
+            }
+        }
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_wake(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let ok = if argv.argc() > 2 {
+        let _ = fd.write(RawFd::stderr(), b"wake: too many arguments\n");
+        false
+    } else {
+        let Some(pid) = argv.arg(1) else {
+            let _ = fd.write(RawFd::stderr(), b"wake: missing pid\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        };
+        let Some(pid) = linked_parse_usize(pid) else {
+            let _ = fd.write(RawFd::stderr(), b"wake: invalid pid\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        };
+        match process.wake_report(ProcessId::new(pid)) {
+            Ok(report) => linked_write_process_control_report(fd, b"wake", &report),
+            Err(_) => {
+                let _ = fd.write(RawFd::stderr(), b"wake: failed\n");
+                false
+            }
+        }
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_block(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let ok = match linked_child_invocation(argv, 1) {
+        Err(LinkedChildInvocationError::MissingProgram) => {
+            let _ = fd.write(RawFd::stderr(), b"block: missing program\n");
+            false
+        }
+        Err(LinkedChildInvocationError::TooManyArguments) => {
+            let _ = fd.write(RawFd::stderr(), b"block: too many arguments\n");
+            false
+        }
+        Err(LinkedChildInvocationError::TooManyEnvVars) => {
+            let _ = fd.write(RawFd::stderr(), b"block: too many env vars\n");
+            false
+        }
+        Ok(child) => match process.spawn_blocked_report_with_env(child.argv(), child.env()) {
+            Ok(report) => linked_write_process_control_report(fd, b"block", &report),
+            Err(ProcessError::NOT_FOUND) => {
+                let _ = fd.write(RawFd::stderr(), b"block: program-not-found\n");
+                false
+            }
+            Err(_) => {
+                let _ = fd.write(RawFd::stderr(), b"block: failed\n");
+                false
+            }
+        },
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_spawn(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let ok = match linked_child_invocation(argv, 1) {
+        Err(LinkedChildInvocationError::MissingProgram) => {
+            let _ = fd.write(RawFd::stderr(), b"spawn: missing program\n");
+            false
+        }
+        Err(LinkedChildInvocationError::TooManyArguments) => {
+            let _ = fd.write(RawFd::stderr(), b"spawn: too many arguments\n");
+            false
+        }
+        Err(LinkedChildInvocationError::TooManyEnvVars) => {
+            let _ = fd.write(RawFd::stderr(), b"spawn: too many env vars\n");
+            false
+        }
+        Ok(child) => match process.spawn_report_with_env(child.argv(), child.env()) {
+            Ok(report) => linked_write_process_control_report(fd, b"spawn", &report),
+            Err(ProcessError::NOT_FOUND) => {
+                let _ = fd.write(RawFd::stderr(), b"spawn: program-not-found\n");
+                false
+            }
+            Err(_) => {
+                let _ = fd.write(RawFd::stderr(), b"spawn: failed\n");
+                false
+            }
+        },
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_sleep(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let ok = if argv.argc() > MAX_PROGRAM_ARGS + 2 {
+        let _ = fd.write(RawFd::stderr(), b"sleep: too many arguments\n");
+        false
+    } else {
+        let Some(ticks) = argv.arg(1) else {
+            let _ = fd.write(RawFd::stderr(), b"sleep: missing ticks\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        };
+        let Some(ticks) = linked_parse_usize(ticks) else {
+            let _ = fd.write(RawFd::stderr(), b"sleep: invalid ticks\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        };
+        if ticks == 0 {
+            let _ = fd.write(RawFd::stderr(), b"sleep: invalid ticks\n");
+            false
+        } else {
+            match linked_child_invocation(argv, 2) {
+                Err(LinkedChildInvocationError::MissingProgram) => {
+                    let _ = fd.write(RawFd::stderr(), b"sleep: missing program\n");
+                    false
+                }
+                Err(LinkedChildInvocationError::TooManyArguments) => {
+                    let _ = fd.write(RawFd::stderr(), b"sleep: too many arguments\n");
+                    false
+                }
+                Err(LinkedChildInvocationError::TooManyEnvVars) => {
+                    let _ = fd.write(RawFd::stderr(), b"sleep: too many env vars\n");
+                    false
+                }
+                Ok(child) => {
+                    match process.spawn_sleeping_with_env(child.argv(), child.env(), ticks) {
+                        Ok(report) => linked_write_process_sleep_report(fd, &report),
+                        Err(ProcessError::NOT_FOUND) => {
+                            let _ = fd.write(RawFd::stderr(), b"sleep: program-not-found\n");
+                            false
+                        }
+                        Err(ProcessError::INVALID_ARGUMENT) => {
+                            let _ = fd.write(RawFd::stderr(), b"sleep: invalid argument\n");
+                            false
+                        }
+                        Err(_) => {
+                            let _ = fd.write(RawFd::stderr(), b"sleep: failed\n");
+                            false
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_wait(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let ok = if argv.argc() > 2 {
+        let _ = fd.write(RawFd::stderr(), b"wait: too many arguments\n");
+        false
+    } else {
+        let Some(pid) = argv.arg(1) else {
+            let _ = fd.write(RawFd::stderr(), b"wait: missing pid\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        };
+        let Some(pid) = linked_parse_usize(pid) else {
+            let _ = fd.write(RawFd::stderr(), b"wait: invalid pid\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        };
+        match process.wait_report(ProcessId::new(pid)) {
+            Ok(report) => linked_write_process_wait_report(fd, &report),
+            Err(ProcessError::BUSY) => return ProgramStatus::Blocked,
+            Err(ProcessError::NOT_WAITABLE) => {
+                let _ = fd.write(RawFd::stderr(), b"wait: not-waitable\n");
+                false
+            }
+            Err(ProcessError::NOT_FOUND) => {
+                let _ = fd.write(RawFd::stderr(), b"wait: process-not-found\n");
+                false
+            }
+            Err(ProcessError::PROTECTED_PROCESS) => {
+                let _ = fd.write(RawFd::stderr(), b"wait: protected-process\n");
+                false
+            }
+            Err(_) => {
+                let _ = fd.write(RawFd::stderr(), b"wait: failed\n");
+                false
+            }
+        }
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_wait_ticks(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let ok = if argv.argc() > 3 {
+        let _ = fd.write(RawFd::stderr(), b"wait-ticks: too many arguments\n");
+        false
+    } else {
+        let Some(ticks) = argv.arg(1) else {
+            let _ = fd.write(RawFd::stderr(), b"wait-ticks: missing ticks\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        };
+        let Some(ticks) = linked_parse_usize(ticks) else {
+            let _ = fd.write(RawFd::stderr(), b"wait-ticks: invalid ticks\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        };
+        let Some(pid) = argv.arg(2) else {
+            let _ = fd.write(RawFd::stderr(), b"wait-ticks: missing pid\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        };
+        let Some(pid) = linked_parse_usize(pid) else {
+            let _ = fd.write(RawFd::stderr(), b"wait-ticks: invalid pid\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        };
+        if ticks == 0 {
+            let _ = fd.write(RawFd::stderr(), b"wait-ticks: invalid ticks\n");
+            false
+        } else {
+            match process.wait_for_ticks(ProcessId::new(pid), ticks) {
+                Ok(report) => linked_write_process_timed_wait_report(fd, &report),
+                Err(_) => {
+                    let _ = fd.write(RawFd::stderr(), b"wait-ticks: failed\n");
+                    false
+                }
+            }
+        }
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_exec(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let child = match linked_child_invocation(argv, 1) {
+        Ok(child) => child,
+        Err(LinkedChildInvocationError::MissingProgram) => {
+            let _ = fd.write(RawFd::stderr(), b"exec: missing program\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        }
+        Err(LinkedChildInvocationError::TooManyArguments) => {
+            let _ = fd.write(RawFd::stderr(), b"exec: too many arguments\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        }
+        Err(LinkedChildInvocationError::TooManyEnvVars) => {
+            let _ = fd.write(RawFd::stderr(), b"exec: too many env vars\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        }
+    };
+
+    match process.execve_with_env(child.argv(), child.env()) {
+        Ok(_replacement_exit) => ProgramStatus::Replaced,
+        Err(ProcessError::BUSY) => ProgramStatus::Blocked,
+        Err(ProcessError::NOT_FOUND) => {
+            let _ = fd.write(RawFd::stderr(), b"exec: program-not-found\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            ProgramStatus::Error
+        }
+        Err(ProcessError::INVALID_IMAGE) => {
+            let _ = fd.write(RawFd::stderr(), b"exec: invalid-image\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            ProgramStatus::Error
+        }
+        Err(_) => {
+            let _ = fd.write(RawFd::stderr(), b"exec: failed\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            ProgramStatus::Error
+        }
+    }
+}
+
+fn bin_service_stop(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let service = SyscallServiceControl::new(raw);
+    let ok = if argv.argc() > 2 {
+        let _ = fd.write(RawFd::stderr(), b"service-stop: too many arguments\n");
+        false
+    } else {
+        let Some(name) = argv.arg(1) else {
+            let _ = fd.write(RawFd::stderr(), b"service-stop: missing service\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        };
+        match service.stop_report(name) {
+            Ok(report) => linked_write_service_control_report(fd, b"service-stop", &report),
+            Err(ServiceError::NOT_FOUND) => {
+                let _ = fd.write(RawFd::stderr(), b"service-stop: service-not-found\n");
+                false
+            }
+            Err(ServiceError::PROTECTED_SERVICE) => {
+                let _ = fd.write(RawFd::stderr(), b"service-stop: protected-service\n");
+                false
+            }
+            Err(ServiceError::NOT_STOPPABLE) => {
+                let _ = fd.write(RawFd::stderr(), b"service-stop: not-stoppable\n");
+                false
+            }
+            Err(ServiceError::INVALID_ARGUMENT) => {
+                let _ = fd.write(RawFd::stderr(), b"service-stop: invalid service\n");
+                false
+            }
+            Err(_) => {
+                let _ = fd.write(RawFd::stderr(), b"service-stop: failed\n");
+                false
+            }
+        }
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_service_start(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let service = SyscallServiceControl::new(raw);
+    let ok = if argv.argc() > 2 {
+        let _ = fd.write(RawFd::stderr(), b"service-start: too many arguments\n");
+        false
+    } else {
+        let Some(name) = argv.arg(1) else {
+            let _ = fd.write(RawFd::stderr(), b"service-start: missing service\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        };
+        match service.start_report(name) {
+            Ok(report) => {
+                linked_write_service_control_report(fd, b"service-start", &report)
+                    && linked_service_result_success(report.result(), report.exit_code())
+            }
+            Err(ServiceError::NOT_FOUND) => {
+                let _ = fd.write(RawFd::stderr(), b"service-start: service-not-found\n");
+                false
+            }
+            Err(ServiceError::PROTECTED_SERVICE) => {
+                let _ = fd.write(RawFd::stderr(), b"service-start: protected-service\n");
+                false
+            }
+            Err(ServiceError::NOT_STOPPABLE) => {
+                let _ = fd.write(RawFd::stderr(), b"service-start: already-started\n");
+                false
+            }
+            Err(ServiceError::UNSUPPORTED) => {
+                let _ = fd.write(RawFd::stderr(), b"service-start: unsupported-target\n");
+                false
+            }
+            Err(ServiceError::PROCESS_NOT_FOUND) => {
+                let _ = fd.write(RawFd::stderr(), b"service-start: process-not-found\n");
+                false
+            }
+            Err(ServiceError::INVALID_ARGUMENT) => {
+                let _ = fd.write(RawFd::stderr(), b"service-start: invalid service\n");
+                false
+            }
+            Err(_) => {
+                let _ = fd.write(RawFd::stderr(), b"service-start: failed\n");
+                false
+            }
+        }
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn bin_service_restart(argv: &ProgramArgv<'_>, raw: RawSyscall) -> ProgramStatus {
+    let fd = SyscallFdControl::new(raw);
+    let process = SyscallProcessControl::new(raw);
+    let service = SyscallServiceControl::new(raw);
+    let ok = if argv.argc() > 2 {
+        let _ = fd.write(RawFd::stderr(), b"service-restart: too many arguments\n");
+        false
+    } else {
+        let Some(name) = argv.arg(1) else {
+            let _ = fd.write(RawFd::stderr(), b"service-restart: missing service\n");
+            let _ = process.exit(ExitCode::FAILURE);
+            return ProgramStatus::Error;
+        };
+        match service.restart_report(name) {
+            Ok(report) => {
+                linked_write_service_control_report(fd, b"service-restart", &report)
+                    && linked_service_result_success(report.result(), report.exit_code())
+            }
+            Err(ServiceError::NOT_FOUND) => {
+                let _ = fd.write(RawFd::stderr(), b"service-restart: service-not-found\n");
+                false
+            }
+            Err(ServiceError::PROTECTED_SERVICE) => {
+                let _ = fd.write(RawFd::stderr(), b"service-restart: protected-service\n");
+                false
+            }
+            Err(ServiceError::NOT_STOPPABLE) => {
+                let _ = fd.write(RawFd::stderr(), b"service-restart: not-stoppable\n");
+                false
+            }
+            Err(ServiceError::UNSUPPORTED) => {
+                let _ = fd.write(RawFd::stderr(), b"service-restart: unsupported-target\n");
+                false
+            }
+            Err(ServiceError::PROCESS_NOT_FOUND) => {
+                let _ = fd.write(RawFd::stderr(), b"service-restart: process-not-found\n");
+                false
+            }
+            Err(ServiceError::INVALID_ARGUMENT) => {
+                let _ = fd.write(RawFd::stderr(), b"service-restart: invalid service\n");
+                false
+            }
+            Err(_) => {
+                let _ = fd.write(RawFd::stderr(), b"service-restart: failed\n");
+                false
+            }
+        }
+    };
+
+    let _ = process.exit(if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    });
+    ProgramStatus::Error
+}
+
+fn linked_sched_tick(fd: SyscallFdControl, sched: SyscallSchedulerControl) -> bool {
+    match sched.tick_current() {
+        Ok(tick_count) => {
+            linked_write_all(
+                fd,
+                RawFd::stdout(),
+                b"sched tick:\nticked=true\nstatus=ok\ntick_count=",
+            ) && linked_write_usize(fd, RawFd::stdout(), tick_count)
+                && linked_write_all(fd, RawFd::stdout(), b"\n")
+        }
+        Err(_) => {
+            let _ = fd.write(RawFd::stderr(), b"sched tick: failed\n");
+            false
+        }
+    }
+}
+
+fn linked_sched_yield(fd: SyscallFdControl, sched: SyscallSchedulerControl) -> bool {
+    match sched.yield_now() {
+        Ok(yielded) => {
+            linked_write_all(fd, RawFd::stdout(), b"sched yield:\nyielded=")
+                && linked_write_bool(fd, RawFd::stdout(), yielded)
+                && linked_write_all(
+                    fd,
+                    RawFd::stdout(),
+                    if yielded {
+                        b"\nstatus=ok\n"
+                    } else {
+                        b"\nstatus=no-peer\n"
+                    },
+                )
+        }
+        Err(_) => {
+            let _ = fd.write(RawFd::stderr(), b"sched yield: failed\n");
+            false
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LinkedSchedSleepStatus {
+    Ok,
+    Blocked,
+    Error,
+}
+
+fn linked_sched_sleep(
+    fd: SyscallFdControl,
+    sched: SyscallSchedulerControl,
+    ticks: usize,
+) -> LinkedSchedSleepStatus {
+    match sched.sleep_for_ticks(SchedulerTicks::new(ticks)) {
+        Ok(tick_count) => {
+            if linked_write_all(
+                fd,
+                RawFd::stdout(),
+                b"sched sleep:\nslept=true\nstatus=ok\ntick_count=",
+            ) && linked_write_usize(fd, RawFd::stdout(), tick_count)
+                && linked_write_all(fd, RawFd::stdout(), b"\n")
+            {
+                LinkedSchedSleepStatus::Ok
+            } else {
+                LinkedSchedSleepStatus::Error
+            }
+        }
+        Err(SchedulerError::BUSY) => LinkedSchedSleepStatus::Blocked,
+        Err(_) => {
+            let _ = fd.write(RawFd::stderr(), b"sched sleep: failed\n");
+            LinkedSchedSleepStatus::Error
+        }
+    }
+}
+
+fn linked_sched_write_status(fd: SyscallFdControl) -> bool {
+    linked_copy_path_to_stdout(fd, b"/proc/scheduler", b"sched")
+}
+
+fn linked_dump_sync(fd: SyscallFdControl, dump: SyscallDumpControl) -> bool {
+    let mut report = DumpSyncReport::empty();
+    if dump.sync(&mut report).is_err() {
+        let _ = fd.write(RawFd::stderr(), b"dump sync: request failed\n");
+        return false;
+    }
+
+    let mut ok = linked_write_all(fd, RawFd::stdout(), b"dump sync:\npersistent=")
+        && linked_write_all(
+            fd,
+            RawFd::stdout(),
+            if report.persistent_available() {
+                b"available"
+            } else {
+                b"unavailable"
+            },
+        )
+        && linked_write_all(fd, RawFd::stdout(), b"\nattempted=")
+        && linked_write_bool(fd, RawFd::stdout(), report.attempted())
+        && linked_write_all(fd, RawFd::stdout(), b"\nstorage=")
+        && linked_write_all(fd, RawFd::stdout(), report.storage_bytes())
+        && linked_write_all(fd, RawFd::stdout(), b"\nstorage_capacity_bytes=")
+        && linked_write_usize(fd, RawFd::stdout(), report.storage_capacity_bytes())
+        && linked_write_all(fd, RawFd::stdout(), b"\nstatus=")
+        && linked_write_all(
+            fd,
+            RawFd::stdout(),
+            if report.written() {
+                b"written"
+            } else {
+                b"not-written"
+            },
+        );
+
+    if report.persistent_available() {
+        ok = ok
+            && linked_write_all(fd, RawFd::stdout(), b"\nbytes=")
+            && linked_write_usize(fd, RawFd::stdout(), report.bytes_written())
+            && linked_write_all(fd, RawFd::stdout(), b"\nchecksum=")
+            && linked_write_usize(fd, RawFd::stdout(), report.checksum() as usize)
+            && linked_write_all(fd, RawFd::stdout(), b"\nverified=")
+            && linked_write_bool(fd, RawFd::stdout(), report.verified());
+    }
+
+    ok = ok
+        && linked_write_all(fd, RawFd::stdout(), b"\nreason=")
+        && linked_write_all(fd, RawFd::stdout(), report.reason_bytes())
+        && linked_write_all(fd, RawFd::stdout(), b"\n");
+    ok && report.written()
+}
+
+fn linked_help_catalog(fd: SyscallFdControl) -> bool {
+    let opened = match fd.open_at(OpenAtDir::session_cwd(), b"/boot/help", OpenFlags::READ_ONLY) {
+        Ok(opened) => opened,
+        Err(_) => {
+            linked_write_command_error(fd, b"help", b"open failed");
+            return false;
+        }
+    };
+
+    let mut read_buf = [0u8; 64];
+    let mut line = [0u8; LINKED_HELP_LINE_BYTES];
+    let mut line_len = 0usize;
+    let mut overflow = false;
+    let mut ok = true;
+    let mut done = false;
+
+    while !done {
+        let read = match fd.read(opened, &mut read_buf) {
+            Ok(read) => read,
+            Err(_) => {
+                linked_write_command_error(fd, b"help", b"read failed");
+                ok = false;
+                break;
+            }
+        };
+        if read == 0 {
+            if line_len > 0 && !overflow {
+                ok = linked_help_catalog_line(fd, &line[..line_len]);
+            }
+            break;
+        }
+
+        let mut index = 0usize;
+        while index < read {
+            let byte = read_buf[index];
+            if byte == b'\n' {
+                if !overflow {
+                    if &line[..line_len] == b"details:" {
+                        done = true;
+                        break;
+                    }
+                    if !linked_help_catalog_line(fd, &line[..line_len]) {
+                        ok = false;
+                        done = true;
+                        break;
+                    }
+                }
+                line_len = 0;
+                overflow = false;
+            } else if line_len < line.len() {
+                line[line_len] = byte;
+                line_len += 1;
+            } else {
+                overflow = true;
+            }
+            index += 1;
+        }
+    }
+
+    let _ = fd.close(opened);
+    ok
+}
+
+fn linked_help_entry(fd: SyscallFdControl, target: &str) -> bool {
+    let opened = match fd.open_at(OpenAtDir::session_cwd(), b"/boot/help", OpenFlags::READ_ONLY) {
+        Ok(opened) => opened,
+        Err(_) => {
+            linked_write_command_error(fd, b"help", b"open failed");
+            return false;
+        }
+    };
+
+    let target_bytes = linked_help_target_name(target);
+    let mut read_buf = [0u8; 64];
+    let mut line = [0u8; LINKED_HELP_LINE_BYTES];
+    let mut line_len = 0usize;
+    let mut overflow = false;
+    let mut in_details = false;
+    let mut copying_match = false;
+    let mut ok = true;
+    let mut found = false;
+    let mut done = false;
+
+    while !done {
+        let read = match fd.read(opened, &mut read_buf) {
+            Ok(read) => read,
+            Err(_) => {
+                linked_write_command_error(fd, b"help", b"read failed");
+                ok = false;
+                break;
+            }
+        };
+        if read == 0 {
+            break;
+        }
+
+        let mut index = 0usize;
+        while index < read {
+            let byte = read_buf[index];
+            if byte == b'\n' {
+                if !overflow {
+                    match linked_help_entry_line(
+                        fd,
+                        &line[..line_len],
+                        target_bytes,
+                        &mut in_details,
+                        &mut copying_match,
+                        &mut found,
+                    ) {
+                        Some(line_ok) => {
+                            ok = line_ok;
+                            done = true;
+                            break;
+                        }
+                        None => {}
+                    }
+                }
+                line_len = 0;
+                overflow = false;
+            } else if line_len < line.len() {
+                line[line_len] = byte;
+                line_len += 1;
+            } else {
+                overflow = true;
+            }
+            index += 1;
+        }
+    }
+
+    if ok && !done && line_len > 0 && !overflow {
+        if let Some(line_ok) = linked_help_entry_line(
+            fd,
+            &line[..line_len],
+            target_bytes,
+            &mut in_details,
+            &mut copying_match,
+            &mut found,
+        ) {
+            ok = line_ok;
+        }
+    }
+
+    let _ = fd.close(opened);
+    if ok && found {
+        true
+    } else if ok {
+        linked_help_unknown(fd, target);
+        false
+    } else {
+        false
+    }
+}
+
+fn linked_help_entry_line(
+    fd: SyscallFdControl,
+    line: &[u8],
+    target: &[u8],
+    in_details: &mut bool,
+    copying_match: &mut bool,
+    found: &mut bool,
+) -> Option<bool> {
+    if !*in_details {
+        if line == b"details:" {
+            *in_details = true;
+        }
+        return None;
+    }
+
+    if *copying_match {
+        if line.starts_with(b"    ") {
+            return if linked_help_write_line(fd, &line[2..]) {
+                None
+            } else {
+                Some(false)
+            };
+        }
+        return Some(true);
+    }
+
+    if let Some(entry) = line.strip_prefix(b"  ") {
+        if linked_help_entry_matches(entry, target) {
+            *copying_match = true;
+            *found = true;
+            return if linked_help_write_line(fd, entry) {
+                None
+            } else {
+                Some(false)
+            };
+        }
+    }
+    None
+}
+
+fn linked_help_catalog_line(fd: SyscallFdControl, line: &[u8]) -> bool {
+    linked_help_write_line(fd, line)
+}
+
+fn linked_help_write_line(fd: SyscallFdControl, line: &[u8]) -> bool {
+    linked_write_all(fd, RawFd::stdout(), line) && linked_write_all(fd, RawFd::stdout(), b"\n")
+}
+
+fn linked_help_target_name(target: &str) -> &[u8] {
+    let bytes = target.as_bytes();
+    if bytes.starts_with(b"/bin/") {
+        &bytes[5..]
+    } else {
+        bytes
+    }
+}
+
+fn linked_help_entry_matches(entry: &[u8], target: &[u8]) -> bool {
+    if target.is_empty() || entry.len() < target.len() || &entry[..target.len()] != target {
+        return false;
+    }
+    match entry.get(target.len()) {
+        Some(byte) => matches!(*byte, b' ' | b'['),
+        None => true,
+    }
+}
+
+fn linked_help_unknown(fd: SyscallFdControl, target: &str) {
+    let _ = fd.write(RawFd::stderr(), b"help: unknown program: ");
+    let _ = fd.write(RawFd::stderr(), target.as_bytes());
+    let _ = fd.write(RawFd::stderr(), b"\n");
+}
+
+fn linked_copy_path_to_stdout(fd: SyscallFdControl, path: &[u8], program: &[u8]) -> bool {
+    match fd.open_at(OpenAtDir::session_cwd(), path, OpenFlags::READ_ONLY) {
+        Ok(opened) => {
+            let ok = linked_copy_fd_to_stdout(fd, opened, program);
+            let _ = fd.close(opened);
+            ok
+        }
+        Err(_) => {
+            linked_write_command_error(fd, program, b"open failed");
+            false
+        }
+    }
+}
+
+fn linked_copy_path_to_stdout_with_line_prefix(
+    fd: SyscallFdControl,
+    path: &[u8],
+    program: &[u8],
+    prefix: &[u8],
+) -> bool {
+    match fd.open_at(OpenAtDir::session_cwd(), path, OpenFlags::READ_ONLY) {
+        Ok(opened) => {
+            let ok = linked_copy_fd_to_stdout_with_line_prefix(fd, opened, program, prefix);
+            let _ = fd.close(opened);
+            ok
+        }
+        Err(_) => {
+            linked_write_command_error(fd, program, b"open failed");
+            false
+        }
+    }
+}
+
+fn linked_ls_target(fd: SyscallFdControl, target: &str) -> bool {
+    match fd.open_at(OpenAtDir::session_cwd(), target.as_bytes(), OpenFlags::READ_DIRECTORY) {
+        Ok(opened) => {
+            let ok = linked_ls_copy_dir(fd, opened);
+            let _ = fd.close(opened);
+            ok
+        }
+        Err(error) if error.code() == 8 => {
+            match fd.open_at(OpenAtDir::session_cwd(), target.as_bytes(), OpenFlags::READ_ONLY) {
+                Ok(opened) => {
+                    let _ = fd.close(opened);
+                    linked_write_basename(fd, target)
+                }
+                Err(file_error) => {
+                    linked_write_path_error(fd, b"ls", target, file_error);
+                    false
+                }
+            }
+        }
+        Err(error) => {
+            linked_write_path_error(fd, b"ls", target, error);
+            false
+        }
+    }
+}
+
+fn linked_ls_copy_dir(fd: SyscallFdControl, input: RawFd) -> bool {
+    let mut buffer = [0u8; 64];
+    loop {
+        let read = match fd.getdents(input, &mut buffer) {
+            Ok(read) => read,
+            Err(_) => {
+                let _ = fd.write(RawFd::stderr(), b"ls: read directory failed\n");
+                return false;
+            }
+        };
+        if read == 0 {
+            return true;
+        }
+        match fd.write(RawFd::stdout(), &buffer[..read]) {
+            Ok(written) if written == read => {}
+            _ => {
+                let _ = fd.write(RawFd::stderr(), b"ls: write failed\n");
+                return false;
+            }
+        }
+    }
+}
+
+fn linked_write_basename(fd: SyscallFdControl, target: &str) -> bool {
+    let name = linked_path_basename(target);
+    matches!(fd.write(RawFd::stdout(), name), Ok(written) if written == name.len())
+        && matches!(fd.write(RawFd::stdout(), b"\n"), Ok(1))
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LinkedCopyStatus {
+    Ok,
+    Blocked,
+    Error,
+}
+
+impl LinkedCopyStatus {
+    const fn is_ok(self) -> bool {
+        matches!(self, Self::Ok)
+    }
+}
+
+fn linked_cat_copy_fd(fd: SyscallFdControl, input: RawFd) -> LinkedCopyStatus {
+    linked_copy_fd_to_stdout_status(fd, input, b"cat")
+}
+
+fn linked_read_tty_line(fd: SyscallFdControl) -> bool {
+    let tty = match fd.open_at(OpenAtDir::session_cwd(), b"/dev/tty", OpenFlags::READ_ONLY) {
+        Ok(tty) => tty,
+        Err(error) => {
+            linked_write_path_error(fd, b"read", "/dev/tty", error);
+            return false;
+        }
+    };
+
+    let mut line = [0u8; ROOT_LINE_BYTES];
+    let read = match fd.read(tty, &mut line) {
+        Ok(read) => read,
+        Err(_) => {
+            let _ = fd.close(tty);
+            linked_write_command_error(fd, b"read", b"read failed");
+            return false;
+        }
+    };
+    let _ = fd.close(tty);
+
+    if read == 0 {
+        let _ = fd.write(RawFd::stderr(), b"read: input eof\n");
+        return false;
+    }
+
+    linked_write_all(fd, RawFd::stdout(), &line[..read])
+        && linked_write_all(fd, RawFd::stdout(), b"\n")
+}
+
+fn linked_write_tty_output(fd: SyscallFdControl, program: &[u8], bytes: &[u8]) -> bool {
+    let tty = match fd.open_at(OpenAtDir::session_cwd(), b"/dev/tty", OpenFlags::WRITE_ONLY) {
+        Ok(tty) => tty,
+        Err(error) => {
+            linked_write_path_error(fd, program, "/dev/tty", error);
+            return false;
+        }
+    };
+
+    let wrote = linked_write_all(fd, tty, bytes);
+    let closed = fd.close(tty).is_ok();
+    if wrote && closed {
+        true
+    } else {
+        linked_write_command_error(fd, program, b"tty write failed");
+        false
+    }
+}
+
+fn linked_copy_fd_to_stdout(fd: SyscallFdControl, input: RawFd, program: &[u8]) -> bool {
+    linked_copy_fd_to_stdout_status(fd, input, program).is_ok()
+}
+
+fn linked_copy_fd_to_stdout_status(
+    fd: SyscallFdControl,
+    input: RawFd,
+    program: &[u8],
+) -> LinkedCopyStatus {
+    let mut buffer = [0u8; 64];
+    loop {
+        let read = match fd.read(input, &mut buffer) {
+            Ok(read) => read,
+            Err(FsError::BUSY) => return LinkedCopyStatus::Blocked,
+            Err(_) => {
+                linked_write_command_error(fd, program, b"read failed");
+                return LinkedCopyStatus::Error;
+            }
+        };
+        if read == 0 {
+            return LinkedCopyStatus::Ok;
+        }
+        match fd.write(RawFd::stdout(), &buffer[..read]) {
+            Ok(written) if written == read => {}
+            _ => {
+                linked_write_command_error(fd, program, b"write failed");
+                return LinkedCopyStatus::Error;
+            }
+        }
+    }
+}
+
+fn linked_copy_fd_to_stdout_with_line_prefix(
+    fd: SyscallFdControl,
+    input: RawFd,
+    program: &[u8],
+    prefix: &[u8],
+) -> bool {
+    let mut buffer = [0u8; 64];
+    let mut at_line_start = true;
+    loop {
+        let read = match fd.read(input, &mut buffer) {
+            Ok(read) => read,
+            Err(_) => {
+                linked_write_command_error(fd, program, b"read failed");
+                return false;
+            }
+        };
+        if read == 0 {
+            return true;
+        }
+
+        let mut start = 0usize;
+        while start < read {
+            if at_line_start && !linked_write_all(fd, RawFd::stdout(), prefix) {
+                linked_write_command_error(fd, program, b"write failed");
+                return false;
+            }
+            at_line_start = false;
+
+            let mut end = start;
+            while end < read && buffer[end] != b'\n' {
+                end += 1;
+            }
+            if end < read {
+                end += 1;
+                at_line_start = true;
+            }
+
+            if !linked_write_all(fd, RawFd::stdout(), &buffer[start..end]) {
+                linked_write_command_error(fd, program, b"write failed");
+                return false;
+            }
+            start = end;
+        }
+    }
+}
+
+fn linked_path_basename(path: &str) -> &[u8] {
+    let bytes = path.as_bytes();
+    if bytes == b"/" {
+        return b"/";
+    }
+    let mut end = bytes.len();
+    while end > 1 && bytes[end - 1] == b'/' {
+        end -= 1;
+    }
+    let mut start = end;
+    while start > 0 {
+        if bytes[start - 1] == b'/' {
+            break;
+        }
+        start -= 1;
+    }
+    &bytes[start..end]
+}
+
+fn linked_write_path_error(fd: SyscallFdControl, program: &[u8], target: &str, error: FsError) {
+    let _ = fd.write(RawFd::stderr(), program);
+    let _ = fd.write(RawFd::stderr(), b": ");
+    let _ = fd.write(RawFd::stderr(), target.as_bytes());
+    let _ = fd.write(RawFd::stderr(), b": ");
+    let _ = fd.write(RawFd::stderr(), linked_fs_error_word(error));
+    let _ = fd.write(RawFd::stderr(), b"\n");
+}
+
+fn linked_write_command_error(fd: SyscallFdControl, program: &[u8], message: &[u8]) {
+    let _ = fd.write(RawFd::stderr(), program);
+    let _ = fd.write(RawFd::stderr(), b": ");
+    let _ = fd.write(RawFd::stderr(), message);
+    let _ = fd.write(RawFd::stderr(), b"\n");
+}
+
+fn linked_write_all(fd: SyscallFdControl, target: RawFd, bytes: &[u8]) -> bool {
+    matches!(fd.write(target, bytes), Ok(written) if written == bytes.len())
+}
+
+fn linked_write_bool(fd: SyscallFdControl, target: RawFd, value: bool) -> bool {
+    linked_write_all(fd, target, if value { b"true" } else { b"false" })
+}
+
+fn linked_write_usize(fd: SyscallFdControl, target: RawFd, mut value: usize) -> bool {
+    let mut buf = [0u8; 20];
+    let mut index = buf.len();
+    if value == 0 {
+        index -= 1;
+        buf[index] = b'0';
+    } else {
+        while value > 0 {
+            index -= 1;
+            buf[index] = b'0' + (value % 10) as u8;
+            value /= 10;
+        }
+    }
+    linked_write_all(fd, target, &buf[index..])
+}
+
+fn linked_write_i32(fd: SyscallFdControl, target: RawFd, value: i32) -> bool {
+    if value < 0 {
+        linked_write_all(fd, target, b"-")
+            && linked_write_usize(fd, target, value.unsigned_abs() as usize)
+    } else {
+        linked_write_usize(fd, target, value as usize)
+    }
+}
+
+fn linked_write_process_control_report(
+    fd: SyscallFdControl,
+    label: &[u8],
+    report: &ProcessControlReport,
+) -> bool {
+    linked_write_all(fd, RawFd::stdout(), label)
+        && linked_write_all(fd, RawFd::stdout(), b":\npid=")
+        && linked_write_usize(fd, RawFd::stdout(), report.pid().raw())
+        && linked_write_all(fd, RawFd::stdout(), b"\npath=")
+        && linked_write_all(fd, RawFd::stdout(), report.path_bytes())
+        && (!report.path_truncated() || linked_write_all(fd, RawFd::stdout(), b"..."))
+        && linked_write_all(fd, RawFd::stdout(), b"\nstate=")
+        && linked_write_all(fd, RawFd::stdout(), linked_process_state_word(report.state()))
+        && linked_write_all(fd, RawFd::stdout(), b"\nloader=")
+        && linked_write_all(fd, RawFd::stdout(), report.loader_bytes())
+        && (!report.loader_truncated() || linked_write_all(fd, RawFd::stdout(), b"..."))
+        && linked_write_all(fd, RawFd::stdout(), b"\nentry_fn=")
+        && linked_write_all(fd, RawFd::stdout(), report.entry_name_bytes())
+        && (!report.entry_name_truncated() || linked_write_all(fd, RawFd::stdout(), b"..."))
+        && linked_write_all(fd, RawFd::stdout(), b"\nartifact_body_format=")
+        && linked_write_all(fd, RawFd::stdout(), report.body_format_bytes())
+        && (!report.body_format_truncated() || linked_write_all(fd, RawFd::stdout(), b"..."))
+        && linked_write_all(fd, RawFd::stdout(), b"\nartifact_body_inner=")
+        && linked_write_all(fd, RawFd::stdout(), report.body_inner_bytes())
+        && (!report.body_inner_truncated() || linked_write_all(fd, RawFd::stdout(), b"..."))
+        && linked_write_all(fd, RawFd::stdout(), b"\nartifact_body_bytes=")
+        && linked_write_usize(fd, RawFd::stdout(), report.body_bytes())
+        && linked_write_all(fd, RawFd::stdout(), b"\nartifact_checksum=")
+        && linked_write_usize(fd, RawFd::stdout(), report.body_checksum() as usize)
+        && linked_write_all(fd, RawFd::stdout(), b"\n")
+}
+
+fn linked_write_process_wait_report(fd: SyscallFdControl, report: &ProcessWaitReport) -> bool {
+    linked_write_all(fd, RawFd::stdout(), b"wait:\npid=")
+        && linked_write_usize(fd, RawFd::stdout(), report.child_pid().raw())
+        && linked_write_all(fd, RawFd::stdout(), b"\nstate=")
+        && linked_write_all(fd, RawFd::stdout(), linked_process_state_word(report.child_state()))
+        && linked_write_all(fd, RawFd::stdout(), b"\nexit=")
+        && linked_write_i32(fd, RawFd::stdout(), report.exit_code())
+        && linked_write_all(fd, RawFd::stdout(), b"\ncompleted=")
+        && linked_write_bool(fd, RawFd::stdout(), report.completed())
+        && linked_write_all(fd, RawFd::stdout(), b"\n")
+}
+
+fn linked_write_process_sleep_report(fd: SyscallFdControl, report: &ProcessSleepReport) -> bool {
+    linked_write_all(fd, RawFd::stdout(), b"sleep:\npid=")
+        && linked_write_usize(fd, RawFd::stdout(), report.pid().raw())
+        && linked_write_all(fd, RawFd::stdout(), b"\npath=")
+        && linked_write_all(fd, RawFd::stdout(), report.path_bytes())
+        && (!report.path_truncated() || linked_write_all(fd, RawFd::stdout(), b"..."))
+        && linked_write_all(fd, RawFd::stdout(), b"\nstate=")
+        && linked_write_all(fd, RawFd::stdout(), linked_process_state_word(report.state()))
+        && linked_write_all(fd, RawFd::stdout(), b"\nblock=sleep\nwake_tick=")
+        && linked_write_usize(fd, RawFd::stdout(), report.wake_tick())
+        && linked_write_all(fd, RawFd::stdout(), b"\n")
+}
+
+fn linked_write_process_timed_wait_report(
+    fd: SyscallFdControl,
+    report: &ProcessTimedWaitReport,
+) -> bool {
+    linked_write_all(fd, RawFd::stdout(), b"wait-ticks:\npid=")
+        && linked_write_usize(fd, RawFd::stdout(), report.child_pid().raw())
+        && linked_write_all(fd, RawFd::stdout(), b"\nstate=")
+        && linked_write_all(fd, RawFd::stdout(), linked_process_state_word(report.child_state()))
+        && linked_write_all(fd, RawFd::stdout(), b"\nexit=")
+        && linked_write_i32(fd, RawFd::stdout(), report.exit_code())
+        && linked_write_all(fd, RawFd::stdout(), b"\ncompleted=")
+        && linked_write_bool(fd, RawFd::stdout(), report.completed())
+        && linked_write_all(fd, RawFd::stdout(), b"\ntimed_out=")
+        && linked_write_bool(fd, RawFd::stdout(), report.timed_out())
+        && linked_write_all(fd, RawFd::stdout(), b"\ntick_count=")
+        && linked_write_usize(fd, RawFd::stdout(), report.tick_count())
+        && linked_write_all(fd, RawFd::stdout(), b"\n")
+}
+
+fn linked_write_service_control_report(
+    fd: SyscallFdControl,
+    label: &[u8],
+    report: &ServiceControlReport,
+) -> bool {
+    linked_write_all(fd, RawFd::stdout(), label)
+        && linked_write_all(fd, RawFd::stdout(), b":\nname=")
+        && linked_write_all(fd, RawFd::stdout(), report.name_bytes())
+        && (!report.name_truncated() || linked_write_all(fd, RawFd::stdout(), b"..."))
+        && linked_write_all(fd, RawFd::stdout(), b"\ntarget=")
+        && linked_write_all(fd, RawFd::stdout(), report.target_bytes())
+        && (!report.target_truncated() || linked_write_all(fd, RawFd::stdout(), b"..."))
+        && linked_write_service_control_result(fd, report)
+        && linked_write_all(fd, RawFd::stdout(), b"\nservice_pid=")
+        && linked_write_usize(fd, RawFd::stdout(), report.service_pid())
+        && linked_write_all(fd, RawFd::stdout(), b"\nservice_task=")
+        && linked_write_usize(fd, RawFd::stdout(), report.service_task_id())
+        && linked_write_all(fd, RawFd::stdout(), b"\nstate=")
+        && linked_write_all(fd, RawFd::stdout(), linked_service_state_word(report.state()))
+        && linked_write_all(fd, RawFd::stdout(), b"\nreason=")
+        && linked_write_all(fd, RawFd::stdout(), linked_service_reason_word(report.reason()))
+        && linked_write_all(fd, RawFd::stdout(), b"\n")
+}
+
+fn linked_write_service_control_result(
+    fd: SyscallFdControl,
+    report: &ServiceControlReport,
+) -> bool {
+    if report.result() == ServiceControlResultCode::NONE {
+        return true;
+    }
+    let mut ok = linked_write_all(fd, RawFd::stdout(), b"\nresult=")
+        && linked_write_all(fd, RawFd::stdout(), linked_service_result_word(report.result()));
+    if report.result() == ServiceControlResultCode::PAYLOAD_EXIT_CODE {
+        ok = ok
+            && linked_write_all(fd, RawFd::stdout(), b"\nexit_code=")
+            && linked_write_i32(fd, RawFd::stdout(), report.exit_code());
+    }
+    ok
+}
+
+fn linked_service_result_success(result: ServiceControlResultCode, exit_code: i32) -> bool {
+    result == ServiceControlResultCode::NONE
+        || result == ServiceControlResultCode::PAYLOAD_READY
+        || result == ServiceControlResultCode::PAYLOAD_RESIDENT
+        || (result == ServiceControlResultCode::PAYLOAD_EXIT_CODE && exit_code == 0)
+}
+
+fn linked_write_source_install_report(
+    fd: SyscallFdControl,
+    label: &[u8],
+    report: &SourceInstallReport,
+) -> bool {
+    let mut ok = linked_write_all(fd, RawFd::stdout(), label)
+        && linked_write_all(fd, RawFd::stdout(), b":\nname=")
+        && linked_write_all(fd, RawFd::stdout(), report.name_bytes())
+        && (!report.name_truncated() || linked_write_all(fd, RawFd::stdout(), b"..."))
+        && linked_write_all(fd, RawFd::stdout(), b"\nnamespace=")
+        && linked_write_all(fd, RawFd::stdout(), linked_source_namespace_word(report.namespace()))
+        && linked_write_all(fd, RawFd::stdout(), b"\npath=")
+        && linked_write_all(fd, RawFd::stdout(), report.path_bytes())
+        && (!report.path_truncated() || linked_write_all(fd, RawFd::stdout(), b"..."));
+
+    if report.status() != SourceInstallStatusCode::NONE {
+        ok = ok
+            && linked_write_all(fd, RawFd::stdout(), b"\nstatus=")
+            && linked_write_all(fd, RawFd::stdout(), linked_source_status_word(report.status()));
+    }
+
+    if report.origin() == SourceInstallOriginCode::SOURCE_MEDIA {
+        ok = ok
+            && linked_write_all(fd, RawFd::stdout(), b"\nstorage=")
+            && linked_write_all(fd, RawFd::stdout(), report.storage_bytes())
+            && (!report.storage_truncated() || linked_write_all(fd, RawFd::stdout(), b"..."))
+            && linked_write_all(fd, RawFd::stdout(), b"\nstorage_capacity_bytes=")
+            && linked_write_usize(fd, RawFd::stdout(), report.storage_capacity_bytes())
+            && linked_write_all(fd, RawFd::stdout(), b"\nartifact_bytes=")
+            && linked_write_usize(fd, RawFd::stdout(), report.artifact_bytes_len());
+    }
+
+    ok = ok
+        && linked_write_all(fd, RawFd::stdout(), b"\nbytes=")
+        && linked_write_usize(fd, RawFd::stdout(), report.bytes_len());
+
+    if report.origin() == SourceInstallOriginCode::SOURCE_MEDIA {
+        ok = ok
+            && linked_write_all(fd, RawFd::stdout(), b"\nchecksum=")
+            && linked_write_usize(fd, RawFd::stdout(), report.checksum() as usize)
+            && linked_write_all(fd, RawFd::stdout(), b"\norigin=installed\nsource=source-media\n");
+    } else {
+        ok = ok
+            && linked_write_all(fd, RawFd::stdout(), b"\norigin=")
+            && linked_write_all(fd, RawFd::stdout(), linked_source_origin_word(report.origin()))
+            && linked_write_all(fd, RawFd::stdout(), b"\n");
+    }
+    ok
+}
+
+fn linked_write_source_error(
+    fd: SyscallFdControl,
+    label: &[u8],
+    error: SourceError,
+    not_found_word: &[u8],
+) {
+    let _ = fd.write(RawFd::stderr(), label);
+    let _ = fd.write(RawFd::stderr(), b": ");
+    let _ = fd.write(RawFd::stderr(), linked_source_error_word(error, not_found_word));
+    let _ = fd.write(RawFd::stderr(), b"\n");
+}
+
+fn linked_parse_bin_source_install_status(value: &str) -> Option<SourceInstallStatusCode> {
+    match value.as_bytes() {
+        b"ok" => Some(SourceInstallStatusCode::OK),
+        b"error" => Some(SourceInstallStatusCode::ERROR),
+        _ => None,
+    }
+}
+
+fn linked_parse_payload_source_install_status(value: &str) -> Option<SourceInstallStatusCode> {
+    match value.as_bytes() {
+        b"ready" => Some(SourceInstallStatusCode::READY),
+        b"failed" => Some(SourceInstallStatusCode::FAILED),
+        _ => None,
+    }
+}
+
+fn linked_source_namespace_word(namespace: SourceNamespaceCode) -> &'static [u8] {
+    if namespace == SourceNamespaceCode::BIN {
+        b"bin"
+    } else if namespace == SourceNamespaceCode::PAYLOAD {
+        b"payload"
+    } else {
+        b"none"
+    }
+}
+
+fn linked_source_status_word(status: SourceInstallStatusCode) -> &'static [u8] {
+    if status == SourceInstallStatusCode::OK {
+        b"ok"
+    } else if status == SourceInstallStatusCode::ERROR {
+        b"error"
+    } else if status == SourceInstallStatusCode::READY {
+        b"ready"
+    } else if status == SourceInstallStatusCode::FAILED {
+        b"failed"
+    } else {
+        b"none"
+    }
+}
+
+fn linked_source_origin_word(origin: SourceInstallOriginCode) -> &'static [u8] {
+    if origin == SourceInstallOriginCode::INSTALLED {
+        b"installed"
+    } else if origin == SourceInstallOriginCode::SOURCE_MEDIA {
+        b"source-media"
+    } else {
+        b"none"
+    }
+}
+
+fn linked_source_error_word(error: SourceError, not_found_word: &[u8]) -> &'static [u8] {
+    if error == SourceError::NOT_FOUND {
+        return if not_found_word == b"payload-not-found" {
+            b"payload-not-found"
+        } else {
+            b"program-not-found"
+        };
+    }
+    if error == SourceError::NO_CURRENT_PROCESS {
+        b"no-current-process"
+    } else if error == SourceError::SOURCE_MEDIA_UNAVAILABLE {
+        b"source-media-unavailable"
+    } else if error == SourceError::SOURCE_MEDIA_READ_FAILED {
+        b"source-media-read-failed"
+    } else if error == SourceError::SOURCE_MEDIA_NAMESPACE_MISMATCH {
+        b"source-media-namespace-mismatch"
+    } else if error == SourceError::SOURCE_MEDIA_PATH_MISMATCH {
+        b"source-media-path-mismatch"
+    } else if error == SourceError::INVALID_IMAGE {
+        b"source-media-invalid"
+    } else if error == SourceError::UNSUPPORTED {
+        b"unsupported-image"
+    } else if error == SourceError::FILE_TOO_LARGE {
+        b"too-large"
+    } else if error == SourceError::BUSY {
+        b"no-slot"
+    } else if error == SourceError::INVALID_ARGUMENT {
+        b"invalid-argument"
+    } else {
+        b"failed"
+    }
+}
+
+fn linked_process_state_word(state: ProcessStateCode) -> &'static [u8] {
+    if state == ProcessStateCode::EMPTY {
+        b"empty"
+    } else if state == ProcessStateCode::NEW {
+        b"new"
+    } else if state == ProcessStateCode::READY {
+        b"ready"
+    } else if state == ProcessStateCode::RUNNING {
+        b"running"
+    } else if state == ProcessStateCode::BLOCKED {
+        b"blocked"
+    } else if state == ProcessStateCode::EXITED {
+        b"exited"
+    } else if state == ProcessStateCode::FAILED {
+        b"failed"
+    } else if state == ProcessStateCode::HALTED {
+        b"halted"
+    } else if state == ProcessStateCode::REAPED {
+        b"reaped"
+    } else {
+        b"unknown"
+    }
+}
+
+fn linked_service_result_word(result: ServiceControlResultCode) -> &'static [u8] {
+    if result == ServiceControlResultCode::NONE {
+        b"none"
+    } else if result == ServiceControlResultCode::PAYLOAD_READY {
+        b"payload.ready"
+    } else if result == ServiceControlResultCode::PAYLOAD_RESIDENT {
+        b"payload.resident"
+    } else if result == ServiceControlResultCode::PAYLOAD_NOT_CONFIGURED {
+        b"payload.not_configured"
+    } else if result == ServiceControlResultCode::PAYLOAD_FAILED {
+        b"payload.failed"
+    } else if result == ServiceControlResultCode::PAYLOAD_EXIT_CODE {
+        b"payload.exit_code"
+    } else {
+        b"unknown"
+    }
+}
+
+fn linked_service_state_word(state: ServiceStateCode) -> &'static [u8] {
+    if state == ServiceStateCode::EMPTY {
+        b"empty"
+    } else if state == ServiceStateCode::REQUESTED {
+        b"requested"
+    } else if state == ServiceStateCode::STARTED {
+        b"started"
+    } else if state == ServiceStateCode::EXITED {
+        b"exited"
+    } else if state == ServiceStateCode::STOPPED {
+        b"stopped"
+    } else if state == ServiceStateCode::FAILED {
+        b"failed"
+    } else {
+        b"unknown"
+    }
+}
+
+fn linked_service_reason_word(reason: ServiceReasonCode) -> &'static [u8] {
+    if reason == ServiceReasonCode::NONE {
+        b"none"
+    } else if reason == ServiceReasonCode::REQUESTED {
+        b"requested"
+    } else if reason == ServiceReasonCode::RUNNING {
+        b"running"
+    } else if reason == ServiceReasonCode::PROCESS_EXITED {
+        b"process-exited"
+    } else if reason == ServiceReasonCode::PROCESS_FAILED {
+        b"process-failed"
+    } else if reason == ServiceReasonCode::PROCESS_KILLED {
+        b"process-killed"
+    } else if reason == ServiceReasonCode::OPERATOR_STOP {
+        b"operator-stop"
+    } else if reason == ServiceReasonCode::EXEC_LOAD_ERROR {
+        b"exec-load-error"
+    } else if reason == ServiceReasonCode::HALT {
+        b"halt"
+    } else if reason == ServiceReasonCode::START_ERROR {
+        b"start-error"
+    } else {
+        b"unknown"
+    }
+}
+
+fn linked_reovim_exit_with_payload_status(
+    fd: SyscallFdControl,
+    process: SyscallProcessControl,
+    code: ExitCode,
+) -> ProgramStatus {
+    let raw = code.raw();
+    let ok = match raw {
+        0 => linked_write_all(fd, RawFd::stdout(), b"payload.ready\n"),
+        1 => linked_write_all(fd, RawFd::stdout(), b"payload.failed\n"),
+        _ => {
+            linked_write_all(fd, RawFd::stdout(), b"payload.exit_code(")
+                && linked_write_usize(fd, RawFd::stdout(), raw as usize)
+                && linked_write_all(fd, RawFd::stdout(), b")\n")
+        }
+    };
+    let exit = if ok { code } else { ExitCode::FAILURE };
+    let _ = process.exit(exit);
+    ProgramStatus::Error
+}
+
+fn linked_launch_exit_with_payload_report(
+    fd: SyscallFdControl,
+    process: SyscallProcessControl,
+    payload: &str,
+    report: ProcessWaitReport,
+) -> ProgramStatus {
+    if !(linked_write_all(fd, RawFd::stdout(), b"launch ")
+        && linked_write_all(fd, RawFd::stdout(), payload.as_bytes())
+        && linked_write_all(fd, RawFd::stdout(), b": "))
+    {
+        let _ = process.exit(ExitCode::FAILURE);
+        return ProgramStatus::Error;
+    }
+    if !report.completed() {
+        let ok = report.child_state() == ProcessStateCode::BLOCKED
+            && linked_write_all(fd, RawFd::stdout(), b"payload.resident\n");
+        let _ = process.exit(if ok {
+            ExitCode::SUCCESS
+        } else {
+            ExitCode::FAILURE
+        });
+        return if ok {
+            ProgramStatus::Ok
+        } else {
+            ProgramStatus::Error
+        };
+    }
+    let code = report.exit_code();
+    if code < 0 || code > u8::MAX as i32 {
+        let _ = linked_write_all(fd, RawFd::stdout(), b"payload.failed\n");
+        let _ = process.exit(ExitCode::FAILURE);
+        return ProgramStatus::Error;
+    }
+    linked_reovim_exit_with_payload_status(fd, process, ExitCode::new(code as u8))
+}
+
+fn linked_write_launch_payload_status(fd: SyscallFdControl, payload: &str, status: &[u8]) -> bool {
+    linked_write_all(fd, RawFd::stdout(), b"launch ")
+        && linked_write_all(fd, RawFd::stdout(), payload.as_bytes())
+        && linked_write_all(fd, RawFd::stdout(), b": ")
+        && linked_write_all(fd, RawFd::stdout(), status)
+        && linked_write_all(fd, RawFd::stdout(), b"\n")
+}
+
+fn linked_launch_enabled(fd: SyscallFdControl) -> Option<bool> {
+    let profile = fd
+        .open_at(OpenAtDir::session_cwd(), b"/boot/profile", OpenFlags::READ_ONLY)
+        .ok()?;
+    let mut buffer = [0u8; 512];
+    let read = match fd.read(profile, &mut buffer) {
+        Ok(read) => read,
+        Err(_) => {
+            let _ = fd.close(profile);
+            return None;
+        }
+    };
+    let _ = fd.close(profile);
+    Some(linked_bytes_contains(&buffer[..read], b"launch=enabled\n"))
+}
+
+fn linked_bytes_contains(bytes: &[u8], needle: &[u8]) -> bool {
+    if needle.is_empty() {
+        return true;
+    }
+    if needle.len() > bytes.len() {
+        return false;
+    }
+    let mut index = 0usize;
+    while index + needle.len() <= bytes.len() {
+        if &bytes[index..index + needle.len()] == needle {
+            return true;
+        }
+        index += 1;
+    }
+    false
+}
+
+fn linked_parse_usize(value: &str) -> Option<usize> {
+    let bytes = value.as_bytes();
+    if bytes.is_empty() {
+        return None;
+    }
+    let mut parsed = 0usize;
+    let mut index = 0usize;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if !byte.is_ascii_digit() {
+            return None;
+        }
+        parsed = parsed.checked_mul(10)?;
+        parsed = parsed.checked_add((byte - b'0') as usize)?;
+        index += 1;
+    }
+    Some(parsed)
+}
+
+struct LinkedChildInvocation {
+    argv: [ProcessArg; MAX_PROGRAM_ARGS],
+    argc: usize,
+    env: [ProcessEnv; MAX_PROGRAM_ENVS],
+    envc: usize,
+}
+
+impl LinkedChildInvocation {
+    fn empty() -> Self {
+        Self {
+            argv: [ProcessArg::from_str(""); MAX_PROGRAM_ARGS],
+            argc: 0,
+            env: [ProcessEnv::from_pair("", ""); MAX_PROGRAM_ENVS],
+            envc: 0,
+        }
+    }
+
+    fn argv(&self) -> &[ProcessArg] {
+        &self.argv[..self.argc]
+    }
+
+    fn env(&self) -> &[ProcessEnv] {
+        &self.env[..self.envc]
+    }
+}
+
+enum LinkedChildInvocationError {
+    MissingProgram,
+    TooManyArguments,
+    TooManyEnvVars,
+}
+
+fn linked_split_env_assignment(token: &str) -> Option<(&str, &str)> {
+    let bytes = token.as_bytes();
+    let mut split = 0usize;
+    while split < bytes.len() && bytes[split] != b'=' {
+        split += 1;
+    }
+    if split == 0 || split >= bytes.len() {
+        return None;
+    }
+    let name = &bytes[..split];
+    if !kernel_program::program_env_name_is_valid(name) {
+        return None;
+    }
+    Some((&token[..split], &token[split + 1..]))
+}
+
+fn linked_program_name_after_env<'a>(argv: &ProgramArgv<'a>, start: usize) -> Option<&'a str> {
+    let mut source = start;
+    while source < argv.argc() {
+        let token = argv.arg(source).unwrap_or("");
+        if linked_split_env_assignment(token).is_none() {
+            return Some(token);
+        }
+        source += 1;
+    }
+    None
+}
+
+fn linked_child_invocation(
+    argv: &ProgramArgv<'_>,
+    start: usize,
+) -> Result<LinkedChildInvocation, LinkedChildInvocationError> {
+    let mut child = LinkedChildInvocation::empty();
+    let mut source = start;
+    while source < argv.argc() {
+        let token = argv.arg(source).unwrap_or("");
+        let Some((name, value)) = linked_split_env_assignment(token) else {
+            break;
+        };
+        if child.envc >= child.env.len() {
+            return Err(LinkedChildInvocationError::TooManyEnvVars);
+        }
+        child.env[child.envc] = ProcessEnv::from_pair(name, value);
+        child.envc += 1;
+        source += 1;
+    }
+
+    if source >= argv.argc() {
+        return Err(LinkedChildInvocationError::MissingProgram);
+    }
+
+    while source < argv.argc() {
+        if child.argc >= child.argv.len() {
+            return Err(LinkedChildInvocationError::TooManyArguments);
+        }
+        child.argv[child.argc] = ProcessArg::from_str(argv.arg(source).unwrap_or(""));
+        child.argc += 1;
+        source += 1;
+    }
+
+    Ok(child)
+}
+
+fn linked_implicit_child_invocation(
+    argv: &ProgramArgv<'_>,
+    start: usize,
+    program: &'static str,
+) -> Result<LinkedChildInvocation, LinkedChildInvocationError> {
+    let mut child = LinkedChildInvocation::empty();
+    child.argv[0] = ProcessArg::from_str(program);
+    child.argc = 1;
+
+    let mut source = start;
+    while source < argv.argc() {
+        let token = argv.arg(source).unwrap_or("");
+        let Some((name, value)) = linked_split_env_assignment(token) else {
+            break;
+        };
+        if child.envc >= child.env.len() {
+            return Err(LinkedChildInvocationError::TooManyEnvVars);
+        }
+        child.env[child.envc] = ProcessEnv::from_pair(name, value);
+        child.envc += 1;
+        source += 1;
+    }
+
+    while source < argv.argc() {
+        if child.argc >= child.argv.len() {
+            return Err(LinkedChildInvocationError::TooManyArguments);
+        }
+        child.argv[child.argc] = ProcessArg::from_str(argv.arg(source).unwrap_or(""));
+        child.argc += 1;
+        source += 1;
+    }
+
+    Ok(child)
+}
+
+fn linked_fs_error_word(error: FsError) -> &'static [u8] {
+    match error.code() {
+        7 => b"not found",
+        8 => b"not a directory",
+        9 => b"busy",
+        10 => b"file too large",
+        11 => b"io error",
+        _ => b"open failed",
+    }
+}
 
 /// Returns the `/bin` program catalog for this image.
 #[must_use]
@@ -369,7 +3446,7 @@ pub fn write_program_help(
     syscalls: &mut ProgramSyscalls<'_, '_, '_>,
 ) -> ProgramStatus {
     let Some(program_name) = program_name else {
-        write_help_catalog(syscalls);
+        write_detailed_help_catalog(syscalls);
         return ProgramStatus::Ok;
     };
     let Some((_, program)) = kernel_program::resolve_argv0(syscalls.programs(), program_name)
@@ -385,171 +3462,44 @@ pub fn write_program_help(
 
 pub fn write_vfs_file(file: File, syscalls: &mut ProgramSyscalls<'_, '_, '_>) {
     match file {
-        File::BinProgram(index) => write_program_file(syscalls, index),
-        File::BootHelp => write_detailed_help_catalog(syscalls),
-        File::BootProfile => write_boot_profile(syscalls),
-        File::BootImage => write_boot_image(syscalls),
+        File::BinProgram(index) => syscalls.write_program_file_metadata(index),
+        File::BootHelp => {
+            let _ = syscalls.write_program_help(None);
+        }
+        File::BootProfile => syscalls.write_boot_profile(),
+        File::BootImage => syscalls.write_boot_image(),
         File::BootInput => syscalls.write_boot_input(),
         File::BootProof => syscalls.write_boot_proof(),
-        File::BootProbes => write_probe_catalog(syscalls),
+        File::BootProbes => syscalls.write_probe_catalog(),
+        File::BootPayloads => syscalls.write_boot_payloads(),
         File::BootStatus => syscalls.write_boot_status(),
-        File::BootMemory => write_boot_memory(syscalls),
-        File::BootDevices => write_boot_devices(syscalls),
+        File::BootMemory => syscalls.write_boot_memory(),
+        File::BootDevices => syscalls.write_boot_devices(),
         File::BootMounts => syscalls.write_mount_table(),
         File::DumpStatus => syscalls.write_dump_status(),
         File::DumpSnapshot => syscalls.write_dump_snapshot(),
         File::LogDmesg => syscalls.write_kernel_log_view(),
-        File::LogEvents => write_event_table(syscalls),
+        File::LogEvents => syscalls.write_kernel_event_table(),
         File::LogStats => syscalls.write_kernel_log_stats(),
         File::ProcExecs => syscalls.write_exec_load_table(),
+        File::ProcAddressSpaces => syscalls.write_address_space_table(),
+        File::ProcPageTables => syscalls.write_address_space_page_table_table(),
+        File::ProcPages => syscalls.write_address_space_page_table_entry_table(),
+        File::ProcMemoryObjects => syscalls.write_address_space_object_table(),
         File::ProcMedia => syscalls.write_source_media_table(),
         File::ProcPending => syscalls.write_pending_exec_table(),
         File::ProcProcesses => syscalls.write_process_table(),
+        File::ProcContinuations => syscalls.write_syscall_continuation_table(),
         File::ProcSelf => syscalls.write_current_process(),
+        File::ProcSession => syscalls.write_session_state(),
+        File::ProcServices => syscalls.write_service_table(),
         File::ProcScheduler => syscalls.write_scheduler_state(),
         File::ProcSources => syscalls.write_source_store_table(),
         File::ProcSyscalls => syscalls.write_syscall_table(),
         File::ProcTasks => syscalls.write_task_table(),
         File::ProcWaits => syscalls.write_wait_table(),
-        File::DevDevice(index) => {
-            if let Some(device) = syscalls.devices().get(index) {
-                write_device_row(syscalls, device, index);
-            }
-        }
-    }
-}
-
-fn write_program_file(syscalls: &ProgramSyscalls<'_, '_, '_>, id: usize) {
-    let Some((_, entry)) = kernel_program::find_by_id(syscalls.programs(), id) else {
-        syscalls.stdout_line("program metadata unavailable");
-        return;
-    };
-    syscalls.stdout_bytes(b"program=");
-    syscalls.stdout_bytes(entry.name.as_bytes());
-    syscalls.stdout_bytes(b"\npath=");
-    syscalls.stdout_bytes(entry.path.as_bytes());
-    syscalls.stdout_bytes(b"\nsummary=");
-    syscalls.stdout_bytes(entry.summary.as_bytes());
-    syscalls.stdout_bytes(b"\ntype=bin\nloader=");
-    syscalls.stdout_bytes(entry.image_kind().as_str().as_bytes());
-    syscalls.stdout_bytes(b"\nentry_fn=");
-    syscalls.stdout_bytes(entry.entry_name.as_bytes());
-    syscalls.stdout_bytes(b"\n");
-}
-
-fn write_boot_profile(syscalls: &ProgramSyscalls<'_, '_, '_>) {
-    syscalls.stdout_bytes(b"profile=");
-    syscalls.stdout_bytes(syscalls.profile_name().as_bytes());
-    syscalls.stdout_bytes(b"\nlaunch=");
-    write_bool_word(syscalls, syscalls.launch_enabled());
-    syscalls.stdout_bytes(b"\npayloads=");
-    write_u64_dec(syscalls, syscalls.payloads().len() as u64);
-    syscalls.stdout_bytes(b"\nprompt=");
-    syscalls.stdout_bytes(syscalls.prompt().as_bytes());
-    let input = syscalls.console_input();
-    syscalls.stdout_bytes(b"\ninput=");
-    syscalls.stdout_bytes(input.source.as_bytes());
-    syscalls.stdout_bytes(b"\ninput_mode=");
-    syscalls.stdout_bytes(input.mode.as_bytes());
-    syscalls.stdout_bytes(b"\nusb_keyboard=");
-    syscalls.stdout_bytes(input_state_word(input.usb_keyboard));
-    syscalls.stdout_bytes(b"\n");
-}
-
-fn write_boot_image(syscalls: &ProgramSyscalls<'_, '_, '_>) {
-    let image = syscalls.boot_image();
-    syscalls.stdout_bytes(b"package=");
-    syscalls.stdout_bytes(image.package.as_bytes());
-    syscalls.stdout_bytes(b"\nversion=");
-    syscalls.stdout_bytes(image.version.as_bytes());
-    syscalls.stdout_bytes(b"\ntarget=");
-    syscalls.stdout_bytes(image.target.as_bytes());
-    syscalls.stdout_bytes(b"\nselected_profile=");
-    syscalls.stdout_bytes(image.selected_profile.as_bytes());
-    syscalls.stdout_bytes(b"\nprofile_request=");
-    syscalls.stdout_bytes(image.profile_request.as_bytes());
-    syscalls.stdout_bytes(b"\nbootline=");
-    syscalls.stdout_bytes(image.bootline.as_bytes());
-    syscalls.stdout_bytes(b"\nlaunch_profile_feature=");
-    syscalls.stdout_bytes(image.launch_profile_feature.as_bytes());
-    syscalls.stdout_bytes(b"\n");
-}
-
-fn write_boot_memory(syscalls: &ProgramSyscalls<'_, '_, '_>) {
-    let info = syscalls.boot_info();
-    write_kv_num(syscalls, "ranges", info.memory.range_count() as u64);
-    write_kv_num(syscalls, "usable_bytes", info.memory.usable_bytes());
-    write_kv_num(syscalls, "cpu_count", info.cpu_count as u64);
-    write_kv_num(syscalls, "heap_total_bytes", info.heap_total_bytes);
-    write_kv_num(syscalls, "cache_line_bytes", info.cache_line_bytes as u64);
-}
-
-fn write_boot_devices(syscalls: &ProgramSyscalls<'_, '_, '_>) {
-    let devices = syscalls.devices();
-    let mut index = 0usize;
-    while index < devices.len() {
-        write_device_row(syscalls, &devices[index], index);
-        index += 1;
-    }
-}
-
-fn write_event_table(syscalls: &ProgramSyscalls<'_, '_, '_>) {
-    let mut records = [klog::EMPTY_EVENT_RECORD; klog::MAX_EVENTS];
-    let count = syscalls.snapshot_kernel_events(&mut records);
-    syscalls.stdout_line("events:");
-    let mut index = 0usize;
-    while index < count {
-        let record = records[index];
-        syscalls.stdout_bytes(b"- seq=");
-        write_u64_dec(syscalls, record.seq as u64);
-        syscalls.stdout_bytes(b" boot=");
-        write_u64_dec(syscalls, record.boot_id as u64);
-        syscalls.stdout_bytes(b" session=");
-        write_u64_dec(syscalls, record.session_id as u64);
-        syscalls.stdout_bytes(b" source=");
-        syscalls.stdout_bytes(record.source.as_bytes());
-        syscalls.stdout_bytes(b" component=");
-        syscalls.stdout_bytes(record.component.as_bytes());
-        syscalls.stdout_bytes(b" severity=");
-        syscalls.stdout_bytes(record.severity.as_bytes());
-        syscalls.stdout_bytes(b" kind=");
-        syscalls.stdout_bytes(record.kind.as_bytes());
-        syscalls.stdout_bytes(b" pid=");
-        write_u64_dec(syscalls, record.process_id as u64);
-        syscalls.stdout_bytes(b" task=");
-        write_u64_dec(syscalls, record.task_id as u64);
-        syscalls.stdout_bytes(b"\n");
-        index += 1;
-    }
-}
-
-fn write_device_row(syscalls: &ProgramSyscalls<'_, '_, '_>, device: &DeviceEntry, index: usize) {
-    syscalls.stdout_bytes(b"- [");
-    write_u64_dec(syscalls, index as u64);
-    syscalls.stdout_bytes(b"] ");
-    syscalls.stdout_bytes(vfs::device_class_name(device.class).as_bytes());
-    syscalls.stdout_bytes(b" compat=");
-    syscalls.stdout_bytes(device.compatible.as_bytes());
-    syscalls.stdout_bytes(b" mmio=");
-    write_u64_hex(syscalls, device.mmio_base);
-    syscalls.stdout_bytes(b"/");
-    write_u64_hex(syscalls, device.mmio_len);
-    syscalls.stdout_bytes(b" irq=");
-    write_u64_dec(syscalls, device.irq as u64);
-    syscalls.stdout_bytes(b"\n");
-}
-
-fn write_probe_catalog(syscalls: &ProgramSyscalls<'_, '_, '_>) {
-    match syscalls.run_hardware_probe("help") {
-        Some(HardwareProbeResult::Handled) => {}
-        Some(HardwareProbeResult::UnknownTarget) => {
-            syscalls.stdout_line("probe targets:");
-            syscalls.stdout_line("  unknown");
-        }
-        None => {
-            syscalls.stdout_line("probe targets:");
-            syscalls.stdout_line("  none");
-        }
+        File::DevTty => {}
+        File::DevDevice(index) => syscalls.write_device_file_metadata(index),
     }
 }
 
@@ -660,25 +3610,121 @@ fn write_program_help_entry(
         BIN_SCHED => write_help_line(
             syscalls,
             prefix,
-            "sched [status|tick|yield] - inspect scheduler state, tick, or yield current task",
+            "sched [status|tick|yield|sleep TICKS] - inspect scheduler state, tick, yield, or sleep current task",
         ),
         BIN_PROC => write_help_line(
             syscalls,
             prefix,
-            "proc [processes|execs|media|pending|self|sources|tasks|waits|syscalls|scheduler|exec PROGRAM [ARG...]|spawn PROGRAM [ARG...]|block PROGRAM [ARG...]|wait PID|wake PID|kill PID|install-bin NAME ok|error|install-payload NAME ready|failed|install-bin-media NAME|install-payload-media NAME] - inspect process state",
+            "proc [processes|execs|address-spaces|page-tables|pages|memory-objects|media|pending|self|session|services|sources|tasks|waits|syscalls|continuations|scheduler] - inspect process state",
         ),
         BIN_PROBE => write_help_line(
             syscalls,
             prefix,
             "probe target - run lower hardware probe; try `probe help` or `cat /boot/probes`",
         ),
-        BIN_LAUNCH => {
-            write_help_line(syscalls, prefix, "launch [payload] - list or run registered payloads")
-        }
-        BIN_REOVIM => {
-            write_help_line(syscalls, prefix, "reovim - run the default reovim payload alias")
-        }
+        BIN_LAUNCH => write_help_line(
+            syscalls,
+            prefix,
+            "launch [NAME=VALUE ...] [payload] [arg...] - list or run registered payloads",
+        ),
+        BIN_REOVIM => write_help_line(
+            syscalls,
+            prefix,
+            "reovim [NAME=VALUE ...] [arg...] - run the default reovim payload alias",
+        ),
+        BIN_HELLO => write_help_line(syscalls, prefix, "hello - print a linked-bin syscall proof"),
         BIN_HALT => write_help_line(syscalls, prefix, "halt - request root daemon shutdown"),
+        BIN_PS => write_help_line(syscalls, prefix, "ps - print retained process table"),
+        BIN_KILL => write_help_line(
+            syscalls,
+            prefix,
+            "kill PID - terminate a retained ready or blocked process",
+        ),
+        BIN_WAKE => {
+            write_help_line(syscalls, prefix, "wake PID - wake an operator-blocked process")
+        }
+        BIN_BLOCK => write_help_line(
+            syscalls,
+            prefix,
+            "block [NAME=VALUE ...] PROGRAM [ARG...] - spawn a retained blocked process",
+        ),
+        BIN_SPAWN => write_help_line(
+            syscalls,
+            prefix,
+            "spawn [NAME=VALUE ...] PROGRAM [ARG...] - spawn a retained ready process",
+        ),
+        BIN_SLEEP => write_help_line(
+            syscalls,
+            prefix,
+            "sleep TICKS [NAME=VALUE ...] PROGRAM [ARG...] - spawn a retained process blocked until scheduler ticks",
+        ),
+        BIN_WAIT => write_help_line(syscalls, prefix, "wait PID - wait for a retained process"),
+        BIN_WAIT_TICKS => write_help_line(
+            syscalls,
+            prefix,
+            "wait-ticks TICKS PID - wait with scheduler ticks for a retained process",
+        ),
+        BIN_EXEC => write_help_line(
+            syscalls,
+            prefix,
+            "exec [NAME=VALUE ...] PROGRAM [ARG...] - replace current process image",
+        ),
+        BIN_SERVICE_STOP => write_help_line(
+            syscalls,
+            prefix,
+            "service-stop NAME - stop a retained resident service",
+        ),
+        BIN_SERVICE_START => write_help_line(
+            syscalls,
+            prefix,
+            "service-start NAME - start a retained payload service",
+        ),
+        BIN_SERVICE_RESTART => write_help_line(
+            syscalls,
+            prefix,
+            "service-restart NAME - restart a retained payload service",
+        ),
+        BIN_SESSION => {
+            write_help_line(syscalls, prefix, "session - print active shell session state")
+        }
+        BIN_SERVICES => {
+            write_help_line(syscalls, prefix, "services - print retained service table")
+        }
+        BIN_TASKS => write_help_line(syscalls, prefix, "tasks - print retained task table"),
+        BIN_WAITS => write_help_line(syscalls, prefix, "waits - print retained wait table"),
+        BIN_SYSCALLS => {
+            write_help_line(syscalls, prefix, "syscalls - print retained syscall trace")
+        }
+        BIN_CONTINUATIONS => {
+            write_help_line(syscalls, prefix, "continuations - print active syscall continuations")
+        }
+        BIN_EXECS => write_help_line(syscalls, prefix, "execs - print executable admission table"),
+        BIN_PENDING => {
+            write_help_line(syscalls, prefix, "pending - print pending executable table")
+        }
+        BIN_SOURCES => write_help_line(syscalls, prefix, "sources - print executable source table"),
+        BIN_MEDIA => write_help_line(syscalls, prefix, "media - print executable media status"),
+        BIN_SELF => write_help_line(syscalls, prefix, "self - print current process state"),
+        BIN_INSTALL_BIN => write_help_line(
+            syscalls,
+            prefix,
+            "install-bin NAME ok|error - install a status-only /bin source image",
+        ),
+        BIN_INSTALL_PAYLOAD => write_help_line(
+            syscalls,
+            prefix,
+            "install-payload NAME ready|failed - install a status-only payload source image",
+        ),
+        BIN_INSTALL_BIN_MEDIA => write_help_line(
+            syscalls,
+            prefix,
+            "install-bin-media NAME - install a /bin source image from source media",
+        ),
+        BIN_INSTALL_PAYLOAD_MEDIA => write_help_line(
+            syscalls,
+            prefix,
+            "install-payload-media NAME - install a payload source image from source media",
+        ),
         _ => {
             syscalls.stdout_bytes(prefix);
             syscalls.stdout_bytes(program.name.as_bytes());
@@ -691,83 +3737,4 @@ fn write_program_help_entry(
 fn write_help_line(syscalls: &ProgramSyscalls<'_, '_, '_>, prefix: &[u8], line: &str) {
     syscalls.stdout_bytes(prefix);
     syscalls.stdout_line(line);
-}
-
-fn input_state_word(state: BootCheckState) -> &'static [u8] {
-    match state {
-        BootCheckState::Ok => b"ready",
-        BootCheckState::Warn => b"unavailable",
-    }
-}
-
-fn write_bool_word(syscalls: &ProgramSyscalls<'_, '_, '_>, value: bool) {
-    syscalls.stdout_bytes(if value { b"enabled" } else { b"disabled" });
-}
-
-fn write_kv_num(syscalls: &ProgramSyscalls<'_, '_, '_>, key: &str, value: u64) {
-    syscalls.stdout_bytes(key.as_bytes());
-    syscalls.stdout_bytes(b"=");
-    write_u64_dec(syscalls, value);
-    syscalls.stdout_bytes(b"\n");
-}
-
-fn write_u64_dec(syscalls: &ProgramSyscalls<'_, '_, '_>, value: u64) {
-    let mut buf = [0u8; 24];
-    let len = u64_to_dec(value, &mut buf);
-    syscalls.stdout_bytes(&buf[..len]);
-}
-
-fn write_u64_hex(syscalls: &ProgramSyscalls<'_, '_, '_>, value: u64) {
-    let mut buf = [0u8; 18];
-    let len = u64_to_hex(value, &mut buf[2..]);
-    buf[0] = b'0';
-    buf[1] = b'x';
-    syscalls.stdout_bytes(&buf[..2 + len]);
-}
-
-fn u64_to_dec(mut value: u64, out: &mut [u8]) -> usize {
-    if value == 0 {
-        out[0] = b'0';
-        return 1;
-    }
-
-    let mut tmp = [0u8; 20];
-    let mut len = 0usize;
-    while value > 0 {
-        tmp[len] = b'0' + (value % 10) as u8;
-        len += 1;
-        value /= 10;
-    }
-
-    let mut i = 0usize;
-    while len > 0 {
-        len -= 1;
-        out[i] = tmp[len];
-        i += 1;
-    }
-    i
-}
-
-fn u64_to_hex(mut value: u64, out: &mut [u8]) -> usize {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    if value == 0 {
-        out[0] = b'0';
-        return 1;
-    }
-
-    let mut tmp = [0u8; 16];
-    let mut len = 0usize;
-    while value > 0 {
-        tmp[len] = HEX[(value & 0xf) as usize];
-        len += 1;
-        value >>= 4;
-    }
-
-    let mut i = 0usize;
-    while len > 0 {
-        len -= 1;
-        out[i] = tmp[len];
-        i += 1;
-    }
-    i
 }

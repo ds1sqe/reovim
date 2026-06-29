@@ -1,4 +1,0 @@
-reovim-source-v1
-reject-argc-greater 1 init: too many arguments
-request-shell-target /bin/sh
-write-stdout-hex 696e69743a20757365726c616e642073657276696365732072656164790a

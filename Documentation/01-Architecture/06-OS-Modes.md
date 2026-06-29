@@ -256,8 +256,8 @@ tty/CLI, and launches descriptor-resolved payload source images behind
 process-visible `/payload/*` lifecycle records with explicit ready/running/exit
 state bookkeeping, bounded scheduler queue state exposed through
 `/proc/scheduler`, parent/child wait records exposed through `/proc/waits`,
-spawn-only `/bin` child admission through `/bin/proc spawn PROGRAM [ARG...]`,
-retained process wait-by-pid through `/bin/proc wait PID`,
+retained process control through linked `/bin/spawn`, `/bin/wait`,
+`/bin/block`, `/bin/wake`, `/bin/sleep`, `/bin/wait-ticks`, and `/bin/kill`,
 Reovim standard stream descriptors attached to each `/bin` process (`stdin=0`,
 `stdout=1`, `stderr=2`), descriptor-shaped `fd-write` syscall rows for stderr
 and rejected writes, descriptor-shaped `fd-read` rows for stdin EOF/probe
@@ -266,23 +266,29 @@ producer path, a separate `/bin/read` program over the current root-console
 line callback through `tty-read-line`, and no second executable class outside
 `/bin` for stateful operator programs such as `cd`; those still resolve as
 `/bin/*` programs.
+`/bin/proc` is now linked read-only compatibility over existing `/proc/*`
+pseudo-files. The former `proc exec PROGRAM [ARG...]` helper is retired; linked
+`/bin/exec [NAME=VALUE ...] PROGRAM [ARG...]` owns same-PID image replacement
+through the process-domain `execve` wrapper, including bounded replacement env
+metadata.
 Current `/bin` and payload descriptors name loader-visible source-store paths,
 while image-owned source tables carry the default byte-backed source artifacts.
 A bounded runtime-installed source overlay is checked before those image tables,
 and `/proc/sources` plus `/bin/proc sources` report `origin=image|installed`.
-`/bin/proc install-bin NAME ok|error` and
-`/bin/proc install-payload NAME ready|failed` cross a typed `source-install`
-syscall and write status-only source images into that overlay for `/bin/*` and
-`/payload/*` descriptors. `/bin/proc install-bin-media NAME` and
-`/bin/proc install-payload-media NAME` first cross a typed `source-media-read`
-syscall against the kernel source-media block target, verify a bounded
-`reovim-source-media-v1` envelope against the requested namespace/path plus
-payload length/checksum, and then write only the enclosed source bytes into the
-same overlay. This is the program-facing install path for current source
-artifacts. Exec admission also uses the same checked source-media envelope as
-an on-demand fallback when a descriptor resolves but its source artifact is
-missing. Offset zero may contain a bounded `reovim-source-media-catalog-v1`
-whose entries point at checked source artifacts elsewhere on the same block
+Linked `/bin/install-bin NAME ok|error` and
+`/bin/install-payload NAME ready|failed` cross typed source-control syscalls and
+write status-only source images into that overlay for `/bin/*` and `/payload/*`
+descriptors. Linked `/bin/install-bin-media NAME` and
+`/bin/install-payload-media NAME` first read the kernel source-media block
+target, verify a bounded `reovim-source-media-v1` envelope against the requested
+namespace/path plus payload length/checksum, and then write only the enclosed
+source bytes into the same overlay. The old `/bin/proc install-*`
+compatibility subcommands are retired; source installation is now exposed as
+real `/bin/install-*` user programs over `uapi::source`. Exec admission also
+uses the same checked source-media envelope as an on-demand fallback when a
+descriptor resolves but its source artifact is missing. Offset zero may contain
+a bounded `reovim-source-media-catalog-v1` whose entries point at checked source
+artifacts elsewhere on the same block
 target; without a catalog, exec falls back to the offset-zero checked artifact.
 Successful fallback records `reason=loaded-source-media`. This is not yet
 FAT/SD-card filesystem loading.

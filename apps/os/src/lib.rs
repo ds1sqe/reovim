@@ -9,5 +9,5 @@
 
 #![no_std]
 
-pub mod boot;
 pub mod bin;
+pub mod boot;

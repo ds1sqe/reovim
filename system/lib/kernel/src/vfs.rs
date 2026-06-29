@@ -22,6 +22,8 @@ pub enum VfsError {
     NotFound,
     /// Traversal tried to enter a file-like node.
     NotDirectory,
+    /// The node exists but does not support writes.
+    NotWritable,
     /// A VFS file read buffer is already in use by this process.
     Busy,
     /// The generated file content exceeded the bounded read buffer.
@@ -31,7 +33,7 @@ pub enum VfsError {
 }
 
 /// A bounded normalized absolute path.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PathBuf {
     bytes: [u8; MAX_PATH_BYTES],
     len: usize,
@@ -190,6 +192,8 @@ pub enum File {
     BootProof,
     /// `/boot/probes`.
     BootProbes,
+    /// `/boot/payloads`.
+    BootPayloads,
     /// `/boot/status`.
     BootStatus,
     /// `/boot/memory`.
@@ -210,14 +214,28 @@ pub enum File {
     DumpSnapshot,
     /// `/proc/processes`.
     ProcProcesses,
+    /// `/proc/continuations`.
+    ProcContinuations,
     /// `/proc/execs`.
     ProcExecs,
+    /// `/proc/address-spaces`.
+    ProcAddressSpaces,
+    /// `/proc/page-tables`.
+    ProcPageTables,
+    /// `/proc/pages`.
+    ProcPages,
+    /// `/proc/memory-objects`.
+    ProcMemoryObjects,
     /// `/proc/pending`.
     ProcPending,
     /// `/proc/media`.
     ProcMedia,
     /// `/proc/self`.
     ProcSelf,
+    /// `/proc/session`.
+    ProcSession,
+    /// `/proc/services`.
+    ProcServices,
     /// `/proc/scheduler`.
     ProcScheduler,
     /// `/proc/sources`.
@@ -228,6 +246,8 @@ pub enum File {
     ProcTasks,
     /// `/proc/waits`.
     ProcWaits,
+    /// `/dev/tty`.
+    DevTty,
     /// `/dev/{class}{ordinal}`.
     DevDevice(usize),
 }
@@ -288,6 +308,7 @@ pub fn lookup(
         "/boot/input" => return Ok(Node::File(File::BootInput)),
         "/boot/proof" => return Ok(Node::File(File::BootProof)),
         "/boot/probes" => return Ok(Node::File(File::BootProbes)),
+        "/boot/payloads" => return Ok(Node::File(File::BootPayloads)),
         "/boot/status" => return Ok(Node::File(File::BootStatus)),
         "/boot/memory" => return Ok(Node::File(File::BootMemory)),
         "/boot/devices" => return Ok(Node::File(File::BootDevices)),
@@ -298,15 +319,23 @@ pub fn lookup(
         "/log/events" => return Ok(Node::File(File::LogEvents)),
         "/log/stats" => return Ok(Node::File(File::LogStats)),
         "/proc/processes" => return Ok(Node::File(File::ProcProcesses)),
+        "/proc/continuations" => return Ok(Node::File(File::ProcContinuations)),
         "/proc/execs" => return Ok(Node::File(File::ProcExecs)),
+        "/proc/address-spaces" => return Ok(Node::File(File::ProcAddressSpaces)),
+        "/proc/page-tables" => return Ok(Node::File(File::ProcPageTables)),
+        "/proc/pages" => return Ok(Node::File(File::ProcPages)),
+        "/proc/memory-objects" => return Ok(Node::File(File::ProcMemoryObjects)),
         "/proc/pending" => return Ok(Node::File(File::ProcPending)),
         "/proc/media" => return Ok(Node::File(File::ProcMedia)),
         "/proc/self" => return Ok(Node::File(File::ProcSelf)),
+        "/proc/session" => return Ok(Node::File(File::ProcSession)),
+        "/proc/services" => return Ok(Node::File(File::ProcServices)),
         "/proc/scheduler" => return Ok(Node::File(File::ProcScheduler)),
         "/proc/sources" => return Ok(Node::File(File::ProcSources)),
         "/proc/syscalls" => return Ok(Node::File(File::ProcSyscalls)),
         "/proc/tasks" => return Ok(Node::File(File::ProcTasks)),
         "/proc/waits" => return Ok(Node::File(File::ProcWaits)),
+        "/dev/tty" => return Ok(Node::File(File::DevTty)),
         _ => {}
     }
 
@@ -324,6 +353,13 @@ pub fn lookup(
 
     if let Some(rest) = path.strip_prefix("/dev/") {
         let (name, tail) = split_first(rest);
+        if name == "tty" {
+            return if tail.is_empty() {
+                Ok(Node::File(File::DevTty))
+            } else {
+                Err(VfsError::NotDirectory)
+            };
+        }
         if let Some(index) = find_device(devices, name) {
             return if tail.is_empty() {
                 Ok(Node::File(File::DevDevice(index)))
@@ -341,6 +377,7 @@ pub fn lookup(
         "/boot/input/",
         "/boot/proof/",
         "/boot/probes/",
+        "/boot/payloads/",
         "/boot/status/",
         "/boot/memory/",
         "/boot/devices/",
@@ -351,10 +388,17 @@ pub fn lookup(
         "/log/events/",
         "/log/stats/",
         "/proc/processes/",
+        "/proc/continuations/",
         "/proc/execs/",
+        "/proc/address-spaces/",
+        "/proc/page-tables/",
+        "/proc/pages/",
+        "/proc/memory-objects/",
         "/proc/pending/",
         "/proc/media/",
         "/proc/self/",
+        "/proc/session/",
+        "/proc/services/",
         "/proc/scheduler/",
         "/proc/sources/",
         "/proc/syscalls/",
