@@ -244,6 +244,8 @@ analysis="$("$ANALYZER" \
     "$pass_dump")"
 
 expect_contains "$analysis" "dump_analysis=ok" "success marker"
+expect_contains "$analysis" "machine_result=live-dump-pass" "live machine result"
+expect_contains "$analysis" "machine_result_persistent=false" "non-persistent machine result marker"
 expect_contains "$analysis" "format=reovim-dump-v1" "format row"
 expect_contains "$analysis" "package=reovim-os" "package row"
 expect_contains "$analysis" "target=aarch64-unknown-none" "target row"
@@ -278,6 +280,8 @@ persistent_analysis="$("$ANALYZER" \
     --require-persistent-proof \
     "$persistent_dump")"
 expect_contains "$persistent_analysis" "persistent_dump_proof=true" "persistent proof marker"
+expect_contains "$persistent_analysis" "machine_result=post-poweroff-dump-pass" "persistent machine result"
+expect_contains "$persistent_analysis" "machine_result_persistent=true" "persistent machine result marker"
 expect_contains "$persistent_analysis" "last_sync_status=written" "persistent last sync status"
 
 active_continuation_analysis="$("$ANALYZER" \

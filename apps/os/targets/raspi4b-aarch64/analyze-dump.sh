@@ -374,6 +374,13 @@ fi
 if [ "$require_persistent_proof" -eq 1 ] && [ "$persistent_dump_proof" != "true" ]; then
     fail "persistent dump proof is not satisfied"
 fi
+if [ "$persistent_dump_proof" = "true" ]; then
+    machine_result="post-poweroff-dump-pass"
+    machine_result_persistent="true"
+else
+    machine_result="live-dump-pass"
+    machine_result_persistent="false"
+fi
 
 for section in boot devices proof dump-sync panic events processes services execs pending scheduler syscalls continuations tasks waits; do
     require_section "$section"
@@ -391,6 +398,8 @@ if [ "$syscall_continuation_records" -gt 0 ]; then
 fi
 
 printf 'dump_analysis=ok\n'
+printf 'machine_result=%s\n' "$machine_result"
+printf 'machine_result_persistent=%s\n' "$machine_result_persistent"
 printf 'dump_file=%s\n' "$dump_file"
 printf 'format=%s\n' "$format"
 printf 'boot_id=%s\n' "$boot_id"

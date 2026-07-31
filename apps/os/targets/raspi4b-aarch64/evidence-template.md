@@ -248,6 +248,9 @@ Mounted bootfs directory analysis requires exactly one supported artifact path:
 `reovim/dump.txt`. If `syscall_continuation_records` is nonzero, analyzer
 success also proves a parseable `continuations:` row with explicit
 `memory=` policy and a structured `syscall-continue-blocked` event row.
+The analyzer reports `machine_result=live-dump-pass` for copied live snapshots
+and `machine_result=post-poweroff-dump-pass` only when checked persistent
+write/read-back proof is present.
 
 Paste analyzer output, if available:
 

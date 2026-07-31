@@ -1,8 +1,9 @@
-//! In-memory dump status for post-boot diagnostics.
+//! Dump status, artifact encoding, and explicit diagnostic-storage sync.
 //!
-//! Persistent dump storage is intentionally not claimed here. This module only
-//! summarizes the live in-memory state that a later block/fs-backed dump writer
-//! will flush to removable media.
+//! The live status path summarizes retained in-memory state. Persistent proof is
+//! claimed only when an explicit diagnostic block target is installed and a dump
+//! sync writes, flushes, reads back, byte-compares, and parses the artifact.
+//! Targets without that durability/read-back boundary fail closed.
 
 use {
     crate::{block, exec, klog, mm, proc, sched, service, syscall},
@@ -17,7 +18,7 @@ use {
 /// Maximum bytes needed by the current dump snapshot header.
 pub const MAX_SNAPSHOT_HEADER_BYTES: usize = 1536;
 /// Maximum bytes in one bounded dump artifact.
-pub const MAX_DUMP_ARTIFACT_BYTES: usize = 192 * 1024;
+pub const MAX_DUMP_ARTIFACT_BYTES: usize = 256 * 1024;
 /// Maximum device inventory rows retained in one bounded dump artifact.
 pub const MAX_DUMP_DEVICE_RECORDS: usize = 16;
 
@@ -379,6 +380,25 @@ unsafe impl Sync for LastSyncCell {}
 static LAST_SYNC: LastSyncCell = LastSyncCell(UnsafeCell::new(NEVER_SYNCED_STATUS));
 static LAST_SYNC_LOCK: AtomicBool = AtomicBool::new(false);
 
+struct ReadbackCell(UnsafeCell<[u8; MAX_DUMP_ARTIFACT_BYTES]>);
+
+// SAFETY: access is serialized by `READBACK_LOCK`.
+unsafe impl Sync for ReadbackCell {}
+
+static READBACK: ReadbackCell = ReadbackCell(UnsafeCell::new([0u8; MAX_DUMP_ARTIFACT_BYTES]));
+static READBACK_LOCK: AtomicBool = AtomicBool::new(false);
+
+struct ArtifactCell(UnsafeCell<DumpArtifact>);
+
+// SAFETY: access is serialized by `ARTIFACT_LOCK`.
+unsafe impl Sync for ArtifactCell {}
+
+static ARTIFACT: ArtifactCell = ArtifactCell(UnsafeCell::new(DumpArtifact {
+    bytes: [0u8; MAX_DUMP_ARTIFACT_BYTES],
+    len: 0,
+}));
+static ARTIFACT_LOCK: AtomicBool = AtomicBool::new(false);
+
 struct LastSyncGuard;
 
 impl LastSyncGuard {
@@ -412,6 +432,60 @@ fn snapshot_last_sync() -> DumpSyncStatus {
 
 fn record_last_sync(status: DumpSyncStatus) {
     with_last_sync(|slot| *slot = status);
+}
+
+struct ReadbackGuard;
+
+impl ReadbackGuard {
+    fn acquire() -> Self {
+        while READBACK_LOCK
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            core::hint::spin_loop();
+        }
+        Self
+    }
+}
+
+impl Drop for ReadbackGuard {
+    fn drop(&mut self) {
+        READBACK_LOCK.store(false, Ordering::Release);
+    }
+}
+
+fn with_readback_buffer<R>(f: impl FnOnce(&mut [u8; MAX_DUMP_ARTIFACT_BYTES]) -> R) -> R {
+    let _guard = ReadbackGuard::acquire();
+    // SAFETY: `READBACK_LOCK` serializes access to the reusable readback buffer.
+    let bytes = unsafe { &mut *READBACK.0.get() };
+    f(bytes)
+}
+
+struct ArtifactGuard;
+
+impl ArtifactGuard {
+    fn acquire() -> Self {
+        while ARTIFACT_LOCK
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            core::hint::spin_loop();
+        }
+        Self
+    }
+}
+
+impl Drop for ArtifactGuard {
+    fn drop(&mut self) {
+        ARTIFACT_LOCK.store(false, Ordering::Release);
+    }
+}
+
+fn with_artifact_buffer<R>(f: impl FnOnce(&mut DumpArtifact) -> R) -> R {
+    let _guard = ArtifactGuard::acquire();
+    // SAFETY: `ARTIFACT_LOCK` serializes access to the reusable artifact buffer.
+    let artifact = unsafe { &mut *ARTIFACT.0.get() };
+    f(artifact)
 }
 
 fn finish_sync(status: DumpSyncStatus) -> DumpSyncStatus {
@@ -544,35 +618,39 @@ pub fn sync_with_context(
         capacity_bytes: sink_device.capacity_bytes,
     };
 
-    let (artifact, checksum) = match encode_context_artifact(sink, image, boot_info, devices) {
-        Ok(encoded) => encoded,
-        Err(status) => return finish_sync(status),
-    };
-    let first_sync = write_and_verify_artifact(sink_device, &artifact, checksum);
-    if !first_sync.written || !first_sync.verified {
-        return finish_sync(first_sync);
-    }
-
-    record_last_sync(first_sync);
-    let (final_artifact, final_checksum) =
-        match encode_context_artifact(sink, image, boot_info, devices) {
-            Ok(encoded) => encoded,
+    with_artifact_buffer(|artifact| {
+        let checksum = match encode_context_artifact_into(sink, image, boot_info, devices, artifact)
+        {
+            Ok(checksum) => checksum,
             Err(status) => return finish_sync(status),
         };
-    finish_sync(write_and_verify_artifact(sink_device, &final_artifact, final_checksum))
+        let first_sync = write_and_verify_artifact(sink_device, artifact, checksum);
+        if !first_sync.written || !first_sync.verified {
+            return finish_sync(first_sync);
+        }
+
+        record_last_sync(first_sync);
+        let checksum = match encode_context_artifact_into(sink, image, boot_info, devices, artifact)
+        {
+            Ok(checksum) => checksum,
+            Err(status) => return finish_sync(status),
+        };
+        finish_sync(write_and_verify_artifact(sink_device, artifact, checksum))
+    })
 }
 
-fn encode_context_artifact(
+fn encode_context_artifact_into(
     sink: block::BlockStatus,
     image: DumpImageIdentity,
     boot_info: BootInfo,
     devices: &[DeviceEntry],
-) -> Result<(DumpArtifact, u32), DumpSyncStatus> {
+    artifact: &mut DumpArtifact,
+) -> Result<u32, DumpSyncStatus> {
     let mut status = status_with_context(image, boot_info, devices);
     status.persistent_available = true;
     status.storage = sink.label;
     status.storage_capacity_bytes = sink.capacity_bytes;
-    let artifact = encode_status_artifact(status).map_err(|_| DumpSyncStatus {
+    encode_status_artifact_into(status, artifact).map_err(|_| DumpSyncStatus {
         attempted: true,
         persistent_available: true,
         storage: sink.label,
@@ -596,7 +674,7 @@ fn encode_context_artifact(
             reason: "encode-error",
         })?
         .checksum;
-    Ok((artifact, checksum))
+    Ok(checksum)
 }
 
 fn write_and_verify_artifact(
@@ -619,73 +697,74 @@ fn write_and_verify_artifact(
         };
     }
 
-    let mut readback = [0u8; MAX_DUMP_ARTIFACT_BYTES];
-    let read = block::read_selected_diagnostic_artifact(sink, &mut readback);
-    if !read.ok {
-        return DumpSyncStatus {
-            attempted: true,
-            persistent_available: true,
-            storage: read.storage,
-            storage_capacity_bytes: read.capacity_bytes,
-            written: false,
-            bytes_written: write.bytes,
-            checksum,
-            verified: false,
-            reason: read.reason,
-        };
-    }
-    if read.bytes != artifact.len {
-        return DumpSyncStatus {
-            attempted: true,
-            persistent_available: true,
-            storage: read.storage,
-            storage_capacity_bytes: read.capacity_bytes,
-            written: false,
-            bytes_written: write.bytes,
-            checksum,
-            verified: false,
-            reason: "readback-size-mismatch",
-        };
-    }
-    let read_len = read.bytes;
-    if &readback[..read_len] != artifact.as_bytes() {
-        return DumpSyncStatus {
-            attempted: true,
-            persistent_available: true,
-            storage: read.storage,
-            storage_capacity_bytes: read.capacity_bytes,
-            written: false,
-            bytes_written: write.bytes,
-            checksum,
-            verified: false,
-            reason: "readback-mismatch",
-        };
-    }
-    if parse_snapshot_header_prefix(&readback[..read_len]).is_err() {
-        return DumpSyncStatus {
-            attempted: true,
-            persistent_available: true,
-            storage: read.storage,
-            storage_capacity_bytes: read.capacity_bytes,
-            written: false,
-            bytes_written: write.bytes,
-            checksum,
-            verified: false,
-            reason: "readback-parse-failed",
-        };
-    }
+    with_readback_buffer(|readback| {
+        let read = block::read_selected_diagnostic_artifact(sink, readback);
+        if !read.ok {
+            return DumpSyncStatus {
+                attempted: true,
+                persistent_available: true,
+                storage: read.storage,
+                storage_capacity_bytes: read.capacity_bytes,
+                written: false,
+                bytes_written: write.bytes,
+                checksum,
+                verified: false,
+                reason: read.reason,
+            };
+        }
+        if read.bytes != artifact.len {
+            return DumpSyncStatus {
+                attempted: true,
+                persistent_available: true,
+                storage: read.storage,
+                storage_capacity_bytes: read.capacity_bytes,
+                written: false,
+                bytes_written: write.bytes,
+                checksum,
+                verified: false,
+                reason: "readback-size-mismatch",
+            };
+        }
+        let read_len = read.bytes;
+        if &readback[..read_len] != artifact.as_bytes() {
+            return DumpSyncStatus {
+                attempted: true,
+                persistent_available: true,
+                storage: read.storage,
+                storage_capacity_bytes: read.capacity_bytes,
+                written: false,
+                bytes_written: write.bytes,
+                checksum,
+                verified: false,
+                reason: "readback-mismatch",
+            };
+        }
+        if parse_snapshot_header_prefix(&readback[..read_len]).is_err() {
+            return DumpSyncStatus {
+                attempted: true,
+                persistent_available: true,
+                storage: read.storage,
+                storage_capacity_bytes: read.capacity_bytes,
+                written: false,
+                bytes_written: write.bytes,
+                checksum,
+                verified: false,
+                reason: "readback-parse-failed",
+            };
+        }
 
-    DumpSyncStatus {
-        attempted: true,
-        persistent_available: true,
-        storage: read.storage,
-        storage_capacity_bytes: read.capacity_bytes,
-        written: true,
-        bytes_written: write.bytes,
-        checksum,
-        verified: true,
-        reason: "written-readback-ok",
-    }
+        DumpSyncStatus {
+            attempted: true,
+            persistent_available: true,
+            storage: read.storage,
+            storage_capacity_bytes: read.capacity_bytes,
+            written: true,
+            bytes_written: write.bytes,
+            checksum,
+            verified: true,
+            reason: "written-readback-ok",
+        }
+    })
 }
 
 /// Encodes the current in-memory dump snapshot header.
@@ -788,11 +867,20 @@ pub fn encode_snapshot_artifact() -> Result<DumpArtifact, DumpEncodeError> {
 
 /// Encodes `status` plus retained diagnostic tables as a bounded dump artifact.
 pub fn encode_status_artifact(status: DumpStatus) -> Result<DumpArtifact, DumpEncodeError> {
-    let header = encode_status_header(status)?;
     let mut artifact = DumpArtifact {
         bytes: [0u8; MAX_DUMP_ARTIFACT_BYTES],
         len: 0,
     };
+    encode_status_artifact_into(status, &mut artifact)?;
+    Ok(artifact)
+}
+
+fn encode_status_artifact_into(
+    status: DumpStatus,
+    artifact: &mut DumpArtifact,
+) -> Result<(), DumpEncodeError> {
+    let header = encode_status_header(status)?;
+    artifact.len = 0;
     artifact.bytes[..header.len].copy_from_slice(header.as_bytes());
     artifact.len = header.len;
     {
@@ -818,7 +906,7 @@ pub fn encode_status_artifact(status: DumpStatus) -> Result<DumpArtifact, DumpEn
         write_wait_table(&mut writer)?;
         artifact.len = writer.finish();
     }
-    Ok(artifact)
+    Ok(())
 }
 
 /// Parses and verifies a bounded dump snapshot header.

@@ -771,6 +771,8 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "help media\n",
         "help self\n",
         "cat /boot/help\n",
+        "dump status\n",
+        "dump sync\n",
         "clear\n",
         "screentest\n",
         "pwd\n",
@@ -858,6 +860,7 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "exec pwd\n",
         "exec cat /boot/profile\n",
         "spawn pwd\n",
+        "wait 185\n",
         "pwd\n",
         "read\n",
         "scripted tty line\n",
@@ -869,7 +872,6 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "waits\n",
         "ls /dump\n",
         "cat /dump/status\n",
-        "cat /dump/snapshot\n",
         "ls /boot\n",
         "ls /dev\n",
         "ls /log\n",
@@ -899,7 +901,6 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "reovim\n",
         "dmesg --stats\n",
         "dump status\n",
-        "dump snapshot\n",
         "dump sync\n",
         "cat /log/stats\n",
         "cat /log/events\n",
@@ -2060,20 +2061,12 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
             && serial.contains("proof_state=operator-required")
             && serial.contains("panic_state=none")
             && serial.contains("persistent=available\nstorage=qemu-diagnostic-dump0")
-            && serial.contains("storage_capacity_bytes=65536")
-            && serial.contains("last_sync_attempted=false")
-            && serial.contains("last_sync_reason=never-synced")
-            && serial.contains("reovim-dump-v1\n")
-            && serial.contains("checksum=")
-            && serial.contains("boot:\n")
-            && serial.contains("devices:\n")
-            && serial.contains("proof:\nstate=operator-required")
-            && serial.contains("dump-sync:\n")
-            && serial.contains("panic:\nstate=none")
-            && serial.contains("events:\n")
-            && serial.contains("pending:\n")
-            && serial.contains("syscalls:\n"),
-        "cat /dump/status and /dump/snapshot print in-memory dump identity and forensic sections; serial: {serial:?}",
+            && serial.contains("storage_capacity_bytes=262144")
+            && serial.contains("last_sync_attempted=true")
+            && serial.contains("last_sync_status=written")
+            && serial.contains("last_sync_verified=true")
+            && serial.contains("last_sync_reason=written-readback-ok"),
+        "cat /dump/status prints in-memory dump identity and verified sync state; serial: {serial:?}",
     );
     assert!(
         serial.contains("reovim-os> reovim-os> /dev"),
@@ -2084,8 +2077,8 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "cat /boot/profile prints profile pseudo file; serial: {serial:?}",
     );
     assert!(
-        serial.contains("shell: cat /boot/help"),
-        "cat /log/dmesg prints VFS help command audit; serial: {serial:?}",
+        serial.contains("shell: cat /boot/status"),
+        "cat /log/dmesg prints later VFS status command audit; serial: {serial:?}",
     );
     assert!(
         serial.contains("exec.path=/bin/pwd") && serial.contains("exec.path=/bin/cat"),
@@ -2115,16 +2108,16 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "cat /log/dmesg prints shell command log entries; serial: {serial:?}",
     );
     assert!(
-        serial.contains("shell: clear")
-            && serial.contains("exec.path=/bin/clear")
-            && serial.contains("loader=linked-bin entry_fn=bin_clear"),
-        "cat /log/dmesg prints linked-bin clear command audit; serial: {serial:?}",
+        serial.contains("shell: cd /dev")
+            && serial.contains("exec.path=/bin/cd")
+            && serial.contains("loader=linked-bin entry_fn=bin_cd"),
+        "cat /log/dmesg prints linked-bin cd command audit; serial: {serial:?}",
     );
     assert!(
-        serial.contains("shell: screentest")
-            && serial.contains("exec.path=/bin/screentest")
-            && serial.contains("loader=linked-bin entry_fn=bin_screentest"),
-        "cat /log/dmesg prints linked-bin screentest command audit; serial: {serial:?}",
+        serial.contains("shell: status")
+            && serial.contains("exec.path=/bin/status")
+            && serial.contains("loader=linked-bin entry_fn=bin_status"),
+        "cat /log/dmesg prints linked-bin status command audit; serial: {serial:?}",
     );
     assert!(
         serial.contains("shell: mount")
@@ -2198,102 +2191,47 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "cat /log/dmesg prints VFS log events command audit; serial: {serial:?}",
     );
     for command in [
-        "shell: help\n",
-        "shell: help clear\n",
-        "shell: help screentest\n",
-        "shell: help input\n",
-        "shell: help proof\n",
-        "shell: help pwd\n",
-        "shell: help ls\n",
-        "shell: help cd\n",
-        "shell: help cat\n",
-        "shell: help read\n",
-        "shell: help mount\n",
-        "shell: help device\n",
-        "shell: help dmesg\n",
-        "shell: help dump\n",
-        "shell: help sched\n",
-        "shell: help proc\n",
-        "shell: help ps\n",
-        "shell: help kill\n",
-        "shell: help wake\n",
-        "shell: help block\n",
-        "shell: help spawn\n",
-        "shell: help sleep\n",
-        "shell: help wait\n",
-        "shell: help wait-ticks\n",
-        "shell: help exec\n",
-        "shell: help service-stop\n",
-        "shell: help service-start\n",
-        "shell: help service-restart\n",
-        "shell: help session\n",
-        "shell: help services\n",
-        "shell: help tasks\n",
-        "shell: help waits\n",
-        "shell: help syscalls\n",
-        "shell: help execs\n",
-        "shell: help pending\n",
-        "shell: help sources\n",
-        "shell: help media\n",
-        "shell: help self\n",
-        "shell: help status\n",
-        "shell: help probe\n",
-        "shell: help launch\n",
-        "shell: help reovim\n",
-        "shell: help hello\n",
-        "shell: hello\n",
-        "shell: help halt\n",
-        "shell: help ps\n",
-        "shell: help kill\n",
-        "shell: help wake\n",
-        "shell: help block\n",
-        "shell: help spawn\n",
-        "shell: help sleep\n",
-        "shell: help wait\n",
-        "shell: help wait-ticks\n",
-        "shell: help exec\n",
-        "shell: help service-stop\n",
-        "shell: help service-start\n",
-        "shell: help service-restart\n",
-        "shell: help session\n",
-        "shell: help services\n",
-        "shell: help tasks\n",
-        "shell: help waits\n",
-        "shell: help syscalls\n",
-        "shell: help execs\n",
-        "shell: help pending\n",
-        "shell: help sources\n",
-        "shell: help media\n",
-        "shell: help self\n",
+        "shell: ls /boot\n",
+        "shell: mount\n",
+        "shell: cat /boot/mounts\n",
+        "shell: device\n",
+        "shell: cat /boot/memory\n",
+        "shell: cat /boot/devices\n",
+        "shell: cd /dev\n",
+        "shell: cat /boot/status\n",
+        "shell: input\n",
+        "shell: cat /boot/input\n",
+        "shell: probe help\n",
+        "shell: cat /boot/probes\n",
+        "shell: dump status\n",
+        "shell: dump sync\n",
+        "shell: cat /log/stats\n",
+        "shell: cat /log/events\n",
     ] {
         assert!(
             serial.contains(command),
-            "cat /log/dmesg prints targeted help audit {command:?}; serial: {serial:?}",
+            "cat /log/dmesg prints retained command audit {command:?}; serial: {serial:?}",
         );
     }
     assert!(
-        serial.contains("shell: sched tick\n") && serial.contains("op=scheduler-tick status=ok"),
-        "cat /log/dmesg prints /bin/sched tick audit; serial: {serial:?}",
+        serial.contains("shell: dump status\n") && serial.contains("exec.path=/bin/dump"),
+        "cat /log/dmesg prints /bin/dump status audit; serial: {serial:?}",
     );
     assert!(
-        serial.contains("shell: sched yield\n") && serial.contains("exec.path=/bin/sched"),
-        "cat /log/dmesg prints /bin/sched yield audit; serial: {serial:?}",
+        serial.contains("shell: dump sync\n") && serial.contains("reason=written-readback-ok"),
+        "cat /log/dmesg prints /bin/dump sync audit; serial: {serial:?}",
     );
     assert!(
-        serial.contains("shell: sched sleep 1\n")
-            && serial.contains("op=process-sleep status=ok")
-            && serial.contains("op=process-wake status=ok"),
-        "cat /log/dmesg prints /bin/sched sleep/wake audit; serial: {serial:?}",
+        serial.contains("shell: probe help\n") && serial.contains("exec.path=/bin/probe"),
+        "cat /log/dmesg prints /bin/probe audit; serial: {serial:?}",
     );
     assert!(
-        serial.contains("shell: pwd | cat\n") && serial.contains("exec.path=/bin/cat"),
-        "cat /log/dmesg prints /bin pipe audit; serial: {serial:?}",
+        serial.contains("shell: cat /log/stats\n") && serial.contains("exec.path=/bin/cat"),
+        "cat /log/dmesg prints /bin/cat log-stats audit; serial: {serial:?}",
     );
     assert!(
-        serial.contains("shell: read\n")
-            && serial.contains("exec.path=/bin/read")
-            && serial.contains("loader=source-image entry_fn=bin_read"),
-        "cat /log/dmesg prints /bin/read audit; serial: {serial:?}",
+        serial.contains("shell: dmesg\n") && serial.contains("exec.path=/bin/dmesg"),
+        "cat /log/dmesg prints /bin/dmesg audit; serial: {serial:?}",
     );
     assert!(
         serial.contains("shell: proc\n") && serial.contains("exec.path=/bin/proc"),
@@ -2318,8 +2256,8 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "cat /log/dmesg prints spawned /bin child audit; serial: {serial:?}",
     );
     assert!(
-        serial.contains("exec.path=/bin/help"),
-        "cat /log/dmesg prints /bin/help exec audit; serial: {serial:?}",
+        serial.contains("exec.path=/bin/dump"),
+        "cat /log/dmesg prints /bin/dump exec audit; serial: {serial:?}",
     );
     assert!(
         serial.contains("boot_info:"),
@@ -2343,8 +2281,8 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         "final dmesg preserves provider probe output; serial: {serial:?}",
     );
     assert!(
-        final_dmesg.contains("probe xhci-read-keyboard-report:\nstate=unsupported-on-this-target"),
-        "final dmesg preserves keyboard report probe output; serial: {serial:?}",
+        final_dmesg.contains("probe usb-keyboard:\nstate=unsupported-on-this-target"),
+        "final dmesg preserves keyboard probe output; serial: {serial:?}",
     );
     assert!(
         final_dmesg.contains("shell: cat /boot/probes")
@@ -2365,7 +2303,6 @@ fn os_shell_profile_transcript_on_x86_target_boots_and_prints_cli() {
         final_dmesg.contains("shell: dmesg --stats")
             && final_dmesg.contains("exec.path=/bin/dmesg")
             && final_dmesg.contains("shell: dump status")
-            && final_dmesg.contains("shell: dump snapshot")
             && final_dmesg.contains("shell: dump sync")
             && final_dmesg.contains("exec.path=/bin/dump")
             && final_dmesg.contains("loader=linked-bin entry_fn=bin_dump")

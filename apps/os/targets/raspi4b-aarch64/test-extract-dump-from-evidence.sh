@@ -214,10 +214,13 @@ analysis="$("$ANALYZER" \
     --require-zero-drops \
     "$extracted")"
 expect_contains "$analysis" "dump_analysis=ok" "analyzer success marker"
+expect_contains "$analysis" "machine_result=live-dump-pass" "live analyzer result"
+expect_contains "$analysis" "machine_result_persistent=false" "non-persistent analyzer marker"
 expect_contains "$analysis" "service_records=1" "service row count"
 
 inline_analysis="$("$EXTRACTOR" --analyze "$evidence")"
 expect_contains "$inline_analysis" "dump_extract=ok" "inline extract success marker"
+expect_contains "$inline_analysis" "machine_result=live-dump-pass" "inline analyzer result"
 expect_contains "$inline_analysis" "dump_analysis=ok" "inline analyzer success marker"
 
 raw_output="$("$EXTRACTOR" "$evidence")"

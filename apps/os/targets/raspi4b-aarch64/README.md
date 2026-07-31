@@ -21,7 +21,7 @@ image=apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img
 bytes=<image-size>
 ```
 
-Current expected size is `1679468` bytes.
+Current expected size is `1679644` bytes.
 
 Copy `apps/target/aarch64-unknown-none/debug/reovim-os.kernel8.img` to the Pi
 4 boot partition as `kernel8.img`, using the normal Raspberry Pi firmware
@@ -496,8 +496,11 @@ one supported artifact path: `reovim-dump-v1.txt`, `reovim-dump.txt`,
 a copied `dump snapshot` transcript, copied dump artifact, or mounted bootfs
 artifact. Add `--require-persistent-proof` only for a post-poweroff artifact
 that should prove available storage and a retained checked `dump sync` result.
-It is not persistent SD-card proof until `dump sync` reports a checked
-write/read-back storage target instead of `reason=no-persistent-dump-sink`.
+The analyzer reports `machine_result=live-dump-pass` for copied live snapshots
+and `machine_result=post-poweroff-dump-pass` only when checked persistent
+write/read-back proof is present. Pi 4 evidence is not persistent SD-card proof
+until `dump sync` reports a checked write/read-back storage target instead of
+`reason=no-persistent-dump-sink`.
 
 For physical evidence files that include the copied `dump snapshot` transcript,
 extract the live dump artifact and analyze it with:
