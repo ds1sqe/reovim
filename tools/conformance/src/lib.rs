@@ -7,12 +7,16 @@ pub mod process;
 mod cargo;
 mod digest;
 mod entrypoint_reviews;
+mod execution_tools;
 mod finding;
 mod git;
 mod graph;
 mod json;
 mod policy;
+mod product_closures;
 mod report;
+mod report_build_v2;
+mod report_v2;
 mod reviews;
 mod rust_source;
 mod schema;
@@ -20,23 +24,28 @@ mod source;
 mod topology;
 
 use std::{
+    collections::BTreeSet,
     fmt, fs,
     io::Write as _,
     path::{Path, PathBuf},
 };
 
 use finding::Findings;
-use report::{BuildInputs, BuiltReport};
 use topology::{HARD_LIMITS, Limits, Topology};
 
 pub const POLICY_KEY: &str = "conformance/source-classification.json";
 pub const TOPOLOGY_KEY: &str = "conformance/workspace-topology.json";
 pub const ENTRYPOINT_REVIEWS_KEY: &str = "conformance/entrypoint-reviews.json";
 pub const DEPENDENCY_REVIEWS_KEY: &str = "conformance/dependency-reviews.json";
+pub const PRODUCT_CLOSURES_KEY: &str = "conformance/product-closures.json";
+pub const EXECUTION_TOOL_REVIEWS_KEY: &str = "conformance/execution-tool-reviews.json";
 pub const POLICY_SCHEMA_KEY: &str = "conformance/source-classification.schema.json";
 pub const TOPOLOGY_SCHEMA_KEY: &str = "conformance/workspace-topology.schema.json";
 pub const ENTRYPOINT_REVIEWS_SCHEMA_KEY: &str = "conformance/entrypoint-reviews.schema.json";
 pub const DEPENDENCY_REVIEWS_SCHEMA_KEY: &str = "conformance/dependency-reviews.schema.json";
+pub const PRODUCT_CLOSURES_SCHEMA_KEY: &str = "conformance/product-closures.schema.json";
+pub const EXECUTION_TOOL_REVIEWS_SCHEMA_KEY: &str =
+    "conformance/execution-tool-reviews.schema.json";
 pub const REPORT_SCHEMA_KEY: &str = "conformance/source-role-map.schema.json";
 
 const EVIDENCE_AUTHORITY_MARKER: &str = ".reovim-evidence-authority-v1";
@@ -45,7 +54,7 @@ const EVIDENCE_AUTHORITY_MARKER_BYTES: &[u8] = b"reovim-evidence-authority-v1\n"
 #[derive(Debug, Clone)]
 pub enum Mode {
     Candidate,
-    Exact { git: PathBuf, expected_revision: String },
+    Exact { git: PathBuf, expected_revision: String, execution_environment: String },
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -64,6 +73,8 @@ pub struct CheckOptions {
     pub topology: PathBuf,
     pub entrypoint_reviews: PathBuf,
     pub dependency_reviews: PathBuf,
+    pub product_closures: PathBuf,
+    pub execution_tool_reviews: PathBuf,
     pub cargo: PathBuf,
     pub rustc: PathBuf,
     pub cargo_home: PathBuf,
@@ -73,7 +84,7 @@ pub struct CheckOptions {
 
 #[derive(Debug)]
 pub struct Outcome {
-    report: BuiltReport,
+    report: report_v2::BuiltReport,
     clean: bool,
     root: PathBuf,
     exact_proven: Option<ExactProven>,
@@ -315,6 +326,10 @@ pub fn check(options: &CheckOptions) -> Result<Outcome, Fatal> {
     let entrypoint_reviews_path =
         committed_input(&root, &options.entrypoint_reviews, ENTRYPOINT_REVIEWS_KEY)?;
     let reviews_path = committed_input(&root, &options.dependency_reviews, DEPENDENCY_REVIEWS_KEY)?;
+    let product_closures_path =
+        committed_input(&root, &options.product_closures, PRODUCT_CLOSURES_KEY)?;
+    let execution_tool_reviews_path =
+        committed_input(&root, &options.execution_tool_reviews, EXECUTION_TOOL_REVIEWS_KEY)?;
     let policy_schema_path =
         committed_input(&root, &root.join(POLICY_SCHEMA_KEY), POLICY_SCHEMA_KEY)?;
     let reviews_schema_path = committed_input(
@@ -326,6 +341,16 @@ pub fn check(options: &CheckOptions) -> Result<Outcome, Fatal> {
         &root,
         &root.join(ENTRYPOINT_REVIEWS_SCHEMA_KEY),
         ENTRYPOINT_REVIEWS_SCHEMA_KEY,
+    )?;
+    let product_closures_schema_path = committed_input(
+        &root,
+        &root.join(PRODUCT_CLOSURES_SCHEMA_KEY),
+        PRODUCT_CLOSURES_SCHEMA_KEY,
+    )?;
+    let execution_tool_reviews_schema_path = committed_input(
+        &root,
+        &root.join(EXECUTION_TOOL_REVIEWS_SCHEMA_KEY),
+        EXECUTION_TOOL_REVIEWS_SCHEMA_KEY,
     )?;
     let report_schema_path =
         committed_input(&root, &root.join(REPORT_SCHEMA_KEY), REPORT_SCHEMA_KEY)?;
@@ -345,6 +370,20 @@ pub fn check(options: &CheckOptions) -> Result<Outcome, Fatal> {
     .map_err(config_fatal)?;
     let (entrypoint_reviews_bytes, entrypoint_reviews_value) = json::read(
         &entrypoint_reviews_path,
+        topology.limits.config_bytes,
+        topology.limits.json_depth,
+        topology.limits.json_container_items,
+    )
+    .map_err(config_fatal)?;
+    let (product_closures_bytes, product_closures_value) = json::read(
+        &product_closures_path,
+        topology.limits.config_bytes,
+        topology.limits.json_depth,
+        topology.limits.json_container_items,
+    )
+    .map_err(config_fatal)?;
+    let (execution_tool_reviews_bytes, execution_tool_reviews_value) = json::read(
+        &execution_tool_reviews_path,
         topology.limits.config_bytes,
         topology.limits.json_depth,
         topology.limits.json_container_items,
@@ -371,6 +410,20 @@ pub fn check(options: &CheckOptions) -> Result<Outcome, Fatal> {
         topology.limits.json_container_items,
     )
     .map_err(config_fatal)?;
+    let (product_closures_schema_bytes, product_closures_schema_value) = json::read(
+        &product_closures_schema_path,
+        topology.limits.config_bytes,
+        topology.limits.json_depth,
+        topology.limits.json_container_items,
+    )
+    .map_err(config_fatal)?;
+    let (execution_tool_reviews_schema_bytes, execution_tool_reviews_schema_value) = json::read(
+        &execution_tool_reviews_schema_path,
+        topology.limits.config_bytes,
+        topology.limits.json_depth,
+        topology.limits.json_container_items,
+    )
+    .map_err(config_fatal)?;
     let (report_schema_bytes, report_schema_value) = json::read(
         &report_schema_path,
         topology.limits.config_bytes,
@@ -384,6 +437,10 @@ pub fn check(options: &CheckOptions) -> Result<Outcome, Fatal> {
         .map_err(|error| Fatal::new("DEPENDENCY_REVIEWS_SCHEMA", error.to_string()))?;
     schema::validate_instance(&entrypoint_reviews_value, &entrypoint_reviews_schema_value)
         .map_err(|error| Fatal::new("ENTRYPOINT_REVIEWS_SCHEMA", error.to_string()))?;
+    schema::validate_instance(&product_closures_value, &product_closures_schema_value)
+        .map_err(|error| Fatal::new("PRODUCT_CLOSURES_SCHEMA", error.to_string()))?;
+    schema::validate_instance(&execution_tool_reviews_value, &execution_tool_reviews_schema_value)
+        .map_err(|error| Fatal::new("EXECUTION_TOOL_REVIEWS_SCHEMA", error.to_string()))?;
     // Validate the schema itself and require the running checker to embed the
     // exact committed report schema, preventing a stale binary/schema pair.
     schema::validate_schema(&report_schema_value)
@@ -399,9 +456,35 @@ pub fn check(options: &CheckOptions) -> Result<Outcome, Fatal> {
     let entrypoint_registry =
         entrypoint_reviews::Registry::parse(&entrypoint_reviews_value).map_err(config_fatal)?;
     let registry = reviews::Registry::parse(&reviews_value).map_err(config_fatal)?;
+    let product_limits = topology.limits.product_execution;
+    let product_registry = product_closures::Registry::parse(
+        &product_closures_value,
+        product_closures::ParseLimits {
+            path_bytes: topology.limits.path_bytes,
+            closure_items: product_limits.compiler_unit_count,
+            package_members: product_limits.package_member_count,
+            public_items: product_limits.public_item_count,
+        },
+    )
+    .map_err(config_fatal)?;
+    let execution_tool_registry = execution_tools::Registry::parse(
+        &execution_tool_reviews_value,
+        execution_tools::ParseLimits {
+            path_bytes: topology.limits.path_bytes,
+            registry_items: product_limits.environment_dependency_count,
+            binding_items: product_limits.environment_dependency_count,
+            runtime_inputs: product_limits.environment_dependency_count,
+            argv_items: product_limits.wrapper_argv_items,
+        },
+    )
+    .map_err(config_fatal)?;
 
     let cargo = canonical_executable("cargo", &options.cargo)?;
     let rustc = canonical_executable("rustc", &options.rustc)?;
+    let checker_path = std::env::current_exe()
+        .map_err(|error| Fatal::new("CHECKER_IDENTITY", error.to_string()))?
+        .canonicalize()
+        .map_err(|error| Fatal::new("CHECKER_IDENTITY", error.to_string()))?;
     let cargo_home = validate_cargo_home(&options.cargo_home)?;
     validate_fixed_cargo_working_directory()?;
     let process_limits = topology.limits.process();
@@ -412,6 +495,16 @@ pub fn check(options: &CheckOptions) -> Result<Outcome, Fatal> {
     let checker_digest_before =
         digest::file_handle_bounded(&checker_handle, topology.limits.tool_executable_bytes)
             .map_err(|error| Fatal::new("CHECKER_IDENTITY", error.to_string()))?;
+    let checker_path_digest_before =
+        digest::file_bounded(&checker_path, topology.limits.tool_executable_bytes)
+            .map_err(|error| Fatal::new("CHECKER_IDENTITY", error.to_string()))?;
+    if checker_path_digest_before != checker_digest_before {
+        return Err(Fatal::new(
+            "CHECKER_IDENTITY",
+            "current executable path and held executing-image bytes differ",
+        ));
+    }
+    let checker_version = capture_checker_version(&checker_path, &root, process_limits)?;
     let git_canonical = match &options.mode {
         Mode::Candidate => None,
         Mode::Exact { git, .. } => Some(canonical_executable("git", git)?),
@@ -423,6 +516,31 @@ pub fn check(options: &CheckOptions) -> Result<Outcome, Fatal> {
         .map_err(|error| Fatal::new("GIT_IDENTITY", error.to_string()))?;
 
     let inventory = source::inventory(&root, &policy, &topology);
+    validate_product_registry(&topology, &inventory, &product_registry)?;
+    validate_execution_tool_review_records(
+        &root,
+        &inventory,
+        &execution_tool_registry,
+        topology.limits.source_file_bytes,
+    )?;
+    let selected_git_binding = match (&options.mode, &git_canonical, &git_digest_before) {
+        (Mode::Exact { execution_environment, .. }, Some(git), Some(executable_digest)) => {
+            Some(select_git_binding(
+                execution_environment,
+                git,
+                executable_digest,
+                &execution_tool_registry,
+                topology.limits.tool_executable_bytes,
+            )?)
+        }
+        (Mode::Candidate, None, None) => None,
+        _ => {
+            return Err(Fatal::new(
+                "EXECUTION_TOOL_STATE",
+                "mode and exact Git execution-tool inputs are inconsistent",
+            ));
+        }
+    };
     if matches!(options.mode, Mode::Exact { .. })
         && inventory.findings.iter().any(|finding| finding.code == "UNMODELED_GIT_SEMANTICS")
     {
@@ -442,6 +560,16 @@ pub fn check(options: &CheckOptions) -> Result<Outcome, Fatal> {
     };
 
     if let Some(evidence) = &git_evidence {
+        let binding = selected_git_binding.ok_or_else(|| {
+            Fatal::new("EXECUTION_TOOL_STATE", "exact Git evidence lacks its selected binding")
+        })?;
+        if evidence.version != binding.version || evidence.version_digest != binding.version_digest
+        {
+            return Err(Fatal::new(
+                "EXECUTION_TOOL_VERSION",
+                "Git version evidence differs from the selected execution-tool binding",
+            ));
+        }
         validate_git_inventory(evidence, &inventory, &policy, &root, topology.limits)?;
     }
     let lockfiles = report::lockfile_identities(&topology.lockfiles, &inventory.files)
@@ -503,15 +631,44 @@ pub fn check(options: &CheckOptions) -> Result<Outcome, Fatal> {
         ));
         graphs.push(graph);
     }
-    let lockfile = topology
-        .lockfiles
-        .first()
-        .ok_or_else(|| Fatal::new("LOCKFILE_TOPOLOGY", "topology must declare Cargo.lock"))?;
+    let root_workspace = topology
+        .workspaces
+        .values()
+        .find(|workspace| workspace.root.as_os_str().is_empty())
+        .ok_or_else(|| {
+            Fatal::new("ROOT_WORKSPACE_TOPOLOGY", "topology lacks the root workspace")
+        })?;
+    if topology.workspaces.len() != 1 {
+        return Err(Fatal::new(
+            "MULTI_WORKSPACE_EXECUTION_UNAVAILABLE",
+            "active v2 execution remains closed to the single Product-empty root workspace",
+        ));
+    }
+    let reviewed_packages = root_workspace
+        .packages
+        .values()
+        .map(|package| reviews::WorkspacePackage {
+            id: package.id.clone(),
+            cargo_name: package.name.clone(),
+        })
+        .collect::<Vec<_>>();
+    let reviewed_profiles = profiles
+        .iter()
+        .map(|(profile, capture)| reviews::ProfileMetadata {
+            id: &profile.name,
+            metadata: &capture.metadata,
+        })
+        .collect::<Vec<_>>();
+    let review_workspaces = [reviews::ValidationWorkspace {
+        id: &root_workspace.id,
+        lockfile: &root_workspace.lockfile,
+        packages: &reviewed_packages,
+        profiles: &reviewed_profiles,
+    }];
     all_findings.extend(reviews::validate(
         &root,
-        lockfile,
         &registry,
-        &profiles,
+        &review_workspaces,
         topology.limits.findings,
         topology.limits.source_file_bytes,
         &inventory.files,
@@ -538,6 +695,12 @@ pub fn check(options: &CheckOptions) -> Result<Outcome, Fatal> {
             topology.limits,
         )?;
         require_config_unchanged(&reviews_path, &reviews_bytes, topology.limits)?;
+        require_config_unchanged(&product_closures_path, &product_closures_bytes, topology.limits)?;
+        require_config_unchanged(
+            &execution_tool_reviews_path,
+            &execution_tool_reviews_bytes,
+            topology.limits,
+        )?;
         require_config_unchanged(&policy_schema_path, &policy_schema_bytes, topology.limits)?;
         require_config_unchanged(&topology_schema_path, &topology_schema_bytes, topology.limits)?;
         require_config_unchanged(
@@ -546,6 +709,16 @@ pub fn check(options: &CheckOptions) -> Result<Outcome, Fatal> {
             topology.limits,
         )?;
         require_config_unchanged(&reviews_schema_path, &reviews_schema_bytes, topology.limits)?;
+        require_config_unchanged(
+            &product_closures_schema_path,
+            &product_closures_schema_bytes,
+            topology.limits,
+        )?;
+        require_config_unchanged(
+            &execution_tool_reviews_schema_path,
+            &execution_tool_reviews_schema_bytes,
+            topology.limits,
+        )?;
         require_config_unchanged(&report_schema_path, &report_schema_bytes, topology.limits)?;
         let final_lockfiles =
             report::lockfile_identities(&topology.lockfiles, &second_inventory.files)
@@ -639,6 +812,9 @@ pub fn check(options: &CheckOptions) -> Result<Outcome, Fatal> {
     let checker_digest =
         digest::file_handle_bounded(&checker_handle, topology.limits.tool_executable_bytes)
             .map_err(|error| Fatal::new("CHECKER_IDENTITY", error.to_string()))?;
+    let checker_path_digest_after =
+        digest::file_bounded(&checker_path, topology.limits.tool_executable_bytes)
+            .map_err(|error| Fatal::new("CHECKER_IDENTITY", error.to_string()))?;
     let git_digest_after = git_canonical
         .as_ref()
         .map(|git| digest::file_bounded(git, topology.limits.tool_executable_bytes))
@@ -649,11 +825,29 @@ pub fn check(options: &CheckOptions) -> Result<Outcome, Fatal> {
         ("Rustc", Some(&rustc_digest_before), Some(&rustc_digest_after)),
         ("Git", git_digest_before.as_ref(), git_digest_after.as_ref()),
         ("checker", Some(&checker_digest_before), Some(&checker_digest)),
+        ("checker path", Some(&checker_path_digest_before), Some(&checker_path_digest_after)),
     ] {
         if before != after {
             return Err(Fatal::new(
                 "TOOL_EXECUTABLE_DRIFT",
                 format!("{name} executable bytes changed during the conformance run"),
+            ));
+        }
+    }
+    if let (Mode::Exact { execution_environment, .. }, Some(git), Some(executable_digest)) =
+        (&options.mode, &git_canonical, &git_digest_after)
+    {
+        let final_binding = select_git_binding(
+            execution_environment,
+            git,
+            executable_digest,
+            &execution_tool_registry,
+            topology.limits.tool_executable_bytes,
+        )?;
+        if selected_git_binding != Some(final_binding) {
+            return Err(Fatal::new(
+                "EXECUTION_TOOL_BINDING_DRIFT",
+                "selected Git execution-tool binding changed during the run",
             ));
         }
     }
@@ -666,81 +860,136 @@ pub fn check(options: &CheckOptions) -> Result<Outcome, Fatal> {
     let entrypoint_reviews_schema_digest = digest::bytes(&entrypoint_reviews_schema_bytes);
     let dependency_reviews_digest = digest::bytes(&reviews_bytes);
     let dependency_reviews_schema_digest = digest::bytes(&reviews_schema_bytes);
+    let product_closures_digest = digest::bytes(&product_closures_bytes);
+    let product_closures_schema_digest = digest::bytes(&product_closures_schema_bytes);
+    let execution_tool_reviews_digest = digest::bytes(&execution_tool_reviews_bytes);
+    let execution_tool_reviews_schema_digest = digest::bytes(&execution_tool_reviews_schema_bytes);
     let report_schema_digest = digest::bytes(&report_schema_bytes);
-    let cargo_identity = report::absolute_tool_identity(
-        &cargo,
-        &cargo_version.version,
-        &cargo_version.version_digest,
+    let checker_identity = v2_tool_identity(
+        &checker_path,
+        &checker_digest,
+        &checker_version,
         topology.limits.tool_executable_bytes,
-    )
-    .map_err(|error| Fatal::new("CARGO_IDENTITY", error.to_string()))?;
+    )?;
+    let cargo_identity = v2_tool_identity(
+        &cargo,
+        &cargo_digest_after,
+        &cargo_version,
+        topology.limits.tool_executable_bytes,
+    )?;
     if cargo_identity.executable_digest != cargo_digest_before {
         return Err(Fatal::new("CARGO_IDENTITY_DRIFT", "Cargo changed after final identity check"));
     }
-    let rustc_identity = report::absolute_tool_identity(
+    let rustc_identity = v2_tool_identity(
         &rustc,
-        &rustc_version.version,
-        &rustc_version.version_digest,
+        &rustc_digest_after,
+        &rustc_version,
         topology.limits.tool_executable_bytes,
-    )
-    .map_err(|error| Fatal::new("RUSTC_IDENTITY", error.to_string()))?;
+    )?;
     if rustc_identity.executable_digest != rustc_digest_before {
         return Err(Fatal::new("RUSTC_IDENTITY_DRIFT", "Rustc changed after final identity check"));
     }
-    let git_identity = match (&git_canonical, &git_evidence) {
-        (Some(path), Some(evidence)) => Some(
-            report::absolute_tool_identity(
-                path,
-                &evidence.version,
-                &evidence.version_digest,
-                topology.limits.tool_executable_bytes,
-            )
-            .map_err(|error| Fatal::new("GIT_IDENTITY", error.to_string()))?,
-        ),
-        _ => None,
+    let source_observations = report_build_v2::observe_source_files(&root, &inventory)
+        .map_err(|error| Fatal::new(error.code, error.message))?;
+    let metadata_evidence = profiles
+        .iter()
+        .zip(&graphs)
+        .map(|((profile, initial), graph)| report_build_v2::MetadataEvidence {
+            workspace: &root_workspace.id,
+            profile: &profile.name,
+            initial,
+            final_capture: final_profiles
+                .iter()
+                .find(|(candidate, _)| candidate.name == profile.name)
+                .map(|(_, capture)| capture),
+            graph,
+        })
+        .collect::<Vec<_>>();
+    let report_mode = match (&options.mode, &git_evidence) {
+        (Mode::Candidate, None) => report_build_v2::Mode::Candidate,
+        (Mode::Exact { execution_environment, .. }, Some(evidence)) => {
+            report_build_v2::Mode::Exact {
+                revision: &evidence.revision,
+                git: evidence,
+                execution_environment,
+            }
+        }
+        _ => unreachable!("mode and Git evidence were validated above"),
     };
-    if git_identity.as_ref().map(|identity| &identity.executable_digest)
-        != git_digest_before.as_ref()
-    {
-        return Err(Fatal::new("GIT_IDENTITY_DRIFT", "Git changed after final identity check"));
-    }
-    let (mode, revision) = match (&options.mode, &git_evidence) {
-        (Mode::Candidate, _) => ("candidate", None),
-        (Mode::Exact { .. }, Some(evidence)) => ("exact", Some(evidence.revision.as_str())),
-        (Mode::Exact { .. }, None) => unreachable!("exact mode creates Git evidence"),
-    };
-    let report = report::build(&BuildInputs {
-        mode,
-        revision,
-        policy_digest: &policy_digest,
-        policy_schema_digest: &policy_schema_digest,
-        topology_digest: &topology_digest,
-        topology_schema_digest: &topology_schema_digest,
-        entrypoint_reviews_digest: &entrypoint_reviews_digest,
-        entrypoint_reviews_schema_digest: &entrypoint_reviews_schema_digest,
-        dependency_reviews_digest: &dependency_reviews_digest,
-        dependency_reviews_schema_digest: &dependency_reviews_schema_digest,
+    let report = report_build_v2::build(&report_build_v2::BuildInputs {
+        repository_root: &root,
+        mode: report_mode,
+        artifacts: report_build_v2::ArtifactInputs {
+            source_classification: report_build_v2::ArtifactIdentity {
+                path: Path::new(POLICY_KEY),
+                schema: policy::SCHEMA,
+                content_digest: &policy_digest,
+                schema_path: Path::new(POLICY_SCHEMA_KEY),
+                schema_digest: &policy_schema_digest,
+            },
+            workspace_topology: report_build_v2::ArtifactIdentity {
+                path: Path::new(TOPOLOGY_KEY),
+                schema: topology::SCHEMA,
+                content_digest: &topology_digest,
+                schema_path: Path::new(TOPOLOGY_SCHEMA_KEY),
+                schema_digest: &topology_schema_digest,
+            },
+            entrypoint_reviews: report_build_v2::ArtifactIdentity {
+                path: Path::new(ENTRYPOINT_REVIEWS_KEY),
+                schema: entrypoint_reviews::SCHEMA,
+                content_digest: &entrypoint_reviews_digest,
+                schema_path: Path::new(ENTRYPOINT_REVIEWS_SCHEMA_KEY),
+                schema_digest: &entrypoint_reviews_schema_digest,
+            },
+            dependency_reviews: report_build_v2::ArtifactIdentity {
+                path: Path::new(DEPENDENCY_REVIEWS_KEY),
+                schema: reviews::SCHEMA,
+                content_digest: &dependency_reviews_digest,
+                schema_path: Path::new(DEPENDENCY_REVIEWS_SCHEMA_KEY),
+                schema_digest: &dependency_reviews_schema_digest,
+            },
+            product_closures: report_build_v2::ArtifactIdentity {
+                path: Path::new(PRODUCT_CLOSURES_KEY),
+                schema: product_closures::SCHEMA,
+                content_digest: &product_closures_digest,
+                schema_path: Path::new(PRODUCT_CLOSURES_SCHEMA_KEY),
+                schema_digest: &product_closures_schema_digest,
+            },
+            execution_tool_reviews: report_build_v2::ArtifactIdentity {
+                path: Path::new(EXECUTION_TOOL_REVIEWS_KEY),
+                schema: execution_tools::SCHEMA,
+                content_digest: &execution_tool_reviews_digest,
+                schema_path: Path::new(EXECUTION_TOOL_REVIEWS_SCHEMA_KEY),
+                schema_digest: &execution_tool_reviews_schema_digest,
+            },
+        },
         report_schema_digest: &report_schema_digest,
-        lockfiles: &lockfiles,
-        checker_digest: &checker_digest,
-        cargo_identity: &cargo_identity,
-        rustc_identity: &rustc_identity,
-        git_identity: git_identity.as_ref(),
-        profiles: &profiles,
-        final_profiles: &final_profiles,
+        policy: &policy,
+        topology: &topology,
+        inventory: &inventory,
+        source_observations: &source_observations,
+        product_closures: &product_registry,
+        execution_tools: &execution_tool_registry,
+        checker: &checker_identity,
+        cargo: &cargo_identity,
+        rustc: &rustc_identity,
+        checker_version: &checker_version,
         cargo_version: &cargo_version,
         rustc_version: &rustc_version,
-        git_evidence: git_evidence.as_ref(),
-        inventory: &inventory,
-        graphs: &graphs,
-        findings: &findings,
-        limits: topology.limits,
+        metadata: &metadata_evidence,
+        additional_findings: &findings,
     })
-    .map_err(|error| Fatal::new("REPORT_BUILD", error.to_string()))?;
-    let verified = report::verify(&report.bytes, topology.limits)
-        .map_err(|error| Fatal::new("REPORT_SELF_VERIFY", error.to_string()))?;
+    .map_err(|error| Fatal::new(error.code, error.message))?;
+    let verified = report_v2::verify(
+        &report.bytes,
+        topology.limits.report_bytes,
+        topology.limits.json_depth,
+        topology.limits.json_container_items,
+    )
+    .map_err(|error| Fatal::new("REPORT_SELF_VERIFY", error.to_string()))?;
+    let expected_mode = if matches!(options.mode, Mode::Candidate) { "candidate" } else { "exact" };
     if verified.identity != report.identity
-        || verified.mode != mode
+        || verified.mode != expected_mode
         || verified.status != if findings.is_empty() { "pass" } else { "fail" }
     {
         return Err(Fatal::new(
@@ -748,8 +997,409 @@ pub fn check(options: &CheckOptions) -> Result<Outcome, Fatal> {
             "constructed report identity, mode, or status disagrees with semantic verification",
         ));
     }
-    let exact_proven = revision.map(|revision| ExactProven { revision: revision.to_owned() });
+    let exact_proven =
+        git_evidence.as_ref().map(|evidence| ExactProven { revision: evidence.revision.clone() });
     Ok(Outcome { clean: findings.is_empty(), report, root, exact_proven })
+}
+
+fn validate_product_registry(
+    topology: &Topology,
+    inventory: &source::Inventory,
+    registry: &product_closures::Registry,
+) -> Result<(), Fatal> {
+    let topology_has_product = topology
+        .workspaces
+        .values()
+        .any(|workspace| workspace.partition == topology::WorkspacePartition::Product);
+    let inventory_has_product = inventory
+        .files
+        .iter()
+        .any(|file| matches!(file.classification.owner, reovim_depgraph::SourceOwner::Product(_)));
+    if registry.closures.is_empty() {
+        if topology_has_product || inventory_has_product {
+            return Err(Fatal::new(
+                "PRODUCT_CLOSURE_MISSING",
+                "Product topology or source exists without an exact Product closure",
+            ));
+        }
+        if !registry.public_consumer_relations.is_empty() {
+            return Err(Fatal::new(
+                "PRODUCT_RELATION_WITHOUT_CLOSURE",
+                "public-consumer relations exist while the Product closure set is empty",
+            ));
+        }
+        return Ok(());
+    }
+    if !topology_has_product || !inventory_has_product {
+        return Err(Fatal::new(
+            "PRODUCT_CLOSURE_UNMATCHED",
+            "a Product closure exists without matching Product topology and source",
+        ));
+    }
+
+    for closure in &registry.closures {
+        validate_product_closure(topology, inventory, closure)?;
+    }
+    validate_public_consumer_relations(&registry.public_consumer_relations)?;
+    Err(Fatal::new(
+        "PRODUCT_EXECUTION_PROOF_UNAVAILABLE",
+        "Product closures are parsed but active Product execution is not yet admitted",
+    ))
+}
+
+fn validate_product_closure(
+    topology: &Topology,
+    inventory: &source::Inventory,
+    closure: &product_closures::Closure,
+) -> Result<(), Fatal> {
+    let workspace = topology.workspaces.get(&closure.workspace.id).ok_or_else(|| {
+        Fatal::new(
+            "PRODUCT_CLOSURE_WORKSPACE",
+            format!("closure {} names an unknown workspace", closure.id),
+        )
+    })?;
+    if workspace.partition != topology::WorkspacePartition::Product
+        || workspace.workspace_manifest != closure.workspace.manifest
+        || workspace.lockfile != closure.workspace.lockfile
+    {
+        return Err(Fatal::new(
+            "PRODUCT_CLOSURE_WORKSPACE",
+            format!("closure {} workspace identity differs from topology", closure.id),
+        ));
+    }
+    let package = workspace.packages.get(&closure.package.id).ok_or_else(|| {
+        Fatal::new(
+            "PRODUCT_CLOSURE_PACKAGE",
+            format!("closure {} names an unknown package", closure.id),
+        )
+    })?;
+    if package.name != closure.package.name || package.manifest != closure.package.manifest {
+        return Err(Fatal::new(
+            "PRODUCT_CLOSURE_PACKAGE",
+            format!("closure {} package identity differs from topology", closure.id),
+        ));
+    }
+    let target = package.targets.get(&closure.target.id).ok_or_else(|| {
+        Fatal::new(
+            "PRODUCT_CLOSURE_TARGET",
+            format!("closure {} names an unknown target", closure.id),
+        )
+    })?;
+    if target.name != closure.target.name
+        || target.src_path != closure.target.src_path
+        || target.kind != closure.target.kind
+        || target.crate_types != closure.target.crate_types
+        || !workspace.metadata_profiles.contains_key(&closure.cargo.profile)
+    {
+        return Err(Fatal::new(
+            "PRODUCT_CLOSURE_TARGET",
+            format!("closure {} target/profile differs from topology", closure.id),
+        ));
+    }
+    let source =
+        inventory.files.iter().find(|file| file.path == closure.target.src_path).ok_or_else(
+            || {
+                Fatal::new(
+                    "PRODUCT_CLOSURE_SOURCE",
+                    format!("closure {} target source is absent from inventory", closure.id),
+                )
+            },
+        )?;
+    if source.classification.owner
+        != reovim_depgraph::SourceOwner::Product(closure.architectural_role)
+        || source.classification.source_use != closure.source_use
+    {
+        return Err(Fatal::new(
+            "PRODUCT_CLOSURE_SOURCE",
+            format!("closure {} source role/use differs from classification", closure.id),
+        ));
+    }
+    validate_package_member_sources(inventory, closure)?;
+    let _ = closure.kind;
+    Ok(())
+}
+
+fn validate_package_member_sources(
+    inventory: &source::Inventory,
+    closure: &product_closures::Closure,
+) -> Result<(), Fatal> {
+    let Some(membership) = &closure.package_membership else { return Ok(()) };
+    for member in &membership.members {
+        if let product_closures::PackageMember::Copied { repository_path, .. } = member
+            && !inventory.files.iter().any(|file| file.path == *repository_path)
+        {
+            return Err(Fatal::new(
+                "PRODUCT_PACKAGE_MEMBER_SOURCE",
+                format!(
+                    "closure {} copied member {} is absent from inventory",
+                    closure.id,
+                    repository_path.display()
+                ),
+            ));
+        }
+        let _ = member.package_path();
+    }
+    Ok(())
+}
+
+fn validate_public_consumer_relations(
+    relations: &[product_closures::PublicConsumerRelation],
+) -> Result<(), Fatal> {
+    for relation in relations {
+        if relation.public_items.is_empty() {
+            return Err(Fatal::new(
+                "PRODUCT_PUBLIC_ITEMS",
+                format!("relation {} has no declared public items", relation.id),
+            ));
+        }
+        for item in &relation.public_items {
+            let _ = (&item.path, item.kind);
+        }
+        for check in &relation.derive_checks {
+            let _ = (check.derive, &check.public_type, check.consumer_operation);
+        }
+        let _ = (&relation.shipping_closure, &relation.consumer_closure);
+    }
+    Ok(())
+}
+
+fn capture_checker_version(
+    checker: &Path,
+    root: &Path,
+    limits: process::ProcessLimits,
+) -> Result<cargo::VersionCapture, Fatal> {
+    let process = process::run(
+        &process::CommandSpec {
+            program: checker.to_path_buf(),
+            arguments: vec!["--version".into()],
+            current_dir: root.to_path_buf(),
+            environment: std::collections::BTreeMap::from([(
+                std::ffi::OsString::from("TERM"),
+                std::ffi::OsString::from("dumb"),
+            )]),
+            clear_environment: true,
+        },
+        limits,
+    )
+    .map_err(|error| Fatal::new("CHECKER_VERSION_RUN", error.to_string()))?;
+    if process.termination_reason != process::TerminationReason::Exited
+        || !process.status.success()
+        || process.stdout_overflow
+        || process.stderr_overflow
+        || process.stdout_read_error.is_some()
+        || process.stderr_read_error.is_some()
+        || !process.stderr.is_empty()
+        || !process.reaped
+        || !process.readers_joined
+    {
+        return Err(Fatal::new(
+            "CHECKER_VERSION_PROCESS",
+            "checker --version did not complete through the bounded owned process contract",
+        ));
+    }
+    let raw = std::str::from_utf8(&process.stdout)
+        .map_err(|error| Fatal::new("CHECKER_VERSION_UTF8", error.to_string()))?;
+    if !raw.ends_with('\n') || raw.trim_end_matches('\n').contains(['\r', '\n']) {
+        return Err(Fatal::new(
+            "CHECKER_VERSION_SHAPE",
+            "checker --version must emit exactly one nonempty LF-terminated line",
+        ));
+    }
+    let version = raw.trim_end_matches('\n').to_owned();
+    if version != concat!("reovim-conformance ", env!("CARGO_PKG_VERSION")) {
+        return Err(Fatal::new(
+            "CHECKER_VERSION_VALUE",
+            "checker --version differs from the compiled package identity",
+        ));
+    }
+    let version_digest = digest::bytes(&process.stdout);
+    Ok(cargo::VersionCapture { process, version, version_digest })
+}
+
+fn v2_tool_identity(
+    executable: &Path,
+    executable_digest: &str,
+    version: &cargo::VersionCapture,
+    executable_byte_limit: u64,
+) -> Result<report_build_v2::ToolIdentity, Fatal> {
+    let metadata =
+        fs::metadata(executable).map_err(|error| Fatal::new("TOOL_IDENTITY", error.to_string()))?;
+    if metadata.len() == 0 || metadata.len() > executable_byte_limit {
+        return Err(Fatal::new(
+            "TOOL_IDENTITY_SIZE",
+            format!(
+                "{} has size {} outside 1..={executable_byte_limit}",
+                executable.display(),
+                metadata.len()
+            ),
+        ));
+    }
+    let argv = version
+        .process
+        .argv
+        .iter()
+        .map(|argument| {
+            argument.to_str().map(str::to_owned).ok_or_else(|| {
+                Fatal::new("TOOL_VERSION_ARGV_UTF8", "tool version argv is not UTF-8")
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let executable_text = executable
+        .to_str()
+        .ok_or_else(|| Fatal::new("TOOL_PATH_UTF8", "tool executable path is not UTF-8"))?;
+    if argv.first().map(String::as_str) != Some(executable_text) || argv.len() < 2 {
+        return Err(Fatal::new(
+            "TOOL_VERSION_ARGV",
+            "tool version capture does not begin with its canonical executable and arguments",
+        ));
+    }
+    Ok(report_build_v2::ToolIdentity {
+        canonical_path: executable.to_path_buf(),
+        executable_digest: executable_digest.to_owned(),
+        executable_size_bytes: metadata.len(),
+        version_argv: argv[1..].to_vec(),
+        version: version.version.clone(),
+        version_digest: version.version_digest.clone(),
+        runtime_inputs: Vec::new(),
+    })
+}
+
+fn validate_execution_tool_review_records(
+    root: &Path,
+    inventory: &source::Inventory,
+    registry: &execution_tools::Registry,
+    file_byte_limit: u64,
+) -> Result<(), Fatal> {
+    if registry.reviewed_at.is_empty() {
+        return Err(Fatal::new("EXECUTION_TOOL_REVIEW", "review timestamp is empty"));
+    }
+    for review in &registry.reviews {
+        let record =
+            inventory.files.iter().find(|file| file.path == review.review_record).ok_or_else(
+                || {
+                    Fatal::new(
+                        "EXECUTION_TOOL_REVIEW_RECORD",
+                        format!("review {} record is absent from source inventory", review.id),
+                    )
+                },
+            )?;
+        if record.content_digest != review.review_record_digest
+            || record.classification.owner != reovim_depgraph::SourceOwner::RepositoryTooling
+            || record.classification.provenance != reovim_depgraph::SourceProvenance::Authored
+            || record.classification.source_use != reovim_depgraph::SourceUse::Tool
+        {
+            return Err(Fatal::new(
+                "EXECUTION_TOOL_REVIEW_RECORD",
+                format!("review {} record identity/classification differs", review.id),
+            ));
+        }
+        let actual = digest::file_bounded(&root.join(&review.review_record), file_byte_limit)
+            .map_err(|error| Fatal::new("EXECUTION_TOOL_REVIEW_RECORD", error.to_string()))?;
+        if actual != review.review_record_digest {
+            return Err(Fatal::new(
+                "EXECUTION_TOOL_REVIEW_RECORD",
+                format!("review {} record bytes changed", review.id),
+            ));
+        }
+        let _ = (
+            review.logical_role,
+            &review.invocation_families,
+            &review.required_semantics,
+            &review.consumers,
+            &review.product_profiles,
+            &review.upstream,
+            &review.license,
+            &review.assumptions,
+            &review.invalidators,
+        );
+    }
+    Ok(())
+}
+
+fn select_git_binding<'a>(
+    environment_id: &str,
+    git: &Path,
+    executable_digest: &str,
+    registry: &'a execution_tools::Registry,
+    executable_byte_limit: u64,
+) -> Result<&'a execution_tools::Binding, Fatal> {
+    let environment = registry
+        .environments
+        .iter()
+        .find(|environment| environment.id == environment_id)
+        .ok_or_else(|| {
+            Fatal::new(
+                "EXECUTION_TOOL_ENVIRONMENT",
+                format!("unknown execution-tool environment {environment_id:?}"),
+            )
+        })?;
+    let bindings = environment
+        .bindings
+        .iter()
+        .filter(|binding| binding.canonical_path == git)
+        .collect::<Vec<_>>();
+    let [binding] = bindings.as_slice() else {
+        return Err(Fatal::new(
+            "EXECUTION_TOOL_BINDING",
+            "selected environment must contain exactly one binding for canonical Git",
+        ));
+    };
+    let review = registry
+        .reviews
+        .iter()
+        .find(|review| review.id == binding.review)
+        .ok_or_else(|| Fatal::new("EXECUTION_TOOL_REVIEW", "Git binding review is absent"))?;
+    let expected_families = BTreeSet::from([
+        execution_tools::InvocationFamily::GitVersion,
+        execution_tools::InvocationFamily::GitRevision,
+        execution_tools::InvocationFamily::GitTree,
+        execution_tools::InvocationFamily::GitIndex,
+        execution_tools::InvocationFamily::GitAttributes,
+    ]);
+    if review.logical_role != execution_tools::LogicalRole::Git
+        || review.invocation_families.iter().copied().collect::<BTreeSet<_>>() != expected_families
+        || !review.product_profiles.is_empty()
+        || binding.prepared_path.is_some()
+        || binding.version_argv != ["--version"]
+    {
+        return Err(Fatal::new(
+            "EXECUTION_TOOL_BINDING",
+            "Git review families/profile/prepared-path/version argv differ from the exact contract",
+        ));
+    }
+    let metadata = fs::metadata(git)
+        .map_err(|error| Fatal::new("EXECUTION_TOOL_BINDING", error.to_string()))?;
+    if metadata.len() != binding.executable_size_bytes
+        || executable_digest != binding.executable_digest
+        || digest::file_bounded(git, executable_byte_limit)
+            .map_err(|error| Fatal::new("EXECUTION_TOOL_BINDING", error.to_string()))?
+            != binding.executable_digest
+    {
+        return Err(Fatal::new(
+            "EXECUTION_TOOL_BINDING",
+            "Git executable path/size/digest differs from the selected binding",
+        ));
+    }
+    for runtime in &binding.runtime_inputs {
+        let canonical = runtime
+            .canonical_path
+            .canonicalize()
+            .map_err(|error| Fatal::new("EXECUTION_TOOL_RUNTIME_INPUT", error.to_string()))?;
+        let metadata = fs::metadata(&canonical)
+            .map_err(|error| Fatal::new("EXECUTION_TOOL_RUNTIME_INPUT", error.to_string()))?;
+        if canonical != runtime.canonical_path
+            || metadata.len() != runtime.size_bytes
+            || digest::file_bounded(&canonical, executable_byte_limit)
+                .map_err(|error| Fatal::new("EXECUTION_TOOL_RUNTIME_INPUT", error.to_string()))?
+                != runtime.content_digest
+        {
+            return Err(Fatal::new(
+                "EXECUTION_TOOL_RUNTIME_INPUT",
+                format!("runtime input {} drifted", runtime.canonical_path.display()),
+            ));
+        }
+    }
+    Ok(binding)
 }
 
 /// Writes an exact passing report into a content-addressed, no-clobber bundle.
@@ -1604,8 +2254,8 @@ fn evidence_paths(
             "only a checker-created exact outcome may be retained",
         ));
     };
-    let verified = report::verify(&outcome.report.bytes, HARD_LIMITS)
-        .map_err(|error| Fatal::new("EVIDENCE_REPORT_VERIFY", error.to_string()))?;
+    let verified = verify_serialized_report(&outcome.report.bytes, HARD_LIMITS)
+        .map_err(|error| Fatal::new("EVIDENCE_REPORT_VERIFY", error.message))?;
     if verified.identity != outcome.report.identity
         || verified.mode != "exact"
         || verified.status != "pass"
@@ -1748,13 +2398,40 @@ pub fn verify_report(path: &Path) -> Result<VerifiedReport, Fatal> {
     }
     let bytes = source::read_bounded(path, HARD_LIMITS.report_bytes as u64)
         .map_err(|error| Fatal::new("VERIFY_REPORT_READ", error))?;
-    report::verify(&bytes, HARD_LIMITS)
+    verify_serialized_report(&bytes, HARD_LIMITS)
+}
+
+fn verify_serialized_report(bytes: &[u8], limits: Limits) -> Result<VerifiedReport, Fatal> {
+    let value = json::parse(bytes, limits.json_depth, limits.json_container_items)
+        .map_err(|error| Fatal::new("VERIFY_REPORT_JSON", error.to_string()))?;
+    match value.get("schema").and_then(serde_json::Value::as_str) {
+        Some("reovim-source-role-map/v1") => report::verify(bytes, limits)
+            .map(|verified| VerifiedReport {
+                identity: verified.identity,
+                mode: verified.mode,
+                status: verified.status,
+            })
+            .map_err(|error| Fatal::new("VERIFY_REPORT_V1", error.to_string())),
+        Some("reovim-source-role-map/v2") => report_v2::verify(
+            bytes,
+            limits.report_bytes,
+            limits.json_depth,
+            limits.json_container_items,
+        )
         .map(|verified| VerifiedReport {
             identity: verified.identity,
             mode: verified.mode,
             status: verified.status,
         })
-        .map_err(|error| Fatal::new("VERIFY_REPORT", error.to_string()))
+        .map_err(|error| Fatal::new("VERIFY_REPORT_V2", error.to_string())),
+        Some(other) => Err(Fatal::new(
+            "VERIFY_REPORT_SCHEMA",
+            format!("unsupported Source Role Map schema {other:?}"),
+        )),
+        None => {
+            Err(Fatal::new("VERIFY_REPORT_SCHEMA", "Source Role Map schema identity is absent"))
+        }
+    }
 }
 
 fn committed_input(root: &Path, supplied: &Path, key: &str) -> Result<PathBuf, Fatal> {
@@ -2078,7 +2755,7 @@ mod tests {
         CleanupState, DirectoryAnchor, DurabilityState, EVIDENCE_AUTHORITY_MARKER, EffectCertainty,
         Outcome, PreparedEvidence, PublicationFault, claim_evidence_root, create_authority_marker,
         create_owned_temporary, create_plain_directory, current_publication_uid, fs,
-        publish_prepared, reject_existing_final, report, validate_directory_entries,
+        publish_prepared, reject_existing_final, report_v2, validate_directory_entries,
         validate_evidence_root_authority, validate_initial_evidence_root, write_evidence,
     };
 
@@ -2278,7 +2955,7 @@ mod tests {
     #[test]
     fn candidate_outcome_cannot_be_written_as_exact_evidence() {
         let outcome = Outcome {
-            report: report::BuiltReport {
+            report: report_v2::BuiltReport {
                 value: serde_json::json!({
                     "mode": "candidate",
                     "revision": null,

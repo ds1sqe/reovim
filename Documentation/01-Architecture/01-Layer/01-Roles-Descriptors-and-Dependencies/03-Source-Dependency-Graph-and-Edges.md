@@ -111,6 +111,11 @@ reject concrete environment, filesystem, socket, protocol/codec, input,
 terminal, renderer, device, and extension-engine types inside portable
 Foundation and Kernel packages.
 
+Repository Tooling may invoke an exact Product compiler/package validation
+closure and inspect its source/artifacts only as bounded evidence data. The
+tooling implementation never imports, links, re-exports, or packages Product
+code; the separately compiled validation consumer remains Product-owned.
+
 Classification and projection are path- and target-aware. One package may
 contain several owners only under exact non-overlapping rules; a package-level
 label cannot hide a forbidden source edge. Cross-partition product/tooling edges

@@ -17,6 +17,9 @@ these records, and first-party code remains `#![forbid(unsafe_code)]`.
   and `zmij 1.0.23`; lock-only `serde 1.0.229` and `serde_derive 1.0.229`.
 - [`syn-closure.md`](syn-closure.md) — `syn 3.0.4`, `proc-macro2 1.0.107`,
   `quote 1.0.47`, and `unicode-ident 1.0.24`, all metadata-resolved.
+- [`nix-linux-execution-closure.md`](nix-linux-execution-closure.md) — selected
+  Linux-only namespace/mount/limit/signal closure for the Product-proof checker;
+  conditional until integrated exact evidence and retained measurements pass.
 
 The RustSec observation date is 2026-09-01 at advisory database revision
 `72f8b23d78ea6c4c9ded301a4c6ec4260e8b4c27`. “No match” means only that the

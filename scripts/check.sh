@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hosted tooling and Phase-B conformance verification for v0.16.
+# Hosted tooling and Product-empty v2 conformance verification for v0.16.
 
 set -euo pipefail
 
@@ -9,9 +9,9 @@ usage() {
     cat <<'EOF'
 Usage: ./scripts/check.sh
 
-Checks normative/public documentation, the exact all-tooling Source Role Map
-boundary, and every hosted workspace target. This command runs candidate mode;
-exact clean-revision evidence uses scripts/check-conformance.sh exact.
+Checks normative/public documentation, the active Product-empty v2 Source Role
+Map boundary, and every hosted workspace target. This command runs candidate
+mode; exact clean-revision evidence uses scripts/check-conformance.sh exact.
 EOF
 }
 

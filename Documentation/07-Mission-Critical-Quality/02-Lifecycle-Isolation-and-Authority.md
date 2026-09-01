@@ -100,6 +100,11 @@ committed inputs enumerate exact workspace topology, source classification,
 entrypoint reviews, and third-party Cargo-package admissions. Other dependency
 mechanisms retain their own exact pins, admission decisions, and review
 records.
+Metadata is declared-graph evidence, not compiler-active source, helper,
+package-membership, or public-consumer evidence. A Product claim additionally
+requires the version-matched Product-closure and execution-tool admissions and
+correlated compiler, package, and external-consumer evidence defined by the
+Conformance Product Proof Profile.
 Automated checks reject unregistered packages/targets, build mechanisms,
 target/feature profiles, unmatched or ambiguous source, forbidden edges, and
 cycles in both the concrete graph and its ArchitecturalRole-only product

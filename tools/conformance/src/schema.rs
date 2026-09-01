@@ -1,17 +1,25 @@
-//! Small fail-closed validator for the committed generated-report schema.
+//! Small fail-closed validator for the committed generated-report schemas.
 //!
-//! It implements exactly the JSON Schema keywords used by the embedded v1
-//! schema. Encountering an unsupported assertion keyword is itself an error.
+//! It implements exactly the JSON Schema keywords used by the frozen v1 and
+//! active v2 schemas. Encountering an unsupported assertion keyword is itself
+//! an error.
 
 use std::{collections::BTreeSet, fmt};
 
 use serde_json::Value;
 
-const REPORT_SCHEMA: &str = include_str!("../../../conformance/source-role-map.schema.json");
+const REPORT_SCHEMA_V1: &str =
+    include_str!("../../../conformance/compat/v1/source-role-map.schema.json");
+const REPORT_SCHEMA_V2: &str = include_str!("../../../conformance/source-role-map.schema.json");
 
 #[must_use]
 pub const fn embedded_report_schema_bytes() -> &'static [u8] {
-    REPORT_SCHEMA.as_bytes()
+    REPORT_SCHEMA_V2.as_bytes()
+}
+
+#[must_use]
+pub const fn embedded_v1_report_schema_bytes() -> &'static [u8] {
+    REPORT_SCHEMA_V1.as_bytes()
 }
 
 #[derive(Debug, Clone)]
@@ -29,9 +37,103 @@ impl fmt::Display for SchemaError {
 impl std::error::Error for SchemaError {}
 
 pub fn validate_report(instance: &Value) -> Result<(), SchemaError> {
-    let schema: Value = serde_json::from_str(REPORT_SCHEMA)
+    let identity = instance
+        .get("schema")
+        .and_then(Value::as_str)
+        .ok_or_else(|| schema_error("$.schema", "required report schema identity is absent"))?;
+    let schema_bytes = match identity {
+        "reovim-source-role-map/v1" => REPORT_SCHEMA_V1,
+        "reovim-source-role-map/v2" => REPORT_SCHEMA_V2,
+        other => {
+            return Err(schema_error(
+                "$.schema",
+                &format!("unsupported report schema identity {other:?}"),
+            ));
+        }
+    };
+    let schema: Value = serde_json::from_str(schema_bytes)
         .map_err(|error| SchemaError { path: "$schema".to_owned(), message: error.to_string() })?;
     validate_instance(instance, &schema)
+}
+
+/// Canonicalizes only arrays whose selected schema explicitly declares
+/// `uniqueItems: true`. Ordered arrays such as argv remain byte-order
+/// significant.
+pub fn canonicalize_unique_arrays(instance: &mut Value, schema: &Value) -> Result<(), SchemaError> {
+    validate_schema(schema)?;
+    canonicalize(instance, schema, schema, "$")
+}
+
+fn canonicalize(
+    instance: &mut Value,
+    schema: &Value,
+    root: &Value,
+    path: &str,
+) -> Result<(), SchemaError> {
+    let object =
+        schema.as_object().ok_or_else(|| schema_error(path, "schema node is not an object"))?;
+    if let Some(reference) = object.get("$ref") {
+        let reference =
+            reference.as_str().ok_or_else(|| schema_error(path, "$ref is not a string"))?;
+        let pointer = reference
+            .strip_prefix('#')
+            .ok_or_else(|| schema_error(path, "only local schema references are supported"))?;
+        let target = root.pointer(pointer).ok_or_else(|| {
+            schema_error(path, &format!("unresolved schema reference {reference}"))
+        })?;
+        canonicalize(instance, target, root, path)?;
+    }
+    if let Some(branches) = object.get("allOf") {
+        for branch in
+            branches.as_array().ok_or_else(|| schema_error(path, "schema allOf is not an array"))?
+        {
+            canonicalize(instance, branch, root, path)?;
+        }
+    }
+    if let Some(branches) = object.get("oneOf") {
+        let branches = branches
+            .as_array()
+            .ok_or_else(|| schema_error(path, "schema oneOf is not an array"))?;
+        let selected = branches
+            .iter()
+            .filter(|branch| validate(instance, branch, root, path).is_ok())
+            .collect::<Vec<_>>();
+        if selected.len() != 1 {
+            return Err(schema_error(
+                path,
+                &format!("oneOf matched {} branches during canonicalization", selected.len()),
+            ));
+        }
+        canonicalize(instance, selected[0], root, path)?;
+    }
+    if let Some(condition) = object.get("if") {
+        let selected = if validate(instance, condition, root, path).is_ok() {
+            object.get("then")
+        } else {
+            object.get("else")
+        };
+        if let Some(selected) = selected {
+            canonicalize(instance, selected, root, path)?;
+        }
+    }
+    if let (Some(values), Some(properties)) =
+        (instance.as_object_mut(), object.get("properties").and_then(Value::as_object))
+    {
+        for (field, subschema) in properties {
+            if let Some(value) = values.get_mut(field) {
+                canonicalize(value, subschema, root, &child(path, field))?;
+            }
+        }
+    }
+    if let (Some(values), Some(items)) = (instance.as_array_mut(), object.get("items")) {
+        for (index, value) in values.iter_mut().enumerate() {
+            canonicalize(value, items, root, &format!("{path}[{index}]"))?;
+        }
+        if object.get("uniqueItems") == Some(&Value::Bool(true)) {
+            values.sort_by_cached_key(Value::to_string);
+        }
+    }
+    Ok(())
 }
 
 pub fn validate_instance(instance: &Value, schema: &Value) -> Result<(), SchemaError> {
@@ -262,6 +364,15 @@ fn pattern_matches(pattern: &str, value: &str) -> Result<bool, SchemaError> {
         "^(?:[0-9a-f]{40}|[0-9a-f]{64})$" => Ok(matches!(value.len(), 40 | 64) && lower_hex(value)),
         "^[0-9a-f]{64}$" => Ok(value.len() == 64 && lower_hex(value)),
         "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$" => Ok(utc_timestamp(value)),
+        "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$" => Ok(kebab_identifier(value)),
+        "^[A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)*$" => Ok(rust_public_path(value)),
+        r"^/(?!.*//)(?!.*(?:^|/)\.{1,2}(?:/|$))(?!.*/$)(?!.*\u0000).+$" => Ok(value
+            .starts_with('/')
+            && value.len() > 1
+            && !value.ends_with('/')
+            && !value.contains(['\0'])
+            && !value.contains("//")
+            && !value.split('/').any(|component| matches!(component, "." | ".."))),
         r"^(?!/)(?![A-Za-z]:)(?!.*\\)(?!.*//)(?!.*(?:^|/)\.{1,2}(?:/|$))(?!.*/$)(?!.*\u0000).+$" => {
             Ok(!(value.is_empty()
                 || value.starts_with('/')
@@ -498,6 +609,28 @@ fn lower_hex(value: &str) -> bool {
     value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
+fn kebab_identifier(value: &str) -> bool {
+    let mut segments = value.split('-');
+    let Some(first) = segments.next() else { return false };
+    !first.is_empty()
+        && first.as_bytes()[0].is_ascii_lowercase()
+        && first.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+        && segments.all(|segment| {
+            !segment.is_empty()
+                && segment.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+        })
+}
+
+fn rust_public_path(value: &str) -> bool {
+    !value.is_empty() && value.split("::").all(rust_identifier)
+}
+
+fn rust_identifier(value: &str) -> bool {
+    let Some(first) = value.bytes().next() else { return false };
+    (first.is_ascii_alphabetic() || first == b'_')
+        && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+}
+
 fn child(parent: &str, field: &str) -> String {
     format!("{parent}.{field}")
 }
@@ -548,5 +681,53 @@ mod tests {
         let schema = json!({"type": "integer", "minimum": 0});
         assert!(super::validate_instance(&json!(-1), &schema).is_err());
         super::validate_instance(&json!(0), &schema).unwrap();
+    }
+
+    #[test]
+    fn v2_identifier_absolute_and_public_path_patterns_are_closed() {
+        let identifier = json!({
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+        });
+        for valid in ["a", "source-role-map-v2", "tool9"] {
+            super::validate_instance(&json!(valid), &identifier).unwrap();
+        }
+        for invalid in ["", "9tool", "Tool", "tool_1", "tool--one", "tool-"] {
+            assert!(super::validate_instance(&json!(invalid), &identifier).is_err());
+        }
+
+        let absolute = json!({
+            "type": "string",
+            "pattern": r"^/(?!.*//)(?!.*(?:^|/)\.{1,2}(?:/|$))(?!.*/$)(?!.*\u0000).+$"
+        });
+        super::validate_instance(&json!("/usr/bin/git"), &absolute).unwrap();
+        for invalid in ["/", "relative", "/a//b", "/a/../b", "/a/"] {
+            assert!(super::validate_instance(&json!(invalid), &absolute).is_err());
+        }
+
+        let public_path = json!({
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)*$"
+        });
+        super::validate_instance(&json!("foundation::ResourceId"), &public_path).unwrap();
+        for invalid in ["::Resource", "resource::", "resource::::Id", "resource::9Id"] {
+            assert!(super::validate_instance(&json!(invalid), &public_path).is_err());
+        }
+    }
+
+    #[test]
+    fn canonicalization_sorts_only_schema_sets() {
+        let schema = json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["set", "argv"],
+            "properties": {
+                "set": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+                "argv": {"type": "array", "items": {"type": "string"}}
+            }
+        });
+        let mut value = json!({"set": ["z", "a"], "argv": ["z", "a"]});
+        super::canonicalize_unique_arrays(&mut value, &schema).unwrap();
+        assert_eq!(value, json!({"set": ["a", "z"], "argv": ["z", "a"]}));
     }
 }

@@ -25,6 +25,11 @@ and retained review; Cargo metadata does not describe it. These laws apply to
 product roles and Repository Tooling independently. Package name, popularity, a
 lockfile entry alone, or a permissive-looking license is not blanket approval.
 
+Metadata resolution proves declared graph participation, not actual compiler
+units, source inputs, helper reads, package membership, or public accessibility.
+A Product closure additionally requires the mechanism-specific evidence owned
+by the Conformance Product Proof Profile.
+
 The Kernel owns Domain, Representation, Projection, and semantic-coordinate
 contracts plus generic coordination. It does not own concrete Text, byte, ELF,
 QEMU, structured-data, or media policy merely because that policy implements a

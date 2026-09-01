@@ -5,7 +5,7 @@
     {
       "kind": "script",
       "path": "scripts/check.sh",
-      "content_digest": "sha256:36916840689d240de1bf59071881736e1494131288abaa2f4649364380f05e41",
+      "content_digest": "sha256:234396a2f80d16da0a5912ec6d07ab7601f8a01d53409444ca7d630e07711258",
       "direct_local_invocations": [
         {
           "kind": "script",
@@ -26,12 +26,12 @@
         "Cargo, Rustdoc, Rustfmt, and Clippy operate on the exact locked workspace and toolchain selected by the invoking environment."
       ],
       "review_record": "conformance/entrypoint-reviews/check-sh.md",
-      "review_record_digest": "sha256:9673e0dab3d79a5f385d9c48819fe659b62c7b20511c3d3becbb5d2a0eebc07f"
+      "review_record_digest": "sha256:b7c534b1f8aab6ae72bc9bdb9a26da597ef4a98b139735864a1e4bf2f8d2cc3f"
     },
     {
       "kind": "script",
       "path": "scripts/check-documentation.sh",
-      "content_digest": "sha256:18ea57bad2086d7b8c04379dbfdfdde4697ef5c76e33ba63e36b4cc41ee485b6",
+      "content_digest": "sha256:c8830c5010f06433571c3a3876a7659d321465c5b8428105995df7a898de3c2d",
       "direct_local_invocations": [],
       "disposition": "admit",
       "mechanism": "exact-content-retained-review",
@@ -41,12 +41,12 @@
         "BASH_SOURCE resolves this checked-out script so ROOT selects the reviewed repository inputs."
       ],
       "review_record": "conformance/entrypoint-reviews/check-documentation-sh.md",
-      "review_record_digest": "sha256:8f561d78735021d864d0375db14f38224fa6fbaa8f04a46eb916bbebd29c023f"
+      "review_record_digest": "sha256:dcd6afe8e01e439272f5f00506b55704a09b28abd29b76feb5b06aa7b41100ac"
     },
     {
       "kind": "script",
       "path": "scripts/check-conformance.sh",
-      "content_digest": "sha256:4642722343c9446b87332659470128f3d1e774be70545c6dadaa2fe2663c7074",
+      "content_digest": "sha256:11c728c8ccf691dbeaa461b604556da98974a59be27f48a8ad91246db6eaa0b7",
       "direct_local_invocations": [
         {
           "kind": "cargo_target",
@@ -63,7 +63,7 @@
         "Cargo selects the exact declared package and binary target from the locked workspace when given -p reovim-conformance --bin reovim-conformance."
       ],
       "review_record": "conformance/entrypoint-reviews/check-conformance-sh.md",
-      "review_record_digest": "sha256:b1e22b39d8289fe7fb3dce7d64f84fc10d245cc524e5b1f48154f46bf2e032cb"
+      "review_record_digest": "sha256:df4856322cf3c471dda5db6b88cd300f9a2bc00896ccbe0633b8c2b8e6ae8109"
     },
     {
       "kind": "workflow",
@@ -89,7 +89,7 @@
         "Each run step uses the hosted runner's admitted shell semantics and begins in the checked-out repository."
       ],
       "review_record": "conformance/entrypoint-reviews/ci-workflow.md",
-      "review_record_digest": "sha256:516cd4127bc26308efa476091480a1855ffdff9ab1612fd2b030ac20b4945ab6"
+      "review_record_digest": "sha256:058c9b4465749ffcf3e0dfc6540e86358b09fe0824a7c20e2b507c51632a2197"
     }
   ]
 }

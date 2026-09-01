@@ -27,4 +27,5 @@ admission. Shell utility and Cargo commands are external-tool invocations.
 ## Decision
 
 Admit these exact workflow bytes and the two declared direct local invocation
-edges for the hosted Phase-B matrix. Any byte or edge change reopens review.
+edges for the hosted Product-empty v2 matrix. Any byte or edge change reopens
+review.

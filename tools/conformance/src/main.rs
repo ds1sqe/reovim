@@ -14,14 +14,16 @@ use serde_json::json;
 const USAGE: &str = "\
 Usage:
   reovim-conformance check --root ABS --policy ABS --topology ABS \\
-    --entrypoint-reviews ABS --dependency-reviews ABS --cargo ABS --rustc ABS \\
+    --entrypoint-reviews ABS --dependency-reviews ABS --product-closures ABS \\
+    --execution-tool-reviews ABS --cargo ABS --rustc ABS \\
     --cargo-home ABS \\
-    [--git ABS --expected-revision HEX] [--stdout-limit N] \\
+    [--git ABS --expected-revision HEX --execution-environment ID] [--stdout-limit N] \\
     [--stderr-limit N] [--deadline-ms N] [--supervision-deadline-ms N] [--report-limit N]
   reovim-conformance generate --root ABS --policy ABS --topology ABS \\
-    --entrypoint-reviews ABS --dependency-reviews ABS --cargo ABS --rustc ABS \\
+    --entrypoint-reviews ABS --dependency-reviews ABS --product-closures ABS \\
+    --execution-tool-reviews ABS --cargo ABS --rustc ABS \\
     --cargo-home ABS \\
-    --git ABS --expected-revision HEX --evidence-root ABS \\
+    --git ABS --expected-revision HEX --execution-environment ID --evidence-root ABS \\
     [--stdout-limit N] [--stderr-limit N] [--deadline-ms N] \\
     [--supervision-deadline-ms N] [--report-limit N]
   reovim-conformance verify --report ABS
@@ -69,6 +71,14 @@ fn run() -> Result<ExitCode, CliError> {
     if command == "--help" || command == "-h" {
         let mut stdout = io::stdout().lock();
         stdout.write_all(USAGE.as_bytes()).and_then(|()| stdout.flush()).map_err(|error| {
+            CliError::Fatal(Fatal { code: "STDOUT_WRITE", message: error.to_string() })
+        })?;
+        return Ok(ExitCode::SUCCESS);
+    }
+    if command == "--version" || command == "-V" {
+        let version = concat!("reovim-conformance ", env!("CARGO_PKG_VERSION"), "\n");
+        let mut stdout = io::stdout().lock();
+        stdout.write_all(version.as_bytes()).and_then(|()| stdout.flush()).map_err(|error| {
             CliError::Fatal(Fatal { code: "STDOUT_WRITE", message: error.to_string() })
         })?;
         return Ok(ExitCode::SUCCESS);
@@ -197,17 +207,22 @@ fn write_stderr(value: &serde_json::Value) {
 fn common_options(arguments: &Arguments, require_exact: bool) -> Result<CheckOptions, CliError> {
     let git = arguments.optional_path("git");
     let expected_revision = arguments.optional("expected-revision").map(str::to_owned);
-    let mode = match (git, expected_revision) {
-        (None, None) if !require_exact => Mode::Candidate,
-        (Some(git), Some(expected_revision)) => Mode::Exact { git, expected_revision },
-        (None, None) => {
+    let execution_environment = arguments.optional("execution-environment").map(str::to_owned);
+    let mode = match (git, expected_revision, execution_environment) {
+        (None, None, None) if !require_exact => Mode::Candidate,
+        (Some(git), Some(expected_revision), Some(execution_environment)) => {
+            Mode::Exact { git, expected_revision, execution_environment }
+        }
+        (None, None, None) => {
             return Err(CliError::Usage(
-                "generate requires --git and --expected-revision".to_owned(),
+                "generate requires --git, --expected-revision, and --execution-environment"
+                    .to_owned(),
             ));
         }
         _ => {
             return Err(CliError::Usage(
-                "--git and --expected-revision must be supplied together".to_owned(),
+                "--git, --expected-revision, and --execution-environment must be supplied together"
+                    .to_owned(),
             ));
         }
     };
@@ -217,6 +232,8 @@ fn common_options(arguments: &Arguments, require_exact: bool) -> Result<CheckOpt
         topology: arguments.path("topology")?,
         entrypoint_reviews: arguments.path("entrypoint-reviews")?,
         dependency_reviews: arguments.path("dependency-reviews")?,
+        product_closures: arguments.path("product-closures")?,
+        execution_tool_reviews: arguments.path("execution-tool-reviews")?,
         cargo: arguments.path("cargo")?,
         rustc: arguments.path("rustc")?,
         cargo_home: arguments.path("cargo-home")?,
@@ -238,11 +255,14 @@ fn common_names() -> Vec<&'static str> {
         "topology",
         "entrypoint-reviews",
         "dependency-reviews",
+        "product-closures",
+        "execution-tool-reviews",
         "cargo",
         "rustc",
         "cargo-home",
         "git",
         "expected-revision",
+        "execution-environment",
         "stdout-limit",
         "stderr-limit",
         "deadline-ms",

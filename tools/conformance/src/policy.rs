@@ -10,22 +10,8 @@ use serde_json::Value;
 
 use crate::json::{self, ConfigError};
 
-pub const SCHEMA: &str = "reovim-source-classification/v1";
+pub const SCHEMA: &str = "reovim-source-classification/v2";
 pub const EVIDENCE_KEY: &str = "conformance/source-role-map.json";
-
-const SHIPPING_TARGET_KINDS: &[&str] = &[
-    "bin",
-    "lib",
-    "rlib",
-    "dylib",
-    "cdylib",
-    "staticlib",
-    "proc-macro",
-    "example",
-    "test",
-    "bench",
-    "custom-build",
-];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Policy {
@@ -33,7 +19,6 @@ pub struct Policy {
     pub exclusions: Vec<Exclusion>,
     pub rules: Vec<Rule>,
     pub allowed_product_edges: BTreeSet<(ArchitecturalRole, ArchitecturalRole)>,
-    pub shipping_closure_roots: Vec<ShippingRoot>,
     pub generated_evidence_key: PathBuf,
 }
 
@@ -84,13 +69,6 @@ pub enum DigestSubject {
     ClassifiedContent,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ShippingRoot {
-    pub package: String,
-    pub target_kind: String,
-    pub target_name: String,
-}
-
 impl Policy {
     pub fn parse(value: &Value) -> Result<Self, ConfigError> {
         let root = json::object(
@@ -102,7 +80,6 @@ impl Policy {
                 "rules",
                 "unmatched",
                 "allowed_product_edges",
-                "shipping_closure_roots",
                 "generated_evidence_key",
             ],
             &[],
@@ -117,7 +94,7 @@ impl Policy {
             return Err(ConfigError::new(
                 "POLICY_SCOPE_ROOT",
                 "$.scope.roots",
-                "v1 requires exactly the repository root '.'",
+                "v2 requires exactly the repository root '.'",
             ));
         }
         let exclusions = parse_exclusions(&scope["exclusions"])?;
@@ -134,7 +111,7 @@ impl Policy {
             return Err(ConfigError::new(
                 "POLICY_EXCLUSION_SET",
                 "$.scope.exclusions",
-                "v1 requires exactly .git/vcs_metadata, target/transient_build_output, and tmp/working_notes",
+                "v2 requires exactly .git/vcs_metadata, target/transient_build_output, and tmp/working_notes",
             ));
         }
         let rules = parse_rules(&root["rules"])?;
@@ -146,25 +123,11 @@ impl Policy {
             ));
         }
         let allowed_product_edges = parse_edges(&root["allowed_product_edges"])?;
-        if !allowed_product_edges.is_empty() {
-            return Err(ConfigError::new(
-                "POLICY_PRODUCT_EDGE_UNAVAILABLE",
-                "$.allowed_product_edges",
-                "v1 admits no latent Product edge while Product boundary proof is unavailable",
-            ));
-        }
-        let shipping_closure_roots = parse_shipping_roots(&root["shipping_closure_roots"])?;
         let generated_evidence_key =
             relative_path(EVIDENCE_KEY, "$.generated_evidence_key", false)?;
 
-        let policy = Self {
-            scope_roots,
-            exclusions,
-            rules,
-            allowed_product_edges,
-            shipping_closure_roots,
-            generated_evidence_key,
-        };
+        let policy =
+            Self { scope_roots, exclusions, rules, allowed_product_edges, generated_evidence_key };
         policy.validate_result_separation()?;
         // Exercise the shared primitive here so invalid normalized prefixes
         // cannot be accepted by one layer and rejected by another.
@@ -174,7 +137,7 @@ impl Policy {
 
     pub fn classification_map(&self) -> Result<SourceClassificationMap, ConfigError> {
         SourceClassificationMap::new(
-            1,
+            2,
             self.rules.iter().map(|rule| {
                 SourceClassificationRule::new(
                     rule.prefix.clone(),
@@ -474,37 +437,6 @@ fn parse_edges(
     Ok(result)
 }
 
-fn parse_shipping_roots(value: &Value) -> Result<Vec<ShippingRoot>, ConfigError> {
-    let mut result = Vec::new();
-    let mut seen = BTreeSet::new();
-    for (item, value) in json::array(value, "$.shipping_closure_roots")?.iter().enumerate() {
-        let path = json::index("$.shipping_closure_roots", item);
-        let object = json::object(value, &path, &["package", "target_kind", "target_name"], &[])?;
-        let root = ShippingRoot {
-            package: nonempty(&object["package"], &json::child(&path, "package"))?,
-            target_kind: nonempty(&object["target_kind"], &json::child(&path, "target_kind"))?,
-            target_name: nonempty(&object["target_name"], &json::child(&path, "target_name"))?,
-        };
-        if !SHIPPING_TARGET_KINDS.contains(&root.target_kind.as_str()) {
-            return Err(ConfigError::new(
-                "POLICY_TARGET_KIND",
-                json::child(&path, "target_kind"),
-                "unsupported Cargo target kind",
-            ));
-        }
-        if !seen.insert(root.clone()) {
-            return Err(ConfigError::new(
-                "POLICY_DUPLICATE_SHIPPING_ROOT",
-                path,
-                "duplicate shipping closure root",
-            ));
-        }
-        result.push(root);
-    }
-    result.sort();
-    Ok(result)
-}
-
 fn parse_unique_paths(
     value: &Value,
     path: &str,
@@ -595,15 +527,6 @@ fn exact_string(value: &Value, path: &str, expected: &str) -> Result<(), ConfigE
     }
 }
 
-fn nonempty(value: &Value, path: &str) -> Result<String, ConfigError> {
-    let value = json::string(value, path)?;
-    if value.is_empty() {
-        Err(ConfigError::new("CFG_EMPTY_STRING", path, "value must not be empty"))
-    } else {
-        Ok(value.to_owned())
-    }
-}
-
 fn valid_digest(value: &str) -> bool {
     value.len() == 71
         && value.starts_with("sha256:")
@@ -629,7 +552,6 @@ mod tests {
             "rules": [rule],
             "unmatched": "deny",
             "allowed_product_edges": [],
-            "shipping_closure_roots": [],
             "generated_evidence_key": super::EVIDENCE_KEY
         })
     }
@@ -697,13 +619,11 @@ mod tests {
     }
 
     #[test]
-    fn latent_product_edges_are_rejected() {
+    fn product_edges_are_parsed_for_closure_validation() {
         let mut value = policy(authored_tool("src"));
         value["allowed_product_edges"] =
             json!([{"consumer":"Kernel Interface","provider":"Foundation"}]);
-        assert_eq!(
-            super::Policy::parse(&value).unwrap_err().code,
-            "POLICY_PRODUCT_EDGE_UNAVAILABLE"
-        );
+        let parsed = super::Policy::parse(&value).unwrap();
+        assert_eq!(parsed.allowed_product_edges.len(), 1);
     }
 }

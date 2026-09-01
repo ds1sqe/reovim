@@ -14,6 +14,7 @@ remains the sole stable rule router.
 3. [Evidence Taxonomy and Authority](03-Evidence-Taxonomy-and-Authority.md)
    defines the closed evidence classes.
 4. [Source Classification and Exact Checker](04-Source-Classification-and-Exact-Checker.md)
-   owns committed checker inputs, generated evidence, and the Phase-B boundary.
+   owns committed checker inputs, generated evidence, the historic Phase-B
+   boundary, and the fail-closed Product proof profile.
 5. [Public Reduction and Qualification](05-Public-Reduction-and-Qualification.md)
    owns public-path and release-proof reduction.

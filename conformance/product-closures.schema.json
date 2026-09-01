@@ -1,0 +1,274 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://reovim.dev/schema/reovim-product-closures-v1.json",
+  "title": "Reovim exact Product closure declarations",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "product_proof_profile", "closures", "public_consumer_relations"],
+  "properties": {
+    "schema": { "const": "reovim-product-closures/v1" },
+    "product_proof_profile": { "const": "authored-std-lib/v1" },
+    "closures": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/closure" }
+    },
+    "public_consumer_relations": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/public_consumer_relation" }
+    }
+  },
+  "$defs": {
+    "nonempty_string": {
+      "type": "string",
+      "minLength": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+    },
+    "relative_path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*//)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*/$)(?!.*\\u0000).+$",
+      "not": { "const": "." }
+    },
+    "string_set": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/nonempty_string" }
+    },
+    "product_role": {
+      "enum": [
+        "Foundation",
+        "Kernel Interface",
+        "Kernel Core",
+        "Kernel Runtime",
+        "Public SDKs",
+        "Concrete policy",
+        "Resource Adapter",
+        "Host Adapter",
+        "External Protocol Binding",
+        "Protocol Adapter",
+        "Extension Adapter",
+        "Extension Engine Adapter",
+        "Client Family",
+        "Client Runtime",
+        "Presentation Adapter",
+        "Assembly"
+      ]
+    },
+    "workspace_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "manifest", "lockfile"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "manifest": { "$ref": "#/$defs/relative_path" },
+        "lockfile": { "$ref": "#/$defs/relative_path" }
+      }
+    },
+    "package_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "manifest"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "$ref": "#/$defs/nonempty_string" },
+        "manifest": { "$ref": "#/$defs/relative_path" }
+      }
+    },
+    "target_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "src_path", "kind", "crate_types"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "$ref": "#/$defs/nonempty_string" },
+        "src_path": { "$ref": "#/$defs/relative_path" },
+        "kind": { "$ref": "#/$defs/string_set" },
+        "crate_types": { "$ref": "#/$defs/string_set" }
+      }
+    },
+    "cargo_selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command",
+        "target_triple",
+        "profile",
+        "all_features",
+        "no_default_features",
+        "features",
+        "expected_artifact_crate_types"
+      ],
+      "properties": {
+        "command": { "const": "build" },
+        "target_triple": { "const": "x86_64-unknown-linux-gnu" },
+        "profile": { "$ref": "#/$defs/id" },
+        "all_features": { "const": false },
+        "no_default_features": { "const": false },
+        "features": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "expected_artifact_crate_types": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "uniqueItems": true,
+          "items": { "const": "rlib" }
+        }
+      }
+    },
+    "copied_member": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "package_path", "repository_path"],
+      "properties": {
+        "kind": { "const": "copied" },
+        "package_path": { "$ref": "#/$defs/relative_path" },
+        "repository_path": { "$ref": "#/$defs/relative_path" }
+      }
+    },
+    "cargo_generated_member": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "package_path"],
+      "properties": {
+        "kind": { "const": "cargo_generated" },
+        "package_path": {
+          "enum": [".cargo_vcs_info.json", "Cargo.lock", "Cargo.toml", "Cargo.toml.orig"]
+        }
+      }
+    },
+    "package_membership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "members"],
+      "properties": {
+        "mode": { "const": "cargo_package_list" },
+        "members": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "oneOf": [
+              { "$ref": "#/$defs/copied_member" },
+              { "$ref": "#/$defs/cargo_generated_member" }
+            ]
+          }
+        }
+      }
+    },
+    "closure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "workspace",
+        "package",
+        "target",
+        "architectural_role",
+        "source_use",
+        "cargo",
+        "mechanism_profile",
+        "package_membership"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "kind": { "enum": ["shipping", "validation"] },
+        "workspace": { "$ref": "#/$defs/workspace_ref" },
+        "package": { "$ref": "#/$defs/package_ref" },
+        "target": { "$ref": "#/$defs/target_ref" },
+        "architectural_role": { "$ref": "#/$defs/product_role" },
+        "source_use": { "enum": ["production", "test"] },
+        "cargo": { "$ref": "#/$defs/cargo_selection" },
+        "mechanism_profile": { "const": "authored-std-lib/v1" },
+        "package_membership": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/package_membership" }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "kind": { "const": "shipping" } },
+            "required": ["kind"]
+          },
+          "then": {
+            "properties": {
+              "source_use": { "const": "production" },
+              "cargo": {
+                "properties": { "profile": { "const": "release" } }
+              },
+              "package_membership": { "$ref": "#/$defs/package_membership" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "kind": { "const": "validation" } },
+            "required": ["kind"]
+          },
+          "then": {
+            "properties": {
+              "source_use": { "const": "test" },
+              "package_membership": { "type": "null" }
+            }
+          }
+        }
+      ]
+    },
+    "public_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "kind"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)*$"
+        },
+        "kind": { "enum": ["module", "type", "trait", "function", "const", "static"] }
+      }
+    },
+    "derive_check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["derive", "public_type", "consumer_operation"],
+      "properties": {
+        "derive": { "enum": ["Clone", "Copy", "Debug", "PartialEq", "Eq", "Hash", "Default"] },
+        "public_type": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)*$"
+        },
+        "consumer_operation": { "enum": ["clone", "copy", "debug", "partial_eq", "eq", "hash", "default"] }
+      }
+    },
+    "public_consumer_relation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "shipping_closure", "consumer_closure", "public_items", "derive_checks"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "shipping_closure": { "$ref": "#/$defs/id" },
+        "consumer_closure": { "$ref": "#/$defs/id" },
+        "public_items": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/public_item" }
+        },
+        "derive_checks": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/derive_check" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,407 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://reovim.dev/schema/reovim-source-classification-v1.json",
+  "title": "Reovim source classification policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "scope",
+    "rules",
+    "unmatched",
+    "allowed_product_edges",
+    "shipping_closure_roots",
+    "generated_evidence_key"
+  ],
+  "properties": {
+    "schema": {
+      "const": "reovim-source-classification/v1"
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["roots", "exclusions"],
+      "properties": {
+        "roots": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/scope_root" }
+        },
+        "exclusions": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/exclusion"
+          }
+        }
+      }
+    },
+    "rules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/rule"
+      }
+    },
+    "unmatched": {
+      "const": "deny"
+    },
+    "allowed_product_edges": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/product_edge"
+      }
+    },
+    "shipping_closure_roots": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/shipping_root"
+      }
+    },
+    "generated_evidence_key": {
+      "const": "conformance/source-role-map.json"
+    }
+  },
+  "$defs": {
+    "scope_root": {
+      "const": "."
+    },
+    "relative_path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*//)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*/$)(?!.*\\u0000).+$",
+      "not": { "const": "." }
+    },
+    "exclusion": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["prefix", "kind"],
+          "properties": {
+            "prefix": { "const": ".git" },
+            "kind": { "const": "vcs_metadata" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["prefix", "kind"],
+          "properties": {
+            "prefix": { "const": "target" },
+            "kind": { "const": "transient_build_output" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["prefix", "kind"],
+          "properties": {
+            "prefix": { "const": "tmp" },
+            "kind": { "const": "working_notes" }
+          }
+        }
+      ]
+    },
+    "product_role": {
+      "enum": [
+        "Foundation",
+        "Kernel Interface",
+        "Kernel Core",
+        "Kernel Runtime",
+        "Public SDKs",
+        "Concrete policy",
+        "Resource Adapter",
+        "Host Adapter",
+        "External Protocol Binding",
+        "Protocol Adapter",
+        "Extension Adapter",
+        "Extension Engine Adapter",
+        "Client Family",
+        "Client Runtime",
+        "Presentation Adapter",
+        "Assembly"
+      ]
+    },
+    "source_owner": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "const": "repository_tooling"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "role"],
+          "properties": {
+            "kind": {
+              "const": "product"
+            },
+            "role": {
+              "$ref": "#/$defs/product_role"
+            }
+          }
+        }
+      ]
+    },
+    "upstream": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "digest", "digest_subject"],
+      "properties": {
+        "identity": {
+          "type": "string",
+          "minLength": 1
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "digest_subject": {
+          "$ref": "#/$defs/digest_subject"
+        }
+      }
+    },
+    "digest_subject": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "paths"],
+          "properties": {
+            "kind": { "const": "paths" },
+            "paths": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/relative_path" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": { "const": "classified_content" }
+          }
+        }
+      ]
+    },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prefix",
+        "precedence",
+        "source_owner",
+        "source_provenance",
+        "source_use"
+      ],
+      "properties": {
+        "prefix": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "precedence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "source_owner": {
+          "$ref": "#/$defs/source_owner"
+        },
+        "source_provenance": {
+          "enum": ["authored", "generated", "vendored"]
+        },
+        "source_use": {
+          "enum": ["production", "test", "example", "tool", "build_output"]
+        },
+        "upstream": {
+          "$ref": "#/$defs/upstream"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["source_provenance"],
+            "properties": {
+              "source_provenance": {
+                "const": "authored"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": ["upstream"]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["source_provenance"],
+            "properties": {
+              "source_provenance": {
+                "enum": ["generated", "vendored"]
+              }
+            }
+          },
+          "then": {
+            "required": ["upstream"]
+          }
+        },
+        {
+          "if": {
+            "required": ["source_provenance"],
+            "properties": {
+              "source_provenance": { "const": "generated" }
+            }
+          },
+          "then": {
+            "properties": {
+              "upstream": {
+                "properties": {
+                  "digest_subject": {
+                    "properties": { "kind": { "const": "paths" } }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["source_provenance"],
+            "properties": {
+              "source_provenance": { "const": "vendored" }
+            }
+          },
+          "then": {
+            "properties": {
+              "upstream": {
+                "properties": {
+                  "digest_subject": {
+                    "properties": {
+                      "kind": { "const": "classified_content" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["source_owner"],
+            "properties": {
+              "source_owner": {
+                "required": ["kind"],
+                "properties": {
+                  "kind": {
+                    "const": "repository_tooling"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "source_use": {
+                "enum": ["test", "example", "tool", "build_output"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["source_owner"],
+            "properties": {
+              "source_owner": {
+                "required": ["kind"],
+                "properties": {
+                  "kind": {
+                    "const": "product"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "source_use": {
+                "enum": ["production", "test", "example"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["source_use"],
+            "properties": {
+              "source_use": { "const": "build_output" }
+            }
+          },
+          "then": {
+            "properties": {
+              "source_provenance": { "const": "generated" }
+            }
+          }
+        }
+      ]
+    },
+    "product_edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["consumer", "provider"],
+      "properties": {
+        "consumer": {
+          "$ref": "#/$defs/product_role"
+        },
+        "provider": {
+          "$ref": "#/$defs/product_role"
+        }
+      }
+    },
+    "shipping_root": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["package", "target_kind", "target_name"],
+      "properties": {
+        "package": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_kind": {
+          "enum": [
+            "bin",
+            "lib",
+            "rlib",
+            "dylib",
+            "cdylib",
+            "staticlib",
+            "proc-macro",
+            "example",
+            "test",
+            "bench",
+            "custom-build"
+          ]
+        },
+        "target_name": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

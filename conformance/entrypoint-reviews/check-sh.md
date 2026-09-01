@@ -4,7 +4,7 @@
 
 - Kind: script
 - Exact content digest:
-  `sha256:36916840689d240de1bf59071881736e1494131288abaa2f4649364380f05e41`
+  `sha256:234396a2f80d16da0a5912ec6d07ab7601f8a01d53409444ca7d630e07711258`
 - Review mechanism: exact content and retained review
 
 ## Direct local invocations
@@ -28,4 +28,5 @@ is reviewed at the `scripts/check-conformance.sh` boundary.
 ## Decision
 
 Admit these exact bytes and the two declared direct local invocation edges for
-Phase-B RepositoryTooling checks. Any byte or edge change reopens this review.
+Product-empty v2 Repository Tooling checks. Any byte or edge change reopens
+this review.

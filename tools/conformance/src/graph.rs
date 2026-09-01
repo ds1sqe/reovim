@@ -64,14 +64,6 @@ pub fn check(
     topology: &Topology,
 ) -> GraphReport {
     let mut findings = Findings::new(topology.limits.findings);
-    if !policy.shipping_closure_roots.is_empty() {
-        findings.push(Finding::new(
-            "product_boundary",
-            "PRODUCT_BOUNDARY_PROOF_UNAVAILABLE",
-            None,
-            "v1 cannot prove shipping roots without compiler and package evidence",
-        ));
-    }
     let canonical_metadata_root = metadata.workspace_root.canonicalize();
     if !matches!(canonical_metadata_root.as_deref(), Ok(path) if path == root) {
         findings.push(Finding::new(
@@ -97,16 +89,23 @@ pub fn check(
                 format!("profile {profile}: retired package {} is forbidden", package.name),
             ));
         }
-        if package.source.is_none() && !metadata.workspace_members.contains(&package.id) {
-            findings.push(Finding::new(
-                "topology",
-                "UNREGISTERED_PATH_PACKAGE",
-                None,
-                format!(
-                    "profile {profile}: source-null package {} {} is not an exact workspace member",
-                    package.name, package.version
-                ),
-            ));
+        if package.source.is_none() {
+            let resolved = package.manifest_path.strip_prefix(root).ok().and_then(|manifest| {
+                topology.resolve_source_null_package(&package.name, &package.version, manifest)
+            });
+            if resolved.is_none() {
+                findings.push(Finding::new(
+                    "topology",
+                    "UNREGISTERED_PATH_PACKAGE",
+                    None,
+                    format!(
+                        "profile {profile}: source-null package {} {} and manifest {} do not resolve to one declared workspace package",
+                        package.name,
+                        package.version,
+                        package.manifest_path.display(),
+                    ),
+                ));
+            }
         }
     }
     let expected_by_name = topology
@@ -559,7 +558,6 @@ mod tests {
             exclusions: Vec::new(),
             rules: Vec::new(),
             allowed_product_edges: BTreeSet::new(),
-            shipping_closure_roots: Vec::new(),
             generated_evidence_key: PathBuf::from("conformance/source-role-map.json"),
         }
     }

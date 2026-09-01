@@ -15,5 +15,8 @@ reovim-depgraph = { path = "../../lib/depgraph" }
 serde_json = { version = "=1.0.151", default-features = false, features = ["std"] }
 syn = { version = "=3.0.4", default-features = false, features = ["full", "parsing", "visit"] }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+nix = { version = "=0.31.3", default-features = false, features = ["fs", "mount", "resource", "sched", "signal"] }
+
 [lints]
 workspace = true

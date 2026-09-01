@@ -4,7 +4,7 @@
 
 - Kind: script
 - Exact content digest:
-  `sha256:4642722343c9446b87332659470128f3d1e774be70545c6dadaa2fe2663c7074`
+  `sha256:11c728c8ccf691dbeaa461b604556da98974a59be27f48a8ad91246db6eaa0b7`
 - Review mechanism: exact content and retained review
 
 ## Direct local invocations
@@ -12,8 +12,10 @@
 - Cargo target `reovim-conformance/reovim-conformance` by `cargo run --bin`
 
 The script also builds the same target and resolves Cargo, Rustc, and Git as
-external tools. Configuration and report paths passed to the binary are
-consumed inputs, not additional executable entrypoints.
+external tools. It passes the Product-closure and execution-tool admissions to
+the checker and selects the committed Git execution environment for exact
+mode. Configuration and report paths passed to the binary are consumed
+inputs, not additional executable entrypoints.
 
 ## Assumptions
 
@@ -27,4 +29,5 @@ consumed inputs, not additional executable entrypoints.
 ## Decision
 
 Admit these exact bytes and the declared Cargo-target edge for candidate and
-exact Phase-B conformance. Any byte, target, or edge change reopens this review.
+exact Product-empty v2 conformance. Any byte, target, environment binding, or
+edge change reopens this review.

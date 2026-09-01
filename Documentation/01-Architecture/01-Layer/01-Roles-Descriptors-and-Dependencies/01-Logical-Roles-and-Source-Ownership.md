@@ -84,3 +84,8 @@ generated source remains product-owned. Generated source compiled or bundled
 into a product is `Production`, not `BuildOutput`. The Conformance contract owns
 the closed classification-policy and evidence schemas and exact use/closure
 rules.
+
+A registered nonshipping validation consumer remains
+`Product(ArchitecturalRole) + Test`, uses only an allowed inward Product-role
+edge, and gains no shipping authority. It is never relabeled Repository Tooling
+merely because a conformance checker compiles it.

@@ -47,13 +47,33 @@ const fn tight_supervision_limits(
     }
 }
 
+fn assert_process_ownership(result: &reovim_conformance::process::ProcessResult) {
+    assert!(result.reaped && result.readers_joined);
+    #[cfg(target_os = "linux")]
+    {
+        assert_eq!(result.pgid, Some(result.leader_pid));
+        assert!(result.group_identity_validated);
+        assert!(result.group_absent_after_reap);
+        assert!(result.descendants_owned);
+        assert!(result.descendants_reaped);
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        assert_eq!(result.pgid, None);
+        assert!(!result.group_identity_validated);
+        assert!(!result.group_absent_after_reap);
+        assert!(!result.descendants_owned);
+        assert!(!result.descendants_reaped);
+    }
+}
+
 #[test]
 fn exact_pipe_cap_is_not_overflow() {
     let result = shell("printf 1234", limits(4, 4, 500));
     assert_eq!(result.termination_reason, TerminationReason::Exited);
     assert_eq!(result.stdout, b"1234");
     assert!(!result.stdout_overflow);
-    assert!(result.reaped && result.readers_joined);
+    assert_process_ownership(&result);
 }
 
 #[test]
@@ -63,7 +83,7 @@ fn cap_plus_one_kills_or_records_the_exit_race_and_reaps() {
     assert_eq!(result.stdout, b"1234");
     assert!(result.stdout_overflow);
     assert!(result.kill_attempted);
-    assert!(result.reaped && result.readers_joined);
+    assert_process_ownership(&result);
 }
 
 #[test]
@@ -74,6 +94,7 @@ fn stdout_and_stderr_are_drained_concurrently() {
     assert_eq!(result.stdout_bytes, 256);
     assert_eq!(result.stderr_bytes, 256);
     assert!(result.status.success());
+    assert_process_ownership(&result);
 }
 
 #[test]
@@ -82,7 +103,7 @@ fn deadline_after_ready_kills_waits_and_joins() {
     assert_eq!(result.termination_reason, TerminationReason::Deadline);
     assert_eq!(result.stdout, b"READY");
     assert!(result.kill_attempted);
-    assert!(result.reaped && result.readers_joined);
+    assert_process_ownership(&result);
 }
 
 #[test]
@@ -91,7 +112,7 @@ fn nonzero_exit_is_retained_without_becoming_a_runner_error() {
     assert_eq!(result.termination_reason, TerminationReason::Exited);
     assert_eq!(result.status.code(), Some(7));
     assert_eq!(result.stderr, b"problem");
-    assert!(result.reaped && result.readers_joined);
+    assert_process_ownership(&result);
 }
 
 #[test]
@@ -99,7 +120,8 @@ fn stderr_cap_plus_one_is_bounded_and_reaped() {
     let result = shell("printf 12345 >&2; while :; do :; done", limits(64, 4, 500));
     assert_eq!(result.termination_reason, TerminationReason::StderrLimit);
     assert_eq!(result.stderr, b"1234");
-    assert!(result.stderr_overflow && result.reaped && result.readers_joined);
+    assert!(result.stderr_overflow);
+    assert_process_ownership(&result);
 }
 
 #[test]
@@ -110,7 +132,8 @@ fn simultaneous_pipe_overflow_is_owned() {
         TerminationReason::StdoutLimit | TerminationReason::StderrLimit
     ));
     assert!(result.stdout_overflow || result.stderr_overflow);
-    assert!(result.kill_attempted && result.reaped && result.readers_joined);
+    assert!(result.kill_attempted);
+    assert_process_ownership(&result);
 }
 
 #[test]
@@ -119,7 +142,7 @@ fn already_exited_cap_race_is_explicit() {
     assert_eq!(result.termination_reason, TerminationReason::StdoutLimit);
     assert!(result.stdout_overflow);
     assert!(result.kill_attempted || result.limit_observed_after_exit);
-    assert!(result.reaped && result.readers_joined);
+    assert_process_ownership(&result);
 }
 
 #[test]
@@ -140,12 +163,13 @@ fn spawn_failure_is_returned_without_a_child() {
 
 #[test]
 fn command_argv_environment_and_directory_are_explicit() {
+    let script = "printf '%s|%s|%s' \"$1\" \"$ONLY\" \"$PWD\"";
     let result = run(
         &CommandSpec {
             program: PathBuf::from("/bin/sh"),
             arguments: vec![
                 OsString::from("-c"),
-                OsString::from("printf '%s|%s|%s' \"$1\" \"$ONLY\" \"$PWD\""),
+                OsString::from(script),
                 OsString::from("reovim-sh"),
                 OsString::from("argument"),
             ],
@@ -157,6 +181,17 @@ fn command_argv_environment_and_directory_are_explicit() {
     )
     .unwrap();
     assert_eq!(result.stdout, b"argument|value|/");
+    assert_eq!(
+        result.argv,
+        [
+            OsString::from("/bin/sh"),
+            OsString::from("-c"),
+            OsString::from(script),
+            OsString::from("reovim-sh"),
+            OsString::from("argument"),
+        ]
+    );
+    assert_process_ownership(&result);
 }
 
 #[test]
@@ -164,35 +199,29 @@ fn invalid_utf8_is_retained_as_bytes() {
     let result = shell("printf '\\377'", limits(4, 4, 500));
     assert_eq!(result.stdout, [0xff]);
     assert!(std::str::from_utf8(&result.stdout).is_err());
+    assert_process_ownership(&result);
 }
 
 #[test]
-fn descendant_pipe_holder_helper() {
-    if std::env::var_os("REOVIM_DESCENDANT_ABORT_HELPER").is_none() {
-        return;
+fn fast_exit_process_group_identity_race_remains_owned() {
+    for _ in 0..32 {
+        let result = shell(":", tight_supervision_limits(8, 8, 100));
+        assert_eq!(result.termination_reason, TerminationReason::Exited);
+        assert!(result.status.success());
+        assert_process_ownership(&result);
     }
-    let _ = shell("/bin/sleep 5 &", tight_supervision_limits(64, 64, 100));
-    panic!("watchdog should abort before inherited pipe join returns");
 }
 
 #[test]
-fn descendant_held_pipe_aborts_supervisor_within_outer_bound() {
-    if std::env::var_os("REOVIM_DESCENDANT_ABORT_HELPER").is_some() {
-        return;
-    }
+#[cfg(target_os = "linux")]
+fn descendant_held_pipe_is_cleaned_as_one_bounded_group() {
     let start = std::time::Instant::now();
-    let output = std::process::Command::new(std::env::current_exe().unwrap())
-        .args(["--exact", "descendant_pipe_holder_helper", "--nocapture"])
-        .env("REOVIM_DESCENDANT_ABORT_HELPER", "1")
-        .output()
-        .unwrap();
-    #[cfg(target_os = "linux")]
-    {
-        use std::os::unix::process::ExitStatusExt as _;
-        assert_eq!(output.status.signal(), Some(6));
-    }
-    #[cfg(not(target_os = "linux"))]
-    assert!(!output.status.success());
+    let result = shell("/bin/sleep 5 &", tight_supervision_limits(64, 64, 100));
+    assert_eq!(result.termination_reason, TerminationReason::Exited);
+    assert!(result.status.success());
+    assert!(result.kill_attempted);
+    assert!(result.descendant_residue_observed);
+    assert_process_ownership(&result);
     assert!(start.elapsed() < Duration::from_secs(2));
 }
 
@@ -208,7 +237,7 @@ impl PlainTemp {
     fn new(label: &str) -> Self {
         let sequence = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
         let path = std::env::temp_dir()
-            .join(format!("reovim-phase-b-{label}-{}-{sequence}", std::process::id()));
+            .join(format!("reovim-product-v2-{label}-{}-{sequence}", std::process::id()));
         fs::create_dir(&path).unwrap();
         #[cfg(unix)]
         {
@@ -230,7 +259,7 @@ impl RepositoryFixture {
         let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap();
         let sequence = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
         let root = std::env::temp_dir()
-            .join(format!("reovim-phase-b-{label}-{}-{sequence}", std::process::id()));
+            .join(format!("reovim-product-v2-{label}-{}-{sequence}", std::process::id()));
         fs::create_dir(&root).unwrap();
         copy_repository_tree(&source, &root).unwrap();
         let fixture = Self { root };
@@ -262,17 +291,17 @@ impl RepositoryFixture {
 
     fn retain_default_profile(&self) {
         let mut topology = self.json("conformance/workspace-topology.json");
-        topology["profiles"].as_array_mut().unwrap().retain(|profile| {
-            profile.get("name").and_then(serde_json::Value::as_str) == Some("hosted-default")
+        topology["workspaces"][0]["metadata_profiles"].as_array_mut().unwrap().retain(|profile| {
+            profile.get("id").and_then(serde_json::Value::as_str) == Some("hosted-default")
         });
         self.write_json("conformance/workspace-topology.json", &topology);
 
         let mut reviews = self.json("conformance/dependency-reviews.json");
-        for admission in reviews["admissions"].as_array_mut().unwrap() {
-            admission["resolved_profiles"]
-                .as_array_mut()
-                .unwrap()
-                .retain(|profile| profile.as_str() == Some("hosted-default"));
+        for admission in reviews["workspaces"][0]["admissions"].as_array_mut().unwrap() {
+            admission["resolved_uses"].as_array_mut().unwrap().retain(|resolved_use| {
+                resolved_use.get("profile").and_then(serde_json::Value::as_str)
+                    == Some("hosted-default")
+            });
         }
         self.write_json("conformance/dependency-reviews.json", &reviews);
     }
@@ -289,6 +318,8 @@ impl RepositoryFixture {
             .arg("/usr/bin/git")
             .arg("--expected-revision")
             .arg(revision)
+            .arg("--execution-environment")
+            .arg("linux-x86-64-git-2-55-0")
             .output()
             .unwrap();
         CheckerRun { status: output.status, stdout: output.stdout, stderr: output.stderr }
@@ -301,6 +332,8 @@ impl RepositoryFixture {
             .arg("/usr/bin/git")
             .arg("--expected-revision")
             .arg(revision)
+            .arg("--execution-environment")
+            .arg("linux-x86-64-git-2-55-0")
             .arg("--evidence-root")
             .arg(evidence_root)
             .output()
@@ -333,6 +366,10 @@ impl RepositoryFixture {
             .arg(self.path("conformance/entrypoint-reviews.json"))
             .arg("--dependency-reviews")
             .arg(self.path("conformance/dependency-reviews.json"))
+            .arg("--product-closures")
+            .arg(self.path("conformance/product-closures.json"))
+            .arg("--execution-tool-reviews")
+            .arg(self.path("conformance/execution-tool-reviews.json"))
             .arg("--cargo")
             .arg(cargo)
             .arg("--rustc")
@@ -459,7 +496,7 @@ fn verify_report_cli(path: &Path) -> CheckerRun {
 
 #[test]
 #[allow(clippy::too_many_lines)]
-fn phase_b_full_cli_current_vendored_and_m1_to_m20_v1_matrix() {
+fn product_empty_v2_full_cli_and_mutation_matrix() {
     let fixture = RepositoryFixture::copy_current("matrix");
     let policy_path = "conformance/source-classification.json";
     let policy_original = fixture.bytes(policy_path);
@@ -477,6 +514,23 @@ fn phase_b_full_cli_current_vendored_and_m1_to_m20_v1_matrix() {
         String::from_utf8_lossy(&current.stdout),
         String::from_utf8_lossy(&current.stderr)
     );
+    let current_report = current.report();
+    assert_eq!(current_report["schema"], "reovim-source-role-map/v2");
+    assert_eq!(current_report["subject"]["kind"], "active_repository");
+    assert_eq!(current_report["mode"], "candidate");
+    assert_eq!(current_report["revision"], serde_json::Value::Null);
+    for field in [
+        "closures",
+        "compiler_units",
+        "compiler_inputs",
+        "extern_edges",
+        "artifacts",
+        "package_memberships",
+        "public_consumers",
+        "executions",
+    ] {
+        assert_eq!(current_report["product_proof"][field], serde_json::json!([]));
+    }
     let baseline_identity = report_identity(&current);
 
     // Passing vendored Tool input: its classified-content digest binds
@@ -493,7 +547,7 @@ fn phase_b_full_cli_current_vendored_and_m1_to_m20_v1_matrix() {
             "source_provenance": "vendored",
             "source_use": "tool",
             "upstream": {
-                "identity": "phase-b-fixture/v1",
+                "identity": "product-v2-fixture/v1",
                 "digest": "sha256:160cc4537148c27cb3f269c9126739f4a99b1fad7f2edad4143c5b1729124e33",
                 "digest_subject": {"kind": "classified_content"}
             }
@@ -646,8 +700,9 @@ fn phase_b_full_cli_current_vendored_and_m1_to_m20_v1_matrix() {
     fixture.restore(check_script_path, &check_script_original);
     fixture.restore(manifest_path, &manifest_original);
 
-    // M7-M11, M18, and M20 use the deliberate v1 generic Product/shipping
-    // proof-unavailable gate; v1 does not claim mechanism proof for them.
+    // Active v2 generation remains Product-empty until the bounded compiler,
+    // package, and public-consumer proof gate is complete. Product source
+    // without a matching closure is a typed fatal configuration mismatch.
     fs::create_dir(fixture.path("product")).unwrap();
     fs::write(fixture.path("product/lib.rs"), b"pub use tooling::*; include!(\"generated.rs\");\n")
         .unwrap();
@@ -665,20 +720,18 @@ fn phase_b_full_cli_current_vendored_and_m1_to_m20_v1_matrix() {
     fixture.write_json(policy_path, &policy);
     let product = fixture.check();
     product.assert_rejected();
-    assert!(product.finding_codes().contains("PRODUCT_BOUNDARY_PROOF_UNAVAILABLE"));
+    assert_eq!(product.fatal_code().as_deref(), Some("PRODUCT_CLOSURE_MISSING"));
     fs::remove_dir_all(fixture.path("product")).unwrap();
     fixture.restore(policy_path, &policy_original);
 
+    // The retired v1 shipping-root field cannot be interpreted as a v2
+    // Product closure or silently upgraded.
     let mut policy = fixture.json(policy_path);
-    policy["shipping_closure_roots"] = serde_json::json!([{
-        "package": "reovim-conformance",
-        "target_kind": "bin",
-        "target_name": "reovim-conformance"
-    }]);
+    policy["shipping_closure_roots"] = serde_json::json!([]);
     fixture.write_json(policy_path, &policy);
     let shipping = fixture.check();
     shipping.assert_rejected();
-    assert!(shipping.finding_codes().contains("PRODUCT_BOUNDARY_PROOF_UNAVAILABLE"));
+    assert_eq!(shipping.fatal_code().as_deref(), Some("POLICY_SCHEMA"));
     fixture.restore(policy_path, &policy_original);
 
     // M12: a newly declared concrete cycle cannot be hidden by policy.
@@ -780,7 +833,7 @@ fn phase_b_full_cli_current_vendored_and_m1_to_m20_v1_matrix() {
     let topology_path = "conformance/workspace-topology.json";
     let topology_original = fixture.bytes(topology_path);
     let mut topology = fixture.json(topology_path);
-    topology["profiles"][0]["all_features"] = serde_json::json!(true);
+    topology["workspaces"][0]["metadata_profiles"][0]["all_features"] = serde_json::json!(true);
     fixture.write_json(topology_path, &topology);
     let changed_profile = fixture.check();
     assert!(changed_profile.status.success());
@@ -827,7 +880,7 @@ fn exact_git_generate_verify_and_raw_identity_mutants() {
     fs::write(&report_path, serde_json::to_vec(&tampered).unwrap()).unwrap();
     let verify_tampered = verify_report_cli(&report_path);
     verify_tampered.assert_rejected();
-    assert_eq!(verify_tampered.fatal_code().as_deref(), Some("VERIFY_REPORT"));
+    assert_eq!(verify_tampered.fatal_code().as_deref(), Some("VERIFY_REPORT_V2"));
 
     let wrong_revision = fixture.exact_check(&"0".repeat(40));
     wrong_revision.assert_rejected();

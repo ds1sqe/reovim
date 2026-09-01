@@ -1,0 +1,294 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://reovim.dev/schema/reovim-workspace-topology-v1.json",
+  "title": "Reovim exact workspace topology",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "workspace_manifest",
+    "workspace_members",
+    "manifests",
+    "lockfiles",
+    "cargo_config_files",
+    "build_scripts",
+    "custom_target_specs",
+    "linker_assets",
+    "repository_entrypoints",
+    "limits",
+    "profiles",
+    "packages"
+  ],
+  "properties": {
+    "schema": {
+      "const": "reovim-workspace-topology/v1"
+    },
+    "workspace_manifest": {
+      "$ref": "#/$defs/relative_path"
+    },
+    "workspace_members": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/relative_path"
+      }
+    },
+    "manifests": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/relative_path"
+      }
+    },
+    "lockfiles": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/relative_path"
+      }
+    },
+    "cargo_config_files": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/relative_path"
+      }
+    },
+    "build_scripts": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/relative_path"
+      }
+    },
+    "custom_target_specs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/relative_path"
+      }
+    },
+    "linker_assets": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/relative_path"
+      }
+    },
+    "repository_entrypoints": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/repository_entrypoint"
+      }
+    },
+    "limits": {
+      "$ref": "#/$defs/limits"
+    },
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/profile"
+      }
+    },
+    "packages": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/package"
+      }
+    }
+  },
+  "$defs": {
+    "relative_path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*//)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*/$)(?!.*\\u0000).+$",
+      "not": { "const": "." }
+    },
+    "repository_entrypoint": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "path", "content_digest"],
+          "properties": {
+            "kind": { "const": "script" },
+            "path": { "$ref": "#/$defs/relative_path" },
+            "content_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "path", "content_digest"],
+          "properties": {
+            "kind": { "const": "workflow" },
+            "path": { "$ref": "#/$defs/relative_path" },
+            "content_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "package", "target"],
+          "properties": {
+            "kind": { "const": "cargo_target" },
+            "package": {
+              "type": "string",
+              "minLength": 1
+            },
+            "target": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    },
+    "string_set": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "config_bytes",
+        "json_depth",
+        "json_container_items",
+        "metadata_stdout_bytes",
+        "child_stderr_bytes",
+        "child_deadline_ms",
+        "child_supervision_deadline_ms",
+        "tool_executable_bytes",
+        "report_bytes",
+        "source_entry_count",
+        "directory_entry_count",
+        "source_file_count",
+        "source_total_bytes",
+        "source_file_bytes",
+        "path_bytes",
+        "syntax_item_expr_type_visits",
+        "findings"
+      ],
+      "properties": {
+        "config_bytes": { "type": "integer", "minimum": 1, "maximum": 1048576 },
+        "json_depth": { "type": "integer", "minimum": 1, "maximum": 128 },
+        "json_container_items": { "type": "integer", "minimum": 1, "maximum": 50000 },
+        "metadata_stdout_bytes": { "type": "integer", "minimum": 1, "maximum": 16777216 },
+        "child_stderr_bytes": { "type": "integer", "minimum": 1, "maximum": 1048576 },
+        "child_deadline_ms": { "type": "integer", "minimum": 1, "maximum": 55000 },
+        "child_supervision_deadline_ms": { "type": "integer", "minimum": 2, "maximum": 60000 },
+        "tool_executable_bytes": { "type": "integer", "minimum": 1, "maximum": 67108864 },
+        "report_bytes": { "type": "integer", "minimum": 1, "maximum": 16777216 },
+        "source_entry_count": { "type": "integer", "minimum": 1, "maximum": 16384 },
+        "directory_entry_count": { "type": "integer", "minimum": 1, "maximum": 8192 },
+        "source_file_count": { "type": "integer", "minimum": 1, "maximum": 8192 },
+        "source_total_bytes": { "type": "integer", "minimum": 1, "maximum": 67108864 },
+        "source_file_bytes": { "type": "integer", "minimum": 1, "maximum": 4194304 },
+        "path_bytes": { "type": "integer", "minimum": 1, "maximum": 4096 },
+        "syntax_item_expr_type_visits": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+        "findings": { "type": "integer", "minimum": 1, "maximum": 4096 }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind", "crate_types", "src_path"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "$ref": "#/$defs/string_set"
+        },
+        "crate_types": {
+          "$ref": "#/$defs/string_set"
+        },
+        "src_path": {
+          "$ref": "#/$defs/relative_path"
+        }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "target",
+        "all_features",
+        "no_default_features",
+        "features"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "all_features": {
+          "type": "boolean"
+        },
+        "no_default_features": {
+          "type": "boolean"
+        },
+        "features": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["all_features"],
+            "properties": { "all_features": { "const": true } }
+          },
+          "then": {
+            "properties": {
+              "no_default_features": { "const": false },
+              "features": { "maxItems": 0 }
+            }
+          }
+        }
+      ]
+    },
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "manifest", "targets"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "manifest": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "targets": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/target"
+          }
+        }
+      }
+    }
+  }
+}

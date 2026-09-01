@@ -4,7 +4,8 @@
 
 ## Repository inventory and include closure
 
-Phase-B v1 scope is the exact repository-root singleton `roots: ["."]`.
+The source-classification scope is the exact repository-root singleton
+`roots: ["."]`.
 Every in-scope repository path is classified exactly once, including committed
 policies, topology, review registries and records, schemas, checker and helper
 sources, tests, and scripts. Its exclusion set is closed to exact root `.git`
@@ -18,7 +19,7 @@ specific evidence named by the applicable contract.
 Each admitted script/workflow entrypoint binds its exact content digest in both
 the committed topology and the one-to-one entrypoint-review registry. The
 registry's explicit direct repository-local invocation set and retained review
-record are the Phase-B authority; exact byte drift invalidates that review.
+record are the entrypoint authority; exact byte drift invalidates that review.
 The checker validates registry/schema identity, coverage, declared-edge
 resolution, review-record digest and classification, and a closed set of
 defense-in-depth lexical warnings. It does not parse or interpret shell or YAML
@@ -31,7 +32,10 @@ For all-tooling v1, a relative string-literal `include_str!` or
 inside the repository, and must be present in the classified inventory.
 `include!`, an absolute or non-literal include path, a missing input, or an
 excluded/out-of-root input fails closed. Product include and macro expansion
-remain part of the later compiler-evidence gate. The included input is
+follow the versioned
+[Product profile](05-Product-v2-Proof/01-Versioned-Inputs-Closures-and-Supported-Profile.md)
+and compiler evidence rather than this lexical rule. The all-tooling included
+input is
 `RepositoryTooling`: a `Tool` source requires `Tool`; a `Test` or `Example`
 source permits shared `Tool` or the same non-shipping use; and `BuildOutput` is
 never a direct source input. Source Use remains a participation label, not a
@@ -52,7 +56,7 @@ path and residual cleanup state. A handed-off link whose reconciliation probe
 is itself indeterminate returns `OutcomeUnknown` with the intended path and
 cleanup/durability state. No cause erases or invents Effect Certainty.
 
-Phase-B exact publication is Linux-only and holds directory and temporary-file
+Exact publication is Linux-only and holds directory and temporary-file
 handles through commit. Creation, link, unlink, and synchronization operate
 through held `/proc/self/fd` directory anchors; nominal directory identities
 are revalidated before commit and after synchronization, and the final entry
@@ -75,4 +79,9 @@ retains it permanently; a failed attempt consumes the one-shot root. After
 acquisition, only that marker may exist before bundle creation. Compliant
 publishers honor the marker. Host/root intervention, compromised-host mutation,
 and hostile concurrent mutation by the same filesystem authority are outside
-this Phase-B proof and cannot inherit its claim.
+this publication proof and cannot inherit its claim.
+
+The evidence-publication authority and Product compiler scratch authority are
+distinct. A passing scratch attempt emits bounded normalized evidence to the
+checker; it never publishes directly into the durable evidence root or reuses
+its marker or directory handles.

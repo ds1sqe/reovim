@@ -131,7 +131,7 @@ or must contain a volatile/unsafe boundary—not merely to hide a package name.
 8. [Selective migration](05-Migration/01-Selective-Migration.md) — donor
    classification and slice cutover.
 9. [Conformance](06-Conformance/README.md) — evidence taxonomy, authority,
-   stable Rule Matrix, and release audit.
+   stable Rule Matrix, versioned source/Product proof, and release audit.
 10. [Mission-critical quality](07-Mission-Critical-Quality/README.md) —
     integrity, lifecycle/isolation, admission, and exact qualification.
 

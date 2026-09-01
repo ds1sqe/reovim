@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://reovim.dev/schema/reovim-source-classification-v1.json",
+  "$id": "https://reovim.dev/schema/reovim-source-classification-v2.json",
   "title": "Reovim source classification policy",
   "type": "object",
   "additionalProperties": false,
@@ -10,12 +10,11 @@
     "rules",
     "unmatched",
     "allowed_product_edges",
-    "shipping_closure_roots",
     "generated_evidence_key"
   ],
   "properties": {
     "schema": {
-      "const": "reovim-source-classification/v1"
+      "const": "reovim-source-classification/v2"
     },
     "scope": {
       "type": "object",
@@ -55,13 +54,6 @@
       "uniqueItems": true,
       "items": {
         "$ref": "#/$defs/product_edge"
-      }
-    },
-    "shipping_closure_roots": {
-      "type": "array",
-      "uniqueItems": true,
-      "items": {
-        "$ref": "#/$defs/shipping_root"
       }
     },
     "generated_evidence_key": {
@@ -370,36 +362,6 @@
         },
         "provider": {
           "$ref": "#/$defs/product_role"
-        }
-      }
-    },
-    "shipping_root": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["package", "target_kind", "target_name"],
-      "properties": {
-        "package": {
-          "type": "string",
-          "minLength": 1
-        },
-        "target_kind": {
-          "enum": [
-            "bin",
-            "lib",
-            "rlib",
-            "dylib",
-            "cdylib",
-            "staticlib",
-            "proc-macro",
-            "example",
-            "test",
-            "bench",
-            "custom-build"
-          ]
-        },
-        "target_name": {
-          "type": "string",
-          "minLength": 1
         }
       }
     }

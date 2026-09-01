@@ -32,7 +32,8 @@ may narrow its ledger applicability but cannot silently broaden it.
 | ARCH-001..003 | Any product source role, Repository Tooling owner, public type, build/packaging/invocation edge, or composed adapter boundary is admitted. | Architecture conformance boundary |
 | ARCH-004 | Any Assembly-selected Runtime or Client subtree is constructed or activated. | The subtree's Lifecycle Owner |
 | ARCH-005 | Any third-party dependency is proposed, admitted, changed, or invalidated. | The dependency's named consumer owner |
-| ARCH-006 | Any classification policy, conformance checker, or implementation/release evidence set is produced or admitted. | Conformance Authority |
+| ARCH-006 | Any versioned classification policy, workspace topology, Source Role Map, conformance checker, or implementation/release evidence set is produced or admitted. | Conformance Authority |
+| ARCH-007 | Any Product shipping/validation closure or compiler, package-membership, public-surface, or Product-proof-capability claim is produced or admitted. | Product-proof Conformance Authority |
 | SAFE-001 | Any opaque carrier crosses a contract, ownership, thread, process, async, or unsafe boundary. | Foundation Carrier Safety boundary |
 | BOUND-001 | Any capability or operation claims a finite bound. | The descriptor-owning contract boundary |
 | ISOLATE-001 | Any payload, work, state, queue, concurrency, retry, wait, or aggregate scope is admitted or retained. | The owning admission and isolation boundary |

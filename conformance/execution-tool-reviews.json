@@ -1,0 +1,88 @@
+{
+  "schema": "reovim-execution-tool-reviews/v1",
+  "reviewed_at": "2026-09-01T20:42:45Z",
+  "reviews": [
+    {
+      "id": "git-repository-proof",
+      "logical_role": "git",
+      "invocation_families": [
+        "git-attributes",
+        "git-index",
+        "git-revision",
+        "git-tree",
+        "git-version"
+      ],
+      "required_semantics": [
+        "Bounded successful processes emit no stderr and preserve exact captured stdout bytes.",
+        "Cleared environment and exact ordered configuration overrides isolate admitted Git semantics.",
+        "HEAD tree and stage-zero index mode/object/path maps are exact and equal.",
+        "Repository root, revision, object format, and attributes path are resolved by closed parsers.",
+        "Version, executable, and direct ELF runtime identities remain exact before and after use."
+      ],
+      "consumers": [
+        "reovim-source-role-map/v2 exact repository proof"
+      ],
+      "product_profiles": [],
+      "upstream": "https://git-scm.com/",
+      "license": "GPL-2.0-only",
+      "assumptions": [
+        "Cleared environment and exact overrides contain configuration for the admitted read-only commands.",
+        "The checker owns bounded capture, termination, reap, and pre/post identity verification.",
+        "The exact executable keeps rev-parse, ls-tree, and ls-files built in without helper dispatch.",
+        "The reviewed Linux x86_64 kernel, loader, filesystem, process, object, and index semantics are trustworthy."
+      ],
+      "invalidators": [
+        "Any admitted command beginning to dispatch a helper, hook, pager, transport, editor, or credential process.",
+        "Any command, ordered configuration prefix, replacement environment, current-directory, bound, or parser change.",
+        "Any executable, raw version output, interpreter, direct ELF input, canonical path, digest, or size drift.",
+        "Any expansion to another command family, environment, architecture, Product consumer, or Product profile."
+      ],
+      "disposition": "admit",
+      "review_record": "conformance/execution-tool-reviews/git-repository-proof.md",
+      "review_record_digest": "sha256:8ccfc8bbb04b3d931eacddf9af8f0b39ffe59b4ecb1a89a1ec011b5ae3e69a85"
+    }
+  ],
+  "environments": [
+    {
+      "id": "linux-x86-64-git-2-55-0",
+      "host_os": "linux",
+      "host_arch": "x86_64",
+      "bindings": [
+        {
+          "review": "git-repository-proof",
+          "canonical_path": "/usr/bin/git",
+          "prepared_path": null,
+          "executable_digest": "sha256:93473c28694fd72bd889364107cd2770514de59780885a6a4aafca4d602e30ad",
+          "executable_size_bytes": 4899632,
+          "version_argv": [
+            "--version"
+          ],
+          "version": "git version 2.55.0",
+          "version_digest": "sha256:e928567de6f903039a669b7647bf037309d50e4f7916bb5c06f7b05d3bf966fe",
+          "runtime_inputs": [
+            {
+              "canonical_path": "/usr/lib/ld-linux-x86-64.so.2",
+              "content_digest": "sha256:d011113b7054c641c8ca064f58bcc23804fd2654a3dff2444dad06ddeda61bfb",
+              "size_bytes": 263152
+            },
+            {
+              "canonical_path": "/usr/lib/libc.so.6",
+              "content_digest": "sha256:e221b10fee9ee4776d8f0f1701253bc06817f7a4dbe6c5292487277d0bf8ffff",
+              "size_bytes": 2215072
+            },
+            {
+              "canonical_path": "/usr/lib/libpcre2-8.so.0.15.0",
+              "content_digest": "sha256:36b35ac0a3b779ab3b71d68ec9dc8de46d314411e6fabd5d5a5a84f6ff61d4d5",
+              "size_bytes": 706856
+            },
+            {
+              "canonical_path": "/usr/lib/libz-ng.so.2.3.3",
+              "content_digest": "sha256:471f8566a997cfb3d8f82f18e0ee51bb27afe087ee5d7b10ac86317062f65ec6",
+              "size_bytes": 166048
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

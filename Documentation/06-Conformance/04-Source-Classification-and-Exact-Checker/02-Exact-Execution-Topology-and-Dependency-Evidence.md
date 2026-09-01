@@ -2,89 +2,71 @@
 
 [Source Classification and Exact Checker](../04-Source-Classification-and-Exact-Checker.md)
 
-## Exact execution environment and Git identity
+## Phase-B v1 execution environment and Git identity
 
-Exact mode uses a cleared environment and records sanitized absence of Cargo
+Exact v1 mode uses a cleared environment and records sanitized absence of Cargo
 home configuration. It checks only whether Cargo-home `config` or `config.toml`
-exists, without opening or hashing either path and without reporting the
-Cargo-home path. The checker never intentionally opens, hashes, lists, or
-reports credential paths and does not treat their presence as pass/fail. Cargo
-still receives canonical Cargo home under offline mode; v1 does not claim
-instrumentation proof of Cargo's internal reads. Exact CI uses a fresh,
-credential-free Cargo home.
+exists, without opening, hashing, or reporting either path. It never
+intentionally opens, hashes, lists, or reports credential paths. Cargo receives
+canonical Cargo home under offline mode; v1 does not claim instrumentation
+proof of Cargo's internal reads. Exact CI uses a fresh credential-free home.
 
-Cargo subprocesses use `/` as their recorded working directory and the checker
+Cargo subprocesses use `/` as their recorded working directory. The checker
 records absence of `/.cargo/config` and `/.cargo/config.toml`; the absolute
-committed manifest path supplies repository identity.
+committed manifest supplies repository identity.
 
-Exact mode binds the full tracked Git tree's names, blob identities, and modes
-as `git_tree_digest` and requires equality with the classified inventory and
-directly hashed worktree bytes/modes. It requires the raw stage-0 index
-mode/object-ID/path map to equal `HEAD`, rejects non-`H` index flags, and
-rejects hierarchical attributes or repository info-attributes before any Git
-command that could apply content filters.
+Exact mode binds the tracked Git tree's names, blob identities, and modes as
+`git_tree_digest` and requires equality with classified inventory and directly
+hashed worktree bytes/modes. It requires the raw stage-0 index map to equal
+`HEAD`, rejects non-`H` index flags, and rejects hierarchical attributes or
+repository info-attributes before a Git command could apply content filters.
 
-## Workspace topology and bounded execution
+## Phase-B v1 topology and bounded execution
 
-Exact Cargo structure is a third, separate committed input:
-`conformance/workspace-topology.json`, validated against
-`conformance/workspace-topology.schema.json`, with schema identity
-`reovim-workspace-topology/v1`. It enumerates the workspace manifest and
-members, every manifest and lockfile, Cargo configuration, build scripts,
-custom target specifications, linker assets, repository invocation entrypoints,
-required target/feature profiles, and every package and Cargo target with its
-exact Cargo-reported `src_path`. Addition, omission, or metadata mismatch in
-that topology fails closed. It is neither classification policy nor generated
+`conformance/workspace-topology.json`, validated as
+`reovim-workspace-topology/v1`, enumerates the singleton workspace manifest/
+members, every manifest/lock, Cargo configuration, build scripts, custom target
+specifications, linker assets, repository entrypoints, required profiles, and
+every package/target with exact Cargo-reported `src_path`. Addition, omission,
+or metadata mismatch fails. It is neither classification policy nor generated
 evidence.
 
-`conformance/entrypoint-reviews.json`, validated against
-`conformance/entrypoint-reviews.schema.json`, is the separate exact entrypoint-
-admission registry. It maps every script/workflow topology entrypoint one-to-
-one to its exact content identity, execution mechanism, explicit direct
-repository-local invocation set, assumptions, `admit` disposition, and exact
-retained review record. Missing, extra, stale, unclassified, or digest-drifted
-entries and review records fail closed. Every declared local invocation must
-resolve to a topology entrypoint. A Cargo target is a terminal reference
-validated by topology, Cargo, and source evidence; this registry makes no
-separate reviewed-source-closure claim for it. Changing entrypoint bytes or the
-reviewed invocation set requires renewed review and synchronized registry/
-topology identities.
+`reovim-entrypoint-reviews/v1` maps every script/workflow topology entrypoint
+one-to-one to exact content identity, mechanism, explicit direct repository-
+local invocations, assumptions, disposition, and retained review. Missing,
+extra, stale, unclassified, digest-drifted, or unresolved entries fail. A Cargo
+target is a terminal reference proved by topology/Cargo/source evidence, not a
+falsely digest-free source review.
 
-For the current all-tooling Rust topology, v1 begins at every Cargo-reported
-target `src_path` and conservatively resolves ordinary external `mod`
-declarations against the complete classified inventory. Every inventoried Rust
-source must be a target root or reachable through that supported module-source
-closure. Conditional modules are treated as potentially selected; missing or
-ambiguous module files and `#[path]` indirection fail closed. This is bounded
-source-selection evidence for the supported syntax, not compiler-active-unit
-evidence.
+For the all-tooling topology, v1 begins at every Cargo-reported target root and
+conservatively resolves ordinary external `mod` declarations against complete
+classified inventory. Every inventoried Rust source is a target root or
+reachable through that supported closure. Conditional modules are potentially
+selected; missing/ambiguous modules and `#[path]` fail. This is supported-
+syntax source-selection evidence, not compiler-active-unit evidence.
 
-The topology input also owns positive hard limits for configuration, report,
-and tool-executable bytes; JSON depth and container items; child stdout, stderr,
-and execution/supervision deadlines; path and aggregate/per-directory entry
-counts; source-file counts and bytes; aggregate source bytes; post-parse
-`syntax_item_expr_type_visits`; and findings. That limit charges selected
-Item/Expr/Type visitor callbacks, not every Syn node, and does not bound parser
-peak memory. A CLI may only tighten these limits. Each profile deterministically
-derives Cargo target and feature arguments from committed fields. Exact mode
-executes and aggregates every declared profile exactly once; selecting fewer
-profiles is diagnostic and cannot support a conformance claim.
+The topology owns positive hard limits for configuration/report/tool bytes;
+JSON depth/items; child captures and execution/supervision deadlines; path and
+aggregate/per-directory entries; source files/per-file/aggregate bytes;
+selected syntax visits; and findings. Syntax visits charge selected Syn
+callbacks and do not bound parser peak memory. A CLI may tighten but never
+widen limits. Every declared profile executes exactly once in exact mode; a
+subset is diagnostic only.
 
-The child deadline triggers termination; one greater absolute supervision
-deadline covers spawn through bounded capture, kill, direct-child reap, and
-reader joins. If ownership cleanup cannot be established within the latter,
-the checker aborts before emitting a report.
+The child deadline triggers termination. One greater absolute supervision
+deadline covers spawn, bounded capture, kill, direct-child reap, and reader
+joins. Ownership cleanup uncertainty aborts before report emission.
 
-## Dependency admission evidence
+## Phase-B v1 dependency admission
 
-`conformance/dependency-reviews.json`, validated against
-`conformance/dependency-reviews.schema.json`, is the exact third-party Cargo-
-package admission registry. It binds the exact lockfile digest and maps every
-resolved or lock-only external package identity and checksum one-to-one to its
-license, Cargo-metadata-resolved incoming consumers and profiles, `admit`
-disposition, and retained review record. A metadata-unresolved lock admission
-has empty resolved sets. Missing, extra, consumer/profile-drifted, or otherwise
-stale entries fail; a lockfile entry is not an implicit admission.
+`reovim-dependency-reviews/v1` binds the exact singleton lock digest and maps
+every resolved or lock-only external Cargo identity/checksum one-to-one to
+license, metadata-resolved incoming consumers/profiles, disposition, and
+retained review. A metadata-unresolved admission has empty resolved sets.
+Missing, extra, consumer/profile-drifted, or stale entries fail; a lock entry is
+not implicit admission. Metadata-resolved means conservative presence or an
+incoming Cargo resolve edge, not compiler-active participation.
 
-Metadata-resolved means conservative presence or an incoming edge in Cargo's
-profile resolve; it does not claim a compiler-active unit.
+Product v2 multi-workspace topology, full descendant ownership, prepared-root
+limits, and execution-tool admission are defined only by the
+[Product v2 Proof](../04-Source-Classification-and-Exact-Checker/05-Product-v2-Proof.md).

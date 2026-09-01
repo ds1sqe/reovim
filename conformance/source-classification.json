@@ -1,5 +1,5 @@
 {
-  "schema": "reovim-source-classification/v1",
+  "schema": "reovim-source-classification/v2",
   "scope": {
     "roots": ["."],
     "exclusions": [
@@ -127,7 +127,7 @@
       "source_use": "tool",
       "upstream": {
         "identity": "cargo-manifest-set/v1: sorted relative path, LF, raw manifest bytes, LF",
-        "digest": "sha256:692fb2e62ea75485bbb0509a9f2363574b3da66bceb3609e2f4f68336c7f2e93",
+        "digest": "sha256:6013c7ba5690e378cd9738af327f421081a8d91355ef140a6190ff00fd620de7",
         "digest_subject": {
           "kind": "paths",
           "paths": [
@@ -229,6 +229,69 @@
       "source_use": "tool"
     },
     {
+      "prefix": "conformance/compat",
+      "precedence": 20,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "conformance/execution-tool-reviews.json",
+      "precedence": 20,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "conformance/execution-tool-reviews.schema.json",
+      "precedence": 20,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "conformance/execution-tool-reviews",
+      "precedence": 20,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "conformance/product-closures.json",
+      "precedence": 20,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "conformance/product-closures.schema.json",
+      "precedence": 20,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "conformance/product-proof-gate.schema.json",
+      "precedence": 20,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
       "prefix": "conformance/source-classification.json",
       "precedence": 20,
       "source_owner": {
@@ -303,6 +366,5 @@
   ],
   "unmatched": "deny",
   "allowed_product_edges": [],
-  "shipping_closure_roots": [],
   "generated_evidence_key": "conformance/source-role-map.json"
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bounded Phase-B repository conformance check and exact evidence generation.
+# Bounded Product-empty v2 repository check and exact evidence generation.
 
 set -euo pipefail
 
@@ -12,9 +12,10 @@ Usage:
   ./scripts/check-conformance.sh exact EXPECTED_REVISION EVIDENCE_ROOT
 
 `candidate` checks the current tree and retains its diagnostic report under
-root `target/`. `exact` requires a clean exact revision and an empty absolute
-evidence directory outside the repository; it generates and verifies one
-content-addressed Source Role Map without publishing it.
+root `target/`. `exact` requires a clean exact revision, the committed explicit
+execution-tool environment, and an empty absolute evidence directory outside
+the repository; it generates and verifies one content-addressed Source Role
+Map without publishing it.
 EOF
 }
 
@@ -82,6 +83,8 @@ COMMON=(
     --topology "$ROOT/conformance/workspace-topology.json"
     --entrypoint-reviews "$ROOT/conformance/entrypoint-reviews.json"
     --dependency-reviews "$ROOT/conformance/dependency-reviews.json"
+    --product-closures "$ROOT/conformance/product-closures.json"
+    --execution-tool-reviews "$ROOT/conformance/execution-tool-reviews.json"
     --cargo "$CARGO_BIN"
     --rustc "$RUSTC_BIN"
     --cargo-home "$CARGO_HOME_PATH"
@@ -128,6 +131,7 @@ fi
 
 EXPECTED_REVISION="$2"
 EVIDENCE_ROOT_INPUT="$3"
+EXECUTION_ENVIRONMENT=linux-x86-64-git-2-55-0
 [[ "$EVIDENCE_ROOT_INPUT" = /* ]] || fail 'EVIDENCE_ROOT must be absolute'
 [[ -d "$EVIDENCE_ROOT_INPUT" ]] || fail 'EVIDENCE_ROOT must already exist as a directory'
 EVIDENCE_ROOT="$(cd "$EVIDENCE_ROOT_INPUT" && pwd -P)"
@@ -143,6 +147,7 @@ echo "==> exact Source Role Map"
 run_checker generate "${COMMON[@]}" \
     --git "$GIT_BIN" \
     --expected-revision "$EXPECTED_REVISION" \
+    --execution-environment "$EXECUTION_ENVIRONMENT" \
     --evidence-root "$EVIDENCE_ROOT"
 
 mapfile -d '' -t reports < <(

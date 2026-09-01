@@ -210,6 +210,7 @@ contract_indexes=(
     Documentation/06-Conformance/01-Requirements-and-Evidence.md
     Documentation/06-Conformance/02-Rule-Matrix.md
     Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker.md
+    Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/05-Product-v2-Proof.md
     Documentation/07-Mission-Critical-Quality/README.md
 )
 for path in "${contract_indexes[@]}"; do
@@ -278,6 +279,13 @@ expected_normative_files=(
     Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/02-Exact-Execution-Topology-and-Dependency-Evidence.md
     Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/03-Inventory-Includes-and-Evidence-Publication.md
     Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/04-Phase-B-Scope-and-Product-Gate.md
+    Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/05-Product-v2-Proof.md
+    Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/05-Product-v2-Proof/01-Versioned-Inputs-Closures-and-Supported-Profile.md
+    Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/05-Product-v2-Proof/02-Prepared-Root-and-Bounded-Execution.md
+    Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/05-Product-v2-Proof/03-Compiler-Units-Inputs-and-Correlation.md
+    Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/05-Product-v2-Proof/04-Package-Membership-Evidence.md
+    Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/05-Product-v2-Proof/05-Public-Surface-and-Consumer-Evidence.md
+    Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/05-Product-v2-Proof/06-Claims-Unavailability-and-Verification.md
     Documentation/06-Conformance/05-Public-Reduction-and-Qualification.md
     Documentation/06-Conformance/README.md
     Documentation/07-Mission-Critical-Quality/01-Integrity-Effects-and-Fencing.md
@@ -387,7 +395,15 @@ check_index_children Documentation/06-Conformance/04-Source-Classification-and-E
     Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/01-Policy-Artifacts-and-Source-Axes.md \
     Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/02-Exact-Execution-Topology-and-Dependency-Evidence.md \
     Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/03-Inventory-Includes-and-Evidence-Publication.md \
-    Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/04-Phase-B-Scope-and-Product-Gate.md
+    Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/04-Phase-B-Scope-and-Product-Gate.md \
+    Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/05-Product-v2-Proof.md
+check_index_children Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/05-Product-v2-Proof.md \
+    Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/05-Product-v2-Proof/01-Versioned-Inputs-Closures-and-Supported-Profile.md \
+    Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/05-Product-v2-Proof/02-Prepared-Root-and-Bounded-Execution.md \
+    Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/05-Product-v2-Proof/03-Compiler-Units-Inputs-and-Correlation.md \
+    Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/05-Product-v2-Proof/04-Package-Membership-Evidence.md \
+    Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/05-Product-v2-Proof/05-Public-Surface-and-Consumer-Evidence.md \
+    Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/05-Product-v2-Proof/06-Claims-Unavailability-and-Verification.md
 check_index_children Documentation/07-Mission-Critical-Quality/README.md \
     Documentation/07-Mission-Critical-Quality/01-Integrity-Effects-and-Fencing.md \
     Documentation/07-Mission-Critical-Quality/02-Lifecycle-Isolation-and-Authority.md \
@@ -413,6 +429,9 @@ check_index_sections \
 check_index_sections \
     Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker.md \
     'Authority and reading order'
+check_index_sections \
+    Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/05-Product-v2-Proof.md \
+    'Authority and reading order'
 
 check_index_digest() {
     local index="$1"
@@ -432,7 +451,10 @@ check_index_digest \
     bfebb820eee5fd6566eed7eb40e60da0a5efe40f9d0ae1bad3d71c4b0b997221
 check_index_digest \
     Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker.md \
-    bd71e9211e9f08a0947027e8dfbb9225dcf4446322dd3b04aaac53dcfa0b7dc3
+    4d5a0b3adc58bc28f8dd3c338183f0f61dd6890b323de83dbc14e543387f20eb
+check_index_digest \
+    Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/05-Product-v2-Proof.md \
+    fcc07d3f0b2025687041e1f6767c88ba7690e447fe27a85f53f1bfac87140a4d
 
 for file in "${active_files[@]}"; do
     [[ "$file" == Documentation/* ]] || continue
@@ -539,6 +561,7 @@ require_unique_owner_clause() {
 layer_roles=Documentation/01-Architecture/01-Layer/01-Roles-Descriptors-and-Dependencies/01-Logical-Roles-and-Source-Ownership.md
 layer_edges=Documentation/01-Architecture/01-Layer/01-Roles-Descriptors-and-Dependencies/03-Source-Dependency-Graph-and-Edges.md
 classification_artifacts=Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/01-Policy-Artifacts-and-Source-Axes.md
+product_proof_authority=Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/05-Product-v2-Proof/01-Versioned-Inputs-Closures-and-Supported-Profile.md
 require_unique_owner_clause "$layer_edges" \
     'Product dependencies point inward without cycles. `RepositoryTooling` grants no product edge and enters no product shipping closure.'
 require_unique_owner_clause "$layer_edges" \
@@ -546,7 +569,9 @@ require_unique_owner_clause "$layer_edges" \
 require_unique_owner_clause "$layer_roles" \
     'Resource Adapter, Host Adapter, External Protocol Binding, Protocol Adapter, Presentation Adapter, Extension Adapter, and Extension Engine Adapter are distinct roles. Selection or composition of one never merges it with another.'
 require_unique_owner_clause "$classification_artifacts" \
-    'Every evidence set carries an exact-revision Source Role Map generated from separate schema-valid classification policy, exact workspace topology, entrypoint reviews, and dependency admissions. Phase-B v1 reports only all-`RepositoryTooling` dependency reachability and fails closed on Product or shipping input.'
+    'Every evidence set carries an exact-revision Source Role Map generated from version-matched, schema-valid classification policy, exact workspace topology, entrypoint reviews, and dependency admissions. Phase-B v1 reports only dependency reachability for an all-`RepositoryTooling` topology and fails closed on Product or shipping input.'
+require_unique_owner_clause "$product_proof_authority" \
+    'Every Product shipping or validation closure is selected by version-matched, schema-valid Product-closure and execution-tool admissions and is proved by correlated compiler-reported Product source/dependencies, Cargo package membership where shipping, and external-crate public-consumer evidence. Unsupported mechanisms fail closed, and fixture capability never qualifies active Product.'
 
 if rg -Fq 'roles do not merge' "$layer_edges"; then
     fail 'dependency graph duplicates the role-distinction authority'
@@ -590,6 +615,8 @@ check_rule_authority "$architecture_rule_chapter" ARCH-003 \
     Documentation/01-Architecture/01-Layer/01-Roles-Descriptors-and-Dependencies/01-Logical-Roles-and-Source-Ownership.md
 check_rule_authority "$architecture_rule_chapter" ARCH-006 \
     Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/01-Policy-Artifacts-and-Source-Axes.md
+check_rule_authority "$architecture_rule_chapter" ARCH-007 \
+    Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/05-Product-v2-Proof/01-Versioned-Inputs-Closures-and-Supported-Profile.md
 check_rule_authority "$meaning_rule_chapter" INT-001 \
     Documentation/01-Architecture/03-Semantics-and-View/02-Interaction-Updates-Protocols-and-View/01-Intent-Outcome-and-Representation-Updates.md
 check_rule_authority "$meaning_rule_chapter" INT-002 \
@@ -601,8 +628,8 @@ check_rule_authority "$meaning_rule_chapter" PROTO-001 \
 
 rule_ids="$(awk -F'`' '/^\| `[A-Z]+-[0-9][0-9][0-9]`/ { print $2 }' "${rule_chapters[@]}")"
 [[ -n "$rule_ids" ]] || fail "Rule Matrix contains no conformance identifiers"
-[[ "$(printf '%s\n' "$rule_ids" | wc -l)" == 90 ]] || \
-    fail "Rule Matrix must contain exactly 90 conformance identifiers"
+[[ "$(printf '%s\n' "$rule_ids" | wc -l)" == 91 ]] || \
+    fail "Rule Matrix must contain exactly 91 conformance identifiers"
 duplicates="$(printf '%s\n' "$rule_ids" | sort | uniq -d)"
 if [[ -n "$duplicates" ]]; then
     printf '%s\n' "$duplicates" >&2
