@@ -1,201 +1,159 @@
-# Reovim Spec
+# Reovim v0.16 Normative Documentation
 
-**Status:** Draft v0 — chapters in flight.
-**Date:** 2026-04-28.
+**Status:** Ratified target contract for the v0.16 editing-system
+re-foundation.
 
-This spec preserves the prior architecture and normalises the
-boundaries. Mechanism remains closed and explicit: the system kernel owns
-World services, while editor/client cores own product mechanism. Domains,
-modules, drivers, and client modules own policy. Every byte, pointer, service,
-config slice, and cdylib
-registry row that crosses a stable boundary gets explicit ownership,
-versioning, validation, resource-limit, and observability rules.
+## Authority
 
-This README is a thin navigation map. Substantive content lives in the
-chapter files. The chapter file is the authority; this README links.
+`Documentation/` is the normative authority for Reovim product goals,
+terminology, architectural ownership, public contracts, conformance, migration,
+and release acceptance. Present-tense normative language defines the target; it
+does not claim that current code implements it or that a release is supported
+or qualified.
 
-## North Star
+Implementation status requires committed code plus matching public-boundary
+tests and evidence. Release qualification additionally requires the exact
+packaged candidate to pass its mapped clean-environment suite. Plans own order
+and progress, flight logs own chronology, trackers own public work state, and
+Experiment Bundles own results. None may redefine this specification.
 
-Reovim is built to two ends: the **fastest-reaction editor**, and an
-editor that **survives 50 years**.
+## Product direction
 
-Frameworks and RPC stacks die as a category; what survives on that
-horizon is the OS syscall surface, terminal escape codes, and protocol
-*documents*. This spec is therefore written to be the **wire truth**:
-every surface of reovim — the framed wire protocol, the cdylib ABI,
-the config and log formats — is specified completely enough that a
-stranger, decades from now, can reimplement either side of any
-boundary from these chapters alone.
+Reovim is a high-performance, extensible editing system pursuing mission-
+critical quality. It inspects and modifies addressable Resources through
+faithful low-level and Domain-aware high-level Representations while preserving
+one authoritative Buffer and History per editing context. Text is one Domain,
+not the shape of the core.
 
-The reliability grade is normative: reovim targets adoption on a
-**Mission to Mars** — a system where a fault is unrecoverable and no
-patch can be shipped mid-flight. Therefore **developer convenience
-("dev-conv") is never a valid justification anywhere in this repo**;
-any argument that reduces to convenience is rejected on sight. The
-operating maxim is **"test what you fly, fly what you test"**:
-verification runs in the same environment the product flies in. This
-is the reason the zero-std bootstrap states ratchet to zero — the
-in-repo `no_std` test runner over `arch/` (1.2 §10) exists so that
-test binaries and flight binaries share one platform floor.
+The **Reovim Kernel** is the portable, Domain-neutral execution and lowering
+substrate. The limited JVM-runtime/LLVM analogy describes its role: it supplies
+common contracts, lifecycle, state-transition, lowering, isolation, and
+observation mechanisms over concrete components. It is not an operating-system
+kernel and implies no bytecode, JIT, compiler pass framework, garbage collector,
+machine-code generator, hardware abstraction, or platform-services product.
 
-Three structural consequences:
+Clients own their applicable presentation or output state. Any concrete View,
+viewport, layout, focus, input mapping, drawing, rendering, or frame state that
+exists is Client-owned. The Kernel knows what semantic state changed and which
+revision/generation it describes; it never knows how a concrete viewport draws
+it.
 
-- **Dependency sovereignty (`DAG5`, 1.2 §9).** The workspace
-  dependency graph is closed: `std`/`core`/`alloc` and in-repo crates
-  only — no third-party crates in any dependency table, tests
-  included. The Rust toolchain is the only trusted external. OS
-  interfaces are reached through hand-written `extern "C"` bindings
-  owned by `arch/`. Reovim owns both ends of every wire it speaks, so
-  ecosystem interop buys nothing; durability buys everything.
-- **Zero-std sovereignty (`DAG6`, 1.2 §10).** Every shipped crate is
-  `#![no_std]` and `alloc`-free — including `arch/`. The platform
-  floor (`arch/`) owns syscalls, process entry, panic handling,
-  allocation, sync primitives, and all heap data structures; every
-  crate above it consumes `arch/`-provided equivalents. The product
-  runs on exactly two foundations: the Rust `core` language and the
-  OS syscall surface.
-- **Latency is a design driver, not an optimization pass.** Owning
-  the wire, the runtime, and the terminal layer means no foreign
-  scheduler, codec, or abstraction sits between a keystroke and the
-  screen.
+## Release split
 
-## Posture
+- **v0.16 — editing-system re-foundation:** establish and prove the neutral
+  Kernel, Resource/Buffer/semantic/Client contracts, Host API, SDK/extension and
+  adapter boundaries, execution/lifecycle, empirical performance, bounded
+  diagnostics, and exact qualification machinery.
+- **v0.17 — Neovim feature parity:** implement parity behavior only through
+  accepted v0.16 contracts. Parity does not automatically select Neovim plugin,
+  Lua, MessagePack-RPC, or remote-UI compatibility.
 
-- **This spec is a quality gate, not a feature pass.** Hardening contracts
-  beats expanding scope.
-- **Do not break userspace. The released ABI is eternal (AB15).**
-  Post-v1.0, every shipped stable surface is supported forever;
-  deprecation is allowed, removal is not. Pre-1.0 is the only
-  window for clean breaks — this spec spends it deliberately (AB14).
-- **Cdylib ABI is `#[repr(C)]`, opaque handles, primitives, byte
-  slices.** No Rust trait objects cross cdylib boundaries.
-- **Domain is an ID, not a trait.** `DomainId(NonZeroU32)`; behaviour
-  routes through tables.
-- **Editor-core input is key-free.** Keymaps, modes, motions, registers,
-  leaders are Domain/client policy.
-- **Runtime-loaded cdylibs are trusted native code.** This spec hardens
-  loading, lifecycle, ABI, and observability — not memory sandboxing.
+v0.16 ships TUI, CLI, and Web as mandatory Client Families. Each owns a Family
+Core, public Contract/extension point, Module surface, Client Runtime, and at
+least one admitted production Presentation path. A missing or failing Family
+blocks release; Android and Native remain future.
 
-## Chapter index
+The official Module binding matrix is:
 
-| § | File | Subject |
-|---|---|---|
-| — | [`00-Vocabulary.md`](00-Vocabulary.md) | Cross-chapter terms |
-| 1.1 | [`01-Architecture/01-Layer-Model.md`](01-Architecture/01-Layer-Model.md) | Foundation/contracts/kernel/runtime/ext/apps tiers |
-| 1.2 | [`01-Architecture/02-Project-Layout-and-DAG.md`](01-Architecture/02-Project-Layout-and-DAG.md) | Source categories + dependency DAG (`DAG1..DAG4`) |
-| 1.3 | [`01-Architecture/03-Apps-and-Invocation.md`](01-Architecture/03-Apps-and-Invocation.md) | Binaries, embedded vs subprocess, library root |
-| 1.4 | [`01-Architecture/04-Provenance.md`](01-Architecture/04-Provenance.md) | Spec ownership of generated artefacts |
-| 1.5 | [`01-Architecture/05-Configuration.md`](01-Architecture/05-Configuration.md) | Config service: participants, layers, trust, schemas (`CFG`) |
-| 1.6 | [`01-Architecture/06-OS-Modes.md`](01-Architecture/06-OS-Modes.md) | Over-OS vs RTOS-itself modes, platform floor, launch model |
-| 2.1 | [`02-Process/01-Kernel-Types.md`](02-Process/01-Kernel-Types.md) | `EditorInit` / `EditorCore` shapes, registries |
-| 2.2 | [`02-Process/02-Lifecycle.md`](02-Process/02-Lifecycle.md) | Boot, cdylib load/unload, drain ordering (`LF`) |
-| 2.3 | [`02-Process/03-Concurrency.md`](02-Process/03-Concurrency.md) | Turn gate + state lock, RefGuard (`CC`) |
-| 2.4 | [`02-Process/04-Persistence.md`](02-Process/04-Persistence.md) | State persistence and restore |
-| 2.5 | [`02-Process/05-Machine-Boot.md`](02-Process/05-Machine-Boot.md) | RTOS system-kernel boot: proof, device lifecycle, sched seam |
-| 3.1 | [`03-State/01-State-Split.md`](03-State/01-State-Split.md) | Editor core / Session / Module-state boundaries |
-| 3.2 | [`03-State/02-Module-State.md`](03-State/02-Module-State.md) | View slots, opaque module state |
-| 3.3 | [`03-State/03-Service-Registry.md`](03-State/03-Service-Registry.md) | Service descriptors, leases (`SVC`) |
-| 3.4 | [`03-State/04-Registers.md`](03-State/04-Registers.md) | Register storage |
-| 4.1 | [`04-Domain-Substrate/01-Domain.md`](04-Domain-Substrate/01-Domain.md) | `DomainId` and `DomainRouter` |
-| 4.2 | [`04-Domain-Substrate/02-Domain-Tree.md`](04-Domain-Substrate/02-Domain-Tree.md) | Attachments, focus, pending (`DT`) |
-| 4.3 | [`04-Domain-Substrate/03-Undo.md`](04-Domain-Substrate/03-Undo.md) | Undo/redo and byte-edit origin |
-| 4.4 | [`04-Domain-Substrate/04-Stream.md`](04-Domain-Substrate/04-Stream.md) | Stream substrate (`S`) |
-| 4.5 | [`04-Domain-Substrate/05-Coordination.md`](04-Domain-Substrate/05-Coordination.md) | Position/cursor carriers, codecs (`CR`) |
-| 4.6 | [`04-Domain-Substrate/06-Device-Domains.md`](04-Domain-Substrate/06-Device-Domains.md) | Effect-typed device editing, capability traits, commit barrier |
-| 5.1 | [`05-View/01-Windows.md`](05-View/01-Windows.md) | Window tree, layout |
-| 5.2 | [`05-View/02-Raw-Input.md`](05-View/02-Raw-Input.md) | `RawInput { kind, payload }` hot path |
-| 5.3 | [`05-View/03-Projections.md`](05-View/03-Projections.md) | Projection contract |
-| 6.1 | [`06-ABI/01-Surface.md`](06-ABI/01-Surface.md) | What is in/out of the ABI |
-| 6.2 | [`06-ABI/02-Versioning-and-Vtables.md`](06-ABI/02-Versioning-and-Vtables.md) | `VtableHeader`, append-only, panic convention (`AB`) |
-| 6.3 | [`06-ABI/03-Type-Catalog.md`](06-ABI/03-Type-Catalog.md) | The single source of `#[repr(C)]` layouts |
-| 6.4 | [`06-ABI/04-Config-Slice.md`](06-ABI/04-Config-Slice.md) | `ConfigSlice` / `ConfigKvp` exact layout |
-| 6.5 | [`06-ABI/05-Platform-Contract.md`](06-ABI/05-Platform-Contract.md) | `kabi/platform` down-face contract: mechanism/impl split, platform vtable, `lib/ds` boundary |
-| 7.1 | [`07-Surfaces/01-Package-Manager.md`](07-Surfaces/01-Package-Manager.md) | `pkg sync`, lockfile, supply chain (`PM`, `SEC`) |
-| 7.2 | [`07-Surfaces/02-Debug-Surface.md`](07-Surfaces/02-Debug-Surface.md) | Debug events, drive (`DS`) |
-| 7.3 | [`07-Surfaces/03-Server-Client-Protocol.md`](07-Surfaces/03-Server-Client-Protocol.md) | Framed wire protocol (`SP`) |
-| 7.4 | [`07-Surfaces/04-Config-CLI.md`](07-Surfaces/04-Config-CLI.md) | `reovim config dump|help|validate|set|force-set` |
-| 7.5 | [`07-Surfaces/05-Log-CLI.md`](07-Surfaces/05-Log-CLI.md) | `reovim log` — the `dmesg` analog (`LOG9..LOG11`) |
-| 8.1 | [`08-Client/01-Layer-Model.md`](08-Client/01-Layer-Model.md) | Client subsys / ext flat-category tree (`CL`) |
-| 8.2 | [`08-Client/02-Platform-Runtimes.md`](08-Client/02-Platform-Runtimes.md) | TUI, web, native runners |
-| 8.3 | [`08-Client/03-Drivers-Modules-Capabilities.md`](08-Client/03-Drivers-Modules-Capabilities.md) | Multi-vtable cdylibs, kinds |
-| 8.4 | [`08-Client/04-Client-Debug.md`](08-Client/04-Client-Debug.md) | Client-side debug capability |
-| 8.5 | [`08-Client/05-Packaging.md`](08-Client/05-Packaging.md) | Client manifests, distribution |
-| 9.1 | [`09-Conformance/01-Rule-Matrix.md`](09-Conformance/01-Rule-Matrix.md) | Per-rule fixtures, golden tests (`CF`) |
-| 9.2 | [`09-Conformance/02-Security.md`](09-Conformance/02-Security.md) | Threat model, transport auth (`SEC`) |
-| 9.3 | [`09-Conformance/03-Failure-Modes.md`](09-Conformance/03-Failure-Modes.md) | Bounded drains, rollback (`FAIL`) |
-| 9.4 | [`09-Conformance/04-Observability.md`](09-Conformance/04-Observability.md) | DS12 event taxonomy, correlation (`OBS`) |
-| 9.5 | [`09-Conformance/05-Logging.md`](09-Conformance/05-Logging.md) | dmesg-style log rendering, ring, sink (`LOG`) |
-| 10.1 | [`10-Development/01-Testing.md`](10-Development/01-Testing.md) | Development process: coverage, E2E smoke, goldens (`DEV`) |
+| SDK | Server | TUI | CLI | Web |
+| --- | --- | --- | --- | --- |
+| Rust | Required v0.16 | Required v0.16 | Required v0.16 | Excluded |
+| Python | Required v0.16 | Non-blocking target | Non-blocking target | Excluded |
+| TypeScript | Excluded | Excluded | Excluded | Required v0.16 |
 
-Non-normative material lives in three sibling tiers, by time axis:
-[`heritage/`](heritage/README.md) (proposals and phase records that
-*shaped* this architecture — past), `debt/` (known gaps against the
-*current* tree — present), and [`future/`](future/README.md) (design
-direction past the 0.16 goal — future, including the device-editing
-vision and the radiation/Mars survival model).
+On selection, each of the seven rows enters the registry with
+`PlannedMissing` AdmissionStatus and may advance only through its own evidence
+gate; Excluded cells have no AdmissionStatus. This initial-state law is not a
+live implementation record. The implementation/admission order is Rust first,
+then the service/transport reference, then Python and TypeScript independently.
+Language-neutral contracts remain semantic authority.
 
-## Locked-rule namespaces
+Easy extension is a product acceptance concern. v0.16 defines a language-
+neutral Extension Adapter, an Extension Engine Adapter specialization, an
+Adapter Kit, a TestOnly model, and Quick Extension rules. It selects no
+production interpreter/VM/engine, embedded Lua/Python, Haskell binding, native/
+FFI profile, separate automation role, or Neovim compatibility facade.
 
-| Prefix | Topic | Owner chapter |
-|---|---|---|
-| `L` | Legacy core; compatibility only | (carried forward) |
-| `LF` | cdylib lifecycle | 2.2 |
-| `CC` | concurrency | 2.3 |
-| `AB` | ABI / vtable / panic | 6.2 |
-| `DT` | Domain tree + dispatch ordering | 4.1, 4.2 |
-| `S` | Stream substrate | 4.4 |
-| `PM` | Package manager | 7.1 |
-| `DS` | Debug surface | 7.2 |
-| `SP` | Server-client protocol | 7.3 |
-| `AL` | Apps / launcher / invocation only | 1.3 |
-| `DAG` | Source layout + dependency graph | 1.2 |
-| `CFG` | Config service | 1.5, 6.4 |
-| `CR` | Coordination carriers/codecs | 4.5 |
-| `CL` | Client layer model | 8.1 |
-| `SVC` | Service registry / leases | 3.3 |
-| `PS` | Persistence / state files | 2.4 |
-| `SEC` | Security / trust | 9.2 |
-| `CF` | Conformance | 9.1 |
-| `OBS` | Observability | 9.4 |
-| `LOG` | Log rendering / ring / sink / reader | 9.5, 7.5 |
-| `DEV` | Development process / testing requirements | 10.1 |
-| `FAIL` | Failure modes | 9.3 |
+## Architectural invariants
 
-`AL` is reserved for binaries and invocation. Config rules go to
-`CFG`. Service rules go to `SVC`. Do not overload `AL`.
+1. Foundation, Kernel Interface, Kernel Core, and Kernel Runtime contain no
+   concrete OS/environment, Resource adapter, Domain policy, transport,
+   presentation, Client, or extension implementation.
+2. Strings, lines, columns, graphemes, text cursors, terminal cells, pixels,
+   and another Domain's coordinates never shape Domain-neutral contracts.
+3. Resource Identity, Address, Extent, Unit, Revision, capabilities, limits,
+   and errors remain explicit; byte offsets are not universal.
+4. A Resource Adapter connects data. A Domain supplies meaning. A
+   Representation exposes interpreted state. A Projection synchronizes it. A
+   Client-owned View presents it.
+5. A Buffer is transactional working state for exactly one Resource and one
+   editing context; it is not a string or mandatory full copy.
+6. Views, Clients, and extensions submit public Intents/Transactions and never
+   mutate storage or private Buffer state directly.
+7. Assembly selects concrete components and builds inert ownership graphs.
+   Lifecycle owners—not Assembly—activate, publish Ready, supervise, roll back,
+   and close their subtrees.
+8. Environment services cross small consumer-driven Host Capabilities.
+   Resource, Host, Protocol, Presentation, Extension Adapter, and Extension
+   Engine Adapter roles remain distinct even when one consumes another.
+9. Every queue, payload, retained state, concurrency group, retry, callback,
+   drain, and shutdown wait is bounded with visible exhaustion.
+10. Performance claims use real Scenarios and retained Experiment Bundles.
+    Input-to-present p99 is the primary reaction metric.
+11. Editor diagnostics use one bounded, loss-visible structured Event Stream;
+    causal traces/graphs and snapshots remain separate bounded evidence.
+12. First-party Clients/extensions use the same public contracts offered to
+    equivalent third parties; private reduction shortcuts are forbidden.
 
-## Design decisions (2026-06)
+## Dependency policy
 
-The implementation-lock questions are all resolved; the adopted
-decisions live in the owner chapters' rule bodies. One-line
-summary per decision:
+The Rust standard library is allowed. A third-party dependency is admitted only
+for a concrete consumer after review of maintenance, ownership, license and
+compatibility rationale, transitive graph/cost, unsafe/native surface, build and
+runtime behavior, target support, and measured overhead. Reovim adds an
+abstraction when it owns different semantics, needs deterministic substitution,
+or must contain a volatile/unsafe boundary—not merely to hide a package name.
 
-| Subject | Owner | Decision |
-|---|---|---|
-| `c_int` ↔ `ErrorCode` migration | 6.2 | Clean break: `ErrorCode` only (AB14); no compat loader — v0.15 impl archived, zero consumers |
-| `ConfigSlice` compound encoding | 6.4 | `CanonicalToml` bytes, config-ABI v1 |
-| Hot-path `RawInputKind` payloads | 5.2, 6.3 | USB HID keycodes + ext range; cell-primary mouse; first-class `Ime` kind; layouts in 6.3 §7 |
-| Env-var canonical encoding | 1.5, 7.4 | Reversible kebab grammar (CFG10); spec swept to kebab-case |
-| Handler/projector tie-break | 4.1, 4.2 | Canonically-sorted lockfile order + manifest-decl order (DT17) |
-| Detach lifecycle ordering | 2.2, 2.4, 4.2 | detach → persist → subs → drops → release; leaf-first; non-blocking (LF12) |
-| Manifest-kind enumeration | 6.2, 8.5, 4.4 | Nine-variant enum final; `StreamScheme` own kind; sub-kinds via vtable strings |
-| Wire-form provenance | 1.4, 7.3 | 7.3's message inventory owns the wire form; `uapi/protocol` structs realize it; CI cross-check (CF5). Superseded the 2026-06 proto split under `DAG5` sovereignty. |
-| Rule-index reshape pass | all chapters | Hybrid renumber; carried bodies restated in owner chapters; lock tiers renamed T1..T13 |
-| Prior-draft disposition | all chapters | Superseded; every carried rule restated here — the prior draft tree is not retained (latest spec is the SSOT) |
+## Document map
 
-Chapter lock is gated only by per-chapter promotion work
-(conformance rows, CF1..CF5).
+1. [Concept](00-Concept.md) — routed North Star, Kernel/Client split, quality,
+   and v0.16 proof.
+2. [Vocabulary](00-Vocabulary.md) — canonical cross-contract terms.
+3. [Architecture](01-Architecture/README.md) — role/dependency, Resource and
+   Buffer, semantics and View, execution, and Client contract map.
+4. [Host API](02-Host-API.md) — semantic environment capabilities and adapters.
+5. [Extension contracts](03-Extensions/README.md) — SDK/API, Server/Client
+   Modules, Contribution Points, binding matrix, and Extension Adapters.
+6. [Performance](04-Performance/README.md) — real Scenarios, causal trace, IPC,
+   instrumentation, locks, and evidence.
+7. [Editor Event Stream](05-Editor-Event-Stream/README.md) — bounded logging,
+   canonical rendering, loss, and causal-debug separation.
+8. [Selective migration](05-Migration/01-Selective-Migration.md) — donor
+   classification and slice cutover.
+9. [Conformance](06-Conformance/README.md) — evidence taxonomy, authority,
+   stable Rule Matrix, and release audit.
+10. [Mission-critical quality](07-Mission-Critical-Quality/README.md) —
+    integrity, lifecycle/isolation, admission, and exact qualification.
 
-## Out of target
+`heritage/` is non-normative historical material. Git history preserves the
+superseded OS/no-std/system-kernel specification; removed chapters do not retain
+authority merely because historical code still exists.
 
-- WASM browser runtime peer vs separate web SSR runner.
-- Project package overlay trust prompt beyond `pkg sync` / `pkg verify`.
-- Q-4 (cross-observer focus pairing) unless DomainTree requires it.
-- Runtime config reload (boot-only).
+## Reading and change rules
 
-## How to read this spec
+Read Concept, Vocabulary, and Layer Model before changing an architectural
+boundary. Then read the owning contract and its Rule Matrix rows. A boundary
+change updates the contract, conformance mapping, implementation, tests,
+migration evidence, and performance/Event evidence together where applicable.
 
-1. Skim this README for the chapter map and namespace.
-2. Read [`00-Vocabulary.md`](00-Vocabulary.md) once.
-3. Read chapters in numeric order; cross-references go forward.
-4. For implementation, [`06-ABI/03-Type-Catalog.md`](06-ABI/03-Type-Catalog.md) is the only authoritative source of `#[repr(C)]` layouts.
+Contract families use short indexes and focused chapters. Every active
+normative Markdown file stays at or below 250 lines; split by one owning subject
+before exceeding that bound. Link to the focused file rather than a fragile
+local heading fragment, and never retain an old monolith as a redirecting second
+authority.
+
+Do not describe a planned contract as implemented. Do not put branch hashes,
+issue order, live progress, measured results, concrete dependency admissions,
+or waivers in normative Documentation. Do not defer a missing proof by leaving
+a permanent compatibility shim; record a bounded owner/removal milestone in the
+tracker and remove the duplicate path after the conforming path is proved.

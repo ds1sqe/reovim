@@ -2,6 +2,22 @@
 
 For old changelog, see `changelog/CHANGELOG-{version}.md`
 
+## Current v0.16 re-foundation
+
+- Ratified the editing-system Documentation authority and 90-rule conformance
+  map. Text is a Domain, the portable Reovim Kernel has no concrete viewport,
+  and TUI, CLI, and Web remain mandatory v0.16 Client Families.
+- Removed the coupled OS product, system runtime, freestanding architecture,
+  UAPI/KABI, and text-shaped editor implementation from the active workspace.
+- Established a one-package hosted tooling baseline with fail-closed excision
+  guards and an explicitly declaration-only dependency preflight. Fresh
+  editing implementation proceeds through reviewed contract-owned slices.
+
+> **Historical donor record:** the entries below describe the removed
+> OS-shaped lineage. They do not describe the current tooling-only v0.16
+> baseline or establish editing-system conformance. New implementation changes
+> will be recorded only as their contract-owned slices land.
+
 ## [0.16.0-dev] - Unreleased
 
 ### Changed

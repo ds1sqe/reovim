@@ -1,57 +1,70 @@
-# reovim
+# Reovim
 
 [![Crates.io](https://img.shields.io/crates/v/reovim.svg)](https://crates.io/crates/reovim)
 
-A Rust-powered editing system.
-
-## Project Goals
-
-- **Fastest-reaction editor**: Minimal latency, instant response
-- **Scalability**: Handles large files and complex operations
-- **Zero-warning policy**: All code must compile warning-free
+Reovim is a high-performance, extensible editing system pursuing mission-
+critical quality. It is designed to inspect and edit addressable Resources
+through faithful low-level and Domain-aware high-level Representations. Text is
+one Domain, not the shape of the core.
 
 ## Status
 
-v0.16 is a **specification-first rebuild**. The v0.15.0 implementation
-is preserved in-tree under [`archive/`](./archive/) as reference; the
-next implementation is built against the normative specification in
-[`Documentation/`](./Documentation/README.md), which is the single
-source of truth for architecture, ABI, and conformance.
+v0.16 is the editing-system re-foundation. The normative target contracts are
+ratified in [Documentation](Documentation/README.md); their presence does not
+claim that the current source implements them or that an artifact is supported
+or qualified. The former OS-shaped implementation has been removed from the
+active workspace. The remaining hosted workspace is a tooling-only baseline;
+fresh implementation and selective migration proceed through reviewed,
+contract-owned slices.
+
+v0.17 follows with Neovim feature parity built only on the v0.16 public
+contracts.
 
 ## Architecture
 
-Reovim follows a **Linux kernel-inspired architecture**: the kernel
-owns mechanism; Domains, modules, drivers, and client modules own
-policy. Modules and drivers are runtime-loaded cdylibs crossing a
-`#[repr(C)]` ABI — no Rust trait objects cross the boundary, and the
-released ABI is treated as eternal (do not break userspace).
+The portable **Reovim Kernel** owns Domain-neutral editing contracts and generic
+mechanisms. It is not an operating-system kernel. A Resource Adapter connects
+data; a Domain supplies meaning; a Representation exposes interpreted state; a
+Projection synchronizes it; and a Client-owned View presents it.
 
-The full layer model, dependency DAG, type catalog, and locked rules
-live in the specification:
+Clients own their applicable presentation or output policy. Any View, viewport,
+layout, input mapping, drawing, rendering, or frame state that exists is
+Client-owned. TUI, CLI, and Web are mandatory v0.16 Client Families, each with a
+Core, public Contract, Module surface, Runtime, and production Presentation or
+output path.
 
-- [Spec README](./Documentation/README.md) — posture, chapter index, rule namespaces
-- [Vocabulary](./Documentation/00-Vocabulary.md) — cross-chapter terms
-- [Layer Model](./Documentation/01-Architecture/01-Layer-Model.md) — foundation/contracts/kernel/runtime/ext/apps tiers
-- [ABI Surface](./Documentation/06-ABI/01-Surface.md) and [Type Catalog](./Documentation/06-ABI/03-Type-Catalog.md) — the `#[repr(C)]` boundary
-- [Conformance](./Documentation/09-Conformance/01-Rule-Matrix.md) — per-rule fixtures and golden tests
-- [Heritage](./Documentation/heritage/README.md) — non-normative project history (proposals, phase records)
+Start here:
 
-## Performance
+- [Normative map and invariants](Documentation/README.md)
+- [Concept](Documentation/00-Concept.md)
+- [Vocabulary](Documentation/00-Vocabulary.md)
+- [Architecture map](Documentation/01-Architecture/README.md)
+- [Execution and concurrency](Documentation/01-Architecture/04-Execution/01-Execution-Laws-and-Operation-Classes.md)
+- [Client, CLM, CCM, and rendering](Documentation/01-Architecture/05-Client/README.md)
+- [Extension contracts](Documentation/03-Extensions/README.md)
+- [Performance contract](Documentation/04-Performance/README.md)
+- [Rule matrix](Documentation/06-Conformance/02-Rule-Matrix.md)
+- [Heritage](Documentation/heritage/README.md) — non-normative historical
+  material
 
-Versioned benchmark reports for released implementations are kept in
-[`perf/`](./perf/).
+## Quality and performance
 
-## Archive
+Source fidelity, atomic state authority, explicit Effect Certainty, bounded
+behavior, recovery, and debuggability take priority over feature count.
+Input-to-present p99 is the primary reaction metric. Numeric budgets follow
+reproducible baselines and retained real-scenario data rather than unsupported
+targets.
 
-- [`archive/`](./archive/) — the complete v0.15.0 implementation
-  (workspace, scripts, configs). Reference only; non-normative.
-- [`archive/docs/`](./archive/docs/) — pre-0.16 documentation for that
-  implementation (architecture, user guide, contributing guides).
-  Superseded by [`Documentation/`](./Documentation/README.md).
-- [Legacy Documentation](https://github.com/ds1sqe/reovim/tree/81806439/archive/pre_kernel/docs) — pre-v0.9.0 documentation (removed from tree, preserved in git history)
+Files under `perf/` and the changelog are historical donor evidence. They do
+not establish v0.16 support, conformance, qualification, or current performance.
+
+Run the repository check suite with:
+
+```sh
+./scripts/check.sh
+```
 
 ## License
 
-AGPL-3.0 - See [LICENSE](./LICENSE) for details.
-
-For commercial licensing options, contact: ds1sqe@mensakorea.org
+AGPL-3.0. See [LICENSE](LICENSE). For commercial licensing, contact
+ds1sqe@mensakorea.org.

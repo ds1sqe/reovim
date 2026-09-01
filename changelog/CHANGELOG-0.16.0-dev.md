@@ -2,6 +2,10 @@
 
 For old changelog, see `changelog/CHANGELOG-{version}.md`
 
+> **Historical donor record:** this file describes the removed OS-shaped
+> lineage. It is retained for provenance and is not current v0.16 conformance
+> or support evidence.
+
 ## [0.16.0-dev] - Unreleased
 
 ### Added

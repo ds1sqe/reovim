@@ -1,6 +1,7 @@
 # Plugin and Module Architecture Design (Superseded)
 
-> **Superseded by**: [Client Layer Model](../../archive/docs/architecture/client/overview.md) (v6.3).
+> **Superseded by:** the historical Client Layer Model v6.3, retained through
+> Git history; the current normative Client contract is outside `heritage/`.
 > This document is preserved as historical reference. The `ClientExtension` trait described
 > here has been replaced by `ClientModule` in the Client Layer Model.
 

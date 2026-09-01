@@ -12,8 +12,8 @@ Foundational documents that shaped Reovim's architecture. These are **historical
 | [phase5-extraction.md](./phase5-extraction.md) | Phase 5 concept-extraction strategy | How we transitioned from v0.8.x to v0.9.0 |
 | [phase-8-migration.md](./phase-8-migration.md) | Phase 8 workspace-split migration | How the flat crate tree became apps/server/clients/ext |
 | [buffer-provider-proposal.md](./buffer-provider-proposal.md) | Buffer provider design proposal | Deferred for future consideration |
-| [client-extensions.md](./client-extensions.md) | Pre-CLM client extension taxonomy | Superseded by [Client Layer Model](../../archive/docs/architecture/client/overview.md) |
-| [runner-overview.md](./runner-overview.md) | Pre-Phase 8 runner architecture | Superseded by [Server](../../archive/docs/architecture/server/overview.md) + [Client](../../archive/docs/architecture/client/overview.md) |
+| [client-extensions.md](./client-extensions.md) | Pre-CLM client extension taxonomy | Superseded Client Layer Model retained through Git history |
+| [runner-overview.md](./runner-overview.md) | Pre-Phase 8 runner architecture | Superseded Server/Client architecture retained through Git history |
 
 ## Why Heritage?
 

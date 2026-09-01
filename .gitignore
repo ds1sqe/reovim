@@ -1,13 +1,5 @@
 /target
-arch/tests/fixtures/target/
-arch/tests/glyph-rasterizer/target/
-editor/lib/core/tests/fixtures/target/
-editor/lib/server/tests/fixtures/target/
-apps/target/
-client/platforms/tui/tests/fixtures/target/
 tmp/
-COVERAGE.md
-COVERAGE-SERVER.md
 
 CLAUDE.md
 
@@ -20,4 +12,4 @@ __pycache__/
 *.pyo
 *.egg-info
 
-nodemodules/
+node_modules/

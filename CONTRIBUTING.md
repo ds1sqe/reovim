@@ -1,84 +1,71 @@
 # Contributing to Reovim
 
-## Code Standards
+## Read the contract first
 
-### Zero-Warning Policy
+Before changing an architectural boundary, read:
 
-This project enforces a **zero-warning policy**. Before submitting code:
+1. [Documentation authority and map](Documentation/README.md);
+2. [Concept](Documentation/00-Concept.md);
+3. [Vocabulary](Documentation/00-Vocabulary.md);
+4. [Architecture and layer model](Documentation/01-Architecture/README.md); and
+5. the owning contract and its [Rule Matrix](Documentation/06-Conformance/02-Rule-Matrix.md)
+   rows.
 
-1. Run `cargo build` - must produce zero warnings
-2. Run `cargo clippy` - must produce zero warnings
-3. Run `cargo fmt` - code must be formatted
+Normative Documentation defines the target; it is not evidence that current
+code conforms. Plans own implementation order. Historical code is a behavior
+donor and does not define v0.16 architecture.
 
-No warnings are acceptable. This is non-negotiable.
+Contract indexes route to focused normative chapters. Keep each active
+normative Markdown file at or below 250 lines, link directly to the owning file,
+and do not preserve a retired monolith as a second authority.
 
-### Code Quality
+## Change discipline
 
-- Follow existing code patterns
-- Keep functions focused and small
-- Prefer clarity over cleverness
+- Preserve inward dependency direction and one semantic authority per state.
+- Keep text, viewport, platform, transport, and adapter implementation types out
+  of the Domain-neutral Kernel.
+- Use public SDK/Module/Client contracts for first-party behavior.
+- Update contract, rule mapping, implementation, public-boundary tests,
+  migration evidence, Events, and performance evidence together when
+  applicable.
+- Classify migrated behavior as adopt, adapt, rewrite, or retire.
+- Do not leave duplicate paths or permanent compatibility shims after cutover.
+- Add dependencies only with the review required by the Layer Model.
 
-All architecture, ABI, and conformance rules live in the normative
-specification at [`Documentation/`](./Documentation/README.md) — read
-it before changing any boundary-crossing surface.
+## Verification
 
-## Testing
+Run the repository check suite:
 
-All changes must pass the test suite:
-
-```bash
-cargo test
+```sh
+./scripts/check.sh
 ```
 
-When adding new functionality:
-- Add tests for new code paths
-- Ensure existing tests pass
-- Spec-governed surfaces additionally require the conformance fixtures
-  listed in [`Documentation/09-Conformance/01-Rule-Matrix.md`](./Documentation/09-Conformance/01-Rule-Matrix.md)
+At minimum, relevant changes require formatting, warning-free builds, strict
+lint, focused and workspace tests, documentation links/terminology checks, and
+the evidence classes named by applicable Rule Matrix rows. A happy-path test
+does not substitute for fault, cancellation, lifecycle, performance, Event, or
+exact-artifact evidence.
 
-## Development Workflow
+Do not claim support or qualification from a source-tree test. Qualification
+uses the exact packaged candidate in its named clean environment.
 
-1. Fork and clone the repository
-2. Create a feature branch from `develop`
-3. Make your changes
-4. Run the full check suite:
-   ```bash
-   cargo build && cargo clippy && cargo test && cargo fmt --check
-   ```
-5. Submit a pull request to `develop`
+## Pull requests
 
-## Pull Request Checklist
+A pull request should:
 
-Before submitting:
+- link its owning issue/plan and normative rules;
+- explain user-visible behavior and architectural ownership;
+- identify donor behavior and migration disposition where applicable;
+- include commands and retained evidence, including failures;
+- state compatibility, dependency, unsafe/native, performance, and release
+  effects; and
+- remove superseded active paths after the conforming replacement passes.
 
-- [ ] Code compiles with zero warnings (`cargo build`)
-- [ ] Clippy passes with zero warnings (`cargo clippy`)
-- [ ] All tests pass (`cargo test`)
-- [ ] Code is formatted (`cargo fmt`)
-- [ ] New code has appropriate tests
-- [ ] Commit messages are clear and descriptive
+## Contributor license terms
 
-## Commit Messages
-
-Use clear, descriptive commit messages:
-
-```
-Add cursor word-forward motion
-
-Implement w command for word-forward navigation.
-Handles word boundaries and line ends.
-```
-
-## Contributor License Agreement
-
-By contributing to this project, you agree to the following terms:
-
-1. **Grant of Rights**: You grant ds1sqe (the project maintainer) a perpetual, worldwide, non-exclusive, royalty-free, irrevocable license to use, reproduce, modify, prepare derivative works of, publicly display, publicly perform, sublicense, and distribute your contributions and any derivative works.
-
-2. **Dual Licensing**: You understand and agree that your contributions may be used under the AGPL-3.0 license for the open source version, and may also be included in commercially licensed versions of the software.
-
-3. **Original Work**: You represent that your contributions are your original work and that you have the right to grant the above license.
-
-4. **No Obligation**: The project maintainer is under no obligation to use or incorporate your contributions.
-
-This CLA ensures that the project can maintain flexibility in licensing while keeping the core open source.
+By contributing, you grant ds1sqe a perpetual, worldwide, non-exclusive,
+royalty-free, irrevocable license to use, reproduce, modify, prepare derivative
+works from, publicly display or perform, sublicense, and distribute your
+contribution and derivative works. You represent that the contribution is your
+original work or that you have the authority to grant these rights. Contributions
+may be included in AGPL-3.0 and commercially licensed versions of Reovim.

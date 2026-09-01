@@ -1,96 +1,6 @@
 [workspace]
 resolver = "2"
-members = [
-    "lib/depgraph",
-    # Portable heap-DS algorithms (Seq/Map/Bytes/Mutex/RwLock/Condvar) — Math;
-    # reaches allocator + futex backends through injected uapi control tables,
-    # never arch/provider/kabi handles directly.
-    "lib/ds",
-    # Core-only no_std test runtime carved out of reovim-arch (SP07): the
-    # arch_test! distributed-slice collector, fail-fast reporter, and
-    # check/check_eq. Output (fd write) and the unique-path TID are injected by
-    # the consumer, so the leaf names no OS edge. arch re-exports it through the
-    # `arch::testrt` facade; the arch-sys-* crates depend on it directly to
-    # register their floor selftests without an upward arch-sys → arch edge.
-    "lib/testrt",
-    "arch",
-    # Per-target raw mechanism crates carved out of reovim-arch (SP01): syscall
-    # FFI / MMIO / asm, returning NATIVE values. arch reaches them via the
-    # arch::sys facade (target-cfg-gated path deps).
-    "arch/sys-linux-x86-64",
-    "arch/sys-linux-aarch64",
-    "arch/sys-none-aarch64",
-    "arch/sys-none-x86-64",
-    # Per-target language-floor lang-item crates carved out of reovim-arch
-    # (SP03): `_start`, `#[panic_handler]`, `rust_eh_personality`, the mem
-    # intrinsics, and the `entry!`/`reovim_arch_main` seam. The composition root
-    # (apps/* + the fixtures) links the matching floor crate; `arch` carries no
-    # floor edge (the floor→product crossing is LINK, not import — invariant #1).
-    "arch/floor-linux-x86-64",
-    "arch/floor-linux-aarch64",
-    "arch/floor-none-aarch64",
-    "arch/floor-none-x86-64",
-    # POSIX provider (SP02): canonicalizes NATIVE arch primitives into the
-    # kabi/platform vtable and installs it (hosted, both Linux arches). Reaches
-    # arch's alloc/clock backends + raw syscall floor through a one-way
-    # transitional `platform-linux-native → arch` edge (retired in SP05).
-    "platform/linux-native",
-    # Test-only bare-metal handle scaffold (SP02 Phase 4): the freestanding
-    # -ENOSYS/sentinel vtable the selftest/bootcore fixtures install on
-    # *-unknown-none, where linux-native cannot link. Empty on Linux
-    # (cfg(not(target_os = "linux"))).
-    "platform/stub-none",
-    "uapi",
-    "uapi/inner/abi",
-    "uapi/inner/dump",
-    "uapi/inner/fs",
-    "uapi/inner/mm",
-    "uapi/inner/net",
-    "uapi/inner/panic",
-    "uapi/inner/process",
-    "uapi/inner/log",
-    "uapi/inner/sched",
-    "uapi/inner/session",
-    "uapi/inner/service",
-    "uapi/inner/source",
-    "uapi/inner/syscall",
-    "uapi/inner/system",
-    "uapi/inner/terminal",
-    "uapi/inner/protocol",
-    "uapi/inner/module-macros",
-    "uapi/inner/driver-macros",
-    # Down-face platform contract: the #[repr(C)] handle vtable arch implements
-    # (SP02, arch → kabi). A leaf — depends on nothing impl-side.
-    "kabi/platform",
-    # Down-face fault-floor seam: the always-present write-once panic-policy atoms
-    # (Platform-Contract §3.4). No install gate — readable before Init::boot.
-    "kabi/panic",
-    # World system-kernel bridge: arch-free common console/FDT/splash policy and
-    # boot-info/device-inventory shaping. Raw facts, framebuffer storage, and
-    # provider installs stay in the lower composition/provider layer.
-    "system/lib/kernel",
-    "editor/lib/subsys/domain",
-    "editor/lib/core",
-    "editor/lib/server",
-    "editor/domains/text",
-    # TUI platform runtime — thin UDS client + raw-termios ANSI paint (#797 Phase 4).
-    "client/platforms/tui",
-    # DEV2 E2E exec harness — bootstrap-state-1 std orchestration (#797 Phase 5).
-    "tools/testing",
-]
-# `arch/tests/fixtures/` is its OWN nested workspace (#785 Phase 4): its
-# `#![no_std] #![no_main]` bins depend on `reovim-arch` with the `runtime`
-# feature, and keeping them out of this workspace prevents `cargo test
-# --workspace` from feature-unifying `runtime` onto the `reovim-arch` rlib the
-# lib's own test harness uses (which would define `#[panic_handler]` in the
-# libtest build and collide with std's lang item). The DAG6 probe still scans
-# them via tree walk; the arch integration test builds them by manifest path.
-#
-# `apps/` is its OWN nested workspace for the same reason: `apps/server` and
-# `apps/reovim` are `#![no_std] #![no_main]` bins with `reovim-arch/runtime`,
-# and their `runtime` feature must not unify onto the parent workspace's `arch`
-# rlib used by libtest builds (#797 Phase 4).
-exclude = ["archive", "arch/tests/fixtures", "editor/lib/core/tests/fixtures", "editor/lib/server/tests/fixtures", "apps", "client/platforms/tui/tests/fixtures"]
+members = ["lib/depgraph"]
 
 [workspace.package]
 rust-version = "1.92"
@@ -98,47 +8,16 @@ version = "0.16.0-dev"
 edition = "2024"
 authors = ["ds1sqe(dukim) <ds1sqe@mensakorea.org>"]
 license = "AGPL-3.0-only"
-description = "A Rust-powered modal editor"
+description = "A high-performance, extensible editing system"
 repository = "https://github.com/ds1sqe/reovim"
 homepage = "https://github.com/ds1sqe/reovim"
 readme = "README.md"
-keywords = ["vim", "vi", "neovim", "editor", "terminal"]
-categories = ["text-editors", "command-line-utilities"]
-
-[workspace.metadata.workspaces]
-allow_branch = "develop"
-
-[workspace.metadata.docs.rs]
-rustdoc-args = ["--document-private-items"]
 
 [workspace.lints.rust]
 warnings = "deny"
 unsafe_code = "warn"
-unexpected_cfgs = { level = "warn", check-cfg = [
-    'cfg(coverage_nightly)',
-    # `arch_coverage` gates the no_main exit shim's `__llvm_profile_write_file`
-    # call (arch/src/start.rs). The coverage script sets it via
-    # `RUSTFLAGS=--cfg arch_coverage` alongside `-C instrument-coverage`;
-    # ordinary builds never set it, so the instrumentation runtime symbol is
-    # not referenced and uninstrumented binaries link clean.
-    'cfg(arch_coverage)',
-] }
 
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
 pedantic = { level = "deny", priority = -1 }
 nursery = { level = "deny", priority = -1 }
-
-# [workspace.dependencies] is intentionally absent — this is the visible L9
-# marker (1.2 §9 Dependency Sovereignty). No third-party crate version is
-# catalogued here; the workspace graph is closed to std + in-repo path deps.
-
-# `panic = "abort"` is mandated by L10/DAG6 (1.2 §10) and AB12 (6.2 §5):
-# under the zero-std regime there is no unwinder, and no unwind may cross an
-# `extern "C"` boundary. The `panic = "abort"` profile gate probe (DAG6
-# step 6) enforces this in place of any grep.
-[profile.dev]
-panic = "abort"
-
-[profile.release]
-panic = "abort"

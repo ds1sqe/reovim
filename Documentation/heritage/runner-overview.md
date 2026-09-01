@@ -1,7 +1,7 @@
 # Runner Architecture (Superseded)
 
-> **Superseded by**: [Server Architecture](../../archive/docs/architecture/server/overview.md) and
-> [Client Architecture](../../archive/docs/architecture/client/overview.md).
+> **Superseded by:** historical Server and Client architecture retained through
+> Git history; current normative contracts are outside `heritage/`.
 > The runner was dissolved in Phase 8. Server and client docs now live separately.
 
 > **Note:** This documentation describes the pre-Phase 8 architecture. The runner has been
@@ -99,4 +99,4 @@ reovim cli keys 'iHello<Esc>'
 reovim tui
 ```
 
-See [Server Mode Reference](../../archive/docs/user-guide/server-mode.md) for complete usage.
+The historical Server Mode reference is available through Git history.
