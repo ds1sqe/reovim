@@ -1,0 +1,19 @@
+[package]
+name = "reovim-conformance"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Non-shipping exact conformance checker for Reovim repository boundaries"
+publish = false
+
+[dependencies]
+reovim-depgraph = { path = "../../lib/depgraph" }
+serde_json = { version = "=1.0.151", default-features = false, features = ["std"] }
+syn = { version = "=3.0.4", default-features = false, features = ["full", "parsing", "visit"] }
+
+[lints]
+workspace = true

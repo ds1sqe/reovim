@@ -49,7 +49,7 @@ the specification.
 1. Characterize the donor through its real public surface and preserve only
    valid observable behavior as fixtures.
 2. Map each responsibility to exactly one applicable logical role in the
-   [Layer Model roles](../01-Architecture/01-Layer/01-Roles-Descriptors-and-Dependencies.md),
+   [Layer Model roles](../01-Architecture/01-Layer/01-Roles-Descriptors-and-Dependencies/01-Logical-Roles-and-Source-Ownership.md),
    including qualified Resource, Host, External Protocol Binding, Protocol,
    Extension Adapter/Engine, Client Family/Runtime, Presentation, Kernel, and
    Assembly boundaries. Do not collapse two roles because donor code combines

@@ -135,4 +135,4 @@ Release evidence maps the exact artifact to the Supported and Qualified
 Environment Matrix. The initial qualification target is
 `x86_64-unknown-linux-gnu`; target selection does not prove qualification.
 
-See [Layer and Dependency Model](../01-Layer/01-Roles-Descriptors-and-Dependencies.md).
+See [Source Dependency Graph and Edges](../01-Layer/01-Roles-Descriptors-and-Dependencies/03-Source-Dependency-Graph-and-Edges.md).

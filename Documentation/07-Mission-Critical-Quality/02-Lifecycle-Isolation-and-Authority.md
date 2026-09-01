@@ -89,13 +89,34 @@ a component-local timeout does not justify an unbounded Runtime join or wait.
 
 ## Dependency and boundary enforcement
 
-Repository paths assign each source responsibility one owner. Locked build
-metadata is the dependency-edge authority, and automated checks reject
-unregistered packages, forbidden edges, and cycles in both the concrete graph
-and its projection onto architectural owners.
+Repository paths assign every in-scope source responsibility one Source Owner,
+Source Provenance, and Source Use under separate committed policy. Product
+ArchitecturalRoles and the closed non-product `RepositoryTooling` owner remain
+distinct. Provenance or use never grants a role or dependency edge, and source
+classification never replaces a Documentation Contract Authority.
+
+Locked build metadata is dependency-edge authority. Separate schema-valid
+committed inputs enumerate exact workspace topology, source classification,
+entrypoint reviews, and third-party Cargo-package admissions. Other dependency
+mechanisms retain their own exact pins, admission decisions, and review
+records.
+Automated checks reject unregistered packages/targets, build mechanisms,
+target/feature profiles, unmatched or ambiguous source, forbidden edges, and
+cycles in both the concrete graph and its ArchitecturalRole-only product
+projection. Repository Tooling is never projected into the product DAG,
+selected by Assembly, or admitted into a shipping closure. Its concrete graph
+remains dependency-reviewed and cycle-checked.
+
+A product package cannot reach Repository Tooling through normal, dev/test,
+build, or proc-macro dependency; import, include/macro expansion, re-export, or
+public type; build/package invocation; or bundled file/asset. Repository Tooling
+does not import product crates or private product types. It may inspect exact
+product source or artifacts only as bounded evidence data. Generated production
+source retains its product owner and is not mislabeled as build output.
 
 Graph shape alone does not prove portability or semantic isolation. Source-
-import, transitive-closure, and public-type checks also reject direct OS,
+import/include, transitive-closure, invocation/packaging, and public-type checks
+also reject direct OS,
 filesystem, environment, socket, protocol, codec, input-device, terminal,
 renderer, and platform mechanisms inside Foundation and Kernel Interface,
 Core, and Runtime. Public Clients and SDK

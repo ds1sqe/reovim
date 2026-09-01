@@ -1,0 +1,133 @@
+{
+  "schema": "reovim-workspace-topology/v1",
+  "workspace_manifest": "Cargo.toml",
+  "workspace_members": [
+    "lib/depgraph",
+    "tools/conformance"
+  ],
+  "manifests": [
+    "Cargo.toml",
+    "lib/depgraph/Cargo.toml",
+    "tools/conformance/Cargo.toml"
+  ],
+  "lockfiles": [
+    "Cargo.lock"
+  ],
+  "cargo_config_files": [],
+  "build_scripts": [],
+  "custom_target_specs": [],
+  "linker_assets": [],
+  "repository_entrypoints": [
+    {
+      "kind": "script",
+      "path": "scripts/check.sh",
+      "content_digest": "sha256:36916840689d240de1bf59071881736e1494131288abaa2f4649364380f05e41"
+    },
+    {
+      "kind": "script",
+      "path": "scripts/check-documentation.sh",
+      "content_digest": "sha256:18ea57bad2086d7b8c04379dbfdfdde4697ef5c76e33ba63e36b4cc41ee485b6"
+    },
+    {
+      "kind": "script",
+      "path": "scripts/check-conformance.sh",
+      "content_digest": "sha256:4642722343c9446b87332659470128f3d1e774be70545c6dadaa2fe2663c7074"
+    },
+    {
+      "kind": "workflow",
+      "path": ".github/workflows/ci.yml",
+      "content_digest": "sha256:54820cd83daee64e4a65593554cedc7714444adab4ef24fa0ee37aebab71c45f"
+    },
+    {
+      "kind": "cargo_target",
+      "package": "reovim-conformance",
+      "target": "reovim-conformance"
+    }
+  ],
+  "limits": {
+    "config_bytes": 1048576,
+    "json_depth": 128,
+    "json_container_items": 50000,
+    "metadata_stdout_bytes": 16777216,
+    "child_stderr_bytes": 1048576,
+    "child_deadline_ms": 55000,
+    "child_supervision_deadline_ms": 60000,
+    "tool_executable_bytes": 67108864,
+    "report_bytes": 16777216,
+    "source_entry_count": 16384,
+    "directory_entry_count": 8192,
+    "source_file_count": 8192,
+    "source_total_bytes": 67108864,
+    "source_file_bytes": 4194304,
+    "path_bytes": 4096,
+    "syntax_item_expr_type_visits": 1000000,
+    "findings": 4096
+  },
+  "profiles": [
+    {
+      "name": "hosted-default",
+      "target": "x86_64-unknown-linux-gnu",
+      "all_features": false,
+      "no_default_features": false,
+      "features": []
+    },
+    {
+      "name": "hosted-all-features",
+      "target": "x86_64-unknown-linux-gnu",
+      "all_features": true,
+      "no_default_features": false,
+      "features": []
+    },
+    {
+      "name": "hosted-no-default-features",
+      "target": "x86_64-unknown-linux-gnu",
+      "all_features": false,
+      "no_default_features": true,
+      "features": []
+    }
+  ],
+  "packages": [
+    {
+      "name": "reovim-depgraph",
+      "manifest": "lib/depgraph/Cargo.toml",
+      "targets": [
+        {
+          "name": "reovim_depgraph",
+          "kind": ["lib"],
+          "crate_types": ["lib"],
+          "src_path": "lib/depgraph/src/lib.rs"
+        },
+        {
+          "name": "depgraph",
+          "kind": ["test"],
+          "crate_types": ["bin"],
+          "src_path": "lib/depgraph/src/tests.rs"
+        }
+      ]
+    },
+    {
+      "name": "reovim-conformance",
+      "manifest": "tools/conformance/Cargo.toml",
+      "targets": [
+        {
+          "name": "reovim_conformance",
+          "kind": ["lib"],
+          "crate_types": ["lib"],
+          "src_path": "tools/conformance/src/lib.rs"
+        },
+        {
+          "name": "reovim-conformance",
+          "kind": ["bin"],
+          "crate_types": ["bin"],
+          "src_path": "tools/conformance/src/main.rs"
+        },
+        {
+          "name": "checker",
+          "kind": ["test"],
+          "crate_types": ["bin"],
+          "src_path": "tools/conformance/tests/checker.rs"
+        }
+      ]
+    }
+  ]
+}

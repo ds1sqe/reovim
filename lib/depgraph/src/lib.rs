@@ -103,40 +103,156 @@ impl fmt::Display for ArchitecturalRole {
     }
 }
 
-/// How a path participates in the checked source tree.
+/// The authority that owns a classified source path.
 ///
-/// Treatment is independent of architectural ownership. For example, a test
-/// fixture and production source may share an owner while requiring different
-/// evidence handling.
+/// Repository tooling is deliberately outside the product role graph. It is
+/// not another [`ArchitecturalRole`] and cannot acquire a product edge by
+/// sharing a package or directory with product source.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum SourceTreatment {
-    Production,
+pub enum SourceOwner {
+    Product(ArchitecturalRole),
+    RepositoryTooling,
+}
+
+impl SourceOwner {
+    /// Returns the stable owner spelling used by deterministic reports.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Product(role) => role.as_str(),
+            Self::RepositoryTooling => "RepositoryTooling",
+        }
+    }
+}
+
+impl fmt::Display for SourceOwner {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+/// How source bytes originated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum SourceProvenance {
+    Authored,
     Generated,
     Vendored,
+}
+
+impl SourceProvenance {
+    /// Returns the stable lower-snake-case report spelling.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Authored => "authored",
+            Self::Generated => "generated",
+            Self::Vendored => "vendored",
+        }
+    }
+}
+
+/// How a classified path participates in the repository or product.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum SourceUse {
+    Production,
     Test,
     Example,
     Tool,
     BuildOutput,
 }
 
-/// The owner and treatment assigned to one source path.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SourceRole {
-    pub owner: ArchitecturalRole,
-    pub treatment: SourceTreatment,
+impl SourceUse {
+    /// Returns the stable lower-snake-case report spelling.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Production => "production",
+            Self::Test => "test",
+            Self::Example => "example",
+            Self::Tool => "tool",
+            Self::BuildOutput => "build_output",
+        }
+    }
 }
 
-impl SourceRole {
-    /// Constructs a source-role assignment.
-    #[must_use]
-    pub const fn new(owner: ArchitecturalRole, treatment: SourceTreatment) -> Self {
-        Self { owner, treatment }
+/// A source owner/provenance/use combination rejected by the closed model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InvalidSourceClassification {
+    pub owner: SourceOwner,
+    pub provenance: SourceProvenance,
+    pub source_use: SourceUse,
+}
+
+impl fmt::Display for InvalidSourceClassification {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "source owner {} with provenance {} cannot have use {}",
+            self.owner,
+            self.provenance.as_str(),
+            self.source_use.as_str()
+        )
+    }
+}
+
+impl std::error::Error for InvalidSourceClassification {}
+
+/// The three independent classifications assigned to one source path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SourceClassification {
+    pub owner: SourceOwner,
+    pub provenance: SourceProvenance,
+    pub source_use: SourceUse,
+}
+
+impl SourceClassification {
+    /// Constructs a classification under the closed owner/use law.
+    ///
+    /// # Errors
+    ///
+    /// Product owners permit production, test, and example source. Repository
+    /// tooling permits tool, test, example, and build-output source. Every
+    /// other owner/use combination is rejected.
+    pub const fn new(
+        owner: SourceOwner,
+        provenance: SourceProvenance,
+        source_use: SourceUse,
+    ) -> Result<Self, InvalidSourceClassification> {
+        let owner_use_valid = matches!(
+            (owner, source_use),
+            (SourceOwner::Product(_), SourceUse::Production | SourceUse::Test | SourceUse::Example)
+                | (
+                    SourceOwner::RepositoryTooling,
+                    SourceUse::Tool | SourceUse::Test | SourceUse::Example | SourceUse::BuildOutput
+                )
+        );
+        let provenance_use_valid = !matches!(source_use, SourceUse::BuildOutput)
+            || matches!(provenance, SourceProvenance::Generated);
+        if owner_use_valid && provenance_use_valid {
+            Ok(Self { owner, provenance, source_use })
+        } else {
+            Err(InvalidSourceClassification { owner, provenance, source_use })
+        }
     }
 
-    /// Constructs a production-source assignment.
+    /// Constructs authored production source for one product role.
     #[must_use]
-    pub const fn production(owner: ArchitecturalRole) -> Self {
-        Self::new(owner, SourceTreatment::Production)
+    pub const fn product(owner: ArchitecturalRole) -> Self {
+        Self {
+            owner: SourceOwner::Product(owner),
+            provenance: SourceProvenance::Authored,
+            source_use: SourceUse::Production,
+        }
+    }
+
+    /// Constructs authored repository-tool source.
+    #[must_use]
+    pub const fn repository_tool() -> Self {
+        Self {
+            owner: SourceOwner::RepositoryTooling,
+            provenance: SourceProvenance::Authored,
+            source_use: SourceUse::Tool,
+        }
     }
 }
 
@@ -145,16 +261,20 @@ impl SourceRole {
 /// Greater precedence wins. Equal-precedence matches are rejected, even when
 /// they carry identical assignments, so overlap cannot become accidental.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SourceRoleRule {
+pub struct SourceClassificationRule {
     pub prefix: PathBuf,
     pub precedence: u32,
-    pub role: SourceRole,
+    pub classification: SourceClassification,
 }
 
-impl SourceRoleRule {
-    /// Constructs a source-role rule.
-    pub fn new(prefix: impl Into<PathBuf>, precedence: u32, role: SourceRole) -> Self {
-        Self { prefix: prefix.into(), precedence, role }
+impl SourceClassificationRule {
+    /// Constructs a source-classification rule.
+    pub fn new(
+        prefix: impl Into<PathBuf>,
+        precedence: u32,
+        classification: SourceClassification,
+    ) -> Self {
+        Self { prefix: prefix.into(), precedence, classification }
     }
 }
 
@@ -166,24 +286,24 @@ impl SourceRoleRule {
 /// coverage. Those obligations belong to the conformance artifact and its
 /// source-level checker.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SourceRoleMap {
+pub struct SourceClassificationMap {
     schema_version: u32,
-    rules: Vec<SourceRoleRule>,
+    rules: Vec<SourceClassificationRule>,
 }
 
-impl SourceRoleMap {
+impl SourceClassificationMap {
     /// Constructs a map and normalizes every relative rule prefix.
     ///
     /// # Errors
     ///
-    /// Returns [`RoleMapError`] if a prefix is absolute or escapes the source
-    /// root.
+    /// Returns [`ClassificationMapError`] if a prefix is absolute or escapes
+    /// the source root.
     pub fn new(
         schema_version: u32,
-        rules: impl IntoIterator<Item = SourceRoleRule>,
-    ) -> Result<Self, RoleMapError> {
+        rules: impl IntoIterator<Item = SourceClassificationRule>,
+    ) -> Result<Self, ClassificationMapError> {
         if schema_version == 0 {
-            return Err(RoleMapError::InvalidSchemaVersion);
+            return Err(ClassificationMapError::InvalidSchemaVersion);
         }
         let mut normalized = Vec::new();
         for mut rule in rules {
@@ -201,7 +321,7 @@ impl SourceRoleMap {
 
     /// Returns the ordered path rules retained by the map.
     #[must_use]
-    pub fn rules(&self) -> &[SourceRoleRule] {
+    pub fn rules(&self) -> &[SourceClassificationRule] {
         &self.rules
     }
 
@@ -211,9 +331,12 @@ impl SourceRoleMap {
     ///
     /// Absolute, escaping, unmatched, and equal-precedence multiply matched
     /// paths are errors.
-    pub fn classify(&self, path: impl AsRef<Path>) -> Result<SourceRole, RoleMapError> {
+    pub fn classify(
+        &self,
+        path: impl AsRef<Path>,
+    ) -> Result<SourceClassification, ClassificationMapError> {
         let normalized = normalize_relative(path.as_ref())?;
-        let mut winners: Vec<&SourceRoleRule> = Vec::new();
+        let mut winners: Vec<&SourceClassificationRule> = Vec::new();
         let mut winning_precedence = None;
 
         for rule in &self.rules {
@@ -235,9 +358,9 @@ impl SourceRoleMap {
         }
 
         match winners.as_slice() {
-            [] => Err(RoleMapError::Unmatched { path: normalized }),
-            [winner] => Ok(winner.role),
-            _ => Err(RoleMapError::Ambiguous {
+            [] => Err(ClassificationMapError::Unmatched { path: normalized }),
+            [winner] => Ok(winner.classification),
+            _ => Err(ClassificationMapError::Ambiguous {
                 path: normalized,
                 precedence: winning_precedence.unwrap_or_default(),
                 prefixes: winners.iter().map(|rule| rule.prefix.clone()).collect(),
@@ -248,7 +371,7 @@ impl SourceRoleMap {
 
 /// A path-classification primitive construction or lookup failure.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RoleMapError {
+pub enum ClassificationMapError {
     InvalidSchemaVersion,
     AbsolutePath { path: PathBuf },
     EscapesRoot { path: PathBuf },
@@ -256,7 +379,7 @@ pub enum RoleMapError {
     Ambiguous { path: PathBuf, precedence: u32, prefixes: Vec<PathBuf> },
 }
 
-impl fmt::Display for RoleMapError {
+impl fmt::Display for ClassificationMapError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidSchemaVersion => {
@@ -287,7 +410,7 @@ impl fmt::Display for RoleMapError {
     }
 }
 
-impl std::error::Error for RoleMapError {}
+impl std::error::Error for ClassificationMapError {}
 
 /// Caller-selected coarse-role edges for declared-manifest preflight.
 ///
@@ -324,9 +447,17 @@ impl PreflightRolePolicy {
 /// One conservative declared-manifest preflight finding.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PreflightIssue {
-    SourceRole {
+    SourceClassification {
         package: String,
-        error: RoleMapError,
+        error: ClassificationMapError,
+    },
+    ForbiddenPartitionDependency {
+        consumer: String,
+        consumer_owner: SourceOwner,
+        provider: String,
+        provider_owner: SourceOwner,
+        kind: DependencyKind,
+        target: Option<String>,
     },
     ForbiddenRoleDependency {
         consumer: String,
@@ -347,8 +478,25 @@ pub enum PreflightIssue {
 impl fmt::Display for PreflightIssue {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::SourceRole { package, error } => {
+            Self::SourceClassification { package, error } => {
                 write!(formatter, "package {package}: {error}")
+            }
+            Self::ForbiddenPartitionDependency {
+                consumer,
+                consumer_owner,
+                provider,
+                provider_owner,
+                kind,
+                target,
+            } => {
+                write!(
+                    formatter,
+                    "forbidden {kind} partition dependency: {consumer} ({consumer_owner}) -> {provider} ({provider_owner})"
+                )?;
+                if let Some(target) = target {
+                    write!(formatter, " for target {target}")?;
+                }
+                Ok(())
             }
             Self::ForbiddenRoleDependency {
                 consumer,
@@ -381,11 +529,11 @@ impl fmt::Display for PreflightIssue {
 
 /// Deterministic declared-manifest preflight output.
 ///
-/// `package_roles` contains classifications of package directories only. It is
+/// `package_classifications` contains classifications of package directories only. It is
 /// not source-file coverage or a normative Source Role Map artifact.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreflightReport {
-    pub package_roles: BTreeMap<String, SourceRole>,
+    pub package_classifications: BTreeMap<String, SourceClassification>,
     pub issues: Vec<PreflightIssue>,
 }
 
@@ -400,47 +548,65 @@ impl PreflightReport {
 /// Preflights package-directory classifications, declared local role edges,
 /// and concrete and role-projected cycles.
 ///
-/// Only package directories are passed to `role_map`; source files are not
-/// enumerated or classified. A clean report is therefore not `ARCH-*`
+/// Only package directories are passed to `classification_map`; source files
+/// are not enumerated or classified. A clean report is therefore not `ARCH-*`
 /// conformance. The exact Cargo-resolved graph and the independent source,
 /// import, transitive-closure, public-type, dependency-review, and normative
 /// Source Role Map evidence checks remain required.
 #[must_use]
 pub fn preflight_declared_graph(
     graph: &DeclaredManifestGraph,
-    role_map: &SourceRoleMap,
+    classification_map: &SourceClassificationMap,
     policy: &PreflightRolePolicy,
 ) -> PreflightReport {
-    let mut package_roles = BTreeMap::new();
+    let mut package_classifications = BTreeMap::new();
     let mut issues = Vec::new();
 
     for package in graph.packages().values() {
-        match role_map.classify(&package.relative_dir) {
-            Ok(role) => {
-                package_roles.insert(package.name.clone(), role);
+        match classification_map.classify(&package.relative_dir) {
+            Ok(classification) => {
+                package_classifications.insert(package.name.clone(), classification);
             }
             Err(error) => {
-                issues.push(PreflightIssue::SourceRole { package: package.name.clone(), error });
+                issues.push(PreflightIssue::SourceClassification {
+                    package: package.name.clone(),
+                    error,
+                });
             }
         }
     }
 
     for edge in graph.local_edges() {
-        let Some(consumer_role) = package_roles.get(&edge.consumer).copied() else {
+        let Some(consumer) = package_classifications.get(&edge.consumer).copied() else {
             continue;
         };
-        let Some(provider_role) = package_roles.get(&edge.provider).copied() else {
+        let Some(provider) = package_classifications.get(&edge.provider).copied() else {
             continue;
         };
-        if !policy.allows(consumer_role.owner, provider_role.owner) {
-            issues.push(PreflightIssue::ForbiddenRoleDependency {
-                consumer: edge.consumer.clone(),
-                consumer_role: consumer_role.owner,
-                provider: edge.provider.clone(),
-                provider_role: provider_role.owner,
-                kind: edge.kind,
-                target: edge.target.clone(),
-            });
+        match (consumer.owner, provider.owner) {
+            (SourceOwner::Product(consumer_role), SourceOwner::Product(provider_role)) => {
+                if !policy.allows(consumer_role, provider_role) {
+                    issues.push(PreflightIssue::ForbiddenRoleDependency {
+                        consumer: edge.consumer.clone(),
+                        consumer_role,
+                        provider: edge.provider.clone(),
+                        provider_role,
+                        kind: edge.kind,
+                        target: edge.target.clone(),
+                    });
+                }
+            }
+            (SourceOwner::RepositoryTooling, SourceOwner::RepositoryTooling) => {}
+            (consumer_owner, provider_owner) => {
+                issues.push(PreflightIssue::ForbiddenPartitionDependency {
+                    consumer: edge.consumer.clone(),
+                    consumer_owner,
+                    provider: edge.provider.clone(),
+                    provider_owner,
+                    kind: edge.kind,
+                    target: edge.target.clone(),
+                });
+            }
         }
     }
 
@@ -456,25 +622,30 @@ pub fn preflight_declared_graph(
 
     let mut role_nodes = BTreeSet::new();
     let mut role_edges = BTreeSet::new();
-    for role in package_roles.values() {
-        role_nodes.insert(role.owner);
+    for classification in package_classifications.values() {
+        if let SourceOwner::Product(role) = classification.owner {
+            role_nodes.insert(role);
+        }
     }
     for edge in graph.local_edges() {
-        if let (Some(consumer), Some(provider)) =
-            (package_roles.get(&edge.consumer), package_roles.get(&edge.provider))
-            && consumer.owner != provider.owner
+        if let (Some(consumer), Some(provider)) = (
+            package_classifications.get(&edge.consumer),
+            package_classifications.get(&edge.provider),
+        ) && let (SourceOwner::Product(consumer), SourceOwner::Product(provider)) =
+            (consumer.owner, provider.owner)
+            && consumer != provider
         {
-            role_edges.insert((consumer.owner, provider.owner));
+            role_edges.insert((consumer, provider));
         }
     }
     if let Some(roles) = find_cycle(&role_nodes, &role_edges) {
         issues.push(PreflightIssue::RoleCycle { roles });
     }
 
-    PreflightReport { package_roles, issues }
+    PreflightReport { package_classifications, issues }
 }
 
-fn normalize_relative(path: &Path) -> Result<PathBuf, RoleMapError> {
+fn normalize_relative(path: &Path) -> Result<PathBuf, ClassificationMapError> {
     let original = path.to_path_buf();
     let mut normalized = PathBuf::new();
     for component in path.components() {
@@ -483,11 +654,11 @@ fn normalize_relative(path: &Path) -> Result<PathBuf, RoleMapError> {
             Component::Normal(part) => normalized.push(part),
             Component::ParentDir => {
                 if !normalized.pop() {
-                    return Err(RoleMapError::EscapesRoot { path: original });
+                    return Err(ClassificationMapError::EscapesRoot { path: original });
                 }
             }
             Component::RootDir | Component::Prefix(_) => {
-                return Err(RoleMapError::AbsolutePath { path: original });
+                return Err(ClassificationMapError::AbsolutePath { path: original });
             }
         }
     }
@@ -545,6 +716,3 @@ where
     }
     None
 }
-
-#[cfg(test)]
-mod tests;

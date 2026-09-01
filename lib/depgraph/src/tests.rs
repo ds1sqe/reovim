@@ -1,10 +1,17 @@
+#![forbid(unsafe_code)]
+
 use std::{
     fs,
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use super::*;
+use reovim_depgraph::{
+    ArchitecturalRole, ClassificationMapError, DependencyKind, DependencySource, DiscoveryOptions,
+    GraphError, PreflightIssue, PreflightRolePolicy, SourceClassification, SourceClassificationMap,
+    SourceClassificationRule, SourceOwner, SourceProvenance, SourceUse,
+    load_declared_manifest_graph, preflight_declared_graph,
+};
 
 static TEMP_ID: AtomicU64 = AtomicU64::new(0);
 
@@ -37,18 +44,20 @@ impl Drop for TempRoot {
     }
 }
 
-fn production(owner: ArchitecturalRole) -> SourceRole {
-    SourceRole::production(owner)
+const fn production(owner: ArchitecturalRole) -> SourceClassification {
+    SourceClassification::product(owner)
 }
 
-fn map(rules: impl IntoIterator<Item = (&'static str, ArchitecturalRole)>) -> SourceRoleMap {
-    SourceRoleMap::new(
+fn map(
+    rules: impl IntoIterator<Item = (&'static str, ArchitecturalRole)>,
+) -> SourceClassificationMap {
+    SourceClassificationMap::new(
         1,
-        rules
-            .into_iter()
-            .map(|(prefix, owner)| SourceRoleRule::new(prefix, 10, SourceRole::production(owner))),
+        rules.into_iter().map(|(prefix, owner)| {
+            SourceClassificationRule::new(prefix, 10, SourceClassification::product(owner))
+        }),
     )
-    .expect("valid role map")
+    .expect("valid classification map")
 }
 
 #[test]
@@ -75,14 +84,14 @@ fn role_vocabulary_is_complete_and_stable() {
 }
 
 #[test]
-fn source_role_map_is_fail_closed_and_uses_explicit_precedence() {
+fn source_classification_map_is_fail_closed_and_uses_explicit_precedence() {
     use ArchitecturalRole::{Foundation, KernelInterface};
 
-    let source_map = SourceRoleMap::new(
+    let source_map = SourceClassificationMap::new(
         3,
         [
-            SourceRoleRule::new("tree", 1, production(Foundation)),
-            SourceRoleRule::new("tree/inner", 2, production(KernelInterface)),
+            SourceClassificationRule::new("tree", 1, production(Foundation)),
+            SourceClassificationRule::new("tree/inner", 2, production(KernelInterface)),
         ],
     )
     .unwrap();
@@ -91,21 +100,24 @@ fn source_role_map_is_fail_closed_and_uses_explicit_precedence() {
     assert_eq!(source_map.classify("tree/inner/item.rs").unwrap(), production(KernelInterface));
     assert!(matches!(
         source_map.classify("elsewhere/item.rs"),
-        Err(RoleMapError::Unmatched { .. })
+        Err(ClassificationMapError::Unmatched { .. })
     ));
-    assert!(matches!(source_map.classify("../escape"), Err(RoleMapError::EscapesRoot { .. })));
+    assert!(matches!(
+        source_map.classify("../escape"),
+        Err(ClassificationMapError::EscapesRoot { .. })
+    ));
 
-    let ambiguous = SourceRoleMap::new(
+    let ambiguous = SourceClassificationMap::new(
         1,
         [
-            SourceRoleRule::new("tree", 4, production(Foundation)),
-            SourceRoleRule::new("tree/inner", 4, production(KernelInterface)),
+            SourceClassificationRule::new("tree", 4, production(Foundation)),
+            SourceClassificationRule::new("tree/inner", 4, production(KernelInterface)),
         ],
     )
     .unwrap();
     assert!(matches!(
         ambiguous.classify("tree/inner/item.rs"),
-        Err(RoleMapError::Ambiguous { .. })
+        Err(ClassificationMapError::Ambiguous { .. })
     ));
 }
 
@@ -206,24 +218,28 @@ fn preflight_classifies_package_directories_only() {
     let root = TempRoot::new();
     root.write("node/Cargo.toml", "[package]\nname = \"alpha\"\nversion = \"0.0.0\"\n");
     root.write("node/src/private.rs", "pub struct Private;\n");
-    let source_map = SourceRoleMap::new(
+    let source_map = SourceClassificationMap::new(
         1,
         [
-            SourceRoleRule::new("node", 1, production(ArchitecturalRole::Foundation)),
-            SourceRoleRule::new("node/src", 2, production(ArchitecturalRole::KernelCore)),
-            SourceRoleRule::new("node/src", 2, production(ArchitecturalRole::KernelRuntime)),
+            SourceClassificationRule::new("node", 1, production(ArchitecturalRole::Foundation)),
+            SourceClassificationRule::new("node/src", 2, production(ArchitecturalRole::KernelCore)),
+            SourceClassificationRule::new(
+                "node/src",
+                2,
+                production(ArchitecturalRole::KernelRuntime),
+            ),
         ],
     )
     .unwrap();
 
     assert!(matches!(
         source_map.classify("node/src/private.rs"),
-        Err(RoleMapError::Ambiguous { .. })
+        Err(ClassificationMapError::Ambiguous { .. })
     ));
     let graph = load_declared_manifest_graph(root.path(), &DiscoveryOptions::default()).unwrap();
     let report = preflight_declared_graph(&graph, &source_map, &PreflightRolePolicy::new());
     assert!(report.is_clean());
-    assert_eq!(report.package_roles["alpha"], production(ArchitecturalRole::Foundation));
+    assert_eq!(report.package_classifications["alpha"], production(ArchitecturalRole::Foundation));
 }
 
 #[test]
@@ -255,6 +271,58 @@ beta = { path = "../two" }
             ..
         }
     )));
+}
+
+#[test]
+fn product_and_repository_tooling_dependencies_are_forbidden_in_both_directions() {
+    for (consumer_tooling, provider_tooling) in [(false, true), (true, false)] {
+        let root = TempRoot::new();
+        root.write(
+            "nodes/one/Cargo.toml",
+            r#"[package]
+name = "alpha"
+version = "0.0.0"
+[dependencies]
+beta = { path = "../two" }
+"#,
+        );
+        root.write("nodes/two/Cargo.toml", "[package]\nname = \"beta\"\nversion = \"0.0.0\"\n");
+
+        let graph =
+            load_declared_manifest_graph(root.path(), &DiscoveryOptions::default()).unwrap();
+        let source_map = SourceClassificationMap::new(
+            1,
+            [
+                SourceClassificationRule::new(
+                    "nodes/one",
+                    10,
+                    if consumer_tooling {
+                        SourceClassification::repository_tool()
+                    } else {
+                        production(ArchitecturalRole::Foundation)
+                    },
+                ),
+                SourceClassificationRule::new(
+                    "nodes/two",
+                    10,
+                    if provider_tooling {
+                        SourceClassification::repository_tool()
+                    } else {
+                        production(ArchitecturalRole::Foundation)
+                    },
+                ),
+            ],
+        )
+        .unwrap();
+        let report = preflight_declared_graph(&graph, &source_map, &PreflightRolePolicy::new());
+
+        assert!(
+            report
+                .issues
+                .iter()
+                .any(|issue| matches!(issue, PreflightIssue::ForbiddenPartitionDependency { .. }))
+        );
+    }
 }
 
 #[test]
@@ -397,15 +465,63 @@ fn cargo_resolution_indirection_sections_fail_closed() {
 }
 
 #[test]
-fn every_source_treatment_remains_distinct() {
-    let treatments = [
-        SourceTreatment::Production,
-        SourceTreatment::Generated,
-        SourceTreatment::Vendored,
-        SourceTreatment::Test,
-        SourceTreatment::Example,
-        SourceTreatment::Tool,
-        SourceTreatment::BuildOutput,
+fn source_axes_remain_orthogonal_and_combinations_are_closed() {
+    let provenances =
+        [SourceProvenance::Authored, SourceProvenance::Generated, SourceProvenance::Vendored];
+    let uses = [
+        SourceUse::Production,
+        SourceUse::Test,
+        SourceUse::Example,
+        SourceUse::Tool,
+        SourceUse::BuildOutput,
     ];
-    assert_eq!(treatments.into_iter().collect::<std::collections::BTreeSet<_>>().len(), 7);
+    assert_eq!(provenances.into_iter().collect::<std::collections::BTreeSet<_>>().len(), 3);
+    assert_eq!(uses.into_iter().collect::<std::collections::BTreeSet<_>>().len(), 5);
+
+    for provenance in provenances {
+        assert!(
+            SourceClassification::new(
+                SourceOwner::Product(ArchitecturalRole::Foundation),
+                provenance,
+                SourceUse::Production,
+            )
+            .is_ok()
+        );
+        assert!(
+            SourceClassification::new(SourceOwner::RepositoryTooling, provenance, SourceUse::Tool,)
+                .is_ok()
+        );
+    }
+    assert!(
+        SourceClassification::new(
+            SourceOwner::Product(ArchitecturalRole::Foundation),
+            SourceProvenance::Authored,
+            SourceUse::Tool,
+        )
+        .is_err()
+    );
+    assert!(
+        SourceClassification::new(
+            SourceOwner::RepositoryTooling,
+            SourceProvenance::Authored,
+            SourceUse::Production,
+        )
+        .is_err()
+    );
+    assert!(
+        SourceClassification::new(
+            SourceOwner::RepositoryTooling,
+            SourceProvenance::Authored,
+            SourceUse::BuildOutput,
+        )
+        .is_err()
+    );
+    assert!(
+        SourceClassification::new(
+            SourceOwner::RepositoryTooling,
+            SourceProvenance::Generated,
+            SourceUse::BuildOutput,
+        )
+        .is_ok()
+    );
 }

@@ -8,4 +8,12 @@ applicability, responsibility, or implementation status. The Rule Matrix
 remains the sole stable rule router.
 
 1. [Conformance Requirements and Evidence](01-Requirements-and-Evidence.md)
-2. [Normative Rule Matrix](02-Rule-Matrix.md)
+   owns authority and routes the focused chapters.
+2. [Normative Rule Matrix](02-Rule-Matrix.md) owns applicability and routes
+   every stable rule tuple exactly once.
+3. [Evidence Taxonomy and Authority](03-Evidence-Taxonomy-and-Authority.md)
+   defines the closed evidence classes.
+4. [Source Classification and Exact Checker](04-Source-Classification-and-Exact-Checker.md)
+   owns committed checker inputs, generated evidence, and the Phase-B boundary.
+5. [Public Reduction and Qualification](05-Public-Reduction-and-Qualification.md)
+   owns public-path and release-proof reduction.

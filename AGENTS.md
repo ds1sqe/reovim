@@ -31,7 +31,7 @@ updating the authoritative documentation.
 ## Architectural invariants
 
 - Preserve the dependency direction in
-  `Documentation/01-Architecture/01-Layer/01-Roles-Descriptors-and-Dependencies.md`.
+  `Documentation/01-Architecture/01-Layer/01-Roles-Descriptors-and-Dependencies/03-Source-Dependency-Graph-and-Edges.md`.
 - Keep foundation and editing-state contracts independent of concrete resource
   adapters, Host API adapters, domains, representations, views, transports,
   and extension implementations.

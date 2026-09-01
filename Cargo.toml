@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["lib/depgraph"]
+members = ["lib/depgraph", "tools/conformance"]
 
 [workspace.package]
 rust-version = "1.92"

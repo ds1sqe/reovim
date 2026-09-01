@@ -1,0 +1,95 @@
+{
+  "schema": "reovim-entrypoint-reviews/v1",
+  "reviewed_at": "2026-09-01T00:00:00Z",
+  "reviews": [
+    {
+      "kind": "script",
+      "path": "scripts/check.sh",
+      "content_digest": "sha256:36916840689d240de1bf59071881736e1494131288abaa2f4649364380f05e41",
+      "direct_local_invocations": [
+        {
+          "kind": "script",
+          "path": "scripts/check-documentation.sh",
+          "mechanism": "direct-path-exec"
+        },
+        {
+          "kind": "script",
+          "path": "scripts/check-conformance.sh",
+          "mechanism": "direct-path-exec"
+        }
+      ],
+      "disposition": "admit",
+      "mechanism": "exact-content-retained-review",
+      "assumptions": [
+        "/usr/bin/env resolves a Bash implementation supporting the constructs used by these exact bytes.",
+        "BASH_SOURCE resolves this checked-out script so ROOT selects the same repository whose local entrypoints are admitted.",
+        "Cargo, Rustdoc, Rustfmt, and Clippy operate on the exact locked workspace and toolchain selected by the invoking environment."
+      ],
+      "review_record": "conformance/entrypoint-reviews/check-sh.md",
+      "review_record_digest": "sha256:9673e0dab3d79a5f385d9c48819fe659b62c7b20511c3d3becbb5d2a0eebc07f"
+    },
+    {
+      "kind": "script",
+      "path": "scripts/check-documentation.sh",
+      "content_digest": "sha256:18ea57bad2086d7b8c04379dbfdfdde4697ef5c76e33ba63e36b4cc41ee485b6",
+      "direct_local_invocations": [],
+      "disposition": "admit",
+      "mechanism": "exact-content-retained-review",
+      "assumptions": [
+        "/usr/bin/env resolves a Bash implementation supporting the constructs used by these exact bytes.",
+        "The GNU/Linux command-line tools resolved from PATH provide the semantics exercised by the retained mutation checks.",
+        "BASH_SOURCE resolves this checked-out script so ROOT selects the reviewed repository inputs."
+      ],
+      "review_record": "conformance/entrypoint-reviews/check-documentation-sh.md",
+      "review_record_digest": "sha256:8f561d78735021d864d0375db14f38224fa6fbaa8f04a46eb916bbebd29c023f"
+    },
+    {
+      "kind": "script",
+      "path": "scripts/check-conformance.sh",
+      "content_digest": "sha256:4642722343c9446b87332659470128f3d1e774be70545c6dadaa2fe2663c7074",
+      "direct_local_invocations": [
+        {
+          "kind": "cargo_target",
+          "package": "reovim-conformance",
+          "target": "reovim-conformance",
+          "mechanism": "cargo-run-bin"
+        }
+      ],
+      "disposition": "admit",
+      "mechanism": "exact-content-retained-review",
+      "assumptions": [
+        "/usr/bin/env resolves a Bash implementation supporting the constructs used by these exact bytes.",
+        "BASH_SOURCE resolves this checked-out script and the supplied Cargo home contains only the dependency state intended by the calling lane.",
+        "Cargo selects the exact declared package and binary target from the locked workspace when given -p reovim-conformance --bin reovim-conformance."
+      ],
+      "review_record": "conformance/entrypoint-reviews/check-conformance-sh.md",
+      "review_record_digest": "sha256:b1e22b39d8289fe7fb3dce7d64f84fc10d245cc524e5b1f48154f46bf2e032cb"
+    },
+    {
+      "kind": "workflow",
+      "path": ".github/workflows/ci.yml",
+      "content_digest": "sha256:54820cd83daee64e4a65593554cedc7714444adab4ef24fa0ee37aebab71c45f",
+      "direct_local_invocations": [
+        {
+          "kind": "script",
+          "path": "scripts/check.sh",
+          "mechanism": "direct-path-exec"
+        },
+        {
+          "kind": "script",
+          "path": "scripts/check-conformance.sh",
+          "mechanism": "direct-path-exec"
+        }
+      ],
+      "disposition": "admit",
+      "mechanism": "exact-content-retained-review",
+      "assumptions": [
+        "GitHub supplies the documented Ubuntu 24.04 hosted-runner, RUNNER_TEMP, and immutable triggering revision in GITHUB_SHA.",
+        "Checkout and toolchain actions execute the exact reviewed pins with the workflow permissions and inputs present in these exact bytes.",
+        "Each run step uses the hosted runner's admitted shell semantics and begins in the checked-out repository."
+      ],
+      "review_record": "conformance/entrypoint-reviews/ci-workflow.md",
+      "review_record_digest": "sha256:516cd4127bc26308efa476091480a1855ffdff9ab1612fd2b030ac20b4945ab6"
+    }
+  ]
+}

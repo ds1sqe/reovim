@@ -1,0 +1,308 @@
+{
+  "schema": "reovim-source-classification/v1",
+  "scope": {
+    "roots": ["."],
+    "exclusions": [
+      {
+        "prefix": ".git",
+        "kind": "vcs_metadata"
+      },
+      {
+        "prefix": "target",
+        "kind": "transient_build_output"
+      },
+      {
+        "prefix": "tmp",
+        "kind": "working_notes"
+      }
+    ]
+  },
+  "rules": [
+    {
+      "prefix": ".github",
+      "precedence": 10,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "Documentation",
+      "precedence": 10,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "changelog",
+      "precedence": 10,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "lib/depgraph",
+      "precedence": 10,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "perf",
+      "precedence": 10,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "scripts",
+      "precedence": 10,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "tools/conformance",
+      "precedence": 10,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": ".gitignore",
+      "precedence": 20,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "AGENTS.md",
+      "precedence": 20,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "CHANGELOG.md",
+      "precedence": 20,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "CONTRIBUTING.md",
+      "precedence": 20,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "Cargo.lock",
+      "precedence": 20,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "generated",
+      "source_use": "tool",
+      "upstream": {
+        "identity": "cargo-manifest-set/v1: sorted relative path, LF, raw manifest bytes, LF",
+        "digest": "sha256:692fb2e62ea75485bbb0509a9f2363574b3da66bceb3609e2f4f68336c7f2e93",
+        "digest_subject": {
+          "kind": "paths",
+          "paths": [
+            "Cargo.toml",
+            "lib/depgraph/Cargo.toml",
+            "tools/conformance/Cargo.toml"
+          ]
+        }
+      }
+    },
+    {
+      "prefix": "Cargo.toml",
+      "precedence": 20,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "GOVERNANCE.md",
+      "precedence": 20,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "LICENSE",
+      "precedence": 20,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "README.md",
+      "precedence": 20,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "conformance/dependency-reviews.json",
+      "precedence": 20,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "conformance/entrypoint-reviews.json",
+      "precedence": 20,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "conformance/entrypoint-reviews.schema.json",
+      "precedence": 20,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "conformance/entrypoint-reviews",
+      "precedence": 20,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "conformance/dependency-reviews.schema.json",
+      "precedence": 20,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "conformance/dependency-reviews",
+      "precedence": 20,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "conformance/source-classification.json",
+      "precedence": 20,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "conformance/source-classification.schema.json",
+      "precedence": 20,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "conformance/source-role-map.schema.json",
+      "precedence": 20,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "conformance/workspace-topology.json",
+      "precedence": 20,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "conformance/workspace-topology.schema.json",
+      "precedence": 20,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "rustfmt.toml",
+      "precedence": 20,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "lib/depgraph/src/tests.rs",
+      "precedence": 30,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "test"
+    },
+    {
+      "prefix": "tools/conformance/tests",
+      "precedence": 30,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "test"
+    }
+  ],
+  "unmatched": "deny",
+  "allowed_product_edges": [],
+  "shipping_closure_roots": [],
+  "generated_evidence_key": "conformance/source-role-map.json"
+}

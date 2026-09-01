@@ -19,8 +19,8 @@ remain authoritative for their own subjects.
 ## Layer and dependency model
 
 1. [Roles, Descriptors, and Dependencies](01-Layer/01-Roles-Descriptors-and-Dependencies.md)
-   owns logical roles, carrier and bound discipline, dependency direction, and
-   allowed and forbidden source edges.
+   routes focused chapters for logical/source ownership, carrier and bound
+   discipline, dependency admission, and allowed and forbidden source edges.
 2. [Interaction, Assembly, and Lifecycle](01-Layer/02-Interaction-Assembly-and-Lifecycle.md)
    owns the Client interaction seam, Assembly selection, readiness, rollback,
    shutdown, runtime relationships, and deliberately unselected mechanisms.

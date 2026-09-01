@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hosted tooling verification for the v0.16 excision checkpoint.
+# Hosted tooling and Phase-B conformance verification for v0.16.
 
 set -euo pipefail
 
@@ -9,9 +9,9 @@ usage() {
     cat <<'EOF'
 Usage: ./scripts/check.sh
 
-Checks normative/public documentation and the retained hosted depgraph tool.
-This checkpoint has no shipping editor, nested workspace, custom target,
-freestanding runtime, or target-specific test lane.
+Checks normative/public documentation, the exact all-tooling Source Role Map
+boundary, and every hosted workspace target. This command runs candidate mode;
+exact clean-revision evidence uses scripts/check-conformance.sh exact.
 EOF
 }
 
@@ -31,30 +31,26 @@ esac
 cd "$ROOT"
 
 echo "==> documentation"
-"$ROOT/scripts/check-documentation.sh"
+./scripts/check-documentation.sh
 
-echo "==> hosted-baseline guard"
-"$ROOT/scripts/check-hosted-baseline.sh"
-"$ROOT/scripts/check-hosted-baseline-tests.sh"
+echo "==> workspace tests and conformance fixtures"
+cargo test --locked --offline --workspace --all-targets --all-features
 
-echo "==> hosted workspace metadata"
-cargo metadata --locked --format-version 1 --no-deps > /dev/null
+echo "==> candidate repository conformance"
+./scripts/check-conformance.sh candidate
 
 echo "==> rustfmt"
 cargo fmt --all --check
 
-echo "==> depgraph tests"
-cargo test --locked -p reovim-depgraph --all-targets --all-features
+echo "==> workspace doctests"
+cargo test --locked --offline --workspace --doc --all-features
 
-echo "==> depgraph doctests"
-cargo test --locked -p reovim-depgraph --doc --all-features
+echo "==> workspace clippy"
+cargo clippy --locked --offline --workspace --all-targets --all-features -- \
+    -D warnings -F unsafe-code
 
-echo "==> depgraph clippy"
-cargo clippy --locked -p reovim-depgraph --all-targets --all-features -- \
-    -D warnings
+echo "==> workspace rustdoc"
+RUSTDOCFLAGS="${RUSTDOCFLAGS:+$RUSTDOCFLAGS }-D warnings -F unsafe-code" \
+    cargo doc --locked --offline --workspace --all-features --no-deps
 
-echo "==> depgraph rustdoc"
-RUSTDOCFLAGS="${RUSTDOCFLAGS:+$RUSTDOCFLAGS }-D warnings" \
-    cargo doc --locked -p reovim-depgraph --all-features --no-deps
-
-echo "check.sh: hosted tooling checks passed"
+echo "check.sh: hosted tooling and candidate conformance checks passed"
