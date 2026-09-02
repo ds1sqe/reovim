@@ -102,21 +102,26 @@ impl Sha256 {
     /// format bound. All checker call sites enforce much smaller committed
     /// byte limits; the assertion keeps future call sites fail-loud.
     pub(crate) fn update(&mut self, mut input: &[u8]) {
-        let input_len = u64::try_from(input.len()).expect("slice length fits u64");
-        self.byte_len = self.byte_len.checked_add(input_len).expect("SHA-256 byte count overflow");
-        assert!(self.byte_len <= u64::MAX / 8, "SHA-256 input exceeds format bit-length bound");
+        let input_len =
+            u64::try_from(input.len()).expect("slice length fits u64");
+        self.byte_len = self
+            .byte_len
+            .checked_add(input_len)
+            .expect("SHA-256 byte count overflow");
+        assert!(
+            self.byte_len <= u64::MAX / 8,
+            "SHA-256 input exceeds format bit-length bound"
+        );
+        let consumed = fill_partial_block(
+            &mut self.state,
+            &mut self.block,
+            &mut self.block_len,
+            input,
+            compress,
+        );
+        input = &input[consumed..];
         if self.block_len != 0 {
-            let take = (64 - self.block_len).min(input.len());
-            self.block[self.block_len..self.block_len + take].copy_from_slice(&input[..take]);
-            self.block_len += take;
-            input = &input[take..];
-            if self.block_len == 64 {
-                compress(&mut self.state, &self.block);
-                self.block_len = 0;
-            }
-            if input.is_empty() {
-                return;
-            }
+            return;
         }
         while input.len() >= 64 {
             let (head, tail) = input.split_at(64);
@@ -131,7 +136,8 @@ impl Sha256 {
     /// Finishes the digest.
     #[must_use]
     pub(crate) fn finish(mut self) -> [u8; 32] {
-        let bit_len = self.byte_len.checked_mul(8).expect("bound checked by update");
+        let bit_len =
+            self.byte_len.checked_mul(8).expect("bound checked by update");
         self.block[self.block_len] = 0x80;
         self.block_len += 1;
         if self.block_len > 56 {
@@ -145,7 +151,9 @@ impl Sha256 {
         compress(&mut self.state, &self.block);
 
         let mut output = [0; 32];
-        for (chunk, word) in output.as_chunks_mut::<4>().0.iter_mut().zip(self.state) {
+        for (chunk, word) in
+            output.as_chunks_mut::<4>().0.iter_mut().zip(self.state)
+        {
             chunk.copy_from_slice(&word.to_be_bytes());
         }
         output
@@ -171,7 +179,10 @@ pub fn file_bounded(path: &Path, byte_limit: u64) -> io::Result<String> {
 pub fn file_handle_bounded(file: &File, byte_limit: u64) -> io::Result<String> {
     let before = file.metadata()?;
     if before.len() > byte_limit {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "file exceeds digest byte limit"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "file exceeds digest byte limit",
+        ));
     }
     let mut input = file.try_clone()?;
     input.seek(io::SeekFrom::Start(0))?;
@@ -196,7 +207,10 @@ pub fn file_handle_bounded(file: &File, byte_limit: u64) -> io::Result<String> {
     }
     let after = file.metadata()?;
     if before.len() != total || after.len() != total {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "file changed while hashing"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "file changed while hashing",
+        ));
     }
     Ok(tagged_hex(digest.finish()))
 }
@@ -255,7 +269,13 @@ struct Sha1 {
 impl Default for Sha1 {
     fn default() -> Self {
         Self {
-            state: [0x6745_2301, 0xefcd_ab89, 0x98ba_dcfe, 0x1032_5476, 0xc3d2_e1f0],
+            state: [
+                0x6745_2301,
+                0xefcd_ab89,
+                0x98ba_dcfe,
+                0x1032_5476,
+                0xc3d2_e1f0,
+            ],
             block: [0; 64],
             block_len: 0,
             byte_len: 0,
@@ -266,24 +286,31 @@ impl Default for Sha1 {
 impl Sha1 {
     fn update(&mut self, mut input: &[u8]) {
         let count = u64::try_from(input.len()).expect("slice length fits u64");
-        self.byte_len = self.byte_len.checked_add(count).expect("SHA-1 byte count overflow");
-        assert!(self.byte_len <= u64::MAX / 8, "SHA-1 input exceeds format bit-length bound");
+        self.byte_len = self
+            .byte_len
+            .checked_add(count)
+            .expect("SHA-1 byte count overflow");
+        assert!(
+            self.byte_len <= u64::MAX / 8,
+            "SHA-1 input exceeds format bit-length bound"
+        );
+        let consumed = fill_partial_block(
+            &mut self.state,
+            &mut self.block,
+            &mut self.block_len,
+            input,
+            compress_sha1,
+        );
+        input = &input[consumed..];
         if self.block_len != 0 {
-            let take = (64 - self.block_len).min(input.len());
-            self.block[self.block_len..self.block_len + take].copy_from_slice(&input[..take]);
-            self.block_len += take;
-            input = &input[take..];
-            if self.block_len == 64 {
-                compress_sha1(&mut self.state, &self.block);
-                self.block_len = 0;
-            }
-            if input.is_empty() {
-                return;
-            }
+            return;
         }
         while input.len() >= 64 {
             let (head, tail) = input.split_at(64);
-            compress_sha1(&mut self.state, head.try_into().expect("64-byte split"));
+            compress_sha1(
+                &mut self.state,
+                head.try_into().expect("64-byte split"),
+            );
             input = tail;
         }
         self.block[..input.len()].copy_from_slice(input);
@@ -291,7 +318,8 @@ impl Sha1 {
     }
 
     fn finish(mut self) -> [u8; 20] {
-        let bit_len = self.byte_len.checked_mul(8).expect("bound checked by update");
+        let bit_len =
+            self.byte_len.checked_mul(8).expect("bound checked by update");
         self.block[self.block_len] = 0x80;
         self.block_len += 1;
         if self.block_len > 56 {
@@ -304,11 +332,33 @@ impl Sha1 {
         self.block[56..].copy_from_slice(&bit_len.to_be_bytes());
         compress_sha1(&mut self.state, &self.block);
         let mut output = [0; 20];
-        for (chunk, word) in output.as_chunks_mut::<4>().0.iter_mut().zip(self.state) {
+        for (chunk, word) in
+            output.as_chunks_mut::<4>().0.iter_mut().zip(self.state)
+        {
             chunk.copy_from_slice(&word.to_be_bytes());
         }
         output
     }
+}
+
+fn fill_partial_block<const N: usize>(
+    state: &mut [u32; N],
+    block: &mut [u8; 64],
+    block_len: &mut usize,
+    input: &[u8],
+    compress_block: fn(&mut [u32; N], &[u8; 64]),
+) -> usize {
+    if *block_len == 0 {
+        return 0;
+    }
+    let take = (64 - *block_len).min(input.len());
+    block[*block_len..*block_len + take].copy_from_slice(&input[..take]);
+    *block_len += take;
+    if *block_len == 64 {
+        compress_block(state, block);
+        *block_len = 0;
+    }
+    take
 }
 
 #[allow(clippy::many_single_char_names)]
@@ -318,9 +368,11 @@ fn compress_sha1(state: &mut [u32; 5], block: &[u8; 64]) {
         words[index] = u32::from_be_bytes(*chunk);
     }
     for index in 16..80 {
-        words[index] =
-            (words[index - 3] ^ words[index - 8] ^ words[index - 14] ^ words[index - 16])
-                .rotate_left(1);
+        words[index] = (words[index - 3]
+            ^ words[index - 8]
+            ^ words[index - 14]
+            ^ words[index - 16])
+            .rotate_left(1);
     }
     let [mut a, mut b, mut c, mut d, mut e] = *state;
     for (index, word) in words.into_iter().enumerate() {
@@ -402,25 +454,36 @@ mod tests {
     use super::bytes;
 
     static TEMP_ID: AtomicU64 = AtomicU64::new(0);
+    const EMPTY_DIGEST: &str = concat!(
+        "sha256:",
+        "e3b0c44298fc1c149afbf4c8996fb924",
+        "27ae41e4649b934ca495991b7852b855",
+    );
+    const ABC_DIGEST: &str = concat!(
+        "sha256:",
+        "ba7816bf8f01cfea414140de5dae2223",
+        "b00361a396177a9cb410ff61f20015ad",
+    );
+    const LONG_VECTOR_DIGEST: &str = concat!(
+        "sha256:",
+        "248d6a61d20638b8e5c026930c3e6039",
+        "a33ce45964ff2167f6ecedd419db06c1",
+    );
+    const MILLION_A_DIGEST: &str = concat!(
+        "sha256:",
+        "cdc76e5c9914fb9281a1c7e284d73e67",
+        "f1809a48a497200e046d39ccc7112cd0",
+    );
 
     #[test]
     fn standard_vectors() {
-        assert_eq!(
-            bytes(b""),
-            "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-        );
-        assert_eq!(
-            bytes(b"abc"),
-            "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
-        );
+        assert_eq!(bytes(b""), EMPTY_DIGEST);
+        assert_eq!(bytes(b"abc"), ABC_DIGEST);
         assert_eq!(
             bytes(b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"),
-            "sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"
+            LONG_VECTOR_DIGEST,
         );
-        assert_eq!(
-            bytes(&vec![b'a'; 1_000_000]),
-            "sha256:cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0"
-        );
+        assert_eq!(bytes(&vec![b'a'; 1_000_000]), MILLION_A_DIGEST);
     }
 
     #[test]
@@ -434,14 +497,22 @@ mod tests {
     #[test]
     fn padding_boundaries_match_across_chunk_splits() {
         for length in [55, 56, 63, 64, 65] {
-            let input = vec![b'x'; length];
-            let expected = bytes(&input);
-            for split in 0..=length {
-                let mut digest = super::Sha256::default();
-                digest.update(&input[..split]);
-                digest.update(&input[split..]);
-                assert_eq!(super::tagged_hex(digest.finish()), expected, "{length}/{split}");
-            }
+            assert_sha256_splits(length);
+        }
+    }
+
+    fn assert_sha256_splits(length: usize) {
+        let input = vec![b'x'; length];
+        let expected = bytes(&input);
+        for split in 0..=length {
+            let mut digest = super::Sha256::default();
+            digest.update(&input[..split]);
+            digest.update(&input[split..]);
+            assert_eq!(
+                super::tagged_hex(digest.finish()),
+                expected,
+                "{length}/{split}"
+            );
         }
     }
 
@@ -458,7 +529,10 @@ mod tests {
             sha1(b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"),
             "84983e441c3bd26ebaae4aa1f95129e5e54670f1"
         );
-        assert_eq!(sha1(&vec![b'a'; 1_000_000]), "34aa973cd4c4daa4f61eeb2bdbad27316534016f");
+        assert_eq!(
+            sha1(&vec![b'a'; 1_000_000]),
+            "34aa973cd4c4daa4f61eeb2bdbad27316534016f"
+        );
         assert_eq!(
             super::git_blob(b"", "sha1").unwrap(),
             "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
@@ -480,16 +554,20 @@ mod tests {
     #[test]
     fn sha1_chunk_boundaries_match() {
         for length in [55, 56, 63, 64, 65] {
-            let input = vec![b'y'; length];
-            let mut one = super::Sha1::default();
-            one.update(&input);
-            let expected = one.finish();
-            for split in 0..=length {
-                let mut chunks = super::Sha1::default();
-                chunks.update(&input[..split]);
-                chunks.update(&input[split..]);
-                assert_eq!(chunks.finish(), expected, "{length}/{split}");
-            }
+            assert_sha1_splits(length);
+        }
+    }
+
+    fn assert_sha1_splits(length: usize) {
+        let input = vec![b'y'; length];
+        let mut one = super::Sha1::default();
+        one.update(&input);
+        let expected = one.finish();
+        for split in 0..=length {
+            let mut chunks = super::Sha1::default();
+            chunks.update(&input[..split]);
+            chunks.update(&input[split..]);
+            assert_eq!(chunks.finish(), expected, "{length}/{split}");
         }
     }
 

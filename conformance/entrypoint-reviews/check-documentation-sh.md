@@ -4,13 +4,14 @@
 
 - Kind: script
 - Exact content digest:
-  `sha256:f4d93d63c0a90b65d300b255b704c89208a7c75ea23205cc459a4ed5fde09d06`
+  `sha256:0dbd930e9ba90e18f1a23e69148dff906b0f4c22e6cac395ae087f07b02b0d7f`
 - Review mechanism: exact content and retained review
 
 ## Direct local invocations
 
-None. The script reads repository documentation, CI workflow, and CI action
-review inputs, but it does not execute another repository entrypoint.
+None. The script reads `CODE_STYLE.md`, repository documentation, the CI
+workflow, and CI action review inputs, but it does not execute another
+repository entrypoint.
 
 ## Assumptions
 
@@ -27,6 +28,6 @@ Admit these exact bytes with an empty direct-local-invocation set for
 documentation conformance. The script binds both the focused
 Interaction/Update/View/Protocol chapters and the focused Product-v2 proof
 chapters to their inventories, indexes, authority clauses, and Rule Matrix
-routes. It also binds the unique Repository Tooling admission/stop authority,
-applicability, and Rule Matrix route. Any byte or invocation change reopens
-this review.
+routes. It includes `CODE_STYLE.md` in public Markdown link, whitespace, fence,
+and local-fragment validation. Any byte or invocation change reopens this
+review.

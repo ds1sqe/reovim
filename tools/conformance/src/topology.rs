@@ -145,7 +145,9 @@ impl Limits {
             stdout_bytes: self.metadata_stdout_bytes,
             stderr_bytes: self.child_stderr_bytes,
             deadline: Duration::from_millis(self.child_deadline_ms),
-            supervision_deadline: Duration::from_millis(self.child_supervision_deadline_ms),
+            supervision_deadline: Duration::from_millis(
+                self.child_supervision_deadline_ms,
+            ),
         }
     }
 
@@ -174,7 +176,11 @@ impl Limits {
                 self.report_bytes as u64,
                 HARD_LIMITS.report_bytes as u64,
             ),
-            ("$.limits.configuration.findings", self.findings as u64, HARD_LIMITS.findings as u64),
+            (
+                "$.limits.configuration.findings",
+                self.findings as u64,
+                HARD_LIMITS.findings as u64,
+            ),
             (
                 "$.limits.inventory.source_entry_count",
                 self.source_entry_count as u64,
@@ -362,16 +368,25 @@ impl Limits {
             ),
         ];
         for (path, value, hard) in pairs {
-            if value > hard {
-                return Err(ConfigError::new(
-                    "TOPOLOGY_HARD_LIMIT",
-                    path,
-                    format!("{value} exceeds checker hard ceiling {hard}"),
-                ));
-            }
+            enforce_hard_ceiling(path, value, hard)?;
         }
         Ok(())
     }
+}
+
+fn enforce_hard_ceiling(
+    path: &str,
+    value: u64,
+    hard: u64,
+) -> Result<(), ConfigError> {
+    if value > hard {
+        return Err(ConfigError::new(
+            "TOPOLOGY_HARD_LIMIT",
+            path,
+            format!("{value} exceeds checker hard ceiling {hard}"),
+        ));
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -471,9 +486,12 @@ impl Topology {
         exact(&object["schema"], "$.schema", SCHEMA)?;
         let limits = parse_limits(&object["limits"])?;
         limits.enforce_hard_ceilings()?;
-        let workspaces = parse_workspaces(&object["workspaces"], limits.path_bytes)?;
-        let repository_entrypoints =
-            parse_entrypoints(&object["repository_entrypoints"], limits.path_bytes)?;
+        let workspaces =
+            parse_workspaces(&object["workspaces"], limits.path_bytes)?;
+        let repository_entrypoints = parse_entrypoints(
+            &object["repository_entrypoints"],
+            limits.path_bytes,
+        )?;
 
         let root_workspace = workspaces
             .values()
@@ -482,7 +500,10 @@ impl Topology {
                 ConfigError::new(
                     "TOPOLOGY_ROOT_WORKSPACE",
                     "$.workspaces",
-                    "exactly one workspace root must be the repository root '.'",
+                    concat!(
+                        "exactly one workspace root must be the ",
+                        "repository root '.'"
+                    ),
                 )
             })?;
 
@@ -494,11 +515,18 @@ impl Topology {
         let mut linker_assets = BTreeSet::new();
         for workspace in workspaces.values() {
             manifests.insert(workspace.workspace_manifest.clone());
-            manifests.extend(workspace.packages.values().map(|package| package.manifest.clone()));
+            manifests.extend(
+                workspace
+                    .packages
+                    .values()
+                    .map(|package| package.manifest.clone()),
+            );
             lockfiles.insert(workspace.lockfile.clone());
-            cargo_config_files.extend(workspace.cargo_config_files.iter().cloned());
+            cargo_config_files
+                .extend(workspace.cargo_config_files.iter().cloned());
             build_scripts.extend(workspace.build_scripts.iter().cloned());
-            custom_target_specs.extend(workspace.custom_target_specs.iter().cloned());
+            custom_target_specs
+                .extend(workspace.custom_target_specs.iter().cloned());
             linker_assets.extend(workspace.linker_assets.iter().cloned());
         }
 
@@ -562,10 +590,7 @@ impl Topology {
         manifest: &Path,
     ) -> Option<(&'a Workspace, &'a WorkspacePackage)> {
         self.workspaces.values().find_map(|workspace| {
-            workspace.packages.values().find_map(|package| {
-                (package.name == name && package.version == version && package.manifest == manifest)
-                    .then_some((workspace, package))
-            })
+            resolve_workspace_package(workspace, name, version, manifest)
         })
     }
 
@@ -577,37 +602,88 @@ impl Topology {
                 RepositoryEntrypoint::CargoTarget { package, target } => {
                     Some((package.clone(), target.clone()))
                 }
-                RepositoryEntrypoint::Script { .. } | RepositoryEntrypoint::Workflow { .. } => None,
+                RepositoryEntrypoint::Script { .. }
+                | RepositoryEntrypoint::Workflow { .. } => None,
             })
             .collect::<BTreeSet<_>>();
-        let mut expected = BTreeSet::new();
-        for workspace in self.workspaces.values() {
-            for package in workspace.packages.values() {
-                for target in package.targets.values() {
-                    if target.kind.iter().any(|kind| kind == "bin")
-                        && !expected.insert((package.name.clone(), target.name.clone()))
-                    {
-                        return Err(ConfigError::new(
-                            "TOPOLOGY_CARGO_TARGET_ALIAS",
-                            "$.workspaces",
-                            format!(
-                                "binary identity {}/{} is ambiguous across workspaces",
-                                package.name, target.name
-                            ),
-                        ));
-                    }
-                }
-            }
-        }
+        let expected = expected_cargo_entrypoints(&self.workspaces)?;
         if declared != expected {
             return Err(ConfigError::new(
                 "TOPOLOGY_CARGO_ENTRYPOINT_SET",
                 "$.repository_entrypoints",
-                "Cargo target entrypoints must equal every declared binary target",
+                concat!(
+                    "Cargo target entrypoints must equal every ",
+                    "declared binary target"
+                ),
             ));
         }
         Ok(())
     }
+}
+
+fn resolve_workspace_package<'a>(
+    workspace: &'a Workspace,
+    name: &str,
+    version: &str,
+    manifest: &Path,
+) -> Option<(&'a Workspace, &'a WorkspacePackage)> {
+    workspace.packages.values().find_map(|package| {
+        (package.name == name
+            && package.version == version
+            && package.manifest == manifest)
+            .then_some((workspace, package))
+    })
+}
+
+fn expected_cargo_entrypoints(
+    workspaces: &BTreeMap<String, Workspace>,
+) -> Result<BTreeSet<(String, String)>, ConfigError> {
+    let mut expected = BTreeSet::new();
+    for workspace in workspaces.values() {
+        insert_workspace_entrypoints(workspace, &mut expected)?;
+    }
+    Ok(expected)
+}
+
+fn insert_workspace_entrypoints(
+    workspace: &Workspace,
+    expected: &mut BTreeSet<(String, String)>,
+) -> Result<(), ConfigError> {
+    for package in workspace.packages.values() {
+        insert_package_entrypoints(package, expected)?;
+    }
+    Ok(())
+}
+
+fn insert_package_entrypoints(
+    package: &WorkspacePackage,
+    expected: &mut BTreeSet<(String, String)>,
+) -> Result<(), ConfigError> {
+    for target in package.targets.values() {
+        insert_binary_entrypoint(package, target, expected)?;
+    }
+    Ok(())
+}
+
+fn insert_binary_entrypoint(
+    package: &WorkspacePackage,
+    target: &WorkspaceTarget,
+    expected: &mut BTreeSet<(String, String)>,
+) -> Result<(), ConfigError> {
+    if !target.kind.iter().any(|kind| kind == "bin") {
+        return Ok(());
+    }
+    if !expected.insert((package.name.clone(), target.name.clone())) {
+        return Err(ConfigError::new(
+            "TOPOLOGY_CARGO_TARGET_ALIAS",
+            "$.workspaces",
+            format!(
+                "binary identity {}/{} is ambiguous across workspaces",
+                package.name, target.name
+            ),
+        ));
+    }
+    Ok(())
 }
 
 fn parse_workspaces(
@@ -663,57 +739,126 @@ fn parse_workspaces(
                 "workspace lockfile is already owned",
             ));
         }
-        for member in &workspace.members {
-            if !member_paths.insert(member.clone()) {
-                return Err(ConfigError::new(
-                    "TOPOLOGY_DUPLICATE_MEMBER",
-                    json::child(&path, "members"),
-                    "workspace member is already owned",
-                ));
-            }
-        }
-        for profile in workspace.metadata_profiles.values() {
-            if !profile_ids.insert(profile.id.clone()) {
-                return Err(ConfigError::new(
-                    "TOPOLOGY_DUPLICATE_PROFILE_ID",
-                    json::child(&path, "metadata_profiles"),
-                    "metadata profile ID must be globally unique",
-                ));
-            }
-        }
-        for package in workspace.packages.values() {
-            if !package_ids.insert(package.id.clone())
-                || !package_names.insert(package.name.clone())
-            {
-                return Err(ConfigError::new(
-                    "TOPOLOGY_DUPLICATE_PACKAGE_IDENTITY",
-                    json::child(&path, "packages"),
-                    "package ID and Cargo name must be globally unique",
-                ));
-            }
-            if !package_manifests.insert(package.manifest.clone()) {
-                return Err(ConfigError::new(
-                    "TOPOLOGY_DUPLICATE_PACKAGE_MANIFEST",
-                    json::child(&path, "packages"),
-                    "package manifest is already owned",
-                ));
-            }
-            for target in package.targets.values() {
-                if !target_sources.insert(target.src_path.clone()) {
-                    return Err(ConfigError::new(
-                        "TOPOLOGY_DUPLICATE_TARGET_SOURCE",
-                        json::child(&path, "packages"),
-                        "target source is already owned",
-                    ));
-                }
-            }
-        }
+        register_workspace_members(&workspace, &path, &mut member_paths)?;
+        register_workspace_profiles(&workspace, &path, &mut profile_ids)?;
+        register_workspace_packages(
+            &workspace,
+            &path,
+            &mut package_ids,
+            &mut package_names,
+            &mut package_manifests,
+            &mut target_sources,
+        )?;
         workspaces.insert(workspace.id.clone(), workspace);
     }
     Ok(workspaces)
 }
 
-fn parse_workspace(value: &Value, path: &str, path_limit: usize) -> Result<Workspace, ConfigError> {
+fn register_workspace_members(
+    workspace: &Workspace,
+    path: &str,
+    member_paths: &mut BTreeSet<PathBuf>,
+) -> Result<(), ConfigError> {
+    for member in &workspace.members {
+        if !member_paths.insert(member.clone()) {
+            return Err(ConfigError::new(
+                "TOPOLOGY_DUPLICATE_MEMBER",
+                json::child(path, "members"),
+                "workspace member is already owned",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn register_workspace_profiles(
+    workspace: &Workspace,
+    path: &str,
+    profile_ids: &mut BTreeSet<String>,
+) -> Result<(), ConfigError> {
+    for profile in workspace.metadata_profiles.values() {
+        if !profile_ids.insert(profile.id.clone()) {
+            return Err(ConfigError::new(
+                "TOPOLOGY_DUPLICATE_PROFILE_ID",
+                json::child(path, "metadata_profiles"),
+                "metadata profile ID must be globally unique",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn register_workspace_packages(
+    workspace: &Workspace,
+    path: &str,
+    package_ids: &mut BTreeSet<String>,
+    package_names: &mut BTreeSet<String>,
+    package_manifests: &mut BTreeSet<PathBuf>,
+    target_sources: &mut BTreeSet<PathBuf>,
+) -> Result<(), ConfigError> {
+    for package in workspace.packages.values() {
+        register_workspace_package(
+            package,
+            path,
+            package_ids,
+            package_names,
+            package_manifests,
+            target_sources,
+        )?;
+    }
+    Ok(())
+}
+
+fn register_workspace_package(
+    package: &WorkspacePackage,
+    path: &str,
+    package_ids: &mut BTreeSet<String>,
+    package_names: &mut BTreeSet<String>,
+    package_manifests: &mut BTreeSet<PathBuf>,
+    target_sources: &mut BTreeSet<PathBuf>,
+) -> Result<(), ConfigError> {
+    if !package_ids.insert(package.id.clone())
+        || !package_names.insert(package.name.clone())
+    {
+        return Err(ConfigError::new(
+            "TOPOLOGY_DUPLICATE_PACKAGE_IDENTITY",
+            json::child(path, "packages"),
+            "package ID and Cargo name must be globally unique",
+        ));
+    }
+    if !package_manifests.insert(package.manifest.clone()) {
+        return Err(ConfigError::new(
+            "TOPOLOGY_DUPLICATE_PACKAGE_MANIFEST",
+            json::child(path, "packages"),
+            "package manifest is already owned",
+        ));
+    }
+    for target in package.targets.values() {
+        register_target_source(target, path, target_sources)?;
+    }
+    Ok(())
+}
+
+fn register_target_source(
+    target: &WorkspaceTarget,
+    path: &str,
+    target_sources: &mut BTreeSet<PathBuf>,
+) -> Result<(), ConfigError> {
+    if !target_sources.insert(target.src_path.clone()) {
+        return Err(ConfigError::new(
+            "TOPOLOGY_DUPLICATE_TARGET_SOURCE",
+            json::child(path, "packages"),
+            "target source is already owned",
+        ));
+    }
+    Ok(())
+}
+
+fn parse_workspace(
+    value: &Value,
+    path: &str,
+    path_limit: usize,
+) -> Result<Workspace, ConfigError> {
     let object = json::object(
         value,
         path,
@@ -746,30 +891,55 @@ fn parse_workspace(value: &Value, path: &str, path_limit: usize) -> Result<Works
             ));
         }
     };
-    let root = bounded_path(&object["root"], &json::child(path, "root"), true, path_limit)?;
+    let root = bounded_path(
+        &object["root"],
+        &json::child(path, "root"),
+        true,
+        path_limit,
+    )?;
     let workspace_manifest = bounded_path(
         &object["workspace_manifest"],
         &json::child(path, "workspace_manifest"),
         false,
         path_limit,
     )?;
-    let lockfile =
-        bounded_path(&object["lockfile"], &json::child(path, "lockfile"), false, path_limit)?;
-    let members = paths(&object["members"], &json::child(path, "members"), path_limit)?;
-    let cargo_config_files =
-        paths(&object["cargo_config_files"], &json::child(path, "cargo_config_files"), path_limit)?;
-    let build_scripts =
-        paths(&object["build_scripts"], &json::child(path, "build_scripts"), path_limit)?;
+    let lockfile = bounded_path(
+        &object["lockfile"],
+        &json::child(path, "lockfile"),
+        false,
+        path_limit,
+    )?;
+    let members =
+        paths(&object["members"], &json::child(path, "members"), path_limit)?;
+    let cargo_config_files = paths(
+        &object["cargo_config_files"],
+        &json::child(path, "cargo_config_files"),
+        path_limit,
+    )?;
+    let build_scripts = paths(
+        &object["build_scripts"],
+        &json::child(path, "build_scripts"),
+        path_limit,
+    )?;
     let custom_target_specs = paths(
         &object["custom_target_specs"],
         &json::child(path, "custom_target_specs"),
         path_limit,
     )?;
-    let linker_assets =
-        paths(&object["linker_assets"], &json::child(path, "linker_assets"), path_limit)?;
-    let metadata_profiles =
-        parse_profiles(&object["metadata_profiles"], &json::child(path, "metadata_profiles"))?;
-    let packages = parse_packages(&object["packages"], &json::child(path, "packages"), path_limit)?;
+    let linker_assets = paths(
+        &object["linker_assets"],
+        &json::child(path, "linker_assets"),
+        path_limit,
+    )?;
+    let metadata_profiles = parse_profiles(
+        &object["metadata_profiles"],
+        &json::child(path, "metadata_profiles"),
+    )?;
+    let packages = parse_packages(
+        &object["packages"],
+        &json::child(path, "packages"),
+        path_limit,
+    )?;
     let workspace = Workspace {
         id,
         partition,
@@ -788,7 +958,10 @@ fn parse_workspace(value: &Value, path: &str, path_limit: usize) -> Result<Works
     Ok(workspace)
 }
 
-fn validate_workspace(workspace: &Workspace, path: &str) -> Result<(), ConfigError> {
+fn validate_workspace(
+    workspace: &Workspace,
+    path: &str,
+) -> Result<(), ConfigError> {
     if parent(&workspace.workspace_manifest) != workspace.root {
         return Err(ConfigError::new(
             "TOPOLOGY_WORKSPACE_MANIFEST",
@@ -811,7 +984,11 @@ fn validate_workspace(workspace: &Workspace, path: &str) -> Result<(), ConfigErr
         ("linker_assets", &workspace.linker_assets),
     ] {
         for candidate in paths {
-            require_under_root(&workspace.root, candidate, &json::child(path, field))?;
+            require_under_root(
+                &workspace.root,
+                candidate,
+                &json::child(path, field),
+            )?;
         }
     }
     let package_members = workspace
@@ -826,7 +1003,8 @@ fn validate_workspace(workspace: &Workspace, path: &str) -> Result<(), ConfigErr
             "members must equal every package manifest directory",
         ));
     }
-    let declared_build_scripts = workspace.build_scripts.iter().cloned().collect::<BTreeSet<_>>();
+    let declared_build_scripts =
+        workspace.build_scripts.iter().cloned().collect::<BTreeSet<_>>();
     let target_build_scripts = workspace
         .packages
         .values()
@@ -842,10 +1020,18 @@ fn validate_workspace(workspace: &Workspace, path: &str) -> Result<(), ConfigErr
         ));
     }
     for package in workspace.packages.values() {
-        require_under_root(&workspace.root, &package.manifest, &json::child(path, "packages"))?;
+        require_under_root(
+            &workspace.root,
+            &package.manifest,
+            &json::child(path, "packages"),
+        )?;
         let package_root = parent(&package.manifest);
         for target in package.targets.values() {
-            require_under_root(&package_root, &target.src_path, &json::child(path, "packages"))?;
+            require_under_root(
+                &package_root,
+                &target.src_path,
+                &json::child(path, "packages"),
+            )?;
         }
     }
     Ok(())
@@ -869,12 +1055,20 @@ fn parse_profiles(
         let object = json::object(
             value,
             &item_path,
-            &["id", "target_triple", "all_features", "no_default_features", "features"],
+            &[
+                "id",
+                "target_triple",
+                "all_features",
+                "no_default_features",
+                "features",
+            ],
             &[],
         )?;
         let id = identifier(&object["id"], &json::child(&item_path, "id"))?;
-        let target_triple =
-            nonempty(&object["target_triple"], &json::child(&item_path, "target_triple"))?;
+        let target_triple = nonempty(
+            &object["target_triple"],
+            &json::child(&item_path, "target_triple"),
+        )?;
         if target_triple.bytes().any(|byte| byte.is_ascii_whitespace()) {
             return Err(ConfigError::new(
                 "TOPOLOGY_TARGET_FORM",
@@ -882,18 +1076,27 @@ fn parse_profiles(
                 "target triple must not contain whitespace",
             ));
         }
-        let all_features =
-            json::boolean(&object["all_features"], &json::child(&item_path, "all_features"))?;
+        let all_features = json::boolean(
+            &object["all_features"],
+            &json::child(&item_path, "all_features"),
+        )?;
         let no_default_features = json::boolean(
             &object["no_default_features"],
             &json::child(&item_path, "no_default_features"),
         )?;
-        let features = strings(&object["features"], &json::child(&item_path, "features"), true)?;
+        let features = strings(
+            &object["features"],
+            &json::child(&item_path, "features"),
+            true,
+        )?;
         if all_features && (no_default_features || !features.is_empty()) {
             return Err(ConfigError::new(
                 "TOPOLOGY_PROFILE_FEATURES",
                 item_path,
-                "all_features cannot be combined with no_default_features or explicit features",
+                concat!(
+                    "all_features cannot be combined with ",
+                    "no_default_features or explicit features"
+                ),
             ));
         }
         let profile = MetadataProfile {
@@ -940,15 +1143,19 @@ fn parse_packages(
         )?;
         let id = identifier(&object["id"], &json::child(&item_path, "id"))?;
         let name = nonempty(&object["name"], &json::child(&item_path, "name"))?;
-        let version = nonempty(&object["version"], &json::child(&item_path, "version"))?;
+        let version =
+            nonempty(&object["version"], &json::child(&item_path, "version"))?;
         let manifest = bounded_path(
             &object["manifest"],
             &json::child(&item_path, "manifest"),
             false,
             path_limit,
         )?;
-        let targets =
-            parse_targets(&object["targets"], &json::child(&item_path, "targets"), path_limit)?;
+        let targets = parse_targets(
+            &object["targets"],
+            &json::child(&item_path, "targets"),
+            path_limit,
+        )?;
         if !names.insert(name.clone()) || !manifests.insert(manifest.clone()) {
             return Err(ConfigError::new(
                 "TOPOLOGY_DUPLICATE_PACKAGE_IDENTITY",
@@ -956,7 +1163,13 @@ fn parse_packages(
                 "duplicate package name or manifest in workspace",
             ));
         }
-        let package = WorkspacePackage { id: id.clone(), name, version, manifest, targets };
+        let package = WorkspacePackage {
+            id: id.clone(),
+            name,
+            version,
+            manifest,
+            targets,
+        };
         if packages.insert(id, package).is_some() {
             return Err(ConfigError::new(
                 "TOPOLOGY_DUPLICATE_PACKAGE_IDENTITY",
@@ -1007,16 +1220,22 @@ fn parse_targets(
         )?;
         let id = identifier(&object["id"], &json::child(&item_path, "id"))?;
         let name = nonempty(&object["name"], &json::child(&item_path, "name"))?;
-        let kind = strings(&object["kind"], &json::child(&item_path, "kind"), false)?;
-        if let Some(unknown) = kind.iter().find(|kind| !KINDS.contains(&kind.as_str())) {
+        let kind =
+            strings(&object["kind"], &json::child(&item_path, "kind"), false)?;
+        if let Some(unknown) =
+            kind.iter().find(|kind| !KINDS.contains(&kind.as_str()))
+        {
             return Err(ConfigError::new(
                 "TOPOLOGY_TARGET_KIND",
                 json::child(&item_path, "kind"),
                 format!("unknown target kind {unknown:?}"),
             ));
         }
-        let crate_types =
-            strings(&object["crate_types"], &json::child(&item_path, "crate_types"), true)?;
+        let crate_types = strings(
+            &object["crate_types"],
+            &json::child(&item_path, "crate_types"),
+            true,
+        )?;
         let src_path = bounded_path(
             &object["src_path"],
             &json::child(&item_path, "src_path"),
@@ -1030,7 +1249,13 @@ fn parse_targets(
                 "duplicate target name or source path in package",
             ));
         }
-        let target = WorkspaceTarget { id: id.clone(), name, kind, crate_types, src_path };
+        let target = WorkspaceTarget {
+            id: id.clone(),
+            name,
+            kind,
+            crate_types,
+            src_path,
+        };
         if targets.insert(id, target).is_some() {
             return Err(ConfigError::new(
                 "TOPOLOGY_DUPLICATE_TARGET_IDENTITY",
@@ -1051,51 +1276,8 @@ fn parse_entrypoints(
     let mut paths = BTreeSet::new();
     for (item, value) in values.iter().enumerate() {
         let path = json::index("$.repository_entrypoints", item);
-        let kind_path = json::child(&path, "kind");
-        let raw = value.as_object().ok_or_else(|| {
-            ConfigError::new("CFG_TYPE", &path, "expected repository entrypoint object")
-        })?;
-        let kind = raw.get("kind").ok_or_else(|| {
-            ConfigError::new("CFG_MISSING_FIELD", &kind_path, "required field is absent")
-        })?;
-        let kind = json::string(kind, &kind_path)?;
-        let entrypoint = match kind {
-            "script" | "workflow" => {
-                let object = json::object(value, &path, &["kind", "path", "content_digest"], &[])?;
-                let entrypoint_path =
-                    bounded_path(&object["path"], &json::child(&path, "path"), false, path_limit)?;
-                if !paths.insert(entrypoint_path.clone()) {
-                    return Err(ConfigError::new(
-                        "TOPOLOGY_ENTRYPOINT_PATH_ALIAS",
-                        json::child(&path, "path"),
-                        "repository entrypoint path is declared more than once",
-                    ));
-                }
-                let content_digest = sha256(
-                    json::string(&object["content_digest"], &json::child(&path, "content_digest"))?,
-                    &json::child(&path, "content_digest"),
-                )?;
-                if kind == "script" {
-                    RepositoryEntrypoint::Script { path: entrypoint_path, content_digest }
-                } else {
-                    RepositoryEntrypoint::Workflow { path: entrypoint_path, content_digest }
-                }
-            }
-            "cargo_target" => {
-                let object = json::object(value, &path, &["kind", "package", "target"], &[])?;
-                RepositoryEntrypoint::CargoTarget {
-                    package: nonempty(&object["package"], &json::child(&path, "package"))?,
-                    target: nonempty(&object["target"], &json::child(&path, "target"))?,
-                }
-            }
-            other => {
-                return Err(ConfigError::new(
-                    "TOPOLOGY_ENTRYPOINT_KIND",
-                    kind_path,
-                    format!("unknown entrypoint kind {other:?}"),
-                ));
-            }
-        };
+        let entrypoint =
+            parse_entrypoint(value, &path, path_limit, &mut paths)?;
         if !result.insert(entrypoint) {
             return Err(ConfigError::new(
                 "TOPOLOGY_DUPLICATE_ENTRYPOINT",
@@ -1105,6 +1287,89 @@ fn parse_entrypoints(
         }
     }
     Ok(result.into_iter().collect())
+}
+
+fn parse_entrypoint(
+    value: &Value,
+    path: &str,
+    path_limit: usize,
+    paths: &mut BTreeSet<PathBuf>,
+) -> Result<RepositoryEntrypoint, ConfigError> {
+    let kind_path = json::child(path, "kind");
+    let raw = value.as_object().ok_or_else(|| {
+        ConfigError::new(
+            "CFG_TYPE",
+            path,
+            "expected repository entrypoint object",
+        )
+    })?;
+    let kind = raw.get("kind").ok_or_else(|| {
+        ConfigError::new(
+            "CFG_MISSING_FIELD",
+            &kind_path,
+            "required field is absent",
+        )
+    })?;
+    let kind = json::string(kind, &kind_path)?;
+    match kind {
+        "script" | "workflow" => {
+            parse_path_entrypoint(value, path, kind, path_limit, paths)
+        }
+        "cargo_target" => parse_cargo_entrypoint(value, path),
+        other => Err(ConfigError::new(
+            "TOPOLOGY_ENTRYPOINT_KIND",
+            kind_path,
+            format!("unknown entrypoint kind {other:?}"),
+        )),
+    }
+}
+
+fn parse_path_entrypoint(
+    value: &Value,
+    path: &str,
+    kind: &str,
+    path_limit: usize,
+    paths: &mut BTreeSet<PathBuf>,
+) -> Result<RepositoryEntrypoint, ConfigError> {
+    let object =
+        json::object(value, path, &["kind", "path", "content_digest"], &[])?;
+    let entrypoint_path = bounded_path(
+        &object["path"],
+        &json::child(path, "path"),
+        false,
+        path_limit,
+    )?;
+    if !paths.insert(entrypoint_path.clone()) {
+        return Err(ConfigError::new(
+            "TOPOLOGY_ENTRYPOINT_PATH_ALIAS",
+            json::child(path, "path"),
+            "repository entrypoint path is declared more than once",
+        ));
+    }
+    let digest_path = json::child(path, "content_digest");
+    let content_digest = sha256(
+        json::string(&object["content_digest"], &digest_path)?,
+        &digest_path,
+    )?;
+    if kind == "script" {
+        return Ok(RepositoryEntrypoint::Script {
+            path: entrypoint_path,
+            content_digest,
+        });
+    }
+    Ok(RepositoryEntrypoint::Workflow { path: entrypoint_path, content_digest })
+}
+
+fn parse_cargo_entrypoint(
+    value: &Value,
+    path: &str,
+) -> Result<RepositoryEntrypoint, ConfigError> {
+    let object =
+        json::object(value, path, &["kind", "package", "target"], &[])?;
+    Ok(RepositoryEntrypoint::CargoTarget {
+        package: nonempty(&object["package"], &json::child(path, "package"))?,
+        target: nonempty(&object["target"], &json::child(path, "target"))?,
+    })
 }
 
 #[allow(clippy::too_many_lines)]
@@ -1118,7 +1383,13 @@ fn parse_limits(value: &Value) -> Result<Limits, ConfigError> {
     let configuration = json::object(
         &object["configuration"],
         "$.limits.configuration",
-        &["config_bytes", "json_depth", "json_container_items", "report_bytes", "findings"],
+        &[
+            "config_bytes",
+            "json_depth",
+            "json_container_items",
+            "report_bytes",
+            "findings",
+        ],
         &[],
     )?;
     let inventory = json::object(
@@ -1198,42 +1469,102 @@ fn parse_limits(value: &Value) -> Result<Limits, ConfigError> {
         ));
     }
     let limits = Limits {
-        config_bytes: positive_usize(configuration, "$.limits.configuration", "config_bytes")?,
-        json_depth: positive_usize(configuration, "$.limits.configuration", "json_depth")?,
+        config_bytes: positive_usize(
+            configuration,
+            "$.limits.configuration",
+            "config_bytes",
+        )?,
+        json_depth: positive_usize(
+            configuration,
+            "$.limits.configuration",
+            "json_depth",
+        )?,
         json_container_items: positive_usize(
             configuration,
             "$.limits.configuration",
             "json_container_items",
         )?,
-        report_bytes: positive_usize(configuration, "$.limits.configuration", "report_bytes")?,
-        findings: positive_usize(configuration, "$.limits.configuration", "findings")?,
-        source_entry_count: positive_usize(inventory, "$.limits.inventory", "source_entry_count")?,
+        report_bytes: positive_usize(
+            configuration,
+            "$.limits.configuration",
+            "report_bytes",
+        )?,
+        findings: positive_usize(
+            configuration,
+            "$.limits.configuration",
+            "findings",
+        )?,
+        source_entry_count: positive_usize(
+            inventory,
+            "$.limits.inventory",
+            "source_entry_count",
+        )?,
         directory_entry_count: positive_usize(
             inventory,
             "$.limits.inventory",
             "directory_entry_count",
         )?,
-        source_file_count: positive_usize(inventory, "$.limits.inventory", "source_file_count")?,
-        source_total_bytes: positive_u64(inventory, "$.limits.inventory", "source_total_bytes")?,
-        source_file_bytes: positive_u64(inventory, "$.limits.inventory", "source_file_bytes")?,
-        path_bytes: positive_usize(inventory, "$.limits.inventory", "path_bytes")?,
+        source_file_count: positive_usize(
+            inventory,
+            "$.limits.inventory",
+            "source_file_count",
+        )?,
+        source_total_bytes: positive_u64(
+            inventory,
+            "$.limits.inventory",
+            "source_total_bytes",
+        )?,
+        source_file_bytes: positive_u64(
+            inventory,
+            "$.limits.inventory",
+            "source_file_bytes",
+        )?,
+        path_bytes: positive_usize(
+            inventory,
+            "$.limits.inventory",
+            "path_bytes",
+        )?,
         syntax_item_expr_type_visits: positive_usize(
             inventory,
             "$.limits.inventory",
             "syntax_item_expr_type_visits",
         )?,
-        metadata_stdout_bytes: positive_usize(process, "$.limits.process", "stdout_bytes")?,
-        child_stderr_bytes: positive_usize(process, "$.limits.process", "stderr_bytes")?,
-        child_deadline_ms: positive_u64(process, "$.limits.process", "execution_deadline_ms")?,
+        metadata_stdout_bytes: positive_usize(
+            process,
+            "$.limits.process",
+            "stdout_bytes",
+        )?,
+        child_stderr_bytes: positive_usize(
+            process,
+            "$.limits.process",
+            "stderr_bytes",
+        )?,
+        child_deadline_ms: positive_u64(
+            process,
+            "$.limits.process",
+            "execution_deadline_ms",
+        )?,
         child_supervision_deadline_ms: positive_u64(
             process,
             "$.limits.process",
             "supervision_deadline_ms",
         )?,
-        tool_executable_bytes: positive_u64(process, "$.limits.process", "tool_executable_bytes")?,
+        tool_executable_bytes: positive_u64(
+            process,
+            "$.limits.process",
+            "tool_executable_bytes",
+        )?,
         product_execution: ProductExecutionLimits {
-            scratch_bytes: positive_u32(product, "$.limits.product_execution", "scratch_bytes")?,
-            scratch_inodes: positive_u16(product, "$.limits.product_execution", "scratch_inodes")?,
+            scratch_bytes: positive_u32(
+                product,
+                "$.limits.product_execution",
+                "scratch_bytes",
+            )?,
+            scratch_inodes: positive_u16(
+                product,
+                "$.limits.product_execution",
+                "scratch_inodes",
+            )?,
             process_address_space_bytes: positive_u64(
                 product,
                 "$.limits.product_execution",
@@ -1315,7 +1646,11 @@ fn parse_limits(value: &Value) -> Result<Limits, ConfigError> {
                 "$.limits.product_execution",
                 "dep_info_total_bytes",
             )?,
-            artifact_count: positive_u16(product, "$.limits.product_execution", "artifact_count")?,
+            artifact_count: positive_u16(
+                product,
+                "$.limits.product_execution",
+                "artifact_count",
+            )?,
             artifact_total_bytes: positive_u32(
                 product,
                 "$.limits.product_execution",
@@ -1347,17 +1682,28 @@ fn parse_limits(value: &Value) -> Result<Limits, ConfigError> {
         return Err(ConfigError::new(
             "TOPOLOGY_SUPERVISION_DEADLINE",
             "$.limits.process.supervision_deadline_ms",
-            "supervision deadline must be strictly greater than execution deadline",
+            concat!(
+                "supervision deadline must be strictly greater ",
+                "than execution deadline"
+            ),
         ));
     }
     Ok(limits)
 }
 
-fn positive_u64(object: &Map<String, Value>, path: &str, name: &str) -> Result<u64, ConfigError> {
+fn positive_u64(
+    object: &Map<String, Value>,
+    path: &str,
+    name: &str,
+) -> Result<u64, ConfigError> {
     let value_path = json::child(path, name);
     let value = json::unsigned(&object[name], &value_path)?;
     if value == 0 {
-        Err(ConfigError::new("TOPOLOGY_ZERO_LIMIT", value_path, "limit must be positive"))
+        Err(ConfigError::new(
+            "TOPOLOGY_ZERO_LIMIT",
+            value_path,
+            "limit must be positive",
+        ))
     } else {
         Ok(value)
     }
@@ -1377,25 +1723,53 @@ fn positive_usize(
     })
 }
 
-fn positive_u32(object: &Map<String, Value>, path: &str, name: &str) -> Result<u32, ConfigError> {
+fn positive_u32(
+    object: &Map<String, Value>,
+    path: &str,
+    name: &str,
+) -> Result<u32, ConfigError> {
     u32::try_from(positive_u64(object, path, name)?).map_err(|_| {
-        ConfigError::new("TOPOLOGY_LIMIT_RANGE", json::child(path, name), "limit exceeds u32")
+        ConfigError::new(
+            "TOPOLOGY_LIMIT_RANGE",
+            json::child(path, name),
+            "limit exceeds u32",
+        )
     })
 }
 
-fn positive_u16(object: &Map<String, Value>, path: &str, name: &str) -> Result<u16, ConfigError> {
+fn positive_u16(
+    object: &Map<String, Value>,
+    path: &str,
+    name: &str,
+) -> Result<u16, ConfigError> {
     u16::try_from(positive_u64(object, path, name)?).map_err(|_| {
-        ConfigError::new("TOPOLOGY_LIMIT_RANGE", json::child(path, name), "limit exceeds u16")
+        ConfigError::new(
+            "TOPOLOGY_LIMIT_RANGE",
+            json::child(path, name),
+            "limit exceeds u16",
+        )
     })
 }
 
-fn positive_u8(object: &Map<String, Value>, path: &str, name: &str) -> Result<u8, ConfigError> {
+fn positive_u8(
+    object: &Map<String, Value>,
+    path: &str,
+    name: &str,
+) -> Result<u8, ConfigError> {
     u8::try_from(positive_u64(object, path, name)?).map_err(|_| {
-        ConfigError::new("TOPOLOGY_LIMIT_RANGE", json::child(path, name), "limit exceeds u8")
+        ConfigError::new(
+            "TOPOLOGY_LIMIT_RANGE",
+            json::child(path, name),
+            "limit exceeds u8",
+        )
     })
 }
 
-fn paths(value: &Value, path: &str, path_limit: usize) -> Result<Vec<PathBuf>, ConfigError> {
+fn paths(
+    value: &Value,
+    path: &str,
+    path_limit: usize,
+) -> Result<Vec<PathBuf>, ConfigError> {
     let mut result = BTreeSet::new();
     for (item, value) in json::array(value, path)?.iter().enumerate() {
         let item_path = json::index(path, item);
@@ -1435,14 +1809,22 @@ fn bounded_path(
     relative_path(raw, path, allow_repository_root)
 }
 
-fn require_under_root(root: &Path, candidate: &Path, path: &str) -> Result<(), ConfigError> {
+fn require_under_root(
+    root: &Path,
+    candidate: &Path,
+    path: &str,
+) -> Result<(), ConfigError> {
     if root.as_os_str().is_empty() || candidate.starts_with(root) {
         Ok(())
     } else {
         Err(ConfigError::new(
             "TOPOLOGY_WORKSPACE_ESCAPE",
             path,
-            format!("{} is outside workspace root {}", candidate.display(), root.display()),
+            format!(
+                "{} is outside workspace root {}",
+                candidate.display(),
+                root.display()
+            ),
         ))
     }
 }
@@ -1451,17 +1833,29 @@ fn parent(path: &Path) -> PathBuf {
     path.parent().unwrap_or_else(|| Path::new("")).to_path_buf()
 }
 
-fn strings(value: &Value, path: &str, allow_empty_array: bool) -> Result<Vec<String>, ConfigError> {
+fn strings(
+    value: &Value,
+    path: &str,
+    allow_empty_array: bool,
+) -> Result<Vec<String>, ConfigError> {
     let values = json::array(value, path)?;
     if !allow_empty_array && values.is_empty() {
-        return Err(ConfigError::new("TOPOLOGY_EMPTY_SET", path, "at least one value is required"));
+        return Err(ConfigError::new(
+            "TOPOLOGY_EMPTY_SET",
+            path,
+            "at least one value is required",
+        ));
     }
     let mut result = BTreeSet::new();
     for (item, value) in values.iter().enumerate() {
         let item_path = json::index(path, item);
         let value = nonempty(value, &item_path)?;
         if !result.insert(value) {
-            return Err(ConfigError::new("TOPOLOGY_DUPLICATE_VALUE", item_path, "duplicate value"));
+            return Err(ConfigError::new(
+                "TOPOLOGY_DUPLICATE_VALUE",
+                item_path,
+                "duplicate value",
+            ));
         }
     }
     Ok(result.into_iter().collect())
@@ -1471,22 +1865,30 @@ fn identifier(value: &Value, path: &str) -> Result<String, ConfigError> {
     let value = nonempty(value, path)?;
     let bytes = value.as_bytes();
     let valid = bytes.first().is_some_and(u8::is_ascii_lowercase)
-        && bytes
-            .iter()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || *byte == b'-')
+        && bytes.iter().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || *byte == b'-'
+        })
         && !value.ends_with('-')
         && !value.contains("--");
     if valid {
         Ok(value)
     } else {
-        Err(ConfigError::new("TOPOLOGY_ID", path, "expected lowercase kebab-case ID"))
+        Err(ConfigError::new(
+            "TOPOLOGY_ID",
+            path,
+            "expected lowercase kebab-case ID",
+        ))
     }
 }
 
 fn nonempty(value: &Value, path: &str) -> Result<String, ConfigError> {
     let value = json::string(value, path)?;
     if value.is_empty() {
-        Err(ConfigError::new("CFG_EMPTY_STRING", path, "value must not be empty"))
+        Err(ConfigError::new(
+            "CFG_EMPTY_STRING",
+            path,
+            "value must not be empty",
+        ))
     } else {
         Ok(value.to_owned())
     }
@@ -1497,18 +1899,28 @@ fn exact(value: &Value, path: &str, expected: &str) -> Result<(), ConfigError> {
     if actual == expected {
         Ok(())
     } else {
-        Err(ConfigError::new("CFG_CONST", path, format!("expected {expected:?}, got {actual:?}")))
+        Err(ConfigError::new(
+            "CFG_CONST",
+            path,
+            format!("expected {expected:?}, got {actual:?}"),
+        ))
     }
 }
 
 fn sha256(value: &str, path: &str) -> Result<String, ConfigError> {
     if value.len() == 71
         && value.starts_with("sha256:")
-        && value[7..].bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        && value[7..]
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     {
         Ok(value.to_owned())
     } else {
-        Err(ConfigError::new("TOPOLOGY_DIGEST", path, "expected sha256:<64 lowercase hex>"))
+        Err(ConfigError::new(
+            "TOPOLOGY_DIGEST",
+            path,
+            "expected sha256:<64 lowercase hex>",
+        ))
     }
 }
 
@@ -1519,7 +1931,10 @@ mod tests {
     use serde_json::{Value, json};
 
     fn topology() -> Value {
-        serde_json::from_str(include_str!("../../../conformance/workspace-topology.json")).unwrap()
+        serde_json::from_str(include_str!(
+            "../../../conformance/workspace-topology.json"
+        ))
+        .unwrap()
     }
 
     fn add_product_workspace(value: &mut Value) {
@@ -1562,16 +1977,16 @@ mod tests {
         let topology = super::Topology::parse(&topology()).unwrap();
         assert_eq!(topology.workspaces.len(), 1);
         let tooling = &topology.workspaces["repository-tooling"];
-        assert_eq!(tooling.partition, super::WorkspacePartition::RepositoryTooling);
+        assert_eq!(
+            tooling.partition,
+            super::WorkspacePartition::RepositoryTooling
+        );
         assert!(tooling.root.as_os_str().is_empty());
         assert_eq!(tooling.metadata_profiles.len(), 3);
         assert_eq!(tooling.packages.len(), 2);
-        assert!(
-            topology
-                .workspaces
-                .values()
-                .all(|workspace| { workspace.partition != super::WorkspacePartition::Product })
-        );
+        assert!(topology.workspaces.values().all(|workspace| {
+            workspace.partition != super::WorkspacePartition::Product
+        }));
         assert_eq!(topology.workspace_manifest, Path::new("Cargo.toml"));
         assert_eq!(topology.profiles.len(), 3);
         assert_eq!(topology.packages.len(), 2);
@@ -1601,26 +2016,43 @@ mod tests {
                 )
                 .is_none()
         );
-        assert!(topology.manifests.contains(&Path::new("product/Cargo.toml").to_path_buf()));
-        assert!(topology.lockfiles.contains(&Path::new("product/Cargo.lock").to_path_buf()));
+        assert!(
+            topology
+                .manifests
+                .contains(&Path::new("product/Cargo.toml").to_path_buf())
+        );
+        assert!(
+            topology
+                .lockfiles
+                .contains(&Path::new("product/Cargo.lock").to_path_buf())
+        );
     }
 
     #[test]
     fn schema_unknown_fields_and_ids_fail_closed() {
         let mut legacy = topology();
         legacy["schema"] = json!("reovim-workspace-topology/v1");
-        assert_eq!(super::Topology::parse(&legacy).unwrap_err().code, "CFG_CONST");
+        assert_eq!(
+            super::Topology::parse(&legacy).unwrap_err().code,
+            "CFG_CONST"
+        );
 
         let mut unknown = topology();
         unknown["workspaces"][0]
             .as_object_mut()
             .unwrap()
             .insert("surprise".to_owned(), json!(true));
-        assert_eq!(super::Topology::parse(&unknown).unwrap_err().code, "CFG_UNKNOWN_FIELD");
+        assert_eq!(
+            super::Topology::parse(&unknown).unwrap_err().code,
+            "CFG_UNKNOWN_FIELD"
+        );
 
         let mut bad_id = topology();
         bad_id["workspaces"][0]["packages"][0]["id"] = json!("Bad_ID");
-        assert_eq!(super::Topology::parse(&bad_id).unwrap_err().code, "TOPOLOGY_ID");
+        assert_eq!(
+            super::Topology::parse(&bad_id).unwrap_err().code,
+            "TOPOLOGY_ID"
+        );
     }
 
     #[test]
@@ -1634,15 +2066,20 @@ mod tests {
         );
 
         let mut profile = topology();
-        let duplicate = profile["workspaces"][0]["metadata_profiles"][0].clone();
-        profile["workspaces"][0]["metadata_profiles"].as_array_mut().unwrap().push(duplicate);
+        let duplicate =
+            profile["workspaces"][0]["metadata_profiles"][0].clone();
+        profile["workspaces"][0]["metadata_profiles"]
+            .as_array_mut()
+            .unwrap()
+            .push(duplicate);
         assert_eq!(
             super::Topology::parse(&profile).unwrap_err().code,
             "TOPOLOGY_DUPLICATE_PROFILE_ID"
         );
 
         let mut package = topology();
-        let duplicate_id = package["workspaces"][0]["packages"][0]["id"].clone();
+        let duplicate_id =
+            package["workspaces"][0]["packages"][0]["id"].clone();
         package["workspaces"][0]["packages"][1]["id"] = duplicate_id;
         assert_eq!(
             super::Topology::parse(&package).unwrap_err().code,
@@ -1650,8 +2087,12 @@ mod tests {
         );
 
         let mut target = topology();
-        let duplicate = target["workspaces"][0]["packages"][0]["targets"][0].clone();
-        target["workspaces"][0]["packages"][0]["targets"].as_array_mut().unwrap().push(duplicate);
+        let duplicate =
+            target["workspaces"][0]["packages"][0]["targets"][0].clone();
+        target["workspaces"][0]["packages"][0]["targets"]
+            .as_array_mut()
+            .unwrap()
+            .push(duplicate);
         assert_eq!(
             super::Topology::parse(&target).unwrap_err().code,
             "TOPOLOGY_DUPLICATE_TARGET_IDENTITY"
@@ -1661,41 +2102,68 @@ mod tests {
     #[test]
     fn normalized_bounded_and_contained_paths_are_required() {
         let mut alias = topology();
-        alias["workspaces"][0]["packages"][0]["manifest"] = json!("lib/depgraph/./Cargo.toml");
-        assert_eq!(super::Topology::parse(&alias).unwrap_err().code, "CFG_PATH_FORM");
+        alias["workspaces"][0]["packages"][0]["manifest"] =
+            json!("lib/depgraph/./Cargo.toml");
+        assert_eq!(
+            super::Topology::parse(&alias).unwrap_err().code,
+            "CFG_PATH_FORM"
+        );
 
         let mut escape = topology();
         add_product_workspace(&mut escape);
-        escape["workspaces"][1]["packages"][0]["manifest"] = json!("other/Cargo.toml");
+        escape["workspaces"][1]["packages"][0]["manifest"] =
+            json!("other/Cargo.toml");
         escape["workspaces"][1]["members"] = json!(["other"]);
-        assert_eq!(super::Topology::parse(&escape).unwrap_err().code, "TOPOLOGY_WORKSPACE_ESCAPE");
+        assert_eq!(
+            super::Topology::parse(&escape).unwrap_err().code,
+            "TOPOLOGY_WORKSPACE_ESCAPE"
+        );
 
         let mut bounded = topology();
         bounded["limits"]["inventory"]["path_bytes"] = json!(10);
-        assert_eq!(super::Topology::parse(&bounded).unwrap_err().code, "TOPOLOGY_PATH_LIMIT");
+        assert_eq!(
+            super::Topology::parse(&bounded).unwrap_err().code,
+            "TOPOLOGY_PATH_LIMIT"
+        );
     }
 
     #[test]
     fn workspace_members_and_build_scripts_are_exact() {
         let mut members = topology();
         members["workspaces"][0]["members"] = json!(["lib/depgraph"]);
-        assert_eq!(super::Topology::parse(&members).unwrap_err().code, "TOPOLOGY_MEMBER_SET");
+        assert_eq!(
+            super::Topology::parse(&members).unwrap_err().code,
+            "TOPOLOGY_MEMBER_SET"
+        );
 
         let mut build = topology();
-        build["workspaces"][0]["build_scripts"] = json!(["tools/conformance/build.rs"]);
-        assert_eq!(super::Topology::parse(&build).unwrap_err().code, "TOPOLOGY_BUILD_SCRIPT_SET");
+        build["workspaces"][0]["build_scripts"] =
+            json!(["tools/conformance/build.rs"]);
+        assert_eq!(
+            super::Topology::parse(&build).unwrap_err().code,
+            "TOPOLOGY_BUILD_SCRIPT_SET"
+        );
     }
 
     #[test]
     fn profiles_targets_and_entrypoints_are_semantically_closed() {
         let mut profile = topology();
-        profile["workspaces"][0]["metadata_profiles"][0]["all_features"] = json!(true);
-        profile["workspaces"][0]["metadata_profiles"][0]["features"] = json!(["x"]);
-        assert_eq!(super::Topology::parse(&profile).unwrap_err().code, "TOPOLOGY_PROFILE_FEATURES");
+        profile["workspaces"][0]["metadata_profiles"][0]["all_features"] =
+            json!(true);
+        profile["workspaces"][0]["metadata_profiles"][0]["features"] =
+            json!(["x"]);
+        assert_eq!(
+            super::Topology::parse(&profile).unwrap_err().code,
+            "TOPOLOGY_PROFILE_FEATURES"
+        );
 
         let mut kind = topology();
-        kind["workspaces"][0]["packages"][0]["targets"][0]["kind"] = json!(["mystery"]);
-        assert_eq!(super::Topology::parse(&kind).unwrap_err().code, "TOPOLOGY_TARGET_KIND");
+        kind["workspaces"][0]["packages"][0]["targets"][0]["kind"] =
+            json!(["mystery"]);
+        assert_eq!(
+            super::Topology::parse(&kind).unwrap_err().code,
+            "TOPOLOGY_TARGET_KIND"
+        );
 
         let mut missing = topology();
         missing["repository_entrypoints"]
@@ -1711,7 +2179,11 @@ mod tests {
         alias["repository_entrypoints"].as_array_mut().unwrap().push(json!({
             "kind": "workflow",
             "path": "scripts/check.sh",
-            "content_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+            "content_digest": concat!(
+                "sha256:",
+                "00000000000000000000000000000000",
+                "00000000000000000000000000000000"
+            )
         }));
         assert_eq!(
             super::Topology::parse(&alias).unwrap_err().code,
@@ -1723,10 +2195,14 @@ mod tests {
     fn nested_limits_are_closed_bounded_and_ordered() {
         let mut oversized = topology();
         oversized["limits"]["configuration"]["json_depth"] = json!(257);
-        assert_eq!(super::Topology::parse(&oversized).unwrap_err().code, "TOPOLOGY_HARD_LIMIT");
+        assert_eq!(
+            super::Topology::parse(&oversized).unwrap_err().code,
+            "TOPOLOGY_HARD_LIMIT"
+        );
 
         let mut deadline = topology();
-        deadline["limits"]["process"]["supervision_deadline_ms"] = json!(120_000);
+        deadline["limits"]["process"]["supervision_deadline_ms"] =
+            json!(120_000);
         assert_eq!(
             super::Topology::parse(&deadline).unwrap_err().code,
             "TOPOLOGY_SUPERVISION_DEADLINE"
@@ -1734,10 +2210,19 @@ mod tests {
 
         let mut core = topology();
         core["limits"]["product_execution"]["core_dump_bytes"] = json!(1);
-        assert_eq!(super::Topology::parse(&core).unwrap_err().code, "TOPOLOGY_CORE_DUMP_LIMIT");
+        assert_eq!(
+            super::Topology::parse(&core).unwrap_err().code,
+            "TOPOLOGY_CORE_DUMP_LIMIT"
+        );
 
         let mut unknown = topology();
-        unknown["limits"]["process"].as_object_mut().unwrap().insert("forks".to_owned(), json!(1));
-        assert_eq!(super::Topology::parse(&unknown).unwrap_err().code, "CFG_UNKNOWN_FIELD");
+        unknown["limits"]["process"]
+            .as_object_mut()
+            .unwrap()
+            .insert("forks".to_owned(), json!(1));
+        assert_eq!(
+            super::Topology::parse(&unknown).unwrap_err().code,
+            "CFG_UNKNOWN_FIELD"
+        );
     }
 }

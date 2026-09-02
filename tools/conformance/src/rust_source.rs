@@ -23,7 +23,6 @@ use crate::{
     topology::Limits,
 };
 
-#[allow(clippy::too_many_lines)]
 pub fn check(
     root: &Path,
     profile: &str,
@@ -34,60 +33,163 @@ pub fn check(
 ) -> Vec<Finding> {
     let mut findings = Findings::new(limits.findings);
     let packages = workspace_packages(root, metadata, files);
-    let target_uses = metadata
+    let target_uses = target_source_uses(root, metadata);
+    let target_roots = target_uses.keys().cloned().collect::<BTreeSet<_>>();
+    let selected_sources = resolve_module_sources(
+        root,
+        &target_uses,
+        files,
+        limits,
+        profile,
+        &mut findings,
+    );
+    let inventory = files
+        .iter()
+        .map(|file| (file.path.clone(), file))
+        .collect::<BTreeMap<_, _>>();
+    let context = RustCheckContext {
+        root,
+        profile,
+        metadata,
+        packages: &packages,
+        selected_sources: &selected_sources,
+        target_roots: &target_roots,
+        inventory: &inventory,
+        policy,
+        limits,
+    };
+    for file in files {
+        if !rust_source_file(file) {
+            continue;
+        }
+        context.check_file(file, &mut findings);
+    }
+    findings.finish()
+}
+
+fn target_source_uses(
+    root: &Path,
+    metadata: &Metadata,
+) -> BTreeMap<PathBuf, BTreeSet<SourceUse>> {
+    metadata
         .workspace_members
         .iter()
         .filter_map(|id| metadata.packages.get(id))
         .flat_map(|package| &package.targets)
         .filter_map(|target| {
-            let path = target
-                .src_path
-                .canonicalize()
-                .ok()
-                .and_then(|path| path.strip_prefix(root).ok().map(Path::to_path_buf))?;
-            let source_use =
-                if target.kind.iter().any(|kind| matches!(kind.as_str(), "test" | "bench")) {
-                    SourceUse::Test
-                } else if target.kind.iter().any(|kind| kind == "example") {
-                    SourceUse::Example
-                } else {
-                    SourceUse::Tool
-                };
+            let path =
+                target.src_path.canonicalize().ok().and_then(|path| {
+                    path.strip_prefix(root).ok().map(Path::to_path_buf)
+                })?;
+            let source_use = if target
+                .kind
+                .iter()
+                .any(|kind| matches!(kind.as_str(), "test" | "bench"))
+            {
+                SourceUse::Test
+            } else if target.kind.iter().any(|kind| kind == "example") {
+                SourceUse::Example
+            } else {
+                SourceUse::Tool
+            };
             Some((path, source_use))
         })
-        .fold(BTreeMap::<PathBuf, BTreeSet<SourceUse>>::new(), |mut uses, (path, source_use)| {
-            uses.entry(path).or_default().insert(source_use);
-            uses
-        });
-    let target_roots = target_uses.keys().cloned().collect::<BTreeSet<_>>();
-    let selected_sources =
-        resolve_module_sources(root, &target_uses, files, limits, profile, &mut findings);
-    let inventory = files.iter().map(|file| (file.path.clone(), file)).collect::<BTreeMap<_, _>>();
-    for file in files.iter().filter(|file| file.path.extension().is_some_and(|value| value == "rs"))
-    {
-        if reject_build_output(file, profile, &mut findings) {
-            continue;
+        .fold(
+            BTreeMap::<PathBuf, BTreeSet<SourceUse>>::new(),
+            |mut uses, (path, source_use)| {
+                uses.entry(path).or_default().insert(source_use);
+                uses
+            },
+        )
+}
+
+fn rust_source_file(file: &ClassifiedFile) -> bool {
+    file.path.extension().is_some_and(|value| value == "rs")
+}
+
+struct RustCheckContext<'a> {
+    root: &'a Path,
+    profile: &'a str,
+    metadata: &'a Metadata,
+    packages: &'a BTreeMap<String, PackageContext>,
+    selected_sources: &'a BTreeMap<PathBuf, BTreeSet<SourceUse>>,
+    target_roots: &'a BTreeSet<PathBuf>,
+    inventory: &'a BTreeMap<PathBuf, &'a ClassifiedFile>,
+    policy: &'a Policy,
+    limits: Limits,
+}
+
+impl RustCheckContext<'_> {
+    fn check_file(&self, file: &ClassifiedFile, findings: &mut Findings) {
+        if reject_build_output(file, self.profile, findings) {
+            return;
         }
-        let Some((package_id, package_owner)) = package_for(&file.path, &packages) else {
+        let Some((package_id, package_owner)) =
+            package_for(&file.path, self.packages)
+        else {
             findings.push(Finding::new(
                 "source",
                 "RUST_SOURCE_PACKAGE",
                 Some(display_relative(&file.path)),
-                format!("profile {profile}: Rust source is outside every workspace package"),
+                format!(
+                    concat!(
+                        "profile {}: Rust source is outside every ",
+                        "workspace package"
+                    ),
+                    self.profile
+                ),
             ));
-            continue;
+            return;
         };
-        report_unregistered_source(&file.path, &selected_sources, profile, &mut findings);
-        let bytes = match read_bounded(&root.join(&file.path), limits.source_file_bytes) {
+        report_unregistered_source(
+            &file.path,
+            self.selected_sources,
+            self.profile,
+            findings,
+        );
+        let Some(syntax) = self.parse_file(file, findings) else {
+            return;
+        };
+        self.check_syntax(file, &syntax, findings);
+        if !syntax_within_limit(
+            &syntax,
+            &file.path,
+            self.limits.syntax_item_expr_type_visits,
+            findings,
+        ) {
+            return;
+        }
+        let dependencies =
+            dependency_owners(package_id, self.metadata, self.packages);
+        analyze_file(
+            &syntax,
+            file,
+            package_owner,
+            &dependencies,
+            self.policy,
+            self.profile,
+            findings,
+        );
+    }
+
+    fn parse_file(
+        &self,
+        file: &ClassifiedFile,
+        findings: &mut Findings,
+    ) -> Option<File> {
+        let bytes = match read_bounded(
+            &self.root.join(&file.path),
+            self.limits.source_file_bytes,
+        ) {
             Ok(bytes) => bytes,
             Err(error) => {
                 findings.push(Finding::new(
                     "source",
                     "RUST_SOURCE_READ",
                     Some(display_relative(&file.path)),
-                    error.clone(),
+                    error,
                 ));
-                continue;
+                return None;
             }
         };
         let contents = match std::str::from_utf8(&bytes) {
@@ -99,7 +201,7 @@ pub fn check(
                     Some(display_relative(&file.path)),
                     error.to_string(),
                 ));
-                continue;
+                return None;
             }
         };
         let analysis_digest = crate::digest::bytes(&bytes);
@@ -109,14 +211,19 @@ pub fn check(
                 "RUST_SOURCE_INVENTORY_DRIFT",
                 Some(display_relative(&file.path)),
                 format!(
-                    "profile {profile}: parsed bytes digest {analysis_digest} differs from inventory {}",
-                    file.content_digest
+                    concat!(
+                        "profile {}: parsed bytes digest {analysis_digest} ",
+                        "differs from inventory {}"
+                    ),
+                    self.profile,
+                    file.content_digest,
+                    analysis_digest = analysis_digest
                 ),
             ));
-            continue;
+            return None;
         }
-        let syntax = match syn::parse_file(contents) {
-            Ok(syntax) => syntax,
+        match syn::parse_file(contents) {
+            Ok(syntax) => Some(syntax),
             Err(error) => {
                 findings.push(Finding::new(
                     "source",
@@ -124,11 +231,19 @@ pub fn check(
                     Some(display_relative(&file.path)),
                     error.to_string(),
                 ));
-                continue;
+                None
             }
-        };
+        }
+    }
+
+    fn check_syntax(
+        &self,
+        file: &ClassifiedFile,
+        syntax: &File,
+        findings: &mut Findings,
+    ) {
         let mut freestanding = FreestandingVisitor { found: false };
-        freestanding.visit_file(&syntax);
+        freestanding.visit_file(syntax);
         if freestanding.found {
             findings.push(Finding::new(
                 "retired_surface",
@@ -137,11 +252,11 @@ pub fn check(
                 "every first-party Rust file forbids no_std and no_main",
             ));
         }
-        if target_roots.contains(&file.path) {
-            validate_crate_attributes(&syntax, &file.path, &mut findings);
+        if self.target_roots.contains(&file.path) {
+            validate_crate_attributes(syntax, &file.path, findings);
         }
         let mut unsafe_syntax = UnsafeVisitor { found: false };
-        unsafe_syntax.visit_file(&syntax);
+        unsafe_syntax.visit_file(syntax);
         if unsafe_syntax.found {
             findings.push(Finding::new(
                 "safety",
@@ -151,33 +266,35 @@ pub fn check(
             ));
         }
         IncludeVisitor {
-            root,
+            root: self.root,
             source_path: &file.path,
             source_classification: file.classification,
-            inventory: &inventory,
-            file_byte_limit: limits.source_file_bytes,
-            findings: &mut findings,
+            inventory: self.inventory,
+            file_byte_limit: self.limits.source_file_bytes,
+            findings,
         }
-        .visit_file(&syntax);
-        let mut counter =
-            NodeCounter { count: 0, limit: limits.syntax_item_expr_type_visits, exceeded: false };
-        counter.visit_file(&syntax);
-        if counter.exceeded {
-            findings.push(Finding::new(
-                "limits",
-                "AST_NODE_LIMIT",
-                Some(display_relative(&file.path)),
-                format!(
-                    "selected item/expression/type visits exceed {}",
-                    limits.syntax_item_expr_type_visits
-                ),
-            ));
-            continue;
-        }
-        let dependencies = dependency_owners(package_id, metadata, &packages);
-        analyze_file(&syntax, file, package_owner, &dependencies, policy, profile, &mut findings);
+        .visit_file(syntax);
     }
-    findings.finish()
+}
+
+fn syntax_within_limit(
+    syntax: &File,
+    path: &Path,
+    limit: usize,
+    findings: &mut Findings,
+) -> bool {
+    let mut counter = NodeCounter { count: 0, limit, exceeded: false };
+    counter.visit_file(syntax);
+    if !counter.exceeded {
+        return true;
+    }
+    findings.push(Finding::new(
+        "limits",
+        "AST_NODE_LIMIT",
+        Some(display_relative(path)),
+        format!("selected item/expression/type visits exceed {limit}"),
+    ));
+    false
 }
 
 fn report_unregistered_source(
@@ -191,7 +308,13 @@ fn report_unregistered_source(
             "source",
             "UNREGISTERED_RUST_SOURCE",
             Some(display_relative(path)),
-            format!("profile {profile}: Rust file is not a Cargo target root or reachable module"),
+            format!(
+                concat!(
+                    "profile {profile}: Rust file is not a Cargo target root ",
+                    "or reachable module"
+                ),
+                profile = profile
+            ),
         ));
     }
 }
@@ -204,72 +327,127 @@ fn resolve_module_sources(
     profile: &str,
     findings: &mut Findings,
 ) -> BTreeMap<PathBuf, BTreeSet<SourceUse>> {
-    let inventory = files.iter().map(|file| (file.path.clone(), file)).collect::<BTreeMap<_, _>>();
+    let inventory = files
+        .iter()
+        .map(|file| (file.path.clone(), file))
+        .collect::<BTreeMap<_, _>>();
     let mut selected = BTreeMap::<PathBuf, BTreeSet<SourceUse>>::new();
     let mut processed = BTreeSet::new();
     let mut pending = target_uses
         .iter()
-        .flat_map(|(path, uses)| uses.iter().map(|source_use| (path.clone(), *source_use)))
+        .flat_map(|(path, uses)| {
+            uses.iter().map(|source_use| (path.clone(), *source_use))
+        })
         .collect::<Vec<_>>();
+    let resolver = ModuleResolver {
+        root,
+        target_uses,
+        inventory: &inventory,
+        limits,
+        profile,
+    };
     while let Some((path, source_use)) = pending.pop() {
         selected.entry(path.clone()).or_default().insert(source_use);
         if !processed.insert((path.clone(), source_use)) {
             continue;
         }
-        let Some(file) = inventory.get(&path) else {
+        resolver.resolve(&path, source_use, &mut pending, findings);
+    }
+    validate_selected_source_uses(&selected, &inventory, profile, findings);
+    selected
+}
+
+struct ModuleResolver<'a> {
+    root: &'a Path,
+    target_uses: &'a BTreeMap<PathBuf, BTreeSet<SourceUse>>,
+    inventory: &'a BTreeMap<PathBuf, &'a ClassifiedFile>,
+    limits: Limits,
+    profile: &'a str,
+}
+
+impl ModuleResolver<'_> {
+    fn resolve(
+        &self,
+        path: &Path,
+        source_use: SourceUse,
+        pending: &mut Vec<(PathBuf, SourceUse)>,
+        findings: &mut Findings,
+    ) {
+        let Some(file) = self.inventory.get(path) else {
             findings.push(Finding::new(
                 "source",
                 "MODULE_SOURCE_UNCLASSIFIED",
-                Some(display_relative(&path)),
-                format!("profile {profile}: target/module source is absent from inventory"),
+                Some(display_relative(path)),
+                format!(
+                    "profile {}: target/module source is absent from inventory",
+                    self.profile
+                ),
             ));
-            continue;
+            return;
         };
-        let bytes = match read_bounded(&root.join(&path), limits.source_file_bytes) {
-            Ok(bytes) if crate::digest::bytes(&bytes) == file.content_digest => bytes,
+        let bytes = match read_bounded(
+            &self.root.join(path),
+            self.limits.source_file_bytes,
+        ) {
+            Ok(bytes)
+                if crate::digest::bytes(&bytes) == file.content_digest =>
+            {
+                bytes
+            }
             Ok(_) => {
                 findings.push(Finding::new(
                     "source",
                     "MODULE_SOURCE_INVENTORY_DRIFT",
-                    Some(display_relative(&path)),
+                    Some(display_relative(path)),
                     "module resolver bytes differ from inventory",
                 ));
-                continue;
+                return;
             }
             Err(error) => {
                 findings.push(Finding::new(
                     "source",
                     "MODULE_SOURCE_READ",
-                    Some(display_relative(&path)),
+                    Some(display_relative(path)),
                     error,
                 ));
-                continue;
+                return;
             }
         };
-        let Some(syntax) =
-            std::str::from_utf8(&bytes).ok().and_then(|text| syn::parse_file(text).ok())
+        let Some(syntax) = std::str::from_utf8(&bytes)
+            .ok()
+            .and_then(|text| syn::parse_file(text).ok())
         else {
-            continue;
+            return;
         };
-        let parent = path.parent().unwrap_or_else(|| Path::new(""));
-        let base = if target_uses.contains_key(&path)
-            || path.file_name().is_some_and(|name| name == "mod.rs")
-        {
-            parent.to_path_buf()
-        } else {
-            parent.join(path.file_stem().unwrap_or_default())
-        };
+        let base = module_base(path, self.target_uses.contains_key(path));
         collect_external_modules(
             &syntax.items,
             &base,
-            &inventory,
-            profile,
+            self.inventory,
+            self.profile,
             source_use,
-            &mut pending,
+            pending,
             findings,
         );
     }
-    for (path, uses) in &selected {
+}
+
+fn module_base(path: &Path, target_root: bool) -> PathBuf {
+    let parent = path.parent().unwrap_or_else(|| Path::new(""));
+    if target_root || path.file_name().is_some_and(|name| name == "mod.rs") {
+        parent.to_path_buf()
+    } else {
+        parent.join(path.file_stem().unwrap_or_default())
+    }
+}
+
+fn validate_selected_source_uses(
+    selected: &BTreeMap<PathBuf, BTreeSet<SourceUse>>,
+    inventory: &BTreeMap<PathBuf, &ClassifiedFile>,
+    profile: &str,
+    findings: &mut Findings,
+) {
+    for (path, uses) in selected {
         let Some(file) = inventory.get(path) else { continue };
         let expected = if uses.contains(&SourceUse::Tool) {
             Some(SourceUse::Tool)
@@ -281,24 +459,33 @@ fn resolve_module_sources(
                 "MODULE_SOURCE_USE_AMBIGUOUS",
                 Some(display_relative(path)),
                 format!(
-                    "profile {profile}: a module shared only by Test and Example targets has no single effective use"
+                    concat!(
+                        "profile {profile}: a module shared only by Test and ",
+                        "Example targets has no single effective use"
+                    ),
+                    profile = profile
                 ),
             ));
             None
         };
-        if expected.is_some_and(|expected| file.classification.source_use != expected) {
+        if expected
+            .is_some_and(|expected| file.classification.source_use != expected)
+        {
             findings.push(Finding::new(
                 "classification",
                 "MODULE_SOURCE_CLASSIFICATION",
                 Some(display_relative(path)),
                 format!(
-                    "profile {profile}: module reachability requires source use {}",
-                    expected.expect("checked above").as_str()
+                    concat!(
+                        "profile {profile}: module reachability requires ",
+                        "source use {}"
+                    ),
+                    expected.expect("checked above").as_str(),
+                    profile = profile
                 ),
             ));
         }
     }
-    selected
 }
 
 fn collect_external_modules(
@@ -317,7 +504,13 @@ fn collect_external_modules(
                 "source",
                 "UNSUPPORTED_PATH_MODULE",
                 None,
-                format!("profile {profile}: #[path] module resolution is not admitted"),
+                format!(
+                    concat!(
+                        "profile {profile}: #[path] module resolution is not ",
+                        "admitted"
+                    ),
+                    profile = profile
+                ),
             ));
             continue;
         }
@@ -334,23 +527,38 @@ fn collect_external_modules(
             );
             continue;
         }
-        let candidates = [base.join(format!("{name}.rs")), base.join(&name).join("mod.rs")]
-            .into_iter()
-            .filter(|candidate| inventory.contains_key(candidate))
-            .collect::<Vec<_>>();
+        let candidates =
+            [base.join(format!("{name}.rs")), base.join(&name).join("mod.rs")]
+                .into_iter()
+                .filter(|candidate| inventory.contains_key(candidate))
+                .collect::<Vec<_>>();
         match candidates.as_slice() {
             [candidate] => pending.push((candidate.clone(), source_use)),
             [] => findings.push(Finding::new(
                 "source",
                 "MODULE_SOURCE_MISSING",
                 None,
-                format!("profile {profile}: external module {name} has no inventoried source"),
+                format!(
+                    concat!(
+                        "profile {profile}: external module {name} has no ",
+                        "inventoried source"
+                    ),
+                    profile = profile,
+                    name = name
+                ),
             )),
             _ => findings.push(Finding::new(
                 "source",
                 "MODULE_SOURCE_AMBIGUOUS",
                 None,
-                format!("profile {profile}: external module {name} has two candidate sources"),
+                format!(
+                    concat!(
+                        "profile {profile}: external module {name} has two ",
+                        "candidate sources"
+                    ),
+                    profile = profile,
+                    name = name
+                ),
             )),
         }
     }
@@ -360,7 +568,9 @@ fn module_attribute_overrides_path(attribute: &Attribute) -> bool {
     attribute.path().is_ident("path")
         || (attribute.path().is_ident("cfg_attr")
             && match &attribute.meta {
-                syn::Meta::List(list) => token_display_has_word(&list.tokens.to_string(), "path"),
+                syn::Meta::List(list) => {
+                    token_display_has_word(&list.tokens.to_string(), "path")
+                }
                 _ => false,
             })
 }
@@ -371,7 +581,8 @@ struct FreestandingVisitor {
 
 impl<'ast> Visit<'ast> for FreestandingVisitor {
     fn visit_attribute(&mut self, attribute: &'ast Attribute) {
-        self.found |= attribute.path().is_ident("no_std") || attribute.path().is_ident("no_main");
+        self.found |= attribute.path().is_ident("no_std")
+            || attribute.path().is_ident("no_main");
         if let syn::Meta::List(list) = &attribute.meta {
             let tokens = list.tokens.to_string();
             self.found |= token_display_has_word(&tokens, "no_std")
@@ -382,19 +593,30 @@ impl<'ast> Visit<'ast> for FreestandingVisitor {
 
     fn visit_macro(&mut self, item: &'ast syn::Macro) {
         let tokens = item.tokens.to_string();
-        self.found |=
-            token_display_has_word(&tokens, "no_std") || token_display_has_word(&tokens, "no_main");
+        self.found |= token_display_has_word(&tokens, "no_std")
+            || token_display_has_word(&tokens, "no_main");
         visit::visit_macro(self, item);
     }
 }
 
-fn reject_build_output(file: &ClassifiedFile, profile: &str, findings: &mut Findings) -> bool {
-    if file.classification.source_use == reovim_depgraph::SourceUse::BuildOutput {
+fn reject_build_output(
+    file: &ClassifiedFile,
+    profile: &str,
+    findings: &mut Findings,
+) -> bool {
+    if file.classification.source_use == reovim_depgraph::SourceUse::BuildOutput
+    {
         findings.push(Finding::new(
             "source",
             "RUST_SOURCE_BUILD_OUTPUT",
             Some(display_relative(&file.path)),
-            format!("profile {profile}: Rust source cannot be admitted as BuildOutput"),
+            format!(
+                concat!(
+                    "profile {profile}: Rust source cannot be admitted as ",
+                    "BuildOutput"
+                ),
+                profile = profile
+            ),
         ));
         true
     } else {
@@ -402,14 +624,20 @@ fn reject_build_output(file: &ClassifiedFile, profile: &str, findings: &mut Find
     }
 }
 
-fn validate_crate_attributes(syntax: &File, path: &Path, findings: &mut Findings) {
+fn validate_crate_attributes(
+    syntax: &File,
+    path: &Path,
+    findings: &mut Findings,
+) {
     let has_forbid_unsafe = syntax.attrs.iter().any(|attribute| {
         attribute.path().is_ident("forbid")
             && match &attribute.meta {
                 syn::Meta::List(list) => list
                     .tokens
                     .to_string()
-                    .split(|character: char| character == ',' || character.is_whitespace())
+                    .split(|character: char| {
+                        character == ',' || character.is_whitespace()
+                    })
                     .any(|token| token == "unsafe_code"),
                 _ => false,
             }
@@ -419,7 +647,10 @@ fn validate_crate_attributes(syntax: &File, path: &Path, findings: &mut Findings
             "safety",
             "TARGET_FORBID_UNSAFE_MISSING",
             Some(display_relative(path)),
-            "every first-party Rust target root requires #![forbid(unsafe_code)]",
+            concat!(
+                "every first-party Rust target root requires ",
+                "#![forbid(unsafe_code)]"
+            ),
         ));
     }
 }
@@ -432,13 +663,15 @@ impl<'ast> Visit<'ast> for UnsafeVisitor {
     fn visit_attribute(&mut self, attribute: &'ast Attribute) {
         self.found |= attribute.path().is_ident("unsafe");
         if let syn::Meta::List(list) = &attribute.meta {
-            self.found |= token_display_has_word(&list.tokens.to_string(), "unsafe");
+            self.found |=
+                token_display_has_word(&list.tokens.to_string(), "unsafe");
         }
         visit::visit_attribute(self, attribute);
     }
 
     fn visit_macro(&mut self, item: &'ast syn::Macro) {
-        self.found |= token_display_has_word(&item.tokens.to_string(), "unsafe");
+        self.found |=
+            token_display_has_word(&item.tokens.to_string(), "unsafe");
         visit::visit_macro(self, item);
     }
 
@@ -509,40 +742,58 @@ struct IncludeVisitor<'a, 'b> {
 
 impl IncludeVisitor<'_, '_> {
     fn check(&mut self, item: &syn::Macro) {
-        let name = item.path.segments.last().map(|segment| segment.ident.to_string());
-        if name.as_deref().is_some_and(include_name) && item.path.segments.len() != 1 {
+        let name =
+            item.path.segments.last().map(|segment| segment.ident.to_string());
+        if name.as_deref().is_some_and(include_name)
+            && item.path.segments.len() != 1
+        {
             self.findings.push(Finding::new(
                 "source",
                 "INCLUDE_QUALIFIED_PROOF_UNAVAILABLE",
                 Some(display_relative(self.source_path)),
-                "qualified include macro paths are not admitted as Rust built-ins in v1",
+                concat!(
+                    "qualified include macro paths are not admitted as Rust ",
+                    "built-ins in v1"
+                ),
             ));
             return;
         }
-        if name.as_deref() == Some("include") {
-            self.findings.push(Finding::new(
+        match name.as_deref() {
+            Some("include") => self.findings.push(Finding::new(
                 "source",
                 "INCLUDE_RUST_PROOF_UNAVAILABLE",
                 Some(display_relative(self.source_path)),
-                "include! source expansion is not admitted by the v1 syntax checker",
-            ));
-            return;
-        }
-        if !matches!(name.as_deref(), Some("include_str" | "include_bytes")) {
-            let tokens = item.tokens.to_string();
-            if ["include", "include_str", "include_bytes"]
-                .into_iter()
-                .any(|word| token_display_has_word(&tokens, word))
-            {
-                self.findings.push(Finding::new(
-                    "source",
-                    "INCLUDE_MACRO_PROOF_UNAVAILABLE",
-                    Some(display_relative(self.source_path)),
-                    "include tokens nested inside another macro cannot be resolved structurally",
-                ));
+                concat!(
+                    "include! source expansion is not admitted by the v1 ",
+                    "syntax checker"
+                ),
+            )),
+            Some("include_str" | "include_bytes") => {
+                self.check_literal_include(item);
             }
-            return;
+            _ => self.check_nested_include(item),
         }
+    }
+
+    fn check_nested_include(&mut self, item: &syn::Macro) {
+        let tokens = item.tokens.to_string();
+        let contains_include = ["include", "include_str", "include_bytes"]
+            .into_iter()
+            .any(|word| token_display_has_word(&tokens, word));
+        if contains_include {
+            self.findings.push(Finding::new(
+                "source",
+                "INCLUDE_MACRO_PROOF_UNAVAILABLE",
+                Some(display_relative(self.source_path)),
+                concat!(
+                    "include tokens nested inside another macro cannot be ",
+                    "resolved structurally"
+                ),
+            ));
+        }
+    }
+
+    fn check_literal_include(&mut self, item: &syn::Macro) {
         let Ok(literal) = item.parse_body::<syn::LitStr>() else {
             self.findings.push(Finding::new(
                 "source",
@@ -577,34 +828,57 @@ impl IncludeVisitor<'_, '_> {
             ));
             return;
         };
-        if classified.classification.owner != SourceOwner::RepositoryTooling
-            || !include_use_compatible(
+        self.check_include_classification(&target, classified);
+        self.check_include_bytes(&target, classified);
+    }
+
+    fn check_include_classification(
+        &mut self,
+        target: &Path,
+        classified: &ClassifiedFile,
+    ) {
+        let compatible = classified.classification.owner
+            == SourceOwner::RepositoryTooling
+            && include_use_compatible(
                 self.source_classification.source_use,
                 classified.classification.source_use,
-            )
-        {
-            self.findings.push(Finding::new(
-                "source",
-                "INCLUDE_TARGET_CLASSIFICATION",
-                Some(display_relative(&target)),
-                format!(
-                    "included input is incompatible with RepositoryTooling consumer use {}",
-                    self.source_classification.source_use.as_str()
-                ),
-            ));
+            );
+        if compatible {
+            return;
         }
-        match read_bounded(&self.root.join(&target), self.file_byte_limit) {
-            Ok(bytes) if crate::digest::bytes(&bytes) == classified.content_digest => {}
+        self.findings.push(Finding::new(
+            "source",
+            "INCLUDE_TARGET_CLASSIFICATION",
+            Some(display_relative(target)),
+            format!(
+                concat!(
+                    "included input is incompatible with RepositoryTooling ",
+                    "consumer use {}"
+                ),
+                self.source_classification.source_use.as_str()
+            ),
+        ));
+    }
+
+    fn check_include_bytes(
+        &mut self,
+        target: &Path,
+        classified: &ClassifiedFile,
+    ) {
+        match read_bounded(&self.root.join(target), self.file_byte_limit) {
+            Ok(bytes)
+                if crate::digest::bytes(&bytes)
+                    == classified.content_digest => {}
             Ok(_) => self.findings.push(Finding::new(
                 "source",
                 "INCLUDE_TARGET_INVENTORY_DRIFT",
-                Some(display_relative(&target)),
+                Some(display_relative(target)),
                 "included bytes differ from the classified inventory digest",
             )),
             Err(error) => self.findings.push(Finding::new(
                 "source",
                 "INCLUDE_TARGET_READ",
-                Some(display_relative(&target)),
+                Some(display_relative(target)),
                 error,
             )),
         }
@@ -615,7 +889,9 @@ const fn include_use_compatible(consumer: SourceUse, input: SourceUse) -> bool {
     match consumer {
         SourceUse::Tool => matches!(input, SourceUse::Tool),
         SourceUse::Test => matches!(input, SourceUse::Tool | SourceUse::Test),
-        SourceUse::Example => matches!(input, SourceUse::Tool | SourceUse::Example),
+        SourceUse::Example => {
+            matches!(input, SourceUse::Tool | SourceUse::Example)
+        }
         SourceUse::Production | SourceUse::BuildOutput => false,
     }
 }
@@ -639,14 +915,21 @@ impl<'ast> Visit<'ast> for IncludeVisitor<'_, '_> {
                 "source",
                 "INCLUDE_ALIAS_PROOF_UNAVAILABLE",
                 Some(display_relative(self.source_path)),
-                "renamed include macros cannot be proven to use a classified literal input",
+                concat!(
+                    "renamed include macros cannot be proven to use a ",
+                    "classified literal input"
+                ),
             ));
         }
         visit::visit_item_use(self, item);
     }
 
     fn visit_item_macro(&mut self, item: &'ast syn::ItemMacro) {
-        if item.ident.as_ref().is_some_and(|ident| include_name(&ident.to_string())) {
+        if item
+            .ident
+            .as_ref()
+            .is_some_and(|ident| include_name(&ident.to_string()))
+        {
             self.findings.push(Finding::new(
                 "source",
                 "INCLUDE_ALIAS_PROOF_UNAVAILABLE",
@@ -672,23 +955,32 @@ fn include_alias(tree: &UseTree) -> bool {
         UseTree::Path(path) => include_alias(&path.tree),
         UseTree::Group(group) => group.items.iter().any(include_alias),
         UseTree::Rename(rename) => {
-            include_name(&rename.ident.to_string()) || include_name(&rename.rename.to_string())
+            include_name(&rename.ident.to_string())
+                || include_name(&rename.rename.to_string())
         }
         UseTree::Name(name) => include_name(&name.ident.to_string()),
         UseTree::Glob(_) => true,
     }
 }
 
-fn resolve_include_path(source_path: &Path, literal: &str) -> Result<PathBuf, String> {
+fn resolve_include_path(
+    source_path: &Path,
+    literal: &str,
+) -> Result<PathBuf, String> {
     if literal.is_empty()
         || literal.contains(['\\', '\0'])
         || literal.as_bytes().get(1) == Some(&b':')
     {
-        return Err("include path is empty or uses a non-portable path form".to_owned());
+        return Err(
+            "include path is empty or uses a non-portable path form".to_owned()
+        );
     }
     let literal = Path::new(literal);
     if literal.is_absolute() {
-        return Err("absolute include paths are outside the repository contract".to_owned());
+        return Err(
+            "absolute include paths are outside the repository contract"
+                .to_owned(),
+        );
     }
     let mut output = source_path
         .parent()
@@ -701,14 +993,20 @@ fn resolve_include_path(source_path: &Path, literal: &str) -> Result<PathBuf, St
         .collect::<Vec<_>>();
     for component in literal.components() {
         match component {
-            std::path::Component::Normal(value) => output.push(value.to_os_string()),
+            std::path::Component::Normal(value) => {
+                output.push(value.to_os_string());
+            }
             std::path::Component::CurDir => {}
             std::path::Component::ParentDir if output.pop().is_some() => {}
             std::path::Component::ParentDir => {
-                return Err("include path escapes the repository root".to_owned());
+                return Err(
+                    "include path escapes the repository root".to_owned()
+                );
             }
             std::path::Component::RootDir | std::path::Component::Prefix(_) => {
-                return Err("include path is not repository-relative".to_owned());
+                return Err(
+                    "include path is not repository-relative".to_owned()
+                );
             }
         }
     }
@@ -722,56 +1020,87 @@ fn token_display_has_word(input: &str, expected: &str) -> bool {
     let bytes = input.as_bytes();
     let mut cursor = 0;
     while cursor < bytes.len() {
-        if let Some(end) = raw_string_end(bytes, cursor) {
-            cursor = end;
-            continue;
-        }
-        if matches!(bytes[cursor], b'"' | b'\'') {
-            let quote = bytes[cursor];
-            if quote == b'\''
-                && bytes
-                    .get(cursor + 1)
-                    .is_some_and(|byte| byte.is_ascii_alphanumeric() || *byte == b'_')
-            {
-                let mut end = cursor + 2;
-                while bytes
-                    .get(end)
-                    .is_some_and(|byte| byte.is_ascii_alphanumeric() || *byte == b'_')
-                {
-                    end += 1;
-                }
-                if bytes.get(end) != Some(&b'\'') {
-                    cursor += 1;
-                    continue;
-                }
-            }
-            cursor += 1;
-            while cursor < bytes.len() {
-                if bytes[cursor] == b'\\' {
-                    cursor = cursor.saturating_add(2);
-                } else if bytes[cursor] == quote {
-                    cursor += 1;
-                    break;
-                } else {
-                    cursor += 1;
-                }
-            }
-        } else if bytes[cursor].is_ascii_alphabetic() || bytes[cursor] == b'_' {
-            let start = cursor;
-            cursor += 1;
-            while cursor < bytes.len()
-                && (bytes[cursor].is_ascii_alphanumeric() || bytes[cursor] == b'_')
-            {
-                cursor += 1;
-            }
-            if &bytes[start..cursor] == expected.as_bytes() {
-                return true;
-            }
-        } else {
-            cursor += 1;
+        match scan_display_token(bytes, cursor, expected) {
+            DisplayToken::Found => return true,
+            DisplayToken::Next(next) => cursor = next,
         }
     }
     false
+}
+
+enum DisplayToken {
+    Found,
+    Next(usize),
+}
+
+fn scan_display_token(
+    bytes: &[u8],
+    cursor: usize,
+    expected: &str,
+) -> DisplayToken {
+    if let Some(end) = raw_string_end(bytes, cursor) {
+        return DisplayToken::Next(end);
+    }
+    if matches!(bytes[cursor], b'"' | b'\'') {
+        let next = quoted_display_token_end(bytes, cursor)
+            .unwrap_or_else(|| cursor.saturating_add(1));
+        return DisplayToken::Next(next);
+    }
+    if !rust_identifier_start(bytes[cursor]) {
+        return DisplayToken::Next(cursor.saturating_add(1));
+    }
+    let end = rust_identifier_end(bytes, cursor);
+    if &bytes[cursor..end] == expected.as_bytes() {
+        DisplayToken::Found
+    } else {
+        DisplayToken::Next(end)
+    }
+}
+
+fn quoted_display_token_end(bytes: &[u8], start: usize) -> Option<usize> {
+    let quote = bytes[start];
+    if quote == b'\'' && lifetime_without_closing_quote(bytes, start) {
+        return None;
+    }
+    let mut cursor = start.saturating_add(1);
+    while cursor < bytes.len() {
+        if bytes[cursor] == b'\\' {
+            cursor = cursor.saturating_add(2);
+            continue;
+        }
+        if bytes[cursor] == quote {
+            return Some(cursor.saturating_add(1));
+        }
+        cursor += 1;
+    }
+    Some(bytes.len())
+}
+
+fn lifetime_without_closing_quote(bytes: &[u8], start: usize) -> bool {
+    let Some(next) = bytes.get(start.saturating_add(1)).copied() else {
+        return false;
+    };
+    if !rust_identifier_continue(next) {
+        return false;
+    }
+    let end = rust_identifier_end(bytes, start.saturating_add(1));
+    bytes.get(end) != Some(&b'\'')
+}
+
+const fn rust_identifier_start(byte: u8) -> bool {
+    byte.is_ascii_alphabetic() || byte == b'_'
+}
+
+const fn rust_identifier_continue(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_'
+}
+
+fn rust_identifier_end(bytes: &[u8], start: usize) -> usize {
+    let mut cursor = start.saturating_add(1);
+    while bytes.get(cursor).copied().is_some_and(rust_identifier_continue) {
+        cursor += 1;
+    }
+    cursor
 }
 
 fn raw_string_end(bytes: &[u8], start: usize) -> Option<usize> {
@@ -794,7 +1123,8 @@ fn raw_string_end(bytes: &[u8], start: usize) -> Option<usize> {
     cursor += 1;
     while cursor < bytes.len() {
         if bytes[cursor] == b'"'
-            && (0..hashes).all(|offset| bytes.get(cursor + 1 + offset) == Some(&b'#'))
+            && (0..hashes)
+                .all(|offset| bytes.get(cursor + 1 + offset) == Some(&b'#'))
         {
             return Some(cursor + 1 + hashes);
         }
@@ -821,7 +1151,10 @@ fn workspace_packages(
             let package = metadata.packages.get(id)?;
             let manifest = package.manifest_path.canonicalize().ok()?;
             let relative = manifest.strip_prefix(root).ok()?;
-            let directory = relative.parent().unwrap_or_else(|| Path::new("")).to_path_buf();
+            let directory = relative
+                .parent()
+                .unwrap_or_else(|| Path::new(""))
+                .to_path_buf();
             let owners = files
                 .iter()
                 .filter(|file| file.path.starts_with(&directory))
@@ -840,7 +1173,9 @@ fn package_for<'a>(
 ) -> Option<(&'a str, SourceOwner)> {
     packages
         .iter()
-        .filter(|(_, package)| path.starts_with(&package.directory) && package.owners.len() == 1)
+        .filter(|(_, package)| {
+            path.starts_with(&package.directory) && package.owners.len() == 1
+        })
         .max_by_key(|(_, package)| package.directory.components().count())
         .map(|(id, package)| (id.as_str(), package.owners[0]))
 }
@@ -856,9 +1191,9 @@ fn dependency_owners(
         .into_iter()
         .flat_map(|node| &node.dependencies)
         .filter_map(|dependency| {
-            packages
-                .get(&dependency.package)
-                .map(|package| (dependency.name.clone(), package.owners.clone()))
+            packages.get(&dependency.package).map(|package| {
+                (dependency.name.clone(), package.owners.clone())
+            })
         })
         .collect()
 }
@@ -874,20 +1209,18 @@ fn analyze_file(
 ) {
     let product = matches!(owner, SourceOwner::Product(_));
     let path = display_relative(&file.path);
+    let boundary = BoundaryContext {
+        consumer: owner,
+        dependencies,
+        policy,
+        profile,
+        path: &path,
+    };
     let mut imports = Vec::new();
     let mut aliases = BTreeMap::new();
     collect_imports(&syntax.items, &mut imports, &mut aliases);
     for import in imports {
-        check_boundary(
-            "SOURCE_IMPORT",
-            &import,
-            owner,
-            dependencies,
-            policy,
-            profile,
-            &path,
-            findings,
-        );
+        check_boundary(&boundary, "SOURCE_IMPORT", &import, findings);
     }
     if product {
         let mut gaps = GapVisitor { path: &path, findings };
@@ -895,73 +1228,106 @@ fn analyze_file(
     }
     let mut public_types = Vec::new();
     collect_public_types(&syntax.items, &mut public_types);
-    if file.classification.provenance == SourceProvenance::Generated && !public_types.is_empty() {
+    if file.classification.provenance == SourceProvenance::Generated
+        && !public_types.is_empty()
+    {
         findings.push(Finding::new(
             "public_type",
             "GENERATED_PUBLIC_TYPE_PROOF_GAP",
             Some(path.clone()),
-            "generated source contributes public type syntax that is not resolved after expansion",
+            concat!(
+                "generated source contributes public type syntax that is not ",
+                "resolved after expansion"
+            ),
         ));
     }
     for mut first in public_types {
         if let Some(original) = aliases.get(&first) {
             first.clone_from(original);
         }
-        check_boundary(
-            "PUBLIC_TYPE",
-            &first,
-            owner,
-            dependencies,
-            policy,
-            profile,
-            &path,
-            findings,
-        );
+        check_boundary(&boundary, "PUBLIC_TYPE", &first, findings);
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+struct BoundaryContext<'a> {
+    consumer: SourceOwner,
+    dependencies: &'a BTreeMap<String, Vec<SourceOwner>>,
+    policy: &'a Policy,
+    profile: &'a str,
+    path: &'a str,
+}
+
 fn check_boundary(
+    context: &BoundaryContext<'_>,
     prefix: &'static str,
     first_segment: &str,
-    consumer: SourceOwner,
-    dependencies: &BTreeMap<String, Vec<SourceOwner>>,
-    policy: &Policy,
-    profile: &str,
-    path: &str,
     findings: &mut Findings,
 ) {
-    let Some(providers) = dependencies.get(first_segment) else { return };
+    let Some(providers) = context.dependencies.get(first_segment) else {
+        return;
+    };
     for provider in providers {
-        let code = match (consumer, *provider) {
-            (SourceOwner::RepositoryTooling, SourceOwner::RepositoryTooling) => continue,
-            (SourceOwner::Product(left), SourceOwner::Product(right)) if left == right => continue,
-            (SourceOwner::Product(left), SourceOwner::Product(right))
-                if policy.allowed_product_edges.contains(&(left, right)) =>
-            {
-                continue;
-            }
-            (SourceOwner::Product(_), SourceOwner::Product(_)) => {
-                if prefix == "PUBLIC_TYPE" {
-                    "PUBLIC_TYPE_PRODUCT_EDGE"
-                } else {
-                    "SOURCE_IMPORT_PRODUCT_EDGE"
-                }
-            }
-            _ => {
-                if prefix == "PUBLIC_TYPE" {
-                    "PUBLIC_TYPE_PARTITION"
-                } else {
-                    "SOURCE_IMPORT_PARTITION"
-                }
-            }
+        let Some(code) =
+            boundary_code(prefix, context.consumer, *provider, context.policy)
+        else {
+            continue;
         };
         findings.push(Finding::new(
-            if prefix == "PUBLIC_TYPE" { "public_type" } else { "source" },
+            boundary_category(prefix),
             code,
-            Some(path.to_owned()),
-            format!("profile {profile}: {first_segment} crosses {consumer} -> {provider}"),
+            Some(context.path.to_owned()),
+            format!(
+                "profile {}: {first_segment} crosses {} -> {provider}",
+                context.profile, context.consumer
+            ),
         ));
+    }
+}
+
+fn boundary_code(
+    prefix: &str,
+    consumer: SourceOwner,
+    provider: SourceOwner,
+    policy: &Policy,
+) -> Option<&'static str> {
+    match (consumer, provider) {
+        (SourceOwner::RepositoryTooling, SourceOwner::RepositoryTooling) => {
+            None
+        }
+        (SourceOwner::Product(left), SourceOwner::Product(right))
+            if left == right =>
+        {
+            None
+        }
+        (SourceOwner::Product(left), SourceOwner::Product(right))
+            if policy.allowed_product_edges.contains(&(left, right)) =>
+        {
+            None
+        }
+        (SourceOwner::Product(_), SourceOwner::Product(_)) => {
+            Some(product_edge_code(prefix))
+        }
+        _ => Some(partition_code(prefix)),
+    }
+}
+
+fn boundary_category(prefix: &str) -> &'static str {
+    if prefix == "PUBLIC_TYPE" { "public_type" } else { "source" }
+}
+
+fn product_edge_code(prefix: &str) -> &'static str {
+    if prefix == "PUBLIC_TYPE" {
+        "PUBLIC_TYPE_PRODUCT_EDGE"
+    } else {
+        "SOURCE_IMPORT_PRODUCT_EDGE"
+    }
+}
+
+fn partition_code(prefix: &str) -> &'static str {
+    if prefix == "PUBLIC_TYPE" {
+        "PUBLIC_TYPE_PARTITION"
+    } else {
+        "SOURCE_IMPORT_PARTITION"
     }
 }
 
@@ -971,22 +1337,30 @@ fn collect_imports(
     aliases: &mut BTreeMap<String, String>,
 ) {
     for item in items {
-        match item {
-            Item::Use(item) => flatten_use(&item.tree, None, imports, aliases),
-            Item::ExternCrate(item) => {
-                let original = item.ident.to_string();
-                imports.push(original.clone());
-                if let Some((_, rename)) = &item.rename {
-                    aliases.insert(rename.to_string(), original);
-                }
+        collect_item_imports(item, imports, aliases);
+    }
+}
+
+fn collect_item_imports(
+    item: &Item,
+    imports: &mut Vec<String>,
+    aliases: &mut BTreeMap<String, String>,
+) {
+    match item {
+        Item::Use(item) => flatten_use(&item.tree, None, imports, aliases),
+        Item::ExternCrate(item) => {
+            let original = item.ident.to_string();
+            imports.push(original.clone());
+            if let Some((_, rename)) = &item.rename {
+                aliases.insert(rename.to_string(), original);
             }
-            Item::Mod(item) => {
-                if let Some((_, nested)) = &item.content {
-                    collect_imports(nested, imports, aliases);
-                }
-            }
-            _ => {}
         }
+        Item::Mod(item) => {
+            if let Some((_, nested)) = &item.content {
+                collect_imports(nested, imports, aliases);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -1001,7 +1375,9 @@ fn flatten_use(
             let first = first.unwrap_or_else(|| path.ident.to_string());
             flatten_use(&path.tree, Some(first), imports, aliases);
         }
-        UseTree::Name(name) => imports.push(first.unwrap_or_else(|| name.ident.to_string())),
+        UseTree::Name(name) => {
+            imports.push(first.unwrap_or_else(|| name.ident.to_string()));
+        }
         UseTree::Rename(rename) => {
             let original = first.unwrap_or_else(|| rename.ident.to_string());
             aliases.insert(rename.rename.to_string(), original.clone());
@@ -1022,106 +1398,124 @@ fn flatten_use(
 
 fn collect_public_types(items: &[Item], output: &mut Vec<String>) {
     for item in items {
-        match item {
-            Item::Fn(item) if public(&item.vis) => {
-                for argument in &item.sig.inputs {
-                    if let syn::FnArg::Typed(argument) = argument {
-                        collect_type(&argument.ty, output);
-                    }
-                }
-                if let ReturnType::Type(_, ty) = &item.sig.output {
-                    collect_type(ty, output);
-                }
+        collect_public_item_types(item, output);
+    }
+}
+
+fn collect_public_item_types(item: &Item, output: &mut Vec<String>) {
+    match item {
+        Item::Fn(item) if public(&item.vis) => {
+            collect_signature(&item.sig, output);
+        }
+        Item::Struct(item) if public(&item.vis) => {
+            collect_fields(&item.fields, true, output);
+        }
+        Item::Enum(item) if public(&item.vis) => {
+            for variant in &item.variants {
+                collect_fields(&variant.fields, false, output);
             }
-            Item::Struct(item) if public(&item.vis) => {
-                for field in &item.fields {
-                    if public(&field.vis) {
-                        collect_type(&field.ty, output);
-                    }
-                }
+        }
+        Item::Type(item) if public(&item.vis) => {
+            collect_type(&item.ty, output);
+        }
+        Item::Const(item) if public(&item.vis) => {
+            collect_type(&item.ty, output);
+        }
+        Item::Static(item) if public(&item.vis) => {
+            collect_type(&item.ty, output);
+        }
+        Item::Trait(item) if public(&item.vis) => {
+            collect_trait_types(item, output);
+        }
+        Item::Impl(item) => collect_impl_types(item, output),
+        Item::Mod(item) if public(&item.vis) => {
+            if let Some((_, nested)) = &item.content {
+                collect_public_types(nested, output);
             }
-            Item::Enum(item) if public(&item.vis) => {
-                for variant in &item.variants {
-                    for field in &variant.fields {
-                        collect_type(&field.ty, output);
-                    }
-                }
+        }
+        _ => {}
+    }
+}
+
+fn collect_signature(signature: &syn::Signature, output: &mut Vec<String>) {
+    for argument in &signature.inputs {
+        if let syn::FnArg::Typed(argument) = argument {
+            collect_type(&argument.ty, output);
+        }
+    }
+    if let ReturnType::Type(_, ty) = &signature.output {
+        collect_type(ty, output);
+    }
+}
+
+fn collect_fields(
+    fields: &syn::Fields,
+    public_only: bool,
+    output: &mut Vec<String>,
+) {
+    for field in fields {
+        if !public_only || public(&field.vis) {
+            collect_type(&field.ty, output);
+        }
+    }
+}
+
+fn collect_trait_types(item: &syn::ItemTrait, output: &mut Vec<String>) {
+    for supertrait in &item.supertraits {
+        collect_trait_bound(supertrait, output);
+    }
+    for item in &item.items {
+        collect_trait_item_types(item, output);
+    }
+}
+
+fn collect_trait_item_types(item: &syn::TraitItem, output: &mut Vec<String>) {
+    match item {
+        syn::TraitItem::Fn(item) => collect_signature(&item.sig, output),
+        syn::TraitItem::Type(item) => {
+            for bound in &item.bounds {
+                collect_trait_bound(bound, output);
             }
-            Item::Type(item) if public(&item.vis) => collect_type(&item.ty, output),
-            Item::Const(item) if public(&item.vis) => collect_type(&item.ty, output),
-            Item::Static(item) if public(&item.vis) => collect_type(&item.ty, output),
-            Item::Trait(item) if public(&item.vis) => {
-                for supertrait in &item.supertraits {
-                    if let syn::TypeParamBound::Trait(bound) = supertrait
-                        && let Some(segment) = bound.path.segments.first()
-                    {
-                        output.push(segment.ident.to_string());
-                    }
-                }
-                for trait_item in &item.items {
-                    match trait_item {
-                        syn::TraitItem::Fn(item) => {
-                            for argument in &item.sig.inputs {
-                                if let syn::FnArg::Typed(argument) = argument {
-                                    collect_type(&argument.ty, output);
-                                }
-                            }
-                            if let ReturnType::Type(_, ty) = &item.sig.output {
-                                collect_type(ty, output);
-                            }
-                        }
-                        syn::TraitItem::Type(item) => {
-                            for bound in &item.bounds {
-                                if let syn::TypeParamBound::Trait(bound) = bound
-                                    && let Some(segment) = bound.path.segments.first()
-                                {
-                                    output.push(segment.ident.to_string());
-                                }
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            Item::Impl(item) => {
-                for nested in &item.items {
-                    if let ImplItem::Fn(function) = nested
-                        && public(&function.vis)
-                    {
-                        for argument in &function.sig.inputs {
-                            if let syn::FnArg::Typed(argument) = argument {
-                                collect_type(&argument.ty, output);
-                            }
-                        }
-                        if let ReturnType::Type(_, ty) = &function.sig.output {
-                            collect_type(ty, output);
-                        }
-                    }
-                }
-            }
-            Item::Mod(item) if public(&item.vis) => {
-                if let Some((_, nested)) = &item.content {
-                    collect_public_types(nested, output);
-                }
-            }
-            _ => {}
+        }
+        _ => {}
+    }
+}
+
+fn collect_trait_bound(bound: &syn::TypeParamBound, output: &mut Vec<String>) {
+    let syn::TypeParamBound::Trait(bound) = bound else {
+        return;
+    };
+    if let Some(segment) = bound.path.segments.first() {
+        output.push(segment.ident.to_string());
+    }
+}
+
+fn collect_impl_types(item: &syn::ItemImpl, output: &mut Vec<String>) {
+    for item in &item.items {
+        let ImplItem::Fn(function) = item else {
+            continue;
+        };
+        if public(&function.vis) {
+            collect_signature(&function.sig, output);
         }
     }
 }
 
 fn collect_type(ty: &Type, output: &mut Vec<String>) {
-    struct Collector<'a>(&'a mut Vec<String>);
-    impl<'ast> Visit<'ast> for Collector<'_> {
-        fn visit_type_path(&mut self, ty: &'ast syn::TypePath) {
-            if ty.qself.is_none()
-                && let Some(segment) = ty.path.segments.first()
-            {
-                self.0.push(segment.ident.to_string());
-            }
-            visit::visit_type_path(self, ty);
+    TypeCollector(output).visit_type(ty);
+}
+
+struct TypeCollector<'a>(&'a mut Vec<String>);
+
+impl<'ast> Visit<'ast> for TypeCollector<'_> {
+    fn visit_type_path(&mut self, ty: &'ast syn::TypePath) {
+        if ty.qself.is_none()
+            && let Some(segment) = ty.path.segments.first()
+        {
+            self.0.push(segment.ident.to_string());
         }
+        visit::visit_type_path(self, ty);
     }
-    Collector(output).visit_type(ty);
 }
 
 const fn public(visibility: &Visibility) -> bool {
@@ -1135,17 +1529,23 @@ struct GapVisitor<'a, 'b> {
 
 impl GapVisitor<'_, '_> {
     fn attributes(&mut self, attributes: &[Attribute]) {
-        for attribute in attributes {
-            if attribute.path().is_ident("cfg") || attribute.path().is_ident("cfg_attr") {
-                self.findings.push(Finding::new(
-                    "source",
-                    "UNSUPPORTED_CFG_PROOF_GAP",
-                    Some(self.path.to_owned()),
-                    "cfg-dependent product syntax requires expanded source evidence",
-                ));
-            }
+        for _ in attributes.iter().filter(|attribute| cfg_attribute(attribute))
+        {
+            self.findings.push(Finding::new(
+                "source",
+                "UNSUPPORTED_CFG_PROOF_GAP",
+                Some(self.path.to_owned()),
+                concat!(
+                    "cfg-dependent product syntax requires expanded source ",
+                    "evidence"
+                ),
+            ));
         }
     }
+}
+
+fn cfg_attribute(attribute: &Attribute) -> bool {
+    attribute.path().is_ident("cfg") || attribute.path().is_ident("cfg_attr")
 }
 
 impl<'ast> Visit<'ast> for GapVisitor<'_, '_> {
@@ -1187,11 +1587,7 @@ impl<'ast> Visit<'ast> for GapVisitor<'_, '_> {
         if public(&item.vis) {
             self.findings.push(Finding::new(
                 "public_type",
-                if contains_glob(&item.tree) {
-                    "UNSUPPORTED_GLOB_REEXPORT_PROOF_GAP"
-                } else {
-                    "UNSUPPORTED_REEXPORT_PROOF_GAP"
-                },
+                reexport_gap_code(&item.tree),
                 Some(self.path.to_owned()),
                 "public re-export requires resolved-name evidence",
             ));
@@ -1209,6 +1605,14 @@ impl<'ast> Visit<'ast> for GapVisitor<'_, '_> {
             ));
         }
         visit::visit_item_type(self, item);
+    }
+}
+
+fn reexport_gap_code(tree: &UseTree) -> &'static str {
+    if contains_glob(tree) {
+        "UNSUPPORTED_GLOB_REEXPORT_PROOF_GAP"
+    } else {
+        "UNSUPPORTED_REEXPORT_PROOF_GAP"
     }
 }
 
@@ -1268,10 +1672,14 @@ mod tests {
         sync::atomic::{AtomicU64, Ordering},
     };
 
-    use reovim_depgraph::{SourceClassification, SourceOwner, SourceProvenance, SourceUse};
+    use reovim_depgraph::{
+        SourceClassification, SourceOwner, SourceProvenance, SourceUse,
+    };
     use syn::visit::Visit as _;
 
-    use crate::{finding::Findings, source::ClassifiedFile, topology::HARD_LIMITS};
+    use crate::{
+        finding::Findings, source::ClassifiedFile, topology::HARD_LIMITS,
+    };
 
     static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 
@@ -1280,13 +1688,20 @@ mod tests {
     impl TempRoot {
         fn new() -> Self {
             let sequence = NEXT_TEMP.fetch_add(1, Ordering::Relaxed);
-            let path = std::env::temp_dir()
-                .join(format!("reovim-conformance-rust-source-{}-{sequence}", std::process::id()));
+            let path = std::env::temp_dir().join(format!(
+                "reovim-conformance-rust-source-{}-{sequence}",
+                std::process::id()
+            ));
             fs::create_dir(&path).unwrap();
             Self(path)
         }
 
-        fn add(&self, relative: &str, contents: &[u8], source_use: SourceUse) -> ClassifiedFile {
+        fn add(
+            &self,
+            relative: &str,
+            contents: &[u8],
+            source_use: SourceUse,
+        ) -> ClassifiedFile {
             let path = self.0.join(relative);
             fs::create_dir_all(path.parent().unwrap()).unwrap();
             fs::write(&path, contents).unwrap();
@@ -1329,7 +1744,8 @@ include!("generated.rs");
         )
         .unwrap();
         let mut findings = Findings::new(32);
-        super::GapVisitor { path: "src/lib.rs", findings: &mut findings }.visit_file(&syntax);
+        super::GapVisitor { path: "src/lib.rs", findings: &mut findings }
+            .visit_file(&syntax);
         let codes = findings
             .finish()
             .into_iter()
@@ -1363,9 +1779,10 @@ include!("generated.rs");
             visitor.visit_file(&syntax);
             assert!(visitor.found, "{source}");
         }
-        for source in
-            ["fn f() { println!(\"unsafe\"); }", "fn f() { println!(r#\"text \\\" unsafe\"#); }"]
-        {
+        for source in [
+            "fn f() { println!(\"unsafe\"); }",
+            "fn f() { println!(r#\"text \\\" unsafe\"#); }",
+        ] {
             let syntax = syn::parse_file(source).unwrap();
             let mut visitor = super::UnsafeVisitor { found: false };
             visitor.visit_file(&syntax);
@@ -1383,11 +1800,15 @@ include!("generated.rs");
         let mut freestanding = super::FreestandingVisitor { found: false };
         freestanding.visit_file(&nested);
         assert!(freestanding.found);
-        let macro_hidden = syn::parse_file("macro_rules! stale { () => { #![no_std] } }").unwrap();
+        let macro_hidden =
+            syn::parse_file("macro_rules! stale { () => { #![no_std] } }")
+                .unwrap();
         let mut freestanding = super::FreestandingVisitor { found: false };
         freestanding.visit_file(&macro_hidden);
         assert!(freestanding.found);
-        for source in ["#![cfg_attr(any(), no_std)]", "#![cfg_attr(any(), no_main)]"] {
+        for source in
+            ["#![cfg_attr(any(), no_std)]", "#![cfg_attr(any(), no_main)]"]
+        {
             let syntax = syn::parse_file(source).unwrap();
             let mut freestanding = super::FreestandingVisitor { found: false };
             freestanding.visit_file(&syntax);
@@ -1400,7 +1821,10 @@ include!("generated.rs");
             &mut findings,
         );
         assert!(
-            findings.finish().iter().any(|finding| finding.code == "TARGET_FORBID_UNSAFE_MISSING")
+            findings
+                .finish()
+                .iter()
+                .any(|finding| finding.code == "TARGET_FORBID_UNSAFE_MISSING")
         );
 
         let file = ClassifiedFile {
@@ -1427,7 +1851,11 @@ include!("generated.rs");
         let files = vec![
             root.add(
                 "src/entry.rs",
-                b"mod foo; mod nested; mod inline { mod bar; } #[cfg(any())] mod cfg_only;",
+                concat!(
+                    "mod foo; mod nested; mod inline { mod bar; } ",
+                    "#[cfg(any())] mod cfg_only;"
+                )
+                .as_bytes(),
                 SourceUse::Tool,
             ),
             root.add("src/foo.rs", b"mod child;", SourceUse::Tool),
@@ -1441,7 +1869,10 @@ include!("generated.rs");
         ];
         let target_uses = BTreeMap::from([
             (PathBuf::from("src/entry.rs"), BTreeSet::from([SourceUse::Tool])),
-            (PathBuf::from("tests/checker.rs"), BTreeSet::from([SourceUse::Test])),
+            (
+                PathBuf::from("tests/checker.rs"),
+                BTreeSet::from([SourceUse::Test]),
+            ),
         ]);
         let mut findings = Findings::new(64);
         let selected = super::resolve_module_sources(
@@ -1477,7 +1908,7 @@ include!("generated.rs");
     }
 
     #[test]
-    fn module_resolution_rejects_path_overrides_missing_ambiguity_and_use_drift() {
+    fn module_resolution_rejects_path_ambiguity_and_use_drift() {
         let root = TempRoot::new();
         let files = vec![
             root.add(
@@ -1492,8 +1923,10 @@ mod wrong_use;"#,
             root.add("src/duplicate/mod.rs", b"", SourceUse::Tool),
             root.add("src/wrong_use.rs", b"", SourceUse::Test),
         ];
-        let targets =
-            BTreeMap::from([(PathBuf::from("src/lib.rs"), BTreeSet::from([SourceUse::Tool]))]);
+        let targets = BTreeMap::from([(
+            PathBuf::from("src/lib.rs"),
+            BTreeSet::from([SourceUse::Tool]),
+        )]);
         let mut findings = Findings::new(64);
         let _ = super::resolve_module_sources(
             &root.0,
@@ -1503,8 +1936,11 @@ mod wrong_use;"#,
             "default",
             &mut findings,
         );
-        let codes =
-            findings.finish().into_iter().map(|finding| finding.code).collect::<BTreeSet<_>>();
+        let codes = findings
+            .finish()
+            .into_iter()
+            .map(|finding| finding.code)
+            .collect::<BTreeSet<_>>();
         for expected in [
             "MODULE_SOURCE_MISSING",
             "MODULE_SOURCE_AMBIGUOUS",
@@ -1517,7 +1953,9 @@ mod wrong_use;"#,
 
     #[test]
     fn module_use_dominance_is_order_independent_and_nonshipping_mix_fails() {
-        for (tool_root, test_root) in [("src/a.rs", "src/z.rs"), ("src/z.rs", "src/a.rs")] {
+        for (tool_root, test_root) in
+            [("src/a.rs", "src/z.rs"), ("src/z.rs", "src/a.rs")]
+        {
             let root = TempRoot::new();
             let files = vec![
                 root.add(tool_root, b"mod shared;", SourceUse::Tool),
@@ -1552,7 +1990,10 @@ mod wrong_use;"#,
         ];
         let targets = BTreeMap::from([
             (PathBuf::from("src/test.rs"), BTreeSet::from([SourceUse::Test])),
-            (PathBuf::from("src/example.rs"), BTreeSet::from([SourceUse::Example])),
+            (
+                PathBuf::from("src/example.rs"),
+                BTreeSet::from([SourceUse::Example]),
+            ),
         ]);
         let mut findings = Findings::new(64);
         let _ = super::resolve_module_sources(
@@ -1564,7 +2005,10 @@ mod wrong_use;"#,
             &mut findings,
         );
         assert!(
-            findings.finish().iter().any(|finding| finding.code == "MODULE_SOURCE_USE_AMBIGUOUS")
+            findings
+                .finish()
+                .iter()
+                .any(|finding| finding.code == "MODULE_SOURCE_USE_AMBIGUOUS")
         );
     }
 
@@ -1583,7 +2027,10 @@ mod wrong_use;"#,
             (SourceUse::Test, SourceUse::BuildOutput, false),
             (SourceUse::Example, SourceUse::BuildOutput, false),
         ] {
-            assert_eq!(super::include_use_compatible(consumer, input), accepted);
+            assert_eq!(
+                super::include_use_compatible(consumer, input),
+                accepted
+            );
         }
     }
 
@@ -1594,7 +2041,8 @@ mod wrong_use;"#,
         let tool = root.add("data.txt", b"retained", SourceUse::Tool);
         let test = root.add("test-only.txt", b"test", SourceUse::Test);
         let files = [source, tool, test];
-        let inventory = files.iter().map(|file| (file.path.clone(), file)).collect();
+        let inventory =
+            files.iter().map(|file| (file.path.clone(), file)).collect();
 
         let positive = syn::parse_file(
             r#"const A: &str = include_str!("../data.txt");
@@ -1633,8 +2081,11 @@ use std::include_str as load;"#,
             findings: &mut findings,
         }
         .visit_file(&negative);
-        let codes =
-            findings.finish().into_iter().map(|finding| finding.code).collect::<BTreeSet<_>>();
+        let codes = findings
+            .finish()
+            .into_iter()
+            .map(|finding| finding.code)
+            .collect::<BTreeSet<_>>();
         for expected in [
             "INCLUDE_PATH_ESCAPE",
             "INCLUDE_TARGET_UNCLASSIFIED",
@@ -1664,8 +2115,11 @@ use arbitrary::*;
             findings: &mut findings,
         }
         .visit_file(&shadowed);
-        let codes =
-            findings.finish().into_iter().map(|finding| finding.code).collect::<BTreeSet<_>>();
+        let codes = findings
+            .finish()
+            .into_iter()
+            .map(|finding| finding.code)
+            .collect::<BTreeSet<_>>();
         assert!(codes.contains("INCLUDE_QUALIFIED_PROOF_UNAVAILABLE"));
         assert!(codes.contains("INCLUDE_ALIAS_PROOF_UNAVAILABLE"));
     }

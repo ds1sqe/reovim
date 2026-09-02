@@ -3,8 +3,8 @@
 use std::{collections::BTreeSet, path::PathBuf};
 
 use reovim_depgraph::{
-    ArchitecturalRole, SourceClassification, SourceClassificationMap, SourceClassificationRule,
-    SourceOwner, SourceProvenance, SourceUse,
+    ArchitecturalRole, SourceClassification, SourceClassificationMap,
+    SourceClassificationRule, SourceOwner, SourceProvenance, SourceUse,
 };
 use serde_json::Value;
 
@@ -86,10 +86,20 @@ impl Policy {
         )?;
         exact_string(&root["schema"], "$.schema", SCHEMA)?;
         exact_string(&root["unmatched"], "$.unmatched", "deny")?;
-        exact_string(&root["generated_evidence_key"], "$.generated_evidence_key", EVIDENCE_KEY)?;
+        exact_string(
+            &root["generated_evidence_key"],
+            "$.generated_evidence_key",
+            EVIDENCE_KEY,
+        )?;
 
-        let scope = json::object(&root["scope"], "$.scope", &["roots", "exclusions"], &[])?;
-        let scope_roots = parse_unique_paths(&scope["roots"], "$.scope.roots", true)?;
+        let scope = json::object(
+            &root["scope"],
+            "$.scope",
+            &["roots", "exclusions"],
+            &[],
+        )?;
+        let scope_roots =
+            parse_unique_paths(&scope["roots"], "$.scope.roots", true)?;
         if scope_roots != [PathBuf::new()] {
             return Err(ConfigError::new(
                 "POLICY_SCOPE_ROOT",
@@ -111,7 +121,10 @@ impl Policy {
             return Err(ConfigError::new(
                 "POLICY_EXCLUSION_SET",
                 "$.scope.exclusions",
-                "v2 requires exactly .git/vcs_metadata, target/transient_build_output, and tmp/working_notes",
+                concat!(
+                    "v2 requires exactly .git/vcs_metadata, ",
+                    "target/transient_build_output, and tmp/working_notes",
+                ),
             ));
         }
         let rules = parse_rules(&root["rules"])?;
@@ -122,12 +135,18 @@ impl Policy {
                 "at least one rule is required",
             ));
         }
-        let allowed_product_edges = parse_edges(&root["allowed_product_edges"])?;
+        let allowed_product_edges =
+            parse_edges(&root["allowed_product_edges"])?;
         let generated_evidence_key =
             relative_path(EVIDENCE_KEY, "$.generated_evidence_key", false)?;
 
-        let policy =
-            Self { scope_roots, exclusions, rules, allowed_product_edges, generated_evidence_key };
+        let policy = Self {
+            scope_roots,
+            exclusions,
+            rules,
+            allowed_product_edges,
+            generated_evidence_key,
+        };
         policy.validate_result_separation()?;
         // Exercise the shared primitive here so invalid normalized prefixes
         // cannot be accepted by one layer and rejected by another.
@@ -135,7 +154,9 @@ impl Policy {
         Ok(policy)
     }
 
-    pub fn classification_map(&self) -> Result<SourceClassificationMap, ConfigError> {
+    pub fn classification_map(
+        &self,
+    ) -> Result<SourceClassificationMap, ConfigError> {
         SourceClassificationMap::new(
             2,
             self.rules.iter().map(|rule| {
@@ -146,7 +167,9 @@ impl Policy {
                 )
             }),
         )
-        .map_err(|error| ConfigError::new("POLICY_RULE_PATH", "$.rules", error.to_string()))
+        .map_err(|error| {
+            ConfigError::new("POLICY_RULE_PATH", "$.rules", error.to_string())
+        })
     }
 
     #[must_use]
@@ -163,7 +186,11 @@ impl Policy {
     }
 
     fn validate_result_separation(&self) -> Result<(), ConfigError> {
-        if self.rules.iter().any(|rule| self.generated_evidence_key.starts_with(&rule.prefix)) {
+        if self
+            .rules
+            .iter()
+            .any(|rule| self.generated_evidence_key.starts_with(&rule.prefix))
+        {
             return Err(ConfigError::new(
                 "POLICY_RESULT_SELF_REFERENCE",
                 "$.rules",
@@ -180,7 +207,9 @@ impl Policy {
 fn parse_exclusions(value: &Value) -> Result<Vec<Exclusion>, ConfigError> {
     let mut result = Vec::new();
     let mut seen = BTreeSet::new();
-    for (item, value) in json::array(value, "$.scope.exclusions")?.iter().enumerate() {
+    for (item, value) in
+        json::array(value, "$.scope.exclusions")?.iter().enumerate()
+    {
         let path = json::index("$.scope.exclusions", item);
         let object = json::object(value, &path, &["prefix", "kind"], &[])?;
         let prefix = relative_path(
@@ -193,7 +222,9 @@ fn parse_exclusions(value: &Value) -> Result<Vec<Exclusion>, ConfigError> {
             "vcs_metadata" => ExclusionKind::VcsMetadata,
             "transient_build_output" => ExclusionKind::TransientBuildOutput,
             "working_notes" => ExclusionKind::WorkingNotes,
-            "generated_evidence_output" => ExclusionKind::GeneratedEvidenceOutput,
+            "generated_evidence_output" => {
+                ExclusionKind::GeneratedEvidenceOutput
+            }
             other => {
                 return Err(ConfigError::new(
                     "POLICY_EXCLUSION_KIND",
@@ -211,7 +242,9 @@ fn parse_exclusions(value: &Value) -> Result<Vec<Exclusion>, ConfigError> {
         }
         result.push(Exclusion { prefix, kind });
     }
-    result.sort_by(|left, right| (&left.prefix, left.kind).cmp(&(&right.prefix, right.kind)));
+    result.sort_by(|left, right| {
+        (&left.prefix, left.kind).cmp(&(&right.prefix, right.kind))
+    });
     Ok(result)
 }
 
@@ -224,31 +257,52 @@ fn parse_rules(value: &Value) -> Result<Vec<Rule>, ConfigError> {
         let object = json::object(
             value,
             &path,
-            &["prefix", "precedence", "source_owner", "source_provenance", "source_use"],
+            &[
+                "prefix",
+                "precedence",
+                "source_owner",
+                "source_provenance",
+                "source_use",
+            ],
             &["upstream"],
         )?;
         let prefix_path = json::child(&path, "prefix");
-        let prefix =
-            relative_path(json::string(&object["prefix"], &prefix_path)?, &prefix_path, false)?;
+        let prefix = relative_path(
+            json::string(&object["prefix"], &prefix_path)?,
+            &prefix_path,
+            false,
+        )?;
         let precedence_path = json::child(&path, "precedence");
-        let precedence = u32::try_from(json::unsigned(&object["precedence"], &precedence_path)?)
-            .map_err(|_| {
-                ConfigError::new("POLICY_PRECEDENCE", precedence_path, "value exceeds u32")
-            })?;
-        let owner = parse_owner(&object["source_owner"], &json::child(&path, "source_owner"))?;
+        let precedence = u32::try_from(json::unsigned(
+            &object["precedence"],
+            &precedence_path,
+        )?)
+        .map_err(|_| {
+            ConfigError::new(
+                "POLICY_PRECEDENCE",
+                precedence_path,
+                "value exceeds u32",
+            )
+        })?;
+        let owner = parse_owner(
+            &object["source_owner"],
+            &json::child(&path, "source_owner"),
+        )?;
         let provenance_path = json::child(&path, "source_provenance");
-        let provenance = match json::string(&object["source_provenance"], &provenance_path)? {
-            "authored" => SourceProvenance::Authored,
-            "generated" => SourceProvenance::Generated,
-            "vendored" => SourceProvenance::Vendored,
-            other => {
-                return Err(ConfigError::new(
-                    "POLICY_PROVENANCE",
-                    provenance_path,
-                    format!("unknown provenance {other:?}"),
-                ));
-            }
-        };
+        let provenance =
+            match json::string(&object["source_provenance"], &provenance_path)?
+            {
+                "authored" => SourceProvenance::Authored,
+                "generated" => SourceProvenance::Generated,
+                "vendored" => SourceProvenance::Vendored,
+                other => {
+                    return Err(ConfigError::new(
+                        "POLICY_PROVENANCE",
+                        provenance_path,
+                        format!("unknown provenance {other:?}"),
+                    ));
+                }
+            };
         let use_path = json::child(&path, "source_use");
         let source_use = match json::string(&object["source_use"], &use_path)? {
             "production" => SourceUse::Production,
@@ -264,10 +318,16 @@ fn parse_rules(value: &Value) -> Result<Vec<Rule>, ConfigError> {
                 ));
             }
         };
-        let classification =
-            SourceClassification::new(owner, provenance, source_use).map_err(|error| {
-                ConfigError::new("POLICY_CLOSED_COMBINATION", &path, error.to_string())
-            })?;
+        let classification = SourceClassification::new(
+            owner, provenance, source_use,
+        )
+        .map_err(|error| {
+            ConfigError::new(
+                "POLICY_CLOSED_COMBINATION",
+                &path,
+                error.to_string(),
+            )
+        })?;
         let upstream = object
             .get("upstream")
             .map(|value| parse_upstream(value, &json::child(&path, "upstream")))
@@ -280,36 +340,22 @@ fn parse_rules(value: &Value) -> Result<Vec<Rule>, ConfigError> {
                     "authored source must not declare upstream",
                 ));
             }
-            (SourceProvenance::Generated | SourceProvenance::Vendored, false) => {
+            (
+                SourceProvenance::Generated | SourceProvenance::Vendored,
+                false,
+            ) => {
                 return Err(ConfigError::new(
                     "POLICY_MISSING_UPSTREAM",
                     &path,
-                    "generated and vendored source require upstream identity and digest",
+                    concat!(
+                        "generated and vendored source require upstream ",
+                        "identity and digest",
+                    ),
                 ));
             }
             _ => {}
         }
-        if let Some(upstream) = &upstream {
-            match (provenance, &upstream.digest_subject) {
-                (SourceProvenance::Generated, DigestSubject::Paths(_))
-                | (SourceProvenance::Vendored, DigestSubject::ClassifiedContent) => {}
-                (SourceProvenance::Generated, DigestSubject::ClassifiedContent) => {
-                    return Err(ConfigError::new(
-                        "POLICY_GENERATED_DIGEST_SUBJECT",
-                        &path,
-                        "generated source requires a paths digest subject",
-                    ));
-                }
-                (SourceProvenance::Vendored, DigestSubject::Paths(_)) => {
-                    return Err(ConfigError::new(
-                        "POLICY_VENDORED_DIGEST_SUBJECT",
-                        &path,
-                        "vendored source requires a classified_content digest subject",
-                    ));
-                }
-                (SourceProvenance::Authored, _) => unreachable!("authored upstream rejected above"),
-            }
-        }
+        validate_upstream_digest_subject(provenance, upstream.as_ref(), &path)?;
         if !seen.insert((prefix.clone(), precedence)) {
             return Err(ConfigError::new(
                 "POLICY_DUPLICATE_RULE",
@@ -322,11 +368,49 @@ fn parse_rules(value: &Value) -> Result<Vec<Rule>, ConfigError> {
     Ok(result)
 }
 
+fn validate_upstream_digest_subject(
+    provenance: SourceProvenance,
+    upstream: Option<&Upstream>,
+    path: &str,
+) -> Result<(), ConfigError> {
+    let Some(upstream) = upstream else {
+        return Ok(());
+    };
+    match (provenance, &upstream.digest_subject) {
+        (SourceProvenance::Generated, DigestSubject::Paths(_))
+        | (SourceProvenance::Vendored, DigestSubject::ClassifiedContent) => {
+            Ok(())
+        }
+        (SourceProvenance::Generated, DigestSubject::ClassifiedContent) => {
+            Err(ConfigError::new(
+                "POLICY_GENERATED_DIGEST_SUBJECT",
+                path,
+                "generated source requires a paths digest subject",
+            ))
+        }
+        (SourceProvenance::Vendored, DigestSubject::Paths(_)) => {
+            Err(ConfigError::new(
+                "POLICY_VENDORED_DIGEST_SUBJECT",
+                path,
+                "vendored source requires a classified_content digest subject",
+            ))
+        }
+        (SourceProvenance::Authored, _) => {
+            unreachable!("authored upstream rejected above")
+        }
+    }
+}
+
 fn parse_owner(value: &Value, path: &str) -> Result<SourceOwner, ConfigError> {
-    let object =
-        value.as_object().ok_or_else(|| ConfigError::new("CFG_TYPE", path, "expected object"))?;
+    let object = value
+        .as_object()
+        .ok_or_else(|| ConfigError::new("CFG_TYPE", path, "expected object"))?;
     let kind = object.get("kind").ok_or_else(|| {
-        ConfigError::new("CFG_MISSING_FIELD", json::child(path, "kind"), "required field is absent")
+        ConfigError::new(
+            "CFG_MISSING_FIELD",
+            json::child(path, "kind"),
+            "required field is absent",
+        )
     })?;
     match json::string(kind, &json::child(path, "kind"))? {
         "repository_tooling" => {
@@ -349,15 +433,31 @@ fn parse_owner(value: &Value, path: &str) -> Result<SourceOwner, ConfigError> {
     }
 }
 
-fn parse_role(value: &str, path: &str) -> Result<ArchitecturalRole, ConfigError> {
-    ArchitecturalRole::ALL.into_iter().find(|role| role.as_str() == value).ok_or_else(|| {
-        ConfigError::new("POLICY_PRODUCT_ROLE", path, format!("unknown product role {value:?}"))
-    })
+fn parse_role(
+    value: &str,
+    path: &str,
+) -> Result<ArchitecturalRole, ConfigError> {
+    ArchitecturalRole::ALL
+        .into_iter()
+        .find(|role| role.as_str() == value)
+        .ok_or_else(|| {
+            ConfigError::new(
+                "POLICY_PRODUCT_ROLE",
+                path,
+                format!("unknown product role {value:?}"),
+            )
+        })
 }
 
 fn parse_upstream(value: &Value, path: &str) -> Result<Upstream, ConfigError> {
-    let object = json::object(value, path, &["identity", "digest", "digest_subject"], &[])?;
-    let identity = json::string(&object["identity"], &json::child(path, "identity"))?;
+    let object = json::object(
+        value,
+        path,
+        &["identity", "digest", "digest_subject"],
+        &[],
+    )?;
+    let identity =
+        json::string(&object["identity"], &json::child(path, "identity"))?;
     if identity.is_empty() {
         return Err(ConfigError::new(
             "POLICY_UPSTREAM_IDENTITY",
@@ -375,49 +475,68 @@ fn parse_upstream(value: &Value, path: &str) -> Result<Upstream, ConfigError> {
     }
     let subject_path = json::child(path, "digest_subject");
     let subject = object.get("digest_subject").expect("required field checked");
-    let kind = subject.as_object().and_then(|subject| subject.get("kind")).ok_or_else(|| {
-        ConfigError::new(
-            "CFG_MISSING_FIELD",
-            json::child(&subject_path, "kind"),
-            "required field is absent",
-        )
-    })?;
-    let digest_subject = match json::string(kind, &json::child(&subject_path, "kind"))? {
-        "paths" => {
-            let subject = json::object(subject, &subject_path, &["kind", "paths"], &[])?;
-            let paths =
-                parse_unique_paths(&subject["paths"], &json::child(&subject_path, "paths"), false)?;
-            if paths.is_empty() {
+    let kind = subject
+        .as_object()
+        .and_then(|subject| subject.get("kind"))
+        .ok_or_else(|| {
+            ConfigError::new(
+                "CFG_MISSING_FIELD",
+                json::child(&subject_path, "kind"),
+                "required field is absent",
+            )
+        })?;
+    let digest_subject =
+        match json::string(kind, &json::child(&subject_path, "kind"))? {
+            "paths" => {
+                let subject = json::object(
+                    subject,
+                    &subject_path,
+                    &["kind", "paths"],
+                    &[],
+                )?;
+                let paths = parse_unique_paths(
+                    &subject["paths"],
+                    &json::child(&subject_path, "paths"),
+                    false,
+                )?;
+                if paths.is_empty() {
+                    return Err(ConfigError::new(
+                        "POLICY_EMPTY_DIGEST_SUBJECT",
+                        subject_path,
+                        "paths digest subject must not be empty",
+                    ));
+                }
+                DigestSubject::Paths(paths)
+            }
+            "classified_content" => {
+                json::object(subject, &subject_path, &["kind"], &[])?;
+                DigestSubject::ClassifiedContent
+            }
+            other => {
                 return Err(ConfigError::new(
-                    "POLICY_EMPTY_DIGEST_SUBJECT",
+                    "POLICY_DIGEST_SUBJECT",
                     subject_path,
-                    "paths digest subject must not be empty",
+                    format!("unknown digest subject {other:?}"),
                 ));
             }
-            DigestSubject::Paths(paths)
-        }
-        "classified_content" => {
-            json::object(subject, &subject_path, &["kind"], &[])?;
-            DigestSubject::ClassifiedContent
-        }
-        other => {
-            return Err(ConfigError::new(
-                "POLICY_DIGEST_SUBJECT",
-                subject_path,
-                format!("unknown digest subject {other:?}"),
-            ));
-        }
-    };
-    Ok(Upstream { identity: identity.to_owned(), digest: digest.to_owned(), digest_subject })
+        };
+    Ok(Upstream {
+        identity: identity.to_owned(),
+        digest: digest.to_owned(),
+        digest_subject,
+    })
 }
 
 fn parse_edges(
     value: &Value,
 ) -> Result<BTreeSet<(ArchitecturalRole, ArchitecturalRole)>, ConfigError> {
     let mut result = BTreeSet::new();
-    for (item, value) in json::array(value, "$.allowed_product_edges")?.iter().enumerate() {
+    for (item, value) in
+        json::array(value, "$.allowed_product_edges")?.iter().enumerate()
+    {
         let path = json::index("$.allowed_product_edges", item);
-        let object = json::object(value, &path, &["consumer", "provider"], &[])?;
+        let object =
+            json::object(value, &path, &["consumer", "provider"], &[])?;
         let consumer = parse_role(
             json::string(&object["consumer"], &json::child(&path, "consumer"))?,
             &json::child(&path, "consumer"),
@@ -446,7 +565,11 @@ fn parse_unique_paths(
     let mut seen = BTreeSet::new();
     for (item, value) in json::array(value, path)?.iter().enumerate() {
         let item_path = json::index(path, item);
-        let value = relative_path(json::string(value, &item_path)?, &item_path, allow_empty)?;
+        let value = relative_path(
+            json::string(value, &item_path)?,
+            &item_path,
+            allow_empty,
+        )?;
         if !seen.insert(value.clone()) {
             return Err(ConfigError::new(
                 "CFG_DUPLICATE_PATH",
@@ -486,11 +609,19 @@ pub fn relative_path(
         ));
     }
     if value.len() >= 2 && value.as_bytes()[1] == b':' {
-        return Err(ConfigError::new("CFG_PATH_FORM", path, "drive-prefixed paths are forbidden"));
+        return Err(ConfigError::new(
+            "CFG_PATH_FORM",
+            path,
+            "drive-prefixed paths are forbidden",
+        ));
     }
     let raw = PathBuf::from(value);
     if raw.is_absolute() {
-        return Err(ConfigError::new("CFG_PATH_FORM", path, "path must be relative"));
+        return Err(ConfigError::new(
+            "CFG_PATH_FORM",
+            path,
+            "path must be relative",
+        ));
     }
     let mut normalized = PathBuf::new();
     for component in raw.components() {
@@ -505,32 +636,54 @@ pub fn relative_path(
                 ));
             }
             std::path::Component::ParentDir => {
-                return Err(ConfigError::new("CFG_PATH_ESCAPE", path, "path contains '..'"));
+                return Err(ConfigError::new(
+                    "CFG_PATH_ESCAPE",
+                    path,
+                    "path contains '..'",
+                ));
             }
             std::path::Component::RootDir | std::path::Component::Prefix(_) => {
-                return Err(ConfigError::new("CFG_PATH_FORM", path, "path must be relative"));
+                return Err(ConfigError::new(
+                    "CFG_PATH_FORM",
+                    path,
+                    "path must be relative",
+                ));
             }
         }
     }
     if normalized.as_os_str().is_empty() && !allow_repository_root {
-        return Err(ConfigError::new("CFG_PATH_FORM", path, "path normalizes to repository root"));
+        return Err(ConfigError::new(
+            "CFG_PATH_FORM",
+            path,
+            "path normalizes to repository root",
+        ));
     }
     Ok(normalized)
 }
 
-fn exact_string(value: &Value, path: &str, expected: &str) -> Result<(), ConfigError> {
+fn exact_string(
+    value: &Value,
+    path: &str,
+    expected: &str,
+) -> Result<(), ConfigError> {
     let actual = json::string(value, path)?;
     if actual == expected {
         Ok(())
     } else {
-        Err(ConfigError::new("CFG_CONST", path, format!("expected {expected:?}, got {actual:?}")))
+        Err(ConfigError::new(
+            "CFG_CONST",
+            path,
+            format!("expected {expected:?}, got {actual:?}"),
+        ))
     }
 }
 
 fn valid_digest(value: &str) -> bool {
     value.len() == 71
         && value.starts_with("sha256:")
-        && value[7..].bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        && value[7..]
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 #[cfg(test)]
@@ -570,7 +723,10 @@ mod tests {
     fn scope_and_exclusions_are_exact_closed_sets() {
         let mut narrow = policy(authored_tool("src"));
         narrow.pointer_mut("/scope/roots").unwrap().clone_from(&json!(["src"]));
-        assert_eq!(super::Policy::parse(&narrow).unwrap_err().code, "POLICY_SCOPE_ROOT");
+        assert_eq!(
+            super::Policy::parse(&narrow).unwrap_err().code,
+            "POLICY_SCOPE_ROOT"
+        );
 
         let mut hidden = policy(authored_tool("src"));
         hidden
@@ -579,7 +735,10 @@ mod tests {
             .as_array_mut()
             .unwrap()
             .push(json!({"prefix":"kernel","kind":"working_notes"}));
-        assert_eq!(super::Policy::parse(&hidden).unwrap_err().code, "POLICY_EXCLUSION_SET");
+        assert_eq!(
+            super::Policy::parse(&hidden).unwrap_err().code,
+            "POLICY_EXCLUSION_SET"
+        );
     }
 
     #[test]
@@ -609,7 +768,9 @@ mod tests {
     #[test]
     fn result_self_reference_and_root_rule_are_rejected() {
         assert_eq!(
-            super::Policy::parse(&policy(authored_tool("conformance"))).unwrap_err().code,
+            super::Policy::parse(&policy(authored_tool("conformance")))
+                .unwrap_err()
+                .code,
             "POLICY_RESULT_SELF_REFERENCE"
         );
         assert_eq!(

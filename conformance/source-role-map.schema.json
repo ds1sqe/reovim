@@ -1373,14 +1373,8 @@
     "group_evidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["pgid", "identity_validated", "absent_after_reap"],
+      "required": ["identity_validated", "absent_after_reap"],
       "properties": {
-        "pgid": {
-          "oneOf": [
-            { "type": "null" },
-            { "$ref": "#/$defs/positive_count" }
-          ]
-        },
         "identity_validated": { "type": "boolean" },
         "absent_after_reap": { "type": "boolean" }
       }

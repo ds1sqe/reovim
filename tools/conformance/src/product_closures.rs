@@ -96,9 +96,8 @@ impl PackageMember {
     #[must_use]
     pub const fn package_path(&self) -> &PathBuf {
         match self {
-            Self::Copied { package_path, .. } | Self::CargoGenerated { package_path } => {
-                package_path
-            }
+            Self::Copied { package_path, .. }
+            | Self::CargoGenerated { package_path } => package_path,
         }
     }
 }
@@ -160,67 +159,38 @@ pub enum ConsumerOperation {
 impl Registry {
     /// Parses and semantically closes a registry value already bounded and
     /// duplicate-key checked by the caller's JSON loader.
-    pub fn parse(value: &Value, limits: ParseLimits) -> Result<Self, ConfigError> {
+    pub fn parse(
+        value: &Value,
+        limits: ParseLimits,
+    ) -> Result<Self, ConfigError> {
         validate_limits(limits)?;
         let object = json::object(
             value,
             "$",
-            &["schema", "product_proof_profile", "closures", "public_consumer_relations"],
+            &[
+                "schema",
+                "product_proof_profile",
+                "closures",
+                "public_consumer_relations",
+            ],
             &[],
         )?;
         exact(&object["schema"], "$.schema", SCHEMA)?;
-        exact(&object["product_proof_profile"], "$.product_proof_profile", PRODUCT_PROOF_PROFILE)?;
-
-        let closure_values = bounded_array(
-            &object["closures"],
-            "$.closures",
-            limits.closure_items,
-            "PRODUCT_CLOSURE_LIMIT",
+        exact(
+            &object["product_proof_profile"],
+            "$.product_proof_profile",
+            PRODUCT_PROOF_PROFILE,
         )?;
-        let mut closures = Vec::with_capacity(closure_values.len());
-        let mut closure_ids = BTreeSet::new();
-        for (item, value) in closure_values.iter().enumerate() {
-            let path = json::index("$.closures", item);
-            let closure = parse_closure(value, &path, limits)?;
-            if !closure_ids.insert(closure.id.clone()) {
-                return Err(ConfigError::new(
-                    "PRODUCT_CLOSURE_DUPLICATE_ID",
-                    json::child(&path, "id"),
-                    "duplicate closure ID",
-                ));
-            }
-            closures.push(closure);
-        }
-        closures.sort_by(|left, right| left.id.cmp(&right.id));
 
-        let relation_values = bounded_array(
-            &object["public_consumer_relations"],
-            "$.public_consumer_relations",
-            limits.closure_items,
-            "PRODUCT_RELATION_LIMIT",
-        )?;
-        let mut public_consumer_relations = Vec::with_capacity(relation_values.len());
-        let mut relation_ids = BTreeSet::new();
-        for (item, value) in relation_values.iter().enumerate() {
-            let path = json::index("$.public_consumer_relations", item);
-            let relation = parse_relation(value, &path, limits)?;
-            if !relation_ids.insert(relation.id.clone()) {
-                return Err(ConfigError::new(
-                    "PRODUCT_RELATION_DUPLICATE_ID",
-                    json::child(&path, "id"),
-                    "duplicate public-consumer relation ID",
-                ));
-            }
-            public_consumer_relations.push(relation);
-        }
-        public_consumer_relations.sort_by(|left, right| left.id.cmp(&right.id));
+        let closures = parse_closures(&object["closures"], limits)?;
+        let public_consumer_relations =
+            parse_relations(&object["public_consumer_relations"], limits)?;
 
         let registry = Self { closures, public_consumer_relations };
         registry.validate_cross_references()?;
         Ok(registry)
     }
 
-    #[allow(clippy::too_many_lines)]
     fn validate_cross_references(&self) -> Result<(), ConfigError> {
         let closures = self
             .closures
@@ -228,187 +198,366 @@ impl Registry {
             .map(|closure| (closure.id.as_str(), closure))
             .collect::<BTreeMap<_, _>>();
 
-        let mut workspaces = BTreeMap::<&str, &WorkspaceRef>::new();
-        let mut workspace_manifests = BTreeMap::<&PathBuf, &str>::new();
-        let mut workspace_locks = BTreeMap::<&PathBuf, &str>::new();
-        let mut packages = BTreeMap::<&str, &PackageRef>::new();
-        let mut package_names = BTreeMap::<&str, &str>::new();
-        let mut package_manifests = BTreeMap::<&PathBuf, &str>::new();
-        let mut targets = BTreeMap::<(&str, &str), &TargetRef>::new();
-        let mut target_sources = BTreeMap::<&PathBuf, (&str, &str)>::new();
-        let mut target_closures = BTreeMap::<(&str, &str), &str>::new();
-        let mut package_memberships = BTreeMap::<&str, &PackageMembership>::new();
-
-        for closure in &self.closures {
-            insert_consistent(
-                &mut workspaces,
-                closure.workspace.id.as_str(),
-                &closure.workspace,
-                "PRODUCT_CLOSURE_WORKSPACE_IDENTITY",
-                "$.closures",
-            )?;
-            insert_reverse_unique(
-                &mut workspace_manifests,
-                &closure.workspace.manifest,
-                closure.workspace.id.as_str(),
-                "PRODUCT_CLOSURE_WORKSPACE_MANIFEST_ALIAS",
-                "$.closures",
-            )?;
-            insert_reverse_unique(
-                &mut workspace_locks,
-                &closure.workspace.lockfile,
-                closure.workspace.id.as_str(),
-                "PRODUCT_CLOSURE_WORKSPACE_LOCK_ALIAS",
-                "$.closures",
-            )?;
-            insert_consistent(
-                &mut packages,
-                closure.package.id.as_str(),
-                &closure.package,
-                "PRODUCT_CLOSURE_PACKAGE_IDENTITY",
-                "$.closures",
-            )?;
-            insert_reverse_unique(
-                &mut package_names,
-                closure.package.name.as_str(),
-                closure.package.id.as_str(),
-                "PRODUCT_CLOSURE_PACKAGE_NAME_ALIAS",
-                "$.closures",
-            )?;
-            insert_reverse_unique(
-                &mut package_manifests,
-                &closure.package.manifest,
-                closure.package.id.as_str(),
-                "PRODUCT_CLOSURE_PACKAGE_MANIFEST_ALIAS",
-                "$.closures",
-            )?;
-            let target_key = (closure.package.id.as_str(), closure.target.id.as_str());
-            insert_consistent(
-                &mut targets,
-                target_key,
-                &closure.target,
-                "PRODUCT_CLOSURE_TARGET_IDENTITY",
-                "$.closures",
-            )?;
-            insert_reverse_unique(
-                &mut target_sources,
-                &closure.target.src_path,
-                target_key,
-                "PRODUCT_CLOSURE_TARGET_SOURCE_ALIAS",
-                "$.closures",
-            )?;
-            insert_reverse_unique(
-                &mut target_closures,
-                target_key,
-                closure.id.as_str(),
-                "PRODUCT_CLOSURE_TARGET_REUSED",
-                "$.closures",
-            )?;
-            if let Some(membership) = &closure.package_membership {
-                insert_consistent(
-                    &mut package_memberships,
-                    closure.package.id.as_str(),
-                    membership,
-                    "PRODUCT_CLOSURE_PACKAGE_MEMBERSHIP_IDENTITY",
-                    "$.closures",
-                )?;
-            }
-        }
-
-        let mut shipping_relations = BTreeMap::<&str, &str>::new();
-        let mut consumer_relations = BTreeMap::<&str, &str>::new();
-        let mut relation_pairs = BTreeSet::new();
-        for relation in &self.public_consumer_relations {
-            let shipping = closures.get(relation.shipping_closure.as_str()).ok_or_else(|| {
-                ConfigError::new(
-                    "PRODUCT_RELATION_SHIPPING_UNRESOLVED",
-                    "$.public_consumer_relations",
-                    format!(
-                        "relation {} names absent shipping closure {}",
-                        relation.id, relation.shipping_closure
-                    ),
-                )
-            })?;
-            if shipping.kind != ClosureKind::Shipping {
-                return Err(ConfigError::new(
-                    "PRODUCT_RELATION_SHIPPING_KIND",
-                    "$.public_consumer_relations",
-                    format!("closure {} is not shipping", shipping.id),
-                ));
-            }
-            let consumer = closures.get(relation.consumer_closure.as_str()).ok_or_else(|| {
-                ConfigError::new(
-                    "PRODUCT_RELATION_CONSUMER_UNRESOLVED",
-                    "$.public_consumer_relations",
-                    format!(
-                        "relation {} names absent consumer closure {}",
-                        relation.id, relation.consumer_closure
-                    ),
-                )
-            })?;
-            if consumer.kind != ClosureKind::Validation {
-                return Err(ConfigError::new(
-                    "PRODUCT_RELATION_CONSUMER_KIND",
-                    "$.public_consumer_relations",
-                    format!("closure {} is not validation", consumer.id),
-                ));
-            }
-            if shipping.workspace != consumer.workspace {
-                return Err(ConfigError::new(
-                    "PRODUCT_RELATION_WORKSPACE",
-                    "$.public_consumer_relations",
-                    "shipping and public consumer must belong to the same exact Product workspace",
-                ));
-            }
-            if shipping.package.id == consumer.package.id {
-                return Err(ConfigError::new(
-                    "PRODUCT_RELATION_EXTERNAL_PACKAGE",
-                    "$.public_consumer_relations",
-                    "public consumer must cross a distinct package boundary",
-                ));
-            }
-            if !relation_pairs.insert((shipping.id.as_str(), consumer.id.as_str())) {
-                return Err(ConfigError::new(
-                    "PRODUCT_RELATION_DUPLICATE_PAIR",
-                    "$.public_consumer_relations",
-                    "duplicate shipping/public-consumer pair",
-                ));
-            }
-            insert_reverse_unique(
-                &mut shipping_relations,
-                shipping.id.as_str(),
-                relation.id.as_str(),
-                "PRODUCT_RELATION_MULTIPLE_SHIPPING",
-                "$.public_consumer_relations",
-            )?;
-            insert_reverse_unique(
-                &mut consumer_relations,
-                consumer.id.as_str(),
-                relation.id.as_str(),
-                "PRODUCT_RELATION_MULTIPLE_CONSUMER",
-                "$.public_consumer_relations",
-            )?;
-        }
-
-        for closure in &self.closures {
-            let present = match closure.kind {
-                ClosureKind::Shipping => shipping_relations.contains_key(closure.id.as_str()),
-                ClosureKind::Validation => consumer_relations.contains_key(closure.id.as_str()),
-            };
-            if !present {
-                return Err(ConfigError::new(
-                    "PRODUCT_CLOSURE_UNRELATED",
-                    "$.closures",
-                    format!("closure {} has no exact public-consumer relation", closure.id),
-                ));
-            }
-        }
+        validate_closure_identities(&self.closures)?;
+        let relations =
+            validate_relations(&closures, &self.public_consumer_relations)?;
+        validate_related_closures(&self.closures, &relations)?;
         Ok(())
     }
 }
 
-#[allow(clippy::too_many_lines)]
-fn parse_closure(value: &Value, path: &str, limits: ParseLimits) -> Result<Closure, ConfigError> {
+fn parse_closures(
+    value: &Value,
+    limits: ParseLimits,
+) -> Result<Vec<Closure>, ConfigError> {
+    let values = bounded_array(
+        value,
+        "$.closures",
+        limits.closure_items,
+        "PRODUCT_CLOSURE_LIMIT",
+    )?;
+    let mut closures = Vec::with_capacity(values.len());
+    let mut ids = BTreeSet::new();
+    for (item, value) in values.iter().enumerate() {
+        let path = json::index("$.closures", item);
+        let closure = parse_closure(value, &path, limits)?;
+        ensure_unique_id(
+            &mut ids,
+            &closure.id,
+            &path,
+            "PRODUCT_CLOSURE_DUPLICATE_ID",
+            "duplicate closure ID",
+        )?;
+        closures.push(closure);
+    }
+    closures.sort_by(|left, right| left.id.cmp(&right.id));
+    Ok(closures)
+}
+
+fn parse_relations(
+    value: &Value,
+    limits: ParseLimits,
+) -> Result<Vec<PublicConsumerRelation>, ConfigError> {
+    let path = "$.public_consumer_relations";
+    let values = bounded_array(
+        value,
+        path,
+        limits.closure_items,
+        "PRODUCT_RELATION_LIMIT",
+    )?;
+    let mut relations = Vec::with_capacity(values.len());
+    let mut ids = BTreeSet::new();
+    for (item, value) in values.iter().enumerate() {
+        let item_path = json::index(path, item);
+        let relation = parse_relation(value, &item_path, limits)?;
+        ensure_unique_id(
+            &mut ids,
+            &relation.id,
+            &item_path,
+            "PRODUCT_RELATION_DUPLICATE_ID",
+            "duplicate public-consumer relation ID",
+        )?;
+        relations.push(relation);
+    }
+    relations.sort_by(|left, right| left.id.cmp(&right.id));
+    Ok(relations)
+}
+
+fn ensure_unique_id(
+    ids: &mut BTreeSet<String>,
+    id: &str,
+    path: &str,
+    code: &'static str,
+    message: &'static str,
+) -> Result<(), ConfigError> {
+    if !ids.insert(id.to_owned()) {
+        return Err(ConfigError::new(code, json::child(path, "id"), message));
+    }
+    Ok(())
+}
+
+#[derive(Default)]
+struct ClosureIdentities<'a> {
+    workspaces: BTreeMap<&'a str, &'a WorkspaceRef>,
+    workspace_manifests: BTreeMap<&'a PathBuf, &'a str>,
+    workspace_locks: BTreeMap<&'a PathBuf, &'a str>,
+    packages: BTreeMap<&'a str, &'a PackageRef>,
+    package_names: BTreeMap<&'a str, &'a str>,
+    package_manifests: BTreeMap<&'a PathBuf, &'a str>,
+    targets: BTreeMap<(&'a str, &'a str), &'a TargetRef>,
+    target_sources: BTreeMap<&'a PathBuf, (&'a str, &'a str)>,
+    target_closures: BTreeMap<(&'a str, &'a str), &'a str>,
+    package_memberships: BTreeMap<&'a str, &'a PackageMembership>,
+}
+
+impl<'a> ClosureIdentities<'a> {
+    fn insert(&mut self, closure: &'a Closure) -> Result<(), ConfigError> {
+        self.insert_workspace(closure)?;
+        self.insert_package(closure)?;
+        self.insert_target(closure)?;
+        if let Some(membership) = &closure.package_membership {
+            insert_consistent(
+                &mut self.package_memberships,
+                closure.package.id.as_str(),
+                membership,
+                "PRODUCT_CLOSURE_PACKAGE_MEMBERSHIP_IDENTITY",
+                "$.closures",
+            )?;
+        }
+        Ok(())
+    }
+
+    fn insert_workspace(
+        &mut self,
+        closure: &'a Closure,
+    ) -> Result<(), ConfigError> {
+        insert_consistent(
+            &mut self.workspaces,
+            closure.workspace.id.as_str(),
+            &closure.workspace,
+            "PRODUCT_CLOSURE_WORKSPACE_IDENTITY",
+            "$.closures",
+        )?;
+        insert_reverse_unique(
+            &mut self.workspace_manifests,
+            &closure.workspace.manifest,
+            closure.workspace.id.as_str(),
+            "PRODUCT_CLOSURE_WORKSPACE_MANIFEST_ALIAS",
+            "$.closures",
+        )?;
+        insert_reverse_unique(
+            &mut self.workspace_locks,
+            &closure.workspace.lockfile,
+            closure.workspace.id.as_str(),
+            "PRODUCT_CLOSURE_WORKSPACE_LOCK_ALIAS",
+            "$.closures",
+        )
+    }
+
+    fn insert_package(
+        &mut self,
+        closure: &'a Closure,
+    ) -> Result<(), ConfigError> {
+        insert_consistent(
+            &mut self.packages,
+            closure.package.id.as_str(),
+            &closure.package,
+            "PRODUCT_CLOSURE_PACKAGE_IDENTITY",
+            "$.closures",
+        )?;
+        insert_reverse_unique(
+            &mut self.package_names,
+            closure.package.name.as_str(),
+            closure.package.id.as_str(),
+            "PRODUCT_CLOSURE_PACKAGE_NAME_ALIAS",
+            "$.closures",
+        )?;
+        insert_reverse_unique(
+            &mut self.package_manifests,
+            &closure.package.manifest,
+            closure.package.id.as_str(),
+            "PRODUCT_CLOSURE_PACKAGE_MANIFEST_ALIAS",
+            "$.closures",
+        )
+    }
+
+    fn insert_target(
+        &mut self,
+        closure: &'a Closure,
+    ) -> Result<(), ConfigError> {
+        let key = (closure.package.id.as_str(), closure.target.id.as_str());
+        insert_consistent(
+            &mut self.targets,
+            key,
+            &closure.target,
+            "PRODUCT_CLOSURE_TARGET_IDENTITY",
+            "$.closures",
+        )?;
+        insert_reverse_unique(
+            &mut self.target_sources,
+            &closure.target.src_path,
+            key,
+            "PRODUCT_CLOSURE_TARGET_SOURCE_ALIAS",
+            "$.closures",
+        )?;
+        insert_reverse_unique(
+            &mut self.target_closures,
+            key,
+            closure.id.as_str(),
+            "PRODUCT_CLOSURE_TARGET_REUSED",
+            "$.closures",
+        )
+    }
+}
+
+fn validate_closure_identities(
+    closures: &[Closure],
+) -> Result<(), ConfigError> {
+    let mut identities = ClosureIdentities::default();
+    for closure in closures {
+        identities.insert(closure)?;
+    }
+    Ok(())
+}
+
+#[derive(Default)]
+struct RelationIndexes<'a> {
+    shipping: BTreeMap<&'a str, &'a str>,
+    consumers: BTreeMap<&'a str, &'a str>,
+    pairs: BTreeSet<(&'a str, &'a str)>,
+}
+
+fn validate_relations<'a>(
+    closures: &BTreeMap<&str, &'a Closure>,
+    relations: &'a [PublicConsumerRelation],
+) -> Result<RelationIndexes<'a>, ConfigError> {
+    let mut indexes = RelationIndexes::default();
+    for relation in relations {
+        validate_relation(closures, &mut indexes, relation)?;
+    }
+    Ok(indexes)
+}
+
+fn validate_relation<'a>(
+    closures: &BTreeMap<&str, &'a Closure>,
+    indexes: &mut RelationIndexes<'a>,
+    relation: &'a PublicConsumerRelation,
+) -> Result<(), ConfigError> {
+    let shipping = resolve_relation_closure(
+        closures,
+        relation.shipping_closure.as_str(),
+        relation,
+        true,
+    )?;
+    let consumer = resolve_relation_closure(
+        closures,
+        relation.consumer_closure.as_str(),
+        relation,
+        false,
+    )?;
+    validate_relation_pair(shipping, consumer)?;
+    let pair = (shipping.id.as_str(), consumer.id.as_str());
+    if !indexes.pairs.insert(pair) {
+        return Err(relation_error(
+            "PRODUCT_RELATION_DUPLICATE_PAIR",
+            "duplicate shipping/public-consumer pair",
+        ));
+    }
+    insert_reverse_unique(
+        &mut indexes.shipping,
+        shipping.id.as_str(),
+        relation.id.as_str(),
+        "PRODUCT_RELATION_MULTIPLE_SHIPPING",
+        "$.public_consumer_relations",
+    )?;
+    insert_reverse_unique(
+        &mut indexes.consumers,
+        consumer.id.as_str(),
+        relation.id.as_str(),
+        "PRODUCT_RELATION_MULTIPLE_CONSUMER",
+        "$.public_consumer_relations",
+    )
+}
+
+fn resolve_relation_closure<'a>(
+    closures: &BTreeMap<&str, &'a Closure>,
+    id: &str,
+    relation: &PublicConsumerRelation,
+    shipping: bool,
+) -> Result<&'a Closure, ConfigError> {
+    let Some(closure) = closures.get(id).copied() else {
+        let role = if shipping { "shipping" } else { "consumer" };
+        let code = if shipping {
+            "PRODUCT_RELATION_SHIPPING_UNRESOLVED"
+        } else {
+            "PRODUCT_RELATION_CONSUMER_UNRESOLVED"
+        };
+        return Err(relation_error(
+            code,
+            format!(
+                "relation {} names absent {role} closure {id}",
+                relation.id
+            ),
+        ));
+    };
+    let expected =
+        if shipping { ClosureKind::Shipping } else { ClosureKind::Validation };
+    if closure.kind != expected {
+        let code = if shipping {
+            "PRODUCT_RELATION_SHIPPING_KIND"
+        } else {
+            "PRODUCT_RELATION_CONSUMER_KIND"
+        };
+        let role = if shipping { "shipping" } else { "validation" };
+        return Err(relation_error(
+            code,
+            format!("closure {} is not {role}", closure.id),
+        ));
+    }
+    Ok(closure)
+}
+
+fn validate_relation_pair(
+    shipping: &Closure,
+    consumer: &Closure,
+) -> Result<(), ConfigError> {
+    if shipping.workspace != consumer.workspace {
+        return Err(relation_error(
+            "PRODUCT_RELATION_WORKSPACE",
+            "shipping and public consumer must belong to the same exact \
+             Product workspace",
+        ));
+    }
+    if shipping.package.id == consumer.package.id {
+        return Err(relation_error(
+            "PRODUCT_RELATION_EXTERNAL_PACKAGE",
+            "public consumer must cross a distinct package boundary",
+        ));
+    }
+    Ok(())
+}
+
+fn relation_error(
+    code: &'static str,
+    message: impl Into<String>,
+) -> ConfigError {
+    ConfigError::new(code, "$.public_consumer_relations", message)
+}
+
+fn validate_related_closures(
+    closures: &[Closure],
+    relations: &RelationIndexes<'_>,
+) -> Result<(), ConfigError> {
+    for closure in closures {
+        validate_related_closure(closure, relations)?;
+    }
+    Ok(())
+}
+
+fn validate_related_closure(
+    closure: &Closure,
+    relations: &RelationIndexes<'_>,
+) -> Result<(), ConfigError> {
+    let id = closure.id.as_str();
+    let present = match closure.kind {
+        ClosureKind::Shipping => relations.shipping.contains_key(id),
+        ClosureKind::Validation => relations.consumers.contains_key(id),
+    };
+    if !present {
+        return Err(ConfigError::new(
+            "PRODUCT_CLOSURE_UNRELATED",
+            "$.closures",
+            format!("closure {id} has no exact public-consumer relation"),
+        ));
+    }
+    Ok(())
+}
+
+fn parse_closure(
+    value: &Value,
+    path: &str,
+    limits: ParseLimits,
+) -> Result<Closure, ConfigError> {
     let object = json::object(
         value,
         path,
@@ -427,98 +576,47 @@ fn parse_closure(value: &Value, path: &str, limits: ParseLimits) -> Result<Closu
         &[],
     )?;
     let id = id(&object["id"], &json::child(path, "id"))?;
-    let kind_path = json::child(path, "kind");
-    let kind = match json::string(&object["kind"], &kind_path)? {
-        "shipping" => ClosureKind::Shipping,
-        "validation" => ClosureKind::Validation,
-        other => {
-            return Err(ConfigError::new(
-                "PRODUCT_CLOSURE_KIND",
-                kind_path,
-                format!("unknown closure kind {other:?}"),
-            ));
-        }
-    };
-    let workspace = parse_workspace(&object["workspace"], &json::child(path, "workspace"), limits)?;
-    let package = parse_package(&object["package"], &json::child(path, "package"), limits)?;
-    let target = parse_target(&object["target"], &json::child(path, "target"), limits)?;
-    if target.kind != ["lib"] || target.crate_types != ["lib"] {
-        return Err(ConfigError::new(
-            "PRODUCT_CLOSURE_TARGET_PROFILE",
-            json::child(path, "target"),
-            "authored-std-lib/v1 requires kind [\"lib\"] and crate_types [\"lib\"]",
-        ));
-    }
-    let architectural_role =
-        role(&object["architectural_role"], &json::child(path, "architectural_role"))?;
-    let source_use_path = json::child(path, "source_use");
-    let source_use = match json::string(&object["source_use"], &source_use_path)? {
-        "production" => SourceUse::Production,
-        "test" => SourceUse::Test,
-        other => {
-            return Err(ConfigError::new(
-                "PRODUCT_CLOSURE_SOURCE_USE",
-                source_use_path,
-                format!("unsupported Product closure source use {other:?}"),
-            ));
-        }
-    };
-    let cargo = parse_cargo(&object["cargo"], &json::child(path, "cargo"), limits)?;
+    let kind = closure_kind(&object["kind"], &json::child(path, "kind"))?;
+    let workspace = parse_workspace(
+        &object["workspace"],
+        &json::child(path, "workspace"),
+        limits,
+    )?;
+    let package = parse_package(
+        &object["package"],
+        &json::child(path, "package"),
+        limits,
+    )?;
+    let target =
+        parse_target(&object["target"], &json::child(path, "target"), limits)?;
+    validate_target_profile(&target, path)?;
+    let architectural_role = role(
+        &object["architectural_role"],
+        &json::child(path, "architectural_role"),
+    )?;
+    let source_use = closure_source_use(
+        &object["source_use"],
+        &json::child(path, "source_use"),
+    )?;
+    let cargo =
+        parse_cargo(&object["cargo"], &json::child(path, "cargo"), limits)?;
     exact(
         &object["mechanism_profile"],
         &json::child(path, "mechanism_profile"),
         PRODUCT_PROOF_PROFILE,
     )?;
-    let package_membership = if object["package_membership"].is_null() {
-        None
-    } else {
-        Some(parse_membership(
-            &object["package_membership"],
-            &json::child(path, "package_membership"),
-            limits,
-        )?)
-    };
-    match kind {
-        ClosureKind::Shipping => {
-            if source_use != SourceUse::Production {
-                return Err(ConfigError::new(
-                    "PRODUCT_CLOSURE_SHIPPING_USE",
-                    json::child(path, "source_use"),
-                    "shipping closure must use production source",
-                ));
-            }
-            if cargo.profile != "release" {
-                return Err(ConfigError::new(
-                    "PRODUCT_CLOSURE_SHIPPING_PROFILE",
-                    json::child(path, "cargo.profile"),
-                    "shipping closure must select Cargo release profile",
-                ));
-            }
-            if package_membership.is_none() {
-                return Err(ConfigError::new(
-                    "PRODUCT_CLOSURE_SHIPPING_MEMBERSHIP",
-                    json::child(path, "package_membership"),
-                    "shipping closure requires exact Cargo package membership",
-                ));
-            }
-        }
-        ClosureKind::Validation => {
-            if source_use != SourceUse::Test {
-                return Err(ConfigError::new(
-                    "PRODUCT_CLOSURE_VALIDATION_USE",
-                    json::child(path, "source_use"),
-                    "validation closure must use test source",
-                ));
-            }
-            if package_membership.is_some() {
-                return Err(ConfigError::new(
-                    "PRODUCT_CLOSURE_VALIDATION_MEMBERSHIP",
-                    json::child(path, "package_membership"),
-                    "validation closure cannot enter shipping package membership",
-                ));
-            }
-        }
-    }
+    let package_membership = optional_membership(
+        &object["package_membership"],
+        &json::child(path, "package_membership"),
+        limits,
+    )?;
+    validate_closure_profile(
+        kind,
+        source_use,
+        &cargo,
+        package_membership.as_ref(),
+        path,
+    )?;
     Ok(Closure {
         id,
         kind,
@@ -532,16 +630,153 @@ fn parse_closure(value: &Value, path: &str, limits: ParseLimits) -> Result<Closu
     })
 }
 
+fn closure_kind(value: &Value, path: &str) -> Result<ClosureKind, ConfigError> {
+    let kind = match json::string(value, path)? {
+        "shipping" => ClosureKind::Shipping,
+        "validation" => ClosureKind::Validation,
+        other => {
+            return Err(ConfigError::new(
+                "PRODUCT_CLOSURE_KIND",
+                path,
+                format!("unknown closure kind {other:?}"),
+            ));
+        }
+    };
+    Ok(kind)
+}
+
+fn validate_target_profile(
+    target: &TargetRef,
+    path: &str,
+) -> Result<(), ConfigError> {
+    if target.kind != ["lib"] || target.crate_types != ["lib"] {
+        return Err(ConfigError::new(
+            "PRODUCT_CLOSURE_TARGET_PROFILE",
+            json::child(path, "target"),
+            concat!(
+                "authored-std-lib/v1 requires kind [\"lib\"] and ",
+                "crate_types [\"lib\"]"
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn closure_source_use(
+    value: &Value,
+    path: &str,
+) -> Result<SourceUse, ConfigError> {
+    match json::string(value, path)? {
+        "production" => Ok(SourceUse::Production),
+        "test" => Ok(SourceUse::Test),
+        other => Err(ConfigError::new(
+            "PRODUCT_CLOSURE_SOURCE_USE",
+            path,
+            format!("unsupported Product closure source use {other:?}"),
+        )),
+    }
+}
+
+fn optional_membership(
+    value: &Value,
+    path: &str,
+    limits: ParseLimits,
+) -> Result<Option<PackageMembership>, ConfigError> {
+    if value.is_null() {
+        Ok(None)
+    } else {
+        parse_membership(value, path, limits).map(Some)
+    }
+}
+
+fn validate_closure_profile(
+    kind: ClosureKind,
+    source_use: SourceUse,
+    cargo: &CargoSelection,
+    membership: Option<&PackageMembership>,
+    path: &str,
+) -> Result<(), ConfigError> {
+    match kind {
+        ClosureKind::Shipping => {
+            validate_shipping(source_use, cargo, membership, path)
+        }
+        ClosureKind::Validation => {
+            validate_validation(source_use, membership, path)
+        }
+    }
+}
+
+fn validate_shipping(
+    source_use: SourceUse,
+    cargo: &CargoSelection,
+    membership: Option<&PackageMembership>,
+    path: &str,
+) -> Result<(), ConfigError> {
+    if source_use != SourceUse::Production {
+        return Err(ConfigError::new(
+            "PRODUCT_CLOSURE_SHIPPING_USE",
+            json::child(path, "source_use"),
+            "shipping closure must use production source",
+        ));
+    }
+    if cargo.profile != "release" {
+        return Err(ConfigError::new(
+            "PRODUCT_CLOSURE_SHIPPING_PROFILE",
+            json::child(path, "cargo.profile"),
+            "shipping closure must select Cargo release profile",
+        ));
+    }
+    if membership.is_none() {
+        return Err(ConfigError::new(
+            "PRODUCT_CLOSURE_SHIPPING_MEMBERSHIP",
+            json::child(path, "package_membership"),
+            "shipping closure requires exact Cargo package membership",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_validation(
+    source_use: SourceUse,
+    membership: Option<&PackageMembership>,
+    path: &str,
+) -> Result<(), ConfigError> {
+    if source_use != SourceUse::Test {
+        return Err(ConfigError::new(
+            "PRODUCT_CLOSURE_VALIDATION_USE",
+            json::child(path, "source_use"),
+            "validation closure must use test source",
+        ));
+    }
+    if membership.is_some() {
+        return Err(ConfigError::new(
+            "PRODUCT_CLOSURE_VALIDATION_MEMBERSHIP",
+            json::child(path, "package_membership"),
+            "validation closure cannot enter shipping package membership",
+        ));
+    }
+    Ok(())
+}
+
 fn parse_workspace(
     value: &Value,
     path: &str,
     limits: ParseLimits,
 ) -> Result<WorkspaceRef, ConfigError> {
-    let object = json::object(value, path, &["id", "manifest", "lockfile"], &[])?;
+    let object =
+        json::object(value, path, &["id", "manifest", "lockfile"], &[])?;
     Ok(WorkspaceRef {
         id: id(&object["id"], &json::child(path, "id"))?,
-        manifest: path_value(&object["manifest"], &json::child(path, "manifest"), limits)?,
-        lockfile: path_value(&object["lockfile"], &json::child(path, "lockfile"), limits)?,
+        manifest: path_value(
+            &object["manifest"],
+            &json::child(path, "manifest"),
+            limits,
+        )?,
+        lockfile: path_value(
+            &object["lockfile"],
+            &json::child(path, "lockfile"),
+            limits,
+        )?,
     })
 }
 
@@ -554,18 +789,39 @@ fn parse_package(
     Ok(PackageRef {
         id: id(&object["id"], &json::child(path, "id"))?,
         name: text(&object["name"], &json::child(path, "name"))?,
-        manifest: path_value(&object["manifest"], &json::child(path, "manifest"), limits)?,
+        manifest: path_value(
+            &object["manifest"],
+            &json::child(path, "manifest"),
+            limits,
+        )?,
     })
 }
 
-fn parse_target(value: &Value, path: &str, limits: ParseLimits) -> Result<TargetRef, ConfigError> {
-    let object =
-        json::object(value, path, &["id", "name", "src_path", "kind", "crate_types"], &[])?;
+fn parse_target(
+    value: &Value,
+    path: &str,
+    limits: ParseLimits,
+) -> Result<TargetRef, ConfigError> {
+    let object = json::object(
+        value,
+        path,
+        &["id", "name", "src_path", "kind", "crate_types"],
+        &[],
+    )?;
     Ok(TargetRef {
         id: id(&object["id"], &json::child(path, "id"))?,
         name: text(&object["name"], &json::child(path, "name"))?,
-        src_path: path_value(&object["src_path"], &json::child(path, "src_path"), limits)?,
-        kind: string_set(&object["kind"], &json::child(path, "kind"), limits.closure_items, false)?,
+        src_path: path_value(
+            &object["src_path"],
+            &json::child(path, "src_path"),
+            limits,
+        )?,
+        kind: string_set(
+            &object["kind"],
+            &json::child(path, "kind"),
+            limits.closure_items,
+            false,
+        )?,
         crate_types: string_set(
             &object["crate_types"],
             &json::child(path, "crate_types"),
@@ -595,19 +851,32 @@ fn parse_cargo(
         &[],
     )?;
     exact(&object["command"], &json::child(path, "command"), "build")?;
-    exact(&object["target_triple"], &json::child(path, "target_triple"), TARGET_TRIPLE)?;
-    if json::boolean(&object["all_features"], &json::child(path, "all_features"))? {
+    exact(
+        &object["target_triple"],
+        &json::child(path, "target_triple"),
+        TARGET_TRIPLE,
+    )?;
+    if json::boolean(
+        &object["all_features"],
+        &json::child(path, "all_features"),
+    )? {
         return Err(ConfigError::new(
             "PRODUCT_CLOSURE_FEATURE_SELECTION",
             json::child(path, "all_features"),
             "all_features must be false",
         ));
     }
-    if json::boolean(&object["no_default_features"], &json::child(path, "no_default_features"))? {
+    if json::boolean(
+        &object["no_default_features"],
+        &json::child(path, "no_default_features"),
+    )? {
         return Err(ConfigError::new(
             "PRODUCT_CLOSURE_FEATURE_SELECTION",
             json::child(path, "no_default_features"),
-            "no_default_features must be false for the default-empty feature profile",
+            concat!(
+                "no_default_features must be false for the default-empty ",
+                "feature profile"
+            ),
         ));
     }
     let features = string_set(
@@ -636,7 +905,9 @@ fn parse_cargo(
             "authored-std-lib/v1 requires exactly rlib",
         ));
     }
-    Ok(CargoSelection { profile: id(&object["profile"], &json::child(path, "profile"))? })
+    Ok(CargoSelection {
+        profile: id(&object["profile"], &json::child(path, "profile"))?,
+    })
 }
 
 fn parse_membership(
@@ -692,12 +963,21 @@ fn parse_member(
     path: &str,
     limits: ParseLimits,
 ) -> Result<PackageMember, ConfigError> {
-    let discriminant = json::object(value, path, &["kind", "package_path"], &["repository_path"])?;
+    let discriminant = json::object(
+        value,
+        path,
+        &["kind", "package_path"],
+        &["repository_path"],
+    )?;
     let kind_path = json::child(path, "kind");
     match json::string(&discriminant["kind"], &kind_path)? {
         "copied" => {
-            let object =
-                json::object(value, path, &["kind", "package_path", "repository_path"], &[])?;
+            let object = json::object(
+                value,
+                path,
+                &["kind", "package_path", "repository_path"],
+                &[],
+            )?;
             Ok(PackageMember::Copied {
                 package_path: path_value(
                     &object["package_path"],
@@ -712,12 +992,21 @@ fn parse_member(
             })
         }
         "cargo_generated" => {
-            let object = json::object(value, path, &["kind", "package_path"], &[])?;
-            let package_path =
-                path_value(&object["package_path"], &json::child(path, "package_path"), limits)?;
+            let object =
+                json::object(value, path, &["kind", "package_path"], &[])?;
+            let package_path = path_value(
+                &object["package_path"],
+                &json::child(path, "package_path"),
+                limits,
+            )?;
             if !matches!(
                 package_path.to_str(),
-                Some(".cargo_vcs_info.json" | "Cargo.lock" | "Cargo.toml" | "Cargo.toml.orig")
+                Some(
+                    ".cargo_vcs_info.json"
+                        | "Cargo.lock"
+                        | "Cargo.toml"
+                        | "Cargo.toml.orig"
+                )
             ) {
                 return Err(ConfigError::new(
                     "PRODUCT_PACKAGE_GENERATED_MEMBER",
@@ -743,7 +1032,13 @@ fn parse_relation(
     let object = json::object(
         value,
         path,
-        &["id", "shipping_closure", "consumer_closure", "public_items", "derive_checks"],
+        &[
+            "id",
+            "shipping_closure",
+            "consumer_closure",
+            "public_items",
+            "derive_checks",
+        ],
         &[],
     )?;
     let values = bounded_array(
@@ -798,7 +1093,8 @@ fn parse_relation(
                 "derive check must name a declared public item of kind type",
             ));
         }
-        if !derive_identities.insert((check.derive, check.public_type.clone())) {
+        if !derive_identities.insert((check.derive, check.public_type.clone()))
+        {
             return Err(ConfigError::new(
                 "PRODUCT_DERIVE_CHECK_DUPLICATE",
                 item_path,
@@ -810,14 +1106,23 @@ fn parse_relation(
     derive_checks.sort();
     Ok(PublicConsumerRelation {
         id: id(&object["id"], &json::child(path, "id"))?,
-        shipping_closure: id(&object["shipping_closure"], &json::child(path, "shipping_closure"))?,
-        consumer_closure: id(&object["consumer_closure"], &json::child(path, "consumer_closure"))?,
+        shipping_closure: id(
+            &object["shipping_closure"],
+            &json::child(path, "shipping_closure"),
+        )?,
+        consumer_closure: id(
+            &object["consumer_closure"],
+            &json::child(path, "consumer_closure"),
+        )?,
         public_items,
         derive_checks,
     })
 }
 
-fn parse_public_item(value: &Value, path: &str) -> Result<PublicItem, ConfigError> {
+fn parse_public_item(
+    value: &Value,
+    path: &str,
+) -> Result<PublicItem, ConfigError> {
     let object = json::object(value, path, &["path", "kind"], &[])?;
     let item_path = public_path(&object["path"], &json::child(path, "path"))?;
     let kind_path = json::child(path, "kind");
@@ -839,8 +1144,16 @@ fn parse_public_item(value: &Value, path: &str) -> Result<PublicItem, ConfigErro
     Ok(PublicItem { path: item_path, kind })
 }
 
-fn parse_derive_check(value: &Value, path: &str) -> Result<DeriveCheck, ConfigError> {
-    let object = json::object(value, path, &["derive", "public_type", "consumer_operation"], &[])?;
+fn parse_derive_check(
+    value: &Value,
+    path: &str,
+) -> Result<DeriveCheck, ConfigError> {
+    let object = json::object(
+        value,
+        path,
+        &["derive", "public_type", "consumer_operation"],
+        &[],
+    )?;
     let derive_path = json::child(path, "derive");
     let derive = match json::string(&object["derive"], &derive_path)? {
         "Clone" => BuiltinDerive::Clone,
@@ -859,22 +1172,23 @@ fn parse_derive_check(value: &Value, path: &str) -> Result<DeriveCheck, ConfigEr
         }
     };
     let operation_path = json::child(path, "consumer_operation");
-    let consumer_operation = match json::string(&object["consumer_operation"], &operation_path)? {
-        "clone" => ConsumerOperation::Clone,
-        "copy" => ConsumerOperation::Copy,
-        "debug" => ConsumerOperation::Debug,
-        "partial_eq" => ConsumerOperation::PartialEq,
-        "eq" => ConsumerOperation::Eq,
-        "hash" => ConsumerOperation::Hash,
-        "default" => ConsumerOperation::Default,
-        other => {
-            return Err(ConfigError::new(
-                "PRODUCT_DERIVE_OPERATION",
-                operation_path,
-                format!("unsupported consumer operation {other:?}"),
-            ));
-        }
-    };
+    let consumer_operation =
+        match json::string(&object["consumer_operation"], &operation_path)? {
+            "clone" => ConsumerOperation::Clone,
+            "copy" => ConsumerOperation::Copy,
+            "debug" => ConsumerOperation::Debug,
+            "partial_eq" => ConsumerOperation::PartialEq,
+            "eq" => ConsumerOperation::Eq,
+            "hash" => ConsumerOperation::Hash,
+            "default" => ConsumerOperation::Default,
+            other => {
+                return Err(ConfigError::new(
+                    "PRODUCT_DERIVE_OPERATION",
+                    operation_path,
+                    format!("unsupported consumer operation {other:?}"),
+                ));
+            }
+        };
     if !derive_matches_operation(derive, consumer_operation) {
         return Err(ConfigError::new(
             "PRODUCT_DERIVE_OPERATION_MISMATCH",
@@ -884,12 +1198,18 @@ fn parse_derive_check(value: &Value, path: &str) -> Result<DeriveCheck, ConfigEr
     }
     Ok(DeriveCheck {
         derive,
-        public_type: public_path(&object["public_type"], &json::child(path, "public_type"))?,
+        public_type: public_path(
+            &object["public_type"],
+            &json::child(path, "public_type"),
+        )?,
         consumer_operation,
     })
 }
 
-const fn derive_matches_operation(derive: BuiltinDerive, operation: ConsumerOperation) -> bool {
+const fn derive_matches_operation(
+    derive: BuiltinDerive,
+    operation: ConsumerOperation,
+) -> bool {
     matches!(
         (derive, operation),
         (BuiltinDerive::Clone, ConsumerOperation::Clone)
@@ -904,22 +1224,33 @@ const fn derive_matches_operation(derive: BuiltinDerive, operation: ConsumerOper
 
 fn role(value: &Value, path: &str) -> Result<ArchitecturalRole, ConfigError> {
     let value = json::string(value, path)?;
-    ArchitecturalRole::ALL.into_iter().find(|role| role.as_str() == value).ok_or_else(|| {
-        ConfigError::new(
-            "PRODUCT_CLOSURE_ROLE",
-            path,
-            format!("unknown Product architectural role {value:?}"),
-        )
-    })
+    ArchitecturalRole::ALL
+        .into_iter()
+        .find(|role| role.as_str() == value)
+        .ok_or_else(|| {
+            ConfigError::new(
+                "PRODUCT_CLOSURE_ROLE",
+                path,
+                format!("unknown Product architectural role {value:?}"),
+            )
+        })
 }
 
-fn path_value(value: &Value, path: &str, limits: ParseLimits) -> Result<PathBuf, ConfigError> {
+fn path_value(
+    value: &Value,
+    path: &str,
+    limits: ParseLimits,
+) -> Result<PathBuf, ConfigError> {
     let value = json::string(value, path)?;
     if value.len() > limits.path_bytes {
         return Err(ConfigError::new(
             "PRODUCT_PATH_LIMIT",
             path,
-            format!("path is {} bytes; limit is {}", value.len(), limits.path_bytes),
+            format!(
+                "path is {} bytes; limit is {}",
+                value.len(),
+                limits.path_bytes
+            ),
         ));
     }
     relative_path(value, path, false)
@@ -952,8 +1283,13 @@ fn public_path(value: &Value, path: &str) -> Result<String, ConfigError> {
     let value = json::string(value, path)?;
     if !value.is_empty()
         && value.split("::").all(|segment| {
-            segment.bytes().next().is_some_and(|byte| byte == b'_' || byte.is_ascii_alphabetic())
-                && segment.bytes().all(|byte| byte == b'_' || byte.is_ascii_alphanumeric())
+            segment
+                .bytes()
+                .next()
+                .is_some_and(|byte| byte == b'_' || byte.is_ascii_alphabetic())
+                && segment
+                    .bytes()
+                    .all(|byte| byte == b'_' || byte.is_ascii_alphanumeric())
         })
     {
         Ok(value.to_owned())
@@ -998,7 +1334,11 @@ fn string_set(
 fn text(value: &Value, path: &str) -> Result<String, ConfigError> {
     let value = json::string(value, path)?;
     if value.is_empty() {
-        Err(ConfigError::new("PRODUCT_TEXT_EMPTY", path, "text must be nonempty"))
+        Err(ConfigError::new(
+            "PRODUCT_TEXT_EMPTY",
+            path,
+            "text must be nonempty",
+        ))
     } else {
         Ok(value.to_owned())
     }
@@ -1009,7 +1349,11 @@ fn exact(value: &Value, path: &str, expected: &str) -> Result<(), ConfigError> {
     if actual == expected {
         Ok(())
     } else {
-        Err(ConfigError::new("CFG_CONST", path, format!("expected {expected:?}")))
+        Err(ConfigError::new(
+            "CFG_CONST",
+            path,
+            format!("expected {expected:?}"),
+        ))
     }
 }
 
@@ -1061,7 +1405,11 @@ where
     if let Some(existing) = map.get(&key)
         && *existing != value
     {
-        return Err(ConfigError::new(code, path, "identity has inconsistent exact definitions"));
+        return Err(ConfigError::new(
+            code,
+            path,
+            "identity has inconsistent exact definitions",
+        ));
     }
     map.insert(key, value);
     Ok(())
@@ -1081,7 +1429,11 @@ where
     if let Some(existing) = map.get(&key)
         && *existing != value
     {
-        return Err(ConfigError::new(code, path, "one exact identity has multiple aliases"));
+        return Err(ConfigError::new(
+            code,
+            path,
+            "one exact identity has multiple aliases",
+        ));
     }
     map.insert(key, value);
     Ok(())
@@ -1109,6 +1461,7 @@ mod tests {
 
     fn closure(id: &str, kind: &str, package: &str, target: &str) -> Value {
         let shipping = kind == "shipping";
+        let role = if shipping { "Foundation" } else { "Kernel Interface" };
         json!({
             "id": id,
             "kind": kind,
@@ -1129,7 +1482,7 @@ mod tests {
                 "kind": ["lib"],
                 "crate_types": ["lib"]
             },
-            "architectural_role": if shipping { "Foundation" } else { "Kernel Interface" },
+            "architectural_role": role,
             "source_use": if shipping { "production" } else { "test" },
             "cargo": {
                 "command": "build",
@@ -1150,7 +1503,10 @@ mod tests {
                             "package_path": "src/lib.rs",
                             "repository_path": format!("{package}/src/lib.rs")
                         },
-                        {"kind": "cargo_generated", "package_path": "Cargo.toml"}
+                        {
+                            "kind": "cargo_generated",
+                            "package_path": "Cargo.toml"
+                        }
                     ]
                 })
             } else {
@@ -1162,8 +1518,18 @@ mod tests {
     fn complete_registry() -> Value {
         let mut value = empty_registry();
         value["closures"] = json!([
-            closure("foundation-shipping", "shipping", "kernel-foundation", "library"),
-            closure("foundation-consumer", "validation", "foundation-consumer", "library")
+            closure(
+                "foundation-shipping",
+                "shipping",
+                "kernel-foundation",
+                "library"
+            ),
+            closure(
+                "foundation-consumer",
+                "validation",
+                "foundation-consumer",
+                "library"
+            )
         ]);
         value["public_consumer_relations"] = json!([{
             "id": "foundation-public-api",
@@ -1174,8 +1540,16 @@ mod tests {
                 {"path": "transaction::begin", "kind": "function"}
             ],
             "derive_checks": [
-                {"derive": "Copy", "public_type": "Revision", "consumer_operation": "copy"},
-                {"derive": "Debug", "public_type": "Revision", "consumer_operation": "debug"}
+                {
+                    "derive": "Copy",
+                    "public_type": "Revision",
+                    "consumer_operation": "copy"
+                },
+                {
+                    "derive": "Debug",
+                    "public_type": "Revision",
+                    "consumer_operation": "debug"
+                }
             ]
         }]);
         value
@@ -1183,42 +1557,62 @@ mod tests {
 
     #[test]
     fn active_empty_registry_is_valid() {
-        let registry = super::Registry::parse(&empty_registry(), LIMITS).unwrap();
-        assert!(registry.closures.is_empty());
-        assert!(registry.public_consumer_relations.is_empty());
+        let registry =
+            super::Registry::parse(&empty_registry(), LIMITS).unwrap();
+        assert_eq!(registry.closures.len(), 0);
+        assert_eq!(registry.public_consumer_relations.len(), 0);
     }
 
     #[test]
     fn complete_pair_parses_and_sorts_semantic_sets() {
-        let registry = super::Registry::parse(&complete_registry(), LIMITS).unwrap();
+        let registry =
+            super::Registry::parse(&complete_registry(), LIMITS).unwrap();
         assert_eq!(registry.closures.len(), 2);
         assert_eq!(registry.closures[0].id, "foundation-consumer");
         let relation = &registry.public_consumer_relations[0];
         assert_eq!(relation.public_items[0].path, "Revision");
-        assert_eq!(relation.derive_checks[0].derive, super::BuiltinDerive::Copy);
+        assert_eq!(
+            relation.derive_checks[0].derive,
+            super::BuiltinDerive::Copy
+        );
     }
 
     #[test]
     fn schema_unknown_fields_ids_paths_and_limits_fail_closed() {
         let mut schema = empty_registry();
         schema["schema"] = json!("reovim-product-closures/v2");
-        assert_eq!(super::Registry::parse(&schema, LIMITS).unwrap_err().code, "CFG_CONST");
+        assert_eq!(
+            super::Registry::parse(&schema, LIMITS).unwrap_err().code,
+            "CFG_CONST"
+        );
 
         let mut unknown = empty_registry();
         unknown["surprise"] = json!(true);
-        assert_eq!(super::Registry::parse(&unknown, LIMITS).unwrap_err().code, "CFG_UNKNOWN_FIELD");
+        assert_eq!(
+            super::Registry::parse(&unknown, LIMITS).unwrap_err().code,
+            "CFG_UNKNOWN_FIELD"
+        );
 
         let mut bad_id = complete_registry();
         bad_id["closures"][0]["id"] = json!("Bad_ID");
-        assert_eq!(super::Registry::parse(&bad_id, LIMITS).unwrap_err().code, "PRODUCT_ID");
+        assert_eq!(
+            super::Registry::parse(&bad_id, LIMITS).unwrap_err().code,
+            "PRODUCT_ID"
+        );
 
         let mut bad_path = complete_registry();
-        bad_path["closures"][0]["workspace"]["manifest"] = json!("../Cargo.toml");
-        assert_eq!(super::Registry::parse(&bad_path, LIMITS).unwrap_err().code, "CFG_PATH_ESCAPE");
+        bad_path["closures"][0]["workspace"]["manifest"] =
+            json!("../Cargo.toml");
+        assert_eq!(
+            super::Registry::parse(&bad_path, LIMITS).unwrap_err().code,
+            "CFG_PATH_ESCAPE"
+        );
 
         let limits = super::ParseLimits { closure_items: 1, ..LIMITS };
         assert_eq!(
-            super::Registry::parse(&complete_registry(), limits).unwrap_err().code,
+            super::Registry::parse(&complete_registry(), limits)
+                .unwrap_err()
+                .code,
             "PRODUCT_CLOSURE_LIMIT"
         );
     }
@@ -1243,7 +1637,9 @@ mod tests {
         validation_membership["closures"][1]["package_membership"] =
             validation_membership["closures"][0]["package_membership"].clone();
         assert_eq!(
-            super::Registry::parse(&validation_membership, LIMITS).unwrap_err().code,
+            super::Registry::parse(&validation_membership, LIMITS)
+                .unwrap_err()
+                .code,
             "PRODUCT_CLOSURE_VALIDATION_MEMBERSHIP"
         );
 
@@ -1258,16 +1654,18 @@ mod tests {
     #[test]
     fn member_paths_are_one_to_one_and_generated_names_are_closed() {
         let mut duplicate = complete_registry();
-        duplicate["closures"][0]["package_membership"]["members"][0]["package_path"] =
-            json!("Cargo.toml");
+        let package_path = &mut duplicate["closures"][0]["package_membership"]
+            ["members"][0]["package_path"];
+        *package_path = json!("Cargo.toml");
         assert_eq!(
             super::Registry::parse(&duplicate, LIMITS).unwrap_err().code,
             "PRODUCT_PACKAGE_MEMBER_DUPLICATE_PATH"
         );
 
         let mut generated = complete_registry();
-        generated["closures"][0]["package_membership"]["members"][1]["package_path"] =
-            json!("README.md");
+        let package_path = &mut generated["closures"][0]["package_membership"]
+            ["members"][1]["package_path"];
+        *package_path = json!("README.md");
         assert_eq!(
             super::Registry::parse(&generated, LIMITS).unwrap_err().code,
             "PRODUCT_PACKAGE_GENERATED_MEMBER"
@@ -1288,7 +1686,9 @@ mod tests {
         inconsistent_workspace["closures"][1]["workspace"]["lockfile"] =
             json!("product/Other.lock");
         assert_eq!(
-            super::Registry::parse(&inconsistent_workspace, LIMITS).unwrap_err().code,
+            super::Registry::parse(&inconsistent_workspace, LIMITS)
+                .unwrap_err()
+                .code,
             "PRODUCT_CLOSURE_WORKSPACE_IDENTITY"
         );
 
@@ -1304,14 +1704,16 @@ mod tests {
     #[test]
     fn public_relation_references_and_derive_checks_are_exact() {
         let mut missing = complete_registry();
-        missing["public_consumer_relations"][0]["shipping_closure"] = json!("absent");
+        missing["public_consumer_relations"][0]["shipping_closure"] =
+            json!("absent");
         assert_eq!(
             super::Registry::parse(&missing, LIMITS).unwrap_err().code,
             "PRODUCT_RELATION_SHIPPING_UNRESOLVED"
         );
 
         let mut same_package = complete_registry();
-        same_package["closures"][0]["package"] = same_package["closures"][1]["package"].clone();
+        same_package["closures"][0]["package"] =
+            same_package["closures"][1]["package"].clone();
         same_package["closures"][0]["target"]["id"] = json!("shipping-library");
         assert_eq!(
             super::Registry::parse(&same_package, LIMITS).unwrap_err().code,
@@ -1319,16 +1721,18 @@ mod tests {
         );
 
         let mut mismatch = complete_registry();
-        mismatch["public_consumer_relations"][0]["derive_checks"][0]["consumer_operation"] =
-            json!("clone");
+        let relation = &mut mismatch["public_consumer_relations"][0];
+        let operation = &mut relation["derive_checks"][0]["consumer_operation"];
+        *operation = json!("clone");
         assert_eq!(
             super::Registry::parse(&mismatch, LIMITS).unwrap_err().code,
             "PRODUCT_DERIVE_OPERATION_MISMATCH"
         );
 
         let mut unresolved = complete_registry();
-        unresolved["public_consumer_relations"][0]["derive_checks"][0]["public_type"] =
-            json!("Missing");
+        let relation = &mut unresolved["public_consumer_relations"][0];
+        let public_type = &mut relation["derive_checks"][0]["public_type"];
+        *public_type = json!("Missing");
         assert_eq!(
             super::Registry::parse(&unresolved, LIMITS).unwrap_err().code,
             "PRODUCT_DERIVE_PUBLIC_TYPE_UNRESOLVED"

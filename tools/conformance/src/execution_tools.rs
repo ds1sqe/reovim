@@ -1,4 +1,5 @@
-//! Exact semantic reviews and environment bindings for independently executed tools.
+//! Exact semantic reviews and environment bindings for independently
+//! executed tools.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -110,10 +111,17 @@ pub struct RuntimeInput {
 impl Registry {
     /// Parses and semantically closes a registry value already bounded and
     /// duplicate-key checked by the caller's JSON loader.
-    pub fn parse(value: &Value, limits: ParseLimits) -> Result<Self, ConfigError> {
+    pub fn parse(
+        value: &Value,
+        limits: ParseLimits,
+    ) -> Result<Self, ConfigError> {
         validate_limits(limits)?;
-        let object =
-            json::object(value, "$", &["schema", "reviewed_at", "reviews", "environments"], &[])?;
+        let object = json::object(
+            value,
+            "$",
+            &["schema", "reviewed_at", "reviews", "environments"],
+            &[],
+        )?;
         exact(&object["schema"], "$.schema", SCHEMA)?;
         let reviewed_at = text(&object["reviewed_at"], "$.reviewed_at")?;
         if !crate::schema::utc_timestamp(&reviewed_at) {
@@ -130,39 +138,7 @@ impl Registry {
             limits.registry_items,
             "EXECUTION_TOOL_REVIEW_LIMIT",
         )?;
-        let mut reviews = Vec::with_capacity(review_values.len());
-        let mut review_ids = BTreeSet::new();
-        let mut review_records = BTreeSet::new();
-        let mut family_owners = BTreeMap::new();
-        for (item, value) in review_values.iter().enumerate() {
-            let path = json::index("$.reviews", item);
-            let review = parse_review(value, &path, limits)?;
-            if !review_ids.insert(review.id.clone()) {
-                return Err(ConfigError::new(
-                    "EXECUTION_TOOL_DUPLICATE_REVIEW_ID",
-                    json::child(&path, "id"),
-                    "duplicate execution-tool review ID",
-                ));
-            }
-            if !review_records.insert(review.review_record.clone()) {
-                return Err(ConfigError::new(
-                    "EXECUTION_TOOL_DUPLICATE_REVIEW_RECORD",
-                    json::child(&path, "review_record"),
-                    "each semantic review requires its own retained record",
-                ));
-            }
-            for family in &review.invocation_families {
-                if let Some(owner) = family_owners.insert(*family, review.id.clone()) {
-                    return Err(ConfigError::new(
-                        "EXECUTION_TOOL_DUPLICATE_FAMILY_REVIEW",
-                        json::child(&path, "invocation_families"),
-                        format!("invocation family is already owned by review {owner}"),
-                    ));
-                }
-            }
-            reviews.push(review);
-        }
-        reviews.sort_by(|left, right| left.id.cmp(&right.id));
+        let (reviews, review_ids) = parse_reviews(review_values, limits)?;
 
         let environment_values = bounded_array(
             &object["environments"],
@@ -170,26 +146,107 @@ impl Registry {
             limits.registry_items,
             "EXECUTION_TOOL_ENVIRONMENT_LIMIT",
         )?;
-        let mut environments = Vec::with_capacity(environment_values.len());
-        let mut environment_ids = BTreeSet::new();
-        for (item, value) in environment_values.iter().enumerate() {
-            let path = json::index("$.environments", item);
-            let environment = parse_environment(value, &path, limits, &review_ids)?;
-            if !environment_ids.insert(environment.id.clone()) {
-                return Err(ConfigError::new(
-                    "EXECUTION_TOOL_DUPLICATE_ENVIRONMENT_ID",
-                    json::child(&path, "id"),
-                    "duplicate execution environment ID",
-                ));
-            }
-            environments.push(environment);
-        }
-        environments.sort_by(|left, right| left.id.cmp(&right.id));
+        let environments =
+            parse_environments(environment_values, limits, &review_ids)?;
         Ok(Self { reviewed_at, reviews, environments })
     }
 }
 
-fn parse_review(value: &Value, path: &str, limits: ParseLimits) -> Result<Review, ConfigError> {
+fn parse_reviews(
+    values: &[Value],
+    limits: ParseLimits,
+) -> Result<(Vec<Review>, BTreeSet<String>), ConfigError> {
+    let mut reviews = Vec::with_capacity(values.len());
+    let mut review_ids = BTreeSet::new();
+    let mut review_records = BTreeSet::new();
+    let mut family_owners = BTreeMap::new();
+    for (item, value) in values.iter().enumerate() {
+        let path = json::index("$.reviews", item);
+        let review = parse_review(value, &path, limits)?;
+        register_review(
+            &review,
+            &path,
+            &mut review_ids,
+            &mut review_records,
+            &mut family_owners,
+        )?;
+        reviews.push(review);
+    }
+    reviews.sort_by(|left, right| left.id.cmp(&right.id));
+    Ok((reviews, review_ids))
+}
+
+fn register_review(
+    review: &Review,
+    path: &str,
+    review_ids: &mut BTreeSet<String>,
+    review_records: &mut BTreeSet<PathBuf>,
+    family_owners: &mut BTreeMap<InvocationFamily, String>,
+) -> Result<(), ConfigError> {
+    if !review_ids.insert(review.id.clone()) {
+        return Err(ConfigError::new(
+            "EXECUTION_TOOL_DUPLICATE_REVIEW_ID",
+            json::child(path, "id"),
+            "duplicate execution-tool review ID",
+        ));
+    }
+    if !review_records.insert(review.review_record.clone()) {
+        return Err(ConfigError::new(
+            "EXECUTION_TOOL_DUPLICATE_REVIEW_RECORD",
+            json::child(path, "review_record"),
+            "each semantic review requires its own retained record",
+        ));
+    }
+    for family in &review.invocation_families {
+        register_family_owner(*family, review, path, family_owners)?;
+    }
+    Ok(())
+}
+
+fn register_family_owner(
+    family: InvocationFamily,
+    review: &Review,
+    path: &str,
+    owners: &mut BTreeMap<InvocationFamily, String>,
+) -> Result<(), ConfigError> {
+    let Some(owner) = owners.insert(family, review.id.clone()) else {
+        return Ok(());
+    };
+    Err(ConfigError::new(
+        "EXECUTION_TOOL_DUPLICATE_FAMILY_REVIEW",
+        json::child(path, "invocation_families"),
+        format!("invocation family is already owned by review {owner}"),
+    ))
+}
+
+fn parse_environments(
+    values: &[Value],
+    limits: ParseLimits,
+    review_ids: &BTreeSet<String>,
+) -> Result<Vec<Environment>, ConfigError> {
+    let mut environments = Vec::with_capacity(values.len());
+    let mut environment_ids = BTreeSet::new();
+    for (item, value) in values.iter().enumerate() {
+        let path = json::index("$.environments", item);
+        let environment = parse_environment(value, &path, limits, review_ids)?;
+        if !environment_ids.insert(environment.id.clone()) {
+            return Err(ConfigError::new(
+                "EXECUTION_TOOL_DUPLICATE_ENVIRONMENT_ID",
+                json::child(&path, "id"),
+                "duplicate execution environment ID",
+            ));
+        }
+        environments.push(environment);
+    }
+    environments.sort_by(|left, right| left.id.cmp(&right.id));
+    Ok(environments)
+}
+
+fn parse_review(
+    value: &Value,
+    path: &str,
+    limits: ParseLimits,
+) -> Result<Review, ConfigError> {
     let object = json::object(
         value,
         path,
@@ -211,7 +268,8 @@ fn parse_review(value: &Value, path: &str, limits: ParseLimits) -> Result<Review
         &[],
     )?;
     let role_path = json::child(path, "logical_role");
-    let logical_role = match json::string(&object["logical_role"], &role_path)? {
+    let logical_role = match json::string(&object["logical_role"], &role_path)?
+    {
         "git" => LogicalRole::Git,
         "linker_driver" => LogicalRole::LinkerDriver,
         "toolchain_resolver" => LogicalRole::ToolchainResolver,
@@ -228,7 +286,10 @@ fn parse_review(value: &Value, path: &str, limits: ParseLimits) -> Result<Review
         &json::child(path, "invocation_families"),
         limits,
     )?;
-    if invocation_families.iter().any(|family| family.logical_role() != logical_role) {
+    if invocation_families
+        .iter()
+        .any(|family| family.logical_role() != logical_role)
+    {
         return Err(ConfigError::new(
             "EXECUTION_TOOL_FAMILY_ROLE",
             json::child(path, "invocation_families"),
@@ -289,7 +350,12 @@ fn parse_families(
     path: &str,
     limits: ParseLimits,
 ) -> Result<Vec<InvocationFamily>, ConfigError> {
-    let values = bounded_array(value, path, limits.registry_items, "EXECUTION_TOOL_FAMILY_LIMIT")?;
+    let values = bounded_array(
+        value,
+        path,
+        limits.registry_items,
+        "EXECUTION_TOOL_FAMILY_LIMIT",
+    )?;
     if values.is_empty() {
         return Err(ConfigError::new(
             "EXECUTION_TOOL_FAMILIES_EMPTY",
@@ -333,7 +399,12 @@ fn parse_environment(
     limits: ParseLimits,
     reviews: &BTreeSet<String>,
 ) -> Result<Environment, ConfigError> {
-    let object = json::object(value, path, &["id", "host_os", "host_arch", "bindings"], &[])?;
+    let object = json::object(
+        value,
+        path,
+        &["id", "host_os", "host_arch", "bindings"],
+        &[],
+    )?;
     exact(&object["host_os"], &json::child(path, "host_os"), "linux")?;
     exact(&object["host_arch"], &json::child(path, "host_arch"), "x86_64")?;
     let values = bounded_array(
@@ -367,7 +438,10 @@ fn parse_environment(
             return Err(ConfigError::new(
                 "EXECUTION_TOOL_DUPLICATE_CANONICAL_PATH",
                 json::child(&item_path, "canonical_path"),
-                "environment binds one canonical executable path more than once",
+                concat!(
+                    "environment binds one canonical executable ",
+                    "path more than once"
+                ),
             ));
         }
         if let Some(prepared_path) = &binding.prepared_path
@@ -382,10 +456,17 @@ fn parse_environment(
         bindings.push(binding);
     }
     bindings.sort();
-    Ok(Environment { id: id(&object["id"], &json::child(path, "id"))?, bindings })
+    Ok(Environment {
+        id: id(&object["id"], &json::child(path, "id"))?,
+        bindings,
+    })
 }
 
-fn parse_binding(value: &Value, path: &str, limits: ParseLimits) -> Result<Binding, ConfigError> {
+fn parse_binding(
+    value: &Value,
+    path: &str,
+    limits: ParseLimits,
+) -> Result<Binding, ConfigError> {
     let object = json::object(
         value,
         path,
@@ -402,15 +483,24 @@ fn parse_binding(value: &Value, path: &str, limits: ParseLimits) -> Result<Bindi
         ],
         &[],
     )?;
-    let canonical_path =
-        absolute_path(&object["canonical_path"], &json::child(path, "canonical_path"), limits)?;
+    let canonical_path = absolute_path(
+        &object["canonical_path"],
+        &json::child(path, "canonical_path"),
+        limits,
+    )?;
     let prepared_path = if object["prepared_path"].is_null() {
         None
     } else {
-        Some(absolute_path(&object["prepared_path"], &json::child(path, "prepared_path"), limits)?)
+        Some(absolute_path(
+            &object["prepared_path"],
+            &json::child(path, "prepared_path"),
+            limits,
+        )?)
     };
-    let executable_size_bytes =
-        positive(&object["executable_size_bytes"], &json::child(path, "executable_size_bytes"))?;
+    let executable_size_bytes = positive(
+        &object["executable_size_bytes"],
+        &json::child(path, "executable_size_bytes"),
+    )?;
     let argv_values = bounded_array(
         &object["version_argv"],
         &json::child(path, "version_argv"),
@@ -427,7 +517,9 @@ fn parse_binding(value: &Value, path: &str, limits: ParseLimits) -> Result<Bindi
     let version_argv = argv_values
         .iter()
         .enumerate()
-        .map(|(item, value)| text(value, &json::index(&json::child(path, "version_argv"), item)))
+        .map(|(item, value)| {
+            text(value, &json::index(&json::child(path, "version_argv"), item))
+        })
         .collect::<Result<Vec<_>, _>>()?;
 
     let input_values = bounded_array(
@@ -469,7 +561,10 @@ fn parse_binding(value: &Value, path: &str, limits: ParseLimits) -> Result<Bindi
         executable_size_bytes,
         version_argv,
         version: text(&object["version"], &json::child(path, "version"))?,
-        version_digest: digest(&object["version_digest"], &json::child(path, "version_digest"))?,
+        version_digest: digest(
+            &object["version_digest"],
+            &json::child(path, "version_digest"),
+        )?,
         runtime_inputs,
     })
 }
@@ -479,26 +574,44 @@ fn parse_runtime_input(
     path: &str,
     limits: ParseLimits,
 ) -> Result<RuntimeInput, ConfigError> {
-    let object =
-        json::object(value, path, &["canonical_path", "content_digest", "size_bytes"], &[])?;
+    let object = json::object(
+        value,
+        path,
+        &["canonical_path", "content_digest", "size_bytes"],
+        &[],
+    )?;
     Ok(RuntimeInput {
         canonical_path: absolute_path(
             &object["canonical_path"],
             &json::child(path, "canonical_path"),
             limits,
         )?,
-        content_digest: digest(&object["content_digest"], &json::child(path, "content_digest"))?,
-        size_bytes: positive(&object["size_bytes"], &json::child(path, "size_bytes"))?,
+        content_digest: digest(
+            &object["content_digest"],
+            &json::child(path, "content_digest"),
+        )?,
+        size_bytes: positive(
+            &object["size_bytes"],
+            &json::child(path, "size_bytes"),
+        )?,
     })
 }
 
-fn absolute_path(value: &Value, path: &str, limits: ParseLimits) -> Result<PathBuf, ConfigError> {
+fn absolute_path(
+    value: &Value,
+    path: &str,
+    limits: ParseLimits,
+) -> Result<PathBuf, ConfigError> {
     let value = json::string(value, path)?;
     if value.len() > limits.path_bytes {
         return Err(ConfigError::new(
             "EXECUTION_TOOL_PATH_LIMIT",
             path,
-            format!("path is {} bytes; limit is {}", value.len(), limits.path_bytes),
+            format!(
+                "path is {} bytes; limit is {}",
+                value.len(),
+                limits.path_bytes
+            ),
         ));
     }
     if value == "/"
@@ -506,12 +619,18 @@ fn absolute_path(value: &Value, path: &str, limits: ParseLimits) -> Result<PathB
         || value.ends_with('/')
         || value.contains("//")
         || value.contains('\0')
-        || value.split('/').skip(1).any(|component| matches!(component, "." | ".."))
+        || value
+            .split('/')
+            .skip(1)
+            .any(|component| matches!(component, "." | ".."))
     {
         return Err(ConfigError::new(
             "EXECUTION_TOOL_ABSOLUTE_PATH",
             path,
-            "expected a normalized non-root absolute path without dot components",
+            concat!(
+                "expected a normalized non-root absolute path ",
+                "without dot components"
+            ),
         ));
     }
     Ok(PathBuf::from(value))
@@ -527,7 +646,11 @@ fn relative_path_value(
         return Err(ConfigError::new(
             "EXECUTION_TOOL_PATH_LIMIT",
             path,
-            format!("path is {} bytes; limit is {}", value.len(), limits.path_bytes),
+            format!(
+                "path is {} bytes; limit is {}",
+                value.len(),
+                limits.path_bytes
+            ),
         ));
     }
     relative_path(value, path, false)
@@ -536,7 +659,11 @@ fn relative_path_value(
 fn positive(value: &Value, path: &str) -> Result<u64, ConfigError> {
     let value = json::unsigned(value, path)?;
     if value == 0 {
-        Err(ConfigError::new("EXECUTION_TOOL_ZERO_SIZE", path, "byte size must be positive"))
+        Err(ConfigError::new(
+            "EXECUTION_TOOL_ZERO_SIZE",
+            path,
+            "byte size must be positive",
+        ))
     } else {
         Ok(value)
     }
@@ -546,11 +673,17 @@ fn digest(value: &Value, path: &str) -> Result<String, ConfigError> {
     let value = json::string(value, path)?;
     if value.len() == 71
         && value.starts_with("sha256:")
-        && value[7..].bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        && value[7..]
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     {
         Ok(value.to_owned())
     } else {
-        Err(ConfigError::new("EXECUTION_TOOL_DIGEST", path, "expected sha256:<64 lowercase hex>"))
+        Err(ConfigError::new(
+            "EXECUTION_TOOL_DIGEST",
+            path,
+            "expected sha256:<64 lowercase hex>",
+        ))
     }
 }
 
@@ -583,7 +716,8 @@ fn string_set(
     limit: usize,
     allow_empty: bool,
 ) -> Result<Vec<String>, ConfigError> {
-    let values = bounded_array(value, path, limit, "EXECUTION_TOOL_STRING_SET_LIMIT")?;
+    let values =
+        bounded_array(value, path, limit, "EXECUTION_TOOL_STRING_SET_LIMIT")?;
     if values.is_empty() && !allow_empty {
         return Err(ConfigError::new(
             "EXECUTION_TOOL_STRING_SET_EMPTY",
@@ -609,7 +743,11 @@ fn string_set(
 fn text(value: &Value, path: &str) -> Result<String, ConfigError> {
     let value = json::string(value, path)?;
     if value.is_empty() {
-        Err(ConfigError::new("EXECUTION_TOOL_TEXT_EMPTY", path, "text must be nonempty"))
+        Err(ConfigError::new(
+            "EXECUTION_TOOL_TEXT_EMPTY",
+            path,
+            "text must be nonempty",
+        ))
     } else {
         Ok(value.to_owned())
     }
@@ -620,7 +758,11 @@ fn exact(value: &Value, path: &str, expected: &str) -> Result<(), ConfigError> {
     if actual == expected {
         Ok(())
     } else {
-        Err(ConfigError::new("CFG_CONST", path, format!("expected {expected:?}")))
+        Err(ConfigError::new(
+            "CFG_CONST",
+            path,
+            format!("expected {expected:?}"),
+        ))
     }
 }
 
@@ -680,6 +822,10 @@ mod tests {
         })
     }
 
+    fn review_record(id: &str) -> String {
+        format!("conformance/execution-tool-reviews/{id}.md")
+    }
+
     fn review(id: &str, role: &str, family: &str) -> Value {
         json!({
             "id": id,
@@ -693,7 +839,7 @@ mod tests {
             "assumptions": ["reviewed invocation grammar"],
             "invalidators": ["executable or runtime-input drift"],
             "disposition": "admit",
-            "review_record": format!("conformance/execution-tool-reviews/{id}.md"),
+            "review_record": review_record(id),
             "review_record_digest": format!("sha256:{}", "1".repeat(64))
         })
     }
@@ -730,24 +876,32 @@ mod tests {
 
     #[test]
     fn active_empty_registry_is_valid() {
-        let registry = super::Registry::parse(&empty_registry(), LIMITS).unwrap();
-        assert!(registry.reviews.is_empty());
-        assert!(registry.environments.is_empty());
+        let registry =
+            super::Registry::parse(&empty_registry(), LIMITS).unwrap();
+        assert_eq!(registry.reviews.len(), 0);
+        assert_eq!(registry.environments.len(), 0);
     }
 
     #[test]
     fn complete_review_and_environment_binding_parse() {
-        let registry = super::Registry::parse(&complete_registry(), LIMITS).unwrap();
+        let registry =
+            super::Registry::parse(&complete_registry(), LIMITS).unwrap();
         assert_eq!(registry.reviews[0].logical_role, super::LogicalRole::Git);
         assert_eq!(registry.environments[0].bindings[0].review, "git-exact");
-        assert_eq!(registry.environments[0].bindings[0].runtime_inputs.len(), 1);
+        assert_eq!(
+            registry.environments[0].bindings[0].runtime_inputs.len(),
+            1
+        );
     }
 
     #[test]
     fn schema_timestamp_unknown_fields_and_limits_fail_closed() {
         let mut schema = empty_registry();
         schema["schema"] = json!("reovim-execution-tool-reviews/v2");
-        assert_eq!(super::Registry::parse(&schema, LIMITS).unwrap_err().code, "CFG_CONST");
+        assert_eq!(
+            super::Registry::parse(&schema, LIMITS).unwrap_err().code,
+            "CFG_CONST"
+        );
 
         let mut timestamp = empty_registry();
         timestamp["reviewed_at"] = json!("2026-02-29T25:00:00Z");
@@ -758,7 +912,10 @@ mod tests {
 
         let mut unknown = complete_registry();
         unknown["reviews"][0]["surprise"] = json!(true);
-        assert_eq!(super::Registry::parse(&unknown, LIMITS).unwrap_err().code, "CFG_UNKNOWN_FIELD");
+        assert_eq!(
+            super::Registry::parse(&unknown, LIMITS).unwrap_err().code,
+            "CFG_UNKNOWN_FIELD"
+        );
 
         let limits = super::ParseLimits { binding_items: 0, ..LIMITS };
         assert_eq!(
@@ -771,14 +928,21 @@ mod tests {
     fn ids_relative_and_absolute_paths_and_digests_are_closed() {
         let mut id = complete_registry();
         id["reviews"][0]["id"] = json!("Git_Exact");
-        assert_eq!(super::Registry::parse(&id, LIMITS).unwrap_err().code, "EXECUTION_TOOL_ID");
+        assert_eq!(
+            super::Registry::parse(&id, LIMITS).unwrap_err().code,
+            "EXECUTION_TOOL_ID"
+        );
 
         let mut relative = complete_registry();
         relative["reviews"][0]["review_record"] = json!("../review.md");
-        assert_eq!(super::Registry::parse(&relative, LIMITS).unwrap_err().code, "CFG_PATH_ESCAPE");
+        assert_eq!(
+            super::Registry::parse(&relative, LIMITS).unwrap_err().code,
+            "CFG_PATH_ESCAPE"
+        );
 
         let mut absolute = complete_registry();
-        absolute["environments"][0]["bindings"][0]["canonical_path"] = json!("/usr/../bin/git");
+        absolute["environments"][0]["bindings"][0]["canonical_path"] =
+            json!("/usr/../bin/git");
         assert_eq!(
             super::Registry::parse(&absolute, LIMITS).unwrap_err().code,
             "EXECUTION_TOOL_ABSOLUTE_PATH"
@@ -830,8 +994,12 @@ mod tests {
         );
 
         let mut duplicate_review = complete_registry();
-        let duplicate = duplicate_review["environments"][0]["bindings"][0].clone();
-        duplicate_review["environments"][0]["bindings"].as_array_mut().unwrap().push(duplicate);
+        let duplicate =
+            duplicate_review["environments"][0]["bindings"][0].clone();
+        duplicate_review["environments"][0]["bindings"]
+            .as_array_mut()
+            .unwrap()
+            .push(duplicate);
         assert_eq!(
             super::Registry::parse(&duplicate_review, LIMITS).unwrap_err().code,
             "EXECUTION_TOOL_DUPLICATE_REVIEW_BINDING"
@@ -839,9 +1007,14 @@ mod tests {
 
         let mut duplicate_environment = complete_registry();
         let duplicate = duplicate_environment["environments"][0].clone();
-        duplicate_environment["environments"].as_array_mut().unwrap().push(duplicate);
+        duplicate_environment["environments"]
+            .as_array_mut()
+            .unwrap()
+            .push(duplicate);
         assert_eq!(
-            super::Registry::parse(&duplicate_environment, LIMITS).unwrap_err().code,
+            super::Registry::parse(&duplicate_environment, LIMITS)
+                .unwrap_err()
+                .code,
             "EXECUTION_TOOL_DUPLICATE_ENVIRONMENT_ID"
         );
     }
@@ -849,7 +1022,9 @@ mod tests {
     #[test]
     fn runtime_inputs_sizes_and_argv_are_bounded_and_unique() {
         let mut duplicate = complete_registry();
-        let input = duplicate["environments"][0]["bindings"][0]["runtime_inputs"][0].clone();
+        let input =
+            duplicate["environments"][0]["bindings"][0]["runtime_inputs"][0]
+                .clone();
         duplicate["environments"][0]["bindings"][0]["runtime_inputs"]
             .as_array_mut()
             .unwrap()
@@ -860,7 +1035,8 @@ mod tests {
         );
 
         let mut zero = complete_registry();
-        zero["environments"][0]["bindings"][0]["executable_size_bytes"] = json!(0);
+        zero["environments"][0]["bindings"][0]["executable_size_bytes"] =
+            json!(0);
         assert_eq!(
             super::Registry::parse(&zero, LIMITS).unwrap_err().code,
             "EXECUTION_TOOL_ZERO_SIZE"

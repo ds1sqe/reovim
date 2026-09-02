@@ -12,7 +12,9 @@ use serde_json::{Value, json};
 use crate::{
     cargo::{Capture, Package as CargoPackage, VersionCapture},
     digest,
-    execution_tools::{self, Binding as ExecutionBinding, InvocationFamily, LogicalRole},
+    execution_tools::{
+        self, Binding as ExecutionBinding, InvocationFamily, LogicalRole,
+    },
     finding::Finding,
     git,
     graph::GraphReport,
@@ -21,7 +23,8 @@ use crate::{
     product_closures, report_v2,
     source::Inventory,
     topology::{
-        Limits, ProductExecutionLimits, Topology, Workspace, WorkspacePackage, WorkspacePartition,
+        Limits, ProductExecutionLimits, Topology, Workspace, WorkspacePackage,
+        WorkspacePartition,
     },
 };
 
@@ -92,7 +95,11 @@ pub struct MetadataEvidence<'a> {
 #[derive(Debug, Clone, Copy)]
 pub enum Mode<'a> {
     Candidate,
-    Exact { revision: &'a str, git: &'a git::Evidence, execution_environment: &'a str },
+    Exact {
+        revision: &'a str,
+        git: &'a git::Evidence,
+        execution_environment: &'a str,
+    },
 }
 
 /// Complete Product-empty inputs. Product compiler/gate evidence is
@@ -143,7 +150,16 @@ impl std::error::Error for BuildError {}
 
 impl From<report_v2::ReportError> for BuildError {
     fn from(failure: report_v2::ReportError) -> Self {
-        Self::new("V2_REPORT_ENVELOPE", failure.to_string())
+        let code = match failure.code() {
+            report_v2::ReportErrorCode::Envelope => "V2_REPORT_ENVELOPE",
+            report_v2::ReportErrorCode::Schema => "V2_REPORT_SCHEMA",
+            report_v2::ReportErrorCode::Canonical => "V2_REPORT_CANONICAL",
+            report_v2::ReportErrorCode::Identity => "V2_REPORT_IDENTITY",
+            report_v2::ReportErrorCode::Limit => "V2_REPORT_LIMIT",
+            report_v2::ReportErrorCode::Reference => "V2_REPORT_REFERENCE",
+            report_v2::ReportErrorCode::Semantic => "V2_REPORT_SEMANTIC",
+        };
+        Self::new(code, failure.to_string())
     }
 }
 
@@ -157,13 +173,22 @@ pub fn observe_source_files(
         .files
         .iter()
         .map(|file| {
-            let metadata = fs::symlink_metadata(root.join(&file.path)).map_err(|failure| {
-                BuildError::new("V2_SOURCE_METADATA", format!("{}: {failure}", file.path.display()))
-            })?;
-            if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
+            let metadata = fs::symlink_metadata(root.join(&file.path))
+                .map_err(|failure| {
+                    BuildError::new(
+                        "V2_SOURCE_METADATA",
+                        format!("{}: {failure}", file.path.display()),
+                    )
+                })?;
+            if !metadata.file_type().is_file()
+                || metadata.file_type().is_symlink()
+            {
                 return Err(BuildError::new(
                     "V2_SOURCE_FILE_TYPE",
-                    format!("{} is not a regular non-symlink file", file.path.display()),
+                    format!(
+                        "{} is not a regular non-symlink file",
+                        file.path.display()
+                    ),
                 ));
             }
             #[cfg(unix)]
@@ -187,18 +212,101 @@ pub fn observe_source_files(
 }
 
 /// Constructs and seals the active Product-empty v2 Source Role Map.
-#[allow(clippy::too_many_lines)]
-pub fn build(inputs: &BuildInputs<'_>) -> Result<report_v2::BuiltReport, BuildError> {
+pub fn build(
+    inputs: &BuildInputs<'_>,
+) -> Result<report_v2::BuiltReport, BuildError> {
     let workspace = validate_product_empty_scope(inputs)?;
     validate_tool_capture(inputs.checker, inputs.checker_version, "checker")?;
     validate_tool_capture(inputs.cargo, inputs.cargo_version, "Cargo")?;
     validate_tool_capture(inputs.rustc, inputs.rustc_version, "rustc")?;
     let metadata = validate_metadata_completeness(inputs, workspace)?;
     let observations = source_observation_map(inputs)?;
+    let mut report = report_value(inputs, workspace, &metadata, &observations)?;
+    // Make accidental caller reuse after mutation impossible to confuse with
+    // the sealed report returned by the v2 envelope.
+    report_v2::build(
+        std::mem::take(&mut report),
+        inputs.topology.limits.report_bytes,
+    )
+    .map_err(Into::into)
+}
 
+struct SourceReportValues {
+    classifications: Vec<Value>,
+    exclusions: Vec<Value>,
+    workspace: Value,
+    lockfile_digest: String,
+}
+
+struct EvidenceReportValues {
+    metadata_runs: Vec<Value>,
+    graph: GraphValues,
+    processes: Vec<Value>,
+}
+
+struct FindingReportValues {
+    values: Vec<Value>,
+    status: &'static str,
+    count: usize,
+}
+
+fn report_value(
+    inputs: &BuildInputs<'_>,
+    workspace: &Workspace,
+    metadata: &[&MetadataEvidence<'_>],
+    observations: &BTreeMap<&Path, &SourceFileObservation>,
+) -> Result<Value, BuildError> {
     let (mode, revision, git_identity, git_tree_digest, git_processes) =
         mode_values(inputs, workspace)?;
-    let classifications = classification_values(inputs, &observations)?;
+    let source = source_report_values(inputs, workspace, observations)?;
+    let evidence =
+        evidence_report_values(inputs, workspace, metadata, git_processes)?;
+    let findings = finding_report_values(inputs)?;
+    let profiles = profile_identity_values(workspace, metadata)?;
+    let identity_inputs = identity_inputs_value(
+        inputs,
+        workspace,
+        &source.lockfile_digest,
+        &git_identity,
+        &git_tree_digest,
+        &profiles,
+    )?;
+    Ok(json!({
+        "schema": report_v2::SCHEMA,
+        "subject": {"kind": "active_repository"},
+        "mode": mode,
+        "revision": revision,
+        "identity_inputs": identity_inputs,
+        "limits": limits_value(inputs.topology.limits),
+        "source_inventory": {
+            "classifications": source.classifications,
+            "exclusions": source.exclusions,
+        },
+        "cargo_graph": {
+            "metadata_runs": evidence.metadata_runs,
+            "workspaces": [source.workspace],
+            "workspace_packages": evidence.graph.workspace_packages,
+            "external_packages": evidence.graph.external_packages,
+            "edges": evidence.graph.edges,
+            "reachability": evidence.graph.reachability,
+        },
+        "product_proof": empty_product_proof_value(),
+        "processes": evidence.processes,
+        "findings": findings.values,
+        "result": {
+            "status": findings.status,
+            "finding_count": findings.count,
+        },
+        "report_identity": null,
+    }))
+}
+
+fn source_report_values(
+    inputs: &BuildInputs<'_>,
+    workspace: &Workspace,
+    observations: &BTreeMap<&Path, &SourceFileObservation>,
+) -> Result<SourceReportValues, BuildError> {
+    let classifications = classification_values(inputs, observations)?;
     let exclusions = inputs
         .inventory
         .exclusions
@@ -210,104 +318,147 @@ pub fn build(inputs: &BuildInputs<'_>) -> Result<report_v2::BuiltReport, BuildEr
             }))
         })
         .collect::<Result<Vec<_>, BuildError>>()?;
-
     let workspace_value = json!({
         "id": workspace.id,
         "partition": "repository_tooling",
         "root": ".",
-        "manifest": path_text(&workspace.workspace_manifest, "workspace manifest")?,
+        "manifest": path_text(
+            &workspace.workspace_manifest,
+            "workspace manifest",
+        )?,
         "lockfile": path_text(&workspace.lockfile, "workspace lockfile")?,
         "members": path_values(&workspace.members, "workspace member")?,
     });
-    let lockfile =
-        inputs.inventory.files.iter().find(|file| file.path == workspace.lockfile).ok_or_else(
-            || {
-                BuildError::new(
-                    "V2_LOCKFILE_UNCLASSIFIED",
-                    format!("{} is absent from source inventory", workspace.lockfile.display()),
-                )
-            },
-        )?;
+    let lockfile = inputs
+        .inventory
+        .files
+        .iter()
+        .find(|file| file.path == workspace.lockfile)
+        .ok_or_else(|| {
+            BuildError::new(
+                "V2_LOCKFILE_UNCLASSIFIED",
+                format!(
+                    "{} is absent from source inventory",
+                    workspace.lockfile.display()
+                ),
+            )
+        })?;
+    Ok(SourceReportValues {
+        classifications,
+        exclusions,
+        workspace: workspace_value,
+        lockfile_digest: lockfile.content_digest.clone(),
+    })
+}
 
-    let mut metadata_runs = Vec::new();
-    let mut workspace_packages = Vec::new();
-    let mut external_packages = Vec::new();
-    let mut edges = Vec::new();
-    let mut reachability = Vec::new();
-    let mut processes = vec![process_value(
-        "checker_version",
-        None,
-        None,
-        None,
-        None,
-        &inputs.checker.executable_digest,
-        &inputs.checker_version.process,
-        inputs.topology.limits.process(),
-    )?];
-    processes.push(process_value(
-        "cargo_version",
-        None,
-        None,
-        None,
-        None,
-        &inputs.cargo.executable_digest,
-        &inputs.cargo_version.process,
-        inputs.topology.limits.process(),
-    )?);
-    processes.push(process_value(
-        "rustc_version",
-        None,
-        None,
-        None,
-        None,
-        &inputs.rustc.executable_digest,
-        &inputs.rustc_version.process,
-        inputs.topology.limits.process(),
-    )?);
-    processes.extend(git_processes);
-
-    for evidence in &metadata {
-        metadata_runs.push(metadata_run_value(
-            evidence.workspace,
-            evidence.profile,
-            "initial",
-            evidence.initial,
-        )?);
-        processes.push(process_value(
-            "cargo_metadata",
-            Some(evidence.workspace),
-            Some(evidence.profile),
-            None,
-            None,
-            &inputs.cargo.executable_digest,
-            &evidence.initial.process,
-            inputs.topology.limits.process(),
-        )?);
-        if let Some(final_capture) = evidence.final_capture {
-            metadata_runs.push(metadata_run_value(
-                evidence.workspace,
-                evidence.profile,
-                "final",
-                final_capture,
-            )?);
-            processes.push(process_value(
-                "cargo_metadata_final",
-                Some(evidence.workspace),
-                Some(evidence.profile),
-                None,
-                None,
-                &inputs.cargo.executable_digest,
-                &final_capture.process,
-                inputs.topology.limits.process(),
-            )?);
-        }
-        let graph = graph_values(inputs.repository_root, workspace, evidence)?;
-        workspace_packages.extend(graph.workspace_packages);
-        external_packages.extend(graph.external_packages);
-        edges.extend(graph.edges);
-        reachability.extend(graph.reachability);
+fn evidence_report_values(
+    inputs: &BuildInputs<'_>,
+    workspace: &Workspace,
+    metadata: &[&MetadataEvidence<'_>],
+    git_processes: Vec<Value>,
+) -> Result<EvidenceReportValues, BuildError> {
+    let mut values = EvidenceReportValues {
+        metadata_runs: Vec::new(),
+        graph: GraphValues::default(),
+        processes: version_process_values(inputs)?,
+    };
+    values.processes.extend(git_processes);
+    for evidence in metadata {
+        append_metadata_values(inputs, workspace, evidence, &mut values)?;
     }
+    Ok(values)
+}
 
+fn version_process_values(
+    inputs: &BuildInputs<'_>,
+) -> Result<Vec<Value>, BuildError> {
+    let descriptions = [
+        ("checker_version", inputs.checker, &inputs.checker_version.process),
+        ("cargo_version", inputs.cargo, &inputs.cargo_version.process),
+        ("rustc_version", inputs.rustc, &inputs.rustc_version.process),
+    ];
+    descriptions
+        .into_iter()
+        .map(|(purpose, tool, process)| {
+            process_value(
+                &ProcessDescription {
+                    purpose,
+                    workspace: None,
+                    profile: None,
+                    tool_review: None,
+                    tool_environment: None,
+                    executable_digest: &tool.executable_digest,
+                },
+                process,
+                &inputs.topology.limits.process(),
+            )
+        })
+        .collect()
+}
+
+fn append_metadata_values(
+    inputs: &BuildInputs<'_>,
+    workspace: &Workspace,
+    evidence: &MetadataEvidence<'_>,
+    values: &mut EvidenceReportValues,
+) -> Result<(), BuildError> {
+    append_metadata_capture(
+        inputs,
+        evidence,
+        "initial",
+        evidence.initial,
+        values,
+    )?;
+    if let Some(final_capture) = evidence.final_capture {
+        append_metadata_capture(
+            inputs,
+            evidence,
+            "final",
+            final_capture,
+            values,
+        )?;
+    }
+    let graph = graph_values(inputs.repository_root, workspace, evidence)?;
+    values.graph.extend(graph);
+    Ok(())
+}
+
+fn append_metadata_capture(
+    inputs: &BuildInputs<'_>,
+    evidence: &MetadataEvidence<'_>,
+    phase: &str,
+    capture: &Capture,
+    values: &mut EvidenceReportValues,
+) -> Result<(), BuildError> {
+    values.metadata_runs.push(metadata_run_value(
+        evidence.workspace,
+        evidence.profile,
+        phase,
+        capture,
+    )?);
+    let purpose = if phase == "initial" {
+        "cargo_metadata"
+    } else {
+        "cargo_metadata_final"
+    };
+    values.processes.push(process_value(
+        &ProcessDescription {
+            purpose,
+            workspace: Some(evidence.workspace),
+            profile: Some(evidence.profile),
+            tool_review: None,
+            tool_environment: None,
+            executable_digest: &inputs.cargo.executable_digest,
+        },
+        &capture.process,
+        &inputs.topology.limits.process(),
+    )?);
+    Ok(())
+}
+
+fn finding_report_values(
+    inputs: &BuildInputs<'_>,
+) -> Result<FindingReportValues, BuildError> {
     let findings = collected_findings(inputs);
     if findings.len() > inputs.topology.limits.findings {
         return Err(BuildError::new(
@@ -315,7 +466,7 @@ pub fn build(inputs: &BuildInputs<'_>) -> Result<report_v2::BuiltReport, BuildEr
             "combined finding set exceeds the committed limit",
         ));
     }
-    let finding_values = findings
+    let values = findings
         .iter()
         .map(|finding| {
             json!({
@@ -325,18 +476,30 @@ pub fn build(inputs: &BuildInputs<'_>) -> Result<report_v2::BuiltReport, BuildEr
                 "message": finding.message,
             })
         })
-        .collect::<Vec<_>>();
+        .collect();
     let status = if findings.is_empty() { "pass" } else { "fail" };
+    Ok(FindingReportValues { values, status, count: findings.len() })
+}
 
-    let profile_identities = metadata
+fn profile_identity_values(
+    workspace: &Workspace,
+    metadata: &[&MetadataEvidence<'_>],
+) -> Result<Vec<Value>, BuildError> {
+    metadata
         .iter()
         .map(|evidence| {
-            let profile = workspace.metadata_profiles.get(evidence.profile).ok_or_else(|| {
-                BuildError::new(
-                    "V2_PROFILE_UNRESOLVED",
-                    format!("unknown metadata profile {}", evidence.profile),
-                )
-            })?;
+            let profile = workspace
+                .metadata_profiles
+                .get(evidence.profile)
+                .ok_or_else(|| {
+                    BuildError::new(
+                        "V2_PROFILE_UNRESOLVED",
+                        format!(
+                            "unknown metadata profile {}",
+                            evidence.profile
+                        ),
+                    )
+                })?;
             Ok(json!({
                 "workspace": evidence.workspace,
                 "profile": evidence.profile,
@@ -347,75 +510,72 @@ pub fn build(inputs: &BuildInputs<'_>) -> Result<report_v2::BuiltReport, BuildEr
                 "metadata_digest": evidence.initial.raw_digest,
             }))
         })
-        .collect::<Result<Vec<_>, BuildError>>()?;
+        .collect()
+}
 
-    let mut report = json!({
-        "schema": report_v2::SCHEMA,
-        "subject": {"kind": "active_repository"},
-        "mode": mode,
-        "revision": revision,
-        "identity_inputs": {
-            "source_classification": artifact_value(inputs.artifacts.source_classification)?,
-            "workspace_topology": artifact_value(inputs.artifacts.workspace_topology)?,
-            "entrypoint_reviews": artifact_value(inputs.artifacts.entrypoint_reviews)?,
-            "dependency_reviews": artifact_value(inputs.artifacts.dependency_reviews)?,
-            "product_closures": artifact_value(inputs.artifacts.product_closures)?,
-            "execution_tool_reviews": artifact_value(inputs.artifacts.execution_tool_reviews)?,
-            "report_schema": {
-                "path": REPORT_SCHEMA_PATH,
-                "schema": report_v2::SCHEMA,
-                "content_digest": inputs.report_schema_digest,
-            },
-            "lockfiles": [{
-                "workspace": workspace.id,
-                "path": path_text(&workspace.lockfile, "workspace lockfile")?,
-                "digest": lockfile.content_digest,
-            }],
-            "source_tree_digest": inputs.inventory.tree_digest,
-            "checker": tool_value(inputs.checker)?,
-            "cargo": tool_value(inputs.cargo)?,
-            "rustc": tool_value(inputs.rustc)?,
-            "git": git_identity,
-            "git_tree_digest": git_tree_digest,
-            "cargo_home_config": "absent",
-            "cargo_working_directory_config": "absent",
-            "compiler_substrates": [],
-            "metadata_profiles": profile_identities,
-            "product_proof_gate": null,
+fn identity_inputs_value(
+    inputs: &BuildInputs<'_>,
+    workspace: &Workspace,
+    lockfile_digest: &str,
+    git_identity: &Value,
+    git_tree_digest: &Value,
+    profile_identities: &[Value],
+) -> Result<Value, BuildError> {
+    Ok(json!({
+        "source_classification": artifact_value(
+            inputs.artifacts.source_classification,
+        )?,
+        "workspace_topology": artifact_value(
+            inputs.artifacts.workspace_topology,
+        )?,
+        "entrypoint_reviews": artifact_value(
+            inputs.artifacts.entrypoint_reviews,
+        )?,
+        "dependency_reviews": artifact_value(
+            inputs.artifacts.dependency_reviews,
+        )?,
+        "product_closures": artifact_value(
+            inputs.artifacts.product_closures,
+        )?,
+        "execution_tool_reviews": artifact_value(
+            inputs.artifacts.execution_tool_reviews,
+        )?,
+        "report_schema": {
+            "path": REPORT_SCHEMA_PATH,
+            "schema": report_v2::SCHEMA,
+            "content_digest": inputs.report_schema_digest,
         },
-        "limits": limits_value(inputs.topology.limits),
-        "source_inventory": {
-            "classifications": classifications,
-            "exclusions": exclusions,
-        },
-        "cargo_graph": {
-            "metadata_runs": metadata_runs,
-            "workspaces": [workspace_value],
-            "workspace_packages": workspace_packages,
-            "external_packages": external_packages,
-            "edges": edges,
-            "reachability": reachability,
-        },
-        "product_proof": {
-            "selected_execution_environment": null,
-            "closures": [],
-            "compiler_units": [],
-            "compiler_inputs": [],
-            "extern_edges": [],
-            "artifacts": [],
-            "package_memberships": [],
-            "public_consumers": [],
-            "executions": [],
-        },
-        "processes": processes,
-        "findings": finding_values,
-        "result": {"status": status, "finding_count": findings.len()},
-        "report_identity": null,
-    });
-    // Make accidental caller reuse after mutation impossible to confuse with
-    // the sealed report returned by the v2 envelope.
-    report_v2::build(std::mem::take(&mut report), inputs.topology.limits.report_bytes)
-        .map_err(Into::into)
+        "lockfiles": [{
+            "workspace": workspace.id,
+            "path": path_text(&workspace.lockfile, "workspace lockfile")?,
+            "digest": lockfile_digest,
+        }],
+        "source_tree_digest": inputs.inventory.tree_digest,
+        "checker": tool_value(inputs.checker)?,
+        "cargo": tool_value(inputs.cargo)?,
+        "rustc": tool_value(inputs.rustc)?,
+        "git": git_identity,
+        "git_tree_digest": git_tree_digest,
+        "cargo_home_config": "absent",
+        "cargo_working_directory_config": "absent",
+        "compiler_substrates": [],
+        "metadata_profiles": profile_identities,
+        "product_proof_gate": null,
+    }))
+}
+
+fn empty_product_proof_value() -> Value {
+    json!({
+        "selected_execution_environment": null,
+        "closures": [],
+        "compiler_units": [],
+        "compiler_inputs": [],
+        "extern_edges": [],
+        "artifacts": [],
+        "package_memberships": [],
+        "public_consumers": [],
+        "executions": [],
+    })
 }
 
 fn validate_product_empty_scope<'a>(
@@ -425,10 +585,15 @@ fn validate_product_empty_scope<'a>(
     if inputs.topology.workspaces.len() != 1 {
         return Err(BuildError::new(
             "V2_WORKSPACE_SCOPE",
-            "active v2 adapter requires exactly one root RepositoryTooling workspace",
+            concat!(
+                "active v2 adapter requires exactly one root ",
+                "RepositoryTooling ",
+                "workspace"
+            ),
         ));
     }
-    let workspace = inputs.topology.workspaces.values().next().expect("length checked");
+    let workspace =
+        inputs.topology.workspaces.values().next().expect("length checked");
     if workspace.partition != WorkspacePartition::RepositoryTooling
         || !workspace.root.as_os_str().is_empty()
     {
@@ -437,12 +602,9 @@ fn validate_product_empty_scope<'a>(
             "active workspace is not the root RepositoryTooling workspace",
         ));
     }
-    if inputs
-        .inventory
-        .files
-        .iter()
-        .any(|file| !matches!(file.classification.owner, SourceOwner::RepositoryTooling))
-    {
+    if inputs.inventory.files.iter().any(|file| {
+        !matches!(file.classification.owner, SourceOwner::RepositoryTooling)
+    }) {
         return Err(BuildError::new(
             "V2_PRODUCT_NOT_EMPTY",
             "Product-empty report contains Product-owned source",
@@ -451,13 +613,20 @@ fn validate_product_empty_scope<'a>(
     Ok(workspace)
 }
 
-fn ensure_empty_product_registry(registry: &product_closures::Registry) -> Result<(), BuildError> {
-    if registry.closures.is_empty() && registry.public_consumer_relations.is_empty() {
+fn ensure_empty_product_registry(
+    registry: &product_closures::Registry,
+) -> Result<(), BuildError> {
+    if registry.closures.is_empty()
+        && registry.public_consumer_relations.is_empty()
+    {
         Ok(())
     } else {
         Err(BuildError::new(
             "V2_PRODUCT_NOT_EMPTY",
-            "active Product-empty adapter refuses Product closures or public-consumer relations",
+            concat!(
+                "active Product-empty adapter refuses Product closures or ",
+                "public-consumer relations"
+            ),
         ))
     }
 }
@@ -467,14 +636,19 @@ fn validate_tool_capture(
     capture: &VersionCapture,
     label: &str,
 ) -> Result<(), BuildError> {
-    if identity.version != capture.version || identity.version_digest != capture.version_digest {
+    if identity.version != capture.version
+        || identity.version_digest != capture.version_digest
+    {
         return Err(BuildError::new(
             "V2_TOOL_VERSION_MISMATCH",
-            format!("{label} identity disagrees with its bounded version capture"),
+            format!(
+                "{label} identity disagrees with its bounded version capture"
+            ),
         ));
     }
     let argv = process_argv(&capture.process, &format!("{label} version"))?;
-    let executable = path_text(&identity.canonical_path, &format!("{label} executable"))?;
+    let executable =
+        path_text(&identity.canonical_path, &format!("{label} executable"))?;
     if argv.first().map(String::as_str) != Some(executable)
         || argv.get(1..) != Some(identity.version_argv.as_slice())
     {
@@ -490,7 +664,8 @@ fn validate_metadata_completeness<'a>(
     inputs: &'a BuildInputs<'a>,
     workspace: &Workspace,
 ) -> Result<Vec<&'a MetadataEvidence<'a>>, BuildError> {
-    let expected = workspace.metadata_profiles.keys().cloned().collect::<BTreeSet<_>>();
+    let expected =
+        workspace.metadata_profiles.keys().cloned().collect::<BTreeSet<_>>();
     let mut actual = BTreeMap::new();
     for evidence in inputs.metadata {
         if evidence.workspace != workspace.id {
@@ -519,44 +694,8 @@ fn validate_metadata_completeness<'a>(
                 format!("duplicate metadata profile {}", evidence.profile),
             ));
         }
-        if evidence.graph.packages.iter().any(|record| record.profile != evidence.profile)
-            || evidence.graph.edges.iter().any(|record| record.profile != evidence.profile)
-            || evidence
-                .graph
-                .dependency_reachability
-                .iter()
-                .any(|record| record.profile != evidence.profile)
-        {
-            return Err(BuildError::new(
-                "V2_GRAPH_PROFILE",
-                format!("graph contains a record outside profile {}", evidence.profile),
-            ));
-        }
-        match inputs.mode {
-            Mode::Candidate if evidence.final_capture.is_some() => {
-                return Err(BuildError::new(
-                    "V2_CANDIDATE_FINAL_METADATA",
-                    "candidate report must not claim an exact final metadata capture",
-                ));
-            }
-            Mode::Exact { .. } => {
-                let final_capture = evidence.final_capture.ok_or_else(|| {
-                    BuildError::new(
-                        "V2_EXACT_FINAL_METADATA",
-                        format!("exact profile {} lacks final metadata", evidence.profile),
-                    )
-                })?;
-                if final_capture.raw_digest != evidence.initial.raw_digest
-                    || final_capture.metadata != evidence.initial.metadata
-                {
-                    return Err(BuildError::new(
-                        "V2_METADATA_DRIFT",
-                        format!("profile {} metadata changed", evidence.profile),
-                    ));
-                }
-            }
-            Mode::Candidate => {}
-        }
+        validate_graph_profile(evidence)?;
+        validate_final_capture(inputs.mode, evidence)?;
     }
     if actual.keys().cloned().collect::<BTreeSet<_>>() != expected {
         return Err(BuildError::new(
@@ -567,6 +706,75 @@ fn validate_metadata_completeness<'a>(
     Ok(actual.into_values().collect())
 }
 
+fn validate_graph_profile(
+    evidence: &MetadataEvidence<'_>,
+) -> Result<(), BuildError> {
+    let wrong_package = evidence
+        .graph
+        .packages
+        .iter()
+        .any(|record| record.profile != evidence.profile);
+    let wrong_edge = evidence
+        .graph
+        .edges
+        .iter()
+        .any(|record| record.profile != evidence.profile);
+    let wrong_reachability = evidence
+        .graph
+        .dependency_reachability
+        .iter()
+        .any(|record| record.profile != evidence.profile);
+    if wrong_package || wrong_edge || wrong_reachability {
+        return Err(BuildError::new(
+            "V2_GRAPH_PROFILE",
+            format!(
+                "graph contains a record outside profile {}",
+                evidence.profile
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_final_capture(
+    mode: Mode<'_>,
+    evidence: &MetadataEvidence<'_>,
+) -> Result<(), BuildError> {
+    match mode {
+        Mode::Candidate if evidence.final_capture.is_some() => {
+            Err(BuildError::new(
+                "V2_CANDIDATE_FINAL_METADATA",
+                concat!(
+                    "candidate report must not claim an exact final metadata ",
+                    "capture"
+                ),
+            ))
+        }
+        Mode::Exact { .. } => validate_exact_final_capture(evidence),
+        Mode::Candidate => Ok(()),
+    }
+}
+
+fn validate_exact_final_capture(
+    evidence: &MetadataEvidence<'_>,
+) -> Result<(), BuildError> {
+    let final_capture = evidence.final_capture.ok_or_else(|| {
+        BuildError::new(
+            "V2_EXACT_FINAL_METADATA",
+            format!("exact profile {} lacks final metadata", evidence.profile),
+        )
+    })?;
+    if final_capture.raw_digest != evidence.initial.raw_digest
+        || final_capture.metadata != evidence.initial.metadata
+    {
+        return Err(BuildError::new(
+            "V2_METADATA_DRIFT",
+            format!("profile {} metadata changed", evidence.profile),
+        ));
+    }
+    Ok(())
+}
+
 fn source_observation_map<'a>(
     inputs: &'a BuildInputs<'_>,
 ) -> Result<BTreeMap<&'a Path, &'a SourceFileObservation>, BuildError> {
@@ -575,18 +783,29 @@ fn source_observation_map<'a>(
         if values.insert(observation.path.as_path(), observation).is_some() {
             return Err(BuildError::new(
                 "V2_SOURCE_OBSERVATION_DUPLICATE",
-                format!("duplicate observation for {}", observation.path.display()),
+                format!(
+                    "duplicate observation for {}",
+                    observation.path.display()
+                ),
             ));
         }
         if !matches!(observation.mode.as_str(), "100644" | "100755") {
             return Err(BuildError::new(
                 "V2_SOURCE_MODE",
-                format!("{} has unadmitted mode {}", observation.path.display(), observation.mode),
+                format!(
+                    "{} has unadmitted mode {}",
+                    observation.path.display(),
+                    observation.mode
+                ),
             ));
         }
     }
-    let expected =
-        inputs.inventory.files.iter().map(|file| file.path.as_path()).collect::<BTreeSet<_>>();
+    let expected = inputs
+        .inventory
+        .files
+        .iter()
+        .map(|file| file.path.as_path())
+        .collect::<BTreeSet<_>>();
     if values.keys().copied().collect::<BTreeSet<_>>() != expected {
         return Err(BuildError::new(
             "V2_SOURCE_OBSERVATION_SET",
@@ -598,53 +817,99 @@ fn source_observation_map<'a>(
 
 type ModeValues = (String, Option<String>, Value, Value, Vec<Value>);
 
-fn mode_values(inputs: &BuildInputs<'_>, workspace: &Workspace) -> Result<ModeValues, BuildError> {
+fn mode_values(
+    inputs: &BuildInputs<'_>,
+    workspace: &Workspace,
+) -> Result<ModeValues, BuildError> {
     match inputs.mode {
-        Mode::Candidate => Ok(("candidate".to_owned(), None, Value::Null, Value::Null, Vec::new())),
+        Mode::Candidate => Ok((
+            "candidate".to_owned(),
+            None,
+            Value::Null,
+            Value::Null,
+            Vec::new(),
+        )),
         Mode::Exact { revision, git, execution_environment } => {
-            if git.revision != revision {
-                return Err(BuildError::new(
-                    "V2_GIT_REVISION",
-                    "exact Git evidence revision differs from requested revision",
-                ));
-            }
-            let (binding, review) = git_binding(
-                inputs.execution_tools,
+            exact_mode_values(
+                inputs,
+                workspace,
+                revision,
+                git,
                 execution_environment,
-                &git.version,
-                &git.version_digest,
-            )?;
-            let identity = execution_binding_value(binding)?;
-            let mut processes = Vec::with_capacity(git.processes.len());
-            for (purpose, process) in &git.processes {
-                let argv = process_argv(process, purpose)?;
-                let executable = path_text(&binding.canonical_path, "Git executable")?;
-                if argv.first().map(String::as_str) != Some(executable) {
-                    return Err(BuildError::new(
-                        "V2_GIT_PROCESS_EXECUTABLE",
-                        format!("{purpose} did not invoke the reviewed Git executable"),
-                    ));
-                }
-                processes.push(process_value(
-                    purpose,
-                    Some(&workspace.id),
-                    None,
-                    Some(&review.id),
-                    Some(execution_environment),
-                    &binding.executable_digest,
-                    process,
-                    inputs.topology.limits.process(),
-                )?);
-            }
-            Ok((
-                "exact".to_owned(),
-                Some(revision.to_owned()),
-                identity,
-                Value::String(git.tree_digest.clone()),
-                processes,
-            ))
+            )
         }
     }
+}
+
+fn exact_mode_values(
+    inputs: &BuildInputs<'_>,
+    workspace: &Workspace,
+    revision: &str,
+    git: &git::Evidence,
+    execution_environment: &str,
+) -> Result<ModeValues, BuildError> {
+    if git.revision != revision {
+        return Err(BuildError::new(
+            "V2_GIT_REVISION",
+            "exact Git evidence revision differs from requested revision",
+        ));
+    }
+    let (binding, review) = git_binding(
+        inputs.execution_tools,
+        execution_environment,
+        &git.version,
+        &git.version_digest,
+    )?;
+    let identity = execution_binding_value(binding)?;
+    let processes = git_process_values(
+        inputs,
+        workspace,
+        git,
+        binding,
+        review,
+        execution_environment,
+    )?;
+    Ok((
+        "exact".to_owned(),
+        Some(revision.to_owned()),
+        identity,
+        Value::String(git.tree_digest.clone()),
+        processes,
+    ))
+}
+
+fn git_process_values(
+    inputs: &BuildInputs<'_>,
+    workspace: &Workspace,
+    git: &git::Evidence,
+    binding: &ExecutionBinding,
+    review: &execution_tools::Review,
+    execution_environment: &str,
+) -> Result<Vec<Value>, BuildError> {
+    let mut values = Vec::with_capacity(git.processes.len());
+    for (purpose, process) in &git.processes {
+        let argv = process_argv(process, purpose)?;
+        let executable = path_text(&binding.canonical_path, "Git executable")?;
+        if argv.first().map(String::as_str) != Some(executable) {
+            return Err(BuildError::new(
+                "V2_GIT_PROCESS_EXECUTABLE",
+                format!("{purpose} did not invoke the reviewed Git executable"),
+            ));
+        }
+        values.push(process_value(
+            &ProcessDescription {
+                purpose,
+                workspace: Some(&workspace.id),
+                profile: None,
+                tool_review: Some(&review.id),
+                tool_environment: Some(execution_environment),
+                executable_digest: &binding.executable_digest,
+            },
+            process,
+            &inputs.topology.limits.process(),
+        )?);
+    }
+    Ok(values)
 }
 
 fn git_binding<'a>(
@@ -653,15 +918,16 @@ fn git_binding<'a>(
     version: &str,
     version_digest: &str,
 ) -> Result<(&'a ExecutionBinding, &'a execution_tools::Review), BuildError> {
-    let environment =
-        registry.environments.iter().find(|candidate| candidate.id == environment).ok_or_else(
-            || {
-                BuildError::new(
-                    "V2_GIT_ENVIRONMENT",
-                    format!("unknown Git execution environment {environment}"),
-                )
-            },
-        )?;
+    let environment = registry
+        .environments
+        .iter()
+        .find(|candidate| candidate.id == environment)
+        .ok_or_else(|| {
+            BuildError::new(
+                "V2_GIT_ENVIRONMENT",
+                format!("unknown Git execution environment {environment}"),
+            )
+        })?;
     let required = BTreeSet::from([
         InvocationFamily::GitVersion,
         InvocationFamily::GitRevision,
@@ -676,7 +942,11 @@ fn git_binding<'a>(
             .find(|review| review.id == binding.review)
             .filter(|review| {
                 review.logical_role == LogicalRole::Git
-                    && review.invocation_families.iter().copied().collect::<BTreeSet<_>>()
+                    && review
+                        .invocation_families
+                        .iter()
+                        .copied()
+                        .collect::<BTreeSet<_>>()
                         == required
                     && review.product_profiles.is_empty()
             })
@@ -685,7 +955,10 @@ fn git_binding<'a>(
     let selected = matches.next().ok_or_else(|| {
         BuildError::new(
             "V2_GIT_BINDING",
-            "environment has no RepositoryTooling-only binding for all Git proof families",
+            concat!(
+                "environment has no RepositoryTooling-only binding for all ",
+                "Git proof families"
+            ),
         )
     })?;
     if matches.next().is_some() {
@@ -713,49 +986,60 @@ fn classification_values(
         .inventory
         .files
         .iter()
-        .map(|file| {
-            let observation = observations.get(file.path.as_path()).ok_or_else(|| {
-                BuildError::new(
-                    "V2_SOURCE_OBSERVATION_MISSING",
-                    format!("missing observation for {}", file.path.display()),
-                )
-            })?;
-            let matches = inputs
-                .policy
-                .rules
-                .iter()
-                .enumerate()
-                .filter(|(_, rule)| {
-                    rule.prefix == file.rule_prefix
-                        && rule.precedence == file.rule_precedence
-                        && rule.classification == file.classification
-                })
-                .collect::<Vec<_>>();
-            let [(index, rule)] = matches.as_slice() else {
-                return Err(BuildError::new(
-                    "V2_WINNING_RULE",
-                    format!("{} does not resolve to one exact policy rule", file.path.display()),
-                ));
-            };
-            Ok(json!({
-                "path": path_text(&file.path, "classified source")?,
-                "content_digest": file.content_digest,
-                "size_bytes": observation.size_bytes,
-                "mode": observation.mode,
-                "source_owner": owner_value(file.classification.owner),
-                "source_provenance": file.classification.provenance.as_str(),
-                "source_use": file.classification.source_use.as_str(),
-                "upstream": file.upstream.as_ref().map(upstream_value).transpose()?,
-                "winning_rule": {
-                    "index": index,
-                    "prefix": path_text(&rule.prefix, "winning rule prefix")?,
-                    "precedence": rule.precedence,
-                },
-            }))
-        })
+        .map(|file| classification_value(inputs, observations, file))
         .collect()
 }
 
+fn classification_value(
+    inputs: &BuildInputs<'_>,
+    observations: &BTreeMap<&Path, &SourceFileObservation>,
+    file: &crate::source::ClassifiedFile,
+) -> Result<Value, BuildError> {
+    let observation =
+        observations.get(file.path.as_path()).ok_or_else(|| {
+            BuildError::new(
+                "V2_SOURCE_OBSERVATION_MISSING",
+                format!("missing observation for {}", file.path.display()),
+            )
+        })?;
+    let matches = inputs
+        .policy
+        .rules
+        .iter()
+        .enumerate()
+        .filter(|(_, rule)| {
+            rule.prefix == file.rule_prefix
+                && rule.precedence == file.rule_precedence
+                && rule.classification == file.classification
+        })
+        .collect::<Vec<_>>();
+    let [(index, rule)] = matches.as_slice() else {
+        return Err(BuildError::new(
+            "V2_WINNING_RULE",
+            format!(
+                "{} does not resolve to one exact policy rule",
+                file.path.display()
+            ),
+        ));
+    };
+    Ok(json!({
+        "path": path_text(&file.path, "classified source")?,
+        "content_digest": file.content_digest,
+        "size_bytes": observation.size_bytes,
+        "mode": observation.mode,
+        "source_owner": owner_value(file.classification.owner),
+        "source_provenance": file.classification.provenance.as_str(),
+        "source_use": file.classification.source_use.as_str(),
+        "upstream": file.upstream.as_ref().map(upstream_value).transpose()?,
+        "winning_rule": {
+            "index": index,
+            "prefix": path_text(&rule.prefix, "winning rule prefix")?,
+            "precedence": rule.precedence,
+        },
+    }))
+}
+
+#[derive(Default)]
 struct GraphValues {
     workspace_packages: Vec<Value>,
     external_packages: Vec<Value>,
@@ -763,84 +1047,169 @@ struct GraphValues {
     reachability: Vec<Value>,
 }
 
-#[allow(clippy::too_many_lines)]
+impl GraphValues {
+    fn extend(&mut self, values: Self) {
+        self.workspace_packages.extend(values.workspace_packages);
+        self.external_packages.extend(values.external_packages);
+        self.edges.extend(values.edges);
+        self.reachability.extend(values.reachability);
+    }
+}
+
 fn graph_values(
     root: &Path,
     workspace: &Workspace,
     evidence: &MetadataEvidence<'_>,
 ) -> Result<GraphValues, BuildError> {
     validate_product_empty_graph(evidence.graph)?;
+    let workspace_packages =
+        workspace_package_values(root, workspace, evidence)?;
+    let external_packages = external_package_values(workspace, evidence)?;
+    let edges = edge_values(root, workspace, evidence)?;
+    let reachability = reachability_values(workspace, evidence)?;
+    Ok(GraphValues {
+        workspace_packages,
+        external_packages,
+        edges,
+        reachability,
+    })
+}
+
+fn workspace_package_values(
+    root: &Path,
+    workspace: &Workspace,
+    evidence: &MetadataEvidence<'_>,
+) -> Result<Vec<Value>, BuildError> {
     let metadata = &evidence.initial.metadata;
     let mut workspace_packages = Vec::new();
     let mut resolved_workspace_ids = BTreeSet::new();
     for cargo_id in &metadata.workspace_members {
-        let package = metadata.packages.get(cargo_id).ok_or_else(|| {
+        let (value, package_id) =
+            workspace_package_value(root, workspace, evidence, cargo_id)?;
+        if !resolved_workspace_ids.insert(package_id.clone()) {
+            return Err(BuildError::new(
+                "V2_METADATA_PACKAGE_DUPLICATE",
+                format!(
+                    "topology package {package_id} resolves more than once"
+                ),
+            ));
+        }
+        workspace_packages.push(value);
+    }
+    if resolved_workspace_ids
+        != workspace.packages.keys().cloned().collect::<BTreeSet<_>>()
+    {
+        return Err(BuildError::new(
+            "V2_METADATA_PACKAGE_SET",
+            format!(
+                "profile {} does not exactly cover topology packages",
+                evidence.profile
+            ),
+        ));
+    }
+
+    Ok(workspace_packages)
+}
+
+fn workspace_package_value(
+    root: &Path,
+    workspace: &Workspace,
+    evidence: &MetadataEvidence<'_>,
+    cargo_id: &str,
+) -> Result<(Value, String), BuildError> {
+    let package =
+        evidence.initial.metadata.packages.get(cargo_id).ok_or_else(|| {
             BuildError::new(
                 "V2_METADATA_MEMBER_UNRESOLVED",
                 format!("workspace member {cargo_id} has no package"),
             )
         })?;
-        let (resolved_workspace, expected) = resolve_workspace_package(root, package, workspace)?;
-        if resolved_workspace.id != workspace.id {
-            return Err(BuildError::new(
-                "V2_METADATA_WORKSPACE_CROSSING",
-                format!("package {} resolved outside active workspace", package.name),
-            ));
-        }
-        if !resolved_workspace_ids.insert(expected.id.clone()) {
-            return Err(BuildError::new(
-                "V2_METADATA_PACKAGE_DUPLICATE",
-                format!("topology package {} resolves more than once", expected.id),
-            ));
-        }
-        let manifest = relative_repo_path(root, &package.manifest_path, "workspace manifest")?;
-        let graph_package = evidence
-            .graph
-            .packages
-            .iter()
-            .find(|record| {
-                record.profile == evidence.profile
-                    && record.name == package.name
-                    && record.manifest == manifest
-            })
-            .ok_or_else(|| {
-                BuildError::new(
-                    "V2_GRAPH_PACKAGE_UNRESOLVED",
-                    format!("{} is absent from graph evidence", package.name),
-                )
-            })?;
-        let targets =
-            package_target_values(root, package, expected, evidence.graph, evidence.profile)?;
-        workspace_packages.push(json!({
-            "workspace": workspace.id,
-            "profile": evidence.profile,
-            "id": expected.id,
-            "name": package.name,
-            "version": package.version,
-            "manifest": path_text(&manifest, "workspace package manifest")?,
-            "owners": graph_package.owners.iter().copied().map(owner_value).collect::<Vec<_>>(),
-            "targets": targets,
-        }));
-    }
-    if resolved_workspace_ids != workspace.packages.keys().cloned().collect::<BTreeSet<_>>() {
+    let (resolved_workspace, expected) =
+        resolve_workspace_package(root, package, workspace)?;
+    if resolved_workspace.id != workspace.id {
         return Err(BuildError::new(
-            "V2_METADATA_PACKAGE_SET",
-            format!("profile {} does not exactly cover topology packages", evidence.profile),
+            "V2_METADATA_WORKSPACE_CROSSING",
+            format!(
+                "package {} resolved outside active workspace",
+                package.name
+            ),
         ));
     }
+    let manifest =
+        relative_repo_path(root, &package.manifest_path, "workspace manifest")?;
+    let graph_package = evidence
+        .graph
+        .packages
+        .iter()
+        .find(|record| {
+            record.profile == evidence.profile
+                && record.name == package.name
+                && record.manifest == manifest
+        })
+        .ok_or_else(|| {
+            BuildError::new(
+                "V2_GRAPH_PACKAGE_UNRESOLVED",
+                format!("{} is absent from graph evidence", package.name),
+            )
+        })?;
+    let targets = package_target_values(
+        root,
+        package,
+        expected,
+        evidence.graph,
+        evidence.profile,
+    )?;
+    let owners = graph_package
+        .owners
+        .iter()
+        .copied()
+        .map(owner_value)
+        .collect::<Vec<_>>();
+    let value = json!({
+        "workspace": workspace.id,
+        "profile": evidence.profile,
+        "id": expected.id,
+        "name": package.name,
+        "version": package.version,
+        "manifest": path_text(&manifest, "workspace package manifest")?,
+        "owners": owners,
+        "targets": targets,
+    });
+    Ok((value, expected.id.clone()))
+}
 
-    let mut external_packages = Vec::new();
-    for package in metadata.packages.values().filter(|package| package.source.is_some()) {
-        external_packages.push(json!({
+fn external_package_values(
+    workspace: &Workspace,
+    evidence: &MetadataEvidence<'_>,
+) -> Result<Vec<Value>, BuildError> {
+    let mut values = Vec::new();
+    for package in evidence
+        .initial
+        .metadata
+        .packages
+        .values()
+        .filter(|package| package.source.is_some())
+    {
+        let checksum =
+            package.checksum.as_deref().map(checksum_digest).transpose()?;
+        values.push(json!({
             "workspace": workspace.id,
             "profile": evidence.profile,
             "name": package.name,
             "version": package.version,
             "source": package.source,
-            "checksum": package.checksum.as_deref().map(checksum_digest).transpose()?,
+            "checksum": checksum,
         }));
     }
+    Ok(values)
+}
 
+fn edge_values(
+    root: &Path,
+    workspace: &Workspace,
+    evidence: &MetadataEvidence<'_>,
+) -> Result<Vec<Value>, BuildError> {
+    let metadata = &evidence.initial.metadata;
     let mut edges = Vec::new();
     for node in metadata.nodes.values() {
         let consumer = metadata.packages.get(&node.id).ok_or_else(|| {
@@ -850,63 +1219,98 @@ fn graph_values(
             )
         })?;
         for dependency in &node.dependencies {
-            let provider = metadata.packages.get(&dependency.package).ok_or_else(|| {
-                BuildError::new(
-                    "V2_METADATA_EDGE_UNRESOLVED",
-                    format!(
-                        "{} dependency alias {} has no provider {}",
-                        consumer.name, dependency.name, dependency.package
-                    ),
-                )
-            })?;
-            if dependency.kinds.is_empty() {
-                return Err(BuildError::new(
-                    "V2_METADATA_EDGE_KIND",
-                    format!("{} -> {} has no dependency kind", consumer.name, provider.name),
-                ));
-            }
-            let consumer_endpoint = package_endpoint(root, workspace, consumer)?;
-            let provider_endpoint = package_endpoint(root, workspace, provider)?;
-            for kind in &dependency.kinds {
-                let (consumer_owners, provider_owners, decision) = resolved_edge_authority(
-                    evidence,
-                    consumer,
-                    provider,
-                    &kind.kind,
-                    kind.target.as_deref(),
-                )?;
-                edges.push(json!({
-                    "workspace": workspace.id,
-                    "profile": evidence.profile,
-                    "consumer": consumer_endpoint,
-                    "provider": provider_endpoint,
-                    "dependency_name": dependency.name,
-                    "kind": kind.kind,
-                    "target": kind.target,
-                    "consumer_owners": consumer_owners.into_iter().map(owner_value).collect::<Vec<_>>(),
-                    "provider_owners": provider_owners.into_iter().map(owner_value).collect::<Vec<_>>(),
-                    "decision": decision,
-                }));
-            }
+            edges.extend(dependency_edge_values(
+                root, workspace, evidence, consumer, dependency,
+            )?);
         }
     }
+    Ok(edges)
+}
 
+fn dependency_edge_values(
+    root: &Path,
+    workspace: &Workspace,
+    evidence: &MetadataEvidence<'_>,
+    consumer: &CargoPackage,
+    dependency: &crate::cargo::ResolvedDependency,
+) -> Result<Vec<Value>, BuildError> {
+    let provider = evidence
+        .initial
+        .metadata
+        .packages
+        .get(&dependency.package)
+        .ok_or_else(|| {
+            BuildError::new(
+                "V2_METADATA_EDGE_UNRESOLVED",
+                format!(
+                    "{} dependency alias {} has no provider {}",
+                    consumer.name, dependency.name, dependency.package
+                ),
+            )
+        })?;
+    if dependency.kinds.is_empty() {
+        return Err(BuildError::new(
+            "V2_METADATA_EDGE_KIND",
+            format!(
+                "{} -> {} has no dependency kind",
+                consumer.name, provider.name
+            ),
+        ));
+    }
+    let consumer_endpoint = package_endpoint(root, workspace, consumer)?;
+    let provider_endpoint = package_endpoint(root, workspace, provider)?;
+    let mut values = Vec::new();
+    for kind in &dependency.kinds {
+        let (consumer_owners, provider_owners, decision) =
+            resolved_edge_authority(
+                evidence,
+                consumer,
+                provider,
+                &kind.kind,
+                kind.target.as_deref(),
+            )?;
+        let consumer_owners =
+            consumer_owners.into_iter().map(owner_value).collect::<Vec<_>>();
+        let provider_owners =
+            provider_owners.into_iter().map(owner_value).collect::<Vec<_>>();
+        values.push(json!({
+            "workspace": workspace.id,
+            "profile": evidence.profile,
+            "consumer": consumer_endpoint,
+            "provider": provider_endpoint,
+            "dependency_name": dependency.name,
+            "kind": kind.kind,
+            "target": kind.target,
+            "consumer_owners": consumer_owners,
+            "provider_owners": provider_owners,
+            "decision": decision,
+        }));
+    }
+    Ok(values)
+}
+
+fn reachability_values(
+    workspace: &Workspace,
+    evidence: &MetadataEvidence<'_>,
+) -> Result<Vec<Value>, BuildError> {
     let package_ids_by_name = workspace
         .packages
         .values()
         .map(|package| (package.name.as_str(), package.id.as_str()))
         .collect::<BTreeMap<_, _>>();
-    let reachability = evidence
+    evidence
         .graph
         .dependency_reachability
         .iter()
         .map(|record| {
-            let package = package_ids_by_name.get(record.package.as_str()).ok_or_else(|| {
-                BuildError::new(
-                    "V2_REACHABILITY_PACKAGE",
-                    format!("unknown reachability root {}", record.package),
-                )
-            })?;
+            let package = package_ids_by_name
+                .get(record.package.as_str())
+                .ok_or_else(|| {
+                    BuildError::new(
+                        "V2_REACHABILITY_PACKAGE",
+                        format!("unknown reachability root {}", record.package),
+                    )
+                })?;
             Ok(json!({
                 "workspace": workspace.id,
                 "profile": evidence.profile,
@@ -914,9 +1318,7 @@ fn graph_values(
                 "members": record.members,
             }))
         })
-        .collect::<Result<Vec<_>, BuildError>>()?;
-
-    Ok(GraphValues { workspace_packages, external_packages, edges, reachability })
+        .collect()
 }
 
 fn resolved_edge_authority<'a>(
@@ -938,8 +1340,8 @@ fn resolved_edge_authority<'a>(
         .edges
         .iter()
         .find(|record| {
-            let endpoints_match =
-                record.consumer == consumer.name && record.provider == provider.name;
+            let endpoints_match = record.consumer == consumer.name
+                && record.provider == provider.name;
             record.profile == evidence.profile
                 && endpoints_match
                 && record.kind == kind
@@ -954,17 +1356,27 @@ fn resolved_edge_authority<'a>(
                 ),
             )
         })?;
-    Ok((record.consumer_owners.clone(), record.provider_owners.clone(), record.decision))
+    Ok((
+        record.consumer_owners.clone(),
+        record.provider_owners.clone(),
+        record.decision,
+    ))
 }
 
 fn validate_product_empty_graph(graph: &GraphReport) -> Result<(), BuildError> {
     for package in &graph.packages {
         if package.owners.is_empty()
-            || package.owners.iter().any(|owner| *owner != SourceOwner::RepositoryTooling)
+            || package
+                .owners
+                .iter()
+                .any(|owner| *owner != SourceOwner::RepositoryTooling)
         {
             return Err(BuildError::new(
                 "V2_PRODUCT_GRAPH_OWNER",
-                format!("package {} is not RepositoryTooling-only", package.name),
+                format!(
+                    "package {} is not RepositoryTooling-only",
+                    package.name
+                ),
             ));
         }
     }
@@ -980,7 +1392,10 @@ fn validate_product_empty_graph(graph: &GraphReport) -> Result<(), BuildError> {
         {
             return Err(BuildError::new(
                 "V2_PRODUCT_GRAPH_EDGE",
-                format!("{} -> {} is not an all-tooling edge", edge.consumer, edge.provider),
+                format!(
+                    "{} -> {} is not an all-tooling edge",
+                    edge.consumer, edge.provider
+                ),
             ));
         }
     }
@@ -995,10 +1410,17 @@ fn resolve_workspace_package<'a>(
     if package.source.is_some() {
         return Err(BuildError::new(
             "V2_TOPOLOGY_PACKAGE_EXTERNAL",
-            format!("external package {} cannot resolve as workspace source", package.name),
+            format!(
+                "external package {} cannot resolve as workspace source",
+                package.name
+            ),
         ));
     }
-    let manifest = relative_repo_path(root, &package.manifest_path, "Cargo package manifest")?;
+    let manifest = relative_repo_path(
+        root,
+        &package.manifest_path,
+        "Cargo package manifest",
+    )?;
     active
         .packages
         .values()
@@ -1032,29 +1454,30 @@ fn package_target_values(
     let mut emitted = BTreeSet::new();
     let mut values = Vec::new();
     for target in &package.targets {
-        let src_path = relative_repo_path(root, &target.src_path, "Cargo target source")?;
+        let src_path =
+            relative_repo_path(root, &target.src_path, "Cargo target source")?;
         let expected_target = expected.targets.values().find(|candidate| {
             candidate.name == target.name
                 && candidate.kind == target.kind
                 && candidate.crate_types == target.crate_types
                 && candidate.src_path == src_path
         });
-        let target_id = if let Some(expected_target) = expected_target {
-            if !resolved.insert(expected_target.id.clone()) {
-                return Err(BuildError::new(
-                    "V2_TOPOLOGY_TARGET_DUPLICATE",
-                    format!("{} target {} resolves twice", package.name, expected_target.id),
-                ));
-            }
-            expected_target.id.clone()
-        } else {
-            require_graph_finding(graph, profile, "TOPOLOGY_TARGET_EXTRA", &src_path)?;
-            diagnostic_target_id(package, target, &src_path)?
-        };
+        let target_id = resolved_target_id(
+            package,
+            target,
+            &src_path,
+            expected_target,
+            graph,
+            profile,
+            &mut resolved,
+        )?;
         if !emitted.insert(target_id.clone()) {
             return Err(BuildError::new(
                 "V2_TOPOLOGY_TARGET_DUPLICATE",
-                format!("{} target identity {target_id} resolves twice", package.name),
+                format!(
+                    "{} target identity {target_id} resolves twice",
+                    package.name
+                ),
             ));
         }
         values.push(json!({
@@ -1065,10 +1488,46 @@ fn package_target_values(
             "src_path": path_text(&src_path, "Cargo target source")?,
         }));
     }
-    for missing in expected.targets.values().filter(|target| !resolved.contains(&target.id)) {
-        require_graph_finding(graph, profile, "TOPOLOGY_TARGET_MISSING", &missing.src_path)?;
+    for missing in expected
+        .targets
+        .values()
+        .filter(|target| !resolved.contains(&target.id))
+    {
+        require_graph_finding(
+            graph,
+            profile,
+            "TOPOLOGY_TARGET_MISSING",
+            &missing.src_path,
+        )?;
     }
     Ok(values)
+}
+
+fn resolved_target_id(
+    package: &CargoPackage,
+    target: &crate::cargo::Target,
+    src_path: &Path,
+    expected: Option<&crate::topology::WorkspaceTarget>,
+    graph: &GraphReport,
+    profile: &str,
+    resolved: &mut BTreeSet<String>,
+) -> Result<String, BuildError> {
+    let Some(expected) = expected else {
+        require_graph_finding(
+            graph,
+            profile,
+            "TOPOLOGY_TARGET_EXTRA",
+            src_path,
+        )?;
+        return diagnostic_target_id(package, target, src_path);
+    };
+    if !resolved.insert(expected.id.clone()) {
+        return Err(BuildError::new(
+            "V2_TOPOLOGY_TARGET_DUPLICATE",
+            format!("{} target {} resolves twice", package.name, expected.id),
+        ));
+    }
+    Ok(expected.id.clone())
 }
 
 fn require_graph_finding(
@@ -1127,7 +1586,8 @@ fn package_endpoint(
             "source": source,
         }))
     } else {
-        let (_, resolved) = resolve_workspace_package(root, package, workspace)?;
+        let (_, resolved) =
+            resolve_workspace_package(root, package, workspace)?;
         Ok(json!({
             "kind": "workspace_package",
             "workspace": workspace.id,
@@ -1139,7 +1599,9 @@ fn package_endpoint(
 fn checksum_digest(value: &str) -> Result<String, BuildError> {
     let raw = value.strip_prefix("sha256:").unwrap_or(value);
     if raw.len() == 64
-        && raw.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        && raw
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     {
         Ok(format!("sha256:{raw}"))
     } else {
@@ -1172,38 +1634,64 @@ fn artifact_value(identity: ArtifactIdentity<'_>) -> Result<Value, BuildError> {
 }
 
 fn tool_value(identity: &ToolIdentity) -> Result<Value, BuildError> {
+    let canonical_path =
+        path_text(&identity.canonical_path, "tool executable")?;
+    let runtime_inputs = identity
+        .runtime_inputs
+        .iter()
+        .map(runtime_input_value)
+        .collect::<Result<Vec<_>, _>>()?;
     Ok(json!({
-        "canonical_path": path_text(&identity.canonical_path, "tool executable")?,
+        "canonical_path": canonical_path,
         "executable_digest": identity.executable_digest,
         "executable_size_bytes": identity.executable_size_bytes,
         "version_argv": identity.version_argv,
         "version": identity.version,
         "version_digest": identity.version_digest,
-        "runtime_inputs": identity.runtime_inputs.iter().map(runtime_input_value).collect::<Result<Vec<_>, _>>()?,
+        "runtime_inputs": runtime_inputs,
     }))
 }
 
-fn execution_binding_value(binding: &ExecutionBinding) -> Result<Value, BuildError> {
+fn execution_binding_value(
+    binding: &ExecutionBinding,
+) -> Result<Value, BuildError> {
+    let canonical_path =
+        path_text(&binding.canonical_path, "execution binding")?;
+    let runtime_inputs = binding
+        .runtime_inputs
+        .iter()
+        .map(execution_runtime_input_value)
+        .collect::<Result<Vec<_>, _>>()?;
     Ok(json!({
-        "canonical_path": path_text(&binding.canonical_path, "execution binding")?,
+        "canonical_path": canonical_path,
         "executable_digest": binding.executable_digest,
         "executable_size_bytes": binding.executable_size_bytes,
         "version_argv": binding.version_argv,
         "version": binding.version,
         "version_digest": binding.version_digest,
-        "runtime_inputs": binding.runtime_inputs.iter().map(|input| {
-            Ok(json!({
-                "canonical_path": path_text(&input.canonical_path, "execution runtime input")?,
-                "content_digest": input.content_digest,
-                "size_bytes": input.size_bytes,
-            }))
-        }).collect::<Result<Vec<_>, BuildError>>()?,
+        "runtime_inputs": runtime_inputs,
     }))
 }
 
-fn runtime_input_value(input: &RuntimeInputIdentity) -> Result<Value, BuildError> {
+fn execution_runtime_input_value(
+    input: &execution_tools::RuntimeInput,
+) -> Result<Value, BuildError> {
+    let canonical_path =
+        path_text(&input.canonical_path, "execution runtime input")?;
     Ok(json!({
-        "canonical_path": path_text(&input.canonical_path, "tool runtime input")?,
+        "canonical_path": canonical_path,
+        "content_digest": input.content_digest,
+        "size_bytes": input.size_bytes,
+    }))
+}
+
+fn runtime_input_value(
+    input: &RuntimeInputIdentity,
+) -> Result<Value, BuildError> {
+    let canonical_path =
+        path_text(&input.canonical_path, "tool runtime input")?;
+    Ok(json!({
+        "canonical_path": canonical_path,
         "content_digest": input.content_digest,
         "size_bytes": input.size_bytes,
     }))
@@ -1225,18 +1713,24 @@ fn metadata_run_value(
     }))
 }
 
-#[allow(clippy::too_many_arguments)]
+struct ProcessDescription<'a> {
+    purpose: &'a str,
+    workspace: Option<&'a str>,
+    profile: Option<&'a str>,
+    tool_review: Option<&'a str>,
+    tool_environment: Option<&'a str>,
+    executable_digest: &'a str,
+}
+
 fn process_value(
-    purpose: &str,
-    workspace: Option<&str>,
-    profile: Option<&str>,
-    tool_review: Option<&str>,
-    tool_environment: Option<&str>,
-    executable_digest: &str,
+    description: &ProcessDescription<'_>,
     process: &ProcessResult,
-    limits: ProcessLimits,
+    limits: &ProcessLimits,
 ) -> Result<Value, BuildError> {
-    if process.stdout_read_error.is_some() || process.stderr_read_error.is_some() {
+    let purpose = description.purpose;
+    if process.stdout_read_error.is_some()
+        || process.stderr_read_error.is_some()
+    {
         return Err(BuildError::new(
             "V2_PROCESS_CAPTURE",
             format!("{purpose} has an unrepresentable pipe read failure"),
@@ -1253,19 +1747,26 @@ fn process_value(
     {
         return Err(BuildError::new(
             "V2_PROCESS_GROUP_EVIDENCE",
-            format!("{purpose} lacks complete Linux process-group ownership or cleanup proof"),
+            format!(
+                "{purpose} lacks complete Linux process-group ownership or \
+                 cleanup proof"
+            ),
         ));
     }
     let signal = process.kill_attempted.then_some("SIGKILL");
+    let execution_deadline =
+        duration_millis(limits.deadline, "execution deadline")?;
+    let supervision_deadline =
+        duration_millis(limits.supervision_deadline, "supervision deadline")?;
     Ok(json!({
         "purpose": purpose,
-        "workspace": workspace,
-        "profile": profile,
+        "workspace": description.workspace,
+        "profile": description.profile,
         "closure": null,
         "execution": null,
-        "tool_review": tool_review,
-        "tool_environment": tool_environment,
-        "executable_digest": executable_digest,
+        "tool_review": description.tool_review,
+        "tool_environment": description.tool_environment,
+        "executable_digest": description.executable_digest,
         "argv": process_argv(process, purpose)?,
         "termination_reason": process.termination_reason.as_str(),
         "status": process.status.code(),
@@ -1295,7 +1796,6 @@ fn process_value(
             // Kernel-assigned process IDs are ephemeral observations. The
             // durable proof is the checked relation and terminal absence, not
             // the numeric value that happened to realize them in this run.
-            "pgid": null,
             "identity_validated": process.group_identity_validated,
             "absent_after_reap": process.group_absent_after_reap,
         },
@@ -1304,14 +1804,17 @@ fn process_value(
             "stderr_joined": process.readers_joined,
         },
         "deadlines": {
-            "execution_ms": duration_millis(limits.deadline, "execution deadline")?,
-            "supervision_ms": duration_millis(limits.supervision_deadline, "supervision deadline")?,
+            "execution_ms": execution_deadline,
+            "supervision_ms": supervision_deadline,
             "observed_after_exit": process.limit_observed_after_exit,
         },
     }))
 }
 
-fn process_argv(process: &ProcessResult, context: &str) -> Result<Vec<String>, BuildError> {
+fn process_argv(
+    process: &ProcessResult,
+    context: &str,
+) -> Result<Vec<String>, BuildError> {
     process
         .argv
         .iter()
@@ -1326,14 +1829,20 @@ fn process_argv(process: &ProcessResult, context: &str) -> Result<Vec<String>, B
         .collect()
 }
 
-fn duration_millis(duration: std::time::Duration, context: &str) -> Result<u64, BuildError> {
-    u64::try_from(duration.as_millis())
-        .map_err(|failure| BuildError::new("V2_DURATION_OVERFLOW", format!("{context}: {failure}")))
+fn duration_millis(
+    duration: std::time::Duration,
+    context: &str,
+) -> Result<u64, BuildError> {
+    u64::try_from(duration.as_millis()).map_err(|failure| {
+        BuildError::new("V2_DURATION_OVERFLOW", format!("{context}: {failure}"))
+    })
 }
 
 fn owner_value(owner: SourceOwner) -> Value {
     match owner {
-        SourceOwner::Product(role) => json!({"kind": "product", "role": role.as_str()}),
+        SourceOwner::Product(role) => {
+            json!({"kind": "product", "role": role.as_str()})
+        }
         SourceOwner::RepositoryTooling => json!({"kind": "repository_tooling"}),
     }
 }
@@ -1344,7 +1853,9 @@ fn upstream_value(upstream: &Upstream) -> Result<Value, BuildError> {
             "kind": "paths",
             "paths": path_values(paths, "upstream digest subject")?,
         }),
-        DigestSubject::ClassifiedContent => json!({"kind": "classified_content"}),
+        DigestSubject::ClassifiedContent => {
+            json!({"kind": "classified_content"})
+        }
     };
     Ok(json!({
         "identity": upstream.identity,
@@ -1413,22 +1924,39 @@ fn product_limits_value(limits: ProductExecutionLimits) -> Value {
     })
 }
 
-fn path_values(paths: &[PathBuf], context: &str) -> Result<Vec<String>, BuildError> {
-    paths.iter().map(|path| path_text(path, context).map(str::to_owned)).collect()
+fn path_values(
+    paths: &[PathBuf],
+    context: &str,
+) -> Result<Vec<String>, BuildError> {
+    paths
+        .iter()
+        .map(|path| path_text(path, context).map(str::to_owned))
+        .collect()
 }
 
 fn path_text<'a>(path: &'a Path, context: &str) -> Result<&'a str, BuildError> {
     path.to_str().ok_or_else(|| {
-        BuildError::new("V2_NON_UTF8_PATH", format!("{context} {} is not UTF-8", path.display()))
+        BuildError::new(
+            "V2_NON_UTF8_PATH",
+            format!("{context} {} is not UTF-8", path.display()),
+        )
     })
 }
 
-fn relative_repo_path(root: &Path, path: &Path, context: &str) -> Result<PathBuf, BuildError> {
+fn relative_repo_path(
+    root: &Path,
+    path: &Path,
+    context: &str,
+) -> Result<PathBuf, BuildError> {
     let relative = if path.is_absolute() {
         path.strip_prefix(root).map_err(|_| {
             BuildError::new(
                 "V2_ROOT_ESCAPE",
-                format!("{context} {} escapes {}", path.display(), root.display()),
+                format!(
+                    "{context} {} escapes {}",
+                    path.display(),
+                    root.display()
+                ),
             )
         })?
     } else {
@@ -1454,14 +1982,44 @@ mod tests {
     };
 
     #[test]
+    fn report_error_conversion_preserves_category_and_message() {
+        use crate::report_v2::ReportErrorCode;
+
+        let cases = [
+            (ReportErrorCode::Envelope, "V2_REPORT_ENVELOPE"),
+            (ReportErrorCode::Schema, "V2_REPORT_SCHEMA"),
+            (ReportErrorCode::Canonical, "V2_REPORT_CANONICAL"),
+            (ReportErrorCode::Identity, "V2_REPORT_IDENTITY"),
+            (ReportErrorCode::Limit, "V2_REPORT_LIMIT"),
+            (ReportErrorCode::Reference, "V2_REPORT_REFERENCE"),
+            (ReportErrorCode::Semantic, "V2_REPORT_SEMANTIC"),
+        ];
+        for (category, code) in cases {
+            let failure = crate::report_v2::ReportError::new(
+                category,
+                "exact report failed",
+            );
+            let converted = super::BuildError::from(failure);
+            assert_eq!(converted.code, code);
+            assert_eq!(converted.message, "exact report failed");
+        }
+    }
+
+    #[test]
     fn cargo_checksums_are_tagged_once_and_fail_closed() {
         let raw = "a".repeat(64);
-        assert_eq!(super::checksum_digest(&raw).unwrap(), format!("sha256:{raw}"));
+        assert_eq!(
+            super::checksum_digest(&raw).unwrap(),
+            format!("sha256:{raw}")
+        );
         assert_eq!(
             super::checksum_digest(&format!("sha256:{raw}")).unwrap(),
             format!("sha256:{raw}")
         );
-        assert_eq!(super::checksum_digest("ABC").unwrap_err().code, "V2_PACKAGE_CHECKSUM");
+        assert_eq!(
+            super::checksum_digest("ABC").unwrap_err().code,
+            "V2_PACKAGE_CHECKSUM"
+        );
     }
 
     #[test]
@@ -1474,13 +2032,15 @@ mod tests {
 
         let relation = crate::product_closures::Registry {
             closures: Vec::new(),
-            public_consumer_relations: vec![crate::product_closures::PublicConsumerRelation {
-                id: "orphan".to_owned(),
-                shipping_closure: "shipping".to_owned(),
-                consumer_closure: "consumer".to_owned(),
-                public_items: Vec::new(),
-                derive_checks: Vec::new(),
-            }],
+            public_consumer_relations: vec![
+                crate::product_closures::PublicConsumerRelation {
+                    id: "orphan".to_owned(),
+                    shipping_closure: "shipping".to_owned(),
+                    consumer_closure: "consumer".to_owned(),
+                    public_items: Vec::new(),
+                    derive_checks: Vec::new(),
+                },
+            ],
         };
         assert_eq!(
             super::ensure_empty_product_registry(&relation).unwrap_err().code,
@@ -1496,13 +2056,18 @@ mod tests {
             "V2_EMPTY_RELATIVE_PATH"
         );
         assert_eq!(
-            super::relative_repo_path(root, Path::new("/elsewhere/file"), "fixture")
-                .unwrap_err()
-                .code,
+            super::relative_repo_path(
+                root,
+                Path::new("/elsewhere/file"),
+                "fixture"
+            )
+            .unwrap_err()
+            .code,
             "V2_ROOT_ESCAPE"
         );
         assert_eq!(
-            super::relative_repo_path(root, Path::new("/repo/file"), "fixture").unwrap(),
+            super::relative_repo_path(root, Path::new("/repo/file"), "fixture")
+                .unwrap(),
             PathBuf::from("file")
         );
     }
@@ -1545,32 +2110,37 @@ mod tests {
         };
         let first_process = process(100, 100);
         let second_process = process(200, 200);
+        let executable_digest = format!("sha256:{}", "a".repeat(64));
         assert_ne!(first_process.pgid, second_process.pgid);
 
         let first = super::process_value(
-            "fixture",
-            None,
-            None,
-            None,
-            None,
-            &format!("sha256:{}", "a".repeat(64)),
+            &super::ProcessDescription {
+                purpose: "fixture",
+                workspace: None,
+                profile: None,
+                tool_review: None,
+                tool_environment: None,
+                executable_digest: &executable_digest,
+            },
             &first_process,
-            limits,
+            &limits,
         )
         .unwrap();
         let second = super::process_value(
-            "fixture",
-            None,
-            None,
-            None,
-            None,
-            &format!("sha256:{}", "a".repeat(64)),
+            &super::ProcessDescription {
+                purpose: "fixture",
+                workspace: None,
+                profile: None,
+                tool_review: None,
+                tool_environment: None,
+                executable_digest: &executable_digest,
+            },
             &second_process,
-            limits,
+            &limits,
         )
         .unwrap();
 
-        assert_eq!(first["group"]["pgid"], serde_json::Value::Null);
+        assert!(first["group"].get("pgid").is_none());
         assert_eq!(first["group"]["identity_validated"], true);
         assert_eq!(first["group"]["absent_after_reap"], true);
         assert_eq!(first, second);
@@ -1578,14 +2148,16 @@ mod tests {
         let mismatched = process(300, 301);
         assert_eq!(
             super::process_value(
-                "fixture",
-                None,
-                None,
-                None,
-                None,
-                &format!("sha256:{}", "a".repeat(64)),
+                &super::ProcessDescription {
+                    purpose: "fixture",
+                    workspace: None,
+                    profile: None,
+                    tool_review: None,
+                    tool_environment: None,
+                    executable_digest: &executable_digest,
+                },
                 &mismatched,
-                limits,
+                &limits,
             )
             .unwrap_err()
             .code,
@@ -1599,7 +2171,10 @@ mod tests {
         use std::{ffi::OsString, os::unix::ffi::OsStringExt as _};
 
         let path = PathBuf::from(OsString::from_vec(vec![b'a', 0xff]));
-        assert_eq!(super::path_text(&path, "fixture").unwrap_err().code, "V2_NON_UTF8_PATH");
+        assert_eq!(
+            super::path_text(&path, "fixture").unwrap_err().code,
+            "V2_NON_UTF8_PATH"
+        );
     }
 
     #[test]
@@ -1655,12 +2230,22 @@ mod tests {
             )],
         };
 
-        let values =
-            super::package_target_values(Path::new("/repo"), &package, &expected, &graph, "p")
-                .unwrap();
+        let values = super::package_target_values(
+            Path::new("/repo"),
+            &package,
+            &expected,
+            &graph,
+            "p",
+        )
+        .unwrap();
         assert_eq!(values.len(), 2);
         assert_eq!(values[0]["id"], "library");
-        assert!(values[1]["id"].as_str().unwrap().starts_with("unregistered-target:sha256:"));
+        assert!(
+            values[1]["id"]
+                .as_str()
+                .unwrap()
+                .starts_with("unregistered-target:sha256:")
+        );
 
         let absent = crate::graph::GraphReport {
             packages: Vec::new(),
@@ -1669,9 +2254,15 @@ mod tests {
             findings: Vec::new(),
         };
         assert_eq!(
-            super::package_target_values(Path::new("/repo"), &package, &expected, &absent, "p")
-                .unwrap_err()
-                .code,
+            super::package_target_values(
+                Path::new("/repo"),
+                &package,
+                &expected,
+                &absent,
+                "p"
+            )
+            .unwrap_err()
+            .code,
             "V2_TOPOLOGY_TARGET_UNRESOLVED"
         );
     }

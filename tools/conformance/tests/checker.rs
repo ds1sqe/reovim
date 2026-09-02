@@ -9,9 +9,14 @@ use std::{
     time::Duration,
 };
 
-use reovim_conformance::process::{CommandSpec, ProcessLimits, TerminationReason, run};
+use reovim_conformance::process::{
+    CommandSpec, ProcessLimits, TerminationReason, run,
+};
 
-fn shell(script: &str, limits: ProcessLimits) -> reovim_conformance::process::ProcessResult {
+fn shell(
+    script: &str,
+    limits: ProcessLimits,
+) -> reovim_conformance::process::ProcessResult {
     run(
         &CommandSpec {
             program: PathBuf::from("/bin/sh"),
@@ -25,7 +30,11 @@ fn shell(script: &str, limits: ProcessLimits) -> reovim_conformance::process::Pr
     .expect("bounded helper process")
 }
 
-const fn limits(stdout_bytes: usize, stderr_bytes: usize, deadline_ms: u64) -> ProcessLimits {
+const fn limits(
+    stdout_bytes: usize,
+    stderr_bytes: usize,
+    deadline_ms: u64,
+) -> ProcessLimits {
     ProcessLimits {
         stdout_bytes,
         stderr_bytes,
@@ -47,7 +56,9 @@ const fn tight_supervision_limits(
     }
 }
 
-fn assert_process_ownership(result: &reovim_conformance::process::ProcessResult) {
+fn assert_process_ownership(
+    result: &reovim_conformance::process::ProcessResult,
+) {
     assert!(result.reaped && result.readers_joined);
     #[cfg(target_os = "linux")]
     {
@@ -65,6 +76,42 @@ fn assert_process_ownership(result: &reovim_conformance::process::ProcessResult)
         assert!(!result.descendants_owned);
         assert!(!result.descendants_reaped);
     }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn conformance_entrypoint_rejects_checker_build_overrides() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let script = root.join("scripts/check-conformance.sh");
+    for name in ["CARGO_BUILD_TARGET", "RUSTC_WRAPPER"] {
+        let output = std::process::Command::new(&script)
+            .arg("candidate")
+            .env(name, "/untrusted/override")
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(64), "{name}");
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(stderr.contains("CHECKER_BUILD_ENV_UNSUPPORTED"));
+        assert!(stderr.contains(name));
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn conformance_entrypoint_rejects_checker_build_config() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let script = root.join("scripts/check-conformance.sh");
+    let cargo_home = PlainTemp::new("checker-build-config");
+    fs::write(cargo_home.0.join("config.toml"), b"[build]\n").unwrap();
+    let output = std::process::Command::new(script)
+        .arg("candidate")
+        .env("CARGO_HOME", &cargo_home.0)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(64));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("CHECKER_BUILD_CONFIG_UNSUPPORTED"));
+    assert!(stderr.contains("config.toml"));
 }
 
 #[test]
@@ -88,7 +135,10 @@ fn cap_plus_one_kills_or_records_the_exit_race_and_reaps() {
 
 #[test]
 fn stdout_and_stderr_are_drained_concurrently() {
-    let script = "i=0; while [ $i -lt 256 ]; do printf x; printf y >&2; i=$((i+1)); done";
+    let script = concat!(
+        "i=0; while [ $i -lt 256 ]; do ",
+        "printf x; printf y >&2; i=$((i+1)); done"
+    );
     let result = shell(script, limits(512, 512, 500));
     assert_eq!(result.termination_reason, TerminationReason::Exited);
     assert_eq!(result.stdout_bytes, 256);
@@ -99,7 +149,8 @@ fn stdout_and_stderr_are_drained_concurrently() {
 
 #[test]
 fn deadline_after_ready_kills_waits_and_joins() {
-    let result = shell("printf READY; while :; do :; done", limits(64, 64, 100));
+    let result =
+        shell("printf READY; while :; do :; done", limits(64, 64, 100));
     assert_eq!(result.termination_reason, TerminationReason::Deadline);
     assert_eq!(result.stdout, b"READY");
     assert!(result.kill_attempted);
@@ -117,7 +168,8 @@ fn nonzero_exit_is_retained_without_becoming_a_runner_error() {
 
 #[test]
 fn stderr_cap_plus_one_is_bounded_and_reaped() {
-    let result = shell("printf 12345 >&2; while :; do :; done", limits(64, 4, 500));
+    let result =
+        shell("printf 12345 >&2; while :; do :; done", limits(64, 4, 500));
     assert_eq!(result.termination_reason, TerminationReason::StderrLimit);
     assert_eq!(result.stderr, b"1234");
     assert!(result.stderr_overflow);
@@ -126,7 +178,10 @@ fn stderr_cap_plus_one_is_bounded_and_reaped() {
 
 #[test]
 fn simultaneous_pipe_overflow_is_owned() {
-    let result = shell("printf 12345; printf 67890 >&2; while :; do :; done", limits(4, 4, 500));
+    let result = shell(
+        "printf 12345; printf 67890 >&2; while :; do :; done",
+        limits(4, 4, 500),
+    );
     assert!(matches!(
         result.termination_reason,
         TerminationReason::StdoutLimit | TerminationReason::StderrLimit
@@ -174,7 +229,10 @@ fn command_argv_environment_and_directory_are_explicit() {
                 OsString::from("argument"),
             ],
             current_dir: PathBuf::from("/"),
-            environment: BTreeMap::from([(OsString::from("ONLY"), OsString::from("value"))]),
+            environment: BTreeMap::from([(
+                OsString::from("ONLY"),
+                OsString::from("value"),
+            )]),
             clear_environment: true,
         },
         limits(128, 64, 500),
@@ -236,13 +294,16 @@ struct PlainTemp(PathBuf);
 impl PlainTemp {
     fn new(label: &str) -> Self {
         let sequence = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir()
-            .join(format!("reovim-product-v2-{label}-{}-{sequence}", std::process::id()));
+        let path = std::env::temp_dir().join(format!(
+            "reovim-product-v2-{label}-{}-{sequence}",
+            std::process::id()
+        ));
         fs::create_dir(&path).unwrap();
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt as _;
-            fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o700))
+                .unwrap();
         }
         Self(path.canonicalize().unwrap())
     }
@@ -256,10 +317,15 @@ impl Drop for PlainTemp {
 
 impl RepositoryFixture {
     fn copy_current(label: &str) -> Self {
-        let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap();
+        let source = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .unwrap();
         let sequence = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
-        let root = std::env::temp_dir()
-            .join(format!("reovim-product-v2-{label}-{}-{sequence}", std::process::id()));
+        let root = std::env::temp_dir().join(format!(
+            "reovim-product-v2-{label}-{}-{sequence}",
+            std::process::id()
+        ));
         fs::create_dir(&root).unwrap();
         copy_repository_tree(&source, &root).unwrap();
         let fixture = Self { root };
@@ -291,24 +357,34 @@ impl RepositoryFixture {
 
     fn retain_default_profile(&self) {
         let mut topology = self.json("conformance/workspace-topology.json");
-        topology["workspaces"][0]["metadata_profiles"].as_array_mut().unwrap().retain(|profile| {
-            profile.get("id").and_then(serde_json::Value::as_str) == Some("hosted-default")
-        });
+        topology["workspaces"][0]["metadata_profiles"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|profile| {
+                profile.get("id").and_then(serde_json::Value::as_str)
+                    == Some("hosted-default")
+            });
         self.write_json("conformance/workspace-topology.json", &topology);
 
         let mut reviews = self.json("conformance/dependency-reviews.json");
-        for admission in reviews["workspaces"][0]["admissions"].as_array_mut().unwrap() {
-            admission["resolved_uses"].as_array_mut().unwrap().retain(|resolved_use| {
-                resolved_use.get("profile").and_then(serde_json::Value::as_str)
-                    == Some("hosted-default")
-            });
+        for admission in
+            reviews["workspaces"][0]["admissions"].as_array_mut().unwrap()
+        {
+            admission["resolved_uses"]
+                .as_array_mut()
+                .unwrap()
+                .retain(hosted_default_use);
         }
         self.write_json("conformance/dependency-reviews.json", &reviews);
     }
 
     fn check(&self) -> CheckerRun {
         let output = self.command("check").output().unwrap();
-        CheckerRun { status: output.status, stdout: output.stdout, stderr: output.stderr }
+        CheckerRun {
+            status: output.status,
+            stdout: output.stdout,
+            stderr: output.stderr,
+        }
     }
 
     fn exact_check(&self, revision: &str) -> CheckerRun {
@@ -322,7 +398,11 @@ impl RepositoryFixture {
             .arg("linux-x86-64-git-2-55-0")
             .output()
             .unwrap();
-        CheckerRun { status: output.status, stdout: output.stdout, stderr: output.stderr }
+        CheckerRun {
+            status: output.status,
+            stdout: output.stdout,
+            stderr: output.stderr,
+        }
     }
 
     fn generate(&self, revision: &str, evidence_root: &Path) -> CheckerRun {
@@ -338,22 +418,35 @@ impl RepositoryFixture {
             .arg(evidence_root)
             .output()
             .unwrap();
-        CheckerRun { status: output.status, stdout: output.stdout, stderr: output.stderr }
+        CheckerRun {
+            status: output.status,
+            stdout: output.stdout,
+            stderr: output.stderr,
+        }
     }
 
     fn command(&self, action: &str) -> std::process::Command {
-        let cargo = PathBuf::from(std::env::var_os("CARGO").expect("Cargo sets CARGO"))
-            .canonicalize()
-            .unwrap();
-        let rustc = cargo.parent().unwrap().join("rustc").canonicalize().unwrap();
+        let cargo =
+            PathBuf::from(std::env::var_os("CARGO").expect("Cargo sets CARGO"))
+                .canonicalize()
+                .unwrap();
+        let rustc =
+            cargo.parent().unwrap().join("rustc").canonicalize().unwrap();
         let cargo_home = std::env::var_os("CARGO_HOME")
             .map_or_else(
-                || PathBuf::from(std::env::var_os("HOME").expect("HOME is set")).join(".cargo"),
+                || {
+                    PathBuf::from(
+                        std::env::var_os("HOME").expect("HOME is set"),
+                    )
+                    .join(".cargo")
+                },
                 PathBuf::from,
             )
             .canonicalize()
             .unwrap();
-        let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_reovim-conformance"));
+        let mut command = std::process::Command::new(env!(
+            "CARGO_BIN_EXE_reovim-conformance"
+        ));
         command
             .arg(action)
             .arg("--root")
@@ -403,8 +496,16 @@ impl RepositoryFixture {
         self.git(&["config", "core.autocrlf", "false"]);
         self.git(&["add", "-f", "--all"]);
         self.git(&["commit", "-q", "-m", "fixture"]);
-        String::from_utf8(self.git(&["rev-parse", "HEAD"])).unwrap().trim().to_owned()
+        String::from_utf8(self.git(&["rev-parse", "HEAD"]))
+            .unwrap()
+            .trim()
+            .to_owned()
     }
+}
+
+fn hosted_default_use(resolved_use: &serde_json::Value) -> bool {
+    resolved_use.get("profile").and_then(serde_json::Value::as_str)
+        == Some("hosted-default")
 }
 
 impl Drop for RepositoryFixture {
@@ -447,7 +548,9 @@ impl CheckerRun {
         String::from_utf8_lossy(&self.stderr)
             .lines()
             .rev()
-            .find_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+            .find_map(|line| {
+                serde_json::from_str::<serde_json::Value>(line).ok()
+            })
             .and_then(|value| value["code"].as_str().map(str::to_owned))
     }
 }
@@ -463,7 +566,10 @@ fn copy_repository_tree(source: &Path, destination: &Path) -> io::Result<()> {
         let destination_path = destination.join(&name);
         let metadata = fs::symlink_metadata(&source_path)?;
         if metadata.file_type().is_symlink() {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "source fixture has a symlink"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "source fixture has a symlink",
+            ));
         }
         if metadata.is_dir() {
             fs::create_dir(&destination_path)?;
@@ -485,13 +591,18 @@ fn report_identity(run: &CheckerRun) -> String {
 }
 
 fn verify_report_cli(path: &Path) -> CheckerRun {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_reovim-conformance"))
-        .arg("verify")
-        .arg("--report")
-        .arg(path)
-        .output()
-        .unwrap();
-    CheckerRun { status: output.status, stdout: output.stdout, stderr: output.stderr }
+    let output =
+        std::process::Command::new(env!("CARGO_BIN_EXE_reovim-conformance"))
+            .arg("verify")
+            .arg("--report")
+            .arg(path)
+            .output()
+            .unwrap();
+    CheckerRun {
+        status: output.status,
+        stdout: output.stdout,
+        stderr: output.stderr,
+    }
 }
 
 #[test]
@@ -529,7 +640,10 @@ fn product_empty_v2_full_cli_and_mutation_matrix() {
         "public_consumers",
         "executions",
     ] {
-        assert_eq!(current_report["product_proof"][field], serde_json::json!([]));
+        assert_eq!(
+            current_report["product_proof"][field],
+            serde_json::json!([])
+        );
     }
     let baseline_identity = report_identity(&current);
 
@@ -548,7 +662,11 @@ fn product_empty_v2_full_cli_and_mutation_matrix() {
             "source_use": "tool",
             "upstream": {
                 "identity": "product-v2-fixture/v1",
-                "digest": "sha256:160cc4537148c27cb3f269c9126739f4a99b1fad7f2edad4143c5b1729124e33",
+                "digest": concat!(
+                    "sha256:",
+                    "160cc4537148c27cb3f269c9126739f4",
+                    "a99b1fad7f2edad4143c5b1729124e33"
+                ),
                 "digest_subject": {"kind": "classified_content"}
             }
         }),
@@ -568,7 +686,8 @@ fn product_empty_v2_full_cli_and_mutation_matrix() {
         b"\n\"$ROOT/tmp/hidden-helper\"\n".as_slice(),
         b"\nHIDDEN=\"$ROOT/tmp/hidden-helper\"; \"$HIDDEN\"\n".as_slice(),
         b"\nHIDDEN=\"$ROOT/tmp/hidden-helper\"; sh \"$HIDDEN\"\n".as_slice(),
-        b"\nHIDDEN=\"$ROOT/tmp/hidden-helper\"; exec \\\n  \"$HIDDEN\"\n".as_slice(),
+        b"\nHIDDEN=\"$ROOT/tmp/hidden-helper\"; exec \\\n  \"$HIDDEN\"\n"
+            .as_slice(),
         b"\nOUT=\"$(\"$ROOT/tmp/hidden-helper\")\"\n".as_slice(),
         b"\nOUT=`\"$ROOT/tmp/hidden-helper\"`\n".as_slice(),
         b"\nVALUES=(\n  \"$(\"$ROOT/tmp/hidden-helper\")\"\n)\n".as_slice(),
@@ -580,7 +699,9 @@ fn product_empty_v2_full_cli_and_mutation_matrix() {
         let variable_command = fixture.check();
         variable_command.assert_rejected();
         assert!(
-            variable_command.finding_codes().contains("ENTRYPOINT_LOCAL_INPUT_PROOF_UNAVAILABLE")
+            variable_command
+                .finding_codes()
+                .contains("ENTRYPOINT_LOCAL_INPUT_PROOF_UNAVAILABLE")
         );
         fixture.restore(check_script_path, &check_script_original);
     }
@@ -630,40 +751,76 @@ fn product_empty_v2_full_cli_and_mutation_matrix() {
     fixture.write_json(policy_path, &policy);
     let ambiguous = fixture.check();
     ambiguous.assert_rejected();
-    assert!(ambiguous.finding_codes().contains("SOURCE_CLASSIFICATION"));
+    assert_eq!(ambiguous.fatal_code().as_deref(), Some("V2_REPORT_REFERENCE"));
+    assert!(
+        String::from_utf8_lossy(&ambiguous.stderr).contains("upstream subject")
+    );
     fixture.restore(policy_path, &policy_original);
 
     // M4-M6: unmatched path, undeclared helper, omitted literal include input,
     // orphan module, and an unregistered Cargo target all remain visible.
     fs::write(fixture.path("unmatched.bin"), b"unmatched").unwrap();
-    fs::write(fixture.path("scripts/undeclared-helper.py"), b"print('fixture')\n").unwrap();
+    fs::write(
+        fixture.path("scripts/undeclared-helper.py"),
+        b"print('fixture')\n",
+    )
+    .unwrap();
     fs::create_dir(fixture.path("tmp")).unwrap();
     fs::write(fixture.path("tmp/hidden"), b"excluded").unwrap();
-    fs::write(fixture.path("tmp/second-hidden"), b"excluded second input").unwrap();
-    fs::write(fixture.path("tools/conformance/src/orphan.rs"), b"pub fn orphan() {}\n").unwrap();
-    fs::write(fixture.path("tools/conformance/src/unused.rs"), b"pub fn unused() {}\n").unwrap();
+    fs::write(fixture.path("tmp/second-hidden"), b"excluded second input")
+        .unwrap();
+    fs::write(
+        fixture.path("tools/conformance/src/orphan.rs"),
+        b"pub fn orphan() {}\n",
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("tools/conformance/src/unused.rs"),
+        b"pub fn unused() {}\n",
+    )
+    .unwrap();
     fs::write(
         fixture.path("tools/conformance/build-helper.rs"),
         b"#![forbid(unsafe_code)]\nfn main() {}\n",
     )
     .unwrap();
-    fs::write(fixture.path("tools/conformance/src/duplicate.rs"), b"pub fn one() {}\n").unwrap();
+    fs::write(
+        fixture.path("tools/conformance/src/duplicate.rs"),
+        b"pub fn one() {}\n",
+    )
+    .unwrap();
     fs::create_dir(fixture.path("tools/conformance/src/duplicate")).unwrap();
-    fs::write(fixture.path("tools/conformance/src/duplicate/mod.rs"), b"pub fn two() {}\n")
-        .unwrap();
+    fs::write(
+        fixture.path("tools/conformance/src/duplicate/mod.rs"),
+        b"pub fn two() {}\n",
+    )
+    .unwrap();
     let mut main = main_original.clone();
-    main.extend_from_slice(
-        b"\nconst _: &str = include_str!(\"../../../tmp/hidden\");\nconst _: &str = arbitrary::include_str!(\"../../../Cargo.toml\");\nmod fixture_missing;\nmod duplicate;\n#[path = \"../../../tmp/hidden.rs\"] mod fixture_path;\n",
+    let rust_mutations = concat!(
+        "\nconst _: &str = include_str!(\"../../../tmp/hidden\");\n",
+        "const _: &str = ",
+        "arbitrary::include_str!(\"../../../Cargo.toml\");\n",
+        "mod fixture_missing;\nmod duplicate;\n",
+        "#[path = \"../../../tmp/hidden.rs\"] mod fixture_path;\n",
     );
+    main.extend_from_slice(rust_mutations.as_bytes());
     fixture.restore(main_path, &main);
     let mut check_script = check_script_original.clone();
-    check_script.extend_from_slice(
-        b"\nsource tmp/hidden\nsource /tmp/reovim-escape\nbash tmp/hidden\npython ../tmp/reovim-escape.py\n./scripts/check.sh ./tmp/second-hidden\n",
+    let script_mutations = concat!(
+        "\nsource tmp/hidden\nsource /tmp/reovim-escape\n",
+        "bash tmp/hidden\npython ../tmp/reovim-escape.py\n",
+        "./scripts/check.sh ./tmp/second-hidden\n",
     );
+    check_script.extend_from_slice(script_mutations.as_bytes());
     fixture.restore(check_script_path, &check_script);
     let mut manifest = String::from_utf8(manifest_original.clone()).unwrap();
-    manifest = manifest.replace("publish = false", "publish = false\nbuild = \"build-helper.rs\"");
-    manifest.push_str("\n[[bin]]\nname = \"fixture-extra\"\npath = \"src/orphan.rs\"\n");
+    manifest = manifest.replace(
+        "publish = false",
+        "publish = false\nbuild = \"build-helper.rs\"",
+    );
+    manifest.push_str(
+        "\n[[bin]]\nname = \"fixture-extra\"\npath = \"src/orphan.rs\"\n",
+    );
     fixture.restore(manifest_path, manifest.as_bytes());
     let omitted = fixture.check();
     omitted.assert_rejected();
@@ -684,18 +841,22 @@ fn product_empty_v2_full_cli_and_mutation_matrix() {
     ] {
         assert!(codes.contains(code), "missing {code}: {codes:?}");
     }
-    assert!(omitted.report()["findings"].as_array().unwrap().iter().any(|finding| {
-        finding["code"] == "ENTRYPOINT_LOCAL_INPUT_UNCLASSIFIED"
-            && finding["path"] == "tmp/second-hidden"
-    }));
+    assert!(omitted.report()["findings"].as_array().unwrap().iter().any(
+        |finding| {
+            finding["code"] == "ENTRYPOINT_LOCAL_INPUT_UNCLASSIFIED"
+                && finding["path"] == "tmp/second-hidden"
+        }
+    ));
     fs::remove_file(fixture.path("unmatched.bin")).unwrap();
     fs::remove_file(fixture.path("scripts/undeclared-helper.py")).unwrap();
     fs::remove_dir_all(fixture.path("tmp")).unwrap();
     fs::remove_file(fixture.path("tools/conformance/src/orphan.rs")).unwrap();
     fs::remove_file(fixture.path("tools/conformance/src/unused.rs")).unwrap();
     fs::remove_file(fixture.path("tools/conformance/build-helper.rs")).unwrap();
-    fs::remove_dir_all(fixture.path("tools/conformance/src/duplicate")).unwrap();
-    fs::remove_file(fixture.path("tools/conformance/src/duplicate.rs")).unwrap();
+    fs::remove_dir_all(fixture.path("tools/conformance/src/duplicate"))
+        .unwrap();
+    fs::remove_file(fixture.path("tools/conformance/src/duplicate.rs"))
+        .unwrap();
     fixture.restore(main_path, &main_original);
     fixture.restore(check_script_path, &check_script_original);
     fixture.restore(manifest_path, &manifest_original);
@@ -704,8 +865,11 @@ fn product_empty_v2_full_cli_and_mutation_matrix() {
     // package, and public-consumer proof gate is complete. Product source
     // without a matching closure is a typed fatal configuration mismatch.
     fs::create_dir(fixture.path("product")).unwrap();
-    fs::write(fixture.path("product/lib.rs"), b"pub use tooling::*; include!(\"generated.rs\");\n")
-        .unwrap();
+    fs::write(
+        fixture.path("product/lib.rs"),
+        b"pub use tooling::*; include!(\"generated.rs\");\n",
+    )
+    .unwrap();
     let mut policy = fixture.json(policy_path);
     push_rule(
         &mut policy,
@@ -720,7 +884,10 @@ fn product_empty_v2_full_cli_and_mutation_matrix() {
     fixture.write_json(policy_path, &policy);
     let product = fixture.check();
     product.assert_rejected();
-    assert_eq!(product.fatal_code().as_deref(), Some("PRODUCT_CLOSURE_MISSING"));
+    assert_eq!(
+        product.fatal_code().as_deref(),
+        Some("PRODUCT_CLOSURE_MISSING")
+    );
     fs::remove_dir_all(fixture.path("product")).unwrap();
     fixture.restore(policy_path, &policy_original);
 
@@ -735,9 +902,13 @@ fn product_empty_v2_full_cli_and_mutation_matrix() {
     fixture.restore(policy_path, &policy_original);
 
     // M12: a newly declared concrete cycle cannot be hidden by policy.
-    let mut manifest = String::from_utf8(fixture.bytes("lib/depgraph/Cargo.toml")).unwrap();
+    let mut manifest =
+        String::from_utf8(fixture.bytes("lib/depgraph/Cargo.toml")).unwrap();
     let depgraph_original = manifest.as_bytes().to_vec();
-    manifest.push_str("\n[dependencies.reovim-conformance]\npath = \"../../tools/conformance\"\n");
+    manifest.push_str(concat!(
+        "\n[dependencies.reovim-conformance]\n",
+        "path = \"../../tools/conformance\"\n"
+    ));
     fixture.restore("lib/depgraph/Cargo.toml", manifest.as_bytes());
     let cycle = fixture.check();
     cycle.assert_rejected();
@@ -747,7 +918,8 @@ fn product_empty_v2_full_cli_and_mutation_matrix() {
     // M13: an in-scope symlink escape is not hidden by classification.
     #[cfg(unix)]
     {
-        std::os::unix::fs::symlink("/", fixture.path("scripts/escape-link")).unwrap();
+        std::os::unix::fs::symlink("/", fixture.path("scripts/escape-link"))
+            .unwrap();
         let escape = fixture.check();
         escape.assert_rejected();
         assert!(escape.finding_codes().contains("SYMLINK_IN_SCOPE"));
@@ -755,8 +927,11 @@ fn product_empty_v2_full_cli_and_mutation_matrix() {
     }
 
     // M14: generated Rust cannot pass as BuildOutput.
-    fs::write(fixture.path("tools/conformance/src/generated.rs"), b"pub fn generated() {}\n")
-        .unwrap();
+    fs::write(
+        fixture.path("tools/conformance/src/generated.rs"),
+        b"pub fn generated() {}\n",
+    )
+    .unwrap();
     let mut policy = fixture.json(policy_path);
     push_rule(
         &mut policy,
@@ -768,7 +943,11 @@ fn product_empty_v2_full_cli_and_mutation_matrix() {
             "source_use": "build_output",
             "upstream": {
                 "identity": "fixture-generator/v1",
-                "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                "digest": concat!(
+                    "sha256:",
+                    "00000000000000000000000000000000",
+                    "00000000000000000000000000000000"
+                ),
                 "digest_subject": {"kind": "paths", "paths": ["Cargo.toml"]}
             }
         }),
@@ -777,7 +956,8 @@ fn product_empty_v2_full_cli_and_mutation_matrix() {
     let generated = fixture.check();
     generated.assert_rejected();
     assert!(generated.finding_codes().contains("RUST_SOURCE_BUILD_OUTPUT"));
-    fs::remove_file(fixture.path("tools/conformance/src/generated.rs")).unwrap();
+    fs::remove_file(fixture.path("tools/conformance/src/generated.rs"))
+        .unwrap();
     fixture.restore(policy_path, &policy_original);
 
     // M15-M17: upstream omission, policy self-coverage omission, and generated
@@ -791,14 +971,21 @@ fn product_empty_v2_full_cli_and_mutation_matrix() {
     fixture.restore(policy_path, &policy_original);
 
     let mut policy = fixture.json(policy_path);
-    policy["rules"]
-        .as_array_mut()
-        .unwrap()
-        .retain(|rule| rule["prefix"].as_str() != Some("conformance/source-classification.json"));
+    policy["rules"].as_array_mut().unwrap().retain(|rule| {
+        rule["prefix"].as_str()
+            != Some("conformance/source-classification.json")
+    });
     fixture.write_json(policy_path, &policy);
     let self_omitted = fixture.check();
     self_omitted.assert_rejected();
-    assert!(self_omitted.finding_codes().contains("SOURCE_CLASSIFICATION"));
+    assert_eq!(
+        self_omitted.fatal_code().as_deref(),
+        Some("V2_REPORT_REFERENCE")
+    );
+    assert!(
+        String::from_utf8_lossy(&self_omitted.stderr)
+            .contains("source_classification path")
+    );
     fixture.restore(policy_path, &policy_original);
 
     let mut policy = fixture.json(policy_path);
@@ -815,13 +1002,17 @@ fn product_empty_v2_full_cli_and_mutation_matrix() {
     fixture.write_json(policy_path, &policy);
     let self_reference = fixture.check();
     self_reference.assert_rejected();
-    assert_eq!(self_reference.fatal_code().as_deref(), Some("POLICY_RESULT_SELF_REFERENCE"));
+    assert_eq!(
+        self_reference.fatal_code().as_deref(),
+        Some("POLICY_RESULT_SELF_REFERENCE")
+    );
     fixture.restore(policy_path, &policy_original);
 
     let entrypoint_reviews_path = "conformance/entrypoint-reviews.json";
     let entrypoint_reviews_original = fixture.bytes(entrypoint_reviews_path);
     let mut entrypoint_reviews = fixture.json(entrypoint_reviews_path);
-    entrypoint_reviews["reviewed_at"] = serde_json::json!("2026-09-01T00:00:01Z");
+    entrypoint_reviews["reviewed_at"] =
+        serde_json::json!("2026-09-01T00:00:01Z");
     fixture.write_json(entrypoint_reviews_path, &entrypoint_reviews);
     let changed_entrypoint_review = fixture.check();
     assert!(changed_entrypoint_review.status.success());
@@ -833,7 +1024,8 @@ fn product_empty_v2_full_cli_and_mutation_matrix() {
     let topology_path = "conformance/workspace-topology.json";
     let topology_original = fixture.bytes(topology_path);
     let mut topology = fixture.json(topology_path);
-    topology["workspaces"][0]["metadata_profiles"][0]["all_features"] = serde_json::json!(true);
+    topology["workspaces"][0]["metadata_profiles"][0]["all_features"] =
+        serde_json::json!(true);
     fixture.write_json(topology_path, &topology);
     let changed_profile = fixture.check();
     assert!(changed_profile.status.success());
@@ -863,16 +1055,28 @@ fn exact_git_generate_verify_and_raw_identity_mutants() {
     assert!(report_path.starts_with(&evidence.0));
     let retained_bytes = fs::read(&report_path).unwrap();
     let verified = verify_report_cli(&report_path);
-    assert!(verified.status.success(), "verify: {}", String::from_utf8_lossy(&verified.stderr));
+    assert!(
+        verified.status.success(),
+        "verify: {}",
+        String::from_utf8_lossy(&verified.stderr)
+    );
 
     let no_clobber = fixture.generate(&revision, &evidence.0);
     no_clobber.assert_rejected();
     assert_eq!(no_clobber.fatal_code().as_deref(), Some("EVIDENCE_EXISTS"));
-    assert!(String::from_utf8_lossy(&no_clobber.stderr).contains("not_applied"));
+    assert!(
+        String::from_utf8_lossy(&no_clobber.stderr).contains("not_applied")
+    );
     assert_eq!(fs::read(&report_path).unwrap(), retained_bytes);
-    assert!(fs::read_dir(report_path.parent().unwrap()).unwrap().all(|entry| {
-        !entry.unwrap().file_name().to_string_lossy().starts_with(".source-role-map")
-    }));
+    assert!(fs::read_dir(report_path.parent().unwrap()).unwrap().all(
+        |entry| {
+            !entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".source-role-map")
+        }
+    ));
 
     let mut tampered: serde_json::Value =
         serde_json::from_slice(&fs::read(&report_path).unwrap()).unwrap();
@@ -880,29 +1084,47 @@ fn exact_git_generate_verify_and_raw_identity_mutants() {
     fs::write(&report_path, serde_json::to_vec(&tampered).unwrap()).unwrap();
     let verify_tampered = verify_report_cli(&report_path);
     verify_tampered.assert_rejected();
-    assert_eq!(verify_tampered.fatal_code().as_deref(), Some("VERIFY_REPORT_V2"));
+    assert_eq!(
+        verify_tampered.fatal_code().as_deref(),
+        Some("VERIFY_REPORT_V2_CANONICAL")
+    );
 
     let wrong_revision = fixture.exact_check(&"0".repeat(40));
     wrong_revision.assert_rejected();
-    assert_eq!(wrong_revision.fatal_code().as_deref(), Some("GIT_REVISION_MISMATCH"));
+    assert_eq!(
+        wrong_revision.fatal_code().as_deref(),
+        Some("GIT_REVISION_MISMATCH")
+    );
 
     fs::write(fixture.path(".gitmodules"), b"[submodule \"x\"]\n").unwrap();
     let modules = fixture.exact_check(&revision);
     modules.assert_rejected();
-    assert_eq!(modules.fatal_code().as_deref(), Some("GIT_UNMODELED_SEMANTICS"));
+    assert_eq!(
+        modules.fatal_code().as_deref(),
+        Some("GIT_UNMODELED_SEMANTICS")
+    );
     fs::remove_file(fixture.path(".gitmodules")).unwrap();
 
     fs::create_dir(fixture.path("nested")).unwrap();
     fs::write(fixture.path("nested/.gitattributes"), b"* -text\n").unwrap();
     let untracked_attributes = fixture.exact_check(&revision);
     untracked_attributes.assert_rejected();
-    assert_eq!(untracked_attributes.fatal_code().as_deref(), Some("GIT_UNMODELED_SEMANTICS"));
+    assert_eq!(
+        untracked_attributes.fatal_code().as_deref(),
+        Some("GIT_UNMODELED_SEMANTICS")
+    );
     fixture.git(&["add", "-f", "nested/.gitattributes"]);
     fixture.git(&["commit", "-q", "-m", "tracked nested attributes"]);
-    revision = String::from_utf8(fixture.git(&["rev-parse", "HEAD"])).unwrap().trim().to_owned();
+    revision = String::from_utf8(fixture.git(&["rev-parse", "HEAD"]))
+        .unwrap()
+        .trim()
+        .to_owned();
     let tracked_attributes = fixture.exact_check(&revision);
     tracked_attributes.assert_rejected();
-    assert_eq!(tracked_attributes.fatal_code().as_deref(), Some("GIT_UNMODELED_SEMANTICS"));
+    assert_eq!(
+        tracked_attributes.fatal_code().as_deref(),
+        Some("GIT_UNMODELED_SEMANTICS")
+    );
     fixture.git(&["rm", "-q", "nested/.gitattributes"]);
     fixture.git(&["commit", "-q", "-m", "remove attributes"]);
     match fs::remove_dir(fixture.path("nested")) {
@@ -910,12 +1132,18 @@ fn exact_git_generate_verify_and_raw_identity_mutants() {
         Err(error) if error.kind() == io::ErrorKind::NotFound => {}
         Err(error) => panic!("remove nested fixture: {error}"),
     }
-    revision = String::from_utf8(fixture.git(&["rev-parse", "HEAD"])).unwrap().trim().to_owned();
+    revision = String::from_utf8(fixture.git(&["rev-parse", "HEAD"]))
+        .unwrap()
+        .trim()
+        .to_owned();
 
     fs::write(fixture.path(".git/info/attributes"), b"* -text\n").unwrap();
     let info_attributes = fixture.exact_check(&revision);
     info_attributes.assert_rejected();
-    assert_eq!(info_attributes.fatal_code().as_deref(), Some("GIT_INFO_ATTRIBUTES"));
+    assert_eq!(
+        info_attributes.fatal_code().as_deref(),
+        Some("GIT_INFO_ATTRIBUTES")
+    );
     fs::remove_file(fixture.path(".git/info/attributes")).unwrap();
 
     fixture.git(&["update-index", "--assume-unchanged", "README.md"]);
@@ -932,12 +1160,16 @@ fn exact_git_generate_verify_and_raw_identity_mutants() {
     fs::write(fixture.path("scripts/ignored.pyc"), b"ignored").unwrap();
     let ignored_extra = fixture.exact_check(&revision);
     ignored_extra.assert_rejected();
-    assert_eq!(ignored_extra.fatal_code().as_deref(), Some("REVISION_INVENTORY_MISMATCH"));
+    assert_eq!(
+        ignored_extra.fatal_code().as_deref(),
+        Some("REVISION_INVENTORY_MISMATCH")
+    );
     fs::remove_file(fixture.path("scripts/ignored.pyc")).unwrap();
 
     #[cfg(unix)]
     {
-        std::os::unix::fs::symlink("/", fixture.path("scripts/exact-link")).unwrap();
+        std::os::unix::fs::symlink("/", fixture.path("scripts/exact-link"))
+            .unwrap();
         let symlink = fixture.exact_check(&revision);
         symlink.assert_rejected();
         assert!(symlink.finding_codes().contains("SYMLINK_IN_SCOPE"));
@@ -951,7 +1183,10 @@ fn exact_git_generate_verify_and_raw_identity_mutants() {
     fixture.git(&["add", "README.md"]);
     let staged_bytes = fixture.exact_check(&revision);
     staged_bytes.assert_rejected();
-    assert_eq!(staged_bytes.fatal_code().as_deref(), Some("GIT_INDEX_TREE_MISMATCH"));
+    assert_eq!(
+        staged_bytes.fatal_code().as_deref(),
+        Some("GIT_INDEX_TREE_MISMATCH")
+    );
     fixture.git(&["reset", "-q", "HEAD", "--", "README.md"]);
     fixture.restore("README.md", &readme);
 
@@ -960,7 +1195,10 @@ fn exact_git_generate_verify_and_raw_identity_mutants() {
     fixture.restore("README.md", &dirty);
     let worktree_bytes = fixture.exact_check(&revision);
     worktree_bytes.assert_rejected();
-    assert_eq!(worktree_bytes.fatal_code().as_deref(), Some("GIT_BLOB_MISMATCH"));
+    assert_eq!(
+        worktree_bytes.fatal_code().as_deref(),
+        Some("GIT_BLOB_MISMATCH")
+    );
     fixture.restore("README.md", &readme);
 
     #[cfg(unix)]
@@ -974,7 +1212,10 @@ fn exact_git_generate_verify_and_raw_identity_mutants() {
         fixture.git(&["add", "README.md"]);
         let staged_mode = fixture.exact_check(&revision);
         staged_mode.assert_rejected();
-        assert_eq!(staged_mode.fatal_code().as_deref(), Some("GIT_INDEX_TREE_MISMATCH"));
+        assert_eq!(
+            staged_mode.fatal_code().as_deref(),
+            Some("GIT_INDEX_TREE_MISMATCH")
+        );
         fixture.git(&["reset", "-q", "HEAD", "--", "README.md"]);
 
         let mut permissions = fs::metadata(&path).unwrap().permissions();
@@ -985,7 +1226,10 @@ fn exact_git_generate_verify_and_raw_identity_mutants() {
         fs::set_permissions(&path, permissions).unwrap();
         let worktree_mode = fixture.exact_check(&revision);
         worktree_mode.assert_rejected();
-        assert_eq!(worktree_mode.fatal_code().as_deref(), Some("GIT_MODE_MISMATCH"));
+        assert_eq!(
+            worktree_mode.fatal_code().as_deref(),
+            Some("GIT_MODE_MISMATCH")
+        );
         let mut permissions = fs::metadata(&path).unwrap().permissions();
         permissions.set_mode(original_mode);
         fs::set_permissions(path, permissions).unwrap();

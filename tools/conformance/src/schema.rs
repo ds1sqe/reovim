@@ -10,7 +10,16 @@ use serde_json::Value;
 
 const REPORT_SCHEMA_V1: &str =
     include_str!("../../../conformance/compat/v1/source-role-map.schema.json");
-const REPORT_SCHEMA_V2: &str = include_str!("../../../conformance/source-role-map.schema.json");
+const REPORT_SCHEMA_V2: &str =
+    include_str!("../../../conformance/source-role-map.schema.json");
+const ABSOLUTE_PATH_PATTERN: &str = concat!(
+    r"^/(?!.*//)(?!.*(?:^|/)\.{1,2}(?:/|$))",
+    r"(?!.*/$)(?!.*\u0000).+$",
+);
+const RELATIVE_PATH_PATTERN: &str = concat!(
+    r"^(?!/)(?![A-Za-z]:)(?!.*\\)(?!.*//)",
+    r"(?!.*(?:^|/)\.{1,2}(?:/|$))(?!.*/$)(?!.*\u0000).+$",
+);
 
 #[must_use]
 pub const fn embedded_report_schema_bytes() -> &'static [u8] {
@@ -37,10 +46,13 @@ impl fmt::Display for SchemaError {
 impl std::error::Error for SchemaError {}
 
 pub fn validate_report(instance: &Value) -> Result<(), SchemaError> {
-    let identity = instance
-        .get("schema")
-        .and_then(Value::as_str)
-        .ok_or_else(|| schema_error("$.schema", "required report schema identity is absent"))?;
+    let identity =
+        instance.get("schema").and_then(Value::as_str).ok_or_else(|| {
+            schema_error(
+                "$.schema",
+                "required report schema identity is absent",
+            )
+        })?;
     let schema_bytes = match identity {
         "reovim-source-role-map/v1" => REPORT_SCHEMA_V1,
         "reovim-source-role-map/v2" => REPORT_SCHEMA_V2,
@@ -51,15 +63,21 @@ pub fn validate_report(instance: &Value) -> Result<(), SchemaError> {
             ));
         }
     };
-    let schema: Value = serde_json::from_str(schema_bytes)
-        .map_err(|error| SchemaError { path: "$schema".to_owned(), message: error.to_string() })?;
+    let schema: Value =
+        serde_json::from_str(schema_bytes).map_err(|error| SchemaError {
+            path: "$schema".to_owned(),
+            message: error.to_string(),
+        })?;
     validate_instance(instance, &schema)
 }
 
 /// Canonicalizes only arrays whose selected schema explicitly declares
 /// `uniqueItems: true`. Ordered arrays such as argv remain byte-order
 /// significant.
-pub fn canonicalize_unique_arrays(instance: &mut Value, schema: &Value) -> Result<(), SchemaError> {
+pub fn canonicalize_unique_arrays(
+    instance: &mut Value,
+    schema: &Value,
+) -> Result<(), SchemaError> {
     validate_schema(schema)?;
     canonicalize(instance, schema, schema, "$")
 }
@@ -70,30 +88,36 @@ fn canonicalize(
     root: &Value,
     path: &str,
 ) -> Result<(), SchemaError> {
-    let object =
-        schema.as_object().ok_or_else(|| schema_error(path, "schema node is not an object"))?;
+    let object = schema
+        .as_object()
+        .ok_or_else(|| schema_error(path, "schema node is not an object"))?;
     if let Some(reference) = object.get("$ref") {
-        let reference =
-            reference.as_str().ok_or_else(|| schema_error(path, "$ref is not a string"))?;
-        let pointer = reference
-            .strip_prefix('#')
-            .ok_or_else(|| schema_error(path, "only local schema references are supported"))?;
+        let reference = reference
+            .as_str()
+            .ok_or_else(|| schema_error(path, "$ref is not a string"))?;
+        let pointer = reference.strip_prefix('#').ok_or_else(|| {
+            schema_error(path, "only local schema references are supported")
+        })?;
         let target = root.pointer(pointer).ok_or_else(|| {
-            schema_error(path, &format!("unresolved schema reference {reference}"))
+            schema_error(
+                path,
+                &format!("unresolved schema reference {reference}"),
+            )
         })?;
         canonicalize(instance, target, root, path)?;
     }
     if let Some(branches) = object.get("allOf") {
-        for branch in
-            branches.as_array().ok_or_else(|| schema_error(path, "schema allOf is not an array"))?
+        for branch in branches
+            .as_array()
+            .ok_or_else(|| schema_error(path, "schema allOf is not an array"))?
         {
             canonicalize(instance, branch, root, path)?;
         }
     }
     if let Some(branches) = object.get("oneOf") {
-        let branches = branches
-            .as_array()
-            .ok_or_else(|| schema_error(path, "schema oneOf is not an array"))?;
+        let branches = branches.as_array().ok_or_else(|| {
+            schema_error(path, "schema oneOf is not an array")
+        })?;
         let selected = branches
             .iter()
             .filter(|branch| validate(instance, branch, root, path).is_ok())
@@ -101,7 +125,10 @@ fn canonicalize(
         if selected.len() != 1 {
             return Err(schema_error(
                 path,
-                &format!("oneOf matched {} branches during canonicalization", selected.len()),
+                &format!(
+                    "oneOf matched {} branches during canonicalization",
+                    selected.len()
+                ),
             ));
         }
         canonicalize(instance, selected[0], root, path)?;
@@ -116,27 +143,72 @@ fn canonicalize(
             canonicalize(instance, selected, root, path)?;
         }
     }
-    if let (Some(values), Some(properties)) =
-        (instance.as_object_mut(), object.get("properties").and_then(Value::as_object))
-    {
-        for (field, subschema) in properties {
-            if let Some(value) = values.get_mut(field) {
-                canonicalize(value, subschema, root, &child(path, field))?;
-            }
-        }
-    }
-    if let (Some(values), Some(items)) = (instance.as_array_mut(), object.get("items")) {
-        for (index, value) in values.iter_mut().enumerate() {
-            canonicalize(value, items, root, &format!("{path}[{index}]"))?;
-        }
-        if object.get("uniqueItems") == Some(&Value::Bool(true)) {
-            values.sort_by_cached_key(Value::to_string);
-        }
+    canonicalize_properties(instance, object, root, path)?;
+    canonicalize_items(instance, object, root, path)?;
+    Ok(())
+}
+
+fn canonicalize_properties(
+    instance: &mut Value,
+    schema: &serde_json::Map<String, Value>,
+    root: &Value,
+    path: &str,
+) -> Result<(), SchemaError> {
+    let (Some(values), Some(properties)) = (
+        instance.as_object_mut(),
+        schema.get("properties").and_then(Value::as_object),
+    ) else {
+        return Ok(());
+    };
+    for (field, subschema) in properties {
+        canonicalize_property(
+            values.get_mut(field),
+            subschema,
+            root,
+            path,
+            field,
+        )?;
     }
     Ok(())
 }
 
-pub fn validate_instance(instance: &Value, schema: &Value) -> Result<(), SchemaError> {
+fn canonicalize_property(
+    value: Option<&mut Value>,
+    schema: &Value,
+    root: &Value,
+    path: &str,
+    field: &str,
+) -> Result<(), SchemaError> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    canonicalize(value, schema, root, &child(path, field))
+}
+
+fn canonicalize_items(
+    instance: &mut Value,
+    schema: &serde_json::Map<String, Value>,
+    root: &Value,
+    path: &str,
+) -> Result<(), SchemaError> {
+    let (Some(values), Some(items)) =
+        (instance.as_array_mut(), schema.get("items"))
+    else {
+        return Ok(());
+    };
+    for (index, value) in values.iter_mut().enumerate() {
+        canonicalize(value, items, root, &format!("{path}[{index}]"))?;
+    }
+    if schema.get("uniqueItems") == Some(&Value::Bool(true)) {
+        values.sort_by_cached_key(Value::to_string);
+    }
+    Ok(())
+}
+
+pub fn validate_instance(
+    instance: &Value,
+    schema: &Value,
+) -> Result<(), SchemaError> {
     validate_schema(schema)?;
     validate(instance, schema, schema, "$")
 }
@@ -145,19 +217,28 @@ pub fn validate_schema(schema: &Value) -> Result<(), SchemaError> {
     preflight_schema(schema, schema, "#", &mut Vec::new(), 0)
 }
 
-fn validate(instance: &Value, schema: &Value, root: &Value, path: &str) -> Result<(), SchemaError> {
+fn validate(
+    instance: &Value,
+    schema: &Value,
+    root: &Value,
+    path: &str,
+) -> Result<(), SchemaError> {
     let object = schema.as_object().ok_or_else(|| SchemaError {
         path: path.to_owned(),
         message: "embedded schema node is not an object".to_owned(),
     })?;
     if let Some(reference) = object.get("$ref") {
-        let reference =
-            reference.as_str().ok_or_else(|| schema_error(path, "$ref is not a string"))?;
-        let pointer = reference
-            .strip_prefix('#')
-            .ok_or_else(|| schema_error(path, "only local schema references are supported"))?;
+        let reference = reference
+            .as_str()
+            .ok_or_else(|| schema_error(path, "$ref is not a string"))?;
+        let pointer = reference.strip_prefix('#').ok_or_else(|| {
+            schema_error(path, "only local schema references are supported")
+        })?;
         let target = root.pointer(pointer).ok_or_else(|| {
-            schema_error(path, &format!("unresolved schema reference {reference}"))
+            schema_error(
+                path,
+                &format!("unresolved schema reference {reference}"),
+            )
         })?;
         validate(instance, target, root, path)?;
     }
@@ -167,41 +248,56 @@ fn validate(instance: &Value, schema: &Value, root: &Value, path: &str) -> Resul
         return Err(schema_error(path, "value differs from schema const"));
     }
     if let Some(values) = object.get("enum") {
-        let values =
-            values.as_array().ok_or_else(|| schema_error(path, "schema enum is not an array"))?;
+        let values = values
+            .as_array()
+            .ok_or_else(|| schema_error(path, "schema enum is not an array"))?;
         if !values.contains(instance) {
             return Err(schema_error(path, "value is outside schema enum"));
         }
     }
     if let Some(kind) = object.get("type") {
-        let kind =
-            kind.as_str().ok_or_else(|| schema_error(path, "schema type is not a string"))?;
+        let kind = kind
+            .as_str()
+            .ok_or_else(|| schema_error(path, "schema type is not a string"))?;
         let matches = match kind {
             "object" => instance.is_object(),
             "array" => instance.is_array(),
             "string" => instance.is_string(),
-            "integer" => instance.as_i64().is_some() || instance.as_u64().is_some(),
+            "integer" => {
+                instance.as_i64().is_some() || instance.as_u64().is_some()
+            }
             "boolean" => instance.is_boolean(),
             "null" => instance.is_null(),
-            other => return Err(schema_error(path, &format!("unsupported schema type {other}"))),
+            other => {
+                return Err(schema_error(
+                    path,
+                    &format!("unsupported schema type {other}"),
+                ));
+            }
         };
         if !matches {
             return Err(schema_error(path, &format!("expected {kind}")));
         }
     }
     if let Some(branches) = object.get("oneOf") {
-        let branches = branches
-            .as_array()
-            .ok_or_else(|| schema_error(path, "schema oneOf is not an array"))?;
-        let matches =
-            branches.iter().filter(|branch| validate(instance, branch, root, path).is_ok()).count();
+        let branches = branches.as_array().ok_or_else(|| {
+            schema_error(path, "schema oneOf is not an array")
+        })?;
+        let matches = branches
+            .iter()
+            .filter(|branch| validate(instance, branch, root, path).is_ok())
+            .count();
         if matches != 1 {
-            return Err(schema_error(path, &format!("oneOf matched {matches} branches")));
+            return Err(schema_error(
+                path,
+                &format!("oneOf matched {matches} branches"),
+            ));
         }
     }
     if let Some(branches) = object.get("allOf") {
-        for branch in
-            branches.as_array().ok_or_else(|| schema_error(path, "schema allOf is not an array"))?
+        for branch in branches
+            .as_array()
+            .ok_or_else(|| schema_error(path, "schema allOf is not an array"))?
         {
             validate(instance, branch, root, path)?;
         }
@@ -235,35 +331,96 @@ fn validate_object(
     path: &str,
 ) -> Result<(), SchemaError> {
     let Some(instance) = instance.as_object() else { return Ok(()) };
-    if let Some(required) = schema.get("required") {
-        for field in required
-            .as_array()
-            .ok_or_else(|| schema_error(path, "schema required is not an array"))?
-        {
-            let field = field
-                .as_str()
-                .ok_or_else(|| schema_error(path, "schema required member is not a string"))?;
-            if !instance.contains_key(field) {
-                return Err(schema_error(&child(path, field), "required field is absent"));
-            }
-        }
-    }
+    validate_required(instance, schema.get("required"), path)?;
     let properties = schema.get("properties").and_then(Value::as_object);
-    if schema.get("additionalProperties") == Some(&Value::Bool(false)) {
-        for field in instance.keys() {
-            if !properties.is_some_and(|properties| properties.contains_key(field)) {
-                return Err(schema_error(&child(path, field), "unknown field"));
-            }
-        }
-    }
-    if let Some(properties) = properties {
-        for (field, subschema) in properties {
-            if let Some(value) = instance.get(field) {
-                validate(value, subschema, root, &child(path, field))?;
-            }
-        }
+    validate_additional_properties(instance, schema, properties, path)?;
+    validate_properties(instance, properties, root, path)?;
+    Ok(())
+}
+
+fn validate_required(
+    instance: &serde_json::Map<String, Value>,
+    required: Option<&Value>,
+    path: &str,
+) -> Result<(), SchemaError> {
+    let Some(required) = required else {
+        return Ok(());
+    };
+    let required = required
+        .as_array()
+        .ok_or_else(|| schema_error(path, "schema required is not an array"))?;
+    for field in required {
+        validate_required_field(instance, field, path)?;
     }
     Ok(())
+}
+
+fn validate_required_field(
+    instance: &serde_json::Map<String, Value>,
+    field: &Value,
+    path: &str,
+) -> Result<(), SchemaError> {
+    let field = field.as_str().ok_or_else(|| {
+        schema_error(path, "schema required member is not a string")
+    })?;
+    if instance.contains_key(field) {
+        return Ok(());
+    }
+    Err(schema_error(&child(path, field), "required field is absent"))
+}
+
+fn validate_additional_properties(
+    instance: &serde_json::Map<String, Value>,
+    schema: &serde_json::Map<String, Value>,
+    properties: Option<&serde_json::Map<String, Value>>,
+    path: &str,
+) -> Result<(), SchemaError> {
+    if schema.get("additionalProperties") != Some(&Value::Bool(false)) {
+        return Ok(());
+    }
+    for field in instance.keys() {
+        validate_known_field(properties, path, field)?;
+    }
+    Ok(())
+}
+
+fn validate_known_field(
+    properties: Option<&serde_json::Map<String, Value>>,
+    path: &str,
+    field: &str,
+) -> Result<(), SchemaError> {
+    if properties.is_some_and(|properties| properties.contains_key(field)) {
+        return Ok(());
+    }
+    Err(schema_error(&child(path, field), "unknown field"))
+}
+
+fn validate_properties(
+    instance: &serde_json::Map<String, Value>,
+    properties: Option<&serde_json::Map<String, Value>>,
+    root: &Value,
+    path: &str,
+) -> Result<(), SchemaError> {
+    let Some(properties) = properties else {
+        return Ok(());
+    };
+    for (field, schema) in properties {
+        validate_property(instance.get(field), schema, root, path, field)?;
+    }
+    Ok(())
+}
+
+fn validate_property(
+    value: Option<&Value>,
+    schema: &Value,
+    root: &Value,
+    path: &str,
+    field: &str,
+) -> Result<(), SchemaError> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    validate(value, schema, root, &child(path, field))
 }
 
 fn validate_array(
@@ -274,30 +431,42 @@ fn validate_array(
 ) -> Result<(), SchemaError> {
     let Some(instance) = instance.as_array() else { return Ok(()) };
     if let Some(minimum) = schema.get("minItems").and_then(Value::as_u64)
-        && u64::try_from(instance.len()).map_err(|error| schema_error(path, &error.to_string()))?
+        && u64::try_from(instance.len())
+            .map_err(|error| schema_error(path, &error.to_string()))?
             < minimum
     {
         return Err(schema_error(path, "array has fewer than minItems"));
     }
     if let Some(maximum) = schema.get("maxItems").and_then(Value::as_u64)
-        && u64::try_from(instance.len()).map_err(|error| schema_error(path, &error.to_string()))?
+        && u64::try_from(instance.len())
+            .map_err(|error| schema_error(path, &error.to_string()))?
             > maximum
     {
         return Err(schema_error(path, "array has more than maxItems"));
     }
-    if schema.get("uniqueItems") == Some(&Value::Bool(true)) {
-        let mut seen = BTreeSet::new();
-        for value in instance {
-            let encoded = serde_json::to_string(value)
-                .map_err(|error| schema_error(path, &error.to_string()))?;
-            if !seen.insert(encoded) {
-                return Err(schema_error(path, "array items are not unique"));
-            }
-        }
-    }
+    validate_unique_items(instance, schema, path)?;
     if let Some(items) = schema.get("items") {
         for (index, value) in instance.iter().enumerate() {
             validate(value, items, root, &format!("{path}[{index}]"))?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_unique_items(
+    instance: &[Value],
+    schema: &serde_json::Map<String, Value>,
+    path: &str,
+) -> Result<(), SchemaError> {
+    if schema.get("uniqueItems") != Some(&Value::Bool(true)) {
+        return Ok(());
+    }
+    let mut seen = BTreeSet::new();
+    for value in instance {
+        let encoded = serde_json::to_string(value)
+            .map_err(|error| schema_error(path, &error.to_string()))?;
+        if !seen.insert(encoded) {
+            return Err(schema_error(path, "array items are not unique"));
         }
     }
     Ok(())
@@ -325,9 +494,17 @@ fn validate_string(
         match format {
             "date-time" if utc_timestamp(instance) => {}
             "date-time" => {
-                return Err(schema_error(path, "string is not the admitted UTC date-time form"));
+                return Err(schema_error(
+                    path,
+                    "string is not the admitted UTC date-time form",
+                ));
             }
-            other => return Err(schema_error(path, &format!("unsupported schema format {other}"))),
+            other => {
+                return Err(schema_error(
+                    path,
+                    &format!("unsupported schema format {other}"),
+                ));
+            }
         }
     }
     Ok(())
@@ -338,8 +515,10 @@ fn validate_number(
     schema: &serde_json::Map<String, Value>,
     path: &str,
 ) -> Result<(), SchemaError> {
-    let Some(instance) =
-        instance.as_i64().map(i128::from).or_else(|| instance.as_u64().map(i128::from))
+    let Some(instance) = instance
+        .as_i64()
+        .map(i128::from)
+        .or_else(|| instance.as_u64().map(i128::from))
     else {
         return Ok(());
     };
@@ -358,30 +537,37 @@ fn validate_number(
 
 fn pattern_matches(pattern: &str, value: &str) -> Result<bool, SchemaError> {
     match pattern {
-        "^sha256:[0-9a-f]{64}$" => {
-            Ok(value.len() == 71 && value.starts_with("sha256:") && lower_hex(&value[7..]))
+        "^sha256:[0-9a-f]{64}$" => Ok(value.len() == 71
+            && value.starts_with("sha256:")
+            && lower_hex(&value[7..])),
+        "^(?:[0-9a-f]{40}|[0-9a-f]{64})$" => {
+            Ok(matches!(value.len(), 40 | 64) && lower_hex(value))
         }
-        "^(?:[0-9a-f]{40}|[0-9a-f]{64})$" => Ok(matches!(value.len(), 40 | 64) && lower_hex(value)),
         "^[0-9a-f]{64}$" => Ok(value.len() == 64 && lower_hex(value)),
-        "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$" => Ok(utc_timestamp(value)),
+        "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$" => {
+            Ok(utc_timestamp(value))
+        }
         "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$" => Ok(kebab_identifier(value)),
-        "^[A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)*$" => Ok(rust_public_path(value)),
-        r"^/(?!.*//)(?!.*(?:^|/)\.{1,2}(?:/|$))(?!.*/$)(?!.*\u0000).+$" => Ok(value
-            .starts_with('/')
+        "^[A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)*$" => {
+            Ok(rust_public_path(value))
+        }
+        ABSOLUTE_PATH_PATTERN => Ok(value.starts_with('/')
             && value.len() > 1
             && !value.ends_with('/')
             && !value.contains(['\0'])
             && !value.contains("//")
-            && !value.split('/').any(|component| matches!(component, "." | ".."))),
-        r"^(?!/)(?![A-Za-z]:)(?!.*\\)(?!.*//)(?!.*(?:^|/)\.{1,2}(?:/|$))(?!.*/$)(?!.*\u0000).+$" => {
-            Ok(!(value.is_empty()
-                || value.starts_with('/')
-                || value.ends_with('/')
-                || value.contains(['\\', '\0'])
-                || value.contains("//")
-                || value.len() >= 2 && value.as_bytes()[1] == b':'
-                || value.split('/').any(|component| matches!(component, "." | ".."))))
-        }
+            && !value
+                .split('/')
+                .any(|component| matches!(component, "." | ".."))),
+        RELATIVE_PATH_PATTERN => Ok(!(value.is_empty()
+            || value.starts_with('/')
+            || value.ends_with('/')
+            || value.contains(['\\', '\0'])
+            || value.contains("//")
+            || value.len() >= 2 && value.as_bytes()[1] == b':'
+            || value
+                .split('/')
+                .any(|component| matches!(component, "." | "..")))),
         other => Err(SchemaError {
             path: "$schema.pattern".to_owned(),
             message: format!("unsupported embedded schema pattern {other:?}"),
@@ -442,64 +628,126 @@ fn preflight_schema(
     if depth > 256 {
         return Err(schema_error(path, "schema validation depth exceeds 256"));
     }
-    let object =
-        schema.as_object().ok_or_else(|| schema_error(path, "schema node is not an object"))?;
+    let object = schema
+        .as_object()
+        .ok_or_else(|| schema_error(path, "schema node is not an object"))?;
     reject_unknown_keywords(object, path)?;
     validate_keyword_shapes(object, path)?;
-    if let Some(reference) = object.get("$ref") {
-        let reference =
-            reference.as_str().ok_or_else(|| schema_error(path, "$ref is not a string"))?;
-        let pointer = reference
-            .strip_prefix('#')
-            .ok_or_else(|| schema_error(path, "only local schema references are supported"))?;
-        if references.iter().any(|active| active == reference) {
-            return Err(schema_error(path, &format!("cyclic schema reference {reference}")));
-        }
-        let target = root.pointer(pointer).ok_or_else(|| {
-            schema_error(path, &format!("unresolved schema reference {reference}"))
-        })?;
-        references.push(reference.to_owned());
-        preflight_schema(target, root, reference, references, depth + 1)?;
-        references.pop();
-    }
+    preflight_reference(object.get("$ref"), root, path, references, depth)?;
     for map_name in ["$defs", "properties"] {
-        if let Some(children) = object.get(map_name) {
-            let children = children
-                .as_object()
-                .ok_or_else(|| schema_error(path, &format!("{map_name} is not an object")))?;
-            for (name, child) in children {
-                preflight_schema(
-                    child,
-                    root,
-                    &format!("{path}/{map_name}/{name}"),
-                    references,
-                    depth + 1,
-                )?;
-            }
-        }
+        preflight_map(
+            object.get(map_name),
+            map_name,
+            root,
+            path,
+            references,
+            depth,
+        )?;
     }
     for array_name in ["oneOf", "allOf"] {
-        if let Some(children) = object.get(array_name) {
-            for (index, child) in children
-                .as_array()
-                .ok_or_else(|| schema_error(path, &format!("{array_name} is not an array")))?
-                .iter()
-                .enumerate()
-            {
-                preflight_schema(
-                    child,
-                    root,
-                    &format!("{path}/{array_name}/{index}"),
-                    references,
-                    depth + 1,
-                )?;
-            }
-        }
+        preflight_array(
+            object.get(array_name),
+            array_name,
+            root,
+            path,
+            references,
+            depth,
+        )?;
     }
     for child_name in ["items", "if", "then", "else", "not"] {
         if let Some(child) = object.get(child_name) {
-            preflight_schema(child, root, &format!("{path}/{child_name}"), references, depth + 1)?;
+            preflight_schema(
+                child,
+                root,
+                &format!("{path}/{child_name}"),
+                references,
+                depth + 1,
+            )?;
         }
+    }
+    Ok(())
+}
+
+fn preflight_reference(
+    reference: Option<&Value>,
+    root: &Value,
+    path: &str,
+    references: &mut Vec<String>,
+    depth: usize,
+) -> Result<(), SchemaError> {
+    let Some(reference) = reference else {
+        return Ok(());
+    };
+    let reference = reference
+        .as_str()
+        .ok_or_else(|| schema_error(path, "$ref is not a string"))?;
+    let pointer = reference.strip_prefix('#').ok_or_else(|| {
+        schema_error(path, "only local schema references are supported")
+    })?;
+    if references.iter().any(|active| active == reference) {
+        return Err(schema_error(
+            path,
+            &format!("cyclic schema reference {reference}"),
+        ));
+    }
+    let target = root.pointer(pointer).ok_or_else(|| {
+        schema_error(path, &format!("unresolved schema reference {reference}"))
+    })?;
+    references.push(reference.to_owned());
+    let result =
+        preflight_schema(target, root, reference, references, depth + 1);
+    references.pop();
+    result
+}
+
+fn preflight_map(
+    children: Option<&Value>,
+    map_name: &str,
+    root: &Value,
+    path: &str,
+    references: &mut Vec<String>,
+    depth: usize,
+) -> Result<(), SchemaError> {
+    let Some(children) = children else {
+        return Ok(());
+    };
+    let children = children.as_object().ok_or_else(|| {
+        schema_error(path, &format!("{map_name} is not an object"))
+    })?;
+    for (name, child) in children {
+        preflight_schema(
+            child,
+            root,
+            &format!("{path}/{map_name}/{name}"),
+            references,
+            depth + 1,
+        )?;
+    }
+    Ok(())
+}
+
+fn preflight_array(
+    children: Option<&Value>,
+    array_name: &str,
+    root: &Value,
+    path: &str,
+    references: &mut Vec<String>,
+    depth: usize,
+) -> Result<(), SchemaError> {
+    let Some(children) = children else {
+        return Ok(());
+    };
+    let children = children.as_array().ok_or_else(|| {
+        schema_error(path, &format!("{array_name} is not an array"))
+    })?;
+    for (index, child) in children.iter().enumerate() {
+        preflight_schema(
+            child,
+            root,
+            &format!("{path}/{array_name}/{index}"),
+            references,
+            depth + 1,
+        )?;
     }
     Ok(())
 }
@@ -508,42 +756,43 @@ fn validate_keyword_shapes(
     schema: &serde_json::Map<String, Value>,
     path: &str,
 ) -> Result<(), SchemaError> {
-    for name in ["$schema", "$id", "$ref", "title", "type", "pattern", "format"] {
+    for name in ["$schema", "$id", "$ref", "title", "type", "pattern", "format"]
+    {
         if schema.get(name).is_some_and(|value| !value.is_string()) {
-            return Err(schema_error(path, &format!("schema {name} must be a string")));
+            return Err(schema_error(
+                path,
+                &format!("schema {name} must be a string"),
+            ));
         }
     }
     if let Some(kind) = schema.get("type").and_then(Value::as_str)
-        && !matches!(kind, "object" | "array" | "string" | "integer" | "boolean" | "null")
+        && !matches!(
+            kind,
+            "object" | "array" | "string" | "integer" | "boolean" | "null"
+        )
     {
-        return Err(schema_error(path, &format!("unsupported schema type {kind}")));
+        return Err(schema_error(
+            path,
+            &format!("unsupported schema type {kind}"),
+        ));
     }
     for name in ["$defs", "properties", "items", "if", "then", "else", "not"] {
         if schema.get(name).is_some_and(|value| !value.is_object()) {
-            return Err(schema_error(path, &format!("schema {name} must be an object")));
+            return Err(schema_error(
+                path,
+                &format!("schema {name} must be an object"),
+            ));
         }
     }
     for name in ["oneOf", "allOf", "required", "enum"] {
-        if let Some(value) = schema.get(name) {
-            let values = value
-                .as_array()
-                .ok_or_else(|| schema_error(path, &format!("schema {name} must be an array")))?;
-            if matches!(name, "oneOf" | "allOf" | "enum") && values.is_empty() {
-                return Err(schema_error(path, &format!("schema {name} must not be empty")));
-            }
-            if name == "required" && values.iter().any(|value| !value.is_string()) {
-                return Err(schema_error(path, "schema required entries must be strings"));
-            }
-            let encoded =
-                values.iter().map(Value::to_string).collect::<std::collections::BTreeSet<_>>();
-            if encoded.len() != values.len() {
-                return Err(schema_error(path, &format!("schema {name} contains duplicates")));
-            }
-        }
+        validate_array_keyword(name, schema.get(name), path)?;
     }
     for name in ["additionalProperties", "uniqueItems"] {
         if schema.get(name).is_some_and(|value| !value.is_boolean()) {
-            return Err(schema_error(path, &format!("schema {name} must be boolean")));
+            return Err(schema_error(
+                path,
+                &format!("schema {name} must be boolean"),
+            ));
         }
     }
     for name in ["minItems", "maxItems", "minLength", "minimum", "maximum"] {
@@ -554,7 +803,8 @@ fn validate_keyword_shapes(
             ));
         }
     }
-    for (minimum, maximum) in [("minItems", "maxItems"), ("minimum", "maximum")] {
+    for (minimum, maximum) in [("minItems", "maxItems"), ("minimum", "maximum")]
+    {
         if let (Some(minimum), Some(maximum)) = (
             schema.get(minimum).and_then(Value::as_u64),
             schema.get(maximum).and_then(Value::as_u64),
@@ -569,7 +819,43 @@ fn validate_keyword_shapes(
     if let Some(format) = schema.get("format").and_then(Value::as_str)
         && format != "date-time"
     {
-        return Err(schema_error(path, &format!("unsupported schema format {format}")));
+        return Err(schema_error(
+            path,
+            &format!("unsupported schema format {format}"),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_array_keyword(
+    name: &str,
+    value: Option<&Value>,
+    path: &str,
+) -> Result<(), SchemaError> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    let values = value.as_array().ok_or_else(|| {
+        schema_error(path, &format!("schema {name} must be an array"))
+    })?;
+    if matches!(name, "oneOf" | "allOf" | "enum") && values.is_empty() {
+        return Err(schema_error(
+            path,
+            &format!("schema {name} must not be empty"),
+        ));
+    }
+    if name == "required" && values.iter().any(|value| !value.is_string()) {
+        return Err(schema_error(
+            path,
+            "schema required entries must be strings",
+        ));
+    }
+    let encoded = values.iter().map(Value::to_string).collect::<BTreeSet<_>>();
+    if encoded.len() != values.len() {
+        return Err(schema_error(
+            path,
+            &format!("schema {name} contains duplicates"),
+        ));
     }
     Ok(())
 }
@@ -588,9 +874,23 @@ pub fn utc_timestamp(value: &str) -> bool {
     {
         return false;
     }
-    let number = |range: std::ops::Range<usize>| value.get(range)?.parse::<u32>().ok();
-    let (Some(year), Some(month), Some(day), Some(hour), Some(minute), Some(second)) =
-        (number(0..4), number(5..7), number(8..10), number(11..13), number(14..16), number(17..19))
+    let number =
+        |range: std::ops::Range<usize>| value.get(range)?.parse::<u32>().ok();
+    let (
+        Some(year),
+        Some(month),
+        Some(day),
+        Some(hour),
+        Some(minute),
+        Some(second),
+    ) = (
+        number(0..4),
+        number(5..7),
+        number(8..10),
+        number(11..13),
+        number(14..16),
+        number(17..19),
+    )
     else {
         return false;
     };
@@ -606,7 +906,9 @@ pub fn utc_timestamp(value: &str) -> bool {
 }
 
 fn lower_hex(value: &str) -> bool {
-    value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    value
+        .bytes()
+        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 fn kebab_identifier(value: &str) -> bool {
@@ -614,10 +916,14 @@ fn kebab_identifier(value: &str) -> bool {
     let Some(first) = segments.next() else { return false };
     !first.is_empty()
         && first.as_bytes()[0].is_ascii_lowercase()
-        && first.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+        && first
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
         && segments.all(|segment| {
             !segment.is_empty()
-                && segment.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+                && segment.bytes().all(|byte| {
+                    byte.is_ascii_lowercase() || byte.is_ascii_digit()
+                })
         })
 }
 
@@ -628,7 +934,9 @@ fn rust_public_path(value: &str) -> bool {
 fn rust_identifier(value: &str) -> bool {
     let Some(first) = value.bytes().next() else { return false };
     (first.is_ascii_alphabetic() || first == b'_')
-        && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
 }
 
 fn child(parent: &str, field: &str) -> String {
@@ -648,23 +956,45 @@ mod tests {
         let mut value = json!({});
         let error = super::validate_report(&value).unwrap_err();
         assert!(error.message.contains("required"));
-        value.as_object_mut().expect("object").insert("unknown".to_owned(), json!(true));
+        value
+            .as_object_mut()
+            .expect("object")
+            .insert("unknown".to_owned(), json!(true));
         assert!(super::validate_report(&value).is_err());
     }
 
     #[test]
     fn schema_preflight_rejects_unresolved_and_cyclic_refs() {
         let unresolved = json!({"$ref": "#/$defs/missing", "$defs": {}});
-        assert!(super::validate_schema(&unresolved).unwrap_err().message.contains("unresolved"));
-        let cyclic = json!({"$ref": "#/$defs/self", "$defs": {"self": {"$ref": "#/$defs/self"}}});
-        assert!(super::validate_schema(&cyclic).unwrap_err().message.contains("cyclic"));
+        assert!(
+            super::validate_schema(&unresolved)
+                .unwrap_err()
+                .message
+                .contains("unresolved")
+        );
+        let cyclic = json!({
+            "$ref": "#/$defs/self",
+            "$defs": {"self": {"$ref": "#/$defs/self"}}
+        });
+        assert!(
+            super::validate_schema(&cyclic)
+                .unwrap_err()
+                .message
+                .contains("cyclic")
+        );
     }
 
     #[test]
     fn normalized_relative_path_pattern_rejects_alias_forms() {
-        let schema = json!({"type": "string", "pattern": r"^(?!/)(?![A-Za-z]:)(?!.*\\)(?!.*//)(?!.*(?:^|/)\.{1,2}(?:/|$))(?!.*/$)(?!.*\u0000).+$"});
+        let schema = json!({
+            "type": "string",
+            "pattern": super::RELATIVE_PATH_PATTERN
+        });
         for invalid in [".", "a/./b", "a//b", "a\\b", "C:/b", "a/"] {
-            assert!(super::validate_instance(&json!(invalid), &schema).is_err(), "{invalid}");
+            assert!(
+                super::validate_instance(&json!(invalid), &schema).is_err(),
+                "{invalid}"
+            );
         }
         super::validate_instance(&json!("a/b"), &schema).unwrap();
     }
@@ -672,8 +1002,12 @@ mod tests {
     #[test]
     fn date_time_is_range_checked() {
         let schema = json!({"type": "string", "format": "date-time"});
-        super::validate_instance(&json!("2024-02-29T23:59:59Z"), &schema).unwrap();
-        assert!(super::validate_instance(&json!("2025-02-29T25:60:60Z"), &schema).is_err());
+        super::validate_instance(&json!("2024-02-29T23:59:59Z"), &schema)
+            .unwrap();
+        assert!(
+            super::validate_instance(&json!("2025-02-29T25:60:60Z"), &schema)
+                .is_err()
+        );
     }
 
     #[test]
@@ -693,25 +1027,38 @@ mod tests {
             super::validate_instance(&json!(valid), &identifier).unwrap();
         }
         for invalid in ["", "9tool", "Tool", "tool_1", "tool--one", "tool-"] {
-            assert!(super::validate_instance(&json!(invalid), &identifier).is_err());
+            assert!(
+                super::validate_instance(&json!(invalid), &identifier).is_err()
+            );
         }
 
         let absolute = json!({
             "type": "string",
-            "pattern": r"^/(?!.*//)(?!.*(?:^|/)\.{1,2}(?:/|$))(?!.*/$)(?!.*\u0000).+$"
+            "pattern": super::ABSOLUTE_PATH_PATTERN
         });
         super::validate_instance(&json!("/usr/bin/git"), &absolute).unwrap();
         for invalid in ["/", "relative", "/a//b", "/a/../b", "/a/"] {
-            assert!(super::validate_instance(&json!(invalid), &absolute).is_err());
+            assert!(
+                super::validate_instance(&json!(invalid), &absolute).is_err()
+            );
         }
 
         let public_path = json!({
             "type": "string",
             "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)*$"
         });
-        super::validate_instance(&json!("foundation::ResourceId"), &public_path).unwrap();
-        for invalid in ["::Resource", "resource::", "resource::::Id", "resource::9Id"] {
-            assert!(super::validate_instance(&json!(invalid), &public_path).is_err());
+        super::validate_instance(
+            &json!("foundation::ResourceId"),
+            &public_path,
+        )
+        .unwrap();
+        for invalid in
+            ["::Resource", "resource::", "resource::::Id", "resource::9Id"]
+        {
+            assert!(
+                super::validate_instance(&json!(invalid), &public_path)
+                    .is_err()
+            );
         }
     }
 
@@ -722,7 +1069,11 @@ mod tests {
             "additionalProperties": false,
             "required": ["set", "argv"],
             "properties": {
-                "set": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+                "set": {
+                    "type": "array",
+                    "uniqueItems": true,
+                    "items": {"type": "string"}
+                },
                 "argv": {"type": "array", "items": {"type": "string"}}
             }
         });

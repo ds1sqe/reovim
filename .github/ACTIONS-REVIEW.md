@@ -1,10 +1,10 @@
 # CI Action Review
 
-Date: 2026-09-01. This record covers the two third-party GitHub Actions used
+Date: 2026-09-02. This record covers the two third-party GitHub Actions used
 by the hosted tooling workflow. They are CI tooling, not Cargo dependencies,
 Product admission, release qualification, or evidence publication.
 
-Workflow digest: `sha256:54820cd83daee64e4a65593554cedc7714444adab4ef24fa0ee37aebab71c45f`.
+Workflow digest: `sha256:b92cb695e19e195514f6f2485d101a2b77b46cc148ede5d86e3a952441f9961c`.
 The admission guard accepts only this reviewed canonical YAML form; any workflow
 byte change reopens action extraction and review before the digest is updated.
 

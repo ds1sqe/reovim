@@ -7,8 +7,9 @@ use std::{
 };
 
 use reovim_depgraph::{
-    ArchitecturalRole, ClassificationMapError, DependencyKind, DependencySource, DiscoveryOptions,
-    GraphError, PreflightIssue, PreflightRolePolicy, SourceClassification, SourceClassificationMap,
+    ArchitecturalRole, ClassificationMapError, DependencyKind,
+    DependencySource, DiscoveryOptions, GraphError, PreflightIssue,
+    PreflightRolePolicy, SourceClassification, SourceClassificationMap,
     SourceClassificationRule, SourceOwner, SourceProvenance, SourceUse,
     load_declared_manifest_graph, preflight_declared_graph,
 };
@@ -20,8 +21,8 @@ struct TempRoot(PathBuf);
 impl TempRoot {
     fn new() -> Self {
         let sequence = TEMP_ID.fetch_add(1, Ordering::Relaxed);
-        let path =
-            std::env::temp_dir().join(format!("reovim-depgraph-{}-{sequence}", std::process::id()));
+        let path = std::env::temp_dir()
+            .join(format!("reovim-depgraph-{}-{sequence}", std::process::id()));
         fs::create_dir(&path).expect("create fixture root");
         Self(path)
     }
@@ -54,7 +55,11 @@ fn map(
     SourceClassificationMap::new(
         1,
         rules.into_iter().map(|(prefix, owner)| {
-            SourceClassificationRule::new(prefix, 10, SourceClassification::product(owner))
+            SourceClassificationRule::new(
+                prefix,
+                10,
+                SourceClassification::product(owner),
+            )
         }),
     )
     .expect("valid classification map")
@@ -80,7 +85,10 @@ fn role_vocabulary_is_complete_and_stable() {
         "Presentation Adapter",
         "Assembly",
     ];
-    assert_eq!(ArchitecturalRole::ALL.map(ArchitecturalRole::as_str), exact_names);
+    assert_eq!(
+        ArchitecturalRole::ALL.map(ArchitecturalRole::as_str),
+        exact_names
+    );
 }
 
 #[test]
@@ -91,13 +99,20 @@ fn source_classification_map_is_fail_closed_and_uses_explicit_precedence() {
         3,
         [
             SourceClassificationRule::new("tree", 1, production(Foundation)),
-            SourceClassificationRule::new("tree/inner", 2, production(KernelInterface)),
+            SourceClassificationRule::new(
+                "tree/inner",
+                2,
+                production(KernelInterface),
+            ),
         ],
     )
     .unwrap();
 
     assert_eq!(source_map.schema_version(), 3);
-    assert_eq!(source_map.classify("tree/inner/item.rs").unwrap(), production(KernelInterface));
+    assert_eq!(
+        source_map.classify("tree/inner/item.rs").unwrap(),
+        production(KernelInterface)
+    );
     assert!(matches!(
         source_map.classify("elsewhere/item.rs"),
         Err(ClassificationMapError::Unmatched { .. })
@@ -111,7 +126,11 @@ fn source_classification_map_is_fail_closed_and_uses_explicit_precedence() {
         1,
         [
             SourceClassificationRule::new("tree", 4, production(Foundation)),
-            SourceClassificationRule::new("tree/inner", 4, production(KernelInterface)),
+            SourceClassificationRule::new(
+                "tree/inner",
+                4,
+                production(KernelInterface),
+            ),
         ],
     )
     .unwrap();
@@ -125,7 +144,10 @@ fn source_classification_map_is_fail_closed_and_uses_explicit_precedence() {
 fn loads_and_preflights_supported_declared_path_graph() {
     let root = TempRoot::new();
     root.write("Cargo.toml", "[workspace]\nmembers = []\n");
-    root.write("nodes/one/Cargo.toml", "[package]\nname = \"alpha\"\nversion = \"0.0.0\"\n");
+    root.write(
+        "nodes/one/Cargo.toml",
+        "[package]\nname = \"alpha\"\nversion = \"0.0.0\"\n",
+    );
     root.write(
         "nodes/two/Cargo.toml",
         r#"[package]
@@ -154,9 +176,14 @@ beta = { path = "../two" }
 outside = "1"
 "#,
     );
-    root.write("target/ignored/Cargo.toml", "[package]\nname = \"ignored\"\nversion = \"0.0.0\"\n");
+    root.write(
+        "target/ignored/Cargo.toml",
+        "[package]\nname = \"ignored\"\nversion = \"0.0.0\"\n",
+    );
 
-    let graph = load_declared_manifest_graph(root.path(), &DiscoveryOptions::default()).unwrap();
+    let graph =
+        load_declared_manifest_graph(root.path(), &DiscoveryOptions::default())
+            .unwrap();
     assert_eq!(graph.packages().len(), 3);
     assert_eq!(graph.local_edges().len(), 3);
     assert!(graph.local_edges().iter().any(|edge| {
@@ -172,7 +199,8 @@ outside = "1"
             && edge.target.as_deref() == Some("cfg(unix)")
     }));
     assert!(graph.packages()["gamma"].dependencies.iter().any(|dependency| {
-        dependency.alias == "outside" && dependency.source == DependencySource::External
+        dependency.alias == "outside"
+            && dependency.source == DependencySource::External
     }));
 
     let source_map = map([
@@ -181,8 +209,14 @@ outside = "1"
         ("nodes/three", ArchitecturalRole::KernelCore),
     ]);
     let policy = PreflightRolePolicy::new()
-        .allow(ArchitecturalRole::KernelInterface, ArchitecturalRole::Foundation)
-        .allow(ArchitecturalRole::KernelCore, ArchitecturalRole::KernelInterface);
+        .allow(
+            ArchitecturalRole::KernelInterface,
+            ArchitecturalRole::Foundation,
+        )
+        .allow(
+            ArchitecturalRole::KernelCore,
+            ArchitecturalRole::KernelInterface,
+        );
     let report = preflight_declared_graph(&graph, &source_map, &policy);
     assert!(report.is_clean(), "{:?}", report.issues);
 }
@@ -199,30 +233,54 @@ version = "0.0.0"
 beta = { path = "../two" }
 "#,
     );
-    root.write("nodes/two/Cargo.toml", "[package]\nname = \"beta\"\nversion = \"0.0.0\"\n");
+    root.write(
+        "nodes/two/Cargo.toml",
+        "[package]\nname = \"beta\"\nversion = \"0.0.0\"\n",
+    );
 
-    let graph = load_declared_manifest_graph(root.path(), &DiscoveryOptions::default()).unwrap();
+    let graph =
+        load_declared_manifest_graph(root.path(), &DiscoveryOptions::default())
+            .unwrap();
     let source_map = map([
         ("nodes/one", ArchitecturalRole::Foundation),
         ("nodes/two", ArchitecturalRole::Foundation),
     ]);
     let policy = PreflightRolePolicy::new();
 
-    assert!(policy.allows(ArchitecturalRole::Foundation, ArchitecturalRole::Foundation));
-    assert!(!policy.allows(ArchitecturalRole::Foundation, ArchitecturalRole::KernelInterface));
+    assert!(
+        policy.allows(
+            ArchitecturalRole::Foundation,
+            ArchitecturalRole::Foundation
+        )
+    );
+    assert!(!policy.allows(
+        ArchitecturalRole::Foundation,
+        ArchitecturalRole::KernelInterface
+    ));
     assert!(preflight_declared_graph(&graph, &source_map, &policy).is_clean());
 }
 
 #[test]
 fn preflight_classifies_package_directories_only() {
     let root = TempRoot::new();
-    root.write("node/Cargo.toml", "[package]\nname = \"alpha\"\nversion = \"0.0.0\"\n");
+    root.write(
+        "node/Cargo.toml",
+        "[package]\nname = \"alpha\"\nversion = \"0.0.0\"\n",
+    );
     root.write("node/src/private.rs", "pub struct Private;\n");
     let source_map = SourceClassificationMap::new(
         1,
         [
-            SourceClassificationRule::new("node", 1, production(ArchitecturalRole::Foundation)),
-            SourceClassificationRule::new("node/src", 2, production(ArchitecturalRole::KernelCore)),
+            SourceClassificationRule::new(
+                "node",
+                1,
+                production(ArchitecturalRole::Foundation),
+            ),
+            SourceClassificationRule::new(
+                "node/src",
+                2,
+                production(ArchitecturalRole::KernelCore),
+            ),
             SourceClassificationRule::new(
                 "node/src",
                 2,
@@ -236,10 +294,19 @@ fn preflight_classifies_package_directories_only() {
         source_map.classify("node/src/private.rs"),
         Err(ClassificationMapError::Ambiguous { .. })
     ));
-    let graph = load_declared_manifest_graph(root.path(), &DiscoveryOptions::default()).unwrap();
-    let report = preflight_declared_graph(&graph, &source_map, &PreflightRolePolicy::new());
+    let graph =
+        load_declared_manifest_graph(root.path(), &DiscoveryOptions::default())
+            .unwrap();
+    let report = preflight_declared_graph(
+        &graph,
+        &source_map,
+        &PreflightRolePolicy::new(),
+    );
     assert!(report.is_clean());
-    assert_eq!(report.package_classifications["alpha"], production(ArchitecturalRole::Foundation));
+    assert_eq!(
+        report.package_classifications["alpha"],
+        production(ArchitecturalRole::Foundation)
+    );
 }
 
 #[test]
@@ -255,14 +322,23 @@ version = "0.0.0"
 beta = { path = "../two" }
 "#,
     );
-    root.write("nodes/two/Cargo.toml", "[package]\nname = \"beta\"\nversion = \"0.0.0\"\n");
+    root.write(
+        "nodes/two/Cargo.toml",
+        "[package]\nname = \"beta\"\nversion = \"0.0.0\"\n",
+    );
 
-    let graph = load_declared_manifest_graph(root.path(), &DiscoveryOptions::default()).unwrap();
+    let graph =
+        load_declared_manifest_graph(root.path(), &DiscoveryOptions::default())
+            .unwrap();
     let source_map = map([
         ("nodes/one", ArchitecturalRole::Foundation),
         ("nodes/two", ArchitecturalRole::KernelInterface),
     ]);
-    let report = preflight_declared_graph(&graph, &source_map, &PreflightRolePolicy::new());
+    let report = preflight_declared_graph(
+        &graph,
+        &source_map,
+        &PreflightRolePolicy::new(),
+    );
     assert!(report.issues.iter().any(|issue| matches!(
         issue,
         PreflightIssue::ForbiddenRoleDependency {
@@ -274,7 +350,7 @@ beta = { path = "../two" }
 }
 
 #[test]
-fn product_and_repository_tooling_dependencies_are_forbidden_in_both_directions() {
+fn product_tooling_dependencies_are_bidirectionally_forbidden() {
     for (consumer_tooling, provider_tooling) in [(false, true), (true, false)] {
         let root = TempRoot::new();
         root.write(
@@ -286,10 +362,16 @@ version = "0.0.0"
 beta = { path = "../two" }
 "#,
         );
-        root.write("nodes/two/Cargo.toml", "[package]\nname = \"beta\"\nversion = \"0.0.0\"\n");
+        root.write(
+            "nodes/two/Cargo.toml",
+            "[package]\nname = \"beta\"\nversion = \"0.0.0\"\n",
+        );
 
-        let graph =
-            load_declared_manifest_graph(root.path(), &DiscoveryOptions::default()).unwrap();
+        let graph = load_declared_manifest_graph(
+            root.path(),
+            &DiscoveryOptions::default(),
+        )
+        .unwrap();
         let source_map = SourceClassificationMap::new(
             1,
             [
@@ -314,14 +396,16 @@ beta = { path = "../two" }
             ],
         )
         .unwrap();
-        let report = preflight_declared_graph(&graph, &source_map, &PreflightRolePolicy::new());
-
-        assert!(
-            report
-                .issues
-                .iter()
-                .any(|issue| matches!(issue, PreflightIssue::ForbiddenPartitionDependency { .. }))
+        let report = preflight_declared_graph(
+            &graph,
+            &source_map,
+            &PreflightRolePolicy::new(),
         );
+
+        assert!(report.issues.iter().any(|issue| matches!(
+            issue,
+            PreflightIssue::ForbiddenPartitionDependency { .. }
+        )));
     }
 }
 
@@ -347,18 +431,37 @@ alpha = { path = "../one" }
 "#,
     );
 
-    let graph = load_declared_manifest_graph(root.path(), &DiscoveryOptions::default()).unwrap();
+    let graph =
+        load_declared_manifest_graph(root.path(), &DiscoveryOptions::default())
+            .unwrap();
     let source_map = map([
         ("nodes/one", ArchitecturalRole::Foundation),
         ("nodes/two", ArchitecturalRole::KernelInterface),
     ]);
     let permissive_cycle = PreflightRolePolicy::new()
-        .allow(ArchitecturalRole::Foundation, ArchitecturalRole::KernelInterface)
-        .allow(ArchitecturalRole::KernelInterface, ArchitecturalRole::Foundation);
-    let report = preflight_declared_graph(&graph, &source_map, &permissive_cycle);
+        .allow(
+            ArchitecturalRole::Foundation,
+            ArchitecturalRole::KernelInterface,
+        )
+        .allow(
+            ArchitecturalRole::KernelInterface,
+            ArchitecturalRole::Foundation,
+        );
+    let report =
+        preflight_declared_graph(&graph, &source_map, &permissive_cycle);
 
-    assert!(report.issues.iter().any(|issue| matches!(issue, PreflightIssue::PackageCycle { .. })));
-    assert!(report.issues.iter().any(|issue| matches!(issue, PreflightIssue::RoleCycle { .. })));
+    assert!(
+        report
+            .issues
+            .iter()
+            .any(|issue| matches!(issue, PreflightIssue::PackageCycle { .. }))
+    );
+    assert!(
+        report
+            .issues
+            .iter()
+            .any(|issue| matches!(issue, PreflightIssue::RoleCycle { .. }))
+    );
 }
 
 #[test]
@@ -374,7 +477,10 @@ missing = { path = "../missing" }
 "#,
     );
     assert!(matches!(
-        load_declared_manifest_graph(unresolved.path(), &DiscoveryOptions::default()),
+        load_declared_manifest_graph(
+            unresolved.path(),
+            &DiscoveryOptions::default()
+        ),
         Err(GraphError::UnresolvedPathDependency { .. })
     ));
 
@@ -388,9 +494,15 @@ version = "0.0.0"
 wrong = { path = "../two" }
 "#,
     );
-    mismatch.write("nodes/two/Cargo.toml", "[package]\nname = \"beta\"\nversion = \"0.0.0\"\n");
+    mismatch.write(
+        "nodes/two/Cargo.toml",
+        "[package]\nname = \"beta\"\nversion = \"0.0.0\"\n",
+    );
     assert!(matches!(
-        load_declared_manifest_graph(mismatch.path(), &DiscoveryOptions::default()),
+        load_declared_manifest_graph(
+            mismatch.path(),
+            &DiscoveryOptions::default()
+        ),
         Err(GraphError::PathPackageMismatch { .. })
     ));
 }
@@ -417,8 +529,16 @@ shared = { workspace = true }
 #[test]
 fn cargo_resolution_indirection_sections_fail_closed() {
     for (sequence, section, expected) in [
-        ("one", "[patch.crates-io]\nalpha = { path = \"node\" }\n", "patch.crates-io"),
-        ("two", "[replace]\n\"alpha:0.0.0\" = { path = \"node\" }\n", "replace"),
+        (
+            "one",
+            "[patch.crates-io]\nalpha = { path = \"node\" }\n",
+            "patch.crates-io",
+        ),
+        (
+            "two",
+            "[replace]\n\"alpha:0.0.0\" = { path = \"node\" }\n",
+            "replace",
+        ),
         (
             "three",
             "[workspace.dependencies]\nalpha = { path = \"node\" }\n",
@@ -429,7 +549,11 @@ fn cargo_resolution_indirection_sections_fail_closed() {
             "[workspace.dependencies.alpha]\npath = \"node\"\n",
             "workspace.dependencies.alpha",
         ),
-        ("five", "patch = { crates-io = { alpha = { path = \"node\" } } }\n", "patch"),
+        (
+            "five",
+            "patch = { crates-io = { alpha = { path = \"node\" } } }\n",
+            "patch",
+        ),
         (
             "six",
             "[workspace]\ndependencies = { alpha = { path = \"node\" } }\n",
@@ -453,21 +577,32 @@ fn cargo_resolution_indirection_sections_fail_closed() {
     ] {
         let root = TempRoot::new();
         root.write("Cargo.toml", section);
-        root.write("node/Cargo.toml", "[package]\nname = \"alpha\"\nversion = \"0.0.0\"\n");
+        root.write(
+            "node/Cargo.toml",
+            "[package]\nname = \"alpha\"\nversion = \"0.0.0\"\n",
+        );
 
-        let error = load_declared_manifest_graph(root.path(), &DiscoveryOptions::default())
-            .expect_err(sequence);
-        assert!(matches!(
+        let error = load_declared_manifest_graph(
+            root.path(),
+            &DiscoveryOptions::default(),
+        )
+        .expect_err(sequence);
+        let unsupported = matches!(
             error,
-            GraphError::UnsupportedResolutionSection { section, .. } if section == expected
-        ));
+            GraphError::UnsupportedResolutionSection { section, .. }
+                if section == expected
+        );
+        assert!(unsupported);
     }
 }
 
 #[test]
 fn source_axes_remain_orthogonal_and_combinations_are_closed() {
-    let provenances =
-        [SourceProvenance::Authored, SourceProvenance::Generated, SourceProvenance::Vendored];
+    let provenances = [
+        SourceProvenance::Authored,
+        SourceProvenance::Generated,
+        SourceProvenance::Vendored,
+    ];
     let uses = [
         SourceUse::Production,
         SourceUse::Test,
@@ -475,8 +610,17 @@ fn source_axes_remain_orthogonal_and_combinations_are_closed() {
         SourceUse::Tool,
         SourceUse::BuildOutput,
     ];
-    assert_eq!(provenances.into_iter().collect::<std::collections::BTreeSet<_>>().len(), 3);
-    assert_eq!(uses.into_iter().collect::<std::collections::BTreeSet<_>>().len(), 5);
+    assert_eq!(
+        provenances
+            .into_iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        3
+    );
+    assert_eq!(
+        uses.into_iter().collect::<std::collections::BTreeSet<_>>().len(),
+        5
+    );
 
     for provenance in provenances {
         assert!(
@@ -488,8 +632,12 @@ fn source_axes_remain_orthogonal_and_combinations_are_closed() {
             .is_ok()
         );
         assert!(
-            SourceClassification::new(SourceOwner::RepositoryTooling, provenance, SourceUse::Tool,)
-                .is_ok()
+            SourceClassification::new(
+                SourceOwner::RepositoryTooling,
+                provenance,
+                SourceUse::Tool,
+            )
+            .is_ok()
         );
     }
     assert!(

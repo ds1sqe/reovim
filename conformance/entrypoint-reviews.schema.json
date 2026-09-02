@@ -65,7 +65,10 @@
         "package": { "$ref": "#/$defs/nonempty_string" },
         "target": { "$ref": "#/$defs/nonempty_string" },
         "mechanism": {
-          "enum": ["direct-path-exec", "cargo-run-bin"]
+          "enum": [
+            "direct-path-exec",
+            "held-cargo-target-exec"
+          ]
         }
       },
       "oneOf": [
@@ -95,7 +98,7 @@
           "required": ["package", "target"],
           "properties": {
             "kind": { "const": "cargo_target" },
-            "mechanism": { "const": "cargo-run-bin" }
+            "mechanism": { "const": "held-cargo-target-exec" }
           },
           "allOf": [
             { "not": { "required": ["path"] } }

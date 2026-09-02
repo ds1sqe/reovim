@@ -1,12 +1,17 @@
 {
   "schema": "reovim-entrypoint-reviews/v1",
-  "reviewed_at": "2026-09-01T00:00:00Z",
+  "reviewed_at": "2026-09-02T00:00:00Z",
   "reviews": [
     {
       "kind": "script",
       "path": "scripts/check.sh",
-      "content_digest": "sha256:234396a2f80d16da0a5912ec6d07ab7601f8a01d53409444ca7d630e07711258",
+      "content_digest": "sha256:719dd1d266ddfcf5a5c91f8f4ffa90067189fc7e0e46351d3d7647f8ef5372af",
       "direct_local_invocations": [
+        {
+          "kind": "script",
+          "path": "scripts/check-style.sh",
+          "mechanism": "direct-path-exec"
+        },
         {
           "kind": "script",
           "path": "scripts/check-documentation.sh",
@@ -23,15 +28,32 @@
       "assumptions": [
         "/usr/bin/env resolves a Bash implementation supporting the constructs used by these exact bytes.",
         "BASH_SOURCE resolves this checked-out script so ROOT selects the same repository whose local entrypoints are admitted.",
-        "Cargo, Rustdoc, Rustfmt, and Clippy operate on the exact locked workspace and toolchain selected by the invoking environment."
+        "Cargo, Rustdoc, Rustfmt, and Clippy operate on the exact locked workspace and toolchain selected by the invoking environment.",
+        "The Clippy invocation binds CLIPPY_CONF_DIR to the reviewed repository root so ambient configuration cannot disable the three-level nesting threshold."
       ],
       "review_record": "conformance/entrypoint-reviews/check-sh.md",
-      "review_record_digest": "sha256:b7c534b1f8aab6ae72bc9bdb9a26da597ef4a98b139735864a1e4bf2f8d2cc3f"
+      "review_record_digest": "sha256:dba863711f1538e13c59c30d2a9090c7428f7436451c4218b5230f9fdbc8e77c"
+    },
+    {
+      "kind": "script",
+      "path": "scripts/check-style.sh",
+      "content_digest": "sha256:f4db854aa98c3249b52ac870e01841c8cb4776006806d08d3dbb90acb9c57d5d",
+      "direct_local_invocations": [],
+      "disposition": "admit",
+      "mechanism": "exact-content-retained-review",
+      "assumptions": [
+        "/usr/bin/env resolves a Bash implementation supporting the constructs used by these exact bytes.",
+        "BASH_SOURCE resolves this checked-out script so ROOT selects the reviewed repository.",
+        "The hosted GNU/Linux Perl core provides utf8::decode; find, stat, mktemp, mkdir, ln, and rm provide the exact reviewed forms.",
+        "The selected toolchain supplies the clippy-driver and rustfmt executables resolved by the script; Rustfmt supports --check and --config-path, and Clippy supports the configured excessive-nesting lint."
+      ],
+      "review_record": "conformance/entrypoint-reviews/check-style-sh.md",
+      "review_record_digest": "sha256:e39364721d93cb46943be725819fbf48ae5c6b67bba87c30963c5ca36faf5c94"
     },
     {
       "kind": "script",
       "path": "scripts/check-documentation.sh",
-      "content_digest": "sha256:f4d93d63c0a90b65d300b255b704c89208a7c75ea23205cc459a4ed5fde09d06",
+      "content_digest": "sha256:0dbd930e9ba90e18f1a23e69148dff906b0f4c22e6cac395ae087f07b02b0d7f",
       "direct_local_invocations": [],
       "disposition": "admit",
       "mechanism": "exact-content-retained-review",
@@ -41,18 +63,18 @@
         "BASH_SOURCE resolves this checked-out script so ROOT selects the reviewed repository inputs."
       ],
       "review_record": "conformance/entrypoint-reviews/check-documentation-sh.md",
-      "review_record_digest": "sha256:751b6b802c9f7c6e3bb9812a4f0c24e462b72d23e8a99eba382f5adb565c0442"
+      "review_record_digest": "sha256:436c4a2ad21c36a777f4195e9f1e36047e7b3499bc3387dc16e4d29b621798b0"
     },
     {
       "kind": "script",
       "path": "scripts/check-conformance.sh",
-      "content_digest": "sha256:11c728c8ccf691dbeaa461b604556da98974a59be27f48a8ad91246db6eaa0b7",
+      "content_digest": "sha256:4a12f94aaad6159163fdd322515b6f1a1c2edd2d137b7647da3f79de07ae890c",
       "direct_local_invocations": [
         {
           "kind": "cargo_target",
           "package": "reovim-conformance",
           "target": "reovim-conformance",
-          "mechanism": "cargo-run-bin"
+          "mechanism": "held-cargo-target-exec"
         }
       ],
       "disposition": "admit",
@@ -60,15 +82,16 @@
       "assumptions": [
         "/usr/bin/env resolves a Bash implementation supporting the constructs used by these exact bytes.",
         "BASH_SOURCE resolves this checked-out script and the supplied Cargo home contains only the dependency state intended by the calling lane.",
-        "Cargo selects the exact declared package and binary target from the locked workspace when given -p reovim-conformance --bin reovim-conformance."
+        "Linux procfs exposes held descriptors through /proc/self/fd and /proc/<pid>/fd, and Bash provides the expansion and child-redirection order exercised by the live retained test; denial produces a HELD_CARGO_* or HELD_CHECKER_* unavailable failure without pathname fallback.",
+        "Held Cargo selects the declared package and binary target from the locked offline workspace and writes the host debug executable at the checked path."
       ],
       "review_record": "conformance/entrypoint-reviews/check-conformance-sh.md",
-      "review_record_digest": "sha256:df4856322cf3c471dda5db6b88cd300f9a2bc00896ccbe0633b8c2b8e6ae8109"
+      "review_record_digest": "sha256:0afad8cd0cb0a903ca7c1afe63aaf815bd74db4e037f9b2ff07327d6c13a7490"
     },
     {
       "kind": "workflow",
       "path": ".github/workflows/ci.yml",
-      "content_digest": "sha256:54820cd83daee64e4a65593554cedc7714444adab4ef24fa0ee37aebab71c45f",
+      "content_digest": "sha256:b92cb695e19e195514f6f2485d101a2b77b46cc148ede5d86e3a952441f9961c",
       "direct_local_invocations": [
         {
           "kind": "script",
@@ -89,7 +112,7 @@
         "Each run step uses the hosted runner's admitted shell semantics and begins in the checked-out repository."
       ],
       "review_record": "conformance/entrypoint-reviews/ci-workflow.md",
-      "review_record_digest": "sha256:058c9b4465749ffcf3e0dfc6540e86358b09fe0824a7c20e2b507c51632a2197"
+      "review_record_digest": "sha256:c895b5c5b89c132c2e03ffd55d4f1413e98e4c8e702143f5623ef177db842eb3"
     }
   ]
 }

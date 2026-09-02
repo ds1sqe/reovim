@@ -19,6 +19,10 @@ Contract indexes route to focused normative chapters. Keep each active
 normative Markdown file at or below 250 lines, link directly to the owning file,
 and do not preserve a retired monolith as a second authority.
 
+Before changing source, read and follow the repository-wide
+[coding style](CODE_STYLE.md). Human-authored source uses an 80-column maximum
+and no more than three Clippy-counted Rust block-nesting levels.
+
 ## Change discipline
 
 - Preserve inward dependency direction and one semantic authority per state.
@@ -67,5 +71,6 @@ By contributing, you grant ds1sqe a perpetual, worldwide, non-exclusive,
 royalty-free, irrevocable license to use, reproduce, modify, prepare derivative
 works from, publicly display or perform, sublicense, and distribute your
 contribution and derivative works. You represent that the contribution is your
-original work or that you have the authority to grant these rights. Contributions
-may be included in AGPL-3.0 and commercially licensed versions of Reovim.
+original work or that you have the authority to grant these rights.
+Contributions may be included in AGPL-3.0 and commercially licensed versions
+of Reovim.

@@ -109,6 +109,15 @@
       "source_use": "tool"
     },
     {
+      "prefix": "CODE_STYLE.md",
+      "precedence": 20,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
       "prefix": "CONTRIBUTING.md",
       "precedence": 20,
       "source_owner": {
@@ -127,7 +136,7 @@
       "source_use": "tool",
       "upstream": {
         "identity": "cargo-manifest-set/v1: sorted relative path, LF, raw manifest bytes, LF",
-        "digest": "sha256:9b2611570f078812d75b09ec7d3544b1d607d1ed3f0fc366aa5d9172547baaab",
+        "digest": "sha256:5833520957b5e1a7cfb06a8ca135be7eefef48b98e24034373cacdd32f17ce8e",
         "digest_subject": {
           "kind": "paths",
           "paths": [
@@ -167,6 +176,15 @@
     },
     {
       "prefix": "README.md",
+      "precedence": 20,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "clippy.toml",
       "precedence": 20,
       "source_owner": {
         "kind": "repository_tooling"

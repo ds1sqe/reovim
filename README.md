@@ -44,6 +44,7 @@ Start here:
 - [Extension contracts](Documentation/03-Extensions/README.md)
 - [Performance contract](Documentation/04-Performance/README.md)
 - [Rule matrix](Documentation/06-Conformance/02-Rule-Matrix.md)
+- [Coding style](CODE_STYLE.md)
 - [Heritage](Documentation/heritage/README.md) — non-normative historical
   material
 

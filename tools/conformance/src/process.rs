@@ -130,15 +130,26 @@ struct Capture {
 /// Panics only if the internal supervisor loses a reader handle after both
 /// handles were installed; that condition indicates a checker invariant bug.
 #[allow(clippy::too_many_lines)]
-pub fn run(spec: &CommandSpec, limits: ProcessLimits) -> io::Result<ProcessResult> {
+pub fn run(
+    spec: &CommandSpec,
+    limits: ProcessLimits,
+) -> io::Result<ProcessResult> {
     validate_limits(limits)?;
     let started_at = Instant::now();
-    let execution_deadline_at = started_at.checked_add(limits.deadline).ok_or_else(|| {
-        io::Error::new(io::ErrorKind::InvalidInput, "execution deadline overflow")
-    })?;
-    let supervision_deadline_at =
-        started_at.checked_add(limits.supervision_deadline).ok_or_else(|| {
-            io::Error::new(io::ErrorKind::InvalidInput, "supervision deadline overflow")
+    let execution_deadline_at =
+        started_at.checked_add(limits.deadline).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "execution deadline overflow",
+            )
+        })?;
+    let supervision_deadline_at = started_at
+        .checked_add(limits.supervision_deadline)
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "supervision deadline overflow",
+            )
         })?;
 
     let mut argv = Vec::with_capacity(spec.arguments.len().saturating_add(1));
@@ -164,7 +175,7 @@ pub fn run(spec: &CommandSpec, limits: ProcessLimits) -> io::Result<ProcessResul
     let child = match command.spawn() {
         Ok(child) => child,
         Err(error) => {
-            disarm_spawn_watchdog(watchdog_sender, watchdog)?;
+            disarm_spawn_watchdog(&watchdog_sender, watchdog)?;
             return Err(error);
         }
     };
@@ -196,16 +207,14 @@ pub fn run(spec: &CommandSpec, limits: ProcessLimits) -> io::Result<ProcessResul
     if stdout.is_none() || stderr.is_none() {
         return Err(io::Error::other("configured child pipe is missing"));
     }
-    let stdout = supervisor
-        .child_mut()
-        .stdout
-        .take()
-        .ok_or_else(|| io::Error::other("configured stdout pipe missing"))?;
-    let stderr = supervisor
-        .child_mut()
-        .stderr
-        .take()
-        .ok_or_else(|| io::Error::other("configured stderr pipe missing"))?;
+    let stdout =
+        supervisor.child_mut().stdout.take().ok_or_else(|| {
+            io::Error::other("configured stdout pipe missing")
+        })?;
+    let stderr =
+        supervisor.child_mut().stderr.take().ok_or_else(|| {
+            io::Error::other("configured stderr pipe missing")
+        })?;
     let stdout_overflow = Arc::new(AtomicBool::new(false));
     let stderr_overflow = Arc::new(AtomicBool::new(false));
     supervisor.stdout_reader = Some(spawn_reader(
@@ -248,21 +257,29 @@ pub fn run(spec: &CommandSpec, limits: ProcessLimits) -> io::Result<ProcessResul
     let status = if let Some(status) = observed_status {
         status
     } else {
-        supervisor.signal_owned(&mut kill_attempted, &mut kill_raced_with_exit)?;
+        supervisor
+            .signal_owned(&mut kill_attempted, &mut kill_raced_with_exit)?;
         supervisor.child_mut().wait()?
     };
     supervisor.mark_leader_reaped();
     supervisor.child.take();
-    let descendant_residue_observed =
-        supervisor.finish_group(&mut kill_attempted, &mut kill_raced_with_exit)?;
+    let descendant_residue_observed = supervisor
+        .finish_group(&mut kill_attempted, &mut kill_raced_with_exit)?;
 
-    let stdout = join_reader(supervisor.stdout_reader.take().expect("checked above"), "stdout");
-    let stderr = join_reader(supervisor.stderr_reader.take().expect("checked above"), "stderr");
+    let stdout = join_reader(
+        supervisor.stdout_reader.take().expect("checked above"),
+        "stdout",
+    );
+    let stderr = join_reader(
+        supervisor.stderr_reader.take().expect("checked above"),
+        "stderr",
+    );
     // Join both before propagating either reader failure.
     let stdout = stdout?;
     let stderr = stderr?;
-    let limit_observed_after_exit =
-        termination_reason == TerminationReason::Exited && (stdout.overflow || stderr.overflow);
+    let limit_observed_after_exit = termination_reason
+        == TerminationReason::Exited
+        && (stdout.overflow || stderr.overflow);
     if limit_observed_after_exit {
         termination_reason = if stdout.overflow {
             TerminationReason::StdoutLimit
@@ -300,8 +317,14 @@ pub fn run(spec: &CommandSpec, limits: ProcessLimits) -> io::Result<ProcessResul
 }
 
 fn validate_limits(limits: ProcessLimits) -> io::Result<()> {
-    if limits.stdout_bytes == 0 || limits.stderr_bytes == 0 || limits.deadline.is_zero() {
-        return Err(io::Error::new(io::ErrorKind::InvalidInput, "process limits must be non-zero"));
+    if limits.stdout_bytes == 0
+        || limits.stderr_bytes == 0
+        || limits.deadline.is_zero()
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "process limits must be non-zero",
+        ));
     }
     if limits.supervision_deadline <= limits.deadline {
         return Err(io::Error::new(
@@ -321,15 +344,16 @@ fn configure_process_group(command: &mut Command) {
 #[cfg(not(target_os = "linux"))]
 const fn configure_process_group(_command: &mut Command) {}
 
-#[allow(clippy::needless_pass_by_value)]
 fn disarm_spawn_watchdog(
-    sender: mpsc::Sender<WatchdogMessage>,
+    sender: &mpsc::Sender<WatchdogMessage>,
     watchdog: thread::JoinHandle<()>,
 ) -> io::Result<()> {
-    sender
-        .send(WatchdogMessage::Complete)
-        .map_err(|_| io::Error::other("process watchdog stopped during spawn failure"))?;
-    watchdog.join().map_err(|_| io::Error::other("process watchdog panicked during spawn failure"))
+    sender.send(WatchdogMessage::Complete).map_err(|_| {
+        io::Error::other("process watchdog stopped during spawn failure")
+    })?;
+    watchdog.join().map_err(|_| {
+        io::Error::other("process watchdog panicked during spawn failure")
+    })
 }
 
 /// Owns every post-spawn resource. An error cannot silently detach a child,
@@ -394,7 +418,9 @@ impl Supervisor {
         kill_raced_with_exit: &mut bool,
     ) -> io::Result<()> {
         if !self.group_identity_validated {
-            return Err(io::Error::other("refusing to signal an unvalidated process group"));
+            return Err(io::Error::other(
+                "refusing to signal an unvalidated process group",
+            ));
         }
         *kill_attempted = true;
         match signal_group(self.pgid.expect("validated Linux group"))? {
@@ -435,31 +461,20 @@ impl Supervisor {
         kill_raced_with_exit: &mut bool,
     ) -> io::Result<bool> {
         if !self.leader_reaped || !self.group_identity_validated {
-            return Err(io::Error::other("group cleanup began without reaped validated leader"));
+            return Err(io::Error::other(
+                "group cleanup began without reaped validated leader",
+            ));
         }
         let pgid = self.pgid.expect("validated Linux group");
-        let mut residue_observed = false;
-        loop {
-            if !group_present(pgid)? {
-                self.group_absent_after_reap = true;
-                self.descendants_reaped = true;
-                return Ok(residue_observed);
-            }
-            residue_observed = true;
-            *kill_attempted = true;
-            if signal_group(pgid)? == SignalOutcome::AlreadyAbsent {
-                *kill_raced_with_exit = true;
-            }
-            let Some(remaining) =
-                self.supervision_deadline_at.checked_duration_since(Instant::now())
-            else {
-                return Err(io::Error::new(
-                    io::ErrorKind::TimedOut,
-                    "process group remained present at supervision deadline",
-                ));
-            };
-            thread::sleep(remaining.min(Duration::from_millis(1)));
-        }
+        let residue_observed = wait_for_group_absence(
+            pgid,
+            self.supervision_deadline_at,
+            kill_attempted,
+            kill_raced_with_exit,
+        )?;
+        self.group_absent_after_reap = true;
+        self.descendants_reaped = true;
+        Ok(residue_observed)
     }
 
     #[cfg(not(target_os = "linux"))]
@@ -473,12 +488,10 @@ impl Supervisor {
 
     fn disarm_watchdog(&mut self) -> io::Result<()> {
         if let Some(sender) = self.watchdog_sender.take() {
-            sender
-                .send(WatchdogMessage::Complete)
-                .map_err(|_| io::Error::other("process watchdog stopped before disarm"))?;
+            send_watchdog_complete(&sender)?;
         }
         if let Some(watchdog) = self.watchdog.take() {
-            watchdog.join().map_err(|_| io::Error::other("process watchdog panicked"))?;
+            join_watchdog(watchdog)?;
         }
         Ok(())
     }
@@ -486,36 +499,75 @@ impl Supervisor {
     fn cleanup_for_drop(&mut self) -> io::Result<()> {
         let mut kill_attempted = false;
         let mut kill_raced_with_exit = false;
-        if self.child.is_some() {
-            #[cfg(target_os = "linux")]
-            if self.group_identity_validated {
-                self.signal_owned(&mut kill_attempted, &mut kill_raced_with_exit)?;
-            } else {
-                let _ = self.child_mut().kill();
-            }
-            #[cfg(not(target_os = "linux"))]
-            self.signal_owned(&mut kill_attempted, &mut kill_raced_with_exit)?;
-
-            self.child_mut().wait()?;
-            self.mark_leader_reaped();
-            self.child.take();
-        }
-        #[cfg(target_os = "linux")]
-        {
-            if !self.group_identity_validated {
-                return Err(io::Error::other("Linux process-group identity remained uncertain"));
-            }
-            if !self.group_absent_after_reap {
-                self.finish_group(&mut kill_attempted, &mut kill_raced_with_exit)?;
-            }
-        }
-        if let Some(reader) = self.stdout_reader.take() {
-            reader.join().map_err(|_| io::Error::other("stdout reader panicked during cleanup"))?;
-        }
-        if let Some(reader) = self.stderr_reader.take() {
-            reader.join().map_err(|_| io::Error::other("stderr reader panicked during cleanup"))?;
-        }
+        self.cleanup_child(&mut kill_attempted, &mut kill_raced_with_exit)?;
+        self.cleanup_group(&mut kill_attempted, &mut kill_raced_with_exit)?;
+        join_optional_reader(self.stdout_reader.take(), "stdout")?;
+        join_optional_reader(self.stderr_reader.take(), "stderr")?;
         self.disarm_watchdog()
+    }
+
+    fn cleanup_child(
+        &mut self,
+        kill_attempted: &mut bool,
+        kill_raced_with_exit: &mut bool,
+    ) -> io::Result<()> {
+        if self.child.is_none() {
+            return Ok(());
+        }
+        self.signal_child_for_cleanup(kill_attempted, kill_raced_with_exit)?;
+        self.child_mut().wait()?;
+        self.mark_leader_reaped();
+        self.child.take();
+        Ok(())
+    }
+
+    #[cfg(target_os = "linux")]
+    fn signal_child_for_cleanup(
+        &mut self,
+        kill_attempted: &mut bool,
+        kill_raced_with_exit: &mut bool,
+    ) -> io::Result<()> {
+        if self.group_identity_validated {
+            return self.signal_owned(kill_attempted, kill_raced_with_exit);
+        }
+        let _ = self.child_mut().kill();
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn signal_child_for_cleanup(
+        &mut self,
+        kill_attempted: &mut bool,
+        kill_raced_with_exit: &mut bool,
+    ) -> io::Result<()> {
+        self.signal_owned(kill_attempted, kill_raced_with_exit)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn cleanup_group(
+        &mut self,
+        kill_attempted: &mut bool,
+        kill_raced_with_exit: &mut bool,
+    ) -> io::Result<()> {
+        if !self.group_identity_validated {
+            return Err(io::Error::other(
+                "Linux process-group identity remained uncertain",
+            ));
+        }
+        if self.group_absent_after_reap {
+            return Ok(());
+        }
+        self.finish_group(kill_attempted, kill_raced_with_exit)?;
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    const fn cleanup_group(
+        &mut self,
+        _kill_attempted: &mut bool,
+        _kill_raced_with_exit: &mut bool,
+    ) -> io::Result<()> {
+        Ok(())
     }
 }
 
@@ -536,8 +588,9 @@ enum SignalOutcome {
 
 #[cfg(target_os = "linux")]
 fn linux_pid(pid: u32) -> io::Result<Pid> {
-    let raw = i32::try_from(pid)
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "child PID exceeds i32"))?;
+    let raw = i32::try_from(pid).map_err(|_| {
+        io::Error::new(io::ErrorKind::InvalidData, "child PID exceeds i32")
+    })?;
     Ok(Pid::from_raw(raw))
 }
 
@@ -551,12 +604,53 @@ fn signal_group(pgid: u32) -> io::Result<SignalOutcome> {
 }
 
 #[cfg(target_os = "linux")]
+fn mark_signal_race(
+    pgid: u32,
+    kill_raced_with_exit: &mut bool,
+) -> io::Result<()> {
+    if signal_group(pgid)? == SignalOutcome::AlreadyAbsent {
+        *kill_raced_with_exit = true;
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
 fn group_present(pgid: u32) -> io::Result<bool> {
     match killpg(linux_pid(pgid)?, None::<Signal>) {
         Ok(()) => Ok(true),
         Err(Errno::ESRCH) => Ok(false),
         Err(error) => Err(nix_error(error)),
     }
+}
+
+#[cfg(target_os = "linux")]
+fn wait_for_group_absence(
+    pgid: u32,
+    supervision_deadline_at: Instant,
+    kill_attempted: &mut bool,
+    kill_raced_with_exit: &mut bool,
+) -> io::Result<bool> {
+    let mut residue_observed = false;
+    loop {
+        if !group_present(pgid)? {
+            return Ok(residue_observed);
+        }
+        residue_observed = true;
+        *kill_attempted = true;
+        mark_signal_race(pgid, kill_raced_with_exit)?;
+        let remaining = remaining_supervision_time(supervision_deadline_at)?;
+        thread::sleep(remaining.min(Duration::from_millis(1)));
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn remaining_supervision_time(deadline_at: Instant) -> io::Result<Duration> {
+    deadline_at.checked_duration_since(Instant::now()).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::TimedOut,
+            "process group remained present at supervision deadline",
+        )
+    })
 }
 
 #[cfg(target_os = "linux")]
@@ -570,11 +664,25 @@ enum WatchdogMessage {
     Complete,
 }
 
+fn send_watchdog_complete(
+    sender: &mpsc::Sender<WatchdogMessage>,
+) -> io::Result<()> {
+    sender
+        .send(WatchdogMessage::Complete)
+        .map_err(|_| io::Error::other("process watchdog stopped before disarm"))
+}
+
+fn join_watchdog(watchdog: thread::JoinHandle<()>) -> io::Result<()> {
+    watchdog.join().map_err(|_| io::Error::other("process watchdog panicked"))
+}
+
 #[allow(clippy::needless_pass_by_value)]
 fn watchdog(receiver: mpsc::Receiver<WatchdogMessage>, deadline_at: Instant) {
     let mut leader_reaped = false;
     loop {
-        let Some(remaining) = deadline_at.checked_duration_since(Instant::now()) else {
+        let Some(remaining) =
+            deadline_at.checked_duration_since(Instant::now())
+        else {
             std::process::abort();
         };
         match receiver.recv_timeout(remaining) {
@@ -597,35 +705,88 @@ fn spawn_reader<R>(
 where
     R: Read + Send + 'static,
 {
-    thread::Builder::new().name(name.to_owned()).spawn(move || {
-        let mut retained = Vec::with_capacity(limit.min(16 * 1024));
-        let mut total = 0_u64;
-        let mut overflow = false;
-        let mut buffer = [0_u8; 8 * 1024];
-        let mut read_error = None;
-        loop {
-            match reader.read(&mut buffer) {
-                Ok(0) => break,
-                Ok(count) => {
-                    total = total.saturating_add(count as u64);
-                    let remaining = limit.saturating_sub(retained.len());
-                    retained.extend_from_slice(&buffer[..count.min(remaining)]);
-                    if count > remaining {
-                        overflow = true;
-                        overflow_signal.store(true, Ordering::Release);
-                    }
-                }
-                Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
-                Err(error) => {
-                    read_error = Some(error.to_string());
-                    break;
-                }
-            }
-        }
-        Capture { retained, total, overflow, read_error }
-    })
+    thread::Builder::new()
+        .name(name.to_owned())
+        .spawn(move || capture_reader(&mut reader, limit, &overflow_signal))
 }
 
-fn join_reader(handle: thread::JoinHandle<Capture>, stream: &'static str) -> io::Result<Capture> {
-    handle.join().map_err(|_| io::Error::other(format!("{stream} reader thread panicked")))
+fn capture_reader(
+    reader: &mut impl Read,
+    limit: usize,
+    overflow_signal: &AtomicBool,
+) -> Capture {
+    let mut capture = Capture {
+        retained: Vec::with_capacity(limit.min(16 * 1024)),
+        total: 0,
+        overflow: false,
+        read_error: None,
+    };
+    let mut buffer = [0_u8; 8 * 1024];
+    loop {
+        if !capture_reader_step(
+            reader,
+            &mut buffer,
+            limit,
+            overflow_signal,
+            &mut capture,
+        ) {
+            return capture;
+        }
+    }
+}
+
+fn capture_reader_step(
+    reader: &mut impl Read,
+    buffer: &mut [u8],
+    limit: usize,
+    overflow_signal: &AtomicBool,
+    capture: &mut Capture,
+) -> bool {
+    match reader.read(buffer) {
+        Ok(0) => false,
+        Ok(count) => {
+            retain_capture(buffer, count, limit, overflow_signal, capture);
+            true
+        }
+        Err(error) if error.kind() == io::ErrorKind::Interrupted => true,
+        Err(error) => {
+            capture.read_error = Some(error.to_string());
+            false
+        }
+    }
+}
+
+fn retain_capture(
+    buffer: &[u8],
+    count: usize,
+    limit: usize,
+    overflow_signal: &AtomicBool,
+    capture: &mut Capture,
+) {
+    capture.total = capture.total.saturating_add(count as u64);
+    let remaining = limit.saturating_sub(capture.retained.len());
+    capture.retained.extend_from_slice(&buffer[..count.min(remaining)]);
+    if count > remaining {
+        capture.overflow = true;
+        overflow_signal.store(true, Ordering::Release);
+    }
+}
+
+fn join_optional_reader(
+    reader: Option<thread::JoinHandle<Capture>>,
+    stream: &'static str,
+) -> io::Result<()> {
+    if let Some(reader) = reader {
+        join_reader(reader, stream)?;
+    }
+    Ok(())
+}
+
+fn join_reader(
+    handle: thread::JoinHandle<Capture>,
+    stream: &'static str,
+) -> io::Result<Capture> {
+    handle.join().map_err(|_| {
+        io::Error::other(format!("{stream} reader thread panicked"))
+    })
 }

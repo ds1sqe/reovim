@@ -4,7 +4,7 @@
 
 - Kind: workflow
 - Exact content digest:
-  `sha256:54820cd83daee64e4a65593554cedc7714444adab4ef24fa0ee37aebab71c45f`
+  `sha256:b92cb695e19e195514f6f2485d101a2b77b46cc148ede5d86e3a952441f9961c`
 - Review mechanism: exact content and retained review
 
 ## Direct local invocations
@@ -23,6 +23,8 @@ admission. Shell utility and Cargo commands are external-tool invocations.
   workflow permissions and inputs present in these exact bytes.
 - Each `run` step uses the hosted runner's admitted shell semantics and begins
   in the checked-out repository.
+- The five-minute job timeout bounds dependency fetch, the selected fast
+  candidate check, and exact-revision evidence together.
 
 ## Decision
 

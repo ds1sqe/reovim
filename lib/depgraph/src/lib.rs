@@ -25,8 +25,9 @@ use std::{
 };
 
 pub use manifest::{
-    DeclaredManifestGraph, Dependency, DependencyKind, DependencySource, DiscoveryOptions,
-    GraphError, LocalDependencyEdge, Package, load_declared_manifest_graph,
+    DeclaredManifestGraph, Dependency, DependencyKind, DependencySource,
+    DiscoveryOptions, GraphError, LocalDependencyEdge, Package,
+    load_declared_manifest_graph,
 };
 
 /// The logical product roles defined by Reovim's Layer and Dependency Model.
@@ -220,14 +221,20 @@ impl SourceClassification {
     ) -> Result<Self, InvalidSourceClassification> {
         let owner_use_valid = matches!(
             (owner, source_use),
-            (SourceOwner::Product(_), SourceUse::Production | SourceUse::Test | SourceUse::Example)
-                | (
-                    SourceOwner::RepositoryTooling,
-                    SourceUse::Tool | SourceUse::Test | SourceUse::Example | SourceUse::BuildOutput
-                )
+            (
+                SourceOwner::Product(_),
+                SourceUse::Production | SourceUse::Test | SourceUse::Example
+            ) | (
+                SourceOwner::RepositoryTooling,
+                SourceUse::Tool
+                    | SourceUse::Test
+                    | SourceUse::Example
+                    | SourceUse::BuildOutput
+            )
         );
-        let provenance_use_valid = !matches!(source_use, SourceUse::BuildOutput)
-            || matches!(provenance, SourceProvenance::Generated);
+        let provenance_use_valid =
+            !matches!(source_use, SourceUse::BuildOutput)
+                || matches!(provenance, SourceProvenance::Generated);
         if owner_use_valid && provenance_use_valid {
             Ok(Self { owner, provenance, source_use })
         } else {
@@ -339,22 +346,12 @@ impl SourceClassificationMap {
         let mut winners: Vec<&SourceClassificationRule> = Vec::new();
         let mut winning_precedence = None;
 
-        for rule in &self.rules {
-            if normalized.starts_with(&rule.prefix) {
-                match winning_precedence {
-                    None => {
-                        winning_precedence = Some(rule.precedence);
-                        winners.push(rule);
-                    }
-                    Some(current) if rule.precedence > current => {
-                        winning_precedence = Some(rule.precedence);
-                        winners.clear();
-                        winners.push(rule);
-                    }
-                    Some(current) if rule.precedence == current => winners.push(rule),
-                    Some(_) => {}
-                }
-            }
+        for rule in self
+            .rules
+            .iter()
+            .filter(|rule| normalized.starts_with(&rule.prefix))
+        {
+            retain_winning_rule(rule, &mut winning_precedence, &mut winners);
         }
 
         match winners.as_slice() {
@@ -363,9 +360,34 @@ impl SourceClassificationMap {
             _ => Err(ClassificationMapError::Ambiguous {
                 path: normalized,
                 precedence: winning_precedence.unwrap_or_default(),
-                prefixes: winners.iter().map(|rule| rule.prefix.clone()).collect(),
+                prefixes: winners
+                    .iter()
+                    .map(|rule| rule.prefix.clone())
+                    .collect(),
             }),
         }
+    }
+}
+
+fn retain_winning_rule<'a>(
+    rule: &'a SourceClassificationRule,
+    winning_precedence: &mut Option<u32>,
+    winners: &mut Vec<&'a SourceClassificationRule>,
+) {
+    match *winning_precedence {
+        None => {
+            *winning_precedence = Some(rule.precedence);
+            winners.push(rule);
+        }
+        Some(current) if rule.precedence > current => {
+            *winning_precedence = Some(rule.precedence);
+            winners.clear();
+            winners.push(rule);
+        }
+        Some(current) if rule.precedence == current => {
+            winners.push(rule);
+        }
+        Some(_) => {}
     }
 }
 
@@ -382,14 +404,21 @@ pub enum ClassificationMapError {
 impl fmt::Display for ClassificationMapError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidSchemaVersion => {
-                formatter.write_str("source-role schema version must be non-zero")
-            }
+            Self::InvalidSchemaVersion => formatter
+                .write_str("source-role schema version must be non-zero"),
             Self::AbsolutePath { path } => {
-                write!(formatter, "source path must be relative: {}", path.display())
+                write!(
+                    formatter,
+                    "source path must be relative: {}",
+                    path.display()
+                )
             }
             Self::EscapesRoot { path } => {
-                write!(formatter, "source path escapes its root: {}", path.display())
+                write!(
+                    formatter,
+                    "source path escapes its root: {}",
+                    path.display()
+                )
             }
             Self::Unmatched { path } => {
                 write!(formatter, "source path has no role: {}", path.display())
@@ -432,14 +461,22 @@ impl PreflightRolePolicy {
 
     /// Adds one `consumer -> provider` role edge.
     #[must_use]
-    pub fn allow(mut self, consumer: ArchitecturalRole, provider: ArchitecturalRole) -> Self {
+    pub fn allow(
+        mut self,
+        consumer: ArchitecturalRole,
+        provider: ArchitecturalRole,
+    ) -> Self {
         self.allowed.insert((consumer, provider));
         self
     }
 
     /// Returns whether an edge is same-role or explicitly admitted.
     #[must_use]
-    pub fn allows(&self, consumer: ArchitecturalRole, provider: ArchitecturalRole) -> bool {
+    pub fn allows(
+        &self,
+        consumer: ArchitecturalRole,
+        provider: ArchitecturalRole,
+    ) -> bool {
         consumer == provider || self.allowed.contains(&(consumer, provider))
     }
 }
@@ -491,12 +528,18 @@ impl fmt::Display for PreflightIssue {
             } => {
                 write!(
                     formatter,
-                    "forbidden {kind} partition dependency: {consumer} ({consumer_owner}) -> {provider} ({provider_owner})"
+                    concat!(
+                        "forbidden {kind} partition dependency: ",
+                        "{consumer} ({consumer_owner}) -> ",
+                        "{provider} ({provider_owner})"
+                    ),
+                    kind = kind,
+                    consumer = consumer,
+                    consumer_owner = consumer_owner,
+                    provider = provider,
+                    provider_owner = provider_owner,
                 )?;
-                if let Some(target) = target {
-                    write!(formatter, " for target {target}")?;
-                }
-                Ok(())
+                write_target_suffix(formatter, target.as_deref())
             }
             Self::ForbiddenRoleDependency {
                 consumer,
@@ -508,29 +551,54 @@ impl fmt::Display for PreflightIssue {
             } => {
                 write!(
                     formatter,
-                    "forbidden {kind} dependency: {consumer} ({consumer_role}) -> {provider} ({provider_role})"
+                    concat!(
+                        "forbidden {kind} dependency: ",
+                        "{consumer} ({consumer_role}) -> ",
+                        "{provider} ({provider_role})"
+                    ),
+                    kind = kind,
+                    consumer = consumer,
+                    consumer_role = consumer_role,
+                    provider = provider,
+                    provider_role = provider_role,
                 )?;
-                if let Some(target) = target {
-                    write!(formatter, " for target {target}")?;
-                }
-                Ok(())
+                write_target_suffix(formatter, target.as_deref())
             }
             Self::PackageCycle { packages } => {
-                write!(formatter, "package dependency cycle: {}", packages.join(" -> "))
+                write!(
+                    formatter,
+                    "package dependency cycle: {}",
+                    packages.join(" -> ")
+                )
             }
             Self::RoleCycle { roles } => write!(
                 formatter,
                 "architectural role cycle: {}",
-                roles.iter().map(ToString::to_string).collect::<Vec<_>>().join(" -> ")
+                roles
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(" -> ")
             ),
         }
     }
 }
 
+fn write_target_suffix(
+    formatter: &mut fmt::Formatter<'_>,
+    target: Option<&str>,
+) -> fmt::Result {
+    let Some(target) = target else {
+        return Ok(());
+    };
+    write!(formatter, " for target {target}")
+}
+
 /// Deterministic declared-manifest preflight output.
 ///
-/// `package_classifications` contains classifications of package directories only. It is
-/// not source-file coverage or a normative Source Role Map artifact.
+/// `package_classifications` contains classifications of package directories
+/// only. It is not source-file coverage or a normative Source Role Map
+/// artifact.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreflightReport {
     pub package_classifications: BTreeMap<String, SourceClassification>,
@@ -565,7 +633,8 @@ pub fn preflight_declared_graph(
     for package in graph.packages().values() {
         match classification_map.classify(&package.relative_dir) {
             Ok(classification) => {
-                package_classifications.insert(package.name.clone(), classification);
+                package_classifications
+                    .insert(package.name.clone(), classification);
             }
             Err(error) => {
                 issues.push(PreflightIssue::SourceClassification {
@@ -577,40 +646,15 @@ pub fn preflight_declared_graph(
     }
 
     for edge in graph.local_edges() {
-        let Some(consumer) = package_classifications.get(&edge.consumer).copied() else {
-            continue;
-        };
-        let Some(provider) = package_classifications.get(&edge.provider).copied() else {
-            continue;
-        };
-        match (consumer.owner, provider.owner) {
-            (SourceOwner::Product(consumer_role), SourceOwner::Product(provider_role)) => {
-                if !policy.allows(consumer_role, provider_role) {
-                    issues.push(PreflightIssue::ForbiddenRoleDependency {
-                        consumer: edge.consumer.clone(),
-                        consumer_role,
-                        provider: edge.provider.clone(),
-                        provider_role,
-                        kind: edge.kind,
-                        target: edge.target.clone(),
-                    });
-                }
-            }
-            (SourceOwner::RepositoryTooling, SourceOwner::RepositoryTooling) => {}
-            (consumer_owner, provider_owner) => {
-                issues.push(PreflightIssue::ForbiddenPartitionDependency {
-                    consumer: edge.consumer.clone(),
-                    consumer_owner,
-                    provider: edge.provider.clone(),
-                    provider_owner,
-                    kind: edge.kind,
-                    target: edge.target.clone(),
-                });
-            }
-        }
+        issues.extend(preflight_edge_issue(
+            edge,
+            &package_classifications,
+            policy,
+        ));
     }
 
-    let package_nodes = graph.packages().keys().cloned().collect::<BTreeSet<_>>();
+    let package_nodes =
+        graph.packages().keys().cloned().collect::<BTreeSet<_>>();
     let package_edges = graph
         .local_edges()
         .iter()
@@ -631,8 +675,10 @@ pub fn preflight_declared_graph(
         if let (Some(consumer), Some(provider)) = (
             package_classifications.get(&edge.consumer),
             package_classifications.get(&edge.provider),
-        ) && let (SourceOwner::Product(consumer), SourceOwner::Product(provider)) =
-            (consumer.owner, provider.owner)
+        ) && let (
+            SourceOwner::Product(consumer),
+            SourceOwner::Product(provider),
+        ) = (consumer.owner, provider.owner)
             && consumer != provider
         {
             role_edges.insert((consumer, provider));
@@ -645,6 +691,44 @@ pub fn preflight_declared_graph(
     PreflightReport { package_classifications, issues }
 }
 
+fn preflight_edge_issue(
+    edge: &LocalDependencyEdge,
+    classifications: &BTreeMap<String, SourceClassification>,
+    policy: &PreflightRolePolicy,
+) -> Option<PreflightIssue> {
+    let consumer = classifications.get(&edge.consumer)?.owner;
+    let provider = classifications.get(&edge.provider)?.owner;
+    match (consumer, provider) {
+        (
+            SourceOwner::Product(consumer_role),
+            SourceOwner::Product(provider_role),
+        ) if !policy.allows(consumer_role, provider_role) => {
+            Some(PreflightIssue::ForbiddenRoleDependency {
+                consumer: edge.consumer.clone(),
+                consumer_role,
+                provider: edge.provider.clone(),
+                provider_role,
+                kind: edge.kind,
+                target: edge.target.clone(),
+            })
+        }
+        (SourceOwner::Product(_), SourceOwner::Product(_))
+        | (SourceOwner::RepositoryTooling, SourceOwner::RepositoryTooling) => {
+            None
+        }
+        (consumer_owner, provider_owner) => {
+            Some(PreflightIssue::ForbiddenPartitionDependency {
+                consumer: edge.consumer.clone(),
+                consumer_owner,
+                provider: edge.provider.clone(),
+                provider_owner,
+                kind: edge.kind,
+                target: edge.target.clone(),
+            })
+        }
+    }
+}
+
 fn normalize_relative(path: &Path) -> Result<PathBuf, ClassificationMapError> {
     let original = path.to_path_buf();
     let mut normalized = PathBuf::new();
@@ -653,64 +737,78 @@ fn normalize_relative(path: &Path) -> Result<PathBuf, ClassificationMapError> {
             Component::CurDir => {}
             Component::Normal(part) => normalized.push(part),
             Component::ParentDir => {
-                if !normalized.pop() {
-                    return Err(ClassificationMapError::EscapesRoot { path: original });
-                }
+                pop_relative_parent(&mut normalized, &original)?;
             }
             Component::RootDir | Component::Prefix(_) => {
-                return Err(ClassificationMapError::AbsolutePath { path: original });
+                return Err(ClassificationMapError::AbsolutePath {
+                    path: original,
+                });
             }
         }
     }
     Ok(normalized)
 }
 
-fn find_cycle<T>(nodes: &BTreeSet<T>, edges: &BTreeSet<(T, T)>) -> Option<Vec<T>>
+fn pop_relative_parent(
+    normalized: &mut PathBuf,
+    original: &Path,
+) -> Result<(), ClassificationMapError> {
+    if normalized.pop() {
+        return Ok(());
+    }
+    Err(ClassificationMapError::EscapesRoot { path: original.to_path_buf() })
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CycleMark {
+    Active,
+    Complete,
+}
+
+fn visit_cycle<T>(
+    node: &T,
+    edges: &BTreeSet<(T, T)>,
+    marks: &mut BTreeMap<T, CycleMark>,
+    stack: &mut Vec<T>,
+) -> Option<Vec<T>>
 where
     T: Clone + Ord,
 {
-    #[derive(Clone, Copy, PartialEq, Eq)]
-    enum Mark {
-        Active,
-        Complete,
+    match marks.get(node) {
+        Some(CycleMark::Complete) => return None,
+        Some(CycleMark::Active) => {
+            let start =
+                stack.iter().position(|entry| entry == node).unwrap_or(0);
+            let mut cycle = stack[start..].to_vec();
+            cycle.push(node.clone());
+            return Some(cycle);
+        }
+        None => {}
     }
 
-    fn visit<T>(
-        node: &T,
-        edges: &BTreeSet<(T, T)>,
-        marks: &mut BTreeMap<T, Mark>,
-        stack: &mut Vec<T>,
-    ) -> Option<Vec<T>>
-    where
-        T: Clone + Ord,
-    {
-        match marks.get(node) {
-            Some(Mark::Complete) => return None,
-            Some(Mark::Active) => {
-                let start = stack.iter().position(|entry| entry == node).unwrap_or(0);
-                let mut cycle = stack[start..].to_vec();
-                cycle.push(node.clone());
-                return Some(cycle);
-            }
-            None => {}
+    marks.insert(node.clone(), CycleMark::Active);
+    stack.push(node.clone());
+    for (_, provider) in edges.iter().filter(|(consumer, _)| consumer == node) {
+        if let Some(cycle) = visit_cycle(provider, edges, marks, stack) {
+            return Some(cycle);
         }
-
-        marks.insert(node.clone(), Mark::Active);
-        stack.push(node.clone());
-        for (_, provider) in edges.iter().filter(|(consumer, _)| consumer == node) {
-            if let Some(cycle) = visit(provider, edges, marks, stack) {
-                return Some(cycle);
-            }
-        }
-        stack.pop();
-        marks.insert(node.clone(), Mark::Complete);
-        None
     }
+    stack.pop();
+    marks.insert(node.clone(), CycleMark::Complete);
+    None
+}
 
+fn find_cycle<T>(
+    nodes: &BTreeSet<T>,
+    edges: &BTreeSet<(T, T)>,
+) -> Option<Vec<T>>
+where
+    T: Clone + Ord,
+{
     let mut marks = BTreeMap::new();
     let mut stack = Vec::new();
     for node in nodes {
-        if let Some(cycle) = visit(node, edges, &mut marks, &mut stack) {
+        if let Some(cycle) = visit_cycle(node, edges, &mut marks, &mut stack) {
             return Some(cycle);
         }
     }

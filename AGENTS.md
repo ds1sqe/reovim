@@ -98,6 +98,17 @@ updating the authoritative documentation.
   or use dead-code allowances to hide them. Do not add broader profiles for
   anticipated future use.
 
+## Coding style
+
+- Follow `CODE_STYLE.md` and its mapped Linux kernel v4.10 maintainability
+  rules.
+- Keep human-authored source at or below 80 columns and Rust block nesting at
+  or below three levels. Split control flow or extract a named helper first.
+- Let `rustfmt` own Rust whitespace and braces. Do not apply C tabs or C syntax
+  rules where they conflict with language tooling.
+- Prefer small single-purpose functions, shallow control flow, narrow scope,
+  descriptive public names, explicit ownership, and comments about why.
+
 ## Performance and observability
 
 - Treat input-to-present p99 as the primary reaction metric. Include command,
