@@ -75,7 +75,7 @@
           "revision": { "$ref": "#/$defs/revision" },
           "identity_inputs": {
             "properties": {
-              "git": { "$ref": "#/$defs/tool_identity" },
+              "git": { "$ref": "#/$defs/execution_tool_identity" },
               "git_tree_digest": { "$ref": "#/$defs/digest" }
             }
           }
@@ -255,7 +255,53 @@
         "size_bytes": { "$ref": "#/$defs/positive_count" }
       }
     },
+    "prepared_runtime_input_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canonical_path",
+        "prepared_path",
+        "content_digest",
+        "size_bytes"
+      ],
+      "properties": {
+        "canonical_path": { "$ref": "#/$defs/nonempty_string" },
+        "prepared_path": { "$ref": "#/$defs/nonempty_string" },
+        "content_digest": { "$ref": "#/$defs/digest" },
+        "size_bytes": { "$ref": "#/$defs/positive_count" }
+      }
+    },
     "tool_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canonical_path",
+        "executable_digest",
+        "executable_size_bytes",
+        "version_argv",
+        "version",
+        "version_digest",
+        "runtime_inputs"
+      ],
+      "properties": {
+        "canonical_path": { "$ref": "#/$defs/nonempty_string" },
+        "executable_digest": { "$ref": "#/$defs/digest" },
+        "executable_size_bytes": { "$ref": "#/$defs/positive_count" },
+        "version_argv": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/nonempty_string" }
+        },
+        "version": { "$ref": "#/$defs/nonempty_string" },
+        "version_digest": { "$ref": "#/$defs/digest" },
+        "runtime_inputs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/prepared_runtime_input_identity" }
+        }
+      }
+    },
+    "execution_tool_identity": {
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -293,7 +339,7 @@
         "canonical_path": { "$ref": "#/$defs/nonempty_string" },
         "kind": { "enum": ["compiler_support", "target_libdir", "host_runtime"] },
         "content_digest": { "$ref": "#/$defs/digest" },
-        "size_bytes": { "$ref": "#/$defs/positive_count" }
+        "size_bytes": { "$ref": "#/$defs/count" }
       }
     },
     "compiler_substrate": {
@@ -407,7 +453,7 @@
         "git": {
           "oneOf": [
             { "type": "null" },
-            { "$ref": "#/$defs/tool_identity" }
+            { "$ref": "#/$defs/execution_tool_identity" }
           ]
         },
         "git_tree_digest": {
@@ -895,10 +941,100 @@
         }
       }
     },
+    "cargo_build_capture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command_argv",
+        "raw_output_digest",
+        "stdout_bytes",
+        "message_count",
+        "compiled_units",
+        "fresh_provider_units",
+        "artifact_events",
+        "probes"
+      ],
+      "properties": {
+        "command_argv": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/nonempty_string" }
+        },
+        "raw_output_digest": { "$ref": "#/$defs/digest" },
+        "stdout_bytes": { "$ref": "#/$defs/positive_count" },
+        "message_count": { "$ref": "#/$defs/positive_count" },
+        "compiled_units": { "$ref": "#/$defs/string_set" },
+        "fresh_provider_units": { "$ref": "#/$defs/string_set" },
+        "artifact_events": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/cargo_artifact_event" }
+        },
+        "probes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/compiler_probe" }
+        }
+      }
+    },
+    "cargo_artifact_event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit", "fresh", "filenames"],
+      "properties": {
+        "unit": { "$ref": "#/$defs/nonempty_string" },
+        "fresh": { "type": "boolean" },
+        "filenames": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/nonempty_string" }
+        }
+      }
+    },
+    "compiler_probe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "original_argv",
+        "effective_argv",
+        "trace_digest",
+        "trace_bytes",
+        "status"
+      ],
+      "properties": {
+        "kind": {
+          "enum": ["version_probe", "host_probe", "target_probe"]
+        },
+        "original_argv": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/nonempty_string" }
+        },
+        "effective_argv": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/nonempty_string" }
+        },
+        "trace_digest": { "$ref": "#/$defs/digest" },
+        "trace_bytes": { "$ref": "#/$defs/positive_count" },
+        "status": { "type": "integer" }
+      }
+    },
     "closure_evidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "kind", "workspace", "package", "target", "execution", "status"],
+      "required": [
+        "id",
+        "kind",
+        "workspace",
+        "package",
+        "target",
+        "execution",
+        "cargo_capture",
+        "status"
+      ],
       "properties": {
         "id": { "$ref": "#/$defs/nonempty_string" },
         "kind": { "enum": ["shipping", "validation"] },
@@ -906,6 +1042,7 @@
         "package": { "$ref": "#/$defs/nonempty_string" },
         "target": { "$ref": "#/$defs/nonempty_string" },
         "execution": { "$ref": "#/$defs/nonempty_string" },
+        "cargo_capture": { "$ref": "#/$defs/cargo_build_capture" },
         "status": { "enum": ["pass", "fail"] }
       }
     },
@@ -928,7 +1065,10 @@
         "original_argv",
         "effective_argv",
         "dep_info_path",
+        "dep_info_digest",
+        "dep_info_bytes",
         "trace_digest",
+        "trace_bytes",
         "status"
       ],
       "properties": {
@@ -955,7 +1095,10 @@
           "items": { "$ref": "#/$defs/nonempty_string" }
         },
         "dep_info_path": { "$ref": "#/$defs/nonempty_string" },
+        "dep_info_digest": { "$ref": "#/$defs/digest" },
+        "dep_info_bytes": { "$ref": "#/$defs/positive_count" },
         "trace_digest": { "$ref": "#/$defs/digest" },
+        "trace_bytes": { "$ref": "#/$defs/positive_count" },
         "status": { "type": "integer" }
       }
     },
@@ -1036,13 +1179,45 @@
         "path": { "$ref": "#/$defs/nonempty_string" },
         "content_digest": { "$ref": "#/$defs/digest" },
         "size_bytes": { "$ref": "#/$defs/count" },
-        "crate_type": { "$ref": "#/$defs/nonempty_string" }
+        "crate_type": { "enum": ["rlib", "rmeta"] }
+      }
+    },
+    "product_file_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "content_digest", "size_bytes"],
+      "properties": {
+        "path": { "$ref": "#/$defs/nonempty_string" },
+        "content_digest": { "$ref": "#/$defs/digest" },
+        "size_bytes": { "$ref": "#/$defs/positive_count" }
+      }
+    },
+    "provider_artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unit",
+        "top_level_rlib",
+        "hashed_rlib",
+        "rmeta"
+      ],
+      "properties": {
+        "unit": { "$ref": "#/$defs/nonempty_string" },
+        "top_level_rlib": { "$ref": "#/$defs/product_file_identity" },
+        "hashed_rlib": { "$ref": "#/$defs/product_file_identity" },
+        "rmeta": { "$ref": "#/$defs/product_file_identity" }
       }
     },
     "package_capture": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["phase", "command_argv", "raw_output_digest", "stdout_bytes"],
+      "required": [
+        "phase",
+        "command_argv",
+        "raw_output_digest",
+        "semantic_digest",
+        "stdout_bytes"
+      ],
       "properties": {
         "phase": { "enum": ["before_compiler", "after_compiler"] },
         "command_argv": {
@@ -1051,6 +1226,7 @@
           "items": { "$ref": "#/$defs/nonempty_string" }
         },
         "raw_output_digest": { "$ref": "#/$defs/digest" },
+        "semantic_digest": { "$ref": "#/$defs/digest" },
         "stdout_bytes": { "$ref": "#/$defs/positive_count" }
       }
     },
@@ -1148,20 +1324,81 @@
     "exposure_entry": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["source", "destination", "filesystem", "flags", "purpose", "inventory_digest"],
+      "required": [
+        "source",
+        "destination",
+        "kind",
+        "filesystem",
+        "flags",
+        "purpose",
+        "inventory_digest",
+        "inventory_entry_count",
+        "inventory_total_bytes",
+        "inventory_entries"
+      ],
       "properties": {
         "source": { "$ref": "#/$defs/nonempty_string" },
         "destination": { "$ref": "#/$defs/nonempty_string" },
-        "filesystem": { "$ref": "#/$defs/nonempty_string" },
+        "kind": { "enum": ["file", "directory", "character_device"] },
+        "filesystem": { "const": "bind" },
         "flags": { "$ref": "#/$defs/string_set" },
         "purpose": { "$ref": "#/$defs/nonempty_string" },
-        "inventory_digest": { "$ref": "#/$defs/digest" }
+        "inventory_digest": { "$ref": "#/$defs/digest" },
+        "inventory_entry_count": { "$ref": "#/$defs/positive_count" },
+        "inventory_total_bytes": { "$ref": "#/$defs/count" },
+        "inventory_entries": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/exposure_inventory_entry" }
+        }
+      }
+    },
+    "exposure_inventory_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "relative_path",
+        "kind",
+        "mode",
+        "size_bytes",
+        "content_digest",
+        "device_identity"
+      ],
+      "properties": {
+        "relative_path": { "$ref": "#/$defs/nonempty_string" },
+        "kind": { "enum": ["file", "directory", "character_device"] },
+        "mode": { "$ref": "#/$defs/positive_count" },
+        "size_bytes": { "$ref": "#/$defs/count" },
+        "content_digest": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/digest" }
+          ]
+        },
+        "device_identity": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/count" }
+          ]
+        }
       }
     },
     "namespace_evidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["user", "mount", "network", "pid", "uid_map", "gid_map", "private_propagation", "pid_one_reaper"],
+      "required": [
+        "user",
+        "mount",
+        "network",
+        "pid",
+        "uid_map",
+        "gid_map",
+        "setgroups_denied",
+        "private_propagation",
+        "pid_one_reaper",
+        "parent_death_signal"
+      ],
       "properties": {
         "user": { "type": "boolean" },
         "mount": { "type": "boolean" },
@@ -1169,18 +1406,31 @@
         "pid": { "type": "boolean" },
         "uid_map": { "$ref": "#/$defs/nonempty_string" },
         "gid_map": { "$ref": "#/$defs/nonempty_string" },
+        "setgroups_denied": { "type": "boolean" },
         "private_propagation": { "type": "boolean" },
-        "pid_one_reaper": { "type": "boolean" }
+        "pid_one_reaper": { "type": "boolean" },
+        "parent_death_signal": { "type": "boolean" }
       }
     },
     "network_evidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["interfaces", "routes", "socket_count", "external_carrier_absent"],
+      "required": [
+        "interfaces",
+        "routes",
+        "kernel_route_count",
+        "socket_count",
+        "policy_observation_digest",
+        "policy_basis",
+        "external_carrier_absent"
+      ],
       "properties": {
         "interfaces": { "$ref": "#/$defs/string_set" },
         "routes": { "$ref": "#/$defs/string_set" },
+        "kernel_route_count": { "$ref": "#/$defs/positive_count" },
         "socket_count": { "$ref": "#/$defs/count" },
+        "policy_observation_digest": { "$ref": "#/$defs/digest" },
+        "policy_basis": { "$ref": "#/$defs/nonempty_string" },
         "external_carrier_absent": { "type": "boolean" }
       }
     },
@@ -1202,10 +1452,8 @@
     "process_group_evidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["leader_pid", "pgid", "identity_validated", "group_absent_after_reap"],
+      "required": ["identity_validated", "group_absent_after_reap"],
       "properties": {
-        "leader_pid": { "$ref": "#/$defs/positive_count" },
-        "pgid": { "$ref": "#/$defs/positive_count" },
         "identity_validated": { "type": "boolean" },
         "group_absent_after_reap": { "type": "boolean" }
       }
@@ -1265,6 +1513,7 @@
         "compiler_inputs",
         "extern_edges",
         "artifacts",
+        "provider_artifact",
         "package_memberships",
         "public_consumers",
         "executions"
@@ -1296,6 +1545,12 @@
           "uniqueItems": true,
           "items": { "$ref": "#/$defs/artifact" }
         },
+        "provider_artifact": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/provider_artifact" }
+          ]
+        },
         "package_memberships": {
           "type": "array",
           "uniqueItems": true,
@@ -1325,6 +1580,7 @@
               "compiler_inputs": { "maxItems": 0 },
               "extern_edges": { "maxItems": 0 },
               "artifacts": { "maxItems": 0 },
+              "provider_artifact": { "type": "null" },
               "package_memberships": { "maxItems": 0 },
               "public_consumers": { "maxItems": 0 },
               "executions": { "maxItems": 0 }
@@ -1333,6 +1589,7 @@
           "else": {
             "properties": {
               "selected_execution_environment": { "$ref": "#/$defs/nonempty_string" },
+              "provider_artifact": { "$ref": "#/$defs/provider_artifact" },
               "executions": { "minItems": 1 }
             }
           }

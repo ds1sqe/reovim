@@ -1,12 +1,60 @@
 {
   "schema": "reovim-dependency-reviews/v2",
-  "reviewed_at": "2026-09-01T00:00:00Z",
+  "reviewed_at": "2026-09-02T10:09:28Z",
   "workspaces": [
     {
       "workspace": "repository-tooling",
       "lockfile": "Cargo.lock",
-      "lock_digest": "sha256:22242ca24f6bbd7153014251095a7f0e540060a6f77e4226099410a883568df0",
+      "lock_digest": "sha256:68ed28fea5b7650f23818fc8b39f4a5e37985d629e2883ba87c66328e92065d3",
       "admissions": [
+        {
+          "name": "autocfg",
+          "version": "1.5.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53",
+          "license": "Apache-2.0 OR MIT",
+          "resolved_uses": [
+            {
+              "profile": "hosted-all-features",
+              "consumer": {
+                "kind": "external_package",
+                "name": "memoffset",
+                "version": "0.9.1",
+                "source": "registry+https://github.com/rust-lang/crates.io-index"
+              },
+              "dependency_name": "autocfg",
+              "kind": "build",
+              "target": null
+            },
+            {
+              "profile": "hosted-default",
+              "consumer": {
+                "kind": "external_package",
+                "name": "memoffset",
+                "version": "0.9.1",
+                "source": "registry+https://github.com/rust-lang/crates.io-index"
+              },
+              "dependency_name": "autocfg",
+              "kind": "build",
+              "target": null
+            },
+            {
+              "profile": "hosted-no-default-features",
+              "consumer": {
+                "kind": "external_package",
+                "name": "memoffset",
+                "version": "0.9.1",
+                "source": "registry+https://github.com/rust-lang/crates.io-index"
+              },
+              "dependency_name": "autocfg",
+              "kind": "build",
+              "target": null
+            }
+          ],
+          "disposition": "admit",
+          "review_record": "conformance/dependency-reviews/nix-linux-execution-closure.md",
+          "review_record_digest": "sha256:b9a3041a1274a24c79b7c009d30f6731f8d556c3a89ce6677a14c5c80e46c2d7"
+        },
         {
           "name": "bitflags",
           "version": "2.13.1",
@@ -53,7 +101,7 @@
           ],
           "disposition": "admit",
           "review_record": "conformance/dependency-reviews/nix-linux-execution-closure.md",
-          "review_record_digest": "sha256:d29379137d03b6b5a5855ce2c259e903a16d8a6e8cbd1d0eb15439c6d97cab23"
+          "review_record_digest": "sha256:b9a3041a1274a24c79b7c009d30f6731f8d556c3a89ce6677a14c5c80e46c2d7"
         },
         {
           "name": "cfg_aliases",
@@ -101,7 +149,7 @@
           ],
           "disposition": "admit",
           "review_record": "conformance/dependency-reviews/nix-linux-execution-closure.md",
-          "review_record_digest": "sha256:d29379137d03b6b5a5855ce2c259e903a16d8a6e8cbd1d0eb15439c6d97cab23"
+          "review_record_digest": "sha256:b9a3041a1274a24c79b7c009d30f6731f8d556c3a89ce6677a14c5c80e46c2d7"
         },
         {
           "name": "cfg-if",
@@ -149,7 +197,7 @@
           ],
           "disposition": "admit",
           "review_record": "conformance/dependency-reviews/nix-linux-execution-closure.md",
-          "review_record_digest": "sha256:d29379137d03b6b5a5855ce2c259e903a16d8a6e8cbd1d0eb15439c6d97cab23"
+          "review_record_digest": "sha256:b9a3041a1274a24c79b7c009d30f6731f8d556c3a89ce6677a14c5c80e46c2d7"
         },
         {
           "name": "itoa",
@@ -245,7 +293,7 @@
           ],
           "disposition": "admit",
           "review_record": "conformance/dependency-reviews/nix-linux-execution-closure.md",
-          "review_record_digest": "sha256:d29379137d03b6b5a5855ce2c259e903a16d8a6e8cbd1d0eb15439c6d97cab23"
+          "review_record_digest": "sha256:b9a3041a1274a24c79b7c009d30f6731f8d556c3a89ce6677a14c5c80e46c2d7"
         },
         {
           "name": "memchr",
@@ -296,6 +344,54 @@
           "review_record_digest": "sha256:4c7928f8e6b209fc16e1b7669c36877f2f09a5c670344b34f6b31277b6b349ed"
         },
         {
+          "name": "memoffset",
+          "version": "0.9.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a",
+          "license": "MIT",
+          "resolved_uses": [
+            {
+              "profile": "hosted-all-features",
+              "consumer": {
+                "kind": "external_package",
+                "name": "nix",
+                "version": "0.31.3",
+                "source": "registry+https://github.com/rust-lang/crates.io-index"
+              },
+              "dependency_name": "memoffset",
+              "kind": "normal",
+              "target": null
+            },
+            {
+              "profile": "hosted-default",
+              "consumer": {
+                "kind": "external_package",
+                "name": "nix",
+                "version": "0.31.3",
+                "source": "registry+https://github.com/rust-lang/crates.io-index"
+              },
+              "dependency_name": "memoffset",
+              "kind": "normal",
+              "target": null
+            },
+            {
+              "profile": "hosted-no-default-features",
+              "consumer": {
+                "kind": "external_package",
+                "name": "nix",
+                "version": "0.31.3",
+                "source": "registry+https://github.com/rust-lang/crates.io-index"
+              },
+              "dependency_name": "memoffset",
+              "kind": "normal",
+              "target": null
+            }
+          ],
+          "disposition": "admit",
+          "review_record": "conformance/dependency-reviews/nix-linux-execution-closure.md",
+          "review_record_digest": "sha256:b9a3041a1274a24c79b7c009d30f6731f8d556c3a89ce6677a14c5c80e46c2d7"
+        },
+        {
           "name": "nix",
           "version": "0.31.3",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -338,7 +434,7 @@
           ],
           "disposition": "admit",
           "review_record": "conformance/dependency-reviews/nix-linux-execution-closure.md",
-          "review_record_digest": "sha256:d29379137d03b6b5a5855ce2c259e903a16d8a6e8cbd1d0eb15439c6d97cab23"
+          "review_record_digest": "sha256:b9a3041a1274a24c79b7c009d30f6731f8d556c3a89ce6677a14c5c80e46c2d7"
         },
         {
           "name": "proc-macro2",
@@ -765,6 +861,12 @@
           "review_record_digest": "sha256:4c7928f8e6b209fc16e1b7669c36877f2f09a5c670344b34f6b31277b6b349ed"
         }
       ]
+    },
+    {
+      "workspace": "product",
+      "lockfile": "product/Cargo.lock",
+      "lock_digest": "sha256:89ce2414e4d2866a8281658398aa3e448e566deeffc674a69eee0a7fec9822a3",
+      "admissions": []
     }
   ]
 }

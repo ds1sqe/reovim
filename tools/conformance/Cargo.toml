@@ -27,7 +27,7 @@ features = ["full", "parsing", "visit"]
 [target.'cfg(target_os = "linux")'.dependencies.nix]
 version = "=0.31.3"
 default-features = false
-features = ["signal"]
+features = ["fs", "mount", "resource", "sched", "signal", "socket"]
 
 [lints]
 workspace = true

@@ -330,6 +330,7 @@ impl RepositoryFixture {
         copy_repository_tree(&source, &root).unwrap();
         let fixture = Self { root };
         fixture.retain_default_profile();
+        fixture.retain_product_empty_profile();
         fixture
     }
 
@@ -376,6 +377,45 @@ impl RepositoryFixture {
                 .retain(hosted_default_use);
         }
         self.write_json("conformance/dependency-reviews.json", &reviews);
+    }
+
+    fn retain_product_empty_profile(&self) {
+        for relative in ["kernel", "product", "tests"] {
+            self.remove_directory_if_present(relative);
+        }
+
+        let mut policy = self.json("conformance/source-classification.json");
+        policy["rules"]
+            .as_array_mut()
+            .unwrap()
+            .retain(retain_product_empty_rule);
+        policy["allowed_product_edges"] = serde_json::json!([]);
+        self.write_json("conformance/source-classification.json", &policy);
+
+        let mut topology = self.json("conformance/workspace-topology.json");
+        topology["workspaces"].as_array_mut().unwrap().retain(|workspace| {
+            workspace["partition"].as_str() == Some("repository_tooling")
+        });
+        self.write_json("conformance/workspace-topology.json", &topology);
+
+        let mut reviews = self.json("conformance/dependency-reviews.json");
+        reviews["workspaces"].as_array_mut().unwrap().retain(|workspace| {
+            workspace["workspace"].as_str() == Some("repository-tooling")
+        });
+        self.write_json("conformance/dependency-reviews.json", &reviews);
+
+        let path = "conformance/product-closures.json";
+        let mut closures = self.json(path);
+        closures["closures"] = serde_json::json!([]);
+        closures["public_consumer_relations"] = serde_json::json!([]);
+        self.write_json(path, &closures);
+    }
+
+    fn remove_directory_if_present(&self, relative: &str) {
+        let path = self.path(relative);
+        if path.exists() {
+            fs::remove_dir_all(path).unwrap();
+        }
     }
 
     fn check(&self) -> CheckerRun {
@@ -506,6 +546,16 @@ impl RepositoryFixture {
 fn hosted_default_use(resolved_use: &serde_json::Value) -> bool {
     resolved_use.get("profile").and_then(serde_json::Value::as_str)
         == Some("hosted-default")
+}
+
+fn retain_product_empty_rule(rule: &serde_json::Value) -> bool {
+    let product_owner =
+        rule.pointer("/source_owner/kind").and_then(serde_json::Value::as_str)
+            == Some("product");
+    let product_path = rule["prefix"].as_str().is_some_and(|prefix| {
+        prefix == "product" || prefix.starts_with("product/")
+    });
+    !product_owner && !product_path
 }
 
 impl Drop for RepositoryFixture {
@@ -861,9 +911,8 @@ fn product_empty_v2_full_cli_and_mutation_matrix() {
     fixture.restore(check_script_path, &check_script_original);
     fixture.restore(manifest_path, &manifest_original);
 
-    // Active v2 generation remains Product-empty until the bounded compiler,
-    // package, and public-consumer proof gate is complete. Product source
-    // without a matching closure is a typed fatal configuration mismatch.
+    // This explicit Repository Tooling fixture remains Product-empty. Product
+    // source without a matching closure is a typed configuration mismatch.
     fs::create_dir(fixture.path("product")).unwrap();
     fs::write(
         fixture.path("product/lib.rs"),

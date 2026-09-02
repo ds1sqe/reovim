@@ -7,10 +7,10 @@
 Product proof requires a Linux prepared execution root. The parent checker
 creates and holds an initially empty canonical owner-only `0700` mountpoint
 outside the repository. It starts a dedicated, initially single-threaded same-
-binary setup subprocess in a new parent-visible process group. An exact reviewed
-Repository Tooling dependency supplies safe namespace, mount, chroot, resource-
-limit, signal, and wait calls while first-party source remains unsafe-free; no
-external-command fallback exists.
+binary setup subprocess in a new parent-visible process group. An exact
+reviewed Repository Tooling dependency supplies safe namespace, mount, chroot,
+resource-limit, signal, wait, and bounded Netfilter-netlink calls while first-
+party source remains unsafe-free; no external-command fallback exists.
 
 Setup creates and verifies the user namespace and one UID/GID map first, then
 private mount, network, and PID namespaces plus private propagation. A second
@@ -23,13 +23,29 @@ Setup mounts one fixed-size/fixed-inode tmpfs with
 `mode=0700,nosuid,nodev,noexec`. It constructs a minimal prepared root there.
 A versioned exposure manifest binds each visible mount's exact source,
 destination, filesystem/type, flags, purpose, and bounded visible inventory.
+Each retained inventory contains its sorted relative paths, closed entry kinds,
+raw modes, logical sizes, file-content digests or device identity, totals, and
+aggregate digest. The standalone verifier recomputes that digest and joins
+file entries to repository, executable, runtime, or compiler-substrate bytes.
+The target-libdir directory inventory must equal the selected substrate file
+set. An opaque, merely well-formed inventory digest is not proof.
 Host-backed system runtime, compiler substrate, checker, and repository views
 are read-only; Product source is also non-executable. Host home, host temporary
 directories, ambient Cargo caches, and unlisted writable mounts are absent.
+Runtime-library resolution canonicalizes host default-search directory aliases
+before choosing prepared destinations. It preserves the ELF interpreter's
+literal path separately. A host `/lib*` symlink must not become a different
+real directory inside the prepared root and thereby change loader semantics.
+The only device exposure is the exact read-only `/dev/null` character device.
+It is `nosuid,noexec` and intentionally not `nodev`; every other exposure is
+`nodev`, and no host `/dev` directory is visible.
 
 The network namespace has no host or external carrier. Its closed interface,
 route, socket, and policy state is verified and reported; a private namespace
 alone is not evidence that no interface exists.
+The current Linux profile separately retains the two exact kernel-generated
+unreachable IPv6 baseline rows on `lo`; they are not external routes. A route
+with any other fields or interface is external-carrier evidence and fails.
 
 All Cargo homes/temp variables, target/build directories, wrapper traces,
 dep-info, package staging, and normalized staging use the one tmpfs. Mount or

@@ -4,7 +4,7 @@
 
 - Kind: script
 - Exact content digest:
-  `sha256:4a12f94aaad6159163fdd322515b6f1a1c2edd2d137b7647da3f79de07ae890c`
+  `sha256:60dc938f3887f0c81b23e5b5b6811069bf8df90725464879f9f3c39e7b2294cf`
 - Review mechanism: exact content and retained review
 
 ## Direct local invocations
@@ -22,15 +22,17 @@ Before that build, the script rejects ambient Cargo/Rust compiler, wrapper,
 target, rustflag, profile, and incremental overrides plus Cargo-home or root
 configuration files. It runs Cargo from `/` with the absolute repository
 manifest, explicit `x86_64-unknown-linux-gnu` target, and explicit target
-directory. The held checker path is therefore derived from that exact target,
-not from an ambient build-target selection or a possibly stale host path.
+directory. It selects the release profile and holds the resulting release
+checker, so active Product hashing and prepared-root execution do not use the
+large debug image. The path is derived from that exact selection, not an
+ambient build target or possibly stale host path.
 
 Both held images pass a `--version` execution probe through the same parent-fd
 and child-close form before authoritative work. Procfs absence, LSM denial, or
 an ineligible held image produces a stable `HELD_CARGO_*` or `HELD_CHECKER_*`
 failure before a claim is generated.
 
-Candidate generation and verification execute `/proc/$$/fd/9 9<&-`. Bash
+Candidate diagnostics and exact generation execute `/proc/$$/fd/9 9<&-`. Bash
 expands `$$` to the parent shell that retains descriptor 9 while the child
 closes its inherited descriptor before `execve`. Repeated calls therefore use
 the same held image without passing that authority into the checker or its
@@ -52,11 +54,12 @@ and evidence paths are consumed inputs rather than executable entrypoints.
   exercised by the live retained test. A host denying this access is a typed
   unavailable outcome, not a fallback to pathname execution.
 - Held Cargo honors the explicit absolute manifest, package, binary target,
-  compilation target, target directory, Cargo home, and Rust compiler after
-  the rejected environment/configuration set is proved absent.
+  compilation target, release profile, target directory, Cargo home, and Rust
+  compiler after the rejected environment/configuration set is proved absent.
 
 ## Decision
 
 Admit these exact bytes and the declared held Cargo-target edge for candidate
-and exact Product-empty v2 conformance. Any byte, descriptor form, target,
-environment binding, or edge change reopens this review.
+diagnostics and exact active-Product conformance. Candidate mode cannot admit
+active Product. Any byte, descriptor form, target, environment binding, or
+edge change reopens this review.

@@ -1,0 +1,32 @@
+[package]
+name = "reovim-foundation"
+workspace = "../../product"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Domain-neutral primitives for Reovim public contracts"
+readme = false
+publish = false
+include = [
+    "src/bound.rs",
+    "src/carrier.rs",
+    "src/contract.rs",
+    "src/identity.rs",
+    "src/lib.rs",
+]
+
+[features]
+default = []
+
+[lib]
+path = "src/lib.rs"
+test = false
+doctest = false
+bench = false
+
+[lints]
+workspace = true

@@ -1,4 +1,4 @@
-name: Hosted tooling and conformance CI
+name: Hosted contributor CI
 
 on:
   pull_request:
@@ -12,8 +12,8 @@ permissions:
   contents: read
 
 jobs:
-  hosted-tooling:
-    name: Rust ${{ matrix.toolchain }}
+  hosted-contributor:
+    name: Contributor / Rust ${{ matrix.toolchain }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     strategy:
@@ -33,11 +33,5 @@ jobs:
         run: mkdir -p "$RUNNER_TEMP/reovim-cargo-home"
       - name: Fetch exact locked dependencies
         run: CARGO_HOME="$RUNNER_TEMP/reovim-cargo-home" cargo fetch --locked
-      - name: Candidate checks
+      - name: Contributor checks
         run: CARGO_HOME="$RUNNER_TEMP/reovim-cargo-home" ./scripts/check.sh
-      - name: Generate and verify exact-revision evidence
-        run: |
-          evidence_root="$RUNNER_TEMP/reovim-evidence"
-          install -d -m 700 "$evidence_root"
-          CARGO_HOME="$RUNNER_TEMP/reovim-cargo-home" \
-            ./scripts/check-conformance.sh exact "$GITHUB_SHA" "$evidence_root"

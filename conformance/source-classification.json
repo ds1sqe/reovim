@@ -55,7 +55,26 @@
       "source_use": "tool"
     },
     {
+      "prefix": "kernel/foundation",
+      "precedence": 10,
+      "source_owner": {
+        "kind": "product",
+        "role": "Foundation"
+      },
+      "source_provenance": "authored",
+      "source_use": "production"
+    },
+    {
       "prefix": "perf",
+      "precedence": 10,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "authored",
+      "source_use": "tool"
+    },
+    {
+      "prefix": "product",
       "precedence": 10,
       "source_owner": {
         "kind": "repository_tooling"
@@ -71,6 +90,16 @@
       },
       "source_provenance": "authored",
       "source_use": "tool"
+    },
+    {
+      "prefix": "tests/foundation-public-consumer",
+      "precedence": 10,
+      "source_owner": {
+        "kind": "product",
+        "role": "Kernel Interface"
+      },
+      "source_provenance": "authored",
+      "source_use": "test"
     },
     {
       "prefix": "tools/conformance",
@@ -136,7 +165,7 @@
       "source_use": "tool",
       "upstream": {
         "identity": "cargo-manifest-set/v1: sorted relative path, LF, raw manifest bytes, LF",
-        "digest": "sha256:5833520957b5e1a7cfb06a8ca135be7eefef48b98e24034373cacdd32f17ce8e",
+        "digest": "sha256:f1a39ea5ec5ddae2e7e47c5a10696a3d173507a56627a313bc69c9a58fcea158",
         "digest_subject": {
           "kind": "paths",
           "paths": [
@@ -155,6 +184,27 @@
       },
       "source_provenance": "authored",
       "source_use": "tool"
+    },
+    {
+      "prefix": "product/Cargo.lock",
+      "precedence": 20,
+      "source_owner": {
+        "kind": "repository_tooling"
+      },
+      "source_provenance": "generated",
+      "source_use": "tool",
+      "upstream": {
+        "identity": "cargo-manifest-set/v1: sorted relative path, LF, raw manifest bytes, LF",
+        "digest": "sha256:e61b483056dd8fd61d3d894c020f5860afca65431a91206bdeebbc30049caa96",
+        "digest_subject": {
+          "kind": "paths",
+          "paths": [
+            "kernel/foundation/Cargo.toml",
+            "product/Cargo.toml",
+            "tests/foundation-public-consumer/Cargo.toml"
+          ]
+        }
+      }
     },
     {
       "prefix": "GOVERNANCE.md",
@@ -383,6 +433,11 @@
     }
   ],
   "unmatched": "deny",
-  "allowed_product_edges": [],
+  "allowed_product_edges": [
+    {
+      "consumer": "Kernel Interface",
+      "provider": "Foundation"
+    }
+  ],
   "generated_evidence_key": "conformance/source-role-map.json"
 }

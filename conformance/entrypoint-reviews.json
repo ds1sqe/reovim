@@ -5,7 +5,7 @@
     {
       "kind": "script",
       "path": "scripts/check.sh",
-      "content_digest": "sha256:719dd1d266ddfcf5a5c91f8f4ffa90067189fc7e0e46351d3d7647f8ef5372af",
+      "content_digest": "sha256:a99d168730773341504af77ddc7e639a4ecf297ac715e934b6ea8bbad80cd76b",
       "direct_local_invocations": [
         {
           "kind": "script",
@@ -16,11 +16,6 @@
           "kind": "script",
           "path": "scripts/check-documentation.sh",
           "mechanism": "direct-path-exec"
-        },
-        {
-          "kind": "script",
-          "path": "scripts/check-conformance.sh",
-          "mechanism": "direct-path-exec"
         }
       ],
       "disposition": "admit",
@@ -28,11 +23,11 @@
       "assumptions": [
         "/usr/bin/env resolves a Bash implementation supporting the constructs used by these exact bytes.",
         "BASH_SOURCE resolves this checked-out script so ROOT selects the same repository whose local entrypoints are admitted.",
-        "Cargo, Rustdoc, Rustfmt, and Clippy operate on the exact locked workspace and toolchain selected by the invoking environment.",
+        "Cargo, Rustdoc, Rustfmt, and Clippy operate on the respective explicit locked Repository Tooling or Product workspace and selected toolchain.",
         "The Clippy invocation binds CLIPPY_CONF_DIR to the reviewed repository root so ambient configuration cannot disable the three-level nesting threshold."
       ],
       "review_record": "conformance/entrypoint-reviews/check-sh.md",
-      "review_record_digest": "sha256:dba863711f1538e13c59c30d2a9090c7428f7436451c4218b5230f9fdbc8e77c"
+      "review_record_digest": "sha256:67b1ea9cdeb4811f1f4568d3a01335d80495e5bd9fae364f20077460b7887884"
     },
     {
       "kind": "script",
@@ -53,7 +48,7 @@
     {
       "kind": "script",
       "path": "scripts/check-documentation.sh",
-      "content_digest": "sha256:0dbd930e9ba90e18f1a23e69148dff906b0f4c22e6cac395ae087f07b02b0d7f",
+      "content_digest": "sha256:b1564c50a4e8d61cfc546d2287d4e6b46b2dc12a80a08d8e2f0b85767f57bf1c",
       "direct_local_invocations": [],
       "disposition": "admit",
       "mechanism": "exact-content-retained-review",
@@ -63,12 +58,12 @@
         "BASH_SOURCE resolves this checked-out script so ROOT selects the reviewed repository inputs."
       ],
       "review_record": "conformance/entrypoint-reviews/check-documentation-sh.md",
-      "review_record_digest": "sha256:436c4a2ad21c36a777f4195e9f1e36047e7b3499bc3387dc16e4d29b621798b0"
+      "review_record_digest": "sha256:0925cb3bf182f471749874d280540c1a530289f5a8539e839b9275fe076768f9"
     },
     {
       "kind": "script",
       "path": "scripts/check-conformance.sh",
-      "content_digest": "sha256:4a12f94aaad6159163fdd322515b6f1a1c2edd2d137b7647da3f79de07ae890c",
+      "content_digest": "sha256:60dc938f3887f0c81b23e5b5b6811069bf8df90725464879f9f3c39e7b2294cf",
       "direct_local_invocations": [
         {
           "kind": "cargo_target",
@@ -83,36 +78,32 @@
         "/usr/bin/env resolves a Bash implementation supporting the constructs used by these exact bytes.",
         "BASH_SOURCE resolves this checked-out script and the supplied Cargo home contains only the dependency state intended by the calling lane.",
         "Linux procfs exposes held descriptors through /proc/self/fd and /proc/<pid>/fd, and Bash provides the expansion and child-redirection order exercised by the live retained test; denial produces a HELD_CARGO_* or HELD_CHECKER_* unavailable failure without pathname fallback.",
-        "Held Cargo selects the declared package and binary target from the locked offline workspace and writes the host debug executable at the checked path."
+        "Held Cargo selects the declared package, binary target, compilation target, and release profile from the locked offline workspace and writes the host release executable at the checked path."
       ],
       "review_record": "conformance/entrypoint-reviews/check-conformance-sh.md",
-      "review_record_digest": "sha256:0afad8cd0cb0a903ca7c1afe63aaf815bd74db4e037f9b2ff07327d6c13a7490"
+      "review_record_digest": "sha256:89d9191e19aeb2d4808a37d3fa321cad9cb5017f8b171ac9c0e7f01462394649"
     },
     {
       "kind": "workflow",
       "path": ".github/workflows/ci.yml",
-      "content_digest": "sha256:b92cb695e19e195514f6f2485d101a2b77b46cc148ede5d86e3a952441f9961c",
+      "content_digest": "sha256:033269df23b9ff12496f77f1730b663a17cd3932044a094af1352ce7119e10e5",
       "direct_local_invocations": [
         {
           "kind": "script",
           "path": "scripts/check.sh",
-          "mechanism": "direct-path-exec"
-        },
-        {
-          "kind": "script",
-          "path": "scripts/check-conformance.sh",
           "mechanism": "direct-path-exec"
         }
       ],
       "disposition": "admit",
       "mechanism": "exact-content-retained-review",
       "assumptions": [
-        "GitHub supplies the documented Ubuntu 24.04 hosted-runner, RUNNER_TEMP, and immutable triggering revision in GITHUB_SHA.",
+        "GitHub supplies the documented Ubuntu 24.04 hosted runner and RUNNER_TEMP.",
         "Checkout and toolchain actions execute the exact reviewed pins with the workflow permissions and inputs present in these exact bytes.",
-        "Each run step uses the hosted runner's admitted shell semantics and begins in the checked-out repository."
+        "Each run step uses the hosted runner's admitted shell semantics and begins in the checked-out repository.",
+        "The mutable hosted image has no exact execution-tool admission or retained namespace and prepared-root measurement, so this workflow makes no exact-evidence claim."
       ],
       "review_record": "conformance/entrypoint-reviews/ci-workflow.md",
-      "review_record_digest": "sha256:c895b5c5b89c132c2e03ffd55d4f1413e98e4c8e702143f5623ef177db842eb3"
+      "review_record_digest": "sha256:98e40e7cd171b3be87f19cf79702f4cb9e13d84603db3584263ff4f091c59402"
     }
   ]
 }

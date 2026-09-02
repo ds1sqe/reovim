@@ -14,7 +14,10 @@ use crate::{
     finding::{Finding, Findings},
     policy::Policy,
     source::{ClassifiedFile, display_relative},
-    topology::{Target as ExpectedTarget, Topology},
+    topology::{
+        Package as ExpectedPackage, Target as ExpectedTarget, Topology,
+        Workspace,
+    },
 };
 
 const RETIRED_NAMES: &[&str] = &[
@@ -70,17 +73,22 @@ pub fn check(
     topology: &Topology,
 ) -> GraphReport {
     let mut findings = Findings::new(topology.limits.findings);
-    check_workspace_root(root, metadata, &mut findings);
+    check_workspace_root(root, metadata, topology, &mut findings);
     check_registered_packages(root, profile, metadata, topology, &mut findings);
+    let workspace = workspace_for_metadata(root, metadata, topology);
+    let expected_packages =
+        workspace.map(project_workspace_packages).unwrap_or_default();
     let (mut packages, owners_by_id) = collect_packages(
         root,
         profile,
         metadata,
         files,
-        topology,
+        &expected_packages,
         &mut findings,
     );
-    check_build_scripts(profile, &packages, topology, &mut findings);
+    let build_scripts: &[PathBuf] =
+        workspace.map_or(&[], |selected| selected.build_scripts.as_slice());
+    check_build_scripts(profile, &packages, build_scripts, &mut findings);
     let edge_report =
         collect_edges(profile, metadata, &owners_by_id, policy, &mut findings);
     let mut edges = edge_report.edges;
@@ -136,13 +144,53 @@ pub fn check(
     }
 }
 
+fn workspace_for_metadata<'a>(
+    root: &Path,
+    metadata: &Metadata,
+    topology: &'a Topology,
+) -> Option<&'a Workspace> {
+    let actual = metadata.workspace_root.canonicalize().ok()?;
+    topology.workspaces.values().find(|workspace| {
+        root.join(&workspace.root)
+            .canonicalize()
+            .is_ok_and(|candidate| candidate == actual)
+    })
+}
+
+fn project_workspace_packages(workspace: &Workspace) -> Vec<ExpectedPackage> {
+    workspace
+        .packages
+        .values()
+        .map(|package| ExpectedPackage {
+            name: package.name.clone(),
+            manifest: package.manifest.clone(),
+            targets: package
+                .targets
+                .values()
+                .map(|target| ExpectedTarget {
+                    name: target.name.clone(),
+                    kind: target.kind.clone(),
+                    crate_types: target.crate_types.clone(),
+                    src_path: target.src_path.clone(),
+                })
+                .collect(),
+        })
+        .collect()
+}
+
 fn check_workspace_root(
     root: &Path,
     metadata: &Metadata,
+    topology: &Topology,
     findings: &mut Findings,
 ) {
     let canonical = metadata.workspace_root.canonicalize();
-    if matches!(canonical.as_deref(), Ok(path) if path == root) {
+    let expected = topology
+        .workspaces
+        .values()
+        .map(|workspace| root.join(&workspace.root))
+        .collect::<BTreeSet<_>>();
+    if canonical.as_ref().is_ok_and(|path| expected.contains(path)) {
         return;
     }
     findings.push(Finding::new(
@@ -150,7 +198,7 @@ fn check_workspace_root(
         "CARGO_WORKSPACE_ROOT",
         None,
         format!(
-            "metadata workspace root {} does not equal checked root {}",
+            "metadata workspace root {} is not registered under {}",
             metadata.workspace_root.display(),
             root.display()
         ),
@@ -223,11 +271,10 @@ fn collect_packages(
     profile: &str,
     metadata: &Metadata,
     files: &[ClassifiedFile],
-    topology: &Topology,
+    expected_packages: &[ExpectedPackage],
     findings: &mut Findings,
 ) -> (Vec<PackageRecord>, BTreeMap<String, Vec<SourceOwner>>) {
-    let expected = topology
-        .packages
+    let expected = expected_packages
         .iter()
         .map(|package| (package.name.as_str(), package))
         .collect::<BTreeMap<_, _>>();
@@ -474,14 +521,14 @@ fn expected_target_use(
     }
     match file.classification.owner {
         SourceOwner::RepositoryTooling => SourceUse::Tool,
-        SourceOwner::Product(_) => SourceUse::Production,
+        SourceOwner::Product(_) => file.classification.source_use,
     }
 }
 
 fn check_build_scripts(
     profile: &str,
     packages: &[PackageRecord],
-    topology: &Topology,
+    expected_scripts: &[PathBuf],
     findings: &mut Findings,
 ) {
     let actual = packages
@@ -490,8 +537,7 @@ fn check_build_scripts(
         .filter(|target| target.kind.iter().any(|kind| kind == "custom-build"))
         .map(|target| target.src_path.clone())
         .collect::<BTreeSet<_>>();
-    let expected =
-        topology.build_scripts.iter().cloned().collect::<BTreeSet<_>>();
+    let expected = expected_scripts.iter().cloned().collect::<BTreeSet<_>>();
     for path in expected.difference(&actual) {
         findings.push(Finding::new(
             "topology",
@@ -965,11 +1011,15 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::BTreeSet, path::PathBuf};
+    use std::{
+        collections::{BTreeMap, BTreeSet},
+        fs,
+        path::{Path, PathBuf},
+    };
 
     use reovim_depgraph::{ArchitecturalRole, SourceOwner};
 
-    use crate::policy::Policy;
+    use crate::{cargo::Metadata, policy::Policy, topology::Topology};
 
     fn policy() -> Policy {
         Policy {
@@ -1014,6 +1064,39 @@ mod tests {
         assert_eq!(
             super::find_cycle(&nodes, &edges),
             Some(vec!["a", "b", "a"])
+        );
+    }
+
+    #[test]
+    fn dual_workspace_selection_uses_the_matching_package_set() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .expect("repository root");
+        let bytes = fs::read(root.join("conformance/workspace-topology.json"))
+            .expect("topology bytes");
+        let value = serde_json::from_slice(&bytes).expect("topology JSON");
+        let topology = Topology::parse(&value).expect("topology");
+        let metadata = Metadata {
+            workspace_root: root.join("product"),
+            workspace_members: BTreeSet::new(),
+            packages: BTreeMap::new(),
+            nodes: BTreeMap::new(),
+        };
+        let workspace =
+            super::workspace_for_metadata(&root, &metadata, &topology)
+                .expect("product workspace");
+        assert_eq!(workspace.id, "product");
+        let names = super::project_workspace_packages(workspace)
+            .into_iter()
+            .map(|package| package.name)
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            names,
+            BTreeSet::from([
+                "reovim-foundation".to_owned(),
+                "reovim-foundation-public-consumer".to_owned(),
+            ])
         );
     }
 }

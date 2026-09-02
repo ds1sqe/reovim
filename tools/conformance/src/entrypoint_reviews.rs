@@ -1104,7 +1104,7 @@ mod tests {
                 )
             })
             .unwrap();
-        assert_eq!(check.direct_local_invocations.len(), 3);
+        assert_eq!(check.direct_local_invocations.len(), 2);
         assert!(check.entrypoint.content_digest().starts_with("sha256:"));
         let conformance = registry
             .reviews
@@ -1331,7 +1331,7 @@ mod tests {
             !matches!(
                 &invocation.target,
                 super::EntrypointIdentity::Script { path }
-                    if path == Path::new("scripts/check-conformance.sh")
+                    if path == Path::new("scripts/check-style.sh")
             )
         });
         let lexical_findings = super::validate(

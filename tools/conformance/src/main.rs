@@ -37,6 +37,15 @@ mode. CLI limits may only tighten committed maxima. Exit: 0 pass, 2 findings,
 ";
 
 fn main() -> ExitCode {
+    if reovim_conformance::private_prepared_root_requested() {
+        return prepared_root_main();
+    }
+    if reovim_conformance::private_rustc_launcher_requested() {
+        return rustc_launcher_main();
+    }
+    if reovim_conformance::private_rustc_wrapper_requested() {
+        return rustc_wrapper_main();
+    }
     match run() {
         Ok(code) => code,
         Err(CliError::Usage(message)) => {
@@ -61,6 +70,63 @@ fn main() -> ExitCode {
                 "durability_state": error.durability_state.as_str(),
             });
             write_stderr(&value);
+            ExitCode::from(70)
+        }
+    }
+}
+
+fn rustc_launcher_main() -> ExitCode {
+    match reovim_conformance::private_rustc_launcher_entry() {
+        Ok(status) => u8::try_from(status).map_or_else(
+            |_| {
+                write_stderr(&json!({
+                    "code": "COMPILER_LAUNCHER_STATUS",
+                    "message": "rustc launcher status is outside 0..=255",
+                }));
+                ExitCode::from(70)
+            },
+            ExitCode::from,
+        ),
+        Err(error) => {
+            write_stderr(&json!({
+                "code": error.code,
+                "message": error.message,
+            }));
+            ExitCode::from(70)
+        }
+    }
+}
+
+fn prepared_root_main() -> ExitCode {
+    match reovim_conformance::private_prepared_root_entry() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            write_stderr(&json!({
+                "code": error.code,
+                "message": error.message,
+            }));
+            ExitCode::from(70)
+        }
+    }
+}
+
+fn rustc_wrapper_main() -> ExitCode {
+    match reovim_conformance::private_rustc_wrapper_entry() {
+        Ok(status) => u8::try_from(status).map_or_else(
+            |_| {
+                write_stderr(&json!({
+                    "code": "COMPILER_WRAPPER_STATUS",
+                    "message": "rustc wrapper status is outside 0..=255",
+                }));
+                ExitCode::from(70)
+            },
+            ExitCode::from,
+        ),
+        Err(error) => {
+            write_stderr(&json!({
+                "code": error.code,
+                "message": error.message,
+            }));
             ExitCode::from(70)
         }
     }

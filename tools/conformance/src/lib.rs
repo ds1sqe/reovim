@@ -5,6 +5,8 @@
 pub mod process;
 
 mod cargo;
+mod compiler_capture;
+mod compiler_substrate;
 mod digest;
 mod entrypoint_reviews;
 mod execution_tools;
@@ -12,12 +14,19 @@ mod finding;
 mod git;
 mod graph;
 mod json;
+mod package_capture;
 mod policy;
+mod prepared_root;
 mod product_closures;
+mod product_preflight;
+mod product_proof;
+mod product_source;
+mod product_workload;
 mod report;
 mod report_build_v2;
 mod report_v2;
 mod reviews;
+mod runtime_closure;
 mod rust_source;
 mod schema;
 mod source;
@@ -30,7 +39,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use finding::Findings;
+use finding::{Finding, Findings};
 use topology::{HARD_LIMITS, Limits, Topology};
 
 pub const POLICY_KEY: &str = "conformance/source-classification.json";
@@ -57,6 +66,117 @@ pub const REPORT_SCHEMA_KEY: &str = "conformance/source-role-map.schema.json";
 const EVIDENCE_AUTHORITY_MARKER: &str = ".reovim-evidence-authority-v1";
 const EVIDENCE_AUTHORITY_MARKER_BYTES: &[u8] =
     b"reovim-evidence-authority-v1\n";
+
+/// Reports whether Cargo invoked this binary as the private rustc wrapper.
+///
+/// This is a hidden binary-dispatch seam, not a Product or extension API.
+#[doc(hidden)]
+#[must_use]
+pub fn private_rustc_wrapper_requested() -> bool {
+    compiler_capture::wrapper_requested()
+}
+
+/// Reports whether Cargo invoked this image as the private rustc launcher.
+#[doc(hidden)]
+#[must_use]
+pub fn private_rustc_launcher_requested() -> bool {
+    compiler_capture::rustc_launcher_requested()
+}
+
+/// Runs one private same-binary rustc discovery launcher invocation.
+///
+/// # Errors
+///
+/// Returns a typed fatal failure when controls, argv, or compiler outcome
+/// differ from the closed prepared-root probe profile.
+#[doc(hidden)]
+pub fn private_rustc_launcher_entry() -> Result<i32, Fatal> {
+    compiler_capture::rustc_launcher_entry().map_err(|failure| {
+        let code = failure.code;
+        Fatal::new(code, failure.to_string())
+    })
+}
+
+/// Runs one private same-binary rustc-wrapper invocation.
+///
+/// # Errors
+///
+/// Returns a typed fatal failure when the invocation, environment, trace, or
+/// compiler outcome is outside the exact Product proof profile.
+#[doc(hidden)]
+pub fn private_rustc_wrapper_entry() -> Result<i32, Fatal> {
+    compiler_capture::wrapper_entry().map_err(|failure| {
+        let code = failure.code;
+        Fatal::new(code, failure.to_string())
+    })
+}
+
+/// Reports whether this binary received a prepared-root hidden dispatch.
+///
+/// This is a same-binary implementation seam, not a public Product API.
+#[doc(hidden)]
+#[must_use]
+pub fn private_prepared_root_requested() -> bool {
+    let argument = std::env::args_os().nth(1);
+    argument.as_deref().is_some_and(|value| {
+        value == std::ffi::OsStr::new(prepared_root::SETUP_ARGUMENT)
+            || value == std::ffi::OsStr::new(prepared_root::PID1_ARGUMENT)
+    })
+}
+
+/// Runs the exact prepared-root setup or namespace-PID-1 dispatch.
+///
+/// # Errors
+///
+/// Returns a typed fatal failure when the hidden argv, environment, bounded
+/// protocol, setup, workload, or cleanup contract fails.
+#[doc(hidden)]
+pub fn private_prepared_root_entry() -> Result<(), Fatal> {
+    let arguments = std::env::args_os().collect::<Vec<_>>();
+    let command = arguments.get(1).ok_or_else(|| {
+        Fatal::new(
+            "PREPARED_DISPATCH_ARGUMENT",
+            "prepared-root dispatch argument is absent",
+        )
+    })?;
+    let bounds = private_prepared_dispatch_bounds();
+    let result = if command == prepared_root::SETUP_ARGUMENT {
+        prepared_root::setup_entry(bounds)
+    } else if command == prepared_root::PID1_ARGUMENT {
+        let config = arguments.get(2).ok_or_else(|| {
+            Fatal::new(
+                "PREPARED_PID1_CONFIG_ARGUMENT",
+                "namespace PID 1 config argument is absent",
+            )
+        })?;
+        prepared_root::pid1_entry(
+            bounds,
+            config.as_encoded_bytes(),
+            product_workload::run,
+        )
+    } else {
+        return Err(Fatal::new(
+            "PREPARED_DISPATCH_ARGUMENT",
+            "unknown prepared-root dispatch argument",
+        ));
+    };
+    result.map_err(|failure| Fatal::new(failure.code, failure.to_string()))
+}
+
+const fn private_prepared_dispatch_bounds() -> prepared_root::DispatchBounds {
+    prepared_root::DispatchBounds {
+        config_bytes: HARD_LIMITS.config_bytes,
+        result_bytes: HARD_LIMITS.metadata_stdout_bytes,
+        json_depth: HARD_LIMITS.json_depth,
+        json_items: HARD_LIMITS.json_container_items,
+        execution_deadline: std::time::Duration::from_millis(
+            HARD_LIMITS.child_deadline_ms,
+        ),
+        supervision_deadline: std::time::Duration::from_millis(
+            HARD_LIMITS.child_supervision_deadline_ms,
+        ),
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum Mode {
@@ -679,22 +799,30 @@ pub fn check(options: &CheckOptions) -> Result<Outcome, Fatal> {
     let rustc_version = cargo::rustc_version(&rustc, &root, process_limits)
         .map_err(cargo_fatal)?;
     let mut profiles = Vec::new();
-    for profile in &topology.profiles {
-        let capture = cargo::metadata(
-            &cargo,
-            &rustc,
-            &root,
-            &cargo_home,
-            &topology.workspace_manifest,
-            profile,
-            process_limits,
-            topology.limits.json_depth,
-            topology.limits.json_container_items,
-        )
-        .map_err(cargo_fatal)?;
-        profiles.push((profile.clone(), capture));
+    for workspace in topology.workspaces.values() {
+        for declaration in workspace.metadata_profiles.values() {
+            let profile = execution_profile(declaration);
+            let capture = cargo::metadata(
+                &cargo,
+                &rustc,
+                &root,
+                &cargo_home,
+                &workspace.workspace_manifest,
+                &profile,
+                process_limits,
+                topology.limits.json_depth,
+                topology.limits.json_container_items,
+            )
+            .map_err(cargo_fatal)?;
+            profiles.push((workspace.id.clone(), profile.clone(), capture));
+        }
     }
-    if profiles.len() != topology.profiles.len() {
+    let expected_profile_count = topology
+        .workspaces
+        .values()
+        .map(|workspace| workspace.metadata_profiles.len())
+        .sum::<usize>();
+    if profiles.len() != expected_profile_count {
         return Err(Fatal::new(
             "PROFILE_COVERAGE",
             "not every committed topology profile was executed exactly once",
@@ -712,7 +840,7 @@ pub fn check(options: &CheckOptions) -> Result<Outcome, Fatal> {
         topology.limits.findings,
         topology.limits.source_file_bytes,
     ));
-    for (profile, capture) in &profiles {
+    for (_, profile, capture) in &profiles {
         let graph = graph::check(
             &root,
             &profile.name,
@@ -728,50 +856,51 @@ pub fn check(options: &CheckOptions) -> Result<Outcome, Fatal> {
             &capture.metadata,
             &inventory.files,
             &policy,
+            &topology,
             topology.limits,
         ));
         graphs.push(graph);
     }
-    let root_workspace = topology
+    let reviewed_packages = topology
         .workspaces
         .values()
-        .find(|workspace| workspace.root.as_os_str().is_empty())
-        .ok_or_else(|| {
-            Fatal::new(
-                "ROOT_WORKSPACE_TOPOLOGY",
-                "topology lacks the root workspace",
-            )
-        })?;
-    if topology.workspaces.len() != 1 {
-        return Err(Fatal::new(
-            "MULTI_WORKSPACE_EXECUTION_UNAVAILABLE",
-            concat!(
-                "active v2 execution remains closed to the single ",
-                "Product-empty root workspace",
-            ),
-        ));
-    }
-    let reviewed_packages = root_workspace
-        .packages
+        .map(|workspace| {
+            workspace
+                .packages
+                .values()
+                .map(|package| reviews::WorkspacePackage {
+                    id: package.id.clone(),
+                    cargo_name: package.name.clone(),
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let reviewed_profiles = topology
+        .workspaces
         .values()
-        .map(|package| reviews::WorkspacePackage {
-            id: package.id.clone(),
-            cargo_name: package.name.clone(),
+        .map(|workspace| {
+            profiles
+                .iter()
+                .filter(|(workspace_id, _, _)| workspace_id == &workspace.id)
+                .map(|(_, profile, capture)| reviews::ProfileMetadata {
+                    id: &profile.name,
+                    metadata: &capture.metadata,
+                })
+                .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
-    let reviewed_profiles = profiles
-        .iter()
-        .map(|(profile, capture)| reviews::ProfileMetadata {
-            id: &profile.name,
-            metadata: &capture.metadata,
+    let review_workspaces = topology
+        .workspaces
+        .values()
+        .zip(&reviewed_packages)
+        .zip(&reviewed_profiles)
+        .map(|((workspace, packages), profiles)| reviews::ValidationWorkspace {
+            id: &workspace.id,
+            lockfile: &workspace.lockfile,
+            packages,
+            profiles,
         })
         .collect::<Vec<_>>();
-    let review_workspaces = [reviews::ValidationWorkspace {
-        id: &root_workspace.id,
-        lockfile: &root_workspace.lockfile,
-        packages: &reviewed_packages,
-        profiles: &reviewed_profiles,
-    }];
     all_findings.extend(reviews::validate(
         &root,
         &registry,
@@ -781,6 +910,37 @@ pub fn check(options: &CheckOptions) -> Result<Outcome, Fatal> {
         &inventory.files,
     ));
     let findings = all_findings.finish();
+
+    let product_evidence = if product_registry.closures.is_empty() {
+        None
+    } else {
+        if !findings.is_empty() {
+            return Err(Fatal::new(
+                "PRODUCT_STATIC_PROOF_FAILED",
+                static_proof_failure(&findings),
+            ));
+        }
+        let Mode::Exact { execution_environment, .. } = &options.mode else {
+            return Err(Fatal::new(
+                "PRODUCT_EXACT_PROOF_REQUIRED",
+                "active Product evidence requires exact clean-revision mode",
+            ));
+        };
+        Some(
+            product_proof::run(&product_proof::Request {
+                repository_root: &root,
+                cargo: &cargo,
+                rustc: &rustc,
+                checker: &checker_path,
+                inventory: &inventory,
+                limits: topology.limits,
+                registry_value: &product_closures_value,
+                registry: &product_registry,
+                execution_environment,
+            })
+            .map_err(|failure| Fatal::new(failure.code, failure.to_string()))?,
+        )
+    };
 
     let mut final_profiles = Vec::new();
     if let (Mode::Exact { expected_revision, .. }, Some(git)) =
@@ -897,13 +1057,14 @@ pub fn check(options: &CheckOptions) -> Result<Outcome, Fatal> {
             ));
         }
         append_git_phase(evidence, pre_metadata_git, "pre_metadata");
-        for (profile, initial) in &profiles {
+        for (workspace_id, profile, initial) in &profiles {
+            let workspace = &topology.workspaces[workspace_id];
             let final_capture = cargo::metadata(
                 &cargo,
                 &rustc,
                 &root,
                 &cargo_home,
-                &topology.workspace_manifest,
+                &workspace.workspace_manifest,
                 profile,
                 process_limits,
                 topology.limits.json_depth,
@@ -911,7 +1072,11 @@ pub fn check(options: &CheckOptions) -> Result<Outcome, Fatal> {
             )
             .map_err(cargo_fatal)?;
             require_metadata_unchanged(profile, initial, &final_capture)?;
-            final_profiles.push((profile.clone(), final_capture));
+            final_profiles.push((
+                workspace_id.clone(),
+                profile.clone(),
+                final_capture,
+            ));
         }
         let post_metadata_inventory =
             source::inventory(&root, &policy, &topology);
@@ -1030,13 +1195,13 @@ pub fn check(options: &CheckOptions) -> Result<Outcome, Fatal> {
     let execution_tool_reviews_schema_digest =
         digest::bytes(&execution_tool_reviews_schema_bytes);
     let report_schema_digest = digest::bytes(&report_schema_bytes);
-    let checker_identity = v2_tool_identity(
+    let mut checker_identity = v2_tool_identity(
         &checker_path,
         &checker_digest,
         &checker_version,
         topology.limits.tool_executable_bytes,
     )?;
-    let cargo_identity = v2_tool_identity(
+    let mut cargo_identity = v2_tool_identity(
         &cargo,
         &cargo_digest_after,
         &cargo_version,
@@ -1048,7 +1213,7 @@ pub fn check(options: &CheckOptions) -> Result<Outcome, Fatal> {
             "Cargo changed after final identity check",
         ));
     }
-    let rustc_identity = v2_tool_identity(
+    let mut rustc_identity = v2_tool_identity(
         &rustc,
         &rustc_digest_after,
         &rustc_version,
@@ -1060,21 +1225,33 @@ pub fn check(options: &CheckOptions) -> Result<Outcome, Fatal> {
             "Rustc changed after final identity check",
         ));
     }
+    if let Some(product) = &product_evidence {
+        checker_identity
+            .runtime_inputs
+            .clone_from(&product.checker_runtime_inputs);
+        cargo_identity.runtime_inputs.clone_from(&product.cargo_runtime_inputs);
+        rustc_identity.runtime_inputs.clone_from(&product.rustc_runtime_inputs);
+    }
     let source_observations =
         report_build_v2::observe_source_files(&root, &inventory)
             .map_err(|error| Fatal::new(error.code, error.message))?;
     let metadata_evidence = profiles
         .iter()
         .zip(&graphs)
-        .map(|((profile, initial), graph)| report_build_v2::MetadataEvidence {
-            workspace: &root_workspace.id,
-            profile: &profile.name,
-            initial,
-            final_capture: final_profiles
-                .iter()
-                .find(|(candidate, _)| candidate.name == profile.name)
-                .map(|(_, capture)| capture),
-            graph,
+        .map(|((workspace_id, profile, initial), graph)| {
+            report_build_v2::MetadataEvidence {
+                workspace: workspace_id,
+                profile: &profile.name,
+                initial,
+                final_capture: final_profiles
+                    .iter()
+                    .find(|(candidate_workspace, candidate, _)| {
+                        candidate_workspace == workspace_id
+                            && candidate.name == profile.name
+                    })
+                    .map(|(_, _, capture)| capture),
+                graph,
+            }
         })
         .collect::<Vec<_>>();
     let report_mode = match (&options.mode, &git_evidence) {
@@ -1088,6 +1265,8 @@ pub fn check(options: &CheckOptions) -> Result<Outcome, Fatal> {
         }
         _ => unreachable!("mode and Git evidence were validated above"),
     };
+    let active_product =
+        product_evidence.as_ref().map(product_proof::Observation::active);
     let report = report_build_v2::build(&report_build_v2::BuildInputs {
         repository_root: &root,
         mode: report_mode,
@@ -1149,6 +1328,7 @@ pub fn check(options: &CheckOptions) -> Result<Outcome, Fatal> {
         cargo_version: &cargo_version,
         rustc_version: &rustc_version,
         metadata: &metadata_evidence,
+        active_product: active_product.as_ref(),
         additional_findings: &findings,
     })
     .map_err(|error| Fatal::new(error.code, error.message))?;
@@ -1182,6 +1362,39 @@ pub fn check(options: &CheckOptions) -> Result<Outcome, Fatal> {
     Ok(Outcome { clean: findings.is_empty(), report, root, exact_proven })
 }
 
+fn static_proof_failure(findings: &[Finding]) -> String {
+    let codes = findings
+        .iter()
+        .map(|finding| finding.code)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .take(8)
+        .collect::<Vec<_>>()
+        .join(",");
+    let samples = findings
+        .iter()
+        .take(8)
+        .map(finding_sample)
+        .collect::<Vec<_>>()
+        .join("|");
+    format!(
+        concat!(
+            "active Product execution requires a finding-free static ",
+            "source, graph, and review preflight; count={}; codes={}; ",
+            "samples={}"
+        ),
+        findings.len(),
+        codes,
+        samples
+    )
+}
+
+fn finding_sample(finding: &Finding) -> String {
+    let path = finding.path.as_deref().unwrap_or("-");
+    let message = finding.message.chars().take(160).collect::<String>();
+    format!("{}@{}:{}", finding.code, path, message)
+}
+
 fn require_metadata_unchanged(
     profile: &topology::Profile,
     initial: &cargo::Capture,
@@ -1196,6 +1409,16 @@ fn require_metadata_unchanged(
         ));
     }
     Ok(())
+}
+
+fn execution_profile(profile: &topology::MetadataProfile) -> topology::Profile {
+    topology::Profile {
+        name: profile.id.clone(),
+        target: profile.target_triple.clone(),
+        all_features: profile.all_features,
+        no_default_features: profile.no_default_features,
+        features: profile.features.clone(),
+    }
 }
 
 fn validate_product_registry(
@@ -1247,13 +1470,7 @@ fn validate_product_registry(
         validate_product_closure(topology, inventory, closure)?;
     }
     validate_public_consumer_relations(&registry.public_consumer_relations)?;
-    Err(Fatal::new(
-        "PRODUCT_EXECUTION_PROOF_UNAVAILABLE",
-        concat!(
-            "Product closures are parsed but active Product execution ",
-            "is not yet admitted",
-        ),
-    ))
+    Ok(())
 }
 
 fn validate_product_closure(

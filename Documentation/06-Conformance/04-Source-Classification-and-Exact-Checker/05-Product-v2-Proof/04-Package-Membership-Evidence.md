@@ -12,8 +12,14 @@ revision evidence forbids a dirty-package override.
 
 The parser requires UTF-8 and final LF. It rejects empty, duplicate, absolute,
 parent-escaping, backslash, NUL, CR, embedded-LF, overlong, over-count, and
-over-byte paths. The report retains each raw-output digest and a deterministically
+over-byte paths. The report retains each raw-output digest and a
+deterministically
 sorted semantic set.
+
+Each capture retains its own raw digest and byte count plus the common
+canonical semantic-set digest. Raw line order may differ across captures when
+the sorted member set and semantic digest remain exact; requiring identical
+raw bytes would contradict Cargo's set-valued package-list evidence.
 
 The Product-closure registry maps every expected member as:
 

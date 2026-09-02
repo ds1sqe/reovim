@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bounded Product-empty v2 repository check and exact evidence generation.
+# Bounded v2 diagnostics and exact Product evidence generation.
 
 set -euo pipefail
 
@@ -12,11 +12,11 @@ Usage:
   ./scripts/check-conformance.sh [candidate]
   ./scripts/check-conformance.sh exact EXPECTED_REVISION EVIDENCE_ROOT
 
-`candidate` checks the current tree and retains its diagnostic report under
-root `target/`. `exact` requires a clean exact revision, the committed explicit
-execution-tool environment, and an empty absolute evidence directory outside
-the repository; it generates and verifies one content-addressed Source Role
-Map without publishing it.
+`candidate` attempts a non-admitting diagnostic report under root `target/`.
+Active Product requires `exact`, a clean revision, the committed explicit tool
+environment, and an empty absolute evidence directory outside the repository.
+Exact mode generates and verifies one content-addressed Source Role Map without
+publishing it.
 EOF
 }
 
@@ -145,9 +145,9 @@ CARGO_HOME="$CARGO_HOME_PATH" \
     /proc/$$/fd/8 8<&- build --locked --offline \
     --manifest-path "$ROOT/Cargo.toml" \
     -p reovim-conformance --bin reovim-conformance \
-    --target "$CHECKER_TARGET"
+    --target "$CHECKER_TARGET" --release
 exec 8<&-
-CHECKER_PATH="$ROOT/target/$CHECKER_TARGET/debug/reovim-conformance"
+CHECKER_PATH="$ROOT/target/$CHECKER_TARGET/release/reovim-conformance"
 
 hold_checker() {
     if ! exec 9< "$CHECKER_PATH"; then

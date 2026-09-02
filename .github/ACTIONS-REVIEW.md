@@ -1,10 +1,10 @@
 # CI Action Review
 
 Date: 2026-09-02. This record covers the two third-party GitHub Actions used
-by the hosted tooling workflow. They are CI tooling, not Cargo dependencies,
+by the hosted contributor workflow. They are CI tooling, not Cargo dependencies,
 Product admission, release qualification, or evidence publication.
 
-Workflow digest: `sha256:b92cb695e19e195514f6f2485d101a2b77b46cc148ede5d86e3a952441f9961c`.
+Workflow digest: `sha256:033269df23b9ff12496f77f1730b663a17cd3932044a094af1352ce7119e10e5`.
 The admission guard accepts only this reviewed canonical YAML form; any workflow
 byte change reopens action extraction and review before the digest is updated.
 
@@ -33,15 +33,20 @@ byte change reopens action extraction and review before the digest is updated.
   repository write permission, and does not publish artifacts.
 - Trust/runtime: maintained by David Tolnay under the MIT license. Rustup and
   the selected toolchain distribution are explicit network/supply-chain
-  boundaries; the checker records the actual Cargo and Rustc identities used.
+  boundaries. The contributor lane uses the selected Cargo and Rustc directly;
+  a separate exact journey records their identities when its environment is
+  admitted.
 
-Exact evidence uses a fresh owner-only `0700` directory per matrix job. The
-checker consumes that root once under its held authority marker; the workflow
-does not reuse or upload it.
+The hosted workflow runs only the bounded contributor gate. It does not claim
+exact evidence: the mutable hosted image has no committed execution-tool
+binding or retained namespace/prepared-root measurement. Exact evidence
+remains a separate fail-closed clean-revision journey in an admitted
+environment.
 
 ## Update gate
 
 Any action SHA, tag, input, permission, runner image, toolchain matrix, or
-network behavior change reopens this review. Re-run workflow syntax validation,
-both toolchain lanes, candidate conformance, and clean exact generate/verify.
-An update does not authorize evidence upload, publication, or a Product claim.
+network behavior change reopens this review. Re-run workflow syntax validation
+and both toolchain contributor lanes. Separately run clean exact generation and
+verification in an admitted environment. An update does not authorize evidence
+upload, publication, or a Product claim.

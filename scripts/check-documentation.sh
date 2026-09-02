@@ -60,7 +60,7 @@ check_ci_action_admission() {
     local toolchain_sha=6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
     local workflow_digest
     # reovim-style: allow-long-line exact-token
-    workflow_digest=b92cb695e19e195514f6f2485d101a2b77b46cc148ede5d86e3a952441f9961c
+    workflow_digest=033269df23b9ff12496f77f1730b663a17cd3932044a094af1352ce7119e10e5
     local -a actual_uses expected_uses
 
     if [[ "$(sha256sum -- "$workflow")" != \

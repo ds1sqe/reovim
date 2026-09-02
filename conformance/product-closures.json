@@ -1,6 +1,1347 @@
 {
   "schema": "reovim-product-closures/v1",
   "product_proof_profile": "authored-std-lib/v1",
-  "closures": [],
-  "public_consumer_relations": []
+  "closures": [
+    {
+      "id": "foundation-shipping",
+      "kind": "shipping",
+      "workspace": {
+        "id": "product",
+        "manifest": "product/Cargo.toml",
+        "lockfile": "product/Cargo.lock"
+      },
+      "package": {
+        "id": "foundation",
+        "name": "reovim-foundation",
+        "manifest": "kernel/foundation/Cargo.toml"
+      },
+      "target": {
+        "id": "library",
+        "name": "reovim_foundation",
+        "src_path": "kernel/foundation/src/lib.rs",
+        "kind": [
+          "lib"
+        ],
+        "crate_types": [
+          "lib"
+        ]
+      },
+      "architectural_role": "Foundation",
+      "source_use": "production",
+      "cargo": {
+        "command": "build",
+        "target_triple": "x86_64-unknown-linux-gnu",
+        "profile": "release",
+        "all_features": false,
+        "no_default_features": false,
+        "features": [],
+        "expected_artifact_crate_types": [
+          "rlib"
+        ]
+      },
+      "mechanism_profile": "authored-std-lib/v1",
+      "package_membership": {
+        "mode": "cargo_package_list",
+        "members": [
+          {
+            "kind": "cargo_generated",
+            "package_path": "Cargo.lock"
+          },
+          {
+            "kind": "cargo_generated",
+            "package_path": "Cargo.toml"
+          },
+          {
+            "kind": "cargo_generated",
+            "package_path": "Cargo.toml.orig"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/bound.rs",
+            "repository_path": "kernel/foundation/src/bound.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/carrier.rs",
+            "repository_path": "kernel/foundation/src/carrier.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/contract.rs",
+            "repository_path": "kernel/foundation/src/contract.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/identity.rs",
+            "repository_path": "kernel/foundation/src/identity.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/lib.rs",
+            "repository_path": "kernel/foundation/src/lib.rs"
+          }
+        ]
+      }
+    },
+    {
+      "id": "foundation-consumer",
+      "kind": "validation",
+      "workspace": {
+        "id": "product",
+        "manifest": "product/Cargo.toml",
+        "lockfile": "product/Cargo.lock"
+      },
+      "package": {
+        "id": "foundation-public-consumer",
+        "name": "reovim-foundation-public-consumer",
+        "manifest": "tests/foundation-public-consumer/Cargo.toml"
+      },
+      "target": {
+        "id": "library",
+        "name": "reovim_foundation_public_consumer",
+        "src_path": "tests/foundation-public-consumer/src/lib.rs",
+        "kind": [
+          "lib"
+        ],
+        "crate_types": [
+          "lib"
+        ]
+      },
+      "architectural_role": "Kernel Interface",
+      "source_use": "test",
+      "cargo": {
+        "command": "build",
+        "target_triple": "x86_64-unknown-linux-gnu",
+        "profile": "release",
+        "all_features": false,
+        "no_default_features": false,
+        "features": [],
+        "expected_artifact_crate_types": [
+          "rlib"
+        ]
+      },
+      "mechanism_profile": "authored-std-lib/v1",
+      "package_membership": null
+    }
+  ],
+  "public_consumer_relations": [
+    {
+      "id": "foundation-public-api",
+      "shipping_closure": "foundation-shipping",
+      "consumer_closure": "foundation-consumer",
+      "public_items": [
+        {
+          "path": "bound",
+          "kind": "module"
+        },
+        {
+          "path": "carrier",
+          "kind": "module"
+        },
+        {
+          "path": "contract",
+          "kind": "module"
+        },
+        {
+          "path": "identity",
+          "kind": "module"
+        },
+        {
+          "path": "bound::ArithmeticRule",
+          "kind": "type"
+        },
+        {
+          "path": "bound::BoundDescriptor",
+          "kind": "type"
+        },
+        {
+          "path": "bound::BoundError",
+          "kind": "type"
+        },
+        {
+          "path": "bound::BoundUnit",
+          "kind": "type"
+        },
+        {
+          "path": "bound::BoundValue",
+          "kind": "type"
+        },
+        {
+          "path": "bound::CheckedByteCount",
+          "kind": "type"
+        },
+        {
+          "path": "bound::CheckedCount",
+          "kind": "type"
+        },
+        {
+          "path": "bound::CheckedDuration",
+          "kind": "type"
+        },
+        {
+          "path": "bound::ValidationOrder",
+          "kind": "type"
+        },
+        {
+          "path": "bound::ZeroPolicy",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::BorrowModel",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::CarrierDescriptorError",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::CarrierSafetyDescriptor",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::ConcurrencySafety",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::CopyModel",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::DropModel",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::InvocationModel",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::InvocationSafety",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::LifetimeModel",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::MemoryCoherenceError",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::MemorySafety",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::OwnershipModel",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::SharingModel",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::ThreadTransfer",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::TypeMismatch",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::UnsafeBoundary",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::UnwindModel",
+          "kind": "type"
+        },
+        {
+          "path": "contract::CompatibleVersionRange",
+          "kind": "type"
+        },
+        {
+          "path": "contract::ContractId",
+          "kind": "type"
+        },
+        {
+          "path": "contract::ContractVersion",
+          "kind": "type"
+        },
+        {
+          "path": "contract::VersionRangeError",
+          "kind": "type"
+        },
+        {
+          "path": "identity::IncarnationId",
+          "kind": "type"
+        },
+        {
+          "path": "identity::InstanceId",
+          "kind": "type"
+        },
+        {
+          "path": "bound::BoundDescriptor::admit_aggregate",
+          "kind": "function"
+        },
+        {
+          "path": "bound::BoundDescriptor::admit_per_object",
+          "kind": "function"
+        },
+        {
+          "path": "bound::BoundDescriptor::aggregate",
+          "kind": "function"
+        },
+        {
+          "path": "bound::BoundDescriptor::arithmetic_rule",
+          "kind": "function"
+        },
+        {
+          "path": "bound::BoundDescriptor::charge_owner",
+          "kind": "function"
+        },
+        {
+          "path": "bound::BoundDescriptor::new",
+          "kind": "function"
+        },
+        {
+          "path": "bound::BoundDescriptor::per_object",
+          "kind": "function"
+        },
+        {
+          "path": "bound::BoundDescriptor::unit",
+          "kind": "function"
+        },
+        {
+          "path": "bound::BoundDescriptor::validation_order",
+          "kind": "function"
+        },
+        {
+          "path": "bound::BoundDescriptor::zero_policy",
+          "kind": "function"
+        },
+        {
+          "path": "bound::BoundValue::checked_add",
+          "kind": "function"
+        },
+        {
+          "path": "bound::BoundValue::unit",
+          "kind": "function"
+        },
+        {
+          "path": "bound::BoundValue::value",
+          "kind": "function"
+        },
+        {
+          "path": "bound::CheckedByteCount::checked_add",
+          "kind": "function"
+        },
+        {
+          "path": "bound::CheckedByteCount::new",
+          "kind": "function"
+        },
+        {
+          "path": "bound::CheckedByteCount::value",
+          "kind": "function"
+        },
+        {
+          "path": "bound::CheckedCount::checked_add",
+          "kind": "function"
+        },
+        {
+          "path": "bound::CheckedCount::new",
+          "kind": "function"
+        },
+        {
+          "path": "bound::CheckedCount::value",
+          "kind": "function"
+        },
+        {
+          "path": "bound::CheckedDuration::checked_add",
+          "kind": "function"
+        },
+        {
+          "path": "bound::CheckedDuration::from_nanoseconds",
+          "kind": "function"
+        },
+        {
+          "path": "bound::CheckedDuration::nanoseconds",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::CarrierDescriptorError::invocation",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::CarrierDescriptorError::memory",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::CarrierDescriptorError::unwind",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::CarrierSafetyDescriptor::concurrency",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::CarrierSafetyDescriptor::invocation",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::CarrierSafetyDescriptor::memory",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::CarrierSafetyDescriptor::mismatch",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::CarrierSafetyDescriptor::new",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::CarrierSafetyDescriptor::schema_versions",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::CarrierSafetyDescriptor::type_id",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::CarrierSafetyDescriptor::unsafe_boundary",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::ConcurrencySafety::new",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::ConcurrencySafety::sharing",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::ConcurrencySafety::thread_transfer",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::InvocationSafety::invocation",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::InvocationSafety::new",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::InvocationSafety::unwind",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::MemorySafety::borrowing",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::MemorySafety::copying",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::MemorySafety::dropping",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::MemorySafety::lifetime",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::MemorySafety::new",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::MemorySafety::ownership",
+          "kind": "function"
+        },
+        {
+          "path": "contract::CompatibleVersionRange::contains",
+          "kind": "function"
+        },
+        {
+          "path": "contract::CompatibleVersionRange::maximum",
+          "kind": "function"
+        },
+        {
+          "path": "contract::CompatibleVersionRange::minimum",
+          "kind": "function"
+        },
+        {
+          "path": "contract::CompatibleVersionRange::new",
+          "kind": "function"
+        },
+        {
+          "path": "contract::ContractId::new",
+          "kind": "function"
+        },
+        {
+          "path": "contract::ContractId::value",
+          "kind": "function"
+        },
+        {
+          "path": "contract::ContractVersion::new",
+          "kind": "function"
+        },
+        {
+          "path": "contract::ContractVersion::value",
+          "kind": "function"
+        },
+        {
+          "path": "contract::VersionRangeError::maximum",
+          "kind": "function"
+        },
+        {
+          "path": "contract::VersionRangeError::minimum",
+          "kind": "function"
+        },
+        {
+          "path": "identity::IncarnationId::new",
+          "kind": "function"
+        },
+        {
+          "path": "identity::IncarnationId::value",
+          "kind": "function"
+        },
+        {
+          "path": "identity::InstanceId::new",
+          "kind": "function"
+        },
+        {
+          "path": "identity::InstanceId::value",
+          "kind": "function"
+        }
+      ],
+      "derive_checks": [
+        {
+          "derive": "Clone",
+          "public_type": "bound::ArithmeticRule",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "bound::ArithmeticRule",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "bound::ArithmeticRule",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "bound::ArithmeticRule",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "bound::ArithmeticRule",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "bound::BoundDescriptor",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "bound::BoundDescriptor",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "bound::BoundDescriptor",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "bound::BoundDescriptor",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "bound::BoundDescriptor",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "bound::BoundError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "bound::BoundError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "bound::BoundError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "bound::BoundError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "bound::BoundError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "bound::BoundUnit",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "bound::BoundUnit",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "bound::BoundUnit",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "bound::BoundUnit",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "bound::BoundUnit",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "bound::BoundValue",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "bound::BoundValue",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "bound::BoundValue",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "bound::BoundValue",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "bound::BoundValue",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "bound::CheckedByteCount",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "bound::CheckedByteCount",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "bound::CheckedByteCount",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "bound::CheckedByteCount",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "bound::CheckedByteCount",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "bound::CheckedCount",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "bound::CheckedCount",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "bound::CheckedCount",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "bound::CheckedCount",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "bound::CheckedCount",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "bound::CheckedDuration",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "bound::CheckedDuration",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "bound::CheckedDuration",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "bound::CheckedDuration",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "bound::CheckedDuration",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "bound::ValidationOrder",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "bound::ValidationOrder",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "bound::ValidationOrder",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "bound::ValidationOrder",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "bound::ValidationOrder",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "bound::ZeroPolicy",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "bound::ZeroPolicy",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "bound::ZeroPolicy",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "bound::ZeroPolicy",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "bound::ZeroPolicy",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::BorrowModel",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::BorrowModel",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::BorrowModel",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::BorrowModel",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::BorrowModel",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::CarrierDescriptorError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::CarrierDescriptorError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::CarrierDescriptorError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::CarrierDescriptorError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::CarrierDescriptorError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::CarrierSafetyDescriptor",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::CarrierSafetyDescriptor",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::CarrierSafetyDescriptor",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::CarrierSafetyDescriptor",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::CarrierSafetyDescriptor",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::ConcurrencySafety",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::ConcurrencySafety",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::ConcurrencySafety",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::ConcurrencySafety",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::ConcurrencySafety",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::CopyModel",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::CopyModel",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::CopyModel",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::CopyModel",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::CopyModel",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::DropModel",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::DropModel",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::DropModel",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::DropModel",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::DropModel",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::InvocationModel",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::InvocationModel",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::InvocationModel",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::InvocationModel",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::InvocationModel",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::InvocationSafety",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::InvocationSafety",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::InvocationSafety",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::InvocationSafety",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::InvocationSafety",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::LifetimeModel",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::LifetimeModel",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::LifetimeModel",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::LifetimeModel",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::LifetimeModel",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::MemoryCoherenceError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::MemoryCoherenceError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::MemoryCoherenceError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::MemoryCoherenceError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::MemoryCoherenceError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::MemorySafety",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::MemorySafety",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::MemorySafety",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::MemorySafety",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::MemorySafety",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::OwnershipModel",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::OwnershipModel",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::OwnershipModel",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::OwnershipModel",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::OwnershipModel",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::SharingModel",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::SharingModel",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::SharingModel",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::SharingModel",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::SharingModel",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::ThreadTransfer",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::ThreadTransfer",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::ThreadTransfer",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::ThreadTransfer",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::ThreadTransfer",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::TypeMismatch",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::TypeMismatch",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::TypeMismatch",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::TypeMismatch",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::TypeMismatch",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::UnsafeBoundary",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::UnsafeBoundary",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::UnsafeBoundary",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::UnsafeBoundary",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::UnsafeBoundary",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::UnwindModel",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::UnwindModel",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::UnwindModel",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::UnwindModel",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::UnwindModel",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "contract::CompatibleVersionRange",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "contract::CompatibleVersionRange",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "contract::CompatibleVersionRange",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "contract::CompatibleVersionRange",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "contract::CompatibleVersionRange",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "contract::ContractId",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "contract::ContractId",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "contract::ContractId",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "contract::ContractId",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "contract::ContractId",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "contract::ContractVersion",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "contract::ContractVersion",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "contract::ContractVersion",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "contract::ContractVersion",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "contract::ContractVersion",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "contract::VersionRangeError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "contract::VersionRangeError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "contract::VersionRangeError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "contract::VersionRangeError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "contract::VersionRangeError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "identity::IncarnationId",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "identity::IncarnationId",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "identity::IncarnationId",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "identity::IncarnationId",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "identity::IncarnationId",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "identity::InstanceId",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "identity::InstanceId",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "identity::InstanceId",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "identity::InstanceId",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "identity::InstanceId",
+          "consumer_operation": "eq"
+        }
+      ]
+    }
+  ]
 }

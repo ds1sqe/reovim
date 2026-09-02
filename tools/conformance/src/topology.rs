@@ -977,7 +977,6 @@ fn validate_workspace(
         ));
     }
     for (field, paths) in [
-        ("members", &workspace.members),
         ("cargo_config_files", &workspace.cargo_config_files),
         ("build_scripts", &workspace.build_scripts),
         ("custom_target_specs", &workspace.custom_target_specs),
@@ -1020,11 +1019,6 @@ fn validate_workspace(
         ));
     }
     for package in workspace.packages.values() {
-        require_under_root(
-            &workspace.root,
-            &package.manifest,
-            &json::child(path, "packages"),
-        )?;
         let package_root = parent(&package.manifest);
         for target in package.targets.values() {
             require_under_root(
@@ -1937,45 +1931,10 @@ mod tests {
         .unwrap()
     }
 
-    fn add_product_workspace(value: &mut Value) {
-        value["workspaces"].as_array_mut().unwrap().push(json!({
-            "id": "product",
-            "partition": "product",
-            "root": "product",
-            "workspace_manifest": "product/Cargo.toml",
-            "lockfile": "product/Cargo.lock",
-            "members": ["product/foundation"],
-            "cargo_config_files": [],
-            "build_scripts": [],
-            "custom_target_specs": [],
-            "linker_assets": [],
-            "metadata_profiles": [{
-                "id": "product-release",
-                "target_triple": "x86_64-unknown-linux-gnu",
-                "all_features": false,
-                "no_default_features": true,
-                "features": []
-            }],
-            "packages": [{
-                "id": "foundation",
-                "name": "reovim-foundation",
-                "version": "0.16.0-dev",
-                "manifest": "product/foundation/Cargo.toml",
-                "targets": [{
-                    "id": "library",
-                    "name": "reovim_foundation",
-                    "kind": ["lib"],
-                    "crate_types": ["rlib"],
-                    "src_path": "product/foundation/src/lib.rs"
-                }]
-            }]
-        }));
-    }
-
     #[test]
-    fn current_product_empty_topology_parses_as_keyed_v2() {
+    fn current_dual_workspace_topology_parses_as_keyed_v2() {
         let topology = super::Topology::parse(&topology()).unwrap();
-        assert_eq!(topology.workspaces.len(), 1);
+        assert_eq!(topology.workspaces.len(), 2);
         let tooling = &topology.workspaces["repository-tooling"];
         assert_eq!(
             tooling.partition,
@@ -1984,9 +1943,11 @@ mod tests {
         assert!(tooling.root.as_os_str().is_empty());
         assert_eq!(tooling.metadata_profiles.len(), 3);
         assert_eq!(tooling.packages.len(), 2);
-        assert!(topology.workspaces.values().all(|workspace| {
-            workspace.partition != super::WorkspacePartition::Product
-        }));
+        let product = &topology.workspaces["product"];
+        assert_eq!(product.partition, super::WorkspacePartition::Product);
+        assert_eq!(product.root, Path::new("product"));
+        assert_eq!(product.metadata_profiles.len(), 1);
+        assert_eq!(product.packages.len(), 2);
         assert_eq!(topology.workspace_manifest, Path::new("Cargo.toml"));
         assert_eq!(topology.profiles.len(), 3);
         assert_eq!(topology.packages.len(), 2);
@@ -1994,15 +1955,13 @@ mod tests {
 
     #[test]
     fn dual_workspace_package_resolves_globally_and_exactly() {
-        let mut value = topology();
-        add_product_workspace(&mut value);
-        let topology = super::Topology::parse(&value).unwrap();
+        let topology = super::Topology::parse(&topology()).unwrap();
         assert_eq!(topology.workspaces.len(), 2);
         let (workspace, package) = topology
             .resolve_source_null_package(
                 "reovim-foundation",
                 "0.16.0-dev",
-                Path::new("product/foundation/Cargo.toml"),
+                Path::new("kernel/foundation/Cargo.toml"),
             )
             .unwrap();
         assert_eq!(workspace.id, "product");
@@ -2012,7 +1971,7 @@ mod tests {
                 .resolve_source_null_package(
                     "reovim-foundation",
                     "0.16.1",
-                    Path::new("product/foundation/Cargo.toml"),
+                    Path::new("kernel/foundation/Cargo.toml"),
                 )
                 .is_none()
         );
@@ -2110,13 +2069,18 @@ mod tests {
         );
 
         let mut escape = topology();
-        add_product_workspace(&mut escape);
-        escape["workspaces"][1]["packages"][0]["manifest"] =
-            json!("other/Cargo.toml");
-        escape["workspaces"][1]["members"] = json!(["other"]);
+        escape["workspaces"][1]["packages"][0]["targets"][0]["src_path"] =
+            json!("other/src/lib.rs");
         assert_eq!(
             super::Topology::parse(&escape).unwrap_err().code,
             "TOPOLOGY_WORKSPACE_ESCAPE"
+        );
+
+        let mut parent = topology();
+        parent["workspaces"][1]["members"][0] = json!("../kernel/foundation");
+        assert_eq!(
+            super::Topology::parse(&parent).unwrap_err().code,
+            "CFG_PATH_ESCAPE"
         );
 
         let mut bounded = topology();
@@ -2142,6 +2106,35 @@ mod tests {
         assert_eq!(
             super::Topology::parse(&build).unwrap_err().code,
             "TOPOLOGY_BUILD_SCRIPT_SET"
+        );
+    }
+
+    #[test]
+    fn external_members_remain_unique_and_root_files_stay_local() {
+        let mut duplicate = topology();
+        let workspace = &mut duplicate["workspaces"][1];
+        workspace["members"][0] = json!("lib/depgraph");
+        workspace["packages"][0]["manifest"] = json!("lib/depgraph/Cargo.toml");
+        workspace["packages"][0]["targets"][0]["src_path"] =
+            json!("lib/depgraph/src/lib.rs");
+        assert_eq!(
+            super::Topology::parse(&duplicate).unwrap_err().code,
+            "TOPOLOGY_DUPLICATE_MEMBER"
+        );
+
+        let mut manifest = topology();
+        manifest["workspaces"][1]["workspace_manifest"] =
+            json!("other/Cargo.toml");
+        assert_eq!(
+            super::Topology::parse(&manifest).unwrap_err().code,
+            "TOPOLOGY_WORKSPACE_MANIFEST"
+        );
+
+        let mut lockfile = topology();
+        lockfile["workspaces"][1]["lockfile"] = json!("other/Cargo.lock");
+        assert_eq!(
+            super::Topology::parse(&lockfile).unwrap_err().code,
+            "TOPOLOGY_WORKSPACE_LOCKFILE"
         );
     }
 

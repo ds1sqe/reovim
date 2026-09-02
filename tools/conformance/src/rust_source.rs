@@ -20,7 +20,7 @@ use crate::{
     finding::{Finding, Findings},
     policy::Policy,
     source::{ClassifiedFile, display_relative, read_bounded},
-    topology::Limits,
+    topology::{Limits, Topology},
 };
 
 pub fn check(
@@ -29,11 +29,12 @@ pub fn check(
     metadata: &Metadata,
     files: &[ClassifiedFile],
     policy: &Policy,
+    topology: &Topology,
     limits: Limits,
 ) -> Vec<Finding> {
     let mut findings = Findings::new(limits.findings);
     let packages = workspace_packages(root, metadata, files);
-    let target_uses = target_source_uses(root, metadata);
+    let target_uses = target_source_uses(root, metadata, files);
     let target_roots = target_uses.keys().cloned().collect::<BTreeSet<_>>();
     let selected_sources = resolve_module_sources(
         root,
@@ -47,6 +48,12 @@ pub fn check(
         .iter()
         .map(|file| (file.path.clone(), file))
         .collect::<BTreeMap<_, _>>();
+    let package_directories = topology
+        .workspaces
+        .values()
+        .flat_map(|workspace| workspace.packages.values())
+        .filter_map(|package| package.manifest.parent())
+        .collect::<BTreeSet<_>>();
     let context = RustCheckContext {
         root,
         profile,
@@ -62,6 +69,13 @@ pub fn check(
         if !rust_source_file(file) {
             continue;
         }
+        let current_package = package_for(&file.path, &packages).is_some();
+        let known_package = package_directories
+            .iter()
+            .any(|directory| file.path.starts_with(directory));
+        if !current_package && known_package {
+            continue;
+        }
         context.check_file(file, &mut findings);
     }
     findings.finish()
@@ -70,6 +84,7 @@ pub fn check(
 fn target_source_uses(
     root: &Path,
     metadata: &Metadata,
+    files: &[ClassifiedFile],
 ) -> BTreeMap<PathBuf, BTreeSet<SourceUse>> {
     metadata
         .workspace_members
@@ -81,17 +96,11 @@ fn target_source_uses(
                 target.src_path.canonicalize().ok().and_then(|path| {
                     path.strip_prefix(root).ok().map(Path::to_path_buf)
                 })?;
-            let source_use = if target
-                .kind
+            let source_use = files
                 .iter()
-                .any(|kind| matches!(kind.as_str(), "test" | "bench"))
-            {
-                SourceUse::Test
-            } else if target.kind.iter().any(|kind| kind == "example") {
-                SourceUse::Example
-            } else {
-                SourceUse::Tool
-            };
+                .find(|file| file.path == path)?
+                .classification
+                .source_use;
             Some((path, source_use))
         })
         .fold(

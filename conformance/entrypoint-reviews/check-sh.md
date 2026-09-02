@@ -4,31 +4,38 @@
 
 - Kind: script
 - Exact content digest:
-  `sha256:719dd1d266ddfcf5a5c91f8f4ffa90067189fc7e0e46351d3d7647f8ef5372af`
+  `sha256:a99d168730773341504af77ddc7e639a4ecf297ac715e934b6ea8bbad80cd76b`
 - Review mechanism: exact content and retained review
 
 ## Direct local invocations
 
 - `scripts/check-style.sh` by direct path execution
 - `scripts/check-documentation.sh` by direct path execution
-- `scripts/check-conformance.sh` by direct path execution
 
 Cargo commands are external-tool invocations. Their selected workspace targets
-are governed by the workspace topology; the checker binary's direct invocation
-is reviewed at the `scripts/check-conformance.sh` boundary.
+are governed by the workspace topology.
 
 ## Reviewed selection
 
 The default contributor path retains workspace library/binary tests, every
 checker integration except the two named exhaustive matrices, the depgraph
-integration target, one real candidate report, doctests, Clippy, and rustdoc.
-The exact-Git and full Product-empty CLI matrices remain direct pre-checkpoint
-commands. Their omission from the per-edit path is exact and closed; another
-skip or target change reopens this review.
+integration target, doctests, Clippy, and rustdoc. It also formats, checks,
+lints, and documents both Product packages through their separate locked
+workspace, explicit release target, and root-excluded build directory.
+
+The exact-Git and explicit Product-empty fixture matrices remain direct pre-
+checkpoint commands. Their omission from the per-edit path is exact and
+closed; another skip or target change reopens this review.
 
 The selected warm target is 75 seconds on Rust 1.92 and stable. The hosted job
-has a five-minute outer timeout that also covers dependency setup and exact-
-revision evidence.
+has a five-minute outer timeout that also covers dependency setup. Active
+Product evidence remains an exact clean-revision checkpoint journey.
+
+Product build and documentation outputs are separated among Rust 1.92,
+explicit stable, and the otherwise active toolchain. Rustdoc 1.92 otherwise
+can read a newer search index from the shared unversioned documentation
+directory and panic. The fixed slot selection is not an arbitrary
+user-selected target path.
 
 ## Exhaustive checkpoint commands
 
@@ -36,10 +43,10 @@ Run the retained matrices directly before a qualifying checkpoint:
 
 ```sh
 cargo test --locked --offline -p reovim-conformance \
-    --test checker --all-features \
+    --release --test checker --all-features \
     product_empty_v2_full_cli_and_mutation_matrix -- --exact
 cargo test --locked --offline -p reovim-conformance \
-    --test checker --all-features \
+    --release --test checker --all-features \
     exact_git_generate_verify_and_raw_identity_mutants -- --exact
 ```
 
@@ -49,13 +56,17 @@ cargo test --locked --offline -p reovim-conformance \
   by these exact bytes.
 - `BASH_SOURCE` resolves this checked-out script so `ROOT` selects the same
   repository whose local entrypoints are admitted.
-- Cargo, Rustdoc, Rustfmt, and Clippy operate on the exact locked workspace and
-  toolchain selected by the invoking environment.
+- Cargo, Rustdoc, Rustfmt, and Clippy operate on the respective explicit locked
+  Repository Tooling or Product workspace and selected toolchain.
+- Product commands use the explicit Product manifest, target triple, release
+  profile, and a toolchain-specific build directory below root `target/`.
+- Exhaustive matrices use the release checker because the debug image is not
+  admitted by the 96 MiB executable-identity bound.
 - The Clippy invocation binds `CLIPPY_CONF_DIR` to the reviewed repository root
   so ambient configuration cannot disable the three-level nesting threshold.
 
 ## Decision
 
-Admit these exact bytes and the three declared direct local invocation edges for
-Product-empty v2 Repository Tooling checks. Any byte or edge change reopens
-this review.
+Admit these exact bytes and the two declared direct local invocation edges for
+bounded Repository Tooling and Product contributor checks. Candidate evidence
+is intentionally absent. Any byte or edge change reopens this review.

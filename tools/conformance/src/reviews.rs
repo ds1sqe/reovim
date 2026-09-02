@@ -1563,17 +1563,20 @@ mod tests {
     #[test]
     fn current_registry_has_exact_workspace_packages_profiles_and_records() {
         let registry = super::Registry::parse(&registry()).unwrap();
-        assert_eq!(registry.workspaces.len(), 1);
-        let workspace = &registry.workspaces[0];
-        assert_eq!(workspace.workspace, "repository-tooling");
-        assert_eq!(workspace.admissions.len(), 16);
+        assert_eq!(registry.workspaces.len(), 2);
+        let workspace = registry
+            .workspaces
+            .iter()
+            .find(|item| item.workspace == "repository-tooling")
+            .unwrap();
+        assert_eq!(workspace.admissions.len(), 18);
         assert_eq!(
             workspace
                 .admissions
                 .iter()
                 .map(|item| item.resolved_uses.len())
                 .sum::<usize>(),
-            48
+            54
         );
         let lock_only = workspace
             .admissions
@@ -1591,6 +1594,12 @@ mod tests {
             item.target.as_deref() == Some("cfg(target_os = \"linux\")")
                 && item.dependency_name == "nix"
         }));
+        let product = registry
+            .workspaces
+            .iter()
+            .find(|item| item.workspace == "product")
+            .unwrap();
+        assert_eq!(product.admissions, Vec::new());
     }
 
     #[test]

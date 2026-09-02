@@ -1,18 +1,34 @@
 #!/usr/bin/env bash
-# Bounded hosted contributor and Product-empty candidate checks for v0.16.
+# Bounded hosted contributor checks for the v0.16 workspaces.
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly PRODUCT_MANIFEST="$ROOT/product/Cargo.toml"
+readonly PRODUCT_TARGET=x86_64-unknown-linux-gnu
+
+case "${RUSTUP_TOOLCHAIN:-}" in
+    1.92.0 | 1.92.0-*)
+        PRODUCT_TARGET_SLOT=rust-1.92
+        ;;
+    stable | stable-*)
+        PRODUCT_TARGET_SLOT=rust-stable
+        ;;
+    *)
+        PRODUCT_TARGET_SLOT=active
+        ;;
+esac
+PRODUCT_TARGET_DIR="$ROOT/target/product-contributor/$PRODUCT_TARGET_SLOT"
+readonly PRODUCT_TARGET_DIR
 
 usage() {
     cat <<'EOF'
 Usage: ./scripts/check.sh
 
-Checks normative/public documentation, the active Product-empty v2 Source Role
-Map boundary, and every fast hosted workspace target. This command targets a
-warm runtime of about one minute. Exact clean-revision evidence uses
-scripts/check-conformance.sh exact.
+Checks normative/public documentation and every fast hosted Repository Tooling
+and Product workspace target. This command targets a warm runtime of about one
+minute. Exact clean-revision Product evidence uses check-conformance.sh and is
+not part of this contributor gate.
 
 The exhaustive `product_empty_v2_full_cli_and_mutation_matrix` and
 `exact_git_generate_verify_and_raw_identity_mutants` tests are pre-checkpoint
@@ -38,8 +54,11 @@ cd "$ROOT"
 echo "==> repository style"
 ./scripts/check-style.sh
 
-echo "==> rustfmt"
+echo "==> Repository Tooling rustfmt"
 cargo fmt --all --check
+
+echo "==> Product rustfmt"
+cargo fmt --manifest-path "$PRODUCT_MANIFEST" --all --check
 
 echo "==> documentation"
 ./scripts/check-documentation.sh
@@ -57,8 +76,11 @@ echo "==> dependency-graph integration tests"
 cargo test --locked --offline -p reovim-depgraph --test depgraph \
     --all-features
 
-echo "==> candidate repository conformance"
-./scripts/check-conformance.sh candidate
+echo "==> Product workspace check"
+CARGO_TARGET_DIR="$PRODUCT_TARGET_DIR" \
+    cargo check --locked --offline \
+        --manifest-path "$PRODUCT_MANIFEST" --workspace --all-targets \
+        --all-features --target "$PRODUCT_TARGET" --release
 
 echo "==> workspace doctests"
 cargo test --locked --offline --workspace --doc --all-features
@@ -68,8 +90,23 @@ CLIPPY_CONF_DIR="$ROOT" \
     cargo clippy --locked --offline --workspace --all-targets \
         --all-features -- -D warnings -F unsafe-code
 
+echo "==> Product workspace clippy"
+CLIPPY_CONF_DIR="$ROOT" \
+    CARGO_TARGET_DIR="$PRODUCT_TARGET_DIR" \
+    cargo clippy --locked --offline \
+        --manifest-path "$PRODUCT_MANIFEST" --workspace --all-targets \
+        --all-features --target "$PRODUCT_TARGET" --release -- \
+        -D warnings -F unsafe-code
+
 echo "==> workspace rustdoc"
 RUSTDOCFLAGS="${RUSTDOCFLAGS:+$RUSTDOCFLAGS }-D warnings -F unsafe-code" \
     cargo doc --locked --offline --workspace --all-features --no-deps
 
-echo "check.sh: hosted tooling and candidate conformance checks passed"
+echo "==> Product workspace rustdoc"
+CARGO_TARGET_DIR="$PRODUCT_TARGET_DIR" \
+    RUSTDOCFLAGS="${RUSTDOCFLAGS:+$RUSTDOCFLAGS }-D warnings -F unsafe-code" \
+    cargo doc --locked --offline \
+        --manifest-path "$PRODUCT_MANIFEST" --workspace --all-features \
+        --target "$PRODUCT_TARGET" --release --no-deps
+
+echo "check.sh: hosted Repository Tooling and Product checks passed"

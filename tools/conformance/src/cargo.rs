@@ -9,6 +9,9 @@ use std::{
 use serde_json::Value;
 
 use crate::{
+    compiler_capture::{
+        RUSTC_LAUNCHER_LIBRARY, RUSTC_LAUNCHER_MODE, RUSTC_LAUNCHER_RUSTC,
+    },
     digest,
     json::{self, ConfigError},
     process::{
@@ -22,6 +25,12 @@ pub struct Capture {
     pub process: ProcessResult,
     pub raw_digest: String,
     pub metadata: Metadata,
+}
+
+#[derive(Clone, Copy)]
+struct RustcLaunch<'a> {
+    launcher: &'a Path,
+    library_path: &'a Path,
 }
 
 #[derive(Debug)]
@@ -181,6 +190,36 @@ pub fn metadata(
     json_depth: usize,
     json_items: usize,
 ) -> Result<Capture, CargoError> {
+    metadata_with_library_path(
+        cargo,
+        rustc,
+        root,
+        cargo_home,
+        workspace_manifest,
+        profile,
+        None,
+        None,
+        limits,
+        json_depth,
+        json_items,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn metadata_with_library_path(
+    cargo: &Path,
+    rustc: &Path,
+    root: &Path,
+    cargo_home: &Path,
+    workspace_manifest: &Path,
+    profile: &Profile,
+    rustc_launcher: Option<&Path>,
+    library_path: Option<&Path>,
+    limits: ProcessLimits,
+    json_depth: usize,
+    json_items: usize,
+) -> Result<Capture, CargoError> {
+    let launch = rustc_launch(rustc_launcher, library_path)?;
     let spec = metadata_spec(
         cargo,
         rustc,
@@ -188,6 +227,7 @@ pub fn metadata(
         cargo_home,
         workspace_manifest,
         profile,
+        launch,
     )?;
     let process = process::run(&spec, limits).map_err(|error| CargoError {
         code: "CARGO_METADATA_RUN",
@@ -344,13 +384,86 @@ fn metadata_spec(
     cargo_home: &Path,
     workspace_manifest: &Path,
     profile: &Profile,
+    launch: Option<RustcLaunch<'_>>,
 ) -> Result<CommandSpec, CargoError> {
     let arguments =
         exact_metadata_arguments(root, workspace_manifest, profile)?
             .into_iter()
             .map(OsString::from)
             .collect();
-    Ok(cargo_spec_os(cargo, rustc, cargo_home, arguments))
+    let selected_rustc = launch.map_or(rustc, |value| value.launcher);
+    let mut spec = cargo_spec_os(cargo, selected_rustc, cargo_home, arguments);
+    configure_rustc_launcher(&mut spec, rustc, launch)?;
+    Ok(spec)
+}
+
+fn rustc_launch<'a>(
+    launcher: Option<&'a Path>,
+    library_path: Option<&'a Path>,
+) -> Result<Option<RustcLaunch<'a>>, CargoError> {
+    match (launcher, library_path) {
+        (None, None) => Ok(None),
+        (Some(launcher), Some(library_path)) => {
+            Ok(Some(RustcLaunch { launcher, library_path }))
+        }
+        _ => Err(CargoError {
+            code: "CARGO_LIBRARY_PATH",
+            message: "rustc launcher and library path must be paired"
+                .to_owned(),
+        }),
+    }
+}
+
+fn configure_rustc_launcher(
+    spec: &mut CommandSpec,
+    rustc: &Path,
+    launch: Option<RustcLaunch<'_>>,
+) -> Result<(), CargoError> {
+    if let Some(launch) = launch {
+        validate_library_path(launch.library_path)?;
+        validate_library_path(launch.launcher)?;
+        spec.environment.insert(
+            OsString::from("LD_LIBRARY_PATH"),
+            launch.library_path.as_os_str().to_owned(),
+        );
+        spec.environment
+            .insert(OsString::from(RUSTC_LAUNCHER_MODE), OsString::from("1"));
+        spec.environment.insert(
+            OsString::from(RUSTC_LAUNCHER_RUSTC),
+            rustc.as_os_str().to_owned(),
+        );
+        spec.environment.insert(
+            OsString::from(RUSTC_LAUNCHER_LIBRARY),
+            launch.library_path.as_os_str().to_owned(),
+        );
+    }
+    Ok(())
+}
+
+fn validate_library_path(path: &Path) -> Result<(), CargoError> {
+    let text = path.to_str().ok_or_else(|| CargoError {
+        code: "CARGO_LIBRARY_PATH",
+        message: "compiler library path is not UTF-8".to_owned(),
+    })?;
+    let normalized = path.is_absolute()
+        && path != Path::new("/")
+        && !text.ends_with('/')
+        && !text.contains(['\0', '\r', '\n', '\\', ':'])
+        && !text.contains("//")
+        && path.components().all(|part| {
+            matches!(
+                part,
+                std::path::Component::RootDir | std::path::Component::Normal(_)
+            )
+        });
+    if normalized {
+        return Ok(());
+    }
+    Err(CargoError {
+        code: "CARGO_LIBRARY_PATH",
+        message: "compiler library path is not one normalized directory"
+            .to_owned(),
+    })
 }
 
 fn cargo_spec<'a>(
@@ -419,7 +532,11 @@ fn validate_process(
     if !process.status.success() {
         return Err(CargoError {
             code: "CARGO_NONZERO",
-            message: format!("{prefix} exited with {}", process.status),
+            message: format!(
+                "{prefix} exited with {}; {}",
+                process.status,
+                stderr_summary(process),
+            ),
         });
     }
     if !process.stderr.is_empty() {
@@ -432,6 +549,18 @@ fn validate_process(
         });
     }
     Ok(())
+}
+
+fn stderr_summary(process: &ProcessResult) -> String {
+    const LIMIT: usize = 512;
+
+    let retained = process.stderr.get(..LIMIT).unwrap_or(&process.stderr);
+    format!(
+        "stderr_bytes={} stderr_digest={} stderr={}",
+        process.stderr.len(),
+        crate::digest::bytes(&process.stderr),
+        String::from_utf8_lossy(retained),
+    )
 }
 
 impl Metadata {
@@ -793,9 +922,12 @@ fn string_set(
 
 #[cfg(test)]
 mod tests {
-    use std::{ffi::OsString, path::Path};
+    use std::{
+        ffi::{OsStr, OsString},
+        path::Path,
+    };
 
-    use super::{exact_metadata_arguments, metadata_spec};
+    use super::{RustcLaunch, exact_metadata_arguments, metadata_spec};
     use crate::topology::Profile;
 
     #[test]
@@ -943,6 +1075,7 @@ mod tests {
             Path::new("/cargo-home"),
             Path::new("nested/Cargo.toml"),
             &profile(false, false, &[]),
+            None,
         )
         .unwrap();
         assert_eq!(spec.current_dir, Path::new("/"));
@@ -951,6 +1084,42 @@ mod tests {
             OsString::from("/checkout/reovim/nested/Cargo.toml")
         );
         assert_ne!(spec.current_dir, root);
+
+        let prepared = metadata_spec(
+            Path::new("/tools/cargo"),
+            Path::new("/tools/rustc"),
+            root,
+            Path::new("/cargo-home"),
+            Path::new("nested/Cargo.toml"),
+            &profile(false, false, &[]),
+            Some(RustcLaunch {
+                launcher: Path::new("/checker/reovim-conformance"),
+                library_path: Path::new("/compiler/lib"),
+            }),
+        )
+        .unwrap();
+        assert_eq!(
+            prepared.environment.get(OsStr::new("LD_LIBRARY_PATH")),
+            Some(&OsString::from("/compiler/lib"))
+        );
+        assert_eq!(
+            prepared.environment.get(OsStr::new("RUSTC")),
+            Some(&OsString::from("/checker/reovim-conformance"))
+        );
+        let failure = metadata_spec(
+            Path::new("/tools/cargo"),
+            Path::new("/tools/rustc"),
+            root,
+            Path::new("/cargo-home"),
+            Path::new("nested/Cargo.toml"),
+            &profile(false, false, &[]),
+            Some(RustcLaunch {
+                launcher: Path::new("/checker/reovim-conformance"),
+                library_path: Path::new("/compiler/lib:/other"),
+            }),
+        )
+        .unwrap_err();
+        assert_eq!(failure.code, "CARGO_LIBRARY_PATH");
     }
 
     fn profile(

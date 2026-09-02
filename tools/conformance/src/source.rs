@@ -77,9 +77,9 @@ pub fn inventory(
         &mut findings,
     );
     files.sort_by(|left, right| left.path.cmp(&right.path));
-    validate_generated_mechanisms(&files, &mut findings);
+    validate_generated_mechanisms(&files, &topology.lockfiles, &mut findings);
     validate_manifests(root, &files, topology.limits, &mut findings);
-    validate_product_boundary(&files, &mut findings);
+    validate_product_boundary(&files, topology, &mut findings);
     validate_classification_rules(policy, &files, &mut findings);
     validate_required_checker_inputs(&files, &mut findings);
     validate_entrypoint_declarations(&files, topology, &mut findings);
@@ -311,15 +311,18 @@ fn classify_source_path(
 
 fn validate_generated_mechanisms(
     files: &[ClassifiedFile],
+    lockfiles: &[PathBuf],
     findings: &mut Findings,
 ) {
-    for file in files.iter().filter(|file| !generated_mechanism_supported(file))
+    for file in files
+        .iter()
+        .filter(|file| !generated_mechanism_supported(file, lockfiles))
     {
         findings.push(Finding::new(
             "classification",
             "GENERATED_MECHANISM_PROOF_UNAVAILABLE",
             Some(display_relative(&file.path)),
-            "v1 validates regeneration only for the exact root Cargo.lock",
+            "generated source lacks an admitted exact mechanism",
         ));
     }
 }
@@ -382,8 +385,14 @@ fn validate_manifest_bytes(
 
 fn validate_product_boundary(
     files: &[ClassifiedFile],
+    topology: &Topology,
     findings: &mut Findings,
 ) {
+    if topology.workspaces.values().any(|workspace| {
+        workspace.partition == crate::topology::WorkspacePartition::Product
+    }) {
+        return;
+    }
     if let Some(file) = files.iter().find(|file| {
         matches!(file.classification.owner, SourceOwner::Product(_))
     }) {
@@ -990,6 +999,7 @@ fn reviewed_held_cargo_invocation(line: &str) -> bool {
         "reovim-conformance",
         "--target",
         "\"$CHECKER_TARGET\"",
+        "--release",
     ])
 }
 
@@ -1244,9 +1254,12 @@ fn variable_command_word(word: &str) -> bool {
     word.contains('$') || word.contains('`')
 }
 
-fn generated_mechanism_supported(file: &ClassifiedFile) -> bool {
+fn generated_mechanism_supported(
+    file: &ClassifiedFile,
+    lockfiles: &[PathBuf],
+) -> bool {
     file.classification.provenance != SourceProvenance::Generated
-        || file.path == Path::new("Cargo.lock")
+        || lockfiles.iter().any(|path| path == &file.path)
 }
 
 fn manifest_assigns_panic(input: &str) -> bool {
@@ -2068,7 +2081,7 @@ mod tests {
     }
 
     #[test]
-    fn generated_mechanism_is_closed_to_root_lockfile() {
+    fn generated_mechanism_is_closed_to_declared_lockfiles() {
         let generated = |path: &str| super::ClassifiedFile {
             path: PathBuf::from(path),
             content_digest: crate::digest::bytes(b"x"),
@@ -2082,10 +2095,20 @@ mod tests {
             rule_prefix: PathBuf::from(path),
             rule_precedence: 1,
         };
-        assert!(super::generated_mechanism_supported(&generated("Cargo.lock")));
-        assert!(!super::generated_mechanism_supported(&generated(
-            "src/generated.json"
-        )));
+        let lockfiles =
+            [PathBuf::from("Cargo.lock"), PathBuf::from("product/Cargo.lock")];
+        assert!(super::generated_mechanism_supported(
+            &generated("Cargo.lock"),
+            &lockfiles,
+        ));
+        assert!(super::generated_mechanism_supported(
+            &generated("product/Cargo.lock"),
+            &lockfiles,
+        ));
+        assert!(!super::generated_mechanism_supported(
+            &generated("src/generated.json"),
+            &lockfiles
+        ));
     }
 
     #[test]
@@ -2172,7 +2195,7 @@ mod tests {
             "    /proc/$$/fd/8 8<&- build --locked --offline \\\n",
             "    --manifest-path \"$ROOT/Cargo.toml\" \\\n",
             "    -p reovim-conformance --bin reovim-conformance \\\n",
-            "    --target \"$CHECKER_TARGET\"",
+            "    --target \"$CHECKER_TARGET\" --release",
         );
         let (_, dynamic) = super::obvious_local_inputs(cargo);
         assert!(!dynamic);
@@ -2185,6 +2208,7 @@ mod tests {
             cargo.replace("--manifest-path \"$ROOT/Cargo.toml\" ", ""),
             cargo.replace("--bin reovim-conformance", "--bin other"),
             cargo.replace("--target \"$CHECKER_TARGET\"", "--target other"),
+            cargo.replace(" --release", ""),
         ] {
             let (_, dynamic) = super::obvious_local_inputs(&mutant);
             assert!(dynamic, "{mutant}");
