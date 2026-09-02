@@ -4,7 +4,7 @@
 
 - Kind: script
 - Exact content digest:
-  `sha256:c8830c5010f06433571c3a3876a7659d321465c5b8428105995df7a898de3c2d`
+  `sha256:f4d93d63c0a90b65d300b255b704c89208a7c75ea23205cc459a4ed5fde09d06`
 - Review mechanism: exact content and retained review
 
 ## Direct local invocations
@@ -27,4 +27,6 @@ Admit these exact bytes with an empty direct-local-invocation set for
 documentation conformance. The script binds both the focused
 Interaction/Update/View/Protocol chapters and the focused Product-v2 proof
 chapters to their inventories, indexes, authority clauses, and Rule Matrix
-routes. Any byte or invocation change reopens this review.
+routes. It also binds the unique Repository Tooling admission/stop authority,
+applicability, and Rule Matrix route. Any byte or invocation change reopens
+this review.

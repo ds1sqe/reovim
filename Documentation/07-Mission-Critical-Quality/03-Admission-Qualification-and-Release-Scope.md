@@ -39,6 +39,46 @@ It is not silently omitted. A happy-path demo, passing unit test, issue closure,
 or feature count cannot substitute for missing applicable evidence. Candidate
 admission is not a release or qualification claim.
 
+## Repository Tooling admission and stop rule
+
+Repository Tooling enters active implementation only for one named immediate
+consumer and exact block, remains the smallest bounded end-to-end path, is
+accepted only when that consumer invokes and consumes it, and stops when the
+block clears; fixtures alone and anticipated future use never admit or expand
+it.
+
+A **Tooling Acceptance record** names the Product, Client, SDK, active
+engineering or migration slice, benchmark Scenario/claim, conformance journey,
+or exact-qualification consumer and its owner; the exact blocking rule,
+evidence, or operation; the smallest closed input/output/profile; applicable
+bounds and typed failures; the end-to-end invocation; and the stop condition.
+It links the active plan's bounded effort budget and forced review or abort
+point. Splitting or renaming work does not reset that budget.
+
+Repository Tooling is accepted only when all of these are true:
+
+- the record and plan budget existed before implementation;
+- the named consumer invokes the exact tool path and consumes its result;
+- the bounded success path and required typed failure paths pass;
+- no compiled mode, profile, output, or abstraction lacks that consumer;
+- implementation stayed within the recorded budget; and
+- the stop, removal, or separately admitted follow-up decision is recorded.
+
+No more than one tooling-only preparatory slice may precede use by that named
+consumer. Acceptance requires the real consumer to invoke the tool and consume
+its result. A fixture, pure model, self-test, broader framework, or anticipated
+future need may support the journey but cannot accept the tool by itself.
+
+Reaching the plan's effort or review limit before real consumption stops the
+tool-only work. The next action is to invoke the real consumer, reduce the
+tool to a smaller admitted path, or remove it. More time for the same unnamed
+future use is not a new acceptance record.
+
+Work stops when the named block is cleared. Another profile, abstraction,
+adapter, evidence field, or execution mechanism requires a separately named
+concrete consumer and block. Unused experimental implementation remains in
+working notes or Git history rather than compiled active source.
+
 ## Public reduction rule
 
 First-party code has no privileged semantic path. A Client or extension uses

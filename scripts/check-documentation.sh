@@ -562,6 +562,7 @@ layer_roles=Documentation/01-Architecture/01-Layer/01-Roles-Descriptors-and-Depe
 layer_edges=Documentation/01-Architecture/01-Layer/01-Roles-Descriptors-and-Dependencies/03-Source-Dependency-Graph-and-Edges.md
 classification_artifacts=Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/01-Policy-Artifacts-and-Source-Axes.md
 product_proof_authority=Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/05-Product-v2-Proof/01-Versioned-Inputs-Closures-and-Supported-Profile.md
+tooling_authority=Documentation/07-Mission-Critical-Quality/03-Admission-Qualification-and-Release-Scope.md
 require_unique_owner_clause "$layer_edges" \
     'Product dependencies point inward without cycles. `RepositoryTooling` grants no product edge and enters no product shipping closure.'
 require_unique_owner_clause "$layer_edges" \
@@ -572,6 +573,8 @@ require_unique_owner_clause "$classification_artifacts" \
     'Every evidence set carries an exact-revision Source Role Map generated from version-matched, schema-valid classification policy, exact workspace topology, entrypoint reviews, and dependency admissions. Phase-B v1 reports only dependency reachability for an all-`RepositoryTooling` topology and fails closed on Product or shipping input.'
 require_unique_owner_clause "$product_proof_authority" \
     'Every Product shipping or validation closure is selected by version-matched, schema-valid Product-closure and execution-tool admissions and is proved by correlated compiler-reported Product source/dependencies, Cargo package membership where shipping, and external-crate public-consumer evidence. Unsupported mechanisms fail closed, and fixture capability never qualifies active Product.'
+require_unique_owner_clause "$tooling_authority" \
+    'Repository Tooling enters active implementation only for one named immediate consumer and exact block, remains the smallest bounded end-to-end path, is accepted only when that consumer invokes and consumes it, and stops when the block clears; fixtures alone and anticipated future use never admit or expand it.'
 
 if rg -Fq 'roles do not merge' "$layer_edges"; then
     fail 'dependency graph duplicates the role-distinction authority'
@@ -617,6 +620,8 @@ check_rule_authority "$architecture_rule_chapter" ARCH-006 \
     Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/01-Policy-Artifacts-and-Source-Axes.md
 check_rule_authority "$architecture_rule_chapter" ARCH-007 \
     Documentation/06-Conformance/04-Source-Classification-and-Exact-Checker/05-Product-v2-Proof/01-Versioned-Inputs-Closures-and-Supported-Profile.md
+check_rule_authority "$architecture_rule_chapter" TOOL-001 \
+    "$tooling_authority"
 check_rule_authority "$meaning_rule_chapter" INT-001 \
     Documentation/01-Architecture/03-Semantics-and-View/02-Interaction-Updates-Protocols-and-View/01-Intent-Outcome-and-Representation-Updates.md
 check_rule_authority "$meaning_rule_chapter" INT-002 \
@@ -628,8 +633,8 @@ check_rule_authority "$meaning_rule_chapter" PROTO-001 \
 
 rule_ids="$(awk -F'`' '/^\| `[A-Z]+-[0-9][0-9][0-9]`/ { print $2 }' "${rule_chapters[@]}")"
 [[ -n "$rule_ids" ]] || fail "Rule Matrix contains no conformance identifiers"
-[[ "$(printf '%s\n' "$rule_ids" | wc -l)" == 91 ]] || \
-    fail "Rule Matrix must contain exactly 91 conformance identifiers"
+[[ "$(printf '%s\n' "$rule_ids" | wc -l)" == 92 ]] || \
+    fail "Rule Matrix must contain exactly 92 conformance identifiers"
 duplicates="$(printf '%s\n' "$rule_ids" | sort | uniq -d)"
 if [[ -n "$duplicates" ]]; then
     printf '%s\n' "$duplicates" >&2

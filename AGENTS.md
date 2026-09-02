@@ -82,6 +82,22 @@ updating the authoritative documentation.
   needs deterministic substitution, or must contain a volatile or unsafe
   boundary—not merely to hide the dependency name.
 
+## Repository tooling
+
+- Follow `TOOL-001` before adding, continuing, or expanding conformance,
+  benchmark, migration, generation, or developer tooling.
+- Record the named immediate consumer, exact block, smallest bounded path,
+  end-to-end invocation, typed failures, and stop condition before coding.
+- Set a plan-owned effort budget and forced review or abort point before tool
+  coding. Reaching either stops tool-only work; splitting or renaming it does
+  not reset the budget.
+- Permit at most one preparatory tool-only slice before the real consumer
+  invokes and consumes the result. Fixtures and self-tests do not accept a
+  tool by themselves.
+- Stop when the named block clears. Do not retain unused compiled experiments
+  or use dead-code allowances to hide them. Do not add broader profiles for
+  anticipated future use.
+
 ## Performance and observability
 
 - Treat input-to-present p99 as the primary reaction metric. Include command,

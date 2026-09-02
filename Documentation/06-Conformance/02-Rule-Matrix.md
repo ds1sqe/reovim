@@ -34,6 +34,7 @@ may narrow its ledger applicability but cannot silently broaden it.
 | ARCH-005 | Any third-party dependency is proposed, admitted, changed, or invalidated. | The dependency's named consumer owner |
 | ARCH-006 | Any versioned classification policy, workspace topology, Source Role Map, conformance checker, or implementation/release evidence set is produced or admitted. | Conformance Authority |
 | ARCH-007 | Any Product shipping/validation closure or compiler, package-membership, public-surface, or Product-proof-capability claim is produced or admitted. | Product-proof Conformance Authority |
+| TOOL-001 | Any Repository Tooling source, target, entrypoint, profile, implementation, or expansion is proposed, continued, retained, or accepted. | The tooling's named immediate consumer owner |
 | SAFE-001 | Any opaque carrier crosses a contract, ownership, thread, process, async, or unsafe boundary. | Foundation Carrier Safety boundary |
 | BOUND-001 | Any capability or operation claims a finite bound. | The descriptor-owning contract boundary |
 | ISOLATE-001 | Any payload, work, state, queue, concurrency, retry, wait, or aggregate scope is admitted or retained. | The owning admission and isolation boundary |
