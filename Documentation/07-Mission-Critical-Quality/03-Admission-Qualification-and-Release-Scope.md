@@ -57,12 +57,20 @@ point. Splitting or renaming work does not reset that budget.
 
 Repository Tooling is accepted only when all of these are true:
 
-- the record and plan budget existed before implementation;
+- the record and plan budget existed before implementation, or before any
+  continuation allowed by the pre-rule adoption path below;
 - the named consumer invokes the exact tool path and consumes its result;
 - the bounded success path and required typed failure paths pass;
 - no compiled mode, profile, output, or abstraction lacks that consumer;
 - implementation stayed within the recorded budget; and
 - the stop, removal, or separately admitted follow-up decision is recorded.
+
+Tooling begun before this rule is not grandfathered. Before any continuation,
+its owner freezes expansion, creates the record and budget, identifies the
+pre-rule bytes, and audits them as keep, reduce, rewrite, or remove against the
+real consumer. Only work retained and completed inside that adoption budget may
+use the acceptance criteria above. Missing chronology or an over-budget audit
+requires reduction or removal rather than a retrospective passing claim.
 
 No more than one tooling-only preparatory slice may precede use by that named
 consumer. Acceptance requires the real consumer to invoke the tool and consume
