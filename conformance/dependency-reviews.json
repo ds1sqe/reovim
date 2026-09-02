@@ -53,7 +53,7 @@
           ],
           "disposition": "admit",
           "review_record": "conformance/dependency-reviews/nix-linux-execution-closure.md",
-          "review_record_digest": "sha256:137ba37ae629e5314fed20429e6c4ae1f28bd6fb8458cb890c2a5a9677e106ec"
+          "review_record_digest": "sha256:d29379137d03b6b5a5855ce2c259e903a16d8a6e8cbd1d0eb15439c6d97cab23"
         },
         {
           "name": "cfg_aliases",
@@ -101,7 +101,7 @@
           ],
           "disposition": "admit",
           "review_record": "conformance/dependency-reviews/nix-linux-execution-closure.md",
-          "review_record_digest": "sha256:137ba37ae629e5314fed20429e6c4ae1f28bd6fb8458cb890c2a5a9677e106ec"
+          "review_record_digest": "sha256:d29379137d03b6b5a5855ce2c259e903a16d8a6e8cbd1d0eb15439c6d97cab23"
         },
         {
           "name": "cfg-if",
@@ -149,7 +149,7 @@
           ],
           "disposition": "admit",
           "review_record": "conformance/dependency-reviews/nix-linux-execution-closure.md",
-          "review_record_digest": "sha256:137ba37ae629e5314fed20429e6c4ae1f28bd6fb8458cb890c2a5a9677e106ec"
+          "review_record_digest": "sha256:d29379137d03b6b5a5855ce2c259e903a16d8a6e8cbd1d0eb15439c6d97cab23"
         },
         {
           "name": "itoa",
@@ -245,7 +245,7 @@
           ],
           "disposition": "admit",
           "review_record": "conformance/dependency-reviews/nix-linux-execution-closure.md",
-          "review_record_digest": "sha256:137ba37ae629e5314fed20429e6c4ae1f28bd6fb8458cb890c2a5a9677e106ec"
+          "review_record_digest": "sha256:d29379137d03b6b5a5855ce2c259e903a16d8a6e8cbd1d0eb15439c6d97cab23"
         },
         {
           "name": "memchr",
@@ -338,7 +338,7 @@
           ],
           "disposition": "admit",
           "review_record": "conformance/dependency-reviews/nix-linux-execution-closure.md",
-          "review_record_digest": "sha256:137ba37ae629e5314fed20429e6c4ae1f28bd6fb8458cb890c2a5a9677e106ec"
+          "review_record_digest": "sha256:d29379137d03b6b5a5855ce2c259e903a16d8a6e8cbd1d0eb15439c6d97cab23"
         },
         {
           "name": "proc-macro2",

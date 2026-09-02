@@ -1,127 +1,89 @@
-# Nix Linux Execution Closure Review
+# Nix Linux Process-Group Closure Review
 
-Status: selected only for Linux Repository Tooling; final admission requires
-the integrated locked closure, retained Plan 07 measurements, and complete
-namespace/process fault evidence.
+Status: admitted only for the current Linux Repository Tooling process
+supervisor and invalidated by any consumer, API, feature, or closure change.
 
-## Exact need and feature selection
+## Exact consumer and selection
 
-The Product-proof checker needs user/mount/PID/network namespaces, mount/
-unmount, chroot/chdir, process limits, process groups/signals/waits, and parent-
-death state without first-party unsafe code or distro-specific orchestration
-executables. The direct dependency is exactly:
+The current checker owns bounded child capture, one dedicated process group,
+whole-group termination, leader reap, descendant/group-absence observation,
+and reader joins. `tools/conformance/src/process.rs` is the named consumer. It
+uses Nix only for typed Linux process-group identity and signaling without
+first-party unsafe code.
 
 ```toml
 [target.'cfg(target_os = "linux")'.dependencies]
 nix = { version = "=0.31.3", default-features = false,
-        features = ["fs", "mount", "resource", "sched", "signal"] }
+        features = ["signal"] }
 ```
 
-Effective features are `fs`, `mount`, `process`, `resource`, `sched`, `signal`,
-and `uio`. `user` is unnecessary because bounded `/proc` parsing and `std::fs`
-own UID/GID mapping; `net` is unnecessary because `sched::CloneFlags` supplies
-`CLONE_NEWNET`. Enabling either feature requires renewed review.
+The effective Nix features are `process` and `signal`. Filesystem, mount,
+resource, scheduler, socket, user, and network features are not admitted. A
+Product prepared root, namespace coordinator, or another execution profile is
+a new `TOOL-001` consumer/block decision and cannot widen this selection.
 
-## Exact researched closure
+## Exact locked closure
 
-Resolved with Cargo/Rust 1.92 on 2026-09-01:
+Resolved with Cargo/Rust 1.92 from the repository lock:
 
 | Package | Role | Checksum | License | Declared MSRV |
 | --- | --- | --- | --- | --- |
 | `nix 0.31.3` | direct/runtime | `cf20d2fde8ff38632c426f1165ed7436270b44f199fc55284c38276f9db47c3d` | MIT | 1.69 |
 | `bitflags 2.13.1` | runtime | `b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da` | MIT OR Apache-2.0 | 1.56 |
 | `cfg-if 1.0.4` | runtime | `9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801` | MIT OR Apache-2.0 | 1.32 |
-| `libc 0.2.189` | runtime, `std+extra_traits` | `3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2` | MIT OR Apache-2.0 | 1.65 |
+| `libc 0.2.189` | runtime | `3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2` | MIT OR Apache-2.0 | 1.65 |
 | `cfg_aliases 0.2.2` | build only | `f079e83a288787bcd14a6aea84cee5c87a67c5a3e660c30f557a3d24761b3527` | MIT | undeclared |
 
-No other feature-selected package enters the closure. Final machine admission
-uses the integrated lock and metadata-resolved consumers/profiles, not this
-table alone.
+The machine admission uses integrated lock and metadata-resolved
+consumer/profile records. This table does not substitute for them.
 
-## Safety, build, and runtime boundary
+## Reviewed API and behavior
 
-Nix provides safe caller APIs for the selected operations. Reovim remains
-`#![forbid(unsafe_code)]` and may use only the reviewed safe subset:
+The first-party crate remains `#![forbid(unsafe_code)]`. Its complete admitted
+Nix API is:
 
-- `sched::unshare`;
-- `mount::{mount,umount,umount2}`;
-- `unistd::{chroot,chdir,getpid,getppid,setpgid,getpgid}`;
-- `sys::resource::{getrlimit,setrlimit}`;
-- `sys::prctl::{get_pdeathsig,set_pdeathsig}`;
-- `sys::signal::{kill,killpg}` including signal-zero probes; and
-- `sys::wait::{wait,waitpid}`.
+- `unistd::{Pid, getpgid}`;
+- `sys::signal::{Signal, killpg}`; and
+- `errno::Errno` for exact absence/error classification.
 
-Unsafe `clone`, `fork`, signal installation, unchecked signal-set conversion,
-and raw descriptor duplication remain forbidden. Nix and libc contain
-substantial internal unsafe FFI; exact package source, kernel ABI behavior, and
-safe-wrapper correctness are the dependency boundary rather than first-party
-unsafe proof.
+The supervisor creates the group through safe `std::process::Command` setup,
+validates the leader/group relation before accepting a result, signals the
+owned group on timeout or residue, reaps the leader, waits for group absence,
+and joins both bounded readers. `ESRCH` is accepted only where terminal absence
+is the required relation; another error is typed failure. Kernel-assigned PID
+and PGID values are observations and are omitted from deterministic report
+identity.
 
-The Nix build script uses build-only `cfg_aliases` to inspect Cargo target/
-feature environment and emit cfg declarations. Libc's build script invokes the
-exact configured Rust compiler or wrapper for `--version`, always attempts
-`emcc -dumpversion` through `PATH`, and may invoke `freebsd-version` when
-`LIBC_CI` is set. Exact builds therefore clear `LIBC_CI`,
-`LIBC_BUILD_VERBOSE`, unstable libc configuration variables, and use a
-controlled PATH which proves `emcc` absent; the Rust compiler and any explicit
-linker remain exact execution-tool/compiler-profile inputs. Any behavior or
-build-input change invalidates this review.
+Nix and libc contain internal unsafe FFI. Their safe-wrapper/kernel-ABI
+correctness, exact package bytes, build scripts, and the selected Linux target
+are the dependency boundary. Unsafe `fork`, `clone`, signal installation, raw
+descriptor operations, and all unselected modules are forbidden.
 
-## Process/mount conditions
+Nix uses `cfg_aliases` at build time. Libc's build script may inspect compiler
+and target configuration. Exact checker builds therefore retain the selected
+compiler, target, lock, cleared control variables, and controlled environment
+through the existing repository evidence contract.
 
-The setup mode is a dedicated initially single-threaded same-binary process.
-It creates/maps the user namespace before mount/network/PID namespaces, then
-spawns namespace PID 1 through safe `std::process::Command`. Every supervisor
-arms/verifies parent-death `SIGKILL` and uses a pipe handshake to close the
-startup race. PID 1 mounts `/proc`, reaps descendants, applies rlimits, and
-chroots/chdirs before Cargo. Parent process-group termination and namespace
-teardown are both required.
+## Compatibility, cost, and invalidation
 
-The old mount API cannot make unknown nested submounts recursively read-only by
-assertion. Each bind source has no nested mount or every visible nested mount is
-enumerated, remounted, and verified through bounded mountinfo. No util-linux
-fallback is admitted.
+Nix 0.31.3 supports Rust 1.69+, lists
+`x86_64-unknown-linux-gnu` as Tier 1, and is MIT licensed. The selected closure
+builds on Rust 1.92 and current stable under the repository's locked/offline
+checks. Process deadline, group kill/absence, reap, reader, and publication
+fault tests are the active consumer evidence; namespace or sandbox probes are
+not evidence for this selection.
 
-## Compatibility, maintenance, and security
+No standalone performance or release claim is made. The dependency is already
+on the current checker path, so normal candidate/exact gate duration and binary
+size measurements own its observed cost. A version, checksum, feature, lock,
+consumer, API, target, build-script, advisory, unsafe-surface, or process-group
+semantic change invalidates this review.
 
-The selected API surface passed isolated locked/offline check/build on Rust
-1.92.0 and stable 1.98.0, including a `#![forbid(unsafe_code)]` live namespace/
-PID-1/tmpfs/chroot/rlimit probe. This is feasibility evidence, not integrated
-conformance or cross-host qualification.
-
-Nix 0.31.3 was released 2026-05-11, supports Rust 1.69+, lists
-`x86_64-unknown-linux-gnu` as Tier 1, and is MIT licensed. RustSec database
-revision `72f8b23d78ea6c4c9ded301a4c6ec4260e8b4c27` has no match for the selected
-version/profile; historical `RUSTSEC-2021-0119` affects old `getgrouplist` code,
-is patched from 0.23 onward, and the `user` feature is disabled. “No match” is
-not an unsafe/correctness/supply-chain proof.
-
-Invalidators include any package/checksum/feature/lock change, Linux/kernel/
-user-namespace policy change, mount or parent-death assumption change, new
-advisory, unsafe-wrapper finding, and `cfg_aliases` behavior/MSRV change.
-
-The actual newer lock is deliberate. `bitflags 2.13.1` fixes a macro-recursion
-regression and enables no selected unsafe feature; `cfg_aliases 0.2.2` changes
-macro punctuation/documentation without new dependency or process behavior;
-and libc 0.2.187–0.2.189 includes an extern-type soundness correction while the
-selected x86_64 GNU namespace/mount/prctl/rlimit/signal/wait declarations remain
-unchanged. Artificial older transitive pins provide no demonstrated benefit.
-
-## Cost and decision
-
-Earlier build/size probes used the superseded transitive snapshot and are
-discarded. They select no budget or cost claim.
-
-Final admission requires retained clean/cached build cost, checker binary delta,
-namespace/prepared-root setup/teardown p50/p99, peak RSS, scratch bytes/inodes,
-timeout-to-kill/teardown/reap/join/cleanup latency, and comparison with the
-discarded command-based design.
-
-Decision: select this exact closure conditionally for the Linux Product-proof
-checker. It grants no Product dependency, runtime Host API, cross-platform
-claim, or permission to widen the feature/API set.
+Decision: admit this exact process/signal closure for the current Linux
+Repository Tooling supervisor. Stop at that consumer. Another execution
+mechanism requires a separate Tooling Acceptance record, dependency review,
+measurements, and end-to-end use.
 
 Primary references: [Nix 0.31.3 manifest](https://docs.rs/crate/nix/0.31.3/source/Cargo.toml),
-[Nix upstream](https://github.com/nix-rust/nix),
-[unshare source](https://docs.rs/crate/nix/0.31.3/source/src/sched.rs), and
-[RUSTSEC-2021-0119](https://rustsec.org/advisories/RUSTSEC-2021-0119.html).
+[Nix upstream](https://github.com/nix-rust/nix), and
+[Nix signal API](https://docs.rs/nix/0.31.3/nix/sys/signal/index.html).
