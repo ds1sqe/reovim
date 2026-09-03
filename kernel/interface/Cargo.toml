@@ -41,6 +41,9 @@ include = [
     "src/lifecycle.rs",
     "src/operation.rs",
     "src/output_health.rs",
+    "src/output_health/counters.rs",
+    "src/output_health/record.rs",
+    "src/output_health/snapshot.rs",
 ]
 
 [features]
