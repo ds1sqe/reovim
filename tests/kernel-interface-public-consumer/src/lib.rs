@@ -3,6 +3,7 @@
 
 mod clock;
 mod diagnostic;
+mod effect;
 mod event;
 mod lifecycle;
 mod operation;
@@ -17,6 +18,7 @@ const fn public_const_cases() -> bool {
         && lifecycle::const_cases()
         && clock::const_cases()
         && diagnostic::const_cases()
+        && effect::const_cases()
         && event::const_cases()
 }
 

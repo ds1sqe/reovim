@@ -26,8 +26,8 @@ move-only declaration below.
 `DiagnosticRecordContract` groups those independently supplied values. It is
 a declaration, not construction, lifecycle, or submission authority.
 
-One output record is a capacity-exact immutable owned byte carrier. It is
-stamped with the full source Event Stream lifecycle identity, its nonzero Event
+One output record is a nonzero, capacity-exact immutable owned byte carrier.
+It is stamped with the full source Event Stream lifecycle identity, its Event
 sequence, and the target DiagnosticOutput lifecycle identity. Identity is
 supplied from the admitted Event record and is never recovered by parsing the
 bytes. The carrier is move-only, permits immutable borrowing, releases its own
@@ -116,22 +116,37 @@ are bounded LocalOnly operations with all six axes declared.
 
 ## Destination and shutdown outcomes
 
-A private destination result carries output and record identity, total record
-bytes, confirmed-prefix bytes, Effect Certainty, Outcome Cause, and the
-authorization cut `before-call`, `in-call`, or `returned`. Confirmed prefix
-never exceeds record size. Causes are success, closing/replacement discard,
-cancellation, shutdown deadline, write-zero/failure, retry exhaustion, writer-
-contract violation, internal failure before/in a call, and supervisor reaping.
+A private destination result carries exact output lifecycle, source Stream
+lifecycle, Event sequence, total/confirmed bytes, Effect Certainty, Outcome
+Cause, and one authorization cut. Public value construction proves coherence,
+not submission acceptance or destination execution.
 
-Success requires `Applied`, a returned call, and a confirmed prefix equal to
-the complete record. A proved pre-call disposition requires
-`DefinitelyNotApplied` and zero prefix. Returned write-zero, write failure, or
-retry exhaustion is `DefinitelyNotApplied` only with zero confirmed bytes and
-is otherwise `OutcomeUnknown`. In-call failure, deadline, and writer-contract
-violation are `OutcomeUnknown`, including with zero prefix. Supervisor reap
-without effect proof is also `OutcomeUnknown`. Unknown effects are never
-blindly retried. Flush, sync, crash durability, and persistence are outside
-this contract.
+Cuts are disjoint:
+
+- `before-call` means no call for the record was ever authorized;
+- `in-call` means at least one was authorized and the latest has no trustworthy
+  return; and
+- `returned` means at least one was authorized and every authorized call has a
+  trustworthy return and confirmed-prefix accounting.
+
+After any returned progress, stopping before another call remains `returned`;
+`StopBeforeNextCall` is private mechanism state, not a result cut. Paired
+closing/replacement, write-zero/failure, and internal-before/in-call phrases
+name distinct causes.
+
+Success is `returned + Applied + full prefix`. Closing/replacement discard is
+`before-call + DefinitelyNotApplied + zero`. Cancellation, shutdown deadline,
+and supervisor reaping derive certainty from the cut: before-call is
+definitely-not-applied/zero, in-call is outcome-unknown, and returned is
+definitely-not-applied at zero or outcome-unknown after progress. Returned
+write-zero/failure/retry exhaustion follow that returned rule; writer-contract
+violation is returned/unknown. Internal-before-call may be before-call or
+returned and follows the cut rule; internal-in-call is in-call/unknown.
+
+Confirmed prefix never exceeds the nonzero total. OutcomeUnknown permits zero
+or a strict partial prefix; only success has a full prefix. Without trustworthy
+cut evidence no coherent result exists. Unknown effects are never blindly
+retried. Flush, sync, crash durability, and persistence remain outside scope.
 
 The shutdown report covers exactly the records still owned at the first
 Closing cut: queued plus in-flight. Its capacity is at least the outstanding-

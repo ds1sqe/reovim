@@ -2382,6 +2382,8 @@ const KERNEL_INTERFACE_SHIPPING_SOURCES: &[&str] = &[
     "kernel/interface/src/clock.rs",
     "kernel/interface/src/contract.rs",
     "kernel/interface/src/diagnostic.rs",
+    "kernel/interface/src/diagnostic/destination.rs",
+    "kernel/interface/src/effect.rs",
     "kernel/interface/src/event.rs",
     "kernel/interface/src/event/admission.rs",
     "kernel/interface/src/event/canonical.rs",
@@ -2405,6 +2407,8 @@ const KERNEL_INTERFACE_SHIPPING_SOURCES: &[&str] = &[
 const KERNEL_INTERFACE_CONSUMER_SOURCES: &[&str] = &[
     "tests/kernel-interface-public-consumer/src/clock.rs",
     "tests/kernel-interface-public-consumer/src/diagnostic.rs",
+    "tests/kernel-interface-public-consumer/src/diagnostic/destination.rs",
+    "tests/kernel-interface-public-consumer/src/effect.rs",
     "tests/kernel-interface-public-consumer/src/event/canonical.rs",
     "tests/kernel-interface-public-consumer/src/event/derives.rs",
     "tests/kernel-interface-public-consumer/src/event/descriptor.rs",

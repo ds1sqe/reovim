@@ -208,6 +208,16 @@
           },
           {
             "kind": "copied",
+            "package_path": "src/diagnostic/destination.rs",
+            "repository_path": "kernel/interface/src/diagnostic/destination.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/effect.rs",
+            "repository_path": "kernel/interface/src/effect.rs"
+          },
+          {
+            "kind": "copied",
             "package_path": "src/event.rs",
             "repository_path": "kernel/interface/src/event.rs"
           },
@@ -2531,6 +2541,58 @@
           "kind": "type"
         },
         {
+          "path": "diagnostic::DiagnosticDestinationCause",
+          "kind": "type"
+        },
+        {
+          "path": "diagnostic::DiagnosticDestinationCut",
+          "kind": "type"
+        },
+        {
+          "path": "diagnostic::DiagnosticDestinationError",
+          "kind": "type"
+        },
+        {
+          "path": "diagnostic::DiagnosticDestinationResult",
+          "kind": "type"
+        },
+        {
+          "path": "diagnostic::DiagnosticDestinationResult::cause",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticDestinationResult::certainty",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticDestinationResult::confirmed_prefix",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticDestinationResult::cut",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticDestinationResult::new",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticDestinationResult::output",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticDestinationResult::sequence",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticDestinationResult::stream",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticDestinationResult::total_bytes",
+          "kind": "function"
+        },
+        {
           "path": "diagnostic::DiagnosticDropCause",
           "kind": "type"
         },
@@ -2764,6 +2826,14 @@
         },
         {
           "path": "diagnostic::DiagnosticSubmissionStatus",
+          "kind": "type"
+        },
+        {
+          "path": "effect",
+          "kind": "module"
+        },
+        {
+          "path": "effect::EffectCertainty",
           "kind": "type"
         },
         {
@@ -3935,6 +4005,82 @@
           "kind": "variant"
         },
         {
+          "path": "diagnostic::DiagnosticDestinationCause::Cancellation",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticDestinationCause::ClosingDiscard",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticDestinationCause::InternalFailureBeforeCall",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticDestinationCause::InternalFailureInCall",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticDestinationCause::ReplacementDiscard",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticDestinationCause::RetryExhaustion",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticDestinationCause::ShutdownDeadline",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticDestinationCause::Success",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticDestinationCause::SupervisorReaping",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticDestinationCause::WriteFailure",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticDestinationCause::WriteZero",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticDestinationCause::WriterContractViolation",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticDestinationCut::BeforeCall",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticDestinationCut::InCall",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticDestinationCut::Returned",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticDestinationError::CauseCutMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticDestinationError::CertaintyMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticDestinationError::PrefixExceedsRecord",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticDestinationError::PrefixMismatch",
+          "kind": "variant"
+        },
+        {
           "path": "diagnostic::DiagnosticDropCause::BoundExceeded",
           "kind": "variant"
         },
@@ -4076,6 +4222,18 @@
         },
         {
           "path": "diagnostic::DiagnosticSubmissionStatus::Dropped",
+          "kind": "variant"
+        },
+        {
+          "path": "effect::EffectCertainty::Applied",
+          "kind": "variant"
+        },
+        {
+          "path": "effect::EffectCertainty::DefinitelyNotApplied",
+          "kind": "variant"
+        },
+        {
+          "path": "effect::EffectCertainty::OutcomeUnknown",
           "kind": "variant"
         },
         {
@@ -5771,6 +5929,106 @@
         },
         {
           "derive": "Clone",
+          "public_type": "diagnostic::DiagnosticDestinationCause",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "diagnostic::DiagnosticDestinationCause",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "diagnostic::DiagnosticDestinationCause",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "diagnostic::DiagnosticDestinationCause",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "diagnostic::DiagnosticDestinationCause",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "diagnostic::DiagnosticDestinationCut",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "diagnostic::DiagnosticDestinationCut",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "diagnostic::DiagnosticDestinationCut",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "diagnostic::DiagnosticDestinationCut",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "diagnostic::DiagnosticDestinationCut",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "diagnostic::DiagnosticDestinationError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "diagnostic::DiagnosticDestinationError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "diagnostic::DiagnosticDestinationError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "diagnostic::DiagnosticDestinationError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "diagnostic::DiagnosticDestinationError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "diagnostic::DiagnosticDestinationResult",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "diagnostic::DiagnosticDestinationResult",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "diagnostic::DiagnosticDestinationResult",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "diagnostic::DiagnosticDestinationResult",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "diagnostic::DiagnosticDestinationResult",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
           "public_type": "diagnostic::DiagnosticDropCause",
           "consumer_operation": "clone"
         },
@@ -6032,6 +6290,31 @@
         {
           "derive": "Eq",
           "public_type": "diagnostic::DiagnosticSubmissionStatus",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "effect::EffectCertainty",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "effect::EffectCertainty",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "effect::EffectCertainty",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "effect::EffectCertainty",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "effect::EffectCertainty",
           "consumer_operation": "eq"
         },
         {

@@ -2,6 +2,8 @@
 
 use core::fmt;
 
+mod destination;
+
 pub use ::reovim_foundation::bound::{
     BoundDescriptor, BoundError, CheckedByteCount, CheckedCount,
     CheckedDuration,
@@ -16,6 +18,7 @@ use crate::carrier::{
 use reovim_foundation::bound::{BoundValue, ZeroPolicy};
 
 use crate::contract::ContractId;
+use crate::effect::EffectCertainty;
 use crate::event::{CanonicalEventRecordRef, EventSequence};
 use crate::lifecycle::LifecycleIdentity;
 use crate::operation::{ContractSelection, OperationDescriptor};
@@ -602,6 +605,209 @@ impl fmt::Debug for DiagnosticOutputRecord {
             .finish_non_exhaustive()
     }
 }
+
+/// Authorization cut observed for one destination attempt result.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DiagnosticDestinationCut {
+    /// No destination call for this record was ever authorized.
+    BeforeCall,
+    /// The latest authorized call has no trustworthy return.
+    InCall,
+    /// At least one call was authorized and every call returned trustworthily.
+    Returned,
+}
+
+/// Exact reason one destination attempt reached its recorded result.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DiagnosticDestinationCause {
+    /// The complete record was accepted by the destination.
+    Success,
+    /// Closing discarded the record before any destination call.
+    ClosingDiscard,
+    /// Output replacement discarded the record before any call.
+    ReplacementDiscard,
+    /// Cancellation ended local destination work.
+    Cancellation,
+    /// The bounded shutdown deadline ended local destination work.
+    ShutdownDeadline,
+    /// A trustworthy destination return made no progress.
+    WriteZero,
+    /// A trustworthy destination return reported failure.
+    WriteFailure,
+    /// The declared retry allowance was exhausted.
+    RetryExhaustion,
+    /// A destination return violated its writer contract.
+    WriterContractViolation,
+    /// An internal failure occurred while no call was active.
+    InternalFailureBeforeCall,
+    /// An internal failure occurred during an active call.
+    InternalFailureInCall,
+    /// The containing supervisor proved execution was reaped.
+    SupervisorReaping,
+}
+
+/// Coherent scalar evidence for one private destination attempt.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DiagnosticDestinationResult {
+    output: LifecycleIdentity,
+    stream: LifecycleIdentity,
+    sequence: EventSequence,
+    total_bytes: CheckedByteCount,
+    confirmed_prefix: CheckedByteCount,
+    certainty: EffectCertainty,
+    cause: DiagnosticDestinationCause,
+    cut: DiagnosticDestinationCut,
+}
+
+/// Failure to construct coherent destination-result evidence.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DiagnosticDestinationError {
+    /// The claimed confirmed prefix exceeds the complete record.
+    PrefixExceedsRecord {
+        /// Rejected confirmed-prefix byte count.
+        confirmed: CheckedByteCount,
+        /// Complete canonical record byte count.
+        total: CheckedByteCount,
+    },
+    /// The cause cannot occur at the supplied authorization cut.
+    CauseCutMismatch {
+        /// Rejected destination outcome cause.
+        cause: DiagnosticDestinationCause,
+        /// Rejected authorization cut.
+        cut: DiagnosticDestinationCut,
+    },
+    /// Effect knowledge conflicts with the cause and cut.
+    CertaintyMismatch {
+        /// Destination outcome cause being validated.
+        cause: DiagnosticDestinationCause,
+        /// Authorization cut being validated.
+        cut: DiagnosticDestinationCut,
+        /// Rejected effect knowledge.
+        certainty: EffectCertainty,
+    },
+    /// The prefix conflicts with the otherwise coherent result.
+    PrefixMismatch {
+        /// Destination outcome cause being validated.
+        cause: DiagnosticDestinationCause,
+        /// Authorization cut being validated.
+        cut: DiagnosticDestinationCut,
+        /// Rejected confirmed-prefix byte count.
+        confirmed: CheckedByteCount,
+        /// Complete canonical record byte count.
+        total: CheckedByteCount,
+    },
+}
+
+impl DiagnosticDestinationResult {
+    /// Constructs coherent destination evidence from one output record.
+    ///
+    /// Construction copies scalar metadata only. It does not retain record
+    /// bytes or prove submission acceptance or destination execution.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first failure in prefix-bound, cause/cut, certainty, then
+    /// exact-prefix validation order.
+    pub const fn new(
+        record: &DiagnosticOutputRecord,
+        confirmed_prefix: CheckedByteCount,
+        certainty: EffectCertainty,
+        cause: DiagnosticDestinationCause,
+        cut: DiagnosticDestinationCut,
+    ) -> Result<Self, DiagnosticDestinationError> {
+        let total = record.size();
+        match destination::validate(
+            confirmed_prefix,
+            total,
+            certainty,
+            cause,
+            cut,
+        ) {
+            Ok(()) => {}
+            Err(error) => return Err(error),
+        }
+        Ok(Self {
+            output: record.output(),
+            stream: record.stream(),
+            sequence: record.sequence(),
+            total_bytes: total,
+            confirmed_prefix,
+            certainty,
+            cause,
+            cut,
+        })
+    }
+
+    /// Returns the exact target output lifecycle stamp.
+    #[must_use]
+    pub const fn output(self) -> LifecycleIdentity {
+        self.output
+    }
+
+    /// Returns the complete source Event Stream lifecycle stamp.
+    #[must_use]
+    pub const fn stream(self) -> LifecycleIdentity {
+        self.stream
+    }
+
+    /// Returns the source Event sequence.
+    #[must_use]
+    pub const fn sequence(self) -> EventSequence {
+        self.sequence
+    }
+
+    /// Returns the complete canonical record byte count.
+    #[must_use]
+    pub const fn total_bytes(self) -> CheckedByteCount {
+        self.total_bytes
+    }
+
+    /// Returns the trustworthy confirmed destination prefix.
+    #[must_use]
+    pub const fn confirmed_prefix(self) -> CheckedByteCount {
+        self.confirmed_prefix
+    }
+
+    /// Returns knowledge of the declared target effect.
+    #[must_use]
+    pub const fn certainty(self) -> EffectCertainty {
+        self.certainty
+    }
+
+    /// Returns the exact destination outcome cause.
+    #[must_use]
+    pub const fn cause(self) -> DiagnosticDestinationCause {
+        self.cause
+    }
+
+    /// Returns the observed destination authorization cut.
+    #[must_use]
+    pub const fn cut(self) -> DiagnosticDestinationCut {
+        self.cut
+    }
+}
+
+impl fmt::Display for DiagnosticDestinationError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let message = match self {
+            Self::PrefixExceedsRecord { .. } => {
+                "Diagnostic destination prefix exceeds its record"
+            }
+            Self::CauseCutMismatch { .. } => {
+                "Diagnostic destination cause and cut conflict"
+            }
+            Self::CertaintyMismatch { .. } => {
+                "Diagnostic destination certainty conflicts"
+            }
+            Self::PrefixMismatch { .. } => {
+                "Diagnostic destination prefix conflicts"
+            }
+        };
+        formatter.write_str(message)
+    }
+}
+
+impl std::error::Error for DiagnosticDestinationError {}
 
 /// Typed failed bind that returns the exact caller-owned carrier.
 pub struct DiagnosticRecordRejection {

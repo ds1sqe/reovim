@@ -3904,6 +3904,8 @@ mod tests {
         "kernel/interface/src/clock.rs",
         "kernel/interface/src/contract.rs",
         "kernel/interface/src/diagnostic.rs",
+        "kernel/interface/src/diagnostic/destination.rs",
+        "kernel/interface/src/effect.rs",
         "kernel/interface/src/event.rs",
         "kernel/interface/src/event/admission.rs",
         "kernel/interface/src/event/canonical.rs",
@@ -3927,6 +3929,8 @@ mod tests {
     const KI_CONSUMER: &[&str] = &[
         "tests/kernel-interface-public-consumer/src/clock.rs",
         "tests/kernel-interface-public-consumer/src/diagnostic.rs",
+        "tests/kernel-interface-public-consumer/src/diagnostic/destination.rs",
+        "tests/kernel-interface-public-consumer/src/effect.rs",
         "tests/kernel-interface-public-consumer/src/event/canonical.rs",
         "tests/kernel-interface-public-consumer/src/event/derives.rs",
         "tests/kernel-interface-public-consumer/src/event/descriptor.rs",

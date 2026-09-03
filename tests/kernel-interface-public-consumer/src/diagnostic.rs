@@ -1,5 +1,7 @@
 //! Public-only `DiagnosticOutput` contract and ownership journey.
 
+mod destination;
+
 use core::fmt::Debug;
 
 use reovim_kernel_interface::bound::{
@@ -51,6 +53,7 @@ pub const fn const_cases() -> bool {
         && descriptor_cases()
         && descriptor_error_cases()
         && derive_cases()
+        && destination::const_cases()
 }
 
 const fn contract_identity_facade_cases() -> bool {
@@ -1525,6 +1528,7 @@ pub fn exercise() -> bool {
         && all_dropped_cases()
         && all_closed_cases()
         && error_and_debug_cases()
+        && destination::exercise()
 }
 
 fn make_record(

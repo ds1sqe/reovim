@@ -9,6 +9,7 @@ pub const fn witness() -> bool {
     contract_items();
     diagnostic_items_one();
     diagnostic_items_two();
+    diagnostic_items_three();
     event_items_one();
     event_items_two();
     identity_items();
@@ -190,6 +191,29 @@ const fn diagnostic_items_two() {
             returned_record,
         ::reovim_kernel_interface::diagnostic::DiagnosticSubmissionOutcome::
             status,
+    );
+}
+
+const fn diagnostic_items_three() {
+    let _ = (
+        ::reovim_kernel_interface::diagnostic::DiagnosticDestinationResult::
+            cause,
+        ::reovim_kernel_interface::diagnostic::DiagnosticDestinationResult::
+            certainty,
+        ::reovim_kernel_interface::diagnostic::DiagnosticDestinationResult::
+            confirmed_prefix,
+        ::reovim_kernel_interface::diagnostic::DiagnosticDestinationResult::
+            cut,
+        ::reovim_kernel_interface::diagnostic::DiagnosticDestinationResult::
+            new,
+        ::reovim_kernel_interface::diagnostic::DiagnosticDestinationResult::
+            output,
+        ::reovim_kernel_interface::diagnostic::DiagnosticDestinationResult::
+            sequence,
+        ::reovim_kernel_interface::diagnostic::DiagnosticDestinationResult::
+            stream,
+        ::reovim_kernel_interface::diagnostic::DiagnosticDestinationResult::
+            total_bytes,
     );
 }
 
@@ -453,6 +477,9 @@ const fn variant_items() {
         clock_instant_ordering_variants,
         diagnostic_closed_cause_variants,
         diagnostic_bound_error_variants,
+        diagnostic_destination_cause_variants,
+        diagnostic_destination_cut_variants,
+        diagnostic_destination_error_variants,
         diagnostic_drop_cause_variants,
         diagnostic_operation_variants,
         diagnostic_output_error_variants,
@@ -473,6 +500,7 @@ const fn variant_items() {
         event_remediation_code_variants,
         event_severity_variants,
         event_snapshot_coverage_variants,
+        effect_effect_certainty_variants,
         lifecycle_lifecycle_state_variants,
         lifecycle_readiness_outcome_variants,
         lifecycle_rollback_outcome_variants,
@@ -713,6 +741,65 @@ const fn diagnostic_closed_cause_variants(
         | ::reovim_kernel_interface::diagnostic::DiagnosticClosedCause::Replaced
         | ::reovim_kernel_interface::diagnostic::DiagnosticClosedCause::
             IncompleteShutdown => {}
+    }
+}
+
+const fn diagnostic_destination_cause_variants(
+    value: ::reovim_kernel_interface::diagnostic::DiagnosticDestinationCause,
+) {
+    match value {
+        ::reovim_kernel_interface::diagnostic::DiagnosticDestinationCause::
+            Success
+        | ::reovim_kernel_interface::diagnostic::DiagnosticDestinationCause::
+            ClosingDiscard
+        | ::reovim_kernel_interface::diagnostic::DiagnosticDestinationCause::
+            ReplacementDiscard
+        | ::reovim_kernel_interface::diagnostic::DiagnosticDestinationCause::
+            Cancellation
+        | ::reovim_kernel_interface::diagnostic::DiagnosticDestinationCause::
+            ShutdownDeadline
+        | ::reovim_kernel_interface::diagnostic::DiagnosticDestinationCause::
+            WriteZero
+        | ::reovim_kernel_interface::diagnostic::DiagnosticDestinationCause::
+            WriteFailure
+        | ::reovim_kernel_interface::diagnostic::DiagnosticDestinationCause::
+            RetryExhaustion
+        | ::reovim_kernel_interface::diagnostic::DiagnosticDestinationCause::
+            WriterContractViolation
+        | ::reovim_kernel_interface::diagnostic::DiagnosticDestinationCause::
+            InternalFailureBeforeCall
+        | ::reovim_kernel_interface::diagnostic::DiagnosticDestinationCause::
+            InternalFailureInCall
+        | ::reovim_kernel_interface::diagnostic::DiagnosticDestinationCause::
+            SupervisorReaping => {}
+    }
+}
+
+const fn diagnostic_destination_cut_variants(
+    value: ::reovim_kernel_interface::diagnostic::DiagnosticDestinationCut,
+) {
+    match value {
+        ::reovim_kernel_interface::diagnostic::DiagnosticDestinationCut::
+            BeforeCall
+        | ::reovim_kernel_interface::diagnostic::DiagnosticDestinationCut::
+            InCall
+        | ::reovim_kernel_interface::diagnostic::DiagnosticDestinationCut::
+            Returned => {}
+    }
+}
+
+const fn diagnostic_destination_error_variants(
+    value: ::reovim_kernel_interface::diagnostic::DiagnosticDestinationError,
+) {
+    match value {
+        ::reovim_kernel_interface::diagnostic::DiagnosticDestinationError::
+            PrefixExceedsRecord { .. }
+        | ::reovim_kernel_interface::diagnostic::DiagnosticDestinationError::
+            CauseCutMismatch { .. }
+        | ::reovim_kernel_interface::diagnostic::DiagnosticDestinationError::
+            CertaintyMismatch { .. }
+        | ::reovim_kernel_interface::diagnostic::DiagnosticDestinationError::
+            PrefixMismatch { .. } => {}
     }
 }
 
@@ -1121,6 +1208,18 @@ const fn event_snapshot_coverage_variants(
         | ::reovim_kernel_interface::event::SnapshotCoverage::Partial {
             first_uncopied: _,
         } => {}
+    }
+}
+
+const fn effect_effect_certainty_variants(
+    value: ::reovim_kernel_interface::effect::EffectCertainty,
+) {
+    match value {
+        ::reovim_kernel_interface::effect::EffectCertainty::Applied
+        | ::reovim_kernel_interface::effect::EffectCertainty::
+            DefinitelyNotApplied
+        | ::reovim_kernel_interface::effect::EffectCertainty::
+            OutcomeUnknown => {}
     }
 }
 

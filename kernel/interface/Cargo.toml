@@ -18,6 +18,8 @@ include = [
     "src/clock.rs",
     "src/contract.rs",
     "src/diagnostic.rs",
+    "src/diagnostic/destination.rs",
+    "src/effect.rs",
     "src/event.rs",
     "src/event/admission.rs",
     "src/event/canonical.rs",

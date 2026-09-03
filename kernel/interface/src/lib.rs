@@ -11,6 +11,7 @@ pub mod carrier;
 pub mod clock;
 pub mod contract;
 pub mod diagnostic;
+pub mod effect;
 pub mod event;
 pub mod identity;
 pub mod lifecycle;
