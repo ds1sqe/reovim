@@ -81,7 +81,7 @@ impl crate::event::StartupProposal {
         self.counts
     }
 
-    /// Returns the fixed bootstrap-health state.
+    /// Returns the fixed bootstrap-health summary marker.
     #[must_use]
     pub const fn bootstrap_health(self) -> BootstrapHealth {
         self.bootstrap_health

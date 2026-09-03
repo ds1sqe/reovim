@@ -315,6 +315,11 @@
             "kind": "copied",
             "package_path": "src/operation.rs",
             "repository_path": "kernel/interface/src/operation.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/output_health.rs",
+            "repository_path": "kernel/interface/src/output_health.rs"
           }
         ]
       }
@@ -4828,6 +4833,206 @@
         {
           "path": "operation::ReentrancyClass::Reentrant",
           "kind": "variant"
+        },
+        {
+          "path": "output_health",
+          "kind": "module"
+        },
+        {
+          "path": "output_health::OutputHealthActivationFailureCause",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthProposal",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthProposalError",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthProposalKind",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthRecordStamp",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthRuntimeFailureCause",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthProposal::activation_cause",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthProposal::activation_failure",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthProposal::closed_cause",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthProposal::destination",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthProposal::destination_result",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthProposal::drop_cause",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthProposal::execution",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthProposal::incomplete_shutdown",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthProposal::is_anomaly_candidate",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthProposal::kind",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthProposal::output",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthProposal::owner_at_latch",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthProposal::record_stamp",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthProposal::rollback",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthProposal::runtime_cause",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthProposal::runtime_failure",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthProposal::source_stream",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthProposal::submission_accepted",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthProposal::submission_closed",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthProposal::submission_dropped",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthProposal::unresolved_records",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthRecordStamp::from_record",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthRecordStamp::output",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthRecordStamp::record_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthRecordStamp::sequence",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthRecordStamp::source_stream",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthActivationFailureCause::DestinationUnavailable",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthActivationFailureCause::ExecutionStartFailure",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthActivationFailureCause::HealthUnavailable",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthActivationFailureCause::InternalFailure",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthProposalError::RuntimeExecutionMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthProposalError::ShutdownComplete",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthProposalKind::ActivationFailure",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthProposalKind::DestinationResult",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthProposalKind::IncompleteShutdown",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthProposalKind::RuntimeFailure",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthProposalKind::SubmissionAccepted",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthProposalKind::SubmissionClosed",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthProposalKind::SubmissionDropped",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthRuntimeFailureCause::DestinationUnavailable",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthRuntimeFailureCause::HealthUnavailable",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthRuntimeFailureCause::InternalFailure",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthRuntimeFailureCause::UnexpectedExecutionTermination",
+          "kind": "variant"
         }
       ],
       "derive_checks": [
@@ -7949,6 +8154,156 @@
         {
           "derive": "Eq",
           "public_type": "operation::ReentrancyClass",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthActivationFailureCause",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthActivationFailureCause",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthActivationFailureCause",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthActivationFailureCause",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthActivationFailureCause",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthProposal",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthProposal",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthProposal",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthProposal",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthProposal",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthProposalError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthProposalError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthProposalError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthProposalError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthProposalError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthProposalKind",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthProposalKind",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthProposalKind",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthProposalKind",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthProposalKind",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthRecordStamp",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthRecordStamp",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthRecordStamp",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthRecordStamp",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthRecordStamp",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthRuntimeFailureCause",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthRuntimeFailureCause",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthRuntimeFailureCause",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthRuntimeFailureCause",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthRuntimeFailureCause",
           "consumer_operation": "eq"
         }
       ]

@@ -95,8 +95,10 @@ CallerMayWait + DeferredTerminal + Single + LocalOnly
 ```
 
 Shutdown relays destination certainty/cause and grants no mutation authority.
-Output-health operations are defined by the
-[Bootstrap Health contract](05-Bootstrap-Health.md).
+Output-health inputs are defined by
+[OutputHealth proposals](05-Bootstrap-Health/02-Output-Health-Proposals.md).
+Write authority and state behavior are defined separately by
+[State](05-Bootstrap-Health/03-Retention-Lease-and-Snapshot.md).
 
 ## Destination results
 

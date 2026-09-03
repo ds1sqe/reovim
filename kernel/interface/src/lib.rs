@@ -16,3 +16,4 @@ pub mod event;
 pub mod identity;
 pub mod lifecycle;
 pub mod operation;
+pub mod output_health;

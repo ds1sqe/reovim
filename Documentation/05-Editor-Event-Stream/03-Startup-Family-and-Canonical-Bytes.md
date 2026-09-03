@@ -30,7 +30,7 @@ An unadmitted startup proposal contains only:
 - rollback disposition: `none`, `reverted`, or `incomplete-shutdown`, where
   only `activation-failed` may select a non-`none` value;
 - checked active, degraded, and unavailable component counts;
-- bootstrap-health state: `clear`, `imported`, or `pending`; and
+- bootstrap-health summary marker: `clear`, `imported`, or `pending`; and
 - the outcome's closed Actionability/remediation selection.
 
 The proposal cannot assign producer identity, Event Stream incarnation,

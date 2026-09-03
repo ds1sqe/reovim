@@ -40,6 +40,7 @@ include = [
     "src/lib.rs",
     "src/lifecycle.rs",
     "src/operation.rs",
+    "src/output_health.rs",
 ]
 
 [features]

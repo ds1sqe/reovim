@@ -64,7 +64,7 @@ pub struct StartupEventDescriptor {
     canonical_reference_safety: CarrierSafetyDescriptor,
 }
 
-/// Fixed bootstrap-health state retained outside Event admission.
+/// Startup summary of fixed bootstrap-health state outside Event admission.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BootstrapHealth {
     /// No startup diagnostic remains pending.

@@ -1568,7 +1568,7 @@ pub fn exercise() -> bool {
         && shutdown::exercise()
 }
 
-fn make_record(
+pub fn make_record(
     descriptor: &DiagnosticOutputDescriptor,
 ) -> Option<DiagnosticOutputRecord> {
     let record = event::make_ready_record()?;

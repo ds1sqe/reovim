@@ -3927,6 +3927,7 @@ mod tests {
         "kernel/interface/src/lib.rs",
         "kernel/interface/src/lifecycle.rs",
         "kernel/interface/src/operation.rs",
+        "kernel/interface/src/output_health.rs",
     ];
     const KI_CONSUMER: &[&str] = &[
         "tests/kernel-interface-public-consumer/src/clock.rs",
@@ -3944,6 +3945,7 @@ mod tests {
         "tests/kernel-interface-public-consumer/src/lib.rs",
         "tests/kernel-interface-public-consumer/src/lifecycle.rs",
         "tests/kernel-interface-public-consumer/src/operation.rs",
+        "tests/kernel-interface-public-consumer/src/output_health.rs",
         "tests/kernel-interface-public-consumer/src/public_items.rs",
     ];
     const LIMITS: AnalysisLimits = AnalysisLimits {

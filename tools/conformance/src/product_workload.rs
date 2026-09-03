@@ -103,6 +103,7 @@ const KERNEL_INTERFACE_SHIPPING_SOURCES: &[&str] = &[
     "kernel/interface/src/lib.rs",
     "kernel/interface/src/lifecycle.rs",
     "kernel/interface/src/operation.rs",
+    "kernel/interface/src/output_health.rs",
 ];
 
 const KERNEL_INTERFACE_VALIDATION_SOURCES: &[&str] = &[
@@ -122,6 +123,7 @@ const KERNEL_INTERFACE_VALIDATION_SOURCES: &[&str] = &[
     "tests/kernel-interface-public-consumer/src/lifecycle.rs",
     "tests/kernel-interface-public-consumer/src/public_items.rs",
     "tests/kernel-interface-public-consumer/src/operation.rs",
+    "tests/kernel-interface-public-consumer/src/output_health.rs",
 ];
 
 /// All caller-selected bounds used inside the prepared workload.

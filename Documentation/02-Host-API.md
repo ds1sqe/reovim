@@ -14,8 +14,9 @@
    submission and destination evidence.
 4. [Shutdown values](02-Host-API/04-Diagnostic-Shutdown-Values.md) defines
    shutdown entries, candidates, latching, and ownership evidence.
-5. [Bootstrap health](02-Host-API/05-Bootstrap-Health.md) defines the one
-   non-recursive failure state and OutputHealth partition.
+5. [Bootstrap health](02-Host-API/05-Bootstrap-Health.md) routes the one
+   non-recursive failure state, OutputHealth proposal, retention, snapshot,
+   import, and readiness contracts.
 6. [Lifecycle](02-Host-API/06-Lifecycle-Adapters-and-Conformance.md)
    defines readiness, shutdown, growth, substitution, and evidence.
 

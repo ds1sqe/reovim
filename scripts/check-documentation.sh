@@ -17,6 +17,7 @@ readonly SEMANTICS="$ARCH/03-Semantics-and-View"
 readonly INTERACTION_NAME=02-Interaction-Updates-Protocols-and-View
 readonly INTERACTION="$SEMANTICS/$INTERACTION_NAME"
 readonly HOST_API="$DOC/02-Host-API"
+readonly BOOTSTRAP_HEALTH="$HOST_API/05-Bootstrap-Health"
 readonly EXTENSIONS="$DOC/03-Extensions"
 readonly PERFORMANCE="$DOC/04-Performance"
 readonly EVENT_STREAM="$DOC/05-Editor-Event-Stream"
@@ -248,6 +249,7 @@ contract_indexes=(
     ${LAYER_ROLES}.md
     ${INTERACTION}.md
     ${ARCH}/05-Client/README.md
+    ${BOOTSTRAP_HEALTH}.md
     ${EXTENSIONS}/README.md
     ${PERFORMANCE}/README.md
     ${EVENT_STREAM}/README.md
@@ -299,7 +301,11 @@ expected_normative_files=(
     ${HOST_API}/02-Monotonic-Clock.md
     ${HOST_API}/03-Diagnostic-Output.md
     ${HOST_API}/04-Diagnostic-Shutdown-Values.md
-    ${HOST_API}/05-Bootstrap-Health.md
+    ${BOOTSTRAP_HEALTH}.md
+    ${BOOTSTRAP_HEALTH}/01-Ownership-Schema-and-Counters.md
+    ${BOOTSTRAP_HEALTH}/02-Output-Health-Proposals.md
+    ${BOOTSTRAP_HEALTH}/03-Retention-Lease-and-Snapshot.md
+    ${BOOTSTRAP_HEALTH}/04-Import-Readiness-and-Failure.md
     ${HOST_API}/06-Lifecycle-Adapters-and-Conformance.md
     ${EXTENSIONS}/01-Packages-Contribution-Points-and-Registry.md
     ${EXTENSIONS}/02-SDKs-Service-Contracts-and-Compatibility.md
@@ -417,8 +423,13 @@ check_index_children Documentation/02-Host-API.md \
     ${HOST_API}/02-Monotonic-Clock.md \
     ${HOST_API}/03-Diagnostic-Output.md \
     ${HOST_API}/04-Diagnostic-Shutdown-Values.md \
-    ${HOST_API}/05-Bootstrap-Health.md \
+    ${BOOTSTRAP_HEALTH}.md \
     ${HOST_API}/06-Lifecycle-Adapters-and-Conformance.md
+check_index_children ${BOOTSTRAP_HEALTH}.md \
+    ${BOOTSTRAP_HEALTH}/01-Ownership-Schema-and-Counters.md \
+    ${BOOTSTRAP_HEALTH}/02-Output-Health-Proposals.md \
+    ${BOOTSTRAP_HEALTH}/03-Retention-Lease-and-Snapshot.md \
+    ${BOOTSTRAP_HEALTH}/04-Import-Readiness-and-Failure.md
 check_index_children ${EXTENSIONS}/README.md \
     ${EXTENSIONS}/01-Packages-Contribution-Points-and-Registry.md \
     ${EXTENSIONS}/02-SDKs-Service-Contracts-and-Compatibility.md \
@@ -489,6 +500,9 @@ check_index_sections \
     'Reading order'
 check_index_sections \
     Documentation/02-Host-API.md \
+    'Reading order'
+check_index_sections \
+    ${BOOTSTRAP_HEALTH}.md \
     'Reading order'
 check_index_sections \
     ${CLASSIFIER}.md \

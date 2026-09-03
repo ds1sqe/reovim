@@ -17,6 +17,8 @@ pub const fn witness() -> bool {
     identity_items();
     lifecycle_items();
     operation_items();
+    output_health_items_one();
+    output_health_items_two();
     trait_items();
     trait_method_items();
     variant_items();
@@ -269,6 +271,67 @@ const fn diagnostic_items_five() {
             statistics,
         ::reovim_kernel_interface::diagnostic::DiagnosticShutdownReportRef::
             entries,
+    );
+}
+
+const fn output_health_items_one() {
+    let _ = (
+        ::reovim_kernel_interface::output_health::OutputHealthRecordStamp::
+            from_record,
+        ::reovim_kernel_interface::output_health::OutputHealthRecordStamp::
+            output,
+        ::reovim_kernel_interface::output_health::OutputHealthRecordStamp::
+            record_bytes,
+        ::reovim_kernel_interface::output_health::OutputHealthRecordStamp::
+            sequence,
+        ::reovim_kernel_interface::output_health::OutputHealthRecordStamp::
+            source_stream,
+        ::reovim_kernel_interface::output_health::OutputHealthProposal::
+            activation_failure,
+        ::reovim_kernel_interface::output_health::OutputHealthProposal::
+            destination_result,
+        ::reovim_kernel_interface::output_health::OutputHealthProposal::
+            incomplete_shutdown,
+        ::reovim_kernel_interface::output_health::OutputHealthProposal::
+            runtime_failure,
+        ::reovim_kernel_interface::output_health::OutputHealthProposal::
+            submission_accepted,
+        ::reovim_kernel_interface::output_health::OutputHealthProposal::
+            submission_closed,
+        ::reovim_kernel_interface::output_health::OutputHealthProposal::
+            submission_dropped,
+    );
+}
+
+const fn output_health_items_two() {
+    let _ = (
+        ::reovim_kernel_interface::output_health::OutputHealthProposal::
+            activation_cause,
+        ::reovim_kernel_interface::output_health::OutputHealthProposal::
+            closed_cause,
+        ::reovim_kernel_interface::output_health::OutputHealthProposal::
+            destination,
+        ::reovim_kernel_interface::output_health::OutputHealthProposal::
+            drop_cause,
+        ::reovim_kernel_interface::output_health::OutputHealthProposal::
+            execution,
+        ::reovim_kernel_interface::output_health::OutputHealthProposal::
+            is_anomaly_candidate,
+        ::reovim_kernel_interface::output_health::OutputHealthProposal::kind,
+        ::reovim_kernel_interface::output_health::OutputHealthProposal::
+            output,
+        ::reovim_kernel_interface::output_health::OutputHealthProposal::
+            owner_at_latch,
+        ::reovim_kernel_interface::output_health::OutputHealthProposal::
+            record_stamp,
+        ::reovim_kernel_interface::output_health::OutputHealthProposal::
+            rollback,
+        ::reovim_kernel_interface::output_health::OutputHealthProposal::
+            runtime_cause,
+        ::reovim_kernel_interface::output_health::OutputHealthProposal::
+            source_stream,
+        ::reovim_kernel_interface::output_health::OutputHealthProposal::
+            unresolved_records,
     );
 }
 
@@ -572,7 +635,75 @@ const fn variant_items() {
         operation_invocation_class_variants,
         operation_operation_descriptor_error_variants,
         operation_reentrancy_class_variants,
+        output_health_activation_failure_cause_variants,
+        output_health_proposal_error_variants,
+        output_health_proposal_kind_variants,
+        output_health_runtime_failure_cause_variants,
     );
+}
+
+const fn output_health_activation_failure_cause_variants(
+    value: ::reovim_kernel_interface::output_health::
+        OutputHealthActivationFailureCause,
+) {
+    match value {
+        ::reovim_kernel_interface::output_health::
+            OutputHealthActivationFailureCause::DestinationUnavailable
+        | ::reovim_kernel_interface::output_health::
+            OutputHealthActivationFailureCause::HealthUnavailable
+        | ::reovim_kernel_interface::output_health::
+            OutputHealthActivationFailureCause::ExecutionStartFailure
+        | ::reovim_kernel_interface::output_health::
+            OutputHealthActivationFailureCause::InternalFailure => {}
+    }
+}
+
+const fn output_health_proposal_error_variants(
+    value: ::reovim_kernel_interface::output_health::OutputHealthProposalError,
+) {
+    match value {
+        ::reovim_kernel_interface::output_health::OutputHealthProposalError::
+            RuntimeExecutionMismatch { .. }
+        | ::reovim_kernel_interface::output_health::
+            OutputHealthProposalError::ShutdownComplete => {}
+    }
+}
+
+const fn output_health_proposal_kind_variants(
+    value: ::reovim_kernel_interface::output_health::OutputHealthProposalKind,
+) {
+    match value {
+        ::reovim_kernel_interface::output_health::OutputHealthProposalKind::
+            SubmissionAccepted
+        | ::reovim_kernel_interface::output_health::OutputHealthProposalKind::
+            SubmissionDropped
+        | ::reovim_kernel_interface::output_health::OutputHealthProposalKind::
+            SubmissionClosed
+        | ::reovim_kernel_interface::output_health::OutputHealthProposalKind::
+            DestinationResult
+        | ::reovim_kernel_interface::output_health::OutputHealthProposalKind::
+            ActivationFailure
+        | ::reovim_kernel_interface::output_health::OutputHealthProposalKind::
+            RuntimeFailure
+        | ::reovim_kernel_interface::output_health::OutputHealthProposalKind::
+            IncompleteShutdown => {}
+    }
+}
+
+const fn output_health_runtime_failure_cause_variants(
+    value: ::reovim_kernel_interface::output_health::
+        OutputHealthRuntimeFailureCause,
+) {
+    match value {
+        ::reovim_kernel_interface::output_health::
+            OutputHealthRuntimeFailureCause::DestinationUnavailable
+        | ::reovim_kernel_interface::output_health::
+            OutputHealthRuntimeFailureCause::HealthUnavailable
+        | ::reovim_kernel_interface::output_health::
+            OutputHealthRuntimeFailureCause::UnexpectedExecutionTermination
+        | ::reovim_kernel_interface::output_health::
+            OutputHealthRuntimeFailureCause::InternalFailure => {}
+    }
 }
 
 const fn bound_arithmetic_rule_variants(

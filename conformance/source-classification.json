@@ -215,7 +215,7 @@
       "source_use": "tool",
       "upstream": {
         "identity": "cargo-manifest-set/v1: sorted relative path, LF, raw manifest bytes, LF",
-        "digest": "sha256:7ec941e4181e10be2ccd7afc880ef0c19c59f570953d0602ae6cf871633614b9",
+        "digest": "sha256:ea8bdaa65ca8c70976f7a32276b4674565a13d10edc214e0f15e2af32b47e6dd",
         "digest_subject": {
           "kind": "paths",
           "paths": [
