@@ -27,7 +27,7 @@ use super::{
     },
 };
 
-pub(super) const CONFIG_ARG_BYTES: usize = 64 * 1024;
+pub(super) const CONFIG_ARG_BYTES: usize = 96 * 1024;
 pub(super) const SCRATCH_PATH: &str = "/scratch";
 pub(super) const PROC_PATH: &str = "/proc";
 pub(super) const NULL_PATH: &str = "/dev/null";

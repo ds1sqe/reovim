@@ -168,7 +168,11 @@ fn failed_config_inspection_cleans_its_mountpoint() {
 
     assert_eq!(error.code, "PREPARED_CONFIG_ENV_LIMIT");
     assert!(error.message.contains("actual="));
-    assert!(error.message.contains("limit=65536 bytes"));
+    assert!(
+        error
+            .message
+            .contains(&format!("limit={} bytes", linux::CONFIG_ARG_BYTES))
+    );
     assert_directory_empty(&fixture.mount_parent);
 }
 

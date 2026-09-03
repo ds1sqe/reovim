@@ -1603,7 +1603,7 @@ mod tests {
         let plan = super::prepared_plan(&request, &preflight, value).unwrap();
         let measured =
             crate::prepared_root::inspect_config_transport(&plan).unwrap();
-        assert_eq!(measured.limit_bytes, 65_536);
+        assert_eq!(measured.limit_bytes, 96 * 1024);
         assert!(measured.headroom_bytes > 0);
         assert_eq!(
             measured.encoded_bytes + measured.headroom_bytes,
