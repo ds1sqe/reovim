@@ -95,8 +95,9 @@ identities and a completeness seal; no second tracked manifest exists. Unit,
 lint, and documentation selection maps each changed file to one owning
 component and includes exactly its transitive reverse dependents. It excludes
 unchanged upstream and sibling components. A TUI-only change therefore selects
-exactly TUI. A Kernel change selects Kernel and every dependent Client,
-including TUI.
+only the TUI package suite for execution. Cargo may compile its dependencies,
+but their suites do not run. A Kernel change selects Kernel and every dependent
+Client, including TUI.
 
 Every reusable result is bound to the repository input inventory, direct tool
 bytes and versions, supported flags and configuration, relevant build
