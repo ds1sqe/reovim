@@ -104,6 +104,9 @@ const KERNEL_INTERFACE_SHIPPING_SOURCES: &[&str] = &[
     "kernel/interface/src/lifecycle.rs",
     "kernel/interface/src/operation.rs",
     "kernel/interface/src/output_health.rs",
+    "kernel/interface/src/output_health/counters.rs",
+    "kernel/interface/src/output_health/record.rs",
+    "kernel/interface/src/output_health/snapshot.rs",
 ];
 
 const KERNEL_INTERFACE_VALIDATION_SOURCES: &[&str] = &[
@@ -124,6 +127,15 @@ const KERNEL_INTERFACE_VALIDATION_SOURCES: &[&str] = &[
     "tests/kernel-interface-public-consumer/src/public_items.rs",
     "tests/kernel-interface-public-consumer/src/operation.rs",
     "tests/kernel-interface-public-consumer/src/output_health.rs",
+    "tests/kernel-interface-public-consumer/src/output_health_state.rs",
+    concat!(
+        "tests/kernel-interface-public-consumer/src/",
+        "output_health_state/counters.rs",
+    ),
+    concat!(
+        "tests/kernel-interface-public-consumer/src/",
+        "output_health_state/snapshot.rs",
+    ),
 ];
 
 /// All caller-selected bounds used inside the prepared workload.
@@ -4211,7 +4223,7 @@ mod tests {
             registry: ParseLimits {
                 path_bytes: 4_096,
                 closure_items: 16,
-                package_members: 32,
+                package_members: 64,
                 public_items: HARD_LIMITS.product_execution.public_item_count,
             },
             metadata_process: PROCESS,
@@ -4220,7 +4232,7 @@ mod tests {
             package: package_capture::Limits {
                 process: PROCESS,
                 output_bytes: 4_096,
-                member_count: 32,
+                member_count: 64,
                 path_bytes: 4_096,
             },
             compiler: crate::compiler_capture::Limits {

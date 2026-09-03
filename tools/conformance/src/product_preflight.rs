@@ -85,6 +85,15 @@ const PRODUCT_FILES: &[(&str, FileRole)] = &[
     ("kernel/interface/src/operation.rs", FileRole::KernelInterface),
     ("kernel/interface/src/output_health.rs", FileRole::KernelInterface),
     (
+        "kernel/interface/src/output_health/counters.rs",
+        FileRole::KernelInterface,
+    ),
+    ("kernel/interface/src/output_health/record.rs", FileRole::KernelInterface),
+    (
+        "kernel/interface/src/output_health/snapshot.rs",
+        FileRole::KernelInterface,
+    ),
+    (
         "tests/kernel-interface-public-consumer/Cargo.toml",
         FileRole::KernelInterfaceConsumer,
     ),
@@ -156,6 +165,24 @@ const PRODUCT_FILES: &[(&str, FileRole)] = &[
     ),
     (
         "tests/kernel-interface-public-consumer/src/output_health.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/src/output_health_state.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        concat!(
+            "tests/kernel-interface-public-consumer/src/",
+            "output_health_state/counters.rs",
+        ),
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        concat!(
+            "tests/kernel-interface-public-consumer/src/",
+            "output_health_state/snapshot.rs",
+        ),
         FileRole::KernelInterfaceConsumer,
     ),
     (

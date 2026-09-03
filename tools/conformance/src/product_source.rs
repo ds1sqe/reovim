@@ -3850,6 +3850,7 @@ fn exact_witness_type_arguments(
                 | "event::CanonicalEventRecordRef"
                 | "event::StartupEventRecord"
                 | "event::StartupSnapshot"
+                | "output_health::OutputHealthSnapshot"
         );
     if !lifetime_type {
         return matches!(arguments, PathArguments::None);
@@ -3928,6 +3929,9 @@ mod tests {
         "kernel/interface/src/lifecycle.rs",
         "kernel/interface/src/operation.rs",
         "kernel/interface/src/output_health.rs",
+        "kernel/interface/src/output_health/counters.rs",
+        "kernel/interface/src/output_health/record.rs",
+        "kernel/interface/src/output_health/snapshot.rs",
     ];
     const KI_CONSUMER: &[&str] = &[
         "tests/kernel-interface-public-consumer/src/clock.rs",
@@ -3946,6 +3950,15 @@ mod tests {
         "tests/kernel-interface-public-consumer/src/lifecycle.rs",
         "tests/kernel-interface-public-consumer/src/operation.rs",
         "tests/kernel-interface-public-consumer/src/output_health.rs",
+        "tests/kernel-interface-public-consumer/src/output_health_state.rs",
+        concat!(
+            "tests/kernel-interface-public-consumer/src/",
+            "output_health_state/counters.rs",
+        ),
+        concat!(
+            "tests/kernel-interface-public-consumer/src/",
+            "output_health_state/snapshot.rs",
+        ),
         "tests/kernel-interface-public-consumer/src/public_items.rs",
     ];
     const LIMITS: AnalysisLimits = AnalysisLimits {

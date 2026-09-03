@@ -320,6 +320,21 @@
             "kind": "copied",
             "package_path": "src/output_health.rs",
             "repository_path": "kernel/interface/src/output_health.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/output_health/counters.rs",
+            "repository_path": "kernel/interface/src/output_health/counters.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/output_health/record.rs",
+            "repository_path": "kernel/interface/src/output_health/record.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/output_health/snapshot.rs",
+            "repository_path": "kernel/interface/src/output_health/snapshot.rs"
           }
         ]
       }
@@ -5033,6 +5048,662 @@
         {
           "path": "output_health::OutputHealthRuntimeFailureCause::UnexpectedExecutionTermination",
           "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthAcceptance",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthAcceptedCounters",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthAnomalyRecord",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthClosedCounters",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthCounters",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthDescriptor",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthDropCounters",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthEffectCounters",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthError",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthEvictionCounters",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthHighWater",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthImportCounterKind",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthImportCounters",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthLease",
+          "kind": "trait"
+        },
+        {
+          "path": "output_health::OutputHealthLeaseScope",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthLimits",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthProposalScope",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthRecordOutcome",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthRecordResultCounters",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthRecordResultKind",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthRetainedRange",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthSequence",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthSequencePosition",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshot",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshotCoverage",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshotLimits",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshotMetadata",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshotRequest",
+          "kind": "type"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshotStatistics",
+          "kind": "type"
+        },
+        {
+          "path": "event::SaturatingCounter::saturating_add",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthAcceptedCounters::new",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthAcceptedCounters::record_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthAcceptedCounters::records",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthAnomalyRecord::new",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthAnomalyRecord::proposal",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthAnomalyRecord::resident_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthAnomalyRecord::sequence",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthClosedCounters::for_cause",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthClosedCounters::from_ordered",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthCounters::accepted",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthCounters::closed",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthCounters::dropped",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthCounters::effect",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthCounters::eviction",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthCounters::import",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthCounters::new",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthCounters::record_results",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthDescriptor::contract",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthDescriptor::lifecycle_owner",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthDescriptor::limits",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthDescriptor::negotiate",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthDescriptor::new",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthDescriptor::record_operation",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthDescriptor::snapshot_operation",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthDescriptor::stream",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthDropCounters::for_cause",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthDropCounters::from_ordered",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthEffectCounters::for_certainty",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthEffectCounters::from_ordered",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthEvictionCounters::new",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthEvictionCounters::records",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthEvictionCounters::resident_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthHighWater::assigned",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthHighWater::empty",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthHighWater::latest",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthHighWater::next_position",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthImportCounters::for_kind",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthImportCounters::from_ordered",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthLease::descriptor",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthLease::record",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthLease::scope",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthLeaseScope::classify",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthLeaseScope::lifecycle_owner",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthLeaseScope::new",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthLeaseScope::output",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthLeaseScope::stream",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthLimits::anomaly_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthLimits::anomaly_records",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthLimits::fixed_resident_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthLimits::import_attempts",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthLimits::new",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthLimits::record_work",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthLimits::resident_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthLimits::snapshot",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthLimits::snapshot_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthLimits::snapshot_records",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthLimits::stream",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthLimits::temporary_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthRecordResultCounters::for_kind",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthRecordResultCounters::from_ordered",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthRetainedRange::earliest",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthRetainedRange::empty",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthRetainedRange::is_empty",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthRetainedRange::latest",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthRetainedRange::non_empty",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthSequence::first",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthSequence::is_before",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthSequence::new",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthSequence::next",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthSequence::value",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshot::counters",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshot::metadata",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshot::new",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshot::records",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshotLimits::bytes",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshotLimits::new",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshotLimits::records",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshotMetadata::anomaly_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshotMetadata::charge_owner",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshotMetadata::coverage",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshotMetadata::high_water",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshotMetadata::new",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshotMetadata::next",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshotMetadata::retained",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshotMetadata::statistics",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshotMetadata::stream",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshotRequest::admit_record",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshotRequest::anomaly_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshotRequest::charge_owner",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshotRequest::maximum_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshotRequest::maximum_records",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshotRequest::new",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshotRequest::stream",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshotStatistics::copied_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshotStatistics::copied_records",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshotStatistics::new",
+          "kind": "function"
+        },
+        {
+          "path": "output_health::OutputHealthAcceptance::AnomalyRetained",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthAcceptance::CounterOnly",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthError::Bound",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthError::CounterOnlyProposal",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthError::IncoherentSnapshotLimits",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthError::IncompatibleContract",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthError::InvalidRetainedRange",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthError::InvalidSnapshotMetadata",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthError::InvalidSnapshotRecords",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthError::LimitsStreamMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthError::SequenceExhausted",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthError::SnapshotBoundExceeded",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthError::SourceStreamMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthError::UnassignedSequence",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthError::UnsupportedContract",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthImportCounterKind::Accepted",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthImportCounterKind::AttemptLimit",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthImportCounterKind::Closed",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthImportCounterKind::Dropped",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthImportCounterKind::Rejected",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthProposalScope::Current",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthProposalScope::Invalid",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthProposalScope::Stale",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthRecordOutcome::Accepted",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthRecordOutcome::Closed",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthRecordOutcome::Invalid",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthRecordOutcome::Pressure",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthRecordOutcome::SequenceExhausted",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthRecordOutcome::Stale",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthRecordResultKind::Closed",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthRecordResultKind::Invalid",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthRecordResultKind::Pressure",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthRecordResultKind::SequenceExhaustion",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthRecordResultKind::Stale",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthSequencePosition::Exhausted",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthSequencePosition::Next",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshotCoverage::Complete",
+          "kind": "variant"
+        },
+        {
+          "path": "output_health::OutputHealthSnapshotCoverage::Partial",
+          "kind": "variant"
         }
       ],
       "derive_checks": [
@@ -8304,6 +8975,706 @@
         {
           "derive": "Eq",
           "public_type": "output_health::OutputHealthRuntimeFailureCause",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthAcceptance",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthAcceptance",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthAcceptance",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthAcceptance",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthAcceptance",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthAcceptedCounters",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthAcceptedCounters",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthAcceptedCounters",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthAcceptedCounters",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthAcceptedCounters",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthAnomalyRecord",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthAnomalyRecord",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthAnomalyRecord",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthAnomalyRecord",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthAnomalyRecord",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthClosedCounters",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthClosedCounters",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthClosedCounters",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthClosedCounters",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthClosedCounters",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthCounters",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthCounters",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthCounters",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthCounters",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthCounters",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthDescriptor",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthDescriptor",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthDescriptor",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthDescriptor",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthDescriptor",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthDropCounters",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthDropCounters",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthDropCounters",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthDropCounters",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthDropCounters",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthEffectCounters",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthEffectCounters",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthEffectCounters",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthEffectCounters",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthEffectCounters",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthEvictionCounters",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthEvictionCounters",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthEvictionCounters",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthEvictionCounters",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthEvictionCounters",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthHighWater",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthHighWater",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthHighWater",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthHighWater",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthHighWater",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthImportCounterKind",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthImportCounterKind",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthImportCounterKind",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthImportCounterKind",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthImportCounterKind",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthImportCounters",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthImportCounters",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthImportCounters",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthImportCounters",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthImportCounters",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthLeaseScope",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthLeaseScope",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthLeaseScope",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthLeaseScope",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthLeaseScope",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthLimits",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthLimits",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthLimits",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthLimits",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthLimits",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthProposalScope",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthProposalScope",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthProposalScope",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthProposalScope",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthProposalScope",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthRecordOutcome",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthRecordOutcome",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthRecordOutcome",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthRecordOutcome",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthRecordOutcome",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthRecordResultCounters",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthRecordResultCounters",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthRecordResultCounters",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthRecordResultCounters",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthRecordResultCounters",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthRecordResultKind",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthRecordResultKind",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthRecordResultKind",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthRecordResultKind",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthRecordResultKind",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthRetainedRange",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthRetainedRange",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthRetainedRange",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthRetainedRange",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthRetainedRange",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthSequence",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthSequence",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthSequence",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthSequence",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthSequence",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthSequencePosition",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthSequencePosition",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthSequencePosition",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthSequencePosition",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthSequencePosition",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthSnapshot",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthSnapshot",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthSnapshot",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthSnapshot",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthSnapshot",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthSnapshotCoverage",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthSnapshotCoverage",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthSnapshotCoverage",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthSnapshotCoverage",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthSnapshotCoverage",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthSnapshotLimits",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthSnapshotLimits",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthSnapshotLimits",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthSnapshotLimits",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthSnapshotLimits",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthSnapshotMetadata",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthSnapshotMetadata",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthSnapshotMetadata",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthSnapshotMetadata",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthSnapshotMetadata",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthSnapshotRequest",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthSnapshotRequest",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthSnapshotRequest",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthSnapshotRequest",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthSnapshotRequest",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "output_health::OutputHealthSnapshotStatistics",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "output_health::OutputHealthSnapshotStatistics",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "output_health::OutputHealthSnapshotStatistics",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "output_health::OutputHealthSnapshotStatistics",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "output_health::OutputHealthSnapshotStatistics",
           "consumer_operation": "eq"
         }
       ]

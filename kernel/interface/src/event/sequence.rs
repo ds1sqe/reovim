@@ -82,10 +82,19 @@ impl crate::event::SaturatingCounter {
     /// Returns the counter after one visible saturating increment.
     #[must_use]
     pub const fn increment(self) -> Self {
-        if self.saturated {
+        self.saturating_add(1)
+    }
+
+    /// Adds one scalar while making every lost increment visible.
+    ///
+    /// Exact arrival at [`u64::MAX`] remains unsaturated. A later nonzero
+    /// addition sets saturation. Adding zero preserves the complete value.
+    #[must_use]
+    pub const fn saturating_add(self, additional: u64) -> Self {
+        if self.saturated || additional == 0 {
             return self;
         }
-        match self.value.checked_add(1) {
+        match self.value.checked_add(additional) {
             Some(value) => Self { value, saturated: false },
             None => Self { value: u64::MAX, saturated: true },
         }

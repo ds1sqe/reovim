@@ -508,7 +508,7 @@ pub const fn make_descriptor() -> Option<DiagnosticOutputDescriptor> {
     make_descriptor_for(output_identity(), event::stream_identity(), 1_024)
 }
 
-const fn make_descriptor_for(
+pub const fn make_descriptor_for(
     output: LifecycleIdentity,
     stream: LifecycleIdentity,
     maximum_record_bytes: u64,

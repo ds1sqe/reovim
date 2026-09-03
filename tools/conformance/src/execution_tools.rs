@@ -882,8 +882,8 @@ mod tests {
     fn active_empty_registry_is_valid() {
         let registry =
             super::Registry::parse(&empty_registry(), LIMITS).unwrap();
-        assert!(registry.reviews.is_empty());
-        assert!(registry.environments.is_empty());
+        assert_eq!(registry.reviews.as_slice(), &[]);
+        assert_eq!(registry.environments.as_slice(), &[]);
     }
 
     #[test]

@@ -4,7 +4,7 @@
 
 - Kind: script
 - Exact content digest:
-  `sha256:79748b63d1b52433d3d362bc4e07c9c9a0fa237fde3ad8002b67ecab6540d077`
+  `sha256:fdf91a8d355642132da68b892b303ce268e5060672cda64928f75aeb2bd193a7`
 - Review mechanism: exact content and retained review
 
 ## Direct local invocations
@@ -36,4 +36,6 @@ indexes. It includes `CODE_STYLE.md` in public Markdown link, whitespace,
 fence, and local-fragment validation. The Host inventory now binds the
 bootstrap-health index and its four focused ownership/schema, proposal,
 retention/snapshot, and import/readiness children beneath the six-child Host
-index. Any byte or invocation change reopens this review.
+index. The retention child is itself a navigation-only index for descriptor/
+lease, counter/sequence/retention, and owner-snapshot chapters. Any byte or
+invocation change reopens this review.

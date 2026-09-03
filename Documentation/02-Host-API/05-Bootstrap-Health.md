@@ -9,14 +9,14 @@
 ## Reading order
 
 1. [Ownership](05-Bootstrap-Health/01-Ownership-Schema-and-Counters.md)
-   defines the one Event Stream-owned state, partition, descriptor, bounds,
-   and exact counter bank.
+   defines the one Event Stream-owned state, aggregate descriptor, bounds,
+   and partition rule.
 2. [OutputHealth proposals](05-Bootstrap-Health/02-Output-Health-Proposals.md)
    defines the complete pre-sequence write vocabulary and its typed
    relations.
 3. [Retention](05-Bootstrap-Health/03-Retention-Lease-and-Snapshot.md)
-   defines anomaly sequencing, capacity behavior, write authority, and owner
-   observation.
+   routes the OutputHealth descriptor, lease, counter, sequence, retention,
+   and snapshot contracts.
 4. [Import](05-Bootstrap-Health/04-Import-Readiness-and-Failure.md)
    defines frozen import, startup summary projection, and degraded-readiness
    behavior.

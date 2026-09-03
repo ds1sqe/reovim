@@ -250,6 +250,7 @@ contract_indexes=(
     ${INTERACTION}.md
     ${ARCH}/05-Client/README.md
     ${BOOTSTRAP_HEALTH}.md
+    ${BOOTSTRAP_HEALTH}/03-Retention-Lease-and-Snapshot.md
     ${EXTENSIONS}/README.md
     ${PERFORMANCE}/README.md
     ${EVENT_STREAM}/README.md
@@ -305,6 +306,9 @@ expected_normative_files=(
     ${BOOTSTRAP_HEALTH}/01-Ownership-Schema-and-Counters.md
     ${BOOTSTRAP_HEALTH}/02-Output-Health-Proposals.md
     ${BOOTSTRAP_HEALTH}/03-Retention-Lease-and-Snapshot.md
+    ${BOOTSTRAP_HEALTH}/03-Retention/01-Descriptor-Lease-and-Record.md
+    ${BOOTSTRAP_HEALTH}/03-Retention/02-Counters-Sequence-and-Retention.md
+    ${BOOTSTRAP_HEALTH}/03-Retention/03-Owner-Snapshot.md
     ${BOOTSTRAP_HEALTH}/04-Import-Readiness-and-Failure.md
     ${HOST_API}/06-Lifecycle-Adapters-and-Conformance.md
     ${EXTENSIONS}/01-Packages-Contribution-Points-and-Registry.md
@@ -430,6 +434,11 @@ check_index_children ${BOOTSTRAP_HEALTH}.md \
     ${BOOTSTRAP_HEALTH}/02-Output-Health-Proposals.md \
     ${BOOTSTRAP_HEALTH}/03-Retention-Lease-and-Snapshot.md \
     ${BOOTSTRAP_HEALTH}/04-Import-Readiness-and-Failure.md
+check_index_children \
+    ${BOOTSTRAP_HEALTH}/03-Retention-Lease-and-Snapshot.md \
+    ${BOOTSTRAP_HEALTH}/03-Retention/01-Descriptor-Lease-and-Record.md \
+    ${BOOTSTRAP_HEALTH}/03-Retention/02-Counters-Sequence-and-Retention.md \
+    ${BOOTSTRAP_HEALTH}/03-Retention/03-Owner-Snapshot.md
 check_index_children ${EXTENSIONS}/README.md \
     ${EXTENSIONS}/01-Packages-Contribution-Points-and-Registry.md \
     ${EXTENSIONS}/02-SDKs-Service-Contracts-and-Compatibility.md \
@@ -503,6 +512,9 @@ check_index_sections \
     'Reading order'
 check_index_sections \
     ${BOOTSTRAP_HEALTH}.md \
+    'Reading order'
+check_index_sections \
+    ${BOOTSTRAP_HEALTH}/03-Retention-Lease-and-Snapshot.md \
     'Reading order'
 check_index_sections \
     ${CLASSIFIER}.md \

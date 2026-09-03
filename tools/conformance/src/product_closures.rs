@@ -1836,8 +1836,8 @@ mod tests {
     fn active_empty_registry_is_valid() {
         let registry =
             super::Registry::parse(&empty_registry(), LIMITS).unwrap();
-        assert!(registry.closures.is_empty());
-        assert!(registry.public_consumer_relations.is_empty());
+        assert_eq!(registry.closures.as_slice(), &[]);
+        assert_eq!(registry.public_consumer_relations.as_slice(), &[]);
     }
 
     #[test]

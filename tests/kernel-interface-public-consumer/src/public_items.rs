@@ -19,6 +19,14 @@ pub const fn witness() -> bool {
     operation_items();
     output_health_items_one();
     output_health_items_two();
+    output_health_items_three();
+    output_health_items_four();
+    output_health_items_five();
+    output_health_items_six();
+    output_health_items_seven();
+    output_health_items_eight();
+    output_health_items_nine();
+    output_health_items_ten();
     trait_items();
     trait_method_items();
     variant_items();
@@ -335,6 +343,214 @@ const fn output_health_items_two() {
     );
 }
 
+const fn output_health_items_three() {
+    let _ = (
+        ::reovim_kernel_interface::output_health::OutputHealthLimits::new,
+        ::reovim_kernel_interface::output_health::OutputHealthLimits::stream,
+        ::reovim_kernel_interface::output_health::OutputHealthLimits::
+            record_work,
+        ::reovim_kernel_interface::output_health::OutputHealthLimits::
+            temporary_bytes,
+        ::reovim_kernel_interface::output_health::OutputHealthLimits::
+            fixed_resident_bytes,
+        ::reovim_kernel_interface::output_health::OutputHealthLimits::
+            anomaly_records,
+        ::reovim_kernel_interface::output_health::OutputHealthLimits::
+            anomaly_bytes,
+        ::reovim_kernel_interface::output_health::OutputHealthLimits::
+            resident_bytes,
+        ::reovim_kernel_interface::output_health::OutputHealthLimits::
+            snapshot_records,
+        ::reovim_kernel_interface::output_health::OutputHealthLimits::
+            snapshot_bytes,
+        ::reovim_kernel_interface::output_health::OutputHealthLimits::
+            import_attempts,
+        ::reovim_kernel_interface::output_health::OutputHealthDescriptor::new,
+    );
+}
+
+const fn output_health_items_four() {
+    let _ = (
+        ::reovim_kernel_interface::output_health::OutputHealthDescriptor::
+            contract,
+        ::reovim_kernel_interface::output_health::OutputHealthDescriptor::
+            stream,
+        ::reovim_kernel_interface::output_health::OutputHealthDescriptor::
+            lifecycle_owner,
+        ::reovim_kernel_interface::output_health::OutputHealthDescriptor::
+            limits,
+        ::reovim_kernel_interface::output_health::OutputHealthDescriptor::
+            record_operation,
+        ::reovim_kernel_interface::output_health::OutputHealthDescriptor::
+            snapshot_operation,
+        ::reovim_kernel_interface::output_health::OutputHealthDescriptor::
+            negotiate,
+        ::reovim_kernel_interface::output_health::OutputHealthSequence::first,
+        ::reovim_kernel_interface::output_health::OutputHealthSequence::new,
+        ::reovim_kernel_interface::output_health::OutputHealthSequence::value,
+        ::reovim_kernel_interface::output_health::OutputHealthSequence::
+            is_before,
+        ::reovim_kernel_interface::output_health::OutputHealthSequence::next,
+    );
+}
+
+const fn output_health_items_five() {
+    let _ = (
+        ::reovim_kernel_interface::output_health::OutputHealthHighWater::empty,
+        ::reovim_kernel_interface::output_health::OutputHealthHighWater::
+            assigned,
+        ::reovim_kernel_interface::output_health::OutputHealthHighWater::latest,
+        ::reovim_kernel_interface::output_health::OutputHealthHighWater::
+            next_position,
+        ::reovim_kernel_interface::output_health::OutputHealthRetainedRange::
+            empty,
+        ::reovim_kernel_interface::output_health::OutputHealthRetainedRange::
+            non_empty,
+        ::reovim_kernel_interface::output_health::OutputHealthRetainedRange::
+            earliest,
+        ::reovim_kernel_interface::output_health::OutputHealthRetainedRange::
+            latest,
+        ::reovim_kernel_interface::output_health::OutputHealthRetainedRange::
+            is_empty,
+        ::reovim_kernel_interface::output_health::OutputHealthLeaseScope::new,
+        ::reovim_kernel_interface::output_health::OutputHealthLeaseScope::
+            stream,
+        ::reovim_kernel_interface::output_health::OutputHealthLeaseScope::
+            lifecycle_owner,
+    );
+}
+
+const fn output_health_items_six() {
+    let _ = (
+        ::reovim_kernel_interface::output_health::OutputHealthLeaseScope::
+            output,
+        ::reovim_kernel_interface::output_health::OutputHealthLeaseScope::
+            classify,
+        ::reovim_kernel_interface::output_health::OutputHealthAnomalyRecord::
+            new,
+        ::reovim_kernel_interface::output_health::OutputHealthAnomalyRecord::
+            sequence,
+        ::reovim_kernel_interface::output_health::OutputHealthAnomalyRecord::
+            proposal,
+        ::reovim_kernel_interface::output_health::OutputHealthAnomalyRecord::
+            resident_bytes,
+        ::reovim_kernel_interface::output_health::
+            OutputHealthAcceptedCounters::new,
+        ::reovim_kernel_interface::output_health::
+            OutputHealthAcceptedCounters::records,
+        ::reovim_kernel_interface::output_health::
+            OutputHealthAcceptedCounters::record_bytes,
+        ::reovim_kernel_interface::output_health::OutputHealthDropCounters::
+            from_ordered,
+        ::reovim_kernel_interface::output_health::OutputHealthDropCounters::
+            for_cause,
+        ::reovim_kernel_interface::output_health::OutputHealthClosedCounters::
+            from_ordered,
+    );
+}
+
+const fn output_health_items_seven() {
+    let _ = (
+        ::reovim_kernel_interface::output_health::OutputHealthClosedCounters::
+            for_cause,
+        ::reovim_kernel_interface::output_health::OutputHealthEffectCounters::
+            from_ordered,
+        ::reovim_kernel_interface::output_health::OutputHealthEffectCounters::
+            for_certainty,
+        ::reovim_kernel_interface::output_health::
+            OutputHealthEvictionCounters::new,
+        ::reovim_kernel_interface::output_health::
+            OutputHealthEvictionCounters::records,
+        ::reovim_kernel_interface::output_health::
+            OutputHealthEvictionCounters::resident_bytes,
+        ::reovim_kernel_interface::output_health::
+            OutputHealthRecordResultCounters::from_ordered,
+        ::reovim_kernel_interface::output_health::
+            OutputHealthRecordResultCounters::for_kind,
+        ::reovim_kernel_interface::output_health::OutputHealthImportCounters::
+            from_ordered,
+        ::reovim_kernel_interface::output_health::OutputHealthImportCounters::
+            for_kind,
+        ::reovim_kernel_interface::output_health::OutputHealthCounters::new,
+        ::reovim_kernel_interface::output_health::OutputHealthCounters::
+            accepted,
+    );
+}
+
+const fn output_health_items_eight() {
+    let _ = (
+        ::reovim_kernel_interface::output_health::OutputHealthCounters::dropped,
+        ::reovim_kernel_interface::output_health::OutputHealthCounters::closed,
+        ::reovim_kernel_interface::output_health::OutputHealthCounters::effect,
+        ::reovim_kernel_interface::output_health::OutputHealthCounters::
+            eviction,
+        ::reovim_kernel_interface::output_health::OutputHealthCounters::
+            record_results,
+        ::reovim_kernel_interface::output_health::OutputHealthCounters::import,
+        ::reovim_kernel_interface::output_health::
+            OutputHealthSnapshotRequest::new,
+        ::reovim_kernel_interface::output_health::
+            OutputHealthSnapshotRequest::stream,
+        ::reovim_kernel_interface::output_health::
+            OutputHealthSnapshotRequest::charge_owner,
+        ::reovim_kernel_interface::output_health::
+            OutputHealthSnapshotRequest::anomaly_bytes,
+        ::reovim_kernel_interface::output_health::
+            OutputHealthSnapshotRequest::maximum_records,
+        ::reovim_kernel_interface::output_health::
+            OutputHealthSnapshotRequest::maximum_bytes,
+    );
+}
+
+const fn output_health_items_nine() {
+    let _ = (
+        ::reovim_kernel_interface::output_health::
+            OutputHealthSnapshotRequest::admit_record,
+        ::reovim_kernel_interface::output_health::
+            OutputHealthSnapshotStatistics::new,
+        ::reovim_kernel_interface::output_health::
+            OutputHealthSnapshotStatistics::copied_records,
+        ::reovim_kernel_interface::output_health::
+            OutputHealthSnapshotStatistics::copied_bytes,
+        ::reovim_kernel_interface::output_health::
+            OutputHealthSnapshotMetadata::new,
+        ::reovim_kernel_interface::output_health::
+            OutputHealthSnapshotMetadata::stream,
+        ::reovim_kernel_interface::output_health::
+            OutputHealthSnapshotMetadata::charge_owner,
+        ::reovim_kernel_interface::output_health::
+            OutputHealthSnapshotMetadata::anomaly_bytes,
+        ::reovim_kernel_interface::output_health::
+            OutputHealthSnapshotMetadata::high_water,
+        ::reovim_kernel_interface::output_health::
+            OutputHealthSnapshotMetadata::retained,
+        ::reovim_kernel_interface::output_health::
+            OutputHealthSnapshotMetadata::statistics,
+        ::reovim_kernel_interface::output_health::
+            OutputHealthSnapshotMetadata::next,
+    );
+}
+
+const fn output_health_items_ten() {
+    let _ = (
+        ::reovim_kernel_interface::output_health::OutputHealthLimits::snapshot,
+        ::reovim_kernel_interface::output_health::
+            OutputHealthSnapshotLimits::new,
+        ::reovim_kernel_interface::output_health::
+            OutputHealthSnapshotLimits::records,
+        ::reovim_kernel_interface::output_health::
+            OutputHealthSnapshotLimits::bytes,
+        ::reovim_kernel_interface::output_health::
+            OutputHealthSnapshotMetadata::coverage,
+        ::reovim_kernel_interface::output_health::OutputHealthSnapshot::new,
+        ::reovim_kernel_interface::output_health::OutputHealthSnapshot::
+            metadata,
+        ::reovim_kernel_interface::output_health::OutputHealthSnapshot::
+            counters,
+        ::reovim_kernel_interface::output_health::OutputHealthSnapshot::records,
+    );
+}
+
 const fn cancellation_items() {
     let _ = (
         ::reovim_kernel_interface::cancellation::CancellationOutcome::cause,
@@ -412,6 +628,7 @@ const fn event_items_one() {
         ::reovim_kernel_interface::event::STARTUP_CANONICAL_MAX_BYTES,
         ::reovim_kernel_interface::event::SaturatingCounter::from_parts,
         ::reovim_kernel_interface::event::SaturatingCounter::increment,
+        ::reovim_kernel_interface::event::SaturatingCounter::saturating_add,
         ::reovim_kernel_interface::event::SaturatingCounter::saturated,
         ::reovim_kernel_interface::event::SaturatingCounter::value,
         ::reovim_kernel_interface::event::SaturatingCounter::zero,
@@ -547,6 +764,9 @@ const fn trait_items() {
     let _: Option<
         &dyn ::reovim_kernel_interface::event::StartupEventAdmission,
     > = None;
+    let _: Option<
+        &dyn ::reovim_kernel_interface::output_health::OutputHealthLease,
+    > = None;
 }
 
 const fn trait_method_items() {
@@ -560,6 +780,12 @@ const fn trait_method_items() {
         <dyn ::reovim_kernel_interface::event::StartupEventAdmission>::
             descriptor,
         <dyn ::reovim_kernel_interface::event::StartupEventAdmission>::scope,
+        <dyn ::reovim_kernel_interface::output_health::OutputHealthLease>::
+            descriptor,
+        <dyn ::reovim_kernel_interface::output_health::OutputHealthLease>::
+            record,
+        <dyn ::reovim_kernel_interface::output_health::OutputHealthLease>::
+            scope,
     );
 }
 
@@ -636,10 +862,153 @@ const fn variant_items() {
         operation_operation_descriptor_error_variants,
         operation_reentrancy_class_variants,
         output_health_activation_failure_cause_variants,
+        output_health_acceptance_variants,
+        output_health_error_variants,
+        output_health_import_counter_kind_variants,
         output_health_proposal_error_variants,
         output_health_proposal_kind_variants,
+        output_health_proposal_scope_variants,
+        output_health_record_outcome_variants,
+        output_health_record_result_kind_variants,
         output_health_runtime_failure_cause_variants,
+        output_health_sequence_position_variants,
+        output_health_snapshot_coverage_variants,
     );
+}
+
+const fn output_health_acceptance_variants(
+    value: ::reovim_kernel_interface::output_health::OutputHealthAcceptance,
+) {
+    match value {
+        ::reovim_kernel_interface::output_health::OutputHealthAcceptance::
+            CounterOnly
+        | ::reovim_kernel_interface::output_health::OutputHealthAcceptance::
+            AnomalyRetained(_) => {}
+    }
+}
+
+const fn output_health_error_variants(
+    value: ::reovim_kernel_interface::output_health::OutputHealthError,
+) {
+    match value {
+        ::reovim_kernel_interface::output_health::OutputHealthError::Bound(_)
+        | ::reovim_kernel_interface::output_health::OutputHealthError::
+            LimitsStreamMismatch
+        | ::reovim_kernel_interface::output_health::OutputHealthError::
+            IncoherentSnapshotLimits
+        | ::reovim_kernel_interface::output_health::OutputHealthError::
+            UnsupportedContract
+        | ::reovim_kernel_interface::output_health::OutputHealthError::
+            IncompatibleContract
+        | ::reovim_kernel_interface::output_health::OutputHealthError::
+            UnassignedSequence
+        | ::reovim_kernel_interface::output_health::OutputHealthError::
+            SequenceExhausted
+        | ::reovim_kernel_interface::output_health::OutputHealthError::
+            SourceStreamMismatch
+        | ::reovim_kernel_interface::output_health::OutputHealthError::
+            CounterOnlyProposal
+        | ::reovim_kernel_interface::output_health::OutputHealthError::
+            InvalidRetainedRange
+        | ::reovim_kernel_interface::output_health::OutputHealthError::
+            SnapshotBoundExceeded
+        | ::reovim_kernel_interface::output_health::OutputHealthError::
+            InvalidSnapshotMetadata
+        | ::reovim_kernel_interface::output_health::OutputHealthError::
+            InvalidSnapshotRecords => {}
+    }
+}
+
+const fn output_health_import_counter_kind_variants(
+    value: ::reovim_kernel_interface::output_health::
+        OutputHealthImportCounterKind,
+) {
+    match value {
+        ::reovim_kernel_interface::output_health::
+            OutputHealthImportCounterKind::Accepted
+        | ::reovim_kernel_interface::output_health::
+            OutputHealthImportCounterKind::Rejected
+        | ::reovim_kernel_interface::output_health::
+            OutputHealthImportCounterKind::Dropped
+        | ::reovim_kernel_interface::output_health::
+            OutputHealthImportCounterKind::Closed
+        | ::reovim_kernel_interface::output_health::
+            OutputHealthImportCounterKind::AttemptLimit => {}
+    }
+}
+
+const fn output_health_proposal_scope_variants(
+    value: ::reovim_kernel_interface::output_health::OutputHealthProposalScope,
+) {
+    match value {
+        ::reovim_kernel_interface::output_health::OutputHealthProposalScope::
+            Current
+        | ::reovim_kernel_interface::output_health::
+            OutputHealthProposalScope::Invalid
+        | ::reovim_kernel_interface::output_health::
+            OutputHealthProposalScope::Stale => {}
+    }
+}
+
+const fn output_health_record_outcome_variants(
+    value: ::reovim_kernel_interface::output_health::OutputHealthRecordOutcome,
+) {
+    match value {
+        ::reovim_kernel_interface::output_health::OutputHealthRecordOutcome::
+            Accepted(_)
+        | ::reovim_kernel_interface::output_health::
+            OutputHealthRecordOutcome::Pressure
+        | ::reovim_kernel_interface::output_health::
+            OutputHealthRecordOutcome::Invalid
+        | ::reovim_kernel_interface::output_health::
+            OutputHealthRecordOutcome::Stale
+        | ::reovim_kernel_interface::output_health::
+            OutputHealthRecordOutcome::Closed
+        | ::reovim_kernel_interface::output_health::
+            OutputHealthRecordOutcome::SequenceExhausted => {}
+    }
+}
+
+const fn output_health_record_result_kind_variants(
+    value: ::reovim_kernel_interface::output_health::
+        OutputHealthRecordResultKind,
+) {
+    match value {
+        ::reovim_kernel_interface::output_health::
+            OutputHealthRecordResultKind::Pressure
+        | ::reovim_kernel_interface::output_health::
+            OutputHealthRecordResultKind::Invalid
+        | ::reovim_kernel_interface::output_health::
+            OutputHealthRecordResultKind::Stale
+        | ::reovim_kernel_interface::output_health::
+            OutputHealthRecordResultKind::Closed
+        | ::reovim_kernel_interface::output_health::
+            OutputHealthRecordResultKind::SequenceExhaustion => {}
+    }
+}
+
+const fn output_health_sequence_position_variants(
+    value: ::reovim_kernel_interface::output_health::
+        OutputHealthSequencePosition,
+) {
+    match value {
+        ::reovim_kernel_interface::output_health::
+            OutputHealthSequencePosition::Next(_)
+        | ::reovim_kernel_interface::output_health::
+            OutputHealthSequencePosition::Exhausted => {}
+    }
+}
+
+const fn output_health_snapshot_coverage_variants(
+    value: ::reovim_kernel_interface::output_health::
+        OutputHealthSnapshotCoverage,
+) {
+    match value {
+        ::reovim_kernel_interface::output_health::
+            OutputHealthSnapshotCoverage::Complete
+        | ::reovim_kernel_interface::output_health::
+            OutputHealthSnapshotCoverage::Partial { .. } => {}
+    }
 }
 
 const fn output_health_activation_failure_cause_variants(

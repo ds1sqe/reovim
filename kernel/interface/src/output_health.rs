@@ -1,7 +1,8 @@
-//! Pre-sequence proposals for the Event Stream-owned `OutputHealth` partition.
+//! Contract values for the Event Stream-owned `OutputHealth` partition.
 
 use core::fmt;
 
+use crate::bound::{BoundDescriptor, BoundError};
 use crate::cancellation::ExecutionOutcome;
 use crate::diagnostic::{
     CheckedByteCount, CheckedCount, DiagnosticClosedCause,
@@ -10,8 +11,13 @@ use crate::diagnostic::{
     DiagnosticOutputOwnerState, DiagnosticOutputRecord,
     DiagnosticShutdownReportRef,
 };
-use crate::event::EventSequence;
+use crate::event::{EventSequence, SaturatingCounter};
 use crate::lifecycle::{LifecycleIdentity, RollbackOutcome, ShutdownOutcome};
+use crate::operation::ContractSelection;
+
+mod counters;
+mod record;
+mod snapshot;
 
 /// Copied scalar identity and accounting from one Diagnostic Output record.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -154,6 +160,297 @@ pub enum OutputHealthProposalError {
     },
     /// A completed shutdown report cannot propose incomplete shutdown.
     ShutdownComplete,
+}
+
+/// Nonzero record and charged-byte maxima for one health snapshot.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OutputHealthSnapshotLimits {
+    records: CheckedCount,
+    bytes: CheckedByteCount,
+}
+
+/// Hard work, storage, snapshot, and import bounds for `OutputHealth`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OutputHealthLimits {
+    stream: LifecycleIdentity,
+    record_work: BoundDescriptor,
+    temporary_bytes: BoundDescriptor,
+    fixed_resident_bytes: BoundDescriptor,
+    anomaly_records: BoundDescriptor,
+    anomaly_bytes: BoundDescriptor,
+    resident_bytes: BoundDescriptor,
+    snapshot: OutputHealthSnapshotLimits,
+    import_attempts: CheckedCount,
+}
+
+/// Immutable contract, ownership, and bounds for one `OutputHealth` partition.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OutputHealthDescriptor {
+    contract: ContractSelection,
+    stream: LifecycleIdentity,
+    lifecycle_owner: LifecycleIdentity,
+    limits: OutputHealthLimits,
+}
+
+/// Checked nonzero order assigned only to an accepted health anomaly.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OutputHealthSequence(u64);
+
+/// Next assignable health sequence or an exhausted sequence domain.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OutputHealthSequencePosition {
+    /// This sequence is next after the represented state cut.
+    Next(OutputHealthSequence),
+    /// The latest assigned sequence is [`u64::MAX`].
+    Exhausted,
+}
+
+/// Latest assigned health sequence, including an empty sequence history.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OutputHealthHighWater {
+    latest: Option<OutputHealthSequence>,
+}
+
+/// Inclusive retained anomaly range, including an empty range.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OutputHealthRetainedRange {
+    earliest: Option<OutputHealthSequence>,
+    latest: Option<OutputHealthSequence>,
+}
+
+/// Immutable per-output authority scope for one write-only health lease.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OutputHealthLeaseScope {
+    stream: LifecycleIdentity,
+    lifecycle_owner: LifecycleIdentity,
+    output: LifecycleIdentity,
+}
+
+/// Pure relation between a proposal and one immutable lease scope.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OutputHealthProposalScope {
+    /// Output and source Stream generations match exactly.
+    Current,
+    /// Output or source Stream names another incarnation.
+    Invalid,
+    /// An incarnation matches but its generation differs.
+    Stale,
+}
+
+/// Successful disposition of one `OutputHealth` record operation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OutputHealthAcceptance {
+    /// Fixed counters changed without consuming anomaly capacity.
+    CounterOnly,
+    /// One complete anomaly committed under this sequence.
+    AnomalyRetained(OutputHealthSequence),
+}
+
+/// Complete producer-visible result of one health record operation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OutputHealthRecordOutcome {
+    /// Counter-only or complete-anomaly recording committed atomically.
+    Accepted(OutputHealthAcceptance),
+    /// Non-waiting state authority was unavailable.
+    Pressure,
+    /// Proposal identities name another output or Stream incarnation.
+    Invalid,
+    /// A matching incarnation used another generation.
+    Stale,
+    /// Health is Closing or Closed.
+    Closed,
+    /// No later anomaly sequence can be assigned without wrapping.
+    SequenceExhausted,
+}
+
+/// Complete retained health anomaly with its fixed contract charge.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OutputHealthAnomalyRecord {
+    sequence: OutputHealthSequence,
+    proposal: OutputHealthProposal,
+    resident_bytes: CheckedByteCount,
+}
+
+/// Accepted `DiagnosticOutput` submission record and byte counters.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OutputHealthAcceptedCounters {
+    records: SaturatingCounter,
+    record_bytes: SaturatingCounter,
+}
+
+/// Fixed counters for every `DiagnosticOutput` drop cause.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OutputHealthDropCounters {
+    counters: [SaturatingCounter; 10],
+}
+
+/// Fixed counters for every `DiagnosticOutput` closed cause.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OutputHealthClosedCounters {
+    counters: [SaturatingCounter; 4],
+}
+
+/// Fixed counters for every Effect Certainty result.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OutputHealthEffectCounters {
+    counters: [SaturatingCounter; 3],
+}
+
+/// Complete-anomaly record and resident-byte eviction counters.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OutputHealthEvictionCounters {
+    records: SaturatingCounter,
+    resident_bytes: SaturatingCounter,
+}
+
+/// Closed semantic label for a nonaccepted health record result.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OutputHealthRecordResultKind {
+    /// Non-waiting state authority was unavailable.
+    Pressure,
+    /// Proposal identity was invalid for the lease.
+    Invalid,
+    /// Proposal or lease generation was stale.
+    Stale,
+    /// Health was Closing or Closed.
+    Closed,
+    /// The anomaly sequence domain was exhausted.
+    SequenceExhaustion,
+}
+
+/// Fixed counters for nonaccepted health record results.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OutputHealthRecordResultCounters {
+    counters: [SaturatingCounter; 5],
+}
+
+/// Closed semantic label for one future health import result counter.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OutputHealthImportCounterKind {
+    /// One complete import entry was admitted as an Event.
+    Accepted,
+    /// Event admission rejected the pending entry.
+    Rejected,
+    /// Event admission dropped the pending entry.
+    Dropped,
+    /// Event admission was closed for the pending entry.
+    Closed,
+    /// The fixed aggregate import-attempt bound was reached.
+    AttemptLimit,
+}
+
+/// Fixed labels and counters reserved for future health import.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OutputHealthImportCounters {
+    counters: [SaturatingCounter; 5],
+}
+
+/// Exact 31-slot `OutputHealth` counter snapshot.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OutputHealthCounters {
+    accepted: OutputHealthAcceptedCounters,
+    dropped: OutputHealthDropCounters,
+    closed: OutputHealthClosedCounters,
+    effect: OutputHealthEffectCounters,
+    eviction: OutputHealthEvictionCounters,
+    record_results: OutputHealthRecordResultCounters,
+    import: OutputHealthImportCounters,
+}
+
+/// Caller-owned record and charged-byte limits for a health snapshot.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OutputHealthSnapshotRequest {
+    stream: LifecycleIdentity,
+    charge_owner: LifecycleIdentity,
+    anomaly_bytes: CheckedByteCount,
+    maximum_records: CheckedCount,
+    maximum_bytes: CheckedByteCount,
+}
+
+/// Exact copied complete-record and charged-byte counts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OutputHealthSnapshotStatistics {
+    copied_records: CheckedCount,
+    copied_bytes: CheckedByteCount,
+}
+
+/// Whether one snapshot copied its complete retained range.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OutputHealthSnapshotCoverage {
+    /// Every retained anomaly at the state cut was copied.
+    Complete,
+    /// Capacity ended before this complete anomaly could be copied.
+    Partial {
+        /// First retained health sequence not present in the snapshot.
+        first_uncopied: OutputHealthSequence,
+    },
+}
+
+/// Bounded health snapshot facts before the complete-record join.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OutputHealthSnapshotMetadata {
+    stream: LifecycleIdentity,
+    charge_owner: LifecycleIdentity,
+    anomaly_bytes: CheckedByteCount,
+    high_water: OutputHealthHighWater,
+    retained: OutputHealthRetainedRange,
+    statistics: OutputHealthSnapshotStatistics,
+    next: OutputHealthSequencePosition,
+    coverage: OutputHealthSnapshotCoverage,
+}
+
+/// Borrowed complete health anomalies and their coherent snapshot facts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OutputHealthSnapshot<'a> {
+    metadata: OutputHealthSnapshotMetadata,
+    counters: &'a OutputHealthCounters,
+    records: &'a [OutputHealthAnomalyRecord],
+}
+
+/// Failure to construct or validate an `OutputHealth` contract value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OutputHealthError {
+    /// A Foundation bound rejected the declaration or arithmetic.
+    Bound(BoundError),
+    /// Limits were prepared for another Event Stream generation.
+    LimitsStreamMismatch,
+    /// Snapshot maxima cannot cover a useful subset of retained capacity.
+    IncoherentSnapshotLimits,
+    /// The requested `OutputHealth` contract family is unsupported.
+    UnsupportedContract,
+    /// The requested `OutputHealth` contract version is incompatible.
+    IncompatibleContract,
+    /// Zero cannot identify an assigned health anomaly.
+    UnassignedSequence,
+    /// The health sequence domain cannot advance without wrapping.
+    SequenceExhausted,
+    /// The `DiagnosticOutput` source differs from the health Stream.
+    SourceStreamMismatch,
+    /// A counter-only proposal cannot form a retained anomaly.
+    CounterOnlyProposal,
+    /// Earliest retained health sequence follows latest.
+    InvalidRetainedRange,
+    /// Snapshot capacity cannot contain the declared complete records.
+    SnapshotBoundExceeded,
+    /// Snapshot scalar, range, position, or coverage facts disagree.
+    InvalidSnapshotMetadata,
+    /// Borrowed anomaly records disagree with snapshot metadata.
+    InvalidSnapshotRecords,
+}
+
+/// Write-only port for one generation-bound `OutputHealth` scope.
+pub trait OutputHealthLease {
+    /// Returns the immutable health declaration.
+    fn descriptor(&self) -> &OutputHealthDescriptor;
+
+    /// Returns this lease's exact output and Stream scope.
+    fn scope(&self) -> OutputHealthLeaseScope;
+
+    /// Attempts one bounded local record operation.
+    fn record(
+        &self,
+        proposal: OutputHealthProposal,
+    ) -> OutputHealthRecordOutcome;
 }
 
 impl OutputHealthProposal {

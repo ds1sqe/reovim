@@ -72,7 +72,7 @@
     {
       "kind": "script",
       "path": "scripts/check-documentation.sh",
-      "content_digest": "sha256:79748b63d1b52433d3d362bc4e07c9c9a0fa237fde3ad8002b67ecab6540d077",
+      "content_digest": "sha256:fdf91a8d355642132da68b892b303ce268e5060672cda64928f75aeb2bd193a7",
       "direct_local_invocations": [],
       "disposition": "admit",
       "mechanism": "exact-content-retained-review",
@@ -82,7 +82,7 @@
         "BASH_SOURCE resolves this checked-out script so ROOT selects the reviewed repository inputs."
       ],
       "review_record": "conformance/entrypoint-reviews/check-documentation-sh.md",
-      "review_record_digest": "sha256:c34ec0750fe6dfba08c0e6b713cf9398141dbbd8dff0eac199aab331ee41ed36"
+      "review_record_digest": "sha256:99a9a257d08a1d25ca43f1f33c700af4ca2206c0ed15ecdd633b488bbd2c9203"
     },
     {
       "kind": "script",

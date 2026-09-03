@@ -71,7 +71,7 @@
     {
       "kind": "script",
       "path": "scripts/check-documentation.sh",
-      "content_digest": "sha256:79748b63d1b52433d3d362bc4e07c9c9a0fa237fde3ad8002b67ecab6540d077"
+      "content_digest": "sha256:fdf91a8d355642132da68b892b303ce268e5060672cda64928f75aeb2bd193a7"
     },
     {
       "kind": "script",

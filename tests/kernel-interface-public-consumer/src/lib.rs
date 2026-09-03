@@ -8,6 +8,7 @@ mod event;
 mod lifecycle;
 mod operation;
 mod output_health;
+mod output_health_state;
 mod public_items;
 
 use core::{error::Error, fmt::Debug};
@@ -22,6 +23,7 @@ const fn public_const_cases() -> bool {
         && effect::const_cases()
         && event::const_cases()
         && output_health::const_cases()
+        && output_health_state::const_cases()
 }
 
 /// Exercises the admitted Kernel Interface contracts through their public API.
@@ -34,6 +36,7 @@ pub fn exercise_public_api() -> bool {
         && diagnostic::exercise()
         && event::exercise()
         && output_health::exercise()
+        && output_health_state::exercise()
 }
 
 const fn derive_witness<T>() -> bool
