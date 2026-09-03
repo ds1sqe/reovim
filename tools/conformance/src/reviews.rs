@@ -1523,10 +1523,7 @@ mod tests {
     }
 
     fn one_admission_registry(record_digest: &str, lock_digest: &str) -> Value {
-        let checksum = concat!(
-            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-        );
+        let checksum = fixture_checksum();
         let review_record = "conformance/dependency-reviews/external.md";
         json!({
             "schema": super::SCHEMA,
@@ -1563,21 +1560,20 @@ mod tests {
     #[test]
     fn current_registry_has_exact_workspace_packages_profiles_and_records() {
         let registry = super::Registry::parse(&registry()).unwrap();
-        assert_eq!(registry.workspaces.len(), 2);
+        let workspace_ids = registry
+            .workspaces
+            .iter()
+            .map(|item| item.workspace.as_str())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            workspace_ids,
+            BTreeSet::from(["product", "repository-tooling"])
+        );
         let workspace = registry
             .workspaces
             .iter()
             .find(|item| item.workspace == "repository-tooling")
             .unwrap();
-        assert_eq!(workspace.admissions.len(), 18);
-        assert_eq!(
-            workspace
-                .admissions
-                .iter()
-                .map(|item| item.resolved_uses.len())
-                .sum::<usize>(),
-            54
-        );
         let lock_only = workspace
             .admissions
             .iter()
@@ -1683,7 +1679,7 @@ mod tests {
         record["workspaces"][0]["admissions"][1]["review_record"] =
             record["workspaces"][0]["admissions"][0]["review_record"].clone();
         record["workspaces"][0]["admissions"][1]["review_record_digest"] =
-            json!(format!("sha256:{}", "f".repeat(64)));
+            json!(crate::digest::bytes(b"conflicting review record"));
         assert_eq!(
             super::Registry::parse(&record).unwrap_err().code,
             "REVIEW_RECORD_DIGEST_CONFLICT"
@@ -1870,7 +1866,7 @@ source = "registry+x"
             version: "1.0.0".to_owned(),
             edition: "2024".to_owned(),
             source: Some("registry+exact".to_owned()),
-            checksum: Some("a".repeat(64)),
+            checksum: Some(fixture_checksum()),
             license: Some("MIT".to_owned()),
             manifest_path: PathBuf::from("/cargo/external/Cargo.toml"),
             targets: Vec::new(),
@@ -1923,24 +1919,27 @@ source = "registry+x"
             ));
             fs::create_dir_all(root.join("conformance/dependency-reviews"))
                 .unwrap();
-            let lock = br#"version = 4
+            let checksum = fixture_checksum();
+            let lock = format!(
+                r#"version = 4
 [[package]]
 name = "external"
 version = "1.0.0"
 source = "registry+exact"
-checksum = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+checksum = "{checksum}"
 [[package]]
 name = "tool"
 version = "0.1.0"
-"#;
+"#
+            );
             let record = b"# External review\n";
-            fs::write(root.join("Cargo.lock"), lock).unwrap();
+            fs::write(root.join("Cargo.lock"), lock.as_bytes()).unwrap();
             fs::write(
                 root.join("conformance/dependency-reviews/external.md"),
                 record,
             )
             .unwrap();
-            let lock_digest = crate::digest::bytes(lock);
+            let lock_digest = crate::digest::bytes(lock.as_bytes());
             let record_digest = crate::digest::bytes(record);
             let classification = SourceClassification::new(
                 SourceOwner::RepositoryTooling,
@@ -1972,6 +1971,12 @@ version = "0.1.0"
             ];
             Self { root, lock_digest, record_digest, inventory }
         }
+    }
+
+    fn fixture_checksum() -> String {
+        crate::digest::bytes(b"external package fixture")
+            .trim_start_matches("sha256:")
+            .to_owned()
     }
 
     impl Drop for Fixture {

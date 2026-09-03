@@ -4,7 +4,7 @@
 
 - Kind: script
 - Exact content digest:
-  `sha256:a90292c883cbd8402fbb6042b42623ad8cb33d8e57417a1b67675b007616b022`
+  `sha256:f3a3621379a2a79c63ae5b84bc4f7ca2d80eedb47cab4b941f162e5af1b3fb56`
 - Review mechanism: exact content and retained review
 
 ## Direct local invocations
@@ -19,6 +19,7 @@ repository entrypoint.
   by these exact bytes.
 - The GNU/Linux command-line tools resolved from `PATH` provide the semantics
   exercised by the retained mutation checks.
+- Ambient Ripgrep configuration is removed before structural searches.
 - `BASH_SOURCE` resolves this checked-out script so `ROOT` selects the reviewed
   repository inputs.
 
@@ -28,7 +29,9 @@ Admit these exact bytes with an empty direct-local-invocation set for
 documentation conformance. The script binds both the focused
 Interaction/Update/View/Protocol chapters and the focused Product-v2 proof
 chapters to their inventories, indexes, authority clauses, and Rule Matrix
-routes. It also binds the focused Host API chapters and initial startup Event
-family to their navigation indexes. It includes `CODE_STYLE.md` in public
-Markdown link, whitespace, fence, and local-fragment validation. Any byte or
-invocation change reopens this review.
+routes. Navigation-only shape is checked through exact child and section
+semantics rather than current-file content hashes. It also binds the focused
+Host API chapters and initial startup Event family to their navigation
+indexes. It includes `CODE_STYLE.md` in public Markdown link, whitespace,
+fence, and local-fragment validation. Any byte or invocation change reopens
+this review.

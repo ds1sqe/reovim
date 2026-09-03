@@ -5095,8 +5095,39 @@ mod tests {
             LIMITS,
         )
         .expect("real Cargo artifact shape");
-        assert_eq!(observation.artifacts.len(), 1);
-        assert_eq!(observation.artifacts[0].features, ["default"]);
+        let [observed] = observation.artifacts.as_slice() else {
+            panic!("expected the one declared shipping artifact");
+        };
+        assert_eq!(
+            observed,
+            &CargoArtifact {
+                package_id: request.package_id.to_owned(),
+                manifest_path: request
+                    .repository_root
+                    .join(&request.closure.package.manifest),
+                target_name: request.closure.target.name.clone(),
+                target_kinds: vec!["lib".to_owned()],
+                crate_types: vec!["lib".to_owned()],
+                source_path: request
+                    .repository_root
+                    .join(&request.closure.target.src_path),
+                features: vec!["default".to_owned()],
+                filenames: vec![
+                    request
+                        .target_dir
+                        .join("release/libreovim_foundation.rlib"),
+                    request
+                        .target_dir
+                        .join("build-dir")
+                        .join(TARGET_TRIPLE)
+                        .join(concat!(
+                            "release/deps/",
+                            "libreovim_foundation-hash.rmeta"
+                        )),
+                ],
+                fresh: false,
+            }
+        );
 
         let helper = cargo_stream(&[
             json!({"reason": "build-script-executed"}),
@@ -5868,6 +5899,6 @@ mod tests {
     }
 
     fn digest(value: char) -> String {
-        format!("sha256:{}", value.to_string().repeat(64))
+        crate::digest::bytes(value.to_string().as_bytes())
     }
 }

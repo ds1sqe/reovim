@@ -2,6 +2,7 @@
 //! Executed external consumer of Kernel Interface contracts.
 
 mod clock;
+mod diagnostic;
 mod event;
 mod lifecycle;
 mod operation;
@@ -15,6 +16,7 @@ const fn public_const_cases() -> bool {
     operation::const_cases()
         && lifecycle::const_cases()
         && clock::const_cases()
+        && diagnostic::const_cases()
         && event::const_cases()
 }
 
@@ -25,6 +27,7 @@ pub fn exercise_public_api() -> bool {
         && operation::exercise()
         && lifecycle::exercise()
         && clock::exercise()
+        && diagnostic::exercise()
         && event::exercise()
 }
 
@@ -54,6 +57,14 @@ where
         + ::core::fmt::Debug
         + ::core::cmp::PartialEq
         + ::core::cmp::Eq,
+{
+    let _layout = (core::mem::size_of::<T>(), core::mem::align_of::<T>());
+    true
+}
+
+const fn send_sync_witness<T>() -> bool
+where
+    T: ::core::marker::Send + ::core::marker::Sync,
 {
     let _layout = (core::mem::size_of::<T>(), core::mem::align_of::<T>());
     true

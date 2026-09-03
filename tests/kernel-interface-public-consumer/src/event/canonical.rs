@@ -136,6 +136,7 @@ fn maximum_descriptor(
         descriptor.identities(),
         clock,
         limits,
+        descriptor.canonical_reference_safety(),
     )
     .ok()
 }
@@ -311,8 +312,20 @@ fn record_cases(descriptor: &StartupEventDescriptor) -> bool {
         && record.timestamp().elapsed_nanoseconds() == 5
         && super::descriptor::readiness_code(record.proposal().readiness()) == 0
         && record.canonical().bytes() == READY_LINE
+        && canonical_ref_cases(&record)
         && record_clone_copy(&record)
         && mismatched_record_case(descriptor, &record)
+}
+
+fn canonical_ref_cases(record: &StartupEventRecord<'_>) -> bool {
+    let reference = record.canonical_ref();
+    reference.stream() == record.scope().stream()
+        && reference.family() == record.family()
+        && reference.schema_version() == record.schema_version()
+        && reference.sequence() == record.sequence()
+        && reference.bytes() == record.canonical().bytes()
+        && reference.size() == record.canonical().size()
+        && super::super::traits(reference)
 }
 
 fn record_clone_copy(record: &StartupEventRecord<'_>) -> bool {

@@ -785,6 +785,12 @@ mod tests {
         value["allowed_product_edges"] =
             json!([{"consumer":"Kernel Interface","provider":"Foundation"}]);
         let parsed = super::Policy::parse(&value).unwrap();
-        assert_eq!(parsed.allowed_product_edges.len(), 1);
+        assert_eq!(
+            parsed.allowed_product_edges,
+            std::collections::BTreeSet::from([(
+                super::ArchitecturalRole::KernelInterface,
+                super::ArchitecturalRole::Foundation,
+            )])
+        );
     }
 }

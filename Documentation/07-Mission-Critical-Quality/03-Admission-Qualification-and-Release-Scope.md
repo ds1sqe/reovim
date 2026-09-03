@@ -87,6 +87,36 @@ adapter, evidence field, or execution mechanism requires a separately named
 concrete consumer and block. Unused experimental implementation remains in
 working notes or Git history rather than compiled active source.
 
+## Basic-check cache boundary
+
+Each commit's Git tree records its mechanically generated per-file blob
+identities. Ignored local coverage records the exact successful working
+identities and a completeness seal; no second tracked manifest exists. Unit,
+lint, and documentation selection maps each changed file to one owning
+component and includes exactly its transitive reverse dependents. It excludes
+unchanged upstream and sibling components. A TUI-only change therefore selects
+exactly TUI. A Kernel change selects Kernel and every dependent Client,
+including TUI.
+
+Every reusable result is bound to the repository input inventory, direct tool
+bytes and versions, supported flags and configuration, relevant build
+environment, and target. The local identity does not claim to fingerprint
+opaque dynamic-loader, system-library, compiler-sysroot, or runtime support
+state. A developer selects `--full` after such state changes; CI and final
+checkpoint gates are always full.
+A known hash mismatch, addition, deletion, or rename selects its old and new
+owners plus reverse dependents; it does not cause unrelated work. Missing or
+malformed local coverage, unknown or ambiguous ownership, incomplete graph
+data, or global tool/config uncertainty runs the full check. Successful
+selected execution may atomically refresh only its local covered inputs. Git
+blob hashes are committed identities, not hand-maintained expectations,
+conformance evidence, or qualification.
+
+CI, conformance, qualification, and the final pre-checkpoint journey use the
+uncached full mode. Cache behavior has generated-input hit, miss, dependency,
+tool/config invalidation, malformed-state, partial-failure, and atomic-refresh
+tests without literal expected digests or incidental inventory counts.
+
 ## Public reduction rule
 
 First-party code has no privileged semantic path. A Client or extension uses

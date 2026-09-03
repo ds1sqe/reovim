@@ -1092,7 +1092,32 @@ mod tests {
         crate::schema::validate_instance(&registry(), &registry_schema())
             .unwrap();
         let registry = super::Registry::parse(&registry()).unwrap();
-        assert_eq!(registry.reviews.len(), 5);
+        let identities = registry
+            .reviews
+            .iter()
+            .map(|review| review.entrypoint.identity())
+            .collect::<BTreeSet<_>>();
+        let expected = BTreeSet::from([
+            super::EntrypointIdentity::Script {
+                path: PathBuf::from("scripts/check.sh"),
+            },
+            super::EntrypointIdentity::Script {
+                path: PathBuf::from("scripts/check-cache.sh"),
+            },
+            super::EntrypointIdentity::Script {
+                path: PathBuf::from("scripts/check-style.sh"),
+            },
+            super::EntrypointIdentity::Script {
+                path: PathBuf::from("scripts/check-documentation.sh"),
+            },
+            super::EntrypointIdentity::Script {
+                path: PathBuf::from("scripts/check-conformance.sh"),
+            },
+            super::EntrypointIdentity::Workflow {
+                path: PathBuf::from(".github/workflows/ci.yml"),
+            },
+        ]);
+        assert_eq!(identities, expected);
         let check = registry
             .reviews
             .iter()
@@ -1104,7 +1129,32 @@ mod tests {
                 )
             })
             .unwrap();
-        assert_eq!(check.direct_local_invocations.len(), 2);
+        let invocations = check
+            .direct_local_invocations
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        let expected = BTreeSet::from([
+            super::Invocation {
+                target: super::EntrypointIdentity::Script {
+                    path: PathBuf::from("scripts/check-style.sh"),
+                },
+                mechanism: super::InvocationMechanism::DirectPathExec,
+            },
+            super::Invocation {
+                target: super::EntrypointIdentity::Script {
+                    path: PathBuf::from("scripts/check-documentation.sh"),
+                },
+                mechanism: super::InvocationMechanism::DirectPathExec,
+            },
+            super::Invocation {
+                target: super::EntrypointIdentity::Script {
+                    path: PathBuf::from("scripts/check-cache.sh"),
+                },
+                mechanism: super::InvocationMechanism::DirectPathExec,
+            },
+        ]);
+        assert_eq!(invocations, expected);
         assert!(check.entrypoint.content_digest().starts_with("sha256:"));
         let conformance = registry
             .reviews
@@ -1240,8 +1290,13 @@ mod tests {
         );
 
         let mut wrong_invocation = registry();
-        let invocation =
-            &mut wrong_invocation["reviews"][3]["direct_local_invocations"][0];
+        let review = wrong_invocation["reviews"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|review| review["path"] == "scripts/check-conformance.sh")
+            .unwrap();
+        let invocation = &mut review["direct_local_invocations"][0];
         invocation["mechanism"] = json!("direct-path-exec");
         assert_eq!(
             super::Registry::parse(&wrong_invocation).unwrap_err().code,
@@ -1363,9 +1418,9 @@ mod tests {
         if let super::ReviewedEntrypoint::Script { content_digest, .. } =
             &mut check.entrypoint
         {
-            *content_digest = format!("sha256:{}", "0".repeat(64));
+            *content_digest = crate::digest::bytes(b"different entrypoint");
         }
-        check.review_record_digest = format!("sha256:{}", "0".repeat(64));
+        check.review_record_digest = crate::digest::bytes(b"different review");
         let record = inventory
             .iter_mut()
             .find(|file| file.path == check.review_record)

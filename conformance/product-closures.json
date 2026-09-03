@@ -178,13 +178,33 @@
           },
           {
             "kind": "copied",
+            "package_path": "src/bound.rs",
+            "repository_path": "kernel/interface/src/bound.rs"
+          },
+          {
+            "kind": "copied",
             "package_path": "src/cancellation.rs",
             "repository_path": "kernel/interface/src/cancellation.rs"
           },
           {
             "kind": "copied",
+            "package_path": "src/carrier.rs",
+            "repository_path": "kernel/interface/src/carrier.rs"
+          },
+          {
+            "kind": "copied",
             "package_path": "src/clock.rs",
             "repository_path": "kernel/interface/src/clock.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/contract.rs",
+            "repository_path": "kernel/interface/src/contract.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/diagnostic.rs",
+            "repository_path": "kernel/interface/src/diagnostic.rs"
           },
           {
             "kind": "copied",
@@ -260,6 +280,11 @@
             "kind": "copied",
             "package_path": "src/event/snapshot_validation.rs",
             "repository_path": "kernel/interface/src/event/snapshot_validation.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/identity.rs",
+            "repository_path": "kernel/interface/src/identity.rs"
           },
           {
             "kind": "copied",
@@ -1734,12 +1759,197 @@
       "consumer_closure": "kernel-interface-consumer",
       "reexports": [
         {
+          "public_type": "bound::ArithmeticRule",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "bound::ArithmeticRule"
+        },
+        {
+          "public_type": "bound::BoundDescriptor",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "bound::BoundDescriptor"
+        },
+        {
+          "public_type": "bound::BoundError",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "bound::BoundError"
+        },
+        {
+          "public_type": "bound::BoundUnit",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "bound::BoundUnit"
+        },
+        {
+          "public_type": "bound::BoundValue",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "bound::BoundValue"
+        },
+        {
+          "public_type": "bound::CheckedByteCount",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "bound::CheckedByteCount"
+        },
+        {
+          "public_type": "bound::CheckedCount",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "bound::CheckedCount"
+        },
+        {
+          "public_type": "bound::CheckedDuration",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "bound::CheckedDuration"
+        },
+        {
+          "public_type": "bound::ValidationOrder",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "bound::ValidationOrder"
+        },
+        {
+          "public_type": "bound::ZeroPolicy",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "bound::ZeroPolicy"
+        },
+        {
+          "public_type": "carrier::BorrowModel",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "carrier::BorrowModel"
+        },
+        {
+          "public_type": "carrier::CarrierDescriptorError",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "carrier::CarrierDescriptorError"
+        },
+        {
+          "public_type": "carrier::CarrierSafetyDescriptor",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "carrier::CarrierSafetyDescriptor"
+        },
+        {
+          "public_type": "carrier::ConcurrencySafety",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "carrier::ConcurrencySafety"
+        },
+        {
+          "public_type": "carrier::CopyModel",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "carrier::CopyModel"
+        },
+        {
+          "public_type": "carrier::DropModel",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "carrier::DropModel"
+        },
+        {
+          "public_type": "carrier::InvocationModel",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "carrier::InvocationModel"
+        },
+        {
+          "public_type": "carrier::InvocationSafety",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "carrier::InvocationSafety"
+        },
+        {
+          "public_type": "carrier::LifetimeModel",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "carrier::LifetimeModel"
+        },
+        {
+          "public_type": "carrier::MemoryCoherenceError",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "carrier::MemoryCoherenceError"
+        },
+        {
+          "public_type": "carrier::MemorySafety",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "carrier::MemorySafety"
+        },
+        {
+          "public_type": "carrier::OwnershipModel",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "carrier::OwnershipModel"
+        },
+        {
+          "public_type": "carrier::SharingModel",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "carrier::SharingModel"
+        },
+        {
+          "public_type": "carrier::ThreadTransfer",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "carrier::ThreadTransfer"
+        },
+        {
+          "public_type": "carrier::TypeMismatch",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "carrier::TypeMismatch"
+        },
+        {
+          "public_type": "carrier::UnsafeBoundary",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "carrier::UnsafeBoundary"
+        },
+        {
+          "public_type": "carrier::UnwindModel",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "carrier::UnwindModel"
+        },
+        {
           "public_type": "clock::CarrierSafetyDescriptor",
           "provider_relation": "foundation-public-api",
           "provider_type": "carrier::CarrierSafetyDescriptor"
         },
         {
           "public_type": "clock::CheckedDuration",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "bound::CheckedDuration"
+        },
+        {
+          "public_type": "contract::CompatibleVersionRange",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "contract::CompatibleVersionRange"
+        },
+        {
+          "public_type": "contract::ContractId",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "contract::ContractId"
+        },
+        {
+          "public_type": "contract::ContractVersion",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "contract::ContractVersion"
+        },
+        {
+          "public_type": "contract::VersionRangeError",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "contract::VersionRangeError"
+        },
+        {
+          "public_type": "diagnostic::BoundDescriptor",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "bound::BoundDescriptor"
+        },
+        {
+          "public_type": "diagnostic::BoundError",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "bound::BoundError"
+        },
+        {
+          "public_type": "diagnostic::CarrierSafetyDescriptor",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "carrier::CarrierSafetyDescriptor"
+        },
+        {
+          "public_type": "diagnostic::CheckedByteCount",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "bound::CheckedByteCount"
+        },
+        {
+          "public_type": "diagnostic::CheckedCount",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "bound::CheckedCount"
+        },
+        {
+          "public_type": "diagnostic::CheckedDuration",
           "provider_relation": "foundation-public-api",
           "provider_type": "bound::CheckedDuration"
         },
@@ -1754,6 +1964,11 @@
           "provider_type": "bound::BoundError"
         },
         {
+          "public_type": "event::CarrierSafetyDescriptor",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "carrier::CarrierSafetyDescriptor"
+        },
+        {
           "public_type": "event::CheckedByteCount",
           "provider_relation": "foundation-public-api",
           "provider_type": "bound::CheckedByteCount"
@@ -1762,9 +1977,151 @@
           "public_type": "event::CheckedCount",
           "provider_relation": "foundation-public-api",
           "provider_type": "bound::CheckedCount"
+        },
+        {
+          "public_type": "identity::IncarnationId",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "identity::IncarnationId"
+        },
+        {
+          "public_type": "identity::InstanceId",
+          "provider_relation": "foundation-public-api",
+          "provider_type": "identity::InstanceId"
         }
       ],
       "public_items": [
+        {
+          "path": "bound",
+          "kind": "module"
+        },
+        {
+          "path": "bound::ArithmeticRule",
+          "kind": "type"
+        },
+        {
+          "path": "bound::BoundDescriptor",
+          "kind": "type"
+        },
+        {
+          "path": "bound::BoundError",
+          "kind": "type"
+        },
+        {
+          "path": "bound::BoundUnit",
+          "kind": "type"
+        },
+        {
+          "path": "bound::BoundValue",
+          "kind": "type"
+        },
+        {
+          "path": "bound::CheckedByteCount",
+          "kind": "type"
+        },
+        {
+          "path": "bound::CheckedCount",
+          "kind": "type"
+        },
+        {
+          "path": "bound::CheckedDuration",
+          "kind": "type"
+        },
+        {
+          "path": "bound::ValidationOrder",
+          "kind": "type"
+        },
+        {
+          "path": "bound::ZeroPolicy",
+          "kind": "type"
+        },
+        {
+          "path": "bound::BoundDescriptor::admit_aggregate",
+          "kind": "function"
+        },
+        {
+          "path": "bound::BoundDescriptor::admit_per_object",
+          "kind": "function"
+        },
+        {
+          "path": "bound::BoundDescriptor::aggregate",
+          "kind": "function"
+        },
+        {
+          "path": "bound::BoundDescriptor::arithmetic_rule",
+          "kind": "function"
+        },
+        {
+          "path": "bound::BoundDescriptor::charge_owner",
+          "kind": "function"
+        },
+        {
+          "path": "bound::BoundDescriptor::new",
+          "kind": "function"
+        },
+        {
+          "path": "bound::BoundDescriptor::per_object",
+          "kind": "function"
+        },
+        {
+          "path": "bound::BoundDescriptor::unit",
+          "kind": "function"
+        },
+        {
+          "path": "bound::BoundDescriptor::validation_order",
+          "kind": "function"
+        },
+        {
+          "path": "bound::BoundDescriptor::zero_policy",
+          "kind": "function"
+        },
+        {
+          "path": "bound::BoundValue::checked_add",
+          "kind": "function"
+        },
+        {
+          "path": "bound::BoundValue::unit",
+          "kind": "function"
+        },
+        {
+          "path": "bound::BoundValue::value",
+          "kind": "function"
+        },
+        {
+          "path": "bound::CheckedByteCount::checked_add",
+          "kind": "function"
+        },
+        {
+          "path": "bound::CheckedByteCount::new",
+          "kind": "function"
+        },
+        {
+          "path": "bound::CheckedByteCount::value",
+          "kind": "function"
+        },
+        {
+          "path": "bound::CheckedCount::checked_add",
+          "kind": "function"
+        },
+        {
+          "path": "bound::CheckedCount::new",
+          "kind": "function"
+        },
+        {
+          "path": "bound::CheckedCount::value",
+          "kind": "function"
+        },
+        {
+          "path": "bound::CheckedDuration::checked_add",
+          "kind": "function"
+        },
+        {
+          "path": "bound::CheckedDuration::from_nanoseconds",
+          "kind": "function"
+        },
+        {
+          "path": "bound::CheckedDuration::nanoseconds",
+          "kind": "function"
+        },
         {
           "path": "cancellation",
           "kind": "module"
@@ -1815,6 +2172,170 @@
         },
         {
           "path": "cancellation::InstallationOutcome::permits_installation",
+          "kind": "function"
+        },
+        {
+          "path": "carrier",
+          "kind": "module"
+        },
+        {
+          "path": "carrier::BorrowModel",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::CarrierDescriptorError",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::CarrierSafetyDescriptor",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::ConcurrencySafety",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::CopyModel",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::DropModel",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::InvocationModel",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::InvocationSafety",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::LifetimeModel",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::MemoryCoherenceError",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::MemorySafety",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::OwnershipModel",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::SharingModel",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::ThreadTransfer",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::TypeMismatch",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::UnsafeBoundary",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::UnwindModel",
+          "kind": "type"
+        },
+        {
+          "path": "carrier::CarrierDescriptorError::invocation",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::CarrierDescriptorError::memory",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::CarrierDescriptorError::unwind",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::CarrierSafetyDescriptor::concurrency",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::CarrierSafetyDescriptor::invocation",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::CarrierSafetyDescriptor::memory",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::CarrierSafetyDescriptor::mismatch",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::CarrierSafetyDescriptor::new",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::CarrierSafetyDescriptor::schema_versions",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::CarrierSafetyDescriptor::type_id",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::CarrierSafetyDescriptor::unsafe_boundary",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::ConcurrencySafety::new",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::ConcurrencySafety::sharing",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::ConcurrencySafety::thread_transfer",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::InvocationSafety::invocation",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::InvocationSafety::new",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::InvocationSafety::unwind",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::MemorySafety::borrowing",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::MemorySafety::copying",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::MemorySafety::dropping",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::MemorySafety::lifetime",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::MemorySafety::new",
+          "kind": "function"
+        },
+        {
+          "path": "carrier::MemorySafety::ownership",
           "kind": "function"
         },
         {
@@ -1918,6 +2439,334 @@
           "kind": "function"
         },
         {
+          "path": "contract",
+          "kind": "module"
+        },
+        {
+          "path": "contract::CompatibleVersionRange",
+          "kind": "type"
+        },
+        {
+          "path": "contract::ContractId",
+          "kind": "type"
+        },
+        {
+          "path": "contract::ContractVersion",
+          "kind": "type"
+        },
+        {
+          "path": "contract::VersionRangeError",
+          "kind": "type"
+        },
+        {
+          "path": "contract::CompatibleVersionRange::contains",
+          "kind": "function"
+        },
+        {
+          "path": "contract::CompatibleVersionRange::maximum",
+          "kind": "function"
+        },
+        {
+          "path": "contract::CompatibleVersionRange::minimum",
+          "kind": "function"
+        },
+        {
+          "path": "contract::CompatibleVersionRange::new",
+          "kind": "function"
+        },
+        {
+          "path": "contract::ContractId::new",
+          "kind": "function"
+        },
+        {
+          "path": "contract::ContractId::value",
+          "kind": "function"
+        },
+        {
+          "path": "contract::ContractVersion::new",
+          "kind": "function"
+        },
+        {
+          "path": "contract::ContractVersion::value",
+          "kind": "function"
+        },
+        {
+          "path": "contract::VersionRangeError::maximum",
+          "kind": "function"
+        },
+        {
+          "path": "contract::VersionRangeError::minimum",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic",
+          "kind": "module"
+        },
+        {
+          "path": "diagnostic::BoundDescriptor",
+          "kind": "type"
+        },
+        {
+          "path": "diagnostic::BoundError",
+          "kind": "type"
+        },
+        {
+          "path": "diagnostic::CarrierSafetyDescriptor",
+          "kind": "type"
+        },
+        {
+          "path": "diagnostic::CheckedByteCount",
+          "kind": "type"
+        },
+        {
+          "path": "diagnostic::CheckedCount",
+          "kind": "type"
+        },
+        {
+          "path": "diagnostic::CheckedDuration",
+          "kind": "type"
+        },
+        {
+          "path": "diagnostic::DiagnosticClosedCause",
+          "kind": "type"
+        },
+        {
+          "path": "diagnostic::DiagnosticDropCause",
+          "kind": "type"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutput",
+          "kind": "trait"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputCompletionBounds",
+          "kind": "type"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputCompletionBounds::activation",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputCompletionBounds::new",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputCompletionBounds::shutdown",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputDescriptor",
+          "kind": "type"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputDescriptor::contract",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputDescriptor::degraded_operation_is_safe",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputDescriptor::lifecycle",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputDescriptor::limits",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputDescriptor::negotiate",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputDescriptor::new",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputDescriptor::operation",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputDescriptor::owner",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputDescriptor::readiness_predicate",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputDescriptor::record_safety",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputDescriptor::record_type",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputDescriptor::shutdown_policy",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputDescriptor::source_stream",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputDescriptor::validate_record",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputError",
+          "kind": "type"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputLimits",
+          "kind": "type"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputLimits::byte_capacity",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputLimits::completion",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputLimits::new",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputLimits::output",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputLimits::record_capacity",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputLimits::shutdown_report_record_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputLimits::shutdown_report_records",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputLimits::submission_work",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputLimits::temporary_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputOperation",
+          "kind": "type"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputReadinessPredicate",
+          "kind": "type"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputRecord",
+          "kind": "type"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputRecord::bind",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputRecord::bytes",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputRecord::output",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputRecord::sequence",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputRecord::size",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputRecord::stream",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticRecordContract",
+          "kind": "type"
+        },
+        {
+          "path": "diagnostic::DiagnosticRecordContract::new",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticRecordContract::safety",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticRecordContract::type_id",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticRecordError",
+          "kind": "type"
+        },
+        {
+          "path": "diagnostic::DiagnosticRecordRejection",
+          "kind": "type"
+        },
+        {
+          "path": "diagnostic::DiagnosticRecordRejection::bytes",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticRecordRejection::cause",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticRecordRejection::into_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownPolicy",
+          "kind": "type"
+        },
+        {
+          "path": "diagnostic::DiagnosticSubmissionOutcome",
+          "kind": "type"
+        },
+        {
+          "path": "diagnostic::DiagnosticSubmissionOutcome::accepted",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticSubmissionOutcome::closed",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticSubmissionOutcome::dropped",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticSubmissionOutcome::into_returned_record",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticSubmissionOutcome::returned_record",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticSubmissionOutcome::status",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticSubmissionStatus",
+          "kind": "type"
+        },
+        {
           "path": "event",
           "kind": "module"
         },
@@ -1952,6 +2801,38 @@
         {
           "path": "event::CanonicalEventBytes::size",
           "kind": "function"
+        },
+        {
+          "path": "event::CanonicalEventRecordRef",
+          "kind": "type"
+        },
+        {
+          "path": "event::CanonicalEventRecordRef::bytes",
+          "kind": "function"
+        },
+        {
+          "path": "event::CanonicalEventRecordRef::family",
+          "kind": "function"
+        },
+        {
+          "path": "event::CanonicalEventRecordRef::schema_version",
+          "kind": "function"
+        },
+        {
+          "path": "event::CanonicalEventRecordRef::sequence",
+          "kind": "function"
+        },
+        {
+          "path": "event::CanonicalEventRecordRef::size",
+          "kind": "function"
+        },
+        {
+          "path": "event::CanonicalEventRecordRef::stream",
+          "kind": "function"
+        },
+        {
+          "path": "event::CarrierSafetyDescriptor",
+          "kind": "type"
         },
         {
           "path": "event::CheckedByteCount",
@@ -2274,6 +3155,10 @@
           "kind": "function"
         },
         {
+          "path": "event::StartupEventDescriptor::canonical_reference_safety",
+          "kind": "function"
+        },
+        {
           "path": "event::StartupEventDescriptor::clock",
           "kind": "function"
         },
@@ -2316,6 +3201,10 @@
         {
           "path": "event::StartupEventIdentities",
           "kind": "type"
+        },
+        {
+          "path": "event::StartupEventIdentities::canonical_reference",
+          "kind": "function"
         },
         {
           "path": "event::StartupEventIdentities::contract",
@@ -2383,6 +3272,10 @@
         },
         {
           "path": "event::StartupEventRecord::canonical",
+          "kind": "function"
+        },
+        {
+          "path": "event::StartupEventRecord::canonical_ref",
           "kind": "function"
         },
         {
@@ -2463,6 +3356,34 @@
         },
         {
           "path": "event::StartupSnapshot::records",
+          "kind": "function"
+        },
+        {
+          "path": "identity",
+          "kind": "module"
+        },
+        {
+          "path": "identity::IncarnationId",
+          "kind": "type"
+        },
+        {
+          "path": "identity::InstanceId",
+          "kind": "type"
+        },
+        {
+          "path": "identity::IncarnationId::new",
+          "kind": "function"
+        },
+        {
+          "path": "identity::IncarnationId::value",
+          "kind": "function"
+        },
+        {
+          "path": "identity::InstanceId::new",
+          "kind": "function"
+        },
+        {
+          "path": "identity::InstanceId::value",
           "kind": "function"
         },
         {
@@ -2634,6 +3555,66 @@
           "kind": "type"
         },
         {
+          "path": "bound::ArithmeticRule::Checked",
+          "kind": "variant"
+        },
+        {
+          "path": "bound::BoundError::ArithmeticOverflow",
+          "kind": "variant"
+        },
+        {
+          "path": "bound::BoundError::Exhausted",
+          "kind": "variant"
+        },
+        {
+          "path": "bound::BoundError::IncoherentDescriptor",
+          "kind": "variant"
+        },
+        {
+          "path": "bound::BoundError::UnitMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "bound::BoundError::ZeroRejected",
+          "kind": "variant"
+        },
+        {
+          "path": "bound::BoundUnit::Bytes",
+          "kind": "variant"
+        },
+        {
+          "path": "bound::BoundUnit::Count",
+          "kind": "variant"
+        },
+        {
+          "path": "bound::BoundUnit::DurationNanoseconds",
+          "kind": "variant"
+        },
+        {
+          "path": "bound::BoundValue::Bytes",
+          "kind": "variant"
+        },
+        {
+          "path": "bound::BoundValue::Count",
+          "kind": "variant"
+        },
+        {
+          "path": "bound::BoundValue::Duration",
+          "kind": "variant"
+        },
+        {
+          "path": "bound::ValidationOrder::BeforeTraversalAndAllocation",
+          "kind": "variant"
+        },
+        {
+          "path": "bound::ZeroPolicy::Allow",
+          "kind": "variant"
+        },
+        {
+          "path": "bound::ZeroPolicy::Reject",
+          "kind": "variant"
+        },
+        {
           "path": "cancellation::CancellationCause::ExplicitRequest",
           "kind": "variant"
         },
@@ -2707,6 +3688,134 @@
         },
         {
           "path": "cancellation::InstallationOutcome::Fenced",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::BorrowModel::Exclusive",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::BorrowModel::Forbidden",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::BorrowModel::Shared",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::CarrierDescriptorError::InvocationUnwind",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::CarrierDescriptorError::Memory",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::CopyModel::Copy",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::CopyModel::MoveOnly",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::DropModel::ReleasesOwnedState",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::DropModel::Trivial",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::InvocationModel::DataOnly",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::InvocationModel::NoUserCallback",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::InvocationModel::UserCallback",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::LifetimeModel::IncarnationBound",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::LifetimeModel::InstanceBound",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::LifetimeModel::Value",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::MemoryCoherenceError::BorrowedReleasesOwnedState",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::MemoryCoherenceError::BorrowedValueLifetime",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::MemoryCoherenceError::BorrowedWithoutBorrow",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::MemoryCoherenceError::CopyDuplicatesReleaseAuthority",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::OwnershipModel::Borrowed",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::OwnershipModel::Owned",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::SharingModel::Exclusive",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::SharingModel::Immutable",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::SharingModel::Synchronized",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::ThreadTransfer::ThreadAffine",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::ThreadTransfer::Transferable",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::TypeMismatch::Reject",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::UnsafeBoundary::None",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::UnsafeBoundary::Reviewed",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::UnwindModel::Contained",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::UnwindModel::ForbiddenAcrossBoundary",
+          "kind": "variant"
+        },
+        {
+          "path": "carrier::UnwindModel::NotInvocable",
           "kind": "variant"
         },
         {
@@ -2788,6 +3897,186 @@
         {
           "path": "clock::MonotonicClock::observe",
           "kind": "function"
+        },
+        {
+          "path": "diagnostic::BoundError::ArithmeticOverflow",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::BoundError::Exhausted",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::BoundError::IncoherentDescriptor",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::BoundError::UnitMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::BoundError::ZeroRejected",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticClosedCause::Closed",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticClosedCause::Closing",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticClosedCause::IncompleteShutdown",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticClosedCause::Replaced",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticDropCause::BoundExceeded",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticDropCause::ByteCapacity",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticDropCause::ChargeOverflow",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticDropCause::DestinationUnavailable",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticDropCause::HealthUnavailable",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticDropCause::InternalFailure",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticDropCause::InvalidRecord",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticDropCause::NotReady",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticDropCause::RecordCapacity",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticDropCause::SynchronizationPressure",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutput::descriptor",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutput::submit",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputError::Bound",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputError::IncoherentCarrier",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputError::IncompatibleContract",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputError::LimitsLifecycleMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputError::UnsupportedContract",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputOperation::Activation",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputOperation::DescriptorInspection",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputOperation::RecordPreparation",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputOperation::Shutdown",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputOperation::Submission",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputReadinessPredicate::CurrentGenerationAdmission",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticRecordError::Bound",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticRecordError::CanonicalMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticRecordError::LengthMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticRecordError::LengthOverflow",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticRecordError::SourceStreamMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownPolicy::Discard",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownPolicy::Drain",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticSubmissionOutcome::Accepted",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticSubmissionOutcome::Closed",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticSubmissionOutcome::Dropped",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticSubmissionStatus::Accepted",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticSubmissionStatus::Closed",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticSubmissionStatus::Dropped",
+          "kind": "variant"
         },
         {
           "path": "event::Actionability::None",
@@ -2907,6 +4196,10 @@
         },
         {
           "path": "event::EventError::EmptyCanonicalBytes",
+          "kind": "variant"
+        },
+        {
+          "path": "event::EventError::IncoherentCarrier",
           "kind": "variant"
         },
         {
@@ -3193,6 +4486,256 @@
       "derive_checks": [
         {
           "derive": "Clone",
+          "public_type": "bound::ArithmeticRule",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "bound::ArithmeticRule",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "bound::ArithmeticRule",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "bound::ArithmeticRule",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "bound::ArithmeticRule",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "bound::BoundDescriptor",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "bound::BoundDescriptor",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "bound::BoundDescriptor",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "bound::BoundDescriptor",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "bound::BoundDescriptor",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "bound::BoundError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "bound::BoundError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "bound::BoundError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "bound::BoundError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "bound::BoundError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "bound::BoundUnit",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "bound::BoundUnit",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "bound::BoundUnit",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "bound::BoundUnit",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "bound::BoundUnit",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "bound::BoundValue",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "bound::BoundValue",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "bound::BoundValue",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "bound::BoundValue",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "bound::BoundValue",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "bound::CheckedByteCount",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "bound::CheckedByteCount",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "bound::CheckedByteCount",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "bound::CheckedByteCount",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "bound::CheckedByteCount",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "bound::CheckedCount",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "bound::CheckedCount",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "bound::CheckedCount",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "bound::CheckedCount",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "bound::CheckedCount",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "bound::CheckedDuration",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "bound::CheckedDuration",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "bound::CheckedDuration",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "bound::CheckedDuration",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "bound::CheckedDuration",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "bound::ValidationOrder",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "bound::ValidationOrder",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "bound::ValidationOrder",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "bound::ValidationOrder",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "bound::ValidationOrder",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "bound::ZeroPolicy",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "bound::ZeroPolicy",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "bound::ZeroPolicy",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "bound::ZeroPolicy",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "bound::ZeroPolicy",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
           "public_type": "cancellation::CancellationCause",
           "consumer_operation": "clone"
         },
@@ -3364,6 +4907,431 @@
         {
           "derive": "Eq",
           "public_type": "cancellation::InstallationOutcome",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::BorrowModel",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::BorrowModel",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::BorrowModel",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::BorrowModel",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::BorrowModel",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::CarrierDescriptorError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::CarrierDescriptorError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::CarrierDescriptorError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::CarrierDescriptorError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::CarrierDescriptorError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::CarrierSafetyDescriptor",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::CarrierSafetyDescriptor",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::CarrierSafetyDescriptor",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::CarrierSafetyDescriptor",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::CarrierSafetyDescriptor",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::ConcurrencySafety",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::ConcurrencySafety",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::ConcurrencySafety",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::ConcurrencySafety",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::ConcurrencySafety",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::CopyModel",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::CopyModel",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::CopyModel",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::CopyModel",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::CopyModel",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::DropModel",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::DropModel",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::DropModel",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::DropModel",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::DropModel",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::InvocationModel",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::InvocationModel",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::InvocationModel",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::InvocationModel",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::InvocationModel",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::InvocationSafety",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::InvocationSafety",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::InvocationSafety",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::InvocationSafety",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::InvocationSafety",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::LifetimeModel",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::LifetimeModel",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::LifetimeModel",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::LifetimeModel",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::LifetimeModel",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::MemoryCoherenceError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::MemoryCoherenceError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::MemoryCoherenceError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::MemoryCoherenceError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::MemoryCoherenceError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::MemorySafety",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::MemorySafety",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::MemorySafety",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::MemorySafety",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::MemorySafety",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::OwnershipModel",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::OwnershipModel",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::OwnershipModel",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::OwnershipModel",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::OwnershipModel",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::SharingModel",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::SharingModel",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::SharingModel",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::SharingModel",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::SharingModel",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::ThreadTransfer",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::ThreadTransfer",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::ThreadTransfer",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::ThreadTransfer",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::ThreadTransfer",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::TypeMismatch",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::TypeMismatch",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::TypeMismatch",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::TypeMismatch",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::TypeMismatch",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::UnsafeBoundary",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::UnsafeBoundary",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::UnsafeBoundary",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::UnsafeBoundary",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::UnsafeBoundary",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "carrier::UnwindModel",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "carrier::UnwindModel",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "carrier::UnwindModel",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "carrier::UnwindModel",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "carrier::UnwindModel",
           "consumer_operation": "eq"
         },
         {
@@ -3528,6 +5496,546 @@
         },
         {
           "derive": "Clone",
+          "public_type": "contract::CompatibleVersionRange",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "contract::CompatibleVersionRange",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "contract::CompatibleVersionRange",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "contract::CompatibleVersionRange",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "contract::CompatibleVersionRange",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "contract::ContractId",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "contract::ContractId",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "contract::ContractId",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "contract::ContractId",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "contract::ContractId",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "contract::ContractVersion",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "contract::ContractVersion",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "contract::ContractVersion",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "contract::ContractVersion",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "contract::ContractVersion",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "contract::VersionRangeError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "contract::VersionRangeError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "contract::VersionRangeError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "contract::VersionRangeError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "contract::VersionRangeError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "diagnostic::BoundDescriptor",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "diagnostic::BoundDescriptor",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "diagnostic::BoundDescriptor",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "diagnostic::BoundDescriptor",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "diagnostic::BoundDescriptor",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "diagnostic::BoundError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "diagnostic::BoundError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "diagnostic::BoundError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "diagnostic::BoundError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "diagnostic::BoundError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "diagnostic::CarrierSafetyDescriptor",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "diagnostic::CarrierSafetyDescriptor",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "diagnostic::CarrierSafetyDescriptor",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "diagnostic::CarrierSafetyDescriptor",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "diagnostic::CarrierSafetyDescriptor",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "diagnostic::CheckedByteCount",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "diagnostic::CheckedByteCount",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "diagnostic::CheckedByteCount",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "diagnostic::CheckedByteCount",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "diagnostic::CheckedByteCount",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "diagnostic::CheckedCount",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "diagnostic::CheckedCount",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "diagnostic::CheckedCount",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "diagnostic::CheckedCount",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "diagnostic::CheckedCount",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "diagnostic::CheckedDuration",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "diagnostic::CheckedDuration",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "diagnostic::CheckedDuration",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "diagnostic::CheckedDuration",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "diagnostic::CheckedDuration",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "diagnostic::DiagnosticClosedCause",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "diagnostic::DiagnosticClosedCause",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "diagnostic::DiagnosticClosedCause",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "diagnostic::DiagnosticClosedCause",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "diagnostic::DiagnosticClosedCause",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "diagnostic::DiagnosticDropCause",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "diagnostic::DiagnosticDropCause",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "diagnostic::DiagnosticDropCause",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "diagnostic::DiagnosticDropCause",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "diagnostic::DiagnosticDropCause",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "diagnostic::DiagnosticOutputCompletionBounds",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "diagnostic::DiagnosticOutputCompletionBounds",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "diagnostic::DiagnosticOutputCompletionBounds",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "diagnostic::DiagnosticOutputCompletionBounds",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "diagnostic::DiagnosticOutputCompletionBounds",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "diagnostic::DiagnosticOutputDescriptor",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "diagnostic::DiagnosticOutputDescriptor",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "diagnostic::DiagnosticOutputDescriptor",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "diagnostic::DiagnosticOutputDescriptor",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "diagnostic::DiagnosticOutputError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "diagnostic::DiagnosticOutputError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "diagnostic::DiagnosticOutputError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "diagnostic::DiagnosticOutputError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "diagnostic::DiagnosticOutputError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "diagnostic::DiagnosticOutputLimits",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "diagnostic::DiagnosticOutputLimits",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "diagnostic::DiagnosticOutputLimits",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "diagnostic::DiagnosticOutputLimits",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "diagnostic::DiagnosticOutputOperation",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "diagnostic::DiagnosticOutputOperation",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "diagnostic::DiagnosticOutputOperation",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "diagnostic::DiagnosticOutputOperation",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "diagnostic::DiagnosticOutputOperation",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "diagnostic::DiagnosticOutputReadinessPredicate",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "diagnostic::DiagnosticOutputReadinessPredicate",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "diagnostic::DiagnosticOutputReadinessPredicate",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "diagnostic::DiagnosticOutputReadinessPredicate",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "diagnostic::DiagnosticOutputReadinessPredicate",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "diagnostic::DiagnosticRecordContract",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "diagnostic::DiagnosticRecordContract",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "diagnostic::DiagnosticRecordContract",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "diagnostic::DiagnosticRecordContract",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "diagnostic::DiagnosticRecordContract",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "diagnostic::DiagnosticRecordError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "diagnostic::DiagnosticRecordError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "diagnostic::DiagnosticRecordError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "diagnostic::DiagnosticRecordError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "diagnostic::DiagnosticRecordError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "diagnostic::DiagnosticShutdownPolicy",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "diagnostic::DiagnosticShutdownPolicy",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "diagnostic::DiagnosticShutdownPolicy",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "diagnostic::DiagnosticShutdownPolicy",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "diagnostic::DiagnosticShutdownPolicy",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "diagnostic::DiagnosticSubmissionStatus",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "diagnostic::DiagnosticSubmissionStatus",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "diagnostic::DiagnosticSubmissionStatus",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "diagnostic::DiagnosticSubmissionStatus",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "diagnostic::DiagnosticSubmissionStatus",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
           "public_type": "event::Actionability",
           "consumer_operation": "clone"
         },
@@ -3649,6 +6157,56 @@
         {
           "derive": "Eq",
           "public_type": "event::CanonicalEventBytes",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "event::CanonicalEventRecordRef",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "event::CanonicalEventRecordRef",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "event::CanonicalEventRecordRef",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "event::CanonicalEventRecordRef",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "event::CanonicalEventRecordRef",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "event::CarrierSafetyDescriptor",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "event::CarrierSafetyDescriptor",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "event::CarrierSafetyDescriptor",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "event::CarrierSafetyDescriptor",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "event::CarrierSafetyDescriptor",
           "consumer_operation": "eq"
         },
         {
@@ -4295,6 +6853,56 @@
           "derive": "Copy",
           "public_type": "event::StartupSnapshot",
           "consumer_operation": "copy"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "identity::IncarnationId",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "identity::IncarnationId",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "identity::IncarnationId",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "identity::IncarnationId",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "identity::IncarnationId",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "identity::InstanceId",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "identity::InstanceId",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "identity::InstanceId",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "identity::InstanceId",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "identity::InstanceId",
+          "consumer_operation": "eq"
         },
         {
           "derive": "Clone",

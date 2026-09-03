@@ -65,6 +65,10 @@ Run the repository check suite with:
 ./scripts/check.sh
 ```
 
+This local gate selects changed components and reverse dependents after one
+successful full run for the active toolchain. CI and checkpoints use
+`./scripts/check.sh --full`.
+
 ## License
 
 AGPL-3.0. See [LICENSE](LICENSE). For commercial licensing, contact

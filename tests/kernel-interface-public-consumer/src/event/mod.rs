@@ -5,10 +5,19 @@ mod outcomes;
 mod sequence;
 mod snapshot;
 
+use reovim_kernel_interface::carrier::{
+    BorrowModel, CarrierSafetyDescriptor, ConcurrencySafety, CopyModel,
+    DropModel, InvocationModel, InvocationSafety, LifetimeModel, MemorySafety,
+    OwnershipModel, SharingModel, ThreadTransfer, TypeMismatch, UnsafeBoundary,
+    UnwindModel,
+};
 use reovim_kernel_interface::clock::ClockDescriptor;
+use reovim_kernel_interface::contract::{
+    CompatibleVersionRange, ContractId, ContractVersion,
+};
 use reovim_kernel_interface::event::{
     EVENT_RING_MAX_BYTES, STARTUP_CANONICAL_MAX_BYTES, StartupEventDescriptor,
-    StartupEventIdentities, StartupEventLimits,
+    StartupEventIdentities, StartupEventLimits, StartupEventRecord,
 };
 use reovim_kernel_interface::lifecycle::{Generation, LifecycleIdentity};
 use reovim_kernel_interface::operation::ContractSelection;
@@ -16,6 +25,7 @@ use reovim_kernel_interface::operation::ContractSelection;
 pub const EVENT_CONTRACT: u128 = 0x11;
 pub const STARTUP_FAMILY: u128 = 0x12;
 pub const REMEDIATION_CATALOG: u128 = 0x13;
+pub const CANONICAL_REFERENCE_TYPE: u128 = 0x14;
 pub const STREAM_INSTANCE: u128 = 0x21;
 pub const STREAM_INCARNATION: u128 = 0x22;
 pub const PRODUCER: u128 = 0x51;
@@ -124,6 +134,7 @@ pub const fn make_identities() -> StartupEventIdentities {
         EVENT_CONTRACT,
         STARTUP_FAMILY,
         REMEDIATION_CATALOG,
+        CANONICAL_REFERENCE_TYPE,
         stream_identity(),
         lifecycle_owner(),
     )
@@ -132,6 +143,42 @@ pub const fn make_identities() -> StartupEventIdentities {
 pub const fn make_limits() -> Option<StartupEventLimits> {
     match StartupEventLimits::new(STREAM_INSTANCE, 8, 16, 32, 2_048, 4, 2_048) {
         Ok(limits) => Some(limits),
+        Err(_) => None,
+    }
+}
+
+pub const fn make_canonical_reference_safety(
+    sharing: SharingModel,
+) -> Option<CarrierSafetyDescriptor> {
+    let Ok(versions) = CompatibleVersionRange::new(
+        ContractVersion::new(1),
+        ContractVersion::new(2),
+    ) else {
+        return None;
+    };
+    let memory = MemorySafety::new(
+        OwnershipModel::Borrowed,
+        BorrowModel::Shared,
+        CopyModel::Copy,
+        DropModel::Trivial,
+        LifetimeModel::IncarnationBound,
+    );
+    let concurrency =
+        ConcurrencySafety::new(ThreadTransfer::Transferable, sharing);
+    let invocation = InvocationSafety::new(
+        InvocationModel::DataOnly,
+        UnwindModel::NotInvocable,
+    );
+    match CarrierSafetyDescriptor::new(
+        ContractId::new(CANONICAL_REFERENCE_TYPE),
+        versions,
+        memory,
+        concurrency,
+        invocation,
+        TypeMismatch::Reject,
+        UnsafeBoundary::None,
+    ) {
+        Ok(safety) => Some(safety),
         Err(_) => None,
     }
 }
@@ -146,13 +193,23 @@ pub const fn make_descriptor() -> Option<StartupEventDescriptor> {
     let Some(limits) = make_limits() else {
         return None;
     };
+    let Some(safety) = make_canonical_reference_safety(SharingModel::Immutable)
+    else {
+        return None;
+    };
     match StartupEventDescriptor::new(
         contract,
         make_identities(),
         clock,
         limits,
+        safety,
     ) {
         Ok(descriptor) => Some(descriptor),
         Err(_) => None,
     }
+}
+
+pub fn make_ready_record() -> Option<StartupEventRecord<'static>> {
+    let descriptor = make_descriptor()?;
+    canonical::make_ready_record(&descriptor)
 }

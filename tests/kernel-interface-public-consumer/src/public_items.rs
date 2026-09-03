@@ -1,16 +1,196 @@
 //! Exact compiler-resolved Kernel Interface public items.
 
 pub const fn witness() -> bool {
+    bound_items();
     cancellation_items();
+    carrier_items_one();
+    carrier_items_two();
     clock_items();
+    contract_items();
+    diagnostic_items_one();
+    diagnostic_items_two();
     event_items_one();
     event_items_two();
+    identity_items();
     lifecycle_items();
     operation_items();
     trait_items();
     trait_method_items();
     variant_items();
     true
+}
+
+const fn bound_items() {
+    let _ = (
+        ::reovim_kernel_interface::bound::BoundDescriptor::admit_aggregate,
+        ::reovim_kernel_interface::bound::BoundDescriptor::admit_per_object,
+        ::reovim_kernel_interface::bound::BoundDescriptor::aggregate,
+        ::reovim_kernel_interface::bound::BoundDescriptor::arithmetic_rule,
+        ::reovim_kernel_interface::bound::BoundDescriptor::charge_owner,
+        ::reovim_kernel_interface::bound::BoundDescriptor::new,
+        ::reovim_kernel_interface::bound::BoundDescriptor::per_object,
+        ::reovim_kernel_interface::bound::BoundDescriptor::unit,
+        ::reovim_kernel_interface::bound::BoundDescriptor::validation_order,
+        ::reovim_kernel_interface::bound::BoundDescriptor::zero_policy,
+        ::reovim_kernel_interface::bound::BoundValue::checked_add,
+        ::reovim_kernel_interface::bound::BoundValue::unit,
+        ::reovim_kernel_interface::bound::BoundValue::value,
+        ::reovim_kernel_interface::bound::CheckedByteCount::checked_add,
+        ::reovim_kernel_interface::bound::CheckedByteCount::new,
+        ::reovim_kernel_interface::bound::CheckedByteCount::value,
+        ::reovim_kernel_interface::bound::CheckedCount::checked_add,
+        ::reovim_kernel_interface::bound::CheckedCount::new,
+        ::reovim_kernel_interface::bound::CheckedCount::value,
+        ::reovim_kernel_interface::bound::CheckedDuration::checked_add,
+        ::reovim_kernel_interface::bound::CheckedDuration::from_nanoseconds,
+        ::reovim_kernel_interface::bound::CheckedDuration::nanoseconds,
+    );
+}
+
+const fn carrier_items_one() {
+    let _ = (
+        ::reovim_kernel_interface::carrier::CarrierDescriptorError::invocation,
+        ::reovim_kernel_interface::carrier::CarrierDescriptorError::memory,
+        ::reovim_kernel_interface::carrier::CarrierDescriptorError::unwind,
+        ::reovim_kernel_interface::carrier::CarrierSafetyDescriptor::
+            concurrency,
+        ::reovim_kernel_interface::carrier::CarrierSafetyDescriptor::invocation,
+        ::reovim_kernel_interface::carrier::CarrierSafetyDescriptor::memory,
+        ::reovim_kernel_interface::carrier::CarrierSafetyDescriptor::mismatch,
+        ::reovim_kernel_interface::carrier::CarrierSafetyDescriptor::new,
+        ::reovim_kernel_interface::carrier::CarrierSafetyDescriptor::
+            schema_versions,
+        ::reovim_kernel_interface::carrier::CarrierSafetyDescriptor::type_id,
+        ::reovim_kernel_interface::carrier::CarrierSafetyDescriptor::
+            unsafe_boundary,
+        ::reovim_kernel_interface::carrier::ConcurrencySafety::new,
+        ::reovim_kernel_interface::carrier::ConcurrencySafety::sharing,
+        ::reovim_kernel_interface::carrier::ConcurrencySafety::thread_transfer,
+    );
+}
+
+const fn carrier_items_two() {
+    let _ = (
+        ::reovim_kernel_interface::carrier::InvocationSafety::invocation,
+        ::reovim_kernel_interface::carrier::InvocationSafety::new,
+        ::reovim_kernel_interface::carrier::InvocationSafety::unwind,
+        ::reovim_kernel_interface::carrier::MemorySafety::borrowing,
+        ::reovim_kernel_interface::carrier::MemorySafety::copying,
+        ::reovim_kernel_interface::carrier::MemorySafety::dropping,
+        ::reovim_kernel_interface::carrier::MemorySafety::lifetime,
+        ::reovim_kernel_interface::carrier::MemorySafety::new,
+        ::reovim_kernel_interface::carrier::MemorySafety::ownership,
+    );
+}
+
+const fn contract_items() {
+    let _ = (
+        ::reovim_kernel_interface::contract::CompatibleVersionRange::contains,
+        ::reovim_kernel_interface::contract::CompatibleVersionRange::maximum,
+        ::reovim_kernel_interface::contract::CompatibleVersionRange::minimum,
+        ::reovim_kernel_interface::contract::CompatibleVersionRange::new,
+        ::reovim_kernel_interface::contract::ContractId::new,
+        ::reovim_kernel_interface::contract::ContractId::value,
+        ::reovim_kernel_interface::contract::ContractVersion::new,
+        ::reovim_kernel_interface::contract::ContractVersion::value,
+        ::reovim_kernel_interface::contract::VersionRangeError::maximum,
+        ::reovim_kernel_interface::contract::VersionRangeError::minimum,
+    );
+}
+
+const fn identity_items() {
+    let _ = (
+        ::reovim_kernel_interface::identity::IncarnationId::new,
+        ::reovim_kernel_interface::identity::IncarnationId::value,
+        ::reovim_kernel_interface::identity::InstanceId::new,
+        ::reovim_kernel_interface::identity::InstanceId::value,
+    );
+}
+
+const fn diagnostic_items_one() {
+    let _ = (
+        ::reovim_kernel_interface::diagnostic::
+            DiagnosticOutputCompletionBounds::activation,
+        ::reovim_kernel_interface::diagnostic::
+            DiagnosticOutputCompletionBounds::new,
+        ::reovim_kernel_interface::diagnostic::
+            DiagnosticOutputCompletionBounds::shutdown,
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputDescriptor::
+            contract,
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputDescriptor::
+            degraded_operation_is_safe,
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputDescriptor::
+            lifecycle,
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputDescriptor::
+            limits,
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputDescriptor::
+            negotiate,
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputDescriptor::new,
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputDescriptor::
+            operation,
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputDescriptor::
+            owner,
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputDescriptor::
+            readiness_predicate,
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputDescriptor::
+            record_safety,
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputDescriptor::
+            record_type,
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputDescriptor::
+            shutdown_policy,
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputDescriptor::
+            source_stream,
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputDescriptor::
+            validate_record,
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputLimits::
+            byte_capacity,
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputLimits::
+            completion,
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputLimits::new,
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputLimits::output,
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputLimits::
+            record_capacity,
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputLimits::
+            shutdown_report_record_bytes,
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputLimits::
+            shutdown_report_records,
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputLimits::
+            submission_work,
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputLimits::
+            temporary_bytes,
+    );
+}
+
+const fn diagnostic_items_two() {
+    let _ = (
+        ::reovim_kernel_interface::diagnostic::DiagnosticRecordContract::new,
+        ::reovim_kernel_interface::diagnostic::DiagnosticRecordContract::
+            safety,
+        ::reovim_kernel_interface::diagnostic::DiagnosticRecordContract::
+            type_id,
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputRecord::bind,
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputRecord::bytes,
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputRecord::output,
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputRecord::sequence,
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputRecord::size,
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputRecord::stream,
+        ::reovim_kernel_interface::diagnostic::DiagnosticRecordRejection::bytes,
+        ::reovim_kernel_interface::diagnostic::DiagnosticRecordRejection::cause,
+        ::reovim_kernel_interface::diagnostic::DiagnosticRecordRejection::
+            into_bytes,
+        ::reovim_kernel_interface::diagnostic::DiagnosticSubmissionOutcome::
+            accepted,
+        ::reovim_kernel_interface::diagnostic::DiagnosticSubmissionOutcome::
+            closed,
+        ::reovim_kernel_interface::diagnostic::DiagnosticSubmissionOutcome::
+            dropped,
+        ::reovim_kernel_interface::diagnostic::DiagnosticSubmissionOutcome::
+            into_returned_record,
+        ::reovim_kernel_interface::diagnostic::DiagnosticSubmissionOutcome::
+            returned_record,
+        ::reovim_kernel_interface::diagnostic::DiagnosticSubmissionOutcome::
+            status,
+    );
 }
 
 const fn cancellation_items() {
@@ -51,6 +231,13 @@ const fn event_items_one() {
         ::reovim_kernel_interface::event::CanonicalEventBytes::bytes,
         ::reovim_kernel_interface::event::CanonicalEventBytes::new,
         ::reovim_kernel_interface::event::CanonicalEventBytes::size,
+        ::reovim_kernel_interface::event::CanonicalEventRecordRef::bytes,
+        ::reovim_kernel_interface::event::CanonicalEventRecordRef::family,
+        ::reovim_kernel_interface::event::CanonicalEventRecordRef::
+            schema_version,
+        ::reovim_kernel_interface::event::CanonicalEventRecordRef::sequence,
+        ::reovim_kernel_interface::event::CanonicalEventRecordRef::size,
+        ::reovim_kernel_interface::event::CanonicalEventRecordRef::stream,
         ::reovim_kernel_interface::event::EVENT_RING_MAX_BYTES,
         ::reovim_kernel_interface::event::EventAdmissionOutcome::
             accepted_sequence,
@@ -116,6 +303,8 @@ const fn event_items_two() {
         ::reovim_kernel_interface::event::StartupEventDescriptor::
             admission_operation,
         ::reovim_kernel_interface::event::StartupEventDescriptor::clock,
+        ::reovim_kernel_interface::event::StartupEventDescriptor::
+            canonical_reference_safety,
         ::reovim_kernel_interface::event::StartupEventDescriptor::contract,
         ::reovim_kernel_interface::event::StartupEventDescriptor::
             family_schema_version,
@@ -132,6 +321,8 @@ const fn event_items_two() {
         ::reovim_kernel_interface::event::StartupEventDescriptor::
             snapshot_operation,
         ::reovim_kernel_interface::event::StartupEventIdentities::contract,
+        ::reovim_kernel_interface::event::StartupEventIdentities::
+            canonical_reference,
         ::reovim_kernel_interface::event::StartupEventIdentities::family,
         ::reovim_kernel_interface::event::StartupEventIdentities::
             lifecycle_owner,
@@ -148,6 +339,7 @@ const fn event_items_two() {
         ::reovim_kernel_interface::event::StartupEventLimits::synchronous_work,
         ::reovim_kernel_interface::event::StartupEventLimits::temporary_bytes,
         ::reovim_kernel_interface::event::StartupEventRecord::canonical,
+        ::reovim_kernel_interface::event::StartupEventRecord::canonical_ref,
         ::reovim_kernel_interface::event::StartupEventRecord::family,
         ::reovim_kernel_interface::event::StartupEventRecord::new,
         ::reovim_kernel_interface::event::StartupEventRecord::proposal,
@@ -208,6 +400,9 @@ const fn operation_items() {
 const fn trait_items() {
     let _: Option<&dyn ::reovim_kernel_interface::clock::MonotonicClock> = None;
     let _: Option<
+        &dyn ::reovim_kernel_interface::diagnostic::DiagnosticOutput,
+    > = None;
+    let _: Option<
         &dyn ::reovim_kernel_interface::event::StartupEventAdmission,
     > = None;
 }
@@ -216,6 +411,9 @@ const fn trait_method_items() {
     let _ = (
         <dyn ::reovim_kernel_interface::clock::MonotonicClock>::descriptor,
         <dyn ::reovim_kernel_interface::clock::MonotonicClock>::observe,
+        <dyn ::reovim_kernel_interface::diagnostic::DiagnosticOutput>::
+            descriptor,
+        <dyn ::reovim_kernel_interface::diagnostic::DiagnosticOutput>::submit,
         <dyn ::reovim_kernel_interface::event::StartupEventAdmission>::admit,
         <dyn ::reovim_kernel_interface::event::StartupEventAdmission>::
             descriptor,
@@ -225,15 +423,44 @@ const fn trait_method_items() {
 
 const fn variant_items() {
     let _ = (
+        bound_arithmetic_rule_variants,
+        bound_error_variants,
+        bound_unit_variants,
+        bound_value_variants,
+        bound_validation_order_variants,
+        bound_zero_policy_variants,
         cancellation_cancellation_cause_variants,
         cancellation_cancellation_state_variants,
         cancellation_deadline_state_variants,
         cancellation_execution_outcome_variants,
         cancellation_fence_cause_variants,
         cancellation_installation_outcome_variants,
+        carrier_borrow_model_variants,
+        carrier_descriptor_error_variants,
+        carrier_copy_model_variants,
+        carrier_drop_model_variants,
+        carrier_invocation_model_variants,
+        carrier_lifetime_model_variants,
+        carrier_memory_coherence_error_variants,
+        carrier_ownership_model_variants,
+        carrier_sharing_model_variants,
+        carrier_thread_transfer_variants,
+        carrier_type_mismatch_variants,
+        carrier_unsafe_boundary_variants,
+        carrier_unwind_model_variants,
         clock_clock_error_variants,
         clock_clock_readiness_predicate_variants,
         clock_instant_ordering_variants,
+        diagnostic_closed_cause_variants,
+        diagnostic_bound_error_variants,
+        diagnostic_drop_cause_variants,
+        diagnostic_operation_variants,
+        diagnostic_output_error_variants,
+        diagnostic_readiness_predicate_variants,
+        diagnostic_record_error_variants,
+        diagnostic_shutdown_policy_variants,
+        diagnostic_submission_outcome_variants,
+        diagnostic_submission_status_variants,
         event_actionability_variants,
         event_bootstrap_health_variants,
         event_bound_error_variants,
@@ -260,6 +487,354 @@ const fn variant_items() {
         operation_operation_descriptor_error_variants,
         operation_reentrancy_class_variants,
     );
+}
+
+const fn bound_arithmetic_rule_variants(
+    value: ::reovim_kernel_interface::bound::ArithmeticRule,
+) {
+    match value {
+        ::reovim_kernel_interface::bound::ArithmeticRule::Checked => {}
+    }
+}
+
+const fn bound_error_variants(
+    value: ::reovim_kernel_interface::bound::BoundError,
+) {
+    match value {
+        ::reovim_kernel_interface::bound::BoundError::ZeroRejected { .. }
+        | ::reovim_kernel_interface::bound::BoundError::ArithmeticOverflow {
+            ..
+        }
+        | ::reovim_kernel_interface::bound::BoundError::UnitMismatch { .. }
+        | ::reovim_kernel_interface::bound::BoundError::IncoherentDescriptor {
+            ..
+        }
+        | ::reovim_kernel_interface::bound::BoundError::Exhausted { .. } => {}
+    }
+}
+
+const fn bound_unit_variants(
+    value: ::reovim_kernel_interface::bound::BoundUnit,
+) {
+    match value {
+        ::reovim_kernel_interface::bound::BoundUnit::Count
+        | ::reovim_kernel_interface::bound::BoundUnit::Bytes
+        | ::reovim_kernel_interface::bound::BoundUnit::DurationNanoseconds => {}
+    }
+}
+
+const fn bound_value_variants(
+    value: ::reovim_kernel_interface::bound::BoundValue,
+) {
+    match value {
+        ::reovim_kernel_interface::bound::BoundValue::Count(_)
+        | ::reovim_kernel_interface::bound::BoundValue::Bytes(_)
+        | ::reovim_kernel_interface::bound::BoundValue::Duration(_) => {}
+    }
+}
+
+const fn bound_validation_order_variants(
+    value: ::reovim_kernel_interface::bound::ValidationOrder,
+) {
+    match value {
+        ::reovim_kernel_interface::bound::ValidationOrder::
+            BeforeTraversalAndAllocation => {}
+    }
+}
+
+const fn bound_zero_policy_variants(
+    value: ::reovim_kernel_interface::bound::ZeroPolicy,
+) {
+    match value {
+        ::reovim_kernel_interface::bound::ZeroPolicy::Allow
+        | ::reovim_kernel_interface::bound::ZeroPolicy::Reject => {}
+    }
+}
+
+const fn carrier_borrow_model_variants(
+    value: ::reovim_kernel_interface::carrier::BorrowModel,
+) {
+    match value {
+        ::reovim_kernel_interface::carrier::BorrowModel::Forbidden
+        | ::reovim_kernel_interface::carrier::BorrowModel::Shared
+        | ::reovim_kernel_interface::carrier::BorrowModel::Exclusive => {}
+    }
+}
+
+const fn carrier_descriptor_error_variants(
+    value: ::reovim_kernel_interface::carrier::CarrierDescriptorError,
+) {
+    match value {
+        ::reovim_kernel_interface::carrier::CarrierDescriptorError::Memory(_)
+        | ::reovim_kernel_interface::carrier::CarrierDescriptorError::
+            InvocationUnwind { .. } => {}
+    }
+}
+
+const fn carrier_copy_model_variants(
+    value: ::reovim_kernel_interface::carrier::CopyModel,
+) {
+    match value {
+        ::reovim_kernel_interface::carrier::CopyModel::MoveOnly
+        | ::reovim_kernel_interface::carrier::CopyModel::Copy => {}
+    }
+}
+
+const fn carrier_drop_model_variants(
+    value: ::reovim_kernel_interface::carrier::DropModel,
+) {
+    match value {
+        ::reovim_kernel_interface::carrier::DropModel::Trivial
+        | ::reovim_kernel_interface::carrier::DropModel::ReleasesOwnedState => {
+        }
+    }
+}
+
+const fn carrier_invocation_model_variants(
+    value: ::reovim_kernel_interface::carrier::InvocationModel,
+) {
+    match value {
+        ::reovim_kernel_interface::carrier::InvocationModel::DataOnly
+        | ::reovim_kernel_interface::carrier::InvocationModel::NoUserCallback
+        | ::reovim_kernel_interface::carrier::InvocationModel::UserCallback => {
+        }
+    }
+}
+
+const fn carrier_lifetime_model_variants(
+    value: ::reovim_kernel_interface::carrier::LifetimeModel,
+) {
+    match value {
+        ::reovim_kernel_interface::carrier::LifetimeModel::Value
+        | ::reovim_kernel_interface::carrier::LifetimeModel::InstanceBound
+        | ::reovim_kernel_interface::carrier::LifetimeModel::IncarnationBound =>
+            {}
+    }
+}
+
+const fn carrier_memory_coherence_error_variants(
+    value: ::reovim_kernel_interface::carrier::MemoryCoherenceError,
+) {
+    match value {
+        ::reovim_kernel_interface::carrier::MemoryCoherenceError::
+            BorrowedWithoutBorrow
+        | ::reovim_kernel_interface::carrier::MemoryCoherenceError::
+            BorrowedValueLifetime
+        | ::reovim_kernel_interface::carrier::MemoryCoherenceError::
+            BorrowedReleasesOwnedState
+        | ::reovim_kernel_interface::carrier::MemoryCoherenceError::
+            CopyDuplicatesReleaseAuthority => {}
+    }
+}
+
+const fn carrier_ownership_model_variants(
+    value: ::reovim_kernel_interface::carrier::OwnershipModel,
+) {
+    match value {
+        ::reovim_kernel_interface::carrier::OwnershipModel::Owned
+        | ::reovim_kernel_interface::carrier::OwnershipModel::Borrowed => {}
+    }
+}
+
+const fn carrier_sharing_model_variants(
+    value: ::reovim_kernel_interface::carrier::SharingModel,
+) {
+    match value {
+        ::reovim_kernel_interface::carrier::SharingModel::Exclusive
+        | ::reovim_kernel_interface::carrier::SharingModel::Immutable
+        | ::reovim_kernel_interface::carrier::SharingModel::Synchronized => {}
+    }
+}
+
+const fn carrier_thread_transfer_variants(
+    value: ::reovim_kernel_interface::carrier::ThreadTransfer,
+) {
+    match value {
+        ::reovim_kernel_interface::carrier::ThreadTransfer::Transferable
+        | ::reovim_kernel_interface::carrier::ThreadTransfer::ThreadAffine => {}
+    }
+}
+
+const fn carrier_type_mismatch_variants(
+    value: ::reovim_kernel_interface::carrier::TypeMismatch,
+) {
+    match value {
+        ::reovim_kernel_interface::carrier::TypeMismatch::Reject => {}
+    }
+}
+
+const fn carrier_unsafe_boundary_variants(
+    value: ::reovim_kernel_interface::carrier::UnsafeBoundary,
+) {
+    match value {
+        ::reovim_kernel_interface::carrier::UnsafeBoundary::None
+        | ::reovim_kernel_interface::carrier::UnsafeBoundary::Reviewed(_) => {}
+    }
+}
+
+const fn carrier_unwind_model_variants(
+    value: ::reovim_kernel_interface::carrier::UnwindModel,
+) {
+    match value {
+        ::reovim_kernel_interface::carrier::UnwindModel::NotInvocable
+        | ::reovim_kernel_interface::carrier::UnwindModel::Contained
+        | ::reovim_kernel_interface::carrier::UnwindModel::
+            ForbiddenAcrossBoundary => {}
+    }
+}
+
+const fn diagnostic_bound_error_variants(
+    value: ::reovim_kernel_interface::diagnostic::BoundError,
+) {
+    match value {
+        ::reovim_kernel_interface::diagnostic::BoundError::ArithmeticOverflow {
+            ..
+        }
+        | ::reovim_kernel_interface::diagnostic::BoundError::Exhausted {
+            ..
+        }
+        | ::reovim_kernel_interface::diagnostic::BoundError::
+            IncoherentDescriptor { .. }
+        | ::reovim_kernel_interface::diagnostic::BoundError::UnitMismatch {
+            ..
+        }
+        | ::reovim_kernel_interface::diagnostic::BoundError::ZeroRejected {
+            ..
+        } => {}
+    }
+}
+
+const fn diagnostic_closed_cause_variants(
+    value: ::reovim_kernel_interface::diagnostic::DiagnosticClosedCause,
+) {
+    match value {
+        ::reovim_kernel_interface::diagnostic::DiagnosticClosedCause::Closing
+        | ::reovim_kernel_interface::diagnostic::DiagnosticClosedCause::Closed
+        | ::reovim_kernel_interface::diagnostic::DiagnosticClosedCause::Replaced
+        | ::reovim_kernel_interface::diagnostic::DiagnosticClosedCause::
+            IncompleteShutdown => {}
+    }
+}
+
+const fn diagnostic_drop_cause_variants(
+    value: ::reovim_kernel_interface::diagnostic::DiagnosticDropCause,
+) {
+    match value {
+        ::reovim_kernel_interface::diagnostic::DiagnosticDropCause::
+            InvalidRecord
+        | ::reovim_kernel_interface::diagnostic::DiagnosticDropCause::
+            BoundExceeded
+        | ::reovim_kernel_interface::diagnostic::DiagnosticDropCause::NotReady
+        | ::reovim_kernel_interface::diagnostic::DiagnosticDropCause::
+            SynchronizationPressure
+        | ::reovim_kernel_interface::diagnostic::DiagnosticDropCause::
+            RecordCapacity
+        | ::reovim_kernel_interface::diagnostic::DiagnosticDropCause::
+            ByteCapacity
+        | ::reovim_kernel_interface::diagnostic::DiagnosticDropCause::
+            ChargeOverflow
+        | ::reovim_kernel_interface::diagnostic::DiagnosticDropCause::
+            DestinationUnavailable
+        | ::reovim_kernel_interface::diagnostic::DiagnosticDropCause::
+            HealthUnavailable
+        | ::reovim_kernel_interface::diagnostic::DiagnosticDropCause::
+            InternalFailure => {}
+    }
+}
+
+const fn diagnostic_operation_variants(
+    value: ::reovim_kernel_interface::diagnostic::DiagnosticOutputOperation,
+) {
+    match value {
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputOperation::
+            DescriptorInspection
+        | ::reovim_kernel_interface::diagnostic::DiagnosticOutputOperation::
+            RecordPreparation
+        | ::reovim_kernel_interface::diagnostic::DiagnosticOutputOperation::
+            Submission
+        | ::reovim_kernel_interface::diagnostic::DiagnosticOutputOperation::
+            Activation
+        | ::reovim_kernel_interface::diagnostic::DiagnosticOutputOperation::
+            Shutdown => {}
+    }
+}
+
+const fn diagnostic_output_error_variants(
+    value: ::reovim_kernel_interface::diagnostic::DiagnosticOutputError,
+) {
+    match value {
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputError::Bound(_)
+        | ::reovim_kernel_interface::diagnostic::DiagnosticOutputError::
+            LimitsLifecycleMismatch
+        | ::reovim_kernel_interface::diagnostic::DiagnosticOutputError::
+            IncoherentCarrier
+        | ::reovim_kernel_interface::diagnostic::DiagnosticOutputError::
+            UnsupportedContract
+        | ::reovim_kernel_interface::diagnostic::DiagnosticOutputError::
+            IncompatibleContract => {}
+    }
+}
+
+const fn diagnostic_readiness_predicate_variants(
+    value: ::reovim_kernel_interface::diagnostic::
+        DiagnosticOutputReadinessPredicate,
+) {
+    match value {
+        ::reovim_kernel_interface::diagnostic::
+            DiagnosticOutputReadinessPredicate::CurrentGenerationAdmission => {}
+    }
+}
+
+const fn diagnostic_record_error_variants(
+    value: ::reovim_kernel_interface::diagnostic::DiagnosticRecordError,
+) {
+    match value {
+        ::reovim_kernel_interface::diagnostic::DiagnosticRecordError::Bound(_)
+        | ::reovim_kernel_interface::diagnostic::DiagnosticRecordError::
+            SourceStreamMismatch
+        | ::reovim_kernel_interface::diagnostic::DiagnosticRecordError::
+            LengthOverflow
+        | ::reovim_kernel_interface::diagnostic::DiagnosticRecordError::
+            LengthMismatch
+        | ::reovim_kernel_interface::diagnostic::DiagnosticRecordError::
+            CanonicalMismatch => {}
+    }
+}
+
+const fn diagnostic_shutdown_policy_variants(
+    value: ::reovim_kernel_interface::diagnostic::DiagnosticShutdownPolicy,
+) {
+    match value {
+        ::reovim_kernel_interface::diagnostic::DiagnosticShutdownPolicy::Drain
+        | ::reovim_kernel_interface::diagnostic::DiagnosticShutdownPolicy::
+            Discard => {}
+    }
+}
+
+const fn diagnostic_submission_outcome_variants(
+    value: &::reovim_kernel_interface::diagnostic::DiagnosticSubmissionOutcome,
+) {
+    match value {
+        ::reovim_kernel_interface::diagnostic::DiagnosticSubmissionOutcome::
+            Accepted
+        | ::reovim_kernel_interface::diagnostic::DiagnosticSubmissionOutcome::
+            Dropped { .. }
+        | ::reovim_kernel_interface::diagnostic::DiagnosticSubmissionOutcome::
+            Closed { .. } => {}
+    }
+}
+
+const fn diagnostic_submission_status_variants(
+    value: ::reovim_kernel_interface::diagnostic::DiagnosticSubmissionStatus,
+) {
+    match value {
+        ::reovim_kernel_interface::diagnostic::DiagnosticSubmissionStatus::
+            Accepted
+        | ::reovim_kernel_interface::diagnostic::DiagnosticSubmissionStatus::
+            Dropped
+        | ::reovim_kernel_interface::diagnostic::DiagnosticSubmissionStatus::
+            Closed => {}
+    }
 }
 
 const fn cancellation_cancellation_cause_variants(
@@ -478,6 +1053,7 @@ const fn event_event_error_variants(
         | ::reovim_kernel_interface::event::EventError::ChargeOwnerMismatch
         | ::reovim_kernel_interface::event::EventError::
             DescriptorContractMismatch
+        | ::reovim_kernel_interface::event::EventError::IncoherentCarrier
         | ::reovim_kernel_interface::event::EventError::UnsupportedContract
         | ::reovim_kernel_interface::event::EventError::IncompatibleContract
         | ::reovim_kernel_interface::event::EventError::ProposalOwnerMismatch

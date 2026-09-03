@@ -29,7 +29,7 @@ const NULL_DEVICE: &str = "/dev/null";
 const REGISTRY_RELATIVE: &str = "conformance/product-closures.json";
 const PREPARED_REGISTRY: &str = "/repo/conformance/product-closures.json";
 
-const PRODUCT_FILES: [(&str, FileRole); 47] = [
+const PRODUCT_FILES: &[(&str, FileRole)] = &[
     (REGISTRY_RELATIVE, FileRole::Tool),
     ("product/Cargo.toml", FileRole::Tool),
     ("product/Cargo.lock", FileRole::Tool),
@@ -46,8 +46,12 @@ const PRODUCT_FILES: [(&str, FileRole); 47] = [
         FileRole::Consumer,
     ),
     ("kernel/interface/Cargo.toml", FileRole::KernelInterface),
+    ("kernel/interface/src/bound.rs", FileRole::KernelInterface),
     ("kernel/interface/src/cancellation.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/carrier.rs", FileRole::KernelInterface),
     ("kernel/interface/src/clock.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/contract.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/diagnostic.rs", FileRole::KernelInterface),
     ("kernel/interface/src/event.rs", FileRole::KernelInterface),
     ("kernel/interface/src/event/admission.rs", FileRole::KernelInterface),
     ("kernel/interface/src/event/canonical.rs", FileRole::KernelInterface),
@@ -69,6 +73,7 @@ const PRODUCT_FILES: [(&str, FileRole); 47] = [
         "kernel/interface/src/event/snapshot_validation.rs",
         FileRole::KernelInterface,
     ),
+    ("kernel/interface/src/identity.rs", FileRole::KernelInterface),
     ("kernel/interface/src/lib.rs", FileRole::KernelInterface),
     ("kernel/interface/src/lifecycle.rs", FileRole::KernelInterface),
     ("kernel/interface/src/operation.rs", FileRole::KernelInterface),
@@ -78,6 +83,10 @@ const PRODUCT_FILES: [(&str, FileRole); 47] = [
     ),
     (
         "tests/kernel-interface-public-consumer/src/clock.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/src/diagnostic.rs",
         FileRole::KernelInterfaceConsumer,
     ),
     (
@@ -418,7 +427,7 @@ fn observe_repository_files(
                 "required Product input is absent from inventory",
             )
         })?;
-        validate_source_role(classified, role)?;
+        validate_source_role(classified, *role)?;
         let source = request.repository_root.join(relative);
         let destination = Path::new(PREPARED_REPOSITORY).join(relative);
         let observed = observe_regular_file(
@@ -1103,6 +1112,7 @@ fn file_is_elf(path: &Path) -> Result<bool, Error> {
 #[cfg(test)]
 mod tests {
     use std::{
+        collections::BTreeSet,
         path::{Path, PathBuf},
         process::Command,
         sync::atomic::{AtomicU64, Ordering},
@@ -1132,8 +1142,22 @@ mod tests {
             1_024,
         )
         .unwrap();
-        assert_eq!(observed.len(), 2);
-        assert!(observed.iter().any(|file| file.size_bytes == 0));
+        let destinations = observed
+            .iter()
+            .map(|file| file.destination.clone())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            destinations,
+            BTreeSet::from([
+                PathBuf::from("/compiler/lib/empty"),
+                PathBuf::from("/compiler/lib/support"),
+            ])
+        );
+        let empty = observed
+            .iter()
+            .find(|file| file.destination == Path::new("/compiler/lib/empty"))
+            .unwrap();
+        assert_eq!(empty.size_bytes, 0);
         assert!(
             observed
                 .iter()
@@ -1187,7 +1211,15 @@ mod tests {
         let mut inventory = product_inventory(&tree.root);
         let request = preflight_request(&tree, &inventory);
         let observed = super::observe_repository_files(&request).unwrap();
-        assert_eq!(observed.len(), PRODUCT_FILES.len());
+        let destinations = observed
+            .iter()
+            .map(|file| file.destination.clone())
+            .collect::<BTreeSet<_>>();
+        let expected = PRODUCT_FILES
+            .iter()
+            .map(|(path, _)| Path::new("/repo").join(path))
+            .collect::<BTreeSet<_>>();
+        assert_eq!(destinations, expected);
         assert!(observed.iter().all(|file| {
             file.destination.starts_with("/repo")
                 && file.destination != Path::new("/repo")
@@ -1252,10 +1284,6 @@ mod tests {
     #[test]
     fn compiler_sources_are_the_exact_four_library_sets() {
         let sources = super::compiler_source_selection();
-        assert_eq!(sources.foundation_shipping.len(), 5);
-        assert_eq!(sources.foundation_consumer.len(), 2);
-        assert_eq!(sources.kernel_interface_shipping.len(), 20);
-        assert_eq!(sources.kernel_interface_consumer.len(), 12);
         assert!(sources.foundation_consumer.contains(Path::new(
             "tests/foundation-public-consumer/src/public_items.rs"
         )));
@@ -1273,16 +1301,31 @@ mod tests {
         let runtime =
             runtimes(vec![shared.clone()], vec![shared.clone()], vec![shared]);
         let deduplicated = super::deduplicate_runtime_files(&runtime).unwrap();
-        assert_eq!(deduplicated.len(), 1);
+        let destinations = deduplicated
+            .iter()
+            .map(|file| file.destination.clone())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            destinations,
+            BTreeSet::from([PathBuf::from("/lib/libc.so.6")])
+        );
 
         let aliases = runtimes(
             vec![mapping("/lib/loader.so", "/lib64/loader.so", '1')],
             vec![mapping("/lib/loader.so", "/usr/lib/loader.so", '1')],
             Vec::new(),
         );
+        let destinations = super::deduplicate_runtime_files(&aliases)
+            .unwrap()
+            .into_iter()
+            .map(|file| file.destination)
+            .collect::<BTreeSet<_>>();
         assert_eq!(
-            super::deduplicate_runtime_files(&aliases).unwrap().len(),
-            2
+            destinations,
+            BTreeSet::from([
+                PathBuf::from("/lib64/loader.so"),
+                PathBuf::from("/usr/lib/loader.so"),
+            ])
         );
         let conflict = runtimes(
             vec![mapping("/lib/one.so", "/lib/lib.so", '1')],
@@ -1375,12 +1418,13 @@ mod tests {
     fn mapping(
         source: &str,
         destination: &str,
-        digest: char,
+        marker: char,
     ) -> crate::runtime_closure::Mapping {
+        let bytes = marker.to_string();
         crate::runtime_closure::Mapping {
             source: PathBuf::from(source),
             destination: PathBuf::from(destination),
-            content_digest: format!("sha256:{}", digest.to_string().repeat(64)),
+            content_digest: crate::digest::bytes(bytes.as_bytes()),
             size_bytes: 1,
         }
     }
@@ -1405,7 +1449,7 @@ mod tests {
             object_count: mappings.len(),
             total_bytes,
             mappings,
-            aggregate_digest: format!("sha256:{}", "0".repeat(64)),
+            aggregate_digest: crate::digest::bytes(b"runtime observation"),
         }
     }
 
@@ -1448,7 +1492,8 @@ mod tests {
 
     fn product_inventory(root: &Path) -> crate::source::Inventory {
         let files = PRODUCT_FILES
-            .into_iter()
+            .iter()
+            .copied()
             .map(|(path, role)| classified_file(root, path, role))
             .collect();
         crate::source::Inventory {

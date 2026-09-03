@@ -21,10 +21,10 @@ Map and dependency laws. It uses these committed inputs:
 5. `reovim-product-closures/v2`; and
 6. `reovim-execution-tool-reviews/v1`.
 
-For the active profile, `conformance/product-closures.json` is also the added
-47th file in the closed preflight repository inventory. It remains classified
-as `RepositoryTooling` with `Tool` use. Its admission as proof configuration
-does not make it Product source, a package member, or a Product closure member.
+For the active profile, `conformance/product-closures.json` is also an explicit
+file in the closed preflight repository inventory. It remains classified as
+`RepositoryTooling` with `Tool` use. Its admission as proof configuration does
+not make it Product source, a package member, or a Product closure member.
 The raw file identity is the authority transported into prepared execution;
 the parsed registry remains the semantic equality target described below.
 
@@ -58,7 +58,8 @@ triple/profile/features, package-membership policy, public-consumer relation,
 and closed mechanism profile. Each public relation contains a required,
 sorted `reexports` set. Every entry names the local public type, its direct
 provider relation, and provider type. Foundation has no entries. Kernel
-Interface has the exact six Foundation origins used by its authored source.
+Interface has the complete registered Foundation origins used by its authored
+source.
 
 The registry is an equality target, not source authority. Static and exact
 proof derive actual aliases independently and require complete equality.

@@ -12,8 +12,8 @@ use reovim_depgraph::{
 use serde_json::Value;
 
 use crate::{
-    compiler_capture, digest, json, package_capture, prepared_root, schema,
-    source,
+    compiler_capture, digest, json, package_capture, prepared_root,
+    product_closures, schema, source, topology::HARD_LIMITS,
 };
 
 /// Exact schema identity accepted by this module.
@@ -2356,16 +2356,6 @@ const KERNEL_INTERFACE_CONSUMER_CARGO_NAME: &str =
     "reovim-kernel-interface-public-consumer";
 const PUBLIC_RELATION: &str = "foundation-public-api";
 const KERNEL_INTERFACE_PUBLIC_RELATION: &str = "kernel-interface-public-api";
-const PUBLIC_ITEM_DIGEST_DOMAIN: &str = "reovim-report-public-items/v1";
-const DERIVE_DIGEST_DOMAIN: &str = "reovim-report-derive-checks/v1";
-const FOUNDATION_PUBLIC_ITEM_DIGEST: &str =
-    "sha256:69f0963bf0f344dee3373aa1a0e2ba0d4c331fff79c856cccddd12db9d5992cf";
-const FOUNDATION_DERIVE_DIGEST: &str =
-    "sha256:1fe7fcec2fe4b89b05847790d6eaec5d937f084f554fe82a92a216570d98897f";
-const KERNEL_INTERFACE_PUBLIC_ITEM_DIGEST: &str =
-    "sha256:7fc22fb55341b93ef72d2915890bc4997278ce7590e64b251aa0b54fbe590c58";
-const KERNEL_INTERFACE_DERIVE_DIGEST: &str =
-    "sha256:5e3239e1f7c384f87f8aec01722344596559bf8e1a9aabf25a770ab0faaf3c51";
 const TARGET_TRIPLE: &str = "x86_64-unknown-linux-gnu";
 const PREPARED_CARGO: &str = "/compiler/bin/cargo";
 const PREPARED_RUSTC: &str = "/compiler/bin/rustc";
@@ -2374,20 +2364,24 @@ const PREPARED_MANIFEST: &str = "/repo/product/Cargo.toml";
 const PREPARED_TARGET_DIR: &str = "/scratch/build-target";
 const NETWORK_POLICY_BASIS: &str = "bounded-nftables-empty-table-dump";
 const NETWORK_POLICY_DOMAIN: &[u8] = b"reovim-nftables-table-set/v1\0";
-const FOUNDATION_SHIPPING_SOURCES: [&str; 5] = [
+const FOUNDATION_SHIPPING_SOURCES: &[&str] = &[
     "kernel/foundation/src/bound.rs",
     "kernel/foundation/src/carrier.rs",
     "kernel/foundation/src/contract.rs",
     "kernel/foundation/src/identity.rs",
     "kernel/foundation/src/lib.rs",
 ];
-const FOUNDATION_CONSUMER_SOURCES: [&str; 2] = [
+const FOUNDATION_CONSUMER_SOURCES: &[&str] = &[
     "tests/foundation-public-consumer/src/lib.rs",
     "tests/foundation-public-consumer/src/public_items.rs",
 ];
-const KERNEL_INTERFACE_SHIPPING_SOURCES: [&str; 20] = [
+const KERNEL_INTERFACE_SHIPPING_SOURCES: &[&str] = &[
+    "kernel/interface/src/bound.rs",
     "kernel/interface/src/cancellation.rs",
+    "kernel/interface/src/carrier.rs",
     "kernel/interface/src/clock.rs",
+    "kernel/interface/src/contract.rs",
+    "kernel/interface/src/diagnostic.rs",
     "kernel/interface/src/event.rs",
     "kernel/interface/src/event/admission.rs",
     "kernel/interface/src/event/canonical.rs",
@@ -2403,12 +2397,14 @@ const KERNEL_INTERFACE_SHIPPING_SOURCES: [&str; 20] = [
     "kernel/interface/src/event/sequence.rs",
     "kernel/interface/src/event/snapshot.rs",
     "kernel/interface/src/event/snapshot_validation.rs",
+    "kernel/interface/src/identity.rs",
     "kernel/interface/src/lib.rs",
     "kernel/interface/src/lifecycle.rs",
     "kernel/interface/src/operation.rs",
 ];
-const KERNEL_INTERFACE_CONSUMER_SOURCES: [&str; 12] = [
+const KERNEL_INTERFACE_CONSUMER_SOURCES: &[&str] = &[
     "tests/kernel-interface-public-consumer/src/clock.rs",
+    "tests/kernel-interface-public-consumer/src/diagnostic.rs",
     "tests/kernel-interface-public-consumer/src/event/canonical.rs",
     "tests/kernel-interface-public-consumer/src/event/derives.rs",
     "tests/kernel-interface-public-consumer/src/event/descriptor.rs",
@@ -2424,13 +2420,13 @@ const KERNEL_INTERFACE_CONSUMER_SOURCES: [&str; 12] = [
 
 fn expected_closure_sources(closure: &str) -> Option<&'static [&'static str]> {
     match closure {
-        SHIPPING_CLOSURE => Some(&FOUNDATION_SHIPPING_SOURCES),
-        CONSUMER_CLOSURE => Some(&FOUNDATION_CONSUMER_SOURCES),
+        SHIPPING_CLOSURE => Some(FOUNDATION_SHIPPING_SOURCES),
+        CONSUMER_CLOSURE => Some(FOUNDATION_CONSUMER_SOURCES),
         KERNEL_INTERFACE_SHIPPING_CLOSURE => {
-            Some(&KERNEL_INTERFACE_SHIPPING_SOURCES)
+            Some(KERNEL_INTERFACE_SHIPPING_SOURCES)
         }
         KERNEL_INTERFACE_CONSUMER_CLOSURE => {
-            Some(&KERNEL_INTERFACE_CONSUMER_SOURCES)
+            Some(KERNEL_INTERFACE_CONSUMER_SOURCES)
         }
         _ => None,
     }
@@ -2447,10 +2443,10 @@ fn expected_product_sources() -> BTreeSet<PathBuf> {
         ["tests/kernel-interface-public-consumer/tests/public_contract.rs"];
     manifests
         .into_iter()
-        .chain(FOUNDATION_SHIPPING_SOURCES)
-        .chain(FOUNDATION_CONSUMER_SOURCES)
-        .chain(KERNEL_INTERFACE_SHIPPING_SOURCES)
-        .chain(KERNEL_INTERFACE_CONSUMER_SOURCES)
+        .chain(FOUNDATION_SHIPPING_SOURCES.iter().copied())
+        .chain(FOUNDATION_CONSUMER_SOURCES.iter().copied())
+        .chain(KERNEL_INTERFACE_SHIPPING_SOURCES.iter().copied())
+        .chain(KERNEL_INTERFACE_CONSUMER_SOURCES.iter().copied())
         .chain(integration)
         .map(PathBuf::from)
         .collect()
@@ -4757,11 +4753,6 @@ fn validate_active_inputs(
     if count > limit {
         return Err(limit_error("compiler inputs exceed their bound"));
     }
-    if inputs.len() != 39 {
-        return Err(reference_error(
-            "compiler inputs differ from the exact four-stage count",
-        ));
-    }
     let expected = expected_active_inputs(units)?;
     let mut observed = BTreeSet::new();
     for input in inputs {
@@ -5329,14 +5320,14 @@ fn package_membership_spec(
             package: SHIPPING_PACKAGE,
             cargo_name: SHIPPING_CARGO_NAME,
             source_prefix: "kernel/foundation/",
-            sources: &FOUNDATION_SHIPPING_SOURCES,
+            sources: FOUNDATION_SHIPPING_SOURCES,
             role: ArchitecturalRole::Foundation,
         }),
         KERNEL_INTERFACE_SHIPPING_CLOSURE => Ok(PackageMembershipSpec {
             package: KERNEL_INTERFACE_PACKAGE,
             cargo_name: KERNEL_INTERFACE_CARGO_NAME,
             source_prefix: "kernel/interface/",
-            sources: &KERNEL_INTERFACE_SHIPPING_SOURCES,
+            sources: KERNEL_INTERFACE_SHIPPING_SOURCES,
             role: ArchitecturalRole::KernelInterface,
         }),
         _ => Err(reference_error(
@@ -5574,12 +5565,12 @@ fn validate_one_public_consumer(
 ) -> Result<(), ReportError> {
     let expected = public_surface_expectation(relation)?;
     let context = "public consumer";
-    let consumer_stage = closures.stage(expected.consumer)?;
+    let consumer_stage = closures.stage(&expected.relation.consumer_closure)?;
     if field_string(consumer, "relation", context)? != relation
         || field_string(consumer, "shipping_closure", context)?
-            != expected.shipping
+            != expected.relation.shipping_closure
         || field_string(consumer, "consumer_closure", context)?
-            != expected.consumer
+            != expected.relation.consumer_closure
         || field_string(consumer, "status", context)? != "pass"
         || !units.contains_key(&consumer_stage.unit)
     {
@@ -5587,51 +5578,127 @@ fn validate_one_public_consumer(
             "public-consumer identity differs from the closure pair",
         ));
     }
-    let types = validate_public_items(value, consumer, relation, expected)?;
-    validate_derive_checks(consumer, relation, expected, &types)
+    let types = validate_public_items(value, consumer, &expected)?;
+    validate_derive_checks(consumer, &expected, &types)
 }
 
-#[derive(Clone, Copy)]
 struct PublicSurfaceExpectation {
-    shipping: &'static str,
-    consumer: &'static str,
-    item_count: usize,
-    item_digest: &'static str,
-    derive_count: usize,
-    derive_digest: &'static str,
+    relation: product_closures::PublicConsumerRelation,
+    public_items: BTreeSet<(String, String)>,
+    derive_checks: BTreeSet<(String, String, String)>,
 }
 
 fn public_surface_expectation(
     relation: &str,
 ) -> Result<PublicSurfaceExpectation, ReportError> {
-    match relation {
-        PUBLIC_RELATION => Ok(PublicSurfaceExpectation {
-            shipping: SHIPPING_CLOSURE,
-            consumer: CONSUMER_CLOSURE,
-            item_count: 143,
-            item_digest: FOUNDATION_PUBLIC_ITEM_DIGEST,
-            derive_count: 165,
-            derive_digest: FOUNDATION_DERIVE_DIGEST,
-        }),
-        KERNEL_INTERFACE_PUBLIC_RELATION => Ok(PublicSurfaceExpectation {
-            shipping: KERNEL_INTERFACE_SHIPPING_CLOSURE,
-            consumer: KERNEL_INTERFACE_CONSUMER_CLOSURE,
-            item_count: 356,
-            item_digest: KERNEL_INTERFACE_PUBLIC_ITEM_DIGEST,
-            derive_count: 306,
-            derive_digest: KERNEL_INTERFACE_DERIVE_DIGEST,
-        }),
-        _ => Err(reference_error(
+    let registry = embedded_product_registry()?;
+    let mut relations = registry
+        .public_consumer_relations
+        .into_iter()
+        .filter(|candidate| candidate.id == relation);
+    let relation = relations.next().ok_or_else(|| {
+        reference_error(
             "public-consumer relation is outside the active profile",
-        )),
+        )
+    })?;
+    if relations.next().is_some() {
+        return Err(reference_error(
+            "embedded public-consumer relation is duplicated",
+        ));
+    }
+    let public_items = relation
+        .public_items
+        .iter()
+        .map(|item| {
+            (public_item_kind_text(item.kind).to_owned(), item.path.clone())
+        })
+        .collect();
+    let derive_checks = relation
+        .derive_checks
+        .iter()
+        .map(|check| {
+            (
+                check.public_type.clone(),
+                derive_text(check.derive).to_owned(),
+                operation_text(check.consumer_operation).to_owned(),
+            )
+        })
+        .collect();
+    Ok(PublicSurfaceExpectation { relation, public_items, derive_checks })
+}
+
+type EmbeddedProductRegistry = product_closures::Registry;
+
+fn embedded_product_registry() -> Result<EmbeddedProductRegistry, ReportError> {
+    let bytes = include_bytes!("../../../conformance/product-closures.json");
+    if bytes.len() > HARD_LIMITS.config_bytes {
+        return Err(limit_error(
+            "embedded Product registry exceeds its hard byte bound",
+        ));
+    }
+    let value = json::parse(
+        bytes,
+        HARD_LIMITS.json_depth,
+        HARD_LIMITS.json_container_items,
+    )
+    .map_err(|failure| reference_error(failure.to_string()))?;
+    let product = HARD_LIMITS.product_execution;
+    product_closures::Registry::parse(
+        &value,
+        product_closures::ParseLimits {
+            path_bytes: HARD_LIMITS.path_bytes,
+            closure_items: product.compiler_unit_count,
+            package_members: product.package_member_count,
+            public_items: product.public_item_count,
+        },
+    )
+    .map_err(|failure| reference_error(failure.to_string()))
+}
+
+const fn public_item_kind_text(
+    kind: product_closures::PublicItemKind,
+) -> &'static str {
+    match kind {
+        product_closures::PublicItemKind::Module => "module",
+        product_closures::PublicItemKind::Type => "type",
+        product_closures::PublicItemKind::Variant => "variant",
+        product_closures::PublicItemKind::Trait => "trait",
+        product_closures::PublicItemKind::Function => "function",
+        product_closures::PublicItemKind::Const => "const",
+        product_closures::PublicItemKind::Static => "static",
+    }
+}
+
+const fn derive_text(derive: product_closures::BuiltinDerive) -> &'static str {
+    match derive {
+        product_closures::BuiltinDerive::Clone => "Clone",
+        product_closures::BuiltinDerive::Copy => "Copy",
+        product_closures::BuiltinDerive::Debug => "Debug",
+        product_closures::BuiltinDerive::PartialEq => "PartialEq",
+        product_closures::BuiltinDerive::Eq => "Eq",
+        product_closures::BuiltinDerive::Hash => "Hash",
+        product_closures::BuiltinDerive::Default => "Default",
+    }
+}
+
+const fn operation_text(
+    operation: product_closures::ConsumerOperation,
+) -> &'static str {
+    match operation {
+        product_closures::ConsumerOperation::Clone => "clone",
+        product_closures::ConsumerOperation::Copy => "copy",
+        product_closures::ConsumerOperation::Debug => "debug",
+        product_closures::ConsumerOperation::PartialEq => "partial_eq",
+        product_closures::ConsumerOperation::Eq => "eq",
+        product_closures::ConsumerOperation::Hash => "hash",
+        product_closures::ConsumerOperation::Default => "default",
     }
 }
 
 fn validate_public_items(
     value: &Value,
     consumer: &Value,
-    relation: &str,
-    expected: PublicSurfaceExpectation,
+    expected: &PublicSurfaceExpectation,
 ) -> Result<BTreeSet<String>, ReportError> {
     let items = required_field_array(consumer, "public_items", "consumer")?;
     let limit = required_count(
@@ -5644,11 +5711,6 @@ fn validate_public_items(
     if count > limit {
         return Err(limit_error(
             "public-consumer items exceed their retained bound",
-        ));
-    }
-    if items.len() != expected.item_count {
-        return Err(reference_error(
-            "public-consumer item count differs from the exact relation",
         ));
     }
     let mut identities = BTreeSet::new();
@@ -5672,13 +5734,7 @@ fn validate_public_items(
             types.insert(path.to_owned());
         }
     }
-    let bytes = serde_json::to_vec(&(
-        PUBLIC_ITEM_DIGEST_DOMAIN,
-        relation,
-        identities.iter().collect::<Vec<_>>(),
-    ))
-    .map_err(|failure| identity_error(failure.to_string()))?;
-    if digest::bytes(&bytes) != expected.item_digest
+    if identities != expected.public_items
         || modules.is_empty()
         || types.is_empty()
     {
@@ -5716,16 +5772,10 @@ fn valid_public_path(path: &str) -> bool {
 
 fn validate_derive_checks(
     consumer: &Value,
-    relation: &str,
-    expected: PublicSurfaceExpectation,
+    expected: &PublicSurfaceExpectation,
     public_types: &BTreeSet<String>,
 ) -> Result<(), ReportError> {
     let checks = required_field_array(consumer, "derive_checks", "consumer")?;
-    if checks.len() != expected.derive_count {
-        return Err(reference_error(
-            "derive-check count differs from the exact relation",
-        ));
-    }
     let mut observed = BTreeSet::new();
     for check in checks {
         let derive = field_string(check, "derive", "derive check")?;
@@ -5745,13 +5795,7 @@ fn validate_derive_checks(
             ));
         }
     }
-    let bytes = serde_json::to_vec(&(
-        DERIVE_DIGEST_DOMAIN,
-        relation,
-        observed.iter().collect::<Vec<_>>(),
-    ))
-    .map_err(|failure| identity_error(failure.to_string()))?;
-    if digest::bytes(&bytes) != expected.derive_digest {
+    if observed != expected.derive_checks {
         return Err(reference_error(
             "derive checks differ from the exact verifier-owned relation",
         ));
@@ -8573,21 +8617,21 @@ mod tests {
         add_product_source_group(
             files,
             "kernel/foundation/Cargo.toml",
-            &super::FOUNDATION_SHIPPING_SOURCES,
+            super::FOUNDATION_SHIPPING_SOURCES,
             "Foundation",
             "production",
         );
         add_product_source_group(
             files,
             "tests/foundation-public-consumer/Cargo.toml",
-            &super::FOUNDATION_CONSUMER_SOURCES,
+            super::FOUNDATION_CONSUMER_SOURCES,
             "Kernel Interface",
             "test",
         );
         add_product_source_group(
             files,
             "kernel/interface/Cargo.toml",
-            &super::KERNEL_INTERFACE_SHIPPING_SOURCES,
+            super::KERNEL_INTERFACE_SHIPPING_SOURCES,
             "Kernel Interface",
             "production",
         );
@@ -10375,7 +10419,7 @@ mod tests {
     }
 
     fn digest(hex: char) -> String {
-        format!("sha256:{}", hex.to_string().repeat(64))
+        crate::digest::bytes(hex.to_string().as_bytes())
     }
 
     fn _assert_built_type(_: BuiltReport) {}

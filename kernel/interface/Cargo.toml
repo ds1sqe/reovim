@@ -12,8 +12,12 @@ description = "Portable public contracts for the Reovim kernel"
 readme = false
 publish = false
 include = [
+    "src/bound.rs",
     "src/cancellation.rs",
+    "src/carrier.rs",
     "src/clock.rs",
+    "src/contract.rs",
+    "src/diagnostic.rs",
     "src/event.rs",
     "src/event/admission.rs",
     "src/event/canonical.rs",
@@ -29,6 +33,7 @@ include = [
     "src/event/sequence.rs",
     "src/event/snapshot.rs",
     "src/event/snapshot_validation.rs",
+    "src/identity.rs",
     "src/lib.rs",
     "src/lifecycle.rs",
     "src/operation.rs",

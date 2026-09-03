@@ -148,6 +148,19 @@ impl OperationDescriptor {
         }
     }
 
+    /// Returns the fixed deferred, single-result, local operation shape.
+    #[must_use]
+    pub(crate) const fn local_deferred() -> Self {
+        Self {
+            invocation: InvocationClass::CallerMayWait,
+            completion: CompletionClass::DeferredTerminal,
+            delivery: DeliveryClass::Single,
+            effect: EffectClass::LocalOnly,
+            callback: CallbackClass::NoUserCallback,
+            reentrancy: ReentrancyClass::NonReentrant,
+        }
+    }
+
     /// Returns the fixed inline external-observation operation shape.
     #[must_use]
     pub const fn external_observation_inline() -> Self {

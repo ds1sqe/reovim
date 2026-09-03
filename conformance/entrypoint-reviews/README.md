@@ -14,6 +14,7 @@ record requires renewed review.
 Current records:
 
 - [`check-sh.md`](check-sh.md)
+- [`check-cache-sh.md`](check-cache-sh.md)
 - [`check-style-sh.md`](check-style-sh.md)
 - [`check-documentation-sh.md`](check-documentation-sh.md)
 - [`check-conformance-sh.md`](check-conformance-sh.md)

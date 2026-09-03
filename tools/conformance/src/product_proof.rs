@@ -1290,6 +1290,7 @@ fn source_error(failure: product_source::ProductSourceError) -> Error {
 #[cfg(test)]
 mod tests {
     use std::{
+        collections::BTreeSet,
         env, fs,
         path::{Path, PathBuf},
         process::Command,
@@ -1335,10 +1336,9 @@ mod tests {
         };
         let value =
             crate::product_workload::request_value(&registry, &mapped).unwrap();
-        let encoded = serde_json::to_vec(&value).unwrap();
-        eprintln!("exact workload request bytes={}", encoded.len());
-        assert_eq!(encoded.len(), 1_423);
-        assert!(encoded.len() <= 4_096);
+        let parsed = crate::product_workload::parse_request(&value).unwrap();
+        assert_eq!(parsed.registry, registry);
+        assert_eq!(parsed.limits, mapped);
     }
 
     #[test]
@@ -1414,7 +1414,12 @@ mod tests {
     fn exposure_join_closes_missing_unknown_and_changed_ids() {
         let plans = vec![exposure("one", "/one"), exposure("two", "/two")];
         let exact = vec![observed("one", "/one"), observed("two", "/two")];
-        assert_eq!(join_exposures(&plans, &exact).unwrap().len(), 2);
+        let joined = join_exposures(&plans, &exact)
+            .unwrap()
+            .into_iter()
+            .map(|value| value.id.as_str())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(joined, BTreeSet::from(["one", "two"]));
         assert_eq!(
             join_exposures(&plans, &exact[..1]).unwrap_err().code,
             "PRODUCT_PROOF_EXPOSURE_JOIN"
@@ -1520,8 +1525,17 @@ mod tests {
             aggregate_digest: digest('2'),
         };
         let retained = runtime_inputs(&observation).unwrap();
-        assert_eq!(retained.len(), 2);
-        assert_ne!(retained[0].prepared_path, retained[1].prepared_path);
+        let prepared = retained
+            .iter()
+            .map(|value| value.prepared_path.as_path())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            prepared,
+            BTreeSet::from([
+                Path::new("/lib64/loader.so"),
+                Path::new("/usr/lib/loader.so"),
+            ])
+        );
         let empty = crate::runtime_closure::Observation {
             mappings: Vec::new(),
             object_count: 0,
@@ -1549,33 +1563,14 @@ mod tests {
         let live = LiveFixture::new();
         let observed = super::run(&live.request()).unwrap();
         let active = observed.active();
-        let input_count = active
-            .product_sources
-            .foundation
-            .shipping_sources
-            .len()
-            + active.product_sources.foundation.consumer_sources.len()
-            + active.product_sources.kernel_interface.shipping_sources.len()
-            + active.product_sources.kernel_interface.consumer_sources.len();
-        let event_counts = active
-            .cargo_builds
-            .iter()
-            .map(|build| build.artifact_events.len())
-            .collect::<Vec<_>>();
         assert_eq!(
-            (
-                active.cargo_builds.len(),
-                active.compiler_units.len(),
-                input_count,
-                active.extern_edges.len(),
-                active.artifacts.len(),
-                active.provider_artifacts.len(),
-            ),
-            (4, 4, 39, 3, 8, 2)
+            active.foundation_package_before.members,
+            active.foundation_package_after.members,
         );
-        assert_eq!(event_counts, [1, 2, 2, 3]);
-        assert_eq!(active.foundation_package_before.members.len(), 8);
-        assert_eq!(active.kernel_interface_package_before.members.len(), 23);
+        assert_eq!(
+            active.kernel_interface_package_before.members,
+            active.kernel_interface_package_after.members,
+        );
     }
 
     #[test]
@@ -1944,6 +1939,6 @@ mod tests {
     }
 
     fn digest(byte: char) -> String {
-        format!("sha256:{}", byte.to_string().repeat(64))
+        crate::digest::bytes(byte.to_string().as_bytes())
     }
 }

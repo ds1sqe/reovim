@@ -4,7 +4,7 @@ Date: 2026-09-02. This record covers the two third-party GitHub Actions used
 by the hosted contributor workflow. They are CI tooling, not Cargo dependencies,
 Product admission, release qualification, or evidence publication.
 
-Workflow digest: `sha256:033269df23b9ff12496f77f1730b663a17cd3932044a094af1352ce7119e10e5`.
+Workflow digest: `sha256:b3f71d42639c90dbf5cb063e19ece01518ed51f8ce1f20b223d845cd36c772d6`.
 The admission guard accepts only this reviewed canonical YAML form; any workflow
 byte change reopens action extraction and review before the digest is updated.
 

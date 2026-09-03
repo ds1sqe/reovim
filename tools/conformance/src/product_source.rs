@@ -36,6 +36,7 @@ const KERNEL_INTERFACE_CRATE: &str = "reovim_kernel_interface";
 const DERIVE_WITNESS: &str = "derive_witness";
 const CLONE_COPY_WITNESS: &str = "clone_copy_witness";
 const CLONE_DEBUG_EQ_WITNESS: &str = "clone_debug_eq_witness";
+const SEND_SYNC_WITNESS: &str = "send_sync_witness";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PairProfile {
@@ -833,6 +834,7 @@ fn validate_source_profile(
         validate_file_attributes(&source.syntax, path, root)?;
         validate_unsafe_syntax(&source.syntax, path)?;
         validate_closed_syntax(&source.syntax, path, mode)?;
+        validate_move_only_impls(&source.syntax, path, mode)?;
         if matches!(mode, SourceMode::Shipping(_)) {
             validate_shipping_value_paths(&source.syntax, path)?;
         }
@@ -954,9 +956,19 @@ fn validate_closed_syntax(
     path: &Path,
     mode: SourceMode,
 ) -> Result<(), ProductSourceError> {
-    let mut guard = SyntaxGuard { path, mode, error: None };
+    let mut guard =
+        SyntaxGuard { path, mode, diagnostic_debug_formats: 0, error: None };
     for item in &syntax.items {
         guard.visit_item(item);
+    }
+    if guard.error.is_none()
+        && diagnostic_consumer_source(path, mode)
+        && guard.diagnostic_debug_formats != 1
+    {
+        guard.fail(
+            "PRODUCT_DEBUG_FORMAT_COUNT",
+            "diagnostic consumer requires one exact Debug format call",
+        );
     }
     guard.error.map_or(Ok(()), Err)
 }
@@ -964,6 +976,7 @@ fn validate_closed_syntax(
 struct SyntaxGuard<'a> {
     path: &'a Path,
     mode: SourceMode,
+    diagnostic_debug_formats: usize,
     error: Option<ProductSourceError>,
 }
 
@@ -971,6 +984,17 @@ impl SyntaxGuard<'_> {
     fn fail(&mut self, code: &'static str, message: &'static str) {
         if self.error.is_none() {
             self.error = Some(ProductSourceError::at(code, self.path, message));
+        }
+    }
+
+    fn observe_diagnostic_debug_format(&mut self) {
+        self.diagnostic_debug_formats =
+            self.diagnostic_debug_formats.saturating_add(1);
+        if self.diagnostic_debug_formats > 1 {
+            self.fail(
+                "PRODUCT_DEBUG_FORMAT_COUNT",
+                "diagnostic consumer repeats its Debug format call",
+            );
         }
     }
 }
@@ -987,6 +1011,10 @@ impl<'ast> Visit<'ast> for SyntaxGuard<'_> {
 
     fn visit_macro(&mut self, item: &'ast syn::Macro) {
         if self.error.is_some() {
+            return;
+        }
+        if exact_diagnostic_debug_format(item, self.path, self.mode) {
+            self.observe_diagnostic_debug_format();
             return;
         }
         let name = item.path.segments.last().map(|part| part.ident.to_string());
@@ -1042,6 +1070,89 @@ impl<'ast> Visit<'ast> for SyntaxGuard<'_> {
             "union declarations are outside the authored profile",
         );
     }
+}
+
+fn diagnostic_consumer_source(path: &Path, mode: SourceMode) -> bool {
+    path == Path::new(
+        "tests/kernel-interface-public-consumer/src/diagnostic.rs",
+    ) && matches!(mode, SourceMode::Consumer(PairProfile::KernelInterface))
+}
+
+fn exact_diagnostic_debug_format(
+    item: &syn::Macro,
+    path: &Path,
+    mode: SourceMode,
+) -> bool {
+    if !diagnostic_consumer_source(path, mode)
+        || !matches!(item.delimiter, syn::MacroDelimiter::Paren(_))
+        || !item.path.is_ident("format")
+    {
+        return false;
+    }
+    syn::parse2::<syn::LitStr>(item.tokens.clone())
+        .is_ok_and(|literal| literal.value() == "{value:?}")
+}
+
+fn validate_move_only_impls(
+    syntax: &File,
+    path: &Path,
+    mode: SourceMode,
+) -> Result<(), ProductSourceError> {
+    if !matches!(mode, SourceMode::Shipping(PairProfile::KernelInterface)) {
+        return Ok(());
+    }
+    let mut guard = MoveOnlyImplGuard { path, error: None };
+    guard.visit_file(syntax);
+    guard.error.map_or(Ok(()), Err)
+}
+
+struct MoveOnlyImplGuard<'a> {
+    path: &'a Path,
+    error: Option<ProductSourceError>,
+}
+
+impl<'ast> Visit<'ast> for MoveOnlyImplGuard<'_> {
+    fn visit_item_impl(&mut self, item: &'ast syn::ItemImpl) {
+        if self.error.is_some() {
+            return;
+        }
+        if forbidden_move_only_impl(item) {
+            self.error = Some(ProductSourceError::at(
+                "PRODUCT_MOVE_ONLY_IMPL_UNAVAILABLE",
+                self.path,
+                "move-only Diagnostic carrier implements Clone or Copy",
+            ));
+            return;
+        }
+        visit::visit_item_impl(self, item);
+    }
+}
+
+fn forbidden_move_only_impl(item: &syn::ItemImpl) -> bool {
+    let Some((public_trait, _)) = &item.trait_ else { return false };
+    let clone_or_copy = public_trait.segments.last().is_some_and(|part| {
+        matches!(normalized_ident(&part.ident).as_str(), "Clone" | "Copy")
+    });
+    clone_or_copy && exact_move_only_target(&item.self_ty)
+}
+
+fn normalized_ident(ident: &syn::Ident) -> String {
+    ident.to_string().trim_start_matches("r#").to_owned()
+}
+
+fn exact_move_only_target(ty: &Type) -> bool {
+    let Type::Path(path) = ty else { return false };
+    if path.qself.is_some() || !type_path_arguments_supported(&path.path) {
+        return false;
+    }
+    let Some(last) = path.path.segments.last() else { return false };
+    let name = normalized_ident(&last.ident);
+    matches!(
+        name.as_str(),
+        "DiagnosticOutputRecord"
+            | "DiagnosticRecordRejection"
+            | "DiagnosticSubmissionOutcome"
+    )
 }
 
 fn validate_item_attribute(
@@ -1439,6 +1550,7 @@ impl<'ast> Visit<'ast> for TypePathGuard<'_> {
         }
         if !allowed_type_path(
             ty,
+            self.path,
             self.mode,
             self.names,
             self.authority.public_types,
@@ -1505,12 +1617,16 @@ fn is_witness_call(call: &ExprCall) -> bool {
 
 fn allowed_type_path(
     ty: &syn::TypePath,
+    source_path: &Path,
     mode: SourceMode,
     names: &BTreeSet<String>,
     public_types: &BTreeSet<String>,
     provider: Option<&ProvenProvider<'_>>,
     witness_type: bool,
 ) -> bool {
+    if exact_diagnostic_byte_box(ty, source_path, mode) {
+        return true;
+    }
     if ty.qself.is_some() || !type_path_arguments_supported(&ty.path) {
         return false;
     }
@@ -1554,6 +1670,48 @@ fn allowed_type_path(
             allowed_external_type(&parts, KERNEL_INTERFACE_CRATE, public_types)
         }
     }
+}
+
+fn exact_diagnostic_byte_box(
+    ty: &syn::TypePath,
+    source_path: &Path,
+    mode: SourceMode,
+) -> bool {
+    if source_path != Path::new("kernel/interface/src/diagnostic.rs")
+        || !matches!(mode, SourceMode::Shipping(PairProfile::KernelInterface))
+        || ty.qself.is_some()
+        || ty.path.leading_colon.is_none()
+    {
+        return false;
+    }
+    let segments = ty.path.segments.iter().collect::<Vec<_>>();
+    if segments.len() != 3
+        || segments[0].ident != "std"
+        || segments[1].ident != "boxed"
+        || segments[2].ident != "Box"
+        || !matches!(segments[0].arguments, PathArguments::None)
+        || !matches!(segments[1].arguments, PathArguments::None)
+    {
+        return false;
+    }
+    let PathArguments::AngleBracketed(arguments) = &segments[2].arguments
+    else {
+        return false;
+    };
+    if arguments.args.len() != 1 {
+        return false;
+    }
+    let Some(GenericArgument::Type(Type::Slice(slice))) =
+        arguments.args.first()
+    else {
+        return false;
+    };
+    let Type::Path(element) = slice.elem.as_ref() else {
+        return false;
+    };
+    element.qself.is_none()
+        && element.path.leading_colon.is_none()
+        && element.path.is_ident("u8")
 }
 
 fn type_path_arguments_supported(path: &SynPath) -> bool {
@@ -1700,6 +1858,8 @@ fn exact_builtin_trait_bound(bound: &syn::TraitBound) -> Option<&'static str> {
     match parts.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
         ["core", "clone", "Clone"] => Some("Clone"),
         ["core", "marker", "Copy"] => Some("Copy"),
+        ["core", "marker", "Send"] => Some("Send"),
+        ["core", "marker", "Sync"] => Some("Sync"),
         ["core", "fmt", "Debug"] => Some("Debug"),
         ["core", "cmp", "PartialEq"] => Some("PartialEq"),
         ["core", "cmp", "Eq"] => Some("Eq"),
@@ -2128,7 +2288,7 @@ fn collect_reexport(
     }
     insert_public_item(surface, &public_type, PublicItemKind::Type)?;
     surface.public_types.insert(public_type.clone());
-    collect_reexported_variants(
+    collect_reexported_members(
         surface,
         provider.observation,
         &provider_type,
@@ -2152,7 +2312,7 @@ fn collect_reexport(
     Ok(())
 }
 
-fn collect_reexported_variants(
+fn collect_reexported_members(
     surface: &mut Surface,
     observation: &ProductSourceObservation,
     provider_type: &str,
@@ -2160,18 +2320,23 @@ fn collect_reexported_variants(
 ) -> Result<(), ProductSourceError> {
     let prefix = format!("{provider_type}::");
     for item in &observation.public_items {
-        if item.kind != PublicItemKind::Variant {
+        let mirrored_member = public_type == provider_type
+            && matches!(
+                item.kind,
+                PublicItemKind::Function | PublicItemKind::Const
+            );
+        if item.kind != PublicItemKind::Variant && !mirrored_member {
             continue;
         }
-        let Some(variant) = item.path.strip_prefix(&prefix) else { continue };
-        if variant.contains("::") {
+        let Some(member) = item.path.strip_prefix(&prefix) else { continue };
+        if member.contains("::") {
             return Err(ProductSourceError::new(
                 "PRODUCT_SOURCE_REEXPORT_ORIGIN",
-                "provider variant path is not direct",
+                "provider type member path is not direct",
             ));
         }
-        let path = format!("{public_type}::{variant}");
-        insert_public_item(surface, &path, PublicItemKind::Variant)?;
+        let path = format!("{public_type}::{member}");
+        insert_public_item(surface, &path, item.kind)?;
     }
     Ok(())
 }
@@ -3206,6 +3371,7 @@ struct WitnessVisitor<'a> {
     profile: PairProfile,
     expected: BTreeMap<String, &'static str>,
     witnesses: BTreeMap<String, &'static str>,
+    send_sync_witnesses: BTreeSet<String>,
     helpers: BTreeMap<&'static str, usize>,
     error: Option<ProductSourceError>,
 }
@@ -3220,6 +3386,7 @@ impl WitnessVisitor<'_> {
             profile,
             expected: expected_witnesses(profile, relation)?,
             witnesses: BTreeMap::new(),
+            send_sync_witnesses: BTreeSet::new(),
             helpers: BTreeMap::new(),
             error: None,
         })
@@ -3246,6 +3413,14 @@ impl WitnessVisitor<'_> {
                 map_difference_message(&self.expected, &self.witnesses),
             ));
         }
+        if self.send_sync_witnesses
+            != expected_send_sync_witnesses(self.profile)
+        {
+            return Err(ProductSourceError::new(
+                "PRODUCT_CONSUMER_DERIVE_SET",
+                "consumer Send + Sync witness set differs",
+            ));
+        }
         Ok(self.witnesses.into_keys().collect())
     }
 }
@@ -3262,10 +3437,10 @@ fn expected_witnesses(
             .insert(check.derive);
     }
     let mut output = BTreeMap::new();
+    let no_derives = BTreeSet::new();
     for public_type in registered_public_types(relation) {
-        let helper = derives
-            .get(&public_type)
-            .and_then(|set| helper_for_derives(profile, set))
+        let type_derives = derives.get(&public_type).unwrap_or(&no_derives);
+        let helper = helper_for_derives(profile, &public_type, type_derives)
             .ok_or_else(|| {
                 ProductSourceError::new(
                     "PRODUCT_CONSUMER_DERIVE_SET",
@@ -3279,8 +3454,15 @@ fn expected_witnesses(
 
 fn helper_for_derives(
     profile: PairProfile,
+    public_type: &str,
     derives: &BTreeSet<BuiltinDerive>,
 ) -> Option<&'static str> {
+    if profile == PairProfile::KernelInterface
+        && derives.is_empty()
+        && move_only_diagnostic_type(public_type)
+    {
+        return Some(SEND_SYNC_WITNESS);
+    }
     let full = BTreeSet::from([
         BuiltinDerive::Clone,
         BuiltinDerive::Copy,
@@ -3308,6 +3490,30 @@ fn helper_for_derives(
     (derives == &clone_debug_eq).then_some(CLONE_DEBUG_EQ_WITNESS)
 }
 
+fn move_only_diagnostic_type(public_type: &str) -> bool {
+    matches!(
+        public_type,
+        "diagnostic::DiagnosticOutputRecord"
+            | "diagnostic::DiagnosticRecordRejection"
+            | "diagnostic::DiagnosticSubmissionOutcome"
+    )
+}
+
+fn expected_send_sync_witnesses(profile: PairProfile) -> BTreeSet<String> {
+    if profile == PairProfile::Foundation {
+        return BTreeSet::new();
+    }
+    [
+        "event::CanonicalEventRecordRef",
+        "diagnostic::DiagnosticOutputRecord",
+        "diagnostic::DiagnosticRecordRejection",
+        "diagnostic::DiagnosticSubmissionOutcome",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect()
+}
+
 fn validate_helper_set(
     profile: PairProfile,
     helpers: &BTreeMap<&'static str, usize>,
@@ -3315,7 +3521,12 @@ fn validate_helper_set(
     let expected = match profile {
         PairProfile::Foundation => vec![DERIVE_WITNESS],
         PairProfile::KernelInterface => {
-            vec![DERIVE_WITNESS, CLONE_COPY_WITNESS, CLONE_DEBUG_EQ_WITNESS]
+            vec![
+                DERIVE_WITNESS,
+                CLONE_COPY_WITNESS,
+                CLONE_DEBUG_EQ_WITNESS,
+                SEND_SYNC_WITNESS,
+            ]
         }
     };
     let exact = helpers.len() == expected.len()
@@ -3382,6 +3593,11 @@ impl<'ast> Visit<'ast> for WitnessVisitor<'_> {
 
 impl WitnessVisitor<'_> {
     fn observe_witness(&mut self, public_type: String, helper: &'static str) {
+        if helper == SEND_SYNC_WITNESS
+            && !self.observe_send_sync_witness(&public_type)
+        {
+            return;
+        }
         if self.expected.get(&public_type).copied() != Some(helper) {
             self.fail(format!(
                 "type {public_type} uses the wrong witness helper"
@@ -3391,6 +3607,17 @@ impl WitnessVisitor<'_> {
         if self.witnesses.insert(public_type, helper).is_some() {
             self.fail("consumer repeats one derive witness");
         }
+    }
+
+    fn observe_send_sync_witness(&mut self, public_type: &str) -> bool {
+        let expected = expected_send_sync_witnesses(self.profile);
+        if !expected.contains(public_type)
+            || !self.send_sync_witnesses.insert(public_type.to_owned())
+        {
+            self.fail("consumer has an unexpected Send + Sync witness");
+            return false;
+        }
+        self.expected.get(public_type).copied() == Some(SEND_SYNC_WITNESS)
     }
 
     fn observe_helper(&mut self, helper: &'static str, item: &syn::ItemFn) {
@@ -3411,6 +3638,7 @@ fn witness_helper_name(name: &str) -> Option<&'static str> {
         DERIVE_WITNESS => Some(DERIVE_WITNESS),
         CLONE_COPY_WITNESS => Some(CLONE_COPY_WITNESS),
         CLONE_DEBUG_EQ_WITNESS => Some(CLONE_DEBUG_EQ_WITNESS),
+        SEND_SYNC_WITNESS => Some(SEND_SYNC_WITNESS),
         _ => None,
     }
 }
@@ -3463,6 +3691,7 @@ fn witness_helper_bounds(helper: &str) -> BTreeSet<String> {
         DERIVE_WITNESS => &["Clone", "Copy", "Debug", "PartialEq", "Eq"],
         CLONE_COPY_WITNESS => &["Clone", "Copy"],
         CLONE_DEBUG_EQ_WITNESS => &["Clone", "Debug", "PartialEq", "Eq"],
+        SEND_SYNC_WITNESS => &["Send", "Sync"],
         _ => &[],
     };
     names.iter().map(|name| (*name).to_owned()).collect()
@@ -3617,6 +3846,7 @@ fn exact_witness_type_arguments(
         && matches!(
             public_type,
             "event::CanonicalEventBytes"
+                | "event::CanonicalEventRecordRef"
                 | "event::StartupEventRecord"
                 | "event::StartupSnapshot"
         );
@@ -3668,8 +3898,12 @@ mod tests {
     const CONSUMER_ITEMS: &str =
         "tests/foundation-public-consumer/src/public_items.rs";
     const KI_SHIPPING: &[&str] = &[
+        "kernel/interface/src/bound.rs",
         "kernel/interface/src/cancellation.rs",
+        "kernel/interface/src/carrier.rs",
         "kernel/interface/src/clock.rs",
+        "kernel/interface/src/contract.rs",
+        "kernel/interface/src/diagnostic.rs",
         "kernel/interface/src/event.rs",
         "kernel/interface/src/event/admission.rs",
         "kernel/interface/src/event/canonical.rs",
@@ -3685,12 +3919,14 @@ mod tests {
         "kernel/interface/src/event/sequence.rs",
         "kernel/interface/src/event/snapshot.rs",
         "kernel/interface/src/event/snapshot_validation.rs",
+        "kernel/interface/src/identity.rs",
         "kernel/interface/src/lib.rs",
         "kernel/interface/src/lifecycle.rs",
         "kernel/interface/src/operation.rs",
     ];
     const KI_CONSUMER: &[&str] = &[
         "tests/kernel-interface-public-consumer/src/clock.rs",
+        "tests/kernel-interface-public-consumer/src/diagnostic.rs",
         "tests/kernel-interface-public-consumer/src/event/canonical.rs",
         "tests/kernel-interface-public-consumer/src/event/derives.rs",
         "tests/kernel-interface-public-consumer/src/event/descriptor.rs",
@@ -3734,9 +3970,13 @@ mod tests {
     fn real_surface_and_witnesses_are_exact() {
         let fixture = fixture();
         let observation = run(&fixture).expect("real Product source passes");
-        assert_eq!(observation.public_items.len(), 143);
-        assert_eq!(observation.derive_checks.len(), 165);
-        assert_eq!(observation.witness_types.len(), 33);
+        let relation = relation(&fixture, "foundation-public-api");
+        assert_eq!(observation.public_items, relation.public_items);
+        assert_eq!(observation.derive_checks, relation.derive_checks);
+        assert_eq!(
+            observation.witness_types.iter().cloned().collect::<BTreeSet<_>>(),
+            super::registered_public_types(relation),
+        );
         assert!(observation.public_items.iter().any(|item| {
             item.path == "carrier::CarrierDescriptorError::invocation"
                 && item.kind == PublicItemKind::Function
@@ -3752,15 +3992,34 @@ mod tests {
         let fixture = fixture();
         let observation =
             run_two_pairs(&fixture).expect("real two-pair source passes");
-        assert_eq!(observation.foundation.public_items.len(), 143);
-        assert_eq!(observation.foundation.derive_checks.len(), 165);
-        assert_eq!(observation.foundation.witness_types.len(), 33);
-        assert_eq!(observation.kernel_interface.public_items.len(), 356);
-        assert_eq!(observation.kernel_interface.derive_checks.len(), 306);
-        assert_eq!(observation.kernel_interface.witness_types.len(), 64);
-        let relation = relation(&fixture, "kernel-interface-public-api");
-        assert_eq!(relation.reexports.len(), 6);
-        assert!(relation.reexports.iter().all(|item| {
+        let foundation = relation(&fixture, "foundation-public-api");
+        let interface = relation(&fixture, "kernel-interface-public-api");
+        assert_eq!(
+            observation.foundation.public_items,
+            foundation.public_items
+        );
+        assert_eq!(
+            observation.foundation.derive_checks,
+            foundation.derive_checks
+        );
+        assert_eq!(
+            observation.kernel_interface.public_items,
+            interface.public_items,
+        );
+        assert_eq!(
+            observation.kernel_interface.derive_checks,
+            interface.derive_checks,
+        );
+        assert_eq!(
+            observation
+                .kernel_interface
+                .witness_types
+                .iter()
+                .cloned()
+                .collect::<BTreeSet<_>>(),
+            super::registered_public_types(interface),
+        );
+        assert!(interface.reexports.iter().all(|item| {
             has_public_type(
                 &observation.kernel_interface.public_items,
                 &item.public_type,
@@ -3794,6 +4053,23 @@ mod tests {
         ki_relation_mut(&mut retargeted).reexports[0].provider_type =
             "bound::BoundError".to_owned();
         assert_two_pair_code(&retargeted, "PRODUCT_SOURCE_REEXPORT_SET");
+    }
+
+    #[test]
+    fn canonical_facades_alone_mirror_inherent_members() {
+        let mut missing = fixture();
+        let relation = ki_relation_mut(&mut missing);
+        relation.public_items.retain(|item| {
+            item.path != "bound::BoundDescriptor::admit_aggregate"
+        });
+        assert_two_pair_code(&missing, "PRODUCT_PUBLIC_ITEM_SET");
+
+        let mut contextual = fixture();
+        ki_relation_mut(&mut contextual).public_items.push(super::PublicItem {
+            path: "clock::CarrierSafetyDescriptor::concurrency".to_owned(),
+            kind: PublicItemKind::Function,
+        });
+        assert_two_pair_code(&contextual, "PRODUCT_PUBLIC_ITEM_SET");
     }
 
     #[test]
@@ -4089,6 +4365,153 @@ mod tests {
             ),
             "PRODUCT_TYPE_PATH_UNAVAILABLE",
         );
+    }
+
+    #[test]
+    fn diagnostic_byte_box_is_the_only_standard_type_exception() {
+        let path = "kernel/interface/src/diagnostic.rs";
+        let byte_box = "::std::boxed::Box<[u8]>";
+        for replacement in [
+            "::std::vec::Vec<u8>",
+            "::std::sync::Arc<[u8]>",
+            "std::boxed::Box<[u8]>",
+            "::r#std::boxed::Box<[u8]>",
+            "::std::boxed::Box<u8>",
+            "::std::boxed::Box<[u16]>",
+        ] {
+            ki_source_mutant(
+                path,
+                byte_box,
+                replacement,
+                "PRODUCT_TYPE_PATH_UNAVAILABLE",
+            );
+        }
+
+        let mut other_source = fixture();
+        append_source(
+            &mut other_source,
+            "kernel/interface/src/cancellation.rs",
+            "\nstruct Hidden(::std::boxed::Box<[u8]>);\n",
+        );
+        assert_two_pair_code(&other_source, "PRODUCT_TYPE_PATH_UNAVAILABLE");
+
+        let mut allocation = fixture();
+        append_source(
+            &mut allocation,
+            path,
+            concat!(
+                "\nfn hidden_allocation() { ",
+                "let _ = ::std::boxed::Box::new([0_u8]); }\n",
+            ),
+        );
+        assert_two_pair_code(&allocation, "PRODUCT_STD_VALUE_PATH_UNAVAILABLE");
+    }
+
+    #[test]
+    fn diagnostic_owning_types_are_proved_move_only() {
+        let path = "kernel/interface/src/diagnostic.rs";
+        for declaration in [
+            "pub struct DiagnosticOutputRecord {",
+            "pub struct DiagnosticRecordRejection {",
+            "pub enum DiagnosticSubmissionOutcome {",
+        ] {
+            ki_source_mutant(
+                path,
+                declaration,
+                &format!("#[derive(Clone)]\n{declaration}"),
+                "PRODUCT_DERIVE_SET",
+            );
+        }
+        for implementation in [
+            concat!(
+                "\nimpl Clone for DiagnosticOutputRecord { ",
+                "fn clone(&self) -> Self { loop {} } }\n",
+            ),
+            "\nimpl Copy for DiagnosticOutputRecord {}\n",
+            concat!(
+                "\nimpl Clone for DiagnosticRecordRejection { ",
+                "fn clone(&self) -> Self { loop {} } }\n",
+            ),
+            "\nimpl Copy for DiagnosticRecordRejection {}\n",
+            concat!(
+                "\nimpl Clone for DiagnosticSubmissionOutcome { ",
+                "fn clone(&self) -> Self { loop {} } }\n",
+            ),
+            "\nimpl ::core::marker::Copy for DiagnosticSubmissionOutcome {}\n",
+            concat!(
+                "\nimpl r#Clone for ",
+                "super::diagnostic::r#DiagnosticOutputRecord { ",
+                "fn clone(&self) -> Self { loop {} } }\n",
+            ),
+        ] {
+            let mut fixture = fixture();
+            append_source(&mut fixture, path, implementation);
+            assert_two_pair_code(
+                &fixture,
+                "PRODUCT_MOVE_ONLY_IMPL_UNAVAILABLE",
+            );
+        }
+
+        let mut other_source = fixture();
+        append_source(
+            &mut other_source,
+            "kernel/interface/src/cancellation.rs",
+            concat!(
+                "\nimpl r#Clone for ",
+                "crate::diagnostic::r#DiagnosticSubmissionOutcome { ",
+                "fn clone(&self) -> Self { loop {} } }\n",
+            ),
+        );
+        assert_two_pair_code(
+            &other_source,
+            "PRODUCT_MOVE_ONLY_IMPL_UNAVAILABLE",
+        );
+    }
+
+    #[test]
+    fn diagnostic_debug_format_macro_is_exact() {
+        let path = "tests/kernel-interface-public-consumer/src/diagnostic.rs";
+        let format = concat!("format!(\"", "{", "value:?", "}", "\")");
+        ki_source_mutant(
+            path,
+            format,
+            "format!(\"{value}\")",
+            "UNSUPPORTED_MACRO_PROOF_GAP",
+        );
+        ki_source_mutant(
+            path,
+            format,
+            concat!("format![\"", "{", "value:?", "}", "\"]"),
+            "UNSUPPORTED_MACRO_PROOF_GAP",
+        );
+        ki_source_mutant(
+            path,
+            format,
+            "\"redacted\".to_owned()",
+            "PRODUCT_DEBUG_FORMAT_COUNT",
+        );
+
+        let mut repeated = fixture();
+        append_source(
+            &mut repeated,
+            path,
+            concat!(
+                "\nfn repeated_debug(value: &DiagnosticOutputRecord) { ",
+                "let _ = format!(\"{value:?}\"); }\n",
+            ),
+        );
+        assert_two_pair_code(&repeated, "PRODUCT_DEBUG_FORMAT_COUNT");
+
+        let mut other_source = fixture();
+        append_source(
+            &mut other_source,
+            "tests/kernel-interface-public-consumer/src/clock.rs",
+            concat!(
+                "\nfn foreign_debug(value: &str) { ",
+                "let _ = format!(\"{value:?}\"); }\n",
+            ),
+        );
+        assert_two_pair_code(&other_source, "UNSUPPORTED_MACRO_PROOF_GAP");
     }
 
     #[test]

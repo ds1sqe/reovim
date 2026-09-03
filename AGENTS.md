@@ -98,6 +98,33 @@ updating the authoritative documentation.
   or use dead-code allowances to hide them. Do not add broader profiles for
   anticipated future use.
 
+## Verification and check caching
+
+- Tests must not use a literal content hash, serialized byte length, or
+  collection cardinality as a proxy for semantic correctness or current
+  repository shape. Compare typed values, keys, sets, ordered relations, and
+  outcomes directly.
+- Published hash vectors and documented protocol, capacity, accounting, and
+  safety bounds may use exact values. Name the owning contract or fixture;
+  do not disguise a checkout snapshot as a bound.
+- Each commit's Git tree supplies its mechanically generated per-file blob
+  identities. Ignored local coverage records successful working identities;
+  no second tracked hash manifest is maintained by hand. Cache hashes and
+  lengths are keys, never test expectations or conformance evidence.
+- Select affected component checks from changed file entries and propagate
+  through reverse dependencies. A TUI-only change runs only TUI checks; it
+  does not rerun an unchanged Kernel suite. A Kernel change reruns Kernel and
+  every dependent Client suite, including TUI.
+- A known hash mismatch, addition, deletion, or rename selects exactly its old
+  and new owners plus reverse dependents. Unknown or ambiguous ownership,
+  incomplete dependency data, malformed local state, or global tool/config
+  uncertainty fails open by running the full check.
+- Reuse a file result only for a genuinely file-local check. Rust unit, lint,
+  and documentation results use the complete declared component or target
+  input closure and a successful toolchain-bound local record.
+- Keep an uncached full mode for CI, release qualification, conformance, and
+  pre-checkpoint verification. A cached pass never replaces required evidence.
+
 ## Coding style
 
 - Follow `CODE_STYLE.md` and its mapped Linux kernel v4.10 maintainability

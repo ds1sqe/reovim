@@ -1,11 +1,11 @@
 {
   "schema": "reovim-entrypoint-reviews/v1",
-  "reviewed_at": "2026-09-02T00:00:00Z",
+  "reviewed_at": "2026-09-03T06:57:58Z",
   "reviews": [
     {
       "kind": "script",
       "path": "scripts/check.sh",
-      "content_digest": "sha256:bf7cfe4cbfc25b22d2333d50bd6f654fe29de1b96d6fe45c7fbd6f9cbc0f5c04",
+      "content_digest": "sha256:10cba8a2ef7cee4aa2cf2848bfd99a28a895e5de11f5bd855863d834d633692d",
       "direct_local_invocations": [
         {
           "kind": "script",
@@ -16,6 +16,11 @@
           "kind": "script",
           "path": "scripts/check-documentation.sh",
           "mechanism": "direct-path-exec"
+        },
+        {
+          "kind": "script",
+          "path": "scripts/check-cache.sh",
+          "mechanism": "direct-path-exec"
         }
       ],
       "disposition": "admit",
@@ -24,41 +29,60 @@
         "/usr/bin/env resolves a Bash implementation supporting the constructs used by these exact bytes.",
         "BASH_SOURCE resolves this checked-out script so ROOT selects the same repository whose local entrypoints are admitted.",
         "Cargo, Rustdoc, Rustfmt, and Clippy operate on the respective explicit locked Repository Tooling or Product workspace and selected toolchain.",
+        "Git supplies the isolated working inventory and blob identities; core Perl JSON::PP parses bounded locked Cargo metadata for component selection.",
+        "Local reuse does not bind opaque dynamic-loader, system-library, or compiler-sysroot state; CI and checkpoints use --full.",
         "The Clippy invocation binds CLIPPY_CONF_DIR to the reviewed repository root so ambient configuration cannot disable the three-level nesting threshold."
       ],
       "review_record": "conformance/entrypoint-reviews/check-sh.md",
-      "review_record_digest": "sha256:50cc74906fe833aaf4ef2f8ee0cf90850099400cd6749cd73e52f399d0bac1e8"
+      "review_record_digest": "sha256:f5c9a3ef50f046c2606a46de36ef1d0ce7a73f492f0a7c8280abfa706679abd7"
+    },
+    {
+      "kind": "script",
+      "path": "scripts/check-cache.sh",
+      "content_digest": "sha256:6654edd59c5bd3427365a8e0f38f09f4d277f84d45127f6b6db1c6c50b5b06ea",
+      "direct_local_invocations": [],
+      "disposition": "admit",
+      "mechanism": "exact-content-retained-review",
+      "assumptions": [
+        "/usr/bin/env resolves a Bash implementation supporting arrays, associative arrays, namerefs, process substitution, and mapfile.",
+        "BASH_SOURCE resolves this checked-out script so ROOT selects the reviewed repository.",
+        "Git supplies isolated inventory, identity, local-configuration, and repository-discovery forms; Cargo supplies bounded locked offline metadata; core Perl supplies JSON::PP and bounded stream parsers.",
+        "Directly recorded hosted tools provide the reviewed forms and remain readable regular files during reusable runs.",
+        "Local reuse does not bind opaque dynamic-loader, system-library, or compiler-sysroot state; CI and checkpoints use --full."
+      ],
+      "review_record": "conformance/entrypoint-reviews/check-cache-sh.md",
+      "review_record_digest": "sha256:8dddf4e2f9b4464660cf0c79e418af74b28604a893b8ff0b0bc48bb8baed1f88"
     },
     {
       "kind": "script",
       "path": "scripts/check-style.sh",
-      "content_digest": "sha256:f4db854aa98c3249b52ac870e01841c8cb4776006806d08d3dbb90acb9c57d5d",
+      "content_digest": "sha256:bde996effe1761bd1cf663774bb99efb14da235f33f07c5eb859f9d72d174c16",
       "direct_local_invocations": [],
       "disposition": "admit",
       "mechanism": "exact-content-retained-review",
       "assumptions": [
         "/usr/bin/env resolves a Bash implementation supporting the constructs used by these exact bytes.",
         "BASH_SOURCE resolves this checked-out script so ROOT selects the reviewed repository.",
-        "The hosted GNU/Linux Perl core provides utf8::decode; find, stat, mktemp, mkdir, ln, and rm provide the exact reviewed forms.",
+        "Git provides isolated tracked and non-ignored-untracked inventory; the hosted GNU/Linux Perl core provides utf8::decode; stat, mktemp, mkdir, ln, and rm provide the exact reviewed forms.",
         "The selected toolchain supplies the clippy-driver and rustfmt executables resolved by the script; Rustfmt supports --check and --config-path, and Clippy supports the configured excessive-nesting lint."
       ],
       "review_record": "conformance/entrypoint-reviews/check-style-sh.md",
-      "review_record_digest": "sha256:e39364721d93cb46943be725819fbf48ae5c6b67bba87c30963c5ca36faf5c94"
+      "review_record_digest": "sha256:44b6633c684b60c86e38b323d8e8366607db0d66b4f33c558aca0baab0ab2a6e"
     },
     {
       "kind": "script",
       "path": "scripts/check-documentation.sh",
-      "content_digest": "sha256:a90292c883cbd8402fbb6042b42623ad8cb33d8e57417a1b67675b007616b022",
+      "content_digest": "sha256:f3a3621379a2a79c63ae5b84bc4f7ca2d80eedb47cab4b941f162e5af1b3fb56",
       "direct_local_invocations": [],
       "disposition": "admit",
       "mechanism": "exact-content-retained-review",
       "assumptions": [
         "/usr/bin/env resolves a Bash implementation supporting the constructs used by these exact bytes.",
-        "The GNU/Linux command-line tools resolved from PATH provide the semantics exercised by the retained mutation checks.",
+        "The GNU/Linux command-line tools resolved from PATH provide the semantics exercised by the retained mutation checks; ambient Ripgrep configuration is removed.",
         "BASH_SOURCE resolves this checked-out script so ROOT selects the reviewed repository inputs."
       ],
       "review_record": "conformance/entrypoint-reviews/check-documentation-sh.md",
-      "review_record_digest": "sha256:e11bd5b0340d011b45c3e9f568a8e116bc54a5c5c8d60f527449d131dd5970b6"
+      "review_record_digest": "sha256:3a1bcb3c374c33dca80b4950923fef3f2f7ded5c7bbc23c4a6be84eda1e8010e"
     },
     {
       "kind": "script",
@@ -86,7 +110,7 @@
     {
       "kind": "workflow",
       "path": ".github/workflows/ci.yml",
-      "content_digest": "sha256:033269df23b9ff12496f77f1730b663a17cd3932044a094af1352ce7119e10e5",
+      "content_digest": "sha256:b3f71d42639c90dbf5cb063e19ece01518ed51f8ce1f20b223d845cd36c772d6",
       "direct_local_invocations": [
         {
           "kind": "script",
@@ -103,7 +127,7 @@
         "The mutable hosted image has no exact execution-tool admission or retained namespace and prepared-root measurement, so this workflow makes no exact-evidence claim."
       ],
       "review_record": "conformance/entrypoint-reviews/ci-workflow.md",
-      "review_record_digest": "sha256:98e40e7cd171b3be87f19cf79702f4cb9e13d84603db3584263ff4f091c59402"
+      "review_record_digest": "sha256:55df95f79964705a6efcb3aa96d7ab1d4fc854eb2fa55cfbaa795df290ad5c43"
     }
   ]
 }

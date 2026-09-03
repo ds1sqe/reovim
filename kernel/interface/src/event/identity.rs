@@ -9,6 +9,7 @@ impl crate::event::StartupEventIdentities {
         contract: u128,
         family: u128,
         remediation_catalog: u128,
+        canonical_reference: u128,
         stream: LifecycleIdentity,
         lifecycle_owner: LifecycleIdentity,
     ) -> Self {
@@ -16,6 +17,7 @@ impl crate::event::StartupEventIdentities {
             contract: ContractId::new(contract),
             family: ContractId::new(family),
             remediation_catalog: ContractId::new(remediation_catalog),
+            canonical_reference: ContractId::new(canonical_reference),
             stream,
             lifecycle_owner,
         }
@@ -37,6 +39,12 @@ impl crate::event::StartupEventIdentities {
     #[must_use]
     pub const fn remediation_catalog(self) -> u128 {
         self.remediation_catalog.value()
+    }
+
+    /// Returns the borrowed canonical-reference carrier type identity.
+    #[must_use]
+    pub const fn canonical_reference(self) -> u128 {
+        self.canonical_reference.value()
     }
 
     /// Returns the exact Event Stream lifecycle identity.

@@ -1036,6 +1036,7 @@ fn segment_has_variable_command(segment: &str) -> bool {
         return false;
     }
     let cursor = skip_shell_wrappers(&words, cursor);
+    let cursor = skip_shell_redirections(&words, cursor);
     words
         .get(cursor)
         .is_some_and(|word| variable_command_word(shell_word(word)))
@@ -1046,6 +1047,10 @@ fn shell_command_start(words: &[String]) -> Option<usize> {
     while let Some(word) = words.get(cursor).map(|word| shell_word(word)) {
         if shell_assignment(word) && word.contains("$(") {
             return None;
+        }
+        if let Some(next) = next_after_shell_redirection(words, cursor) {
+            cursor = next;
+            continue;
         }
         if !shell_prefix_word(word) {
             break;
@@ -1075,6 +1080,38 @@ fn shell_prefix_word(word: &str) -> bool {
                 | "run:"
         )
         || shell_assignment(word)
+}
+
+fn shell_redirection(word: &str) -> bool {
+    let operator = shell_redirection_operator(word);
+    operator.starts_with('<') || operator.starts_with('>')
+}
+
+fn shell_redirection_needs_target(word: &str) -> bool {
+    matches!(
+        shell_redirection_operator(word),
+        "<" | ">" | "<>" | ">>" | "<<" | "<<<" | ">|" | "<&" | ">&"
+    )
+}
+
+fn shell_redirection_operator(word: &str) -> &str {
+    word.trim_start_matches(|character: char| character.is_ascii_digit())
+}
+
+fn skip_shell_redirections(words: &[String], mut cursor: usize) -> usize {
+    while let Some(next) = next_after_shell_redirection(words, cursor) {
+        cursor = next;
+    }
+    cursor
+}
+
+fn next_after_shell_redirection(
+    words: &[String],
+    cursor: usize,
+) -> Option<usize> {
+    let word = words.get(cursor).map(|word| shell_word(word))?;
+    shell_redirection(word)
+        .then(|| cursor + 1 + usize::from(shell_redirection_needs_target(word)))
 }
 
 fn shell_query_command(words: &[String], cursor: usize) -> bool {
@@ -1115,6 +1152,10 @@ fn command_substitution_has_variable_command(line: &str) -> bool {
     let mut substitutions = line;
     while let Some(start) = substitutions.find("$(") {
         substitutions = &substitutions[start + 2..];
+        if substitutions.starts_with('(') {
+            substitutions = &substitutions[1..];
+            continue;
+        }
         if variable_expanded_command_path(substitutions) {
             return true;
         }
@@ -1239,6 +1280,11 @@ fn shell_word(word: &str) -> &str {
 fn shell_assignment(word: &str) -> bool {
     let Some((name, _)) = word.split_once('=') else { return false };
     let name = name.strip_suffix('+').unwrap_or(name);
+    let name = match name.split_once('[') {
+        None => name,
+        Some((name, subscript)) if subscript.ends_with(']') => name,
+        Some(_) => return false,
+    };
     !name.is_empty()
         && name.bytes().enumerate().all(|(index, byte)| {
             byte == b'_'
@@ -2157,6 +2203,25 @@ mod tests {
             "ROOT=\"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")/..\" && pwd)\"",
         );
         assert!(!dynamic);
+        let (_, dynamic) = super::obvious_local_inputs(
+            "VALUES[\"$path\"]=\"$value\"\nVALUES+=(\n  \"$value\"\n)\n",
+        );
+        assert!(!dynamic);
+        let (_, dynamic) = super::obvious_local_inputs(
+            "VALUES[$(\"$ROOT/tmp/hidden\")]=value",
+        );
+        assert!(dynamic);
+
+        for input in ["done <\"$graph\"", "done 7< \"$graph\""] {
+            let (_, dynamic) = super::obvious_local_inputs(input);
+            assert!(!dynamic, "{input}");
+        }
+        let (_, dynamic) =
+            super::obvious_local_inputs("last=$((${#values[@]} - 1))");
+        assert!(!dynamic);
+        let (_, dynamic) =
+            super::obvious_local_inputs("last=$(( $(\"$ROOT/tmp/hidden\") ))");
+        assert!(dynamic);
 
         let (_, dynamic) = super::obvious_local_inputs(
             "VALUES=(\n  \"$(\"$ROOT/tmp/hidden\")\"\n)\n",
@@ -2291,6 +2356,7 @@ exec 9<&-
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
         for path in [
             "scripts/check.sh",
+            "scripts/check-cache.sh",
             "scripts/check-documentation.sh",
             "scripts/check-conformance.sh",
             "scripts/check-style.sh",

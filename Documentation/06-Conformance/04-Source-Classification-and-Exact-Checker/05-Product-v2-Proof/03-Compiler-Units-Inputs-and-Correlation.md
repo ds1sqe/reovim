@@ -45,9 +45,9 @@ target, features/cfgs, outputs, and artifact paths.
 
 Only the Foundation shipping stage records the exact
 Version/Host/Target/Version discovery sequence. The later three stages reuse
-the same authorities and record no repeated probe. Each stage compiles exactly
-one selected unit. Cargo artifact-event cardinalities are `1/2/2/3`: the
-selected unit plus the exact fresh upstream events implied by the stage.
+the same authorities and record no repeated probe. Each stage compiles one
+selected unit. Its Cargo artifact-event set is exactly that unit plus the fresh
+upstream events implied by the registered direct and transitive relations.
 Freshness does not establish a dependency edge.
 
 The three direct compiler edges are Foundation validation to Foundation,
@@ -71,14 +71,14 @@ rustc basename is insufficient.
 Every supplied `--extern` is conservatively participating even when rustc may
 not use it. Every provider maps to another proved allowed Product unit or the
 bound sysroot. Every repository source/module path reported by dep-info maps to
-one exact classified pre/post-identical input. Their four-stage union is
-exactly 39 compiler-selected Rust files. Visibility of
-`/repo/conformance/product-closures.json` changes neither that set nor its
-count. Its presence in dep-info, package membership, a supplied `--extern`, or
-a Product closure fails. Any other unknown, excluded, out-of-root, Repository
-Tooling, generated, vendored, or `OUT_DIR` input also fails. Environment
-dependencies and include inputs are unavailable in the first profile and fail
-if reported.
+one exact classified pre/post-identical input. Their four-stage union equals
+the four registered compiler-source sets. Visibility of
+`/repo/conformance/product-closures.json` changes neither that union nor its
+members. Its presence in dep-info, package membership, a supplied `--extern`,
+or a Product closure fails. Any other unknown, excluded, out-of-root,
+Repository Tooling, generated, vendored, or `OUT_DIR` input also fails.
+Environment dependencies and include inputs are unavailable in the first
+profile and fail if reported.
 
 Compiler identity binds canonical Cargo/rustc/checker plus a bounded exact
 inventory/digest of rustc compiler-support files and the selected target

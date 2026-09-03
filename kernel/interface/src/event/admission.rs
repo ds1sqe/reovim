@@ -166,6 +166,9 @@ impl fmt::Display for crate::event::EventError {
             Self::DescriptorContractMismatch => {
                 "Event descriptor contract identities differ"
             }
+            Self::IncoherentCarrier => {
+                "Event canonical-reference carrier is incoherent"
+            }
             Self::UnsupportedContract => "Event contract is unsupported",
             Self::IncompatibleContract => "Event contract is incompatible",
             Self::ProposalOwnerMismatch => "proposal owner stamp differs",

@@ -10,6 +10,17 @@ invocation, it makes ownership/lifetime, type/schema mismatch, affinity and
 concurrency, panic/unwind behavior, and the unsafe implementation/audit boundary
 inspectable. An undeclared property is unsupported.
 
+`InstanceBound` and `IncarnationBound` are logical identity scopes. A Rust
+borrow protects referenced storage but does not prove lifecycle liveness,
+readiness, or admission; a live capability use also compares the applicable
+current identity and generation.
+
+Kernel Interface exposes the complete admitted Foundation vocabulary through
+neutral `bound`, `carrier`, `contract`, and `identity` modules. Public consumers
+can therefore construct and interpret returned descriptors without a direct
+Foundation dependency. These are exact aliases, not a second semantic
+definition; focused contract modules may retain convenient aliases.
+
 Every capability or operation family claiming a bound owns a Bound Descriptor.
 It declares units and hard maxima for per-object and aggregate counts, owned
 bytes, payload, retained state, concurrency, queues, and completion waits as

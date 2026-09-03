@@ -1920,7 +1920,7 @@ fn sha256(value: &str, path: &str) -> Result<String, ConfigError> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
+    use std::{collections::BTreeSet, path::Path};
 
     use serde_json::{Value, json};
 
@@ -1934,29 +1934,87 @@ mod tests {
     #[test]
     fn current_dual_workspace_topology_parses_as_keyed_v2() {
         let topology = super::Topology::parse(&topology()).unwrap();
-        assert_eq!(topology.workspaces.len(), 2);
+        let workspace_ids = topology
+            .workspaces
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            workspace_ids,
+            BTreeSet::from(["product", "repository-tooling"])
+        );
         let tooling = &topology.workspaces["repository-tooling"];
         assert_eq!(
             tooling.partition,
             super::WorkspacePartition::RepositoryTooling
         );
         assert!(tooling.root.as_os_str().is_empty());
-        assert_eq!(tooling.metadata_profiles.len(), 3);
-        assert_eq!(tooling.packages.len(), 2);
+        let tooling_profiles = tooling
+            .metadata_profiles
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            tooling_profiles,
+            BTreeSet::from([
+                "hosted-all-features",
+                "hosted-default",
+                "hosted-no-default-features",
+            ])
+        );
+        let tooling_packages = tooling
+            .packages
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            tooling_packages,
+            BTreeSet::from(["reovim-conformance", "reovim-depgraph"])
+        );
         let product = &topology.workspaces["product"];
         assert_eq!(product.partition, super::WorkspacePartition::Product);
         assert_eq!(product.root, Path::new("product"));
-        assert_eq!(product.metadata_profiles.len(), 1);
-        assert_eq!(product.packages.len(), 4);
+        let product_profiles = product
+            .metadata_profiles
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        assert_eq!(product_profiles, BTreeSet::from(["release"]));
+        let product_packages = product
+            .packages
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            product_packages,
+            BTreeSet::from([
+                "foundation",
+                "foundation-public-consumer",
+                "kernel-interface",
+                "kernel-interface-public-consumer",
+            ])
+        );
         assert_eq!(topology.workspace_manifest, Path::new("Cargo.toml"));
-        assert_eq!(topology.profiles.len(), 3);
-        assert_eq!(topology.packages.len(), 2);
+        let profile_names = topology
+            .profiles
+            .iter()
+            .map(|profile| profile.name.as_str())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(profile_names, tooling_profiles);
+        let package_names = topology
+            .packages
+            .iter()
+            .map(|package| package.name.as_str())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            package_names,
+            BTreeSet::from(["reovim-conformance", "reovim-depgraph"])
+        );
     }
 
     #[test]
     fn dual_workspace_package_resolves_globally_and_exactly() {
         let topology = super::Topology::parse(&topology()).unwrap();
-        assert_eq!(topology.workspaces.len(), 2);
         let (workspace, package) = topology
             .resolve_source_null_package(
                 "reovim-foundation",
@@ -2169,14 +2227,17 @@ mod tests {
         );
 
         let mut alias = topology();
+        let digest = alias["repository_entrypoints"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entrypoint| entrypoint["path"] == "scripts/check.sh")
+            .unwrap()["content_digest"]
+            .clone();
         alias["repository_entrypoints"].as_array_mut().unwrap().push(json!({
             "kind": "workflow",
             "path": "scripts/check.sh",
-            "content_digest": concat!(
-                "sha256:",
-                "00000000000000000000000000000000",
-                "00000000000000000000000000000000"
-            )
+            "content_digest": digest,
         }));
         assert_eq!(
             super::Topology::parse(&alias).unwrap_err().code,

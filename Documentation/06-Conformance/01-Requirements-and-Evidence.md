@@ -11,6 +11,13 @@ it is current when the contract is written.
 A document, type name, passing narrow test, or historical implementation is
 not by itself conformance evidence.
 
+A test compares semantic values, keys, sets, ordered relations, or outcomes.
+It does not use a literal checkout digest, serialized byte length, or aggregate
+cardinality as a proxy for meaning. Published algorithm vectors and exact
+protocol, capacity, accounting, or safety bounds remain valid when their owner
+is named. Mechanically generated cache identities are performance inputs, not
+test expectations or evidence.
+
 Normative target language does not imply current implementation. Current
 physical dependency truth comes from build metadata and generated or retained
 evidence; implementation status comes from code plus matching conformance

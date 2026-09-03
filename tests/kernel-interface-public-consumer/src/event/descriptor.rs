@@ -1,3 +1,12 @@
+use reovim_kernel_interface::carrier::{
+    BorrowModel, CarrierSafetyDescriptor, ConcurrencySafety, CopyModel,
+    DropModel, InvocationModel, InvocationSafety, LifetimeModel, MemorySafety,
+    OwnershipModel, SharingModel, ThreadTransfer, TypeMismatch, UnsafeBoundary,
+    UnwindModel,
+};
+use reovim_kernel_interface::contract::{
+    CompatibleVersionRange, ContractId, ContractVersion,
+};
 use reovim_kernel_interface::event::{
     Actionability, BootstrapHealth, EventError, EventRejectCause,
     RemediationCode, Severity, StartupComponentCounts, StartupEventDescriptor,
@@ -11,8 +20,9 @@ use reovim_kernel_interface::operation::{
 };
 
 use super::{
-    EVENT_CONTRACT, REMEDIATION_CATALOG, STARTUP_CANONICAL_MAX_BYTES,
-    STARTUP_FAMILY, STREAM_INSTANCE, lifecycle_owner, make_clock_descriptor,
+    CANONICAL_REFERENCE_TYPE, EVENT_CONTRACT, REMEDIATION_CATALOG,
+    STARTUP_CANONICAL_MAX_BYTES, STARTUP_FAMILY, STREAM_INSTANCE,
+    lifecycle_owner, make_canonical_reference_safety, make_clock_descriptor,
     make_descriptor, make_identities, make_limits, stream_identity,
 };
 
@@ -28,10 +38,19 @@ pub const fn const_cases() -> bool {
 }
 
 const fn identity_cases(identities: StartupEventIdentities) -> bool {
+    let stream = stream_identity();
+    let next_generation = LifecycleIdentity::new(
+        stream.instance(),
+        stream.incarnation(),
+        Generation::new(stream.generation().value() + 1),
+    );
     identities.contract() == EVENT_CONTRACT
         && identities.family() == STARTUP_FAMILY
         && identities.remediation_catalog() == REMEDIATION_CATALOG
-        && identities.stream().same_generation(stream_identity())
+        && identities.canonical_reference() == CANONICAL_REFERENCE_TYPE
+        && identities.stream().same_generation(stream)
+        && identities.stream().same_incarnation(next_generation)
+        && !identities.stream().same_generation(next_generation)
         && identities.lifecycle_owner().same_generation(lifecycle_owner())
 }
 
@@ -65,12 +84,117 @@ const fn operation_cases(descriptor: &StartupEventDescriptor) -> bool {
         && descriptor.clock().maximum_elapsed().nanoseconds() == 1_000
         && descriptor.family_schema_version() == 1
         && descriptor.remediation_catalog_version() == 1
+        && descriptor.canonical_reference_safety().type_id().value()
+            == CANONICAL_REFERENCE_TYPE
+        && canonical_reference_safety_cases(descriptor)
         && invocation_code(admission.invocation()) == 0
         && effect_code(admission.effect()) == 1
         && invocation_code(snapshot.invocation()) == 0
         && effect_code(snapshot.effect()) == 0
         && descriptor.negotiate(EVENT_CONTRACT, 1).is_ok()
         && descriptor.negotiate(EVENT_CONTRACT, 2).is_ok()
+}
+
+const fn canonical_reference_safety_cases(
+    descriptor: &StartupEventDescriptor,
+) -> bool {
+    let safety = descriptor.canonical_reference_safety();
+    let memory = safety.memory();
+    let concurrency = safety.concurrency();
+    let invocation = safety.invocation();
+    safety.schema_versions().minimum().value() == 1
+        && safety.schema_versions().maximum().value() == 2
+        && ownership_code(memory.ownership()) == 1
+        && borrow_code(memory.borrowing()) == 1
+        && copy_code(memory.copying()) == 1
+        && drop_code(memory.dropping()) == 0
+        && lifetime_code(memory.lifetime()) == 2
+        && transfer_code(concurrency.thread_transfer()) == 0
+        && sharing_code(concurrency.sharing()) == 1
+        && carrier_invocation_code(invocation.invocation()) == 0
+        && unwind_code(invocation.unwind()) == 0
+        && mismatch_code(safety.mismatch()) == 0
+        && unsafe_boundary_code(safety.unsafe_boundary()) == 0
+}
+
+const fn ownership_code(value: OwnershipModel) -> u8 {
+    match value {
+        OwnershipModel::Owned => 0,
+        OwnershipModel::Borrowed => 1,
+    }
+}
+
+const fn borrow_code(value: BorrowModel) -> u8 {
+    match value {
+        BorrowModel::Forbidden => 0,
+        BorrowModel::Shared => 1,
+        BorrowModel::Exclusive => 2,
+    }
+}
+
+const fn copy_code(value: CopyModel) -> u8 {
+    match value {
+        CopyModel::MoveOnly => 0,
+        CopyModel::Copy => 1,
+    }
+}
+
+const fn drop_code(value: DropModel) -> u8 {
+    match value {
+        DropModel::Trivial => 0,
+        DropModel::ReleasesOwnedState => 1,
+    }
+}
+
+const fn lifetime_code(value: LifetimeModel) -> u8 {
+    match value {
+        LifetimeModel::Value => 0,
+        LifetimeModel::InstanceBound => 1,
+        LifetimeModel::IncarnationBound => 2,
+    }
+}
+
+const fn transfer_code(value: ThreadTransfer) -> u8 {
+    match value {
+        ThreadTransfer::Transferable => 0,
+        ThreadTransfer::ThreadAffine => 1,
+    }
+}
+
+const fn sharing_code(value: SharingModel) -> u8 {
+    match value {
+        SharingModel::Exclusive => 0,
+        SharingModel::Immutable => 1,
+        SharingModel::Synchronized => 2,
+    }
+}
+
+const fn carrier_invocation_code(value: InvocationModel) -> u8 {
+    match value {
+        InvocationModel::DataOnly => 0,
+        InvocationModel::NoUserCallback => 1,
+        InvocationModel::UserCallback => 2,
+    }
+}
+
+const fn unwind_code(value: UnwindModel) -> u8 {
+    match value {
+        UnwindModel::NotInvocable => 0,
+        UnwindModel::Contained => 1,
+        UnwindModel::ForbiddenAcrossBoundary => 2,
+    }
+}
+
+const fn mismatch_code(value: TypeMismatch) -> u8 {
+    let TypeMismatch::Reject = value;
+    0
+}
+
+const fn unsafe_boundary_code(value: UnsafeBoundary) -> u8 {
+    match value {
+        UnsafeBoundary::None => 0,
+        UnsafeBoundary::Reviewed(_) => 1,
+    }
 }
 
 const fn invocation_code(value: InvocationClass) -> u8 {
@@ -93,6 +217,7 @@ const fn descriptor_error_cases(descriptor: &StartupEventDescriptor) -> bool {
         && unit_error_code(descriptor.negotiate(EVENT_CONTRACT, 3)) == 5
         && mismatched_contract_code() == 3
         && mismatched_owner_code() == 2
+        && canonical_reference_negative_cases(descriptor)
         && invalid_limit_code() == 1
 }
 
@@ -108,11 +233,16 @@ const fn mismatched_contract_code() -> u8 {
         0xff,
         STARTUP_FAMILY,
         REMEDIATION_CATALOG,
+        CANONICAL_REFERENCE_TYPE,
         stream_identity(),
         lifecycle_owner(),
     );
+    let Some(safety) = make_canonical_reference_safety(SharingModel::Immutable)
+    else {
+        return 0;
+    };
     descriptor_code(&StartupEventDescriptor::new(
-        contract, identities, clock, limits,
+        contract, identities, clock, limits, safety,
     ))
 }
 
@@ -127,12 +257,356 @@ const fn mismatched_owner_code() -> u8 {
     else {
         return 0;
     };
+    let Some(safety) = make_canonical_reference_safety(SharingModel::Immutable)
+    else {
+        return 0;
+    };
     descriptor_code(&StartupEventDescriptor::new(
         contract,
         make_identities(),
         clock,
         limits,
+        safety,
     ))
+}
+
+const fn canonical_reference_negative_cases(
+    descriptor: &StartupEventDescriptor,
+) -> bool {
+    identity_and_version_negative_cases(descriptor)
+        && coherent_memory_negative_cases(descriptor)
+        && concurrency_negative_cases(descriptor)
+        && coherent_invocation_negative_cases(descriptor)
+        && unsafe_boundary_negative_case(descriptor)
+        && singleton_mismatch_axis_is_forced(descriptor)
+}
+
+const fn identity_and_version_negative_cases(
+    descriptor: &StartupEventDescriptor,
+) -> bool {
+    let Some(exact) = version_range(1, 2) else {
+        return false;
+    };
+    let Some(changed_minimum) = version_range(2, 2) else {
+        return false;
+    };
+    let Some(changed_maximum) = version_range(1, 3) else {
+        return false;
+    };
+    rejects_carrier(
+        descriptor,
+        CANONICAL_REFERENCE_TYPE + 1,
+        exact,
+        exact_memory(),
+        exact_concurrency(),
+        exact_carrier_invocation(),
+        UnsafeBoundary::None,
+    ) && rejects_carrier(
+        descriptor,
+        CANONICAL_REFERENCE_TYPE,
+        changed_minimum,
+        exact_memory(),
+        exact_concurrency(),
+        exact_carrier_invocation(),
+        UnsafeBoundary::None,
+    ) && rejects_carrier(
+        descriptor,
+        CANONICAL_REFERENCE_TYPE,
+        changed_maximum,
+        exact_memory(),
+        exact_concurrency(),
+        exact_carrier_invocation(),
+        UnsafeBoundary::None,
+    )
+}
+
+const fn coherent_memory_negative_cases(
+    descriptor: &StartupEventDescriptor,
+) -> bool {
+    rejects_memory(descriptor, owned_reference_memory())
+        && rejects_memory(descriptor, forbidden_borrow_memory())
+        && rejects_memory(descriptor, exclusive_borrow_memory())
+        && rejects_memory(descriptor, move_only_borrow_memory())
+        && rejects_memory(descriptor, releasing_owned_memory())
+        && rejects_memory(descriptor, value_lifetime_memory())
+        && rejects_memory(descriptor, instance_lifetime_memory())
+}
+
+const fn owned_reference_memory() -> MemorySafety {
+    MemorySafety::new(
+        OwnershipModel::Owned,
+        BorrowModel::Shared,
+        CopyModel::Copy,
+        DropModel::Trivial,
+        LifetimeModel::IncarnationBound,
+    )
+}
+
+const fn forbidden_borrow_memory() -> MemorySafety {
+    // Foundation permits forbidden borrowing here only with owned memory.
+    MemorySafety::new(
+        OwnershipModel::Owned,
+        BorrowModel::Forbidden,
+        CopyModel::Copy,
+        DropModel::Trivial,
+        LifetimeModel::IncarnationBound,
+    )
+}
+
+const fn exclusive_borrow_memory() -> MemorySafety {
+    MemorySafety::new(
+        OwnershipModel::Borrowed,
+        BorrowModel::Exclusive,
+        CopyModel::Copy,
+        DropModel::Trivial,
+        LifetimeModel::IncarnationBound,
+    )
+}
+
+const fn move_only_borrow_memory() -> MemorySafety {
+    MemorySafety::new(
+        OwnershipModel::Borrowed,
+        BorrowModel::Shared,
+        CopyModel::MoveOnly,
+        DropModel::Trivial,
+        LifetimeModel::IncarnationBound,
+    )
+}
+
+const fn releasing_owned_memory() -> MemorySafety {
+    // Releasing state requires an owned, move-only carrier.
+    MemorySafety::new(
+        OwnershipModel::Owned,
+        BorrowModel::Shared,
+        CopyModel::MoveOnly,
+        DropModel::ReleasesOwnedState,
+        LifetimeModel::IncarnationBound,
+    )
+}
+
+const fn value_lifetime_memory() -> MemorySafety {
+    // A self-contained value lifetime requires owned memory.
+    MemorySafety::new(
+        OwnershipModel::Owned,
+        BorrowModel::Shared,
+        CopyModel::Copy,
+        DropModel::Trivial,
+        LifetimeModel::Value,
+    )
+}
+
+const fn instance_lifetime_memory() -> MemorySafety {
+    MemorySafety::new(
+        OwnershipModel::Borrowed,
+        BorrowModel::Shared,
+        CopyModel::Copy,
+        DropModel::Trivial,
+        LifetimeModel::InstanceBound,
+    )
+}
+
+const fn concurrency_negative_cases(
+    descriptor: &StartupEventDescriptor,
+) -> bool {
+    rejects_concurrency(
+        descriptor,
+        ConcurrencySafety::new(
+            ThreadTransfer::ThreadAffine,
+            SharingModel::Immutable,
+        ),
+    ) && rejects_concurrency(
+        descriptor,
+        ConcurrencySafety::new(
+            ThreadTransfer::Transferable,
+            SharingModel::Exclusive,
+        ),
+    ) && rejects_concurrency(
+        descriptor,
+        ConcurrencySafety::new(
+            ThreadTransfer::Transferable,
+            SharingModel::Synchronized,
+        ),
+    )
+}
+
+const fn coherent_invocation_negative_cases(
+    descriptor: &StartupEventDescriptor,
+) -> bool {
+    // Callable carriers require either contained or forbidden unwind.
+    rejects_invocation(
+        descriptor,
+        InvocationModel::NoUserCallback,
+        UnwindModel::Contained,
+    ) && rejects_invocation(
+        descriptor,
+        InvocationModel::NoUserCallback,
+        UnwindModel::ForbiddenAcrossBoundary,
+    ) && rejects_invocation(
+        descriptor,
+        InvocationModel::UserCallback,
+        UnwindModel::Contained,
+    ) && rejects_invocation(
+        descriptor,
+        InvocationModel::UserCallback,
+        UnwindModel::ForbiddenAcrossBoundary,
+    )
+}
+
+const fn unsafe_boundary_negative_case(
+    descriptor: &StartupEventDescriptor,
+) -> bool {
+    let boundary = UnsafeBoundary::Reviewed(ContractId::new(0x61));
+    let Some(versions) = version_range(1, 2) else {
+        return false;
+    };
+    rejects_carrier(
+        descriptor,
+        CANONICAL_REFERENCE_TYPE,
+        versions,
+        exact_memory(),
+        exact_concurrency(),
+        exact_carrier_invocation(),
+        boundary,
+    )
+}
+
+const fn singleton_mismatch_axis_is_forced(
+    descriptor: &StartupEventDescriptor,
+) -> bool {
+    // Reject is the only TypeMismatch value in the public vocabulary.
+    mismatch_code(descriptor.canonical_reference_safety().mismatch()) == 0
+}
+
+const fn rejects_memory(
+    descriptor: &StartupEventDescriptor,
+    memory: MemorySafety,
+) -> bool {
+    let Some(versions) = version_range(1, 2) else {
+        return false;
+    };
+    rejects_carrier(
+        descriptor,
+        CANONICAL_REFERENCE_TYPE,
+        versions,
+        memory,
+        exact_concurrency(),
+        exact_carrier_invocation(),
+        UnsafeBoundary::None,
+    )
+}
+
+const fn rejects_concurrency(
+    descriptor: &StartupEventDescriptor,
+    concurrency: ConcurrencySafety,
+) -> bool {
+    let Some(versions) = version_range(1, 2) else {
+        return false;
+    };
+    rejects_carrier(
+        descriptor,
+        CANONICAL_REFERENCE_TYPE,
+        versions,
+        exact_memory(),
+        concurrency,
+        exact_carrier_invocation(),
+        UnsafeBoundary::None,
+    )
+}
+
+const fn rejects_invocation(
+    descriptor: &StartupEventDescriptor,
+    invocation: InvocationModel,
+    unwind: UnwindModel,
+) -> bool {
+    let Some(versions) = version_range(1, 2) else {
+        return false;
+    };
+    let invocation = InvocationSafety::new(invocation, unwind);
+    rejects_carrier(
+        descriptor,
+        CANONICAL_REFERENCE_TYPE,
+        versions,
+        exact_memory(),
+        exact_concurrency(),
+        invocation,
+        UnsafeBoundary::None,
+    )
+}
+
+const fn rejects_carrier(
+    descriptor: &StartupEventDescriptor,
+    type_id: u128,
+    versions: CompatibleVersionRange,
+    memory: MemorySafety,
+    concurrency: ConcurrencySafety,
+    invocation: InvocationSafety,
+    boundary: UnsafeBoundary,
+) -> bool {
+    let Ok(safety) = CarrierSafetyDescriptor::new(
+        ContractId::new(type_id),
+        versions,
+        memory,
+        concurrency,
+        invocation,
+        TypeMismatch::Reject,
+        boundary,
+    ) else {
+        return false;
+    };
+    let Some(limits) = make_limits() else {
+        return false;
+    };
+    let result = StartupEventDescriptor::new(
+        descriptor.contract(),
+        descriptor.identities(),
+        descriptor.clock(),
+        limits,
+        safety,
+    );
+    incoherent_carrier_result(&result)
+}
+
+const fn incoherent_carrier_result(
+    result: &Result<StartupEventDescriptor, EventError>,
+) -> bool {
+    match result {
+        Err(EventError::IncoherentCarrier) => true,
+        Err(_) | Ok(_) => false,
+    }
+}
+
+const fn version_range(
+    minimum: u64,
+    maximum: u64,
+) -> Option<CompatibleVersionRange> {
+    match CompatibleVersionRange::new(
+        ContractVersion::new(minimum),
+        ContractVersion::new(maximum),
+    ) {
+        Ok(versions) => Some(versions),
+        Err(_) => None,
+    }
+}
+
+const fn exact_memory() -> MemorySafety {
+    MemorySafety::new(
+        OwnershipModel::Borrowed,
+        BorrowModel::Shared,
+        CopyModel::Copy,
+        DropModel::Trivial,
+        LifetimeModel::IncarnationBound,
+    )
+}
+
+const fn exact_concurrency() -> ConcurrencySafety {
+    ConcurrencySafety::new(
+        ThreadTransfer::Transferable,
+        SharingModel::Immutable,
+    )
+}
+
+const fn exact_carrier_invocation() -> InvocationSafety {
+    InvocationSafety::new(InvocationModel::DataOnly, UnwindModel::NotInvocable)
 }
 
 const fn invalid_limit_code() -> u8 {
@@ -341,14 +815,20 @@ const fn actionability_error(
         EVENT_CONTRACT,
         STARTUP_FAMILY,
         REMEDIATION_CATALOG + 1,
+        CANONICAL_REFERENCE_TYPE,
         stream_identity(),
         lifecycle_owner(),
     );
+    let Some(safety) = make_canonical_reference_safety(SharingModel::Immutable)
+    else {
+        return false;
+    };
     let Ok(altered) = StartupEventDescriptor::new(
         descriptor.contract(),
         identities,
         descriptor.clock(),
         limits,
+        safety,
     ) else {
         return false;
     };

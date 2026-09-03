@@ -3,6 +3,16 @@
 
 set -euo pipefail
 
+unset GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_CEILING_DIRECTORIES \
+    GIT_COMMON_DIR GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS \
+    GIT_CONFIG_SYSTEM GIT_DIR GIT_DISCOVERY_ACROSS_FILESYSTEM \
+    GIT_EXEC_PATH GIT_GRAFT_FILE GIT_INDEX_FILE GIT_NAMESPACE \
+    GIT_OBJECT_DIRECTORY GIT_PREFIX GIT_REPLACE_REF_BASE \
+    GIT_SHALLOW_FILE GIT_WORK_TREE
+export GIT_CONFIG_GLOBAL=/dev/null
+export GIT_CONFIG_NOSYSTEM=1
+unset RIPGREP_CONFIG_PATH
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 readonly LIMIT=80
 readonly MAX_ENTRIES=16384
@@ -15,19 +25,44 @@ readonly SEARCH_REASON="searchable-string"
 
 usage() {
     cat <<'EOF'
-Usage: ./scripts/check-style.sh
+Usage: ./scripts/check-style.sh [--files0-from ABSOLUTE_FILE]
 
 Checks line width, local line-width exemptions, and trailing whitespace in
 active human-authored Rust, shell, TOML, and YAML source. It also runs its
 closed scanner, Rustfmt, and Clippy mutation fixtures.
+
+The internal --files0-from mode keeps global inventory bounds but scans only
+the normalized repository-relative paths in the NUL-delimited input file.
 EOF
 }
 
+selected_mode=0
+selection_file=""
 case "${1:-}" in
-    "") ;;
+    "")
+        if [[ $# -ne 0 ]]; then
+            printf 'check-style: unexpected empty argument\n' >&2
+            usage >&2
+            exit 2
+        fi
+        ;;
     -h | --help)
+        if [[ $# -ne 1 ]]; then
+            printf 'check-style: help accepts no other arguments\n' >&2
+            usage >&2
+            exit 2
+        fi
         usage
         exit 0
+        ;;
+    --files0-from)
+        if [[ $# -ne 2 ]]; then
+            printf 'check-style: --files0-from requires one file\n' >&2
+            usage >&2
+            exit 2
+        fi
+        selected_mode=1
+        selection_file="$2"
         ;;
     *)
         printf 'check-style: unexpected argument: %s\n' "$1" >&2
@@ -98,6 +133,128 @@ decimal_exceeds() {
         return
     fi
     [[ "$value" > "$limit" ]]
+}
+
+declare -a selected_paths=()
+declare -A selected_lookup=()
+declare -A selected_seen=()
+
+selection_issue() {
+    local code="$1"
+    local message="$2"
+
+    style_issue check-style 0 "$code" "$message"
+}
+
+selected_path_is_normalized() {
+    local path="$1"
+    local dot=$'\x2e'
+    local slash=$'\x2f'
+    local parent="$dot$dot"
+
+    [[ -n "$path" && "$path" != "$slash"* \
+        && "$path" != *"$slash" && "$path" != "$dot" \
+        && "$path" != "$dot$slash"* \
+        && "$path" != *"$slash$dot" \
+        && "$path" != *"$slash$dot$slash"* \
+        && "$path" != "$parent" && "$path" != "$parent$slash"* \
+        && "$path" != *"$slash$parent" \
+        && "$path" != *"$slash$parent$slash"* \
+        && "$path" != *"$slash$slash"* \
+        && "$path" != *$'\n'* && "$path" != *$'\r'* \
+        && "$path" != *$'\t'* ]]
+}
+
+admit_selected_path() {
+    local path="$1"
+    local absolute
+
+    if ! selected_path_is_normalized "$path"; then
+        selection_issue STYLE_SELECTION_PATH \
+            'selected path is not normalized repository-relative input'
+        return 1
+    fi
+    absolute="$ROOT/$path"
+    if [[ ! -e "$absolute" && ! -L "$absolute" ]]; then
+        selection_issue STYLE_SELECTION_MISSING \
+            "selected path does not exist: $path"
+        return 1
+    fi
+    if [[ -n "${selected_lookup[$path]+present}" ]]; then
+        selection_issue STYLE_SELECTION_DUPLICATE \
+            "selected path is duplicated: $path"
+        return 1
+    fi
+    if [[ ${#selected_paths[@]} -ge MAX_ENTRIES ]]; then
+        selection_issue STYLE_SELECTION_COUNT_LIMIT \
+            "selected path count exceeds $MAX_ENTRIES"
+        return 1
+    fi
+    selected_lookup["$path"]=1
+    selected_paths+=("$path")
+}
+
+read_selected_paths() {
+    local input_size
+    local record=""
+
+    if [[ "$selection_file" != /* ]]; then
+        selection_issue STYLE_SELECTION_FILE \
+            '--files0-from requires an absolute path'
+        return 1
+    fi
+    if [[ -L "$selection_file" || ! -f "$selection_file" \
+        || ! -r "$selection_file" ]]; then
+        selection_issue STYLE_SELECTION_FILE \
+            'selection input must be one regular non-symlink file'
+        return 1
+    fi
+    if ! input_size="$(stat -c '%s' -- "$selection_file" 2>/dev/null)"; then
+        selection_issue STYLE_SELECTION_FILE \
+            'selection input size is unavailable'
+        return 1
+    fi
+    case "$input_size" in
+        '' | *[!0-9]*)
+            selection_issue STYLE_SELECTION_FILE \
+                'selection input size is not an unsigned decimal'
+            return 1
+            ;;
+    esac
+    if decimal_exceeds "$input_size" "$MAX_FILE_BYTES"; then
+        selection_issue STYLE_SELECTION_BYTES_LIMIT \
+            "selection input exceeds $MAX_FILE_BYTES bytes"
+        return 1
+    fi
+    while IFS= read -r -d '' record; do
+        if ! admit_selected_path "$record"; then
+            return 1
+        fi
+    done <"$selection_file"
+    if [[ -n "$record" ]]; then
+        selection_issue STYLE_SELECTION_FORMAT \
+            'selection input must end each path with NUL'
+        return 1
+    fi
+}
+
+path_is_selected() {
+    local path="$1"
+
+    [[ -n "${selected_lookup[$path]+present}" ]]
+}
+
+verify_selected_paths() {
+    local path
+
+    for path in "${selected_paths[@]}"; do
+        is_governed_path "$path" || continue
+        if [[ -z "${selected_seen[$path]+present}" ]]; then
+            selection_issue STYLE_SELECTION_NOT_SEEN \
+                "selected governed path was not encountered: $path"
+            return 1
+        fi
+    done
 }
 
 admitted_total=0
@@ -667,10 +824,14 @@ run_mutation_fixtures() {
     ((mutation_failures == 0))
 }
 
-run_mutation_fixtures || {
-    echo 'check-style: embedded mutation fixture failed' >&2
-    exit 1
-}
+if (( selected_mode == 0 )); then
+    run_mutation_fixtures || {
+        echo 'check-style: embedded mutation fixture failed' >&2
+        exit 1
+    }
+else
+    read_selected_paths || exit 2
+fi
 
 failures=0
 entries=0
@@ -678,25 +839,22 @@ files=0
 total_bytes=0
 inventory_pid=""
 if ! exec 7< <(
-    find "$ROOT" \
-        \( -path "$ROOT/.git" -o -path "$ROOT/target" \
-        -o -path "$ROOT/tmp" \
-        -o -path "$ROOT/Documentation/heritage" \
-        -o -path "$ROOT/changelog" \) -prune \
-        -o -print0
+    git -C "$ROOT" ls-files --cached --others \
+        --exclude-from="$ROOT/.gitignore" -z
 ); then
     style_issue check-style 0 STYLE_INVENTORY_READ \
         'repository traversal could not start'
     exit 1
 fi
 inventory_pid="$!"
-while IFS= read -r -d '' file <&7; do
-    relative="${file#"$ROOT/"}"
+while IFS= read -r -d '' relative <&7; do
+    file="$ROOT/$relative"
     next_entries=$((entries + 1))
     if ! check_entry_bound "$relative" "$next_entries"; then
         exit 1
     fi
     entries="$next_entries"
+    [[ -e "$file" || -L "$file" ]] || continue
     is_governed_path "$relative" || continue
     if ! check_input_type "$file" "$relative"; then
         exit 1
@@ -711,9 +869,19 @@ while IFS= read -r -d '' file <&7; do
         exit 1
     fi
     remaining_bytes=$((MAX_TOTAL_BYTES - total_bytes))
-    if ! scan_file \
-        "$file" "$relative" "$size" "$remaining_bytes"; then
-        failures=1
+    scan_selected=1
+    if (( selected_mode != 0 )); then
+        scan_selected=0
+        if path_is_selected "$relative"; then
+            selected_seen["$relative"]=1
+            scan_selected=1
+        fi
+    fi
+    if (( scan_selected != 0 )); then
+        if ! scan_file \
+            "$file" "$relative" "$size" "$remaining_bytes"; then
+            failures=1
+        fi
     fi
     files="$next_files"
     total_bytes="$admitted_total"
@@ -725,10 +893,21 @@ if ! wait "$inventory_pid"; then
     exit 1
 fi
 
+if (( selected_mode != 0 )); then
+    verify_selected_paths || exit 1
+fi
+
 ((failures == 0)) || {
     echo 'check-style: governed files do not conform' >&2
     exit 1
 }
+
+if (( selected_mode != 0 )); then
+    printf 'check-style: selected checks passed '
+    printf '(%d selected, %d entries, %d files, %d bytes)\n' \
+        "${#selected_paths[@]}" "$entries" "$files" "$total_bytes"
+    exit 0
+fi
 
 printf 'check-style: all checks passed (%d entries, %d files, %d bytes)\n' \
     "$entries" "$files" "$total_bytes"

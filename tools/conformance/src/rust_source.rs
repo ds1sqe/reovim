@@ -1968,8 +1968,18 @@ include!("generated.rs");
             &mut findings,
         );
         let values = findings.finish();
-        assert_eq!(values.len(), 1);
-        assert_eq!(values[0].code, "UNREGISTERED_RUST_SOURCE");
+        assert_eq!(
+            values,
+            [crate::finding::Finding::new(
+                "source",
+                "UNREGISTERED_RUST_SOURCE",
+                Some("src/orphan.rs".to_owned()),
+                concat!(
+                    "profile default: Rust file is not a Cargo target root ",
+                    "or reachable module",
+                ),
+            )]
+        );
     }
 
     #[test]

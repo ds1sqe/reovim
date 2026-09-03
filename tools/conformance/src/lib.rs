@@ -3996,12 +3996,7 @@ mod tests {
                     "result": {"status": "pass"}
                 }),
                 bytes: Vec::new(),
-                identity: concat!(
-                    "sha256:",
-                    "00000000000000000000000000000000",
-                    "00000000000000000000000000000000",
-                )
-                .to_owned(),
+                identity: crate::digest::bytes(b"candidate report"),
             },
             clean: true,
             root: PathBuf::from("/checked-root"),

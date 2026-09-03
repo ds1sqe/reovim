@@ -51,6 +51,15 @@ pub const fn const_cases() -> bool {
         && crate::derive_witness::<
             ::reovim_kernel_interface::event::CanonicalEventBytes<'static>,
         >()
+        && crate::derive_witness::<
+            ::reovim_kernel_interface::event::CanonicalEventRecordRef<'static>,
+        >()
+        && crate::send_sync_witness::<
+            ::reovim_kernel_interface::event::CanonicalEventRecordRef<'static>,
+        >()
+        && crate::derive_witness::<
+            ::reovim_kernel_interface::event::CarrierSafetyDescriptor,
+        >()
         && crate::clone_copy_witness::<
             ::reovim_kernel_interface::event::StartupEventRecord<'static>,
         >()

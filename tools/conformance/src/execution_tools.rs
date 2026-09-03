@@ -827,6 +827,7 @@ mod tests {
     }
 
     fn review(id: &str, role: &str, family: &str) -> Value {
+        let record_digest = crate::digest::bytes(id.as_bytes());
         json!({
             "id": id,
             "logical_role": role,
@@ -840,23 +841,26 @@ mod tests {
             "invalidators": ["executable or runtime-input drift"],
             "disposition": "admit",
             "review_record": review_record(id),
-            "review_record_digest": format!("sha256:{}", "1".repeat(64))
+            "review_record_digest": record_digest
         })
     }
 
     fn binding(review: &str, executable: &str, prepared: &str) -> Value {
+        let executable_digest = crate::digest::bytes(executable.as_bytes());
+        let version_digest = crate::digest::bytes(b"tool 1.0\n");
+        let runtime_digest = crate::digest::bytes(prepared.as_bytes());
         json!({
             "review": review,
             "canonical_path": executable,
             "prepared_path": prepared,
-            "executable_digest": format!("sha256:{}", "2".repeat(64)),
+            "executable_digest": executable_digest,
             "executable_size_bytes": 1024,
             "version_argv": ["--version"],
             "version": "tool 1.0\n",
-            "version_digest": format!("sha256:{}", "3".repeat(64)),
+            "version_digest": version_digest,
             "runtime_inputs": [{
                 "canonical_path": "/lib64/ld-linux-x86-64.so.2",
-                "content_digest": format!("sha256:{}", "4".repeat(64)),
+                "content_digest": runtime_digest,
                 "size_bytes": 2048
             }]
         })
@@ -878,8 +882,8 @@ mod tests {
     fn active_empty_registry_is_valid() {
         let registry =
             super::Registry::parse(&empty_registry(), LIMITS).unwrap();
-        assert_eq!(registry.reviews.len(), 0);
-        assert_eq!(registry.environments.len(), 0);
+        assert!(registry.reviews.is_empty());
+        assert!(registry.environments.is_empty());
     }
 
     #[test]
@@ -889,8 +893,14 @@ mod tests {
         assert_eq!(registry.reviews[0].logical_role, super::LogicalRole::Git);
         assert_eq!(registry.environments[0].bindings[0].review, "git-exact");
         assert_eq!(
-            registry.environments[0].bindings[0].runtime_inputs.len(),
-            1
+            registry.environments[0].bindings[0].runtime_inputs,
+            [super::RuntimeInput {
+                canonical_path: std::path::PathBuf::from(
+                    "/lib64/ld-linux-x86-64.so.2",
+                ),
+                content_digest: crate::digest::bytes(b"/tools/git"),
+                size_bytes: 2048,
+            }]
         );
     }
 

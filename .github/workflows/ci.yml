@@ -34,4 +34,6 @@ jobs:
       - name: Fetch exact locked dependencies
         run: CARGO_HOME="$RUNNER_TEMP/reovim-cargo-home" cargo fetch --locked
       - name: Contributor checks
-        run: CARGO_HOME="$RUNNER_TEMP/reovim-cargo-home" ./scripts/check.sh
+        run: >-
+          CARGO_HOME="$RUNNER_TEMP/reovim-cargo-home"
+          ./scripts/check.sh --full

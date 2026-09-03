@@ -4,7 +4,7 @@
 
 - Kind: workflow
 - Exact content digest:
-  `sha256:033269df23b9ff12496f77f1730b663a17cd3932044a094af1352ce7119e10e5`
+  `sha256:b3f71d42639c90dbf5cb063e19ece01518ed51f8ce1f20b223d845cd36c772d6`
 - Review mechanism: exact content and retained review
 
 ## Direct local invocations
@@ -21,6 +21,8 @@ admission. Shell utility and Cargo commands are external-tool invocations.
   workflow permissions and inputs present in these exact bytes.
 - Each `run` step uses the hosted runner's admitted shell semantics and begins
   in the checked-out repository.
+- The contributor invocation passes `--full`; CI never consumes local cache
+  hits as verification evidence.
 - The five-minute job timeout bounds dependency fetch, the selected fast
   contributor check, and cleanup together.
 - The mutable hosted image has no exact execution-tool admission or retained

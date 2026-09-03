@@ -3,10 +3,49 @@ use super::canonical::{
     parse_startup_line,
 };
 use super::{
-    BootstrapHealth, CanonicalEventBytes, EventAdmissionScope, EventError,
-    EventSequence, EventTimestamp, ReadinessOutcome, RetainedSequenceRange,
-    StartupEventDescriptor, StartupEventRecord, StartupProposal,
+    BootstrapHealth, CanonicalEventBytes, CanonicalEventRecordRef,
+    EventAdmissionScope, EventError, EventSequence, EventTimestamp,
+    ReadinessOutcome, RetainedSequenceRange, StartupEventDescriptor,
+    StartupEventRecord, StartupProposal,
 };
+
+impl<'a> crate::event::CanonicalEventRecordRef<'a> {
+    /// Returns the complete source Event Stream lifecycle stamp.
+    #[must_use]
+    pub const fn stream(self) -> crate::lifecycle::LifecycleIdentity {
+        self.stream
+    }
+
+    /// Returns the stable Event family identity scalar.
+    #[must_use]
+    pub const fn family(self) -> u128 {
+        self.family.value()
+    }
+
+    /// Returns the Event family schema version.
+    #[must_use]
+    pub const fn schema_version(self) -> u64 {
+        self.schema_version
+    }
+
+    /// Returns the nonzero candidate Event sequence.
+    #[must_use]
+    pub const fn sequence(self) -> EventSequence {
+        self.sequence
+    }
+
+    /// Returns the structurally validated canonical Event bytes.
+    #[must_use]
+    pub const fn bytes(self) -> &'a [u8] {
+        self.bytes
+    }
+
+    /// Returns the checked canonical byte count.
+    #[must_use]
+    pub const fn size(self) -> crate::event::CheckedByteCount {
+        self.size
+    }
+}
 
 impl<'a> crate::event::StartupEventRecord<'a> {
     /// Constructs one fully validated startup record value.
@@ -82,6 +121,22 @@ impl<'a> crate::event::StartupEventRecord<'a> {
     #[must_use]
     pub const fn canonical(self) -> CanonicalEventBytes<'a> {
         self.canonical
+    }
+
+    /// Returns the family-neutral canonical reference for later fan-out.
+    ///
+    /// This reference preserves validated structure but does not itself prove
+    /// that admission committed the candidate record.
+    #[must_use]
+    pub const fn canonical_ref(self) -> CanonicalEventRecordRef<'a> {
+        CanonicalEventRecordRef {
+            stream: self.scope.stream(),
+            family: self.family,
+            schema_version: self.schema_version,
+            sequence: self.sequence,
+            bytes: self.canonical.bytes(),
+            size: self.canonical.size(),
+        }
     }
 }
 

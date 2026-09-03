@@ -3,6 +3,7 @@
 pub use ::reovim_foundation::bound::{
     BoundDescriptor, BoundError, CheckedByteCount, CheckedCount,
 };
+pub use ::reovim_foundation::carrier::CarrierSafetyDescriptor;
 use reovim_foundation::contract::ContractId;
 use reovim_foundation::identity::InstanceId;
 
@@ -36,6 +37,7 @@ pub struct StartupEventIdentities {
     contract: ContractId,
     family: ContractId,
     remediation_catalog: ContractId,
+    canonical_reference: ContractId,
     stream: LifecycleIdentity,
     lifecycle_owner: LifecycleIdentity,
 }
@@ -59,6 +61,7 @@ pub struct StartupEventDescriptor {
     identities: StartupEventIdentities,
     clock: ClockDescriptor,
     limits: StartupEventLimits,
+    canonical_reference_safety: CarrierSafetyDescriptor,
 }
 
 /// Fixed bootstrap-health state retained outside Event admission.
@@ -226,6 +229,20 @@ pub struct CanonicalEventBytes<'a> {
     size: CheckedByteCount,
 }
 
+/// Borrowed family-neutral identity and canonical bytes for Event fan-out.
+///
+/// This value proves structural coherence. Possession alone does not prove
+/// that the record crossed the atomic admission cut.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CanonicalEventRecordRef<'a> {
+    stream: LifecycleIdentity,
+    family: ContractId,
+    schema_version: u64,
+    sequence: EventSequence,
+    bytes: &'a [u8],
+    size: CheckedByteCount,
+}
+
 /// Complete immutable startup record prepared for one admission commit.
 #[derive(Clone, Copy)]
 pub struct StartupEventRecord<'a> {
@@ -318,6 +335,8 @@ pub enum EventError {
     ChargeOwnerMismatch,
     /// Contract selection and startup identity name different families.
     DescriptorContractMismatch,
+    /// The borrowed canonical-reference carrier declaration is incoherent.
+    IncoherentCarrier,
     /// The selected startup Event contract family differs.
     UnsupportedContract,
     /// The requested startup Event contract version is incompatible.

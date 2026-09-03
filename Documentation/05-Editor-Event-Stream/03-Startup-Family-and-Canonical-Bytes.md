@@ -147,6 +147,24 @@ whose checked sum is `u64::MAX`, the coherent `activation-failed` plus
 record-size bound and canonical-rendering golden rather than an estimated
 allocation size.
 
+A borrowed canonical-record reference exposes only validated Stream, family,
+schema, candidate-sequence, canonical-byte, and checked-size values. It proves
+their structural coherence without reparsing in a consumer; possession alone
+does not prove the record crossed the atomic admission cut. Live Runtime fan-
+out obtains this reference only from the admitted record after commit.
+
+Contract Authority supplies the versioned reference-safety descriptor, and the
+startup constructor rejects any nonexact axis. The required declaration is
+`Borrowed + Shared + Copy + Trivial + IncarnationBound`,
+`Transferable + Immutable`, `DataOnly + NotInvocable`, mismatch Reject, and no
+unsafe boundary. It can be retained only while its Rust borrow and source
+Stream incarnation remain valid.
+
+`IncarnationBound` is a logical identity scope, not proof of current liveness,
+readiness, or admission. The Rust lifetime protects the borrowed bytes; every
+use against a live capability must also compare the complete current Stream
+identity. Same-incarnation data from another generation is not current.
+
 The v1 family has no escaping case because it accepts no free-form field.
 Adding one requires a new family schema that fixes escaping and redaction while
 preserving this record's bytes. Ring replay, DiagnosticOutput, human export,

@@ -44,6 +44,16 @@ Run the repository check suite:
 ./scripts/check.sh
 ```
 
+With valid toolchain-bound local coverage, the default command selects only
+the changed component plus reverse dependents. A TUI-only change runs only the
+TUI suite; a Kernel change also runs dependent Client suites. Missing or
+uncertain coverage falls back to the full gate. Run the uncached checkpoint
+form before committing:
+
+```sh
+./scripts/check.sh --full
+```
+
 At minimum, relevant changes require formatting, warning-free builds, strict
 lint, focused and workspace tests, documentation links/terminology checks, and
 the evidence classes named by applicable Rule Matrix rows. A happy-path test

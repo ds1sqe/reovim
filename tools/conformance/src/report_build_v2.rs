@@ -41,7 +41,6 @@ const PRODUCT_WORKSPACE: &str = "product";
 const PRODUCT_PROFILE: &str = "release";
 const PRODUCT_TARGET: &str = "library";
 const PRODUCT_TARGET_TRIPLE: &str = "x86_64-unknown-linux-gnu";
-const PRODUCT_COMPILER_INPUT_COUNT: usize = 39;
 const PUBLIC_RELATION: &str = "foundation-public-api";
 const KERNEL_INTERFACE_PUBLIC_RELATION: &str = "kernel-interface-public-api";
 const PREPARED_CARGO: &str = "/compiler/bin/cargo";
@@ -1008,12 +1007,28 @@ fn validate_product_mode(
 fn active_registry(
     registry: &product_closures::Registry,
 ) -> Result<ActiveRegistry<'_>, BuildError> {
-    if registry.closures.len() != 4
-        || registry.public_consumer_relations.len() != 2
-    {
+    let closure_ids = registry
+        .closures
+        .iter()
+        .map(|closure| closure.id.as_str())
+        .collect::<BTreeSet<_>>();
+    let expected_closures = BTreeSet::from([
+        SHIPPING_CLOSURE,
+        CONSUMER_CLOSURE,
+        KERNEL_INTERFACE_SHIPPING_CLOSURE,
+        KERNEL_INTERFACE_CONSUMER_CLOSURE,
+    ]);
+    let relation_ids = registry
+        .public_consumer_relations
+        .iter()
+        .map(|relation| relation.id.as_str())
+        .collect::<BTreeSet<_>>();
+    let expected_relations =
+        BTreeSet::from([PUBLIC_RELATION, KERNEL_INTERFACE_PUBLIC_RELATION]);
+    if closure_ids != expected_closures || relation_ids != expected_relations {
         return Err(BuildError::new(
             "V2_PRODUCT_REGISTRY_SET",
-            "active Product proof requires four closures and two relations",
+            "active Product registry differs from its closed identity sets",
         ));
     }
     let foundation = active_pair(
@@ -1101,7 +1116,7 @@ fn validate_foundation_registry(
         false,
     )?;
     validate_registry_relation(pair, PUBLIC_RELATION)?;
-    validate_registry_counts(pair, 8, 143, 165, 0)
+    Ok(())
 }
 
 fn validate_kernel_interface_registry(
@@ -1138,7 +1153,7 @@ fn validate_kernel_interface_registry(
         false,
     )?;
     validate_registry_relation(pair, KERNEL_INTERFACE_PUBLIC_RELATION)?;
-    validate_registry_counts(pair, 23, 356, 306, 6)
+    Ok(())
 }
 
 fn validate_registry_path(
@@ -1174,33 +1189,6 @@ fn validate_registry_relation(
     Err(BuildError::new(
         "V2_PRODUCT_RELATION",
         format!("public relation {relation_id} differs from its exact pair"),
-    ))
-}
-
-fn validate_registry_counts(
-    pair: ActivePair<'_>,
-    package_members: usize,
-    public_items: usize,
-    derive_checks: usize,
-    reexports: usize,
-) -> Result<(), BuildError> {
-    let membership =
-        pair.shipping.package_membership.as_ref().ok_or_else(|| {
-            BuildError::new(
-                "V2_PRODUCT_PACKAGE_REGISTRY",
-                "shipping closure lacks package membership authority",
-            )
-        })?;
-    let exact = membership.members.len() == package_members
-        && pair.relation.public_items.len() == public_items
-        && pair.relation.derive_checks.len() == derive_checks
-        && pair.relation.reexports.len() == reexports;
-    if exact {
-        return Ok(());
-    }
-    Err(BuildError::new(
-        "V2_PRODUCT_REGISTRY_SET",
-        format!("relation {} has unexpected evidence counts", pair.relation.id),
     ))
 }
 
@@ -2213,11 +2201,10 @@ fn product_input_values(
             )
         })
     })?;
-    if count != PRODUCT_COMPILER_INPUT_COUNT
-        || count
-            > usize::from(
-                inputs.topology.limits.product_execution.compiler_input_count,
-            )
+    if count
+        > usize::from(
+            inputs.topology.limits.product_execution.compiler_input_count,
+        )
     {
         return Err(BuildError::new(
             "V2_PRODUCT_INPUT_LIMIT",
@@ -3220,37 +3207,33 @@ fn validate_product_source_observation(
             product_closures::PackageMember::CargoGenerated { .. } => None,
         })
         .collect::<BTreeSet<_>>();
-    let observed_shipping =
-        source.shipping_sources.iter().cloned().collect::<BTreeSet<_>>();
-    let observed_consumer =
-        source.consumer_sources.iter().cloned().collect::<BTreeSet<_>>();
-    let witnesses =
-        source.witness_types.iter().cloned().collect::<BTreeSet<_>>();
-    let expected_witnesses = pair
-        .relation
-        .derive_checks
-        .iter()
-        .map(|check| check.public_type.clone())
-        .collect::<BTreeSet<_>>();
-    let expected_counts = match pair.relation.id.as_str() {
-        PUBLIC_RELATION => (5, 2),
-        KERNEL_INTERFACE_PUBLIC_RELATION => (20, 12),
+    let expected_shipping = shipping.iter().cloned().collect::<Vec<_>>();
+    let selections = product_preflight::compiler_source_selection();
+    let expected_consumer = match pair.relation.id.as_str() {
+        PUBLIC_RELATION => selections.foundation_consumer,
+        KERNEL_INTERFACE_PUBLIC_RELATION => {
+            selections.kernel_interface_consumer
+        }
         _ => {
             return Err(BuildError::new(
                 "V2_PRODUCT_SOURCE_SET",
                 "source observation references an unknown public relation",
             ));
         }
-    };
+    }
+    .into_iter()
+    .collect::<Vec<_>>();
+    let expected_witnesses = pair
+        .relation
+        .public_items
+        .iter()
+        .filter(|item| item.kind == product_closures::PublicItemKind::Type)
+        .map(|item| item.path.clone())
+        .collect::<Vec<_>>();
     if source.relation != pair.relation.id
-        || shipping != observed_shipping
-        || source.shipping_sources.len() != observed_shipping.len()
-        || source.consumer_sources.len() != observed_consumer.len()
-        || !observed_consumer.contains(&pair.consumer.target.src_path)
-        || observed_shipping.len() != expected_counts.0
-        || observed_consumer.len() != expected_counts.1
-        || witnesses != expected_witnesses
-        || source.witness_types.len() != witnesses.len()
+        || source.shipping_sources != expected_shipping
+        || source.consumer_sources != expected_consumer
+        || source.witness_types != expected_witnesses
     {
         return Err(BuildError::new(
             "V2_PRODUCT_SOURCE_SET",
@@ -5753,7 +5736,7 @@ mod tests {
         let entry = crate::compiler_substrate::Entry {
             kind: crate::compiler_substrate::EntryKind::CompilerSupport,
             canonical_path: PathBuf::from("/toolchain/empty"),
-            content_digest: format!("sha256:{}", "0".repeat(64)),
+            content_digest: crate::digest::bytes(b"empty substrate fixture"),
             size_bytes: 0,
         };
         let retained = super::substrate_entry_value(&entry).unwrap();
@@ -5919,7 +5902,7 @@ mod tests {
                 kind: crate::prepared_root::InventoryEntryKind::File,
                 mode: 0o100_755,
                 size_bytes: 1,
-                content_digest: Some(format!("sha256:{}", "2".repeat(64))),
+                content_digest: Some(crate::digest::bytes(b"cargo fixture")),
                 device_identity: None,
             },
         ])
@@ -6043,7 +6026,7 @@ mod tests {
         };
         let first_process = process(100, 100);
         let second_process = process(200, 200);
-        let executable_digest = format!("sha256:{}", "a".repeat(64));
+        let executable_digest = crate::digest::bytes(b"executable fixture");
         assert_ne!(first_process.pgid, second_process.pgid);
 
         let first = super::process_value(
@@ -6208,13 +6191,19 @@ mod tests {
             "p",
         )
         .unwrap();
-        assert_eq!(values.len(), 2);
-        assert_eq!(values[0]["id"], "library");
-        assert!(
-            values[1]["id"]
-                .as_str()
-                .unwrap()
-                .starts_with("unregistered-target:sha256:")
+        let diagnostic_id = super::diagnostic_target_id(
+            &package,
+            &package.targets[1],
+            Path::new("fixture/build.rs"),
+        )
+        .unwrap();
+        let identities = values
+            .iter()
+            .map(|value| value["id"].as_str().unwrap())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            identities,
+            BTreeSet::from(["library", diagnostic_id.as_str()])
         );
 
         let absent = crate::graph::GraphReport {

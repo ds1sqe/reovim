@@ -531,7 +531,17 @@ mod tests {
         assert_eq!(parsed[std::path::Path::new("file.txt")].mode, "100644");
 
         let sha256 = tree_entry("100755", "blob", SHA256_OID, "script");
-        assert_eq!(super::parse_tree(&sha256, "sha256").unwrap().len(), 1);
+        assert_eq!(
+            super::parse_tree(&sha256, "sha256").unwrap(),
+            std::collections::BTreeMap::from([(
+                std::path::PathBuf::from("script"),
+                super::TreeEntry {
+                    mode: "100755".to_owned(),
+                    kind: "blob".to_owned(),
+                    object_id: SHA256_OID.to_owned(),
+                },
+            )])
+        );
 
         for invalid in [
             tree_entry("120000", "blob", SHA1_OID, "link"),
@@ -548,8 +558,15 @@ mod tests {
         let oid = "0123456789012345678901234567890123456789";
         let valid = format!("H 100644 {oid} 0\tfile\0");
         assert_eq!(
-            super::parse_index_entries(valid.as_bytes(), "sha1").unwrap().len(),
-            1
+            super::parse_index_entries(valid.as_bytes(), "sha1").unwrap(),
+            std::collections::BTreeMap::from([(
+                std::path::PathBuf::from("file"),
+                super::TreeEntry {
+                    mode: "100644".to_owned(),
+                    kind: "blob".to_owned(),
+                    object_id: oid.to_owned(),
+                },
+            )])
         );
         for flag in ['h', 'S', '?'] {
             let invalid = format!("{flag} 100644 {oid} 0\tfile\0");

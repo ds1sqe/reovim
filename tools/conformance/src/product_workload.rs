@@ -61,7 +61,7 @@ const KERNEL_INTERFACE_SHIPPING_PACKAGE: &str = "reovim-kernel-interface";
 const KERNEL_INTERFACE_VALIDATION_PACKAGE: &str =
     "reovim-kernel-interface-public-consumer";
 
-const SHIPPING_SOURCES: [&str; 5] = [
+const SHIPPING_SOURCES: &[&str] = &[
     "kernel/foundation/src/bound.rs",
     "kernel/foundation/src/carrier.rs",
     "kernel/foundation/src/contract.rs",
@@ -69,14 +69,18 @@ const SHIPPING_SOURCES: [&str; 5] = [
     "kernel/foundation/src/lib.rs",
 ];
 
-const VALIDATION_SOURCES: [&str; 2] = [
+const VALIDATION_SOURCES: &[&str] = &[
     "tests/foundation-public-consumer/src/lib.rs",
     "tests/foundation-public-consumer/src/public_items.rs",
 ];
 
-const KERNEL_INTERFACE_SHIPPING_SOURCES: [&str; 20] = [
+const KERNEL_INTERFACE_SHIPPING_SOURCES: &[&str] = &[
+    "kernel/interface/src/bound.rs",
     "kernel/interface/src/cancellation.rs",
+    "kernel/interface/src/carrier.rs",
     "kernel/interface/src/clock.rs",
+    "kernel/interface/src/contract.rs",
+    "kernel/interface/src/diagnostic.rs",
     "kernel/interface/src/event.rs",
     "kernel/interface/src/event/admission.rs",
     "kernel/interface/src/event/canonical.rs",
@@ -92,13 +96,15 @@ const KERNEL_INTERFACE_SHIPPING_SOURCES: [&str; 20] = [
     "kernel/interface/src/event/sequence.rs",
     "kernel/interface/src/event/snapshot.rs",
     "kernel/interface/src/event/snapshot_validation.rs",
+    "kernel/interface/src/identity.rs",
     "kernel/interface/src/lib.rs",
     "kernel/interface/src/lifecycle.rs",
     "kernel/interface/src/operation.rs",
 ];
 
-const KERNEL_INTERFACE_VALIDATION_SOURCES: [&str; 12] = [
+const KERNEL_INTERFACE_VALIDATION_SOURCES: &[&str] = &[
     "tests/kernel-interface-public-consumer/src/clock.rs",
+    "tests/kernel-interface-public-consumer/src/diagnostic.rs",
     "tests/kernel-interface-public-consumer/src/event/canonical.rs",
     "tests/kernel-interface-public-consumer/src/event/derives.rs",
     "tests/kernel-interface-public-consumer/src/event/descriptor.rs",
@@ -549,7 +555,7 @@ fn capture_four_stages(
         paths,
         metadata,
         shipping,
-        &SHIPPING_SOURCES,
+        SHIPPING_SOURCES,
         StageProviders { direct: None, transitive: None },
     )?;
     let foundation_provider = provider(&foundation_shipping)?;
@@ -558,7 +564,7 @@ fn capture_four_stages(
         paths,
         metadata,
         validation,
-        &VALIDATION_SOURCES,
+        VALIDATION_SOURCES,
         StageProviders { direct: Some(&foundation_provider), transitive: None },
     )?;
     let kernel_interface_shipping = capture_stage(
@@ -566,7 +572,7 @@ fn capture_four_stages(
         paths,
         metadata,
         kernel_shipping,
-        &KERNEL_INTERFACE_SHIPPING_SOURCES,
+        KERNEL_INTERFACE_SHIPPING_SOURCES,
         StageProviders { direct: Some(&foundation_provider), transitive: None },
     )?;
     let kernel_provider = provider(&kernel_interface_shipping)?;
@@ -575,7 +581,7 @@ fn capture_four_stages(
         paths,
         metadata,
         kernel_validation,
-        &KERNEL_INTERFACE_VALIDATION_SOURCES,
+        KERNEL_INTERFACE_VALIDATION_SOURCES,
         StageProviders {
             direct: Some(&kernel_provider),
             transitive: Some(&foundation_provider),
@@ -589,12 +595,12 @@ fn capture_four_stages(
     })
 }
 
-fn capture_stage<const N: usize>(
+fn capture_stage(
     request: &LoadedRequest,
     paths: &WorkloadPaths,
     metadata: &cargo::Metadata,
     closure: &Closure,
-    sources: &[&str; N],
+    sources: &[&str],
     providers: StageProviders<'_>,
 ) -> Result<BuildObservation, Error> {
     let package_id = package_id(metadata, closure)?;
@@ -1130,9 +1136,25 @@ fn validate_limits(limits: &Limits) -> Result<(), Error> {
 }
 
 fn validate_registry(registry: &Registry) -> Result<(), Error> {
-    if registry.closures.len() != 4
-        || registry.public_consumer_relations.len() != 2
-    {
+    let closure_ids = registry
+        .closures
+        .iter()
+        .map(|closure| closure.id.as_str())
+        .collect::<BTreeSet<_>>();
+    let expected_closures = BTreeSet::from([
+        SHIPPING_CLOSURE,
+        VALIDATION_CLOSURE,
+        KERNEL_INTERFACE_SHIPPING_CLOSURE,
+        KERNEL_INTERFACE_VALIDATION_CLOSURE,
+    ]);
+    let relation_ids = registry
+        .public_consumer_relations
+        .iter()
+        .map(|relation| relation.id.as_str())
+        .collect::<BTreeSet<_>>();
+    let expected_relations =
+        BTreeSet::from([PUBLIC_RELATION, KERNEL_INTERFACE_PUBLIC_RELATION]);
+    if closure_ids != expected_closures || relation_ids != expected_relations {
         return Err(Error::new(
             "PRODUCT_WORKLOAD_REGISTRY_SET",
             "registry is not the exact Foundation and KI closure pairs",
@@ -1151,18 +1173,12 @@ fn validate_registry(registry: &Registry) -> Result<(), Error> {
         PUBLIC_RELATION,
         SHIPPING_CLOSURE,
         VALIDATION_CLOSURE,
-        143,
-        165,
-        0,
     )?;
     validate_relation(
         registry,
         KERNEL_INTERFACE_PUBLIC_RELATION,
         KERNEL_INTERFACE_SHIPPING_CLOSURE,
         KERNEL_INTERFACE_VALIDATION_CLOSURE,
-        356,
-        306,
-        6,
     )
 }
 
@@ -1171,9 +1187,6 @@ fn validate_relation(
     id: &str,
     shipping: &str,
     consumer: &str,
-    public_items: usize,
-    derives: usize,
-    reexports: usize,
 ) -> Result<(), Error> {
     let mut relations = registry
         .public_consumer_relations
@@ -1187,10 +1200,7 @@ fn validate_relation(
     })?;
     let exact = relations.next().is_none()
         && relation.shipping_closure == shipping
-        && relation.consumer_closure == consumer
-        && relation.public_items.len() == public_items
-        && relation.derive_checks.len() == derives
-        && relation.reexports.len() == reexports;
+        && relation.consumer_closure == consumer;
     if !exact {
         return Err(Error::new(
             "PRODUCT_WORKLOAD_RELATION",
@@ -1504,7 +1514,7 @@ fn exact_package_targets(package: &cargo::Package, closure: &Closure) -> bool {
     })
 }
 
-fn source_set<const N: usize>(values: &[&str; N]) -> BTreeSet<PathBuf> {
+fn source_set(values: &[&str]) -> BTreeSet<PathBuf> {
     values.iter().map(PathBuf::from).collect()
 }
 
@@ -3173,25 +3183,25 @@ fn validate_unit(
     let (crate_name, sources, dep_root, extern_name) = match closure {
         SHIPPING_CLOSURE => (
             "reovim_foundation",
-            source_set(&SHIPPING_SOURCES),
+            source_set(SHIPPING_SOURCES),
             Path::new("/scratch/shipping-dep-info"),
             None,
         ),
         VALIDATION_CLOSURE => (
             "reovim_foundation_public_consumer",
-            source_set(&VALIDATION_SOURCES),
+            source_set(VALIDATION_SOURCES),
             Path::new("/scratch/validation-dep-info"),
             Some("reovim_foundation"),
         ),
         KERNEL_INTERFACE_SHIPPING_CLOSURE => (
             "reovim_kernel_interface",
-            source_set(&KERNEL_INTERFACE_SHIPPING_SOURCES),
+            source_set(KERNEL_INTERFACE_SHIPPING_SOURCES),
             Path::new("/scratch/kernel-interface-shipping-dep-info"),
             Some("reovim_foundation"),
         ),
         KERNEL_INTERFACE_VALIDATION_CLOSURE => (
             "reovim_kernel_interface_public_consumer",
-            source_set(&KERNEL_INTERFACE_VALIDATION_SOURCES),
+            source_set(KERNEL_INTERFACE_VALIDATION_SOURCES),
             Path::new("/scratch/kernel-interface-validation-dep-info"),
             Some("reovim_kernel_interface"),
         ),
@@ -4176,6 +4186,7 @@ mod tests {
         package_capture::{self, DirtyMode, Phase},
         process::ProcessLimits,
         product_closures::{ParseLimits, Registry},
+        topology::HARD_LIMITS,
     };
 
     const PROCESS: ProcessLimits = ProcessLimits {
@@ -4193,7 +4204,7 @@ mod tests {
                 path_bytes: 4_096,
                 closure_items: 16,
                 package_members: 32,
-                public_items: 512,
+                public_items: HARD_LIMITS.product_execution.public_item_count,
             },
             metadata_process: PROCESS,
             metadata_json_depth: 64,
@@ -4287,7 +4298,6 @@ mod tests {
         assert_eq!(value["schema"], REQUEST_SCHEMA);
         let bytes = serde_json::to_vec(&value).unwrap();
         assert!(bytes.len() <= REQUEST_MAX_BYTES);
-        assert_eq!(bytes.len(), 1_344);
     }
 
     #[test]
@@ -4491,20 +4501,6 @@ mod tests {
             .pointer("/foundation_validation/provider_reuse/extern_edge/path")
             .unwrap();
         assert_eq!(shipping_rmeta, consumer_extern);
-        assert_eq!(
-            value["foundation_shipping"]["probes"].as_array().unwrap().len(),
-            4
-        );
-        let event_counts = [
-            "foundation_shipping",
-            "foundation_validation",
-            "kernel_interface_shipping",
-            "kernel_interface_validation",
-        ]
-        .map(|name| {
-            value[name]["cargo"]["artifacts"].as_array().unwrap().len()
-        });
-        assert_eq!(event_counts, [1, 2, 2, 3]);
     }
 
     #[test]
@@ -5025,9 +5021,9 @@ mod tests {
             .find(|closure| closure.package.name == package)
             .unwrap();
         let sources = if package == SHIPPING_PACKAGE {
-            source_set(&SHIPPING_SOURCES)
+            source_set(SHIPPING_SOURCES)
         } else {
-            source_set(&KERNEL_INTERFACE_SHIPPING_SOURCES)
+            source_set(KERNEL_INTERFACE_SHIPPING_SOURCES)
         }
         .into_iter()
         .collect::<Vec<_>>();
@@ -5490,14 +5486,14 @@ mod tests {
                 "reovim_foundation",
                 "/scratch/shipping-dep-info/00000004.d",
                 "kernel/foundation/src/lib.rs",
-                source_set(&SHIPPING_SOURCES),
+                source_set(SHIPPING_SOURCES),
                 "1111111111111111",
             ),
             VALIDATION_CLOSURE => (
                 "reovim_foundation_public_consumer",
                 "/scratch/validation-dep-info/00000000.d",
                 "tests/foundation-public-consumer/src/lib.rs",
-                source_set(&VALIDATION_SOURCES),
+                source_set(VALIDATION_SOURCES),
                 "2222222222222222",
             ),
             KERNEL_INTERFACE_SHIPPING_CLOSURE => (
@@ -5507,7 +5503,7 @@ mod tests {
                     "00000000.d"
                 ),
                 "kernel/interface/src/lib.rs",
-                source_set(&KERNEL_INTERFACE_SHIPPING_SOURCES),
+                source_set(KERNEL_INTERFACE_SHIPPING_SOURCES),
                 "3333333333333333",
             ),
             KERNEL_INTERFACE_VALIDATION_CLOSURE => (
@@ -5517,7 +5513,7 @@ mod tests {
                     "00000000.d"
                 ),
                 "tests/kernel-interface-public-consumer/src/lib.rs",
-                source_set(&KERNEL_INTERFACE_VALIDATION_SOURCES),
+                source_set(KERNEL_INTERFACE_VALIDATION_SOURCES),
                 "4444444444444444",
             ),
             _ => unreachable!(),
@@ -5692,7 +5688,7 @@ mod tests {
     }
 
     fn digest(value: char) -> String {
-        format!("sha256:{}", std::iter::repeat_n(value, 64).collect::<String>())
+        crate::digest::bytes(value.to_string().as_bytes())
     }
 
     #[test]

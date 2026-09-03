@@ -1836,17 +1836,29 @@ mod tests {
     fn active_empty_registry_is_valid() {
         let registry =
             super::Registry::parse(&empty_registry(), LIMITS).unwrap();
-        assert_eq!(registry.closures.len(), 0);
-        assert_eq!(registry.public_consumer_relations.len(), 0);
+        assert!(registry.closures.is_empty());
+        assert!(registry.public_consumer_relations.is_empty());
     }
 
     #[test]
     fn complete_pair_parses_and_sorts_semantic_sets() {
         let registry =
             super::Registry::parse(&complete_registry(), LIMITS).unwrap();
-        assert_eq!(registry.closures.len(), 2);
-        assert_eq!(registry.closures[0].id, "foundation-consumer");
-        let relation = &registry.public_consumer_relations[0];
+        assert_eq!(
+            registry
+                .closures
+                .iter()
+                .map(|closure| (closure.id.as_str(), closure.kind))
+                .collect::<Vec<_>>(),
+            [
+                ("foundation-consumer", super::ClosureKind::Validation),
+                ("foundation-shipping", super::ClosureKind::Shipping),
+            ]
+        );
+        let [relation] = registry.public_consumer_relations.as_slice() else {
+            panic!("expected only the foundation public relation");
+        };
+        assert_eq!(relation.id, "foundation-public-api");
         assert_eq!(relation.public_items[0].path, "Revision");
         assert_eq!(
             relation.derive_checks[0].derive,
@@ -2060,13 +2072,23 @@ mod tests {
             .iter()
             .find(|relation| relation.id == "kernel-interface-public-api")
             .unwrap();
-        assert_eq!(relation.reexports.len(), 2);
-        assert_eq!(relation.reexports[0].public_type, "clock::Revision");
         assert_eq!(
-            relation.reexports[0].provider_relation,
-            "foundation-public-api"
+            relation
+                .reexports
+                .iter()
+                .map(|reexport| {
+                    (
+                        reexport.public_type.as_str(),
+                        reexport.provider_relation.as_str(),
+                        reexport.provider_type.as_str(),
+                    )
+                })
+                .collect::<Vec<_>>(),
+            [
+                ("clock::Revision", "foundation-public-api", "Revision"),
+                ("clock::Version", "foundation-public-api", "Version"),
+            ]
         );
-        assert_eq!(relation.reexports[0].provider_type, "Revision");
     }
 
     #[test]

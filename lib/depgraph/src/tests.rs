@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 use std::{
+    collections::BTreeSet,
     fs,
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
@@ -184,20 +185,37 @@ outside = "1"
     let graph =
         load_declared_manifest_graph(root.path(), &DiscoveryOptions::default())
             .unwrap();
-    assert_eq!(graph.packages().len(), 3);
-    assert_eq!(graph.local_edges().len(), 3);
-    assert!(graph.local_edges().iter().any(|edge| {
-        edge.consumer == "beta"
-            && edge.provider == "alpha"
-            && edge.kind == DependencyKind::Normal
-            && edge.optional
-    }));
-    assert!(graph.local_edges().iter().any(|edge| {
-        edge.consumer == "gamma"
-            && edge.provider == "beta"
-            && edge.kind == DependencyKind::Development
-            && edge.target.as_deref() == Some("cfg(unix)")
-    }));
+    assert_eq!(
+        graph.packages().keys().map(String::as_str).collect::<Vec<_>>(),
+        ["alpha", "beta", "gamma"]
+    );
+    let edges = graph
+        .local_edges()
+        .iter()
+        .map(|edge| {
+            (
+                edge.consumer.as_str(),
+                edge.provider.as_str(),
+                edge.kind,
+                edge.target.as_deref(),
+                edge.optional,
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        edges,
+        BTreeSet::from([
+            ("beta", "alpha", DependencyKind::Normal, None, true),
+            (
+                "gamma",
+                "beta",
+                DependencyKind::Development,
+                Some("cfg(unix)"),
+                false,
+            ),
+            ("gamma", "beta", DependencyKind::Build, None, false),
+        ])
+    );
     assert!(graph.packages()["gamma"].dependencies.iter().any(|dependency| {
         dependency.alias == "outside"
             && dependency.source == DependencySource::External
@@ -611,17 +629,13 @@ fn source_axes_remain_orthogonal_and_combinations_are_closed() {
         SourceUse::BuildOutput,
     ];
     assert_eq!(
-        provenances
-            .into_iter()
-            .collect::<std::collections::BTreeSet<_>>()
-            .len(),
-        3
+        provenances.map(SourceProvenance::as_str),
+        ["authored", "generated", "vendored"]
     );
     assert_eq!(
-        uses.into_iter().collect::<std::collections::BTreeSet<_>>().len(),
-        5
+        uses.map(SourceUse::as_str),
+        ["production", "test", "example", "tool", "build_output"]
     );
-
     for provenance in provenances {
         assert!(
             SourceClassification::new(
