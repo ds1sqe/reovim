@@ -1,8 +1,9 @@
-//! Closed Cargo and rustc capture for the initial Product proof profile.
+//! Closed Cargo and rustc capture for the four-stage Product producer.
 //!
-//! Cargo selects one exact library build. The same checker binary acts as its
-//! private `RUSTC_WRAPPER`, records closed discovery probes separately, and
-//! retains one compiler unit with private dep-info evidence.
+//! Cargo selects one exact library build at each fixed stage. The same checker
+//! binary acts as its private `RUSTC_WRAPPER`, records stage-one discovery
+//! probes separately, and retains one compiler unit per stage with private
+//! dep-info evidence.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -86,7 +87,7 @@ pub struct Limits {
 
 /// Exact prepared-root selection for one Cargo build.
 pub struct BuildRequest<'a> {
-    /// Registered shipping or validation closure.
+    /// One of the four registered producer-stage closures.
     pub closure: &'a Closure,
     /// Exact package ID from locked/offline Cargo metadata.
     pub package_id: &'a str,
@@ -116,8 +117,10 @@ pub struct BuildRequest<'a> {
     pub dep_info_dir: &'a Path,
     /// Exact compiler source/module paths admitted for this closure.
     pub admitted_sources: &'a BTreeSet<PathBuf>,
-    /// Prior shipping provider required by a validation build.
+    /// Exact direct provider selected by this stage.
     pub provider: Option<&'a ProviderArtifacts>,
+    /// Exact transitive Foundation provider retained by KI validation.
+    pub transitive_provider: Option<&'a ProviderArtifacts>,
 }
 
 /// Exact regular-file identity retained for an output artifact.
@@ -275,6 +278,8 @@ pub struct CompilerUnit {
     pub dep_info_digest: String,
     /// Private dep-info bytes.
     pub dep_info_bytes: u64,
+    /// Complete bounded dep-info text retained for independent validation.
+    pub dep_info_text: String,
     /// Exact repository-relative compiler sources.
     pub sources: Vec<PathBuf>,
     /// Conservatively participating extern edges.
@@ -289,7 +294,7 @@ pub struct CompilerUnit {
     pub status: i32,
 }
 
-/// Exact reusable Foundation outputs retained after shipping capture.
+/// Exact reusable provider outputs retained after shipping capture.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProviderArtifacts {
     /// Shipping closure ID.
@@ -325,6 +330,17 @@ pub struct ProviderReuse {
     pub extern_edge: ExternEdge,
 }
 
+/// Validated fresh transitive provider without a direct rustc extern.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TransitiveProviderReuse {
+    /// Fresh Cargo provider event.
+    pub fresh_artifact: CargoArtifact,
+    /// Fresh-event hashed rlib identity.
+    pub hashed_rlib: FileIdentity,
+    /// Fresh-event metadata identity.
+    pub rmeta: FileIdentity,
+}
+
 /// Fully correlated semantic result of one Cargo build.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BuildObservation {
@@ -340,6 +356,31 @@ pub struct BuildObservation {
     pub provider: Option<ProviderArtifacts>,
     /// Validated provider reuse, when this is the validation build.
     pub provider_reuse: Option<ProviderReuse>,
+    /// Validated transitive Foundation reuse for KI validation.
+    pub transitive_provider_reuse: Option<TransitiveProviderReuse>,
+    /// Cargo top-level rlib correlated to a consumer unit's hashed rlib.
+    pub consumer_rlib: Option<FileIdentity>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BuildStage {
+    FoundationShipping,
+    FoundationConsumer,
+    KernelInterfaceShipping,
+    KernelInterfaceConsumer,
+}
+
+fn build_stage(closure: &Closure) -> Result<BuildStage, Error> {
+    match closure.id.as_str() {
+        "foundation-shipping" => Ok(BuildStage::FoundationShipping),
+        "foundation-consumer" => Ok(BuildStage::FoundationConsumer),
+        "kernel-interface-shipping" => Ok(BuildStage::KernelInterfaceShipping),
+        "kernel-interface-consumer" => Ok(BuildStage::KernelInterfaceConsumer),
+        _ => Err(Error::new(
+            "COMPILER_CAPTURE_CLOSURE",
+            "closure is outside the exact four-stage profile",
+        )),
+    }
 }
 
 /// Semantic observation accepted after full Cargo process supervision.
@@ -682,6 +723,7 @@ fn validate_build_request(
 }
 
 fn validate_closure(closure: &Closure) -> Result<(), Error> {
+    let stage = build_stage(closure)?;
     if closure.target.kind != ["lib"]
         || closure.target.crate_types != ["lib"]
         || closure.cargo.profile != "release"
@@ -695,6 +737,36 @@ fn validate_closure(closure: &Closure) -> Result<(), Error> {
         return Err(Error::new(
             "COMPILER_CAPTURE_CLOSURE",
             "closure package and target names must be nonempty",
+        ));
+    }
+    let exact = match stage {
+        BuildStage::FoundationShipping => {
+            closure.kind == ClosureKind::Shipping
+                && closure.package.name == "reovim-foundation"
+                && closure.target.name == "reovim_foundation"
+        }
+        BuildStage::FoundationConsumer => {
+            closure.kind == ClosureKind::Validation
+                && closure.package.name == "reovim-foundation-public-consumer"
+                && closure.target.name == "reovim_foundation_public_consumer"
+        }
+        BuildStage::KernelInterfaceShipping => {
+            closure.kind == ClosureKind::Shipping
+                && closure.package.name == "reovim-kernel-interface"
+                && closure.target.name == "reovim_kernel_interface"
+        }
+        BuildStage::KernelInterfaceConsumer => {
+            closure.kind == ClosureKind::Validation
+                && closure.package.name
+                    == "reovim-kernel-interface-public-consumer"
+                && closure.target.name
+                    == "reovim_kernel_interface_public_consumer"
+        }
+    };
+    if !exact {
+        return Err(Error::new(
+            "COMPILER_CAPTURE_CLOSURE",
+            "closure identity differs from the exact four-stage profile",
         ));
     }
     Ok(())
@@ -774,7 +846,7 @@ fn validate_writable_paths(request: &BuildRequest<'_>) -> Result<(), Error> {
     reject_overlapping_writable_paths(&writable)?;
     require_empty_directory(request.trace_dir, "trace directory")?;
     require_empty_directory(request.dep_info_dir, "dep-info directory")?;
-    if request.closure.kind == ClosureKind::Shipping {
+    if build_stage(request.closure)? == BuildStage::FoundationShipping {
         require_empty_directory(request.target_dir, "shipping target")?;
     }
     Ok(())
@@ -874,22 +946,37 @@ fn validate_metadata_targets(
     package: &crate::cargo::Package,
     request: &BuildRequest<'_>,
 ) -> Result<(), Error> {
-    if package.targets.len() != 1 {
+    let stage = build_stage(request.closure)?;
+    let expected_count =
+        if stage == BuildStage::KernelInterfaceConsumer { 2 } else { 1 };
+    if package.targets.len() != expected_count {
         return Err(Error::new(
             "COMPILER_METADATA_TARGET",
-            "selected package does not have exactly one target",
+            "selected package target count differs from its exact stage",
         ));
     }
-    let target = &package.targets[0];
     let source = request.repository_root.join(&request.closure.target.src_path);
-    if target.name != request.closure.target.name
-        || target.kind != ["lib"]
-        || target.crate_types != ["lib"]
-        || target.src_path != source
-    {
+    let library = package.targets.iter().any(|target| {
+        target.name == request.closure.target.name
+            && target.kind == ["lib"]
+            && target.crate_types == ["lib"]
+            && target.src_path == source
+    });
+    let extra = stage != BuildStage::KernelInterfaceConsumer
+        || package.targets.iter().any(|target| {
+            target.name == "kernel-interface-public-contract"
+                && target.kind == ["test"]
+                && target.crate_types == ["bin"]
+                && target.src_path
+                    == request
+                        .repository_root
+                        .join("tests/kernel-interface-public-consumer/")
+                        .join("tests/public_contract.rs")
+        });
+    if !library || !extra {
         return Err(Error::new(
             "COMPILER_METADATA_TARGET",
-            "Cargo target differs from the registered library closure",
+            "Cargo targets differ from the exact library closure profile",
         ));
     }
     Ok(())
@@ -963,33 +1050,44 @@ fn validate_metadata_dependencies(
         .nodes
         .get(request.package_id)
         .expect("reachable root node checked above");
-    if request.closure.kind == ClosureKind::Shipping {
-        if reachable != &BTreeSet::from([request.package_id.to_owned()]) {
-            return Err(Error::new(
-                "COMPILER_SHIPPING_DEPENDENCY",
-                "shipping closure has a non-sysroot dependency",
-            ));
+    let stage = build_stage(request.closure)?;
+    if stage == BuildStage::FoundationShipping {
+        let exact = reachable
+            == &BTreeSet::from([request.package_id.to_owned()])
+            && node.dependencies.is_empty();
+        if exact {
+            return Ok(());
         }
-        return Ok(());
+        return Err(Error::new(
+            "COMPILER_SHIPPING_DEPENDENCY",
+            "Foundation shipping has a Product dependency",
+        ));
     }
     let provider = request.provider.expect("selection checked before metadata");
-    if reachable
-        != &BTreeSet::from([
-            request.package_id.to_owned(),
-            provider.package_id.clone(),
-        ])
-        || node.dependencies.len() != 1
-    {
+    let mut expected = BTreeSet::from([
+        request.package_id.to_owned(),
+        provider.package_id.clone(),
+    ]);
+    if let Some(transitive) = request.transitive_provider {
+        expected.insert(transitive.package_id.clone());
+    }
+    if reachable != &expected || node.dependencies.len() != 1 {
         return Err(Error::new(
             "COMPILER_VALIDATION_DEPENDENCY",
-            "validation dependency closure is not exactly its provider",
+            "stage dependency closure is not exactly its providers",
         ));
     }
     let edge = &node.dependencies[0];
     let normal = edge.kinds.len() == 1
         && edge.kinds[0].kind == "normal"
         && edge.kinds[0].target.is_none();
-    if edge.name != "reovim_foundation"
+    let expected_name = match stage {
+        BuildStage::FoundationConsumer
+        | BuildStage::KernelInterfaceShipping => "reovim_foundation",
+        BuildStage::KernelInterfaceConsumer => "reovim_kernel_interface",
+        BuildStage::FoundationShipping => unreachable!(),
+    };
+    if edge.name != expected_name
         || edge.package != provider.package_id
         || !normal
     {
@@ -1004,27 +1102,44 @@ fn validate_metadata_dependencies(
 fn validate_provider_selection(
     request: &BuildRequest<'_>,
 ) -> Result<(), Error> {
-    match (request.closure.kind, request.provider) {
-        (ClosureKind::Shipping, None) => Ok(()),
-        (ClosureKind::Validation, Some(provider)) => {
-            if provider.target_dir != request.target_dir
-                || provider.cargo_home != request.cargo_home
-            {
-                return Err(Error::new(
-                    "COMPILER_PROVIDER_TARGET",
-                    "validation does not reuse shipping Cargo/target authority",
-                ));
-            }
-            Ok(())
+    let stage = build_stage(request.closure)?;
+    let expected = expected_provider_selection(stage);
+    let direct = request.provider.map(|provider| provider.closure.as_str());
+    let transitive =
+        request.transitive_provider.map(|provider| provider.closure.as_str());
+    if (direct, transitive) != expected {
+        return Err(Error::new(
+            "COMPILER_PROVIDER_SELECTION",
+            "providers differ from the exact four-stage matrix",
+        ));
+    }
+    for provider in
+        [request.provider, request.transitive_provider].into_iter().flatten()
+    {
+        if provider.target_dir != request.target_dir
+            || provider.cargo_home != request.cargo_home
+        {
+            return Err(Error::new(
+                "COMPILER_PROVIDER_TARGET",
+                "provider does not reuse the shared Cargo/target authority",
+            ));
         }
-        (ClosureKind::Shipping, Some(_)) => Err(Error::new(
-            "COMPILER_PROVIDER_UNEXPECTED",
-            "shipping build cannot consume prior provider evidence",
-        )),
-        (ClosureKind::Validation, None) => Err(Error::new(
-            "COMPILER_PROVIDER_MISSING",
-            "validation build requires prior shipping provider evidence",
-        )),
+    }
+    Ok(())
+}
+
+const fn expected_provider_selection(
+    stage: BuildStage,
+) -> (Option<&'static str>, Option<&'static str>) {
+    match stage {
+        BuildStage::FoundationShipping => (None, None),
+        BuildStage::FoundationConsumer
+        | BuildStage::KernelInterfaceShipping => {
+            (Some("foundation-shipping"), None)
+        }
+        BuildStage::KernelInterfaceConsumer => {
+            (Some("kernel-interface-shipping"), Some("foundation-shipping"))
+        }
     }
 }
 
@@ -1881,6 +1996,10 @@ fn validate_unit_identity_grammar(
         "reovim_foundation_public_consumer" => {
             "tests/foundation-public-consumer/src/lib.rs"
         }
+        "reovim_kernel_interface" => "kernel/interface/src/lib.rs",
+        "reovim_kernel_interface_public_consumer" => {
+            "tests/kernel-interface-public-consumer/src/lib.rs"
+        }
         _ => {
             return Err(Error::new(
                 "COMPILER_UNIT_IDENTITY",
@@ -1909,9 +2028,30 @@ fn validate_unit_identity_grammar(
 }
 
 fn validate_unit_extern_grammar(unit: &UnitArguments) -> Result<(), Error> {
-    if unit.crate_name == "reovim_foundation" && unit.externs.is_empty() {
+    let expected = match unit.crate_name.as_str() {
+        "reovim_foundation" => None,
+        "reovim_foundation_public_consumer" | "reovim_kernel_interface" => {
+            Some("reovim_foundation")
+        }
+        "reovim_kernel_interface_public_consumer" => {
+            Some("reovim_kernel_interface")
+        }
+        _ => {
+            return Err(Error::new(
+                "COMPILER_EXTERN_EDGE_SET",
+                "compiler unit is outside the exact four-stage profile",
+            ));
+        }
+    };
+    if expected.is_none() && unit.externs.is_empty() {
         return Ok(());
     }
+    let expected = expected.ok_or_else(|| {
+        Error::new(
+            "COMPILER_EXTERN_EDGE_SET",
+            "Foundation shipping has an extern edge",
+        )
+    })?;
     let edges = unit.externs.iter().collect::<Vec<_>>();
     let [edge] = edges.as_slice() else {
         return Err(Error::new(
@@ -1921,17 +2061,16 @@ fn validate_unit_extern_grammar(unit: &UnitArguments) -> Result<(), Error> {
     };
     let filename = edge.path.file_name().and_then(OsStr::to_str).unwrap_or("");
     let valid_filename = filename
-        .strip_prefix("libreovim_foundation-")
+        .strip_prefix(&format!("lib{expected}-"))
         .and_then(|value| value.strip_suffix(".rmeta"))
         .is_some_and(closed_hex);
-    if unit.crate_name != "reovim_foundation_public_consumer"
-        || edge.name != "reovim_foundation"
+    if edge.name != expected
         || !valid_filename
         || edge.path.parent() != Some(unit.out_dir.as_path())
     {
         return Err(Error::new(
             "COMPILER_EXTERN_EDGE_SET",
-            "consumer extern is outside the closed Foundation metadata shape",
+            "compiler extern is outside the closed direct-provider shape",
         ));
     }
     Ok(())
@@ -3007,18 +3146,7 @@ pub fn validate_reported_unit_argv(
     crate_name: &str,
     extern_path: Option<&Path>,
 ) -> Result<(), Error> {
-    let (dep_info_dir, ordinal) = match crate_name {
-        "reovim_foundation" => ("/scratch/shipping-dep-info", 4_u64),
-        "reovim_foundation_public_consumer" => {
-            ("/scratch/validation-dep-info", 0_u64)
-        }
-        _ => {
-            return Err(Error::new(
-                "COMPILER_UNIT_IDENTITY",
-                "reported compiler unit is outside the closed pair",
-            ));
-        }
-    };
+    let (dep_info_dir, ordinal) = reported_dep_info_selection(crate_name)?;
     let expected_dep_info =
         Path::new(dep_info_dir).join(format!("{ordinal:08}.d"));
     if dep_info_path != expected_dep_info {
@@ -3038,7 +3166,7 @@ pub fn validate_reported_unit_argv(
             "reported compiler argv names the wrong closed crate",
         ));
     }
-    validate_reported_extern(&unit, extern_path)?;
+    validate_reported_extern(&unit, crate_name, extern_path)?;
     let rewritten = rewrite_emit(original, &unit.emit, dep_info_path)?;
     let expected = inject_sysroot(&rewritten, &config.sysroot)?;
     if effective == expected {
@@ -3047,6 +3175,171 @@ pub fn validate_reported_unit_argv(
     Err(Error::new(
         "COMPILER_EFFECTIVE_ARGV",
         "reported effective argv differs from the exact wrapper rewrite",
+    ))
+}
+
+/// Revalidates report-retained rlib/rmeta paths against raw rustc argv.
+pub fn validate_reported_unit_outputs(
+    original: &[String],
+    crate_name: &str,
+    rlib: &Path,
+    rmeta: &Path,
+) -> Result<(), Error> {
+    let (dep_info_dir, _) = reported_dep_info_selection(crate_name)?;
+    let config = report_wrapper_config(Path::new(dep_info_dir));
+    require_wrapper_rustc(original, &config)?;
+    reject_dangerous_arguments(original, &config.target_dir)?;
+    let unit = parse_unit_arguments(original, &config)?;
+    if unit.crate_name != crate_name {
+        return Err(Error::new(
+            "COMPILER_UNIT_IDENTITY",
+            "reported compiler argv names the wrong closed crate",
+        ));
+    }
+    let stem = format!("{}{}", unit.crate_name, unit.extra_filename);
+    let expected = BTreeSet::from([
+        unit.out_dir.join(format!("lib{stem}.rlib")),
+        unit.out_dir.join(format!("lib{stem}.rmeta")),
+    ]);
+    let observed = BTreeSet::from([rlib.to_path_buf(), rmeta.to_path_buf()]);
+    if observed == expected {
+        return Ok(());
+    }
+    Err(Error::new(
+        "COMPILER_RETAINED_UNIT_OUTPUTS",
+        "reported output paths differ from the parsed rustc output stem",
+    ))
+}
+
+fn reported_dep_info_selection(
+    crate_name: &str,
+) -> Result<(&'static str, u64), Error> {
+    Ok(match crate_name {
+        "reovim_foundation" => ("/scratch/shipping-dep-info", 4_u64),
+        "reovim_foundation_public_consumer" => {
+            ("/scratch/validation-dep-info", 0_u64)
+        }
+        "reovim_kernel_interface" => {
+            ("/scratch/kernel-interface-shipping-dep-info", 0_u64)
+        }
+        "reovim_kernel_interface_public_consumer" => {
+            ("/scratch/kernel-interface-validation-dep-info", 0_u64)
+        }
+        _ => {
+            return Err(Error::new(
+                "COMPILER_UNIT_IDENTITY",
+                "reported compiler unit is outside the four-stage profile",
+            ));
+        }
+    })
+}
+
+/// Revalidates every duplicated retained compiler-unit field from raw inputs.
+///
+/// # Errors
+///
+/// Returns a typed failure when exact argv, output, dep-info, or semantic
+/// fields disagree.
+pub fn validate_retained_unit(
+    retained: &CompilerUnit,
+    limits: Limits,
+) -> Result<(), Error> {
+    let extern_path = retained.externs.first().map(|edge| edge.path.as_path());
+    validate_reported_unit_argv(
+        &retained.original_argv,
+        &retained.effective_argv,
+        &retained.dep_info_path,
+        &retained.crate_name,
+        extern_path,
+    )?;
+    let (dep_info_dir, _) = reported_dep_info_selection(&retained.crate_name)?;
+    let config = report_wrapper_config(Path::new(dep_info_dir));
+    let parsed = parse_unit_arguments(&retained.original_argv, &config)?;
+    validate_retained_fields(retained, &parsed)?;
+    validate_retained_outputs(retained, &parsed)?;
+    validate_retained_dep_info(retained, limits)
+}
+
+fn validate_retained_fields(
+    retained: &CompilerUnit,
+    parsed: &UnitArguments,
+) -> Result<(), Error> {
+    let crate_types = parsed.crate_types.iter().cloned().collect::<Vec<_>>();
+    let features = parsed.features.iter().cloned().collect::<Vec<_>>();
+    let cfgs = parsed.cfgs.iter().cloned().collect::<Vec<_>>();
+    let externs = parsed.externs.iter().cloned().collect::<Vec<_>>();
+    let exact = retained.crate_name == parsed.crate_name
+        && retained.crate_types == crate_types
+        && retained.target_triple == parsed.target
+        && retained.features == features
+        && retained.cfgs == cfgs
+        && retained.externs == externs;
+    if exact {
+        return Ok(());
+    }
+    Err(Error::new(
+        "COMPILER_RETAINED_UNIT_FIELDS",
+        "retained unit fields differ from the exact parsed rustc argv",
+    ))
+}
+
+fn validate_retained_outputs(
+    retained: &CompilerUnit,
+    parsed: &UnitArguments,
+) -> Result<(), Error> {
+    let stem = format!("{}{}", parsed.crate_name, parsed.extra_filename);
+    let expected = BTreeSet::from([
+        parsed.out_dir.join(format!("lib{stem}.rlib")),
+        parsed.out_dir.join(format!("lib{stem}.rmeta")),
+    ]);
+    let observed = retained
+        .outputs
+        .iter()
+        .map(|identity| identity.path.clone())
+        .collect::<BTreeSet<_>>();
+    if retained.outputs.len() == expected.len() && observed == expected {
+        return Ok(());
+    }
+    Err(Error::new(
+        "COMPILER_RETAINED_UNIT_OUTPUTS",
+        "retained output paths differ from the parsed rustc output stem",
+    ))
+}
+
+fn validate_retained_dep_info(
+    retained: &CompilerUnit,
+    limits: Limits,
+) -> Result<(), Error> {
+    let bytes = retained.dep_info_text.as_bytes();
+    let observed_bytes = u64::try_from(bytes.len()).map_err(|failure| {
+        Error::new("COMPILER_DEP_INFO_LIMIT", failure.to_string())
+    })?;
+    if bytes.is_empty()
+        || bytes.len() > limits.dep_info_file_bytes
+        || observed_bytes != retained.dep_info_bytes
+        || digest::bytes(bytes) != retained.dep_info_digest
+        || !bytes.ends_with(b"\n")
+        || bytes.contains(&b'\r')
+        || bytes.contains(&0)
+    {
+        return Err(Error::new(
+            "COMPILER_RETAINED_DEP_INFO",
+            "retained dep-info bytes, framing, size, or digest disagree",
+        ));
+    }
+    let logical = join_make_continuations(&retained.dep_info_text)?;
+    let dependencies = dependency_rule_set(&logical)?;
+    let sources = relative_dep_info_sources_at_root(
+        &dependencies,
+        Path::new("/repo"),
+        limits,
+    )?;
+    if sources == retained.sources {
+        return Ok(());
+    }
+    Err(Error::new(
+        "COMPILER_RETAINED_DEP_INFO",
+        "retained dep-info dependencies differ from semantic sources",
     ))
 }
 
@@ -3075,13 +3368,29 @@ fn report_wrapper_config(dep_info_dir: &Path) -> WrapperConfig {
 
 fn validate_reported_extern(
     unit: &UnitArguments,
+    crate_name: &str,
     expected_path: Option<&Path>,
 ) -> Result<(), Error> {
+    let expected_name = match crate_name {
+        "reovim_foundation" => None,
+        "reovim_foundation_public_consumer" | "reovim_kernel_interface" => {
+            Some("reovim_foundation")
+        }
+        "reovim_kernel_interface_public_consumer" => {
+            Some("reovim_kernel_interface")
+        }
+        _ => {
+            return Err(Error::new(
+                "COMPILER_UNIT_IDENTITY",
+                "reported compiler unit is outside the four-stage profile",
+            ));
+        }
+    };
     let values = unit.externs.iter().collect::<Vec<_>>();
-    match (values.as_slice(), expected_path) {
-        ([], None) => Ok(()),
-        ([edge], Some(path))
-            if edge.name == "reovim_foundation" && edge.path == path =>
+    match (values.as_slice(), expected_name, expected_path) {
+        ([], None, None) => Ok(()),
+        ([edge], Some(name), Some(path))
+            if edge.name == name && edge.path == path =>
         {
             Ok(())
         }
@@ -3523,6 +3832,7 @@ fn parse_build_finished(value: &Value) -> Result<(), Error> {
 struct DepInfoObservation {
     digest: String,
     bytes: u64,
+    text: String,
     sources: Vec<PathBuf>,
 }
 
@@ -3562,6 +3872,7 @@ fn parse_dep_info(
         bytes: u64::try_from(bytes.len()).map_err(|failure| {
             Error::new("COMPILER_DEP_INFO_LIMIT", failure.to_string())
         })?,
+        text: text.to_owned(),
         sources,
     })
 }
@@ -3690,6 +4001,18 @@ fn relative_dep_info_sources(
     request: &BuildRequest<'_>,
     limits: Limits,
 ) -> Result<Vec<PathBuf>, Error> {
+    relative_dep_info_sources_at_root(
+        dependencies,
+        request.repository_root,
+        limits,
+    )
+}
+
+fn relative_dep_info_sources_at_root(
+    dependencies: &BTreeSet<String>,
+    repository_root: &Path,
+    limits: Limits,
+) -> Result<Vec<PathBuf>, Error> {
     if dependencies.len() > limits.compiler_input_count {
         return Err(Error::new(
             "COMPILER_INPUT_LIMIT",
@@ -3701,7 +4024,7 @@ fn relative_dep_info_sources(
         let absolute = Path::new(dependency);
         validate_absolute_path(absolute, "compiler input", limits.path_bytes)?;
         let relative = absolute
-            .strip_prefix(request.repository_root)
+            .strip_prefix(repository_root)
             .map_err(|_| {
                 Error::at(
                     "COMPILER_INPUT_AUTHORITY",
@@ -3736,6 +4059,10 @@ pub fn run(
         .provider
         .map(|provider| snapshot_provider(provider, limits))
         .transpose()?;
+    let transitive_before = request
+        .transitive_provider
+        .map(|provider| snapshot_provider(provider, limits))
+        .transpose()?;
     let spec = command_spec(request, limits)?;
     let process = process::run(&spec, limits.process).map_err(|failure| {
         Error::new("COMPILER_CARGO_RUN", failure.to_string())
@@ -3753,6 +4080,17 @@ pub fn run(
             return Err(Error::new(
                 "COMPILER_PROVIDER_PRE_POST_DRIFT",
                 "shipping provider bytes changed during validation",
+            ));
+        }
+    }
+    if let (Some(provider), Some(before)) =
+        (request.transitive_provider, transitive_before.as_ref())
+    {
+        let after = snapshot_provider(provider, limits)?;
+        if &after != before {
+            return Err(Error::new(
+                "COMPILER_TRANSITIVE_PROVIDER_PRE_POST_DRIFT",
+                "transitive provider bytes changed during the build",
             ));
         }
     }
@@ -3841,14 +4179,17 @@ fn correlate_build(
     traces: Vec<WrapperTrace>,
     limits: Limits,
 ) -> Result<BuildObservation, Error> {
-    let (unit_trace, probes) = split_traces(traces, request.closure.kind)?;
+    let stage = build_stage(request.closure)?;
+    let (unit_trace, probes) = split_traces(traces, stage)?;
     let mut budget = ArtifactBudget::new(limits);
     let unit = compiler_unit(request, unit_trace, limits, &mut budget)?;
-    match request.closure.kind {
-        ClosureKind::Shipping => {
+    match stage {
+        BuildStage::FoundationShipping
+        | BuildStage::KernelInterfaceShipping => {
             correlate_shipping(request, cargo, probes, unit, &mut budget)
         }
-        ClosureKind::Validation => {
+        BuildStage::FoundationConsumer
+        | BuildStage::KernelInterfaceConsumer => {
             correlate_validation(request, cargo, probes, unit, &mut budget)
         }
     }
@@ -3856,7 +4197,7 @@ fn correlate_build(
 
 fn split_traces(
     traces: Vec<WrapperTrace>,
-    closure_kind: ClosureKind,
+    stage: BuildStage,
 ) -> Result<(WrapperTrace, Vec<WrapperTrace>), Error> {
     let mut units = Vec::new();
     let mut probes = Vec::new();
@@ -3873,24 +4214,26 @@ fn split_traces(
             "build requires exactly one nonfresh compiler unit",
         ));
     };
-    validate_probe_set(&probes, closure_kind)?;
-    validate_trace_ordinals(unit, &probes, closure_kind)?;
+    validate_probe_set(&probes, stage)?;
+    validate_trace_ordinals(unit, &probes, stage)?;
     Ok((unit.clone(), probes))
 }
 
 fn validate_probe_set(
     probes: &[WrapperTrace],
-    closure_kind: ClosureKind,
+    stage: BuildStage,
 ) -> Result<(), Error> {
     let observed = probes.iter().map(|probe| probe.kind).collect::<Vec<_>>();
-    let expected = match closure_kind {
-        ClosureKind::Shipping => vec![
+    let expected = match stage {
+        BuildStage::FoundationShipping => vec![
             InvocationKind::VersionProbe,
             InvocationKind::HostProbe,
             InvocationKind::TargetProbe,
             InvocationKind::VersionProbe,
         ],
-        ClosureKind::Validation => Vec::new(),
+        BuildStage::FoundationConsumer
+        | BuildStage::KernelInterfaceShipping
+        | BuildStage::KernelInterfaceConsumer => Vec::new(),
     };
     if observed != expected {
         return Err(Error::new(
@@ -3904,11 +4247,13 @@ fn validate_probe_set(
 fn validate_trace_ordinals(
     unit: &WrapperTrace,
     probes: &[WrapperTrace],
-    closure_kind: ClosureKind,
+    stage: BuildStage,
 ) -> Result<(), Error> {
-    let expected_unit = match closure_kind {
-        ClosureKind::Shipping => 4,
-        ClosureKind::Validation => 0,
+    let expected_unit = match stage {
+        BuildStage::FoundationShipping => 4,
+        BuildStage::FoundationConsumer
+        | BuildStage::KernelInterfaceShipping
+        | BuildStage::KernelInterfaceConsumer => 0,
     };
     let probe_ordinals = probes.iter().map(|probe| probe.ordinal);
     let expected_probes =
@@ -3965,6 +4310,7 @@ fn compiler_unit(
         dep_info_path,
         dep_info_digest: dep_info.digest,
         dep_info_bytes: dep_info.bytes,
+        dep_info_text: dep_info.text,
         sources: dep_info.sources,
         externs: arguments.externs.into_iter().collect(),
         outputs,
@@ -4074,17 +4420,34 @@ fn correlate_shipping(
     unit: CompilerUnit,
     budget: &mut ArtifactBudget,
 ) -> Result<BuildObservation, Error> {
-    let [artifact] = cargo.artifacts.as_slice() else {
+    let expected = 1 + usize::from(request.provider.is_some());
+    if cargo.artifacts.len() != expected {
         return Err(Error::new(
             "COMPILER_CARGO_ARTIFACT_SET",
-            "shipping build requires exactly one Cargo artifact",
+            "shipping artifact count differs from its exact stage",
         ));
-    };
+    }
+    let artifact = cargo
+        .artifacts
+        .iter()
+        .find(|artifact| artifact.package_id == request.package_id)
+        .ok_or_else(|| {
+            Error::new(
+                "COMPILER_CARGO_ARTIFACT_SET",
+                "shipping Cargo stream lacks its own artifact",
+            )
+        })?;
     validate_closure_artifact(artifact, request, false)?;
-    if !unit.externs.is_empty() {
+    let provider_reuse = request
+        .provider
+        .map(|provider| {
+            direct_provider_reuse(&cargo, &unit, provider, request, budget)
+        })
+        .transpose()?;
+    if request.provider.is_none() && !unit.externs.is_empty() {
         return Err(Error::new(
             "COMPILER_SHIPPING_EXTERN",
-            "shipping compiler unit supplies a non-sysroot extern",
+            "Foundation shipping supplies a non-sysroot extern",
         ));
     }
     let cargo_files = identify_cargo_files(artifact, request, budget)?;
@@ -4111,7 +4474,9 @@ fn correlate_shipping(
         probes,
         unit,
         provider: Some(provider),
-        provider_reuse: None,
+        provider_reuse,
+        transitive_provider_reuse: None,
+        consumer_rlib: None,
     })
 }
 
@@ -4123,22 +4488,13 @@ fn correlate_validation(
     budget: &mut ArtifactBudget,
 ) -> Result<BuildObservation, Error> {
     let provider = request.provider.expect("request validation checked");
-    if cargo.artifacts.len() != 2 {
+    let expected = 2 + usize::from(request.transitive_provider.is_some());
+    if cargo.artifacts.len() != expected {
         return Err(Error::new(
             "COMPILER_CARGO_ARTIFACT_SET",
-            "validation requires one fresh provider and one consumer artifact",
+            "validation artifact count differs from its exact stage",
         ));
     }
-    let fresh = cargo
-        .artifacts
-        .iter()
-        .find(|artifact| artifact.package_id == provider.package_id)
-        .ok_or_else(|| {
-            Error::new(
-                "COMPILER_PROVIDER_EVENT",
-                "validation Cargo stream lacks its provider event",
-            )
-        })?;
     let consumer = cargo
         .artifacts
         .iter()
@@ -4150,21 +4506,16 @@ fn correlate_validation(
             )
         })?;
     validate_closure_artifact(consumer, request, false)?;
-    validate_provider_event(fresh, provider)?;
-    let fresh_files = identify_cargo_files(fresh, request, budget)?;
-    let fresh_rlib = extension_identity(&fresh_files, "rlib")?;
-    let fresh_rmeta = extension_identity(&fresh_files, "rmeta")?;
-    require_same_file_identity(fresh_rlib, &provider.hashed_rlib, true)?;
-    require_same_file_identity(fresh_rmeta, &provider.rmeta, true)?;
-    require_same_file_identity(fresh_rlib, &provider.top_level_rlib, false)?;
-    let extern_edge = exact_provider_extern(&unit, provider)?;
-    correlate_consumer_artifact(consumer, request, &unit, budget)?;
-    let provider_reuse = ProviderReuse {
-        fresh_artifact: fresh.clone(),
-        hashed_rlib: fresh_rlib.clone(),
-        rmeta: fresh_rmeta.clone(),
-        extern_edge,
-    };
+    let provider_reuse =
+        direct_provider_reuse(&cargo, &unit, provider, request, budget)?;
+    let transitive_provider_reuse = request
+        .transitive_provider
+        .map(|provider| {
+            transitive_provider_reuse(&cargo, provider, request, budget)
+        })
+        .transpose()?;
+    let consumer_rlib =
+        correlate_consumer_artifact(consumer, request, &unit, budget)?;
     Ok(BuildObservation {
         closure: request.closure.id.clone(),
         cargo,
@@ -4172,7 +4523,64 @@ fn correlate_validation(
         unit,
         provider: None,
         provider_reuse: Some(provider_reuse),
+        transitive_provider_reuse,
+        consumer_rlib: Some(consumer_rlib),
     })
+}
+
+fn direct_provider_reuse(
+    cargo: &CargoObservation,
+    unit: &CompilerUnit,
+    provider: &ProviderArtifacts,
+    request: &BuildRequest<'_>,
+    budget: &mut ArtifactBudget,
+) -> Result<ProviderReuse, Error> {
+    let (fresh, rlib, rmeta) =
+        reused_provider(cargo, provider, request, budget)?;
+    let extern_edge = exact_provider_extern(unit, provider)?;
+    Ok(ProviderReuse {
+        fresh_artifact: fresh,
+        hashed_rlib: rlib,
+        rmeta,
+        extern_edge,
+    })
+}
+
+fn transitive_provider_reuse(
+    cargo: &CargoObservation,
+    provider: &ProviderArtifacts,
+    request: &BuildRequest<'_>,
+    budget: &mut ArtifactBudget,
+) -> Result<TransitiveProviderReuse, Error> {
+    let (fresh_artifact, hashed_rlib, rmeta) =
+        reused_provider(cargo, provider, request, budget)?;
+    Ok(TransitiveProviderReuse { fresh_artifact, hashed_rlib, rmeta })
+}
+
+fn reused_provider(
+    cargo: &CargoObservation,
+    provider: &ProviderArtifacts,
+    request: &BuildRequest<'_>,
+    budget: &mut ArtifactBudget,
+) -> Result<(CargoArtifact, FileIdentity, FileIdentity), Error> {
+    let fresh = cargo
+        .artifacts
+        .iter()
+        .find(|artifact| artifact.package_id == provider.package_id)
+        .ok_or_else(|| {
+            Error::new(
+                "COMPILER_PROVIDER_EVENT",
+                "Cargo stream lacks its exact fresh provider event",
+            )
+        })?;
+    validate_provider_event(fresh, provider)?;
+    let files = identify_cargo_files(fresh, request, budget)?;
+    let rlib = extension_identity(&files, "rlib")?;
+    let rmeta = extension_identity(&files, "rmeta")?;
+    require_same_file_identity(rlib, &provider.hashed_rlib, true)?;
+    require_same_file_identity(rmeta, &provider.rmeta, true)?;
+    require_same_file_identity(rlib, &provider.top_level_rlib, false)?;
+    Ok((fresh.clone(), rlib.clone(), rmeta.clone()))
 }
 
 fn validate_closure_artifact(
@@ -4327,7 +4735,9 @@ fn exact_provider_extern(
             "consumer requires exactly one provider extern edge",
         ));
     };
-    if edge.name != "reovim_foundation" || edge.path != provider.rmeta.path {
+    if edge.name != provider.cargo_artifact.target_name
+        || edge.path != provider.rmeta.path
+    {
         return Err(Error::new(
             "COMPILER_EXTERN_EDGE_SET",
             "consumer extern does not select exact provider metadata",
@@ -4341,14 +4751,15 @@ fn correlate_consumer_artifact(
     request: &BuildRequest<'_>,
     unit: &CompilerUnit,
     budget: &mut ArtifactBudget,
-) -> Result<(), Error> {
+) -> Result<FileIdentity, Error> {
     let cargo_files = identify_cargo_files(artifact, request, budget)?;
     let cargo_rlib = extension_identity(&cargo_files, "rlib")?;
     let cargo_rmeta = extension_identity(&cargo_files, "rmeta")?;
     let unit_rlib = extension_identity(&unit.outputs, "rlib")?;
     let unit_rmeta = extension_identity(&unit.outputs, "rmeta")?;
     require_same_file_identity(cargo_rlib, unit_rlib, false)?;
-    require_same_file_identity(cargo_rmeta, unit_rmeta, true)
+    require_same_file_identity(cargo_rmeta, unit_rmeta, true)?;
+    Ok(cargo_rlib.clone())
 }
 
 fn snapshot_provider(
@@ -4394,13 +4805,14 @@ mod tests {
     use serde_json::{Value, json};
 
     use super::{
-        BuildRequest, CargoArtifact, EnvironmentEntry, FileIdentity,
-        InvocationKind, Limits, ProviderArtifacts, WrapperConfig,
+        BuildRequest, BuildStage, CargoArtifact, EnvironmentEntry,
+        FileIdentity, InvocationKind, Limits, ProviderArtifacts, WrapperConfig,
         WrapperLimits, WrapperTrace, build_arguments, build_environment,
-        classify_invocation, parse_cargo_output, parse_dep_info,
-        parse_trace_pair, plan_invocation, require_same_file_identity,
-        same_artifact_semantics, validate_metadata_preflight, validate_probe,
-        validate_probe_set, validate_provider_event, validate_recorded_probe,
+        classify_invocation, expected_provider_selection, parse_cargo_output,
+        parse_dep_info, parse_trace_pair, plan_invocation,
+        require_same_file_identity, same_artifact_semantics,
+        validate_metadata_preflight, validate_probe, validate_probe_set,
+        validate_provider_event, validate_recorded_probe,
         wrapper_child_environment,
     };
     use crate::{
@@ -4408,7 +4820,7 @@ mod tests {
             DependencyKind, Metadata, Node, Package, ResolvedDependency, Target,
         },
         process::ProcessLimits,
-        product_closures::{ClosureKind, ParseLimits, Registry, TARGET_TRIPLE},
+        product_closures::{ParseLimits, Registry, TARGET_TRIPLE},
     };
 
     const LIMITS: Limits = Limits {
@@ -4609,10 +5021,10 @@ mod tests {
             InvocationKind::TargetProbe,
             InvocationKind::VersionProbe,
         ]);
-        validate_probe_set(&exact, ClosureKind::Shipping)
+        validate_probe_set(&exact, BuildStage::FoundationShipping)
             .expect("exact shipping probe sequence");
         assert_eq!(
-            validate_probe_set(&exact[..3], ClosureKind::Shipping)
+            validate_probe_set(&exact[..3], BuildStage::FoundationShipping)
                 .expect_err("missing version probe")
                 .code,
             "COMPILER_DISCOVERY_PROBE_SET"
@@ -4620,18 +5032,51 @@ mod tests {
         let mut extra = exact;
         extra.push(dummy_trace(4, InvocationKind::VersionProbe));
         assert_eq!(
-            validate_probe_set(&extra, ClosureKind::Shipping)
+            validate_probe_set(&extra, BuildStage::FoundationShipping)
                 .expect_err("duplicate version probe")
                 .code,
             "COMPILER_DISCOVERY_PROBE_SET"
         );
-        validate_probe_set(&[], ClosureKind::Validation)
+        validate_probe_set(&[], BuildStage::FoundationConsumer)
             .expect("validation reuses compiler discovery");
+        validate_probe_set(&[], BuildStage::KernelInterfaceShipping)
+            .expect("Kernel Interface shipping reuses compiler discovery");
+        validate_probe_set(&[], BuildStage::KernelInterfaceConsumer)
+            .expect("Kernel Interface consumer reuses compiler discovery");
         assert_eq!(
-            validate_probe_set(&extra[..1], ClosureKind::Validation)
+            validate_probe_set(&extra[..1], BuildStage::FoundationConsumer)
                 .expect_err("validation probe is unexpected")
                 .code,
             "COMPILER_DISCOVERY_PROBE_SET"
+        );
+        assert_eq!(
+            validate_probe_set(
+                &extra[..1],
+                BuildStage::KernelInterfaceShipping,
+            )
+            .expect_err("Kernel Interface discovery probe is unexpected")
+            .code,
+            "COMPILER_DISCOVERY_PROBE_SET"
+        );
+    }
+
+    #[test]
+    fn provider_selection_is_the_literal_four_stage_matrix() {
+        assert_eq!(
+            expected_provider_selection(BuildStage::FoundationShipping),
+            (None, None)
+        );
+        assert_eq!(
+            expected_provider_selection(BuildStage::FoundationConsumer),
+            (Some("foundation-shipping"), None)
+        );
+        assert_eq!(
+            expected_provider_selection(BuildStage::KernelInterfaceShipping),
+            (Some("foundation-shipping"), None)
+        );
+        assert_eq!(
+            expected_provider_selection(BuildStage::KernelInterfaceConsumer),
+            (Some("kernel-interface-shipping"), Some("foundation-shipping"))
         );
     }
 
@@ -5010,6 +5455,7 @@ mod tests {
             id: id.to_owned(),
             name: closure.package.name.clone(),
             version: "0.16.0-dev".to_owned(),
+            edition: "2024".to_owned(),
             source: None,
             checksum: None,
             license: Some("AGPL-3.0-only".to_owned()),
@@ -5047,6 +5493,7 @@ mod tests {
             dep_info_dir: &fixture.dep_info_dir,
             admitted_sources: &fixture.shipping_sources,
             provider: None,
+            transitive_provider: None,
         }
     }
 

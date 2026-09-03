@@ -29,6 +29,37 @@ aggregate digest. The standalone verifier recomputes that digest and joins
 file entries to repository, executable, runtime, or compiler-substrate bytes.
 The target-libdir directory inventory must equal the selected substrate file
 set. An opaque, merely well-formed inventory digest is not proof.
+
+The Product registry has one protocol-fixed prepared exposure at
+`/repo/conformance/product-closures.json`. It is the same regular,
+non-symlink raw file admitted by preflight, mounted read-only and
+non-executable, and retained in the exposure manifest and repository
+inventory. No caller-selected path, alternate registry, writable copy, or
+second serialization is admitted.
+
+The v2 workload request carries the registry's exact raw byte count and
+SHA-256 identity, never the registry body. The host and prepared child each
+perform their own bounded raw read, duplicate-key and malformed-JSON
+rejection, typed registry parse, and exact identity joins. Those joins bind the
+caller's typed value, preflight file identity, prepared exposure inventory,
+request identity, child-observed raw bytes, and child-parsed registry. A
+missing, retargeted, changed, over-limit, or semantically different registry
+fails before its observations can enter evidence.
+
+The existing 64 KiB environment/argument carrier remains a control plane for
+bounded identities, limits, and setup selection; the registry body does not
+enter it or enlarge its bound. A host-only acceptance inspection measures the
+complete encoded configuration without creating a namespace, mount, or child.
+A transport/request-shape change retains that inspection's actual byte count,
+limit, and positive headroom in its verification record before a live retry.
+These acceptance values are not Source Role Map fields, and a Product report
+makes no per-run headroom claim.
+
+Production applies the same encoder and 64 KiB ceiling at both hops. Tests
+require byte-identical hop payloads for the same typed configuration.
+First-hop overflow fails before setup; second-hop overflow fails before PID 1
+starts, and setup cleanup remains mandatory.
+
 Host-backed system runtime, compiler substrate, checker, and repository views
 are read-only; Product source is also non-executable. Host home, host temporary
 directories, ambient Cargo caches, and unlisted writable mounts are absent.

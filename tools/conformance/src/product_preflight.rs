@@ -1,4 +1,4 @@
-//! Read-only host preflight for the exact Foundation Product journey.
+//! Read-only host preflight for the exact four-closure Product journey.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -26,8 +26,11 @@ const PREPARED_CHECKER_ROOT: &str = "/checker";
 const PREPARED_CHECKER: &str = "/checker/reovim-conformance";
 const PREPARED_SYSROOT: &str = "/sysroot";
 const NULL_DEVICE: &str = "/dev/null";
+const REGISTRY_RELATIVE: &str = "conformance/product-closures.json";
+const PREPARED_REGISTRY: &str = "/repo/conformance/product-closures.json";
 
-const PRODUCT_FILES: [(&str, FileRole); 10] = [
+const PRODUCT_FILES: [(&str, FileRole); 47] = [
+    (REGISTRY_RELATIVE, FileRole::Tool),
     ("product/Cargo.toml", FileRole::Tool),
     ("product/Cargo.lock", FileRole::Tool),
     ("kernel/foundation/Cargo.toml", FileRole::Foundation),
@@ -38,7 +41,98 @@ const PRODUCT_FILES: [(&str, FileRole); 10] = [
     ("kernel/foundation/src/lib.rs", FileRole::Foundation),
     ("tests/foundation-public-consumer/Cargo.toml", FileRole::Consumer),
     ("tests/foundation-public-consumer/src/lib.rs", FileRole::Consumer),
+    (
+        "tests/foundation-public-consumer/src/public_items.rs",
+        FileRole::Consumer,
+    ),
+    ("kernel/interface/Cargo.toml", FileRole::KernelInterface),
+    ("kernel/interface/src/cancellation.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/clock.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/event.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/event/admission.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/event/canonical.rs", FileRole::KernelInterface),
+    (
+        "kernel/interface/src/event/canonical/grammar.rs",
+        FileRole::KernelInterface,
+    ),
+    ("kernel/interface/src/event/counts.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/event/cursor.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/event/descriptor.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/event/identity.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/event/limits.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/event/proposal.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/event/record.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/event/remediation.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/event/sequence.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/event/snapshot.rs", FileRole::KernelInterface),
+    (
+        "kernel/interface/src/event/snapshot_validation.rs",
+        FileRole::KernelInterface,
+    ),
+    ("kernel/interface/src/lib.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/lifecycle.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/operation.rs", FileRole::KernelInterface),
+    (
+        "tests/kernel-interface-public-consumer/Cargo.toml",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/src/clock.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/src/event/canonical.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/src/event/derives.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/src/event/descriptor.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/src/event/mod.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/src/event/outcomes.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/src/event/sequence.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/src/event/snapshot.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/src/lib.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/src/lifecycle.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/src/operation.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/src/public_items.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/tests/public_contract.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
 ];
+
+pub fn repository_inputs() -> impl Iterator<Item = &'static str> {
+    PRODUCT_FILES.iter().map(|(path, _)| *path)
+}
 
 /// Canonical host inputs for one read-only Product preflight.
 pub struct Request<'a> {
@@ -89,11 +183,13 @@ pub struct CompilerLayout {
     pub provided_shared_objects: Vec<FileIdentity>,
 }
 
-/// Exact repository-relative compiler source sets for the closure pair.
+/// Exact repository-relative compiler source sets for all four closures.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompilerSourceSelection {
-    pub shipping: BTreeSet<PathBuf>,
-    pub consumer: BTreeSet<PathBuf>,
+    pub foundation_shipping: BTreeSet<PathBuf>,
+    pub foundation_consumer: BTreeSet<PathBuf>,
+    pub kernel_interface_shipping: BTreeSet<PathBuf>,
+    pub kernel_interface_consumer: BTreeSet<PathBuf>,
 }
 
 /// Runtime observations retained separately for each tool identity.
@@ -107,6 +203,8 @@ pub struct ToolRuntimeObservations {
 /// Complete owned preflight result for prepared-root plan construction.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Observation {
+    /// Raw registry file selected before its prepared exposure is constructed.
+    pub registry: FileIdentity,
     pub compiler_sources: CompilerSourceSelection,
     pub cargo: FileIdentity,
     pub rustc: FileIdentity,
@@ -160,6 +258,7 @@ impl std::error::Error for Error {}
 pub fn observe(request: &Request<'_>) -> Result<Observation, Error> {
     validate_request(request)?;
     let repository_files = observe_repository_files(request)?;
+    let registry = registry_identity(&repository_files)?;
     let compiler_sources = compiler_source_selection();
     let compiler = observe_compiler_layout(request)?;
     let cargo = observe_tool(
@@ -195,6 +294,7 @@ pub fn observe(request: &Request<'_>) -> Result<Observation, Error> {
         &runtime_files,
     )?;
     Ok(Observation {
+        registry,
         compiler_sources,
         cargo,
         rustc,
@@ -205,8 +305,28 @@ pub fn observe(request: &Request<'_>) -> Result<Observation, Error> {
     })
 }
 
-fn compiler_source_selection() -> CompilerSourceSelection {
-    let shipping = [
+fn registry_identity(files: &[FileIdentity]) -> Result<FileIdentity, Error> {
+    let mut matches = files
+        .iter()
+        .filter(|file| file.destination == Path::new(PREPARED_REGISTRY));
+    let registry = matches.next().ok_or_else(|| {
+        Error::new(
+            "PRODUCT_PREFLIGHT_REGISTRY",
+            "Product closure registry identity is absent",
+        )
+    })?;
+    if matches.next().is_some() {
+        return Err(Error::new(
+            "PRODUCT_PREFLIGHT_REGISTRY",
+            "Product closure registry identity is duplicated",
+        ));
+    }
+    Ok(registry.clone())
+}
+
+/// Returns the exact four compiler-selected library source sets.
+pub fn compiler_source_selection() -> CompilerSourceSelection {
+    let foundation_shipping = [
         "kernel/foundation/src/bound.rs",
         "kernel/foundation/src/carrier.rs",
         "kernel/foundation/src/contract.rs",
@@ -216,11 +336,38 @@ fn compiler_source_selection() -> CompilerSourceSelection {
     .into_iter()
     .map(PathBuf::from)
     .collect();
-    let consumer =
-        std::iter::once("tests/foundation-public-consumer/src/lib.rs")
-            .map(PathBuf::from)
-            .collect();
-    CompilerSourceSelection { shipping, consumer }
+    let foundation_consumer = [
+        "tests/foundation-public-consumer/src/lib.rs",
+        "tests/foundation-public-consumer/src/public_items.rs",
+    ]
+    .into_iter()
+    .map(PathBuf::from)
+    .collect();
+    let kernel_interface_shipping = PRODUCT_FILES
+        .iter()
+        .filter(|(path, role)| {
+            *role == FileRole::KernelInterface
+                && Path::new(path)
+                    .extension()
+                    .is_some_and(|value| value.eq_ignore_ascii_case("rs"))
+        })
+        .map(|(path, _)| PathBuf::from(path))
+        .collect();
+    let kernel_interface_consumer = PRODUCT_FILES
+        .iter()
+        .filter(|(path, role)| {
+            *role == FileRole::KernelInterfaceConsumer
+                && Path::new(path)
+                    .starts_with("tests/kernel-interface-public-consumer/src")
+        })
+        .map(|(path, _)| PathBuf::from(path))
+        .collect();
+    CompilerSourceSelection {
+        foundation_shipping,
+        foundation_consumer,
+        kernel_interface_shipping,
+        kernel_interface_consumer,
+    }
 }
 
 fn validate_request(request: &Request<'_>) -> Result<(), Error> {
@@ -305,11 +452,13 @@ fn observe_repository_files(
     Ok(values)
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum FileRole {
     Tool,
     Foundation,
     Consumer,
+    KernelInterface,
+    KernelInterfaceConsumer,
 }
 
 fn validate_source_role(
@@ -323,6 +472,12 @@ fn validate_source_role(
         }
         FileRole::Consumer => {
             Some((ArchitecturalRole::KernelInterface, SourceUse::Test))
+        }
+        FileRole::KernelInterface => {
+            Some((ArchitecturalRole::KernelInterface, SourceUse::Production))
+        }
+        FileRole::KernelInterfaceConsumer => {
+            Some((ArchitecturalRole::KernelRuntime, SourceUse::Test))
         }
     };
     let valid = match expected {
@@ -1037,6 +1192,34 @@ mod tests {
             file.destination.starts_with("/repo")
                 && file.destination != Path::new("/repo")
         }));
+        let registry = super::registry_identity(&observed).unwrap();
+        assert_eq!(
+            registry.destination,
+            Path::new("/repo/conformance/product-closures.json")
+        );
+        assert_eq!(
+            registry.source,
+            tree.root.join("conformance/product-closures.json")
+        );
+        assert_eq!(
+            registry.content_digest,
+            crate::digest::bytes(b"conformance/product-closures.json")
+        );
+        let exposure =
+            super::file_exposure(&registry, false, "Product repository input");
+        assert!(!exposure.executable);
+        assert_eq!(exposure.purpose, "Product repository input");
+
+        let classified = inventory
+            .files
+            .iter()
+            .find(|file| file.path == Path::new(super::REGISTRY_RELATIVE))
+            .unwrap();
+        assert_eq!(
+            classified.classification.owner,
+            SourceOwner::RepositoryTooling
+        );
+        assert_eq!(classified.classification.source_use, SourceUse::Tool);
 
         inventory.files[0].content_digest = crate::digest::bytes(b"wrong");
         let request = preflight_request(&tree, &inventory);
@@ -1044,6 +1227,44 @@ mod tests {
             super::observe_repository_files(&request).unwrap_err().code,
             "PRODUCT_PREFLIGHT_SOURCE_IDENTITY"
         );
+    }
+
+    #[test]
+    fn registry_identity_rejects_omission_and_duplication() {
+        assert_eq!(
+            super::registry_identity(&[]).unwrap_err().code,
+            "PRODUCT_PREFLIGHT_REGISTRY"
+        );
+        let registry = super::FileIdentity {
+            source: PathBuf::from("/host/product-closures.json"),
+            destination: PathBuf::from(super::PREPARED_REGISTRY),
+            content_digest: crate::digest::bytes(b"registry"),
+            size_bytes: 8,
+        };
+        assert_eq!(
+            super::registry_identity(&[registry.clone(), registry])
+                .unwrap_err()
+                .code,
+            "PRODUCT_PREFLIGHT_REGISTRY"
+        );
+    }
+
+    #[test]
+    fn compiler_sources_are_the_exact_four_library_sets() {
+        let sources = super::compiler_source_selection();
+        assert_eq!(sources.foundation_shipping.len(), 5);
+        assert_eq!(sources.foundation_consumer.len(), 2);
+        assert_eq!(sources.kernel_interface_shipping.len(), 20);
+        assert_eq!(sources.kernel_interface_consumer.len(), 12);
+        assert!(sources.foundation_consumer.contains(Path::new(
+            "tests/foundation-public-consumer/src/public_items.rs"
+        )));
+        assert!(sources.kernel_interface_consumer.contains(Path::new(
+            "tests/kernel-interface-public-consumer/src/public_items.rs"
+        )));
+        assert!(!sources.kernel_interface_consumer.contains(Path::new(
+            "tests/kernel-interface-public-consumer/tests/public_contract.rs"
+        )));
     }
 
     #[test]
@@ -1253,6 +1474,14 @@ mod tests {
             ),
             super::FileRole::Consumer => (
                 SourceOwner::Product(ArchitecturalRole::KernelInterface),
+                SourceUse::Test,
+            ),
+            super::FileRole::KernelInterface => (
+                SourceOwner::Product(ArchitecturalRole::KernelInterface),
+                SourceUse::Production,
+            ),
+            super::FileRole::KernelInterfaceConsumer => (
+                SourceOwner::Product(ArchitecturalRole::KernelRuntime),
                 SourceUse::Test,
             ),
         };

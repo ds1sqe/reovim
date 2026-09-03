@@ -1,0 +1,33 @@
+[package]
+name = "reovim-kernel-interface-public-consumer"
+workspace = "../../product"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Nonshipping public consumer of Reovim kernel contracts"
+readme = false
+publish = false
+
+[features]
+default = []
+
+[dependencies.reovim-kernel-interface]
+path = "../../kernel/interface"
+version = "=0.16.0-dev"
+
+[lib]
+path = "src/lib.rs"
+test = false
+doctest = false
+bench = false
+
+[[test]]
+name = "kernel-interface-public-contract"
+path = "tests/public_contract.rs"
+
+[lints]
+workspace = true

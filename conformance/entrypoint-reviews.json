@@ -5,7 +5,7 @@
     {
       "kind": "script",
       "path": "scripts/check.sh",
-      "content_digest": "sha256:a99d168730773341504af77ddc7e639a4ecf297ac715e934b6ea8bbad80cd76b",
+      "content_digest": "sha256:bf7cfe4cbfc25b22d2333d50bd6f654fe29de1b96d6fe45c7fbd6f9cbc0f5c04",
       "direct_local_invocations": [
         {
           "kind": "script",
@@ -27,7 +27,7 @@
         "The Clippy invocation binds CLIPPY_CONF_DIR to the reviewed repository root so ambient configuration cannot disable the three-level nesting threshold."
       ],
       "review_record": "conformance/entrypoint-reviews/check-sh.md",
-      "review_record_digest": "sha256:67b1ea9cdeb4811f1f4568d3a01335d80495e5bd9fae364f20077460b7887884"
+      "review_record_digest": "sha256:50cc74906fe833aaf4ef2f8ee0cf90850099400cd6749cd73e52f399d0bac1e8"
     },
     {
       "kind": "script",
@@ -48,7 +48,7 @@
     {
       "kind": "script",
       "path": "scripts/check-documentation.sh",
-      "content_digest": "sha256:b1564c50a4e8d61cfc546d2287d4e6b46b2dc12a80a08d8e2f0b85767f57bf1c",
+      "content_digest": "sha256:a90292c883cbd8402fbb6042b42623ad8cb33d8e57417a1b67675b007616b022",
       "direct_local_invocations": [],
       "disposition": "admit",
       "mechanism": "exact-content-retained-review",
@@ -58,7 +58,7 @@
         "BASH_SOURCE resolves this checked-out script so ROOT selects the reviewed repository inputs."
       ],
       "review_record": "conformance/entrypoint-reviews/check-documentation-sh.md",
-      "review_record_digest": "sha256:0925cb3bf182f471749874d280540c1a530289f5a8539e839b9275fe076768f9"
+      "review_record_digest": "sha256:e11bd5b0340d011b45c3e9f568a8e116bc54a5c5c8d60f527449d131dd5970b6"
     },
     {
       "kind": "script",

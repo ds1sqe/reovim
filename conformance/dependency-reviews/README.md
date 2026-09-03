@@ -18,9 +18,9 @@ these records, and first-party code remains `#![forbid(unsafe_code)]`.
 - [`syn-closure.md`](syn-closure.md) — `syn 3.0.4`, `proc-macro2 1.0.107`,
   `quote 1.0.47`, and `unicode-ident 1.0.24`, all metadata-resolved.
 - [`nix-linux-execution-closure.md`](nix-linux-execution-closure.md) — selected
-  Linux-only process-group identity/signal closure for the repository checker;
-  admitted only for the current process supervisor and invalidated by any
-  consumer, API, feature, or closure change.
+  Linux-only process and prepared-root closure for the repository checker;
+  admitted only for the current supervisor and fixed Product two-pair proof,
+  and invalidated by any consumer, API, feature, or closure change.
 
 The RustSec observation date is 2026-09-01 at advisory database revision
 `72f8b23d78ea6c4c9ded301a4c6ec4260e8b4c27`. “No match” means only that the

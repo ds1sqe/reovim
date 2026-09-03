@@ -1,8 +1,9 @@
 # Nix Linux Execution Closure Review
 
 Status: admitted only for the current Linux Repository Tooling process
-supervisor and Plan 05's active Foundation Product-proof prepared root. Any
-consumer, API, feature, or closure change invalidates this review.
+supervisor and the fixed Foundation/Kernel Interface two-pair Product-proof
+prepared root. Any consumer, API, feature, dependency closure, or prepared
+workload profile change invalidates this review.
 
 ## Exact consumer and selection
 
@@ -11,11 +12,12 @@ The checker has two exact consumers:
 1. `tools/conformance/src/process.rs` owns bounded child capture, one dedicated
    process group, whole-group termination, leader reap, group-absence
    observation, and reader joins.
-2. Plan 05's active Product-proof execution module owns the same-binary Linux
+2. The exact Product-proof execution module owns the same-binary Linux
    prepared root: user/mount/network/PID namespaces, private propagation,
    quota tmpfs, exact read-only mounts, chroot, per-process limits, and bounded
-   teardown. It exists only because the real Foundation and public consumer
-   reached `PRODUCT_EXECUTION_PROOF_UNAVAILABLE`.
+   teardown. Its fixed workload proves the Foundation shipping/public-consumer
+   pair followed by the Foundation-dependent Kernel Interface
+   shipping/public-consumer pair.
 
 Both use safe Nix APIs without first-party unsafe code.
 
@@ -123,7 +125,7 @@ Nix 0.31.3 supports Rust 1.69+, lists
 builds on Rust 1.92 and current stable under the repository's locked/offline
 checks. Process deadline, group kill/absence, reap, and reader faults remain
 required. The Product checkpoint additionally requires namespace/mount/limit/
-source/tool-identity/cleanup faults and a measured real Foundation journey.
+source/tool-identity/cleanup faults and a measured real fixed two-pair journey.
 
 No release or sandbox-against-host-root claim is made. The dependency was
 already on the checker path; the prepared-root feature delta adds safe wrapper
@@ -142,7 +144,13 @@ grew from 15 to 17 packages. These measured binary, time, and RSS deltas are
 accepted as conservative end-to-end checker deltas, not attributed solely to
 Nix, because the current tree also contains the prepared-root proof.
 
-Prepared-root setup/teardown and the real Foundation journey remain separate
+The selected four-stage prepared workload reached its complete observation in
+145.87 seconds at 197,140 KiB peak RSS before the then-deliberate report
+boundary. It left no owned process, mount, scratch, report, or evidence-marker
+residue. This is a scenario measurement of the complete prepared mechanism,
+not an isolated Nix cost.
+
+Prepared-root setup/teardown and the fixed two-pair journey remain separate
 required measurements before checkpoint.
 A version, checksum, feature, lock, consumer, API, target, build script,
 advisory, unsafe surface, namespace, mount, socket, Netfilter framing, limit,
@@ -150,8 +158,8 @@ or cleanup semantic change invalidates this review.
 
 Decision: admit this exact closure for the two named Repository Tooling
 consumers and no other mechanism. The Product prepared root must be invoked
-end to end by the real Foundation journey and pass its faults/measurements
-before checkpoint. Stop when that journey passes.
+end to end by the fixed Foundation/Kernel Interface two-pair journey and pass
+its faults/measurements before checkpoint. Stop when that journey passes.
 
 Primary references: [Nix 0.31.3 manifest](https://docs.rs/crate/nix/0.31.3/source/Cargo.toml),
 [Nix upstream](https://github.com/nix-rust/nix), and

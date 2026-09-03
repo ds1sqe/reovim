@@ -8,5 +8,6 @@ obligations. The
 [Normative Rule Matrix](../06-Conformance/02-Rule-Matrix.md) remains the sole
 stable rule router.
 
-1. [Event Records, Admission, Retention, and Consumers](01-Records-Admission-Retention-and-Consumers.md)
-2. [Event Scope, Failure, and Conformance](02-Scope-Failure-and-Conformance.md)
+1. [Records and admission](01-Records-Admission-Retention-and-Consumers.md)
+2. [Scope and failure](02-Scope-Failure-and-Conformance.md)
+3. [Startup family](03-Startup-Family-and-Canonical-Bytes.md)

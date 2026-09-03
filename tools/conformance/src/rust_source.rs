@@ -19,19 +19,31 @@ use crate::{
     cargo::Metadata,
     finding::{Finding, Findings},
     policy::Policy,
+    product_closures, product_reexport,
     source::{ClassifiedFile, display_relative, read_bounded},
     topology::{Limits, Topology},
 };
 
-pub fn check(
-    root: &Path,
-    profile: &str,
-    metadata: &Metadata,
-    files: &[ClassifiedFile],
-    policy: &Policy,
-    topology: &Topology,
-    limits: Limits,
-) -> Vec<Finding> {
+pub struct CheckRequest<'a> {
+    pub root: &'a Path,
+    pub profile: &'a str,
+    pub metadata: &'a Metadata,
+    pub files: &'a [ClassifiedFile],
+    pub policy: &'a Policy,
+    pub topology: &'a Topology,
+    pub product_registry: &'a product_closures::Registry,
+    pub limits: Limits,
+}
+
+pub fn check(request: &CheckRequest<'_>) -> Vec<Finding> {
+    let root = request.root;
+    let profile = request.profile;
+    let metadata = request.metadata;
+    let files = request.files;
+    let policy = request.policy;
+    let topology = request.topology;
+    let product_registry = request.product_registry;
+    let limits = request.limits;
     let mut findings = Findings::new(limits.findings);
     let packages = workspace_packages(root, metadata, files);
     let target_uses = target_source_uses(root, metadata, files);
@@ -63,8 +75,17 @@ pub fn check(
         target_roots: &target_roots,
         inventory: &inventory,
         policy,
+        product_registry,
         limits,
     };
+    let mut reexports =
+        product_reexport::Resolver::new(product_reexport::Limits {
+            imports: limits.product_execution.public_item_count,
+            source_files: limits.source_file_count,
+            source_file_bytes: limits.source_file_bytes,
+            source_total_bytes: limits.source_total_bytes,
+            syntax_nodes: limits.syntax_item_expr_type_visits,
+        });
     for file in files {
         if !rust_source_file(file) {
             continue;
@@ -76,8 +97,9 @@ pub fn check(
         if !current_package && known_package {
             continue;
         }
-        context.check_file(file, &mut findings);
+        context.check_file(file, &mut reexports, &mut findings);
     }
+    reexports.finish(metadata, product_registry, &mut findings);
     findings.finish()
 }
 
@@ -125,11 +147,17 @@ struct RustCheckContext<'a> {
     target_roots: &'a BTreeSet<PathBuf>,
     inventory: &'a BTreeMap<PathBuf, &'a ClassifiedFile>,
     policy: &'a Policy,
+    product_registry: &'a product_closures::Registry,
     limits: Limits,
 }
 
 impl RustCheckContext<'_> {
-    fn check_file(&self, file: &ClassifiedFile, findings: &mut Findings) {
+    fn check_file(
+        &self,
+        file: &ClassifiedFile,
+        reexports: &mut product_reexport::Resolver,
+        findings: &mut Findings,
+    ) {
         if reject_build_output(file, self.profile, findings) {
             return;
         }
@@ -171,12 +199,20 @@ impl RustCheckContext<'_> {
         let dependencies =
             dependency_owners(package_id, self.metadata, self.packages);
         analyze_file(
-            &syntax,
-            file,
-            package_owner,
-            &dependencies,
-            self.policy,
-            self.profile,
+            &AnalysisRequest {
+                syntax: &syntax,
+                file,
+                package_id,
+                owner: package_owner,
+                dependencies: &dependencies,
+                policy: self.policy,
+                profile: self.profile,
+                root: self.root,
+                metadata: self.metadata,
+                inventory: self.inventory,
+                product_registry: self.product_registry,
+            },
+            reexports,
             findings,
         );
     }
@@ -1207,15 +1243,36 @@ fn dependency_owners(
         .collect()
 }
 
-fn analyze_file(
-    syntax: &File,
-    file: &ClassifiedFile,
+struct AnalysisRequest<'a> {
+    syntax: &'a File,
+    file: &'a ClassifiedFile,
+    package_id: &'a str,
     owner: SourceOwner,
-    dependencies: &BTreeMap<String, Vec<SourceOwner>>,
-    policy: &Policy,
-    profile: &str,
+    dependencies: &'a BTreeMap<String, Vec<SourceOwner>>,
+    policy: &'a Policy,
+    profile: &'a str,
+    root: &'a Path,
+    metadata: &'a Metadata,
+    inventory: &'a BTreeMap<PathBuf, &'a ClassifiedFile>,
+    product_registry: &'a product_closures::Registry,
+}
+
+fn analyze_file(
+    request: &AnalysisRequest<'_>,
+    reexports: &mut product_reexport::Resolver,
     findings: &mut Findings,
 ) {
+    let syntax = request.syntax;
+    let file = request.file;
+    let package_id = request.package_id;
+    let owner = request.owner;
+    let dependencies = request.dependencies;
+    let policy = request.policy;
+    let profile = request.profile;
+    let root = request.root;
+    let metadata = request.metadata;
+    let inventory = request.inventory;
+    let product_registry = request.product_registry;
     let product = matches!(owner, SourceOwner::Product(_));
     let path = display_relative(&file.path);
     let boundary = BoundaryContext {
@@ -1232,6 +1289,20 @@ fn analyze_file(
         check_boundary(&boundary, "SOURCE_IMPORT", &import, findings);
     }
     if product {
+        product_reexport::check(
+            &product_reexport::Request {
+                root,
+                profile,
+                metadata,
+                inventory,
+                registry: product_registry,
+                package_id,
+                source: file,
+                syntax,
+            },
+            reexports,
+            findings,
+        );
         let mut gaps = GapVisitor { path: &path, findings };
         gaps.visit_file(syntax);
     }
@@ -1592,16 +1663,17 @@ impl<'ast> Visit<'ast> for GapVisitor<'_, '_> {
         visit::visit_expr_macro(self, expression);
     }
 
-    fn visit_item_use(&mut self, item: &'ast syn::ItemUse) {
-        if public(&item.vis) {
-            self.findings.push(Finding::new(
-                "public_type",
-                reexport_gap_code(&item.tree),
-                Some(self.path.to_owned()),
-                "public re-export requires resolved-name evidence",
-            ));
-        }
-        visit::visit_item_use(self, item);
+    fn visit_item_extern_crate(&mut self, item: &'ast syn::ItemExternCrate) {
+        self.findings.push(Finding::new(
+            "public_type",
+            "UNSUPPORTED_EXTERN_CRATE_PROOF_GAP",
+            Some(self.path.to_owned()),
+            concat!(
+                "extern crate can shadow an extern-prelude dependency name ",
+                "and is outside the Product source profile"
+            ),
+        ));
+        visit::visit_item_extern_crate(self, item);
     }
 
     fn visit_item_type(&mut self, item: &'ast syn::ItemType) {
@@ -1614,23 +1686,6 @@ impl<'ast> Visit<'ast> for GapVisitor<'_, '_> {
             ));
         }
         visit::visit_item_type(self, item);
-    }
-}
-
-fn reexport_gap_code(tree: &UseTree) -> &'static str {
-    if contains_glob(tree) {
-        "UNSUPPORTED_GLOB_REEXPORT_PROOF_GAP"
-    } else {
-        "UNSUPPORTED_REEXPORT_PROOF_GAP"
-    }
-}
-
-fn contains_glob(tree: &UseTree) -> bool {
-    match tree {
-        UseTree::Glob(_) => true,
-        UseTree::Path(path) => contains_glob(&path.tree),
-        UseTree::Group(group) => group.items.iter().any(contains_glob),
-        UseTree::Name(_) | UseTree::Rename(_) => false,
     }
 }
 
@@ -1748,6 +1803,7 @@ mod tests {
 pub fn selected() {}
 pub use crate::*;
 pub type Alias = crate::Thing;
+extern crate evil as reovim_foundation;
 include!("generated.rs");
 "#,
         )
@@ -1762,7 +1818,7 @@ include!("generated.rs");
             .collect::<std::collections::BTreeSet<_>>();
         for code in [
             "UNSUPPORTED_CFG_PROOF_GAP",
-            "UNSUPPORTED_GLOB_REEXPORT_PROOF_GAP",
+            "UNSUPPORTED_EXTERN_CRATE_PROOF_GAP",
             "UNSUPPORTED_PUBLIC_ALIAS_PROOF_GAP",
             "UNSUPPORTED_INCLUDE_PROOF_GAP",
         ] {

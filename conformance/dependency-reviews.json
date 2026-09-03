@@ -1,6 +1,6 @@
 {
   "schema": "reovim-dependency-reviews/v2",
-  "reviewed_at": "2026-09-02T10:09:28Z",
+  "reviewed_at": "2026-09-02T23:52:35Z",
   "workspaces": [
     {
       "workspace": "repository-tooling",
@@ -53,7 +53,7 @@
           ],
           "disposition": "admit",
           "review_record": "conformance/dependency-reviews/nix-linux-execution-closure.md",
-          "review_record_digest": "sha256:b9a3041a1274a24c79b7c009d30f6731f8d556c3a89ce6677a14c5c80e46c2d7"
+          "review_record_digest": "sha256:472ebb9fe85e224e057cdde441b412a44317ba064e7e6a1a462614ad55571f63"
         },
         {
           "name": "bitflags",
@@ -101,7 +101,7 @@
           ],
           "disposition": "admit",
           "review_record": "conformance/dependency-reviews/nix-linux-execution-closure.md",
-          "review_record_digest": "sha256:b9a3041a1274a24c79b7c009d30f6731f8d556c3a89ce6677a14c5c80e46c2d7"
+          "review_record_digest": "sha256:472ebb9fe85e224e057cdde441b412a44317ba064e7e6a1a462614ad55571f63"
         },
         {
           "name": "cfg_aliases",
@@ -149,7 +149,7 @@
           ],
           "disposition": "admit",
           "review_record": "conformance/dependency-reviews/nix-linux-execution-closure.md",
-          "review_record_digest": "sha256:b9a3041a1274a24c79b7c009d30f6731f8d556c3a89ce6677a14c5c80e46c2d7"
+          "review_record_digest": "sha256:472ebb9fe85e224e057cdde441b412a44317ba064e7e6a1a462614ad55571f63"
         },
         {
           "name": "cfg-if",
@@ -197,7 +197,7 @@
           ],
           "disposition": "admit",
           "review_record": "conformance/dependency-reviews/nix-linux-execution-closure.md",
-          "review_record_digest": "sha256:b9a3041a1274a24c79b7c009d30f6731f8d556c3a89ce6677a14c5c80e46c2d7"
+          "review_record_digest": "sha256:472ebb9fe85e224e057cdde441b412a44317ba064e7e6a1a462614ad55571f63"
         },
         {
           "name": "itoa",
@@ -293,7 +293,7 @@
           ],
           "disposition": "admit",
           "review_record": "conformance/dependency-reviews/nix-linux-execution-closure.md",
-          "review_record_digest": "sha256:b9a3041a1274a24c79b7c009d30f6731f8d556c3a89ce6677a14c5c80e46c2d7"
+          "review_record_digest": "sha256:472ebb9fe85e224e057cdde441b412a44317ba064e7e6a1a462614ad55571f63"
         },
         {
           "name": "memchr",
@@ -389,7 +389,7 @@
           ],
           "disposition": "admit",
           "review_record": "conformance/dependency-reviews/nix-linux-execution-closure.md",
-          "review_record_digest": "sha256:b9a3041a1274a24c79b7c009d30f6731f8d556c3a89ce6677a14c5c80e46c2d7"
+          "review_record_digest": "sha256:472ebb9fe85e224e057cdde441b412a44317ba064e7e6a1a462614ad55571f63"
         },
         {
           "name": "nix",
@@ -434,7 +434,7 @@
           ],
           "disposition": "admit",
           "review_record": "conformance/dependency-reviews/nix-linux-execution-closure.md",
-          "review_record_digest": "sha256:b9a3041a1274a24c79b7c009d30f6731f8d556c3a89ce6677a14c5c80e46c2d7"
+          "review_record_digest": "sha256:472ebb9fe85e224e057cdde441b412a44317ba064e7e6a1a462614ad55571f63"
         },
         {
           "name": "proc-macro2",
@@ -865,7 +865,7 @@
     {
       "workspace": "product",
       "lockfile": "product/Cargo.lock",
-      "lock_digest": "sha256:89ce2414e4d2866a8281658398aa3e448e566deeffc674a69eee0a7fec9822a3",
+      "lock_digest": "sha256:4aa9e5fdb3bfdffeadaad4506b9868de146975b54e63dec4958f06b403400536",
       "admissions": []
     }
   ]

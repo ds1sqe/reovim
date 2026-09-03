@@ -1,0 +1,51 @@
+[package]
+name = "reovim-kernel-interface"
+workspace = "../../product"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Portable public contracts for the Reovim kernel"
+readme = false
+publish = false
+include = [
+    "src/cancellation.rs",
+    "src/clock.rs",
+    "src/event.rs",
+    "src/event/admission.rs",
+    "src/event/canonical.rs",
+    "src/event/canonical/grammar.rs",
+    "src/event/counts.rs",
+    "src/event/cursor.rs",
+    "src/event/descriptor.rs",
+    "src/event/identity.rs",
+    "src/event/limits.rs",
+    "src/event/proposal.rs",
+    "src/event/record.rs",
+    "src/event/remediation.rs",
+    "src/event/sequence.rs",
+    "src/event/snapshot.rs",
+    "src/event/snapshot_validation.rs",
+    "src/lib.rs",
+    "src/lifecycle.rs",
+    "src/operation.rs",
+]
+
+[features]
+default = []
+
+[dependencies.reovim-foundation]
+path = "../foundation"
+version = "=0.16.0-dev"
+
+[lib]
+path = "src/lib.rs"
+test = false
+doctest = false
+bench = false
+
+[lints]
+workspace = true

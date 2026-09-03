@@ -3,6 +3,8 @@
 mod model;
 
 #[cfg(target_os = "linux")]
+mod config_transport;
+#[cfg(target_os = "linux")]
 mod diagnostic;
 #[cfg(target_os = "linux")]
 mod inventory;
@@ -30,10 +32,14 @@ use serde_json::Value;
 
 pub use model::{
     Capability, DispatchBounds, Error, Evidence, Execution, ExposureKind,
-    ExposurePlan, InventoryEntry, InventoryEntryKind, InventoryIdentity,
-    InventoryLimits, Plan, ResourceLimits, ScratchLimits, WorkloadContext,
+    ExposureObservation, ExposurePlan, InventoryEntry, InventoryEntryKind,
+    InventoryIdentity, InventoryLimits, Plan, ResourceLimits, ScratchLimits,
+    WorkloadContext,
 };
 pub use model::{PID1_ARGUMENT, SETUP_ARGUMENT};
+
+#[cfg(test)]
+pub use model::ConfigTransportInspection;
 
 pub fn validate_inventory_identity(
     identity: &InventoryIdentity,
@@ -58,6 +64,23 @@ pub fn execute(plan: &Plan) -> Result<Execution, Error> {
     parent::execute(plan)
 }
 
+/// Measures the exact config transport without starting prepared execution.
+///
+/// This may inventory configured exposures and briefly hold an empty
+/// mountpoint directory. It creates no namespace, mount, or child process and
+/// reconciles the temporary directory before returning.
+///
+/// # Errors
+///
+/// Returns a typed plan, inventory, encoding, transport, identity, or cleanup
+/// error.
+#[cfg(all(test, target_os = "linux"))]
+pub fn inspect_config_transport(
+    plan: &Plan,
+) -> Result<ConfigTransportInspection, Error> {
+    parent::inspect_config_transport(plan)
+}
+
 /// Handles the fixed outer same-binary setup dispatch.
 ///
 /// # Errors
@@ -78,13 +101,7 @@ pub fn setup_entry(bounds: DispatchBounds) -> Result<(), Error> {
             )
         })?;
     let bytes = value.into_vec();
-    let limit = bounds.config_bytes.min(linux::CONFIG_ARG_BYTES);
-    if bytes.len() > limit {
-        return Err(Error::new(
-            "PREPARED_CONFIG_ENV_LIMIT",
-            "setup config environment slot exceeds its byte limit",
-        ));
-    }
+    config_transport::inspect_length(bytes.len(), bounds.config_bytes)?;
     let config = protocol::parse_config(&bytes, bounds)?;
     let result = setup::run(&config)?;
     let mut output = protocol::encode_setup_result(&result, bounds)?;
@@ -118,6 +135,7 @@ pub fn pid1_entry(
 ) -> Result<(), Error> {
     require_pid1_environment()?;
     require_pid1_arguments(config_json)?;
+    config_transport::inspect_length(config_json.len(), bounds.config_bytes)?;
     let config = protocol::parse_config(config_json, bounds)?;
     pid1::run(&config, workload)
 }
@@ -236,13 +254,28 @@ pub fn capability_probe() -> Capability {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(all(test, not(target_os = "linux")))]
 /// Returns the typed non-Linux platform failure.
 ///
 /// # Errors
 ///
 /// Always returns `PREPARED_PLATFORM_UNAVAILABLE`.
 pub fn execute(_plan: &Plan) -> Result<Execution, Error> {
+    Err(Error::new(
+        "PREPARED_PLATFORM_UNAVAILABLE",
+        "prepared-root execution requires Linux",
+    ))
+}
+
+#[cfg(all(test, not(target_os = "linux")))]
+/// Returns the typed non-Linux platform failure.
+///
+/// # Errors
+///
+/// Always returns `PREPARED_PLATFORM_UNAVAILABLE`.
+pub fn inspect_config_transport(
+    _plan: &Plan,
+) -> Result<ConfigTransportInspection, Error> {
     Err(Error::new(
         "PREPARED_PLATFORM_UNAVAILABLE",
         "prepared-root execution requires Linux",

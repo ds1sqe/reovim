@@ -14,6 +14,7 @@ readonly BUFFER="$ARCH/02-Resource-and-Buffer"
 readonly SEMANTICS="$ARCH/03-Semantics-and-View"
 readonly INTERACTION_NAME=02-Interaction-Updates-Protocols-and-View
 readonly INTERACTION="$SEMANTICS/$INTERACTION_NAME"
+readonly HOST_API="$DOC/02-Host-API"
 readonly EXTENSIONS="$DOC/03-Extensions"
 readonly PERFORMANCE="$DOC/04-Performance"
 readonly EVENT_STREAM="$DOC/05-Editor-Event-Stream"
@@ -292,6 +293,10 @@ expected_normative_files=(
     ${ARCH}/05-Client/README.md
     ${ARCH}/README.md
     Documentation/02-Host-API.md
+    ${HOST_API}/01-Boundary-and-Capability-Admission.md
+    ${HOST_API}/02-Monotonic-Clock.md
+    ${HOST_API}/03-Diagnostic-Output-and-Bootstrap-Health.md
+    ${HOST_API}/04-Lifecycle-Adapters-and-Conformance.md
     ${EXTENSIONS}/01-Packages-Contribution-Points-and-Registry.md
     ${EXTENSIONS}/02-SDKs-Service-Contracts-and-Compatibility.md
     ${EXTENSIONS}/03-Adapters-Execution-and-Lifecycle.md
@@ -303,6 +308,7 @@ expected_normative_files=(
     ${PERFORMANCE}/README.md
     ${EVENT_STREAM}/01-Records-Admission-Retention-and-Consumers.md
     ${EVENT_STREAM}/02-Scope-Failure-and-Conformance.md
+    ${EVENT_STREAM}/03-Startup-Family-and-Canonical-Bytes.md
     ${EVENT_STREAM}/README.md
     Documentation/05-Migration/01-Selective-Migration.md
     ${CONFORMANCE}/01-Requirements-and-Evidence.md
@@ -402,6 +408,11 @@ check_index_children ${ARCH}/05-Client/README.md \
     ${ARCH}/05-Client/02-Rendering-Capabilities.md \
     ${ARCH}/05-Client/03-Extension-Modules-and-CCM.md \
     ${ARCH}/05-Client/04-Lifecycle-Families-and-Release-Evidence.md
+check_index_children Documentation/02-Host-API.md \
+    ${HOST_API}/01-Boundary-and-Capability-Admission.md \
+    ${HOST_API}/02-Monotonic-Clock.md \
+    ${HOST_API}/03-Diagnostic-Output-and-Bootstrap-Health.md \
+    ${HOST_API}/04-Lifecycle-Adapters-and-Conformance.md
 check_index_children ${EXTENSIONS}/README.md \
     ${EXTENSIONS}/01-Packages-Contribution-Points-and-Registry.md \
     ${EXTENSIONS}/02-SDKs-Service-Contracts-and-Compatibility.md \
@@ -413,7 +424,8 @@ check_index_children ${PERFORMANCE}/README.md \
     ${PERFORMANCE}/03-Path-Overhead-and-Regression-Evidence.md
 check_index_children ${EVENT_STREAM}/README.md \
     ${EVENT_STREAM}/01-Records-Admission-Retention-and-Consumers.md \
-    ${EVENT_STREAM}/02-Scope-Failure-and-Conformance.md
+    ${EVENT_STREAM}/02-Scope-Failure-and-Conformance.md \
+    ${EVENT_STREAM}/03-Startup-Family-and-Canonical-Bytes.md
 check_index_children ${CONFORMANCE}/README.md \
     ${CONFORMANCE}/01-Requirements-and-Evidence.md \
     ${RULE_MATRIX}.md \
@@ -468,6 +480,9 @@ check_index_sections \
     'Reading order'
 check_index_sections \
     ${INTERACTION}.md \
+    'Reading order'
+check_index_sections \
+    Documentation/02-Host-API.md \
     'Reading order'
 check_index_sections \
     ${CLASSIFIER}.md \

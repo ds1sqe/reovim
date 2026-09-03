@@ -15,6 +15,13 @@ Cargo subprocesses use `/` as their recorded working directory. The checker
 records absence of `/.cargo/config` and `/.cargo/config.toml`; the absolute
 committed manifest supplies repository identity.
 
+Host metadata subprocesses fix `CARGO_TARGET_DIR` to
+`target/cargo-metadata` under the canonical repository root. That directory is
+Repository Tooling scratch below the already excluded root `target/`; it is
+not Product input, compiler evidence, or report evidence. This prevents Cargo
+target-discovery caches from materializing below a Product workspace and
+changing the next source inventory.
+
 Exact mode binds the tracked Git tree's names, blob identities, and modes as
 `git_tree_digest` and requires equality with classified inventory and directly
 hashed worktree bytes/modes. It requires the raw stage-0 index map to equal

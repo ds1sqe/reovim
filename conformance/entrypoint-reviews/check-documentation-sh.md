@@ -4,7 +4,7 @@
 
 - Kind: script
 - Exact content digest:
-  `sha256:b1564c50a4e8d61cfc546d2287d4e6b46b2dc12a80a08d8e2f0b85767f57bf1c`
+  `sha256:a90292c883cbd8402fbb6042b42623ad8cb33d8e57417a1b67675b007616b022`
 - Review mechanism: exact content and retained review
 
 ## Direct local invocations
@@ -28,6 +28,7 @@ Admit these exact bytes with an empty direct-local-invocation set for
 documentation conformance. The script binds both the focused
 Interaction/Update/View/Protocol chapters and the focused Product-v2 proof
 chapters to their inventories, indexes, authority clauses, and Rule Matrix
-routes. It includes `CODE_STYLE.md` in public Markdown link, whitespace, fence,
-and local-fragment validation. Any byte or invocation change reopens this
-review.
+routes. It also binds the focused Host API chapters and initial startup Event
+family to their navigation indexes. It includes `CODE_STYLE.md` in public
+Markdown link, whitespace, fence, and local-fragment validation. Any byte or
+invocation change reopens this review.

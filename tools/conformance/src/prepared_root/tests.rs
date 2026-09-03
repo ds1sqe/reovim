@@ -109,6 +109,70 @@ fn config_roundtrip_preserves_opaque_workload_request() {
 }
 
 #[test]
+fn both_config_hops_accept_the_exact_transport_limit() {
+    let fixture = Fixture::new();
+    let config = config_with_encoded_length(&fixture, linux::CONFIG_ARG_BYTES);
+
+    let environment =
+        parent::setup_environment_payload_for_test(&config).unwrap();
+    let argument = setup::pid1_argument_payload_for_test(&config).unwrap();
+
+    assert_eq!(environment.len(), linux::CONFIG_ARG_BYTES);
+    assert_eq!(argument, environment);
+}
+
+#[test]
+fn both_config_hops_reject_one_byte_over_with_sizes() {
+    let fixture = Fixture::new();
+    let target = linux::CONFIG_ARG_BYTES + 1;
+    let config = config_with_encoded_length(&fixture, target);
+
+    for error in [
+        parent::setup_environment_payload_for_test(&config).unwrap_err(),
+        setup::pid1_argument_payload_for_test(&config).unwrap_err(),
+    ] {
+        assert_eq!(error.code, "PREPARED_CONFIG_ENV_LIMIT");
+        assert_eq!(
+            error.message,
+            format!(
+                "config transport actual={target} bytes, limit={} bytes",
+                linux::CONFIG_ARG_BYTES,
+            )
+        );
+    }
+}
+
+#[test]
+fn config_inspection_measures_and_cleans_without_execution() {
+    let fixture = Fixture::new();
+    let plan = fixture.plan();
+
+    let inspection = super::inspect_config_transport(&plan).unwrap();
+
+    assert!(inspection.encoded_bytes < inspection.limit_bytes);
+    assert_eq!(inspection.limit_bytes, linux::CONFIG_ARG_BYTES);
+    assert_eq!(
+        inspection.headroom_bytes,
+        inspection.limit_bytes - inspection.encoded_bytes,
+    );
+    assert_directory_empty(&fixture.mount_parent);
+}
+
+#[test]
+fn failed_config_inspection_cleans_its_mountpoint() {
+    let fixture = Fixture::new();
+    let mut plan = fixture.plan();
+    plan.workload_request = Value::String("x".repeat(linux::CONFIG_ARG_BYTES));
+
+    let error = super::inspect_config_transport(&plan).unwrap_err();
+
+    assert_eq!(error.code, "PREPARED_CONFIG_ENV_LIMIT");
+    assert!(error.message.contains("actual="));
+    assert!(error.message.contains("limit=65536 bytes"));
+    assert_directory_empty(&fixture.mount_parent);
+}
+
+#[test]
 fn config_parser_accepts_tightened_selected_bounds() {
     let fixture = Fixture::new();
     let plan = fixture.plan();
@@ -725,6 +789,21 @@ fn expanded_bootstrap(selected: DispatchBounds) -> DispatchBounds {
         execution_deadline: selected.execution_deadline * 2,
         supervision_deadline: selected.supervision_deadline * 2,
     }
+}
+
+fn config_with_encoded_length(fixture: &Fixture, target: usize) -> Config {
+    let plan = fixture.plan();
+    let mut config = fixture.config(&plan);
+    config.workload_request = Value::String(String::new());
+    let base = protocol::encode_config(&config).unwrap().len();
+    assert!(base <= target);
+    config.workload_request = Value::String("x".repeat(target - base));
+    assert_eq!(protocol::encode_config(&config).unwrap().len(), target);
+    config
+}
+
+fn assert_directory_empty(path: &std::path::Path) {
+    assert_eq!(fs::read_dir(path).unwrap().count(), 0);
 }
 
 fn complete_namespace(uid_map: &str, gid_map: &str) -> NamespaceObservation {

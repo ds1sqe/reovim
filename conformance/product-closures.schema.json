@@ -1,13 +1,18 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://reovim.dev/schema/reovim-product-closures-v1.json",
+  "$id": "https://reovim.dev/schema/reovim-product-closures-v2.json",
   "title": "Reovim exact Product closure declarations",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "product_proof_profile", "closures", "public_consumer_relations"],
+  "required": [
+    "schema",
+    "product_proof_profile",
+    "closures",
+    "public_consumer_relations"
+  ],
   "properties": {
-    "schema": { "const": "reovim-product-closures/v1" },
-    "product_proof_profile": { "const": "authored-std-lib/v1" },
+    "schema": { "const": "reovim-product-closures/v2" },
+    "product_proof_profile": { "const": "authored-std-lib/v2" },
     "closures": {
       "type": "array",
       "uniqueItems": true,
@@ -27,6 +32,10 @@
     "id": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+    },
+    "public_path": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)*$"
     },
     "relative_path": {
       "type": "string",
@@ -186,7 +195,7 @@
         "architectural_role": { "$ref": "#/$defs/product_role" },
         "source_use": { "enum": ["production", "test"] },
         "cargo": { "$ref": "#/$defs/cargo_selection" },
-        "mechanism_profile": { "const": "authored-std-lib/v1" },
+        "mechanism_profile": { "const": "authored-std-lib/v2" },
         "package_membership": {
           "oneOf": [
             { "type": "null" },
@@ -229,11 +238,8 @@
       "additionalProperties": false,
       "required": ["path", "kind"],
       "properties": {
-        "path": {
-          "type": "string",
-          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)*$"
-        },
-        "kind": { "enum": ["module", "type", "trait", "function", "const", "static"] }
+        "path": { "$ref": "#/$defs/public_path" },
+        "kind": { "enum": ["module", "type", "variant", "trait", "function", "const", "static"] }
       }
     },
     "derive_check": {
@@ -242,17 +248,35 @@
       "required": ["derive", "public_type", "consumer_operation"],
       "properties": {
         "derive": { "enum": ["Clone", "Copy", "Debug", "PartialEq", "Eq", "Hash", "Default"] },
-        "public_type": {
-          "type": "string",
-          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)*$"
-        },
+        "public_type": { "$ref": "#/$defs/public_path" },
         "consumer_operation": { "enum": ["clone", "copy", "debug", "partial_eq", "eq", "hash", "default"] }
+      }
+    },
+    "public_reexport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "public_type",
+        "provider_relation",
+        "provider_type"
+      ],
+      "properties": {
+        "public_type": { "$ref": "#/$defs/public_path" },
+        "provider_relation": { "$ref": "#/$defs/id" },
+        "provider_type": { "$ref": "#/$defs/public_path" }
       }
     },
     "public_consumer_relation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "shipping_closure", "consumer_closure", "public_items", "derive_checks"],
+      "required": [
+        "id",
+        "shipping_closure",
+        "consumer_closure",
+        "public_items",
+        "derive_checks",
+        "reexports"
+      ],
       "properties": {
         "id": { "$ref": "#/$defs/id" },
         "shipping_closure": { "$ref": "#/$defs/id" },
@@ -267,6 +291,11 @@
           "type": "array",
           "uniqueItems": true,
           "items": { "$ref": "#/$defs/derive_check" }
+        },
+        "reexports": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/public_reexport" }
         }
       }
     }

@@ -4,7 +4,7 @@
 
 - Kind: script
 - Exact content digest:
-  `sha256:a99d168730773341504af77ddc7e639a4ecf297ac715e934b6ea8bbad80cd76b`
+  `sha256:bf7cfe4cbfc25b22d2333d50bd6f654fe29de1b96d6fe45c7fbd6f9cbc0f5c04`
 - Review mechanism: exact content and retained review
 
 ## Direct local invocations
@@ -20,8 +20,9 @@ are governed by the workspace topology.
 The default contributor path retains workspace library/binary tests, every
 checker integration except the two named exhaustive matrices, the depgraph
 integration target, doctests, Clippy, and rustdoc. It also formats, checks,
-lints, and documents both Product packages through their separate locked
-workspace, explicit release target, and root-excluded build directory.
+executes the public-boundary integration journey, lints, and documents all
+four Product packages through their separate locked workspace, explicit
+release target, and root-excluded build directory.
 
 The exact-Git and explicit Product-empty fixture matrices remain direct pre-
 checkpoint commands. Their omission from the per-edit path is exact and

@@ -36,6 +36,14 @@ contracts. They cannot assign the Kernel sequence, impersonate another
 producer, attach unbounded rendering payloads, or expose a concrete viewport,
 frame, or raw platform handle as structured event state.
 
+Each family fixes timestamp ownership. The initial
+[startup family](03-Startup-Family-and-Canonical-Bytes.md) accepts no caller-
+supplied instant; admission observes the injected
+[MonotonicClock](../02-Host-API/02-Monotonic-Clock.md) and stamps the record
+after proposal validation and redaction. One Stream incarnation binds to one
+clock incarnation/generation or carries an equally explicit clock-domain stamp;
+it never mixes incomparable instants under one sequence domain.
+
 Validation and field-level redaction occur before any subscriber or output can
 observe the event. A single total sequence number is assigned at admission,
 before fan-out. Sequence numbers are never reused within one Event Stream
@@ -56,9 +64,12 @@ pressured, or failed states, and it does not replace the remediation catalog.
 Producer admission performs bounded work and returns an explicit result:
 
 - accepted with its sequence number;
-- rejected because the record is invalid or exceeds a declared bound;
-- dropped because of rate, pressure, or allocation limits; or
-- closed because stream shutdown has begun.
+- rejected because the proposal or its required synchronous observation is
+  invalid, unavailable, or exceeds a declared bound;
+- dropped because of rate, pressure, allocation, charge-preparation, or
+  rendering failure; or
+- closed because the Stream or one bound lifecycle dependency is Closing,
+  Closed, replaced, or exhausted.
 
 Pre-admission loss has no sequence number and increments a cause-specific
 counter; it never fabricates an Event Gap. Accepted records retain their
@@ -139,8 +150,8 @@ or output admission beyond those bounds returns typed pressure. Slow consumers
 are isolated from one another as well as from the producer path.
 Admission never invokes subscriber code or performs file/stderr I/O
 synchronously on the editing path. A slow or failed consumer is isolated;
-pressure produces a consumer-specific Event Gap or drop count rather than blocking
-or growing memory without bound.
+pressure produces a consumer-specific Event Gap or drop count rather than
+blocking or growing memory without bound.
 
 Subscriptions support cancellation and idempotent unsubscribe. Stream closing
 stops new producer admission, establishes a final sequence high-water mark,

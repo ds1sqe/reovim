@@ -1096,6 +1096,8 @@ mod tests {
             BTreeSet::from([
                 "reovim-foundation".to_owned(),
                 "reovim-foundation-public-consumer".to_owned(),
+                "reovim-kernel-interface".to_owned(),
+                "reovim-kernel-interface-public-consumer".to_owned(),
             ])
         );
     }

@@ -12,3 +12,17 @@ version = "0.16.0-dev"
 dependencies = [
  "reovim-foundation",
 ]
+
+[[package]]
+name = "reovim-kernel-interface"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-foundation",
+]
+
+[[package]]
+name = "reovim-kernel-interface-public-consumer"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-kernel-interface",
+]

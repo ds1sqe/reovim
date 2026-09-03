@@ -65,6 +65,16 @@
       "source_use": "production"
     },
     {
+      "prefix": "kernel/interface",
+      "precedence": 10,
+      "source_owner": {
+        "kind": "product",
+        "role": "Kernel Interface"
+      },
+      "source_provenance": "authored",
+      "source_use": "production"
+    },
+    {
       "prefix": "perf",
       "precedence": 10,
       "source_owner": {
@@ -97,6 +107,16 @@
       "source_owner": {
         "kind": "product",
         "role": "Kernel Interface"
+      },
+      "source_provenance": "authored",
+      "source_use": "test"
+    },
+    {
+      "prefix": "tests/kernel-interface-public-consumer",
+      "precedence": 10,
+      "source_owner": {
+        "kind": "product",
+        "role": "Kernel Runtime"
       },
       "source_provenance": "authored",
       "source_use": "test"
@@ -195,13 +215,15 @@
       "source_use": "tool",
       "upstream": {
         "identity": "cargo-manifest-set/v1: sorted relative path, LF, raw manifest bytes, LF",
-        "digest": "sha256:e61b483056dd8fd61d3d894c020f5860afca65431a91206bdeebbc30049caa96",
+        "digest": "sha256:b6490fa8c3c487604c4e72a98299e4ec6dc9d415791698c29092cad2ac277ac6",
         "digest_subject": {
           "kind": "paths",
           "paths": [
             "kernel/foundation/Cargo.toml",
+            "kernel/interface/Cargo.toml",
             "product/Cargo.toml",
-            "tests/foundation-public-consumer/Cargo.toml"
+            "tests/foundation-public-consumer/Cargo.toml",
+            "tests/kernel-interface-public-consumer/Cargo.toml"
           ]
         }
       }
@@ -437,6 +459,10 @@
     {
       "consumer": "Kernel Interface",
       "provider": "Foundation"
+    },
+    {
+      "consumer": "Kernel Runtime",
+      "provider": "Kernel Interface"
     }
   ],
   "generated_evidence_key": "conformance/source-role-map.json"

@@ -14,7 +14,7 @@ use nix::{
 };
 
 use super::{
-    diagnostic,
+    config_transport, diagnostic,
     linux::{
         MountStack, mount_exposures, mount_scratch, one_final_line,
         read_bounded, read_trimmed, require_configured_identities,
@@ -143,7 +143,7 @@ fn make_mounts_private() -> Result<(), Error> {
 }
 
 fn launch_pid1(config: &Config) -> Result<Pid1Result, Error> {
-    let bytes = protocol::encode_config(config)?;
+    let bytes = pid1_argument_payload(config)?;
     let text = std::str::from_utf8(&bytes).map_err(|failure| {
         Error::new("PREPARED_CONFIG_UTF8", failure.to_string())
     })?;
@@ -161,6 +161,17 @@ fn launch_pid1(config: &Config) -> Result<Pid1Result, Error> {
         Error::new("PREPARED_PID1_SPAWN", failure.to_string())
     })?;
     Pid1Supervisor::new(child)?.finish(config.dispatch_bounds)
+}
+
+fn pid1_argument_payload(config: &Config) -> Result<Vec<u8>, Error> {
+    config_transport::encode(config).map(|value| value.0)
+}
+
+#[cfg(test)]
+pub(super) fn pid1_argument_payload_for_test(
+    config: &Config,
+) -> Result<Vec<u8>, Error> {
+    pid1_argument_payload(config)
 }
 
 struct Pid1Supervisor {

@@ -13,8 +13,8 @@ use crate::{
     policy::relative_path,
 };
 
-pub const SCHEMA: &str = "reovim-product-closures/v1";
-pub const PRODUCT_PROOF_PROFILE: &str = "authored-std-lib/v1";
+pub const SCHEMA: &str = "reovim-product-closures/v2";
+pub const PRODUCT_PROOF_PROFILE: &str = "authored-std-lib/v2";
 pub const TARGET_TRIPLE: &str = "x86_64-unknown-linux-gnu";
 
 /// Caller-owned limits applied after the bounded JSON loader has constructed a
@@ -109,6 +109,14 @@ pub struct PublicConsumerRelation {
     pub consumer_closure: String,
     pub public_items: Vec<PublicItem>,
     pub derive_checks: Vec<DeriveCheck>,
+    pub reexports: Vec<PublicReexport>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct PublicReexport {
+    pub public_type: String,
+    pub provider_relation: String,
+    pub provider_type: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -121,6 +129,7 @@ pub struct PublicItem {
 pub enum PublicItemKind {
     Module,
     Type,
+    Variant,
     Trait,
     Function,
     Const,
@@ -201,6 +210,7 @@ impl Registry {
         validate_closure_identities(&self.closures)?;
         let relations =
             validate_relations(&closures, &self.public_consumer_relations)?;
+        validate_reexports(&self.public_consumer_relations)?;
         validate_related_closures(&self.closures, &relations)?;
         Ok(())
     }
@@ -416,6 +426,127 @@ fn validate_relations<'a>(
         validate_relation(closures, &mut indexes, relation)?;
     }
     Ok(indexes)
+}
+
+fn validate_reexports(
+    relations: &[PublicConsumerRelation],
+) -> Result<(), ConfigError> {
+    let relation_count = relations.len();
+    let relations = relations
+        .iter()
+        .map(|relation| (relation.id.as_str(), relation))
+        .collect::<BTreeMap<_, _>>();
+    if relations.len() != relation_count {
+        return Err(reexport_error(
+            "PRODUCT_RELATION_DUPLICATE_ID",
+            "duplicate public-consumer relation ID",
+        ));
+    }
+    for relation in relations.values() {
+        validate_relation_reexports(relation, &relations)?;
+    }
+    Ok(())
+}
+
+fn validate_relation_reexports(
+    relation: &PublicConsumerRelation,
+    relations: &BTreeMap<&str, &PublicConsumerRelation>,
+) -> Result<(), ConfigError> {
+    let mut public_types = BTreeSet::new();
+    for reexport in &relation.reexports {
+        if !public_types.insert(reexport.public_type.as_str()) {
+            return Err(reexport_error(
+                "PRODUCT_REEXPORT_DUPLICATE_PUBLIC_TYPE",
+                "public type has more than one re-export origin",
+            ));
+        }
+        validate_reexport(relation, reexport, relations)?;
+    }
+    Ok(())
+}
+
+fn validate_reexport(
+    relation: &PublicConsumerRelation,
+    reexport: &PublicReexport,
+    relations: &BTreeMap<&str, &PublicConsumerRelation>,
+) -> Result<(), ConfigError> {
+    require_public_type(relation, &reexport.public_type, false)?;
+    if reexport.provider_relation == relation.id {
+        return Err(reexport_error(
+            "PRODUCT_REEXPORT_SELF_PROVIDER",
+            "public re-export provider must be another relation",
+        ));
+    }
+    let provider = relations
+        .get(reexport.provider_relation.as_str())
+        .copied()
+        .ok_or_else(|| {
+            reexport_error(
+                "PRODUCT_REEXPORT_PROVIDER_RELATION_UNRESOLVED",
+                "public re-export names an absent provider relation",
+            )
+        })?;
+    require_public_type(provider, &reexport.provider_type, true)?;
+    if provider
+        .reexports
+        .iter()
+        .any(|item| item.public_type == reexport.provider_type)
+    {
+        return Err(reexport_error(
+            "PRODUCT_REEXPORT_PROVIDER_NOT_DIRECT",
+            "public re-export provider type is itself a re-export",
+        ));
+    }
+    let consumer_derives = derive_set(relation, &reexport.public_type);
+    let provider_derives = derive_set(provider, &reexport.provider_type);
+    if consumer_derives != provider_derives {
+        return Err(reexport_error(
+            "PRODUCT_REEXPORT_DERIVE_SET",
+            "public re-export and provider derive sets differ",
+        ));
+    }
+    Ok(())
+}
+
+fn require_public_type(
+    relation: &PublicConsumerRelation,
+    public_type: &str,
+    provider: bool,
+) -> Result<(), ConfigError> {
+    let exact = relation.public_items.iter().any(|item| {
+        item.path == public_type && item.kind == PublicItemKind::Type
+    });
+    if exact {
+        return Ok(());
+    }
+    let (code, message) = if provider {
+        (
+            "PRODUCT_REEXPORT_PROVIDER_TYPE_UNRESOLVED",
+            "provider path is not a declared public item of kind type",
+        )
+    } else {
+        (
+            "PRODUCT_REEXPORT_PUBLIC_TYPE_UNRESOLVED",
+            "re-export path is not a declared public item of kind type",
+        )
+    };
+    Err(reexport_error(code, message))
+}
+
+fn derive_set(
+    relation: &PublicConsumerRelation,
+    public_type: &str,
+) -> BTreeSet<BuiltinDerive> {
+    relation
+        .derive_checks
+        .iter()
+        .filter(|check| check.public_type == public_type)
+        .map(|check| check.derive)
+        .collect()
+}
+
+fn reexport_error(code: &'static str, message: &'static str) -> ConfigError {
+    ConfigError::new(code, "$.public_consumer_relations", message)
 }
 
 fn validate_relation<'a>(
@@ -654,7 +785,7 @@ fn validate_target_profile(
             "PRODUCT_CLOSURE_TARGET_PROFILE",
             json::child(path, "target"),
             concat!(
-                "authored-std-lib/v1 requires kind [\"lib\"] and ",
+                "authored-std-lib/v2 requires kind [\"lib\"] and ",
                 "crate_types [\"lib\"]"
             ),
         ));
@@ -889,7 +1020,7 @@ fn parse_cargo(
         return Err(ConfigError::new(
             "PRODUCT_CLOSURE_FEATURE_SELECTION",
             json::child(path, "features"),
-            "authored-std-lib/v1 admits no selected features",
+            "authored-std-lib/v2 admits no selected features",
         ));
     }
     let expected = string_set(
@@ -902,7 +1033,7 @@ fn parse_cargo(
         return Err(ConfigError::new(
             "PRODUCT_CLOSURE_ARTIFACT_TYPE",
             json::child(path, "expected_artifact_crate_types"),
-            "authored-std-lib/v1 requires exactly rlib",
+            "authored-std-lib/v2 requires exactly rlib",
         ));
     }
     Ok(CargoSelection {
@@ -1038,6 +1169,7 @@ fn parse_relation(
             "consumer_closure",
             "public_items",
             "derive_checks",
+            "reexports",
         ],
         &[],
     )?;
@@ -1104,6 +1236,12 @@ fn parse_relation(
         derive_checks.push(check);
     }
     derive_checks.sort();
+    let reexports = parse_reexports(
+        &object["reexports"],
+        &json::child(path, "reexports"),
+        limits.public_items,
+        &public_types,
+    )?;
     Ok(PublicConsumerRelation {
         id: id(&object["id"], &json::child(path, "id"))?,
         shipping_closure: id(
@@ -1116,6 +1254,65 @@ fn parse_relation(
         )?,
         public_items,
         derive_checks,
+        reexports,
+    })
+}
+
+fn parse_reexports(
+    value: &Value,
+    path: &str,
+    limit: usize,
+    public_types: &BTreeSet<&str>,
+) -> Result<Vec<PublicReexport>, ConfigError> {
+    let values = bounded_array(value, path, limit, "PRODUCT_REEXPORT_LIMIT")?;
+    let mut reexports = Vec::with_capacity(values.len());
+    let mut reexported_types = BTreeSet::new();
+    for (item, value) in values.iter().enumerate() {
+        let item_path = json::index(path, item);
+        let reexport = parse_public_reexport(value, &item_path)?;
+        if !public_types.contains(reexport.public_type.as_str()) {
+            return Err(ConfigError::new(
+                "PRODUCT_REEXPORT_PUBLIC_TYPE_UNRESOLVED",
+                json::child(&item_path, "public_type"),
+                "re-export must name a declared public item of kind type",
+            ));
+        }
+        if !reexported_types.insert(reexport.public_type.clone()) {
+            return Err(ConfigError::new(
+                "PRODUCT_REEXPORT_DUPLICATE_PUBLIC_TYPE",
+                item_path,
+                "public type has more than one re-export origin",
+            ));
+        }
+        reexports.push(reexport);
+    }
+    reexports.sort();
+    Ok(reexports)
+}
+
+fn parse_public_reexport(
+    value: &Value,
+    path: &str,
+) -> Result<PublicReexport, ConfigError> {
+    let object = json::object(
+        value,
+        path,
+        &["public_type", "provider_relation", "provider_type"],
+        &[],
+    )?;
+    Ok(PublicReexport {
+        public_type: public_path(
+            &object["public_type"],
+            &json::child(path, "public_type"),
+        )?,
+        provider_relation: id(
+            &object["provider_relation"],
+            &json::child(path, "provider_relation"),
+        )?,
+        provider_type: public_path(
+            &object["provider_type"],
+            &json::child(path, "provider_type"),
+        )?,
     })
 }
 
@@ -1129,6 +1326,7 @@ fn parse_public_item(
     let kind = match json::string(&object["kind"], &kind_path)? {
         "module" => PublicItemKind::Module,
         "type" => PublicItemKind::Type,
+        "variant" => PublicItemKind::Variant,
         "trait" => PublicItemKind::Trait,
         "function" => PublicItemKind::Function,
         "const" => PublicItemKind::Const,
@@ -1550,8 +1748,87 @@ mod tests {
                     "public_type": "Revision",
                     "consumer_operation": "debug"
                 }
-            ]
+            ],
+            "reexports": []
         }]);
+        value
+    }
+
+    fn reexport_registry() -> Value {
+        let mut value = complete_registry();
+        let foundation = &mut value["public_consumer_relations"][0];
+        foundation["public_items"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"path": "Version", "kind": "type"}));
+        for derive in ["Copy", "Debug"] {
+            foundation["derive_checks"].as_array_mut().unwrap().push(json!({
+                "derive": derive,
+                "public_type": "Version",
+                "consumer_operation": derive.to_ascii_lowercase()
+            }));
+        }
+
+        let mut shipping = closure(
+            "kernel-interface-shipping",
+            "shipping",
+            "kernel-interface",
+            "library",
+        );
+        shipping["architectural_role"] = json!("Kernel Interface");
+        let mut consumer = closure(
+            "kernel-interface-consumer",
+            "validation",
+            "kernel-interface-consumer",
+            "library",
+        );
+        consumer["architectural_role"] = json!("Kernel Runtime");
+        value["closures"].as_array_mut().unwrap().extend([shipping, consumer]);
+        value["public_consumer_relations"].as_array_mut().unwrap().push(
+            json!({
+                "id": "kernel-interface-public-api",
+                "shipping_closure": "kernel-interface-shipping",
+                "consumer_closure": "kernel-interface-consumer",
+                "public_items": [
+                    {"path": "clock::Revision", "kind": "type"},
+                    {"path": "clock::Version", "kind": "type"}
+                ],
+                "derive_checks": [
+                    {
+                        "derive": "Copy",
+                        "public_type": "clock::Revision",
+                        "consumer_operation": "copy"
+                    },
+                    {
+                        "derive": "Debug",
+                        "public_type": "clock::Revision",
+                        "consumer_operation": "debug"
+                    },
+                    {
+                        "derive": "Copy",
+                        "public_type": "clock::Version",
+                        "consumer_operation": "copy"
+                    },
+                    {
+                        "derive": "Debug",
+                        "public_type": "clock::Version",
+                        "consumer_operation": "debug"
+                    }
+                ],
+                "reexports": [
+                    {
+                        "public_type": "clock::Version",
+                        "provider_relation": "foundation-public-api",
+                        "provider_type": "Version"
+                    },
+                    {
+                        "public_type": "clock::Revision",
+                        "provider_relation": "foundation-public-api",
+                        "provider_type": "Revision"
+                    }
+                ]
+            }),
+        );
         value
     }
 
@@ -1575,14 +1852,22 @@ mod tests {
             relation.derive_checks[0].derive,
             super::BuiltinDerive::Copy
         );
+        assert_eq!(relation.reexports, Vec::new());
     }
 
     #[test]
     fn schema_unknown_fields_ids_paths_and_limits_fail_closed() {
         let mut schema = empty_registry();
-        schema["schema"] = json!("reovim-product-closures/v2");
+        schema["schema"] = json!("reovim-product-closures/v1");
         assert_eq!(
             super::Registry::parse(&schema, LIMITS).unwrap_err().code,
+            "CFG_CONST"
+        );
+
+        let mut profile = empty_registry();
+        profile["product_proof_profile"] = json!("authored-std-lib/v1");
+        assert_eq!(
+            super::Registry::parse(&profile, LIMITS).unwrap_err().code,
             "CFG_CONST"
         );
 
@@ -1591,6 +1876,18 @@ mod tests {
         assert_eq!(
             super::Registry::parse(&unknown, LIMITS).unwrap_err().code,
             "CFG_UNKNOWN_FIELD"
+        );
+
+        let mut missing_reexports = complete_registry();
+        missing_reexports["public_consumer_relations"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("reexports");
+        assert_eq!(
+            super::Registry::parse(&missing_reexports, LIMITS)
+                .unwrap_err()
+                .code,
+            "CFG_MISSING_FIELD"
         );
 
         let mut bad_id = complete_registry();
@@ -1648,6 +1945,14 @@ mod tests {
         assert_eq!(
             super::Registry::parse(&feature, LIMITS).unwrap_err().code,
             "PRODUCT_CLOSURE_FEATURE_SELECTION"
+        );
+
+        let mut mechanism = complete_registry();
+        mechanism["closures"][0]["mechanism_profile"] =
+            json!("authored-std-lib/v1");
+        assert_eq!(
+            super::Registry::parse(&mechanism, LIMITS).unwrap_err().code,
+            "CFG_CONST"
         );
     }
 
@@ -1743,6 +2048,137 @@ mod tests {
         assert_eq!(
             super::Registry::parse(&unrelated, LIMITS).unwrap_err().code,
             "PRODUCT_CLOSURE_UNRELATED"
+        );
+    }
+
+    #[test]
+    fn direct_reexport_origins_parse_and_sort() {
+        let registry =
+            super::Registry::parse(&reexport_registry(), LIMITS).unwrap();
+        let relation = registry
+            .public_consumer_relations
+            .iter()
+            .find(|relation| relation.id == "kernel-interface-public-api")
+            .unwrap();
+        assert_eq!(relation.reexports.len(), 2);
+        assert_eq!(relation.reexports[0].public_type, "clock::Revision");
+        assert_eq!(
+            relation.reexports[0].provider_relation,
+            "foundation-public-api"
+        );
+        assert_eq!(relation.reexports[0].provider_type, "Revision");
+    }
+
+    #[test]
+    fn reexport_references_kinds_and_derives_fail_closed() {
+        let mut local = reexport_registry();
+        local["public_consumer_relations"][1]["reexports"][0]["public_type"] =
+            json!("clock::Missing");
+        assert_eq!(
+            super::Registry::parse(&local, LIMITS).unwrap_err().code,
+            "PRODUCT_REEXPORT_PUBLIC_TYPE_UNRESOLVED"
+        );
+
+        let mut relation = reexport_registry();
+        let reexport =
+            &mut relation["public_consumer_relations"][1]["reexports"][0];
+        reexport["provider_relation"] = json!("absent-public-api");
+        assert_eq!(
+            super::Registry::parse(&relation, LIMITS).unwrap_err().code,
+            "PRODUCT_REEXPORT_PROVIDER_RELATION_UNRESOLVED"
+        );
+
+        let mut provider = reexport_registry();
+        let reexport =
+            &mut provider["public_consumer_relations"][1]["reexports"][0];
+        reexport["provider_type"] = json!("transaction::begin");
+        assert_eq!(
+            super::Registry::parse(&provider, LIMITS).unwrap_err().code,
+            "PRODUCT_REEXPORT_PROVIDER_TYPE_UNRESOLVED"
+        );
+
+        let mut derives = reexport_registry();
+        derives["public_consumer_relations"][1]["derive_checks"]
+            .as_array_mut()
+            .unwrap()
+            .pop();
+        assert_eq!(
+            super::Registry::parse(&derives, LIMITS).unwrap_err().code,
+            "PRODUCT_REEXPORT_DERIVE_SET"
+        );
+    }
+
+    #[test]
+    fn duplicate_self_and_transitive_reexport_origins_fail_closed() {
+        let mut duplicate = reexport_registry();
+        let repeated =
+            duplicate["public_consumer_relations"][1]["reexports"][0].clone();
+        duplicate["public_consumer_relations"][1]["reexports"]
+            .as_array_mut()
+            .unwrap()
+            .push(repeated);
+        assert_eq!(
+            super::Registry::parse(&duplicate, LIMITS).unwrap_err().code,
+            "PRODUCT_REEXPORT_DUPLICATE_PUBLIC_TYPE"
+        );
+
+        let mut self_provider = reexport_registry();
+        let reexport =
+            &mut self_provider["public_consumer_relations"][1]["reexports"][0];
+        reexport["provider_relation"] = json!("kernel-interface-public-api");
+        assert_eq!(
+            super::Registry::parse(&self_provider, LIMITS).unwrap_err().code,
+            "PRODUCT_REEXPORT_SELF_PROVIDER"
+        );
+
+        let mut transitive = reexport_registry();
+        transitive["public_consumer_relations"][0]["reexports"] = json!([{
+            "public_type": "Version",
+            "provider_relation": "kernel-interface-public-api",
+            "provider_type": "clock::Version"
+        }]);
+        assert_eq!(
+            super::Registry::parse(&transitive, LIMITS).unwrap_err().code,
+            "PRODUCT_REEXPORT_PROVIDER_NOT_DIRECT"
+        );
+    }
+
+    #[test]
+    fn typed_registry_mutation_cannot_bypass_reexport_validation() {
+        let mut registry =
+            super::Registry::parse(&reexport_registry(), LIMITS).unwrap();
+        let relation = registry
+            .public_consumer_relations
+            .iter_mut()
+            .find(|relation| relation.id == "kernel-interface-public-api")
+            .unwrap();
+        relation.reexports[0].public_type = "clock::Missing".to_owned();
+        assert_eq!(
+            registry.validate_cross_references().unwrap_err().code,
+            "PRODUCT_REEXPORT_PUBLIC_TYPE_UNRESOLVED"
+        );
+
+        let mut registry =
+            super::Registry::parse(&reexport_registry(), LIMITS).unwrap();
+        let relation = registry
+            .public_consumer_relations
+            .iter_mut()
+            .find(|relation| relation.id == "kernel-interface-public-api")
+            .unwrap();
+        relation.reexports[1].public_type =
+            relation.reexports[0].public_type.clone();
+        assert_eq!(
+            registry.validate_cross_references().unwrap_err().code,
+            "PRODUCT_REEXPORT_DUPLICATE_PUBLIC_TYPE"
+        );
+
+        let mut registry =
+            super::Registry::parse(&reexport_registry(), LIMITS).unwrap();
+        let repeated_id = registry.public_consumer_relations[0].id.clone();
+        registry.public_consumer_relations[1].id = repeated_id;
+        assert_eq!(
+            registry.validate_cross_references().unwrap_err().code,
+            "PRODUCT_RELATION_DUPLICATE_ID"
         );
     }
 }

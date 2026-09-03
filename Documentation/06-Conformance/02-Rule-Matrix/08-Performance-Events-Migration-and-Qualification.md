@@ -24,3 +24,10 @@
 | `QUAL-001` | Features enter a candidate only with complete public, fault, bounds, lifecycle, dependency, performance, Event, and qualification mapping. | [Quality](../../07-Mission-Critical-Quality/03-Admission-Qualification-and-Release-Scope.md) | `TRACE,REVIEW,QUAL` |
 | `QUAL-002` | Exact TUI/CLI/Web artifacts and required SDK rows qualify on `x86_64-unknown-linux-gnu` before v0.16 release. | [Quality](../../07-Mission-Critical-Quality/03-Admission-Qualification-and-Release-Scope.md) | `INTEG,PERF,QUAL` |
 | `QUAL-003` | Mission-critical language is scoped evidence discipline and never implies unnamed formal certification. | [Quality](../../07-Mission-Critical-Quality/01-Integrity-Effects-and-Fencing.md) | `DOC,REVIEW` |
+
+The exact `kernel.startup` schema, canonical bytes, operation classes, and
+cause mapping used by `EVT-002`, `EVT-004`, and `EVT-006` are owned by the
+[startup family][startup].
+
+[startup]:
+  ../../05-Editor-Event-Stream/03-Startup-Family-and-Canonical-Bytes.md

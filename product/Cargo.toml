@@ -2,11 +2,15 @@
 resolver = "3"
 members = [
     "../kernel/foundation",
+    "../kernel/interface",
     "../tests/foundation-public-consumer",
+    "../tests/kernel-interface-public-consumer",
 ]
 default-members = [
     "../kernel/foundation",
+    "../kernel/interface",
     "../tests/foundation-public-consumer",
+    "../tests/kernel-interface-public-consumer",
 ]
 
 [workspace.package]

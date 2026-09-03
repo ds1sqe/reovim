@@ -915,6 +915,23 @@ mod tests {
     }
 
     #[test]
+    fn semantic_set_uses_path_component_order() {
+        let parsed = super::parse_output(
+            Phase::BeforeCompiler,
+            DirtyMode::Reject,
+            argv(),
+            b"src/event.rs\nsrc/event/admission.rs\n",
+            limits(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            parsed.members,
+            ["src/event/admission.rs", "src/event.rs"].map(PathBuf::from)
+        );
+    }
+
+    #[test]
     fn parser_rejects_encoding_framing_and_path_mutants() {
         let cases: &[(&[u8], &str)] = &[
             (b"", "PACKAGE_LIST_EMPTY"),

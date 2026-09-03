@@ -20,6 +20,8 @@ use crate::{
     topology::Profile,
 };
 
+const METADATA_TARGET_DIRECTORY: &str = "target/cargo-metadata";
+
 #[derive(Debug)]
 pub struct Capture {
     pub process: ProcessResult,
@@ -53,6 +55,7 @@ pub struct Package {
     pub id: String,
     pub name: String,
     pub version: String,
+    pub edition: String,
     pub source: Option<String>,
     pub checksum: Option<String>,
     pub license: Option<String>,
@@ -393,6 +396,10 @@ fn metadata_spec(
             .collect();
     let selected_rustc = launch.map_or(rustc, |value| value.launcher);
     let mut spec = cargo_spec_os(cargo, selected_rustc, cargo_home, arguments);
+    spec.environment.insert(
+        OsString::from("CARGO_TARGET_DIR"),
+        root.join(METADATA_TARGET_DIRECTORY).into_os_string(),
+    );
     configure_rustc_launcher(&mut spec, rustc, launch)?;
     Ok(spec)
 }
@@ -724,6 +731,10 @@ fn parse_package(value: &Value, path: &str) -> Result<Package, ConfigError> {
         required(object, "version", path)?,
         &json::child(path, "version"),
     )?;
+    let edition = nonempty(
+        required(object, "edition", path)?,
+        &json::child(path, "edition"),
+    )?;
     let source =
         optional_string(object.get("source"), &json::child(path, "source"))?;
     let checksum = optional_string(
@@ -750,6 +761,7 @@ fn parse_package(value: &Value, path: &str) -> Result<Package, ConfigError> {
         id,
         name,
         version,
+        edition,
         source,
         checksum,
         license,
@@ -931,6 +943,27 @@ mod tests {
     use crate::topology::Profile;
 
     #[test]
+    fn package_edition_is_retained_and_required() {
+        let mut value = serde_json::json!({
+            "id": "path+file:///fixture#package@0.1.0",
+            "name": "package",
+            "version": "0.1.0",
+            "edition": "2024",
+            "source": null,
+            "checksum": null,
+            "license": null,
+            "manifest_path": "/fixture/Cargo.toml",
+            "targets": []
+        });
+        let package = super::parse_package(&value, "$.packages[0]").unwrap();
+        assert_eq!(package.edition, "2024");
+
+        value.as_object_mut().unwrap().remove("edition");
+        let error = super::parse_package(&value, "$.packages[0]").unwrap_err();
+        assert_eq!(error.code, "CARGO_MISSING");
+    }
+
+    #[test]
     fn metadata_arguments_use_retained_relative_manifest() {
         let profile = profile(false, false, &[]);
         let arguments = exact_metadata_arguments(
@@ -1084,6 +1117,10 @@ mod tests {
             OsString::from("/checkout/reovim/nested/Cargo.toml")
         );
         assert_ne!(spec.current_dir, root);
+        assert_eq!(
+            spec.environment.get(OsStr::new("CARGO_TARGET_DIR")),
+            Some(&OsString::from("/checkout/reovim/target/cargo-metadata"))
+        );
 
         let prepared = metadata_spec(
             Path::new("/tools/cargo"),

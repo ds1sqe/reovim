@@ -5,9 +5,9 @@
 
 | ID | Obligation | Authority | Evidence |
 | --- | --- | --- | --- |
-| `HOST-001` | Host capabilities are small, semantic, consumer-driven, and exclude platform handles/branching. | [Host API](../../02-Host-API.md) | `STATIC,SHAPE,REVIEW` |
-| `HOST-002` | Initial Host scope contains only MonotonicClock and DiagnosticOutput; ExecutionFacility/engines are non-Host. | [Host API](../../02-Host-API.md) | `STATIC,CONTRACT` |
-| `HOST-003` | Every Host capability has standard/test adapters, shared conformance, lifecycle, limits, events, and measurements. | [Host API](../../02-Host-API.md) | `CONTRACT,FAULT,PERF` |
+| `HOST-001` | Host capabilities are small, semantic, consumer-driven, and exclude platform handles/branching. | [Host boundary](../../02-Host-API/01-Boundary-and-Capability-Admission.md) | `STATIC,SHAPE,REVIEW` |
+| `HOST-002` | Initial Host scope contains only MonotonicClock and DiagnosticOutput; ExecutionFacility/engines are non-Host. | [Host scope](../../02-Host-API/01-Boundary-and-Capability-Admission.md) | `STATIC,CONTRACT` |
+| `HOST-003` | Every Host capability has standard/test adapters, shared conformance, lifecycle, limits, events, and measurements. | [Host conformance](../../02-Host-API/04-Lifecycle-Adapters-and-Conformance.md) | `CONTRACT,FAULT,PERF` |
 | `SDK-001` | Language-neutral schemas own semantics; Rust/Python/TypeScript projections cannot redefine wire, retry, certainty, or lifecycle. | [Extensions](../../03-Extensions/02-SDKs-Service-Contracts-and-Compatibility.md) | `SHAPE,COMPAT,GOLDEN` |
 | `SDK-002` | Rust-first and service-reference predecessor gates complete before Python/TypeScript admission. | [Extensions](../../03-Extensions/02-SDKs-Service-Contracts-and-Compatibility.md) | `TRACE,CONTRACT,PERF` |
 | `SDK-003` | Each required or supported role/family/language row has public examples, docs, conformance, exact package, and independent evidence. | [Extensions](../../03-Extensions/04-Quick-Authoring-Admission-and-Compatibility.md) | `DOC,COMPAT,INTEG,PERF,QUAL` |
@@ -18,3 +18,11 @@
 | `EXT-004` | Adapter and Engine descriptors separate stable identity from registry-owned scope/delivery/admission status. | [Extensions](../../03-Extensions/03-Adapters-Execution-and-Lifecycle.md) | `SHAPE,CONTRACT` |
 | `EXT-005` | v0.16 Adapter Kit/TestOnly model selects no production engine or compatibility profile. | [Extensions](../../03-Extensions/03-Adapters-Execution-and-Lifecycle.md) | `STATIC,SHAPE,TRACE` |
 | `EXT-006` | Quick local manifests are synthesized only before execution from explicit inputs; installed, shared, and published packages use explicit manifests. | [Extensions](../../03-Extensions/04-Quick-Authoring-Admission-and-Compatibility.md) | `SHAPE,SEC,INTEG` |
+
+`HOST-003` conformance applies the focused
+[MonotonicClock](../../02-Host-API/02-Monotonic-Clock.md) and
+[DiagnosticOutput][diagnostic]
+contracts; those chapters own their capability-specific semantics.
+
+[diagnostic]:
+  ../../02-Host-API/03-Diagnostic-Output-and-Bootstrap-Health.md

@@ -1,4 +1,4 @@
-//! Real coordinator for the initial Foundation Product proof.
+//! Real coordinator for the exact four-stage Product producer.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -21,14 +21,19 @@ use crate::{
 const SHIPPING_CLOSURE: &str = "foundation-shipping";
 const CONSUMER_CLOSURE: &str = "foundation-consumer";
 const PUBLIC_RELATION: &str = "foundation-public-api";
-const EXECUTION_ID: &str = "foundation-proof";
+const KERNEL_INTERFACE_SHIPPING_CLOSURE: &str = "kernel-interface-shipping";
+const KERNEL_INTERFACE_CONSUMER_CLOSURE: &str = "kernel-interface-consumer";
+const KERNEL_INTERFACE_PUBLIC_RELATION: &str = "kernel-interface-public-api";
+const EXECUTION_ID: &str = "kernel-interface-two-pair-proof";
 const SUBSTRATE_ID: &str = "foundation-rustc-substrate";
 const HOST_TRIPLE: &str = "x86_64-unknown-linux-gnu";
 const TARGET_TRIPLE: &str = "x86_64-unknown-linux-gnu";
 const PREPARED_SCRATCH: &str = "/scratch";
 const MOUNT_PARENT: &str = "/tmp";
+const REGISTRY_RELATIVE: &str = "conformance/product-closures.json";
+const REGISTRY_PURPOSE: &str = "Product repository input";
 
-/// Exact caller-owned authorities for one active Foundation proof.
+/// Exact caller-owned authorities for one four-stage Product execution.
 pub struct Request<'a> {
     pub repository_root: &'a Path,
     pub cargo: &'a Path,
@@ -36,6 +41,7 @@ pub struct Request<'a> {
     pub checker: &'a Path,
     pub inventory: &'a Inventory,
     pub limits: Limits,
+    pub registry_bytes: &'a [u8],
     pub registry_value: &'a Value,
     pub registry: &'a product_closures::Registry,
     pub execution_environment: &'a str,
@@ -46,7 +52,7 @@ pub struct Request<'a> {
 pub struct Observation {
     pub prepared: prepared_root::Execution,
     pub workload: product_workload::Observation,
-    pub product_source: product_source::ProductSourceObservation,
+    pub product_sources: product_source::TwoPairSourceObservation,
     pub checker_runtime_inputs: Vec<report_build_v2::RuntimeInputIdentity>,
     pub cargo_runtime_inputs: Vec<report_build_v2::RuntimeInputIdentity>,
     pub rustc_runtime_inputs: Vec<report_build_v2::RuntimeInputIdentity>,
@@ -54,7 +60,7 @@ pub struct Observation {
     compiler_units: Vec<report_build_v2::ProductCompilerUnitEvidence>,
     extern_edges: Vec<report_build_v2::ProductExternEvidence>,
     artifacts: Vec<report_build_v2::ProductArtifactEvidence>,
-    provider_artifact: report_build_v2::ProductProviderArtifactEvidence,
+    provider_artifacts: Vec<report_build_v2::ProductProviderArtifactEvidence>,
     execution: report_build_v2::ProductExecutionEvidence,
 }
 
@@ -71,10 +77,16 @@ impl Observation {
             compiler_units: &self.compiler_units,
             extern_edges: &self.extern_edges,
             artifacts: &self.artifacts,
-            provider_artifact: &self.provider_artifact,
-            package_before: &self.workload.package_before,
-            package_after: &self.workload.package_after,
-            product_source: &self.product_source,
+            provider_artifacts: &self.provider_artifacts,
+            foundation_package_before: &self.workload.package_before,
+            foundation_package_after: &self.workload.package_after,
+            kernel_interface_package_before: &self
+                .workload
+                .kernel_interface_package_before,
+            kernel_interface_package_after: &self
+                .workload
+                .kernel_interface_package_after,
+            product_sources: &self.product_sources,
             execution: &self.execution,
             process: &self.prepared.process,
         }
@@ -118,7 +130,7 @@ impl fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-/// Runs and correlates the complete initial Foundation Product proof.
+/// Runs and correlates the complete four-stage Product producer.
 ///
 /// # Errors
 ///
@@ -134,22 +146,28 @@ pub fn run(request: &Request<'_>) -> Result<Observation, Error> {
         limits: request.limits,
     })
     .map_err(preflight_error)?;
+    validate_host_registry(request, &preflight.registry)?;
     let workload_limits = workload_limits(request.limits);
-    let workload_request = product_workload::request_value(
-        request.registry_value,
-        &workload_limits,
-    )
-    .map_err(workload_error)?;
+    let registry_input = product_workload::RegistryInput {
+        path: preflight.registry.destination.clone(),
+        content_digest: preflight.registry.content_digest.clone(),
+        size_bytes: preflight.registry.size_bytes,
+    };
+    let workload_request =
+        product_workload::request_value(&registry_input, &workload_limits)
+            .map_err(workload_error)?;
     validate_registry_join(
         &workload_request,
         &workload_limits,
-        request.registry,
+        &registry_input,
     )?;
     let plan = prepared_plan(request, &preflight, workload_request)?;
     let prepared = prepared_root::execute(&plan).map_err(prepared_error)?;
+    validate_prepared_registry_exposure(&preflight.registry, &prepared)?;
     let workload = product_workload::parse_result(
         &prepared.evidence.workload.value,
         &workload_limits,
+        request.registry,
     )
     .map_err(workload_error)?;
     validate_substrate_join(&preflight.compiler, &workload.compiler_substrate)?;
@@ -157,9 +175,11 @@ pub fn run(request: &Request<'_>) -> Result<Observation, Error> {
         &preflight.compiler_sources,
         &workload.shipping.unit.sources,
         &workload.validation.unit.sources,
+        &workload.kernel_interface_shipping.unit.sources,
+        &workload.kernel_interface_validation.unit.sources,
     )?;
-    let product_source =
-        analyze_product_source(request, &workload, workload_limits.source)?;
+    let product_sources =
+        analyze_two_pair_source(request, &workload, workload_limits.source)?;
     let checker_runtime_inputs = runtime_inputs(&preflight.runtime.checker)?;
     let cargo_runtime_inputs = runtime_inputs(&preflight.runtime.cargo)?;
     let rustc_runtime_inputs = runtime_inputs(&preflight.runtime.rustc)?;
@@ -167,12 +187,12 @@ pub fn run(request: &Request<'_>) -> Result<Observation, Error> {
     let compiler_units = compiler_unit_evidence(&workload);
     let extern_edges = extern_evidence(&workload)?;
     let artifacts = artifact_evidence(&workload)?;
-    let provider_artifact = provider_artifact_evidence(&workload)?;
+    let provider_artifacts = provider_artifact_evidence(&workload)?;
     let execution = execution_evidence(&preflight, &prepared)?;
     Ok(Observation {
         prepared,
         workload,
-        product_source,
+        product_sources,
         checker_runtime_inputs,
         cargo_runtime_inputs,
         rustc_runtime_inputs,
@@ -180,7 +200,7 @@ pub fn run(request: &Request<'_>) -> Result<Observation, Error> {
         compiler_units,
         extern_edges,
         artifacts,
-        provider_artifact,
+        provider_artifacts,
         execution,
     })
 }
@@ -194,10 +214,172 @@ fn require_prepared_capability() -> Result<(), Error> {
     }
 }
 
+fn validate_host_registry(
+    request: &Request<'_>,
+    identity: &product_preflight::FileIdentity,
+) -> Result<(), Error> {
+    let source = request.repository_root.join(REGISTRY_RELATIVE);
+    let destination = Path::new(product_workload::PREPARED_REGISTRY_PATH);
+    let size = u64::try_from(request.registry_bytes.len()).map_err(|_| {
+        Error::new(
+            "PRODUCT_PROOF_REGISTRY_SIZE",
+            "raw registry byte count does not fit u64",
+        )
+    })?;
+    let bounded = !request.registry_bytes.is_empty()
+        && size <= request.limits.source_file_bytes;
+    let exact_identity = identity.source == source
+        && identity.destination == destination
+        && identity.size_bytes == size
+        && identity.content_digest
+            == crate::digest::bytes(request.registry_bytes);
+    if !bounded || !exact_identity {
+        return Err(Error::new(
+            "PRODUCT_PROOF_REGISTRY_IDENTITY",
+            "raw registry bytes differ from preflight identity",
+        ));
+    }
+    let value = crate::json::parse(
+        request.registry_bytes,
+        request.limits.json_depth,
+        request.limits.json_container_items,
+    )
+    .map_err(|failure| {
+        Error::at(failure.code, failure.path, failure.message)
+    })?;
+    if &value != request.registry_value {
+        return Err(Error::new(
+            "PRODUCT_PROOF_REGISTRY_VALUE",
+            "raw registry bytes differ from the caller's parsed value",
+        ));
+    }
+    let parsed = product_closures::Registry::parse(
+        &value,
+        workload_limits(request.limits).registry,
+    )
+    .map_err(|failure| {
+        Error::at(failure.code, failure.path, failure.message)
+    })?;
+    if &parsed == request.registry {
+        return Ok(());
+    }
+    Err(Error::new(
+        "PRODUCT_PROOF_REGISTRY_TYPED",
+        "raw registry bytes differ from the caller's typed registry",
+    ))
+}
+
+fn validate_prepared_registry_exposure(
+    expected: &product_preflight::FileIdentity,
+    execution: &prepared_root::Execution,
+) -> Result<(), Error> {
+    let mut matches = execution
+        .evidence
+        .exposures
+        .iter()
+        .filter(|value| value.destination == expected.destination);
+    let observed = matches.next().ok_or_else(|| {
+        Error::new(
+            "PRODUCT_PROOF_REGISTRY_EXPOSURE",
+            "prepared registry exposure is absent",
+        )
+    })?;
+    if matches.next().is_some() {
+        return Err(Error::new(
+            "PRODUCT_PROOF_REGISTRY_EXPOSURE",
+            "prepared registry exposure is duplicated",
+        ));
+    }
+    let view = registry_exposure_view(observed)?;
+    validate_registry_exposure_identity(expected, &view)
+}
+
+#[derive(Clone, Copy)]
+struct RegistryExposureView<'a> {
+    id: &'a str,
+    destination: &'a Path,
+    kind: prepared_root::ExposureKind,
+    executable: bool,
+    purpose: &'a str,
+    device_identity: (Option<u64>, Option<u64>),
+    mount_policy: [bool; 4],
+    entry_count: usize,
+    total_bytes: u64,
+    root_relative_path: &'a Path,
+    root_kind: prepared_root::InventoryEntryKind,
+    root_size_bytes: u64,
+    root_content_digest: Option<&'a str>,
+    root_device_identity: Option<u64>,
+}
+
+fn registry_exposure_view(
+    observed: &prepared_root::ExposureObservation,
+) -> Result<RegistryExposureView<'_>, Error> {
+    prepared_root::validate_inventory_identity(&observed.inventory)
+        .map_err(prepared_error)?;
+    let [root] = observed.inventory.entries.as_slice() else {
+        return Err(Error::new(
+            "PRODUCT_PROOF_REGISTRY_EXPOSURE",
+            "prepared registry inventory is not one file root",
+        ));
+    };
+    Ok(RegistryExposureView {
+        id: &observed.id,
+        destination: &observed.destination,
+        kind: observed.kind,
+        executable: observed.executable,
+        purpose: &observed.purpose,
+        device_identity: (observed.device_major, observed.device_minor),
+        mount_policy: [
+            observed.mount_flags.read_only(),
+            observed.mount_flags.nosuid(),
+            observed.mount_flags.nodev(),
+            observed.mount_flags.noexec(),
+        ],
+        entry_count: observed.inventory.entry_count,
+        total_bytes: observed.inventory.total_bytes,
+        root_relative_path: &root.relative_path,
+        root_kind: root.kind,
+        root_size_bytes: root.size_bytes,
+        root_content_digest: root.content_digest.as_deref(),
+        root_device_identity: root.device_identity,
+    })
+}
+
+fn validate_registry_exposure_identity(
+    expected: &product_preflight::FileIdentity,
+    observed: &RegistryExposureView<'_>,
+) -> Result<(), Error> {
+    let id = format!("file:{}", expected.destination.display());
+    let exact = observed.id == id
+        && observed.destination
+            == Path::new(product_workload::PREPARED_REGISTRY_PATH)
+        && observed.kind == prepared_root::ExposureKind::File
+        && !observed.executable
+        && observed.purpose == REGISTRY_PURPOSE
+        && observed.device_identity == (None, None)
+        && observed.mount_policy == [true; 4]
+        && observed.entry_count == 1
+        && observed.total_bytes == expected.size_bytes
+        && observed.root_relative_path == Path::new(".")
+        && observed.root_kind == prepared_root::InventoryEntryKind::File
+        && observed.root_size_bytes == expected.size_bytes
+        && observed.root_content_digest
+            == Some(expected.content_digest.as_str())
+        && observed.root_device_identity.is_none();
+    if exact {
+        return Ok(());
+    }
+    Err(Error::new(
+        "PRODUCT_PROOF_REGISTRY_EXPOSURE",
+        "prepared registry exposure differs from preflight identity",
+    ))
+}
+
 fn validate_registry_join(
     value: &Value,
     limits: &product_workload::Limits,
-    expected: &product_closures::Registry,
+    expected: &product_workload::RegistryInput,
 ) -> Result<(), Error> {
     let parsed =
         product_workload::parse_request(value).map_err(workload_error)?;
@@ -442,15 +624,27 @@ fn substrate_entry(
 
 fn validate_source_join(
     expected: &product_preflight::CompilerSourceSelection,
-    shipping: &[PathBuf],
-    consumer: &[PathBuf],
+    foundation_shipping: &[PathBuf],
+    foundation_consumer: &[PathBuf],
+    kernel_interface_shipping: &[PathBuf],
+    kernel_interface_consumer: &[PathBuf],
 ) -> Result<(), Error> {
-    let shipping_set = shipping.iter().cloned().collect::<BTreeSet<_>>();
-    let consumer_set = consumer.iter().cloned().collect::<BTreeSet<_>>();
-    let exact = shipping.len() == shipping_set.len()
-        && consumer.len() == consumer_set.len()
-        && shipping_set == expected.shipping
-        && consumer_set == expected.consumer;
+    let foundation_shipping_set =
+        foundation_shipping.iter().cloned().collect::<BTreeSet<_>>();
+    let foundation_consumer_set =
+        foundation_consumer.iter().cloned().collect::<BTreeSet<_>>();
+    let kernel_shipping_set =
+        kernel_interface_shipping.iter().cloned().collect::<BTreeSet<_>>();
+    let kernel_consumer_set =
+        kernel_interface_consumer.iter().cloned().collect::<BTreeSet<_>>();
+    let exact = foundation_shipping.len() == foundation_shipping_set.len()
+        && foundation_consumer.len() == foundation_consumer_set.len()
+        && kernel_interface_shipping.len() == kernel_shipping_set.len()
+        && kernel_interface_consumer.len() == kernel_consumer_set.len()
+        && foundation_shipping_set == expected.foundation_shipping
+        && foundation_consumer_set == expected.foundation_consumer
+        && kernel_shipping_set == expected.kernel_interface_shipping
+        && kernel_consumer_set == expected.kernel_interface_consumer;
     if exact {
         return Ok(());
     }
@@ -460,34 +654,80 @@ fn validate_source_join(
     ))
 }
 
-fn analyze_product_source(
+fn analyze_two_pair_source(
     request: &Request<'_>,
     workload: &product_workload::Observation,
     limits: product_source::AnalysisLimits,
-) -> Result<product_source::ProductSourceObservation, Error> {
-    let shipping = registry_closure(request.registry, SHIPPING_CLOSURE)?;
-    let consumer = registry_closure(request.registry, CONSUMER_CLOSURE)?;
-    let relation = registry_relation(request.registry)?;
-    let shipping_sources =
-        workload.shipping.unit.sources.iter().cloned().collect::<BTreeSet<_>>();
-    let consumer_sources = workload
-        .validation
-        .unit
-        .sources
-        .iter()
-        .cloned()
-        .collect::<BTreeSet<_>>();
-    product_source::analyze(&product_source::AnalysisRequest {
-        root: request.repository_root,
-        shipping,
-        consumer,
-        relation,
-        shipping_sources: &shipping_sources,
-        consumer_sources: &consumer_sources,
-        inventory: &request.inventory.files,
-        limits,
+) -> Result<product_source::TwoPairSourceObservation, Error> {
+    let foundation_shipping =
+        registry_closure(request.registry, SHIPPING_CLOSURE)?;
+    let foundation_consumer =
+        registry_closure(request.registry, CONSUMER_CLOSURE)?;
+    let foundation_relation =
+        registry_relation(request.registry, PUBLIC_RELATION)?;
+    let kernel_shipping =
+        registry_closure(request.registry, KERNEL_INTERFACE_SHIPPING_CLOSURE)?;
+    let kernel_consumer =
+        registry_closure(request.registry, KERNEL_INTERFACE_CONSUMER_CLOSURE)?;
+    let kernel_relation =
+        registry_relation(request.registry, KERNEL_INTERFACE_PUBLIC_RELATION)?;
+    let foundation_shipping_sources = source_set(&workload.shipping);
+    let foundation_consumer_sources = source_set(&workload.validation);
+    let kernel_shipping_sources =
+        source_set(&workload.kernel_interface_shipping);
+    let kernel_consumer_sources =
+        source_set(&workload.kernel_interface_validation);
+    let foundation_provider =
+        workload.shipping.provider.as_ref().ok_or_else(|| {
+            Error::new(
+                "PRODUCT_PROOF_COMPILER_JOIN",
+                "Foundation shipping provider evidence is absent",
+            )
+        })?;
+    let kernel_reuse =
+        workload.kernel_interface_shipping.provider_reuse.as_ref().ok_or_else(
+            || {
+                Error::new(
+                    "PRODUCT_PROOF_COMPILER_JOIN",
+                    "Kernel Interface Foundation extern evidence is absent",
+                )
+            },
+        )?;
+    product_source::analyze_two_pairs(&product_source::TwoPairAnalysisRequest {
+        foundation: product_source::AnalysisRequest {
+            root: request.repository_root,
+            shipping: foundation_shipping,
+            consumer: foundation_consumer,
+            relation: foundation_relation,
+            shipping_sources: &foundation_shipping_sources,
+            consumer_sources: &foundation_consumer_sources,
+            inventory: &request.inventory.files,
+            limits,
+        },
+        kernel_interface: product_source::AnalysisRequest {
+            root: request.repository_root,
+            shipping: kernel_shipping,
+            consumer: kernel_consumer,
+            relation: kernel_relation,
+            shipping_sources: &kernel_shipping_sources,
+            consumer_sources: &kernel_consumer_sources,
+            inventory: &request.inventory.files,
+            limits,
+        },
+        compiler_join: product_source::CompilerJoin {
+            consumer_closure: &workload.kernel_interface_shipping.closure,
+            extern_name: &kernel_reuse.extern_edge.name,
+            provider_closure: &foundation_provider.closure,
+            provider_relation: &foundation_relation.id,
+            extern_path: &kernel_reuse.extern_edge.path,
+            provider_rmeta_path: &foundation_provider.rmeta.path,
+        },
     })
     .map_err(source_error)
+}
+
+fn source_set(build: &BuildObservation) -> BTreeSet<PathBuf> {
+    build.unit.sources.iter().cloned().collect()
 }
 
 fn registry_closure<'a>(
@@ -503,22 +743,21 @@ fn registry_closure<'a>(
     })
 }
 
-fn registry_relation(
-    registry: &product_closures::Registry,
-) -> Result<&product_closures::PublicConsumerRelation, Error> {
-    let [relation] = registry.public_consumer_relations.as_slice() else {
-        return Err(Error::new(
-            "PRODUCT_PROOF_REGISTRY_JOIN",
-            "active Product registry lacks its one public relation",
-        ));
-    };
-    if relation.id == PUBLIC_RELATION {
-        return Ok(relation);
-    }
-    Err(Error::new(
-        "PRODUCT_PROOF_REGISTRY_JOIN",
-        "active Product registry names an unexpected public relation",
-    ))
+fn registry_relation<'a>(
+    registry: &'a product_closures::Registry,
+    id: &str,
+) -> Result<&'a product_closures::PublicConsumerRelation, Error> {
+    registry
+        .public_consumer_relations
+        .iter()
+        .find(|relation| relation.id == id)
+        .ok_or_else(|| {
+            Error::at(
+                "PRODUCT_PROOF_REGISTRY_JOIN",
+                id,
+                "required Product public relation is absent",
+            )
+        })
 }
 
 fn runtime_inputs(
@@ -545,15 +784,28 @@ fn runtime_inputs(
 fn cargo_build_evidence(
     observed: &product_workload::Observation,
 ) -> Result<Vec<report_build_v2::ProductCargoBuildEvidence>, Error> {
-    let shipping = cargo_build(&observed.shipping, None)?;
-    let validation =
-        cargo_build(&observed.validation, Some(&observed.shipping.unit.id))?;
-    Ok(vec![shipping, validation])
+    let foundation = (
+        observed.shipping.unit.crate_name.as_str(),
+        observed.shipping.unit.id.as_str(),
+    );
+    let kernel_interface = (
+        observed.kernel_interface_shipping.unit.crate_name.as_str(),
+        observed.kernel_interface_shipping.unit.id.as_str(),
+    );
+    Ok(vec![
+        cargo_build(&observed.shipping, &[])?,
+        cargo_build(&observed.validation, &[foundation])?,
+        cargo_build(&observed.kernel_interface_shipping, &[foundation])?,
+        cargo_build(
+            &observed.kernel_interface_validation,
+            &[foundation, kernel_interface],
+        )?,
+    ])
 }
 
 fn cargo_build(
     observed: &BuildObservation,
-    provider_unit: Option<&String>,
+    provider_units: &[(&str, &str)],
 ) -> Result<report_build_v2::ProductCargoBuildEvidence, Error> {
     let message_count =
         u64::try_from(observed.cargo.message_count).map_err(|_| {
@@ -571,9 +823,12 @@ fn cargo_build(
         .cargo
         .artifacts
         .iter()
-        .map(|artifact| cargo_artifact_event(observed, artifact, provider_unit))
+        .map(|artifact| {
+            cargo_artifact_event(observed, artifact, provider_units)
+        })
         .collect::<Result<Vec<_>, Error>>()?;
-    let fresh_provider_units = provider_unit.cloned().into_iter().collect();
+    let fresh_provider_units =
+        provider_units.iter().map(|(_, unit)| (*unit).to_owned()).collect();
     Ok(report_build_v2::ProductCargoBuildEvidence {
         closure: observed.closure.clone(),
         command_argv: observed.cargo.command_argv.clone(),
@@ -590,17 +845,21 @@ fn cargo_build(
 fn cargo_artifact_event(
     observed: &BuildObservation,
     artifact: &compiler_capture::CargoArtifact,
-    provider_unit: Option<&String>,
+    provider_units: &[(&str, &str)],
 ) -> Result<report_build_v2::ProductCargoArtifactEventEvidence, Error> {
     let unit = if artifact.target_name == observed.unit.crate_name {
         observed.unit.id.clone()
     } else {
-        provider_unit.cloned().ok_or_else(|| {
-            Error::new(
-                "PRODUCT_PROOF_CARGO_ARTIFACT_UNIT",
-                "Cargo event does not map to its compiler unit",
-            )
-        })?
+        provider_units
+            .iter()
+            .find(|(target, _)| *target == artifact.target_name)
+            .map(|(_, unit)| (*unit).to_owned())
+            .ok_or_else(|| {
+                Error::new(
+                    "PRODUCT_PROOF_CARGO_ARTIFACT_UNIT",
+                    "Cargo event does not map to its compiler unit",
+                )
+            })?
     };
     Ok(report_build_v2::ProductCargoArtifactEventEvidence {
         unit,
@@ -611,10 +870,20 @@ fn cargo_artifact_event(
 
 fn provider_artifact_evidence(
     observed: &product_workload::Observation,
+) -> Result<Vec<report_build_v2::ProductProviderArtifactEvidence>, Error> {
+    let foundation = provider_artifact(&observed.shipping)?;
+    let kernel_interface =
+        provider_artifact(&observed.kernel_interface_shipping)?;
+    Ok(vec![foundation, kernel_interface])
+}
+
+fn provider_artifact(
+    observed: &BuildObservation,
 ) -> Result<report_build_v2::ProductProviderArtifactEvidence, Error> {
-    let provider = observed.shipping.provider.as_ref().ok_or_else(|| {
-        Error::new(
+    let provider = observed.provider.as_ref().ok_or_else(|| {
+        Error::at(
             "PRODUCT_PROOF_PROVIDER_ARTIFACT",
+            &observed.closure,
             "shipping workload omitted its provider artifact relation",
         )
     })?;
@@ -667,48 +936,72 @@ fn probe_evidence(
 fn compiler_unit_evidence(
     observed: &product_workload::Observation,
 ) -> Vec<report_build_v2::ProductCompilerUnitEvidence> {
-    [&observed.shipping.unit, &observed.validation.unit]
-        .into_iter()
-        .map(|unit| report_build_v2::ProductCompilerUnitEvidence {
-            id: unit.id.clone(),
-            closure: unit.closure.clone(),
-            features: unit.features.clone(),
-            cfgs: unit.cfgs.clone(),
-            original_argv: unit.original_argv.clone(),
-            effective_argv: unit.effective_argv.clone(),
-            dep_info_path: unit.dep_info_path.clone(),
-            dep_info_digest: unit.dep_info_digest.clone(),
-            dep_info_bytes: unit.dep_info_bytes,
-            trace_digest: unit.trace_digest.clone(),
-            trace_bytes: unit.trace_bytes,
-            status: unit.status,
-        })
-        .collect()
+    [
+        &observed.shipping.unit,
+        &observed.validation.unit,
+        &observed.kernel_interface_shipping.unit,
+        &observed.kernel_interface_validation.unit,
+    ]
+    .into_iter()
+    .map(|unit| report_build_v2::ProductCompilerUnitEvidence {
+        id: unit.id.clone(),
+        closure: unit.closure.clone(),
+        features: unit.features.clone(),
+        cfgs: unit.cfgs.clone(),
+        original_argv: unit.original_argv.clone(),
+        effective_argv: unit.effective_argv.clone(),
+        dep_info_path: unit.dep_info_path.clone(),
+        dep_info_digest: unit.dep_info_digest.clone(),
+        dep_info_bytes: unit.dep_info_bytes,
+        trace_digest: unit.trace_digest.clone(),
+        trace_bytes: unit.trace_bytes,
+        status: unit.status,
+    })
+    .collect()
 }
 
 fn extern_evidence(
     observed: &product_workload::Observation,
 ) -> Result<Vec<report_build_v2::ProductExternEvidence>, Error> {
-    let reuse =
-        observed.validation.provider_reuse.as_ref().ok_or_else(|| {
-            Error::new(
-                "PRODUCT_PROOF_EXTERN_JOIN",
-                "validation build lacks its provider reuse",
-            )
-        })?;
-    Ok(vec![report_build_v2::ProductExternEvidence {
-        consumer_unit: observed.validation.unit.id.clone(),
+    Ok(vec![
+        extern_edge(&observed.validation, &observed.shipping)?,
+        extern_edge(&observed.kernel_interface_shipping, &observed.shipping)?,
+        extern_edge(
+            &observed.kernel_interface_validation,
+            &observed.kernel_interface_shipping,
+        )?,
+    ])
+}
+
+fn extern_edge(
+    consumer: &BuildObservation,
+    provider: &BuildObservation,
+) -> Result<report_build_v2::ProductExternEvidence, Error> {
+    let reuse = consumer.provider_reuse.as_ref().ok_or_else(|| {
+        Error::at(
+            "PRODUCT_PROOF_EXTERN_JOIN",
+            &consumer.closure,
+            "consumer build lacks its direct provider reuse",
+        )
+    })?;
+    Ok(report_build_v2::ProductExternEvidence {
+        consumer_unit: consumer.unit.id.clone(),
         extern_name: reuse.extern_edge.name.clone(),
-        provider_unit: observed.shipping.unit.id.clone(),
+        provider_unit: provider.unit.id.clone(),
         provider_path: reuse.extern_edge.path.clone(),
-    }])
+    })
 }
 
 fn artifact_evidence(
     observed: &product_workload::Observation,
 ) -> Result<Vec<report_build_v2::ProductArtifactEvidence>, Error> {
     let mut values = Vec::new();
-    for unit in [&observed.shipping.unit, &observed.validation.unit] {
+    for unit in [
+        &observed.shipping.unit,
+        &observed.validation.unit,
+        &observed.kernel_interface_shipping.unit,
+        &observed.kernel_interface_validation.unit,
+    ] {
         for artifact in &unit.outputs {
             values.push(report_build_v2::ProductArtifactEvidence {
                 unit: unit.id.clone(),
@@ -1003,8 +1296,10 @@ mod tests {
     };
 
     use super::{
-        ExposureJoin, artifact_kind, join_exposures, runtime_inputs,
-        validate_source_join, validate_substrate_join, workload_limits,
+        ExposureJoin, REGISTRY_PURPOSE, RegistryExposureView, artifact_kind,
+        join_exposures, runtime_inputs, validate_host_registry,
+        validate_registry_exposure_identity, validate_source_join,
+        validate_substrate_join, workload_limits,
     };
 
     #[test]
@@ -1030,6 +1325,20 @@ mod tests {
             usize::from(product.compiler_input_count)
         );
         assert_eq!(mapped.result_bytes, source.metadata_stdout_bytes);
+        let raw = include_bytes!("../../../conformance/product-closures.json");
+        let registry = crate::product_workload::RegistryInput {
+            path: PathBuf::from(
+                crate::product_workload::PREPARED_REGISTRY_PATH,
+            ),
+            content_digest: crate::digest::bytes(raw),
+            size_bytes: u64::try_from(raw.len()).unwrap(),
+        };
+        let value =
+            crate::product_workload::request_value(&registry, &mapped).unwrap();
+        let encoded = serde_json::to_vec(&value).unwrap();
+        eprintln!("exact workload request bytes={}", encoded.len());
+        assert_eq!(encoded.len(), 1_423);
+        assert!(encoded.len() <= 4_096);
     }
 
     #[test]
@@ -1053,24 +1362,50 @@ mod tests {
     #[test]
     fn compiler_source_join_is_exact_and_duplicate_closed() {
         let expected = crate::product_preflight::CompilerSourceSelection {
-            shipping: std::iter::once(PathBuf::from(
+            foundation_shipping: std::iter::once(PathBuf::from(
                 "kernel/foundation/src/lib.rs",
             ))
             .collect(),
-            consumer: std::iter::once(PathBuf::from(
+            foundation_consumer: std::iter::once(PathBuf::from(
                 "tests/foundation-public-consumer/src/lib.rs",
+            ))
+            .collect(),
+            kernel_interface_shipping: std::iter::once(PathBuf::from(
+                "kernel/interface/src/lib.rs",
+            ))
+            .collect(),
+            kernel_interface_consumer: std::iter::once(PathBuf::from(
+                "tests/kernel-interface-public-consumer/src/lib.rs",
             ))
             .collect(),
         };
         let shipping = vec![PathBuf::from("kernel/foundation/src/lib.rs")];
         let consumer =
             vec![PathBuf::from("tests/foundation-public-consumer/src/lib.rs")];
-        validate_source_join(&expected, &shipping, &consumer).unwrap();
+        let kernel_shipping =
+            vec![PathBuf::from("kernel/interface/src/lib.rs")];
+        let kernel_consumer = vec![PathBuf::from(
+            "tests/kernel-interface-public-consumer/src/lib.rs",
+        )];
+        validate_source_join(
+            &expected,
+            &shipping,
+            &consumer,
+            &kernel_shipping,
+            &kernel_consumer,
+        )
+        .unwrap();
         let duplicate = vec![shipping[0].clone(), shipping[0].clone()];
         assert_eq!(
-            validate_source_join(&expected, &duplicate, &consumer)
-                .unwrap_err()
-                .code,
+            validate_source_join(
+                &expected,
+                &duplicate,
+                &consumer,
+                &kernel_shipping,
+                &kernel_consumer,
+            )
+            .unwrap_err()
+            .code,
             "PRODUCT_PROOF_SOURCE_JOIN"
         );
     }
@@ -1095,6 +1430,82 @@ mod tests {
             join_exposures(&plans, &changed).unwrap_err().code,
             "PRODUCT_PROOF_EXPOSURE_JOIN"
         );
+    }
+
+    #[test]
+    fn host_registry_join_rejects_all_caller_authority_drift() {
+        let fixture = HostRegistryFixture::new();
+        let request =
+            fixture.request(&fixture.bytes, &fixture.value, &fixture.registry);
+        let identity = fixture.identity();
+        validate_host_registry(&request, &identity).unwrap();
+
+        let mut changed = identity.clone();
+        changed.source = fixture.root.join("conformance/other.json");
+        assert_host_registry_code(&request, &changed, "IDENTITY");
+
+        let mut changed = identity.clone();
+        changed.destination = PathBuf::from("/repo/conformance/other.json");
+        assert_host_registry_code(&request, &changed, "IDENTITY");
+
+        let mut changed = identity.clone();
+        changed.size_bytes += 1;
+        assert_host_registry_code(&request, &changed, "IDENTITY");
+
+        let mut changed = identity.clone();
+        changed.content_digest = digest('0');
+        assert_host_registry_code(&request, &changed, "IDENTITY");
+
+        let omitted = fixture.request(&[], &fixture.value, &fixture.registry);
+        assert_host_registry_code(&omitted, &identity, "IDENTITY");
+
+        let changed_value = serde_json::Value::Null;
+        let changed =
+            fixture.request(&fixture.bytes, &changed_value, &fixture.registry);
+        assert_host_registry_code(&changed, &identity, "VALUE");
+
+        let mut changed_registry = fixture.registry.clone();
+        changed_registry.closures.pop();
+        let changed =
+            fixture.request(&fixture.bytes, &fixture.value, &changed_registry);
+        assert_host_registry_code(&changed, &identity, "TYPED");
+    }
+
+    #[test]
+    fn prepared_registry_join_rejects_identity_and_policy_drift() {
+        let expected = registry_identity();
+        let exact = registry_exposure(&expected);
+        validate_registry_exposure_identity(&expected, &exact).unwrap();
+
+        let mut changed = exact;
+        changed.destination = Path::new("/repo/conformance/other.json");
+        assert_registry_exposure_failure(&expected, &changed);
+
+        let mut changed = exact;
+        changed.kind = crate::prepared_root::ExposureKind::Directory;
+        assert_registry_exposure_failure(&expected, &changed);
+
+        let mut changed = exact;
+        changed.executable = true;
+        assert_registry_exposure_failure(&expected, &changed);
+
+        let mut changed = exact;
+        changed.purpose = "wrong purpose";
+        assert_registry_exposure_failure(&expected, &changed);
+
+        for flag in 0..4 {
+            let mut changed = exact;
+            changed.mount_policy[flag] = false;
+            assert_registry_exposure_failure(&expected, &changed);
+        }
+
+        let mut changed = exact;
+        changed.root_size_bytes += 1;
+        assert_registry_exposure_failure(&expected, &changed);
+
+        let mut changed = exact;
+        changed.root_content_digest = Some("sha256:wrong");
+        assert_registry_exposure_failure(&expected, &changed);
     }
 
     #[test]
@@ -1135,46 +1546,275 @@ mod tests {
     #[test]
     #[ignore = "requires live Linux namespace/mount capability"]
     fn live_current_repository_prepared_journey() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .canonicalize()
-            .unwrap();
-        let checker = live_checker();
-        let cargo = rustup_which("cargo");
-        let rustc = rustup_which("rustc");
-        let topology_value = config_value(&root, crate::TOPOLOGY_KEY);
-        let topology =
-            crate::topology::Topology::parse(&topology_value).unwrap();
-        let policy_value = config_value(&root, crate::POLICY_KEY);
-        let policy = crate::policy::Policy::parse(&policy_value).unwrap();
-        let inventory = crate::source::inventory(&root, &policy, &topology);
-        assert!(inventory.findings.is_empty(), "inventory has findings");
-        let registry_value = config_value(&root, crate::PRODUCT_CLOSURES_KEY);
-        let limits = workload_limits(topology.limits);
-        let registry = crate::product_closures::Registry::parse(
-            &registry_value,
-            limits.registry,
+        let live = LiveFixture::new();
+        let observed = super::run(&live.request()).unwrap();
+        let active = observed.active();
+        let input_count = active
+            .product_sources
+            .foundation
+            .shipping_sources
+            .len()
+            + active.product_sources.foundation.consumer_sources.len()
+            + active.product_sources.kernel_interface.shipping_sources.len()
+            + active.product_sources.kernel_interface.consumer_sources.len();
+        let event_counts = active
+            .cargo_builds
+            .iter()
+            .map(|build| build.artifact_events.len())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            (
+                active.cargo_builds.len(),
+                active.compiler_units.len(),
+                input_count,
+                active.extern_edges.len(),
+                active.artifacts.len(),
+                active.provider_artifacts.len(),
+            ),
+            (4, 4, 39, 3, 8, 2)
+        );
+        assert_eq!(event_counts, [1, 2, 2, 3]);
+        assert_eq!(active.foundation_package_before.members.len(), 8);
+        assert_eq!(active.kernel_interface_package_before.members.len(), 23);
+    }
+
+    #[test]
+    #[ignore = "explicit config-transport acceptance measurement"]
+    fn live_current_repository_config_transport_inspection() {
+        let live = LiveFixture::new();
+        let request = live.request();
+        let preflight = crate::product_preflight::observe(
+            &crate::product_preflight::Request {
+                repository_root: request.repository_root,
+                cargo: request.cargo,
+                rustc: request.rustc,
+                checker: request.checker,
+                inventory: request.inventory,
+                limits: request.limits,
+            },
         )
         .unwrap();
-        let observed = super::run(&super::Request {
-            repository_root: &root,
-            cargo: &cargo,
-            rustc: &rustc,
-            checker: &checker,
-            inventory: &inventory,
-            limits: topology.limits,
-            registry_value: &registry_value,
-            registry: &registry,
-            execution_environment: "live-foundation-proof",
-        })
-        .unwrap();
-        assert_ne!(observed.checker_runtime_inputs, Vec::new());
-        assert_ne!(observed.cargo_runtime_inputs, Vec::new());
-        assert_ne!(observed.rustc_runtime_inputs, Vec::new());
-        let active = observed.active();
-        assert_eq!(active.cargo_builds.len(), 2);
-        assert_eq!(active.compiler_units.len(), 2);
-        assert_eq!(active.artifacts.len(), 4);
+        validate_host_registry(&request, &preflight.registry).unwrap();
+        let limits = workload_limits(request.limits);
+        let registry = crate::product_workload::RegistryInput {
+            path: preflight.registry.destination.clone(),
+            content_digest: preflight.registry.content_digest.clone(),
+            size_bytes: preflight.registry.size_bytes,
+        };
+        let value =
+            crate::product_workload::request_value(&registry, &limits).unwrap();
+        let request_bytes = serde_json::to_vec(&value).unwrap().len();
+        assert!(request_bytes <= 4_096);
+        let plan = super::prepared_plan(&request, &preflight, value).unwrap();
+        let measured =
+            crate::prepared_root::inspect_config_transport(&plan).unwrap();
+        assert_eq!(measured.limit_bytes, 65_536);
+        assert!(measured.headroom_bytes > 0);
+        assert_eq!(
+            measured.encoded_bytes + measured.headroom_bytes,
+            measured.limit_bytes
+        );
+        eprintln!(
+            "request={} encoded={} limit={} headroom={}",
+            request_bytes,
+            measured.encoded_bytes,
+            measured.limit_bytes,
+            measured.headroom_bytes,
+        );
+    }
+
+    struct HostRegistryFixture {
+        root: PathBuf,
+        bytes: Vec<u8>,
+        value: serde_json::Value,
+        registry: crate::product_closures::Registry,
+        inventory: crate::source::Inventory,
+    }
+
+    impl HostRegistryFixture {
+        fn new() -> Self {
+            let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../..")
+                .canonicalize()
+                .unwrap();
+            let bytes =
+                fs::read(root.join(crate::PRODUCT_CLOSURES_KEY)).unwrap();
+            let limits = crate::topology::HARD_LIMITS;
+            let value = crate::json::parse(
+                &bytes,
+                limits.json_depth,
+                limits.json_container_items,
+            )
+            .unwrap();
+            let registry = crate::product_closures::Registry::parse(
+                &value,
+                workload_limits(limits).registry,
+            )
+            .unwrap();
+            let inventory = crate::source::Inventory {
+                files: Vec::new(),
+                exclusions: Vec::new(),
+                tree_digest: digest('0'),
+                findings: Vec::new(),
+            };
+            Self { root, bytes, value, registry, inventory }
+        }
+
+        fn request<'a>(
+            &'a self,
+            bytes: &'a [u8],
+            value: &'a serde_json::Value,
+            registry: &'a crate::product_closures::Registry,
+        ) -> super::Request<'a> {
+            super::Request {
+                repository_root: &self.root,
+                cargo: Path::new("/tool/cargo"),
+                rustc: Path::new("/tool/rustc"),
+                checker: Path::new("/tool/checker"),
+                inventory: &self.inventory,
+                limits: crate::topology::HARD_LIMITS,
+                registry_bytes: bytes,
+                registry_value: value,
+                registry,
+                execution_environment: "registry-unit-test",
+            }
+        }
+
+        fn identity(&self) -> crate::product_preflight::FileIdentity {
+            crate::product_preflight::FileIdentity {
+                source: self.root.join(crate::PRODUCT_CLOSURES_KEY),
+                destination: PathBuf::from(
+                    crate::product_workload::PREPARED_REGISTRY_PATH,
+                ),
+                content_digest: crate::digest::bytes(&self.bytes),
+                size_bytes: u64::try_from(self.bytes.len()).unwrap(),
+            }
+        }
+    }
+
+    struct LiveFixture {
+        root: PathBuf,
+        checker: PathBuf,
+        cargo: PathBuf,
+        rustc: PathBuf,
+        inventory: crate::source::Inventory,
+        limits: crate::topology::Limits,
+        registry_bytes: Vec<u8>,
+        registry_value: serde_json::Value,
+        registry: crate::product_closures::Registry,
+    }
+
+    impl LiveFixture {
+        fn new() -> Self {
+            let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../..")
+                .canonicalize()
+                .unwrap();
+            let topology_value = config_value(&root, crate::TOPOLOGY_KEY);
+            let topology =
+                crate::topology::Topology::parse(&topology_value).unwrap();
+            let policy_value = config_value(&root, crate::POLICY_KEY);
+            let policy = crate::policy::Policy::parse(&policy_value).unwrap();
+            let inventory = crate::source::inventory(&root, &policy, &topology);
+            assert!(inventory.findings.is_empty(), "inventory has findings");
+            let registry_bytes =
+                fs::read(root.join(crate::PRODUCT_CLOSURES_KEY)).unwrap();
+            let registry_value = crate::json::parse(
+                &registry_bytes,
+                topology.limits.json_depth,
+                topology.limits.json_container_items,
+            )
+            .unwrap();
+            let registry = crate::product_closures::Registry::parse(
+                &registry_value,
+                workload_limits(topology.limits).registry,
+            )
+            .unwrap();
+            Self {
+                root,
+                checker: live_checker(),
+                cargo: rustup_which("cargo"),
+                rustc: rustup_which("rustc"),
+                inventory,
+                limits: topology.limits,
+                registry_bytes,
+                registry_value,
+                registry,
+            }
+        }
+
+        fn request(&self) -> super::Request<'_> {
+            super::Request {
+                repository_root: &self.root,
+                cargo: &self.cargo,
+                rustc: &self.rustc,
+                checker: &self.checker,
+                inventory: &self.inventory,
+                limits: self.limits,
+                registry_bytes: &self.registry_bytes,
+                registry_value: &self.registry_value,
+                registry: &self.registry,
+                execution_environment: "live-kernel-interface-two-pair-proof",
+            }
+        }
+    }
+
+    fn assert_host_registry_code(
+        request: &super::Request<'_>,
+        identity: &crate::product_preflight::FileIdentity,
+        suffix: &str,
+    ) {
+        let expected = format!("PRODUCT_PROOF_REGISTRY_{suffix}");
+        assert_eq!(
+            validate_host_registry(request, identity).unwrap_err().code,
+            expected
+        );
+    }
+
+    fn registry_identity() -> crate::product_preflight::FileIdentity {
+        crate::product_preflight::FileIdentity {
+            source: PathBuf::from(
+                "/host/repo/conformance/product-closures.json",
+            ),
+            destination: PathBuf::from(
+                crate::product_workload::PREPARED_REGISTRY_PATH,
+            ),
+            content_digest: digest('1'),
+            size_bytes: 100,
+        }
+    }
+
+    fn registry_exposure(
+        expected: &crate::product_preflight::FileIdentity,
+    ) -> RegistryExposureView<'_> {
+        RegistryExposureView {
+            id: "file:/repo/conformance/product-closures.json",
+            destination: &expected.destination,
+            kind: crate::prepared_root::ExposureKind::File,
+            executable: false,
+            purpose: REGISTRY_PURPOSE,
+            device_identity: (None, None),
+            mount_policy: [true; 4],
+            entry_count: 1,
+            total_bytes: expected.size_bytes,
+            root_relative_path: Path::new("."),
+            root_kind: crate::prepared_root::InventoryEntryKind::File,
+            root_size_bytes: expected.size_bytes,
+            root_content_digest: Some(&expected.content_digest),
+            root_device_identity: None,
+        }
+    }
+
+    fn assert_registry_exposure_failure(
+        expected: &crate::product_preflight::FileIdentity,
+        observed: &RegistryExposureView<'_>,
+    ) {
+        assert_eq!(
+            validate_registry_exposure_identity(expected, observed)
+                .unwrap_err()
+                .code,
+            "PRODUCT_PROOF_REGISTRY_EXPOSURE"
+        );
     }
 
     fn live_checker() -> PathBuf {

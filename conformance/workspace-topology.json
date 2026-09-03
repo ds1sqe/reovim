@@ -56,7 +56,7 @@
     {
       "kind": "script",
       "path": "scripts/check.sh",
-      "content_digest": "sha256:a99d168730773341504af77ddc7e639a4ecf297ac715e934b6ea8bbad80cd76b"
+      "content_digest": "sha256:bf7cfe4cbfc25b22d2333d50bd6f654fe29de1b96d6fe45c7fbd6f9cbc0f5c04"
     },
     {
       "kind": "script",
@@ -66,7 +66,7 @@
     {
       "kind": "script",
       "path": "scripts/check-documentation.sh",
-      "content_digest": "sha256:b1564c50a4e8d61cfc546d2287d4e6b46b2dc12a80a08d8e2f0b85767f57bf1c"
+      "content_digest": "sha256:a90292c883cbd8402fbb6042b42623ad8cb33d8e57417a1b67675b007616b022"
     },
     {
       "kind": "script",
@@ -184,7 +184,9 @@
       "lockfile": "product/Cargo.lock",
       "members": [
         "kernel/foundation",
-        "tests/foundation-public-consumer"
+        "kernel/interface",
+        "tests/foundation-public-consumer",
+        "tests/kernel-interface-public-consumer"
       ],
       "cargo_config_files": [],
       "build_scripts": [],
@@ -227,6 +229,43 @@
               "kind": ["lib"],
               "crate_types": ["lib"],
               "src_path": "tests/foundation-public-consumer/src/lib.rs"
+            }
+          ]
+        },
+        {
+          "id": "kernel-interface",
+          "name": "reovim-kernel-interface",
+          "version": "0.16.0-dev",
+          "manifest": "kernel/interface/Cargo.toml",
+          "targets": [
+            {
+              "id": "library",
+              "name": "reovim_kernel_interface",
+              "kind": ["lib"],
+              "crate_types": ["lib"],
+              "src_path": "kernel/interface/src/lib.rs"
+            }
+          ]
+        },
+        {
+          "id": "kernel-interface-public-consumer",
+          "name": "reovim-kernel-interface-public-consumer",
+          "version": "0.16.0-dev",
+          "manifest": "tests/kernel-interface-public-consumer/Cargo.toml",
+          "targets": [
+            {
+              "id": "library",
+              "name": "reovim_kernel_interface_public_consumer",
+              "kind": ["lib"],
+              "crate_types": ["lib"],
+              "src_path": "tests/kernel-interface-public-consumer/src/lib.rs"
+            },
+            {
+              "id": "integration-test",
+              "name": "kernel-interface-public-contract",
+              "kind": ["test"],
+              "crate_types": ["bin"],
+              "src_path": "tests/kernel-interface-public-consumer/tests/public_contract.rs"
             }
           ]
         }

@@ -82,6 +82,12 @@ CARGO_TARGET_DIR="$PRODUCT_TARGET_DIR" \
         --manifest-path "$PRODUCT_MANIFEST" --workspace --all-targets \
         --all-features --target "$PRODUCT_TARGET" --release
 
+echo "==> Product public-boundary tests"
+CARGO_TARGET_DIR="$PRODUCT_TARGET_DIR" \
+    cargo test --locked --offline \
+        --manifest-path "$PRODUCT_MANIFEST" --workspace --all-features \
+        --target "$PRODUCT_TARGET" --release
+
 echo "==> workspace doctests"
 cargo test --locked --offline --workspace --doc --all-features
 

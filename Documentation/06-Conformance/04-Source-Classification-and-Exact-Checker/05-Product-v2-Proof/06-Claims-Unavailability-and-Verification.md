@@ -4,24 +4,32 @@
 
 ## Exact claim
 
-A passing initial profile proves, for its named compiler, target, and prepared
+A passing current profile proves, for its named compiler, target, and prepared
 environment:
 
 - the exact repository Product source/module inputs reported by rustc dep-info;
 - conservative supplied `--extern` dependency edges;
-- Cargo-selected package member paths and corresponding tracked source bytes;
+- Cargo-selected member paths and tracked bytes for both shipping packages;
 - the supported source/public syntax boundary; and
-- compilation by the separate public-only nonshipping library consumer.
+- compilation by both separate public-only nonshipping library consumers.
 
 It does not prove every compiler/sysroot/runtime/helper file read, expanded
 Rust, item-level cfg selection, arbitrary helper or proc-macro reads, generator
 provenance, general resolved public API, Cargo-staged or archive bytes, linked
 executables, a release bundle, runtime behavior, performance, support,
-qualification, certification, or a malicious-toolchain sandbox.
+qualification, certification, or a malicious-toolchain sandbox. The executed
+Kernel Interface integration test is separate contributor evidence; this
+library-closure proof does not claim its executable or runtime behavior.
 
 Every unsupported mechanism has a stable specific unavailable result. Unknown
 or ambiguous behavior fails closed and is never assigned to the nearest
 supported category.
+
+These chapters define the current `authored-std-lib/v2` target. They do not
+assert that the registry transport is implemented, that an attempted producer
+passed, or that any revision is qualified. The claim above exists only after
+committed code and independently verifiable retained evidence satisfy every
+current v2 requirement; until then, exact Product proof remains unavailable.
 
 ## Generated source and helpers
 
@@ -40,10 +48,18 @@ the initial profile.
 
 ## Stable basis and standalone verification
 
-The initial profile uses stable Cargo metadata format 1, Cargo JSON messages,
-`RUSTC_WRAPPER`, explicit rustc dep-info, and Cargo package list. Cargo unit
-graph/build plan, expanded source, and rustdoc JSON are unstable and cannot
-enter the Rust 1.92 proof path.
+The current profile uses stable Cargo metadata format 1, Cargo JSON messages,
+`RUSTC_WRAPPER`, explicit rustc dep-info, and Cargo package list. Its private
+workload request/result protocol is v2 and fixes the four ordered stages; v1's
+single Foundation pair is not reinterpreted. Cargo unit graph/build plan,
+expanded source, and rustdoc JSON are unstable and cannot enter the Rust 1.92
+proof path.
+
+The private workload observation and coordinator validate that chronological
+order before report construction. Source Role Map arrays use canonical identity
+order rather than chronology. Standalone report verification reconstructs the
+exact direct-edge and fresh-provider partial order, but it does not prove that
+Foundation validation ran before Kernel Interface shipping.
 
 Standalone report verification validates schema/version dispatch, canonical
 identity/order, result consistency, input references, and closure accounting.

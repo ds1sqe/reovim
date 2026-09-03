@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 //! Compile-only external consumer of every admitted Foundation primitive.
 
+mod public_items;
+
 use core::fmt::Debug;
 
 const _: [(); 1] = [(); foundation_contract_cases() as usize];
@@ -398,7 +400,8 @@ const fn memory_error_code(
 /// Exercises the complete admitted Foundation surface through its public API.
 #[must_use]
 pub fn exercise_public_api() -> bool {
-    contract_cases()
+    public_items::witness()
+        && contract_cases()
         && identity_cases()
         && quantity_cases()
         && bound_cases()
@@ -901,58 +904,66 @@ const fn derive_witnesses() -> bool {
 }
 
 const fn bound_derive_witnesses() -> bool {
-    derive_witness::<reovim_foundation::bound::ArithmeticRule>()
-        && derive_witness::<reovim_foundation::bound::BoundDescriptor>()
-        && derive_witness::<reovim_foundation::bound::BoundError>()
-        && derive_witness::<reovim_foundation::bound::BoundUnit>()
-        && derive_witness::<reovim_foundation::bound::BoundValue>()
-        && derive_witness::<reovim_foundation::bound::CheckedByteCount>()
-        && derive_witness::<reovim_foundation::bound::CheckedCount>()
-        && derive_witness::<reovim_foundation::bound::CheckedDuration>()
-        && derive_witness::<reovim_foundation::bound::ValidationOrder>()
-        && derive_witness::<reovim_foundation::bound::ZeroPolicy>()
+    derive_witness::<::reovim_foundation::bound::ArithmeticRule>()
+        && derive_witness::<::reovim_foundation::bound::BoundDescriptor>()
+        && derive_witness::<::reovim_foundation::bound::BoundError>()
+        && derive_witness::<::reovim_foundation::bound::BoundUnit>()
+        && derive_witness::<::reovim_foundation::bound::BoundValue>()
+        && derive_witness::<::reovim_foundation::bound::CheckedByteCount>()
+        && derive_witness::<::reovim_foundation::bound::CheckedCount>()
+        && derive_witness::<::reovim_foundation::bound::CheckedDuration>()
+        && derive_witness::<::reovim_foundation::bound::ValidationOrder>()
+        && derive_witness::<::reovim_foundation::bound::ZeroPolicy>()
 }
 
 const fn carrier_derive_witnesses() -> bool {
-    derive_witness::<reovim_foundation::carrier::BorrowModel>()
-        && derive_witness::<reovim_foundation::carrier::CarrierDescriptorError>(
-        )
+    derive_witness::<::reovim_foundation::carrier::BorrowModel>()
+        && carrier_descriptor_error_derive_witness()
         && carrier_descriptor_derive_witness()
-        && derive_witness::<reovim_foundation::carrier::ConcurrencySafety>()
-        && derive_witness::<reovim_foundation::carrier::CopyModel>()
-        && derive_witness::<reovim_foundation::carrier::DropModel>()
-        && derive_witness::<reovim_foundation::carrier::InvocationModel>()
-        && derive_witness::<reovim_foundation::carrier::InvocationSafety>()
-        && derive_witness::<reovim_foundation::carrier::LifetimeModel>()
-        && derive_witness::<reovim_foundation::carrier::MemoryCoherenceError>()
-        && derive_witness::<reovim_foundation::carrier::MemorySafety>()
-        && derive_witness::<reovim_foundation::carrier::OwnershipModel>()
-        && derive_witness::<reovim_foundation::carrier::SharingModel>()
-        && derive_witness::<reovim_foundation::carrier::ThreadTransfer>()
-        && derive_witness::<reovim_foundation::carrier::TypeMismatch>()
-        && derive_witness::<reovim_foundation::carrier::UnsafeBoundary>()
-        && derive_witness::<reovim_foundation::carrier::UnwindModel>()
+        && derive_witness::<::reovim_foundation::carrier::ConcurrencySafety>()
+        && derive_witness::<::reovim_foundation::carrier::CopyModel>()
+        && derive_witness::<::reovim_foundation::carrier::DropModel>()
+        && derive_witness::<::reovim_foundation::carrier::InvocationModel>()
+        && derive_witness::<::reovim_foundation::carrier::InvocationSafety>()
+        && derive_witness::<::reovim_foundation::carrier::LifetimeModel>()
+        && derive_witness::<::reovim_foundation::carrier::MemoryCoherenceError>(
+        )
+        && derive_witness::<::reovim_foundation::carrier::MemorySafety>()
+        && derive_witness::<::reovim_foundation::carrier::OwnershipModel>()
+        && derive_witness::<::reovim_foundation::carrier::SharingModel>()
+        && derive_witness::<::reovim_foundation::carrier::ThreadTransfer>()
+        && derive_witness::<::reovim_foundation::carrier::TypeMismatch>()
+        && derive_witness::<::reovim_foundation::carrier::UnsafeBoundary>()
+        && derive_witness::<::reovim_foundation::carrier::UnwindModel>()
+}
+
+const fn carrier_descriptor_error_derive_witness() -> bool {
+    derive_witness::<::reovim_foundation::carrier::CarrierDescriptorError>()
 }
 
 const fn carrier_descriptor_derive_witness() -> bool {
-    derive_witness::<reovim_foundation::carrier::CarrierSafetyDescriptor>()
+    derive_witness::<::reovim_foundation::carrier::CarrierSafetyDescriptor>()
 }
 
 const fn contract_derive_witnesses() -> bool {
-    derive_witness::<reovim_foundation::contract::CompatibleVersionRange>()
-        && derive_witness::<reovim_foundation::contract::ContractId>()
-        && derive_witness::<reovim_foundation::contract::ContractVersion>()
-        && derive_witness::<reovim_foundation::contract::VersionRangeError>()
+    derive_witness::<::reovim_foundation::contract::CompatibleVersionRange>()
+        && derive_witness::<::reovim_foundation::contract::ContractId>()
+        && derive_witness::<::reovim_foundation::contract::ContractVersion>()
+        && derive_witness::<::reovim_foundation::contract::VersionRangeError>()
 }
 
 const fn identity_derive_witnesses() -> bool {
-    derive_witness::<reovim_foundation::identity::IncarnationId>()
-        && derive_witness::<reovim_foundation::identity::InstanceId>()
+    derive_witness::<::reovim_foundation::identity::IncarnationId>()
+        && derive_witness::<::reovim_foundation::identity::InstanceId>()
 }
 
 const fn derive_witness<T>() -> bool
 where
-    T: Clone + Copy + Debug + PartialEq + Eq,
+    T: ::core::clone::Clone
+        + ::core::marker::Copy
+        + ::core::fmt::Debug
+        + ::core::cmp::PartialEq
+        + ::core::cmp::Eq,
 {
     let _layout = (core::mem::size_of::<T>(), core::mem::align_of::<T>());
     true

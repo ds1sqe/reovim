@@ -8,15 +8,19 @@ Exact locked/offline metadata preflight resolves declared packages, targets,
 features, and dependency kinds before project/helper execution. Metadata is not
 actual compiler-unit evidence.
 
-One fresh shipping build names exact absolute manifest, package, `--lib`,
-target, `--profile release`, features, `--jobs 1`, JSON message format, and
-authorized target directory. The validation library has a separate fresh
-selection. The cleared environment fixes canonical Cargo/rustc/checker,
-offline mode, incremental-off, prepared Cargo/temp/trace paths, and rejection
-of conflicting Cargo configuration. It fixes `LD_LIBRARY_PATH` to the one
-inventoried `/compiler/lib` directory because the relocated rustc image cannot
-rely on its host-relative `$ORIGIN` path inside the prepared root; no other
-dynamic-library search directory is admitted.
+The current profile executes four exact library selections in one shared Cargo
+home and target authority: Foundation shipping, Foundation validation, Kernel
+Interface shipping, then Kernel Interface validation. Each names the absolute
+manifest, package, `--lib`, target, `--profile release`, features, `--jobs 1`,
+JSON message format, and authorized target directory. This is a closed ordered
+matrix, not a registry-driven build graph.
+
+The cleared environment fixes canonical Cargo/rustc/checker, offline mode,
+incremental-off, prepared Cargo/temp/trace paths, and rejection of conflicting
+Cargo configuration. It fixes `LD_LIBRARY_PATH` to the one inventoried
+`/compiler/lib` directory because the relocated rustc image cannot rely on its
+host-relative `$ORIGIN` path inside the prepared root; no other dynamic-library
+search directory is admitted.
 
 Metadata and package discovery select the exact checker image as a private
 rustc launcher. That launcher admits only the closed Rust 1.92 discovery
@@ -39,31 +43,42 @@ terminal, `fresh: false`, no build-script event, and only expected artifacts.
 It correlates wrapper units by workspace/package/target root, crate name/kind,
 target, features/cfgs, outputs, and artifact paths.
 
-For the initial Cargo profile, the fresh shipping build records the exact
-Version/Host/Target/Version discovery sequence before its unit. Validation
-reuses the same Cargo home, build directory, and target authority, so it
-records no repeated discovery probes and exactly one consumer unit. Both unit
-`rlib` and `rmeta` outputs retain separate identities. Cargo may report a
-top-level shipping `rlib` and later a fresh hashed provider `rlib`; their paths
-remain distinct and their digest/size equality is proved. The compile-only
-consumer's `--extern` selects the exact retained provider `rmeta`, not the
-shipping `rlib`.
+Only the Foundation shipping stage records the exact
+Version/Host/Target/Version discovery sequence. The later three stages reuse
+the same authorities and record no repeated probe. Each stage compiles exactly
+one selected unit. Cargo artifact-event cardinalities are `1/2/2/3`: the
+selected unit plus the exact fresh upstream events implied by the stage.
+Freshness does not establish a dependency edge.
 
-The report retains every correlated Cargo artifact event with its unit,
-freshness, and exact two-file `rlib`/`rmeta` path set. It separately retains
-the top-level shipping `rlib`, hashed provider `rlib`, and provider `rmeta`
-identities. Standalone verification repeats the distinct-path/equal-byte join,
-the validation fresh-provider join, and the consumer-`rmeta` join. It also
-revalidates the complete ordered rustc grammar and exact dep-info/sysroot
-rewrite; recognizing a target, emit flag, or rustc basename is insufficient.
+The three direct compiler edges are Foundation validation to Foundation,
+Kernel Interface shipping to Foundation, and Kernel Interface validation to
+Kernel Interface. The last stage also carries a transitive fresh Foundation
+event but no direct Foundation `--extern`. Each direct `--extern` selects its
+exact retained provider `rmeta`.
+
+Every compiler unit retains separate `rlib` and `rmeta` identities. Cargo may
+report a top-level shipping `rlib` and later fresh hashed provider `rlib`;
+their paths remain distinct and their digest/size equality is proved for both
+shipping providers. The report retains every correlated Cargo artifact event
+with unit, direct-or-transitive role, freshness, and exact filenames. It also
+retains both top-level/hashed/provider-metadata joins.
+
+Standalone verification repeats both distinct-path/equal-byte provider joins,
+all direct `rmeta` joins, the exact fresh-event matrix, complete ordered rustc
+grammar, and dep-info/sysroot rewrite. Recognizing a target, emit flag, or
+rustc basename is insufficient.
 
 Every supplied `--extern` is conservatively participating even when rustc may
 not use it. Every provider maps to another proved allowed Product unit or the
 bound sysroot. Every repository source/module path reported by dep-info maps to
-one exact classified pre/post-identical input. Unknown, excluded, out-of-root,
-Repository Tooling, registry, generated, vendored, or `OUT_DIR` input fails.
-Environment dependencies and include inputs are unavailable in the first
-profile and fail if reported.
+one exact classified pre/post-identical input. Their four-stage union is
+exactly 39 compiler-selected Rust files. Visibility of
+`/repo/conformance/product-closures.json` changes neither that set nor its
+count. Its presence in dep-info, package membership, a supplied `--extern`, or
+a Product closure fails. Any other unknown, excluded, out-of-root, Repository
+Tooling, generated, vendored, or `OUT_DIR` input also fails. Environment
+dependencies and include inputs are unavailable in the first profile and fail
+if reported.
 
 Compiler identity binds canonical Cargo/rustc/checker plus a bounded exact
 inventory/digest of rustc compiler-support files and the selected target

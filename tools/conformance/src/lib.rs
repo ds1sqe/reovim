@@ -20,6 +20,7 @@ mod prepared_root;
 mod product_closures;
 mod product_preflight;
 mod product_proof;
+mod product_reexport;
 mod product_source;
 mod product_workload;
 mod report;
@@ -850,15 +851,16 @@ pub fn check(options: &CheckOptions) -> Result<Outcome, Fatal> {
             &topology,
         );
         all_findings.extend(graph.findings.clone());
-        all_findings.extend(rust_source::check(
-            &root,
-            &profile.name,
-            &capture.metadata,
-            &inventory.files,
-            &policy,
-            &topology,
-            topology.limits,
-        ));
+        all_findings.extend(rust_source::check(&rust_source::CheckRequest {
+            root: &root,
+            profile: &profile.name,
+            metadata: &capture.metadata,
+            files: &inventory.files,
+            policy: &policy,
+            topology: &topology,
+            product_registry: &product_registry,
+            limits: topology.limits,
+        }));
         graphs.push(graph);
     }
     let reviewed_packages = topology
@@ -934,6 +936,7 @@ pub fn check(options: &CheckOptions) -> Result<Outcome, Fatal> {
                 checker: &checker_path,
                 inventory: &inventory,
                 limits: topology.limits,
+                registry_bytes: &product_closures_bytes,
                 registry_value: &product_closures_value,
                 registry: &product_registry,
                 execution_environment,

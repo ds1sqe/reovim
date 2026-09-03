@@ -61,6 +61,21 @@ components; attaches work under exact generations; and completes required
 initial synchronization. Inspectable readiness predicates replace unverified
 self-reports.
 
+The lifecycle contract keeps these public terms distinct:
+
+- `Constructed` is inert and grants no operation authority.
+- `Starting` is provisional activation under one owner and generation. It is
+  not externally Ready.
+- `Ready` and `DiagnosticsDegraded` are separate successful publication
+  dispositions. A descriptor names the operations safe in degraded readiness.
+- `ActivationFailed` publishes no contribution and carries the terminal
+  rollback disposition.
+- `Closing` rejects new work before drain, discard, or reconciliation.
+- `Closed` proves all owned execution stopped or its isolation owner proved
+  the containing process reaped.
+- `IncompleteShutdown` is a latched failed-owned terminal disposition. It
+  names bounded unresolved work and never claims close, detach, or unload.
+
 Ready publishes atomically only after every required child predicate passes. A
 failure exposes no partial contribution, fences the generation, cancels owned
 work, and reverses public child operations with dependants before dependencies
@@ -79,6 +94,26 @@ Shutdown is the reverse ownership transaction:
 Nonterminal same-process extension work remains failed-owned as
 `IncompleteShutdown`; a deadline or generation fence never proves execution
 stopped.
+
+Rollback and shutdown report owned work as `drained`, `discarded`, or
+`unresolved`. `Drained` proves the work reached its declared terminal.
+`Discarded` proves its result or queued input will not be installed; it proves
+execution stopped only when its execution disposition separately says so.
+`Unresolved` remains owned and requires `IncompleteShutdown`. Every count,
+identity list, and retained witness is bounded by the lifecycle descriptor.
+
+Cancellation request, deadline observation, generation fencing, and execution
+terminality are four separate facts. A cancellation result identifies its
+cause and whether work was never started, actually stopped, or remains owned.
+A deadline may end one caller's wait. A generation fence prevents stale
+installation. Neither fact changes execution to stopped. Replacement advances
+the generation before admitting work for the new component, and every late
+completion retains its old generation and typed rejected-installation result.
+
+Immediate operations that retain no work may declare cancellation and deadline
+not applicable. They still check readiness and generation at their declared
+linearization cut and return typed `not-ready`, `stale`, `closing`, or `closed`
+outcomes. Expected lifecycle outcomes are never internal-invariant panics.
 
 ## Runtime relationship
 
@@ -135,6 +170,8 @@ authority-before-probe, negotiation, atomic readiness, rollback, fencing,
 bounded pressure/cancellation, ordered shutdown, and absence of private
 shortcuts. Passing one class never substitutes for another.
 
-See [Resource, Snapshot, Buffer, and Transaction](../02-Resource-and-Buffer/01-Resource-Access-Snapshots-and-Change.md)
+See [Resource, Snapshot, Buffer, and Transaction][resource]
 and [Domain, Representation, Projection, and Client-Owned
 View](../03-Semantics-and-View/01-Domains-Representations-and-Projections.md).
+
+[resource]: ../02-Resource-and-Buffer/01-Resource-Access-Snapshots-and-Change.md

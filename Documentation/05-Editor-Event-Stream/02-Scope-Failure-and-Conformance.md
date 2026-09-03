@@ -16,11 +16,11 @@ dmesg-like operational surface, not authoritative editing state.
 
 ## Relationship to trace, causal debugging, and snapshots
 
-The [Execution and Concurrency contract](../01-Architecture/04-Execution/05-Causal-Debugging-and-Evidence.md)
+The [causal-debug contract][causal]
 owns Causal Debug Graph relations, reverse queries, state-reference semantics,
-and development capture. The [Performance contract](../04-Performance/02-Scenarios-Bundles-and-Traces.md) owns
-Causal Interaction Trace, sampling, completeness, clock domains, overhead, and
-claim evidence. This contract owns only Event admission, retained ring, canonical
+and development capture. The [Performance contract][performance] owns Causal
+Interaction Trace, sampling, completeness, clock domains, overhead, and claim
+evidence. This contract owns only Event admission, retained ring, canonical
 rendering, loss, and their separation from those evidence systems.
 
 Events, trace nodes, graph nodes, and snapshots may share correlation identity,
@@ -55,10 +55,15 @@ Conformance requires schema and bounds tests; provenance and actionable-
 category tests; total-order concurrency tests; Stream-incarnation stale cursor
 tests; exact pre-mutation byte-accounting and wrap tests; redaction-before-fan-
 out tests; snapshot/follow race and Event Gap tests; deterministic rendering
-goldens across all destinations; concurrent subscribe/unsubscribe at per-consumer and
-subsystem-wide record/byte limits; slow, failed, and closed consumer tests;
+goldens across all destinations; concurrent subscribe/unsubscribe at
+per-consumer and subsystem-wide record/byte limits; slow, failed, and closed
+consumer tests;
 recursion and allocation failure tests; cancellation and shutdown tests; and
-the overhead workloads in [Performance](../04-Performance/03-Path-Overhead-and-Regression-Evidence.md). It also covers
-trace/graph/snapshot separation, bounded summaries, fatal-path recursion
-failure, and production observation-only behavior. Target-contract prose is
+the overhead workloads in [path overhead][overhead]. It also covers trace,
+graph, and snapshot separation; bounded summaries; fatal-path recursion
+failure; and production observation-only behavior. Target-contract prose is
 not evidence that any of these obligations has passed.
+
+[causal]: ../01-Architecture/04-Execution/05-Causal-Debugging-and-Evidence.md
+[performance]: ../04-Performance/02-Scenarios-Bundles-and-Traces.md
+[overhead]: ../04-Performance/03-Path-Overhead-and-Regression-Evidence.md

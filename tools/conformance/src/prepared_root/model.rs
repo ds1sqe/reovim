@@ -126,6 +126,18 @@ pub struct Plan {
     pub descendant_reap_limit: usize,
 }
 
+/// Host-side measurement of the bounded config carrier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(clippy::struct_field_names)]
+pub struct ConfigTransportInspection {
+    /// Exact encoded config size used by both hidden dispatch hops.
+    pub encoded_bytes: usize,
+    /// Effective configured or Linux per-argument ceiling.
+    pub limit_bytes: usize,
+    /// Bytes remaining before the effective ceiling is reached.
+    pub headroom_bytes: usize,
+}
+
 /// Read-only capability probe result.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Capability {

@@ -1947,7 +1947,7 @@ mod tests {
         assert_eq!(product.partition, super::WorkspacePartition::Product);
         assert_eq!(product.root, Path::new("product"));
         assert_eq!(product.metadata_profiles.len(), 1);
-        assert_eq!(product.packages.len(), 2);
+        assert_eq!(product.packages.len(), 4);
         assert_eq!(topology.workspace_manifest, Path::new("Cargo.toml"));
         assert_eq!(topology.profiles.len(), 3);
         assert_eq!(topology.packages.len(), 2);

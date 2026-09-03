@@ -1,13 +1,15 @@
-//! Fixed prepared-root workload for the initial Foundation Product proof.
+//! Fixed prepared-root workload for the four-stage Product producer.
 //!
 //! The outer checker supplies one closed, versioned request.  The workload
 //! reconstructs the committed Product registry, runs the exact prepared
-//! metadata/package/compiler journey, and returns only observations consumed
-//! by active report construction.
+//! metadata/package/compiler journey, and returns the two package pairs and
+//! four compiler stages needed by the next proof adapter.
 
 use std::{
     collections::BTreeSet,
     fmt, fs,
+    fs::File,
+    io::Read as _,
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -27,12 +29,19 @@ use crate::{
     topology::Profile,
 };
 
-pub const REQUEST_SCHEMA: &str = "reovim-product-workload-request/v1";
-pub const RESULT_SCHEMA: &str = "reovim-product-workload-result/v1";
+pub const REQUEST_SCHEMA: &str = "reovim-product-workload-request/v2";
+pub const RESULT_SCHEMA: &str = "reovim-product-workload-result/v2";
+pub const PREPARED_REGISTRY_PATH: &str =
+    "/repo/conformance/product-closures.json";
+
+const REQUEST_MAX_BYTES: usize = 4_096;
 
 const SHIPPING_CLOSURE: &str = "foundation-shipping";
 const VALIDATION_CLOSURE: &str = "foundation-consumer";
 const PUBLIC_RELATION: &str = "foundation-public-api";
+const KERNEL_INTERFACE_SHIPPING_CLOSURE: &str = "kernel-interface-shipping";
+const KERNEL_INTERFACE_VALIDATION_CLOSURE: &str = "kernel-interface-consumer";
+const KERNEL_INTERFACE_PUBLIC_RELATION: &str = "kernel-interface-public-api";
 const TARGET: &str = "x86_64-unknown-linux-gnu";
 
 const REPOSITORY: &str = "/repo";
@@ -48,6 +57,9 @@ const TARGET_LIBDIR: &str =
 const PRODUCT_MANIFEST: &str = "product/Cargo.toml";
 const SHIPPING_PACKAGE: &str = "reovim-foundation";
 const VALIDATION_PACKAGE: &str = "reovim-foundation-public-consumer";
+const KERNEL_INTERFACE_SHIPPING_PACKAGE: &str = "reovim-kernel-interface";
+const KERNEL_INTERFACE_VALIDATION_PACKAGE: &str =
+    "reovim-kernel-interface-public-consumer";
 
 const SHIPPING_SOURCES: [&str; 5] = [
     "kernel/foundation/src/bound.rs",
@@ -57,8 +69,48 @@ const SHIPPING_SOURCES: [&str; 5] = [
     "kernel/foundation/src/lib.rs",
 ];
 
-const VALIDATION_SOURCES: [&str; 1] =
-    ["tests/foundation-public-consumer/src/lib.rs"];
+const VALIDATION_SOURCES: [&str; 2] = [
+    "tests/foundation-public-consumer/src/lib.rs",
+    "tests/foundation-public-consumer/src/public_items.rs",
+];
+
+const KERNEL_INTERFACE_SHIPPING_SOURCES: [&str; 20] = [
+    "kernel/interface/src/cancellation.rs",
+    "kernel/interface/src/clock.rs",
+    "kernel/interface/src/event.rs",
+    "kernel/interface/src/event/admission.rs",
+    "kernel/interface/src/event/canonical.rs",
+    "kernel/interface/src/event/canonical/grammar.rs",
+    "kernel/interface/src/event/counts.rs",
+    "kernel/interface/src/event/cursor.rs",
+    "kernel/interface/src/event/descriptor.rs",
+    "kernel/interface/src/event/identity.rs",
+    "kernel/interface/src/event/limits.rs",
+    "kernel/interface/src/event/proposal.rs",
+    "kernel/interface/src/event/record.rs",
+    "kernel/interface/src/event/remediation.rs",
+    "kernel/interface/src/event/sequence.rs",
+    "kernel/interface/src/event/snapshot.rs",
+    "kernel/interface/src/event/snapshot_validation.rs",
+    "kernel/interface/src/lib.rs",
+    "kernel/interface/src/lifecycle.rs",
+    "kernel/interface/src/operation.rs",
+];
+
+const KERNEL_INTERFACE_VALIDATION_SOURCES: [&str; 12] = [
+    "tests/kernel-interface-public-consumer/src/clock.rs",
+    "tests/kernel-interface-public-consumer/src/event/canonical.rs",
+    "tests/kernel-interface-public-consumer/src/event/derives.rs",
+    "tests/kernel-interface-public-consumer/src/event/descriptor.rs",
+    "tests/kernel-interface-public-consumer/src/event/mod.rs",
+    "tests/kernel-interface-public-consumer/src/event/outcomes.rs",
+    "tests/kernel-interface-public-consumer/src/event/sequence.rs",
+    "tests/kernel-interface-public-consumer/src/event/snapshot.rs",
+    "tests/kernel-interface-public-consumer/src/lib.rs",
+    "tests/kernel-interface-public-consumer/src/lifecycle.rs",
+    "tests/kernel-interface-public-consumer/src/public_items.rs",
+    "tests/kernel-interface-public-consumer/src/operation.rs",
+];
 
 /// All caller-selected bounds used inside the prepared workload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,22 +128,50 @@ pub struct Limits {
     pub result_json_items: usize,
 }
 
-/// Parsed request retaining both the exact registry value and typed registry.
+/// Raw identity of the one prepared Product-closure registry file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegistryInput {
+    /// Exact canonical prepared-root path of the registry.
+    pub path: PathBuf,
+    /// SHA-256 identity of the raw registry bytes.
+    pub content_digest: String,
+    /// Exact length of the raw registry bytes.
+    pub size_bytes: u64,
+}
+
+/// Parsed bounded request for one file-backed Product registry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Request {
-    pub registry_value: Value,
-    pub registry: Registry,
+    pub registry: RegistryInput,
     pub limits: Limits,
 }
 
-/// Minimal prepared result consumed by the active Product report adapter.
+struct LoadedRequest {
+    registry: Registry,
+    limits: Limits,
+}
+
+/// Complete raw result from the fixed four-stage prepared producer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Observation {
+    package_ids: PackageIds,
     pub compiler_substrate: compiler_substrate::Observation,
     pub package_before: package_capture::Observation,
     pub package_after: package_capture::Observation,
     pub shipping: BuildObservation,
     pub validation: BuildObservation,
+    pub kernel_interface_package_before: package_capture::Observation,
+    pub kernel_interface_package_after: package_capture::Observation,
+    pub kernel_interface_shipping: BuildObservation,
+    pub kernel_interface_validation: BuildObservation,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PackageIds {
+    foundation_shipping: String,
+    foundation_validation: String,
+    kernel_interface_shipping: String,
+    kernel_interface_validation: String,
 }
 
 /// Typed protocol, setup, execution, or semantic failure.
@@ -145,42 +225,186 @@ impl From<Error> for prepared_root::Error {
 ///
 /// # Errors
 ///
-/// Returns a typed error when the limits or Product registry do not describe
-/// the one supported Foundation closure pair.
+/// Returns a typed error when the limits or raw registry identity are invalid.
 pub fn request_value(
-    registry_value: &Value,
+    registry: &RegistryInput,
     limits: &Limits,
 ) -> Result<Value, Error> {
     validate_limits(limits)?;
-    let registry = Registry::parse(registry_value, limits.registry)
-        .map_err(config_error)?;
-    validate_registry(&registry)?;
-    Ok(json!({
+    validate_registry_input(registry, limits)?;
+    let value = json!({
         "schema": REQUEST_SCHEMA,
-        "product_closures": registry_value,
+        "registry": registry_input_value(registry)?,
         "limits": limits_value(limits)?,
-    }))
+    });
+    validate_request_size(&value)?;
+    Ok(value)
 }
 
-/// Parses the closed request and reconstructs its exact Product registry.
+/// Parses the closed file-backed registry request.
 ///
 /// # Errors
 ///
 /// Returns a typed error for any missing, extra, malformed, unbounded, or
 /// unsupported request field.
 pub fn parse_request(value: &Value) -> Result<Request, Error> {
-    let object = object(value, "$", &["schema", "product_closures", "limits"])?;
+    validate_request_size(value)?;
+    let object = object(value, "$", &["schema", "registry", "limits"])?;
     exact_text(field(object, "schema")?, "$.schema", REQUEST_SCHEMA)?;
     let limits = parse_limits(field(object, "limits")?)?;
     validate_limits(&limits)?;
-    let registry_value = field(object, "product_closures")?.clone();
-    let registry = Registry::parse(&registry_value, limits.registry)
-        .map_err(config_error)?;
-    validate_registry(&registry)?;
-    Ok(Request { registry_value, registry, limits })
+    let registry = parse_registry_input(field(object, "registry")?)?;
+    validate_registry_input(&registry, &limits)?;
+    Ok(Request { registry, limits })
 }
 
-/// Executes the fixed initial Product journey inside the prepared root.
+fn registry_input_value(input: &RegistryInput) -> Result<Value, Error> {
+    Ok(json!({
+        "path": path_value(&input.path)?,
+        "content_digest": input.content_digest,
+        "size_bytes": input.size_bytes,
+    }))
+}
+
+fn parse_registry_input(value: &Value) -> Result<RegistryInput, Error> {
+    let path = "$.registry";
+    let object =
+        object(value, path, &["path", "content_digest", "size_bytes"])?;
+    Ok(RegistryInput {
+        path: path_field(object, "path", path)?,
+        content_digest: digest_field(object, "content_digest", path)?,
+        size_bytes: u64_field(object, "size_bytes", path)?,
+    })
+}
+
+fn validate_registry_input(
+    input: &RegistryInput,
+    limits: &Limits,
+) -> Result<(), Error> {
+    let exact_path = input.path == Path::new(PREPARED_REGISTRY_PATH);
+    let bounded_size = input.size_bytes > 0
+        && input.size_bytes <= limits.source.source_file_bytes;
+    if exact_path && bounded_size && valid_digest(&input.content_digest) {
+        return Ok(());
+    }
+    Err(Error::at(
+        "PRODUCT_WORKLOAD_REGISTRY_INPUT",
+        input.path.display().to_string(),
+        "registry path, size, or digest is outside the exact profile",
+    ))
+}
+
+fn validate_request_size(value: &Value) -> Result<(), Error> {
+    let bytes = serde_json::to_vec(value).map_err(|failure| {
+        Error::new("PRODUCT_WORKLOAD_REQUEST_ENCODE", failure.to_string())
+    })?;
+    if bytes.len() <= REQUEST_MAX_BYTES {
+        return Ok(());
+    }
+    Err(Error::new(
+        "PRODUCT_WORKLOAD_REQUEST_LIMIT",
+        format!("workload request exceeds {REQUEST_MAX_BYTES} bytes"),
+    ))
+}
+
+fn load_request(request: &Request) -> Result<LoadedRequest, Error> {
+    let registry = read_registry_file(&request.registry, &request.limits)?;
+    Ok(LoadedRequest { registry, limits: request.limits })
+}
+
+fn read_registry_file(
+    input: &RegistryInput,
+    limits: &Limits,
+) -> Result<Registry, Error> {
+    let metadata = fs::symlink_metadata(&input.path).map_err(|failure| {
+        Error::at(
+            "PRODUCT_WORKLOAD_REGISTRY_METADATA",
+            input.path.display().to_string(),
+            failure.to_string(),
+        )
+    })?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err(Error::at(
+            "PRODUCT_WORKLOAD_REGISTRY_KIND",
+            input.path.display().to_string(),
+            "registry is not a regular non-symlink file",
+        ));
+    }
+    let canonical = fs::canonicalize(&input.path).map_err(|failure| {
+        Error::at(
+            "PRODUCT_WORKLOAD_REGISTRY_CANONICAL",
+            input.path.display().to_string(),
+            failure.to_string(),
+        )
+    })?;
+    if canonical != input.path {
+        return Err(Error::at(
+            "PRODUCT_WORKLOAD_REGISTRY_CANONICAL",
+            input.path.display().to_string(),
+            "registry path differs from its canonical identity",
+        ));
+    }
+    if metadata.len() != input.size_bytes {
+        return Err(Error::at(
+            "PRODUCT_WORKLOAD_REGISTRY_SIZE",
+            input.path.display().to_string(),
+            "registry size differs from its raw identity",
+        ));
+    }
+    let read_limit = input.size_bytes.checked_add(1).ok_or_else(|| {
+        Error::new(
+            "PRODUCT_WORKLOAD_REGISTRY_LIMIT",
+            "registry read bound overflow",
+        )
+    })?;
+    if read_limit > limits.source.source_file_bytes.saturating_add(1) {
+        return Err(Error::new(
+            "PRODUCT_WORKLOAD_REGISTRY_LIMIT",
+            "registry read exceeds the existing source-file bound",
+        ));
+    }
+    let file = File::open(&input.path).map_err(|failure| {
+        Error::at(
+            "PRODUCT_WORKLOAD_REGISTRY_OPEN",
+            input.path.display().to_string(),
+            failure.to_string(),
+        )
+    })?;
+    let mut bytes = Vec::new();
+    file.take(read_limit).read_to_end(&mut bytes).map_err(|failure| {
+        Error::at(
+            "PRODUCT_WORKLOAD_REGISTRY_READ",
+            input.path.display().to_string(),
+            failure.to_string(),
+        )
+    })?;
+    if u64::try_from(bytes.len()).ok() != Some(input.size_bytes) {
+        return Err(Error::at(
+            "PRODUCT_WORKLOAD_REGISTRY_SIZE",
+            input.path.display().to_string(),
+            "bounded registry read is shorter or longer than expected",
+        ));
+    }
+    if digest::bytes(&bytes) != input.content_digest {
+        return Err(Error::at(
+            "PRODUCT_WORKLOAD_REGISTRY_DIGEST",
+            input.path.display().to_string(),
+            "registry bytes differ from their raw digest",
+        ));
+    }
+    let value = bounded_json::parse(
+        &bytes,
+        limits.result_json_depth,
+        limits.result_json_items,
+    )
+    .map_err(config_error)?;
+    let registry =
+        Registry::parse(&value, limits.registry).map_err(config_error)?;
+    validate_registry(&registry)?;
+    Ok(registry)
+}
+
+/// Executes the fixed four-stage Product journey inside the prepared root.
 ///
 /// # Errors
 ///
@@ -192,17 +416,20 @@ pub fn run(context: &WorkloadContext) -> Result<Value, prepared_root::Error> {
 fn run_inner(context: &WorkloadContext) -> Result<Value, Error> {
     validate_context(context)?;
     let request = parse_request(&context.workload_request)?;
+    let request = load_request(&request)?;
     let paths = WorkloadPaths::create(Path::new(SCRATCH))?;
     let observation = execute_journey(&request, &paths)?;
-    encode_observation(&observation, &request.limits)
+    encode_observation(&observation, &request)
 }
 
 fn execute_journey(
-    request: &Request,
+    request: &LoadedRequest,
     paths: &WorkloadPaths,
 ) -> Result<Observation, Error> {
     let metadata = capture_metadata(request, paths)?;
     validate_metadata(&metadata.metadata, &request.registry)?;
+    let package_ids =
+        observed_package_ids(&metadata.metadata, &request.registry)?;
     let substrate_request = substrate_request();
     let substrate_before = compiler_substrate::observe(
         substrate_request,
@@ -210,60 +437,40 @@ fn execute_journey(
     )
     .map_err(substrate_error)?;
     let shipping = closure(&request.registry, SHIPPING_CLOSURE)?;
-    let validation = closure(&request.registry, VALIDATION_CLOSURE)?;
-    let shipping_id = package_id(&metadata.metadata, shipping)?;
-    let validation_id = package_id(&metadata.metadata, validation)?;
-    let package_before = package_capture::run(
-        package_request(
-            paths,
-            shipping,
-            package_capture::Phase::BeforeCompiler,
-        ),
+    let kernel_shipping =
+        closure(&request.registry, KERNEL_INTERFACE_SHIPPING_CLOSURE)?;
+    let package_before = capture_package(
+        paths,
+        shipping,
+        package_capture::Phase::BeforeCompiler,
         request.limits.package,
-    )
-    .map_err(package_error)?
-    .observation;
-    let shipping_sources = source_set(&SHIPPING_SOURCES);
-    let shipping_capture = compiler_capture::run(
-        &compiler_request(
-            paths,
-            shipping,
-            shipping_id,
-            &metadata.metadata,
-            &shipping_sources,
-            None,
-        ),
-        request.limits.compiler,
-    )
-    .map_err(compiler_error)?;
-    let provider =
-        shipping_capture.observation.provider.clone().ok_or_else(|| {
-            Error::new(
-                "PRODUCT_WORKLOAD_PROVIDER",
-                "shipping capture omitted provider artifacts",
-            )
-        })?;
-    let validation_sources = source_set(&VALIDATION_SOURCES);
-    let validation_capture = compiler_capture::run(
-        &compiler_request(
-            paths,
-            validation,
-            validation_id,
-            &metadata.metadata,
-            &validation_sources,
-            Some(&provider),
-        ),
-        request.limits.compiler,
-    )
-    .map_err(compiler_error)?;
-    let package_after = package_capture::run(
-        package_request(paths, shipping, package_capture::Phase::AfterCompiler),
+    )?;
+    let kernel_interface_package_before = capture_package(
+        paths,
+        kernel_shipping,
+        package_capture::Phase::BeforeCompiler,
         request.limits.package,
-    )
-    .map_err(package_error)?
-    .observation;
+    )?;
+    let stages = capture_four_stages(request, paths, &metadata.metadata)?;
+    let package_after = capture_package(
+        paths,
+        shipping,
+        package_capture::Phase::AfterCompiler,
+        request.limits.package,
+    )?;
+    let kernel_interface_package_after = capture_package(
+        paths,
+        kernel_shipping,
+        package_capture::Phase::AfterCompiler,
+        request.limits.package,
+    )?;
     package_capture::compare(&package_before, &package_after)
         .map_err(package_error)?;
+    package_capture::compare(
+        &kernel_interface_package_before,
+        &kernel_interface_package_after,
+    )
+    .map_err(package_error)?;
     let substrate_after = compiler_substrate::observe(
         substrate_request,
         request.limits.substrate,
@@ -272,16 +479,169 @@ fn execute_journey(
     compiler_substrate::require_unchanged(&substrate_before, &substrate_after)
         .map_err(substrate_error)?;
     Ok(Observation {
+        package_ids,
         compiler_substrate: substrate_before,
         package_before,
         package_after,
-        shipping: shipping_capture.observation,
-        validation: validation_capture.observation,
+        shipping: stages.foundation_shipping,
+        validation: stages.foundation_validation,
+        kernel_interface_package_before,
+        kernel_interface_package_after,
+        kernel_interface_shipping: stages.kernel_interface_shipping,
+        kernel_interface_validation: stages.kernel_interface_validation,
     })
 }
 
+fn observed_package_ids(
+    metadata: &cargo::Metadata,
+    registry: &Registry,
+) -> Result<PackageIds, Error> {
+    Ok(PackageIds {
+        foundation_shipping: package_id(
+            metadata,
+            closure(registry, SHIPPING_CLOSURE)?,
+        )?
+        .to_owned(),
+        foundation_validation: package_id(
+            metadata,
+            closure(registry, VALIDATION_CLOSURE)?,
+        )?
+        .to_owned(),
+        kernel_interface_shipping: package_id(
+            metadata,
+            closure(registry, KERNEL_INTERFACE_SHIPPING_CLOSURE)?,
+        )?
+        .to_owned(),
+        kernel_interface_validation: package_id(
+            metadata,
+            closure(registry, KERNEL_INTERFACE_VALIDATION_CLOSURE)?,
+        )?
+        .to_owned(),
+    })
+}
+
+struct StageObservations {
+    foundation_shipping: BuildObservation,
+    foundation_validation: BuildObservation,
+    kernel_interface_shipping: BuildObservation,
+    kernel_interface_validation: BuildObservation,
+}
+
+#[derive(Clone, Copy)]
+struct StageProviders<'a> {
+    direct: Option<&'a compiler_capture::ProviderArtifacts>,
+    transitive: Option<&'a compiler_capture::ProviderArtifacts>,
+}
+
+fn capture_four_stages(
+    request: &LoadedRequest,
+    paths: &WorkloadPaths,
+    metadata: &cargo::Metadata,
+) -> Result<StageObservations, Error> {
+    let shipping = closure(&request.registry, SHIPPING_CLOSURE)?;
+    let validation = closure(&request.registry, VALIDATION_CLOSURE)?;
+    let kernel_shipping =
+        closure(&request.registry, KERNEL_INTERFACE_SHIPPING_CLOSURE)?;
+    let kernel_validation =
+        closure(&request.registry, KERNEL_INTERFACE_VALIDATION_CLOSURE)?;
+    let foundation_shipping = capture_stage(
+        request,
+        paths,
+        metadata,
+        shipping,
+        &SHIPPING_SOURCES,
+        StageProviders { direct: None, transitive: None },
+    )?;
+    let foundation_provider = provider(&foundation_shipping)?;
+    let foundation_validation = capture_stage(
+        request,
+        paths,
+        metadata,
+        validation,
+        &VALIDATION_SOURCES,
+        StageProviders { direct: Some(&foundation_provider), transitive: None },
+    )?;
+    let kernel_interface_shipping = capture_stage(
+        request,
+        paths,
+        metadata,
+        kernel_shipping,
+        &KERNEL_INTERFACE_SHIPPING_SOURCES,
+        StageProviders { direct: Some(&foundation_provider), transitive: None },
+    )?;
+    let kernel_provider = provider(&kernel_interface_shipping)?;
+    let kernel_interface_validation = capture_stage(
+        request,
+        paths,
+        metadata,
+        kernel_validation,
+        &KERNEL_INTERFACE_VALIDATION_SOURCES,
+        StageProviders {
+            direct: Some(&kernel_provider),
+            transitive: Some(&foundation_provider),
+        },
+    )?;
+    Ok(StageObservations {
+        foundation_shipping,
+        foundation_validation,
+        kernel_interface_shipping,
+        kernel_interface_validation,
+    })
+}
+
+fn capture_stage<const N: usize>(
+    request: &LoadedRequest,
+    paths: &WorkloadPaths,
+    metadata: &cargo::Metadata,
+    closure: &Closure,
+    sources: &[&str; N],
+    providers: StageProviders<'_>,
+) -> Result<BuildObservation, Error> {
+    let package_id = package_id(metadata, closure)?;
+    let admitted_sources = source_set(sources);
+    compiler_capture::run(
+        &compiler_request(
+            paths,
+            closure,
+            package_id,
+            metadata,
+            &admitted_sources,
+            providers.direct,
+            providers.transitive,
+        )?,
+        request.limits.compiler,
+    )
+    .map(|capture| capture.observation)
+    .map_err(compiler_error)
+}
+
+fn provider(
+    observation: &BuildObservation,
+) -> Result<compiler_capture::ProviderArtifacts, Error> {
+    observation.provider.clone().ok_or_else(|| {
+        Error::new(
+            "PRODUCT_WORKLOAD_PROVIDER",
+            format!(
+                "shipping capture {} omitted provider",
+                observation.closure
+            ),
+        )
+    })
+}
+
+fn capture_package(
+    paths: &WorkloadPaths,
+    shipping: &Closure,
+    phase: package_capture::Phase,
+    limits: package_capture::Limits,
+) -> Result<package_capture::Observation, Error> {
+    package_capture::run(package_request(paths, shipping, phase), limits)
+        .map(|capture| capture.observation)
+        .map_err(package_error)
+}
+
 fn capture_metadata(
-    request: &Request,
+    request: &LoadedRequest,
     paths: &WorkloadPaths,
 ) -> Result<cargo::Capture, Error> {
     let profile = metadata_profile();
@@ -310,12 +670,12 @@ fn substrate_request() -> compiler_substrate::Request<'static> {
 
 fn encode_observation(
     observation: &Observation,
-    limits: &Limits,
+    request: &LoadedRequest,
 ) -> Result<Value, Error> {
-    validate_observation(observation, limits)?;
+    validate_observation(observation, &request.limits, &request.registry)?;
     let value = observation_value(observation)?;
-    bound_result(&value, limits)?;
-    let parsed = parse_result(&value, limits)?;
+    bound_result(&value, &request.limits)?;
+    let parsed = parse_result(&value, &request.limits, &request.registry)?;
     if parsed != *observation {
         return Err(Error::new(
             "PRODUCT_WORKLOAD_RESULT_ROUNDTRIP",
@@ -344,6 +704,10 @@ struct WorkloadPaths {
     shipping_dep_info: PathBuf,
     validation_trace: PathBuf,
     validation_dep_info: PathBuf,
+    kernel_interface_shipping_trace: PathBuf,
+    kernel_interface_shipping_dep_info: PathBuf,
+    kernel_interface_validation_trace: PathBuf,
+    kernel_interface_validation_dep_info: PathBuf,
 }
 
 impl WorkloadPaths {
@@ -358,6 +722,14 @@ impl WorkloadPaths {
             shipping_dep_info: root.join("shipping-dep-info"),
             validation_trace: root.join("validation-trace"),
             validation_dep_info: root.join("validation-dep-info"),
+            kernel_interface_shipping_trace: root
+                .join("kernel-interface-shipping-trace"),
+            kernel_interface_shipping_dep_info: root
+                .join("kernel-interface-shipping-dep-info"),
+            kernel_interface_validation_trace: root
+                .join("kernel-interface-validation-trace"),
+            kernel_interface_validation_dep_info: root
+                .join("kernel-interface-validation-dep-info"),
         };
         for path in paths.all() {
             create_scratch_directory(path)?;
@@ -365,7 +737,7 @@ impl WorkloadPaths {
         Ok(paths)
     }
 
-    fn all(&self) -> [&Path; 8] {
+    fn all(&self) -> [&Path; 12] {
         [
             &self.cargo_home,
             &self.temp_dir,
@@ -375,6 +747,10 @@ impl WorkloadPaths {
             &self.shipping_dep_info,
             &self.validation_trace,
             &self.validation_dep_info,
+            &self.kernel_interface_shipping_trace,
+            &self.kernel_interface_shipping_dep_info,
+            &self.kernel_interface_validation_trace,
+            &self.kernel_interface_validation_dep_info,
         ]
     }
 }
@@ -754,36 +1130,79 @@ fn validate_limits(limits: &Limits) -> Result<(), Error> {
 }
 
 fn validate_registry(registry: &Registry) -> Result<(), Error> {
-    if registry.closures.len() != 2
-        || registry.public_consumer_relations.len() != 1
+    if registry.closures.len() != 4
+        || registry.public_consumer_relations.len() != 2
     {
         return Err(Error::new(
             "PRODUCT_WORKLOAD_REGISTRY_SET",
-            "registry is not the exact Foundation closure pair",
+            "registry is not the exact Foundation and KI closure pairs",
         ));
     }
-    let shipping = closure(registry, SHIPPING_CLOSURE)?;
-    let validation = closure(registry, VALIDATION_CLOSURE)?;
-    validate_closure(shipping, true)?;
-    validate_closure(validation, false)?;
-    let relation = &registry.public_consumer_relations[0];
-    if relation.id != PUBLIC_RELATION
-        || relation.shipping_closure != SHIPPING_CLOSURE
-        || relation.consumer_closure != VALIDATION_CLOSURE
-        || relation.public_items.len() != 96
-        || relation.derive_checks.len() != 165
-    {
+    for id in [
+        SHIPPING_CLOSURE,
+        VALIDATION_CLOSURE,
+        KERNEL_INTERFACE_SHIPPING_CLOSURE,
+        KERNEL_INTERFACE_VALIDATION_CLOSURE,
+    ] {
+        validate_closure(closure(registry, id)?)?;
+    }
+    validate_relation(
+        registry,
+        PUBLIC_RELATION,
+        SHIPPING_CLOSURE,
+        VALIDATION_CLOSURE,
+        143,
+        165,
+        0,
+    )?;
+    validate_relation(
+        registry,
+        KERNEL_INTERFACE_PUBLIC_RELATION,
+        KERNEL_INTERFACE_SHIPPING_CLOSURE,
+        KERNEL_INTERFACE_VALIDATION_CLOSURE,
+        356,
+        306,
+        6,
+    )
+}
+
+fn validate_relation(
+    registry: &Registry,
+    id: &str,
+    shipping: &str,
+    consumer: &str,
+    public_items: usize,
+    derives: usize,
+    reexports: usize,
+) -> Result<(), Error> {
+    let mut relations = registry
+        .public_consumer_relations
+        .iter()
+        .filter(|relation| relation.id == id);
+    let relation = relations.next().ok_or_else(|| {
+        Error::new(
+            "PRODUCT_WORKLOAD_RELATION",
+            format!("relation {id} is absent"),
+        )
+    })?;
+    let exact = relations.next().is_none()
+        && relation.shipping_closure == shipping
+        && relation.consumer_closure == consumer
+        && relation.public_items.len() == public_items
+        && relation.derive_checks.len() == derives
+        && relation.reexports.len() == reexports;
+    if !exact {
         return Err(Error::new(
             "PRODUCT_WORKLOAD_RELATION",
-            "public-consumer relation differs from the exact v1 profile",
+            format!("relation {id} differs from the exact v2 profile"),
         ));
     }
     Ok(())
 }
 
-fn validate_closure(closure: &Closure, shipping: bool) -> Result<(), Error> {
-    let expected = if shipping {
-        (
+fn validate_closure(closure: &Closure) -> Result<(), Error> {
+    let expected = match closure.id.as_str() {
+        SHIPPING_CLOSURE => (
             SHIPPING_CLOSURE,
             ClosureKind::Shipping,
             "foundation",
@@ -793,9 +1212,8 @@ fn validate_closure(closure: &Closure, shipping: bool) -> Result<(), Error> {
             "kernel/foundation/src/lib.rs",
             ArchitecturalRole::Foundation,
             SourceUse::Production,
-        )
-    } else {
-        (
+        ),
+        VALIDATION_CLOSURE => (
             VALIDATION_CLOSURE,
             ClosureKind::Validation,
             "foundation-public-consumer",
@@ -805,7 +1223,35 @@ fn validate_closure(closure: &Closure, shipping: bool) -> Result<(), Error> {
             "tests/foundation-public-consumer/src/lib.rs",
             ArchitecturalRole::KernelInterface,
             SourceUse::Test,
-        )
+        ),
+        KERNEL_INTERFACE_SHIPPING_CLOSURE => (
+            KERNEL_INTERFACE_SHIPPING_CLOSURE,
+            ClosureKind::Shipping,
+            "kernel-interface",
+            KERNEL_INTERFACE_SHIPPING_PACKAGE,
+            "kernel/interface/Cargo.toml",
+            "reovim_kernel_interface",
+            "kernel/interface/src/lib.rs",
+            ArchitecturalRole::KernelInterface,
+            SourceUse::Production,
+        ),
+        KERNEL_INTERFACE_VALIDATION_CLOSURE => (
+            KERNEL_INTERFACE_VALIDATION_CLOSURE,
+            ClosureKind::Validation,
+            "kernel-interface-public-consumer",
+            KERNEL_INTERFACE_VALIDATION_PACKAGE,
+            "tests/kernel-interface-public-consumer/Cargo.toml",
+            "reovim_kernel_interface_public_consumer",
+            "tests/kernel-interface-public-consumer/src/lib.rs",
+            ArchitecturalRole::KernelRuntime,
+            SourceUse::Test,
+        ),
+        _ => {
+            return Err(Error::new(
+                "PRODUCT_WORKLOAD_CLOSURE",
+                "closure is outside the exact four-stage profile",
+            ));
+        }
     };
     let exact = closure.id == expected.0
         && closure.kind == expected.1
@@ -823,7 +1269,8 @@ fn validate_closure(closure: &Closure, shipping: bool) -> Result<(), Error> {
         && closure.architectural_role == expected.7
         && closure.source_use == expected.8
         && closure.cargo.profile == "release"
-        && closure.package_membership.is_some() == shipping;
+        && closure.package_membership.is_some()
+            == (closure.kind == ClosureKind::Shipping);
     if exact {
         return Ok(());
     }
@@ -920,9 +1367,9 @@ fn validate_metadata(
     registry: &Registry,
 ) -> Result<(), Error> {
     if metadata.workspace_root != Path::new("/repo/product")
-        || metadata.workspace_members.len() != 2
-        || metadata.packages.len() != 2
-        || metadata.nodes.len() != 2
+        || metadata.workspace_members.len() != 4
+        || metadata.packages.len() != 4
+        || metadata.nodes.len() != 4
         || metadata.workspace_members
             != metadata.packages.keys().cloned().collect()
         || metadata.workspace_members
@@ -930,35 +1377,63 @@ fn validate_metadata(
     {
         return Err(Error::new(
             "PRODUCT_WORKLOAD_METADATA_SET",
-            "metadata is not the exact two-package Product workspace",
+            "metadata is not the exact four-package Product workspace",
         ));
     }
     let shipping = closure(registry, SHIPPING_CLOSURE)?;
     let validation = closure(registry, VALIDATION_CLOSURE)?;
+    let kernel_shipping = closure(registry, KERNEL_INTERFACE_SHIPPING_CLOSURE)?;
+    let kernel_validation =
+        closure(registry, KERNEL_INTERFACE_VALIDATION_CLOSURE)?;
     let shipping_id = package_id(metadata, shipping)?;
     let validation_id = package_id(metadata, validation)?;
-    let shipping_node = &metadata.nodes[shipping_id];
-    let validation_node = &metadata.nodes[validation_id];
-    if !shipping_node.dependencies.is_empty()
-        || validation_node.dependencies.len() != 1
-    {
+    let kernel_shipping_id = package_id(metadata, kernel_shipping)?;
+    let kernel_validation_id = package_id(metadata, kernel_validation)?;
+    if !metadata.nodes[shipping_id].dependencies.is_empty() {
         return Err(Error::new(
             "PRODUCT_WORKLOAD_METADATA_GRAPH",
-            "metadata dependency graph differs from the closure pair",
+            "Foundation shipping has a Product dependency",
         ));
     }
-    let edge = &validation_node.dependencies[0];
-    let exact_edge = edge.name == "reovim_foundation"
-        && edge.package == shipping_id
+    validate_metadata_edge(
+        &metadata.nodes[validation_id],
+        "reovim_foundation",
+        shipping_id,
+    )?;
+    validate_metadata_edge(
+        &metadata.nodes[kernel_shipping_id],
+        "reovim_foundation",
+        shipping_id,
+    )?;
+    validate_metadata_edge(
+        &metadata.nodes[kernel_validation_id],
+        "reovim_kernel_interface",
+        kernel_shipping_id,
+    )
+}
+
+fn validate_metadata_edge(
+    node: &cargo::Node,
+    name: &str,
+    provider: &str,
+) -> Result<(), Error> {
+    let [edge] = node.dependencies.as_slice() else {
+        return Err(Error::new(
+            "PRODUCT_WORKLOAD_METADATA_GRAPH",
+            "Product node does not have one exact direct dependency",
+        ));
+    };
+    let exact = edge.name == name
+        && edge.package == provider
         && edge.kinds.len() == 1
         && edge.kinds[0].kind == "normal"
         && edge.kinds[0].target.is_none();
-    if exact_edge {
+    if exact {
         return Ok(());
     }
     Err(Error::new(
         "PRODUCT_WORKLOAD_METADATA_GRAPH",
-        "validation dependency is not the exact Foundation edge",
+        "Product dependency differs from its exact direct edge",
     ))
 }
 
@@ -979,21 +1454,27 @@ fn package_id<'a>(
             format!("metadata package {} is absent", closure.package.name),
         )
     })?;
-    if matches.next().is_some() || package.targets.len() != 1 {
+    if matches.next().is_some() {
         return Err(Error::new(
             "PRODUCT_WORKLOAD_METADATA_PACKAGE",
-            format!(
-                "metadata package {} is ambiguous or multitarget",
-                closure.package.name
-            ),
+            format!("metadata package {} is ambiguous", closure.package.name),
         ));
     }
-    let target = &package.targets[0];
+    if package.edition != "2024" {
+        return Err(Error::new(
+            "PRODUCT_WORKLOAD_METADATA_EDITION",
+            format!("metadata package {} is not edition 2024", package.name),
+        ));
+    }
     let source = Path::new(REPOSITORY).join(&closure.target.src_path);
-    if target.name == closure.target.name
-        && target.kind == ["lib"]
-        && target.crate_types == ["lib"]
-        && target.src_path == source
+    let target = package.targets.iter().find(|target| {
+        target.name == closure.target.name
+            && target.kind == ["lib"]
+            && target.crate_types == ["lib"]
+            && target.src_path == source
+    });
+    if target.is_some()
+        && exact_package_targets(package, closure)
         && metadata.workspace_members.contains(&package.id)
         && metadata.nodes.contains_key(&package.id)
     {
@@ -1001,8 +1482,26 @@ fn package_id<'a>(
     }
     Err(Error::new(
         "PRODUCT_WORKLOAD_METADATA_TARGET",
-        format!("metadata target {} differs from registry", target.name),
+        format!("metadata targets for {} differ from registry", package.name),
     ))
+}
+
+fn exact_package_targets(package: &cargo::Package, closure: &Closure) -> bool {
+    if closure.id != KERNEL_INTERFACE_VALIDATION_CLOSURE {
+        return package.targets.len() == 1;
+    }
+    if package.targets.len() != 2 {
+        return false;
+    }
+    package.targets.iter().any(|target| {
+        target.name == "kernel-interface-public-contract"
+            && target.kind == ["test"]
+            && target.crate_types == ["bin"]
+            && target.src_path
+                == Path::new(REPOSITORY)
+                    .join("tests/kernel-interface-public-consumer/")
+                    .join("tests/public_contract.rs")
+    })
 }
 
 fn source_set<const N: usize>(values: &[&str; N]) -> BTreeSet<PathBuf> {
@@ -1042,14 +1541,40 @@ fn substrate_error(failure: compiler_substrate::Error) -> Error {
 fn observation_value(observation: &Observation) -> Result<Value, Error> {
     Ok(json!({
         "schema": RESULT_SCHEMA,
+        "package_ids": package_ids_value(&observation.package_ids),
         "compiler_substrate": substrate_value(
             &observation.compiler_substrate,
         )?,
-        "package_before": package_value(&observation.package_before)?,
-        "package_after": package_value(&observation.package_after)?,
-        "shipping": build_value(&observation.shipping)?,
-        "validation": build_value(&observation.validation)?,
+        "foundation_package_before": package_value(
+            &observation.package_before,
+        )?,
+        "foundation_package_after": package_value(
+            &observation.package_after,
+        )?,
+        "foundation_shipping": build_value(&observation.shipping)?,
+        "foundation_validation": build_value(&observation.validation)?,
+        "kernel_interface_package_before": package_value(
+            &observation.kernel_interface_package_before,
+        )?,
+        "kernel_interface_package_after": package_value(
+            &observation.kernel_interface_package_after,
+        )?,
+        "kernel_interface_shipping": build_value(
+            &observation.kernel_interface_shipping,
+        )?,
+        "kernel_interface_validation": build_value(
+            &observation.kernel_interface_validation,
+        )?,
     }))
+}
+
+fn package_ids_value(ids: &PackageIds) -> Value {
+    json!({
+        "foundation_shipping": ids.foundation_shipping,
+        "foundation_validation": ids.foundation_validation,
+        "kernel_interface_shipping": ids.kernel_interface_shipping,
+        "kernel_interface_validation": ids.kernel_interface_validation,
+    })
 }
 
 /// Parses and semantically closes one bounded prepared-workload result.
@@ -1061,40 +1586,106 @@ fn observation_value(observation: &Observation) -> Result<Value, Error> {
 pub fn parse_result(
     value: &Value,
     limits: &Limits,
+    registry: &Registry,
 ) -> Result<Observation, Error> {
     validate_limits(limits)?;
+    validate_registry(registry)?;
     bound_result(value, limits)?;
     let object = object(
         value,
         "$",
         &[
             "schema",
+            "package_ids",
             "compiler_substrate",
-            "package_before",
-            "package_after",
-            "shipping",
-            "validation",
+            "foundation_package_before",
+            "foundation_package_after",
+            "foundation_shipping",
+            "foundation_validation",
+            "kernel_interface_package_before",
+            "kernel_interface_package_after",
+            "kernel_interface_shipping",
+            "kernel_interface_validation",
         ],
     )?;
     exact_text(field(object, "schema")?, "$.schema", RESULT_SCHEMA)?;
     let observation = Observation {
+        package_ids: parse_package_ids(field(object, "package_ids")?)?,
         compiler_substrate: parse_substrate(field(
             object,
             "compiler_substrate",
         )?)?,
         package_before: parse_package(
-            field(object, "package_before")?,
-            "$.package_before",
+            field(object, "foundation_package_before")?,
+            "$.foundation_package_before",
         )?,
         package_after: parse_package(
-            field(object, "package_after")?,
-            "$.package_after",
+            field(object, "foundation_package_after")?,
+            "$.foundation_package_after",
         )?,
-        shipping: parse_build(field(object, "shipping")?, "$.shipping")?,
-        validation: parse_build(field(object, "validation")?, "$.validation")?,
+        shipping: parse_build(
+            field(object, "foundation_shipping")?,
+            "$.foundation_shipping",
+        )?,
+        validation: parse_build(
+            field(object, "foundation_validation")?,
+            "$.foundation_validation",
+        )?,
+        kernel_interface_package_before: parse_package(
+            field(object, "kernel_interface_package_before")?,
+            "$.kernel_interface_package_before",
+        )?,
+        kernel_interface_package_after: parse_package(
+            field(object, "kernel_interface_package_after")?,
+            "$.kernel_interface_package_after",
+        )?,
+        kernel_interface_shipping: parse_build(
+            field(object, "kernel_interface_shipping")?,
+            "$.kernel_interface_shipping",
+        )?,
+        kernel_interface_validation: parse_build(
+            field(object, "kernel_interface_validation")?,
+            "$.kernel_interface_validation",
+        )?,
     };
-    validate_observation(&observation, limits)?;
+    validate_observation(&observation, limits, registry)?;
     Ok(observation)
+}
+
+fn parse_package_ids(value: &Value) -> Result<PackageIds, Error> {
+    let path = "$.package_ids";
+    let object = object(
+        value,
+        path,
+        &[
+            "foundation_shipping",
+            "foundation_validation",
+            "kernel_interface_shipping",
+            "kernel_interface_validation",
+        ],
+    )?;
+    Ok(PackageIds {
+        foundation_shipping: text_field(object, "foundation_shipping", path)?
+            .to_owned(),
+        foundation_validation: text_field(
+            object,
+            "foundation_validation",
+            path,
+        )?
+        .to_owned(),
+        kernel_interface_shipping: text_field(
+            object,
+            "kernel_interface_shipping",
+            path,
+        )?
+        .to_owned(),
+        kernel_interface_validation: text_field(
+            object,
+            "kernel_interface_validation",
+            path,
+        )?
+        .to_owned(),
+    })
 }
 
 fn bound_result(value: &Value, limits: &Limits) -> Result<(), Error> {
@@ -1320,6 +1911,18 @@ fn build_value(observation: &BuildObservation) -> Result<Value, Error> {
         .map(provider_reuse_value)
         .transpose()?
         .unwrap_or(Value::Null);
+    let transitive_reuse = observation
+        .transitive_provider_reuse
+        .as_ref()
+        .map(transitive_provider_reuse_value)
+        .transpose()?
+        .unwrap_or(Value::Null);
+    let consumer_rlib = observation
+        .consumer_rlib
+        .as_ref()
+        .map(file_identity_value)
+        .transpose()?
+        .unwrap_or(Value::Null);
     Ok(json!({
         "closure": observation.closure,
         "cargo": cargo_observation_value(&observation.cargo)?,
@@ -1327,6 +1930,8 @@ fn build_value(observation: &BuildObservation) -> Result<Value, Error> {
         "unit": compiler_unit_value(&observation.unit)?,
         "provider": provider,
         "provider_reuse": reuse,
+        "transitive_provider_reuse": transitive_reuse,
+        "consumer_rlib": consumer_rlib,
     }))
 }
 
@@ -1439,6 +2044,7 @@ fn compiler_unit_value(
         "dep_info_path": path_value(&unit.dep_info_path)?,
         "dep_info_digest": unit.dep_info_digest,
         "dep_info_bytes": unit.dep_info_bytes,
+        "dep_info_text": unit.dep_info_text,
         "sources": sources,
         "externs": externs,
         "outputs": outputs,
@@ -1496,11 +2102,30 @@ fn provider_reuse_value(
     }))
 }
 
+fn transitive_provider_reuse_value(
+    reuse: &compiler_capture::TransitiveProviderReuse,
+) -> Result<Value, Error> {
+    Ok(json!({
+        "fresh_artifact": cargo_artifact_value(&reuse.fresh_artifact)?,
+        "hashed_rlib": file_identity_value(&reuse.hashed_rlib)?,
+        "rmeta": file_identity_value(&reuse.rmeta)?,
+    }))
+}
+
 fn parse_build(value: &Value, path: &str) -> Result<BuildObservation, Error> {
     let object = object(
         value,
         path,
-        &["closure", "cargo", "probes", "unit", "provider", "provider_reuse"],
+        &[
+            "closure",
+            "cargo",
+            "probes",
+            "unit",
+            "provider",
+            "provider_reuse",
+            "transitive_provider_reuse",
+            "consumer_rlib",
+        ],
     )?;
     let probe_path = format!("{path}.probes");
     let values = array(field(object, "probes")?, &probe_path)?;
@@ -1527,7 +2152,25 @@ fn parse_build(value: &Value, path: &str) -> Result<BuildObservation, Error> {
             field(object, "provider_reuse")?,
             &format!("{path}.provider_reuse"),
         )?,
+        transitive_provider_reuse: parse_optional_transitive_reuse(
+            field(object, "transitive_provider_reuse")?,
+            &format!("{path}.transitive_provider_reuse"),
+        )?,
+        consumer_rlib: parse_optional_file_identity(
+            field(object, "consumer_rlib")?,
+            &format!("{path}.consumer_rlib"),
+        )?,
     })
+}
+
+fn parse_optional_file_identity(
+    value: &Value,
+    path: &str,
+) -> Result<Option<compiler_capture::FileIdentity>, Error> {
+    if value.is_null() {
+        return Ok(None);
+    }
+    parse_file_identity(value, path).map(Some)
 }
 
 fn parse_cargo_observation(
@@ -1687,6 +2330,7 @@ fn parse_compiler_unit(
             "dep_info_path",
             "dep_info_digest",
             "dep_info_bytes",
+            "dep_info_text",
             "sources",
             "externs",
             "outputs",
@@ -1724,6 +2368,12 @@ fn parse_compiler_unit(
         dep_info_path: path_field(object, "dep_info_path", path)?,
         dep_info_digest: digest_field(object, "dep_info_digest", path)?,
         dep_info_bytes: u64_field(object, "dep_info_bytes", path)?,
+        dep_info_text: bounded_json::string(
+            field(object, "dep_info_text")?,
+            &format!("{path}.dep_info_text"),
+        )
+        .map_err(config_error)?
+        .to_owned(),
         sources: path_array_field(object, "sources", path)?,
         externs,
         outputs,
@@ -1850,9 +2500,35 @@ fn parse_provider_reuse(
     })
 }
 
+fn parse_optional_transitive_reuse(
+    value: &Value,
+    path: &str,
+) -> Result<Option<compiler_capture::TransitiveProviderReuse>, Error> {
+    if value.is_null() {
+        return Ok(None);
+    }
+    let object =
+        object(value, path, &["fresh_artifact", "hashed_rlib", "rmeta"])?;
+    Ok(Some(compiler_capture::TransitiveProviderReuse {
+        fresh_artifact: parse_cargo_artifact(
+            field(object, "fresh_artifact")?,
+            &format!("{path}.fresh_artifact"),
+        )?,
+        hashed_rlib: parse_file_identity(
+            field(object, "hashed_rlib")?,
+            &format!("{path}.hashed_rlib"),
+        )?,
+        rmeta: parse_file_identity(
+            field(object, "rmeta")?,
+            &format!("{path}.rmeta"),
+        )?,
+    }))
+}
+
 fn validate_observation(
     observation: &Observation,
     limits: &Limits,
+    registry: &Registry,
 ) -> Result<(), Error> {
     validate_substrate_observation(
         &observation.compiler_substrate,
@@ -1861,6 +2537,15 @@ fn validate_observation(
     validate_package_observations(
         &observation.package_before,
         &observation.package_after,
+        closure(registry, SHIPPING_CLOSURE)?,
+        &observation.shipping.unit.sources,
+        limits.package,
+    )?;
+    validate_package_observations(
+        &observation.kernel_interface_package_before,
+        &observation.kernel_interface_package_after,
+        closure(registry, KERNEL_INTERFACE_SHIPPING_CLOSURE)?,
+        &observation.kernel_interface_shipping.unit.sources,
         limits.package,
     )?;
     validate_build(&observation.shipping, SHIPPING_CLOSURE, limits.compiler)?;
@@ -1869,11 +2554,176 @@ fn validate_observation(
         VALIDATION_CLOSURE,
         limits.compiler,
     )?;
+    validate_build(
+        &observation.kernel_interface_shipping,
+        KERNEL_INTERFACE_SHIPPING_CLOSURE,
+        limits.compiler,
+    )?;
+    validate_build(
+        &observation.kernel_interface_validation,
+        KERNEL_INTERFACE_VALIDATION_CLOSURE,
+        limits.compiler,
+    )?;
+    validate_package_id_joins(observation)?;
     validate_build_relation(
         &observation.shipping,
         &observation.validation,
+        "reovim_foundation",
+        limits.compiler,
+    )?;
+    validate_build_relation(
+        &observation.shipping,
+        &observation.kernel_interface_shipping,
+        "reovim_foundation",
+        limits.compiler,
+    )?;
+    validate_build_relation(
+        &observation.kernel_interface_shipping,
+        &observation.kernel_interface_validation,
+        "reovim_kernel_interface",
+        limits.compiler,
+    )?;
+    validate_transitive_relation(
+        &observation.shipping,
+        &observation.kernel_interface_validation,
         limits.compiler,
     )
+}
+
+fn validate_package_id_joins(observation: &Observation) -> Result<(), Error> {
+    let ids = &observation.package_ids;
+    let unique = [
+        ids.foundation_shipping.as_str(),
+        ids.foundation_validation.as_str(),
+        ids.kernel_interface_shipping.as_str(),
+        ids.kernel_interface_validation.as_str(),
+    ]
+    .into_iter()
+    .collect::<BTreeSet<_>>();
+    if unique.len() != 4 {
+        return Err(Error::new(
+            "PRODUCT_WORKLOAD_PACKAGE_ID_SET",
+            "four observed Cargo package IDs are not unique",
+        ));
+    }
+    for build in [
+        &observation.shipping,
+        &observation.validation,
+        &observation.kernel_interface_shipping,
+        &observation.kernel_interface_validation,
+    ] {
+        validate_build_package_ids(build, ids)?;
+    }
+    Ok(())
+}
+
+fn validate_build_package_ids(
+    build: &BuildObservation,
+    ids: &PackageIds,
+) -> Result<(), Error> {
+    let own = package_id_for_closure(ids, &build.closure)?;
+    if build.cargo.artifacts.iter().any(|artifact| {
+        package_id_for_target(ids, &artifact.target_name)
+            != Some(artifact.package_id.as_str())
+    }) {
+        return Err(Error::new(
+            "PRODUCT_WORKLOAD_PACKAGE_ID_JOIN",
+            "Cargo artifact package ID differs from its observed identity",
+        ));
+    }
+    let own_artifact = build
+        .cargo
+        .artifacts
+        .iter()
+        .find(|artifact| artifact.package_id == own);
+    if own_artifact.is_none() {
+        return Err(Error::new(
+            "PRODUCT_WORKLOAD_PACKAGE_ID_JOIN",
+            "build lacks its exact observed package ID",
+        ));
+    }
+    if let Some(provider) = &build.provider {
+        let provider_id = package_id_for_closure(ids, &provider.closure)?;
+        if provider.package_id != provider_id
+            || provider.cargo_artifact.package_id != provider_id
+        {
+            return Err(Error::new(
+                "PRODUCT_WORKLOAD_PACKAGE_ID_JOIN",
+                "shipping provider package ID differs from metadata",
+            ));
+        }
+    }
+    validate_reuse_package_ids(build, ids)
+}
+
+fn validate_reuse_package_ids(
+    build: &BuildObservation,
+    ids: &PackageIds,
+) -> Result<(), Error> {
+    if let Some(reuse) = &build.provider_reuse {
+        let expected = match build.closure.as_str() {
+            VALIDATION_CLOSURE | KERNEL_INTERFACE_SHIPPING_CLOSURE => {
+                &ids.foundation_shipping
+            }
+            KERNEL_INTERFACE_VALIDATION_CLOSURE => {
+                &ids.kernel_interface_shipping
+            }
+            _ => {
+                return Err(Error::new(
+                    "PRODUCT_WORKLOAD_PACKAGE_ID_JOIN",
+                    "unexpected direct provider package ID",
+                ));
+            }
+        };
+        if &reuse.fresh_artifact.package_id != expected {
+            return Err(Error::new(
+                "PRODUCT_WORKLOAD_PACKAGE_ID_JOIN",
+                "direct provider reuse package ID differs from metadata",
+            ));
+        }
+    }
+    if let Some(reuse) = &build.transitive_provider_reuse
+        && reuse.fresh_artifact.package_id != ids.foundation_shipping
+    {
+        return Err(Error::new(
+            "PRODUCT_WORKLOAD_PACKAGE_ID_JOIN",
+            "transitive provider package ID differs from metadata",
+        ));
+    }
+    Ok(())
+}
+
+fn package_id_for_closure<'a>(
+    ids: &'a PackageIds,
+    closure: &str,
+) -> Result<&'a str, Error> {
+    match closure {
+        SHIPPING_CLOSURE => Ok(&ids.foundation_shipping),
+        VALIDATION_CLOSURE => Ok(&ids.foundation_validation),
+        KERNEL_INTERFACE_SHIPPING_CLOSURE => Ok(&ids.kernel_interface_shipping),
+        KERNEL_INTERFACE_VALIDATION_CLOSURE => {
+            Ok(&ids.kernel_interface_validation)
+        }
+        _ => Err(Error::new(
+            "PRODUCT_WORKLOAD_PACKAGE_ID_JOIN",
+            "build closure has no observed package ID",
+        )),
+    }
+}
+
+fn package_id_for_target<'a>(
+    ids: &'a PackageIds,
+    target: &str,
+) -> Option<&'a str> {
+    match target {
+        "reovim_foundation" => Some(&ids.foundation_shipping),
+        "reovim_foundation_public_consumer" => Some(&ids.foundation_validation),
+        "reovim_kernel_interface" => Some(&ids.kernel_interface_shipping),
+        "reovim_kernel_interface_public_consumer" => {
+            Some(&ids.kernel_interface_validation)
+        }
+        _ => None,
+    }
 }
 
 fn validate_substrate_observation(
@@ -1992,8 +2842,12 @@ fn append_length(output: &mut Vec<u8>, value: usize) -> Result<(), Error> {
 fn validate_package_observations(
     before: &package_capture::Observation,
     after: &package_capture::Observation,
+    shipping: &Closure,
+    sources: &[PathBuf],
     limits: package_capture::Limits,
 ) -> Result<(), Error> {
+    let members = registered_package_members(shipping, sources)?;
+    let package = &shipping.package.name;
     if before.dirty_mode != package_capture::DirtyMode::Reject
         || after.dirty_mode != package_capture::DirtyMode::Reject
         || before.stdout_bytes == 0
@@ -2004,10 +2858,10 @@ fn validate_package_observations(
         || after.members.len() > limits.member_count
         || before.member_path_bytes > limits.output_bytes as u64
         || after.member_path_bytes > limits.output_bytes as u64
-        || before.command_argv != package_argv()
-        || after.command_argv != package_argv()
-        || before.members != expected_package_members()
-        || after.members != expected_package_members()
+        || before.command_argv != package_argv(package)
+        || after.command_argv != package_argv(package)
+        || before.members != members
+        || after.members != members
     {
         return Err(Error::new(
             "PRODUCT_WORKLOAD_PACKAGE",
@@ -2018,7 +2872,7 @@ fn validate_package_observations(
     Ok(())
 }
 
-fn package_argv() -> Vec<String> {
+fn package_argv(package: &str) -> Vec<String> {
     [
         CARGO,
         "package",
@@ -2030,27 +2884,76 @@ fn package_argv() -> Vec<String> {
         "--manifest-path",
         "/repo/product/Cargo.toml",
         "--package",
-        SHIPPING_PACKAGE,
+        package,
     ]
     .into_iter()
     .map(str::to_owned)
     .collect()
 }
 
-fn expected_package_members() -> Vec<PathBuf> {
-    [
-        "Cargo.lock",
-        "Cargo.toml",
-        "Cargo.toml.orig",
-        "src/bound.rs",
-        "src/carrier.rs",
-        "src/contract.rs",
-        "src/identity.rs",
-        "src/lib.rs",
-    ]
-    .into_iter()
-    .map(PathBuf::from)
-    .collect()
+fn registered_package_members(
+    shipping: &Closure,
+    sources: &[PathBuf],
+) -> Result<Vec<PathBuf>, Error> {
+    let membership = shipping.package_membership.as_ref().ok_or_else(|| {
+        Error::new(
+            "PRODUCT_WORKLOAD_PACKAGE_MEMBERSHIP",
+            format!("shipping closure {} lacks membership", shipping.id),
+        )
+    })?;
+    let source_set = sources.iter().cloned().collect::<BTreeSet<_>>();
+    let package_root = shipping.package.manifest.parent().ok_or_else(|| {
+        Error::new(
+            "PRODUCT_WORKLOAD_PACKAGE_MEMBERSHIP",
+            "shipping package manifest has no repository parent",
+        )
+    })?;
+    let mut copied = BTreeSet::new();
+    for member in &membership.members {
+        let crate::product_closures::PackageMember::Copied {
+            package_path,
+            repository_path,
+        } = member
+        else {
+            continue;
+        };
+        validate_copied_member(
+            package_root,
+            package_path,
+            repository_path,
+            &source_set,
+        )?;
+        copied.insert(repository_path.clone());
+    }
+    if copied != source_set {
+        return Err(Error::new(
+            "PRODUCT_WORKLOAD_PACKAGE_MEMBERSHIP",
+            "copied package members differ from compiler-selected sources",
+        ));
+    }
+    let mut members = membership
+        .members
+        .iter()
+        .map(|member| member.package_path().clone())
+        .collect::<Vec<_>>();
+    members.sort();
+    Ok(members)
+}
+
+fn validate_copied_member(
+    package_root: &Path,
+    package_path: &Path,
+    repository_path: &Path,
+    sources: &BTreeSet<PathBuf>,
+) -> Result<(), Error> {
+    let expected = package_root.join(package_path);
+    if repository_path == expected && sources.contains(repository_path) {
+        return Ok(());
+    }
+    Err(Error::new(
+        "PRODUCT_WORKLOAD_PACKAGE_MEMBERSHIP",
+        "copied package member does not join its compiler source",
+    ))
 }
 
 fn validate_build(
@@ -2058,11 +2961,11 @@ fn validate_build(
     closure: &str,
     limits: compiler_capture::Limits,
 ) -> Result<(), Error> {
-    let shipping = closure == SHIPPING_CLOSURE;
+    let initial = closure == SHIPPING_CLOSURE;
     if build.closure != closure
         || build.unit.closure != closure
         || build.unit.id != format!("{closure}:rustc")
-        || build.cargo.command_argv != build_argv(shipping)
+        || build.cargo.command_argv != build_argv(closure)?
         || build.cargo.stdout_bytes == 0
         || build.cargo.stdout_bytes > limits.cargo_json_bytes as u64
         || build.cargo.message_count != build.cargo.artifacts.len() + 1
@@ -2074,15 +2977,28 @@ fn validate_build(
             format!("build {closure} differs from its exact Cargo capture"),
         ));
     }
-    validate_probes(build, shipping, limits)?;
-    validate_unit(&build.unit, shipping, limits)?;
-    validate_cargo_artifacts(build, shipping, limits)?;
-    let option_shape = if shipping {
-        build.provider.is_some() && build.provider_reuse.is_none()
-    } else {
-        build.provider.is_none() && build.provider_reuse.is_some()
+    validate_probes(build, initial, limits)?;
+    validate_unit(&build.unit, closure, limits)?;
+    validate_cargo_artifacts(build, closure, limits)?;
+    let options = (
+        build.provider.is_some(),
+        build.provider_reuse.is_some(),
+        build.transitive_provider_reuse.is_some(),
+        build.consumer_rlib.is_some(),
+    );
+    let expected = match closure {
+        SHIPPING_CLOSURE => (true, false, false, false),
+        VALIDATION_CLOSURE => (false, true, false, true),
+        KERNEL_INTERFACE_SHIPPING_CLOSURE => (true, true, false, false),
+        KERNEL_INTERFACE_VALIDATION_CLOSURE => (false, true, true, true),
+        _ => {
+            return Err(Error::new(
+                "PRODUCT_WORKLOAD_BUILD",
+                "build closure is outside the four-stage profile",
+            ));
+        }
     };
-    if option_shape {
+    if options == expected {
         return Ok(());
     }
     Err(Error::new(
@@ -2091,9 +3007,22 @@ fn validate_build(
     ))
 }
 
-fn build_argv(shipping: bool) -> Vec<String> {
-    let package = if shipping { SHIPPING_PACKAGE } else { VALIDATION_PACKAGE };
-    [
+fn build_argv(closure: &str) -> Result<Vec<String>, Error> {
+    let package = match closure {
+        SHIPPING_CLOSURE => SHIPPING_PACKAGE,
+        VALIDATION_CLOSURE => VALIDATION_PACKAGE,
+        KERNEL_INTERFACE_SHIPPING_CLOSURE => KERNEL_INTERFACE_SHIPPING_PACKAGE,
+        KERNEL_INTERFACE_VALIDATION_CLOSURE => {
+            KERNEL_INTERFACE_VALIDATION_PACKAGE
+        }
+        _ => {
+            return Err(Error::new(
+                "PRODUCT_WORKLOAD_BUILD",
+                "build argv closure is outside the four-stage profile",
+            ));
+        }
+    };
+    Ok([
         CARGO,
         "build",
         "--quiet",
@@ -2116,7 +3045,7 @@ fn build_argv(shipping: bool) -> Vec<String> {
     ]
     .into_iter()
     .map(str::to_owned)
-    .collect()
+    .collect())
 }
 
 fn validate_probes(
@@ -2238,26 +3167,42 @@ fn expected_probe_argv(index: usize) -> Vec<String> {
 
 fn validate_unit(
     unit: &compiler_capture::CompilerUnit,
-    shipping: bool,
+    closure: &str,
     limits: compiler_capture::Limits,
 ) -> Result<(), Error> {
-    let closure = if shipping { SHIPPING_CLOSURE } else { VALIDATION_CLOSURE };
-    let crate_name = if shipping {
-        "reovim_foundation"
-    } else {
-        "reovim_foundation_public_consumer"
-    };
-    let sources = if shipping {
-        source_set(&SHIPPING_SOURCES)
-    } else {
-        source_set(&VALIDATION_SOURCES)
+    let (crate_name, sources, dep_root, extern_name) = match closure {
+        SHIPPING_CLOSURE => (
+            "reovim_foundation",
+            source_set(&SHIPPING_SOURCES),
+            Path::new("/scratch/shipping-dep-info"),
+            None,
+        ),
+        VALIDATION_CLOSURE => (
+            "reovim_foundation_public_consumer",
+            source_set(&VALIDATION_SOURCES),
+            Path::new("/scratch/validation-dep-info"),
+            Some("reovim_foundation"),
+        ),
+        KERNEL_INTERFACE_SHIPPING_CLOSURE => (
+            "reovim_kernel_interface",
+            source_set(&KERNEL_INTERFACE_SHIPPING_SOURCES),
+            Path::new("/scratch/kernel-interface-shipping-dep-info"),
+            Some("reovim_foundation"),
+        ),
+        KERNEL_INTERFACE_VALIDATION_CLOSURE => (
+            "reovim_kernel_interface_public_consumer",
+            source_set(&KERNEL_INTERFACE_VALIDATION_SOURCES),
+            Path::new("/scratch/kernel-interface-validation-dep-info"),
+            Some("reovim_kernel_interface"),
+        ),
+        _ => {
+            return Err(Error::new(
+                "PRODUCT_WORKLOAD_UNIT",
+                "unit closure is outside the four-stage profile",
+            ));
+        }
     };
     let source_set = unit.sources.iter().cloned().collect::<BTreeSet<_>>();
-    let dep_root = if shipping {
-        Path::new("/scratch/shipping-dep-info")
-    } else {
-        Path::new("/scratch/validation-dep-info")
-    };
     let shape = unit.id == format!("{closure}:rustc")
         && unit.closure == closure
         && unit.crate_name == crate_name
@@ -2278,32 +3223,18 @@ fn validate_unit(
         && source_set.len() == unit.sources.len()
         && unit.sources.len() <= limits.compiler_input_count
         && valid_argv(&unit.original_argv, limits)
-        && valid_argv(&unit.effective_argv, limits)
-        && unit.original_argv.iter().any(|value| value == TARGET)
-        && unit.effective_argv.iter().any(|value| value == TARGET)
-        && valid_effective_sysroot(&unit.original_argv, &unit.effective_argv)
-        && valid_dep_info_emit(unit);
+        && valid_argv(&unit.effective_argv, limits);
     if !shape {
         return Err(Error::new(
             "PRODUCT_WORKLOAD_UNIT",
             format!("compiler unit {closure} differs from the exact profile"),
         ));
     }
+    compiler_capture::validate_retained_unit(unit, limits)
+        .map_err(compiler_error)?;
     validate_unit_outputs(unit, limits)?;
-    let extern_shape = if shipping {
-        unit.externs.is_empty()
-    } else {
-        unit.externs.len() == 1
-            && unit.externs[0].name == "reovim_foundation"
-            && unit.externs[0]
-                .path
-                .extension()
-                .is_some_and(|value| value == "rmeta")
-            && unit.externs[0].path.starts_with(
-                "/scratch/build-target/build-dir/x86_64-unknown-linux-gnu/\
-                 release/deps",
-            )
-    };
+    let extern_shape = extern_name
+        .map_or(unit.externs.is_empty(), |name| valid_unit_extern(unit, name));
     if extern_shape {
         return Ok(());
     }
@@ -2311,6 +3242,22 @@ fn validate_unit(
         "PRODUCT_WORKLOAD_EXTERN",
         "compiler unit extern set differs from the exact closure relation",
     ))
+}
+
+fn valid_unit_extern(
+    unit: &compiler_capture::CompilerUnit,
+    name: &str,
+) -> bool {
+    unit.externs.len() == 1
+        && unit.externs[0].name == name
+        && unit.externs[0]
+            .path
+            .extension()
+            .is_some_and(|value| value == "rmeta")
+        && unit.externs[0].path.starts_with(
+            "/scratch/build-target/build-dir/x86_64-unknown-linux-gnu/\
+             release/deps",
+        )
 }
 
 fn validate_unit_outputs(
@@ -2353,19 +3300,6 @@ fn validate_unit_outputs(
     ))
 }
 
-fn valid_dep_info_emit(unit: &compiler_capture::CompilerUnit) -> bool {
-    let path = unit.dep_info_path.to_string_lossy();
-    let emits = unit
-        .effective_argv
-        .iter()
-        .filter(|value| value.starts_with("--emit=") || *value == "--emit")
-        .count();
-    emits == 1
-        && unit.effective_argv.iter().any(|value| {
-            value.contains("dep-info=") && value.contains(path.as_ref())
-        })
-}
-
 fn validate_file_identity(
     identity: &compiler_capture::FileIdentity,
     limits: compiler_capture::Limits,
@@ -2388,10 +3322,11 @@ fn validate_file_identity(
 
 fn validate_cargo_artifacts(
     build: &BuildObservation,
-    shipping: bool,
+    closure: &str,
     limits: compiler_capture::Limits,
 ) -> Result<(), Error> {
-    let expected_count = if shipping { 1 } else { 2 };
+    let expected = expected_cargo_events(closure)?;
+    let expected_count = expected.len();
     if build.cargo.artifacts.len() != expected_count
         || build.cargo.artifacts.len() > limits.artifact_count
     {
@@ -2410,20 +3345,13 @@ fn validate_cargo_artifacts(
             ));
         }
     }
-    let foundation = build
+    let actual = build
         .cargo
         .artifacts
         .iter()
-        .find(|artifact| artifact.target_name == "reovim_foundation");
-    let consumer = build.cargo.artifacts.iter().find(|artifact| {
-        artifact.target_name == "reovim_foundation_public_consumer"
-    });
-    let exact = if shipping {
-        foundation.is_some_and(|value| !value.fresh) && consumer.is_none()
-    } else {
-        foundation.is_some_and(|value| value.fresh)
-            && consumer.is_some_and(|value| !value.fresh)
-    };
+        .map(|artifact| (artifact.target_name.as_str(), artifact.fresh))
+        .collect::<BTreeSet<_>>();
+    let exact = actual == expected.into_iter().collect();
     if exact {
         return Ok(());
     }
@@ -2433,22 +3361,60 @@ fn validate_cargo_artifacts(
     ))
 }
 
+fn expected_cargo_events(
+    closure: &str,
+) -> Result<Vec<(&'static str, bool)>, Error> {
+    match closure {
+        SHIPPING_CLOSURE => Ok(vec![("reovim_foundation", false)]),
+        VALIDATION_CLOSURE => Ok(vec![
+            ("reovim_foundation", true),
+            ("reovim_foundation_public_consumer", false),
+        ]),
+        KERNEL_INTERFACE_SHIPPING_CLOSURE => Ok(vec![
+            ("reovim_foundation", true),
+            ("reovim_kernel_interface", false),
+        ]),
+        KERNEL_INTERFACE_VALIDATION_CLOSURE => Ok(vec![
+            ("reovim_foundation", true),
+            ("reovim_kernel_interface", true),
+            ("reovim_kernel_interface_public_consumer", false),
+        ]),
+        _ => Err(Error::new(
+            "PRODUCT_WORKLOAD_CARGO_ARTIFACT_SET",
+            "Cargo event closure is outside the four-stage profile",
+        )),
+    }
+}
+
 fn validate_cargo_artifact(
     artifact: &compiler_capture::CargoArtifact,
     limits: compiler_capture::Limits,
 ) -> Result<(), Error> {
-    let foundation = artifact.target_name == "reovim_foundation";
-    let consumer = artifact.target_name == "reovim_foundation_public_consumer";
-    let expected_manifest = if foundation {
-        "/repo/kernel/foundation/Cargo.toml"
-    } else {
-        "/repo/tests/foundation-public-consumer/Cargo.toml"
-    };
-    let expected_source = if foundation {
-        "/repo/kernel/foundation/src/lib.rs"
-    } else {
-        "/repo/tests/foundation-public-consumer/src/lib.rs"
-    };
+    let (expected_manifest, expected_source) =
+        match artifact.target_name.as_str() {
+            "reovim_foundation" => (
+                "/repo/kernel/foundation/Cargo.toml",
+                "/repo/kernel/foundation/src/lib.rs",
+            ),
+            "reovim_foundation_public_consumer" => (
+                "/repo/tests/foundation-public-consumer/Cargo.toml",
+                "/repo/tests/foundation-public-consumer/src/lib.rs",
+            ),
+            "reovim_kernel_interface" => (
+                "/repo/kernel/interface/Cargo.toml",
+                "/repo/kernel/interface/src/lib.rs",
+            ),
+            "reovim_kernel_interface_public_consumer" => (
+                "/repo/tests/kernel-interface-public-consumer/Cargo.toml",
+                "/repo/tests/kernel-interface-public-consumer/src/lib.rs",
+            ),
+            _ => {
+                return Err(Error::new(
+                    "PRODUCT_WORKLOAD_CARGO_ARTIFACT",
+                    "Cargo artifact target is outside the four-stage profile",
+                ));
+            }
+        };
     let filenames = artifact
         .filenames
         .iter()
@@ -2464,7 +3430,6 @@ fn validate_cargo_artifact(
                 .is_ok_and(|value| value.len() <= limits.path_bytes)
     });
     let exact = !artifact.package_id.is_empty()
-        && (foundation || consumer)
         && artifact.manifest_path == Path::new(expected_manifest)
         && artifact.target_kinds == ["lib"]
         && artifact.crate_types == ["lib"]
@@ -2488,6 +3453,7 @@ fn validate_cargo_artifact(
 fn validate_build_relation(
     shipping: &BuildObservation,
     validation: &BuildObservation,
+    provider_target: &str,
     limits: compiler_capture::Limits,
 ) -> Result<(), Error> {
     let provider = shipping.provider.as_ref().ok_or_else(|| {
@@ -2506,7 +3472,7 @@ fn validate_build_relation(
         .cargo
         .artifacts
         .iter()
-        .find(|artifact| artifact.target_name == "reovim_foundation")
+        .find(|artifact| artifact.target_name == provider_target)
         .ok_or_else(|| {
             Error::new(
                 "PRODUCT_WORKLOAD_PROVIDER_ARTIFACT",
@@ -2517,7 +3483,7 @@ fn validate_build_relation(
         .cargo
         .artifacts
         .iter()
-        .find(|artifact| artifact.target_name == "reovim_foundation")
+        .find(|artifact| artifact.target_name == provider_target)
         .ok_or_else(|| {
             Error::new(
                 "PRODUCT_WORKLOAD_REUSE_ARTIFACT",
@@ -2526,58 +3492,237 @@ fn validate_build_relation(
         })?;
     let unit_rlib = extension_identity(&shipping.unit.outputs, "rlib")?;
     let unit_rmeta = extension_identity(&shipping.unit.outputs, "rmeta")?;
-    let consumer_edge = validation.unit.externs.as_slice();
     validate_file_identity(&provider.top_level_rlib, limits)?;
     validate_file_identity(&provider.hashed_rlib, limits)?;
     validate_file_identity(&provider.rmeta, limits)?;
-    let provider_shape = provider.closure == SHIPPING_CLOSURE
-        && provider.unit == shipping.unit.id
-        && provider.cargo_artifact == *shipping_artifact
-        && provider.package_id == shipping_artifact.package_id
-        && provider.target_dir == Path::new("/scratch/build-target")
-        && provider.cargo_home == Path::new("/scratch/cargo-home")
-        && provider.hashed_rlib == *unit_rlib
-        && provider.rmeta == *unit_rmeta
-        && provider.top_level_rlib.path != provider.hashed_rlib.path
-        && same_file_bytes(&provider.top_level_rlib, &provider.hashed_rlib);
-    let reuse_shape = reuse.fresh_artifact == *fresh_artifact
-        && same_artifact_semantics(fresh_artifact, shipping_artifact)
-        && reuse.hashed_rlib == provider.hashed_rlib
-        && reuse.rmeta == provider.rmeta
-        && consumer_edge == [reuse.extern_edge.clone()]
-        && reuse.extern_edge.name == "reovim_foundation"
-        && reuse.extern_edge.path == provider.rmeta.path;
-    if provider_shape && reuse_shape {
-        return validate_consumer_artifact(validation);
+    let provider_failure = provider_relation_failure(
+        provider,
+        shipping,
+        shipping_artifact,
+        unit_rlib,
+        unit_rmeta,
+    );
+    if let Some(check) = provider_failure {
+        return Err(build_relation_error(
+            shipping, validation, "provider", check,
+        ));
     }
-    Err(Error::new(
+    let reuse_failure = reuse_relation_failure(
+        reuse,
+        validation,
+        provider,
+        fresh_artifact,
+        shipping_artifact,
+        provider_target,
+    );
+    if let Some(check) = reuse_failure {
+        return Err(build_relation_error(shipping, validation, "reuse", check));
+    }
+    if validation.consumer_rlib.is_some() {
+        return validate_consumer_artifact(validation, limits);
+    }
+    Ok(())
+}
+
+fn provider_relation_failure(
+    provider: &compiler_capture::ProviderArtifacts,
+    shipping: &BuildObservation,
+    shipping_artifact: &compiler_capture::CargoArtifact,
+    unit_rlib: &compiler_capture::FileIdentity,
+    unit_rmeta: &compiler_capture::FileIdentity,
+) -> Option<&'static str> {
+    first_failed_check(&[
+        ("closure", provider.closure == shipping.closure),
+        ("unit", provider.unit == shipping.unit.id),
+        ("cargo_artifact", provider.cargo_artifact == *shipping_artifact),
+        ("package_id", provider.package_id == shipping_artifact.package_id),
+        (
+            "target_dir",
+            provider.target_dir == Path::new("/scratch/build-target"),
+        ),
+        ("cargo_home", provider.cargo_home == Path::new("/scratch/cargo-home")),
+        ("hashed_rlib", provider.hashed_rlib == *unit_rlib),
+        ("rmeta", provider.rmeta == *unit_rmeta),
+        (
+            "distinct_rlib_paths",
+            provider.top_level_rlib.path != provider.hashed_rlib.path,
+        ),
+        (
+            "top_level_rlib_path",
+            provider.top_level_rlib.path
+                == top_level_rlib_path(&shipping_artifact.target_name),
+        ),
+        (
+            "artifact_filenames",
+            artifact_filenames_match(
+                shipping_artifact,
+                &provider.top_level_rlib,
+                &provider.rmeta,
+            ),
+        ),
+        (
+            "rlib_bytes",
+            same_file_bytes(&provider.top_level_rlib, &provider.hashed_rlib),
+        ),
+    ])
+}
+
+fn reuse_relation_failure(
+    reuse: &compiler_capture::ProviderReuse,
+    validation: &BuildObservation,
+    provider: &compiler_capture::ProviderArtifacts,
+    fresh_artifact: &compiler_capture::CargoArtifact,
+    shipping_artifact: &compiler_capture::CargoArtifact,
+    provider_target: &str,
+) -> Option<&'static str> {
+    first_failed_check(&[
+        ("fresh_artifact", reuse.fresh_artifact == *fresh_artifact),
+        (
+            "artifact_semantics",
+            same_artifact_semantics(fresh_artifact, shipping_artifact),
+        ),
+        ("hashed_rlib", reuse.hashed_rlib == provider.hashed_rlib),
+        ("rmeta", reuse.rmeta == provider.rmeta),
+        (
+            "artifact_filenames",
+            artifact_filenames_match(
+                fresh_artifact,
+                &reuse.hashed_rlib,
+                &reuse.rmeta,
+            ),
+        ),
+        (
+            "consumer_edge_set",
+            validation.unit.externs == [reuse.extern_edge.clone()],
+        ),
+        ("extern_name", reuse.extern_edge.name == provider_target),
+        ("extern_path", reuse.extern_edge.path == provider.rmeta.path),
+    ])
+}
+
+fn first_failed_check(checks: &[(&'static str, bool)]) -> Option<&'static str> {
+    checks.iter().find_map(|(name, passed)| (!passed).then_some(*name))
+}
+
+fn build_relation_error(
+    shipping: &BuildObservation,
+    validation: &BuildObservation,
+    group: &str,
+    check: &str,
+) -> Error {
+    Error::at(
         "PRODUCT_WORKLOAD_PROVIDER_RELATION",
-        "provider bytes, metadata extern, or fresh reuse relation drifted",
-    ))
+        format!("{} -> {}", shipping.closure, validation.closure),
+        format!("{group} check failed: {check}"),
+    )
 }
 
 fn validate_consumer_artifact(
     validation: &BuildObservation,
+    limits: compiler_capture::Limits,
 ) -> Result<(), Error> {
+    let target = validation.unit.crate_name.as_str();
     let artifact = validation
         .cargo
         .artifacts
         .iter()
-        .find(|value| value.target_name == "reovim_foundation_public_consumer")
+        .find(|value| value.target_name == target)
         .expect("validation artifact set checked before relation");
-    let cargo_rmeta = artifact
-        .filenames
-        .iter()
-        .find(|path| path.extension().is_some_and(|value| value == "rmeta"))
-        .expect("Cargo artifact extensions checked before relation");
+    let cargo_rlib = validation.consumer_rlib.as_ref().ok_or_else(|| {
+        Error::new(
+            "PRODUCT_WORKLOAD_CONSUMER_ARTIFACT",
+            "consumer Cargo rlib identity is absent",
+        )
+    })?;
+    validate_file_identity(cargo_rlib, limits)?;
+    let unit_rlib = extension_identity(&validation.unit.outputs, "rlib")?;
     let unit_rmeta = extension_identity(&validation.unit.outputs, "rmeta")?;
-    if cargo_rmeta == &unit_rmeta.path {
+    let failure = first_failed_check(&[
+        ("top_level_rlib_path", cargo_rlib.path == top_level_rlib_path(target)),
+        ("distinct_rlib_paths", cargo_rlib.path != unit_rlib.path),
+        ("rlib_bytes", same_file_bytes(cargo_rlib, unit_rlib)),
+        (
+            "artifact_filenames",
+            artifact_filenames_match(artifact, cargo_rlib, unit_rmeta),
+        ),
+    ]);
+    let Some(check) = failure else { return Ok(()) };
+    Err(Error::at(
+        "PRODUCT_WORKLOAD_CONSUMER_ARTIFACT",
+        validation.closure.clone(),
+        format!("consumer check failed: {check}"),
+    ))
+}
+
+fn top_level_rlib_path(crate_name: &str) -> PathBuf {
+    Path::new("/scratch/build-target")
+        .join(TARGET)
+        .join("release")
+        .join(format!("lib{crate_name}.rlib"))
+}
+
+fn validate_transitive_relation(
+    foundation: &BuildObservation,
+    validation: &BuildObservation,
+    limits: compiler_capture::Limits,
+) -> Result<(), Error> {
+    let provider = foundation.provider.as_ref().ok_or_else(|| {
+        Error::new(
+            "PRODUCT_WORKLOAD_PROVIDER_MISSING",
+            "Foundation provider evidence is absent",
+        )
+    })?;
+    let reuse =
+        validation.transitive_provider_reuse.as_ref().ok_or_else(|| {
+            Error::new(
+                "PRODUCT_WORKLOAD_REUSE_MISSING",
+                "transitive Foundation reuse is absent",
+            )
+        })?;
+    validate_file_identity(&reuse.hashed_rlib, limits)?;
+    validate_file_identity(&reuse.rmeta, limits)?;
+    let cargo_artifact = validation
+        .cargo
+        .artifacts
+        .iter()
+        .find(|artifact| artifact.target_name == "reovim_foundation")
+        .ok_or_else(|| {
+            Error::new(
+                "PRODUCT_WORKLOAD_TRANSITIVE_PROVIDER_RELATION",
+                "Kernel Interface validation lacks Foundation reuse",
+            )
+        })?;
+    let exact = reuse.fresh_artifact == *cargo_artifact
+        && reuse.fresh_artifact.target_name == "reovim_foundation"
+        && reuse.fresh_artifact.fresh
+        && reuse.hashed_rlib == provider.hashed_rlib
+        && reuse.rmeta == provider.rmeta
+        && artifact_filenames_match(
+            cargo_artifact,
+            &reuse.hashed_rlib,
+            &reuse.rmeta,
+        )
+        && same_artifact_semantics(
+            &reuse.fresh_artifact,
+            &provider.cargo_artifact,
+        );
+    if exact {
         return Ok(());
     }
     Err(Error::new(
-        "PRODUCT_WORKLOAD_CONSUMER_ARTIFACT",
-        "consumer Cargo rmeta path differs from its compiler unit",
+        "PRODUCT_WORKLOAD_TRANSITIVE_PROVIDER_RELATION",
+        "transitive Foundation artifact identity drifted",
     ))
+}
+
+fn artifact_filenames_match(
+    artifact: &compiler_capture::CargoArtifact,
+    rlib: &compiler_capture::FileIdentity,
+    rmeta: &compiler_capture::FileIdentity,
+) -> bool {
+    let actual = artifact.filenames.iter().collect::<BTreeSet<_>>();
+    let expected = BTreeSet::from([&rlib.path, &rmeta.path]);
+    actual.len() == artifact.filenames.len() && actual == expected
 }
 
 fn extension_identity<'a>(
@@ -2639,21 +3784,6 @@ fn valid_argv(argv: &[String], limits: compiler_capture::Limits) -> bool {
             total.checked_add(value.len())
         })
         .is_some_and(|bytes| bytes <= limits.wrapper_argv_bytes)
-}
-
-fn valid_effective_sysroot(original: &[String], effective: &[String]) -> bool {
-    let original_sysroots =
-        original.iter().filter(|value| value.starts_with("--sysroot")).count();
-    let effective_sysroots =
-        effective.iter().filter(|value| value.starts_with("--sysroot")).count();
-    let pair_count = effective
-        .windows(2)
-        .filter(|pair| pair[0] == "--sysroot" && pair[1] == SYSROOT)
-        .count();
-    original_sysroots == 0
-        && effective_sysroots == 1
-        && pair_count == 1
-        && effective.first() == original.first()
 }
 
 fn valid_environment(
@@ -2966,19 +4096,29 @@ fn compiler_request<'a>(
     metadata: &'a cargo::Metadata,
     admitted_sources: &'a BTreeSet<PathBuf>,
     provider: Option<&'a compiler_capture::ProviderArtifacts>,
-) -> compiler_capture::BuildRequest<'a> {
-    let validation = closure.kind == ClosureKind::Validation;
-    let trace_dir = if validation {
-        &paths.validation_trace
-    } else {
-        &paths.shipping_trace
+    transitive_provider: Option<&'a compiler_capture::ProviderArtifacts>,
+) -> Result<compiler_capture::BuildRequest<'a>, Error> {
+    let (trace_dir, dep_info_dir) = match closure.id.as_str() {
+        SHIPPING_CLOSURE => (&paths.shipping_trace, &paths.shipping_dep_info),
+        VALIDATION_CLOSURE => {
+            (&paths.validation_trace, &paths.validation_dep_info)
+        }
+        KERNEL_INTERFACE_SHIPPING_CLOSURE => (
+            &paths.kernel_interface_shipping_trace,
+            &paths.kernel_interface_shipping_dep_info,
+        ),
+        KERNEL_INTERFACE_VALIDATION_CLOSURE => (
+            &paths.kernel_interface_validation_trace,
+            &paths.kernel_interface_validation_dep_info,
+        ),
+        _ => {
+            return Err(Error::new(
+                "PRODUCT_WORKLOAD_CLOSURE",
+                "compiler request closure is outside the four-stage profile",
+            ));
+        }
     };
-    let dep_info_dir = if validation {
-        &paths.validation_dep_info
-    } else {
-        &paths.shipping_dep_info
-    };
-    compiler_capture::BuildRequest {
+    Ok(compiler_capture::BuildRequest {
         closure,
         package_id,
         metadata,
@@ -2995,28 +4135,42 @@ fn compiler_request<'a>(
         dep_info_dir,
         admitted_sources,
         provider,
-    }
+        transitive_provider,
+    })
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{path::PathBuf, time::Duration};
+    use std::{
+        collections::{BTreeMap, BTreeSet},
+        fs,
+        path::{Path, PathBuf},
+        sync::atomic::{AtomicU64, Ordering},
+        time::Duration,
+    };
 
     use serde_json::{Value, json};
 
     use super::{
-        CARGO, CHECKER, Limits, Observation, REQUEST_SCHEMA, RUSTC,
-        SHIPPING_CLOSURE, SHIPPING_PACKAGE, SHIPPING_SOURCES, SYSROOT, TARGET,
-        VALIDATION_CLOSURE, VALIDATION_SOURCES, build_argv,
+        CARGO, CHECKER, KERNEL_INTERFACE_SHIPPING_CLOSURE,
+        KERNEL_INTERFACE_SHIPPING_PACKAGE, KERNEL_INTERFACE_SHIPPING_SOURCES,
+        KERNEL_INTERFACE_VALIDATION_CLOSURE,
+        KERNEL_INTERFACE_VALIDATION_SOURCES, Limits, Observation,
+        PREPARED_REGISTRY_PATH, REQUEST_MAX_BYTES, REQUEST_SCHEMA, RUSTC,
+        RegistryInput, SHIPPING_CLOSURE, SHIPPING_PACKAGE, SHIPPING_SOURCES,
+        SYSROOT, TARGET, VALIDATION_CLOSURE, VALIDATION_SOURCES, build_argv,
         expected_probe_argv, expected_probe_effective, observation_value,
-        package_argv, parse_request, parse_result, request_value, source_set,
-        substrate_digest,
+        package_argv, parse_request,
+        parse_result as parse_result_with_registry, read_registry_file,
+        request_value, source_set, substrate_digest,
     };
     use crate::{
+        cargo::{Metadata, Node, Package, Target},
         compiler_capture::{
             BuildObservation, CargoArtifact, CargoObservation, CompilerUnit,
             EnvironmentEntry, ExternEdge, FileIdentity, InvocationKind,
-            ProviderArtifacts, ProviderReuse, WrapperTrace,
+            ProviderArtifacts, ProviderReuse, TransitiveProviderReuse,
+            WrapperTrace,
         },
         compiler_substrate::{self, Entry, EntryKind},
         package_capture::{self, DirtyMode, Phase},
@@ -3030,6 +4184,8 @@ mod tests {
         deadline: Duration::from_secs(10),
         supervision_deadline: Duration::from_secs(11),
     };
+
+    static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 
     fn limits() -> Limits {
         Limits {
@@ -3059,7 +4215,7 @@ mod tests {
                 wrapper_trace_count: 8,
                 dep_info_file_bytes: 4_096,
                 dep_info_total_bytes: 8_192,
-                compiler_input_count: 16,
+                compiler_input_count: 32,
                 artifact_count: 16,
                 artifact_total_bytes: 1_048_576,
                 json_depth: 64,
@@ -3089,40 +4245,239 @@ mod tests {
         .unwrap()
     }
 
-    #[test]
-    fn request_roundtrip_reconstructs_exact_registry() {
-        let registry = registry_value();
-        let value = request_value(&registry, &limits()).unwrap();
-        let parsed = parse_request(&value).unwrap();
-        assert_eq!(parsed.registry_value, registry);
-        assert_eq!(
-            parsed.registry,
-            Registry::parse(&registry, limits().registry).unwrap()
-        );
-        assert_eq!(parsed.limits, limits());
-        assert_eq!(value["schema"], REQUEST_SCHEMA);
+    fn registry_bytes() -> &'static [u8] {
+        include_bytes!("../../../conformance/product-closures.json")
+    }
+
+    fn prepared_registry_input() -> RegistryInput {
+        registry_input(Path::new(PREPARED_REGISTRY_PATH), registry_bytes())
+    }
+
+    fn registry_input(path: &Path, bytes: &[u8]) -> RegistryInput {
+        RegistryInput {
+            path: path.to_path_buf(),
+            content_digest: crate::digest::bytes(bytes),
+            size_bytes: u64::try_from(bytes.len()).unwrap(),
+        }
+    }
+
+    fn registry() -> Registry {
+        let value = registry_value();
+        Registry::parse(&value, limits().registry).unwrap()
+    }
+
+    fn parse_result(
+        value: &Value,
+        limits: &Limits,
+    ) -> Result<Observation, super::Error> {
+        parse_result_with_registry(value, limits, &registry())
+    }
+
+    fn registry_from_value(value: &Value) -> Registry {
+        Registry::parse(value, limits().registry).unwrap()
     }
 
     #[test]
-    fn request_rejects_protocol_and_registry_mutants() {
-        let mut value = request_value(&registry_value(), &limits()).unwrap();
+    fn request_roundtrip_preserves_bounded_registry_reference() {
+        let input = prepared_registry_input();
+        let value = request_value(&input, &limits()).unwrap();
+        let parsed = parse_request(&value).unwrap();
+        assert_eq!(parsed.registry, input);
+        assert_eq!(parsed.limits, limits());
+        assert_eq!(value["schema"], REQUEST_SCHEMA);
+        let bytes = serde_json::to_vec(&value).unwrap();
+        assert!(bytes.len() <= REQUEST_MAX_BYTES);
+        assert_eq!(bytes.len(), 1_344);
+    }
+
+    #[test]
+    fn request_rejects_protocol_and_reference_mutants() {
+        let input = prepared_registry_input();
+        let mut value = request_value(&input, &limits()).unwrap();
         value["extra"] = json!(true);
         assert_eq!(
             parse_request(&value).unwrap_err().code,
             "CFG_UNKNOWN_FIELD"
         );
 
-        let mut registry = registry_value();
-        registry["closures"].as_array_mut().unwrap().pop();
-        let failure = request_value(&registry, &limits()).unwrap_err();
-        assert_eq!(failure.code, "PRODUCT_RELATION_CONSUMER_UNRESOLVED");
+        let mut value = request_value(&input, &limits()).unwrap();
+        value.as_object_mut().unwrap().remove("registry");
+        assert_eq!(
+            parse_request(&value).unwrap_err().code,
+            "CFG_MISSING_FIELD"
+        );
+
+        let mut value = request_value(&input, &limits()).unwrap();
+        value["product_closures"] = registry_value();
+        assert_eq!(
+            parse_request(&value).unwrap_err().code,
+            "PRODUCT_WORKLOAD_REQUEST_LIMIT"
+        );
+
+        for field in ["path", "content_digest", "size_bytes"] {
+            let mut value = request_value(&input, &limits()).unwrap();
+            value["registry"].as_object_mut().unwrap().remove(field);
+            assert_eq!(
+                parse_request(&value).unwrap_err().code,
+                "CFG_MISSING_FIELD"
+            );
+        }
+
+        let mut changed = input.clone();
+        changed.path = PathBuf::from("/repo/conformance/other.json");
+        assert_eq!(
+            request_value(&changed, &limits()).unwrap_err().code,
+            "PRODUCT_WORKLOAD_REGISTRY_INPUT"
+        );
+
+        let mut changed = input.clone();
+        changed.content_digest = "sha256:wrong".to_owned();
+        assert_eq!(
+            request_value(&changed, &limits()).unwrap_err().code,
+            "PRODUCT_WORKLOAD_REGISTRY_INPUT"
+        );
+
+        let mut changed = input.clone();
+        changed.size_bytes = 0;
+        assert_eq!(
+            request_value(&changed, &limits()).unwrap_err().code,
+            "PRODUCT_WORKLOAD_REGISTRY_INPUT"
+        );
 
         let mut invalid = limits();
         invalid.compiler.wrapper_trace_count = 0;
         assert_eq!(
-            request_value(&registry_value(), &invalid).unwrap_err().code,
+            request_value(&input, &invalid).unwrap_err().code,
             "PRODUCT_WORKLOAD_LIMITS"
         );
+    }
+
+    #[test]
+    fn registry_file_loads_exact_current_bytes() {
+        let fixture = RegistryFixture::new(registry_bytes());
+        let input = fixture.input(registry_bytes());
+        assert_eq!(read_registry_file(&input, &limits()).unwrap(), registry());
+    }
+
+    #[test]
+    fn registry_file_rejects_kind_size_and_digest_mutants() {
+        let fixture = RegistryFixture::new(registry_bytes());
+        let input = fixture.input(registry_bytes());
+
+        let directory = registry_input(&fixture.root, registry_bytes());
+        assert_eq!(
+            read_registry_file(&directory, &limits()).unwrap_err().code,
+            "PRODUCT_WORKLOAD_REGISTRY_KIND"
+        );
+
+        let mut short = input.clone();
+        short.size_bytes -= 1;
+        assert_eq!(
+            read_registry_file(&short, &limits()).unwrap_err().code,
+            "PRODUCT_WORKLOAD_REGISTRY_SIZE"
+        );
+
+        let mut long = input.clone();
+        long.size_bytes += 1;
+        assert_eq!(
+            read_registry_file(&long, &limits()).unwrap_err().code,
+            "PRODUCT_WORKLOAD_REGISTRY_SIZE"
+        );
+
+        let mut digest = input;
+        digest.content_digest = crate::digest::bytes(b"different");
+        assert_eq!(
+            read_registry_file(&digest, &limits()).unwrap_err().code,
+            "PRODUCT_WORKLOAD_REGISTRY_DIGEST"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn registry_file_rejects_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let fixture = RegistryFixture::new(registry_bytes());
+        let alias = fixture.root.join("registry-alias.json");
+        symlink(&fixture.path, &alias).unwrap();
+        let input = registry_input(&alias, registry_bytes());
+        assert_eq!(
+            read_registry_file(&input, &limits()).unwrap_err().code,
+            "PRODUCT_WORKLOAD_REGISTRY_KIND"
+        );
+    }
+
+    #[test]
+    fn registry_file_rejects_raw_and_semantic_mutants() {
+        assert_registry_parse_failure(b"{", "CFG_JSON_SYNTAX");
+        assert_registry_parse_failure(
+            br#"{"schema":1,"schema":2}"#,
+            "CFG_DUPLICATE_FIELD",
+        );
+
+        let mut semantic = registry_value();
+        semantic["closures"].as_array_mut().unwrap().pop();
+        let bytes = serde_json::to_vec(&semantic).unwrap();
+        let fixture = RegistryFixture::new(&bytes);
+        let failure =
+            read_registry_file(&fixture.input(&bytes), &limits()).unwrap_err();
+        assert_eq!(failure.code, "PRODUCT_RELATION_CONSUMER_UNRESOLVED");
+    }
+
+    #[test]
+    fn registry_file_rejects_identity_drift() {
+        let fixture = RegistryFixture::new(registry_bytes());
+        let input = fixture.input(registry_bytes());
+        let mut changed = registry_bytes().to_vec();
+        changed[0] = if changed[0] == b'{' { b' ' } else { b'{' };
+        fixture.rewrite(&changed);
+        assert_eq!(
+            read_registry_file(&input, &limits()).unwrap_err().code,
+            "PRODUCT_WORKLOAD_REGISTRY_DIGEST"
+        );
+    }
+
+    fn assert_registry_parse_failure(bytes: &[u8], code: &'static str) {
+        let fixture = RegistryFixture::new(bytes);
+        let input = fixture.input(bytes);
+        assert_eq!(
+            read_registry_file(&input, &limits()).unwrap_err().code,
+            code
+        );
+    }
+
+    struct RegistryFixture {
+        root: PathBuf,
+        path: PathBuf,
+    }
+
+    impl RegistryFixture {
+        fn new(bytes: &[u8]) -> Self {
+            let ordinal = NEXT_TEMP.fetch_add(1, Ordering::Relaxed);
+            let root = std::env::temp_dir().join(format!(
+                "reovim-product-registry-{}-{ordinal}",
+                std::process::id(),
+            ));
+            fs::create_dir(&root).unwrap();
+            let root = root.canonicalize().unwrap();
+            let path = root.join("product-closures.json");
+            fs::write(&path, bytes).unwrap();
+            Self { root, path }
+        }
+
+        fn input(&self, bytes: &[u8]) -> RegistryInput {
+            registry_input(&self.path, bytes)
+        }
+
+        fn rewrite(&self, bytes: &[u8]) {
+            fs::write(&self.path, bytes).unwrap();
+        }
+    }
+
+    impl Drop for RegistryFixture {
+        fn drop(&mut self) {
+            fs::remove_dir_all(&self.root).unwrap();
+        }
     }
 
     #[test]
@@ -3130,11 +4485,26 @@ mod tests {
         let observation = observation();
         let value = observation_value(&observation).unwrap();
         assert_eq!(parse_result(&value, &limits()).unwrap(), observation);
+        let shipping_rmeta =
+            value.pointer("/foundation_shipping/provider/rmeta/path").unwrap();
+        let consumer_extern = value
+            .pointer("/foundation_validation/provider_reuse/extern_edge/path")
+            .unwrap();
+        assert_eq!(shipping_rmeta, consumer_extern);
         assert_eq!(
-            value["shipping"]["provider"]["rmeta"]["path"],
-            value["validation"]["provider_reuse"]["extern_edge"]["path"]
+            value["foundation_shipping"]["probes"].as_array().unwrap().len(),
+            4
         );
-        assert_eq!(value["shipping"]["probes"].as_array().unwrap().len(), 4);
+        let event_counts = [
+            "foundation_shipping",
+            "foundation_validation",
+            "kernel_interface_shipping",
+            "kernel_interface_validation",
+        ]
+        .map(|name| {
+            value[name]["cargo"]["artifacts"].as_array().unwrap().len()
+        });
+        assert_eq!(event_counts, [1, 2, 2, 3]);
     }
 
     #[test]
@@ -3147,24 +4517,25 @@ mod tests {
         );
 
         let mut value = observation_value(&observation()).unwrap();
-        value["shipping"]["probes"].as_array_mut().unwrap().pop();
+        value["foundation_shipping"]["probes"].as_array_mut().unwrap().pop();
         assert_eq!(
             parse_result(&value, &limits()).unwrap_err().code,
             "PRODUCT_WORKLOAD_PROBES"
         );
 
         let mut value = observation_value(&observation()).unwrap();
-        let probe = value["shipping"]["probes"][0].clone();
-        value["validation"]["probes"] = json!([probe]);
+        let probe = value["foundation_shipping"]["probes"][0].clone();
+        value["foundation_validation"]["probes"] = json!([probe]);
         assert_eq!(
             parse_result(&value, &limits()).unwrap_err().code,
             "PRODUCT_WORKLOAD_PROBES"
         );
 
         let mut value = observation_value(&observation()).unwrap();
-        let environment = value["shipping"]["probes"][0]["environment"]
-            .as_array_mut()
-            .unwrap();
+        let environment =
+            value["foundation_shipping"]["probes"][0]["environment"]
+                .as_array_mut()
+                .unwrap();
         let term = environment
             .iter_mut()
             .find(|entry| entry["name"] == "TERM")
@@ -3179,7 +4550,8 @@ mod tests {
     #[test]
     fn result_rejects_package_substrate_and_provider_drift() {
         let mut value = observation_value(&observation()).unwrap();
-        value["package_after"]["dirty_mode"] = json!("candidate_allow");
+        value["foundation_package_after"]["dirty_mode"] =
+            json!("candidate_allow");
         assert_eq!(
             parse_result(&value, &limits()).unwrap_err().code,
             "PRODUCT_WORKLOAD_DIRTY_MODE"
@@ -3193,35 +4565,422 @@ mod tests {
         );
 
         let mut value = observation_value(&observation()).unwrap();
-        value["shipping"]["provider"]["top_level_rlib"]["content_digest"] =
-            json!(digest('9'));
+        let path = "/foundation_shipping/provider/top_level_rlib/\
+                    content_digest";
+        *value.pointer_mut(path).unwrap() = json!(digest('9'));
+        let error = parse_result(&value, &limits()).unwrap_err();
+        assert_eq!(error.code, "PRODUCT_WORKLOAD_PROVIDER_RELATION");
+        assert_eq!(
+            error.subject.as_deref(),
+            Some("foundation-shipping -> foundation-consumer")
+        );
+        assert_eq!(error.message, "provider check failed: rlib_bytes");
+
+        let mut value = observation_value(&observation()).unwrap();
+        let path = "/foundation_validation/provider_reuse/extern_edge/path";
+        *value.pointer_mut(path).unwrap() =
+            json!("/scratch/build-target/wrong.rmeta");
+        let error = parse_result(&value, &limits()).unwrap_err();
+        assert_eq!(
+            error.subject.as_deref(),
+            Some("foundation-shipping -> foundation-consumer")
+        );
+        assert_eq!(error.code, "PRODUCT_WORKLOAD_PROVIDER_RELATION");
+        assert_eq!(error.message, "reuse check failed: consumer_edge_set");
+    }
+
+    #[test]
+    fn result_rejects_build_dir_as_final_artifact_root() {
+        let mut value = observation_value(&observation()).unwrap();
+        let wrong = json!(concat!(
+            "/scratch/build-target/build-dir/",
+            "x86_64-unknown-linux-gnu/release/",
+            "libreovim_foundation.rlib",
+        ));
+        value["foundation_shipping"]["cargo"]["artifacts"][0]["filenames"][0] =
+            wrong.clone();
+        value["foundation_shipping"]["provider"]["cargo_artifact"]["filenames"]
+            [0] = wrong.clone();
+        value["foundation_shipping"]["provider"]["top_level_rlib"]["path"] =
+            wrong;
+        let error = parse_result(&value, &limits()).unwrap_err();
+        assert_eq!(error.code, "PRODUCT_WORKLOAD_PROVIDER_RELATION");
+        assert_eq!(
+            error.subject.as_deref(),
+            Some("foundation-shipping -> foundation-consumer")
+        );
+        assert_eq!(error.message, "provider check failed: top_level_rlib_path");
+    }
+
+    #[test]
+    fn result_joins_package_membership_to_registry_and_sources() {
+        let result = observation_value(&observation()).unwrap();
+        let mut value = registry_value();
+        shipping_closure_value(&mut value, KERNEL_INTERFACE_SHIPPING_CLOSURE)
+            ["package_membership"]["members"]
+            .as_array_mut()
+            .unwrap()
+            .pop();
+        let changed = registry_from_value(&value);
+        assert_eq!(
+            parse_result_with_registry(&result, &limits(), &changed)
+                .unwrap_err()
+                .code,
+            "PRODUCT_WORKLOAD_PACKAGE_MEMBERSHIP"
+        );
+
+        let mut value = registry_value();
+        let members = shipping_closure_value(
+            &mut value,
+            KERNEL_INTERFACE_SHIPPING_CLOSURE,
+        )["package_membership"]["members"]
+            .as_array_mut()
+            .unwrap();
+        let copied = members
+            .iter_mut()
+            .find(|member| member["package_path"] == "src/clock.rs")
+            .unwrap();
+        copied["repository_path"] = json!("kernel/interface/src/clock2.rs");
+        let changed = registry_from_value(&value);
+        assert_eq!(
+            parse_result_with_registry(&result, &limits(), &changed)
+                .unwrap_err()
+                .code,
+            "PRODUCT_WORKLOAD_PACKAGE_MEMBERSHIP"
+        );
+
+        let mut value = registry_value();
+        let members = shipping_closure_value(
+            &mut value,
+            KERNEL_INTERFACE_SHIPPING_CLOSURE,
+        )["package_membership"]["members"]
+            .as_array_mut()
+            .unwrap();
+        let copied = members
+            .iter_mut()
+            .find(|member| member["package_path"] == "src/clock.rs")
+            .unwrap();
+        copied["package_path"] = json!("src/clock2.rs");
+        let changed = registry_from_value(&value);
+        assert_eq!(
+            parse_result_with_registry(&result, &limits(), &changed)
+                .unwrap_err()
+                .code,
+            "PRODUCT_WORKLOAD_PACKAGE_MEMBERSHIP"
+        );
+    }
+
+    #[test]
+    fn metadata_requires_edition_2024_for_the_fixed_packages() {
+        let registry = registry();
+        let shipping = registry
+            .closures
+            .iter()
+            .find(|closure| closure.id == SHIPPING_CLOSURE)
+            .unwrap();
+        let mut metadata = shipping_metadata(shipping);
+        assert_eq!(super::package_id(&metadata, shipping).unwrap(), "shipping");
+        metadata.packages.get_mut("shipping").unwrap().edition =
+            "2015".to_owned();
+        assert_eq!(
+            super::package_id(&metadata, shipping).unwrap_err().code,
+            "PRODUCT_WORKLOAD_METADATA_EDITION"
+        );
+    }
+
+    #[test]
+    fn result_rejects_package_id_retargeting() {
+        let mut value = observation_value(&observation()).unwrap();
+        value["package_ids"]["foundation_shipping"] =
+            json!("retargeted-package-id");
+        assert_eq!(
+            parse_result(&value, &limits()).unwrap_err().code,
+            "PRODUCT_WORKLOAD_PACKAGE_ID_JOIN"
+        );
+
+        let mut value = observation_value(&observation()).unwrap();
+        value["foundation_shipping"]["provider"]["package_id"] =
+            json!("retargeted-package-id");
+        assert_eq!(
+            parse_result(&value, &limits()).unwrap_err().code,
+            "PRODUCT_WORKLOAD_PACKAGE_ID_JOIN"
+        );
+    }
+
+    #[test]
+    fn result_rejects_retained_unit_and_dep_info_mutants() {
+        let mut value = observation_value(&observation()).unwrap();
+        replace_argv_text(
+            &mut value,
+            "/foundation_shipping/unit/original_argv",
+            "--edition=2024",
+            "--edition=2015",
+        );
+        assert_result_code(&value, "COMPILER_WRAPPER_ARGV_FORM");
+
+        let mut value = observation_value(&observation()).unwrap();
+        replace_argv_text(
+            &mut value,
+            "/foundation_shipping/unit/original_argv",
+            "reovim_foundation",
+            "retargeted_foundation",
+        );
+        assert_result_code(&value, "COMPILER_UNIT_IDENTITY");
+
+        let mut value = observation_value(&observation()).unwrap();
+        replace_argv_prefix(
+            &mut value,
+            "/foundation_validation/unit/original_argv",
+            "reovim_foundation=",
+            "retargeted_foundation=",
+        );
+        assert_result_code(&value, "COMPILER_EXTERN_EDGE_SET");
+
+        let mut value = observation_value(&observation()).unwrap();
+        replace_argv_text(
+            &mut value,
+            "/foundation_shipping/unit/original_argv",
+            "extra-filename=-1111111111111111",
+            "extra-filename=-9999999999999999",
+        );
+        assert_result_code(&value, "COMPILER_EFFECTIVE_ARGV");
+
+        let mut value = observation_value(&observation()).unwrap();
+        replace_argv_text(
+            &mut value,
+            "/foundation_shipping/unit/original_argv",
+            "feature=\"default\"",
+            "feature=\"changed\"",
+        );
+        assert_result_code(&value, "COMPILER_FEATURE_SET");
+
+        let mut value = observation_value(&observation()).unwrap();
+        replace_argv_text(
+            &mut value,
+            "/foundation_shipping/unit/original_argv",
+            "/repo/kernel/foundation/src/lib.rs",
+            "/repo/kernel/foundation/src/bound.rs",
+        );
+        assert_result_code(&value, "COMPILER_UNIT_IDENTITY");
+
+        let mut value = observation_value(&observation()).unwrap();
+        value["foundation_shipping"]["unit"]["effective_argv"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!("--unknown"));
+        assert_result_code(&value, "COMPILER_EFFECTIVE_ARGV");
+
+        let mut value = observation_value(&observation()).unwrap();
+        value["foundation_shipping"]["unit"]["dep_info_digest"] =
+            json!(digest('0'));
+        assert_result_code(&value, "COMPILER_RETAINED_DEP_INFO");
+
+        let mut value = observation_value(&observation()).unwrap();
+        mutate_dep_info_source(&mut value);
+        assert_result_code(&value, "COMPILER_RETAINED_DEP_INFO");
+
+        let mut value = observation_value(&observation()).unwrap();
+        let path = "/foundation_shipping/unit/outputs/0/path";
+        *value.pointer_mut(path).unwrap() = json!(concat!(
+            "/scratch/build-target/build-dir/",
+            "x86_64-unknown-linux-gnu/release/deps/",
+            "libreovim_foundation-9999999999999999.rlib",
+        ));
+        assert_result_code(&value, "COMPILER_RETAINED_UNIT_OUTPUTS");
+    }
+
+    #[test]
+    fn result_rejects_detached_consumer_rlibs() {
+        assert_detached_consumer_rlib(
+            "foundation_validation",
+            "foundation-consumer",
+            1,
+            "libreovim_foundation_public_consumer-detached.rlib",
+        );
+        assert_detached_consumer_rlib(
+            "kernel_interface_validation",
+            "kernel-interface-consumer",
+            2,
+            "libreovim_kernel_interface_public_consumer-detached.rlib",
+        );
+    }
+
+    #[test]
+    fn result_rejects_kernel_stage_and_transitive_mutants() {
+        let mut value = observation_value(&observation()).unwrap();
+        value["kernel_interface_shipping"]["cargo"]["artifacts"][0]["fresh"] =
+            json!(false);
+        assert_eq!(
+            parse_result(&value, &limits()).unwrap_err().code,
+            "PRODUCT_WORKLOAD_CARGO_ARTIFACT_SET"
+        );
+
+        let mut value = observation_value(&observation()).unwrap();
+        let probes = value["foundation_shipping"]["probes"].clone();
+        value["kernel_interface_shipping"]["probes"] = probes;
+        assert_eq!(
+            parse_result(&value, &limits()).unwrap_err().code,
+            "PRODUCT_WORKLOAD_PROBES"
+        );
+
+        let mut value = observation_value(&observation()).unwrap();
+        value["kernel_interface_validation"]["transitive_provider_reuse"] =
+            Value::Null;
+        assert_eq!(
+            parse_result(&value, &limits()).unwrap_err().code,
+            "PRODUCT_WORKLOAD_PROVIDER_SHAPE"
+        );
+
+        let mut value = observation_value(&observation()).unwrap();
+        let path = "/kernel_interface_validation/\
+                    transitive_provider_reuse/hashed_rlib/content_digest";
+        *value.pointer_mut(path).unwrap() = json!(digest('0'));
+        assert_eq!(
+            parse_result(&value, &limits()).unwrap_err().code,
+            "PRODUCT_WORKLOAD_TRANSITIVE_PROVIDER_RELATION"
+        );
+
+        let mut value = observation_value(&observation()).unwrap();
+        let detached = json!(concat!(
+            "/scratch/build-target/",
+            "x86_64-unknown-linux-gnu/release/",
+            "libreovim_foundation-detached.rlib",
+        ));
+        value["foundation_shipping"]["cargo"]["artifacts"][0]["filenames"][0] =
+            detached.clone();
+        value["foundation_shipping"]["provider"]["cargo_artifact"]["filenames"]
+            [0] = detached;
         assert_eq!(
             parse_result(&value, &limits()).unwrap_err().code,
             "PRODUCT_WORKLOAD_PROVIDER_RELATION"
         );
 
         let mut value = observation_value(&observation()).unwrap();
-        value["validation"]["provider_reuse"]["extern_edge"]["path"] =
-            json!("/scratch/build-target/wrong.rmeta");
+        let detached = json!(concat!(
+            "/scratch/build-target/build-dir/",
+            "x86_64-unknown-linux-gnu/release/deps/",
+            "libreovim_foundation-detached.rlib",
+        ));
+        value["foundation_validation"]["cargo"]["artifacts"][0]["filenames"]
+            [0] = detached.clone();
+        let path = "/foundation_validation/provider_reuse/\
+                    fresh_artifact/filenames/0";
+        *value.pointer_mut(path).unwrap() = detached;
         assert_eq!(
             parse_result(&value, &limits()).unwrap_err().code,
             "PRODUCT_WORKLOAD_PROVIDER_RELATION"
         );
+
+        let mut value = observation_value(&observation()).unwrap();
+        let path = "/kernel_interface_validation/\
+                    transitive_provider_reuse/fresh_artifact/filenames/0";
+        *value.pointer_mut(path).unwrap() = json!(concat!(
+            "/scratch/build-target/build-dir/",
+            "x86_64-unknown-linux-gnu/release/deps/",
+            "libreovim_foundation-detached.rlib",
+        ));
+        assert_eq!(
+            parse_result(&value, &limits()).unwrap_err().code,
+            "PRODUCT_WORKLOAD_TRANSITIVE_PROVIDER_RELATION"
+        );
+    }
+
+    fn assert_result_code(value: &Value, code: &'static str) {
+        assert_eq!(parse_result(value, &limits()).unwrap_err().code, code);
+    }
+
+    fn replace_argv_text(value: &mut Value, path: &str, old: &str, new: &str) {
+        let arguments =
+            value.pointer_mut(path).unwrap().as_array_mut().unwrap();
+        let argument = arguments
+            .iter_mut()
+            .find(|argument| argument.as_str() == Some(old))
+            .unwrap();
+        *argument = json!(new);
+    }
+
+    fn replace_argv_prefix(
+        value: &mut Value,
+        path: &str,
+        old: &str,
+        new: &str,
+    ) {
+        let arguments =
+            value.pointer_mut(path).unwrap().as_array_mut().unwrap();
+        let argument = arguments
+            .iter_mut()
+            .find(|argument| {
+                argument.as_str().is_some_and(|text| text.starts_with(old))
+            })
+            .unwrap();
+        let changed = argument.as_str().unwrap().replacen(old, new, 1);
+        *argument = json!(changed);
+    }
+
+    fn mutate_dep_info_source(value: &mut Value) {
+        let path = "/foundation_shipping/unit/dep_info_text";
+        let changed = value.pointer(path).unwrap().as_str().unwrap().replace(
+            "/repo/kernel/foundation/src/bound.rs",
+            "/repo/kernel/foundation/src/unknown.rs",
+        );
+        let digest = crate::digest::bytes(changed.as_bytes());
+        let bytes = changed.len();
+        *value.pointer_mut(path).unwrap() = json!(changed);
+        value["foundation_shipping"]["unit"]["dep_info_digest"] = json!(digest);
+        value["foundation_shipping"]["unit"]["dep_info_bytes"] = json!(bytes);
+    }
+
+    fn assert_detached_consumer_rlib(
+        stage: &str,
+        closure: &str,
+        cargo_index: usize,
+        filename: &str,
+    ) {
+        let mut value = observation_value(&observation()).unwrap();
+        let detached =
+            format!("/scratch/build-target/{TARGET}/release/{filename}");
+        value[stage]["cargo"]["artifacts"][cargo_index]["filenames"][0] =
+            json!(detached);
+        value[stage]["consumer_rlib"]["path"] = json!(detached);
+        let error = parse_result(&value, &limits()).unwrap_err();
+        assert_eq!(error.code, "PRODUCT_WORKLOAD_CONSUMER_ARTIFACT");
+        assert_eq!(error.subject.as_deref(), Some(closure));
+        assert_eq!(error.message, "consumer check failed: top_level_rlib_path");
     }
 
     fn observation() -> Observation {
         let compiler_substrate = substrate();
-        let package_before = package(Phase::BeforeCompiler);
-        let mut package_after = package(Phase::AfterCompiler);
+        let package_before = package(Phase::BeforeCompiler, SHIPPING_PACKAGE);
+        let mut package_after = package(Phase::AfterCompiler, SHIPPING_PACKAGE);
         package_after.raw_output_digest = digest('8');
         let shipping = shipping_build();
         let validation = validation_build(&shipping);
+        let kernel_interface_package_before =
+            package(Phase::BeforeCompiler, KERNEL_INTERFACE_SHIPPING_PACKAGE);
+        let mut kernel_interface_package_after =
+            package(Phase::AfterCompiler, KERNEL_INTERFACE_SHIPPING_PACKAGE);
+        kernel_interface_package_after.raw_output_digest = digest('9');
+        let kernel_interface_shipping = kernel_shipping_build(&shipping);
+        let kernel_interface_validation =
+            kernel_validation_build(&shipping, &kernel_interface_shipping);
         Observation {
+            package_ids: super::PackageIds {
+                foundation_shipping: "shipping-package-id".to_owned(),
+                foundation_validation: "validation-package-id".to_owned(),
+                kernel_interface_shipping: "kernel-shipping-package-id"
+                    .to_owned(),
+                kernel_interface_validation: "kernel-validation-package-id"
+                    .to_owned(),
+            },
             compiler_substrate,
             package_before,
             package_after,
             shipping,
             validation,
+            kernel_interface_package_before,
+            kernel_interface_package_after,
+            kernel_interface_shipping,
+            kernel_interface_validation,
         }
     }
 
@@ -3258,26 +5017,81 @@ mod tests {
         }
     }
 
-    fn package(phase: Phase) -> package_capture::Observation {
-        let bytes = concat!(
-            "Cargo.lock\n",
-            "Cargo.toml\n",
-            "Cargo.toml.orig\n",
-            "src/bound.rs\n",
-            "src/carrier.rs\n",
-            "src/contract.rs\n",
-            "src/identity.rs\n",
-            "src/lib.rs\n",
-        )
-        .as_bytes();
+    fn package(phase: Phase, package: &str) -> package_capture::Observation {
+        let registry = registry();
+        let shipping = registry
+            .closures
+            .iter()
+            .find(|closure| closure.package.name == package)
+            .unwrap();
+        let sources = if package == SHIPPING_PACKAGE {
+            source_set(&SHIPPING_SOURCES)
+        } else {
+            source_set(&KERNEL_INTERFACE_SHIPPING_SOURCES)
+        }
+        .into_iter()
+        .collect::<Vec<_>>();
+        let members =
+            super::registered_package_members(shipping, &sources).unwrap();
+        let bytes = format!(
+            "{}\n",
+            members
+                .iter()
+                .map(|path| path.to_str().unwrap())
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
         package_capture::parse_output(
             phase,
             DirtyMode::Reject,
-            package_argv(),
-            bytes,
+            package_argv(package),
+            bytes.as_bytes(),
             limits().package,
         )
         .unwrap()
+    }
+
+    fn shipping_closure_value<'a>(
+        registry: &'a mut Value,
+        id: &str,
+    ) -> &'a mut Value {
+        registry["closures"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|closure| closure["id"] == id)
+            .unwrap()
+    }
+
+    fn shipping_metadata(
+        closure: &crate::product_closures::Closure,
+    ) -> Metadata {
+        let id = "shipping".to_owned();
+        let package = Package {
+            id: id.clone(),
+            name: closure.package.name.clone(),
+            version: "0.16.0-dev".to_owned(),
+            edition: "2024".to_owned(),
+            source: None,
+            checksum: None,
+            license: Some("AGPL-3.0-only".to_owned()),
+            manifest_path: Path::new("/repo").join(&closure.package.manifest),
+            targets: vec![Target {
+                name: closure.target.name.clone(),
+                kind: vec!["lib".to_owned()],
+                crate_types: vec!["lib".to_owned()],
+                src_path: Path::new("/repo").join(&closure.target.src_path),
+            }],
+        };
+        Metadata {
+            workspace_root: PathBuf::from("/repo/product"),
+            workspace_members: BTreeSet::from([id.clone()]),
+            packages: BTreeMap::from([(id.clone(), package)]),
+            nodes: BTreeMap::from([(
+                id.clone(),
+                Node { id, dependencies: Vec::new() },
+            )]),
+        }
     }
 
     fn shipping_build() -> BuildObservation {
@@ -3285,7 +5099,7 @@ mod tests {
             concat!(
                 "/scratch/build-target/build-dir/",
                 "x86_64-unknown-linux-gnu/release/deps/",
-                "libreovim_foundation-abc.rlib",
+                "libreovim_foundation-1111111111111111.rlib",
             ),
             '3',
             100,
@@ -3294,14 +5108,14 @@ mod tests {
             concat!(
                 "/scratch/build-target/build-dir/",
                 "x86_64-unknown-linux-gnu/release/deps/",
-                "libreovim_foundation-abc.rmeta",
+                "libreovim_foundation-1111111111111111.rmeta",
             ),
             '4',
             40,
         );
         let top = file(
             concat!(
-                "/scratch/build-target/build-dir/",
+                "/scratch/build-target/",
                 "x86_64-unknown-linux-gnu/release/",
                 "libreovim_foundation.rlib",
             ),
@@ -3309,7 +5123,11 @@ mod tests {
             100,
         );
         let artifact = foundation_artifact(false, &top.path, &rmeta.path);
-        let unit = unit(true, vec![rlib.clone(), rmeta.clone()], Vec::new());
+        let unit = unit(
+            SHIPPING_CLOSURE,
+            vec![rlib.clone(), rmeta.clone()],
+            Vec::new(),
+        );
         let provider = ProviderArtifacts {
             closure: SHIPPING_CLOSURE.to_owned(),
             package_id: "shipping-package-id".to_owned(),
@@ -3324,7 +5142,7 @@ mod tests {
         BuildObservation {
             closure: SHIPPING_CLOSURE.to_owned(),
             cargo: CargoObservation {
-                command_argv: build_argv(true),
+                command_argv: build_argv(SHIPPING_CLOSURE).unwrap(),
                 raw_digest: digest('5'),
                 stdout_bytes: 100,
                 message_count: 2,
@@ -3334,6 +5152,8 @@ mod tests {
             unit,
             provider: Some(provider),
             provider_reuse: None,
+            transitive_provider_reuse: None,
+            consumer_rlib: None,
         }
     }
 
@@ -3343,7 +5163,7 @@ mod tests {
             concat!(
                 "/scratch/build-target/build-dir/",
                 "x86_64-unknown-linux-gnu/release/deps/",
-                "libreovim_foundation_public_consumer-def.rlib",
+                "libreovim_foundation_public_consumer-2222222222222222.rlib",
             ),
             '6',
             80,
@@ -3352,27 +5172,39 @@ mod tests {
             concat!(
                 "/scratch/build-target/build-dir/",
                 "x86_64-unknown-linux-gnu/release/deps/",
-                "libreovim_foundation_public_consumer-def.rmeta",
+                "libreovim_foundation_public_consumer-2222222222222222.rmeta",
             ),
             '7',
             30,
+        );
+        let top = file(
+            concat!(
+                "/scratch/build-target/",
+                "x86_64-unknown-linux-gnu/release/",
+                "libreovim_foundation_public_consumer.rlib",
+            ),
+            '6',
+            80,
         );
         let edge = ExternEdge {
             name: "reovim_foundation".to_owned(),
             path: provider.rmeta.path.clone(),
         };
-        let unit =
-            unit(false, vec![rlib.clone(), rmeta.clone()], vec![edge.clone()]);
+        let unit = unit(
+            VALIDATION_CLOSURE,
+            vec![rlib, rmeta.clone()],
+            vec![edge.clone()],
+        );
         let fresh = foundation_artifact(
             true,
             &provider.hashed_rlib.path,
             &provider.rmeta.path,
         );
-        let consumer = consumer_artifact(&rlib.path, &rmeta.path);
+        let consumer = consumer_artifact(&top.path, &rmeta.path);
         BuildObservation {
             closure: VALIDATION_CLOSURE.to_owned(),
             cargo: CargoObservation {
-                command_argv: build_argv(false),
+                command_argv: build_argv(VALIDATION_CLOSURE).unwrap(),
                 raw_digest: digest('a'),
                 stdout_bytes: 200,
                 message_count: 3,
@@ -3387,6 +5219,176 @@ mod tests {
                 rmeta: provider.rmeta.clone(),
                 extern_edge: edge,
             }),
+            transitive_provider_reuse: None,
+            consumer_rlib: Some(top),
+        }
+    }
+
+    fn kernel_shipping_build(
+        foundation: &BuildObservation,
+    ) -> BuildObservation {
+        let foundation_provider = foundation.provider.as_ref().unwrap();
+        let rlib = file(
+            concat!(
+                "/scratch/build-target/build-dir/",
+                "x86_64-unknown-linux-gnu/release/deps/",
+                "libreovim_kernel_interface-3333333333333333.rlib",
+            ),
+            'e',
+            140,
+        );
+        let rmeta = file(
+            concat!(
+                "/scratch/build-target/build-dir/",
+                "x86_64-unknown-linux-gnu/release/deps/",
+                "libreovim_kernel_interface-3333333333333333.rmeta",
+            ),
+            'f',
+            60,
+        );
+        let top = file(
+            concat!(
+                "/scratch/build-target/",
+                "x86_64-unknown-linux-gnu/release/",
+                "libreovim_kernel_interface.rlib",
+            ),
+            'e',
+            140,
+        );
+        let edge = ExternEdge {
+            name: "reovim_foundation".to_owned(),
+            path: foundation_provider.rmeta.path.clone(),
+        };
+        let unit = unit(
+            KERNEL_INTERFACE_SHIPPING_CLOSURE,
+            vec![rlib.clone(), rmeta.clone()],
+            vec![edge.clone()],
+        );
+        let fresh_foundation = foundation_artifact(
+            true,
+            &foundation_provider.hashed_rlib.path,
+            &foundation_provider.rmeta.path,
+        );
+        let own = kernel_artifact(false, &top.path, &rmeta.path);
+        let provider = ProviderArtifacts {
+            closure: KERNEL_INTERFACE_SHIPPING_CLOSURE.to_owned(),
+            package_id: "kernel-shipping-package-id".to_owned(),
+            unit: unit.id.clone(),
+            cargo_artifact: own.clone(),
+            top_level_rlib: top,
+            hashed_rlib: rlib,
+            rmeta,
+            target_dir: PathBuf::from("/scratch/build-target"),
+            cargo_home: PathBuf::from("/scratch/cargo-home"),
+        };
+        BuildObservation {
+            closure: KERNEL_INTERFACE_SHIPPING_CLOSURE.to_owned(),
+            cargo: CargoObservation {
+                command_argv: build_argv(KERNEL_INTERFACE_SHIPPING_CLOSURE)
+                    .unwrap(),
+                raw_digest: digest('1'),
+                stdout_bytes: 300,
+                message_count: 3,
+                artifacts: vec![fresh_foundation.clone(), own],
+            },
+            probes: Vec::new(),
+            unit,
+            provider: Some(provider),
+            provider_reuse: Some(ProviderReuse {
+                fresh_artifact: fresh_foundation,
+                hashed_rlib: foundation_provider.hashed_rlib.clone(),
+                rmeta: foundation_provider.rmeta.clone(),
+                extern_edge: edge,
+            }),
+            transitive_provider_reuse: None,
+            consumer_rlib: None,
+        }
+    }
+
+    fn kernel_validation_build(
+        foundation: &BuildObservation,
+        kernel: &BuildObservation,
+    ) -> BuildObservation {
+        let foundation_provider = foundation.provider.as_ref().unwrap();
+        let kernel_provider = kernel.provider.as_ref().unwrap();
+        let rlib = file(
+            concat!(
+                "/scratch/build-target/build-dir/",
+                "x86_64-unknown-linux-gnu/release/deps/",
+                "libreovim_kernel_interface_public_consumer-",
+                "4444444444444444.rlib",
+            ),
+            '2',
+            90,
+        );
+        let rmeta = file(
+            concat!(
+                "/scratch/build-target/build-dir/",
+                "x86_64-unknown-linux-gnu/release/deps/",
+                "libreovim_kernel_interface_public_consumer-",
+                "4444444444444444.rmeta",
+            ),
+            '3',
+            35,
+        );
+        let top = file(
+            concat!(
+                "/scratch/build-target/",
+                "x86_64-unknown-linux-gnu/release/",
+                "libreovim_kernel_interface_public_consumer.rlib",
+            ),
+            '2',
+            90,
+        );
+        let edge = ExternEdge {
+            name: "reovim_kernel_interface".to_owned(),
+            path: kernel_provider.rmeta.path.clone(),
+        };
+        let unit = unit(
+            KERNEL_INTERFACE_VALIDATION_CLOSURE,
+            vec![rlib, rmeta.clone()],
+            vec![edge.clone()],
+        );
+        let fresh_foundation = foundation_artifact(
+            true,
+            &foundation_provider.hashed_rlib.path,
+            &foundation_provider.rmeta.path,
+        );
+        let fresh_kernel = kernel_artifact(
+            true,
+            &kernel_provider.hashed_rlib.path,
+            &kernel_provider.rmeta.path,
+        );
+        let consumer = kernel_consumer_artifact(&top.path, &rmeta.path);
+        BuildObservation {
+            closure: KERNEL_INTERFACE_VALIDATION_CLOSURE.to_owned(),
+            cargo: CargoObservation {
+                command_argv: build_argv(KERNEL_INTERFACE_VALIDATION_CLOSURE)
+                    .unwrap(),
+                raw_digest: digest('4'),
+                stdout_bytes: 400,
+                message_count: 4,
+                artifacts: vec![
+                    fresh_foundation.clone(),
+                    fresh_kernel.clone(),
+                    consumer,
+                ],
+            },
+            probes: Vec::new(),
+            unit,
+            provider: None,
+            provider_reuse: Some(ProviderReuse {
+                fresh_artifact: fresh_kernel,
+                hashed_rlib: kernel_provider.hashed_rlib.clone(),
+                rmeta: kernel_provider.rmeta.clone(),
+                extern_edge: edge,
+            }),
+            transitive_provider_reuse: Some(TransitiveProviderReuse {
+                fresh_artifact: fresh_foundation,
+                hashed_rlib: foundation_provider.hashed_rlib.clone(),
+                rmeta: foundation_provider.rmeta.clone(),
+            }),
+            consumer_rlib: Some(top),
         }
     }
 
@@ -3436,47 +5438,24 @@ mod tests {
     }
 
     fn unit(
-        shipping: bool,
+        closure: &str,
         outputs: Vec<FileIdentity>,
         externs: Vec<ExternEdge>,
     ) -> CompilerUnit {
-        let closure =
-            if shipping { SHIPPING_CLOSURE } else { VALIDATION_CLOSURE };
-        let crate_name = if shipping {
-            "reovim_foundation"
-        } else {
-            "reovim_foundation_public_consumer"
-        };
-        let dep_root = if shipping {
-            "/scratch/shipping-dep-info/00000004.d"
-        } else {
-            "/scratch/validation-dep-info/00000000.d"
-        };
-        let original_argv = vec![
-            RUSTC.to_owned(),
-            "--crate-name".to_owned(),
-            crate_name.to_owned(),
-            "--crate-type".to_owned(),
-            "lib".to_owned(),
-            "--target".to_owned(),
-            TARGET.to_owned(),
-            "--cfg".to_owned(),
-            "feature=\"default\"".to_owned(),
-            "--emit=dep-info,metadata,link".to_owned(),
-        ];
-        let mut effective_argv = original_argv.clone();
-        *effective_argv.last_mut().unwrap() =
-            format!("--emit=dep-info={dep_root},metadata,link");
-        effective_argv.extend(["--sysroot".to_owned(), SYSROOT.to_owned()]);
-        let sources = if shipping {
-            source_set(&SHIPPING_SOURCES)
-        } else {
-            source_set(&VALIDATION_SOURCES)
-        };
+        let profile = unit_profile(closure);
+        let (original_argv, effective_argv) = unit_argv(&profile, &externs);
+        let sources = profile.sources.into_iter().collect::<Vec<_>>();
+        let dependencies = sources
+            .iter()
+            .map(|source| Path::new("/repo").join(source).display().to_string())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let dep_info_text =
+            format!("{}: {dependencies}\n", outputs[0].path.display());
         CompilerUnit {
             id: format!("{closure}:rustc"),
             closure: closure.to_owned(),
-            crate_name: crate_name.to_owned(),
+            crate_name: profile.crate_name.to_owned(),
             crate_types: vec!["lib".to_owned()],
             target_triple: TARGET.to_owned(),
             profile: "release".to_owned(),
@@ -3484,16 +5463,140 @@ mod tests {
             cfgs: vec!["feature=\"default\"".to_owned()],
             original_argv,
             effective_argv,
-            dep_info_path: PathBuf::from(dep_root),
-            dep_info_digest: digest('c'),
-            dep_info_bytes: 100,
-            sources: sources.into_iter().collect(),
+            dep_info_path: PathBuf::from(profile.dep_root),
+            dep_info_digest: crate::digest::bytes(dep_info_text.as_bytes()),
+            dep_info_bytes: u64::try_from(dep_info_text.len()).unwrap(),
+            dep_info_text,
+            sources,
             externs,
             outputs,
             trace_digest: digest('d'),
             trace_bytes: 20,
             status: 0,
         }
+    }
+
+    struct UnitFixtureProfile {
+        crate_name: &'static str,
+        dep_root: &'static str,
+        root_source: &'static str,
+        sources: BTreeSet<PathBuf>,
+        hash: &'static str,
+    }
+
+    fn unit_profile(closure: &str) -> UnitFixtureProfile {
+        let values = match closure {
+            SHIPPING_CLOSURE => (
+                "reovim_foundation",
+                "/scratch/shipping-dep-info/00000004.d",
+                "kernel/foundation/src/lib.rs",
+                source_set(&SHIPPING_SOURCES),
+                "1111111111111111",
+            ),
+            VALIDATION_CLOSURE => (
+                "reovim_foundation_public_consumer",
+                "/scratch/validation-dep-info/00000000.d",
+                "tests/foundation-public-consumer/src/lib.rs",
+                source_set(&VALIDATION_SOURCES),
+                "2222222222222222",
+            ),
+            KERNEL_INTERFACE_SHIPPING_CLOSURE => (
+                "reovim_kernel_interface",
+                concat!(
+                    "/scratch/kernel-interface-shipping-dep-info/",
+                    "00000000.d"
+                ),
+                "kernel/interface/src/lib.rs",
+                source_set(&KERNEL_INTERFACE_SHIPPING_SOURCES),
+                "3333333333333333",
+            ),
+            KERNEL_INTERFACE_VALIDATION_CLOSURE => (
+                "reovim_kernel_interface_public_consumer",
+                concat!(
+                    "/scratch/kernel-interface-validation-dep-info/",
+                    "00000000.d"
+                ),
+                "tests/kernel-interface-public-consumer/src/lib.rs",
+                source_set(&KERNEL_INTERFACE_VALIDATION_SOURCES),
+                "4444444444444444",
+            ),
+            _ => unreachable!(),
+        };
+        UnitFixtureProfile {
+            crate_name: values.0,
+            dep_root: values.1,
+            root_source: values.2,
+            sources: values.3,
+            hash: values.4,
+        }
+    }
+
+    fn unit_argv(
+        profile: &UnitFixtureProfile,
+        externs: &[ExternEdge],
+    ) -> (Vec<String>, Vec<String>) {
+        let out_dir = Path::new("/scratch/build-target/build-dir")
+            .join(TARGET)
+            .join("release/deps");
+        let mut original_argv = vec![
+            RUSTC.to_owned(),
+            "--crate-name".to_owned(),
+            profile.crate_name.to_owned(),
+            "--edition=2024".to_owned(),
+            Path::new("/repo").join(profile.root_source).display().to_string(),
+            "--error-format=json".to_owned(),
+            "--json=diagnostic-rendered-ansi,artifacts,future-incompat"
+                .to_owned(),
+            "--crate-type".to_owned(),
+            "lib".to_owned(),
+            "--emit=dep-info,metadata,link".to_owned(),
+            "-C".to_owned(),
+            "opt-level=3".to_owned(),
+            "-C".to_owned(),
+            "embed-bitcode=no".to_owned(),
+            "--deny=clippy::pedantic".to_owned(),
+            "--deny=clippy::nursery".to_owned(),
+            "--deny=clippy::all".to_owned(),
+            "--deny=warnings".to_owned(),
+            "--forbid=unsafe_code".to_owned(),
+            "--forbid=clippy::excessive_nesting".to_owned(),
+            "--cfg".to_owned(),
+            "feature=\"default\"".to_owned(),
+            "--check-cfg".to_owned(),
+            "cfg(docsrs,test)".to_owned(),
+            "--check-cfg".to_owned(),
+            "cfg(feature, values(\"default\"))".to_owned(),
+            "-C".to_owned(),
+            "metadata=0123456789abcdef".to_owned(),
+            "-C".to_owned(),
+            format!("extra-filename=-{}", profile.hash),
+            "--out-dir".to_owned(),
+            out_dir.display().to_string(),
+            "--target".to_owned(),
+            TARGET.to_owned(),
+            "-C".to_owned(),
+            "strip=debuginfo".to_owned(),
+            "-L".to_owned(),
+            format!("dependency={}", out_dir.display()),
+            "-L".to_owned(),
+            "dependency=/scratch/build-target/build-dir/release/deps"
+                .to_owned(),
+        ];
+        if let [edge] = externs {
+            original_argv.extend([
+                "--extern".to_owned(),
+                format!("{}={}", edge.name, edge.path.display()),
+            ]);
+        }
+        let mut effective_argv = original_argv.clone();
+        let emit = effective_argv
+            .iter()
+            .position(|value| value == "--emit=dep-info,metadata,link")
+            .unwrap();
+        effective_argv[emit] =
+            format!("--emit=dep-info={},metadata,link", profile.dep_root);
+        effective_argv.extend(["--sysroot".to_owned(), SYSROOT.to_owned()]);
+        (original_argv, effective_argv)
     }
 
     fn foundation_artifact(
@@ -3521,6 +5624,37 @@ mod tests {
             "/repo/tests/foundation-public-consumer/Cargo.toml",
             "reovim_foundation_public_consumer",
             "/repo/tests/foundation-public-consumer/src/lib.rs",
+            false,
+            rlib,
+            rmeta,
+        )
+    }
+
+    fn kernel_artifact(
+        fresh: bool,
+        rlib: &std::path::Path,
+        rmeta: &std::path::Path,
+    ) -> CargoArtifact {
+        artifact(
+            "kernel-shipping-package-id",
+            "/repo/kernel/interface/Cargo.toml",
+            "reovim_kernel_interface",
+            "/repo/kernel/interface/src/lib.rs",
+            fresh,
+            rlib,
+            rmeta,
+        )
+    }
+
+    fn kernel_consumer_artifact(
+        rlib: &std::path::Path,
+        rmeta: &std::path::Path,
+    ) -> CargoArtifact {
+        artifact(
+            "kernel-validation-package-id",
+            "/repo/tests/kernel-interface-public-consumer/Cargo.toml",
+            "reovim_kernel_interface_public_consumer",
+            "/repo/tests/kernel-interface-public-consumer/src/lib.rs",
             false,
             rlib,
             rmeta,
@@ -3567,7 +5701,7 @@ mod tests {
         assert_eq!(RUSTC, "/compiler/bin/rustc");
         assert_eq!(CHECKER, "/checker/reovim-conformance");
         assert_eq!(
-            package_argv(),
+            package_argv(SHIPPING_PACKAGE),
             [
                 CARGO,
                 "package",

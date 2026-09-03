@@ -24,7 +24,7 @@ use crate::{
     policy::{DigestSubject, Policy, Upstream},
     prepared_root,
     process::{ProcessLimits, ProcessResult},
-    product_closures, product_source, report_v2,
+    product_closures, product_preflight, product_source, report_v2,
     source::Inventory,
     topology::{
         Limits, ProductExecutionLimits, Topology, Workspace, WorkspacePackage,
@@ -35,32 +35,25 @@ use crate::{
 const REPORT_SCHEMA_PATH: &str = "conformance/source-role-map.schema.json";
 const SHIPPING_CLOSURE: &str = "foundation-shipping";
 const CONSUMER_CLOSURE: &str = "foundation-consumer";
+const KERNEL_INTERFACE_SHIPPING_CLOSURE: &str = "kernel-interface-shipping";
+const KERNEL_INTERFACE_CONSUMER_CLOSURE: &str = "kernel-interface-consumer";
 const PRODUCT_WORKSPACE: &str = "product";
 const PRODUCT_PROFILE: &str = "release";
 const PRODUCT_TARGET: &str = "library";
 const PRODUCT_TARGET_TRIPLE: &str = "x86_64-unknown-linux-gnu";
+const PRODUCT_COMPILER_INPUT_COUNT: usize = 39;
 const PUBLIC_RELATION: &str = "foundation-public-api";
+const KERNEL_INTERFACE_PUBLIC_RELATION: &str = "kernel-interface-public-api";
 const PREPARED_CARGO: &str = "/compiler/bin/cargo";
 const PREPARED_RUSTC: &str = "/compiler/bin/rustc";
 const PREPARED_CHECKER: &str = "/checker/reovim-conformance";
 const PREPARED_MANIFEST: &str = "/repo/product/Cargo.toml";
+const PREPARED_TARGET_DIR: &str = "/scratch/build-target";
 const PREPARED_COMPILER_SUPPORT: &str = "/compiler/lib";
 const PREPARED_TARGET_LIBDIR: &str =
     concat!("/sysroot/lib/rustlib/", "x86_64-unknown-linux-gnu/lib");
 const NETWORK_POLICY_BASIS: &str = "bounded-nftables-empty-table-dump";
 const NETWORK_POLICY_DOMAIN: &[u8] = b"reovim-nftables-table-set/v1\0";
-const PRODUCT_REPOSITORY_INPUTS: [&str; 10] = [
-    "product/Cargo.toml",
-    "product/Cargo.lock",
-    "kernel/foundation/Cargo.toml",
-    "kernel/foundation/src/bound.rs",
-    "kernel/foundation/src/carrier.rs",
-    "kernel/foundation/src/contract.rs",
-    "kernel/foundation/src/identity.rs",
-    "kernel/foundation/src/lib.rs",
-    "tests/foundation-public-consumer/Cargo.toml",
-    "tests/foundation-public-consumer/src/lib.rs",
-];
 
 /// One committed input plus the exact schema that validated it.
 #[derive(Debug, Clone, Copy)]
@@ -219,7 +212,7 @@ pub struct ProductFileIdentityEvidence {
     pub size_bytes: u64,
 }
 
-/// Top-level Cargo output and hashed wrapper outputs for Foundation reuse.
+/// Top-level Cargo output and hashed wrapper outputs for one shipping unit.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProductProviderArtifactEvidence {
     pub unit: String,
@@ -347,10 +340,12 @@ pub struct ActiveProductEvidence<'a> {
     pub compiler_units: &'a [ProductCompilerUnitEvidence],
     pub extern_edges: &'a [ProductExternEvidence],
     pub artifacts: &'a [ProductArtifactEvidence],
-    pub provider_artifact: &'a ProductProviderArtifactEvidence,
-    pub package_before: &'a package_capture::Observation,
-    pub package_after: &'a package_capture::Observation,
-    pub product_source: &'a product_source::ProductSourceObservation,
+    pub provider_artifacts: &'a [ProductProviderArtifactEvidence],
+    pub foundation_package_before: &'a package_capture::Observation,
+    pub foundation_package_after: &'a package_capture::Observation,
+    pub kernel_interface_package_before: &'a package_capture::Observation,
+    pub kernel_interface_package_after: &'a package_capture::Observation,
+    pub product_sources: &'a product_source::TwoPairSourceObservation,
     pub execution: &'a ProductExecutionEvidence,
     pub process: &'a ProcessResult,
 }
@@ -904,17 +899,34 @@ fn empty_product_proof_value() -> Value {
         "compiler_inputs": [],
         "extern_edges": [],
         "artifacts": [],
-        "provider_artifact": null,
+        "provider_artifacts": [],
         "package_memberships": [],
         "public_consumers": [],
         "executions": [],
     })
 }
 
-struct ActiveRegistry<'a> {
+#[derive(Clone, Copy)]
+struct ActivePair<'a> {
     shipping: &'a product_closures::Closure,
     consumer: &'a product_closures::Closure,
     relation: &'a product_closures::PublicConsumerRelation,
+}
+
+struct ActiveRegistry<'a> {
+    foundation: ActivePair<'a>,
+    kernel_interface: ActivePair<'a>,
+}
+
+impl<'a> ActiveRegistry<'a> {
+    const fn closures(&self) -> [&'a product_closures::Closure; 4] {
+        [
+            self.foundation.shipping,
+            self.foundation.consumer,
+            self.kernel_interface.shipping,
+            self.kernel_interface.consumer,
+        ]
+    }
 }
 
 fn product_report_values(
@@ -944,11 +956,11 @@ fn product_report_values(
         product_input_values(inputs, active, &registry, &units, observations)?;
     let artifacts = product_artifact_values(inputs, active, &units)?;
     let extern_edges = product_extern_values(active, &units, &artifacts)?;
-    let provider_artifact =
-        product_provider_artifact_value(inputs, active, &units, &artifacts)?;
-    let membership =
-        package_membership_value(inputs, active, &registry, observations)?;
-    let public = public_consumer_value(inputs, active, &registry)?;
+    let provider_artifacts =
+        product_provider_artifact_values(inputs, active, &units, &artifacts)?;
+    let memberships =
+        package_membership_values(inputs, active, &registry, observations)?;
+    let public_consumers = public_consumer_values(inputs, active, &registry)?;
     validate_active_runtime_exposures(inputs, active.execution)?;
     let execution = product_execution_value(inputs, active)?;
     let process = product_process_value(inputs, active)?;
@@ -961,9 +973,9 @@ fn product_report_values(
             "compiler_inputs": compiler_inputs,
             "extern_edges": extern_edges,
             "artifacts": artifacts.values,
-            "provider_artifact": provider_artifact,
-            "package_memberships": [membership],
-            "public_consumers": [public],
+            "provider_artifacts": provider_artifacts,
+            "package_memberships": memberships,
+            "public_consumers": public_consumers,
             "executions": [execution],
         }),
         process: Some(process),
@@ -996,92 +1008,199 @@ fn validate_product_mode(
 fn active_registry(
     registry: &product_closures::Registry,
 ) -> Result<ActiveRegistry<'_>, BuildError> {
-    if registry.closures.len() != 2
-        || registry.public_consumer_relations.len() != 1
+    if registry.closures.len() != 4
+        || registry.public_consumer_relations.len() != 2
     {
         return Err(BuildError::new(
             "V2_PRODUCT_REGISTRY_SET",
-            "active Foundation proof requires two closures and one relation",
+            "active Product proof requires four closures and two relations",
         ));
     }
-    let shipping = registry
+    let foundation = active_pair(
+        registry,
+        SHIPPING_CLOSURE,
+        CONSUMER_CLOSURE,
+        PUBLIC_RELATION,
+    )?;
+    let kernel_interface = active_pair(
+        registry,
+        KERNEL_INTERFACE_SHIPPING_CLOSURE,
+        KERNEL_INTERFACE_CONSUMER_CLOSURE,
+        KERNEL_INTERFACE_PUBLIC_RELATION,
+    )?;
+    validate_foundation_registry(foundation)?;
+    validate_kernel_interface_registry(kernel_interface)?;
+    Ok(ActiveRegistry { foundation, kernel_interface })
+}
+
+fn active_pair<'a>(
+    registry: &'a product_closures::Registry,
+    shipping_id: &str,
+    consumer_id: &str,
+    relation_id: &str,
+) -> Result<ActivePair<'a>, BuildError> {
+    let shipping = active_closure(registry, shipping_id)?;
+    let consumer = active_closure(registry, consumer_id)?;
+    let relation = registry
+        .public_consumer_relations
+        .iter()
+        .find(|value| value.id == relation_id)
+        .ok_or_else(|| missing_product_registry(relation_id))?;
+    Ok(ActivePair { shipping, consumer, relation })
+}
+
+fn active_closure<'a>(
+    registry: &'a product_closures::Registry,
+    id: &str,
+) -> Result<&'a product_closures::Closure, BuildError> {
+    registry
         .closures
         .iter()
-        .find(|closure| closure.id == SHIPPING_CLOSURE)
-        .ok_or_else(|| missing_product_registry("shipping closure"))?;
-    let consumer = registry
-        .closures
-        .iter()
-        .find(|closure| closure.id == CONSUMER_CLOSURE)
-        .ok_or_else(|| missing_product_registry("consumer closure"))?;
-    let relation = &registry.public_consumer_relations[0];
-    validate_active_registry_shape(shipping, consumer, relation)?;
-    Ok(ActiveRegistry { shipping, consumer, relation })
+        .find(|value| value.id == id)
+        .ok_or_else(|| missing_product_registry(id))
 }
 
 fn missing_product_registry(subject: &str) -> BuildError {
     BuildError::new(
         "V2_PRODUCT_REGISTRY_SET",
-        format!("active Foundation registry lacks its {subject}"),
+        format!("active Product registry lacks {subject}"),
     )
 }
 
-fn validate_active_registry_shape(
-    shipping: &product_closures::Closure,
-    consumer: &product_closures::Closure,
-    relation: &product_closures::PublicConsumerRelation,
+fn validate_foundation_registry(
+    pair: ActivePair<'_>,
 ) -> Result<(), BuildError> {
     validate_registry_closure(
-        shipping,
+        pair.shipping,
         product_closures::ClosureKind::Shipping,
         "foundation",
         "reovim-foundation",
         ArchitecturalRole::Foundation,
         SourceUse::Production,
     )?;
-    validate_registry_specific_paths(shipping, consumer)?;
     validate_registry_closure(
-        consumer,
+        pair.consumer,
         product_closures::ClosureKind::Validation,
         "foundation-public-consumer",
         "reovim-foundation-public-consumer",
         ArchitecturalRole::KernelInterface,
         SourceUse::Test,
     )?;
-    if relation.id != PUBLIC_RELATION
-        || relation.shipping_closure != SHIPPING_CLOSURE
-        || relation.consumer_closure != CONSUMER_CLOSURE
-    {
-        return Err(BuildError::new(
-            "V2_PRODUCT_RELATION",
-            "public relation differs from the active Foundation pair",
-        ));
-    }
-    Ok(())
+    validate_registry_path(
+        pair.shipping,
+        "kernel/foundation/Cargo.toml",
+        "reovim_foundation",
+        "kernel/foundation/src/lib.rs",
+        true,
+    )?;
+    validate_registry_path(
+        pair.consumer,
+        "tests/foundation-public-consumer/Cargo.toml",
+        "reovim_foundation_public_consumer",
+        "tests/foundation-public-consumer/src/lib.rs",
+        false,
+    )?;
+    validate_registry_relation(pair, PUBLIC_RELATION)?;
+    validate_registry_counts(pair, 8, 143, 165, 0)
 }
 
-fn validate_registry_specific_paths(
-    shipping: &product_closures::Closure,
-    consumer: &product_closures::Closure,
+fn validate_kernel_interface_registry(
+    pair: ActivePair<'_>,
 ) -> Result<(), BuildError> {
-    let shipping_ok = shipping.package.manifest
-        == Path::new("kernel/foundation/Cargo.toml")
-        && shipping.target.name == "reovim_foundation"
-        && shipping.target.src_path
-            == Path::new("kernel/foundation/src/lib.rs")
-        && shipping.package_membership.is_some();
-    let consumer_ok = consumer.package.manifest
-        == Path::new("tests/foundation-public-consumer/Cargo.toml")
-        && consumer.target.name == "reovim_foundation_public_consumer"
-        && consumer.target.src_path
-            == Path::new("tests/foundation-public-consumer/src/lib.rs")
-        && consumer.package_membership.is_none();
-    if shipping_ok && consumer_ok {
+    validate_registry_closure(
+        pair.shipping,
+        product_closures::ClosureKind::Shipping,
+        "kernel-interface",
+        "reovim-kernel-interface",
+        ArchitecturalRole::KernelInterface,
+        SourceUse::Production,
+    )?;
+    validate_registry_closure(
+        pair.consumer,
+        product_closures::ClosureKind::Validation,
+        "kernel-interface-public-consumer",
+        "reovim-kernel-interface-public-consumer",
+        ArchitecturalRole::KernelRuntime,
+        SourceUse::Test,
+    )?;
+    validate_registry_path(
+        pair.shipping,
+        "kernel/interface/Cargo.toml",
+        "reovim_kernel_interface",
+        "kernel/interface/src/lib.rs",
+        true,
+    )?;
+    validate_registry_path(
+        pair.consumer,
+        "tests/kernel-interface-public-consumer/Cargo.toml",
+        "reovim_kernel_interface_public_consumer",
+        "tests/kernel-interface-public-consumer/src/lib.rs",
+        false,
+    )?;
+    validate_registry_relation(pair, KERNEL_INTERFACE_PUBLIC_RELATION)?;
+    validate_registry_counts(pair, 23, 356, 306, 6)
+}
+
+fn validate_registry_path(
+    closure: &product_closures::Closure,
+    manifest: &str,
+    target: &str,
+    source: &str,
+    has_membership: bool,
+) -> Result<(), BuildError> {
+    let exact = closure.package.manifest == Path::new(manifest)
+        && closure.target.name == target
+        && closure.target.src_path == Path::new(source)
+        && closure.package_membership.is_some() == has_membership;
+    if exact {
         return Ok(());
     }
     Err(BuildError::new(
         "V2_PRODUCT_CLOSURE_PATH",
-        "active closure package or target path differs from Foundation",
+        format!("closure {} has an unexpected package path", closure.id),
+    ))
+}
+
+fn validate_registry_relation(
+    pair: ActivePair<'_>,
+    relation_id: &str,
+) -> Result<(), BuildError> {
+    let exact = pair.relation.id == relation_id
+        && pair.relation.shipping_closure == pair.shipping.id
+        && pair.relation.consumer_closure == pair.consumer.id;
+    if exact {
+        return Ok(());
+    }
+    Err(BuildError::new(
+        "V2_PRODUCT_RELATION",
+        format!("public relation {relation_id} differs from its exact pair"),
+    ))
+}
+
+fn validate_registry_counts(
+    pair: ActivePair<'_>,
+    package_members: usize,
+    public_items: usize,
+    derive_checks: usize,
+    reexports: usize,
+) -> Result<(), BuildError> {
+    let membership =
+        pair.shipping.package_membership.as_ref().ok_or_else(|| {
+            BuildError::new(
+                "V2_PRODUCT_PACKAGE_REGISTRY",
+                "shipping closure lacks package membership authority",
+            )
+        })?;
+    let exact = membership.members.len() == package_members
+        && pair.relation.public_items.len() == public_items
+        && pair.relation.derive_checks.len() == derive_checks
+        && pair.relation.reexports.len() == reexports;
+    if exact {
+        return Ok(());
+    }
+    Err(BuildError::new(
+        "V2_PRODUCT_REGISTRY_SET",
+        format!("relation {} has unexpected evidence counts", pair.relation.id),
     ))
 }
 
@@ -1275,10 +1394,10 @@ fn product_closure_values(
     active: &ActiveProductEvidence<'_>,
     registry: &ActiveRegistry<'_>,
 ) -> Result<ProductClosureValues, BuildError> {
-    if active.cargo_builds.len() != 2 {
+    if active.cargo_builds.len() != 4 {
         return Err(BuildError::new(
             "V2_PRODUCT_CARGO_CAPTURE_SET",
-            "active Product evidence requires two Cargo build captures",
+            "active Product evidence requires four Cargo build captures",
         ));
     }
     let mut builds = BTreeMap::new();
@@ -1290,8 +1409,8 @@ fn product_closure_values(
             ));
         }
     }
-    let mut values = Vec::with_capacity(2);
-    for closure in [registry.shipping, registry.consumer] {
+    let mut values = Vec::with_capacity(4);
+    for closure in registry.closures() {
         let build = builds.get(closure.id.as_str()).ok_or_else(|| {
             BuildError::new(
                 "V2_PRODUCT_CARGO_CAPTURE_MISSING",
@@ -1300,8 +1419,7 @@ fn product_closure_values(
         })?;
         validate_product_cargo_capture(inputs, active, closure, build)?;
         let probes = product_probe_values(inputs, closure, &build.probes)?;
-        let artifact_events =
-            cargo_artifact_event_values(inputs, active, build)?;
+        let artifact_events = cargo_artifact_event_values(inputs, build)?;
         values.push(json!({
             "id": closure.id,
             "kind": closure_kind_text(closure.kind),
@@ -1335,7 +1453,6 @@ fn product_closure_values(
 
 fn cargo_artifact_event_values(
     inputs: &BuildInputs<'_>,
-    active: &ActiveProductEvidence<'_>,
     build: &ProductCargoBuildEvidence,
 ) -> Result<Vec<Value>, BuildError> {
     if build.artifact_events.is_empty()
@@ -1368,7 +1485,7 @@ fn cargo_artifact_event_values(
                 || filenames.iter().any(|path| {
                     require_under_path(
                         path,
-                        &active.execution.scratch.mountpoint,
+                        Path::new(PREPARED_TARGET_DIR),
                         "Cargo artifact filename",
                     )
                     .is_err()
@@ -1436,13 +1553,8 @@ fn validate_product_cargo_capture(
             format!("closure {} exceeds its Cargo capture bound", closure.id),
         ));
     }
-    let target_dir = option_value(&build.command_argv, "--target-dir")
-        .ok_or_else(|| {
-            BuildError::new(
-                "V2_PRODUCT_CARGO_ARGV",
-                "Product Cargo build omits --target-dir",
-            )
-        })?;
+    validate_cargo_message_relation(build)?;
+    let target_dir = exact_product_target_dir(&build.command_argv)?;
     validate_product_path(inputs, Path::new(target_dir), "Cargo target")?;
     require_under_path(
         Path::new(target_dir),
@@ -1479,12 +1591,43 @@ fn validate_product_cargo_capture(
     Ok(())
 }
 
+fn validate_cargo_message_relation(
+    build: &ProductCargoBuildEvidence,
+) -> Result<(), BuildError> {
+    let expected = u64::try_from(build.artifact_events.len())
+        .ok()
+        .and_then(|count| count.checked_add(1));
+    if expected == Some(build.message_count) {
+        return Ok(());
+    }
+    Err(BuildError::new(
+        "V2_PRODUCT_CARGO_CAPTURE_SET",
+        "Cargo message count differs from artifact events plus finish",
+    ))
+}
+
+fn exact_product_target_dir(argv: &[String]) -> Result<&str, BuildError> {
+    let target = option_value(argv, "--target-dir").ok_or_else(|| {
+        BuildError::new(
+            "V2_PRODUCT_CARGO_ARGV",
+            "Product Cargo build omits --target-dir",
+        )
+    })?;
+    if target == PREPARED_TARGET_DIR {
+        return Ok(target);
+    }
+    Err(BuildError::new(
+        "V2_PRODUCT_CARGO_ARGV",
+        "Product Cargo target differs from its exact scratch authority",
+    ))
+}
+
 fn product_probe_values(
     inputs: &BuildInputs<'_>,
     closure: &product_closures::Closure,
     probes: &[ProductProbeEvidence],
 ) -> Result<Vec<Value>, BuildError> {
-    let expected = if closure.kind == product_closures::ClosureKind::Shipping {
+    let expected = if closure.id == SHIPPING_CLOSURE {
         vec![
             ProductProbeKind::Version,
             ProductProbeKind::Host,
@@ -1650,6 +1793,7 @@ fn sorted_unique_strings(
 #[derive(Debug, Clone)]
 struct ProductUnitRef {
     closure: String,
+    original_argv: Vec<String>,
 }
 
 struct ProductUnitValues {
@@ -1664,21 +1808,22 @@ fn product_unit_values(
     registry: &ActiveRegistry<'_>,
 ) -> Result<ProductUnitValues, BuildError> {
     let limits = inputs.topology.limits.product_execution;
-    if active.compiler_units.len() != 2
+    if active.compiler_units.len() != 4
         || active.compiler_units.len() > limits.compiler_unit_count
     {
         return Err(BuildError::new(
             "V2_PRODUCT_UNIT_SET",
-            "active Product evidence requires two bounded compiler units",
+            "active Product evidence requires four bounded compiler units",
         ));
     }
-    let closures = BTreeMap::from([
-        (registry.shipping.id.as_str(), registry.shipping),
-        (registry.consumer.id.as_str(), registry.consumer),
-    ]);
+    let closures = registry
+        .closures()
+        .into_iter()
+        .map(|closure| (closure.id.as_str(), closure))
+        .collect::<BTreeMap<_, _>>();
     let mut units = active.compiler_units.iter().collect::<Vec<_>>();
     units.sort_by(|left, right| left.id.cmp(&right.id));
-    let mut values = Vec::with_capacity(2);
+    let mut values = Vec::with_capacity(4);
     let mut by_id = BTreeMap::new();
     let mut by_closure = BTreeMap::new();
     let mut dep_paths = BTreeSet::new();
@@ -1703,7 +1848,10 @@ fn product_unit_values(
             || by_id
                 .insert(
                     unit.id.clone(),
-                    ProductUnitRef { closure: unit.closure.clone() },
+                    ProductUnitRef {
+                        closure: unit.closure.clone(),
+                        original_argv: unit.original_argv.clone(),
+                    },
                 )
                 .is_some()
         {
@@ -1801,14 +1949,27 @@ fn expected_unit_extern<'a>(
     if unit.closure == SHIPPING_CLOSURE {
         return Ok(None);
     }
-    let [edge] = active.extern_edges else {
+    let expected_name = match unit.closure.as_str() {
+        CONSUMER_CLOSURE | KERNEL_INTERFACE_SHIPPING_CLOSURE => {
+            "reovim_foundation"
+        }
+        KERNEL_INTERFACE_CONSUMER_CLOSURE => "reovim_kernel_interface",
+        _ => {
+            return Err(BuildError::new(
+                "V2_PRODUCT_UNIT_CLOSURE",
+                "compiler unit closure is outside the closed two-pair set",
+            ));
+        }
+    };
+    let mut edges =
+        active.extern_edges.iter().filter(|edge| edge.consumer_unit == unit.id);
+    let Some(edge) = edges.next() else {
         return Err(BuildError::new(
             "V2_PRODUCT_EXTERN_SET",
             "consumer compiler unit lacks one retained extern edge",
         ));
     };
-    if edge.consumer_unit == unit.id && edge.extern_name == "reovim_foundation"
-    {
+    if edges.next().is_none() && edge.extern_name == expected_name {
         return Ok(Some(&edge.provider_path));
     }
     Err(BuildError::new(
@@ -1821,6 +1982,10 @@ fn crate_name_for_closure(closure: &str) -> Result<&'static str, BuildError> {
     match closure {
         SHIPPING_CLOSURE => Ok("reovim_foundation"),
         CONSUMER_CLOSURE => Ok("reovim_foundation_public_consumer"),
+        KERNEL_INTERFACE_SHIPPING_CLOSURE => Ok("reovim_kernel_interface"),
+        KERNEL_INTERFACE_CONSUMER_CLOSURE => {
+            Ok("reovim_kernel_interface_public_consumer")
+        }
         _ => Err(BuildError::new(
             "V2_PRODUCT_UNIT_CLOSURE",
             "compiler unit closure is outside the closed pair",
@@ -1893,12 +2058,11 @@ fn validate_cargo_unit_joins(
     active: &ActiveProductEvidence<'_>,
     units: &BTreeMap<String, String>,
 ) -> Result<(), BuildError> {
-    let shipping = units.get(SHIPPING_CLOSURE).ok_or_else(|| {
-        BuildError::new("V2_PRODUCT_UNIT_MISSING", "shipping unit is absent")
-    })?;
-    let consumer = units.get(CONSUMER_CLOSURE).ok_or_else(|| {
-        BuildError::new("V2_PRODUCT_UNIT_MISSING", "consumer unit is absent")
-    })?;
+    let foundation = required_unit(units, SHIPPING_CLOSURE)?;
+    let foundation_consumer = required_unit(units, CONSUMER_CLOSURE)?;
+    let kernel = required_unit(units, KERNEL_INTERFACE_SHIPPING_CLOSURE)?;
+    let kernel_consumer =
+        required_unit(units, KERNEL_INTERFACE_CONSUMER_CLOSURE)?;
     for build in active.cargo_builds {
         let expected = units.get(&build.closure).ok_or_else(|| {
             BuildError::new(
@@ -1912,25 +2076,76 @@ fn validate_cargo_unit_joins(
                 "Cargo compiled-unit set differs from wrapper evidence",
             ));
         }
-        let expected_fresh = if build.closure == SHIPPING_CLOSURE {
-            Vec::new()
-        } else {
-            vec![shipping.clone()]
+        let expected_fresh = match build.closure.as_str() {
+            SHIPPING_CLOSURE => BTreeSet::new(),
+            CONSUMER_CLOSURE | KERNEL_INTERFACE_SHIPPING_CLOSURE => {
+                BTreeSet::from([foundation.clone()])
+            }
+            KERNEL_INTERFACE_CONSUMER_CLOSURE => {
+                BTreeSet::from([foundation.clone(), kernel.clone()])
+            }
+            _ => {
+                return Err(BuildError::new(
+                    "V2_PRODUCT_CARGO_UNIT",
+                    "Cargo capture references an unknown closure",
+                ));
+            }
         };
-        if build.fresh_provider_units != expected_fresh {
+        let actual_fresh =
+            build.fresh_provider_units.iter().cloned().collect::<BTreeSet<_>>();
+        if actual_fresh.len() != build.fresh_provider_units.len()
+            || actual_fresh != expected_fresh
+        {
             return Err(BuildError::new(
                 "V2_PRODUCT_CARGO_FRESH",
                 "Cargo fresh-provider set differs from the closure pair",
             ));
         }
+        let event_compiled = build
+            .artifact_events
+            .iter()
+            .filter(|event| !event.fresh)
+            .map(|event| event.unit.clone())
+            .collect::<BTreeSet<_>>();
+        let event_fresh = build
+            .artifact_events
+            .iter()
+            .filter(|event| event.fresh)
+            .map(|event| event.unit.clone())
+            .collect::<BTreeSet<_>>();
+        if event_compiled != BTreeSet::from([expected.clone()])
+            || event_fresh != expected_fresh
+            || build.artifact_events.len()
+                != event_compiled.len() + event_fresh.len()
+        {
+            return Err(BuildError::new(
+                "V2_PRODUCT_CARGO_ARTIFACT_SET",
+                "Cargo artifact events differ from compiled and fresh units",
+            ));
+        }
     }
-    if shipping == consumer {
+    let distinct = [foundation, foundation_consumer, kernel, kernel_consumer]
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+    if distinct.len() != 4 {
         return Err(BuildError::new(
             "V2_PRODUCT_UNIT_DUPLICATE",
-            "shipping and consumer use the same compiler unit",
+            "the four closures do not use distinct compiler units",
         ));
     }
     Ok(())
+}
+
+fn required_unit<'a>(
+    units: &'a BTreeMap<String, String>,
+    closure: &str,
+) -> Result<&'a String, BuildError> {
+    units.get(closure).ok_or_else(|| {
+        BuildError::new(
+            "V2_PRODUCT_UNIT_MISSING",
+            format!("closure {closure} has no compiler unit"),
+        )
+    })
 }
 
 fn require_under_path(
@@ -1971,9 +2186,24 @@ fn product_input_values(
     units: &ProductUnitValues,
     observations: &BTreeMap<&Path, &SourceFileObservation>,
 ) -> Result<Vec<Value>, BuildError> {
+    validate_exact_compiler_source_sets(active.product_sources)?;
     let sets = [
-        (registry.shipping, &active.product_source.shipping_sources),
-        (registry.consumer, &active.product_source.consumer_sources),
+        (
+            registry.foundation.shipping,
+            &active.product_sources.foundation.shipping_sources,
+        ),
+        (
+            registry.foundation.consumer,
+            &active.product_sources.foundation.consumer_sources,
+        ),
+        (
+            registry.kernel_interface.shipping,
+            &active.product_sources.kernel_interface.shipping_sources,
+        ),
+        (
+            registry.kernel_interface.consumer,
+            &active.product_sources.kernel_interface.consumer_sources,
+        ),
     ];
     let count = sets.iter().try_fold(0_usize, |total, (_, paths)| {
         total.checked_add(paths.len()).ok_or_else(|| {
@@ -1983,14 +2213,15 @@ fn product_input_values(
             )
         })
     })?;
-    if count
-        > usize::from(
-            inputs.topology.limits.product_execution.compiler_input_count,
-        )
+    if count != PRODUCT_COMPILER_INPUT_COUNT
+        || count
+            > usize::from(
+                inputs.topology.limits.product_execution.compiler_input_count,
+            )
     {
         return Err(BuildError::new(
             "V2_PRODUCT_INPUT_LIMIT",
-            "compiler source inputs exceed their retained bound",
+            "compiler source inputs differ from the exact retained set",
         ));
     }
     let mut values = Vec::with_capacity(count);
@@ -2010,6 +2241,47 @@ fn product_input_values(
         left_key.cmp(&right_key)
     });
     Ok(values)
+}
+
+fn validate_exact_compiler_source_sets(
+    observed: &product_source::TwoPairSourceObservation,
+) -> Result<(), BuildError> {
+    let expected = product_preflight::compiler_source_selection();
+    let exact = observed
+        .foundation
+        .shipping_sources
+        .iter()
+        .cloned()
+        .collect::<BTreeSet<_>>()
+        == expected.foundation_shipping
+        && observed
+            .foundation
+            .consumer_sources
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<_>>()
+            == expected.foundation_consumer
+        && observed
+            .kernel_interface
+            .shipping_sources
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<_>>()
+            == expected.kernel_interface_shipping
+        && observed
+            .kernel_interface
+            .consumer_sources
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<_>>()
+            == expected.kernel_interface_consumer;
+    if exact {
+        return Ok(());
+    }
+    Err(BuildError::new(
+        "V2_PRODUCT_INPUT_SET",
+        "source analysis differs from exact preflight compiler selection",
+    ))
 }
 
 fn append_product_inputs(
@@ -2111,7 +2383,7 @@ fn product_artifact_values(
     units: &ProductUnitValues,
 ) -> Result<ProductArtifactValues, BuildError> {
     let limits = inputs.topology.limits.product_execution;
-    if active.artifacts.len() != 4
+    if active.artifacts.len() != 8
         || active.artifacts.len() > usize::from(limits.artifact_count)
     {
         return Err(BuildError::new(
@@ -2125,7 +2397,7 @@ fn product_artifact_values(
     });
     let mut total = 0_u64;
     let mut paths = BTreeSet::new();
-    let mut values = Vec::with_capacity(4);
+    let mut values = Vec::with_capacity(8);
     let mut by_unit_kind = BTreeMap::new();
     for artifact in artifacts {
         let unit = units.by_id.get(&artifact.unit).ok_or_else(|| {
@@ -2135,7 +2407,7 @@ fn product_artifact_values(
             )
         })?;
         if artifact.size_bytes == 0
-            || !matches!(artifact.crate_type.as_str(), "rlib" | "rmeta")
+            || !artifact_extension_matches(artifact)
             || !paths.insert(artifact.path.clone())
         {
             return Err(BuildError::new(
@@ -2145,7 +2417,7 @@ fn product_artifact_values(
         }
         require_under_path(
             &artifact.path,
-            &active.execution.scratch.mountpoint,
+            Path::new(PREPARED_TARGET_DIR),
             "Product artifact",
         )?;
         validate_product_path(inputs, &artifact.path, "Product artifact")?;
@@ -2185,7 +2457,109 @@ fn product_artifact_values(
             "compiler unit lacks rlib or rmeta artifact coverage",
         ));
     }
+    validate_product_artifact_paths(units, &by_unit_kind)?;
     Ok(ProductArtifactValues { values, by_unit_kind })
+}
+
+fn artifact_extension_matches(artifact: &ProductArtifactEvidence) -> bool {
+    matches!(artifact.crate_type.as_str(), "rlib" | "rmeta")
+        && artifact.path.extension().and_then(|value| value.to_str())
+            == Some(artifact.crate_type.as_str())
+}
+
+fn validate_product_artifact_paths(
+    units: &ProductUnitValues,
+    artifacts: &BTreeMap<(String, String), ProductArtifactRef>,
+) -> Result<(), BuildError> {
+    for (unit_id, unit) in &units.by_id {
+        let rlib = artifacts
+            .get(&(unit_id.clone(), "rlib".to_owned()))
+            .ok_or_else(|| {
+                BuildError::new(
+                    "V2_PRODUCT_ARTIFACT_COVERAGE",
+                    "compiler unit rlib is absent",
+                )
+            })?;
+        let rmeta = artifacts
+            .get(&(unit_id.clone(), "rmeta".to_owned()))
+            .ok_or_else(|| {
+                BuildError::new(
+                    "V2_PRODUCT_ARTIFACT_COVERAGE",
+                    "compiler unit rmeta is absent",
+                )
+            })?;
+        compiler_capture::validate_reported_unit_outputs(
+            &unit.original_argv,
+            crate_name_for_closure(&unit.closure)?,
+            &rlib.path,
+            &rmeta.path,
+        )
+        .map_err(|failure| {
+            BuildError::new(failure.code, failure.to_string())
+        })?;
+    }
+    Ok(())
+}
+
+fn product_provider_artifact_values(
+    inputs: &BuildInputs<'_>,
+    active: &ActiveProductEvidence<'_>,
+    units: &ProductUnitValues,
+    artifacts: &ProductArtifactValues,
+) -> Result<Vec<Value>, BuildError> {
+    if active.provider_artifacts.len() != 2 {
+        return Err(BuildError::new(
+            "V2_PRODUCT_PROVIDER_SET",
+            "active Product evidence requires two provider artifacts",
+        ));
+    }
+    let mut providers = active
+        .provider_artifacts
+        .iter()
+        .map(|provider| (provider.unit.as_str(), provider))
+        .collect::<BTreeMap<_, _>>();
+    if providers.len() != active.provider_artifacts.len() {
+        return Err(BuildError::new(
+            "V2_PRODUCT_PROVIDER_SET",
+            "provider artifact unit is duplicated",
+        ));
+    }
+    let mut values = Vec::with_capacity(2);
+    let mut top_paths = BTreeSet::new();
+    for closure in [SHIPPING_CLOSURE, KERNEL_INTERFACE_SHIPPING_CLOSURE] {
+        let unit = required_unit(&units.by_closure, closure)?;
+        let provider = providers.remove(unit.as_str()).ok_or_else(|| {
+            BuildError::new(
+                "V2_PRODUCT_PROVIDER_UNIT",
+                format!("shipping closure {closure} lacks its provider"),
+            )
+        })?;
+        if !top_paths.insert(provider.top_level_rlib.path.clone())
+            || active
+                .artifacts
+                .iter()
+                .any(|artifact| artifact.path == provider.top_level_rlib.path)
+        {
+            return Err(BuildError::new(
+                "V2_PRODUCT_PROVIDER_BYTES",
+                "provider top-level rlib path is duplicated or hashed",
+            ));
+        }
+        values.push(product_provider_artifact_value(
+            inputs, active, units, artifacts, provider, closure,
+        )?);
+    }
+    if !providers.is_empty() {
+        return Err(BuildError::new(
+            "V2_PRODUCT_PROVIDER_SET",
+            "provider artifact references a nonshipping unit",
+        ));
+    }
+    validate_compiled_consumer_events(active, units, artifacts)?;
+    values.sort_by(|left, right| {
+        left["unit"].as_str().cmp(&right["unit"].as_str())
+    });
+    Ok(values)
 }
 
 fn product_provider_artifact_value(
@@ -2193,20 +2567,10 @@ fn product_provider_artifact_value(
     active: &ActiveProductEvidence<'_>,
     units: &ProductUnitValues,
     artifacts: &ProductArtifactValues,
+    provider: &ProductProviderArtifactEvidence,
+    shipping_closure: &str,
 ) -> Result<Value, BuildError> {
-    let provider = active.provider_artifact;
-    let shipping = units.by_closure.get(SHIPPING_CLOSURE).ok_or_else(|| {
-        BuildError::new(
-            "V2_PRODUCT_PROVIDER_UNIT",
-            "shipping compiler unit is absent",
-        )
-    })?;
-    if &provider.unit != shipping {
-        return Err(BuildError::new(
-            "V2_PRODUCT_PROVIDER_UNIT",
-            "provider artifact names the wrong compiler unit",
-        ));
-    }
+    let shipping = required_unit(&units.by_closure, shipping_closure)?;
     let hashed = artifacts
         .by_unit_kind
         .get(&(shipping.clone(), "rlib".to_owned()))
@@ -2230,11 +2594,24 @@ fn product_provider_artifact_value(
     let top = &provider.top_level_rlib;
     require_under_path(
         &top.path,
-        &active.execution.scratch.mountpoint,
+        Path::new(PREPARED_TARGET_DIR),
         "top-level Cargo rlib",
     )?;
     validate_product_path(inputs, &top.path, "top-level Cargo rlib")?;
-    if top.path == provider.hashed_rlib.path
+    if top.path
+        != product_top_level_rlib_path(crate_name_for_closure(
+            shipping_closure,
+        )?)
+        || top.path == provider.hashed_rlib.path
+        || top.path.extension().and_then(|value| value.to_str()) != Some("rlib")
+        || provider
+            .hashed_rlib
+            .path
+            .extension()
+            .and_then(|value| value.to_str())
+            != Some("rlib")
+        || provider.rmeta.path.extension().and_then(|value| value.to_str())
+            != Some("rmeta")
         || top.content_digest != provider.hashed_rlib.content_digest
         || top.size_bytes == 0
         || top.size_bytes != provider.hashed_rlib.size_bytes
@@ -2244,7 +2621,7 @@ fn product_provider_artifact_value(
             "top-level and hashed provider paths/bytes are not exact",
         ));
     }
-    validate_provider_cargo_events(active, units, provider)?;
+    validate_provider_cargo_events(active, provider, shipping_closure)?;
     Ok(json!({
         "unit": provider.unit,
         "top_level_rlib": product_file_identity_value(top)?,
@@ -2272,34 +2649,17 @@ fn require_provider_identity(
 
 fn validate_provider_cargo_events(
     active: &ActiveProductEvidence<'_>,
-    units: &ProductUnitValues,
     provider: &ProductProviderArtifactEvidence,
+    shipping_closure: &str,
 ) -> Result<(), BuildError> {
     let shipping = active
         .cargo_builds
         .iter()
-        .find(|build| build.closure == SHIPPING_CLOSURE)
+        .find(|build| build.closure == shipping_closure)
         .ok_or_else(|| {
             BuildError::new(
                 "V2_PRODUCT_CARGO_ARTIFACT_SET",
                 "shipping Cargo artifact capture is absent",
-            )
-        })?;
-    let consumer = active
-        .cargo_builds
-        .iter()
-        .find(|build| build.closure == CONSUMER_CLOSURE)
-        .ok_or_else(|| {
-            BuildError::new(
-                "V2_PRODUCT_CARGO_ARTIFACT_SET",
-                "consumer Cargo artifact capture is absent",
-            )
-        })?;
-    let consumer_unit =
-        units.by_closure.get(CONSUMER_CLOSURE).ok_or_else(|| {
-            BuildError::new(
-                "V2_PRODUCT_CARGO_ARTIFACT_UNIT",
-                "consumer compiler unit is absent",
             )
         })?;
     let shipping_files = BTreeSet::from([
@@ -2316,32 +2676,83 @@ fn validate_provider_cargo_events(
         provider.hashed_rlib.path.clone(),
         provider.rmeta.path.clone(),
     ]);
-    require_cargo_event(
-        &consumer.artifact_events,
-        &provider.unit,
-        true,
-        &fresh_files,
-    )?;
-    let consumer_event = consumer
-        .artifact_events
-        .iter()
-        .find(|event| event.unit == *consumer_unit && !event.fresh)
-        .ok_or_else(|| {
-            BuildError::new(
-                "V2_PRODUCT_CARGO_ARTIFACT_SET",
-                "consumer Cargo artifact event is absent",
-            )
-        })?;
-    if shipping.artifact_events.len() == 1
-        && consumer.artifact_events.len() == 2
-        && consumer_event.filenames.len() == 2
+    let consumers: &[&str] = if shipping_closure == SHIPPING_CLOSURE {
+        &[
+            CONSUMER_CLOSURE,
+            KERNEL_INTERFACE_SHIPPING_CLOSURE,
+            KERNEL_INTERFACE_CONSUMER_CLOSURE,
+        ]
+    } else {
+        &[KERNEL_INTERFACE_CONSUMER_CLOSURE]
+    };
+    for closure in consumers {
+        let consumer = active
+            .cargo_builds
+            .iter()
+            .find(|build| build.closure == *closure)
+            .ok_or_else(|| {
+                BuildError::new(
+                    "V2_PRODUCT_CARGO_ARTIFACT_SET",
+                    format!("closure {closure} lacks its Cargo capture"),
+                )
+            })?;
+        require_cargo_event(
+            &consumer.artifact_events,
+            &provider.unit,
+            true,
+            &fresh_files,
+        )?;
+    }
+    if shipping.artifact_events.iter().filter(|event| !event.fresh).count() == 1
     {
         return Ok(());
     }
     Err(BuildError::new(
         "V2_PRODUCT_CARGO_ARTIFACT_SET",
-        "Cargo artifact event set differs from the closed journey",
+        "shipping Cargo capture has an unexpected compiled event set",
     ))
+}
+
+fn validate_compiled_consumer_events(
+    active: &ActiveProductEvidence<'_>,
+    units: &ProductUnitValues,
+    artifacts: &ProductArtifactValues,
+) -> Result<(), BuildError> {
+    for closure in [CONSUMER_CLOSURE, KERNEL_INTERFACE_CONSUMER_CLOSURE] {
+        let unit = required_unit(&units.by_closure, closure)?;
+        let build = active
+            .cargo_builds
+            .iter()
+            .find(|build| build.closure == closure)
+            .ok_or_else(|| {
+                BuildError::new(
+                    "V2_PRODUCT_CARGO_ARTIFACT_SET",
+                    format!("closure {closure} lacks its Cargo capture"),
+                )
+            })?;
+        let rmeta = artifacts
+            .by_unit_kind
+            .get(&(unit.clone(), "rmeta".to_owned()))
+            .ok_or_else(|| {
+                BuildError::new(
+                    "V2_PRODUCT_CARGO_ARTIFACT_SET",
+                    "consumer compiler rmeta is absent",
+                )
+            })?;
+        let filenames = BTreeSet::from([
+            product_top_level_rlib_path(crate_name_for_closure(closure)?),
+            rmeta.path.clone(),
+        ]);
+        require_cargo_event(&build.artifact_events, unit, false, &filenames)?;
+    }
+    Ok(())
+}
+
+fn product_top_level_rlib_path(crate_name: &str) -> PathBuf {
+    Path::new(PREPARED_TARGET_DIR)
+        .join(PRODUCT_TARGET_TRIPLE)
+        .join("release")
+        .join(format!("lib{crate_name}.rlib"))
 }
 
 fn require_cargo_event(
@@ -2393,73 +2804,147 @@ fn product_extern_values(
     units: &ProductUnitValues,
     artifacts: &ProductArtifactValues,
 ) -> Result<Vec<Value>, BuildError> {
-    let [edge] = active.extern_edges else {
+    if active.extern_edges.len() != 3 {
         return Err(BuildError::new(
             "V2_PRODUCT_EXTERN_SET",
-            "active Foundation evidence requires one extern edge",
-        ));
-    };
-    let consumer = units.by_id.get(&edge.consumer_unit).ok_or_else(|| {
-        BuildError::new(
-            "V2_PRODUCT_EXTERN_CONSUMER",
-            "extern edge references an unknown consumer unit",
-        )
-    })?;
-    let provider = units.by_id.get(&edge.provider_unit).ok_or_else(|| {
-        BuildError::new(
-            "V2_PRODUCT_EXTERN_PROVIDER",
-            "extern edge references an unknown provider unit",
-        )
-    })?;
-    let artifact = artifacts
-        .by_unit_kind
-        .get(&(edge.provider_unit.clone(), "rmeta".to_owned()))
-        .ok_or_else(|| {
-            BuildError::new(
-                "V2_PRODUCT_EXTERN_ARTIFACT",
-                "extern provider has no retained rmeta artifact",
-            )
-        })?;
-    if consumer.closure != CONSUMER_CLOSURE
-        || provider.closure != SHIPPING_CLOSURE
-        || artifact.closure != SHIPPING_CLOSURE
-        || edge.extern_name != "reovim_foundation"
-        || edge.provider_path != artifact.path
-    {
-        return Err(BuildError::new(
-            "V2_PRODUCT_EXTERN_JOIN",
-            "extern edge differs from the Foundation public-consumer edge",
+            "active Product evidence requires three direct extern edges",
         ));
     }
-    Ok(vec![json!({
-        "closure": consumer.closure,
-        "unit": edge.consumer_unit,
-        "extern_name": edge.extern_name,
-        "provider": {
-            "kind": "compiler_unit",
-            "unit": edge.provider_unit,
-            "path": path_text(&edge.provider_path, "extern provider")?,
-        },
-        "decision": "admitted_product_unit",
-    })])
+    let mut edges = active.extern_edges.iter().collect::<Vec<_>>();
+    edges.sort_by(|left, right| left.consumer_unit.cmp(&right.consumer_unit));
+    let mut consumers = BTreeSet::new();
+    let mut values = Vec::with_capacity(3);
+    for edge in edges {
+        let consumer =
+            units.by_id.get(&edge.consumer_unit).ok_or_else(|| {
+                BuildError::new(
+                    "V2_PRODUCT_EXTERN_CONSUMER",
+                    "extern edge references an unknown consumer unit",
+                )
+            })?;
+        let provider =
+            units.by_id.get(&edge.provider_unit).ok_or_else(|| {
+                BuildError::new(
+                    "V2_PRODUCT_EXTERN_PROVIDER",
+                    "extern edge references an unknown provider unit",
+                )
+            })?;
+        let artifact = artifacts
+            .by_unit_kind
+            .get(&(edge.provider_unit.clone(), "rmeta".to_owned()))
+            .ok_or_else(|| {
+                BuildError::new(
+                    "V2_PRODUCT_EXTERN_ARTIFACT",
+                    "extern provider has no retained rmeta artifact",
+                )
+            })?;
+        let (provider_closure, extern_name) =
+            expected_extern_relation(&consumer.closure)?;
+        let exact = consumers.insert(consumer.closure.clone())
+            && provider.closure == provider_closure
+            && artifact.closure == provider_closure
+            && edge.extern_name == extern_name
+            && edge.provider_path == artifact.path;
+        if !exact {
+            return Err(BuildError::new(
+                "V2_PRODUCT_EXTERN_JOIN",
+                "extern edge differs from the exact direct Product edge",
+            ));
+        }
+        values.push(json!({
+            "closure": consumer.closure,
+            "unit": edge.consumer_unit,
+            "extern_name": edge.extern_name,
+            "provider": {
+                "kind": "compiler_unit",
+                "unit": edge.provider_unit,
+                "path": path_text(&edge.provider_path, "extern provider")?,
+            },
+            "decision": "admitted_product_unit",
+        }));
+    }
+    let expected_consumers = BTreeSet::from([
+        CONSUMER_CLOSURE.to_owned(),
+        KERNEL_INTERFACE_SHIPPING_CLOSURE.to_owned(),
+        KERNEL_INTERFACE_CONSUMER_CLOSURE.to_owned(),
+    ]);
+    if consumers != expected_consumers {
+        return Err(BuildError::new(
+            "V2_PRODUCT_EXTERN_SET",
+            "direct extern consumer set differs from the exact profile",
+        ));
+    }
+    Ok(values)
 }
 
-fn package_membership_value(
+fn expected_extern_relation(
+    consumer_closure: &str,
+) -> Result<(&'static str, &'static str), BuildError> {
+    match consumer_closure {
+        CONSUMER_CLOSURE | KERNEL_INTERFACE_SHIPPING_CLOSURE => {
+            Ok((SHIPPING_CLOSURE, "reovim_foundation"))
+        }
+        KERNEL_INTERFACE_CONSUMER_CLOSURE => {
+            Ok((KERNEL_INTERFACE_SHIPPING_CLOSURE, "reovim_kernel_interface"))
+        }
+        _ => Err(BuildError::new(
+            "V2_PRODUCT_EXTERN_JOIN",
+            "shipping or unknown closure cannot own a direct extern edge",
+        )),
+    }
+}
+
+fn package_membership_values(
     inputs: &BuildInputs<'_>,
     active: &ActiveProductEvidence<'_>,
     registry: &ActiveRegistry<'_>,
     observations: &BTreeMap<&Path, &SourceFileObservation>,
-) -> Result<Value, BuildError> {
-    validate_package_observations(inputs, active, registry.shipping)?;
-    let membership =
-        registry.shipping.package_membership.as_ref().ok_or_else(|| {
-            BuildError::new(
-                "V2_PRODUCT_PACKAGE_REGISTRY",
-                "shipping closure lacks package membership authority",
+) -> Result<Vec<Value>, BuildError> {
+    let pairs = [
+        (
+            registry.foundation.shipping,
+            active.foundation_package_before,
+            active.foundation_package_after,
+        ),
+        (
+            registry.kernel_interface.shipping,
+            active.kernel_interface_package_before,
+            active.kernel_interface_package_after,
+        ),
+    ];
+    let mut values = pairs
+        .into_iter()
+        .map(|(shipping, before, after)| {
+            package_membership_value(
+                inputs,
+                shipping,
+                before,
+                after,
+                observations,
             )
-        })?;
-    let observed =
-        active.package_before.members.iter().cloned().collect::<BTreeSet<_>>();
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    values.sort_by(|left, right| {
+        left["closure"].as_str().cmp(&right["closure"].as_str())
+    });
+    Ok(values)
+}
+
+fn package_membership_value(
+    inputs: &BuildInputs<'_>,
+    shipping: &product_closures::Closure,
+    before: &package_capture::Observation,
+    after: &package_capture::Observation,
+    observations: &BTreeMap<&Path, &SourceFileObservation>,
+) -> Result<Value, BuildError> {
+    validate_package_observations(inputs, shipping, before, after)?;
+    let membership = shipping.package_membership.as_ref().ok_or_else(|| {
+        BuildError::new(
+            "V2_PRODUCT_PACKAGE_REGISTRY",
+            "shipping closure lacks package membership authority",
+        )
+    })?;
+    let observed = before.members.iter().cloned().collect::<BTreeSet<_>>();
     let expected = membership
         .members
         .iter()
@@ -2476,9 +2961,11 @@ fn package_membership_value(
         .sort_by(|left, right| left.package_path().cmp(right.package_path()));
     let members = members
         .into_iter()
-        .map(|member| package_member_value(inputs, observations, member))
+        .map(|member| {
+            package_member_value(inputs, observations, shipping, member)
+        })
         .collect::<Result<Vec<_>, _>>()?;
-    let mut captures = [active.package_before, active.package_after]
+    let mut captures = [before, after]
         .into_iter()
         .map(package_capture_value)
         .collect::<Vec<_>>();
@@ -2486,9 +2973,9 @@ fn package_membership_value(
         left["phase"].as_str().cmp(&right["phase"].as_str())
     });
     Ok(json!({
-        "closure": registry.shipping.id,
-        "workspace": registry.shipping.workspace.id,
-        "package": registry.shipping.package.id,
+        "closure": shipping.id,
+        "workspace": shipping.workspace.id,
+        "package": shipping.package.id,
         "captures": captures,
         "members": members,
     }))
@@ -2496,11 +2983,10 @@ fn package_membership_value(
 
 fn validate_package_observations(
     inputs: &BuildInputs<'_>,
-    active: &ActiveProductEvidence<'_>,
     shipping: &product_closures::Closure,
+    before: &package_capture::Observation,
+    after: &package_capture::Observation,
 ) -> Result<(), BuildError> {
-    let before = active.package_before;
-    let after = active.package_after;
     let limit =
         u64::from(inputs.topology.limits.product_execution.package_list_bytes);
     let member_limit =
@@ -2569,6 +3055,7 @@ fn package_capture_value(observed: &package_capture::Observation) -> Value {
 fn package_member_value(
     inputs: &BuildInputs<'_>,
     observations: &BTreeMap<&Path, &SourceFileObservation>,
+    shipping: &product_closures::Closure,
     member: &product_closures::PackageMember,
 ) -> Result<Value, BuildError> {
     match member {
@@ -2587,6 +3074,7 @@ fn package_member_value(
         } => copied_package_member_value(
             inputs,
             observations,
+            shipping,
             package_path,
             repository_path,
         ),
@@ -2596,6 +3084,7 @@ fn package_member_value(
 fn copied_package_member_value(
     inputs: &BuildInputs<'_>,
     observations: &BTreeMap<&Path, &SourceFileObservation>,
+    shipping: &product_closures::Closure,
     package_path: &Path,
     repository_path: &Path,
 ) -> Result<Value, BuildError> {
@@ -2620,9 +3109,9 @@ fn copied_package_member_value(
         )
     })?;
     if source.classification.owner
-        != SourceOwner::Product(ArchitecturalRole::Foundation)
+        != SourceOwner::Product(shipping.architectural_role)
         || source.classification.provenance != SourceProvenance::Authored
-        || source.classification.source_use != SourceUse::Production
+        || source.classification.source_use != shipping.source_use
     {
         return Err(BuildError::new(
             "V2_PRODUCT_PACKAGE_CLASSIFICATION",
@@ -2641,15 +3130,33 @@ fn copied_package_member_value(
     }))
 }
 
-fn public_consumer_value(
+fn public_consumer_values(
     inputs: &BuildInputs<'_>,
     active: &ActiveProductEvidence<'_>,
     registry: &ActiveRegistry<'_>,
+) -> Result<Vec<Value>, BuildError> {
+    let pairs = [
+        (registry.foundation, &active.product_sources.foundation),
+        (registry.kernel_interface, &active.product_sources.kernel_interface),
+    ];
+    let mut values = pairs
+        .into_iter()
+        .map(|(pair, source)| public_consumer_value(inputs, pair, source))
+        .collect::<Result<Vec<_>, _>>()?;
+    values.sort_by(|left, right| {
+        left["relation"].as_str().cmp(&right["relation"].as_str())
+    });
+    Ok(values)
+}
+
+fn public_consumer_value(
+    inputs: &BuildInputs<'_>,
+    pair: ActivePair<'_>,
+    source: &product_source::ProductSourceObservation,
 ) -> Result<Value, BuildError> {
-    let source = active.product_source;
-    validate_product_source_observation(source, registry)?;
-    if source.public_items != registry.relation.public_items
-        || source.derive_checks != registry.relation.derive_checks
+    validate_product_source_observation(source, pair)?;
+    if source.public_items != pair.relation.public_items
+        || source.derive_checks != pair.relation.derive_checks
         || source.public_items.is_empty()
         || source.public_items.len()
             > inputs.topology.limits.product_execution.public_item_count
@@ -2683,9 +3190,9 @@ fn public_consumer_value(
         })
         .collect::<Vec<_>>();
     Ok(json!({
-        "relation": registry.relation.id,
-        "shipping_closure": registry.relation.shipping_closure,
-        "consumer_closure": registry.relation.consumer_closure,
+        "relation": pair.relation.id,
+        "shipping_closure": pair.relation.shipping_closure,
+        "consumer_closure": pair.relation.consumer_closure,
         "public_items": items,
         "derive_checks": checks,
         "status": "pass",
@@ -2694,10 +3201,10 @@ fn public_consumer_value(
 
 fn validate_product_source_observation(
     source: &product_source::ProductSourceObservation,
-    registry: &ActiveRegistry<'_>,
+    pair: ActivePair<'_>,
 ) -> Result<(), BuildError> {
     let membership =
-        registry.shipping.package_membership.as_ref().ok_or_else(|| {
+        pair.shipping.package_membership.as_ref().ok_or_else(|| {
             BuildError::new(
                 "V2_PRODUCT_SOURCE_SET",
                 "shipping package membership is absent",
@@ -2715,21 +3222,33 @@ fn validate_product_source_observation(
         .collect::<BTreeSet<_>>();
     let observed_shipping =
         source.shipping_sources.iter().cloned().collect::<BTreeSet<_>>();
-    let consumer = BTreeSet::from([registry.consumer.target.src_path.clone()]);
     let observed_consumer =
         source.consumer_sources.iter().cloned().collect::<BTreeSet<_>>();
     let witnesses =
         source.witness_types.iter().cloned().collect::<BTreeSet<_>>();
-    let expected_witnesses = registry
+    let expected_witnesses = pair
         .relation
         .derive_checks
         .iter()
         .map(|check| check.public_type.clone())
         .collect::<BTreeSet<_>>();
-    if shipping != observed_shipping
+    let expected_counts = match pair.relation.id.as_str() {
+        PUBLIC_RELATION => (5, 2),
+        KERNEL_INTERFACE_PUBLIC_RELATION => (20, 12),
+        _ => {
+            return Err(BuildError::new(
+                "V2_PRODUCT_SOURCE_SET",
+                "source observation references an unknown public relation",
+            ));
+        }
+    };
+    if source.relation != pair.relation.id
+        || shipping != observed_shipping
         || source.shipping_sources.len() != observed_shipping.len()
-        || consumer != observed_consumer
         || source.consumer_sources.len() != observed_consumer.len()
+        || !observed_consumer.contains(&pair.consumer.target.src_path)
+        || observed_shipping.len() != expected_counts.0
+        || observed_consumer.len() != expected_counts.1
         || witnesses != expected_witnesses
         || source.witness_types.len() != witnesses.len()
     {
@@ -2747,6 +3266,7 @@ const fn public_item_kind_text(
     match kind {
         product_closures::PublicItemKind::Module => "module",
         product_closures::PublicItemKind::Type => "type",
+        product_closures::PublicItemKind::Variant => "variant",
         product_closures::PublicItemKind::Trait => "trait",
         product_closures::PublicItemKind::Function => "function",
         product_closures::PublicItemKind::Const => "const",
@@ -2798,7 +3318,12 @@ fn product_execution_value(
     Ok(json!({
         "id": active.execution.id,
         "environment": active.execution.environment,
-        "closures": [SHIPPING_CLOSURE, CONSUMER_CLOSURE],
+        "closures": [
+            SHIPPING_CLOSURE,
+            CONSUMER_CLOSURE,
+            KERNEL_INTERFACE_SHIPPING_CLOSURE,
+            KERNEL_INTERFACE_CONSUMER_CLOSURE,
+        ],
         "exposure": exposures,
         "namespaces": {
             "user": namespaces.user,
@@ -2873,10 +3398,12 @@ fn validate_active_runtime_exposures(
             let mapping =
                 (input.canonical_path.clone(), input.prepared_path.clone());
             runtime_mappings.insert(mapping.clone());
-            runtime_identities.insert(
+            let identity = (input.content_digest.clone(), input.size_bytes);
+            retain_runtime_identity(
+                &mut runtime_identities,
                 mapping,
-                (input.content_digest.clone(), input.size_bytes),
-            );
+                &identity,
+            )?;
         }
     }
     let exposed = execution
@@ -2900,6 +3427,21 @@ fn validate_active_runtime_exposures(
         )?;
     }
     Ok(())
+}
+
+fn retain_runtime_identity(
+    identities: &mut BTreeMap<(PathBuf, PathBuf), (String, u64)>,
+    mapping: (PathBuf, PathBuf),
+    identity: &(String, u64),
+) -> Result<(), BuildError> {
+    let prior = identities.insert(mapping, identity.clone());
+    if prior.as_ref().is_none_or(|value| value == identity) {
+        return Ok(());
+    }
+    Err(BuildError::new(
+        "V2_PRODUCT_RUNTIME_INPUT",
+        "shared runtime mapping has conflicting file identity",
+    ))
 }
 
 fn product_exposure_value(
@@ -3119,7 +3661,7 @@ fn validate_repository_exposures(
     exposures: &[ProductExposureEvidence],
     accounted: &mut BTreeSet<PathBuf>,
 ) -> Result<(), BuildError> {
-    for relative in PRODUCT_REPOSITORY_INPUTS {
+    for relative in product_preflight::repository_inputs() {
         let source = inputs.repository_root.join(relative);
         let destination = Path::new("/repo").join(relative);
         require_product_exposure(
@@ -5080,6 +5622,7 @@ mod tests {
                     consumer_closure: "consumer".to_owned(),
                     public_items: Vec::new(),
                     derive_checks: Vec::new(),
+                    reexports: Vec::new(),
                 },
             ],
         };
@@ -5102,9 +5645,21 @@ mod tests {
     fn active_registry_adapter_is_exact_and_ordered() {
         let registry = active_registry_fixture();
         let selected = super::active_registry(&registry).unwrap();
-        assert_eq!(selected.shipping.id, "foundation-shipping");
-        assert_eq!(selected.consumer.id, "foundation-consumer");
-        assert_eq!(selected.relation.id, "foundation-public-api");
+        assert_eq!(selected.foundation.shipping.id, super::SHIPPING_CLOSURE);
+        assert_eq!(selected.foundation.consumer.id, super::CONSUMER_CLOSURE);
+        assert_eq!(selected.foundation.relation.id, super::PUBLIC_RELATION);
+        assert_eq!(
+            selected.kernel_interface.shipping.id,
+            super::KERNEL_INTERFACE_SHIPPING_CLOSURE
+        );
+        assert_eq!(
+            selected.kernel_interface.consumer.id,
+            super::KERNEL_INTERFACE_CONSUMER_CLOSURE
+        );
+        assert_eq!(
+            selected.kernel_interface.relation.id,
+            super::KERNEL_INTERFACE_PUBLIC_RELATION
+        );
 
         let sorted = super::sorted_unique_strings(
             &["z".to_owned(), "a".to_owned()],
@@ -5214,6 +5769,128 @@ mod tests {
             ),
             Some(&serde_json::json!("#/$defs/count"))
         );
+    }
+
+    #[test]
+    fn plural_producer_helpers_reject_identity_drift() {
+        let mut build = cargo_build_evidence();
+        super::validate_cargo_message_relation(&build).unwrap();
+        build.message_count += 1;
+        assert_eq!(
+            super::validate_cargo_message_relation(&build).unwrap_err().code,
+            "V2_PRODUCT_CARGO_CAPTURE_SET"
+        );
+
+        let exact = vec![
+            "--target-dir".to_owned(),
+            super::PREPARED_TARGET_DIR.to_owned(),
+        ];
+        assert_eq!(
+            super::exact_product_target_dir(&exact).unwrap(),
+            super::PREPARED_TARGET_DIR
+        );
+        let changed =
+            vec!["--target-dir".to_owned(), "/scratch/other".to_owned()];
+        assert_eq!(
+            super::exact_product_target_dir(&changed).unwrap_err().code,
+            "V2_PRODUCT_CARGO_ARGV"
+        );
+
+        let mut artifact = super::ProductArtifactEvidence {
+            unit: "unit".to_owned(),
+            path: PathBuf::from("/scratch/build-target/value.rlib"),
+            content_digest: crate::digest::bytes(b"artifact"),
+            size_bytes: 1,
+            crate_type: "rlib".to_owned(),
+        };
+        assert!(super::artifact_extension_matches(&artifact));
+        artifact.crate_type = "rmeta".to_owned();
+        assert!(!super::artifact_extension_matches(&artifact));
+
+        assert_runtime_identity_conflict();
+        assert_source_selection_substitution();
+    }
+
+    fn cargo_build_evidence() -> super::ProductCargoBuildEvidence {
+        super::ProductCargoBuildEvidence {
+            closure: "foundation-shipping".to_owned(),
+            command_argv: Vec::new(),
+            raw_output_digest: crate::digest::bytes(b"cargo"),
+            stdout_bytes: 1,
+            message_count: 2,
+            compiled_units: vec!["unit".to_owned()],
+            fresh_provider_units: Vec::new(),
+            artifact_events: vec![super::ProductCargoArtifactEventEvidence {
+                unit: "unit".to_owned(),
+                fresh: false,
+                filenames: Vec::new(),
+            }],
+            probes: Vec::new(),
+        }
+    }
+
+    fn assert_runtime_identity_conflict() {
+        let mapping =
+            (PathBuf::from("/host/lib.so"), PathBuf::from("/lib/lib.so"));
+        let mut identities = BTreeMap::new();
+        let first = (crate::digest::bytes(b"first"), 1);
+        super::retain_runtime_identity(
+            &mut identities,
+            mapping.clone(),
+            &first,
+        )
+        .unwrap();
+        let changed = (crate::digest::bytes(b"changed"), 1);
+        assert_eq!(
+            super::retain_runtime_identity(&mut identities, mapping, &changed,)
+                .unwrap_err()
+                .code,
+            "V2_PRODUCT_RUNTIME_INPUT"
+        );
+    }
+
+    fn assert_source_selection_substitution() {
+        let expected = crate::product_preflight::compiler_source_selection();
+        let foundation = source_observation(
+            "foundation-public-api",
+            expected.foundation_shipping,
+            expected.foundation_consumer,
+        );
+        let kernel_interface = source_observation(
+            "kernel-interface-public-api",
+            expected.kernel_interface_shipping,
+            expected.kernel_interface_consumer,
+        );
+        let mut observed = crate::product_source::TwoPairSourceObservation {
+            foundation,
+            kernel_interface,
+        };
+        super::validate_exact_compiler_source_sets(&observed).unwrap();
+        observed.kernel_interface.consumer_sources.pop();
+        observed.kernel_interface.consumer_sources.push(PathBuf::from(
+            "tests/kernel-interface-public-consumer/tests/public_contract.rs",
+        ));
+        assert_eq!(
+            super::validate_exact_compiler_source_sets(&observed)
+                .unwrap_err()
+                .code,
+            "V2_PRODUCT_INPUT_SET"
+        );
+    }
+
+    fn source_observation(
+        relation: &str,
+        shipping: BTreeSet<PathBuf>,
+        consumer: BTreeSet<PathBuf>,
+    ) -> crate::product_source::ProductSourceObservation {
+        crate::product_source::ProductSourceObservation {
+            relation: relation.to_owned(),
+            public_items: Vec::new(),
+            derive_checks: Vec::new(),
+            witness_types: Vec::new(),
+            shipping_sources: shipping.into_iter().collect(),
+            consumer_sources: consumer.into_iter().collect(),
+        }
     }
 
     fn assert_duplicate_network_rejected() {
@@ -5444,7 +6121,7 @@ mod tests {
                 workspace: Some("product"),
                 profile: Some("release"),
                 closure: None,
-                execution: Some("foundation-proof"),
+                execution: Some("kernel-interface-two-pair-proof"),
                 tool_review: None,
                 tool_environment: None,
                 executable_digest,
@@ -5453,7 +6130,7 @@ mod tests {
             limits,
         )
         .unwrap();
-        assert_eq!(scoped["execution"], "foundation-proof");
+        assert_eq!(scoped["execution"], "kernel-interface-two-pair-proof");
         assert!(scoped["closure"].is_null());
     }
 
@@ -5475,6 +6152,7 @@ mod tests {
             id: "cargo-package-id".to_owned(),
             name: "fixture".to_owned(),
             version: "0.1.0".to_owned(),
+            edition: "2024".to_owned(),
             source: None,
             checksum: None,
             license: None,

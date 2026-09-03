@@ -1286,7 +1286,7 @@
       "required": ["path", "kind"],
       "properties": {
         "path": { "$ref": "#/$defs/nonempty_string" },
-        "kind": { "enum": ["module", "type", "trait", "function", "const", "static"] }
+        "kind": { "enum": ["module", "type", "variant", "trait", "function", "const", "static"] }
       }
     },
     "derive_check": {
@@ -1513,7 +1513,7 @@
         "compiler_inputs",
         "extern_edges",
         "artifacts",
-        "provider_artifact",
+        "provider_artifacts",
         "package_memberships",
         "public_consumers",
         "executions"
@@ -1545,11 +1545,10 @@
           "uniqueItems": true,
           "items": { "$ref": "#/$defs/artifact" }
         },
-        "provider_artifact": {
-          "oneOf": [
-            { "type": "null" },
-            { "$ref": "#/$defs/provider_artifact" }
-          ]
+        "provider_artifacts": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/provider_artifact" }
         },
         "package_memberships": {
           "type": "array",
@@ -1580,7 +1579,7 @@
               "compiler_inputs": { "maxItems": 0 },
               "extern_edges": { "maxItems": 0 },
               "artifacts": { "maxItems": 0 },
-              "provider_artifact": { "type": "null" },
+              "provider_artifacts": { "maxItems": 0 },
               "package_memberships": { "maxItems": 0 },
               "public_consumers": { "maxItems": 0 },
               "executions": { "maxItems": 0 }
@@ -1589,7 +1588,7 @@
           "else": {
             "properties": {
               "selected_execution_environment": { "$ref": "#/$defs/nonempty_string" },
-              "provider_artifact": { "$ref": "#/$defs/provider_artifact" },
+              "provider_artifacts": { "minItems": 1 },
               "executions": { "minItems": 1 }
             }
           }

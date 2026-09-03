@@ -11,11 +11,10 @@ use crate::process::{
 };
 
 use super::{
-    diagnostic,
+    config_transport, diagnostic,
     linux::{
-        CONFIG_ARG_BYTES, ParentMountpoint, configure_exposures, current_ids,
-        namespace_links, one_final_line, require_configured_identities,
-        validate_plan,
+        ParentMountpoint, configure_exposures, current_ids, namespace_links,
+        one_final_line, require_configured_identities, validate_plan,
     },
     model::{
         CleanupObservation, Config, ConfiguredExposure, Error, Evidence,
@@ -25,7 +24,35 @@ use super::{
     network, pid1, protocol,
 };
 
+#[cfg(test)]
+use super::model::ConfigTransportInspection;
+
 pub(super) fn execute(plan: &Plan) -> Result<Execution, Error> {
+    let (config, mountpoint) = assemble_config(plan)?;
+    let journey = run_outer(&config);
+    let post_identity = require_configured_identities(&config);
+    let mount_cleanup = mountpoint.finish();
+    mount_cleanup?;
+    post_identity?;
+    let (process, setup) = journey?;
+    let evidence = evidence(plan, &setup, &process)?;
+    Ok(Execution { evidence, process })
+}
+
+#[cfg(test)]
+pub(super) fn inspect_config_transport(
+    plan: &Plan,
+) -> Result<ConfigTransportInspection, Error> {
+    let (config, mountpoint) = assemble_config(plan)?;
+    let inspection = config_transport::encode(&config).map(|value| value.1);
+    let post_identity = require_configured_identities(&config);
+    let mount_cleanup = mountpoint.finish();
+    mount_cleanup?;
+    post_identity?;
+    inspection
+}
+
+fn assemble_config(plan: &Plan) -> Result<(Config, ParentMountpoint), Error> {
     validate_plan(plan)?;
     let exposures = configure_exposures(plan)?;
     let parent_namespaces = namespace_links()?;
@@ -48,24 +75,11 @@ pub(super) fn execute(plan: &Plan) -> Result<Execution, Error> {
         outside_uid: host_identity.0,
         outside_gid: host_identity.1,
     };
-    let journey = run_outer(&config);
-    let post_identity = require_configured_identities(&config);
-    let mount_cleanup = mountpoint.finish();
-    mount_cleanup?;
-    post_identity?;
-    let (process, setup) = journey?;
-    let evidence = evidence(plan, &setup, &process)?;
-    Ok(Execution { evidence, process })
+    Ok((config, mountpoint))
 }
 
 fn run_outer(config: &Config) -> Result<(ProcessResult, SetupResult), Error> {
-    let config_bytes = protocol::encode_config(config)?;
-    if config_bytes.len() > CONFIG_ARG_BYTES {
-        return Err(Error::new(
-            "PREPARED_CONFIG_ENV_LIMIT",
-            "setup config exceeds the environment byte limit",
-        ));
-    }
+    let config_bytes = setup_environment_payload(config)?;
     let config_text =
         std::str::from_utf8(&config_bytes).map_err(|failure| {
             Error::new("PREPARED_CONFIG_UTF8", failure.to_string())
@@ -98,6 +112,17 @@ fn run_outer(config: &Config) -> Result<(ProcessResult, SetupResult), Error> {
     let setup = protocol::parse_setup_result(&result, config.dispatch_bounds)?;
     validate_setup(&setup, config)?;
     Ok((process, setup))
+}
+
+fn setup_environment_payload(config: &Config) -> Result<Vec<u8>, Error> {
+    config_transport::encode(config).map(|value| value.0)
+}
+
+#[cfg(test)]
+pub(super) fn setup_environment_payload_for_test(
+    config: &Config,
+) -> Result<Vec<u8>, Error> {
+    setup_environment_payload(config)
 }
 
 fn validate_process(
