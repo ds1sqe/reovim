@@ -10,6 +10,8 @@ pub const fn witness() -> bool {
     diagnostic_items_one();
     diagnostic_items_two();
     diagnostic_items_three();
+    diagnostic_items_four();
+    diagnostic_items_five();
     event_items_one();
     event_items_two();
     identity_items();
@@ -214,6 +216,59 @@ const fn diagnostic_items_three() {
             stream,
         ::reovim_kernel_interface::diagnostic::DiagnosticDestinationResult::
             total_bytes,
+    );
+}
+
+const fn diagnostic_items_four() {
+    let _ = (
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputOwnerState::
+            execution_is_terminal,
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputOwnerState::
+            release_is_complete,
+        ::reovim_kernel_interface::diagnostic::DiagnosticShutdownEntry::new,
+        ::reovim_kernel_interface::diagnostic::DiagnosticShutdownEntry::
+            destination,
+        ::reovim_kernel_interface::diagnostic::DiagnosticShutdownEntry::
+            disposition,
+        ::reovim_kernel_interface::diagnostic::DiagnosticShutdownEntry::
+            execution,
+        ::reovim_kernel_interface::diagnostic::DiagnosticShutdownStatistics::
+            drained_records,
+        ::reovim_kernel_interface::diagnostic::DiagnosticShutdownStatistics::
+            drained_source_bytes,
+        ::reovim_kernel_interface::diagnostic::DiagnosticShutdownStatistics::
+            discarded_records,
+        ::reovim_kernel_interface::diagnostic::DiagnosticShutdownStatistics::
+            discarded_source_bytes,
+        ::reovim_kernel_interface::diagnostic::DiagnosticShutdownStatistics::
+            unresolved_records,
+        ::reovim_kernel_interface::diagnostic::DiagnosticShutdownStatistics::
+            unresolved_source_bytes,
+        ::reovim_kernel_interface::diagnostic::DiagnosticShutdownStatistics::
+            total_records,
+        ::reovim_kernel_interface::diagnostic::DiagnosticShutdownStatistics::
+            total_source_bytes,
+    );
+}
+
+const fn diagnostic_items_five() {
+    let _ = (
+        ::reovim_kernel_interface::diagnostic::DiagnosticShutdownReportRef::
+            new,
+        ::reovim_kernel_interface::diagnostic::DiagnosticShutdownReportRef::
+            output,
+        ::reovim_kernel_interface::diagnostic::DiagnosticShutdownReportRef::
+            source_stream,
+        ::reovim_kernel_interface::diagnostic::DiagnosticShutdownReportRef::
+            policy,
+        ::reovim_kernel_interface::diagnostic::DiagnosticShutdownReportRef::
+            outcome,
+        ::reovim_kernel_interface::diagnostic::DiagnosticShutdownReportRef::
+            owner_at_latch,
+        ::reovim_kernel_interface::diagnostic::DiagnosticShutdownReportRef::
+            statistics,
+        ::reovim_kernel_interface::diagnostic::DiagnosticShutdownReportRef::
+            entries,
     );
 }
 
@@ -482,10 +537,13 @@ const fn variant_items() {
         diagnostic_destination_error_variants,
         diagnostic_drop_cause_variants,
         diagnostic_operation_variants,
+        diagnostic_output_owner_state_variants,
         diagnostic_output_error_variants,
         diagnostic_readiness_predicate_variants,
         diagnostic_record_error_variants,
+        diagnostic_shutdown_entry_error_variants,
         diagnostic_shutdown_policy_variants,
+        diagnostic_shutdown_report_error_variants,
         diagnostic_submission_outcome_variants,
         diagnostic_submission_status_variants,
         event_actionability_variants,
@@ -800,6 +858,73 @@ const fn diagnostic_destination_error_variants(
             CertaintyMismatch { .. }
         | ::reovim_kernel_interface::diagnostic::DiagnosticDestinationError::
             PrefixMismatch { .. } => {}
+    }
+}
+
+const fn diagnostic_output_owner_state_variants(
+    value: ::reovim_kernel_interface::diagnostic::DiagnosticOutputOwnerState,
+) {
+    match value {
+        ::reovim_kernel_interface::diagnostic::DiagnosticOutputOwnerState::
+            NoOwnedExecution
+        | ::reovim_kernel_interface::diagnostic::DiagnosticOutputOwnerState::
+            LiveOwned
+        | ::reovim_kernel_interface::diagnostic::DiagnosticOutputOwnerState::
+            ExitedOwned
+        | ::reovim_kernel_interface::diagnostic::DiagnosticOutputOwnerState::
+            JoinedOwned
+        | ::reovim_kernel_interface::diagnostic::DiagnosticOutputOwnerState::
+            ContainingProcessReaped => {}
+    }
+}
+
+const fn diagnostic_shutdown_entry_error_variants(
+    value: ::reovim_kernel_interface::diagnostic::DiagnosticShutdownEntryError,
+) {
+    match value {
+        ::reovim_kernel_interface::diagnostic::
+            DiagnosticShutdownEntryError::DispositionExecutionMismatch {
+                ..
+            }
+        | ::reovim_kernel_interface::diagnostic::
+            DiagnosticShutdownEntryError::ExecutionDestinationMismatch {
+                ..
+            }
+        | ::reovim_kernel_interface::diagnostic::
+            DiagnosticShutdownEntryError::DispositionDestinationMismatch {
+                ..
+            }
+        | ::reovim_kernel_interface::diagnostic::
+            DiagnosticShutdownEntryError::ReapingExecutionMismatch { .. } => {}
+    }
+}
+
+const fn diagnostic_shutdown_report_error_variants(
+    value: ::reovim_kernel_interface::diagnostic::DiagnosticShutdownReportError,
+) {
+    match value {
+        ::reovim_kernel_interface::diagnostic::
+            DiagnosticShutdownReportError::EntryCountUnrepresentable
+        | ::reovim_kernel_interface::diagnostic::
+            DiagnosticShutdownReportError::RecordCapacityExceeded { .. }
+        | ::reovim_kernel_interface::diagnostic::
+            DiagnosticShutdownReportError::OutputMismatch { .. }
+        | ::reovim_kernel_interface::diagnostic::
+            DiagnosticShutdownReportError::SourceStreamMismatch { .. }
+        | ::reovim_kernel_interface::diagnostic::
+            DiagnosticShutdownReportError::RecordByteCapacityExceeded {
+                ..
+            }
+        | ::reovim_kernel_interface::diagnostic::
+            DiagnosticShutdownReportError::SequenceNotIncreasing { .. }
+        | ::reovim_kernel_interface::diagnostic::
+            DiagnosticShutdownReportError::PolicyDiscardMismatch { .. }
+        | ::reovim_kernel_interface::diagnostic::
+            DiagnosticShutdownReportError::SourceByteCapacityExceeded {
+                ..
+            }
+        | ::reovim_kernel_interface::diagnostic::
+            DiagnosticShutdownReportError::UnresolvedOwnerMismatch { .. } => {}
     }
 }
 

@@ -213,6 +213,11 @@
           },
           {
             "kind": "copied",
+            "package_path": "src/diagnostic/shutdown.rs",
+            "repository_path": "kernel/interface/src/diagnostic/shutdown.rs"
+          },
+          {
+            "kind": "copied",
             "package_path": "src/effect.rs",
             "repository_path": "kernel/interface/src/effect.rs"
           },
@@ -2725,6 +2730,18 @@
           "kind": "type"
         },
         {
+          "path": "diagnostic::DiagnosticOutputOwnerState",
+          "kind": "type"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputOwnerState::execution_is_terminal",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputOwnerState::release_is_complete",
+          "kind": "function"
+        },
+        {
           "path": "diagnostic::DiagnosticOutputReadinessPredicate",
           "kind": "type"
         },
@@ -2793,8 +2810,108 @@
           "kind": "function"
         },
         {
+          "path": "diagnostic::DiagnosticShutdownEntry",
+          "kind": "type"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownEntry::destination",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownEntry::disposition",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownEntry::execution",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownEntry::new",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownEntryError",
+          "kind": "type"
+        },
+        {
           "path": "diagnostic::DiagnosticShutdownPolicy",
           "kind": "type"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownReportError",
+          "kind": "type"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownReportRef",
+          "kind": "type"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownReportRef::entries",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownReportRef::new",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownReportRef::outcome",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownReportRef::output",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownReportRef::owner_at_latch",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownReportRef::policy",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownReportRef::source_stream",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownReportRef::statistics",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownStatistics",
+          "kind": "type"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownStatistics::discarded_records",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownStatistics::discarded_source_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownStatistics::drained_records",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownStatistics::drained_source_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownStatistics::total_records",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownStatistics::total_source_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownStatistics::unresolved_records",
+          "kind": "function"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownStatistics::unresolved_source_bytes",
+          "kind": "function"
         },
         {
           "path": "diagnostic::DiagnosticSubmissionOutcome",
@@ -4169,6 +4286,26 @@
           "kind": "variant"
         },
         {
+          "path": "diagnostic::DiagnosticOutputOwnerState::ContainingProcessReaped",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputOwnerState::ExitedOwned",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputOwnerState::JoinedOwned",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputOwnerState::LiveOwned",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticOutputOwnerState::NoOwnedExecution",
+          "kind": "variant"
+        },
+        {
           "path": "diagnostic::DiagnosticOutputReadinessPredicate::CurrentGenerationAdmission",
           "kind": "variant"
         },
@@ -4193,11 +4330,63 @@
           "kind": "variant"
         },
         {
+          "path": "diagnostic::DiagnosticShutdownEntryError::DispositionDestinationMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownEntryError::DispositionExecutionMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownEntryError::ExecutionDestinationMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownEntryError::ReapingExecutionMismatch",
+          "kind": "variant"
+        },
+        {
           "path": "diagnostic::DiagnosticShutdownPolicy::Discard",
           "kind": "variant"
         },
         {
           "path": "diagnostic::DiagnosticShutdownPolicy::Drain",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownReportError::EntryCountUnrepresentable",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownReportError::OutputMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownReportError::PolicyDiscardMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownReportError::RecordByteCapacityExceeded",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownReportError::RecordCapacityExceeded",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownReportError::SequenceNotIncreasing",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownReportError::SourceByteCapacityExceeded",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownReportError::SourceStreamMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "diagnostic::DiagnosticShutdownReportError::UnresolvedOwnerMismatch",
           "kind": "variant"
         },
         {
@@ -6169,6 +6358,31 @@
         },
         {
           "derive": "Clone",
+          "public_type": "diagnostic::DiagnosticOutputOwnerState",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "diagnostic::DiagnosticOutputOwnerState",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "diagnostic::DiagnosticOutputOwnerState",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "diagnostic::DiagnosticOutputOwnerState",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "diagnostic::DiagnosticOutputOwnerState",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
           "public_type": "diagnostic::DiagnosticOutputReadinessPredicate",
           "consumer_operation": "clone"
         },
@@ -6244,6 +6458,56 @@
         },
         {
           "derive": "Clone",
+          "public_type": "diagnostic::DiagnosticShutdownEntry",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "diagnostic::DiagnosticShutdownEntry",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "diagnostic::DiagnosticShutdownEntry",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "diagnostic::DiagnosticShutdownEntry",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "diagnostic::DiagnosticShutdownEntry",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "diagnostic::DiagnosticShutdownEntryError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "diagnostic::DiagnosticShutdownEntryError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "diagnostic::DiagnosticShutdownEntryError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "diagnostic::DiagnosticShutdownEntryError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "diagnostic::DiagnosticShutdownEntryError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
           "public_type": "diagnostic::DiagnosticShutdownPolicy",
           "consumer_operation": "clone"
         },
@@ -6265,6 +6529,81 @@
         {
           "derive": "Eq",
           "public_type": "diagnostic::DiagnosticShutdownPolicy",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "diagnostic::DiagnosticShutdownReportError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "diagnostic::DiagnosticShutdownReportError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "diagnostic::DiagnosticShutdownReportError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "diagnostic::DiagnosticShutdownReportError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "diagnostic::DiagnosticShutdownReportError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "diagnostic::DiagnosticShutdownReportRef",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "diagnostic::DiagnosticShutdownReportRef",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "diagnostic::DiagnosticShutdownReportRef",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "diagnostic::DiagnosticShutdownReportRef",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "diagnostic::DiagnosticShutdownReportRef",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "diagnostic::DiagnosticShutdownStatistics",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "diagnostic::DiagnosticShutdownStatistics",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "diagnostic::DiagnosticShutdownStatistics",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "diagnostic::DiagnosticShutdownStatistics",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "diagnostic::DiagnosticShutdownStatistics",
           "consumer_operation": "eq"
         },
         {

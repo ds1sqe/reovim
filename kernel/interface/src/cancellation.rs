@@ -68,7 +68,7 @@ impl InstallationOutcome {
 /// Separately observed terminality of still-owned execution.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ExecutionOutcome {
-    /// Cancellation won before execution began.
+    /// Execution was proved not to have begun before terminal resolution.
     NeverStarted,
     /// Execution is not proved terminal and remains owned.
     OwnedNonterminal,

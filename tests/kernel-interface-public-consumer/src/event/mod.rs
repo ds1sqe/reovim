@@ -213,3 +213,13 @@ pub fn make_ready_record() -> Option<StartupEventRecord<'static>> {
     let descriptor = make_descriptor()?;
     canonical::make_ready_record(&descriptor)
 }
+
+pub fn make_degraded_record() -> Option<StartupEventRecord<'static>> {
+    let descriptor = make_descriptor()?;
+    canonical::make_degraded_record(&descriptor)
+}
+
+pub fn make_failed_record() -> Option<StartupEventRecord<'static>> {
+    let descriptor = make_descriptor()?;
+    canonical::make_failed_record(&descriptor)
+}

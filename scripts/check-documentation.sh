@@ -297,8 +297,10 @@ expected_normative_files=(
     Documentation/02-Host-API.md
     ${HOST_API}/01-Boundary-and-Capability-Admission.md
     ${HOST_API}/02-Monotonic-Clock.md
-    ${HOST_API}/03-Diagnostic-Output-and-Bootstrap-Health.md
-    ${HOST_API}/04-Lifecycle-Adapters-and-Conformance.md
+    ${HOST_API}/03-Diagnostic-Output.md
+    ${HOST_API}/04-Diagnostic-Shutdown-Values.md
+    ${HOST_API}/05-Bootstrap-Health.md
+    ${HOST_API}/06-Lifecycle-Adapters-and-Conformance.md
     ${EXTENSIONS}/01-Packages-Contribution-Points-and-Registry.md
     ${EXTENSIONS}/02-SDKs-Service-Contracts-and-Compatibility.md
     ${EXTENSIONS}/03-Adapters-Execution-and-Lifecycle.md
@@ -413,8 +415,10 @@ check_index_children ${ARCH}/05-Client/README.md \
 check_index_children Documentation/02-Host-API.md \
     ${HOST_API}/01-Boundary-and-Capability-Admission.md \
     ${HOST_API}/02-Monotonic-Clock.md \
-    ${HOST_API}/03-Diagnostic-Output-and-Bootstrap-Health.md \
-    ${HOST_API}/04-Lifecycle-Adapters-and-Conformance.md
+    ${HOST_API}/03-Diagnostic-Output.md \
+    ${HOST_API}/04-Diagnostic-Shutdown-Values.md \
+    ${HOST_API}/05-Bootstrap-Health.md \
+    ${HOST_API}/06-Lifecycle-Adapters-and-Conformance.md
 check_index_children ${EXTENSIONS}/README.md \
     ${EXTENSIONS}/01-Packages-Contribution-Points-and-Registry.md \
     ${EXTENSIONS}/02-SDKs-Service-Contracts-and-Compatibility.md \

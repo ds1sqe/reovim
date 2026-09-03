@@ -3845,7 +3845,8 @@ fn exact_witness_type_arguments(
     let lifetime_type = profile == PairProfile::KernelInterface
         && matches!(
             public_type,
-            "event::CanonicalEventBytes"
+            "diagnostic::DiagnosticShutdownReportRef"
+                | "event::CanonicalEventBytes"
                 | "event::CanonicalEventRecordRef"
                 | "event::StartupEventRecord"
                 | "event::StartupSnapshot"
@@ -3905,6 +3906,7 @@ mod tests {
         "kernel/interface/src/contract.rs",
         "kernel/interface/src/diagnostic.rs",
         "kernel/interface/src/diagnostic/destination.rs",
+        "kernel/interface/src/diagnostic/shutdown.rs",
         "kernel/interface/src/effect.rs",
         "kernel/interface/src/event.rs",
         "kernel/interface/src/event/admission.rs",
@@ -3930,6 +3932,7 @@ mod tests {
         "tests/kernel-interface-public-consumer/src/clock.rs",
         "tests/kernel-interface-public-consumer/src/diagnostic.rs",
         "tests/kernel-interface-public-consumer/src/diagnostic/destination.rs",
+        "tests/kernel-interface-public-consumer/src/diagnostic/shutdown.rs",
         "tests/kernel-interface-public-consumer/src/effect.rs",
         "tests/kernel-interface-public-consumer/src/event/canonical.rs",
         "tests/kernel-interface-public-consumer/src/event/derives.rs",
@@ -4158,6 +4161,42 @@ mod tests {
             "const fn clone_copy_witness<T>() -> bool",
             "const fn renamed_clone_copy_witness<T>() -> bool",
             "PRODUCT_TRAIT_BOUND_UNAVAILABLE",
+        );
+    }
+
+    #[test]
+    fn borrowed_report_derive_witness_requires_static_lifetime() {
+        let path = concat!(
+            "tests/kernel-interface-public-consumer/",
+            "src/diagnostic/shutdown.rs",
+        );
+        let explicit = concat!(
+            "::reovim_kernel_interface::diagnostic::",
+            "DiagnosticShutdownReportRef<\n",
+            "            'static,\n",
+            "        >,",
+        );
+        let omitted = concat!(
+            "::reovim_kernel_interface::diagnostic::",
+            "DiagnosticShutdownReportRef,",
+        );
+        let inferred = concat!(
+            "::reovim_kernel_interface::diagnostic::",
+            "DiagnosticShutdownReportRef<\n",
+            "            '_,\n",
+            "        >,",
+        );
+        ki_source_mutant(
+            path,
+            explicit,
+            omitted,
+            "PRODUCT_CONSUMER_DERIVE_SET",
+        );
+        ki_source_mutant(
+            path,
+            explicit,
+            inferred,
+            "PRODUCT_CONSUMER_DERIVE_SET",
         );
     }
 

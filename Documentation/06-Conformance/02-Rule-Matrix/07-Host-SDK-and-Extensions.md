@@ -7,7 +7,7 @@
 | --- | --- | --- | --- |
 | `HOST-001` | Host capabilities are small, semantic, consumer-driven, and exclude platform handles/branching. | [Host boundary](../../02-Host-API/01-Boundary-and-Capability-Admission.md) | `STATIC,SHAPE,REVIEW` |
 | `HOST-002` | Initial Host scope contains only MonotonicClock and DiagnosticOutput; ExecutionFacility/engines are non-Host. | [Host scope](../../02-Host-API/01-Boundary-and-Capability-Admission.md) | `STATIC,CONTRACT` |
-| `HOST-003` | Every Host capability has standard/test adapters, shared conformance, lifecycle, limits, events, and measurements. | [Host conformance](../../02-Host-API/04-Lifecycle-Adapters-and-Conformance.md) | `CONTRACT,FAULT,PERF` |
+| `HOST-003` | Every Host capability has standard/test adapters, shared conformance, lifecycle, limits, events, and measurements. | [Host conformance](../../02-Host-API/06-Lifecycle-Adapters-and-Conformance.md) | `CONTRACT,FAULT,PERF` |
 | `SDK-001` | Language-neutral schemas own semantics; Rust/Python/TypeScript projections cannot redefine wire, retry, certainty, or lifecycle. | [Extensions](../../03-Extensions/02-SDKs-Service-Contracts-and-Compatibility.md) | `SHAPE,COMPAT,GOLDEN` |
 | `SDK-002` | Rust-first and service-reference predecessor gates complete before Python/TypeScript admission. | [Extensions](../../03-Extensions/02-SDKs-Service-Contracts-and-Compatibility.md) | `TRACE,CONTRACT,PERF` |
 | `SDK-003` | Each required or supported role/family/language row has public examples, docs, conformance, exact package, and independent evidence. | [Extensions](../../03-Extensions/04-Quick-Authoring-Admission-and-Compatibility.md) | `DOC,COMPAT,INTEG,PERF,QUAL` |
@@ -25,4 +25,4 @@
 contracts; those chapters own their capability-specific semantics.
 
 [diagnostic]:
-  ../../02-Host-API/03-Diagnostic-Output-and-Bootstrap-Health.md
+  ../../02-Host-API/03-Diagnostic-Output.md

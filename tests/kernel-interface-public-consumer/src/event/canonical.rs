@@ -7,7 +7,7 @@ use reovim_kernel_interface::event::{
     EventSequence, EventTimestamp, StartupComponentCounts,
     StartupEventDescriptor, StartupEventLimits, StartupEventRecord,
 };
-use reovim_kernel_interface::lifecycle::ReadinessOutcome;
+use reovim_kernel_interface::lifecycle::{ReadinessOutcome, RollbackOutcome};
 
 use super::{
     CORRELATION, DEGRADED_LINE, FAILED_LINE, PRODUCER, READY_LINE,
@@ -261,7 +261,57 @@ fn observation_error_case(descriptor: &StartupEventDescriptor) -> bool {
 pub fn make_ready_record(
     descriptor: &StartupEventDescriptor,
 ) -> Option<StartupEventRecord<'static>> {
-    let Ok(instant) = descriptor.clock().instant(5) else {
+    make_record(
+        descriptor,
+        EventSequence::first(),
+        5,
+        ReadinessOutcome::Ready,
+        BootstrapHealth::Clear,
+        (3, 0, 0),
+        READY_LINE,
+    )
+}
+
+pub fn make_degraded_record(
+    descriptor: &StartupEventDescriptor,
+) -> Option<StartupEventRecord<'static>> {
+    let sequence = EventSequence::new(2).ok()?;
+    make_record(
+        descriptor,
+        sequence,
+        6,
+        ReadinessOutcome::DiagnosticsDegraded,
+        BootstrapHealth::Imported,
+        (1, 2, 0),
+        DEGRADED_LINE,
+    )
+}
+
+pub fn make_failed_record(
+    descriptor: &StartupEventDescriptor,
+) -> Option<StartupEventRecord<'static>> {
+    let sequence = EventSequence::new(3).ok()?;
+    make_record(
+        descriptor,
+        sequence,
+        7,
+        ReadinessOutcome::ActivationFailed(RollbackOutcome::Reverted),
+        BootstrapHealth::Pending,
+        (0, 1, 2),
+        FAILED_LINE,
+    )
+}
+
+fn make_record(
+    descriptor: &StartupEventDescriptor,
+    sequence: EventSequence,
+    elapsed: u64,
+    readiness: ReadinessOutcome,
+    health: BootstrapHealth,
+    counts: (u64, u64, u64),
+    line: &'static [u8],
+) -> Option<StartupEventRecord<'static>> {
+    let Ok(instant) = descriptor.clock().instant(elapsed) else {
         return None;
     };
     let clock = FixedClock::observed(descriptor.clock(), instant);
@@ -276,27 +326,20 @@ pub fn make_ready_record(
     ) else {
         return None;
     };
-    let Ok(counts) = StartupComponentCounts::new(3, 0, 0) else {
+    let Ok(counts) = StartupComponentCounts::new(counts.0, counts.1, counts.2)
+    else {
         return None;
     };
-    let Ok(proposal) = super::descriptor::make_proposal(
-        descriptor,
-        ReadinessOutcome::Ready,
-        BootstrapHealth::Clear,
-        counts,
-    ) else {
+    let Ok(proposal) =
+        super::descriptor::make_proposal(descriptor, readiness, health, counts)
+    else {
         return None;
     };
-    let Ok(canonical) = CanonicalEventBytes::new(descriptor, READY_LINE) else {
+    let Ok(canonical) = CanonicalEventBytes::new(descriptor, line) else {
         return None;
     };
     StartupEventRecord::new(
-        descriptor,
-        scope,
-        EventSequence::first(),
-        timestamp,
-        proposal,
-        canonical,
+        descriptor, scope, sequence, timestamp, proposal, canonical,
     )
     .ok()
 }

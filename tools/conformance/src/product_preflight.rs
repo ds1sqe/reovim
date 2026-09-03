@@ -56,6 +56,7 @@ const PRODUCT_FILES: &[(&str, FileRole)] = &[
         "kernel/interface/src/diagnostic/destination.rs",
         FileRole::KernelInterface,
     ),
+    ("kernel/interface/src/diagnostic/shutdown.rs", FileRole::KernelInterface),
     ("kernel/interface/src/effect.rs", FileRole::KernelInterface),
     ("kernel/interface/src/event.rs", FileRole::KernelInterface),
     ("kernel/interface/src/event/admission.rs", FileRole::KernelInterface),
@@ -98,6 +99,13 @@ const PRODUCT_FILES: &[(&str, FileRole)] = &[
         concat!(
             "tests/kernel-interface-public-consumer/",
             "src/diagnostic/destination.rs",
+        ),
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        concat!(
+            "tests/kernel-interface-public-consumer/",
+            "src/diagnostic/shutdown.rs",
         ),
         FileRole::KernelInterfaceConsumer,
     ),

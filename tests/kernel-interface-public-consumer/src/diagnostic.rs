@@ -1,6 +1,7 @@
 //! Public-only `DiagnosticOutput` contract and ownership journey.
 
 mod destination;
+mod shutdown;
 
 use core::fmt::Debug;
 
@@ -26,7 +27,9 @@ use reovim_kernel_interface::diagnostic::{
     DiagnosticRecordContract, DiagnosticRecordError, DiagnosticShutdownPolicy,
     DiagnosticSubmissionOutcome, DiagnosticSubmissionStatus,
 };
-use reovim_kernel_interface::event::CanonicalEventRecordRef;
+use reovim_kernel_interface::event::{
+    CanonicalEventRecordRef, StartupEventRecord,
+};
 use reovim_kernel_interface::identity::{IncarnationId, InstanceId};
 use reovim_kernel_interface::lifecycle::{Generation, LifecycleIdentity};
 use reovim_kernel_interface::operation::{
@@ -54,6 +57,7 @@ pub const fn const_cases() -> bool {
         && descriptor_error_cases()
         && derive_cases()
         && destination::const_cases()
+        && shutdown::const_cases()
 }
 
 const fn contract_identity_facade_cases() -> bool {
@@ -475,6 +479,15 @@ const fn make_limits_for(
     output: LifecycleIdentity,
     maximum_record_bytes: u64,
 ) -> Option<DiagnosticOutputLimits> {
+    make_limits_with(output, maximum_record_bytes, 4, 4_096)
+}
+
+const fn make_limits_with(
+    output: LifecycleIdentity,
+    maximum_record_bytes: u64,
+    maximum_records: u64,
+    maximum_source_bytes: u64,
+) -> Option<DiagnosticOutputLimits> {
     let Some(completion) = make_completion() else {
         return None;
     };
@@ -482,8 +495,8 @@ const fn make_limits_for(
         output,
         8,
         maximum_record_bytes,
-        4,
-        4_096,
+        maximum_records,
+        maximum_source_bytes,
         completion,
     ) {
         Ok(value) => Some(value),
@@ -500,6 +513,24 @@ const fn make_descriptor_for(
     stream: LifecycleIdentity,
     maximum_record_bytes: u64,
 ) -> Option<DiagnosticOutputDescriptor> {
+    make_descriptor_with(
+        output,
+        stream,
+        maximum_record_bytes,
+        4,
+        4_096,
+        DiagnosticShutdownPolicy::Drain,
+    )
+}
+
+const fn make_descriptor_with(
+    output: LifecycleIdentity,
+    stream: LifecycleIdentity,
+    maximum_record_bytes: u64,
+    maximum_records: u64,
+    maximum_source_bytes: u64,
+    policy: DiagnosticShutdownPolicy,
+) -> Option<DiagnosticOutputDescriptor> {
     let Ok(contract) =
         reovim_kernel_interface::operation::ContractSelection::new(
             OUTPUT_CONTRACT,
@@ -510,7 +541,12 @@ const fn make_descriptor_for(
     else {
         return None;
     };
-    let Some(limits) = make_limits_for(output, maximum_record_bytes) else {
+    let Some(limits) = make_limits_with(
+        output,
+        maximum_record_bytes,
+        maximum_records,
+        maximum_source_bytes,
+    ) else {
         return None;
     };
     let Some(safety) = make_record_safety(SharingModel::Immutable) else {
@@ -523,7 +559,7 @@ const fn make_descriptor_for(
         stream,
         limits,
         record_contract(safety),
-        DiagnosticShutdownPolicy::Drain,
+        policy,
     ) {
         Ok(value) => Some(value),
         Err(_) => None,
@@ -1529,18 +1565,26 @@ pub fn exercise() -> bool {
         && all_closed_cases()
         && error_and_debug_cases()
         && destination::exercise()
+        && shutdown::exercise()
 }
 
 fn make_record(
     descriptor: &DiagnosticOutputDescriptor,
 ) -> Option<DiagnosticOutputRecord> {
     let record = event::make_ready_record()?;
+    make_record_from_event(descriptor, &record)
+}
+
+fn make_record_from_event(
+    descriptor: &DiagnosticOutputDescriptor,
+    record: &StartupEventRecord<'_>,
+) -> Option<DiagnosticOutputRecord> {
     let source = record.canonical_ref();
     let size = descriptor.validate_record(source).ok()?;
     if size.value() != source.size().value() {
         return None;
     }
-    let bytes = event::READY_LINE.into();
+    let bytes = source.bytes().into();
     DiagnosticOutputRecord::bind(descriptor, source, bytes).ok()
 }
 

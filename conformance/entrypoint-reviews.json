@@ -1,6 +1,6 @@
 {
   "schema": "reovim-entrypoint-reviews/v1",
-  "reviewed_at": "2026-09-03T06:57:58Z",
+  "reviewed_at": "2026-09-03T09:56:55Z",
   "reviews": [
     {
       "kind": "script",
@@ -72,7 +72,7 @@
     {
       "kind": "script",
       "path": "scripts/check-documentation.sh",
-      "content_digest": "sha256:f3a3621379a2a79c63ae5b84bc4f7ca2d80eedb47cab4b941f162e5af1b3fb56",
+      "content_digest": "sha256:cf70d632405595ee2f4161c151deecb70188a041a8ae3ac544f4c931b96602d6",
       "direct_local_invocations": [],
       "disposition": "admit",
       "mechanism": "exact-content-retained-review",
@@ -82,7 +82,7 @@
         "BASH_SOURCE resolves this checked-out script so ROOT selects the reviewed repository inputs."
       ],
       "review_record": "conformance/entrypoint-reviews/check-documentation-sh.md",
-      "review_record_digest": "sha256:3a1bcb3c374c33dca80b4950923fef3f2f7ded5c7bbc23c4a6be84eda1e8010e"
+      "review_record_digest": "sha256:72f63ea1bc536f41181242c549149be5037950061181c9f336ee6ec9f950c28c"
     },
     {
       "kind": "script",

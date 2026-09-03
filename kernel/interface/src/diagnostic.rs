@@ -3,6 +3,7 @@
 use core::fmt;
 
 mod destination;
+mod shutdown;
 
 pub use ::reovim_foundation::bound::{
     BoundDescriptor, BoundError, CheckedByteCount, CheckedCount,
@@ -17,10 +18,11 @@ use crate::carrier::{
 };
 use reovim_foundation::bound::{BoundValue, ZeroPolicy};
 
+use crate::cancellation::ExecutionOutcome;
 use crate::contract::ContractId;
 use crate::effect::EffectCertainty;
 use crate::event::{CanonicalEventRecordRef, EventSequence};
-use crate::lifecycle::LifecycleIdentity;
+use crate::lifecycle::{LifecycleIdentity, ShutdownOutcome, WorkDisposition};
 use crate::operation::{ContractSelection, OperationDescriptor};
 
 /// Nonzero outer completion bounds for activation and shutdown.
@@ -205,9 +207,9 @@ impl DiagnosticOutputLimits {
 /// Preselected treatment for work owned at the first Closing cut.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DiagnosticShutdownPolicy {
-    /// Attempt bounded completion of work accepted before Closing.
+    /// Attempt bounded completion, then discard unstarted work at deadline.
     Drain,
-    /// Discard work that has not begun a destination attempt.
+    /// Discard unstarted work on Closing or replacement.
     Discard,
 }
 
@@ -808,6 +810,422 @@ impl fmt::Display for DiagnosticDestinationError {
 }
 
 impl std::error::Error for DiagnosticDestinationError {}
+
+/// Independent execution-owner and release state able to retain a record or
+/// canonical report backing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DiagnosticOutputOwnerState {
+    /// No such independent owner or corresponding release obligation remains.
+    NoOwnedExecution,
+    /// Owning execution is not proved terminal and remains owned.
+    LiveOwned,
+    /// Execution is terminal while its join or release remains owned.
+    ExitedOwned,
+    /// Owning execution and its release obligation are complete.
+    JoinedOwned,
+    /// An isolation owner proved the containing process was reaped.
+    ContainingProcessReaped,
+}
+
+impl DiagnosticOutputOwnerState {
+    /// Reports whether owning execution is proved terminal.
+    #[must_use]
+    pub const fn execution_is_terminal(self) -> bool {
+        match self {
+            Self::LiveOwned => return false,
+            Self::NoOwnedExecution
+            | Self::ExitedOwned
+            | Self::JoinedOwned
+            | Self::ContainingProcessReaped => {}
+        }
+        true
+    }
+
+    /// Reports whether the independent owner's release obligation is complete.
+    #[must_use]
+    pub const fn release_is_complete(self) -> bool {
+        match self {
+            Self::LiveOwned | Self::ExitedOwned => return false,
+            Self::NoOwnedExecution
+            | Self::JoinedOwned
+            | Self::ContainingProcessReaped => {}
+        }
+        true
+    }
+}
+
+/// Coherent destination and execution evidence for one shutdown record.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DiagnosticShutdownEntry {
+    destination: DiagnosticDestinationResult,
+    disposition: WorkDisposition,
+    execution: ExecutionOutcome,
+}
+
+/// Failure to construct one coherent Diagnostic shutdown entry.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DiagnosticShutdownEntryError {
+    /// Work disposition conflicts with observed execution terminality.
+    DispositionExecutionMismatch {
+        /// Rejected work disposition.
+        disposition: WorkDisposition,
+        /// Rejected execution outcome.
+        execution: ExecutionOutcome,
+    },
+    /// Never-started execution carries evidence from an authorized call.
+    ExecutionDestinationMismatch {
+        /// Rejected execution outcome.
+        execution: ExecutionOutcome,
+        /// Conflicting destination authorization cut.
+        cut: DiagnosticDestinationCut,
+    },
+    /// Work disposition conflicts with coherent destination evidence.
+    DispositionDestinationMismatch {
+        /// Rejected work disposition.
+        disposition: WorkDisposition,
+        /// Rejected execution outcome.
+        execution: ExecutionOutcome,
+        /// Conflicting destination effect knowledge.
+        certainty: EffectCertainty,
+        /// Conflicting destination outcome cause.
+        cause: DiagnosticDestinationCause,
+        /// Conflicting destination authorization cut.
+        cut: DiagnosticDestinationCut,
+        /// Conflicting confirmed-prefix byte count.
+        confirmed_prefix: CheckedByteCount,
+    },
+    /// A supervisor-reaping cause lacks reaped execution evidence.
+    ReapingExecutionMismatch {
+        /// Rejected execution outcome.
+        execution: ExecutionOutcome,
+    },
+}
+
+impl DiagnosticShutdownEntry {
+    /// Constructs one internally coherent shutdown entry.
+    ///
+    /// This validates value relations only. It proves no destination or
+    /// shutdown execution.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first disposition/execution, execution/destination,
+    /// disposition/destination, or reaping/execution mismatch in that order.
+    pub const fn new(
+        destination: DiagnosticDestinationResult,
+        disposition: WorkDisposition,
+        execution: ExecutionOutcome,
+    ) -> Result<Self, DiagnosticShutdownEntryError> {
+        match shutdown::validate_entry(destination, disposition, execution) {
+            Ok(()) => {}
+            Err(error) => return Err(error),
+        }
+        Ok(Self { destination, disposition, execution })
+    }
+
+    /// Returns the copied scalar destination evidence.
+    #[must_use]
+    pub const fn destination(self) -> DiagnosticDestinationResult {
+        self.destination
+    }
+
+    /// Returns the work disposition at the report latch.
+    #[must_use]
+    pub const fn disposition(self) -> WorkDisposition {
+        self.disposition
+    }
+
+    /// Returns the separately observed execution outcome.
+    #[must_use]
+    pub const fn execution(self) -> ExecutionOutcome {
+        self.execution
+    }
+}
+
+impl fmt::Display for DiagnosticShutdownEntryError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let message = match self {
+            Self::DispositionExecutionMismatch { .. } => {
+                "Diagnostic shutdown disposition conflicts with execution"
+            }
+            Self::ExecutionDestinationMismatch { .. } => {
+                "Diagnostic shutdown execution conflicts with destination"
+            }
+            Self::DispositionDestinationMismatch { .. } => {
+                "Diagnostic shutdown disposition conflicts with destination"
+            }
+            Self::ReapingExecutionMismatch { .. } => {
+                "Diagnostic shutdown reaping cause conflicts with execution"
+            }
+        };
+        formatter.write_str(message)
+    }
+}
+
+impl std::error::Error for DiagnosticShutdownEntryError {}
+
+/// Exact checked record and source-byte partitions for one report candidate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DiagnosticShutdownStatistics {
+    drained_records: CheckedCount,
+    drained_source_bytes: CheckedByteCount,
+    discarded_records: CheckedCount,
+    discarded_source_bytes: CheckedByteCount,
+    unresolved_records: CheckedCount,
+    unresolved_source_bytes: CheckedByteCount,
+    total_records: CheckedCount,
+    total_source_bytes: CheckedByteCount,
+}
+
+impl DiagnosticShutdownStatistics {
+    /// Returns records that reached terminal execution during the drain.
+    #[must_use]
+    pub const fn drained_records(self) -> CheckedCount {
+        self.drained_records
+    }
+
+    /// Returns source bytes represented by drained records.
+    #[must_use]
+    pub const fn drained_source_bytes(self) -> CheckedByteCount {
+        self.drained_source_bytes
+    }
+
+    /// Returns records discarded before execution began.
+    #[must_use]
+    pub const fn discarded_records(self) -> CheckedCount {
+        self.discarded_records
+    }
+
+    /// Returns source bytes represented by discarded records.
+    #[must_use]
+    pub const fn discarded_source_bytes(self) -> CheckedByteCount {
+        self.discarded_source_bytes
+    }
+
+    /// Returns records whose execution remains owned and nonterminal.
+    #[must_use]
+    pub const fn unresolved_records(self) -> CheckedCount {
+        self.unresolved_records
+    }
+
+    /// Returns source bytes represented by unresolved records.
+    #[must_use]
+    pub const fn unresolved_source_bytes(self) -> CheckedByteCount {
+        self.unresolved_source_bytes
+    }
+
+    /// Returns the checked sum of all disposition record counts.
+    #[must_use]
+    pub const fn total_records(self) -> CheckedCount {
+        self.total_records
+    }
+
+    /// Returns the checked sum of all represented source bytes.
+    #[must_use]
+    pub const fn total_source_bytes(self) -> CheckedByteCount {
+        self.total_source_bytes
+    }
+}
+
+/// Immutable borrowed view of one coherent shutdown-report candidate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DiagnosticShutdownReportRef<'a> {
+    output: LifecycleIdentity,
+    source_stream: LifecycleIdentity,
+    policy: DiagnosticShutdownPolicy,
+    outcome: ShutdownOutcome,
+    owner_at_latch: DiagnosticOutputOwnerState,
+    statistics: DiagnosticShutdownStatistics,
+    entries: &'a [DiagnosticShutdownEntry],
+}
+
+/// Failure to construct one coherent shutdown-report candidate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DiagnosticShutdownReportError {
+    /// The platform slice length cannot fit the portable count carrier.
+    EntryCountUnrepresentable,
+    /// The entry slice exceeds the descriptor's report-record capacity.
+    RecordCapacityExceeded {
+        /// Requested report entry count.
+        requested: CheckedCount,
+        /// Maximum report entry count.
+        maximum: CheckedCount,
+    },
+    /// An entry belongs to another output lifecycle generation.
+    OutputMismatch {
+        /// Source Event sequence naming the rejected entry.
+        sequence: EventSequence,
+        /// Descriptor output lifecycle identity.
+        expected: LifecycleIdentity,
+        /// Rejected output lifecycle identity.
+        actual: LifecycleIdentity,
+    },
+    /// An entry belongs to another source Event Stream generation.
+    SourceStreamMismatch {
+        /// Source Event sequence naming the rejected entry.
+        sequence: EventSequence,
+        /// Descriptor source Stream lifecycle identity.
+        expected: LifecycleIdentity,
+        /// Rejected source Stream lifecycle identity.
+        actual: LifecycleIdentity,
+    },
+    /// One represented source record exceeds the per-record byte bound.
+    RecordByteCapacityExceeded {
+        /// Source Event sequence naming the rejected entry.
+        sequence: EventSequence,
+        /// Rejected source-record byte count.
+        bytes: CheckedByteCount,
+        /// Maximum source-record byte count.
+        maximum: CheckedByteCount,
+    },
+    /// Entry Event sequences are duplicated or reversed.
+    SequenceNotIncreasing {
+        /// Immediately preceding Event sequence.
+        previous: EventSequence,
+        /// Rejected current Event sequence.
+        current: EventSequence,
+    },
+    /// A discarded entry conflicts with the descriptor's shutdown policy.
+    PolicyDiscardMismatch {
+        /// Source Event sequence naming the rejected entry.
+        sequence: EventSequence,
+        /// Descriptor shutdown policy.
+        policy: DiagnosticShutdownPolicy,
+        /// Rejected destination cause.
+        cause: DiagnosticDestinationCause,
+    },
+    /// Adding one entry exceeds represented source-byte capacity.
+    SourceByteCapacityExceeded {
+        /// Source Event sequence naming the rejected entry.
+        sequence: EventSequence,
+        /// Bytes accumulated before the rejected entry.
+        accumulated: CheckedByteCount,
+        /// Source bytes represented by the rejected entry.
+        next: CheckedByteCount,
+        /// Maximum represented source bytes.
+        maximum: CheckedByteCount,
+    },
+    /// Unresolved entries conflict with aggregate output-owner state.
+    UnresolvedOwnerMismatch {
+        /// Rejected output-owner state.
+        owner: DiagnosticOutputOwnerState,
+        /// Exact unresolved record count.
+        unresolved: CheckedCount,
+    },
+}
+
+impl<'a> DiagnosticShutdownReportRef<'a> {
+    /// Validates one caller-owned ordered shutdown-report candidate.
+    ///
+    /// Construction performs no allocation, wait, callback, or I/O. It
+    /// retains only the explicit immutable `entries` borrow.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first capacity or per-entry failure in declared order,
+    /// followed by aggregate owner incoherence after complete traversal.
+    pub fn new(
+        descriptor: &DiagnosticOutputDescriptor,
+        owner_at_latch: DiagnosticOutputOwnerState,
+        entries: &'a [DiagnosticShutdownEntry],
+    ) -> Result<Self, DiagnosticShutdownReportError> {
+        let statistics =
+            shutdown::validate_report(descriptor, owner_at_latch, entries)?;
+        let outcome = shutdown::shutdown_outcome(
+            owner_at_latch,
+            statistics.unresolved_records(),
+        );
+        Ok(Self {
+            output: descriptor.lifecycle(),
+            source_stream: descriptor.source_stream(),
+            policy: descriptor.shutdown_policy(),
+            outcome,
+            owner_at_latch,
+            statistics,
+            entries,
+        })
+    }
+
+    /// Returns the output lifecycle scope and future canonical latch key.
+    #[must_use]
+    pub const fn output(self) -> LifecycleIdentity {
+        self.output
+    }
+
+    /// Returns the exact source Event Stream lifecycle identity.
+    #[must_use]
+    pub const fn source_stream(self) -> LifecycleIdentity {
+        self.source_stream
+    }
+
+    /// Returns the preselected shutdown policy.
+    #[must_use]
+    pub const fn policy(self) -> DiagnosticShutdownPolicy {
+        self.policy
+    }
+
+    /// Returns the outcome derived from entries and owner state.
+    #[must_use]
+    pub const fn outcome(self) -> ShutdownOutcome {
+        self.outcome
+    }
+
+    /// Returns independent execution-owner and release state at the candidate
+    /// latch. The owner may retain a record or canonical report backing.
+    #[must_use]
+    pub const fn owner_at_latch(self) -> DiagnosticOutputOwnerState {
+        self.owner_at_latch
+    }
+
+    /// Returns exact checked disposition statistics.
+    #[must_use]
+    pub const fn statistics(self) -> DiagnosticShutdownStatistics {
+        self.statistics
+    }
+
+    /// Returns the caller-owned immutable ordered entry slice.
+    #[must_use]
+    pub const fn entries(self) -> &'a [DiagnosticShutdownEntry] {
+        self.entries
+    }
+}
+
+impl fmt::Display for DiagnosticShutdownReportError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let message = match self {
+            Self::EntryCountUnrepresentable => {
+                "Diagnostic shutdown entry count is unrepresentable"
+            }
+            Self::RecordCapacityExceeded { .. } => {
+                "Diagnostic shutdown record capacity is exceeded"
+            }
+            Self::OutputMismatch { .. } => {
+                "Diagnostic shutdown output lifecycle differs"
+            }
+            Self::SourceStreamMismatch { .. } => {
+                "Diagnostic shutdown source Stream differs"
+            }
+            Self::RecordByteCapacityExceeded { .. } => {
+                "Diagnostic shutdown record byte capacity is exceeded"
+            }
+            Self::SequenceNotIncreasing { .. } => {
+                "Diagnostic shutdown sequence is not increasing"
+            }
+            Self::PolicyDiscardMismatch { .. } => {
+                "Diagnostic shutdown discard conflicts with policy"
+            }
+            Self::SourceByteCapacityExceeded { .. } => {
+                "Diagnostic shutdown source byte capacity is exceeded"
+            }
+            Self::UnresolvedOwnerMismatch { .. } => {
+                "Diagnostic shutdown unresolved work conflicts with owner"
+            }
+        };
+        formatter.write_str(message)
+    }
+}
+
+impl std::error::Error for DiagnosticShutdownReportError {}
 
 /// Typed failed bind that returns the exact caller-owned carrier.
 pub struct DiagnosticRecordRejection {

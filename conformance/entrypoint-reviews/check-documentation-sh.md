@@ -4,7 +4,7 @@
 
 - Kind: script
 - Exact content digest:
-  `sha256:f3a3621379a2a79c63ae5b84bc4f7ca2d80eedb47cab4b941f162e5af1b3fb56`
+  `sha256:cf70d632405595ee2f4161c151deecb70188a041a8ae3ac544f4c931b96602d6`
 - Review mechanism: exact content and retained review
 
 ## Direct local invocations
@@ -33,5 +33,6 @@ routes. Navigation-only shape is checked through exact child and section
 semantics rather than current-file content hashes. It also binds the focused
 Host API chapters and initial startup Event family to their navigation
 indexes. It includes `CODE_STYLE.md` in public Markdown link, whitespace,
-fence, and local-fragment validation. Any byte or invocation change reopens
-this review.
+fence, and local-fragment validation. The Host inventory now binds separate
+Output, shutdown-value, bootstrap-health, and lifecycle chapters through the
+six-child Host index. Any byte or invocation change reopens this review.

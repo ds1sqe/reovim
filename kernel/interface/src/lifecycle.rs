@@ -87,11 +87,11 @@ pub enum LifecycleState {
     Ready,
     /// Partial activation is being reversed in dependency order.
     RollingBack,
-    /// New admission is closed while owned work is resolved.
+    /// New admission is closed while work and release obligations resolve.
     Closing,
-    /// All owned execution stopped or its containing process was reaped.
+    /// Owned execution is terminal and owned release obligations are complete.
     Closed,
-    /// Nonterminal work remains owned after the shutdown bound.
+    /// Execution or release remains failed-owned after the shutdown bound.
     IncompleteShutdown,
 }
 
@@ -109,9 +109,9 @@ pub enum ReadinessOutcome {
 /// Terminal disposition of one failed activation rollback.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RollbackOutcome {
-    /// Provisional contributions were fully reversed.
+    /// Provisional contributions were reversed with no owned release remaining.
     Reverted,
-    /// Nonterminal work remains failed-owned after the rollback bound.
+    /// Execution or release remains failed-owned after the rollback bound.
     IncompleteShutdown,
 }
 
@@ -129,8 +129,8 @@ pub enum WorkDisposition {
 /// Idempotent terminal result of one lifecycle shutdown operation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ShutdownOutcome {
-    /// All execution stopped or its containing process was reaped.
+    /// Owned execution is terminal and owned release obligations are complete.
     Closed,
-    /// Nonterminal work remains failed-owned after the shutdown bound.
+    /// Execution or release remains failed-owned after the shutdown bound.
     IncompleteShutdown,
 }
