@@ -290,5 +290,8 @@ fn descriptor_values() -> bool {
     };
     traits(selection)
         && traits(OperationDescriptor::local_inline())
+        && traits(OperationDescriptor::local_deferred())
         && traits(OperationDescriptor::external_observation_inline())
+        && traits(OperationDescriptor::external_observation_deferred())
+        && traits(OperationDescriptor::external_observation_stream())
 }

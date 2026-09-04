@@ -5,11 +5,16 @@ use reovim_kernel_interface::resource::{
     ResourceSnapshotIdentity, ResourceSnapshotStamp, ResourceValueSchemas,
 };
 
-fn selection(identity: u128) -> Option<ContractSelection> {
+mod access;
+
+pub fn selection(identity: u128) -> Option<ContractSelection> {
     ContractSelection::new(identity, 1, 1, 1).ok()
 }
 
-fn snapshot(generation: u64, revision: u128) -> Option<ResourceSnapshotStamp> {
+pub fn snapshot(
+    generation: u64,
+    revision: u128,
+) -> Option<ResourceSnapshotStamp> {
     let resource = ResourceIdentity::new(11);
     let lifecycle = LifecycleIdentity::new(12, 13, Generation::new(generation));
     let access = ResourceAccessStamp::new(resource, lifecycle);
@@ -24,6 +29,7 @@ fn snapshot(generation: u64, revision: u128) -> Option<ResourceSnapshotStamp> {
 pub const fn const_cases() -> bool {
     ResourceIdentity::new(11).value() == 11
         && ResourceSnapshotIdentity::new(15).value() == 15
+        && access::const_cases()
 }
 
 pub fn exercise() -> bool {
@@ -74,4 +80,5 @@ pub fn exercise() -> bool {
         >()
         && crate::traits(exact.access().resource())
         && crate::traits(exact.snapshot())
+        && access::exercise()
 }

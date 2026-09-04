@@ -29,9 +29,17 @@ pub const fn witness() -> bool {
     output_health_items_ten();
     resource_items_one();
     resource_items_two();
+    resource_access_items_one();
+    resource_access_items_two();
+    resource_access_items_three();
+    resource_access_items_four();
+    resource_access_items_five();
+    resource_access_items_six();
+    resource_access_items_seven();
     trait_items();
     trait_method_items();
     variant_items();
+    resource_variant_items();
     true
 }
 
@@ -69,6 +77,137 @@ const fn resource_items_two() {
         ::reovim_kernel_interface::resource::ResourceValueSchemas::new,
         ::reovim_kernel_interface::resource::ResourceValueSchemas::revision,
         ::reovim_kernel_interface::resource::ResourceValueSchemas::unit,
+    );
+}
+
+const fn resource_access_items_one() {
+    let _ = (
+        ::reovim_kernel_interface::resource::capability::
+            ResourceCapabilities::change_discovery,
+        ::reovim_kernel_interface::resource::capability::
+            ResourceCapabilities::creation,
+        ::reovim_kernel_interface::resource::capability::
+            ResourceCapabilities::history,
+        ::reovim_kernel_interface::resource::capability::
+            ResourceCapabilities::mutation,
+        ::reovim_kernel_interface::resource::capability::
+            ResourceCapabilities::new,
+        ::reovim_kernel_interface::resource::capability::
+            ResourceCapabilities::snapshot_consistency,
+        ::reovim_kernel_interface::resource::capability::
+            ResourceCapabilities::source_access,
+        ::reovim_kernel_interface::resource::capability::
+            ResourceCapabilities::source_stability,
+    );
+}
+
+const fn resource_access_items_two() {
+    let _ = (
+        ::reovim_kernel_interface::resource::bounds::
+            ResourceTransferBounds::carrier_bytes,
+        ::reovim_kernel_interface::resource::bounds::
+            ResourceTransferBounds::new,
+        ::reovim_kernel_interface::resource::bounds::
+            ResourceTransferBounds::payload_bytes,
+        ::reovim_kernel_interface::resource::bounds::
+            ResourceTransferBounds::regions,
+        ::reovim_kernel_interface::resource::bounds::
+            ResourceStateBounds::in_flight,
+        ::reovim_kernel_interface::resource::bounds::ResourceStateBounds::new,
+        ::reovim_kernel_interface::resource::bounds::
+            ResourceStateBounds::owned_bytes,
+        ::reovim_kernel_interface::resource::bounds::
+            ResourceStateBounds::queue,
+        ::reovim_kernel_interface::resource::bounds::
+            ResourceStateBounds::snapshots,
+        ::reovim_kernel_interface::resource::bounds::
+            ResourceStateBounds::terminals,
+    );
+}
+
+const fn resource_access_items_three() {
+    let _ = (
+        ::reovim_kernel_interface::resource::bounds::
+            ResourceAccessBounds::completion_scope,
+        ::reovim_kernel_interface::resource::bounds::ResourceAccessBounds::new,
+        ::reovim_kernel_interface::resource::bounds::
+            ResourceAccessBounds::payload_accounting,
+        ::reovim_kernel_interface::resource::bounds::
+            ResourceAccessBounds::state,
+        ::reovim_kernel_interface::resource::bounds::
+            ResourceAccessBounds::transfer,
+        ::reovim_kernel_interface::resource::access::
+            ResourceReadyState::access,
+        ::reovim_kernel_interface::resource::access::
+            ResourceReadyState::change_checkpoint,
+        ::reovim_kernel_interface::resource::access::ResourceReadyState::new,
+        ::reovim_kernel_interface::resource::access::
+            ResourceReadyState::snapshot,
+    );
+}
+
+const fn resource_access_items_four() {
+    let _ = (
+        ::reovim_kernel_interface::resource::access::
+            ResourceAccessDescriptor::adapter,
+        ::reovim_kernel_interface::resource::access::
+            ResourceAccessDescriptor::applicability_operation,
+        ::reovim_kernel_interface::resource::access::
+            ResourceAccessDescriptor::bounds,
+        ::reovim_kernel_interface::resource::access::
+            ResourceAccessDescriptor::capabilities,
+        ::reovim_kernel_interface::resource::access::
+            ResourceAccessDescriptor::change_operation,
+        ::reovim_kernel_interface::resource::access::
+            ResourceAccessDescriptor::close_operation,
+        ::reovim_kernel_interface::resource::access::
+            ResourceAccessDescriptor::contract,
+    );
+}
+
+const fn resource_access_items_five() {
+    let _ = (
+        ::reovim_kernel_interface::resource::access::
+            ResourceAccessDescriptor::inspection_operation,
+        ::reovim_kernel_interface::resource::access::
+            ResourceAccessDescriptor::negotiate,
+        ::reovim_kernel_interface::resource::access::
+            ResourceAccessDescriptor::new,
+        ::reovim_kernel_interface::resource::access::
+            ResourceAccessDescriptor::observation_operation,
+        ::reovim_kernel_interface::resource::access::
+            ResourceAccessDescriptor::open_operation,
+        ::reovim_kernel_interface::resource::access::
+            ResourceAccessDescriptor::owner,
+        ::reovim_kernel_interface::resource::access::
+            ResourceAccessDescriptor::schemas,
+    );
+}
+
+const fn resource_access_items_six() {
+    let _ = (
+        ::reovim_kernel_interface::resource::access::
+            ResourceIncompleteClose::execution,
+        ::reovim_kernel_interface::resource::access::
+            ResourceIncompleteClose::new,
+        ::reovim_kernel_interface::resource::access::
+            ResourceIncompleteClose::unresolved,
+    );
+}
+
+const fn resource_access_items_seven() {
+    let _ = (
+        ::reovim_kernel_interface::resource::access::
+            ResourceOpenOutcome::failure,
+        ::reovim_kernel_interface::resource::access::
+            ResourceOpenOutcome::not_ready,
+        ::reovim_kernel_interface::resource::access::ResourceOpenOutcome::ready,
+        ::reovim_kernel_interface::resource::access::
+            ResourceOpenOutcome::ready_state,
+        ::reovim_kernel_interface::resource::access::
+            ResourceOpenOutcome::rollback,
+        ::reovim_kernel_interface::resource::access::
+            ResourceOpenOutcome::status,
     );
 }
 
@@ -787,8 +926,14 @@ const fn operation_items() {
         ::reovim_kernel_interface::operation::OperationDescriptor::delivery,
         ::reovim_kernel_interface::operation::OperationDescriptor::effect,
         ::reovim_kernel_interface::operation::OperationDescriptor::
+            external_observation_deferred,
+        ::reovim_kernel_interface::operation::OperationDescriptor::
             external_observation_inline,
+        ::reovim_kernel_interface::operation::OperationDescriptor::
+            external_observation_stream,
         ::reovim_kernel_interface::operation::OperationDescriptor::invocation,
+        ::reovim_kernel_interface::operation::OperationDescriptor::
+            local_deferred,
         ::reovim_kernel_interface::operation::OperationDescriptor::local_inline,
         ::reovim_kernel_interface::operation::OperationDescriptor::new,
         ::reovim_kernel_interface::operation::OperationDescriptor::reentrancy,
@@ -913,6 +1058,366 @@ const fn variant_items() {
         output_health_sequence_position_variants,
         output_health_snapshot_coverage_variants,
     );
+}
+
+const fn resource_variant_items() {
+    let _ = (
+        resource_applicability_outcome_variants,
+        resource_bound_field_variants,
+        resource_bounds_error_variants,
+        resource_capability_error_variants,
+        resource_change_checkpoint_variants,
+        resource_change_discovery_variants,
+        resource_close_error_variants,
+        resource_close_outcome_variants,
+        resource_completion_scope_variants,
+        resource_destination_creation_variants,
+        resource_freshness_variants,
+        resource_historical_availability_variants,
+        resource_mutation_grammar_variants,
+        resource_negotiation_error_variants,
+        resource_observation_failure_variants,
+        resource_observation_outcome_variants,
+        resource_open_failure_variants,
+        resource_open_status_variants,
+        resource_payload_accounting_variants,
+        resource_ready_error_variants,
+        resource_snapshot_consistency_variants,
+        resource_source_access_authority_variants,
+        resource_source_stability_variants,
+    );
+}
+
+const fn resource_source_access_authority_variants(
+    value: ::reovim_kernel_interface::resource::capability::
+        SourceAccessAuthority,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::capability::
+            SourceAccessAuthority::ObserveOnly
+        | ::reovim_kernel_interface::resource::capability::
+            SourceAccessAuthority::ObserveAndPublish => {}
+    }
+}
+
+const fn resource_source_stability_variants(
+    value: ::reovim_kernel_interface::resource::capability::SourceStability,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::capability::
+            SourceStability::Stable
+        | ::reovim_kernel_interface::resource::capability::
+            SourceStability::ExternallyEvolving => {}
+    }
+}
+
+const fn resource_snapshot_consistency_variants(
+    value: ::reovim_kernel_interface::resource::capability::SnapshotConsistency,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::capability::
+            SnapshotConsistency::WholeResource
+        | ::reovim_kernel_interface::resource::capability::
+            SnapshotConsistency::NativeRegion => {}
+    }
+}
+
+const fn resource_historical_availability_variants(
+    value: ::reovim_kernel_interface::resource::capability::
+        HistoricalAvailability,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::capability::
+            HistoricalAvailability::CurrentOnly
+        | ::reovim_kernel_interface::resource::capability::
+            HistoricalAvailability::BoundedRetention => {}
+    }
+}
+
+const fn resource_mutation_grammar_variants(
+    value: ::reovim_kernel_interface::resource::capability::
+        ResourceMutationGrammar,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::capability::
+            ResourceMutationGrammar::None
+        | ::reovim_kernel_interface::resource::capability::
+            ResourceMutationGrammar::Replacement
+        | ::reovim_kernel_interface::resource::capability::
+            ResourceMutationGrammar::AddOnly
+        | ::reovim_kernel_interface::resource::capability::
+            ResourceMutationGrammar::Resize => {}
+    }
+}
+
+const fn resource_destination_creation_variants(
+    value: ::reovim_kernel_interface::resource::capability::DestinationCreation,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::capability::
+            DestinationCreation::NotGranted
+        | ::reovim_kernel_interface::resource::capability::
+            DestinationCreation::Granted => {}
+    }
+}
+
+const fn resource_change_discovery_variants(
+    value: ::reovim_kernel_interface::resource::capability::ChangeDiscovery,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::capability::ChangeDiscovery::None
+        | ::reovim_kernel_interface::resource::capability::
+            ChangeDiscovery::Invalidation
+        | ::reovim_kernel_interface::resource::capability::
+            ChangeDiscovery::OrderedResumableFeed => {}
+    }
+}
+
+const fn resource_capability_error_variants(
+    value: ::reovim_kernel_interface::resource::capability::
+        ResourceCapabilityError,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::capability::
+            ResourceCapabilityError::MutationWithoutPublicationAuthority
+        | ::reovim_kernel_interface::resource::capability::
+            ResourceCapabilityError::ChangeDiscoveryForStableResource => {}
+    }
+}
+
+const fn resource_payload_accounting_variants(
+    value: ::reovim_kernel_interface::resource::bounds::
+        ResourcePayloadAccounting,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::bounds::
+            ResourcePayloadAccounting::OwnedByAccess
+        | ::reovim_kernel_interface::resource::bounds::
+            ResourcePayloadAccounting::SharedBySnapshot => {}
+    }
+}
+
+const fn resource_completion_scope_variants(
+    value: ::reovim_kernel_interface::resource::bounds::ResourceCompletionScope,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::bounds::
+            ResourceCompletionScope::AccessIncarnation
+        | ::reovim_kernel_interface::resource::bounds::
+            ResourceCompletionScope::AdapterInstance => {}
+    }
+}
+
+const fn resource_bound_field_variants(
+    value: ::reovim_kernel_interface::resource::bounds::ResourceBoundField,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::bounds::ResourceBoundField::Regions
+        | ::reovim_kernel_interface::resource::bounds::
+            ResourceBoundField::CarrierBytes
+        | ::reovim_kernel_interface::resource::bounds::
+            ResourceBoundField::PayloadBytes
+        | ::reovim_kernel_interface::resource::bounds::
+            ResourceBoundField::OwnedBytes
+        | ::reovim_kernel_interface::resource::bounds::
+            ResourceBoundField::InFlight
+        | ::reovim_kernel_interface::resource::bounds::ResourceBoundField::Queue
+        | ::reovim_kernel_interface::resource::bounds::
+            ResourceBoundField::Snapshots
+        | ::reovim_kernel_interface::resource::bounds::
+            ResourceBoundField::Terminals => {}
+    }
+}
+
+const fn resource_bounds_error_variants(
+    value: ::reovim_kernel_interface::resource::bounds::ResourceBoundsError,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::bounds::
+            ResourceBoundsError::WrongUnit { .. }
+        | ::reovim_kernel_interface::resource::bounds::
+            ResourceBoundsError::InFlightCapacityRequired
+        | ::reovim_kernel_interface::resource::bounds::
+            ResourceBoundsError::TerminalRetentionRequired
+        | ::reovim_kernel_interface::resource::bounds::
+            ResourceBoundsError::HistoricalRetentionRequired
+        | ::reovim_kernel_interface::resource::bounds::
+            ResourceBoundsError::ChangeQueueRequired => {}
+    }
+}
+
+const fn resource_applicability_outcome_variants(
+    value: ::reovim_kernel_interface::resource::access::
+        ResourceApplicabilityOutcome,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::access::
+            ResourceApplicabilityOutcome::Applicable
+        | ::reovim_kernel_interface::resource::access::
+            ResourceApplicabilityOutcome::Denied
+        | ::reovim_kernel_interface::resource::access::
+            ResourceApplicabilityOutcome::Unsupported
+        | ::reovim_kernel_interface::resource::access::
+            ResourceApplicabilityOutcome::Incompatible => {}
+    }
+}
+
+const fn resource_negotiation_error_variants(
+    value: ::reovim_kernel_interface::resource::access::
+        ResourceNegotiationError,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::access::
+            ResourceNegotiationError::UnsupportedContract
+        | ::reovim_kernel_interface::resource::access::
+            ResourceNegotiationError::IncompatibleContract => {}
+    }
+}
+
+const fn resource_freshness_variants(
+    value: ::reovim_kernel_interface::resource::access::ResourceFreshness,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::access::ResourceFreshness::Fresh
+        | ::reovim_kernel_interface::resource::access::
+            ResourceFreshness::Stale
+        | ::reovim_kernel_interface::resource::access::
+            ResourceFreshness::Indeterminate => {}
+    }
+}
+
+const fn resource_change_checkpoint_variants(
+    value: ::reovim_kernel_interface::resource::access::
+        ResourceChangeCheckpoint,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::access::
+            ResourceChangeCheckpoint::NotRequired
+        | ::reovim_kernel_interface::resource::access::
+            ResourceChangeCheckpoint::Invalidation(_)
+        | ::reovim_kernel_interface::resource::access::
+            ResourceChangeCheckpoint::Feed { .. } => {}
+    }
+}
+
+const fn resource_ready_error_variants(
+    value: ::reovim_kernel_interface::resource::access::ResourceReadyError,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::access::
+            ResourceReadyError::RevisionSchemaMismatch
+        | ::reovim_kernel_interface::resource::access::
+            ResourceReadyError::ChangeCheckpointMismatch => {}
+    }
+}
+
+const fn resource_open_failure_variants(
+    value: ::reovim_kernel_interface::resource::access::ResourceOpenFailure,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::access::ResourceOpenFailure::Denied
+        | ::reovim_kernel_interface::resource::access::
+            ResourceOpenFailure::Unsupported
+        | ::reovim_kernel_interface::resource::access::
+            ResourceOpenFailure::Incompatible
+        | ::reovim_kernel_interface::resource::access::
+            ResourceOpenFailure::InvalidDescriptor
+        | ::reovim_kernel_interface::resource::access::
+            ResourceOpenFailure::InvalidSnapshot
+        | ::reovim_kernel_interface::resource::access::
+            ResourceOpenFailure::Stale
+        | ::reovim_kernel_interface::resource::access::
+            ResourceOpenFailure::Unavailable
+        | ::reovim_kernel_interface::resource::access::
+            ResourceOpenFailure::Indeterminate
+        | ::reovim_kernel_interface::resource::access::
+            ResourceOpenFailure::Pressure
+        | ::reovim_kernel_interface::resource::access::
+            ResourceOpenFailure::Cancelled
+        | ::reovim_kernel_interface::resource::access::
+            ResourceOpenFailure::Replaced
+        | ::reovim_kernel_interface::resource::access::
+            ResourceOpenFailure::Closing
+        | ::reovim_kernel_interface::resource::access::
+            ResourceOpenFailure::Closed
+        | ::reovim_kernel_interface::resource::access::
+            ResourceOpenFailure::AdapterFailure => {}
+    }
+}
+
+const fn resource_open_status_variants(
+    value: ::reovim_kernel_interface::resource::access::ResourceOpenStatus,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::access::
+            ResourceOpenStatus::Ready
+        | ::reovim_kernel_interface::resource::access::
+            ResourceOpenStatus::NotReady => {}
+    }
+}
+
+const fn resource_observation_failure_variants(
+    value: ::reovim_kernel_interface::resource::access::
+        ResourceObservationFailure,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::access::
+            ResourceObservationFailure::InvalidRange
+        | ::reovim_kernel_interface::resource::access::
+            ResourceObservationFailure::UnsupportedSchema
+        | ::reovim_kernel_interface::resource::access::
+            ResourceObservationFailure::StaleAccess
+        | ::reovim_kernel_interface::resource::access::
+            ResourceObservationFailure::Unavailable
+        | ::reovim_kernel_interface::resource::access::
+            ResourceObservationFailure::Stale
+        | ::reovim_kernel_interface::resource::access::
+            ResourceObservationFailure::Indeterminate
+        | ::reovim_kernel_interface::resource::access::
+            ResourceObservationFailure::Pressure
+        | ::reovim_kernel_interface::resource::access::
+            ResourceObservationFailure::Cancelled
+        | ::reovim_kernel_interface::resource::access::
+            ResourceObservationFailure::Replaced
+        | ::reovim_kernel_interface::resource::access::
+            ResourceObservationFailure::Closing
+        | ::reovim_kernel_interface::resource::access::
+            ResourceObservationFailure::Closed
+        | ::reovim_kernel_interface::resource::access::
+            ResourceObservationFailure::AdapterFailure => {}
+    }
+}
+
+const fn resource_observation_outcome_variants(
+    value: ::reovim_kernel_interface::resource::access::
+        ResourceObservationOutcome,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::access::
+            ResourceObservationOutcome::Observed(_)
+        | ::reovim_kernel_interface::resource::access::
+            ResourceObservationOutcome::NotObserved(_) => {}
+    }
+}
+
+const fn resource_close_error_variants(
+    value: ::reovim_kernel_interface::resource::access::ResourceCloseError,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::access::
+            ResourceCloseError::NoRetainedOwnership => {}
+    }
+}
+
+const fn resource_close_outcome_variants(
+    value: ::reovim_kernel_interface::resource::access::ResourceCloseOutcome,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::access::
+            ResourceCloseOutcome::Closed
+        | ::reovim_kernel_interface::resource::access::
+            ResourceCloseOutcome::Incomplete(_) => {}
+    }
 }
 
 const fn output_health_acceptance_variants(

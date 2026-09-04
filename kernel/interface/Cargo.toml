@@ -45,6 +45,9 @@ include = [
     "src/output_health/record.rs",
     "src/output_health/snapshot.rs",
     "src/resource.rs",
+    "src/resource/access.rs",
+    "src/resource/bounds.rs",
+    "src/resource/capability.rs",
 ]
 
 [features]

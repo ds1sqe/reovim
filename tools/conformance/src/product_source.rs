@@ -3355,20 +3355,36 @@ impl<'a> PublicItemWitnessVisitor<'a> {
     }
 
     fn insert_module_witnesses(&mut self) {
-        let modules = self
-            .observed
-            .iter()
-            .filter_map(|item| item.path.split_once("::"))
-            .map(|(module, _)| module.to_owned())
-            .filter(|module| {
-                self.expected.get(module) == Some(&PublicItemKind::Module)
-            })
-            .collect::<BTreeSet<_>>();
+        let mut modules = BTreeSet::new();
+        for item in &self.observed {
+            collect_registered_module_prefixes(
+                &item.path,
+                &self.expected,
+                &mut modules,
+            );
+        }
         for module in modules {
             self.observed.insert(PublicItem {
                 path: module,
                 kind: PublicItemKind::Module,
             });
+        }
+    }
+}
+
+fn collect_registered_module_prefixes(
+    path: &str,
+    expected: &BTreeMap<String, PublicItemKind>,
+    output: &mut BTreeSet<String>,
+) {
+    let mut prefix = String::new();
+    for part in path.split("::") {
+        if !prefix.is_empty() {
+            prefix.push_str("::");
+        }
+        prefix.push_str(part);
+        if expected.get(&prefix) == Some(&PublicItemKind::Module) {
+            output.insert(prefix.clone());
         }
     }
 }
@@ -3440,7 +3456,7 @@ fn exact_public_variant_path(
     }
     let exact = qself.is_none()
         && path.leading_colon.is_some()
-        && path.segments.len() == 4
+        && path.segments.len() >= 4
         && path
             .segments
             .iter()
@@ -4069,21 +4085,29 @@ fn external_public_type(
     }
     let segments = ty.path.segments.iter().collect::<Vec<_>>();
     let public_crate = profile.spec().public_crate;
-    if segments.len() != 3
+    let module_segments = segments.get(1..segments.len().saturating_sub(1));
+    if segments.len() < 3
         || segments[0].ident != public_crate
         || !matches!(segments[0].arguments, PathArguments::None)
-        || !matches!(segments[1].arguments, PathArguments::None)
+        || module_segments.is_none_or(|parts| {
+            parts
+                .iter()
+                .any(|part| !matches!(part.arguments, PathArguments::None))
+        })
     {
         return Err(
             "derive witness must use its exact full public path".to_owned()
         );
     }
-    let public_type = format!("{}::{}", segments[1].ident, segments[2].ident);
-    if !exact_witness_type_arguments(
-        &segments[2].arguments,
-        profile,
-        &public_type,
-    ) {
+    let public_type = segments[1..]
+        .iter()
+        .map(|part| part.ident.to_string())
+        .collect::<Vec<_>>()
+        .join("::");
+    let Some(last) = segments.last() else {
+        return Err("derive witness type path is empty".to_owned());
+    };
+    if !exact_witness_type_arguments(&last.arguments, profile, &public_type) {
         return Err(
             "derive witness type has unavailable generic arguments".to_owned()
         );
@@ -4134,8 +4158,10 @@ mod tests {
     };
 
     use super::{
-        AnalysisLimits, AnalysisRequest, CompilerJoin, ProductSourceError,
-        TwoPairAnalysisRequest, analyze, analyze_two_pairs,
+        AnalysisLimits, AnalysisRequest, CompilerJoin, PairProfile,
+        ProductSourceError, TwoPairAnalysisRequest, analyze, analyze_two_pairs,
+        collect_registered_module_prefixes, exact_public_variant_path,
+        external_public_type,
     };
     use crate::{
         digest,
@@ -4187,6 +4213,9 @@ mod tests {
         "kernel/interface/src/output_health/record.rs",
         "kernel/interface/src/output_health/snapshot.rs",
         "kernel/interface/src/resource.rs",
+        "kernel/interface/src/resource/access.rs",
+        "kernel/interface/src/resource/bounds.rs",
+        "kernel/interface/src/resource/capability.rs",
     ];
     const KI_CONSUMER: &[&str] = &[
         "tests/kernel-interface-public-consumer/src/clock.rs",
@@ -4216,9 +4245,11 @@ mod tests {
         ),
         "tests/kernel-interface-public-consumer/src/public_items.rs",
         "tests/kernel-interface-public-consumer/src/resource.rs",
+        "tests/kernel-interface-public-consumer/src/resource/access.rs",
     ];
     const LIMITS: AnalysisLimits = AnalysisLimits {
-        source_files: 64,
+        // Mutation-fixture capacity, never a repository-shape expectation.
+        source_files: 96,
         source_file_bytes: 1_048_576,
         source_total_bytes: 8_388_608,
         syntax_nodes: 100_000,
@@ -4432,6 +4463,111 @@ mod tests {
             "const fn clone_copy_witness<T>() -> bool",
             "const fn renamed_clone_copy_witness<T>() -> bool",
             "PRODUCT_TRAIT_BOUND_UNAVAILABLE",
+        );
+    }
+
+    #[test]
+    fn nested_kernel_interface_witness_paths_remain_exact() {
+        let nested = syn::parse_str::<syn::TypePath>(concat!(
+            "::reovim_kernel_interface::resource::access::",
+            "ResourceReadyState",
+        ))
+        .expect("valid nested public type path");
+        assert_eq!(
+            external_public_type(&nested, PairProfile::KernelInterface)
+                .as_deref(),
+            Ok("resource::access::ResourceReadyState"),
+        );
+
+        let intermediate_generic = syn::parse_str::<syn::TypePath>(concat!(
+            "::reovim_kernel_interface::resource::<u8>::access::",
+            "ResourceReadyState",
+        ))
+        .expect("valid Rust type path with an invalid public shape");
+        let intermediate_result = external_public_type(
+            &intermediate_generic,
+            PairProfile::KernelInterface,
+        );
+        assert_eq!(
+            intermediate_result.as_ref().err().map(String::as_str),
+            Some("derive witness must use its exact full public path"),
+        );
+
+        let terminal_generic = syn::parse_str::<syn::TypePath>(concat!(
+            "::reovim_kernel_interface::resource::access::",
+            "ResourceReadyState<u8>",
+        ))
+        .expect("valid Rust generic type path");
+        let terminal_result = external_public_type(
+            &terminal_generic,
+            PairProfile::KernelInterface,
+        );
+        assert_eq!(
+            terminal_result.as_ref().err().map(String::as_str),
+            Some("derive witness type has unavailable generic arguments"),
+        );
+
+        let shadow = syn::parse_str::<syn::TypePath>(
+            "::other_crate::resource::access::ResourceReadyState",
+        )
+        .expect("valid shadow type path");
+        let shadow_result =
+            external_public_type(&shadow, PairProfile::KernelInterface);
+        assert_eq!(
+            shadow_result.as_ref().err().map(String::as_str),
+            Some("derive witness must use its exact full public path"),
+        );
+
+        let expected = std::collections::BTreeMap::from([
+            ("resource".to_owned(), PublicItemKind::Module),
+            ("resource::access".to_owned(), PublicItemKind::Module),
+            (
+                "resource::access::ResourceReadyState".to_owned(),
+                PublicItemKind::Type,
+            ),
+        ]);
+        let mut modules = std::collections::BTreeSet::new();
+        collect_registered_module_prefixes(
+            "resource::access::ResourceReadyState::new",
+            &expected,
+            &mut modules,
+        );
+        assert_eq!(
+            modules,
+            std::collections::BTreeSet::from([
+                "resource".to_owned(),
+                "resource::access".to_owned(),
+            ]),
+        );
+
+        let variant = syn::parse_str::<syn::Path>(concat!(
+            "::reovim_kernel_interface::resource::access::",
+            "ResourceApplicabilityOutcome::Applicable",
+        ))
+        .expect("valid nested public variant path");
+        let variant_path = exact_public_variant_path(
+            None,
+            &variant,
+            PairProfile::KernelInterface,
+        );
+        assert_eq!(
+            variant_path.as_ref().ok().and_then(Option::as_deref),
+            Some("resource::access::ResourceApplicabilityOutcome::Applicable",),
+        );
+
+        let generic_variant = syn::parse_str::<syn::Path>(concat!(
+            "::reovim_kernel_interface::resource::<u8>::access::",
+            "ResourceApplicabilityOutcome::Applicable",
+        ))
+        .expect("valid Rust variant path with an invalid public shape");
+        let variant_result = exact_public_variant_path(
+            None,
+            &generic_variant,
+            PairProfile::KernelInterface,
+        );
+        assert_eq!(
+            variant_result.as_ref().err().map(String::as_str),
+            Some("public variant witness path is not exact"),
         );
     }
 

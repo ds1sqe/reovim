@@ -340,6 +340,21 @@
             "kind": "copied",
             "package_path": "src/resource.rs",
             "repository_path": "kernel/interface/src/resource.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/resource/access.rs",
+            "repository_path": "kernel/interface/src/resource/access.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/resource/bounds.rs",
+            "repository_path": "kernel/interface/src/resource/bounds.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/resource/capability.rs",
+            "repository_path": "kernel/interface/src/resource/capability.rs"
           }
         ]
       }
@@ -5829,6 +5844,686 @@
         {
           "path": "resource::ResourceValueSchemas::unit",
           "kind": "function"
+        },
+        {
+          "path": "operation::OperationDescriptor::external_observation_deferred",
+          "kind": "function"
+        },
+        {
+          "path": "operation::OperationDescriptor::external_observation_stream",
+          "kind": "function"
+        },
+        {
+          "path": "operation::OperationDescriptor::local_deferred",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access",
+          "kind": "module"
+        },
+        {
+          "path": "resource::access::ResourceAccessDescriptor",
+          "kind": "type"
+        },
+        {
+          "path": "resource::access::ResourceAccessDescriptor::adapter",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceAccessDescriptor::applicability_operation",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceAccessDescriptor::bounds",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceAccessDescriptor::capabilities",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceAccessDescriptor::change_operation",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceAccessDescriptor::close_operation",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceAccessDescriptor::contract",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceAccessDescriptor::inspection_operation",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceAccessDescriptor::negotiate",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceAccessDescriptor::new",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceAccessDescriptor::observation_operation",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceAccessDescriptor::open_operation",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceAccessDescriptor::owner",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceAccessDescriptor::schemas",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceApplicabilityOutcome",
+          "kind": "type"
+        },
+        {
+          "path": "resource::access::ResourceApplicabilityOutcome::Applicable",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceApplicabilityOutcome::Denied",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceApplicabilityOutcome::Incompatible",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceApplicabilityOutcome::Unsupported",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceChangeCheckpoint",
+          "kind": "type"
+        },
+        {
+          "path": "resource::access::ResourceChangeCheckpoint::Feed",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceChangeCheckpoint::Invalidation",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceChangeCheckpoint::NotRequired",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceCloseError",
+          "kind": "type"
+        },
+        {
+          "path": "resource::access::ResourceCloseError::NoRetainedOwnership",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceCloseOutcome",
+          "kind": "type"
+        },
+        {
+          "path": "resource::access::ResourceCloseOutcome::Closed",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceCloseOutcome::Incomplete",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceFreshness",
+          "kind": "type"
+        },
+        {
+          "path": "resource::access::ResourceFreshness::Fresh",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceFreshness::Indeterminate",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceFreshness::Stale",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceIncompleteClose",
+          "kind": "type"
+        },
+        {
+          "path": "resource::access::ResourceIncompleteClose::execution",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceIncompleteClose::new",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceIncompleteClose::unresolved",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceNegotiationError",
+          "kind": "type"
+        },
+        {
+          "path": "resource::access::ResourceNegotiationError::IncompatibleContract",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceNegotiationError::UnsupportedContract",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceObservationFailure",
+          "kind": "type"
+        },
+        {
+          "path": "resource::access::ResourceObservationFailure::AdapterFailure",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceObservationFailure::Cancelled",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceObservationFailure::Closed",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceObservationFailure::Closing",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceObservationFailure::Indeterminate",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceObservationFailure::InvalidRange",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceObservationFailure::Pressure",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceObservationFailure::Replaced",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceObservationFailure::Stale",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceObservationFailure::StaleAccess",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceObservationFailure::Unavailable",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceObservationFailure::UnsupportedSchema",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceObservationOutcome",
+          "kind": "type"
+        },
+        {
+          "path": "resource::access::ResourceObservationOutcome::NotObserved",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceObservationOutcome::Observed",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceOpenFailure",
+          "kind": "type"
+        },
+        {
+          "path": "resource::access::ResourceOpenFailure::AdapterFailure",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceOpenFailure::Cancelled",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceOpenFailure::Closed",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceOpenFailure::Closing",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceOpenFailure::Denied",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceOpenFailure::Incompatible",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceOpenFailure::Indeterminate",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceOpenFailure::InvalidDescriptor",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceOpenFailure::InvalidSnapshot",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceOpenFailure::Pressure",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceOpenFailure::Replaced",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceOpenFailure::Stale",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceOpenFailure::Unavailable",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceOpenFailure::Unsupported",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceOpenOutcome",
+          "kind": "type"
+        },
+        {
+          "path": "resource::access::ResourceReadyError",
+          "kind": "type"
+        },
+        {
+          "path": "resource::access::ResourceReadyError::ChangeCheckpointMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceReadyError::RevisionSchemaMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceReadyState",
+          "kind": "type"
+        },
+        {
+          "path": "resource::access::ResourceReadyState::access",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceReadyState::change_checkpoint",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceReadyState::new",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceReadyState::snapshot",
+          "kind": "function"
+        },
+        {
+          "path": "resource::bounds",
+          "kind": "module"
+        },
+        {
+          "path": "resource::bounds::ResourceAccessBounds",
+          "kind": "type"
+        },
+        {
+          "path": "resource::bounds::ResourceAccessBounds::completion_scope",
+          "kind": "function"
+        },
+        {
+          "path": "resource::bounds::ResourceAccessBounds::new",
+          "kind": "function"
+        },
+        {
+          "path": "resource::bounds::ResourceAccessBounds::payload_accounting",
+          "kind": "function"
+        },
+        {
+          "path": "resource::bounds::ResourceAccessBounds::state",
+          "kind": "function"
+        },
+        {
+          "path": "resource::bounds::ResourceAccessBounds::transfer",
+          "kind": "function"
+        },
+        {
+          "path": "resource::bounds::ResourceBoundField",
+          "kind": "type"
+        },
+        {
+          "path": "resource::bounds::ResourceBoundField::CarrierBytes",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::bounds::ResourceBoundField::InFlight",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::bounds::ResourceBoundField::OwnedBytes",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::bounds::ResourceBoundField::PayloadBytes",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::bounds::ResourceBoundField::Queue",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::bounds::ResourceBoundField::Regions",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::bounds::ResourceBoundField::Snapshots",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::bounds::ResourceBoundField::Terminals",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::bounds::ResourceBoundsError",
+          "kind": "type"
+        },
+        {
+          "path": "resource::bounds::ResourceBoundsError::ChangeQueueRequired",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::bounds::ResourceBoundsError::HistoricalRetentionRequired",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::bounds::ResourceBoundsError::InFlightCapacityRequired",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::bounds::ResourceBoundsError::TerminalRetentionRequired",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::bounds::ResourceBoundsError::WrongUnit",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::bounds::ResourceCompletionScope",
+          "kind": "type"
+        },
+        {
+          "path": "resource::bounds::ResourceCompletionScope::AccessIncarnation",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::bounds::ResourceCompletionScope::AdapterInstance",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::bounds::ResourcePayloadAccounting",
+          "kind": "type"
+        },
+        {
+          "path": "resource::bounds::ResourcePayloadAccounting::OwnedByAccess",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::bounds::ResourcePayloadAccounting::SharedBySnapshot",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::bounds::ResourceStateBounds",
+          "kind": "type"
+        },
+        {
+          "path": "resource::bounds::ResourceStateBounds::in_flight",
+          "kind": "function"
+        },
+        {
+          "path": "resource::bounds::ResourceStateBounds::new",
+          "kind": "function"
+        },
+        {
+          "path": "resource::bounds::ResourceStateBounds::owned_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "resource::bounds::ResourceStateBounds::queue",
+          "kind": "function"
+        },
+        {
+          "path": "resource::bounds::ResourceStateBounds::snapshots",
+          "kind": "function"
+        },
+        {
+          "path": "resource::bounds::ResourceStateBounds::terminals",
+          "kind": "function"
+        },
+        {
+          "path": "resource::bounds::ResourceTransferBounds",
+          "kind": "type"
+        },
+        {
+          "path": "resource::bounds::ResourceTransferBounds::carrier_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "resource::bounds::ResourceTransferBounds::new",
+          "kind": "function"
+        },
+        {
+          "path": "resource::bounds::ResourceTransferBounds::payload_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "resource::bounds::ResourceTransferBounds::regions",
+          "kind": "function"
+        },
+        {
+          "path": "resource::capability",
+          "kind": "module"
+        },
+        {
+          "path": "resource::capability::ChangeDiscovery",
+          "kind": "type"
+        },
+        {
+          "path": "resource::capability::ChangeDiscovery::Invalidation",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::capability::ChangeDiscovery::None",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::capability::ChangeDiscovery::OrderedResumableFeed",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::capability::DestinationCreation",
+          "kind": "type"
+        },
+        {
+          "path": "resource::capability::DestinationCreation::Granted",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::capability::DestinationCreation::NotGranted",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::capability::HistoricalAvailability",
+          "kind": "type"
+        },
+        {
+          "path": "resource::capability::HistoricalAvailability::BoundedRetention",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::capability::HistoricalAvailability::CurrentOnly",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::capability::ResourceCapabilities",
+          "kind": "type"
+        },
+        {
+          "path": "resource::capability::ResourceCapabilities::change_discovery",
+          "kind": "function"
+        },
+        {
+          "path": "resource::capability::ResourceCapabilities::creation",
+          "kind": "function"
+        },
+        {
+          "path": "resource::capability::ResourceCapabilities::history",
+          "kind": "function"
+        },
+        {
+          "path": "resource::capability::ResourceCapabilities::mutation",
+          "kind": "function"
+        },
+        {
+          "path": "resource::capability::ResourceCapabilities::new",
+          "kind": "function"
+        },
+        {
+          "path": "resource::capability::ResourceCapabilities::snapshot_consistency",
+          "kind": "function"
+        },
+        {
+          "path": "resource::capability::ResourceCapabilities::source_access",
+          "kind": "function"
+        },
+        {
+          "path": "resource::capability::ResourceCapabilities::source_stability",
+          "kind": "function"
+        },
+        {
+          "path": "resource::capability::ResourceCapabilityError",
+          "kind": "type"
+        },
+        {
+          "path": "resource::capability::ResourceCapabilityError::ChangeDiscoveryForStableResource",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::capability::ResourceCapabilityError::MutationWithoutPublicationAuthority",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::capability::ResourceMutationGrammar",
+          "kind": "type"
+        },
+        {
+          "path": "resource::capability::ResourceMutationGrammar::AddOnly",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::capability::ResourceMutationGrammar::None",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::capability::ResourceMutationGrammar::Replacement",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::capability::ResourceMutationGrammar::Resize",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::capability::SnapshotConsistency",
+          "kind": "type"
+        },
+        {
+          "path": "resource::capability::SnapshotConsistency::NativeRegion",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::capability::SnapshotConsistency::WholeResource",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::capability::SourceAccessAuthority",
+          "kind": "type"
+        },
+        {
+          "path": "resource::capability::SourceAccessAuthority::ObserveAndPublish",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::capability::SourceAccessAuthority::ObserveOnly",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::capability::SourceStability",
+          "kind": "type"
+        },
+        {
+          "path": "resource::capability::SourceStability::ExternallyEvolving",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::capability::SourceStability::Stable",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceOpenOutcome::failure",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceOpenOutcome::not_ready",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceOpenOutcome::ready",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceOpenOutcome::ready_state",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceOpenOutcome::rollback",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceOpenOutcome::status",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceOpenStatus",
+          "kind": "type"
+        },
+        {
+          "path": "resource::access::ResourceOpenStatus::NotReady",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceOpenStatus::Ready",
+          "kind": "variant"
         }
       ],
       "derive_checks": [
@@ -9950,6 +10645,756 @@
         {
           "derive": "PartialEq",
           "public_type": "resource::ResourceValueSchemas",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::access::ResourceAccessDescriptor",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::access::ResourceApplicabilityOutcome",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::access::ResourceChangeCheckpoint",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::access::ResourceCloseError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::access::ResourceCloseOutcome",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::access::ResourceFreshness",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::access::ResourceIncompleteClose",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::access::ResourceNegotiationError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::access::ResourceObservationFailure",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::access::ResourceObservationOutcome",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::access::ResourceOpenFailure",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::access::ResourceOpenOutcome",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::access::ResourceReadyError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::access::ResourceReadyState",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::bounds::ResourceAccessBounds",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::bounds::ResourceBoundField",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::bounds::ResourceBoundsError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::bounds::ResourceCompletionScope",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::bounds::ResourcePayloadAccounting",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::bounds::ResourceStateBounds",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::bounds::ResourceTransferBounds",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::capability::ChangeDiscovery",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::capability::DestinationCreation",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::capability::HistoricalAvailability",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::capability::ResourceCapabilities",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::capability::ResourceCapabilityError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::capability::ResourceMutationGrammar",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::capability::SnapshotConsistency",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::capability::SourceAccessAuthority",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::capability::SourceStability",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::access::ResourceApplicabilityOutcome",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::access::ResourceChangeCheckpoint",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::access::ResourceCloseError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::access::ResourceCloseOutcome",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::access::ResourceFreshness",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::access::ResourceIncompleteClose",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::access::ResourceNegotiationError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::access::ResourceObservationFailure",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::access::ResourceObservationOutcome",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::access::ResourceOpenFailure",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::access::ResourceReadyError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::access::ResourceReadyState",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::bounds::ResourceBoundField",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::bounds::ResourceBoundsError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::bounds::ResourceCompletionScope",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::bounds::ResourcePayloadAccounting",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::capability::ChangeDiscovery",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::capability::DestinationCreation",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::capability::HistoricalAvailability",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::capability::ResourceCapabilities",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::capability::ResourceCapabilityError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::capability::ResourceMutationGrammar",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::capability::SnapshotConsistency",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::capability::SourceAccessAuthority",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::capability::SourceStability",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::access::ResourceAccessDescriptor",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::access::ResourceApplicabilityOutcome",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::access::ResourceChangeCheckpoint",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::access::ResourceCloseError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::access::ResourceCloseOutcome",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::access::ResourceFreshness",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::access::ResourceIncompleteClose",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::access::ResourceNegotiationError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::access::ResourceObservationFailure",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::access::ResourceObservationOutcome",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::access::ResourceOpenFailure",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::access::ResourceOpenOutcome",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::access::ResourceReadyError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::access::ResourceReadyState",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::bounds::ResourceAccessBounds",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::bounds::ResourceBoundField",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::bounds::ResourceBoundsError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::bounds::ResourceCompletionScope",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::bounds::ResourcePayloadAccounting",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::bounds::ResourceStateBounds",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::bounds::ResourceTransferBounds",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::capability::ChangeDiscovery",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::capability::DestinationCreation",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::capability::HistoricalAvailability",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::capability::ResourceCapabilities",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::capability::ResourceCapabilityError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::capability::ResourceMutationGrammar",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::capability::SnapshotConsistency",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::capability::SourceAccessAuthority",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::capability::SourceStability",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::access::ResourceAccessDescriptor",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::access::ResourceApplicabilityOutcome",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::access::ResourceChangeCheckpoint",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::access::ResourceCloseError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::access::ResourceCloseOutcome",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::access::ResourceFreshness",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::access::ResourceIncompleteClose",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::access::ResourceNegotiationError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::access::ResourceObservationFailure",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::access::ResourceObservationOutcome",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::access::ResourceOpenFailure",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::access::ResourceOpenOutcome",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::access::ResourceReadyError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::access::ResourceReadyState",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::bounds::ResourceAccessBounds",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::bounds::ResourceBoundField",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::bounds::ResourceBoundsError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::bounds::ResourceCompletionScope",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::bounds::ResourcePayloadAccounting",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::bounds::ResourceStateBounds",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::bounds::ResourceTransferBounds",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::capability::ChangeDiscovery",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::capability::DestinationCreation",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::capability::HistoricalAvailability",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::capability::ResourceCapabilities",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::capability::ResourceCapabilityError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::capability::ResourceMutationGrammar",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::capability::SnapshotConsistency",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::capability::SourceAccessAuthority",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::capability::SourceStability",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::access::ResourceAccessDescriptor",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::access::ResourceApplicabilityOutcome",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::access::ResourceChangeCheckpoint",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::access::ResourceCloseError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::access::ResourceCloseOutcome",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::access::ResourceFreshness",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::access::ResourceIncompleteClose",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::access::ResourceNegotiationError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::access::ResourceObservationFailure",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::access::ResourceObservationOutcome",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::access::ResourceOpenFailure",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::access::ResourceOpenOutcome",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::access::ResourceReadyError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::access::ResourceReadyState",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::bounds::ResourceAccessBounds",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::bounds::ResourceBoundField",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::bounds::ResourceBoundsError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::bounds::ResourceCompletionScope",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::bounds::ResourcePayloadAccounting",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::bounds::ResourceStateBounds",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::bounds::ResourceTransferBounds",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::capability::ChangeDiscovery",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::capability::DestinationCreation",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::capability::HistoricalAvailability",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::capability::ResourceCapabilities",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::capability::ResourceCapabilityError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::capability::ResourceMutationGrammar",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::capability::SnapshotConsistency",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::capability::SourceAccessAuthority",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::capability::SourceStability",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::access::ResourceOpenStatus",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::access::ResourceOpenStatus",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::access::ResourceOpenStatus",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::access::ResourceOpenStatus",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::access::ResourceOpenStatus",
           "consumer_operation": "partial_eq"
         }
       ]

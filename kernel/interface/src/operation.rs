@@ -150,7 +150,7 @@ impl OperationDescriptor {
 
     /// Returns the fixed deferred, single-result, local operation shape.
     #[must_use]
-    pub(crate) const fn local_deferred() -> Self {
+    pub const fn local_deferred() -> Self {
         Self {
             invocation: InvocationClass::CallerMayWait,
             completion: CompletionClass::DeferredTerminal,
@@ -168,6 +168,32 @@ impl OperationDescriptor {
             invocation: InvocationClass::NonBlockingInvocation,
             completion: CompletionClass::InlineTerminal,
             delivery: DeliveryClass::Single,
+            effect: EffectClass::ExternalObservation,
+            callback: CallbackClass::NoUserCallback,
+            reentrancy: ReentrancyClass::NonReentrant,
+        }
+    }
+
+    /// Returns the fixed deferred, single-result external observation shape.
+    #[must_use]
+    pub const fn external_observation_deferred() -> Self {
+        Self {
+            invocation: InvocationClass::CallerMayWait,
+            completion: CompletionClass::DeferredTerminal,
+            delivery: DeliveryClass::Single,
+            effect: EffectClass::ExternalObservation,
+            callback: CallbackClass::NoUserCallback,
+            reentrancy: ReentrancyClass::NonReentrant,
+        }
+    }
+
+    /// Returns the fixed deferred external observation stream shape.
+    #[must_use]
+    pub const fn external_observation_stream() -> Self {
+        Self {
+            invocation: InvocationClass::CallerMayWait,
+            completion: CompletionClass::DeferredTerminal,
+            delivery: DeliveryClass::Stream,
             effect: EffectClass::ExternalObservation,
             callback: CallbackClass::NoUserCallback,
             reentrancy: ReentrancyClass::NonReentrant,

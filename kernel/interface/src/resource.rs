@@ -3,6 +3,10 @@
 use crate::lifecycle::LifecycleIdentity;
 use crate::operation::ContractSelection;
 
+pub mod access;
+pub mod bounds;
+pub mod capability;
+
 /// Stable opaque identity of one Resource subject.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ResourceIdentity(u128);

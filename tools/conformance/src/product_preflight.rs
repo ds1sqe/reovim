@@ -94,6 +94,9 @@ const PRODUCT_FILES: &[(&str, FileRole)] = &[
         FileRole::KernelInterface,
     ),
     ("kernel/interface/src/resource.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/resource/access.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/resource/bounds.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/resource/capability.rs", FileRole::KernelInterface),
     (
         "tests/kernel-interface-public-consumer/Cargo.toml",
         FileRole::KernelInterfaceConsumer,
@@ -192,6 +195,10 @@ const PRODUCT_FILES: &[(&str, FileRole)] = &[
     ),
     (
         "tests/kernel-interface-public-consumer/src/resource.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/src/resource/access.rs",
         FileRole::KernelInterfaceConsumer,
     ),
     (
