@@ -4,6 +4,7 @@
 
 extern crate alloc;
 
+mod buffer;
 mod clock;
 mod diagnostic;
 mod effect;
@@ -20,7 +21,8 @@ use core::{error::Error, fmt::Debug};
 const _: [(); 1] = [(); public_const_cases() as usize];
 
 const fn public_const_cases() -> bool {
-    operation::const_cases()
+    buffer::const_cases()
+        && operation::const_cases()
         && lifecycle::const_cases()
         && clock::const_cases()
         && diagnostic::const_cases()
@@ -35,6 +37,7 @@ const fn public_const_cases() -> bool {
 #[must_use]
 pub fn exercise_public_api() -> bool {
     public_items::witness()
+        && buffer::exercise()
         && operation::exercise()
         && lifecycle::exercise()
         && clock::exercise()

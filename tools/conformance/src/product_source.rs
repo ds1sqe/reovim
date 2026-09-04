@@ -39,6 +39,11 @@ const CLONE_DEBUG_EQ_WITNESS: &str = "clone_debug_eq_witness";
 const SEND_SYNC_WITNESS: &str = "send_sync_witness";
 
 const MOVE_ONLY_KERNEL_TYPES: &[(&str, &str)] = &[
+    ("BufferPlanCarrier", "buffer::carrier::BufferPlanCarrier"),
+    ("BufferCarrierRejection", "buffer::carrier::BufferCarrierRejection"),
+    ("BufferPlanRejection", "buffer::plan::BufferPlanRejection"),
+    ("BufferTransactionPlan", "buffer::plan::BufferTransactionPlan"),
+    ("BufferPlanBindingOutcome", "buffer::plan::BufferPlanBindingOutcome"),
     ("DiagnosticOutputRecord", "diagnostic::DiagnosticOutputRecord"),
     ("DiagnosticRecordRejection", "diagnostic::DiagnosticRecordRejection"),
     ("DiagnosticSubmissionOutcome", "diagnostic::DiagnosticSubmissionOutcome"),
@@ -1958,6 +1963,7 @@ fn exact_owned_byte_box(
 fn owned_byte_box_path(path: &Path) -> bool {
     [
         "kernel/interface/src/diagnostic.rs",
+        "kernel/interface/src/buffer/carrier.rs",
         "kernel/interface/src/resource/access.rs",
         "kernel/interface/src/resource/carrier.rs",
     ]
@@ -4215,6 +4221,10 @@ mod tests {
         "tests/foundation-public-consumer/src/public_items.rs";
     const KI_SHIPPING: &[&str] = &[
         "kernel/interface/src/bound.rs",
+        "kernel/interface/src/buffer.rs",
+        "kernel/interface/src/buffer/bounds.rs",
+        "kernel/interface/src/buffer/carrier.rs",
+        "kernel/interface/src/buffer/plan.rs",
         "kernel/interface/src/cancellation.rs",
         "kernel/interface/src/carrier.rs",
         "kernel/interface/src/clock.rs",
@@ -4256,6 +4266,9 @@ mod tests {
         "kernel/interface/src/resource/port.rs",
     ];
     const KI_CONSUMER: &[&str] = &[
+        "tests/kernel-interface-public-consumer/src/buffer.rs",
+        "tests/kernel-interface-public-consumer/src/buffer/carrier.rs",
+        "tests/kernel-interface-public-consumer/src/buffer/plan.rs",
         "tests/kernel-interface-public-consumer/src/clock.rs",
         "tests/kernel-interface-public-consumer/src/diagnostic.rs",
         "tests/kernel-interface-public-consumer/src/diagnostic/destination.rs",
@@ -4940,6 +4953,7 @@ mod tests {
     fn owned_byte_box_is_exact_and_path_bounded() {
         for path in [
             "kernel/interface/src/diagnostic.rs",
+            "kernel/interface/src/buffer/carrier.rs",
             "kernel/interface/src/resource/access.rs",
             "kernel/interface/src/resource/carrier.rs",
         ] {
@@ -5031,8 +5045,16 @@ mod tests {
     }
 
     #[test]
-    fn resource_owning_types_are_proved_move_only() {
+    fn buffer_and_resource_owning_types_are_proved_move_only() {
         for (path, name) in [
+            ("kernel/interface/src/buffer/carrier.rs", "BufferPlanCarrier"),
+            (
+                "kernel/interface/src/buffer/carrier.rs",
+                "BufferCarrierRejection",
+            ),
+            ("kernel/interface/src/buffer/plan.rs", "BufferPlanRejection"),
+            ("kernel/interface/src/buffer/plan.rs", "BufferTransactionPlan"),
+            ("kernel/interface/src/buffer/plan.rs", "BufferPlanBindingOutcome"),
             (
                 "kernel/interface/src/resource/carrier.rs",
                 "ResourceRegionCarrier",

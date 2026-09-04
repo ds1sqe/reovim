@@ -2377,6 +2377,10 @@ const FOUNDATION_CONSUMER_SOURCES: &[&str] = &[
 ];
 const KERNEL_INTERFACE_SHIPPING_SOURCES: &[&str] = &[
     "kernel/interface/src/bound.rs",
+    "kernel/interface/src/buffer.rs",
+    "kernel/interface/src/buffer/bounds.rs",
+    "kernel/interface/src/buffer/carrier.rs",
+    "kernel/interface/src/buffer/plan.rs",
     "kernel/interface/src/cancellation.rs",
     "kernel/interface/src/carrier.rs",
     "kernel/interface/src/clock.rs",
@@ -2418,6 +2422,9 @@ const KERNEL_INTERFACE_SHIPPING_SOURCES: &[&str] = &[
     "kernel/interface/src/resource/port.rs",
 ];
 const KERNEL_INTERFACE_CONSUMER_SOURCES: &[&str] = &[
+    "tests/kernel-interface-public-consumer/src/buffer.rs",
+    "tests/kernel-interface-public-consumer/src/buffer/carrier.rs",
+    "tests/kernel-interface-public-consumer/src/buffer/plan.rs",
     "tests/kernel-interface-public-consumer/src/clock.rs",
     "tests/kernel-interface-public-consumer/src/diagnostic.rs",
     "tests/kernel-interface-public-consumer/src/diagnostic/destination.rs",

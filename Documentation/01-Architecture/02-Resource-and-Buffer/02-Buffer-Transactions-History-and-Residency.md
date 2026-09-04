@@ -44,6 +44,78 @@ Preconditions plus origin/correlation data. Domain, Client, extension, and
 external callback policy is fully evaluated before the atomic acceptance
 section.
 
+### Public Transaction plan boundary
+
+Kernel Interface owns the portable **Transaction Plan** values crossing from
+Domain or Representation lowering into Kernel Runtime. Kernel Core owns the
+private unstable Buffer Transition port and its state mechanism. A Transaction
+Plan is immutable data for that later port; constructing or validating it does
+not prove currentness, accept state, advance Buffer or History, or publish an
+Outcome.
+
+One **Buffer Plan Descriptor** selects:
+
+- its own contract identity and compatible version;
+- the exact lifecycle generation authorized to receive plans;
+- independent versioned carrier contracts for origin, ordered Operations, and
+  Preconditions; and
+- Count bounds for Operations and Preconditions plus Byte bounds for each
+  carrier and total owned plan state. All six bounds name one explicit charge
+  owner; construction rejects the first mismatched owner as a typed error.
+
+The three carrier type identities are distinct. Their portable Rust projection
+is immutable, move-only, transferable with shared borrowing, and value-lifetime
+owned. Debug exposes role, type/version stamp, item count, and charge but never
+carried bytes. Carrier mismatch rejects without parsing and returns the
+unchanged owned allocation.
+
+The origin carrier is one self-contained schema-qualified provenance record.
+Its selected semantic schema includes the exact applicable Domain,
+Representation, Projection, coordinate-space, request, and authority stamps.
+Kernel Interface validates and retains its carrier contract but does not decode
+Domain meaning. Operations and Preconditions likewise remain Buffer-family
+selected opaque values; there is no universal opcode or general Editing IR.
+
+Preparation validates carrier role, type identity, selected schema version,
+item count, byte count, zero rules, checked arithmetic, and per-plan hard bounds
+before allocation, traversal, parsing, lookup, or policy/Core work. Binding
+repeats those checks against the current descriptor and exact allocation
+length. A plan has exactly one nonempty origin record and at least one
+Operation. Preconditions are optional: zero items require zero bytes, while a
+nonzero count requires nonzero bytes.
+
+Binding returns one move-only **Buffer Plan Binding Outcome** so acceptance and
+rejection remain explicit ownership transfers. Its Accepted variant owns the
+complete Transaction Plan. Its Rejected variant owns the exact rejection
+cause, stamp, target, and every unchanged carrier. Both variants are
+transferable, immutable, and payload-redacted under Debug.
+
+One **Transaction Plan Stamp** names the descriptor-owner generation,
+Transaction identity, History-transition identity, cancellation authority,
+root correlation, and optional separately governed deadline. The target state
+names one exact Resource Snapshot, Buffer identity/incarnation and local
+version, and History lifecycle and position. Resource Revision and Buffer
+version remain distinct.
+
+Cancellation or deadline observation before Buffer State Lane entry can reject
+the plan. The atomic transition itself is local, inline, bounded,
+non-suspending, non-reentrant, and callback-free. Once its linearization section
+begins, it completes with acceptance or typed non-acceptance rather than
+polling an outside cancellation source.
+
+Structural validation cannot determine whether a previously valid target is
+still current or whether an encoded Precondition holds. Kernel Runtime and the
+private Core port revalidate the exact target, carrier selections, Operations,
+and Preconditions at the declared cuts. Failure returns or retains the complete
+plan under its ownership contract and never silently retargets it.
+
+The Transaction Plan is not a public Buffer mutation service. Clients and
+extensions submit semantic Intents; selected Domain/Representation policy
+produces plans. A general Editing IR or pass manager remains unavailable until
+the separately governed multi-consumer and measurement gate admits one.
+
+### Buffer State Lane and acceptance
+
 The **Buffer State Lane** is the one logical linearization authority for
 Transaction, History, compatibility, publication/reconcile, and lifecycle
 installation. It is not necessarily a thread. Work outside the lane observes

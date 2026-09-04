@@ -13,6 +13,10 @@ readme = false
 publish = false
 include = [
     "src/bound.rs",
+    "src/buffer.rs",
+    "src/buffer/bounds.rs",
+    "src/buffer/carrier.rs",
+    "src/buffer/plan.rs",
     "src/cancellation.rs",
     "src/carrier.rs",
     "src/clock.rs",

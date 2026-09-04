@@ -2,6 +2,16 @@
 
 pub const fn witness() -> bool {
     bound_items();
+    buffer_items_one();
+    buffer_items_two();
+    buffer_items_three();
+    buffer_items_four();
+    buffer_items_five();
+    buffer_items_six();
+    buffer_items_seven();
+    buffer_items_eight();
+    buffer_items_nine();
+    buffer_items_ten();
     cancellation_items();
     carrier_items_one();
     carrier_items_two();
@@ -55,8 +65,206 @@ pub const fn witness() -> bool {
     trait_items();
     trait_method_items();
     variant_items();
+    buffer_variant_items();
     resource_variant_items();
     true
+}
+
+const fn buffer_items_one() {
+    let _ = (
+        ::reovim_kernel_interface::buffer::BufferIdentity::new,
+        ::reovim_kernel_interface::buffer::BufferIdentity::value,
+        ::reovim_kernel_interface::buffer::BufferVersion::INITIAL,
+        ::reovim_kernel_interface::buffer::BufferVersion::new,
+        ::reovim_kernel_interface::buffer::BufferVersion::value,
+        ::reovim_kernel_interface::buffer::BufferIncarnationStamp::new,
+        ::reovim_kernel_interface::buffer::BufferIncarnationStamp::buffer,
+        ::reovim_kernel_interface::buffer::BufferIncarnationStamp::lifecycle,
+        ::reovim_kernel_interface::buffer::BufferIncarnationStamp::
+            same_incarnation,
+        ::reovim_kernel_interface::buffer::BufferIncarnationStamp::
+            same_generation,
+    );
+}
+
+const fn buffer_items_two() {
+    let _ = (
+        ::reovim_kernel_interface::buffer::BufferHistoryPosition::INITIAL,
+        ::reovim_kernel_interface::buffer::BufferHistoryPosition::new,
+        ::reovim_kernel_interface::buffer::BufferHistoryPosition::value,
+        ::reovim_kernel_interface::buffer::BufferHistoryStamp::new,
+        ::reovim_kernel_interface::buffer::BufferHistoryStamp::lifecycle,
+        ::reovim_kernel_interface::buffer::BufferHistoryStamp::position,
+        ::reovim_kernel_interface::buffer::BufferHistoryStamp::same_state,
+        ::reovim_kernel_interface::buffer::BufferStateStamp::new,
+        ::reovim_kernel_interface::buffer::BufferStateStamp::source,
+        ::reovim_kernel_interface::buffer::BufferStateStamp::buffer,
+    );
+}
+
+const fn buffer_items_three() {
+    let _ = (
+        ::reovim_kernel_interface::buffer::BufferStateStamp::version,
+        ::reovim_kernel_interface::buffer::BufferStateStamp::history,
+        ::reovim_kernel_interface::buffer::BufferStateStamp::same_state,
+        ::reovim_kernel_interface::buffer::bounds::BufferPlanBounds::new,
+        ::reovim_kernel_interface::buffer::bounds::BufferPlanBounds::
+            charge_owner,
+        ::reovim_kernel_interface::buffer::bounds::BufferPlanBounds::
+            operations,
+        ::reovim_kernel_interface::buffer::bounds::BufferPlanBounds::
+            preconditions,
+        ::reovim_kernel_interface::buffer::bounds::BufferPlanBounds::
+            origin_bytes,
+        ::reovim_kernel_interface::buffer::bounds::BufferPlanBounds::
+            operation_bytes,
+        ::reovim_kernel_interface::buffer::bounds::BufferPlanBounds::
+            precondition_bytes,
+        ::reovim_kernel_interface::buffer::bounds::BufferPlanBounds::
+            owned_bytes,
+    );
+}
+
+const fn buffer_items_four() {
+    let _ = (
+        ::reovim_kernel_interface::buffer::bounds::BufferPlanBounds::
+            admit_plan_bytes,
+        ::reovim_kernel_interface::buffer::bounds::BufferPlanBounds::
+            admit_retained_bytes,
+        ::reovim_kernel_interface::buffer::carrier::BufferCarrierStamp::new,
+        ::reovim_kernel_interface::buffer::carrier::BufferCarrierStamp::
+            type_identity,
+        ::reovim_kernel_interface::buffer::carrier::BufferCarrierStamp::
+            schema_version,
+        ::reovim_kernel_interface::buffer::carrier::BufferCarrierContract::new,
+        ::reovim_kernel_interface::buffer::carrier::BufferCarrierContract::
+            schema,
+        ::reovim_kernel_interface::buffer::carrier::BufferCarrierContract::
+            safety,
+        ::reovim_kernel_interface::buffer::carrier::BufferCarrierContract::
+            selected_stamp,
+        ::reovim_kernel_interface::buffer::carrier::BufferCarrierContract::
+            validate_stamp,
+    );
+}
+
+const fn buffer_items_five() {
+    let _ = (
+        ::reovim_kernel_interface::buffer::carrier::BufferCarrierContracts::
+            new,
+        ::reovim_kernel_interface::buffer::carrier::BufferCarrierContracts::
+            origin,
+        ::reovim_kernel_interface::buffer::carrier::BufferCarrierContracts::
+            operations,
+        ::reovim_kernel_interface::buffer::carrier::BufferCarrierContracts::
+            preconditions,
+        ::reovim_kernel_interface::buffer::carrier::BufferCarrierPreparation::
+            role,
+        ::reovim_kernel_interface::buffer::carrier::BufferCarrierPreparation::
+            stamp,
+        ::reovim_kernel_interface::buffer::carrier::BufferCarrierPreparation::
+            items,
+        ::reovim_kernel_interface::buffer::carrier::BufferCarrierPreparation::
+            size,
+        ::reovim_kernel_interface::buffer::carrier::BufferCarrierPreparation::
+            bind,
+        ::reovim_kernel_interface::buffer::carrier::BufferPlanCarrier::role,
+    );
+}
+
+const fn buffer_items_six() {
+    let _ = (
+        ::reovim_kernel_interface::buffer::carrier::BufferPlanCarrier::stamp,
+        ::reovim_kernel_interface::buffer::carrier::BufferPlanCarrier::items,
+        ::reovim_kernel_interface::buffer::carrier::BufferPlanCarrier::size,
+        ::reovim_kernel_interface::buffer::carrier::BufferPlanCarrier::bytes,
+        ::reovim_kernel_interface::buffer::carrier::BufferPlanCarrier::
+            into_bytes,
+        ::reovim_kernel_interface::buffer::carrier::BufferCarrierRejection::
+            cause,
+        ::reovim_kernel_interface::buffer::carrier::BufferCarrierRejection::
+            bytes,
+        ::reovim_kernel_interface::buffer::carrier::BufferCarrierRejection::
+            into_bytes,
+        ::reovim_kernel_interface::buffer::plan::BufferTransactionIdentity::
+            new,
+        ::reovim_kernel_interface::buffer::plan::BufferTransactionIdentity::
+            value,
+    );
+}
+
+const fn buffer_items_seven() {
+    let _ = (
+        ::reovim_kernel_interface::buffer::plan::
+            BufferHistoryTransitionIdentity::new,
+        ::reovim_kernel_interface::buffer::plan::
+            BufferHistoryTransitionIdentity::value,
+        ::reovim_kernel_interface::buffer::plan::BufferCancellationIdentity::
+            new,
+        ::reovim_kernel_interface::buffer::plan::BufferCancellationIdentity::
+            value,
+        ::reovim_kernel_interface::buffer::plan::BufferCorrelationIdentity::
+            new,
+        ::reovim_kernel_interface::buffer::plan::BufferCorrelationIdentity::
+            value,
+        ::reovim_kernel_interface::buffer::plan::BufferDeadlineIdentity::new,
+        ::reovim_kernel_interface::buffer::plan::BufferDeadlineIdentity::value,
+        ::reovim_kernel_interface::buffer::plan::BufferPlanStamp::new,
+        ::reovim_kernel_interface::buffer::plan::BufferPlanStamp::owner,
+    );
+}
+
+const fn buffer_items_eight() {
+    let _ = (
+        ::reovim_kernel_interface::buffer::plan::BufferPlanStamp::transaction,
+        ::reovim_kernel_interface::buffer::plan::BufferPlanStamp::
+            history_transition,
+        ::reovim_kernel_interface::buffer::plan::BufferPlanStamp::cancellation,
+        ::reovim_kernel_interface::buffer::plan::BufferPlanStamp::correlation,
+        ::reovim_kernel_interface::buffer::plan::BufferPlanStamp::deadline,
+        ::reovim_kernel_interface::buffer::plan::BufferPlanDescriptor::new,
+        ::reovim_kernel_interface::buffer::plan::BufferPlanDescriptor::contract,
+        ::reovim_kernel_interface::buffer::plan::BufferPlanDescriptor::owner,
+        ::reovim_kernel_interface::buffer::plan::BufferPlanDescriptor::carriers,
+        ::reovim_kernel_interface::buffer::plan::BufferPlanDescriptor::bounds,
+    );
+}
+
+const fn buffer_items_nine() {
+    let _ = (
+        ::reovim_kernel_interface::buffer::plan::BufferPlanDescriptor::
+            transition_operation,
+        ::reovim_kernel_interface::buffer::plan::BufferPlanDescriptor::
+            prepare_carrier,
+        ::reovim_kernel_interface::buffer::plan::BufferPlanDescriptor::
+            bind_plan,
+        ::reovim_kernel_interface::buffer::plan::BufferPlanRejection::cause,
+        ::reovim_kernel_interface::buffer::plan::BufferPlanRejection::stamp,
+        ::reovim_kernel_interface::buffer::plan::BufferPlanRejection::target,
+        ::reovim_kernel_interface::buffer::plan::BufferPlanRejection::origin,
+        ::reovim_kernel_interface::buffer::plan::BufferPlanRejection::
+            operations,
+        ::reovim_kernel_interface::buffer::plan::BufferPlanRejection::
+            preconditions,
+        ::reovim_kernel_interface::buffer::plan::BufferPlanRejection::
+            into_carriers,
+        ::reovim_kernel_interface::buffer::plan::BufferTransactionPlan::stamp,
+        ::reovim_kernel_interface::buffer::plan::BufferTransactionPlan::target,
+    );
+}
+
+const fn buffer_items_ten() {
+    let _ = (
+        ::reovim_kernel_interface::buffer::plan::BufferTransactionPlan::origin,
+        ::reovim_kernel_interface::buffer::plan::BufferTransactionPlan::
+            operations,
+        ::reovim_kernel_interface::buffer::plan::BufferTransactionPlan::
+            preconditions,
+        ::reovim_kernel_interface::buffer::plan::BufferTransactionPlan::
+            owned_bytes,
+        ::reovim_kernel_interface::buffer::plan::BufferTransactionPlan::
+            into_carriers,
+    );
 }
 
 const fn resource_items_one() {
@@ -1396,6 +1604,126 @@ const fn variant_items() {
         output_health_sequence_position_variants,
         output_health_snapshot_coverage_variants,
     );
+}
+
+const fn buffer_variant_items() {
+    let _ = (
+        buffer_plan_bound_field_variants,
+        buffer_plan_bounds_error_variants,
+        buffer_carrier_role_variants,
+        buffer_carrier_error_variants,
+        buffer_deadline_variants,
+        buffer_plan_binding_outcome_variants,
+        buffer_plan_error_variants,
+    );
+}
+
+const fn buffer_plan_bound_field_variants(
+    value: ::reovim_kernel_interface::buffer::bounds::BufferPlanBoundField,
+) {
+    match value {
+        ::reovim_kernel_interface::buffer::bounds::BufferPlanBoundField::
+            Operations
+        | ::reovim_kernel_interface::buffer::bounds::BufferPlanBoundField::
+            Preconditions
+        | ::reovim_kernel_interface::buffer::bounds::BufferPlanBoundField::
+            OriginBytes
+        | ::reovim_kernel_interface::buffer::bounds::BufferPlanBoundField::
+            OperationBytes
+        | ::reovim_kernel_interface::buffer::bounds::BufferPlanBoundField::
+            PreconditionBytes
+        | ::reovim_kernel_interface::buffer::bounds::BufferPlanBoundField::
+            OwnedBytes => {}
+    }
+}
+
+const fn buffer_plan_bounds_error_variants(
+    value: ::reovim_kernel_interface::buffer::bounds::BufferPlanBoundsError,
+) {
+    match value {
+        ::reovim_kernel_interface::buffer::bounds::BufferPlanBoundsError::
+            WrongUnit { .. }
+        | ::reovim_kernel_interface::buffer::bounds::BufferPlanBoundsError::
+            WrongZeroPolicy { .. }
+        | ::reovim_kernel_interface::buffer::bounds::BufferPlanBoundsError::
+            ChargeOwnerMismatch { .. } => {}
+    }
+}
+
+const fn buffer_carrier_role_variants(
+    value: ::reovim_kernel_interface::buffer::carrier::BufferCarrierRole,
+) {
+    match value {
+        ::reovim_kernel_interface::buffer::carrier::BufferCarrierRole::Origin
+        | ::reovim_kernel_interface::buffer::carrier::BufferCarrierRole::
+            Operations
+        | ::reovim_kernel_interface::buffer::carrier::BufferCarrierRole::
+            Preconditions => {}
+    }
+}
+
+const fn buffer_carrier_error_variants(
+    value: ::reovim_kernel_interface::buffer::carrier::BufferCarrierError,
+) {
+    match value {
+        ::reovim_kernel_interface::buffer::carrier::BufferCarrierError::
+            IncoherentSafety
+        | ::reovim_kernel_interface::buffer::carrier::BufferCarrierError::
+            DuplicateTypeIdentity { .. }
+        | ::reovim_kernel_interface::buffer::carrier::BufferCarrierError::
+            TypeMismatch { .. }
+        | ::reovim_kernel_interface::buffer::carrier::BufferCarrierError::
+            IncompatibleSchema { .. }
+        | ::reovim_kernel_interface::buffer::carrier::BufferCarrierError::
+            Bound { .. }
+        | ::reovim_kernel_interface::buffer::carrier::BufferCarrierError::
+            OriginRecordCount { .. }
+        | ::reovim_kernel_interface::buffer::carrier::BufferCarrierError::
+            PreconditionShape { .. }
+        | ::reovim_kernel_interface::buffer::carrier::BufferCarrierError::
+            RoleMismatch { .. }
+        | ::reovim_kernel_interface::buffer::carrier::BufferCarrierError::
+            LengthOverflow { .. }
+        | ::reovim_kernel_interface::buffer::carrier::BufferCarrierError::
+            LengthMismatch { .. } => {}
+    }
+}
+
+const fn buffer_deadline_variants(
+    value: ::reovim_kernel_interface::buffer::plan::BufferDeadline,
+) {
+    match value {
+        ::reovim_kernel_interface::buffer::plan::BufferDeadline::None
+        | ::reovim_kernel_interface::buffer::plan::BufferDeadline::Governed(
+            _,
+        ) => {}
+    }
+}
+
+const fn buffer_plan_error_variants(
+    value: ::reovim_kernel_interface::buffer::plan::BufferPlanError,
+) {
+    match value {
+        ::reovim_kernel_interface::buffer::plan::BufferPlanError::
+            OwnerGenerationMismatch
+        | ::reovim_kernel_interface::buffer::plan::BufferPlanError::Carrier(
+            _,
+        )
+        | ::reovim_kernel_interface::buffer::plan::BufferPlanError::Bound(
+            _,
+        ) => {}
+    }
+}
+
+const fn buffer_plan_binding_outcome_variants(
+    value: &::reovim_kernel_interface::buffer::plan::BufferPlanBindingOutcome,
+) {
+    match value {
+        ::reovim_kernel_interface::buffer::plan::BufferPlanBindingOutcome::
+            Accepted(_)
+        | ::reovim_kernel_interface::buffer::plan::BufferPlanBindingOutcome::
+            Rejected(_) => {}
+    }
 }
 
 const fn resource_variant_items() {

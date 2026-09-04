@@ -375,6 +375,26 @@
             "kind": "copied",
             "package_path": "src/resource/port.rs",
             "repository_path": "kernel/interface/src/resource/port.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/buffer.rs",
+            "repository_path": "kernel/interface/src/buffer.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/buffer/bounds.rs",
+            "repository_path": "kernel/interface/src/buffer/bounds.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/buffer/carrier.rs",
+            "repository_path": "kernel/interface/src/buffer/carrier.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/buffer/plan.rs",
+            "repository_path": "kernel/interface/src/buffer/plan.rs"
           }
         ]
       }
@@ -7428,6 +7448,646 @@
         {
           "path": "resource::access::ResourceObservedStateError::SnapshotMismatch",
           "kind": "variant"
+        },
+        {
+          "path": "buffer",
+          "kind": "module"
+        },
+        {
+          "path": "buffer::BufferHistoryPosition",
+          "kind": "type"
+        },
+        {
+          "path": "buffer::BufferHistoryPosition::INITIAL",
+          "kind": "const"
+        },
+        {
+          "path": "buffer::BufferHistoryPosition::new",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::BufferHistoryPosition::value",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::BufferHistoryStamp",
+          "kind": "type"
+        },
+        {
+          "path": "buffer::BufferHistoryStamp::lifecycle",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::BufferHistoryStamp::new",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::BufferHistoryStamp::position",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::BufferHistoryStamp::same_state",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::BufferIdentity",
+          "kind": "type"
+        },
+        {
+          "path": "buffer::BufferIdentity::new",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::BufferIdentity::value",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::BufferIncarnationStamp",
+          "kind": "type"
+        },
+        {
+          "path": "buffer::BufferIncarnationStamp::buffer",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::BufferIncarnationStamp::lifecycle",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::BufferIncarnationStamp::new",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::BufferIncarnationStamp::same_generation",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::BufferIncarnationStamp::same_incarnation",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::BufferStateStamp",
+          "kind": "type"
+        },
+        {
+          "path": "buffer::BufferStateStamp::buffer",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::BufferStateStamp::history",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::BufferStateStamp::new",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::BufferStateStamp::same_state",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::BufferStateStamp::source",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::BufferStateStamp::version",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::BufferVersion",
+          "kind": "type"
+        },
+        {
+          "path": "buffer::BufferVersion::INITIAL",
+          "kind": "const"
+        },
+        {
+          "path": "buffer::BufferVersion::new",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::BufferVersion::value",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::bounds",
+          "kind": "module"
+        },
+        {
+          "path": "buffer::bounds::BufferPlanBoundField",
+          "kind": "type"
+        },
+        {
+          "path": "buffer::bounds::BufferPlanBoundField::OperationBytes",
+          "kind": "variant"
+        },
+        {
+          "path": "buffer::bounds::BufferPlanBoundField::Operations",
+          "kind": "variant"
+        },
+        {
+          "path": "buffer::bounds::BufferPlanBoundField::OriginBytes",
+          "kind": "variant"
+        },
+        {
+          "path": "buffer::bounds::BufferPlanBoundField::OwnedBytes",
+          "kind": "variant"
+        },
+        {
+          "path": "buffer::bounds::BufferPlanBoundField::PreconditionBytes",
+          "kind": "variant"
+        },
+        {
+          "path": "buffer::bounds::BufferPlanBoundField::Preconditions",
+          "kind": "variant"
+        },
+        {
+          "path": "buffer::bounds::BufferPlanBounds",
+          "kind": "type"
+        },
+        {
+          "path": "buffer::bounds::BufferPlanBounds::admit_plan_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::bounds::BufferPlanBounds::admit_retained_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::bounds::BufferPlanBounds::new",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::bounds::BufferPlanBounds::operation_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::bounds::BufferPlanBounds::operations",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::bounds::BufferPlanBounds::origin_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::bounds::BufferPlanBounds::owned_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::bounds::BufferPlanBounds::precondition_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::bounds::BufferPlanBounds::preconditions",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::bounds::BufferPlanBoundsError",
+          "kind": "type"
+        },
+        {
+          "path": "buffer::bounds::BufferPlanBoundsError::WrongUnit",
+          "kind": "variant"
+        },
+        {
+          "path": "buffer::bounds::BufferPlanBoundsError::WrongZeroPolicy",
+          "kind": "variant"
+        },
+        {
+          "path": "buffer::carrier",
+          "kind": "module"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierContract",
+          "kind": "type"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierContract::new",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierContract::safety",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierContract::schema",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierContract::selected_stamp",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierContract::validate_stamp",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierContracts",
+          "kind": "type"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierContracts::new",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierContracts::operations",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierContracts::origin",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierContracts::preconditions",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierError",
+          "kind": "type"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierError::Bound",
+          "kind": "variant"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierError::DuplicateTypeIdentity",
+          "kind": "variant"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierError::IncoherentSafety",
+          "kind": "variant"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierError::IncompatibleSchema",
+          "kind": "variant"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierError::LengthMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierError::LengthOverflow",
+          "kind": "variant"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierError::OriginRecordCount",
+          "kind": "variant"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierError::PreconditionShape",
+          "kind": "variant"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierError::RoleMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierError::TypeMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierPreparation",
+          "kind": "type"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierPreparation::bind",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierPreparation::items",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierPreparation::role",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierPreparation::size",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierPreparation::stamp",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierRejection",
+          "kind": "type"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierRejection::bytes",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierRejection::cause",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierRejection::into_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierRole",
+          "kind": "type"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierRole::Operations",
+          "kind": "variant"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierRole::Origin",
+          "kind": "variant"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierRole::Preconditions",
+          "kind": "variant"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierStamp",
+          "kind": "type"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierStamp::new",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierStamp::schema_version",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::carrier::BufferCarrierStamp::type_identity",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::carrier::BufferPlanCarrier",
+          "kind": "type"
+        },
+        {
+          "path": "buffer::carrier::BufferPlanCarrier::bytes",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::carrier::BufferPlanCarrier::into_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::carrier::BufferPlanCarrier::items",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::carrier::BufferPlanCarrier::role",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::carrier::BufferPlanCarrier::size",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::carrier::BufferPlanCarrier::stamp",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan",
+          "kind": "module"
+        },
+        {
+          "path": "buffer::plan::BufferCancellationIdentity",
+          "kind": "type"
+        },
+        {
+          "path": "buffer::plan::BufferCancellationIdentity::new",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferCancellationIdentity::value",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferCorrelationIdentity",
+          "kind": "type"
+        },
+        {
+          "path": "buffer::plan::BufferCorrelationIdentity::new",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferCorrelationIdentity::value",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferDeadline",
+          "kind": "type"
+        },
+        {
+          "path": "buffer::plan::BufferDeadline::Governed",
+          "kind": "variant"
+        },
+        {
+          "path": "buffer::plan::BufferDeadline::None",
+          "kind": "variant"
+        },
+        {
+          "path": "buffer::plan::BufferDeadlineIdentity",
+          "kind": "type"
+        },
+        {
+          "path": "buffer::plan::BufferDeadlineIdentity::new",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferDeadlineIdentity::value",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferHistoryTransitionIdentity",
+          "kind": "type"
+        },
+        {
+          "path": "buffer::plan::BufferHistoryTransitionIdentity::new",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferHistoryTransitionIdentity::value",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferPlanDescriptor",
+          "kind": "type"
+        },
+        {
+          "path": "buffer::plan::BufferPlanDescriptor::bind_plan",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferPlanDescriptor::bounds",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferPlanDescriptor::carriers",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferPlanDescriptor::contract",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferPlanDescriptor::new",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferPlanDescriptor::owner",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferPlanDescriptor::prepare_carrier",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferPlanDescriptor::transition_operation",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferPlanError",
+          "kind": "type"
+        },
+        {
+          "path": "buffer::plan::BufferPlanError::Bound",
+          "kind": "variant"
+        },
+        {
+          "path": "buffer::plan::BufferPlanError::Carrier",
+          "kind": "variant"
+        },
+        {
+          "path": "buffer::plan::BufferPlanError::OwnerGenerationMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "buffer::plan::BufferPlanRejection",
+          "kind": "type"
+        },
+        {
+          "path": "buffer::plan::BufferPlanRejection::cause",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferPlanRejection::into_carriers",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferPlanRejection::operations",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferPlanRejection::origin",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferPlanRejection::preconditions",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferPlanStamp",
+          "kind": "type"
+        },
+        {
+          "path": "buffer::plan::BufferPlanStamp::cancellation",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferPlanStamp::correlation",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferPlanStamp::deadline",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferPlanStamp::history_transition",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferPlanStamp::new",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferPlanStamp::owner",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferPlanStamp::transaction",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferTransactionIdentity",
+          "kind": "type"
+        },
+        {
+          "path": "buffer::plan::BufferTransactionIdentity::new",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferTransactionIdentity::value",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferTransactionPlan",
+          "kind": "type"
+        },
+        {
+          "path": "buffer::plan::BufferTransactionPlan::into_carriers",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferTransactionPlan::operations",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferTransactionPlan::origin",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferTransactionPlan::owned_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferTransactionPlan::preconditions",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferTransactionPlan::stamp",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferTransactionPlan::target",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::bounds::BufferPlanBounds::charge_owner",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::bounds::BufferPlanBoundsError::ChargeOwnerMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "buffer::plan::BufferPlanBindingOutcome",
+          "kind": "type"
+        },
+        {
+          "path": "buffer::plan::BufferPlanBindingOutcome::Accepted",
+          "kind": "variant"
+        },
+        {
+          "path": "buffer::plan::BufferPlanBindingOutcome::Rejected",
+          "kind": "variant"
+        },
+        {
+          "path": "buffer::plan::BufferPlanRejection::stamp",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferPlanRejection::target",
+          "kind": "function"
         }
       ],
       "derive_checks": [
@@ -12914,6 +13574,586 @@
         {
           "derive": "PartialEq",
           "public_type": "resource::operation::ResourceRequestIdentity",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "buffer::BufferHistoryPosition",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "buffer::BufferHistoryStamp",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "buffer::BufferIdentity",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "buffer::BufferIncarnationStamp",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "buffer::BufferStateStamp",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "buffer::BufferVersion",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "buffer::bounds::BufferPlanBoundField",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "buffer::bounds::BufferPlanBounds",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "buffer::bounds::BufferPlanBoundsError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "buffer::carrier::BufferCarrierContract",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "buffer::carrier::BufferCarrierContracts",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "buffer::carrier::BufferCarrierError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "buffer::carrier::BufferCarrierPreparation",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "buffer::carrier::BufferCarrierRole",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "buffer::carrier::BufferCarrierStamp",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "buffer::plan::BufferCancellationIdentity",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "buffer::plan::BufferCorrelationIdentity",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "buffer::plan::BufferDeadline",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "buffer::plan::BufferDeadlineIdentity",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "buffer::plan::BufferHistoryTransitionIdentity",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "buffer::plan::BufferPlanDescriptor",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "buffer::plan::BufferPlanError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "buffer::plan::BufferPlanStamp",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "buffer::plan::BufferTransactionIdentity",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "buffer::BufferHistoryPosition",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "buffer::BufferHistoryStamp",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "buffer::BufferIdentity",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "buffer::BufferIncarnationStamp",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "buffer::BufferStateStamp",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "buffer::BufferVersion",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "buffer::bounds::BufferPlanBoundField",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "buffer::bounds::BufferPlanBoundsError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "buffer::carrier::BufferCarrierError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "buffer::carrier::BufferCarrierPreparation",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "buffer::carrier::BufferCarrierRole",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "buffer::carrier::BufferCarrierStamp",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "buffer::plan::BufferCancellationIdentity",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "buffer::plan::BufferCorrelationIdentity",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "buffer::plan::BufferDeadline",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "buffer::plan::BufferDeadlineIdentity",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "buffer::plan::BufferHistoryTransitionIdentity",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "buffer::plan::BufferPlanError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "buffer::plan::BufferPlanStamp",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "buffer::plan::BufferTransactionIdentity",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "buffer::BufferHistoryPosition",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "buffer::BufferHistoryStamp",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "buffer::BufferIdentity",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "buffer::BufferIncarnationStamp",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "buffer::BufferStateStamp",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "buffer::BufferVersion",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "buffer::bounds::BufferPlanBoundField",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "buffer::bounds::BufferPlanBounds",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "buffer::bounds::BufferPlanBoundsError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "buffer::carrier::BufferCarrierContract",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "buffer::carrier::BufferCarrierContracts",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "buffer::carrier::BufferCarrierError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "buffer::carrier::BufferCarrierPreparation",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "buffer::carrier::BufferCarrierRole",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "buffer::carrier::BufferCarrierStamp",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "buffer::plan::BufferCancellationIdentity",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "buffer::plan::BufferCorrelationIdentity",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "buffer::plan::BufferDeadline",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "buffer::plan::BufferDeadlineIdentity",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "buffer::plan::BufferHistoryTransitionIdentity",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "buffer::plan::BufferPlanDescriptor",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "buffer::plan::BufferPlanError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "buffer::plan::BufferPlanStamp",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "buffer::plan::BufferTransactionIdentity",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "buffer::BufferHistoryPosition",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "buffer::BufferHistoryStamp",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "buffer::BufferIdentity",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "buffer::BufferIncarnationStamp",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "buffer::BufferStateStamp",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "buffer::BufferVersion",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "buffer::bounds::BufferPlanBoundField",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "buffer::bounds::BufferPlanBounds",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "buffer::bounds::BufferPlanBoundsError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "buffer::carrier::BufferCarrierContract",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "buffer::carrier::BufferCarrierContracts",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "buffer::carrier::BufferCarrierError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "buffer::carrier::BufferCarrierPreparation",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "buffer::carrier::BufferCarrierRole",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "buffer::carrier::BufferCarrierStamp",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "buffer::plan::BufferCancellationIdentity",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "buffer::plan::BufferCorrelationIdentity",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "buffer::plan::BufferDeadline",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "buffer::plan::BufferDeadlineIdentity",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "buffer::plan::BufferHistoryTransitionIdentity",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "buffer::plan::BufferPlanDescriptor",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "buffer::plan::BufferPlanError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "buffer::plan::BufferPlanStamp",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "buffer::plan::BufferTransactionIdentity",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "buffer::BufferHistoryPosition",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "buffer::BufferHistoryStamp",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "buffer::BufferIdentity",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "buffer::BufferIncarnationStamp",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "buffer::BufferStateStamp",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "buffer::BufferVersion",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "buffer::bounds::BufferPlanBoundField",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "buffer::bounds::BufferPlanBounds",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "buffer::bounds::BufferPlanBoundsError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "buffer::carrier::BufferCarrierContract",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "buffer::carrier::BufferCarrierContracts",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "buffer::carrier::BufferCarrierError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "buffer::carrier::BufferCarrierPreparation",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "buffer::carrier::BufferCarrierRole",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "buffer::carrier::BufferCarrierStamp",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "buffer::plan::BufferCancellationIdentity",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "buffer::plan::BufferCorrelationIdentity",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "buffer::plan::BufferDeadline",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "buffer::plan::BufferDeadlineIdentity",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "buffer::plan::BufferHistoryTransitionIdentity",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "buffer::plan::BufferPlanDescriptor",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "buffer::plan::BufferPlanError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "buffer::plan::BufferPlanStamp",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "buffer::plan::BufferTransactionIdentity",
           "consumer_operation": "partial_eq"
         }
       ]

@@ -9,6 +9,7 @@
 extern crate alloc;
 
 pub mod bound;
+pub mod buffer;
 pub mod cancellation;
 pub mod carrier;
 pub mod clock;

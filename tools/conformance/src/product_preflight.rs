@@ -47,6 +47,10 @@ const PRODUCT_FILES: &[(&str, FileRole)] = &[
     ),
     ("kernel/interface/Cargo.toml", FileRole::KernelInterface),
     ("kernel/interface/src/bound.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/buffer.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/buffer/bounds.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/buffer/carrier.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/buffer/plan.rs", FileRole::KernelInterface),
     ("kernel/interface/src/cancellation.rs", FileRole::KernelInterface),
     ("kernel/interface/src/carrier.rs", FileRole::KernelInterface),
     ("kernel/interface/src/clock.rs", FileRole::KernelInterface),
@@ -103,6 +107,18 @@ const PRODUCT_FILES: &[(&str, FileRole)] = &[
     ("kernel/interface/src/resource/port.rs", FileRole::KernelInterface),
     (
         "tests/kernel-interface-public-consumer/Cargo.toml",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/src/buffer.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/src/buffer/carrier.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/src/buffer/plan.rs",
         FileRole::KernelInterfaceConsumer,
     ),
     (
