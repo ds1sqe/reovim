@@ -1857,6 +1857,16 @@ mod tests {
         findings.finish().iter().any(|finding| finding.code == code)
     }
 
+    fn expect_no_findings(findings: Findings) {
+        let findings = findings.finish();
+        match findings.as_slice() {
+            [] => {}
+            unexpected => {
+                panic!("expected no findings, got {unexpected:?}");
+            }
+        }
+    }
+
     #[test]
     fn product_syntax_proof_gaps_are_typed() {
         let syntax = syn::parse_file(
@@ -1994,7 +2004,7 @@ include!("generated.rs");
             let mut findings = Findings::new(8);
             super::GapVisitor { path, findings: &mut findings }
                 .visit_file(&exact);
-            assert!(findings.finish().is_empty());
+            expect_no_findings(findings);
         }
         for (path, source) in [
             ("kernel/foundation/src/lib.rs", "extern crate alloc;"),
