@@ -9,6 +9,13 @@ use crate::operation::{ContractSelection, OperationDescriptor};
 
 use super::bounds::ResourceAccessBounds;
 use super::capability::{ChangeDiscovery, ResourceCapabilities};
+use super::carrier::{
+    ResourceCarrierContracts, ResourceCarrierError, ResourceCarrierRejection,
+    ResourceCarrierRole, ResourceCarrierStamp, ResourcePayloadCarrier,
+    ResourcePayloadPreparation, ResourceRegionCarrier,
+    ResourceRegionPreparation,
+};
+use super::operation::ResourceObservationTarget;
 use super::{ResourceAccessStamp, ResourceSnapshotStamp, ResourceValueSchemas};
 
 /// Immutable declaration for one Resource Adapter contract and owner.
@@ -19,6 +26,7 @@ pub struct ResourceAccessDescriptor {
     owner: LifecycleIdentity,
     schemas: ResourceValueSchemas,
     capabilities: ResourceCapabilities,
+    carriers: ResourceCarrierContracts,
     bounds: ResourceAccessBounds,
 }
 
@@ -31,6 +39,7 @@ impl ResourceAccessDescriptor {
         owner: LifecycleIdentity,
         schemas: ResourceValueSchemas,
         capabilities: ResourceCapabilities,
+        carriers: &ResourceCarrierContracts,
         bounds: &ResourceAccessBounds,
     ) -> Self {
         Self {
@@ -39,6 +48,7 @@ impl ResourceAccessDescriptor {
             owner,
             schemas,
             capabilities,
+            carriers: carriers.clone(),
             bounds: bounds.clone(),
         }
     }
@@ -73,10 +83,94 @@ impl ResourceAccessDescriptor {
         self.capabilities
     }
 
+    /// Returns the independently qualified region and payload carriers.
+    #[must_use]
+    pub const fn carriers(&self) -> &ResourceCarrierContracts {
+        &self.carriers
+    }
+
     /// Returns all transfer, state, and retention bounds.
     #[must_use]
     pub const fn bounds(&self) -> &ResourceAccessBounds {
         &self.bounds
+    }
+
+    /// Validates a region carrier before the caller allocates its bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed identity, schema, arithmetic, or hard-bound failure.
+    pub const fn prepare_region_carrier(
+        &self,
+        stamp: ResourceCarrierStamp,
+        regions: u64,
+        bytes: u64,
+    ) -> Result<ResourceRegionPreparation, ResourceCarrierError> {
+        super::carrier::prepare_regions(
+            self.carriers.regions(),
+            self.bounds.transfer(),
+            stamp,
+            regions,
+            bytes,
+        )
+    }
+
+    /// Binds an exact region allocation to its prevalidated preparation.
+    ///
+    /// # Errors
+    ///
+    /// Returns the unchanged allocation with a typed failure if descriptor
+    /// terms changed or the allocated length differs.
+    pub fn bind_region_carrier(
+        &self,
+        preparation: ResourceRegionPreparation,
+        bytes: ::alloc::boxed::Box<[u8]>,
+    ) -> Result<ResourceRegionCarrier, ResourceCarrierRejection> {
+        super::carrier::bind_regions(
+            self.carriers.regions(),
+            self.bounds.transfer(),
+            preparation,
+            bytes,
+        )
+    }
+
+    /// Validates a payload carrier before the caller allocates its bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed identity, schema, arithmetic, or hard-bound failure.
+    pub const fn prepare_payload_carrier(
+        &self,
+        stamp: ResourceCarrierStamp,
+        regions: u64,
+        bytes: u64,
+    ) -> Result<ResourcePayloadPreparation, ResourceCarrierError> {
+        super::carrier::prepare_payload(
+            self.carriers.payload(),
+            self.bounds.transfer(),
+            stamp,
+            regions,
+            bytes,
+        )
+    }
+
+    /// Binds an exact payload allocation to its validated preparation.
+    ///
+    /// # Errors
+    ///
+    /// Returns the unchanged allocation with a typed failure if descriptor
+    /// terms changed or the allocated length differs.
+    pub fn bind_payload_carrier(
+        &self,
+        preparation: ResourcePayloadPreparation,
+        bytes: ::alloc::boxed::Box<[u8]>,
+    ) -> Result<ResourcePayloadCarrier, ResourceCarrierRejection> {
+        super::carrier::bind_payload(
+            self.carriers.payload(),
+            self.bounds.transfer(),
+            preparation,
+            bytes,
+        )
     }
 
     /// Returns the side-effect-free descriptor inspection operation.
@@ -94,13 +188,25 @@ impl ResourceAccessDescriptor {
     /// Returns the provisional open operation classification.
     #[must_use]
     pub const fn open_operation(&self) -> OperationDescriptor {
-        OperationDescriptor::external_observation_deferred()
+        OperationDescriptor::external_observation_deferred_admission()
     }
 
     /// Returns the bounded Snapshot observation operation classification.
     #[must_use]
     pub const fn observation_operation(&self) -> OperationDescriptor {
-        OperationDescriptor::external_observation_deferred()
+        OperationDescriptor::external_observation_deferred_admission()
+    }
+
+    /// Returns the non-waiting local completion-retrieval classification.
+    #[must_use]
+    pub const fn completion_delivery_operation(&self) -> OperationDescriptor {
+        OperationDescriptor::local_inline()
+    }
+
+    /// Returns the cooperative cancellation-request classification.
+    #[must_use]
+    pub const fn cancellation_operation(&self) -> OperationDescriptor {
+        OperationDescriptor::local_inline()
     }
 
     /// Returns the selected change-delivery operation classification.
@@ -406,13 +512,212 @@ pub enum ResourceObservationFailure {
     AdapterFailure,
 }
 
-/// Terminal result of one bounded Resource observation.
+/// Failure to bind one payload to an exact observation result.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ResourceObservationOutcome {
-    /// One exact immutable Snapshot was observed.
-    Observed(ResourceSnapshotStamp),
-    /// No Snapshot was produced for the stated semantic reason.
-    NotObserved(ResourceObservationFailure),
+pub enum ResourceObservedStateError {
+    /// The resulting Snapshot belongs to another Access generation.
+    AccessMismatch,
+    /// An exact historical request produced another immutable Snapshot.
+    SnapshotMismatch,
+    /// The resulting Revision uses another Resource-native schema.
+    RevisionSchemaMismatch,
+    /// Payload covers a different native-region count than requested.
+    RegionCountMismatch,
+    /// Payload carrier identity or version differs from the descriptor.
+    Carrier(ResourceCarrierError),
+}
+
+impl fmt::Display for ResourceObservedStateError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::AccessMismatch => {
+                "observed Snapshot belongs to another Resource Access"
+            }
+            Self::SnapshotMismatch => {
+                "observed Snapshot differs from the requested Snapshot"
+            }
+            Self::RevisionSchemaMismatch => {
+                "observed Snapshot uses another Revision schema"
+            }
+            Self::RegionCountMismatch => {
+                "observed payload covers another native-region count"
+            }
+            Self::Carrier(_) => {
+                "observed payload carrier differs from the descriptor"
+            }
+        })
+    }
+}
+
+impl core::error::Error for ResourceObservedStateError {}
+
+/// Exact immutable Snapshot stamp and bounded Resource-native payload.
+pub struct ResourceObservedState {
+    snapshot: ResourceSnapshotStamp,
+    payload: ResourcePayloadCarrier,
+}
+
+impl fmt::Debug for ResourceObservedState {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ResourceObservedState")
+            .field("snapshot", &self.snapshot)
+            .field("payload", &self.payload)
+            .finish()
+    }
+}
+
+impl ResourceObservedState {
+    /// Binds an observed payload to one requested Access and region count.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed Access, Revision, region-count, or carrier mismatch.
+    pub const fn new(
+        descriptor: &ResourceAccessDescriptor,
+        expected_target: ResourceObservationTarget,
+        expected_regions: CheckedCount,
+        snapshot: ResourceSnapshotStamp,
+        payload: ResourcePayloadCarrier,
+    ) -> Result<Self, (ResourceObservedStateError, ResourcePayloadCarrier)>
+    {
+        if let Err(error) =
+            validate_observation_target(expected_target, snapshot)
+        {
+            return Err((error, payload));
+        }
+        if !same_contract(
+            descriptor.schemas().revision(),
+            snapshot.revision().schema(),
+        ) {
+            return Err((
+                ResourceObservedStateError::RevisionSchemaMismatch,
+                payload,
+            ));
+        }
+        if expected_regions.value() != payload.regions().value() {
+            return Err((
+                ResourceObservedStateError::RegionCountMismatch,
+                payload,
+            ));
+        }
+        if let Err(error) = descriptor
+            .carriers()
+            .payload()
+            .validate_stamp(ResourceCarrierRole::Payload, payload.stamp())
+        {
+            return Err((ResourceObservedStateError::Carrier(error), payload));
+        }
+        Ok(Self { snapshot, payload })
+    }
+
+    /// Returns the exact immutable Snapshot observation stamp.
+    #[must_use]
+    pub const fn snapshot(&self) -> ResourceSnapshotStamp {
+        self.snapshot
+    }
+
+    /// Borrows the qualified Resource-native payload.
+    #[must_use]
+    pub const fn payload(&self) -> &ResourcePayloadCarrier {
+        &self.payload
+    }
+
+    /// Releases the observation and returns its payload carrier.
+    #[must_use]
+    pub fn into_payload(self) -> ResourcePayloadCarrier {
+        self.payload
+    }
+}
+
+const fn validate_observation_target(
+    target: ResourceObservationTarget,
+    snapshot: ResourceSnapshotStamp,
+) -> Result<(), ResourceObservedStateError> {
+    match target {
+        ResourceObservationTarget::Current(access) => {
+            if access.same_generation(snapshot.access()) {
+                Ok(())
+            } else {
+                Err(ResourceObservedStateError::AccessMismatch)
+            }
+        }
+        ResourceObservationTarget::Snapshot(expected) => {
+            if expected.same_snapshot(snapshot) {
+                Ok(())
+            } else {
+                Err(ResourceObservedStateError::SnapshotMismatch)
+            }
+        }
+    }
+}
+
+/// Closed status of one terminal Resource observation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResourceObservationStatus {
+    /// One exact immutable Snapshot and payload were observed.
+    Observed,
+    /// No Snapshot was produced.
+    NotObserved,
+}
+
+/// Allocation-free terminal result of one bounded Resource observation.
+pub struct ResourceObservationOutcome {
+    observed: Option<ResourceObservedState>,
+    failure: Option<ResourceObservationFailure>,
+}
+
+impl fmt::Debug for ResourceObservationOutcome {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ResourceObservationOutcome")
+            .field("status", &self.status())
+            .field("observed", &self.observed)
+            .field("failure", &self.failure)
+            .finish()
+    }
+}
+
+impl ResourceObservationOutcome {
+    /// Constructs a successful immutable Snapshot observation.
+    #[must_use]
+    pub const fn observed(state: ResourceObservedState) -> Self {
+        Self { observed: Some(state), failure: None }
+    }
+
+    /// Constructs a terminal observation that produced no Snapshot.
+    #[must_use]
+    pub const fn not_observed(failure: ResourceObservationFailure) -> Self {
+        Self { observed: None, failure: Some(failure) }
+    }
+
+    /// Returns whether one Snapshot payload was observed.
+    #[must_use]
+    pub const fn status(&self) -> ResourceObservationStatus {
+        if self.observed.is_some() {
+            ResourceObservationStatus::Observed
+        } else {
+            ResourceObservationStatus::NotObserved
+        }
+    }
+
+    /// Borrows the observed Snapshot and payload when successful.
+    #[must_use]
+    pub const fn observed_state(&self) -> Option<&ResourceObservedState> {
+        self.observed.as_ref()
+    }
+
+    /// Returns why no Snapshot was produced, when applicable.
+    #[must_use]
+    pub const fn failure(&self) -> Option<ResourceObservationFailure> {
+        self.failure
+    }
+
+    /// Returns Snapshot-payload ownership when observation succeeded.
+    #[must_use]
+    pub fn into_observed_state(self) -> Option<ResourceObservedState> {
+        self.observed
+    }
 }
 
 /// Typed incoherence in an incomplete close report.
@@ -474,6 +779,8 @@ pub enum ResourceCloseOutcome {
     Closed,
     /// Bounded shutdown ended while ownership remains explicit.
     Incomplete(ResourceIncompleteClose),
+    /// The close request targets another adapter generation.
+    StaleAdapter,
 }
 
 const fn checkpoint_matches(

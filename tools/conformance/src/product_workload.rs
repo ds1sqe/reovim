@@ -110,7 +110,11 @@ const KERNEL_INTERFACE_SHIPPING_SOURCES: &[&str] = &[
     "kernel/interface/src/resource.rs",
     "kernel/interface/src/resource/access.rs",
     "kernel/interface/src/resource/bounds.rs",
+    "kernel/interface/src/resource/carrier.rs",
     "kernel/interface/src/resource/capability.rs",
+    "kernel/interface/src/resource/delivery.rs",
+    "kernel/interface/src/resource/operation.rs",
+    "kernel/interface/src/resource/port.rs",
 ];
 
 const KERNEL_INTERFACE_VALIDATION_SOURCES: &[&str] = &[
@@ -131,6 +135,8 @@ const KERNEL_INTERFACE_VALIDATION_SOURCES: &[&str] = &[
     "tests/kernel-interface-public-consumer/src/public_items.rs",
     "tests/kernel-interface-public-consumer/src/resource.rs",
     "tests/kernel-interface-public-consumer/src/resource/access.rs",
+    "tests/kernel-interface-public-consumer/src/resource/carrier.rs",
+    "tests/kernel-interface-public-consumer/src/resource/port.rs",
     "tests/kernel-interface-public-consumer/src/operation.rs",
     "tests/kernel-interface-public-consumer/src/output_health.rs",
     "tests/kernel-interface-public-consumer/src/output_health_state.rs",
@@ -5037,6 +5043,21 @@ mod tests {
             entry_count: 2,
             total_bytes: 30,
         }
+    }
+
+    #[test]
+    fn workload_sources_match_prepared_repository_exposure() {
+        let exposed = crate::product_preflight::compiler_source_selection();
+        assert_eq!(exposed.foundation_shipping, source_set(SHIPPING_SOURCES));
+        assert_eq!(exposed.foundation_consumer, source_set(VALIDATION_SOURCES));
+        assert_eq!(
+            exposed.kernel_interface_shipping,
+            source_set(KERNEL_INTERFACE_SHIPPING_SOURCES)
+        );
+        assert_eq!(
+            exposed.kernel_interface_consumer,
+            source_set(KERNEL_INTERFACE_VALIDATION_SOURCES)
+        );
     }
 
     fn package(phase: Phase, package: &str) -> package_capture::Observation {

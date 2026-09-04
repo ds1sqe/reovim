@@ -38,6 +38,42 @@ const CLONE_COPY_WITNESS: &str = "clone_copy_witness";
 const CLONE_DEBUG_EQ_WITNESS: &str = "clone_debug_eq_witness";
 const SEND_SYNC_WITNESS: &str = "send_sync_witness";
 
+const MOVE_ONLY_KERNEL_TYPES: &[(&str, &str)] = &[
+    ("DiagnosticOutputRecord", "diagnostic::DiagnosticOutputRecord"),
+    ("DiagnosticRecordRejection", "diagnostic::DiagnosticRecordRejection"),
+    ("DiagnosticSubmissionOutcome", "diagnostic::DiagnosticSubmissionOutcome"),
+    ("ResourceRegionCarrier", "resource::carrier::ResourceRegionCarrier"),
+    ("ResourcePayloadCarrier", "resource::carrier::ResourcePayloadCarrier"),
+    ("ResourceCarrierRejection", "resource::carrier::ResourceCarrierRejection"),
+    ("ResourceObservedState", "resource::access::ResourceObservedState"),
+    (
+        "ResourceObservationOutcome",
+        "resource::access::ResourceObservationOutcome",
+    ),
+    (
+        "ResourceObservationRequest",
+        "resource::operation::ResourceObservationRequest",
+    ),
+    ("ResourceOpenAdmission", "resource::delivery::ResourceOpenAdmission"),
+    (
+        "ResourceObservationAdmission",
+        "resource::delivery::ResourceObservationAdmission",
+    ),
+    ("ResourceOpenCompletion", "resource::delivery::ResourceOpenCompletion"),
+    (
+        "ResourceObservationCompletion",
+        "resource::delivery::ResourceObservationCompletion",
+    ),
+    (
+        "ResourceOpenCompletionDelivery",
+        "resource::delivery::ResourceOpenCompletionDelivery",
+    ),
+    (
+        "ResourceObservationCompletionDelivery",
+        "resource::delivery::ResourceObservationCompletionDelivery",
+    ),
+];
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PairProfile {
     Foundation,
@@ -1329,7 +1365,7 @@ impl<'ast> Visit<'ast> for MoveOnlyImplGuard<'_> {
             self.error = Some(ProductSourceError::at(
                 "PRODUCT_MOVE_ONLY_IMPL_UNAVAILABLE",
                 self.path,
-                "move-only Diagnostic carrier implements Clone or Copy",
+                "move-only Product carrier implements Clone or Copy",
             ));
             return;
         }
@@ -1356,12 +1392,7 @@ fn exact_move_only_target(ty: &Type) -> bool {
     }
     let Some(last) = path.path.segments.last() else { return false };
     let name = normalized_ident(&last.ident);
-    matches!(
-        name.as_str(),
-        "DiagnosticOutputRecord"
-            | "DiagnosticRecordRejection"
-            | "DiagnosticSubmissionOutcome"
-    )
+    MOVE_ONLY_KERNEL_TYPES.iter().any(|(type_name, _)| name == *type_name)
 }
 
 fn validate_item_attribute(
@@ -1834,7 +1865,7 @@ fn allowed_type_path(
     provider: Option<&ProvenProvider<'_>>,
     witness_type: bool,
 ) -> bool {
-    if exact_diagnostic_byte_box(ty, source_path, mode) {
+    if exact_owned_byte_box(ty, source_path, mode) {
         return true;
     }
     if ty.qself.is_some() || !type_path_arguments_supported(&ty.path) {
@@ -1882,12 +1913,12 @@ fn allowed_type_path(
     }
 }
 
-fn exact_diagnostic_byte_box(
+fn exact_owned_byte_box(
     ty: &syn::TypePath,
     source_path: &Path,
     mode: SourceMode,
 ) -> bool {
-    if source_path != Path::new("kernel/interface/src/diagnostic.rs")
+    if !owned_byte_box_path(source_path)
         || !matches!(mode, SourceMode::Shipping(PairProfile::KernelInterface))
         || ty.qself.is_some()
         || ty.path.leading_colon.is_none()
@@ -1922,6 +1953,16 @@ fn exact_diagnostic_byte_box(
     element.qself.is_none()
         && element.path.leading_colon.is_none()
         && element.path.is_ident("u8")
+}
+
+fn owned_byte_box_path(path: &Path) -> bool {
+    [
+        "kernel/interface/src/diagnostic.rs",
+        "kernel/interface/src/resource/access.rs",
+        "kernel/interface/src/resource/carrier.rs",
+    ]
+    .into_iter()
+    .any(|allowed| path == Path::new(allowed))
 }
 
 fn type_path_arguments_supported(path: &SynPath) -> bool {
@@ -2086,7 +2127,7 @@ fn exact_public_trait_path(
         || bound.path.leading_colon.is_none()
         || bound.modifiers.require_empty().is_err()
         || bound.maybe.is_some()
-        || bound.path.segments.len() != 3
+        || bound.path.segments.len() < 3
         || bound
             .path
             .segments
@@ -3212,7 +3253,7 @@ fn exact_trait_impl_path(
 ) -> Option<String> {
     if modified
         || path.leading_colon.is_none()
-        || path.segments.len() != 3
+        || path.segments.len() < 3
         || path
             .segments
             .iter()
@@ -3535,7 +3576,7 @@ fn exact_public_trait_method_path(
         && segments
             .iter()
             .all(|segment| matches!(segment.arguments, PathArguments::None))
-        && trait_segments.len() == 3
+        && trait_segments.len() >= 3
         && trait_segments
             .iter()
             .all(|segment| matches!(segment.arguments, PathArguments::None));
@@ -3729,7 +3770,7 @@ fn helper_for_derives(
 ) -> Option<&'static str> {
     if profile == PairProfile::KernelInterface
         && derives.is_empty()
-        && move_only_diagnostic_type(public_type)
+        && move_only_product_type(public_type)
     {
         return Some(SEND_SYNC_WITNESS);
     }
@@ -3760,28 +3801,20 @@ fn helper_for_derives(
     (derives == &clone_debug_eq).then_some(CLONE_DEBUG_EQ_WITNESS)
 }
 
-fn move_only_diagnostic_type(public_type: &str) -> bool {
-    matches!(
-        public_type,
-        "diagnostic::DiagnosticOutputRecord"
-            | "diagnostic::DiagnosticRecordRejection"
-            | "diagnostic::DiagnosticSubmissionOutcome"
-    )
+fn move_only_product_type(public_type: &str) -> bool {
+    MOVE_ONLY_KERNEL_TYPES.iter().any(|(_, path)| public_type == *path)
 }
 
 fn expected_send_sync_witnesses(profile: PairProfile) -> BTreeSet<String> {
     if profile == PairProfile::Foundation {
         return BTreeSet::new();
     }
-    [
-        "event::CanonicalEventRecordRef",
-        "diagnostic::DiagnosticOutputRecord",
-        "diagnostic::DiagnosticRecordRejection",
-        "diagnostic::DiagnosticSubmissionOutcome",
-    ]
-    .into_iter()
-    .map(str::to_owned)
-    .collect()
+    let mut expected =
+        BTreeSet::from(["event::CanonicalEventRecordRef".to_owned()]);
+    expected.extend(
+        MOVE_ONLY_KERNEL_TYPES.iter().map(|(_, path)| (*path).to_owned()),
+    );
+    expected
 }
 
 fn validate_helper_set(
@@ -4160,8 +4193,9 @@ mod tests {
     use super::{
         AnalysisLimits, AnalysisRequest, CompilerJoin, PairProfile,
         ProductSourceError, TwoPairAnalysisRequest, analyze, analyze_two_pairs,
-        collect_registered_module_prefixes, exact_public_variant_path,
-        external_public_type,
+        collect_registered_module_prefixes, exact_public_trait_method_path,
+        exact_public_trait_path, exact_public_variant_path,
+        exact_trait_impl_path, external_public_type,
     };
     use crate::{
         digest,
@@ -4215,7 +4249,11 @@ mod tests {
         "kernel/interface/src/resource.rs",
         "kernel/interface/src/resource/access.rs",
         "kernel/interface/src/resource/bounds.rs",
+        "kernel/interface/src/resource/carrier.rs",
         "kernel/interface/src/resource/capability.rs",
+        "kernel/interface/src/resource/delivery.rs",
+        "kernel/interface/src/resource/operation.rs",
+        "kernel/interface/src/resource/port.rs",
     ];
     const KI_CONSUMER: &[&str] = &[
         "tests/kernel-interface-public-consumer/src/clock.rs",
@@ -4246,6 +4284,8 @@ mod tests {
         "tests/kernel-interface-public-consumer/src/public_items.rs",
         "tests/kernel-interface-public-consumer/src/resource.rs",
         "tests/kernel-interface-public-consumer/src/resource/access.rs",
+        "tests/kernel-interface-public-consumer/src/resource/carrier.rs",
+        "tests/kernel-interface-public-consumer/src/resource/port.rs",
     ];
     const LIMITS: AnalysisLimits = AnalysisLimits {
         // Mutation-fixture capacity, never a repository-shape expectation.
@@ -4897,24 +4937,13 @@ mod tests {
     }
 
     #[test]
-    fn diagnostic_byte_box_is_the_only_alloc_type_exception() {
-        let path = "kernel/interface/src/diagnostic.rs";
-        let byte_box = "::alloc::boxed::Box<[u8]>";
-        for replacement in [
-            "::alloc::vec::Vec<u8>",
-            "::alloc::sync::Arc<[u8]>",
-            "alloc::boxed::Box<[u8]>",
-            "::r#alloc::boxed::Box<[u8]>",
-            "::alloc::boxed::Box<u8>",
-            "::alloc::boxed::Box<[u16]>",
-            "::std::boxed::Box<[u8]>",
+    fn owned_byte_box_is_exact_and_path_bounded() {
+        for path in [
+            "kernel/interface/src/diagnostic.rs",
+            "kernel/interface/src/resource/access.rs",
+            "kernel/interface/src/resource/carrier.rs",
         ] {
-            ki_source_mutant(
-                path,
-                byte_box,
-                replacement,
-                "PRODUCT_TYPE_PATH_UNAVAILABLE",
-            );
+            assert_owned_byte_box_replacements(path);
         }
 
         let mut other_source = fixture();
@@ -4928,7 +4957,7 @@ mod tests {
         let mut allocation = fixture();
         append_source(
             &mut allocation,
-            path,
+            "kernel/interface/src/diagnostic.rs",
             concat!(
                 "\nfn hidden_allocation() { ",
                 "let _ = ::alloc::boxed::Box::new([0_u8]); }\n",
@@ -4999,6 +5028,74 @@ mod tests {
             &other_source,
             "PRODUCT_MOVE_ONLY_IMPL_UNAVAILABLE",
         );
+    }
+
+    #[test]
+    fn resource_owning_types_are_proved_move_only() {
+        for (path, name) in [
+            (
+                "kernel/interface/src/resource/carrier.rs",
+                "ResourceRegionCarrier",
+            ),
+            (
+                "kernel/interface/src/resource/carrier.rs",
+                "ResourcePayloadCarrier",
+            ),
+            (
+                "kernel/interface/src/resource/carrier.rs",
+                "ResourceCarrierRejection",
+            ),
+            (
+                "kernel/interface/src/resource/access.rs",
+                "ResourceObservedState",
+            ),
+            (
+                "kernel/interface/src/resource/access.rs",
+                "ResourceObservationOutcome",
+            ),
+            (
+                "kernel/interface/src/resource/operation.rs",
+                "ResourceObservationRequest",
+            ),
+            (
+                "kernel/interface/src/resource/delivery.rs",
+                "ResourceOpenAdmission",
+            ),
+            (
+                "kernel/interface/src/resource/delivery.rs",
+                "ResourceObservationAdmission",
+            ),
+            (
+                "kernel/interface/src/resource/delivery.rs",
+                "ResourceOpenCompletion",
+            ),
+            (
+                "kernel/interface/src/resource/delivery.rs",
+                "ResourceObservationCompletion",
+            ),
+            (
+                "kernel/interface/src/resource/delivery.rs",
+                "ResourceOpenCompletionDelivery",
+            ),
+            (
+                "kernel/interface/src/resource/delivery.rs",
+                "ResourceObservationCompletionDelivery",
+            ),
+        ] {
+            let mut fixture = fixture();
+            append_source(
+                &mut fixture,
+                path,
+                &format!(
+                    "\nimpl Clone for {name} {{ \
+                     fn clone(&self) -> Self {{ loop {{}} }} }}\n",
+                ),
+            );
+            assert_two_pair_code(
+                &fixture,
+                "PRODUCT_MOVE_ONLY_IMPL_UNAVAILABLE",
+            );
+        }
     }
 
     #[test]
@@ -5259,6 +5356,79 @@ mod tests {
                 "    T: fake::Clone",
             ),
             "PRODUCT_TRAIT_BOUND_UNAVAILABLE",
+        );
+    }
+
+    #[test]
+    fn nested_public_trait_paths_are_exact() {
+        let expected =
+            BTreeSet::from(["resource::port::ResourceAccessPort".to_owned()]);
+        let bound = syn::parse_str::<syn::TraitBound>(concat!(
+            "::reovim_kernel_interface::resource::port::",
+            "ResourceAccessPort",
+        ))
+        .expect("valid nested public trait bound");
+        assert_eq!(
+            exact_public_trait_path(
+                &bound,
+                PairProfile::KernelInterface,
+                &expected,
+            )
+            .as_deref(),
+            Some("resource::port::ResourceAccessPort"),
+        );
+
+        let implementation = syn::parse_str::<syn::Path>(concat!(
+            "::reovim_kernel_interface::resource::port::",
+            "ResourceAccessPort",
+        ))
+        .expect("valid nested public trait implementation path");
+        assert_eq!(
+            exact_trait_impl_path(
+                false,
+                &implementation,
+                PairProfile::KernelInterface,
+                &expected,
+            )
+            .as_deref(),
+            Some("resource::port::ResourceAccessPort"),
+        );
+
+        let method = syn::parse_str::<syn::ExprPath>(concat!(
+            "<dyn ::reovim_kernel_interface::resource::port::",
+            "ResourceAccessPort>::close",
+        ))
+        .expect("valid nested public trait method path");
+        assert_eq!(
+            exact_public_trait_method_path(&method).as_deref(),
+            Ok("resource::port::ResourceAccessPort::close"),
+        );
+
+        let generic = syn::parse_str::<syn::TraitBound>(concat!(
+            "::reovim_kernel_interface::resource::<u8>::port::",
+            "ResourceAccessPort",
+        ))
+        .expect("valid Rust trait path with an invalid public shape");
+        assert!(
+            exact_public_trait_path(
+                &generic,
+                PairProfile::KernelInterface,
+                &expected,
+            )
+            .is_none()
+        );
+
+        let shadow = syn::parse_str::<syn::TraitBound>(
+            "::other_crate::resource::port::ResourceAccessPort",
+        )
+        .expect("valid shadow public trait path");
+        assert!(
+            exact_public_trait_path(
+                &shadow,
+                PairProfile::KernelInterface,
+                &expected,
+            )
+            .is_none()
         );
     }
 
@@ -5673,6 +5843,26 @@ mod tests {
         let mut fixture = fixture();
         replace_source(&mut fixture, path, old, new);
         assert_two_pair_code(&fixture, code);
+    }
+
+    fn assert_owned_byte_box_replacements(path: &str) {
+        let byte_box = "::alloc::boxed::Box<[u8]>";
+        for replacement in [
+            "::alloc::vec::Vec<u8>",
+            "::alloc::sync::Arc<[u8]>",
+            "alloc::boxed::Box<[u8]>",
+            "::r#alloc::boxed::Box<[u8]>",
+            "::alloc::boxed::Box<u8>",
+            "::alloc::boxed::Box<[u16]>",
+            "::std::boxed::Box<[u8]>",
+        ] {
+            ki_source_mutant(
+                path,
+                byte_box,
+                replacement,
+                "PRODUCT_TYPE_PATH_UNAVAILABLE",
+            );
+        }
     }
 
     fn replace_source(fixture: &mut Fixture, path: &str, old: &str, new: &str) {

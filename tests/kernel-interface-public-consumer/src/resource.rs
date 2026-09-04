@@ -6,6 +6,8 @@ use reovim_kernel_interface::resource::{
 };
 
 mod access;
+mod carrier;
+mod port;
 
 pub fn selection(identity: u128) -> Option<ContractSelection> {
     ContractSelection::new(identity, 1, 1, 1).ok()
@@ -30,6 +32,8 @@ pub const fn const_cases() -> bool {
     ResourceIdentity::new(11).value() == 11
         && ResourceSnapshotIdentity::new(15).value() == 15
         && access::const_cases()
+        && carrier::const_cases()
+        && port::const_cases()
 }
 
 pub fn exercise() -> bool {
@@ -81,4 +85,6 @@ pub fn exercise() -> bool {
         && crate::traits(exact.access().resource())
         && crate::traits(exact.snapshot())
         && access::exercise()
+        && carrier::exercise()
+        && port::exercise()
 }

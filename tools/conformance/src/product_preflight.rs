@@ -97,6 +97,10 @@ const PRODUCT_FILES: &[(&str, FileRole)] = &[
     ("kernel/interface/src/resource/access.rs", FileRole::KernelInterface),
     ("kernel/interface/src/resource/bounds.rs", FileRole::KernelInterface),
     ("kernel/interface/src/resource/capability.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/resource/carrier.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/resource/delivery.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/resource/operation.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/resource/port.rs", FileRole::KernelInterface),
     (
         "tests/kernel-interface-public-consumer/Cargo.toml",
         FileRole::KernelInterfaceConsumer,
@@ -199,6 +203,14 @@ const PRODUCT_FILES: &[(&str, FileRole)] = &[
     ),
     (
         "tests/kernel-interface-public-consumer/src/resource/access.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/src/resource/carrier.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/src/resource/port.rs",
         FileRole::KernelInterfaceConsumer,
     ),
     (

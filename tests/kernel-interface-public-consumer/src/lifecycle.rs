@@ -42,15 +42,16 @@ const fn cancellation_const_cases() -> bool {
         && ExecutionOutcome::NeverStarted.is_terminal()
         && ExecutionOutcome::Stopped.is_terminal()
         && ExecutionOutcome::ContainingProcessReaped.is_terminal()
-        && cancellation_cause_code(cancellation.cause()) == 1
+        && cancellation_cause_code(cancellation.cause()) == 2
         && execution_code(cancellation.execution()) == 1
 }
 
 const fn cancellation_cause_code(value: CancellationCause) -> u8 {
     match value {
         CancellationCause::ExplicitRequest => 0,
-        CancellationCause::Replacement => 1,
-        CancellationCause::OwnerClosing => 2,
+        CancellationCause::DeadlineReached => 1,
+        CancellationCause::Replacement => 2,
+        CancellationCause::OwnerClosing => 3,
     }
 }
 
@@ -153,6 +154,7 @@ fn work_variants() -> bool {
 
 fn cancellation_variants() -> bool {
     traits(CancellationCause::ExplicitRequest)
+        && traits(CancellationCause::DeadlineReached)
         && traits(CancellationCause::Replacement)
         && traits(CancellationCause::OwnerClosing)
         && traits(CancellationState::Open)

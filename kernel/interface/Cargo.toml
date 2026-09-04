@@ -47,7 +47,11 @@ include = [
     "src/resource.rs",
     "src/resource/access.rs",
     "src/resource/bounds.rs",
+    "src/resource/carrier.rs",
     "src/resource/capability.rs",
+    "src/resource/delivery.rs",
+    "src/resource/operation.rs",
+    "src/resource/port.rs",
 ]
 
 [features]

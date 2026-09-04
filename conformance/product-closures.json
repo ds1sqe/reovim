@@ -355,6 +355,26 @@
             "kind": "copied",
             "package_path": "src/resource/capability.rs",
             "repository_path": "kernel/interface/src/resource/capability.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/resource/carrier.rs",
+            "repository_path": "kernel/interface/src/resource/carrier.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/resource/delivery.rs",
+            "repository_path": "kernel/interface/src/resource/delivery.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/resource/operation.rs",
+            "repository_path": "kernel/interface/src/resource/operation.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/resource/port.rs",
+            "repository_path": "kernel/interface/src/resource/port.rs"
           }
         ]
       }
@@ -6078,14 +6098,6 @@
           "kind": "type"
         },
         {
-          "path": "resource::access::ResourceObservationOutcome::NotObserved",
-          "kind": "variant"
-        },
-        {
-          "path": "resource::access::ResourceObservationOutcome::Observed",
-          "kind": "variant"
-        },
-        {
           "path": "resource::access::ResourceOpenFailure",
           "kind": "type"
         },
@@ -6523,6 +6535,898 @@
         },
         {
           "path": "resource::access::ResourceOpenStatus::Ready",
+          "kind": "variant"
+        },
+        {
+          "path": "cancellation::CancellationCause::DeadlineReached",
+          "kind": "variant"
+        },
+        {
+          "path": "operation::OperationDescriptor::external_observation_deferred_admission",
+          "kind": "function"
+        },
+        {
+          "path": "operation::OperationDescriptor::local_deferred_admission",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceAccessDescriptor::bind_payload_carrier",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceAccessDescriptor::bind_region_carrier",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceAccessDescriptor::cancellation_operation",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceAccessDescriptor::carriers",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceAccessDescriptor::completion_delivery_operation",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceAccessDescriptor::prepare_payload_carrier",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceAccessDescriptor::prepare_region_carrier",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceCloseOutcome::StaleAdapter",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceObservationOutcome::failure",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceObservationOutcome::into_observed_state",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceObservationOutcome::not_observed",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceObservationOutcome::observed",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceObservationOutcome::observed_state",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceObservationOutcome::status",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceObservationStatus",
+          "kind": "type"
+        },
+        {
+          "path": "resource::access::ResourceObservationStatus::NotObserved",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceObservationStatus::Observed",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceObservedState",
+          "kind": "type"
+        },
+        {
+          "path": "resource::access::ResourceObservedState::into_payload",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceObservedState::new",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceObservedState::payload",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceObservedState::snapshot",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceObservedStateError",
+          "kind": "type"
+        },
+        {
+          "path": "resource::access::ResourceObservedStateError::AccessMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceObservedStateError::Carrier",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceObservedStateError::RegionCountMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::access::ResourceObservedStateError::RevisionSchemaMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::carrier",
+          "kind": "module"
+        },
+        {
+          "path": "resource::carrier::ResourceCarrierContract",
+          "kind": "type"
+        },
+        {
+          "path": "resource::carrier::ResourceCarrierContract::new",
+          "kind": "function"
+        },
+        {
+          "path": "resource::carrier::ResourceCarrierContract::safety",
+          "kind": "function"
+        },
+        {
+          "path": "resource::carrier::ResourceCarrierContract::schema",
+          "kind": "function"
+        },
+        {
+          "path": "resource::carrier::ResourceCarrierContract::selected_stamp",
+          "kind": "function"
+        },
+        {
+          "path": "resource::carrier::ResourceCarrierContract::validate_stamp",
+          "kind": "function"
+        },
+        {
+          "path": "resource::carrier::ResourceCarrierContracts",
+          "kind": "type"
+        },
+        {
+          "path": "resource::carrier::ResourceCarrierContracts::new",
+          "kind": "function"
+        },
+        {
+          "path": "resource::carrier::ResourceCarrierContracts::payload",
+          "kind": "function"
+        },
+        {
+          "path": "resource::carrier::ResourceCarrierContracts::regions",
+          "kind": "function"
+        },
+        {
+          "path": "resource::carrier::ResourceCarrierError",
+          "kind": "type"
+        },
+        {
+          "path": "resource::carrier::ResourceCarrierError::Bound",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::carrier::ResourceCarrierError::DuplicateTypeIdentity",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::carrier::ResourceCarrierError::IncoherentSafety",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::carrier::ResourceCarrierError::IncompatibleSchema",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::carrier::ResourceCarrierError::LengthMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::carrier::ResourceCarrierError::LengthOverflow",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::carrier::ResourceCarrierError::TypeMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::carrier::ResourceCarrierRejection",
+          "kind": "type"
+        },
+        {
+          "path": "resource::carrier::ResourceCarrierRejection::bytes",
+          "kind": "function"
+        },
+        {
+          "path": "resource::carrier::ResourceCarrierRejection::cause",
+          "kind": "function"
+        },
+        {
+          "path": "resource::carrier::ResourceCarrierRejection::into_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "resource::carrier::ResourceCarrierRole",
+          "kind": "type"
+        },
+        {
+          "path": "resource::carrier::ResourceCarrierRole::Payload",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::carrier::ResourceCarrierRole::Regions",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::carrier::ResourceCarrierStamp",
+          "kind": "type"
+        },
+        {
+          "path": "resource::carrier::ResourceCarrierStamp::new",
+          "kind": "function"
+        },
+        {
+          "path": "resource::carrier::ResourceCarrierStamp::schema_version",
+          "kind": "function"
+        },
+        {
+          "path": "resource::carrier::ResourceCarrierStamp::type_identity",
+          "kind": "function"
+        },
+        {
+          "path": "resource::carrier::ResourcePayloadCarrier",
+          "kind": "type"
+        },
+        {
+          "path": "resource::carrier::ResourcePayloadCarrier::bytes",
+          "kind": "function"
+        },
+        {
+          "path": "resource::carrier::ResourcePayloadCarrier::into_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "resource::carrier::ResourcePayloadCarrier::regions",
+          "kind": "function"
+        },
+        {
+          "path": "resource::carrier::ResourcePayloadCarrier::size",
+          "kind": "function"
+        },
+        {
+          "path": "resource::carrier::ResourcePayloadCarrier::stamp",
+          "kind": "function"
+        },
+        {
+          "path": "resource::carrier::ResourcePayloadPreparation",
+          "kind": "type"
+        },
+        {
+          "path": "resource::carrier::ResourcePayloadPreparation::regions",
+          "kind": "function"
+        },
+        {
+          "path": "resource::carrier::ResourcePayloadPreparation::size",
+          "kind": "function"
+        },
+        {
+          "path": "resource::carrier::ResourcePayloadPreparation::stamp",
+          "kind": "function"
+        },
+        {
+          "path": "resource::carrier::ResourceRegionCarrier",
+          "kind": "type"
+        },
+        {
+          "path": "resource::carrier::ResourceRegionCarrier::bytes",
+          "kind": "function"
+        },
+        {
+          "path": "resource::carrier::ResourceRegionCarrier::into_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "resource::carrier::ResourceRegionCarrier::regions",
+          "kind": "function"
+        },
+        {
+          "path": "resource::carrier::ResourceRegionCarrier::size",
+          "kind": "function"
+        },
+        {
+          "path": "resource::carrier::ResourceRegionCarrier::stamp",
+          "kind": "function"
+        },
+        {
+          "path": "resource::carrier::ResourceRegionPreparation",
+          "kind": "type"
+        },
+        {
+          "path": "resource::carrier::ResourceRegionPreparation::regions",
+          "kind": "function"
+        },
+        {
+          "path": "resource::carrier::ResourceRegionPreparation::size",
+          "kind": "function"
+        },
+        {
+          "path": "resource::carrier::ResourceRegionPreparation::stamp",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery",
+          "kind": "module"
+        },
+        {
+          "path": "resource::delivery::ResourceAdmissionFailure",
+          "kind": "type"
+        },
+        {
+          "path": "resource::delivery::ResourceAdmissionFailure::AdapterFailure",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceAdmissionFailure::Cancelled",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceAdmissionFailure::Closed",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceAdmissionFailure::Closing",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceAdmissionFailure::Denied",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceAdmissionFailure::DuplicateRequest",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceAdmissionFailure::Incompatible",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceAdmissionFailure::InvalidRequest",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceAdmissionFailure::NotReady",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceAdmissionFailure::Pressure",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceAdmissionFailure::Replaced",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceAdmissionFailure::StaleAccess",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceAdmissionFailure::Unsupported",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceAdmissionStatus",
+          "kind": "type"
+        },
+        {
+          "path": "resource::delivery::ResourceAdmissionStatus::Admitted",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceAdmissionStatus::NotAdmitted",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceCancellationResult",
+          "kind": "type"
+        },
+        {
+          "path": "resource::delivery::ResourceCancellationResult::AlreadyRequested",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceCancellationResult::AlreadyTerminal",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceCancellationResult::Closed",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceCancellationResult::Closing",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceCancellationResult::Denied",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceCancellationResult::Requested",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceCancellationResult::StaleAdapter",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceCancellationResult::UnknownRequest",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceCompletionStatus",
+          "kind": "type"
+        },
+        {
+          "path": "resource::delivery::ResourceCompletionStatus::Delivered",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceCompletionStatus::Unavailable",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceCompletionUnavailable",
+          "kind": "type"
+        },
+        {
+          "path": "resource::delivery::ResourceCompletionUnavailable::AlreadyDelivered",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceCompletionUnavailable::Closed",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceCompletionUnavailable::Closing",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceCompletionUnavailable::Gap",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceCompletionUnavailable::Pending",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceCompletionUnavailable::Replaced",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceCompletionUnavailable::UnknownRequest",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceCompletionUnavailable::WrongOperation",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::delivery::ResourceObservationAdmission",
+          "kind": "type"
+        },
+        {
+          "path": "resource::delivery::ResourceObservationAdmission::admitted",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceObservationAdmission::admitted_operation",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceObservationAdmission::failure",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceObservationAdmission::into_returned_request",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceObservationAdmission::not_admitted",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceObservationAdmission::returned_request",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceObservationAdmission::status",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceObservationCompletion",
+          "kind": "type"
+        },
+        {
+          "path": "resource::delivery::ResourceObservationCompletion::into_parts",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceObservationCompletion::new",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceObservationCompletion::operation",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceObservationCompletion::outcome",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceObservationCompletion::request",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceObservationCompletionDelivery",
+          "kind": "type"
+        },
+        {
+          "path": "resource::delivery::ResourceObservationCompletionDelivery::completion",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceObservationCompletionDelivery::delivered",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceObservationCompletionDelivery::into_completion",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceObservationCompletionDelivery::status",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceObservationCompletionDelivery::unavailable",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceOpenAdmission",
+          "kind": "type"
+        },
+        {
+          "path": "resource::delivery::ResourceOpenAdmission::admitted",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceOpenAdmission::admitted_operation",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceOpenAdmission::failure",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceOpenAdmission::into_returned_request",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceOpenAdmission::not_admitted",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceOpenAdmission::returned_request",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceOpenAdmission::status",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceOpenCompletion",
+          "kind": "type"
+        },
+        {
+          "path": "resource::delivery::ResourceOpenCompletion::into_parts",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceOpenCompletion::new",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceOpenCompletion::operation",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceOpenCompletion::outcome",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceOpenCompletion::request",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceOpenCompletionDelivery",
+          "kind": "type"
+        },
+        {
+          "path": "resource::delivery::ResourceOpenCompletionDelivery::completion",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceOpenCompletionDelivery::delivered",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceOpenCompletionDelivery::into_completion",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceOpenCompletionDelivery::status",
+          "kind": "function"
+        },
+        {
+          "path": "resource::delivery::ResourceOpenCompletionDelivery::unavailable",
+          "kind": "function"
+        },
+        {
+          "path": "resource::operation",
+          "kind": "module"
+        },
+        {
+          "path": "resource::operation::ResourceCancellationIdentity",
+          "kind": "type"
+        },
+        {
+          "path": "resource::operation::ResourceCancellationIdentity::new",
+          "kind": "function"
+        },
+        {
+          "path": "resource::operation::ResourceCancellationIdentity::value",
+          "kind": "function"
+        },
+        {
+          "path": "resource::operation::ResourceCancellationRequest",
+          "kind": "type"
+        },
+        {
+          "path": "resource::operation::ResourceCancellationRequest::cause",
+          "kind": "function"
+        },
+        {
+          "path": "resource::operation::ResourceCancellationRequest::new",
+          "kind": "function"
+        },
+        {
+          "path": "resource::operation::ResourceCancellationRequest::operation",
+          "kind": "function"
+        },
+        {
+          "path": "resource::operation::ResourceCloseRequest",
+          "kind": "type"
+        },
+        {
+          "path": "resource::operation::ResourceCloseRequest::new",
+          "kind": "function"
+        },
+        {
+          "path": "resource::operation::ResourceCloseRequest::operation",
+          "kind": "function"
+        },
+        {
+          "path": "resource::operation::ResourceCorrelationIdentity",
+          "kind": "type"
+        },
+        {
+          "path": "resource::operation::ResourceCorrelationIdentity::new",
+          "kind": "function"
+        },
+        {
+          "path": "resource::operation::ResourceCorrelationIdentity::value",
+          "kind": "function"
+        },
+        {
+          "path": "resource::operation::ResourceDeadline",
+          "kind": "type"
+        },
+        {
+          "path": "resource::operation::ResourceDeadline::Governed",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::operation::ResourceDeadline::None",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::operation::ResourceDeadlineIdentity",
+          "kind": "type"
+        },
+        {
+          "path": "resource::operation::ResourceDeadlineIdentity::new",
+          "kind": "function"
+        },
+        {
+          "path": "resource::operation::ResourceDeadlineIdentity::value",
+          "kind": "function"
+        },
+        {
+          "path": "resource::operation::ResourceObservationRequest",
+          "kind": "type"
+        },
+        {
+          "path": "resource::operation::ResourceObservationRequest::into_regions",
+          "kind": "function"
+        },
+        {
+          "path": "resource::operation::ResourceObservationRequest::new",
+          "kind": "function"
+        },
+        {
+          "path": "resource::operation::ResourceObservationRequest::operation",
+          "kind": "function"
+        },
+        {
+          "path": "resource::operation::ResourceObservationRequest::regions",
+          "kind": "function"
+        },
+        {
+          "path": "resource::operation::ResourceObservationRequest::target",
+          "kind": "function"
+        },
+        {
+          "path": "resource::operation::ResourceObservationTarget",
+          "kind": "type"
+        },
+        {
+          "path": "resource::operation::ResourceObservationTarget::Current",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::operation::ResourceObservationTarget::Snapshot",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::operation::ResourceObservationTarget::access",
+          "kind": "function"
+        },
+        {
+          "path": "resource::operation::ResourceOpenRequest",
+          "kind": "type"
+        },
+        {
+          "path": "resource::operation::ResourceOpenRequest::new",
+          "kind": "function"
+        },
+        {
+          "path": "resource::operation::ResourceOpenRequest::operation",
+          "kind": "function"
+        },
+        {
+          "path": "resource::operation::ResourceOpenRequest::resource",
+          "kind": "function"
+        },
+        {
+          "path": "resource::operation::ResourceOperationKind",
+          "kind": "type"
+        },
+        {
+          "path": "resource::operation::ResourceOperationKind::Close",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::operation::ResourceOperationKind::Observation",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::operation::ResourceOperationKind::Open",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::operation::ResourceOperationStamp",
+          "kind": "type"
+        },
+        {
+          "path": "resource::operation::ResourceOperationStamp::adapter",
+          "kind": "function"
+        },
+        {
+          "path": "resource::operation::ResourceOperationStamp::cancellation",
+          "kind": "function"
+        },
+        {
+          "path": "resource::operation::ResourceOperationStamp::correlation",
+          "kind": "function"
+        },
+        {
+          "path": "resource::operation::ResourceOperationStamp::deadline",
+          "kind": "function"
+        },
+        {
+          "path": "resource::operation::ResourceOperationStamp::kind",
+          "kind": "function"
+        },
+        {
+          "path": "resource::operation::ResourceOperationStamp::new",
+          "kind": "function"
+        },
+        {
+          "path": "resource::operation::ResourceOperationStamp::request",
+          "kind": "function"
+        },
+        {
+          "path": "resource::operation::ResourceRequestError",
+          "kind": "type"
+        },
+        {
+          "path": "resource::operation::ResourceRequestError::AdapterGenerationMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::operation::ResourceRequestError::CloseIsNotCancellable",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::operation::ResourceRequestError::OperationKindMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "resource::operation::ResourceRequestIdentity",
+          "kind": "type"
+        },
+        {
+          "path": "resource::operation::ResourceRequestIdentity::new",
+          "kind": "function"
+        },
+        {
+          "path": "resource::operation::ResourceRequestIdentity::value",
+          "kind": "function"
+        },
+        {
+          "path": "resource::port",
+          "kind": "module"
+        },
+        {
+          "path": "resource::port::ResourceAccessPort",
+          "kind": "trait"
+        },
+        {
+          "path": "resource::port::ResourceAccessPort::applicability",
+          "kind": "function"
+        },
+        {
+          "path": "resource::port::ResourceAccessPort::close",
+          "kind": "function"
+        },
+        {
+          "path": "resource::port::ResourceAccessPort::descriptor",
+          "kind": "function"
+        },
+        {
+          "path": "resource::port::ResourceAccessPort::request_cancellation",
+          "kind": "function"
+        },
+        {
+          "path": "resource::port::ResourceAccessPort::submit_observation",
+          "kind": "function"
+        },
+        {
+          "path": "resource::port::ResourceAccessPort::submit_open",
+          "kind": "function"
+        },
+        {
+          "path": "resource::port::ResourceAccessPort::take_observation_completion",
+          "kind": "function"
+        },
+        {
+          "path": "resource::port::ResourceAccessPort::take_open_completion",
+          "kind": "function"
+        },
+        {
+          "path": "resource::access::ResourceObservedStateError::SnapshotMismatch",
           "kind": "variant"
         }
       ],
@@ -10694,11 +11598,6 @@
         },
         {
           "derive": "Clone",
-          "public_type": "resource::access::ResourceObservationOutcome",
-          "consumer_operation": "clone"
-        },
-        {
-          "derive": "Clone",
           "public_type": "resource::access::ResourceOpenFailure",
           "consumer_operation": "clone"
         },
@@ -10839,11 +11738,6 @@
         },
         {
           "derive": "Copy",
-          "public_type": "resource::access::ResourceObservationOutcome",
-          "consumer_operation": "copy"
-        },
-        {
-          "derive": "Copy",
           "public_type": "resource::access::ResourceOpenFailure",
           "consumer_operation": "copy"
         },
@@ -10965,11 +11859,6 @@
         {
           "derive": "Debug",
           "public_type": "resource::access::ResourceObservationFailure",
-          "consumer_operation": "debug"
-        },
-        {
-          "derive": "Debug",
-          "public_type": "resource::access::ResourceObservationOutcome",
           "consumer_operation": "debug"
         },
         {
@@ -11119,11 +12008,6 @@
         },
         {
           "derive": "Eq",
-          "public_type": "resource::access::ResourceObservationOutcome",
-          "consumer_operation": "eq"
-        },
-        {
-          "derive": "Eq",
           "public_type": "resource::access::ResourceOpenFailure",
           "consumer_operation": "eq"
         },
@@ -11269,11 +12153,6 @@
         },
         {
           "derive": "PartialEq",
-          "public_type": "resource::access::ResourceObservationOutcome",
-          "consumer_operation": "partial_eq"
-        },
-        {
-          "derive": "PartialEq",
           "public_type": "resource::access::ResourceOpenFailure",
           "consumer_operation": "partial_eq"
         },
@@ -11395,6 +12274,646 @@
         {
           "derive": "PartialEq",
           "public_type": "resource::access::ResourceOpenStatus",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::access::ResourceObservationStatus",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::access::ResourceObservedStateError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::carrier::ResourceCarrierContract",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::carrier::ResourceCarrierContracts",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::carrier::ResourceCarrierError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::carrier::ResourceCarrierRole",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::carrier::ResourceCarrierStamp",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::carrier::ResourcePayloadPreparation",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::carrier::ResourceRegionPreparation",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::delivery::ResourceAdmissionFailure",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::delivery::ResourceAdmissionStatus",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::delivery::ResourceCancellationResult",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::delivery::ResourceCompletionStatus",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::delivery::ResourceCompletionUnavailable",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::operation::ResourceCancellationIdentity",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::operation::ResourceCancellationRequest",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::operation::ResourceCloseRequest",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::operation::ResourceCorrelationIdentity",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::operation::ResourceDeadline",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::operation::ResourceDeadlineIdentity",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::operation::ResourceObservationTarget",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::operation::ResourceOpenRequest",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::operation::ResourceOperationKind",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::operation::ResourceOperationStamp",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::operation::ResourceRequestError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::operation::ResourceRequestIdentity",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::access::ResourceObservationStatus",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::access::ResourceObservedStateError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::carrier::ResourceCarrierError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::carrier::ResourceCarrierRole",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::carrier::ResourceCarrierStamp",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::carrier::ResourcePayloadPreparation",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::carrier::ResourceRegionPreparation",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::delivery::ResourceAdmissionFailure",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::delivery::ResourceAdmissionStatus",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::delivery::ResourceCancellationResult",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::delivery::ResourceCompletionStatus",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::delivery::ResourceCompletionUnavailable",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::operation::ResourceCancellationIdentity",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::operation::ResourceCancellationRequest",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::operation::ResourceCloseRequest",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::operation::ResourceCorrelationIdentity",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::operation::ResourceDeadline",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::operation::ResourceDeadlineIdentity",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::operation::ResourceObservationTarget",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::operation::ResourceOpenRequest",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::operation::ResourceOperationKind",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::operation::ResourceOperationStamp",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::operation::ResourceRequestError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::operation::ResourceRequestIdentity",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::access::ResourceObservationStatus",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::access::ResourceObservedStateError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::carrier::ResourceCarrierContract",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::carrier::ResourceCarrierContracts",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::carrier::ResourceCarrierError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::carrier::ResourceCarrierRole",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::carrier::ResourceCarrierStamp",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::carrier::ResourcePayloadPreparation",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::carrier::ResourceRegionPreparation",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::delivery::ResourceAdmissionFailure",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::delivery::ResourceAdmissionStatus",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::delivery::ResourceCancellationResult",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::delivery::ResourceCompletionStatus",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::delivery::ResourceCompletionUnavailable",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::operation::ResourceCancellationIdentity",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::operation::ResourceCancellationRequest",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::operation::ResourceCloseRequest",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::operation::ResourceCorrelationIdentity",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::operation::ResourceDeadline",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::operation::ResourceDeadlineIdentity",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::operation::ResourceObservationTarget",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::operation::ResourceOpenRequest",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::operation::ResourceOperationKind",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::operation::ResourceOperationStamp",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::operation::ResourceRequestError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::operation::ResourceRequestIdentity",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::access::ResourceObservationStatus",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::access::ResourceObservedStateError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::carrier::ResourceCarrierContract",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::carrier::ResourceCarrierContracts",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::carrier::ResourceCarrierError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::carrier::ResourceCarrierRole",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::carrier::ResourceCarrierStamp",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::carrier::ResourcePayloadPreparation",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::carrier::ResourceRegionPreparation",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::delivery::ResourceAdmissionFailure",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::delivery::ResourceAdmissionStatus",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::delivery::ResourceCancellationResult",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::delivery::ResourceCompletionStatus",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::delivery::ResourceCompletionUnavailable",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::operation::ResourceCancellationIdentity",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::operation::ResourceCancellationRequest",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::operation::ResourceCloseRequest",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::operation::ResourceCorrelationIdentity",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::operation::ResourceDeadline",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::operation::ResourceDeadlineIdentity",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::operation::ResourceObservationTarget",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::operation::ResourceOpenRequest",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::operation::ResourceOperationKind",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::operation::ResourceOperationStamp",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::operation::ResourceRequestError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::operation::ResourceRequestIdentity",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::access::ResourceObservationStatus",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::access::ResourceObservedStateError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::carrier::ResourceCarrierContract",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::carrier::ResourceCarrierContracts",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::carrier::ResourceCarrierError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::carrier::ResourceCarrierRole",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::carrier::ResourceCarrierStamp",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::carrier::ResourcePayloadPreparation",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::carrier::ResourceRegionPreparation",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::delivery::ResourceAdmissionFailure",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::delivery::ResourceAdmissionStatus",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::delivery::ResourceCancellationResult",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::delivery::ResourceCompletionStatus",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::delivery::ResourceCompletionUnavailable",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::operation::ResourceCancellationIdentity",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::operation::ResourceCancellationRequest",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::operation::ResourceCloseRequest",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::operation::ResourceCorrelationIdentity",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::operation::ResourceDeadline",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::operation::ResourceDeadlineIdentity",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::operation::ResourceObservationTarget",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::operation::ResourceOpenRequest",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::operation::ResourceOperationKind",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::operation::ResourceOperationStamp",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::operation::ResourceRequestError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::operation::ResourceRequestIdentity",
           "consumer_operation": "partial_eq"
         }
       ]

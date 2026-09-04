@@ -6,6 +6,10 @@ use crate::operation::ContractSelection;
 pub mod access;
 pub mod bounds;
 pub mod capability;
+pub mod carrier;
+pub mod delivery;
+pub mod operation;
+pub mod port;
 
 /// Stable opaque identity of one Resource subject.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

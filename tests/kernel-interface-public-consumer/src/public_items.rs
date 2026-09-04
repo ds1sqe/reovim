@@ -36,6 +36,22 @@ pub const fn witness() -> bool {
     resource_access_items_five();
     resource_access_items_six();
     resource_access_items_seven();
+    resource_access_items_eight();
+    resource_access_items_nine();
+    resource_access_items_ten();
+    resource_carrier_items_one();
+    resource_carrier_items_two();
+    resource_carrier_items_three();
+    resource_carrier_items_four();
+    resource_operation_items_one();
+    resource_operation_items_two();
+    resource_operation_items_three();
+    resource_operation_items_four();
+    resource_delivery_items_one();
+    resource_delivery_items_two();
+    resource_delivery_items_three();
+    resource_delivery_items_four();
+    resource_delivery_items_five();
     trait_items();
     trait_method_items();
     variant_items();
@@ -208,6 +224,305 @@ const fn resource_access_items_seven() {
             ResourceOpenOutcome::rollback,
         ::reovim_kernel_interface::resource::access::
             ResourceOpenOutcome::status,
+    );
+}
+
+const fn resource_access_items_eight() {
+    let _ = (
+        ::reovim_kernel_interface::resource::access::
+            ResourceAccessDescriptor::bind_payload_carrier,
+        ::reovim_kernel_interface::resource::access::
+            ResourceAccessDescriptor::bind_region_carrier,
+        ::reovim_kernel_interface::resource::access::
+            ResourceAccessDescriptor::cancellation_operation,
+        ::reovim_kernel_interface::resource::access::
+            ResourceAccessDescriptor::carriers,
+        ::reovim_kernel_interface::resource::access::
+            ResourceAccessDescriptor::completion_delivery_operation,
+        ::reovim_kernel_interface::resource::access::
+            ResourceAccessDescriptor::prepare_payload_carrier,
+        ::reovim_kernel_interface::resource::access::
+            ResourceAccessDescriptor::prepare_region_carrier,
+    );
+}
+
+const fn resource_access_items_nine() {
+    let _ = (
+        ::reovim_kernel_interface::resource::access::
+            ResourceObservedState::into_payload,
+        ::reovim_kernel_interface::resource::access::ResourceObservedState::new,
+        ::reovim_kernel_interface::resource::access::
+            ResourceObservedState::payload,
+        ::reovim_kernel_interface::resource::access::
+            ResourceObservedState::snapshot,
+        ::reovim_kernel_interface::resource::access::
+            ResourceObservationOutcome::failure,
+        ::reovim_kernel_interface::resource::access::
+            ResourceObservationOutcome::into_observed_state,
+    );
+}
+
+const fn resource_access_items_ten() {
+    let _ = (
+        ::reovim_kernel_interface::resource::access::
+            ResourceObservationOutcome::not_observed,
+        ::reovim_kernel_interface::resource::access::
+            ResourceObservationOutcome::observed,
+        ::reovim_kernel_interface::resource::access::
+            ResourceObservationOutcome::observed_state,
+        ::reovim_kernel_interface::resource::access::
+            ResourceObservationOutcome::status,
+    );
+}
+
+const fn resource_carrier_items_one() {
+    let _ = (
+        ::reovim_kernel_interface::resource::carrier::
+            ResourceCarrierStamp::new,
+        ::reovim_kernel_interface::resource::carrier::
+            ResourceCarrierStamp::schema_version,
+        ::reovim_kernel_interface::resource::carrier::
+            ResourceCarrierStamp::type_identity,
+        ::reovim_kernel_interface::resource::carrier::
+            ResourceCarrierContract::new,
+        ::reovim_kernel_interface::resource::carrier::
+            ResourceCarrierContract::safety,
+        ::reovim_kernel_interface::resource::carrier::
+            ResourceCarrierContract::schema,
+        ::reovim_kernel_interface::resource::carrier::
+            ResourceCarrierContract::selected_stamp,
+        ::reovim_kernel_interface::resource::carrier::
+            ResourceCarrierContract::validate_stamp,
+    );
+}
+
+const fn resource_carrier_items_two() {
+    let _ = (
+        ::reovim_kernel_interface::resource::carrier::
+            ResourceCarrierContracts::new,
+        ::reovim_kernel_interface::resource::carrier::
+            ResourceCarrierContracts::payload,
+        ::reovim_kernel_interface::resource::carrier::
+            ResourceCarrierContracts::regions,
+        ::reovim_kernel_interface::resource::carrier::
+            ResourceRegionPreparation::regions,
+        ::reovim_kernel_interface::resource::carrier::
+            ResourceRegionPreparation::size,
+        ::reovim_kernel_interface::resource::carrier::
+            ResourceRegionPreparation::stamp,
+        ::reovim_kernel_interface::resource::carrier::
+            ResourcePayloadPreparation::regions,
+        ::reovim_kernel_interface::resource::carrier::
+            ResourcePayloadPreparation::size,
+        ::reovim_kernel_interface::resource::carrier::
+            ResourcePayloadPreparation::stamp,
+    );
+}
+
+const fn resource_carrier_items_three() {
+    let _ = (
+        ::reovim_kernel_interface::resource::carrier::
+            ResourceRegionCarrier::bytes,
+        ::reovim_kernel_interface::resource::carrier::
+            ResourceRegionCarrier::into_bytes,
+        ::reovim_kernel_interface::resource::carrier::
+            ResourceRegionCarrier::regions,
+        ::reovim_kernel_interface::resource::carrier::
+            ResourceRegionCarrier::size,
+        ::reovim_kernel_interface::resource::carrier::
+            ResourceRegionCarrier::stamp,
+        ::reovim_kernel_interface::resource::carrier::
+            ResourcePayloadCarrier::bytes,
+        ::reovim_kernel_interface::resource::carrier::
+            ResourcePayloadCarrier::into_bytes,
+        ::reovim_kernel_interface::resource::carrier::
+            ResourcePayloadCarrier::regions,
+        ::reovim_kernel_interface::resource::carrier::
+            ResourcePayloadCarrier::size,
+        ::reovim_kernel_interface::resource::carrier::
+            ResourcePayloadCarrier::stamp,
+    );
+}
+
+const fn resource_carrier_items_four() {
+    let _ = (
+        ::reovim_kernel_interface::resource::carrier::
+            ResourceCarrierRejection::bytes,
+        ::reovim_kernel_interface::resource::carrier::
+            ResourceCarrierRejection::cause,
+        ::reovim_kernel_interface::resource::carrier::
+            ResourceCarrierRejection::into_bytes,
+    );
+}
+
+const fn resource_operation_items_one() {
+    let _ = (
+        ::reovim_kernel_interface::resource::operation::
+            ResourceRequestIdentity::new,
+        ::reovim_kernel_interface::resource::operation::
+            ResourceRequestIdentity::value,
+        ::reovim_kernel_interface::resource::operation::
+            ResourceCancellationIdentity::new,
+        ::reovim_kernel_interface::resource::operation::
+            ResourceCancellationIdentity::value,
+        ::reovim_kernel_interface::resource::operation::
+            ResourceCorrelationIdentity::new,
+        ::reovim_kernel_interface::resource::operation::
+            ResourceCorrelationIdentity::value,
+        ::reovim_kernel_interface::resource::operation::
+            ResourceDeadlineIdentity::new,
+        ::reovim_kernel_interface::resource::operation::
+            ResourceDeadlineIdentity::value,
+    );
+}
+
+const fn resource_operation_items_two() {
+    let _ = (
+        ::reovim_kernel_interface::resource::operation::
+            ResourceOperationStamp::adapter,
+        ::reovim_kernel_interface::resource::operation::
+            ResourceOperationStamp::cancellation,
+        ::reovim_kernel_interface::resource::operation::
+            ResourceOperationStamp::correlation,
+        ::reovim_kernel_interface::resource::operation::
+            ResourceOperationStamp::deadline,
+        ::reovim_kernel_interface::resource::operation::
+            ResourceOperationStamp::kind,
+        ::reovim_kernel_interface::resource::operation::
+            ResourceOperationStamp::new,
+        ::reovim_kernel_interface::resource::operation::
+            ResourceOperationStamp::request,
+    );
+}
+
+const fn resource_operation_items_three() {
+    let _ = (
+        ::reovim_kernel_interface::resource::operation::
+            ResourceOpenRequest::new,
+        ::reovim_kernel_interface::resource::operation::
+            ResourceOpenRequest::operation,
+        ::reovim_kernel_interface::resource::operation::
+            ResourceOpenRequest::resource,
+        ::reovim_kernel_interface::resource::operation::
+            ResourceObservationTarget::access,
+        ::reovim_kernel_interface::resource::operation::
+            ResourceObservationRequest::into_regions,
+        ::reovim_kernel_interface::resource::operation::
+            ResourceObservationRequest::new,
+        ::reovim_kernel_interface::resource::operation::
+            ResourceObservationRequest::operation,
+        ::reovim_kernel_interface::resource::operation::
+            ResourceObservationRequest::regions,
+        ::reovim_kernel_interface::resource::operation::
+            ResourceObservationRequest::target,
+    );
+}
+
+const fn resource_operation_items_four() {
+    let _ = (
+        ::reovim_kernel_interface::resource::operation::
+            ResourceCancellationRequest::cause,
+        ::reovim_kernel_interface::resource::operation::
+            ResourceCancellationRequest::new,
+        ::reovim_kernel_interface::resource::operation::
+            ResourceCancellationRequest::operation,
+        ::reovim_kernel_interface::resource::operation::
+            ResourceCloseRequest::new,
+        ::reovim_kernel_interface::resource::operation::
+            ResourceCloseRequest::operation,
+    );
+}
+
+const fn resource_delivery_items_one() {
+    let _ = (
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceOpenAdmission::admitted,
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceOpenAdmission::admitted_operation,
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceOpenAdmission::failure,
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceOpenAdmission::into_returned_request,
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceOpenAdmission::not_admitted,
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceOpenAdmission::returned_request,
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceOpenAdmission::status,
+    );
+}
+
+const fn resource_delivery_items_two() {
+    let _ = (
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceObservationAdmission::admitted,
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceObservationAdmission::admitted_operation,
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceObservationAdmission::failure,
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceObservationAdmission::into_returned_request,
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceObservationAdmission::not_admitted,
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceObservationAdmission::returned_request,
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceObservationAdmission::status,
+    );
+}
+
+const fn resource_delivery_items_three() {
+    let _ = (
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceOpenCompletion::into_parts,
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceOpenCompletion::new,
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceOpenCompletion::operation,
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceOpenCompletion::outcome,
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceOpenCompletion::request,
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceObservationCompletion::into_parts,
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceObservationCompletion::new,
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceObservationCompletion::operation,
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceObservationCompletion::outcome,
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceObservationCompletion::request,
+    );
+}
+
+const fn resource_delivery_items_four() {
+    let _ = (
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceOpenCompletionDelivery::completion,
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceOpenCompletionDelivery::delivered,
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceOpenCompletionDelivery::into_completion,
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceOpenCompletionDelivery::status,
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceOpenCompletionDelivery::unavailable,
+    );
+}
+
+const fn resource_delivery_items_five() {
+    let _ = (
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceObservationCompletionDelivery::completion,
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceObservationCompletionDelivery::delivered,
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceObservationCompletionDelivery::into_completion,
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceObservationCompletionDelivery::status,
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceObservationCompletionDelivery::unavailable,
     );
 }
 
@@ -928,12 +1243,16 @@ const fn operation_items() {
         ::reovim_kernel_interface::operation::OperationDescriptor::
             external_observation_deferred,
         ::reovim_kernel_interface::operation::OperationDescriptor::
+            external_observation_deferred_admission,
+        ::reovim_kernel_interface::operation::OperationDescriptor::
             external_observation_inline,
         ::reovim_kernel_interface::operation::OperationDescriptor::
             external_observation_stream,
         ::reovim_kernel_interface::operation::OperationDescriptor::invocation,
         ::reovim_kernel_interface::operation::OperationDescriptor::
             local_deferred,
+        ::reovim_kernel_interface::operation::OperationDescriptor::
+            local_deferred_admission,
         ::reovim_kernel_interface::operation::OperationDescriptor::local_inline,
         ::reovim_kernel_interface::operation::OperationDescriptor::new,
         ::reovim_kernel_interface::operation::OperationDescriptor::reentrancy,
@@ -950,6 +1269,9 @@ const fn trait_items() {
     > = None;
     let _: Option<
         &dyn ::reovim_kernel_interface::output_health::OutputHealthLease,
+    > = None;
+    let _: Option<
+        &dyn ::reovim_kernel_interface::resource::port::ResourceAccessPort,
     > = None;
 }
 
@@ -970,6 +1292,22 @@ const fn trait_method_items() {
             record,
         <dyn ::reovim_kernel_interface::output_health::OutputHealthLease>::
             scope,
+        <dyn ::reovim_kernel_interface::resource::port::ResourceAccessPort>::
+            applicability,
+        <dyn ::reovim_kernel_interface::resource::port::ResourceAccessPort>::
+            close,
+        <dyn ::reovim_kernel_interface::resource::port::ResourceAccessPort>::
+            descriptor,
+        <dyn ::reovim_kernel_interface::resource::port::ResourceAccessPort>::
+            request_cancellation,
+        <dyn ::reovim_kernel_interface::resource::port::ResourceAccessPort>::
+            submit_observation,
+        <dyn ::reovim_kernel_interface::resource::port::ResourceAccessPort>::
+            submit_open,
+        <dyn ::reovim_kernel_interface::resource::port::ResourceAccessPort>::
+            take_observation_completion,
+        <dyn ::reovim_kernel_interface::resource::port::ResourceAccessPort>::
+            take_open_completion,
     );
 }
 
@@ -1066,6 +1404,8 @@ const fn resource_variant_items() {
         resource_bound_field_variants,
         resource_bounds_error_variants,
         resource_capability_error_variants,
+        resource_carrier_error_variants,
+        resource_carrier_role_variants,
         resource_change_checkpoint_variants,
         resource_change_discovery_variants,
         resource_close_error_variants,
@@ -1076,16 +1416,243 @@ const fn resource_variant_items() {
         resource_historical_availability_variants,
         resource_mutation_grammar_variants,
         resource_negotiation_error_variants,
+        resource_observed_state_error_variants,
+        resource_observation_status_variants,
         resource_observation_failure_variants,
-        resource_observation_outcome_variants,
+        resource_observation_target_variants,
         resource_open_failure_variants,
         resource_open_status_variants,
+        resource_admission_failure_variants,
+        resource_admission_status_variants,
+        resource_cancellation_result_variants,
+        resource_completion_status_variants,
+        resource_completion_unavailable_variants,
+        resource_deadline_variants,
+        resource_operation_kind_variants,
+        resource_request_error_variants,
         resource_payload_accounting_variants,
         resource_ready_error_variants,
         resource_snapshot_consistency_variants,
         resource_source_access_authority_variants,
         resource_source_stability_variants,
     );
+}
+
+const fn resource_carrier_role_variants(
+    value: ::reovim_kernel_interface::resource::carrier::ResourceCarrierRole,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::carrier::ResourceCarrierRole::
+            Regions
+        | ::reovim_kernel_interface::resource::carrier::ResourceCarrierRole::
+            Payload => {}
+    }
+}
+
+const fn resource_carrier_error_variants(
+    value: ::reovim_kernel_interface::resource::carrier::ResourceCarrierError,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::carrier::ResourceCarrierError::
+            IncoherentSafety
+        | ::reovim_kernel_interface::resource::carrier::ResourceCarrierError::
+            DuplicateTypeIdentity
+        | ::reovim_kernel_interface::resource::carrier::ResourceCarrierError::
+            TypeMismatch { .. }
+        | ::reovim_kernel_interface::resource::carrier::ResourceCarrierError::
+            IncompatibleSchema { .. }
+        | ::reovim_kernel_interface::resource::carrier::ResourceCarrierError::
+            Bound { .. }
+        | ::reovim_kernel_interface::resource::carrier::ResourceCarrierError::
+            LengthOverflow { .. }
+        | ::reovim_kernel_interface::resource::carrier::ResourceCarrierError::
+            LengthMismatch { .. } => {}
+    }
+}
+
+const fn resource_observed_state_error_variants(
+    value: ::reovim_kernel_interface::resource::access::
+        ResourceObservedStateError,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::access::
+            ResourceObservedStateError::AccessMismatch
+        | ::reovim_kernel_interface::resource::access::
+            ResourceObservedStateError::SnapshotMismatch
+        | ::reovim_kernel_interface::resource::access::
+            ResourceObservedStateError::RevisionSchemaMismatch
+        | ::reovim_kernel_interface::resource::access::
+            ResourceObservedStateError::RegionCountMismatch
+        | ::reovim_kernel_interface::resource::access::
+            ResourceObservedStateError::Carrier(_) => {}
+    }
+}
+
+const fn resource_observation_status_variants(
+    value: ::reovim_kernel_interface::resource::access::
+        ResourceObservationStatus,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::access::
+            ResourceObservationStatus::Observed
+        | ::reovim_kernel_interface::resource::access::
+            ResourceObservationStatus::NotObserved => {}
+    }
+}
+
+const fn resource_deadline_variants(
+    value: ::reovim_kernel_interface::resource::operation::ResourceDeadline,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::operation::ResourceDeadline::None
+        | ::reovim_kernel_interface::resource::operation::ResourceDeadline::
+            Governed(_) => {}
+    }
+}
+
+const fn resource_operation_kind_variants(
+    value: ::reovim_kernel_interface::resource::operation::
+        ResourceOperationKind,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::operation::
+            ResourceOperationKind::Open
+        | ::reovim_kernel_interface::resource::operation::
+            ResourceOperationKind::Observation
+        | ::reovim_kernel_interface::resource::operation::
+            ResourceOperationKind::Close => {}
+    }
+}
+
+const fn resource_request_error_variants(
+    value: ::reovim_kernel_interface::resource::operation::ResourceRequestError,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::operation::
+            ResourceRequestError::AdapterGenerationMismatch
+        | ::reovim_kernel_interface::resource::operation::
+            ResourceRequestError::OperationKindMismatch { .. }
+        | ::reovim_kernel_interface::resource::operation::
+            ResourceRequestError::CloseIsNotCancellable => {}
+    }
+}
+
+const fn resource_observation_target_variants(
+    value: ::reovim_kernel_interface::resource::operation::
+        ResourceObservationTarget,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::operation::
+            ResourceObservationTarget::Current(_)
+        | ::reovim_kernel_interface::resource::operation::
+            ResourceObservationTarget::Snapshot(_) => {}
+    }
+}
+
+const fn resource_admission_status_variants(
+    value: ::reovim_kernel_interface::resource::delivery::
+        ResourceAdmissionStatus,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceAdmissionStatus::Admitted
+        | ::reovim_kernel_interface::resource::delivery::
+            ResourceAdmissionStatus::NotAdmitted => {}
+    }
+}
+
+const fn resource_admission_failure_variants(
+    value: ::reovim_kernel_interface::resource::delivery::
+        ResourceAdmissionFailure,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceAdmissionFailure::Denied
+        | ::reovim_kernel_interface::resource::delivery::
+            ResourceAdmissionFailure::Unsupported
+        | ::reovim_kernel_interface::resource::delivery::
+            ResourceAdmissionFailure::Incompatible
+        | ::reovim_kernel_interface::resource::delivery::
+            ResourceAdmissionFailure::InvalidRequest
+        | ::reovim_kernel_interface::resource::delivery::
+            ResourceAdmissionFailure::NotReady
+        | ::reovim_kernel_interface::resource::delivery::
+            ResourceAdmissionFailure::DuplicateRequest
+        | ::reovim_kernel_interface::resource::delivery::
+            ResourceAdmissionFailure::StaleAccess
+        | ::reovim_kernel_interface::resource::delivery::
+            ResourceAdmissionFailure::Pressure
+        | ::reovim_kernel_interface::resource::delivery::
+            ResourceAdmissionFailure::Cancelled
+        | ::reovim_kernel_interface::resource::delivery::
+            ResourceAdmissionFailure::Replaced
+        | ::reovim_kernel_interface::resource::delivery::
+            ResourceAdmissionFailure::Closing
+        | ::reovim_kernel_interface::resource::delivery::
+            ResourceAdmissionFailure::Closed
+        | ::reovim_kernel_interface::resource::delivery::
+            ResourceAdmissionFailure::AdapterFailure => {}
+    }
+}
+
+const fn resource_cancellation_result_variants(
+    value: ::reovim_kernel_interface::resource::delivery::
+        ResourceCancellationResult,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceCancellationResult::Requested(_)
+        | ::reovim_kernel_interface::resource::delivery::
+            ResourceCancellationResult::AlreadyRequested(_)
+        | ::reovim_kernel_interface::resource::delivery::
+            ResourceCancellationResult::AlreadyTerminal
+        | ::reovim_kernel_interface::resource::delivery::
+            ResourceCancellationResult::Denied
+        | ::reovim_kernel_interface::resource::delivery::
+            ResourceCancellationResult::UnknownRequest
+        | ::reovim_kernel_interface::resource::delivery::
+            ResourceCancellationResult::StaleAdapter
+        | ::reovim_kernel_interface::resource::delivery::
+            ResourceCancellationResult::Closing
+        | ::reovim_kernel_interface::resource::delivery::
+            ResourceCancellationResult::Closed => {}
+    }
+}
+
+const fn resource_completion_unavailable_variants(
+    value: ::reovim_kernel_interface::resource::delivery::
+        ResourceCompletionUnavailable,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceCompletionUnavailable::Pending
+        | ::reovim_kernel_interface::resource::delivery::
+            ResourceCompletionUnavailable::UnknownRequest
+        | ::reovim_kernel_interface::resource::delivery::
+            ResourceCompletionUnavailable::WrongOperation
+        | ::reovim_kernel_interface::resource::delivery::
+            ResourceCompletionUnavailable::AlreadyDelivered
+        | ::reovim_kernel_interface::resource::delivery::
+            ResourceCompletionUnavailable::Gap
+        | ::reovim_kernel_interface::resource::delivery::
+            ResourceCompletionUnavailable::Replaced
+        | ::reovim_kernel_interface::resource::delivery::
+            ResourceCompletionUnavailable::Closing
+        | ::reovim_kernel_interface::resource::delivery::
+            ResourceCompletionUnavailable::Closed => {}
+    }
+}
+
+const fn resource_completion_status_variants(
+    value: ::reovim_kernel_interface::resource::delivery::
+        ResourceCompletionStatus,
+) {
+    match value {
+        ::reovim_kernel_interface::resource::delivery::
+            ResourceCompletionStatus::Delivered
+        | ::reovim_kernel_interface::resource::delivery::
+            ResourceCompletionStatus::Unavailable(_) => {}
+    }
 }
 
 const fn resource_source_access_authority_variants(
@@ -1388,18 +1955,6 @@ const fn resource_observation_failure_variants(
     }
 }
 
-const fn resource_observation_outcome_variants(
-    value: ::reovim_kernel_interface::resource::access::
-        ResourceObservationOutcome,
-) {
-    match value {
-        ::reovim_kernel_interface::resource::access::
-            ResourceObservationOutcome::Observed(_)
-        | ::reovim_kernel_interface::resource::access::
-            ResourceObservationOutcome::NotObserved(_) => {}
-    }
-}
-
 const fn resource_close_error_variants(
     value: ::reovim_kernel_interface::resource::access::ResourceCloseError,
 ) {
@@ -1416,7 +1971,9 @@ const fn resource_close_outcome_variants(
         ::reovim_kernel_interface::resource::access::
             ResourceCloseOutcome::Closed
         | ::reovim_kernel_interface::resource::access::
-            ResourceCloseOutcome::Incomplete(_) => {}
+            ResourceCloseOutcome::Incomplete(_)
+        | ::reovim_kernel_interface::resource::access::
+            ResourceCloseOutcome::StaleAdapter => {}
     }
 }
 
@@ -2099,6 +2656,8 @@ const fn cancellation_cancellation_cause_variants(
     match value {
         ::reovim_kernel_interface::cancellation::CancellationCause::
             ExplicitRequest
+        | ::reovim_kernel_interface::cancellation::CancellationCause::
+            DeadlineReached
         | ::reovim_kernel_interface::cancellation::CancellationCause::
             Replacement
         | ::reovim_kernel_interface::cancellation::CancellationCause::

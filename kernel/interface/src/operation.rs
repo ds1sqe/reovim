@@ -161,6 +161,19 @@ impl OperationDescriptor {
         }
     }
 
+    /// Returns a non-waiting admission for deferred local completion.
+    #[must_use]
+    pub const fn local_deferred_admission() -> Self {
+        Self {
+            invocation: InvocationClass::NonBlockingInvocation,
+            completion: CompletionClass::DeferredTerminal,
+            delivery: DeliveryClass::Single,
+            effect: EffectClass::LocalOnly,
+            callback: CallbackClass::NoUserCallback,
+            reentrancy: ReentrancyClass::NonReentrant,
+        }
+    }
+
     /// Returns the fixed inline external-observation operation shape.
     #[must_use]
     pub const fn external_observation_inline() -> Self {
@@ -179,6 +192,19 @@ impl OperationDescriptor {
     pub const fn external_observation_deferred() -> Self {
         Self {
             invocation: InvocationClass::CallerMayWait,
+            completion: CompletionClass::DeferredTerminal,
+            delivery: DeliveryClass::Single,
+            effect: EffectClass::ExternalObservation,
+            callback: CallbackClass::NoUserCallback,
+            reentrancy: ReentrancyClass::NonReentrant,
+        }
+    }
+
+    /// Returns a non-waiting admission for deferred external observation.
+    #[must_use]
+    pub const fn external_observation_deferred_admission() -> Self {
+        Self {
+            invocation: InvocationClass::NonBlockingInvocation,
             completion: CompletionClass::DeferredTerminal,
             delivery: DeliveryClass::Single,
             effect: EffectClass::ExternalObservation,

@@ -5,6 +5,8 @@
 pub enum CancellationCause {
     /// The owning cancellation authority requested cancellation directly.
     ExplicitRequest,
+    /// The separately governed operation deadline was observed as reached.
+    DeadlineReached,
     /// Replacement requires old-generation work to cooperate with shutdown.
     Replacement,
     /// The owning lifecycle requested cancellation while Closing.

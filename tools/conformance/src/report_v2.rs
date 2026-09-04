@@ -2412,6 +2412,10 @@ const KERNEL_INTERFACE_SHIPPING_SOURCES: &[&str] = &[
     "kernel/interface/src/resource/access.rs",
     "kernel/interface/src/resource/bounds.rs",
     "kernel/interface/src/resource/capability.rs",
+    "kernel/interface/src/resource/carrier.rs",
+    "kernel/interface/src/resource/delivery.rs",
+    "kernel/interface/src/resource/operation.rs",
+    "kernel/interface/src/resource/port.rs",
 ];
 const KERNEL_INTERFACE_CONSUMER_SOURCES: &[&str] = &[
     "tests/kernel-interface-public-consumer/src/clock.rs",
@@ -2442,6 +2446,8 @@ const KERNEL_INTERFACE_CONSUMER_SOURCES: &[&str] = &[
     "tests/kernel-interface-public-consumer/src/public_items.rs",
     "tests/kernel-interface-public-consumer/src/resource.rs",
     "tests/kernel-interface-public-consumer/src/resource/access.rs",
+    "tests/kernel-interface-public-consumer/src/resource/carrier.rs",
+    "tests/kernel-interface-public-consumer/src/resource/port.rs",
 ];
 
 fn expected_closure_sources(closure: &str) -> Option<&'static [&'static str]> {
@@ -6799,7 +6805,10 @@ fn reference_error(message: impl Into<String>) -> ReportError {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::BTreeMap, path::PathBuf};
+    use std::{
+        collections::{BTreeMap, BTreeSet},
+        path::PathBuf,
+    };
 
     use serde_json::{Value, json};
 
@@ -6814,6 +6823,30 @@ mod tests {
     const REPORT_LIMIT: usize = 4 * 1024 * 1024;
     const JSON_DEPTH: usize = 256;
     const JSON_ITEMS: usize = 1_000_000;
+
+    #[test]
+    fn verifier_sources_match_prepared_source_authority() {
+        let exposed = crate::product_preflight::compiler_source_selection();
+        let paths = |values: &[&str]| {
+            values.iter().copied().map(PathBuf::from).collect::<BTreeSet<_>>()
+        };
+        assert_eq!(
+            paths(super::FOUNDATION_SHIPPING_SOURCES),
+            exposed.foundation_shipping
+        );
+        assert_eq!(
+            paths(super::FOUNDATION_CONSUMER_SOURCES),
+            exposed.foundation_consumer
+        );
+        assert_eq!(
+            paths(super::KERNEL_INTERFACE_SHIPPING_SOURCES),
+            exposed.kernel_interface_shipping
+        );
+        assert_eq!(
+            paths(super::KERNEL_INTERFACE_CONSUMER_SOURCES),
+            exposed.kernel_interface_consumer
+        );
+    }
 
     fn refresh_source_tree_digest(report: &mut Value) {
         let digest = {

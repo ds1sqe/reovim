@@ -14,9 +14,8 @@ use reovim_kernel_interface::resource::access::{
     ResourceAccessDescriptor, ResourceApplicabilityOutcome,
     ResourceChangeCheckpoint, ResourceCloseError, ResourceCloseOutcome,
     ResourceFreshness, ResourceIncompleteClose, ResourceNegotiationError,
-    ResourceObservationFailure, ResourceObservationOutcome,
-    ResourceOpenFailure, ResourceOpenOutcome, ResourceOpenStatus,
-    ResourceReadyError, ResourceReadyState,
+    ResourceObservationFailure, ResourceOpenFailure, ResourceOpenOutcome,
+    ResourceOpenStatus, ResourceReadyError, ResourceReadyState,
 };
 use reovim_kernel_interface::resource::bounds::{
     ResourceAccessBounds, ResourceBoundField, ResourceBoundsError,
@@ -127,15 +126,21 @@ const fn derive_terminal_access() -> bool {
     >() && crate::derive_witness::<
         ::reovim_kernel_interface::resource::access::ResourceOpenStatus,
     >() && crate::derive_witness::<
-        ::reovim_kernel_interface::resource::access::ResourceObservationFailure,
+        ::reovim_kernel_interface::resource::access::ResourceObservationStatus,
     >() && crate::derive_witness::<
-        ::reovim_kernel_interface::resource::access::ResourceObservationOutcome,
+        ::reovim_kernel_interface::resource::access::ResourceObservedStateError,
+    >() && crate::derive_witness::<
+        ::reovim_kernel_interface::resource::access::ResourceObservationFailure,
     >() && crate::derive_witness::<
         ::reovim_kernel_interface::resource::access::ResourceCloseError,
     >() && crate::derive_witness::<
         ::reovim_kernel_interface::resource::access::ResourceIncompleteClose,
     >() && crate::derive_witness::<
         ::reovim_kernel_interface::resource::access::ResourceCloseOutcome,
+    >() && crate::send_sync_witness::<
+        ::reovim_kernel_interface::resource::access::ResourceObservedState,
+    >() && crate::send_sync_witness::<
+        ::reovim_kernel_interface::resource::access::ResourceObservationOutcome,
     >()
 }
 
@@ -593,8 +598,14 @@ fn descriptor_operations(descriptor: &ResourceAccessDescriptor) -> bool {
     let observation = descriptor.observation_operation();
     inspection == OperationDescriptor::local_inline()
         && applicability == OperationDescriptor::external_observation_inline()
-        && open == OperationDescriptor::external_observation_deferred()
-        && observation == OperationDescriptor::external_observation_deferred()
+        && open
+            == OperationDescriptor::external_observation_deferred_admission()
+        && observation
+            == OperationDescriptor::external_observation_deferred_admission()
+        && descriptor.completion_delivery_operation()
+            == OperationDescriptor::local_inline()
+        && descriptor.cancellation_operation()
+            == OperationDescriptor::local_inline()
         && descriptor.change_operation().is_none()
         && descriptor.close_operation() == OperationDescriptor::local_deferred()
         && delivery_code(open.delivery()) == 0
@@ -616,7 +627,7 @@ const fn effect_code(value: EffectClass) -> u8 {
     }
 }
 
-fn stable_descriptor() -> Option<ResourceAccessDescriptor> {
+pub(super) fn stable_descriptor() -> Option<ResourceAccessDescriptor> {
     let capabilities = stable_capabilities()?;
     descriptor(capabilities)
 }
@@ -637,12 +648,14 @@ fn descriptor(
         | ChangeDiscovery::OrderedResumableFeed => 4,
     };
     let bounds = access_bounds(capabilities, queue, 4, 1, 1)?;
+    let carriers = super::carrier::contracts()?;
     Some(ResourceAccessDescriptor::new(
         contract,
         LifecycleIdentity::new(210, 211, Generation::new(1)),
         LifecycleIdentity::new(220, 221, Generation::new(1)),
         schemas,
         capabilities,
+        &carriers,
         &bounds,
     ))
 }
@@ -807,11 +820,17 @@ const OPEN_FAILURES: [ResourceOpenFailure; 14] = [
 ];
 
 fn observation_outcome_cases() -> bool {
-    let Some(snapshot) = snapshot(1, 14) else { return false };
-    traits(ResourceObservationOutcome::Observed(snapshot))
-        && OBSERVATION_FAILURES
-            .into_iter()
-            .all(|cause| traits(ResourceObservationOutcome::NotObserved(cause)))
+    OBSERVATION_FAILURES.into_iter().all(|cause| {
+        let outcome =
+            reovim_kernel_interface::resource::access::
+                ResourceObservationOutcome::not_observed(cause);
+        outcome.status()
+            == reovim_kernel_interface::resource::access::
+                ResourceObservationStatus::NotObserved
+            && outcome.observed_state().is_none()
+            && outcome.failure() == Some(cause)
+            && outcome.into_observed_state().is_none()
+    })
 }
 
 const OBSERVATION_FAILURES: [ResourceObservationFailure; 12] = [
@@ -852,4 +871,5 @@ fn close_outcome_cases() -> bool {
         && traits(ResourceCloseOutcome::Closed)
         && traits(ResourceCloseOutcome::Incomplete(nonterminal))
         && traits(ResourceCloseOutcome::Incomplete(release))
+        && traits(ResourceCloseOutcome::StaleAdapter)
 }

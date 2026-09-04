@@ -72,6 +72,46 @@ Every bound declares:
 
 “Bounded” without these fields is not a capability claim.
 
+## Qualified operation carriers
+
+One Resource Access independently selects carrier contracts for native region
+requests and Snapshot payloads. A region carrier encodes only the selected
+Resource family's Address, Extent, and Unit schemas. A payload carrier encodes
+the native result for the exact requested region count. Neither carrier makes
+bytes, text, paths, or another family's coordinates universal semantics.
+
+Each carrier declares its own type identity, selected schema version, complete
+Carrier Safety Descriptor, native-region count, and exact carried-byte charge.
+The portable Rust projection is immutable, move-only, and transferable with
+shared borrowing; debug output exposes stamps and bounds but not payload bytes.
+
+Preparation validates type, selected version, checked count, checked byte size,
+and the applicable per-object bound before allocation, parsing, lookup, or
+adapter work. Binding repeats those descriptor checks and accepts only the
+exact prepared allocation length. Failure returns the unchanged allocation.
+Aggregate admission later charges the retained request and terminal result.
+
+## Admission and terminal delivery
+
+Open and observation submission are `NonBlockingInvocation` with
+`DeferredTerminal` completion. Accepted admission transfers the complete
+request to the provider and returns its copyable operation stamp. Definite
+non-admission retains nothing and returns the exact request with a typed cause.
+
+The operation stamp names the adapter generation, operation kind, request,
+cancellation authority, root correlation, and optional separately governed
+deadline. Reaching that deadline requests cooperative cancellation; it does
+not prove execution stopped, release carrier ownership, or erase the required
+terminal completion.
+
+Completion retrieval is bounded and non-waiting. It either transfers the exact
+returned request and its one terminal result, reports owned pending work, or
+reports typed unknown, wrong-operation, already-delivered, gap, replacement,
+Closing, or Closed state. A gap is not success and requires reconciliation or
+shutdown. Close may wait only within its declared bound and reports `Closed`,
+stale generation, or explicit incomplete ownership. Repeated close is
+idempotent for the same current generation.
+
 Assembly selects an adapter through explicit configuration or one unambiguous
 descriptor match before activation. Missing or ambiguous selection is typed;
 there is no hidden fallback or revealing probe. Authority is validated before
