@@ -22,3 +22,4 @@ pub mod lifecycle;
 pub mod operation;
 pub mod output_health;
 pub mod resource;
+pub mod semantic;

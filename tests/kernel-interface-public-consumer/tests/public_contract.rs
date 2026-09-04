@@ -18,6 +18,9 @@ use reovim_kernel_interface::buffer::{
     BufferHistoryPosition, BufferHistoryStamp, BufferIdentity,
     BufferIncarnationStamp, BufferStateStamp, BufferVersion,
 };
+use reovim_kernel_interface::cancellation::{
+    CancellationState, DeadlineState, InstallationOutcome,
+};
 use reovim_kernel_interface::carrier::{
     BorrowModel, CarrierSafetyDescriptor, ConcurrencySafety, CopyModel,
     DropModel, InvocationModel, InvocationSafety, LifetimeModel, MemorySafety,
@@ -34,6 +37,19 @@ use reovim_kernel_interface::resource::{
     ResourceAccessStamp, ResourceIdentity, ResourceRevision,
     ResourceSnapshotIdentity, ResourceSnapshotStamp,
 };
+use reovim_kernel_interface::semantic::domain::{
+    DomainPolicyPort, DomainValidationCandidate, DomainValidationReceipt,
+    DomainValidationRequest,
+};
+use reovim_kernel_interface::semantic::identity::{
+    SemanticIntentIdentity, SemanticRequestIdentity,
+};
+use reovim_kernel_interface::semantic::intent::SemanticIntentBindingOutcome;
+use reovim_kernel_interface::semantic::representation::{
+    RepresentationLoweringCandidate, RepresentationLoweringRequest,
+    RepresentationPolicyPort,
+};
+use reovim_kernel_interface::semantic::stamp::SemanticIntentStamp;
 
 #[test]
 fn complete_public_contract_journey() {
@@ -96,6 +112,232 @@ fn buffer_plan_outcome_debug_is_payload_redacted() {
     assert!(!rendered.contains("secret"));
     assert!(!rendered.contains("apply"));
     assert!(matches!(rejected, BufferPlanBindingOutcome::Rejected(_)));
+}
+
+#[test]
+fn domain_policy_panic_preserves_runtime_intent() {
+    let inputs =
+        reovim_kernel_interface_public_consumer::semantic_panic_inputs()
+            .expect("semantic panic fixture");
+    let provider = PanickingDomain { descriptor: &inputs.domain };
+    let request = DomainValidationRequest::new(
+        &inputs.domain,
+        &inputs.representation,
+        &inputs.intent,
+        inputs.domain_charge,
+        CancellationState::Open,
+        DeadlineState::Pending,
+    )
+    .expect("valid Domain request");
+    let unwind = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        provider.validate(request)
+    }));
+    assert!(unwind.is_err());
+    assert_eq!(inputs.intent.bytes(), [0x91, 0x02, 0x7f, 0xa4]);
+}
+
+#[test]
+fn representation_policy_panic_preserves_runtime_intent() {
+    let inputs =
+        reovim_kernel_interface_public_consumer::semantic_panic_inputs()
+            .expect("semantic panic fixture");
+    let domain_request = DomainValidationRequest::new(
+        &inputs.domain,
+        &inputs.representation,
+        &inputs.intent,
+        inputs.domain_charge,
+        CancellationState::Open,
+        DeadlineState::Pending,
+    )
+    .expect("valid Domain request");
+    let receipt = domain_request
+        .finish(
+            &inputs.domain,
+            domain_request.validated_candidate(),
+            InstallationOutcome::Current,
+        )
+        .receipt()
+        .expect("exact Domain receipt");
+    let request = RepresentationLoweringRequest::new(
+        &inputs.representation,
+        &inputs.intent,
+        &receipt,
+        &inputs.buffer,
+        inputs.representation_charge,
+        CancellationState::Open,
+        DeadlineState::Pending,
+    )
+    .expect("valid Representation request");
+    let provider =
+        PanickingRepresentation { descriptor: &inputs.representation };
+    let unwind = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        provider.lower(request)
+    }));
+    assert!(unwind.is_err());
+    assert_eq!(inputs.intent.bytes(), [0x91, 0x02, 0x7f, 0xa4]);
+}
+
+#[test]
+fn semantic_owning_debug_is_payload_redacted() {
+    let inputs =
+        reovim_kernel_interface_public_consumer::semantic_panic_inputs()
+            .expect("semantic debug fixture");
+    let intent_debug = format!("{:?}", inputs.intent);
+    assert!(intent_debug.contains("SemanticIntent"));
+    assert!(!intent_debug.contains("[145, 2, 127, 164]"));
+
+    let binding = semantic_binding_rejection(&inputs);
+    let binding_debug = format!("{binding:?}");
+    assert!(binding_debug.contains("Rejected"));
+    assert!(!binding_debug.contains("secret"));
+    let SemanticIntentBindingOutcome::Rejected(rejection) = binding else {
+        panic!("expected exact semantic binding rejection");
+    };
+    let rejection_debug = format!("{rejection:?}");
+    assert!(rejection_debug.contains("SemanticIntentRejection"));
+    assert!(!rejection_debug.contains("secret"));
+
+    let receipt = semantic_receipt(&inputs);
+    let request = semantic_lowering_request(&inputs, &receipt);
+    let candidate = semantic_plan_candidate(&inputs);
+    let candidate_debug = format!("{candidate:?}");
+    assert!(candidate_debug.contains("RepresentationLoweringCandidate"));
+    assert!(!candidate_debug.contains("secret"));
+    assert!(!candidate_debug.contains("apply"));
+    let outcome = candidate.finish(
+        request,
+        &inputs.representation,
+        InstallationOutcome::Current,
+    );
+    let outcome_debug = format!("{outcome:?}");
+    assert!(outcome_debug.contains("RepresentationLoweringOutcome"));
+    assert!(!outcome_debug.contains("secret"));
+    assert!(!outcome_debug.contains("apply"));
+}
+
+fn semantic_binding_rejection(
+    inputs: &reovim_kernel_interface_public_consumer::SemanticPanicInputs,
+) -> SemanticIntentBindingOutcome {
+    let retained = inputs.intent.stamp();
+    let stamp = SemanticIntentStamp::new(
+        SemanticIntentIdentity::new(9_980),
+        retained.caller(),
+        SemanticRequestIdentity::new(9_981),
+        *retained.target(),
+        *retained.plan(),
+        *retained.projection(),
+        retained.coordinate(),
+    );
+    let preparation = stamp
+        .prepare_intent(
+            &inputs.representation,
+            inputs.representation.intent().selected_stamp(),
+            1,
+            0,
+            7,
+        )
+        .expect("valid semantic preparation");
+    let preparation_debug = format!("{preparation:?}");
+    assert!(preparation_debug.contains("SemanticIntentPreparation"));
+    assert!(!preparation_debug.contains("secret"));
+    preparation.bind(&inputs.representation, b"secret".as_slice().into())
+}
+
+fn semantic_receipt(
+    inputs: &reovim_kernel_interface_public_consumer::SemanticPanicInputs,
+) -> DomainValidationReceipt {
+    let request = DomainValidationRequest::new(
+        &inputs.domain,
+        &inputs.representation,
+        &inputs.intent,
+        inputs.domain_charge,
+        CancellationState::Open,
+        DeadlineState::Pending,
+    )
+    .expect("valid Domain request");
+    request
+        .finish(
+            &inputs.domain,
+            request.validated_candidate(),
+            InstallationOutcome::Current,
+        )
+        .receipt()
+        .expect("exact Domain receipt")
+}
+
+fn semantic_lowering_request<'a>(
+    inputs: &'a reovim_kernel_interface_public_consumer::SemanticPanicInputs,
+    receipt: &'a DomainValidationReceipt,
+) -> RepresentationLoweringRequest<'a> {
+    RepresentationLoweringRequest::new(
+        &inputs.representation,
+        &inputs.intent,
+        receipt,
+        &inputs.buffer,
+        inputs.representation_charge,
+        CancellationState::Open,
+        DeadlineState::Pending,
+    )
+    .expect("valid Representation request")
+}
+
+fn semantic_plan_candidate(
+    inputs: &reovim_kernel_interface_public_consumer::SemanticPanicInputs,
+) -> RepresentationLoweringCandidate {
+    let (origin, operations, preconditions) = plan_carriers(&inputs.buffer);
+    let outcome = inputs.buffer.bind_plan(
+        *inputs.intent.stamp().plan(),
+        *inputs.intent.stamp().target(),
+        origin,
+        operations,
+        preconditions,
+    );
+    let BufferPlanBindingOutcome::Accepted(plan) = outcome else {
+        panic!("semantic fixture must produce a complete plan");
+    };
+    plan.into()
+}
+
+struct PanickingDomain<'a> {
+    descriptor: &'a reovim_kernel_interface::semantic::descriptor::
+        DomainPolicyDescriptor,
+}
+
+impl DomainPolicyPort for PanickingDomain<'_> {
+    fn descriptor(
+        &self,
+    ) -> &reovim_kernel_interface::semantic::descriptor::DomainPolicyDescriptor
+    {
+        self.descriptor
+    }
+
+    fn validate(
+        &self,
+        _request: DomainValidationRequest<'_>,
+    ) -> DomainValidationCandidate {
+        panic!("scripted Domain policy panic")
+    }
+}
+
+struct PanickingRepresentation<'a> {
+    descriptor: &'a reovim_kernel_interface::semantic::descriptor::
+        RepresentationPolicyDescriptor,
+}
+
+impl RepresentationPolicyPort for PanickingRepresentation<'_> {
+    fn descriptor(
+        &self,
+    ) -> &reovim_kernel_interface::semantic::descriptor::
+    RepresentationPolicyDescriptor{
+        self.descriptor
+    }
+
+    fn lower(
+        &self,
+        _request: RepresentationLoweringRequest<'_>,
+    ) -> RepresentationLoweringCandidate {
+        panic!("scripted Representation policy panic")
+    }
 }
 
 fn plan_carriers(

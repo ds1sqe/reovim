@@ -11,7 +11,7 @@ use reovim_kernel_interface::buffer::{
 use reovim_kernel_interface::identity::InstanceId;
 use reovim_kernel_interface::lifecycle::{Generation, LifecycleIdentity};
 
-mod carrier;
+pub mod carrier;
 mod plan;
 
 const CHARGE_OWNER: u128 = 700;

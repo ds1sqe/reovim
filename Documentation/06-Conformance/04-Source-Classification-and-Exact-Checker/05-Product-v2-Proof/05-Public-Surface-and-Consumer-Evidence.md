@@ -68,9 +68,10 @@ qualified expression. The exact type-level `core::error::Error` trait path is
 admitted for shipping error implementations.
 
 The only owned-container type exception is the exact
-`::alloc::boxed::Box<[u8]>` spelling in the Kernel Interface Diagnostic Output
-source. It admits no alias, other payload, other source, constructor call, or
-other `alloc` value path. The Kernel consumer may import the exact
+`::alloc::boxed::Box<[u8]>` spelling in individually admitted Kernel Interface
+Diagnostic Output, Resource carrier/access, Buffer carrier, and semantic Intent
+sources. It admits no alias, other payload, unlisted source, constructor call,
+or other `alloc` value path. The Kernel consumer may import the exact
 `alloc::string::ToString` trait used by its public Display/error behavior probes.
 
 The current profile permits directly authored public declarations/modules and

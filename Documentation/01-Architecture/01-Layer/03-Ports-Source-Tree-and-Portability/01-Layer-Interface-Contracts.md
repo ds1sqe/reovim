@@ -73,10 +73,11 @@ Kernel Interface owns semantic policy contracts. Selected Domain and
 Representation policies provide validation, lowering, semantic state, and
 correspondence operations to Kernel Runtime/Core.
 
-Domain policy fully lowers a bounded semantic Intent into Buffer-valid
-Operations and Preconditions before Buffer mutation. Policy receives neither
-storage authority nor Client, Protocol, Presentation, or concrete adapter
-state.
+Domain policy validates bounded semantic Intent meaning. Representation policy
+then validates its coordinate/correspondence and completely lowers it into
+Buffer-valid Operations and Preconditions before Buffer mutation. Neither
+policy receives storage authority nor Client, Protocol, Presentation, or
+concrete adapter state.
 
 ### Buffer transition
 

@@ -395,6 +395,51 @@
             "kind": "copied",
             "package_path": "src/buffer/plan.rs",
             "repository_path": "kernel/interface/src/buffer/plan.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/semantic.rs",
+            "repository_path": "kernel/interface/src/semantic.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/semantic/bounds.rs",
+            "repository_path": "kernel/interface/src/semantic/bounds.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/semantic/descriptor.rs",
+            "repository_path": "kernel/interface/src/semantic/descriptor.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/semantic/domain.rs",
+            "repository_path": "kernel/interface/src/semantic/domain.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/semantic/identity.rs",
+            "repository_path": "kernel/interface/src/semantic/identity.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/semantic/intent.rs",
+            "repository_path": "kernel/interface/src/semantic/intent.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/semantic/policy.rs",
+            "repository_path": "kernel/interface/src/semantic/policy.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/semantic/representation.rs",
+            "repository_path": "kernel/interface/src/semantic/representation.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/semantic/stamp.rs",
+            "repository_path": "kernel/interface/src/semantic/stamp.rs"
           }
         ]
       }
@@ -8088,6 +8133,1382 @@
         {
           "path": "buffer::plan::BufferPlanRejection::target",
           "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferPlanDescriptor::validate_plan",
+          "kind": "function"
+        },
+        {
+          "path": "buffer::plan::BufferPlanStamp::same_plan",
+          "kind": "function"
+        },
+        {
+          "path": "operation::OperationDescriptor::local_deferred_callback_admission",
+          "kind": "function"
+        },
+        {
+          "path": "semantic",
+          "kind": "module"
+        },
+        {
+          "path": "semantic::bounds",
+          "kind": "module"
+        },
+        {
+          "path": "semantic::bounds::SemanticBoundField",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::bounds::SemanticBoundField::ConcurrentCalls",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::bounds::SemanticBoundField::IntentBytes",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::bounds::SemanticBoundField::IntentDepth",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::bounds::SemanticBoundField::IntentItems",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::bounds::SemanticBoundField::PolicyWork",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::bounds::SemanticBoundField::ResultBytes",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::bounds::SemanticBoundField::TemporaryBytes",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::bounds::SemanticBoundViolation",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::bounds::SemanticBoundViolation::Bound",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::bounds::SemanticBoundViolation::ChargeOwnerMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::bounds::SemanticBoundViolation::cause",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::bounds::SemanticBoundViolation::field",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::bounds::SemanticBoundsError",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::bounds::SemanticBoundsError::ChargeOwnerMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::bounds::SemanticBoundsError::WrongUnit",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::bounds::SemanticBoundsError::WrongZeroPolicy",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::bounds::SemanticIntentBounds",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::bounds::SemanticIntentBounds::admit_retained_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::bounds::SemanticIntentBounds::bytes",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::bounds::SemanticIntentBounds::charge_owner",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::bounds::SemanticIntentBounds::depth",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::bounds::SemanticIntentBounds::items",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::bounds::SemanticIntentBounds::new",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::bounds::SemanticIntentBounds::prepare",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::bounds::SemanticIntentShape",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::bounds::SemanticIntentShape::bytes",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::bounds::SemanticIntentShape::depth",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::bounds::SemanticIntentShape::items",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::bounds::SemanticPolicyCallBounds",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::bounds::SemanticPolicyCallBounds::charge_owner",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::bounds::SemanticPolicyCallBounds::concurrent_calls",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::bounds::SemanticPolicyCallBounds::new",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::bounds::SemanticPolicyCallBounds::prepare",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::bounds::SemanticPolicyCallBounds::result_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::bounds::SemanticPolicyCallBounds::temporary_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::bounds::SemanticPolicyCallBounds::validate_charge",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::bounds::SemanticPolicyCallBounds::work",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::bounds::SemanticPolicyCallCharge",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::bounds::SemanticPolicyCallCharge::charge_owner",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::bounds::SemanticPolicyCallCharge::concurrent_calls",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::bounds::SemanticPolicyCallCharge::result_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::bounds::SemanticPolicyCallCharge::temporary_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::bounds::SemanticPolicyCallCharge::work",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor",
+          "kind": "module"
+        },
+        {
+          "path": "semantic::descriptor::DomainPolicyDescriptor",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::descriptor::DomainPolicyDescriptor::new",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::DomainPolicyDescriptor::stamp",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::DomainPolicyDescriptor::validation",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::RepresentationBehavior",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::descriptor::RepresentationBehavior::correspondence",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::RepresentationBehavior::editability",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::RepresentationBehavior::fidelity",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::RepresentationBehavior::new",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::RepresentationPolicyDescriptor",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::descriptor::RepresentationPolicyDescriptor::coordinate",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::RepresentationPolicyDescriptor::correspondence",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::RepresentationPolicyDescriptor::editability",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::RepresentationPolicyDescriptor::fidelity",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::RepresentationPolicyDescriptor::intent",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::RepresentationPolicyDescriptor::lowering",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::RepresentationPolicyDescriptor::new",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::RepresentationPolicyDescriptor::plan",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::RepresentationPolicyDescriptor::stamp",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::SemanticBufferPlanContract",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::descriptor::SemanticBufferPlanContract::contract",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::SemanticBufferPlanContract::from_descriptor",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::SemanticBufferPlanContract::matches_descriptor",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::SemanticBufferPlanContract::operations",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::SemanticBufferPlanContract::origin",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::SemanticBufferPlanContract::preconditions",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::SemanticCoordinateSpaceDescriptor",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::descriptor::SemanticCoordinateSpaceDescriptor::coordinate_schema",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::SemanticCoordinateSpaceDescriptor::intent_bounds",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::SemanticCoordinateSpaceDescriptor::new",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::SemanticCoordinateSpaceDescriptor::region_schema",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::SemanticCoordinateSpaceDescriptor::stamp",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::SemanticCoordinateSpaceDescriptor::value_schema",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::SemanticCorrespondence",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::descriptor::SemanticCorrespondence::Bidirectional",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::descriptor::SemanticCorrespondence::None",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::descriptor::SemanticCorrespondence::SourceOnly",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::descriptor::SemanticDescriptorError",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::descriptor::SemanticDescriptorError::ConstrainedReadOnly",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::descriptor::SemanticDescriptorError::DerivedEditable",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::descriptor::SemanticDescriptorError::DomainGenerationMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::descriptor::SemanticDescriptorError::FaithfulWithoutCorrespondence",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::descriptor::SemanticDescriptorError::SerializedConcurrencyExceeded",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::descriptor::SemanticDescriptorError::TransactionWithoutReverseCorrespondence",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::descriptor::SemanticEditability",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::descriptor::SemanticEditability::ReadOnly",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::descriptor::SemanticEditability::Transactional",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::descriptor::SemanticFidelity",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::descriptor::SemanticFidelity::ConstrainedEditable",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::descriptor::SemanticFidelity::DerivedReadOnly",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::descriptor::SemanticFidelity::Faithful",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::descriptor::SemanticPolicyCallDescriptor",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::descriptor::SemanticPolicyCallDescriptor::bounds",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::SemanticPolicyCallDescriptor::concurrency",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::SemanticPolicyCallDescriptor::new",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::SemanticPolicyCallDescriptor::operation",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::SemanticPolicyCallDescriptor::progress",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::SemanticPolicyCallDescriptor::safety",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::SemanticPolicyConcurrency",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::descriptor::SemanticPolicyConcurrency::ParallelIndependent",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::descriptor::SemanticPolicyConcurrency::Serialized",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::descriptor::SemanticPolicyProgress",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::descriptor::SemanticPolicyProgress::BoundedToCompletion",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::domain",
+          "kind": "module"
+        },
+        {
+          "path": "semantic::domain::DomainPolicyPort",
+          "kind": "trait"
+        },
+        {
+          "path": "semantic::domain::DomainPolicyPort::descriptor",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::domain::DomainPolicyPort::validate",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::domain::DomainValidationCandidate",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::domain::DomainValidationCandidate::failure",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::domain::DomainValidationCandidate::rejected",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::domain::DomainValidationCandidate::status",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::domain::DomainValidationCandidate::validated",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::domain::DomainValidationCandidate::validation",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::domain::DomainValidationCandidateStatus",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::domain::DomainValidationCandidateStatus::Rejected",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::domain::DomainValidationCandidateStatus::Validated",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::domain::DomainValidationOutcome",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::domain::DomainValidationOutcome::failure",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::domain::DomainValidationOutcome::receipt",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::domain::DomainValidationOutcome::status",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::domain::DomainValidationOutcome::violation",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::domain::DomainValidationReceipt",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::domain::DomainValidationReceipt::matches_intent",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::domain::DomainValidationReceipt::stamp",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::domain::DomainValidationRequest",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::domain::DomainValidationRequest::cancellation",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::domain::DomainValidationRequest::charge",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::domain::DomainValidationRequest::deadline",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::domain::DomainValidationRequest::domain",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::domain::DomainValidationRequest::finish",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::domain::DomainValidationRequest::intent",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::domain::DomainValidationRequest::new",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::domain::DomainValidationRequest::validated_candidate",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::domain::DomainValidationRequest::validation_stamp",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::domain::DomainValidationStatus",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::domain::DomainValidationStatus::ContractViolation",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::domain::DomainValidationStatus::Rejected",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::domain::DomainValidationStatus::Validated",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::domain::SemanticIntentValidationStamp",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::domain::SemanticIntentValidationStamp::carrier",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::domain::SemanticIntentValidationStamp::domain",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::domain::SemanticIntentValidationStamp::intent",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::domain::SemanticIntentValidationStamp::matches_intent",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::domain::SemanticIntentValidationStamp::new",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::domain::SemanticIntentValidationStamp::request",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::domain::SemanticIntentValidationStamp::shape",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::identity",
+          "kind": "module"
+        },
+        {
+          "path": "semantic::identity::CoordinateSpaceIdentity",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::identity::CoordinateSpaceIdentity::new",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::identity::CoordinateSpaceIdentity::value",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::identity::DomainIdentity",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::identity::DomainIdentity::new",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::identity::DomainIdentity::value",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::identity::ProjectionGeneration",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::identity::ProjectionGeneration::INITIAL",
+          "kind": "const"
+        },
+        {
+          "path": "semantic::identity::ProjectionGeneration::new",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::identity::ProjectionGeneration::value",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::identity::ProjectionIdentity",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::identity::ProjectionIdentity::new",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::identity::ProjectionIdentity::value",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::identity::RepresentationIdentity",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::identity::RepresentationIdentity::new",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::identity::RepresentationIdentity::value",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::identity::SemanticIntentIdentity",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::identity::SemanticIntentIdentity::new",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::identity::SemanticIntentIdentity::value",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::identity::SemanticRequestIdentity",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::identity::SemanticRequestIdentity::new",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::identity::SemanticRequestIdentity::value",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::intent",
+          "kind": "module"
+        },
+        {
+          "path": "semantic::intent::SemanticIntent",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::intent::SemanticIntent::bytes",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::intent::SemanticIntent::carrier",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::intent::SemanticIntent::into_bytes",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::intent::SemanticIntent::shape",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::intent::SemanticIntent::stamp",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentBindingOutcome",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentBindingOutcome::Bound",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentBindingOutcome::Rejected",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentCarrierStamp",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentCarrierStamp::new",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentCarrierStamp::schema_version",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentCarrierStamp::type_identity",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentContract",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentContract::new",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentContract::safety",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentContract::schema",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentContract::selected_stamp",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentContract::validate_stamp",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentError",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentError::Bound",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentError::CoordinateSpaceMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentError::IncoherentSafety",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentError::IncompatibleSchema",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentError::LengthMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentError::LengthOverflow",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentError::RepresentationGenerationMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentError::TypeMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentPreparation",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentPreparation::bind",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentPreparation::carrier",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentPreparation::shape",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentPreparation::stamp",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentRejection",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentRejection::bytes",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentRejection::cause",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentRejection::into_parts",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::intent::SemanticIntentRejection::preparation",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::policy",
+          "kind": "module"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyContractError",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyContractError::IntentCoordinateMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyContractError::IntentDomainMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyContractError::IntentRepresentationMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyContractError::LoweringCandidateShape",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyContractError::PlanDescriptorMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyContractError::PlanOwnerMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyContractError::ProviderDescriptorMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyContractError::ReturnedPlanInvalid",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyContractError::ReturnedPlanStampMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyContractError::ReturnedPlanTargetMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyContractError::ValidationReceiptMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyContractError::ValidationStampMismatch",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyFailure",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyFailure::AmbiguousCorrespondence",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyFailure::Cancelled",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyFailure::Closed",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyFailure::Closing",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyFailure::DeadlineReached",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyFailure::InvalidIntent",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyFailure::NoCorrespondence",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyFailure::Pressure",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyFailure::ProviderFailure",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyFailure::ProviderPanicked",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyFailure::ReadOnly",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyFailure::Replaced",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyFailure::StaleState",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyFailure::UnsupportedCapability",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyFailure::UnsupportedSchema",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyRequestError",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyRequestError::Bound",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyRequestError::Cancelled",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyRequestError::Contract",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyRequestError::DeadlineReached",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyRequestError::ReadOnly",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::representation",
+          "kind": "module"
+        },
+        {
+          "path": "semantic::representation::RepresentationLoweringCandidate",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::representation::RepresentationLoweringCandidate::failure",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::representation::RepresentationLoweringCandidate::finish",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::representation::RepresentationLoweringCandidate::plan",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::representation::RepresentationLoweringCandidate::rejected",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::representation::RepresentationLoweringCandidate::status",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::representation::RepresentationLoweringCandidateStatus",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::representation::RepresentationLoweringCandidateStatus::Lowered",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::representation::RepresentationLoweringCandidateStatus::Rejected",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::representation::RepresentationLoweringOutcome",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::representation::RepresentationLoweringOutcome::failure",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::representation::RepresentationLoweringOutcome::into_plan",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::representation::RepresentationLoweringOutcome::plan",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::representation::RepresentationLoweringOutcome::status",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::representation::RepresentationLoweringOutcome::violation",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::representation::RepresentationLoweringRequest",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::representation::RepresentationLoweringRequest::cancellation",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::representation::RepresentationLoweringRequest::charge",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::representation::RepresentationLoweringRequest::deadline",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::representation::RepresentationLoweringRequest::intent",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::representation::RepresentationLoweringRequest::new",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::representation::RepresentationLoweringRequest::plan",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::representation::RepresentationLoweringRequest::representation",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::representation::RepresentationLoweringRequest::validation",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::representation::RepresentationLoweringStatus",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::representation::RepresentationLoweringStatus::ContractViolation",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::representation::RepresentationLoweringStatus::Lowered",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::representation::RepresentationLoweringStatus::Rejected",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::representation::RepresentationPolicyPort",
+          "kind": "trait"
+        },
+        {
+          "path": "semantic::representation::RepresentationPolicyPort::descriptor",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::representation::RepresentationPolicyPort::lower",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp",
+          "kind": "module"
+        },
+        {
+          "path": "semantic::stamp::CoordinateSpaceStamp",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::stamp::CoordinateSpaceStamp::contract",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::CoordinateSpaceStamp::incarnation",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::CoordinateSpaceStamp::new",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::CoordinateSpaceStamp::same_incarnation",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::CoordinateSpaceStamp::space",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::DomainPolicyStamp",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::stamp::DomainPolicyStamp::contract",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::DomainPolicyStamp::domain",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::DomainPolicyStamp::lifecycle",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::DomainPolicyStamp::new",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::DomainPolicyStamp::same_generation",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::ProjectionStamp",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::stamp::ProjectionStamp::lifecycle",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::ProjectionStamp::new",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::ProjectionStamp::predecessor",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::ProjectionStamp::projection",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::ProjectionStamp::representation",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::ProjectionStamp::same_state",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::RepresentationPolicyStamp",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::stamp::RepresentationPolicyStamp::contract",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::RepresentationPolicyStamp::domain",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::RepresentationPolicyStamp::lifecycle",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::RepresentationPolicyStamp::new",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::RepresentationPolicyStamp::representation",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::RepresentationPolicyStamp::same_generation",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::SemanticCallerStamp",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::stamp::SemanticCallerStamp::authority",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::SemanticCallerStamp::new",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::SemanticCallerStamp::role",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::SemanticCallerStamp::same_authority",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::SemanticIntentStamp",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::stamp::SemanticIntentStamp::caller",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::SemanticIntentStamp::coordinate",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::SemanticIntentStamp::intent",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::SemanticIntentStamp::new",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::SemanticIntentStamp::plan",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::SemanticIntentStamp::prepare_intent",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::SemanticIntentStamp::projection",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::SemanticIntentStamp::request",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::SemanticIntentStamp::same_request",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::stamp::SemanticIntentStamp::target",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::SemanticPolicyAffinity",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::descriptor::SemanticPolicyAffinity::AnyRuntimeWorker",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::descriptor::SemanticPolicyCallDescriptor::affinity",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::SemanticPolicyCallDescriptor::context",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::SemanticPolicyCallDescriptor::interruption",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::SemanticPolicyCallDescriptor::outward_calls",
+          "kind": "function"
+        },
+        {
+          "path": "semantic::descriptor::SemanticPolicyExecutionContext",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::descriptor::SemanticPolicyExecutionContext::RuntimeWorker",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::descriptor::SemanticPolicyInterruptionObservation",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::descriptor::SemanticPolicyInterruptionObservation::RuntimeBoundaries",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::descriptor::SemanticPolicyOutwardCalls",
+          "kind": "type"
+        },
+        {
+          "path": "semantic::descriptor::SemanticPolicyOutwardCalls::None",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyContractError::ReturnedPlanChargeExceeded",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyFailure::CallerTimedOut",
+          "kind": "variant"
+        },
+        {
+          "path": "semantic::policy::SemanticPolicyFailure::from_fence",
+          "kind": "function"
         }
       ],
       "derive_checks": [
@@ -14154,6 +15575,1216 @@
         {
           "derive": "PartialEq",
           "public_type": "buffer::plan::BufferTransactionIdentity",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::bounds::SemanticBoundField",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::bounds::SemanticBoundViolation",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::bounds::SemanticBoundsError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::bounds::SemanticIntentBounds",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::bounds::SemanticIntentShape",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::bounds::SemanticPolicyCallBounds",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::bounds::SemanticPolicyCallCharge",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::descriptor::DomainPolicyDescriptor",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::descriptor::RepresentationBehavior",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::descriptor::RepresentationPolicyDescriptor",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::descriptor::SemanticBufferPlanContract",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::descriptor::SemanticCoordinateSpaceDescriptor",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::descriptor::SemanticCorrespondence",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::descriptor::SemanticDescriptorError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::descriptor::SemanticEditability",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::descriptor::SemanticFidelity",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::descriptor::SemanticPolicyCallDescriptor",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::descriptor::SemanticPolicyConcurrency",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::descriptor::SemanticPolicyProgress",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::domain::DomainValidationCandidate",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::domain::DomainValidationCandidateStatus",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::domain::DomainValidationOutcome",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::domain::DomainValidationReceipt",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::domain::DomainValidationRequest",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::domain::DomainValidationStatus",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::domain::SemanticIntentValidationStamp",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::identity::CoordinateSpaceIdentity",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::identity::DomainIdentity",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::identity::ProjectionGeneration",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::identity::ProjectionIdentity",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::identity::RepresentationIdentity",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::identity::SemanticIntentIdentity",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::identity::SemanticRequestIdentity",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::intent::SemanticIntentCarrierStamp",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::intent::SemanticIntentContract",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::intent::SemanticIntentError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::policy::SemanticPolicyContractError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::policy::SemanticPolicyFailure",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::policy::SemanticPolicyRequestError",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::representation::RepresentationLoweringCandidateStatus",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::representation::RepresentationLoweringRequest",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::representation::RepresentationLoweringStatus",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::stamp::CoordinateSpaceStamp",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::stamp::DomainPolicyStamp",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::stamp::ProjectionStamp",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::stamp::RepresentationPolicyStamp",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::stamp::SemanticCallerStamp",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::bounds::SemanticBoundField",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::bounds::SemanticBoundViolation",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::bounds::SemanticBoundsError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::bounds::SemanticIntentShape",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::bounds::SemanticPolicyCallCharge",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::descriptor::RepresentationBehavior",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::descriptor::SemanticBufferPlanContract",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::descriptor::SemanticCorrespondence",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::descriptor::SemanticDescriptorError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::descriptor::SemanticEditability",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::descriptor::SemanticFidelity",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::descriptor::SemanticPolicyConcurrency",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::descriptor::SemanticPolicyProgress",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::domain::DomainValidationCandidate",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::domain::DomainValidationCandidateStatus",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::domain::DomainValidationOutcome",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::domain::DomainValidationReceipt",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::domain::DomainValidationRequest",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::domain::DomainValidationStatus",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::domain::SemanticIntentValidationStamp",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::identity::CoordinateSpaceIdentity",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::identity::DomainIdentity",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::identity::ProjectionGeneration",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::identity::ProjectionIdentity",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::identity::RepresentationIdentity",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::identity::SemanticIntentIdentity",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::identity::SemanticRequestIdentity",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::intent::SemanticIntentCarrierStamp",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::intent::SemanticIntentError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::policy::SemanticPolicyContractError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::policy::SemanticPolicyFailure",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::policy::SemanticPolicyRequestError",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::representation::RepresentationLoweringCandidateStatus",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::representation::RepresentationLoweringRequest",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::representation::RepresentationLoweringStatus",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::stamp::CoordinateSpaceStamp",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::stamp::DomainPolicyStamp",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::stamp::ProjectionStamp",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::stamp::RepresentationPolicyStamp",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::stamp::SemanticCallerStamp",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::bounds::SemanticBoundField",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::bounds::SemanticBoundViolation",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::bounds::SemanticBoundsError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::bounds::SemanticIntentBounds",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::bounds::SemanticIntentShape",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::bounds::SemanticPolicyCallBounds",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::bounds::SemanticPolicyCallCharge",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::descriptor::DomainPolicyDescriptor",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::descriptor::RepresentationBehavior",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::descriptor::RepresentationPolicyDescriptor",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::descriptor::SemanticBufferPlanContract",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::descriptor::SemanticCoordinateSpaceDescriptor",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::descriptor::SemanticCorrespondence",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::descriptor::SemanticDescriptorError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::descriptor::SemanticEditability",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::descriptor::SemanticFidelity",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::descriptor::SemanticPolicyCallDescriptor",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::descriptor::SemanticPolicyConcurrency",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::descriptor::SemanticPolicyProgress",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::domain::DomainValidationCandidate",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::domain::DomainValidationCandidateStatus",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::domain::DomainValidationOutcome",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::domain::DomainValidationReceipt",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::domain::DomainValidationStatus",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::domain::SemanticIntentValidationStamp",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::identity::CoordinateSpaceIdentity",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::identity::DomainIdentity",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::identity::ProjectionGeneration",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::identity::ProjectionIdentity",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::identity::RepresentationIdentity",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::identity::SemanticIntentIdentity",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::identity::SemanticRequestIdentity",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::intent::SemanticIntentCarrierStamp",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::intent::SemanticIntentContract",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::intent::SemanticIntentError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::policy::SemanticPolicyContractError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::policy::SemanticPolicyFailure",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::policy::SemanticPolicyRequestError",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::representation::RepresentationLoweringCandidateStatus",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::representation::RepresentationLoweringStatus",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::stamp::CoordinateSpaceStamp",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::stamp::DomainPolicyStamp",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::stamp::ProjectionStamp",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::stamp::RepresentationPolicyStamp",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::stamp::SemanticCallerStamp",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::bounds::SemanticBoundField",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::bounds::SemanticBoundViolation",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::bounds::SemanticBoundsError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::bounds::SemanticIntentBounds",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::bounds::SemanticIntentShape",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::bounds::SemanticPolicyCallBounds",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::bounds::SemanticPolicyCallCharge",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::descriptor::DomainPolicyDescriptor",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::descriptor::RepresentationBehavior",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::descriptor::RepresentationPolicyDescriptor",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::descriptor::SemanticBufferPlanContract",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::descriptor::SemanticCoordinateSpaceDescriptor",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::descriptor::SemanticCorrespondence",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::descriptor::SemanticDescriptorError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::descriptor::SemanticEditability",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::descriptor::SemanticFidelity",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::descriptor::SemanticPolicyCallDescriptor",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::descriptor::SemanticPolicyConcurrency",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::descriptor::SemanticPolicyProgress",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::domain::DomainValidationCandidate",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::domain::DomainValidationCandidateStatus",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::domain::DomainValidationOutcome",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::domain::DomainValidationReceipt",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::domain::DomainValidationStatus",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::domain::SemanticIntentValidationStamp",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::identity::CoordinateSpaceIdentity",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::identity::DomainIdentity",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::identity::ProjectionGeneration",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::identity::ProjectionIdentity",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::identity::RepresentationIdentity",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::identity::SemanticIntentIdentity",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::identity::SemanticRequestIdentity",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::intent::SemanticIntentCarrierStamp",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::intent::SemanticIntentContract",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::intent::SemanticIntentError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::policy::SemanticPolicyContractError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::policy::SemanticPolicyFailure",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::policy::SemanticPolicyRequestError",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::representation::RepresentationLoweringCandidateStatus",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::representation::RepresentationLoweringStatus",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::stamp::CoordinateSpaceStamp",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::stamp::DomainPolicyStamp",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::stamp::ProjectionStamp",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::stamp::RepresentationPolicyStamp",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::stamp::SemanticCallerStamp",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::bounds::SemanticBoundField",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::bounds::SemanticBoundViolation",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::bounds::SemanticBoundsError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::bounds::SemanticIntentBounds",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::bounds::SemanticIntentShape",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::bounds::SemanticPolicyCallBounds",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::bounds::SemanticPolicyCallCharge",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::descriptor::DomainPolicyDescriptor",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::descriptor::RepresentationBehavior",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::descriptor::RepresentationPolicyDescriptor",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::descriptor::SemanticBufferPlanContract",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::descriptor::SemanticCoordinateSpaceDescriptor",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::descriptor::SemanticCorrespondence",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::descriptor::SemanticDescriptorError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::descriptor::SemanticEditability",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::descriptor::SemanticFidelity",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::descriptor::SemanticPolicyCallDescriptor",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::descriptor::SemanticPolicyConcurrency",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::descriptor::SemanticPolicyProgress",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::domain::DomainValidationCandidate",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::domain::DomainValidationCandidateStatus",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::domain::DomainValidationOutcome",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::domain::DomainValidationReceipt",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::domain::DomainValidationStatus",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::domain::SemanticIntentValidationStamp",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::identity::CoordinateSpaceIdentity",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::identity::DomainIdentity",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::identity::ProjectionGeneration",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::identity::ProjectionIdentity",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::identity::RepresentationIdentity",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::identity::SemanticIntentIdentity",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::identity::SemanticRequestIdentity",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::intent::SemanticIntentCarrierStamp",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::intent::SemanticIntentContract",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::intent::SemanticIntentError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::policy::SemanticPolicyContractError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::policy::SemanticPolicyFailure",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::policy::SemanticPolicyRequestError",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::representation::RepresentationLoweringCandidateStatus",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::representation::RepresentationLoweringStatus",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::stamp::CoordinateSpaceStamp",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::stamp::DomainPolicyStamp",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::stamp::ProjectionStamp",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::stamp::RepresentationPolicyStamp",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::stamp::SemanticCallerStamp",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::descriptor::SemanticPolicyAffinity",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::descriptor::SemanticPolicyExecutionContext",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::descriptor::SemanticPolicyInterruptionObservation",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "semantic::descriptor::SemanticPolicyOutwardCalls",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::descriptor::SemanticPolicyAffinity",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::descriptor::SemanticPolicyExecutionContext",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::descriptor::SemanticPolicyInterruptionObservation",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "semantic::descriptor::SemanticPolicyOutwardCalls",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::descriptor::SemanticPolicyAffinity",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::descriptor::SemanticPolicyExecutionContext",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::descriptor::SemanticPolicyInterruptionObservation",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "semantic::descriptor::SemanticPolicyOutwardCalls",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::descriptor::SemanticPolicyAffinity",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::descriptor::SemanticPolicyExecutionContext",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::descriptor::SemanticPolicyInterruptionObservation",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "semantic::descriptor::SemanticPolicyOutwardCalls",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::descriptor::SemanticPolicyAffinity",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::descriptor::SemanticPolicyExecutionContext",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::descriptor::SemanticPolicyInterruptionObservation",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "semantic::descriptor::SemanticPolicyOutwardCalls",
           "consumer_operation": "partial_eq"
         }
       ]

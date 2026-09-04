@@ -56,6 +56,15 @@ include = [
     "src/resource/delivery.rs",
     "src/resource/operation.rs",
     "src/resource/port.rs",
+    "src/semantic.rs",
+    "src/semantic/bounds.rs",
+    "src/semantic/descriptor.rs",
+    "src/semantic/domain.rs",
+    "src/semantic/identity.rs",
+    "src/semantic/intent.rs",
+    "src/semantic/policy.rs",
+    "src/semantic/representation.rs",
+    "src/semantic/stamp.rs",
 ]
 
 [features]

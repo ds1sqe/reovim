@@ -119,6 +119,15 @@ const KERNEL_INTERFACE_SHIPPING_SOURCES: &[&str] = &[
     "kernel/interface/src/resource/delivery.rs",
     "kernel/interface/src/resource/operation.rs",
     "kernel/interface/src/resource/port.rs",
+    "kernel/interface/src/semantic.rs",
+    "kernel/interface/src/semantic/bounds.rs",
+    "kernel/interface/src/semantic/descriptor.rs",
+    "kernel/interface/src/semantic/domain.rs",
+    "kernel/interface/src/semantic/identity.rs",
+    "kernel/interface/src/semantic/intent.rs",
+    "kernel/interface/src/semantic/policy.rs",
+    "kernel/interface/src/semantic/representation.rs",
+    "kernel/interface/src/semantic/stamp.rs",
 ];
 
 const KERNEL_INTERFACE_VALIDATION_SOURCES: &[&str] = &[
@@ -144,6 +153,15 @@ const KERNEL_INTERFACE_VALIDATION_SOURCES: &[&str] = &[
     "tests/kernel-interface-public-consumer/src/resource/access.rs",
     "tests/kernel-interface-public-consumer/src/resource/carrier.rs",
     "tests/kernel-interface-public-consumer/src/resource/port.rs",
+    "tests/kernel-interface-public-consumer/src/semantic.rs",
+    "tests/kernel-interface-public-consumer/src/semantic/domain.rs",
+    "tests/kernel-interface-public-consumer/src/semantic/intent.rs",
+    "tests/kernel-interface-public-consumer/src/semantic/representation.rs",
+    concat!(
+        "tests/kernel-interface-public-consumer/src/",
+        "semantic/representation/faults.rs",
+    ),
+    "tests/kernel-interface-public-consumer/src/semantic/support.rs",
     "tests/kernel-interface-public-consumer/src/operation.rs",
     "tests/kernel-interface-public-consumer/src/output_health.rs",
     "tests/kernel-interface-public-consumer/src/output_health_state.rs",

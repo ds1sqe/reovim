@@ -4,6 +4,16 @@
 > [Architecture contract](../README.md). Present-tense requirements define the
 > v0.16 target and do not assert current implementation or qualification.
 
+## Reading order
+
+1. This chapter owns the general Domain, Representation, fidelity,
+   correspondence, and Projection model.
+2. [Semantic Descriptors, Stamps, and Intent](01-Domains-Representations-and-Projections/01-Semantic-Descriptors-Stamps-and-Intent.md)
+   owns the exact portable values crossing the edit-policy boundary.
+3. [Domain Validation and Representation Lowering](01-Domains-Representations-and-Projections/02-Domain-Validation-and-Representation-Lowering.md)
+   owns Runtime request retention, provider candidates, validation cuts, and
+   complete lowering into a Buffer Transaction Plan.
+
 ## Ownership split
 
 The Reovim Kernel owns semantic contracts and Domain-neutral coordination

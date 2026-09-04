@@ -105,6 +105,18 @@ const PRODUCT_FILES: &[(&str, FileRole)] = &[
     ("kernel/interface/src/resource/delivery.rs", FileRole::KernelInterface),
     ("kernel/interface/src/resource/operation.rs", FileRole::KernelInterface),
     ("kernel/interface/src/resource/port.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/semantic.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/semantic/bounds.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/semantic/descriptor.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/semantic/domain.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/semantic/identity.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/semantic/intent.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/semantic/policy.rs", FileRole::KernelInterface),
+    (
+        "kernel/interface/src/semantic/representation.rs",
+        FileRole::KernelInterface,
+    ),
+    ("kernel/interface/src/semantic/stamp.rs", FileRole::KernelInterface),
     (
         "tests/kernel-interface-public-consumer/Cargo.toml",
         FileRole::KernelInterfaceConsumer,
@@ -227,6 +239,36 @@ const PRODUCT_FILES: &[(&str, FileRole)] = &[
     ),
     (
         "tests/kernel-interface-public-consumer/src/resource/port.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/src/semantic.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/src/semantic/domain.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/src/semantic/intent.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        concat!(
+            "tests/kernel-interface-public-consumer/src/",
+            "semantic/representation.rs",
+        ),
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        concat!(
+            "tests/kernel-interface-public-consumer/src/",
+            "semantic/representation/faults.rs",
+        ),
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/src/semantic/support.rs",
         FileRole::KernelInterfaceConsumer,
     ),
     (

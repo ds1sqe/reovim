@@ -15,8 +15,31 @@ mod output_health;
 mod output_health_state;
 mod public_items;
 mod resource;
+mod semantic;
 
 use core::{error::Error, fmt::Debug};
+use reovim_kernel_interface::buffer::plan::BufferPlanDescriptor;
+use reovim_kernel_interface::semantic::bounds::SemanticPolicyCallCharge;
+use reovim_kernel_interface::semantic::descriptor::{
+    DomainPolicyDescriptor, RepresentationPolicyDescriptor,
+};
+use reovim_kernel_interface::semantic::intent::SemanticIntent;
+
+/// Hosted-test inputs for checking policy unwind ownership at the public API.
+pub struct SemanticPanicInputs {
+    /// Selected Domain provider descriptor.
+    pub domain: DomainPolicyDescriptor,
+    /// Selected Representation provider descriptor.
+    pub representation: RepresentationPolicyDescriptor,
+    /// Exact Buffer-plan descriptor supplied to lowering.
+    pub buffer: BufferPlanDescriptor,
+    /// Runtime-retained immutable Intent owner.
+    pub intent: SemanticIntent,
+    /// Valid Domain callback reservation.
+    pub domain_charge: SemanticPolicyCallCharge,
+    /// Valid Representation callback reservation.
+    pub representation_charge: SemanticPolicyCallCharge,
+}
 
 const _: [(); 1] = [(); public_const_cases() as usize];
 
@@ -31,6 +54,7 @@ const fn public_const_cases() -> bool {
         && output_health::const_cases()
         && output_health_state::const_cases()
         && resource::const_cases()
+        && semantic::const_cases()
 }
 
 /// Exercises the admitted Kernel Interface contracts through their public API.
@@ -46,6 +70,13 @@ pub fn exercise_public_api() -> bool {
         && output_health::exercise()
         && output_health_state::exercise()
         && resource::exercise()
+        && semantic::exercise()
+}
+
+/// Builds exact public values for the hosted caught-panic ownership tests.
+#[must_use]
+pub fn semantic_panic_inputs() -> Option<SemanticPanicInputs> {
+    semantic::panic_inputs()
 }
 
 const fn derive_witness<T>() -> bool

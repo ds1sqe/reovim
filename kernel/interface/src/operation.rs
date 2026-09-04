@@ -174,6 +174,19 @@ impl OperationDescriptor {
         }
     }
 
+    /// Returns deferred local work that may invoke selected policy code.
+    #[must_use]
+    pub const fn local_deferred_callback_admission() -> Self {
+        Self {
+            invocation: InvocationClass::NonBlockingInvocation,
+            completion: CompletionClass::DeferredTerminal,
+            delivery: DeliveryClass::Single,
+            effect: EffectClass::LocalOnly,
+            callback: CallbackClass::MayInvokeUserCallback,
+            reentrancy: ReentrancyClass::NonReentrant,
+        }
+    }
+
     /// Returns the fixed inline external-observation operation shape.
     #[must_use]
     pub const fn external_observation_inline() -> Self {

@@ -90,6 +90,12 @@ complete Transaction Plan. Its Rejected variant owns the exact rejection
 cause, stamp, target, and every unchanged carrier. Both variants are
 transferable, immutable, and payload-redacted under Debug.
 
+The same descriptor exposes borrowed structural revalidation for an existing
+complete plan. That operation rechecks owner generation, all three carrier
+contracts and shapes, and complete-byte bounds without consuming the plan or
+claiming current Buffer state. Semantic candidate validation and the later
+private transition use this Buffer-owned rule instead of duplicating it.
+
 One **Transaction Plan Stamp** names the descriptor-owner generation,
 Transaction identity, History-transition identity, cancellation authority,
 root correlation, and optional separately governed deadline. The target state

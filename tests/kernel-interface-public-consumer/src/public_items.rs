@@ -62,11 +62,28 @@ pub const fn witness() -> bool {
     resource_delivery_items_three();
     resource_delivery_items_four();
     resource_delivery_items_five();
+    semantic_identity_items();
+    semantic_stamp_items_one();
+    semantic_stamp_items_two();
+    semantic_stamp_items_three();
+    semantic_bound_items_one();
+    semantic_bound_items_two();
+    semantic_descriptor_items_one();
+    semantic_descriptor_items_two();
+    semantic_descriptor_items_three();
+    semantic_intent_items_one();
+    semantic_intent_items_two();
+    semantic_domain_items_one();
+    semantic_domain_items_two();
+    semantic_domain_items_three();
+    semantic_representation_items_one();
+    semantic_representation_items_two();
     trait_items();
     trait_method_items();
     variant_items();
     buffer_variant_items();
     resource_variant_items();
+    semantic_variant_items();
     true
 }
 
@@ -222,6 +239,7 @@ const fn buffer_items_eight() {
         ::reovim_kernel_interface::buffer::plan::BufferPlanStamp::cancellation,
         ::reovim_kernel_interface::buffer::plan::BufferPlanStamp::correlation,
         ::reovim_kernel_interface::buffer::plan::BufferPlanStamp::deadline,
+        ::reovim_kernel_interface::buffer::plan::BufferPlanStamp::same_plan,
         ::reovim_kernel_interface::buffer::plan::BufferPlanDescriptor::new,
         ::reovim_kernel_interface::buffer::plan::BufferPlanDescriptor::contract,
         ::reovim_kernel_interface::buffer::plan::BufferPlanDescriptor::owner,
@@ -238,6 +256,8 @@ const fn buffer_items_nine() {
             prepare_carrier,
         ::reovim_kernel_interface::buffer::plan::BufferPlanDescriptor::
             bind_plan,
+        ::reovim_kernel_interface::buffer::plan::BufferPlanDescriptor::
+            validate_plan,
         ::reovim_kernel_interface::buffer::plan::BufferPlanRejection::cause,
         ::reovim_kernel_interface::buffer::plan::BufferPlanRejection::stamp,
         ::reovim_kernel_interface::buffer::plan::BufferPlanRejection::target,
@@ -1461,9 +1481,426 @@ const fn operation_items() {
             local_deferred,
         ::reovim_kernel_interface::operation::OperationDescriptor::
             local_deferred_admission,
+        ::reovim_kernel_interface::operation::OperationDescriptor::
+            local_deferred_callback_admission,
         ::reovim_kernel_interface::operation::OperationDescriptor::local_inline,
         ::reovim_kernel_interface::operation::OperationDescriptor::new,
         ::reovim_kernel_interface::operation::OperationDescriptor::reentrancy,
+    );
+}
+
+const fn semantic_identity_items() {
+    let _ = (
+        ::reovim_kernel_interface::semantic::identity::DomainIdentity::new,
+        ::reovim_kernel_interface::semantic::identity::DomainIdentity::value,
+        ::reovim_kernel_interface::semantic::identity::
+            RepresentationIdentity::new,
+        ::reovim_kernel_interface::semantic::identity::
+            RepresentationIdentity::value,
+        ::reovim_kernel_interface::semantic::identity::ProjectionIdentity::new,
+        ::reovim_kernel_interface::semantic::identity::
+            ProjectionIdentity::value,
+        ::reovim_kernel_interface::semantic::identity::
+            ProjectionGeneration::INITIAL,
+        ::reovim_kernel_interface::semantic::identity::
+            ProjectionGeneration::new,
+        ::reovim_kernel_interface::semantic::identity::
+            ProjectionGeneration::value,
+        ::reovim_kernel_interface::semantic::identity::
+            CoordinateSpaceIdentity::new,
+        ::reovim_kernel_interface::semantic::identity::
+            CoordinateSpaceIdentity::value,
+        ::reovim_kernel_interface::semantic::identity::
+            SemanticRequestIdentity::new,
+        ::reovim_kernel_interface::semantic::identity::
+            SemanticRequestIdentity::value,
+        ::reovim_kernel_interface::semantic::identity::
+            SemanticIntentIdentity::new,
+        ::reovim_kernel_interface::semantic::identity::
+            SemanticIntentIdentity::value,
+    );
+}
+
+const fn semantic_stamp_items_one() {
+    let _ = (
+        ::reovim_kernel_interface::semantic::stamp::DomainPolicyStamp::new,
+        ::reovim_kernel_interface::semantic::stamp::DomainPolicyStamp::domain,
+        ::reovim_kernel_interface::semantic::stamp::DomainPolicyStamp::contract,
+        ::reovim_kernel_interface::semantic::stamp::DomainPolicyStamp::
+            lifecycle,
+        ::reovim_kernel_interface::semantic::stamp::DomainPolicyStamp::
+            same_generation,
+        ::reovim_kernel_interface::semantic::stamp::
+            RepresentationPolicyStamp::new,
+        ::reovim_kernel_interface::semantic::stamp::
+            RepresentationPolicyStamp::representation,
+        ::reovim_kernel_interface::semantic::stamp::
+            RepresentationPolicyStamp::contract,
+        ::reovim_kernel_interface::semantic::stamp::
+            RepresentationPolicyStamp::lifecycle,
+        ::reovim_kernel_interface::semantic::stamp::
+            RepresentationPolicyStamp::domain,
+        ::reovim_kernel_interface::semantic::stamp::
+            RepresentationPolicyStamp::same_generation,
+    );
+}
+
+const fn semantic_stamp_items_two() {
+    let _ = (
+        ::reovim_kernel_interface::semantic::stamp::ProjectionStamp::new,
+        ::reovim_kernel_interface::semantic::stamp::ProjectionStamp::projection,
+        ::reovim_kernel_interface::semantic::stamp::ProjectionStamp::lifecycle,
+        ::reovim_kernel_interface::semantic::stamp::ProjectionStamp::
+            representation,
+        ::reovim_kernel_interface::semantic::stamp::ProjectionStamp::
+            predecessor,
+        ::reovim_kernel_interface::semantic::stamp::ProjectionStamp::same_state,
+        ::reovim_kernel_interface::semantic::stamp::CoordinateSpaceStamp::new,
+        ::reovim_kernel_interface::semantic::stamp::CoordinateSpaceStamp::space,
+        ::reovim_kernel_interface::semantic::stamp::CoordinateSpaceStamp::
+            contract,
+        ::reovim_kernel_interface::semantic::stamp::CoordinateSpaceStamp::
+            incarnation,
+        ::reovim_kernel_interface::semantic::stamp::CoordinateSpaceStamp::
+            same_incarnation,
+    );
+}
+
+const fn semantic_stamp_items_three() {
+    let _ = (
+        ::reovim_kernel_interface::semantic::stamp::SemanticCallerStamp::new,
+        ::reovim_kernel_interface::semantic::stamp::SemanticCallerStamp::
+            authority,
+        ::reovim_kernel_interface::semantic::stamp::SemanticCallerStamp::role,
+        ::reovim_kernel_interface::semantic::stamp::SemanticCallerStamp::
+            same_authority,
+        ::reovim_kernel_interface::semantic::stamp::SemanticIntentStamp::new,
+        ::reovim_kernel_interface::semantic::stamp::SemanticIntentStamp::
+            prepare_intent,
+        ::reovim_kernel_interface::semantic::stamp::SemanticIntentStamp::intent,
+        ::reovim_kernel_interface::semantic::stamp::SemanticIntentStamp::caller,
+        ::reovim_kernel_interface::semantic::stamp::SemanticIntentStamp::
+            request,
+        ::reovim_kernel_interface::semantic::stamp::SemanticIntentStamp::target,
+        ::reovim_kernel_interface::semantic::stamp::SemanticIntentStamp::plan,
+        ::reovim_kernel_interface::semantic::stamp::SemanticIntentStamp::
+            projection,
+        ::reovim_kernel_interface::semantic::stamp::SemanticIntentStamp::
+            coordinate,
+        ::reovim_kernel_interface::semantic::stamp::SemanticIntentStamp::
+            same_request,
+    );
+}
+
+const fn semantic_bound_items_one() {
+    let _ = (
+        ::reovim_kernel_interface::semantic::bounds::SemanticBoundViolation::
+            field,
+        ::reovim_kernel_interface::semantic::bounds::SemanticBoundViolation::
+            cause,
+        ::reovim_kernel_interface::semantic::bounds::SemanticIntentShape::items,
+        ::reovim_kernel_interface::semantic::bounds::SemanticIntentShape::depth,
+        ::reovim_kernel_interface::semantic::bounds::SemanticIntentShape::bytes,
+        ::reovim_kernel_interface::semantic::bounds::SemanticIntentBounds::new,
+        ::reovim_kernel_interface::semantic::bounds::SemanticIntentBounds::
+            charge_owner,
+        ::reovim_kernel_interface::semantic::bounds::SemanticIntentBounds::
+            items,
+        ::reovim_kernel_interface::semantic::bounds::SemanticIntentBounds::
+            depth,
+        ::reovim_kernel_interface::semantic::bounds::SemanticIntentBounds::
+            bytes,
+        ::reovim_kernel_interface::semantic::bounds::SemanticIntentBounds::
+            prepare,
+        ::reovim_kernel_interface::semantic::bounds::SemanticIntentBounds::
+            admit_retained_bytes,
+    );
+}
+
+const fn semantic_bound_items_two() {
+    let _ = (
+        ::reovim_kernel_interface::semantic::bounds::
+            SemanticPolicyCallCharge::charge_owner,
+        ::reovim_kernel_interface::semantic::bounds::
+            SemanticPolicyCallCharge::work,
+        ::reovim_kernel_interface::semantic::bounds::
+            SemanticPolicyCallCharge::temporary_bytes,
+        ::reovim_kernel_interface::semantic::bounds::
+            SemanticPolicyCallCharge::result_bytes,
+        ::reovim_kernel_interface::semantic::bounds::
+            SemanticPolicyCallCharge::concurrent_calls,
+        ::reovim_kernel_interface::semantic::bounds::
+            SemanticPolicyCallBounds::new,
+        ::reovim_kernel_interface::semantic::bounds::
+            SemanticPolicyCallBounds::charge_owner,
+        ::reovim_kernel_interface::semantic::bounds::
+            SemanticPolicyCallBounds::work,
+        ::reovim_kernel_interface::semantic::bounds::
+            SemanticPolicyCallBounds::temporary_bytes,
+        ::reovim_kernel_interface::semantic::bounds::
+            SemanticPolicyCallBounds::result_bytes,
+        ::reovim_kernel_interface::semantic::bounds::
+            SemanticPolicyCallBounds::concurrent_calls,
+        ::reovim_kernel_interface::semantic::bounds::
+            SemanticPolicyCallBounds::prepare,
+        ::reovim_kernel_interface::semantic::bounds::
+            SemanticPolicyCallBounds::validate_charge,
+    );
+}
+
+const fn semantic_descriptor_items_one() {
+    let _ = (
+        ::reovim_kernel_interface::semantic::descriptor::
+            RepresentationBehavior::new,
+        ::reovim_kernel_interface::semantic::descriptor::
+            RepresentationBehavior::fidelity,
+        ::reovim_kernel_interface::semantic::descriptor::
+            RepresentationBehavior::editability,
+        ::reovim_kernel_interface::semantic::descriptor::
+            RepresentationBehavior::correspondence,
+        ::reovim_kernel_interface::semantic::descriptor::
+            SemanticPolicyCallDescriptor::new,
+        ::reovim_kernel_interface::semantic::descriptor::
+            SemanticPolicyCallDescriptor::operation,
+        ::reovim_kernel_interface::semantic::descriptor::
+            SemanticPolicyCallDescriptor::safety,
+        ::reovim_kernel_interface::semantic::descriptor::
+            SemanticPolicyCallDescriptor::progress,
+        ::reovim_kernel_interface::semantic::descriptor::
+            SemanticPolicyCallDescriptor::concurrency,
+        ::reovim_kernel_interface::semantic::descriptor::
+            SemanticPolicyCallDescriptor::context,
+        ::reovim_kernel_interface::semantic::descriptor::
+            SemanticPolicyCallDescriptor::affinity,
+        ::reovim_kernel_interface::semantic::descriptor::
+            SemanticPolicyCallDescriptor::outward_calls,
+        ::reovim_kernel_interface::semantic::descriptor::
+            SemanticPolicyCallDescriptor::interruption,
+        ::reovim_kernel_interface::semantic::descriptor::
+            SemanticPolicyCallDescriptor::bounds,
+    );
+}
+
+const fn semantic_descriptor_items_two() {
+    let _ = (
+        ::reovim_kernel_interface::semantic::descriptor::
+            SemanticCoordinateSpaceDescriptor::new,
+        ::reovim_kernel_interface::semantic::descriptor::
+            SemanticCoordinateSpaceDescriptor::stamp,
+        ::reovim_kernel_interface::semantic::descriptor::
+            SemanticCoordinateSpaceDescriptor::coordinate_schema,
+        ::reovim_kernel_interface::semantic::descriptor::
+            SemanticCoordinateSpaceDescriptor::region_schema,
+        ::reovim_kernel_interface::semantic::descriptor::
+            SemanticCoordinateSpaceDescriptor::value_schema,
+        ::reovim_kernel_interface::semantic::descriptor::
+            SemanticCoordinateSpaceDescriptor::intent_bounds,
+        ::reovim_kernel_interface::semantic::descriptor::
+            DomainPolicyDescriptor::new,
+        ::reovim_kernel_interface::semantic::descriptor::
+            DomainPolicyDescriptor::stamp,
+        ::reovim_kernel_interface::semantic::descriptor::
+            DomainPolicyDescriptor::validation,
+        ::reovim_kernel_interface::semantic::descriptor::
+            SemanticBufferPlanContract::from_descriptor,
+        ::reovim_kernel_interface::semantic::descriptor::
+            SemanticBufferPlanContract::contract,
+        ::reovim_kernel_interface::semantic::descriptor::
+            SemanticBufferPlanContract::origin,
+        ::reovim_kernel_interface::semantic::descriptor::
+            SemanticBufferPlanContract::operations,
+        ::reovim_kernel_interface::semantic::descriptor::
+            SemanticBufferPlanContract::preconditions,
+        ::reovim_kernel_interface::semantic::descriptor::
+            SemanticBufferPlanContract::matches_descriptor,
+    );
+}
+
+const fn semantic_descriptor_items_three() {
+    let _ = (
+        ::reovim_kernel_interface::semantic::descriptor::
+            RepresentationPolicyDescriptor::new,
+        ::reovim_kernel_interface::semantic::descriptor::
+            RepresentationPolicyDescriptor::stamp,
+        ::reovim_kernel_interface::semantic::descriptor::
+            RepresentationPolicyDescriptor::coordinate,
+        ::reovim_kernel_interface::semantic::descriptor::
+            RepresentationPolicyDescriptor::intent,
+        ::reovim_kernel_interface::semantic::descriptor::
+            RepresentationPolicyDescriptor::fidelity,
+        ::reovim_kernel_interface::semantic::descriptor::
+            RepresentationPolicyDescriptor::editability,
+        ::reovim_kernel_interface::semantic::descriptor::
+            RepresentationPolicyDescriptor::correspondence,
+        ::reovim_kernel_interface::semantic::descriptor::
+            RepresentationPolicyDescriptor::plan,
+        ::reovim_kernel_interface::semantic::descriptor::
+            RepresentationPolicyDescriptor::lowering,
+    );
+}
+
+const fn semantic_intent_items_one() {
+    let _ = (
+        ::reovim_kernel_interface::semantic::intent::
+            SemanticIntentCarrierStamp::new,
+        ::reovim_kernel_interface::semantic::intent::
+            SemanticIntentCarrierStamp::type_identity,
+        ::reovim_kernel_interface::semantic::intent::
+            SemanticIntentCarrierStamp::schema_version,
+        ::reovim_kernel_interface::semantic::intent::
+            SemanticIntentContract::new,
+        ::reovim_kernel_interface::semantic::intent::
+            SemanticIntentContract::schema,
+        ::reovim_kernel_interface::semantic::intent::
+            SemanticIntentContract::safety,
+        ::reovim_kernel_interface::semantic::intent::
+            SemanticIntentContract::selected_stamp,
+        ::reovim_kernel_interface::semantic::intent::
+            SemanticIntentContract::validate_stamp,
+        ::reovim_kernel_interface::semantic::intent::
+            SemanticIntentPreparation::stamp,
+        ::reovim_kernel_interface::semantic::intent::
+            SemanticIntentPreparation::carrier,
+        ::reovim_kernel_interface::semantic::intent::
+            SemanticIntentPreparation::shape,
+        ::reovim_kernel_interface::semantic::intent::
+            SemanticIntentPreparation::bind,
+    );
+}
+
+const fn semantic_intent_items_two() {
+    let _ = (
+        ::reovim_kernel_interface::semantic::intent::SemanticIntent::stamp,
+        ::reovim_kernel_interface::semantic::intent::SemanticIntent::carrier,
+        ::reovim_kernel_interface::semantic::intent::SemanticIntent::shape,
+        ::reovim_kernel_interface::semantic::intent::SemanticIntent::bytes,
+        ::reovim_kernel_interface::semantic::intent::SemanticIntent::
+            into_bytes,
+        ::reovim_kernel_interface::semantic::intent::SemanticIntentRejection::
+            cause,
+        ::reovim_kernel_interface::semantic::intent::SemanticIntentRejection::
+            preparation,
+        ::reovim_kernel_interface::semantic::intent::SemanticIntentRejection::
+            bytes,
+        ::reovim_kernel_interface::semantic::intent::SemanticIntentRejection::
+            into_parts,
+    );
+}
+
+const fn semantic_domain_items_one() {
+    let _ = (
+        ::reovim_kernel_interface::semantic::domain::
+            SemanticIntentValidationStamp::new,
+        ::reovim_kernel_interface::semantic::domain::
+            SemanticIntentValidationStamp::domain,
+        ::reovim_kernel_interface::semantic::domain::
+            SemanticIntentValidationStamp::intent,
+        ::reovim_kernel_interface::semantic::domain::
+            SemanticIntentValidationStamp::request,
+        ::reovim_kernel_interface::semantic::domain::
+            SemanticIntentValidationStamp::carrier,
+        ::reovim_kernel_interface::semantic::domain::
+            SemanticIntentValidationStamp::shape,
+        ::reovim_kernel_interface::semantic::domain::
+            SemanticIntentValidationStamp::matches_intent,
+        ::reovim_kernel_interface::semantic::domain::
+            DomainValidationCandidate::validated,
+        ::reovim_kernel_interface::semantic::domain::
+            DomainValidationCandidate::rejected,
+        ::reovim_kernel_interface::semantic::domain::
+            DomainValidationCandidate::status,
+        ::reovim_kernel_interface::semantic::domain::
+            DomainValidationCandidate::validation,
+        ::reovim_kernel_interface::semantic::domain::
+            DomainValidationCandidate::failure,
+    );
+}
+
+const fn semantic_domain_items_two() {
+    let _ = (
+        ::reovim_kernel_interface::semantic::policy::SemanticPolicyFailure::
+            from_fence,
+        ::reovim_kernel_interface::semantic::domain::DomainValidationReceipt::
+            stamp,
+        ::reovim_kernel_interface::semantic::domain::DomainValidationReceipt::
+            matches_intent,
+        ::reovim_kernel_interface::semantic::domain::DomainValidationOutcome::
+            status,
+        ::reovim_kernel_interface::semantic::domain::DomainValidationOutcome::
+            receipt,
+        ::reovim_kernel_interface::semantic::domain::DomainValidationOutcome::
+            failure,
+        ::reovim_kernel_interface::semantic::domain::DomainValidationOutcome::
+            violation,
+    );
+}
+
+const fn semantic_domain_items_three() {
+    let _ = (
+        ::reovim_kernel_interface::semantic::domain::DomainValidationRequest::
+            new,
+        ::reovim_kernel_interface::semantic::domain::DomainValidationRequest::
+            domain,
+        ::reovim_kernel_interface::semantic::domain::DomainValidationRequest::
+            intent,
+        ::reovim_kernel_interface::semantic::domain::DomainValidationRequest::
+            charge,
+        ::reovim_kernel_interface::semantic::domain::DomainValidationRequest::
+            cancellation,
+        ::reovim_kernel_interface::semantic::domain::DomainValidationRequest::
+            deadline,
+        ::reovim_kernel_interface::semantic::domain::DomainValidationRequest::
+            validation_stamp,
+        ::reovim_kernel_interface::semantic::domain::DomainValidationRequest::
+            validated_candidate,
+        ::reovim_kernel_interface::semantic::domain::DomainValidationRequest::
+            finish,
+    );
+}
+
+const fn semantic_representation_items_one() {
+    let _ = (
+        ::reovim_kernel_interface::semantic::representation::
+            RepresentationLoweringCandidate::rejected,
+        ::reovim_kernel_interface::semantic::representation::
+            RepresentationLoweringCandidate::status,
+        ::reovim_kernel_interface::semantic::representation::
+            RepresentationLoweringCandidate::plan,
+        ::reovim_kernel_interface::semantic::representation::
+            RepresentationLoweringCandidate::failure,
+        ::reovim_kernel_interface::semantic::representation::
+            RepresentationLoweringCandidate::finish,
+        ::reovim_kernel_interface::semantic::representation::
+            RepresentationLoweringOutcome::status,
+        ::reovim_kernel_interface::semantic::representation::
+            RepresentationLoweringOutcome::plan,
+        ::reovim_kernel_interface::semantic::representation::
+            RepresentationLoweringOutcome::failure,
+        ::reovim_kernel_interface::semantic::representation::
+            RepresentationLoweringOutcome::violation,
+        ::reovim_kernel_interface::semantic::representation::
+            RepresentationLoweringOutcome::into_plan,
+    );
+}
+
+const fn semantic_representation_items_two() {
+    let _ = (
+        ::reovim_kernel_interface::semantic::representation::
+            RepresentationLoweringRequest::new,
+        ::reovim_kernel_interface::semantic::representation::
+            RepresentationLoweringRequest::representation,
+        ::reovim_kernel_interface::semantic::representation::
+            RepresentationLoweringRequest::intent,
+        ::reovim_kernel_interface::semantic::representation::
+            RepresentationLoweringRequest::validation,
+        ::reovim_kernel_interface::semantic::representation::
+            RepresentationLoweringRequest::plan,
+        ::reovim_kernel_interface::semantic::representation::
+            RepresentationLoweringRequest::charge,
+        ::reovim_kernel_interface::semantic::representation::
+            RepresentationLoweringRequest::cancellation,
+        ::reovim_kernel_interface::semantic::representation::
+            RepresentationLoweringRequest::deadline,
     );
 }
 
@@ -1480,6 +1917,13 @@ const fn trait_items() {
     > = None;
     let _: Option<
         &dyn ::reovim_kernel_interface::resource::port::ResourceAccessPort,
+    > = None;
+    let _: Option<
+        &dyn ::reovim_kernel_interface::semantic::domain::DomainPolicyPort,
+    > = None;
+    let _: Option<
+        &dyn ::reovim_kernel_interface::semantic::representation::
+            RepresentationPolicyPort,
     > = None;
 }
 
@@ -1516,6 +1960,14 @@ const fn trait_method_items() {
             take_observation_completion,
         <dyn ::reovim_kernel_interface::resource::port::ResourceAccessPort>::
             take_open_completion,
+        <dyn ::reovim_kernel_interface::semantic::domain::DomainPolicyPort>::
+            descriptor,
+        <dyn ::reovim_kernel_interface::semantic::domain::DomainPolicyPort>::
+            validate,
+        <dyn ::reovim_kernel_interface::semantic::representation::
+            RepresentationPolicyPort>::descriptor,
+        <dyn ::reovim_kernel_interface::semantic::representation::
+            RepresentationPolicyPort>::lower,
     );
 }
 
@@ -1723,6 +2175,375 @@ const fn buffer_plan_binding_outcome_variants(
             Accepted(_)
         | ::reovim_kernel_interface::buffer::plan::BufferPlanBindingOutcome::
             Rejected(_) => {}
+    }
+}
+
+const fn semantic_variant_items() {
+    let _ = (
+        semantic_bound_field_variants,
+        semantic_bounds_error_variants,
+        semantic_bound_violation_variants,
+        semantic_fidelity_variants,
+        semantic_editability_variants,
+        semantic_correspondence_variants,
+        semantic_policy_progress_variants,
+        semantic_policy_concurrency_variants,
+        semantic_policy_execution_context_variants,
+        semantic_policy_affinity_variants,
+        semantic_policy_outward_calls_variants,
+        semantic_policy_interruption_observation_variants,
+        semantic_descriptor_error_variants,
+        semantic_intent_error_variants,
+        semantic_intent_binding_outcome_variants,
+        semantic_policy_failure_variants,
+        semantic_policy_contract_error_variants,
+        semantic_policy_request_error_variants,
+        domain_validation_candidate_status_variants,
+        domain_validation_status_variants,
+        representation_lowering_candidate_status_variants,
+        representation_lowering_status_variants,
+    );
+}
+
+const fn semantic_bound_field_variants(
+    value: ::reovim_kernel_interface::semantic::bounds::SemanticBoundField,
+) {
+    match value {
+        ::reovim_kernel_interface::semantic::bounds::SemanticBoundField::
+            IntentItems
+        | ::reovim_kernel_interface::semantic::bounds::SemanticBoundField::
+            IntentDepth
+        | ::reovim_kernel_interface::semantic::bounds::SemanticBoundField::
+            IntentBytes
+        | ::reovim_kernel_interface::semantic::bounds::SemanticBoundField::
+            PolicyWork
+        | ::reovim_kernel_interface::semantic::bounds::SemanticBoundField::
+            TemporaryBytes
+        | ::reovim_kernel_interface::semantic::bounds::SemanticBoundField::
+            ResultBytes
+        | ::reovim_kernel_interface::semantic::bounds::SemanticBoundField::
+            ConcurrentCalls => {}
+    }
+}
+
+const fn semantic_bounds_error_variants(
+    value: ::reovim_kernel_interface::semantic::bounds::SemanticBoundsError,
+) {
+    match value {
+        ::reovim_kernel_interface::semantic::bounds::SemanticBoundsError::
+            WrongUnit { .. }
+        | ::reovim_kernel_interface::semantic::bounds::SemanticBoundsError::
+            WrongZeroPolicy { .. }
+        | ::reovim_kernel_interface::semantic::bounds::SemanticBoundsError::
+            ChargeOwnerMismatch { .. } => {}
+    }
+}
+
+const fn semantic_bound_violation_variants(
+    value: ::reovim_kernel_interface::semantic::bounds::SemanticBoundViolation,
+) {
+    match value {
+        ::reovim_kernel_interface::semantic::bounds::SemanticBoundViolation::
+            Bound { .. }
+        | ::reovim_kernel_interface::semantic::bounds::
+            SemanticBoundViolation::ChargeOwnerMismatch { .. } => {}
+    }
+}
+
+const fn semantic_fidelity_variants(
+    value: ::reovim_kernel_interface::semantic::descriptor::SemanticFidelity,
+) {
+    match value {
+        ::reovim_kernel_interface::semantic::descriptor::SemanticFidelity::
+            Faithful
+        | ::reovim_kernel_interface::semantic::descriptor::SemanticFidelity::
+            ConstrainedEditable
+        | ::reovim_kernel_interface::semantic::descriptor::SemanticFidelity::
+            DerivedReadOnly => {}
+    }
+}
+
+const fn semantic_editability_variants(
+    value: ::reovim_kernel_interface::semantic::descriptor::SemanticEditability,
+) {
+    match value {
+        ::reovim_kernel_interface::semantic::descriptor::SemanticEditability::
+            ReadOnly
+        | ::reovim_kernel_interface::semantic::descriptor::
+            SemanticEditability::Transactional => {}
+    }
+}
+
+const fn semantic_correspondence_variants(
+    value: ::reovim_kernel_interface::semantic::descriptor::
+        SemanticCorrespondence,
+) {
+    match value {
+        ::reovim_kernel_interface::semantic::descriptor::
+            SemanticCorrespondence::Bidirectional
+        | ::reovim_kernel_interface::semantic::descriptor::
+            SemanticCorrespondence::SourceOnly
+        | ::reovim_kernel_interface::semantic::descriptor::
+            SemanticCorrespondence::None => {}
+    }
+}
+
+const fn semantic_policy_progress_variants(
+    value: ::reovim_kernel_interface::semantic::descriptor::
+        SemanticPolicyProgress,
+) {
+    match value {
+        ::reovim_kernel_interface::semantic::descriptor::
+            SemanticPolicyProgress::BoundedToCompletion => {}
+    }
+}
+
+const fn semantic_policy_concurrency_variants(
+    value: ::reovim_kernel_interface::semantic::descriptor::
+        SemanticPolicyConcurrency,
+) {
+    match value {
+        ::reovim_kernel_interface::semantic::descriptor::
+            SemanticPolicyConcurrency::Serialized
+        | ::reovim_kernel_interface::semantic::descriptor::
+            SemanticPolicyConcurrency::ParallelIndependent => {}
+    }
+}
+
+const fn semantic_policy_execution_context_variants(
+    value: ::reovim_kernel_interface::semantic::descriptor::
+        SemanticPolicyExecutionContext,
+) {
+    match value {
+        ::reovim_kernel_interface::semantic::descriptor::
+            SemanticPolicyExecutionContext::RuntimeWorker => {}
+    }
+}
+
+const fn semantic_policy_affinity_variants(
+    value: ::reovim_kernel_interface::semantic::descriptor::
+        SemanticPolicyAffinity,
+) {
+    match value {
+        ::reovim_kernel_interface::semantic::descriptor::
+            SemanticPolicyAffinity::AnyRuntimeWorker => {}
+    }
+}
+
+const fn semantic_policy_outward_calls_variants(
+    value: ::reovim_kernel_interface::semantic::descriptor::
+        SemanticPolicyOutwardCalls,
+) {
+    match value {
+        ::reovim_kernel_interface::semantic::descriptor::
+            SemanticPolicyOutwardCalls::None => {}
+    }
+}
+
+const fn semantic_policy_interruption_observation_variants(
+    value: ::reovim_kernel_interface::semantic::descriptor::
+        SemanticPolicyInterruptionObservation,
+) {
+    match value {
+        ::reovim_kernel_interface::semantic::descriptor::
+            SemanticPolicyInterruptionObservation::RuntimeBoundaries => {}
+    }
+}
+
+const fn semantic_descriptor_error_variants(
+    value: ::reovim_kernel_interface::semantic::descriptor::
+        SemanticDescriptorError,
+) {
+    match value {
+        ::reovim_kernel_interface::semantic::descriptor::
+            SemanticDescriptorError::DomainGenerationMismatch
+        | ::reovim_kernel_interface::semantic::descriptor::
+            SemanticDescriptorError::DerivedEditable
+        | ::reovim_kernel_interface::semantic::descriptor::
+            SemanticDescriptorError::ConstrainedReadOnly
+        | ::reovim_kernel_interface::semantic::descriptor::
+            SemanticDescriptorError::TransactionWithoutReverseCorrespondence
+        | ::reovim_kernel_interface::semantic::descriptor::
+            SemanticDescriptorError::FaithfulWithoutCorrespondence
+        | ::reovim_kernel_interface::semantic::descriptor::
+            SemanticDescriptorError::SerializedConcurrencyExceeded { .. } => {}
+    }
+}
+
+const fn semantic_intent_error_variants(
+    value: ::reovim_kernel_interface::semantic::intent::SemanticIntentError,
+) {
+    match value {
+        ::reovim_kernel_interface::semantic::intent::SemanticIntentError::
+            IncoherentSafety
+        | ::reovim_kernel_interface::semantic::intent::SemanticIntentError::
+            TypeMismatch
+        | ::reovim_kernel_interface::semantic::intent::SemanticIntentError::
+            IncompatibleSchema
+        | ::reovim_kernel_interface::semantic::intent::SemanticIntentError::
+            RepresentationGenerationMismatch
+        | ::reovim_kernel_interface::semantic::intent::SemanticIntentError::
+            CoordinateSpaceMismatch
+        | ::reovim_kernel_interface::semantic::intent::SemanticIntentError::
+            Bound(_)
+        | ::reovim_kernel_interface::semantic::intent::SemanticIntentError::
+            LengthOverflow
+        | ::reovim_kernel_interface::semantic::intent::SemanticIntentError::
+            LengthMismatch { .. } => {}
+    }
+}
+
+const fn semantic_intent_binding_outcome_variants(
+    value: &::reovim_kernel_interface::semantic::intent::
+        SemanticIntentBindingOutcome,
+) {
+    match value {
+        ::reovim_kernel_interface::semantic::intent::
+            SemanticIntentBindingOutcome::Bound(_)
+        | ::reovim_kernel_interface::semantic::intent::
+            SemanticIntentBindingOutcome::Rejected(_) => {}
+    }
+}
+
+const fn semantic_policy_failure_variants(
+    value: ::reovim_kernel_interface::semantic::policy::SemanticPolicyFailure,
+) {
+    match value {
+        ::reovim_kernel_interface::semantic::policy::SemanticPolicyFailure::
+            UnsupportedCapability
+        | ::reovim_kernel_interface::semantic::policy::SemanticPolicyFailure::
+            UnsupportedSchema
+        | ::reovim_kernel_interface::semantic::policy::SemanticPolicyFailure::
+            InvalidIntent
+        | ::reovim_kernel_interface::semantic::policy::SemanticPolicyFailure::
+            NoCorrespondence
+        | ::reovim_kernel_interface::semantic::policy::SemanticPolicyFailure::
+            AmbiguousCorrespondence
+        | ::reovim_kernel_interface::semantic::policy::SemanticPolicyFailure::
+            StaleState
+        | ::reovim_kernel_interface::semantic::policy::SemanticPolicyFailure::
+            ReadOnly
+        | ::reovim_kernel_interface::semantic::policy::SemanticPolicyFailure::
+            Pressure
+        | ::reovim_kernel_interface::semantic::policy::SemanticPolicyFailure::
+            Cancelled
+        | ::reovim_kernel_interface::semantic::policy::SemanticPolicyFailure::
+            DeadlineReached
+        | ::reovim_kernel_interface::semantic::policy::SemanticPolicyFailure::
+            CallerTimedOut
+        | ::reovim_kernel_interface::semantic::policy::SemanticPolicyFailure::
+            Replaced
+        | ::reovim_kernel_interface::semantic::policy::SemanticPolicyFailure::
+            Closing
+        | ::reovim_kernel_interface::semantic::policy::SemanticPolicyFailure::
+            Closed
+        | ::reovim_kernel_interface::semantic::policy::SemanticPolicyFailure::
+            ProviderFailure
+        | ::reovim_kernel_interface::semantic::policy::SemanticPolicyFailure::
+            ProviderPanicked => {}
+    }
+}
+
+const fn semantic_policy_contract_error_variants(
+    value: ::reovim_kernel_interface::semantic::policy::
+        SemanticPolicyContractError,
+) {
+    match value {
+        ::reovim_kernel_interface::semantic::policy::
+            SemanticPolicyContractError::ProviderDescriptorMismatch
+        | ::reovim_kernel_interface::semantic::policy::
+            SemanticPolicyContractError::IntentDomainMismatch
+        | ::reovim_kernel_interface::semantic::policy::
+            SemanticPolicyContractError::IntentRepresentationMismatch
+        | ::reovim_kernel_interface::semantic::policy::
+            SemanticPolicyContractError::IntentCoordinateMismatch
+        | ::reovim_kernel_interface::semantic::policy::
+            SemanticPolicyContractError::ValidationStampMismatch
+        | ::reovim_kernel_interface::semantic::policy::
+            SemanticPolicyContractError::ValidationReceiptMismatch
+        | ::reovim_kernel_interface::semantic::policy::
+            SemanticPolicyContractError::PlanDescriptorMismatch
+        | ::reovim_kernel_interface::semantic::policy::
+            SemanticPolicyContractError::PlanOwnerMismatch
+        | ::reovim_kernel_interface::semantic::policy::
+            SemanticPolicyContractError::ReturnedPlanStampMismatch
+        | ::reovim_kernel_interface::semantic::policy::
+            SemanticPolicyContractError::ReturnedPlanTargetMismatch
+        | ::reovim_kernel_interface::semantic::policy::
+            SemanticPolicyContractError::ReturnedPlanChargeExceeded { .. }
+        | ::reovim_kernel_interface::semantic::policy::
+            SemanticPolicyContractError::ReturnedPlanInvalid(_)
+        | ::reovim_kernel_interface::semantic::policy::
+            SemanticPolicyContractError::LoweringCandidateShape => {}
+    }
+}
+
+const fn semantic_policy_request_error_variants(
+    value: ::reovim_kernel_interface::semantic::policy::
+        SemanticPolicyRequestError,
+) {
+    match value {
+        ::reovim_kernel_interface::semantic::policy::
+            SemanticPolicyRequestError::Contract(_)
+        | ::reovim_kernel_interface::semantic::policy::
+            SemanticPolicyRequestError::Bound(_)
+        | ::reovim_kernel_interface::semantic::policy::
+            SemanticPolicyRequestError::Cancelled(_)
+        | ::reovim_kernel_interface::semantic::policy::
+            SemanticPolicyRequestError::DeadlineReached
+        | ::reovim_kernel_interface::semantic::policy::
+            SemanticPolicyRequestError::ReadOnly => {}
+    }
+}
+
+const fn domain_validation_candidate_status_variants(
+    value: ::reovim_kernel_interface::semantic::domain::
+        DomainValidationCandidateStatus,
+) {
+    match value {
+        ::reovim_kernel_interface::semantic::domain::
+            DomainValidationCandidateStatus::Validated
+        | ::reovim_kernel_interface::semantic::domain::
+            DomainValidationCandidateStatus::Rejected => {}
+    }
+}
+
+const fn domain_validation_status_variants(
+    value: ::reovim_kernel_interface::semantic::domain::DomainValidationStatus,
+) {
+    match value {
+        ::reovim_kernel_interface::semantic::domain::DomainValidationStatus::
+            Validated
+        | ::reovim_kernel_interface::semantic::domain::
+            DomainValidationStatus::Rejected
+        | ::reovim_kernel_interface::semantic::domain::
+            DomainValidationStatus::ContractViolation => {}
+    }
+}
+
+const fn representation_lowering_candidate_status_variants(
+    value: ::reovim_kernel_interface::semantic::representation::
+        RepresentationLoweringCandidateStatus,
+) {
+    match value {
+        ::reovim_kernel_interface::semantic::representation::
+            RepresentationLoweringCandidateStatus::Lowered
+        | ::reovim_kernel_interface::semantic::representation::
+            RepresentationLoweringCandidateStatus::Rejected => {}
+    }
+}
+
+const fn representation_lowering_status_variants(
+    value: ::reovim_kernel_interface::semantic::representation::
+        RepresentationLoweringStatus,
+) {
+    match value {
+        ::reovim_kernel_interface::semantic::representation::
+            RepresentationLoweringStatus::Lowered
+        | ::reovim_kernel_interface::semantic::representation::
+            RepresentationLoweringStatus::Rejected
+        | ::reovim_kernel_interface::semantic::representation::
+            RepresentationLoweringStatus::ContractViolation => {}
     }
 }
 

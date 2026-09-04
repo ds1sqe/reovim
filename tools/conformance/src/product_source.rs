@@ -77,6 +77,25 @@ const MOVE_ONLY_KERNEL_TYPES: &[(&str, &str)] = &[
         "ResourceObservationCompletionDelivery",
         "resource::delivery::ResourceObservationCompletionDelivery",
     ),
+    ("SemanticIntentStamp", "semantic::stamp::SemanticIntentStamp"),
+    (
+        "SemanticIntentPreparation",
+        "semantic::intent::SemanticIntentPreparation",
+    ),
+    (
+        "SemanticIntentBindingOutcome",
+        "semantic::intent::SemanticIntentBindingOutcome",
+    ),
+    ("SemanticIntent", "semantic::intent::SemanticIntent"),
+    ("SemanticIntentRejection", "semantic::intent::SemanticIntentRejection"),
+    (
+        "RepresentationLoweringCandidate",
+        "semantic::representation::RepresentationLoweringCandidate",
+    ),
+    (
+        "RepresentationLoweringOutcome",
+        "semantic::representation::RepresentationLoweringOutcome",
+    ),
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1966,6 +1985,7 @@ fn owned_byte_box_path(path: &Path) -> bool {
         "kernel/interface/src/buffer/carrier.rs",
         "kernel/interface/src/resource/access.rs",
         "kernel/interface/src/resource/carrier.rs",
+        "kernel/interface/src/semantic/intent.rs",
     ]
     .into_iter()
     .any(|allowed| path == Path::new(allowed))
@@ -4168,6 +4188,8 @@ fn exact_witness_type_arguments(
                 | "event::StartupEventRecord"
                 | "event::StartupSnapshot"
                 | "output_health::OutputHealthSnapshot"
+                | "semantic::domain::DomainValidationRequest"
+                | "semantic::representation::RepresentationLoweringRequest"
         );
     if !lifetime_type {
         return matches!(arguments, PathArguments::None);
@@ -4264,6 +4286,15 @@ mod tests {
         "kernel/interface/src/resource/delivery.rs",
         "kernel/interface/src/resource/operation.rs",
         "kernel/interface/src/resource/port.rs",
+        "kernel/interface/src/semantic.rs",
+        "kernel/interface/src/semantic/bounds.rs",
+        "kernel/interface/src/semantic/descriptor.rs",
+        "kernel/interface/src/semantic/domain.rs",
+        "kernel/interface/src/semantic/identity.rs",
+        "kernel/interface/src/semantic/intent.rs",
+        "kernel/interface/src/semantic/policy.rs",
+        "kernel/interface/src/semantic/representation.rs",
+        "kernel/interface/src/semantic/stamp.rs",
     ];
     const KI_CONSUMER: &[&str] = &[
         "tests/kernel-interface-public-consumer/src/buffer.rs",
@@ -4299,6 +4330,15 @@ mod tests {
         "tests/kernel-interface-public-consumer/src/resource/access.rs",
         "tests/kernel-interface-public-consumer/src/resource/carrier.rs",
         "tests/kernel-interface-public-consumer/src/resource/port.rs",
+        "tests/kernel-interface-public-consumer/src/semantic.rs",
+        "tests/kernel-interface-public-consumer/src/semantic/domain.rs",
+        "tests/kernel-interface-public-consumer/src/semantic/intent.rs",
+        "tests/kernel-interface-public-consumer/src/semantic/representation.rs",
+        concat!(
+            "tests/kernel-interface-public-consumer/src/",
+            "semantic/representation/faults.rs",
+        ),
+        "tests/kernel-interface-public-consumer/src/semantic/support.rs",
     ];
     const LIMITS: AnalysisLimits = AnalysisLimits {
         // Mutation-fixture capacity, never a repository-shape expectation.
@@ -4956,6 +4996,7 @@ mod tests {
             "kernel/interface/src/buffer/carrier.rs",
             "kernel/interface/src/resource/access.rs",
             "kernel/interface/src/resource/carrier.rs",
+            "kernel/interface/src/semantic/intent.rs",
         ] {
             assert_owned_byte_box_replacements(path);
         }
@@ -5102,6 +5143,28 @@ mod tests {
             (
                 "kernel/interface/src/resource/delivery.rs",
                 "ResourceObservationCompletionDelivery",
+            ),
+            ("kernel/interface/src/semantic/stamp.rs", "SemanticIntentStamp"),
+            (
+                "kernel/interface/src/semantic/intent.rs",
+                "SemanticIntentPreparation",
+            ),
+            (
+                "kernel/interface/src/semantic/intent.rs",
+                "SemanticIntentBindingOutcome",
+            ),
+            ("kernel/interface/src/semantic/intent.rs", "SemanticIntent"),
+            (
+                "kernel/interface/src/semantic/intent.rs",
+                "SemanticIntentRejection",
+            ),
+            (
+                "kernel/interface/src/semantic/representation.rs",
+                "RepresentationLoweringCandidate",
+            ),
+            (
+                "kernel/interface/src/semantic/representation.rs",
+                "RepresentationLoweringOutcome",
             ),
         ] {
             let mut fixture = fixture();

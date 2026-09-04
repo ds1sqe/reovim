@@ -15,6 +15,8 @@ readonly LAYER_ROLES="$LAYER/01-Roles-Descriptors-and-Dependencies"
 readonly LAYER_PORTS="$LAYER/03-Ports-Source-Tree-and-Portability"
 readonly BUFFER="$ARCH/02-Resource-and-Buffer"
 readonly SEMANTICS="$ARCH/03-Semantics-and-View"
+readonly DOMAIN_REP_NAME=01-Domains-Representations-and-Projections
+readonly DOMAIN_REP="$SEMANTICS/$DOMAIN_REP_NAME"
 readonly INTERACTION_NAME=02-Interaction-Updates-Protocols-and-View
 readonly INTERACTION="$SEMANTICS/$INTERACTION_NAME"
 readonly HOST_API="$DOC/02-Host-API"
@@ -250,6 +252,7 @@ contract_indexes=(
     ${LAYER_ROLES}.md
     ${LAYER_PORTS}.md
     ${INTERACTION}.md
+    ${DOMAIN_REP}.md
     ${ARCH}/05-Client/README.md
     ${BOOTSTRAP_HEALTH}.md
     ${BOOTSTRAP_HEALTH}/03-Retention-Lease-and-Snapshot.md
@@ -285,7 +288,9 @@ expected_normative_files=(
     ${BUFFER}/01-Resource-Access-Snapshots-and-Change.md
     ${BUFFER}/02-Buffer-Transactions-History-and-Residency.md
     ${BUFFER}/03-External-Effects-and-Conformance.md
-    ${SEMANTICS}/01-Domains-Representations-and-Projections.md
+    ${DOMAIN_REP}.md
+    ${DOMAIN_REP}/01-Semantic-Descriptors-Stamps-and-Intent.md
+    ${DOMAIN_REP}/02-Domain-Validation-and-Representation-Lowering.md
     ${INTERACTION}.md
     ${INTERACTION}/01-Intent-Outcome-and-Representation-Updates.md
     ${INTERACTION}/02-Client-View-and-Presentation.md
@@ -408,7 +413,7 @@ check_index_children ${ARCH}/README.md \
     ${BUFFER}/01-Resource-Access-Snapshots-and-Change.md \
     ${BUFFER}/02-Buffer-Transactions-History-and-Residency.md \
     ${BUFFER}/03-External-Effects-and-Conformance.md \
-    ${SEMANTICS}/01-Domains-Representations-and-Projections.md \
+    ${DOMAIN_REP}.md \
     ${INTERACTION}.md \
     ${ARCH}/04-Execution/01-Execution-Laws-and-Operation-Classes.md \
     ${ARCH}/04-Execution/02-State-Lanes-and-Synchronization.md \
@@ -424,6 +429,9 @@ check_index_children ${LAYER_PORTS}.md \
     ${LAYER_PORTS}/01-Layer-Interface-Contracts.md \
     ${LAYER_PORTS}/02-Source-Tree-and-Product-Compositions.md \
     ${LAYER_PORTS}/03-Portable-Host-and-No-Std-Profiles.md
+check_index_children ${DOMAIN_REP}.md \
+    ${DOMAIN_REP}/01-Semantic-Descriptors-Stamps-and-Intent.md \
+    ${DOMAIN_REP}/02-Domain-Validation-and-Representation-Lowering.md
 check_index_children ${INTERACTION}.md \
     ${INTERACTION}/01-Intent-Outcome-and-Representation-Updates.md \
     ${INTERACTION}/02-Client-View-and-Presentation.md \

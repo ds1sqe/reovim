@@ -179,6 +179,29 @@ impl BufferPlanStamp {
     pub const fn deadline(self) -> BufferDeadline {
         self.deadline
     }
+
+    /// Reports equality of every plan identity and authority stamp.
+    #[must_use]
+    pub const fn same_plan(self, other: Self) -> bool {
+        self.owner.same_generation(other.owner)
+            && self.transaction.value() == other.transaction.value()
+            && self.history_transition.value()
+                == other.history_transition.value()
+            && self.cancellation.value() == other.cancellation.value()
+            && self.correlation.value() == other.correlation.value()
+            && same_deadline(self.deadline, other.deadline)
+    }
+}
+
+const fn same_deadline(left: BufferDeadline, right: BufferDeadline) -> bool {
+    match (left, right) {
+        (BufferDeadline::None, BufferDeadline::None) => true,
+        (BufferDeadline::Governed(left), BufferDeadline::Governed(right)) => {
+            left.value() == right.value()
+        }
+        (BufferDeadline::None, BufferDeadline::Governed(_))
+        | (BufferDeadline::Governed(_), BufferDeadline::None) => false,
+    }
 }
 
 /// Descriptor for structural construction of Buffer Transaction plans.
@@ -274,8 +297,13 @@ impl BufferPlanDescriptor {
         operations: BufferPlanCarrier,
         preconditions: BufferPlanCarrier,
     ) -> BufferPlanBindingOutcome {
-        let charge =
-            validate_plan(self, stamp, &origin, &operations, &preconditions);
+        let charge = validate_plan_parts(
+            self,
+            stamp,
+            &origin,
+            &operations,
+            &preconditions,
+        );
         let parts = BufferPlanParts {
             stamp,
             target,
@@ -296,6 +324,27 @@ impl BufferPlanDescriptor {
                     parts,
                 })
             }
+        }
+    }
+
+    /// Revalidates a complete plan against this exact descriptor.
+    ///
+    /// # Errors
+    ///
+    /// Returns an owner, carrier, shape, or complete-byte bound failure.
+    pub const fn validate_plan(
+        &self,
+        plan: &BufferTransactionPlan,
+    ) -> Result<(), BufferPlanError> {
+        match validate_plan_parts(
+            self,
+            plan.stamp(),
+            plan.origin(),
+            plan.operations(),
+            plan.preconditions(),
+        ) {
+            Ok(_) => Ok(()),
+            Err(error) => Err(error),
         }
     }
 }
@@ -486,7 +535,7 @@ impl fmt::Debug for BufferTransactionPlan {
     }
 }
 
-const fn validate_plan(
+const fn validate_plan_parts(
     descriptor: &BufferPlanDescriptor,
     stamp: BufferPlanStamp,
     origin: &BufferPlanCarrier,

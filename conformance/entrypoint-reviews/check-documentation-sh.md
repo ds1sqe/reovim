@@ -4,7 +4,7 @@
 
 - Kind: script
 - Exact content digest:
-  `sha256:47a73d81001fec0d59e6df0a2f1fe2f4dc4e8ce557b9a8660f98189552d49371`
+  `sha256:4e01c8aa4283a3a0eeebdded4866f05ec5abab87383617dfdcedd22367ce8d63`
 - Review mechanism: exact content and retained review
 
 ## Direct local invocations

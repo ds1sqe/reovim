@@ -25,6 +25,11 @@ policy invocation, or mutation. Raw keyboard, pointer, terminal, or device input
 is not an Intent; Client-owned policy translates it. A stale Intent is rejected
 or enters an explicit reconciliation path and is never silently retargeted.
 
+Kernel Runtime retains the owned Intent while
+[Domain validation and Representation lowering](../01-Domains-Representations-and-Projections/02-Domain-Validation-and-Representation-Lowering.md)
+receive bounded immutable invocation borrows. A policy failure or caught panic
+cannot consume, retarget, or silently convert that retained request.
+
 Every submitted Intent receives exactly one bounded correlated **Interaction
 Outcome**. It distinguishes local acceptance from non-acceptance, preserves
 Effect Certainty and Outcome Cause where a response can be lost, and names the
