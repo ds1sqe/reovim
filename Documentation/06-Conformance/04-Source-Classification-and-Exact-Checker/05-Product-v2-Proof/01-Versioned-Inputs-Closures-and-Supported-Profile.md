@@ -66,6 +66,33 @@ proof derive actual aliases independently and require complete equality.
 Missing, additional, retargeted, or locally replaced aliases fail even when a
 replacement has the same public path, kind, and built-in derives.
 
+## Derived-row refresh
+
+Closure identity, role, workspace, dependency, target, Cargo profile, support,
+and relation selection remain human-reviewed authority. A refresh command may
+not infer or change them.
+
+For the admitted Kernel Interface relation, the Product source and complete
+external public consumer are changed and compiled first. Then the bounded
+release-only command below regenerates only the existing Product manifest-set
+identity, selected package membership, and source-observed public item,
+built-in derive, and validated re-export rows:
+
+```sh
+cargo run --locked --release -p reovim-conformance -- \
+  refresh-product-contract --root /absolute/path/to/reovim \
+  --relation kernel-interface-public-api
+```
+
+The command validates both schemas, unchanged Foundation authority, the real
+Kernel Interface source, and its complete external witness before atomically
+publishing the two candidate JSON files. It preserves existing row order and
+all unrelated fields. Review its minimal diff, run the public Product journey,
+and then run exact clean-revision proof.
+
+Do not edit those generated JSON fields manually. Another relation, topology
+field, or generator requires a separately admitted real consumer and blocker.
+
 An empty registry is valid only when inventory and topology contain no Product
 owner or shipping root. A Product path without an exact closure and evidence
 fails; an unmatched closure also fails.

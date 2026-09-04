@@ -107,6 +107,7 @@ const KERNEL_INTERFACE_SHIPPING_SOURCES: &[&str] = &[
     "kernel/interface/src/output_health/counters.rs",
     "kernel/interface/src/output_health/record.rs",
     "kernel/interface/src/output_health/snapshot.rs",
+    "kernel/interface/src/resource.rs",
 ];
 
 const KERNEL_INTERFACE_VALIDATION_SOURCES: &[&str] = &[
@@ -125,6 +126,7 @@ const KERNEL_INTERFACE_VALIDATION_SOURCES: &[&str] = &[
     "tests/kernel-interface-public-consumer/src/lib.rs",
     "tests/kernel-interface-public-consumer/src/lifecycle.rs",
     "tests/kernel-interface-public-consumer/src/public_items.rs",
+    "tests/kernel-interface-public-consumer/src/resource.rs",
     "tests/kernel-interface-public-consumer/src/operation.rs",
     "tests/kernel-interface-public-consumer/src/output_health.rs",
     "tests/kernel-interface-public-consumer/src/output_health_state.rs",
@@ -4246,7 +4248,7 @@ mod tests {
                 wrapper_trace_count: 8,
                 dep_info_file_bytes: 4_096,
                 dep_info_total_bytes: 8_192,
-                compiler_input_count: 32,
+                compiler_input_count: 64,
                 artifact_count: 16,
                 artifact_total_bytes: 1_048_576,
                 json_depth: 64,
@@ -4258,7 +4260,7 @@ mod tests {
                 total_bytes: 1_048_576,
             },
             source: crate::product_source::AnalysisLimits {
-                source_files: 16,
+                source_files: 64,
                 source_file_bytes: 1_048_576,
                 source_total_bytes: 2_097_152,
                 syntax_nodes: 100_000,

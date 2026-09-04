@@ -2408,6 +2408,7 @@ const KERNEL_INTERFACE_SHIPPING_SOURCES: &[&str] = &[
     "kernel/interface/src/output_health/counters.rs",
     "kernel/interface/src/output_health/record.rs",
     "kernel/interface/src/output_health/snapshot.rs",
+    "kernel/interface/src/resource.rs",
 ];
 const KERNEL_INTERFACE_CONSUMER_SOURCES: &[&str] = &[
     "tests/kernel-interface-public-consumer/src/clock.rs",
@@ -2436,6 +2437,7 @@ const KERNEL_INTERFACE_CONSUMER_SOURCES: &[&str] = &[
         "output_health_state/snapshot.rs",
     ),
     "tests/kernel-interface-public-consumer/src/public_items.rs",
+    "tests/kernel-interface-public-consumer/src/resource.rs",
 ];
 
 fn expected_closure_sources(closure: &str) -> Option<&'static [&'static str]> {

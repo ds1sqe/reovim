@@ -30,12 +30,15 @@ Usage:
     [--supervision-deadline-ms N] [--report-limit N]
   reovim-conformance verify --report ABS
   reovim-conformance refresh-entrypoint-review --root ABS --path REL
+  reovim-conformance refresh-product-contract --root ABS --relation ID
 
 `check` runs every committed topology profile. Supplying both --git and
 --expected-revision selects exact clean-tree mode; omitting both is candidate
 mode. `refresh-entrypoint-review` updates one registered script/workflow and
-its linked focused review/topology fields. CLI limits may only tighten committed
-maxima. Exit: 0 pass, 2 findings, 64 usage, 70 fatal
+its linked focused review/topology fields. `refresh-product-contract` derives
+only the selected real Product relation and its linked manifest identity. CLI
+limits may only tighten committed maxima. Exit: 0 pass, 2 findings, 64 usage, \
+70 fatal
 runner/configuration/internal failure.
 ";
 
@@ -77,6 +80,16 @@ fn main() -> ExitCode {
         }
         #[cfg(not(debug_assertions))]
         Err(CliError::Refresh(error)) => {
+            let value = json!({
+                "code": error.code,
+                "message": error.message,
+                "effect_certainty": error.effect.as_str(),
+            });
+            write_stderr(&value);
+            ExitCode::from(70)
+        }
+        #[cfg(not(debug_assertions))]
+        Err(CliError::ProductRefresh(error)) => {
             let value = json!({
                 "code": error.code,
                 "message": error.message,
@@ -189,10 +202,58 @@ fn run() -> Result<ExitCode, CliError> {
         "generate" => generate_command(&parsed),
         "verify" => verify_command(&parsed),
         "refresh-entrypoint-review" => refresh_entrypoint_command(&parsed),
+        "refresh-product-contract" => refresh_product_command(&parsed),
         _ => Err(CliError::Usage(format!(
             "unknown command {command:?}\n{USAGE}"
         ))),
     }
+}
+
+#[cfg(not(debug_assertions))]
+fn refresh_product_command(
+    arguments: &Arguments,
+) -> Result<ExitCode, CliError> {
+    arguments.reject_unknown(&["root", "relation"])?;
+    let relation = arguments
+        .optional("relation")
+        .ok_or_else(|| CliError::Usage("missing --relation".to_owned()))?;
+    let request = reovim_conformance::ProductRefreshRequest {
+        root: arguments.path("root")?,
+        relation: relation.to_owned(),
+    };
+    let outcome = reovim_conformance::refresh_product_contract(&request)
+        .map_err(CliError::ProductRefresh)?;
+    let value = json!({
+        "schema": outcome.schema,
+        "relation": outcome.relation,
+        "manifest_set_digest": outcome.manifest_set_digest,
+        "package_members": outcome.package_members,
+        "public_items": outcome.public_items,
+        "derive_checks": outcome.derive_checks,
+        "reexports": outcome.reexports,
+        "effect_certainty": "applied",
+    });
+    let mut stdout = io::stdout().lock();
+    serde_json::to_writer(&mut stdout, &value)
+        .and_then(|()| stdout.write_all(b"\n").map_err(serde_json::Error::io))
+        .and_then(|()| stdout.flush().map_err(serde_json::Error::io))
+        .map_err(|error| {
+            CliError::ProductRefresh(reovim_conformance::ProductRefreshError {
+                code: "STDOUT_WRITE",
+                message: error.to_string(),
+                effect: reovim_conformance::RefreshEffect::Applied,
+            })
+        })?;
+    Ok(ExitCode::SUCCESS)
+}
+
+#[cfg(debug_assertions)]
+fn refresh_product_command(
+    _arguments: &Arguments,
+) -> Result<ExitCode, CliError> {
+    Err(CliError::Usage(
+        "refresh-product-contract requires a --release build".to_owned(),
+    ))
 }
 
 #[cfg(not(debug_assertions))]
@@ -467,6 +528,8 @@ enum CliError {
     Publication(reovim_conformance::PublicationError),
     #[cfg(not(debug_assertions))]
     Refresh(reovim_conformance::EntrypointRefreshError),
+    #[cfg(not(debug_assertions))]
+    ProductRefresh(reovim_conformance::ProductRefreshError),
 }
 
 impl From<Fatal> for CliError {

@@ -27,10 +27,49 @@ pub const fn witness() -> bool {
     output_health_items_eight();
     output_health_items_nine();
     output_health_items_ten();
+    resource_items_one();
+    resource_items_two();
     trait_items();
     trait_method_items();
     variant_items();
     true
+}
+
+const fn resource_items_one() {
+    let _ = (
+        ::reovim_kernel_interface::resource::ResourceAccessStamp::lifecycle,
+        ::reovim_kernel_interface::resource::ResourceAccessStamp::new,
+        ::reovim_kernel_interface::resource::ResourceAccessStamp::resource,
+        ::reovim_kernel_interface::resource::ResourceAccessStamp::
+            same_generation,
+        ::reovim_kernel_interface::resource::ResourceAccessStamp::
+            same_incarnation,
+        ::reovim_kernel_interface::resource::ResourceIdentity::new,
+        ::reovim_kernel_interface::resource::ResourceIdentity::value,
+        ::reovim_kernel_interface::resource::ResourceRevision::new,
+        ::reovim_kernel_interface::resource::ResourceRevision::schema,
+        ::reovim_kernel_interface::resource::ResourceRevision::token,
+        ::reovim_kernel_interface::resource::ResourceSnapshotIdentity::new,
+        ::reovim_kernel_interface::resource::ResourceSnapshotIdentity::value,
+    );
+}
+
+const fn resource_items_two() {
+    let _ = (
+        ::reovim_kernel_interface::resource::ResourceSnapshotStamp::access,
+        ::reovim_kernel_interface::resource::ResourceSnapshotStamp::new,
+        ::reovim_kernel_interface::resource::ResourceSnapshotStamp::revision,
+        ::reovim_kernel_interface::resource::ResourceSnapshotStamp::
+            same_revision,
+        ::reovim_kernel_interface::resource::ResourceSnapshotStamp::
+            same_snapshot,
+        ::reovim_kernel_interface::resource::ResourceSnapshotStamp::snapshot,
+        ::reovim_kernel_interface::resource::ResourceValueSchemas::address,
+        ::reovim_kernel_interface::resource::ResourceValueSchemas::extent,
+        ::reovim_kernel_interface::resource::ResourceValueSchemas::new,
+        ::reovim_kernel_interface::resource::ResourceValueSchemas::revision,
+        ::reovim_kernel_interface::resource::ResourceValueSchemas::unit,
+    );
 }
 
 const fn bound_items() {

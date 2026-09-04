@@ -176,6 +176,18 @@ pub struct TwoPairAnalysisRequest<'a> {
     pub compiler_join: CompilerJoin<'a>,
 }
 
+/// Candidate inputs used to derive one reviewed Kernel Interface relation.
+///
+/// This path does not provide exact compiler evidence. The normal Product
+/// proof must still consume the refreshed relation before it is accepted.
+#[cfg(not(debug_assertions))]
+pub struct RelationDerivationRequest<'a> {
+    /// Exact unchanged Foundation pair and relation.
+    pub foundation: AnalysisRequest<'a>,
+    /// Kernel Interface pair whose derived rows are being refreshed.
+    pub kernel_interface: AnalysisRequest<'a>,
+}
+
 /// Source-derived facts retained after the closed checks pass.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProductSourceObservation {
@@ -308,6 +320,73 @@ pub fn analyze_two_pairs(
     Ok(TwoPairSourceObservation { foundation, kernel_interface })
 }
 
+/// Derives the Kernel Interface public rows from real source and witnesses.
+///
+/// The Foundation pair must already match its registered relation. The
+/// Kernel Interface relation supplies only its fixed identity and closure
+/// selection; public items, derives, and re-exports come from source. The
+/// resulting relation is accepted only after the complete external consumer
+/// validates against it.
+///
+/// # Errors
+///
+/// Returns a typed source error for an invalid pair, non-exact Foundation
+/// relation, unsupported source shape, invalid re-export, or incomplete
+/// Kernel Interface consumer witness.
+#[cfg(not(debug_assertions))]
+pub fn derive_kernel_interface_relation(
+    request: &RelationDerivationRequest<'_>,
+) -> Result<PublicConsumerRelation, ProductSourceError> {
+    validate_pair_inputs(&request.foundation, &request.kernel_interface)?;
+    let inventory = inventory_index(request.foundation.inventory)?;
+    let mut budget =
+        ReadBudget::new(request.foundation.limits.source_total_bytes);
+    let foundation = analyze_pair(
+        &request.foundation,
+        PairProfile::Foundation,
+        None,
+        &inventory,
+        &mut budget,
+    )?;
+    validate_relation(&request.kernel_interface, PairProfile::KernelInterface)?;
+    let provider = ProvenProvider {
+        relation: request.foundation.relation,
+        observation: &foundation,
+    };
+    let shipping = load_source_set(
+        request.kernel_interface.root,
+        request.kernel_interface.shipping,
+        request.kernel_interface.shipping_sources,
+        &inventory,
+        request.kernel_interface.limits,
+        &mut budget,
+    )?;
+    let consumer = load_source_set(
+        request.kernel_interface.root,
+        request.kernel_interface.consumer,
+        request.kernel_interface.consumer_sources,
+        &inventory,
+        request.kernel_interface.limits,
+        &mut budget,
+    )?;
+    let surface = derive_shipping(
+        &shipping,
+        request.kernel_interface.shipping,
+        request.kernel_interface.relation,
+        PairProfile::KernelInterface,
+        Some(&provider),
+    )?;
+    let relation =
+        relation_from_surface(request.kernel_interface.relation, &surface);
+    analyze_consumer(
+        &consumer,
+        request.kernel_interface.consumer,
+        &relation,
+        PairProfile::KernelInterface,
+    )?;
+    Ok(relation)
+}
+
 struct ProvenProvider<'a> {
     relation: &'a PublicConsumerRelation,
     observation: &'a ProductSourceObservation,
@@ -365,8 +444,13 @@ fn analyze_pair(
 fn validate_two_pair_request(
     request: &TwoPairAnalysisRequest<'_>,
 ) -> Result<(), ProductSourceError> {
-    let foundation = &request.foundation;
-    let kernel_interface = &request.kernel_interface;
+    validate_pair_inputs(&request.foundation, &request.kernel_interface)
+}
+
+fn validate_pair_inputs(
+    foundation: &AnalysisRequest<'_>,
+    kernel_interface: &AnalysisRequest<'_>,
+) -> Result<(), ProductSourceError> {
     validate_limits(foundation.limits)?;
     if foundation.root != kernel_interface.root
         || foundation.limits != kernel_interface.limits
@@ -2083,6 +2167,35 @@ fn analyze_shipping(
         SourceMode::Shipping(profile),
         provider,
     )?;
+    collect_shipping_surface(sources, closure, provider)
+}
+
+#[cfg(not(debug_assertions))]
+fn derive_shipping(
+    sources: &SourceSet,
+    closure: &Closure,
+    template: &PublicConsumerRelation,
+    profile: PairProfile,
+    provider: Option<&ProvenProvider<'_>>,
+) -> Result<Surface, ProductSourceError> {
+    validate_provider(profile, provider)?;
+    let surface = collect_shipping_surface(sources, closure, provider)?;
+    let relation = relation_from_surface(template, &surface);
+    validate_source_profile(
+        sources,
+        closure,
+        &relation,
+        SourceMode::Shipping(profile),
+        provider,
+    )?;
+    Ok(surface)
+}
+
+fn collect_shipping_surface(
+    sources: &SourceSet,
+    closure: &Closure,
+    provider: Option<&ProvenProvider<'_>>,
+) -> Result<Surface, ProductSourceError> {
     let mut surface = Surface::new();
     let mut visited = BTreeSet::new();
     let mut walk =
@@ -2098,6 +2211,21 @@ fn analyze_shipping(
     validate_visited_sources(sources, &visited)?;
     finish_inherent_items(&mut surface)?;
     Ok(surface)
+}
+
+#[cfg(not(debug_assertions))]
+fn relation_from_surface(
+    template: &PublicConsumerRelation,
+    surface: &Surface,
+) -> PublicConsumerRelation {
+    PublicConsumerRelation {
+        id: template.id.clone(),
+        shipping_closure: template.shipping_closure.clone(),
+        consumer_closure: template.consumer_closure.clone(),
+        public_items: surface.public_items.iter().cloned().collect(),
+        derive_checks: surface.derive_checks.iter().cloned().collect(),
+        reexports: surface.reexports.iter().cloned().collect(),
+    }
 }
 
 struct ShippingWalk<'state, 'provider, 'facts> {
@@ -4058,6 +4186,7 @@ mod tests {
         "kernel/interface/src/output_health/counters.rs",
         "kernel/interface/src/output_health/record.rs",
         "kernel/interface/src/output_health/snapshot.rs",
+        "kernel/interface/src/resource.rs",
     ];
     const KI_CONSUMER: &[&str] = &[
         "tests/kernel-interface-public-consumer/src/clock.rs",
@@ -4086,6 +4215,7 @@ mod tests {
             "output_health_state/snapshot.rs",
         ),
         "tests/kernel-interface-public-consumer/src/public_items.rs",
+        "tests/kernel-interface-public-consumer/src/resource.rs",
     ];
     const LIMITS: AnalysisLimits = AnalysisLimits {
         source_files: 64,

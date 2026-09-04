@@ -1836,7 +1836,7 @@ fn validate_upstream_digests(
     }
 }
 
-fn aggregate_digest(
+pub fn aggregate_digest(
     root: &Path,
     paths: &[PathBuf],
     files: &[ClassifiedFile],

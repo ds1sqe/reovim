@@ -23,6 +23,8 @@ mod product_closures;
 mod product_preflight;
 mod product_proof;
 mod product_reexport;
+#[cfg(not(debug_assertions))]
+mod product_refresh;
 mod product_source;
 mod product_workload;
 mod report;
@@ -49,6 +51,11 @@ use topology::{HARD_LIMITS, Limits, Topology};
 pub use entrypoint_refresh::{
     EntrypointRefreshError, EntrypointRefreshOutcome, EntrypointRefreshRequest,
     RefreshEffect, refresh_entrypoint_review,
+};
+#[cfg(not(debug_assertions))]
+pub use product_refresh::{
+    ProductRefreshError, ProductRefreshOutcome, ProductRefreshRequest,
+    refresh_product_contract,
 };
 
 pub const POLICY_KEY: &str = "conformance/source-classification.json";

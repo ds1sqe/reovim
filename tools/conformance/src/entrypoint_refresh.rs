@@ -477,14 +477,18 @@ fn validate_candidates(
 }
 
 #[derive(Debug)]
-struct FileUpdate {
+pub struct FileUpdate {
     path: PathBuf,
     original: Vec<u8>,
     candidate: Vec<u8>,
 }
 
 impl FileUpdate {
-    const fn new(path: PathBuf, original: Vec<u8>, candidate: Vec<u8>) -> Self {
+    pub const fn new(
+        path: PathBuf,
+        original: Vec<u8>,
+        candidate: Vec<u8>,
+    ) -> Self {
         Self { path, original, candidate }
     }
 }
@@ -494,7 +498,7 @@ struct StagedUpdate {
     temporary: PathBuf,
 }
 
-fn publish_updates(
+pub fn publish_updates(
     updates: &[FileUpdate],
 ) -> Result<(), EntrypointRefreshError> {
     publish_updates_with(updates, |source, target, _index| {

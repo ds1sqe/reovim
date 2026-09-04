@@ -335,6 +335,11 @@
             "kind": "copied",
             "package_path": "src/output_health/snapshot.rs",
             "repository_path": "kernel/interface/src/output_health/snapshot.rs"
+          },
+          {
+            "kind": "copied",
+            "package_path": "src/resource.rs",
+            "repository_path": "kernel/interface/src/resource.rs"
           }
         ]
       }
@@ -5704,6 +5709,126 @@
         {
           "path": "output_health::OutputHealthSnapshotCoverage::Partial",
           "kind": "variant"
+        },
+        {
+          "path": "resource",
+          "kind": "module"
+        },
+        {
+          "path": "resource::ResourceAccessStamp",
+          "kind": "type"
+        },
+        {
+          "path": "resource::ResourceAccessStamp::lifecycle",
+          "kind": "function"
+        },
+        {
+          "path": "resource::ResourceAccessStamp::new",
+          "kind": "function"
+        },
+        {
+          "path": "resource::ResourceAccessStamp::resource",
+          "kind": "function"
+        },
+        {
+          "path": "resource::ResourceAccessStamp::same_generation",
+          "kind": "function"
+        },
+        {
+          "path": "resource::ResourceAccessStamp::same_incarnation",
+          "kind": "function"
+        },
+        {
+          "path": "resource::ResourceIdentity",
+          "kind": "type"
+        },
+        {
+          "path": "resource::ResourceIdentity::new",
+          "kind": "function"
+        },
+        {
+          "path": "resource::ResourceIdentity::value",
+          "kind": "function"
+        },
+        {
+          "path": "resource::ResourceRevision",
+          "kind": "type"
+        },
+        {
+          "path": "resource::ResourceRevision::new",
+          "kind": "function"
+        },
+        {
+          "path": "resource::ResourceRevision::schema",
+          "kind": "function"
+        },
+        {
+          "path": "resource::ResourceRevision::token",
+          "kind": "function"
+        },
+        {
+          "path": "resource::ResourceSnapshotIdentity",
+          "kind": "type"
+        },
+        {
+          "path": "resource::ResourceSnapshotIdentity::new",
+          "kind": "function"
+        },
+        {
+          "path": "resource::ResourceSnapshotIdentity::value",
+          "kind": "function"
+        },
+        {
+          "path": "resource::ResourceSnapshotStamp",
+          "kind": "type"
+        },
+        {
+          "path": "resource::ResourceSnapshotStamp::access",
+          "kind": "function"
+        },
+        {
+          "path": "resource::ResourceSnapshotStamp::new",
+          "kind": "function"
+        },
+        {
+          "path": "resource::ResourceSnapshotStamp::revision",
+          "kind": "function"
+        },
+        {
+          "path": "resource::ResourceSnapshotStamp::same_revision",
+          "kind": "function"
+        },
+        {
+          "path": "resource::ResourceSnapshotStamp::same_snapshot",
+          "kind": "function"
+        },
+        {
+          "path": "resource::ResourceSnapshotStamp::snapshot",
+          "kind": "function"
+        },
+        {
+          "path": "resource::ResourceValueSchemas",
+          "kind": "type"
+        },
+        {
+          "path": "resource::ResourceValueSchemas::address",
+          "kind": "function"
+        },
+        {
+          "path": "resource::ResourceValueSchemas::extent",
+          "kind": "function"
+        },
+        {
+          "path": "resource::ResourceValueSchemas::new",
+          "kind": "function"
+        },
+        {
+          "path": "resource::ResourceValueSchemas::revision",
+          "kind": "function"
+        },
+        {
+          "path": "resource::ResourceValueSchemas::unit",
+          "kind": "function"
         }
       ],
       "derive_checks": [
@@ -9676,6 +9801,156 @@
           "derive": "Eq",
           "public_type": "output_health::OutputHealthSnapshotStatistics",
           "consumer_operation": "eq"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::ResourceAccessStamp",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::ResourceIdentity",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::ResourceRevision",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::ResourceSnapshotIdentity",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::ResourceSnapshotStamp",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Clone",
+          "public_type": "resource::ResourceValueSchemas",
+          "consumer_operation": "clone"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::ResourceAccessStamp",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::ResourceIdentity",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::ResourceRevision",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::ResourceSnapshotIdentity",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::ResourceSnapshotStamp",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Copy",
+          "public_type": "resource::ResourceValueSchemas",
+          "consumer_operation": "copy"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::ResourceAccessStamp",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::ResourceIdentity",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::ResourceRevision",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::ResourceSnapshotIdentity",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::ResourceSnapshotStamp",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Debug",
+          "public_type": "resource::ResourceValueSchemas",
+          "consumer_operation": "debug"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::ResourceAccessStamp",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::ResourceIdentity",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::ResourceRevision",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::ResourceSnapshotIdentity",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::ResourceSnapshotStamp",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "Eq",
+          "public_type": "resource::ResourceValueSchemas",
+          "consumer_operation": "eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::ResourceAccessStamp",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::ResourceIdentity",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::ResourceRevision",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::ResourceSnapshotIdentity",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::ResourceSnapshotStamp",
+          "consumer_operation": "partial_eq"
+        },
+        {
+          "derive": "PartialEq",
+          "public_type": "resource::ResourceValueSchemas",
+          "consumer_operation": "partial_eq"
         }
       ]
     }
