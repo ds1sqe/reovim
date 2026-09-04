@@ -74,7 +74,7 @@ may narrow its ledger applicability but cannot silently broaden it.
 | EXT-001..006 | An Extension Package, Contribution, Adapter, Engine, Quick Profile, or introspection surface is offered. | Extension Contract/admission boundary |
 | PERF-001..008 | A performance claim, budget, Scenario, trace, measurement field, or Experiment Bundle is produced. | Performance Authority |
 | EVT-001..006 | An Event is submitted, retained, rendered, followed, exported, or used as evidence. | Editor Event Stream Lifecycle Owner |
-| MIG-001..003 | Historical behavior or code enters an active migration slice. | Migration slice owner |
+| MIG-001..004 | Historical behavior or code enters an active migration slice. | Migration slice owner |
 | QUAL-001..002 | A feature enters a candidate or an artifact/environment is claimed. | Release Qualification Authority |
 | QUAL-003 | Mission-critical or certification language is published. | Product Contract Authority |
 

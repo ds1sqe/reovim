@@ -292,6 +292,8 @@ expected_normative_files=(
     ${INTERACTION}/03-External-Semantic-Protocols.md
     ${INTERACTION}/04-End-to-End-Flow-and-Readiness.md
     ${INTERACTION}/05-Fidelity-and-Conformance-Proof.md
+    ${INTERACTION}/06-First-Visible-Edit-Oracle.md
+    ${INTERACTION}/07-First-Visible-Edit-Interface-Chain.md
     ${ARCH}/04-Execution/01-Execution-Laws-and-Operation-Classes.md
     ${ARCH}/04-Execution/02-State-Lanes-and-Synchronization.md
     ${ARCH}/04-Execution/03-Runtime-Execution-Facility.md
@@ -427,7 +429,9 @@ check_index_children ${INTERACTION}.md \
     ${INTERACTION}/02-Client-View-and-Presentation.md \
     ${INTERACTION}/03-External-Semantic-Protocols.md \
     ${INTERACTION}/04-End-to-End-Flow-and-Readiness.md \
-    ${INTERACTION}/05-Fidelity-and-Conformance-Proof.md
+    ${INTERACTION}/05-Fidelity-and-Conformance-Proof.md \
+    ${INTERACTION}/06-First-Visible-Edit-Oracle.md \
+    ${INTERACTION}/07-First-Visible-Edit-Interface-Chain.md
 check_index_children ${ARCH}/05-Client/README.md \
     ${ARCH}/05-Client/01-Client-Ownership-and-Family-Contracts.md \
     ${ARCH}/05-Client/02-Rendering-Capabilities.md \
@@ -737,6 +741,8 @@ check_rule_authority "$host_rule_chapter" SDK-005 \
     ${EXTENSIONS}/01-Packages-Contribution-Points-and-Registry.md
 check_rule_authority "$migration_rule_chapter" MIG-003 \
     Documentation/05-Migration/01-Selective-Migration.md
+check_rule_authority "$migration_rule_chapter" MIG-004 \
+    ${INTERACTION}/06-First-Visible-Edit-Oracle.md
 
 # reovim-style: allow-long-line searchable-string
 rule_ids="$(awk -F'`' '/^\| `[A-Z]+-[0-9][0-9][0-9]`/ { print $2 }' "${rule_chapters[@]}")"
