@@ -4,7 +4,7 @@
 
 - Kind: script
 - Exact content digest:
-  `sha256:fdf91a8d355642132da68b892b303ce268e5060672cda64928f75aeb2bd193a7`
+  `sha256:bef319d36f5d1877f43be33588ea12ff32d37c0a5e1093b2abb83f95988a6685`
 - Review mechanism: exact content and retained review
 
 ## Direct local invocations
@@ -39,3 +39,11 @@ retention/snapshot, and import/readiness children beneath the six-child Host
 index. The retention child is itself a navigation-only index for descriptor/
 lease, counter/sequence/retention, and owner-snapshot chapters. Any byte or
 invocation change reopens this review.
+
+The Architecture inventory also binds the navigation-only Ports, Source Tree,
+and Portability index and its layer-interface, source-placement, and portable-
+Host children. Direct Rule Matrix routes cover their interface, placement, and
+`no_std` authorities plus Client Host applicability, vertical migration order,
+and SDK stability state. These additions use the existing bounded document
+inventory, link, topology, authority, and taxonomy passes; they add no command,
+dependency, generated output, or broader execution mechanism.

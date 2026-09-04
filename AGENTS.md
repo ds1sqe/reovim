@@ -47,10 +47,16 @@ updating the authoritative documentation.
   transaction contracts. They never mutate concrete storage directly.
 - Select concrete components only in assembly. Avoid hidden globals and cyclic
   callbacks.
+- Design the complete Inter-Layer Contract chain for one accepted journey and
+  compile its public providers/consumers before implementing inner mechanisms.
+- Keep Foundation `core`-only and the portable Kernel plus applicable Rust
+  Client path `no_std + alloc`. Hosted adapters stay outside that closure.
 
 ## Host API
 
 - Route environment services through small semantic Host API capabilities.
+- Apply the same Host contract family to exact Kernel, Client, and Resource
+  consumers through separately owned grants; it is not server-only.
 - Keep platform-specific handles, constants, branching, and dependencies
   inside standard adapters.
 - Add a capability only with a concrete consumer, typed errors and limits, a
@@ -67,6 +73,11 @@ updating the authoritative documentation.
   make an embedded interpreter a core dependency.
 - Public examples use only public SDK or service-contract APIs. Private core
   types are not an extension contract.
+- Treat Intra-Tree Interfaces as private and unstable. They may break only with
+  a coherent owner-tree update and must never leak into public SDK use.
+- v0.16 public SDK and service APIs remain Experimental even when required or
+  Supported. Stable compatibility begins only at an explicitly admitted full
+  SDK Stability Release.
 - Require capability negotiation, bounds, backpressure, cancellation,
   lifecycle handling, compatibility tests, and failure containment.
 - Third-party extensions and adapters are allowed only after deliberate trust,
@@ -97,6 +108,9 @@ updating the authoritative documentation.
 - Stop when the named block clears. Do not retain unused compiled experiments
   or use dead-code allowances to hide them. Do not add broader profiles for
   anticipated future use.
+- After reviewing a changed registered entrypoint and its retained prose, run
+  the documented bounded refresh command. Do not hand-edit its generated JSON
+  digest or timestamp fields.
 
 ## Verification and check caching
 

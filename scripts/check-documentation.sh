@@ -12,6 +12,7 @@ readonly DOC=Documentation
 readonly ARCH="$DOC/01-Architecture"
 readonly LAYER="$ARCH/01-Layer"
 readonly LAYER_ROLES="$LAYER/01-Roles-Descriptors-and-Dependencies"
+readonly LAYER_PORTS="$LAYER/03-Ports-Source-Tree-and-Portability"
 readonly BUFFER="$ARCH/02-Resource-and-Buffer"
 readonly SEMANTICS="$ARCH/03-Semantics-and-View"
 readonly INTERACTION_NAME=02-Interaction-Updates-Protocols-and-View
@@ -247,6 +248,7 @@ contract_indexes=(
     Documentation/00-Concept.md
     ${ARCH}/README.md
     ${LAYER_ROLES}.md
+    ${LAYER_PORTS}.md
     ${INTERACTION}.md
     ${ARCH}/05-Client/README.md
     ${BOOTSTRAP_HEALTH}.md
@@ -276,6 +278,10 @@ expected_normative_files=(
     ${LAYER_ROLES}/02-Descriptors-and-Dependency-Admission.md
     ${LAYER_ROLES}/03-Source-Dependency-Graph-and-Edges.md
     ${ARCH}/01-Layer/02-Interaction-Assembly-and-Lifecycle.md
+    ${LAYER_PORTS}.md
+    ${LAYER_PORTS}/01-Layer-Interface-Contracts.md
+    ${LAYER_PORTS}/02-Source-Tree-and-Product-Compositions.md
+    ${LAYER_PORTS}/03-Portable-Host-and-No-Std-Profiles.md
     ${BUFFER}/01-Resource-Access-Snapshots-and-Change.md
     ${BUFFER}/02-Buffer-Transactions-History-and-Residency.md
     ${BUFFER}/03-External-Effects-and-Conformance.md
@@ -396,6 +402,7 @@ check_index_children Documentation/00-Concept.md \
 check_index_children ${ARCH}/README.md \
     ${LAYER_ROLES}.md \
     ${ARCH}/01-Layer/02-Interaction-Assembly-and-Lifecycle.md \
+    ${LAYER_PORTS}.md \
     ${BUFFER}/01-Resource-Access-Snapshots-and-Change.md \
     ${BUFFER}/02-Buffer-Transactions-History-and-Residency.md \
     ${BUFFER}/03-External-Effects-and-Conformance.md \
@@ -411,6 +418,10 @@ check_index_children ${LAYER_ROLES}.md \
     ${LAYER_ROLES}/01-Logical-Roles-and-Source-Ownership.md \
     ${LAYER_ROLES}/02-Descriptors-and-Dependency-Admission.md \
     ${LAYER_ROLES}/03-Source-Dependency-Graph-and-Edges.md
+check_index_children ${LAYER_PORTS}.md \
+    ${LAYER_PORTS}/01-Layer-Interface-Contracts.md \
+    ${LAYER_PORTS}/02-Source-Tree-and-Product-Compositions.md \
+    ${LAYER_PORTS}/03-Portable-Host-and-No-Std-Profiles.md
 check_index_children ${INTERACTION}.md \
     ${INTERACTION}/01-Intent-Outcome-and-Representation-Updates.md \
     ${INTERACTION}/02-Client-View-and-Presentation.md \
@@ -503,6 +514,9 @@ check_index_sections() {
 
 check_index_sections \
     ${LAYER_ROLES}.md \
+    'Reading order'
+check_index_sections \
+    ${LAYER_PORTS}.md \
     'Reading order'
 check_index_sections \
     ${INTERACTION}.md \
@@ -629,6 +643,9 @@ require_unique_owner_clause() {
 
 layer_roles=${LAYER_ROLES}/01-Logical-Roles-and-Source-Ownership.md
 layer_edges=${LAYER_ROLES}/03-Source-Dependency-Graph-and-Edges.md
+layer_interfaces=${LAYER_PORTS}/01-Layer-Interface-Contracts.md
+source_placement=${LAYER_PORTS}/02-Source-Tree-and-Product-Compositions.md
+portable_host=${LAYER_PORTS}/03-Portable-Host-and-No-Std-Profiles.md
 classification_artifacts=${CLASSIFIER}/01-Policy-Artifacts-and-Source-Axes.md
 product_proof_authority=${PRODUCT_INPUT}
 tooling_authority=${QUALITY}/03-Admission-Qualification-and-Release-Scope.md
@@ -673,6 +690,8 @@ rule_chapters=(
 
 architecture_rule_chapter=${RULE_MATRIX}/01-Product-Authority-and-Layering.md
 meaning_rule_chapter=${RULE_MATRIX}/04-Meaning-Interaction-and-View.md
+host_rule_chapter=${RULE_MATRIX}/07-Host-SDK-and-Extensions.md
+migration_rule_chapter=${rule_chapters[7]}
 
 check_rule_authority() {
     local chapter="$1"
@@ -696,6 +715,12 @@ check_rule_authority "$architecture_rule_chapter" ARCH-006 \
     ${CLASSIFIER}/01-Policy-Artifacts-and-Source-Axes.md
 check_rule_authority "$architecture_rule_chapter" ARCH-007 \
     ${PRODUCT_INPUT}
+check_rule_authority "$architecture_rule_chapter" ARCH-008 \
+    "$layer_interfaces"
+check_rule_authority "$architecture_rule_chapter" ARCH-009 \
+    "$source_placement"
+check_rule_authority "$architecture_rule_chapter" ARCH-010 \
+    "$portable_host"
 check_rule_authority "$architecture_rule_chapter" TOOL-001 \
     "$tooling_authority"
 check_rule_authority "$meaning_rule_chapter" INT-001 \
@@ -706,6 +731,12 @@ check_rule_authority "$meaning_rule_chapter" VIEW-001 \
     ${INTERACTION}/02-Client-View-and-Presentation.md
 check_rule_authority "$meaning_rule_chapter" PROTO-001 \
     ${INTERACTION}/03-External-Semantic-Protocols.md
+check_rule_authority "$host_rule_chapter" HOST-004 \
+    ${HOST_API}/01-Boundary-and-Capability-Admission.md
+check_rule_authority "$host_rule_chapter" SDK-005 \
+    ${EXTENSIONS}/01-Packages-Contribution-Points-and-Registry.md
+check_rule_authority "$migration_rule_chapter" MIG-003 \
+    Documentation/05-Migration/01-Selective-Migration.md
 
 # reovim-style: allow-long-line searchable-string
 rule_ids="$(awk -F'`' '/^\| `[A-Z]+-[0-9][0-9][0-9]`/ { print $2 }' "${rule_chapters[@]}")"

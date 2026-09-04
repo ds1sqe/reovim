@@ -29,11 +29,14 @@ Usage:
     [--stdout-limit N] [--stderr-limit N] [--deadline-ms N] \\
     [--supervision-deadline-ms N] [--report-limit N]
   reovim-conformance verify --report ABS
+  reovim-conformance refresh-entrypoint-review --root ABS --path REL
 
 `check` runs every committed topology profile. Supplying both --git and
 --expected-revision selects exact clean-tree mode; omitting both is candidate
-mode. CLI limits may only tighten committed maxima. Exit: 0 pass, 2 findings,
-64 usage, 70 fatal runner/configuration/internal failure.
+mode. `refresh-entrypoint-review` updates one registered script/workflow and
+its linked focused review/topology fields. CLI limits may only tighten committed
+maxima. Exit: 0 pass, 2 findings, 64 usage, 70 fatal
+runner/configuration/internal failure.
 ";
 
 fn main() -> ExitCode {
@@ -68,6 +71,16 @@ fn main() -> ExitCode {
                     .map(|path| path.display().to_string()),
                 "cleanup_state": error.cleanup_state.as_str(),
                 "durability_state": error.durability_state.as_str(),
+            });
+            write_stderr(&value);
+            ExitCode::from(70)
+        }
+        #[cfg(not(debug_assertions))]
+        Err(CliError::Refresh(error)) => {
+            let value = json!({
+                "code": error.code,
+                "message": error.message,
+                "effect_certainty": error.effect.as_str(),
             });
             write_stderr(&value);
             ExitCode::from(70)
@@ -175,10 +188,54 @@ fn run() -> Result<ExitCode, CliError> {
         "check" => check_command(&parsed),
         "generate" => generate_command(&parsed),
         "verify" => verify_command(&parsed),
+        "refresh-entrypoint-review" => refresh_entrypoint_command(&parsed),
         _ => Err(CliError::Usage(format!(
             "unknown command {command:?}\n{USAGE}"
         ))),
     }
+}
+
+#[cfg(not(debug_assertions))]
+fn refresh_entrypoint_command(
+    arguments: &Arguments,
+) -> Result<ExitCode, CliError> {
+    arguments.reject_unknown(&["root", "path"])?;
+    let request = reovim_conformance::EntrypointRefreshRequest {
+        root: arguments.path("root")?,
+        entrypoint: arguments.path("path")?,
+    };
+    let outcome = reovim_conformance::refresh_entrypoint_review(&request)
+        .map_err(CliError::Refresh)?;
+    let value = json!({
+        "schema": outcome.schema,
+        "entrypoint": outcome.entrypoint,
+        "content_digest": outcome.content_digest,
+        "review_record": outcome.review_record,
+        "review_record_digest": outcome.review_record_digest,
+        "reviewed_at": outcome.reviewed_at,
+        "effect_certainty": "applied",
+    });
+    let mut stdout = io::stdout().lock();
+    serde_json::to_writer(&mut stdout, &value)
+        .and_then(|()| stdout.write_all(b"\n").map_err(serde_json::Error::io))
+        .and_then(|()| stdout.flush().map_err(serde_json::Error::io))
+        .map_err(|error| {
+            CliError::Refresh(reovim_conformance::EntrypointRefreshError {
+                code: "STDOUT_WRITE",
+                message: error.to_string(),
+                effect: reovim_conformance::RefreshEffect::Applied,
+            })
+        })?;
+    Ok(ExitCode::SUCCESS)
+}
+
+#[cfg(debug_assertions)]
+fn refresh_entrypoint_command(
+    _arguments: &Arguments,
+) -> Result<ExitCode, CliError> {
+    Err(CliError::Usage(
+        "refresh-entrypoint-review requires a --release build".to_owned(),
+    ))
 }
 
 fn check_command(arguments: &Arguments) -> Result<ExitCode, CliError> {
@@ -408,6 +465,8 @@ enum CliError {
     Usage(String),
     Fatal(Fatal),
     Publication(reovim_conformance::PublicationError),
+    #[cfg(not(debug_assertions))]
+    Refresh(reovim_conformance::EntrypointRefreshError),
 }
 
 impl From<Fatal> for CliError {

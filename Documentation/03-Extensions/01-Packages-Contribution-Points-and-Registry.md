@@ -114,19 +114,34 @@ evidence.
 
 Every public API entry is exactly one of:
 
-- **Stable:** a supported registry row with compatibility policy, public docs,
-  conformance, deprecation/replacement rules, and release evidence;
+- **Stable:** an SDK Stability Release has explicitly admitted the named row
+  with compatibility policy, public docs, conformance, deprecation/replacement
+  rules, migration support, and release evidence;
 - **Experimental:** a separately named opt-in contract/version, unavailable to
   stable packages by default and never represented as supported compatibility;
   or
 - **Private:** unavailable to first-party and third-party extension code and
-  forbidden from public examples.
+  forbidden from public examples. Private Intra-Tree Interfaces may break at
+  any commit when their owner updates the complete tree coherently.
 
 Promotion from Experimental to Stable is an evidence-backed admission decision,
 not a rename. Stable surfaces evolve additively only where the schema explicitly
 marks unknown values as safely ignorable. Incompatible meaning uses a new
 contract identity or version. Product, SDK, contract, and package versions
 remain independent.
+
+v0.16 declares no Stable SDK or service-contract row. A row may be required,
+Supported, or Qualified while its public API state remains Experimental; API
+stability and AdmissionStatus are independent. Before the SDK Stability
+Release, every public change still updates contract/schema identity or version,
+compatibility fixtures, generated projections, registry metadata, migration
+guidance, and all affected public journeys. Experimental never means silent
+field reuse or untracked breakage.
+
+The SDK Stability Release is a later explicit full-release decision. It may
+promote only individually named rows whose compatibility and qualification
+evidence passes. After promotion, the published compatibility and deprecation
+policy is binding.
 
 The same registry and schema authority generates API reference, compatibility
 tables, completion/type metadata, `describe` introspection, capability and limit

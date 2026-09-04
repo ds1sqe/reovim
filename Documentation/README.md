@@ -136,8 +136,9 @@ or must contain a volatile/unsafe boundary—not merely to hide a package name.
     integrity, lifecycle/isolation, admission, and exact qualification.
 
 `heritage/` is non-normative historical material. Git history preserves the
-superseded OS/no-std/system-kernel specification; removed chapters do not retain
-authority merely because historical code still exists.
+superseded OS/universal-`no_std`/system-kernel specification; removed chapters
+do not retain authority merely because historical code still exists. The
+current focused portable profiles are owned by the Architecture contract.
 
 ## Reading and change rules
 

@@ -10,6 +10,10 @@ invoke, re-export, expose, or bundle repository tooling. Repository tooling
 does not import product crates or private product types; it may consume exact
 source or artifact data only through a bounded evidence-input boundary.
 
+Canonical top-level role placement and Product compositions are owned by
+[Source Tree and Product Compositions](../03-Ports-Source-Tree-and-Portability/02-Source-Tree-and-Product-Compositions.md).
+Path placement makes ownership reviewable but never overrides this graph.
+
 ## Source-dependency graph
 
 ~~~text

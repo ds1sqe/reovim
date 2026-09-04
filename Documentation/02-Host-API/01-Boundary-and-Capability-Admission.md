@@ -15,6 +15,12 @@ or generic environment abstraction. Kernel Core, Kernel Runtime, Resource
 Adapters, and Clients receive only the independently negotiated capabilities
 that their accepted public paths actually use.
 
+The same Host Capability contract family applies to Kernel Runtime, every
+Client Runtime/Family, and Resource Adapters. Each grant and instance has its
+own owner, incarnation, bounds, readiness, failure accounting, replacement,
+and shutdown. Sharing one underlying environment service never merges Kernel
+and Client lifecycle authority or creates a global Host handle.
+
 A Host Capability supplies an environmental service. A **Resource Adapter**
 connects one external or synthetic Resource and may consume individually
 injected Host Capabilities. These responsibilities never merge.
@@ -25,7 +31,8 @@ Each part has one narrow dependency and ownership rule:
 
 - Kernel Interface owns Host Capability contracts. They may depend on
   Foundation and must not own Environment mechanisms, Resource semantics, or
-  concrete configuration.
+  concrete configuration. Their portable surface uses no `std` or concrete
+  host type.
 - Kernel Core or Kernel Runtime may consume only the exact Host Interface
   contracts justified by their public paths. They must not own concrete Host
   Adapter types or hidden discovery.
@@ -53,6 +60,11 @@ graph. The named Lifecycle Owner for the consuming subtree activates, grants,
 supervises, and closes each injected capability instance and its admitted work.
 Client Runtime is that owner for a Client subtree; Kernel Runtime is that owner
 for a Kernel subtree. No consumer discovers an implementation through a global.
+
+An external custom OS or runtime may implement the same contracts under the
+[Portable Host profile](../01-Architecture/01-Layer/03-Ports-Source-Tree-and-Portability/03-Portable-Host-and-No-Std-Profiles.md).
+That does not add a Host Capability, merge adapter roles, or place custom-host
+code inside Reovim.
 
 ## Initial closed scope
 

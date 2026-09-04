@@ -128,11 +128,20 @@ version range. Existing released fields are not repurposed. Unknown required
 meaning returns a typed unsupported-version or capability outcome; incompatible
 required semantics use a new identity/version.
 
-Before 1.0, compatibility remains explicit and testable rather than eternal.
+Before the SDK Stability Release, compatibility remains explicit and testable
+rather than an indefinite stability promise.
 Changing authority, Effect Certainty, idempotency, ordering, delivery, or a
 durable side effect is compatibility-significant even if bytes remain
 decodable. One deterministic published compatibility matrix covers contract
 identity/version, role, required capabilities, and optional capabilities.
+
+All v0.16 SDK and service rows are Experimental API even when their independent
+DeliveryGate requires them or their AdmissionStatus becomes Supported or
+Qualified. A pre-stability incompatible change is allowed only through an
+explicit new identity/version, compatibility fixtures, migration guidance, and
+affected public-journey reruns. Private Core, Runtime, Family, and adapter APIs
+remain unversioned Intra-Tree Interfaces and may break without an SDK migration
+promise because they are forbidden from public use.
 
 Request identity is unique within its negotiated scope. Reuse with another
 payload is a protocol violation; identical reuse follows the declared duplicate

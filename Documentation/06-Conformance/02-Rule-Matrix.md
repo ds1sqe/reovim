@@ -34,6 +34,9 @@ may narrow its ledger applicability but cannot silently broaden it.
 | ARCH-005 | Any third-party dependency is proposed, admitted, changed, or invalidated. | The dependency's named consumer owner |
 | ARCH-006 | Any versioned classification policy, workspace topology, Source Role Map, conformance checker, or implementation/release evidence set is produced or admitted. | Conformance Authority |
 | ARCH-007 | Any Product shipping/validation closure or compiler, package-membership, public-surface, or Product-proof-capability claim is produced or admitted. | Product-proof Conformance Authority |
+| ARCH-008 | Any Inter-Layer Contract, provider, consumer, or cross-role call is proposed, implemented, or claimed. | Inter-Layer Contract Authority |
+| ARCH-009 | Any Product source root, package placement, Server/Client composition, or embedded composition is proposed or admitted. | Source placement and Assembly boundary |
+| ARCH-010 | Any `no_std`, portable closure, or external custom-host support claim is proposed or admitted. | Portable profile authority |
 | TOOL-001 | Any Repository Tooling source, target, entrypoint, profile, implementation, or expansion is proposed, continued, retained, or accepted. | The tooling's named immediate consumer owner |
 | SAFE-001 | Any opaque carrier crosses a contract, ownership, thread, process, async, or unsafe boundary. | Foundation Carrier Safety boundary |
 | BOUND-001 | Any capability or operation claims a finite bound. | The descriptor-owning contract boundary |
@@ -66,12 +69,12 @@ may narrow its ledger applicability but cannot silently broaden it.
 | CLIENT-002 | Client-local composition or cross-Client synchronization is introduced. | CLM/CCM contract boundary |
 | CCM-001..002 | A Synchronization Scope or mandatory mixed-Family proof is selected. | Synchronization Authority |
 | RENDER-001..003 | Rendering/output capability or a Presentation path is selected or claimed. | Client Rendering/Presentation boundary |
-| HOST-001..003 | A Host Capability or Host Adapter is proposed, implemented, or used. | Host Capability boundary |
-| SDK-001..004 | A public SDK schema, callable, package, binding row, or admission claim is offered. | SDK/support registry authority |
+| HOST-001..004 | A Host Capability or Host Adapter is proposed, implemented, or used. | Host Capability boundary |
+| SDK-001..005 | A public SDK schema, callable, package, binding row, API-stability state, or admission claim is offered. | SDK/support registry authority |
 | EXT-001..006 | An Extension Package, Contribution, Adapter, Engine, Quick Profile, or introspection surface is offered. | Extension Contract/admission boundary |
 | PERF-001..008 | A performance claim, budget, Scenario, trace, measurement field, or Experiment Bundle is produced. | Performance Authority |
 | EVT-001..006 | An Event is submitted, retained, rendered, followed, exported, or used as evidence. | Editor Event Stream Lifecycle Owner |
-| MIG-001..002 | Historical behavior or code enters an active migration slice. | Migration slice owner |
+| MIG-001..003 | Historical behavior or code enters an active migration slice. | Migration slice owner |
 | QUAL-001..002 | A feature enters a candidate or an artifact/environment is claimed. | Release Qualification Authority |
 | QUAL-003 | Mission-critical or certification language is published. | Product Contract Authority |
 

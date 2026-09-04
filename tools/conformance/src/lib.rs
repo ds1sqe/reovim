@@ -8,6 +8,8 @@ mod cargo;
 mod compiler_capture;
 mod compiler_substrate;
 mod digest;
+#[cfg(not(debug_assertions))]
+mod entrypoint_refresh;
 mod entrypoint_reviews;
 mod execution_tools;
 mod finding;
@@ -42,6 +44,12 @@ use std::{
 
 use finding::{Finding, Findings};
 use topology::{HARD_LIMITS, Limits, Topology};
+
+#[cfg(not(debug_assertions))]
+pub use entrypoint_refresh::{
+    EntrypointRefreshError, EntrypointRefreshOutcome, EntrypointRefreshRequest,
+    RefreshEffect, refresh_entrypoint_review,
+};
 
 pub const POLICY_KEY: &str = "conformance/source-classification.json";
 pub const TOPOLOGY_KEY: &str = "conformance/workspace-topology.json";

@@ -11,4 +11,6 @@
 3. [Source Dependency Graph and Edges](01-Roles-Descriptors-and-Dependencies/03-Source-Dependency-Graph-and-Edges.md)
 
 [Interaction, Assembly, and Lifecycle](02-Interaction-Assembly-and-Lifecycle.md)
-is the sibling chapter to read after this focused family.
+is the sibling chapter to read after this focused family. Then read
+[Ports, Source Tree, and Portability](03-Ports-Source-Tree-and-Portability.md)
+before selecting package placement or an inter-layer interface.

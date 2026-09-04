@@ -24,9 +24,12 @@ remain authoritative for their own subjects.
 2. [Interaction, Assembly, and Lifecycle](01-Layer/02-Interaction-Assembly-and-Lifecycle.md)
    owns the Client interaction seam, Assembly selection, readiness, rollback,
    shutdown, runtime relationships, and deliberately unselected mechanisms.
+3. [Ports, Source Tree, and Portability](01-Layer/03-Ports-Source-Tree-and-Portability.md)
+   routes the inter-layer interface law, canonical role placement, Server and
+   Client compositions, and portable Host profiles.
 
-Applicable Rule Matrix families: `ARCH`, `SAFE`, `BOUND`, and `IR` as routed by
-the individual rows.
+Applicable Rule Matrix families: `ARCH`, `SAFE`, `BOUND`, `HOST`, and `IR` as
+routed by the individual rows.
 
 ## Resource and Buffer
 

@@ -70,6 +70,25 @@ phase includes a composed integration smoke, not only isolated unit tests.
 Analytical characterization and responsibility-mapping phases retain review and
 traceability evidence instead of inventing a pre-implementation smoke.
 
+## Vertical implementation order
+
+Inward source dependency is not implementation order. An active migration
+slice proceeds from one accepted user or author journey:
+
+1. preserve the donor's valid observable behavior and define the target oracle;
+2. trace and ratify the complete Inter-Layer Contract chain used by that
+   journey;
+3. compile public provider and consumer fixtures for every used boundary;
+4. implement only the inner mechanisms those interfaces require;
+5. add concrete adapters and Assembly; and
+6. run the composed behavior, fault, lifecycle, Event, causal, memory, and
+   performance evidence before cutover.
+
+No horizontal subsystem, empty future-role package, general framework, or
+proof-tool expansion is accepted unless the current composed smoke reaches and
+consumes it. A later vertical may extend a contract when a second concrete
+consumer reveals missing semantics; it may not bypass the first public path.
+
 ## Slice acceptance
 
 A migrated slice is accepted only when ownership and dependencies conform,

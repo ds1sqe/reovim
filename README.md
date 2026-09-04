@@ -13,9 +13,10 @@ v0.16 is the editing-system re-foundation. The normative target contracts are
 ratified in [Documentation](Documentation/README.md); their presence does not
 claim that the current source implements them or that an artifact is supported
 or qualified. The former OS-shaped implementation has been removed from the
-active workspace. The remaining hosted workspace is a tooling-only baseline;
-fresh implementation and selective migration proceed through reviewed,
-contract-owned slices.
+active workspace. The current Product source is a small Foundation and Kernel
+Interface contract seed; it is not yet a runnable editor. Further
+implementation selectively migrates complete Client–Server journeys through
+reviewed, contract-owned slices.
 
 v0.17 follows with Neovim feature parity built only on the v0.16 public
 contracts.
@@ -26,6 +27,12 @@ The portable **Reovim Kernel** owns Domain-neutral editing contracts and generic
 mechanisms. It is not an operating-system kernel. A Resource Adapter connects
 data; a Domain supplies meaning; a Representation exposes interpreted state; a
 Projection synchronizes it; and a Client-owned View presents it.
+
+Foundation is a `core`-only `no_std` profile. The portable Kernel and applicable
+Rust Client path use `core + alloc`; hosted adapters and application Assembly
+remain outside that closure. An external custom environment can host Reovim by
+implementing the exact Host, Resource, Protocol, Presentation, and execution
+contracts its composition consumes.
 
 Clients own their applicable presentation or output policy. Any View, viewport,
 layout, input mapping, drawing, rendering, or frame state that exists is
@@ -39,6 +46,7 @@ Start here:
 - [Concept](Documentation/00-Concept.md)
 - [Vocabulary](Documentation/00-Vocabulary.md)
 - [Architecture map](Documentation/01-Architecture/README.md)
+- [Ports, source tree, and portability](Documentation/01-Architecture/01-Layer/03-Ports-Source-Tree-and-Portability.md)
 - [Execution and concurrency](Documentation/01-Architecture/04-Execution/01-Execution-Laws-and-Operation-Classes.md)
 - [Client, CLM, CCM, and rendering](Documentation/01-Architecture/05-Client/README.md)
 - [Extension contracts](Documentation/03-Extensions/README.md)
