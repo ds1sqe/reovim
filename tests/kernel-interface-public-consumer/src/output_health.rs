@@ -1,5 +1,6 @@
 //! `OutputHealth` proposal values through the public contract.
 
+use alloc::string::ToString;
 use reovim_kernel_interface::bound::{CheckedByteCount, ZeroPolicy};
 use reovim_kernel_interface::cancellation::ExecutionOutcome;
 use reovim_kernel_interface::diagnostic::{

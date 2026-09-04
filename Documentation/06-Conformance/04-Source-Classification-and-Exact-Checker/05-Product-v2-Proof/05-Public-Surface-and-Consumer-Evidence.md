@@ -54,14 +54,24 @@ witness do not close the function's full signature or semantic behavior. Enum
 payload and function-signature semantic completeness, ABI stability, and
 runtime behavior remain outside this proof.
 
+The current Foundation, Kernel Interface, and their two external consumer
+library roots each require exactly one unconditional `#![no_std]`. Every other
+path, duplicate, conditional/nested/macro-hidden form, and all `#![no_main]`
+remain unavailable. Kernel Interface and its consumer alone require one exact
+private, unrenamed, unattributed `extern crate alloc;` at their crate roots.
+Foundation has no `alloc` authority.
+
 Shipping value-expression paths have a separate closed guard. A path rooted at
-`std` is unavailable in value-expression position, so source cannot introduce a
-concrete standard-library mechanism through a qualified expression. The exact
-type-level `std::error::Error` trait path remains admitted for the existing
-shipping error implementations; that exception grants no `std` value access.
+`std` or `alloc` is unavailable in value-expression position, so source cannot
+introduce a concrete environment mechanism or hidden allocation site through a
+qualified expression. The exact type-level `core::error::Error` trait path is
+admitted for shipping error implementations.
+
 The only owned-container type exception is the exact
-`::std::boxed::Box<[u8]>` spelling in the Kernel Interface Diagnostic Output
-source. It admits no alias, other payload, other source, or `std` value path.
+`::alloc::boxed::Box<[u8]>` spelling in the Kernel Interface Diagnostic Output
+source. It admits no alias, other payload, other source, constructor call, or
+other `alloc` value path. The Kernel consumer may import the exact
+`alloc::string::ToString` trait used by its public Display/error behavior probes.
 
 The current profile permits directly authored public declarations/modules and
 the exact closed type-path/compiler-attribute sets. It also permits one narrow
@@ -99,9 +109,10 @@ provider, or adding an unregistered alias fails closed.
 
 Resolution work is cached and charged against the committed import, source-
 file, aggregate-byte, and syntax-node bounds. Unqualified paths, `extern
-crate`, globs, renames, `self`, nested groups, aliases, provider re-exports,
-other packages or relations, private or conditional modules/items, qualified
-or unsupported derives, duplicate names, and unresolved paths fail closed.
+crate` outside the two exact `alloc` roots, globs, renames, `self`, nested
+groups, aliases, provider re-exports, other packages or relations, private or
+conditional modules/items, qualified or unsupported derives, duplicate names,
+and unresolved paths fail closed.
 Public aliases, cfg-selected or macro-generated public items, and types from
 an unproved external package or Repository Tooling remain rejected.
 
@@ -147,8 +158,8 @@ This closes duplication authority for the selected source; it is not a general
 negative-trait proof facility.
 
 Consumer macros remain unavailable except one parenthesized
-`format!("{value:?}")` call in the exact Diagnostic consumer source. The
-checker requires exactly one string literal with that decoded value and no
+`alloc::format!("{value:?}")` call in the exact Diagnostic consumer source.
+The checker requires exactly one string literal with that decoded value and no
 additional macro argument. Debug payload-redaction behavior can therefore
 execute without admitting hidden expressions or another macro surface.
 

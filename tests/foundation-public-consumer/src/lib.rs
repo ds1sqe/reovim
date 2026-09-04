@@ -1,3 +1,4 @@
+#![no_std]
 #![forbid(unsafe_code)]
 //! Compile-only external consumer of every admitted Foundation primitive.
 

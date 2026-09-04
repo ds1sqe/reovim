@@ -537,7 +537,7 @@ impl fmt::Display for OutputHealthError {
     }
 }
 
-impl std::error::Error for OutputHealthError {}
+impl core::error::Error for OutputHealthError {}
 
 const fn snapshot_limits_incoherent(
     snapshot: OutputHealthSnapshotLimits,

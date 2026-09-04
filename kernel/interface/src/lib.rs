@@ -1,9 +1,12 @@
+#![no_std]
 #![forbid(unsafe_code)]
 //! Portable contracts above Reovim Foundation.
 //!
 //! Kernel Interface owns semantic contract values only. Runtime mechanisms,
 //! Host adapters, Event retention, rendering, and Assembly remain outside this
 //! package.
+
+extern crate alloc;
 
 pub mod bound;
 pub mod cancellation;

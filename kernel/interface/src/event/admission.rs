@@ -207,7 +207,7 @@ impl fmt::Display for crate::event::EventError {
     }
 }
 
-impl std::error::Error for crate::event::EventError {}
+impl core::error::Error for crate::event::EventError {}
 
 fn validate_clock_descriptor(
     expected: ClockDescriptor,

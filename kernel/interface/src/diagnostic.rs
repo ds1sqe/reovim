@@ -473,7 +473,7 @@ impl fmt::Display for DiagnosticOutputError {
     }
 }
 
-impl std::error::Error for DiagnosticOutputError {}
+impl core::error::Error for DiagnosticOutputError {}
 
 /// Failure to prepare or bind one exact canonical output record.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -506,7 +506,7 @@ impl fmt::Display for DiagnosticRecordError {
     }
 }
 
-impl std::error::Error for DiagnosticRecordError {}
+impl core::error::Error for DiagnosticRecordError {}
 
 /// Capacity-exact immutable bytes owned by one output submission.
 pub struct DiagnosticOutputRecord {
@@ -514,7 +514,7 @@ pub struct DiagnosticOutputRecord {
     stream: LifecycleIdentity,
     sequence: EventSequence,
     size: CheckedByteCount,
-    bytes: ::std::boxed::Box<[u8]>,
+    bytes: ::alloc::boxed::Box<[u8]>,
 }
 
 impl DiagnosticOutputRecord {
@@ -530,7 +530,7 @@ impl DiagnosticOutputRecord {
     pub fn bind(
         descriptor: &DiagnosticOutputDescriptor,
         source: CanonicalEventRecordRef<'_>,
-        bytes: ::std::boxed::Box<[u8]>,
+        bytes: ::alloc::boxed::Box<[u8]>,
     ) -> Result<Self, DiagnosticRecordRejection> {
         let size = match descriptor.validate_record(source) {
             Ok(value) => value,
@@ -809,7 +809,7 @@ impl fmt::Display for DiagnosticDestinationError {
     }
 }
 
-impl std::error::Error for DiagnosticDestinationError {}
+impl core::error::Error for DiagnosticDestinationError {}
 
 /// Independent execution-owner and release state able to retain a record or
 /// canonical report backing.
@@ -962,7 +962,7 @@ impl fmt::Display for DiagnosticShutdownEntryError {
     }
 }
 
-impl std::error::Error for DiagnosticShutdownEntryError {}
+impl core::error::Error for DiagnosticShutdownEntryError {}
 
 /// Exact checked record and source-byte partitions for one report candidate.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1225,12 +1225,12 @@ impl fmt::Display for DiagnosticShutdownReportError {
     }
 }
 
-impl std::error::Error for DiagnosticShutdownReportError {}
+impl core::error::Error for DiagnosticShutdownReportError {}
 
 /// Typed failed bind that returns the exact caller-owned carrier.
 pub struct DiagnosticRecordRejection {
     cause: DiagnosticRecordError,
-    bytes: ::std::boxed::Box<[u8]>,
+    bytes: ::alloc::boxed::Box<[u8]>,
 }
 
 impl DiagnosticRecordRejection {
@@ -1248,7 +1248,7 @@ impl DiagnosticRecordRejection {
 
     /// Returns ownership of the exact rejected carrier.
     #[must_use]
-    pub fn into_bytes(self) -> ::std::boxed::Box<[u8]> {
+    pub fn into_bytes(self) -> ::alloc::boxed::Box<[u8]> {
         self.bytes
     }
 }

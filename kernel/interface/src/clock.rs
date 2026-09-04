@@ -364,7 +364,7 @@ impl fmt::Display for ClockError {
     }
 }
 
-impl std::error::Error for ClockError {}
+impl core::error::Error for ClockError {}
 
 /// Public semantic port implemented by one injected monotonic-clock adapter.
 pub trait MonotonicClock {

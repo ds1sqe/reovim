@@ -190,7 +190,7 @@ impl fmt::Display for CarrierDescriptorError {
     }
 }
 
-impl std::error::Error for CarrierDescriptorError {}
+impl core::error::Error for CarrierDescriptorError {}
 
 /// Ownership, borrow, copy, drop, and lifetime declaration.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

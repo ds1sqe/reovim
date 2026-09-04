@@ -1,5 +1,8 @@
+#![no_std]
 #![forbid(unsafe_code)]
 //! Executed external consumer of Kernel Interface contracts.
+
+extern crate alloc;
 
 mod clock;
 mod diagnostic;

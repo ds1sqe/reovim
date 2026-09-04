@@ -831,7 +831,7 @@ fn validate_source_profile(
     let public_traits = registered_public_traits(relation);
     for (path, source) in &sources.files {
         let root = path == &closure.target.src_path;
-        validate_file_attributes(&source.syntax, path, root)?;
+        validate_file_attributes(&source.syntax, path, root, mode)?;
         validate_unsafe_syntax(&source.syntax, path)?;
         validate_closed_syntax(&source.syntax, path, mode)?;
         validate_move_only_impls(&source.syntax, path, mode)?;
@@ -882,34 +882,73 @@ impl<'ast> Visit<'ast> for ShippingValuePathGuard<'_> {
         if self.error.is_some() {
             return;
         }
-        let std_value =
-            expression.path.segments.first().is_some_and(|segment| {
-                matches!(segment.ident.to_string().as_str(), "std" | "r#std")
-            });
-        if std_value {
+        let root = expression
+            .path
+            .segments
+            .first()
+            .map(|segment| segment.ident.to_string());
+        let code = match root.as_deref() {
+            Some("std" | "r#std") => Some("PRODUCT_STD_VALUE_PATH_UNAVAILABLE"),
+            Some("alloc" | "r#alloc") => {
+                Some("PRODUCT_ALLOC_VALUE_PATH_UNAVAILABLE")
+            }
+            _ => None,
+        };
+        if let Some(code) = code {
             self.error = Some(ProductSourceError::at(
-                "PRODUCT_STD_VALUE_PATH_UNAVAILABLE",
+                code,
                 self.path,
-                "standard-environment value path is unavailable",
+                "standard or allocation value path is unavailable",
             ));
             return;
         }
         visit::visit_expr_path(self, expression);
     }
+
+    fn visit_item_impl(&mut self, item: &'ast syn::ItemImpl) {
+        if self.error.is_some() {
+            return;
+        }
+        let standard_trait = item
+            .trait_
+            .as_ref()
+            .is_some_and(|(path, _)| standard_path_root(path));
+        if standard_trait {
+            self.error = Some(ProductSourceError::at(
+                "PRODUCT_TYPE_PATH_UNAVAILABLE",
+                self.path,
+                "standard-environment trait implementation is unavailable",
+            ));
+            return;
+        }
+        visit::visit_item_impl(self, item);
+    }
+}
+
+fn standard_path_root(path: &SynPath) -> bool {
+    path.segments.first().is_some_and(|segment| {
+        matches!(segment.ident.to_string().as_str(), "std" | "r#std")
+    })
 }
 
 fn validate_file_attributes(
     syntax: &File,
     path: &Path,
     root: bool,
+    mode: SourceMode,
 ) -> Result<(), ProductSourceError> {
     let mut forbid_count = 0_usize;
+    let mut no_std_count = 0_usize;
     for attribute in &syntax.attrs {
         if attribute.path().is_ident("doc") {
             continue;
         }
         if root && exact_forbid_unsafe(attribute) {
             forbid_count = forbid_count.saturating_add(1);
+            continue;
+        }
+        if root && exact_no_std(attribute) {
+            no_std_count = no_std_count.saturating_add(1);
             continue;
         }
         return Err(attribute_error(attribute, path));
@@ -921,7 +960,38 @@ fn validate_file_attributes(
             "crate root requires exactly one forbid(unsafe_code)",
         ));
     }
+    if portable_profile_root(path, mode) && no_std_count != 1 {
+        return Err(ProductSourceError::at(
+            "PRODUCT_NO_STD_PROFILE",
+            path,
+            "portable crate root requires one unconditional no_std attribute",
+        ));
+    }
     Ok(())
+}
+
+fn exact_no_std(attribute: &Attribute) -> bool {
+    attribute.path().is_ident("no_std")
+        && matches!(attribute.meta, Meta::Path(_))
+}
+
+fn portable_profile_root(path: &Path, mode: SourceMode) -> bool {
+    matches!(
+        (mode, path.to_str()),
+        (
+            SourceMode::Shipping(PairProfile::Foundation),
+            Some("kernel/foundation/src/lib.rs")
+        ) | (
+            SourceMode::Consumer(PairProfile::Foundation),
+            Some("tests/foundation-public-consumer/src/lib.rs")
+        ) | (
+            SourceMode::Shipping(PairProfile::KernelInterface),
+            Some("kernel/interface/src/lib.rs")
+        ) | (
+            SourceMode::Consumer(PairProfile::KernelInterface),
+            Some("tests/kernel-interface-public-consumer/src/lib.rs")
+        )
+    )
 }
 
 fn exact_forbid_unsafe(attribute: &Attribute) -> bool {
@@ -956,8 +1026,13 @@ fn validate_closed_syntax(
     path: &Path,
     mode: SourceMode,
 ) -> Result<(), ProductSourceError> {
-    let mut guard =
-        SyntaxGuard { path, mode, diagnostic_debug_formats: 0, error: None };
+    let mut guard = SyntaxGuard {
+        path,
+        mode,
+        diagnostic_debug_formats: 0,
+        alloc_externs: 0,
+        error: None,
+    };
     for item in &syntax.items {
         guard.visit_item(item);
     }
@@ -970,6 +1045,15 @@ fn validate_closed_syntax(
             "diagnostic consumer requires one exact Debug format call",
         );
     }
+    if guard.error.is_none()
+        && alloc_profile_root(path, mode)
+        && guard.alloc_externs != 1
+    {
+        guard.fail(
+            "PRODUCT_ALLOC_EXTERN_PROFILE",
+            "allocation-profile root requires one exact alloc extern crate",
+        );
+    }
     guard.error.map_or(Ok(()), Err)
 }
 
@@ -977,6 +1061,7 @@ struct SyntaxGuard<'a> {
     path: &'a Path,
     mode: SourceMode,
     diagnostic_debug_formats: usize,
+    alloc_externs: usize,
     error: Option<ProductSourceError>,
 }
 
@@ -1050,7 +1135,11 @@ impl<'ast> Visit<'ast> for SyntaxGuard<'_> {
         );
     }
 
-    fn visit_item_extern_crate(&mut self, _item: &'ast syn::ItemExternCrate) {
+    fn visit_item_extern_crate(&mut self, item: &'ast syn::ItemExternCrate) {
+        if exact_alloc_extern_crate(item, self.path, self.mode) {
+            self.alloc_externs = self.alloc_externs.saturating_add(1);
+            return;
+        }
         self.fail(
             "PRODUCT_EXTERN_CRATE_UNAVAILABLE",
             "extern crate syntax is outside the authored profile",
@@ -1072,6 +1161,31 @@ impl<'ast> Visit<'ast> for SyntaxGuard<'_> {
     }
 }
 
+fn alloc_profile_root(path: &Path, mode: SourceMode) -> bool {
+    matches!(
+        (mode, path.to_str()),
+        (
+            SourceMode::Shipping(PairProfile::KernelInterface),
+            Some("kernel/interface/src/lib.rs")
+        ) | (
+            SourceMode::Consumer(PairProfile::KernelInterface),
+            Some("tests/kernel-interface-public-consumer/src/lib.rs")
+        )
+    )
+}
+
+fn exact_alloc_extern_crate(
+    item: &syn::ItemExternCrate,
+    path: &Path,
+    mode: SourceMode,
+) -> bool {
+    alloc_profile_root(path, mode)
+        && item.attrs.is_empty()
+        && matches!(item.vis, Visibility::Inherited)
+        && item.ident == "alloc"
+        && item.rename.is_none()
+}
+
 fn diagnostic_consumer_source(path: &Path, mode: SourceMode) -> bool {
     path == Path::new(
         "tests/kernel-interface-public-consumer/src/diagnostic.rs",
@@ -1085,12 +1199,23 @@ fn exact_diagnostic_debug_format(
 ) -> bool {
     if !diagnostic_consumer_source(path, mode)
         || !matches!(item.delimiter, syn::MacroDelimiter::Paren(_))
-        || !item.path.is_ident("format")
+        || !exact_alloc_format_path(&item.path)
     {
         return false;
     }
     syn::parse2::<syn::LitStr>(item.tokens.clone())
         .is_ok_and(|literal| literal.value() == "{value:?}")
+}
+
+fn exact_alloc_format_path(path: &SynPath) -> bool {
+    path.leading_colon.is_none()
+        && path.segments.len() == 2
+        && path.segments[0].ident == "alloc"
+        && path.segments[1].ident == "format"
+        && path
+            .segments
+            .iter()
+            .all(|segment| matches!(segment.arguments, PathArguments::None))
 }
 
 fn validate_move_only_impls(
@@ -1380,7 +1505,8 @@ fn allowed_import(
                     if root == "core"
                         && ((module == "fmt" && name == "Debug")
                             || (module == "error" && name == "Error"))
-            ) || local_import(parts, names)
+            ) || parts == ["alloc", "string", "ToString"]
+                || local_import(parts, names)
                 || public_import(parts, KERNEL_INTERFACE_CRATE, relation)
         }
     }
@@ -1686,7 +1812,7 @@ fn exact_diagnostic_byte_box(
     }
     let segments = ty.path.segments.iter().collect::<Vec<_>>();
     if segments.len() != 3
-        || segments[0].ident != "std"
+        || segments[0].ident != "alloc"
         || segments[1].ident != "boxed"
         || segments[2].ident != "Box"
         || !matches!(segments[0].arguments, PathArguments::None)
@@ -1763,7 +1889,7 @@ fn allowed_shipping_type(parts: &[String]) -> bool {
         .is_some_and(|part| matches!(part.as_str(), "crate" | "self" | "super"))
         || parts == ["fmt", "Formatter"]
         || parts == ["fmt", "Result"]
-        || parts == ["std", "error", "Error"]
+        || parts == ["core", "error", "Error"]
 }
 
 fn allowed_external_type(
@@ -4413,6 +4539,85 @@ mod tests {
     }
 
     #[test]
+    fn no_std_roots_and_alloc_externs_are_exact() {
+        for path in [
+            "kernel/foundation/src/lib.rs",
+            "tests/foundation-public-consumer/src/lib.rs",
+        ] {
+            source_mutant(path, "#![no_std]\n", "", "PRODUCT_NO_STD_PROFILE");
+        }
+        for path in [
+            "kernel/interface/src/lib.rs",
+            "tests/kernel-interface-public-consumer/src/lib.rs",
+        ] {
+            ki_source_mutant(
+                path,
+                "#![no_std]\n",
+                "",
+                "PRODUCT_NO_STD_PROFILE",
+            );
+            ki_source_mutant(
+                path,
+                "extern crate alloc;",
+                "",
+                "PRODUCT_ALLOC_EXTERN_PROFILE",
+            );
+            ki_source_mutant(
+                path,
+                "extern crate alloc;",
+                "pub extern crate alloc;",
+                "PRODUCT_EXTERN_CRATE_UNAVAILABLE",
+            );
+            ki_source_mutant(
+                path,
+                "extern crate alloc;",
+                "extern crate alloc;\nextern crate alloc;",
+                "PRODUCT_ALLOC_EXTERN_PROFILE",
+            );
+        }
+        source_mutant(
+            "kernel/foundation/src/lib.rs",
+            "#![no_std]\n",
+            "#![no_std]\n#![no_std]\n",
+            "PRODUCT_NO_STD_PROFILE",
+        );
+        source_mutant(
+            "kernel/foundation/src/lib.rs",
+            "#![no_std]",
+            "#![cfg_attr(any(), no_std)]",
+            "UNSUPPORTED_CFG_PROOF_GAP",
+        );
+        source_mutant(
+            "kernel/foundation/src/carrier.rs",
+            "use core::fmt;",
+            "#![no_std]\nuse core::fmt;",
+            "PRODUCT_ATTRIBUTE_UNAVAILABLE",
+        );
+        source_mutant(
+            "kernel/foundation/src/carrier.rs",
+            "use core::fmt;",
+            "extern crate alloc;\nuse core::fmt;",
+            "PRODUCT_EXTERN_CRATE_UNAVAILABLE",
+        );
+    }
+
+    #[test]
+    fn core_error_and_alloc_imports_are_exact() {
+        source_mutant(
+            "kernel/foundation/src/bound.rs",
+            "impl core::error::Error for BoundError {}",
+            "impl std::error::Error for BoundError {}",
+            "PRODUCT_TYPE_PATH_UNAVAILABLE",
+        );
+        ki_source_mutant(
+            "tests/kernel-interface-public-consumer/src/output_health.rs",
+            "use alloc::string::ToString;",
+            "use alloc::vec::Vec;",
+            "PRODUCT_IMPORT_UNAVAILABLE",
+        );
+    }
+
+    #[test]
     fn forbidden_private_type_paths_are_not_hidden_from_analysis() {
         source_mutant(
             "kernel/foundation/src/carrier.rs",
@@ -4426,16 +4631,17 @@ mod tests {
     }
 
     #[test]
-    fn diagnostic_byte_box_is_the_only_standard_type_exception() {
+    fn diagnostic_byte_box_is_the_only_alloc_type_exception() {
         let path = "kernel/interface/src/diagnostic.rs";
-        let byte_box = "::std::boxed::Box<[u8]>";
+        let byte_box = "::alloc::boxed::Box<[u8]>";
         for replacement in [
-            "::std::vec::Vec<u8>",
-            "::std::sync::Arc<[u8]>",
-            "std::boxed::Box<[u8]>",
-            "::r#std::boxed::Box<[u8]>",
-            "::std::boxed::Box<u8>",
-            "::std::boxed::Box<[u16]>",
+            "::alloc::vec::Vec<u8>",
+            "::alloc::sync::Arc<[u8]>",
+            "alloc::boxed::Box<[u8]>",
+            "::r#alloc::boxed::Box<[u8]>",
+            "::alloc::boxed::Box<u8>",
+            "::alloc::boxed::Box<[u16]>",
+            "::std::boxed::Box<[u8]>",
         ] {
             ki_source_mutant(
                 path,
@@ -4449,7 +4655,7 @@ mod tests {
         append_source(
             &mut other_source,
             "kernel/interface/src/cancellation.rs",
-            "\nstruct Hidden(::std::boxed::Box<[u8]>);\n",
+            "\nstruct Hidden(::alloc::boxed::Box<[u8]>);\n",
         );
         assert_two_pair_code(&other_source, "PRODUCT_TYPE_PATH_UNAVAILABLE");
 
@@ -4459,10 +4665,13 @@ mod tests {
             path,
             concat!(
                 "\nfn hidden_allocation() { ",
-                "let _ = ::std::boxed::Box::new([0_u8]); }\n",
+                "let _ = ::alloc::boxed::Box::new([0_u8]); }\n",
             ),
         );
-        assert_two_pair_code(&allocation, "PRODUCT_STD_VALUE_PATH_UNAVAILABLE");
+        assert_two_pair_code(
+            &allocation,
+            "PRODUCT_ALLOC_VALUE_PATH_UNAVAILABLE",
+        );
     }
 
     #[test]
@@ -4529,17 +4738,23 @@ mod tests {
     #[test]
     fn diagnostic_debug_format_macro_is_exact() {
         let path = "tests/kernel-interface-public-consumer/src/diagnostic.rs";
-        let format = concat!("format!(\"", "{", "value:?", "}", "\")");
+        let format = concat!("alloc::format!(\"", "{", "value:?", "}", "\")",);
         ki_source_mutant(
             path,
             format,
-            "format!(\"{value}\")",
+            "alloc::format!(\"{value}\")",
             "UNSUPPORTED_MACRO_PROOF_GAP",
         );
         ki_source_mutant(
             path,
             format,
-            concat!("format![\"", "{", "value:?", "}", "\"]"),
+            concat!("alloc::format![\"", "{", "value:?", "}", "\"]"),
+            "UNSUPPORTED_MACRO_PROOF_GAP",
+        );
+        ki_source_mutant(
+            path,
+            format,
+            concat!("format!(\"", "{", "value:?", "}", "\")"),
             "UNSUPPORTED_MACRO_PROOF_GAP",
         );
         ki_source_mutant(
@@ -4555,7 +4770,7 @@ mod tests {
             path,
             concat!(
                 "\nfn repeated_debug(value: &DiagnosticOutputRecord) { ",
-                "let _ = format!(\"{value:?}\"); }\n",
+                "let _ = alloc::format!(\"{value:?}\"); }\n",
             ),
         );
         assert_two_pair_code(&repeated, "PRODUCT_DEBUG_FORMAT_COUNT");
@@ -4566,7 +4781,7 @@ mod tests {
             "tests/kernel-interface-public-consumer/src/clock.rs",
             concat!(
                 "\nfn foreign_debug(value: &str) { ",
-                "let _ = format!(\"{value:?}\"); }\n",
+                "let _ = alloc::format!(\"{value:?}\"); }\n",
             ),
         );
         assert_two_pair_code(&other_source, "UNSUPPORTED_MACRO_PROOF_GAP");
@@ -4798,7 +5013,7 @@ mod tests {
     }
 
     #[test]
-    fn standard_environment_value_paths_are_unavailable_in_shipping() {
+    fn standard_and_alloc_value_paths_are_unavailable_in_shipping() {
         let mut foundation = fixture();
         append_source(
             &mut foundation,
@@ -4836,6 +5051,17 @@ mod tests {
             ),
         );
         assert_two_pair_code(&raw_kernel, "PRODUCT_STD_VALUE_PATH_UNAVAILABLE");
+
+        let mut allocation = fixture();
+        append_source(
+            &mut allocation,
+            "kernel/interface/src/cancellation.rs",
+            "\nfn hidden() { let _ = ::alloc::vec::Vec::<u8>::new(); }\n",
+        );
+        assert_two_pair_code(
+            &allocation,
+            "PRODUCT_ALLOC_VALUE_PATH_UNAVAILABLE",
+        );
     }
 
     #[test]

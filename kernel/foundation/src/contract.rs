@@ -78,7 +78,7 @@ impl fmt::Display for VersionRangeError {
     }
 }
 
-impl std::error::Error for VersionRangeError {}
+impl core::error::Error for VersionRangeError {}
 
 /// Inclusive versions accepted for one separately identified contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

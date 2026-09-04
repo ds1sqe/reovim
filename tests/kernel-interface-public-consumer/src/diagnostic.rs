@@ -2055,7 +2055,7 @@ fn record_matches(record: &DiagnosticOutputRecord, pointer: *const u8) -> bool {
 }
 
 fn debug_omits_payload<T: Debug>(value: &T) -> bool {
-    let debug = format!("{value:?}");
+    let debug = alloc::format!("{value:?}");
     !debug.contains("reovim-event") && !debug.contains("bytes")
 }
 

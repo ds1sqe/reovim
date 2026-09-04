@@ -88,7 +88,7 @@ impl fmt::Display for OperationDescriptorError {
     }
 }
 
-impl std::error::Error for OperationDescriptorError {}
+impl core::error::Error for OperationDescriptorError {}
 
 /// One validated declaration of all six operation axes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -246,7 +246,7 @@ impl fmt::Display for ContractSelectionError {
     }
 }
 
-impl std::error::Error for ContractSelectionError {}
+impl core::error::Error for ContractSelectionError {}
 
 /// One explicit contract identity and compatible selected version.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

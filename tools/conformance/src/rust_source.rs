@@ -287,14 +287,15 @@ impl RustCheckContext<'_> {
         syntax: &File,
         findings: &mut Findings,
     ) {
-        let mut freestanding = FreestandingVisitor { found: false };
-        freestanding.visit_file(syntax);
-        if freestanding.found {
+        if !portable_crate_directives_valid(syntax, &file.path) {
             findings.push(Finding::new(
-                "retired_surface",
-                "FREESTANDING_ATTRIBUTE_FORBIDDEN",
+                "source",
+                "PORTABLE_CRATE_DIRECTIVE_INVALID",
                 Some(display_relative(&file.path)),
-                "every first-party Rust file forbids no_std and no_main",
+                concat!(
+                    "no_std requires one exact portable crate root and ",
+                    "no_main remains unavailable"
+                ),
             ));
         }
         if self.target_roots.contains(&file.path) {
@@ -620,27 +621,70 @@ fn module_attribute_overrides_path(attribute: &Attribute) -> bool {
             })
 }
 
-struct FreestandingVisitor {
-    found: bool,
+#[derive(Default)]
+struct CrateDirectiveVisitor {
+    no_std: usize,
+    no_main: bool,
 }
 
-impl<'ast> Visit<'ast> for FreestandingVisitor {
+fn portable_crate_directives_valid(syntax: &File, path: &Path) -> bool {
+    let mut observed = CrateDirectiveVisitor::default();
+    observed.visit_file(syntax);
+    if observed.no_main {
+        return false;
+    }
+    let direct = syntax
+        .attrs
+        .iter()
+        .filter(|attribute| {
+            attribute.path().is_ident("no_std")
+                && matches!(attribute.meta, syn::Meta::Path(_))
+        })
+        .count();
+    if portable_no_std_root(path) {
+        direct == 1 && observed.no_std == 1
+    } else {
+        observed.no_std == 0
+    }
+}
+
+fn portable_no_std_root(path: &Path) -> bool {
+    [
+        "kernel/foundation/src/lib.rs",
+        "kernel/interface/src/lib.rs",
+        "tests/foundation-public-consumer/src/lib.rs",
+        "tests/kernel-interface-public-consumer/src/lib.rs",
+    ]
+    .iter()
+    .any(|candidate| path == Path::new(candidate))
+}
+
+impl<'ast> Visit<'ast> for CrateDirectiveVisitor {
     fn visit_attribute(&mut self, attribute: &'ast Attribute) {
-        self.found |= attribute.path().is_ident("no_std")
-            || attribute.path().is_ident("no_main");
+        self.no_std = self
+            .no_std
+            .saturating_add(usize::from(attribute.path().is_ident("no_std")));
+        self.no_main |= attribute.path().is_ident("no_main");
         if let syn::Meta::List(list) = &attribute.meta {
             let tokens = list.tokens.to_string();
-            self.found |= token_display_has_word(&tokens, "no_std")
-                || token_display_has_word(&tokens, "no_main");
+            self.observe_tokens(&tokens);
         }
         visit::visit_attribute(self, attribute);
     }
 
     fn visit_macro(&mut self, item: &'ast syn::Macro) {
         let tokens = item.tokens.to_string();
-        self.found |= token_display_has_word(&tokens, "no_std")
-            || token_display_has_word(&tokens, "no_main");
+        self.observe_tokens(&tokens);
         visit::visit_macro(self, item);
+    }
+}
+
+impl CrateDirectiveVisitor {
+    fn observe_tokens(&mut self, tokens: &str) {
+        self.no_std = self.no_std.saturating_add(usize::from(
+            token_display_has_word(tokens, "no_std"),
+        ));
+        self.no_main |= token_display_has_word(tokens, "no_main");
     }
 }
 
@@ -1664,6 +1708,9 @@ impl<'ast> Visit<'ast> for GapVisitor<'_, '_> {
     }
 
     fn visit_item_extern_crate(&mut self, item: &'ast syn::ItemExternCrate) {
+        if exact_alloc_extern_crate(item, self.path) {
+            return;
+        }
         self.findings.push(Finding::new(
             "public_type",
             "UNSUPPORTED_EXTERN_CRATE_PROOF_GAP",
@@ -1687,6 +1734,17 @@ impl<'ast> Visit<'ast> for GapVisitor<'_, '_> {
         }
         visit::visit_item_type(self, item);
     }
+}
+
+fn exact_alloc_extern_crate(item: &syn::ItemExternCrate, path: &str) -> bool {
+    matches!(
+        path,
+        "kernel/interface/src/lib.rs"
+            | "tests/kernel-interface-public-consumer/src/lib.rs"
+    ) && item.attrs.is_empty()
+        && matches!(item.vis, Visibility::Inherited)
+        && item.ident == "alloc"
+        && item.rename.is_none()
 }
 
 struct NodeCounter {
@@ -1795,6 +1853,10 @@ mod tests {
         .unwrap()
     }
 
+    fn has_finding_code(findings: Findings, code: &str) -> bool {
+        findings.finish().iter().any(|finding| finding.code == code)
+    }
+
     #[test]
     fn product_syntax_proof_gaps_are_typed() {
         let syntax = syn::parse_file(
@@ -1857,28 +1919,40 @@ include!("generated.rs");
 
     #[test]
     fn target_attributes_and_build_output_are_fail_closed() {
-        let syntax = syn::parse_file("#![no_std]\npub fn f() {}").unwrap();
-        let mut freestanding = super::FreestandingVisitor { found: false };
-        freestanding.visit_file(&syntax);
-        assert!(freestanding.found);
-        let nested = syn::parse_file("mod stale { #![no_main] }").unwrap();
-        let mut freestanding = super::FreestandingVisitor { found: false };
-        freestanding.visit_file(&nested);
-        assert!(freestanding.found);
-        let macro_hidden =
-            syn::parse_file("macro_rules! stale { () => { #![no_std] } }")
-                .unwrap();
-        let mut freestanding = super::FreestandingVisitor { found: false };
-        freestanding.visit_file(&macro_hidden);
-        assert!(freestanding.found);
-        for source in
-            ["#![cfg_attr(any(), no_std)]", "#![cfg_attr(any(), no_main)]"]
-        {
-            let syntax = syn::parse_file(source).unwrap();
-            let mut freestanding = super::FreestandingVisitor { found: false };
-            freestanding.visit_file(&syntax);
-            assert!(freestanding.found, "{source}");
+        let portable = syn::parse_file("#![no_std]\npub fn f() {}").unwrap();
+        for path in [
+            "kernel/foundation/src/lib.rs",
+            "kernel/interface/src/lib.rs",
+            "tests/foundation-public-consumer/src/lib.rs",
+            "tests/kernel-interface-public-consumer/src/lib.rs",
+        ] {
+            assert!(super::portable_crate_directives_valid(
+                &portable,
+                std::path::Path::new(path),
+            ));
         }
+        assert!(!super::portable_crate_directives_valid(
+            &portable,
+            std::path::Path::new("tools/portable/src/lib.rs"),
+        ));
+        for source in [
+            "#![no_std]\n#![no_std]",
+            "#![no_std]\nmod stale { #![no_std] }",
+            "#![no_std]\nmacro_rules! stale { () => { #![no_std] } }",
+            "#![cfg_attr(any(), no_std)]",
+            "#![no_std]\n#![no_main]",
+            "#![no_std]\nmod stale { #![no_main] }",
+        ] {
+            let syntax = syn::parse_file(source).unwrap();
+            assert!(
+                !super::portable_crate_directives_valid(
+                    &syntax,
+                    std::path::Path::new("kernel/foundation/src/lib.rs"),
+                ),
+                "{source}",
+            );
+        }
+        let syntax = syn::parse_file("pub fn f() {}").unwrap();
         let mut findings = Findings::new(8);
         super::validate_crate_attributes(
             &syntax,
@@ -1908,6 +1982,35 @@ include!("generated.rs");
         let mut findings = Findings::new(8);
         assert!(super::reject_build_output(&file, "test", &mut findings));
         assert_eq!(findings.finish()[0].code, "RUST_SOURCE_BUILD_OUTPUT");
+    }
+
+    #[test]
+    fn alloc_extern_crate_is_path_and_shape_bounded() {
+        let exact = syn::parse_file("extern crate alloc;").unwrap();
+        for path in [
+            "kernel/interface/src/lib.rs",
+            "tests/kernel-interface-public-consumer/src/lib.rs",
+        ] {
+            let mut findings = Findings::new(8);
+            super::GapVisitor { path, findings: &mut findings }
+                .visit_file(&exact);
+            assert!(findings.finish().is_empty());
+        }
+        for (path, source) in [
+            ("kernel/foundation/src/lib.rs", "extern crate alloc;"),
+            ("kernel/interface/src/lib.rs", "pub extern crate alloc;"),
+            ("kernel/interface/src/lib.rs", "extern crate alloc as heap;"),
+            ("kernel/interface/src/lib.rs", "extern crate core;"),
+        ] {
+            let syntax = syn::parse_file(source).unwrap();
+            let mut findings = Findings::new(8);
+            super::GapVisitor { path, findings: &mut findings }
+                .visit_file(&syntax);
+            assert!(has_finding_code(
+                findings,
+                "UNSUPPORTED_EXTERN_CRATE_PROOF_GAP",
+            ));
+        }
     }
 
     #[test]

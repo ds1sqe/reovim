@@ -1,5 +1,6 @@
 //! Destination-result value matrix through the public contract.
 
+use alloc::string::ToString;
 use reovim_kernel_interface::bound::{CheckedByteCount, ZeroPolicy};
 use reovim_kernel_interface::diagnostic::{
     DiagnosticDestinationCause, DiagnosticDestinationCut,

@@ -56,7 +56,7 @@ impl fmt::Display for BoundError {
     }
 }
 
-impl std::error::Error for BoundError {}
+impl core::error::Error for BoundError {}
 
 /// Checked domain-neutral item count.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

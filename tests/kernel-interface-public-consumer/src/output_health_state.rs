@@ -3,6 +3,7 @@
 mod counters;
 mod snapshot;
 
+use alloc::string::ToString;
 use reovim_kernel_interface::diagnostic::DiagnosticOutputDescriptor;
 use reovim_kernel_interface::lifecycle::{Generation, LifecycleIdentity};
 use reovim_kernel_interface::operation::ContractSelection;

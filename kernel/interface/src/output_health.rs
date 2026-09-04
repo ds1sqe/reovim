@@ -796,7 +796,7 @@ impl fmt::Display for OutputHealthProposalError {
     }
 }
 
-impl std::error::Error for OutputHealthProposalError {}
+impl core::error::Error for OutputHealthProposalError {}
 
 const fn runtime_execution_matches(
     cause: OutputHealthRuntimeFailureCause,
