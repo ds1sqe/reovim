@@ -1,7 +1,7 @@
 mod domain;
 mod intent;
 mod representation;
-mod support;
+pub mod support;
 
 use crate::SemanticPanicInputs;
 

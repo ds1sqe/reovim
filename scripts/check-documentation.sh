@@ -19,6 +19,8 @@ readonly DOMAIN_REP_NAME=01-Domains-Representations-and-Projections
 readonly DOMAIN_REP="$SEMANTICS/$DOMAIN_REP_NAME"
 readonly INTERACTION_NAME=02-Interaction-Updates-Protocols-and-View
 readonly INTERACTION="$SEMANTICS/$INTERACTION_NAME"
+readonly INTERACTION_CORE_NAME=01-Intent-Outcome-and-Representation-Updates
+readonly INTERACTION_CORE="$INTERACTION/$INTERACTION_CORE_NAME"
 readonly HOST_API="$DOC/02-Host-API"
 readonly BOOTSTRAP_HEALTH="$HOST_API/05-Bootstrap-Health"
 readonly EXTENSIONS="$DOC/03-Extensions"
@@ -293,6 +295,8 @@ expected_normative_files=(
     ${DOMAIN_REP}/02-Domain-Validation-and-Representation-Lowering.md
     ${INTERACTION}.md
     ${INTERACTION}/01-Intent-Outcome-and-Representation-Updates.md
+    ${INTERACTION_CORE}/01-Session-Negotiation-Intent-and-Outcome.md
+    ${INTERACTION_CORE}/02-Update-Delivery-Gaps-and-Resynchronization.md
     ${INTERACTION}/02-Client-View-and-Presentation.md
     ${INTERACTION}/03-External-Semantic-Protocols.md
     ${INTERACTION}/04-End-to-End-Flow-and-Readiness.md
@@ -440,6 +444,10 @@ check_index_children ${INTERACTION}.md \
     ${INTERACTION}/05-Fidelity-and-Conformance-Proof.md \
     ${INTERACTION}/06-First-Visible-Edit-Oracle.md \
     ${INTERACTION}/07-First-Visible-Edit-Interface-Chain.md
+check_index_children \
+    ${INTERACTION}/01-Intent-Outcome-and-Representation-Updates.md \
+    ${INTERACTION_CORE}/01-Session-Negotiation-Intent-and-Outcome.md \
+    ${INTERACTION_CORE}/02-Update-Delivery-Gaps-and-Resynchronization.md
 check_index_children ${ARCH}/05-Client/README.md \
     ${ARCH}/05-Client/01-Client-Ownership-and-Family-Contracts.md \
     ${ARCH}/05-Client/02-Rendering-Capabilities.md \
@@ -736,9 +744,9 @@ check_rule_authority "$architecture_rule_chapter" ARCH-010 \
 check_rule_authority "$architecture_rule_chapter" TOOL-001 \
     "$tooling_authority"
 check_rule_authority "$meaning_rule_chapter" INT-001 \
-    ${INTERACTION}/01-Intent-Outcome-and-Representation-Updates.md
+    ${INTERACTION_CORE}/01-Session-Negotiation-Intent-and-Outcome.md
 check_rule_authority "$meaning_rule_chapter" INT-002 \
-    ${INTERACTION}/01-Intent-Outcome-and-Representation-Updates.md
+    ${INTERACTION_CORE}/02-Update-Delivery-Gaps-and-Resynchronization.md
 check_rule_authority "$meaning_rule_chapter" VIEW-001 \
     ${INTERACTION}/02-Client-View-and-Presentation.md
 check_rule_authority "$meaning_rule_chapter" PROTO-001 \

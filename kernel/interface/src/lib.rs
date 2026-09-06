@@ -18,6 +18,7 @@ pub mod diagnostic;
 pub mod effect;
 pub mod event;
 pub mod identity;
+pub mod interaction;
 pub mod lifecycle;
 pub mod operation;
 pub mod output_health;

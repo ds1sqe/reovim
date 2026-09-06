@@ -514,7 +514,7 @@ pub fn byte_bound(
     .ok()
 }
 
-fn carrier_safety(identity: u128) -> Option<CarrierSafetyDescriptor> {
+pub fn carrier_safety(identity: u128) -> Option<CarrierSafetyDescriptor> {
     carrier_safety_with_transfer(identity, ThreadTransfer::Transferable)
 }
 

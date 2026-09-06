@@ -187,6 +187,19 @@ impl OperationDescriptor {
         }
     }
 
+    /// Returns non-waiting admission for one deferred local stream.
+    #[must_use]
+    pub const fn local_deferred_stream_admission() -> Self {
+        Self {
+            invocation: InvocationClass::NonBlockingInvocation,
+            completion: CompletionClass::DeferredTerminal,
+            delivery: DeliveryClass::Stream,
+            effect: EffectClass::LocalOnly,
+            callback: CallbackClass::NoUserCallback,
+            reentrancy: ReentrancyClass::NonReentrant,
+        }
+    }
+
     /// Returns the fixed inline external-observation operation shape.
     #[must_use]
     pub const fn external_observation_inline() -> Self {

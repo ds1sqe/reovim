@@ -94,23 +94,33 @@ the direct endpoint; TUI Client Runtime consumes it. A later transport binds
 the same semantics without changing them.
 
 The descriptor declares negotiation, grants, readiness, pending request and
-payload bounds, terminal retention, Update-stream retention, credits, fairness,
-cancellation, reconciliation, replacement, and close. Its public operations
-are:
+payload bounds, terminal retention, Update-stream retention, credits,
+serialized single-owner dispatch, resynchronization count/work/result-byte
+reservations, fairness, cancellation, reconciliation, replacement, and close.
+Its public operations are:
 
 1. negotiate one compatible Session and authority generation;
 2. attach Representation delivery and obtain initial Snapshot/checkpoint;
 3. submit a bounded Intent without waiting for policy or Buffer work;
-4. receive exactly one terminal Outcome for each admitted request;
-5. receive ordered predecessor-bound Representation Updates;
-6. cancel or reconcile one exact request;
-7. report a Gap and request a bounded full resynchronization; and
-8. close admission and reach a bounded terminal state.
+4. request cooperative cancellation of one exact admitted request;
+5. receive exactly one terminal Outcome for each admitted request;
+6. reconcile one exact Outcome or delivery Gap;
+7. receive ordered predecessor-bound Representation Updates;
+8. acknowledge one Update and return its credit;
+9. report a Gap and request a bounded full resynchronization; and
+10. close admission and reach a bounded terminal state.
+
+Every stateful call enters through one exclusive mutable port owner; ingress
+concurrency belongs to an outer Protocol Binding. Resynchronization
+non-admission returns the unchanged request and charge, while admission returns
+only a receipt and leaves both owned by Runtime until matching result retention
+or an incomplete close exposes them.
 
 Submission distinguishes immediate definite non-admission from accepted
 ownership. Deferred completion never makes a missing response success. A
 terminal Outcome carries local effect certainty, cause, result stamps, and any
-reconcile identity. Update delivery has its own stream incarnation and cursor.
+reconcile identity. Update delivery has its own stream incarnation, cursor,
+data credit, and reserved control capacity.
 
 Duplicate and older Updates cannot install. Missing ancestry stops delta
 application and requires resynchronization. Slow-Client pressure cannot block

@@ -4,7 +4,7 @@
 
 - Kind: script
 - Exact content digest:
-  `sha256:4e01c8aa4283a3a0eeebdded4866f05ec5abab87383617dfdcedd22367ce8d63`
+  `sha256:3f66d075b0f736b7621edcf45970de497806e5916c724240dd9d46d9fbc74de3`
 - Review mechanism: exact content and retained review
 
 ## Direct local invocations
@@ -29,11 +29,13 @@ Admit these exact bytes with an empty direct-local-invocation set for
 documentation conformance. The script binds both the focused
 Interaction/Update/View/Protocol chapters and the focused Product-v2 proof
 chapters to their inventories, indexes, authority clauses, and Rule Matrix
-routes. Navigation-only shape is checked through exact child and section
+routes. The Interaction overview now routes its focused Session/Outcome and
+Update/gap/resynchronization children and binds `INT-001`/`INT-002` directly to
+them. Navigation-only shape is checked through exact child and section
 semantics rather than current-file content hashes. It also binds the focused
-Host API chapters and initial startup Event family to their navigation
-indexes. It includes `CODE_STYLE.md` in public Markdown link, whitespace,
-fence, and local-fragment validation. The Host inventory now binds the
+Host API chapters and initial startup Event family to their navigation indexes.
+It includes `CODE_STYLE.md` in public Markdown link, whitespace, fence, and
+local-fragment validation. The Host inventory now binds the
 bootstrap-health index and its four focused ownership/schema, proposal,
 retention/snapshot, and import/readiness children beneath the six-child Host
 index. The retention child is itself a navigation-only index for descriptor/

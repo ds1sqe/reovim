@@ -25,6 +25,7 @@ pub const fn witness() -> bool {
     event_items_one();
     event_items_two();
     identity_items();
+    interaction_items();
     lifecycle_items();
     operation_items();
     output_health_items_one();
@@ -1483,6 +1484,8 @@ const fn operation_items() {
             local_deferred_admission,
         ::reovim_kernel_interface::operation::OperationDescriptor::
             local_deferred_callback_admission,
+        ::reovim_kernel_interface::operation::OperationDescriptor::
+            local_deferred_stream_admission,
         ::reovim_kernel_interface::operation::OperationDescriptor::local_inline,
         ::reovim_kernel_interface::operation::OperationDescriptor::new,
         ::reovim_kernel_interface::operation::OperationDescriptor::reentrancy,
@@ -1904,6 +1907,1028 @@ const fn semantic_representation_items_two() {
     );
 }
 
+const fn interaction_items() {
+    interaction_identity_items_one();
+    interaction_identity_items_two();
+    interaction_identity_items_three();
+    interaction_session_items_one();
+    interaction_session_items_two();
+    interaction_session_items_three();
+    interaction_session_items_four();
+    interaction_session_items_five();
+    interaction_session_items_six();
+    interaction_bound_items_one();
+    interaction_bound_items_two();
+    interaction_bound_items_three();
+    interaction_bound_items_four();
+    interaction_bound_items_five();
+    interaction_bound_items_six();
+    interaction_bound_items_seven();
+    interaction_descriptor_items_one();
+    interaction_descriptor_items_two();
+    interaction_descriptor_items_three();
+    interaction_descriptor_items_four();
+    interaction_descriptor_items_five();
+    interaction_intent_items();
+    interaction_outcome_items();
+    interaction_update_items_one();
+    interaction_update_items_two();
+    interaction_update_items_three();
+    interaction_update_items_four();
+    interaction_update_items_five();
+    interaction_update_items_six();
+    interaction_intent_delivery_items_one();
+    interaction_intent_delivery_items_two();
+    interaction_intent_delivery_items_three();
+    interaction_intent_delivery_items_four();
+    interaction_session_delivery_items_one();
+    interaction_session_delivery_items_two();
+    interaction_session_delivery_items_three();
+    interaction_session_delivery_items_four();
+    interaction_session_delivery_items_five();
+    interaction_update_delivery_items_one();
+    interaction_update_delivery_items_two();
+    interaction_update_delivery_items_three();
+    interaction_variant_items();
+}
+
+const fn interaction_identity_items_one() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::identity::ClientIdentity::new,
+        ::reovim_kernel_interface::interaction::identity::ClientIdentity::value,
+        ::reovim_kernel_interface::interaction::identity::
+            InteractionSessionIdentity::new,
+        ::reovim_kernel_interface::interaction::identity::
+            InteractionSessionIdentity::value,
+        ::reovim_kernel_interface::interaction::identity::
+            RepresentationAttachmentIdentity::new,
+        ::reovim_kernel_interface::interaction::identity::
+            RepresentationAttachmentIdentity::value,
+        ::reovim_kernel_interface::interaction::identity::
+            InteractionRequestIdentity::new,
+        ::reovim_kernel_interface::interaction::identity::
+            InteractionRequestIdentity::value,
+        ::reovim_kernel_interface::interaction::identity::
+            InteractionCancellationIdentity::new,
+        ::reovim_kernel_interface::interaction::identity::
+            InteractionCancellationIdentity::value,
+        ::reovim_kernel_interface::interaction::identity::
+            InteractionCorrelationIdentity::new,
+        ::reovim_kernel_interface::interaction::identity::
+            InteractionCorrelationIdentity::value,
+    );
+}
+
+const fn interaction_identity_items_two() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::identity::
+            InteractionDeadlineIdentity::new,
+        ::reovim_kernel_interface::interaction::identity::
+            InteractionDeadlineIdentity::value,
+        ::reovim_kernel_interface::interaction::identity::
+            InteractionReconcileIdentity::new,
+        ::reovim_kernel_interface::interaction::identity::
+            InteractionReconcileIdentity::value,
+        ::reovim_kernel_interface::interaction::identity::
+            RepresentationUpdateStreamIdentity::new,
+        ::reovim_kernel_interface::interaction::identity::
+            RepresentationUpdateStreamIdentity::value,
+        ::reovim_kernel_interface::interaction::identity::
+            RepresentationUpdateIdentity::new,
+        ::reovim_kernel_interface::interaction::identity::
+            RepresentationUpdateIdentity::value,
+        ::reovim_kernel_interface::interaction::identity::
+            RepresentationResynchronizationIdentity::new,
+        ::reovim_kernel_interface::interaction::identity::
+            RepresentationResynchronizationIdentity::value,
+    );
+}
+
+const fn interaction_identity_items_three() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::identity::
+            RepresentationUpdateCursor::INITIAL,
+        ::reovim_kernel_interface::interaction::identity::
+            RepresentationUpdateCursor::new,
+        ::reovim_kernel_interface::interaction::identity::
+            RepresentationUpdateCursor::value,
+        ::reovim_kernel_interface::interaction::identity::
+            RepresentationUpdateCursor::checked_next,
+    );
+}
+
+const fn interaction_session_items_one() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::session::
+            InteractionClientStamp::new,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionClientStamp::client,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionClientStamp::lifecycle,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionClientStamp::role,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionClientStamp::same_generation,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionSessionStamp::new,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionSessionStamp::session,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionSessionStamp::contract,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionSessionStamp::lifecycle,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionSessionStamp::client,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionSessionStamp::handle,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionSessionStamp::same_generation,
+    );
+}
+
+const fn interaction_session_items_two() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::session::
+            InteractionSessionHandle::new,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionSessionHandle::session,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionSessionHandle::lifecycle,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionSessionHandle::matches,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionSessionHandle::same_generation,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionResourceScope::new,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionResourceScope::access,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionResourceScope::buffer,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionResourceScope::contains,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionResourceScope::same_scope,
+    );
+}
+
+const fn interaction_session_items_three() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::session::
+            RepresentationAttachmentHandle::new,
+        ::reovim_kernel_interface::interaction::session::
+            RepresentationAttachmentHandle::attachment,
+        ::reovim_kernel_interface::interaction::session::
+            RepresentationAttachmentHandle::lifecycle,
+        ::reovim_kernel_interface::interaction::session::
+            RepresentationAttachmentHandle::session,
+        ::reovim_kernel_interface::interaction::session::
+            RepresentationAttachmentHandle::same_generation,
+        ::reovim_kernel_interface::interaction::session::
+            RepresentationUpdateStreamStamp::new,
+        ::reovim_kernel_interface::interaction::session::
+            RepresentationUpdateStreamStamp::stream,
+        ::reovim_kernel_interface::interaction::session::
+            RepresentationUpdateStreamStamp::lifecycle,
+        ::reovim_kernel_interface::interaction::session::
+            RepresentationUpdateStreamStamp::attachment,
+        ::reovim_kernel_interface::interaction::session::
+            RepresentationUpdateStreamStamp::same_generation,
+        ::reovim_kernel_interface::interaction::session::
+            RepresentationUpdateStreamStamp::handle,
+    );
+}
+
+const fn interaction_session_items_six() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::session::
+            RepresentationUpdateStreamHandle::new,
+        ::reovim_kernel_interface::interaction::session::
+            RepresentationUpdateStreamHandle::stream,
+        ::reovim_kernel_interface::interaction::session::
+            RepresentationUpdateStreamHandle::lifecycle,
+        ::reovim_kernel_interface::interaction::session::
+            RepresentationUpdateStreamHandle::same_generation,
+    );
+}
+
+const fn interaction_session_items_four() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::session::
+            InteractionSemanticBinding::new,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionSemanticBinding::request,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionSemanticBinding::intent,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionSemanticBinding::cancellation,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionSemanticBinding::correlation,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionSemanticBinding::deadline,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionSemanticBinding::transaction,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionSemanticBinding::history,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionSemanticBinding::matches_intent,
+    );
+}
+
+const fn interaction_session_items_five() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::session::
+            InteractionRequestStamp::new,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionRequestStamp::session,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionRequestStamp::attachment,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionRequestStamp::request,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionRequestStamp::cancellation,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionRequestStamp::correlation,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionRequestStamp::deadline,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionRequestStamp::semantic,
+        ::reovim_kernel_interface::interaction::session::
+            InteractionRequestStamp::same_request,
+    );
+}
+
+const fn interaction_bound_items_one() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::bounds::
+            InteractionBoundViolation::field,
+        ::reovim_kernel_interface::interaction::bounds::
+            InteractionBoundViolation::cause,
+        ::reovim_kernel_interface::interaction::bounds::
+            InteractionIntentCharge::charge_owner,
+        ::reovim_kernel_interface::interaction::bounds::
+            InteractionIntentCharge::intent_bytes,
+        ::reovim_kernel_interface::interaction::bounds::
+            InteractionIntentCharge::outcome_bytes,
+        ::reovim_kernel_interface::interaction::bounds::
+            InteractionPendingTotals::intents,
+        ::reovim_kernel_interface::interaction::bounds::
+            InteractionPendingTotals::intent_bytes,
+        ::reovim_kernel_interface::interaction::bounds::
+            InteractionPendingTotals::outcomes,
+        ::reovim_kernel_interface::interaction::bounds::
+            InteractionPendingTotals::outcome_bytes,
+    );
+}
+
+const fn interaction_bound_items_two() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::bounds::
+            InteractionRequestBounds::new,
+        ::reovim_kernel_interface::interaction::bounds::
+            InteractionRequestBounds::charge_owner,
+        ::reovim_kernel_interface::interaction::bounds::
+            InteractionRequestBounds::pending_intents,
+        ::reovim_kernel_interface::interaction::bounds::
+            InteractionRequestBounds::pending_intent_bytes,
+        ::reovim_kernel_interface::interaction::bounds::
+            InteractionRequestBounds::retained_outcomes,
+        ::reovim_kernel_interface::interaction::bounds::
+            InteractionRequestBounds::retained_outcome_bytes,
+        ::reovim_kernel_interface::interaction::bounds::
+            InteractionRequestBounds::prepare_intent,
+        ::reovim_kernel_interface::interaction::bounds::
+            InteractionRequestBounds::validate_charge,
+        ::reovim_kernel_interface::interaction::bounds::
+            InteractionRequestBounds::admit_pending,
+    );
+}
+
+const fn interaction_bound_items_three() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateShape::items,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateShape::depth,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateShape::bytes,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateTotals::updates,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateTotals::bytes,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateShapeBounds::new,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateShapeBounds::items,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateShapeBounds::depth,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateShapeBounds::bytes,
+    );
+}
+
+const fn interaction_bound_items_four() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateFlowBounds::new,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateFlowBounds::retained_updates,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateFlowBounds::retained_bytes,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateFlowBounds::credits,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateFlowBounds::control,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateFlowBounds::resynchronization,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateBounds::new,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateBounds::charge_owner,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateBounds::items,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateBounds::depth,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateBounds::bytes,
+    );
+}
+
+const fn interaction_bound_items_five() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateBounds::retained_updates,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateBounds::retained_bytes,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateBounds::credits,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateBounds::control,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateBounds::resynchronizations,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateBounds::resynchronization_work,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateBounds::resynchronization_bytes,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateBounds::prepare_shape,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateBounds::prepare_credit,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateBounds::admit_credits,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateBounds::require_control_reserve,
+    );
+}
+
+const fn interaction_bound_items_six() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateBounds::prepare_resynchronization,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateBounds::validate_resynchronization_charge,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateBounds::admit_resynchronization,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationUpdateBounds::admit_retained,
+        ::reovim_kernel_interface::interaction::bounds::
+            InteractionSessionBounds::new,
+        ::reovim_kernel_interface::interaction::bounds::
+            InteractionSessionBounds::charge_owner,
+        ::reovim_kernel_interface::interaction::bounds::
+            InteractionSessionBounds::requests,
+        ::reovim_kernel_interface::interaction::bounds::
+            InteractionSessionBounds::updates,
+        ::reovim_kernel_interface::interaction::bounds::
+            InteractionSessionBounds::close_work,
+        ::reovim_kernel_interface::interaction::bounds::
+            InteractionSessionBounds::prepare_close_work,
+    );
+}
+
+const fn interaction_bound_items_seven() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationResynchronizationBounds::new,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationResynchronizationBounds::requests,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationResynchronizationBounds::work,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationResynchronizationBounds::bytes,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationResynchronizationCharge::charge_owner,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationResynchronizationCharge::requests,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationResynchronizationCharge::work,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationResynchronizationCharge::bytes,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationResynchronizationTotals::charge_owner,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationResynchronizationTotals::requests,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationResynchronizationTotals::work,
+        ::reovim_kernel_interface::interaction::bounds::
+            RepresentationResynchronizationTotals::bytes,
+    );
+}
+
+const fn interaction_descriptor_items_one() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionSessionCapabilities::new,
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionSessionCapabilities::cancellation,
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionSessionCapabilities::reconciliation,
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionSessionCapabilities::updates,
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionSessionCapabilities::deltas,
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionSessionCapabilities::resynchronization,
+    );
+}
+
+const fn interaction_descriptor_items_two() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionSessionOperations::required,
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionSessionOperations::negotiate,
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionSessionOperations::attach,
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionSessionOperations::submit_intent,
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionSessionOperations::request_cancellation,
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionSessionOperations::take_outcome,
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionSessionOperations::reconcile_outcome,
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionSessionOperations::take_update,
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionSessionOperations::acknowledge_update,
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionSessionOperations::request_resynchronization,
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionSessionOperations::close,
+    );
+}
+
+const fn interaction_descriptor_items_three() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionSessionDescriptor::new,
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionSessionDescriptor::stamp,
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionSessionDescriptor::scope,
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionSessionDescriptor::capabilities,
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionSessionDescriptor::bounds,
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionSessionDescriptor::update_contract,
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionSessionDescriptor::operations,
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionSessionDescriptor::fairness,
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionSessionDescriptor::outcome_retention,
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionSessionDescriptor::update_retention,
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionSessionDescriptor::prepare_update,
+    );
+}
+
+const fn interaction_descriptor_items_four() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::descriptor::
+            RepresentationAttachmentSelection::new,
+        ::reovim_kernel_interface::interaction::descriptor::
+            RepresentationAttachmentSelection::handle,
+        ::reovim_kernel_interface::interaction::descriptor::
+            RepresentationAttachmentSelection::scope,
+        ::reovim_kernel_interface::interaction::descriptor::
+            RepresentationAttachmentSelection::representation,
+        ::reovim_kernel_interface::interaction::descriptor::
+            RepresentationAttachmentSelection::projection,
+        ::reovim_kernel_interface::interaction::descriptor::
+            RepresentationAttachmentSelection::coordinate,
+        ::reovim_kernel_interface::interaction::descriptor::
+            RepresentationAttachmentSelection::stream,
+        ::reovim_kernel_interface::interaction::descriptor::
+            RepresentationAttachmentSelection::initial_credit,
+    );
+}
+
+const fn interaction_descriptor_items_five() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::descriptor::
+            RepresentationAttachmentDescriptor::new,
+        ::reovim_kernel_interface::interaction::descriptor::
+            RepresentationAttachmentDescriptor::handle,
+        ::reovim_kernel_interface::interaction::descriptor::
+            RepresentationAttachmentDescriptor::scope,
+        ::reovim_kernel_interface::interaction::descriptor::
+            RepresentationAttachmentDescriptor::representation,
+        ::reovim_kernel_interface::interaction::descriptor::
+            RepresentationAttachmentDescriptor::projection,
+        ::reovim_kernel_interface::interaction::descriptor::
+            RepresentationAttachmentDescriptor::coordinate,
+        ::reovim_kernel_interface::interaction::descriptor::
+            RepresentationAttachmentDescriptor::stream,
+        ::reovim_kernel_interface::interaction::descriptor::
+            RepresentationAttachmentDescriptor::initial_credit,
+    );
+}
+
+const fn interaction_intent_items() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::intent::
+            InteractionIntent::bind,
+        ::reovim_kernel_interface::interaction::intent::
+            InteractionIntent::stamp,
+        ::reovim_kernel_interface::interaction::intent::
+            InteractionIntent::charge,
+        ::reovim_kernel_interface::interaction::intent::
+            InteractionIntent::semantic,
+        ::reovim_kernel_interface::interaction::intent::
+            InteractionIntent::into_semantic,
+        ::reovim_kernel_interface::interaction::intent::
+            InteractionIntentRejection::cause,
+        ::reovim_kernel_interface::interaction::intent::
+            InteractionIntentRejection::stamp,
+        ::reovim_kernel_interface::interaction::intent::
+            InteractionIntentRejection::charge,
+        ::reovim_kernel_interface::interaction::intent::
+            InteractionIntentRejection::semantic,
+        ::reovim_kernel_interface::interaction::intent::
+            InteractionIntentRejection::into_parts,
+    );
+}
+
+const fn interaction_outcome_items() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::outcome::
+            InteractionAcceptedState::transaction,
+        ::reovim_kernel_interface::interaction::outcome::
+            InteractionAcceptedState::history,
+        ::reovim_kernel_interface::interaction::outcome::
+            InteractionAcceptedState::result,
+        ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcome::accepted,
+        ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcome::not_accepted,
+        ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcome::reconciliation_required,
+        ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcome::request,
+        ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcome::status,
+        ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcome::effect_certainty,
+        ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcome::accepted_state,
+        ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcome::cause,
+        ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcome::reconcile,
+    );
+}
+
+const fn interaction_update_items_one() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateCarrierStamp::new,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateCarrierStamp::type_identity,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateCarrierStamp::schema_version,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdatePayloadClaim::new,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdatePayloadClaim::carrier,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdatePayloadClaim::items,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdatePayloadClaim::depth,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdatePayloadClaim::bytes,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateContract::new,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateContract::schema,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateContract::safety,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateContract::selected_stamp,
+    );
+}
+
+const fn interaction_update_items_two() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateContract::validate_stamp,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateLineage::has_payload,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateLineage::result,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateStamp::new,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateStamp::identity,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateStamp::state,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateStamp::stream,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateStamp::update,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateStamp::cursor,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateStamp::resolve_target,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateStamp::resolve_projection,
+    );
+}
+
+const fn interaction_update_items_three() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateStamp::same_update,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdatePreparation::stamp,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdatePreparation::lineage,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdatePreparation::carrier,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdatePreparation::shape,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdatePreparation::bind,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateRejection::cause,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateRejection::preparation,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateRejection::bytes,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateRejection::into_parts,
+    );
+}
+
+const fn interaction_update_items_six() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateIdentityStamp::stream,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateIdentityStamp::update,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateIdentityStamp::cursor,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateIdentityStamp::same_update,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateStateStamp::revision,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateStateStamp::snapshot,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateStateStamp::version,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateStateStamp::history,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateStateStamp::predecessor,
+    );
+}
+
+const fn interaction_update_items_four() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateCarrier::stamp,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateCarrier::lineage,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateCarrier::carrier,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateCarrier::shape,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateCarrier::bytes,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateCarrier::into_bytes,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateCarrier::into_update,
+    );
+}
+
+const fn interaction_update_items_five() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdate::invalidation,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdate::gap,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdate::stamp,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdate::lineage,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdate::carrier,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdate::into_carrier,
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdate::validate,
+    );
+}
+
+const fn interaction_intent_delivery_items_one() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionIntentNonAdmission::bind,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionIntentNonAdmission::outcome,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionIntentNonAdmission::intent,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionIntentNonAdmission::into_parts,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionIntentNonAdmissionRejection::cause,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionIntentNonAdmissionRejection::intent,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionIntentNonAdmissionRejection::outcome,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionIntentNonAdmissionRejection::into_parts,
+    );
+}
+
+const fn interaction_intent_delivery_items_two() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionIntentAdmission::admitted,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionIntentAdmission::not_admitted,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionIntentAdmission::status,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionIntentAdmission::admitted_request,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionIntentAdmission::non_admission,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionIntentAdmission::into_non_admission,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionCancellationRequest::new,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionCancellationRequest::request,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionCancellationRequest::cause,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionOutcomeRequest::new,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionOutcomeRequest::session,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionOutcomeRequest::request,
+    );
+}
+
+const fn interaction_intent_delivery_items_three() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionOutcomeDelivery::delivered,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionOutcomeDelivery::unavailable,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionOutcomeDelivery::status,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionOutcomeDelivery::outcome,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionReconcileRequest::new,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionReconcileRequest::request,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionReconcileRequest::reconcile,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionReconciledEffect::applied,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionReconciledEffect::definitely_not_applied,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionReconciledEffect::certainty,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionReconciledEffect::accepted,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionReconciledEffect::cause,
+    );
+}
+
+const fn interaction_intent_delivery_items_four() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionReconcileResult::recovered,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionReconcileResult::effect_resolved,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionReconcileResult::unavailable,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionReconcileResult::status,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionReconcileResult::recovered_outcome,
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionReconcileResult::effect,
+    );
+}
+
+const fn interaction_session_delivery_items_one() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionNegotiationRequest::new,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionNegotiationRequest::session,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionNegotiationRequest::scope,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionNegotiationRequest::capabilities,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionNegotiationOutcome::negotiated,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionNegotiationOutcome::rejected,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionNegotiationOutcome::status,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionNegotiationOutcome::session,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentRequest::bind,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentRequest::session,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentRequest::descriptor,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentRequest::into_descriptor,
+    );
+}
+
+const fn interaction_session_delivery_items_two() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentRequestRejection::cause,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentRequestRejection::descriptor,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentRequestRejection::into_descriptor,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentReady::bind,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentReady::descriptor,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentReady::initial,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentReady::into_parts,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentReadyRejection::cause,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentReadyRejection::descriptor,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentReadyRejection::initial,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentReadyRejection::into_parts,
+    );
+}
+
+const fn interaction_session_delivery_items_three() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentResynchronizing::new,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentResynchronizing::descriptor,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentResynchronizing::resynchronization,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentResynchronizing::into_descriptor,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentRejection::new,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentRejection::cause,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentRejection::request,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentRejection::into_request,
+    );
+}
+
+const fn interaction_session_delivery_items_four() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentOutcome::ready,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentOutcome::resynchronizing,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentOutcome::rejected,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentOutcome::status,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentOutcome::ready_state,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentOutcome::resynchronizing_state,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentOutcome::rejection,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionCloseRequest::new,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionCloseRequest::session,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionCloseRequest::work,
+    );
+}
+
+const fn interaction_session_delivery_items_five() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionCloseRetainedState::new,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionIncompleteClose::new,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionIncompleteClose::execution,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionIncompleteClose::pending_intents,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionIncompleteClose::retained_outcomes,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionIncompleteClose::retained_updates,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionIncompleteClose::unacknowledged_updates,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionIncompleteClose::reconciliations,
+        ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionIncompleteClose::resynchronization,
+    );
+}
+
+const fn interaction_update_delivery_items_one() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateRequest::new,
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateRequest::stream,
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateRequest::expected,
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateDelivery::try_bind,
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateDelivery::unavailable,
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateDelivery::status,
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateDelivery::update,
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateDelivery::into_update,
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateAcknowledgement::new,
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateAcknowledgement::stamp,
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateAcknowledgement::application,
+    );
+}
+
+const fn interaction_update_delivery_items_two() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationRequest::new,
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationRequest::receipt,
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationRequest::stream,
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationRequest::gap,
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationRequest::cursor,
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationRequest::resynchronization,
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationRequest::charge,
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationRequest::validate_result,
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationAdmission::admitted,
+    );
+}
+
+const fn interaction_update_delivery_items_three() {
+    let _ = (
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationReceipt::stream,
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationReceipt::gap,
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationReceipt::cursor,
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationReceipt::resynchronization,
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationReceipt::charge,
+    );
+}
+
 const fn trait_items() {
     let _: Option<&dyn ::reovim_kernel_interface::clock::MonotonicClock> = None;
     let _: Option<
@@ -1911,6 +2936,10 @@ const fn trait_items() {
     > = None;
     let _: Option<
         &dyn ::reovim_kernel_interface::event::StartupEventAdmission,
+    > = None;
+    let _: Option<
+        &dyn ::reovim_kernel_interface::interaction::port::
+            InteractionSessionPort,
     > = None;
     let _: Option<
         &dyn ::reovim_kernel_interface::output_health::OutputHealthLease,
@@ -1938,6 +2967,28 @@ const fn trait_method_items() {
         <dyn ::reovim_kernel_interface::event::StartupEventAdmission>::
             descriptor,
         <dyn ::reovim_kernel_interface::event::StartupEventAdmission>::scope,
+        <dyn ::reovim_kernel_interface::interaction::port::
+            InteractionSessionPort>::descriptor,
+        <dyn ::reovim_kernel_interface::interaction::port::
+            InteractionSessionPort>::negotiate,
+        <dyn ::reovim_kernel_interface::interaction::port::
+            InteractionSessionPort>::attach,
+        <dyn ::reovim_kernel_interface::interaction::port::
+            InteractionSessionPort>::submit_intent,
+        <dyn ::reovim_kernel_interface::interaction::port::
+            InteractionSessionPort>::request_cancellation,
+        <dyn ::reovim_kernel_interface::interaction::port::
+            InteractionSessionPort>::take_outcome,
+        <dyn ::reovim_kernel_interface::interaction::port::
+            InteractionSessionPort>::reconcile_outcome,
+        <dyn ::reovim_kernel_interface::interaction::port::
+            InteractionSessionPort>::take_update,
+        <dyn ::reovim_kernel_interface::interaction::port::
+            InteractionSessionPort>::acknowledge_update,
+        <dyn ::reovim_kernel_interface::interaction::port::
+            InteractionSessionPort>::request_resynchronization,
+        <dyn ::reovim_kernel_interface::interaction::port::
+            InteractionSessionPort>::close,
         <dyn ::reovim_kernel_interface::output_health::OutputHealthLease>::
             descriptor,
         <dyn ::reovim_kernel_interface::output_health::OutputHealthLease>::
@@ -4246,5 +5297,1018 @@ const fn operation_reentrancy_class_variants(
     match value {
         ::reovim_kernel_interface::operation::ReentrancyClass::NonReentrant
         | ::reovim_kernel_interface::operation::ReentrancyClass::Reentrant => {}
+    }
+}
+
+const fn interaction_variant_items() {
+    let _ = (
+        interaction_deadline_variants,
+        interaction_stamp_error_variants,
+        interaction_bound_field_variants,
+        interaction_bounds_error_variants,
+        interaction_bound_violation_variants,
+        interaction_capability_support_variants,
+        interaction_capability_error_variants,
+        interaction_fairness_variants,
+        interaction_outcome_retention_variants,
+        representation_update_retention_variants,
+        interaction_descriptor_error_variants,
+        representation_attachment_error_variants,
+        interaction_intent_error_variants,
+        interaction_intent_binding_outcome_variants,
+        interaction_outcome_cause_variants,
+        interaction_outcome_status_variants,
+        interaction_outcome_error_variants,
+        representation_gap_cause_variants,
+        representation_update_lineage_variants,
+        representation_update_stamp_error_variants,
+        representation_update_error_variants,
+        representation_update_binding_outcome_variants,
+        interaction_intent_admission_status_variants,
+        interaction_intent_admission_error_variants,
+        interaction_intent_non_admission_binding_outcome_variants,
+        interaction_cancellation_request_error_variants,
+        interaction_cancellation_result_variants,
+        interaction_outcome_request_error_variants,
+        interaction_outcome_unavailable_variants,
+        interaction_outcome_delivery_status_variants,
+        interaction_reconcile_request_error_variants,
+        interaction_reconcile_unavailable_variants,
+        interaction_reconcile_status_variants,
+        interaction_negotiation_request_error_variants,
+        interaction_negotiation_failure_variants,
+        interaction_negotiation_status_variants,
+        representation_attachment_request_error_variants,
+        representation_attachment_request_binding_outcome_variants,
+        representation_attachment_failure_variants,
+        representation_attachment_ready_binding_outcome_variants,
+        representation_attachment_ready_error_variants,
+        representation_attachment_status_variants,
+        interaction_close_error_variants,
+        interaction_close_outcome_variants,
+        representation_update_request_error_variants,
+        representation_update_delivery_error_variants,
+        representation_update_unavailable_variants,
+        representation_update_delivery_status_variants,
+        representation_update_application_variants,
+        representation_update_acknowledgement_error_variants,
+        representation_update_acknowledgement_result_variants,
+        representation_resynchronization_request_error_variants,
+        representation_resynchronization_result_error_variants,
+        representation_resynchronization_failure_variants,
+        representation_resynchronization_admission_variants,
+    );
+}
+
+const fn interaction_deadline_variants(
+    value: ::reovim_kernel_interface::interaction::session::InteractionDeadline,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::session::InteractionDeadline::
+            None
+        | ::reovim_kernel_interface::interaction::session::
+            InteractionDeadline::Governed(_) => {}
+    }
+}
+
+const fn interaction_stamp_error_variants(
+    value: ::reovim_kernel_interface::interaction::session::
+        InteractionStampError,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::session::
+            InteractionStampError::AttachmentSessionMismatch => {}
+    }
+}
+
+const fn interaction_bound_field_variants(
+    value: ::reovim_kernel_interface::interaction::bounds::
+        InteractionBoundField,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::bounds::InteractionBoundField::
+            PendingIntents
+        | ::reovim_kernel_interface::interaction::bounds::
+            InteractionBoundField::PendingIntentBytes
+        | ::reovim_kernel_interface::interaction::bounds::
+            InteractionBoundField::RetainedOutcomes
+        | ::reovim_kernel_interface::interaction::bounds::
+            InteractionBoundField::RetainedOutcomeBytes
+        | ::reovim_kernel_interface::interaction::bounds::
+            InteractionBoundField::UpdateItems
+        | ::reovim_kernel_interface::interaction::bounds::
+            InteractionBoundField::UpdateDepth
+        | ::reovim_kernel_interface::interaction::bounds::
+            InteractionBoundField::UpdateBytes
+        | ::reovim_kernel_interface::interaction::bounds::
+            InteractionBoundField::RetainedUpdates
+        | ::reovim_kernel_interface::interaction::bounds::
+            InteractionBoundField::RetainedUpdateBytes
+        | ::reovim_kernel_interface::interaction::bounds::
+            InteractionBoundField::UpdateCredits
+        | ::reovim_kernel_interface::interaction::bounds::
+            InteractionBoundField::ControlDeliveries
+        | ::reovim_kernel_interface::interaction::bounds::
+            InteractionBoundField::Resynchronizations
+        | ::reovim_kernel_interface::interaction::bounds::
+            InteractionBoundField::ResynchronizationWork
+        | ::reovim_kernel_interface::interaction::bounds::
+            InteractionBoundField::ResynchronizationBytes
+        | ::reovim_kernel_interface::interaction::bounds::
+            InteractionBoundField::CloseWork => {}
+    }
+}
+
+const fn interaction_bounds_error_variants(
+    value: ::reovim_kernel_interface::interaction::bounds::
+        InteractionBoundsError,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::bounds::InteractionBoundsError::
+            WrongUnit { .. }
+        | ::reovim_kernel_interface::interaction::bounds::
+            InteractionBoundsError::WrongZeroPolicy { .. }
+        | ::reovim_kernel_interface::interaction::bounds::
+            InteractionBoundsError::ChargeOwnerMismatch { .. }
+        | ::reovim_kernel_interface::interaction::bounds::
+            InteractionBoundsError::BoundFamilyOwnerMismatch => {}
+    }
+}
+
+const fn interaction_bound_violation_variants(
+    value: ::reovim_kernel_interface::interaction::bounds::
+        InteractionBoundViolation,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::bounds::
+            InteractionBoundViolation::Bound { .. }
+        | ::reovim_kernel_interface::interaction::bounds::
+            InteractionBoundViolation::ReservationMismatch { .. }
+        | ::reovim_kernel_interface::interaction::bounds::
+            InteractionBoundViolation::ChargeOwnerMismatch { .. } => {}
+    }
+}
+
+const fn interaction_capability_support_variants(
+    value: ::reovim_kernel_interface::interaction::descriptor::
+        InteractionCapabilitySupport,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionCapabilitySupport::Unsupported
+        | ::reovim_kernel_interface::interaction::descriptor::
+            InteractionCapabilitySupport::Supported => {}
+    }
+}
+
+const fn interaction_capability_error_variants(
+    value: ::reovim_kernel_interface::interaction::descriptor::
+        InteractionCapabilityError,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionCapabilityError::DeltaWithoutUpdates
+        | ::reovim_kernel_interface::interaction::descriptor::
+            InteractionCapabilityError::ResynchronizationWithoutUpdates => {}
+    }
+}
+
+const fn interaction_fairness_variants(
+    value: ::reovim_kernel_interface::interaction::descriptor::
+        InteractionFairness,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionFairness::IndependentSessionProgress => {}
+    }
+}
+
+const fn interaction_outcome_retention_variants(
+    value: ::reovim_kernel_interface::interaction::descriptor::
+        InteractionOutcomeRetention,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionOutcomeRetention::UntilDeliveredReconciledOrClosed => {}
+    }
+}
+
+const fn representation_update_retention_variants(
+    value: ::reovim_kernel_interface::interaction::descriptor::
+        RepresentationUpdateRetention,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::descriptor::
+            RepresentationUpdateRetention::BoundedCursorWindow => {}
+    }
+}
+
+const fn interaction_descriptor_error_variants(
+    value: ::reovim_kernel_interface::interaction::descriptor::
+        InteractionDescriptorError,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::descriptor::
+            InteractionDescriptorError::ChargeOwnerMismatch { .. }
+        | ::reovim_kernel_interface::interaction::descriptor::
+            InteractionDescriptorError::MissingControlReserve(_) => {}
+    }
+}
+
+const fn representation_attachment_error_variants(
+    value: ::reovim_kernel_interface::interaction::descriptor::
+        RepresentationAttachmentError,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::descriptor::
+            RepresentationAttachmentError::SessionMismatch
+        | ::reovim_kernel_interface::interaction::descriptor::
+            RepresentationAttachmentError::StreamMismatch
+        | ::reovim_kernel_interface::interaction::descriptor::
+            RepresentationAttachmentError::RepresentationMismatch
+        | ::reovim_kernel_interface::interaction::descriptor::
+            RepresentationAttachmentError::ProjectionMismatch
+        | ::reovim_kernel_interface::interaction::descriptor::
+            RepresentationAttachmentError::CoordinateMismatch
+        | ::reovim_kernel_interface::interaction::descriptor::
+            RepresentationAttachmentError::UpdatesUnsupported
+        | ::reovim_kernel_interface::interaction::descriptor::
+            RepresentationAttachmentError::Credit(_) => {}
+    }
+}
+
+const fn interaction_intent_error_variants(
+    value: ::reovim_kernel_interface::interaction::intent::
+        InteractionIntentError,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::intent::InteractionIntentError::
+            SessionMismatch
+        | ::reovim_kernel_interface::interaction::intent::
+            InteractionIntentError::AttachmentMismatch
+        | ::reovim_kernel_interface::interaction::intent::
+            InteractionIntentError::ScopeMismatch
+        | ::reovim_kernel_interface::interaction::intent::
+            InteractionIntentError::CallerAuthorityMismatch
+        | ::reovim_kernel_interface::interaction::intent::
+            InteractionIntentError::CallerRoleMismatch
+        | ::reovim_kernel_interface::interaction::intent::
+            InteractionIntentError::SemanticBindingMismatch
+        | ::reovim_kernel_interface::interaction::intent::
+            InteractionIntentError::RepresentationMismatch
+        | ::reovim_kernel_interface::interaction::intent::
+            InteractionIntentError::ProjectionMismatch
+        | ::reovim_kernel_interface::interaction::intent::
+            InteractionIntentError::CoordinateMismatch
+        | ::reovim_kernel_interface::interaction::intent::
+            InteractionIntentError::Bound(_)
+        | ::reovim_kernel_interface::interaction::intent::
+            InteractionIntentError::IntentByteChargeMismatch { .. }
+        | ::reovim_kernel_interface::interaction::intent::
+            InteractionIntentError::Cancelled
+        | ::reovim_kernel_interface::interaction::intent::
+            InteractionIntentError::DeadlineReached => {}
+    }
+}
+
+const fn interaction_intent_binding_outcome_variants(
+    value: &::reovim_kernel_interface::interaction::intent::
+        InteractionIntentBindingOutcome,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::intent::
+            InteractionIntentBindingOutcome::Bound(_)
+        | ::reovim_kernel_interface::interaction::intent::
+            InteractionIntentBindingOutcome::Rejected(_) => {}
+    }
+}
+
+const fn interaction_outcome_cause_variants(
+    value: ::reovim_kernel_interface::interaction::outcome::
+        InteractionOutcomeCause,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeCause::Denied
+        | ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeCause::Unsupported
+        | ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeCause::Incompatible
+        | ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeCause::InvalidIntent
+        | ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeCause::StaleState
+        | ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeCause::ReadOnly
+        | ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeCause::NoCorrespondence
+        | ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeCause::AmbiguousCorrespondence
+        | ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeCause::Conflict
+        | ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeCause::Pressure
+        | ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeCause::Cancelled
+        | ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeCause::Deadline
+        | ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeCause::CallerTimeout
+        | ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeCause::Replaced
+        | ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeCause::Closing
+        | ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeCause::Closed
+        | ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeCause::PolicyFailure
+        | ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeCause::ProviderContractViolation
+        | ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeCause::DeliveryFailure
+        | ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeCause::InvariantFailure => {}
+    }
+}
+
+const fn interaction_outcome_status_variants(
+    value: ::reovim_kernel_interface::interaction::outcome::
+        InteractionOutcomeStatus,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeStatus::Accepted
+        | ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeStatus::NotAccepted
+        | ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeStatus::ReconciliationRequired => {}
+    }
+}
+
+const fn interaction_outcome_error_variants(
+    value: ::reovim_kernel_interface::interaction::outcome::
+        InteractionOutcomeError,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeError::SemanticBindingMismatch
+        | ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeError::SourceMismatch
+        | ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeError::BufferMismatch
+        | ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeError::BufferVersionOverflow
+        | ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeError::BufferVersionNotAdvanced { .. }
+        | ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeError::HistoryPositionOverflow
+        | ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeError::HistoryPositionNotAdvanced { .. }
+        | ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeError::CauseCannotRequireReconciliation => {}
+    }
+}
+
+const fn representation_gap_cause_variants(
+    value: ::reovim_kernel_interface::interaction::update::
+        RepresentationGapCause,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::update::RepresentationGapCause::
+            RetentionEvicted
+        | ::reovim_kernel_interface::interaction::update::
+            RepresentationGapCause::Coalesced
+        | ::reovim_kernel_interface::interaction::update::
+            RepresentationGapCause::ProtocolLoss
+        | ::reovim_kernel_interface::interaction::update::
+            RepresentationGapCause::Pressure
+        | ::reovim_kernel_interface::interaction::update::
+            RepresentationGapCause::SourceDiscontinuity
+        | ::reovim_kernel_interface::interaction::update::
+            RepresentationGapCause::Replacement
+        | ::reovim_kernel_interface::interaction::update::
+            RepresentationGapCause::MissingPredecessor => {}
+    }
+}
+
+const fn representation_update_lineage_variants(
+    value: ::reovim_kernel_interface::interaction::update::
+        RepresentationUpdateLineage,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateLineage::FullSnapshot { .. }
+        | ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateLineage::Delta { .. }
+        | ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateLineage::Invalidation { .. }
+        | ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateLineage::Gap { .. }
+        | ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateLineage::Resynchronization { .. } => {}
+    }
+}
+
+const fn representation_update_stamp_error_variants(
+    value: ::reovim_kernel_interface::interaction::update::
+        RepresentationUpdateStampError,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateStampError::SessionMismatch
+        | ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateStampError::ScopeMismatch
+        | ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateStampError::RepresentationMismatch
+        | ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateStampError::ProjectionMismatch
+        | ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateStampError::CoordinateMismatch => {}
+    }
+}
+
+const fn representation_update_error_variants(
+    value: ::reovim_kernel_interface::interaction::update::
+        RepresentationUpdateError,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateError::IncoherentSafety
+        | ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateError::TypeMismatch
+        | ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateError::IncompatibleSchema
+        | ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateError::UnexpectedPayload
+        | ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateError::MissingPayload
+        | ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateError::InvalidLineage
+        | ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateError::SessionMismatch
+        | ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateError::StreamMismatch
+        | ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateError::ScopeMismatch
+        | ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateError::UpdatesUnsupported
+        | ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateError::DeltaUnsupported
+        | ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateError::ResynchronizationUnsupported
+        | ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateError::Bound(_)
+        | ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateError::LengthOverflow
+        | ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateError::LengthMismatch { .. } => {}
+    }
+}
+
+const fn representation_update_binding_outcome_variants(
+    value: &::reovim_kernel_interface::interaction::update::
+        RepresentationUpdateBindingOutcome,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateBindingOutcome::Bound(_)
+        | ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateBindingOutcome::Rejected(_) => {}
+    }
+}
+
+const fn interaction_intent_admission_status_variants(
+    value: ::reovim_kernel_interface::interaction::delivery::intent::
+        InteractionIntentAdmissionStatus,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionIntentAdmissionStatus::Admitted
+        | ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionIntentAdmissionStatus::NotAdmitted => {}
+    }
+}
+
+const fn interaction_intent_admission_error_variants(
+    value: ::reovim_kernel_interface::interaction::delivery::intent::
+        InteractionIntentAdmissionError,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionIntentAdmissionError::OutcomeRequestMismatch
+        | ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionIntentAdmissionError::OutcomeNotDefinitelyRejected => {}
+    }
+}
+
+const fn interaction_intent_non_admission_binding_outcome_variants(
+    value: &::reovim_kernel_interface::interaction::delivery::intent::
+        InteractionIntentNonAdmissionBindingOutcome,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionIntentNonAdmissionBindingOutcome::Bound(_)
+        | ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionIntentNonAdmissionBindingOutcome::Rejected(_) => {}
+    }
+}
+
+const fn interaction_cancellation_request_error_variants(
+    value: ::reovim_kernel_interface::interaction::delivery::intent::
+        InteractionCancellationRequestError,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionCancellationRequestError::SessionMismatch
+        | ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionCancellationRequestError::Unsupported => {}
+    }
+}
+
+const fn interaction_cancellation_result_variants(
+    value: ::reovim_kernel_interface::interaction::delivery::intent::
+        InteractionCancellationResult,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionCancellationResult::Requested(_)
+        | ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionCancellationResult::AlreadyRequested(_)
+        | ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionCancellationResult::AlreadyTerminal
+        | ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionCancellationResult::Denied
+        | ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionCancellationResult::UnknownRequest
+        | ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionCancellationResult::StaleSession
+        | ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionCancellationResult::Closing
+        | ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionCancellationResult::Closed => {}
+    }
+}
+
+const fn interaction_outcome_request_error_variants(
+    value: ::reovim_kernel_interface::interaction::delivery::intent::
+        InteractionOutcomeRequestError,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionOutcomeRequestError::SessionMismatch => {}
+    }
+}
+
+const fn interaction_outcome_unavailable_variants(
+    value: ::reovim_kernel_interface::interaction::delivery::intent::
+        InteractionOutcomeUnavailable,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionOutcomeUnavailable::Pending
+        | ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionOutcomeUnavailable::UnknownRequest
+        | ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionOutcomeUnavailable::AlreadyDelivered
+        | ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionOutcomeUnavailable::Gap(_)
+        | ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionOutcomeUnavailable::Replaced
+        | ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionOutcomeUnavailable::Closing
+        | ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionOutcomeUnavailable::Closed => {}
+    }
+}
+
+const fn interaction_outcome_delivery_status_variants(
+    value: ::reovim_kernel_interface::interaction::delivery::intent::
+        InteractionOutcomeDeliveryStatus,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionOutcomeDeliveryStatus::Delivered
+        | ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionOutcomeDeliveryStatus::Unavailable(_) => {}
+    }
+}
+
+const fn interaction_reconcile_request_error_variants(
+    value: ::reovim_kernel_interface::interaction::delivery::intent::
+        InteractionReconcileRequestError,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionReconcileRequestError::SessionMismatch
+        | ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionReconcileRequestError::Unsupported => {}
+    }
+}
+
+const fn interaction_reconcile_unavailable_variants(
+    value: ::reovim_kernel_interface::interaction::delivery::intent::
+        InteractionReconcileUnavailable,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionReconcileUnavailable::Pending
+        | ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionReconcileUnavailable::Unresolved
+        | ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionReconcileUnavailable::Expired
+        | ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionReconcileUnavailable::Denied
+        | ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionReconcileUnavailable::UnknownRequest
+        | ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionReconcileUnavailable::StaleSession
+        | ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionReconcileUnavailable::Closing
+        | ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionReconcileUnavailable::Closed => {}
+    }
+}
+
+const fn interaction_reconcile_status_variants(
+    value: ::reovim_kernel_interface::interaction::delivery::intent::
+        InteractionReconcileStatus,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionReconcileStatus::Recovered
+        | ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionReconcileStatus::EffectResolved
+        | ::reovim_kernel_interface::interaction::delivery::intent::
+            InteractionReconcileStatus::Unavailable(_) => {}
+    }
+}
+
+const fn interaction_negotiation_request_error_variants(
+    value: ::reovim_kernel_interface::interaction::delivery::session::
+        InteractionNegotiationRequestError,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionNegotiationRequestError::SessionMismatch
+        | ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionNegotiationRequestError::ScopeMismatch
+        | ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionNegotiationRequestError::CapabilityMismatch => {}
+    }
+}
+
+const fn interaction_negotiation_failure_variants(
+    value: ::reovim_kernel_interface::interaction::delivery::session::
+        InteractionNegotiationFailure,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionNegotiationFailure::Denied
+        | ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionNegotiationFailure::Incompatible
+        | ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionNegotiationFailure::InvalidRequest
+        | ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionNegotiationFailure::NotReady
+        | ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionNegotiationFailure::Pressure
+        | ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionNegotiationFailure::Replaced
+        | ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionNegotiationFailure::Closing
+        | ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionNegotiationFailure::Closed
+        | ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionNegotiationFailure::RuntimeFailure => {}
+    }
+}
+
+const fn interaction_negotiation_status_variants(
+    value: ::reovim_kernel_interface::interaction::delivery::session::
+        InteractionNegotiationStatus,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionNegotiationStatus::Negotiated
+        | ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionNegotiationStatus::Rejected(_) => {}
+    }
+}
+
+const fn representation_attachment_request_error_variants(
+    value: ::reovim_kernel_interface::interaction::delivery::session::
+        RepresentationAttachmentRequestError,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentRequestError::SessionMismatch => {}
+    }
+}
+
+const fn representation_attachment_request_binding_outcome_variants(
+    value: &::reovim_kernel_interface::interaction::delivery::session::
+        RepresentationAttachmentRequestBindingOutcome,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentRequestBindingOutcome::Bound(_)
+        | ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentRequestBindingOutcome::Rejected(_) => {}
+    }
+}
+
+const fn representation_attachment_failure_variants(
+    value: ::reovim_kernel_interface::interaction::delivery::session::
+        RepresentationAttachmentFailure,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentFailure::Denied
+        | ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentFailure::Unsupported
+        | ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentFailure::Incompatible
+        | ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentFailure::NotReady
+        | ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentFailure::DuplicateAttachment
+        | ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentFailure::Stale
+        | ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentFailure::Pressure
+        | ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentFailure::Replaced
+        | ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentFailure::Closing
+        | ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentFailure::Closed
+        | ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentFailure::RuntimeFailure => {}
+    }
+}
+
+const fn representation_attachment_ready_binding_outcome_variants(
+    value: &::reovim_kernel_interface::interaction::delivery::session::
+        RepresentationAttachmentReadyBindingOutcome,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentReadyBindingOutcome::Bound(_)
+        | ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentReadyBindingOutcome::Rejected(_) => {}
+    }
+}
+
+const fn representation_attachment_ready_error_variants(
+    value: ::reovim_kernel_interface::interaction::delivery::session::
+        RepresentationAttachmentReadyError,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentReadyError::Update(_)
+        | ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentReadyError::NotFullSnapshot => {}
+    }
+}
+
+const fn representation_attachment_status_variants(
+    value: ::reovim_kernel_interface::interaction::delivery::session::
+        RepresentationAttachmentStatus,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentStatus::Ready
+        | ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentStatus::Resynchronizing
+        | ::reovim_kernel_interface::interaction::delivery::session::
+            RepresentationAttachmentStatus::Rejected(_) => {}
+    }
+}
+
+const fn interaction_close_error_variants(
+    value: ::reovim_kernel_interface::interaction::delivery::session::
+        InteractionCloseError,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionCloseError::NoRetainedOwnership
+        | ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionCloseError::Bound(_) => {}
+    }
+}
+
+const fn interaction_close_outcome_variants(
+    value: ::reovim_kernel_interface::interaction::delivery::session::
+        InteractionCloseOutcome,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionCloseOutcome::Closed
+        | ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionCloseOutcome::Incomplete(_)
+        | ::reovim_kernel_interface::interaction::delivery::session::
+            InteractionCloseOutcome::StaleSession => {}
+    }
+}
+
+const fn representation_update_request_error_variants(
+    value: ::reovim_kernel_interface::interaction::delivery::update::
+        RepresentationUpdateRequestError,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateRequestError::SessionMismatch
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateRequestError::StreamMismatch
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateRequestError::Unsupported => {}
+    }
+}
+
+const fn representation_update_delivery_error_variants(
+    value: ::reovim_kernel_interface::interaction::delivery::update::
+        RepresentationUpdateDeliveryError,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateDeliveryError::MissingCandidate
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateDeliveryError::StreamMismatch
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateDeliveryError::CursorMismatch => {}
+    }
+}
+
+const fn representation_update_unavailable_variants(
+    value: ::reovim_kernel_interface::interaction::delivery::update::
+        RepresentationUpdateUnavailable,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateUnavailable::Pending
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateUnavailable::NoCredit
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateUnavailable::CursorBehind
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateUnavailable::CursorAhead
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateUnavailable::UnknownStream
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateUnavailable::AlreadyDelivered
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateUnavailable::Replaced
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateUnavailable::Closing
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateUnavailable::Closed
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateUnavailable::ProviderContractViolation(_) => {}
+    }
+}
+
+const fn representation_update_delivery_status_variants(
+    value: ::reovim_kernel_interface::interaction::delivery::update::
+        RepresentationUpdateDeliveryStatus,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateDeliveryStatus::Delivered
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateDeliveryStatus::Unavailable(_) => {}
+    }
+}
+
+const fn representation_update_application_variants(
+    value: ::reovim_kernel_interface::interaction::delivery::update::
+        RepresentationUpdateApplication,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateApplication::Installed
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateApplication::Duplicate
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateApplication::Older
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateApplication::MissingPredecessor
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateApplication::Fenced(_) => {}
+    }
+}
+
+const fn representation_update_acknowledgement_error_variants(
+    value: ::reovim_kernel_interface::interaction::delivery::update::
+        RepresentationUpdateAcknowledgementError,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateAcknowledgementError::SessionMismatch
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateAcknowledgementError::StreamMismatch => {}
+    }
+}
+
+const fn representation_update_acknowledgement_result_variants(
+    value: ::reovim_kernel_interface::interaction::delivery::update::
+        RepresentationUpdateAcknowledgementResult,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateAcknowledgementResult::Accepted
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateAcknowledgementResult::AlreadyRecorded
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateAcknowledgementResult::UnknownUpdate
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateAcknowledgementResult::WrongCursor
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateAcknowledgementResult::StaleStream
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateAcknowledgementResult::Closing
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationUpdateAcknowledgementResult::Closed => {}
+    }
+}
+
+const fn representation_resynchronization_request_error_variants(
+    value: ::reovim_kernel_interface::interaction::delivery::update::
+        RepresentationResynchronizationRequestError,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationRequestError::Update(_)
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationRequestError::NotGap
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationRequestError::Unsupported
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationRequestError::Bound(_) => {}
+    }
+}
+
+const fn representation_resynchronization_result_error_variants(
+    value: ::reovim_kernel_interface::interaction::delivery::update::
+        RepresentationResynchronizationResultError,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationResultError::StreamMismatch
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationResultError::CursorOverflow
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationResultError::CursorMismatch
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationResultError::NotResynchronization
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationResultError::IdentityMismatch
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationResultError::MissingPayload
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationResultError::ResultBytesExceeded {
+                ..
+            } => {}
+    }
+}
+
+const fn representation_resynchronization_failure_variants(
+    value: ::reovim_kernel_interface::interaction::delivery::update::
+        RepresentationResynchronizationFailure,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationFailure::Denied
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationFailure::Unsupported
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationFailure::Incompatible
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationFailure::UnknownGap
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationFailure::DuplicateRequest
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationFailure::Stale
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationFailure::Pressure
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationFailure::Replaced
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationFailure::Closing
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationFailure::Closed
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationFailure::RuntimeFailure => {}
+    }
+}
+
+const fn representation_resynchronization_admission_variants(
+    value: &::reovim_kernel_interface::interaction::delivery::update::
+        RepresentationResynchronizationAdmission,
+) {
+    match value {
+        ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationAdmission::Admitted(_)
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationAdmission::NotAdmitted { .. } => {}
     }
 }

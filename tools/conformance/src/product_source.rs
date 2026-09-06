@@ -47,6 +47,127 @@ const MOVE_ONLY_KERNEL_TYPES: &[(&str, &str)] = &[
     ("DiagnosticOutputRecord", "diagnostic::DiagnosticOutputRecord"),
     ("DiagnosticRecordRejection", "diagnostic::DiagnosticRecordRejection"),
     ("DiagnosticSubmissionOutcome", "diagnostic::DiagnosticSubmissionOutcome"),
+    ("InteractionIntent", "interaction::intent::InteractionIntent"),
+    (
+        "InteractionIntentBindingOutcome",
+        "interaction::intent::InteractionIntentBindingOutcome",
+    ),
+    (
+        "InteractionIntentRejection",
+        "interaction::intent::InteractionIntentRejection",
+    ),
+    (
+        "InteractionIntentNonAdmission",
+        "interaction::delivery::intent::InteractionIntentNonAdmission",
+    ),
+    (
+        "InteractionIntentNonAdmissionBindingOutcome",
+        concat!(
+            "interaction::delivery::intent::",
+            "InteractionIntentNonAdmissionBindingOutcome",
+        ),
+    ),
+    (
+        "InteractionIntentNonAdmissionRejection",
+        concat!(
+            "interaction::delivery::intent::",
+            "InteractionIntentNonAdmissionRejection",
+        ),
+    ),
+    (
+        "InteractionIntentAdmission",
+        "interaction::delivery::intent::InteractionIntentAdmission",
+    ),
+    (
+        "RepresentationAttachmentRequest",
+        "interaction::delivery::session::RepresentationAttachmentRequest",
+    ),
+    (
+        "RepresentationAttachmentRequestBindingOutcome",
+        concat!(
+            "interaction::delivery::session::",
+            "RepresentationAttachmentRequestBindingOutcome",
+        ),
+    ),
+    (
+        "RepresentationAttachmentRequestRejection",
+        concat!(
+            "interaction::delivery::session::",
+            "RepresentationAttachmentRequestRejection",
+        ),
+    ),
+    (
+        "RepresentationAttachmentReady",
+        "interaction::delivery::session::RepresentationAttachmentReady",
+    ),
+    (
+        "RepresentationAttachmentReadyBindingOutcome",
+        concat!(
+            "interaction::delivery::session::",
+            "RepresentationAttachmentReadyBindingOutcome",
+        ),
+    ),
+    (
+        "RepresentationAttachmentReadyRejection",
+        concat!(
+            "interaction::delivery::session::",
+            "RepresentationAttachmentReadyRejection",
+        ),
+    ),
+    (
+        "RepresentationAttachmentResynchronizing",
+        concat!(
+            "interaction::delivery::session::",
+            "RepresentationAttachmentResynchronizing",
+        ),
+    ),
+    (
+        "RepresentationAttachmentRejection",
+        "interaction::delivery::session::RepresentationAttachmentRejection",
+    ),
+    (
+        "RepresentationAttachmentOutcome",
+        "interaction::delivery::session::RepresentationAttachmentOutcome",
+    ),
+    (
+        "RepresentationUpdatePreparation",
+        "interaction::update::RepresentationUpdatePreparation",
+    ),
+    (
+        "RepresentationUpdateBindingOutcome",
+        "interaction::update::RepresentationUpdateBindingOutcome",
+    ),
+    (
+        "RepresentationUpdateRejection",
+        "interaction::update::RepresentationUpdateRejection",
+    ),
+    (
+        "RepresentationUpdateCarrier",
+        "interaction::update::RepresentationUpdateCarrier",
+    ),
+    ("RepresentationUpdate", "interaction::update::RepresentationUpdate"),
+    (
+        "RepresentationUpdateDelivery",
+        "interaction::delivery::update::RepresentationUpdateDelivery",
+    ),
+    (
+        "RepresentationUpdateStamp",
+        "interaction::update::RepresentationUpdateStamp",
+    ),
+    (
+        "RepresentationResynchronizationRequest",
+        concat!(
+            "interaction::delivery::update::",
+            "RepresentationResynchronizationRequest",
+        ),
+    ),
+    (
+        "RepresentationResynchronizationAdmission",
+        concat!(
+            "interaction::delivery::update::",
+            "RepresentationResynchronizationAdmission",
+        ),
+    ),
     ("ResourceRegionCarrier", "resource::carrier::ResourceRegionCarrier"),
     ("ResourcePayloadCarrier", "resource::carrier::ResourcePayloadCarrier"),
     ("ResourceCarrierRejection", "resource::carrier::ResourceCarrierRejection"),
@@ -1986,6 +2107,7 @@ fn owned_byte_box_path(path: &Path) -> bool {
         "kernel/interface/src/resource/access.rs",
         "kernel/interface/src/resource/carrier.rs",
         "kernel/interface/src/semantic/intent.rs",
+        "kernel/interface/src/interaction/update.rs",
     ]
     .into_iter()
     .any(|allowed| path == Path::new(allowed))
@@ -4271,6 +4393,19 @@ mod tests {
         "kernel/interface/src/event/snapshot.rs",
         "kernel/interface/src/event/snapshot_validation.rs",
         "kernel/interface/src/identity.rs",
+        "kernel/interface/src/interaction.rs",
+        "kernel/interface/src/interaction/bounds.rs",
+        "kernel/interface/src/interaction/delivery.rs",
+        "kernel/interface/src/interaction/delivery/intent.rs",
+        "kernel/interface/src/interaction/delivery/session.rs",
+        "kernel/interface/src/interaction/delivery/update.rs",
+        "kernel/interface/src/interaction/descriptor.rs",
+        "kernel/interface/src/interaction/identity.rs",
+        "kernel/interface/src/interaction/intent.rs",
+        "kernel/interface/src/interaction/outcome.rs",
+        "kernel/interface/src/interaction/port.rs",
+        "kernel/interface/src/interaction/session.rs",
+        "kernel/interface/src/interaction/update.rs",
         "kernel/interface/src/lib.rs",
         "kernel/interface/src/lifecycle.rs",
         "kernel/interface/src/operation.rs",
@@ -4313,6 +4448,25 @@ mod tests {
         "tests/kernel-interface-public-consumer/src/event/sequence.rs",
         "tests/kernel-interface-public-consumer/src/event/snapshot.rs",
         "tests/kernel-interface-public-consumer/src/lib.rs",
+        "tests/kernel-interface-public-consumer/src/interaction.rs",
+        "tests/kernel-interface-public-consumer/src/interaction/derives.rs",
+        concat!(
+            "tests/kernel-interface-public-consumer/src/interaction/",
+            "derives/intent.rs",
+        ),
+        concat!(
+            "tests/kernel-interface-public-consumer/src/interaction/",
+            "derives/session.rs",
+        ),
+        concat!(
+            "tests/kernel-interface-public-consumer/src/interaction/",
+            "derives/update.rs",
+        ),
+        "tests/kernel-interface-public-consumer/src/interaction/intent.rs",
+        "tests/kernel-interface-public-consumer/src/interaction/provider.rs",
+        "tests/kernel-interface-public-consumer/src/interaction/session.rs",
+        "tests/kernel-interface-public-consumer/src/interaction/support.rs",
+        "tests/kernel-interface-public-consumer/src/interaction/update.rs",
         "tests/kernel-interface-public-consumer/src/lifecycle.rs",
         "tests/kernel-interface-public-consumer/src/operation.rs",
         "tests/kernel-interface-public-consumer/src/output_health.rs",
@@ -4342,7 +4496,7 @@ mod tests {
     ];
     const LIMITS: AnalysisLimits = AnalysisLimits {
         // Mutation-fixture capacity, never a repository-shape expectation.
-        source_files: 96,
+        source_files: 160,
         source_file_bytes: 1_048_576,
         source_total_bytes: 8_388_608,
         syntax_nodes: 100_000,
@@ -4991,6 +5145,9 @@ mod tests {
 
     #[test]
     fn owned_byte_box_is_exact_and_path_bounded() {
+        assert!(super::owned_byte_box_path(Path::new(
+            "kernel/interface/src/interaction/update.rs",
+        )));
         for path in [
             "kernel/interface/src/diagnostic.rs",
             "kernel/interface/src/buffer/carrier.rs",

@@ -2,64 +2,36 @@
 
 [Interaction, Updates, Protocols, and View](../02-Interaction-Updates-Protocols-and-View.md)
 
-## Interaction Intent and Outcome
+## Reading order
+
+1. This chapter owns the separation among Interaction Intent, terminal Outcome,
+   and independently delivered Representation Update.
+2. [Session Negotiation, Intent, and Outcome](01-Intent-Outcome-and-Representation-Updates/01-Session-Negotiation-Intent-and-Outcome.md)
+   owns exact Session authority, identity mapping, admission, ownership, and
+   reconciliation.
+3. [Update Delivery, Gaps, and Resynchronization](01-Intent-Outcome-and-Representation-Updates/02-Update-Delivery-Gaps-and-Resynchronization.md)
+   owns attachment, lineage, carrier, cursor, credit, acknowledgement, gap,
+   resynchronization, and close semantics.
+
+## Ownership split
 
 **Interaction Intent** is the versioned transport-neutral Client-to-Kernel
-request. Its descriptor declares contract/version, semantic intent families,
-capabilities, value schemas, payload/stream/work/concurrency bounds,
-backpressure, cancellation, and failures.
+request. Its outer envelope owns exact Contract Session and Client authority,
+request and causal identity, and one already validated move-only Semantic
+Intent. Raw device input and presentation coordinates never enter it.
 
-Each Intent identifies:
+**Interaction Outcome** is the one correlated terminal semantic disposition of
+an admitted Intent. Definite non-admission returns the unchanged Intent with an
+immediate terminal non-acceptance. Outcome records local acceptance, explicit
+non-acceptance, or retained reconciliation; it never substitutes for current
+Representation state.
 
-- Contract Session incarnation and authority generation;
-- Client role;
-- Resource Identity, Access Incarnation, and Revision;
-- Buffer identity/incarnation/version;
-- Representation identity and Projection generation;
-- semantic coordinate-space identity/incarnation and a bounded semantic value;
-- request/correlation and cancellation identities; and
-- deadline and authority required for admission.
+**Representation Update** independently carries bounded semantic state. It is
+a full snapshot, predecessor-bound delta, invalidation, explicit Gap, or
+resynchronization result. It never proves Intent acceptance and never contains
+View, viewport, layout, rendering, or presentation commands.
 
-Authority and shape bounds are checked before Resource lookup, expansion,
-policy invocation, or mutation. Raw keyboard, pointer, terminal, or device input
-is not an Intent; Client-owned policy translates it. A stale Intent is rejected
-or enters an explicit reconciliation path and is never silently retargeted.
-
-Kernel Runtime retains the owned Intent while
-[Domain validation and Representation lowering](../01-Domains-Representations-and-Projections/02-Domain-Validation-and-Representation-Lowering.md)
-receive bounded immutable invocation borrows. A policy failure or caught panic
-cannot consume, retarget, or silently convert that retained request.
-
-Every submitted Intent receives exactly one bounded correlated **Interaction
-Outcome**. It distinguishes local acceptance from non-acceptance, preserves
-Effect Certainty and Outcome Cause where a response can be lost, and names the
-resulting Buffer version. Cancellation races have a declared winner or retained
-reconciliation. Representation Update never proves that an Intent was accepted.
-
-## Representation Update
-
-**Representation Update** is the versioned transport-neutral Kernel-to-Client
-state result. It names exact Resource, Access, Revision, Buffer,
-Representation, Projection, and semantic-coordinate-space state and carries a
-bounded:
-
-- full semantic snapshot;
-- predecessor-bound delta;
-- invalidation;
-- Representation Gap; or
-- resynchronization result.
-
-A delta names exact predecessor and result generations. The Client applies it
-atomically only to the named predecessor. Duplicate or older delivery is a typed
-no-op/stale result. Missing ancestry produces a Gap and resynchronization. A full
-snapshot declares the prior state superseded. Bounded delivery never guesses
-after loss.
-
-An Update describes semantic Representation state. It may carry schema-qualified
-intrinsic source pixels, samples, structured values, or Text values. It never
-prescribes a Viewport, target grid, target-screen pixel, glyph, layout tree,
-drawing command, GPU command, or frame schedule.
-
-In-process and Protocol Adapter compositions share Update semantics. Protocol
-Adapter owns framing, serialization, carrier, connection, and queue mechanics
-only.
+Direct in-process and later Protocol Adapter compositions implement the same
+semantics. Protocol Adapter owns only encoding, framing, carrier, connection,
+and queue mechanics; it cannot redefine authority, Effect Certainty, ordering,
+gap, or reconciliation.

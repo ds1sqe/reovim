@@ -9,6 +9,7 @@ mod clock;
 mod diagnostic;
 mod effect;
 mod event;
+mod interaction;
 mod lifecycle;
 mod operation;
 mod output_health;
@@ -24,6 +25,26 @@ use reovim_kernel_interface::semantic::descriptor::{
     DomainPolicyDescriptor, RepresentationPolicyDescriptor,
 };
 use reovim_kernel_interface::semantic::intent::SemanticIntent;
+
+/// Public values for hosted Interaction payload-redaction tests.
+pub struct InteractionDebugInputs {
+    /// Selected Session descriptor.
+    pub session:
+        reovim_kernel_interface::interaction::descriptor::
+            InteractionSessionDescriptor,
+    /// Selected Representation attachment descriptor.
+    pub attachment:
+        reovim_kernel_interface::interaction::descriptor::
+            RepresentationAttachmentDescriptor,
+    /// Move-only outer Intent with a recognizable opaque payload.
+    pub intent: reovim_kernel_interface::interaction::intent::InteractionIntent,
+    /// Initial payload-bearing full Representation Update.
+    pub initial:
+        reovim_kernel_interface::interaction::update::RepresentationUpdate,
+    /// Payload-bearing delta Representation Update.
+    pub delta:
+        reovim_kernel_interface::interaction::update::RepresentationUpdate,
+}
 
 /// Hosted-test inputs for checking policy unwind ownership at the public API.
 pub struct SemanticPanicInputs {
@@ -51,6 +72,7 @@ const fn public_const_cases() -> bool {
         && diagnostic::const_cases()
         && effect::const_cases()
         && event::const_cases()
+        && interaction::const_cases()
         && output_health::const_cases()
         && output_health_state::const_cases()
         && resource::const_cases()
@@ -67,6 +89,7 @@ pub fn exercise_public_api() -> bool {
         && clock::exercise()
         && diagnostic::exercise()
         && event::exercise()
+        && interaction::exercise()
         && output_health::exercise()
         && output_health_state::exercise()
         && resource::exercise()
@@ -77,6 +100,12 @@ pub fn exercise_public_api() -> bool {
 #[must_use]
 pub fn semantic_panic_inputs() -> Option<SemanticPanicInputs> {
     semantic::panic_inputs()
+}
+
+/// Builds exact public values for hosted Interaction Debug tests.
+#[must_use]
+pub fn interaction_debug_inputs() -> Option<InteractionDebugInputs> {
+    interaction::debug_inputs()
 }
 
 const fn derive_witness<T>() -> bool

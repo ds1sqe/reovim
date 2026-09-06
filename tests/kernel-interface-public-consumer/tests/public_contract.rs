@@ -215,6 +215,61 @@ fn semantic_owning_debug_is_payload_redacted() {
     assert!(!outcome_debug.contains("apply"));
 }
 
+#[test]
+fn interaction_owning_debug_is_payload_redacted() {
+    let inputs =
+        reovim_kernel_interface_public_consumer::interaction_debug_inputs()
+            .expect("Interaction debug fixture");
+    let intent_debug = format!("{:?}", inputs.intent);
+    assert!(intent_debug.contains("InteractionIntent"));
+    assert!(!intent_debug.contains("145, 2, 127, 164"));
+
+    let admission = reovim_kernel_interface::interaction::delivery::intent::
+        InteractionIntentAdmission::not_admitted(
+            inputs.intent,
+            reovim_kernel_interface::interaction::outcome::
+                InteractionOutcomeCause::Pressure,
+        );
+    let admission_debug = format!("{admission:?}");
+    assert!(admission_debug.contains("NotAdmitted"));
+    assert!(!admission_debug.contains("145, 2, 127, 164"));
+
+    let request = reovim_kernel_interface::interaction::delivery::update::
+        RepresentationUpdateRequest::new(
+            &inputs.session,
+            &inputs.attachment,
+            inputs.delta.stamp().cursor(),
+        )
+        .expect("valid Update request");
+    let mut candidate = Some(inputs.delta);
+    let delivery = reovim_kernel_interface::interaction::delivery::update::
+        RepresentationUpdateDelivery::try_bind(&request, &mut candidate)
+            .expect("valid Update delivery binding");
+    let delivery_debug = format!("{delivery:?}");
+    assert!(delivery_debug.contains("Delivered"));
+    assert!(!delivery_debug.contains("17, 162, 0, 255"));
+
+    let ready = reovim_kernel_interface::interaction::delivery::session::
+        RepresentationAttachmentReady::bind(
+            &inputs.session,
+            inputs.attachment,
+            inputs.initial,
+        );
+    let ready_debug = format!("{ready:?}");
+    assert!(ready_debug.contains("Bound"));
+    assert!(!ready_debug.contains("17, 162, 0, 255"));
+    let reovim_kernel_interface::interaction::delivery::session::
+        RepresentationAttachmentReadyBindingOutcome::Bound(ready) = ready
+    else {
+        panic!("expected coherent initial Interaction Update");
+    };
+    let outcome = reovim_kernel_interface::interaction::delivery::session::
+        RepresentationAttachmentOutcome::ready(ready);
+    let outcome_debug = format!("{outcome:?}");
+    assert!(outcome_debug.contains("Ready"));
+    assert!(!outcome_debug.contains("17, 162, 0, 255"));
+}
+
 fn semantic_binding_rejection(
     inputs: &reovim_kernel_interface_public_consumer::SemanticPanicInputs,
 ) -> SemanticIntentBindingOutcome {

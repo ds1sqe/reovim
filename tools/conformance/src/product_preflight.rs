@@ -84,6 +84,31 @@ const PRODUCT_FILES: &[(&str, FileRole)] = &[
         FileRole::KernelInterface,
     ),
     ("kernel/interface/src/identity.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/interaction.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/interaction/bounds.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/interaction/delivery.rs", FileRole::KernelInterface),
+    (
+        "kernel/interface/src/interaction/delivery/intent.rs",
+        FileRole::KernelInterface,
+    ),
+    (
+        "kernel/interface/src/interaction/delivery/session.rs",
+        FileRole::KernelInterface,
+    ),
+    (
+        "kernel/interface/src/interaction/delivery/update.rs",
+        FileRole::KernelInterface,
+    ),
+    (
+        "kernel/interface/src/interaction/descriptor.rs",
+        FileRole::KernelInterface,
+    ),
+    ("kernel/interface/src/interaction/identity.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/interaction/intent.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/interaction/outcome.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/interaction/port.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/interaction/session.rs", FileRole::KernelInterface),
+    ("kernel/interface/src/interaction/update.rs", FileRole::KernelInterface),
     ("kernel/interface/src/lib.rs", FileRole::KernelInterface),
     ("kernel/interface/src/lifecycle.rs", FileRole::KernelInterface),
     ("kernel/interface/src/operation.rs", FileRole::KernelInterface),
@@ -189,6 +214,55 @@ const PRODUCT_FILES: &[(&str, FileRole)] = &[
     ),
     (
         "tests/kernel-interface-public-consumer/src/lib.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/src/interaction.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/src/interaction/derives.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        concat!(
+            "tests/kernel-interface-public-consumer/src/interaction/",
+            "derives/intent.rs",
+        ),
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        concat!(
+            "tests/kernel-interface-public-consumer/src/interaction/",
+            "derives/session.rs",
+        ),
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        concat!(
+            "tests/kernel-interface-public-consumer/src/interaction/",
+            "derives/update.rs",
+        ),
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/src/interaction/intent.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/src/interaction/provider.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/src/interaction/session.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/src/interaction/support.rs",
+        FileRole::KernelInterfaceConsumer,
+    ),
+    (
+        "tests/kernel-interface-public-consumer/src/interaction/update.rs",
         FileRole::KernelInterfaceConsumer,
     ),
     (
