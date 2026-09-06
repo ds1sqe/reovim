@@ -46,17 +46,18 @@ request identity, child-observed raw bytes, and child-parsed registry. A
 missing, retargeted, changed, over-limit, or semantically different registry
 fails before its observations can enter evidence.
 
-The fixed 96 KiB environment/argument carrier is a control plane for bounded
+The fixed 112 KiB environment/argument carrier is a control plane for bounded
 identities, limits, and setup selection; the registry body does not enter it
-or enlarge its bound. On the selected x86_64 Linux target, it remains 32 KiB
-below the 128 KiB per-string kernel ceiling. A host-only acceptance inspection
+or enlarge its bound. On the selected x86_64 Linux target, it remains 16 KiB
+below the 128 KiB per-string kernel ceiling, including room for the environment
+key and string terminators. A host-only acceptance inspection
 measures the complete encoded configuration without creating a namespace,
 mount, or child. A transport/request-shape change retains that inspection's
 actual byte count, limit, and positive headroom in its verification record
 before a live retry. These acceptance values are not Source Role Map fields,
 and a Product report makes no per-run headroom claim.
 
-Production applies the same encoder and 96 KiB ceiling at both hops. Tests
+Production applies the same encoder and 112 KiB ceiling at both hops. Tests
 require byte-identical hop payloads for the same typed configuration.
 First-hop overflow fails before setup; second-hop overflow fails before PID 1
 starts, and setup cleanup remains mandatory.
