@@ -1,168 +1,51 @@
-# Buffer Provider System (DEFERRED)
+# Buffer provider proposal
 
-**Status**: Deferred from Issue #211
-**Reason**: Complex plugin buffer patterns need dedicated design issue
-**Original Location**: `lib/core/src/content/provider.rs`
+Historical design deferred from #211 because virtual buffers needed a
+dedicated ownership and lifecycle decision. No option was selected in this
+note. The [heritage index](README.md) explains how to read the full original.
 
----
+## Problem
 
-## Overview
+Plugins generated directory listings, diagnostics, terminal content, help,
+and search results through `PluginBufferProvider` in
+`lib/core/src/content/provider.rs`.
 
-The buffer provider system allows plugins to create **virtual buffers** with programmatically-generated content. This enables features like:
+The old API combined content production and client interaction:
 
-- File explorer (directory listings)
-- LSP diagnostics panel
-- Terminal emulator buffers
-- Help/documentation viewers
-- Search results panels
+| Method | Responsibility |
+| --- | --- |
+| `get_lines` | Return `Vec<String>` synchronously on every render. |
+| `on_cursor_move` | Respond to a text position change. |
+| `on_input` | Handle a key; return handled, unhandled, or close requested. |
+| `is_editable` | Declare whether the virtual buffer accepts edits. |
 
----
+`BufferContext` carried the buffer ID, viewport width/height, and plugin state.
+`WindowContentSource` selected a normal `BufferId` or a plugin ID with an
+`Arc<dyn PluginBufferProvider>`. The explorer was a concrete consumer.
 
-## Current Implementation (OLD)
+## Unresolved choices
 
-### Key Types
+| Concern | Question left open |
+| --- | --- |
+| Loading | Async streaming or cached results for expensive/network content? |
+| Lifecycle | How do virtual buffers join `:ls`, windows, persistence, and undo? |
+| Input | Route through keymaps, plugin handlers, or both? |
+| Memory | How are large results paged, bounded, and reclaimed? |
 
-```rust
-// lib/core/src/content/provider.rs
+Three placements were considered:
 
-/// Trait for plugins that provide buffer content
-pub trait PluginBufferProvider: Send + Sync {
-    /// Get current lines (called every render)
-    fn get_lines(&self, ctx: &BufferContext) -> Vec<String>;
+- Display driver: define provider/source contracts beside rendering, with
+  implementations in `modules/plugins/buffer_providers/`.
+- Kernel extension: add virtual-buffer primitives under `kernel/block/` and
+  let display consume them.
+- Plugin subsystem: put provider contracts, registration, and lifecycle in
+  a dedicated `lib/plugins/`.
 
-    /// Handle cursor movement
-    fn on_cursor_move(&mut self, position: Position, ctx: &mut BufferContext);
+The useful unresolved problem is the coupling: synchronous content generation
+ran on the render path, while one interface mixed storage, viewport dimensions,
+and key handling. The alternatives above recorded possible owners without
+settling that boundary.
 
-    /// Handle user input (optional)
-    fn on_input(&mut self, key: KeyEvent, ctx: &mut BufferContext) -> InputResult;
-
-    /// Whether buffer allows editing
-    fn is_editable(&self) -> bool;
-}
-
-/// Context passed to provider methods
-pub struct BufferContext<'a> {
-    pub buffer_id: usize,
-    pub width: u16,
-    pub height: u16,
-    pub state: &'a PluginStateRegistry,
-}
-
-/// Result of input handling
-pub enum InputResult {
-    Handled,
-    Unhandled,
-    RequestClose,
-}
-```
-
-### Window Content Source
-
-```rust
-// lib/core/src/content/mod.rs
-
-pub enum WindowContentSource {
-    /// Normal file buffer
-    Buffer(BufferId),
-    /// Plugin-provided virtual buffer
-    Plugin {
-        plugin_id: PluginId,
-        provider: Arc<dyn PluginBufferProvider>,
-    },
-}
-```
-
----
-
-## Design Questions (To Resolve)
-
-### 1. Async Buffer Loading
-
-Current design calls `get_lines()` synchronously on every render. This is problematic for:
-- Large directory listings
-- Network-based content (LSP results)
-- Expensive computations
-
-**Question**: Should we use async streaming or double-buffered caching?
-
-### 2. Buffer Lifecycle
-
-**Question**: How should plugin buffers interact with:
-- Buffer list (`:ls`)
-- Window management
-- Session persistence
-- Undo/redo (for editable plugin buffers)
-
-### 3. Input Routing
-
-**Question**: Should plugin input handling be part of:
-- The keymap module (consistent with other key handling)
-- The plugin system directly
-- A hybrid approach
-
-### 4. Memory Management
-
-**Question**: How to handle plugins that generate large content:
-- Lazy loading / virtualization
-- Memory limits per plugin
-- Garbage collection of old content
-
----
-
-## Proposed Architecture (Future)
-
-### Option A: Driver-Based
-
-```
-drivers/display/
-├── buffer_source.rs      # WindowContentSource enum
-└── plugin_buffer.rs      # PluginBufferProvider trait
-
-modules/plugins/
-└── buffer_providers/     # Concrete implementations
-```
-
-### Option B: Kernel Extension
-
-```
-kernel/block/
-├── virtual_buffer.rs     # Virtual buffer abstraction
-└── plugin_source.rs      # Plugin buffer source
-
-drivers/display/
-└── Uses kernel virtual buffer API
-```
-
-### Option C: Dedicated Plugin Subsystem
-
-```
-lib/plugins/
-├── buffer_provider.rs    # Trait and types
-├── registry.rs           # Provider registration
-└── lifecycle.rs          # Buffer lifecycle management
-```
-
----
-
-## Migration Path
-
-1. **Phase 1**: Keep current implementation in `lib/core/`
-2. **Phase 2**: Design new architecture in dedicated issue
-3. **Phase 3**: Implement new design
-4. **Phase 4**: Migrate plugins to new API
-5. **Phase 5**: Remove old implementation
-
----
-
-## Related Issues
-
-- Issue #211: Remaining Core Directories Assessment (current)
-- Future Issue: Buffer Provider Architecture Design (TBD)
-
----
-
-## References
-
-- `lib/core/src/content/mod.rs` - Current window content source
-- `lib/core/src/content/provider.rs` - Current provider trait
-- `plugins/features/explorer/` - File explorer using provider
+For current ownership, read
+[resources and state](../interfaces/resources-and-state.md)
+and [clients](../interfaces/clients.md).
