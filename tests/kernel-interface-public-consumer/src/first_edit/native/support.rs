@@ -30,11 +30,21 @@ use reovim_kernel_interface::resource::{
     ResourceSnapshotIdentity, ResourceSnapshotStamp, ResourceValueSchemas,
 };
 
+/// Reuses the selected Resource and Buffer fixture contracts.
+///
+/// # Panics
+/// Panics if the shared fixture descriptors are incoherent.
+#[must_use]
 pub fn descriptors() -> (ResourceAccessDescriptor, BufferPlanDescriptor) {
-    reovim_kernel_interface_public_consumer::resource_state_fixture()
+    crate::resource_state_fixture()
         .expect("existing public descriptor fixtures")
 }
 
+/// Selects distinct native address/extent/unit schemas for a fixture model.
+///
+/// # Panics
+/// The identity must leave room for its three adjacent fixture schema IDs.
+#[must_use]
 pub fn binding(identity: u128) -> ResourceStateModelBinding {
     let (resource, _) = descriptors();
     ResourceStateModelBinding {
@@ -50,10 +60,17 @@ pub fn binding(identity: u128) -> ResourceStateModelBinding {
     }
 }
 
+/// Selects version one of a fixture schema.
+///
+/// # Panics
+/// Panics if the fixed compatible version window is incoherent.
+#[must_use]
 pub fn selection(identity: u128) -> ContractSelection {
     ContractSelection::new(identity, 1, 1, 1).expect("fixture schema")
 }
 
+/// Names native output/work reservations and bounded observation inputs.
+#[must_use]
 pub fn limits(resident: u64, work: u64) -> ResourceStateLimits {
     ResourceStateLimits {
         resident_bytes: bytes(resident),
@@ -63,6 +80,8 @@ pub fn limits(resident: u64, work: u64) -> ResourceStateLimits {
     }
 }
 
+/// Reports fixture-model memory/work charges, not measured performance.
+#[must_use]
 pub fn usage(resident: u64, work: u64) -> ResourceStateUsage {
     ResourceStateUsage {
         resident_bytes: bytes(resident),
@@ -70,17 +89,41 @@ pub fn usage(resident: u64, work: u64) -> ResourceStateUsage {
     }
 }
 
+/// Constructs a byte charge under the fixture's zero-allowing policy.
+///
+/// # Panics
+/// Panics if that policy stops accepting the supplied quantity.
+#[must_use]
 pub fn bytes(value: u64) -> CheckedByteCount {
     CheckedByteCount::new(value, ZeroPolicy::Allow)
         .expect("named preparation byte reservation")
 }
 
+/// Constructs a model-work or observation reservation, allowing zero.
+///
+/// # Panics
+/// Panics if that policy stops accepting the supplied quantity.
+#[must_use]
 pub fn count(value: u64) -> CheckedCount {
     CheckedCount::new(value, ZeroPolicy::Allow)
         .expect("named model work or observation reservation")
 }
 
+/// Binds actual data to the fixture's initial source snapshot.
+#[must_use]
 pub fn observation(bytes: &[u8]) -> ResourceObservedState {
+    observation_at(snapshot(), bytes)
+}
+
+/// Binds actual data to a selected source observation.
+///
+/// # Panics
+/// Panics on incompatible source schema or exceeded fixture payload bounds.
+#[must_use]
+pub fn observation_at(
+    snapshot: ResourceSnapshotStamp,
+    bytes: &[u8],
+) -> ResourceObservedState {
     let (resource, _) = descriptors();
     let payload_stamp = resource.carriers().payload().selected_stamp();
     let prepared = resource
@@ -95,14 +138,16 @@ pub fn observation(bytes: &[u8]) -> ResourceObservedState {
         .expect("actual observed native data");
     ResourceObservedState::new(
         &resource,
-        ResourceObservationTarget::Snapshot(snapshot()),
+        ResourceObservationTarget::Snapshot(snapshot),
         prepared.regions(),
-        snapshot(),
+        snapshot,
         payload,
     )
     .expect("coherent Resource observation")
 }
 
+/// Returns the fixture's initial native source identity and revision.
+#[must_use]
 pub fn snapshot() -> ResourceSnapshotStamp {
     let (resource, _) = descriptors();
     ResourceSnapshotStamp::new(
@@ -115,6 +160,8 @@ pub fn snapshot() -> ResourceSnapshotStamp {
     )
 }
 
+/// Selects a Buffer version and opaque History node without tree arithmetic.
+#[must_use]
 pub fn state_stamp(version: u64, history: u128) -> BufferStateStamp {
     BufferStateStamp::new(
         snapshot(),
@@ -130,6 +177,11 @@ pub fn state_stamp(version: u64, history: u128) -> BufferStateStamp {
     )
 }
 
+/// Names a Core-selected fixture tree edge; this does not create a tree.
+///
+/// # Panics
+/// Panics if both endpoints identify the same node.
+#[must_use]
 pub fn edge(parent: u128, child: u128) -> BufferHistoryEdge {
     BufferHistoryEdge::new(
         BufferHistoryNodeIdentity::new(parent),
@@ -138,6 +190,11 @@ pub fn edge(parent: u128, child: u128) -> BufferHistoryEdge {
     .expect("fixture parent-child relation")
 }
 
+/// Binds a fixture transaction to its plan and causal authorities.
+///
+/// # Panics
+/// The transaction ID must leave room for the fixture transition ID.
+#[must_use]
 pub fn plan_stamp(transaction: u128) -> BufferPlanStamp {
     let (_, descriptor) = descriptors();
     BufferPlanStamp::new(
@@ -150,6 +207,8 @@ pub fn plan_stamp(transaction: u128) -> BufferPlanStamp {
     )
 }
 
+/// Encodes native operations/preconditions under the default fixture request.
+#[must_use]
 pub fn plan(
     target: &BufferStateStamp,
     operations: &[u8],
@@ -158,6 +217,11 @@ pub fn plan(
     plan_for(target, 61, operations, preconditions)
 }
 
+/// Encodes a complete native plan under an explicitly selected request.
+///
+/// # Panics
+/// Panics when supplied carriers exceed the selected fixture's bounds.
+#[must_use]
 pub fn plan_for(
     target: &BufferStateStamp,
     transaction: u128,
@@ -202,6 +266,8 @@ fn carrier(
         .expect("native carrier data")
 }
 
+/// Borrows exact native data without copying it or granting mutation access.
+#[must_use]
 pub const fn view<'a, State>(
     model: &ResourceStateModelBinding,
     stamp: &BufferStateStamp,
@@ -210,6 +276,11 @@ pub const fn view<'a, State>(
     ResourceWorkingState { model: *model, stamp: *stamp, state }
 }
 
+/// Validates fixture input against the selected native model/reservation.
+///
+/// # Panics
+/// Panics if the supplied input is structurally mismatched or over budget.
+#[must_use]
 pub fn request<'a, State>(
     model: &ResourceStateModelBinding,
     input: ResourceStateInput<'a, State>,

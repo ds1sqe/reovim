@@ -6,6 +6,7 @@ use crate::buffer::carrier::BufferCarrierStamp;
 use crate::buffer::plan::BufferPlanDescriptor;
 use crate::carrier::{InvocationModel, InvocationSafety, UnwindModel};
 use crate::operation::{ContractSelection, OperationDescriptor};
+use crate::resource::state::ResourceStateModelBinding;
 
 use super::bounds::{SemanticIntentBounds, SemanticPolicyCallBounds};
 use super::intent::SemanticIntentContract;
@@ -347,6 +348,7 @@ impl SemanticCoordinateSpaceDescriptor {
 pub struct DomainPolicyDescriptor {
     stamp: DomainPolicyStamp,
     validation: SemanticPolicyCallDescriptor,
+    state_model: ResourceStateModelBinding,
 }
 
 impl DomainPolicyDescriptor {
@@ -355,8 +357,13 @@ impl DomainPolicyDescriptor {
     pub fn new(
         stamp: DomainPolicyStamp,
         validation: &SemanticPolicyCallDescriptor,
+        state_model: &ResourceStateModelBinding,
     ) -> Self {
-        Self { stamp, validation: validation.clone() }
+        Self {
+            stamp,
+            validation: validation.clone(),
+            state_model: *state_model,
+        }
     }
 
     /// Returns the exact selected Domain policy generation.
@@ -369,6 +376,12 @@ impl DomainPolicyDescriptor {
     #[must_use]
     pub const fn validation(&self) -> &SemanticPolicyCallDescriptor {
         &self.validation
+    }
+
+    /// Returns the exact native model/schema accepted by this policy.
+    #[must_use]
+    pub const fn state_model(&self) -> &ResourceStateModelBinding {
+        &self.state_model
     }
 }
 
@@ -451,6 +464,7 @@ pub struct RepresentationPolicyDescriptor {
     behavior: RepresentationBehavior,
     plan: SemanticBufferPlanContract,
     lowering: SemanticPolicyCallDescriptor,
+    state_model: ResourceStateModelBinding,
 }
 
 impl RepresentationPolicyDescriptor {
@@ -478,6 +492,7 @@ impl RepresentationPolicyDescriptor {
             behavior,
             plan,
             lowering: lowering.clone(),
+            state_model: *domain.state_model(),
         })
     }
 
@@ -527,6 +542,12 @@ impl RepresentationPolicyDescriptor {
     #[must_use]
     pub const fn lowering(&self) -> &SemanticPolicyCallDescriptor {
         &self.lowering
+    }
+
+    /// Returns the exact state model inherited from the selected Domain.
+    #[must_use]
+    pub const fn state_model(&self) -> &ResourceStateModelBinding {
+        &self.state_model
     }
 }
 

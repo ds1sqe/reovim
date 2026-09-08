@@ -25,6 +25,7 @@ pub fn panic_inputs() -> Option<SemanticPanicInputs> {
         fixture.domain.validation().bounds().prepare(4, 0, 0, 1).ok()?;
     let representation_charge = representation::charge(&fixture)?;
     Some(SemanticPanicInputs {
+        state: fixture.state,
         domain: fixture.domain,
         representation: fixture.representation,
         buffer: fixture.buffer,

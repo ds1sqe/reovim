@@ -1,5 +1,5 @@
-use std::cell::Cell;
-use std::collections::BTreeMap;
+use alloc::{collections::BTreeMap, vec::Vec};
+use core::cell::Cell;
 
 use reovim_kernel_interface::buffer::plan::{
     BufferPlanDescriptor, BufferTransactionPlan,
@@ -12,6 +12,7 @@ use reovim_kernel_interface::resource::state::{
 
 use super::support;
 
+/// Deterministic byte-addressed model, independent of semantic heading policy.
 pub struct ByteModel {
     pub binding: ResourceStateModelBinding,
     pub entered: Cell<bool>,
@@ -20,6 +21,8 @@ pub struct ByteModel {
 }
 
 impl ByteModel {
+    /// Constructs the model with the declared fixture schemas and charges.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             binding: support::binding(901),
@@ -27,6 +30,12 @@ impl ByteModel {
             usage: support::usage(32, 8),
             descriptor: support::descriptors().1,
         }
+    }
+}
+
+impl Default for ByteModel {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -93,13 +102,22 @@ pub enum Key {
 
 pub type KeyedState = BTreeMap<Key, bool>;
 
+/// Deterministic non-positional model preserving independently keyed values.
 pub struct KeyedModel {
     descriptor: BufferPlanDescriptor,
 }
 
 impl KeyedModel {
+    /// Constructs a model using the selected native plan contract.
+    #[must_use]
     pub fn new() -> Self {
         Self { descriptor: support::descriptors().1 }
+    }
+}
+
+impl Default for KeyedModel {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -140,13 +158,15 @@ fn prepare_keys(
 }
 
 fn initial_keys(payload: &[u8]) -> Result<KeyedState, ResourceStateError> {
-    let [alpha, omega] = payload else {
-        return Err(ResourceStateError::MalformedOperation);
-    };
-    Ok(BTreeMap::from([
-        (Key::Alpha, enabled(*alpha)?),
-        (Key::Omega, enabled(*omega)?),
-    ]))
+    // This fixture encoding admits an Omega-only resource too.
+    match payload {
+        [alpha, omega] => Ok(BTreeMap::from([
+            (Key::Alpha, enabled(*alpha)?),
+            (Key::Omega, enabled(*omega)?),
+        ])),
+        [omega] => Ok(BTreeMap::from([(Key::Omega, enabled(*omega)?)])),
+        _ => Err(ResourceStateError::MalformedOperation),
+    }
 }
 
 fn replace_key(

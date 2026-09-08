@@ -359,6 +359,26 @@ impl fmt::Debug for SemanticIntentRejection {
     }
 }
 
+pub(super) const fn validate_retained(
+    descriptor: &RepresentationPolicyDescriptor,
+    intent: &SemanticIntent,
+) -> Result<(), SemanticIntentError> {
+    match validate_carrier(descriptor, intent.carrier()) {
+        Ok(()) => {}
+        Err(error) => return Err(error),
+    }
+    let shape = intent.shape();
+    match prepare_shape(
+        descriptor,
+        shape.items().value(),
+        shape.depth().value(),
+        shape.bytes().value(),
+    ) {
+        Ok(_) => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
 pub(super) const fn validate_outer(
     descriptor: &RepresentationPolicyDescriptor,
     stamp: &SemanticIntentStamp,

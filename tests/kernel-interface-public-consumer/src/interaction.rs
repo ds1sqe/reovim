@@ -2,7 +2,7 @@ mod derives;
 mod intent;
 mod provider;
 mod session;
-mod support;
+pub mod support;
 mod update;
 
 use crate::InteractionDebugInputs;

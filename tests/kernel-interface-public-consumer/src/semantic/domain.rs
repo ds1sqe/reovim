@@ -31,6 +31,7 @@ struct ScriptedDomain<'a> {
 impl ::reovim_kernel_interface::semantic::domain::DomainPolicyPort
     for ScriptedDomain<'_>
 {
+    type State = ();
     fn descriptor(
         &self,
     ) -> &reovim_kernel_interface::semantic::descriptor::DomainPolicyDescriptor
@@ -40,7 +41,7 @@ impl ::reovim_kernel_interface::semantic::domain::DomainPolicyPort
 
     fn validate(
         &self,
-        request: DomainValidationRequest<'_>,
+        request: DomainValidationRequest<'_, ()>,
     ) -> DomainValidationCandidate {
         match self.script {
             Script::Inspect
@@ -96,7 +97,7 @@ pub const fn const_cases() -> bool {
         >()
         && crate::clone_copy_witness::<
             ::reovim_kernel_interface::semantic::domain::
-                DomainValidationRequest<'static>,
+                DomainValidationRequest<'static, ()>,
         >()
 }
 
@@ -151,7 +152,7 @@ fn valid_receipt() -> bool {
         && outcome.status() == DomainValidationStatus::Validated
         && outcome.failure().is_none()
         && outcome.violation().is_none()
-        && receipt.matches_intent(fixture.domain.stamp(), &intent)
+        && receipt.matches_intent(&fixture.domain, &intent)
         && receipt.stamp().request().value() == 1_061
 }
 
@@ -263,7 +264,7 @@ fn cancelled(
     let code = match DomainValidationRequest::new(
         &fixture.domain,
         &fixture.representation,
-        intent,
+        support::input(fixture, intent),
         charge,
         CancellationState::Requested(CancellationCause::ExplicitRequest),
         DeadlineState::Pending,
@@ -284,7 +285,7 @@ fn deadline(
     let code = match DomainValidationRequest::new(
         &fixture.domain,
         &fixture.representation,
-        intent,
+        support::input(fixture, intent),
         charge,
         CancellationState::Open,
         DeadlineState::Reached,
@@ -308,7 +309,7 @@ fn wrong_charge_owner(
     let code = match DomainValidationRequest::new(
             &fixture.domain,
             &fixture.representation,
-            intent,
+            support::input(fixture, intent),
             charge,
             CancellationState::Open,
             DeadlineState::Pending,
@@ -336,7 +337,7 @@ fn excessive_charge(
     let code = match DomainValidationRequest::new(
             &fixture.domain,
             &fixture.representation,
-            intent,
+            support::input(fixture, intent),
             charge,
             CancellationState::Open,
             DeadlineState::Pending,
@@ -363,7 +364,7 @@ fn wrong_domain(
     let code = match DomainValidationRequest::new(
         &other,
         &fixture.representation,
-        intent,
+        support::input(fixture, intent),
         charge,
         CancellationState::Open,
         DeadlineState::Pending,
@@ -379,11 +380,11 @@ fn wrong_domain(
 fn request<'a>(
     fixture: &'a SemanticFixture,
     intent: &'a reovim_kernel_interface::semantic::intent::SemanticIntent,
-) -> Option<DomainValidationRequest<'a>> {
+) -> Option<DomainValidationRequest<'a, ()>> {
     DomainValidationRequest::new(
         &fixture.domain,
         &fixture.representation,
-        intent,
+        support::input(fixture, intent),
         charge(fixture)?,
         CancellationState::Open,
         DeadlineState::Pending,
@@ -399,22 +400,33 @@ fn charge(
 }
 
 fn invoke(
-    provider: &dyn DomainPolicyPort,
-    request: DomainValidationRequest<'_>,
+    provider: &dyn DomainPolicyPort<State = ()>,
+    request: DomainValidationRequest<'_, ()>,
 ) -> DomainValidationCandidate {
     provider.validate(request)
 }
 
 const fn wrong_intent_candidate(
-    request: DomainValidationRequest<'_>,
+    request: DomainValidationRequest<'_, ()>,
 ) -> DomainValidationCandidate {
     let stamp = request.validation_stamp();
+    let original = request.intent().stamp();
+    let altered =
+        reovim_kernel_interface::semantic::stamp::SemanticIntentStamp::new(
+            SemanticIntentIdentity::new(9_999),
+            original.caller(),
+            original.request(),
+            *original.target(),
+            *original.plan(),
+            *original.projection(),
+            original.coordinate(),
+        );
     DomainValidationCandidate::validated(SemanticIntentValidationStamp::new(
         stamp.domain(),
-        SemanticIntentIdentity::new(9_999),
-        stamp.request(),
+        &altered,
         stamp.carrier(),
         stamp.shape(),
+        request.domain().state_model(),
     ))
 }
 
@@ -422,6 +434,8 @@ fn failure_vocabulary() -> bool {
     let failures = [
         SemanticPolicyFailure::UnsupportedCapability,
         SemanticPolicyFailure::UnsupportedSchema,
+        SemanticPolicyFailure::Unrepresentable,
+        SemanticPolicyFailure::StateUnavailable,
         SemanticPolicyFailure::InvalidIntent,
         SemanticPolicyFailure::NoCorrespondence,
         SemanticPolicyFailure::AmbiguousCorrespondence,

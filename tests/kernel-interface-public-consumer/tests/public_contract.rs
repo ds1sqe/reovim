@@ -126,7 +126,7 @@ fn domain_policy_panic_preserves_runtime_intent() {
     let request = DomainValidationRequest::new(
         &inputs.domain,
         &inputs.representation,
-        &inputs.intent,
+        inputs.input(),
         inputs.domain_charge,
         CancellationState::Open,
         DeadlineState::Pending,
@@ -147,7 +147,7 @@ fn representation_policy_panic_preserves_runtime_intent() {
     let domain_request = DomainValidationRequest::new(
         &inputs.domain,
         &inputs.representation,
-        &inputs.intent,
+        inputs.input(),
         inputs.domain_charge,
         CancellationState::Open,
         DeadlineState::Pending,
@@ -163,7 +163,7 @@ fn representation_policy_panic_preserves_runtime_intent() {
         .expect("exact Domain receipt");
     let request = RepresentationLoweringRequest::new(
         &inputs.representation,
-        &inputs.intent,
+        inputs.input(),
         &receipt,
         &inputs.buffer,
         inputs.representation_charge,
@@ -307,7 +307,7 @@ fn semantic_receipt(
     let request = DomainValidationRequest::new(
         &inputs.domain,
         &inputs.representation,
-        &inputs.intent,
+        inputs.input(),
         inputs.domain_charge,
         CancellationState::Open,
         DeadlineState::Pending,
@@ -326,10 +326,10 @@ fn semantic_receipt(
 fn semantic_lowering_request<'a>(
     inputs: &'a reovim_kernel_interface_public_consumer::SemanticPanicInputs,
     receipt: &'a DomainValidationReceipt,
-) -> RepresentationLoweringRequest<'a> {
+) -> RepresentationLoweringRequest<'a, ()> {
     RepresentationLoweringRequest::new(
         &inputs.representation,
-        &inputs.intent,
+        inputs.input(),
         receipt,
         &inputs.buffer,
         inputs.representation_charge,
@@ -362,6 +362,7 @@ struct PanickingDomain<'a> {
 }
 
 impl DomainPolicyPort for PanickingDomain<'_> {
+    type State = ();
     fn descriptor(
         &self,
     ) -> &reovim_kernel_interface::semantic::descriptor::DomainPolicyDescriptor
@@ -371,7 +372,7 @@ impl DomainPolicyPort for PanickingDomain<'_> {
 
     fn validate(
         &self,
-        _request: DomainValidationRequest<'_>,
+        _request: DomainValidationRequest<'_, ()>,
     ) -> DomainValidationCandidate {
         panic!("scripted Domain policy panic")
     }
@@ -383,6 +384,7 @@ struct PanickingRepresentation<'a> {
 }
 
 impl RepresentationPolicyPort for PanickingRepresentation<'_> {
+    type State = ();
     fn descriptor(
         &self,
     ) -> &reovim_kernel_interface::semantic::descriptor::
@@ -392,7 +394,7 @@ impl RepresentationPolicyPort for PanickingRepresentation<'_> {
 
     fn lower(
         &self,
-        _request: RepresentationLoweringRequest<'_>,
+        _request: RepresentationLoweringRequest<'_, ()>,
     ) -> RepresentationLoweringCandidate {
         panic!("scripted Representation policy panic")
     }

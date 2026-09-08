@@ -1,5 +1,9 @@
 //! Exact compiler-resolved Kernel Interface public items.
 
+use reovim_kernel_interface::semantic::domain::{
+    DomainPolicyPort, DomainValidationRequest,
+};
+
 pub const fn witness() -> bool {
     bound_items();
     buffer_items_one();
@@ -1839,24 +1843,15 @@ const fn semantic_domain_items_two() {
 
 const fn semantic_domain_items_three() {
     let _ = (
-        ::reovim_kernel_interface::semantic::domain::DomainValidationRequest::
-            new,
-        ::reovim_kernel_interface::semantic::domain::DomainValidationRequest::
-            domain,
-        ::reovim_kernel_interface::semantic::domain::DomainValidationRequest::
-            intent,
-        ::reovim_kernel_interface::semantic::domain::DomainValidationRequest::
-            charge,
-        ::reovim_kernel_interface::semantic::domain::DomainValidationRequest::
-            cancellation,
-        ::reovim_kernel_interface::semantic::domain::DomainValidationRequest::
-            deadline,
-        ::reovim_kernel_interface::semantic::domain::DomainValidationRequest::
-            validation_stamp,
-        ::reovim_kernel_interface::semantic::domain::DomainValidationRequest::
-            validated_candidate,
-        ::reovim_kernel_interface::semantic::domain::DomainValidationRequest::
-            finish,
+        DomainValidationRequest::<()>::new,
+        DomainValidationRequest::<()>::domain,
+        DomainValidationRequest::<()>::intent,
+        DomainValidationRequest::<()>::charge,
+        DomainValidationRequest::<()>::cancellation,
+        DomainValidationRequest::<()>::deadline,
+        DomainValidationRequest::<()>::validation_stamp,
+        DomainValidationRequest::<()>::validated_candidate,
+        DomainValidationRequest::<()>::finish,
     );
 }
 
@@ -1871,7 +1866,7 @@ const fn semantic_representation_items_one() {
         ::reovim_kernel_interface::semantic::representation::
             RepresentationLoweringCandidate::failure,
         ::reovim_kernel_interface::semantic::representation::
-            RepresentationLoweringCandidate::finish,
+            RepresentationLoweringCandidate::finish::<()>,
         ::reovim_kernel_interface::semantic::representation::
             RepresentationLoweringOutcome::status,
         ::reovim_kernel_interface::semantic::representation::
@@ -1888,21 +1883,21 @@ const fn semantic_representation_items_one() {
 const fn semantic_representation_items_two() {
     let _ = (
         ::reovim_kernel_interface::semantic::representation::
-            RepresentationLoweringRequest::new,
+            RepresentationLoweringRequest::<()>::new,
         ::reovim_kernel_interface::semantic::representation::
-            RepresentationLoweringRequest::representation,
+            RepresentationLoweringRequest::<()>::representation,
         ::reovim_kernel_interface::semantic::representation::
-            RepresentationLoweringRequest::intent,
+            RepresentationLoweringRequest::<()>::intent,
         ::reovim_kernel_interface::semantic::representation::
-            RepresentationLoweringRequest::validation,
+            RepresentationLoweringRequest::<()>::validation,
         ::reovim_kernel_interface::semantic::representation::
-            RepresentationLoweringRequest::plan,
+            RepresentationLoweringRequest::<()>::plan,
         ::reovim_kernel_interface::semantic::representation::
-            RepresentationLoweringRequest::charge,
+            RepresentationLoweringRequest::<()>::charge,
         ::reovim_kernel_interface::semantic::representation::
-            RepresentationLoweringRequest::cancellation,
+            RepresentationLoweringRequest::<()>::cancellation,
         ::reovim_kernel_interface::semantic::representation::
-            RepresentationLoweringRequest::deadline,
+            RepresentationLoweringRequest::<()>::deadline,
     );
 }
 
@@ -2939,12 +2934,10 @@ const fn trait_items() {
     let _: Option<
         &dyn ::reovim_kernel_interface::resource::port::ResourceAccessPort,
     > = None;
-    let _: Option<
-        &dyn ::reovim_kernel_interface::semantic::domain::DomainPolicyPort,
-    > = None;
+    let _: Option<&dyn DomainPolicyPort<State = ()>> = None;
     let _: Option<
         &dyn ::reovim_kernel_interface::semantic::representation::
-            RepresentationPolicyPort,
+            RepresentationPolicyPort<State = ()>,
     > = None;
 }
 
@@ -3003,14 +2996,14 @@ const fn trait_method_items() {
             take_observation_completion,
         <dyn ::reovim_kernel_interface::resource::port::ResourceAccessPort>::
             take_open_completion,
-        <dyn ::reovim_kernel_interface::semantic::domain::DomainPolicyPort>::
+        <dyn DomainPolicyPort<State = ()>>::
             descriptor,
-        <dyn ::reovim_kernel_interface::semantic::domain::DomainPolicyPort>::
+        <dyn DomainPolicyPort<State = ()>>::
             validate,
         <dyn ::reovim_kernel_interface::semantic::representation::
-            RepresentationPolicyPort>::descriptor,
+            RepresentationPolicyPort<State = ()>>::descriptor,
         <dyn ::reovim_kernel_interface::semantic::representation::
-            RepresentationPolicyPort>::lower,
+            RepresentationPolicyPort<State = ()>>::lower,
     );
 }
 
@@ -3455,6 +3448,10 @@ const fn semantic_policy_failure_variants(
         ::reovim_kernel_interface::semantic::policy::SemanticPolicyFailure::
             UnsupportedCapability
         | ::reovim_kernel_interface::semantic::policy::SemanticPolicyFailure::
+            Unrepresentable
+        | ::reovim_kernel_interface::semantic::policy::SemanticPolicyFailure::
+            StateUnavailable
+        | ::reovim_kernel_interface::semantic::policy::SemanticPolicyFailure::
             UnsupportedSchema
         | ::reovim_kernel_interface::semantic::policy::SemanticPolicyFailure::
             InvalidIntent
@@ -3494,6 +3491,12 @@ const fn semantic_policy_contract_error_variants(
     match value {
         ::reovim_kernel_interface::semantic::policy::
             SemanticPolicyContractError::ProviderDescriptorMismatch
+        | ::reovim_kernel_interface::semantic::policy::
+            SemanticPolicyContractError::WorkingStateModelMismatch
+        | ::reovim_kernel_interface::semantic::policy::
+            SemanticPolicyContractError::WorkingStateTargetMismatch
+        | ::reovim_kernel_interface::semantic::policy::
+            SemanticPolicyContractError::RetainedIntentInvalid(_)
         | ::reovim_kernel_interface::semantic::policy::
             SemanticPolicyContractError::IntentDomainMismatch
         | ::reovim_kernel_interface::semantic::policy::

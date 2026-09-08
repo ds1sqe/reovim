@@ -50,7 +50,7 @@ fn wrong_receipt() -> bool {
     let Some(charge) = super::charge(&fixture) else { return false };
     let code = match RepresentationLoweringRequest::new(
         &fixture.representation,
-        &second,
+        support::input(&fixture, &second),
         &receipt,
         &fixture.buffer,
         charge,
@@ -82,7 +82,7 @@ fn read_only() -> bool {
     let Some(charge) = super::charge(&fixture) else { return false };
     let code = match RepresentationLoweringRequest::new(
         &read_only,
-        &intent,
+        support::input(&fixture, &intent),
         &receipt,
         &fixture.buffer,
         charge,
@@ -113,7 +113,7 @@ fn wrong_representation() -> bool {
     let Some(charge) = super::charge(&fixture) else { return false };
     let code = match RepresentationLoweringRequest::new(
         &replacement,
-        &intent,
+        support::input(&fixture, &intent),
         &receipt,
         &fixture.buffer,
         charge,
@@ -179,7 +179,7 @@ fn request_with_plan(
     let charge = super::charge(fixture)?;
     match RepresentationLoweringRequest::new(
         &fixture.representation,
-        intent,
+        support::input(fixture, intent),
         receipt,
         plan,
         charge,
@@ -217,7 +217,7 @@ fn cancelled(
     let Some(charge) = super::charge(fixture) else { return false };
     let code = match RepresentationLoweringRequest::new(
         &fixture.representation,
-        intent,
+        support::input(fixture, intent),
         receipt,
         &fixture.buffer,
         charge,
@@ -241,7 +241,7 @@ fn deadline(
     let Some(charge) = super::charge(fixture) else { return false };
     let code = match RepresentationLoweringRequest::new(
         &fixture.representation,
-        intent,
+        support::input(fixture, intent),
         receipt,
         &fixture.buffer,
         charge,
@@ -268,7 +268,7 @@ fn wrong_charge(
     };
     let code = match RepresentationLoweringRequest::new(
             &fixture.representation,
-            intent,
+            support::input(fixture, intent),
             receipt,
             &fixture.buffer,
             charge,
@@ -300,7 +300,7 @@ fn excessive_charge(
     };
     let code = match RepresentationLoweringRequest::new(
             &fixture.representation,
-            intent,
+            support::input(fixture, intent),
             receipt,
             &fixture.buffer,
             charge,
@@ -408,7 +408,7 @@ fn returned_charge_failure() -> bool {
     };
     let Some(request) = RepresentationLoweringRequest::new(
         &fixture.representation,
-        &intent,
+        support::input(&fixture, &intent),
         &receipt,
         &fixture.buffer,
         charge,

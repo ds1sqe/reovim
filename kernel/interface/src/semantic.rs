@@ -7,4 +7,6 @@ pub mod identity;
 pub mod intent;
 pub mod policy;
 pub mod representation;
+pub mod snapshot;
 pub mod stamp;
+pub mod state;

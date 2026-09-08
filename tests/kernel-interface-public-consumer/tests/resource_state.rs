@@ -6,11 +6,10 @@ mod faults;
 mod history_faults;
 #[path = "resource_state/journey.rs"]
 mod journey;
-#[path = "resource_state/models.rs"]
-mod models;
 #[path = "resource_state/provider.rs"]
 mod provider;
 #[path = "resource_state/retirement.rs"]
 mod retirement;
-#[path = "resource_state/support.rs"]
-mod support;
+use reovim_kernel_interface_public_consumer::first_edit::native::{
+    models, support,
+};

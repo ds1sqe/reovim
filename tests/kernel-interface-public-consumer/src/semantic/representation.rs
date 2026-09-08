@@ -37,6 +37,7 @@ pub(super) struct ScriptedRepresentation<'a> {
 impl ::reovim_kernel_interface::semantic::representation::
     RepresentationPolicyPort for ScriptedRepresentation<'_>
 {
+    type State = ();
     fn descriptor(
         &self,
     ) -> &reovim_kernel_interface::semantic::descriptor::
@@ -46,7 +47,7 @@ impl ::reovim_kernel_interface::semantic::representation::
 
     fn lower(
         &self,
-        request: RepresentationLoweringRequest<'_>,
+        request: RepresentationLoweringRequest<'_, ()>,
     ) -> RepresentationLoweringCandidate {
         match self.script {
             Script::Lower => exact_plan(request),
@@ -69,7 +70,7 @@ pub const fn const_cases() -> bool {
             RepresentationLoweringStatus,
     >() && crate::clone_copy_witness::<
         ::reovim_kernel_interface::semantic::representation::
-            RepresentationLoweringRequest<'static>,
+            RepresentationLoweringRequest<'static, ()>,
     >() && crate::send_sync_witness::<
         ::reovim_kernel_interface::semantic::representation::
             RepresentationLoweringCandidate,
@@ -167,10 +168,10 @@ pub(super) fn request<'a>(
     fixture: &'a SemanticFixture,
     intent: &'a reovim_kernel_interface::semantic::intent::SemanticIntent,
     receipt: &'a DomainValidationReceipt,
-) -> Option<RepresentationLoweringRequest<'a>> {
+) -> Option<RepresentationLoweringRequest<'a, ()>> {
     RepresentationLoweringRequest::new(
         &fixture.representation,
-        intent,
+        support::input(fixture, intent),
         receipt,
         &fixture.buffer,
         charge(fixture)?,
@@ -188,14 +189,14 @@ pub(super) fn charge(
 }
 
 pub(super) fn invoke(
-    provider: &dyn RepresentationPolicyPort,
-    request: RepresentationLoweringRequest<'_>,
+    provider: &dyn RepresentationPolicyPort<State = ()>,
+    request: RepresentationLoweringRequest<'_, ()>,
 ) -> RepresentationLoweringCandidate {
     provider.lower(request)
 }
 
 fn exact_plan(
-    request: RepresentationLoweringRequest<'_>,
+    request: RepresentationLoweringRequest<'_, ()>,
 ) -> RepresentationLoweringCandidate {
     build_plan(
         request.plan(),
@@ -205,7 +206,7 @@ fn exact_plan(
 }
 
 fn wrong_stamp_plan(
-    request: RepresentationLoweringRequest<'_>,
+    request: RepresentationLoweringRequest<'_, ()>,
 ) -> RepresentationLoweringCandidate {
     let exact = *request.intent().stamp().plan();
     let wrong = BufferPlanStamp::new(
@@ -220,7 +221,7 @@ fn wrong_stamp_plan(
 }
 
 fn wrong_target_plan(
-    request: RepresentationLoweringRequest<'_>,
+    request: RepresentationLoweringRequest<'_, ()>,
 ) -> RepresentationLoweringCandidate {
     let Some(target) = crate::buffer::state(1, 1, 0) else {
         return RepresentationLoweringCandidate::rejected(
@@ -231,7 +232,7 @@ fn wrong_target_plan(
 }
 
 fn wrong_carrier_plan(
-    request: RepresentationLoweringRequest<'_>,
+    request: RepresentationLoweringRequest<'_, ()>,
 ) -> RepresentationLoweringCandidate {
     let Some(descriptor) = support::alternate_buffer_descriptor() else {
         return RepresentationLoweringCandidate::rejected(

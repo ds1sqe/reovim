@@ -54,7 +54,12 @@ pub struct InteractionFixture {
 }
 
 pub fn fixture() -> Option<InteractionFixture> {
-    let semantic = crate::semantic::support::fixture()?;
+    fixture_for_semantic(crate::semantic::support::fixture()?)
+}
+
+pub fn fixture_for_semantic(
+    semantic: SemanticFixture,
+) -> Option<InteractionFixture> {
     let semantic_stamp =
         crate::semantic::support::intent_stamp(&semantic, 1_060, 1_061)?;
     let session_lifecycle = semantic_stamp.caller().authority();

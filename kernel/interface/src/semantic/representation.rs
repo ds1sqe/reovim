@@ -6,6 +6,7 @@ use crate::buffer::plan::{BufferPlanDescriptor, BufferTransactionPlan};
 use crate::cancellation::{
     CancellationState, DeadlineState, InstallationOutcome,
 };
+use crate::resource::state::ResourceWorkingState;
 
 use super::bounds::SemanticPolicyCallCharge;
 use super::descriptor::{RepresentationPolicyDescriptor, SemanticEditability};
@@ -15,6 +16,7 @@ use super::policy::{
     SemanticPolicyContractError, SemanticPolicyFailure,
     SemanticPolicyRequestError,
 };
+use super::state::SemanticPolicyInput;
 
 /// Provider disposition carried by a Representation lowering candidate.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -62,9 +64,9 @@ impl RepresentationLoweringCandidate {
 
     /// Validates this provider candidate against the retained request.
     #[must_use]
-    pub fn finish(
+    pub fn finish<State>(
         self,
-        request: RepresentationLoweringRequest<'_>,
+        request: RepresentationLoweringRequest<'_, State>,
         provider: &RepresentationPolicyDescriptor,
         installation: InstallationOutcome,
     ) -> RepresentationLoweringOutcome {
@@ -196,10 +198,9 @@ impl fmt::Debug for RepresentationLoweringOutcome {
 }
 
 /// Immutable invocation-scoped Representation lowering request.
-#[derive(Clone, Copy)]
-pub struct RepresentationLoweringRequest<'a> {
+pub struct RepresentationLoweringRequest<'a, State> {
     representation: &'a RepresentationPolicyDescriptor,
-    intent: &'a SemanticIntent,
+    input: SemanticPolicyInput<'a, State>,
     validation: &'a DomainValidationReceipt,
     plan: &'a BufferPlanDescriptor,
     charge: SemanticPolicyCallCharge,
@@ -207,23 +208,34 @@ pub struct RepresentationLoweringRequest<'a> {
     deadline: DeadlineState,
 }
 
-impl<'a> RepresentationLoweringRequest<'a> {
+impl<State> Copy for RepresentationLoweringRequest<'_, State> {}
+
+impl<State> Clone for RepresentationLoweringRequest<'_, State> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<'a, State> RepresentationLoweringRequest<'a, State> {
     /// Binds retained policy inputs to exact lowering call terms.
     ///
     /// # Errors
     ///
     /// Returns contract, read-only, bound, cancellation, or deadline failure
     /// before provider invocation.
-    pub const fn new(
+    pub fn new(
         representation: &'a RepresentationPolicyDescriptor,
-        intent: &'a SemanticIntent,
+        input: SemanticPolicyInput<'a, State>,
         validation: &'a DomainValidationReceipt,
         plan: &'a BufferPlanDescriptor,
         charge: SemanticPolicyCallCharge,
         cancellation: CancellationState,
         deadline: DeadlineState,
     ) -> Result<Self, SemanticPolicyRequestError> {
-        match validate_binding(representation, intent, validation, plan) {
+        input
+            .validate(representation.state_model())
+            .map_err(SemanticPolicyRequestError::Contract)?;
+        match validate_binding(representation, input.intent, validation, plan) {
             Ok(()) => {}
             Err(error) => {
                 return Err(SemanticPolicyRequestError::Contract(error));
@@ -250,7 +262,7 @@ impl<'a> RepresentationLoweringRequest<'a> {
         }
         Ok(Self {
             representation,
-            intent,
+            input,
             validation,
             plan,
             charge,
@@ -268,7 +280,13 @@ impl<'a> RepresentationLoweringRequest<'a> {
     /// Returns the immutable retained semantic Intent.
     #[must_use]
     pub const fn intent(self) -> &'a SemanticIntent {
-        self.intent
+        self.input.intent
+    }
+
+    /// Returns actual immutable state used for correspondence and lowering.
+    #[must_use]
+    pub const fn state(self) -> &'a ResourceWorkingState<'a, State> {
+        self.input.state
     }
 
     /// Returns the Runtime-minted Domain validation receipt.
@@ -300,14 +318,38 @@ impl<'a> RepresentationLoweringRequest<'a> {
     pub const fn deadline(self) -> DeadlineState {
         self.deadline
     }
+
+    /// Invokes only the selected provider, outside Buffer commit ownership.
+    ///
+    /// Finish the returned candidate with current descriptor/fence evidence;
+    /// invoking policy alone never makes its proposed plan authoritative.
+    ///
+    /// # Errors
+    ///
+    /// Rejects another provider descriptor before it may inspect native state.
+    pub fn invoke<Provider>(
+        self,
+        provider: &Provider,
+    ) -> Result<RepresentationLoweringCandidate, SemanticPolicyContractError>
+    where
+        Provider: RepresentationPolicyPort<State = State> + ?Sized,
+    {
+        if self.representation != provider.descriptor() {
+            return Err(
+                SemanticPolicyContractError::ProviderDescriptorMismatch,
+            );
+        }
+        Ok(provider.lower(self))
+    }
 }
 
-impl fmt::Debug for RepresentationLoweringRequest<'_> {
+impl<State> fmt::Debug for RepresentationLoweringRequest<'_, State> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("RepresentationLoweringRequest")
             .field("representation", &self.representation.stamp())
-            .field("intent", &self.intent)
+            .field("intent", &self.input.intent)
+            .field("state", &self.input.state)
             .field("validation", &self.validation)
             .field("plan", &self.plan.contract())
             .field("charge", &self.charge)
@@ -322,23 +364,30 @@ impl fmt::Debug for RepresentationLoweringRequest<'_> {
 /// Assembly selects this object only together with `Send + Sync`; keeping the
 /// callback trait separate also permits direct deterministic test providers.
 pub trait RepresentationPolicyPort {
+    /// Public immutable native state/read surface consumed by this policy.
+    type State;
+
     /// Returns the immutable descriptor governing this provider instance.
     fn descriptor(&self) -> &RepresentationPolicyDescriptor;
 
     /// Returns one complete plan candidate or expected semantic non-result.
     fn lower(
         &self,
-        request: RepresentationLoweringRequest<'_>,
+        request: RepresentationLoweringRequest<'_, Self::State>,
     ) -> RepresentationLoweringCandidate;
 }
 
-const fn validate_binding(
+fn validate_binding(
     representation: &RepresentationPolicyDescriptor,
     intent: &SemanticIntent,
     validation: &DomainValidationReceipt,
     plan: &BufferPlanDescriptor,
 ) -> Result<(), SemanticPolicyContractError> {
-    if !validation.matches_intent(representation.stamp().domain(), intent) {
+    if !validation.stamp().matches_selection(
+        representation.stamp().domain(),
+        intent,
+        representation.state_model(),
+    ) {
         return Err(SemanticPolicyContractError::ValidationReceiptMismatch);
     }
     if !representation
@@ -360,17 +409,19 @@ const fn validate_binding(
     if !plan.owner().same_generation(intent.stamp().plan().owner()) {
         return Err(SemanticPolicyContractError::PlanOwnerMismatch);
     }
+    super::intent::validate_retained(representation, intent)
+        .map_err(SemanticPolicyContractError::RetainedIntentInvalid)?;
     Ok(())
 }
 
-const fn validate_returned_plan(
-    request: RepresentationLoweringRequest<'_>,
+const fn validate_returned_plan<State>(
+    request: RepresentationLoweringRequest<'_, State>,
     plan: &BufferTransactionPlan,
 ) -> Result<(), SemanticPolicyContractError> {
-    if !plan.stamp().same_plan(*request.intent.stamp().plan()) {
+    if !plan.stamp().same_plan(*request.input.intent.stamp().plan()) {
         return Err(SemanticPolicyContractError::ReturnedPlanStampMismatch);
     }
-    if !request.intent.stamp().target().same_state(plan.target()) {
+    if !request.input.intent.stamp().target().same_state(plan.target()) {
         return Err(SemanticPolicyContractError::ReturnedPlanTargetMismatch);
     }
     let reserved = request.charge.result_bytes().value();

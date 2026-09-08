@@ -9,6 +9,7 @@ mod clock;
 mod diagnostic;
 mod effect;
 mod event;
+pub mod first_edit;
 mod interaction;
 mod lifecycle;
 mod operation;
@@ -48,6 +49,11 @@ pub struct InteractionDebugInputs {
 
 /// Hosted-test inputs for checking policy unwind ownership at the public API.
 pub struct SemanticPanicInputs {
+    /// Explicit observed unit state for structural boundary fixtures only.
+    pub state: reovim_kernel_interface::resource::state::ResourceWorkingState<
+        'static,
+        (),
+    >,
     /// Selected Domain provider descriptor.
     pub domain: DomainPolicyDescriptor,
     /// Selected Representation provider descriptor.
@@ -60,6 +66,20 @@ pub struct SemanticPanicInputs {
     pub domain_charge: SemanticPolicyCallCharge,
     /// Valid Representation callback reservation.
     pub representation_charge: SemanticPolicyCallCharge,
+}
+
+impl SemanticPanicInputs {
+    /// Borrows the structural fixture's intent and actual observed unit value.
+    #[must_use]
+    pub const fn input(
+        &self,
+    ) -> reovim_kernel_interface::semantic::state::SemanticPolicyInput<'_, ()>
+    {
+        reovim_kernel_interface::semantic::state::SemanticPolicyInput {
+            intent: &self.intent,
+            state: &self.state,
+        }
+    }
 }
 
 const _: [(); 1] = [(); public_const_cases() as usize];

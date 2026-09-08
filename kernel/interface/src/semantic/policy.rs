@@ -6,6 +6,7 @@ use crate::buffer::plan::BufferPlanError;
 use crate::cancellation::{CancellationCause, FenceCause};
 
 use super::bounds::SemanticBoundViolation;
+use super::intent::SemanticIntentError;
 
 /// Expected semantic non-result returned without Buffer state change.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -14,6 +15,10 @@ pub enum SemanticPolicyFailure {
     UnsupportedCapability,
     /// A selected semantic schema is unsupported by this provider.
     UnsupportedSchema,
+    /// Valid source meaning has no form in the selected Representation.
+    Unrepresentable,
+    /// Required native data is not resident or otherwise unavailable.
+    StateUnavailable,
     /// Encoded semantic meaning is invalid under the selected schema.
     InvalidIntent,
     /// No source correspondence exists for the requested semantic location.
@@ -49,6 +54,8 @@ impl fmt::Display for SemanticPolicyFailure {
         formatter.write_str(match self {
             Self::UnsupportedCapability => "semantic capability is unsupported",
             Self::UnsupportedSchema => "semantic schema is unsupported",
+            Self::Unrepresentable => "source meaning cannot be represented",
+            Self::StateUnavailable => "required semantic state is unavailable",
             Self::InvalidIntent => "semantic Intent is invalid",
             Self::NoCorrespondence => "semantic location has no correspondence",
             Self::AmbiguousCorrespondence => {
@@ -89,6 +96,12 @@ impl core::error::Error for SemanticPolicyFailure {}
 /// Provider output or retained-request contract mismatch.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SemanticPolicyContractError {
+    /// The retained intent no longer matches selected carrier or shape bounds.
+    RetainedIntentInvalid(SemanticIntentError),
+    /// Actual working state uses another model, generation or native schema.
+    WorkingStateModelMismatch,
+    /// Actual working state differs from the retained intent's exact target.
+    WorkingStateTargetMismatch,
     /// The invoked provider exposes another current descriptor.
     ProviderDescriptorMismatch,
     /// The retained Intent names another Domain generation.
@@ -125,6 +138,11 @@ pub enum SemanticPolicyContractError {
 impl fmt::Display for SemanticPolicyContractError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
+            Self::RetainedIntentInvalid(_) => {
+                "retained Intent differs from the selected contract"
+            }
+            Self::WorkingStateModelMismatch => "semantic state model differs",
+            Self::WorkingStateTargetMismatch => "semantic state target differs",
             Self::ProviderDescriptorMismatch => {
                 "semantic provider descriptor changed"
             }

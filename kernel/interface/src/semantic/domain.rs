@@ -2,9 +2,12 @@
 
 use core::fmt;
 
+use crate::buffer::BufferStateStamp;
+use crate::buffer::plan::BufferPlanStamp;
 use crate::cancellation::{
     CancellationState, DeadlineState, InstallationOutcome,
 };
+use crate::resource::state::{ResourceStateModelBinding, ResourceWorkingState};
 
 use super::bounds::{SemanticIntentShape, SemanticPolicyCallCharge};
 use super::descriptor::{
@@ -16,7 +19,11 @@ use super::policy::{
     SemanticPolicyContractError, SemanticPolicyFailure,
     SemanticPolicyRequestError,
 };
-use super::stamp::DomainPolicyStamp;
+use super::stamp::{
+    CoordinateSpaceStamp, DomainPolicyStamp, ProjectionStamp,
+    SemanticCallerStamp, SemanticIntentStamp,
+};
+use super::state::SemanticPolicyInput;
 
 /// Exact Domain validation claim over one retained semantic Intent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -26,6 +33,12 @@ pub struct SemanticIntentValidationStamp {
     request: SemanticRequestIdentity,
     carrier: SemanticIntentCarrierStamp,
     shape: SemanticIntentShape,
+    state_model: ResourceStateModelBinding,
+    target: BufferStateStamp,
+    caller: SemanticCallerStamp,
+    plan: BufferPlanStamp,
+    projection: ProjectionStamp,
+    coordinate: CoordinateSpaceStamp,
 }
 
 impl SemanticIntentValidationStamp {
@@ -33,12 +46,24 @@ impl SemanticIntentValidationStamp {
     #[must_use]
     pub const fn new(
         domain: DomainPolicyStamp,
-        intent: SemanticIntentIdentity,
-        request: SemanticRequestIdentity,
+        semantic: &SemanticIntentStamp,
         carrier: SemanticIntentCarrierStamp,
         shape: SemanticIntentShape,
+        state_model: &ResourceStateModelBinding,
     ) -> Self {
-        Self { domain, intent, request, carrier, shape }
+        Self {
+            domain,
+            intent: semantic.intent(),
+            request: semantic.request(),
+            carrier,
+            shape,
+            state_model: *state_model,
+            target: *semantic.target(),
+            caller: semantic.caller(),
+            plan: *semantic.plan(),
+            projection: *semantic.projection(),
+            coordinate: semantic.coordinate(),
+        }
     }
 
     /// Returns the claimed Domain policy generation.
@@ -73,16 +98,49 @@ impl SemanticIntentValidationStamp {
 
     /// Reports whether this claim names one exact retained Intent.
     #[must_use]
-    pub const fn matches_intent(
+    pub fn matches_intent(
+        self,
+        domain: &DomainPolicyDescriptor,
+        intent: &SemanticIntent,
+    ) -> bool {
+        self.matches_selection(domain.stamp(), intent, domain.state_model())
+    }
+
+    /// Returns the native model against which meaning was validated.
+    #[must_use]
+    pub const fn state_model(&self) -> &ResourceStateModelBinding {
+        &self.state_model
+    }
+
+    /// Returns the exact observed Buffer/History state that was validated.
+    #[must_use]
+    pub const fn target(&self) -> &BufferStateStamp {
+        &self.target
+    }
+
+    pub(super) fn matches_selection(
         self,
         domain: DomainPolicyStamp,
         intent: &SemanticIntent,
+        state_model: &ResourceStateModelBinding,
     ) -> bool {
         self.domain.same_generation(domain)
-            && self.intent.value() == intent.stamp().intent().value()
-            && self.request.value() == intent.stamp().request().value()
+            && self.intent_stamp().same_request(intent.stamp())
             && same_carrier(self.carrier, intent.carrier())
             && same_shape(self.shape, intent.shape())
+            && self.state_model == *state_model
+    }
+
+    const fn intent_stamp(&self) -> SemanticIntentStamp {
+        SemanticIntentStamp::new(
+            self.intent,
+            self.caller,
+            self.request,
+            self.target,
+            self.plan,
+            self.projection,
+            self.coordinate,
+        )
     }
 }
 
@@ -145,8 +203,8 @@ pub struct DomainValidationReceipt {
 }
 
 impl DomainValidationReceipt {
-    const fn new(stamp: SemanticIntentValidationStamp) -> Self {
-        Self { stamp }
+    const fn new(stamp: &SemanticIntentValidationStamp) -> Self {
+        Self { stamp: *stamp }
     }
 
     /// Returns the exact Runtime-validated Domain claim.
@@ -157,9 +215,9 @@ impl DomainValidationReceipt {
 
     /// Reports whether this receipt belongs to one exact retained Intent.
     #[must_use]
-    pub const fn matches_intent(
+    pub fn matches_intent(
         self,
-        domain: DomainPolicyStamp,
+        domain: &DomainPolicyDescriptor,
         intent: &SemanticIntent,
     ) -> bool {
         self.stamp.matches_intent(domain, intent)
@@ -186,8 +244,8 @@ pub enum DomainValidationStatus {
 }
 
 impl DomainValidationOutcome {
-    const fn validated(receipt: DomainValidationReceipt) -> Self {
-        Self { receipt: Some(receipt), failure: None, violation: None }
+    const fn validated(receipt: &DomainValidationReceipt) -> Self {
+        Self { receipt: Some(*receipt), failure: None, violation: None }
     }
 
     const fn rejected(failure: SemanticPolicyFailure) -> Self {
@@ -232,31 +290,46 @@ impl DomainValidationOutcome {
 }
 
 /// Immutable invocation-scoped Domain validation request.
-#[derive(Clone, Copy)]
-pub struct DomainValidationRequest<'a> {
+pub struct DomainValidationRequest<'a, State> {
     domain: &'a DomainPolicyDescriptor,
-    intent: &'a SemanticIntent,
+    input: SemanticPolicyInput<'a, State>,
     charge: SemanticPolicyCallCharge,
     cancellation: CancellationState,
     deadline: DeadlineState,
 }
 
-impl<'a> DomainValidationRequest<'a> {
+impl<State> Copy for DomainValidationRequest<'_, State> {}
+
+impl<State> Clone for DomainValidationRequest<'_, State> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<'a, State> DomainValidationRequest<'a, State> {
     /// Binds a retained Intent to exact Domain validation call terms.
     ///
     /// # Errors
     ///
     /// Returns contract, bound, cancellation, or deadline failure before
     /// provider invocation.
-    pub const fn new(
+    pub fn new(
         domain: &'a DomainPolicyDescriptor,
         representation: &'a RepresentationPolicyDescriptor,
-        intent: &'a SemanticIntent,
+        input: SemanticPolicyInput<'a, State>,
         charge: SemanticPolicyCallCharge,
         cancellation: CancellationState,
         deadline: DeadlineState,
     ) -> Result<Self, SemanticPolicyRequestError> {
-        match validate_binding(domain, representation, intent) {
+        input
+            .validate(domain.state_model())
+            .map_err(SemanticPolicyRequestError::Contract)?;
+        if domain.state_model() != representation.state_model() {
+            return Err(SemanticPolicyRequestError::Contract(
+                SemanticPolicyContractError::WorkingStateModelMismatch,
+            ));
+        }
+        match validate_binding(domain, representation, input.intent) {
             Ok(()) => {}
             Err(error) => {
                 return Err(SemanticPolicyRequestError::Contract(error));
@@ -278,7 +351,7 @@ impl<'a> DomainValidationRequest<'a> {
                 return Err(SemanticPolicyRequestError::DeadlineReached);
             }
         }
-        Ok(Self { domain, intent, charge, cancellation, deadline })
+        Ok(Self { domain, input, charge, cancellation, deadline })
     }
 
     /// Returns the selected Domain descriptor.
@@ -290,7 +363,13 @@ impl<'a> DomainValidationRequest<'a> {
     /// Returns the immutable retained semantic Intent.
     #[must_use]
     pub const fn intent(self) -> &'a SemanticIntent {
-        self.intent
+        self.input.intent
+    }
+
+    /// Returns actual immutable state used for semantic meaning validation.
+    #[must_use]
+    pub const fn state(self) -> &'a ResourceWorkingState<'a, State> {
+        self.input.state
     }
 
     /// Returns the validated policy-call reservation.
@@ -316,10 +395,10 @@ impl<'a> DomainValidationRequest<'a> {
     pub const fn validation_stamp(self) -> SemanticIntentValidationStamp {
         SemanticIntentValidationStamp::new(
             self.domain.stamp(),
-            self.intent.stamp().intent(),
-            self.intent.stamp().request(),
-            self.intent.carrier(),
-            self.intent.shape(),
+            self.input.intent.stamp(),
+            self.input.intent.carrier(),
+            self.input.intent.shape(),
+            &self.input.state.model,
         )
     }
 
@@ -327,6 +406,29 @@ impl<'a> DomainValidationRequest<'a> {
     #[must_use]
     pub const fn validated_candidate(self) -> DomainValidationCandidate {
         DomainValidationCandidate::validated(self.validation_stamp())
+    }
+
+    /// Invokes only the selected provider, outside Buffer commit ownership.
+    ///
+    /// Call `finish` afterward with the current installation fence; invocation
+    /// alone neither mints a validation receipt nor accepts an edit.
+    ///
+    /// # Errors
+    ///
+    /// Rejects another provider descriptor before it may inspect native state.
+    pub fn invoke<Provider>(
+        self,
+        provider: &Provider,
+    ) -> Result<DomainValidationCandidate, SemanticPolicyContractError>
+    where
+        Provider: DomainPolicyPort<State = State> + ?Sized,
+    {
+        if self.domain != provider.descriptor() {
+            return Err(
+                SemanticPolicyContractError::ProviderDescriptorMismatch,
+            );
+        }
+        Ok(provider.validate(self))
     }
 
     /// Validates provider identity and candidate before minting a receipt.
@@ -343,7 +445,7 @@ impl<'a> DomainValidationRequest<'a> {
             );
         }
         if let Some(stamp) = candidate.validation() {
-            return self.finish_validation(stamp, installation);
+            return self.finish_validation(&stamp, installation);
         }
         let Some(failure) = candidate.failure() else {
             return DomainValidationOutcome::contract_violation(
@@ -353,19 +455,19 @@ impl<'a> DomainValidationRequest<'a> {
         DomainValidationOutcome::rejected(failure)
     }
 
-    const fn finish_validation(
+    fn finish_validation(
         self,
-        stamp: SemanticIntentValidationStamp,
+        stamp: &SemanticIntentValidationStamp,
         installation: InstallationOutcome,
     ) -> DomainValidationOutcome {
-        if !stamp.matches_intent(self.domain.stamp(), self.intent) {
+        if !stamp.matches_intent(self.domain, self.input.intent) {
             return DomainValidationOutcome::contract_violation(
                 SemanticPolicyContractError::ValidationStampMismatch,
             );
         }
         match installation {
             InstallationOutcome::Current => DomainValidationOutcome::validated(
-                DomainValidationReceipt::new(stamp),
+                &DomainValidationReceipt::new(stamp),
             ),
             InstallationOutcome::Fenced(cause) => {
                 DomainValidationOutcome::rejected(
@@ -376,12 +478,13 @@ impl<'a> DomainValidationRequest<'a> {
     }
 }
 
-impl fmt::Debug for DomainValidationRequest<'_> {
+impl<State> fmt::Debug for DomainValidationRequest<'_, State> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("DomainValidationRequest")
             .field("domain", &self.domain.stamp())
-            .field("intent", &self.intent)
+            .field("intent", &self.input.intent)
+            .field("state", &self.input.state)
             .field("charge", &self.charge)
             .field("cancellation", &self.cancellation)
             .field("deadline", &self.deadline)
@@ -394,13 +497,16 @@ impl fmt::Debug for DomainValidationRequest<'_> {
 /// Assembly selects this object only together with `Send + Sync`; keeping the
 /// callback trait separate also permits direct deterministic test providers.
 pub trait DomainPolicyPort {
+    /// Public immutable native state/read surface consumed by this policy.
+    type State;
+
     /// Returns the immutable descriptor governing this provider instance.
     fn descriptor(&self) -> &DomainPolicyDescriptor;
 
     /// Returns a candidate from one immutable invocation-scoped request.
     fn validate(
         &self,
-        request: DomainValidationRequest<'_>,
+        request: DomainValidationRequest<'_, Self::State>,
     ) -> DomainValidationCandidate;
 }
 
@@ -422,6 +528,14 @@ const fn validate_binding(
         .same_incarnation(intent.stamp().coordinate())
     {
         return Err(SemanticPolicyContractError::IntentCoordinateMismatch);
+    }
+    match super::intent::validate_retained(representation, intent) {
+        Ok(()) => {}
+        Err(error) => {
+            return Err(SemanticPolicyContractError::RetainedIntentInvalid(
+                error,
+            ));
+        }
     }
     Ok(())
 }

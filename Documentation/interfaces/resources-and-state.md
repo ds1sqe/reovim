@@ -73,6 +73,20 @@ an accepted edit. Edit preparation consumes the lowered plan. Restore
 preparation receives the current state and the History-selected retained
 state; the model neither selects eligibility nor advances Buffer versions.
 
+Domain validation and Representation lowering borrow that same immutable
+working-state view alongside the semantic intent. Each selected policy binds
+its supported state model/schema; mismatched state rejects before invocation.
+A validation receipt names both the exact observed Buffer state and model,
+so it cannot authorize lowering against another observation.
+
+Read-only snapshot production is independent of edit lowering. Representation
+policy interprets immutable working state and returns bounded, schema-qualified
+semantic data, or an explicit unavailable/unrepresentable result. It receives
+no client delivery handles. Projection/Interaction owners stamp and bind that
+data to their selected generations and update lineage, rechecking currentness
+before installation. Neither snapshot production nor its failure changes an
+accepted Buffer transition or dictates a client's Position/Selection.
+
 Preparation validates model/schema and structural plans before native work.
 Models report bounded retained memory and work, with typed malformed,
 precondition, unavailable, pressure and cancellation failures. These are

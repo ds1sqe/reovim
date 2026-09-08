@@ -24,6 +24,9 @@ use reovim_kernel_interface::operation::{
     CallbackClass, CompletionClass, DeliveryClass, EffectClass,
     InvocationClass, ReentrancyClass,
 };
+use reovim_kernel_interface::resource::state::{
+    ResourceStateModelBinding, ResourceWorkingState,
+};
 use reovim_kernel_interface::semantic::bounds::{
     SemanticIntentBounds, SemanticPolicyCallBounds,
 };
@@ -49,6 +52,7 @@ use reovim_kernel_interface::semantic::stamp::{
     CoordinateSpaceStamp, DomainPolicyStamp, ProjectionStamp,
     RepresentationPolicyStamp, SemanticCallerStamp, SemanticIntentStamp,
 };
+use reovim_kernel_interface::semantic::state::SemanticPolicyInput;
 
 pub const INTENT_BYTES: &[u8] = &[0x91, 0x02, 0x7f, 0xa4];
 pub const INTENT_TYPE: u128 = 1_040;
@@ -60,13 +64,20 @@ pub struct SemanticFixture {
     pub domain: DomainPolicyDescriptor,
     pub representation: RepresentationPolicyDescriptor,
     pub buffer: BufferPlanDescriptor,
+    pub state: ResourceWorkingState<'static, ()>,
 }
 
 pub fn fixture() -> Option<SemanticFixture> {
+    fixture_for_model(&state_model()?)
+}
+
+pub fn fixture_for_model(
+    model: &ResourceStateModelBinding,
+) -> Option<SemanticFixture> {
     let buffer = crate::buffer::descriptor()?;
     let domain_stamp = domain_stamp(1)?;
     let domain_call = call_descriptor(DOMAIN_CALL_OWNER, 16)?;
-    let domain = DomainPolicyDescriptor::new(domain_stamp, &domain_call);
+    let domain = DomainPolicyDescriptor::new(domain_stamp, &domain_call, model);
     let representation_stamp = representation_stamp(domain_stamp, 1)?;
     let coordinate = coordinate_descriptor()?;
     let intent = intent_contract()?;
@@ -88,7 +99,29 @@ pub fn fixture() -> Option<SemanticFixture> {
         &lowering,
     )
     .ok()?;
-    Some(SemanticFixture { domain, representation, buffer })
+    let state = ResourceWorkingState {
+        model: *model,
+        stamp: crate::buffer::state(1, 0, 0)?,
+        state: &(),
+    };
+    Some(SemanticFixture { domain, representation, buffer, state })
+}
+
+pub const fn input<'a>(
+    fixture: &'a SemanticFixture,
+    intent: &'a SemanticIntent,
+) -> SemanticPolicyInput<'a, ()> {
+    SemanticPolicyInput { intent, state: &fixture.state }
+}
+
+fn state_model() -> Option<ResourceStateModelBinding> {
+    let (resource, _) = crate::resource_state_fixture()?;
+    Some(ResourceStateModelBinding {
+        contract: crate::resource::selection(901)?,
+        lifecycle: LifecycleIdentity::new(902, 903, Generation::new(1)),
+        schemas: resource.schemas(),
+        payload: resource.carriers().payload().selected_stamp(),
+    })
 }
 
 pub fn descriptor_cases() -> bool {
@@ -123,8 +156,27 @@ pub fn make_intent_with(
     intent: u128,
     request: u128,
 ) -> Option<SemanticIntent> {
+    make_intent_on(fixture, bytes, &fixture.state.stamp, intent, request)
+}
+
+pub fn make_intent_on(
+    fixture: &SemanticFixture,
+    bytes: &[u8],
+    target: &reovim_kernel_interface::buffer::BufferStateStamp,
+    intent: u128,
+    request: u128,
+) -> Option<SemanticIntent> {
     let size = u64::try_from(bytes.len()).ok()?;
-    let stamp = intent_stamp(fixture, intent, request)?;
+    let base = intent_stamp(fixture, intent, request)?;
+    let stamp = SemanticIntentStamp::new(
+        base.intent(),
+        base.caller(),
+        base.request(),
+        *target,
+        *base.plan(),
+        *base.projection(),
+        base.coordinate(),
+    );
     let preparation = stamp
         .prepare_intent(
             &fixture.representation,
@@ -183,7 +235,7 @@ pub fn intent_stamp_for(
 pub fn domain_descriptor(generation: u64) -> Option<DomainPolicyDescriptor> {
     let stamp = domain_stamp(generation)?;
     let call = call_descriptor(DOMAIN_CALL_OWNER, 16)?;
-    Some(DomainPolicyDescriptor::new(stamp, &call))
+    Some(DomainPolicyDescriptor::new(stamp, &call, &state_model()?))
 }
 
 pub fn replacement_representation(
@@ -457,8 +509,12 @@ fn intent_bounds() -> Option<SemanticIntentBounds> {
 }
 
 fn intent_contract() -> Option<SemanticIntentContract> {
-    let schema = crate::resource::selection(INTENT_TYPE)?;
-    let safety = carrier_safety(INTENT_TYPE)?;
+    intent_contract_for(INTENT_TYPE)
+}
+
+pub fn intent_contract_for(identity: u128) -> Option<SemanticIntentContract> {
+    let schema = crate::resource::selection(identity)?;
+    let safety = carrier_safety(identity)?;
     SemanticIntentContract::new(schema, safety).ok()
 }
 
