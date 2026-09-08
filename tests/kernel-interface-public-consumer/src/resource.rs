@@ -1,5 +1,6 @@
 use reovim_kernel_interface::lifecycle::{Generation, LifecycleIdentity};
 use reovim_kernel_interface::operation::ContractSelection;
+use reovim_kernel_interface::resource::access::ResourceAccessDescriptor;
 use reovim_kernel_interface::resource::{
     ResourceAccessStamp, ResourceIdentity, ResourceRevision,
     ResourceSnapshotIdentity, ResourceSnapshotStamp, ResourceValueSchemas,
@@ -8,6 +9,10 @@ use reovim_kernel_interface::resource::{
 mod access;
 mod carrier;
 mod port;
+
+pub fn descriptor() -> Option<ResourceAccessDescriptor> {
+    access::stable_descriptor()
+}
 
 pub fn selection(identity: u128) -> Option<ContractSelection> {
     ContractSelection::new(identity, 1, 1, 1).ok()

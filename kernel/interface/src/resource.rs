@@ -10,6 +10,7 @@ pub mod carrier;
 pub mod delivery;
 pub mod operation;
 pub mod port;
+pub mod state;
 
 /// Stable opaque identity of one Resource subject.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

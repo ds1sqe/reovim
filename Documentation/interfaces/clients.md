@@ -34,6 +34,29 @@ observed revisions, never terminal cells or viewport coordinates. Missing or
 stale correspondence rejects the action; it never guesses an edit location.
 See [events and input](events-and-input.md) for registration and resolution.
 
+## Semantic Position and Selection
+
+Position identifies a location or target under a Domain/Representation schema;
+Selection identifies the chosen parts under that schema. Neither requires
+text coordinates, a single scalar, a contiguous range, or two endpoints.
+Examples include video time under a declared timebase, an image layer, or
+several disjoint paths/subtrees in a JSON shape. These are examples of open
+schemas, not a closed list of Kernel variants.
+
+Shared or submitted values identify their schema, semantic coordinate space,
+Resource/Buffer observation and applicable Representation generation, with
+bounded payloads. Interpretation and mapping belong outside the Kernel.
+
+Cross-domain/Representation translation requires explicit correspondence;
+neutral values are not universally convertible. A valid source Position or
+Selection may have no equivalent target meaning. Distinguish exact mapping,
+partial/lossy mapping, unrepresentable, unsupported, ambiguous and stale
+results. Partial mapping identifies omitted meaning and requires explicit
+client-policy acceptance; never silently drop selected parts or replace the
+original with a guessed location. Failed translation is a local capability
+result, not failure or reversal of an already accepted Kernel transition.
+Only a valid, current correspondence can supply a subsequent edit target.
+
 ## Observe and present
 
 The common client contract exposes attach, submit, observe/resynchronize, and
@@ -51,9 +74,20 @@ requires an authoritative snapshot/checkpoint.
 
 The client validates those stamps before installing derived state. A local
 cache, preview, or speculative view is discardable, never another Buffer or
-History authority. Editing-dependent local state follows the correlated
-outcome and matching update. Any later speculative policy must define bounded
-rollback and reconciliation explicitly.
+History authority. Editing-dependent local changes are gated by the
+correlated outcome and matching update, not commanded by them. Any later
+speculative policy must define bounded rollback and reconciliation explicitly.
+
+On accepted edit/undo/redo, Kernel reports the committed transition and state
+through outcomes and semantic notifications. It does not command a cursor or
+selection change, including for the requesting client. Each client decides
+whether to follow, keep, restore from its own context, or use another policy.
+No client acknowledgement or cursor update gates Kernel acceptance.
+
+Keeping a local Position/Selection does not make its old correspondence
+current: resolve or explicitly invalidate it before submitting another edit.
+Cross-client Position/Selection sharing is a separate, explicit CCM scope;
+receiving another client's state does not impose a follow policy.
 
 Example: the GUI submits a Markdown edit observed at Buffer revision R. An
 accepted result names R+1; source and preview updates may arrive separately.
@@ -131,6 +165,12 @@ Exercise render capability denial/loss and bounded teardown through the real
 selected adapters. Record causal input-to-present paths and overhead under
 [performance](../performance.md), including a typed unavailable observation
 when presentation cannot be measured.
+Exercise clients choosing different Position/Selection responses to the same
+undo/redo notification. Include non-text and disjoint selection schemas;
+stale retained positions cannot bypass normal edit-target validation.
+Test a valid source selection that another Domain/Representation cannot
+express, including a partially representable multipart selection. Both clients
+still observe the same accepted Buffer revision without forced translation.
 
 Full v0.16 release proof additionally joins TUI, CLI and Web in one mixed-family
 CCM scope, exercising gap/reconnect and slow-member isolation. A GUI/TUI

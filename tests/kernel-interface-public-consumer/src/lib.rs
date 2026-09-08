@@ -102,6 +102,15 @@ pub fn semantic_panic_inputs() -> Option<SemanticPanicInputs> {
     semantic::panic_inputs()
 }
 
+/// Reuses the selected public descriptors for native-state behavior tests.
+#[must_use]
+pub fn resource_state_fixture() -> Option<(
+    reovim_kernel_interface::resource::access::ResourceAccessDescriptor,
+    BufferPlanDescriptor,
+)> {
+    Some((resource::descriptor()?, buffer::descriptor()?))
+}
+
 /// Builds exact public values for hosted Interaction Debug tests.
 #[must_use]
 pub fn interaction_debug_inputs() -> Option<InteractionDebugInputs> {

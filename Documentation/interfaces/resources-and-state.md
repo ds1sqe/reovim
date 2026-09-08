@@ -65,6 +65,25 @@ A Resource-native State Model prepares the immutable state/History candidate
 from those operations outside Core commit ownership, as specified in
 [architecture](../architecture.md). Neither model nor adapter is a second
 Buffer writer; Core installs only a fully prepared, current candidate.
+The Rust preparation port uses a model-owned associated state type, not a
+Kernel byte container or downcast registry. Immutable working-state views
+pair actual data with exact Buffer and model/schema stamps. Initial
+preparation consumes a bounded Resource observation; it does not fabricate
+an accepted edit. Edit preparation consumes the lowered plan. Restore
+preparation receives the current state and the History-selected retained
+state; the model neither selects eligibility nor advances Buffer versions.
+
+Preparation validates model/schema and structural plans before native work.
+Models report bounded retained memory and work, with typed malformed,
+precondition, unavailable, pressure and cancellation failures. These are
+trusted provider obligations, not a sandbox or proof of arbitrary heap usage.
+Core rechecks candidate identity, selected History relation, current target
+and installation fences under the same serialization that installs it.
+Scalar checks may run there; model calls and candidate destruction may not.
+Rejection retains candidate ownership for release outside that authority.
+Retained data may predate the current source snapshot; restore publishes a
+fresh Buffer version against the current base, never the retained old stamp.
+
 Ambiguous, unsupported, or stale correspondence rejects without guessing.
 Derived Markdown preview is not a second authoritative document. An editable
 Representation needs a faithful reverse mapping; otherwise it is read-only.
@@ -96,10 +115,17 @@ The first profile uses one accepted transaction per new node. An atomic group
 submits one transaction; implicit timing-based merging is outside this
 profile. This is shared Buffer history, not per-client undo.
 
+Acceptance notifies clients of the resulting state and History edge; it does
+not restore or synchronize client cursors. Position/Selection interpretation
+and each client's response are owned by the [client contract](clients.md).
+
 Example: edit version 4 -> version 5; undo at 5 -> version 6 with the prior
 units; redo at 6 -> version 7. A concurrent edit still naming version 4
 rejects as stale. Both a Text edit and a keyed non-byte-addressed edit use
 this same acceptance/history mechanism with their own native operations.
+For branching, A -> B, undo to A, then edit C retains both edges A -> B and
+A -> C. Redo can select either child after undoing to A; B and C are not
+consecutive positions in a history list.
 
 Each edit has a session-scoped request identity. An identical retry returns
 its pending/retained result, never applies the same edit again; changed payload
@@ -119,9 +145,6 @@ operation.result -> Effect(certainty, cause, proof_or_reconcile)
 Save is explicit publication through the Resource Adapter, never a side effect
 of accepting an edit. It captures one immutable selected Buffer version and
 the expected Resource revision. Edits accepted later are not included or
-For branching, A -> B, undo to A, then edit C retains both edges A -> B and
-A -> C. Redo can select either child after undoing to A; B and C are not
-consecutive positions in a history list.
 marked saved. Conflicts preserve local intent for explicit reject or rebase;
 save must not overwrite external change merely because a path still exists.
 

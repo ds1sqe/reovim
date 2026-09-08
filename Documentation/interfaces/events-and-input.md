@@ -40,6 +40,10 @@ must state whether they offer invalidation only or complete ordered changes.
 A rejected edit produces its request outcome, not `buffer.changed`. A local
 mode change produces no fabricated Buffer transaction. Client events cannot
 expose a concrete viewport to Kernel state mechanisms.
+Accepted undo/redo uses `buffer.changed` with the actual History edge and
+resulting state. Notification reports acceptance; it is not a command to
+change any client's Position/Selection. The [client contract](clients.md)
+owns those response policies.
 
 Representation update lineage is exactly one of full snapshot, delta,
 invalidation, gap, or resynchronization. A delta names its exact predecessor

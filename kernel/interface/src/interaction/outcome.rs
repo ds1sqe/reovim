@@ -62,6 +62,9 @@ pub enum InteractionOutcomeCause {
 }
 
 /// Exact accepted Transaction and resulting Buffer state.
+///
+/// Reports authority state, not a command to move a client Position/Selection.
+/// Each client owns its response and any cross-schema interpretation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct InteractionAcceptedState {
     transaction: BufferTransactionIdentity,
