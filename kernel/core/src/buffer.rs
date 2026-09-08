@@ -11,11 +11,13 @@ use reovim_kernel_interface::resource::state::ResourcePreparedState;
 use crate::{BufferConfig, StateLease};
 
 mod edit;
+mod history;
 mod initialize;
 
 struct Retained<State> {
     stamp: BufferStateStamp,
     parent: Option<BufferHistoryNodeIdentity>,
+    preferred_child: Option<BufferHistoryNodeIdentity>,
     prepared: Rc<ResourcePreparedState<State>>,
 }
 
@@ -28,10 +30,12 @@ pub struct Buffer<State> {
     config: BufferConfig,
     nodes: Vec<Option<Retained<State>>>,
     current: usize,
+    current_state: Rc<ResourcePreparedState<State>>,
     used: usize,
     stamp: BufferStateStamp,
     next_node: u128,
     retained_bytes: CheckedByteCount,
+    resident_bytes: CheckedByteCount,
 }
 
 /// A Core-selected accepted transition, ready for Runtime delivery binding.
@@ -39,12 +43,34 @@ pub struct Buffer<State> {
 pub struct BufferCommit {
     /// Exact prior authority, not merely the client's claimed version.
     pub prior: BufferStateStamp,
-    /// Fresh accepted Buffer version and Core-allocated History node.
+    /// Fresh Buffer version and the newly created or traversed History node.
     pub result: BufferStateStamp,
-    /// New child relation; prior retained nodes remain available.
+    /// Exact created or traversed relation; siblings remain retained.
     pub edge: BufferHistoryEdge,
     /// Exact evaluated native plan and causal authority.
     pub plan: BufferPlanStamp,
+}
+
+/// Installed result and displaced ownership, both returned outside authority.
+///
+/// The retired lease may still share a canonical retained node. A restored
+/// materialization can instead be unique, so its destructor must never run
+/// before the caller releases the Buffer's mutable guard.
+pub struct Installation<State> {
+    /// Accepted state transition for Runtime outcome/notification binding.
+    pub commit: BufferCommit,
+    /// Previously current native ownership; release outside authority.
+    pub retired: StateLease<State>,
+}
+
+impl<State> fmt::Debug for Installation<State> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("Installation")
+            .field("commit", &self.commit)
+            .field("retired", &self.retired)
+            .finish()
+    }
 }
 
 impl<State> Buffer<State> {
@@ -56,19 +82,20 @@ impl<State> Buffer<State> {
 
     /// Retains current immutable data without requiring `State: Clone`.
     /// Runtime bounds lease owners and drops the borrow before policy calls.
-    ///
-    /// # Panics
-    /// Panics only if the private retained-current invariant is violated.
     #[must_use]
     pub fn observe(&self) -> StateLease<State> {
-        let node = self.nodes[self.current]
-            .as_ref()
-            .expect("the current accepted node remains retained");
         StateLease {
             model: self.config.model,
             stamp: self.stamp,
-            prepared: Rc::clone(&node.prepared),
+            prepared: Rc::clone(&self.current_state),
         }
+    }
+
+    /// Returns canonical native charges plus an extra current reconstruction.
+    /// Runtime separately bounds pending, leased and returned retired work.
+    #[must_use]
+    pub const fn resident_bytes(&self) -> CheckedByteCount {
+        self.resident_bytes
     }
 }
 
@@ -81,6 +108,7 @@ impl<State> fmt::Debug for Buffer<State> {
             .field("retained_stamp", &node.map(|value| value.stamp))
             .field("parent", &node.and_then(|value| value.parent))
             .field("retained_bytes", &self.retained_bytes)
+            .field("resident_bytes", &self.resident_bytes)
             .finish_non_exhaustive()
     }
 }

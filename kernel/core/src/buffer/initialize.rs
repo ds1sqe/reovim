@@ -52,15 +52,22 @@ impl<State> Buffer<State> {
             ),
         );
         let retained_bytes = candidate.usage().resident_bytes;
-        nodes[0] = Some(Retained { stamp, parent: None, prepared: candidate });
+        nodes[0] = Some(Retained {
+            stamp,
+            parent: None,
+            preferred_child: None,
+            prepared: Rc::clone(&candidate),
+        });
         Ok(Self {
             config: *config,
             nodes,
             current: 0,
+            current_state: candidate,
             used: 1,
             stamp,
             next_node: 1,
             retained_bytes,
+            resident_bytes: retained_bytes,
         })
     }
 }

@@ -10,9 +10,9 @@ v0.16 rebuilds the editing-system foundation. The first product target is a
 Markdown editor with a TypeScript GUI and a TUI with Kitty graphics. GUI
 framework selection remains open; SSR is the initial direction.
 
-The local Rust service now executes open, repeated semantic edits and automatic
-snapshots through Core/Runtime for two small native models. It is not a usable
-editor yet: full Markdown, History traversal and client presentation remain
+The local Rust service executes open, semantic edits, branching undo/redo and
+automatic snapshots through Core/Runtime for two small native models. It is
+not a usable editor yet: full Markdown and client presentation remain
 unfinished. Migration extracts useful behavior into domain-neutral mechanisms.
 v0.17 follows with Neovim feature parity.
 
@@ -36,8 +36,8 @@ Run the [local editing reference](apps/server/README.md):
 cargo run --manifest-path product/Cargo.toml -p reovim-server --features std
 ```
 
-It boots two public consumers, edits a heading and keyed state, observes the
-actual results, closes owners and exports correlated diagnostics to stderr.
+It boots two public consumers, edits heading/keyed state, traverses retained
+branches, observes results, closes owners and exports diagnostics to stderr.
 Contributor checks:
 
 ```sh

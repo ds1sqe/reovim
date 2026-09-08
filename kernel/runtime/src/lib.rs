@@ -5,6 +5,7 @@ extern crate alloc;
 
 pub mod diagnostics;
 mod engine;
+mod history;
 mod opening;
 mod root;
 mod session;
@@ -139,7 +140,11 @@ where
         let mut sessions = reserved(clients.len())?;
         for binding in clients {
             validate_client(&config, &binding, snapshot.descriptor())?;
-            sessions.push(Session::new(binding, Rc::clone(&telemetry))?);
+            sessions.push(Session::new(
+                binding,
+                model.plan_descriptor().clone(),
+                Rc::clone(&telemetry),
+            )?);
         }
         Ok(Self {
             config,

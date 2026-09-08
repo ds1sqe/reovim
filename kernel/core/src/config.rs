@@ -11,8 +11,10 @@ use reovim_kernel_interface::resource::state::{
 pub struct BufferLimits {
     /// Retained nodes including the initial state, at least one.
     pub history_nodes: CheckedCount,
-    /// Aggregate conservative native-state charge of all retained nodes.
-    /// Node metadata is separately bounded by `history_nodes`.
+    /// Canonical native-state charges plus any current reconstruction.
+    /// An aliased canonical/current state is charged once. Pending/retired
+    /// leases belong to Runtime's separate reservations; metadata is bounded
+    /// by `history_nodes` and one current materialization.
     pub resident_bytes: CheckedByteCount,
 }
 

@@ -12,8 +12,8 @@ use reovim_kernel_interface::resource::state::{
     ResourceStateTarget, ResourceStateTransition,
 };
 
-use super::{Buffer, BufferCommit, Retained};
-use crate::{BufferError, Rejected, StagedEdit};
+use super::{Buffer, BufferCommit, Installation, Retained};
+use crate::{BufferError, Rejected, StagedEdit, StateLease};
 
 impl<State> Buffer<State> {
     /// Checks a completed edit and allocates its retained immutable handle.
@@ -42,16 +42,20 @@ impl<State> Buffer<State> {
     ///
     /// The caller supplies the live Runtime fence, not accepted versions or
     /// nodes. No allocation, native callback or native destructor occurs here.
-    /// Every old state remains retained, so this edit retires no native state.
+    /// Canonical nodes stay retained. A displaced reconstruction is returned
+    /// for release after the caller drops its mutable Buffer guard.
     ///
     /// # Errors
     /// Returns a failed fence, changed observation/plan or exhausted bound.
     /// The returned staged candidate must be dropped outside authority.
+    ///
+    /// # Panics
+    /// Panics if the private canonical-current invariant is corrupted.
     pub fn commit_edit(
         &mut self,
         staged: StagedEdit<State>,
         fence: InstallationOutcome,
-    ) -> Result<BufferCommit, Rejected<StagedEdit<State>>> {
+    ) -> Result<Installation<State>, Rejected<StagedEdit<State>>> {
         // Staging validated the expected request against this immutable
         // stamp; there is no mutable duplicate that can diverge afterward.
         let expected = staged.prepared.stamp();
@@ -67,17 +71,31 @@ impl<State> Buffer<State> {
         let node = Retained {
             stamp: commit.result,
             parent: Some(commit.edge.parent()),
-            prepared: staged.prepared,
+            preferred_child: None,
+            prepared: Rc::clone(&staged.prepared),
         };
+        let parent = self.nodes[self.current]
+            .as_mut()
+            .expect("current canonical History node remains retained");
         // Atomic cut: the slot is already allocated and proved empty.
         // Only moves/scalars follow; every prior node stays owned unchanged.
+        parent.preferred_child = Some(commit.edge.child());
         self.nodes[self.used] = Some(node);
+        let retired = StateLease {
+            model: self.config.model,
+            stamp: commit.prior,
+            prepared: core::mem::replace(
+                &mut self.current_state,
+                staged.prepared,
+            ),
+        };
         self.current = self.used;
         self.used += 1;
         self.stamp = commit.result;
         self.next_node = next_node;
         self.retained_bytes = retained_bytes;
-        Ok(commit)
+        self.resident_bytes = retained_bytes;
+        Ok(Installation { commit, retired })
     }
 
     fn check_edit(

@@ -7,7 +7,7 @@ use reovim_kernel_interface::buffer::{
     BufferStateStamp,
     plan::{
         BufferCancellationIdentity, BufferCorrelationIdentity, BufferDeadline,
-        BufferHistoryTransitionIdentity, BufferPlanStamp,
+        BufferHistoryTransitionIdentity, BufferPlanDescriptor, BufferPlanStamp,
         BufferTransactionIdentity,
     },
 };
@@ -24,6 +24,9 @@ use reovim_kernel_interface::interaction::delivery::update::{
 use reovim_kernel_interface::interaction::descriptor::{
     InteractionSessionDescriptor, RepresentationAttachmentDescriptor,
     RepresentationAttachmentSelection,
+};
+use reovim_kernel_interface::interaction::history::{
+    InteractionHistoryAction, InteractionHistoryRequest,
 };
 use reovim_kernel_interface::interaction::identity::{
     InteractionCancellationIdentity, InteractionCorrelationIdentity,
@@ -85,7 +88,7 @@ pub struct Client {
     pub attachment: RepresentationAttachmentDescriptor,
     policy: descriptor::RepresentationPolicyDescriptor,
     authorization: LifecycleIdentity,
-    plan_owner: LifecycleIdentity,
+    plans: BufferPlanDescriptor,
     handle: Option<RootClientHandle>,
     state: Option<BufferStateStamp>,
     projection: ProjectionStamp,
@@ -99,7 +102,7 @@ impl Client {
     pub fn new(
         binding: &reovim_kernel_runtime::ClientBinding,
         policy: descriptor::RepresentationPolicyDescriptor,
-        plan_owner: LifecycleIdentity,
+        plans: BufferPlanDescriptor,
     ) -> Self {
         Self {
             session: binding.session.clone(),
@@ -107,7 +110,7 @@ impl Client {
             projection: binding.attachment.projection(),
             policy,
             authorization: binding.authorization,
-            plan_owner,
+            plans,
             handle: None,
             state: None,
             payload: None,
@@ -147,12 +150,12 @@ impl Client {
         Ok(())
     }
 
-    /// Negotiates and consumes the actual initial snapshot from the endpoint.
+    /// Negotiates the Session without requiring a semantic view attachment.
     ///
     /// # Errors
-    /// Rejects incompatible readiness, attachment or initial state.
-    pub fn initialize(
-        &mut self,
+    /// Rejects incompatible Session scope, capabilities or readiness.
+    pub fn negotiate(
+        &self,
         port: &mut impl InteractionSessionPort,
     ) -> Result<(), ClientError> {
         let request = InteractionNegotiationRequest::new(
@@ -167,6 +170,18 @@ impl Client {
         {
             return Err(ClientError::NotReady);
         }
+        Ok(())
+    }
+
+    /// Negotiates and consumes the actual initial snapshot from the endpoint.
+    ///
+    /// # Errors
+    /// Rejects incompatible readiness, attachment or initial state.
+    pub fn initialize(
+        &mut self,
+        port: &mut impl InteractionSessionPort,
+    ) -> Result<(), ClientError> {
+        self.negotiate(port)?;
         let RepresentationAttachmentRequestBindingOutcome::Bound(request) =
             RepresentationAttachmentRequest::bind(
                 &self.session,
@@ -236,21 +251,9 @@ impl Client {
             self.session.stamp().lifecycle(),
             self.session.stamp().client().role(),
         );
-        let local =
-            u64::try_from(request).map_err(|_| ClientError::Identity)?;
-        let namespace = u64::try_from(self.session.stamp().session().value())
-            .map_err(|_| ClientError::Identity)?;
-        let plan_id = (u128::from(namespace) << 64) | u128::from(local);
-        let plan = BufferPlanStamp::new(
-            self.plan_owner,
-            BufferTransactionIdentity::new(plan_id),
-            BufferHistoryTransitionIdentity::new(plan_id),
-            BufferCancellationIdentity::new(plan_id),
-            BufferCorrelationIdentity::new(plan_id),
-            BufferDeadline::None,
-        );
+        let plan = self.plan(request)?;
         let semantic = SemanticIntentStamp::new(
-            SemanticIntentIdentity::new(plan_id),
+            SemanticIntentIdentity::new(plan.transaction().value()),
             caller,
             SemanticRequestIdentity::new(request),
             target,
@@ -312,6 +315,44 @@ impl Client {
             return Err(ClientError::Intent);
         };
         Ok(intent)
+    }
+
+    /// Requests shared History from an observed Buffer, without semantic data.
+    /// A new request shares the exact identity namespace used by edits.
+    ///
+    /// # Errors
+    /// Returns missing observation, stale binding or identity exhaustion.
+    pub fn history(
+        &self,
+        request: u128,
+        action: InteractionHistoryAction,
+    ) -> Result<InteractionHistoryRequest, ClientError> {
+        let target = self.state.ok_or(ClientError::NotReady)?;
+        InteractionHistoryRequest::new(
+            &self.session,
+            &self.plans,
+            InteractionRequestIdentity::new(request),
+            self.plan(request)?,
+            target,
+            action,
+        )
+        .map_err(|_| ClientError::Binding)
+    }
+
+    fn plan(&self, request: u128) -> Result<BufferPlanStamp, ClientError> {
+        let local =
+            u64::try_from(request).map_err(|_| ClientError::Identity)?;
+        let namespace = u64::try_from(self.session.stamp().session().value())
+            .map_err(|_| ClientError::Identity)?;
+        let identity = (u128::from(namespace) << 64) | u128::from(local);
+        Ok(BufferPlanStamp::new(
+            self.plans.owner(),
+            BufferTransactionIdentity::new(identity),
+            BufferHistoryTransitionIdentity::new(identity),
+            BufferCancellationIdentity::new(identity),
+            BufferCorrelationIdentity::new(identity),
+            BufferDeadline::None,
+        ))
     }
 
     /// Installs a received full snapshot only at its exact predecessor.

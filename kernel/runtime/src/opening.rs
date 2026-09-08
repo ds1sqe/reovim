@@ -237,11 +237,8 @@ where
             return Ok(());
         }
         self.sessions[session].phase = crate::session::Phase::Opened;
-        self.opens[index].outcome = Some(Ok(RootOpenedBuffer {
-            state,
-            editable: true,
-            history: false,
-        }));
+        self.opens[index].outcome =
+            Some(Ok(RootOpenedBuffer { state, editable: true, history: true }));
         let _ = self.telemetry.emit(
             EditingStage::Opened,
             &EditingContext {

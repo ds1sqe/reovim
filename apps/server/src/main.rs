@@ -9,13 +9,11 @@ use std::{
 use reovim_host_reference::{DiagnosticQueue, StdClock};
 use reovim_kernel_interface::clock::ClockDescriptor;
 use reovim_kernel_interface::lifecycle::ShutdownOutcome;
-use reovim_kernel_interface::resource::state::ResourceStateModel;
-use reovim_kernel_interface::semantic::domain::DomainPolicyPort;
-use reovim_kernel_interface::semantic::representation::RepresentationPolicyPort;
-use reovim_kernel_interface::semantic::snapshot::RepresentationSnapshotPort;
 use reovim_kernel_runtime::diagnostics::Telemetry;
 use reovim_resource_local::profile;
-use reovim_server::assembly::{self, Service, life};
+use reovim_server::assembly::{self, life};
+
+mod scenario;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut arguments = std::env::args().skip(1);
@@ -45,7 +43,7 @@ fn heading() -> Result<(), Box<dyn Error>> {
         b"# a\n\xffopaque".to_vec(),
         Rc::clone(&telemetry),
     )?;
-    exercise(service, &[b"b", b"c", b"d", b"e"])?;
+    scenario::exercise(service, &[b"b", b"c", b"d", b"e"], b"z")?;
     export(&telemetry, &output)?;
     clock.close();
     Ok(())
@@ -55,45 +53,9 @@ fn keyed() -> Result<(), Box<dyn Error>> {
     let (telemetry, output, clock) = diagnostics(2)?;
     let service =
         assembly::keyed(life(2), vec![17, 0, 93, 1], Rc::clone(&telemetry))?;
-    exercise(service, &[&[17], &[17], &[93], &[17]])?;
+    scenario::exercise(service, &[&[17], &[17], &[93], &[17]], &[93])?;
     export(&telemetry, &output)?;
     clock.close();
-    Ok(())
-}
-
-fn exercise<M, D, R, S>(
-    mut service: Service<M, D, R, S>,
-    inputs: &[&[u8]],
-) -> Result<(), Box<dyn Error>>
-where
-    M: ResourceStateModel,
-    D: DomainPolicyPort<State = M::State>,
-    R: RepresentationPolicyPort<State = M::State>,
-    S: RepresentationSnapshotPort<State = M::State>,
-{
-    service.open(0)?;
-    service.open(1)?;
-    for (index, input) in inputs.iter().enumerate() {
-        let outcome = service.edit(0, index as u128 + 1, input)?;
-        let Some(accepted) = outcome.accepted_state() else {
-            return Err(io::Error::other(format!(
-                "edit was not accepted: {:?}",
-                outcome.cause()
-            ))
-            .into());
-        };
-        service.receive(0)?;
-        service.receive(1)?;
-        println!(
-            "request={} version={} node={:?} client0={:?} client1={:?}",
-            index + 1,
-            accepted.result().version().value(),
-            accepted.result().history().node(),
-            service.clients[0].payload(),
-            service.clients[1].payload()
-        );
-    }
-    service.close()?;
     Ok(())
 }
 

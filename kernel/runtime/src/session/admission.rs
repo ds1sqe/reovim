@@ -1,12 +1,11 @@
 use reovim_kernel_interface::buffer::plan::BufferDeadline;
-use reovim_kernel_interface::cancellation::{
-    CancellationOutcome, ExecutionOutcome,
-};
+use reovim_kernel_interface::event::editing::{EditingContext, EditingStage};
+use reovim_kernel_interface::interaction::bounds::InteractionIntentCharge;
 use reovim_kernel_interface::interaction::delivery::intent as delivery;
 use reovim_kernel_interface::interaction::intent::InteractionIntent;
 use reovim_kernel_interface::interaction::outcome::InteractionOutcomeCause;
 
-use super::{Phase, RequestRecord, Session};
+use super::{Phase, RequestBody, RequestRecord, Session};
 
 impl Session {
     pub(super) fn admit(
@@ -20,28 +19,44 @@ impl Session {
             );
         }
         let admitted = delivery::InteractionIntentAdmission::admitted(&intent);
-        if let Some(record) = self.requests.iter_mut().find(|record| {
-            record.intent.stamp().request() == intent.stamp().request()
-        }) {
+        if let Some(record) = self
+            .requests
+            .iter_mut()
+            .find(|record| record.identity() == intent.stamp().request())
+        {
             record.delivered = false;
             return admitted;
         }
-        self.request_bytes += intent.charge().intent_bytes().value();
-        let parent = self
-            .telemetry
-            .emit(
-                reovim_kernel_interface::event::editing::EditingStage::Admitted,
-                &crate::engine::context(&intent),
-            )
-            .sequence();
+        let context = crate::engine::context(&intent);
+        let charge = intent.charge();
+        // Reserve the complete terminal slot before admission is observable.
+        let Ok(outcome) = crate::reserved(1) else {
+            self.record_refusal(&intent, InteractionOutcomeCause::Pressure);
+            return delivery::InteractionIntentAdmission::not_admitted(
+                intent,
+                InteractionOutcomeCause::Pressure,
+            );
+        };
+        self.retain(RequestBody::Edit { intent, outcome }, charge, &context);
+        admitted
+    }
+
+    pub(super) fn retain(
+        &mut self,
+        body: RequestBody,
+        charge: InteractionIntentCharge,
+        context: &EditingContext,
+    ) {
+        self.request_bytes += charge.intent_bytes().value();
+        let parent =
+            self.telemetry.emit(EditingStage::Admitted, context).sequence();
         self.requests.push(RequestRecord {
-            intent,
-            outcome: None,
+            body,
+            charge,
             delivered: false,
             cancellation: None,
             parent,
         });
-        admitted
     }
 
     fn record_refusal(
@@ -73,14 +88,18 @@ impl Session {
         if let Some(cause) = self.live_claim_failure(intent) {
             return Some(cause);
         }
-        if let Some(record) = self.requests.iter().find(|record| {
-            record.intent.stamp().request() == intent.stamp().request()
-        }) {
-            return (!record.intent.same_request(intent))
-                .then_some(Cause::InvalidIntent);
+        if let Some(record) = self
+            .requests
+            .iter()
+            .find(|record| record.identity() == intent.stamp().request())
+        {
+            return (!record
+                .edit()
+                .is_some_and(|old| old.same_request(intent)))
+            .then_some(Cause::InvalidIntent);
         }
-        if self.requests.iter().any(|record| {
-            record.intent.semantic().stamp().intent()
+        if self.requests.iter().filter_map(RequestRecord::edit).any(|old| {
+            old.semantic().stamp().intent()
                 == intent.semantic().stamp().intent()
         }) {
             return Some(Cause::InvalidIntent);
@@ -100,7 +119,7 @@ impl Session {
         {
             return Some(Cause::StaleState);
         }
-        self.check_request_capacity(intent)
+        self.check_request_capacity(intent.charge())
     }
 
     fn live_claim_failure(
@@ -132,18 +151,17 @@ impl Session {
         None
     }
 
-    fn check_request_capacity(
+    pub(super) fn check_request_capacity(
         &self,
-        intent: &InteractionIntent,
+        charge: InteractionIntentCharge,
     ) -> Option<InteractionOutcomeCause> {
         let bounds = self.binding.session.bounds().requests();
-        let charge = intent.charge();
         let bytes =
             self.request_bytes.checked_add(charge.intent_bytes().value());
-        let pending = self.requests.iter().filter(|r| r.outcome.is_none());
+        let pending = self.requests.iter().filter(|r| r.pending());
         let pending_count = pending.clone().count() as u64;
         let pending_bytes =
-            pending.map(|r| r.intent.charge().intent_bytes().value()).sum();
+            pending.map(|r| r.charge.intent_bytes().value()).sum();
         let retained = self.requests.len() as u64 - pending_count;
         let outcome_bytes =
             retained.checked_mul(charge.outcome_bytes().value());
@@ -182,25 +200,16 @@ impl Session {
         {
             return Result::Denied;
         }
-        let Some(record) = self.requests.iter_mut().find(|record| {
-            record.intent.stamp().same_request(request.request())
-        }) else {
+        if self.phase == Phase::Closed {
+            return Result::Closed;
+        }
+        let Some(record) = self
+            .requests
+            .iter_mut()
+            .find(|record| record.matches_edit(&request.request()))
+        else {
             return Result::UnknownRequest;
         };
-        if record.outcome.is_some() {
-            return Result::AlreadyTerminal;
-        }
-        let outcome = CancellationOutcome::new(
-            request.cause(),
-            ExecutionOutcome::OwnedNonterminal,
-        );
-        if let Some(cause) = record.cancellation {
-            return Result::AlreadyRequested(CancellationOutcome::new(
-                cause,
-                ExecutionOutcome::OwnedNonterminal,
-            ));
-        }
-        record.cancellation = Some(request.cause());
-        Result::Requested(outcome)
+        record.cancel(request.cause())
     }
 }

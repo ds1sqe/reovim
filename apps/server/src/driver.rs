@@ -12,14 +12,20 @@ use reovim_kernel_interface::interaction::delivery::update::{
     RepresentationUpdateAcknowledgementResult, RepresentationUpdateApplication,
     RepresentationUpdateRequest,
 };
+use reovim_kernel_interface::interaction::history::{
+    InteractionHistoryAction, InteractionHistoryOutcome,
+    InteractionHistoryRequest,
+};
 use reovim_kernel_interface::interaction::identity::{
     InteractionRequestIdentity, RepresentationUpdateCursor,
 };
 use reovim_kernel_interface::interaction::outcome::InteractionOutcome;
-use reovim_kernel_interface::interaction::port::InteractionSessionPort;
 use reovim_kernel_interface::interaction::root::{
     InteractionRootPort, RootFailure, RootLifecycleRequest, RootOpenFailure,
     RootOpenRequest, RootOpenTarget,
+};
+use reovim_kernel_interface::interaction::{
+    history_delivery::InteractionHistoryPort, port::InteractionSessionPort,
 };
 use reovim_kernel_interface::lifecycle::{ReadinessOutcome, ShutdownOutcome};
 use reovim_kernel_interface::resource::state::ResourceStateModel;
@@ -146,6 +152,46 @@ where
     ) -> Result<Option<InteractionOutcome>, DriverError> {
         self.progress()?;
         let delivery = self.endpoint(index)?.take_outcome(*lookup);
+        if let Some(outcome) = delivery.outcome() {
+            return Ok(Some(outcome));
+        }
+        let pending = InteractionOutcomeDeliveryStatus::Unavailable(
+            InteractionOutcomeUnavailable::Pending,
+        );
+        if delivery.status() != pending {
+            return Err(DriverError::Delivery);
+        }
+        Ok(None)
+    }
+
+    /// Executes a shared History request; semantic updates remain independent.
+    ///
+    /// # Errors
+    /// Returns invalid binding, failed progress or bounded incompletion.
+    pub fn history(
+        &mut self,
+        index: usize,
+        request: u128,
+        action: InteractionHistoryAction,
+    ) -> Result<InteractionHistoryOutcome, DriverError> {
+        let client =
+            self.clients.get(index).ok_or(DriverError::UnknownClient)?;
+        let request =
+            client.history(request, action).map_err(DriverError::Client)?;
+        let admission = self.endpoint(index)?.submit_history(request);
+        if let Some(cause) = admission.rejection {
+            return Ok(InteractionHistoryOutcome::not_accepted(request, cause));
+        }
+        bounded(|| self.poll_history(index, &request))
+    }
+
+    fn poll_history(
+        &mut self,
+        index: usize,
+        request: &InteractionHistoryRequest,
+    ) -> Result<Option<InteractionHistoryOutcome>, DriverError> {
+        self.progress()?;
+        let delivery = self.endpoint(index)?.take_history_outcome(*request);
         if let Some(outcome) = delivery.outcome() {
             return Ok(Some(outcome));
         }

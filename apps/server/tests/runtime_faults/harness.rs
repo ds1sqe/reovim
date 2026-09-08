@@ -86,7 +86,7 @@ where
     let client = Client::new(
         &binding,
         representation.descriptor().clone(),
-        model.plan_descriptor().owner(),
+        model.plan_descriptor().clone(),
     );
     let config = RuntimeConfig {
         owner: assembly::life(1),

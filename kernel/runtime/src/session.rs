@@ -1,15 +1,13 @@
 use alloc::rc::Rc;
 use alloc::vec::Vec;
 use reovim_kernel_interface::buffer::BufferStateStamp;
-use reovim_kernel_interface::cancellation::CancellationCause;
+use reovim_kernel_interface::buffer::plan::BufferPlanDescriptor;
 use reovim_kernel_interface::interaction::descriptor::{
     InteractionSessionDescriptor, RepresentationAttachmentDescriptor,
 };
-use reovim_kernel_interface::interaction::intent::InteractionIntent;
 use reovim_kernel_interface::interaction::notification::{
     BufferChangeNotification, BufferChangeSubscription,
 };
-use reovim_kernel_interface::interaction::outcome::InteractionOutcome;
 use reovim_kernel_interface::interaction::root::RootClientHandle;
 use reovim_kernel_interface::interaction::update::{
     RepresentationUpdate, RepresentationUpdateIdentityStamp,
@@ -22,8 +20,12 @@ use crate::{RuntimeError, capacity, reserved};
 mod admission;
 mod changes;
 mod delivery;
+mod history;
 mod port;
+mod record;
 mod teardown;
+
+pub use record::{RequestBody, RequestRecord};
 
 /// Assembly-selected live authority and one supported Representation stream.
 pub struct ClientBinding {
@@ -33,14 +35,6 @@ pub struct ClientBinding {
     pub session: InteractionSessionDescriptor,
     /// Selected semantic attachment; no concrete renderer or cursor state.
     pub attachment: RepresentationAttachmentDescriptor,
-}
-
-pub struct RequestRecord {
-    pub intent: InteractionIntent,
-    pub outcome: Option<InteractionOutcome>,
-    pub delivered: bool,
-    pub cancellation: Option<CancellationCause>,
-    pub parent: Option<reovim_kernel_interface::event::EventSequence>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -56,6 +50,7 @@ pub enum Phase {
 /// Public endpoint containing delivery ownership, never authoritative state.
 pub struct Session {
     pub(crate) binding: ClientBinding,
+    pub(crate) plans: BufferPlanDescriptor,
     pub(crate) client: Option<RootClientHandle>,
     pub(crate) phase: Phase,
     pub(crate) current: Option<BufferStateStamp>,
@@ -83,6 +78,7 @@ pub struct Session {
 impl Session {
     pub(crate) fn new(
         binding: ClientBinding,
+        plans: BufferPlanDescriptor,
         telemetry: Rc<crate::diagnostics::Telemetry>,
     ) -> Result<Self, RuntimeError> {
         if !binding.attachment.scope().same_scope(binding.session.scope())
@@ -109,6 +105,7 @@ impl Session {
             transferred_projection: binding.attachment.projection(),
             next_delivery_cursor: Some(1),
             binding,
+            plans,
             client: None,
             phase: Phase::Inert,
             current: None,

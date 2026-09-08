@@ -2,9 +2,7 @@ use reovim_kernel_interface::bound::{CheckedCount, ZeroPolicy};
 use reovim_kernel_interface::cancellation::ExecutionOutcome;
 use reovim_kernel_interface::event::editing::{EditingContext, EditingStage};
 use reovim_kernel_interface::interaction::delivery::session as delivery;
-use reovim_kernel_interface::interaction::outcome::{
-    InteractionOutcome, InteractionOutcomeCause,
-};
+use reovim_kernel_interface::interaction::outcome::InteractionOutcomeCause;
 
 use super::{Phase, Session};
 
@@ -29,14 +27,11 @@ impl Session {
             },
         );
         for record in
-            self.requests.iter_mut().filter(|r| r.outcome.is_none()).take(
+            self.requests.iter_mut().filter(|r| r.pending()).take(
                 usize::try_from(request.work().value()).unwrap_or(usize::MAX),
             )
         {
-            record.outcome = Some(InteractionOutcome::not_accepted(
-                record.intent.stamp(),
-                InteractionOutcomeCause::Closing,
-            ));
+            record.reject(InteractionOutcomeCause::Closing);
         }
         if self.requests.iter().any(|r| !r.delivered) {
             return self.incomplete();
@@ -65,11 +60,11 @@ impl Session {
 
     fn incomplete(&self) -> delivery::InteractionCloseOutcome {
         let pending =
-            self.requests.iter().filter(|r| r.outcome.is_none()).count() as u64;
+            self.requests.iter().filter(|r| r.pending()).count() as u64;
         let retained = self
             .requests
             .iter()
-            .filter(|r| r.outcome.is_some() && !r.delivered)
+            .filter(|r| !r.pending() && !r.delivered)
             .count() as u64;
         let state = delivery::InteractionCloseRetainedState::new(
             count(pending),

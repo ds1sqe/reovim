@@ -32,7 +32,8 @@ use reovim_kernel_interface::lifecycle::LifecycleIdentity;
 
 /// The executable reference reserves bounded repeated requests per endpoint.
 pub const REQUESTS: u64 = 128;
-const REQUEST_BYTES: u64 = 64;
+// Includes complete in-process History requests, not just semantic payloads.
+const REQUEST_BYTES: u64 = 1024;
 const OUTCOME_BYTES: u64 = 4096;
 const UPDATE_BYTES: u64 = 4096;
 const UPDATES: u64 = 16;

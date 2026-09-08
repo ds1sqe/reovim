@@ -11,7 +11,8 @@ cargo run --manifest-path product/Cargo.toml -p reovim-server --features std
 An optional final argument selects `heading`, `keyed`, or `both` (default).
 Each scenario starts the Runtime, attaches two clients, independently opens
 one Resource, explicitly joins its Buffer, negotiates initial snapshots,
-executes four edits, consumes both update streams and closes dependencies.
+executes repeated edits, creates a sibling after undo, follows preferred and
+explicit redo children, consumes both update streams and closes dependencies.
 Stdout reports outcomes and interpreted state; stderr receives the canonical
 diagnostic records after editing has stopped. Output failure is an error, not
 evidence that the completed editing transactions were rolled back.
@@ -23,7 +24,7 @@ evidence that the completed editing transactions were rolled back.
 | Resource | Immutable in-memory source; byte and sparse keyed native models. |
 | Domain | Replace one ASCII heading label; toggle one existing keyed value. |
 | Representation | Native lowering and separately produced semantic snapshots. |
-| Core | Immutable state leases, atomic installation, retained parent relations. |
+| Core | Immutable state leases, atomic installation, tree History and restore. |
 | Runtime | Open, admission, bounded progress, exact replay and update delivery. |
 | Client | Current observations and public requests, independent update install. |
 | Host | Explicit clock grant and non-waiting diagnostic ownership queue. |
@@ -39,9 +40,16 @@ there is no implicit request/History eviction. The diagnostic ring is bounded
 by the common 1 MiB ceiling and reports gaps/loss independently of editing.
 These are reference capacity limits, not ratified performance budgets.
 
+Undo/redo selects existing opaque nodes with fresh Buffer versions. The native
+model reconstructs actual state; Core installs it without replacing canonical
+retained nodes. Returned prior materializations are released outside authority.
+History needs the negotiated Session and observed Buffer, not an attached
+Representation or a synthetic semantic intent. Edit and History share one
+request-ID ledger, including cancellation, exact replay and terminal draining.
+
 This stage uses full snapshots only. Stream exhaustion produces explicit
-invalidation, not invented recovery evidence. History traversal and snapshot
-recovery are not implemented by this reference yet. There is no transport,
+invalidation, not invented recovery evidence. Snapshot recovery is not
+implemented by this reference yet. There is no transport,
 file publication, renderer, general Markdown parser or extension runtime.
 Single-threaded direct execution does not measure IPC or presentation latency.
 
@@ -53,11 +61,16 @@ was adapted into separately owned providers. State wrappers no longer require
 Clone. Their capacity, malformed input and native preconditions have direct
 provider tests. Core and Runtime were rewritten; the scripted journey
 coordinator is not a product dependency or an alternate execution path.
-Older History traversal remains only a behavior donor for the next slice.
+Parent/child and preferred-redo behavior was adapted from the stable undo tree.
+Text inverse edits, cursor restoration, clocks, ordinal IDs and implicit
+pruning were excluded; selected native Restore supplies reconstruction.
 
 [Executing tests](tests/executing.rs) exercise repeated edits, stale requests
 and independent clients. [Core admission tests](tests/core_admission.rs) check
-native preservation, immutable leases, fences and capacity. Fault injection
+native preservation, immutable leases, fences and capacity.
+[History tests](tests/history.rs) exercise retained siblings, exact edge
+notifications and view-independent undo through both models.
+Fault injection
 and diagnostic tests exercise the same composed path and public contracts.
 `scripts/ci.sh` runs these with the pinned stable/nightly window; hosted std
 assembly is feature-gated while the default library path compiles no_std.

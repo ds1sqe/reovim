@@ -193,7 +193,7 @@ where
         clients.push(Client::new(
             &binding,
             representation.descriptor().clone(),
-            config.buffer.plan_owner,
+            model.plan_descriptor().clone(),
         ));
         bindings.push(binding);
     }

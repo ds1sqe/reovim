@@ -13,8 +13,8 @@ use reovim_kernel_interface::interaction::outcome::{
 use reovim_kernel_interface::lifecycle::LifecycleState;
 use reovim_kernel_interface::resource::port::ResourceAccessPort;
 use reovim_kernel_interface::resource::state::{
-    ResourceStateInput, ResourceStateLimits, ResourceStateModel,
-    ResourceStatePreparation,
+    ResourceStateError, ResourceStateInput, ResourceStateLimits,
+    ResourceStateModel, ResourceStatePreparation,
 };
 use reovim_kernel_interface::semantic::bounds::SemanticPolicyCallCharge;
 use reovim_kernel_interface::semantic::descriptor::SemanticPolicyCallDescriptor;
@@ -28,6 +28,7 @@ use reovim_kernel_interface::semantic::representation::{
 use reovim_kernel_interface::semantic::snapshot::RepresentationSnapshotPort;
 use reovim_kernel_interface::semantic::state::SemanticPolicyInput;
 
+use crate::session::RequestBody;
 use crate::{Runtime, RuntimeError};
 
 impl<A, M, D, R, S> Runtime<A, M, D, R, S>
@@ -77,7 +78,7 @@ where
             self.sessions[index]
                 .requests
                 .iter()
-                .position(|record| record.outcome.is_none())
+                .position(super::session::RequestRecord::pending)
                 .map(|request| (index, request))
         });
         let Some((index, request)) = pending else {
@@ -89,10 +90,17 @@ where
     }
 
     fn execute(&mut self, session: usize, request: usize) {
+        match &self.sessions[session].requests[request].body {
+            RequestBody::Edit { .. } => self.execute_edit(session, request),
+            RequestBody::History { .. } => {
+                self.execute_history(session, request);
+            }
+        }
+    }
+
+    fn execute_edit(&mut self, session: usize, request: usize) {
         let record = &self.sessions[session].requests[request];
-        let intent = &record.intent;
-        let mut context = context(intent);
-        context.parent = record.parent;
+        let mut context = record.context();
         let result = self.prepare(session, request);
         if result.is_ok() {
             context.parent = self
@@ -106,11 +114,15 @@ where
             InstallationOutcome::Fenced(FenceCause::Replacement)
         };
         let accepted = result.and_then(|staged| {
-            self.buffer
+            let installed = self
+                .buffer
                 .as_mut()
                 .ok_or(InteractionOutcomeCause::Closed)?
                 .commit_edit(staged, fence)
-                .map_err(|rejected| buffer_failure(rejected.cause))
+                .map_err(|rejected| buffer_failure(rejected.cause))?;
+            let commit = installed.commit;
+            drop(installed.retired);
+            Ok(commit)
         });
         self.finish_edit(
             session,
@@ -143,7 +155,7 @@ where
             &self.model,
             &self.domain,
             &self.representation,
-            &record.intent,
+            record.edit().expect("selected an edit record"),
             self.config.buffer.preparation,
         )
     }
@@ -159,7 +171,10 @@ where
         context: &EditingContext,
     ) {
         let record = &mut self.sessions[session].requests[request];
-        let intent = &record.intent;
+        let RequestBody::Edit { intent, outcome: retained } = &mut record.body
+        else {
+            unreachable!("edit execution retains its request kind");
+        };
         let outcome = match *result {
             Ok(state) => InteractionOutcome::accepted(
                 intent.stamp(),
@@ -171,7 +186,7 @@ where
                 InteractionOutcome::not_accepted(intent.stamp(), cause)
             }
         };
-        record.outcome = Some(outcome);
+        retained.push(outcome);
         let mut context = *context;
         let Some(accepted) = outcome.accepted_state() else {
             context.cause = outcome.cause();
@@ -188,7 +203,7 @@ where
     }
 }
 
-const fn cancellation_failure(
+pub const fn cancellation_failure(
     cause: reovim_kernel_interface::cancellation::CancellationCause,
 ) -> InteractionOutcomeCause {
     use reovim_kernel_interface::cancellation::CancellationCause as Cause;
@@ -233,11 +248,11 @@ where
         CancellationState::Open,
         DeadlineState::Pending,
     )
-    .map_err(|_| InteractionOutcomeCause::ProviderContractViolation)?;
+    .map_err(state_failure)?;
     let expected = preparation.stamp();
     let candidate = preparation
         .prepare_with(model)
-        .map_err(|_| InteractionOutcomeCause::PolicyFailure)?;
+        .map_err(|rejected| state_failure(rejected.cause))?;
     buffer
         .stage_edit(&expected, candidate)
         .map_err(|rejected| buffer_failure(rejected.cause))
@@ -310,15 +325,45 @@ pub fn charge(
         .map_err(|_| InteractionOutcomeCause::Pressure)
 }
 
-const fn buffer_failure(cause: BufferError) -> InteractionOutcomeCause {
+pub const fn buffer_failure(cause: BufferError) -> InteractionOutcomeCause {
     match cause {
         BufferError::Capacity | BufferError::IdentityExhausted => {
             InteractionOutcomeCause::Pressure
         }
-        BufferError::State(_) => InteractionOutcomeCause::StaleState,
+        BufferError::State(cause) => state_failure(cause),
         BufferError::InvalidConfiguration => {
             InteractionOutcomeCause::ProviderContractViolation
         }
+    }
+}
+
+pub const fn state_failure(
+    cause: ResourceStateError,
+) -> InteractionOutcomeCause {
+    use ResourceStateError as Error;
+    match cause {
+        Error::Fenced(cause) => fence_failure(cause),
+        Error::Pressure => InteractionOutcomeCause::Pressure,
+        Error::PreconditionFailed => InteractionOutcomeCause::Conflict,
+        Error::ModelMismatch => InteractionOutcomeCause::Replaced,
+        Error::StateMismatch | Error::PreparationMismatch => {
+            InteractionOutcomeCause::StaleState
+        }
+        Error::Unavailable | Error::ProviderFailure => {
+            InteractionOutcomeCause::PolicyFailure
+        }
+        _ => InteractionOutcomeCause::ProviderContractViolation,
+    }
+}
+
+const fn fence_failure(cause: FenceCause) -> InteractionOutcomeCause {
+    match cause {
+        FenceCause::Cancellation => InteractionOutcomeCause::Cancelled,
+        FenceCause::Deadline => InteractionOutcomeCause::Deadline,
+        FenceCause::CallerTimeout => InteractionOutcomeCause::CallerTimeout,
+        FenceCause::Replacement => InteractionOutcomeCause::Replaced,
+        FenceCause::Closing => InteractionOutcomeCause::Closing,
+        FenceCause::Closed => InteractionOutcomeCause::Closed,
     }
 }
 

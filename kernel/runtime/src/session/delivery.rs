@@ -2,7 +2,7 @@ use reovim_kernel_interface::interaction::delivery::{intent, update};
 use reovim_kernel_interface::interaction::update::RepresentationUpdate;
 use reovim_kernel_interface::semantic::stamp::ProjectionStamp;
 
-use super::{Phase, Session};
+use super::{Phase, RequestBody, Session};
 
 impl Session {
     pub(super) fn deliver_outcome(
@@ -16,15 +16,20 @@ impl Session {
         if !request.session().matches(self.binding.session.stamp()) {
             return Delivery::unavailable(Missing::Replaced);
         }
-        let Some(record) = self.requests.iter_mut().find(|record| {
-            record.intent.stamp().same_request(request.request())
-        }) else {
+        let Some(record) = self
+            .requests
+            .iter_mut()
+            .find(|record| record.matches_edit(&request.request()))
+        else {
             return Delivery::unavailable(Missing::UnknownRequest);
         };
         if record.delivered {
             return Delivery::unavailable(Missing::AlreadyDelivered);
         }
-        let Some(outcome) = record.outcome else {
+        let RequestBody::Edit { outcome, .. } = &record.body else {
+            unreachable!("exact edit lookup only selects an edit");
+        };
+        let Some(outcome) = outcome.first().copied() else {
             return Delivery::unavailable(Missing::Pending);
         };
         record.delivered = true;
