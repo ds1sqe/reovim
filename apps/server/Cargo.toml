@@ -1,0 +1,51 @@
+[package]
+name = "reovim-server"
+workspace = "../../product"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Runnable local reference for the Reovim editing service"
+publish = false
+
+[features]
+default = []
+std = ["reovim-host-reference/std"]
+
+[dependencies.reovim-kernel-interface]
+path = "../../kernel/interface"
+version = "=0.16.0-dev"
+
+[dependencies.reovim-kernel-core]
+path = "../../kernel/core"
+version = "=0.16.0-dev"
+
+[dependencies.reovim-kernel-runtime]
+path = "../../kernel/runtime"
+version = "=0.16.0-dev"
+
+[dependencies.reovim-resource-local]
+path = "../../resource/local"
+version = "=0.16.0-dev"
+
+[dependencies.reovim-domain-basic]
+path = "../../domain/basic"
+version = "=0.16.0-dev"
+
+[dependencies.reovim-representation-basic]
+path = "../../representation/basic"
+version = "=0.16.0-dev"
+
+[dependencies.reovim-host-reference]
+path = "../../host/reference"
+version = "=0.16.0-dev"
+
+[[bin]]
+name = "reovim-server"
+path = "src/main.rs"
+required-features = ["std"]
+
+[lints]
+workspace = true

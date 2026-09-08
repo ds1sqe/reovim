@@ -1,0 +1,27 @@
+[package]
+name = "reovim-representation-basic"
+workspace = "../../product"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Heading and keyed Representation lowering and snapshots"
+readme = false
+publish = false
+
+[dependencies.reovim-kernel-interface]
+path = "../../kernel/interface"
+version = "=0.16.0-dev"
+
+[dependencies.reovim-resource-local]
+path = "../../resource/local"
+version = "=0.16.0-dev"
+
+[dependencies.reovim-domain-basic]
+path = "../../domain/basic"
+version = "=0.16.0-dev"
+
+[lints]
+workspace = true

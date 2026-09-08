@@ -1,0 +1,23 @@
+[package]
+name = "reovim-domain-basic"
+workspace = "../../product"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "State-aware heading and keyed Domain providers"
+readme = false
+publish = false
+
+[dependencies.reovim-kernel-interface]
+path = "../../kernel/interface"
+version = "=0.16.0-dev"
+
+[dependencies.reovim-resource-local]
+path = "../../resource/local"
+version = "=0.16.0-dev"
+
+[lints]
+workspace = true

@@ -16,6 +16,8 @@ Next and Completed. After a successful commit, move only fully covered
 Completed tasks to the active plan directory's completed.md with commit/date,
 result and verification. Leave uncommitted tasks in current.md.
 Do not resume archived plans. Keep tmp/README.md synchronized with disk.
+Keep context light and focused on the active task. Runtime notes and inventory
+stay concise; link durable decisions and history instead of repeating them.
 Retain perf/ and Documentation/heritage/ as reference material; do not delete
 them during documentation or tooling cleanup.
 

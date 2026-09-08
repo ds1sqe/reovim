@@ -1,14 +1,28 @@
 [workspace]
 resolver = "3"
 members = [
+    "../apps/server",
+    "../domain/basic",
+    "../host/reference",
+    "../kernel/core",
     "../kernel/foundation",
     "../kernel/interface",
+    "../kernel/runtime",
+    "../representation/basic",
+    "../resource/local",
     "../tests/foundation-public-consumer",
     "../tests/kernel-interface-public-consumer",
 ]
 default-members = [
+    "../apps/server",
+    "../domain/basic",
+    "../host/reference",
+    "../kernel/core",
     "../kernel/foundation",
     "../kernel/interface",
+    "../kernel/runtime",
+    "../representation/basic",
+    "../resource/local",
     "../tests/foundation-public-consumer",
     "../tests/kernel-interface-public-consumer",
 ]

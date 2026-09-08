@@ -5,6 +5,7 @@ use crate::cancellation::InstallationOutcome;
 use super::{
     ResourcePreparationStamp, ResourceStateError, ResourceStateLimits,
     ResourceStateModelBinding, ResourceStateOutput, ResourceStateTarget,
+    ResourceStateUsage,
 };
 
 /// Fully evaluated immutable candidate, still without mutation authority.
@@ -36,6 +37,13 @@ impl<State> ResourcePreparedState<State> {
     #[must_use]
     pub const fn state(&self) -> &State {
         &self.output.state
+    }
+
+    /// Returns the provider's conservative native memory and work charge.
+    /// Core uses it to reserve aggregate retention before installation.
+    #[must_use]
+    pub const fn usage(&self) -> ResourceStateUsage {
+        self.output.usage
     }
 
     /// Checks scalar installation conditions without callbacks or loss of

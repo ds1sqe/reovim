@@ -16,6 +16,7 @@ mod canonical;
 mod counts;
 mod cursor;
 mod descriptor;
+pub mod editing;
 mod identity;
 mod limits;
 mod proposal;

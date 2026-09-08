@@ -45,6 +45,16 @@ encoding fixtures in kernel/interface. That bound is a wire-format limit,
 not a hash or checkout-shape expectation. Additional diagnostic families must
 declare their schema, safe fields and actionability before use.
 
+The first executing service adds `kernel.editing/v1`: opened, admitted,
+prepared, committed, update-ready, update-failed, rejected, closing and closed.
+Update failure never reclassifies an accepted edit as rejected. Runtime
+stamps producer/stream/sequence and clock identity; safe fields are the exact
+session/request, Buffer-plan correlation, state identity, typed rejection
+cause and optional causal parent. Native content and selections are not logged.
+Canonical fields have fixed order and bounded ASCII encoding. This family
+shares the diagnostic stream and output contracts, not the semantic update
+feed. A missing diagnostic or failed sink never changes editing acceptance.
+
 ## Backtrace an event and inspect related state
 
 Record actual causal edges, not guessed timestamp relationships:
