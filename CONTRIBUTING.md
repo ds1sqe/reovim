@@ -1,79 +1,75 @@
 # Contributing to Reovim
 
-## Read the contract first
+Read [the goals and interface map](Documentation/README.md), then
+[architecture](Documentation/architecture.md) and the owning interface.
+Specifications define the target; implementation requires code and evidence.
 
-Before changing an architectural boundary, read:
+## Make a coherent change
 
-1. [Documentation authority and map](Documentation/README.md);
-2. [Concept](Documentation/00-Concept.md);
-3. [Vocabulary](Documentation/00-Vocabulary.md);
-4. [Architecture and layer model](Documentation/01-Architecture/README.md); and
-5. the owning contract and its [Rule Matrix](Documentation/06-Conformance/02-Rule-Matrix.md)
-   rows.
+- Agree the used interface chain before its inner mechanisms. Compile public
+  providers/consumers, then run the actual journey.
+- Preserve inward dependencies, one editing authority, source fidelity and
+  explicit error/effect outcomes. Keep Client view policy outside the Kernel.
+- Classify donor behavior as adopt, adapt, rewrite or retire. Do not copy a
+  subsystem just because it already works for text.
+- Keep contracts, code, behavior/fault tests and evidence consistent.
+- Use public SDK/service/family APIs in examples and first-party modules.
+- Review dependency maintenance, license, targets, unsafe and runtime cost.
+- Follow [coding style](CODE_STYLE.md): 80 columns, three Rust nesting levels,
+  rustfmt, small functions and explicit ownership.
 
-Normative Documentation defines the target; it is not evidence that current
-code conforms. Plans own implementation order. Historical code is a behavior
-donor and does not define v0.16 architecture.
+Plans own scope/order. tmp/current.md holds Mission, Progress and Focus;
+Progress has Current, Next and Completed. After a successful commit, move
+only fully covered Completed tasks to the plan directory's completed.md,
+with commit/date, result and verification. Leave uncommitted tasks live.
 
-Contract indexes route to focused normative chapters. Keep each active
-normative Markdown file at or below 250 lines, link directly to the owning file,
-and do not preserve a retired monolith as a second authority.
-
-Before changing source, read and follow the repository-wide
-[coding style](CODE_STYLE.md). Human-authored source uses an 80-column maximum
-and no more than three Clippy-counted Rust block-nesting levels.
-
-## Change discipline
-
-- Preserve inward dependency direction and one semantic authority per state.
-- Keep text, viewport, platform, transport, and adapter implementation types out
-  of the Domain-neutral Kernel.
-- Use public SDK/Module/Client contracts for first-party behavior.
-- Update contract, rule mapping, implementation, public-boundary tests,
-  migration evidence, Events, and performance evidence together when
-  applicable.
-- Classify migrated behavior as adopt, adapt, rewrite, or retire.
-- Do not leave duplicate paths or permanent compatibility shims after cutover.
-- Add dependencies only with the review required by the Layer Model.
-
-## Verification
-
-Run the repository check suite:
+## Verify
 
 ```sh
 ./scripts/check.sh
+./scripts/ci.sh
 ```
 
-With valid toolchain-bound local coverage, the default command selects only
-the changed component plus reverse dependents. A TUI-only change runs only the
-TUI suite; a Kernel change also runs dependent Client suites. Missing or
-uncertain coverage falls back to the full gate. Run the uncached checkpoint
-form before committing:
+The default gate selects affected components and reverse dependents using
+Git file identities and successful toolchain-bound local records. Unknown
+ownership or invalid coverage runs the full gate. No manually tracked hash
+manifest is needed. check.sh --full runs its uncached checks for one installed
+toolchain. ci.sh is the checkpoint/CI runner: it runs the same complete window
+locally and in GitHub, with no cached-result shortcut.
 
-```sh
-./scripts/check.sh --full
-```
+ci.json owns rust-stable and rust-nightly as exact version pins. The window
+tracks the selected latest stable and dated nightly releases. The runner
+installs those pins/components/targets, fetches locked dependencies into a
+fresh Cargo home, and invokes check.sh --full. This requires network access.
+Use ci.sh --toolchain stable or nightly for one lane; --matrix shows the
+GitHub matrix. Normal runs never change ci.json. To update the window, change
+its pins, run the full matrix, review the results, then commit the manifest.
 
-At minimum, relevant changes require formatting, warning-free builds, strict
-lint, focused and workspace tests, documentation links/terminology checks, and
-the evidence classes named by applicable Rule Matrix rows. A happy-path test
-does not substitute for fault, cancellation, lifecycle, performance, Event, or
-exact-artifact evidence.
+The runner shares commands, toolchains and configuration with GitHub CI;
+it does not claim identical host OS, system libraries or physical hardware.
+The current runner requires Linux x86_64 and an existing rustup installation.
 
-Do not claim support or qualification from a source-tree test. Qualification
-uses the exact packaged candidate in its named clean environment.
+The gate checks style, links, product formatting, builds/tests, Clippy,
+rustdoc and portable library compilation. Cargo commands use
+--manifest-path product/Cargo.toml. Review actual Cargo dependencies and
+public types: bare-target compilation alone proves neither core-only
+Foundation nor absence of every forbidden architectural edge.
 
-## Pull requests
+Use semantic tests, not literal checkout hashes, lengths or package counts.
+Each changed journey also needs applicable failure/cancellation, lifecycle,
+structured events and causal evidence. Measure performance on reproducible
+scenarios and retain raw artifacts. Report failures, not only successful runs.
 
-A pull request should:
+The former exact source/compiler/package proof system is retired. Ordinary
+tests do not claim its automated proof or packaged release qualification.
+A release claim tests the exact packaged candidate on its claimed environment.
 
-- link its owning issue/plan and normative rules;
-- explain user-visible behavior and architectural ownership;
-- identify donor behavior and migration disposition where applicable;
-- include commands and retained evidence, including failures;
-- state compatibility, dependency, unsafe/native, performance, and release
-  effects; and
-- remove superseded active paths after the conforming replacement passes.
+## Submit
+
+A change explains the owning issue/plan, public behavior, responsibility,
+donor/dependency decisions, exact verification and limits. Do not claim an
+unimplemented contract as supported. Remove superseded paths only after
+the replacement is checked; preserve unrelated or uncommitted user work.
 
 ## Contributor license terms
 

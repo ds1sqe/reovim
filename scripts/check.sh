@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bounded hosted contributor checks for the v0.16 workspaces.
+# Component-aware contributor checks for the editing-system workspace.
 
 set -euo pipefail
 
@@ -17,18 +17,11 @@ unset RIPGREP_CONFIG_PATH
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly PRODUCT_MANIFEST="$ROOT/product/Cargo.toml"
 readonly PRODUCT_TARGET=x86_64-unknown-linux-gnu
+readonly PORTABLE_TARGET=x86_64-unknown-none
 
-case "${RUSTUP_TOOLCHAIN:-}" in
-    1.92.0 | 1.92.0-*)
-        PRODUCT_TARGET_SLOT=rust-1.92
-        ;;
-    stable | stable-*)
-        PRODUCT_TARGET_SLOT=rust-stable
-        ;;
-    *)
-        PRODUCT_TARGET_SLOT=active
-        ;;
-esac
+# Rustdoc indexes from different compiler versions cannot share one slot.
+PRODUCT_TARGET_SLOT="$(rustc -Vv | git hash-object --stdin)"
+readonly PRODUCT_TARGET_SLOT
 PRODUCT_TARGET_DIR="$ROOT/target/product-contributor/$PRODUCT_TARGET_SLOT"
 readonly PRODUCT_TARGET_DIR
 CHECK_RUSTDOCFLAGS="${RUSTDOCFLAGS:+$RUSTDOCFLAGS }"
@@ -39,24 +32,22 @@ usage() {
     cat <<'EOF'
 Usage: ./scripts/check.sh [--full]
 
-Checks normative/public documentation and every fast hosted Repository Tooling
-and Product workspace target affected by working inputs. The first run for one
-tool context is full and seeds ignored local coverage. --full always executes
-the complete uncached gate. This command targets a warm runtime of about one
-minute. Exact clean-revision Product evidence uses check-conformance.sh.
+Checks documentation, style, and affected Product components. Successful
+toolchain-bound local coverage selects changed components and their reverse
+dependents. Missing or uncertain coverage runs the full gate. --full always
+runs uncached checks and cache fixtures; use it in CI and before checkpoints.
 
-The exhaustive `product_empty_v2_full_cli_and_mutation_matrix` and
-`exact_git_generate_verify_and_raw_identity_mutants` tests are pre-checkpoint
-gates, not per-edit checks.
+The current workspace contains portable contracts and public consumers.
+Checks include x86_64-unknown-none library compilation, hosted tests, Clippy,
+and rustdoc. Both targets must already be installed. Warm runtime targets
+about one minute; this gate does not qualify a release or custom host.
 EOF
 }
 
 force_full=no
 case "${1:-}" in
     "") ;;
-    --full)
-        force_full=yes
-        ;;
+    --full) force_full=yes ;;
     -h | --help)
         usage
         exit 0
@@ -75,262 +66,103 @@ fi
 
 cd "$ROOT"
 
+run_product_checks() {
+    local -a packages=("$@")
+
+    echo "==> portable Product libraries and public consumers"
+    CARGO_TARGET_DIR="$PRODUCT_TARGET_DIR" \
+        cargo check --locked --offline \
+            --manifest-path "$PRODUCT_MANIFEST" "${packages[@]}" \
+            --lib --no-default-features --target "$PORTABLE_TARGET" --release
+
+    echo "==> hosted Product workspace check"
+    CARGO_TARGET_DIR="$PRODUCT_TARGET_DIR" \
+        cargo check --locked --offline \
+            --manifest-path "$PRODUCT_MANIFEST" "${packages[@]}" \
+            --all-targets --all-features --target "$PRODUCT_TARGET" --release
+
+    echo "==> Product public-boundary tests"
+    CARGO_TARGET_DIR="$PRODUCT_TARGET_DIR" \
+        cargo test --locked --offline \
+            --manifest-path "$PRODUCT_MANIFEST" "${packages[@]}" \
+            --all-features --target "$PRODUCT_TARGET" --release
+
+    echo "==> Product Clippy"
+    CLIPPY_CONF_DIR="$ROOT" \
+        CARGO_TARGET_DIR="$PRODUCT_TARGET_DIR" \
+        cargo clippy --locked --offline \
+            --manifest-path "$PRODUCT_MANIFEST" "${packages[@]}" \
+            --all-targets --all-features --target "$PRODUCT_TARGET" \
+            --release -- -D warnings -F unsafe-code
+
+    echo "==> Product rustdoc"
+    CARGO_TARGET_DIR="$PRODUCT_TARGET_DIR" \
+        RUSTDOCFLAGS="$CHECK_RUSTDOCFLAGS" \
+        cargo doc --locked --offline \
+            --manifest-path "$PRODUCT_MANIFEST" "${packages[@]}" \
+            --all-features --target "$PRODUCT_TARGET" --release --no-deps
+}
+
 run_full_checks() {
     local fixture_directory="$1"
 
     echo "==> check-cache fixtures"
     ./scripts/check-cache.sh fixtures "$fixture_directory"
-
     echo "==> repository style"
     ./scripts/check-style.sh
-
-    echo "==> Repository Tooling rustfmt"
-    cargo fmt --all --check
-
     echo "==> Product rustfmt"
     cargo fmt --manifest-path "$PRODUCT_MANIFEST" --all --check
-
     echo "==> documentation"
     ./scripts/check-documentation.sh
-
-    echo "==> workspace library and binary tests"
-    cargo test --locked --offline --workspace --lib --bins --all-features
-
-    echo "==> fast checker integration tests"
-    cargo test --locked --offline -p reovim-conformance --test checker \
-        --all-features -- \
-        --skip product_empty_v2_full_cli_and_mutation_matrix \
-        --skip exact_git_generate_verify_and_raw_identity_mutants
-
-    echo "==> dependency-graph integration tests"
-    cargo test --locked --offline -p reovim-depgraph --test depgraph \
-        --all-features
-
-    echo "==> Product workspace check"
-    CARGO_TARGET_DIR="$PRODUCT_TARGET_DIR" \
-        cargo check --locked --offline \
-            --manifest-path "$PRODUCT_MANIFEST" --workspace --all-targets \
-            --all-features --target "$PRODUCT_TARGET" --release
-
-    echo "==> Product public-boundary tests"
-    CARGO_TARGET_DIR="$PRODUCT_TARGET_DIR" \
-        cargo test --locked --offline \
-            --manifest-path "$PRODUCT_MANIFEST" --workspace --all-features \
-            --target "$PRODUCT_TARGET" --release
-
-    echo "==> workspace doctests"
-    cargo test --locked --offline --workspace --doc --all-features
-
-    echo "==> workspace clippy"
-    CLIPPY_CONF_DIR="$ROOT" \
-        cargo clippy --locked --offline --workspace --all-targets \
-            --all-features -- -D warnings -F unsafe-code
-
-    echo "==> Product workspace clippy"
-    CLIPPY_CONF_DIR="$ROOT" \
-        CARGO_TARGET_DIR="$PRODUCT_TARGET_DIR" \
-        cargo clippy --locked --offline \
-            --manifest-path "$PRODUCT_MANIFEST" --workspace --all-targets \
-            --all-features --target "$PRODUCT_TARGET" --release -- \
-            -D warnings -F unsafe-code
-
-    echo "==> workspace rustdoc"
-    RUSTDOCFLAGS="$CHECK_RUSTDOCFLAGS" \
-        cargo doc --locked --offline --workspace --all-features --no-deps
-
-    echo "==> Product workspace rustdoc"
-    CARGO_TARGET_DIR="$PRODUCT_TARGET_DIR" \
-        RUSTDOCFLAGS="$CHECK_RUSTDOCFLAGS" \
-        cargo doc --locked --offline \
-            --manifest-path "$PRODUCT_MANIFEST" --workspace --all-features \
-            --target "$PRODUCT_TARGET" --release --no-deps
+    run_product_checks --workspace
 }
 
-component_fields() {
+component_package() {
     local graph="$1"
     local wanted="$2"
     local kind component workspace package root
 
-    while IFS=$'\t' read -r \
-        kind component workspace package root; do
-        [[ "$kind" == package ]] || continue
-        [[ "$component" == "$wanted" ]] || continue
-        printf '%s\t%s\n' "$workspace" "$package"
+    while IFS=$'\t' read -r kind component workspace package root; do
+        [[ "$kind" == package && "$component" == "$wanted" ]] || continue
+        [[ "$workspace" == product ]] || return 1
+        printf '%s\n' "$package"
         return
     done <"$graph"
     return 1
 }
 
-append_package_args() {
-    local output_name="$1"
-    shift
-    local -n output="$output_name"
-    local package
-
-    for package in "$@"; do
-        output+=(
-            -p
-            "$package"
-        )
-    done
-}
-
-package_selected() {
-    local wanted="$1"
-    shift
-    local package
-
-    for package in "$@"; do
-        [[ "$package" == "$wanted" ]] && return 0
-    done
-    return 1
-}
-
-run_root_integration_tests() {
-    local -a packages=("$@")
-    local package
-
-    if package_selected reovim-conformance "${packages[@]}"; then
-        echo "==> selected fast checker integration tests"
-        cargo test --locked --offline \
-            -p reovim-conformance --test checker --all-features -- \
-            --skip product_empty_v2_full_cli_and_mutation_matrix \
-            --skip exact_git_generate_verify_and_raw_identity_mutants
-    fi
-    if package_selected reovim-depgraph "${packages[@]}"; then
-        echo "==> selected dependency-graph integration tests"
-        cargo test --locked --offline \
-            -p reovim-depgraph --test depgraph --all-features
-    fi
-    for package in "${packages[@]}"; do
-        case "$package" in
-            reovim-conformance | reovim-depgraph) continue ;;
-        esac
-        echo "==> selected $package integration tests"
-        cargo test --locked --offline \
-            -p "$package" --tests --all-features
-    done
-}
-
-run_selected_root_checks() {
-    local direct_name="$1"
-    local selected_name="$2"
-    local -n direct="$direct_name"
-    local -n selected="$selected_name"
-    local -a direct_args=() selected_args=()
-
-    [[ ${#selected[@]} -ne 0 ]] || return 0
-    append_package_args selected_args "${selected[@]}"
-    if [[ ${#direct[@]} -ne 0 ]]; then
-        append_package_args direct_args "${direct[@]}"
-        echo "==> selected Repository Tooling rustfmt"
-        cargo fmt "${direct_args[@]}" --check
-    fi
-    echo "==> selected workspace library and binary tests"
-    cargo test --locked --offline "${selected_args[@]}" \
-        --lib --bins --all-features
-    run_root_integration_tests "${selected[@]}"
-    echo "==> selected workspace doctests"
-    cargo test --locked --offline "${selected_args[@]}" --doc --all-features
-    echo "==> selected workspace clippy"
-    CLIPPY_CONF_DIR="$ROOT" \
-        cargo clippy --locked --offline "${selected_args[@]}" \
-            --all-targets --all-features -- -D warnings -F unsafe-code
-    echo "==> selected workspace rustdoc"
-    RUSTDOCFLAGS="$CHECK_RUSTDOCFLAGS" \
-        cargo doc --locked --offline "${selected_args[@]}" \
-            --all-features --no-deps
-}
-
-run_selected_product_checks() {
-    local direct_name="$1"
-    local selected_name="$2"
-    local -n direct="$direct_name"
-    local -n selected="$selected_name"
-    local -a direct_args=() selected_args=()
-
-    [[ ${#selected[@]} -ne 0 ]] || return 0
-    append_package_args selected_args "${selected[@]}"
-    if [[ ${#direct[@]} -ne 0 ]]; then
-        append_package_args direct_args "${direct[@]}"
-        echo "==> selected Product rustfmt"
-        cargo fmt --manifest-path "$PRODUCT_MANIFEST" \
-            "${direct_args[@]}" --check
-    fi
-    echo "==> selected Product workspace check"
-    CARGO_TARGET_DIR="$PRODUCT_TARGET_DIR" \
-        cargo check --locked --offline \
-            --manifest-path "$PRODUCT_MANIFEST" "${selected_args[@]}" \
-            --all-targets --all-features --target "$PRODUCT_TARGET" --release
-    echo "==> selected Product public-boundary tests"
-    CARGO_TARGET_DIR="$PRODUCT_TARGET_DIR" \
-        cargo test --locked --offline \
-            --manifest-path "$PRODUCT_MANIFEST" "${selected_args[@]}" \
-            --all-features --target "$PRODUCT_TARGET" --release
-    echo "==> selected Product workspace clippy"
-    CLIPPY_CONF_DIR="$ROOT" \
-        CARGO_TARGET_DIR="$PRODUCT_TARGET_DIR" \
-        cargo clippy --locked --offline \
-            --manifest-path "$PRODUCT_MANIFEST" "${selected_args[@]}" \
-            --all-targets --all-features --target "$PRODUCT_TARGET" \
-            --release -- -D warnings -F unsafe-code
-    echo "==> selected Product workspace rustdoc"
-    CARGO_TARGET_DIR="$PRODUCT_TARGET_DIR" \
-        RUSTDOCFLAGS="$CHECK_RUSTDOCFLAGS" \
-        cargo doc --locked --offline \
-            --manifest-path "$PRODUCT_MANIFEST" "${selected_args[@]}" \
-            --all-features --target "$PRODUCT_TARGET" --release --no-deps
-}
-
 run_selected_checks() {
     local directory="$1"
-    local graph="$directory/graph.tsv"
-    local mode component fields workspace package
+    local mode component package
     local documentation_selected=no
-    local -a root_direct=() root_selected=()
-    local -a product_direct=() product_selected=()
+    local -a direct=() selected=()
 
     echo "==> selected repository style"
-    ./scripts/check-style.sh \
-        --files0-from "$directory/changed-paths.z"
+    ./scripts/check-style.sh --files0-from "$directory/changed-paths.z"
     while IFS=$'\t' read -r mode component; do
         [[ -n "$component" ]] || continue
         if [[ "$component" == documentation ]]; then
             documentation_selected=yes
             continue
         fi
-        fields="$(component_fields "$graph" "$component")" || return 1
-        IFS=$'\t' read -r workspace package <<<"$fields"
-        case "$workspace" in
-            repository-tooling)
-                root_selected+=(
-                    "$package"
-                )
-                if [[ "$mode" == direct ]]; then
-                    root_direct+=(
-                        "$package"
-                    )
-                fi
-                ;;
-            product)
-                product_selected+=(
-                    "$package"
-                )
-                if [[ "$mode" == direct ]]; then
-                    product_direct+=(
-                        "$package"
-                    )
-                fi
-                ;;
-            *) return 1 ;;
-        esac
+        package="$(component_package \
+            "$directory/graph.tsv" "$component")" || return 1
+        selected+=( -p "$package" )
+        if [[ "$mode" == direct ]]; then
+            direct+=( -p "$package" )
+        fi
     done <"$directory/plan.tsv"
     if [[ "$documentation_selected" == yes ]]; then
         echo "==> selected documentation"
         ./scripts/check-documentation.sh
     fi
-    run_selected_root_checks root_direct root_selected
-    run_selected_product_checks product_direct product_selected
+    if [[ ${#direct[@]} -ne 0 ]]; then
+        echo "==> selected Product rustfmt"
+        cargo fmt --manifest-path "$PRODUCT_MANIFEST" \
+            "${direct[@]}" --check
+    fi
+    [[ ${#selected[@]} -ne 0 ]] || return 0
+    run_product_checks "${selected[@]}"
 }
 
 selection_directory="$(mktemp -d)"
@@ -358,17 +190,12 @@ printf 'check.sh: selection=%s (%s)\n' \
     "$selection_mode" "$selection_reason"
 
 case "$selection_mode" in
-    full)
-        run_full_checks "$selection_directory"
-        ;;
+    full) run_full_checks "$selection_directory" ;;
     selected)
-        sed 's/^/check.sh: selected /' \
-            "$selection_directory/plan.tsv"
+        sed 's/^/check.sh: selected /' "$selection_directory/plan.tsv"
         run_selected_checks "$selection_directory"
         ;;
-    hit)
-        echo 'check.sh: all cacheable component checks are current'
-        ;;
+    hit) echo 'check.sh: all cacheable component checks are current' ;;
     *)
         echo 'check.sh: cache selector returned an invalid mode' >&2
         exit 1
@@ -380,4 +207,4 @@ if ! ./scripts/check-cache.sh publish "$selection_directory"; then
     exit 1
 fi
 
-echo "check.sh: hosted Repository Tooling and Product checks passed"
+echo "check.sh: editing-system contributor checks passed"

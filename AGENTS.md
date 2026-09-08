@@ -1,182 +1,113 @@
-# Reovim Repository Rules
+# Reovim repository rules
 
-These rules apply to the entire repository. More specific workflow documents
-may add constraints but must not redefine the architecture below without also
-updating the authoritative documentation.
+## Direction and authority
 
-## Product and release direction
+Reovim is a reliable, high-performance, extensible editing system. Text is one
+domain. v0.16 is re-foundation; v0.17 builds Neovim parity on its contracts.
 
-- Reovim is a high-performance, extensible editing system.
-- Text editing is a domain, not the shape of the core.
-- v0.16 is the editing-system re-foundation.
-- v0.17 is Neovim feature parity built on the v0.16 contracts.
-- Do not describe a planned contract as implemented without code, tests, and
-  conformance evidence.
+Read Documentation/README.md, Documentation/architecture.md and the owning
+interface before changing a boundary. Documentation owns goals/contracts;
+plans own execution order. Target prose is not implementation evidence.
+Keep each active specification at most 250 lines, explain each rule once,
+and use direct file links.
 
-## Documentation authority
+Use tmp/current.md for Mission, Progress and Focus. Progress contains Current,
+Next and Completed. After a successful commit, move only fully covered
+Completed tasks to the active plan directory's completed.md with commit/date,
+result and verification. Leave uncommitted tasks in current.md.
+Do not resume archived plans. Keep tmp/README.md synchronized with disk.
+Retain perf/ and Documentation/heritage/ as reference material; do not delete
+them during documentation or tooling cleanup.
 
-- Read `Documentation/README.md`, `Documentation/00-Concept.md`, and the
-  relevant contract before changing an architectural boundary.
-- Follow the contract indexes to the focused owning chapters. Keep every active
-  normative Markdown file at or below 250 lines and use direct file links
-  instead of local heading fragments or duplicate redirect stubs.
-- `Documentation/` owns normative terminology, contracts, and conformance
-  rules. `docs/` may contain user guides and implementation explanations but
-  must not contradict or redefine the normative documents.
-- Update the contract, conformance rule, implementation, tests, and migration
-  evidence together when a boundary changes.
-- Keep temporary investigation and working notes in `tmp/`. Promote durable
-  decisions into `Documentation/` rather than relying on temporary notes.
+## Architecture
 
-## Architectural invariants
+- Dependencies point inward: Runtime -> Core -> Interface -> Foundation.
+  Assembly alone selects concrete components; no hidden globals or cycles.
+- Kernel owns neutral mechanisms and authoritative Buffer/History state, not
+  concrete domains, resource/Host adapters, transports, clients or renderers.
+- No text strings/coordinates, file paths, terminal cells, viewport or drawing
+  types shape the neutral core. Address, unit, revision and capability are
+  explicit; byte offsets and whole-resource copies are not universal.
+- Resource adapters connect data; Domains supply meaning; Representations
+  interpret/lower; Projections synchronize; Client views present.
+- One Buffer is transactional state over one Resource. Clients/extensions
+  submit public semantic edits, never mutate storage or private state.
+- Complete the used interface chain and compile public providers/consumers
+  before inner mechanisms. Then execute that journey, not another type catalog.
+- Foundation is core-only; portable Kernel/applicable Rust Client logic is
+  no_std + alloc. Hosted adapters/assembly may use std.
+- Host contracts apply to Kernel, Client and Resource consumers through
+  separate grants. Keep concrete environment types inside adapters.
+- A new Host capability needs an immediate consumer, typed bounds/errors,
+  standard/test adapters, shared tests, cancellation/shutdown and measurements.
+- No I/O, waiting, callbacks or fallible work after the atomic commit cut
+  under Buffer authority. Revalidate revisions/generations before installation.
 
-- Preserve the dependency direction in
-  `Documentation/01-Architecture/01-Layer/01-Roles-Descriptors-and-Dependencies/03-Source-Dependency-Graph-and-Edges.md`.
-- Keep foundation and editing-state contracts independent of concrete resource
-  adapters, Host API adapters, domains, representations, views, transports,
-  and extension implementations.
-- Do not place strings, lines, columns, grapheme positions, text cursors,
-  terminal cells, or another domain's types in the domain-neutral core.
-- Do not assume all resources use byte offsets. Keep address, extent, unit,
-  revision, capability, and error types explicit.
-- Resource adapters connect data. Domains provide meaning. Representations
-  expose interpreted state. Projections synchronize it. Views present it.
-- A buffer is transactional working state over one resource; it is not a string
-  or a mandatory full copy.
-- Views and extensions submit edits through representation/domain and
-  transaction contracts. They never mutate concrete storage directly.
-- Select concrete components only in assembly. Avoid hidden globals and cyclic
-  callbacks.
-- Design the complete Inter-Layer Contract chain for one accepted journey and
-  compile its public providers/consumers before implementing inner mechanisms.
-- Keep Foundation `core`-only and the portable Kernel plus applicable Rust
-  Client path `no_std + alloc`. Hosted adapters stay outside that closure.
+## Public APIs and dependencies
 
-## Host API
+Rust SDK is the trusted in-process surface. Python/TS extensions use versioned
+language-neutral service contracts; no embedded interpreter in the Kernel.
+Every client owns its Core, Contract, Runtime and Module roles. Rendering is
+explicit capability, never inferred solely from a client family name.
 
-- Route environment services through small semantic Host API capabilities.
-- Apply the same Host contract family to exact Kernel, Client, and Resource
-  consumers through separately owned grants; it is not server-only.
-- Keep platform-specific handles, constants, branching, and dependencies
-  inside standard adapters.
-- Add a capability only with a concrete consumer, typed errors and limits, a
-  standard adapter, a deterministic test adapter, shared contract tests,
-  cancellation/shutdown behavior, measurements, and structured events.
-- Keep resource adapters and Host API adapters distinct even when a resource
-  adapter consumes Host API capabilities.
+Internal owner-tree APIs may change coherently. Public v0.16 APIs remain
+Experimental; stable compatibility starts at an admitted full SDK release.
+Public examples and first-party extensions use public APIs, not private types.
+Require grants, bounds, pressure, cancellation, lifecycle, compatibility tests
+and honest containment limits.
 
-## Extensions and public contracts
+Review third-party needs, maintenance, license, transitive/unsafe cost, targets,
+runtime behavior and overhead. Abstract dependencies for owned semantics,
+deterministic substitution or an unsafe/volatile boundary, not just naming.
 
-- Treat the Rust SDK as the trusted, latency-sensitive in-process surface.
-- Keep the cross-language contract versioned and language-neutral.
-- Python and TypeScript SDK extensions run as out-of-process services; do not
-  make an embedded interpreter a core dependency.
-- Public examples use only public SDK or service-contract APIs. Private core
-  types are not an extension contract.
-- Treat Intra-Tree Interfaces as private and unstable. They may break only with
-  a coherent owner-tree update and must never leak into public SDK use.
-- v0.16 public SDK and service APIs remain Experimental even when required or
-  Supported. Stable compatibility begins only at an explicitly admitted full
-  SDK Stability Release.
-- Require capability negotiation, bounds, backpressure, cancellation,
-  lifecycle handling, compatibility tests, and failure containment.
-- Third-party extensions and adapters are allowed only after deliberate trust,
-  dependency, compatibility, and performance review.
+## Verification and tooling
 
-## Dependencies
+Use scripts/check.sh during work and scripts/ci.sh before a checkpoint.
+ci.json owns the exact stable/nightly version window. Local and GitHub CI
+use the same runner, which installs those pins and invokes check.sh --full.
+Window changes require the full matrix before committing; normal test runs
+must not mutate the manifest. Do not restore the old Rust 1.92 test lane.
+The retained gate uses ordinary Cargo and style/link checks.
+The old exact conformance registry, source classifier and compiler/package
+proof requirements are retired, not silently satisfied by these checks.
+Review dependency direction, public types and portable closures explicitly.
 
-- The Rust standard library is allowed.
-- Add third-party dependencies selectively. Record the concrete need and review
-  maintenance, license, transitive cost, unsafe surface, runtime behavior,
-  target support, and measured overhead relevant to the use.
-- Add an abstraction around a dependency when Reovim owns different semantics,
-  needs deterministic substitution, or must contain a volatile or unsafe
-  boundary—not merely to hide the dependency name.
+Tests compare semantic values, keys, sets, relations and outcomes. Never use
+literal content hashes, serialized lengths or collection counts as proxies
+for behavior or repository shape. Published protocol/hash vectors and named
+capacity/safety/accounting bounds may use exact values.
 
-## Repository tooling
+Git supplies committed per-file blob identities. Ignored local coverage
+records successful inputs. Do not hand-maintain a tracked hash manifest or
+edit generated digest/timestamp fields. Select changed file owners and reverse
+dependents; unknown ownership/configuration or invalid cache runs all checks.
+Reuse file-local results only for file-local checks; Rust results require the
+complete component input closure and toolchain. Cached passes do not replace
+uncached checkpoint/release verification.
 
-- Follow `TOOL-001` before adding, continuing, or expanding conformance,
-  benchmark, migration, generation, or developer tooling.
-- Record the named immediate consumer, exact block, smallest bounded path,
-  end-to-end invocation, typed failures, and stop condition before coding.
-- Set a plan-owned effort budget and forced review or abort point before tool
-  coding. Reaching either stops tool-only work; splitting or renaming it does
-  not reset the budget.
-- Permit at most one preparatory tool-only slice before the real consumer
-  invokes and consumes the result. Fixtures and self-tests do not accept a
-  tool by themselves.
-- Stop when the named block clears. Do not retain unused compiled experiments
-  or use dead-code allowances to hide them. Do not add broader profiles for
-  anticipated future use.
-- After reviewing a changed registered entrypoint and its retained prose, run
-  the documented bounded refresh command. Do not hand-edit its generated JSON
-  digest or timestamp fields.
+Before tool coding, record its immediate consumer/block, smallest path,
+invocation/failures, effort budget and stop condition in the active plan.
+At most one preparatory tool-only slice may precede real consumption.
+Stop at the cleared block or budget/review point; renaming does not reset it.
+Retain no unused framework. Target about one minute for the warm ordinary
+check and measure it; do not claim that target without data.
 
-## Verification and check caching
+## Style, performance and migration
 
-- Tests must not use a literal content hash, serialized byte length, or
-  collection cardinality as a proxy for semantic correctness or current
-  repository shape. Compare typed values, keys, sets, ordered relations, and
-  outcomes directly.
-- Published hash vectors and documented protocol, capacity, accounting, and
-  safety bounds may use exact values. Name the owning contract or fixture;
-  do not disguise a checkout snapshot as a bound.
-- Each commit's Git tree supplies its mechanically generated per-file blob
-  identities. Ignored local coverage records successful working identities;
-  no second tracked hash manifest is maintained by hand. Cache hashes and
-  lengths are keys, never test expectations or conformance evidence.
-- Select affected component checks from changed file entries and propagate
-  through reverse dependencies. A TUI-only change runs only TUI checks; it
-  does not rerun an unchanged Kernel suite. A Kernel change reruns Kernel and
-  every dependent Client suite, including TUI.
-- A known hash mismatch, addition, deletion, or rename selects exactly its old
-  and new owners plus reverse dependents. Unknown or ambiguous ownership,
-  incomplete dependency data, malformed local state, or global tool/config
-  uncertainty fails open by running the full check.
-- Reuse a file result only for a genuinely file-local check. Rust unit, lint,
-  and documentation results use the complete declared component or target
-  input closure and a successful toolchain-bound local record.
-- Keep an uncached full mode for CI, release qualification, conformance, and
-  pre-checkpoint verification. A cached pass never replaces required evidence.
+Follow CODE_STYLE.md: 80 columns and at most three Rust block-nesting levels.
+Let rustfmt own whitespace. Use small functions, shallow flow, explicit
+ownership and comments about why.
 
-## Coding style
+Measure real scenarios from input admission through presentation, primarily
+p99. Include memory, large/sparse resources, IPC/transports, extensions, locks,
+logging and tracing overhead. Retain raw data and workload/environment.
+Use the single structured diagnostic stream with bounded 1 MiB ring, canonical
+output and visible loss. Keep causal graph/snapshots separately bounded.
+Development deadlocks fail loudly with bounded independent capture; elapsed
+time alone does not prove deadlock. See Documentation/debugging.md.
 
-- Follow `CODE_STYLE.md` and its mapped Linux kernel v4.10 maintainability
-  rules.
-- Keep human-authored source at or below 80 columns and Rust block nesting at
-  or below three levels. Split control flow or extract a named helper first.
-- Let `rustfmt` own Rust whitespace and braces. Do not apply C tabs or C syntax
-  rules where they conflict with language tooling.
-- Prefer small single-purpose functions, shallow control flow, narrow scope,
-  descriptive public names, explicit ownership, and comments about why.
-
-## Performance and observability
-
-- Treat input-to-present p99 as the primary reaction metric. Include command,
-  transaction, projection, layout, rendering, and presentation handoff inside
-  its boundary.
-- Measure large/sparse resource latency and memory, extension cost, and logging
-  cost. Establish a reproducible baseline before ratifying numeric budgets.
-- Every performance claim names the workload and links retained artifacts.
-- Emit editor diagnostics through the one structured event stream defined by
-  the Editor Event Stream contract. Keep queues and the 1 MiB ring bounded,
-  make loss visible, and preserve canonical rendering across ring, file,
-  stderr, replay, and `reovim log`.
-- Measure instrumentation overhead and test sink failure, pressure, redaction,
-  correlation, and shutdown behavior.
-
-## Migration and verification
-
-- Follow `Documentation/05-Migration/01-Selective-Migration.md`. Prior code is
-  a behavior donor, not the v0.16 design authority.
-- Classify migration slices as adopt, adapt, rewrite, or retire. Do not copy a
-  subsystem wholesale because it already works for text.
-- Preserve useful behavioral fixtures, but rewrite tests that enshrine invalid
-  ownership or coupling.
-- A migrated slice needs public-boundary behavior tests, integration smoke,
-  fault/cancellation coverage, applicable conformance checks, performance
-  evidence, and structured-event verification.
-- Remove duplicate paths and stale documentation after the conforming path is
-  verified. Do not leave permanent compatibility shims without an explicitly
-  tracked owner and removal milestone.
-- Place feature parity that is not required to prove the foundation in v0.17.
+Migrate behavior individually as adopt/adapt/rewrite/retire. Preserve useful
+fixtures, remove invalid coupling, and prove a real composed public path.
+Include relevant fault/cancellation, lifecycle, event and performance evidence.
+Remove superseded paths after verification; no permanent unowned shims.
+Do not discard unrelated or uncommitted user work.

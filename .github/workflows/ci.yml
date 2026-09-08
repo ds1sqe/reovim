@@ -12,28 +12,35 @@ permissions:
   contents: read
 
 jobs:
-  hosted-contributor:
-    name: Contributor / Rust ${{ matrix.toolchain }}
+  contributor-matrix:
+    name: Discover contributor matrix
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    strategy:
-      fail-fast: false
-      matrix:
-        toolchain: ["1.92.0", stable]
+    timeout-minutes: 1
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # reovim-style: allow-long-line exact-token
-      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1/current master
+      - name: Read shared matrix
+        id: matrix
+        run: |
+          matrix="$(./scripts/ci.sh --matrix)"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  hosted-contributor:
+    name: Contributor / ${{ matrix.toolchain }} / ${{ matrix.version }}
+    needs: contributor-matrix
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.contributor-matrix.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          toolchain: ${{ matrix.toolchain }}
-          components: clippy, rustfmt
-      - name: Prepare isolated Cargo home
-        run: mkdir -p "$RUNNER_TEMP/reovim-cargo-home"
-      - name: Fetch exact locked dependencies
-        run: CARGO_HOME="$RUNNER_TEMP/reovim-cargo-home" cargo fetch --locked
-      - name: Contributor checks
-        run: >-
-          CARGO_HOME="$RUNNER_TEMP/reovim-cargo-home"
-          ./scripts/check.sh --full
+          persist-credentials: false
+      - name: Run shared contributor lane
+        env:
+          CI_TOOLCHAIN: ${{ matrix.toolchain }}
+        run: ./scripts/ci.sh --toolchain "$CI_TOOLCHAIN"

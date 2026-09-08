@@ -14,13 +14,15 @@ feature admission, dependencies, release claims, and project policy.
 - [Documentation](Documentation/README.md) owns stable goals, terminology,
   architecture, contracts, conformance, migration, and release acceptance.
 - Durable plans own dependency order and implementation phases.
-- Flight logs own chronological progress and evidence pointers.
+- tmp/current.md owns live Mission, Progress and Focus; completed.md in the
+  plan directory records tasks moved after their successful commits.
+- Flight logs own decisions, chronology and evidence pointers.
 - GitHub issues and milestones own public work tracking.
 - Code, tests, and retained evidence establish implementation conformance.
 
 Tracker state, implementation convenience, or a historical subsystem cannot
-override a normative contract. A contract change and its conformance mapping
-are reviewed together.
+override a normative contract. Review contract changes with their behavior,
+failure and verification requirements; the old exact-proof registry is retired.
 
 ## Product priorities
 

@@ -606,7 +606,8 @@ check_cache_context() {
 
     : >"$material"
     printf '%s\0%s\0' "$CHECK_CACHE_MAGIC" \
-        'target=x86_64-unknown-linux-gnu;profile=release' >"$material"
+        'host=x86_64-unknown-linux-gnu;portable=x86_64-unknown-none' \
+        >"$material"
     check_cache_reject_injected_environment || return 1
     check_cache_reject_unbound_flags \
         "$material.unbound-flag-names" || return 1
@@ -769,7 +770,6 @@ die "metadata target escaped scratch"
 check_cache_load_graph() {
     local directory="$1"
     local graph="$directory/graph.tsv"
-    local root_metadata="$directory/root-metadata.json"
     local product_metadata="$directory/product-metadata.json"
     local metadata_target="$directory/cargo-metadata-target"
 
@@ -777,17 +777,11 @@ check_cache_load_graph() {
     [[ -d "$metadata_target" && ! -L "$metadata_target" \
         && -O "$metadata_target" ]] || return 1
     check_cache_capture_metadata \
-        "$root_metadata" "$metadata_target" || return 1
-    check_cache_capture_metadata \
         "$product_metadata" "$metadata_target" \
         --manifest-path "$ROOT/product/Cargo.toml" || return 1
     check_cache_validate_metadata_target \
-        "$root_metadata" "$metadata_target" || return 1
-    check_cache_validate_metadata_target \
         "$product_metadata" "$metadata_target" || return 1
     {
-        check_cache_emit_workspace_graph \
-            "$root_metadata" repository-tooling Cargo.toml Cargo.lock
         check_cache_emit_workspace_graph \
             "$product_metadata" product product/Cargo.toml \
             product/Cargo.lock
@@ -797,25 +791,6 @@ check_cache_load_graph() {
         "$graph" "$CHECK_CACHE_MAX_GRAPH_BYTES" || return 1
     check_cache_validate_graph "$graph" || return 1
     printf '%s\n' "$graph"
-}
-
-check_cache_component_by_name() {
-    local graph="$1"
-    local workspace="$2"
-    local name="$3"
-    local kind component candidate_workspace candidate_name root
-    local found=''
-
-    while IFS=$'\t' read -r \
-        kind component candidate_workspace candidate_name root; do
-        [[ "$kind" == package ]] || continue
-        [[ "$candidate_workspace" == "$workspace" ]] || continue
-        [[ "$candidate_name" == "$name" ]] || continue
-        [[ -z "$found" ]] || return 1
-        found="$component"
-    done <"$graph"
-    [[ -n "$found" ]] || return 1
-    printf '%s\n' "$found"
 }
 
 check_cache_package_owner() {
@@ -846,21 +821,10 @@ check_cache_package_owner() {
 check_cache_owner_for_path() {
     local path="$1"
     local graph="$2"
-    local component
 
     case "$path" in
-        Cargo.toml | Cargo.lock)
-            printf '%s\n' 'workspace:repository-tooling'
-            return
-            ;;
         product/Cargo.toml | product/Cargo.lock)
             printf '%s\n' 'workspace:product'
-            return
-            ;;
-        conformance/*)
-            component="$(check_cache_component_by_name \
-                "$graph" repository-tooling reovim-conformance)" || return 1
-            printf 'package:%s\n' "$component"
             return
             ;;
         Documentation/* | changelog/* | perf/* | .github/ISSUE_TEMPLATE/*)
@@ -1527,7 +1491,6 @@ check_cache_run_metadata_target_fixture() {
 check_cache_run_graph_fixtures() {
     local directory="$1"
     local graph="$directory/fixture-graph.tsv"
-    local live_graph="$directory/graph.tsv"
     local direct="$directory/fixture-direct"
     local selected="$directory/fixture-selected"
     local expected="$directory/fixture-expected"
@@ -1554,47 +1517,6 @@ check_cache_run_graph_fixtures() {
     printf '%s\n' \
         fixture:cli fixture:kernel fixture:tui fixture:web >"$expected"
     check_cache_assert_set kernel-clients "$selected" "$expected" || return 1
-
-    [[ -f "$live_graph" ]] || return 0
-    printf '%s\n' \
-        product:reovim-kernel-interface-public-consumer >"$direct"
-    check_cache_expand_components "$live_graph" "$direct" "$selected"
-    cp -- "$direct" "$expected"
-    check_cache_assert_set consumer-only "$selected" "$expected" || return 1
-
-    printf '%s\n' product:reovim-kernel-interface >"$direct"
-    check_cache_expand_components "$live_graph" "$direct" "$selected"
-    printf '%s\n' \
-        product:reovim-kernel-interface \
-        product:reovim-kernel-interface-public-consumer >"$expected"
-    check_cache_assert_set kernel-interface "$selected" "$expected" || {
-        return 1
-    }
-
-    printf '%s\n' product:reovim-foundation-public-consumer >"$direct"
-    check_cache_expand_components "$live_graph" "$direct" "$selected"
-    cp -- "$direct" "$expected"
-    check_cache_assert_set foundation-consumer "$selected" "$expected" || {
-        return 1
-    }
-
-    printf '%s\n' product:reovim-foundation >"$direct"
-    check_cache_expand_components "$live_graph" "$direct" "$selected"
-    printf '%s\n' \
-        product:reovim-foundation \
-        product:reovim-foundation-public-consumer \
-        product:reovim-kernel-interface \
-        product:reovim-kernel-interface-public-consumer >"$expected"
-    check_cache_assert_set foundation-chain "$selected" "$expected" || {
-        return 1
-    }
-
-    printf '%s\n' repository-tooling:reovim-depgraph >"$direct"
-    check_cache_expand_components "$live_graph" "$direct" "$selected"
-    printf '%s\n' \
-        repository-tooling:reovim-conformance \
-        repository-tooling:reovim-depgraph >"$expected"
-    check_cache_assert_set depgraph-chain "$selected" "$expected"
 }
 
 check_cache_run_transition_fixtures() {

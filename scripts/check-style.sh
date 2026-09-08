@@ -796,7 +796,7 @@ run_mutation_fixtures() {
     expect_path_scope excluded tmp/generated.rs
     expect_path_scope excluded changelog/generated.yml
     expect_path_scope governed generated/bindings.rs
-    expect_path_scope governed tools/conformance/src/generated/bindings.rs
+    expect_path_scope governed kernel/example/src/generated/bindings.rs
     expect_path_scope excluded Documentation/heritage/example.sh
     expect_path_scope excluded Cargo.lock
     if ! mkdir -- "$fixture_root/nonregular.rs"; then

@@ -5,11 +5,11 @@
 ## Authority and scope
 
 - Owning issue/plan: #
-- Normative rule IDs:
+- Owning specification:
 - Public contract(s):
 - Release/support effect:
 
-<!-- A contract change updates its rule mapping and applicable evidence. -->
+<!-- Review contract changes with their behavior and failure evidence. -->
 
 ## Changes
 
@@ -34,13 +34,12 @@
 ## Checklist
 
 - [ ] The owning issue and plan are linked.
-- [ ] Applicable normative rules and responsible boundaries are identified.
+- [ ] Owning contracts and responsible boundaries are identified.
 - [ ] First-party behavior uses only its supported public contracts.
 - [ ] Bounds, pressure, cancellation, failure, and shutdown are covered.
-- [ ] Documentation, Rule Matrix, tests, and migration evidence changed together
-      where applicable.
-- [ ] Performance claims link a Real Product Scenario and Experiment Bundle.
+- [ ] Documentation, tests, and migration evidence changed together as needed.
+- [ ] Performance claims link the real scenario and retained raw results.
 - [ ] Support or qualification is not inferred from a source-tree test.
 - [ ] Superseded active paths are removed after the conforming path is proved.
-- [ ] `./scripts/check.sh` passed, or every failure is reported and scoped.
+- [ ] `./scripts/ci.sh` passed, or failures are reported and scoped.
 - [ ] `CHANGELOG.md` is updated when user-visible behavior changed.
