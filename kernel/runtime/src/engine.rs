@@ -28,7 +28,7 @@ use reovim_kernel_interface::semantic::representation::{
 use reovim_kernel_interface::semantic::snapshot::RepresentationSnapshotPort;
 use reovim_kernel_interface::semantic::state::SemanticPolicyInput;
 
-use crate::session::RequestBody;
+use crate::session::{PendingWork, RequestBody};
 use crate::{Runtime, RuntimeError};
 
 impl<A, M, D, R, S> Runtime<A, M, D, R, S>
@@ -44,7 +44,7 @@ where
     /// process-fatal; this portable composition promises no unwind recovery.
     ///
     /// # Errors
-    /// Rejects zero/excess work or invalid provider output during opening.
+    /// Rejects zero or excessive work budgets.
     pub fn progress(
         &mut self,
         work: CheckedCount,
@@ -59,34 +59,33 @@ where
             return Ok(0);
         }
         let mut completed = 0;
-        while completed < work.value() && self.progress_one()? {
+        while completed < work.value() && self.progress_one() {
             completed += 1;
         }
         Ok(completed)
     }
 
-    fn progress_one(&mut self) -> Result<bool, RuntimeError> {
-        if self.progress_open()? {
-            return Ok(true);
+    fn progress_one(&mut self) -> bool {
+        if self.progress_open() {
+            return true;
         }
         if self.phase != LifecycleState::Ready {
-            return Ok(false);
+            return false;
         }
         let count = self.sessions.len();
         let pending = (0..count).find_map(|offset| {
             let index = (self.next_session + offset) % count;
-            self.sessions[index]
-                .requests
-                .iter()
-                .position(super::session::RequestRecord::pending)
-                .map(|request| (index, request))
+            self.sessions[index].pending_work().map(|work| (index, work))
         });
         let Some((index, request)) = pending else {
-            return Ok(false);
+            return false;
         };
-        self.execute(index, request);
+        match request {
+            PendingWork::Request(request) => self.execute(index, request),
+            PendingWork::Recovery => self.execute_recovery(index),
+        }
         self.next_session = (index + 1) % count;
-        Ok(true)
+        true
     }
 
     fn execute(&mut self, session: usize, request: usize) {
@@ -375,5 +374,8 @@ pub const fn context(intent: &InteractionIntent) -> EditingContext {
         state: Some(*intent.semantic().stamp().target()),
         parent: None,
         cause: None,
+        observer: None,
+        update: None,
+        additional_parent: None,
     }
 }

@@ -2,6 +2,7 @@ use alloc::rc::Rc;
 use alloc::vec::Vec;
 use reovim_kernel_interface::buffer::BufferStateStamp;
 use reovim_kernel_interface::buffer::plan::BufferPlanDescriptor;
+use reovim_kernel_interface::event::editing::EditingContext;
 use reovim_kernel_interface::interaction::descriptor::{
     InteractionSessionDescriptor, RepresentationAttachmentDescriptor,
 };
@@ -23,9 +24,27 @@ mod delivery;
 mod history;
 mod port;
 mod record;
+mod recovery;
 mod teardown;
 
 pub use record::{RequestBody, RequestRecord};
+pub use recovery::{RecoveryGap, RecoveryWork};
+
+pub struct IssuedUpdate {
+    pub stamp: RepresentationUpdateIdentityStamp,
+    pub class: CreditClass,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum CreditClass {
+    Data,
+    Control,
+}
+
+pub enum PendingWork {
+    Request(usize),
+    Recovery,
+}
 
 /// Assembly-selected live authority and one supported Representation stream.
 pub struct ClientBinding {
@@ -63,10 +82,15 @@ pub struct Session {
     pub(crate) cursor: u64,
     pub(crate) initial: Option<RepresentationUpdate>,
     pub(crate) updates: Vec<Option<RepresentationUpdate>>,
-    pub(crate) issued: Vec<RepresentationUpdateIdentityStamp>,
+    pub(crate) issued: Vec<IssuedUpdate>,
     pub(crate) acknowledged: Option<RepresentationUpdateIdentityStamp>,
     pub(crate) control: Option<RepresentationUpdate>,
     pub(crate) invalidated: bool,
+    pub(crate) gap: Option<RecoveryGap>,
+    pub(crate) recovery: Option<RecoveryWork>,
+    pub(crate) next_recovery: u128,
+    pub(crate) next_update: u128,
+    pub(crate) update_context: EditingContext,
     pub(crate) subscription: Option<BufferChangeSubscription>,
     pub(crate) subscription_closed: bool,
     pub(crate) notices: Vec<BufferChangeNotification>,
@@ -76,6 +100,16 @@ pub struct Session {
 }
 
 impl Session {
+    pub(crate) fn pending_work(&self) -> Option<PendingWork> {
+        if self.recovery_pending() {
+            return Some(PendingWork::Recovery);
+        }
+        self.requests
+            .iter()
+            .position(RequestRecord::pending)
+            .map(PendingWork::Request)
+    }
+
     pub(crate) fn new(
         binding: ClientBinding,
         plans: BufferPlanDescriptor,
@@ -97,6 +131,9 @@ impl Session {
         let update_capacity =
             capacity(updates.retained_updates().aggregate().value())?;
         let credit = capacity(binding.attachment.initial_credit().value())?;
+        let controls = capacity(updates.control().aggregate().value())?;
+        let issued_capacity =
+            credit.checked_add(controls).ok_or(RuntimeError::Capacity)?;
         if request_capacity == 0 || update_capacity == 0 || credit == 0 {
             return Err(RuntimeError::Configuration);
         }
@@ -115,10 +152,15 @@ impl Session {
             cursor: 0,
             initial: None,
             updates: reserved(update_capacity)?,
-            issued: reserved(credit)?,
+            issued: reserved(issued_capacity)?,
             acknowledged: None,
             control: None,
             invalidated: false,
+            gap: None,
+            recovery: None,
+            next_recovery: 1,
+            next_update: 1,
+            update_context: EditingContext::default(),
             subscription: None,
             subscription_closed: true,
             notices: Vec::new(),

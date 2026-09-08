@@ -133,6 +133,11 @@ where
         cause: CancellationCause,
     ) -> Result<CancellationOutcome, contract::RootFailure> {
         self.client_index(ticket.client)?;
+        let owned = self.opening.is_some_and(|opening| {
+            let record = &self.opens[opening.record()];
+            record.request.client == ticket.client
+                && record.request.request == ticket.request
+        });
         let record = self
             .opens
             .iter_mut()
@@ -142,7 +147,7 @@ where
             })
             .ok_or(contract::RootFailure::UnknownRequest)?;
         record.cancellation.get_or_insert(cause);
-        let execution = if record.outcome.is_some() {
+        let execution = if record.outcome.is_some() && !owned {
             ExecutionOutcome::Stopped
         } else {
             ExecutionOutcome::OwnedNonterminal
@@ -176,10 +181,15 @@ where
         self.check_lifecycle(request)?;
         let index = self.client_index(client)?;
         self.fence_opens(Some(client));
-        if self.opens.iter().any(|record| {
-            record.request.client == client
-                && (record.outcome.is_none() || !record.delivered)
-        }) {
+        let retained = self.opening.is_some_and(|opening| {
+            self.opens[opening.record()].request.client == client
+        });
+        if retained
+            || self.opens.iter().any(|record| {
+                record.request.client == client
+                    && (record.outcome.is_none() || !record.delivered)
+            })
+        {
             self.sessions[index].phase = crate::session::Phase::Closing;
             return Ok(ShutdownOutcome::IncompleteShutdown);
         }
@@ -207,9 +217,8 @@ where
         }
         self.phase = LifecycleState::Closing;
         self.fence_opens(None);
-        self.progress_open()
-            .map_err(|_| contract::RootFailure::ProviderFailure)?;
-        let mut incomplete = false;
+        self.progress_open();
+        let mut incomplete = self.opening.is_some();
         for index in 0..self.sessions.len() {
             incomplete |= self.detach_one(index, request)?;
         }

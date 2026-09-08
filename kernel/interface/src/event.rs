@@ -25,6 +25,7 @@ mod remediation;
 mod sequence;
 mod snapshot;
 mod snapshot_validation;
+pub mod trace;
 
 /// Exact maximum for one canonical `kernel.startup` schema-v1 record.
 pub const STARTUP_CANONICAL_MAX_BYTES: u64 = 495;

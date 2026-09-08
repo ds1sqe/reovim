@@ -98,7 +98,7 @@ pub enum RepresentationUpdateDeliveryError {
     MissingCandidate,
     /// The Update belongs to another stream incarnation.
     StreamMismatch,
-    /// The Update does not occupy the requested cursor.
+    /// The cursor is neither exact nor a permitted forward Gap.
     CursorMismatch,
 }
 
@@ -121,7 +121,7 @@ impl core::error::Error for RepresentationUpdateDeliveryError {}
 pub enum RepresentationUpdateUnavailable {
     /// No Update is currently ready at the expected cursor.
     Pending,
-    /// All granted data credit is awaiting acknowledgement.
+    /// The corresponding data or control credit awaits acknowledgement.
     NoCredit,
     /// The supplied cursor is older than the retained next cursor.
     CursorBehind,
@@ -144,7 +144,7 @@ pub enum RepresentationUpdateUnavailable {
 /// Status of one non-waiting Update stream read.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RepresentationUpdateDeliveryStatus {
-    /// One exact ordered Update transfers and consumes one credit.
+    /// One ordered Update transfers under its data or control reservation.
     Delivered,
     /// No Update transfers for the stated reason.
     Unavailable(RepresentationUpdateUnavailable),
@@ -157,7 +157,8 @@ pub struct RepresentationUpdateDelivery {
 }
 
 impl RepresentationUpdateDelivery {
-    /// Takes and binds one exact candidate only after validation succeeds.
+    /// Takes one candidate after validation. Only a Gap may jump forward over
+    /// a lost prefix; ordinary and terminal recovery cursors remain exact.
     ///
     /// # Errors
     ///
@@ -173,7 +174,11 @@ impl RepresentationUpdateDelivery {
         if !stamp.stream().same_generation(request.stream()) {
             return Err(RepresentationUpdateDeliveryError::StreamMismatch);
         }
-        if stamp.cursor().value() != request.expected().value() {
+        let forward_gap =
+            matches!(update.lineage(), RepresentationUpdateLineage::Gap { .. })
+                && request.expected().value() <= stamp.cursor().value();
+        if stamp.cursor().value() != request.expected().value() && !forward_gap
+        {
             return Err(RepresentationUpdateDeliveryError::CursorMismatch);
         }
         let Some(update) = candidate.take() else {
@@ -367,6 +372,8 @@ pub enum RepresentationResynchronizationResultError {
     IdentityMismatch,
     /// A resynchronization result lacks its qualified payload.
     MissingPayload,
+    /// Failed recovery control cannot carry semantic snapshot bytes.
+    UnexpectedPayload,
     /// The result payload exceeds the prepared byte reservation.
     ResultBytesExceeded {
         /// Actual qualified result bytes.
@@ -397,6 +404,9 @@ impl fmt::Display for RepresentationResynchronizationResultError {
             Self::MissingPayload => {
                 "resynchronization result lacks its payload"
             }
+            Self::UnexpectedPayload => {
+                "failed resynchronization must not carry a payload"
+            }
             Self::ResultBytesExceeded { .. } => {
                 "resynchronization result exceeds its byte reservation"
             }
@@ -417,6 +427,17 @@ pub struct RepresentationResynchronizationReceipt {
 }
 
 impl RepresentationResynchronizationReceipt {
+    /// Validates a terminal success or failure after request transfer.
+    ///
+    /// # Errors
+    /// Rejects another stream, next cursor, identity or payload disposition.
+    pub const fn validate_result(
+        &self,
+        update: &RepresentationUpdate,
+    ) -> Result<(), RepresentationResynchronizationResultError> {
+        validate_resynchronization_result(self, update)
+    }
+
     /// Returns the exact descriptor-relative stream incarnation.
     #[must_use]
     pub const fn stream(self) -> RepresentationUpdateStreamHandle {
@@ -563,55 +584,66 @@ impl RepresentationResynchronizationRequest {
         &self,
         update: &RepresentationUpdate,
     ) -> Result<(), RepresentationResynchronizationResultError> {
-        let stamp = update.stamp();
-        if !self.stream().same_generation(stamp.stream()) {
-            return Err(
-                RepresentationResynchronizationResultError::StreamMismatch,
-            );
-        }
-        let Some(cursor) = self.cursor().checked_next() else {
-            return Err(
-                RepresentationResynchronizationResultError::CursorOverflow,
-            );
-        };
-        if cursor.value() != stamp.cursor().value() {
-            return Err(
-                RepresentationResynchronizationResultError::CursorMismatch,
-            );
-        }
-        let RepresentationUpdateLineage::Resynchronization {
-            resynchronization,
-            ..
-        } = update.lineage()
-        else {
-            return Err(
-                RepresentationResynchronizationResultError::
-                    NotResynchronization,
-            );
-        };
-        if self.resynchronization().value() != resynchronization.value() {
-            return Err(
-                RepresentationResynchronizationResultError::IdentityMismatch,
-            );
-        }
-        let Some(carrier) = update.carrier() else {
-            return Err(
-                RepresentationResynchronizationResultError::MissingPayload,
-            );
-        };
-        let actual = carrier.shape().bytes().value();
-        let reserved = self.charge().bytes().value();
-        if actual > reserved {
-            return Err(
-                RepresentationResynchronizationResultError::
-                    ResultBytesExceeded { actual, reserved },
-            );
-        }
-        Ok(())
+        self.receipt.validate_result(update)
     }
 }
 
-/// Cause of definite immediate resynchronization non-admission.
+const fn validate_resynchronization_result(
+    receipt: &RepresentationResynchronizationReceipt,
+    update: &RepresentationUpdate,
+) -> Result<(), RepresentationResynchronizationResultError> {
+    let stamp = update.stamp();
+    if !receipt.stream().same_generation(stamp.stream()) {
+        return Err(RepresentationResynchronizationResultError::StreamMismatch);
+    }
+    let Some(cursor) = receipt.cursor().checked_next() else {
+        return Err(RepresentationResynchronizationResultError::CursorOverflow);
+    };
+    if cursor.value() != stamp.cursor().value() {
+        return Err(RepresentationResynchronizationResultError::CursorMismatch);
+    }
+    let (resynchronization, failed) = match update.lineage() {
+        RepresentationUpdateLineage::Resynchronization {
+            resynchronization,
+            ..
+        } => (resynchronization, false),
+        RepresentationUpdateLineage::ResynchronizationFailed {
+            resynchronization,
+            ..
+        } => (resynchronization, true),
+        _ => return Err(
+            RepresentationResynchronizationResultError::NotResynchronization,
+        ),
+    };
+    if receipt.resynchronization().value() != resynchronization.value() {
+        return Err(
+            RepresentationResynchronizationResultError::IdentityMismatch,
+        );
+    }
+    if failed {
+        return if update.carrier().is_none() {
+            Ok(())
+        } else {
+            Err(RepresentationResynchronizationResultError::UnexpectedPayload)
+        };
+    }
+    let Some(carrier) = update.carrier() else {
+        return Err(RepresentationResynchronizationResultError::MissingPayload);
+    };
+    let actual = carrier.shape().bytes().value();
+    let reserved = receipt.charge().bytes().value();
+    if actual > reserved {
+        return Err(
+            RepresentationResynchronizationResultError::ResultBytesExceeded {
+                actual,
+                reserved,
+            },
+        );
+    }
+    Ok(())
+}
+
+/// Definite recovery refusal or terminal snapshot-work failure.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RepresentationResynchronizationFailure {
     /// Authority was denied before retained Gap lookup.
@@ -634,7 +666,7 @@ pub enum RepresentationResynchronizationFailure {
     Closing,
     /// The Session is closed.
     Closed,
-    /// Another bounded Runtime failure prevented admission.
+    /// Another bounded Runtime failure prevented admission or completion.
     RuntimeFailure,
 }
 

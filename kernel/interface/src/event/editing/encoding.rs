@@ -43,7 +43,7 @@ pub(super) fn render(
 }
 
 fn render_fields(bytes: &mut Bytes, record: &EditingRecord) -> fmt::Result {
-    bytes.write_str("kernel.editing/v1 stream=")?;
+    bytes.write_str("kernel.editing/v2 stream=")?;
     life(bytes, record.stream)?;
     write!(bytes, " seq={} producer=", record.sequence.value())?;
     life(bytes, record.producer)?;
@@ -56,6 +56,10 @@ fn render_fields(bytes: &mut Bytes, record: &EditingRecord) -> fmt::Result {
         record.stage.token()
     )?;
     session(bytes, record.context.session)?;
+    bytes.write_str(" observer=")?;
+    session(bytes, record.context.observer)?;
+    bytes.write_str(" update=")?;
+    update(bytes, record.context.update.as_ref())?;
     bytes.write_str(" request=")?;
     optional(
         bytes,
@@ -76,6 +80,14 @@ fn render_fields(bytes: &mut Bytes, record: &EditingRecord) -> fmt::Result {
         bytes,
         record.context.parent.map(|parent| u128::from(parent.value())),
     )?;
+    bytes.write_str(" additional-parent=")?;
+    optional(
+        bytes,
+        record
+            .context
+            .additional_parent
+            .map(|parent| u128::from(parent.value())),
+    )?;
     bytes.write_str(" state=")?;
     state(bytes, record.context.state.as_ref())?;
     bytes.write_str(" cause=")?;
@@ -84,6 +96,19 @@ fn render_fields(bytes: &mut Bytes, record: &EditingRecord) -> fmt::Result {
         None => bytes.write_char('-')?,
     }
     bytes.write_char('\n')
+}
+
+fn update(
+    bytes: &mut Bytes,
+    value: Option<
+        &crate::interaction::update::RepresentationUpdateIdentityStamp,
+    >,
+) -> fmt::Result {
+    let Some(stamp) = value else { return bytes.write_char('-') };
+    let stream = stamp.stream();
+    write!(bytes, "{:x}@", stream.stream().value())?;
+    life(bytes, stream.lifecycle())?;
+    write!(bytes, "/{:x}/{}", stamp.update().value(), stamp.cursor().value())
 }
 
 fn life(bytes: &mut Bytes, stamp: LifecycleIdentity) -> fmt::Result {

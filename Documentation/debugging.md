@@ -45,12 +45,15 @@ encoding fixtures in kernel/interface. That bound is a wire-format limit,
 not a hash or checkout-shape expectation. Additional diagnostic families must
 declare their schema, safe fields and actionability before use.
 
-The first executing service adds `kernel.editing/v1`: opened, admitted,
-prepared, committed, update-ready, update-failed, rejected, closing and closed.
+The executing service's `kernel.editing/v2` extends its earlier v1 records
+with observer/update identity, a second causal parent, received and installed.
+Other stages are opened, admitted, prepared, committed, update-ready,
+update-failed, rejected, closing and closed. Startup v1 remains unchanged.
 Update failure never reclassifies an accepted edit as rejected. Runtime
 stamps producer/stream/sequence and clock identity; safe fields are the exact
-session/request, Buffer-plan correlation, state identity, typed rejection
-cause and optional causal parent. Native content and selections are not logged.
+origin session/request, observing session, exact update, Buffer-plan
+correlation, state identity, typed rejection and optional causal parents.
+Native content and selections are not logged.
 Canonical fields have fixed order and bounded ASCII encoding. This family
 shares the diagnostic stream and output contracts, not the semantic update
 feed. A missing diagnostic or failed sink never changes editing acceptance.
@@ -83,6 +86,12 @@ State inspection returns an immutable captured version or a typed
 not-captured, evicted, redacted, incomparable or gap result. Never present
 today's state as the state at an earlier event. Captured state leases charge
 all transitive retained memory and have bounded retention/lifetime.
+
+The local reference captures produced semantic snapshots under explicit debug
+grants and separate metadata/payload limits. Each capture names the actual
+schema, Buffer, Projection and update identity. It is not native-source
+capture. Requests for uncaptured/evicted evidence remain explicit; disabled
+instrumentation and incomplete ancestry never become inferred success.
 
 Keep full graphs and snapshots outside the diagnostic ring in separately
 bounded, access-controlled stores. The log contains only safe summaries and

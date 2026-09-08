@@ -1,6 +1,6 @@
 //! Runtime-owned bounded diagnostics, never editing acceptance authority.
 
-use alloc::{collections::VecDeque, rc::Rc, vec::Vec};
+use alloc::{boxed::Box, collections::VecDeque, rc::Rc, vec::Vec};
 use core::{
     cell::{Cell, RefCell},
     fmt,
@@ -18,6 +18,10 @@ use reovim_kernel_interface::event::editing::{
 };
 use reovim_kernel_interface::event::{EVENT_RING_MAX_BYTES, EventSequence};
 use reovim_kernel_interface::lifecycle::LifecycleIdentity;
+
+mod capture;
+mod trace;
+pub use trace::TraceHealth;
 
 /// Diagnostic failure never changes a terminal editing result.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -103,6 +107,7 @@ pub struct Telemetry {
     flushing: Cell<bool>,
     capacity: usize,
     resident_bytes: usize,
+    trace: Option<Box<trace::TraceStore>>,
 }
 
 impl Telemetry {
@@ -149,6 +154,7 @@ impl Telemetry {
             flushing: Cell::new(false),
             capacity,
             resident_bytes,
+            trace: None,
         })
     }
 
@@ -213,7 +219,17 @@ impl Telemetry {
         }
         ring.records.push_back(record);
         ring.next = sequence.next().ok();
+        // The side store copies scalar evidence into reserved slots. It has
+        // no callback or sink and never observes authoritative native state.
+        self.record_trace(ring.records.back().expect("just admitted record"));
         Ok(sequence)
+    }
+
+    fn record_trace(&self, record: &EditingRecord) {
+        let Some(trace) = &self.trace else { return };
+        if trace.record(record).is_err() {
+            trace.loss();
+        }
     }
 
     /// Copies retained canonical bytes to the selected output after editing.

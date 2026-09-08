@@ -19,6 +19,7 @@ use super::bounds::{
     InteractionBoundViolation, RepresentationUpdateBounds,
     RepresentationUpdateShape,
 };
+use super::delivery::update::RepresentationResynchronizationFailure;
 use super::descriptor::{
     InteractionCapabilitySupport, InteractionSessionDescriptor,
     RepresentationAttachmentDescriptor,
@@ -236,6 +237,8 @@ pub enum RepresentationGapCause {
     Replacement,
     /// The Client reported a missing predecessor.
     MissingPredecessor,
+    /// The selected provider could not produce the required Projection.
+    ProjectionUnavailable,
 }
 
 /// Exact Projection-generation meaning of one Update.
@@ -278,6 +281,13 @@ pub enum RepresentationUpdateLineage {
         /// Request identity that produced the complete state.
         resynchronization: RepresentationResynchronizationIdentity,
     },
+    /// Terminal failure of admitted recovery; does not reverse any edit.
+    ResynchronizationFailed {
+        /// Exact admitted recovery request resolved by this control record.
+        resynchronization: RepresentationResynchronizationIdentity,
+        /// Why no new semantic snapshot was produced or installed.
+        cause: RepresentationResynchronizationFailure,
+    },
 }
 
 impl RepresentationUpdateLineage {
@@ -295,7 +305,9 @@ impl RepresentationUpdateLineage {
             Self::FullSnapshot { result, .. }
             | Self::Delta { result, .. }
             | Self::Resynchronization { result, .. } => Some(result),
-            Self::Invalidation { .. } | Self::Gap { .. } => None,
+            Self::Invalidation { .. }
+            | Self::Gap { .. }
+            | Self::ResynchronizationFailed { .. } => None,
         }
     }
 }
@@ -897,6 +909,35 @@ pub struct RepresentationUpdate {
 }
 
 impl RepresentationUpdate {
+    /// Binds a payload-free terminal recovery failure at its selected cursor.
+    /// Session close reports `Closing` after fencing pending snapshot work;
+    /// it does not claim a separate cancellation capability.
+    ///
+    /// # Errors
+    /// Rejects another Session/stream or unsupported recovery capability.
+    pub const fn resynchronization_failed(
+        session: &InteractionSessionDescriptor,
+        attachment: &RepresentationAttachmentDescriptor,
+        stamp: RepresentationUpdateStamp,
+        resynchronization: RepresentationResynchronizationIdentity,
+        cause: RepresentationResynchronizationFailure,
+    ) -> Result<Self, RepresentationUpdateError> {
+        let lineage = RepresentationUpdateLineage::ResynchronizationFailed {
+            resynchronization,
+            cause,
+        };
+        match validate_update_stamp(&stamp, session, attachment) {
+            Ok(()) => {}
+            Err(error) => return Err(error),
+        }
+        match validate_capability(lineage, session) {
+            Ok(()) => Ok(Self {
+                state: RepresentationUpdateState::Control { stamp, lineage },
+            }),
+            Err(error) => Err(error),
+        }
+    }
+
     /// Constructs one typed invalidation control Update.
     ///
     /// # Errors
@@ -1136,7 +1177,9 @@ const fn validate_capability(
     if kind == 1 && !is_supported(session.capabilities().deltas()) {
         return Err(RepresentationUpdateError::DeltaUnsupported);
     }
-    if kind == 4 && !is_supported(session.capabilities().resynchronization()) {
+    if (kind == 4 || kind == 5)
+        && !is_supported(session.capabilities().resynchronization())
+    {
         return Err(RepresentationUpdateError::ResynchronizationUnsupported);
     }
     Ok(())
@@ -1187,6 +1230,7 @@ const fn validate_lineage(
         RepresentationUpdateLineage::Resynchronization { result, .. } => {
             result.value() >= observed
         }
+        RepresentationUpdateLineage::ResynchronizationFailed { .. } => true,
     };
     if valid { Ok(()) } else { Err(RepresentationUpdateError::InvalidLineage) }
 }
@@ -1207,6 +1251,7 @@ const fn lineage_kind(lineage: RepresentationUpdateLineage) -> u8 {
         RepresentationUpdateLineage::Invalidation { .. } => 2,
         RepresentationUpdateLineage::Gap { .. } => 3,
         RepresentationUpdateLineage::Resynchronization { .. } => 4,
+        RepresentationUpdateLineage::ResynchronizationFailed { .. } => 5,
     }
 }
 

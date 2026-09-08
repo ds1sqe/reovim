@@ -69,7 +69,7 @@ pub fn client_binding(
         supported,
         supported,
         unsupported,
-        unsupported,
+        supported,
     )
     .map_err(|_| super::AssemblyError::Policy)?;
     let update_contract = RepresentationUpdateContract::new(

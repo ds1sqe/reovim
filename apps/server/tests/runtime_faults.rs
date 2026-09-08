@@ -32,6 +32,8 @@ use reovim_server::assembly;
 mod harness;
 #[path = "runtime_faults/providers.rs"]
 mod providers;
+#[path = "runtime_faults/recovery.rs"]
+mod recovery;
 #[path = "runtime_faults/retention.rs"]
 mod retention;
 
@@ -136,12 +138,11 @@ fn invalidation_after_acceptance(failure: SnapshotMode, pressure: bool) {
     );
     let update = service.next_update();
     assert_eq!(update.stamp().cursor().value(), next_cursor);
-    assert_eq!(
-        update.lineage(),
-        RepresentationUpdateLineage::Invalidation {
-            invalidated: projection.predecessor(),
-        }
-    );
+    let RepresentationUpdateLineage::Gap { expected, .. } = update.lineage()
+    else {
+        panic!("selected recovery retains a payload-free Gap");
+    };
+    assert_eq!(expected, projection.predecessor());
     assert_eq!(
         update
             .stamp()

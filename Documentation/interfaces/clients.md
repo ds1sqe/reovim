@@ -78,6 +78,17 @@ and Projection generations. Either delivery may arrive first. A delta applies
 only to its declared predecessor; a gap stops dependent delta application and
 requires an authoritative snapshot/checkpoint.
 
+Admitted resynchronization retains its exact gap/stream receipt until one
+terminal update transfers: a qualified snapshot or a payload-free typed
+failure. Failure cannot fabricate recovered state. Session close cancels
+unstarted recovery and retains its Closing terminal for draining; it does
+not discard the request merely because shutdown was requested.
+Gap/failure controls have separately bounded credit and cannot be stranded
+behind exhausted data credit. Admitting the exact delivered gap retires its
+obsolete data-credit prefix, never editing outcomes or control credit;
+old acknowledgements cannot release new credit. A fresh gap/token is
+required after failed recovery, and stale receipts cannot install a result.
+
 The client validates those stamps before installing derived state. A local
 cache, preview, or speculative view is discardable, never another Buffer or
 History authority. Editing-dependent local changes are gated by the

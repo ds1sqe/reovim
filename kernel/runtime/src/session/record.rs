@@ -141,5 +141,8 @@ pub const fn history_context(
         state: Some(request.target()),
         parent: None,
         cause: None,
+        observer: None,
+        update: None,
+        additional_parent: None,
     }
 }

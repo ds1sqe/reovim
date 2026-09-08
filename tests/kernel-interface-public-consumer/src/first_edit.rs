@@ -9,10 +9,7 @@ mod request_faults;
 mod snapshot_faults;
 mod snapshots;
 
-pub(crate) use chain::semantic_plan;
 pub use chain::{Evidence, heading, keyed};
-pub(crate) use families::Family;
 pub use receipt_faults::exercise as exercise_receipt_fences;
 pub use request_faults::exercise as exercise_request_fences;
 pub use snapshot_faults::exercise as exercise_snapshot_fences;
-pub(crate) use snapshots::produce_snapshot;

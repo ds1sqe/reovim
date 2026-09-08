@@ -7,18 +7,11 @@ use reovim_kernel_interface::interaction::delivery::intent::{
     InteractionOutcomeDeliveryStatus, InteractionOutcomeRequest,
     InteractionOutcomeUnavailable,
 };
-use reovim_kernel_interface::interaction::delivery::update::{
-    RepresentationUpdateAcknowledgement,
-    RepresentationUpdateAcknowledgementResult, RepresentationUpdateApplication,
-    RepresentationUpdateRequest,
-};
 use reovim_kernel_interface::interaction::history::{
     InteractionHistoryAction, InteractionHistoryOutcome,
     InteractionHistoryRequest,
 };
-use reovim_kernel_interface::interaction::identity::{
-    InteractionRequestIdentity, RepresentationUpdateCursor,
-};
+use reovim_kernel_interface::interaction::identity::InteractionRequestIdentity;
 use reovim_kernel_interface::interaction::outcome::InteractionOutcome;
 use reovim_kernel_interface::interaction::root::{
     InteractionRootPort, RootFailure, RootLifecycleRequest, RootOpenFailure,
@@ -37,6 +30,9 @@ use reovim_resource_local::profile;
 
 use crate::assembly::Service;
 use crate::client::ClientError;
+
+mod observe;
+mod recovery;
 
 /// Maximum synchronous progress rounds for this local consumer invocation.
 pub const PROGRESS_ROUNDS: u64 = 64;
@@ -204,40 +200,21 @@ where
         Ok(None)
     }
 
-    /// Consumes one queued semantic snapshot and acknowledges installation.
+    /// Consumes one coherent update, pairing local responses when opted in.
     ///
     /// # Errors
-    /// Returns missing delivery, stale state or failed acknowledgement.
+    /// Returns missing delivery, lost continuity or local installation failure.
     pub fn receive(&mut self, index: usize) -> Result<(), DriverError> {
-        let client =
-            self.clients.get(index).ok_or(DriverError::UnknownClient)?;
-        let next =
-            client.cursor().checked_add(1).ok_or(DriverError::Delivery)?;
-        let request = RepresentationUpdateRequest::new(
-            &client.session,
-            &client.attachment,
-            RepresentationUpdateCursor::new(next),
-        )
-        .map_err(|_| DriverError::Delivery)?;
-        let update = self
-            .endpoint(index)?
-            .take_update(request)
-            .into_update()
-            .ok_or(DriverError::Delivery)?;
-        let client = &mut self.clients[index];
-        let stamp = client.install(update).map_err(DriverError::Client)?;
-        let ack = RepresentationUpdateAcknowledgement::new(
-            &client.session,
-            &client.attachment,
-            stamp,
-            RepresentationUpdateApplication::Installed,
-        )
-        .map_err(|_| DriverError::Delivery)?;
-        if self.endpoint(index)?.acknowledge_update(ack)
-            != RepresentationUpdateAcknowledgementResult::Accepted
-        {
-            return Err(DriverError::Delivery);
+        let observes = self
+            .clients
+            .get(index)
+            .ok_or(DriverError::UnknownClient)?
+            .subscription()
+            .is_some();
+        if observes && self.receive_change(index)?.is_some() {
+            return Ok(());
         }
+        self.receive_update(index)?.ok_or(DriverError::Incomplete)?;
         Ok(())
     }
 

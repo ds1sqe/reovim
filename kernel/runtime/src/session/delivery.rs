@@ -1,10 +1,24 @@
 use reovim_kernel_interface::interaction::delivery::{intent, update};
-use reovim_kernel_interface::interaction::update::RepresentationUpdate;
+use reovim_kernel_interface::interaction::update::{
+    RepresentationGapCause, RepresentationUpdate,
+    RepresentationUpdateIdentityStamp, RepresentationUpdateLineage,
+};
 use reovim_kernel_interface::semantic::stamp::ProjectionStamp;
 
-use super::{Phase, RequestBody, Session};
+use super::{CreditClass, IssuedUpdate, Phase, RequestBody, Session};
 
 impl Session {
+    fn update_acknowledged(
+        &self,
+        identity: RepresentationUpdateIdentityStamp,
+    ) -> bool {
+        self.acknowledged == Some(identity)
+            || self
+                .gap
+                .as_ref()
+                .is_some_and(|gap| gap.identity == identity && gap.acknowledged)
+    }
+
     pub(super) fn deliver_outcome(
         &mut self,
         request: &intent::InteractionOutcomeRequest,
@@ -50,26 +64,31 @@ impl Session {
         if self.phase == Phase::Closed {
             return Delivery::unavailable(Missing::Closed);
         }
-        if self.issued.len() as u64
-            >= self.binding.attachment.initial_credit().value()
-        {
-            return Delivery::unavailable(Missing::NoCredit);
-        }
-        let slot = if self.control.is_some() {
-            &mut self.control
-        } else if let Some(first) = self.updates.first_mut() {
-            first
-        } else {
+        self.replay_gap(request.expected());
+        let Some(candidate) = self.delivery_candidate() else {
             return Delivery::unavailable(Missing::Pending);
         };
-        let candidate = slot.as_ref().expect("queue retains occupied slots");
         let identity = candidate.stamp().identity();
-        if request.expected().value() < identity.cursor().value() {
+        let class = if candidate.carrier().is_some() {
+            CreditClass::Data
+        } else {
+            CreditClass::Control
+        };
+        let gap = matches!(
+            candidate.lineage(),
+            RepresentationUpdateLineage::Gap { .. }
+        );
+        if request.expected().value() < identity.cursor().value() && !gap {
             return Delivery::unavailable(Missing::CursorBehind);
         }
         if request.expected().value() > identity.cursor().value() {
             return Delivery::unavailable(Missing::CursorAhead);
         }
+        if !self.credit_available(class, identity) {
+            return Delivery::unavailable(Missing::NoCredit);
+        }
+        let slot =
+            self.delivery_slot().expect("inspected occupied delivery slot");
         let delivery = match Delivery::try_bind(&request, slot) {
             Ok(delivery) => delivery,
             Err(cause) => {
@@ -79,11 +98,74 @@ impl Session {
             }
         };
         self.transferred(delivery.update().expect("bound update retained"));
+        self.mark_gap_transferred(
+            delivery.update().expect("bound update retained"),
+        );
+        self.recovery_transferred(
+            delivery.update().expect("bound update retained"),
+        );
         if self.updates.first().is_some_and(Option::is_none) {
             self.updates.remove(0);
         }
-        self.issued.push(identity);
+        if !self.update_acknowledged(identity)
+            && !self.issued.iter().any(|issued| issued.stamp == identity)
+        {
+            self.issued.push(IssuedUpdate { stamp: identity, class });
+        }
         delivery
+    }
+
+    fn delivery_candidate(&self) -> Option<&RepresentationUpdate> {
+        self.recovery
+            .as_ref()
+            .and_then(|work| work.completion.as_ref())
+            .or(self.control.as_ref())
+            .or_else(|| self.updates.first().and_then(Option::as_ref))
+    }
+
+    fn delivery_slot(&mut self) -> Option<&mut Option<RepresentationUpdate>> {
+        if self.recovery.as_ref().is_some_and(|work| work.completion.is_some())
+        {
+            return Some(
+                &mut self
+                    .recovery
+                    .as_mut()
+                    .expect("retained completion")
+                    .completion,
+            );
+        }
+        if self.control.is_some() {
+            return Some(&mut self.control);
+        }
+        self.updates.first_mut()
+    }
+
+    fn credit_available(
+        &self,
+        class: CreditClass,
+        identity: RepresentationUpdateIdentityStamp,
+    ) -> bool {
+        if self.update_acknowledged(identity)
+            || self.issued.iter().any(|issued| issued.stamp == identity)
+        {
+            return true;
+        }
+        let limit = match class {
+            CreditClass::Data => {
+                self.binding.attachment.initial_credit().value()
+            }
+            CreditClass::Control => self
+                .binding
+                .session
+                .bounds()
+                .updates()
+                .control()
+                .aggregate()
+                .value(),
+        };
+        (self.issued.iter().filter(|issued| issued.class == class).count()
+            as u64)
+            < limit
     }
 
     pub(super) const fn transferred(&mut self, update: &RepresentationUpdate) {
@@ -109,16 +191,30 @@ impl Session {
         {
             return Result::StaleStream;
         }
-        if self.acknowledged == Some(request.stamp()) {
+        if self.update_acknowledged(request.stamp()) {
             return Result::AlreadyRecorded;
         }
-        let Some(index) =
-            self.issued.iter().position(|stamp| *stamp == request.stamp())
+        let Some(index) = self
+            .issued
+            .iter()
+            .position(|issued| issued.stamp == request.stamp())
         else {
             return Result::UnknownUpdate;
         };
-        self.issued.remove(index);
+        let issued = self.issued.remove(index);
         self.acknowledged = Some(request.stamp());
+        if let Some(gap) = &mut self.gap {
+            gap.acknowledged |= gap.identity == request.stamp();
+        }
+        if issued.class == CreditClass::Data
+            && matches!(
+                request.application(),
+                update::RepresentationUpdateApplication::MissingPredecessor
+            )
+            && !self.ending()
+        {
+            let _ = self.queue_gap(RepresentationGapCause::MissingPredecessor);
+        }
         Result::Accepted
     }
 }

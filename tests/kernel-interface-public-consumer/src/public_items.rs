@@ -5680,7 +5680,9 @@ const fn representation_gap_cause_variants(
         | ::reovim_kernel_interface::interaction::update::
             RepresentationGapCause::Replacement
         | ::reovim_kernel_interface::interaction::update::
-            RepresentationGapCause::MissingPredecessor => {}
+            RepresentationGapCause::MissingPredecessor
+        | ::reovim_kernel_interface::interaction::update::
+            RepresentationGapCause::ProjectionUnavailable => {}
     }
 }
 
@@ -5698,7 +5700,9 @@ const fn representation_update_lineage_variants(
         | ::reovim_kernel_interface::interaction::update::
             RepresentationUpdateLineage::Gap { .. }
         | ::reovim_kernel_interface::interaction::update::
-            RepresentationUpdateLineage::Resynchronization { .. } => {}
+            RepresentationUpdateLineage::Resynchronization { .. }
+        | ::reovim_kernel_interface::interaction::update::
+            RepresentationUpdateLineage::ResynchronizationFailed { .. } => {}
     }
 }
 
@@ -6257,6 +6261,8 @@ const fn representation_resynchronization_result_error_variants(
             RepresentationResynchronizationResultError::IdentityMismatch
         | ::reovim_kernel_interface::interaction::delivery::update::
             RepresentationResynchronizationResultError::MissingPayload
+        | ::reovim_kernel_interface::interaction::delivery::update::
+            RepresentationResynchronizationResultError::UnexpectedPayload
         | ::reovim_kernel_interface::interaction::delivery::update::
             RepresentationResynchronizationResultError::ResultBytesExceeded {
                 ..

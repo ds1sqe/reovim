@@ -1,4 +1,4 @@
-//! Bounded kernel.editing/v1 diagnostics; never editing acceptance authority.
+//! Bounded kernel.editing/v2 diagnostics; never editing acceptance authority.
 
 use core::fmt;
 
@@ -8,6 +8,7 @@ use crate::contract::ContractId;
 use crate::interaction::identity::InteractionRequestIdentity;
 use crate::interaction::outcome::InteractionOutcomeCause;
 use crate::interaction::session::InteractionSessionHandle;
+use crate::interaction::update::RepresentationUpdateIdentityStamp;
 use crate::lifecycle::LifecycleIdentity;
 
 use super::{CanonicalEventRecordRef, CheckedByteCount, EventSequence};
@@ -34,6 +35,10 @@ pub enum EditingStage {
     UpdateReady,
     /// Snapshot production/retention failed; an accepted edit stays accepted.
     UpdateFailed,
+    /// The observer received the exact qualified semantic update.
+    Received,
+    /// The observer installed that semantic state, not a presentation frame.
+    Installed,
     /// Work terminated without an accepted edit.
     Rejected,
     /// Admission was fenced while owned work drains.
@@ -53,6 +58,8 @@ impl EditingStage {
             Self::Committed => "committed",
             Self::UpdateReady => "update-ready",
             Self::UpdateFailed => "update-failed",
+            Self::Received => "received",
+            Self::Installed => "installed",
             Self::Rejected => "rejected",
             Self::Closing => "closing",
             Self::Closed => "closed",
@@ -63,8 +70,12 @@ impl EditingStage {
 /// Safe identities only. Missing evidence is explicit, never guessed.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct EditingContext {
-    /// Session involved in admission or delivery.
+    /// Originating Session; never replaced by the observing Session.
     pub session: Option<InteractionSessionHandle>,
+    /// Independently qualified observer for delivery/client stages.
+    pub observer: Option<InteractionSessionHandle>,
+    /// Exact produced or received update, distinct from its origin request.
+    pub update: Option<RepresentationUpdateIdentityStamp>,
     /// Request identity within that exact Session.
     pub request: Option<InteractionRequestIdentity>,
     /// Buffer-plan correlation, not an authority grant.
@@ -73,6 +84,8 @@ pub struct EditingContext {
     pub state: Option<BufferStateStamp>,
     /// Known causal parent within the same diagnostic stream.
     pub parent: Option<EventSequence>,
+    /// A separately known incoming cause, for explicit joins rather than trees.
+    pub additional_parent: Option<EventSequence>,
     /// Typed terminal rejection reason, never an arbitrary error string.
     pub cause: Option<InteractionOutcomeCause>,
 }
@@ -127,7 +140,11 @@ impl EditingRecord {
         context: EditingContext,
     ) -> Result<Self, EditingRecordError> {
         clock.validate_stamp(instant).map_err(EditingRecordError::Clock)?;
-        if context.parent.is_some_and(|parent| !parent.is_before(sequence)) {
+        if context.parent.is_some_and(|parent| !parent.is_before(sequence))
+            || context
+                .additional_parent
+                .is_some_and(|parent| !parent.is_before(sequence))
+        {
             return Err(EditingRecordError::InvalidParent);
         }
         let mut record = Self {
@@ -162,6 +179,24 @@ impl EditingRecord {
         self.sequence
     }
 
+    /// Returns the exact stream incarnation qualifying causal references.
+    #[must_use]
+    pub const fn stream(&self) -> LifecycleIdentity {
+        self.stream
+    }
+
+    /// Returns the exact source clock incarnation for stage-time comparison.
+    #[must_use]
+    pub const fn clock(&self) -> LifecycleIdentity {
+        self.clock
+    }
+
+    /// Returns observed elapsed ticks; subtract only within this clock.
+    #[must_use]
+    pub const fn nanoseconds(&self) -> u64 {
+        self.nanoseconds
+    }
+
     /// Borrows the byte-identical record consumed by every diagnostic sink.
     ///
     /// # Panics
@@ -171,7 +206,7 @@ impl EditingRecord {
         CanonicalEventRecordRef {
             stream: self.stream,
             family: ContractId::new(EDITING_FAMILY),
-            schema_version: 1,
+            schema_version: 2,
             sequence: self.sequence,
             bytes: self.canonical.as_slice(),
             size: CheckedByteCount::new(

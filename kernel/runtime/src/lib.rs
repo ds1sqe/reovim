@@ -7,6 +7,7 @@ pub mod diagnostics;
 mod engine;
 mod history;
 mod opening;
+mod recovery;
 mod root;
 mod session;
 mod snapshot;
@@ -109,6 +110,14 @@ where
     R: RepresentationPolicyPort<State = M::State>,
     S: RepresentationSnapshotPort<State = M::State>,
 {
+    /// Reports Core-retained native preparation charges, not physical RSS.
+    #[must_use]
+    pub fn retained_native_bytes(
+        &self,
+    ) -> Option<reovim_kernel_interface::bound::CheckedByteCount> {
+        self.buffer.as_ref().map(Buffer::resident_bytes)
+    }
+
     /// Reserves inert ownership. Native region selection belongs to assembly.
     ///
     /// # Errors
@@ -197,7 +206,6 @@ fn validate_client(
         || binding.attachment.coordinate() != snapshot.coordinate()
         || binding.session.update_contract().schema() != snapshot.output()
         || capabilities.deltas() != unsupported
-        || capabilities.resynchronization() != unsupported
     {
         return Err(RuntimeError::Configuration);
     }

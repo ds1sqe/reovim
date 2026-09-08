@@ -53,9 +53,10 @@ fn canonical_record_contains_exact_typed_evidence_not_native_payload() {
     )
     .unwrap();
     let expected = concat!(
-        "kernel.editing/v1 stream=2:1:1 seq=2 producer=1:1:1 clock=3:1:1 ",
-        "ns=42 severity=info stage=rejected session=5@6:1:1 request=11 ",
-        "correlation=12 parent=1 state=7@8:1:1/b/9:1:1:1/a/c@d:1:1/14/",
+        "kernel.editing/v2 stream=2:1:1 seq=2 producer=1:1:1 clock=3:1:1 ",
+        "ns=42 severity=info stage=rejected session=5@6:1:1 ",
+        "observer=- update=- request=11 correlation=12 parent=1 ",
+        "additional-parent=- state=7@8:1:1/b/9:1:1:1/a/c@d:1:1/14/",
         "f@10:1:1 cause=StaleState\n",
     );
     assert_eq!(record.context(), &context);
@@ -64,7 +65,7 @@ fn canonical_record_contains_exact_typed_evidence_not_native_payload() {
     assert_eq!(record.canonical().bytes(), expected.as_bytes());
     assert_eq!(record.canonical().stream(), life(2));
     assert_eq!(record.canonical().family(), EDITING_FAMILY);
-    assert_eq!(record.canonical().schema_version(), 1);
+    assert_eq!(record.canonical().schema_version(), 2);
     assert!(
         record.canonical().size().value() <= EDITING_CANONICAL_MAX_BYTES as u64
     );
@@ -436,6 +437,7 @@ fn context() -> EditingContext {
         )),
         parent: Some(sequence(1)),
         cause: Some(InteractionOutcomeCause::StaleState),
+        ..EditingContext::default()
     }
 }
 

@@ -6,7 +6,7 @@ use reovim_kernel_interface::interaction::descriptor;
 use reovim_kernel_interface::interaction::intent::InteractionIntent;
 use reovim_kernel_interface::interaction::port::InteractionSessionPort;
 
-use super::{Phase, Session};
+use super::{CreditClass, IssuedUpdate, Phase, Session};
 
 impl InteractionSessionPort for Session {
     fn descriptor(&self) -> &descriptor::InteractionSessionDescriptor {
@@ -73,7 +73,8 @@ impl InteractionSessionPort for Session {
         else {
             panic!("Runtime prepared the selected initial snapshot");
         };
-        self.issued.push(issued);
+        self.issued
+            .push(IssuedUpdate { stamp: issued, class: CreditClass::Data });
         self.phase = Phase::Attached;
         Outcome::ready(ready)
     }
@@ -135,11 +136,7 @@ impl InteractionSessionPort for Session {
         &mut self,
         request: update_delivery::RepresentationResynchronizationRequest,
     ) -> update_delivery::RepresentationResynchronizationAdmission {
-        use update_delivery::RepresentationResynchronizationFailure as Failure;
-        update_delivery::RepresentationResynchronizationAdmission::NotAdmitted {
-            cause: Failure::Unsupported,
-            request,
-        }
+        self.request_recovery(request)
     }
 
     fn close(

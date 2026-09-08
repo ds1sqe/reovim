@@ -1,10 +1,12 @@
 use reovim_kernel_interface::bound::{CheckedCount, ZeroPolicy};
 use reovim_kernel_interface::cancellation::ExecutionOutcome;
 use reovim_kernel_interface::event::editing::{EditingContext, EditingStage};
-use reovim_kernel_interface::interaction::delivery::session as delivery;
+use reovim_kernel_interface::interaction::delivery::{
+    session as delivery, update,
+};
 use reovim_kernel_interface::interaction::outcome::InteractionOutcomeCause;
 
-use super::{Phase, Session};
+use super::{CreditClass, Phase, Session};
 
 impl Session {
     pub(super) fn close_session(
@@ -18,6 +20,11 @@ impl Session {
             return delivery::InteractionCloseOutcome::Closed;
         }
         self.phase = Phase::Closing;
+        if self.recovery_pending() {
+            self.recovery_failed(
+                update::RepresentationResynchronizationFailure::Closing,
+            );
+        }
         let _ = self.telemetry.emit(
             EditingStage::Closing,
             &EditingContext {
@@ -33,7 +40,8 @@ impl Session {
         {
             record.reject(InteractionOutcomeCause::Closing);
         }
-        if self.requests.iter().any(|r| !r.delivered) {
+        if self.requests.iter().any(|r| !r.delivered) || self.recovery.is_some()
+        {
             return self.incomplete();
         }
         // This full-snapshot profile explicitly discards projection delivery
@@ -42,6 +50,7 @@ impl Session {
         self.updates.clear();
         self.issued.clear();
         self.control = None;
+        self.gap = None;
         self.notices.clear();
         self.notice_gap = None;
         self.subscription_closed = true;
@@ -70,9 +79,14 @@ impl Session {
             count(pending),
             count(retained),
             count(self.updates.len() as u64),
-            count(self.issued.len() as u64),
+            count(
+                self.issued
+                    .iter()
+                    .filter(|issued| issued.class == CreditClass::Data)
+                    .count() as u64,
+            ),
             count(0),
-            None,
+            self.recovery.as_ref().map(|work| work.totals),
         );
         let execution = if pending == 0 {
             ExecutionOutcome::Stopped

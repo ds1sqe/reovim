@@ -2,15 +2,17 @@ use reovim_kernel_interface::cancellation::{
     CancellationState, DeadlineState, InstallationOutcome,
 };
 use reovim_kernel_interface::event::editing::{EditingContext, EditingStage};
+use reovim_kernel_interface::interaction::delivery::update as delivery;
+use reovim_kernel_interface::interaction::descriptor;
 use reovim_kernel_interface::interaction::identity::{
     RepresentationUpdateCursor, RepresentationUpdateIdentity,
 };
 use reovim_kernel_interface::interaction::notification;
 use reovim_kernel_interface::interaction::outcome::InteractionOutcomeCause;
 use reovim_kernel_interface::interaction::update::{
-    RepresentationUpdate, RepresentationUpdateBindingOutcome,
-    RepresentationUpdateLineage, RepresentationUpdatePayloadClaim,
-    RepresentationUpdateStamp,
+    RepresentationGapCause, RepresentationUpdate,
+    RepresentationUpdateBindingOutcome, RepresentationUpdateLineage,
+    RepresentationUpdatePayloadClaim, RepresentationUpdateStamp,
 };
 use reovim_kernel_interface::resource::port::ResourceAccessPort;
 use reovim_kernel_interface::resource::state::ResourceStateModel;
@@ -37,7 +39,8 @@ where
         &mut self,
         index: usize,
     ) -> Result<(), RuntimeError> {
-        let update = self.make_snapshot(index)?;
+        let update = self.make_snapshot(index, None)?;
+        self.sessions[index].note_ready(&update);
         self.sessions[index].initial = Some(update);
         Ok(())
     }
@@ -63,30 +66,24 @@ where
             return;
         }
         session.current = Some(notice.accepted().result());
+        session.update_context = *context;
         session.publish_change(notice);
         if session.invalidated {
             return;
         }
-        let update = self.make_snapshot(index);
+        let update = self.make_snapshot(index, None);
         let session = &mut self.sessions[index];
         let failure = match update {
             Ok(update) => session.retain_snapshot(update).err(),
             Err(cause) => {
-                session.invalidate();
+                session.invalidate(cause);
                 Some(cause)
             }
         };
         let mut context = *context;
-        context.session = Some(session.binding.session.stamp().handle());
+        context.observer = Some(session.binding.session.stamp().handle());
         if let Some(failure) = failure {
             self.snapshot_failure(failure, &context);
-        }
-        let session = &self.sessions[index];
-        if session.initial.is_some()
-            || session.control.is_some()
-            || !session.updates.is_empty()
-        {
-            let _ = self.telemetry.emit(EditingStage::UpdateReady, &context);
         }
     }
 
@@ -105,15 +102,20 @@ where
         let _ = self.telemetry.emit(EditingStage::UpdateFailed, &context);
     }
 
-    fn make_snapshot(
+    pub(crate) fn make_snapshot(
         &mut self,
         index: usize,
+        recovery: Option<delivery::RepresentationResynchronizationReceipt>,
     ) -> Result<RepresentationUpdate, RuntimeError> {
         let buffer = self.buffer.as_ref().ok_or(RuntimeError::Provider)?;
         let lease = buffer.observe();
         let state = lease.view();
         let session = &mut self.sessions[index];
-        let predecessor = session.snapshot_predecessor();
+        let predecessor = if recovery.is_some() {
+            session.transferred_projection
+        } else {
+            session.snapshot_predecessor()
+        };
         let request = RepresentationSnapshotRequest::new(
             &self.snapshot_selection,
             &state,
@@ -131,7 +133,7 @@ where
             .check_admission(
                 self.snapshot.descriptor(),
                 &buffer.stamp(),
-                &session.snapshot_predecessor(),
+                &predecessor,
                 InstallationOutcome::Current,
             )
             .map_err(|_| RuntimeError::Provider)?;
@@ -146,9 +148,20 @@ where
         let next = predecessor
             .predecessor()
             .value()
+            .max(session.projection.predecessor().value())
             .checked_add(1)
             .ok_or(RuntimeError::Capacity)?;
-        let cursor = session.snapshot_cursor().ok_or(RuntimeError::Capacity)?;
+        let cursor = recovery
+            .map_or_else(
+                || session.snapshot_cursor(),
+                |receipt| {
+                    receipt
+                        .cursor()
+                        .checked_next()
+                        .map(RepresentationUpdateCursor::value)
+                },
+            )
+            .ok_or(RuntimeError::Capacity)?;
         let result = ProjectionGeneration::new(next);
         let projection = ProjectionStamp::new(
             predecessor.projection(),
@@ -164,10 +177,16 @@ where
             u64::try_from(payload.bytes.len())
                 .map_err(|_| RuntimeError::Capacity)?,
         );
-        let lineage = RepresentationUpdateLineage::FullSnapshot {
-            supersedes: predecessor.predecessor(),
-            result,
-        };
+        let lineage = recovery.map_or_else(
+            || RepresentationUpdateLineage::FullSnapshot {
+                supersedes: predecessor.predecessor(),
+                result,
+            },
+            |receipt| RepresentationUpdateLineage::Resynchronization {
+                result,
+                resynchronization: receipt.resynchronization(),
+            },
+        );
         let preparation = session
             .binding
             .session
@@ -186,6 +205,22 @@ where
 }
 
 impl Session {
+    pub(crate) fn note_ready(&self, update: &RepresentationUpdate) {
+        let _ = self.telemetry.capture_update(
+            &self.binding.session,
+            &self.binding.attachment,
+            update,
+        );
+        let mut context = self.update_context;
+        context.observer = Some(self.binding.session.stamp().handle());
+        context.update = Some(update.stamp().identity());
+        context.state = update
+            .stamp()
+            .resolve_target(&self.binding.session, &self.binding.attachment)
+            .ok();
+        let _ = self.telemetry.emit(EditingStage::UpdateReady, &context);
+    }
+
     const fn snapshot_predecessor(&self) -> ProjectionStamp {
         match self.phase {
             Phase::Attached => self.projection,
@@ -205,6 +240,7 @@ impl Session {
         update: RepresentationUpdate,
     ) -> Result<(), RuntimeError> {
         if self.phase != Phase::Attached {
+            self.note_ready(&update);
             self.initial = Some(update);
             return Ok(());
         }
@@ -242,18 +278,29 @@ impl Session {
             )
             .is_err()
         {
-            self.invalidate();
+            self.invalidate(RuntimeError::Capacity);
             return Err(RuntimeError::Capacity);
         }
+        self.note_ready(&update);
         self.updates.push(Some(update));
         Ok(())
     }
 
-    fn invalidate(&mut self) {
+    fn invalidate(&mut self, failure: RuntimeError) {
         // Loss affects this projection, not the accepted edit or other clients.
         if self.phase != Phase::Attached {
             self.initial = None;
             self.invalidated = true;
+            return;
+        }
+        if self.binding.session.capabilities().resynchronization()
+            == descriptor::InteractionCapabilitySupport::Supported
+        {
+            let cause = match failure {
+                RuntimeError::Capacity => RepresentationGapCause::Pressure,
+                _ => RepresentationGapCause::ProjectionUnavailable,
+            };
+            let _ = self.queue_gap(cause);
             return;
         }
         let Some(cursor) = self.next_delivery_cursor else {
@@ -272,25 +319,32 @@ impl Session {
             projection.predecessor(),
         )
         .ok();
+        if let Some(update) = &self.control {
+            self.note_ready(update);
+        }
         self.updates.clear();
         self.invalidated = true;
     }
 }
 
-fn stamp(
-    session: &Session,
+pub fn stamp(
+    session: &mut Session,
     cursor: u64,
     projection: &ProjectionStamp,
 ) -> Result<RepresentationUpdateStamp, RuntimeError> {
     let state = session.current.ok_or(RuntimeError::Provider)?;
-    RepresentationUpdateStamp::new(
+    let next =
+        session.next_update.checked_add(1).ok_or(RuntimeError::Capacity)?;
+    let update = RepresentationUpdateStamp::new(
         &session.binding.session,
         &session.binding.attachment,
-        RepresentationUpdateIdentity::new(u128::from(cursor)),
+        RepresentationUpdateIdentity::new(session.next_update),
         RepresentationUpdateCursor::new(cursor),
         &state,
         projection,
         &session.binding.attachment.coordinate(),
     )
-    .map_err(|_| RuntimeError::Provider)
+    .map_err(|_| RuntimeError::Provider)?;
+    session.next_update = next;
+    Ok(update)
 }
