@@ -5,7 +5,9 @@ use core::fmt;
 use crate::buffer::plan::{
     BufferHistoryTransitionIdentity, BufferTransactionIdentity,
 };
-use crate::buffer::{BufferStateStamp, BufferVersion};
+use crate::buffer::{
+    BufferHistoryDirection, BufferHistoryEdge, BufferStateStamp, BufferVersion,
+};
 use crate::effect::EffectCertainty;
 use crate::semantic::stamp::SemanticIntentStamp;
 
@@ -33,6 +35,8 @@ pub enum InteractionOutcomeCause {
     AmbiguousCorrespondence,
     /// Buffer Preconditions or version assumptions conflict.
     Conflict,
+    /// No retained transaction is eligible in the requested History direction.
+    NoHistory,
     /// Bounded capacity prevented admission or completion.
     Pressure,
     /// Cooperative cancellation affected the request.
@@ -63,6 +67,8 @@ pub struct InteractionAcceptedState {
     transaction: BufferTransactionIdentity,
     history: BufferHistoryTransitionIdentity,
     result: BufferStateStamp,
+    direction: Option<BufferHistoryDirection>,
+    edge: BufferHistoryEdge,
 }
 
 impl InteractionAcceptedState {
@@ -82,6 +88,18 @@ impl InteractionAcceptedState {
     #[must_use]
     pub const fn result(self) -> BufferStateStamp {
         self.result
+    }
+
+    /// Returns undo/redo direction, or `None` for a newly accepted edit.
+    #[must_use]
+    pub const fn history_direction(self) -> Option<BufferHistoryDirection> {
+        self.direction
+    }
+
+    /// Returns the exact created or traversed History edge.
+    #[must_use]
+    pub const fn history_edge(self) -> BufferHistoryEdge {
+        self.edge
     }
 }
 
@@ -114,15 +132,10 @@ pub enum InteractionOutcomeError {
         /// Version supplied by the Outcome.
         actual: BufferVersion,
     },
-    /// Resulting History position could not advance without overflow.
-    HistoryPositionOverflow,
-    /// Resulting History position is not the exact next position.
-    HistoryPositionNotAdvanced {
-        /// Position required after one accepted Transaction.
-        expected: u64,
-        /// Position supplied by the Outcome.
-        actual: u64,
-    },
+    /// Current/result nodes do not match the selected non-self History edge.
+    HistoryEdgeMismatch,
+    /// The selected child differs from the explicitly requested redo branch.
+    HistoryBranchMismatch,
     /// This cause cannot produce an `OutcomeUnknown` local disposition.
     CauseCannotRequireReconciliation,
 }
@@ -145,12 +158,8 @@ impl fmt::Display for InteractionOutcomeError {
             Self::BufferVersionNotAdvanced { .. } => {
                 "accepted Interaction Buffer version did not advance once"
             }
-            Self::HistoryPositionOverflow => {
-                "accepted Interaction History position overflowed"
-            }
-            Self::HistoryPositionNotAdvanced { .. } => {
-                "accepted Interaction History position did not advance once"
-            }
+            Self::HistoryEdgeMismatch => "accepted History edge differs",
+            Self::HistoryBranchMismatch => "accepted redo branch differs",
             Self::CauseCannotRequireReconciliation => {
                 "Interaction cause cannot require reconciliation"
             }
@@ -160,10 +169,13 @@ impl fmt::Display for InteractionOutcomeError {
 
 impl core::error::Error for InteractionOutcomeError {}
 
-/// One coherent terminal semantic disposition for an Interaction Intent.
+/// One terminal disposition retaining its exact immutable request binding.
+///
+/// The default request is an edit. History uses its own request type rather
+/// than inventing a Domain Intent or Representation attachment.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct InteractionOutcome {
-    request: InteractionRequestStamp,
+pub struct InteractionOutcome<Request = InteractionRequestStamp> {
+    request: Request,
     status: InteractionOutcomeStatus,
     accepted: Option<InteractionAcceptedState>,
     cause: Option<InteractionOutcomeCause>,
@@ -185,19 +197,28 @@ impl InteractionOutcome {
             Ok(value) => value,
             Err(error) => return Err(error),
         };
-        Ok(Self {
+        Ok(Self::from_accepted(request, &accepted))
+    }
+}
+
+impl<Request: Copy> InteractionOutcome<Request> {
+    pub(super) const fn from_accepted(
+        request: Request,
+        accepted: &InteractionAcceptedState,
+    ) -> Self {
+        Self {
             request,
             status: InteractionOutcomeStatus::Accepted,
-            accepted: Some(accepted),
+            accepted: Some(*accepted),
             cause: None,
             reconcile: None,
-        })
+        }
     }
 
     /// Constructs a proved definitely-not-applied terminal result.
     #[must_use]
     pub const fn not_accepted(
-        request: InteractionRequestStamp,
+        request: Request,
         cause: InteractionOutcomeCause,
     ) -> Self {
         Self {
@@ -215,7 +236,7 @@ impl InteractionOutcome {
     ///
     /// Returns a cause that cannot be uncertain at a local effect cut.
     pub const fn reconciliation_required(
-        request: InteractionRequestStamp,
+        request: Request,
         cause: InteractionOutcomeCause,
         reconcile: InteractionReconcileIdentity,
     ) -> Result<Self, InteractionOutcomeError> {
@@ -235,7 +256,7 @@ impl InteractionOutcome {
 
     /// Returns the exact request receiving this terminal disposition.
     #[must_use]
-    pub const fn request(self) -> InteractionRequestStamp {
+    pub const fn request(self) -> Request {
         self.request
     }
 
@@ -286,7 +307,30 @@ const fn validate_accepted(
     if !request.semantic().matches_intent(semantic) {
         return Err(InteractionOutcomeError::SemanticBindingMismatch);
     }
-    let target = *semantic.target();
+    let Ok(edge) = BufferHistoryEdge::new(
+        semantic.target().history().node(),
+        result.history().node(),
+    ) else {
+        return Err(InteractionOutcomeError::HistoryEdgeMismatch);
+    };
+    accepted_transition(
+        semantic.target(),
+        result,
+        request.semantic().transaction(),
+        request.semantic().history(),
+        edge,
+        None,
+    )
+}
+
+pub(super) const fn accepted_transition(
+    target: &BufferStateStamp,
+    result: &BufferStateStamp,
+    transaction: BufferTransactionIdentity,
+    history: BufferHistoryTransitionIdentity,
+    edge: BufferHistoryEdge,
+    direction: Option<BufferHistoryDirection>,
+) -> Result<InteractionAcceptedState, InteractionOutcomeError> {
     if !target.source().same_snapshot(result.source()) {
         return Err(InteractionOutcomeError::SourceMismatch);
     }
@@ -310,22 +354,22 @@ const fn validate_accepted(
     {
         return Err(InteractionOutcomeError::BufferMismatch);
     }
-    let Some(expected_history) =
-        target.history().position().value().checked_add(1)
-    else {
-        return Err(InteractionOutcomeError::HistoryPositionOverflow);
+    // New edits create a child; redo traverses the same parent-to-child shape.
+    let traversal = match direction {
+        Some(value) => value,
+        None => BufferHistoryDirection::Redo,
     };
-    let actual_history = result.history().position().value();
-    if actual_history != expected_history {
-        return Err(InteractionOutcomeError::HistoryPositionNotAdvanced {
-            expected: expected_history,
-            actual: actual_history,
-        });
+    if edge.from(traversal).value() != target.history().node().value()
+        || edge.to(traversal).value() != result.history().node().value()
+    {
+        return Err(InteractionOutcomeError::HistoryEdgeMismatch);
     }
     Ok(InteractionAcceptedState {
-        transaction: request.semantic().transaction(),
-        history: request.semantic().history(),
+        transaction,
+        history,
         result: *result,
+        direction,
+        edge,
     })
 }
 

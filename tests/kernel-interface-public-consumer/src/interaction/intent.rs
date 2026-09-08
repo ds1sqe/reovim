@@ -173,7 +173,7 @@ fn accepted_outcome_faults(
     intent: &InteractionIntent,
 ) -> bool {
     let Some(version) = crate::buffer::state(1, 2, 1) else { return false };
-    let Some(history) = crate::buffer::state(1, 1, 2) else { return false };
+    let Some(history) = crate::buffer::state(1, 1, 0) else { return false };
     let Some(buffer) = crate::buffer::state(2, 1, 1) else { return false };
     let wrong_version = InteractionOutcome::accepted(
         intent.stamp(),
@@ -197,13 +197,8 @@ fn accepted_outcome_faults(
         }) => expected.value() == 1 && actual.value() == 2,
         _ => false,
     };
-    let history_failed = match wrong_history {
-        Err(InteractionOutcomeError::HistoryPositionNotAdvanced {
-            expected,
-            actual,
-        }) => expected == 1 && actual == 2,
-        _ => false,
-    };
+    let history_failed = wrong_history.err()
+        == Some(InteractionOutcomeError::HistoryEdgeMismatch);
     version_failed
         && history_failed
         && wrong_buffer.err() == Some(InteractionOutcomeError::BufferMismatch)

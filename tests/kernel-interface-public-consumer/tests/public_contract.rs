@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
-//! Executed public-boundary journey for Kernel Interface contracts.
+//! Executed public-boundary cases for Kernel Interface contracts.
+
+#[path = "public_contract/history.rs"]
+mod history;
 
 use reovim_kernel_interface::bound::{
     BoundDescriptor, BoundValue, CheckedByteCount, CheckedCount, ZeroPolicy,
@@ -15,7 +18,7 @@ use reovim_kernel_interface::buffer::plan::{
     BufferPlanDescriptor, BufferPlanStamp, BufferTransactionIdentity,
 };
 use reovim_kernel_interface::buffer::{
-    BufferHistoryPosition, BufferHistoryStamp, BufferIdentity,
+    BufferHistoryNodeIdentity, BufferHistoryStamp, BufferIdentity,
     BufferIncarnationStamp, BufferStateStamp, BufferVersion,
 };
 use reovim_kernel_interface::cancellation::{
@@ -52,7 +55,7 @@ use reovim_kernel_interface::semantic::representation::{
 use reovim_kernel_interface::semantic::stamp::SemanticIntentStamp;
 
 #[test]
-fn complete_public_contract_journey() {
+fn existing_public_contract_cases() {
     assert!(reovim_kernel_interface_public_consumer::exercise_public_api());
 }
 
@@ -453,7 +456,7 @@ const fn buffer_state() -> BufferStateStamp {
     );
     let history = BufferHistoryStamp::new(
         LifecycleIdentity::new(939, 940, Generation::new(1)),
-        BufferHistoryPosition::INITIAL,
+        BufferHistoryNodeIdentity::new(0xac),
     );
     BufferStateStamp::new(source, buffer, BufferVersion::INITIAL, history)
 }

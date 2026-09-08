@@ -48,7 +48,7 @@ fn accepted_plan() -> bool {
             == BufferDeadline::Governed(BufferDeadlineIdentity::new(825))
         && target.buffer().buffer().value() == 701
         && target.version().value() == 0
-        && target.history().position().value() == 0
+        && target.history().node().value() == 0
         && plan.origin().bytes() == b"secret"
         && plan.operations().bytes() == b"hello"
         && plan.preconditions().bytes().is_empty()

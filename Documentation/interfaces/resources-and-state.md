@@ -52,8 +52,8 @@ closes another Buffer, and does not change another Client's selection.
 
 ```text
 session.edit(buffer, observed_state, representation, intent) -> operation
-session.undo(buffer, observed_state, history_position) -> operation
-session.redo(buffer, observed_state, history_position) -> operation
+session.undo(buffer, observed_state) -> operation
+session.redo(buffer, observed_state, selected_child?) -> operation
 operation.result -> Accepted(new_state, transition) | Rejected(cause)
 ```
 
@@ -76,15 +76,25 @@ and preconditions, then commits the complete transaction and History change
 atomically. This section is bounded, synchronous, and non-reentrant; no waits
 or user callbacks run inside it. Failure changes neither state nor History.
 
-Undo and redo are new ordered transitions with new Buffer versions, not
-rewrites of old versions. The first profile uses one accepted transaction per
-undo step. A command requiring an atomic group submits one transaction;
-implicit timing-based merging is not part of this profile. History owns
-eligibility and retention. An edit after undo invalidates the active redo
-path. Retained branches and truncation follow the History descriptor; this
-does not require deleting every alternate branch. When no eligible step
-exists, return `NoHistory` without mutation. This is shared Buffer history,
-not implicit per-client selective undo.
+History is a tree, not a linear version counter. Each retained state has an
+opaque node identity and explicit parent/child edges. The root has no parent;
+a node may have several children. Node identity implies neither ordering nor
+depth. Core owns the tree, its current node and selected redo child.
+
+Undo follows the current node's parent. Redo follows an explicitly requested
+child or the current node's selected child. An edit after undo creates and
+selects a new child; existing siblings remain available as branches. Retention
+and explicit truncation follow the History descriptor, not an implicit
+delete-on-edit rule. A missing eligible edge returns `NoHistory` unchanged.
+
+Undo and redo produce fresh Buffer versions while selecting existing History
+nodes. Only the Buffer version advances monotonically; History traversal uses
+edges, never node-ID arithmetic. Acceptance identifies the exact traversed or
+created edge. Core selects the edge before native preparation and rechecks it
+at commit; changing the preferred child cannot redirect pending redo work.
+The first profile uses one accepted transaction per new node. An atomic group
+submits one transaction; implicit timing-based merging is outside this
+profile. This is shared Buffer history, not per-client undo.
 
 Example: edit version 4 -> version 5; undo at 5 -> version 6 with the prior
 units; redo at 6 -> version 7. A concurrent edit still naming version 4
@@ -109,6 +119,9 @@ operation.result -> Effect(certainty, cause, proof_or_reconcile)
 Save is explicit publication through the Resource Adapter, never a side effect
 of accepting an edit. It captures one immutable selected Buffer version and
 the expected Resource revision. Edits accepted later are not included or
+For branching, A -> B, undo to A, then edit C retains both edges A -> B and
+A -> C. Redo can select either child after undoing to A; B and C are not
+consecutive positions in a history list.
 marked saved. Conflicts preserve local intent for explicit reject or rebase;
 save must not overwrite external change merely because a path still exists.
 

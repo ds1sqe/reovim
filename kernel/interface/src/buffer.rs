@@ -5,7 +5,10 @@ use crate::resource::ResourceSnapshotStamp;
 
 pub mod bounds;
 pub mod carrier;
+pub mod history;
 pub mod plan;
+
+pub use history::{BufferHistoryEdge, BufferHistoryEdgeError};
 
 /// Stable opaque identity of one Buffer working context.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -90,32 +93,41 @@ impl BufferIncarnationStamp {
     }
 }
 
-/// Ordered boundary between applied and redo-eligible History entries.
+/// Requested movement through the Buffer's authoritative History.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct BufferHistoryPosition(u64);
+pub enum BufferHistoryDirection {
+    /// Restore the current node's parent.
+    Undo,
+    /// Restore a selected child of the current node.
+    Redo,
+}
 
-impl BufferHistoryPosition {
-    /// Initial position of an empty History.
-    pub const INITIAL: Self = Self(0);
+/// Opaque retained-state identity within one History incarnation.
+///
+/// Identity implies neither ordering, depth nor adjacency. Core supplies the
+/// root identity too; no distinguished scalar means root or empty History.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BufferHistoryNodeIdentity(u128);
 
-    /// Constructs an authority-supplied History position.
+impl BufferHistoryNodeIdentity {
+    /// Constructs an authority-supplied node identity, not a tree index.
     #[must_use]
-    pub const fn new(value: u64) -> Self {
+    pub const fn new(value: u128) -> Self {
         Self(value)
     }
 
-    /// Returns the opaque ordered position scalar.
+    /// Returns the opaque identity scalar, never an ordinal position.
     #[must_use]
-    pub const fn value(self) -> u64 {
+    pub const fn value(self) -> u128 {
         self.0
     }
 }
 
-/// Exact History incarnation, generation, and current position.
+/// Exact History incarnation, generation, and selected node.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BufferHistoryStamp {
     lifecycle: LifecycleIdentity,
-    position: BufferHistoryPosition,
+    node: BufferHistoryNodeIdentity,
 }
 
 impl BufferHistoryStamp {
@@ -123,9 +135,9 @@ impl BufferHistoryStamp {
     #[must_use]
     pub const fn new(
         lifecycle: LifecycleIdentity,
-        position: BufferHistoryPosition,
+        node: BufferHistoryNodeIdentity,
     ) -> Self {
-        Self { lifecycle, position }
+        Self { lifecycle, node }
     }
 
     /// Returns the History lifecycle identity.
@@ -134,17 +146,17 @@ impl BufferHistoryStamp {
         self.lifecycle
     }
 
-    /// Returns the current History position.
+    /// Returns the selected History node, independent of Buffer version.
     #[must_use]
-    pub const fn position(self) -> BufferHistoryPosition {
-        self.position
+    pub const fn node(self) -> BufferHistoryNodeIdentity {
+        self.node
     }
 
     /// Reports whether two values name the same complete History state.
     #[must_use]
     pub const fn same_state(self, other: Self) -> bool {
         self.lifecycle.same_generation(other.lifecycle)
-            && self.position.value() == other.position.value()
+            && self.node.value() == other.node.value()
     }
 }
 

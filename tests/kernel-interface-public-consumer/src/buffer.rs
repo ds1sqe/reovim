@@ -5,7 +5,7 @@ use reovim_kernel_interface::bound::{
 use reovim_kernel_interface::buffer::bounds::BufferPlanBounds;
 use reovim_kernel_interface::buffer::plan::BufferPlanDescriptor;
 use reovim_kernel_interface::buffer::{
-    BufferHistoryPosition, BufferHistoryStamp, BufferIdentity,
+    BufferHistoryNodeIdentity, BufferHistoryStamp, BufferIdentity,
     BufferIncarnationStamp, BufferStateStamp, BufferVersion,
 };
 use reovim_kernel_interface::identity::InstanceId;
@@ -19,7 +19,7 @@ const CHARGE_OWNER: u128 = 700;
 pub const fn const_cases() -> bool {
     BufferIdentity::new(701).value() == 701
         && BufferVersion::INITIAL.value() == 0
-        && BufferHistoryPosition::INITIAL.value() == 0
+        && BufferHistoryNodeIdentity::new(0xac).value() == 0xac
         && carrier::const_cases()
         && plan::const_cases()
 }
@@ -34,7 +34,7 @@ pub fn exercise() -> bool {
         && current.buffer().lifecycle().instance() == 702
         && current.version() == BufferVersion::INITIAL
         && current.history().lifecycle().instance() == 704
-        && current.history().position() == BufferHistoryPosition::INITIAL
+        && current.history().node() == BufferHistoryNodeIdentity::new(0)
         && current.same_state(same)
         && !current.same_state(replaced)
         && !current.same_state(advanced)
@@ -60,7 +60,7 @@ pub fn descriptor() -> Option<BufferPlanDescriptor> {
 pub fn state(
     generation: u64,
     version: u64,
-    history_position: u64,
+    history_node: u128,
 ) -> Option<BufferStateStamp> {
     let source = crate::resource::snapshot(1, 14)?;
     let buffer = BufferIncarnationStamp::new(
@@ -69,7 +69,7 @@ pub fn state(
     );
     let history = BufferHistoryStamp::new(
         LifecycleIdentity::new(704, 705, Generation::new(generation)),
-        BufferHistoryPosition::new(history_position),
+        BufferHistoryNodeIdentity::new(history_node),
     );
     Some(BufferStateStamp::new(
         source,
@@ -105,7 +105,7 @@ const fn state_derives() -> bool {
             ::reovim_kernel_interface::buffer::BufferIncarnationStamp,
         >()
         && crate::derive_witness::<
-            ::reovim_kernel_interface::buffer::BufferHistoryPosition,
+            ::reovim_kernel_interface::buffer::BufferHistoryNodeIdentity,
         >()
         && crate::derive_witness::<
             ::reovim_kernel_interface::buffer::BufferHistoryStamp,

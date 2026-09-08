@@ -3,6 +3,7 @@
 pub mod bounds;
 pub mod delivery;
 pub mod descriptor;
+pub mod history;
 pub mod identity;
 pub mod intent;
 pub mod outcome;

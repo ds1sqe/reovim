@@ -107,12 +107,11 @@ const fn buffer_items_one() {
 
 const fn buffer_items_two() {
     let _ = (
-        ::reovim_kernel_interface::buffer::BufferHistoryPosition::INITIAL,
-        ::reovim_kernel_interface::buffer::BufferHistoryPosition::new,
-        ::reovim_kernel_interface::buffer::BufferHistoryPosition::value,
+        ::reovim_kernel_interface::buffer::BufferHistoryNodeIdentity::new,
+        ::reovim_kernel_interface::buffer::BufferHistoryNodeIdentity::value,
         ::reovim_kernel_interface::buffer::BufferHistoryStamp::new,
         ::reovim_kernel_interface::buffer::BufferHistoryStamp::lifecycle,
-        ::reovim_kernel_interface::buffer::BufferHistoryStamp::position,
+        ::reovim_kernel_interface::buffer::BufferHistoryStamp::node,
         ::reovim_kernel_interface::buffer::BufferHistoryStamp::same_state,
         ::reovim_kernel_interface::buffer::BufferStateStamp::new,
         ::reovim_kernel_interface::buffer::BufferStateStamp::source,
@@ -2473,6 +2472,8 @@ const fn interaction_intent_items() {
 }
 
 const fn interaction_outcome_items() {
+    type EditOutcome =
+        ::reovim_kernel_interface::interaction::outcome::InteractionOutcome;
     let _ = (
         ::reovim_kernel_interface::interaction::outcome::
             InteractionAcceptedState::transaction,
@@ -2480,24 +2481,15 @@ const fn interaction_outcome_items() {
             InteractionAcceptedState::history,
         ::reovim_kernel_interface::interaction::outcome::
             InteractionAcceptedState::result,
-        ::reovim_kernel_interface::interaction::outcome::
-            InteractionOutcome::accepted,
-        ::reovim_kernel_interface::interaction::outcome::
-            InteractionOutcome::not_accepted,
-        ::reovim_kernel_interface::interaction::outcome::
-            InteractionOutcome::reconciliation_required,
-        ::reovim_kernel_interface::interaction::outcome::
-            InteractionOutcome::request,
-        ::reovim_kernel_interface::interaction::outcome::
-            InteractionOutcome::status,
-        ::reovim_kernel_interface::interaction::outcome::
-            InteractionOutcome::effect_certainty,
-        ::reovim_kernel_interface::interaction::outcome::
-            InteractionOutcome::accepted_state,
-        ::reovim_kernel_interface::interaction::outcome::
-            InteractionOutcome::cause,
-        ::reovim_kernel_interface::interaction::outcome::
-            InteractionOutcome::reconcile,
+        EditOutcome::accepted,
+        EditOutcome::not_accepted,
+        EditOutcome::reconciliation_required,
+        EditOutcome::request,
+        EditOutcome::status,
+        EditOutcome::effect_certainty,
+        EditOutcome::accepted_state,
+        EditOutcome::cause,
+        EditOutcome::reconcile,
     );
 }
 
@@ -5607,6 +5599,8 @@ const fn interaction_outcome_cause_variants(
         | ::reovim_kernel_interface::interaction::outcome::
             InteractionOutcomeCause::Conflict
         | ::reovim_kernel_interface::interaction::outcome::
+            InteractionOutcomeCause::NoHistory
+        | ::reovim_kernel_interface::interaction::outcome::
             InteractionOutcomeCause::Pressure
         | ::reovim_kernel_interface::interaction::outcome::
             InteractionOutcomeCause::Cancelled
@@ -5661,9 +5655,9 @@ const fn interaction_outcome_error_variants(
         | ::reovim_kernel_interface::interaction::outcome::
             InteractionOutcomeError::BufferVersionNotAdvanced { .. }
         | ::reovim_kernel_interface::interaction::outcome::
-            InteractionOutcomeError::HistoryPositionOverflow
+            InteractionOutcomeError::HistoryEdgeMismatch
         | ::reovim_kernel_interface::interaction::outcome::
-            InteractionOutcomeError::HistoryPositionNotAdvanced { .. }
+            InteractionOutcomeError::HistoryBranchMismatch
         | ::reovim_kernel_interface::interaction::outcome::
             InteractionOutcomeError::CauseCannotRequireReconciliation => {}
     }
