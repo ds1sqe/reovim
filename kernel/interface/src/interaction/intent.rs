@@ -160,6 +160,21 @@ impl InteractionIntent {
         &self.semantic
     }
 
+    /// Compares the complete immutable request, including its actual payload.
+    ///
+    /// Runtime checks authority first, then uses this bounded comparison for
+    /// retained duplicate handling outside Buffer commit ownership. Equal
+    /// request numbers or payload sizes alone never authorize replay. Capacity
+    /// reservations are accounting, not part of the requested operation.
+    #[must_use]
+    pub fn same_request(&self, other: &Self) -> bool {
+        self.stamp.same_request(other.stamp)
+            && self.semantic.stamp().same_request(other.semantic.stamp())
+            && self.semantic.carrier() == other.semantic.carrier()
+            && self.semantic.shape() == other.semantic.shape()
+            && self.semantic.bytes() == other.semantic.bytes()
+    }
+
     /// Releases the outer request and returns the Semantic Intent owner.
     #[must_use]
     pub fn into_semantic(self) -> SemanticIntent {

@@ -2710,19 +2710,15 @@ const fn interaction_intent_delivery_items_three() {
 }
 
 const fn interaction_intent_delivery_items_four() {
+    type Reconcile = ::reovim_kernel_interface::interaction::delivery::intent::
+        InteractionReconcileResult;
     let _ = (
-        ::reovim_kernel_interface::interaction::delivery::intent::
-            InteractionReconcileResult::recovered,
-        ::reovim_kernel_interface::interaction::delivery::intent::
-            InteractionReconcileResult::effect_resolved,
-        ::reovim_kernel_interface::interaction::delivery::intent::
-            InteractionReconcileResult::unavailable,
-        ::reovim_kernel_interface::interaction::delivery::intent::
-            InteractionReconcileResult::status,
-        ::reovim_kernel_interface::interaction::delivery::intent::
-            InteractionReconcileResult::recovered_outcome,
-        ::reovim_kernel_interface::interaction::delivery::intent::
-            InteractionReconcileResult::effect,
+        Reconcile::recovered,
+        Reconcile::effect_resolved,
+        Reconcile::unavailable,
+        Reconcile::status,
+        Reconcile::recovered_outcome,
+        Reconcile::effect,
     );
 }
 

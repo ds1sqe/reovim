@@ -23,6 +23,7 @@ use reovim_kernel_interface::interaction::outcome::{
     InteractionOutcome, InteractionOutcomeCause, InteractionOutcomeError,
     InteractionOutcomeStatus,
 };
+use reovim_kernel_interface::interaction::session::InteractionRequestStamp;
 
 use super::support;
 
@@ -232,7 +233,7 @@ fn request_cases(fixture: &support::InteractionFixture) -> bool {
             == InteractionOutcomeDeliveryStatus::Unavailable(
                 InteractionOutcomeUnavailable::Pending,
             )
-        && InteractionReconcileResult::unavailable(
+        && InteractionReconcileResult::<InteractionRequestStamp>::unavailable(
             InteractionReconcileUnavailable::Pending,
         )
         .status()

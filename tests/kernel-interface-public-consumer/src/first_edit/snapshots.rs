@@ -81,6 +81,23 @@ pub fn produce<Model: Family>(
     result: ProjectionGeneration,
     cursor: RepresentationUpdateCursor,
 ) -> (Box<[u8]>, RepresentationUpdate) {
+    let snapshot = produce_snapshot(model, fixture, observed, projection);
+    bind_update(
+        fixture,
+        &observed.stamp,
+        projection,
+        result,
+        cursor,
+        snapshot.into_payload(),
+    )
+}
+
+pub fn produce_snapshot<Model: Family>(
+    model: &Model,
+    fixture: &SemanticFixture,
+    observed: &ResourceWorkingState<'_, Model::State>,
+    projection: &ProjectionStamp,
+) -> reovim_kernel_interface::semantic::snapshot::RepresentationSnapshot {
     let provider = SnapshotPolicy { descriptor: descriptor(fixture), model };
     let charge = provider
         .descriptor
@@ -106,14 +123,7 @@ pub fn produce<Model: Family>(
             InstallationOutcome::Current,
         )
         .expect("exact state and Projection retained after interpretation");
-    bind_update(
-        fixture,
-        &observed.stamp,
-        projection,
-        result,
-        cursor,
-        snapshot.into_payload(),
-    )
+    snapshot
 }
 
 fn bind_update(

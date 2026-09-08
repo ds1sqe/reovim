@@ -598,16 +598,16 @@ pub enum InteractionReconcileStatus {
 
 /// Result of one exact bounded Outcome reconciliation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct InteractionReconcileResult {
+pub struct InteractionReconcileResult<Request = InteractionRequestStamp> {
     status: InteractionReconcileStatus,
-    recovered: Option<InteractionOutcome>,
+    recovered: Option<InteractionOutcome<Request>>,
     effect: Option<InteractionReconciledEffect>,
 }
 
-impl InteractionReconcileResult {
+impl<Request: Copy> InteractionReconcileResult<Request> {
     /// Recovers an Outcome that had not previously transferred.
     #[must_use]
-    pub const fn recovered(outcome: InteractionOutcome) -> Self {
+    pub const fn recovered(outcome: InteractionOutcome<Request>) -> Self {
         Self {
             status: InteractionReconcileStatus::Recovered,
             recovered: Some(outcome),
@@ -643,7 +643,9 @@ impl InteractionReconcileResult {
 
     /// Returns a recovered first-delivery Outcome when present.
     #[must_use]
-    pub const fn recovered_outcome(self) -> Option<InteractionOutcome> {
+    pub const fn recovered_outcome(
+        self,
+    ) -> Option<InteractionOutcome<Request>> {
         self.recovered
     }
 

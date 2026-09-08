@@ -36,10 +36,18 @@ before dependencies. Failure reports rollback outcomes, including unresolved
 work; `ActivationFailed` never implies that unfinished execution disappeared.
 
 Boot example: assemble resource/domain providers and Host grants; start the
-Kernel; negotiate a client's session; initialize its input/presentation and
-required modules; obtain the initial semantic snapshot; publish client Ready.
+Kernel; attach a client lifetime before any Buffer exists; open or explicitly
+join a Buffer; obtain its scoped Interaction endpoint and Representation's
+initial semantic snapshot; initialize required client contributions and
+publish client Ready. Root attachment grants neither Buffer access nor edits.
 If its required renderer fails, roll back that client's provisional subtree.
 The already-ready Kernel and unrelated clients retain their own lifetimes.
+
+Root lifecycle calls address the exact owner generation and have bounded,
+non-waiting admission/status paths. An open is retained until initial state
+and observation readiness succeed or rollback reports its actual disposition.
+Only then may the root expose a Buffer-scoped endpoint. Failed or cancelled
+open exposes no provisional Buffer; incomplete rollback retains its owner.
 
 ## Operation and shutdown semantics
 
@@ -53,6 +61,8 @@ installation, requests cancellation, and boundedly drains/discards/reconciles
 owned work. It removes subscriptions, contributions, and memberships before
 closing dependencies and releasing resources. Detaching a client does not
 implicitly save, discard, or close shared Buffer state.
+Closing retains a public route to drain owned terminal results; it does not
+reopen admission. Dependencies stay alive until their dependants are terminal.
 
 Every phase has an outer completion bound. A timeout ends a wait, cancellation
 requests cooperation, and fencing rejects stale results: none proves execution

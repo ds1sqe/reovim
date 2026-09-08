@@ -65,6 +65,12 @@ versions, grants, resource scope, request identity, and queue/payload/work
 bounds. Protocol adapters provide transport, not editing authority. Client and
 Kernel use separate Host grants, even when cohosted.
 
+The root client attachment precedes open and carries no fabricated Buffer.
+An explicit independent-open or join-existing operation yields the authorized
+Buffer-scoped endpoint. Representation attachment and its initial snapshot
+come afterward. Closing this endpoint or detaching the client leaves shared
+Buffer state and other clients alive.
+
 An edit's terminal outcome and its Representation update are different values.
 Acceptance names the authoritative resulting Buffer revision. Updates describe
 semantic snapshots, deltas, invalidation, or a gap with exact source revisions
@@ -83,6 +89,12 @@ through outcomes and semantic notifications. It does not command a cursor or
 selection change, including for the requesting client. Each client decides
 whether to follow, keep, restore from its own context, or use another policy.
 No client acknowledgement or cursor update gates Kernel acceptance.
+
+History requests need the authorized Buffer observation, not an editable
+Representation or a fabricated semantic intent. State notifications retain
+prior/new state, the originating request and exact transaction/History edge.
+The receiving observer is separately qualified; origin is not delivery scope.
+Notification recovery restores a checkpoint, not fictitious lost outcomes.
 
 Keeping a local Position/Selection does not make its old correspondence
 current: resolve or explicitly invalidate it before submitting another edit.

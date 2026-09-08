@@ -11,6 +11,7 @@ mod effect;
 mod event;
 pub mod first_edit;
 mod interaction;
+pub mod journey;
 mod lifecycle;
 mod operation;
 mod output_health;

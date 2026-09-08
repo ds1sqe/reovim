@@ -45,6 +45,14 @@ resulting state. Notification reports acceptance; it is not a command to
 change any client's Position/Selection. The [client contract](clients.md)
 owns those response policies.
 
+Build change notifications from an accepted outcome and its exact prior
+observation, not an arbitrary pair of versions. Carry the originating
+session/request and transaction/History correlation separately from each
+authorized recipient's stream. Edit, undo and redo remain distinguishable.
+The payload contains no intent bytes or client selection. Rejections cannot
+produce change notifications; recovery supplies current state without
+inventing the causes of unavailable transitions.
+
 Representation update lineage is exactly one of full snapshot, delta,
 invalidation, gap, or resynchronization. A delta names its exact predecessor
 and result; invalidation supplies no replacement state. Snapshot/delta payload

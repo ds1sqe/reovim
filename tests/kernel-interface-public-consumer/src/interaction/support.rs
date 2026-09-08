@@ -61,15 +61,26 @@ pub fn fixture_for_semantic(
     semantic: SemanticFixture,
 ) -> Option<InteractionFixture> {
     let semantic_stamp =
-        crate::semantic::support::intent_stamp(&semantic, 1_060, 1_061)?;
-    let session_lifecycle = semantic_stamp.caller().authority();
+        crate::semantic::support::intent_stamp(&semantic, 1060, 1061)?;
+    let lifecycle = semantic_stamp.caller().authority();
     let client = InteractionClientStamp::new(
-        ClientIdentity::new(1_200),
-        LifecycleIdentity::new(1_201, 1_202, Generation::new(1)),
-        semantic_stamp.caller().role(),
+        ClientIdentity::new(1200),
+        LifecycleIdentity::new(1201, 1202, Generation::new(1)),
+        crate::resource::selection(1064)?,
     );
+    fixture_for_client(semantic, client, lifecycle)
+}
+
+pub fn fixture_for_client(
+    semantic: SemanticFixture,
+    client: InteractionClientStamp,
+    session_lifecycle: LifecycleIdentity,
+) -> Option<InteractionFixture> {
+    let semantic_stamp =
+        crate::semantic::support::intent_stamp(&semantic, 1_060, 1_061)?;
+    let client_identity = client.client().value();
     let session_stamp = InteractionSessionStamp::new(
-        InteractionSessionIdentity::new(1_203),
+        InteractionSessionIdentity::new(client_identity + 3),
         crate::resource::selection(1_204)?,
         session_lifecycle,
         client,
@@ -92,13 +103,21 @@ pub fn fixture_for_semantic(
     )
     .ok()?;
     let attachment_handle = RepresentationAttachmentHandle::new(
-        RepresentationAttachmentIdentity::new(1_205),
-        LifecycleIdentity::new(1_206, 1_207, Generation::new(1)),
+        RepresentationAttachmentIdentity::new(client_identity + 5),
+        LifecycleIdentity::new(
+            client_identity + 6,
+            client_identity + 7,
+            Generation::new(1),
+        ),
         session_stamp.handle(),
     );
     let stream = RepresentationUpdateStreamStamp::new(
-        RepresentationUpdateStreamIdentity::new(1_208),
-        LifecycleIdentity::new(1_209, 1_210, Generation::new(1)),
+        RepresentationUpdateStreamIdentity::new(client_identity + 8),
+        LifecycleIdentity::new(
+            client_identity + 9,
+            client_identity + 10,
+            Generation::new(1),
+        ),
         attachment_handle,
     );
     let selection = RepresentationAttachmentSelection::new(
