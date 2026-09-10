@@ -18,12 +18,9 @@ v0.17 follows with Neovim feature parity.
 
 ## Start here
 
-- [Goals and interface map](Documentation/README.md)
-- [Kernel mechanisms, source tree and Host boundary][architecture]
-- [Editing and file operations](Documentation/interfaces/resources-and-state.md)
-- [Events, keymaps and resolver](Documentation/interfaces/events-and-input.md)
-- [Clients and rendering](Documentation/interfaces/clients.md)
-- [Modules, SDKs and boot lifetime][modules]
+- [Product goals](Documentation/README.md)
+- [One editing journey](Documentation/Design/00-overview.md)
+- [Design chapters](Documentation/Design/README.md)
 - [Debugging](Documentation/debugging.md) and
   [performance](Documentation/performance.md)
 - [Contributing](CONTRIBUTING.md) and [coding style](CODE_STYLE.md)
@@ -61,6 +58,3 @@ and [performance reports](perf/README.md), as well as Git/reference worktrees.
 
 AGPL-3.0. See [LICENSE](LICENSE). For commercial licensing, contact
 ds1sqe@mensakorea.org.
-
-[architecture]: Documentation/architecture.md
-[modules]: Documentation/interfaces/lifecycle-and-modules.md

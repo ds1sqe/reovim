@@ -1,7 +1,7 @@
 # Contributing to Reovim
 
-Read [the goals and interface map](Documentation/README.md), then
-[architecture](Documentation/architecture.md) and the owning interface.
+Read [the goals](Documentation/README.md), then
+[the resource-based design](Documentation/Design/README.md).
 Specifications define the target; implementation requires code and evidence.
 
 ## Make a coherent change
@@ -17,11 +17,6 @@ Specifications define the target; implementation requires code and evidence.
 - Review dependency maintenance, license, targets, unsafe and runtime cost.
 - Follow [coding style](CODE_STYLE.md): 80 columns, three Rust nesting levels,
   rustfmt, small functions and explicit ownership.
-
-Plans own scope/order. tmp/current.md holds Mission, Progress and Focus;
-Progress has Current, Next and Completed. After a successful commit, move
-only fully covered Completed tasks to the plan directory's completed.md,
-with commit/date, result and verification. Leave uncommitted tasks live.
 
 ## Verify
 

@@ -165,4 +165,4 @@ The sketch left gaps: its example router silently dropped unknown or
 undecodable events, and its notification discussion did not fully specify
 per-client filtering or recovery after missed updates. Activity transitions
 alone would also miss content changes while a prompt stayed active.
-Current requirements belong to the [client contract](../interfaces/clients.md).
+Current requirements belong to the [client contract](../Design/04-clients.md).

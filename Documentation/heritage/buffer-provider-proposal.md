@@ -47,5 +47,5 @@ and key handling. The alternatives above recorded possible owners without
 settling that boundary.
 
 For current ownership, read
-[resources and state](../interfaces/resources-and-state.md)
-and [clients](../interfaces/clients.md).
+[resources and state](../Design/02-buffer.md)
+and [clients](../Design/04-clients.md).

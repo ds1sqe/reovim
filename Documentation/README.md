@@ -1,50 +1,44 @@
 # Reovim editing system
 
-Documentation defines product goals and contracts, not implementation status.
-Conceptual operations here become concrete through public API documentation,
-behavior tests and a running composition. Plans own order; completed tasks
-and experiment records own progress/results.
+Build a reliable, extensible editing system. Preserve data, make failure and
+recovery explicit, then measure performance. Text and Markdown are domains;
+the Kernel supports other state models through the same editing mechanisms.
 
-## Goal
+The first product is Markdown source editing with a derived preview, a
+TypeScript GUI and a TUI supporting Kitty graphics. Both Clients share one
+editing authority and keep independent views. SSR is the GUI's initial
+presentation direction; its framework and deployment remain open.
 
-Build a capable, extensible editing system with mission-critical quality:
-preserve data, make failure and recovery explicit, then measure performance.
-Text and Markdown are domains, not the shape of the Kernel.
+## Design
 
-The first concrete product target is Markdown source editing with a derived
-preview, a TypeScript-ecosystem GUI and a TUI supporting Kitty graphics.
-SSR is the GUI's initial presentation direction; its framework and deployment
-remain open. Both clients use one editing authority with independent views.
+Start with [one editing journey](Design/00-overview.md). The
+[design chapters](Design/README.md) introduce Resources and public calls,
+Buffer/History, observation and edits, Clients, execution and modules.
+These are target contracts; source and tests establish implementation status.
 
-## Interfaces
+Kernel owns Resource access, execution and atomic Buffer/History installation.
+Clients own input, views, rendering and user-facing output. Retaining Session
+context or supplying semantic preview data does not transfer those Client
+responsibilities to Kernel.
 
-Read [architecture](architecture.md) for mechanisms, source ownership,
-dependencies and Host portability. Then go directly to the owning interface:
-
-- [Resources and state](interfaces/resources-and-state.md): open, save, rename,
-  select a Buffer, edit, undo/redo, conflicts and effects.
-- [Events and input](interfaces/events-and-input.md): event catalog,
-  subscriptions, keymap registration and resolver behavior.
-- [Lifecycle and modules](interfaces/lifecycle-and-modules.md): boot, Ready,
-  capabilities, extension SDKs, unload and shutdown.
-- [Clients](interfaces/clients.md): client core/contracts/modules, rendering,
-  independent state and Client-Client synchronization.
-- [Debugging](debugging.md): operational log, causal backtrace, state and locks.
-- [Performance](performance.md): workloads, IPC, measurements and probe cost.
-
-These focused documents replace the former numbered specification and exact
-conformance registry. Readable contracts and behavior evidence remain required;
-retiring the source-classifier/compiler/package proof system is not a claim
-that ordinary checks provide the same automated proof.
+[Composition](Design/05.1-composition.md) supplies granted Resource access.
+Ordinary callers read/write requests and await results; module API packages
+can supply typed helpers without extending the common SDK.
+[Kernel modules](Design/06-modules.md) add Resource, State Model, Domain and
+Representation providers without rebuilding or restarting Kernel. Client
+modules use their own lifecycle and can depend on Kernel services; the
+[navigation/help example](Design/06.3-module-composition.md) shows both owners.
+Compatible independent Clients, Kernels and module hosts share the
+[public behavior](Design/00-overview.md) and negotiated
+[ABI or service protocol](Design/06.4-native-modules.md).
 
 ## Release scope
 
 v0.16 establishes the editing-system foundation. v0.17 builds Neovim feature
-parity on it; plugin/runtime compatibility is not implied.
-
-The first Markdown milestone does not remove the existing v0.16 requirement
-to ship TUI, CLI and Web. Each needs its own usable Core/Contract/Module/Runtime
-and production output path. Android/native support remains a future direction.
+parity on it; plugin/runtime compatibility is not implied. The first Markdown
+milestone keeps the v0.16 requirement to ship TUI, CLI and Web, each with usable
+Core/Contract/Module/Runtime and production output. Android/native support
+remains a future direction.
 
 | Module SDK | Server | TUI | CLI | Web |
 | --- | --- | --- | --- | --- |
@@ -52,40 +46,46 @@ and production output path. Android/native support remains a future direction.
 | Python | Required | Optional | Optional | Excluded |
 | TypeScript | Excluded | Excluded | Excluded | Required |
 
-The matrix is a release obligation, not current availability or implementation
-order. Rust establishes the public semantics first; a tested service reference
-precedes Python/TS extension bindings. Developing the TS GUI does not by itself
-implement its extension SDK. No embedded engine is selected.
-Public v0.16 APIs remain Experimental until an explicitly admitted full SDK
-stability release.
+These are release requirements, not current availability. Server SDKs concern
+Kernel modules; Client columns concern their own module systems. Rust defines
+the public semantics first, followed by a tested service reference before
+Python/TS extension bindings. A TS GUI alone does not provide its extension
+SDK. No embedded engine is selected.
 
-## Acceptance, not feature count
+The complete v0.16 cross-client context-sharing path joins TUI, CLI and Web
+in one shared scope, with gap/reconnect recovery and slow-member isolation.
+The GUI/TUI milestone covers only part of that scope. Public v0.16 SDK/service
+APIs remain Experimental until an explicitly admitted full SDK stability
+release.
 
-Each supported behavior needs an owning contract, a public path without
-private shortcuts, bounded resources, typed failure/cancellation, lifecycle,
-diagnostics and appropriate measurements. Test actual outcomes, not checkout
-hashes, lengths or package counts.
+## Reliability
 
-First prove the executing edit/undo journey. A small non-text,
-non-byte-addressed model must use the same Kernel transaction/History path.
-The foundation release also retains its low/high-level fidelity proof: a
-partially resident resource edited through byte/hex and Text representations,
-one Buffer/History, with invalid source units preserved. Read-only/create,
-volatile-source gaps and add-only effects need deterministic behavior tests.
+Edits and Undo use one Buffer/History authority. The same path must handle a
+small non-text, non-byte-addressed model. The foundation also includes byte/hex
+and Text access to one partially resident Resource, preserving invalid source
+units through one Buffer/History. Read-only access, creation, volatile-source
+gaps and add-only effects retain their own explicit behavior.
 
-A migrated behavior is individually adopted, adapted, rewritten or retired.
-Record the donor and valid behavior, unwanted coupling, target owner,
-verification and cutover in its implementation record. Old code is a behavior
-donor, not design authority. Do not copy an old editor as a parallel workspace.
+Supported behavior needs bounded resources, typed failure/cancellation,
+lifecycle, diagnostics and a public path. Behavior tests check actual outcomes;
+compilation and retired conformance tooling do not establish runtime support.
+[Debugging](debugging.md) owns diagnostics and causal/lock inspection.
+[Performance](performance.md) owns reproducible workloads, IPC and
+instrumentation cost. Unmeasured data is not measured zero.
 
-Qualify the exact packaged candidate on each claimed environment. A model,
-compilation pass or a development crash does not qualify a running product.
-Failures and unmeasured limits stay visible. Numeric performance budgets need
-reproducible baselines; unobserved data is not measured zero.
+Release claims require the exact packaged candidate on each claimed
+environment. Failures and unmeasured limits remain visible; numerical budgets
+need retained, reproducible baselines.
 
-Keep specifications focused and at most 250 lines each. Update the owning
-contract and applicable code/tests/evidence together; keep chronology and
-machine-specific results out of these documents.
+## Existing code and documentation
 
+Donor behavior is adopted, adapted, rewritten or retired individually. Its
+implementation record names the useful behavior, unwanted coupling, new
+owner, verification and cutover. Existing code supplies behavior to learn
+from; it does not define the target architecture or justify a parallel editor.
+
+Keep each specification focused and at most 250 lines. Explain contracts and
+brief rationale together; keep execution plans and machine-specific results
+outside the design. Update relevant code/tests/evidence with changed behavior.
 [Heritage](heritage/README.md) and [past performance reports](../perf/README.md)
-remain available as historical references, not current implementation proof.
+remain historical references.
