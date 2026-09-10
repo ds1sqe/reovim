@@ -3,6 +3,7 @@
 //! A root coordinates owners; it is not another Buffer/History authority.
 //! Copyable request metadata is retained unchanged by callers on refusal.
 
+use alloc::vec::Vec;
 use core::fmt;
 
 use crate::bound::CheckedCount;
@@ -14,7 +15,8 @@ use crate::lifecycle::{
     LifecycleIdentity, LifecycleState, ReadinessOutcome, RollbackOutcome,
     ShutdownOutcome,
 };
-use crate::resource::operation::ResourceOpenRequest;
+use crate::namespace::ResourceEntry;
+use crate::resource::ResourceId;
 
 use super::identity::InteractionRequestIdentity;
 use super::port::InteractionSessionPort;
@@ -69,10 +71,10 @@ pub struct RootClientHandle {
 /// Independent editing context or authorized sharing of an existing one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RootOpenTarget {
-    /// Open one resource through the already selected Resource Adapter.
-    Independent(ResourceOpenRequest),
+    /// Open a granted source; Runtime selects the native adapter request.
+    Independent(ResourceId),
     /// Join this exact Buffer context; never infer sharing from a locator.
-    Existing(BufferIncarnationStamp),
+    Existing(ResourceId),
 }
 
 /// One client-scoped open, with no client-selected capabilities.
@@ -82,7 +84,7 @@ pub struct RootOpenRequest {
     pub client: RootClientHandle,
     /// Request identity within this attachment's lifetime.
     pub request: InteractionRequestIdentity,
-    /// Explicit selected adapter operation or existing Buffer lifetime.
+    /// Explicit source or existing Buffer in this attachment's namespace.
     pub target: RootOpenTarget,
     /// Work reservation, including bounded initialization/attachment work.
     pub work: CheckedCount,
@@ -209,6 +211,43 @@ pub trait InteractionRootPort {
         &mut self,
         request: RootAttachRequest,
     ) -> Result<RootClientHandle, RootFailure>;
+    /// Returns the attachment's authorized namespace root without opening it.
+    ///
+    /// # Errors
+    /// Returns denied, not-ready or closed-owner failure.
+    fn root(&self, client: RootClientHandle)
+    -> Result<ResourceId, RootFailure>;
+    /// Resolves relative to the attachment's root without running the subject.
+    ///
+    /// # Errors
+    /// Returns invalid path, denied, unavailable, pressure or closed failure.
+    fn resolve(
+        &self,
+        client: RootClientHandle,
+        path: &str,
+    ) -> Result<ResourceId, RootFailure> {
+        self.resolve_at(client, self.root(client)?, path)
+    }
+    /// Resolves a relative path; empty names the parent. Rejects leading `/`,
+    /// empty segments, `.` and `..`. Checks access at every component.
+    ///
+    /// # Errors
+    /// Returns invalid path, denied, unavailable, pressure or closed failure.
+    fn resolve_at(
+        &self,
+        client: RootClientHandle,
+        parent: ResourceId,
+        path: &str,
+    ) -> Result<ResourceId, RootFailure>;
+    /// Returns a complete, owned listing in name order; leaves may reject it.
+    ///
+    /// # Errors
+    /// Returns denied, unavailable, unsupported, pressure or closed failure.
+    fn children(
+        &self,
+        client: RootClientHandle,
+        parent: ResourceId,
+    ) -> Result<Vec<ResourceEntry>, RootFailure>;
     /// Reserves one bounded terminal result or refuses unchanged metadata.
     ///
     /// # Errors

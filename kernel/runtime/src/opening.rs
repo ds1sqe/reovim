@@ -123,8 +123,8 @@ where
         }
         match self.opens[index].request.target {
             RootOpenTarget::Existing(_) => self.publish_open(index),
-            RootOpenTarget::Independent(request) => {
-                self.submit_resource_open(index, request);
+            RootOpenTarget::Independent(_) => {
+                self.submit_resource_open(index, self.resource_open);
             }
         }
         true
@@ -163,8 +163,7 @@ where
         };
         let expected = self.config.buffer.source;
         if completion.operation() != operation
-            || self.opens[index].request.target
-                != RootOpenTarget::Independent(completion.request())
+            || completion.request() != self.resource_open
         {
             self.fail_open(index, RootFailure::ProviderFailure, true);
             return true;

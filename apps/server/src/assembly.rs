@@ -6,7 +6,7 @@ use core::fmt;
 use reovim_domain_basic::{HeadingDomain, KeyedDomain};
 use reovim_kernel_core::{BufferConfig, BufferLimits};
 use reovim_kernel_interface::buffer::{BufferIdentity, BufferIncarnationStamp};
-use reovim_kernel_interface::interaction::root::{RootLimits, RootOpenTarget};
+use reovim_kernel_interface::interaction::root::RootLimits;
 use reovim_kernel_interface::interaction::session::InteractionResourceScope;
 use reovim_kernel_interface::lifecycle::{Generation, LifecycleIdentity};
 use reovim_kernel_interface::resource::state::{
@@ -67,8 +67,6 @@ pub struct Service<M: ResourceStateModel, D, R, S> {
     pub runtime: Runtime<MemoryResource, M, D, R, S>,
     /// Independent public request/snapshot consumers.
     pub clients: Vec<Client>,
-    /// The selected resource operation; a client explicitly requests open.
-    pub open_target: RootOpenTarget,
     /// Shared diagnostic observation, not the semantic update feed.
     pub telemetry: Rc<Telemetry>,
 }
@@ -139,8 +137,8 @@ where
     );
     let resource = MemoryResource::new(&model.binding(), access, source)
         .map_err(|_| AssemblyError::Resource)?;
-    let open_target = RootOpenTarget::Independent(resource.open_request(1));
     let requests = ResourceRequests {
+        open: resource.open_request(1),
         observation: resource.observation_request(2),
         close: resource.close_request(),
     };
@@ -191,7 +189,9 @@ where
             snapshot.descriptor(),
         )?;
         clients.push(Client::new(
-            &binding,
+            binding.session.clone(),
+            binding.attachment.clone(),
+            binding.authorization,
             representation.descriptor().clone(),
             model.plan_descriptor().clone(),
         ));
@@ -205,7 +205,7 @@ where
         Rc::clone(&telemetry),
     )
     .map_err(|_| AssemblyError::Runtime)?;
-    Ok(Service { runtime, clients, open_target, telemetry })
+    Ok(Service { runtime, clients, telemetry })
 }
 
 /// Constructs an explicit reference root incarnation for a caller-owned run.

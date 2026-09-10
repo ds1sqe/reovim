@@ -69,6 +69,7 @@ pub enum Phase {
 /// Public endpoint containing delivery ownership, never authoritative state.
 pub struct Session {
     pub(crate) binding: ClientBinding,
+    pub(crate) namespace: crate::namespace::Namespace,
     pub(crate) plans: BufferPlanDescriptor,
     pub(crate) client: Option<RootClientHandle>,
     pub(crate) phase: Phase,
@@ -112,6 +113,7 @@ impl Session {
 
     pub(crate) fn new(
         binding: ClientBinding,
+        namespace: crate::namespace::Namespace,
         plans: BufferPlanDescriptor,
         telemetry: Rc<crate::diagnostics::Telemetry>,
     ) -> Result<Self, RuntimeError> {
@@ -142,6 +144,7 @@ impl Session {
             transferred_projection: binding.attachment.projection(),
             next_delivery_cursor: Some(1),
             binding,
+            namespace,
             plans,
             client: None,
             phase: Phase::Inert,

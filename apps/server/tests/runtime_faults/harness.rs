@@ -44,7 +44,6 @@ pub struct Harness<A> {
         FaultSnapshot,
     >,
     pub client: Client,
-    pub target: root::RootOpenTarget,
     pub telemetry: Rc<Telemetry>,
 }
 
@@ -65,8 +64,8 @@ where
     let resource =
         MemoryResource::new(&model.binding(), access, b"# a\n\xff".to_vec())
             .unwrap();
-    let target = root::RootOpenTarget::Independent(resource.open_request(1));
     let requests = ResourceRequests {
+        open: resource.open_request(1),
         observation: resource.observation_request(2),
         close: resource.close_request(),
     };
@@ -84,7 +83,9 @@ where
         super::retention::restrict(&mut binding);
     }
     let client = Client::new(
-        &binding,
+        binding.session.clone(),
+        binding.attachment.clone(),
+        binding.authorization,
         representation.descriptor().clone(),
         model.plan_descriptor().clone(),
     );
@@ -129,7 +130,7 @@ where
         Rc::clone(&telemetry),
     )
     .unwrap();
-    Harness { runtime, client, target, telemetry }
+    Harness { runtime, client, telemetry }
 }
 
 pub fn telemetry() -> Rc<Telemetry> {
@@ -168,7 +169,9 @@ impl<A: ResourceAccessPort> Harness<A> {
             .open(root::RootOpenRequest {
                 client: handle,
                 request: InteractionRequestIdentity::new(1),
-                target: self.target,
+                target: root::RootOpenTarget::Independent(
+                    self.runtime.resolve(handle, "source").unwrap(),
+                ),
                 work: profile::count(64),
             })
             .unwrap()

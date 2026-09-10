@@ -80,7 +80,9 @@ fn negotiated_history_does_not_require_a_representation_attachment() {
         .open(RootOpenRequest {
             client: handle,
             request: InteractionRequestIdentity::new(1),
-            target: RootOpenTarget::Existing(before.buffer()),
+            target: RootOpenTarget::Existing(
+                service.runtime.resolve(handle, "buffer").unwrap(),
+            ),
             work: profile::count(1),
         })
         .unwrap();

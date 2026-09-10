@@ -163,7 +163,9 @@ fn initial_attachment_remains_coherent_when_another_client_edits_first() {
         .open(RootOpenRequest {
             client: handle,
             request: InteractionRequestIdentity::new(1),
-            target: RootOpenTarget::Existing(original.buffer()),
+            target: RootOpenTarget::Existing(
+                service.runtime.resolve(handle, "buffer").unwrap(),
+            ),
             work: profile::count(1),
         })
         .unwrap();

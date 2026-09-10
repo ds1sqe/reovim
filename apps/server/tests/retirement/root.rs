@@ -54,7 +54,9 @@ fn successful_open_replay_preserves_original_result_and_rejects_changed_target()
     let request = RootOpenRequest {
         client: handle,
         request: InteractionRequestIdentity::new(1),
-        target: service.open_target,
+        target: RootOpenTarget::Independent(
+            service.runtime.resolve(handle, "source").unwrap(),
+        ),
         work: service.runtime.limits().work,
     };
     service.edit(1, 10, b"b").unwrap();
@@ -67,7 +69,9 @@ fn successful_open_replay_preserves_original_result_and_rejects_changed_target()
     assert_eq!(completion.outcome.unwrap().state, initial);
     assert_eq!(
         service.runtime.open(RootOpenRequest {
-            target: RootOpenTarget::Existing(initial.buffer()),
+            target: RootOpenTarget::Existing(
+                service.runtime.resolve(handle, "buffer").unwrap(),
+            ),
             ..request
         }),
         Err(RootFailure::ConflictingRequest)
@@ -93,7 +97,9 @@ fn detach_pending_open_keeps_the_exact_failure_drain_without_publication() {
     let request = RootOpenRequest {
         client: handle,
         request: InteractionRequestIdentity::new(1),
-        target: service.open_target,
+        target: RootOpenTarget::Independent(
+            service.runtime.resolve(handle, "source").unwrap(),
+        ),
         work: profile::count(1),
     };
     let ticket = service.runtime.open(request).unwrap();

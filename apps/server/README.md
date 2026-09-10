@@ -39,6 +39,15 @@ Only the label changes; invalid source units outside that label survive.
 The keyed family uses record keys, not byte-offset addresses. It supports
 missing keys and retains unrelated values; no text types enter the Kernel.
 
+Clients resolve `source` before opening and `buffer` before explicitly joining.
+Each attachment has its own Resource IDs; native open requests stay in Runtime.
+Lookup and sorted, owned listings are passive; paths allow at most 256 bytes.
+`buffer/history` appears after successful initialization; closed attachments
+lose namespace access.
+These names belong to this single-source reference profile. Open/result and
+Session calls still use the existing typed ports; generic Message dispatch,
+dynamic namespaces and module loading are not implemented here.
+
 The local assembly reserves 256 History nodes, 128 exact request records per
 Session, two clients and four retained open requests. It rejects pressure;
 there is no implicit request/History eviction. The diagnostic ring is bounded

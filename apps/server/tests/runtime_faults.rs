@@ -86,18 +86,18 @@ fn detached_client_cannot_reopen_through_a_retained_handle() {
         work: profile::count(64),
         deadline: DeadlineState::Pending,
     };
-    assert_eq!(
-        service.runtime.detach_client(handle, lifecycle).unwrap(),
-        ShutdownOutcome::Closed
-    );
     let request = RootOpenRequest {
         client: handle,
         request: InteractionRequestIdentity::new(2),
         target: RootOpenTarget::Existing(
-            service.clients[0].state().unwrap().buffer(),
+            service.runtime.resolve(handle, "buffer").unwrap(),
         ),
         work: profile::count(64),
     };
+    assert_eq!(
+        service.runtime.detach_client(handle, lifecycle).unwrap(),
+        ShutdownOutcome::Closed
+    );
     assert_eq!(service.runtime.open(request), Err(RootFailure::Closed));
     assert_eq!(
         service.runtime.shutdown(lifecycle).unwrap(),

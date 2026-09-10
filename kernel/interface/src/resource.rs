@@ -12,6 +12,11 @@ pub mod operation;
 pub mod port;
 pub mod state;
 
+/// A subject in one caller's namespace; copying grants or retains nothing.
+/// IDs never retarget another subject during that connection's lifetime.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ResourceId(pub u64);
+
 /// Stable opaque identity of one Resource subject.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ResourceIdentity(u128);

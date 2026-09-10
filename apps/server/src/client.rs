@@ -91,16 +91,18 @@ impl Client {
     /// Constructs an inert consumer from assembly-selected public contracts.
     #[must_use]
     pub fn new(
-        binding: &reovim_kernel_runtime::ClientBinding,
+        session: InteractionSessionDescriptor,
+        attachment: RepresentationAttachmentDescriptor,
+        authorization: LifecycleIdentity,
         policy: descriptor::RepresentationPolicyDescriptor,
         plans: BufferPlanDescriptor,
     ) -> Self {
         Self {
-            session: binding.session.clone(),
-            attachment: binding.attachment.clone(),
-            projection: binding.attachment.projection(),
+            projection: attachment.projection(),
+            session,
+            attachment,
             policy,
-            authorization: binding.authorization,
+            authorization,
             plans,
             handle: None,
             state: None,

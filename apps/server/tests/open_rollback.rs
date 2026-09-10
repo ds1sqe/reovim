@@ -109,7 +109,12 @@ fn terminal_open_failure_retains_unfinished_resource_release() {
 #[test]
 fn cancelled_pending_open_never_publishes_a_late_ready_completion() {
     let mut fixture = fixture(Fault::PendingOpen);
+    let client = fixture.handles[0];
+    let root = fixture.runtime.root(client).unwrap();
+    fixture.runtime.children(client, root).unwrap();
+    assert_eq!(&*fixture.control.calls.borrow(), &[]);
     let ticket = fixture.open(0, fixture.target, 1);
+    fixture.assert_unpublished(ticket);
     fixture.runtime.progress(profile::count(64)).unwrap();
     assert!(fixture.runtime.take_open(ticket).unwrap().is_none());
     fixture
@@ -204,7 +209,9 @@ fn failed_join_snapshot_does_not_close_or_discard_the_shared_buffer() {
     fixture.control.snapshot_fail.set(true);
     let joined = fixture.open(
         1,
-        root::RootOpenTarget::Existing(ready.state.buffer()),
+        root::RootOpenTarget::Existing(
+            fixture.runtime.resolve(fixture.handles[1], "buffer").unwrap(),
+        ),
         2,
     );
     fixture.runtime.progress(profile::count(64)).unwrap();

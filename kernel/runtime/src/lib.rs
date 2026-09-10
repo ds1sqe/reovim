@@ -6,6 +6,7 @@ extern crate alloc;
 pub mod diagnostics;
 mod engine;
 mod history;
+mod namespace;
 mod opening;
 mod recovery;
 mod root;
@@ -18,7 +19,7 @@ use reovim_kernel_core::{Buffer, BufferConfig};
 use reovim_kernel_interface::interaction::root::{RootLimits, RootOpenRequest};
 use reovim_kernel_interface::lifecycle::{LifecycleIdentity, LifecycleState};
 use reovim_kernel_interface::resource::operation::{
-    ResourceCloseRequest, ResourceObservationRequest,
+    ResourceCloseRequest, ResourceObservationRequest, ResourceOpenRequest,
 };
 use reovim_kernel_interface::resource::port::ResourceAccessPort;
 use reovim_kernel_interface::resource::state::ResourceStateModel;
@@ -71,6 +72,8 @@ pub struct Providers<A, M, D, R, S> {
 
 /// Native region and release requests selected outside neutral mechanisms.
 pub struct ResourceRequests {
+    /// Native source selection, never supplied by a Client open request.
+    pub open: ResourceOpenRequest,
     /// Initial observation, retained until actual open readiness.
     pub observation: ResourceObservationRequest,
     /// Matching Resource lifetime close request.
@@ -93,6 +96,7 @@ where
     representation_selection: RepresentationPolicyDescriptor,
     snapshot_selection: RepresentationSnapshotDescriptor,
     observation: Option<ResourceObservationRequest>,
+    resource_open: ResourceOpenRequest,
     resource_close: ResourceCloseRequest,
     buffer: Option<Buffer<M::State>>,
     sessions: Vec<Session>,
@@ -132,8 +136,11 @@ where
         let Providers { resource, model, domain, representation, snapshot } =
             providers;
         validate_config(&config, &model, &domain, &representation, &snapshot)?;
-        if requests.observation.target().access()
-            != config.buffer.source.access()
+        if requests.open.resource() != config.buffer.source.access().resource()
+            || requests.open.operation().adapter()
+                != resource.descriptor().adapter()
+            || requests.observation.target().access()
+                != config.buffer.source.access()
             || requests.observation.operation().adapter()
                 != resource.descriptor().adapter()
             || requests.close.operation().adapter()
@@ -151,6 +158,7 @@ where
             validate_client(&config, &binding, snapshot.descriptor())?;
             sessions.push(Session::new(
                 binding,
+                namespace::Namespace::new(sessions.len())?,
                 model.plan_descriptor().clone(),
                 Rc::clone(&telemetry),
             )?);
@@ -167,6 +175,7 @@ where
             representation,
             snapshot,
             observation: Some(requests.observation),
+            resource_open: requests.open,
             resource_close: requests.close,
             buffer: None,
             sessions,

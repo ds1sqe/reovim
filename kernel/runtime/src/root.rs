@@ -1,3 +1,4 @@
+use alloc::vec::Vec;
 use reovim_kernel_interface::buffer::BufferIncarnationStamp;
 use reovim_kernel_interface::cancellation::{
     CancellationCause, CancellationOutcome, DeadlineState, ExecutionOutcome,
@@ -10,6 +11,8 @@ use reovim_kernel_interface::interaction::root as contract;
 use reovim_kernel_interface::lifecycle::{
     LifecycleIdentity, LifecycleState, ReadinessOutcome, ShutdownOutcome,
 };
+use reovim_kernel_interface::namespace::ResourceEntry;
+use reovim_kernel_interface::resource::ResourceId;
 use reovim_kernel_interface::resource::access::ResourceCloseOutcome;
 use reovim_kernel_interface::resource::port::ResourceAccessPort;
 use reovim_kernel_interface::resource::state::ResourceStateModel;
@@ -82,6 +85,30 @@ where
         };
         session.client = Some(handle);
         Ok(handle)
+    }
+
+    fn root(
+        &self,
+        client: contract::RootClientHandle,
+    ) -> Result<ResourceId, contract::RootFailure> {
+        Ok(self.namespace(client)?.root())
+    }
+
+    fn resolve_at(
+        &self,
+        client: contract::RootClientHandle,
+        parent: ResourceId,
+        path: &str,
+    ) -> Result<ResourceId, contract::RootFailure> {
+        self.namespace(client)?.resolve_at(parent, path, self.buffer.is_some())
+    }
+
+    fn children(
+        &self,
+        client: contract::RootClientHandle,
+        parent: ResourceId,
+    ) -> Result<Vec<ResourceEntry>, contract::RootFailure> {
+        self.namespace(client)?.children(parent, self.buffer.is_some())
     }
 
     fn open(
@@ -312,6 +339,18 @@ where
             .ok_or(contract::RootFailure::Denied)
     }
 
+    fn namespace(
+        &self,
+        client: contract::RootClientHandle,
+    ) -> Result<&crate::namespace::Namespace, contract::RootFailure> {
+        let session = &self.sessions[self.client_index(client)?];
+        if session.ending() || self.phase == LifecycleState::Closed {
+            return Err(contract::RootFailure::Closed);
+        }
+        self.check_ready()?;
+        Ok(&session.namespace)
+    }
+
     fn check_open(
         &self,
         request: &contract::RootOpenRequest,
@@ -329,18 +368,22 @@ where
         if self.sessions[session].current.is_some() {
             return Err(contract::RootFailure::Denied);
         }
+        let namespace = &self.sessions[session].namespace;
+        let resource = match request.target {
+            contract::RootOpenTarget::Existing(id)
+            | contract::RootOpenTarget::Independent(id) => id,
+        };
+        namespace.resolve_at(resource, "", self.buffer.is_some())?;
         match request.target {
             contract::RootOpenTarget::Existing(buffer)
-                if buffer != self.config.buffer.incarnation
-                    || self.buffer.is_none() =>
+                if buffer != namespace.buffer() =>
             {
                 Err(contract::RootFailure::Unavailable)
             }
             contract::RootOpenTarget::Independent(open)
                 if self.buffer.is_some()
                     || !self.opens.is_empty()
-                    || open.resource()
-                        != self.config.buffer.source.access().resource() =>
+                    || open != namespace.source() =>
             {
                 Err(contract::RootFailure::Denied)
             }

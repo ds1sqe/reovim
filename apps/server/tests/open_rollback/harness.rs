@@ -74,12 +74,7 @@ impl Harness {
         let buffer = self.clients[0].session.scope().buffer();
         assert!(self.runtime.endpoint(ticket.client, buffer).is_err());
         assert_eq!(
-            self.runtime.open(root::RootOpenRequest {
-                client: self.handles[1],
-                request: InteractionRequestIdentity::new(2),
-                target: root::RootOpenTarget::Existing(buffer),
-                work: profile::count(64)
-            }),
+            self.runtime.resolve(self.handles[1], "buffer"),
             Err(root::RootFailure::Unavailable)
         );
     }
@@ -103,8 +98,8 @@ pub fn fixture(fault: Fault) -> Harness {
     let resource =
         MemoryResource::new(&model.binding(), access, b"# a\n\xff".to_vec())
             .unwrap();
-    let target = root::RootOpenTarget::Independent(resource.open_request(1));
     let requests = ResourceRequests {
+        open: resource.open_request(1),
         observation: resource.observation_request(2),
         close: resource.close_request(),
     };
@@ -123,7 +118,9 @@ pub fn fixture(fault: Fault) -> Harness {
         .iter()
         .map(|binding| {
             Client::new(
-                binding,
+                binding.session.clone(),
+                binding.attachment.clone(),
+                binding.authorization,
                 representation.descriptor().clone(),
                 model.plan_descriptor().clone(),
             )
@@ -158,7 +155,10 @@ pub fn fixture(fault: Fault) -> Harness {
         .map(|client| {
             runtime.attach_client(client.attach_request(life(1))).unwrap()
         })
-        .collect();
+        .collect::<Vec<_>>();
+    let target = root::RootOpenTarget::Independent(
+        runtime.resolve(handles[0], "source").unwrap(),
+    );
     Harness { runtime, clients, handles, control, target }
 }
 

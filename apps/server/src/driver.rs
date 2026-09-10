@@ -80,19 +80,25 @@ where
         if ready != Some(ReadinessOutcome::Ready) {
             return Err(DriverError::Incomplete);
         }
-        let target = self
+        let joining = self
             .clients
             .iter()
             .find_map(super::client::Client::state)
-            .map_or(self.open_target, |state| {
-                RootOpenTarget::Existing(state.buffer())
-            });
+            .is_some();
         let client =
             self.clients.get(index).ok_or(DriverError::UnknownClient)?;
         let handle = self
             .runtime
             .attach_client(client.attach_request(self.runtime.owner()))
             .map_err(DriverError::Root)?;
+        let path = if joining { "buffer" } else { "source" };
+        let resource =
+            self.runtime.resolve(handle, path).map_err(DriverError::Root)?;
+        let target = if joining {
+            RootOpenTarget::Existing(resource)
+        } else {
+            RootOpenTarget::Independent(resource)
+        };
         let ticket = self
             .runtime
             .open(RootOpenRequest {
