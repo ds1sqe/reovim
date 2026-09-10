@@ -843,7 +843,7 @@ check_cache_owner_for_path() {
             printf '%s\n' global
             return
             ;;
-        CODE_STYLE.md | rustfmt.toml | clippy.toml | .gitignore)
+        CODE_STYLE.md | rustfmt.toml | clippy.toml | ci.json | .gitignore)
             printf '%s\n' global
             return
             ;;
@@ -1244,6 +1244,8 @@ check_cache_prepare() {
     if ! check_cache_snapshot \
         "$graph" "$context" "$snapshot" \
         "$directory/pre-observation.v1"; then
+        # Failed output is not an input to the full fallback's state fixtures.
+        rm -f -- "$snapshot" "$directory/pre-observation.v1" || return 1
         check_cache_full_plan \
             "$directory" 'working input snapshot is unavailable' no
         return
@@ -1506,6 +1508,11 @@ check_cache_run_graph_fixtures() {
         printf 'edge\tfixture:kernel\tfixture:web\n'
     } | LC_ALL=C sort -u >"$graph"
     check_cache_validate_graph "$graph" || return 1
+    if [[ "$(check_cache_owner_for_path ci.json "$graph")" != global ]]; then
+        check_cache_issue CHECK_CACHE_FIXTURE \
+            'toolchain window did not invalidate global coverage'
+        return 1
+    fi
 
     printf '%s\n' fixture:tui >"$direct"
     check_cache_expand_components "$graph" "$direct" "$selected"
@@ -1620,6 +1627,29 @@ check_cache_run_transition_fixtures() {
         return 1
     fi
 }
+
+check_cache_run_failed_snapshot_fixture() (
+    local directory="$1/failed-snapshot"
+    local fixture_graph="$1/fixture-graph.tsv"
+
+    mkdir -p -- "$directory" || return 1
+    check_cache_context() { printf '%s\n' fixture-context; }
+    check_cache_load_graph() {
+        cp -- "$fixture_graph" "$directory/graph.tsv" || return 1
+        printf '%s\n' "$directory/graph.tsv"
+    }
+    # The fixture graph cannot own this checkout's actual provider files.
+    check_cache_prepare "$directory" yes || return 1
+    if [[ "$(<"$directory/mode")" != full \
+        || "$(<"$directory/publishable")" != no \
+        || -e "$directory/pre-state.v1" \
+        || -e "$directory/pre-observation.v1" ]]; then
+        check_cache_issue CHECK_CACHE_FIXTURE \
+            'failed snapshot poisoned the full fallback'
+        return 1
+    fi
+    check_cache_run_state_fixtures "$directory"
+)
 
 check_cache_run_state_fixtures() {
     local directory="$1"
@@ -1881,6 +1911,7 @@ check_cache_run_fixtures() {
     check_cache_run_metadata_target_fixture "$directory" || return 1
     check_cache_run_graph_fixtures "$directory" || return 1
     check_cache_run_transition_fixtures "$directory" || return 1
+    check_cache_run_failed_snapshot_fixture "$directory" || return 1
     check_cache_run_state_fixtures "$directory" || return 1
     check_cache_run_context_fixtures "$directory" || return 1
     check_cache_run_publication_fixtures "$directory"
