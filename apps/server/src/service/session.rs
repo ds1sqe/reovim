@@ -1,43 +1,28 @@
 //! Assembly selects one shared editing context; clients keep private roots.
 
-use alloc::format;
-use core::future::Future;
-use reovim_kernel_interface::{
-    Connection, Contract, Message, RequestError, ResourceId,
-    provider::Permissions, session,
+use alloc::{boxed::Box, format};
+use core::{future::Future, task::Poll};
+use reovim_kernel_interface::{RequestError, ResourceId, session};
+use reovim_kernel_runtime::{Binding, Runtime};
+use std::{
+    io,
+    sync::Arc,
+    task::{Context, Waker},
+    thread,
 };
-use reovim_kernel_runtime::Runtime;
-use std::io;
 
 pub(super) fn create(
     runtime: &mut Runtime,
-) -> io::Result<(Connection, ResourceId)> {
-    let model = runtime
-        .register_model(
-            "models/session",
-            reovim_representation_basic::heading(),
-        )
-        .map_err(|(error, _)| io::Error::other(error))?;
-    let owner = reovim_sdk::local(
-        runtime
-            .connect(&[(model, Permissions::ALL)])
-            .map_err(io::Error::other)?,
-    );
+    binding: &Binding,
+    selected: &crate::boot::Session,
+) -> io::Result<ResourceId> {
+    let owner = reovim_sdk::local(binding.connection());
     let model = owner
-        .resolve("models/session")
+        .resolve(&selected.model)
         .into_inner()
         .map_err(io::Error::other)?;
-    let observed = finish(
-        runtime,
-        session::create(
-            &owner,
-            model,
-            &Message::new(
-                Contract::new("heading.initial", 1),
-                b"# Shared session\n",
-            ),
-        ),
-    )?;
+    let observed =
+        finish(runtime, session::create(&owner, model, &selected.initial))?;
     let parent =
         owner.resolve("sessions").into_inner().map_err(io::Error::other)?;
     let entry = owner
@@ -47,19 +32,27 @@ pub(super) fn create(
         .into_iter()
         .find(|entry| entry.resource == observed.session)
         .ok_or_else(|| io::Error::other("shared Session is not named"))?;
-    let resource = runtime
+    let resource = binding
         .resource(&format!("sessions/{}", entry.name))
         .map_err(io::Error::other)?;
     finish(runtime, session::release(&owner, observed.snapshot))?;
-    Ok((owner, resource))
+    Ok(resource)
 }
-fn finish<T>(
+pub(super) fn finish<T>(
     runtime: &mut Runtime,
     future: impl Future<Output = Result<T, RequestError>>,
 ) -> io::Result<T> {
-    reovim_host_reference::run(future, |context| {
-        runtime.advance(context).map(|_| ())
-    })
-    .map_err(io::Error::other)?
-    .map_err(io::Error::other)
+    let waker = Waker::from(Arc::new(super::OwnerWake(thread::current())));
+    let mut context = Context::from_waker(&waker);
+    let mut future = Box::pin(future);
+    loop {
+        if let Poll::Ready(result) = future.as_mut().poll(&mut context) {
+            return result.map_err(io::Error::other);
+        }
+        let progress =
+            runtime.advance(&mut context).map_err(io::Error::other)?;
+        if progress != reovim_kernel_interface::driver::Progress::More {
+            thread::park_timeout(std::time::Duration::from_millis(1));
+        }
+    }
 }

@@ -5,9 +5,12 @@
 extern crate alloc;
 
 use alloc::{boxed::Box, rc::Rc, vec};
-use core::{cell::Cell, future::ready};
+use core::{
+    cell::Cell,
+    future::{Ready, ready},
+};
 use reovim_kernel_interface::{
-    Contract, Error, Message,
+    Contract, Error, Message, ResourceId,
     buffer::integer,
     driver::{DriverOps, Lifecycle, Progress},
     module::{Factory, Module},
@@ -65,23 +68,11 @@ pub fn provider(value: Rc<Cell<u64>>) -> ResourceProvider {
         value,
         ResourceOps {
             unload: None,
-            read: |value, _, input| {
-                Box::pin(ready(if input.data.is_empty() {
-                    Ok(Message::new(input.contract, &value.get().to_le_bytes()))
-                } else {
-                    Err(Error::INVALID)
-                }))
+            read: |value, subject, input| {
+                Box::pin(read_value(value, subject, input))
             },
-            write: |value, _, input| {
-                let result = integer(&input.data).and_then(|amount| {
-                    let next = value
-                        .get()
-                        .checked_add(amount)
-                        .ok_or(Error::PRESSURE)?;
-                    value.set(next);
-                    Ok(Message::new(input.contract, &next.to_le_bytes()))
-                });
-                Box::pin(ready(result))
+            write: |value, subject, input| {
+                Box::pin(add_value(value, subject, input))
             },
         },
         Box::new([Surface {
@@ -92,4 +83,44 @@ pub fn provider(value: Rc<Cell<u64>>) -> ResourceProvider {
         }]),
         Rc::new(()),
     )
+}
+
+fn read_value(
+    value: &Cell<u64>,
+    _: ResourceId,
+    input: Message,
+) -> Ready<Result<Message, Error>> {
+    ready(if input.data.is_empty() {
+        Ok(Message::new(input.contract, &value.get().to_le_bytes()))
+    } else {
+        Err(Error::INVALID)
+    })
+}
+fn add_value(
+    value: &Cell<u64>,
+    _: ResourceId,
+    input: Message,
+) -> Ready<Result<Message, Error>> {
+    ready(integer(&input.data).and_then(|amount| {
+        let next = value.get().checked_add(amount).ok_or(Error::PRESSURE)?;
+        value.set(next);
+        Ok(Message::new(input.contract, &next.to_le_bytes()))
+    }))
+}
+fn native_state(_: reovim_module::Connection) -> Cell<u64> {
+    Cell::new(0)
+}
+const COUNTER: reovim_module::Contract =
+    reovim_module::Contract::new("external.counter", 1);
+reovim_module::rv_module! {
+    pub MODULE {
+        contract: ("counter", 1),
+        state: native_state,
+        resources: {
+            "value" => {
+                read COUNTER => read_value,
+                write COUNTER => add_value,
+            },
+        },
+    }
 }

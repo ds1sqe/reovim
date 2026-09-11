@@ -17,9 +17,13 @@ pub fn heading() -> ModelProvider {
         (),
         ModelOps {
             unload: None,
-            initialize: heading_initial,
-            prepare: heading_edit,
-            observe: heading_read,
+            initialize: |(), input| {
+                Box::pin(core::future::ready(heading_initial(input)))
+            },
+            prepare: |(), state, input| {
+                Box::pin(core::future::ready(heading_edit(state, input)))
+            },
+            observe: |(), state| heading_read(state),
         },
         Contract::new("heading.initial", 1),
         Contract::new("heading.source", 1),
@@ -45,16 +49,20 @@ pub fn keyed() -> ModelProvider {
     )
 }
 
-fn heading_initial(_: &mut (), input: Message) -> StateReply {
+/// Prepares immutable heading state without performing external work.
+/// # Errors
+/// Rejects a source without a supported heading.
+pub fn heading_initial(input: Message) -> Result<State, Error> {
     let bytes = Bytes(input.data.into_vec());
-    Box::pin(async move {
-        reovim_domain_basic::replace_heading(&bytes, b"check")?;
-        let cost = bytes.0.len() as u64;
-        Ok(State::new(bytes, cost))
-    })
+    reovim_domain_basic::replace_heading(&bytes, b"check")?;
+    let cost = bytes.0.len() as u64;
+    Ok(State::new(bytes, cost))
 }
 
-fn heading_edit(_: &mut (), state: &State, input: Message) -> StateReply {
+/// Prepares a replacement while preserving unrelated source bytes.
+/// # Errors
+/// Rejects foreign state or an unsupported heading edit.
+pub fn heading_edit(state: &State, input: Message) -> Result<State, Error> {
     let result = state
         .get::<Bytes>()
         .ok_or(Error::UNSUPPORTED)
@@ -66,10 +74,13 @@ fn heading_edit(_: &mut (), state: &State, input: Message) -> StateReply {
             State::new(value, cost)
         });
     drop(input);
-    Box::pin(core::future::ready(result))
+    result
 }
 
-fn heading_read(_: &mut (), state: &State) -> Result<Message, Error> {
+/// Observes the preserved source bytes of immutable heading state.
+/// # Errors
+/// Rejects state belonging to another model.
+pub fn heading_read(state: &State) -> Result<Message, Error> {
     let bytes = state.get::<Bytes>().ok_or(Error::UNSUPPORTED)?;
     Ok(Message::new(Contract::new("heading.source", 1), &bytes.0))
 }

@@ -82,8 +82,37 @@ impl Export {
 /// Inert Resource construction plus passive export metadata for any module.
 /// Provider order matches export order; each provider owns its private state.
 pub struct Definition {
+    pub identity: Identity,
+    pub dependencies: &'static [Identity],
     pub exports: &'static [Export],
     pub construct: fn(Connection) -> Vec<provider::ResourceProvider>,
+}
+
+/// Immutable catalog contract view. Only static Rust strings can supply it.
+#[repr(transparent)]
+pub struct Identity(abi::Contract);
+// Its sole pointer refers to an immutable static string.
+unsafe impl Sync for Identity {}
+
+impl Identity {
+    /// An explicitly unnamed declaration remains usable by direct loading.
+    pub const UNNAMED: Self = Self::new("", 0);
+
+    #[must_use]
+    pub const fn new(name: &'static str, version: u32) -> Self {
+        Self(abi::Contract { name: view(name.as_bytes()), version })
+    }
+
+    pub(super) const fn view(&self) -> abi::Contract {
+        self.0
+    }
+
+    pub(super) fn matches(&self, contract: &Contract) -> bool {
+        let name = unsafe {
+            core::slice::from_raw_parts(self.0.name.data, self.0.name.len)
+        };
+        name == contract.name.as_bytes() && self.0.version == contract.version
+    }
 }
 
 pub(super) const fn view(bytes: &'static [u8]) -> abi::Bytes {

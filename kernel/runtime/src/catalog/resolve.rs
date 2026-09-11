@@ -46,7 +46,14 @@ fn step(
     };
     let entry = catalog.borrow();
     let factory = entry.factory.as_ref().ok_or(Error::UNAVAILABLE)?;
-    let Some(identity) = factory.dependencies.get(index) else {
+    // A retained instance already owns exact dependency selections. New
+    // declarations cannot invalidate that established graph.
+    let required = entry
+        .selected
+        .is_none()
+        .then(|| factory.dependencies.get(index))
+        .flatten();
+    let Some(identity) = required else {
         graph.visiting.pop();
         graph.ordered.push((key, Rc::clone(catalog)));
         return Ok(());

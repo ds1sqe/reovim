@@ -6,7 +6,7 @@ use super::Catalog;
 use crate::{Runtime, namespace::Kind};
 
 impl Runtime {
-    pub(super) fn withdraw_catalog(
+    pub(crate) fn withdraw_catalog(
         &self,
         key: u64,
         catalog: &Rc<RefCell<Catalog>>,

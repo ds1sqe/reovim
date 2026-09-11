@@ -3,6 +3,7 @@
 //! Editing providers and optional caller helpers over Resource requests.
 
 extern crate alloc;
+pub mod native;
 
 use alloc::{rc::Rc, vec};
 use reovim_kernel_interface::{

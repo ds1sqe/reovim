@@ -4,9 +4,10 @@ from .fixture import Scenario
 class Editing(Scenario):
     def test_source_fidelity_stale_rejection_undo_and_close(self):
         exit_command = self.load_command("exit", "exit")
-        module = self.activate("editing")
+        module = self.call("write", "catalog/editing",
+                           "kernel.module.activate", "1").resources[0]
         source = b"# original\n\xffopaque"
-        initial = self.call("write", "models/heading", "heading.initial",
+        initial = self.call("write", "editing/heading", "heading.initial",
                             "1", source.hex())
         buffer, history = initial.resources
         self.assertEqual(initial.data[16:], source)

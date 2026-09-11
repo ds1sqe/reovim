@@ -2,7 +2,9 @@
 //! Modules declare their own paths, surfaces, state and operation tables.
 
 mod declaration;
-pub use declaration::{Definition, Export, Surface};
+mod model;
+pub use declaration::{Definition, Export, Identity, Surface};
+pub use model::ModelDefinition;
 
 use alloc::{boxed::Box, rc::Rc, vec::Vec};
 use core::{cell::RefCell, ffi::c_void, ptr};
@@ -41,6 +43,9 @@ impl Definition {
             exports: self.exports.len(),
             describe: Some(describe),
             request: Some(request),
+            identity: self.identity.view(),
+            dependencies: self.dependencies.as_ptr().cast(),
+            dependency_count: self.dependencies.len(),
         })
     }
 }

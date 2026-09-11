@@ -22,6 +22,7 @@ pub struct Catalog {
     identity: Contract,
     factory: Option<Factory>,
     selected: Option<(ResourceId, Rc<Cell<Lifecycle>>)>,
+    binding: Option<crate::Binding>,
 }
 
 impl Runtime {
@@ -34,6 +35,16 @@ impl Runtime {
         identity: Contract,
         factory: Factory,
     ) -> Result<ResourceId, (Error, Contract, Factory)> {
+        self.install_factory(path, identity, factory, None)
+    }
+
+    fn install_factory(
+        &self,
+        path: &str,
+        identity: Contract,
+        factory: Factory,
+        binding: Option<crate::Binding>,
+    ) -> Result<ResourceId, (Error, Contract, Factory)> {
         let shared = self.shared.borrow();
         let validation = shared
             .check_registration(path)
@@ -43,13 +54,36 @@ impl Runtime {
         if let Err(error) = validation {
             return Err((error, identity, factory));
         }
-        let entry =
-            Catalog { identity, factory: Some(factory), selected: None };
+        let entry = Catalog {
+            identity,
+            factory: Some(factory),
+            selected: None,
+            binding,
+        };
         let key = self
             .shared
             .borrow_mut()
             .insert(path, Kind::Catalog(Rc::new(RefCell::new(entry))));
         Ok(ResourceId(key))
+    }
+
+    /// Registers a catalog factory with its actual receiving namespace.
+    /// # Errors
+    /// Rejects foreign/closed bindings or invalid catalog declarations.
+    pub fn register_bound_factory(
+        &mut self,
+        binding: &crate::Binding,
+        path: &str,
+        identity: Contract,
+        factory: Factory,
+    ) -> Result<ResourceId, (Error, Contract, Factory)> {
+        if !Rc::ptr_eq(&self.shared, &binding.shared) {
+            return Err((Error::INVALID, identity, factory));
+        }
+        if binding.scope.borrow().closed {
+            return Err((Error::CLOSED, identity, factory));
+        }
+        self.install_factory(path, identity, factory, Some(binding.clone()))
     }
 
     pub(super) fn catalog_request(
@@ -119,13 +153,21 @@ impl Runtime {
         if let Some(selected) = &catalog.selected {
             return Ok(selected.clone());
         }
-        let path = format!("modules/instances/{key}");
+        let path = match &catalog.binding {
+            Some(binding) => {
+                binding.publication_path(&format!("instances/{key}"))?
+            }
+            None => format!("modules/instances/{key}").into(),
+        };
         let instance = self
             .adopt_factory(
                 &path,
                 catalog.factory.as_ref().ok_or(Error::UNAVAILABLE)?.clone(),
             )
             .map_err(|(error, _)| error)?;
+        if let Some(binding) = &catalog.binding {
+            self.attach_binding(binding);
+        }
         let shared = self.shared.borrow();
         let Kind::Module(status) =
             &shared.entries[shared.entry_index(instance.0)?].kind

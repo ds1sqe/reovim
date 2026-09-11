@@ -20,6 +20,7 @@ use std::path::Path;
 /// Rejects incompatible tables, malformed contracts or failed construction.
 pub unsafe fn load_model(path: &Path) -> Result<ModelProvider, Error> {
     let (table, library) = unsafe { load_table(path)? };
+    super::standalone(&table)?;
     unsafe { from_table(table, library, None) }
 }
 

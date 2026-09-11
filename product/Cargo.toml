@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "../modules/example",
     "../modules/env",
+    "../modules/dump",
     "../lib/bitflags",
     "../lib/vtable",
     "../lib/module",
@@ -33,6 +34,7 @@ members = [
 default-members = [
     "../modules/example",
     "../modules/env",
+    "../modules/dump",
     "../lib/bitflags",
     "../lib/vtable",
     "../lib/module",

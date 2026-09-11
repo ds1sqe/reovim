@@ -80,11 +80,11 @@ class RequestDelivery(Scenario):
             "read", "modules/counter/value", "external.counter", "1").data,
             "little"), 7)
         self.wire("release", request)
-        editing = self.rpc("write", "modules/catalog/editing",
+        editing = self.rpc("write", "catalog/editing",
                            "kernel.module.activate", "1")
         request = self.reserve()
         source = b"# Retained\nunchanged source\n"
-        self.send_without_reading(request, "write", "models/heading",
+        self.send_without_reading(request, "write", "editing/heading",
                                   "heading.initial", "1", source.hex())
         self.finished(request)
         first = Reply.parse(self.wire("result", request))

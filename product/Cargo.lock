@@ -92,6 +92,7 @@ name = "reovim-module-counter"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-kernel-interface",
+ "reovim-module",
 ]
 
 [[package]]
@@ -103,10 +104,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-module-dump"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-host-reference",
+ "reovim-kernel-interface",
+ "reovim-kernel-runtime",
+ "reovim-module",
+]
+
+[[package]]
 name = "reovim-module-editing"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-kernel-interface",
+ "reovim-module",
  "reovim-representation-basic",
 ]
 

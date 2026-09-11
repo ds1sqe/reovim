@@ -8,7 +8,7 @@ the request again. Fields are tab-separated; payload bytes and recovery strings 
 
 ```text
 v1  open
-ok  client-token
+ok  client-token  boot-receipt-id
 v1  client-token  reserve
 ok  request-id
 v1  client-token  call     request-id  operation-fields...
@@ -20,6 +20,11 @@ v1  client-token  requests
 ```
 
 `open` creates a retained client with a private namespace and native loader.
+Its response waits for configured client startup. That work occupies one
+ordinary retained receipt whose input is `boot`; acknowledge it with `release`
+after adopting readiness. Failure returns
+`error boot TOKEN RECEIPT rejected|failed|unknown CODE ID RECOVERY` with tab
+separators, retaining partial startup ownership for inspection and cleanup.
 Its opaque token selects that same logical client across sockets; another token
 has different IDs and grants. The reference Linux host uses its random source
 and bounds live clients to 16. Selecting a token does not start a new Kernel
@@ -59,4 +64,7 @@ when the result is unknown; never submit a fresh identity as automatic recovery.
 The owner drives Kernel execution independently of up to 32 socket workers.
 Waiting calls and incomplete frames leave other clients responsive. A failed socket
 write removes only its observer; its receipt/execution stays with the client.
-Explicit client teardown and native owned/subscription access remain unfinished.
+`v1 TOKEN disconnect` fences owned subscriptions and attempts private cleanup.
+Pending receipts and live Buffer/Session state keep the client recoverable;
+adopt results and explicitly close state before retrying a Busy teardown.
+Successful teardown is idempotent within the bounded recently closed token set.

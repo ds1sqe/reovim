@@ -1,20 +1,9 @@
 import socket
-import time
 
 from .fixture import Reply, Scenario
 
 
 class ClientTeardown(Scenario):
-    def disconnect(self, client):
-        deadline = time.monotonic() + 5
-        while True:
-            result = self.wire("disconnect", client=client)
-            if result == "ok":
-                return
-            self.assertIn("client cleanup: Resource error 8", result)
-            self.assertLess(time.monotonic(), deadline, result)
-            time.sleep(0.01)
-
     def test_disconnect_settles_watch_retains_receipts_and_preserves_peer(self):
         library = self.build_module("reovim-module-env", "env")
         peer = self.new_client()

@@ -4,12 +4,19 @@
 
 extern crate alloc;
 
-#[cfg(all(feature = "std", target_os = "linux"))]
+#[cfg(feature = "std")]
 extern crate std;
 
 #[cfg(all(feature = "std", target_os = "linux"))]
 #[allow(unsafe_code)]
 pub mod native;
+
+#[cfg(all(feature = "std", target_os = "linux"))]
+#[allow(unsafe_code)]
+pub mod export;
+#[cfg(all(feature = "std", not(target_os = "linux")))]
+#[path = "export/unsupported.rs"]
+pub mod export;
 
 use alloc::boxed::Box;
 use core::{

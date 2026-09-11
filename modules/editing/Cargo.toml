@@ -17,3 +17,10 @@ version = "=0.16.0-dev"
 
 [lints]
 workspace = true
+
+[dependencies.reovim-module]
+path = "../../lib/module"
+
+[[example]]
+name = "heading"
+crate-type = ["cdylib"]

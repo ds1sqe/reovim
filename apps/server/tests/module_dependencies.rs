@@ -110,6 +110,25 @@ fn dependency_is_ready_before_dependant_and_retained_until_cleanup() {
     run_with(module::activate(&client, local), &mut runtime, &Runtime::DRIVER)
         .unwrap()
         .unwrap();
+    let duplicate = runtime
+        .register_factory(
+            "another-b",
+            Contract::new("b", 1),
+            factory("unused", &trace, &[]),
+        )
+        .map_err(|(error, _, _)| error)
+        .unwrap();
+    let later = runtime
+        .connect(&[
+            (a, Permissions::ALL),
+            (b, Permissions::ALL),
+            (duplicate, Permissions::ALL),
+        ])
+        .unwrap();
+    let same = later.resolve("a").into_inner().unwrap();
+    run_with(module::activate(&later, same), &mut runtime, &Runtime::DRIVER)
+        .unwrap()
+        .unwrap();
     let dependency = client.resolve("b").into_inner().unwrap();
     run_with(
         module::activate(&client, dependency),

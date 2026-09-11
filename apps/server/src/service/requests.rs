@@ -47,6 +47,24 @@ impl Requests {
     }
 
     pub fn reserve(&mut self) -> Result<String, String> {
+        self.allocate().map(|id| format!("ok\t{id}"))
+    }
+
+    pub fn enqueue(
+        &mut self,
+        input: &str,
+        make: impl FnOnce(u64) -> Response,
+    ) -> Result<Response, String> {
+        let id = self.allocate()?;
+        let receipt = self.find(id)?;
+        let mut value = receipt.borrow_mut();
+        value.input = Some(input.into());
+        value.response = Some(make(id));
+        drop(value);
+        Ok(observe(receipt))
+    }
+
+    fn allocate(&mut self) -> Result<u64, String> {
         if self.entries.len() == CAPACITY {
             return Err("request capacity".into());
         }
@@ -55,7 +73,7 @@ impl Requests {
         self.entries.try_reserve(1).map_err(|_| "request capacity")?;
         self.entries.push((id, Rc::default()));
         self.next = id;
-        Ok(format!("ok\t{id}"))
+        Ok(id)
     }
 
     pub fn call(

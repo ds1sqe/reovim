@@ -213,6 +213,7 @@ fn info(input: Message, data: &[u8]) -> Result<Message, Error> {
 
 rv_module! {
     pub MODULE {
+        contract: ("env", 1),
         state: Environment::new,
         resources: {
             "env" => { read NAMES => Environment::names },

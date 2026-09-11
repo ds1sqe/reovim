@@ -46,13 +46,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn connect(address: &str) -> io::Result<String> {
     let reply = exchange(address, &["open".into()])?;
-    let token = reply
-        .strip_prefix("ok\t")
-        .filter(|value| {
-            value.len() == 32 && value.bytes().all(|b| b.is_ascii_hexdigit())
-        })
-        .ok_or_else(|| io::Error::other("invalid client identity"))?;
-    Ok(token.into())
+    let fields: Vec<_> = reply.split('\t').collect();
+    let ["ok", token, receipt] = fields.as_slice() else {
+        return Err(io::Error::other("invalid client identity"));
+    };
+    if token.len() != 32
+        || !token.bytes().all(|b| b.is_ascii_hexdigit())
+        || receipt.parse::<u64>().is_err()
+    {
+        return Err(io::Error::other("invalid client identity"));
+    }
+    exchange(address, &[(*token).into(), "release".into(), (*receipt).into()])
+        .map_err(|error| {
+            io::Error::other(format!(
+                "client {token}, boot receipt {receipt}: {error}",
+            ))
+        })?;
+    Ok((*token).into())
 }
 
 fn encode_frame(fields: &[String]) -> io::Result<String> {

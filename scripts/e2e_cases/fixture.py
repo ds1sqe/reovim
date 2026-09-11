@@ -45,13 +45,27 @@ class Scenario(unittest.TestCase):
             (self.evidence / "server.stdout").open("w"))
         errors = self.enterContext(
             (self.evidence / "server.stderr").open("w"))
+        boot = self.boot_arguments()
         self.server = subprocess.Popen(
-            [str(self.binaries / "reovim-server"), "127.0.0.1:0"],
+            [str(self.binaries / "reovim-server"), "127.0.0.1:0",
+             *boot],
             stdout=output, stderr=errors,
         )
         self.addCleanup(self.stop_server)
         self.address = self.wait_for_address()
         self.client = self.new_client()
+
+    def boot_arguments(self):
+        counter = self.build_module("reovim-module-counter", "counter")
+        heading = self.build_module("reovim-module-editing", "heading")
+        return [
+            "--module", "counter", str(counter), "counter",
+            "--module", "session_model", str(heading), "models/session",
+            "--start", "heading.model", "1",
+            "--session", "models/session", "heading.initial", "1",
+            b"# Shared session\n".hex(),
+            "--client-module", "editing", str(heading), "editing/heading",
+        ]
 
     def new_client(self):
         result = self.command([str(self.binaries / "reovim-cli"),
@@ -59,6 +73,16 @@ class Scenario(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stderr, "")
         return result.stdout.strip()
+
+    def disconnect(self, client):
+        deadline = time.monotonic() + 5
+        while True:
+            result = self.wire("disconnect", client=client)
+            if result == "ok":
+                return
+            self.assertIn("client cleanup: Resource error 8", result)
+            self.assertLess(time.monotonic(), deadline, result)
+            time.sleep(0.01)
 
     def stop_server(self):
         self.stop_process(self.server)

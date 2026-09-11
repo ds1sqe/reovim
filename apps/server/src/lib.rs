@@ -6,6 +6,11 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
+#[cfg(all(feature = "std", target_os = "linux"))]
+pub mod boot;
+#[cfg(all(feature = "std", not(target_os = "linux")))]
+#[path = "boot/unsupported.rs"]
+pub mod boot;
 #[cfg(feature = "std")]
 mod loading;
 #[cfg(feature = "std")]

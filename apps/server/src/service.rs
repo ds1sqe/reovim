@@ -6,9 +6,11 @@ mod requests;
 mod session;
 mod transport;
 
+use crate::boot::{Config, Modules, Scope};
 use alloc::{boxed::Box, format, string::String, vec::Vec};
 use clients::Clients;
 use pending::{Pending, Response};
+use reovim_kernel_interface::provider::Permissions;
 use reovim_kernel_interface::{
     Connection, Contract, Message, RequestError, ResourceId, driver::Progress,
 };
@@ -31,39 +33,51 @@ use std::{
 /// # Errors
 /// Reports bind/startup errors. Individual connection failures are isolated.
 pub fn serve(address: &str) -> io::Result<()> {
+    serve_configured(address, Config::default())
+}
+
+/// Discovers configured native contracts before admitting clients.
+/// # Errors
+/// Reports discovery, contract selection, startup or listener failures.
+pub fn serve_configured(address: &str, mut config: Config) -> io::Result<()> {
+    let exports = config
+        .output
+        .take()
+        .as_deref()
+        .map(|path| {
+            reovim_host_reference::export::Directory::open(path)?
+                .create(&format!("run-{}", clients::token()?))
+        })
+        .transpose()?;
     let listener = TcpListener::bind(address)?;
     if !listener.local_addr()?.ip().is_loopback() {
         return Err(io::Error::other("the control service requires loopback"));
     }
-    let mut runtime =
-        Runtime::new(1, Limits::default()).map_err(io::Error::other)?;
+    // Retained clients each need import scopes and private module publications.
+    let limits = Limits { resources: 1024, callers: 256, ..Limits::default() };
+    let mut runtime = Runtime::new(1, limits).map_err(io::Error::other)?;
     runtime.start().map_err(io::Error::other)?;
-    runtime
-        .register_factory(
-            "modules/catalog/counter",
-            Contract::new("counter", 1),
-            reovim_module_counter::factory(),
-        )
-        .map_err(|(error, _, _)| io::Error::other(error))?;
-    runtime
-        .register_factory(
-            "modules/catalog/editing",
-            Contract::new("editing", 1),
-            reovim_module_editing::factory(),
-        )
-        .map_err(|(error, _, _)| io::Error::other(error))?;
-    let modules = runtime.resource("modules").map_err(io::Error::other)?;
-    let models =
-        runtime.register_namespace("models").map_err(io::Error::other)?;
-    let (owner, session) = session::create(&mut runtime)?;
-    let mut clients = Clients::new(
-        owner,
-        alloc::vec![
-            ("modules", modules),
-            ("models", models),
-            ("session", session),
-        ],
-    );
+    let root =
+        runtime.register_namespace("server").map_err(io::Error::other)?;
+    let models = runtime
+        .register_namespace("server/models")
+        .map_err(io::Error::other)?;
+    let owner = runtime
+        .bind_at(root, &[(root, Permissions::ALL)])
+        .map_err(io::Error::other)?;
+    let selected_session = config.session.take();
+    let modules = Modules::discover(config).map_err(io::Error::other)?;
+    let startup = modules
+        .prepare(&mut runtime, &owner, Scope::Server)
+        .map_err(io::Error::other)?;
+    session::finish(&mut runtime, startup)?;
+    let mut shared = alloc::vec![("modules", root), ("models", models)];
+    if let Some(selected) = selected_session {
+        let session = session::create(&mut runtime, &owner, &selected)?;
+        shared.push(("session", session));
+    }
+    let mut clients =
+        Clients::new(owner.connection(), exports, shared, modules);
     std::println!("listening {}", listener.local_addr()?);
     let commands = transport::start(listener)?;
     let waker = Waker::from(Arc::new(OwnerWake(thread::current())));
@@ -91,8 +105,8 @@ fn advance(
 ) -> io::Result<()> {
     for _ in 0..64 {
         Pending::poll(pending, context);
-        let progress = runtime.advance(context).map_err(io::Error::other)?;
         clients.advance(runtime, context);
+        let progress = runtime.advance(context).map_err(io::Error::other)?;
         if progress != Progress::More && !clients.is_pending() {
             // unpark retains a token when a wake races this sleep.
             thread::park();

@@ -3,13 +3,17 @@
 use alloc::{collections::VecDeque, format, string::String, vec, vec::Vec};
 use core::task::Context;
 use reovim_kernel_interface::{
-    Connection, Error, ResourceId, provider::Permissions,
+    Connection, Error, ResourceId,
+    provider::{Contribution, Permissions},
 };
 use reovim_kernel_runtime::Runtime;
 use std::io::{self, Read};
 
 use super::{pending::Response, requests::Requests};
-use crate::loading::Loader;
+use crate::{
+    boot::{Modules, Scope},
+    loading::Loader,
+};
 
 struct Client {
     token: String,
@@ -24,15 +28,21 @@ pub(super) struct Clients {
     shared: Vec<(&'static str, ResourceId)>,
     next: u64,
     closed: VecDeque<String>,
+    exports: Option<reovim_host_reference::export::Directory>,
+    modules: Modules,
 }
 
 impl Clients {
     pub const fn new(
         owner: Connection,
+        exports: Option<reovim_host_reference::export::Directory>,
         shared: Vec<(&'static str, ResourceId)>,
+        modules: Modules,
     ) -> Self {
         Self {
             _assembly: owner,
+            exports,
+            modules,
             values: Vec::new(),
             shared,
             next: 0,
@@ -46,10 +56,7 @@ impl Clients {
         line: &str,
     ) -> Result<Response, String> {
         if line == "v1\topen" {
-            let token = self.open(runtime).map_err(|e| format!("{e}"))?;
-            return Ok(alloc::boxed::Box::pin(core::future::ready(Ok(
-                format!("ok\t{token}"),
-            ))));
+            return self.open(runtime).map_err(|e| format!("{e}"));
         }
         let rest =
             line.strip_prefix("v1\t").ok_or("invalid service profile")?;
@@ -99,7 +106,7 @@ impl Clients {
         Ok(ready(Ok("ok".into())))
     }
 
-    fn open(&mut self, runtime: &mut Runtime) -> io::Result<String> {
+    fn open(&mut self, runtime: &mut Runtime) -> io::Result<Response> {
         if self.values.len() == 16 {
             return Err(io::Error::other(Error::PRESSURE));
         }
@@ -116,6 +123,15 @@ impl Clients {
             .next
             .checked_add(1)
             .ok_or_else(|| io::Error::other(Error::PRESSURE))?;
+        let output = self
+            .exports
+            .as_ref()
+            .map(|directory| {
+                directory
+                    .create(&format!("client-{}", self.next))
+                    .map(|directory| directory.provider())
+            })
+            .transpose()?;
         let prefix = format!("clients/{}", self.next);
         let log = runtime
             .register(
@@ -123,17 +139,28 @@ impl Clients {
                 runtime.diagnostic_resource(),
             )
             .map_err(|(error, _)| io::Error::other(error))?;
-        let client = construct(runtime, &prefix, &self.shared, token.clone());
-        match client {
-            Ok(client) => self.values.push(client),
+        let client =
+            construct(runtime, &prefix, &self.shared, token.clone(), output);
+        let mut client = match client {
+            Ok(client) => client,
             Err(error) => {
                 runtime
                     .unregister_contributions(&[log])
                     .map_err(io::Error::other)?;
                 return Err(io::Error::other(error));
             }
-        }
-        Ok(token)
+        };
+        // The receipt owns startup even if its socket observer disappears.
+        let startup = self.modules.prepare(
+            runtime,
+            client.loader.binding(),
+            Scope::Client,
+        );
+        let response = client
+            .requests
+            .enqueue("boot", |id| boot_response(startup, token, id));
+        self.values.push(client);
+        response.map_err(io::Error::other)
     }
 
     pub fn advance(&mut self, runtime: &mut Runtime, wake: &mut Context<'_>) {
@@ -148,11 +175,32 @@ impl Clients {
     }
 }
 
+fn boot_response(
+    startup: Result<
+        crate::boot::Startup,
+        reovim_kernel_interface::RequestError,
+    >,
+    token: String,
+    id: u64,
+) -> Response {
+    alloc::boxed::Box::pin(async move {
+        let result = match startup {
+            Ok(startup) => startup.await,
+            Err(error) => Err(error),
+        };
+        result.map_err(|error| {
+            format!("boot\t{token}\t{id}\t{}", super::failure(error))
+        })?;
+        Ok(format!("ok\t{token}\t{id}"))
+    })
+}
+
 fn construct(
     runtime: &mut Runtime,
     prefix: &str,
     shared: &[(&str, ResourceId)],
     token: String,
+    output: Option<reovim_kernel_interface::provider::ResourceProvider>,
 ) -> Result<Client, Error> {
     let root = runtime.resource(prefix)?;
     let mut grants = vec![(root, Permissions::ALL)];
@@ -163,13 +211,21 @@ fn construct(
     }
     let kernel = reovim_sdk::local(owner.connection());
     let loader = Loader::new(owner, root, grants);
-    runtime
-        .register(&format!("{prefix}/kernel/modules/load"), loader.provider())
-        .map_err(|(error, _)| error)?;
+    let mut values = vec![Contribution::Resource {
+        path: format!("{prefix}/kernel/modules/load").into(),
+        provider: loader.provider(),
+    }];
+    if let Some(provider) = output {
+        values.push(Contribution::Resource {
+            path: format!("{prefix}/host/files").into(),
+            provider,
+        });
+    }
+    runtime.register_contributions(values).map_err(|(error, _)| error)?;
     Ok(Client { token, kernel, loader, requests: Requests::default() })
 }
 
-fn token() -> io::Result<String> {
+pub(super) fn token() -> io::Result<String> {
     let mut bytes = [0_u8; 16];
     std::fs::File::open("/dev/urandom")?.read_exact(&mut bytes)?;
     Ok(reovim_service::hex(&bytes))

@@ -78,7 +78,9 @@ pub mod __private {
         abi,
         provider::{ResourceOps, ResourceProvider},
     };
-    pub use reovim_sdk::module::{Definition, Export};
+    pub use reovim_sdk::module::{
+        Definition, Export, Identity, ModelDefinition,
+    };
 
     /// # Panics
     /// Compile-time declarations must use one reference policy per Resource.

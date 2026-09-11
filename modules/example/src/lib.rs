@@ -132,6 +132,7 @@ impl Example {
 
 rv_module! {
     pub MODULE {
+        contract: ("example", 1),
         state: Example::new,
         resources: {
             "" => { write GREET => Example::greet },

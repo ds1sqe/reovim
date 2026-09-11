@@ -95,6 +95,11 @@ pub struct Module {
     pub request: Option<
         unsafe extern "C" fn(*mut c_void, usize, *const Request) -> Pending,
     >,
+    /// Passive catalog identity; an empty name is not selectable by contract.
+    pub identity: Contract,
+    /// Required catalog contracts, borrowed for the lifetime of this table.
+    pub dependencies: *const Contract,
+    pub dependency_count: usize,
 }
 }
 

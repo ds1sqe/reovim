@@ -3,10 +3,45 @@
 /// State construction is inert. Async handlers borrow state retained by the
 /// adapter and return `Result<Message, Error>` or preserve `RequestError`
 /// through a forwarding handler; no executor is generated.
+///
+/// Optional `contract: ("name", schema)` and `requires: [("name", schema)]`
+/// declare passive catalog metadata. They do not construct or activate any
+/// provider. An unnamed declaration is not selectable by a boot contract.
 #[macro_export]
 macro_rules! rv_module {
     (
         $visibility:vis $name:ident {
+            contract: ($identity:literal, $version:literal),
+            $(requires: [$(($required:literal, $schema:literal)),* $(,)?],)?
+            model: {
+                initialize ($initial:literal, $initial_version:literal) =>
+                    $initialize:path,
+                prepare ($edit:literal, $edit_version:literal) => $prepare:path,
+                observe ($read:literal, $read_version:literal) =>
+                    $observe:path $(,)?
+            } $(,)?
+        }
+    ) => {
+        $visibility static $name: $crate::__private::ModelDefinition =
+            $crate::__private::ModelDefinition {
+                identity: $crate::__private::Identity::new($identity, $version),
+                dependencies: &[$($(
+                    $crate::__private::Identity::new($required, $schema)
+                ),*)?],
+                initial: $crate::__private::Identity::new(
+                    $initial, $initial_version
+                ),
+                edit: $crate::__private::Identity::new($edit, $edit_version),
+                read: $crate::__private::Identity::new($read, $read_version),
+                initialize: $initialize,
+                prepare: $prepare,
+                observe: $observe,
+            };
+    };
+    (
+        $visibility:vis $name:ident {
+            $(contract: ($identity:literal, $version:literal),)?
+            $(requires: [$(($required:literal, $schema:literal)),* $(,)?],)?
             state: $construct:path,
             resources: {
                 $( $path:literal => {
@@ -54,6 +89,10 @@ macro_rules! rv_module {
                 }),+]
             }
             $crate::__private::Definition {
+                identity: $crate::rv_module!(@identity $($identity, $version)?),
+                dependencies: &[$($(
+                    $crate::__private::Identity::new($required, $schema)
+                ),*)?],
                 construct,
                 exports: &[$($crate::__private::Export {
                     path: $path,
@@ -66,6 +105,10 @@ macro_rules! rv_module {
                 }),+],
             }
         };
+    };
+    (@identity) => { $crate::__private::Identity::UNNAMED };
+    (@identity $name:literal, $version:literal) => {
+        $crate::__private::Identity::new($name, $version)
     };
     (@method read) => { $crate::Permissions::READ };
     (@method write) => { $crate::Permissions::WRITE };

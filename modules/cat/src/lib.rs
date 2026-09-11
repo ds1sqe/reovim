@@ -82,6 +82,7 @@ const BYTES: reovim_module::Contract =
 
 reovim_module::rv_module! {
     pub MODULE {
+        contract: ("cat", 1),
         state: Command::new,
         resources: {
             "" => { write CALL => Command::call },

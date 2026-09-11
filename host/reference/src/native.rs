@@ -76,6 +76,7 @@ unsafe fn resource_with_imports(
     kernel: Option<&Connection>,
 ) -> Result<ResourceProvider, Error> {
     let (table, library) = unsafe { load_table(path)? };
+    standalone(&table)?;
     unsafe { resource_table(table, library, kernel) }
 }
 
@@ -149,6 +150,7 @@ pub unsafe fn load_with(
     kernel: Option<&Connection>,
 ) -> Result<Contribution, Error> {
     let (table, library) = unsafe { load_table(path)? };
+    standalone(&table)?;
     match table.kind {
         abi::RESOURCE => Ok(Contribution::Resource {
             path: export.into(),
@@ -241,6 +243,8 @@ fn call(
 
 mod model;
 pub use model::load_model;
+mod artifact;
+pub use artifact::Artifact;
 
 unsafe fn load_table(path: &Path) -> Result<(abi::Module, Rc<Library>), Error> {
     let library = unsafe { open(path)? };
@@ -293,6 +297,23 @@ pub unsafe fn load_contributions(
     kernel: Option<&Connection>,
 ) -> Result<Vec<Contribution>, Error> {
     let (table, library) = unsafe { load_table(path)? };
+    standalone(&table)?;
+    unsafe { contributions(table, library, mount, kernel) }
+}
+
+const fn standalone(table: &abi::Module) -> Result<(), Error> {
+    if table.dependency_count != 0 {
+        return Err(Error::UNSUPPORTED);
+    }
+    Ok(())
+}
+
+unsafe fn contributions(
+    table: abi::Module,
+    library: Rc<Library>,
+    mount: &str,
+    kernel: Option<&Connection>,
+) -> Result<Vec<Contribution>, Error> {
     if table.kind == abi::RESOURCE && table.exports != 0 {
         return unsafe { resources::load(table, library, mount, kernel) };
     }

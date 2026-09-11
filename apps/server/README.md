@@ -19,26 +19,70 @@ and `write` command artifacts. Command implementations are not linked into
 this server; an independently built Resource module can add another command
 without a CLI or Kernel rebuild.
 
-Assembly supplies [counter](../../modules/counter/README.md) and
-[editing](../../modules/editing/README.md) modules.
-Activation constructs each instance at runtime; unload removes its service. The module
-imports Kernel Interface only. These initial factory declarations are compiled into the server. On Linux, `kernel/modules/load` loads native Resource or State Model
-providers after startup; see
-[native-counter](../../modules/native-counter/README.md).
+Without configuration, the service starts with private client roots and no
+concrete modules or Session. On Linux, process arguments select native artifacts
+by their passive contract declarations:
+
+```sh
+reovim-server 127.0.0.1:7878 \
+  --module counter /opt/reovim/modules/counter.so counter \
+  --start counter 1 \
+  --client-module environment /opt/reovim/modules/env.so '' \
+  --grant '' all --client-start env 1
+```
+
+`--module LABEL LIBRARY MOUNT` declares a server-owned catalog entry.
+`--client-module` declares a fresh instance template for every retained client.
+`--start CONTRACT SCHEMA` and `--client-start` select exact required identities.
+Dependencies come from the artifact and use the existing catalog graph; missing,
+incompatible, ambiguous and cyclic selections fail startup. Discovery retains
+the exact executable, reads metadata and does not call the module constructor.
+Dynamic linker constructors and the ABI entry point still execute native code.
+
+`--grant PATH read|write|all` applies to the preceding declaration. Paths refer
+to existing Resources in that context; an empty path grants its root subtree.
+No grants are implicit. Dependency selection does not grant data access.
+Server and client dependency catalogs have separate selection scopes.
+Server publications appear under the client's `modules` alias; private client
+publications and `catalog/LABEL` appear in its own root. Ordinary activation of
+an unstarted catalog remains available. Each context admits at most 64 configured
+declarations and 64 required roots, subject to Runtime capacity.
+The service reserves limits of 1024 Resources and 256 caller/import scopes;
+other Runtime limits retain their defaults. Sixteen client contexts with private
+env templates are exercised together; richer configurations can exhaust a
+different bound first and return pressure.
+
+For a shared Session, select a native Model and pass
+`--session MODEL_PATH INPUT_CONTRACT SCHEMA HEX_DATA`. The server contains no
+heading schema or constructor choice. `--export-root DIRECTORY` separately
+grants filesystem output; see [dump](../../modules/dump/README.md).
+
+An installed user supplies only a compatible module package and configuration;
+adding it requires neither a Reovim checkout nor a server/CLI rebuild. The ABI is
+SemVer 0.1.0 with reserved u32 zero until official release; operation and module
+contract schemas are separate u32 identities. Installation performs no network
+fetch. The native and output adapters currently support Linux.
+
+`kernel/modules/load` also loads standalone native Resource or State Model
+providers after startup; see [native-counter](../../modules/native-counter/README.md).
+Artifacts declaring dependencies must use the catalog path.
 `host.module.load-with` accepts one Resource reference as the module's granted
 import subtree; [native-forward](../../modules/native-forward/README.md) calls
 another module through that connection.
 
 The [command transport](../../host/service/README.md) retains separate client
 roots selected by connection tokens. Each has its own diagnostic access and
-native loader; the initial editing catalog/services and one selected Session
+native loader; configured server services and an optional selected Session
 are explicitly shared. Each client keeps its own env instance and namespace;
 Session access does not share CWD.
 A module loaded into a client's root cannot publish through shared aliases.
 Selecting that full root as its imports includes the client's authorized shared
 aliases; selecting a narrower Resource grants only that subject's subtree.
-State lasts until process exit. Client-scoped env, explicit client teardown
-remain unfinished. Delivery receipts preserve original outcomes across sockets.
+State lasts until explicit client teardown or process exit. Teardown refuses to
+discard live Buffer/Session state or unadopted receipts. Delivery receipts retain
+client startup as well as ordinary requests. `--connect` returns only after its
+required contracts are ready and acknowledges that startup receipt; a failed
+startup reports its retained client token and receipt for recovery/cleanup.
 
 Socket workers use bounded channels and retain no Kernel execution. Waiting
 responses and incomplete frames do not block other clients. A disconnected

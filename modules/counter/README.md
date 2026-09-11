@@ -11,5 +11,10 @@ Activation publishes `modules/counter/value`; unload removes it.
 Invalid input and overflow preserve the value. Each factory construction owns
 fresh state. Rustdoc shows the public factory/provider usage.
 
+The `counter` cdylib example exports those same operations through `rv_module!`,
+declaring the passive `counter` schema 1 identity. A boot configuration mounts
+its `value` child wherever selected; no counter implementation is linked into
+the hosted server.
+
 The [server walkthrough](../../apps/server/README.md) exercises live activation
 and unload through ordinary Resource requests.

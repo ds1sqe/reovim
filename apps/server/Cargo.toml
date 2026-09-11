@@ -45,7 +45,7 @@ required-features = ["std"]
 [lints]
 workspace = true
 
-[dependencies.reovim-module-counter]
+[dev-dependencies.reovim-module-counter]
 path = "../../modules/counter"
 version = "=0.16.0-dev"
 
@@ -58,6 +58,6 @@ path = "../../host/service"
 version = "=0.16.0-dev"
 optional = true
 
-[dependencies.reovim-module-editing]
+[dev-dependencies.reovim-module-editing]
 path = "../../modules/editing"
 version = "=0.16.0-dev"

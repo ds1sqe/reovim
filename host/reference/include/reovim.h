@@ -54,6 +54,10 @@ struct rv_module {
     size_t exports;
     struct rv_failure (*describe)(const void *, size_t, struct rv_resource_export *);
     struct rv_pending (*request)(void *, size_t, const struct rv_request *);
+    /* Passive catalog identity and requirements; no construction required. */
+    struct rv_contract identity;
+    const struct rv_contract *dependencies;
+    size_t dependency_count;
 };
 
 /* Experimental module ABI 0.1.0. Kind: Resource=1, Model=2.

@@ -1,0 +1,27 @@
+[package]
+name = "reovim-module-dump"
+workspace = "../../product"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies.reovim-kernel-interface]
+path = "../../kernel/interface"
+
+[lints]
+workspace = true
+
+[dependencies.reovim-module]
+path = "../../lib/module"
+
+[[example]]
+name = "dump"
+crate-type = ["cdylib"]
+
+[dev-dependencies.reovim-kernel-runtime]
+path = "../../kernel/runtime"
+
+[dev-dependencies.reovim-host-reference]
+path = "../../host/reference"

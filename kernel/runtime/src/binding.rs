@@ -19,6 +19,27 @@ pub struct Binding {
 }
 
 impl Binding {
+    /// Resolves an assembly identity through this binding's granted namespace.
+    /// Modules receive Connection identities instead of these registry keys.
+    /// # Errors
+    /// Rejects closed bindings, invalid paths and inaccessible resources.
+    pub fn resource(&self, path: &str) -> Result<ResourceId, Error> {
+        let shared = self.shared.borrow();
+        let scope = self.scope.borrow();
+        if scope.closed {
+            return Err(Error::CLOSED);
+        }
+        crate::namespace::validate(path, shared.limits.path_bytes)?;
+        let key = path
+            .split('/')
+            .filter(|name| !name.is_empty())
+            .try_fold(scope.root, |parent, name| {
+                scope.child(&shared, parent, name)
+            })?;
+        scope.require_visible(&shared, key)?;
+        Ok(ResourceId(key))
+    }
+
     /// Resolves a publication name beneath this namespace's owned root.
     /// An alias names another owner's subtree and cannot receive publications.
     /// # Errors
@@ -251,7 +272,7 @@ impl Runtime {
         Ok(id)
     }
 
-    fn attach_binding(&mut self, binding: &Binding) {
+    pub(super) fn attach_binding(&mut self, binding: &Binding) {
         self.modules.last_mut().expect("adopted module").binding =
             Some(binding.clone());
     }

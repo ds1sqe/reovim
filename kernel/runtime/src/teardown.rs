@@ -28,8 +28,27 @@ impl Runtime {
             return Err(Error::BUSY);
         }
         self.close_client_modules(owner)?;
+        self.retire_catalogs(root)?;
         self.retire_providers(root)?;
         self.retire_names(owner, root)
+    }
+
+    fn retire_catalogs(&self, root: u64) -> Result<(), Error> {
+        let shared = self.shared.borrow();
+        let catalogs: Vec<_> = shared
+            .entries
+            .iter()
+            .filter(|entry| shared.descends(entry.key, root))
+            .filter_map(|entry| match &entry.kind {
+                Kind::Catalog(catalog) => Some((entry.key, catalog.clone())),
+                _ => None,
+            })
+            .collect();
+        drop(shared);
+        for (key, catalog) in catalogs {
+            self.withdraw_catalog(key, &catalog)?;
+        }
+        Ok(())
     }
 
     fn retire_providers(&mut self, root: u64) -> Result<(), Error> {

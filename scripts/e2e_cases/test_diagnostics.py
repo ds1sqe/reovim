@@ -5,8 +5,9 @@ class Diagnostics(Scenario):
     def test_transitions_cursor_and_responsive_root(self):
         dmesg = self.load_command("dmesg", "dmesg", imports="kernel/log")
         close_command = self.load_command("close", "close")
-        module = self.activate("editing")
-        initial = self.call("write", "models/heading", "heading.initial", "1",
+        module = self.call("write", "catalog/editing",
+                           "kernel.module.activate", "1").resources[0]
+        initial = self.call("write", "editing/heading", "heading.initial", "1",
                             b"# diagnostic source".hex())
         buffer, _ = initial.resources
         self.call("write", buffer, "heading.replace", "1",
