@@ -1,23 +1,46 @@
-//! Bounded native families and immutable in-memory Resource Access.
-//!
-//! Native states and schemas are public for concrete Domain/Representation
-//! providers. Adapter storage and request ownership remain private. The
-//! reference profile permits one open and one initial observation per Access;
-//! Buffer edits do not publish changes back to this immutable source.
-
 #![no_std]
+#![forbid(unsafe_code)]
+//! Immutable sources and public native values for the reference models.
 
 extern crate alloc;
 
-mod bytes;
-mod keyed;
-mod memory;
-mod native;
-pub mod profile;
+use alloc::{boxed::Box, collections::BTreeMap, rc::Rc, vec::Vec};
+use reovim_kernel_interface::provider::{
+    Permissions, ProviderReply, ResourceOps, ResourceProvider, Surface,
+};
+use reovim_kernel_interface::{Contract, Error, Message, ResourceId};
 
-pub use bytes::{ByteModel, ByteState};
-pub use keyed::{Key, KeyedModel, KeyedState};
-pub use memory::{MemoryResource, MemoryResourceError};
+pub struct Bytes(pub Vec<u8>);
+pub struct Keys(pub BTreeMap<u64, bool>);
 
-/// Maximum source payload admitted by the bounded reference profile.
-pub const MAX_SOURCE_BYTES: u64 = 64 * 1024;
+#[must_use]
+pub fn memory(data: &[u8]) -> ResourceProvider {
+    ResourceProvider::new(
+        Bytes(data.to_vec()),
+        ResourceOps { unload: None, read: read_memory, write: unsupported },
+        Box::new([Surface {
+            contract: Contract::new("resource.bytes", 1),
+            methods: Permissions::READ,
+            input: Box::new([]),
+            output: Box::new([]),
+        }]),
+        Rc::new(()),
+    )
+}
+
+fn read_memory(
+    data: &mut Bytes,
+    _: ResourceId,
+    input: Message,
+) -> ProviderReply {
+    let result = if input.data.is_empty() {
+        Ok(Message::new(input.contract, &data.0))
+    } else {
+        Err(Error::INVALID)
+    };
+    Box::pin(async move { result })
+}
+
+fn unsupported(_: &mut Bytes, _: ResourceId, _: Message) -> ProviderReply {
+    Box::pin(async { Err(Error::UNSUPPORTED) })
+}

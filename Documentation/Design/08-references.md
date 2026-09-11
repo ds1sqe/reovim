@@ -60,18 +60,19 @@ inspected is not the transport carrying Reovim's own service requests.
 
 ## Existing code
 
-These are inspected behaviors, not proof that the new Resource APIs exist:
+Current implementation evidence is deliberately narrower than this design:
 
-- [Local access tests](../../resource/local/tests/access.rs) include
-  empty_native_source_is_present_not_unavailable. Valid empty native state is
-  observable; this is not mmap or a complete scratch create/edit workflow.
-- [Edit installation](../../kernel/core/src/buffer/edit.rs) and
-  [History installation](../../kernel/core/src/buffer/history/install.rs)
-  update currentness and state under the same mutable Buffer authority.
-  This supports the one-authority design; it is not a measured lock-cost claim.
-- [Diagnostics](../../kernel/runtime/src/diagnostics.rs) has independent
-  next_record readers and bounded health reporting. Reuse the canonical stream;
-  this is not an implemented live log Resource/Buffer adapter.
+- [Resource journeys](../../apps/server/tests/resources.rs) exercise dynamic
+  registration, namespace isolation, recovery and two distinct state models.
+- [Core installation](../../kernel/core/src/lib.rs) changes immutable state
+  and History under one authority. This is not a measured lock-cost claim.
+- [Native loading](../../apps/server/tests/native.rs) builds a C Resource
+  provider after Runtime starts and invokes it through the common API.
+  [Native models](../../apps/server/tests/native_model.rs) exercise edit/Undo;
+  [C callers](../../apps/server/tests/c_caller.rs) use the caller table.
+  Complete lifecycle and compatibility conformance remain incomplete.
+- [Diagnostics](../../kernel/runtime/src/diagnostics.rs) records bounded
+  request transitions. It is not yet a live log Resource/Buffer adapter.
 
 A log Resource must preserve stream identity, visible gaps, redaction and
 independent bounded readers. It must not make an unbounded shadow copy or

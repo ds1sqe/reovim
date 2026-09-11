@@ -7,8 +7,6 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Bounded standard and deterministic Reovim Host adapters"
-readme = false
 publish = false
 
 [features]
@@ -21,3 +19,7 @@ version = "=0.16.0-dev"
 
 [lints]
 workspace = true
+
+[dependencies.reovim-sdk]
+path = "../../sdk/rust"
+version = "=0.16.0-dev"

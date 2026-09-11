@@ -123,6 +123,14 @@ idempotent for that lifetime; stale references never close replacement subjects.
 Releasing a descriptor or caller view leaves shared state alive. Buffer close
 deletes no backing and stops no independently owned source.
 
+The initial `kernel.buffer.close` v1 profile writes little-endian revision:u64
+followed by policy:u8 (0 = RejectModified, 1 = DiscardLocal), with one reference
+to the expected Buffer. The creating caller scope owns shared close; ordinary
+write permission alone does not transfer that authority. Retained work can
+return busy before teardown. Closed identity metadata permits idempotent close
+without retaining model code. Current unbound Buffers require DiscardLocal;
+publication must establish the evidence for RejectModified success.
+
 Selected data is owned or read-leased; a revision alone retains nothing.
 Sparse/partial residency is normal. Borrowed inputs last for the call; queued
 work captures needed input before handoff. Caller input stays unchanged;

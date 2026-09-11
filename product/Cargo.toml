@@ -5,12 +5,11 @@ members = [
     "../domain/basic",
     "../host/reference",
     "../kernel/core",
-    "../kernel/foundation",
     "../kernel/interface",
     "../kernel/runtime",
     "../representation/basic",
     "../resource/local",
-    "../tests/foundation-public-consumer",
+    "../sdk/rust",
     "../tests/kernel-interface-public-consumer",
 ]
 default-members = [
@@ -18,12 +17,11 @@ default-members = [
     "../domain/basic",
     "../host/reference",
     "../kernel/core",
-    "../kernel/foundation",
     "../kernel/interface",
     "../kernel/runtime",
     "../representation/basic",
     "../resource/local",
-    "../tests/foundation-public-consumer",
+    "../sdk/rust",
     "../tests/kernel-interface-public-consumer",
 ]
 
@@ -34,11 +32,10 @@ rust-version = "1.92"
 authors = ["ds1sqe(dukim) <ds1sqe@mensakorea.org>"]
 license = "AGPL-3.0-only"
 repository = "https://github.com/ds1sqe/reovim"
-homepage = "https://github.com/ds1sqe/reovim"
 
 [workspace.lints.rust]
 warnings = "deny"
-unsafe_code = "forbid"
+unsafe_code = "deny"
 
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }

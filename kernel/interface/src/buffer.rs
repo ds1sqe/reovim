@@ -1,216 +1,226 @@
-//! Domain-neutral Buffer identity and state stamps.
+//! Buffer metadata and same-build immutable model preparation.
 
-use crate::lifecycle::LifecycleIdentity;
-use crate::resource::ResourceSnapshotStamp;
+use alloc::{boxed::Box, rc::Rc, vec::Vec};
+use core::{any::Any, future::Future, pin::Pin};
 
-pub mod bounds;
-pub mod carrier;
-pub mod history;
-pub mod plan;
+use crate::{Contract, Error, Message, ResourceId};
 
-pub use history::{BufferHistoryEdge, BufferHistoryEdgeError};
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BufferState {
+    pub buffer: ResourceId,
+    pub revision: u64,
+}
 
-/// Stable opaque identity of one Buffer working context.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct BufferIdentity(u128);
+/// Core's implementation boundary, selected by assembly rather than Runtime.
+pub trait Authority {
+    fn state(&self) -> State;
+    fn revision(&self) -> u64;
+    fn node(&self) -> usize;
+    fn children(&self) -> Vec<usize>;
+    /// # Errors
+    /// Rejection returns the candidate for destruction outside authority.
+    fn install(
+        &mut self,
+        expected: u64,
+        candidate: State,
+    ) -> Result<(), (Error, State)>;
+    /// # Errors
+    /// Rejects stale state or an unavailable parent/child without mutation.
+    fn restore(
+        &mut self,
+        expected: u64,
+        undo: bool,
+        child: Option<usize>,
+    ) -> Result<(), Error>;
+}
 
-impl BufferIdentity {
-    /// Constructs an authority-supplied Buffer identity.
+pub type CoreFactory =
+    fn(State, usize, u64) -> Result<Box<dyn Authority>, (Error, State)>;
+
+/// A copied semantic observation; metadata owns no Buffer or History lease.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Observation {
+    pub state: BufferState,
+    pub history: ResourceId,
+    pub node: u64,
+    pub value: Message,
+}
+
+/// Immutable provider data. Runtime pins the selected implementation in it.
+#[derive(Clone)]
+pub struct State {
+    value: Rc<dyn Any>,
+    owner: Option<Rc<dyn Any>>,
+    pub cost: u64,
+}
+
+impl State {
     #[must_use]
-    pub const fn new(value: u128) -> Self {
-        Self(value)
+    pub fn new<T: 'static>(value: T, cost: u64) -> Self {
+        Self { value: Rc::new(value), owner: None, cost }
     }
 
-    /// Returns the opaque identity scalar.
     #[must_use]
-    pub const fn value(self) -> u128 {
-        self.0
+    pub fn get<T: 'static>(&self) -> Option<&T> {
+        self.value.downcast_ref()
+    }
+
+    /// Called by the preparation owner before transferring state to Core.
+    pub fn retain(&mut self, owner: Rc<dyn Any>) {
+        self.owner = Some(owner);
     }
 }
 
-/// Monotonic local version of one Buffer incarnation.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct BufferVersion(u64);
+pub type StateReply = Pin<Box<dyn Future<Output = Result<State, Error>>>>;
 
-impl BufferVersion {
-    /// Initial version before any local Transaction is accepted.
-    pub const INITIAL: Self = Self(0);
+/// Providers prepare outside Core. A candidate cannot mutate installed state.
+pub struct ModelOps<Context> {
+    /// Runs only after retained states/work drain, outside registry guards.
+    pub unload: Option<crate::provider::Unload<Context>>,
+    pub initialize: fn(&mut Context, Message) -> StateReply,
+    pub prepare: fn(&mut Context, &State, Message) -> StateReply,
+    pub observe: fn(&mut Context, &State) -> Result<Message, Error>,
+}
 
-    /// Constructs an authority-supplied local Buffer version.
-    #[must_use]
-    pub const fn new(value: u64) -> Self {
-        Self(value)
+trait Dispatch {
+    fn unload(&mut self) -> Result<(), Error>;
+    fn initialize(&mut self, input: Message) -> StateReply;
+    fn prepare(&mut self, state: &State, input: Message) -> StateReply;
+    fn observe(&mut self, state: &State) -> Result<Message, Error>;
+}
+
+struct Implementation<Context> {
+    context: Context,
+    operations: ModelOps<Context>,
+}
+
+impl<Context> Dispatch for Implementation<Context> {
+    fn unload(&mut self) -> Result<(), Error> {
+        self.operations
+            .unload
+            .map_or(Ok(()), |unload| unload(&mut self.context))
     }
 
-    /// Returns the local version scalar.
-    #[must_use]
-    pub const fn value(self) -> u64 {
-        self.0
+    fn initialize(&mut self, input: Message) -> StateReply {
+        (self.operations.initialize)(&mut self.context, input)
+    }
+    fn prepare(&mut self, state: &State, input: Message) -> StateReply {
+        (self.operations.prepare)(&mut self.context, state, input)
+    }
+
+    fn observe(&mut self, state: &State) -> Result<Message, Error> {
+        (self.operations.observe)(&mut self.context, state)
     }
 }
 
-/// Exact opened lifetime and generation of one Buffer identity.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct BufferIncarnationStamp {
-    buffer: BufferIdentity,
-    lifecycle: LifecycleIdentity,
+/// Runtime can accept a new model without changing its compiled type.
+pub struct ModelProvider {
+    pub create: Contract,
+    pub read: Contract,
+    pub edit: Contract,
+    implementation: Box<dyn Dispatch>,
+    _code: Rc<dyn Any>,
 }
 
-impl BufferIncarnationStamp {
-    /// Binds a Buffer identity to one lifecycle incarnation and generation.
+impl ModelProvider {
     #[must_use]
-    pub const fn new(
-        buffer: BufferIdentity,
-        lifecycle: LifecycleIdentity,
+    pub fn new<Context: 'static>(
+        context: Context,
+        operations: ModelOps<Context>,
+        create: Contract,
+        read: Contract,
+        edit: Contract,
+        code: Rc<dyn Any>,
     ) -> Self {
-        Self { buffer, lifecycle }
+        Self {
+            create,
+            read,
+            edit,
+            implementation: Box::new(Implementation { context, operations }),
+            _code: code,
+        }
     }
 
-    /// Returns the stable Buffer identity.
-    #[must_use]
-    pub const fn buffer(self) -> BufferIdentity {
-        self.buffer
+    /// # Errors
+    /// Busy preserves an active model; success permits context destruction.
+    pub fn unload(&mut self) -> Result<(), Error> {
+        self.implementation.unload()
     }
 
-    /// Returns the Buffer lifecycle identity.
-    #[must_use]
-    pub const fn lifecycle(self) -> LifecycleIdentity {
-        self.lifecycle
+    pub fn initialize(&mut self, input: Message) -> StateReply {
+        self.implementation.initialize(input)
     }
 
-    /// Reports whether two stamps name one Buffer incarnation.
-    #[must_use]
-    pub const fn same_incarnation(self, other: Self) -> bool {
-        self.buffer.value() == other.buffer.value()
-            && self.lifecycle.same_incarnation(other.lifecycle)
+    pub fn prepare(&mut self, state: &State, input: Message) -> StateReply {
+        self.implementation.prepare(state, input)
     }
 
-    /// Reports whether two stamps name one complete Buffer generation.
-    #[must_use]
-    pub const fn same_generation(self, other: Self) -> bool {
-        self.buffer.value() == other.buffer.value()
-            && self.lifecycle.same_generation(other.lifecycle)
-    }
-}
-
-/// Requested movement through the Buffer's authoritative History.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BufferHistoryDirection {
-    /// Restore the current node's parent.
-    Undo,
-    /// Restore a selected child of the current node.
-    Redo,
-}
-
-/// Opaque retained-state identity within one History incarnation.
-///
-/// Identity implies neither ordering, depth nor adjacency. Core supplies the
-/// root identity too; no distinguished scalar means root or empty History.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct BufferHistoryNodeIdentity(u128);
-
-impl BufferHistoryNodeIdentity {
-    /// Constructs an authority-supplied node identity, not a tree index.
-    #[must_use]
-    pub const fn new(value: u128) -> Self {
-        Self(value)
-    }
-
-    /// Returns the opaque identity scalar, never an ordinal position.
-    #[must_use]
-    pub const fn value(self) -> u128 {
-        self.0
+    /// # Errors
+    /// Reports unsupported state or failed semantic interpretation.
+    pub fn observe(&mut self, state: &State) -> Result<Message, Error> {
+        self.implementation.observe(state)
     }
 }
 
-/// Exact History incarnation, generation, and selected node.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct BufferHistoryStamp {
-    lifecycle: LifecycleIdentity,
-    node: BufferHistoryNodeIdentity,
+/// Adds exact currentness to a component-owned semantic edit.
+#[must_use]
+pub fn edit(expected: BufferState, mut input: Message) -> Message {
+    let mut data = Vec::with_capacity(8 + input.data.len());
+    data.extend_from_slice(&expected.revision.to_le_bytes());
+    data.extend_from_slice(&input.data);
+    input.data = data.into();
+    input.resources = Box::new([expected.buffer]);
+    input
 }
 
-impl BufferHistoryStamp {
-    /// Constructs one observed History state.
-    #[must_use]
-    pub const fn new(
-        lifecycle: LifecycleIdentity,
-        node: BufferHistoryNodeIdentity,
-    ) -> Self {
-        Self { lifecycle, node }
+/// Decodes the common observation prefix and its borrowed references.
+/// # Errors
+/// Rejects malformed observations without guessing another schema.
+pub fn observation(mut reply: Message) -> Result<Observation, Error> {
+    if reply.data.len() < 16 || reply.resources.len() != 2 {
+        return Err(Error::INVALID);
     }
-
-    /// Returns the History lifecycle identity.
-    #[must_use]
-    pub const fn lifecycle(self) -> LifecycleIdentity {
-        self.lifecycle
-    }
-
-    /// Returns the selected History node, independent of Buffer version.
-    #[must_use]
-    pub const fn node(self) -> BufferHistoryNodeIdentity {
-        self.node
-    }
-
-    /// Reports whether two values name the same complete History state.
-    #[must_use]
-    pub const fn same_state(self, other: Self) -> bool {
-        self.lifecycle.same_generation(other.lifecycle)
-            && self.node.value() == other.node.value()
-    }
+    let revision = integer(&reply.data[..8])?;
+    let node = integer(&reply.data[8..16])?;
+    let buffer = reply.resources[0];
+    let history = reply.resources[1];
+    reply.data = reply.data[16..].into();
+    reply.resources = Box::new([]);
+    Ok(Observation {
+        state: BufferState { buffer, revision },
+        history,
+        node,
+        value: reply,
+    })
 }
 
-/// Exact Resource, Buffer, local-version, and History state observed.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct BufferStateStamp {
-    source: ResourceSnapshotStamp,
-    buffer: BufferIncarnationStamp,
-    version: BufferVersion,
-    history: BufferHistoryStamp,
+/// # Errors
+/// Requires exactly one little-endian u64 value.
+pub fn integer(data: &[u8]) -> Result<u64, Error> {
+    data.try_into().map(u64::from_le_bytes).map_err(|_| Error::INVALID)
 }
 
-impl BufferStateStamp {
-    /// Constructs one coherent caller-observed target stamp.
-    #[must_use]
-    pub const fn new(
-        source: ResourceSnapshotStamp,
-        buffer: BufferIncarnationStamp,
-        version: BufferVersion,
-        history: BufferHistoryStamp,
-    ) -> Self {
-        Self { source, buffer, version, history }
-    }
+/// Shared close is separate from releasing one caller's access.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ClosePolicy {
+    RejectModified,
+    DiscardLocal,
+}
 
-    /// Returns the exact base Resource Snapshot.
-    #[must_use]
-    pub const fn source(self) -> ResourceSnapshotStamp {
-        self.source
-    }
-
-    /// Returns the exact Buffer incarnation and generation.
-    #[must_use]
-    pub const fn buffer(self) -> BufferIncarnationStamp {
-        self.buffer
-    }
-
-    /// Returns the observed local Buffer version.
-    #[must_use]
-    pub const fn version(self) -> BufferVersion {
-        self.version
-    }
-
-    /// Returns the observed History state.
-    #[must_use]
-    pub const fn history(self) -> BufferHistoryStamp {
-        self.history
-    }
-
-    /// Reports whether both values name the same exact Buffer target state.
-    #[must_use]
-    pub const fn same_state(self, other: Self) -> bool {
-        self.source.same_snapshot(other.source)
-            && self.buffer.same_generation(other.buffer)
-            && self.version.value() == other.version.value()
-            && self.history.same_state(other.history)
-    }
+/// Requests shared close with exact currentness and explicit loss policy.
+#[must_use = "Await close completion or retain its recovery access"]
+pub fn close(
+    connection: &crate::Connection,
+    expected: BufferState,
+    policy: ClosePolicy,
+) -> crate::access::Reply {
+    let policy = match policy {
+        ClosePolicy::RejectModified => 0,
+        ClosePolicy::DiscardLocal => 1,
+    };
+    let request = edit(
+        expected,
+        Message::new(Contract::new("kernel.buffer.close", 1), &[policy]),
+    );
+    connection.write(expected.buffer, &request)
 }

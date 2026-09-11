@@ -7,91 +7,11 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-homepage.workspace = true
-description = "Portable public contracts for the Reovim kernel"
-readme = false
 publish = false
-include = [
-    "src/bound.rs",
-    "src/buffer.rs",
-    "src/buffer/bounds.rs",
-    "src/buffer/carrier.rs",
-    "src/buffer/plan.rs",
-    "src/cancellation.rs",
-    "src/carrier.rs",
-    "src/clock.rs",
-    "src/contract.rs",
-    "src/diagnostic.rs",
-    "src/diagnostic/destination.rs",
-    "src/diagnostic/shutdown.rs",
-    "src/effect.rs",
-    "src/event.rs",
-    "src/event/admission.rs",
-    "src/event/canonical.rs",
-    "src/event/canonical/grammar.rs",
-    "src/event/counts.rs",
-    "src/event/cursor.rs",
-    "src/event/descriptor.rs",
-    "src/event/identity.rs",
-    "src/event/limits.rs",
-    "src/event/proposal.rs",
-    "src/event/record.rs",
-    "src/event/remediation.rs",
-    "src/event/sequence.rs",
-    "src/event/snapshot.rs",
-    "src/event/snapshot_validation.rs",
-    "src/identity.rs",
-    "src/interaction.rs",
-    "src/interaction/bounds.rs",
-    "src/interaction/delivery.rs",
-    "src/interaction/delivery/intent.rs",
-    "src/interaction/delivery/session.rs",
-    "src/interaction/delivery/update.rs",
-    "src/interaction/descriptor.rs",
-    "src/interaction/identity.rs",
-    "src/interaction/intent.rs",
-    "src/interaction/outcome.rs",
-    "src/interaction/port.rs",
-    "src/interaction/session.rs",
-    "src/interaction/update.rs",
-    "src/lib.rs",
-    "src/lifecycle.rs",
-    "src/operation.rs",
-    "src/output_health.rs",
-    "src/output_health/counters.rs",
-    "src/output_health/record.rs",
-    "src/output_health/snapshot.rs",
-    "src/resource.rs",
-    "src/resource/access.rs",
-    "src/resource/bounds.rs",
-    "src/resource/carrier.rs",
-    "src/resource/capability.rs",
-    "src/resource/delivery.rs",
-    "src/resource/operation.rs",
-    "src/resource/port.rs",
-    "src/semantic.rs",
-    "src/semantic/bounds.rs",
-    "src/semantic/descriptor.rs",
-    "src/semantic/domain.rs",
-    "src/semantic/identity.rs",
-    "src/semantic/intent.rs",
-    "src/semantic/policy.rs",
-    "src/semantic/representation.rs",
-    "src/semantic/stamp.rs",
-]
 
 [features]
 default = []
-
-[dependencies.reovim-foundation]
-path = "../foundation"
-version = "=0.16.0-dev"
-
-[lib]
-path = "src/lib.rs"
-test = false
-doctest = false
-bench = false
+std = []
 
 [lints]
 workspace = true

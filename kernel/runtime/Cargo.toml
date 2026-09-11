@@ -7,16 +7,14 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Bounded editing service orchestration for Reovim"
-readme = false
 publish = false
+
+[features]
+default = []
+std = []
 
 [dependencies.reovim-kernel-interface]
 path = "../interface"
-version = "=0.16.0-dev"
-
-[dependencies.reovim-kernel-core]
-path = "../core"
 version = "=0.16.0-dev"
 
 [lints]

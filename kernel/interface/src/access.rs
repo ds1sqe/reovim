@@ -1,0 +1,170 @@
+use alloc::{boxed::Box, rc::Rc, vec::Vec};
+use core::{
+    fmt,
+    future::{Future, Ready, ready},
+    pin::Pin,
+};
+
+use crate::{Error, ResourceId, namespace::ResourceEntry};
+
+/// Exact, component-owned encoding and reference-slot contract.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Contract {
+    pub name: Box<str>,
+    pub version: u32,
+}
+
+impl Contract {
+    #[must_use]
+    pub fn new(name: &str, version: u32) -> Self {
+        Self { name: name.into(), version }
+    }
+}
+
+/// One complete value. References are translated separately from encoded data.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Message {
+    pub contract: Contract,
+    pub data: Box<[u8]>,
+    pub resources: Box<[ResourceId]>,
+}
+
+impl Message {
+    #[must_use]
+    pub fn new(contract: Contract, data: &[u8]) -> Self {
+        Self { contract, data: data.into(), resources: Box::new([]) }
+    }
+
+    #[must_use]
+    pub fn reference(contract: Contract, resource: ResourceId) -> Self {
+        Self { contract, data: Box::new([]), resources: Box::new([resource]) }
+    }
+}
+
+/// Unknown is not a failure of the effect or permission to replay it.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RequestError {
+    Rejected(Error),
+    Failed(Error),
+    Unknown { cause: Error, recovery: Box<str> },
+}
+
+impl fmt::Display for RequestError {
+    fn fmt(&self, output: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(output, "Resource request: {self:?}")
+    }
+}
+
+impl core::error::Error for RequestError {}
+
+/// An ordinary awaited result; polling observes work owned by Runtime.
+pub type Reply = Pin<Box<dyn Future<Output = Result<Message, RequestError>>>>;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Method {
+    Read,
+    Write,
+}
+
+/// Common adapter boundary. These calls perform no provider execution.
+pub trait Access {
+    /// # Errors
+    /// Rejects a closed or replaced connection.
+    fn root(&self) -> Result<ResourceId, Error>;
+    /// # Errors
+    /// Rejects invalid, unavailable or unauthorized paths.
+    fn resolve_at(
+        &self,
+        parent: ResourceId,
+        path: &str,
+    ) -> Result<ResourceId, Error>;
+    /// # Errors
+    /// Rejects incomplete listings or unavailable access.
+    fn children(&self, parent: ResourceId)
+    -> Result<Vec<ResourceEntry>, Error>;
+    fn request(
+        &self,
+        method: Method,
+        subject: ResourceId,
+        input: &Message,
+    ) -> Reply;
+    /// # Errors
+    /// Busy access retains its outstanding work.
+    fn close(&self, access: ResourceId) -> Result<(), Error>;
+    /// # Errors
+    /// Rejects lost scope or a closed Runtime.
+    fn reconnect(&self) -> Result<Connection, Error>;
+}
+
+/// Granted access to one Runtime; new module surfaces add no fields here.
+#[derive(Clone)]
+pub struct Connection(Rc<dyn Access>);
+
+impl Connection {
+    #[must_use]
+    pub fn new(access: Rc<dyn Access>) -> Self {
+        Self(access)
+    }
+
+    /// # Errors
+    /// Rejects a closed or replaced connection.
+    pub fn root(&self) -> Ready<Result<ResourceId, RequestError>> {
+        ready(self.0.root().map_err(RequestError::Rejected))
+    }
+
+    /// # Errors
+    /// Rejects invalid, unavailable or unauthorized paths.
+    pub fn resolve(
+        &self,
+        path: &str,
+    ) -> Ready<Result<ResourceId, RequestError>> {
+        ready(
+            self.0
+                .root()
+                .and_then(|root| self.0.resolve_at(root, path))
+                .map_err(RequestError::Rejected),
+        )
+    }
+
+    /// # Errors
+    /// Rejects invalid, unavailable or unauthorized paths.
+    pub fn resolve_at(
+        &self,
+        parent: ResourceId,
+        path: &str,
+    ) -> Ready<Result<ResourceId, RequestError>> {
+        ready(self.0.resolve_at(parent, path).map_err(RequestError::Rejected))
+    }
+
+    /// # Errors
+    /// Returns a complete listing or an explicit access/capacity error.
+    pub fn children(
+        &self,
+        parent: ResourceId,
+    ) -> Ready<Result<Vec<ResourceEntry>, RequestError>> {
+        ready(self.0.children(parent).map_err(RequestError::Rejected))
+    }
+
+    #[must_use = "Await the result or retain its recovery access"]
+    pub fn read(&self, subject: ResourceId, input: &Message) -> Reply {
+        self.0.request(Method::Read, subject, input)
+    }
+
+    #[must_use = "Await the result or retain its recovery access"]
+    pub fn write(&self, subject: ResourceId, input: &Message) -> Reply {
+        self.0.request(Method::Write, subject, input)
+    }
+
+    /// # Errors
+    /// Busy access retains its outstanding work; shared data is not closed.
+    pub fn close(&self, access: ResourceId) -> Ready<Result<(), RequestError>> {
+        ready(self.0.close(access).map_err(RequestError::Rejected))
+    }
+
+    /// Reauthorizes the same scope with a fresh namespace and fences old IDs.
+    /// # Errors
+    /// Rejects lost scope or a closed Runtime.
+    pub fn reconnect(&self) -> Result<Self, Error> {
+        self.0.reconnect()
+    }
+}

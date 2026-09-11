@@ -1,263 +1,357 @@
-//! Single-threaded bounded editing service; Core alone installs state.
 #![no_std]
+#![forbid(unsafe_code)]
+//! Resource admission, registered providers and independently driven execution.
 
 extern crate alloc;
 
-pub mod diagnostics;
-mod engine;
-mod history;
+mod access;
+mod closing;
+mod contributions;
+mod driver;
+mod execution;
 mod namespace;
-mod opening;
-mod recovery;
-mod root;
-mod session;
-mod snapshot;
+mod registration;
+mod request;
 
-use alloc::rc::Rc;
-use alloc::vec::Vec;
-use reovim_kernel_core::{Buffer, BufferConfig};
-use reovim_kernel_interface::interaction::root::{RootLimits, RootOpenRequest};
-use reovim_kernel_interface::lifecycle::{LifecycleIdentity, LifecycleState};
-use reovim_kernel_interface::resource::operation::{
-    ResourceCloseRequest, ResourceObservationRequest, ResourceOpenRequest,
-};
-use reovim_kernel_interface::resource::port::ResourceAccessPort;
-use reovim_kernel_interface::resource::state::ResourceStateModel;
-use reovim_kernel_interface::semantic::descriptor::{
-    DomainPolicyDescriptor, RepresentationPolicyDescriptor,
-};
-use reovim_kernel_interface::semantic::domain::DomainPolicyPort;
-use reovim_kernel_interface::semantic::representation::RepresentationPolicyPort;
-use reovim_kernel_interface::semantic::snapshot::{
-    RepresentationSnapshotDescriptor, RepresentationSnapshotPort,
-};
+pub mod diagnostics;
 
-pub use session::{ClientBinding, Session};
+use alloc::{boxed::Box, collections::VecDeque, rc::Rc, vec::Vec};
+use core::{cell::RefCell, task::Context};
+mod sequence;
+use reovim_kernel_interface::buffer::{Authority, CoreFactory, ModelProvider};
+use reovim_kernel_interface::provider::{Permissions, ResourceProvider};
+use reovim_kernel_interface::{Connection, Error, ResourceId};
+use sequence::Sequence;
 
-/// Explicit reservations and owner identities for one selected Resource.
-#[derive(Clone, Copy, Debug)]
-pub struct RuntimeConfig {
-    /// Root lifecycle selected by assembly.
-    pub owner: LifecycleIdentity,
-    /// Client, request ledger and per-tick work limits.
-    pub limits: RootLimits,
-    /// Core identity and native-state reservations.
-    pub buffer: BufferConfig,
+use diagnostics::{Event, Stage};
+use namespace::{Entry, Kind, Scope};
+use request::Record;
+
+/// Finite reservations; pressure rejects before admitting another effect.
+#[derive(Clone, Copy)]
+pub struct Limits {
+    pub resources: usize,
+    pub requests: usize,
+    pub callers: usize,
+    pub message_bytes: usize,
+    pub path_bytes: usize,
+    pub history_nodes: usize,
+    pub state_bytes: u64,
+    pub events: usize,
 }
 
-/// Construction/progress failure with no fabricated editing acceptance.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum RuntimeError {
-    /// Supplied selections or zero reservations are incompatible.
-    Configuration,
-    /// A reservation cannot be represented or allocated.
-    Capacity,
-    /// A provider violated the selected contract.
-    Provider,
-}
-
-/// Assembly-owned selected implementations, with no global discovery.
-pub struct Providers<A, M, D, R, S> {
-    /// Selected Resource Access adapter.
-    pub resource: A,
-    /// Native immutable working-state model.
-    pub model: M,
-    /// Semantic validation policy.
-    pub domain: D,
-    /// Semantic-to-native lowering policy.
-    pub representation: R,
-    /// Native-state semantic snapshot producer.
-    pub snapshot: S,
-}
-
-/// Native region and release requests selected outside neutral mechanisms.
-pub struct ResourceRequests {
-    /// Native source selection, never supplied by a Client open request.
-    pub open: ResourceOpenRequest,
-    /// Initial observation, retained until actual open readiness.
-    pub observation: ResourceObservationRequest,
-    /// Matching Resource lifetime close request.
-    pub close: ResourceCloseRequest,
-}
-
-/// Selected providers; no registry or concrete domain enters the Kernel.
-pub struct Runtime<A, M, D, R, S>
-where
-    M: ResourceStateModel,
-{
-    config: RuntimeConfig,
-    phase: LifecycleState,
-    resource: A,
-    model: M,
-    domain: D,
-    representation: R,
-    snapshot: S,
-    domain_selection: DomainPolicyDescriptor,
-    representation_selection: RepresentationPolicyDescriptor,
-    snapshot_selection: RepresentationSnapshotDescriptor,
-    observation: Option<ResourceObservationRequest>,
-    resource_open: ResourceOpenRequest,
-    resource_close: ResourceCloseRequest,
-    buffer: Option<Buffer<M::State>>,
-    sessions: Vec<Session>,
-    opens: Vec<opening::OpenRecord>,
-    opening: Option<opening::Opening>,
-    telemetry: Rc<diagnostics::Telemetry>,
-    next_session: usize,
-}
-
-impl<A, M, D, R, S> Runtime<A, M, D, R, S>
-where
-    A: ResourceAccessPort,
-    M: ResourceStateModel,
-    D: DomainPolicyPort<State = M::State>,
-    R: RepresentationPolicyPort<State = M::State>,
-    S: RepresentationSnapshotPort<State = M::State>,
-{
-    /// Reports Core-retained native preparation charges, not physical RSS.
-    #[must_use]
-    pub fn retained_native_bytes(
-        &self,
-    ) -> Option<reovim_kernel_interface::bound::CheckedByteCount> {
-        self.buffer.as_ref().map(Buffer::resident_bytes)
+impl Default for Limits {
+    fn default() -> Self {
+        Self {
+            resources: 256,
+            requests: 64,
+            callers: 16,
+            message_bytes: 1024 * 1024,
+            path_bytes: 1024,
+            history_nodes: 256,
+            state_bytes: 32 * 1024 * 1024,
+            events: 256,
+        }
     }
+}
 
-    /// Reserves inert ownership. Native region selection belongs to assembly.
-    ///
+pub use reovim_kernel_interface::driver::Progress;
+
+struct Editing {
+    core: Box<dyn Authority>,
+    model: Rc<RefCell<ModelProvider>>,
+    resource: u64,
+    history: u64,
+    owner: u64,
+}
+
+struct Shared {
+    identity: u64,
+    core: CoreFactory,
+    limits: Limits,
+    ids: Sequence,
+    ready: bool,
+    closing: bool,
+    entries: Vec<Entry>,
+    scopes: Vec<Rc<RefCell<Scope>>>,
+    requests: Vec<Rc<RefCell<Record>>>,
+    events: VecDeque<Event>,
+    event_sequence: Sequence,
+    lost_events: u64,
+    active: Option<u64>,
+}
+
+/// Composition owns this driver. Ordinary consumers receive only Connection.
+pub struct Runtime {
+    shared: Rc<RefCell<Shared>>,
+    cursor: usize,
+}
+
+impl Runtime {
     /// # Errors
-    /// Returns incompatible selections or unavailable bounded storage.
+    /// Rejects unusable bounds or unavailable reservation storage.
     pub fn new(
-        config: RuntimeConfig,
-        providers: Providers<A, M, D, R, S>,
-        requests: ResourceRequests,
-        clients: Vec<ClientBinding>,
-        telemetry: Rc<diagnostics::Telemetry>,
-    ) -> Result<Self, RuntimeError> {
-        let Providers { resource, model, domain, representation, snapshot } =
-            providers;
-        validate_config(&config, &model, &domain, &representation, &snapshot)?;
-        if requests.open.resource() != config.buffer.source.access().resource()
-            || requests.open.operation().adapter()
-                != resource.descriptor().adapter()
-            || requests.observation.target().access()
-                != config.buffer.source.access()
-            || requests.observation.operation().adapter()
-                != resource.descriptor().adapter()
-            || requests.close.operation().adapter()
-                != resource.descriptor().adapter()
+        identity: u64,
+        limits: Limits,
+        core: CoreFactory,
+    ) -> Result<Self, Error> {
+        if identity == 0
+            || limits.resources < 3
+            || limits.requests == 0
+            || limits.callers == 0
+            || limits.message_bytes == 0
+            || limits.path_bytes == 0
+            || limits.history_nodes == 0
+            || limits.events == 0
         {
-            return Err(RuntimeError::Configuration);
+            return Err(Error::INVALID);
         }
-        if clients.is_empty()
-            || clients.len() > capacity(config.limits.clients.value())?
-        {
-            return Err(RuntimeError::Configuration);
-        }
-        let mut sessions = reserved(clients.len())?;
-        for binding in clients {
-            validate_client(&config, &binding, snapshot.descriptor())?;
-            sessions.push(Session::new(
-                binding,
-                namespace::Namespace::new(sessions.len())?,
-                model.plan_descriptor().clone(),
-                Rc::clone(&telemetry),
-            )?);
-        }
+        let mut entries = reserve(limits.resources)?;
+        entries.push(Entry::directory(1, 1, ""));
+        entries.push(Entry::directory(2, 1, "requests"));
+        entries.push(Entry::directory(3, 1, "buffers"));
+        let mut events = VecDeque::new();
+        events.try_reserve_exact(limits.events).map_err(|_| Error::PRESSURE)?;
         Ok(Self {
-            config,
-            phase: LifecycleState::Constructed,
-            resource,
-            model,
-            domain_selection: domain.descriptor().clone(),
-            representation_selection: representation.descriptor().clone(),
-            snapshot_selection: snapshot.descriptor().clone(),
-            domain,
-            representation,
-            snapshot,
-            observation: Some(requests.observation),
-            resource_open: requests.open,
-            resource_close: requests.close,
-            buffer: None,
-            sessions,
-            opens: reserved(capacity(config.limits.opens.value())?)?,
-            opening: None,
-            telemetry,
-            next_session: 0,
+            shared: Rc::new(RefCell::new(Shared {
+                identity,
+                core,
+                limits,
+                ids: Sequence::after(3),
+                ready: false,
+                closing: false,
+                entries,
+                scopes: reserve(limits.callers)?,
+                requests: reserve(limits.requests)?,
+                events,
+                event_sequence: Sequence::default(),
+                lost_events: 0,
+                active: None,
+            })),
+            cursor: 0,
         })
     }
 
-    fn open_index(&self, request: &RootOpenRequest) -> Option<usize> {
-        self.opens.iter().position(|record| {
-            record.request.client == request.client
-                && record.request.request == request.request
-        })
+    /// # Errors
+    /// A closing Runtime cannot restart.
+    pub fn start(&mut self) -> Result<(), Error> {
+        let mut shared = self.shared.borrow_mut();
+        if shared.closing {
+            return Err(Error::CLOSED);
+        }
+        shared.ready = true;
+        Ok(())
     }
 
-    fn providers_current(&self) -> bool {
-        self.model.binding() == self.config.buffer.model
-            && *self.domain.descriptor() == self.domain_selection
-            && *self.representation.descriptor()
-                == self.representation_selection
+    /// Resolves an owner-namespace identity for composition grants.
+    /// Caller code uses Connection lookup and receives its own scoped IDs.
+    /// # Errors
+    /// Rejects invalid or unavailable paths without executing providers.
+    pub fn resource(&self, path: &str) -> Result<ResourceId, Error> {
+        self.shared.borrow().path(1, path).map(ResourceId)
+    }
+
+    /// Register a live provider; failure returns its unchanged ownership.
+    /// # Errors
+    /// Rejects duplicate names, closing state or exhausted capacity.
+    pub fn register(
+        &mut self,
+        path: &str,
+        provider: ResourceProvider,
+    ) -> Result<ResourceId, (Error, ResourceProvider)> {
+        let validation =
+            self.shared.borrow().check_registration(path).and_then(|()| {
+                registration::resource(&provider, self.shared.borrow().limits)
+            });
+        if let Err(error) = validation {
+            return Err((error, provider));
+        }
+        let provider = Rc::new(RefCell::new(provider));
+        let key =
+            self.shared.borrow_mut().insert(path, Kind::Provider(provider));
+        Ok(ResourceId(key))
+    }
+
+    /// # Errors
+    /// Rejects incompatible names or capacity before taking model ownership.
+    pub fn register_model(
+        &mut self,
+        path: &str,
+        provider: ModelProvider,
+    ) -> Result<ResourceId, (Error, Box<ModelProvider>)> {
+        let validation =
+            self.shared.borrow().check_registration(path).and_then(|()| {
+                registration::model(&provider, self.shared.borrow().limits)
+            });
+        if let Err(error) = validation {
+            return Err((error, Box::new(provider)));
+        }
+        let provider = Rc::new(RefCell::new(provider));
+        let key = self.shared.borrow_mut().insert(path, Kind::Model(provider));
+        Ok(ResourceId(key))
+    }
+
+    /// # Errors
+    /// Busy leaves the live provider intact while work or model state needs it.
+    pub fn unregister(
+        &mut self,
+        registration: ResourceId,
+    ) -> Result<(), Error> {
+        self.unregister_contributions(&[registration])
+    }
+
+    /// Composition grants exact subjects/subtrees, independently per caller.
+    /// # Errors
+    /// Rejects unknown grants, closing state or caller capacity exhaustion.
+    pub fn connect(
+        &mut self,
+        grants: &[(ResourceId, Permissions)],
+    ) -> Result<Connection, Error> {
+        let mut shared = self.shared.borrow_mut();
+        if shared.closing || shared.scopes.len() == shared.limits.callers {
+            return Err(Error::PRESSURE);
+        }
+        for (resource, _) in grants {
+            shared.entry_index(resource.0)?;
+        }
+        let id = shared.id()?;
+        let scope = Rc::new(RefCell::new(Scope::new(id, grants)));
+        shared.scopes.push(Rc::clone(&scope));
+        Ok(access::connection(Rc::clone(&self.shared), scope, 0))
+    }
+
+    /// Runs one bounded work turn; caller Future polling never enters here.
+    /// # Errors
+    /// Reports unavailable startup or an exhausted internal identity space.
+    pub fn advance(
+        &mut self,
+        context: &mut Context<'_>,
+    ) -> Result<Progress, Error> {
+        self.advance_one(context)
+    }
+
+    /// Fences admission. Unobserved results remain recoverable until adopted.
+    /// # Errors
+    /// Busy means requests or results still have owners to settle.
+    pub fn close(&mut self) -> Result<(), Error> {
+        self.shared.borrow_mut().closing = true;
+        close_providers(self)?;
+        if !self.shared.borrow().requests.is_empty() {
+            return Err(Error::BUSY);
+        }
+        let editing = detach_editing(&mut self.shared.borrow_mut())?;
+        drop(editing);
+        close_providers(self)?;
+        if self.shared.borrow().entries.iter().any(|entry| {
+            matches!(entry.kind, Kind::Provider(_) | Kind::Model(_))
+        }) {
+            return Err(Error::BUSY);
+        }
+        let entries = core::mem::take(&mut self.shared.borrow_mut().entries);
+        drop(entries);
+        Ok(())
+    }
+
+    /// Passive copied diagnostics; each reader retains its own sequence.
+    #[must_use]
+    pub fn events(&self, after: u64) -> Vec<Event> {
+        self.shared
+            .borrow()
+            .events
+            .iter()
+            .filter(|event| event.sequence > after)
+            .copied()
+            .collect()
+    }
+
+    #[must_use]
+    pub fn lost_events(&self) -> u64 {
+        self.shared.borrow().lost_events
     }
 }
 
-fn validate_client(
-    config: &RuntimeConfig,
-    binding: &ClientBinding,
-    snapshot: &RepresentationSnapshotDescriptor,
-) -> Result<(), RuntimeError> {
-    use reovim_kernel_interface::interaction::descriptor;
-    let unsupported = descriptor::InteractionCapabilitySupport::Unsupported;
-    let capabilities = binding.session.capabilities();
-    if binding.session.scope().buffer() != config.buffer.incarnation
-        || binding.session.scope().access() != config.buffer.source.access()
-        || binding.attachment.representation() != snapshot.representation()
-        || binding.attachment.coordinate() != snapshot.coordinate()
-        || binding.session.update_contract().schema() != snapshot.output()
-        || capabilities.deltas() != unsupported
-    {
-        return Err(RuntimeError::Configuration);
+impl Shared {
+    fn id(&mut self) -> Result<u64, Error> {
+        self.ids.take().ok_or(Error::PRESSURE)
     }
-    Ok(())
+
+    fn emit(
+        &mut self,
+        request: u64,
+        scope: u64,
+        subject: u64,
+        stage: Stage,
+        parent: Option<u64>,
+    ) {
+        let Some(sequence) = self.event_sequence.take() else {
+            self.lost_events = self.lost_events.saturating_add(1);
+            return;
+        };
+        if self.events.len() == self.limits.events {
+            self.events.pop_front();
+            self.lost_events = self.lost_events.saturating_add(1);
+        }
+        self.events.push_back(Event {
+            sequence,
+            request,
+            scope,
+            subject,
+            stage,
+            parent,
+        });
+    }
 }
 
-fn validate_config<M, D, R, S>(
-    config: &RuntimeConfig,
-    model: &M,
-    domain: &D,
-    representation: &R,
-    snapshot: &S,
-) -> Result<(), RuntimeError>
-where
-    M: ResourceStateModel,
-    D: DomainPolicyPort<State = M::State>,
-    R: RepresentationPolicyPort<State = M::State>,
-    S: RepresentationSnapshotPort<State = M::State>,
-{
-    if config.limits.work.value() == 0 || config.limits.opens.value() == 0 {
-        return Err(RuntimeError::Configuration);
-    }
-    let binding = model.binding();
-    if config.buffer.model != binding
-        || *domain.descriptor().state_model() != binding
-        || *representation.descriptor().state_model() != binding
-        || *snapshot.descriptor().state_model() != binding
-        || snapshot.descriptor().representation()
-            != representation.descriptor().stamp()
-        || representation.descriptor().stamp().domain()
-            != domain.descriptor().stamp()
-    {
-        return Err(RuntimeError::Configuration);
-    }
-    Ok(())
-}
-
-fn capacity(value: u64) -> Result<usize, RuntimeError> {
-    usize::try_from(value).map_err(|_| RuntimeError::Capacity)
-}
-
-fn reserved<T>(capacity: usize) -> Result<Vec<T>, RuntimeError> {
+fn reserve<T>(capacity: usize) -> Result<Vec<T>, Error> {
     let mut values = Vec::new();
-    values.try_reserve_exact(capacity).map_err(|_| RuntimeError::Capacity)?;
+    values.try_reserve_exact(capacity).map_err(|_| Error::PRESSURE)?;
     Ok(values)
+}
+
+fn unload(kind: &Kind) -> Result<(), Error> {
+    match kind {
+        Kind::Provider(provider) => provider.borrow_mut().unload(),
+        Kind::Model(model) => model.borrow_mut().unload(),
+        _ => Err(Error::UNSUPPORTED),
+    }
+}
+
+fn detach_editing(shared: &mut Shared) -> Result<Vec<Entry>, Error> {
+    let mut retired = Vec::new();
+    retired
+        .try_reserve_exact(shared.entries.len())
+        .map_err(|_| Error::PRESSURE)?;
+    let mut index = 0;
+    while index < shared.entries.len() {
+        if matches!(
+            shared.entries[index].kind,
+            Kind::Buffer(_) | Kind::History(_)
+        ) {
+            retired.push(shared.entries.remove(index));
+        } else {
+            index += 1;
+        }
+    }
+    Ok(retired)
+}
+
+fn close_providers(runtime: &mut Runtime) -> Result<(), Error> {
+    let providers: Vec<_> = runtime
+        .shared
+        .borrow()
+        .entries
+        .iter()
+        .filter(|entry| {
+            matches!(entry.kind, Kind::Provider(_) | Kind::Model(_))
+        })
+        .map(|entry| ResourceId(entry.key))
+        .collect();
+    for provider in providers {
+        match runtime.unregister(provider) {
+            Ok(()) => (),
+            Err(error) if error == Error::BUSY => (),
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(())
 }

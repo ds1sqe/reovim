@@ -11,21 +11,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "reovim-foundation"
-version = "0.16.0-dev"
-
-[[package]]
-name = "reovim-foundation-public-consumer"
-version = "0.16.0-dev"
-dependencies = [
- "reovim-foundation",
-]
-
-[[package]]
 name = "reovim-host-reference"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-kernel-interface",
+ "reovim-sdk",
 ]
 
 [[package]]
@@ -38,9 +28,6 @@ dependencies = [
 [[package]]
 name = "reovim-kernel-interface"
 version = "0.16.0-dev"
-dependencies = [
- "reovim-foundation",
-]
 
 [[package]]
 name = "reovim-kernel-interface-public-consumer"
@@ -53,7 +40,6 @@ dependencies = [
 name = "reovim-kernel-runtime"
 version = "0.16.0-dev"
 dependencies = [
- "reovim-kernel-core",
  "reovim-kernel-interface",
 ]
 
@@ -74,6 +60,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-sdk"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-kernel-interface",
+]
+
+[[package]]
 name = "reovim-server"
 version = "0.16.0-dev"
 dependencies = [
@@ -81,7 +74,9 @@ dependencies = [
  "reovim-host-reference",
  "reovim-kernel-core",
  "reovim-kernel-interface",
+ "reovim-kernel-interface-public-consumer",
  "reovim-kernel-runtime",
  "reovim-representation-basic",
  "reovim-resource-local",
+ "reovim-sdk",
 ]

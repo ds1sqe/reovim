@@ -16,12 +16,12 @@ close     -> stop admission -> settle owned work -> Stopped
 ```text
 assembly selects and binds implementations
 server/client orchestration -> Interface
-Kernel Runtime -> Core -> Interface -> Foundation
+Kernel implementation (Runtime + Core) -> Interface
+consumer -> language adapter -> C ABI <- implementation adapter
 ```
 
 | Source home | Responsibility |
 | --- | --- |
-| kernel/foundation | Core-only checked arithmetic and value invariants |
 | kernel/interface | Public values, typed tables and provider contracts |
 | kernel/core | Atomic neutral state/History installation |
 | kernel/runtime | Live contexts, admission, execution and lifecycle |
@@ -31,8 +31,9 @@ Kernel Runtime -> Core -> Interface -> Foundation
 | apps/ composition | Construct and bind concrete providers |
 
 Consumers import Interface; composition may import implementations. Each layer
-needs a distinct purpose; do not duplicate public catalogs. Foundation stays
-core-only; portable Kernel/applicable Rust Client code uses `no_std + alloc`.
+needs a distinct purpose; do not duplicate public catalogs. Core is an internal
+authority, not a caller dependency. Small helpers stay private to their owner.
+Portable Kernel/applicable Rust Client code uses `no_std + alloc`.
 
 [Composition](05.1-composition.md) owns construction and provider wiring.
 Runtime's compiled type cannot enumerate dynamically loaded providers.
@@ -58,12 +59,20 @@ pub enum Progress {
 }
 pub struct DriverOps<Context> {
     pub status: fn(context: &Context) -> Lifecycle,
-    pub advance: fn(context: &mut Context) -> Result<Progress, Error>,
+    pub advance: fn(
+        context: &mut Context,
+        wake: &mut core::task::Context<'_>,
+    ) -> Result<Progress, Error>,
     pub close: fn(context: &mut Context) -> Result<(), Error>,
 }
 // Context is private implementation state; the owner pairs it with this table.
 // Ordinary modules receive no driver for Kernel or their owning Runtime.
 ```
+
+The same-build Runtime supplies `Runtime::DRIVER`; hosted assembly passes it
+to the Interface-only execution loop. Its first advance starts a constructed
+owner. Closing advances drain work and retry cleanup; unobserved results keep
+it Closing. This Rust table is not itself a native ABI table.
 
 The owner installs Host wake/readiness sources before serving calls.
 Admission, provider completion and deadlines wake its loop. Arm readiness,

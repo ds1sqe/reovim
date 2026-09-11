@@ -25,7 +25,7 @@ readonly PRODUCT_TARGET_SLOT
 PRODUCT_TARGET_DIR="$ROOT/target/product-contributor/$PRODUCT_TARGET_SLOT"
 readonly PRODUCT_TARGET_DIR
 CHECK_RUSTDOCFLAGS="${RUSTDOCFLAGS:+$RUSTDOCFLAGS }"
-CHECK_RUSTDOCFLAGS+='-D warnings -F unsafe-code'
+CHECK_RUSTDOCFLAGS+='-D warnings -D unsafe-code'
 readonly CHECK_RUSTDOCFLAGS
 
 usage() {
@@ -93,7 +93,7 @@ run_product_checks() {
         cargo clippy --locked --offline \
             --manifest-path "$PRODUCT_MANIFEST" "${packages[@]}" \
             --all-targets --all-features --target "$PRODUCT_TARGET" \
-            --release -- -D warnings -F unsafe-code
+            --release -- -D warnings -D unsafe-code
 
     echo "==> Product rustdoc"
     CARGO_TARGET_DIR="$PRODUCT_TARGET_DIR" \

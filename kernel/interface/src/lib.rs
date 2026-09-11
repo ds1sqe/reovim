@@ -1,27 +1,20 @@
 #![no_std]
-#![forbid(unsafe_code)]
-//! Portable contracts above Reovim Foundation.
-//!
-//! Kernel Interface owns semantic contract values only. Runtime mechanisms,
-//! Host adapters, Event retention, rendering, and Assembly remain outside this
-//! package.
+#![deny(unsafe_code)]
+//! Common Resource access and executable provider contracts.
 
 extern crate alloc;
 
-pub mod bound;
+#[allow(unsafe_code)]
+pub mod abi;
+pub mod access;
 pub mod buffer;
-pub mod cancellation;
-pub mod carrier;
-pub mod clock;
-pub mod contract;
-pub mod diagnostic;
-pub mod effect;
-pub mod event;
-pub mod identity;
-pub mod interaction;
-pub mod lifecycle;
+pub mod driver;
+pub mod error;
 pub mod namespace;
-pub mod operation;
-pub mod output_health;
+pub mod provider;
+pub mod requests;
 pub mod resource;
-pub mod semantic;
+
+pub use access::{Connection, Contract, Message, RequestError};
+pub use error::{Error, ErrorCode};
+pub use resource::ResourceId;

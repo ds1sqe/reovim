@@ -7,7 +7,6 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Runnable local reference for the Reovim editing service"
 publish = false
 
 [features]
@@ -16,10 +15,6 @@ std = ["reovim-host-reference/std"]
 
 [dependencies.reovim-kernel-interface]
 path = "../../kernel/interface"
-version = "=0.16.0-dev"
-
-[dependencies.reovim-kernel-core]
-path = "../../kernel/core"
 version = "=0.16.0-dev"
 
 [dependencies.reovim-kernel-runtime]
@@ -49,3 +44,15 @@ required-features = ["std"]
 
 [lints]
 workspace = true
+
+[dependencies.reovim-kernel-core]
+path = "../../kernel/core"
+version = "=0.16.0-dev"
+
+[dev-dependencies.reovim-kernel-interface-public-consumer]
+path = "../../tests/kernel-interface-public-consumer"
+version = "=0.16.0-dev"
+
+[dependencies.reovim-sdk]
+path = "../../sdk/rust"
+version = "=0.16.0-dev"

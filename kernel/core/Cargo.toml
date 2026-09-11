@@ -7,9 +7,11 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Domain-neutral Buffer authority for Reovim"
-readme = false
 publish = false
+
+[features]
+default = []
+std = []
 
 [dependencies.reovim-kernel-interface]
 path = "../interface"
