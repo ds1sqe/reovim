@@ -9,9 +9,7 @@ use std::task::{Context, Waker};
 
 #[test]
 fn interface_driver_starts_executes_and_retains_results_while_closing() {
-    let mut runtime =
-        Runtime::new(116, Limits::default(), reovim_kernel_core::create)
-            .unwrap();
+    let mut runtime = Runtime::new(116, Limits::default()).unwrap();
     let source = runtime
         .register("source", reovim_resource_local::memory(b"\xffretained"))
         .map_err(|(error, _)| error)
@@ -60,9 +58,7 @@ fn interface_driver_starts_executes_and_retains_results_while_closing() {
 
 #[test]
 fn driver_can_close_an_owner_that_never_started() {
-    let mut runtime =
-        Runtime::new(117, Limits::default(), reovim_kernel_core::create)
-            .unwrap();
+    let mut runtime = Runtime::new(117, Limits::default()).unwrap();
     let driver = Runtime::DRIVER;
     (driver.close)(&mut runtime).unwrap();
     let mut context = Context::from_waker(Waker::noop());

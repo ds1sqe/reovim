@@ -29,16 +29,11 @@ impl Drop for Library {
 }
 #[test]
 fn independent_c_caller_uses_the_kernel_table() {
-    let mut runtime =
-        Runtime::new(83, Limits::default(), reovim_kernel_core::create)
-            .unwrap();
+    let mut runtime = Runtime::new(83, Limits::default()).unwrap();
     runtime.start().unwrap();
     let value = Rc::new(Cell::new(0));
     let resource = runtime
-        .register(
-            "counter",
-            reovim_kernel_interface_public_consumer::counter(Rc::clone(&value)),
-        )
+        .register("counter", reovim_module_counter::provider(Rc::clone(&value)))
         .map_err(|(error, _)| error)
         .unwrap();
     let connection = reovim_sdk::export(

@@ -10,9 +10,7 @@ use std::{path::Path, process::Command};
 #[test]
 #[allow(unsafe_code)]
 fn loads_independent_c_provider_after_runtime_start() {
-    let mut runtime =
-        Runtime::new(71, Limits::default(), reovim_kernel_core::create)
-            .unwrap();
+    let mut runtime = Runtime::new(71, Limits::default()).unwrap();
     runtime.start().unwrap();
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let directory = std::env::temp_dir()
@@ -23,7 +21,7 @@ fn loads_independent_c_provider_after_runtime_start() {
         .args(["-std=c11", "-Wall", "-Wextra", "-Werror", "-shared", "-fPIC"])
         .arg("-I")
         .arg(root.join("host/reference/include"))
-        .arg(root.join("apps/server/tests/native/counter.c"))
+        .arg(root.join("modules/native-counter/counter.c"))
         .arg("-o")
         .arg(&library)
         .output()

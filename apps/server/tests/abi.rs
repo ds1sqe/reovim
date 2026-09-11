@@ -34,15 +34,13 @@ impl Wake for Signal {
 }
 #[test]
 fn caller_abi_preserves_execution_ownership_and_wakes_the_waiter() {
-    let mut runtime =
-        Runtime::new(81, Limits::default(), reovim_kernel_core::create)
-            .unwrap();
+    let mut runtime = Runtime::new(81, Limits::default()).unwrap();
     runtime.start().unwrap();
     let value = Rc::new(Cell::new(0));
     let id = runtime
         .register(
             "modules/counter",
-            reovim_kernel_interface_public_consumer::counter(Rc::clone(&value)),
+            reovim_module_counter::provider(Rc::clone(&value)),
         )
         .map_err(|(error, _)| error)
         .unwrap();
@@ -80,16 +78,11 @@ fn caller_abi_preserves_execution_ownership_and_wakes_the_waiter() {
 }
 #[test]
 fn caller_abi_preserves_unknown_recovery_and_reconnect_fencing() {
-    let mut runtime =
-        Runtime::new(82, Limits::default(), reovim_kernel_core::create)
-            .unwrap();
+    let mut runtime = Runtime::new(82, Limits::default()).unwrap();
     runtime.start().unwrap();
     let value = Rc::new(Cell::new(0));
     let id = runtime
-        .register(
-            "counter",
-            reovim_kernel_interface_public_consumer::counter(Rc::clone(&value)),
-        )
+        .register("counter", reovim_module_counter::provider(Rc::clone(&value)))
         .map_err(|(error, _)| error)
         .unwrap();
     let client = roundtrip(runtime.connect(&[(id, Permissions::ALL)]).unwrap());
@@ -114,6 +107,7 @@ fn caller_abi_preserves_unknown_recovery_and_reconnect_fencing() {
         ),
     )
     .unwrap();
+    next.close(work).into_inner().unwrap();
     let output =
         reovim_kernel_interface::requests::decode(output).unwrap().unwrap();
     assert_eq!(integer(&output.data), Ok(3));

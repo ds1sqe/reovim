@@ -26,7 +26,11 @@ fn build_as(name: &str, label: &str) -> (PathBuf, PathBuf) {
         .args(["-std=c11", "-Wall", "-Wextra", "-Werror", "-shared", "-fPIC"])
         .arg("-I")
         .arg(root.join("host/reference/include"))
-        .arg(root.join(format!("apps/server/tests/native/{name}.c")))
+        .arg(root.join(if name == "forward" {
+            "modules/native-forward/forward.c".into()
+        } else {
+            format!("apps/server/tests/native/{name}.c")
+        }))
         .arg("-o")
         .arg(&library)
         .output()
@@ -41,15 +45,13 @@ fn build_as(name: &str, label: &str) -> (PathBuf, PathBuf) {
 #[test]
 #[allow(unsafe_code)]
 fn native_module_calls_granted_kernel_api_and_keeps_pending_work_owned() {
-    let mut runtime =
-        Runtime::new(109, Limits::default(), reovim_kernel_core::create)
-            .unwrap();
+    let mut runtime = Runtime::new(109, Limits::default()).unwrap();
     runtime.start().unwrap();
     let value = Rc::new(Cell::new(0));
     let counter = runtime
         .register(
-            "counter",
-            reovim_kernel_interface_public_consumer::counter(Rc::clone(&value)),
+            "modules/counter/value",
+            reovim_module_counter::provider(Rc::clone(&value)),
         )
         .map_err(|(error, _)| error)
         .unwrap();
@@ -120,15 +122,13 @@ fn incompatible_native_table_is_rejected_before_context_creation() {
 #[test]
 #[allow(unsafe_code)]
 fn reconnect_keeps_native_wakes_alive_until_child_completion() {
-    let mut runtime =
-        Runtime::new(110, Limits::default(), reovim_kernel_core::create)
-            .unwrap();
+    let mut runtime = Runtime::new(110, Limits::default()).unwrap();
     runtime.start().unwrap();
     let value = Rc::new(Cell::new(0));
     let counter = runtime
         .register(
-            "counter",
-            reovim_kernel_interface_public_consumer::counter(Rc::clone(&value)),
+            "modules/counter/value",
+            reovim_module_counter::provider(Rc::clone(&value)),
         )
         .map_err(|(error, _)| error)
         .unwrap();
@@ -159,7 +159,7 @@ fn reconnect_keeps_native_wakes_alive_until_child_completion() {
     runtime.advance(&mut context).unwrap();
     assert_eq!(value.get(), 7);
     runtime.unregister(forward).unwrap();
-    assert!(recovered.resolve("counter").into_inner().is_ok());
+    assert!(recovered.resolve("modules/counter/value").into_inner().is_ok());
     let requests = recovered.resolve("requests").into_inner().unwrap();
     let retained = recovered.children(requests).into_inner().unwrap();
     let work = retained.first().expect("child result remains recoverable");
@@ -170,6 +170,7 @@ fn reconnect_keeps_native_wakes_alive_until_child_completion() {
     .unwrap()
     .unwrap()
     .unwrap();
+    recovered.close(work.resource).into_inner().unwrap();
     assert_eq!(result.contract, Contract::new("external.counter", 1));
     assert_eq!(integer(&result.data), Ok(7));
     assert_eq!(value.get(), 7); // Recovery does not replay the effect.

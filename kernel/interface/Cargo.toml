@@ -15,3 +15,9 @@ std = []
 
 [lints]
 workspace = true
+
+[dependencies.reovim-bitflags]
+path = "../../lib/bitflags"
+
+[dependencies.reovim-vtable]
+path = "../../lib/vtable"

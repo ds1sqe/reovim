@@ -8,6 +8,9 @@ const NAME: &str = "kernel.request.result";
 
 /// Retrieves the original outcome without repeating its effect.
 ///
+/// Repeated reads retain the same outcome and Resource identities. Close the
+/// work Resource through [`Connection::close`] after adopting its result.
+///
 /// # Errors
 /// Outer errors concern retrieval/decoding; inner errors belong to the work.
 #[allow(clippy::future_not_send)] // Connections are local to one executor.
@@ -56,6 +59,40 @@ pub fn encode(outcome: Result<Message, Error>) -> Result<Message, Error> {
     })
 }
 
+/// Encodes an observed outcome, including an original lost-reply locator.
+///
+/// Tag 2 carries cause:u64 followed by its UTF-8 locator; reference slots carry
+/// the optional cause diagnostic. Tags 0 and 1 retain their settled encodings.
+/// # Errors
+/// Allocation or size exhaustion retains responsibility with the work owner.
+pub fn encode_outcome(
+    outcome: Result<Message, RequestError>,
+) -> Result<Message, Error> {
+    match outcome {
+        Ok(message) => encode(Ok(message)),
+        Err(RequestError::Rejected(error) | RequestError::Failed(error)) => {
+            encode(Err(error))
+        }
+        Err(RequestError::Unknown { cause, recovery }) => {
+            if recovery.is_empty() {
+                return Err(Error::INVALID);
+            }
+            let mut data = Vec::new();
+            let length =
+                recovery.len().checked_add(9).ok_or(Error::PRESSURE)?;
+            data.try_reserve_exact(length).map_err(|_| Error::PRESSURE)?;
+            data.push(2);
+            data.extend_from_slice(&cause.code.0.to_le_bytes());
+            data.extend_from_slice(recovery.as_bytes());
+            Ok(Message {
+                contract: Contract::new(NAME, 1),
+                data: data.into(),
+                resources: cause.id.into_iter().collect(),
+            })
+        }
+    }
+}
+
 /// Decodes the common envelope, keeping retrieval errors outside its value.
 ///
 /// # Errors
@@ -71,8 +108,23 @@ pub fn decode(
         Some(1) => {
             failure(&envelope).map(|error| Err(RequestError::Failed(error)))
         }
+        Some(2) => unknown(&envelope).map(Err),
         _ => Err(Error::INVALID),
     }
+}
+fn unknown(envelope: &Message) -> Result<RequestError, Error> {
+    if envelope.resources.len() > 1 {
+        return Err(Error::INVALID);
+    }
+    let data = envelope.data.get(1..9).ok_or(Error::INVALID)?;
+    let recovery = core::str::from_utf8(&envelope.data[9..])
+        .map_err(|_| Error::INVALID)?;
+    if recovery.is_empty() {
+        return Err(Error::INVALID);
+    }
+    let mut cause = Error::new(integer(data)?);
+    cause.id = envelope.resources.first().copied();
+    Ok(RequestError::Unknown { cause, recovery: recovery.into() })
 }
 fn success(envelope: Message) -> Result<Message, Error> {
     let prefix = envelope.data.get(..13).ok_or(Error::INVALID)?;

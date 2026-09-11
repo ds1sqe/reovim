@@ -11,7 +11,7 @@ publish = false
 
 [features]
 default = []
-std = ["reovim-host-reference/std"]
+std = ["reovim-host-reference/std", "dep:reovim-service", "reovim-service/std"]
 
 [dependencies.reovim-kernel-interface]
 path = "../../kernel/interface"
@@ -45,14 +45,19 @@ required-features = ["std"]
 [lints]
 workspace = true
 
-[dependencies.reovim-kernel-core]
-path = "../../kernel/core"
-version = "=0.16.0-dev"
-
-[dev-dependencies.reovim-kernel-interface-public-consumer]
-path = "../../tests/kernel-interface-public-consumer"
+[dependencies.reovim-module-counter]
+path = "../../modules/counter"
 version = "=0.16.0-dev"
 
 [dependencies.reovim-sdk]
 path = "../../sdk/rust"
+version = "=0.16.0-dev"
+
+[dependencies.reovim-service]
+path = "../../host/service"
+version = "=0.16.0-dev"
+optional = true
+
+[dependencies.reovim-module-editing]
+path = "../../modules/editing"
 version = "=0.16.0-dev"

@@ -15,9 +15,7 @@ fn finish<T>(runtime: &mut Runtime, future: impl Future<Output = T>) -> T {
 #[test]
 #[allow(unsafe_code)]
 fn native_nontext_model_edits_and_undoes_through_the_same_authority() {
-    let mut runtime =
-        Runtime::new(92, Limits::default(), reovim_kernel_core::create)
-            .unwrap();
+    let mut runtime = Runtime::new(92, Limits::default()).unwrap();
     runtime.start().unwrap();
     let (directory, library) = build_model();
     // Fixture uses immutable states and matching native destructors.
@@ -113,7 +111,7 @@ fn build_model() -> (std::path::PathBuf, std::path::PathBuf) {
         .args(["-std=c11", "-Wall", "-Wextra", "-Werror", "-shared", "-fPIC"])
         .arg("-I")
         .arg(root.join("host/reference/include"))
-        .arg(root.join("apps/server/tests/native/keys.c"))
+        .arg(root.join("modules/native-keys/keys.c"))
         .arg("-o")
         .arg(&library)
         .output()

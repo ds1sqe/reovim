@@ -43,12 +43,7 @@ fn closing(
     runtime: &mut Runtime,
     context: &mut Context<'_>,
 ) -> Result<Progress, Error> {
-    // A never-started owner can close without executing ordinary work.
-    let progress = if runtime.shared.borrow().ready {
-        runtime.advance(context)?
-    } else {
-        Progress::Idle
-    };
+    let progress = runtime.advance(context)?;
     match runtime.close() {
         Ok(()) => Ok(Progress::Stopped),
         Err(error) if error == Error::BUSY => Ok(progress),

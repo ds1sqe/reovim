@@ -1,6 +1,6 @@
 //! Linux loader for the synchronous native provider table.
 
-use alloc::{boxed::Box, rc::Rc};
+use alloc::{boxed::Box, rc::Rc, vec::Vec};
 use core::{
     ffi::{c_char, c_int, c_void},
     ptr, slice, str,
@@ -8,7 +8,8 @@ use core::{
 use reovim_kernel_interface::{
     Connection, Contract, Error, Message, ResourceId, abi,
     provider::{
-        Permissions, ProviderReply, ResourceOps, ResourceProvider, Surface,
+        Contribution, Permissions, ProviderReply, ResourceOps,
+        ResourceProvider, Surface,
     },
 };
 use std::{ffi::CString, os::unix::ffi::OsStrExt, path::Path};
@@ -48,7 +49,7 @@ impl Drop for Instance {
 /// Loads a Resource provider through the native ABI.
 ///
 /// # Safety
-/// The artifact must obey module ABI v2 ownership and no-unwind rules.
+/// The artifact must obey module ABI 0.1.0 ownership and no-unwind rules.
 /// Register before calling; destroy only after unload readiness succeeds.
 /// Library constructors execute during loading. Native code is trusted.
 /// # Errors
@@ -75,6 +76,14 @@ unsafe fn resource_with_imports(
     kernel: Option<&Connection>,
 ) -> Result<ResourceProvider, Error> {
     let (table, library) = unsafe { load_table(path)? };
+    unsafe { resource_table(table, library, kernel) }
+}
+
+unsafe fn resource_table(
+    table: abi::Module,
+    library: Rc<Library>,
+    kernel: Option<&Connection>,
+) -> Result<ResourceProvider, Error> {
     if table.kind != abi::RESOURCE
         || table.call.is_none()
         || table.release.is_none()
@@ -85,7 +94,7 @@ unsafe fn resource_with_imports(
     }
     let read = unsafe { contract(table.read_contract)? };
     let write = unsafe { contract(table.edit_contract)? };
-    let context = unsafe { create(&table, kernel)? };
+    let context = unsafe { create(&table, kernel, library.clone())? };
     let instance = Instance { table, context, _library: library.clone() };
     let surfaces = if read == write {
         alloc::vec![surface(read, Permissions::ALL)]
@@ -105,6 +114,52 @@ unsafe fn resource_with_imports(
         surfaces.into_boxed_slice(),
         library,
     ))
+}
+
+/// Loads the contribution kind declared by one native module table.
+/// ```no_run
+/// # fn example() -> Result<(), reovim_kernel_interface::Error> {
+/// let path = std::path::Path::new("/opt/reovim/keys.so");
+/// // The selected artifact is trusted and obeys the native module contract.
+/// let contribution = unsafe {
+///     reovim_host_reference::native::load(path, "models/keys")?
+/// };
+/// // Assembly hands the contribution to its module activation owner.
+/// # Ok(()) }
+/// ```
+/// # Safety
+/// The artifact must obey module ABI 0.1.0 and the ownership, no-unwind and
+/// immutability requirements of its declared Resource or Model kind.
+/// Register before use; retain it until unload readiness succeeds.
+/// # Errors
+/// Rejects unknown kinds, incompatible tables or failed native construction.
+pub unsafe fn load(path: &Path, export: &str) -> Result<Contribution, Error> {
+    unsafe { load_with(path, export, None) }
+}
+
+/// Loads a contribution with explicitly granted caller access.
+/// # Safety
+/// Same artifact/ownership requirements as [`load`]. Native code must retain
+/// the caller ABI connection if it stores imports beyond construction.
+/// # Errors
+/// Reports loader, ABI, contract or native construction failure.
+pub unsafe fn load_with(
+    path: &Path,
+    export: &str,
+    kernel: Option<&Connection>,
+) -> Result<Contribution, Error> {
+    let (table, library) = unsafe { load_table(path)? };
+    match table.kind {
+        abi::RESOURCE => Ok(Contribution::Resource {
+            path: export.into(),
+            provider: unsafe { resource_table(table, library, kernel)? },
+        }),
+        abi::MODEL => Ok(Contribution::Model {
+            path: export.into(),
+            provider: unsafe { model::from_table(table, library, kernel)? },
+        }),
+        _ => Err(Error::UNSUPPORTED),
+    }
 }
 
 fn surface(contract: Contract, methods: Permissions) -> Surface {
@@ -188,14 +243,24 @@ mod model;
 pub use model::load_model;
 
 unsafe fn load_table(path: &Path) -> Result<(abi::Module, Rc<Library>), Error> {
+    let library = unsafe { open(path)? };
+    unsafe { module_table(library) }
+}
+
+unsafe fn open(path: &Path) -> Result<Rc<Library>, Error> {
     let path = CString::new(path.as_os_str().as_bytes())
         .map_err(|_| Error::INVALID)?;
     let handle = unsafe { dlopen(path.as_ptr(), 2) }; // RTLD_NOW, local scope.
     if handle.is_null() {
         return Err(Error::UNAVAILABLE);
     }
-    let library = Rc::new(Library(handle));
-    let symbol = unsafe { dlsym(handle, c"reovim_module_v2".as_ptr()) };
+    Ok(Rc::new(Library(handle)))
+}
+
+unsafe fn module_table(
+    library: Rc<Library>,
+) -> Result<(abi::Module, Rc<Library>), Error> {
+    let symbol = unsafe { dlsym(library.0, c"rv_module_entry".as_ptr()) };
     if symbol.is_null() {
         return Err(Error::UNSUPPORTED);
     }
@@ -206,17 +271,46 @@ unsafe fn load_table(path: &Path) -> Result<(abi::Module, Rc<Library>), Error> {
         return Err(Error::INVALID);
     }
     // Read the fixed prefix before accessing the versioned table extent.
-    let prefix = pointer.cast::<u32>();
+    let prefix = pointer.cast::<abi::Version>();
     let version = unsafe { prefix.read() };
-    let size = unsafe { prefix.add(1).read() };
-    if version != abi::MODULE_VERSION
-        || (size as usize) < size_of::<abi::Module>()
-    {
+    let size = unsafe { prefix.add(1).cast::<u32>().read() };
+    if version != abi::VERSION || (size as usize) < size_of::<abi::Module>() {
         return Err(Error::UNSUPPORTED);
     }
     let table = unsafe { pointer.read() };
     Ok((table, library))
 }
+
+/// Loads the full contribution group through the current native table.
+/// # Safety
+/// The selected artifact must obey the matching native ABI's ownership,
+/// single-threaded execution and no-unwind contracts. Loading executes code.
+/// # Errors
+/// Rejects incompatible metadata or construction before publication.
+pub unsafe fn load_contributions(
+    path: &Path,
+    mount: &str,
+    kernel: Option<&Connection>,
+) -> Result<Vec<Contribution>, Error> {
+    let (table, library) = unsafe { load_table(path)? };
+    if table.kind == abi::RESOURCE && table.exports != 0 {
+        return unsafe { resources::load(table, library, mount, kernel) };
+    }
+    let contribution = match table.kind {
+        abi::RESOURCE => Contribution::Resource {
+            path: mount.into(),
+            provider: unsafe { resource_table(table, library, kernel)? },
+        },
+        abi::MODEL => Contribution::Model {
+            path: mount.into(),
+            provider: unsafe { model::from_table(table, library, kernel)? },
+        },
+        _ => return Err(Error::UNSUPPORTED),
+    };
+    Ok(alloc::vec![contribution])
+}
+
+mod resources;
 
 struct KernelImport(abi::Connection);
 impl Drop for KernelImport {
@@ -229,12 +323,16 @@ impl Drop for KernelImport {
 unsafe fn create(
     table: &abi::Module,
     kernel: Option<&Connection>,
+    library: Rc<Library>,
 ) -> Result<*mut c_void, Error> {
-    let imported =
-        kernel.map(|kernel| KernelImport(reovim_sdk::export(kernel.clone())));
+    let imported = kernel.map(|kernel| {
+        KernelImport(reovim_sdk::export_with_code(kernel.clone(), library))
+    });
     let pointer =
         imported.as_ref().map_or(ptr::null(), |value| &raw const value.0);
-    let context = unsafe { table.create.ok_or(Error::INVALID)?(pointer) };
+    let context = unsafe {
+        table.create.ok_or(Error::INVALID)?(table.declaration, pointer)
+    };
     if context.is_null() {
         return Err(Error::PROVIDER);
     }

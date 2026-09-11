@@ -47,8 +47,7 @@ fn provider(mode: Rc<Cell<u8>>) -> ModelProvider {
 fn failed_candidate_observation_preserves_state_and_history() {
     let mode = Rc::new(Cell::new(0));
     let limits = Limits { message_bytes: 48, ..Limits::default() };
-    let mut runtime =
-        Runtime::new(90, limits, reovim_kernel_core::create).unwrap();
+    let mut runtime = Runtime::new(90, limits).unwrap();
     runtime.start().unwrap();
     let id = runtime
         .register_model("model", provider(Rc::clone(&mode)))
@@ -109,9 +108,7 @@ fn failed_candidate_observation_preserves_state_and_history() {
 #[test]
 fn failed_initial_observation_does_not_publish_or_pin_a_buffer() {
     let mode = Rc::new(Cell::new(1));
-    let mut runtime =
-        Runtime::new(91, Limits::default(), reovim_kernel_core::create)
-            .unwrap();
+    let mut runtime = Runtime::new(91, Limits::default()).unwrap();
     runtime.start().unwrap();
     let id = runtime
         .register_model("model", provider(mode))

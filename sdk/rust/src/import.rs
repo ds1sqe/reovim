@@ -18,7 +18,7 @@ mod wake;
 /// Adopts one owned ABI connection reference. `code` pins its executable owner.
 ///
 /// # Safety
-/// The connection must implement ABI v1 with valid tables, thread-safe wake
+/// The connection must implement ABI 0.1.0 with valid tables, thread-safe wake
 /// callbacks and the declared ownership rules. All access stays on this thread.
 #[must_use]
 pub unsafe fn import(raw: abi::Connection, code: Rc<dyn Any>) -> Connection {
@@ -43,6 +43,38 @@ impl Drop for Remote {
 }
 struct Imported(Rc<Remote>);
 impl Access for Imported {
+    fn withdraw(&self, resource: ResourceId) -> Result<(), Error> {
+        check(unsafe {
+            (self.0.table().withdraw)(self.0.raw.context, resource.0)
+        })
+    }
+
+    fn publish(
+        &self,
+        parent: ResourceId,
+        name: &str,
+        provider: reovim_kernel_interface::provider::ResourceProvider,
+    ) -> Result<
+        ResourceId,
+        (Error, reovim_kernel_interface::provider::ResourceProvider),
+    > {
+        let provider = crate::provider::Export::new(provider);
+        let raw = provider.view();
+        let mut id = 0;
+        let result = check(unsafe {
+            (self.0.table().publish)(
+                self.0.raw.context,
+                parent.0,
+                view(name.as_bytes()),
+                &raw const raw,
+                &raw mut id,
+            )
+        });
+        match result {
+            Ok(()) => Ok(ResourceId(id)),
+            Err(error) => Err((error, provider.recover())),
+        }
+    }
     fn root(&self) -> Result<ResourceId, Error> {
         let mut id = 0;
         check(unsafe {
@@ -111,10 +143,7 @@ impl Access for Imported {
         let pending = unsafe {
             (self.0.table().request)(self.0.raw.context, &raw const request)
         };
-        Box::pin(Waiting {
-            pending: Some(pending),
-            _remote: Rc::clone(&self.0),
-        })
+        unsafe { import_reply(pending, self.0.clone()) }
     }
     fn close(&self, id: ResourceId) -> Result<(), Error> {
         check(unsafe { (self.0.table().close)(self.0.raw.context, id.0) })
@@ -141,7 +170,15 @@ impl Drop for Listing {
 }
 struct Waiting {
     pending: Option<abi::Pending>,
-    _remote: Rc<Remote>,
+    _owner: Rc<dyn Any>,
+}
+
+/// Adopts one native pending reference and retains its code/context owner.
+/// # Safety
+/// The handle must obey Pending ownership, wake and no-unwind rules. Its
+/// callbacks and borrowed outcome views remain valid until release.
+pub unsafe fn import_reply(pending: abi::Pending, owner: Rc<dyn Any>) -> Reply {
+    Box::pin(Waiting { pending: Some(pending), _owner: owner })
 }
 impl Waiting {
     fn release(&mut self) {

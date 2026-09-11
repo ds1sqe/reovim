@@ -1,0 +1,15 @@
+[package]
+name = "reovim-module-counter"
+workspace = "../../product"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies.reovim-kernel-interface]
+path = "../../kernel/interface"
+version = "=0.16.0-dev"
+
+[lints]
+workspace = true

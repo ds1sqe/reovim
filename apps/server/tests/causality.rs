@@ -37,16 +37,11 @@ fn unsupported(_: &mut Forward, _: ResourceId, _: Message) -> ProviderReply {
 }
 #[test]
 fn nested_module_requests_keep_their_original_parent_across_execution() {
-    let mut runtime =
-        Runtime::new(102, Limits::default(), reovim_kernel_core::create)
-            .unwrap();
+    let mut runtime = Runtime::new(102, Limits::default()).unwrap();
     runtime.start().unwrap();
     let value = Rc::new(Cell::new(0));
     let counter = runtime
-        .register(
-            "counter",
-            reovim_kernel_interface_public_consumer::counter(Rc::clone(&value)),
-        )
+        .register("counter", reovim_module_counter::provider(Rc::clone(&value)))
         .map_err(|(error, _)| error)
         .unwrap();
     let module = reovim_sdk::local(

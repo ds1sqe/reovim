@@ -6,9 +6,7 @@ use reovim_kernel_runtime::{Limits, Runtime};
 
 #[test]
 fn ambiguous_registration_returns_usable_provider_ownership() {
-    let mut runtime =
-        Runtime::new(104, Limits::default(), reovim_kernel_core::create)
-            .unwrap();
+    let mut runtime = Runtime::new(104, Limits::default()).unwrap();
     let mut provider = reovim_resource_local::memory(b"\xffkept");
     let surface = provider.surfaces[0].clone();
     provider.surfaces = Box::new([surface.clone(), surface.clone()]);
@@ -40,8 +38,7 @@ fn ambiguous_registration_returns_usable_provider_ownership() {
 #[test]
 fn contract_metadata_is_bounded_before_registration() {
     let limits = Limits { path_bytes: 8, ..Limits::default() };
-    let mut runtime =
-        Runtime::new(105, limits, reovim_kernel_core::create).unwrap();
+    let mut runtime = Runtime::new(105, limits).unwrap();
     let provider = reovim_resource_local::memory(b"kept");
     let Err((error, mut provider)) = runtime.register("source", provider)
     else {
@@ -74,9 +71,7 @@ fn contract_metadata_is_bounded_before_registration() {
 
 #[test]
 fn model_edit_cannot_replace_the_shared_close_contract() {
-    let mut runtime =
-        Runtime::new(106, Limits::default(), reovim_kernel_core::create)
-            .unwrap();
+    let mut runtime = Runtime::new(106, Limits::default()).unwrap();
     let mut model = reovim_representation_basic::heading();
     model.edit = Contract::new("kernel.buffer.close", 1);
     let Err((error, mut model)) = runtime.register_model("model", model) else {

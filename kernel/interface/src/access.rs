@@ -49,6 +49,12 @@ pub enum RequestError {
     Unknown { cause: Error, recovery: Box<str> },
 }
 
+impl From<Error> for RequestError {
+    fn from(error: Error) -> Self {
+        Self::Failed(error)
+    }
+}
+
 impl fmt::Display for RequestError {
     fn fmt(&self, output: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(output, "Resource request: {self:?}")
@@ -68,6 +74,25 @@ pub enum Method {
 
 /// Common adapter boundary. These calls perform no provider execution.
 pub trait Access {
+    /// Withdraws a quiescent subtree owned by the executing module.
+    /// # Errors
+    /// Denied/Busy leave names and providers unchanged.
+    fn withdraw(&self, _: ResourceId) -> Result<(), Error> {
+        Err(Error::DENIED)
+    }
+
+    /// Publishes an initialized child within the executing module's namespace.
+    /// # Errors
+    /// Rejection returns the provider without publishing a name.
+    fn publish(
+        &self,
+        _: ResourceId,
+        _: &str,
+        provider: crate::provider::ResourceProvider,
+    ) -> Result<ResourceId, (Error, crate::provider::ResourceProvider)> {
+        Err((Error::DENIED, provider))
+    }
+
     /// # Errors
     /// Rejects a closed or replaced connection.
     fn root(&self) -> Result<ResourceId, Error>;
@@ -101,6 +126,25 @@ pub trait Access {
 pub struct Connection(Rc<dyn Access>);
 
 impl Connection {
+    /// Withdraws an idle provider subtree without unloading its owning module.
+    /// # Errors
+    /// Rejects foreign ownership and captured/in-flight use.
+    pub fn withdraw(&self, resource: ResourceId) -> Result<(), Error> {
+        self.0.withdraw(resource)
+    }
+
+    /// Publishes an initialized child through module publication access.
+    /// # Errors
+    /// Rejection returns the uninstalled provider and its state.
+    pub fn publish(
+        &self,
+        parent: ResourceId,
+        name: &str,
+        provider: crate::provider::ResourceProvider,
+    ) -> Result<ResourceId, (Error, crate::provider::ResourceProvider)> {
+        self.0.publish(parent, name, provider)
+    }
+
     #[must_use]
     pub fn new(access: Rc<dyn Access>) -> Self {
         Self(access)

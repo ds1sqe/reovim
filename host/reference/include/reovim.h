@@ -1,95 +1,121 @@
-#ifndef REOVIM_ABI_H
-#define REOVIM_ABI_H
+#ifndef RV_ABI_H
+#define RV_ABI_H
+#define RV_ABI_VERSION { 0, 1, 0, 0 } /* Until official release. */
 #include <stddef.h>
 #include <stdint.h>
 
-typedef struct ReovimAccess ReovimAccess;
-typedef struct { void *context; const ReovimAccess *table; } ReovimConnection;
+struct rv_version {
+    uint32_t major, minor, patch;
+    uint32_t reserved; /* Must be zero. */
+};
+static inline int rv_abi_compatible(struct rv_version version) {
+    const struct rv_version current = RV_ABI_VERSION;
+    return version.major == current.major && version.minor == current.minor
+        && version.patch == current.patch && version.reserved == 0;
+}
 
-typedef struct { const uint8_t *data; size_t len; } ReovimBytes;
-typedef struct { ReovimBytes name; uint32_t version; } ReovimContract;
-typedef struct {
+struct rv_access;
+struct rv_provider;
+struct rv_resource_export;
+struct rv_pending;
+struct rv_failure;
+struct rv_connection { void *context; const struct rv_access *table; };
+
+struct rv_bytes { const uint8_t *data; size_t len; };
+struct rv_contract { struct rv_bytes name; uint32_t version; };
+struct rv_request {
     uint32_t method;
     uint64_t subject;
-    ReovimContract contract;
-    ReovimBytes data;
+    struct rv_contract contract;
+    struct rv_bytes data;
     const uint64_t *resources;
     size_t resource_count;
-} ReovimRequest;
-typedef struct {
+};
+struct rv_reply {
     uint64_t error;
-    ReovimBytes data;
+    struct rv_bytes data;
     void *state;
     uint64_t state_bytes;
-} ReovimReply;
-typedef struct {
-    uint32_t version, size, kind;
-    ReovimContract create_contract, read_contract, edit_contract;
-    void *(*create)(const ReovimConnection *);
+};
+struct rv_module {
+    struct rv_version version;
+    uint32_t size, kind;
+    const void *declaration;
+    struct rv_contract create_contract, read_contract, edit_contract;
+    void *(*create)(const void *, const struct rv_connection *);
     void (*destroy)(void *);
-    ReovimReply (*call)(void *, const ReovimRequest *);
-    ReovimReply (*initialize)(void *, const ReovimRequest *);
-    ReovimReply (*prepare)(void *, const void *, const ReovimRequest *);
-    ReovimReply (*observe)(void *, const void *);
-    void (*release)(void *, ReovimReply *);
+    struct rv_reply (*call)(void *, const struct rv_request *);
+    struct rv_reply (*initialize)(void *, const struct rv_request *);
+    struct rv_reply (*prepare)(void *, const void *, const struct rv_request *);
+    struct rv_reply (*observe)(void *, const void *);
+    void (*release)(void *, struct rv_reply *);
     void (*drop_state)(void *, void *);
     uint64_t (*unload)(void *);
-} ReovimModule;
+    size_t exports;
+    struct rv_failure (*describe)(const void *, size_t, struct rv_resource_export *);
+    struct rv_pending (*request)(void *, size_t, const struct rv_request *);
+};
 
-/* Module version 2; kind 1 = Resource, 2 = model; method 1 = read, 2 = write.
+/* Experimental module ABI 0.1.0. Kind: Resource=1, Model=2.
+ * Methods: read=1, write=2.
  * Inputs are borrowed during a call. Copy anything needed afterwards.
  * Output bytes live until release. A successful state transfers to the host:
  * release sees state=NULL; drop_state eventually destroys the transferred state.
- * All callbacks settle synchronously and must not unwind across the boundary.
+ * Resource request returns an owned pending result; model callbacks settle
+ * synchronously. No callback may unwind across the boundary.
  * Unload happens only after contexts, calls, results and states have drained.
  */
-/* create receives optional borrowed caller-v1 access: retain before storing.
+/* create receives optional borrowed caller access: retain before storing.
  * Factory state is inert: metadata lookup is allowed, starting work is not.
  * unload returns 0 only after all external callbacks/work have drained;
  * readiness always leaves the provider usable: another grouped member may
  * return busy (8). destroy follows the owner's successful removal of the set.
  */
-const ReovimModule *reovim_module_v2(void);
+const struct rv_module *rv_module_entry(void);
 
 /* Caller ABI. Views are borrowed unless a release callback is supplied. */
-typedef struct { uint64_t code, resource; } ReovimFailure;
-typedef struct { ReovimBytes name; uint64_t resource; } ReovimEntry;
-typedef struct {
-    const ReovimEntry *entries;
+struct rv_failure { uint64_t code, resource; };
+struct rv_entry { struct rv_bytes name; uint64_t resource; };
+struct rv_listing {
+    const struct rv_entry *entries;
     size_t count;
     void *owner;
     void (*release)(void *);
-} ReovimListing;
-typedef struct {
+};
+struct rv_wake {
     const void *context;
     void (*retain)(const void *);
     void (*release)(const void *);
     void (*wake)(const void *);
-} ReovimWake;
-typedef struct {
+};
+struct rv_outcome {
     uint32_t status; /* 0 pending, 1 success, 2 rejected, 3 failed, 4 unknown */
-    ReovimFailure error;
-    ReovimContract contract;
-    ReovimBytes data;
+    struct rv_failure error;
+    struct rv_contract contract;
+    struct rv_bytes data;
     const uint64_t *resources;
     size_t resource_count;
-    ReovimBytes recovery;
-} ReovimOutcome;
-typedef struct {
+    struct rv_bytes recovery;
+};
+struct rv_pending {
     void *context;
-    ReovimOutcome (*poll)(void *, ReovimWake);
+    struct rv_outcome (*poll)(void *, struct rv_wake);
     void (*release)(void *);
-} ReovimPending;
-struct ReovimAccess {
-    uint32_t version, size;
+};
+struct rv_access {
+    struct rv_version version;
+    uint32_t size;
     void (*retain)(void *);
     void (*release)(void *);
-    ReovimFailure (*root)(void *, uint64_t *);
-    ReovimFailure (*resolve)(void *, uint64_t, ReovimBytes, uint64_t *);
-    ReovimFailure (*children)(void *, uint64_t, ReovimListing *);
-    ReovimPending (*request)(void *, const ReovimRequest *);
-    ReovimFailure (*close)(void *, uint64_t);
-    ReovimFailure (*reconnect)(void *, ReovimConnection *);
+    struct rv_failure (*root)(void *, uint64_t *);
+    struct rv_failure (*resolve)(void *, uint64_t, struct rv_bytes, uint64_t *);
+    struct rv_failure (*children)(void *, uint64_t, struct rv_listing *);
+    struct rv_pending (*request)(void *, const struct rv_request *);
+    struct rv_failure (*close)(void *, uint64_t);
+    struct rv_failure (*reconnect)(void *, struct rv_connection *);
+    struct rv_failure (*withdraw)(void *, uint64_t);
+    struct rv_failure (*publish)(void *, uint64_t, struct rv_bytes,
+        const struct rv_provider *, uint64_t *);
 };
 /* Connection/Pending own one reference, released through their own table.
  * Access is single-threaded. Wake retain/release/wake must be thread-safe;
@@ -99,4 +125,47 @@ struct ReovimAccess {
  * until Listing.release. Failed metadata calls leave output pointers untouched.
  * Every callback must obey the no-unwind rule. resource=0 means no error subject.
  */
+/* Resource exports share one inert context. Empty path
+ * denotes the chosen mount. Surface methods and slots use read=1/write=2 bits.
+ * describe returns immutable views valid while the library remains loaded.
+ * Runtime invokes call and polls Pending on one thread outside registry guards.
+ * Provider polling advances its own work and can await imported Kernel calls.
+ * call copies borrowed input. Release each Pending before destroying context.
+ * unload returns busy while imports, wakes or retained work need native code.
+ */
+struct rv_surface {
+    struct rv_contract contract;
+    uint32_t methods;
+    const uint32_t *input;
+    size_t input_count;
+    const uint32_t *output;
+    size_t output_count;
+};
+struct rv_resource_export {
+    struct rv_bytes path;
+    const struct rv_surface *surfaces;
+    size_t surface_count;
+    uint32_t forwarding; /* 0 fixed slots; 1 complete Messages and grants. */
+};
+
+/* A borrowed provider descriptor. Success retains; rejection retains nothing. */
+struct rv_provider_ops {
+    struct rv_version version;
+    uint32_t size;
+    void (*retain)(void *);
+    void (*release)(void *);
+    struct rv_pending (*request)(void *, const struct rv_request *);
+    /* Owned access: fence delivery and wake pending calls; cannot fail. */
+    void (*close)(void *);
+    struct rv_failure (*unload)(void *);
+};
+struct rv_provider {
+    void *context;
+    const struct rv_provider_ops *table;
+    const struct rv_surface *surfaces;
+    size_t surface_count;
+    uint32_t forwarding;
+    uint32_t owned;
+};
+
 #endif

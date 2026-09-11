@@ -5,20 +5,34 @@
 extern crate alloc;
 
 mod access;
+mod binding;
+pub use binding::Binding;
+mod catalog;
 mod closing;
 mod contributions;
 mod driver;
 mod execution;
+mod history;
+mod modules;
 mod namespace;
+mod owned;
+mod publication;
 mod registration;
 mod request;
 
 pub mod diagnostics;
 
-use alloc::{boxed::Box, collections::VecDeque, rc::Rc, vec::Vec};
+use alloc::{
+    boxed::Box,
+    collections::VecDeque,
+    rc::{Rc, Weak},
+    vec::Vec,
+};
 use core::{cell::RefCell, task::Context};
 mod sequence;
-use reovim_kernel_interface::buffer::{Authority, CoreFactory, ModelProvider};
+mod sessions;
+mod teardown;
+use reovim_kernel_interface::buffer::ModelProvider;
 use reovim_kernel_interface::provider::{Permissions, ResourceProvider};
 use reovim_kernel_interface::{Connection, Error, ResourceId};
 use sequence::Sequence;
@@ -58,7 +72,7 @@ impl Default for Limits {
 pub use reovim_kernel_interface::driver::Progress;
 
 struct Editing {
-    core: Box<dyn Authority>,
+    state: history::History,
     model: Rc<RefCell<ModelProvider>>,
     resource: u64,
     history: u64,
@@ -67,13 +81,12 @@ struct Editing {
 
 struct Shared {
     identity: u64,
-    core: CoreFactory,
     limits: Limits,
     ids: Sequence,
     ready: bool,
     closing: bool,
     entries: Vec<Entry>,
-    scopes: Vec<Rc<RefCell<Scope>>>,
+    scopes: Vec<Weak<RefCell<Scope>>>,
     requests: Vec<Rc<RefCell<Record>>>,
     events: VecDeque<Event>,
     event_sequence: Sequence,
@@ -85,16 +98,13 @@ struct Shared {
 pub struct Runtime {
     shared: Rc<RefCell<Shared>>,
     cursor: usize,
+    modules: Vec<modules::Instance>,
 }
 
 impl Runtime {
     /// # Errors
     /// Rejects unusable bounds or unavailable reservation storage.
-    pub fn new(
-        identity: u64,
-        limits: Limits,
-        core: CoreFactory,
-    ) -> Result<Self, Error> {
+    pub fn new(identity: u64, limits: Limits) -> Result<Self, Error> {
         if identity == 0
             || limits.resources < 3
             || limits.requests == 0
@@ -115,7 +125,6 @@ impl Runtime {
         Ok(Self {
             shared: Rc::new(RefCell::new(Shared {
                 identity,
-                core,
                 limits,
                 ids: Sequence::after(3),
                 ready: false,
@@ -129,6 +138,7 @@ impl Runtime {
                 active: None,
             })),
             cursor: 0,
+            modules: Vec::new(),
         })
     }
 
@@ -151,6 +161,18 @@ impl Runtime {
         self.shared.borrow().path(1, path).map(ResourceId)
     }
 
+    /// Installs a namespace Resource for selected providers and shared aliases.
+    /// # Errors
+    /// Rejects duplicate/invalid paths, closing state or exhausted capacity.
+    pub fn register_namespace(
+        &mut self,
+        path: &str,
+    ) -> Result<ResourceId, Error> {
+        let mut shared = self.shared.borrow_mut();
+        shared.check_registration(path)?;
+        Ok(ResourceId(shared.insert(path, Kind::Directory)))
+    }
+
     /// Register a live provider; failure returns its unchanged ownership.
     /// # Errors
     /// Rejects duplicate names, closing state or exhausted capacity.
@@ -159,6 +181,9 @@ impl Runtime {
         path: &str,
         provider: ResourceProvider,
     ) -> Result<ResourceId, (Error, ResourceProvider)> {
+        if provider.is_owned() {
+            return Err((Error::INVALID, provider));
+        }
         let validation =
             self.shared.borrow().check_registration(path).and_then(|()| {
                 registration::resource(&provider, self.shared.borrow().limits)
@@ -207,17 +232,7 @@ impl Runtime {
         &mut self,
         grants: &[(ResourceId, Permissions)],
     ) -> Result<Connection, Error> {
-        let mut shared = self.shared.borrow_mut();
-        if shared.closing || shared.scopes.len() == shared.limits.callers {
-            return Err(Error::PRESSURE);
-        }
-        for (resource, _) in grants {
-            shared.entry_index(resource.0)?;
-        }
-        let id = shared.id()?;
-        let scope = Rc::new(RefCell::new(Scope::new(id, grants)));
-        shared.scopes.push(Rc::clone(&scope));
-        Ok(access::connection(Rc::clone(&self.shared), scope, 0))
+        Ok(self.bind(grants)?.connection())
     }
 
     /// Runs one bounded work turn; caller Future polling never enters here.
@@ -227,7 +242,16 @@ impl Runtime {
         &mut self,
         context: &mut Context<'_>,
     ) -> Result<Progress, Error> {
-        self.advance_one(context)
+        if !self.shared.borrow().ready && !self.shared.borrow().closing {
+            return Err(Error::NOT_READY);
+        }
+        owned::reclaim(&self.shared);
+        let module = self.advance_modules(context);
+        if !self.shared.borrow().ready {
+            return Ok(module);
+        }
+        let request = self.advance_one(context)?;
+        Ok(if module == Progress::More { Progress::More } else { request })
     }
 
     /// Fences admission. Unobserved results remain recoverable until adopted.
@@ -235,12 +259,18 @@ impl Runtime {
     /// Busy means requests or results still have owners to settle.
     pub fn close(&mut self) -> Result<(), Error> {
         self.shared.borrow_mut().closing = true;
+        owned::close_all(&self.shared);
+        owned::reclaim(&self.shared);
+        self.close_modules()?;
         close_providers(self)?;
         if !self.shared.borrow().requests.is_empty() {
             return Err(Error::BUSY);
         }
         let editing = detach_editing(&mut self.shared.borrow_mut())?;
         drop(editing);
+        if !self.close_modules()? {
+            return Err(Error::BUSY);
+        }
         close_providers(self)?;
         if self.shared.borrow().entries.iter().any(|entry| {
             matches!(entry.kind, Kind::Provider(_) | Kind::Model(_))
@@ -325,7 +355,7 @@ fn detach_editing(shared: &mut Shared) -> Result<Vec<Entry>, Error> {
     while index < shared.entries.len() {
         if matches!(
             shared.entries[index].kind,
-            Kind::Buffer(_) | Kind::History(_)
+            Kind::Buffer(_) | Kind::History(_) | Kind::Session(_)
         ) {
             retired.push(shared.entries.remove(index));
         } else {
@@ -347,6 +377,9 @@ fn close_providers(runtime: &mut Runtime) -> Result<(), Error> {
         .map(|entry| ResourceId(entry.key))
         .collect();
     for provider in providers {
+        if runtime.module_contribution(provider) {
+            continue;
+        }
         match runtime.unregister(provider) {
             Ok(()) => (),
             Err(error) if error == Error::BUSY => (),

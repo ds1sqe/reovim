@@ -24,8 +24,9 @@ Preserve unrelated work, perf/ and Documentation/heritage/.
 - Runtime owns live contexts and execution. Interface declares typed operation
   tables; consumers depend on Interface, not concrete Runtime/Core types.
   Composition selects implementations and binds them to actual contexts.
-- Kernel dependencies point inward: Runtime -> Core -> Interface -> Foundation.
-  Each layer needs a distinct purpose; do not duplicate public type catalogs.
+- Kernel implementation and language adapters depend on Interface. Core owns
+  atomic installation inside the implementation; callers cross the declared ABI.
+  Each layer needs a distinct purpose; keep small helpers private to their owner.
 - Core owns atomic Buffer/History installation. No I/O, waiting, callbacks or
   fallible work after the commit cut under that authority. Revalidate first.
 - Clients own semantic response and presentation policy. Kernel knows neither
@@ -33,7 +34,7 @@ Preserve unrelated work, perf/ and Documentation/heritage/.
   rendering and user-facing output are outside Kernel responsibility. Host
   grants apply separately to Kernel, Client and Resource consumers; native
   details stay in adapters.
-- Foundation is core-only; portable Kernel/applicable Rust Client paths stay
+- Portable Kernel/applicable Rust Client paths stay
   no_std + alloc. Hosted adapters/assembly may use std.
 - Use public contracts for modules/examples. Internal APIs may change.
   Public v0.16 SDK/service APIs remain Experimental. Review dependencies and

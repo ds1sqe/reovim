@@ -1,5 +1,6 @@
 use alloc::{boxed::Box, rc::Rc, vec::Vec};
 use core::{
+    any::Any,
     ffi::c_void,
     ptr, slice, str,
     task::{Context, Poll},
@@ -15,19 +16,34 @@ mod wake;
 /// Release through the returned table. Calls are single-threaded.
 #[must_use]
 pub fn export(connection: Connection) -> abi::Connection {
+    export_with_code(connection, Rc::new(()))
+}
+
+/// Exports access while pinning the code of providers published through it.
+#[must_use]
+pub fn export_with_code(
+    connection: Connection,
+    code: Rc<dyn Any>,
+) -> abi::Connection {
     abi::Connection {
-        context: Rc::into_raw(Rc::new(connection)).cast_mut().cast(),
+        context: Rc::into_raw(Rc::new(Exported { connection, code }))
+            .cast_mut()
+            .cast(),
         table: &raw const TABLE,
     }
 }
+struct Exported {
+    connection: Connection,
+    code: Rc<dyn Any>,
+}
+impl core::ops::Deref for Exported {
+    type Target = Connection;
+    fn deref(&self) -> &Connection {
+        &self.connection
+    }
+}
 
-const _: () = assert!(size_of::<abi::Access>() <= u32::MAX as usize);
-
-// The ABI extent is checked above at compile time.
-#[allow(clippy::cast_possible_truncation)]
-static TABLE: abi::Access = abi::Access {
-    version: abi::VERSION,
-    size: size_of::<abi::Access>() as u32,
+static TABLE: abi::Access = reovim_vtable::rv_vtable!(abi::Access {
     retain,
     release,
     root,
@@ -36,16 +52,18 @@ static TABLE: abi::Access = abi::Access {
     request,
     close,
     reconnect,
-};
+    publish,
+    withdraw,
+});
 
 unsafe extern "C" fn retain(context: *mut c_void) {
     unsafe {
-        Rc::increment_strong_count(context.cast::<Connection>());
+        Rc::increment_strong_count(context.cast::<Exported>());
     }
 }
 unsafe extern "C" fn release(context: *mut c_void) {
     unsafe {
-        Rc::decrement_strong_count(context.cast::<Connection>());
+        Rc::decrement_strong_count(context.cast::<Exported>());
     }
 }
 
@@ -82,7 +100,7 @@ unsafe extern "C" fn root(
     context: *mut c_void,
     output: *mut u64,
 ) -> abi::Failure {
-    let connection = unsafe { &*context.cast::<Connection>() };
+    let connection = unsafe { &*context.cast::<Exported>() };
     unsafe { return_id(connection.root().into_inner(), output) }
 }
 
@@ -108,7 +126,7 @@ unsafe extern "C" fn resolve(
         Ok(path) => path,
         Err(error) => return failure(error),
     };
-    let connection = unsafe { &*context.cast::<Connection>() };
+    let connection = unsafe { &*context.cast::<Exported>() };
     unsafe {
         return_id(
             connection.resolve_at(ResourceId(parent), path).into_inner(),
@@ -129,7 +147,7 @@ unsafe extern "C" fn children(
     parent: u64,
     output: *mut abi::Listing,
 ) -> abi::Failure {
-    let connection = unsafe { &*context.cast::<Connection>() };
+    let connection = unsafe { &*context.cast::<Exported>() };
     let entries = match connection.children(ResourceId(parent)).into_inner() {
         Ok(entries) => entries,
         Err(error) => return rejected(&error),
@@ -156,7 +174,7 @@ unsafe extern "C" fn children(
 }
 
 unsafe extern "C" fn close(context: *mut c_void, id: u64) -> abi::Failure {
-    let connection = unsafe { &*context.cast::<Connection>() };
+    let connection = unsafe { &*context.cast::<Exported>() };
     connection
         .close(ResourceId(id))
         .into_inner()
@@ -166,11 +184,11 @@ unsafe extern "C" fn reconnect(
     context: *mut c_void,
     output: *mut abi::Connection,
 ) -> abi::Failure {
-    let connection = unsafe { &*context.cast::<Connection>() };
+    let connection = unsafe { &*context.cast::<Exported>() };
     match connection.reconnect() {
-        Ok(connection) => {
+        Ok(next) => {
             unsafe {
-                output.write(export(connection));
+                output.write(export_with_code(next, connection.code.clone()));
             }
             SUCCESS
         }
@@ -183,7 +201,12 @@ struct Pending {
     result: Option<Result<Message, RequestError>>,
     references: Vec<u64>,
 }
-unsafe fn message(request: &abi::Request) -> Result<Message, Error> {
+/// Copies a borrowed native request's value and reference slots.
+/// # Safety
+/// Every nonempty view must reference readable memory for this call.
+/// # Errors
+/// Rejects malformed text, null views and impossible extents.
+pub unsafe fn decode_request(request: &abi::Request) -> Result<Message, Error> {
     let name = str::from_utf8(unsafe { bytes(request.contract.name)? })
         .map_err(|_| Error::INVALID)?;
     let data = unsafe { bytes(request.data)? };
@@ -209,9 +232,9 @@ unsafe extern "C" fn request(
     context: *mut c_void,
     input: *const abi::Request,
 ) -> abi::Pending {
-    let connection = unsafe { &*context.cast::<Connection>() };
+    let connection = unsafe { &*context.cast::<Exported>() };
     let input = unsafe { &*input };
-    let future = match unsafe { message(input) } {
+    let future = match unsafe { decode_request(input) } {
         Ok(message) if input.method == abi::READ => {
             connection.read(ResourceId(input.subject), &message)
         }
@@ -222,6 +245,13 @@ unsafe extern "C" fn request(
             Error::INVALID,
         )))),
     };
+    export_reply(future)
+}
+
+/// Transfers one pending result across the ABI. Its owner calls poll/release.
+/// Polling the returned handle polls this future on its owning thread.
+#[must_use]
+pub fn export_reply(future: Reply) -> abi::Pending {
     abi::Pending {
         context: Box::into_raw(Box::new(Pending {
             future,
@@ -295,4 +325,44 @@ fn set_error(output: &mut abi::Outcome, error: &RequestError) {
     };
     output.status = status;
     output.error = failure(error);
+}
+
+unsafe extern "C" fn publish(
+    context: *mut c_void,
+    parent: u64,
+    name: abi::Bytes,
+    provider: *const abi::Provider,
+    output: *mut u64,
+) -> abi::Failure {
+    let connection = unsafe { &*context.cast::<Exported>() };
+    let name = match unsafe { bytes(name) }
+        .and_then(|name| str::from_utf8(name).map_err(|_| Error::INVALID))
+    {
+        Ok(name) => name,
+        Err(error) => return failure(error),
+    };
+    let provider = match unsafe {
+        crate::provider::import(*provider, connection.code.clone())
+    } {
+        Ok(provider) => provider,
+        Err(error) => return failure(error),
+    };
+    match connection.publish(ResourceId(parent), name, provider) {
+        Ok(id) => {
+            unsafe { output.write(id.0) };
+            SUCCESS
+        }
+        Err((error, provider)) => {
+            drop(provider);
+            failure(error)
+        }
+    }
+}
+
+unsafe extern "C" fn withdraw(
+    context: *mut c_void,
+    resource: u64,
+) -> abi::Failure {
+    let connection = unsafe { &*context.cast::<Exported>() };
+    connection.withdraw(ResourceId(resource)).map_or_else(failure, |()| SUCCESS)
 }

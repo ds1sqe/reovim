@@ -1,8 +1,15 @@
 #![no_std]
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 //! Assembly of independent implementations; consumers use only Interface.
 
 extern crate alloc;
+#[cfg(feature = "std")]
+extern crate std;
+
+#[cfg(feature = "std")]
+mod loading;
+#[cfg(feature = "std")]
+pub mod service;
 
 pub mod client;
 
@@ -24,8 +31,7 @@ pub struct Service {
 /// # Errors
 /// Reports failed construction/registration before supplying caller access.
 pub fn assemble() -> Result<Service, Error> {
-    let mut runtime =
-        Runtime::new(1, Limits::default(), reovim_kernel_core::create)?;
+    let mut runtime = Runtime::new(1, Limits::default())?;
     runtime.start()?;
     let installed = runtime
         .register_contributions(vec![

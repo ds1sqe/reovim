@@ -1,41 +1,51 @@
 use reovim_host_reference::run;
 use reovim_kernel_interface::{
-    Contract, Error, Message, RequestError, ResourceId,
+    Connection, Contract, Error, Message, RequestError, ResourceId,
     buffer::integer,
     provider::{
-        Permissions, ProviderReply, ResourceOps, ResourceProvider, Surface,
+        Contribution, Permissions, ProviderReply, ResourceOps,
+        ResourceProvider, Surface,
     },
 };
 use reovim_kernel_runtime::{Limits, Runtime};
-use std::{
-    cell::Cell,
-    future::{Future, ready},
-    rc::Rc,
-};
+use std::{cell::Cell, future::Future, rc::Rc};
 
 struct State {
-    reference: ResourceId,
-    value: Rc<Cell<u64>>,
+    kernel: Connection,
 }
 fn read(state: &mut State, _: ResourceId, input: Message) -> ProviderReply {
-    Box::pin(ready(reply(state, input)))
+    forward(state, input, false)
 }
 fn write(state: &mut State, _: ResourceId, input: Message) -> ProviderReply {
-    state.value.set(9);
-    Box::pin(ready(reply(state, input)))
+    forward(state, input, true)
 }
-fn reply(state: &State, input: Message) -> Result<Message, Error> {
-    if input.resources.as_ref() != [state.reference] {
-        return Err(Error::INVALID);
-    }
-    Ok(Message::new(input.contract, &state.value.get().to_le_bytes()))
+fn forward(state: &State, input: Message, write: bool) -> ProviderReply {
+    let kernel = state.kernel.clone();
+    Box::pin(async move {
+        let [source] = input.resources.as_ref() else {
+            return Err(Error::INVALID);
+        };
+        let data = if write { 9_u64.to_le_bytes().to_vec() } else { vec![] };
+        let query = Message::new(Contract::new("external.counter", 1), &data);
+        let request = if write {
+            kernel.write(*source, &query)
+        } else {
+            kernel.read(*source, &query)
+        };
+        let reply = request.await.map_err(|_| Error::PROVIDER)?;
+        Ok(Message {
+            contract: input.contract,
+            data: reply.data,
+            resources: input.resources,
+        })
+    })
 }
 fn surface(methods: Permissions) -> Surface {
     Surface {
         contract: Contract::new("slots", 1),
         methods,
         input: Box::new([methods]),
-        output: Box::new([]),
+        output: Box::new([methods]),
     }
 }
 fn finish<T>(runtime: &mut Runtime, future: impl Future<Output = T>) -> T {
@@ -43,30 +53,28 @@ fn finish<T>(runtime: &mut Runtime, future: impl Future<Output = T>) -> T {
 }
 #[test]
 fn reference_grants_follow_the_selected_method_of_the_contract() {
-    let mut runtime =
-        Runtime::new(103, Limits::default(), reovim_kernel_core::create)
-            .unwrap();
+    let mut runtime = Runtime::new(103, Limits::default()).unwrap();
     runtime.start().unwrap();
+    let value = Rc::new(Cell::new(0));
     let source = runtime
-        .register(
-            "source",
-            reovim_kernel_interface_public_consumer::counter(Rc::new(
-                Cell::new(0),
-            )),
-        )
+        .register("source", reovim_module_counter::provider(value.clone()))
         .map_err(|(error, _)| error)
         .unwrap();
-    let value = Rc::new(Cell::new(0));
+    let binding = runtime.bind(&[]).unwrap();
+    let kernel = reovim_sdk::local(binding.connection());
     let provider = ResourceProvider::new(
-        State { reference: source, value: Rc::clone(&value) },
+        State { kernel: kernel.clone() },
         ResourceOps { unload: None, read, write },
         Box::new([surface(Permissions::READ), surface(Permissions::WRITE)]),
         Rc::new(()),
     );
     let target = runtime
-        .register("target", provider)
+        .register_bound(
+            &binding,
+            vec![Contribution::Resource { path: "target".into(), provider }],
+        )
         .map_err(|(error, _)| error)
-        .unwrap();
+        .unwrap()[0];
     let client = reovim_sdk::local(
         runtime
             .connect(&[(target, Permissions::ALL), (source, Permissions::READ)])
@@ -75,8 +83,15 @@ fn reference_grants_follow_the_selected_method_of_the_contract() {
     let reference = client.resolve("source").into_inner().unwrap();
     let resource = client.resolve("target").into_inner().unwrap();
     let input = Message::reference(Contract::new("slots", 1), reference);
-    let observed = finish(&mut runtime, client.read(resource, &input)).unwrap();
+    let pending = client.read(resource, &input);
+    assert_eq!(runtime.unregister(source), Err(Error::BUSY));
+    let observed = finish(&mut runtime, pending).unwrap();
     assert_eq!(integer(&observed.data), Ok(0));
+    assert_eq!(observed.resources.as_ref(), [reference]);
+    assert_eq!(
+        kernel.resolve("source").into_inner(),
+        Err(RequestError::Rejected(Error::DENIED))
+    );
     assert_eq!(
         finish(&mut runtime, client.write(resource, &input)),
         Err(RequestError::Rejected(Error::DENIED))
@@ -98,6 +113,7 @@ fn reference_grants_follow_the_selected_method_of_the_contract() {
     )
     .unwrap();
     assert_eq!(integer(&output.data), Ok(9));
+    assert_eq!(output.resources.as_ref(), [reference]);
     assert_eq!(value.get(), 9);
     runtime.close().unwrap();
 }

@@ -1,0 +1,74 @@
+use crate::{Runtime, namespace::Kind, request::Record};
+use alloc::rc::Rc;
+use core::cell::RefCell;
+use reovim_kernel_interface::{Error, Message};
+
+impl Runtime {
+    pub(crate) fn close_session(
+        &self,
+        record: &Rc<RefCell<Record>>,
+    ) -> Result<Message, Error> {
+        let record = record.borrow();
+        if !record.input.data.is_empty() {
+            return Err(Error::INVALID);
+        }
+        let owner = match &record.target {
+            Kind::Session(session) => session.borrow().owner,
+            Kind::ClosedSession { owner } => *owner,
+            _ => return Err(Error::UNSUPPORTED),
+        };
+        if record.scope.borrow().owner != owner {
+            return Err(Error::DENIED);
+        }
+        let mut shared = self.shared.borrow_mut();
+        let busy = shared.requests.iter().any(|other| {
+            let other = other.borrow();
+            other.id != record.id
+                && other.subject == record.subject
+                && !(other.method
+                    == reovim_kernel_interface::access::Method::Write
+                    && super::closing(&other.input.contract))
+        });
+        let children = shared.entries.iter().any(|entry| {
+            entry.key != record.subject
+                && shared.descends(entry.key, record.subject)
+                && !matches!(entry.kind, Kind::Directory | Kind::Snapshot(_))
+        });
+        if busy || children {
+            return Err(Error::BUSY);
+        }
+        let index = shared.entry_index(record.subject)?;
+        let retired = core::mem::replace(
+            &mut shared.entries[index].kind,
+            Kind::ClosedSession { owner },
+        );
+        shared.entries[index].activation = None;
+        drop(shared);
+        drop(retired);
+        Ok(Message::new(record.input.contract.clone(), &[]))
+    }
+
+    pub(crate) fn snapshot_request(
+        &self,
+        record: &Rc<RefCell<Record>>,
+        snapshot: &Rc<super::Snapshot>,
+    ) -> Result<Message, Error> {
+        use reovim_kernel_interface::access::Method;
+        let record = record.borrow();
+        if !record.input.data.is_empty() {
+            return Err(Error::INVALID);
+        }
+        if record.method == Method::Read {
+            return Ok(snapshot.value.clone());
+        }
+        if record.scope.borrow().owner != snapshot.owner {
+            return Err(Error::DENIED);
+        }
+        let mut shared = self.shared.borrow_mut();
+        let index = shared.entry_index(record.subject)?;
+        let retired = shared.entries.remove(index);
+        drop(shared);
+        drop(retired);
+        Ok(Message::new(record.input.contract.clone(), &[]))
+    }
+}

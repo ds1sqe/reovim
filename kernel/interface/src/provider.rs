@@ -1,7 +1,10 @@
 use alloc::{boxed::Box, rc::Rc};
 use core::{future::Future, pin::Pin};
 
-use crate::{Contract, Error, Message, ResourceId, access::Method};
+use crate::{
+    Contract, Error, Message, ResourceId,
+    access::{Method, Reply, RequestError},
+};
 
 /// Ready contributions transferred together by the activation owner.
 /// Names are captured here; installed namespace entries remain private.
@@ -19,34 +22,27 @@ impl Contribution {
     }
 }
 
-/// Rights are checked for the subject and each declared reference slot.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Permissions {
-    pub read: bool,
-    pub write: bool,
+reovim_bitflags::rv_bitflags! {
+    /// Rights checked for the subject and each declared reference slot.
+    pub struct Permissions: u32 {
+        const READ = 1;
+        const WRITE = 2;
+        const ALL = Self::READ.bits() | Self::WRITE.bits();
+    }
 }
 
 impl Permissions {
-    pub const READ: Self = Self { read: true, write: false };
-    pub const WRITE: Self = Self { read: false, write: true };
-    pub const ALL: Self = Self { read: true, write: true };
-
     #[must_use]
     pub const fn allows(self, method: Method) -> bool {
         match method {
-            Method::Read => self.read,
-            Method::Write => self.write,
+            Method::Read => self.intersects(Self::READ),
+            Method::Write => self.intersects(Self::WRITE),
         }
-    }
-
-    #[must_use]
-    pub const fn contains(self, other: Self) -> bool {
-        (!other.read || self.read) && (!other.write || self.write)
     }
 }
 
-/// This initial profile transfers borrowed subject references, never leases.
-#[derive(Clone, Debug)]
+/// Slots declare operation rights; publication determines access ownership.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Surface {
     pub contract: Contract,
     pub methods: Permissions,
@@ -54,17 +50,20 @@ pub struct Surface {
     pub output: Box<[Permissions]>,
 }
 
-pub type ProviderReply = Pin<Box<dyn Future<Output = Result<Message, Error>>>>;
+/// Ordinary implementations use `Error`. Adapters may preserve `RequestError`
+/// when delivery itself is uncertain; external effect evidence is a Message.
+pub type ProviderReply<Failure = Error> =
+    Pin<Box<dyn Future<Output = Result<Message, Failure>>>>;
 
 /// Runtime alone invokes and polls the selected table outside Core authority.
 pub type Unload<State> = fn(&mut State) -> Result<(), Error>;
 
-pub struct ResourceOps<State> {
+pub struct ResourceOps<State, Failure = Error> {
     /// Checks readiness outside registry guards; leaves the provider usable.
     /// Another contribution may reject the owner's grouped unload.
     pub unload: Option<Unload<State>>,
-    pub read: fn(&mut State, ResourceId, Message) -> ProviderReply,
-    pub write: fn(&mut State, ResourceId, Message) -> ProviderReply,
+    pub read: fn(&mut State, ResourceId, Message) -> ProviderReply<Failure>,
+    pub write: fn(&mut State, ResourceId, Message) -> ProviderReply<Failure>,
 }
 
 trait Dispatch {
@@ -74,15 +73,17 @@ trait Dispatch {
         method: Method,
         subject: ResourceId,
         input: Message,
-    ) -> ProviderReply;
+    ) -> Reply;
 }
 
-struct Implementation<State> {
+struct Implementation<State, Failure> {
     state: State,
-    operations: ResourceOps<State>,
+    operations: ResourceOps<State, Failure>,
 }
 
-impl<State> Dispatch for Implementation<State> {
+impl<State, Failure: Into<RequestError> + 'static> Dispatch
+    for Implementation<State, Failure>
+{
     fn unload(&mut self) -> Result<(), Error> {
         self.operations.unload.map_or(Ok(()), |unload| unload(&mut self.state))
     }
@@ -92,39 +93,74 @@ impl<State> Dispatch for Implementation<State> {
         method: Method,
         subject: ResourceId,
         input: Message,
-    ) -> ProviderReply {
-        match method {
+    ) -> Reply {
+        let reply = match method {
             Method::Read => {
                 (self.operations.read)(&mut self.state, subject, input)
             }
             Method::Write => {
                 (self.operations.write)(&mut self.state, subject, input)
             }
-        }
+        };
+        Box::pin(async move { reply.await.map_err(Into::into) })
     }
 }
 
 /// Erased same-build implementation; Runtime's type never enumerates providers.
 pub struct ResourceProvider {
     pub surfaces: Box<[Surface]>,
+    /// A bound relay forwards complete Messages and each reference's granted
+    /// permissions. Its declared surfaces have empty fixed slot lists.
+    pub forwarding: bool,
     implementation: Box<dyn Dispatch>,
+    close: Option<Box<dyn FnMut()>>,
     // Keep executable ownership after implementation/context destruction.
     _code: Rc<dyn core::any::Any>,
 }
 
 impl ResourceProvider {
     #[must_use]
-    pub fn new<State: 'static>(
+    pub fn new<State: 'static, Failure: Into<RequestError> + 'static>(
         state: State,
-        operations: ResourceOps<State>,
+        operations: ResourceOps<State, Failure>,
         surfaces: Box<[Surface]>,
         code: Rc<dyn core::any::Any>,
     ) -> Self {
         Self {
             surfaces,
+            forwarding: false,
+            close: None,
             implementation: Box::new(Implementation { state, operations }),
             _code: code,
         }
+    }
+
+    /// A published access belongs to the requesting client until close.
+    /// The callback fences delivery and wakes pending calls; it must not fail.
+    /// Runtime invokes it once, outside registry guards, before reclamation.
+    #[must_use]
+    pub fn owned(mut self, close: impl FnMut() + 'static) -> Self {
+        self.close = Some(Box::new(close));
+        self
+    }
+
+    #[must_use]
+    pub const fn is_owned(&self) -> bool {
+        self.close.is_some()
+    }
+
+    pub fn close(&mut self) {
+        if let Some(mut close) = self.close.take() {
+            close();
+        }
+    }
+
+    /// Uses the receiving Connection's grants for forwarded reference slots.
+    /// The returned Message preserves its original contract and schema.
+    #[must_use]
+    pub const fn forwarding(mut self) -> Self {
+        self.forwarding = true;
+        self
     }
 
     /// # Errors
@@ -138,7 +174,7 @@ impl ResourceProvider {
         method: Method,
         subject: ResourceId,
         input: Message,
-    ) -> ProviderReply {
+    ) -> Reply {
         self.implementation.call(method, subject, input)
     }
 }

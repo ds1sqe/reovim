@@ -29,9 +29,7 @@ fn read(_: &mut State, _: ResourceId, input: Message) -> ProviderReply {
 }
 fn setup() -> (Runtime, Connection, ResourceId, Rc<Cell<bool>>, Rc<Cell<bool>>)
 {
-    let mut runtime =
-        Runtime::new(108, Limits::default(), reovim_kernel_core::create)
-            .unwrap();
+    let mut runtime = Runtime::new(108, Limits::default()).unwrap();
     runtime.start().unwrap();
     let ready = Rc::new(Cell::new(false));
     let destroyed = Rc::new(Cell::new(false));

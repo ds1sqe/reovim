@@ -13,12 +13,16 @@ impl Runtime {
         &mut self,
         registrations: &[ResourceId],
     ) -> Result<(), Error> {
+        if registrations.iter().any(|id| self.module_contribution(*id)) {
+            return Err(Error::BUSY);
+        }
         let mut retired = Vec::new();
         retired
             .try_reserve_exact(registrations.len())
             .map_err(|_| Error::PRESSURE)?;
         let mut shared = self.shared.borrow_mut();
         removable(&shared, registrations)?;
+        let removed = removal_keys(&shared, registrations)?;
         for id in registrations {
             let index = shared.entry_index(id.0)?;
             let kind = core::mem::replace(
@@ -35,9 +39,7 @@ impl Runtime {
             restore(&mut shared, retired)?;
             return Err(error);
         }
-        shared
-            .entries
-            .retain(|entry| !registrations.iter().any(|id| id.0 == entry.key));
+        shared.entries.retain(|entry| !removed.contains(&entry.key));
         drop(shared);
         drop(retired);
         Ok(())
@@ -89,11 +91,31 @@ fn removable(shared: &Shared, ids: &[ResourceId]) -> Result<(), Error> {
             return Err(Error::INVALID);
         }
         let entry = &shared.entries[shared.entry_index(id.0)?];
-        if !entry.kind.removable() {
+        if entry.ownership.is_some() || !entry.kind.removable() {
             return Err(Error::BUSY);
         }
     }
     Ok(())
+}
+
+fn removal_keys(
+    shared: &Shared,
+    ids: &[ResourceId],
+) -> Result<Vec<u64>, Error> {
+    let mut removed = Vec::new();
+    for entry in &shared.entries {
+        if !ids.iter().any(|id| shared.descends(entry.key, id.0)) {
+            continue;
+        }
+        if !ids.contains(&ResourceId(entry.key))
+            && !matches!(entry.kind, Kind::Directory)
+        {
+            return Err(Error::BUSY);
+        }
+        removed.try_reserve(1).map_err(|_| Error::PRESSURE)?;
+        removed.push(entry.key);
+    }
+    Ok(removed)
 }
 
 fn publish(shared: &mut Shared, contribution: Contribution) -> ResourceId {
@@ -119,14 +141,17 @@ fn validate(shared: &Shared, values: &[Contribution]) -> Result<(), Error> {
         return Err(Error::PRESSURE);
     }
     let mut missing = Vec::new();
-    for value in values {
+    for (index, value) in values.iter().enumerate() {
         let path = value.path();
         crate::namespace::validate(path, shared.limits.path_bytes)?;
-        if path.is_empty() || shared.path(1, path).is_ok() {
+        if path.is_empty()
+            || shared.path(1, path).is_ok()
+            || values[..index].iter().any(|value| value.path() == path)
+        {
             return Err(Error::INVALID);
         }
         metadata(shared, value)?;
-        prefixes(shared, path, values, &mut missing)?;
+        prefixes(shared, path, &mut missing)?;
     }
     if !shared.ids.can_take(missing.len()) {
         return Err(Error::PRESSURE);
@@ -137,6 +162,9 @@ fn validate(shared: &Shared, values: &[Contribution]) -> Result<(), Error> {
 fn metadata(shared: &Shared, value: &Contribution) -> Result<(), Error> {
     match value {
         Contribution::Resource { provider, .. } => {
+            if provider.is_owned() {
+                return Err(Error::INVALID);
+            }
             registration::resource(provider, shared.limits)
         }
         Contribution::Model { provider, .. } => {
@@ -148,7 +176,6 @@ fn metadata(shared: &Shared, value: &Contribution) -> Result<(), Error> {
 fn prefixes<'a>(
     shared: &Shared,
     path: &'a str,
-    values: &[Contribution],
     missing: &mut Vec<&'a str>,
 ) -> Result<(), Error> {
     let ends = path
@@ -157,17 +184,10 @@ fn prefixes<'a>(
         .chain(core::iter::once(path.len()));
     for end in ends {
         let prefix = &path[..end];
-        if existing_directory(shared, prefix)? {
+        if existing_parent(shared, prefix)? {
             continue;
         }
-        if end != path.len() && values.iter().any(|v| v.path() == prefix) {
-            return Err(Error::INVALID);
-        }
-        let duplicate = missing.contains(&prefix);
-        if duplicate && end == path.len() {
-            return Err(Error::INVALID);
-        }
-        if duplicate {
+        if missing.contains(&prefix) {
             continue;
         }
         if shared.entries.len() + missing.len() == shared.limits.resources {
@@ -179,12 +199,12 @@ fn prefixes<'a>(
     Ok(())
 }
 
-fn existing_directory(shared: &Shared, path: &str) -> Result<bool, Error> {
+fn existing_parent(shared: &Shared, path: &str) -> Result<bool, Error> {
     let Ok(key) = shared.path(1, path) else {
         return Ok(false);
     };
     let entry = &shared.entries[shared.entry_index(key)?];
-    if !matches!(entry.kind, Kind::Directory) {
+    if !entry.kind.accepts_children() {
         return Err(Error::INVALID);
     }
     Ok(true)

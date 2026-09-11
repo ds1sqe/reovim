@@ -26,9 +26,36 @@ pub fn connection(
 }
 
 impl Access for Caller {
+    fn withdraw(&self, resource: ResourceId) -> Result<(), Error> {
+        self.check()?;
+        crate::publication::withdraw(&self.shared, &self.scope, resource)
+    }
+
+    fn publish(
+        &self,
+        parent: ResourceId,
+        name: &str,
+        provider: reovim_kernel_interface::provider::ResourceProvider,
+    ) -> Result<
+        ResourceId,
+        (Error, reovim_kernel_interface::provider::ResourceProvider),
+    > {
+        if let Err(error) = self.check() {
+            return Err((error, provider));
+        }
+        crate::publication::publish(
+            &self.shared,
+            &self.scope,
+            parent,
+            name,
+            provider,
+        )
+    }
+
     fn root(&self) -> Result<ResourceId, Error> {
         self.check()?;
-        self.scope.borrow_mut().export(&mut self.shared.borrow_mut(), 1)
+        let root = self.scope.borrow().root;
+        self.scope.borrow_mut().export(&mut self.shared.borrow_mut(), root)
     }
 
     fn resolve_at(
@@ -45,7 +72,7 @@ impl Access for Caller {
             return Err(Error::DENIED);
         }
         for name in path.split('/').filter(|name| !name.is_empty()) {
-            key = shared.path(key, name)?;
+            key = scope.child(&shared, key, name)?;
             scope.require_visible(&shared, key)?;
         }
         scope.export(&mut shared, key)
@@ -63,19 +90,21 @@ impl Access for Caller {
             return Err(Error::DENIED);
         }
         let kind = &shared.entries[shared.entry_index(key)?].kind;
-        if !matches!(kind, Kind::Directory | Kind::Buffer(_)) {
+        if !matches!(
+            kind,
+            Kind::Directory
+                | Kind::Provider(_)
+                | Kind::Model(_)
+                | Kind::Buffer(_)
+                | Kind::Session(_)
+                | Kind::ClosedSession { .. }
+        ) {
             return Err(Error::UNSUPPORTED);
         }
-        let entries: Vec<_> = shared
-            .entries
-            .iter()
-            .filter(|entry| {
-                entry.parent == key
-                    && entry.key != key
-                    && scope.visible(&shared, entry.key)
-            })
-            .map(|entry| (entry.name.clone(), entry.key))
-            .collect();
+        let entries = scope.children(&shared, key);
+        if entries.len() > shared.limits.resources {
+            return Err(Error::PRESSURE);
+        }
         let mut result = Vec::new();
         result.try_reserve_exact(entries.len()).map_err(|_| Error::PRESSURE)?;
         for (name, key) in entries {
@@ -106,26 +135,20 @@ impl Access for Caller {
         self.check()?;
         let mut shared = self.shared.borrow_mut();
         let key = self.scope.borrow().key(access)?;
+        if shared.entries[shared.entry_index(key)?].ownership.is_some() {
+            drop(shared);
+            return crate::owned::close(&self.shared, &self.scope, key);
+        }
         let kind = shared.entries[shared.entry_index(key)?].kind.clone();
-        if let Kind::Work { scope, request } = kind {
-            let retired = self.close_work(&mut shared, scope, request)?;
+        if let Kind::Work { request, .. } = kind {
+            let retired = self.close_work(&mut shared, key, request)?;
             drop(shared);
             drop(retired);
             return Ok(());
         }
-        let scope_id = self.scope.borrow().id;
-        if shared
-            .requests
-            .iter()
-            .any(|record| record.borrow().scope.borrow().id == scope_id)
-        {
-            return Err(Error::BUSY);
-        }
-        self.scope
-            .borrow_mut()
-            .grants
-            .retain(|(grant, _)| !shared.descends(*grant, key));
-        Ok(())
+        // A borrowed subject is not an owned access. Revoking this import's
+        // grants would not close the caller's access or the shared subject.
+        Err(Error::DENIED)
     }
 
     fn reconnect(&self) -> Result<Connection, Error> {
@@ -144,6 +167,9 @@ impl Access for Caller {
 
 impl Caller {
     fn check(&self) -> Result<(), Error> {
+        if self.scope.borrow().closed {
+            return Err(Error::CLOSED);
+        }
         if self.scope.borrow().generation != self.generation {
             return Err(Error::STALE);
         }
@@ -167,25 +193,53 @@ impl Caller {
         let mut shared = self.shared.borrow_mut();
         let scope = self.scope.borrow();
         let key = scope.key(subject)?;
-        let target = shared.entries[shared.entry_index(key)?].kind.clone();
-        let owner = scope.id;
-        if matches!(target, Kind::Work { scope, .. } if scope != owner) {
-            return Err(Error::DENIED);
-        }
-        if let Kind::Work { request, .. } = target {
-            return self.recovery(&shared, request, method, input);
-        }
-        if shared.closing {
+        if shared.entries[shared.entry_index(key)?].closed() {
             return Err(Error::CLOSED);
         }
+        let target = shared.entries[shared.entry_index(key)?].kind.clone();
         if !scope.permissions(&shared, key).is_some_and(|p| p.allows(method)) {
             return Err(Error::DENIED);
         }
+        if let Kind::Work { request, .. } = target {
+            return self.recovery(&mut shared, request, method, input);
+        }
+        if shared.closing
+            && !(matches!(target, Kind::Module(_))
+                && crate::modules::during_close(method, &input.contract))
+        {
+            return Err(Error::CLOSED);
+        }
+        let activation =
+            shared.entries[shared.entry_index(key)?].activation.clone();
+        let closing_buffer =
+            matches!(target, Kind::Buffer(_) | Kind::ClosedBuffer { .. })
+                && method == Method::Write
+                && crate::closing::contract(&input.contract);
+        let closing_session =
+            matches!(target, Kind::Session(_) | Kind::ClosedSession { .. })
+                && method == Method::Write
+                && crate::sessions::closing(&input.contract);
+        let activation =
+            if closing_buffer || closing_session { None } else { activation };
+        crate::modules::require_ready(activation.as_deref())?;
         let output = validate_contract(&target, method, input)?;
         Self::check_capacity(&shared, input)?;
         let mut captured = input.clone();
-        translate_input(&shared, &scope, &target, method, &mut captured)?;
+        let snapshot = crate::sessions::capture_snapshot(
+            &shared,
+            &scope,
+            &target,
+            method,
+            key,
+            &mut captured,
+        )?;
+        if snapshot.is_none() {
+            translate_input(&shared, &scope, &target, method, &mut captured)?;
+        }
         let id = shared.id()?;
+        let references = crate::binding::capture(&shared, &captured)?;
+        let receiver =
+            shared.entries[shared.entry_index(key)?].receiver.clone();
         let resource = shared.id()?;
         let recovery = shared.work_path(scope.id, id);
         let name =
@@ -195,28 +249,41 @@ impl Caller {
             id,
             parent,
             scope: Rc::clone(&self.scope),
+            receiver,
             subject: key,
             method,
             input: captured,
             work: Some(Work::Queued),
             outcome: None,
             target,
+            _references: references,
+            activation,
             output,
+            snapshot,
             cancelled: false,
             observed: false,
+            readers: 0,
+            recovery_work: None,
             recovery,
-            waker: None,
+            wakers: Vec::new(),
+            schedule: crate::request::Schedule::new(),
         }));
         shared.entries.push(Entry {
             key: resource,
             parent: 2,
             name,
-            kind: Kind::Work { scope: scope.id, request: id },
+            kind: Kind::Work { scope: scope.id, request: id, retained: false },
+            activation: None,
+            receiver: None,
+            group: None,
+            ownership: None,
         });
         shared.requests.push(Rc::clone(&record));
         shared.emit(id, scope.id, key, Stage::Admitted, parent);
         Ok(Box::pin(Wait {
+            id,
             shared: Rc::clone(&self.shared),
+            scope: Rc::clone(&self.scope),
             record: Some(record),
             recovery: false,
             generation: self.generation,
@@ -238,7 +305,7 @@ impl Caller {
 
     fn recovery(
         &self,
-        shared: &Shared,
+        shared: &mut Shared,
         id: u64,
         method: Method,
         input: &Message,
@@ -263,8 +330,17 @@ impl Caller {
             input.contract.version,
         ) {
             (Method::Read, "kernel.request.result", 1) => {
+                let readers = record.borrow().readers;
+                let readers = readers
+                    .checked_add(1)
+                    .filter(|count| *count <= shared.limits.requests)
+                    .ok_or(Error::PRESSURE)?;
+                let id = shared.id()?;
+                record.borrow_mut().readers = readers;
                 return Ok(Box::pin(Wait {
+                    id,
                     shared: Rc::clone(&self.shared),
+                    scope: Rc::clone(&self.scope),
                     record: Some(record),
                     recovery: true,
                     generation: self.generation,
@@ -285,20 +361,33 @@ impl Caller {
     fn close_work(
         &self,
         shared: &mut Shared,
-        owner: u64,
+        key: u64,
         request: u64,
     ) -> Result<Option<Rc<RefCell<Record>>>, Error> {
-        if owner != self.scope.borrow().id {
+        if !self
+            .scope
+            .borrow()
+            .permissions(shared, key)
+            .is_some_and(|rights| rights.contains(Permissions::WRITE))
+        {
             return Err(Error::DENIED);
+        }
+        if shared
+            .requests
+            .iter()
+            .any(|record| record.borrow().references(ResourceId(key)))
+        {
+            return Err(Error::BUSY);
         }
         let record = shared
             .requests
             .iter()
             .find(|record| record.borrow().id == request)
             .ok_or(Error::UNAVAILABLE)?;
-        if record.borrow().outcome.is_none() {
+        if record.borrow().outcome.is_none() || record.borrow().readers != 0 {
             return Err(Error::BUSY);
         }
+        record.borrow_mut().observed = true;
         Ok(shared.retire(request))
     }
 }
@@ -309,6 +398,11 @@ fn validate_contract(
     input: &Message,
 ) -> Result<Box<[Permissions]>, Error> {
     match target {
+        Kind::Session(_) | Kind::Snapshot(_) | Kind::ClosedSession { .. } => {
+            crate::sessions::surface(target, method, input)
+        }
+        Kind::Catalog(_) => crate::catalog::surface(method, &input.contract),
+        Kind::Module(_) => crate::modules::surface(method, &input.contract),
         Kind::Provider(provider) => provider
             .borrow()
             .surfaces
@@ -321,7 +415,10 @@ fn validate_contract(
             .ok_or(Error::UNSUPPORTED),
         Kind::Model(model)
             if method == Method::Write
-                && input.contract == model.borrow().create =>
+                && (input.contract == model.borrow().create
+                    || reovim_kernel_interface::session::is_create(
+                        &input.contract,
+                    )) =>
         {
             Ok(Box::new([Permissions::ALL, Permissions::ALL]))
         }
@@ -410,16 +507,13 @@ fn translate_input(
         .iter()
         .find(|s| s.contract == input.contract && s.methods.allows(method))
         .ok_or(Error::UNSUPPORTED)?;
-    if surface.input.len() != input.resources.len() {
+    if !provider.forwarding && surface.input.len() != input.resources.len() {
         return Err(Error::INVALID);
     }
-    for (reference, required) in input.resources.iter_mut().zip(&surface.input)
-    {
+    for (index, reference) in input.resources.iter_mut().enumerate() {
         let key = scope.key(*reference)?;
-        if !scope
-            .permissions(shared, key)
-            .is_some_and(|rights| rights.contains(*required))
-        {
+        let allowed = scope.permissions(shared, key).ok_or(Error::DENIED)?;
+        if !provider.forwarding && !allowed.contains(surface.input[index]) {
             return Err(Error::DENIED);
         }
         *reference = ResourceId(key);

@@ -1,8 +1,10 @@
-use super::{Instance, bytes, contract, create, load_table, quiescent};
+use super::{
+    Instance, Library, bytes, contract, create, load_table, quiescent,
+};
 use alloc::{boxed::Box, rc::Rc};
 use core::{ffi::c_void, future::ready, ptr};
 use reovim_kernel_interface::{
-    Contract, Error, Message, abi,
+    Connection, Contract, Error, Message, abi,
     buffer::{ModelOps, ModelProvider, State, StateReply},
 };
 use std::path::Path;
@@ -10,7 +12,7 @@ use std::path::Path;
 /// Loads a native immutable state model.
 ///
 /// # Safety
-/// The library must obey module ABI v2 ownership and immutability rules.
+/// The library must obey module ABI 0.1.0 ownership and immutability rules.
 /// Callbacks must not unwind across the ABI.
 /// Register before use; destroy only after unload readiness succeeds.
 /// Its constructors and callbacks execute trusted native code.
@@ -18,6 +20,14 @@ use std::path::Path;
 /// Rejects incompatible tables, malformed contracts or failed construction.
 pub unsafe fn load_model(path: &Path) -> Result<ModelProvider, Error> {
     let (table, library) = unsafe { load_table(path)? };
+    unsafe { from_table(table, library, None) }
+}
+
+pub(super) unsafe fn from_table(
+    table: abi::Module,
+    library: Rc<Library>,
+    kernel: Option<&Connection>,
+) -> Result<ModelProvider, Error> {
     if table.kind != abi::MODEL
         || table.initialize.is_none()
         || table.prepare.is_none()
@@ -32,7 +42,7 @@ pub unsafe fn load_model(path: &Path) -> Result<ModelProvider, Error> {
     let initial = unsafe { contract(table.create_contract)? };
     let read = unsafe { contract(table.read_contract)? };
     let edit = unsafe { contract(table.edit_contract)? };
-    let context = unsafe { create(&table, None)? };
+    let context = unsafe { create(&table, kernel, library.clone())? };
     let owner =
         Rc::new(Instance { table, context, _library: Rc::clone(&library) });
     Ok(ModelProvider::new(

@@ -18,13 +18,10 @@ fn finish<T>(runtime: &mut Runtime, future: impl Future<Output = T>) -> T {
 
 fn counter()
 -> (Runtime, Connection, Rc<Cell<u64>>, reovim_kernel_interface::ResourceId) {
-    let mut runtime =
-        Runtime::new(17, Limits::default(), reovim_kernel_core::create)
-            .unwrap();
+    let mut runtime = Runtime::new(17, Limits::default()).unwrap();
     runtime.start().unwrap();
     let value = Rc::new(Cell::new(0));
-    let provider =
-        reovim_kernel_interface_public_consumer::counter(Rc::clone(&value));
+    let provider = reovim_module_counter::provider(Rc::clone(&value));
     let registration = runtime
         .register("modules/counter/add", provider)
         .map_err(|(error, _)| error)
@@ -86,6 +83,7 @@ fn dropped_wait_and_reconnect_recover_the_original_effect() {
         ),
     )
     .unwrap();
+    next.close(work).into_inner().unwrap();
     let result =
         reovim_kernel_interface::requests::decode(result).unwrap().unwrap();
     assert_eq!(integer(&result.data), Ok(3));

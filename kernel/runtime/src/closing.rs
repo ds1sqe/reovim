@@ -24,7 +24,7 @@ impl Runtime {
             return Err(Error::INVALID);
         }
         let (owner, revision) = state(&record.target)?;
-        if owner != record.scope.borrow().id {
+        if owner != record.scope.borrow().owner {
             return Err(Error::DENIED);
         }
         if expected != revision {
@@ -66,7 +66,7 @@ fn state(target: &Kind) -> Result<(u64, u64), Error> {
     match target {
         Kind::Buffer(buffer) => {
             let buffer = buffer.borrow();
-            Ok((buffer.owner, buffer.core.revision()))
+            Ok((buffer.owner, buffer.state.revision()))
         }
         Kind::ClosedBuffer { owner, revision } => Ok((*owner, *revision)),
         _ => Err(Error::UNSUPPORTED),

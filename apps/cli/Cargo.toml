@@ -1,0 +1,27 @@
+[package]
+name = "reovim-cli"
+workspace = "../../product"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies.reovim-service]
+path = "../../host/service"
+version = "=0.16.0-dev"
+
+[dependencies.reovim-call]
+path = "../../lib/call"
+
+[features]
+default = []
+std = ["reovim-service/std"]
+
+[[bin]]
+name = "reovim-cli"
+path = "src/main.rs"
+required-features = ["std"]
+
+[lints]
+workspace = true

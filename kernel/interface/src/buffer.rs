@@ -11,32 +11,6 @@ pub struct BufferState {
     pub revision: u64,
 }
 
-/// Core's implementation boundary, selected by assembly rather than Runtime.
-pub trait Authority {
-    fn state(&self) -> State;
-    fn revision(&self) -> u64;
-    fn node(&self) -> usize;
-    fn children(&self) -> Vec<usize>;
-    /// # Errors
-    /// Rejection returns the candidate for destruction outside authority.
-    fn install(
-        &mut self,
-        expected: u64,
-        candidate: State,
-    ) -> Result<(), (Error, State)>;
-    /// # Errors
-    /// Rejects stale state or an unavailable parent/child without mutation.
-    fn restore(
-        &mut self,
-        expected: u64,
-        undo: bool,
-        child: Option<usize>,
-    ) -> Result<(), Error>;
-}
-
-pub type CoreFactory =
-    fn(State, usize, u64) -> Result<Box<dyn Authority>, (Error, State)>;
-
 /// A copied semantic observation; metadata owns no Buffer or History lease.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Observation {
@@ -65,7 +39,7 @@ impl State {
         self.value.downcast_ref()
     }
 
-    /// Called by the preparation owner before transferring state to Core.
+    /// Called by the preparation owner before installing state.
     pub fn retain(&mut self, owner: Rc<dyn Any>) {
         self.owner = Some(owner);
     }
@@ -73,7 +47,7 @@ impl State {
 
 pub type StateReply = Pin<Box<dyn Future<Output = Result<State, Error>>>>;
 
-/// Providers prepare outside Core. A candidate cannot mutate installed state.
+/// Providers prepare before installation; candidates cannot mutate live state.
 pub struct ModelOps<Context> {
     /// Runs only after retained states/work drain, outside registry guards.
     pub unload: Option<crate::provider::Unload<Context>>,

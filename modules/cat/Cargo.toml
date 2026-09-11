@@ -1,0 +1,21 @@
+[package]
+name = "reovim-module-cat"
+workspace = "../../product"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies.reovim-kernel-interface]
+path = "../../kernel/interface"
+
+[lints]
+workspace = true
+
+[dependencies.reovim-module]
+path = "../../lib/module"
+
+[[example]]
+name = "cat"
+crate-type = ["cdylib"]

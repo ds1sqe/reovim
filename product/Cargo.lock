@@ -3,6 +3,26 @@
 version = 4
 
 [[package]]
+name = "reovim-bitflags"
+version = "0.16.0-dev"
+
+[[package]]
+name = "reovim-call"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-kernel-interface",
+ "reovim-service",
+]
+
+[[package]]
+name = "reovim-cli"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-call",
+ "reovim-service",
+]
+
+[[package]]
 name = "reovim-domain-basic"
 version = "0.16.0-dev"
 dependencies = [
@@ -19,21 +39,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "reovim-kernel-core"
-version = "0.16.0-dev"
-dependencies = [
- "reovim-kernel-interface",
-]
-
-[[package]]
 name = "reovim-kernel-interface"
 version = "0.16.0-dev"
-
-[[package]]
-name = "reovim-kernel-interface-public-consumer"
-version = "0.16.0-dev"
 dependencies = [
- "reovim-kernel-interface",
+ "reovim-bitflags",
+ "reovim-vtable",
 ]
 
 [[package]]
@@ -41,6 +51,132 @@ name = "reovim-kernel-runtime"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-kernel-interface",
+]
+
+[[package]]
+name = "reovim-module"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-kernel-interface",
+ "reovim-sdk",
+]
+
+[[package]]
+name = "reovim-module-cat"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-kernel-interface",
+ "reovim-module",
+]
+
+[[package]]
+name = "reovim-module-cd"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-call",
+ "reovim-kernel-interface",
+ "reovim-module",
+]
+
+[[package]]
+name = "reovim-module-close"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-call",
+ "reovim-kernel-interface",
+ "reovim-module",
+]
+
+[[package]]
+name = "reovim-module-counter"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-kernel-interface",
+]
+
+[[package]]
+name = "reovim-module-dmesg"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-kernel-interface",
+ "reovim-module",
+]
+
+[[package]]
+name = "reovim-module-editing"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-kernel-interface",
+ "reovim-representation-basic",
+]
+
+[[package]]
+name = "reovim-module-env"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-kernel-interface",
+ "reovim-module",
+]
+
+[[package]]
+name = "reovim-module-example"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-module",
+]
+
+[[package]]
+name = "reovim-module-exit"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-call",
+ "reovim-kernel-interface",
+ "reovim-module",
+]
+
+[[package]]
+name = "reovim-module-help"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-call",
+ "reovim-kernel-interface",
+ "reovim-module",
+]
+
+[[package]]
+name = "reovim-module-ls"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-call",
+ "reovim-kernel-interface",
+ "reovim-module",
+]
+
+[[package]]
+name = "reovim-module-pwd"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-call",
+ "reovim-kernel-interface",
+ "reovim-module",
+]
+
+[[package]]
+name = "reovim-module-read"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-call",
+ "reovim-kernel-interface",
+ "reovim-module",
+]
+
+[[package]]
+name = "reovim-module-write"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-call",
+ "reovim-kernel-interface",
+ "reovim-module",
 ]
 
 [[package]]
@@ -64,6 +200,7 @@ name = "reovim-sdk"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-kernel-interface",
+ "reovim-vtable",
 ]
 
 [[package]]
@@ -72,11 +209,20 @@ version = "0.16.0-dev"
 dependencies = [
  "reovim-domain-basic",
  "reovim-host-reference",
- "reovim-kernel-core",
  "reovim-kernel-interface",
- "reovim-kernel-interface-public-consumer",
  "reovim-kernel-runtime",
+ "reovim-module-counter",
+ "reovim-module-editing",
  "reovim-representation-basic",
  "reovim-resource-local",
  "reovim-sdk",
+ "reovim-service",
 ]
+
+[[package]]
+name = "reovim-service"
+version = "0.16.0-dev"
+
+[[package]]
+name = "reovim-vtable"
+version = "0.16.0-dev"

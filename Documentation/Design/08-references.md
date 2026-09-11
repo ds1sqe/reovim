@@ -64,7 +64,7 @@ Current implementation evidence is deliberately narrower than this design:
 
 - [Resource journeys](../../apps/server/tests/resources.rs) exercise dynamic
   registration, namespace isolation, recovery and two distinct state models.
-- [Core installation](../../kernel/core/src/lib.rs) changes immutable state
+- [Core installation](../../kernel/runtime/src/history.rs) changes immutable state
   and History under one authority. This is not a measured lock-cost claim.
 - [Native loading](../../apps/server/tests/native.rs) builds a C Resource
   provider after Runtime starts and invokes it through the common API.

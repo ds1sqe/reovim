@@ -17,9 +17,7 @@ fn fail(
 }
 #[test]
 fn diagnostic_ids_are_scoped_and_do_not_disclose_hidden_subjects() {
-    let mut runtime =
-        Runtime::new(107, Limits::default(), reovim_kernel_core::create)
-            .unwrap();
+    let mut runtime = Runtime::new(107, Limits::default()).unwrap();
     runtime.start().unwrap();
     let error = Rc::new(Cell::new(Error::INVALID));
     let provider = ResourceProvider::new(
