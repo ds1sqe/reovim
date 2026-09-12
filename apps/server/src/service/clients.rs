@@ -20,6 +20,7 @@ struct Client {
     kernel: Connection,
     loader: Loader,
     requests: Requests,
+    opening: Option<(String, u64)>,
 }
 
 pub(super) struct Clients {
@@ -56,11 +57,14 @@ impl Clients {
         line: &str,
     ) -> Result<Response, String> {
         if line == "v1\topen" {
-            return self.open(runtime).map_err(|e| format!("{e}"));
+            return self.open(runtime, None).map_err(|e| format!("{e}"));
         }
         let rest =
             line.strip_prefix("v1\t").ok_or("invalid service profile")?;
         let (token, request) = rest.split_once('\t').ok_or("missing client")?;
+        if token == "open" || token == "recover" {
+            return self.handshake(runtime, token, request);
+        }
         if request == "disconnect" {
             return self.disconnect(runtime, token);
         }
@@ -106,7 +110,37 @@ impl Clients {
         Ok(ready(Ok("ok".into())))
     }
 
-    fn open(&mut self, runtime: &mut Runtime) -> io::Result<Response> {
+    fn handshake(
+        &mut self,
+        runtime: &mut Runtime,
+        action: &str,
+        key: &str,
+    ) -> Result<Response, String> {
+        if key.len() != 32
+            || !key.bytes().all(|byte| {
+                byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)
+            })
+        {
+            return Err("invalid opening secret".into());
+        }
+        let existing = self.values.iter().find_map(|client| {
+            let (secret, id) = client.opening.as_ref()?;
+            (secret == key).then_some((client, *id))
+        });
+        if let Some((client, id)) = existing {
+            return client.requests.result(id);
+        }
+        if action == "recover" {
+            return Err("opening evidence unavailable".into());
+        }
+        self.open(runtime, Some(key)).map_err(|error| format!("{error}"))
+    }
+
+    fn open(
+        &mut self,
+        runtime: &mut Runtime,
+        opening: Option<&str>,
+    ) -> io::Result<Response> {
         if self.values.len() == 16 {
             return Err(io::Error::other(Error::PRESSURE));
         }
@@ -157,8 +191,10 @@ impl Clients {
         let response = client
             .requests
             .enqueue("boot", |id| boot_response(startup, token, id));
+        let (id, response) = response.map_err(io::Error::other)?;
+        client.opening = opening.map(|key| (key.into(), id));
         self.values.push(client);
-        response.map_err(io::Error::other)
+        Ok(response)
     }
 
     pub fn advance(&mut self, runtime: &mut Runtime, wake: &mut Context<'_>) {
@@ -220,7 +256,13 @@ fn construct(
         });
     }
     runtime.register_contributions(values).map_err(|(error, _)| error)?;
-    Ok(Client { token, kernel, loader, requests: Requests::default() })
+    Ok(Client {
+        token,
+        kernel,
+        loader,
+        requests: Requests::default(),
+        opening: None,
+    })
 }
 
 pub(super) fn token() -> io::Result<String> {

@@ -4,8 +4,33 @@ import net from 'node:net';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { Client, DeliveryError, hex, message, outcome, resource, u64 }
+import { Client, DeliveryError, hex, message, opening, outcome, resource, u64 }
   from '../../target/browser/sdk/typescript/resource.js';
+
+test('opening uncertainty recovers before startup receipt retirement', async t => {
+  const original = Client.prototype.wire;
+  t.after(() => { Client.prototype.wire = original; });
+  const start = opening();
+  let saved;
+  const persist = () => { saved = structuredClone(start); };
+  const frames = [];
+  const response = `ok\t${'a'.repeat(32)}\t1`;
+  Client.prototype.wire = async fields => {
+    frames.push(fields);
+    assert.equal(saved.sent, true);
+    if (fields[0] === 'open') throw new Error('reply lost');
+    if (fields[0] === 'recover') return response;
+    assert.equal(saved.response, response);
+    if (frames.length === 3) throw new Error('release reply lost');
+    return 'ok';
+  };
+  await assert.rejects(Client.connect(start, persist), /reply lost/);
+  await assert.rejects(Client.connect(start, persist), /release reply lost/);
+  const client = await Client.connect(start, persist);
+  assert.equal(client.token, 'a'.repeat(32));
+  assert.deepEqual(frames, [['open', start.key], ['recover', start.key],
+    [client.token, 'release', '1'], [client.token, 'release', '1']]);
+});
 
 test('identities and currentness remain exact beyond Number precision', () => {
   assert.equal(resource('@18446744073709551615'), '@18446744073709551615');

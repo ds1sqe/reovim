@@ -1,8 +1,8 @@
-import { Client, message, outcome, type Receipt } from '../../sdk/typescript/resource.js';
+import { Client, message, opening, outcome, type Opening, type Receipt } from '../../sdk/typescript/resource.js';
 
 interface Observation { snapshot: string; watch: string; revision: string;
   snapshotClosed?: boolean; watchClosed?: boolean }
-interface Journal { token?: string; receipt?: Receipt; observation?: Observation }
+interface Journal { token?: string; opening?: Opening; receipt?: Receipt; observation?: Observation }
 const output = document.querySelector('pre')!;
 const saved = sessionStorage.getItem('reovim');
 const journal: Journal = saved ? JSON.parse(saved) : {};
@@ -56,8 +56,11 @@ async function run(release: boolean) {
   if (busy) return;
   busy = true;
   try {
-    const client = journal.token ? new Client(journal.token) : await Client.connect();
+    if (!journal.token && !journal.opening) { journal.opening = opening(); persist(); }
+    const client = journal.token ? new Client(journal.token)
+      : await Client.connect(journal.opening!, persist);
     journal.token = client.token; persist();
+    delete journal.opening; persist();
     if (journal.receipt) await execute(client, journal.receipt.fields);
     if (!release && !journal.observation) {
       await execute(client, ['read', 'session', 'kernel.session.observe', '1']);

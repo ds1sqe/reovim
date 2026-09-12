@@ -24,6 +24,11 @@ within the existing trust model. Closing HTTP does not cancel admitted work.
 
 The local browser check is separate from the pinned Rust CI window. This
 initial profile was tested with Node 26.8.0 and TypeScript 6.0.3. Browser build
-toolchain/CI integration, handshake-loss recovery, richer SDK ownership helpers,
+toolchain/CI integration, richer SDK ownership helpers,
 the editing UI, extension SDK and packaged qualification remain required.
 This connection witness is not the planned Markdown GUI.
+
+The browser persists an opening secret before startup. A lost handshake is
+recovered through that secret without creating another Client. It journals
+the returned token/result before releasing startup delivery storage. Missing
+evidence and failed startup remain retained errors for explicit reconciliation.

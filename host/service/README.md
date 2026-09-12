@@ -8,6 +8,8 @@ the request again. Fields are tab-separated; payload bytes and recovery strings 
 
 ```text
 v1  open
+v1  open     opening-secret
+v1  recover  opening-secret
 ok  client-token  boot-receipt-id
 v1  client-token  reserve
 ok  request-id
@@ -29,6 +31,15 @@ Its opaque token selects that same logical client across sockets; another token
 has different IDs and grants. The reference Linux host uses its random source
 and bounds live clients to 16. Selecting a token does not start a new Kernel
 connection epoch. This profile provides no persistence across server restart.
+
+Resumable callers generate a random 128-bit lowercase hex `opening-secret`
+and persist it before sending `open SECRET`. Treat it as a credential. While
+the Client lives, that secret selects its original startup receipt. After any
+uncertain transmission use only `recover SECRET`, which never creates a Client.
+Missing evidence, including after server restart or teardown, is an error,
+not permission to open again. Save the returned token and startup result before
+releasing the boot receipt; its result is unavailable after release. Legacy
+`open` without a secret cannot recover a lost handshake response.
 
 Reserve an identity before transmitting operation fields. The client retains
 up to 64 receipts; released identities are never reused. The first `call` records

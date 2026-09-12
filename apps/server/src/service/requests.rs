@@ -54,14 +54,14 @@ impl Requests {
         &mut self,
         input: &str,
         make: impl FnOnce(u64) -> Response,
-    ) -> Result<Response, String> {
+    ) -> Result<(u64, Response), String> {
         let id = self.allocate()?;
         let receipt = self.find(id)?;
         let mut value = receipt.borrow_mut();
         value.input = Some(input.into());
         value.response = Some(make(id));
         drop(value);
-        Ok(observe(receipt))
+        Ok((id, observe(receipt)))
     }
 
     fn allocate(&mut self) -> Result<u64, String> {

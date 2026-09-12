@@ -1,6 +1,11 @@
 export type ResourceId = `@${bigint}`;
 export interface Message { contract: string; schema: number; data: Uint8Array; resources: ResourceId[] }
 export interface Receipt { client: string; id: string; fields: string[]; response?: string }
+/** Persist before connect; never replace an uncertain opening with a new one. */
+export interface Opening { key: string; sent?: boolean; response?: string }
+export function opening(): Opening {
+  return { key: hex(crypto.getRandomValues(new Uint8Array(16))) };
+}
 export type Outcome = { kind: 'ok'; value: Message } | {
   kind: 'rejected' | 'failed' | 'unknown'; code: bigint;
   resource?: ResourceId; recovery: string
@@ -64,13 +69,30 @@ export class Client {
     if (!response.ok) throw new Error(`transport ${response.status}`);
     return response.text();
   }
-  static async connect(endpoint = '/rpc'): Promise<Client> {
+  static async connect(start: Opening, persist: () => void,
+    endpoint = '/rpc'): Promise<Client> {
     const temporary = new Client('', endpoint);
-    const parts = (await temporary.wire(['open'])).split('\t');
+    if (start.response === undefined) {
+      const action = start.sent ? 'recover' : 'open';
+      start.sent = true;
+      persist();
+      const response = await temporary.wire([action, start.key]);
+      // Control errors are not startup results; keep recovery possible.
+      if (!response.startsWith('ok\t') && !response.startsWith('error\tboot\t')) {
+        throw new Error(response);
+      }
+      start.response = response;
+      persist();
+    }
+    if (start.response.startsWith('error\tboot\t')) {
+      throw new Error('Client startup failed; opening result retained');
+    }
+    const parts = start.response.split('\t');
     if (parts.length !== 3 || parts[0] !== 'ok' || !/^[0-9a-f]{32}$/.test(parts[1]!)) {
       throw new Error('invalid client handshake');
     }
     const client = new Client(parts[1]!, endpoint);
+    integer(parts[2]!);
     await client.release(parts[2]!);
     return client;
   }
