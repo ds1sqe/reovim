@@ -5,6 +5,7 @@ interface Queued { start: string; end: string; text: string; after: Window }
 export interface Draft {
   value: string; phase: 'composition' | 'input' | 'submitted';
   base?: Window; queue?: Queued[];
+  proof?: { client: string; id: string };
 }
 export interface DraftStorage {
   load(): Draft | undefined;
@@ -17,6 +18,7 @@ export function input(element: HTMLTextAreaElement,
   undo: () => Promise<void>, failed: (error: unknown) => void,
   storage?: DraftStorage) {
   let draft = storage?.load();
+  let proof = draft?.proof;
   let queue: Queued[] = draft?.queue ?? [];
   let observed: Window | undefined, basis: Window | undefined;
   let projection = project({ start: '0', end: '0', eof: true, units: [] });
@@ -25,7 +27,7 @@ export function input(element: HTMLTextAreaElement,
 
   const save = (value: Draft | undefined) => { draft = value; storage?.save(value); };
   const retain = (phase: Draft['phase']) => save({ value: element.value, phase,
-    base: observed, queue: [...queue] });
+    base: observed, queue: [...queue], ...(proof ? { proof } : {}) });
   const refresh = () => {
     if (!pending && !queue.length && !composing && !halted) {
       basis = observed;
@@ -50,6 +52,7 @@ export function input(element: HTMLTextAreaElement,
           throw new Error('Accepted view differs from queued basis; input retained');
         }
         queue.shift();
+        proof = undefined;
         observed = actual;
         if (halted || composing || queue.length) retain(composing ? 'composition' : 'submitted');
         else save(undefined);
@@ -109,10 +112,33 @@ export function input(element: HTMLTextAreaElement,
     queueMicrotask(() => { finishing = false; commit(); refresh(); });
   });
   return {
+    correlate(client: string, id: string) {
+      if (!pending || !queue.length) throw new Error('No input is awaiting correlation');
+      proof = { client, id }; retain('submitted');
+    },
+    get resumeRequest() {
+      if (!halted || pending || composing || !proof || !queue.length
+          || draft?.phase !== 'submitted'
+          || project(queue[queue.length - 1]!.after).value !== draft.value) {
+        throw new Error('Queue needs manual reconciliation');
+      }
+      return { ...proof, after: queue[0]!.after };
+    },
+    resume(client: string, id: string, actual: Window) {
+      const request = this.resumeRequest;
+      if (request.client !== client || request.id !== id || !sameWindow(actual, request.after)) {
+        throw new Error('Original queue acceptance does not match');
+      }
+      queue.shift(); proof = undefined; observed = actual;
+      basis = queue.length ? queue[queue.length - 1]!.after : actual;
+      projection = project(basis); halted = false;
+      if (queue.length) retain('submitted'); else save(undefined);
+      refresh(); void drain();
+    },
     update(window: Window | undefined) { observed = window; refresh(); },
     discard() {
       if (pending || composing) throw new Error('Finish the active input first');
-      queue = []; halted = false; save(undefined); refresh();
+      queue = []; proof = undefined; halted = false; save(undefined); refresh();
     },
     get composing() { return composing; },
     get retained() { return !!draft; }

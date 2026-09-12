@@ -49,8 +49,11 @@ loseEdit = true;
 await assert.rejects(editor.replace(2n, 4n, 'é漢'), /Outcome unavailable/);
 assert.ok(saved.receipt);
 const resumed = new Editing(saved, () => {}, `${origin}/rpc`);
-await resumed.recover();
-await resumed.observe();
+const originalReceipt = saved.receipt;
+const checkpoint = await resumed.inputCheckpoint(originalReceipt.client, originalReceipt.id,
+  { start: '0', end: after.length.toString(), eof: true, units: after });
+assert.deepEqual(checkpoint.units, after);
+await assert.rejects(resumed.inputCheckpoint(originalReceipt.client, '0', checkpoint), /unavailable/);
 assert.equal(saved.source.revision, '1');
 assert.deepEqual(saved.window.units, after);
 await resumed.undo();
@@ -112,6 +115,8 @@ intervene = true;
 await assert.rejects(resumed.replace(0n, 0n, '!'), /changed after acceptance/);
 assert.equal(BigInt(saved.source.revision), prior + 2n);
 assert.deepEqual(saved.window.units, [...scalar('!zy' + 'x'.repeat(33)), ...before]);
+await assert.rejects(resumed.inputCheckpoint(saved.acceptedInput.client,
+  saved.acceptedInput.id, saved.window), /changed after original acceptance/);
 await resumed.close();
 assert.equal(saved.source, undefined);
 assert.equal(saved.access, undefined);

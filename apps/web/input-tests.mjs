@@ -20,6 +20,33 @@ const window = value => ({ start: '0', end: [...value].length.toString(), eof: t
   units: [...value].map(scalar => ({ scalar })) });
 const tick = () => new Promise(setImmediate);
 
+test('explicit queue recovery removes only the head paired with the accepted receipt', async () => {
+  const field = new Field();
+  let saved, reject;
+  const storage = { load: () => structuredClone(saved),
+    save: value => { saved = structuredClone(value); } };
+  const adapter = input(field, () => {
+    adapter.correlate('client', '17');
+    return new Promise((_, failed) => { reject = failed; });
+  }, async () => {}, () => {}, storage);
+  adapter.update(window('a')); field.insert('b'); field.insert('c');
+  reject(new Error('accepted reply lost')); await tick();
+  assert.deepEqual(saved.proof, { client: 'client', id: '17' });
+  const restored = new Field(), calls = [];
+  const resume = input(restored, async (...args) => {
+    calls.push(args); resume.correlate('client', '18'); return window('abc');
+  }, async () => {}, error => { throw error; }, storage);
+  resume.update(window('ab'));
+  assert.throws(() => resume.resume('foreign', '17', window('ab')), /does not match/);
+  assert.throws(() => resume.resume('client', '16', window('ab')), /does not match/);
+  assert.throws(() => resume.resume('client', '17', window('peer')), /does not match/);
+  assert.deepEqual(calls, []);
+  resume.resume('client', '17', window('ab')); await tick();
+  assert.deepEqual(calls, [[2n, 2n, 'c']]);
+  assert.equal(saved, undefined);
+  assert.equal(restored.value, 'abc');
+});
+
 test('typing continues while acknowledgments verify each queued semantic basis', async () => {
   const field = new Field(), calls = [], replies = [];
   let saved;

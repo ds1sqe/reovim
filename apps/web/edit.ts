@@ -12,7 +12,8 @@ const content = document.querySelector<HTMLElement>('#content')!;
 const input = (id: string) => document.querySelector<HTMLInputElement>(`#${id}`)!.value;
 let busy = false;
 const typing = bindInput(document.querySelector<HTMLTextAreaElement>('#typing')!,
-  (start, end, text) => operate(() => editing.replace(start, end, text)),
+  (start, end, text) => operate(() => editing.replace(start, end, text,
+    receipt => typing.correlate(receipt.client, receipt.id))),
   () => operate(() => editing.undo()), report, {
     load: () => journal.draft,
     save: value => { journal.draft = value; persist(); draftStatus(); }
@@ -72,6 +73,17 @@ for (const [id, action] of Object.entries(actions)) {
   });
 }
 document.querySelector('#discard-draft')!.addEventListener('click', () => {
-  try { typing.discard(); render(); } catch (error) { report(error); }
+  try {
+    if (busy) throw new Error('Finish pending work first');
+    typing.discard(); render();
+  } catch (error) { report(error); }
+});
+document.querySelector('#resume-input')!.addEventListener('click', async () => {
+  try {
+    const request = typing.resumeRequest;
+    const actual = await operate(() => editing.inputCheckpoint(request.client, request.id, request.after));
+    typing.resume(request.client, request.id, actual);
+    render();
+  } catch (error) { report(error); }
 });
 render();

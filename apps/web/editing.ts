@@ -5,11 +5,13 @@ import * as text from '../../modules/text/api/typescript.js';
 
 interface Source { buffer: ResourceId; history: ResourceId; revision: string;
   shared?: boolean }
+interface AcceptedInput { client: string; id: string; revision: string; buffer: ResourceId }
 export interface Journal {
   token?: string; opening?: Opening; receipt?: Receipt;
   source?: Source; access?: ResourceId; observed?: text.Observation;
   window?: text.Window; retiring: ResourceId[];
   change?: text.Change; needsRefresh?: boolean;
+  acceptedInput?: AcceptedInput;
 }
 
 /** This composition owns its source; sharing/follow policy is a later consumer. */
@@ -36,9 +38,9 @@ export class Editing {
     await this.retire(client);
   }
 
-  private send(client: Client, fields: string[]): Promise<void> {
+  private send(client: Client, fields: string[], correlate?: (receipt: Receipt) => void): Promise<void> {
     return deliver(client, this.journal, this.persist, fields,
-      (request, line) => this.adopt(request, line));
+      (request, line) => this.adopt(request, line), correlate);
   }
 
   private adopt(fields: string[], line: string): void {
@@ -61,6 +63,10 @@ export class Editing {
       state.source = { shared: state.source?.shared,
         buffer: value.resources[0]!, history: value.resources[1]!,
         revision: new DataView(value.data.buffer).getBigUint64(0, true).toString() };
+      if (fields[2] === 'text.replace') {
+        state.acceptedInput = { client: state.receipt!.client, id: state.receipt!.id,
+          revision: state.source.revision, buffer: state.source.buffer };
+      }
       delete state.window;
     } else if (fields[2] === 'kernel.buffer.describe') {
       if (value.contract !== 'kernel.buffer.describe' || value.schema !== 1
@@ -165,7 +171,8 @@ export class Editing {
     if (state.needsRefresh) await this.observe();
   }
 
-  async replace(start: bigint, end: bigint, replacement: string): Promise<text.Window> {
+  async replace(start: bigint, end: bigint, replacement: string,
+    correlate?: (receipt: Receipt) => void): Promise<text.Window> {
     const client = await this.ready();
     if (!this.journal.observed) throw new Error('Observe Text first');
     const window = this.journal.window;
@@ -174,11 +181,26 @@ export class Editing {
       count = BigInt(window.units.length + [...replacement].length) - (end - start);
       if (count > 1024n) count = 1024n;
     }
-    await this.send(client, text.replace(this.journal.observed, start, end, replacement));
+    await this.send(client, text.replace(this.journal.observed, start, end, replacement), correlate);
     const accepted = this.journal.source!.revision;
     await this.observe(BigInt(window?.start ?? '0'), count);
     if (this.journal.observed.revision !== accepted) {
       throw new Error('Source changed after acceptance; queued input retained');
+    }
+    return this.journal.window!;
+  }
+
+  async inputCheckpoint(client: string, id: string, expected: text.Window): Promise<text.Window> {
+    await this.recover();
+    const accepted = this.journal.acceptedInput;
+    if (!accepted || accepted.client !== client || accepted.id !== id
+        || this.journal.token !== client || this.journal.source?.buffer !== accepted.buffer) {
+      throw new Error('Original input acceptance is unavailable; queue retained');
+    }
+    await this.observe(BigInt(expected.start), BigInt(expected.units.length));
+    if (this.journal.observed?.revision !== accepted.revision
+        || this.journal.observed.buffer !== accepted.buffer) {
+      throw new Error('Source changed after original acceptance; queue retained');
     }
     return this.journal.window!;
   }

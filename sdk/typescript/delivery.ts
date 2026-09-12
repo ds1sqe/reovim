@@ -5,12 +5,14 @@ export interface Journal { receipt?: Receipt }
 /** Adoption must be idempotent: a journal may resume after receipt retirement. */
 export async function deliver(client: Client, journal: Journal,
   persist: () => void, fields: string[],
-  adopt: (fields: string[], line: string) => void): Promise<void> {
+  adopt: (fields: string[], line: string) => void,
+  correlate?: (receipt: Receipt) => void): Promise<void> {
   if (!journal.receipt) {
     journal.receipt = await client.reserve(fields);
-    persist();
   }
   const receipt = journal.receipt;
+  correlate?.(receipt);
+  persist();
   receipt.response = await client.send(receipt);
   persist();
   if (receipt.response.startsWith('error\t')) {

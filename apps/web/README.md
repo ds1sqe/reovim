@@ -97,7 +97,10 @@ semantic window must match the predicted basis before the next queued edit is
 sent. Peer changes, mismatched views, lost replies and pressure retain the
 remaining draft for reconciliation. Composition stays local until completion.
 Queued operations survive reload as locked draft data; they are not replayed
-automatically. Platform IME and larger-window input remain further work.
+automatically. Recover and resume verifies the queue head's original Client/
+receipt acceptance and current semantic state, then sends only remaining edits.
+Missing proof, peer changes or unqueued draft text require manual reconciliation.
+Platform IME and larger-window input remain further work.
 Input and composition drafts are saved in the same session journal before
 transmission and survive reload as locked local text. Refresh does not discard
 them or submit them again. Recover admitted work through its existing receipt,
