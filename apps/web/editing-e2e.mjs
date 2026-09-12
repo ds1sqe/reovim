@@ -9,10 +9,21 @@ const origin = new URL(process.argv[2]).origin;
 const nativeFetch = globalThis.fetch;
 let loseEdit = false;
 let loseNext = false;
+let intervene = false;
 globalThis.fetch = async (url, options) => {
   const fields = JSON.parse(options.body);
   const reply = await nativeFetch(url, { ...options,
     headers: { ...options.headers, Origin: origin } });
+  if (intervene && fields[1] === 'call' && fields[5] === 'text.replace') {
+    intervene = false;
+    const accepted = message(await reply.clone().text());
+    const revision = new DataView(accepted.data.buffer).getBigUint64(0, true);
+    const peer = new Client(fields[0], url);
+    const request = await peer.reserve(['write', accepted.resources[0], 'source.splice', '1',
+      hex(u64(revision)) + text.range(0n, 0n), accepted.resources[0]]);
+    assert.match(await peer.send(request), /^ok\t/);
+    await peer.release(request.id);
+  }
   if (loseEdit && fields[1] === 'call' && fields[5] === 'text.replace') {
     loseEdit = false;
     await reply.text();
@@ -96,6 +107,11 @@ await client.release(next.id);
 assert.equal(remaining.delivery.after, revision.toString());
 await resumed.follow();
 assert.deepEqual(saved.window.units, [...scalar('zy' + 'x'.repeat(33)), ...before]);
+const prior = BigInt(saved.source.revision);
+intervene = true;
+await assert.rejects(resumed.replace(0n, 0n, '!'), /changed after acceptance/);
+assert.equal(BigInt(saved.source.revision), prior + 2n);
+assert.deepEqual(saved.window.units, [...scalar('!zy' + 'x'.repeat(33)), ...before]);
 await resumed.close();
 assert.equal(saved.source, undefined);
 assert.equal(saved.access, undefined);

@@ -7,6 +7,28 @@ export interface Projection {
 export interface Anchor { start: number; end: number; backward: boolean }
 export interface Replacement { start: bigint; end: bigint; text: string }
 
+/** Predict only this bounded view; the server still decides acceptance. */
+export function apply(window: Window, edit: Replacement): Window {
+  const first = BigInt(window.start);
+  const start = edit.start - first, end = edit.end - first;
+  if (start < 0n || end < start || end > BigInt(window.units.length)
+      || /[\uD800-\uDFFF]/u.test(edit.text)) throw new Error('invalid local edit');
+  const units = [...window.units.slice(0, Number(start)),
+    ...[...edit.text].map(scalar => ({ scalar })), ...window.units.slice(Number(end))];
+  if (units.length > 1024) throw new Error('input window capacity; draft retained');
+  return { start: window.start, end: (first + BigInt(units.length)).toString(),
+    eof: window.eof, units };
+}
+
+export function sameWindow(left: Window, right: Window): boolean {
+  return left.start === right.start && left.end === right.end && left.eof === right.eof
+    && left.units.length === right.units.length && left.units.every((unit, index) => {
+      const other = right.units[index]!;
+      return 'scalar' in unit ? 'scalar' in other && unit.scalar === other.scalar
+        : 'opaque' in other && unit.opaque === other.opaque;
+    });
+}
+
 export function project(window: Window): Projection {
   const characters: string[] = [], positions = [BigInt(window.start)];
   for (let index = 0; index < window.units.length; index++) {

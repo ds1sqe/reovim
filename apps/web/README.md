@@ -91,8 +91,13 @@ The textarea input trial maps browser UTF-16 selection and normalized newlines
 back to the observed Text window. It preserves untouched CRLF and opaque bytes;
 the object marker represents one opaque byte. Composition remains a local draft
 until completion. Undo uses shared History rather than a second document store.
-The trial permits one in-flight edit, locking input while awaiting acceptance;
-queued input under latency and platform IME qualification remain required.
+The input queue holds at most 32 edits over a view of at most 1024 Text units.
+Typing continues while one edit is in flight. Each accepted revision and its
+semantic window must match the predicted basis before the next queued edit is
+sent. Peer changes, mismatched views, lost replies and pressure retain the
+remaining draft for reconciliation. Composition stays local until completion.
+Queued operations survive reload as locked draft data; they are not replayed
+automatically. Platform IME and larger-window input remain further work.
 Input and composition drafts are saved in the same session journal before
 transmission and survive reload as locked local text. Refresh does not discard
 them or submit them again. Recover admitted work through its existing receipt,

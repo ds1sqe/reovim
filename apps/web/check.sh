@@ -12,4 +12,4 @@ fi
 echo "web/check.sh: Node $node_pin; TypeScript $ts_pin"
 tsc -p apps/web/tsconfig.json
 cp apps/web/package.json target/browser/package.json
-node --test apps/web/tests.mjs
+node --test apps/web/tests.mjs apps/web/input-tests.mjs

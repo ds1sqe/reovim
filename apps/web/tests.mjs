@@ -8,7 +8,7 @@ import { Client, DeliveryError, hex, message, opening, outcome, resource,
   startupFailure, u64 }
   from '../../target/browser/sdk/typescript/resource.js';
 import * as text from '../../target/browser/modules/text/api/typescript.js';
-import { project, replacement } from '../../target/browser/clients/gui/contract/input.js';
+import { apply, project, replacement } from '../../target/browser/clients/gui/contract/input.js';
 import { input as bindInput } from '../../target/browser/apps/web/input.js';
 
 test('draft journal survives reload without submitting and is saved before transmission', async () => {
@@ -25,7 +25,9 @@ test('draft journal survives reload without submitting and is saved before trans
     save: value => { saved = structuredClone(value); } };
   const field = new Field();
   const adapter = bindInput(field, async () => {
-    assert.deepEqual(saved, { value: 'drafta', phase: 'submitted' });
+    assert.deepEqual(saved, { value: 'drafta', phase: 'submitted', base: window,
+      queue: [{ start: '0', end: '0', text: 'draft',
+        after: apply(window, { start: 0n, end: 0n, text: 'draft' }) }] });
     throw new Error('lost response');
   }, async () => {}, () => {}, storage);
   adapter.update(window);
@@ -45,7 +47,7 @@ test('draft journal survives reload without submitting and is saved before trans
   assert.equal(restored.readOnly, false);
   restored.emit('compositionstart');
   restored.value = 'composition'; restored.emit('input');
-  assert.deepEqual(saved, { value: 'composition', phase: 'composition' });
+  assert.deepEqual(saved, { value: 'composition', phase: 'composition', base: window, queue: [] });
   saved = undefined;
   const invalid = new Field();
   const validation = bindInput(invalid, async () => { assert.fail('invalid selection'); },
@@ -55,7 +57,9 @@ test('draft journal survives reload without submitting and is saved before trans
   invalid.emit('beforeinput', { inputType: 'insertText' });
   invalid.value = 'invalid draft'; invalid.emit('input');
   await new Promise(setImmediate);
-  assert.deepEqual(saved, { value: 'invalid draft', phase: 'input' });
+  assert.equal(saved.value, 'invalid draft');
+  assert.equal(saved.phase, 'input');
+  assert.deepEqual(saved.queue, []);
 });
 
 test('composition submits once at completion and failed input keeps its draft', async () => {
@@ -69,7 +73,10 @@ test('composition submits once at completion and failed input keeps its draft', 
   const field = new Field(), requests = [];
   const window = { start: '0', end: '3', eof: true,
     units: [...'# a'].map(scalar => ({ scalar })) };
-  const adapter = bindInput(field, async (...request) => { requests.push(request); },
+  const adapter = bindInput(field, async (...request) => {
+    requests.push(request);
+    return apply(window, { start: request[0], end: request[1], text: request[2] });
+  },
     async () => {}, error => { throw error; });
   adapter.update(window);
   field.emit('compositionstart');

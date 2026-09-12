@@ -23,10 +23,10 @@ function draftStatus() {
     ? `Retained ${journal.draft.phase} draft. Recover pending work before further input.` : '';
 }
 
-async function operate(action: () => Promise<void>) {
+async function operate<T>(action: () => Promise<T>): Promise<T> {
   if (busy) throw new Error('Wait for the pending operation');
   busy = true;
-  try { await action(); render(); }
+  try { const result = await action(); render(); return result; }
   finally { busy = false; }
 }
 function report(error: unknown) {
@@ -52,7 +52,7 @@ function render() {
     : 'No pending changes.';
 }
 
-const actions: Record<string, () => Promise<void>> = {
+const actions: Record<string, () => Promise<unknown>> = {
   create: () => editing.create(unhex(input('initial').trim())),
   join: () => editing.join(),
   observe: () => editing.observe(),

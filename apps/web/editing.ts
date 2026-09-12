@@ -136,7 +136,7 @@ export class Editing {
     await this.observe();
   }
 
-  async observe(): Promise<void> {
+  async observe(start = 0n, count = 1024n): Promise<void> {
     const client = await this.ready();
     const state = this.journal;
     if (!state.source) throw new Error('Create a source first');
@@ -145,14 +145,14 @@ export class Editing {
     }
     await this.send(client, ['read', state.access!, 'text.observe', '1']);
     await this.retire(client);
-    await this.read(0n);
+    await this.read(start, count);
   }
 
-  async read(start: bigint): Promise<void> {
+  async read(start: bigint, count = 1024n): Promise<void> {
     const client = await this.ready();
     if (!this.journal.observed) throw new Error('Observe Text first');
     await this.send(client, ['read', this.journal.observed.snapshot, 'text.window', '1',
-      hex(u64(start)) + hex(u64(1024n))]);
+      hex(u64(start)) + hex(u64(count))]);
   }
 
   async follow(): Promise<void> {
@@ -165,11 +165,22 @@ export class Editing {
     if (state.needsRefresh) await this.observe();
   }
 
-  async replace(start: bigint, end: bigint, replacement: string): Promise<void> {
+  async replace(start: bigint, end: bigint, replacement: string): Promise<text.Window> {
     const client = await this.ready();
     if (!this.journal.observed) throw new Error('Observe Text first');
+    const window = this.journal.window;
+    let count = 1024n;
+    if (window && start >= BigInt(window.start) && end <= BigInt(window.end)) {
+      count = BigInt(window.units.length + [...replacement].length) - (end - start);
+      if (count > 1024n) count = 1024n;
+    }
     await this.send(client, text.replace(this.journal.observed, start, end, replacement));
-    await this.observe();
+    const accepted = this.journal.source!.revision;
+    await this.observe(BigInt(window?.start ?? '0'), count);
+    if (this.journal.observed.revision !== accepted) {
+      throw new Error('Source changed after acceptance; queued input retained');
+    }
+    return this.journal.window!;
   }
 
   async undo(): Promise<void> {
