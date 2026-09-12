@@ -1,5 +1,13 @@
 # Browser service reference
 
+The editing trial can dynamically load the first-party uppercase contribution,
+run it on the explicit selected range, and unload it. It uses only the
+[GUI contribution contract](../../clients/gui/contract/README.md); opaque units
+refuse conversion and native Text/History owns acceptance. This is an initial
+public author/lifecycle path, not the complete packaged extension SDK.
+Run `node apps/web/contribution-e2e.mjs BROWSER_URL` against a dedicated private
+source/Text trial server to verify that contribution through the public path.
+
 This small loopback HTTP adapter forwards the existing public service protocol.
 It supplies no editing authority and does not replay operations automatically.
 The TypeScript client keeps Resource IDs and receipts as exact strings and

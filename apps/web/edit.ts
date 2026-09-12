@@ -1,6 +1,9 @@
 import { Editing, type Journal } from './editing.js';
 import { unhex } from '../../sdk/typescript/resource.js';
 import { input as bindInput, type Draft } from './input.js';
+import { Commands } from '../../clients/gui/runtime/commands.js';
+import { editor as editorCapability } from '../../clients/gui/runtime/editor.js';
+import type { Registration } from '../../clients/gui/contract/commands.js';
 
 const saved = sessionStorage.getItem('reovim-editing');
 const journal: Journal & { draft?: Draft } = saved ? JSON.parse(saved) : { retiring: [] };
@@ -18,6 +21,17 @@ const typing = bindInput(document.querySelector<HTMLTextAreaElement>('#typing')!
     load: () => journal.draft,
     save: value => { journal.draft = value; persist(); draftStatus(); }
   });
+const commands = new Commands();
+const moduleEditor = editorCapability(() => {
+  if (busy || typing.composing || typing.retained || journal.receipt) {
+    throw new Error('Finish pending input before a contribution command');
+  }
+  if (!journal.observed || !journal.window) throw new Error('Observe Text first');
+  return { snapshot: journal.observed.snapshot, window: journal.window,
+    start: BigInt(input('start')), end: BigInt(input('end')) };
+}, (start, end, text) => operate(() => editing.replace(start, end, text)));
+let contribution: Registration | undefined;
+let loading = false;
 
 function draftStatus() {
   document.querySelector('#draft-status')!.textContent = journal.draft
@@ -89,6 +103,27 @@ document.querySelector('#resume-input')!.addEventListener('click', async () => {
     const actual = await operate(() => editing.inputCheckpoint(request.client, request.id, request.after));
     typing.resume(request.client, request.id, actual);
     render();
+  } catch (error) { report(error); }
+});
+document.querySelector('#load-contribution')!.addEventListener('click', async () => {
+  try {
+    if (loading || contribution) throw new Error('contribution already loading or loaded');
+    loading = true;
+    const module = await import('../../clients/gui/modules/uppercase/index.js');
+    contribution = module.activate(moduleEditor, commands.register);
+    document.querySelector('#contribution-status')!.textContent = 'Uppercase contribution loaded.';
+  } catch (error) { report(error); }
+  finally { loading = false; }
+});
+document.querySelector('#uppercase')!.addEventListener('click', () => {
+  void commands.invoke('text.uppercase').catch(report);
+});
+document.querySelector('#unload-contribution')!.addEventListener('click', () => {
+  try {
+    if (loading) throw new Error('contribution loading; retry unload');
+    if (!contribution) throw new Error('contribution is not loaded');
+    contribution.close(); contribution = undefined;
+    document.querySelector('#contribution-status')!.textContent = 'Uppercase contribution unloaded.';
   } catch (error) { report(error); }
 });
 render();
