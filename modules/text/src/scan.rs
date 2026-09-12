@@ -2,7 +2,9 @@
 #![allow(clippy::future_not_send)]
 
 use crate::api::Unit;
+use crate::index::{Index, Mark, STEP};
 use alloc::vec::Vec;
+use core::cell::RefCell;
 use reovim_kernel_interface::{
     Connection, Error, RequestError, buffer::RetainedState,
 };
@@ -15,15 +17,29 @@ pub struct Scan<'a> {
     bytes: Vec<u8>,
     index: usize,
     pub offset: u64,
+    pub position: u64,
+    marks: &'a RefCell<Index>,
 }
 
 impl<'a> Scan<'a> {
-    pub const fn new(
+    pub fn new(
         kernel: &'a Connection,
         source: &'a RetainedState,
         length: u64,
+        marks: &'a RefCell<Index>,
+        wanted: u64,
     ) -> Self {
-        Self { kernel, source, length, bytes: Vec::new(), index: 0, offset: 0 }
+        let mark = marks.borrow().before(wanted);
+        Self {
+            kernel,
+            source,
+            length,
+            bytes: Vec::new(),
+            index: 0,
+            offset: mark.byte,
+            position: mark.unit,
+            marks,
+        }
     }
 
     pub async fn next(&mut self) -> Result<Option<Unit>, RequestError> {
@@ -36,6 +52,12 @@ impl<'a> Scan<'a> {
         let (unit, consumed) = unit(&self.bytes[self.index..])?;
         self.index += consumed;
         self.offset += consumed as u64;
+        self.position += 1;
+        if self.position.is_multiple_of(STEP) {
+            self.marks
+                .borrow_mut()
+                .record(Mark { unit: self.position, byte: self.offset });
+        }
         Ok(Some(unit))
     }
 

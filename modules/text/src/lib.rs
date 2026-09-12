@@ -4,6 +4,7 @@
 
 extern crate alloc;
 pub mod api;
+mod index;
 mod scan;
 mod snapshot;
 mod view;
@@ -84,6 +85,7 @@ impl Module {
             snapshots: RefCell::new(Vec::new()),
             watches: RefCell::new(Vec::new()),
             pending: RefCell::new(Vec::new()),
+            index_hint: RefCell::new(None),
         });
         let id = self.0.publish(subject, "view", view::provider(view))?;
         Ok(Message::reference(input.contract, id))

@@ -13,7 +13,9 @@ use reovim_module_text::{
     api::{self, Unit},
 };
 use std::{
+    cell::RefCell,
     future::{Future, ready},
+    ops::Range,
     rc::Rc,
 };
 
@@ -45,22 +47,179 @@ fn text_module(kernel: Connection, path: &str) -> Module {
 }
 
 fn source() -> ModelProvider {
+    traced_source(Rc::default())
+}
+
+type Reads = Rc<RefCell<Vec<Range<u64>>>>;
+
+fn traced_source(reads: Reads) -> ModelProvider {
     use reovim_module_source::SOURCE;
     ModelProvider::new(
-        (),
+        reads,
         ModelOps {
             unload: None,
-            initialize: |(), input| Box::pin(ready((SOURCE.initialize)(input))),
-            prepare: |(), state, input| {
+            initialize: |_, input| Box::pin(ready((SOURCE.initialize)(input))),
+            prepare: |_, state, input| {
                 Box::pin(ready((SOURCE.prepare)(state, input)))
             },
-            observe: |(), state, input| (SOURCE.observe)(state, input),
+            observe: |reads, state, input| {
+                if input.data.len() == 16 {
+                    let start = buffer::integer(&input.data[..8])?;
+                    let end = buffer::integer(&input.data[8..])?;
+                    reads.borrow_mut().push(start..end);
+                }
+                (SOURCE.observe)(state, input)
+            },
         },
         Contract::new("source.initial", 1),
         Contract::new("source.bytes", 1),
         Contract::new("source.splice", 1),
         Rc::new(()),
     )
+}
+
+#[test]
+fn windows_reuse_only_proven_snapshot_correspondence() {
+    let mut runtime = Runtime::new(207, Limits::default()).unwrap();
+    runtime.start().unwrap();
+    let reads = Reads::default();
+    let model = runtime
+        .register_model("source", traced_source(reads.clone()))
+        .map_err(|(error, _)| error)
+        .unwrap();
+    let assembly = runtime.bind(&[(model, Permissions::ALL)]).unwrap();
+    let admin = assembly.connection();
+    let model = admin.resolve("source").into_inner().unwrap();
+    let bytes = b"a\xe6\xbc\xa2\xff".repeat(60_000);
+    let initial = finish(
+        &mut runtime,
+        reovim_module_source::api::create(&admin, model, &bytes),
+    )
+    .unwrap();
+    let buffers = admin.resolve("buffers").into_inner().unwrap();
+    let entries = admin.children(buffers).into_inner().unwrap();
+    let shared =
+        assembly.resource(&format!("buffers/{}", entries[0].name)).unwrap();
+    let (client, view) =
+        peer(&mut runtime, "indexed", shared, Permissions::ALL);
+    let observed = finish(&mut runtime, api::observe(&client, view)).unwrap();
+    reads.borrow_mut().clear();
+    let cold = finish(&mut runtime, api::read(&client, &observed, 150_001, 3))
+        .unwrap();
+    let cold_reads = reads.borrow().clone();
+    assert_eq!(
+        cold.units,
+        [Unit::Scalar('漢'), Unit::Opaque(255), Unit::Scalar('a')]
+    );
+    reads.borrow_mut().clear();
+    let hot = finish(&mut runtime, api::read(&client, &observed, 150_001, 3))
+        .unwrap();
+    let hot_reads = reads.borrow().clone();
+    assert_eq!(hot.units, cold.units);
+    assert!(hot_reads.iter().all(|range| range.start > 0));
+    read_work(&cold_reads, &hot_reads);
+    let changed = finish(
+        &mut runtime,
+        api::replace(&client, &observed, 150_001..150_002, "z"),
+    )
+    .unwrap();
+    let fresh = finish(&mut runtime, api::observe(&client, view)).unwrap();
+    reads.borrow_mut().clear();
+    let next =
+        finish(&mut runtime, api::read(&client, &fresh, 150_001, 3)).unwrap();
+    assert_eq!(
+        next.units,
+        [Unit::Scalar('z'), Unit::Opaque(255), Unit::Scalar('a')]
+    );
+    assert!(reads.borrow().first().unwrap().start > 0);
+    assert_eq!(
+        finish(&mut runtime, api::read(&client, &observed, 150_001, 3))
+            .unwrap()
+            .units,
+        cold.units
+    );
+    let state = buffer::BufferState {
+        revision: changed.state.revision,
+        ..initial.state
+    };
+    let external = raw_prefix(&mut runtime, &admin, state);
+    let unrelated = finish(&mut runtime, api::observe(&client, view)).unwrap();
+    reads.borrow_mut().clear();
+    let unknown =
+        finish(&mut runtime, api::read(&client, &unrelated, 150_001, 3))
+            .unwrap();
+    assert_eq!(
+        unknown.units,
+        [Unit::Scalar('a'), Unit::Scalar('z'), Unit::Opaque(255)]
+    );
+    assert_eq!(reads.borrow().first().unwrap().start, 0);
+    release_text(&client, view, &[observed, fresh, unrelated]);
+    finish(
+        &mut runtime,
+        buffer::close(
+            &admin,
+            external.state,
+            buffer::ClosePolicy::DiscardLocal,
+        ),
+    )
+    .unwrap();
+    let instance = client.resolve("instance").into_inner().unwrap();
+    finish(
+        &mut runtime,
+        client.write(
+            instance,
+            &Message::new(Contract::new("kernel.module.unload", 1), &[]),
+        ),
+    )
+    .unwrap();
+    runtime.close().unwrap();
+}
+
+fn read_work(cold: &[Range<u64>], hot: &[Range<u64>]) {
+    let bytes = |ranges: &[Range<u64>]| {
+        ranges.iter().map(|r| r.end - r.start).sum::<u64>()
+    };
+    assert!(bytes(hot) < bytes(cold));
+    println!(
+        concat!(
+            "indexed-window cold_requests={} cold_bytes={} ",
+            "hot_requests={} hot_bytes={}"
+        ),
+        cold.len(),
+        bytes(cold),
+        hot.len(),
+        bytes(hot)
+    );
+}
+
+fn raw_prefix(
+    runtime: &mut Runtime,
+    kernel: &Connection,
+    state: buffer::BufferState,
+) -> buffer::Observation {
+    let snapshot = buffer::retained(
+        &finish(runtime, buffer::retain(kernel, state)).unwrap(),
+    )
+    .unwrap();
+    let changed = finish(
+        runtime,
+        reovim_module_source::api::splice(kernel, &snapshot, 0..0, b"q"),
+    )
+    .unwrap();
+    kernel.close(snapshot.id).into_inner().unwrap();
+    changed
+}
+
+fn release_text(
+    kernel: &Connection,
+    view: ResourceId,
+    snapshots: &[api::Observation],
+) {
+    kernel.close(view).into_inner().unwrap();
+    for snapshot in snapshots {
+        kernel.close(snapshot.snapshot()).into_inner().unwrap();
+        kernel.close(snapshot.watch()).into_inner().unwrap();
+    }
 }
 
 #[test]

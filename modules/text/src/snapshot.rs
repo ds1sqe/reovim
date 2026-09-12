@@ -1,7 +1,7 @@
 #![allow(clippy::future_not_send)]
 use crate::{api, scan::Scan};
 use alloc::{boxed::Box, rc::Rc, vec::Vec};
-use core::cell::Cell;
+use core::cell::{Cell, RefCell};
 use core::ops::Range;
 use reovim_kernel_interface::{
     Connection, Contract, Error, Message, RequestError, ResourceId,
@@ -16,6 +16,7 @@ pub struct Snapshot {
     pub id: Cell<ResourceId>,
     pub closed: Cell<bool>,
     pub active: Cell<usize>,
+    pub index: RefCell<crate::index::Index>,
 }
 
 pub struct Use(Rc<Snapshot>);
@@ -55,8 +56,14 @@ impl Snapshot {
         if wanted.start > wanted.end {
             return Err(Error::INVALID.into());
         }
-        let mut scan = Scan::new(&self.kernel, &self.source, self.length);
-        for _ in 0..wanted.start {
+        let mut scan = Scan::new(
+            &self.kernel,
+            &self.source,
+            self.length,
+            &self.index,
+            wanted.start,
+        );
+        for _ in scan.position..wanted.start {
             scan.next().await?.ok_or(Error::INVALID)?;
         }
         let start = scan.offset;
@@ -75,8 +82,14 @@ impl Snapshot {
         if count > 1024 {
             return Err(Error::PRESSURE.into());
         }
-        let mut scan = Scan::new(&self.kernel, &self.source, self.length);
-        for _ in 0..start {
+        let mut scan = Scan::new(
+            &self.kernel,
+            &self.source,
+            self.length,
+            &self.index,
+            start,
+        );
+        for _ in scan.position..start {
             scan.next().await?.ok_or(Error::INVALID)?;
         }
         let (units, consumed) = collect(&mut scan, count).await?;

@@ -38,8 +38,14 @@ remains owned by the interpreted access. The module permits 32 active operations
 and up to 32 live snapshots/watches per access, within Kernel resource bounds.
 Slow Buffer readers report Gap; renew observe and release the old watch.
 
-The first reader scans 4096-byte source chunks from the beginning to the selected
-scalar positions, carrying incomplete UTF-8 prefixes across boundaries. It does
-not materialize the whole document, but random access is linear in the scanned
-prefix. Indexed/sparse residency, performance qualification, full Resource-valued
-History metadata and Markdown preview remain further plan work.
+The reader scans 4096-byte source chunks and carries incomplete UTF-8 prefixes.
+Each snapshot caches decoded unit/byte positions, initially every 1024 units,
+with at most 4096 marks. A full index becomes coarser; allocation failure skips
+optional cache growth. Repeated reads start at a known preceding boundary.
+Successful Text splices can seed the next snapshot's index using their exact
+range/replacement correspondence, only when its Buffer state matches. Unrelated
+edits start a fresh index; old snapshots retain their own positions.
+
+First access to an unindexed prefix remains linear. There is no hidden whole
+document materialization. Sparse residency, full performance qualification,
+Resource-valued History metadata and Markdown preview remain further work.

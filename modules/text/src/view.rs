@@ -27,6 +27,7 @@ pub struct View {
     pub snapshots: RefCell<Vec<Weak<Snapshot>>>,
     pub watches: RefCell<Vec<Weak<Watch>>>,
     pub pending: RefCell<Vec<Watching>>,
+    pub index_hint: RefCell<Option<(buffer::BufferState, crate::index::Index)>>,
 }
 
 struct Active(Rc<View>);
@@ -123,6 +124,14 @@ impl View {
             id: Cell::new(ResourceId(0)),
             closed: Cell::new(false),
             active: Cell::new(0),
+            index: RefCell::new(
+                self.index_hint
+                    .borrow()
+                    .as_ref()
+                    .filter(|(state, _)| *state == watched.snapshot.state)
+                    .and_then(|(_, index)| index.copy())
+                    .unwrap_or_default(),
+            ),
         });
         let watch = Rc::new(Watch {
             kernel: kernel.capture(watched.watch, Permissions::READ)?,
@@ -208,10 +217,18 @@ impl View {
         let accepted = reovim_module_source::api::splice(
             &kernel,
             &snapshot.source,
-            range,
+            range.clone(),
             text.as_bytes(),
         )
         .await?;
+        let index = snapshot.index.borrow().splice(
+            start..end,
+            range,
+            text.chars().count() as u64,
+            text.len() as u64,
+        );
+        *self.index_hint.borrow_mut() =
+            index.map(|index| (accepted.state, index));
         let mut data = [
             accepted.state.revision.to_le_bytes(),
             accepted.node.to_le_bytes(),
@@ -239,6 +256,7 @@ impl View {
             watch.end()?;
         }
         self.kernel.borrow_mut().take();
+        self.index_hint.borrow_mut().take();
         Ok(())
     }
 }

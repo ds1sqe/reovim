@@ -102,8 +102,13 @@ class NativeText(Scenario):
         fresh = self.observe(view)
         self.assertEqual(self.window(fresh, 4095, 20),
                          (scalar("🦀é!") + [(1, b) for b in b"\x80\x80\xf0\x9f"], 1))
+        # The warmed suffix moves by -1 scalar and +1 byte after this splice.
+        changed = self.replace(view, fresh, 0, 2, "漢")
+        shifted = self.observe(view)
+        self.assertEqual(self.window(shifted, 4095, 20),
+                         (scalar("é!") + [(1, b) for b in b"\x80\x80\xf0\x9f"], 1))
         self.close_access(view)
-        for item in (observed, fresh):
+        for item in (observed, fresh, shifted):
             self.close_access(item.resources[4])
             self.close_access(item.resources[5])
         self.unload(text_module)
