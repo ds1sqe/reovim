@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<title>Reovim Text editing trial</title>
+<main><h1>Text editing trial</h1>
+<p>Ranges count Unicode scalars and opaque source bytes. Opaque bytes display
+as ⟦ff⟧; this notation is not replacement text. This is a contract trial.</p>
+<label>Initial source bytes (hex)
+<input id="initial" size="64" value="2320ed959ceab88020f09fa6800d0aff007461696c"></label>
+<button id="create">Create source</button>
+<button id="observe">Observe current Text</button>
+<button id="recover">Recover pending request</button>
+<pre id="status" aria-live="polite"></pre>
+<p id="range"></p><pre id="content"></pre>
+<label>Window start <input id="window-start" value="0" inputmode="numeric"></label>
+<button id="read">Read window</button>
+<p><label>Range start <input id="start" value="2" inputmode="numeric"></label>
+<label>Range end <input id="end" value="4" inputmode="numeric"></label>
+<label>Replacement <input id="replacement" value="é漢"></label></p>
+<button id="replace">Replace range</button><button id="undo">Undo</button>
+<button id="close">Discard and close source</button>
+</main><script type="module" src="/edit.js"></script></html>

@@ -7,6 +7,25 @@ import { once } from 'node:events';
 import { Client, DeliveryError, hex, message, opening, outcome, resource,
   startupFailure, u64 }
   from '../../target/browser/sdk/typescript/resource.js';
+import * as text from '../../target/browser/modules/text/api/typescript.js';
+
+test('Text replacement preserves scalar ranges and rejects lone surrogates', () => {
+  const observed = { access: '@5', snapshot: '@6' };
+  assert.deepEqual(text.replace(observed, 9007199254740993n,
+    9007199254740994n, '🦀'), ['write', '@5', 'text.replace', '1',
+    hex(u64(9007199254740993n)) + hex(u64(9007199254740994n)) + 'f09fa680', '@6']);
+  assert.throws(() => text.replace(observed, 0n, 1n, '\ud800'), /Unicode/);
+  assert.throws(() => text.range(3n, 2n), /reversed/);
+  const data = new Uint8Array(27);
+  const view = new DataView(data.buffer);
+  data[0] = 1; view.setBigUint64(9, 2n, true);
+  view.setUint32(18, 0x1f980, true);
+  data[22] = 1; view.setUint32(23, 255, true);
+  assert.deepEqual(text.window(`ok\ttext.window\t1\t${hex(data)}\t`, 0n, 2n),
+    { start: '0', end: '2', eof: true, units: [{ scalar: '🦀' }, { opaque: 255 }] });
+  view.setUint32(18, 0xd800, true);
+  assert.throws(() => text.window(`ok\ttext.window\t1\t${hex(data)}\t`, 0n, 2n), /unit/);
+});
 
 test('failed startup cleanup retains its owner across uncertain teardown', async () => {
   const token = 'b'.repeat(32);

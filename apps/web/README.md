@@ -32,3 +32,31 @@ The browser persists an opening secret before startup. A lost handshake is
 recovered through that secret without creating another Client. It journals
 the returned token/result before releasing startup delivery storage. Missing
 evidence and failed startup remain retained errors for explicit reconciliation.
+
+The `/edit` contract trial creates a source Buffer and client-owned Text access,
+reads bounded scalar/opaque windows, replaces explicit scalar ranges and uses
+the same History for Undo. Configure its providers before starting the bridge:
+
+```sh
+cargo build --manifest-path product/Cargo.toml -p reovim-server \
+  --features reovim-server/std
+cargo build --manifest-path product/Cargo.toml \
+  -p reovim-module-source --example source \
+  -p reovim-module-text --example text
+product/target/debug/reovim-server 127.0.0.1:7878 \
+  --client-module source product/target/debug/examples/libsource.so source \
+  --client-start source.model 1 \
+  --client-module text product/target/debug/examples/libtext.so text \
+  --grant "" all --client-start text 1
+```
+
+After starting the bridge, run `node apps/web/editing-e2e.mjs BROWSER_URL`
+to exercise editing, lost-reply recovery, stale input, Undo and cleanup against
+those real providers. It requires a dedicated test server. The browser trial
+journals ownership and never retries edits with a new receipt. Recovery settles
+the pending operation; use Observe afterward to acquire current Text. Its
+initial hex field can create invalid source bytes without lossy decoding.
+
+This trial owns a private source; it does not implement shared Session focus,
+watch/Gap renewal, Markdown preview, keyboard/IME editing or SSR. The Text TS
+codec lives with its module; the common service client has no Text semantics.

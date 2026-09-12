@@ -47,6 +47,11 @@ async function route(request, response) {
   }
   if (request.method === 'GET') {
     const files = { '/': [new URL('./index.html', import.meta.url), 'text/html'],
+      '/edit': [new URL('./edit.html', import.meta.url), 'text/html'],
+      '/edit.js': [new URL('apps/web/edit.js', assets), 'text/javascript'],
+      '/editing.js': [new URL('apps/web/editing.js', assets), 'text/javascript'],
+      '/modules/text/api/typescript.js': [new URL('modules/text/api/typescript.js', assets), 'text/javascript'],
+      '/sdk/typescript/delivery.js': [new URL('sdk/typescript/delivery.js', assets), 'text/javascript'],
       '/app.js': [new URL('apps/web/app.js', assets), 'text/javascript'],
       '/sdk/typescript/resource.js': [new URL('sdk/typescript/resource.js', assets), 'text/javascript'] };
     const file = Object.hasOwn(files, request.url) ? files[request.url] : undefined;
