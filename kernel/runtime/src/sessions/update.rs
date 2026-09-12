@@ -106,7 +106,7 @@ impl Runtime {
             &model.borrow(),
             value,
         )?;
-        super::references::set_output(record, &value)?;
+        super::references::set_output(record, &value, limits.resources)?;
         let record = record.borrow();
         if record.cancelled {
             return Err(Error::CANCELLED);
@@ -136,12 +136,19 @@ impl Runtime {
             value,
         );
         let retired = core::mem::replace(&mut session.state, candidate);
+        let change = super::watch::Change {
+            request: record.id,
+            before: session.revision,
+            after: revision,
+        };
+        let feed = session.feed.clone();
         session.revision = revision;
         drop(scope);
         drop(shared);
         drop(session);
         drop(record);
         drop(retired);
+        crate::watch::changed(&feed, change);
         Ok(reply)
     }
 }

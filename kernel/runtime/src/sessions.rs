@@ -2,6 +2,7 @@ mod access;
 mod close;
 mod references;
 mod update;
+pub mod watch;
 pub use access::{closing, read_contract, surface};
 pub use update::capture_snapshot;
 
@@ -23,6 +24,7 @@ pub struct Session {
     receiver: Option<Rc<RefCell<crate::namespace::Scope>>>,
     state: State,
     revision: u64,
+    feed: Rc<RefCell<crate::watch::Feed<watch::Change>>>,
     pub(crate) owner: u64,
 }
 
@@ -49,7 +51,7 @@ impl Runtime {
             &model.borrow(),
             value,
         )?;
-        references::set_output(record, &value)?;
+        references::set_output(record, &value, limits.resources)?;
         let record = record.borrow();
         if record.cancelled {
             return Err(Error::CANCELLED);
@@ -73,6 +75,7 @@ impl Runtime {
             receiver,
             state,
             revision: 1,
+            feed: Rc::default(),
             owner: scope.owner,
         }));
         let parent = parent.unwrap_or_else(|| {
@@ -95,6 +98,9 @@ impl Runtime {
         record: &Rc<RefCell<Record>>,
         session: &Rc<RefCell<Session>>,
     ) -> Result<Message, Error> {
+        if watch::contract(&record.borrow().input.contract) {
+            return self.observe_session(record, session);
+        }
         if !record.borrow().input.data.is_empty() {
             return Err(Error::INVALID);
         }
@@ -115,7 +121,7 @@ impl Runtime {
             &model.borrow(),
             value,
         )?;
-        references::set_output(record, &value)?;
+        references::set_output(record, &value, limits.resources)?;
         let record = record.borrow();
         if record.cancelled {
             return Err(Error::CANCELLED);
@@ -182,6 +188,18 @@ fn snapshot(
         .into_iter()
         .chain(reply.resources.iter().copied())
         .collect();
+    publish_snapshot(shared, scope, key, session, revision, value);
+    reply
+}
+
+fn publish_snapshot(
+    shared: &mut crate::Shared,
+    scope: &mut crate::namespace::Scope,
+    key: u64,
+    session: ResourceId,
+    revision: u64,
+    value: references::Value,
+) {
     let snapshot = Snapshot { session, revision, owner: scope.owner, value };
     shared.entries.push(Entry {
         receiver: None,
@@ -194,5 +212,4 @@ fn snapshot(
         activation: None,
     });
     scope.grants.push((key, Permissions::ALL));
-    reply
 }

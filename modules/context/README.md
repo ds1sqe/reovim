@@ -27,5 +27,15 @@ Closing a Session leaves retained context snapshots and shared Buffers alive;
 release each snapshot separately. Snapshots copy their values and retain the
 referenced subjects, so they can outlive the context model's executable code.
 
-This supplies retained focus values. Follow/seek, context watches, open/backing
-ownership, browser transport and frontend commands remain separate consumers.
+`kernel.session.observe` acquires a snapshot and independent watch at one cut.
+The common `session::Watching` helper decodes revision, snapshot, watch and the
+semantic context value. `kernel.session.next` reports accepted revision edges,
+Gap, End or passive Pending; empty input waits and byte zero polls. Each Session
+allows 32 readers and 32 queued events per reader. A slow reader gets sticky
+Gap and renews observation; it does not delay another reader. Release snapshots
+and close watches independently.
+
+This supplies passive follow data. Client policy chooses whose context to
+follow and how to present it; observing grants no mutation authority. Full
+participation/seek, open/backing ownership, browser transport and frontend
+commands remain separate consumers.

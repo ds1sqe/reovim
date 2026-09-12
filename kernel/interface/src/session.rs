@@ -2,6 +2,8 @@
 
 use crate::{Connection, Contract, Error, Message, RequestError, ResourceId};
 use alloc::vec::Vec;
+mod watch;
+pub use watch::{Change, Watching, change, next, observe, watching};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Observation {

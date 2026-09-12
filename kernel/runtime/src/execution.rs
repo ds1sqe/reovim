@@ -460,6 +460,11 @@ impl Runtime {
             }
             Kind::Session(session) => {
                 result.contract == crate::sessions::read_contract(session)
+                    || (record.method == Method::Read
+                        && crate::sessions::watch::contract(
+                            &record.input.contract,
+                        )
+                        && result.contract == record.input.contract)
             }
             Kind::Buffer(_)
                 if record.method == Method::Read

@@ -38,14 +38,23 @@ impl Runtime {
             return Err(Error::BUSY);
         }
         let index = shared.entry_index(record.subject)?;
+        let feed = match &record.target {
+            Kind::Session(session) => Some(session.borrow().feed.clone()),
+            _ => None,
+        };
         let retired = core::mem::replace(
             &mut shared.entries[index].kind,
             Kind::ClosedSession { owner },
         );
         shared.entries[index].activation = None;
+        let reply = Message::new(record.input.contract.clone(), &[]);
         drop(shared);
         drop(retired);
-        Ok(Message::new(record.input.contract.clone(), &[]))
+        drop(record);
+        if let Some(feed) = feed {
+            crate::watch::end(&feed);
+        }
+        Ok(reply)
     }
 
     pub(crate) fn snapshot_request(

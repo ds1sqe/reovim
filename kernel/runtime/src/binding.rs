@@ -519,6 +519,9 @@ pub fn state_container(
     name: &str,
     subjects: usize,
 ) -> Result<Option<u64>, Error> {
+    if scope.aliases.borrow().iter().any(|(alias, _)| alias.as_ref() == name) {
+        return Err(Error::DENIED);
+    }
     let parent = match scope.child(shared, scope.root, name) {
         Ok(key) => Some(key),
         Err(Error::UNAVAILABLE) => None,

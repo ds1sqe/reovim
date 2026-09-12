@@ -20,6 +20,16 @@ pub fn surface(
         return Ok(Box::new([]));
     }
     match kind {
+        Kind::Session(_)
+            if method == Method::Read
+                && super::watch::contract(&input.contract) =>
+        {
+            Ok(Box::new([
+                Permissions::READ,
+                Permissions::ALL,
+                Permissions::READ,
+            ]))
+        }
         Kind::Session(session)
             if method == Method::Read
                 && input.contract == session.borrow().model.borrow().read =>

@@ -14,13 +14,14 @@ use reovim_kernel_interface::{
     },
 };
 
-struct Read {
-    reader: Rc<RefCell<Reader>>,
+struct Read<T> {
+    reader: Rc<RefCell<Reader<T>>>,
+    encode: fn(&Contract, T) -> Message,
     contract: Contract,
     wait: bool,
 }
 
-impl Future for Read {
+impl<T> Future for Read<T> {
     type Output = Result<Message, Error>;
     fn poll(
         self: Pin<&mut Self>,
@@ -31,7 +32,7 @@ impl Future for Read {
             return Poll::Ready(Err(Error::CLOSED));
         }
         if let Some(change) = reader.events.pop_front() {
-            return Poll::Ready(Ok(encode(&self.contract, change)));
+            return Poll::Ready(Ok((self.encode)(&self.contract, change)));
         }
         let bytes = if reader.status == Status::Ended {
             &[2, u8::from(reader.gap)][..]
@@ -47,7 +48,7 @@ impl Future for Read {
     }
 }
 
-impl Drop for Read {
+impl<T> Drop for Read<T> {
     fn drop(&mut self) {
         let mut reader = self.reader.borrow_mut();
         reader.reading = false;
@@ -56,16 +57,24 @@ impl Drop for Read {
 }
 
 pub fn provider(reader: Rc<RefCell<Reader>>) -> ResourceProvider {
+    mapped(reader, "kernel.buffer.next", encode)
+}
+
+pub fn mapped<T: 'static>(
+    reader: Rc<RefCell<Reader<T>>>,
+    name: &str,
+    encode: fn(&Contract, T) -> Message,
+) -> ResourceProvider {
     let closing = reader.clone();
     ResourceProvider::new(
-        reader,
+        (reader, encode),
         ResourceOps {
             unload: None,
-            read: |reader, _, input| next(reader, input),
+            read: |(reader, encode), _, input| next(reader, *encode, input),
             write: |_, _, _| Box::pin(async { Err(Error::UNSUPPORTED) }),
         },
         Box::new([Surface {
-            contract: Contract::new("kernel.buffer.next", 1),
+            contract: Contract::new(name, 1),
             methods: Permissions::READ,
             input: Box::new([]),
             output: Box::new([]),
@@ -75,7 +84,11 @@ pub fn provider(reader: Rc<RefCell<Reader>>) -> ResourceProvider {
     .owned(move || close(&closing))
 }
 
-fn next(reader: &Rc<RefCell<Reader>>, input: Message) -> ProviderReply {
+fn next<T: 'static>(
+    reader: &Rc<RefCell<Reader<T>>>,
+    encode: fn(&Contract, T) -> Message,
+    input: Message,
+) -> ProviderReply {
     let wait = match input.data.as_ref() {
         [] => true,
         [0] => false,
@@ -86,7 +99,12 @@ fn next(reader: &Rc<RefCell<Reader>>, input: Message) -> ProviderReply {
         return Box::pin(async { Err(Error::BUSY) });
     }
     state.reading = true;
-    Box::pin(Read { reader: reader.clone(), contract: input.contract, wait })
+    Box::pin(Read {
+        reader: reader.clone(),
+        encode,
+        contract: input.contract,
+        wait,
+    })
 }
 
 fn encode(contract: &Contract, change: Change) -> Message {
