@@ -51,7 +51,7 @@ impl Command {
 }
 
 const CALL: reovim_module::Contract =
-    reovim_module::Contract::new("command.close", 1);
+    reovim_module::Contract::new("command.close", 1).forwarding();
 const BYTES: reovim_module::Contract =
     reovim_module::Contract::new("resource.bytes", 1);
 

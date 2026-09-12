@@ -13,7 +13,37 @@ use std::{
     fs::File,
     io::{self, Write},
     path::Path,
+    sync::OnceLock,
 };
+
+struct Destination {
+    parent: Arc<File>,
+    child: Option<(Box<str>, OnceLock<File>)>,
+}
+impl Destination {
+    fn execute(&self, input: Message) -> Result<Message, Error> {
+        let root = match self.root() {
+            Ok(root) => root,
+            Err(error) => {
+                return Ok(outcome(input.contract, 1, 0, Some(error)));
+            }
+        };
+        execute(root, input)
+    }
+
+    fn root(&self) -> io::Result<&File> {
+        let Some((name, opened)) = &self.child else {
+            return Ok(&self.parent);
+        };
+        if let Some(file) = opened.get() {
+            return Ok(file);
+        }
+        // Only the admitted Host worker initializes this private directory.
+        path::directory(&self.parent, name)?;
+        let file = path::child(&self.parent, name)?;
+        Ok(opened.get_or_init(|| file))
+    }
+}
 
 pub struct Directory {
     root: Arc<File>,
@@ -34,27 +64,42 @@ impl Directory {
     }
     #[must_use]
     pub fn provider(&self) -> ResourceProvider {
-        ResourceProvider::new(
-            (self.root.clone(), Arc::new(AtomicBool::new(false))),
-            ResourceOps {
-                unload: Some(|(_, busy)| {
-                    busy.load(Ordering::Acquire)
-                        .then_some(Error::BUSY)
-                        .map_or(Ok(()), Err)
-                }),
-                read: |_, _, _| Box::pin(async { Err(Error::UNSUPPORTED) }),
-                write: |(root, busy), _, input| {
-                    let root = root.clone();
-                    worker::start(busy, move || execute(&root, input))
-                },
-            },
-            Box::new([
-                surface("host.export.directory"),
-                surface("host.export.file"),
-            ]),
-            Rc::new(()),
-        )
+        provider(Destination { parent: self.root.clone(), child: None })
     }
+
+    /// Reserves a private output name without performing filesystem work.
+    /// The first admitted output creates it exclusively on the Host worker.
+    /// # Errors
+    /// Rejects an invalid path component before constructing the provider.
+    pub fn private_provider(&self, name: &str) -> io::Result<ResourceProvider> {
+        path::component(name)?;
+        Ok(provider(Destination {
+            parent: self.root.clone(),
+            child: Some((name.into(), OnceLock::new())),
+        }))
+    }
+}
+fn provider(destination: Destination) -> ResourceProvider {
+    ResourceProvider::new(
+        (Arc::new(destination), Arc::new(AtomicBool::new(false))),
+        ResourceOps {
+            unload: Some(|(_, busy)| {
+                busy.load(Ordering::Acquire)
+                    .then_some(Error::BUSY)
+                    .map_or(Ok(()), Err)
+            }),
+            read: |_, _, _| Box::pin(async { Err(Error::UNSUPPORTED) }),
+            write: |(root, busy), _, input| {
+                let root = root.clone();
+                worker::start(busy, move || root.execute(input))
+            },
+        },
+        Box::new([
+            surface("host.export.directory"),
+            surface("host.export.file"),
+        ]),
+        Rc::new(()),
+    )
 }
 fn surface(name: &str) -> Surface {
     Surface {

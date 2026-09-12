@@ -100,6 +100,38 @@ fn export_preserves_bytes_and_never_replaces_an_existing_file() {
     provider.unload().unwrap();
 }
 #[test]
+fn private_output_is_lazy_exclusive_and_keeps_the_opened_directory() {
+    let scratch = Scratch::new();
+    let grant = Directory::open(&scratch.0).unwrap();
+    let mut provider = grant.private_provider("client").unwrap();
+    assert!(!scratch.0.join("client").exists());
+    let created =
+        write(&mut provider, "host.export.directory", b"dump").unwrap();
+    assert_eq!(created.data[0], 0);
+    fs::rename(scratch.0.join("client"), scratch.0.join("moved")).unwrap();
+    fs::create_dir(scratch.0.join("client")).unwrap();
+    let written = write(
+        &mut provider,
+        "host.export.file",
+        b"dump/value.bin\0original pinned directory",
+    )
+    .unwrap();
+    assert_eq!(written.data[0], 0);
+    assert_eq!(
+        fs::read(scratch.0.join("moved/dump/value.bin")).unwrap(),
+        b"original pinned directory"
+    );
+    assert!(!scratch.0.join("client/dump").exists());
+    let mut collision = grant.private_provider("client").unwrap();
+    let rejected =
+        write(&mut collision, "host.export.directory", b"other").unwrap();
+    assert_eq!(rejected.data[0], 1);
+    assert!(!scratch.0.join("client/other").exists());
+    provider.unload().unwrap();
+    collision.unload().unwrap();
+}
+
+#[test]
 fn output_grants_reject_traversal_and_symlink_following() {
     let scratch = Scratch::new();
     fs::create_dir(scratch.0.join("granted")).unwrap();

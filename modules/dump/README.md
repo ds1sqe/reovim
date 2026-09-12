@@ -51,5 +51,7 @@ recovery. Requests execute on bounded Host workers, outside Runtime execution.
 
 The Linux reference server accepts an explicit `--export-root DIRECTORY` grant.
 Each retained client gets a private output directory exposed at `host/files`.
+Its filesystem directory is created exclusively by the Host worker on the first
+output request; opening a client performs no filesystem output work.
 Without that option, no filesystem output Resource is installed. Kernel and
 portable module code contain no filesystem handles or I/O.

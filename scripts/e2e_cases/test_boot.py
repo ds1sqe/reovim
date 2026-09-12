@@ -8,7 +8,21 @@ from .fixture import ROOT, Scenario
 
 class FailedClientBoot(Scenario):
     def boot_arguments(self):
-        return ["--client-start", "missing", "1"]
+        args = []
+        for name in ("good", "denied"):
+            library = self.work / f"{name}.so"
+            flags = ["-DREQUIRE_STORAGE"] if name == "denied" else []
+            result = self.command([
+                "cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-shared",
+                "-fPIC", "-DLEAF", *flags, f'-DMODULE_NAME="example.{name}"',
+                "-I", str(ROOT / "host/reference/include"),
+                str(ROOT / "apps/server/tests/native/metadata.c"),
+                "-o", str(library),
+            ])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            args.extend(["--client-module", name, str(library), name,
+                         "--client-start", f"example.{name}", "1"])
+        return args
 
     def new_client(self):
         host, port = self.address.rsplit(":", 1)
@@ -22,6 +36,10 @@ class FailedClientBoot(Scenario):
         return reply[2]
 
     def test_failed_startup_keeps_receipt_and_cleanup_owner(self):
+        started = self.rpc("read", "good", "example.constructions", "1")
+        self.assertEqual(int.from_bytes(started.data, "little"), 1)
+        self.assertTrue(self.wire("call", self.receipt, "boot")
+                        .startswith("error\tboot\t"))
         self.assertEqual(self.wire("status", self.receipt), "ok\tfinished")
         self.assertTrue(self.wire("result", self.receipt).startswith("error\tboot\t"))
         self.assertIn("client busy", self.wire("disconnect"))

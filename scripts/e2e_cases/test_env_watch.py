@@ -20,6 +20,15 @@ def snapshot(data):
 
 
 class EnvWatch(Scenario):
+    def test_close_command_accepts_returned_read_only_watch_reference(self):
+        self.load_command("env", "", imports="")
+        library = self.build_module("reovim-module-close", "close")
+        self.load(library, "close")
+        observed = self.rpc("read", "module/env/watch", "env.observe", "1")
+        reference, = observed.resources
+        self.cli("--refs", reference, "/close", "@0")
+        self.call("read", reference, "env.next", "1", success=False)
+
     def close(self, resource):
         request = self.wire("reserve").split("\t")[1]
         self.assertEqual(self.wire("call", request, "close", resource), "ok")

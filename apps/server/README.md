@@ -42,6 +42,8 @@ Dynamic linker constructors and the ABI entry point still execute native code.
 `--grant PATH read|write|all` applies to the preceding declaration. Paths refer
 to existing Resources in that context; an empty path grants its root subtree.
 No grants are implicit. Dependency selection does not grant data access.
+Shared aliases need their own named grants, such as `--grant modules read`;
+granting the private root alone does not grant the alias targets.
 Server and client dependency catalogs have separate selection scopes.
 Server publications appear under the client's `modules` alias; private client
 publications and `catalog/LABEL` appear in its own root. Ordinary activation of

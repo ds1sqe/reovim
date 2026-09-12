@@ -22,4 +22,10 @@ impl Directory {
     pub fn provider(&self) -> ResourceProvider {
         match self.0 {}
     }
+
+    /// # Errors
+    /// No Directory can be constructed on this target.
+    pub fn private_provider(&self, _: &str) -> io::Result<ResourceProvider> {
+        match self.0 {}
+    }
 }

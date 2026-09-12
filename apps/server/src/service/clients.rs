@@ -127,9 +127,7 @@ impl Clients {
             .exports
             .as_ref()
             .map(|directory| {
-                directory
-                    .create(&format!("client-{}", self.next))
-                    .map(|directory| directory.provider())
+                directory.private_provider(&format!("client-{}", self.next))
             })
             .transpose()?;
         let prefix = format!("clients/{}", self.next);

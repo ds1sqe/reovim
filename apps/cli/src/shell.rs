@@ -100,6 +100,17 @@ impl Shell {
         };
         String::from_utf8(data_bytes(&reply)?).map_err(io::Error::other)
     }
+
+    fn prompt(&self) -> io::Result<()> {
+        match self.cwd() {
+            Ok(cwd) => print!("resource:/{}> ", cwd.escape_debug()),
+            Err(error) => {
+                eprintln!("CWD: {error}; use an absolute path to repair it");
+                print!("resource:?> ");
+            }
+        }
+        io::stdout().flush()
+    }
 }
 
 pub fn run(address: &str, client: &str) -> io::Result<()> {
@@ -107,8 +118,7 @@ pub fn run(address: &str, client: &str) -> io::Result<()> {
     let terminal = io::stdin().is_terminal();
     while shell.running {
         if terminal {
-            print!("resource:/{}> ", shell.cwd()?);
-            io::stdout().flush()?;
+            shell.prompt()?;
         }
         let mut line = String::new();
         if io::stdin().read_line(&mut line)? == 0 {

@@ -55,5 +55,5 @@ class Dump(Scenario):
         self.rpc("write", "module/env/create", "env.create", "1",
                  (b"large\0" + b"x" * 16385).hex())
         self.cli("--refs", "env/large,host/files", "/dump", "large", success=False)
-        root, = self.exports.glob("run-*/client-*")
-        self.assertFalse((root / "large").exists())
+        root, = self.exports.glob("run-*")
+        self.assertFalse((root / "client-1").exists())
