@@ -4,6 +4,12 @@ Read [the goals](Documentation/README.md), then
 [the resource-based design](Documentation/Design/README.md).
 Specifications define the target; implementation requires code and evidence.
 
+Browser checks require the Node and TypeScript versions declared in
+apps/web/package.json on PATH. The shared runner verifies them and runs the
+browser build/transport tests before Rust cache selection on every invocation.
+Local checks do not install browser tools. GitHub provisions the same declared
+versions before calling that runner.
+
 ## Make a coherent change
 
 - Agree the used interface chain before its inner mechanisms. Compile public

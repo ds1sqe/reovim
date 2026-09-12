@@ -165,6 +165,10 @@ run_selected_checks() {
     run_product_checks "${selected[@]}"
 }
 
+# Browser checks are small and uncached; Rust coverage cannot substitute them.
+echo '==> Browser build and transport tests'
+bash "$ROOT/apps/web/check.sh"
+
 selection_directory="$(mktemp -d)"
 if [[ -z "$selection_directory" || "$selection_directory" != /* \
     || ! -d "$selection_directory" || -L "$selection_directory" \

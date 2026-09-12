@@ -22,9 +22,12 @@ limits frames and concurrent forwarding, and preserves transport uncertainty.
 It accepts no arbitrary proxy target or filesystem path. Local processes remain
 within the existing trust model. Closing HTTP does not cancel admitted work.
 
-The local browser check is separate from the pinned Rust CI window. This
-initial profile was tested with Node 26.8.0 and TypeScript 6.0.3. Browser build
-toolchain/CI integration, richer SDK ownership helpers,
+apps/web/package.json declares exact Node and TypeScript toolchain versions.
+The shared check.sh/ci.sh runner verifies them and executes this build and its
+transport tests in every lane. Local checks require those tools on PATH and
+install nothing. GitHub provisions the declared tools before the same runner.
+Real-browser and dedicated native-process journeys remain additional checks;
+this build gate does not qualify packaged browser behavior. Richer SDK helpers,
 the editing UI, extension SDK and packaged qualification remain required.
 This connection witness is not the planned Markdown GUI.
 
