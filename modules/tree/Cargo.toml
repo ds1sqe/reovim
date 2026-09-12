@@ -1,0 +1,24 @@
+[package]
+name = "reovim-module-tree"
+workspace = "../../product"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies.reovim-kernel-interface]
+path = "../../kernel/interface"
+
+[dependencies.reovim-call]
+path = "../../lib/call"
+
+[dependencies.reovim-module]
+path = "../../lib/module"
+
+[lints]
+workspace = true
+
+[[example]]
+name = "tree"
+crate-type = ["cdylib"]

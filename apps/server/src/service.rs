@@ -122,6 +122,10 @@ fn advance(
 fn dispatch(line: &str, kernel: &Connection) -> Result<Response, String> {
     let fields: Vec<_> = line.split('\t').collect();
     match fields.as_slice() {
+        ["resolve", path] => {
+            let subject = resolve(kernel, path)?;
+            Ok(Box::pin(core::future::ready(Ok(format!("ok\t@{}", subject.0)))))
+        }
         ["close", path] => {
             let subject = resolve(kernel, path)?;
             kernel.close(subject).into_inner().map_err(failure)?;
@@ -163,7 +167,7 @@ fn dispatch(line: &str, kernel: &Connection) -> Result<Response, String> {
             }
             call(kernel, method, path, &input)
         }
-        _ => Err("expected v1 ls/read/write/close command".into()),
+        _ => Err("expected v1 resolve/ls/read/write/close command".into()),
     }
 }
 

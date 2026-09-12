@@ -63,7 +63,8 @@ fn option<'a>(
 
 impl Invocation<'_> {
     pub fn needs_cwd(&self) -> bool {
-        relative(self.path)
+        (relative(self.path)
+            && (self.path.contains('/') || matches!(self.path, "." | "..")))
             || self
                 .references
                 .is_some_and(|references| references.split(',').any(relative))

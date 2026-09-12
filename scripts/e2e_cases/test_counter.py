@@ -21,7 +21,7 @@ class Counter(Scenario):
         unchanged = self.call("read", path, contract, "1")
         self.assertEqual(int.from_bytes(unchanged.data, "little"), 7)
         output = self.cli(input=(
-            "cd modules/counter\n/pwd\n/ls\n"
+            "/cd modules/counter\n/pwd\n/ls\n"
             "/read value --contract external.counter 1\n"
             "/write value --contract external.counter 1 --hex 0200000000000000\n"
             "/cd ../catalog\n/pwd\n/ls\n/exit\n"))

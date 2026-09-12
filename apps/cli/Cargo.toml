@@ -14,9 +14,14 @@ version = "=0.16.0-dev"
 [dependencies.reovim-call]
 path = "../../lib/call"
 
+[dependencies.rustyline]
+version = "=18.0.1"
+default-features = false
+optional = true
+
 [features]
 default = []
-std = ["reovim-service/std"]
+std = ["reovim-service/std", "dep:rustyline"]
 
 [[bin]]
 name = "reovim-cli"

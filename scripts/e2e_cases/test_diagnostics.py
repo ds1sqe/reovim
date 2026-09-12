@@ -13,15 +13,15 @@ class Diagnostics(Scenario):
         self.call("write", buffer, "heading.replace", "1",
                   (1).to_bytes(8, "little").hex() + b"stale".hex(),
                   buffer, success=False)
-        log = self.cli("dmesg")
+        log = self.cli("/dmesg")
         self.assertTrue(log.startswith("lost="), log)
         self.assertIn("Accepted", log)
         self.assertIn("Failed", log)
         cursor = log.splitlines()[-1].removeprefix("next=")
-        later = self.cli("dmesg", cursor)
+        later = self.cli("/dmesg", cursor)
         for event in later.splitlines()[1:-1]:
             self.assertGreater(int(event.split()[0]), int(cursor))
-        self.cli("close", "/", success=False)
+        self.cli("/close", "/", success=False)
         self.call("read", "kernel/log", "kernel.diagnostics", "1")
         close = ((0).to_bytes(8, "little") + b"\x01").hex()
         self.call("write", buffer, "kernel.buffer.close", "1", close, buffer)

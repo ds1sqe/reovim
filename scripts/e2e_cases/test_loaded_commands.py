@@ -11,7 +11,7 @@ class LoadedCommands(Scenario):
                            imports="kernel/log")
         info = self.call("read", mount + "/info", "resource.bytes", "1")
         self.assertIn(b"write\tcommand.dmesg\t1\tutf8", info.data)
-        listing = self.cli("ls", mount)
+        listing = self.cli("/ls", mount)
         self.assertIn("info\n", listing)
         # Omitted arguments still submit one complete request with empty data.
         reply = self.call("write", mount, "command.dmesg", "1")

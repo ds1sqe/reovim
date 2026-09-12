@@ -36,6 +36,7 @@ its exact UTF-8 operation fields before admission. An identical retry joins the
 same execution/result; changed fields reject without changing the original.
 
 ```text
+resolve path
 ls     path
 read   path-or-@id  contract  version  [hex [refs]]
 write  path-or-@id  contract  version  [hex [refs]]
@@ -48,6 +49,9 @@ error  control-error-detail
 `ls` returns `ok` followed by `name=@id` fields. References are comma-separated
 paths or caller-local `@ID` values; use `-` for empty hex data. Kernel validates
 grants and contract slots. Root selection/aliases grant no private peer access.
+`resolve` returns `ok @ID` with tab separation. It performs passive lookup;
+the CLI uses that exact identity when searching command directories, so a
+subsequent path replacement cannot redirect the selected invocation.
 
 `status` reports reserved, pending or finished. Reserved does not establish
 that a delayed call can never arrive. `result` waits for or returns the original
