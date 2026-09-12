@@ -21,11 +21,12 @@ use std::{
 
 const NOFOLLOW: c_int = 1 << 17;
 const NONBLOCK: c_int = 1 << 11;
-const TMPFILE: c_int = (1 << 22) | (1 << 16);
-const EXCLUSIVE: c_int = 1 << 7;
 const FICLONE: c_ulong = 0x4004_9409;
 /// Maximum bytes returned by one immutable window request.
 pub const WINDOW: u64 = 32768;
+
+mod directory;
+pub use directory::Directory;
 
 unsafe extern "C" {
     fn ioctl(fd: c_int, request: c_ulong, ...) -> c_int;
@@ -44,21 +45,22 @@ pub fn capture(source: &Path, scratch: &Path) -> io::Result<ResourceProvider> {
         .read(true)
         .custom_flags(NOFOLLOW | NONBLOCK)
         .open(source)?;
+    let scratch = crate::path::root(scratch)?;
+    let (file, length) = clone(&source, &scratch)?;
+    Ok(provider(file, length))
+}
+
+fn clone(source: &File, scratch: &File) -> io::Result<(File, u64)> {
     if !source.metadata()?.is_file() {
         return Err(io::Error::from(io::ErrorKind::InvalidInput));
     }
-    let snapshot = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .mode(0o600)
-        .custom_flags(TMPFILE | EXCLUSIVE | NOFOLLOW)
-        .open(scratch)?;
+    let snapshot = crate::path::anonymous(scratch)?;
     if unsafe { ioctl(snapshot.as_raw_fd(), FICLONE, source.as_raw_fd()) } == -1
     {
         return Err(io::Error::last_os_error());
     }
     let length = snapshot.metadata()?.len();
-    Ok(provider(snapshot, length))
+    Ok((snapshot, length))
 }
 
 fn provider(file: File, length: u64) -> ResourceProvider {

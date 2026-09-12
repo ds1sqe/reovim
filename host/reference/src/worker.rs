@@ -1,29 +1,30 @@
 use alloc::{boxed::Box, sync::Arc};
 use core::{
-    future::poll_fn,
+    future::{Future, poll_fn},
+    pin::Pin,
     sync::atomic::{AtomicBool, Ordering},
     task::{Poll, Waker},
 };
-use reovim_kernel_interface::{Error, Message, provider::ProviderReply};
+use reovim_kernel_interface::Error;
 use std::sync::Mutex;
 
-#[derive(Default)]
-struct Completion {
-    result: Option<Result<Message, Error>>,
+struct Completion<T> {
+    result: Option<Result<T, Error>>,
     wake: Option<Waker>,
 }
 
-pub fn start(
+pub fn start<T: Send + 'static>(
     busy: &Arc<AtomicBool>,
-    job: impl FnOnce() -> Result<Message, Error> + Send + 'static,
-) -> ProviderReply {
+    job: impl FnOnce() -> Result<T, Error> + Send + 'static,
+) -> Pin<Box<dyn Future<Output = Result<T, Error>>>> {
     if busy
         .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
         .is_err()
     {
         return Box::pin(async { Err(Error::BUSY) });
     }
-    let completion = Arc::new(Mutex::new(Completion::default()));
+    let completion =
+        Arc::new(Mutex::new(Completion { result: None, wake: None }));
     let output = completion.clone();
     let running = busy.clone();
     let spawned = std::thread::Builder::new()
@@ -44,10 +45,10 @@ pub fn start(
         Poll::Pending
     }))
 }
-fn complete(
-    completion: &Mutex<Completion>,
+fn complete<T>(
+    completion: &Mutex<Completion<T>>,
     busy: &AtomicBool,
-    result: Result<Message, Error>,
+    result: Result<T, Error>,
 ) {
     let wake = {
         let mut completion = completion

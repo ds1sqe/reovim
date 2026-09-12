@@ -31,6 +31,41 @@ unsafe extern "C" {
 pub fn root(path: &Path) -> io::Result<File> {
     OpenOptions::new().read(true).custom_flags(DIRECTORY | NOFOLLOW).open(path)
 }
+
+pub fn read(root: &File, path: &str) -> io::Result<File> {
+    let mut parts = path.split('/').peekable();
+    for part in parts.clone() {
+        component(part)?;
+    }
+    let mut parent = root.try_clone()?;
+    while let Some(part) = parts.next() {
+        if parts.peek().is_none() {
+            let name = component(part)?;
+            let fd = unsafe {
+                openat(
+                    parent.as_raw_fd(),
+                    name.as_ptr(),
+                    NOFOLLOW | CLOEXEC | (1 << 11),
+                )
+            };
+            return owned(fd);
+        }
+        parent = child(&parent, part)?;
+    }
+    Err(io::Error::from(io::ErrorKind::InvalidInput))
+}
+
+pub fn anonymous(root: &File) -> io::Result<File> {
+    let fd = unsafe {
+        openat(
+            root.as_raw_fd(),
+            c".".as_ptr(),
+            2 | (1 << 22) | DIRECTORY | EXCLUSIVE | CLOEXEC,
+            0o600_u32,
+        )
+    };
+    owned(fd)
+}
 pub fn component(name: &str) -> io::Result<CString> {
     if name.is_empty() || name.contains('/') || matches!(name, "." | "..") {
         return Err(io::Error::from(io::ErrorKind::InvalidInput));

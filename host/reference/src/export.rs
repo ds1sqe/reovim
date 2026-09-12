@@ -1,6 +1,6 @@
 //! Finite file output through a granted directory Resource and Host workers.
 
-mod path;
+use crate::path;
 use crate::worker;
 
 use alloc::{boxed::Box, rc::Rc, sync::Arc};

@@ -66,6 +66,17 @@ cloning fails boot explicitly. Source and scratch are explicit process grants;
 this does not expose arbitrary filesystem paths to modules. See the
 [source model](../../modules/source/README.md) for lazy working-state opening.
 
+`--files MOUNT DIRECTORY SCRATCH_DIRECTORY` grants fresh capture after boot.
+Write a UTF-8 relative filename to `modules/MOUNT` with `host.files.capture` v1;
+the result owns one READ snapshot Resource. Every path component stays beneath
+the pinned directory grant; absolute paths, `..`, symlinks and non-regular files
+reject. Capture runs on a bounded Host worker and publishes only on success.
+Pass the snapshot to `source.open`, then close it after its working states and
+retained reads no longer need the backing. Explicit source-access close fences
+future reads; it is not the same operation as shared Buffer close. Replaying
+one retained request returns its original snapshot; a new request captures a
+new cut. Unsupported atomic cloning returns Unsupported without a snapshot.
+
 An installed user supplies only a compatible module package and configuration;
 adding it requires neither a Reovim checkout nor a server/CLI rebuild. The ABI is
 SemVer 0.1.0 with reserved u32 zero until official release; operation and module

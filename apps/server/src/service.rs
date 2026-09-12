@@ -1,6 +1,7 @@
 //! Local control service with retained, isolated client namespaces.
 
 mod clients;
+mod files;
 mod pending;
 mod requests;
 mod session;
@@ -78,6 +79,7 @@ pub fn serve_configured(address: &str, mut config: Config) -> io::Result<()> {
             .map_err(|(error, _)| io::Error::other(error))?;
     }
     let selected_session = config.session.take();
+    files::install(&mut runtime, &owner, core::mem::take(&mut config.files))?;
     let modules = Modules::discover(config).map_err(io::Error::other)?;
     let startup = modules
         .prepare(&mut runtime, &owner, Scope::Server)

@@ -34,6 +34,7 @@ pub struct Config {
     pub session: Option<Session>,
     pub output: Option<PathBuf>,
     pub snapshots: Vec<Snapshot>,
+    pub files: Vec<Snapshot>,
 }
 
 impl Config {
@@ -68,6 +69,13 @@ impl Config {
             }
             "--snapshot" if self.snapshots.len() < 64 => {
                 self.snapshots.push(Snapshot {
+                    mount: field(args)?,
+                    source: field(args)?.into(),
+                    scratch: field(args)?.into(),
+                });
+            }
+            "--files" if self.files.len() < 64 => {
+                self.files.push(Snapshot {
                     mount: field(args)?,
                     source: field(args)?.into(),
                     scratch: field(args)?.into(),
