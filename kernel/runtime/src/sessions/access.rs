@@ -8,6 +8,20 @@ pub fn closing(contract: &Contract) -> bool {
     contract == &Contract::new("kernel.session.close", 1)
 }
 
+pub fn control(method: Method, contract: &Contract) -> bool {
+    contract.version == 1
+        && matches!(
+            (method, contract.name.as_ref()),
+            (Method::Read, "kernel.session.observe" | "kernel.session.attach")
+                | (
+                    Method::Write,
+                    "kernel.session.close"
+                        | "kernel.session.seek"
+                        | "kernel.session.detach"
+                )
+        )
+}
+
 pub fn surface(
     kind: &Kind,
     method: Method,
@@ -20,6 +34,17 @@ pub fn surface(
         return Ok(Box::new([]));
     }
     match kind {
+        Kind::Participation(participation) => super::participation::surface(
+            &participation.borrow(),
+            method,
+            input,
+        ),
+        Kind::Session(_)
+            if method == Method::Read
+                && super::participation::attaching(&input.contract) =>
+        {
+            Ok(Box::new([Permissions::ALL]))
+        }
         Kind::Session(_)
             if method == Method::Read
                 && super::watch::contract(&input.contract) =>

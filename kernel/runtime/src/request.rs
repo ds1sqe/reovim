@@ -47,7 +47,7 @@ pub struct Record {
     pub work: Option<Work>,
     pub outcome: Option<Result<Message, RequestError>>,
     pub target: Kind,
-    pub _references: Vec<Kind>,
+    pub references: Vec<Kind>,
     pub activation: Option<Rc<Cell<Lifecycle>>>,
     pub output: Box<[Permissions]>,
     pub snapshot: Option<Rc<crate::sessions::Snapshot>>,

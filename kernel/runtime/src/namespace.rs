@@ -11,6 +11,7 @@ use crate::{Editing, Shared};
 pub enum Kind {
     Session(Rc<RefCell<crate::sessions::Session>>),
     Snapshot(Rc<crate::sessions::Snapshot>),
+    Participation(Rc<RefCell<crate::sessions::Participation>>),
     ClosedSession { owner: u64 },
     Catalog(Rc<RefCell<crate::catalog::Catalog>>),
     Module(Rc<Cell<Lifecycle>>),

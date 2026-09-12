@@ -171,3 +171,71 @@ fn reading_a_buffer_close_named_schema_preserves_the_buffer() {
     .unwrap();
     runtime.close().unwrap();
 }
+
+#[test]
+fn reading_a_detach_named_schema_preserves_participation() {
+    let mut runtime = Runtime::new(234, Limits::default()).unwrap();
+    runtime.start().unwrap();
+    let contract = Contract::new("kernel.session.detach", 1);
+    let schema = runtime
+        .register_model("schema", model(contract.clone()))
+        .map_err(|(error, _)| error)
+        .unwrap();
+    let client = reovim_sdk::local(
+        runtime.connect(&[(schema, Permissions::ALL)]).unwrap(),
+    );
+    let schema = client.resolve("schema").into_inner().unwrap();
+    let observed = run_with(
+        session::create(
+            &client,
+            schema,
+            &Message::new(Contract::new("test.initial", 1), &[]),
+        ),
+        &mut runtime,
+        &Runtime::DRIVER,
+    )
+    .unwrap()
+    .unwrap();
+    let attached = run_with(
+        session::attach(&client, observed.session),
+        &mut runtime,
+        &Runtime::DRIVER,
+    )
+    .unwrap()
+    .unwrap();
+    let participant = session::attached(&attached).unwrap();
+    for _ in 0..2 {
+        let reply = run_with(
+            client.read(participant, &Message::new(contract.clone(), &[])),
+            &mut runtime,
+            &Runtime::DRIVER,
+        )
+        .unwrap()
+        .unwrap();
+        let read = session::observation(reply).unwrap();
+        assert_eq!(read.session, observed.session);
+        assert_eq!(read.value.data.as_ref(), &[7]);
+        run_with(
+            session::release(&client, read.snapshot),
+            &mut runtime,
+            &Runtime::DRIVER,
+        )
+        .unwrap()
+        .unwrap();
+    }
+    run_with(
+        session::detach(&client, participant),
+        &mut runtime,
+        &Runtime::DRIVER,
+    )
+    .unwrap()
+    .unwrap();
+    run_with(
+        session::close(&client, observed.session),
+        &mut runtime,
+        &Runtime::DRIVER,
+    )
+    .unwrap()
+    .unwrap();
+    runtime.close().unwrap();
+}

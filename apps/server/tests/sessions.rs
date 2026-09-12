@@ -377,6 +377,27 @@ fn models_cannot_shadow_common_session_controls() {
 }
 
 #[test]
+fn models_cannot_shadow_participation_or_watch_controls() {
+    let mut runtime = Runtime::new(233, Limits::default()).unwrap();
+    for (name, read) in [
+        ("kernel.session.attach", true),
+        ("kernel.session.seek", false),
+        ("kernel.session.detach", false),
+        ("kernel.session.observe", true),
+    ] {
+        let mut provider = model(Rc::new(Cell::new(false)));
+        if read {
+            provider.read = Contract::new(name, 1);
+        } else {
+            provider.edit = Contract::new(name, 1);
+        }
+        let (error, _) =
+            runtime.register_model("schema", provider).err().unwrap();
+        assert_eq!(error, Error::INVALID);
+    }
+}
+
+#[test]
 fn reconnect_recovers_the_created_session_and_snapshot() {
     let (mut runtime, client, _, _) = setup();
     let model = client.resolve("schema").into_inner().unwrap();

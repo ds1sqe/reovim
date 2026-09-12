@@ -434,6 +434,7 @@ pub fn returned(
         crate::namespace::Kind::Model(_)
             | crate::namespace::Kind::Session(_)
             | crate::namespace::Kind::Snapshot(_)
+            | crate::namespace::Kind::Participation(_)
     ) {
         return Ok(());
     }

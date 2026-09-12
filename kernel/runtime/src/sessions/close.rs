@@ -24,7 +24,9 @@ impl Runtime {
         let busy = shared.requests.iter().any(|other| {
             let other = other.borrow();
             other.id != record.id
-                && other.subject == record.subject
+                && (other.subject == record.subject
+                    || matches!(&other.target, Kind::Participation(p)
+                        if p.borrow().session.0 == record.subject))
                 && !(other.method
                     == reovim_kernel_interface::access::Method::Write
                     && super::closing(&other.input.contract))
@@ -38,6 +40,18 @@ impl Runtime {
             return Err(Error::BUSY);
         }
         let index = shared.entry_index(record.subject)?;
+        let participants: alloc::vec::Vec<_> = shared
+            .entries
+            .iter()
+            .filter_map(|entry| match &entry.kind {
+                Kind::Participation(p)
+                    if p.borrow().session.0 == record.subject =>
+                {
+                    Some(p.clone())
+                }
+                _ => None,
+            })
+            .collect();
         let feed = match &record.target {
             Kind::Session(session) => Some(session.borrow().feed.clone()),
             _ => None,
@@ -51,6 +65,10 @@ impl Runtime {
         drop(shared);
         drop(retired);
         drop(record);
+        for participant in participants {
+            let retired = participant.borrow_mut().detach();
+            drop(retired);
+        }
         if let Some(feed) = feed {
             crate::watch::end(&feed);
         }

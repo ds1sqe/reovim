@@ -8,6 +8,7 @@ use reovim_kernel_interface::{
     Error, Message, ResourceId, buffer::ModelProvider, provider::Permissions,
 };
 
+#[derive(Clone)]
 pub struct Value {
     pub message: Message,
     pub rights: Box<[Permissions]>,

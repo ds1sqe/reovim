@@ -17,6 +17,7 @@ impl Runtime {
         let (owner, root) = validate(self, client)?;
         self.close_owned_access(client)?;
         quiescent(&self.shared.borrow(), owner, root)?;
+        release_participations(self, owner);
         release_snapshots(self, owner);
         if self
             .shared
@@ -149,7 +150,10 @@ fn live(kind: &Kind, owner: u64) -> bool {
         _ => false,
     }
 }
-const fn settled(kind: &Kind) -> bool {
+fn settled(kind: &Kind) -> bool {
+    if let Kind::Participation(participant) = kind {
+        return participant.borrow().settled();
+    }
     matches!(
         kind,
         Kind::Directory
@@ -157,6 +161,24 @@ const fn settled(kind: &Kind) -> bool {
             | Kind::ClosedBuffer { .. }
             | Kind::ClosedSession { .. }
     )
+}
+fn release_participations(runtime: &Runtime, owner: u64) {
+    let participants: Vec<_> = runtime
+        .shared
+        .borrow()
+        .entries
+        .iter()
+        .filter_map(|entry| match &entry.kind {
+            Kind::Participation(p) if p.borrow().owner == owner => {
+                Some(p.clone())
+            }
+            _ => None,
+        })
+        .collect();
+    for participant in participants {
+        let retired = participant.borrow_mut().detach();
+        drop(retired);
+    }
 }
 fn release_snapshots(runtime: &Runtime, owner: u64) {
     loop {

@@ -1,9 +1,11 @@
 mod access;
 mod close;
+mod participation;
 mod references;
+pub use participation::Participation;
 mod update;
 pub mod watch;
-pub use access::{closing, read_contract, surface};
+pub use access::{closing, control, read_contract, surface};
 pub use update::capture_snapshot;
 
 use crate::{
@@ -101,6 +103,19 @@ impl Runtime {
         if watch::contract(&record.borrow().input.contract) {
             return self.observe_session(record, session);
         }
+        if participation::attaching(&record.borrow().input.contract) {
+            return self.attach_session(record, session);
+        }
+        let subject = ResourceId(record.borrow().subject);
+        self.read_session_at(record, session, subject)
+    }
+
+    fn read_session_at(
+        &self,
+        record: &Rc<RefCell<Record>>,
+        session: &Rc<RefCell<Session>>,
+        subject: ResourceId,
+    ) -> Result<Message, Error> {
         if !record.borrow().input.data.is_empty() {
             return Err(Error::INVALID);
         }
@@ -139,13 +154,7 @@ impl Runtime {
             &value.rights,
             &value.message,
         )?;
-        Ok(snapshot(
-            &mut shared,
-            &mut scope,
-            ResourceId(record.subject),
-            revision,
-            value,
-        ))
+        Ok(snapshot(&mut shared, &mut scope, subject, revision, value))
     }
 }
 

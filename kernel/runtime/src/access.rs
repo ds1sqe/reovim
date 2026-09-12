@@ -53,6 +53,8 @@ impl Access for Caller {
         }
         let entry = &shared.entries[shared.entry_index(key)?];
         if entry.closed()
+            || matches!(&entry.kind, Kind::Participation(p)
+                if p.borrow().settled())
             || matches!(
                 entry.kind,
                 Kind::ClosedBuffer { .. } | Kind::ClosedSession { .. }
@@ -310,7 +312,7 @@ impl Caller {
             work: Some(Work::Queued),
             outcome: None,
             target,
-            _references: references,
+            references,
             activation,
             output,
             snapshot,
@@ -452,7 +454,10 @@ fn validate_contract(
     input: &Message,
 ) -> Result<Box<[Permissions]>, Error> {
     match target {
-        Kind::Session(_) | Kind::Snapshot(_) | Kind::ClosedSession { .. } => {
+        Kind::Session(_)
+        | Kind::Snapshot(_)
+        | Kind::ClosedSession { .. }
+        | Kind::Participation(_) => {
             crate::sessions::surface(target, method, input)
         }
         Kind::Catalog(_) => crate::catalog::surface(method, &input.contract),
@@ -539,6 +544,15 @@ fn translate_input(
     method: Method,
     input: &mut Message,
 ) -> Result<(), Error> {
+    if matches!(target, Kind::Participation(_)) {
+        let slots = if input.contract == Contract::new("kernel.session.seek", 1)
+        {
+            &[Permissions::READ][..]
+        } else {
+            &[]
+        };
+        return translate_slots(shared, scope, slots, input);
+    }
     if let Kind::Model(model) = target {
         let model = model.borrow();
         let slots = model.references.map_or_else(

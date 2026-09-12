@@ -1,6 +1,7 @@
 use crate::Limits;
 use reovim_kernel_interface::{
-    Contract, Error, buffer::ModelProvider, provider::ResourceProvider,
+    Contract, Error, access::Method, buffer::ModelProvider,
+    provider::ResourceProvider,
 };
 
 pub fn resource(
@@ -38,7 +39,8 @@ pub fn resource(
 
 pub fn model(provider: &ModelProvider, limits: Limits) -> Result<(), Error> {
     if crate::closing::contract(&provider.edit)
-        || crate::sessions::closing(&provider.edit)
+        || crate::sessions::control(Method::Write, &provider.edit)
+        || crate::sessions::control(Method::Read, &provider.read)
         || reovim_kernel_interface::session::is_create(&provider.create)
         || crate::snapshots::contract(&provider.read)
     {

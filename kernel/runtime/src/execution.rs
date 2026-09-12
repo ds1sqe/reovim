@@ -135,10 +135,7 @@ impl Runtime {
                 self.catalog_request(&catalog, record),
             )),
             Kind::Module(_) if method == Method::Write => {
-                match self.begin_module_unload(ResourceId(subject), &input) {
-                    Ok(()) => Step::Pending(Work::ModuleUnload),
-                    Err(error) => Step::Finished(Err(error)),
-                }
+                self.begin_module(ResourceId(subject), &input)
             }
             Kind::Module(status) => Step::Pending(Work::provider(
                 crate::modules::read(status, input),
@@ -185,6 +182,9 @@ impl Runtime {
             Kind::Snapshot(snapshot) => {
                 Step::Finished(self.snapshot_request(record, &snapshot))
             }
+            Kind::Participation(participation) => Step::Finished(
+                self.participation_request(record, &participation),
+            ),
             Kind::Buffer(_) | Kind::ClosedBuffer { .. }
                 if method == Method::Write
                     && crate::closing::contract(&input.contract) =>
@@ -202,6 +202,13 @@ impl Runtime {
                 Step::Finished(history(&buffer, &input, id))
             }
             _ => Step::Finished(Err(Error::UNSUPPORTED)),
+        }
+    }
+
+    fn begin_module(&mut self, subject: ResourceId, input: &Message) -> Step {
+        match self.begin_module_unload(subject, input) {
+            Ok(()) => Step::Pending(Work::ModuleUnload),
+            Err(error) => Step::Finished(Err(error)),
         }
     }
 
@@ -452,6 +459,16 @@ impl Runtime {
         }
         let valid_contract = match &record.target {
             Kind::Model(model) => result.contract == model.borrow().read,
+            Kind::Session(_)
+                if record.method == Method::Read
+                    && record.input.contract
+                        == reovim_kernel_interface::Contract::new(
+                            "kernel.session.attach",
+                            1,
+                        ) =>
+            {
+                result.contract == record.input.contract
+            }
             Kind::Session(_)
                 if record.method == Method::Write
                     && crate::sessions::closing(&record.input.contract) =>
