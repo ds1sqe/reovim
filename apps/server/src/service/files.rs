@@ -29,7 +29,7 @@ pub fn install(
         let kernel = owner.connection();
         let instance =
             kernel.resolve(&relative).into_inner().map_err(io::Error::other)?;
-        super::session::finish(runtime, module::ready(&kernel, instance))?;
+        super::state::finish(runtime, module::ready(&kernel, instance))?;
     }
     Ok(())
 }

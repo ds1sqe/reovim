@@ -3,7 +3,8 @@ import { Client, hex, message, opening, u64, unhex,
 import { deliver } from '../../sdk/typescript/delivery.js';
 import * as text from '../../modules/text/api/typescript.js';
 
-interface Source { buffer: ResourceId; history: ResourceId; revision: string }
+interface Source { buffer: ResourceId; history: ResourceId; revision: string;
+  shared?: boolean }
 export interface Journal {
   token?: string; opening?: Opening; receipt?: Receipt;
   source?: Source; access?: ResourceId; observed?: text.Observation;
@@ -57,9 +58,16 @@ export class Editing {
       if (state.source && state.source.buffer !== value.resources[0]) {
         throw new Error('foreign source acceptance');
       }
-      state.source = { buffer: value.resources[0]!, history: value.resources[1]!,
+      state.source = { shared: state.source?.shared,
+        buffer: value.resources[0]!, history: value.resources[1]!,
         revision: new DataView(value.data.buffer).getBigUint64(0, true).toString() };
       delete state.window;
+    } else if (fields[2] === 'kernel.buffer.describe') {
+      if (value.contract !== 'kernel.buffer.describe' || value.schema !== 1
+          || value.data.length !== 8 || value.resources.length < 2
+          || value.resources.length > 3) throw new Error('invalid Buffer descriptor');
+      state.source = { shared: true, buffer: value.resources[0]!, history: value.resources[1]!,
+        revision: new DataView(value.data.buffer).getBigUint64(0, true).toString() };
     } else if (fields[2] === 'kernel.history.undo') {
       if (value.contract !== 'kernel.history.undo' || value.schema !== 1
           || value.data.length !== 16 || value.resources.length || !state.source) {
@@ -121,6 +129,13 @@ export class Editing {
     await this.observe();
   }
 
+  async join(): Promise<void> {
+    const client = await this.ready();
+    if (this.journal.source) throw new Error('Detach the existing source first');
+    await this.send(client, ['read', 'buffer', 'kernel.buffer.describe', '1']);
+    await this.observe();
+  }
+
   async observe(): Promise<void> {
     const client = await this.ready();
     const state = this.journal;
@@ -177,7 +192,10 @@ export class Editing {
     }
     await this.retire(client);
     if (state.access) await this.send(client, ['close', state.access]);
-    if (state.source) {
+    if (state.source?.shared) {
+      delete state.source;
+      this.persist();
+    } else if (state.source) {
       await this.send(client, ['write', state.source.buffer, 'kernel.buffer.close', '1',
         hex(u64(BigInt(state.source.revision))) + '01', state.source.buffer]);
     }

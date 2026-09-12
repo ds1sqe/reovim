@@ -4,7 +4,7 @@ mod clients;
 mod files;
 mod pending;
 mod requests;
-mod session;
+mod state;
 mod transport;
 
 use crate::boot::{Config, Modules, Scope};
@@ -79,15 +79,20 @@ pub fn serve_configured(address: &str, mut config: Config) -> io::Result<()> {
             .map_err(|(error, _)| io::Error::other(error))?;
     }
     let selected_session = config.session.take();
+    let selected_buffer = config.buffer.take();
     files::install(&mut runtime, &owner, core::mem::take(&mut config.files))?;
     let modules = Modules::discover(config).map_err(io::Error::other)?;
     let startup = modules
         .prepare(&mut runtime, &owner, Scope::Server)
         .map_err(io::Error::other)?;
-    session::finish(&mut runtime, startup)?;
+    state::finish(&mut runtime, startup)?;
     let mut shared = alloc::vec![("modules", root), ("models", models)];
+    if let Some(selected) = selected_buffer {
+        let buffer = state::buffer(&mut runtime, &owner, &selected)?;
+        shared.push(("buffer", buffer));
+    }
     if let Some(selected) = selected_session {
-        let session = session::create(&mut runtime, &owner, &selected)?;
+        let session = state::create(&mut runtime, &owner, &selected)?;
         shared.push(("session", session));
     }
     let mut clients =

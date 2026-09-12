@@ -29,6 +29,7 @@ function render() {
 
 const actions: Record<string, () => Promise<void>> = {
   create: () => editing.create(unhex(input('initial').trim())),
+  join: () => editing.join(),
   observe: () => editing.observe(),
   follow: () => editing.follow(),
   read: () => editing.read(BigInt(input('window-start'))),

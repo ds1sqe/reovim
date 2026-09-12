@@ -17,7 +17,7 @@ pub struct Source {
     pub mount: String,
     pub grants: Vec<(String, Permissions)>,
 }
-pub struct Session {
+pub struct Initial {
     pub model: String,
     pub initial: Message,
 }
@@ -31,7 +31,8 @@ pub struct Config {
     pub sources: Vec<Source>,
     pub start: Vec<Contract>,
     pub client_start: Vec<Contract>,
-    pub session: Option<Session>,
+    pub session: Option<Initial>,
+    pub buffer: Option<Initial>,
     pub output: Option<PathBuf>,
     pub snapshots: Vec<Snapshot>,
     pub files: Vec<Snapshot>,
@@ -62,7 +63,10 @@ impl Config {
             "--start" => required(&mut self.start, args)?,
             "--client-start" => required(&mut self.client_start, args)?,
             "--session" if self.session.is_none() => {
-                self.session = Some(session(args)?);
+                self.session = Some(initial(args)?);
+            }
+            "--buffer" if self.buffer.is_none() => {
+                self.buffer = Some(initial(args)?);
             }
             "--export-root" if self.output.is_none() => {
                 self.output = Some(field(args)?.into());
@@ -152,12 +156,12 @@ fn required(
     selected.push(contract(args)?);
     Ok(())
 }
-fn session(args: &mut impl Iterator<Item = String>) -> io::Result<Session> {
+fn initial(args: &mut impl Iterator<Item = String>) -> io::Result<Initial> {
     let model = field(args)?;
     let contract = contract(args)?;
     let data = reovim_service::unhex(&field(args)?)
         .ok_or_else(|| invalid("invalid initial hex"))?;
-    Ok(Session { model, initial: Message::new(contract, &data) })
+    Ok(Initial { model, initial: Message::new(contract, &data) })
 }
 fn invalid(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, message)

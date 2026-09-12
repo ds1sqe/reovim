@@ -63,6 +63,23 @@ distinct. Recovery preserves the original delivery before refresh and does not
 consume another event. The old snapshot remains a qualified historical view
 until renewal; notification alone does not change its content or revision.
 
-This trial owns a private source; it does not implement shared Session focus,
+The trial can also join a server-owned Buffer with independent Client Text
+views. For that profile configure the source Model at server scope:
+
+```sh
+product/target/debug/reovim-server 127.0.0.1:7878 \
+  --module source product/target/debug/examples/libsource.so source \
+  --start source.model 1 --buffer source source.initial 1 2320736861726564 \
+  --client-module text product/target/debug/examples/libtext.so text \
+  --grant "" all --client-start text 1
+```
+
+Choose Join shared source in independent browser tabs. Detach releases only
+that Client's Text owners; it cannot discard the shared Buffer. Run
+`node apps/web/shared-e2e.mjs BROWSER_URL` against a fresh dedicated server with
+the above initial bytes to verify independent edits/views, stale input, shared
+Undo, denied shared close and independent detach/rejoin.
+
+This trial does not implement shared Session focus,
 continuous following, Markdown preview, keyboard/IME editing or SSR. The Text TS
 codec lives with its module; the common service client has no Text semantics.

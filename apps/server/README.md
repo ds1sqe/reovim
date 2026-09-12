@@ -59,6 +59,13 @@ For a shared Session, select a native Model and pass
 heading schema or constructor choice. `--export-root DIRECTORY` separately
 grants filesystem output; see [dump](../../modules/dump/README.md).
 
+`--buffer MODEL_PATH INPUT_CONTRACT SCHEMA HEX_DATA` creates one server-owned
+Buffer through the selected Model's public creation contract. It is mounted as
+`buffer` in each independent Client scope. Clients receive read/write access
+and share its History, but the server remains the close owner. Each Client
+attaches/detaches its own Text interpretation; shared content implies no focus
+or view sharing. Buffer and Session configuration remain separate choices.
+
 `--snapshot MOUNT SOURCE SCRATCH_DIRECTORY` grants an immutable file snapshot
 at `modules/MOUNT`. The Linux Host atomically clones the source into an
 anonymous file on the scratch filesystem. Unsupported or cross-filesystem
