@@ -50,6 +50,8 @@ async function route(request, response) {
       '/edit': [new URL('./edit.html', import.meta.url), 'text/html'],
       '/edit.js': [new URL('apps/web/edit.js', assets), 'text/javascript'],
       '/editing.js': [new URL('apps/web/editing.js', assets), 'text/javascript'],
+      '/input.js': [new URL('apps/web/input.js', assets), 'text/javascript'],
+      '/clients/gui/contract/input.js': [new URL('clients/gui/contract/input.js', assets), 'text/javascript'],
       '/modules/text/api/typescript.js': [new URL('modules/text/api/typescript.js', assets), 'text/javascript'],
       '/sdk/typescript/delivery.js': [new URL('sdk/typescript/delivery.js', assets), 'text/javascript'],
       '/app.js': [new URL('apps/web/app.js', assets), 'text/javascript'],

@@ -1,0 +1,55 @@
+import type { Window } from '../../../modules/text/api/typescript.js';
+
+/** One bounded Text window projected into a browser's normalized string. */
+export interface Projection {
+  value: string; characters: string[]; positions: bigint[];
+}
+export interface Anchor { start: number; end: number; backward: boolean }
+export interface Replacement { start: bigint; end: bigint; text: string }
+
+export function project(window: Window): Projection {
+  const characters: string[] = [], positions = [BigInt(window.start)];
+  for (let index = 0; index < window.units.length; index++) {
+    const unit = window.units[index]!;
+    let character = 'scalar' in unit ? unit.scalar : '\ufffc';
+    if (character === '\r') {
+      const next = window.units[index + 1];
+      if (next && 'scalar' in next && next.scalar === '\n') index++;
+      character = '\n';
+    }
+    characters.push(character);
+    positions.push(BigInt(window.start) + BigInt(index + 1));
+  }
+  return { value: characters.join(''), characters, positions };
+}
+
+function position(characters: string[], offset: number): number {
+  let consumed = 0;
+  for (let index = 0; index <= characters.length; index++) {
+    if (consumed === offset) return index;
+    consumed += characters[index]?.length ?? 0;
+  }
+  throw new Error('selection splits a scalar or leaves the observed window');
+}
+
+/** Selection anchoring disambiguates equal characters and normalized newlines. */
+export function replacement(old: Projection, value: string, anchor: Anchor): Replacement | undefined {
+  const next = [...value];
+  const start = position(old.characters, anchor.start);
+  const end = position(old.characters, anchor.end);
+  if (end < start) throw new Error('reversed selection');
+  let prefix = 0, suffix = 0;
+  const head = () => {
+    while (prefix < start && prefix < next.length - suffix
+        && old.characters[prefix] === next[prefix]) prefix++;
+  };
+  const tail = () => {
+    while (suffix < old.characters.length - end && suffix < next.length - prefix
+        && old.characters[old.characters.length - suffix - 1] === next[next.length - suffix - 1]) suffix++;
+  };
+  if (anchor.backward) { tail(); head(); } else { head(); tail(); }
+  const last = old.characters.length - suffix;
+  const text = next.slice(prefix, next.length - suffix).join('');
+  if (prefix === last && !text) return;
+  return { start: old.positions[prefix]!, end: old.positions[last]!, text };
+}

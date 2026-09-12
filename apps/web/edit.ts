@@ -1,5 +1,6 @@
 import { Editing, type Journal } from './editing.js';
 import { unhex } from '../../sdk/typescript/resource.js';
+import { input as bindInput } from './input.js';
 
 const saved = sessionStorage.getItem('reovim-editing');
 const journal: Journal = saved ? JSON.parse(saved) : { retiring: [] };
@@ -9,8 +10,22 @@ const status = document.querySelector<HTMLElement>('#status')!;
 const content = document.querySelector<HTMLElement>('#content')!;
 const input = (id: string) => document.querySelector<HTMLInputElement>(`#${id}`)!.value;
 let busy = false;
+const typing = bindInput(document.querySelector<HTMLTextAreaElement>('#typing')!,
+  (start, end, text) => operate(() => editing.replace(start, end, text)),
+  () => operate(() => editing.undo()), report);
+
+async function operate(action: () => Promise<void>) {
+  if (busy) throw new Error('Wait for the pending operation');
+  busy = true;
+  try { await action(); render(); }
+  finally { busy = false; }
+}
+function report(error: unknown) {
+  render(); status.textContent += `\n${String(error)}`;
+}
 
 function render() {
+  typing.update(journal.receipt ? undefined : journal.window);
   status.textContent = journal.source
     ? `Revision ${journal.source.revision}${journal.receipt ? '; request needs recovery' : ''}`
     : 'No source is open.';
@@ -38,11 +53,9 @@ const actions: Record<string, () => Promise<void>> = {
 };
 for (const [id, action] of Object.entries(actions)) {
   document.querySelector(`#${id}`)!.addEventListener('click', async () => {
-    if (busy) return;
-    busy = true;
-    try { await action(); render(); }
-    catch (error) { render(); status.textContent += `\n${String(error)}`; }
-    finally { busy = false; }
+    if (typing.composing) { status.textContent = 'Finish composition first.'; return; }
+    try { await operate(action); }
+    catch (error) { report(error); }
   });
 }
 render();

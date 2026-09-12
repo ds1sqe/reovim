@@ -8,6 +8,67 @@ import { Client, DeliveryError, hex, message, opening, outcome, resource,
   startupFailure, u64 }
   from '../../target/browser/sdk/typescript/resource.js';
 import * as text from '../../target/browser/modules/text/api/typescript.js';
+import { project, replacement } from '../../target/browser/clients/gui/contract/input.js';
+import { input as bindInput } from '../../target/browser/apps/web/input.js';
+
+test('composition submits once at completion and failed input keeps its draft', async () => {
+  class Field extends EventTarget {
+    value = ''; selectionStart = 2; selectionEnd = 3; readOnly = false;
+    setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; }
+    emit(type, properties = {}) {
+      this.dispatchEvent(Object.assign(new Event(type, { cancelable: true }), properties));
+    }
+  }
+  const field = new Field(), requests = [];
+  const window = { start: '0', end: '3', eof: true,
+    units: [...'# a'].map(scalar => ({ scalar })) };
+  const adapter = bindInput(field, async (...request) => { requests.push(request); },
+    async () => {}, error => { throw error; });
+  adapter.update(window);
+  field.emit('compositionstart');
+  field.value = '# h'; field.emit('input');
+  field.value = '# 漢'; field.emit('input');
+  assert.deepEqual(requests, []);
+  field.emit('compositionend'); field.emit('input');
+  await new Promise(setImmediate);
+  assert.deepEqual(requests, [[2n, 3n, '漢']]);
+  adapter.update(window);
+  field.setSelectionRange(2, 3);
+  field.emit('compositionstart');
+  field.value = '# temporary'; field.emit('input');
+  field.value = '# a'; field.emit('compositionend'); field.emit('input');
+  await new Promise(setImmediate);
+  assert.deepEqual(requests, [[2n, 3n, '漢']]);
+  const failed = new Field();
+  let error;
+  const failing = bindInput(failed, async () => { throw new Error('stale'); },
+    async () => {}, value => { error = value; failing.update(window); });
+  failing.update(window);
+  failed.emit('beforeinput', { inputType: 'insertText' });
+  failed.value = '# draft'; failed.emit('input');
+  await new Promise(setImmediate);
+  assert.equal(error.message, 'stale');
+  assert.equal(failed.value, '# draft');
+  assert.equal(failed.readOnly, true);
+});
+
+test('browser input maps UTF-16, CRLF and opaque units with selection anchors', () => {
+  const scalar = value => [...value].map(scalar => ({ scalar }));
+  const window = { start: '10', end: '18', eof: true,
+    units: [...scalar('🦀\r\n'), { opaque: 255 }, ...scalar('tail')] };
+  const view = project(window);
+  assert.equal(view.value, '🦀\n\ufffctail');
+  assert.deepEqual(replacement(view, '🦀!\n\ufffctail',
+    { start: 2, end: 2, backward: false }), { start: 11n, end: 11n, text: '!' });
+  assert.throws(() => replacement(view, '', { start: 1, end: 1, backward: false }), /scalar/);
+  const breaks = project({ start: '0', end: '3', eof: true, units: scalar('\r\n\n') });
+  assert.deepEqual(replacement(breaks, '\n', { start: 0, end: 0, backward: false }),
+    { start: 0n, end: 2n, text: '' });
+  assert.deepEqual(replacement(breaks, '\n', { start: 2, end: 2, backward: true }),
+    { start: 2n, end: 3n, text: '' });
+  assert.deepEqual(replacement(view, '🦀\nXtail', { start: 3, end: 4, backward: false }),
+    { start: 13n, end: 14n, text: 'X' });
+});
 
 test('Text delivery preserves observation identity and exact event values', () => {
   const observed = { access: '@5', buffer: '@6', history: '@7', watch: '@8' };

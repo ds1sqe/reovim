@@ -84,5 +84,15 @@ the above initial bytes to verify independent edits/views, stale input, shared
 Undo, denied shared close and independent detach/rejoin.
 
 This trial does not implement shared Session focus,
-continuous following, Markdown preview, keyboard/IME editing or SSR. The Text TS
+continuous following, Markdown preview or SSR. The Text TS
 codec lives with its module; the common service client has no Text semantics.
+
+The textarea input trial maps browser UTF-16 selection and normalized newlines
+back to the observed Text window. It preserves untouched CRLF and opaque bytes;
+the object marker represents one opaque byte. Composition remains a local draft
+until completion. Undo uses shared History rather than a second document store.
+The trial permits one in-flight edit, locking input while awaiting acceptance;
+queued input under latency and platform IME qualification remain required.
+Failed input keeps its draft in the textarea until explicit refresh; this local
+draft is not durable across reload. Admitted requests retain their normal
+journaled recovery. This is input-contract evidence, not the finished GUI.
