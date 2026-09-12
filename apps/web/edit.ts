@@ -1,5 +1,6 @@
 import { Editing, type Journal } from './editing.js';
-import { unhex } from '../../sdk/typescript/resource.js';
+import { Client, unhex } from '../../sdk/typescript/resource.js';
+import { Focus, type ContextJournal } from '../../clients/gui/runtime/context.js';
 import { input as bindInput, type Draft } from './input.js';
 import { Commands } from '../../clients/gui/runtime/commands.js';
 import { editor as editorCapability } from '../../clients/gui/runtime/editor.js';
@@ -7,7 +8,7 @@ import type { Registration } from '../../clients/gui/contract/commands.js';
 import { selectedRange } from '../../clients/gui/contract/input.js';
 
 const saved = sessionStorage.getItem('reovim-editing');
-const journal: Journal & { draft?: Draft } = saved ? JSON.parse(saved) : { retiring: [] };
+const journal: Journal & { draft?: Draft; focus?: ContextJournal } = saved ? JSON.parse(saved) : { retiring: [] };
 const persist = () => sessionStorage.setItem('reovim-editing', JSON.stringify(journal));
 const editing = new Editing(journal,
   persist);
@@ -34,6 +35,13 @@ const moduleEditor = editorCapability(() => {
 }, (start, end, text) => operate(() => editing.replace(start, end, text)));
 let contribution: Registration | undefined;
 let loading = false;
+let context: Focus | undefined;
+function focus(): Focus {
+  if (!journal.token) throw new Error('Connect to a source first');
+  journal.focus ??= { retiring: [] };
+  context ??= new Focus(new Client(journal.token), journal.focus, persist);
+  return context;
+}
 
 function draftStatus() {
   document.querySelector('#draft-status')!.textContent = journal.draft
@@ -56,6 +64,9 @@ function render() {
     ? `Revision ${journal.source.revision}${journal.receipt ? '; request needs recovery' : ''}`
     : 'No source is open.';
   draftStatus();
+  const current = journal.focus?.current;
+  document.querySelector('#focus-status')!.textContent = current
+    ? `Private context: ${current.active ?? 'no active Buffer'}` : 'No private context.';
   const value = journal.window;
   content.textContent = value ? value.units.map(unit => 'scalar' in unit
     ? unit.scalar : `⟦${unit.opaque.toString(16).padStart(2, '0')}⟧`).join('') : '';
@@ -76,7 +87,18 @@ const actions: Record<string, () => Promise<unknown>> = {
   follow: () => editing.follow(),
   read: () => editing.read(BigInt(input('window-start'))),
   replace: () => editing.replace(BigInt(input('start')), BigInt(input('end')), input('replacement')),
-  close: () => editing.close(), recover: () => editing.recover()
+  close: () => editing.close(), recover: () => editing.recover(),
+  'create-context': () => focus().create({ known: [] }),
+  'focus-source': () => {
+    if (!journal.source) throw new Error('Open a source first');
+    const known = [...(journal.focus?.current?.known ?? [])];
+    if (!known.includes(journal.source.buffer)) known.push(journal.source.buffer);
+    return focus().set({ known, active: journal.source.buffer });
+  },
+  'clear-focus': () => focus().set({ known: journal.focus?.current?.known ?? [] }),
+  'refresh-context': () => focus().refresh(),
+  'close-context': () => focus().close(),
+  'recover-context': () => focus().recover()
 };
 for (const [id, action] of Object.entries(actions)) {
   document.querySelector(`#${id}`)!.addEventListener('click', async () => {

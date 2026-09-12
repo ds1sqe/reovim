@@ -95,6 +95,23 @@ This trial does not implement shared Session focus,
 continuous following, Markdown preview or SSR. The Text TS
 codec lives with its module; the common service client has no Text semantics.
 
+For private retained focus, append this client module to the server command:
+
+```sh
+--client-module context product/target/debug/examples/libcontext.so context \
+  --grant "" all --client-start editing.context.model 1
+```
+
+Build its example with `cargo build --manifest-path product/Cargo.toml
+-p reovim-module-context --example context`. Create private context starts with
+no known/active Buffer; Focus current source adds the current Buffer with READ
+references. Clear focus keeps known references. Context updates/close never
+edit or close those Buffers. Snapshots and delivery receipts retire separately,
+including after interrupted replies. Run `node apps/web/context-e2e.mjs
+BROWSER_URL` against a dedicated shared-source/context server for the two-Client
+journey. Participation sharing/seek and automatic focus policy remain further
+work; these controls expose the retained context contract explicitly.
+
 Undo and Redo buttons, Ctrl/Meta+Z, Ctrl/Meta+Shift+Z and Ctrl+Y use native
 History. History navigation waits for pending input and temporarily locks the
 textarea until its accepted state is observed. Browser-native History input
