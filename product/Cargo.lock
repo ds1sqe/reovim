@@ -247,6 +247,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-module-source"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-host-reference",
+ "reovim-kernel-interface",
+ "reovim-kernel-runtime",
+ "reovim-module",
+ "reovim-sdk",
+]
+
+[[package]]
 name = "reovim-module-tree"
 version = "0.16.0-dev"
 dependencies = [
