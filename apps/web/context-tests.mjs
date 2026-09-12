@@ -4,6 +4,54 @@ import { initial, observation, update, watching, followed, change } from '../../
 import { Client, hex, u64 } from '../../target/browser/sdk/typescript/resource.js';
 import { Focus } from '../../target/browser/clients/gui/runtime/context.js';
 
+test('checkpoint recovery keeps its separate owner and does not replace the selected view', async () => {
+  const client = new Client('client'), seen = [];
+  client.wire = async fields => { seen.push(fields); return 'ok'; };
+  const state = { ownership: 'shared', participation: '@3',
+    current: { session: '@1', snapshot: '@2', known: [] },
+    checkpoint: { session: '@1', snapshot: '@4', known: [] },
+    checkpointRequest: '7', retiring: [],
+    receipt: { client: 'client', id: '7', fields: ['read', '@3', 'editing.context', '1'],
+      response: 'ok\tediting.context\t1\tffffffffffffffff\t@1,@4' } };
+  await new Focus(client, state, () => {}).recover();
+  assert.equal(state.current.snapshot, '@2');
+  assert.equal(state.checkpoint.snapshot, '@4');
+  assert.deepEqual(state.retiring, []);
+  assert.equal(state.receipt, undefined); assert.equal(state.checkpointRequest, undefined);
+  assert.deepEqual(seen, [['client', 'release', '7']]);
+});
+
+test('shared close recovers adopted detach before retiring only its own observations', async () => {
+  const client = new Client('client'), operations = [];
+  let id = 0, lost = true;
+  client.wire = async fields => {
+    if (fields[1] === 'reserve') return `ok\t${++id}`;
+    if (fields[1] === 'release') {
+      if (lost) { lost = false; throw new Error('lost retirement'); }
+      return 'ok';
+    }
+    assert.equal(fields[1], 'call');
+    const request = fields.slice(3); operations.push(request);
+    assert.notEqual(request[2], 'kernel.session.close');
+    return request[0] === 'close' ? 'ok' : `ok\t${request[2]}\t1\t\t`;
+  };
+  let state = { ownership: 'shared', participation: '@3',
+    current: { session: '@1', snapshot: '@2', known: [] },
+    checkpoint: { session: '@1', snapshot: '@4', known: [] },
+    watch: { id: '@5', session: '@1', revision: '1' }, retiring: [] };
+  await assert.rejects(new Focus(client, state, () => {}).close(), /lost retirement/);
+  assert.equal(state.participation, undefined); assert.equal(state.closing, true);
+  state = JSON.parse(JSON.stringify(state));
+  await new Focus(client, state, () => {}).recover();
+  assert.equal(state.current, undefined); assert.equal(state.checkpoint, undefined);
+  assert.equal(state.closing, undefined); assert.deepEqual(state.retiring, []);
+  assert.deepEqual(operations, [
+    ['write', '@3', 'kernel.session.detach', '1'],
+    ['write', '@2', 'kernel.session.release', '1'],
+    ['write', '@4', 'kernel.session.release', '1'], ['close', '@5']
+  ]);
+});
+
 test('context recovery refuses lifecycle and watch records from another Session', async () => {
   const client = new Client('client');
   client.wire = async () => { assert.fail('foreign result must not retire its receipt'); };

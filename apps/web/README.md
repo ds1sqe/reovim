@@ -109,9 +109,8 @@ references. Clear focus keeps known references. Context updates/close never
 edit or close those Buffers. Snapshots and delivery receipts retire separately,
 including after interrupted replies. Run `node apps/web/context-e2e.mjs
 BROWSER_URL` against a dedicated shared-source/context server for the two-Client
-journey. Participation sharing/seek and automatic focus policy remain further
-work; these controls expose the retained context contract explicitly.
-Check context changes acquires a coherent snapshot/watch and checks delivery.
+journey. Each context uses owned native participation. Follow live context
+acquires a coherent snapshot/watch and checks delivery.
 Events or Gap renew context and release obsolete snapshots/watches separately.
 Lost delivery recovers the original receipt before renewal; it cannot consume
 another event as recovery. Context observation does not edit or close Buffers.
@@ -124,9 +123,30 @@ node apps/web/participation-e2e.mjs BROWSER_URL
 
 It exercises the loaded context Model's reference-bearing updates, historical
 seek, coherent follow, lost-result recovery after an intervening update, stale
-ABA rejection and detach cleanup. Buffer revision stays unchanged. The Focus
-UI still uses direct Session operations; participation controls and recovery
-in that UI are the next consumer integration.
+ABA rejection and detach cleanup. Buffer revision stays unchanged.
+
+For shared context, add a server-owned context Model and initial Session to
+the shared-source configuration, alongside any private Client context Model:
+
+```sh
+--module context product/target/debug/examples/libcontext.so context \
+  --grant "" all --start editing.context.model 1 \
+  --session context editing.context.initial 1 ffffffffffffffff
+```
+
+Join shared context creates independent participation in the `session` alias.
+Retain context checkpoint owns one additional snapshot; replacing it releases
+the old checkpoint. View retained context selects that observation without
+rewinding text. Focus changes require Follow live context while viewing history.
+Close or detach context releases participation, watches and snapshots, and
+closes the Session only when this controller created it privately.
+
+Attach, checkpoint, seek and teardown recovery preserve the original receipt
+and ownership across reload. Restoration sends no work by itself. Run
+`node apps/web/context-participation-e2e.mjs BROWSER_URL` on the dedicated
+shared-context/source server for two-Client views, interrupted lifecycle steps,
+shared content/Undo and cleanup. Automatic open/focus policy and the finished
+GUI remain further product work.
 
 Undo and Redo buttons, Ctrl/Meta+Z, Ctrl/Meta+Shift+Z and Ctrl+Y use native
 History. History navigation waits for pending input and temporarily locks the

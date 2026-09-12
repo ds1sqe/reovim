@@ -66,9 +66,12 @@ function render() {
   draftStatus();
   const current = journal.focus?.current;
   document.querySelector('#focus-status')!.textContent = current
-    ? `Private context: ${current.active ?? 'no active Buffer'}` : 'No private context.';
+    ? `${journal.focus?.ownership ?? 'private'} context (${journal.focus?.historical ? 'historical' : 'live'}): ${current.active ?? 'no active Buffer'}`
+    : 'No context.';
   document.querySelector('#focus-change')!.textContent = journal.focus?.change
     ? `Context delivery: ${journal.focus.change.kind}` : '';
+  document.querySelector('#context-checkpoint')!.textContent = journal.focus?.checkpoint
+    ? `Checkpoint retained: ${journal.focus.checkpoint.active ?? 'no active Buffer'}` : 'No context checkpoint.';
   const value = journal.window;
   content.textContent = value ? value.units.map(unit => 'scalar' in unit
     ? unit.scalar : `⟦${unit.opaque.toString(16).padStart(2, '0')}⟧`).join('') : '';
@@ -91,6 +94,7 @@ const actions: Record<string, () => Promise<unknown>> = {
   replace: () => editing.replace(BigInt(input('start')), BigInt(input('end')), input('replacement')),
   close: () => editing.close(), recover: () => editing.recover(),
   'create-context': () => focus().create({ known: [] }),
+  'join-context': () => focus().join(),
   'focus-source': () => {
     if (!journal.source) throw new Error('Open a source first');
     const known = [...(journal.focus?.current?.known ?? [])];
@@ -100,6 +104,8 @@ const actions: Record<string, () => Promise<unknown>> = {
   'clear-focus': () => focus().set({ known: journal.focus?.current?.known ?? [] }),
   'refresh-context': () => focus().refresh(),
   'follow-context': () => focus().follow(),
+  'remember-context': () => focus().remember(),
+  'seek-context': () => focus().seek(),
   'close-context': () => focus().close(),
   'recover-context': () => focus().recover()
 };
