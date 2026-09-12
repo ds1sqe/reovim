@@ -1,11 +1,19 @@
+#![allow(clippy::future_not_send)] // State and Connection use one executor.
+use super::backing::Backing;
 use alloc::{boxed::Box, rc::Rc, vec::Vec};
 use core::ops::Range;
 use reovim_kernel_interface::Error;
 
 #[derive(Clone)]
+enum Data {
+    Resident(Rc<[u8]>),
+    Backing(Rc<Backing>),
+}
+
+#[derive(Clone)]
 struct Piece {
-    bytes: Rc<[u8]>,
-    range: Range<usize>,
+    bytes: Data,
+    range: Range<u64>,
 }
 
 pub struct Source {
@@ -19,7 +27,10 @@ impl Source {
         let mut pieces = Vec::new();
         if !bytes.is_empty() {
             pieces.try_reserve_exact(1).map_err(|_| Error::PRESSURE)?;
-            pieces.push(Piece { range: 0..bytes.len(), bytes: bytes.into() });
+            pieces.push(Piece {
+                range: 0..length,
+                bytes: Data::Resident(bytes.into()),
+            });
         }
         Ok(Self { pieces, length })
     }
@@ -28,12 +39,43 @@ impl Source {
         self.length
     }
 
+    pub fn backed(backing: Backing) -> Self {
+        let length = backing.length;
+        Self {
+            pieces: alloc::vec![Piece {
+                range: 0..length,
+                bytes: Data::Backing(Rc::new(backing)),
+            }],
+            length,
+        }
+    }
+
+    pub async fn read_async(
+        &self,
+        range: Range<u64>,
+        output: &mut Vec<u8>,
+    ) -> Result<(), Error> {
+        self.validate(&range)?;
+        let mut pieces = self.pieces.iter();
+        let mut offset = 0;
+        while offset < range.end {
+            let piece = pieces.next().ok_or(Error::PROVIDER)?;
+            let end = offset + (piece.range.end - piece.range.start);
+            append_selected(piece, offset, &range, output).await?;
+            offset = end;
+        }
+        Ok(())
+    }
+
     pub fn cost(&self) -> Result<u64, Error> {
         self.pieces.iter().try_fold(
             (self.pieces.capacity() * core::mem::size_of::<Piece>()) as u64,
             |cost, piece| {
-                cost.checked_add(piece.bytes.len() as u64)
-                    .ok_or(Error::PRESSURE)
+                let bytes = match &piece.bytes {
+                    Data::Resident(bytes) => bytes.len() as u64,
+                    Data::Backing(_) => core::mem::size_of::<Backing>() as u64,
+                };
+                cost.checked_add(bytes).ok_or(Error::PRESSURE)
             },
         )
     }
@@ -47,10 +89,15 @@ impl Source {
         let size = usize::try_from(range.end - range.start)
             .map_err(|_| Error::PRESSURE)?;
         output.try_reserve(size).map_err(|_| Error::PRESSURE)?;
-        visit(&self.pieces, range, |piece, selected| {
-            output.extend_from_slice(&piece.bytes[selected]);
+        let mut ready = true;
+        visit(&self.pieces, range, |piece, selected| match &piece.bytes {
+            Data::Resident(bytes) => output.extend_from_slice(
+                &bytes[usize::try_from(selected.start).expect("resident range")
+                    ..usize::try_from(selected.end).expect("resident range")],
+            ),
+            Data::Backing(_) => ready = false,
         });
-        Ok(())
+        if ready { Ok(()) } else { Err(Error::NOT_READY) }
     }
 
     pub fn splice(
@@ -70,7 +117,10 @@ impl Source {
         pieces.try_reserve_exact(capacity).map_err(|_| Error::PRESSURE)?;
         self.copy_pieces(0..range.start, &mut pieces);
         if !bytes.is_empty() {
-            pieces.push(Piece { bytes: bytes.into(), range: 0..bytes.len() });
+            pieces.push(Piece {
+                bytes: Data::Resident(bytes.into()),
+                range: 0..bytes.len() as u64,
+            });
         }
         self.copy_pieces(range.end..self.length, &mut pieces);
         Ok(Self { pieces, length })
@@ -93,20 +143,19 @@ impl Source {
     }
 }
 
-fn visit(
-    pieces: &[Piece],
+fn visit<'a>(
+    pieces: &'a [Piece],
     range: Range<u64>,
-    mut use_piece: impl FnMut(&Piece, Range<usize>),
+    mut use_piece: impl FnMut(&'a Piece, Range<u64>),
 ) {
     let mut offset = 0;
     for piece in pieces {
-        let end = offset + (piece.range.end - piece.range.start) as u64;
+        let end = offset + (piece.range.end - piece.range.start);
         let start = range.start.max(offset);
         let stop = range.end.min(end);
         if start < stop {
-            // Both offsets were clipped to this resident allocation.
-            let first = usize::try_from(start - offset).expect("piece offset");
-            let last = usize::try_from(stop - offset).expect("piece offset");
+            let first = start - offset;
+            let last = stop - offset;
             let selected = piece.range.start + first..piece.range.start + last;
             use_piece(piece, selected);
         }
@@ -115,4 +164,39 @@ fn visit(
             break;
         }
     }
+}
+
+async fn append(
+    piece: &Piece,
+    range: Range<u64>,
+    output: &mut Vec<u8>,
+) -> Result<(), Error> {
+    match &piece.bytes {
+        Data::Resident(bytes) => {
+            let start =
+                usize::try_from(range.start).map_err(|_| Error::PROVIDER)?;
+            let end =
+                usize::try_from(range.end).map_err(|_| Error::PROVIDER)?;
+            output.try_reserve(end - start).map_err(|_| Error::PRESSURE)?;
+            output.extend_from_slice(&bytes[start..end]);
+        }
+        Data::Backing(backing) => backing.read(range, output).await?,
+    }
+    Ok(())
+}
+
+async fn append_selected(
+    piece: &Piece,
+    offset: u64,
+    range: &Range<u64>,
+    output: &mut Vec<u8>,
+) -> Result<(), Error> {
+    let start = range.start.max(offset);
+    let end = range.end.min(offset + (piece.range.end - piece.range.start));
+    if start >= end {
+        return Ok(());
+    }
+    let selected = piece.range.start + (start - offset)
+        ..piece.range.start + (end - offset);
+    append(piece, selected, output).await
 }

@@ -29,3 +29,7 @@ path = "../../sdk/rust"
 [[example]]
 name = "source"
 crate-type = ["cdylib"]
+
+[[example]]
+name = "source_open"
+crate-type = ["cdylib"]

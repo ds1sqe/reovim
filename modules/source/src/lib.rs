@@ -5,6 +5,9 @@
 extern crate alloc;
 
 pub mod api;
+mod backing;
+#[cfg(test)]
+mod backing_tests;
 mod storage;
 #[cfg(test)]
 mod tests;
@@ -24,11 +27,61 @@ reovim_module::rv_module! {
     }
 }
 
+reovim_module::rv_module! {
+    pub OPEN {
+        contract: ("source.open.model", 1),
+        model: {
+            initial_input: [reovim_module::Permissions::READ],
+            initialize ("source.open", 1) => unavailable,
+            prepare ("source.splice", 1) => prepare,
+            observe ("source.bytes", 1) => observe,
+            inspect => inspect,
+            initialize_async => open,
+        },
+    }
+}
+
+fn unavailable(_: Message) -> Result<State, Error> {
+    Err(Error::UNSUPPORTED)
+}
+fn open(
+    kernel: Option<reovim_module::Connection>,
+    input: Message,
+) -> reovim_kernel_interface::buffer::StateReply {
+    alloc::boxed::Box::pin(async move {
+        if !input.data.is_empty() {
+            return Err(Error::INVALID);
+        }
+        let source = Source::backed(
+            backing::Backing::open(
+                kernel.ok_or(Error::DENIED)?,
+                input.resources[0],
+            )
+            .await?,
+        );
+        let cost = source.cost()?;
+        Ok(State::new(source, cost))
+    })
+}
+
 fn inspect(
     state: State,
     input: Message,
 ) -> reovim_kernel_interface::provider::ProviderReply {
-    alloc::boxed::Box::pin(async move { observe(&state, input) })
+    alloc::boxed::Box::pin(async move {
+        if input.data.is_empty() {
+            return observe(&state, input);
+        }
+        let source = state.get::<Source>().ok_or(Error::PROVIDER)?;
+        let range = api::decode_range(&input.data)?;
+        let mut data = api::encode_range(&range).to_vec();
+        source.read_async(range, &mut data).await?;
+        Ok(Message {
+            contract: input.contract,
+            data: data.into(),
+            resources: alloc::boxed::Box::new([]),
+        })
+    })
 }
 
 fn initialize(input: Message) -> Result<State, Error> {

@@ -1,7 +1,7 @@
 //! Finite file output through a granted directory Resource and Host workers.
 
 mod path;
-mod worker;
+use crate::worker;
 
 use alloc::{boxed::Box, rc::Rc, sync::Arc};
 use core::sync::atomic::{AtomicBool, Ordering};

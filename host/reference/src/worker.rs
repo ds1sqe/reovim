@@ -27,7 +27,7 @@ pub fn start(
     let output = completion.clone();
     let running = busy.clone();
     let spawned = std::thread::Builder::new()
-        .name("resource-export".into())
+        .name("resource-io".into())
         .spawn(move || complete(&output, &running, job()));
     if spawned.is_err() {
         busy.store(false, Ordering::Release);

@@ -65,6 +65,18 @@ pub fn serve_configured(address: &str, mut config: Config) -> io::Result<()> {
     let owner = runtime
         .bind_at(root, &[(root, Permissions::ALL)])
         .map_err(io::Error::other)?;
+    for snapshot in config.snapshots.drain(..) {
+        let path = owner
+            .publication_path(&snapshot.mount)
+            .map_err(io::Error::other)?;
+        let provider = reovim_host_reference::snapshot::capture(
+            &snapshot.source,
+            &snapshot.scratch,
+        )?;
+        runtime
+            .register(&path, provider)
+            .map_err(|(error, _)| io::Error::other(error))?;
+    }
     let selected_session = config.session.take();
     let modules = Modules::discover(config).map_err(io::Error::other)?;
     let startup = modules

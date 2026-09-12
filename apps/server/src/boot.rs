@@ -1,7 +1,7 @@
 //! Native declarations feed the existing scoped catalog and activation graph.
 
 mod config;
-pub use config::{Config, Scope, Session, Source};
+pub use config::{Config, Scope, Session, Snapshot, Source};
 
 use alloc::{boxed::Box, format, vec::Vec};
 use reovim_host_reference::native::Artifact;

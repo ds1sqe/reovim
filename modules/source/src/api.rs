@@ -44,6 +44,23 @@ pub async fn create(
     descriptor(reply).map_err(Into::into)
 }
 
+/// Opens working source ranges from an immutable snapshot Resource.
+/// # Errors
+/// Rejects unavailable access, malformed snapshot metadata or failed delivery.
+pub async fn open(
+    connection: &Connection,
+    model: ResourceId,
+    snapshot: ResourceId,
+) -> Result<Observation, RequestError> {
+    let reply = connection
+        .write(
+            model,
+            &Message::reference(Contract::new("source.open", 1), snapshot),
+        )
+        .await?;
+    descriptor(reply).map_err(Into::into)
+}
+
 /// Reads only the selected window through its independently owned state access.
 /// # Errors
 /// Rejects expired access, invalid ranges, bad replies or failed delivery.

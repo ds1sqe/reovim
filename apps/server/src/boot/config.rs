@@ -21,6 +21,11 @@ pub struct Session {
     pub model: String,
     pub initial: Message,
 }
+pub struct Snapshot {
+    pub mount: String,
+    pub source: PathBuf,
+    pub scratch: PathBuf,
+}
 #[derive(Default)]
 pub struct Config {
     pub sources: Vec<Source>,
@@ -28,6 +33,7 @@ pub struct Config {
     pub client_start: Vec<Contract>,
     pub session: Option<Session>,
     pub output: Option<PathBuf>,
+    pub snapshots: Vec<Snapshot>,
 }
 
 impl Config {
@@ -59,6 +65,13 @@ impl Config {
             }
             "--export-root" if self.output.is_none() => {
                 self.output = Some(field(args)?.into());
+            }
+            "--snapshot" if self.snapshots.len() < 64 => {
+                self.snapshots.push(Snapshot {
+                    mount: field(args)?,
+                    source: field(args)?.into(),
+                    scratch: field(args)?.into(),
+                });
             }
             _ => return Err(invalid("unknown boot option")),
         }

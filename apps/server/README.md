@@ -59,6 +59,13 @@ For a shared Session, select a native Model and pass
 heading schema or constructor choice. `--export-root DIRECTORY` separately
 grants filesystem output; see [dump](../../modules/dump/README.md).
 
+`--snapshot MOUNT SOURCE SCRATCH_DIRECTORY` grants an immutable file snapshot
+at `modules/MOUNT`. The Linux Host atomically clones the source into an
+anonymous file on the scratch filesystem. Unsupported or cross-filesystem
+cloning fails boot explicitly. Source and scratch are explicit process grants;
+this does not expose arbitrary filesystem paths to modules. See the
+[source model](../../modules/source/README.md) for lazy working-state opening.
+
 An installed user supplies only a compatible module package and configuration;
 adding it requires neither a Reovim checkout nor a server/CLI rebuild. The ABI is
 SemVer 0.1.0 with reserved u32 zero until official release; operation and module
