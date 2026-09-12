@@ -111,6 +111,10 @@ including after interrupted replies. Run `node apps/web/context-e2e.mjs
 BROWSER_URL` against a dedicated shared-source/context server for the two-Client
 journey. Participation sharing/seek and automatic focus policy remain further
 work; these controls expose the retained context contract explicitly.
+Check context changes acquires a coherent snapshot/watch and checks delivery.
+Events or Gap renew context and release obsolete snapshots/watches separately.
+Lost delivery recovers the original receipt before renewal; it cannot consume
+another event as recovery. Context observation does not edit or close Buffers.
 
 Undo and Redo buttons, Ctrl/Meta+Z, Ctrl/Meta+Shift+Z and Ctrl+Y use native
 History. History navigation waits for pending input and temporarily locks the

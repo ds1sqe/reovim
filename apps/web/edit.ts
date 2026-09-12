@@ -67,6 +67,8 @@ function render() {
   const current = journal.focus?.current;
   document.querySelector('#focus-status')!.textContent = current
     ? `Private context: ${current.active ?? 'no active Buffer'}` : 'No private context.';
+  document.querySelector('#focus-change')!.textContent = journal.focus?.change
+    ? `Context delivery: ${journal.focus.change.kind}` : '';
   const value = journal.window;
   content.textContent = value ? value.units.map(unit => 'scalar' in unit
     ? unit.scalar : `⟦${unit.opaque.toString(16).padStart(2, '0')}⟧`).join('') : '';
@@ -97,6 +99,7 @@ const actions: Record<string, () => Promise<unknown>> = {
   },
   'clear-focus': () => focus().set({ known: journal.focus?.current?.known ?? [] }),
   'refresh-context': () => focus().refresh(),
+  'follow-context': () => focus().follow(),
   'close-context': () => focus().close(),
   'recover-context': () => focus().recover()
 };
