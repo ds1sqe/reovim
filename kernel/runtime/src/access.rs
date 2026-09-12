@@ -442,6 +442,9 @@ fn buffer_contract(
     input: &Message,
 ) -> Result<Box<[Permissions]>, Error> {
     if method == Method::Read && crate::snapshots::contract(&input.contract) {
+        if crate::snapshots::observing(&input.contract) {
+            return Ok(Box::new([Permissions::READ; 4]));
+        }
         return Ok(Box::new([Permissions::READ, Permissions::READ]));
     }
     let buffer = buffer.borrow();

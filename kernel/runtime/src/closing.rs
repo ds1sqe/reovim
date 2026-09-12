@@ -59,6 +59,14 @@ impl Runtime {
         remove_history(&mut shared.entries, record.subject, &mut retired);
         drop(shared);
         drop(retired);
+        let feed = match &record.target {
+            Kind::Buffer(buffer) => Some(buffer.borrow().feed.clone()),
+            _ => None,
+        };
+        drop(record);
+        if let Some(feed) = feed {
+            crate::watch::end(&feed);
+        }
         Ok(reply)
     }
 }

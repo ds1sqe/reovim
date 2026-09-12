@@ -12,6 +12,7 @@ pub mod driver;
 pub mod error;
 pub mod module;
 pub mod namespace;
+pub mod notify;
 pub mod provider;
 pub mod requests;
 pub mod resource;

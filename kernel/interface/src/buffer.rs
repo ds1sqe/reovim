@@ -7,6 +7,10 @@ use crate::{Contract, Error, Message, ResourceId};
 
 mod snapshot;
 pub use snapshot::{RetainedState, retain, retained};
+mod watch;
+pub use watch::{
+    Change, Transition, Watching, change, next, observe, watching,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BufferState {

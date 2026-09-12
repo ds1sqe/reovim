@@ -188,7 +188,9 @@ impl Runtime {
                 Step::Finished(self.retain_state(record, &buffer))
             }
             Kind::Buffer(buffer) => begin_buffer(&buffer, method, input),
-            Kind::History(buffer) => Step::Finished(history(&buffer, &input)),
+            Kind::History(buffer) => {
+                Step::Finished(history(&buffer, &input, id))
+            }
             _ => Step::Finished(Err(Error::UNSUPPORTED)),
         }
     }
@@ -242,9 +244,18 @@ impl Runtime {
             }
             Kind::Buffer(buffer) => {
                 let expected = integer(&record.borrow().input.data[..8])?;
+                let previous = buffer.borrow().state.node() as u64;
                 let installed =
                     buffer.borrow_mut().state.install(expected, candidate);
                 installed.map_err(|(error, _candidate)| error)?;
+                let cause = record.borrow().id;
+                changed(
+                    &buffer,
+                    cause,
+                    expected,
+                    previous,
+                    reovim_kernel_interface::buffer::Transition::Edit,
+                );
                 buffer
             }
             _ => return Err(Error::PROVIDER),
@@ -279,6 +290,7 @@ impl Runtime {
             resource,
             history,
             owner,
+            feed: Rc::default(),
         }));
         let name = alloc::format!("{resource}").into();
         let parent = parent.unwrap_or_else(|| {
@@ -535,6 +547,7 @@ fn observe(buffer: &Rc<RefCell<Editing>>) -> Result<Message, Error> {
 fn history(
     buffer: &Rc<RefCell<Editing>>,
     input: &Message,
+    request: u64,
 ) -> Result<Message, Error> {
     if input.contract.name.as_ref() == "kernel.history.children" {
         if !input.data.is_empty() {
@@ -558,19 +571,50 @@ fn history(
         ),
         _ => return Err(Error::INVALID),
     };
-    let (revision, node) = {
+    let (revision, node, previous) = {
         let mut buffer = buffer.borrow_mut();
+        let previous = buffer.state.node() as u64;
         buffer.state.restore(
             expected,
             input.contract.name.as_ref() == "kernel.history.undo",
             child,
         )?;
-        (buffer.state.revision(), buffer.state.node())
+        (buffer.state.revision(), buffer.state.node(), previous)
     };
+    let transition = if input.contract.name.as_ref() == "kernel.history.undo" {
+        reovim_kernel_interface::buffer::Transition::Undo
+    } else {
+        reovim_kernel_interface::buffer::Transition::Redo
+    };
+    changed(buffer, request, expected, previous, transition);
     let mut data = Vec::new();
     data.extend_from_slice(&revision.to_le_bytes());
     data.extend_from_slice(&(node as u64).to_le_bytes());
     Ok(Message::new(input.contract.clone(), &data))
+}
+
+fn changed(
+    buffer: &Rc<RefCell<Editing>>,
+    request: u64,
+    before: u64,
+    from_node: u64,
+    transition: reovim_kernel_interface::buffer::Transition,
+) {
+    let (feed, change) = {
+        let buffer = buffer.borrow();
+        (
+            buffer.feed.clone(),
+            reovim_kernel_interface::buffer::Change {
+                request,
+                before,
+                after: buffer.state.revision(),
+                from_node,
+                to_node: buffer.state.node() as u64,
+                transition,
+            },
+        )
+    };
+    crate::watch::changed(&feed, change);
 }
 
 // Prepare the complete reply before transferring candidate state.

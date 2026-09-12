@@ -33,6 +33,7 @@ mod sequence;
 mod sessions;
 mod snapshots;
 mod teardown;
+mod watch;
 use reovim_kernel_interface::buffer::ModelProvider;
 use reovim_kernel_interface::provider::{Permissions, ResourceProvider};
 use reovim_kernel_interface::{Connection, Error, ResourceId};
@@ -78,6 +79,7 @@ struct Editing {
     resource: u64,
     history: u64,
     owner: u64,
+    feed: Rc<RefCell<watch::Feed>>,
 }
 
 struct Shared {
