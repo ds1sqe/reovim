@@ -3,6 +3,20 @@ import test from 'node:test';
 import { Commands } from '../../target/browser/clients/gui/runtime/commands.js';
 import { editor } from '../../target/browser/clients/gui/runtime/editor.js';
 import { activate } from '../../target/browser/clients/gui/modules/uppercase/index.js';
+import { selectedRange } from '../../target/browser/clients/gui/contract/input.js';
+
+test('browser selections preserve Text endpoints across UTF-16, CRLF and opaque units', () => {
+  const window = { start: '9007199254740993', end: '9007199254740998', eof: true,
+    units: [{ scalar: '🦀' }, { scalar: '\r' }, { scalar: '\n' }, { opaque: 255 }, { scalar: 'a' }] };
+  const displayed = '🦀\n\ufffca';
+  assert.deepEqual(selectedRange(window, displayed, 2, 4),
+    { start: 9007199254740994n, end: 9007199254740997n });
+  assert.deepEqual(selectedRange(window, displayed, 0, 2),
+    { start: 9007199254740993n, end: 9007199254740994n });
+  assert.throws(() => selectedRange(window, displayed, 1, 2), /scalar/);
+  assert.throws(() => selectedRange(window, displayed, 4, 2), /reversed/);
+  assert.throws(() => selectedRange(window, 'unobserved text', 0, 2), /differs/);
+});
 
 test('unload fences new calls and keeps the active registration until settlement', async () => {
   const commands = new Commands();
@@ -32,6 +46,9 @@ test('author contribution edits Unicode through a qualified public capability', 
   assert.equal(units[0].scalar, 's');
   const commands = new Commands();
   const contribution = activate(access, commands.register);
+  await commands.invoke('text.uppercase');
+  assert.deepEqual(writes, [[0n, 6n, 'STRASSE']]);
+  view = { ...view, start: 0n, end: 0n };
   await commands.invoke('text.uppercase');
   assert.deepEqual(writes, [[0n, 6n, 'STRASSE']]);
   view = { ...view, snapshot: '@8' };

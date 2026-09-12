@@ -20,6 +20,21 @@ const window = value => ({ start: '0', end: [...value].length.toString(), eof: t
   units: [...value].map(scalar => ({ scalar })) });
 const tick = () => new Promise(setImmediate);
 
+test('input without a captured selection retains its draft instead of guessing', () => {
+  const field = new Field();
+  let failure, saved;
+  const adapter = input(field, async () => { assert.fail('unanchored input was sent'); },
+    async () => {}, error => { failure = error; }, {
+      load: () => undefined, save: value => { saved = structuredClone(value); }
+    });
+  adapter.update(window('observed'));
+  field.value = 'unanchored draft'; field.emit('input');
+  assert.match(failure?.message ?? '', /selection/);
+  assert.equal(saved.value, 'unanchored draft');
+  assert.equal(field.value, 'unanchored draft');
+  assert.equal(field.readOnly, true);
+});
+
 test('History shortcuts use one native direction and wait for accepted state', async () => {
   const field = new Field(), calls = [];
   let finish;

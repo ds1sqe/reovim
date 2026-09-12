@@ -1,7 +1,7 @@
 # Browser service reference
 
 The editing trial can dynamically load the first-party uppercase contribution,
-run it on the explicit selected range, and unload it. It uses only the
+run it on the textarea's highlighted selection, and unload it. It uses only the
 [GUI contribution contract](../../clients/gui/contract/README.md); opaque units
 refuse conversion and native Text/History owns acceptance. This is an initial
 public author/lifecycle path, not the complete packaged extension SDK.

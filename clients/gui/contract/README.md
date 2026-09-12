@@ -5,6 +5,9 @@ registration. A selection contains its observed Text snapshot, scalar/opaque
 range and copied units. Replace rejects a different current snapshot before
 crossing the native Text contract, which also checks actual source currentness.
 Module code imports this contract, not a concrete GUI or Kernel Runtime.
+The browser derives selection endpoints from its highlighted textarea range,
+checking the displayed projection before translating UTF-16 offsets to Text.
+An empty uppercase selection performs no edit or History operation.
 
 The command owner admits at most 64 names (lowercase identifiers up to 64
 characters) and 32 concurrent invocations per command. Duplicate names reject.

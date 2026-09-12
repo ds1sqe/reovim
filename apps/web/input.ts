@@ -26,7 +26,12 @@ export function input(element: HTMLTextAreaElement,
   let composing = false, finishing = false, pending = false, halted = !!draft;
   let historyPending = false;
   let disposed = false;
-  const events = new AbortController();
+  const listeners: (() => void)[] = [];
+  const on = <K extends keyof HTMLElementEventMap>(name: K,
+    listener: (event: HTMLElementEventMap[K]) => void) => {
+    element.addEventListener(name, listener);
+    listeners.push(() => element.removeEventListener(name, listener));
+  };
 
   const save = (value: Draft | undefined) => { draft = value; storage?.save(value); };
   const retain = (phase: Draft['phase']) => save({ value: element.value, phase,
@@ -98,7 +103,7 @@ export function input(element: HTMLTextAreaElement,
     try { await history(direction); }
     finally { historyPending = false; refresh(); }
   };
-  element.addEventListener('keydown', event => {
+  on('keydown', event => {
     if (event.isComposing || composing || event.altKey || !(event.ctrlKey || event.metaKey)) return;
     const key = event.key.toLowerCase();
     const direction = key === 'z' ? (event.shiftKey ? 'redo' : 'undo')
@@ -106,8 +111,8 @@ export function input(element: HTMLTextAreaElement,
     if (!direction) return;
     event.preventDefault();
     void navigate(direction).catch(report);
-  }, { signal: events.signal });
-  element.addEventListener('beforeinput', event => {
+  });
+  on('beforeinput', event => {
     if (halted || historyPending || !basis) { event.preventDefault(); return; }
     if (event.inputType === 'historyUndo' || event.inputType === 'historyRedo') {
       event.preventDefault();
@@ -115,17 +120,22 @@ export function input(element: HTMLTextAreaElement,
       return;
     }
     if (!composing && !finishing) anchor = selection(event.inputType.endsWith('Backward'));
-  }, { signal: events.signal });
-  element.addEventListener('input', () => {
+  });
+  on('input', () => {
     if (composing) {
       try { retain('composition'); } catch (error) { halt(error); }
-    } else if (!finishing) commit();
-  }, { signal: events.signal });
-  element.addEventListener('compositionstart', () => {
+    } else if (!finishing) {
+      if (!anchor && element.value !== projection.value) {
+        try { retain('input'); halt(new Error('Input selection unavailable; draft retained')); }
+        catch (error) { halt(error); }
+      } else commit();
+    }
+  });
+  on('compositionstart', () => {
     if (halted || !basis) return;
     composing = true; anchor = selection(false);
-  }, { signal: events.signal });
-  element.addEventListener('compositionend', () => {
+  });
+  on('compositionend', () => {
     composing = false; finishing = true;
     if (element.value === projection.value) {
       anchor = undefined;
@@ -133,7 +143,7 @@ export function input(element: HTMLTextAreaElement,
       catch (error) { halt(error); }
     }
     queueMicrotask(() => { finishing = false; commit(); refresh(); });
-  }, { signal: events.signal });
+  });
   return {
     history: navigate,
     correlate(client: string, id: string) {
@@ -166,7 +176,7 @@ export function input(element: HTMLTextAreaElement,
     },
     dispose() {
       disposed = true; halted = true;
-      events.abort();
+      for (const remove of listeners.splice(0)) remove();
     },
     get composing() { return composing; },
     get retained() { return !!draft; }

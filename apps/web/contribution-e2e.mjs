@@ -19,6 +19,11 @@ const capability = editor(() => ({ snapshot: state.observed.snapshot,
 const commands = new Commands();
 const { activate } = await import('../../target/browser/clients/gui/modules/uppercase/index.js');
 const installed = activate(capability, commands.register);
+end = 0n;
+await commands.invoke('text.uppercase');
+await editing.observe();
+assert.equal(state.source.revision, '0');
+end = 6n;
 const old = capability.selection();
 await commands.invoke('text.uppercase');
 assert.deepEqual(state.window.units,

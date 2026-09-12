@@ -4,6 +4,7 @@ import { input as bindInput, type Draft } from './input.js';
 import { Commands } from '../../clients/gui/runtime/commands.js';
 import { editor as editorCapability } from '../../clients/gui/runtime/editor.js';
 import type { Registration } from '../../clients/gui/contract/commands.js';
+import { selectedRange } from '../../clients/gui/contract/input.js';
 
 const saved = sessionStorage.getItem('reovim-editing');
 const journal: Journal & { draft?: Draft } = saved ? JSON.parse(saved) : { retiring: [] };
@@ -14,7 +15,8 @@ const status = document.querySelector<HTMLElement>('#status')!;
 const content = document.querySelector<HTMLElement>('#content')!;
 const input = (id: string) => document.querySelector<HTMLInputElement>(`#${id}`)!.value;
 let busy = false;
-const typing = bindInput(document.querySelector<HTMLTextAreaElement>('#typing')!,
+const textarea = document.querySelector<HTMLTextAreaElement>('#typing')!;
+const typing = bindInput(textarea,
   (start, end, text) => operate(() => editing.replace(start, end, text,
     receipt => typing.correlate(receipt.client, receipt.id))),
   direction => operate(() => editing.history(direction)), report, {
@@ -28,7 +30,7 @@ const moduleEditor = editorCapability(() => {
   }
   if (!journal.observed || !journal.window) throw new Error('Observe Text first');
   return { snapshot: journal.observed.snapshot, window: journal.window,
-    start: BigInt(input('start')), end: BigInt(input('end')) };
+    ...selectedRange(journal.window, textarea.value, textarea.selectionStart, textarea.selectionEnd) };
 }, (start, end, text) => operate(() => editing.replace(start, end, text)));
 let contribution: Registration | undefined;
 let loading = false;

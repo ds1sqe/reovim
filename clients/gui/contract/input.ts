@@ -54,6 +54,17 @@ function position(characters: string[], offset: number): number {
   throw new Error('selection splits a scalar or leaves the observed window');
 }
 
+/** Browser selection offsets are UTF-16; returned endpoints belong to Text. */
+export function selectedRange(window: Window, value: string, start: number, end: number): {
+  start: bigint; end: bigint
+} {
+  if (end < start) throw new Error('reversed selection');
+  const view = project(window);
+  if (value !== view.value) throw new Error('selection view differs from observed Text');
+  return { start: view.positions[position(view.characters, start)]!,
+    end: view.positions[position(view.characters, end)]! };
+}
+
 /** Selection anchoring disambiguates equal characters and normalized newlines. */
 export function replacement(old: Projection, value: string, anchor: Anchor): Replacement | undefined {
   const next = [...value];
