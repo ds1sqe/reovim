@@ -13,7 +13,9 @@ use reovim_kernel_interface::{
     namespace::ResourceEntry,
 };
 
+mod state;
 mod wake;
+pub use state::import_state_reply;
 
 /// Adopts one owned ABI connection reference. `code` pins its executable owner.
 ///

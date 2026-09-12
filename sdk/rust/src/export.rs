@@ -10,7 +10,9 @@ use reovim_kernel_interface::{
     access::Reply,
 };
 
+mod state;
 mod wake;
+pub use state::export_state_reply;
 
 /// Transfers one owned connection reference to the ABI caller.
 /// Release through the returned table. Calls are single-threaded.

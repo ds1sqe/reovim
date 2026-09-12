@@ -35,14 +35,14 @@ struct Endpoint {
 }
 
 pub(super) unsafe fn load(
-    table: abi::Module,
+    table: &abi::Module,
     library: Rc<Library>,
     mount: &str,
     kernel: Option<&Connection>,
 ) -> Result<Vec<Contribution>, Error> {
-    validate(&table)?;
+    validate(table)?;
     // Validate and copy all views before constructing the inert context.
-    let exports = unsafe { exports(&table, mount)? };
+    let exports = unsafe { exports(table, mount)? };
     let imported = kernel.map(|kernel| {
         KernelImport(reovim_sdk::export_with_code(
             kernel.clone(),
@@ -56,7 +56,8 @@ pub(super) unsafe fn load(
     if context.is_null() {
         return Err(Error::PROVIDER);
     }
-    let instance = Rc::new(Instance { table, context, _library: library });
+    let instance =
+        Rc::new(Instance { table: *table, context, _library: library });
     Ok(exports
         .into_iter()
         .enumerate()

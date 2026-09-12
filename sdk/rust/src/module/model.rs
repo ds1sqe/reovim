@@ -3,7 +3,10 @@
 use super::Identity;
 use alloc::boxed::Box;
 use core::{ffi::c_void, ptr};
-use reovim_kernel_interface::{Error, Message, abi, buffer::State};
+use reovim_kernel_interface::{
+    Error, Message, abi,
+    buffer::{State, StateReply},
+};
 
 pub struct ModelDefinition {
     pub identity: Identity,
@@ -13,6 +16,8 @@ pub struct ModelDefinition {
     pub read: Identity,
     pub initialize: fn(Message) -> Result<State, Error>,
     pub prepare: fn(&State, Message) -> Result<State, Error>,
+    pub initialize_async: Option<fn(Message) -> StateReply>,
+    pub prepare_async: Option<fn(State, Message) -> StateReply>,
     pub observe: fn(&State, Message) -> Result<Message, Error>,
     /// Deferred immutable reads; None reuses the finite observation function.
     pub inspect: Option<
@@ -21,7 +26,7 @@ pub struct ModelDefinition {
 }
 
 impl ModelDefinition {
-    /// Exports synchronous preparation and owned immutable states over C.
+    /// Exports preparation and owned immutable states over C.
     #[must_use]
     pub const fn table(&'static self) -> abi::Module {
         reovim_vtable::rv_vtable!(abi::Module {
@@ -35,6 +40,14 @@ impl ModelDefinition {
             call: None,
             initialize: Some(initialize),
             prepare: Some(prepare),
+            initialize_async: match self.initialize_async {
+                Some(_) => Some(initialize_async),
+                None => None,
+            },
+            prepare_async: match self.prepare_async {
+                Some(_) => Some(prepare_async),
+                None => None,
+            },
             observe: Some(observe),
             inspect: Some(inspect),
             release: Some(release),
@@ -101,6 +114,40 @@ unsafe extern "C" fn observe(
         }),
         &definition.read,
     )
+}
+
+unsafe extern "C" fn initialize_async(
+    context: *mut c_void,
+    input: *const abi::Request,
+) -> abi::StatePending {
+    let definition = unsafe { &*context.cast::<ModelDefinition>() };
+    let input = unsafe { crate::decode_request(&*input) };
+    crate::export_state_reply(Box::pin(async move {
+        let input = input?;
+        validate(&definition.initial, &input)?;
+        match definition.initialize_async {
+            Some(initialize) => initialize(input).await,
+            None => (definition.initialize)(input),
+        }
+    }))
+}
+
+unsafe extern "C" fn prepare_async(
+    context: *mut c_void,
+    state: *const c_void,
+    input: *const abi::Request,
+) -> abi::StatePending {
+    let definition = unsafe { &*context.cast::<ModelDefinition>() };
+    let state = unsafe { &*state.cast::<State>() }.clone();
+    let input = unsafe { crate::decode_request(&*input) };
+    crate::export_state_reply(Box::pin(async move {
+        let input = input?;
+        validate(&definition.edit, &input)?;
+        match definition.prepare_async {
+            Some(prepare) => prepare(state, input).await,
+            None => (definition.prepare)(&state, input),
+        }
+    }))
 }
 
 unsafe extern "C" fn inspect(

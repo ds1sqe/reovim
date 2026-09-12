@@ -7,7 +7,9 @@ extern crate alloc;
 #[allow(unsafe_code)]
 mod export;
 
-pub use export::{decode_request, export, export_reply, export_with_code};
+pub use export::{
+    decode_request, export, export_reply, export_state_reply, export_with_code,
+};
 
 #[allow(unsafe_code)]
 mod provider;
@@ -15,7 +17,7 @@ mod provider;
 #[allow(unsafe_code)]
 mod import;
 
-pub use import::{import, import_reply};
+pub use import::{import, import_reply, import_state_reply};
 
 #[allow(unsafe_code)]
 pub mod module;

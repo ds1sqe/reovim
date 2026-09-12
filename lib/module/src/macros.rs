@@ -18,7 +18,9 @@ macro_rules! rv_module {
                     $initialize:path,
                 prepare ($edit:literal, $edit_version:literal) => $prepare:path,
                 observe ($read:literal, $read_version:literal) =>
-                    $observe:path $(, inspect => $inspect:path)? $(,)?
+                    $observe:path $(, inspect => $inspect:path)?
+                $(, initialize_async => $initialize_async:path)?
+                $(, prepare_async => $prepare_async:path)? $(,)?
             } $(,)?
         }
     ) => {
@@ -37,6 +39,10 @@ macro_rules! rv_module {
                 prepare: $prepare,
                 observe: $observe,
                 inspect: $crate::rv_module!(@inspect $($inspect)?),
+                initialize_async: $crate::rv_module!(
+                    @inspect $($initialize_async)?
+                ),
+                prepare_async: $crate::rv_module!(@inspect $($prepare_async)?),
             };
     };
     (@inspect) => { None };

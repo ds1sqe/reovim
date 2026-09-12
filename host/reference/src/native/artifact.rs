@@ -66,7 +66,7 @@ impl Artifact {
         imports: Option<&Connection>,
     ) -> Result<Vec<Contribution>, Error> {
         unsafe {
-            contributions(self.table, self.library.clone(), mount, imports)
+            contributions(&self.table, self.library.clone(), mount, imports)
         }
     }
 }

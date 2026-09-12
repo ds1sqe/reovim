@@ -21,17 +21,17 @@ use std::path::Path;
 pub unsafe fn load_model(path: &Path) -> Result<ModelProvider, Error> {
     let (table, library) = unsafe { load_table(path)? };
     super::standalone(&table)?;
-    unsafe { from_table(table, library, None) }
+    unsafe { from_table(&table, library, None) }
 }
 
 pub(super) unsafe fn from_table(
-    table: abi::Module,
+    table: &abi::Module,
     library: Rc<Library>,
     kernel: Option<&Connection>,
 ) -> Result<ModelProvider, Error> {
     if table.kind != abi::MODEL
-        || table.initialize.is_none()
-        || table.prepare.is_none()
+        || (table.initialize.is_none() && table.initialize_async.is_none())
+        || (table.prepare.is_none() && table.prepare_async.is_none())
         || table.observe.is_none()
         || table.release.is_none()
         || table.drop_state.is_none()
@@ -43,9 +43,12 @@ pub(super) unsafe fn from_table(
     let initial = unsafe { contract(table.create_contract)? };
     let read = unsafe { contract(table.read_contract)? };
     let edit = unsafe { contract(table.edit_contract)? };
-    let context = unsafe { create(&table, kernel, library.clone())? };
-    let owner =
-        Rc::new(Instance { table, context, _library: Rc::clone(&library) });
+    let context = unsafe { create(table, kernel, library.clone())? };
+    let owner = Rc::new(Instance {
+        table: *table,
+        context,
+        _library: Rc::clone(&library),
+    });
     Ok(ModelProvider::new(
         owner,
         ModelOps {
@@ -94,6 +97,10 @@ fn request(input: &Message) -> abi::Request {
 }
 fn initialize(owner: &mut Rc<Instance>, input: Message) -> StateReply {
     let request = request(&input);
+    if let Some(initialize) = owner.table.initialize_async {
+        let pending = unsafe { initialize(owner.context, &raw const request) };
+        return preparation(owner, pending, owner.clone());
+    }
     let reply = unsafe {
         (owner.table.initialize.unwrap())(owner.context, &raw const request)
     };
@@ -105,6 +112,16 @@ fn prepare(
     state: &State,
     input: Message,
 ) -> StateReply {
+    if let Some(prepare) = owner.table.prepare_async {
+        let pointer = match native(owner, state) {
+            Ok(state) => state.pointer,
+            Err(error) => return Box::pin(ready(Err(error))),
+        };
+        let request = request(&input);
+        let pending =
+            unsafe { prepare(owner.context, pointer, &raw const request) };
+        return preparation(owner, pending, Rc::new(state.clone()));
+    }
     let result = native(owner, state).and_then(|state| {
         let request = request(&input);
         let reply = unsafe {
@@ -118,6 +135,19 @@ fn prepare(
     });
     drop(input);
     Box::pin(ready(result))
+}
+fn preparation(
+    owner: &Rc<Instance>,
+    pending: abi::StatePending,
+    retained: Rc<dyn core::any::Any>,
+) -> StateReply {
+    let owner = Rc::clone(owner);
+    // Pending.release runs before its old state and executable owner expire.
+    unsafe {
+        reovim_sdk::import_state_reply(pending, retained, move |reply| {
+            adopt(&owner, reply)
+        })
+    }
 }
 fn native<'a>(
     owner: &Rc<Instance>,

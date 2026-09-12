@@ -19,7 +19,8 @@ fn native_nontext_model_edits_and_undoes_through_the_same_authority() {
     runtime.start().unwrap();
     let (directory, library) = build_model();
     // Fixture uses immutable states and matching native destructors.
-    let model = unsafe { load_model(&library) }.unwrap();
+    let mut model = unsafe { load_model(&library) }.unwrap();
+    cancelled_preparation(&mut model);
     let id = runtime
         .register_model("models/native", model)
         .map_err(|(error, _)| error)
@@ -114,6 +115,31 @@ fn native_nontext_model_edits_and_undoes_through_the_same_authority() {
     still_live(&mut runtime);
     runtime.close().unwrap();
     std::fs::remove_dir_all(directory).unwrap();
+}
+
+fn cancelled_preparation(
+    model: &mut reovim_kernel_interface::buffer::ModelProvider,
+) {
+    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+    let initial = Message::new(Contract::new("native.keys.create", 1), &[]);
+    let mut cancelled = model.initialize(initial.clone());
+    assert!(cancelled.as_mut().poll(&mut context).is_pending());
+    drop(cancelled);
+    let state = run(model.initialize(initial), |_| Ok(())).unwrap().unwrap();
+    let request = Message::new(
+        Contract::new("native.keys.toggle", 1),
+        &17_u64.to_le_bytes(),
+    );
+    let mut cancelled = model.prepare(&state, request);
+    assert!(cancelled.as_mut().poll(&mut context).is_pending());
+    drop(state);
+    // The C fixture asserts old state survives until pending release.
+    drop(cancelled);
+    let invalid = Message::new(Contract::new("native.keys.create", 1), &[1]);
+    assert!(matches!(
+        run(model.initialize(invalid), |_| Ok(())).unwrap(),
+        Err(Error::INVALID)
+    ));
 }
 
 fn still_live(runtime: &mut Runtime) {

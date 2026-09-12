@@ -63,6 +63,29 @@ pub type Observe =
 pub type Inspect =
     unsafe extern "C" fn(*mut c_void, *const c_void, *const Request) -> Pending;
 
+/// Deferred preparation with one-time state transfer.
+///
+/// Poll reports readiness without transferring state. Take transfers one Reply
+/// after readiness, consumed with the Model's `release`/`drop_state` callbacks.
+/// Release cancels unfinished work and drops any state not taken. The caller
+/// retains the Model context, code and borrowed old state through release.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct StatePending {
+    pub context: *mut c_void,
+    pub poll: unsafe extern "C" fn(*mut c_void, Wake) -> StatePoll,
+    pub take: unsafe extern "C" fn(*mut c_void) -> Reply,
+    pub release: unsafe extern "C" fn(*mut c_void),
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct StatePoll {
+    /// 0 pending, 1 ready, 2 failed. No state ownership transfers here.
+    pub status: u32,
+    pub error: u64,
+}
+
 reovim_vtable::rv_vtable! {
     /// A loaded module returns this immutable table via `rv_module_entry`.
     /// No Rust containers, trait objects or Futures cross it.
@@ -82,6 +105,16 @@ pub struct Module {
     pub call: Option<Call>,
     pub initialize: Option<Call>,
     pub prepare: Option<Prepare>,
+    pub initialize_async: Option<
+        unsafe extern "C" fn(*mut c_void, *const Request) -> StatePending,
+    >,
+    /// Async callbacks copy request views before returning. The old state stays
+    /// borrowed until pending release. Async slots supersede finite ones.
+    pub prepare_async: Option<
+        unsafe extern "C" fn(
+            *mut c_void, *const c_void, *const Request,
+        ) -> StatePending,
+    >,
     pub observe: Option<Observe>,
     pub inspect: Option<Inspect>,
     pub release: Option<unsafe extern "C" fn(*mut c_void, *mut Reply)>,

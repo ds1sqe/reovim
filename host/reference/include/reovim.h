@@ -18,6 +18,7 @@ struct rv_access;
 struct rv_provider;
 struct rv_resource_export;
 struct rv_pending;
+struct rv_state_pending;
 struct rv_failure;
 struct rv_connection { void *context; const struct rv_access *table; };
 
@@ -47,6 +48,10 @@ struct rv_module {
     struct rv_reply (*call)(void *, const struct rv_request *);
     struct rv_reply (*initialize)(void *, const struct rv_request *);
     struct rv_reply (*prepare)(void *, const void *, const struct rv_request *);
+    /* Async slots supersede finite callbacks. Copy request views on entry;
+     * old state and context stay borrowed until state_pending.release. */
+    struct rv_state_pending (*initialize_async)(void *, const struct rv_request *);
+    struct rv_state_pending (*prepare_async)(void *, const void *, const struct rv_request *);
     struct rv_reply (*observe)(void *, const void *, const struct rv_request *);
     struct rv_pending (*inspect)(void *, const void *, const struct rv_request *);
     void (*release)(void *, struct rv_reply *);
@@ -114,6 +119,17 @@ struct rv_pending {
     struct rv_outcome (*poll)(void *, struct rv_wake);
     void (*release)(void *);
 };
+struct rv_state_poll { uint32_t status; uint64_t error; };
+struct rv_state_pending {
+    void *context;
+    struct rv_state_poll (*poll)(void *, struct rv_wake);
+    struct rv_reply (*take)(void *);
+    void (*release)(void *);
+};
+/* State poll: 0 pending, 1 ready, 2 failed. Poll never transfers state.
+ * After ready, take transfers exactly one owned Reply state; the Model's
+ * release/drop_state callbacks apply. Pending release destroys untaken state.
+ */
 struct rv_access {
     struct rv_version version;
     uint32_t size;

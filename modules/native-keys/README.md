@@ -2,6 +2,11 @@
 
 An independent C State Model using module ABI 0.1.0 and immutable native states.
 
+Initialization and edit preparation yield through `rv_state_pending`. Readiness
+does not transfer ownership; `take` hands one prepared state to the Host before
+pending release. Cancellation releases unfinished work without installing it.
+The fixture asserts borrowed old states survive through pending release.
+
 Retained inspection yields once through the provider Pending table before
 reading its selected immutable state. The fixture asserts pending reads are
 released before their state/context, including shared Buffer/access close.

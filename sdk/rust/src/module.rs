@@ -36,6 +36,8 @@ impl Definition {
             call: None,
             initialize: None,
             prepare: None,
+            initialize_async: None,
+            prepare_async: None,
             observe: None,
             inspect: None,
             release: None,

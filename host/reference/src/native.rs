@@ -77,11 +77,11 @@ unsafe fn resource_with_imports(
 ) -> Result<ResourceProvider, Error> {
     let (table, library) = unsafe { load_table(path)? };
     standalone(&table)?;
-    unsafe { resource_table(table, library, kernel) }
+    unsafe { resource_table(&table, library, kernel) }
 }
 
 unsafe fn resource_table(
-    table: abi::Module,
+    table: &abi::Module,
     library: Rc<Library>,
     kernel: Option<&Connection>,
 ) -> Result<ResourceProvider, Error> {
@@ -95,8 +95,9 @@ unsafe fn resource_table(
     }
     let read = unsafe { contract(table.read_contract)? };
     let write = unsafe { contract(table.edit_contract)? };
-    let context = unsafe { create(&table, kernel, library.clone())? };
-    let instance = Instance { table, context, _library: library.clone() };
+    let context = unsafe { create(table, kernel, library.clone())? };
+    let instance =
+        Instance { table: *table, context, _library: library.clone() };
     let surfaces = if read == write {
         alloc::vec![surface(read, Permissions::ALL)]
     } else {
@@ -154,11 +155,11 @@ pub unsafe fn load_with(
     match table.kind {
         abi::RESOURCE => Ok(Contribution::Resource {
             path: export.into(),
-            provider: unsafe { resource_table(table, library, kernel)? },
+            provider: unsafe { resource_table(&table, library, kernel)? },
         }),
         abi::MODEL => Ok(Contribution::Model {
             path: export.into(),
-            provider: unsafe { model::from_table(table, library, kernel)? },
+            provider: unsafe { model::from_table(&table, library, kernel)? },
         }),
         _ => Err(Error::UNSUPPORTED),
     }
@@ -298,7 +299,7 @@ pub unsafe fn load_contributions(
 ) -> Result<Vec<Contribution>, Error> {
     let (table, library) = unsafe { load_table(path)? };
     standalone(&table)?;
-    unsafe { contributions(table, library, mount, kernel) }
+    unsafe { contributions(&table, library, mount, kernel) }
 }
 
 const fn standalone(table: &abi::Module) -> Result<(), Error> {
@@ -309,7 +310,7 @@ const fn standalone(table: &abi::Module) -> Result<(), Error> {
 }
 
 unsafe fn contributions(
-    table: abi::Module,
+    table: &abi::Module,
     library: Rc<Library>,
     mount: &str,
     kernel: Option<&Connection>,
