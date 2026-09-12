@@ -2,12 +2,13 @@
 import assert from 'node:assert/strict';
 import { setTimeout } from 'node:timers/promises';
 import { Editing } from '../../target/browser/apps/web/editing.js';
-import { Client, unhex } from '../../target/browser/sdk/typescript/resource.js';
+import { Client, hex, message, u64, unhex } from '../../target/browser/sdk/typescript/resource.js';
 import * as text from '../../target/browser/modules/text/api/typescript.js';
 
 const origin = new URL(process.argv[2]).origin;
 const nativeFetch = globalThis.fetch;
 let loseEdit = false;
+let loseNext = false;
 globalThis.fetch = async (url, options) => {
   const fields = JSON.parse(options.body);
   const reply = await nativeFetch(url, { ...options,
@@ -16,6 +17,11 @@ globalThis.fetch = async (url, options) => {
     loseEdit = false;
     await reply.text();
     throw new Error('injected lost accepted edit reply');
+  }
+  if (loseNext && fields[1] === 'call' && fields[5] === 'text.next') {
+    loseNext = false;
+    await reply.text();
+    throw new Error('injected lost change reply');
   }
   return reply;
 };
@@ -50,6 +56,46 @@ assert.deepEqual(saved.window.units,
   [...scalar('# peer 🦀\r\n'), { opaque: 255 }, ...scalar('\0tail')]);
 await resumed.undo();
 assert.deepEqual(saved.window.units, before);
+const slow = saved.observed;
+let revision = BigInt(saved.source.revision);
+for (let index = 0; index < 33; index++) {
+  const request = await client.reserve(['write', saved.source.buffer, 'source.splice', '1',
+    hex(u64(revision)) + text.range(0n, 0n) + '78', saved.source.buffer]);
+  const reply = message(await client.send(request));
+  revision = new DataView(reply.data.buffer).getBigUint64(0, true);
+  await client.release(request.id);
+}
+loseNext = true;
+await assert.rejects(resumed.follow(), /Outcome unavailable/);
+await resumed.recover();
+assert.equal(saved.change.delivery.kind, 'gap');
+assert.equal(saved.needsRefresh, true);
+await resumed.follow();
+assert.equal(saved.observed.revision, revision.toString());
+assert.notEqual(saved.observed.watch, slow.watch);
+assert.deepEqual(saved.window.units, [...scalar('x'.repeat(33)), ...before]);
+await resumed.follow();
+assert.equal(saved.change.delivery.kind, 'pending');
+const current = saved.observed;
+for (const value of ['y', 'z']) {
+  const request = await client.reserve(['write', saved.source.buffer, 'source.splice', '1',
+    hex(u64(revision)) + text.range(0n, 0n) + hex(new TextEncoder().encode(value)), saved.source.buffer]);
+  const reply = message(await client.send(request));
+  revision = new DataView(reply.data.buffer).getBigUint64(0, true);
+  await client.release(request.id);
+}
+loseNext = true;
+await assert.rejects(resumed.follow(), /Outcome unavailable/);
+await resumed.recover();
+assert.equal(saved.change.delivery.kind, 'item');
+assert.equal(saved.change.delivery.before, current.revision);
+assert.equal(saved.change.delivery.after, (BigInt(current.revision) + 1n).toString());
+const next = await client.reserve(['read', current.watch, 'text.next', '1', '00']);
+const remaining = text.change(await client.send(next), current);
+await client.release(next.id);
+assert.equal(remaining.delivery.after, revision.toString());
+await resumed.follow();
+assert.deepEqual(saved.window.units, [...scalar('zy' + 'x'.repeat(33)), ...before]);
 await resumed.close();
 assert.equal(saved.source, undefined);
 assert.equal(saved.access, undefined);
@@ -62,4 +108,4 @@ for (;;) {
   assert.ok(performance.now() < deadline, 'Client cleanup did not settle');
   await setTimeout(10);
 }
-console.log('Browser transport editing, lost reply, stale rejection, Undo and cleanup passed');
+console.log('Browser editing, lost edit/change replies, stale input, Undo, Gap renewal and cleanup passed');

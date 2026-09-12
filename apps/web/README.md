@@ -57,6 +57,12 @@ journals ownership and never retries edits with a new receipt. Recovery settles
 the pending operation; use Observe afterward to acquire current Text. Its
 initial hex field can create invalid source bytes without lossy decoding.
 
+Check changes reads the current Text watch without waiting. Events and Gap
+renew observation and release the old snapshot/watch; Pending and End remain
+distinct. Recovery preserves the original delivery before refresh and does not
+consume another event. The old snapshot remains a qualified historical view
+until renewal; notification alone does not change its content or revision.
+
 This trial owns a private source; it does not implement shared Session focus,
-watch/Gap renewal, Markdown preview, keyboard/IME editing or SSR. The Text TS
+continuous following, Markdown preview, keyboard/IME editing or SSR. The Text TS
 codec lives with its module; the common service client has no Text semantics.

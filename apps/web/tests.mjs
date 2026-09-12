@@ -9,6 +9,26 @@ import { Client, DeliveryError, hex, message, opening, outcome, resource,
   from '../../target/browser/sdk/typescript/resource.js';
 import * as text from '../../target/browser/modules/text/api/typescript.js';
 
+test('Text delivery preserves observation identity and exact event values', () => {
+  const observed = { access: '@5', buffer: '@6', history: '@7', watch: '@8' };
+  const frame = bytes => `ok\ttext.next\t1\t${hex(bytes)}\t`;
+  assert.deepEqual(text.change(frame(new Uint8Array([1])), observed),
+    { ...observed, delivery: { kind: 'gap' } });
+  assert.equal(text.change(frame(new Uint8Array([3])), observed).delivery.kind, 'pending');
+  assert.deepEqual(text.change(frame(new Uint8Array([2, 1])), observed).delivery,
+    { kind: 'end', lost: true });
+  const data = new Uint8Array(42);
+  const view = new DataView(data.buffer);
+  data[1] = 1;
+  for (const [offset, value] of [[2, 9007199254740993n], [10, 4n], [18, 5n], [26, 3n], [34, 2n]]) {
+    view.setBigUint64(offset, value, true);
+  }
+  assert.deepEqual(text.change(frame(data), observed), { ...observed,
+    delivery: { kind: 'item', transition: 'undo', request: '9007199254740993',
+      before: '4', after: '5', fromNode: '3', toNode: '2' } });
+  assert.throws(() => text.change(frame(new Uint8Array([2, 2])), observed));
+});
+
 test('Text replacement preserves scalar ranges and rejects lone surrogates', () => {
   const observed = { access: '@5', snapshot: '@6' };
   assert.deepEqual(text.replace(observed, 9007199254740993n,

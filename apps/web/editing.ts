@@ -8,6 +8,7 @@ export interface Journal {
   token?: string; opening?: Opening; receipt?: Receipt;
   source?: Source; access?: ResourceId; observed?: text.Observation;
   window?: text.Window; retiring: ResourceId[];
+  change?: text.Change; needsRefresh?: boolean;
 }
 
 /** This composition owns its source; sharing/follow policy is a later consumer. */
@@ -80,7 +81,13 @@ export class Editing {
       }
       state.observed = next;
       state.source.revision = next.revision;
+      state.needsRefresh = false;
       delete state.window;
+    } else if (fields[2] === 'text.next') {
+      if (!state.observed || fields[1] !== state.observed.watch) throw new Error('foreign Text watch');
+      state.change = text.change(line, state.observed);
+      const kind = state.change.delivery.kind;
+      state.needsRefresh = kind === 'item' || kind === 'gap';
     } else if (fields[2] === 'text.window') {
       if (fields[1] !== state.observed?.snapshot) throw new Error('foreign Text snapshot');
       const range = new DataView(unhex(fields[4]!).buffer);
@@ -133,6 +140,16 @@ export class Editing {
       hex(u64(start)) + hex(u64(1024n))]);
   }
 
+  async follow(): Promise<void> {
+    const client = await this.ready();
+    const state = this.journal;
+    if (!state.observed) throw new Error('Observe Text first');
+    if (!state.needsRefresh) {
+      await this.send(client, ['read', state.observed.watch, 'text.next', '1', '00']);
+    }
+    if (state.needsRefresh) await this.observe();
+  }
+
   async replace(start: bigint, end: bigint, replacement: string): Promise<void> {
     const client = await this.ready();
     if (!this.journal.observed) throw new Error('Observe Text first');
@@ -155,6 +172,7 @@ export class Editing {
     if (state.observed) {
       state.retiring.push(state.observed.snapshot, state.observed.watch);
       delete state.observed; delete state.window;
+      delete state.change; delete state.needsRefresh;
       this.persist();
     }
     await this.retire(client);

@@ -19,11 +19,18 @@ function render() {
     ? unit.scalar : `⟦${unit.opaque.toString(16).padStart(2, '0')}⟧`).join('') : '';
   document.querySelector('#range')!.textContent = value
     ? `Units ${value.start}–${value.end}${value.eof ? '; end of source' : '; more available'}` : '';
+  const delivery = journal.change?.delivery;
+  document.querySelector('#changes')!.textContent = !delivery ? ''
+    : delivery.kind === 'item' ? `${delivery.transition}: ${delivery.before} → ${delivery.after}`
+    : delivery.kind === 'gap' ? `Change gap${journal.needsRefresh ? '; refresh required' : '; observation renewed'}`
+    : delivery.kind === 'end' ? `Watch ended${delivery.lost ? '; changes may be missing' : ''}`
+    : 'No pending changes.';
 }
 
 const actions: Record<string, () => Promise<void>> = {
   create: () => editing.create(unhex(input('initial').trim())),
   observe: () => editing.observe(),
+  follow: () => editing.follow(),
   read: () => editing.read(BigInt(input('window-start'))),
   replace: () => editing.replace(BigInt(input('start')), BigInt(input('end')), input('replacement')),
   undo: () => editing.undo(), close: () => editing.close(), recover: () => editing.recover()
