@@ -116,6 +116,18 @@ Events or Gap renew context and release obsolete snapshots/watches separately.
 Lost delivery recovers the original receipt before renewal; it cannot consume
 another event as recovery. Context observation does not edit or close Buffers.
 
+The native participation journey uses that same dedicated server configuration:
+
+```sh
+node apps/web/participation-e2e.mjs BROWSER_URL
+```
+
+It exercises the loaded context Model's reference-bearing updates, historical
+seek, coherent follow, lost-result recovery after an intervening update, stale
+ABA rejection and detach cleanup. Buffer revision stays unchanged. The Focus
+UI still uses direct Session operations; participation controls and recovery
+in that UI are the next consumer integration.
+
 Undo and Redo buttons, Ctrl/Meta+Z, Ctrl/Meta+Shift+Z and Ctrl+Y use native
 History. History navigation waits for pending input and temporarily locks the
 textarea until its accepted state is observed. Browser-native History input

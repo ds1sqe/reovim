@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { initial, observation, update, watching, change } from '../../target/browser/modules/context/api/typescript.js';
+import { initial, observation, update, watching, followed, change } from '../../target/browser/modules/context/api/typescript.js';
 import { Client, hex, u64 } from '../../target/browser/sdk/typescript/resource.js';
 import { Focus } from '../../target/browser/clients/gui/runtime/context.js';
 
@@ -33,6 +33,12 @@ test('coherent context observation decodes its own value offset and delivery var
   assert.deepEqual(watching(`ok\tkernel.session.observe\t1\t${hex(data)}\t@1,@2,@3,@4`),
     { watch: '@3', revision: '9007199254740993',
       observation: { session: '@1', snapshot: '@2', known: ['@4'], active: '@4' } });
+  const follow = `ok\tkernel.session.follow\t1\t${hex(data)}\t@1,@2,@3,@4`;
+  assert.deepEqual(followed(follow).observation,
+    { session: '@1', snapshot: '@2', known: ['@4'], active: '@4' });
+  assert.throws(() => watching(follow), /watch/);
+  assert.throws(() => followed(follow.replace('kernel.session.follow',
+    'kernel.session.observe')), /watch/);
   assert.deepEqual(change('ok\tkernel.session.next\t1\t01\t'), { kind: 'gap' });
   assert.deepEqual(change('ok\tkernel.session.next\t1\t03\t'), { kind: 'pending' });
   assert.deepEqual(change('ok\tkernel.session.next\t1\t0201\t'), { kind: 'end', lost: true });

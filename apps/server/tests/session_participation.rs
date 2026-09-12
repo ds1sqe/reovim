@@ -1,108 +1,13 @@
-use reovim_host_reference::run_with;
 use reovim_kernel_interface::{
     Connection, Contract, Error, Message, RequestError, ResourceId,
-    buffer::{ModelOps, ModelProvider, State},
     provider::Permissions,
     session::{self, Observation},
 };
 use reovim_kernel_runtime::{Limits, Runtime};
-use std::{
-    future::{Future, ready},
-    rc::Rc,
-};
 
-fn finish<T>(runtime: &mut Runtime, future: impl Future<Output = T>) -> T {
-    run_with(future, runtime, &Runtime::DRIVER).unwrap()
-}
-
-fn setup() -> (Runtime, Connection, Observation) {
-    setup_with(Limits::default())
-}
-
-fn setup_with(limits: Limits) -> (Runtime, Connection, Observation) {
-    let mut runtime = Runtime::new(232, limits).unwrap();
-    runtime.start().unwrap();
-    let model = ModelProvider::new(
-        (),
-        ModelOps {
-            inspect: None,
-            unload: None,
-            initialize: |(), input| {
-                Box::pin(ready(Ok(State::new(input.data, 1))))
-            },
-            prepare: |(), _, input| {
-                Box::pin(ready(Ok(State::new(input.data, 1))))
-            },
-            observe: |(), state, input| {
-                Ok(Message::new(
-                    input.contract,
-                    state.get::<Box<[u8]>>().unwrap(),
-                ))
-            },
-        },
-        Contract::new("initial", 1),
-        Contract::new("focus", 1),
-        Contract::new("set", 1),
-        Rc::new(()),
-    );
-    let model = runtime
-        .register_model("model", model)
-        .map_err(|(error, _)| error)
-        .unwrap();
-    let client = reovim_sdk::local(
-        runtime.connect(&[(model, Permissions::ALL)]).unwrap(),
-    );
-    let model = client.resolve("model").into_inner().unwrap();
-    let initial = finish(
-        &mut runtime,
-        session::create(
-            &client,
-            model,
-            &Message::new(Contract::new("initial", 1), &[1]),
-        ),
-    )
-    .unwrap();
-    (runtime, client, initial)
-}
-
-fn attach(
-    runtime: &mut Runtime,
-    client: &Connection,
-    session: ResourceId,
-) -> ResourceId {
-    session::attached(
-        &finish(runtime, session::attach(client, session)).unwrap(),
-    )
-    .unwrap()
-}
-
-fn read(
-    runtime: &mut Runtime,
-    client: &Connection,
-    subject: ResourceId,
-) -> Result<Message, RequestError> {
-    finish(
-        runtime,
-        client.read(subject, &Message::new(Contract::new("focus", 1), &[])),
-    )
-}
-
-fn update(
-    runtime: &mut Runtime,
-    client: &Connection,
-    observed: &Observation,
-    value: u8,
-) -> Observation {
-    let input = session::update(
-        observed,
-        Message::new(Contract::new("set", 1), &[value]),
-    )
-    .unwrap();
-    session::observation(
-        finish(runtime, client.write(observed.session, &input)).unwrap(),
-    )
-    .unwrap()
-}
+#[path = "support/session.rs"]
+mod support;
+use support::{attach, finish, read, setup, setup_with, update};
 
 fn peer(
     runtime: &mut Runtime,
@@ -388,4 +293,107 @@ fn blocker(runtime: &mut Runtime, index: usize) -> Option<ResourceId> {
             None
         }
     }
+}
+
+fn edit_participation(
+    runtime: &mut Runtime,
+    client: &Connection,
+    participant: ResourceId,
+    observed: &Observation,
+    value: u8,
+) -> Result<Observation, RequestError> {
+    let input = session::update(
+        observed,
+        Message::new(Contract::new("set", 1), &[value]),
+    )
+    .unwrap();
+    finish(runtime, client.write(participant, &input))
+        .map(|reply| session::observation(reply).unwrap())
+}
+
+#[test]
+fn participation_updates_live_context_without_rewriting_historical_selection() {
+    let (mut runtime, client, initial) = setup();
+    let own = attach(&mut runtime, &client, initial.session);
+    finish(&mut runtime, session::seek(&client, own, initial.snapshot))
+        .unwrap();
+    let changed =
+        edit_participation(&mut runtime, &client, own, &initial, 2).unwrap();
+    assert_eq!(changed.session, initial.session);
+    assert_eq!(changed.value.data.as_ref(), &[2]);
+    assert_eq!(read(&mut runtime, &client, own).unwrap().data.as_ref(), &[1]);
+    assert_eq!(
+        read(&mut runtime, &client, initial.session).unwrap().data.as_ref(),
+        &[2]
+    );
+    let restored =
+        edit_participation(&mut runtime, &client, own, &changed, 1).unwrap();
+    assert_eq!(restored.value.data.as_ref(), &[1]);
+    assert_ne!(restored.snapshot, initial.snapshot);
+    assert_eq!(
+        edit_participation(&mut runtime, &client, own, &initial, 3),
+        Err(RequestError::Failed(Error::STALE))
+    );
+    finish(&mut runtime, session::detach(&client, own)).unwrap();
+    finish(&mut runtime, session::close(&client, initial.session)).unwrap();
+    runtime.close().unwrap();
+}
+
+#[test]
+fn read_only_session_grants_allow_view_control_but_not_model_updates() {
+    let (mut runtime, client, initial) = setup();
+    let (peer, subject) = peer(&mut runtime, &client, initial.session);
+    let own = attach(&mut runtime, &peer, subject);
+    let observed =
+        session::observation(read(&mut runtime, &peer, own).unwrap()).unwrap();
+    finish(&mut runtime, session::seek(&peer, own, observed.snapshot)).unwrap();
+    assert_eq!(
+        edit_participation(&mut runtime, &peer, own, &observed, 2),
+        Err(RequestError::Rejected(Error::DENIED))
+    );
+    assert_eq!(
+        read(&mut runtime, &client, initial.session).unwrap().data.as_ref(),
+        &[1]
+    );
+    finish(&mut runtime, session::detach(&peer, own)).unwrap();
+    finish(&mut runtime, session::close(&client, initial.session)).unwrap();
+    runtime.close().unwrap();
+}
+
+#[test]
+fn owned_participation_carries_session_access_into_a_client_module_scope() {
+    let (mut runtime, binding, initial) =
+        support::setup_binding(Limits::default());
+    let client = reovim_sdk::local(binding.connection());
+    let own = attach(&mut runtime, &client, initial.session);
+    let root = client.resolve("participations").into_inner().unwrap();
+    let name = client
+        .children(root)
+        .into_inner()
+        .unwrap()
+        .into_iter()
+        .find(|entry| entry.resource == own)
+        .unwrap()
+        .name;
+    let path = format!("participations/{name}");
+    let id = runtime.resource(&path).unwrap();
+    let module = runtime.bind_for(&binding, &[(id, Permissions::ALL)]).unwrap();
+    let imported = reovim_sdk::local(module.connection());
+    let participant = imported.resolve(&path).into_inner().unwrap();
+    let observed = session::observation(
+        read(&mut runtime, &imported, participant).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(observed.value.data.as_ref(), &[1]);
+    let changed =
+        edit_participation(&mut runtime, &imported, participant, &observed, 2)
+            .unwrap();
+    assert_eq!(changed.session, observed.session);
+    assert_eq!(
+        read(&mut runtime, &client, initial.session).unwrap().data.as_ref(),
+        &[2]
+    );
+    finish(&mut runtime, session::detach(&client, own)).unwrap();
+    finish(&mut runtime, session::close(&client, initial.session)).unwrap();
+    runtime.close().unwrap();
 }

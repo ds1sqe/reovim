@@ -42,6 +42,7 @@ pub struct Record {
     pub receiver: Option<Rc<RefCell<Scope>>>,
     pub subject: u64,
     pub method: Method,
+    pub rights: Permissions,
     pub input: Message,
     // Futures/results are destroyed before the captured implementation.
     pub work: Option<Work>,
@@ -69,6 +70,17 @@ impl Drop for Record {
                 .borrow_mut()
                 .loans
                 .retain(|(owner, _, _)| *owner != self.id);
+        }
+    }
+}
+
+impl Record {
+    /// The admitted Session remains distinct from a participation subject.
+    pub fn session(&self) -> Option<&Rc<RefCell<crate::sessions::Session>>> {
+        self.snapshot.as_ref()?;
+        match self.references.first()? {
+            Kind::Session(session) => Some(session),
+            _ => None,
         }
     }
 }

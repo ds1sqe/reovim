@@ -325,11 +325,16 @@ pub fn receive(
     record: &Record,
     mut input: Message,
 ) -> Result<(ResourceId, Message), Error> {
+    let subject = if record.session().is_some() {
+        record.input.resources[0].0
+    } else {
+        record.subject
+    };
     let Some(receiver) = &record.receiver else {
         if forwarding(record) {
             return Err(Error::INVALID);
         }
-        return Ok((ResourceId(record.subject), input));
+        return Ok((ResourceId(subject), input));
     };
     let mut receiver = receiver.borrow_mut();
     let rights = input_rights(shared, record)?;
@@ -337,7 +342,7 @@ pub fn receive(
         return Err(Error::PRESSURE);
     }
     receiver.loans.try_reserve(rights.len()).map_err(|_| Error::PRESSURE)?;
-    let subject = receiver.export(shared, record.subject)?;
+    let subject = receiver.export(shared, subject)?;
     for (id, rights) in input.resources.iter_mut().zip(rights) {
         let key = id.0;
         *id = receiver.export(shared, key)?;
@@ -357,7 +362,7 @@ fn input_rights(
             |rights| alloc::vec![rights; record.input.resources.len()],
         ));
     }
-    if let crate::namespace::Kind::Session(session) = &record.target {
+    if let Some(session) = record.session() {
         let mode = session.borrow().model.borrow().references;
         return Ok(mode.map_or_else(Vec::new, |rights| {
             alloc::vec![rights; record.input.resources.len().saturating_sub(2)]

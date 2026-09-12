@@ -21,12 +21,29 @@ pub fn contract(value: &Contract) -> bool {
     value == &Contract::new("kernel.session.observe", 1)
 }
 
+pub fn following(value: &Contract) -> bool {
+    value == &Contract::new("kernel.session.follow", 1)
+}
+
+pub(super) type Reader = Rc<RefCell<crate::watch::Reader<Change>>>;
+
 impl Runtime {
     pub(super) fn observe_session(
         &self,
         record: &Rc<RefCell<Record>>,
         session: &Rc<RefCell<Session>>,
     ) -> Result<Message, Error> {
+        let subject = ResourceId(record.borrow().subject);
+        self.observe_session_at(record, session, subject)
+            .map(|(reply, _)| reply)
+    }
+
+    pub(super) fn observe_session_at(
+        &self,
+        record: &Rc<RefCell<Record>>,
+        session: &Rc<RefCell<Session>>,
+        subject: ResourceId,
+    ) -> Result<(Message, Reader), Error> {
         if !record.borrow().input.data.is_empty() {
             return Err(Error::INVALID);
         }
@@ -79,6 +96,12 @@ impl Runtime {
             .grants
             .try_reserve(2 + value.rights.len())
             .map_err(|_| Error::PRESSURE)?;
+        references::grant_session(
+            &shared,
+            &mut scope,
+            subject,
+            Permissions::READ,
+        )?;
         crate::binding::grant_outputs(
             &shared,
             &mut scope,
@@ -94,12 +117,12 @@ impl Runtime {
             &mut shared,
             &mut scope,
             snapshot,
-            ResourceId(record.subject),
+            subject,
             revision,
             value,
         );
         reply.resources[..3].copy_from_slice(&[
-            ResourceId(record.subject),
+            subject,
             ResourceId(snapshot),
             ResourceId(watch),
         ]);
@@ -115,7 +138,7 @@ impl Runtime {
         });
         scope.grants.push((watch, Permissions::READ));
         feed.borrow_mut().subscribe(&reader);
-        Ok(reply)
+        Ok((reply, reader))
     }
 }
 

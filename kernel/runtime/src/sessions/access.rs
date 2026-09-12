@@ -12,13 +12,17 @@ pub fn control(method: Method, contract: &Contract) -> bool {
     contract.version == 1
         && matches!(
             (method, contract.name.as_ref()),
-            (Method::Read, "kernel.session.observe" | "kernel.session.attach")
-                | (
-                    Method::Write,
-                    "kernel.session.close"
-                        | "kernel.session.seek"
-                        | "kernel.session.detach"
-                )
+            (
+                Method::Read,
+                "kernel.session.observe"
+                    | "kernel.session.attach"
+                    | "kernel.session.follow"
+            ) | (
+                Method::Write,
+                "kernel.session.close"
+                    | "kernel.session.seek"
+                    | "kernel.session.detach"
+            )
         )
 }
 

@@ -253,9 +253,10 @@ impl Caller {
             return Err(Error::CLOSED);
         }
         let target = shared.entries[shared.entry_index(key)?].kind.clone();
-        if !scope.permissions(&shared, key).is_some_and(|p| p.allows(method)) {
-            return Err(Error::DENIED);
-        }
+        let rights = scope
+            .permissions(&shared, key)
+            .filter(|rights| rights.allows(method))
+            .ok_or(Error::DENIED)?;
         if let Kind::Work { request, .. } = target {
             return self.recovery(&mut shared, request, method, input);
         }
@@ -294,7 +295,16 @@ impl Caller {
         }
         let id = shared.id()?;
         let references = crate::binding::capture(&shared, &captured)?;
-        let receiver = crate::binding::receiver(&shared, key, &captured)?;
+        let receiver_key =
+            if snapshot.is_some() { captured.resources[0].0 } else { key };
+        let receiver =
+            crate::binding::receiver(&shared, receiver_key, &captured)?;
+        let activation = if receiver_key == key {
+            activation
+        } else {
+            shared.entries[shared.entry_index(receiver_key)?].activation.clone()
+        };
+        crate::modules::require_ready(activation.as_deref())?;
         let resource = shared.id()?;
         let recovery = shared.work_path(scope.id, id);
         let name =
@@ -308,6 +318,7 @@ impl Caller {
             receiver,
             subject: key,
             method,
+            rights,
             input: captured,
             work: Some(Work::Queued),
             outcome: None,
@@ -324,26 +335,40 @@ impl Caller {
             wakers: Vec::new(),
             schedule: crate::request::Schedule::new(),
         }));
+        Ok(self.publish_request(&mut shared, record, resource, name))
+    }
+
+    fn publish_request(
+        &self,
+        shared: &mut Shared,
+        record: Rc<RefCell<Record>>,
+        resource: u64,
+        name: Box<str>,
+    ) -> Reply {
+        let (id, scope, key, parent) = {
+            let record = record.borrow();
+            (record.id, record.scope.borrow().id, record.subject, record.parent)
+        };
         shared.entries.push(Entry {
             key: resource,
             parent: 2,
             name,
-            kind: Kind::Work { scope: scope.id, request: id, retained: false },
+            kind: Kind::Work { scope, request: id, retained: false },
             activation: None,
             receiver: None,
             group: None,
             ownership: None,
         });
         shared.requests.push(Rc::clone(&record));
-        shared.emit(id, scope.id, key, Stage::Admitted, parent);
-        Ok(Box::pin(Wait {
+        shared.emit(id, scope, key, Stage::Admitted, parent);
+        Box::pin(Wait {
             id,
             shared: Rc::clone(&self.shared),
             scope: Rc::clone(&self.scope),
             record: Some(record),
             recovery: false,
             generation: self.generation,
-        }))
+        })
     }
 
     fn check_capacity(shared: &Shared, input: &Message) -> Result<(), Error> {

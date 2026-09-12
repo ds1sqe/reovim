@@ -49,8 +49,14 @@ function decoded(data: Uint8Array, known: ResourceId[]): Value {
   return value;
 }
 export function watching(line: string): Watching {
+  return watchReply(line, 'kernel.session.observe');
+}
+export function followed(line: string): Watching {
+  return watchReply(line, 'kernel.session.follow');
+}
+function watchReply(line: string, contract: string): Watching {
   const reply = message(line);
-  if (reply.contract !== 'kernel.session.observe' || reply.schema !== 1
+  if (reply.contract !== contract || reply.schema !== 1
       || reply.data.length < 16 || reply.resources.length < 3 || reply.resources.length > 256) {
     throw new Error('invalid context watch');
   }

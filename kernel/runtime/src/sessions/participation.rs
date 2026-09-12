@@ -1,7 +1,7 @@
 use super::{Session, Snapshot};
 use crate::{
     Runtime,
-    namespace::{Entry, Kind},
+    namespace::{Capture, Entry, Kind},
     request::Record,
 };
 use alloc::{boxed::Box, format, rc::Rc};
@@ -14,7 +14,25 @@ pub struct Participation {
     pub(super) session: ResourceId,
     pub(crate) owner: u64,
     read: Contract,
+    edit: Contract,
+    access: Option<Rc<Capture>>,
     view: View,
+    watch: Option<super::watch::Reader>,
+}
+
+pub struct Retired {
+    _view: View,
+    _access: Option<Rc<Capture>>,
+    watch: Option<super::watch::Reader>,
+    fence: bool,
+}
+
+impl Drop for Retired {
+    fn drop(&mut self) {
+        if let Some(watch) = self.watch.as_ref().filter(|_| self.fence) {
+            crate::watch::close(watch);
+        }
+    }
 }
 
 enum View {
@@ -40,8 +58,18 @@ pub fn surface(
     if matches!(participant.view, View::Detached) {
         return Err(Error::CLOSED);
     }
+    if method == Method::Read && super::watch::following(&input.contract) {
+        return Ok(Box::new([
+            Permissions::READ,
+            Permissions::ALL,
+            Permissions::READ,
+        ]));
+    }
     if method == Method::Read && input.contract == participant.read {
         return Ok(Box::new([Permissions::READ, Permissions::ALL]));
+    }
+    if method == Method::Write && input.contract == participant.edit {
+        return Ok(Box::new([Permissions::WRITE, Permissions::ALL]));
     }
     if method == Method::Write
         && input.contract == Contract::new("kernel.session.seek", 1)
@@ -52,15 +80,54 @@ pub fn surface(
 }
 
 impl Participation {
+    pub(super) fn update_session(
+        &self,
+        shared: &crate::Shared,
+        owner: u64,
+    ) -> Result<(u64, Rc<RefCell<Session>>), Error> {
+        if self.owner != owner
+            || !self.access.as_ref().is_some_and(|access| {
+                access.rights.contains(Permissions::WRITE)
+            })
+        {
+            return Err(Error::DENIED);
+        }
+        if self.settled() {
+            return Err(Error::CLOSED);
+        }
+        Ok((self.session.0, live_session(shared, self.session)?))
+    }
+
     pub(crate) const fn settled(&self) -> bool {
         matches!(self.view, View::Detached)
     }
 
-    // Return the retained value so callers drop it outside registry guards.
-    pub(crate) fn detach(&mut self) -> Option<Rc<Snapshot>> {
-        match core::mem::replace(&mut self.view, View::Detached) {
-            View::Historical(snapshot) => Some(snapshot),
-            _ => None,
+    // Release backing and wake fenced readers outside all owner guards.
+    pub(crate) const fn detach(&mut self) -> Retired {
+        self.select(View::Detached, None, true)
+    }
+
+    // Session close ends its feed after dependants settle, preserving queued
+    // delivery. Explicit detach instead fences the old stream immediately.
+    pub(super) const fn end(&mut self) -> Retired {
+        self.select(View::Detached, None, false)
+    }
+
+    const fn select(
+        &mut self,
+        view: View,
+        watch: Option<super::watch::Reader>,
+        fence: bool,
+    ) -> Retired {
+        Retired {
+            _access: if matches!(view, View::Detached) {
+                self.access.take()
+            } else {
+                None
+            },
+            _view: core::mem::replace(&mut self.view, view),
+            watch: core::mem::replace(&mut self.watch, watch),
+            fence,
         }
     }
 }
@@ -84,11 +151,24 @@ impl Runtime {
             1,
         )?;
         scope.grants.try_reserve(1).map_err(|_| Error::PRESSURE)?;
+        scope.captures.retain(|capture| capture.strong_count() != 0);
+        if scope.captures.len() == shared.limits.resources {
+            return Err(Error::PRESSURE);
+        }
+        scope.captures.try_reserve(1).map_err(|_| Error::PRESSURE)?;
+        let access = Rc::new(Capture {
+            key: record.subject,
+            rights: record.rights,
+            _target: Kind::Session(session.clone()),
+        });
         let participant = Participation {
             session: ResourceId(record.subject),
             owner: scope.owner,
             read: session.borrow().model.borrow().read.clone(),
+            edit: session.borrow().model.borrow().edit.clone(),
+            access: Some(access.clone()),
             view: View::Live,
+            watch: None,
         };
         let key = shared.id()?;
         let parent = parent.unwrap_or_else(|| {
@@ -105,6 +185,7 @@ impl Runtime {
             ownership: None,
         });
         scope.grants.push((key, Permissions::ALL));
+        scope.captures.push(Rc::downgrade(&access));
         Ok(Message::reference(record.input.contract.clone(), ResourceId(key)))
     }
 
@@ -132,8 +213,27 @@ impl Runtime {
         if request.method == Method::Write {
             return seek_request(&request, participant);
         }
+        let following = super::watch::following(&request.input.contract);
         drop(request);
+        if following {
+            return self.follow_participation(record, participant);
+        }
         self.read_participation(record, participant)
+    }
+
+    fn follow_participation(
+        &self,
+        record: &Rc<RefCell<Record>>,
+        participant: &Rc<RefCell<Participation>>,
+    ) -> Result<Message, Error> {
+        let subject = participant.borrow().session;
+        let session = live_session(&self.shared.borrow(), subject)?;
+        let (reply, reader) =
+            self.observe_session_at(record, &session, subject)?;
+        let retired =
+            participant.borrow_mut().select(View::Live, Some(reader), true);
+        drop(retired);
+        Ok(reply)
     }
 
     fn read_participation(
@@ -145,16 +245,8 @@ impl Runtime {
         if let View::Historical(snapshot) = &participant.view {
             return self.copy_session_snapshot(record, snapshot);
         }
-        let shared = self.shared.borrow();
-        let entry =
-            &shared.entries[shared.entry_index(participant.session.0)?];
-        let Kind::Session(session) = &entry.kind else {
-            return Err(Error::CLOSED);
-        };
-        crate::modules::require_ready(entry.activation.as_deref())?;
-        let session = session.clone();
         let subject = participant.session;
-        drop(shared);
+        let session = live_session(&self.shared.borrow(), subject)?;
         drop(participant);
         self.read_session_at(record, &session, subject)
     }
@@ -178,6 +270,12 @@ impl Runtime {
             .grants
             .try_reserve(1 + value.rights.len())
             .map_err(|_| Error::PRESSURE)?;
+        super::references::grant_session(
+            &shared,
+            &mut scope,
+            snapshot.session,
+            Permissions::READ,
+        )?;
         crate::binding::grant_outputs(
             &shared,
             &mut scope,
@@ -192,6 +290,18 @@ impl Runtime {
             value,
         ))
     }
+}
+
+fn live_session(
+    shared: &crate::Shared,
+    subject: ResourceId,
+) -> Result<Rc<RefCell<Session>>, Error> {
+    let entry = &shared.entries[shared.entry_index(subject.0)?];
+    let Kind::Session(session) = &entry.kind else {
+        return Err(Error::CLOSED);
+    };
+    crate::modules::require_ready(entry.activation.as_deref())?;
+    Ok(session.clone())
 }
 
 fn detach_request(
@@ -223,9 +333,10 @@ fn seek_request(
     if snapshot.session != participant.borrow().session {
         return Err(Error::STALE);
     }
-    let retired = core::mem::replace(
-        &mut participant.borrow_mut().view,
+    let retired = participant.borrow_mut().select(
         View::Historical(snapshot.clone()),
+        None,
+        true,
     );
     drop(retired);
     Ok(Message::new(request.input.contract.clone(), &[]))

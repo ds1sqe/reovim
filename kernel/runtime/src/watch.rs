@@ -110,7 +110,7 @@ fn queue<T: Copy>(
     reader.wake.take()
 }
 
-fn close<T>(reader: &Rc<RefCell<Reader<T>>>) {
+pub fn close<T>(reader: &Rc<RefCell<Reader<T>>>) {
     let wake = {
         let mut reader = reader.borrow_mut();
         reader.status = Status::Closed;

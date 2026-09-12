@@ -4,8 +4,8 @@ use crate::{Connection, Contract, Error, Message, RequestError, ResourceId};
 use alloc::vec::Vec;
 mod participation;
 mod watch;
-pub use participation::{attach, attached, detach, seek};
-pub use watch::{Change, Watching, change, next, observe, watching};
+pub use participation::{attach, attached, detach, follow, seek};
+pub use watch::{Change, Watching, change, followed, next, observe, watching};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Observation {

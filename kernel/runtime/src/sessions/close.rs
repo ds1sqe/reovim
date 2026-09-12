@@ -66,7 +66,7 @@ impl Runtime {
         drop(retired);
         drop(record);
         for participant in participants {
-            let retired = participant.borrow_mut().detach();
+            let retired = participant.borrow_mut().end();
             drop(retired);
         }
         if let Some(feed) = feed {

@@ -384,6 +384,7 @@ fn models_cannot_shadow_participation_or_watch_controls() {
         ("kernel.session.seek", false),
         ("kernel.session.detach", false),
         ("kernel.session.observe", true),
+        ("kernel.session.follow", true),
     ] {
         let mut provider = model(Rc::new(Cell::new(false)));
         if read {

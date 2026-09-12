@@ -44,6 +44,20 @@ pub fn watching(reply: &Message) -> Result<Watching, Error> {
     if reply.contract != Contract::new("kernel.session.observe", 1) {
         return Err(Error::INVALID);
     }
+    decode(reply)
+}
+
+/// Decodes the coherent live view acquired through owned participation.
+/// # Errors
+/// Requires the follow contract and the same exact observation envelope.
+pub fn followed(reply: &Message) -> Result<Watching, Error> {
+    if reply.contract != Contract::new("kernel.session.follow", 1) {
+        return Err(Error::INVALID);
+    }
+    decode(reply)
+}
+
+fn decode(reply: &Message) -> Result<Watching, Error> {
     let [session, snapshot, watch, values @ ..] = reply.resources.as_ref()
     else {
         return Err(Error::INVALID);

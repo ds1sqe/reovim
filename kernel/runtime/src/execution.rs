@@ -130,6 +130,10 @@ impl Runtime {
             Stage::Started,
             record.borrow().parent,
         );
+        let session = record.borrow().session().cloned();
+        if let Some(session) = session {
+            return self.begin_session(record, &session);
+        }
         match target {
             Kind::Catalog(catalog) => Step::Pending(Work::provider(
                 self.catalog_request(&catalog, record),
@@ -170,12 +174,6 @@ impl Runtime {
             {
                 Step::Finished(self.close_session(record))
             }
-            Kind::Session(session) if method == Method::Write => {
-                match self.prepare_session(record, &session) {
-                    Ok(future) => Step::Pending(Work::Model(future)),
-                    Err(error) => Step::Finished(Err(error)),
-                }
-            }
             Kind::Session(session) => {
                 Step::Finished(self.read_session(record, &session))
             }
@@ -212,6 +210,17 @@ impl Runtime {
         }
     }
 
+    fn begin_session(
+        &self,
+        record: &Rc<RefCell<Record>>,
+        session: &Rc<RefCell<crate::sessions::Session>>,
+    ) -> Step {
+        match self.prepare_session(record, session) {
+            Ok(future) => Step::Pending(Work::Model(future)),
+            Err(error) => Step::Finished(Err(error)),
+        }
+    }
+
     fn poll_module_unload(&self, record: &Rc<RefCell<Record>>) -> Step {
         let record = record.borrow();
         match self
@@ -234,8 +243,9 @@ impl Runtime {
             return Err(Error::CANCELLED);
         }
         let target = record.borrow().target.clone();
-        if let Kind::Session(session) = &target {
-            return self.install_session(record, session, candidate);
+        let session = record.borrow().session().cloned();
+        if let Some(session) = session {
+            return self.install_session(record, &session, candidate);
         }
         let model = match &target {
             Kind::Model(model) => Rc::clone(model),
@@ -458,6 +468,10 @@ impl Runtime {
             return Err(Error::PROVIDER);
         }
         let valid_contract = match &record.target {
+            Kind::Participation(_) if record.snapshot.is_some() => {
+                record.session().map(crate::sessions::read_contract).as_ref()
+                    == Some(&result.contract)
+            }
             Kind::Model(model) => result.contract == model.borrow().read,
             Kind::Session(_)
                 if record.method == Method::Read

@@ -1,6 +1,8 @@
 //! Owned live/historical context views through common Resource messages.
 //! Read the Model's declared schema on the participation to obtain a separately
-//! owned snapshot. Participation updates and follow are not yet wired.
+//! owned snapshot. Model updates use the same explicit Session/snapshot
+//! precondition on the participation subject. Follow returns a coherent live
+//! baseline and fences the participation's previous stream after success.
 
 use crate::{
     Connection, Contract, Error, Message, RequestError, ResourceId,
@@ -8,6 +10,7 @@ use crate::{
 };
 
 /// Creates an owned participation initially reading live Session context.
+/// Captures Session write permission without transferring close rights.
 #[must_use = "Adopt or recover the returned participation"]
 pub fn attach(connection: &Connection, session: ResourceId) -> Reply {
     connection.read(
@@ -29,6 +32,16 @@ pub fn attached(reply: &Message) -> Result<ResourceId, Error> {
         return Err(Error::INVALID);
     };
     Ok(*participant)
+}
+
+/// Returns to live context with a coherent snapshot and independent watch.
+/// Failure preserves the previous selection and stream.
+#[must_use = "Adopt or recover the returned snapshot and watch"]
+pub fn follow(connection: &Connection, participant: ResourceId) -> Reply {
+    connection.read(
+        participant,
+        &Message::new(Contract::new("kernel.session.follow", 1), &[]),
+    )
 }
 
 /// Selects a retained snapshot without changing live context or Buffers.

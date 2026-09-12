@@ -148,6 +148,12 @@ impl Runtime {
             .grants
             .try_reserve(1 + value.rights.len())
             .map_err(|_| Error::PRESSURE)?;
+        references::grant_session(
+            &shared,
+            &mut scope,
+            subject,
+            Permissions::READ,
+        )?;
         crate::binding::grant_outputs(
             &shared,
             &mut scope,

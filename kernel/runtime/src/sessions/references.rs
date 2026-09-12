@@ -15,6 +15,25 @@ pub struct Value {
     _subjects: Vec<Kind>,
 }
 
+/// Observation metadata carries the declared Session access into the caller's
+/// namespace, including a different module scope of the participation owner.
+pub(super) fn grant_session(
+    shared: &Shared,
+    scope: &mut Scope,
+    session: ResourceId,
+    rights: Permissions,
+) -> Result<(), Error> {
+    if scope
+        .permissions(shared, session.0)
+        .is_some_and(|allowed| allowed.contains(rights))
+    {
+        return Ok(());
+    }
+    scope.grants.try_reserve(1).map_err(|_| Error::PRESSURE)?;
+    scope.grants.push((session.0, rights));
+    Ok(())
+}
+
 pub fn capture(
     shared: &Shared,
     receiver: Option<&Rc<RefCell<Scope>>>,

@@ -21,12 +21,16 @@ pub fn capture_snapshot(
     subject: u64,
     input: &mut Message,
 ) -> Result<Option<Rc<Snapshot>>, Error> {
-    if !matches!(target, Kind::Session(_))
-        || method != Method::Write
-        || super::closing(&input.contract)
-    {
+    if method != Method::Write || super::control(method, &input.contract) {
         return Ok(None);
     }
+    let (subject, target) = match target {
+        Kind::Session(session) => (subject, session.clone()),
+        Kind::Participation(participant) => {
+            participant.borrow().update_session(shared, scope.owner)?
+        }
+        _ => return Ok(None),
+    };
     let [session, snapshot, ..] = input.resources.as_ref() else {
         return Err(Error::INVALID);
     };
@@ -48,10 +52,7 @@ pub fn capture_snapshot(
     if snapshot.session.0 != subject {
         return Err(Error::STALE);
     }
-    let rights = match target {
-        Kind::Session(session) => session.borrow().model.borrow().references,
-        _ => None,
-    };
+    let rights = target.borrow().model.borrow().references;
     let mut resources = alloc::vec![ResourceId(subject), ResourceId(key)];
     for id in &input.resources[2..] {
         let rights = rights.ok_or(Error::INVALID)?;
@@ -122,19 +123,21 @@ impl Runtime {
             .grants
             .try_reserve(1 + value.rights.len())
             .map_err(|_| Error::PRESSURE)?;
+        let subject = record.snapshot.as_ref().ok_or(Error::INVALID)?.session;
+        super::references::grant_session(
+            &shared,
+            &mut scope,
+            subject,
+            Permissions::WRITE,
+        )?;
         crate::binding::grant_outputs(
             &shared,
             &mut scope,
             &value.rights,
             &value.message,
         )?;
-        let reply = super::snapshot(
-            &mut shared,
-            &mut scope,
-            ResourceId(record.subject),
-            revision,
-            value,
-        );
+        let reply =
+            super::snapshot(&mut shared, &mut scope, subject, revision, value);
         let retired = core::mem::replace(&mut session.state, candidate);
         let change = super::watch::Change {
             request: record.id,
