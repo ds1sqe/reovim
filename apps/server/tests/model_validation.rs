@@ -43,7 +43,7 @@ fn observe(
 fn provider(mode: Rc<Cell<u8>>) -> ModelProvider {
     ModelProvider::new(
         mode,
-        ModelOps { unload: None, initialize, prepare, observe },
+        ModelOps { unload: None, initialize, prepare, observe, inspect: None },
         Contract::new("create", 1),
         Contract::new("value", 1),
         Contract::new("edit", 1),
@@ -143,6 +143,7 @@ fn window_model() -> ModelProvider {
     ModelProvider::new(
         (),
         ModelOps {
+            inspect: None,
             unload: None,
             initialize: |(), _| {
                 let mut bytes = vec![0; 4096];

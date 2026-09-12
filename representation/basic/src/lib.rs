@@ -16,6 +16,7 @@ pub fn heading() -> ModelProvider {
     ModelProvider::new(
         (),
         ModelOps {
+            inspect: None,
             unload: None,
             initialize: |(), input| {
                 Box::pin(core::future::ready(heading_initial(input)))
@@ -37,6 +38,7 @@ pub fn keyed() -> ModelProvider {
     ModelProvider::new(
         (),
         ModelOps {
+            inspect: None,
             unload: None,
             initialize: keys_initial,
             prepare: keys_edit,

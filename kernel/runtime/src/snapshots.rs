@@ -149,7 +149,7 @@ fn read(
     _: ResourceId,
     input: Message,
 ) -> ProviderReply {
-    Box::pin(ready(context.model.borrow_mut().inspect(&context.state, input)))
+    context.model.borrow_mut().inspect(&context.state, input)
 }
 
 fn unsupported(_: &mut ReadState, _: ResourceId, _: Message) -> ProviderReply {

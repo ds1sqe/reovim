@@ -19,8 +19,16 @@ reovim_module::rv_module! {
             initialize ("source.initial", 1) => initialize,
             prepare ("source.splice", 1) => prepare,
             observe ("source.bytes", 1) => observe,
+            inspect => inspect,
         },
     }
+}
+
+fn inspect(
+    state: State,
+    input: Message,
+) -> reovim_kernel_interface::provider::ProviderReply {
+    alloc::boxed::Box::pin(async move { observe(&state, input) })
 }
 
 fn initialize(input: Message) -> Result<State, Error> {

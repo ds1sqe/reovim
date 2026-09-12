@@ -48,7 +48,13 @@ pub(super) unsafe fn from_table(
         Rc::new(Instance { table, context, _library: Rc::clone(&library) });
     Ok(ModelProvider::new(
         owner,
-        ModelOps { unload: Some(unload), initialize, prepare, observe },
+        ModelOps {
+            unload: Some(unload),
+            initialize,
+            prepare,
+            observe,
+            inspect: table.inspect.map(|_| inspect as _),
+        },
         initial,
         read,
         edit,
@@ -174,6 +180,40 @@ fn observe_result(
     let data = unsafe { bytes(reply.data)? };
     let contract: Contract = unsafe { contract(owner.table.read_contract)? };
     Ok(Message::new(contract, data))
+}
+
+fn inspect(
+    owner: &mut Rc<Instance>,
+    state: State,
+    input: Message,
+) -> reovim_kernel_interface::provider::ProviderReply {
+    let pointer = match native(owner, &state) {
+        Ok(value) => value.pointer,
+        Err(error) => return Box::pin(ready(Err(error))),
+    };
+    let mut request = request(&input);
+    request.method = abi::READ;
+    let pending = unsafe {
+        (owner.table.inspect.unwrap())(
+            owner.context,
+            pointer,
+            &raw const request,
+        )
+    };
+    // The native state and executable owner outlive Pending.release.
+    let future = unsafe { reovim_sdk::import_reply(pending, Rc::new(state)) };
+    drop(input);
+    Box::pin(async move {
+        future.await.map_err(|error| match error {
+            reovim_kernel_interface::RequestError::Rejected(error)
+            | reovim_kernel_interface::RequestError::Failed(error) => {
+                Error::new(error.code.0)
+            }
+            reovim_kernel_interface::RequestError::Unknown { .. } => {
+                Error::PROVIDER
+            }
+        })
+    })
 }
 
 fn unload(owner: &mut Rc<Instance>) -> Result<(), Error> {

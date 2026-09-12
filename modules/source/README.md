@@ -26,6 +26,11 @@ fit one message, while subsequent insertions may grow beyond that frame size.
 State cost conservatively charges reachable byte allocations and segment
 metadata per retained state, including storage behind slices.
 
+Native retained reads use the optional Model `inspect` pending callback. The
+current resident implementation completes when polled; acceptance descriptors
+remain finite and synchronous. Deferred inspection is the path for future
+residency work, not evidence that this model already performs backing I/O.
+
 `buffer::observe` acquires a retained source snapshot and change watch at one
 boundary. `buffer::next` reports accepted Edit/Undo/Redo edges, Pending, Gap or
 End through `kernel.buffer.next`; slow readers renew observation after Gap.

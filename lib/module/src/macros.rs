@@ -18,7 +18,7 @@ macro_rules! rv_module {
                     $initialize:path,
                 prepare ($edit:literal, $edit_version:literal) => $prepare:path,
                 observe ($read:literal, $read_version:literal) =>
-                    $observe:path $(,)?
+                    $observe:path $(, inspect => $inspect:path)? $(,)?
             } $(,)?
         }
     ) => {
@@ -36,8 +36,11 @@ macro_rules! rv_module {
                 initialize: $initialize,
                 prepare: $prepare,
                 observe: $observe,
+                inspect: $crate::rv_module!(@inspect $($inspect)?),
             };
     };
+    (@inspect) => { None };
+    (@inspect $inspect:path) => { Some($inspect) };
     (
         $visibility:vis $name:ident {
             $(contract: ($identity:literal, $version:literal),)?

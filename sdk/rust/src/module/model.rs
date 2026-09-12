@@ -1,4 +1,4 @@
-//! Safe declarations for the existing synchronous immutable Model profile.
+//! Safe immutable Model declarations with optional deferred state inspection.
 
 use super::Identity;
 use alloc::boxed::Box;
@@ -14,6 +14,10 @@ pub struct ModelDefinition {
     pub initialize: fn(Message) -> Result<State, Error>,
     pub prepare: fn(&State, Message) -> Result<State, Error>,
     pub observe: fn(&State, Message) -> Result<Message, Error>,
+    /// Deferred immutable reads; None reuses the finite observation function.
+    pub inspect: Option<
+        fn(State, Message) -> reovim_kernel_interface::provider::ProviderReply,
+    >,
 }
 
 impl ModelDefinition {
@@ -32,6 +36,7 @@ impl ModelDefinition {
             initialize: Some(initialize),
             prepare: Some(prepare),
             observe: Some(observe),
+            inspect: Some(inspect),
             release: Some(release),
             drop_state: Some(drop_state),
             unload: Some(unload),
@@ -96,6 +101,26 @@ unsafe extern "C" fn observe(
         }),
         &definition.read,
     )
+}
+
+unsafe extern "C" fn inspect(
+    context: *mut c_void,
+    state: *const c_void,
+    input: *const abi::Request,
+) -> abi::Pending {
+    let definition = unsafe { &*context.cast::<ModelDefinition>() };
+    let state = unsafe { &*state.cast::<State>() }.clone();
+    let input = unsafe { crate::decode_request(&*input) };
+    crate::export_reply(Box::pin(async move {
+        let input = input?;
+        validate(&definition.read, &input)?;
+        let output = match definition.inspect {
+            Some(inspect) => inspect(state, input).await?,
+            None => (definition.observe)(&state, input)?,
+        };
+        validate(&definition.read, &output).map_err(|_| Error::PROVIDER)?;
+        Ok(output)
+    }))
 }
 fn candidate(result: Result<State, Error>) -> abi::Reply {
     match result {

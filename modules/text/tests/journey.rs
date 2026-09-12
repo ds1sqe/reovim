@@ -57,6 +57,7 @@ fn traced_source(reads: Reads) -> ModelProvider {
     ModelProvider::new(
         reads,
         ModelOps {
+            inspect: None,
             unload: None,
             initialize: |_, input| Box::pin(ready((SOURCE.initialize)(input))),
             prepare: |_, state, input| {

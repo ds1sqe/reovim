@@ -25,6 +25,7 @@ fn model(released: Rc<Cell<bool>>) -> ModelProvider {
     ModelProvider::new(
         (),
         ModelOps {
+            inspect: None,
             unload: None,
             initialize: |(), input| value(&input),
             prepare: |(), _, input| value(&input),

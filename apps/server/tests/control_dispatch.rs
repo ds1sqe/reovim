@@ -19,6 +19,7 @@ fn model(read: Contract) -> ModelProvider {
     ModelProvider::new(
         read.clone(),
         ModelOps {
+            inspect: None,
             unload: None,
             initialize: |_, _| Box::pin(ready(Ok(State::new(7_u8, 1)))),
             prepare: |_, state, _| Box::pin(ready(Ok(state.clone()))),

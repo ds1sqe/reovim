@@ -37,6 +37,7 @@ impl Definition {
             initialize: None,
             prepare: None,
             observe: None,
+            inspect: None,
             release: None,
             drop_state: None,
             unload: Some(unload),

@@ -62,10 +62,21 @@ pub struct ModelOps<Context> {
     pub prepare: fn(&mut Context, &State, Message) -> StateReply,
     /// Empty input requests the finite descriptor used in acceptance replies.
     /// Other payloads describe model-owned reads of the same immutable state.
+    /// Must not wait on external work; deferred reads use inspect.
     pub observe: fn(&mut Context, &State, Message) -> Result<Message, Error>,
+    /// Optional deferred inspection. Owns state until its read settles.
+    /// None uses the finite observation callback for retained reads too.
+    pub inspect: Option<
+        fn(&mut Context, State, Message) -> crate::provider::ProviderReply,
+    >,
 }
 
 trait Dispatch {
+    fn inspect(
+        &mut self,
+        state: State,
+        input: Message,
+    ) -> crate::provider::ProviderReply;
     fn unload(&mut self) -> Result<(), Error>;
     fn initialize(&mut self, input: Message) -> StateReply;
     fn prepare(&mut self, state: &State, input: Message) -> StateReply;
@@ -82,6 +93,16 @@ struct Implementation<Context> {
 }
 
 impl<Context> Dispatch for Implementation<Context> {
+    fn inspect(
+        &mut self,
+        state: State,
+        input: Message,
+    ) -> crate::provider::ProviderReply {
+        if let Some(inspect) = self.operations.inspect {
+            return inspect(&mut self.context, state, input);
+        }
+        Box::pin(core::future::ready(self.observe(&state, input)))
+    }
     fn unload(&mut self) -> Result<(), Error> {
         self.operations
             .unload
@@ -149,21 +170,21 @@ impl ModelProvider {
     /// # Errors
     /// Reports unsupported state or failed semantic interpretation.
     pub fn observe(&mut self, state: &State) -> Result<Message, Error> {
-        self.inspect(state, Message::new(self.read.clone(), &[]))
+        self.implementation.observe(state, Message::new(self.read.clone(), &[]))
     }
 
     /// Reads exact immutable state using a model-defined payload.
-    /// # Errors
-    /// Rejects foreign contracts/references or unsupported model requests.
+    /// The future owns the required state; pending residency does not block
+    /// Runtime. Its result reports foreign contracts or unsupported reads.
     pub fn inspect(
         &mut self,
         state: &State,
         input: Message,
-    ) -> Result<Message, Error> {
+    ) -> crate::provider::ProviderReply {
         if input.contract != self.read || !input.resources.is_empty() {
-            return Err(Error::INVALID);
+            return Box::pin(core::future::ready(Err(Error::INVALID)));
         }
-        self.implementation.observe(state, input)
+        self.implementation.inspect(state.clone(), input)
     }
 }
 

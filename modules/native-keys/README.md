@@ -2,6 +2,10 @@
 
 An independent C State Model using module ABI 0.1.0 and immutable native states.
 
+Retained inspection yields once through the provider Pending table before
+reading its selected immutable state. The fixture asserts pending reads are
+released before their state/context, including shared Buffer/access close.
+
 The read contract accepts empty data for both keyed values, or one byte
 (`0` or `1`) for the corresponding Boolean value. A `kernel.buffer.retain`
 read creates an independently owned access to the exact requested revision;

@@ -60,6 +60,8 @@ pub type Prepare =
     unsafe extern "C" fn(*mut c_void, *const c_void, *const Request) -> Reply;
 pub type Observe =
     unsafe extern "C" fn(*mut c_void, *const c_void, *const Request) -> Reply;
+pub type Inspect =
+    unsafe extern "C" fn(*mut c_void, *const c_void, *const Request) -> Pending;
 
 reovim_vtable::rv_vtable! {
     /// A loaded module returns this immutable table via `rv_module_entry`.
@@ -81,6 +83,7 @@ pub struct Module {
     pub initialize: Option<Call>,
     pub prepare: Option<Prepare>,
     pub observe: Option<Observe>,
+    pub inspect: Option<Inspect>,
     pub release: Option<unsafe extern "C" fn(*mut c_void, *mut Reply)>,
     pub drop_state: Option<unsafe extern "C" fn(*mut c_void, *mut c_void)>,
     pub unload: Option<unsafe extern "C" fn(*mut c_void) -> u64>,

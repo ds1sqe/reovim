@@ -96,10 +96,14 @@ fn native_nontext_model_edits_and_undoes_through_the_same_authority() {
     .unwrap();
     // Shared close leaves the independently owned state and native code alive.
     assert_eq!(runtime.unregister(id), Err(Error::BUSY));
-    let old =
-        finish(&mut runtime, client.read(snapshot.id, &selected)).unwrap();
-    assert_eq!(old.data.as_ref(), &[0]);
+    let mut pending = client.read(snapshot.id, &selected);
+    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+    assert!(pending.as_mut().poll(&mut context).is_pending());
+    runtime.advance(&mut context).unwrap();
+    runtime.advance(&mut context).unwrap();
     client.close(snapshot.id).into_inner().unwrap();
+    assert_eq!(runtime.unregister(id), Err(Error::BUSY));
+    assert_eq!(finish(&mut runtime, pending).unwrap().data.as_ref(), &[0]);
     client.close(snapshot.id).into_inner().unwrap();
     assert_eq!(
         finish(&mut runtime, client.read(snapshot.id, &selected)),

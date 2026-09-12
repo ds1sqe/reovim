@@ -48,6 +48,7 @@ struct rv_module {
     struct rv_reply (*initialize)(void *, const struct rv_request *);
     struct rv_reply (*prepare)(void *, const void *, const struct rv_request *);
     struct rv_reply (*observe)(void *, const void *, const struct rv_request *);
+    struct rv_pending (*inspect)(void *, const void *, const struct rv_request *);
     void (*release)(void *, struct rv_reply *);
     void (*drop_state)(void *, void *);
     uint64_t (*unload)(void *);
@@ -65,11 +66,15 @@ struct rv_module {
  * Inputs are borrowed during a call. Copy anything needed afterwards.
  * Output bytes live until release. A successful state transfers to the host:
  * release sees state=NULL; drop_state eventually destroys the transferred state.
- * Resource request returns an owned pending result; model callbacks settle
- * synchronously. No callback may unwind across the boundary.
+ * Resource request and optional Model inspect return owned pending results.
+ * Model initialize/prepare/observe settle synchronously. No callback may unwind.
  * Model observe receives read_contract with no resource slots. Empty data
  * requests the finite acceptance descriptor; other data is model-defined.
  * Each read uses the exact immutable state, including retained older states.
+ * Optional Model inspect returns Pending for deferred state reads. The host
+ * pins the state through Pending.release. Its input is borrowed only for the
+ * callback. Success uses read_contract and no references; failures are model
+ * error codes, with no external-effect recovery outcome in this profile.
  * Unload happens only after contexts, calls, results and states have drained.
  */
 /* create receives optional borrowed caller access: retain before storing.

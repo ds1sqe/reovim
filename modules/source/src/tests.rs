@@ -20,6 +20,7 @@ fn model() -> ModelProvider {
     ModelProvider::new(
         (),
         ModelOps {
+            inspect: None,
             unload: None,
             initialize: |(), input| Box::pin(ready(initialize(input))),
             prepare: |(), state, input| Box::pin(ready(prepare(state, input))),
