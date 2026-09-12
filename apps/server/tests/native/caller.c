@@ -13,7 +13,11 @@ int reovim_client_start(struct rv_connection connection, struct rv_pending *pend
         .contract = { { (const uint8_t *)"external.counter", 16 }, 1 },
         .data = { increment, sizeof(increment) },
     };
-    *pending = api->request(connection.context, &request);
+    struct rv_connection captured;
+    if (api->capture(connection.context, counter, 2, &captured).code) return 4;
+    *pending = captured.table->request(captured.context, &request);
+    /* Admitted work retains the selected capture after the caller releases it. */
+    captured.table->release(captured.context);
     return 0;
 }
 

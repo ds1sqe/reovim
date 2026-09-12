@@ -43,6 +43,22 @@ impl Drop for Remote {
 }
 struct Imported(Rc<Remote>);
 impl Access for Imported {
+    fn capture(
+        &self,
+        subject: ResourceId,
+        rights: reovim_kernel_interface::provider::Permissions,
+    ) -> Result<Connection, Error> {
+        let mut output = MaybeUninit::uninit();
+        check(unsafe {
+            (self.0.table().capture)(
+                self.0.raw.context,
+                subject.0,
+                rights.bits(),
+                output.as_mut_ptr(),
+            )
+        })?;
+        Ok(unsafe { import(output.assume_init(), self.0.code.clone()) })
+    }
     fn withdraw(&self, resource: ResourceId) -> Result<(), Error> {
         check(unsafe {
             (self.0.table().withdraw)(self.0.raw.context, resource.0)

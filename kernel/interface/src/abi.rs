@@ -237,5 +237,7 @@ pub struct Access {
     pub withdraw: unsafe extern "C" fn(*mut c_void, u64) -> Failure,
     pub publish: unsafe extern "C" fn(*mut c_void, u64, Bytes,
         *const Provider, *mut u64) -> Failure,
+    pub capture: unsafe extern "C" fn(*mut c_void, u64, u32,
+        *mut Connection) -> Failure,
 }
 }

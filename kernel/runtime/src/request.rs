@@ -35,6 +35,7 @@ impl Work {
 }
 
 pub struct Record {
+    pub _capture: Option<Rc<crate::namespace::Capture>>,
     pub id: u64,
     pub parent: Option<u64>,
     pub scope: Rc<RefCell<Scope>>,

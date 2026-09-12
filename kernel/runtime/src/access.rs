@@ -15,6 +15,7 @@ struct Caller {
     shared: Rc<RefCell<Shared>>,
     scope: Rc<RefCell<Scope>>,
     generation: u64,
+    capture: Option<Rc<crate::namespace::Capture>>,
 }
 
 pub fn connection(
@@ -22,10 +23,62 @@ pub fn connection(
     scope: Rc<RefCell<Scope>>,
     generation: u64,
 ) -> Connection {
-    Connection::new(Rc::new(Caller { shared, scope, generation }))
+    Connection::new(Rc::new(Caller {
+        shared,
+        scope,
+        generation,
+        capture: None,
+    }))
 }
 
 impl Access for Caller {
+    fn capture(
+        &self,
+        subject: ResourceId,
+        rights: Permissions,
+    ) -> Result<Connection, Error> {
+        self.check()?;
+        let shared = self.shared.borrow();
+        if shared.closing {
+            return Err(Error::CLOSED);
+        }
+        let mut scope = self.scope.borrow_mut();
+        let key = scope.key(subject)?;
+        if rights.is_empty()
+            || !scope
+                .permissions(&shared, key)
+                .is_some_and(|allowed| allowed.contains(rights))
+        {
+            return Err(Error::DENIED);
+        }
+        let entry = &shared.entries[shared.entry_index(key)?];
+        if entry.closed()
+            || matches!(
+                entry.kind,
+                Kind::ClosedBuffer { .. } | Kind::ClosedSession { .. }
+            )
+        {
+            return Err(Error::CLOSED);
+        }
+        crate::modules::require_ready(entry.activation.as_deref())?;
+        scope.captures.retain(|capture| capture.strong_count() != 0);
+        if scope.captures.len() == shared.limits.resources {
+            return Err(Error::PRESSURE);
+        }
+        scope.captures.try_reserve(1).map_err(|_| Error::PRESSURE)?;
+        let capture = Rc::new(crate::namespace::Capture {
+            key,
+            rights,
+            _target: entry.kind.clone(),
+        });
+        scope.captures.push(Rc::downgrade(&capture));
+        Ok(Connection::new(Rc::new(Self {
+            shared: self.shared.clone(),
+            scope: self.scope.clone(),
+            generation: self.generation,
+            capture: Some(capture),
+        })))
+    }
     fn withdraw(&self, resource: ResourceId) -> Result<(), Error> {
         self.check()?;
         crate::publication::withdraw(&self.shared, &self.scope, resource)
@@ -157,11 +210,12 @@ impl Access for Caller {
         scope.generation =
             scope.generation.checked_add(1).ok_or(Error::PRESSURE)?;
         scope.names.clear();
-        Ok(connection(
-            Rc::clone(&self.shared),
-            Rc::clone(&self.scope),
-            scope.generation,
-        ))
+        Ok(Connection::new(Rc::new(Self {
+            shared: self.shared.clone(),
+            scope: self.scope.clone(),
+            generation: scope.generation,
+            capture: self.capture.clone(),
+        })))
     }
 }
 
@@ -246,6 +300,7 @@ impl Caller {
             recovery.strip_prefix("requests/").ok_or(Error::INVALID)?.into();
         let parent = shared.active;
         let record = Rc::new(RefCell::new(Record {
+            _capture: self.capture.clone(),
             id,
             parent,
             scope: Rc::clone(&self.scope),

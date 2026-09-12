@@ -123,8 +123,12 @@ struct rv_access {
     struct rv_failure (*withdraw)(void *, uint64_t);
     struct rv_failure (*publish)(void *, uint64_t, struct rv_bytes,
         const struct rv_provider *, uint64_t *);
+    struct rv_failure (*capture)(void *, uint64_t, uint32_t,
+        struct rv_connection *);
 };
 /* Connection/Pending own one reference, released through their own table.
+ * capture retains selected existing rights in this namespace through its
+ * returned Connection; release does not close the shared Resource.
  * Access is single-threaded. Wake retain/release/wake must be thread-safe;
  * poll borrows Wake, so retaining it requires retain. request copies inputs.
  * Poll observes results only: the implementation owner drives execution.

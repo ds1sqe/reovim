@@ -74,6 +74,15 @@ pub enum Method {
 
 /// Common adapter boundary. These calls perform no provider execution.
 pub trait Access {
+    /// # Errors
+    /// Rejects unsupported retention or rights not already granted.
+    fn capture(
+        &self,
+        _: ResourceId,
+        _: crate::provider::Permissions,
+    ) -> Result<Connection, Error> {
+        Err(Error::UNSUPPORTED)
+    }
     /// Withdraws a quiescent subtree owned by the executing module.
     /// # Errors
     /// Denied/Busy leave names and providers unchanged.
@@ -126,6 +135,19 @@ pub trait Access {
 pub struct Connection(Rc<dyn Access>);
 
 impl Connection {
+    /// Retains selected existing rights in this namespace through the result.
+    ///
+    /// Clones retain the same capture. Drop releases it without closing the
+    /// shared subject. Existing namespace grants remain independent.
+    /// # Errors
+    /// Rejects missing rights, closed access or retention pressure.
+    pub fn capture(
+        &self,
+        subject: ResourceId,
+        rights: crate::provider::Permissions,
+    ) -> Result<Self, Error> {
+        self.0.capture(subject, rights)
+    }
     /// Withdraws an idle provider subtree without unloading its owning module.
     /// # Errors
     /// Rejects foreign ownership and captured/in-flight use.

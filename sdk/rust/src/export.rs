@@ -54,6 +54,7 @@ static TABLE: abi::Access = reovim_vtable::rv_vtable!(abi::Access {
     reconnect,
     publish,
     withdraw,
+    capture,
 });
 
 unsafe extern "C" fn retain(context: *mut c_void) {
@@ -186,6 +187,29 @@ unsafe extern "C" fn reconnect(
 ) -> abi::Failure {
     let connection = unsafe { &*context.cast::<Exported>() };
     match connection.reconnect() {
+        Ok(next) => {
+            unsafe {
+                output.write(export_with_code(next, connection.code.clone()));
+            }
+            SUCCESS
+        }
+        Err(error) => failure(error),
+    }
+}
+
+unsafe extern "C" fn capture(
+    context: *mut c_void,
+    subject: u64,
+    rights: u32,
+    output: *mut abi::Connection,
+) -> abi::Failure {
+    let connection = unsafe { &*context.cast::<Exported>() };
+    let Some(rights) =
+        reovim_kernel_interface::provider::Permissions::from_bits(rights)
+    else {
+        return failure(Error::INVALID);
+    };
+    match connection.capture(ResourceId(subject), rights) {
         Ok(next) => {
             unsafe {
                 output.write(export_with_code(next, connection.code.clone()));

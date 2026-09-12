@@ -97,6 +97,13 @@ pub struct Scope {
     pub grants: Vec<(u64, Permissions)>,
     pub names: Vec<(ResourceId, u64)>,
     pub loans: Vec<(u64, u64, Permissions)>,
+    pub captures: Vec<alloc::rc::Weak<Capture>>,
+}
+
+pub struct Capture {
+    pub key: u64,
+    pub rights: Permissions,
+    pub _target: Kind,
 }
 
 impl Scope {
@@ -110,6 +117,7 @@ impl Scope {
             closed: false,
             names: Vec::new(),
             loans: Vec::new(),
+            captures: Vec::new(),
             grants: grants.iter().map(|(id, rights)| (id.0, *rights)).collect(),
         }
     }
@@ -207,6 +215,12 @@ impl Scope {
             .iter()
             .copied()
             .chain(self.loans.iter().map(|(_, key, rights)| (*key, *rights)))
+            .chain(
+                self.captures
+                    .iter()
+                    .filter_map(alloc::rc::Weak::upgrade)
+                    .map(|capture| (capture.key, capture.rights)),
+            )
             .filter(|(root, _)| {
                 key == *root || (work.is_none() && shared.descends(key, *root))
             })
@@ -243,6 +257,11 @@ impl Scope {
                         .loans
                         .iter()
                         .any(|(_, root, _)| shared.descends(*root, key))
+                    || self
+                        .captures
+                        .iter()
+                        .filter_map(alloc::rc::Weak::upgrade)
+                        .any(|capture| shared.descends(capture.key, key))
             }
         }
     }
