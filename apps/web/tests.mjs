@@ -1,0 +1,89 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import net from 'node:net';
+import http from 'node:http';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
+import { Client, DeliveryError, hex, message, outcome, resource, u64 }
+  from '../../target/browser/sdk/typescript/resource.js';
+
+test('identities and currentness remain exact beyond Number precision', () => {
+  assert.equal(resource('@18446744073709551615'), '@18446744073709551615');
+  assert.equal(hex(u64(18446744073709551615n)), 'ffffffffffffffff');
+  assert.equal(message('ok\tvalue\t1\t00\t@9007199254740993').resources[0], '@9007199254740993');
+  assert.throws(() => resource('@18446744073709551616'));
+  assert.throws(() => u64(-1n));
+  const failed = outcome('error\tunknown\t9007199254740993\t@17\t776f726b');
+  assert.equal(failed.code, 9007199254740993n);
+  assert.equal(failed.recovery, 'work');
+});
+
+test('lost delivery retains exact receipt; adopted results do not resend', async () => {
+  const client = new Client('client');
+  const calls = [];
+  client.wire = async fields => {
+    calls.push(fields);
+    if (fields[1] === 'reserve') return 'ok\t9007199254740993';
+    throw new Error('connection lost');
+  };
+  const receipt = await client.reserve(['write', '@7', 'edit', '1', 'ff']);
+  await assert.rejects(client.send(receipt), error =>
+    error instanceof DeliveryError && error.receipt === receipt);
+  assert.deepEqual(calls[1], ['client', 'call', '9007199254740993', 'write', '@7', 'edit', '1', 'ff']);
+  receipt.response = 'ok\tvalue\t1\tff\t';
+  assert.equal(await client.send(receipt), receipt.response);
+  assert.deepEqual(calls, [['client', 'reserve'], ['client', 'call',
+    '9007199254740993', 'write', '@7', 'edit', '1', 'ff']]);
+});
+
+test('HTTP bridge preserves frames and rejects cross-origin forwarding', { timeout: 10000 }, async t => {
+  const frames = [];
+  const backend = net.createServer(socket => {
+    socket.once('data', data => {
+      frames.push(data.toString());
+      if (data.includes(Buffer.from('park'))) backend.emit('parked');
+      else if (data.includes(Buffer.from('lost'))) socket.end();
+      else socket.end('pending\nok\t9007199254740993\n');
+    });
+  });
+  backend.listen(0, '127.0.0.1'); await once(backend, 'listening');
+  t.after(() => backend.close());
+  const child = spawn(process.execPath, ['apps/web/bridge.mjs',
+    `127.0.0.1:${backend.address().port}`, '0'], { stdio: ['ignore', 'pipe', 'pipe'] });
+  t.after(() => child.kill());
+  const [data] = await once(child.stdout, 'data');
+  const origin = data.toString().trim().replace('browser ', '');
+  const send = (fields, extra = {}) => fetch(`${origin}/rpc`, {
+    method: 'POST', headers: { Origin: origin, 'X-Reovim': '1', ...extra },
+    body: JSON.stringify(fields)
+  });
+  assert.equal((await send(['open'], { Origin: 'https://foreign.invalid' })).status, 403);
+  assert.deepEqual(frames, []);
+  assert.equal(await (await send(['한글'])).text(), 'ok\t9007199254740993');
+  assert.deepEqual(frames, ['v1\t한글\n']);
+  assert.equal((await send(['bad\nframe'])).status, 400);
+  assert.equal((await send(['lost'])).status, 502);
+  assert.deepEqual(frames, ['v1\t한글\n', 'v1\tlost\n']);
+  const body = Buffer.from(JSON.stringify(['한글']));
+  await new Promise((resolve, reject) => {
+    const request = http.request(`${origin}/rpc`, { method: 'POST',
+      headers: { Origin: origin, 'X-Reovim': '1' } }, response => {
+      response.resume(); response.on('end', resolve);
+    });
+    request.on('error', reject);
+    request.write(body.subarray(0, 3));
+    setImmediate(() => request.end(body.subarray(3)));
+  });
+  assert.equal(frames.at(-1), 'v1\t한글\n');
+  for (let index = 0; index < 20; index++) {
+    const controller = new AbortController();
+    const parked = once(backend, 'parked');
+    const waiting = fetch(`${origin}/rpc`, { method: 'POST',
+      headers: { Origin: origin, 'X-Reovim': '1' },
+      body: JSON.stringify(['park']), signal: controller.signal });
+    await parked;
+    controller.abort();
+    await assert.rejects(waiting);
+  }
+  assert.equal(await (await send(['open'])).text(), 'ok\t9007199254740993');
+});
