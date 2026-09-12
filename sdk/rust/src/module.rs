@@ -51,6 +51,7 @@ impl Definition {
             identity: self.identity.view(),
             dependencies: self.dependencies.as_ptr().cast(),
             dependency_count: self.dependencies.len(),
+            references: 0,
         })
     }
 }

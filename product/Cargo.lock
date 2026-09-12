@@ -152,6 +152,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-module-context"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-kernel-interface",
+ "reovim-module",
+]
+
+[[package]]
 name = "reovim-module-counter"
 version = "0.16.0-dev"
 dependencies = [

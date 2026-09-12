@@ -46,6 +46,13 @@ pub(super) unsafe fn from_table(
     let initial_input = unsafe {
         super::resources::slots(table.initial_input, table.initial_input_count)?
     };
+    let references = match table.references {
+        0 => None,
+        bits => Some(
+            reovim_kernel_interface::provider::Permissions::from_bits(bits)
+                .ok_or(Error::INVALID)?,
+        ),
+    };
     let context = unsafe { create(table, kernel, library.clone())? };
     let owner = Rc::new(Instance {
         table: *table,
@@ -67,6 +74,7 @@ pub(super) unsafe fn from_table(
         library,
     );
     provider.initial_input = initial_input;
+    provider.references = references;
     Ok(provider)
 }
 
@@ -167,7 +175,7 @@ fn native<'a>(
 fn adopt(owner: &Rc<Instance>, mut reply: abi::Reply) -> Result<State, Error> {
     let result = if reply.error != 0 {
         Err(Error::new(reply.error))
-    } else if reply.state.is_null() {
+    } else if reply.state.is_null() || reply.resource_count != 0 {
         Err(Error::PROVIDER)
     } else {
         let value =
@@ -214,7 +222,21 @@ fn observe_result(
     }
     let data = unsafe { bytes(reply.data)? };
     let contract: Contract = unsafe { contract(owner.table.read_contract)? };
-    Ok(Message::new(contract, data))
+    let mut message = Message::new(contract, data);
+    if reply.resource_count != 0 {
+        if reply.resources.is_null() || reply.resource_count > 256 {
+            return Err(Error::PROVIDER);
+        }
+        let ids = unsafe {
+            core::slice::from_raw_parts(reply.resources, reply.resource_count)
+        };
+        message.resources = ids
+            .iter()
+            .copied()
+            .map(reovim_kernel_interface::ResourceId)
+            .collect();
+    }
+    Ok(message)
 }
 
 fn inspect(

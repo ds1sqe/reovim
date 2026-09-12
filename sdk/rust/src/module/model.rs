@@ -15,6 +15,7 @@ pub struct ModelDefinition {
     pub initial: Identity,
     /// Borrowed Resource slots; capture access before retaining it in State.
     pub initial_input: &'static [Permissions],
+    pub references: Option<Permissions>,
     pub edit: Identity,
     pub read: Identity,
     pub initialize: fn(Message) -> Result<State, Error>,
@@ -65,6 +66,10 @@ impl ModelDefinition {
             identity: self.identity.view(),
             dependencies: self.dependencies.as_ptr().cast(),
             dependency_count: self.dependencies.len(),
+            references: match self.references {
+                Some(rights) => rights.bits(),
+                None => 0,
+            },
         })
     }
 }
@@ -115,7 +120,7 @@ unsafe extern "C" fn prepare(
     let state = unsafe { &*state.cast::<State>() };
     let input = unsafe { crate::decode_request(&*input) };
     candidate(input.and_then(|input| {
-        validate(&definition.edit, &input)?;
+        validate_value(&definition.edit, &input, definition.references)?;
         (definition.prepare)(state, input)
     }))
 }
@@ -132,7 +137,7 @@ unsafe extern "C" fn observe(
             validate(&definition.read, &input)?;
             (definition.observe)(state, input)
         }),
-        &definition.read,
+        definition,
     )
 }
 
@@ -164,7 +169,7 @@ unsafe extern "C" fn prepare_async(
     let input = unsafe { crate::decode_request(&*input) };
     crate::export_state_reply(Box::pin(async move {
         let input = input?;
-        validate(&definition.edit, &input)?;
+        validate_value(&definition.edit, &input, definition.references)?;
         match definition.prepare_async {
             Some(prepare) => prepare(state, input).await,
             None => (definition.prepare)(&state, input),
@@ -187,7 +192,8 @@ unsafe extern "C" fn inspect(
             Some(inspect) => inspect(state, input).await?,
             None => (definition.observe)(&state, input)?,
         };
-        validate(&definition.read, &output).map_err(|_| Error::PROVIDER)?;
+        validate_value(&definition.read, &output, definition.references)
+            .map_err(|_| Error::PROVIDER)?;
         Ok(output)
     }))
 }
@@ -198,20 +204,23 @@ fn candidate(result: Result<State, Error>) -> abi::Reply {
             data: empty(),
             state_bytes: state.cost,
             state: Box::into_raw(Box::new(state)).cast(),
+            resources: ptr::null(),
+            resource_count: 0,
         },
         Err(error) => failure(error),
     }
 }
 fn observation(
     result: Result<Message, Error>,
-    contract: &Identity,
+    definition: &ModelDefinition,
 ) -> abi::Reply {
     let message = match result {
         Ok(message) => message,
         Err(error) => return failure(error),
     };
-    // The synchronous C Model profile carries finite observation bytes.
-    if !contract.matches(&message.contract) || !message.resources.is_empty() {
+    if validate_value(&definition.read, &message, definition.references)
+        .is_err()
+    {
         return failure(Error::PROVIDER);
     }
     let len = message.data.len();
@@ -221,6 +230,8 @@ fn observation(
         data: abi::Bytes { data: pointer, len },
         state: ptr::null_mut(),
         state_bytes: 0,
+        resource_count: message.resources.len(),
+        resources: Box::into_raw(message.resources).cast(),
     }
 }
 const fn failure(error: Error) -> abi::Reply {
@@ -229,16 +240,25 @@ const fn failure(error: Error) -> abi::Reply {
         data: empty(),
         state: ptr::null_mut(),
         state_bytes: 0,
+        resources: ptr::null(),
+        resource_count: 0,
     }
 }
 const fn empty() -> abi::Bytes {
     abi::Bytes { data: ptr::null(), len: 0 }
 }
 fn validate(contract: &Identity, input: &Message) -> Result<(), Error> {
+    validate_value(contract, input, None)
+}
+fn validate_value(
+    contract: &Identity,
+    input: &Message,
+    references: Option<Permissions>,
+) -> Result<(), Error> {
     if !contract.matches(&input.contract) {
         return Err(Error::UNSUPPORTED);
     }
-    if !input.resources.is_empty() {
+    if references.is_none() && !input.resources.is_empty() {
         return Err(Error::INVALID);
     }
     Ok(())
@@ -250,13 +270,24 @@ fn validate_initial(
     if !definition.initial.matches(&input.contract) {
         return Err(Error::UNSUPPORTED);
     }
-    if input.resources.len() != definition.initial_input.len() {
+    if definition.references.is_none()
+        && input.resources.len() != definition.initial_input.len()
+    {
         return Err(Error::INVALID);
     }
     Ok(())
 }
 unsafe extern "C" fn release(_: *mut c_void, reply: *mut abi::Reply) {
     let reply = unsafe { &mut *reply };
+    if !reply.resources.is_null() {
+        let resources = ptr::slice_from_raw_parts_mut(
+            reply.resources.cast_mut(),
+            reply.resource_count,
+        );
+        drop(unsafe { Box::from_raw(resources) });
+        reply.resources = ptr::null();
+        reply.resource_count = 0;
+    }
     if !reply.data.data.is_null() {
         let bytes = ptr::slice_from_raw_parts_mut(
             reply.data.data.cast_mut(),

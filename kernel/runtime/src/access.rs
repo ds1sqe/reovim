@@ -541,12 +541,11 @@ fn translate_input(
 ) -> Result<(), Error> {
     if let Kind::Model(model) = target {
         let model = model.borrow();
-        let slots = if input.contract == model.create {
-            &*model.initial_input
-        } else {
-            &[]
-        };
-        return translate_slots(shared, scope, slots, input);
+        let slots = model.references.map_or_else(
+            || model.initial_input.to_vec(),
+            |rights| alloc::vec![rights; input.resources.len()],
+        );
+        return translate_slots(shared, scope, &slots, input);
     }
     if matches!(target, Kind::ClosedBuffer { .. }) {
         if input.resources.len() != 1 {

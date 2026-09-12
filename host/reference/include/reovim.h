@@ -37,6 +37,8 @@ struct rv_reply {
     struct rv_bytes data;
     void *state;
     uint64_t state_bytes;
+    const uint64_t *resources;
+    size_t resource_count;
 };
 struct rv_module {
     struct rv_version version;
@@ -68,12 +70,13 @@ struct rv_module {
     struct rv_contract identity;
     const struct rv_contract *dependencies;
     size_t dependency_count;
+    uint32_t references;
 };
 
 /* Experimental module ABI 0.1.0. Kind: Resource=1, Model=2.
  * Methods: read=1, write=2.
  * Inputs are borrowed during a call. Copy anything needed afterwards.
- * Output bytes live until release. A successful state transfers to the host:
+ * Output byte/reference views live until release. State transfers to the host:
  * release sees state=NULL; drop_state eventually destroys the transferred state.
  * Resource request and optional Model inspect return owned pending results.
  * Model initialize/prepare/observe settle synchronously. No callback may unwind.

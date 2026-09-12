@@ -15,6 +15,7 @@ macro_rules! rv_module {
             $(requires: [$(($required:literal, $schema:literal)),* $(,)?],)?
             model: {
                 $(initial_input: [$($initial_rights:expr),* $(,)?],)?
+                $(references: $reference_rights:expr,)?
                 initialize ($initial:literal, $initial_version:literal) =>
                     $initialize:path,
                 prepare ($edit:literal, $edit_version:literal) => $prepare:path,
@@ -35,6 +36,9 @@ macro_rules! rv_module {
                     $initial, $initial_version
                 ),
                 initial_input: &[$($($initial_rights),*)?],
+                references: $crate::rv_module!(
+                    @references $($reference_rights)?
+                ),
                 edit: $crate::__private::Identity::new($edit, $edit_version),
                 read: $crate::__private::Identity::new($read, $read_version),
                 initialize: $initialize,
@@ -48,6 +52,8 @@ macro_rules! rv_module {
             };
     };
     (@inspect) => { None };
+    (@references) => { None };
+    (@references $rights:expr) => { Some($rights) };
     (@inspect $inspect:path) => { Some($inspect) };
     (
         $visibility:vis $name:ident {

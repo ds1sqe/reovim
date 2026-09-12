@@ -1,7 +1,7 @@
 //! Retained context through the common immutable model and Resource contracts.
 
 use crate::{Connection, Contract, Error, Message, RequestError, ResourceId};
-use alloc::{boxed::Box, vec::Vec};
+use alloc::vec::Vec;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Observation {
@@ -28,25 +28,28 @@ pub async fn create(
 /// # Errors
 /// Rejects malformed reference slots without guessing a schema.
 pub fn observation(mut reply: Message) -> Result<Observation, Error> {
-    let [session, snapshot] = reply.resources.as_ref() else {
+    let [session, snapshot, ..] = reply.resources.as_ref() else {
         return Err(Error::INVALID);
     };
     let (session, snapshot) = (*session, *snapshot);
-    reply.resources = Box::new([]);
+    reply.resources = reply.resources[2..].into();
     Ok(Observation { session, snapshot, value: reply })
 }
 
 /// Uses a retained snapshot as an opaque update precondition.
 /// # Errors
-/// This initial profile rejects reference-bearing context values.
+/// Semantic reference slots follow the two currentness references unchanged.
 pub fn update(
     observed: &Observation,
     mut proposed: Message,
 ) -> Result<Message, Error> {
-    if !proposed.resources.is_empty() {
-        return Err(Error::UNSUPPORTED);
-    }
-    proposed.resources = Box::new([observed.session, observed.snapshot]);
+    let mut resources = Vec::new();
+    resources
+        .try_reserve(2 + proposed.resources.len())
+        .map_err(|_| Error::PRESSURE)?;
+    resources.extend_from_slice(&[observed.session, observed.snapshot]);
+    resources.extend_from_slice(&proposed.resources);
+    proposed.resources = resources.into();
     Ok(proposed)
 }
 
@@ -98,9 +101,9 @@ pub fn is_create(contract: &Contract) -> bool {
 
 /// Decodes version:u32, name length:u32, UTF-8 name, then model payload.
 /// # Errors
-/// Rejects unsupported wrappers, malformed names and reference-bearing values.
+/// Rejects unsupported wrappers and malformed names; Runtime validates slots.
 pub fn decode_initial(input: &Message) -> Result<Message, Error> {
-    if !is_create(&input.contract) || !input.resources.is_empty() {
+    if !is_create(&input.contract) {
         return Err(Error::INVALID);
     }
     let prefix = input.data.get(..8).ok_or(Error::INVALID)?;
@@ -114,13 +117,14 @@ pub fn decode_initial(input: &Message) -> Result<Message, Error> {
     let name =
         core::str::from_utf8(input.data.get(8..end).ok_or(Error::INVALID)?)
             .map_err(|_| Error::INVALID)?;
-    Ok(Message::new(Contract::new(name, version), &input.data[end..]))
+    Ok(Message {
+        contract: Contract::new(name, version),
+        data: input.data[end..].into(),
+        resources: input.resources.clone(),
+    })
 }
 
 fn encode_initial(initial: &Message) -> Result<Message, Error> {
-    if !initial.resources.is_empty() {
-        return Err(Error::UNSUPPORTED);
-    }
     let length = u32::try_from(initial.contract.name.len())
         .map_err(|_| Error::PRESSURE)?;
     let capacity = 8_usize
@@ -133,5 +137,9 @@ fn encode_initial(initial: &Message) -> Result<Message, Error> {
     data.extend_from_slice(&length.to_le_bytes());
     data.extend_from_slice(initial.contract.name.as_bytes());
     data.extend_from_slice(&initial.data);
-    Ok(Message::new(Contract::new("kernel.session.create", 1), &data))
+    Ok(Message {
+        contract: Contract::new("kernel.session.create", 1),
+        data: data.into(),
+        resources: initial.resources.clone(),
+    })
 }

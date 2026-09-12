@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+    "../modules/context",
     "../modules/text",
     "../modules/source",
     "../modules/example",
@@ -35,6 +36,7 @@ members = [
     "../apps/cli",
 ]
 default-members = [
+    "../modules/context",
     "../modules/text",
     "../modules/source",
     "../modules/example",

@@ -59,7 +59,13 @@ impl Runtime {
             return Err(Error::INVALID);
         }
         if record.method == Method::Read {
-            return Ok(snapshot.value.clone());
+            crate::binding::grant_outputs(
+                &self.shared.borrow(),
+                &mut record.scope.borrow_mut(),
+                &snapshot.value.rights,
+                &snapshot.value.message,
+            )?;
+            return Ok(snapshot.value.message.clone());
         }
         if record.scope.borrow().owner != snapshot.owner {
             return Err(Error::DENIED);

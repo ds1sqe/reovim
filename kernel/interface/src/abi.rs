@@ -53,6 +53,8 @@ pub struct Reply {
     pub data: Bytes,
     pub state: *mut c_void,
     pub state_bytes: u64,
+    pub resources: *const u64,
+    pub resource_count: usize,
 }
 
 pub type Call = unsafe extern "C" fn(*mut c_void, *const Request) -> Reply;
@@ -140,6 +142,8 @@ pub struct Module {
     /// Required catalog contracts, borrowed for the lifetime of this table.
     pub dependencies: *const Contract,
     pub dependency_count: usize,
+    /// Zero: exact inputs. Otherwise uniform Model context reference rights.
+    pub references: u32,
 }
 }
 

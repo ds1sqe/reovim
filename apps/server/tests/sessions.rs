@@ -504,7 +504,20 @@ fn unsupported_context_references_are_rejected_without_discarding_them() {
     let observed = create(&mut runtime, &client, 1);
     let proposed =
         Message::reference(Contract::new("context.set", 1), observed.snapshot);
-    assert_eq!(session::update(&observed, proposed), Err(Error::UNSUPPORTED));
+    let update = session::update(&observed, proposed).unwrap();
+    assert_eq!(
+        update.resources.as_ref(),
+        &[observed.session, observed.snapshot, observed.snapshot]
+    );
+    assert_eq!(
+        run_with(
+            client.write(observed.session, &update),
+            &mut runtime,
+            &Runtime::DRIVER
+        )
+        .unwrap(),
+        Err(RequestError::Rejected(Error::INVALID))
+    );
     let model = client.resolve("schema").into_inner().unwrap();
     let initial = Message::reference(
         Contract::new("context.initial", 1),
@@ -517,7 +530,7 @@ fn unsupported_context_references_are_rejected_without_discarding_them() {
             &Runtime::DRIVER
         )
         .unwrap(),
-        Err(RequestError::Rejected(Error::UNSUPPORTED))
+        Err(RequestError::Rejected(Error::INVALID))
     );
     assert_eq!(
         read(&mut runtime, &client, observed.session).data.as_ref(),

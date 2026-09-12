@@ -1,5 +1,6 @@
 mod access;
 mod close;
+mod references;
 mod update;
 pub use access::{closing, read_contract, surface};
 pub use update::capture_snapshot;
@@ -9,7 +10,7 @@ use crate::{
     namespace::{Entry, Kind},
     request::Record,
 };
-use alloc::{boxed::Box, format, rc::Rc};
+use alloc::{format, rc::Rc};
 use core::cell::RefCell;
 use reovim_kernel_interface::{
     Error, Message, ResourceId,
@@ -18,7 +19,8 @@ use reovim_kernel_interface::{
 };
 
 pub struct Session {
-    model: Rc<RefCell<ModelProvider>>,
+    pub(crate) model: Rc<RefCell<ModelProvider>>,
+    receiver: Option<Rc<RefCell<crate::namespace::Scope>>>,
     state: State,
     revision: u64,
     pub(crate) owner: u64,
@@ -28,7 +30,7 @@ pub struct Snapshot {
     session: ResourceId,
     revision: u64,
     pub(crate) owner: u64,
-    value: Message,
+    value: references::Value,
 }
 
 impl Runtime {
@@ -40,6 +42,14 @@ impl Runtime {
     ) -> Result<Message, Error> {
         let limits = self.shared.borrow().limits;
         let value = observe(&model, &state, limits)?;
+        let receiver = record.borrow().receiver.clone();
+        let value = references::capture(
+            &self.shared.borrow(),
+            receiver.as_ref(),
+            &model.borrow(),
+            value,
+        )?;
+        references::set_output(record, &value)?;
         let record = record.borrow();
         if record.cancelled {
             return Err(Error::CANCELLED);
@@ -48,9 +58,19 @@ impl Runtime {
         let mut scope = record.scope.borrow_mut();
         let parent =
             crate::binding::state_container(&shared, &scope, "sessions", 2)?;
-        scope.grants.try_reserve(2).map_err(|_| Error::PRESSURE)?;
+        scope
+            .grants
+            .try_reserve(2 + value.rights.len())
+            .map_err(|_| Error::PRESSURE)?;
+        crate::binding::grant_outputs(
+            &shared,
+            &mut scope,
+            &value.rights,
+            &value.message,
+        )?;
         let session = Rc::new(RefCell::new(Session {
             model,
+            receiver,
             state,
             revision: 1,
             owner: scope.owner,
@@ -65,6 +85,7 @@ impl Runtime {
         );
         let index = shared.entry_index(id).expect("new Session");
         shared.entries[index].activation.clone_from(&record.activation);
+        shared.entries[index].receiver.clone_from(&record.receiver);
         scope.grants.push((id, Permissions::ALL));
         Ok(snapshot(&mut shared, &mut scope, ResourceId(id), 1, value))
     }
@@ -77,12 +98,24 @@ impl Runtime {
         if !record.borrow().input.data.is_empty() {
             return Err(Error::INVALID);
         }
-        let (model, state, revision) = {
+        let (model, state, revision, receiver) = {
             let session = session.borrow();
-            (Rc::clone(&session.model), session.state.clone(), session.revision)
+            (
+                Rc::clone(&session.model),
+                session.state.clone(),
+                session.revision,
+                session.receiver.clone(),
+            )
         };
         let limits = self.shared.borrow().limits;
         let value = observe(&model, &state, limits)?;
+        let value = references::capture(
+            &self.shared.borrow(),
+            receiver.as_ref(),
+            &model.borrow(),
+            value,
+        )?;
+        references::set_output(record, &value)?;
         let record = record.borrow();
         if record.cancelled {
             return Err(Error::CANCELLED);
@@ -90,7 +123,16 @@ impl Runtime {
         let mut shared = self.shared.borrow_mut();
         reserve_snapshot(&shared)?;
         let mut scope = record.scope.borrow_mut();
-        scope.grants.try_reserve(1).map_err(|_| Error::PRESSURE)?;
+        scope
+            .grants
+            .try_reserve(1 + value.rights.len())
+            .map_err(|_| Error::PRESSURE)?;
+        crate::binding::grant_outputs(
+            &shared,
+            &mut scope,
+            &value.rights,
+            &value.message,
+        )?;
         Ok(snapshot(
             &mut shared,
             &mut scope,
@@ -111,7 +153,6 @@ fn observe(
     }
     let value = model.borrow_mut().observe(state)?;
     if value.contract != model.borrow().read
-        || !value.resources.is_empty()
         || value.data.len() > limits.message_bytes
     {
         return Err(Error::PROVIDER);
@@ -133,10 +174,14 @@ fn snapshot(
     scope: &mut crate::namespace::Scope,
     session: ResourceId,
     revision: u64,
-    value: Message,
+    value: references::Value,
 ) -> Message {
     let key = shared.ids.take().expect("snapshot identity reserved");
-    let mut reply = value.clone();
+    let mut reply = value.message.clone();
+    reply.resources = [session, ResourceId(key)]
+        .into_iter()
+        .chain(reply.resources.iter().copied())
+        .collect();
     let snapshot = Snapshot { session, revision, owner: scope.owner, value };
     shared.entries.push(Entry {
         receiver: None,
@@ -149,6 +194,5 @@ fn snapshot(
         activation: None,
     });
     scope.grants.push((key, Permissions::ALL));
-    reply.resources = Box::new([session, ResourceId(key)]);
     reply
 }

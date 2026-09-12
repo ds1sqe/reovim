@@ -352,11 +352,16 @@ fn input_rights(
 ) -> Result<Vec<Permissions>, Error> {
     if let crate::namespace::Kind::Model(model) = &record.target {
         let model = model.borrow();
-        return Ok(if record.input.contract == model.create {
-            model.initial_input.to_vec()
-        } else {
-            Vec::new()
-        });
+        return Ok(model.references.map_or_else(
+            || model.initial_input.to_vec(),
+            |rights| alloc::vec![rights; record.input.resources.len()],
+        ));
+    }
+    if let crate::namespace::Kind::Session(session) = &record.target {
+        let mode = session.borrow().model.borrow().references;
+        return Ok(mode.map_or_else(Vec::new, |rights| {
+            alloc::vec![rights; record.input.resources.len().saturating_sub(2)]
+        }));
     }
     if forwarding(record) {
         let scope = record.scope.borrow();
@@ -423,8 +428,13 @@ pub fn returned(
     record: &Record,
     message: &mut Message,
 ) -> Result<(), Error> {
-    // Model creation replies contain Runtime-owned Buffer/History identities.
-    if matches!(record.target, crate::namespace::Kind::Model(_)) {
+    // Runtime has already translated and granted state/context result slots.
+    if matches!(
+        record.target,
+        crate::namespace::Kind::Model(_)
+            | crate::namespace::Kind::Session(_)
+            | crate::namespace::Kind::Snapshot(_)
+    ) {
         return Ok(());
     }
     let Some(receiver) = &record.receiver else { return Ok(()) };

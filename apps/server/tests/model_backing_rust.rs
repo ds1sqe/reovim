@@ -18,6 +18,7 @@ static MODEL: ModelDefinition = ModelDefinition {
     dependencies: &[],
     initial: Identity::new("rust.initial", 1),
     initial_input: &[Permissions::READ],
+    references: None,
     edit: Identity::new("rust.edit", 1),
     read: Identity::new("rust.value", 1),
     initialize: |_| Err(Error::UNSUPPORTED),

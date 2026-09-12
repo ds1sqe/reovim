@@ -1,0 +1,21 @@
+[package]
+name = "reovim-module-context"
+workspace = "../../product"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies.reovim-kernel-interface]
+path = "../../kernel/interface"
+
+[dependencies.reovim-module]
+path = "../../lib/module"
+
+[lints]
+workspace = true
+
+[[example]]
+name = "context"
+crate-type = ["cdylib"]

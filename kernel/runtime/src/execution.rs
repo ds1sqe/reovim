@@ -174,7 +174,7 @@ impl Runtime {
                 Step::Finished(self.close_session(record))
             }
             Kind::Session(session) if method == Method::Write => {
-                match Self::prepare_session(record, &session) {
+                match self.prepare_session(record, &session) {
                     Ok(future) => Step::Pending(Work::Model(future)),
                     Err(error) => Step::Finished(Err(error)),
                 }

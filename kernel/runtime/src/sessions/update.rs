@@ -4,7 +4,7 @@ use crate::{
     namespace::{Kind, Scope},
     request::Record,
 };
-use alloc::{boxed::Box, rc::Rc};
+use alloc::rc::Rc;
 use core::cell::RefCell;
 use reovim_kernel_interface::{
     Error, Message, ResourceId,
@@ -27,7 +27,7 @@ pub fn capture_snapshot(
     {
         return Ok(None);
     }
-    let [session, snapshot] = input.resources.as_ref() else {
+    let [session, snapshot, ..] = input.resources.as_ref() else {
         return Err(Error::INVALID);
     };
     if scope.key(*session)? != subject {
@@ -48,12 +48,26 @@ pub fn capture_snapshot(
     if snapshot.session.0 != subject {
         return Err(Error::STALE);
     }
-    input.resources = Box::new([ResourceId(subject), ResourceId(key)]);
+    let rights = match target {
+        Kind::Session(session) => session.borrow().model.borrow().references,
+        _ => None,
+    };
+    let mut resources = alloc::vec![ResourceId(subject), ResourceId(key)];
+    for id in &input.resources[2..] {
+        let rights = rights.ok_or(Error::INVALID)?;
+        let key = scope.key(*id)?;
+        if !scope.permissions(shared, key).is_some_and(|p| p.contains(rights)) {
+            return Err(Error::DENIED);
+        }
+        resources.push(ResourceId(key));
+    }
+    input.resources = resources.into();
     Ok(Some(Rc::clone(snapshot)))
 }
 
 impl Runtime {
     pub(crate) fn prepare_session(
+        &self,
         record: &Rc<RefCell<Record>>,
         session: &Rc<RefCell<Session>>,
     ) -> Result<StateReply, Error> {
@@ -63,7 +77,15 @@ impl Runtime {
             current(&record.borrow(), &session)?;
             (Rc::clone(&session.model), session.state.clone())
         };
-        input.resources = Box::new([]);
+        input.resources = input.resources[2..].into();
+        if !input.resources.is_empty() && record.borrow().receiver.is_none() {
+            return Err(Error::INVALID);
+        }
+        let (_, input) = crate::binding::receive(
+            &mut self.shared.borrow_mut(),
+            &record.borrow(),
+            input,
+        )?;
         Ok(model.borrow_mut().prepare(&state, input))
     }
 
@@ -77,6 +99,14 @@ impl Runtime {
         candidate.retain(model.clone());
         let limits = self.shared.borrow().limits;
         let value = super::observe(&model, &candidate, limits)?;
+        let receiver = session.borrow().receiver.clone();
+        let value = super::references::capture(
+            &self.shared.borrow(),
+            receiver.as_ref(),
+            &model.borrow(),
+            value,
+        )?;
+        super::references::set_output(record, &value)?;
         let record = record.borrow();
         if record.cancelled {
             return Err(Error::CANCELLED);
@@ -88,7 +118,16 @@ impl Runtime {
         let mut shared = self.shared.borrow_mut();
         super::reserve_snapshot(&shared)?;
         let mut scope = record.scope.borrow_mut();
-        scope.grants.try_reserve(1).map_err(|_| Error::PRESSURE)?;
+        scope
+            .grants
+            .try_reserve(1 + value.rights.len())
+            .map_err(|_| Error::PRESSURE)?;
+        crate::binding::grant_outputs(
+            &shared,
+            &mut scope,
+            &value.rights,
+            &value.message,
+        )?;
         let reply = super::snapshot(
             &mut shared,
             &mut scope,

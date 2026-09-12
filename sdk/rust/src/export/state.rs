@@ -60,6 +60,8 @@ unsafe extern "C" fn take(context: *mut c_void) -> abi::Reply {
         data: abi::Bytes { data: ptr::null(), len: 0 },
         state: ptr::null_mut(),
         state_bytes: 0,
+        resources: ptr::null(),
+        resource_count: 0,
     };
     match value.result.take() {
         Some(Ok(state)) => {

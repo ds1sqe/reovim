@@ -227,14 +227,16 @@ fn call(
     let mut reply = unsafe {
         (state.table.call.unwrap())(state.context, &raw const request)
     };
-    let result = if reply.error == 0 {
+    let result = if reply.error != 0 {
+        Err(Error::new(reply.error))
+    } else if reply.resource_count != 0 || !reply.state.is_null() {
+        Err(Error::PROVIDER)
+    } else {
         unsafe { bytes(reply.data) }.map(|data| Message {
             contract: input.contract,
             data: data.into(),
             resources: Box::new([]),
         })
-    } else {
-        Err(Error::new(reply.error))
     };
     unsafe {
         (state.table.release.unwrap())(state.context, &raw mut reply);

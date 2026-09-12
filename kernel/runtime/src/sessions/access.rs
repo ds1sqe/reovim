@@ -34,9 +34,9 @@ pub fn surface(
         }
         Kind::Snapshot(snapshot)
             if method == Method::Read
-                && input.contract == snapshot.value.contract =>
+                && input.contract == snapshot.value.message.contract =>
         {
-            Ok(Box::new([]))
+            Ok(snapshot.value.rights.clone())
         }
         Kind::Snapshot(_)
             if method == Method::Write
