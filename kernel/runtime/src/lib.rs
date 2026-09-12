@@ -31,6 +31,7 @@ use alloc::{
 use core::{cell::RefCell, task::Context};
 mod sequence;
 mod sessions;
+mod snapshots;
 mod teardown;
 use reovim_kernel_interface::buffer::ModelProvider;
 use reovim_kernel_interface::provider::{Permissions, ResourceProvider};

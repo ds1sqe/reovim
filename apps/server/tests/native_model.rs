@@ -3,7 +3,7 @@
 use reovim_host_reference::{native::load_model, run};
 use reovim_kernel_interface::{
     Contract, Error, Message,
-    buffer::{edit, observation},
+    buffer::{edit, observation, retain, retained},
     provider::Permissions,
 };
 use reovim_kernel_runtime::{Limits, Runtime};
@@ -39,6 +39,12 @@ fn native_nontext_model_edits_and_undoes_through_the_same_authority() {
     let keys = reovim_domain_basic::decode_keys(&initial.value.data).unwrap();
     assert_eq!(keys.0.get(&17), Some(&true));
     assert_eq!(keys.0.get(&9001), Some(&false));
+    let snapshot = retained(
+        &finish(&mut runtime, retain(&client, initial.state)).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(snapshot.state, initial.state);
+    assert_eq!(snapshot.node, initial.node);
     let request = edit(
         initial.state,
         Message::new(
@@ -53,6 +59,14 @@ fn native_nontext_model_edits_and_undoes_through_the_same_authority() {
     let keys = reovim_domain_basic::decode_keys(&changed.value.data).unwrap();
     assert_eq!(keys.0.get(&17), Some(&true));
     assert_eq!(keys.0.get(&9001), Some(&true));
+    let selected = Message::new(Contract::new("native.keys", 1), &[1]);
+    let old =
+        finish(&mut runtime, client.read(snapshot.id, &selected)).unwrap();
+    assert_eq!(old.data.as_ref(), &[0]);
+    assert_eq!(
+        finish(&mut runtime, retain(&client, initial.state)),
+        Err(reovim_kernel_interface::RequestError::Failed(Error::STALE))
+    );
     assert_eq!(runtime.unregister(id), Err(Error::BUSY));
     let undo = edit(
         changed.state,
@@ -80,8 +94,25 @@ fn native_nontext_model_edits_and_undoes_through_the_same_authority() {
         ),
     )
     .unwrap();
+    // Shared close leaves the independently owned state and native code alive.
+    assert_eq!(runtime.unregister(id), Err(Error::BUSY));
+    let old =
+        finish(&mut runtime, client.read(snapshot.id, &selected)).unwrap();
+    assert_eq!(old.data.as_ref(), &[0]);
+    client.close(snapshot.id).into_inner().unwrap();
+    client.close(snapshot.id).into_inner().unwrap();
+    assert_eq!(
+        finish(&mut runtime, client.read(snapshot.id, &selected)),
+        Err(reovim_kernel_interface::RequestError::Rejected(Error::CLOSED))
+    );
     // C destroy asserts states died before context release; Runtime stays live.
     runtime.unregister(id).unwrap();
+    still_live(&mut runtime);
+    runtime.close().unwrap();
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+fn still_live(runtime: &mut Runtime) {
     let fresh = runtime
         .register("still-live", reovim_resource_local::memory(b"alive"))
         .map_err(|(error, _)| error)
@@ -89,7 +120,7 @@ fn native_nontext_model_edits_and_undoes_through_the_same_authority() {
     let reader = runtime.connect(&[(fresh, Permissions::READ)]).unwrap();
     let resource = reader.resolve("still-live").into_inner().unwrap();
     let value = finish(
-        &mut runtime,
+        runtime,
         reader.read(
             resource,
             &Message::new(Contract::new("resource.bytes", 1), &[]),
@@ -97,8 +128,6 @@ fn native_nontext_model_edits_and_undoes_through_the_same_authority() {
     )
     .unwrap();
     assert_eq!(value.data.as_ref(), b"alive");
-    runtime.close().unwrap();
-    std::fs::remove_dir_all(directory).unwrap();
 }
 
 fn build_model() -> (std::path::PathBuf, std::path::PathBuf) {

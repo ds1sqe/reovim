@@ -139,11 +139,23 @@ fn adopt(owner: &Rc<Instance>, mut reply: abi::Reply) -> Result<State, Error> {
     }
     result
 }
-fn observe(owner: &mut Rc<Instance>, state: &State) -> Result<Message, Error> {
+fn observe(
+    owner: &mut Rc<Instance>,
+    state: &State,
+    input: Message,
+) -> Result<Message, Error> {
     let state = native(owner, state)?;
-    let mut reply =
-        unsafe { (owner.table.observe.unwrap())(owner.context, state.pointer) };
+    let mut request = request(&input);
+    request.method = abi::READ;
+    let mut reply = unsafe {
+        (owner.table.observe.unwrap())(
+            owner.context,
+            state.pointer,
+            &raw const request,
+        )
+    };
     let result = observe_result(owner, &reply);
+    drop(input); // Native input views expired when the callback returned.
     unsafe {
         (owner.table.release.unwrap())(owner.context, &raw mut reply);
     }

@@ -22,7 +22,7 @@ fn model(read: Contract) -> ModelProvider {
             unload: None,
             initialize: |_, _| Box::pin(ready(Ok(State::new(7_u8, 1)))),
             prepare: |_, state, _| Box::pin(ready(Ok(state.clone()))),
-            observe: |read, state| {
+            observe: |read, state, _| {
                 let value = *state.get::<u8>().unwrap();
                 Ok(Message::new(read.clone(), &[value]))
             },

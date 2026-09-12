@@ -5,6 +5,9 @@ use core::{any::Any, future::Future, pin::Pin};
 
 use crate::{Contract, Error, Message, ResourceId};
 
+mod snapshot;
+pub use snapshot::{RetainedState, retain, retained};
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BufferState {
     pub buffer: ResourceId,
@@ -53,14 +56,20 @@ pub struct ModelOps<Context> {
     pub unload: Option<crate::provider::Unload<Context>>,
     pub initialize: fn(&mut Context, Message) -> StateReply,
     pub prepare: fn(&mut Context, &State, Message) -> StateReply,
-    pub observe: fn(&mut Context, &State) -> Result<Message, Error>,
+    /// Empty input requests the finite descriptor used in acceptance replies.
+    /// Other payloads describe model-owned reads of the same immutable state.
+    pub observe: fn(&mut Context, &State, Message) -> Result<Message, Error>,
 }
 
 trait Dispatch {
     fn unload(&mut self) -> Result<(), Error>;
     fn initialize(&mut self, input: Message) -> StateReply;
     fn prepare(&mut self, state: &State, input: Message) -> StateReply;
-    fn observe(&mut self, state: &State) -> Result<Message, Error>;
+    fn observe(
+        &mut self,
+        state: &State,
+        input: Message,
+    ) -> Result<Message, Error>;
 }
 
 struct Implementation<Context> {
@@ -82,8 +91,12 @@ impl<Context> Dispatch for Implementation<Context> {
         (self.operations.prepare)(&mut self.context, state, input)
     }
 
-    fn observe(&mut self, state: &State) -> Result<Message, Error> {
-        (self.operations.observe)(&mut self.context, state)
+    fn observe(
+        &mut self,
+        state: &State,
+        input: Message,
+    ) -> Result<Message, Error> {
+        (self.operations.observe)(&mut self.context, state, input)
     }
 }
 
@@ -132,7 +145,21 @@ impl ModelProvider {
     /// # Errors
     /// Reports unsupported state or failed semantic interpretation.
     pub fn observe(&mut self, state: &State) -> Result<Message, Error> {
-        self.implementation.observe(state)
+        self.inspect(state, Message::new(self.read.clone(), &[]))
+    }
+
+    /// Reads exact immutable state using a model-defined payload.
+    /// # Errors
+    /// Rejects foreign contracts/references or unsupported model requests.
+    pub fn inspect(
+        &mut self,
+        state: &State,
+        input: Message,
+    ) -> Result<Message, Error> {
+        if input.contract != self.read || !input.resources.is_empty() {
+            return Err(Error::INVALID);
+        }
+        self.implementation.observe(state, input)
     }
 }
 

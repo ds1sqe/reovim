@@ -181,6 +181,12 @@ impl Runtime {
             {
                 Step::Finished(self.close_buffer(record))
             }
+            Kind::Buffer(buffer)
+                if method == Method::Read
+                    && crate::snapshots::contract(&input.contract) =>
+            {
+                Step::Finished(self.retain_state(record, &buffer))
+            }
             Kind::Buffer(buffer) => begin_buffer(&buffer, method, input),
             Kind::History(buffer) => Step::Finished(history(&buffer, &input)),
             _ => Step::Finished(Err(Error::UNSUPPORTED)),
@@ -432,6 +438,12 @@ impl Runtime {
             }
             Kind::Session(session) => {
                 result.contract == crate::sessions::read_contract(session)
+            }
+            Kind::Buffer(_)
+                if record.method == Method::Read
+                    && crate::snapshots::contract(&record.input.contract) =>
+            {
+                result.contract == record.input.contract
             }
             Kind::Buffer(_)
                 if record.method == Method::Write

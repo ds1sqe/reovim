@@ -47,7 +47,7 @@ struct rv_module {
     struct rv_reply (*call)(void *, const struct rv_request *);
     struct rv_reply (*initialize)(void *, const struct rv_request *);
     struct rv_reply (*prepare)(void *, const void *, const struct rv_request *);
-    struct rv_reply (*observe)(void *, const void *);
+    struct rv_reply (*observe)(void *, const void *, const struct rv_request *);
     void (*release)(void *, struct rv_reply *);
     void (*drop_state)(void *, void *);
     uint64_t (*unload)(void *);
@@ -67,6 +67,9 @@ struct rv_module {
  * release sees state=NULL; drop_state eventually destroys the transferred state.
  * Resource request returns an owned pending result; model callbacks settle
  * synchronously. No callback may unwind across the boundary.
+ * Model observe receives read_contract with no resource slots. Empty data
+ * requests the finite acceptance descriptor; other data is model-defined.
+ * Each read uses the exact immutable state, including retained older states.
  * Unload happens only after contexts, calls, results and states have drained.
  */
 /* create receives optional borrowed caller access: retain before storing.

@@ -47,9 +47,16 @@ static struct rv_reply prepare(void *context, const void *old,
     else return (struct rv_reply){ .error = 3 };
     return allocate(context, next);
 }
-static struct rv_reply observe(void *pointer, const void *value) {
+static struct rv_reply observe(void *pointer, const void *value,
+                               const struct rv_request *request) {
     Context *context = pointer;
     const State *state = value;
+    if (request->data.len) {
+        if (request->data.len != 1 || request->data.data[0] > 1)
+            return (struct rv_reply){ .error = 3 };
+        context->result[0] = request->data.data[0] ? state->second : state->first;
+        return (struct rv_reply){ .data = { context->result, 1 } };
+    }
     memset(context->result, 0, sizeof(context->result));
     context->result[0] = 17;
     context->result[8] = state->first;

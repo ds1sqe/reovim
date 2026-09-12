@@ -23,7 +23,7 @@ pub fn heading() -> ModelProvider {
             prepare: |(), state, input| {
                 Box::pin(core::future::ready(heading_edit(state, input)))
             },
-            observe: |(), state| heading_read(state),
+            observe: |(), state, input| heading_read(state, input),
         },
         Contract::new("heading.initial", 1),
         Contract::new("heading.source", 1),
@@ -80,7 +80,11 @@ pub fn heading_edit(state: &State, input: Message) -> Result<State, Error> {
 /// Observes the preserved source bytes of immutable heading state.
 /// # Errors
 /// Rejects state belonging to another model.
-pub fn heading_read(state: &State) -> Result<Message, Error> {
+pub fn heading_read(state: &State, input: Message) -> Result<Message, Error> {
+    if !input.data.is_empty() {
+        return Err(Error::INVALID);
+    }
+    drop(input);
     let bytes = state.get::<Bytes>().ok_or(Error::UNSUPPORTED)?;
     Ok(Message::new(Contract::new("heading.source", 1), &bytes.0))
 }
@@ -108,7 +112,15 @@ fn keys_edit(_: &mut (), state: &State, input: Message) -> StateReply {
     Box::pin(core::future::ready(result))
 }
 
-fn keys_read(_: &mut (), state: &State) -> Result<Message, Error> {
+fn keys_read(
+    _: &mut (),
+    state: &State,
+    input: Message,
+) -> Result<Message, Error> {
+    if !input.data.is_empty() {
+        return Err(Error::INVALID);
+    }
+    drop(input);
     let values = state.get::<Keys>().ok_or(Error::UNSUPPORTED)?;
     Ok(Message::new(
         Contract::new("keys.values", 1),

@@ -40,6 +40,7 @@ pub fn model(provider: &ModelProvider, limits: Limits) -> Result<(), Error> {
     if crate::closing::contract(&provider.edit)
         || crate::sessions::closing(&provider.edit)
         || reovim_kernel_interface::session::is_create(&provider.create)
+        || crate::snapshots::contract(&provider.read)
     {
         return Err(Error::INVALID);
     }

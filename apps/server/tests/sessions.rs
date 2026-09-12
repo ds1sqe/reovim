@@ -28,7 +28,7 @@ fn model(released: Rc<Cell<bool>>) -> ModelProvider {
             unload: None,
             initialize: |(), input| value(&input),
             prepare: |(), _, input| value(&input),
-            observe: |(), state| {
+            observe: |(), state, _| {
                 let number = state.get::<u8>().ok_or(Error::INVALID)?;
                 Ok(Message::new(Contract::new("context.value", 1), &[*number]))
             },

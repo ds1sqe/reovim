@@ -1,6 +1,13 @@
 # Native keyed-state model
 
 An independent C State Model using module ABI 0.1.0 and immutable native states.
+
+The read contract accepts empty data for both keyed values, or one byte
+(`0` or `1`) for the corresponding Boolean value. A `kernel.buffer.retain`
+read creates an independently owned access to the exact requested revision;
+the same model read payload works after edits or shared Buffer close. Closing
+that access releases its retained state and permits native unload once other
+owners drain.
 It defines boolean values at semantic keys 17 and 9001; keys are not offsets.
 
 ```sh

@@ -58,7 +58,8 @@ pub struct Reply {
 pub type Call = unsafe extern "C" fn(*mut c_void, *const Request) -> Reply;
 pub type Prepare =
     unsafe extern "C" fn(*mut c_void, *const c_void, *const Request) -> Reply;
-pub type Observe = unsafe extern "C" fn(*mut c_void, *const c_void) -> Reply;
+pub type Observe =
+    unsafe extern "C" fn(*mut c_void, *const c_void, *const Request) -> Reply;
 
 reovim_vtable::rv_vtable! {
     /// A loaded module returns this immutable table via `rv_module_entry`.

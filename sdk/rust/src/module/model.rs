@@ -13,7 +13,7 @@ pub struct ModelDefinition {
     pub read: Identity,
     pub initialize: fn(Message) -> Result<State, Error>,
     pub prepare: fn(&State, Message) -> Result<State, Error>,
-    pub observe: fn(&State) -> Result<Message, Error>,
+    pub observe: fn(&State, Message) -> Result<Message, Error>,
 }
 
 impl ModelDefinition {
@@ -84,10 +84,18 @@ unsafe extern "C" fn prepare(
 unsafe extern "C" fn observe(
     context: *mut c_void,
     state: *const c_void,
+    input: *const abi::Request,
 ) -> abi::Reply {
     let definition = unsafe { &*context.cast::<ModelDefinition>() };
     let state = unsafe { &*state.cast::<State>() };
-    observation((definition.observe)(state), &definition.read)
+    let input = unsafe { crate::decode_request(&*input) };
+    observation(
+        input.and_then(|input| {
+            validate(&definition.read, &input)?;
+            (definition.observe)(state, input)
+        }),
+        &definition.read,
+    )
 }
 fn candidate(result: Result<State, Error>) -> abi::Reply {
     match result {
