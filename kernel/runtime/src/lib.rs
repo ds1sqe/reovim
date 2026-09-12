@@ -29,6 +29,7 @@ use alloc::{
     vec::Vec,
 };
 use core::{cell::RefCell, task::Context};
+mod describe;
 mod sequence;
 mod sessions;
 mod snapshots;

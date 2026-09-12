@@ -5,7 +5,9 @@ use core::{any::Any, future::Future, pin::Pin};
 
 use crate::{Contract, Error, Message, ResourceId};
 
+mod descriptor;
 mod snapshot;
+pub use descriptor::{BufferDescriptor, describe, descriptor};
 pub use snapshot::{RetainedState, retain, retained};
 mod watch;
 pub use watch::{

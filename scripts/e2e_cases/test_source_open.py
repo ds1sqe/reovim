@@ -60,6 +60,9 @@ class SourceOpen(Scenario):
         opened = self.call("write", "native/source", "source.open", "1", "",
                            "modules/snapshots/input")
         buffer, history = opened.resources
+        metadata = self.call("read", buffer, "kernel.buffer.describe", "1")
+        self.assertEqual(metadata.resources, (buffer, history))
+        self.assertEqual(metadata.data, u64(0))
         self.assertEqual(opened.data[16:], u64(self.length))
         self.call("read", "modules/snapshots/input", "resource.snapshot", "1",
                   (u64(0) + u64(32769)).hex(), success=False)

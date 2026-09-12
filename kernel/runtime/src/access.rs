@@ -483,6 +483,12 @@ fn validate_contract(
             Ok(Box::new([]))
         }
         Kind::Buffer(buffer) => buffer_contract(buffer, method, input),
+        Kind::ClosedBuffer { .. }
+            if method == Method::Read
+                && crate::describe::contract(&input.contract) =>
+        {
+            Err(Error::CLOSED)
+        }
         Kind::History(_) if history_contract(method, &input.contract) => {
             Ok(Box::new([]))
         }
@@ -495,7 +501,10 @@ fn buffer_contract(
     method: Method,
     input: &Message,
 ) -> Result<Box<[Permissions]>, Error> {
-    if method == Method::Read && crate::snapshots::contract(&input.contract) {
+    if method == Method::Read
+        && (crate::snapshots::contract(&input.contract)
+            || crate::describe::contract(&input.contract))
+    {
         if crate::snapshots::observing(&input.contract) {
             return Ok(Box::new([Permissions::READ; 4]));
         }

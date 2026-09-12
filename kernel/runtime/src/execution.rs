@@ -463,7 +463,10 @@ impl Runtime {
             }
             Kind::Buffer(_)
                 if record.method == Method::Read
-                    && crate::snapshots::contract(&record.input.contract) =>
+                    && (crate::snapshots::contract(&record.input.contract)
+                        || crate::describe::contract(
+                            &record.input.contract,
+                        )) =>
             {
                 result.contract == record.input.contract
             }
@@ -504,6 +507,9 @@ fn begin_buffer(
     method: Method,
     mut input: Message,
 ) -> Step {
+    if method == Method::Read && crate::describe::contract(&input.contract) {
+        return Step::Finished(crate::describe::read(&buffer.borrow(), input));
+    }
     if method == Method::Read {
         return Step::Finished(if input.data.is_empty() {
             observe(buffer)
