@@ -2,7 +2,8 @@ export type ResourceId = `@${bigint}`;
 export interface Message { contract: string; schema: number; data: Uint8Array; resources: ResourceId[] }
 export interface Receipt { client: string; id: string; fields: string[]; response?: string }
 /** Persist before connect; never replace an uncertain opening with a new one. */
-export interface Opening { key: string; sent?: boolean; response?: string }
+export interface Opening { key: string; sent?: boolean; response?: string;
+  released?: boolean }
 export function opening(): Opening {
   return { key: hex(crypto.getRandomValues(new Uint8Array(16))) };
 }
@@ -31,6 +32,36 @@ export class DeliveryError extends Error {
   constructor(public readonly receipt: Receipt, cause: unknown) {
     super('Outcome unavailable; recover this receipt before repeating the operation', { cause });
   }
+}
+/** A failed boot retains its Client and delivery receipt until cleanup settles. */
+export class StartupError extends Error {
+  constructor(public readonly client: Client, public readonly receipt: string,
+    public readonly result: Exclude<Outcome, { kind: 'ok' }>,
+    private readonly start: Opening) {
+    super(`Client startup ${result.kind} (code ${result.code}); result retained`);
+  }
+  async cleanup(persist: () => void): Promise<void> {
+    if (this.result.kind === 'unknown') {
+      throw new Error('Startup outcome is unknown; reconcile before cleanup');
+    }
+    if (!this.start.released) {
+      await this.client.release(this.receipt);
+      this.start.released = true;
+      persist();
+    }
+    const response = await this.client.wire([this.client.token, 'disconnect']);
+    if (response !== 'ok') throw new Error(response);
+  }
+}
+export function startupFailure(start: Opening, endpoint = '/rpc'): StartupError | undefined {
+  if (!start.response?.startsWith('error\tboot\t')) return;
+  const parts = start.response.split('\t');
+  if (!/^[0-9a-f]{32}$/.test(parts[2] ?? '') || integer(parts[3] ?? '') === 0n) {
+    throw new Error('invalid startup owner');
+  }
+  const result = outcome(['error', ...parts.slice(4)].join('\t'));
+  if (result.kind === 'ok') throw new Error('invalid startup failure');
+  return new StartupError(new Client(parts[2]!, endpoint), parts[3]!, result, start);
 }
 export const u64 = (value: bigint): Uint8Array => {
   if (value < 0n || value > 0xffffffffffffffffn) throw new Error('u64 range');
@@ -84,9 +115,8 @@ export class Client {
       start.response = response;
       persist();
     }
-    if (start.response.startsWith('error\tboot\t')) {
-      throw new Error('Client startup failed; opening result retained');
-    }
+    const failure = startupFailure(start, endpoint);
+    if (failure) throw failure;
     const parts = start.response.split('\t');
     if (parts.length !== 3 || parts[0] !== 'ok' || !/^[0-9a-f]{32}$/.test(parts[1]!)) {
       throw new Error('invalid client handshake');

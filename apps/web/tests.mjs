@@ -4,8 +4,37 @@ import net from 'node:net';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { Client, DeliveryError, hex, message, opening, outcome, resource, u64 }
+import { Client, DeliveryError, hex, message, opening, outcome, resource,
+  startupFailure, u64 }
   from '../../target/browser/sdk/typescript/resource.js';
+
+test('failed startup cleanup retains its owner across uncertain teardown', async () => {
+  const token = 'b'.repeat(32);
+  const start = { key: 'c'.repeat(32),
+    response: `error\tboot\t${token}\t1\tfailed\t8\t@7\t` };
+  const failure = startupFailure(start);
+  assert.equal(failure.result.resource, '@7');
+  const frames = [];
+  failure.client.wire = async fields => {
+    frames.push(fields);
+    if (frames.length === 2) throw new Error('disconnect reply lost');
+    return 'ok';
+  };
+  let saved;
+  const persist = () => { saved = structuredClone(start); };
+  await assert.rejects(failure.cleanup(persist), /disconnect reply lost/);
+  assert.equal(saved.released, true);
+  const recovered = startupFailure(saved);
+  recovered.client.wire = failure.client.wire;
+  await recovered.cleanup(() => { assert.fail('receipt already retired'); });
+  assert.deepEqual(frames, [[token, 'release', '1'], [token, 'disconnect'],
+    [token, 'disconnect']]);
+  const unknown = startupFailure({ ...start,
+    response: `error\tboot\t${token}\t1\tunknown\t8\t\t776f726b` });
+  unknown.client.wire = async () => { assert.fail('unknown must retain ownership'); };
+  await assert.rejects(unknown.cleanup(() => {}), /reconcile/);
+  assert.equal(unknown.result.recovery, 'work');
+});
 
 test('opening uncertainty recovers before startup receipt retirement', async t => {
   const original = Client.prototype.wire;
