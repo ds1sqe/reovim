@@ -10,6 +10,7 @@ reovim_module::rv_module! {
     MODEL {
         contract: ("test.model", 1),
         model: {
+            initial_input: [reovim_module::Permissions::READ],
             initialize ("test.initial", 1) => initialize,
             prepare ("test.edit", 1) => prepare,
             observe ("test.read", 1) => observe,
@@ -29,7 +30,11 @@ fn prepare(_: &State, _: Message) -> Result<State, Error> {
 const fn observe(_: &State, input: Message) -> Result<Message, Error> {
     Ok(input)
 }
-fn initialize_async(input: Message) -> StateReply {
+fn initialize_async(
+    _: Option<reovim_module::Connection>,
+    input: Message,
+) -> StateReply {
+    assert_eq!(input.resources.as_ref(), &[reovim_module::ResourceId(7)]);
     let mut yielded = false;
     Box::pin(poll_fn(move |context| {
         if !yielded {
@@ -68,10 +73,14 @@ fn declaration_copies_inputs_and_owns_state_across_deferred_callbacks() {
     unsafe {
         let context = table.create.unwrap()(table.declaration, ptr::null());
         let bytes = vec![17];
-        let input = request(table.create_contract, &bytes);
+        let mut input = request(table.create_contract, &bytes);
+        let resources = vec![7_u64];
+        input.resources = resources.as_ptr();
+        input.resource_count = resources.len();
         let pending =
             table.initialize_async.unwrap()(context, &raw const input);
         drop(bytes);
+        drop(resources);
         assert_eq!((pending.poll)(pending.context, wake()).status, 0);
         assert_eq!((pending.poll)(pending.context, wake()).status, 1);
         let mut old = (pending.take)(pending.context);

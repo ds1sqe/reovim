@@ -1,22 +1,26 @@
 //! Safe immutable Model declarations with optional deferred state inspection.
 
 use super::Identity;
-use alloc::boxed::Box;
+use alloc::{boxed::Box, rc::Rc};
 use core::{ffi::c_void, ptr};
 use reovim_kernel_interface::{
-    Error, Message, abi,
+    Connection, Error, Message, abi,
     buffer::{State, StateReply},
+    provider::Permissions,
 };
 
 pub struct ModelDefinition {
     pub identity: Identity,
     pub dependencies: &'static [Identity],
     pub initial: Identity,
+    /// Borrowed Resource slots; capture access before retaining it in State.
+    pub initial_input: &'static [Permissions],
     pub edit: Identity,
     pub read: Identity,
     pub initialize: fn(Message) -> Result<State, Error>,
     pub prepare: fn(&State, Message) -> Result<State, Error>,
-    pub initialize_async: Option<fn(Message) -> StateReply>,
+    /// Receives the optional composition connection, never implicit authority.
+    pub initialize_async: Option<fn(Option<Connection>, Message) -> StateReply>,
     pub prepare_async: Option<fn(State, Message) -> StateReply>,
     pub observe: fn(&State, Message) -> Result<Message, Error>,
     /// Deferred immutable reads; None reuses the finite observation function.
@@ -33,6 +37,8 @@ impl ModelDefinition {
             kind: abi::MODEL,
             declaration: ptr::from_ref(self).cast(),
             create_contract: self.initial.view(),
+            initial_input: self.initial_input.as_ptr().cast(),
+            initial_input_count: self.initial_input.len(),
             read_contract: self.read.view(),
             edit_contract: self.edit.view(),
             create: Some(create),
@@ -63,14 +69,28 @@ impl ModelDefinition {
     }
 }
 
-const unsafe extern "C" fn create(
-    declaration: *const c_void,
-    _: *const abi::Connection,
-) -> *mut c_void {
-    // This profile has no mutable module context; all data lives in State.
-    declaration.cast_mut()
+struct Instance {
+    definition: &'static ModelDefinition,
+    kernel: Option<Connection>,
 }
-const unsafe extern "C" fn destroy(_: *mut c_void) {}
+
+unsafe extern "C" fn create(
+    declaration: *const c_void,
+    kernel: *const abi::Connection,
+) -> *mut c_void {
+    let definition = unsafe { &*declaration.cast::<ModelDefinition>() };
+    let kernel = if kernel.is_null() {
+        None
+    } else {
+        let raw = unsafe { *kernel };
+        unsafe { ((*raw.table).retain)(raw.context) };
+        Some(unsafe { crate::import(raw, Rc::new(())) })
+    };
+    Box::into_raw(Box::new(Instance { definition, kernel })).cast()
+}
+unsafe extern "C" fn destroy(context: *mut c_void) {
+    drop(unsafe { Box::from_raw(context.cast::<Instance>()) });
+}
 const unsafe extern "C" fn unload(_: *mut c_void) -> u64 {
     0
 }
@@ -79,10 +99,10 @@ unsafe extern "C" fn initialize(
     context: *mut c_void,
     input: *const abi::Request,
 ) -> abi::Reply {
-    let definition = unsafe { &*context.cast::<ModelDefinition>() };
+    let definition = unsafe { &*context.cast::<Instance>() }.definition;
     let input = unsafe { crate::decode_request(&*input) };
     candidate(input.and_then(|input| {
-        validate(&definition.initial, &input)?;
+        validate_initial(definition, &input)?;
         (definition.initialize)(input)
     }))
 }
@@ -91,7 +111,7 @@ unsafe extern "C" fn prepare(
     state: *const c_void,
     input: *const abi::Request,
 ) -> abi::Reply {
-    let definition = unsafe { &*context.cast::<ModelDefinition>() };
+    let definition = unsafe { &*context.cast::<Instance>() }.definition;
     let state = unsafe { &*state.cast::<State>() };
     let input = unsafe { crate::decode_request(&*input) };
     candidate(input.and_then(|input| {
@@ -104,7 +124,7 @@ unsafe extern "C" fn observe(
     state: *const c_void,
     input: *const abi::Request,
 ) -> abi::Reply {
-    let definition = unsafe { &*context.cast::<ModelDefinition>() };
+    let definition = unsafe { &*context.cast::<Instance>() }.definition;
     let state = unsafe { &*state.cast::<State>() };
     let input = unsafe { crate::decode_request(&*input) };
     observation(
@@ -120,13 +140,15 @@ unsafe extern "C" fn initialize_async(
     context: *mut c_void,
     input: *const abi::Request,
 ) -> abi::StatePending {
-    let definition = unsafe { &*context.cast::<ModelDefinition>() };
+    let instance = unsafe { &*context.cast::<Instance>() };
+    let definition = instance.definition;
+    let kernel = instance.kernel.clone();
     let input = unsafe { crate::decode_request(&*input) };
     crate::export_state_reply(Box::pin(async move {
         let input = input?;
-        validate(&definition.initial, &input)?;
+        validate_initial(definition, &input)?;
         match definition.initialize_async {
-            Some(initialize) => initialize(input).await,
+            Some(initialize) => initialize(kernel, input).await,
             None => (definition.initialize)(input),
         }
     }))
@@ -137,7 +159,7 @@ unsafe extern "C" fn prepare_async(
     state: *const c_void,
     input: *const abi::Request,
 ) -> abi::StatePending {
-    let definition = unsafe { &*context.cast::<ModelDefinition>() };
+    let definition = unsafe { &*context.cast::<Instance>() }.definition;
     let state = unsafe { &*state.cast::<State>() }.clone();
     let input = unsafe { crate::decode_request(&*input) };
     crate::export_state_reply(Box::pin(async move {
@@ -155,7 +177,7 @@ unsafe extern "C" fn inspect(
     state: *const c_void,
     input: *const abi::Request,
 ) -> abi::Pending {
-    let definition = unsafe { &*context.cast::<ModelDefinition>() };
+    let definition = unsafe { &*context.cast::<Instance>() }.definition;
     let state = unsafe { &*state.cast::<State>() }.clone();
     let input = unsafe { crate::decode_request(&*input) };
     crate::export_reply(Box::pin(async move {
@@ -217,6 +239,18 @@ fn validate(contract: &Identity, input: &Message) -> Result<(), Error> {
         return Err(Error::UNSUPPORTED);
     }
     if !input.resources.is_empty() {
+        return Err(Error::INVALID);
+    }
+    Ok(())
+}
+fn validate_initial(
+    definition: &ModelDefinition,
+    input: &Message,
+) -> Result<(), Error> {
+    if !definition.initial.matches(&input.contract) {
+        return Err(Error::UNSUPPORTED);
+    }
+    if input.resources.len() != definition.initial_input.len() {
         return Err(Error::INVALID);
     }
     Ok(())

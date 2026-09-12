@@ -43,13 +43,16 @@ pub(super) unsafe fn from_table(
     let initial = unsafe { contract(table.create_contract)? };
     let read = unsafe { contract(table.read_contract)? };
     let edit = unsafe { contract(table.edit_contract)? };
+    let initial_input = unsafe {
+        super::resources::slots(table.initial_input, table.initial_input_count)?
+    };
     let context = unsafe { create(table, kernel, library.clone())? };
     let owner = Rc::new(Instance {
         table: *table,
         context,
         _library: Rc::clone(&library),
     });
-    Ok(ModelProvider::new(
+    let mut provider = ModelProvider::new(
         owner,
         ModelOps {
             unload: Some(unload),
@@ -62,7 +65,9 @@ pub(super) unsafe fn from_table(
         read,
         edit,
         library,
-    ))
+    );
+    provider.initial_input = initial_input;
+    Ok(provider)
 }
 
 struct NativeState {
@@ -91,8 +96,8 @@ fn request(input: &Message) -> abi::Request {
             version: input.contract.version,
         },
         data: abi::Bytes { data: input.data.as_ptr(), len: input.data.len() },
-        resources: ptr::null(),
-        resource_count: 0,
+        resources: input.resources.as_ptr().cast(),
+        resource_count: input.resources.len(),
     }
 }
 fn initialize(owner: &mut Rc<Instance>, input: Message) -> StateReply {

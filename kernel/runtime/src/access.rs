@@ -292,8 +292,7 @@ impl Caller {
         }
         let id = shared.id()?;
         let references = crate::binding::capture(&shared, &captured)?;
-        let receiver =
-            shared.entries[shared.entry_index(key)?].receiver.clone();
+        let receiver = crate::binding::receiver(&shared, key, &captured)?;
         let resource = shared.id()?;
         let recovery = shared.work_path(scope.id, id);
         let name =
@@ -531,6 +530,15 @@ fn translate_input(
     method: Method,
     input: &mut Message,
 ) -> Result<(), Error> {
+    if let Kind::Model(model) = target {
+        let model = model.borrow();
+        let slots = if input.contract == model.create {
+            &*model.initial_input
+        } else {
+            &[]
+        };
+        return translate_slots(shared, scope, slots, input);
+    }
     if matches!(target, Kind::ClosedBuffer { .. }) {
         if input.resources.len() != 1 {
             return Err(Error::INVALID);
@@ -575,6 +583,28 @@ fn translate_input(
         let key = scope.key(*reference)?;
         let allowed = scope.permissions(shared, key).ok_or(Error::DENIED)?;
         if !provider.forwarding && !allowed.contains(surface.input[index]) {
+            return Err(Error::DENIED);
+        }
+        *reference = ResourceId(key);
+    }
+    Ok(())
+}
+
+fn translate_slots(
+    shared: &Shared,
+    scope: &Scope,
+    slots: &[Permissions],
+    input: &mut Message,
+) -> Result<(), Error> {
+    if input.resources.len() != slots.len() {
+        return Err(Error::INVALID);
+    }
+    for (reference, rights) in input.resources.iter_mut().zip(slots) {
+        let key = scope.key(*reference)?;
+        if !scope
+            .permissions(shared, key)
+            .is_some_and(|allowed| allowed.contains(*rights))
+        {
             return Err(Error::DENIED);
         }
         *reference = ResourceId(key);

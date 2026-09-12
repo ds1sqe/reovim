@@ -128,6 +128,8 @@ impl<Context> Dispatch for Implementation<Context> {
 /// Runtime can accept a new model without changing its compiled type.
 pub struct ModelProvider {
     pub create: Contract,
+    /// Borrowed Resource slots for initialization, in declaration order.
+    pub initial_input: Box<[crate::provider::Permissions]>,
     pub read: Contract,
     pub edit: Contract,
     implementation: Box<dyn Dispatch>,
@@ -146,6 +148,7 @@ impl ModelProvider {
     ) -> Self {
         Self {
             create,
+            initial_input: Box::new([]),
             read,
             edit,
             implementation: Box::new(Implementation { context, operations }),

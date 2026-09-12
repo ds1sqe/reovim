@@ -96,6 +96,9 @@ pub struct Module {
     /// Borrowed immutable declaration, retained with the module's code.
     pub declaration: *const c_void,
     pub create_contract: Contract,
+    /// Initialization's borrowed Resource-slot permissions, in input order.
+    pub initial_input: *const u32,
+    pub initial_input_count: usize,
     pub read_contract: Contract,
     pub edit_contract: Contract,
     pub create: Option<

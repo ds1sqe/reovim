@@ -156,7 +156,17 @@ impl Runtime {
                     Err(error) => Step::Finished(Err(error)),
                 }
             }
-            Kind::Model(model) => begin_model(&model, input),
+            Kind::Model(model) => {
+                let received = crate::binding::receive(
+                    &mut self.shared.borrow_mut(),
+                    &record.borrow(),
+                    input,
+                );
+                match received {
+                    Ok((_, input)) => begin_model(&model, input),
+                    Err(error) => Step::Finished(Err(error)),
+                }
+            }
             Kind::Session(_) | Kind::ClosedSession { .. }
                 if method == Method::Write
                     && crate::sessions::closing(&input.contract) =>

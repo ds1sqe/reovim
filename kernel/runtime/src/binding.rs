@@ -281,10 +281,28 @@ fn attach(shared: &mut Shared, binding: &Binding, ids: &[ResourceId]) {
     for id in ids {
         let index = shared.entry_index(id.0).expect("new contribution");
         let entry = &mut shared.entries[index];
-        entry.receiver =
-            matches!(entry.kind, crate::namespace::Kind::Provider(_))
-                .then(|| binding.scope.clone());
+        entry.receiver = matches!(
+            entry.kind,
+            crate::namespace::Kind::Provider(_)
+                | crate::namespace::Kind::Model(_)
+        )
+        .then(|| binding.scope.clone());
     }
+}
+
+pub fn receiver(
+    shared: &Shared,
+    key: u64,
+    input: &Message,
+) -> Result<Option<Rc<RefCell<Scope>>>, Error> {
+    let entry = &shared.entries[shared.entry_index(key)?];
+    if matches!(entry.kind, crate::namespace::Kind::Model(_))
+        && !input.resources.is_empty()
+        && entry.receiver.is_none()
+    {
+        return Err(Error::INVALID);
+    }
+    Ok(entry.receiver.clone())
 }
 
 pub fn capture(
@@ -332,6 +350,14 @@ fn input_rights(
     shared: &Shared,
     record: &Record,
 ) -> Result<Vec<Permissions>, Error> {
+    if let crate::namespace::Kind::Model(model) = &record.target {
+        let model = model.borrow();
+        return Ok(if record.input.contract == model.create {
+            model.initial_input.to_vec()
+        } else {
+            Vec::new()
+        });
+    }
     if forwarding(record) {
         let scope = record.scope.borrow();
         return record
@@ -397,6 +423,10 @@ pub fn returned(
     record: &Record,
     message: &mut Message,
 ) -> Result<(), Error> {
+    // Model creation replies contain Runtime-owned Buffer/History identities.
+    if matches!(record.target, crate::namespace::Kind::Model(_)) {
+        return Ok(());
+    }
     let Some(receiver) = &record.receiver else { return Ok(()) };
     let receiver = receiver.borrow();
     for (resource, rights) in message.resources.iter_mut().zip(&record.output) {

@@ -140,15 +140,19 @@ unsafe fn surface(value: &abi::Surface) -> Result<Surface, Error> {
     Ok(Surface {
         contract: unsafe { contract(value.contract)? },
         methods: permissions(value.methods)?,
-        input: unsafe { elements(value.input, value.input_count)? }
-            .iter()
-            .map(|value| permissions(*value))
-            .collect::<Result<_, _>>()?,
-        output: unsafe { elements(value.output, value.output_count)? }
-            .iter()
-            .map(|value| permissions(*value))
-            .collect::<Result<_, _>>()?,
+        input: unsafe { slots(value.input, value.input_count)? },
+        output: unsafe { slots(value.output, value.output_count)? },
     })
+}
+
+pub(super) unsafe fn slots(
+    pointer: *const u32,
+    count: usize,
+) -> Result<Box<[Permissions]>, Error> {
+    unsafe { elements(pointer, count)? }
+        .iter()
+        .map(|value| permissions(*value))
+        .collect()
 }
 
 const fn permissions(value: u32) -> Result<Permissions, Error> {

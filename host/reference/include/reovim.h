@@ -42,7 +42,11 @@ struct rv_module {
     struct rv_version version;
     uint32_t size, kind;
     const void *declaration;
-    struct rv_contract create_contract, read_contract, edit_contract;
+    struct rv_contract create_contract;
+    /* Borrowed initialization slots; capture rights to retain access in state. */
+    const uint32_t *initial_input;
+    size_t initial_input_count;
+    struct rv_contract read_contract, edit_contract;
     void *(*create)(const void *, const struct rv_connection *);
     void (*destroy)(void *);
     struct rv_reply (*call)(void *, const struct rv_request *);

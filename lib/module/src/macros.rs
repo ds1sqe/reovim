@@ -14,6 +14,7 @@ macro_rules! rv_module {
             contract: ($identity:literal, $version:literal),
             $(requires: [$(($required:literal, $schema:literal)),* $(,)?],)?
             model: {
+                $(initial_input: [$($initial_rights:expr),* $(,)?],)?
                 initialize ($initial:literal, $initial_version:literal) =>
                     $initialize:path,
                 prepare ($edit:literal, $edit_version:literal) => $prepare:path,
@@ -33,6 +34,7 @@ macro_rules! rv_module {
                 initial: $crate::__private::Identity::new(
                     $initial, $initial_version
                 ),
+                initial_input: &[$($($initial_rights),*)?],
                 edit: $crate::__private::Identity::new($edit, $edit_version),
                 read: $crate::__private::Identity::new($read, $read_version),
                 initialize: $initialize,

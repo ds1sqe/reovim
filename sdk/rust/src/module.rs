@@ -29,6 +29,8 @@ impl Definition {
             kind: abi::RESOURCE,
             declaration: ptr::from_ref(self).cast(),
             create_contract: EMPTY,
+            initial_input: ptr::null(),
+            initial_input_count: 0,
             read_contract: EMPTY,
             edit_contract: EMPTY,
             create: Some(create),
