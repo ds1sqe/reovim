@@ -93,6 +93,9 @@ the object marker represents one opaque byte. Composition remains a local draft
 until completion. Undo uses shared History rather than a second document store.
 The trial permits one in-flight edit, locking input while awaiting acceptance;
 queued input under latency and platform IME qualification remain required.
-Failed input keeps its draft in the textarea until explicit refresh; this local
-draft is not durable across reload. Admitted requests retain their normal
-journaled recovery. This is input-contract evidence, not the finished GUI.
+Input and composition drafts are saved in the same session journal before
+transmission and survive reload as locked local text. Refresh does not discard
+them or submit them again. Recover admitted work through its existing receipt,
+then explicitly discard the local draft when appropriate. Discarding a draft
+does not cancel or forget a pending request. Session storage is not persistence
+across browser/session loss. This is input-contract evidence, not the finished GUI.

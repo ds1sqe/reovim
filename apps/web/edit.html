@@ -17,8 +17,11 @@ as ⟦ff⟧; this notation is not replacement text. This is a contract trial.</p
 <p id="range"></p><pre id="content"></pre>
 <label>Type in the observed window
 <textarea id="typing" rows="8" cols="72" readonly spellcheck="false"></textarea></label>
+<p id="draft-status" aria-live="polite"></p>
+<button id="discard-draft">Discard local input draft</button>
 <p>The object marker represents one opaque byte. Unchanged line endings and
-opaque bytes remain in the source. Refresh explicitly after a failed input.</p>
+opaque bytes remain in the source. Recover pending work before discarding a
+retained local draft.</p>
 <label>Window start <input id="window-start" value="0" inputmode="numeric"></label>
 <button id="read">Read window</button>
 <p><label>Range start <input id="start" value="2" inputmode="numeric"></label>

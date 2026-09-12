@@ -1,18 +1,27 @@
 import { Editing, type Journal } from './editing.js';
 import { unhex } from '../../sdk/typescript/resource.js';
-import { input as bindInput } from './input.js';
+import { input as bindInput, type Draft } from './input.js';
 
 const saved = sessionStorage.getItem('reovim-editing');
-const journal: Journal = saved ? JSON.parse(saved) : { retiring: [] };
+const journal: Journal & { draft?: Draft } = saved ? JSON.parse(saved) : { retiring: [] };
+const persist = () => sessionStorage.setItem('reovim-editing', JSON.stringify(journal));
 const editing = new Editing(journal,
-  () => sessionStorage.setItem('reovim-editing', JSON.stringify(journal)));
+  persist);
 const status = document.querySelector<HTMLElement>('#status')!;
 const content = document.querySelector<HTMLElement>('#content')!;
 const input = (id: string) => document.querySelector<HTMLInputElement>(`#${id}`)!.value;
 let busy = false;
 const typing = bindInput(document.querySelector<HTMLTextAreaElement>('#typing')!,
   (start, end, text) => operate(() => editing.replace(start, end, text)),
-  () => operate(() => editing.undo()), report);
+  () => operate(() => editing.undo()), report, {
+    load: () => journal.draft,
+    save: value => { journal.draft = value; persist(); draftStatus(); }
+  });
+
+function draftStatus() {
+  document.querySelector('#draft-status')!.textContent = journal.draft
+    ? `Retained ${journal.draft.phase} draft. Recover pending work before further input.` : '';
+}
 
 async function operate(action: () => Promise<void>) {
   if (busy) throw new Error('Wait for the pending operation');
@@ -29,6 +38,7 @@ function render() {
   status.textContent = journal.source
     ? `Revision ${journal.source.revision}${journal.receipt ? '; request needs recovery' : ''}`
     : 'No source is open.';
+  draftStatus();
   const value = journal.window;
   content.textContent = value ? value.units.map(unit => 'scalar' in unit
     ? unit.scalar : `⟦${unit.opaque.toString(16).padStart(2, '0')}⟧`).join('') : '';
@@ -54,8 +64,14 @@ const actions: Record<string, () => Promise<void>> = {
 for (const [id, action] of Object.entries(actions)) {
   document.querySelector(`#${id}`)!.addEventListener('click', async () => {
     if (typing.composing) { status.textContent = 'Finish composition first.'; return; }
+    if (typing.retained && ['create', 'join', 'replace', 'undo', 'close'].includes(id)) {
+      status.textContent = 'Resolve or discard the retained local draft first.'; return;
+    }
     try { await operate(action); }
     catch (error) { report(error); }
   });
 }
+document.querySelector('#discard-draft')!.addEventListener('click', () => {
+  try { typing.discard(); render(); } catch (error) { report(error); }
+});
 render();

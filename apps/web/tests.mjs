@@ -11,6 +11,53 @@ import * as text from '../../target/browser/modules/text/api/typescript.js';
 import { project, replacement } from '../../target/browser/clients/gui/contract/input.js';
 import { input as bindInput } from '../../target/browser/apps/web/input.js';
 
+test('draft journal survives reload without submitting and is saved before transmission', async () => {
+  class Field extends EventTarget {
+    value = ''; selectionStart = 0; selectionEnd = 0; readOnly = false;
+    setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; }
+    emit(type, properties = {}) {
+      this.dispatchEvent(Object.assign(new Event(type, { cancelable: true }), properties));
+    }
+  }
+  const window = { start: '0', end: '1', eof: true, units: [{ scalar: 'a' }] };
+  let saved;
+  const storage = { load: () => structuredClone(saved),
+    save: value => { saved = structuredClone(value); } };
+  const field = new Field();
+  const adapter = bindInput(field, async () => {
+    assert.deepEqual(saved, { value: 'drafta', phase: 'submitted' });
+    throw new Error('lost response');
+  }, async () => {}, () => {}, storage);
+  adapter.update(window);
+  field.emit('beforeinput', { inputType: 'insertText' });
+  field.value = 'drafta'; field.emit('input');
+  await new Promise(setImmediate);
+  const restored = new Field();
+  const reload = bindInput(restored, async () => { assert.fail('reload cannot replay'); },
+    async () => {}, () => {}, storage);
+  reload.update(window);
+  assert.equal(restored.value, 'drafta');
+  assert.equal(restored.readOnly, true);
+  assert.equal(reload.retained, true);
+  reload.discard();
+  assert.equal(saved, undefined);
+  assert.equal(restored.value, 'a');
+  assert.equal(restored.readOnly, false);
+  restored.emit('compositionstart');
+  restored.value = 'composition'; restored.emit('input');
+  assert.deepEqual(saved, { value: 'composition', phase: 'composition' });
+  saved = undefined;
+  const invalid = new Field();
+  const validation = bindInput(invalid, async () => { assert.fail('invalid selection'); },
+    async () => {}, () => {}, storage);
+  validation.update({ start: '0', end: '1', eof: true, units: [{ scalar: '🦀' }] });
+  invalid.selectionStart = 1; invalid.selectionEnd = 1;
+  invalid.emit('beforeinput', { inputType: 'insertText' });
+  invalid.value = 'invalid draft'; invalid.emit('input');
+  await new Promise(setImmediate);
+  assert.deepEqual(saved, { value: 'invalid draft', phase: 'input' });
+});
+
 test('composition submits once at completion and failed input keeps its draft', async () => {
   class Field extends EventTarget {
     value = ''; selectionStart = 2; selectionEnd = 3; readOnly = false;
