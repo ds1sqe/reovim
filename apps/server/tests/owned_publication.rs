@@ -9,7 +9,7 @@ use reovim_kernel_interface::{
 };
 use reovim_kernel_runtime::{Binding, Limits, Runtime};
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     future::{Future, poll_fn},
     rc::Rc,
     task::{Poll, Waker},
@@ -20,6 +20,9 @@ struct Reader {
     closed: bool,
     started: bool,
     wake: Option<Waker>,
+    cleanup_ready: Option<Rc<Cell<bool>>>,
+    cleaned: bool,
+    error_resource: Option<ResourceId>,
 }
 fn subscription(reader: Rc<RefCell<Reader>>) -> ResourceProvider {
     let closing = reader.clone();
@@ -36,15 +39,23 @@ fn subscription(reader: Rc<RefCell<Reader>>) -> ResourceProvider {
         Box::new([surface("next", &[])]),
         Rc::new(()),
     )
-    .owned(move || {
-        let wake = {
+    .try_owned(move || {
+        let (wake, ready) = {
             let mut reader = closing.borrow_mut();
-            assert!(!reader.closed, "close callback is invoked once");
+            assert!(!reader.cleaned, "successful cleanup is invoked once");
             reader.closed = true;
-            reader.wake.take()
+            let ready =
+                reader.cleanup_ready.as_ref().is_none_or(|ready| ready.get());
+            reader.cleaned = ready;
+            (reader.wake.take(), ready)
         };
         if let Some(wake) = wake {
             wake.wake();
+        }
+        if ready {
+            Ok(())
+        } else {
+            Err(Error { id: closing.borrow().error_resource, ..Error::BUSY })
         }
     })
 }
@@ -113,6 +124,7 @@ fn publish(
     input: Message,
 ) -> Result<Message, RequestError> {
     let parent = kernel.resolve("source").into_inner()?;
+    reader.borrow_mut().error_resource = Some(parent);
     let name = std::str::from_utf8(&input.data).map_err(|_| Error::INVALID)?;
     let id = kernel
         .publish(parent, name, subscription(reader))
@@ -271,4 +283,62 @@ fn observe(
     )
     .unwrap()
     .resources[0]
+}
+
+#[test]
+fn failed_native_cleanup_stays_fenced_owned_and_retryable() {
+    let mut runtime = Runtime::new(204, Limits::default()).unwrap();
+    runtime.start().unwrap();
+    let root = runtime.resource("").unwrap();
+    let owner = runtime.bind(&[(root, Permissions::ALL)]).unwrap();
+    let provider =
+        runtime.bind_for(&owner, &[(root, Permissions::ALL)]).unwrap();
+    let ready = Rc::new(Cell::new(false));
+    let reader = Rc::new(RefCell::new(Reader {
+        cleanup_ready: Some(ready.clone()),
+        ..Reader::default()
+    }));
+    runtime
+        .activate_bound_module(
+            &provider,
+            "instance",
+            module(&provider, vec![reader.clone()]),
+        )
+        .map_err(|(e, _)| e)
+        .unwrap();
+    let client = reovim_sdk::local(owner.connection());
+    let instance = client.resolve("instance").into_inner().unwrap();
+    finish(&mut runtime, client.read(instance, &input("kernel.module.ready")))
+        .unwrap();
+    let access = observe(&mut runtime, &client, b"blocked");
+    let source = client.resolve("source").into_inner().unwrap();
+    assert_eq!(
+        client.close(access).into_inner(),
+        Err(RequestError::Rejected(Error { id: Some(source), ..Error::BUSY }))
+    );
+    assert!(reader.borrow().closed);
+    assert!(!reader.borrow().cleaned);
+    assert_eq!(
+        finish(&mut runtime, client.read(access, &input("next"))),
+        Err(RequestError::Rejected(Error::CLOSED))
+    );
+    assert_eq!(
+        unload(&mut runtime, &client, instance),
+        Err(RequestError::Failed(Error::BUSY))
+    );
+    assert_eq!(
+        runtime.close_owned_access(&owner),
+        Err(Error {
+            id: Some(runtime.resource("source").unwrap()),
+            ..Error::BUSY
+        })
+    );
+    assert!(!reader.borrow().cleaned);
+    ready.set(true);
+    client.close(access).into_inner().unwrap();
+    client.close(access).into_inner().unwrap();
+    assert!(reader.borrow().cleaned);
+    runtime.close_owned_access(&owner).unwrap();
+    unload(&mut runtime, &client, instance).unwrap();
+    runtime.close().unwrap();
 }

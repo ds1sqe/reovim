@@ -24,7 +24,14 @@ pub fn close(
     let provider = fence(&mut registry.entries[index]);
     drop(registry);
     if let Some(provider) = provider {
-        provider.borrow_mut().close();
+        attempt(provider).map_err(|error| {
+            crate::request::translate_error(
+                &mut shared.borrow_mut(),
+                &mut scope.borrow_mut(),
+                error,
+            )
+            .unwrap_or(Error { id: None, ..error })
+        })?;
     }
     reclaim(shared);
     Ok(())
@@ -32,29 +39,48 @@ pub fn close(
 
 type Provider =
     Rc<RefCell<reovim_kernel_interface::provider::ResourceProvider>>;
+type Closing = (Provider, Option<Rc<RefCell<Scope>>>);
 
-fn fence(entry: &mut crate::namespace::Entry) -> Option<Provider> {
+fn fence(entry: &mut crate::namespace::Entry) -> Option<Closing> {
     let ownership = entry.ownership.as_mut()?;
-    if ownership.closed {
-        return None;
-    }
     ownership.closed = true;
     match &entry.kind {
-        Kind::Provider(provider) => Some(provider.clone()),
+        Kind::Provider(provider) if provider.borrow().is_owned() => {
+            Some((provider.clone(), entry.receiver.clone()))
+        }
         _ => None,
     }
 }
 
-pub fn close_all(shared: &Rc<RefCell<Shared>>) {
-    close_matching(shared, |_| true);
+fn attempt((provider, receiver): Closing) -> Result<(), Error> {
+    provider.borrow_mut().close().map_err(|mut error| {
+        if let Some(receiver) = receiver {
+            error.id = error
+                .id
+                .and_then(|id| receiver.borrow().key(id).ok())
+                .map(ResourceId);
+        }
+        error
+    })
 }
 
-pub fn close_owner(shared: &Rc<RefCell<Shared>>, owner: u64) {
-    close_matching(shared, |client| client == owner);
+pub fn close_all(shared: &Rc<RefCell<Shared>>) -> Result<(), Error> {
+    close_matching(shared, |_| true)
+}
+
+pub fn close_owner(
+    shared: &Rc<RefCell<Shared>>,
+    owner: u64,
+) -> Result<(), Error> {
+    close_matching(shared, |client| client == owner)?;
     reclaim(shared);
+    Ok(())
 }
 
-fn close_matching(shared: &Rc<RefCell<Shared>>, matches: impl Fn(u64) -> bool) {
+fn close_matching(
+    shared: &Rc<RefCell<Shared>>,
+    matches: impl Fn(u64) -> bool,
+) -> Result<(), Error> {
     loop {
         let provider = shared
             .borrow_mut()
@@ -68,18 +94,20 @@ fn close_matching(shared: &Rc<RefCell<Shared>>, matches: impl Fn(u64) -> bool) {
             })
             .find_map(fence);
         let Some(provider) = provider else { break };
-        provider.borrow_mut().close();
+        attempt(provider)?;
     }
+    Ok(())
 }
 
 pub fn reclaim(shared: &Rc<RefCell<Shared>>) {
     loop {
         let mut registry = shared.borrow_mut();
-        let Some(entry) = registry
-            .entries
-            .iter_mut()
-            .find(|entry| entry.closed() && entry.kind.removable())
-        else {
+        let Some(entry) = registry.entries.iter_mut().find(|entry| {
+            entry.closed()
+                && entry.kind.removable()
+                && !matches!(&entry.kind, Kind::Provider(provider)
+                    if provider.borrow().is_owned())
+        }) else {
             break;
         };
         let retired = core::mem::replace(&mut entry.kind, Kind::Directory);

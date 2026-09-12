@@ -167,9 +167,13 @@ struct rv_provider_ops {
     void (*release)(void *);
     struct rv_pending (*request)(void *, const struct rv_request *);
     /* Owned access: fence delivery and wake pending calls; cannot fail. */
-    void (*close)(void *);
+    struct rv_failure (*close)(void *);
     struct rv_failure (*unload)(void *);
 };
+/* An owned provider close fences operations before cleanup. Failure retains
+ * context and code for a retry; successful cleanup is not invoked again.
+ * The callback must tolerate its own partial cleanup from earlier attempts.
+ */
 struct rv_provider {
     void *context;
     const struct rv_provider_ops *table;

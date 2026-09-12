@@ -107,8 +107,7 @@ impl Runtime {
             return Err(Error::INVALID);
         }
         let owner = client.scope.borrow().owner;
-        crate::owned::close_owner(&self.shared, owner);
-        Ok(())
+        crate::owned::close_owner(&self.shared, owner)
     }
 
     /// Creates a separate import namespace under the retained client's owner.

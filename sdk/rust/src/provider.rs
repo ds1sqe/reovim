@@ -50,9 +50,9 @@ unsafe extern "C" fn retain(context: *mut c_void) {
 unsafe extern "C" fn release(context: *mut c_void) {
     unsafe { Rc::decrement_strong_count(context.cast::<Export>()) };
 }
-unsafe extern "C" fn close(context: *mut c_void) {
+unsafe extern "C" fn close(context: *mut c_void) -> abi::Failure {
     let value = unsafe { &*context.cast::<Export>() };
-    value.provider.borrow_mut().close();
+    failure(value.provider.borrow_mut().close())
 }
 unsafe extern "C" fn unload(context: *mut c_void) -> abi::Failure {
     let value = unsafe { &*context.cast::<Export>() };
@@ -141,9 +141,7 @@ pub unsafe fn import(
         imported.clone(),
     );
     if raw.owned != 0 {
-        provider = provider.owned(move || unsafe {
-            ((*imported.raw.table).close)(imported.raw.context);
-        });
+        provider = provider.try_owned(move || cleanup(&imported));
     }
     provider.forwarding = raw.forwarding != 0;
     Ok(provider)
@@ -212,6 +210,14 @@ const fn view(data: &[u8]) -> abi::Bytes {
 }
 const fn check(value: abi::Failure) -> Result<(), Error> {
     if value.code == 0 { Ok(()) } else { Err(Error::new(value.code)) }
+}
+fn cleanup(value: &Imported) -> Result<(), Error> {
+    let failure = unsafe { ((*value.raw.table).close)(value.raw.context) };
+    check(failure).map_err(|mut error| {
+        error.id =
+            (failure.resource != 0).then_some(ResourceId(failure.resource));
+        error
+    })
 }
 fn failure(value: Result<(), Error>) -> abi::Failure {
     value.map_or_else(

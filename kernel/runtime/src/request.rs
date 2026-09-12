@@ -288,7 +288,7 @@ fn translate_refs(
     Ok(())
 }
 
-fn translate_error(
+pub fn translate_error(
     shared: &mut Shared,
     scope: &mut Scope,
     mut error: Error,

@@ -113,7 +113,7 @@ pub struct ResourceProvider {
     /// permissions. Its declared surfaces have empty fixed slot lists.
     pub forwarding: bool,
     implementation: Box<dyn Dispatch>,
-    close: Option<Box<dyn FnMut()>>,
+    close: Option<Box<dyn FnMut() -> Result<(), Error>>>,
     // Keep executable ownership after implementation/context destruction.
     _code: Rc<dyn core::any::Any>,
 }
@@ -139,7 +139,22 @@ impl ResourceProvider {
     /// The callback fences delivery and wakes pending calls; it must not fail.
     /// Runtime invokes it once, outside registry guards, before reclamation.
     #[must_use]
-    pub fn owned(mut self, close: impl FnMut() + 'static) -> Self {
+    pub fn owned(self, mut close: impl FnMut() + 'static) -> Self {
+        self.try_owned(move || {
+            close();
+            Ok(())
+        })
+    }
+
+    /// Fences access, then attempts cleanup outside registry guards.
+    ///
+    /// Failure retains context/code and this callback for a close retry.
+    /// The callback must tolerate its own partial cleanup from earlier calls.
+    #[must_use]
+    pub fn try_owned(
+        mut self,
+        close: impl FnMut() -> Result<(), Error> + 'static,
+    ) -> Self {
         self.close = Some(Box::new(close));
         self
     }
@@ -149,10 +164,14 @@ impl ResourceProvider {
         self.close.is_some()
     }
 
-    pub fn close(&mut self) {
-        if let Some(mut close) = self.close.take() {
-            close();
+    /// # Errors
+    /// Failed cleanup leaves the callback owned and retryable.
+    pub fn close(&mut self) -> Result<(), Error> {
+        if let Some(close) = self.close.as_mut() {
+            close()?;
         }
+        self.close = None;
+        Ok(())
     }
 
     /// Uses the receiving Connection's grants for forwarded reference slots.

@@ -211,7 +211,7 @@ reovim_vtable::rv_vtable! {
         pub release: unsafe extern "C" fn(*mut c_void),
         pub request:
             unsafe extern "C" fn(*mut c_void, *const Request) -> Pending,
-        pub close: unsafe extern "C" fn(*mut c_void),
+        pub close: unsafe extern "C" fn(*mut c_void) -> Failure,
         pub unload: unsafe extern "C" fn(*mut c_void) -> Failure,
     }
 }
