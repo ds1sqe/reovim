@@ -20,6 +20,32 @@ const window = value => ({ start: '0', end: [...value].length.toString(), eof: t
   units: [...value].map(scalar => ({ scalar })) });
 const tick = () => new Promise(setImmediate);
 
+test('retiring an input view removes listeners and preserves in-flight recovery', async () => {
+  const field = new Field(), calls = [];
+  let reply, saved;
+  const storage = { load: () => structuredClone(saved),
+    save: value => { saved = structuredClone(value); } };
+  const retired = input(field, (...args) => {
+    calls.push(args); retired.correlate('client', '17');
+    return new Promise(resolve => { reply = resolve; });
+  }, async () => {}, error => { throw error; }, storage);
+  retired.update(window('a')); field.insert('b');
+  const evidence = structuredClone(saved);
+  retired.dispose(); retired.dispose();
+  const current = input(field, async (...args) => {
+    calls.push(args); return window('abx');
+  }, async () => {}, error => { throw error; }, storage);
+  current.update(window('ab'));
+  reply(window('ab')); await tick();
+  assert.deepEqual(saved, evidence);
+  assert.deepEqual(calls, [[1n, 1n, 'b']]);
+  assert.equal(field.readOnly, true);
+  current.resume('client', '17', window('ab')); await tick();
+  field.insert('x'); await tick();
+  assert.deepEqual(calls, [[1n, 1n, 'b'], [2n, 2n, 'x']]);
+  assert.equal(field.value, 'abx');
+});
+
 test('explicit queue recovery removes only the head paired with the accepted receipt', async () => {
   const field = new Field();
   let saved, reject;

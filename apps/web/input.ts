@@ -24,11 +24,14 @@ export function input(element: HTMLTextAreaElement,
   let projection = project({ start: '0', end: '0', eof: true, units: [] });
   let anchor: Anchor | undefined;
   let composing = false, finishing = false, pending = false, halted = !!draft;
+  let disposed = false;
+  const events = new AbortController();
 
   const save = (value: Draft | undefined) => { draft = value; storage?.save(value); };
   const retain = (phase: Draft['phase']) => save({ value: element.value, phase,
     base: observed, queue: [...queue], ...(proof ? { proof } : {}) });
   const refresh = () => {
+    if (disposed) return;
     if (!pending && !queue.length && !composing && !halted) {
       basis = observed;
       if (basis) {
@@ -42,12 +45,14 @@ export function input(element: HTMLTextAreaElement,
   const halt = (error: unknown) => { halted = true; failed(error); refresh(); };
 
   const drain = async () => {
-    if (pending || halted) return;
+    if (disposed || pending || halted) return;
     pending = true;
     try {
       while (queue.length && !halted) {
         const next = queue[0]!;
         const actual = await submit(BigInt(next.start), BigInt(next.end), next.text);
+        // Transport owns admitted work; a retired view must not adopt its reply.
+        if (disposed) return;
         if (!sameWindow(actual, next.after)) {
           throw new Error('Accepted view differs from queued basis; input retained');
         }
@@ -57,11 +62,11 @@ export function input(element: HTMLTextAreaElement,
         if (halted || composing || queue.length) retain(composing ? 'composition' : 'submitted');
         else save(undefined);
       }
-    } catch (error) { halt(error); }
+    } catch (error) { if (!disposed) halt(error); }
     finally { pending = false; refresh(); }
   };
   const commit = () => {
-    if (!anchor || halted || !basis) return;
+    if (disposed || !anchor || halted || !basis) return;
     const selected = anchor;
     anchor = undefined;
     try {
@@ -92,16 +97,16 @@ export function input(element: HTMLTextAreaElement,
       return;
     }
     if (!composing && !finishing) anchor = selection(event.inputType.endsWith('Backward'));
-  });
+  }, { signal: events.signal });
   element.addEventListener('input', () => {
     if (composing) {
       try { retain('composition'); } catch (error) { halt(error); }
     } else if (!finishing) commit();
-  });
+  }, { signal: events.signal });
   element.addEventListener('compositionstart', () => {
     if (halted || !basis) return;
     composing = true; anchor = selection(false);
-  });
+  }, { signal: events.signal });
   element.addEventListener('compositionend', () => {
     composing = false; finishing = true;
     if (element.value === projection.value) {
@@ -110,14 +115,14 @@ export function input(element: HTMLTextAreaElement,
       catch (error) { halt(error); }
     }
     queueMicrotask(() => { finishing = false; commit(); refresh(); });
-  });
+  }, { signal: events.signal });
   return {
     correlate(client: string, id: string) {
       if (!pending || !queue.length) throw new Error('No input is awaiting correlation');
       proof = { client, id }; retain('submitted');
     },
     get resumeRequest() {
-      if (!halted || pending || composing || !proof || !queue.length
+      if (disposed || !halted || pending || composing || !proof || !queue.length
           || draft?.phase !== 'submitted'
           || project(queue[queue.length - 1]!.after).value !== draft.value) {
         throw new Error('Queue needs manual reconciliation');
@@ -137,8 +142,12 @@ export function input(element: HTMLTextAreaElement,
     },
     update(window: Window | undefined) { observed = window; refresh(); },
     discard() {
-      if (pending || composing) throw new Error('Finish the active input first');
+      if (disposed || pending || composing) throw new Error('Finish the active input first');
       queue = []; proof = undefined; halted = false; save(undefined); refresh();
+    },
+    dispose() {
+      disposed = true; halted = true;
+      events.abort();
     },
     get composing() { return composing; },
     get retained() { return !!draft; }
