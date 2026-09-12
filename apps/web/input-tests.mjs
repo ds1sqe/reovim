@@ -6,7 +6,7 @@ import { apply } from '../../target/browser/clients/gui/contract/input.js';
 class Field extends EventTarget {
   value = ''; selectionStart = 0; selectionEnd = 0; readOnly = false;
   emit(type, properties = {}) {
-    this.dispatchEvent(Object.assign(new Event(type, { cancelable: true }), properties));
+    return this.dispatchEvent(Object.assign(new Event(type, { cancelable: true }), properties));
   }
   insert(text) {
     this.selectionStart = this.value.length; this.selectionEnd = this.value.length;
@@ -19,6 +19,55 @@ class Field extends EventTarget {
 const window = value => ({ start: '0', end: [...value].length.toString(), eof: true,
   units: [...value].map(scalar => ({ scalar })) });
 const tick = () => new Promise(setImmediate);
+
+test('History shortcuts use one native direction and wait for accepted state', async () => {
+  const field = new Field(), calls = [];
+  let finish;
+  const adapter = input(field, async () => { assert.fail('History cannot become a text splice'); },
+    direction => { calls.push(direction); return new Promise(resolve => { finish = resolve; }); },
+    error => { throw error; });
+  adapter.update(window('edited'));
+  assert.equal(field.emit('keydown', { key: 'z', ctrlKey: true }), false);
+  assert.deepEqual(calls, ['undo']);
+  assert.equal(field.readOnly, true);
+  assert.equal(field.emit('beforeinput', { inputType: 'insertText' }), false);
+  adapter.update(window('original')); finish(); await tick();
+  assert.equal(field.value, 'original');
+  assert.equal(field.readOnly, false);
+  assert.equal(field.emit('keydown', { key: 'Z', metaKey: true, shiftKey: true }), false);
+  assert.deepEqual(calls, ['undo', 'redo']);
+  adapter.update(window('edited')); finish(); await tick();
+  assert.equal(field.emit('beforeinput', { inputType: 'historyRedo' }), false);
+  assert.deepEqual(calls, ['undo', 'redo', 'redo']);
+  finish(); await tick();
+  adapter.dispose();
+  assert.equal(field.emit('keydown', { key: 'y', ctrlKey: true }), true);
+});
+
+test('History failure leaves settled input usable and composing keys stay local', async () => {
+  const field = new Field();
+  let failure;
+  const adapter = input(field, async () => window(''), async () => { throw new Error('no redo'); },
+    error => { failure = error; });
+  adapter.update(window('a'));
+  assert.equal(field.emit('keydown', { key: 'z', ctrlKey: true, isComposing: true }), true);
+  await adapter.history('redo').catch(error => { failure = error; });
+  assert.equal(failure.message, 'no redo');
+  assert.equal(field.readOnly, false);
+  assert.equal(field.value, 'a');
+});
+
+test('late History failure does not report into a retired input view', async () => {
+  const field = new Field();
+  let reject;
+  const adapter = input(field, async () => window('a'),
+    () => new Promise((_, failed) => { reject = failed; }),
+    () => { assert.fail('retired view received a failure callback'); });
+  adapter.update(window('a'));
+  field.emit('keydown', { key: 'z', ctrlKey: true });
+  adapter.dispose();
+  reject(new Error('lost History response')); await tick();
+});
 
 test('retiring an input view removes listeners and preserves in-flight recovery', async () => {
   const field = new Field(), calls = [];

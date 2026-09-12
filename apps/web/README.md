@@ -87,6 +87,11 @@ This trial does not implement shared Session focus,
 continuous following, Markdown preview or SSR. The Text TS
 codec lives with its module; the common service client has no Text semantics.
 
+Undo and Redo buttons, Ctrl/Meta+Z, Ctrl/Meta+Shift+Z and Ctrl+Y use native
+History. History navigation waits for pending input and temporarily locks the
+textarea until its accepted state is observed. Browser-native History input
+events use the same path; IME key events remain with composition.
+
 The textarea input trial maps browser UTF-16 selection and normalized newlines
 back to the observed Text window. It preserves untouched CRLF and opaque bytes;
 the object marker represents one opaque byte. Composition remains a local draft

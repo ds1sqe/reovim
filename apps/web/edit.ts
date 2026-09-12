@@ -14,7 +14,7 @@ let busy = false;
 const typing = bindInput(document.querySelector<HTMLTextAreaElement>('#typing')!,
   (start, end, text) => operate(() => editing.replace(start, end, text,
     receipt => typing.correlate(receipt.client, receipt.id))),
-  () => operate(() => editing.undo()), report, {
+  direction => operate(() => editing.history(direction)), report, {
     load: () => journal.draft,
     save: value => { journal.draft = value; persist(); draftStatus(); }
   });
@@ -60,7 +60,7 @@ const actions: Record<string, () => Promise<unknown>> = {
   follow: () => editing.follow(),
   read: () => editing.read(BigInt(input('window-start'))),
   replace: () => editing.replace(BigInt(input('start')), BigInt(input('end')), input('replacement')),
-  undo: () => editing.undo(), close: () => editing.close(), recover: () => editing.recover()
+  close: () => editing.close(), recover: () => editing.recover()
 };
 for (const [id, action] of Object.entries(actions)) {
   document.querySelector(`#${id}`)!.addEventListener('click', async () => {
@@ -70,6 +70,11 @@ for (const [id, action] of Object.entries(actions)) {
     }
     try { await operate(action); }
     catch (error) { report(error); }
+  });
+}
+for (const direction of ['undo', 'redo'] as const) {
+  document.querySelector(`#${direction}`)!.addEventListener('click', () => {
+    void typing.history(direction).catch(report);
   });
 }
 document.querySelector('#discard-draft')!.addEventListener('click', () => {

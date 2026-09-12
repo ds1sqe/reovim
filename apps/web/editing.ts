@@ -74,8 +74,8 @@ export class Editing {
           || value.resources.length > 3) throw new Error('invalid Buffer descriptor');
       state.source = { shared: true, buffer: value.resources[0]!, history: value.resources[1]!,
         revision: new DataView(value.data.buffer).getBigUint64(0, true).toString() };
-    } else if (fields[2] === 'kernel.history.undo') {
-      if (value.contract !== 'kernel.history.undo' || value.schema !== 1
+    } else if (fields[2] === 'kernel.history.undo' || fields[2] === 'kernel.history.redo') {
+      if (value.contract !== fields[2] || value.schema !== 1
           || value.data.length !== 16 || value.resources.length || !state.source) {
         throw new Error('invalid History acceptance');
       }
@@ -205,11 +205,14 @@ export class Editing {
     return this.journal.window!;
   }
 
-  async undo(): Promise<void> {
+  undo(): Promise<void> { return this.history('undo'); }
+  redo(): Promise<void> { return this.history('redo'); }
+
+  async history(direction: 'undo' | 'redo'): Promise<void> {
     const client = await this.ready();
     const source = this.journal.source;
     if (!source) throw new Error('Create a source first');
-    await this.send(client, ['write', source.history, 'kernel.history.undo', '1',
+    await this.send(client, ['write', source.history, `kernel.history.${direction}`, '1',
       hex(u64(BigInt(source.revision))), source.buffer]);
     await this.observe();
   }

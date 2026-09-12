@@ -58,6 +58,10 @@ assert.equal(saved.source.revision, '1');
 assert.deepEqual(saved.window.units, after);
 await resumed.undo();
 assert.deepEqual(saved.window.units, before);
+await resumed.redo();
+assert.deepEqual(saved.window.units, after);
+await resumed.undo();
+assert.deepEqual(saved.window.units, before);
 
 // A separate caller of this retained scope changes state behind the old view.
 const client = new Client(saved.token, `${origin}/rpc`);

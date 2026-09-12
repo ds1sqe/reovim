@@ -15,7 +15,7 @@ export interface DraftStorage {
 /** Local prediction is input state; only verified server replies advance work. */
 export function input(element: HTMLTextAreaElement,
   submit: (start: bigint, end: bigint, text: string) => Promise<Window>,
-  undo: () => Promise<void>, failed: (error: unknown) => void,
+  history: (direction: 'undo' | 'redo') => Promise<void>, failed: (error: unknown) => void,
   storage?: DraftStorage) {
   let draft = storage?.load();
   let proof = draft?.proof;
@@ -24,6 +24,7 @@ export function input(element: HTMLTextAreaElement,
   let projection = project({ start: '0', end: '0', eof: true, units: [] });
   let anchor: Anchor | undefined;
   let composing = false, finishing = false, pending = false, halted = !!draft;
+  let historyPending = false;
   let disposed = false;
   const events = new AbortController();
 
@@ -32,7 +33,7 @@ export function input(element: HTMLTextAreaElement,
     base: observed, queue: [...queue], ...(proof ? { proof } : {}) });
   const refresh = () => {
     if (disposed) return;
-    if (!pending && !queue.length && !composing && !halted) {
+    if (!pending && !historyPending && !queue.length && !composing && !halted) {
       basis = observed;
       if (basis) {
         projection = project(basis);
@@ -40,9 +41,10 @@ export function input(element: HTMLTextAreaElement,
       }
     }
     if (halted && draft) element.value = draft.value;
-    element.readOnly = halted || !basis;
+    element.readOnly = halted || !basis || historyPending;
   };
   const halt = (error: unknown) => { halted = true; failed(error); refresh(); };
+  const report = (error: unknown) => { if (!disposed) failed(error); };
 
   const drain = async () => {
     if (disposed || pending || halted) return;
@@ -87,13 +89,29 @@ export function input(element: HTMLTextAreaElement,
   const selection = (backward: boolean): Anchor => ({
     start: element.selectionStart, end: element.selectionEnd, backward
   });
+  const navigate = async (direction: 'undo' | 'redo') => {
+    if (disposed || halted || !basis) throw new Error('Resolve retained input first');
+    if (pending || historyPending || composing || queue.length) {
+      throw new Error('Finish pending input before History navigation');
+    }
+    historyPending = true; refresh();
+    try { await history(direction); }
+    finally { historyPending = false; refresh(); }
+  };
+  element.addEventListener('keydown', event => {
+    if (event.isComposing || composing || event.altKey || !(event.ctrlKey || event.metaKey)) return;
+    const key = event.key.toLowerCase();
+    const direction = key === 'z' ? (event.shiftKey ? 'redo' : 'undo')
+      : key === 'y' && event.ctrlKey && !event.shiftKey ? 'redo' : undefined;
+    if (!direction) return;
+    event.preventDefault();
+    void navigate(direction).catch(report);
+  }, { signal: events.signal });
   element.addEventListener('beforeinput', event => {
-    if (halted || !basis) { event.preventDefault(); return; }
+    if (halted || historyPending || !basis) { event.preventDefault(); return; }
     if (event.inputType === 'historyUndo' || event.inputType === 'historyRedo') {
       event.preventDefault();
-      if (pending || composing) failed(new Error('Finish pending input before History navigation'));
-      else if (event.inputType === 'historyUndo') void undo().catch(halt);
-      else failed(new Error('Redo input is not yet supported'));
+      void navigate(event.inputType === 'historyUndo' ? 'undo' : 'redo').catch(report);
       return;
     }
     if (!composing && !finishing) anchor = selection(event.inputType.endsWith('Backward'));
@@ -117,6 +135,7 @@ export function input(element: HTMLTextAreaElement,
     queueMicrotask(() => { finishing = false; commit(); refresh(); });
   }, { signal: events.signal });
   return {
+    history: navigate,
     correlate(client: string, id: string) {
       if (!pending || !queue.length) throw new Error('No input is awaiting correlation');
       proof = { client, id }; retain('submitted');
@@ -142,7 +161,7 @@ export function input(element: HTMLTextAreaElement,
     },
     update(window: Window | undefined) { observed = window; refresh(); },
     discard() {
-      if (disposed || pending || composing) throw new Error('Finish the active input first');
+      if (disposed || pending || historyPending || composing) throw new Error('Finish the active input first');
       queue = []; proof = undefined; halted = false; save(undefined); refresh();
     },
     dispose() {
