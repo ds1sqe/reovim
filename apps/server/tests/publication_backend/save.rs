@@ -465,6 +465,49 @@ fn await_backend(f: &mut Fixture, context: &mut Context<'_>) {
 }
 
 #[test]
+fn captured_proof_survives_close_until_its_reader_releases_it() {
+    let mut f = setup_model(true);
+    edit(&mut f, true);
+    let report = publication::report(
+        &finish(
+            &mut f.runtime,
+            publication::save(&f.client, f.buffer.state, &[]),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let key = f.runtime.resource(&report.recovery).unwrap();
+    let reader = f.runtime.bind(&[(key, Permissions::READ)]).unwrap();
+    let access = reader.connection();
+    let work = access.resolve(&report.recovery).into_inner().unwrap();
+    let held = access.capture(work, Permissions::READ).unwrap();
+    for _ in 0..8 {
+        assert_eq!(
+            f.client.close(report.work).into_inner(),
+            Err(RequestError::Rejected(Error::BUSY))
+        );
+        f.runtime.advance(&mut Context::from_waker(Waker::noop())).unwrap();
+    }
+    let original = finish(
+        &mut f.runtime,
+        held.read(
+            work,
+            &Message::new(Contract::new("kernel.request.result", 1), &[]),
+        ),
+    )
+    .unwrap();
+    let original =
+        reovim_kernel_interface::requests::decode(original).unwrap().unwrap();
+    assert_eq!(
+        publication::report(&original).unwrap().status,
+        protocol::Status::Applied
+    );
+    drop(held);
+    retire(&mut f, report.work);
+    stop(f);
+}
+
+#[test]
 fn proof_close_retries_rejected_cleanup_without_losing_application() {
     let mut f = setup_model(true);
     edit(&mut f, true);

@@ -506,7 +506,16 @@ impl Caller {
         if shared.requests.iter().any(|record| {
             let record = record.borrow();
             record.id != request && record.references(ResourceId(key))
-        }) {
+        }) || shared.scopes.iter().filter_map(alloc::rc::Weak::upgrade).any(
+            |scope| {
+                scope
+                    .borrow()
+                    .captures
+                    .iter()
+                    .filter_map(alloc::rc::Weak::upgrade)
+                    .any(|capture| capture.key == key)
+            },
+        ) {
             return Err(Error::BUSY);
         }
         let record = shared
