@@ -66,6 +66,12 @@ class FileCapture(Scenario):
                            "native/source", imports="")
         opened = self.call("write", "native/source", "source.open", "1", "", old)
         buffer, _ = opened.resources
+        self.close_access(old)
+        self.close_access(new)
+        self.close_access(old)
+        self.call("read", old, "resource.snapshot", "1", success=False)
+        self.call("read", new, "resource.snapshot", "1", success=False)
+        self.unload("modules/host/files-0")
         held = self.call("read", buffer, "kernel.buffer.retain", "1",
                          u64(0).hex()).resources[1]
         self.call("write", buffer, "kernel.buffer.close", "1",
@@ -75,8 +81,3 @@ class FileCapture(Scenario):
         self.assertEqual(value.data[16:], self.original)
         self.close_access(held)
         self.unload(module)
-        self.close_access(old)
-        self.close_access(new)
-        self.call("read", old, "resource.snapshot", "1", success=False)
-        self.call("read", new, "resource.snapshot", "1", success=False)
-        self.unload("modules/host/files-0")

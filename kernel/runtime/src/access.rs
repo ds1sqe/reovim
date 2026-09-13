@@ -1,5 +1,5 @@
 use alloc::{boxed::Box, rc::Rc, vec::Vec};
-use core::cell::RefCell;
+use core::cell::{Cell, RefCell};
 use reovim_kernel_interface::access::{Access, Method, Reply};
 use reovim_kernel_interface::namespace::ResourceEntry;
 use reovim_kernel_interface::provider::Permissions;
@@ -16,6 +16,7 @@ struct Caller {
     scope: Rc<RefCell<Scope>>,
     generation: u64,
     capture: Option<Rc<crate::namespace::Capture>>,
+    view: Option<Rc<Cell<bool>>>,
 }
 
 pub fn connection(
@@ -28,10 +29,29 @@ pub fn connection(
         scope,
         generation,
         capture: None,
+        view: None,
+    }))
+}
+
+pub fn view_connection(
+    shared: Rc<RefCell<Shared>>,
+    scope: Rc<RefCell<Scope>>,
+    view: Rc<Cell<bool>>,
+) -> Connection {
+    Connection::new(Rc::new(Caller {
+        shared,
+        scope,
+        generation: 0,
+        capture: None,
+        view: Some(view),
     }))
 }
 
 impl Access for Caller {
+    fn read_view(&self, subject: ResourceId) -> Result<Connection, Error> {
+        self.check()?;
+        crate::read_views::acquire(&self.shared, &self.scope, subject)
+    }
     fn capture(
         &self,
         subject: ResourceId,
@@ -79,6 +99,7 @@ impl Access for Caller {
             scope: self.scope.clone(),
             generation: self.generation,
             capture: Some(capture),
+            view: self.view.clone(),
         })))
     }
     fn withdraw(&self, resource: ResourceId) -> Result<(), Error> {
@@ -190,6 +211,12 @@ impl Access for Caller {
         self.check()?;
         let mut shared = self.shared.borrow_mut();
         let key = self.scope.borrow().key(access)?;
+        if let Some(view) =
+            self.view.as_ref().filter(|_| key == self.scope.borrow().root)
+        {
+            let scope = self.scope.borrow().id;
+            return crate::read_views::close(&shared, scope, view);
+        }
         if shared.entries[shared.entry_index(key)?].ownership.is_some() {
             drop(shared);
             return crate::owned::close(&self.shared, &self.scope, key);
@@ -217,12 +244,16 @@ impl Access for Caller {
             scope: self.scope.clone(),
             generation: scope.generation,
             capture: self.capture.clone(),
+            view: self.view.clone(),
         })))
     }
 }
 
 impl Caller {
     fn check(&self) -> Result<(), Error> {
+        if self.view.as_ref().is_some_and(|view| !view.get()) {
+            return Err(Error::CLOSED);
+        }
         if self.scope.borrow().closed {
             return Err(Error::CLOSED);
         }
@@ -252,7 +283,10 @@ impl Caller {
         if shared.entries[shared.entry_index(key)?].closed() {
             return Err(Error::CLOSED);
         }
-        let target = shared.entries[shared.entry_index(key)?].kind.clone();
+        let target = match &shared.entries[shared.entry_index(key)?].kind {
+            Kind::ReadView { provider, .. } => Kind::Provider(provider.clone()),
+            kind => kind.clone(),
+        };
         let rights = scope
             .permissions(&shared, key)
             .filter(|rights| rights.allows(method))

@@ -17,6 +17,7 @@ mod modules;
 mod namespace;
 mod owned;
 mod publication;
+mod read_views;
 mod registration;
 mod request;
 
@@ -250,6 +251,7 @@ impl Runtime {
             return Err(Error::NOT_READY);
         }
         owned::reclaim(&self.shared);
+        read_views::reclaim(&self.shared);
         let module = self.advance_modules(context);
         if !self.shared.borrow().ready {
             return Ok(module);
@@ -264,6 +266,7 @@ impl Runtime {
     pub fn close(&mut self) -> Result<(), Error> {
         self.shared.borrow_mut().closing = true;
         owned::close_all(&self.shared)?;
+        read_views::reclaim(&self.shared);
         owned::reclaim(&self.shared);
         self.close_modules()?;
         close_providers(self)?;

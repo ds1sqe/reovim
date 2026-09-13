@@ -12,17 +12,30 @@ pub enum Kind {
     Session(Rc<RefCell<crate::sessions::Session>>),
     Snapshot(Rc<crate::sessions::Snapshot>),
     Participation(Rc<RefCell<crate::sessions::Participation>>),
-    ClosedSession { owner: u64 },
+    ClosedSession {
+        owner: u64,
+    },
     Catalog(Rc<RefCell<crate::catalog::Catalog>>),
     Module(Rc<Cell<Lifecycle>>),
     Directory,
     Unloading,
     Provider(Rc<RefCell<ResourceProvider>>),
+    ReadView {
+        provider: Rc<RefCell<ResourceProvider>>,
+        live: alloc::rc::Weak<Cell<bool>>,
+    },
     Model(Rc<RefCell<ModelProvider>>),
     Buffer(Rc<RefCell<Editing>>),
     History(Rc<RefCell<Editing>>),
-    ClosedBuffer { owner: u64, revision: u64 },
-    Work { scope: u64, request: u64, retained: bool },
+    ClosedBuffer {
+        owner: u64,
+        revision: u64,
+    },
+    Work {
+        scope: u64,
+        request: u64,
+        retained: bool,
+    },
 }
 
 impl Kind {
@@ -70,6 +83,8 @@ impl Entry {
 
     pub fn closed(&self) -> bool {
         self.ownership.as_ref().is_some_and(|owner| owner.closed)
+            || matches!(&self.kind, Kind::ReadView { live, .. }
+                if !live.upgrade().is_some_and(|live| live.get()))
     }
 
     pub fn directory(key: u64, parent: u64, name: &str) -> Self {

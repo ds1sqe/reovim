@@ -2,7 +2,7 @@
 use alloc::vec::Vec;
 use core::ops::Range;
 use reovim_kernel_interface::{
-    Connection, Contract, Error, Message, ResourceId, provider::Permissions,
+    Connection, Contract, Error, Message, ResourceId,
 };
 
 pub struct Backing {
@@ -15,7 +15,9 @@ impl Backing {
         connection: Connection,
         resource: ResourceId,
     ) -> Result<Self, Error> {
-        let connection = connection.capture(resource, Permissions::READ)?;
+        let connection = connection.read_view(resource)?;
+        let resource =
+            connection.root().await.map_err(|error| failure(&error))?;
         let input = Message::new(Contract::new("resource.snapshot", 1), &[]);
         let value = connection
             .read(resource, &input)

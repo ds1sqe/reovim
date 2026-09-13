@@ -64,8 +64,18 @@ fn clone(source: &File, scratch: &File) -> io::Result<(File, u64)> {
 }
 
 fn provider(file: File, length: u64) -> ResourceProvider {
+    reader(Arc::new(file), length, Arc::new(AtomicBool::new(false)))
+}
+
+fn reader(
+    file: Arc<File>,
+    length: u64,
+    busy: Arc<AtomicBool>,
+) -> ResourceProvider {
+    let view_file = file.clone();
+    let view_busy = busy.clone();
     ResourceProvider::new(
-        (Arc::new(file), length, Arc::new(AtomicBool::new(false))),
+        (file, length, busy),
         ResourceOps {
             unload: Some(|(_, _, busy)| {
                 if busy.load(Ordering::Acquire) {
@@ -88,6 +98,9 @@ fn provider(file: File, length: u64) -> ResourceProvider {
         }]),
         Rc::new(()),
     )
+    .with_read_view(move || {
+        Ok(reader(view_file.clone(), length, view_busy.clone()))
+    })
 }
 
 fn read(file: &File, length: u64, input: Message) -> Result<Message, Error> {

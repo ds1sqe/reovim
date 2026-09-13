@@ -57,6 +57,7 @@ static TABLE: abi::Access = reovim_vtable::rv_vtable!(abi::Access {
     publish,
     withdraw,
     capture,
+    read_view: Some(read_view),
 });
 
 unsafe extern "C" fn retain(context: *mut c_void) {
@@ -74,6 +75,21 @@ fn failure(error: Error) -> abi::Failure {
     abi::Failure { code: error.code.0, resource: error.id.map_or(0, |id| id.0) }
 }
 const SUCCESS: abi::Failure = abi::Failure { code: 0, resource: 0 };
+
+unsafe extern "C" fn read_view(
+    context: *mut c_void,
+    subject: u64,
+    output: *mut abi::Connection,
+) -> abi::Failure {
+    let owner = unsafe { &*context.cast::<Exported>() };
+    match owner.read_view(ResourceId(subject)) {
+        Ok(view) => {
+            unsafe { output.write(export_with_code(view, owner.code.clone())) };
+            SUCCESS
+        }
+        Err(error) => failure(error),
+    }
+}
 
 fn rejected(error: &RequestError) -> abi::Failure {
     match error {

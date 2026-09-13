@@ -43,6 +43,7 @@ static TABLE: abi::ProviderOps = reovim_vtable::rv_vtable!(abi::ProviderOps {
     request,
     unload,
     close,
+    read_view: Some(read_view),
 });
 unsafe extern "C" fn retain(context: *mut c_void) {
     unsafe { Rc::increment_strong_count(context.cast::<Export>()) };
@@ -57,6 +58,22 @@ unsafe extern "C" fn close(context: *mut c_void) -> abi::Failure {
 unsafe extern "C" fn unload(context: *mut c_void) -> abi::Failure {
     let value = unsafe { &*context.cast::<Export>() };
     failure(value.provider.borrow_mut().unload())
+}
+
+unsafe extern "C" fn read_view(
+    context: *mut c_void,
+    output: *mut abi::Provider,
+) -> abi::Failure {
+    let owner = unsafe { &*context.cast::<Export>() };
+    match owner.provider.borrow_mut().read_view() {
+        Ok(view) => {
+            let exported = Export::new(view);
+            unsafe { output.write(exported.view()) };
+            core::mem::forget(exported);
+            failure(Ok(()))
+        }
+        Err(error) => failure(Err(error)),
+    }
 }
 unsafe extern "C" fn request(
     context: *mut c_void,
@@ -95,7 +112,7 @@ fn surface_view(surface: &Surface) -> abi::Surface {
 }
 struct Imported {
     raw: abi::Provider,
-    _code: Rc<dyn Any>,
+    code: Rc<dyn Any>,
 }
 impl Drop for Imported {
     fn drop(&mut self) {
@@ -110,11 +127,12 @@ pub unsafe fn import(
     if raw.table.is_null() {
         return Err(Error::INVALID);
     }
-    let table = unsafe { &*raw.table };
-    if table.version != abi::VERSION || table.size != abi::ProviderOps::ABI_SIZE
-    {
+    let version = unsafe { (&raw const (*raw.table).version).read() };
+    let size = unsafe { (&raw const (*raw.table).size).read() };
+    if version != abi::VERSION || size != abi::ProviderOps::ABI_SIZE {
         return Err(Error::UNSUPPORTED);
     }
+    let table = unsafe { &*raw.table };
     let surfaces = unsafe { elements(raw.surfaces, raw.surface_count)? }
         .iter()
         .map(|surface| unsafe { surface_owned(surface) })
@@ -123,7 +141,7 @@ pub unsafe fn import(
         return Err(Error::INVALID);
     }
     unsafe { (table.retain)(raw.context) };
-    let imported = Rc::new(Imported { raw, _code: code });
+    let imported = Rc::new(Imported { raw, code });
     let mut provider = ResourceProvider::new(
         imported.clone(),
         ResourceOps {
@@ -139,12 +157,29 @@ pub unsafe fn import(
         },
         surfaces,
         imported.clone(),
-    );
+    )
+    .with_read_view({
+        let original = imported.clone();
+        move || independent(&original)
+    });
     if raw.owned != 0 {
         provider = provider.try_owned(move || cleanup(&imported));
     }
     provider.forwarding = raw.forwarding != 0;
     Ok(provider)
+}
+
+fn independent(original: &Imported) -> Result<ResourceProvider, Error> {
+    let mut output = core::mem::MaybeUninit::uninit();
+    let acquire =
+        unsafe { (*original.raw.table).read_view }.ok_or(Error::UNSUPPORTED)?;
+    check(unsafe { acquire(original.raw.context, output.as_mut_ptr()) })?;
+    let raw = unsafe { output.assume_init() };
+    let result = unsafe { import(raw, original.code.clone()) };
+    if !raw.table.is_null() {
+        unsafe { ((*raw.table).release)(raw.context) };
+    }
+    result
 }
 fn call(
     value: &Rc<Imported>,

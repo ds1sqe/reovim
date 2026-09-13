@@ -256,6 +256,8 @@ reovim_vtable::rv_vtable! {
             unsafe extern "C" fn(*mut c_void, *const Request) -> Pending,
         pub close: unsafe extern "C" fn(*mut c_void) -> Failure,
         pub unload: unsafe extern "C" fn(*mut c_void) -> Failure,
+        pub read_view:
+            Option<unsafe extern "C" fn(*mut c_void, *mut Provider) -> Failure>,
     }
 }
 
@@ -282,5 +284,7 @@ pub struct Access {
         *const Provider, *mut u64) -> Failure,
     pub capture: unsafe extern "C" fn(*mut c_void, u64, u32,
         *mut Connection) -> Failure,
+    pub read_view: Option<unsafe extern "C" fn(*mut c_void, u64,
+        *mut Connection) -> Failure>,
 }
 }

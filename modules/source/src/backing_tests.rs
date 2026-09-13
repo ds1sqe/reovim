@@ -17,6 +17,8 @@ fn finish<T>(runtime: &mut Runtime, future: impl Future<Output = T>) -> T {
 }
 
 fn provider(reads: Reads, mode: Rc<Cell<u8>>) -> ResourceProvider {
+    let view_reads = reads.clone();
+    let view_mode = mode.clone();
     ResourceProvider::new(
         (reads, mode),
         ResourceOps {
@@ -40,6 +42,7 @@ fn provider(reads: Reads, mode: Rc<Cell<u8>>) -> ResourceProvider {
         }]),
         Rc::new(()),
     )
+    .with_read_view(move || Ok(provider(view_reads.clone(), view_mode.clone())))
 }
 fn metadata(
     input: Message,

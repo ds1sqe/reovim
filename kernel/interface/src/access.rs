@@ -72,8 +72,15 @@ pub enum Method {
     Write,
 }
 
-/// Common adapter boundary. These calls perform no provider execution.
+/// Common adapter boundary. Read-view factories only construct inert access;
+/// request execution remains with Runtime.
 pub trait Access {
+    /// Acquires a producer-offered independent, data-only read view.
+    /// # Errors
+    /// Unsupported, denied and capacity failures preserve the original access.
+    fn read_view(&self, _: ResourceId) -> Result<Connection, Error> {
+        Err(Error::UNSUPPORTED)
+    }
     /// # Errors
     /// Rejects unsupported retention or rights not already granted.
     fn capture(
@@ -135,6 +142,15 @@ pub trait Access {
 pub struct Connection(Rc<dyn Access>);
 
 impl Connection {
+    /// Owns an independent read view whose root is the view subject.
+    /// Clones share its lifetime; dropping the last owner releases the view.
+    /// Acquisition performs no I/O. Requests still execute through Runtime.
+    /// # Errors
+    /// The producer must offer a self-contained data-only reader. Existing READ
+    /// rights are required; original access close never closes the new view.
+    pub fn read_view(&self, subject: ResourceId) -> Result<Self, Error> {
+        self.0.read_view(subject)
+    }
     /// Retains selected existing rights in this namespace through the result.
     ///
     /// Clones retain the same capture. Drop releases it without closing the

@@ -114,6 +114,7 @@ pub struct ResourceProvider {
     pub forwarding: bool,
     implementation: Box<dyn Dispatch>,
     close: Option<Box<dyn FnMut() -> Result<(), Error>>>,
+    read_view: Option<Box<dyn FnMut() -> Result<Self, Error>>>,
     // Keep executable ownership after implementation/context destruction.
     _code: Rc<dyn core::any::Any>,
 }
@@ -130,9 +131,29 @@ impl ResourceProvider {
             surfaces,
             forwarding: false,
             close: None,
+            read_view: None,
             implementation: Box::new(Implementation { state, operations }),
             _code: code,
         }
+    }
+
+    /// Offers an independent reader owning its data/code. The factory performs
+    /// no I/O or waiting. Its result has data-only READ surfaces and no close
+    /// callback; final release is ordinary ownership destruction.
+    #[must_use]
+    pub fn with_read_view(
+        mut self,
+        factory: impl FnMut() -> Result<Self, Error> + 'static,
+    ) -> Self {
+        self.read_view = Some(Box::new(factory));
+        self
+    }
+
+    /// Acquires the declared independent reader without changing this access.
+    /// # Errors
+    /// Missing support and producer/capacity failures remain explicit.
+    pub fn read_view(&mut self) -> Result<Self, Error> {
+        self.read_view.as_mut().ok_or(Error::UNSUPPORTED)?()
     }
 
     /// A published access belongs to the requesting client until close.

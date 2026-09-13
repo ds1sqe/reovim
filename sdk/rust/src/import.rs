@@ -45,6 +45,14 @@ impl Drop for Remote {
 }
 struct Imported(Rc<Remote>);
 impl Access for Imported {
+    fn read_view(&self, subject: ResourceId) -> Result<Connection, Error> {
+        let mut output = MaybeUninit::uninit();
+        let acquire = self.0.table().read_view.ok_or(Error::UNSUPPORTED)?;
+        check(unsafe {
+            acquire(self.0.raw.context, subject.0, output.as_mut_ptr())
+        })?;
+        Ok(unsafe { import(output.assume_init(), self.0.code.clone()) })
+    }
     fn capture(
         &self,
         subject: ResourceId,

@@ -33,7 +33,11 @@ Native retained reads use the optional Model `inspect` pending callback. The
 resident implementation completes when polled; backed ranges await bounded
 `resource.snapshot` reads. Acceptance descriptors remain finite and synchronous.
 Opening and splice preparation do not read untouched backing ranges. Captured
-backing access survives through every state that still references those ranges.
+backing uses an independent `Connection::read_view`; snapshot providers must
+support that optional operation or opening returns Unsupported. The view shares
+immutable data without copying the whole source. Closing the original capture
+does not close the view. Every state referencing backed ranges retains it;
+releasing the last state drops its connection without a fallible close callback.
 
 `buffer::observe` acquires a retained source snapshot and change watch at one
 boundary. `buffer::next` reports accepted Edit/Undo/Redo edges, Pending, Gap or

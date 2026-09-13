@@ -153,8 +153,12 @@ struct rv_access {
         const struct rv_provider *, uint64_t *);
     struct rv_failure (*capture)(void *, uint64_t, uint32_t,
         struct rv_connection *);
+    struct rv_failure (*read_view)(void *, uint64_t, struct rv_connection *);
 };
 /* Connection/Pending own one reference, released through their own table.
+ * read_view optionally acquires an independent data-only READ connection.
+ * Its root is the new view; retain/release own its lifetime. Acquisition does
+ * not perform I/O or wait. NULL means unsupported. Original close is separate.
  * capture retains selected existing rights in this namespace through its
  * returned Connection; release does not close the shared Resource.
  * Access is single-threaded. Wake retain/release/wake must be thread-safe;
@@ -197,10 +201,14 @@ struct rv_provider_ops {
     /* Owned access: fence delivery and wake pending calls; cannot fail. */
     struct rv_failure (*close)(void *);
     struct rv_failure (*unload)(void *);
+    struct rv_failure (*read_view)(void *, struct rv_provider *);
 };
 /* An owned provider close fences operations before cleanup. Failure retains
  * context and code for a retry; successful cleanup is not invoked again.
  * The callback must tolerate its own partial cleanup from earlier attempts.
+ * read_view returns one owned, self-contained provider descriptor on success.
+ * It has only READ surfaces, no reference slots, forwarding or close callback.
+ * Failure leaves output untouched; NULL means no independent-view support.
  */
 struct rv_provider {
     void *context;
