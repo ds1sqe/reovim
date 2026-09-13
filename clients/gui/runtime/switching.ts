@@ -4,6 +4,7 @@ import type { BufferViews } from '../contract/buffers.js';
 import { Focus } from './context.js';
 
 export interface SwitchJournal {
+  observing?: { session: ResourceId; kind: 'follow' | 'seek'; checkpoint?: ResourceId; started?: boolean };
   opening?: { session: ResourceId };
   pending?: { session: ResourceId; value: Value; phase: 'focus' | 'view';
     closing?: ResourceId;
@@ -24,6 +25,7 @@ export class Switching {
 
   select(target?: ResourceId): Promise<void> {
     return this.run(async () => {
+      if (this.journal.observing) throw new Error('Recover context observation first');
       if (this.journal.opening) throw new Error('Recover the opening first');
       if (this.journal.pending?.phase === 'focus' || this.journal.pending?.closing) throw new Error('Recover the context switch first');
       if (this.journal.pending) {
@@ -45,7 +47,7 @@ export class Switching {
   /** Prepare ownership without a Text view; recovery never repeats prepare. */
   open(prepare: () => Promise<void>): Promise<void> {
     return this.run(async () => {
-      if (this.journal.opening || this.journal.pending || this.views.pending()
+      if (this.journal.observing || this.journal.opening || this.journal.pending || this.views.pending()
           || this.focus.journal.receipt || this.focus.journal.closing) {
         throw new Error('Recover pending work first');
       }
@@ -82,7 +84,7 @@ export class Switching {
   close(target: ResourceId): Promise<void> {
     return this.run(async () => {
       if (this.views.current() !== target) throw new Error('Close the current Buffer first');
-      if (this.journal.opening || this.journal.pending || this.focus.journal.receipt || this.focus.journal.closing) {
+      if (this.journal.observing || this.journal.opening || this.journal.pending || this.focus.journal.receipt || this.focus.journal.closing) {
         throw new Error('Recover context work first');
       }
       const current = this.focus.journal.current;
@@ -101,6 +103,51 @@ export class Switching {
   private accepted(): boolean {
     const request = this.journal.pending?.request, accepted = this.focus.journal.acceptedUpdate;
     return !!request && request.client === accepted?.client && request.id === accepted.id;
+  }
+
+  observe(kind: 'follow' | 'seek'): Promise<void> {
+    return this.run(async () => {
+      if (this.journal.pending?.phase === 'view' && !this.journal.pending.closing) {
+        await this.focus.recover(); await this.views.recover();
+        delete this.journal.pending; this.persist();
+      }
+      if (this.journal.observing || this.journal.opening || this.journal.pending
+          || this.focus.journal.receipt || this.views.pending()) throw new Error('Recover pending work first');
+      const current = this.focus.journal.current;
+      if (!current) throw new Error('Create or join a context first');
+      const checkpoint = this.focus.journal.checkpoint?.snapshot;
+      if (kind === 'seek' && !checkpoint) throw new Error('Retain a context checkpoint first');
+      this.journal.observing = { session: current.session, kind, checkpoint };
+      this.persist();
+      await this.readContext();
+      await this.observedView();
+    });
+  }
+
+  private async readContext(): Promise<void> {
+    const observing = this.journal.observing!;
+    const started = () => { observing.started = true; this.persist(); };
+    try {
+      if (observing.kind === 'seek') await this.focus.seek(started, observing.checkpoint);
+      else await this.focus.follow(started);
+    } catch (error) { this.failedObservation(error); }
+  }
+
+  private failedObservation(error: unknown): never {
+    const state = this.focus.journal;
+    if (!state.receipt && !state.needsRead && !state.retiring.length && !state.retiringWatches?.length) {
+      delete this.journal.observing; this.persist();
+    }
+    throw error;
+  }
+
+  private async observedView(): Promise<void> {
+    const current = this.focus.journal.current!;
+    if (current.session !== this.journal.observing!.session) throw new Error('Context changed during observation');
+    this.journal.pending = { session: current.session, phase: 'view',
+      value: { known: [...current.known], active: current.active } };
+    delete this.journal.observing; this.persist();
+    await this.show();
   }
 
   private async update(): Promise<void> {
@@ -139,6 +186,12 @@ export class Switching {
 
   recover(): Promise<void> {
     return this.run(async () => {
+      if (this.journal.observing) {
+        try { await this.focus.recover(); }
+        catch (error) { this.failedObservation(error); }
+        if (!this.journal.observing.started) await this.readContext();
+        await this.observedView(); return;
+      }
       if (this.journal.opening) {
         try { await this.views.recover(); }
         catch (error) { this.failedOpening(error); }

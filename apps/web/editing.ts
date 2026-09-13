@@ -5,12 +5,13 @@ import { result as retainedResult } from '../../sdk/typescript/requests.js';
 import * as text from '../../modules/text/api/typescript.js';
 
 interface Source { buffer: ResourceId; history: ResourceId; revision: string;
-  shared?: boolean; backing?: ResourceId; name?: string; windowStart?: string }
+  shared?: boolean; readOnly?: boolean; backing?: ResourceId; name?: string; windowStart?: string }
 interface AcceptedInput { client: string; id: string; revision: string; buffer: ResourceId }
 export interface Journal {
   token?: string; opening?: Opening; receipt?: Receipt;
   source?: Source; access?: ResourceId; observed?: text.Observation;
   inactive?: Source[]; openingName?: string;
+  readOnlyTarget?: ResourceId;
   window?: text.Window; retiring: ResourceId[];
   change?: text.Change; needsRefresh?: boolean;
   acceptedInput?: AcceptedInput;
@@ -182,9 +183,12 @@ export class Editing {
       if (value.contract !== 'kernel.buffer.describe' || value.schema !== 1
           || value.data.length !== 8 || value.resources.length < 2
           || value.resources.length > 3) throw new Error('invalid Buffer descriptor');
-      state.source = { shared: true, buffer: value.resources[0]!, history: value.resources[1]!,
+      if (state.readOnlyTarget && value.resources[0] !== state.readOnlyTarget) throw new Error('foreign read-only Buffer');
+      state.source = { shared: true, readOnly: state.readOnlyTarget !== undefined,
+        buffer: value.resources[0]!, history: value.resources[1]!,
         backing: value.resources[2],
         revision: new DataView(value.data.buffer).getBigUint64(0, true).toString() };
+      delete state.readOnlyTarget;
     } else if (fields[2] === 'kernel.history.undo' || fields[2] === 'kernel.history.redo') {
       if (value.contract !== fields[2] || value.schema !== 1
           || value.data.length !== 16 || value.resources.length || !state.source) {
@@ -192,8 +196,8 @@ export class Editing {
       }
       state.source.revision = new DataView(value.data.buffer).getBigUint64(0, true).toString();
       delete state.window;
-    } else if (fields[2] === 'text.attach') {
-      if (value.contract !== 'text.attach' || value.schema !== 1
+    } else if (fields[2] === 'text.attach' || fields[2] === 'text.attach.read') {
+      if (value.contract !== fields[2] || value.schema !== 1
           || value.resources.length !== 1 || value.data.length) {
         throw new Error('invalid Text attachment');
       }
@@ -237,6 +241,7 @@ export class Editing {
     const client = await this.client();
     await this.retire(client);
     await this.finishOpening(client);
+    if (this.journal.readOnlyTarget) { delete this.journal.readOnlyTarget; this.persist(); }
     return client;
   }
 
@@ -272,7 +277,7 @@ export class Editing {
     const state = this.journal;
     if (!state.source) throw new Error('Create a source first');
     if (!state.access) {
-      await this.send(client, ['write', 'text', 'text.attach', '1', '', state.source.buffer]);
+      await this.send(client, ['write', 'text', state.source.readOnly ? 'text.attach.read' : 'text.attach', '1', '', state.source.buffer]);
     }
     await this.send(client, ['read', state.access!, 'text.observe', '1']);
     await this.retire(client);
@@ -299,6 +304,7 @@ export class Editing {
   async replace(start: bigint, end: bigint, replacement: string,
     correlate?: (receipt: Receipt) => void): Promise<text.Window> {
     const client = await this.ready();
+    if (this.journal.source?.readOnly) throw new Error('This source is read-only');
     if (!this.journal.observed) throw new Error('Observe Text first');
     const window = this.journal.window;
     let count = 1024n;
@@ -336,6 +342,7 @@ export class Editing {
   async history(direction: 'undo' | 'redo'): Promise<void> {
     const client = await this.ready();
     const source = this.journal.source;
+    if (source?.readOnly) throw new Error('This source is read-only');
     if (!source) throw new Error('Create a source first');
     await this.send(client, ['write', source.history, `kernel.history.${direction}`, '1',
       hex(u64(BigInt(source.revision))), source.buffer]);
@@ -378,6 +385,17 @@ export class Editing {
     state.source = selected;
     this.persist();
     await this.observe(BigInt(selected.windowStart ?? '0'));
+  }
+
+  async showContext(buffer: ResourceId): Promise<void> {
+    if (this.journal.source?.buffer === buffer || this.journal.inactive?.some(source => source.buffer === buffer)) {
+      await this.switchTo(buffer); return;
+    }
+    await this.park();
+    const client = await this.ready();
+    this.journal.readOnlyTarget = buffer; this.persist();
+    await this.send(client, ['read', buffer, 'kernel.buffer.describe', '1']);
+    await this.observe();
   }
 
   private async releaseView(client: Client): Promise<void> {

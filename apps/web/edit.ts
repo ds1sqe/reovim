@@ -28,7 +28,7 @@ const typing = bindInput(textarea,
   });
 const commands = new Commands();
 const moduleEditor = editorCapability(() => {
-  if (busy || typing.composing || typing.retained || journal.receipt || switchPending()) {
+  if (busy || typing.composing || typing.retained || journal.receipt || switchPending() || journal.focus?.historical || journal.source?.readOnly) {
     throw new Error('Finish pending input before a contribution command');
   }
   if (!journal.observed || !journal.window) throw new Error('Observe Text first');
@@ -49,14 +49,14 @@ function knownSources() {
   return [...(journal.inactive ?? []).map(source => source.buffer),
     ...(journal.source ? [journal.source.buffer] : [])];
 }
-function switchPending() { return !!(journal.switching?.opening || journal.switching?.pending); }
+function switchPending() { return !!(journal.switching?.observing || journal.switching?.opening || journal.switching?.pending); }
 let selector: Switching | undefined;
 function switching(): Switching {
   journal.switching ??= {};
   selector ??= new Switching(focus(), { known: knownSources, current: () => journal.source?.buffer,
     pending: () => !!(journal.receipt || journal.resuming || journal.openingCleanup
       || journal.openingWork?.length || journal.retiring.length),
-    show: target => target ? editing.switchTo(target) : editing.park(),
+    show: target => target ? editing.showContext(target) : editing.park(),
     recover: () => editing.recover(),
     close: async target => {
       if (!knownSources().includes(target)) return;
@@ -82,7 +82,7 @@ function report(error: unknown) {
 }
 
 function render() {
-  typing.suspend(changingView || switchPending());
+  typing.suspend(changingView || switchPending() || !!journal.focus?.historical || !!journal.source?.readOnly);
   const sources = document.querySelector<HTMLSelectElement>('#open-sources')!;
   const selected = sources.value;
   sources.replaceChildren(...(journal.inactive ?? []).map(source => {
@@ -97,6 +97,8 @@ function render() {
     : 'No source is open.';
   draftStatus();
   if (switchPending()) status.textContent += '\nContext transition needs recovery.';
+  if (journal.focus?.historical) status.textContent += '\nHistorical context; current Buffer contents are read-only here.';
+  if (journal.source?.readOnly) status.textContent += '\nThis source has read-only access.';
   const current = journal.focus?.current;
   document.querySelector('#focus-status')!.textContent = current
     ? `${journal.focus?.ownership ?? 'private'} context (${journal.focus?.historical ? 'historical' : 'live'}): ${current.active ?? 'no active Buffer'}`
@@ -148,21 +150,24 @@ const actions: Record<string, () => Promise<unknown>> = {
   },
   'clear-focus': () => focus().set({ known: journal.focus?.current?.known ?? [] }),
   'refresh-context': () => focus().refresh(),
-  'follow-context': () => focus().follow(),
+  'follow-context': () => switching().observe('follow'),
   'remember-context': () => focus().remember(),
-  'seek-context': () => focus().seek(),
+  'seek-context': () => switching().observe('seek'),
   'close-context': () => focus().close(),
   'recover-context': () => switchPending() ? switching().recover() : focus().recover()
 };
 for (const [id, action] of Object.entries(actions)) {
   document.querySelector(`#${id}`)!.addEventListener('click', async () => {
+    if (journal.focus?.historical && id === 'replace') {
+      status.textContent = 'Follow live context before editing.'; return;
+    }
     if (busy) { status.textContent = 'Wait for the pending operation'; return; }
     if (journal.focus?.receipt && ['create', 'open-file', 'join', 'park-source', 'switch-source', 'close'].includes(id)) {
       status.textContent = 'Recover context work first.'; return;
     }
     const replacingView = journal.switching?.pending?.phase === 'view'
       && !journal.switching.pending.closing
-      && ['park-source', 'switch-source'].includes(id);
+      && ['park-source', 'switch-source', 'follow-context', 'seek-context'].includes(id);
     if (switchPending() && !replacingView && !['recover', 'recover-context'].includes(id)) {
       status.textContent = 'Recover the context switch first.'; return;
     }
@@ -171,11 +176,11 @@ for (const [id, action] of Object.entries(actions)) {
         && ['create', 'open-file', 'join', 'park-source', 'switch-source', 'focus-source', 'replace', 'undo', 'close'].includes(id)) {
       status.textContent = 'Resolve or discard the retained local draft first.'; return;
     }
-    changingView = ['create', 'open-file', 'join', 'park-source', 'switch-source', 'focus-source', 'recover', 'recover-context', 'close'].includes(id);
+    changingView = ['create', 'open-file', 'join', 'park-source', 'switch-source', 'focus-source', 'follow-context', 'seek-context', 'recover', 'recover-context', 'close'].includes(id);
     render();
     try { await operate(action); }
     catch (error) { report(error); }
-    finally { changingView = false; typing.suspend(switchPending()); }
+    finally { changingView = false; typing.suspend(switchPending() || !!journal.focus?.historical || !!journal.source?.readOnly); }
   });
 }
 for (const direction of ['undo', 'redo'] as const) {

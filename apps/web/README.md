@@ -24,8 +24,12 @@ With a live context, creating, opening or joining adopts Buffer ownership first,
 then updates membership/focus, then acquires Text. The opening intent survives
 reload and recovery never repeats preparation. A rejected context update leaves
 the adopted Buffer owned without a new view; refresh/reselect explicitly.
-Following another participant's context still needs view-selection policy;
-this is not a complete Session workspace.
+Follow and retained-context seek select the observed active Buffer without
+writing context or undoing Buffer contents. Historical context shows current
+contents read-only in this trial. The context provider grants READ references;
+an unfamiliar peer Buffer uses `text.attach.read`, never writable attachment.
+Existing writable views keep their independently held grants. Missing or closed
+selections retain previous Buffer ownership and report a view failure.
 Run `node apps/web/switching-e2e.mjs BROWSER_URL` on the private source/Text
 fixture, or add `files` with `one.md` containing `first\n` and `two.md` containing
 `second\n` plus file/open providers. The journey checks dirty state, independent
@@ -35,6 +39,8 @@ context provider and checks focus/view/cleanup loss, reload and stale focus.
 `context-opening-e2e.mjs BROWSER_URL create|file|join` checks all three opening
 stages through loss/reload and stale focus. File mode needs `draft.md` containing
 `opened\n`; join mode needs a shared Buffer containing `shared`.
+`context-selection-e2e.mjs BROWSER_URL` uses an initially empty shared context
+to test seek/follow loss, current Buffer contents and read-only peer selection.
 
 The editing trial's **Open file** control calls the separately loaded
 [open command](../../modules/open/README.md). Composition supplies per-client

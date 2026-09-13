@@ -193,21 +193,21 @@ export class Focus {
   remember(): Promise<void> {
     return this.run(async () => { await this.send(['read', await this.ready(), 'editing.context', '1'], true); });
   }
-  seek(): Promise<void> {
+  seek(correlate?: (receipt: Receipt) => void, snapshot = this.journal.checkpoint?.snapshot): Promise<void> {
     return this.run(async () => {
       const participant = await this.ready();
-      if (!this.journal.checkpoint) throw new Error('Retain a context checkpoint first');
-      await this.send(['write', participant, 'kernel.session.seek', '1', '', this.journal.checkpoint.snapshot]);
+      if (!snapshot) throw new Error('Retain a context checkpoint first');
+      await this.send(['write', participant, 'kernel.session.seek', '1', '', snapshot], false, correlate);
     });
   }
-  follow(): Promise<void> {
+  follow(correlate?: (receipt: Receipt) => void): Promise<void> {
     return this.run(async () => {
       const participant = await this.ready();
       if (this.journal.watch && !this.journal.needsRefresh) {
         await this.send(['read', this.journal.watch.id, 'kernel.session.next', '1', '00']);
       }
       if (!this.journal.watch || this.journal.needsRefresh) {
-        await this.send(['read', participant, 'kernel.session.follow', '1']);
+        await this.send(['read', participant, 'kernel.session.follow', '1'], false, correlate);
       }
     });
   }
