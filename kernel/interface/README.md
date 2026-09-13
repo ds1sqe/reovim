@@ -96,6 +96,12 @@ the earlier evidence and reports the control failure separately. Earlier
 Message copies never change. Ordinary non-publication Work does not gain a
 reconciliation implementation from this profile.
 
+Reconciliation cannot erase a known partial effect or atomicity violation.
+Contradictory backend claims reject as Provider failure while prior evidence
+remains retained. A non-atomic partial operation may complete its remaining
+original work and then report Applied; a violated atomic guarantee cannot be
+retroactively satisfied by repair.
+
 Close Work after adopting its proof. Unresolved effects reject release;
 settled effects may first return Busy while Runtime releases backend evidence.
 Retained release requests prevent uncertain cleanup from becoming a new call.

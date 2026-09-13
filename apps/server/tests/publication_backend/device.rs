@@ -18,6 +18,9 @@ pub struct Device {
     pub uncertain: Cell<bool>,
     pub reconcile: Cell<bool>,
     pub base_ready: Cell<bool>,
+    pub mirror: Cell<bool>,
+    pub partial: Cell<bool>,
+    pub contradict: Cell<bool>,
 }
 
 impl Device {
@@ -32,6 +35,9 @@ impl Device {
             uncertain: Cell::new(false),
             reconcile: Cell::new(true),
             base_ready: Cell::new(true),
+            mirror: Cell::new(false),
+            partial: Cell::new(false),
+            contradict: Cell::new(false),
         })
     }
 }
@@ -41,6 +47,7 @@ struct Evidence {
     actual: Cell<protocol::Status>,
     committed: RefCell<Option<Rc<Version>>>,
     device: Rc<Device>,
+    remaining: RefCell<Option<Rc<Version>>>,
 }
 struct Record {
     name: String,
@@ -167,6 +174,7 @@ fn reserve(
         )),
         committed: RefCell::new(None),
         device: device.clone(),
+        remaining: RefCell::new(None),
     });
     let resource = kernel
         .publish(target, name, record(evidence.clone()))
@@ -183,8 +191,8 @@ fn apply(evidence: &Evidence, expected: u64, candidate: Rc<Version>) {
     let mut current = evidence.device.current.borrow_mut();
     let status = if current.generation == expected {
         *current = candidate.clone();
-        *evidence.committed.borrow_mut() = Some(candidate);
-        protocol::Status::Applied
+        *evidence.committed.borrow_mut() = Some(candidate.clone());
+        apply_mirror(evidence, candidate)
     } else {
         protocol::Status::DefinitelyNotApplied(Error::STALE.code)
     };
@@ -194,6 +202,21 @@ fn apply(evidence: &Evidence, expected: u64, candidate: Rc<Version>) {
     } else {
         status
     });
+}
+
+fn apply_mirror(
+    evidence: &Evidence,
+    candidate: Rc<Version>,
+) -> protocol::Status {
+    if evidence.device.partial.replace(false) {
+        *evidence.remaining.borrow_mut() = Some(candidate);
+        return protocol::Status::PartiallyApplied {
+            cause: Error::UNAVAILABLE.code,
+            atomicity_violated: false,
+        };
+    }
+    evidence.device.mirror.set(candidate.active);
+    protocol::Status::Applied
 }
 
 fn record(evidence: Rc<Evidence>) -> ResourceProvider {
@@ -232,8 +255,31 @@ fn reconcile(evidence: &Evidence, input: Message) -> Result<Message, Error> {
     if !evidence.device.reconcile.get() {
         return Err(Error::UNSUPPORTED);
     }
+    if evidence.device.contradict.get() {
+        return protocol::encode(
+            input.contract,
+            protocol::Status::DefinitelyNotApplied(Error::STALE.code),
+        );
+    }
+    complete_mirror(evidence)?;
     evidence.reported.set(evidence.actual.get());
     protocol::encode(input.contract, evidence.reported.get())
+}
+
+fn complete_mirror(evidence: &Evidence) -> Result<(), Error> {
+    let pending = evidence.remaining.borrow().clone();
+    let Some(pending) = pending else {
+        return Ok(());
+    };
+    if !Rc::ptr_eq(&pending, &evidence.device.current.borrow()) {
+        return Err(Error::STALE);
+    }
+    // Finish only the second part of the original effect. The first part and
+    // its version must not be written again or refreshed from another save.
+    evidence.device.mirror.set(pending.active);
+    evidence.remaining.borrow_mut().take();
+    evidence.actual.set(protocol::Status::Applied);
+    Ok(())
 }
 
 fn report(evidence: &Evidence, input: Message) -> Result<Message, Error> {

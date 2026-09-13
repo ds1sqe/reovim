@@ -551,3 +551,79 @@ fn reconnect_recovers_the_original_save_with_fresh_scoped_ids() {
     retire(&mut f, work);
     stop(f);
 }
+
+#[test]
+fn partial_save_finishes_original_effect_without_erasing_evidence() {
+    let mut f = setup_model(true);
+    edit(&mut f, true);
+    f.device.partial.set(true);
+    let report = publication::report(
+        &finish(
+            &mut f.runtime,
+            publication::save(&f.client, f.buffer.state, &[]),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let partial = protocol::Status::PartiallyApplied {
+        cause: Error::UNAVAILABLE.code,
+        atomicity_violated: false,
+    };
+    assert_eq!(report.status, partial);
+    assert!(f.device.current.borrow().active);
+    assert!(!f.device.mirror.get());
+    let first_part = f.device.current.borrow().clone();
+    assert_eq!(
+        f.client.close(report.work).into_inner(),
+        Err(RequestError::Rejected(Error::BUSY))
+    );
+    assert_eq!(
+        finish(
+            &mut f.runtime,
+            buffer::close(
+                &f.client,
+                f.buffer.state,
+                buffer::ClosePolicy::RejectModified
+            )
+        ),
+        Err(RequestError::Failed(Error::BUSY))
+    );
+    edit(&mut f, false);
+    f.device.contradict.set(true);
+    assert_eq!(
+        finish(&mut f.runtime, publication::reconcile(&f.client, report.work)),
+        Err(RequestError::Failed(Error::PROVIDER))
+    );
+    let retained = finish(
+        &mut f.runtime,
+        reovim_kernel_interface::requests::result(&f.client, report.work),
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(publication::report(&retained).unwrap(), report);
+    assert!(!f.device.mirror.get());
+    f.device.contradict.set(false);
+    let applied = publication::report(
+        &finish(&mut f.runtime, publication::reconcile(&f.client, report.work))
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(applied.status, protocol::Status::Applied);
+    assert_eq!(report.status, partial); // Earlier evidence remains immutable.
+    assert!(f.device.mirror.get());
+    assert!(Rc::ptr_eq(&first_part, &f.device.current.borrow()));
+    assert_eq!(f.buffer.value.data.as_ref(), [0]);
+    assert_eq!(
+        finish(
+            &mut f.runtime,
+            buffer::close(
+                &f.client,
+                f.buffer.state,
+                buffer::ClosePolicy::RejectModified
+            )
+        ),
+        Err(RequestError::Failed(Error::BUSY))
+    );
+    retire(&mut f, report.work);
+    stop(f);
+}

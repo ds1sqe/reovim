@@ -11,6 +11,9 @@ use reovim_kernel_interface::{
     Connection, Contract, Error, Message, RequestError, ResourceId,
 };
 
+#[cfg(test)]
+mod tests;
+
 fn context(
     save: &RefCell<Save>,
 ) -> Result<(Rc<RefCell<Scope>>, Connection), Error> {
@@ -86,6 +89,7 @@ async fn execute(
         backend::result(&connection, evidence)
     };
     let status = backend::status(&result.await?)?;
+    let status = refine(save.borrow().status, status)?;
     save.borrow_mut().status = Some(status);
     match status {
         Status::Applied => adopt(shared, save, &scope, evidence)?,
@@ -93,6 +97,24 @@ async fn execute(
         _ => (),
     }
     Ok(())
+}
+
+const fn refine(
+    previous: Option<Status>,
+    next: Status,
+) -> Result<Status, Error> {
+    match (previous, next) {
+        (
+            Some(Status::PartiallyApplied { .. }),
+            Status::DefinitelyNotApplied(_) | Status::OutcomeUnknown(_),
+        )
+        | (
+            Some(Status::PartiallyApplied { atomicity_violated: true, .. }),
+            Status::Applied
+            | Status::PartiallyApplied { atomicity_violated: false, .. },
+        ) => Err(Error::PROVIDER),
+        _ => Ok(next),
+    }
 }
 
 #[allow(clippy::future_not_send)]
