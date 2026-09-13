@@ -14,8 +14,14 @@ private context includes currently owned Buffers and the displayed source.
 The coordinator records the exact context receipt; a matching active value is
 not acceptance evidence. Recover an uncertain switch before editing. Accepted
 context changes survive failed view acquisition, and both Buffers remain owned.
-Opening/closing sources and following another participant's context still use
-their existing separate operations; this is not a complete Session workspace.
+Closing the current source first removes it from the context's known set and
+clears active only if it names that source. Close/detach then follows the
+existing policy. A lost close reply is recovered without another context update.
+A rejected close leaves the Buffer owned, ends that close decision, and does
+not roll back the accepted context removal. Observe and make a new decision;
+unseen concurrent edits are never silently discarded by refreshing the revision.
+Opening sources and following another participant's context still use their
+existing separate operations; this is not a complete Session workspace.
 Run `node apps/web/switching-e2e.mjs BROWSER_URL` on the private source/Text
 fixture, or add `files` with `one.md` containing `first\n` and `two.md` containing
 `second\n` plus file/open providers. The journey checks dirty state, independent

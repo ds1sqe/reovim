@@ -3,18 +3,28 @@ import { setTimeout } from 'node:timers/promises';
 import { Editing } from '../../target/browser/apps/web/editing.js';
 import { Focus } from '../../target/browser/clients/gui/runtime/context.js';
 import { Switching } from '../../target/browser/clients/gui/runtime/switching.js';
-import { Client } from '../../target/browser/sdk/typescript/resource.js';
+import { Client, hex, u64 } from '../../target/browser/sdk/typescript/resource.js';
 import * as context from '../../target/browser/modules/context/api/typescript.js';
 
 const origin = new URL(process.argv[2]).origin, endpoint = `${origin}/rpc`;
 const nativeFetch = globalThis.fetch, updates = new Set();
+const closes = new Set();
 let loseFocus = false, loseView = false, loseCleanup = false, rejectView = false;
+let loseClose = false;
+let raceClose;
 globalThis.fetch = async (url, options) => {
   const fields = JSON.parse(options.body);
   const reply = await nativeFetch(url, { ...options,
     headers: { ...options.headers, Origin: origin } });
   if (fields[1] === 'call' && fields[5] === 'editing.context.update') {
     updates.add(fields[2]);
+    if (raceClose) {
+      const selected = raceClose; raceClose = undefined;
+      const peer = new Client(fields[0], url);
+      const edit = await peer.reserve(['write', selected.buffer, 'source.splice', '1',
+        hex(u64(BigInt(selected.revision))) + hex(u64(0n)) + hex(u64(0n)) + '21', selected.buffer]);
+      assert.match(await peer.send(edit), /^ok\t/); await peer.release(edit.id);
+    }
     if (loseFocus) { loseFocus = false; await reply.text(); throw new Error('lost focus'); }
   }
   if (loseView && fields[1] === 'call' && fields[5] === 'text.observe') {
@@ -22,6 +32,10 @@ globalThis.fetch = async (url, options) => {
   }
   if (loseCleanup && fields[1] === 'call' && fields[5] === 'kernel.session.release') {
     loseCleanup = false; await reply.text(); throw new Error('lost context cleanup');
+  }
+  if (fields[1] === 'call' && fields[5] === 'kernel.buffer.close') {
+    closes.add(fields[2]);
+    if (loseClose) { loseClose = false; await reply.text(); throw new Error('lost Buffer close'); }
   }
   return reply;
 };
@@ -32,13 +46,19 @@ function connect() {
   focus = new Focus(new Client(state.token, endpoint), focused,
     () => { savedFocus = structuredClone(focused); });
   switching = new Switching(focus, {
+    current: () => state.source?.buffer,
+    pending: () => !!(state.receipt || state.retiring.length),
     known: () => [...(state.inactive ?? []).map(source => source.buffer),
       ...(state.source ? [state.source.buffer] : [])],
     show: async target => {
       if (rejectView) { rejectView = false; throw new Error('view unavailable'); }
       if (target) await editor.switchTo(target); else await editor.park();
     },
-    recover: () => editor.recover()
+    recover: () => editor.recover(),
+    close: async target => {
+      if (state.source?.buffer === target) await editor.close();
+      else assert.ok(!state.inactive?.some(source => source.buffer === target));
+    }
   }, transition, () => { savedTransition = structuredClone(transition); });
 }
 editor = new Editing(state, () => { savedState = structuredClone(state); }, endpoint);
@@ -108,8 +128,43 @@ assert.equal(state.source, undefined);
 await switching.select(first);
 await editor.undo();
 assert.equal(state.window.units.map(unit => unit.scalar).join(''), 'first');
+await assert.rejects(switching.close(second), /current Buffer/);
+await focus.set({ known: [first, second], active: second });
+raceClose = { ...state.source };
+loseClose = true;
+await assert.rejects(switching.close(first), /Outcome unavailable/);
+const refusedClose = state.receipt.id;
+await assert.rejects(switching.recover(), /error/);
+assert.deepEqual([...closes], [refusedClose]);
+assert.equal(transition.pending, undefined);
+assert.equal(state.source.buffer, first);
+assert.deepEqual(focused.current.known, [second]);
+assert.equal(focused.current.active, second);
+await editor.observe();
+assert.equal(state.window.units.map(unit => unit.scalar).join(''), '!first');
+await switching.select(first);
+loseFocus = true;
+await assert.rejects(switching.close(first), /Outcome unavailable/);
+assert.equal(state.source.buffer, first);
+assert.equal(transition.pending.closing, first);
+await assert.rejects(switching.select(second), /Recover/);
+const closingFocus = transition.pending.request.id;
+loseClose = true;
+await assert.rejects(switching.recover(), /Outcome unavailable/);
+assert.equal(focused.current.active, undefined);
+assert.deepEqual(focused.current.known, [second]);
+state = structuredClone(savedState); focused = structuredClone(savedFocus);
+transition = structuredClone(savedTransition); connect();
+await switching.recover();
+assert.equal(transition.pending, undefined);
+assert.equal(state.source, undefined);
+assert.equal(focused.acceptedUpdate.id, closingFocus);
+await switching.select(second);
+assert.equal(state.window.units.map(unit => unit.scalar).join(''), 'second edited');
+await switching.close(second);
+assert.deepEqual(focused.current.known, []);
+assert.equal(focused.current.active, undefined);
 await focus.close();
-await editor.close(); await editor.switchTo(second); await editor.close();
 const deadline = performance.now() + 5000;
 for (;;) {
   const reply = await client.wire([client.token, 'disconnect']);
@@ -117,4 +172,4 @@ for (;;) {
   assert.equal(reply, 'error\tclient cleanup: Resource error 8');
   assert.ok(performance.now() < deadline); await setTimeout(10);
 }
-console.log('Context-correlated switching survives focus/view loss, reload and stale focus rejection.');
+console.log('Context switching and close survive lost replies, reload, stale focus and concurrent edits.');

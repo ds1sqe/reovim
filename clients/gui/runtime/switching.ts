@@ -5,6 +5,7 @@ import { Focus } from './context.js';
 
 export interface SwitchJournal {
   pending?: { session: ResourceId; value: Value; phase: 'focus' | 'view';
+    closing?: ResourceId;
     request?: Pick<Receipt, 'client' | 'id'> };
 }
 
@@ -22,7 +23,7 @@ export class Switching {
 
   select(target?: ResourceId): Promise<void> {
     return this.run(async () => {
-      if (this.journal.pending?.phase === 'focus') throw new Error('Recover the context switch first');
+      if (this.journal.pending?.phase === 'focus' || this.journal.pending?.closing) throw new Error('Recover the context switch first');
       if (this.journal.pending) {
         await this.focus.recover(); await this.views.recover();
       }
@@ -33,6 +34,25 @@ export class Switching {
       if (target && !owned.includes(target)) throw new Error('That Buffer has no owned view');
       this.journal.pending = { session: current.session, phase: 'focus',
         value: { known: [...new Set([...current.known, ...owned])], active: target } };
+      this.persist();
+      await this.update();
+      await this.show();
+    });
+  }
+
+  close(target: ResourceId): Promise<void> {
+    return this.run(async () => {
+      if (this.views.current() !== target) throw new Error('Close the current Buffer first');
+      if (this.journal.pending || this.focus.journal.receipt || this.focus.journal.closing) {
+        throw new Error('Recover context work first');
+      }
+      const current = this.focus.journal.current;
+      if (!current || this.focus.journal.historical) throw new Error('Select a live context first');
+      const owned = this.views.known();
+      if (!owned.includes(target)) throw new Error('That Buffer has no owned view');
+      this.journal.pending = { session: current.session, phase: 'focus', closing: target,
+        value: { known: [...new Set([...current.known, ...owned])].filter(id => id !== target),
+          active: current.active === target ? undefined : current.active } };
       this.persist();
       await this.update();
       await this.show();
@@ -63,8 +83,19 @@ export class Switching {
   private async show(): Promise<void> {
     const pending = this.journal.pending!;
     if (this.focus.journal.current?.session !== pending.session) throw new Error('Context changed during switch');
-    await this.views.show(pending.value.active);
+    if (pending.closing) {
+      try { await this.views.close(pending.closing); }
+      catch (error) { this.failedView(error); }
+    } else await this.views.show(pending.value.active);
     delete this.journal.pending; this.persist();
+  }
+
+  private failedView(error: unknown): never {
+    // With no recovery work left, end this decision without another close.
+    if (this.journal.pending?.closing && !this.views.pending()) {
+      delete this.journal.pending; this.persist();
+    }
+    throw error;
   }
 
   recover(): Promise<void> {
@@ -82,7 +113,8 @@ export class Switching {
         else if (this.accepted()) { pending.phase = 'view'; this.persist(); }
         else throw new Error('Original context acceptance is unavailable');
       }
-      await this.views.recover();
+      try { await this.views.recover(); }
+      catch (error) { this.failedView(error); }
       await this.show();
     });
   }

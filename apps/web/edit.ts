@@ -52,9 +52,16 @@ function knownSources() {
 let selector: Switching | undefined;
 function switching(): Switching {
   journal.switching ??= {};
-  selector ??= new Switching(focus(), { known: knownSources,
+  selector ??= new Switching(focus(), { known: knownSources, current: () => journal.source?.buffer,
+    pending: () => !!(journal.receipt || journal.resuming || journal.openingCleanup
+      || journal.openingWork?.length || journal.retiring.length),
     show: target => target ? editing.switchTo(target) : editing.park(),
-    recover: () => editing.recover() }, journal.switching, persist);
+    recover: () => editing.recover(),
+    close: async target => {
+      if (!knownSources().includes(target)) return;
+      if (journal.source?.buffer !== target) throw new Error('Recover the original close target first');
+      await editing.close();
+    } }, journal.switching, persist);
   return selector;
 }
 
@@ -125,7 +132,9 @@ const actions: Record<string, () => Promise<unknown>> = {
   follow: () => editing.follow(),
   read: () => editing.read(BigInt(input('window-start'))),
   replace: () => editing.replace(BigInt(input('start')), BigInt(input('end')), input('replacement')),
-  close: () => editing.close(), recover: () => journal.switching?.pending ? switching().recover() : editing.recover(),
+  close: () => journal.focus?.current && journal.source
+    ? switching().close(journal.source.buffer) : editing.close(),
+  recover: () => journal.switching?.pending ? switching().recover() : editing.recover(),
   'create-context': () => focus().create({ known: knownSources(), active: journal.source?.buffer }),
   'join-context': () => focus().join(),
   'focus-source': () => {
@@ -147,6 +156,7 @@ for (const [id, action] of Object.entries(actions)) {
       status.textContent = 'Recover context work first.'; return;
     }
     const replacingView = journal.switching?.pending?.phase === 'view'
+      && !journal.switching.pending.closing
       && ['park-source', 'switch-source'].includes(id);
     if (journal.switching?.pending && !replacingView && !['recover', 'recover-context'].includes(id)) {
       status.textContent = 'Recover the context switch first.'; return;
