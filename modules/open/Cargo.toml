@@ -1,0 +1,30 @@
+[package]
+name = "reovim-module-open"
+workspace = "../../product"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies.reovim-kernel-interface]
+path = "../../kernel/interface"
+
+[dependencies.reovim-module]
+path = "../../lib/module"
+
+[lints]
+workspace = true
+
+[[example]]
+name = "open"
+crate-type = ["cdylib"]
+
+[dev-dependencies.reovim-kernel-runtime]
+path = "../../kernel/runtime"
+
+[dev-dependencies.reovim-host-reference]
+path = "../../host/reference"
+
+[dev-dependencies.reovim-sdk]
+path = "../../sdk/rust"

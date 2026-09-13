@@ -7,6 +7,9 @@
 /// Optional `contract: ("name", schema)` and `requires: [("name", schema)]`
 /// declare passive catalog metadata. They do not construct or activate any
 /// provider. An unnamed declaration is not selectable by a boot contract.
+/// Optional `unload: State::unload` receives shared state and returns
+/// `Result<(), Error>`. It may be called for each export and on retries, so
+/// successful cleanup must be idempotent. Failure retains the native instance.
 #[macro_export]
 macro_rules! rv_module {
     (
@@ -60,6 +63,7 @@ macro_rules! rv_module {
             $(contract: ($identity:literal, $version:literal),)?
             $(requires: [$(($required:literal, $schema:literal)),* $(,)?],)?
             state: $construct:path,
+            $(unload: $unload:path,)?
             resources: {
                 $( $path:literal => {
                     $( $method:ident $contract:path => $handler:path ),+ $(,)?
@@ -72,6 +76,11 @@ macro_rules! rv_module {
                 -> $crate::__private::Vec<$crate::__private::ResourceProvider>
             {
                 let state = $crate::__private::Rc::new($construct(kernel));
+                let unload: Option<
+                    fn(&mut $crate::__private::Rc<_>)
+                        -> Result<(), $crate::Error>
+                > =
+                    $crate::rv_module!(@unload $($unload)?);
                 $crate::__private::vec![$({
                     const EXPORT: $crate::__private::Export =
                     $crate::__private::Export {
@@ -86,7 +95,7 @@ macro_rules! rv_module {
                     let mut provider = $crate::__private::ResourceProvider::new(
                         state.clone(),
                         $crate::__private::ResourceOps {
-                            unload: None,
+                            unload,
                             read: |state, subject, input| {
                                 $crate::rv_module!(@dispatch read, state,
                                     subject, input;
@@ -124,6 +133,10 @@ macro_rules! rv_module {
         };
     };
     (@identity) => { $crate::__private::Identity::UNNAMED };
+    (@unload) => { None };
+    (@unload $unload:path) => {
+        Some(|state: &mut $crate::__private::Rc<_>| $unload(&**state))
+    };
     (@identity $name:literal, $version:literal) => {
         $crate::__private::Identity::new($name, $version)
     };
