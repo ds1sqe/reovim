@@ -8,8 +8,8 @@ use std::{fs::File, io, path::Path};
 
 /// Explicit read root and same-filesystem snapshot storage grants.
 pub struct Directory {
-    root: Arc<File>,
-    scratch: Arc<File>,
+    pub(super) root: Arc<File>,
+    pub(super) scratch: Arc<File>,
 }
 impl Directory {
     /// Pins both directories without following final symlinks.
@@ -22,7 +22,21 @@ impl Directory {
         })
     }
 
-    /// Supplies capture operations under an activated module's bound namespace.
+    /// Supplies file operations under an activated module's bound namespace.
+    ///
+    /// `host.files.capture` v1 returns a caller-owned anonymous snapshot.
+    /// `host.files.select` v1 selects and prepares a shared file source. Both
+    /// take relative UTF-8 path data and return one READ reference. Selection
+    /// reuses the same pinned file within this directory provider, including
+    /// hard links; pathname replacement selects a different source.
+    /// Selection response data names its Resource child for explicit release.
+    ///
+    /// Shared subjects stay installed until module unload or an explicit
+    /// `host.files.release` v1 WRITE naming the Resource child in UTF-8 data
+    /// with no references. Release rejects captured or in-flight use. A
+    /// caller must capture selected access before relying on its lifetime.
+    /// Runtime resource limits bound installed selections.
+    /// No selection is evicted automatically.
     #[must_use]
     pub fn provider(self, kernel: Connection) -> ResourceProvider {
         let state = Capture {
@@ -30,20 +44,25 @@ impl Directory {
             kernel,
             next: 0,
             busy: Arc::new(AtomicBool::new(false)),
+            selection: super::selection::Selection::default(),
         };
         ResourceProvider::new(
             state,
             ResourceOps {
                 unload: Some(unload),
                 read: |_, _, _| Box::pin(async { Err(Error::UNSUPPORTED) }),
-                write: capture,
+                write,
             },
-            Box::new([Surface {
-                contract: Contract::new("host.files.capture", 1),
-                methods: Permissions::WRITE,
-                input: Box::new([]),
-                output: Box::new([Permissions::READ]),
-            }]),
+            Box::new([
+                surface("host.files.capture"),
+                surface("host.files.select"),
+                Surface {
+                    contract: Contract::new("host.files.release", 1),
+                    methods: Permissions::WRITE,
+                    input: Box::new([]),
+                    output: Box::new([]),
+                },
+            ]),
             Rc::new(()),
         )
     }
@@ -53,19 +72,53 @@ struct Capture {
     kernel: Connection,
     next: u64,
     busy: Arc<AtomicBool>,
+    selection: super::selection::Selection,
 }
-fn capture(
+fn surface(name: &str) -> Surface {
+    Surface {
+        contract: Contract::new(name, 1),
+        methods: Permissions::WRITE,
+        input: Box::new([]),
+        output: Box::new([Permissions::READ]),
+    }
+}
+
+fn write(
     state: &mut Capture,
     parent: ResourceId,
     input: Message,
 ) -> reovim_kernel_interface::provider::ProviderReply {
-    let root = state.directory.root.clone();
-    let scratch = state.directory.scratch.clone();
-    let kernel = state.kernel.clone();
+    if input.contract.name.as_ref() == "host.files.release" {
+        let result = state.selection.release(&state.kernel, input);
+        return Box::pin(core::future::ready(result));
+    }
     let Some(next) = state.next.checked_add(1) else {
         return Box::pin(async { Err(Error::PRESSURE) });
     };
     state.next = next;
+    if input.contract.name.as_ref() == "host.files.select" {
+        return super::selection::select(
+            &state.directory,
+            state.selection.clone(),
+            state.kernel.clone(),
+            parent,
+            next,
+            &state.busy,
+            input,
+        );
+    }
+    capture(state, parent, input, next)
+}
+
+fn capture(
+    state: &Capture,
+    parent: ResourceId,
+    input: Message,
+    next: u64,
+) -> reovim_kernel_interface::provider::ProviderReply {
+    let root = state.directory.root.clone();
+    let scratch = state.directory.scratch.clone();
+    let kernel = state.kernel.clone();
     let work = crate::worker::start(&state.busy, move || {
         let path =
             core::str::from_utf8(&input.data).map_err(|_| Error::INVALID)?;

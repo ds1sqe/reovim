@@ -13,7 +13,7 @@ struct Prepared {
     length: u64,
     busy: Arc<AtomicBool>,
 }
-struct Source {
+pub(super) struct Source {
     file: Arc<File>,
     scratch: Arc<File>,
     busy: Arc<AtomicBool>,
@@ -46,16 +46,30 @@ pub fn source(source: &Path, scratch: &Path) -> io::Result<ResourceProvider> {
     if !file.metadata()?.is_file() {
         return Err(io::Error::from(io::ErrorKind::InvalidInput));
     }
-    let state = Source {
-        file: Arc::new(file),
-        scratch: Arc::new(crate::path::root(scratch)?),
-        busy: Arc::new(AtomicBool::new(false)),
-        prepared: Rc::new(RefCell::new(None)),
-    };
-    Ok(provider(state))
+    let state = Source::new(file, Arc::new(crate::path::root(scratch)?));
+    Ok(state.provider())
 }
 
-fn provider(state: Source) -> ResourceProvider {
+impl Source {
+    pub(super) fn new(file: File, scratch: Arc<File>) -> Rc<Self> {
+        Rc::new(Self {
+            file: Arc::new(file),
+            scratch,
+            busy: Arc::new(AtomicBool::new(false)),
+            prepared: Rc::new(RefCell::new(None)),
+        })
+    }
+
+    pub(super) fn select(&self, file: File, length: u64) {
+        install(&self.prepared, file, length);
+    }
+
+    pub(super) fn provider(self: Rc<Self>) -> ResourceProvider {
+        provider(self)
+    }
+}
+
+fn provider(state: Rc<Source>) -> ResourceProvider {
     let views = state.prepared.clone();
     ResourceProvider::new(
         state,
@@ -98,11 +112,15 @@ fn prepare(state: &Source, input: Message) -> ProviderReply {
     });
     Box::pin(async move {
         let (file, length) = work.await?;
-        *prepared.borrow_mut() = Some(Prepared {
-            file: Arc::new(file),
-            length,
-            busy: Arc::new(AtomicBool::new(false)),
-        });
+        install(&prepared, file, length);
         Ok(Message::new(input.contract, &[]))
     })
+}
+
+fn install(prepared: &RefCell<Option<Prepared>>, file: File, length: u64) {
+    *prepared.borrow_mut() = Some(Prepared {
+        file: Arc::new(file),
+        length,
+        busy: Arc::new(AtomicBool::new(false)),
+    });
 }

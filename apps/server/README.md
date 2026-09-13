@@ -84,6 +84,21 @@ future reads; it is not the same operation as shared Buffer close. Replaying
 one retained request returns its original snapshot; a new request captures a
 new cut. Unsupported atomic cloning returns Unsupported without a snapshot.
 
+`host.files.select` v1 on the same directory selects a shared file source and
+prepares an immutable data/base view. Pass its READ reference to the selected
+Model with `kernel.buffer.open` v1 to install a backed Buffer. Repeated selection
+of the same pinned file, including hard links, reuses its subject within that
+directory provider. Replacing a pathname selects a different file. Each Buffer
+retains its own base and working state; a later selection cannot change them.
+
+Selection response data names the Resource child. `host.files.release` v1 takes
+that UTF-8 name with no references and withdraws the idle selection. It rejects
+captured or in-flight use; closing one Buffer does not close the shared source.
+The directory owns selections until explicit release or module unload, within
+Runtime resource limits. This read-only profile supplies exact original content
+as base evidence, not conditional save support. The existing `command.open`
+still uses anonymous snapshots pending its backed-response/recovery integration.
+
 An installed user supplies only a compatible module package and configuration;
 adding it requires neither a Reovim checkout nor a server/CLI rebuild. The ABI is
 SemVer 0.1.0 with reserved u32 zero until official release; operation and module

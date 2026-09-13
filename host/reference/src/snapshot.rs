@@ -29,6 +29,7 @@ mod directory;
 pub use directory::Directory;
 mod source;
 pub use source::source;
+mod selection;
 
 unsafe extern "C" {
     fn ioctl(fd: c_int, request: c_ulong, ...) -> c_int;
