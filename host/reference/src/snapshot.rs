@@ -29,20 +29,26 @@ mod directory;
 pub use directory::Directory;
 mod source;
 pub use source::source;
+#[cfg(target_arch = "x86_64")]
+mod copying;
 mod selection;
 
 unsafe extern "C" {
     fn ioctl(fd: c_int, request: c_ulong, ...) -> c_int;
 }
 
-/// Captures a regular file at one atomic clone boundary during Host assembly.
+/// Captures a regular file coherently during Host assembly.
 ///
-/// Scratch is an explicit writable directory on the source filesystem. Its
-/// anonymous clone cannot be linked by this adapter and dies with its last
+/// Scratch is an explicit writable directory. Its anonymous snapshot cannot
+/// be linked by this adapter and dies with its last
 /// owner. The returned provider exposes no mutation or file descriptor access.
 /// # Errors
-/// Returns native errors, including unsupported cloning or cross-device input.
-/// No copying fallback can silently weaken concurrent-write consistency.
+/// Cloning is preferred. Linux `x86_64` can copy under a private read lease
+/// when cloning is unavailable. Lease conflict, break or unsupported protection
+/// rejects; copying never relies on timestamp comparisons. This fallback
+/// requires owned regular input and /proc/self/fd for private descriptor
+/// access.
+/// Returns native errors for unsupported protection, I/O or resource pressure.
 pub fn capture(source: &Path, scratch: &Path) -> io::Result<ResourceProvider> {
     let source = OpenOptions::new()
         .read(true)
@@ -60,7 +66,12 @@ fn clone(source: &File, scratch: &File) -> io::Result<(File, u64)> {
     let snapshot = crate::path::anonymous(scratch)?;
     if unsafe { ioctl(snapshot.as_raw_fd(), FICLONE, source.as_raw_fd()) } == -1
     {
-        return Err(io::Error::last_os_error());
+        let error = io::Error::last_os_error();
+        #[cfg(target_arch = "x86_64")]
+        if matches!(error.raw_os_error(), Some(18 | 22 | 25 | 95)) {
+            return copying::capture(source, snapshot);
+        }
+        return Err(error);
     }
     let length = snapshot.metadata()?.len();
     Ok((snapshot, length))

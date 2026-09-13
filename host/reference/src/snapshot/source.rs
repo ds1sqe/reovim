@@ -27,7 +27,7 @@ pub(super) struct Source {
 /// the pinned file, never resolves that pathname again.
 ///
 /// Read `resource.state.prepare` v1 with empty data before acquiring a view.
-/// Preparation performs an atomic clone on the Host worker. Acquisition is
+/// Preparation performs a coherent capture on the Host worker. Acquisition is
 /// inert and returns `NOT_READY` until preparation succeeds. Existing views
 /// keep their captured bytes through later preparation and source withdrawal.
 ///
@@ -37,7 +37,7 @@ pub(super) struct Source {
 /// write, locator replacement, durability or publication guarantee.
 /// # Errors
 /// Returns native errors for inaccessible paths or non-regular input. Clone
-/// support and same-filesystem storage are checked by asynchronous preparation.
+/// or read-lease copy support is checked by asynchronous preparation.
 pub fn source(source: &Path, scratch: &Path) -> io::Result<ResourceProvider> {
     let file = OpenOptions::new()
         .read(true)

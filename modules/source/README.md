@@ -48,7 +48,8 @@ node ordinals and execution correlation token; they grant no mutation rights.
 
 The Linux Host can supply atomic file snapshots with server boot option
 `--snapshot snapshots/input SOURCE SCRATCH_DIRECTORY`. Scratch must support
-anonymous temporary files and atomic cloning on the source filesystem.
+anonymous temporary files. Linux x86_64 supports read-lease copying when atomic
+cloning is unavailable; lease conflict or break rejects preparation.
 Load `source_open` and call `source.open` with `modules/snapshots/input` as its
 reference. Each call creates independent working state/History from that
 captured snapshot. A new file capture requires a new snapshot grant; this boot

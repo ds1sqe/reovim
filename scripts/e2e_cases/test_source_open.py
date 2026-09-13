@@ -7,9 +7,12 @@ from .test_native_source import u64
 
 
 class SourceOpen(Scenario):
+    storage = ROOT / "tmp"
+    profile = "Linux atomic clone; immutable 32KiB windows"
+
     def boot_arguments(self):
         directory = self.enterContext(tempfile.TemporaryDirectory(
-            prefix="source-open-", dir=ROOT / "tmp"))
+            prefix="source-open-", dir=self.storage))
         self.source = Path(directory) / "source"
         self.length = 1024 * 1024 * 1024
         with self.source.open("wb") as file:
@@ -17,7 +20,7 @@ class SourceOpen(Scenario):
             file.seek(self.length - 4)
             file.write(b"\xffend")
         return [*super().boot_arguments(), "--snapshot", "snapshots/input",
-                str(self.source), directory]
+                str(self.source), str(ROOT / "tmp")]
 
     def memory(self, stage):
         pid = self.server.pid
@@ -97,5 +100,10 @@ class SourceOpen(Scenario):
         (self.evidence / "workload.json").write_text(json.dumps({
             "logical_bytes": self.length,
             "initial_extents": [[0, "head"], [self.length - 4, "ff656e64"]],
-            "storage_profile": "Linux atomic clone; immutable 32KiB windows",
+            "storage_profile": self.profile,
         }, indent=2))
+
+
+class LeasedSourceOpen(SourceOpen):
+    storage = Path("/dev/shm")
+    profile = "Linux x86_64 read-lease sparse copy; immutable 32KiB windows"

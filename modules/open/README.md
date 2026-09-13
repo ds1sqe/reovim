@@ -56,5 +56,5 @@ not close another Buffer's source. Retained state keeps its immutable reader
 after source withdrawal. Selection can prepare a newer cut for later openings;
 each Buffer retains the coherent cut acquired when its Kernel opening begins.
 
-The current producer uses Linux atomic file clones and read-only backing.
-This command does not establish conditional saving or non-clone storage.
+The producer uses Linux atomic clones or qualified read-lease copying, with
+read-only backing. This command does not establish conditional saving.

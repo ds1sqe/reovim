@@ -16,7 +16,7 @@ class FileSelection(Scenario):
         scratch = self.enterContext(tempfile.TemporaryDirectory(
             prefix="file-selection-", dir="/dev/shm"))
         return [*super().boot_arguments(), "--files", "files", directory,
-                directory, "--files", "unsupported", directory, scratch]
+            directory, "--files", "copied", directory, scratch]
 
     def select(self, path):
         return self.call("write", "modules/files", "host.files.select", "1",
@@ -104,10 +104,13 @@ class FileSelection(Scenario):
         for path in ("missing", "../draft", "/draft", "", "draft\0ignored"):
             self.call("write", "modules/files", "host.files.select", "1",
                       path.encode().hex(), success=False)
-        self.call("write", "modules/unsupported", "host.files.select", "1",
-                  b"draft".hex(), success=False)
-        self.call("write", "modules/unsupported", "host.files.release", "1",
-                  old.data.hex(), success=False)
+        with self.path.open("r+b"):
+            self.call("write", "modules/copied", "host.files.select", "1",
+                      b"draft".hex(), success=False)
+        copied = self.call("write", "modules/copied", "host.files.select",
+                           "1", b"draft".hex())
+        self.call("write", "modules/copied", "host.files.release", "1",
+                  copied.data.hex())
         self.assertEqual(self.select("draft"), replaced)
         self.release(old)
         self.release(replaced)

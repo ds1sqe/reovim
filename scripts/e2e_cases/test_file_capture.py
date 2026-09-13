@@ -22,7 +22,7 @@ class FileCapture(Scenario):
             prefix="file-capture-", dir="/dev/shm"))
         return [*super().boot_arguments(),
                 "--files", "files", str(self.root), str(self.directory),
-                "--files", "unsupported", str(self.root), scratch]
+                "--files", "copied", str(self.root), scratch]
 
     def close_access(self, resource):
         request = self.wire("reserve").split("\t")[1]
@@ -43,9 +43,10 @@ class FileCapture(Scenario):
             self.call("write", "modules/files", "host.files.capture", "1",
                       path.encode().hex(), success=False)
         failed = self.wire("reserve").split("\t")[1]
-        result = self.wire("call", failed, "write", "modules/unsupported",
-                           "host.files.capture", "1", b"draft".hex())
-        self.assertTrue(result.startswith("error\tfailed\t4\t"), result)
+        with (self.root / "draft").open("r+b"):
+            result = self.wire("call", failed, "write", "modules/copied",
+                               "host.files.capture", "1", b"draft".hex())
+        self.assertTrue(result.startswith("error\tfailed\t8\t"), result)
         self.assertEqual(self.wire("release", failed), "ok")
         request = self.wire("reserve").split("\t")[1]
         fields = ("call", request, "write", "modules/files",
@@ -96,12 +97,12 @@ class FileCapture(Scenario):
                   b"draft".hex(), "modules/files,modules/files",
                   success=False)
         opened = self.call("write", "native/open", "command.open", "1",
-                           b"draft".hex(), "modules/files,native/source")
+                           b"draft".hex(), "modules/copied,native/source")
         buffer, history, source = opened.resources
         self.assertEqual(opened.data, u64(0))
         metadata = self.call("read", buffer, "kernel.buffer.describe", "1")
         self.assertEqual(metadata.resources, (buffer, history, source))
-        self.unload("modules/host/files-0", success=False)
+        self.unload("modules/host/files-1", success=False)
         self.unload(command)
         held = self.call("read", buffer, "kernel.buffer.retain", "1",
                          u64(0).hex()).resources[1]
@@ -121,6 +122,6 @@ class FileCapture(Scenario):
                   u64(1).hex(), buffer)
         self.call("write", buffer, "kernel.buffer.close", "1",
                   (u64(2) + b"\x00").hex(), buffer)
-        self.unload("modules/host/files-0")
+        self.unload("modules/host/files-1")
         self.close_access(held)
         self.unload(model)

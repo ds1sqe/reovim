@@ -6,7 +6,7 @@ use reovim_kernel_interface::{
 };
 use std::{fs::File, io, path::Path};
 
-/// Explicit read root and same-filesystem snapshot storage grants.
+/// Explicit read root and coherent snapshot storage grants.
 pub struct Directory {
     pub(super) root: Arc<File>,
     pub(super) scratch: Arc<File>,
@@ -141,6 +141,8 @@ fn unload(state: &mut Capture) -> Result<(), Error> {
 pub(super) fn native(error: &io::Error) -> Error {
     match error.raw_os_error() {
         Some(13 | 1) => Error::DENIED,
+        Some(11) => Error::BUSY,
+        Some(116) => Error::STALE,
         Some(18 | 25 | 95) => Error::UNSUPPORTED,
         Some(22 | 40 | 20) => Error::INVALID,
         Some(12 | 23 | 24 | 28) => Error::PRESSURE,

@@ -231,10 +231,11 @@ fn check_identity(
 }
 
 #[test]
-fn unsupported_clone_leaves_source_unprepared() {
+fn cross_device_capture_rejects_writer_then_retains_coherent_bytes() {
     let files = Files::new("unsupported");
     let path = files.0.join("draft");
-    fs::write(&path, b"original").unwrap();
+    fs::write(&path, b"original!").unwrap();
+    let writer = fs::OpenOptions::new().write(true).open(&path).unwrap();
     let mut runtime = Runtime::new(245, Limits::default()).unwrap();
     runtime.start().unwrap();
     let source = runtime
@@ -253,10 +254,31 @@ fn unsupported_clone_leaves_source_unprepared() {
             &mut runtime,
             client.read(subject, &query("resource.state.prepare", &[]))
         ),
-        Err(RequestError::Failed(Error::UNSUPPORTED))
+        Err(RequestError::Failed(Error::BUSY))
     );
     assert_eq!(client.read_view(subject).err(), Some(Error::NOT_READY));
-    assert_eq!(fs::read(&path).unwrap(), b"original");
+    assert_eq!(fs::read(&path).unwrap(), b"original!");
+    drop(writer);
+    prepare(&mut runtime, &client, subject);
+    let view = client.read_view(subject).unwrap();
+    fs::write(&path, b"modified!").unwrap();
+    assert_eq!(
+        bytes(&mut runtime, &view, "resource.base").as_ref(),
+        b"original!"
+    );
+    fs::remove_file(&path).unwrap();
+    prepare(&mut runtime, &client, subject);
+    let unlinked = client.read_view(subject).unwrap();
+    assert_eq!(
+        bytes(&mut runtime, &unlinked, "resource.base").as_ref(),
+        b"modified!"
+    );
+    assert_eq!(
+        bytes(&mut runtime, &view, "resource.base").as_ref(),
+        b"original!"
+    );
+    drop(unlinked);
+    drop(view);
     runtime.unregister(source).unwrap();
     runtime.close().unwrap();
 }

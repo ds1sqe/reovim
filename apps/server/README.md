@@ -67,9 +67,11 @@ attaches/detaches its own Text interpretation; shared content implies no focus
 or view sharing. Buffer and Session configuration remain separate choices.
 
 `--snapshot MOUNT SOURCE SCRATCH_DIRECTORY` grants an immutable file snapshot
-at `modules/MOUNT`. The Linux Host atomically clones the source into an
-anonymous file on the scratch filesystem. Unsupported or cross-filesystem
-cloning fails boot explicitly. Source and scratch are explicit process grants;
+at `modules/MOUNT`. The Linux Host prefers an atomic clone into anonymous
+scratch. Linux x86_64 can instead copy under a read lease, including across
+filesystems. This requires owned input and `/proc/self/fd`; existing writers,
+lease breaks or unsupported protection reject capture. Source and scratch
+are explicit process grants;
 this does not expose arbitrary filesystem paths to modules. See the
 [source model](../../modules/source/README.md) for lazy working-state opening.
 
@@ -82,7 +84,7 @@ Pass the snapshot to `source.open`, then close it after its working states and
 retained reads no longer need the backing. Explicit source-access close fences
 future reads; it is not the same operation as shared Buffer close. Replaying
 one retained request returns its original snapshot; a new request captures a
-new cut. Unsupported atomic cloning returns Unsupported without a snapshot.
+new cut. Capture never falls back to unprotected copying or timestamp checks.
 
 `host.files.select` v1 on the same directory selects a shared file source and
 prepares an immutable data/base view. Pass its READ reference to the selected

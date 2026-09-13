@@ -23,3 +23,6 @@ workspace = true
 [dependencies.reovim-sdk]
 path = "../../sdk/rust"
 version = "=0.16.0-dev"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = { version = "=0.2.189", default-features = false }
