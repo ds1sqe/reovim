@@ -52,6 +52,7 @@ pub struct Record {
     pub activation: Option<Rc<Cell<Lifecycle>>>,
     pub output: Box<[Permissions]>,
     pub snapshot: Option<Rc<crate::sessions::Snapshot>>,
+    pub backing: Option<crate::opening::Association>,
     pub cancelled: bool,
     pub observed: bool,
     pub readers: usize,

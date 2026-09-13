@@ -160,6 +160,7 @@ impl Runtime {
             key: record.subject,
             rights: record.rights,
             _target: Kind::Session(session.clone()),
+            _view: None,
         });
         let participant = Participation {
             session: ResourceId(record.subject),

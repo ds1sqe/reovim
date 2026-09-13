@@ -92,6 +92,10 @@ impl Access for Caller {
             key,
             rights,
             _target: entry.kind.clone(),
+            _view: match &entry.kind {
+                Kind::ReadView { live, .. } => live.upgrade(),
+                _ => None,
+            },
         });
         scope.captures.push(Rc::downgrade(&capture));
         Ok(Connection::new(Rc::new(Self {
@@ -361,6 +365,7 @@ impl Caller {
             activation,
             output,
             snapshot,
+            backing: None,
             cancelled: false,
             observed: false,
             readers: 0,
@@ -533,6 +538,17 @@ fn validate_contract(
             .ok_or(Error::UNSUPPORTED),
         Kind::Model(model)
             if method == Method::Write
+                && crate::opening::contract(&input.contract) =>
+        {
+            crate::opening::validate_model(&model.borrow())?;
+            Ok(Box::new([
+                Permissions::ALL,
+                Permissions::ALL,
+                Permissions::empty(),
+            ]))
+        }
+        Kind::Model(model)
+            if method == Method::Write
                 && (input.contract == model.borrow().create
                     || reovim_kernel_interface::session::is_create(
                         &input.contract,
@@ -571,6 +587,15 @@ fn buffer_contract(
     {
         if crate::snapshots::observing(&input.contract) {
             return Ok(Box::new([Permissions::READ; 4]));
+        }
+        if crate::describe::contract(&input.contract)
+            && buffer.borrow().backing.is_some()
+        {
+            return Ok(Box::new([
+                Permissions::READ,
+                Permissions::READ,
+                Permissions::empty(),
+            ]));
         }
         return Ok(Box::new([Permissions::READ, Permissions::READ]));
     }

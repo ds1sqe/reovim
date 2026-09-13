@@ -22,13 +22,14 @@ pub fn describe(connection: &Connection, buffer: ResourceId) -> Reply {
 /// # Errors
 /// Rejects malformed metadata or another contract's reply.
 pub fn descriptor(reply: &Message) -> Result<BufferDescriptor, Error> {
-    if reply.contract != Contract::new("kernel.buffer.describe", 1)
+    let opened = reply.contract == Contract::new("kernel.buffer.open", 1);
+    if (!opened && reply.contract != Contract::new("kernel.buffer.describe", 1))
         || reply.data.len() != 8
     {
         return Err(Error::INVALID);
     }
     let (buffer, history, backing) = match reply.resources.as_ref() {
-        [buffer, history] => (*buffer, *history, None),
+        [buffer, history] if !opened => (*buffer, *history, None),
         [buffer, history, backing] => (*buffer, *history, Some(*backing)),
         _ => return Err(Error::INVALID),
     };

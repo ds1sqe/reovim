@@ -433,6 +433,16 @@ pub fn returned(
     record: &Record,
     message: &mut Message,
 ) -> Result<(), Error> {
+    if matches!(record.target, crate::namespace::Kind::Buffer(_))
+        && crate::describe::contract(&record.input.contract)
+    {
+        return grant_outputs(
+            shared,
+            &mut record.scope.borrow_mut(),
+            &record.output,
+            message,
+        );
+    }
     // Runtime has already translated and granted state/context result slots.
     if matches!(
         record.target,

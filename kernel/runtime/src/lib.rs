@@ -15,6 +15,7 @@ mod execution;
 mod history;
 mod modules;
 mod namespace;
+mod opening;
 mod owned;
 mod publication;
 mod read_views;
@@ -82,6 +83,7 @@ struct Editing {
     history: u64,
     owner: u64,
     feed: Rc<RefCell<watch::Feed>>,
+    backing: Option<opening::Association>,
 }
 
 struct Shared {

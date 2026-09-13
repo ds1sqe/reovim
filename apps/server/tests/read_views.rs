@@ -124,11 +124,17 @@ fn view_reconnect_retains_its_root_and_explicit_close_fences_clones() {
     );
     let root = next.root().into_inner().unwrap();
     let clone = next.clone();
+    let captured = next.capture(root, Permissions::READ).unwrap();
     next.close(root).into_inner().unwrap();
     assert_eq!(
         read(&mut runtime, &clone, root),
         Err(RequestError::Rejected(Error::CLOSED))
     );
+    assert_eq!(
+        read(&mut runtime, &captured, root),
+        Err(RequestError::Rejected(Error::CLOSED))
+    );
+    drop(captured);
     drop(clone);
     drop(next);
     drop(view);

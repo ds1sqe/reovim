@@ -42,6 +42,7 @@ pub fn model(provider: &ModelProvider, limits: Limits) -> Result<(), Error> {
         || crate::sessions::control(Method::Write, &provider.edit)
         || crate::sessions::control(Method::Read, &provider.read)
         || reovim_kernel_interface::session::is_create(&provider.create)
+        || crate::opening::contract(&provider.create)
         || crate::snapshots::contract(&provider.read)
     {
         return Err(Error::INVALID);

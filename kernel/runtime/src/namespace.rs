@@ -120,6 +120,8 @@ pub struct Capture {
     pub key: u64,
     pub rights: Permissions,
     pub _target: Kind,
+    // A borrowed view can be captured from a different receiving namespace.
+    pub _view: Option<Rc<Cell<bool>>>,
 }
 
 impl Scope {

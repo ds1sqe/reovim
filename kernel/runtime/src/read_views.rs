@@ -16,6 +16,14 @@ pub fn acquire(
     scope: &Rc<RefCell<Scope>>,
     subject: ResourceId,
 ) -> Result<Connection, Error> {
+    acquire_root(shared, scope, subject).map(|(_, connection)| connection)
+}
+
+pub fn acquire_root(
+    shared: &Rc<RefCell<Shared>>,
+    scope: &Rc<RefCell<Scope>>,
+    subject: ResourceId,
+) -> Result<(u64, Connection), Error> {
     let (provider, owner) = {
         let registry = shared.borrow();
         if registry.closing {
@@ -66,7 +74,7 @@ fn publish(
     shared: &Rc<RefCell<Shared>>,
     owner: u64,
     provider: ResourceProvider,
-) -> Result<Connection, Error> {
+) -> Result<(u64, Connection), Error> {
     let mut registry = shared.borrow_mut();
     crate::registration::resource(&provider, registry.limits)?;
     registry.scopes.retain(|scope| scope.strong_count() != 0);
@@ -102,7 +110,7 @@ fn publish(
         group: None,
         ownership: None,
     });
-    Ok(crate::access::view_connection(shared.clone(), scope, live))
+    Ok((key, crate::access::view_connection(shared.clone(), scope, live)))
 }
 
 pub fn reclaim(shared: &Rc<RefCell<Shared>>) {

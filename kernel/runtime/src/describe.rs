@@ -11,8 +11,15 @@ pub fn read(buffer: &crate::Editing, input: Message) -> Result<Message, Error> {
     }
     let mut reply =
         Message::new(input.contract, &buffer.state.revision().to_le_bytes());
-    // Initial snapshot inputs do not establish a publication backing.
-    reply.resources =
-        Box::new([ResourceId(buffer.resource), ResourceId(buffer.history)]);
+    reply.resources = match &buffer.backing {
+        Some(backing) => Box::new([
+            ResourceId(buffer.resource),
+            ResourceId(buffer.history),
+            ResourceId(backing.source),
+        ]),
+        None => {
+            Box::new([ResourceId(buffer.resource), ResourceId(buffer.history)])
+        }
+    };
     Ok(reply)
 }

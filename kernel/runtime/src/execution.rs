@@ -158,15 +158,7 @@ impl Runtime {
                 }
             }
             Kind::Model(model) => {
-                let received = crate::binding::receive(
-                    &mut self.shared.borrow_mut(),
-                    &record.borrow(),
-                    input,
-                );
-                match received {
-                    Ok((_, input)) => begin_model(&model, input),
-                    Err(error) => Step::Finished(Err(error)),
-                }
+                self.begin_model_request(record, &model, input)
             }
             Kind::Session(_) | Kind::ClosedSession { .. }
                 if method == Method::Write
@@ -206,6 +198,31 @@ impl Runtime {
     fn begin_module(&mut self, subject: ResourceId, input: &Message) -> Step {
         match self.begin_module_unload(subject, input) {
             Ok(()) => Step::Pending(Work::ModuleUnload),
+            Err(error) => Step::Finished(Err(error)),
+        }
+    }
+
+    fn begin_model_request(
+        &self,
+        record: &Rc<RefCell<Record>>,
+        model: &Rc<RefCell<reovim_kernel_interface::buffer::ModelProvider>>,
+        input: Message,
+    ) -> Step {
+        let received = crate::opening::prepare(
+            &self.shared,
+            record,
+            &model.borrow(),
+            input,
+        )
+        .and_then(|input| {
+            crate::binding::receive(
+                &mut self.shared.borrow_mut(),
+                &record.borrow(),
+                input,
+            )
+        });
+        match received {
+            Ok((_, input)) => begin_model(model, input),
             Err(error) => Step::Finished(Err(error)),
         }
     }
@@ -258,10 +275,18 @@ impl Runtime {
         ) {
             return self.create_session(record, model, candidate);
         }
-        let value = model.borrow_mut().observe(&candidate)?;
+        let backing = crate::opening::source(&record.borrow())?;
         let limit = self.shared.borrow().limits.message_bytes;
-        let mut reply =
-            prepare_observation(value, &model.borrow().read, limit)?;
+        let mut reply = if backing.is_some() {
+            crate::opening::reply(limit)?
+        } else {
+            let value = model.borrow_mut().observe(&candidate)?;
+            prepare_observation(value, &model.borrow().read, limit)?
+        };
+        crate::opening::revalidate(
+            &self.shared.borrow(),
+            record.borrow().backing.as_ref(),
+        )?;
         if record.borrow().cancelled {
             return Err(Error::CANCELLED);
         }
@@ -288,7 +313,11 @@ impl Runtime {
             _ => return Err(Error::PROVIDER),
         };
         self.accepted(record, &buffer);
-        stamp_observation(&mut reply, &buffer.borrow());
+        if let Some(source) = backing {
+            crate::opening::stamp(&mut reply, &buffer.borrow(), source);
+        } else {
+            stamp_observation(&mut reply, &buffer.borrow());
+        }
         Ok(reply)
     }
 
@@ -318,6 +347,7 @@ impl Runtime {
             history,
             owner,
             feed: Rc::default(),
+            backing: record.borrow_mut().backing.take(),
         }));
         let name = alloc::format!("{resource}").into();
         let parent = parent.unwrap_or_else(|| {
@@ -471,6 +501,11 @@ impl Runtime {
             Kind::Participation(_) if record.snapshot.is_some() => {
                 record.session().map(crate::sessions::read_contract).as_ref()
                     == Some(&result.contract)
+            }
+            Kind::Model(_)
+                if crate::opening::contract(&record.input.contract) =>
+            {
+                result.contract == record.input.contract
             }
             Kind::Model(model) => result.contract == model.borrow().read,
             Kind::Session(_)

@@ -155,6 +155,8 @@ impl Connection {
     ///
     /// Clones retain the same capture. Drop releases it without closing the
     /// shared subject. Existing namespace grants remain independent.
+    /// Capturing a borrowed read view keeps that view alive even from another
+    /// namespace; explicit view close still fences every captured access.
     /// # Errors
     /// Rejects missing rights, closed access or retention pressure.
     pub fn capture(

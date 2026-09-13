@@ -34,8 +34,7 @@ impl Runtime {
         if matches!(record.target, Kind::ClosedBuffer { .. }) {
             return Ok(reply);
         }
-        // Every currently supported Buffer is unbound/unexported.
-        if policy == 0 {
+        if policy == 0 && unpublished(&record.target) {
             return Err(Error::BUSY);
         }
         let mut shared = self.shared.borrow_mut();
@@ -69,6 +68,14 @@ impl Runtime {
         }
         Ok(reply)
     }
+}
+fn unpublished(target: &Kind) -> bool {
+    let Kind::Buffer(buffer) = target else { return true };
+    let buffer = buffer.borrow();
+    buffer
+        .backing
+        .as_ref()
+        .is_none_or(|backing| backing.published != buffer.state.node())
 }
 fn state(target: &Kind) -> Result<(u64, u64), Error> {
     match target {
