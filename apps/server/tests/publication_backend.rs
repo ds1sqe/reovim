@@ -18,6 +18,8 @@ use std::{
 mod device;
 #[path = "publication_backend/model.rs"]
 mod model;
+#[path = "publication_backend/save.rs"]
+mod save;
 
 const fn code(error: &RequestError) -> Error {
     match error {
@@ -50,9 +52,17 @@ struct Fixture {
 }
 
 fn setup() -> Fixture {
+    setup_model(false)
+}
+
+fn setup_model(backed: bool) -> Fixture {
     let mut runtime = Runtime::new(248, Limits::default()).unwrap();
     runtime.start().unwrap();
-    let model = model::register(&mut runtime);
+    let model = if backed {
+        model::backed(&mut runtime)
+    } else {
+        model::register(&mut runtime)
+    };
     let device = device::Device::new();
     let base = runtime
         .register("base", device::view(device.current.borrow().clone()))
@@ -89,16 +99,7 @@ fn setup() -> Fixture {
         .map_err(|(error, _)| error)
         .unwrap();
     let control = runtime.resource("backend").unwrap();
-    let bootstrap = reovim_sdk::local(
-        runtime.connect(&[(control, Permissions::ALL)]).unwrap(),
-    );
-    let instance = bootstrap.resolve("backend").into_inner().unwrap();
-    finish(
-        &mut runtime,
-        reovim_kernel_interface::module::ready(&bootstrap, instance),
-    )
-    .unwrap();
-    drop(bootstrap);
+    ready_backend(&mut runtime, control);
     let target = runtime.resource("target").unwrap();
     let client = reovim_sdk::local(
         runtime
@@ -113,22 +114,53 @@ fn setup() -> Fixture {
     let target = client.resolve("target").into_inner().unwrap();
     let base = client.resolve("base").into_inner().unwrap();
     let model = client.resolve("model").into_inner().unwrap();
-    let buffer = buffer::observation(
-        finish(
-            &mut runtime,
-            client.write(
-                model,
-                &Message::new(Contract::new("logical.initial", 1), &[1]),
-            ),
+    let buffer = if backed {
+        let opened = buffer::descriptor(
+            &finish(&mut runtime, buffer::open(&client, model, target, &[]))
+                .unwrap(),
         )
-        .unwrap(),
-    )
-    .unwrap();
+        .unwrap();
+        buffer::observation(
+            finish(
+                &mut runtime,
+                client.read(
+                    opened.state.buffer,
+                    &Message::new(Contract::new("logical.value", 1), &[]),
+                ),
+            )
+            .unwrap(),
+        )
+        .unwrap()
+    } else {
+        buffer::observation(
+            finish(
+                &mut runtime,
+                client.write(
+                    model,
+                    &Message::new(Contract::new("logical.initial", 1), &[1]),
+                ),
+            )
+            .unwrap(),
+        )
+        .unwrap()
+    };
     let selected = buffer::retained(
         &finish(&mut runtime, buffer::retain(&client, buffer.state)).unwrap(),
     )
     .unwrap();
     Fixture { runtime, client, target, base, buffer, selected, device }
+}
+
+fn ready_backend(runtime: &mut Runtime, control: ResourceId) {
+    let bootstrap = reovim_sdk::local(
+        runtime.connect(&[(control, Permissions::ALL)]).unwrap(),
+    );
+    let instance = bootstrap.resolve("backend").into_inner().unwrap();
+    finish(
+        runtime,
+        reovim_kernel_interface::module::ready(&bootstrap, instance),
+    )
+    .unwrap();
 }
 
 fn publish(f: &mut Fixture, base: ResourceId) -> protocol::Receipt {

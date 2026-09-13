@@ -58,7 +58,7 @@ impl Runtime {
             .map(|offset| (self.cursor + offset) % total)
             .find(|index| {
                 let record = shared.requests[*index].borrow();
-                record.outcome.is_none()
+                record.work.is_some()
                     && (matches!(
                         record.target,
                         Kind::Catalog(_) | Kind::Module(_)
@@ -134,6 +134,10 @@ impl Runtime {
         if let Some(session) = session {
             return self.begin_session(record, &session);
         }
+        let save = record.borrow().save.clone();
+        if let Some(save) = save {
+            return self.begin_save(record, save, id);
+        }
         match target {
             Kind::Catalog(catalog) => Step::Pending(Work::provider(
                 self.catalog_request(&catalog, record),
@@ -200,6 +204,28 @@ impl Runtime {
             Ok(()) => Step::Pending(Work::ModuleUnload),
             Err(error) => Step::Finished(Err(error)),
         }
+    }
+
+    fn begin_save(
+        &self,
+        record: &Rc<RefCell<Record>>,
+        save: Rc<RefCell<crate::saving::Save>>,
+        id: u64,
+    ) -> Step {
+        let work =
+            match crate::saving::retain(&mut self.shared.borrow_mut(), id) {
+                Ok(work) => work,
+                Err(error) => return Step::Finished(Err(error)),
+            };
+        let owner = record.borrow().scope.borrow().owner;
+        let recovery = record.borrow().recovery.clone();
+        Step::Pending(Work::Resource(crate::saving::start(
+            self.shared.clone(),
+            save,
+            owner,
+            work,
+            recovery,
+        )))
     }
 
     fn begin_model_request(
@@ -425,6 +451,9 @@ impl Runtime {
         };
         let mut record = record.borrow_mut();
         let result = self.validate_outcome(&mut record, result);
+        if result.is_err() {
+            crate::saving::rejected(&mut self.shared.borrow_mut(), &record);
+        }
         let stage = match &result {
             Ok(_) => Stage::Finished,
             Err(RequestError::Unknown { cause, .. }) => {
@@ -543,7 +572,8 @@ impl Runtime {
             }
             Kind::Buffer(_)
                 if record.method == Method::Write
-                    && crate::closing::contract(&record.input.contract) =>
+                    && (crate::closing::contract(&record.input.contract)
+                        || crate::saving::contract(&record.input.contract)) =>
             {
                 result.contract == record.input.contract
             }

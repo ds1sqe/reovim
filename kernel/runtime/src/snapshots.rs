@@ -131,6 +131,19 @@ fn state_reader(context: ReadState, surface: Surface) -> ResourceProvider {
     .with_read_view(move || Ok(state_reader(view.clone(), declaration.clone())))
 }
 
+pub fn selected(
+    model: Rc<RefCell<ModelProvider>>,
+    state: State,
+) -> ResourceProvider {
+    let surface = Surface {
+        contract: model.borrow().read.clone(),
+        methods: Permissions::READ,
+        input: Box::new([]),
+        output: Box::new([]),
+    };
+    state_reader(ReadState { state, model }, surface)
+}
+
 fn publish(
     shared: &mut crate::Shared,
     scope: &mut crate::namespace::Scope,

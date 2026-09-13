@@ -1,6 +1,6 @@
 #![cfg(all(feature = "std", target_os = "linux"))]
 
-use reovim_host_reference::{run, snapshot};
+use reovim_host_reference::snapshot;
 use reovim_kernel_interface::{
     Connection, Contract, Error, Message, RequestError, ResourceId,
     buffer::{self, ClosePolicy, ModelOps, ModelProvider, State},
@@ -8,6 +8,11 @@ use reovim_kernel_interface::{
 };
 use reovim_kernel_runtime::{Limits, Runtime};
 use std::{fs, future::Future, path::PathBuf, rc::Rc};
+use std::{
+    sync::Arc,
+    task::{Context, Poll, Wake, Waker},
+    time::{Duration, Instant},
+};
 
 struct Files(PathBuf);
 impl Files {
@@ -26,7 +31,28 @@ impl Drop for Files {
 }
 
 fn finish<T>(runtime: &mut Runtime, future: impl Future<Output = T>) -> T {
-    run(future, |context| runtime.advance(context).map(|_| ())).unwrap()
+    let wake = Waker::from(Arc::new(WakeThread(std::thread::current())));
+    let mut context = Context::from_waker(&wake);
+    let mut future = Box::pin(future);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Poll::Ready(value) = future.as_mut().poll(&mut context) {
+            return value;
+        }
+        assert!(Instant::now() < deadline, "Host operation did not finish");
+        if runtime.advance(&mut context).unwrap()
+            != reovim_kernel_interface::driver::Progress::More
+        {
+            std::thread::park_timeout(Duration::from_millis(1));
+        }
+    }
+}
+
+struct WakeThread(std::thread::Thread);
+impl Wake for WakeThread {
+    fn wake(self: Arc<Self>) {
+        self.0.unpark();
+    }
 }
 
 fn query(name: &str, data: &[u8]) -> Message {

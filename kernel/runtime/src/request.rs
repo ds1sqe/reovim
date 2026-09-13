@@ -53,6 +53,7 @@ pub struct Record {
     pub output: Box<[Permissions]>,
     pub snapshot: Option<Rc<crate::sessions::Snapshot>>,
     pub backing: Option<crate::opening::Association>,
+    pub save: Option<Rc<RefCell<crate::saving::Save>>>,
     pub cancelled: bool,
     pub observed: bool,
     pub readers: usize,
@@ -76,6 +77,13 @@ impl Drop for Record {
 }
 
 impl Record {
+    pub fn cancel(&mut self) {
+        self.cancelled = true;
+        if let Some(save) = &self.save {
+            save.borrow_mut().cancelled = true;
+        }
+    }
+
     /// The admitted Session remains distinct from a participation subject.
     pub fn session(&self) -> Option<&Rc<RefCell<crate::sessions::Session>>> {
         self.snapshot.as_ref()?;
@@ -93,6 +101,7 @@ pub struct Wait {
     pub record: Option<Rc<RefCell<Record>>>,
     pub generation: u64,
     pub recovery: bool,
+    pub refresh: bool,
 }
 
 impl Future for Wait {
@@ -118,7 +127,7 @@ impl Wait {
         let Some(record) = self.record.take() else { return };
         let mut record = record.borrow_mut();
         // Keep native wake owners pinned until their admitted work settles.
-        if self.recovery {
+        if self.recovery || self.refresh {
             record.readers -= 1;
         }
     }
@@ -140,7 +149,19 @@ impl Wait {
                 Error::UNAVAILABLE,
             )));
         }
-        let Some(outcome) = record.outcome.clone() else {
+        if self.refresh
+            && record.work.is_none()
+            && let Some(error) =
+                record.save.as_ref().and_then(|save| save.borrow().last_error)
+        {
+            return Poll::Ready(Err(RequestError::Failed(error)));
+        }
+        let outcome = if self.refresh && record.work.is_some() {
+            None
+        } else {
+            record.outcome.clone()
+        };
+        let Some(outcome) = outcome else {
             let limit = self.shared.borrow().limits.requests.saturating_add(1);
             record.listen(self.id, context.waker(), limit).map_err(
                 |cause| RequestError::Unknown {

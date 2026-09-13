@@ -11,7 +11,12 @@ pub struct Association {
     pub source: u64,
     pub published: usize,
     _source: Connection,
-    _base: Connection,
+    pub base: Rc<Base>,
+}
+
+pub struct Base {
+    pub key: u64,
+    pub _access: Connection,
 }
 
 pub fn contract(value: &Contract) -> bool {
@@ -47,7 +52,7 @@ pub fn prepare(
         source,
         published: 0,
         _source: source_access,
-        _base: base_access,
+        base: Rc::new(Base { key: base, _access: base_access }),
     });
     Ok(input)
 }
@@ -85,7 +90,7 @@ pub fn stamp(reply: &mut Message, buffer: &crate::Editing, source: u64) {
     reply.resources[2] = ResourceId(source);
 }
 
-fn require_base(shared: &Shared, key: u64) -> Result<(), Error> {
+pub fn require_base(shared: &Shared, key: u64) -> Result<(), Error> {
     let Kind::ReadView { provider, .. } =
         &shared.entries[shared.entry_index(key)?].kind
     else {

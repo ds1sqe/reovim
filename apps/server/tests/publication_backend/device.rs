@@ -17,6 +17,7 @@ pub struct Device {
     pub wake: RefCell<Option<Waker>>,
     pub uncertain: Cell<bool>,
     pub reconcile: Cell<bool>,
+    pub base_ready: Cell<bool>,
 }
 
 impl Device {
@@ -30,6 +31,7 @@ impl Device {
             wake: RefCell::new(None),
             uncertain: Cell::new(false),
             reconcile: Cell::new(true),
+            base_ready: Cell::new(true),
         })
     }
 }
@@ -53,6 +55,7 @@ struct Backend {
 }
 
 pub fn provider(kernel: Connection, device: Rc<Device>) -> ResourceProvider {
+    let views = device.clone();
     ResourceProvider::new(
         Backend { kernel, device, records: Rc::default(), next: 0 },
         ResourceOps {
@@ -82,6 +85,7 @@ pub fn provider(kernel: Connection, device: Rc<Device>) -> ResourceProvider {
         ]),
         Rc::new(()),
     )
+    .with_read_view(move || Ok(view(views.current.borrow().clone())))
 }
 
 fn publish(
@@ -213,6 +217,9 @@ fn record(evidence: Rc<Evidence>) -> ResourceProvider {
         Rc::new(()),
     )
     .with_read_view(move || {
+        if !views.device.base_ready.get() {
+            return Err(Error::PRESSURE);
+        }
         if views.reported.get() != protocol::Status::Applied {
             return Err(Error::NOT_READY);
         }

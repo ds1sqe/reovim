@@ -333,6 +333,7 @@ impl Caller {
         }
         let id = shared.id()?;
         let references = crate::binding::capture(&shared, &captured)?;
+        let save = crate::saving::capture(&shared, &scope, &target, &captured)?;
         let receiver_key =
             if snapshot.is_some() { captured.resources[0].0 } else { key };
         let receiver =
@@ -366,6 +367,7 @@ impl Caller {
             output,
             snapshot,
             backing: None,
+            save,
             cancelled: false,
             observed: false,
             readers: 0,
@@ -406,6 +408,7 @@ impl Caller {
             scope: Rc::clone(&self.scope),
             record: Some(record),
             recovery: false,
+            refresh: false,
             generation: self.generation,
         })
     }
@@ -439,7 +442,11 @@ impl Caller {
             .find(|record| record.borrow().id == id)
             .cloned()
             .ok_or(Error::UNAVAILABLE)?;
-        let status = if record.borrow().outcome.is_some() {
+        let status = if record.borrow().work.is_some() {
+            b"pending".as_slice()
+        } else if let Some(save) = &record.borrow().save {
+            save.borrow().status()
+        } else if record.borrow().outcome.is_some() {
             b"finished".as_slice()
         } else {
             b"pending".as_slice()
@@ -463,12 +470,16 @@ impl Caller {
                     scope: Rc::clone(&self.scope),
                     record: Some(record),
                     recovery: true,
+                    refresh: false,
                     generation: self.generation,
                 }));
             }
             (Method::Write, "kernel.request.cancel", 1) => {
-                record.borrow_mut().cancelled = true;
+                record.borrow_mut().cancel();
                 Message::new(input.contract.clone(), b"requested")
+            }
+            (Method::Write, "kernel.request.reconcile", 1) => {
+                return self.reconcile_save(shared, record);
             }
             (Method::Read, "kernel.request.status", 1) => {
                 Message::new(input.contract.clone(), status)
@@ -492,11 +503,10 @@ impl Caller {
         {
             return Err(Error::DENIED);
         }
-        if shared
-            .requests
-            .iter()
-            .any(|record| record.borrow().references(ResourceId(key)))
-        {
+        if shared.requests.iter().any(|record| {
+            let record = record.borrow();
+            record.id != request && record.references(ResourceId(key))
+        }) {
             return Err(Error::BUSY);
         }
         let record = shared
@@ -507,8 +517,41 @@ impl Caller {
         if record.borrow().outcome.is_none() || record.borrow().readers != 0 {
             return Err(Error::BUSY);
         }
+        crate::saving::prepare_close(&self.shared, record)?;
         record.borrow_mut().observed = true;
         Ok(shared.retire(request))
+    }
+
+    fn reconcile_save(
+        &self,
+        shared: &mut Shared,
+        record: Rc<RefCell<Record>>,
+    ) -> Result<Reply, Error> {
+        let save = record.borrow().save.clone().ok_or(Error::UNSUPPORTED)?;
+        let readers = record
+            .borrow()
+            .readers
+            .checked_add(1)
+            .filter(|count| *count <= shared.limits.requests)
+            .ok_or(Error::PRESSURE)?;
+        let id = shared.id()?;
+        if record.borrow().work.is_none() && !save.borrow().settled {
+            let pending =
+                crate::saving::resume(self.shared.clone(), save, false)?;
+            record.borrow_mut().work =
+                Some(crate::request::Work::Resource(pending));
+            record.borrow_mut().schedule = crate::request::Schedule::new();
+        }
+        record.borrow_mut().readers = readers;
+        Ok(Box::pin(Wait {
+            id,
+            shared: self.shared.clone(),
+            scope: self.scope.clone(),
+            record: Some(record),
+            recovery: false,
+            refresh: true,
+            generation: self.generation,
+        }))
     }
 }
 
@@ -581,6 +624,13 @@ fn buffer_contract(
     method: Method,
     input: &Message,
 ) -> Result<Box<[Permissions]>, Error> {
+    if method == Method::Write && crate::saving::contract(&input.contract) {
+        return Ok(Box::new([
+            Permissions::empty(),
+            Permissions::empty(),
+            Permissions::ALL,
+        ]));
+    }
     if method == Method::Read
         && (crate::snapshots::contract(&input.contract)
             || crate::describe::contract(&input.contract))

@@ -112,6 +112,11 @@ class FileCapture(Scenario):
                             (u64(0) + u64(0) + u64(0) + b"new ").hex(),
                             buffer)
         self.assertEqual(changed.data[:8], u64(1))
+        self.call("write", buffer, "kernel.buffer.save", "1", u64(1).hex(),
+                  buffer, success=False)
+        self.assertEqual((self.root / "draft").read_bytes(), self.original)
+        self.call("write", buffer, "kernel.buffer.close", "1",
+                  (u64(1) + b"\0").hex(), buffer, success=False)
         self.call("write", history, "kernel.history.undo", "1",
                   u64(1).hex(), buffer)
         self.call("write", buffer, "kernel.buffer.close", "1",

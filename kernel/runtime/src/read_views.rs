@@ -52,7 +52,8 @@ pub fn acquire_root(
     };
     let view = provider.borrow_mut().read_view()?;
     validate(&view)?;
-    publish(shared, owner, view)
+    let (key, _, access) = publish(shared, owner, view)?;
+    Ok((key, access))
 }
 
 fn validate(view: &ResourceProvider) -> Result<(), Error> {
@@ -70,11 +71,11 @@ fn validate(view: &ResourceProvider) -> Result<(), Error> {
     Ok(())
 }
 
-fn publish(
+pub fn publish(
     shared: &Rc<RefCell<Shared>>,
     owner: u64,
     provider: ResourceProvider,
-) -> Result<(u64, Connection), Error> {
+) -> Result<(u64, Rc<RefCell<Scope>>, Connection), Error> {
     let mut registry = shared.borrow_mut();
     crate::registration::resource(&provider, registry.limits)?;
     registry.scopes.retain(|scope| scope.strong_count() != 0);
@@ -110,7 +111,11 @@ fn publish(
         group: None,
         ownership: None,
     });
-    Ok((key, crate::access::view_connection(shared.clone(), scope, live)))
+    Ok((
+        key,
+        scope.clone(),
+        crate::access::view_connection(shared.clone(), scope, live),
+    ))
 }
 
 pub fn reclaim(shared: &Rc<RefCell<Shared>>) {

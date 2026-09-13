@@ -8,8 +8,9 @@ const NAME: &str = "kernel.request.result";
 
 /// Retrieves the original outcome without repeating its effect.
 ///
-/// Repeated reads retain the same outcome and Resource identities. Close the
-/// work Resource through [`Connection::close`] after adopting its result.
+/// Reads refer to the same work and returned Resource ownership. Publication
+/// reconciliation may refine effect evidence; earlier Messages stay unchanged.
+/// Close Work through [`Connection::close`] after adopting its result.
 ///
 /// # Errors
 /// Outer errors concern retrieval/decoding; inner errors belong to the work.

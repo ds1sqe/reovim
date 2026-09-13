@@ -42,6 +42,10 @@ impl Runtime {
             let other = other.borrow();
             other.id != record.id
                 && shared.descends(other.subject, record.subject)
+                && !other
+                    .save
+                    .as_ref()
+                    .is_some_and(|save| save.borrow().settled)
         });
         if busy {
             return Err(Error::BUSY);

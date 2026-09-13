@@ -21,6 +21,7 @@ mod publication;
 mod read_views;
 mod registration;
 mod request;
+mod saving;
 
 pub mod diagnostics;
 
