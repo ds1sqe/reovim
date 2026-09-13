@@ -3,6 +3,36 @@ import assert from 'node:assert/strict';
 import { initial, observation, update, watching, followed, change } from '../../target/browser/modules/context/api/typescript.js';
 import { Client, hex, u64 } from '../../target/browser/sdk/typescript/resource.js';
 import { Focus } from '../../target/browser/clients/gui/runtime/context.js';
+import { Editing } from '../../target/browser/apps/web/editing.js';
+
+test('lost file opening adopts the original Buffer after journal reload', async t => {
+  let state = { token: 'client', retiring: [] }, calls = 0, lost = true;
+  const opened = `ok\tcommand.open\t1\t${hex(u64(0n))}${hex(u64(0n))}${hex(u64(9n))}\t@7,@8`;
+  t.mock.method(Client.prototype, 'wire', async fields => {
+    if (fields[1] === 'reserve') return 'ok\t1';
+    if (fields[1] === 'release') return 'ok';
+    if (fields[1] === 'call') {
+      calls++;
+      assert.deepEqual(fields.slice(3), ['write', 'open', 'command.open', '1',
+        hex(new TextEncoder().encode('draft.md')), 'modules/files,file_source']);
+      if (lost) { lost = false; throw new Error('lost response'); }
+      return opened;
+    }
+    assert.fail(`unexpected exchange ${fields}`);
+  });
+  await assert.rejects(new Editing(state, () => {}).openFile('draft.md'), /Outcome unavailable/);
+  assert.equal(state.source, undefined);
+  assert.equal(state.receipt.id, '1');
+  state = JSON.parse(JSON.stringify(state));
+  const editing = new Editing(state, () => {});
+  await assert.rejects(editing.openFile('different.md'), /Recover/);
+  assert.equal(calls, 1);
+  await editing.recover();
+  assert.deepEqual(state.source, { buffer: '@7', history: '@8', revision: '0', shared: undefined });
+  assert.equal(state.receipt, undefined);
+  assert.equal(calls, 2, 'same receipt retrieves the server-retained result');
+  await assert.rejects(editing.openFile('different.md'), /Close the existing/);
+});
 
 test('checkpoint recovery keeps its separate owner and does not replace the selected view', async () => {
   const client = new Client('client'), seen = [];

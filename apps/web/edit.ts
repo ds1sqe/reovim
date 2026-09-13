@@ -87,6 +87,7 @@ function render() {
 
 const actions: Record<string, () => Promise<unknown>> = {
   create: () => editing.create(unhex(input('initial').trim())),
+  'open-file': () => editing.openFile(input('filename')),
   join: () => editing.join(),
   observe: () => editing.observe(),
   follow: () => editing.follow(),
@@ -112,7 +113,7 @@ const actions: Record<string, () => Promise<unknown>> = {
 for (const [id, action] of Object.entries(actions)) {
   document.querySelector(`#${id}`)!.addEventListener('click', async () => {
     if (typing.composing) { status.textContent = 'Finish composition first.'; return; }
-    if (typing.retained && ['create', 'join', 'replace', 'undo', 'close'].includes(id)) {
+    if (typing.retained && ['create', 'open-file', 'join', 'replace', 'undo', 'close'].includes(id)) {
       status.textContent = 'Resolve or discard the retained local draft first.'; return;
     }
     try { await operate(action); }

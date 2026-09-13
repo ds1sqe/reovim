@@ -51,8 +51,8 @@ export class Editing {
       return;
     }
     const value = message(line);
-    if (fields[2] === 'source.initial' || fields[2] === 'text.replace') {
-      const contract = fields[2] === 'text.replace' ? 'text.replace' : 'source.bytes';
+    if (['source.initial', 'text.replace', 'command.open'].includes(fields[2]!)) {
+      const contract = fields[2] === 'source.initial' ? 'source.bytes' : fields[2];
       if (value.contract !== contract || value.schema !== 1
           || value.resources.length !== 2 || value.data.length !== 24) {
         throw new Error('invalid source acceptance');
@@ -139,6 +139,16 @@ export class Editing {
     const client = await this.ready();
     if (this.journal.source) throw new Error('Detach the existing source first');
     await this.send(client, ['read', 'buffer', 'kernel.buffer.describe', '1']);
+    await this.observe();
+  }
+
+  async openFile(name: string, command = 'open', directory = 'modules/files',
+    model = 'file_source'): Promise<void> {
+    if (!name) throw new Error('Choose a file first');
+    const client = await this.ready();
+    if (this.journal.source) throw new Error('Close the existing source first');
+    await this.send(client, ['write', command, 'command.open', '1',
+      hex(new TextEncoder().encode(name)), `${directory},${model}`]);
     await this.observe();
   }
 

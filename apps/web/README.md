@@ -1,5 +1,20 @@
 # Browser service reference
 
+The editing trial's **Open file** control calls the separately loaded
+[open command](../../modules/open/README.md). Composition supplies per-client
+`open` and `file_source` (the Source opening Model), plus a granted directory
+at `modules/files`. It also needs the existing per-client Text provider.
+The filename is relative to that explicit Host grant. This does not associate
+the working Buffer with a save destination.
+
+Opening persists its receipt and adopts the owned Buffer before Text observation
+or context attachment. Recover a lost response before another opening; changing
+the disk file does not change the retained result. **Focus current source** is a
+separate exact-current context update. A stale or lost focus update leaves the
+opened Buffer owned by this Client. Refresh/recover context before retrying it.
+`node apps/web/file-context-e2e.mjs BROWSER_URL FIXTURE_PATH` exercises this chain
+on a dedicated server; it deliberately replaces the test fixture after opening.
+
 The editing trial can dynamically load the first-party uppercase contribution,
 run it on the textarea's highlighted selection, and unload it. It uses only the
 [GUI contribution contract](../../clients/gui/contract/README.md); opaque units
