@@ -91,10 +91,10 @@ test('lost file opening adopts the original Buffer after journal reload', async 
   assert.equal(calls, 1);
   await editing.recover();
   assert.deepEqual(state.source, { buffer: '@7', history: '@8', revision: '0',
-    shared: undefined, backing: '@40' });
+    shared: undefined, backing: '@40', name: 'draft.md' });
   assert.equal(state.receipt, undefined);
   assert.equal(calls, 2, 'same receipt retrieves the server-retained result');
-  await assert.rejects(editing.openFile('different.md'), /Close the existing/);
+  await assert.rejects(editing.openFile('different.md'), /Keep the current/);
 });
 
 test('opening rejects legacy or incomplete descriptors without adopting a Buffer', async t => {

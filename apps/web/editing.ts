@@ -5,11 +5,12 @@ import { result as retainedResult } from '../../sdk/typescript/requests.js';
 import * as text from '../../modules/text/api/typescript.js';
 
 interface Source { buffer: ResourceId; history: ResourceId; revision: string;
-  shared?: boolean; backing?: ResourceId }
+  shared?: boolean; backing?: ResourceId; name?: string; windowStart?: string }
 interface AcceptedInput { client: string; id: string; revision: string; buffer: ResourceId }
 export interface Journal {
   token?: string; opening?: Opening; receipt?: Receipt;
   source?: Source; access?: ResourceId; observed?: text.Observation;
+  inactive?: Source[]; openingName?: string;
   window?: text.Window; retiring: ResourceId[];
   change?: text.Change; needsRefresh?: boolean;
   acceptedInput?: AcceptedInput;
@@ -21,7 +22,7 @@ export interface Journal {
   openingWork?: ResourceId[];
 }
 
-/** This composition owns its source; sharing/follow policy is a later consumer. */
+/** Buffer ownership outlives the active Text view. */
 export class Editing {
   constructor(public readonly journal: Journal, private readonly persist: () => void,
     private readonly endpoint = '/rpc') {}
@@ -161,9 +162,11 @@ export class Editing {
         throw new Error('foreign source acceptance');
       }
       state.source = { shared: state.source?.shared,
+        name: state.source?.name ?? state.openingName,
         backing: backed ? value.resources[2] : state.source?.backing,
         buffer: value.resources[0]!, history: value.resources[1]!,
         revision: new DataView(value.data.buffer).getBigUint64(0, true).toString() };
+      delete state.openingName;
       if (fields[2] === 'command.open.resume') {
         // Newer resume records refer to older work; retire dependants first.
         if (state.resuming?.work) state.retiring.unshift(state.resuming.work);
@@ -239,7 +242,9 @@ export class Editing {
 
   async create(bytes: Uint8Array): Promise<void> {
     const client = await this.ready();
-    if (this.journal.source) throw new Error('Close the existing source first');
+    if (this.journal.source) throw new Error('Keep the current source open or close it first');
+    this.journal.openingName = `Untitled ${(this.journal.inactive?.length ?? 0) + 1}`;
+    this.persist();
     await this.send(client, ['write', 'source', 'source.initial', '1', hex(bytes)]);
     await this.observe();
   }
@@ -255,7 +260,8 @@ export class Editing {
     model = 'file_source'): Promise<void> {
     if (!name) throw new Error('Choose a file first');
     const client = await this.ready();
-    if (this.journal.source) throw new Error('Close the existing source first');
+    if (this.journal.source) throw new Error('Keep the current source open or close it first');
+    this.journal.openingName = name; this.persist();
     await this.send(client, ['write', command, 'command.open', '1',
       hex(new TextEncoder().encode(name)), `${directory},${model}`]);
     await this.observe();
@@ -339,6 +345,43 @@ export class Editing {
   async close(): Promise<void> {
     const client = await this.ready();
     const state = this.journal;
+    await this.releaseView(client);
+    if (state.source?.shared) {
+      delete state.source;
+      this.persist();
+    } else if (state.source) {
+      await this.send(client, ['write', state.source.buffer, 'kernel.buffer.close', '1',
+        hex(u64(BigInt(state.source.revision))) + '01', state.source.buffer]);
+    }
+  }
+
+  async park(): Promise<void> {
+    const client = await this.ready();
+    const state = this.journal;
+    if (!state.source) return;
+    state.source.windowStart = state.window?.start ?? state.source.windowStart ?? '0';
+    await this.releaseView(client);
+    state.inactive ??= [];
+    state.inactive.push(state.source);
+    delete state.source; delete state.acceptedInput;
+    this.persist();
+  }
+
+  async switchTo(buffer: ResourceId): Promise<void> {
+    await this.ready();
+    const state = this.journal;
+    if (state.source?.buffer === buffer) { await this.observe(); return; }
+    const selected = state.inactive?.find(source => source.buffer === buffer);
+    if (!selected) throw new Error('That Buffer is not open in this client');
+    await this.park();
+    state.inactive = state.inactive!.filter(source => source.buffer !== buffer);
+    state.source = selected;
+    this.persist();
+    await this.observe(BigInt(selected.windowStart ?? '0'));
+  }
+
+  private async releaseView(client: Client): Promise<void> {
+    const state = this.journal;
     if (state.observed) {
       state.retiring.push(state.observed.snapshot, state.observed.watch);
       delete state.observed; delete state.window;
@@ -347,12 +390,5 @@ export class Editing {
     }
     await this.retire(client);
     if (state.access) await this.send(client, ['close', state.access]);
-    if (state.source?.shared) {
-      delete state.source;
-      this.persist();
-    } else if (state.source) {
-      await this.send(client, ['write', state.source.buffer, 'kernel.buffer.close', '1',
-        hex(u64(BigInt(state.source.revision))) + '01', state.source.buffer]);
-    }
   }
 }

@@ -1,5 +1,20 @@
 # Browser service reference
 
+**Keep source open** releases the current Text view while retaining its Buffer
+and History. Create or open another source, then use **Other open sources** and
+**Switch source** to return. Switching reacquires current Text and preserves the
+previous window start; it does not close a Buffer or send an edit. The journal
+keeps inactive identities through reload and recovers lost view-cleanup replies.
+Retained drafts and composition prevent switching. Closing affects only the
+current source under the existing discard/detach policy.
+
+This trial keeps its context-focus update explicit through **Focus current
+source**; switching views does not silently rewrite shared Session context.
+Run `node apps/web/switching-e2e.mjs BROWSER_URL` on the private source/Text
+fixture, or add `files` with `one.md` containing `first\n` and `two.md` containing
+`second\n` plus file/open providers. The journey checks dirty state, independent
+History, lost cleanup/reload, failed opening and eventual client cleanup.
+
 The editing trial's **Open file** control calls the separately loaded
 [open command](../../modules/open/README.md). Composition supplies per-client
 `open` and `file_source` (the Source opening Model), plus a granted directory

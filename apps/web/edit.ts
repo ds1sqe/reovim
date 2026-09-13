@@ -59,9 +59,17 @@ function report(error: unknown) {
 }
 
 function render() {
+  const sources = document.querySelector<HTMLSelectElement>('#open-sources')!;
+  const selected = sources.value;
+  sources.replaceChildren(...(journal.inactive ?? []).map(source => {
+    const option = document.createElement('option');
+    option.value = source.buffer; option.textContent = source.name ?? 'Shared source';
+    return option;
+  }));
+  if ([...sources.options].some(option => option.value === selected)) sources.value = selected;
   typing.update(journal.receipt ? undefined : journal.window);
   status.textContent = journal.source
-    ? `Revision ${journal.source.revision}${journal.receipt || journal.resuming || journal.openingCleanup ? '; request needs recovery' : ''}`
+    ? `${journal.source.name ?? 'Shared source'}: Revision ${journal.source.revision}${journal.receipt || journal.resuming || journal.openingCleanup ? '; request needs recovery' : ''}`
     : 'No source is open.';
   draftStatus();
   const current = journal.focus?.current;
@@ -89,6 +97,13 @@ const actions: Record<string, () => Promise<unknown>> = {
   create: () => editing.create(unhex(input('initial').trim())),
   'open-file': () => editing.openFile(input('filename')),
   join: () => editing.join(),
+  'park-source': () => editing.park(),
+  'switch-source': () => {
+    const value = document.querySelector<HTMLSelectElement>('#open-sources')!.value;
+    const source = journal.inactive?.find(source => source.buffer === value);
+    if (!source) throw new Error('Choose an open source first');
+    return editing.switchTo(source.buffer);
+  },
   observe: () => editing.observe(),
   follow: () => editing.follow(),
   read: () => editing.read(BigInt(input('window-start'))),
@@ -113,7 +128,8 @@ const actions: Record<string, () => Promise<unknown>> = {
 for (const [id, action] of Object.entries(actions)) {
   document.querySelector(`#${id}`)!.addEventListener('click', async () => {
     if (typing.composing) { status.textContent = 'Finish composition first.'; return; }
-    if (typing.retained && ['create', 'open-file', 'join', 'replace', 'undo', 'close'].includes(id)) {
+    if (typing.retained
+        && ['create', 'open-file', 'join', 'park-source', 'switch-source', 'replace', 'undo', 'close'].includes(id)) {
       status.textContent = 'Resolve or discard the retained local draft first.'; return;
     }
     try { await operate(action); }
