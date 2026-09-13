@@ -94,7 +94,11 @@ async fn execute(
     match status {
         Status::Applied => adopt(shared, save, &scope, evidence)?,
         Status::DefinitelyNotApplied(_) => save.borrow_mut().settled = true,
-        _ => (),
+        Status::PartiallyApplied { .. } => {
+            let settled = backend::settled(&connection, evidence).await?;
+            save.borrow_mut().settled = settled;
+        }
+        Status::OutcomeUnknown(_) => (),
     }
     Ok(())
 }

@@ -22,6 +22,8 @@ mod model;
 mod save;
 #[path = "publication_backend/transfer.rs"]
 mod transfer;
+#[path = "publication_backend/violation.rs"]
+mod violation;
 
 const fn code(error: &RequestError) -> Error {
     match error {

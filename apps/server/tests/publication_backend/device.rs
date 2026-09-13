@@ -21,6 +21,8 @@ pub struct Device {
     pub mirror: Cell<bool>,
     pub partial: Cell<bool>,
     pub contradict: Cell<bool>,
+    pub settlement: Cell<bool>,
+    pub invalid_settlement: Cell<bool>,
 }
 
 impl Device {
@@ -38,6 +40,8 @@ impl Device {
             mirror: Cell::new(false),
             partial: Cell::new(false),
             contradict: Cell::new(false),
+            settlement: Cell::new(true),
+            invalid_settlement: Cell::new(false),
         })
     }
 }
@@ -67,11 +71,22 @@ pub fn provider(kernel: Connection, device: Rc<Device>) -> ResourceProvider {
         Backend { kernel, device, records: Rc::default(), next: 0 },
         ResourceOps {
             unload: Some(|backend| {
-                backend.records.borrow().iter().try_for_each(|record| {
-                    settled(record.evidence.reported.get())
-                })
+                backend
+                    .records
+                    .borrow()
+                    .iter()
+                    .try_for_each(|record| settled(&record.evidence))
             }),
-            read: |_, _, _| Box::pin(async { Err(Error::UNSUPPORTED) }),
+            read: |backend, _, input| {
+                let pair = [
+                    u8::from(backend.device.current.borrow().active),
+                    u8::from(backend.device.mirror.get()),
+                ];
+                Box::pin(std::future::ready(Ok(Message::new(
+                    input.contract,
+                    &pair,
+                ))))
+            },
             write: |backend, target, input| {
                 if input.contract.name.as_ref() == "resource.effect.release" {
                     return Box::pin(std::future::ready(release(
@@ -89,6 +104,7 @@ pub fn provider(kernel: Connection, device: Rc<Device>) -> ResourceProvider {
                 output: Box::new([Permissions::ALL]),
             },
             surface("resource.effect.release", Permissions::WRITE),
+            surface("logical.pair", Permissions::READ),
         ]),
         Rc::new(()),
     )
@@ -108,9 +124,13 @@ fn publish(
     let device = backend.device.clone();
     let records = backend.records.clone();
     Box::pin(async move {
-        if !input.data.is_empty() {
-            return Err(Error::INVALID);
-        }
+        // The optional byte selects atomic primary/mirror visibility. A
+        // fault after the primary cut must report violation of that promise.
+        let atomic = match input.data.as_ref() {
+            [] => false,
+            [1] => true,
+            _ => return Err(Error::INVALID),
+        };
         let (selected, base) = (selected?, base?);
         wait(&device).await;
         let value = read(&selected, "logical.value").await?;
@@ -131,7 +151,7 @@ fn publish(
         let id = records.borrow().last().unwrap().resource;
         let mut reply = Message::reference(input.contract, id);
         reply.data = name.as_bytes().into();
-        apply(&evidence, expected, candidate);
+        apply(&evidence, expected, candidate, atomic);
         Ok(reply)
     })
 }
@@ -187,12 +207,17 @@ fn reserve(
     Ok(evidence)
 }
 
-fn apply(evidence: &Evidence, expected: u64, candidate: Rc<Version>) {
+fn apply(
+    evidence: &Evidence,
+    expected: u64,
+    candidate: Rc<Version>,
+    atomic: bool,
+) {
     let mut current = evidence.device.current.borrow_mut();
     let status = if current.generation == expected {
         *current = candidate.clone();
         *evidence.committed.borrow_mut() = Some(candidate.clone());
-        apply_mirror(evidence, candidate)
+        apply_mirror(evidence, candidate, atomic)
     } else {
         protocol::Status::DefinitelyNotApplied(Error::STALE.code)
     };
@@ -207,12 +232,13 @@ fn apply(evidence: &Evidence, expected: u64, candidate: Rc<Version>) {
 fn apply_mirror(
     evidence: &Evidence,
     candidate: Rc<Version>,
+    atomic: bool,
 ) -> protocol::Status {
     if evidence.device.partial.replace(false) {
         *evidence.remaining.borrow_mut() = Some(candidate);
         return protocol::Status::PartiallyApplied {
             cause: Error::UNAVAILABLE.code,
-            atomicity_violated: false,
+            atomicity_violated: atomic,
         };
     }
     evidence.device.mirror.set(candidate.active);
@@ -224,7 +250,7 @@ fn record(evidence: Rc<Evidence>) -> ResourceProvider {
     ResourceProvider::new(
         evidence,
         ResourceOps {
-            unload: Some(|evidence| settled(evidence.reported.get())),
+            unload: Some(|evidence| settled(evidence)),
             read: |evidence, _, input| {
                 Box::pin(std::future::ready(report(evidence, input)))
             },
@@ -236,6 +262,7 @@ fn record(evidence: Rc<Evidence>) -> ResourceProvider {
         Box::new([
             surface("resource.effect", Permissions::READ),
             surface("resource.effect.reconcile", Permissions::WRITE),
+            surface("resource.effect.settlement", Permissions::READ),
         ]),
         Rc::new(()),
     )
@@ -278,13 +305,34 @@ fn complete_mirror(evidence: &Evidence) -> Result<(), Error> {
     // its version must not be written again or refreshed from another save.
     evidence.device.mirror.set(pending.active);
     evidence.remaining.borrow_mut().take();
-    evidence.actual.set(protocol::Status::Applied);
+    if !matches!(
+        evidence.actual.get(),
+        protocol::Status::PartiallyApplied { atomicity_violated: true, .. }
+    ) {
+        evidence.actual.set(protocol::Status::Applied);
+    }
     Ok(())
 }
 
 fn report(evidence: &Evidence, input: Message) -> Result<Message, Error> {
     empty(&input)?;
+    if input.contract == Contract::new("resource.effect.settlement", 1) {
+        return settlement(evidence, input.contract);
+    }
     protocol::encode(input.contract, evidence.reported.get())
+}
+
+fn settlement(
+    evidence: &Evidence,
+    contract: Contract,
+) -> Result<Message, Error> {
+    if !evidence.device.settlement.get() {
+        return Err(Error::UNSUPPORTED);
+    }
+    if evidence.device.invalid_settlement.get() {
+        return Ok(Message::new(contract, &[2]));
+    }
+    Ok(Message::new(contract, &[u8::from(settled(evidence).is_ok())]))
 }
 
 fn empty(input: &Message) -> Result<(), Error> {
@@ -301,16 +349,21 @@ fn release(backend: &Backend, input: Message) -> Result<Message, Error> {
         .iter()
         .position(|r| r.name.as_bytes() == input.data.as_ref())
         .ok_or(Error::UNAVAILABLE)?;
-    settled(records[index].evidence.reported.get())?;
+    settled(&records[index].evidence)?;
     backend.kernel.withdraw(records[index].resource)?;
     records.remove(index);
     Ok(Message::new(input.contract, &[]))
 }
 
-const fn settled(status: protocol::Status) -> Result<(), Error> {
-    match status {
+fn settled(evidence: &Evidence) -> Result<(), Error> {
+    match evidence.reported.get() {
         protocol::Status::Applied
         | protocol::Status::DefinitelyNotApplied(_) => Ok(()),
+        protocol::Status::PartiallyApplied { .. }
+            if evidence.remaining.borrow().is_none() =>
+        {
+            Ok(())
+        }
         _ => Err(Error::BUSY),
     }
 }

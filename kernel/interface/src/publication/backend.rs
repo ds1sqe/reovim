@@ -18,6 +18,11 @@
 //! Reconcile examines or progresses only the original effect. Unknown/partial
 //! evidence must remain owned and accessible until settlement or transfer.
 //! It is not made safe to release by an ordinary successful request envelope.
+//! Optional `resource.effect.settlement` v1 READ has empty input and a single
+//! boolean byte: 1 proves no remaining repair/reconciliation obligations and
+//! a final retained outcome; 0 means pending. Unsupported supplies no proof.
+//! Settled partial evidence remains partial, including any atomicity violation.
+//! Settlement neither advances a Buffer base nor completes evidence release.
 //!
 //! Applied evidence offers an independent `resource.base` v1 read view of its
 //! exact committed base. It must not acquire a later source version. A caller
@@ -88,6 +93,36 @@ pub fn result(connection: &Connection, evidence: ResourceId) -> Reply {
 #[must_use = "Retain the original effect until reconciliation settles"]
 pub fn reconcile(connection: &Connection, evidence: ResourceId) -> Reply {
     connection.write(evidence, &Message::new(reconciliation(), &[]))
+}
+
+/// Reads optional proof that a partial effect's recovery obligations are done.
+/// # Errors
+/// Rejects malformed evidence and propagates failures other than Unsupported.
+#[allow(clippy::future_not_send)]
+pub async fn settled(
+    connection: &Connection,
+    evidence: ResourceId,
+) -> Result<bool, crate::RequestError> {
+    use crate::RequestError::{Failed, Rejected};
+    let contract = Contract::new("resource.effect.settlement", 1);
+    let result =
+        connection.read(evidence, &Message::new(contract.clone(), &[])).await;
+    let reply = match result {
+        Err(Rejected(error) | Failed(error))
+            if error.code == Error::UNSUPPORTED.code =>
+        {
+            return Ok(false);
+        }
+        other => other?,
+    };
+    if reply.contract != contract || !reply.resources.is_empty() {
+        return Err(Failed(Error::INVALID));
+    }
+    match reply.data.as_ref() {
+        [0] => Ok(false),
+        [1] => Ok(true),
+        _ => Err(Failed(Error::INVALID)),
+    }
 }
 
 #[must_use = "Retry rejected evidence release without repeating the effect"]

@@ -102,6 +102,12 @@ remains retained. A non-atomic partial operation may complete its remaining
 original work and then report Applied; a violated atomic guarantee cannot be
 retroactively satisfied by repair.
 
+Optional backend settlement evidence can prove that a partial effect has no
+remaining repair/reconciliation obligations. Work then reports finished while
+its result remains partial, including any atomicity violation. This permits
+evidence cleanup; it never advances the Buffer base or marks the state saved.
+Unsupported settlement supplies no proof and leaves Work retained.
+
 Close Work after adopting its proof. Unresolved effects reject release;
 settled effects may first return Busy while Runtime releases backend evidence.
 Retained release requests prevent uncertain cleanup from becoming a new call.
