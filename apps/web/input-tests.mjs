@@ -20,6 +20,23 @@ const window = value => ({ start: '0', end: [...value].length.toString(), eof: t
   units: [...value].map(scalar => ({ scalar })) });
 const tick = () => new Promise(setImmediate);
 
+test('view transitions suspend typing and History across observation changes', async () => {
+  const field = new Field();
+  const adapter = input(field, async () => { assert.fail('suspended edit'); },
+    async () => { assert.fail('suspended History'); }, () => {});
+  adapter.update(window('first'));
+  adapter.suspend(true);
+  assert.equal(field.emit('beforeinput', { inputType: 'insertText' }), false);
+  await assert.rejects(adapter.history('undo'), /view change/);
+  adapter.update(window('second'));
+  assert.equal(field.readOnly, true);
+  assert.equal(field.value, 'second');
+  adapter.suspend(false);
+  assert.equal(field.readOnly, false);
+  assert.equal(field.emit('beforeinput', { inputType: 'insertText' }), true);
+  adapter.dispose();
+});
+
 test('input without a captured selection retains its draft instead of guessing', () => {
   const field = new Field();
   let failure, saved;

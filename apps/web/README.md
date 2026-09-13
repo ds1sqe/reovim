@@ -8,12 +8,20 @@ keeps inactive identities through reload and recovers lost view-cleanup replies.
 Retained drafts and composition prevent switching. Closing affects only the
 current source under the existing discard/detach policy.
 
-This trial keeps its context-focus update explicit through **Focus current
-source**; switching views does not silently rewrite shared Session context.
+With a live context, **Keep source open**, **Switch source** and **Focus current
+source** update its known/active state before changing Text views. Creating a
+private context includes currently owned Buffers and the displayed source.
+The coordinator records the exact context receipt; a matching active value is
+not acceptance evidence. Recover an uncertain switch before editing. Accepted
+context changes survive failed view acquisition, and both Buffers remain owned.
+Opening/closing sources and following another participant's context still use
+their existing separate operations; this is not a complete Session workspace.
 Run `node apps/web/switching-e2e.mjs BROWSER_URL` on the private source/Text
 fixture, or add `files` with `one.md` containing `first\n` and `two.md` containing
 `second\n` plus file/open providers. The journey checks dirty state, independent
 History, lost cleanup/reload, failed opening and eventual client cleanup.
+`context-switching-e2e.mjs BROWSER_URL` additionally requires the per-client
+context provider and checks focus/view/cleanup loss, reload and stale focus.
 
 The editing trial's **Open file** control calls the separately loaded
 [open command](../../modules/open/README.md). Composition supplies per-client

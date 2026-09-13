@@ -54,6 +54,7 @@ async function route(request, response) {
       '/clients/gui/contract/input.js': [new URL('clients/gui/contract/input.js', assets), 'text/javascript'],
       '/clients/gui/runtime/commands.js': [new URL('clients/gui/runtime/commands.js', assets), 'text/javascript'],
       '/clients/gui/runtime/editor.js': [new URL('clients/gui/runtime/editor.js', assets), 'text/javascript'],
+      '/clients/gui/runtime/switching.js': [new URL('clients/gui/runtime/switching.js', assets), 'text/javascript'],
       '/clients/gui/runtime/context.js': [new URL('clients/gui/runtime/context.js', assets), 'text/javascript'],
       '/modules/context/api/typescript.js': [new URL('modules/context/api/typescript.js', assets), 'text/javascript'],
       '/clients/gui/modules/uppercase/index.js': [new URL('clients/gui/modules/uppercase/index.js', assets), 'text/javascript'],

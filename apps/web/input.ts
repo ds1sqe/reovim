@@ -26,6 +26,7 @@ export function input(element: HTMLTextAreaElement,
   let composing = false, finishing = false, pending = false, halted = !!draft;
   let historyPending = false;
   let disposed = false;
+  let suspended = false;
   const listeners: (() => void)[] = [];
   const on = <K extends keyof HTMLElementEventMap>(name: K,
     listener: (event: HTMLElementEventMap[K]) => void) => {
@@ -46,7 +47,7 @@ export function input(element: HTMLTextAreaElement,
       }
     }
     if (halted && draft) element.value = draft.value;
-    element.readOnly = halted || !basis || historyPending;
+    element.readOnly = suspended || halted || !basis || historyPending;
   };
   const halt = (error: unknown) => { halted = true; failed(error); refresh(); };
   const report = (error: unknown) => { if (!disposed) failed(error); };
@@ -95,6 +96,7 @@ export function input(element: HTMLTextAreaElement,
     start: element.selectionStart, end: element.selectionEnd, backward
   });
   const navigate = async (direction: 'undo' | 'redo') => {
+    if (suspended) throw new Error('Finish the view change first');
     if (disposed || halted || !basis) throw new Error('Resolve retained input first');
     if (pending || historyPending || composing || queue.length) {
       throw new Error('Finish pending input before History navigation');
@@ -113,7 +115,7 @@ export function input(element: HTMLTextAreaElement,
     void navigate(direction).catch(report);
   });
   on('beforeinput', event => {
-    if (halted || historyPending || !basis) { event.preventDefault(); return; }
+    if (suspended || halted || historyPending || !basis) { event.preventDefault(); return; }
     if (event.inputType === 'historyUndo' || event.inputType === 'historyRedo') {
       event.preventDefault();
       void navigate(event.inputType === 'historyUndo' ? 'undo' : 'redo').catch(report);
@@ -132,7 +134,7 @@ export function input(element: HTMLTextAreaElement,
     }
   });
   on('compositionstart', () => {
-    if (halted || !basis) return;
+    if (suspended || halted || !basis) return;
     composing = true; anchor = selection(false);
   });
   on('compositionend', () => {
@@ -170,6 +172,7 @@ export function input(element: HTMLTextAreaElement,
       refresh(); void drain();
     },
     update(window: Window | undefined) { observed = window; refresh(); },
+    suspend(value: boolean) { suspended = value; refresh(); },
     discard() {
       if (disposed || pending || historyPending || composing) throw new Error('Finish the active input first');
       queue = []; proof = undefined; halted = false; save(undefined); refresh();

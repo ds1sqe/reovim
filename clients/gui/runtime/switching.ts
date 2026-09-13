@@ -1,0 +1,89 @@
+import type { Receipt, ResourceId } from '../../../sdk/typescript/resource.js';
+import type { Value } from '../../../modules/context/api/typescript.js';
+import type { BufferViews } from '../contract/buffers.js';
+import { Focus } from './context.js';
+
+export interface SwitchJournal {
+  pending?: { session: ResourceId; value: Value; phase: 'focus' | 'view';
+    request?: Pick<Receipt, 'client' | 'id'> };
+}
+
+/** Context acceptance precedes view acquisition; failures keep both owners. */
+export class Switching {
+  private busy = false;
+  constructor(private readonly focus: Focus, private readonly views: BufferViews,
+    public readonly journal: SwitchJournal, private readonly persist: () => void) {}
+
+  private async run(action: () => Promise<void>): Promise<void> {
+    if (this.busy) throw new Error('Buffer switch is running');
+    this.busy = true;
+    try { await action(); } finally { this.busy = false; }
+  }
+
+  select(target?: ResourceId): Promise<void> {
+    return this.run(async () => {
+      if (this.journal.pending?.phase === 'focus') throw new Error('Recover the context switch first');
+      if (this.journal.pending) {
+        await this.focus.recover(); await this.views.recover();
+      }
+      const current = this.focus.journal.current;
+      if (this.focus.journal.receipt || this.focus.journal.closing) throw new Error('Recover context work first');
+      if (!current || this.focus.journal.historical) throw new Error('Select a live context first');
+      const owned = this.views.known();
+      if (target && !owned.includes(target)) throw new Error('That Buffer has no owned view');
+      this.journal.pending = { session: current.session, phase: 'focus',
+        value: { known: [...new Set([...current.known, ...owned])], active: target } };
+      this.persist();
+      await this.update();
+      await this.show();
+    });
+  }
+
+  private accepted(): boolean {
+    const request = this.journal.pending?.request, accepted = this.focus.journal.acceptedUpdate;
+    return !!request && request.client === accepted?.client && request.id === accepted.id;
+  }
+
+  private async update(): Promise<void> {
+    const pending = this.journal.pending!;
+    try {
+      await this.focus.set(pending.value, request => {
+        pending.request = { client: request.client, id: request.id };
+        this.persist();
+      });
+    } catch (error) {
+      if (this.accepted()) pending.phase = 'view';
+      else if (!this.focus.journal.receipt) delete this.journal.pending;
+      this.persist(); throw error;
+    }
+    if (!this.accepted()) throw new Error('Context acceptance is unavailable');
+    pending.phase = 'view'; this.persist();
+  }
+
+  private async show(): Promise<void> {
+    const pending = this.journal.pending!;
+    if (this.focus.journal.current?.session !== pending.session) throw new Error('Context changed during switch');
+    await this.views.show(pending.value.active);
+    delete this.journal.pending; this.persist();
+  }
+
+  recover(): Promise<void> {
+    return this.run(async () => {
+      if (!this.journal.pending) return;
+      try { await this.focus.recover(); }
+      catch (error) {
+        if (this.accepted()) this.journal.pending.phase = 'view';
+        else if (!this.focus.journal.receipt) delete this.journal.pending;
+        this.persist(); throw error;
+      }
+      const pending = this.journal.pending;
+      if (pending.phase === 'focus') {
+        if (!pending.request) await this.update();
+        else if (this.accepted()) { pending.phase = 'view'; this.persist(); }
+        else throw new Error('Original context acceptance is unavailable');
+      }
+      await this.views.recover();
+      await this.show();
+    });
+  }
+}

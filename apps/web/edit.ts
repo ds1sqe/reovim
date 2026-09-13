@@ -1,6 +1,7 @@
 import { Editing, type Journal } from './editing.js';
 import { Client, unhex } from '../../sdk/typescript/resource.js';
 import { Focus, type ContextJournal } from '../../clients/gui/runtime/context.js';
+import { Switching, type SwitchJournal } from '../../clients/gui/runtime/switching.js';
 import { input as bindInput, type Draft } from './input.js';
 import { Commands } from '../../clients/gui/runtime/commands.js';
 import { editor as editorCapability } from '../../clients/gui/runtime/editor.js';
@@ -8,7 +9,7 @@ import type { Registration } from '../../clients/gui/contract/commands.js';
 import { selectedRange } from '../../clients/gui/contract/input.js';
 
 const saved = sessionStorage.getItem('reovim-editing');
-const journal: Journal & { draft?: Draft; focus?: ContextJournal } = saved ? JSON.parse(saved) : { retiring: [] };
+const journal: Journal & { draft?: Draft; focus?: ContextJournal; switching?: SwitchJournal } = saved ? JSON.parse(saved) : { retiring: [] };
 const persist = () => sessionStorage.setItem('reovim-editing', JSON.stringify(journal));
 const editing = new Editing(journal,
   persist);
@@ -16,6 +17,7 @@ const status = document.querySelector<HTMLElement>('#status')!;
 const content = document.querySelector<HTMLElement>('#content')!;
 const input = (id: string) => document.querySelector<HTMLInputElement>(`#${id}`)!.value;
 let busy = false;
+let changingView = false;
 const textarea = document.querySelector<HTMLTextAreaElement>('#typing')!;
 const typing = bindInput(textarea,
   (start, end, text) => operate(() => editing.replace(start, end, text,
@@ -26,7 +28,7 @@ const typing = bindInput(textarea,
   });
 const commands = new Commands();
 const moduleEditor = editorCapability(() => {
-  if (busy || typing.composing || typing.retained || journal.receipt) {
+  if (busy || typing.composing || typing.retained || journal.receipt || journal.switching?.pending) {
     throw new Error('Finish pending input before a contribution command');
   }
   if (!journal.observed || !journal.window) throw new Error('Observe Text first');
@@ -41,6 +43,19 @@ function focus(): Focus {
   journal.focus ??= { retiring: [] };
   context ??= new Focus(new Client(journal.token), journal.focus, persist);
   return context;
+}
+
+function knownSources() {
+  return [...(journal.inactive ?? []).map(source => source.buffer),
+    ...(journal.source ? [journal.source.buffer] : [])];
+}
+let selector: Switching | undefined;
+function switching(): Switching {
+  journal.switching ??= {};
+  selector ??= new Switching(focus(), { known: knownSources,
+    show: target => target ? editing.switchTo(target) : editing.park(),
+    recover: () => editing.recover() }, journal.switching, persist);
+  return selector;
 }
 
 function draftStatus() {
@@ -59,6 +74,7 @@ function report(error: unknown) {
 }
 
 function render() {
+  typing.suspend(changingView || !!journal.switching?.pending);
   const sources = document.querySelector<HTMLSelectElement>('#open-sources')!;
   const selected = sources.value;
   sources.replaceChildren(...(journal.inactive ?? []).map(source => {
@@ -72,6 +88,7 @@ function render() {
     ? `${journal.source.name ?? 'Shared source'}: Revision ${journal.source.revision}${journal.receipt || journal.resuming || journal.openingCleanup ? '; request needs recovery' : ''}`
     : 'No source is open.';
   draftStatus();
+  if (journal.switching?.pending) status.textContent += '\nContext switch needs recovery.';
   const current = journal.focus?.current;
   document.querySelector('#focus-status')!.textContent = current
     ? `${journal.focus?.ownership ?? 'private'} context (${journal.focus?.historical ? 'historical' : 'live'}): ${current.active ?? 'no active Buffer'}`
@@ -97,25 +114,23 @@ const actions: Record<string, () => Promise<unknown>> = {
   create: () => editing.create(unhex(input('initial').trim())),
   'open-file': () => editing.openFile(input('filename')),
   join: () => editing.join(),
-  'park-source': () => editing.park(),
+  'park-source': () => journal.focus?.current ? switching().select() : editing.park(),
   'switch-source': () => {
     const value = document.querySelector<HTMLSelectElement>('#open-sources')!.value;
     const source = journal.inactive?.find(source => source.buffer === value);
     if (!source) throw new Error('Choose an open source first');
-    return editing.switchTo(source.buffer);
+    return journal.focus?.current ? switching().select(source.buffer) : editing.switchTo(source.buffer);
   },
   observe: () => editing.observe(),
   follow: () => editing.follow(),
   read: () => editing.read(BigInt(input('window-start'))),
   replace: () => editing.replace(BigInt(input('start')), BigInt(input('end')), input('replacement')),
-  close: () => editing.close(), recover: () => editing.recover(),
-  'create-context': () => focus().create({ known: [] }),
+  close: () => editing.close(), recover: () => journal.switching?.pending ? switching().recover() : editing.recover(),
+  'create-context': () => focus().create({ known: knownSources(), active: journal.source?.buffer }),
   'join-context': () => focus().join(),
   'focus-source': () => {
     if (!journal.source) throw new Error('Open a source first');
-    const known = [...(journal.focus?.current?.known ?? [])];
-    if (!known.includes(journal.source.buffer)) known.push(journal.source.buffer);
-    return focus().set({ known, active: journal.source.buffer });
+    return switching().select(journal.source.buffer);
   },
   'clear-focus': () => focus().set({ known: journal.focus?.current?.known ?? [] }),
   'refresh-context': () => focus().refresh(),
@@ -123,17 +138,29 @@ const actions: Record<string, () => Promise<unknown>> = {
   'remember-context': () => focus().remember(),
   'seek-context': () => focus().seek(),
   'close-context': () => focus().close(),
-  'recover-context': () => focus().recover()
+  'recover-context': () => journal.switching?.pending ? switching().recover() : focus().recover()
 };
 for (const [id, action] of Object.entries(actions)) {
   document.querySelector(`#${id}`)!.addEventListener('click', async () => {
+    if (busy) { status.textContent = 'Wait for the pending operation'; return; }
+    if (journal.focus?.receipt && ['create', 'open-file', 'join', 'park-source', 'switch-source', 'close'].includes(id)) {
+      status.textContent = 'Recover context work first.'; return;
+    }
+    const replacingView = journal.switching?.pending?.phase === 'view'
+      && ['park-source', 'switch-source'].includes(id);
+    if (journal.switching?.pending && !replacingView && !['recover', 'recover-context'].includes(id)) {
+      status.textContent = 'Recover the context switch first.'; return;
+    }
     if (typing.composing) { status.textContent = 'Finish composition first.'; return; }
     if (typing.retained
-        && ['create', 'open-file', 'join', 'park-source', 'switch-source', 'replace', 'undo', 'close'].includes(id)) {
+        && ['create', 'open-file', 'join', 'park-source', 'switch-source', 'focus-source', 'replace', 'undo', 'close'].includes(id)) {
       status.textContent = 'Resolve or discard the retained local draft first.'; return;
     }
+    changingView = ['create', 'open-file', 'join', 'park-source', 'switch-source', 'focus-source', 'recover', 'recover-context', 'close'].includes(id);
+    render();
     try { await operate(action); }
     catch (error) { report(error); }
+    finally { changingView = false; typing.suspend(!!journal.switching?.pending); }
   });
 }
 for (const direction of ['undo', 'redo'] as const) {

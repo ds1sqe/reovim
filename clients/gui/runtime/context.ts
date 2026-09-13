@@ -3,6 +3,7 @@ import { deliver } from '../../../sdk/typescript/delivery.js';
 import * as context from '../../../modules/context/api/typescript.js';
 
 export interface ContextJournal {
+  acceptedUpdate?: Pick<Receipt, 'client' | 'id'>;
   receipt?: Receipt; current?: context.Observation; retiring: ResourceId[];
   ownership?: 'private' | 'shared'; participation?: ResourceId;
   checkpoint?: context.Observation; checkpointRequest?: string;
@@ -53,11 +54,13 @@ export class Focus {
       await this.send(['close', this.journal.retiringWatches[0]!]);
     }
   }
-  private async send(fields: string[], checkpoint = false): Promise<void> {
+  private async send(fields: string[], checkpoint = false,
+    correlate?: (receipt: Receipt) => void): Promise<void> {
     try {
       await deliver(this.client, this.journal, this.persist, fields,
         (request, line) => this.adopt(request, line), receipt => {
           if (checkpoint) this.journal.checkpointRequest = receipt.id;
+          correlate?.(receipt);
         });
     } finally {
       if (!this.journal.receipt && this.journal.checkpointRequest) {
@@ -117,6 +120,10 @@ export class Focus {
     }
     if (old && old.snapshot !== next.snapshot) this.queue(old.snapshot);
     this.journal.current = next; this.journal.needsRead = false;
+    if (name === 'editing.context.update') {
+      const receipt = this.journal.receipt!;
+      this.journal.acceptedUpdate = { client: receipt.client, id: receipt.id };
+    }
   }
   private lifecycle(request: string[], line: string): void {
     const name = request[2], reply = message(line);
@@ -147,6 +154,7 @@ export class Focus {
     delete this.journal.current; delete this.journal.checkpoint;
     delete this.journal.ownership; delete this.journal.historical;
     delete this.journal.needsRead; delete this.journal.change;
+    delete this.journal.acceptedUpdate;
   }
   private async ready(): Promise<ResourceId> {
     if (this.journal.closing) throw new Error('Finish closing context first');
@@ -171,12 +179,12 @@ export class Focus {
       await this.send(['read', 'session', 'editing.context', '1']);
     });
   }
-  set(value: context.Value): Promise<void> {
+  set(value: context.Value, correlate?: (receipt: Receipt) => void): Promise<void> {
     return this.run(async () => {
       const participant = await this.ready();
       if (this.journal.historical) throw new Error('Follow live context before changing focus');
       const fields = context.update(this.journal.current!, value);
-      fields[1] = participant; await this.send(fields);
+      fields[1] = participant; await this.send(fields, false, correlate);
     });
   }
   refresh(): Promise<void> {
