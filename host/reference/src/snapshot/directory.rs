@@ -85,7 +85,7 @@ fn capture(
 fn unload(state: &mut Capture) -> Result<(), Error> {
     if state.busy.load(Ordering::Acquire) { Err(Error::BUSY) } else { Ok(()) }
 }
-fn native(error: &io::Error) -> Error {
+pub(super) fn native(error: &io::Error) -> Error {
     match error.raw_os_error() {
         Some(13 | 1) => Error::DENIED,
         Some(18 | 25 | 95) => Error::UNSUPPORTED,

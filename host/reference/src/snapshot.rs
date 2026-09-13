@@ -27,6 +27,8 @@ pub const WINDOW: u64 = 32768;
 
 mod directory;
 pub use directory::Directory;
+mod source;
+pub use source::source;
 
 unsafe extern "C" {
     fn ioctl(fd: c_int, request: c_ulong, ...) -> c_int;
@@ -64,13 +66,14 @@ fn clone(source: &File, scratch: &File) -> io::Result<(File, u64)> {
 }
 
 fn provider(file: File, length: u64) -> ResourceProvider {
-    reader(Arc::new(file), length, Arc::new(AtomicBool::new(false)))
+    reader(Arc::new(file), length, Arc::new(AtomicBool::new(false)), false)
 }
 
 fn reader(
     file: Arc<File>,
     length: u64,
     busy: Arc<AtomicBool>,
+    base: bool,
 ) -> ResourceProvider {
     let view_file = file.clone();
     let view_busy = busy.clone();
@@ -90,17 +93,29 @@ fn reader(
             },
             write: |_, _, _| Box::pin(async { Err(Error::DENIED) }),
         },
-        Box::new([Surface {
-            contract: Contract::new("resource.snapshot", 1),
-            methods: Permissions::READ,
-            input: Box::new([]),
-            output: Box::new([]),
-        }]),
+        surfaces(base),
         Rc::new(()),
     )
     .with_read_view(move || {
-        Ok(reader(view_file.clone(), length, view_busy.clone()))
+        Ok(reader(view_file.clone(), length, view_busy.clone(), base))
     })
+}
+
+fn surfaces(base: bool) -> Box<[Surface]> {
+    if base {
+        Box::new([surface("resource.snapshot"), surface("resource.base")])
+    } else {
+        Box::new([surface("resource.snapshot")])
+    }
+}
+
+fn surface(name: &str) -> Surface {
+    Surface {
+        contract: Contract::new(name, 1),
+        methods: Permissions::READ,
+        input: Box::new([]),
+        output: Box::new([]),
+    }
 }
 
 fn read(file: &File, length: u64, input: Message) -> Result<Message, Error> {
