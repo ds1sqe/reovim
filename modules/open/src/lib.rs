@@ -5,12 +5,13 @@
 
 extern crate alloc;
 
+mod recovery;
 #[cfg(test)]
 mod tests;
 
 use alloc::{boxed::Box, rc::Rc, vec::Vec};
 use core::cell::{Cell, RefCell};
-use reovim_kernel_interface::{buffer, requests};
+use reovim_kernel_interface::buffer;
 use reovim_module::{
     Connection, Contract, Error, Message, Permissions, RequestError, ResourceId,
 };
@@ -19,12 +20,16 @@ const OPEN: Contract = Contract::new("command.open", 1)
     .input(&[Permissions::WRITE, Permissions::WRITE])
     .output(&[Permissions::ALL, Permissions::ALL]);
 const DRAIN: Contract = Contract::new("command.open.cleanup", 1);
+const RESUME: Contract = Contract::new("command.open.resume", 1)
+    .input(&[Permissions::READ])
+    .output(&[Permissions::ALL, Permissions::ALL]);
 const INFO: Contract = Contract::new("resource.bytes", 1);
 
 struct Pending {
+    model: RefCell<Option<(Connection, ResourceId)>>,
     snapshot: Cell<Option<ResourceId>>,
     recovery: RefCell<Option<Box<str>>>,
-    work: Cell<Option<ResourceId>>,
+    work: RefCell<Vec<ResourceId>>,
     running: Cell<bool>,
 }
 struct Active(Rc<Pending>);
@@ -50,10 +55,13 @@ impl Command {
             return Err(Error::PRESSURE);
         }
         pending.try_reserve(1).map_err(|_| Error::PRESSURE)?;
+        let mut work = Vec::new();
+        work.try_reserve_exact(recovery::LIMIT).map_err(|_| Error::PRESSURE)?;
         let job = Rc::new(Pending {
+            model: RefCell::new(None),
             snapshot: Cell::new(None),
             recovery: RefCell::new(None),
-            work: Cell::new(None),
+            work: RefCell::new(work),
             running: Cell::new(true),
         });
         pending.push(job.clone());
@@ -84,6 +92,9 @@ impl Command {
         pending: &Pending,
         input: &Message,
     ) -> Result<Message, RequestError> {
+        let model = input.resources[1];
+        *pending.model.borrow_mut() =
+            Some((self.kernel.capture(model, Permissions::WRITE)?, model));
         let capture = self.kernel.write(
             input.resources[0],
             &Message::new(
@@ -92,18 +103,36 @@ impl Command {
             ),
         );
         let captured = self.settle(pending, capture.await).await?;
+        self.open_captured(pending, captured, &input.contract).await
+    }
+
+    async fn open_captured(
+        &self,
+        pending: &Pending,
+        captured: Message,
+        contract: &reovim_kernel_interface::Contract,
+    ) -> Result<Message, RequestError> {
         let [snapshot] = captured.resources.as_ref() else {
             return Err(Error::PROVIDER.into());
         };
         pending.snapshot.set(Some(*snapshot));
-        let opened = self.kernel.write(
-            input.resources[1],
+        let (kernel, model) =
+            pending.model.borrow().clone().ok_or(Error::PROVIDER)?;
+        let opened = kernel.write(
+            model,
             &Message::reference(
                 reovim_kernel_interface::Contract::new("source.open", 1),
                 *snapshot,
             ),
         );
-        let mut reply = self.settle(pending, opened.await).await?;
+        let reply = self.settle(pending, opened.await).await?;
+        Self::accepted(reply, contract)
+    }
+
+    fn accepted(
+        mut reply: Message,
+        contract: &reovim_kernel_interface::Contract,
+    ) -> Result<Message, RequestError> {
         let observed = buffer::observation(reply.clone())?;
         if observed.value.contract
             != reovim_kernel_interface::Contract::new("source.bytes", 1)
@@ -111,8 +140,65 @@ impl Command {
         {
             return Err(Error::PROVIDER.into());
         }
-        reply.contract = input.contract.clone();
+        reply.contract = contract.clone();
         Ok(reply)
+    }
+
+    async fn resume(
+        &self,
+        _: ResourceId,
+        input: Message,
+    ) -> Result<Message, RequestError> {
+        let [work] = input.resources.as_ref() else {
+            return Err(Error::INVALID.into());
+        };
+        if !input.data.is_empty() {
+            return Err(Error::INVALID.into());
+        }
+        let (job, path) = recovery::opening(self, *work).await?;
+        if job.running.replace(true) {
+            return Err(Error::BUSY.into());
+        }
+        let active = Active(job);
+        let result = self.continue_open(&active.0, path, &input.contract).await;
+        drop(active);
+        let _ = self.cleanup();
+        result
+    }
+
+    fn find(&self, work: ResourceId) -> Result<(Rc<Pending>, Box<str>), Error> {
+        let jobs = self.pending.borrow().clone();
+        jobs.into_iter()
+            .find_map(|job| self.match_work(job, work))
+            .ok_or(Error::UNAVAILABLE)
+    }
+
+    fn match_work(
+        &self,
+        job: Rc<Pending>,
+        work: ResourceId,
+    ) -> Option<(Rc<Pending>, Box<str>)> {
+        let path = job.recovery.borrow().clone()?;
+        let id = self.kernel.resolve(&path).into_inner().ok()?;
+        (id == work).then_some((job, path))
+    }
+
+    async fn continue_open(
+        &self,
+        job: &Pending,
+        path: Box<str>,
+        contract: &reovim_kernel_interface::Contract,
+    ) -> Result<Message, RequestError> {
+        let unknown = Err(RequestError::Unknown {
+            cause: Error::UNAVAILABLE,
+            recovery: path,
+        });
+        let result = self.settle(job, unknown).await?;
+        if job.snapshot.get().is_some() {
+            Self::accepted(result, contract)
+        } else {
+            self.open_captured(job, result, contract).await
+        }
     }
 
     async fn settle(
@@ -120,25 +206,7 @@ impl Command {
         pending: &Pending,
         result: Result<Message, RequestError>,
     ) -> Result<Message, RequestError> {
-        let Err(error @ RequestError::Unknown { .. }) = result else {
-            return result;
-        };
-        let RequestError::Unknown { recovery, .. } = &error else {
-            unreachable!();
-        };
-        *pending.recovery.borrow_mut() = Some(recovery.clone());
-        let Ok(work) = self.kernel.resolve(recovery).await else {
-            return Err(error);
-        };
-        let Ok(result) = requests::result(&self.kernel, work).await else {
-            return Err(error);
-        };
-        if matches!(result, Err(RequestError::Unknown { .. })) {
-            return Err(error);
-        }
-        pending.recovery.borrow_mut().take();
-        pending.work.set(Some(work));
-        result
+        recovery::settle(&self.kernel, pending, result, true).await
     }
 
     fn cleanup(&self) -> Result<(), Error> {
@@ -149,7 +217,7 @@ impl Command {
         self.pending.borrow_mut().retain(|job| {
             job.running.get()
                 || job.snapshot.get().is_some()
-                || job.work.get().is_some()
+                || !job.work.borrow().is_empty()
                 || job.recovery.borrow().is_some()
         });
         Ok(())
@@ -160,7 +228,7 @@ impl Command {
             return Ok(());
         }
         self.close(&job.snapshot)?;
-        self.close(&job.work)
+        recovery::release(&self.kernel, job)
     }
 
     fn close(&self, slot: &Cell<Option<ResourceId>>) -> Result<(), Error> {
@@ -200,10 +268,11 @@ impl Command {
         }
         let recovery = job.recovery.borrow().clone();
         let Some(recovery) = recovery else { return Ok(()) };
-        let work = self.kernel.resolve(&recovery).await?;
-        let result = requests::result(&self.kernel, work).await?;
-        if matches!(result, Err(RequestError::Unknown { .. })) {
-            return Err(Error::BUSY.into());
+        let unknown =
+            Err(RequestError::Unknown { cause: Error::UNAVAILABLE, recovery });
+        let result = recovery::settle(&self.kernel, job, unknown, false).await;
+        if let Err(error @ RequestError::Unknown { .. }) = result {
+            return Err(error);
         }
         if job.snapshot.get().is_none() {
             Self::recovered_capture(job, &result)?;
@@ -253,6 +322,7 @@ reovim_module::rv_module! {
         unload: Command::unload,
         resources: {
             "" => { write OPEN => Command::open,
+                write RESUME => Command::resume,
                 write DRAIN => Command::drain },
             "info" => { read INFO => Command::info },
         },

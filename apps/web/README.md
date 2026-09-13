@@ -14,6 +14,18 @@ separate exact-current context update. A stale or lost focus update leaves the
 opened Buffer owned by this Client. Refresh/recover context before retrying it.
 `node apps/web/file-context-e2e.mjs BROWSER_URL FIXTURE_PATH` exercises this chain
 on a dedicated server; it deliberately replaces the test fixture after opening.
+An observed nested Unknown uses `command.open.resume`: the journal preserves
+the original receipt until its granted work reference is adopted, then retains
+the resume receipt. Reload can recover either step without another opening.
+After Buffer adoption it retires outer work newest first and retries command
+cleanup before reporting recovery complete. Cleanup failure retains the Buffer.
+It reads retained outcomes before resuming. A confirmed failed stage is cleaned
+up and reported without installing a Buffer or retrying the filename; a later
+new opening is allowed. Unknown or unavailable evidence remains owned.
+`nested-file-e2e.mjs BROWSER_URL FIXTURE_PATH` uses the native `open_fault`
+artifact to test both stopped stages and interrupted lookup/receipt retirement.
+`failed-file-e2e.mjs BROWSER_URL` selects its `fail.md` initialization fault and
+checks failure cleanup followed by a successful new opening.
 
 The editing trial can dynamically load the first-party uppercase contribution,
 run it on the textarea's highlighted selection, and unload it. It uses only the

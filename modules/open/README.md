@@ -18,11 +18,33 @@ while ownership remains unresolved. No fallible work runs in Drop.
 
 Nested unknown delivery first attempts ordinary request-result recovery. If
 that cannot settle, the original recovery locator is preserved and the command
-retains its capture bookkeeping. `command.open.cleanup` v1 WRITE with empty
+retains its stage, capture bookkeeping and Model access. Resolve that locator
+and pass the granted work as the single READ slot to `command.open.resume` v1
+WRITE, with empty data. It resumes the stopped opening and returns the same
+Buffer envelope under the resume contract. It never captures again or creates
+another Buffer for a recovered initialization. A completed job cannot be
+resumed under a new request. Ordinary delivery retries use the same receipt.
+The supplied work may be an outer command request; resume follows its Unknown
+results to the retained stage. After adopting the final Buffer, close caller
+work newest first, then call cleanup to release internal stage records. Those
+records can stay Busy while outer requests still reference them.
+
+Recovery follows at most 16 nested results per attempt and retains at most 16
+internally consumed work records per opening. Exhaustion or unavailable
+evidence stays Unknown. Internally adopted work is closed during cleanup;
+work explicitly exposed to the caller remains available to that caller.
+
+`command.open.cleanup` v1 WRITE with empty
 data and no slots reconciles those results and retries capture cleanup. Drain
 before closing an exposed nested recovery result; drain does not close that
 caller's work access or a returned Buffer. Missing recovery evidence remains
 an explicit error, never permission to repeat an effect.
+
+The `open_fault` example is a test witness. It retains actual capture and
+initialization requests and rejects their first recovery read, exercising both
+resume phases through the native ABI. It is not the ordinary command artifact.
+Its `fail.md` fixture also sends an invalid initialization payload, allowing
+the Client to verify a confirmed failed stage without a created Buffer.
 
 The current producer uses Linux atomic file clones. This command does not
 establish writable backing association, save semantics or non-clone storage.

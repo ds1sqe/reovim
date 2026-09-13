@@ -1,6 +1,7 @@
-import { Client, hex, message, opening, u64, unhex,
+import { Client, hex, message, opening, outcome, resource, u64, unhex,
   type Opening, type Receipt, type ResourceId } from '../../sdk/typescript/resource.js';
 import { deliver } from '../../sdk/typescript/delivery.js';
+import { result as retainedResult } from '../../sdk/typescript/requests.js';
 import * as text from '../../modules/text/api/typescript.js';
 
 interface Source { buffer: ResourceId; history: ResourceId; revision: string;
@@ -12,6 +13,12 @@ export interface Journal {
   window?: text.Window; retiring: ResourceId[];
   change?: text.Change; needsRefresh?: boolean;
   acceptedInput?: AcceptedInput;
+  resuming?: { command: string; locator: string; original?: Receipt; work?: ResourceId;
+    probe?: ResourceId; probes?: ResourceId[]; next?: string; depth?: number;
+    checked?: boolean; failed?: string; applied?: string };
+  openingCleanup?: string;
+  openingFailed?: string;
+  openingWork?: ResourceId[];
 }
 
 /** This composition owns its source; sharing/follow policy is a later consumer. */
@@ -34,8 +41,64 @@ export class Editing {
 
   async recover(): Promise<void> {
     const client = await this.client();
+    this.resumeUnknown();
     if (this.journal.receipt) await this.send(client, this.journal.receipt.fields);
+    const resume = this.journal.resuming;
+    if (resume) {
+      if (!resume.work) await this.send(client, ['resolve', resume.locator]);
+      if (resume.original) {
+        await client.release(resume.original.id);
+        delete resume.original; this.persist();
+      }
+      await this.checkOpening(client);
+      if (resume.failed) {
+        this.journal.retiring.unshift(resume.work!);
+        this.journal.openingCleanup = resume.command;
+        this.journal.openingFailed = resume.failed;
+        this.journal.openingWork = resume.probes ?? [];
+        delete this.journal.resuming; this.persist();
+      } else {
+        await this.send(client, ['write', resume.command, 'command.open.resume', '1', '', resume.work!]);
+      }
+    }
     await this.retire(client);
+    await this.finishOpening(client);
+  }
+
+  private async finishOpening(client: Client): Promise<void> {
+    if (this.journal.openingCleanup) {
+      await this.send(client, ['write', this.journal.openingCleanup, 'command.open.cleanup', '1']);
+    }
+    while (this.journal.openingWork?.length) {
+      await this.send(client, ['close', this.journal.openingWork[0]!]);
+    }
+    if (this.journal.openingWork) { delete this.journal.openingWork; this.persist(); }
+    if (this.journal.openingFailed) {
+      const code = this.journal.openingFailed;
+      delete this.journal.openingFailed; this.persist();
+      throw new Error(`Opening failed (code ${code}); cleanup completed`);
+    }
+  }
+
+  private async checkOpening(client: Client): Promise<void> {
+    const resume = this.journal.resuming!;
+    while (!resume.checked) {
+      if (resume.next) await this.send(client, ['resolve', resume.next]);
+      if ((resume.depth ?? 0) === 16) throw new Error('Opening recovery chain limit; work retained');
+      await this.send(client, ['read', resume.probe ?? resume.work!, 'kernel.request.result', '1']);
+    }
+  }
+
+  private resumeUnknown(): void {
+    const receipt = this.journal.receipt;
+    if (!receipt?.response?.startsWith('error\tunknown\t')
+        || !['command.open', 'command.open.resume'].includes(receipt.fields[2]!)) return;
+    const result = outcome(receipt.response);
+    if (result.kind !== 'unknown' || !result.recovery) throw new Error('Missing opening recovery');
+    if (this.journal.resuming?.original) throw new Error('Retire the original opening receipt first');
+    if (this.journal.resuming?.work) this.journal.retiring.unshift(this.journal.resuming.work);
+    this.journal.resuming = { command: receipt.fields[1]!, locator: result.recovery, original: receipt };
+    delete this.journal.receipt; this.persist();
   }
 
   private send(client: Client, fields: string[], correlate?: (receipt: Receipt) => void): Promise<void> {
@@ -45,13 +108,48 @@ export class Editing {
 
   private adopt(fields: string[], line: string): void {
     const state = this.journal;
+    if (fields[0] === 'resolve') {
+      if (state.resuming?.applied && state.resuming.applied === state.receipt?.id) return;
+      const parts = line.split('\t');
+      if (!state.resuming || fields[1] !== (state.resuming.next ?? state.resuming.locator)
+          || parts.length !== 2 || parts[0] !== 'ok') throw new Error('foreign opening recovery');
+      if (state.resuming.next) {
+        state.resuming.probe = resource(parts[1]!);
+        (state.resuming.probes ??= []).push(state.resuming.probe);
+        delete state.resuming.next;
+      } else state.resuming.work = resource(parts[1]!);
+      state.resuming.applied = state.receipt!.id;
+      return;
+    }
     if (fields[0] === 'close' && line === 'ok') {
       state.retiring = state.retiring.filter(id => id !== fields[1]);
+      state.openingWork = state.openingWork?.filter(id => id !== fields[1]);
       if (state.access === fields[1]) delete state.access;
       return;
     }
     const value = message(line);
-    if (['source.initial', 'text.replace', 'command.open'].includes(fields[2]!)) {
+    if (fields[2] === 'kernel.request.result') {
+      const resume = state.resuming;
+      if (resume?.applied && resume.applied === state.receipt?.id) return;
+      if (!resume || fields[1] !== (resume.probe ?? resume.work)) throw new Error('foreign opening result');
+      const result = retainedResult(line);
+      if (result.kind === 'unknown') {
+        resume.next = result.recovery; resume.depth = (resume.depth ?? 0) + 1;
+      } else {
+        resume.checked = true;
+        if (result.kind !== 'ok') resume.failed = result.code.toString();
+      }
+      resume.applied = state.receipt!.id;
+      return;
+    }
+    if (fields[2] === 'command.open.cleanup') {
+      if (value.contract !== fields[2] || value.schema !== 1 || value.data.length
+          || value.resources.length || (state.openingCleanup && fields[1] !== state.openingCleanup)) {
+        throw new Error('invalid opening cleanup');
+      }
+      delete state.openingCleanup; return;
+    }
+    if (['source.initial', 'text.replace', 'command.open', 'command.open.resume'].includes(fields[2]!)) {
       const contract = fields[2] === 'source.initial' ? 'source.bytes' : fields[2];
       if (value.contract !== contract || value.schema !== 1
           || value.resources.length !== 2 || value.data.length !== 24) {
@@ -63,6 +161,12 @@ export class Editing {
       state.source = { shared: state.source?.shared,
         buffer: value.resources[0]!, history: value.resources[1]!,
         revision: new DataView(value.data.buffer).getBigUint64(0, true).toString() };
+      if (fields[2] === 'command.open.resume') {
+        // Newer resume records refer to older work; retire dependants first.
+        if (state.resuming?.work) state.retiring.unshift(state.resuming.work);
+        state.openingCleanup = fields[1];
+        delete state.resuming;
+      }
       if (fields[2] === 'text.replace') {
         state.acceptedInput = { client: state.receipt!.client, id: state.receipt!.id,
           revision: state.source.revision, buffer: state.source.buffer };
@@ -122,9 +226,10 @@ export class Editing {
   }
 
   private async ready(): Promise<Client> {
-    if (this.journal.receipt) throw new Error('Recover the pending request first');
+    if (this.journal.receipt || this.journal.resuming) throw new Error('Recover the pending request first');
     const client = await this.client();
     await this.retire(client);
+    await this.finishOpening(client);
     return client;
   }
 

@@ -59,6 +59,7 @@ async function route(request, response) {
       '/clients/gui/modules/uppercase/index.js': [new URL('clients/gui/modules/uppercase/index.js', assets), 'text/javascript'],
       '/modules/text/api/typescript.js': [new URL('modules/text/api/typescript.js', assets), 'text/javascript'],
       '/sdk/typescript/delivery.js': [new URL('sdk/typescript/delivery.js', assets), 'text/javascript'],
+      '/sdk/typescript/requests.js': [new URL('sdk/typescript/requests.js', assets), 'text/javascript'],
       '/app.js': [new URL('apps/web/app.js', assets), 'text/javascript'],
       '/sdk/typescript/resource.js': [new URL('sdk/typescript/resource.js', assets), 'text/javascript'] };
     const file = Object.hasOwn(files, request.url) ? files[request.url] : undefined;

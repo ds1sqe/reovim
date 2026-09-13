@@ -61,7 +61,7 @@ function report(error: unknown) {
 function render() {
   typing.update(journal.receipt ? undefined : journal.window);
   status.textContent = journal.source
-    ? `Revision ${journal.source.revision}${journal.receipt ? '; request needs recovery' : ''}`
+    ? `Revision ${journal.source.revision}${journal.receipt || journal.resuming || journal.openingCleanup ? '; request needs recovery' : ''}`
     : 'No source is open.';
   draftStatus();
   const current = journal.focus?.current;

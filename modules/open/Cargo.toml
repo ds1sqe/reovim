@@ -20,6 +20,10 @@ workspace = true
 name = "open"
 crate-type = ["cdylib"]
 
+[[example]]
+name = "open_fault"
+crate-type = ["cdylib"]
+
 [dev-dependencies.reovim-kernel-runtime]
 path = "../../kernel/runtime"
 

@@ -1,4 +1,6 @@
 use super::*;
+mod fault;
+mod resume;
 use core::future::Future;
 use reovim_kernel_interface::provider::{
     Contribution, ResourceOps, ResourceProvider, Surface,
@@ -195,4 +197,110 @@ fn stop(runtime: &mut Runtime, kernel: &Connection) {
     let control = kernel.resolve("module").into_inner().unwrap();
     finish(runtime, reovim_kernel_interface::module::unload(kernel, control))
         .unwrap();
+}
+
+#[test]
+fn explicit_drain_leaves_exposed_recovery_for_the_original_caller() {
+    let reads = Rc::new(Cell::new(0));
+    let (mut runtime, kernel, snapshot) =
+        setup(counted_reader(reads.clone()).owned(|| {}));
+    let wait = kernel.read(
+        snapshot,
+        &Message::new(reovim_kernel_interface::Contract::new("bytes", 1), &[]),
+    );
+    let kernel = kernel.reconnect().unwrap();
+    let snapshot = kernel.resolve("factory/snapshot").into_inner().unwrap();
+    let lost = finish(&mut runtime, wait);
+    let Err(RequestError::Unknown { recovery, .. }) = &lost else {
+        panic!("original work locator");
+    };
+    let recovery = recovery.clone();
+    let command = Command::new(fault::once(kernel));
+    let active = command.reserve().unwrap();
+    active.0.snapshot.set(Some(snapshot));
+    assert!(matches!(
+        finish(&mut runtime, command.settle(&active.0, lost)),
+        Err(RequestError::Unknown { .. })
+    ));
+    drop(active);
+    assert_eq!(command.unload(), Err(Error::BUSY));
+    finish(
+        &mut runtime,
+        command.drain(
+            ResourceId(0),
+            Message::new(
+                reovim_kernel_interface::Contract::new(
+                    "command.open.cleanup",
+                    1,
+                ),
+                &[],
+            ),
+        ),
+    )
+    .unwrap();
+    let work = command.kernel.resolve(&recovery).into_inner().unwrap();
+    let result = finish(
+        &mut runtime,
+        reovim_kernel_interface::requests::result(&command.kernel, work),
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(result.data.as_ref(), b"data");
+    assert_eq!(reads.get(), 1);
+    command.kernel.close(work).into_inner().unwrap();
+    command.unload().unwrap();
+    stop(&mut runtime, &command.kernel);
+    runtime.close().unwrap();
+}
+
+#[test]
+fn nested_unknown_result_follows_its_original_work_and_releases_both() {
+    let reads = Rc::new(Cell::new(0));
+    let (mut runtime, kernel, snapshot) = setup(counted_reader(reads.clone()));
+    let input =
+        Message::new(reovim_kernel_interface::Contract::new("bytes", 1), &[]);
+    let leaf = kernel.read(snapshot, &input);
+    let kernel = kernel.reconnect().unwrap();
+    let leaf_error = finish(&mut runtime, leaf).unwrap_err();
+    let RequestError::Unknown { recovery: leaf_path, .. } = &leaf_error else {
+        panic!("leaf recovery");
+    };
+    let leaf_path = leaf_path.clone();
+    let mut outer = reader();
+    outer = ResourceProvider::new(
+        leaf_error,
+        ResourceOps {
+            unload: None,
+            read: |error, _, _| {
+                Box::pin(core::future::ready(Err(error.clone())))
+            },
+            write: |_, _, _| Box::pin(async { Err(Error::UNSUPPORTED.into()) }),
+        },
+        outer.surfaces,
+        Rc::new(()),
+    );
+    let id =
+        runtime.register("outer", outer).map_err(|(error, _)| error).unwrap();
+    let subject = kernel.resolve("outer").into_inner().unwrap();
+    let outer = kernel.read(subject, &input);
+    let kernel = kernel.reconnect().unwrap();
+    let lost = finish(&mut runtime, outer);
+    let RequestError::Unknown { recovery: outer_path, .. } =
+        lost.as_ref().unwrap_err()
+    else {
+        panic!("outer recovery");
+    };
+    let outer_path = outer_path.clone();
+    let command = Command::new(kernel);
+    let active = command.reserve().unwrap();
+    let result = finish(&mut runtime, command.settle(&active.0, lost)).unwrap();
+    assert_eq!(result.data.as_ref(), b"data");
+    assert_eq!(reads.get(), 1);
+    drop(active);
+    command.unload().unwrap();
+    assert!(command.kernel.resolve(&leaf_path).into_inner().is_err());
+    assert!(command.kernel.resolve(&outer_path).into_inner().is_err());
+    runtime.unregister(id).unwrap();
+    stop(&mut runtime, &command.kernel);
+    runtime.close().unwrap();
 }

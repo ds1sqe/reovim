@@ -4,6 +4,68 @@ import { initial, observation, update, watching, followed, change } from '../../
 import { Client, hex, u64 } from '../../target/browser/sdk/typescript/resource.js';
 import { Focus } from '../../target/browser/clients/gui/runtime/context.js';
 import { Editing } from '../../target/browser/apps/web/editing.js';
+import { result as retainedResult } from '../../target/browser/sdk/typescript/requests.js';
+
+test('retained results preserve values, failure context and nested locators', () => {
+  const name = new TextEncoder().encode('source.bytes');
+  assert.deepEqual(retainedResult(`ok\tkernel.request.result\t1\t0001000000${hex(u64(BigInt(name.length)))}${hex(name)}ff\t@1,@2`),
+    { kind: 'ok', value: { contract: 'source.bytes', schema: 1,
+      data: new Uint8Array([255]), resources: ['@1', '@2'] } });
+  assert.deepEqual(retainedResult(`ok\tkernel.request.result\t1\t01${hex(u64(5n))}\t@3`),
+    { kind: 'failed', code: 5n, resource: '@3', recovery: '' });
+  const locator = hex(new TextEncoder().encode('requests/original'));
+  assert.equal(retainedResult(`ok\tkernel.request.result\t1\t02${hex(u64(8n))}${locator}\t`).recovery,
+    'requests/original');
+  for (const data of ['00', `01${hex(u64(5n))}00`, `02${hex(u64(8n))}`]) {
+    assert.throws(() => retainedResult(`ok\tkernel.request.result\t1\t${data}\t`));
+  }
+});
+
+test('nested opening recovery retains its work across original receipt retirement', async t => {
+  let state = { token: 'client', retiring: [] }, id = 0, failRelease = true;
+  let cleanupReceipt, loseCleanup = true;
+  const calls = [], locator = hex(new TextEncoder().encode('requests/original'));
+  t.mock.method(Client.prototype, 'wire', async fields => {
+    if (fields[1] === 'reserve') return `ok\t${++id}`;
+    if (fields[1] === 'release') {
+      if (fields[2] === cleanupReceipt && loseCleanup) {
+        loseCleanup = false; throw new Error('lost cleanup retirement');
+      }
+      if (fields[2] === '1' && failRelease) {
+        failRelease = false; throw new Error('lost retirement');
+      }
+      return 'ok';
+    }
+    const request = fields.slice(3); calls.push(request);
+    if (request[0] === 'close') { assert.equal(request[1], '@33'); return 'ok'; }
+    if (request[2] === 'command.open.cleanup') {
+      cleanupReceipt = fields[2]; return 'ok\tcommand.open.cleanup\t1\t\t';
+    }
+    if (request[0] === 'resolve') return 'ok\t@33';
+    if (request[2] === 'kernel.request.result') {
+      return 'ok\tkernel.request.result\t1\t0001000000070000000000000063617074757265\t@40';
+    }
+    if (request[2] === 'command.open') return `error\tunknown\t5\t\t${locator}`;
+    assert.deepEqual(request, ['write', 'open', 'command.open.resume', '1', '', '@33']);
+    return `ok\tcommand.open.resume\t1\t${hex(u64(0n))}${hex(u64(0n))}${hex(u64(9n))}\t@7,@8`;
+  });
+  let editing = new Editing(state, () => {});
+  await assert.rejects(editing.openFile('draft.md'), /Unknown outcome/);
+  await assert.rejects(editing.recover(), /lost retirement/);
+  assert.equal(state.resuming.original.id, '1'); assert.equal(state.resuming.work, '@33');
+  assert.equal(state.receipt, undefined);
+  state = JSON.parse(JSON.stringify(state)); editing = new Editing(state, () => {});
+  await assert.rejects(editing.openFile('another.md'), /Recover/);
+  await assert.rejects(editing.recover(), /lost cleanup retirement/);
+  assert.equal(state.openingCleanup, undefined);
+  assert.equal(state.receipt.id, cleanupReceipt);
+  state = JSON.parse(JSON.stringify(state)); editing = new Editing(state, () => {});
+  await editing.recover();
+  assert.equal(state.source.buffer, '@7'); assert.equal(state.resuming, undefined);
+  assert.deepEqual(calls.map(fields => ['resolve', 'close'].includes(fields[0]) ? fields[0] : fields[2]),
+    ['command.open', 'resolve', 'kernel.request.result', 'command.open.resume', 'close', 'command.open.cleanup']);
+  assert.equal(state.openingCleanup, undefined);
+});
 
 test('lost file opening adopts the original Buffer after journal reload', async t => {
   let state = { token: 'client', retiring: [] }, calls = 0, lost = true;
