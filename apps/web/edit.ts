@@ -19,14 +19,14 @@ const input = (id: string) => document.querySelector<HTMLInputElement>(`#${id}`)
 let busy = false;
 let changingView = false;
 const textarea = document.querySelector<HTMLTextAreaElement>('#typing')!;
+const commands = new Commands();
 const typing = bindInput(textarea,
   (start, end, text) => operate(() => editing.replace(start, end, text,
     receipt => typing.correlate(receipt.client, receipt.id))),
   direction => operate(() => editing.history(direction)), report, {
     load: () => journal.draft,
     save: value => { journal.draft = value; persist(); draftStatus(); }
-  });
-const commands = new Commands();
+  }, commands);
 const moduleEditor = editorCapability(() => {
   if (busy || typing.composing || typing.retained || journal.receipt || switchPending() || journal.focus?.historical || journal.source?.readOnly) {
     throw new Error('Finish pending input before a contribution command');
@@ -207,7 +207,7 @@ document.querySelector('#load-contribution')!.addEventListener('click', async ()
     if (loading || contribution) throw new Error('contribution already loading or loaded');
     loading = true;
     const module = await import('../../clients/gui/modules/uppercase/index.js');
-    contribution = module.activate(moduleEditor, commands.register);
+    contribution = module.activate(moduleEditor, commands.register, typing.registerKeymap);
     document.querySelector('#contribution-status')!.textContent = 'Uppercase contribution loaded.';
   } catch (error) { report(error); }
   finally { loading = false; }

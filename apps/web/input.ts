@@ -1,5 +1,10 @@
 import { apply, project, replacement, sameWindow, type Anchor } from '../../clients/gui/contract/input.js';
 import type { Window } from '../../modules/text/api/typescript.js';
+import { Keymaps } from '../../clients/gui/core/keymaps.js';
+import { Commands } from '../../clients/gui/runtime/commands.js';
+import { bindKeys } from './keys.js';
+import { historyBindings } from '../../clients/gui/modules/history/keymaps.js';
+import type { RegisterKeymap } from '../../clients/gui/contract/keymaps.js';
 
 interface Queued { start: string; end: string; text: string; after: Window }
 export interface Draft {
@@ -16,7 +21,7 @@ export interface DraftStorage {
 export function input(element: HTMLTextAreaElement,
   submit: (start: bigint, end: bigint, text: string) => Promise<Window>,
   history: (direction: 'undo' | 'redo') => Promise<void>, failed: (error: unknown) => void,
-  storage?: DraftStorage) {
+  storage?: DraftStorage, commands = new Commands()) {
   let draft = storage?.load();
   let proof = draft?.proof;
   let queue: Queued[] = draft?.queue ?? [];
@@ -105,15 +110,14 @@ export function input(element: HTMLTextAreaElement,
     try { await history(direction); }
     finally { historyPending = false; refresh(); }
   };
-  on('keydown', event => {
-    if (event.isComposing || composing || event.altKey || !(event.ctrlKey || event.metaKey)) return;
-    const key = event.key.toLowerCase();
-    const direction = key === 'z' ? (event.shiftKey ? 'redo' : 'undo')
-      : key === 'y' && event.ctrlKey && !event.shiftKey ? 'redo' : undefined;
-    if (!direction) return;
-    event.preventDefault();
-    void navigate(direction).catch(report);
-  });
+  const maps = new Keymaps();
+  const registerKeymap: RegisterKeymap = binding => {
+    if (disposed) throw new Error('input adapter disposed');
+    return maps.register(binding, commands.target(binding.command));
+  };
+  historyBindings(binding => maps.register(binding, { available: () => !disposed,
+    invoke: () => navigate(binding.command === 'history.undo' ? 'undo' : 'redo') }));
+  const keys = bindKeys(element, maps, () => composing || finishing, report);
   on('beforeinput', event => {
     if (suspended || halted || historyPending || !basis) { event.preventDefault(); return; }
     if (event.inputType === 'historyUndo' || event.inputType === 'historyRedo') {
@@ -147,6 +151,7 @@ export function input(element: HTMLTextAreaElement,
     queueMicrotask(() => { finishing = false; commit(); refresh(); });
   });
   return {
+    registerKeymap,
     history: navigate,
     correlate(client: string, id: string) {
       if (!pending || !queue.length) throw new Error('No input is awaiting correlation');
@@ -171,13 +176,17 @@ export function input(element: HTMLTextAreaElement,
       if (queue.length) retain('submitted'); else save(undefined);
       refresh(); void drain();
     },
-    update(window: Window | undefined) { observed = window; refresh(); },
-    suspend(value: boolean) { suspended = value; refresh(); },
+    update(window: Window | undefined) {
+      if (window !== observed) keys.clear();
+      observed = window; refresh();
+    },
+    suspend(value: boolean) { if (value) keys.clear(); suspended = value; refresh(); },
     discard() {
       if (disposed || pending || historyPending || composing) throw new Error('Finish the active input first');
       queue = []; proof = undefined; halted = false; save(undefined); refresh();
     },
     dispose() {
+      keys.dispose();
       disposed = true; halted = true;
       for (const remove of listeners.splice(0)) remove();
     },

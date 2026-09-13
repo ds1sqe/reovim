@@ -2,6 +2,28 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { input } from '../../target/browser/apps/web/input.js';
 import { apply } from '../../target/browser/clients/gui/contract/input.js';
+import { Commands } from '../../target/browser/clients/gui/runtime/commands.js';
+
+test('contribution chords dispatch once and fence blur, composition and view changes', async () => {
+  const field = new Field(), commands = new Commands(), calls = [];
+  commands.register('test.command', async () => { calls.push('run'); });
+  const adapter = input(field, async () => window(''), async () => {}, error => { throw error; }, undefined, commands);
+  adapter.update(window('source'));
+  const binding = adapter.registerKeymap({ sequence: [{ key: 'k', ctrl: true }, { key: 'u', ctrl: true }],
+    scope: 'text', priority: 0, command: 'test.command' });
+  const press = key => field.emit('keydown', { key, ctrlKey: true });
+  assert.equal(press('k'), false); press('Control'); assert.equal(press('u'), false);
+  await tick(); assert.deepEqual(calls, ['run']);
+  press('k'); field.emit('blur'); assert.equal(press('u'), true);
+  press('k'); adapter.update(window('other')); assert.equal(press('u'), true);
+  press('k'); field.emit('keydown', { key: 'u', ctrlKey: true, getModifierState: name => name === 'AltGraph' });
+  assert.equal(press('u'), true);
+  press('k'); field.emit('compositionstart');
+  assert.equal(press('u'), true);
+  field.emit('compositionend'); await tick();
+  press('k'); binding.close(); assert.equal(press('u'), true);
+  assert.deepEqual(calls, ['run']); adapter.dispose();
+});
 
 class Field extends EventTarget {
   value = ''; selectionStart = 0; selectionEnd = 0; readOnly = false;

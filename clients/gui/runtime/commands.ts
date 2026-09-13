@@ -1,4 +1,5 @@
 import type { RegisterCommand } from '../contract/commands.js';
+import type { Target } from '../core/keymaps.js';
 
 interface Command { run(): Promise<void>; active: number; retiring: boolean }
 
@@ -21,6 +22,21 @@ export class Commands {
   async invoke(name: string): Promise<void> {
     const command = this.entries.get(name);
     if (!command || command.retiring) throw new Error('command unavailable');
+    return this.run(command);
+  }
+
+  /** Captures this registration, so name reuse cannot retarget a binding. */
+  target(name: string): Target {
+    const command = this.entries.get(name);
+    if (!command || command.retiring) throw new Error('command unavailable');
+    const available = () => this.entries.get(name) === command && !command.retiring;
+    return { available, invoke: async () => {
+      if (!available()) throw new Error('command unavailable');
+      await this.run(command);
+    } };
+  }
+
+  private async run(command: Command): Promise<void> {
     if (command.active === 32) throw new Error('command invocation capacity');
     command.active++;
     try { await command.run(); }

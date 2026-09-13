@@ -4,6 +4,70 @@ import { Commands } from '../../target/browser/clients/gui/runtime/commands.js';
 import { editor } from '../../target/browser/clients/gui/runtime/editor.js';
 import { activate } from '../../target/browser/clients/gui/modules/uppercase/index.js';
 import { selectedRange } from '../../target/browser/clients/gui/contract/input.js';
+import { Keymaps } from '../../target/browser/clients/gui/core/keymaps.js';
+
+test('key resolution ranks scope then priority and rejects equal active matches', async () => {
+  const maps = new Keymaps(), commands = new Commands(), calls = [];
+  for (const name of ['default', 'text', 'other']) commands.register(name, async () => { calls.push(name); });
+  const bind = (command, scope, priority) => maps.register({
+    sequence: [{ key: 'x', ctrl: true }], command, scope, priority
+  }, commands.target(command));
+  bind('default', '', 100);
+  const scoped = bind('text', 'text', 0);
+  assert.throws(() => bind('other', 'text', 0), /conflict/);
+  let result = maps.press({ key: 'x', ctrl: true }, ['text'], 0);
+  assert.equal(result.kind, 'command'); await result.target.invoke();
+  assert.deepEqual(calls, ['text']);
+  const equal = bind('other', 'other', 0);
+  assert.equal(maps.press({ key: 'x', ctrl: true }, ['other', 'text'], 1).kind, 'ambiguous');
+  equal.close(); scoped.close();
+  result = maps.press({ key: 'x', ctrl: true }, ['text'], 2);
+  await result.target.invoke(); assert.deepEqual(calls, ['text', 'default']);
+});
+
+test('chords expire, retry only the mismatching key and fence context and removal', async () => {
+  const maps = new Keymaps(), commands = new Commands(), calls = [];
+  for (const name of ['short', 'long', 'fresh']) commands.register(name, async () => { calls.push(name); });
+  const bind = (command, sequence) => maps.register({
+    sequence: sequence.map(key => ({ key })), command, scope: 'text', priority: 0
+  }, commands.target(command));
+  bind('short', ['k']); const long = bind('long', ['k', 'u']); bind('fresh', ['x']);
+  assert.deepEqual(maps.press({ key: 'k' }, ['text'], 0), { kind: 'pending', deadline: 750 });
+  assert.equal(maps.expire(['text'], 749).kind, 'pending');
+  let result = maps.expire(['text'], 750); await result.target.invoke();
+  assert.deepEqual(calls, ['short']);
+  maps.press({ key: 'k' }, ['text'], 800);
+  result = maps.press({ key: 'u' }, ['text'], 801); await result.target.invoke();
+  maps.press({ key: 'k' }, ['text'], 900);
+  result = maps.press({ key: 'x' }, ['text'], 901); await result.target.invoke();
+  assert.deepEqual(calls, ['short', 'long', 'fresh']);
+  maps.press({ key: 'k' }, ['text'], 1000);
+  assert.equal(maps.expire(['other'], 1750).kind, 'unhandled');
+  maps.press({ key: 'k' }, ['text'], 1800); long.close();
+  assert.equal(maps.expire(['text'], 2600).kind, 'unhandled');
+  assert.throws(() => maps.expire(['text'], 2599), /monotonic/);
+});
+
+test('retired commands cannot be reached through old bindings after name reuse', async () => {
+  const maps = new Keymaps(), commands = new Commands();
+  const old = commands.register('same', async () => { assert.fail('retired callback'); });
+  maps.register({ sequence: [{ key: 'k' }, { key: 'u' }], scope: '',
+    priority: 0, command: 'same' }, commands.target('same'));
+  maps.press({ key: 'k' }, [], 0); old.close();
+  commands.register('same', async () => { assert.fail('retargeted callback'); });
+  assert.equal(maps.press({ key: 'u' }, [], 1).kind, 'unhandled');
+  assert.equal(maps.press({ key: 'k' }, [], 2).kind, 'unhandled');
+});
+
+test('prefix-only expires and named chord bounds reject without publishing', () => {
+  const maps = new Keymaps(), target = { available: () => true, invoke: async () => {} };
+  const binding = { sequence: [{ key: 'k' }, { key: 'u' }], scope: '', priority: 0, command: 'test' };
+  maps.register(binding, target);
+  assert.equal(maps.press({ key: 'k' }, [], 0).kind, 'pending');
+  assert.equal(maps.expire([], 750).kind, 'unhandled');
+  assert.throws(() => maps.register({ ...binding, sequence: Array(5).fill({ key: 'x' }) }, target), /invalid/);
+  assert.throws(() => maps.register({ ...binding, priority: NaN }, target), /invalid/);
+});
 
 test('browser selections preserve Text endpoints across UTF-16, CRLF and opaque units', () => {
   const window = { start: '9007199254740993', end: '9007199254740998', eof: true,
