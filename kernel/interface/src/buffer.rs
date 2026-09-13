@@ -236,6 +236,24 @@ pub fn integer(data: &[u8]) -> Result<u64, Error> {
     data.try_into().map(u64::from_le_bytes).map_err(|_| Error::INVALID)
 }
 
+/// Decodes History acceptance paired with the Buffer in the original request.
+/// # Errors
+/// Rejects a foreign direction, malformed metadata or unexpected references.
+pub fn history_state(
+    reply: &Message,
+    buffer: ResourceId,
+    redo: bool,
+) -> Result<BufferState, Error> {
+    let name = if redo { "kernel.history.redo" } else { "kernel.history.undo" };
+    if reply.contract != Contract::new(name, 1)
+        || reply.data.len() != 16
+        || !reply.resources.is_empty()
+    {
+        return Err(Error::PROVIDER);
+    }
+    Ok(BufferState { buffer, revision: integer(&reply.data[..8])? })
+}
+
 /// Shared close is separate from releasing one caller's access.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ClosePolicy {

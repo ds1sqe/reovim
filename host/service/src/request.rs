@@ -30,7 +30,66 @@ pub struct Request {
     released: bool,
 }
 
+/// Local checkpoint data; credentials and result bytes require private storage.
+/// Restoration validates transitions and the expected caller scope.
+pub struct Checkpoint {
+    pub frame: String,
+    pub sent: bool,
+    pub response: Option<String>,
+    pub adopted: bool,
+    pub released: bool,
+}
+
 impl Request {
+    #[must_use]
+    pub fn checkpoint(&self) -> Checkpoint {
+        Checkpoint {
+            frame: self.frame.clone(),
+            sent: self.sent,
+            response: self.response.clone(),
+            adopted: self.adopted,
+            released: self.released,
+        }
+    }
+
+    /// Restores local custody; this neither reconnects nor sends a request.
+    /// # Errors
+    /// Rejects foreign scope, malformed frames and impossible transitions.
+    pub fn restore(client: &str, saved: Checkpoint) -> Result<Self, Error> {
+        if saved.frame.len() >= crate::MAX_LINE {
+            return Err(Error::Invalid);
+        }
+        let parts: alloc::vec::Vec<_> = saved.frame.split('\t').collect();
+        let ["v1", owner, "call", id, fields @ ..] = parts.as_slice() else {
+            return Err(Error::Invalid);
+        };
+        if *owner != client {
+            return Err(Error::Invalid);
+        }
+        let fields: alloc::vec::Vec<_> =
+            fields.iter().map(|value| String::from(*value)).collect();
+        let mut value = Self::new(
+            client,
+            id.parse().map_err(|_| Error::Invalid)?,
+            &fields,
+        )?;
+        if value.frame != saved.frame {
+            return Err(Error::Invalid);
+        }
+        if saved.sent {
+            value.send()?;
+        }
+        if let Some(response) = saved.response {
+            value.record(response)?;
+        }
+        if saved.adopted {
+            value.adopt()?;
+        }
+        if saved.released {
+            value.released("ok")?;
+        }
+        Ok(value)
+    }
     /// Takes custody of a known reservation; invalid input leaves it to caller.
     /// # Errors
     /// Rejects invalid identity, fields or an oversized encoded frame.
@@ -159,7 +218,7 @@ fn outcome(reply: &str) -> Result<bool, Error> {
         return Err(Error::Invalid);
     };
     if !matches!(*kind, "rejected" | "failed" | "unknown")
-        || code.parse::<u32>().is_err()
+        || code.parse::<u64>().is_err()
         || (!resource.is_empty()
             && resource
                 .strip_prefix('@')

@@ -49,6 +49,7 @@ impl Observation {
         self.history
     }
     #[must_use]
+    /// Source length: UTF-8 width per scalar and one byte per opaque unit.
     pub const fn byte_len(&self) -> u64 {
         self.byte_len
     }
@@ -83,11 +84,22 @@ pub async fn attach(
     let reply = kernel
         .write(factory, &Message::reference(Contract::new(name, 1), buffer))
         .await?;
+    attachment(&reply, writable).map_err(Into::into)
+}
+
+/// Validates an attachment reply for native or remote consumers.
+/// # Errors
+/// Rejects a foreign contract, payload or reference layout.
+pub fn attachment(
+    reply: &Message,
+    writable: bool,
+) -> Result<ResourceId, Error> {
+    let name = if writable { "text.attach" } else { "text.attach.read" };
     if reply.contract != Contract::new(name, 1)
         || !reply.data.is_empty()
         || reply.resources.len() != 1
     {
-        return Err(Error::PROVIDER.into());
+        return Err(Error::PROVIDER);
     }
     Ok(reply.resources[0])
 }
@@ -102,13 +114,23 @@ pub async fn observe(
     let reply = kernel
         .read(view, &Message::new(Contract::new("text.observe", 1), &[]))
         .await?;
+    observation(&reply, view).map_err(Into::into)
+}
+
+/// Validates a coherent semantic observation from the selected interpretation.
+/// # Errors
+/// Rejects foreign identity or malformed semantic metadata.
+pub fn observation(
+    reply: &Message,
+    view: ResourceId,
+) -> Result<Observation, Error> {
     if reply.contract != Contract::new("text.observe", 1)
         || reply.resources.len() != 6
         || reply.data.len() != 24
         || reply.resources[0] != view
         || reply.resources[1] != view
     {
-        return Err(Error::PROVIDER.into());
+        return Err(Error::PROVIDER);
     }
     Ok(Observation {
         observed: Observed {
@@ -144,12 +166,24 @@ pub async fn read(
             ),
         )
         .await?;
+    window(&reply, observation, start, count).map_err(Into::into)
+}
+
+/// Decodes exact scalar/opaque units for a retained observation and range.
+/// # Errors
+/// Rejects invalid units, foreign ranges and malformed wire values.
+pub fn window(
+    reply: &Message,
+    observation: &Observation,
+    start: u64,
+    count: u64,
+) -> Result<Window, Error> {
     if reply.contract != Contract::new("text.window", 1)
         || !reply.resources.is_empty()
         || reply.data.len() < 17
         || reply.data[0] > 1
     {
-        return Err(Error::PROVIDER.into());
+        return Err(Error::PROVIDER);
     }
     let first = buffer::integer(&reply.data[1..9])?;
     let end = buffer::integer(&reply.data[9..17])?;
@@ -158,7 +192,7 @@ pub async fn read(
         || end.checked_sub(start) != Some(units.len() as u64)
         || units.len() as u64 > count
     {
-        return Err(Error::PROVIDER.into());
+        return Err(Error::PROVIDER);
     }
     Ok(Window {
         observed: observation.observed,

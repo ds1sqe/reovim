@@ -1,5 +1,21 @@
 use reovim_service::request::{Error, Request};
 
+#[test]
+fn restored_receipt_keeps_scope_and_delivery_state() {
+    let client = "0123456789abcdef0123456789abcdef";
+    let mut request = Request::new(client, u64::MAX, &["read".into()]).unwrap();
+    request.send().unwrap();
+    let mut restored = Request::restore(client, request.checkpoint()).unwrap();
+    assert_eq!(restored.id(), u64::MAX);
+    assert_eq!(restored.send(), Err(Error::State));
+    assert_eq!(restored.recover(), request.recover());
+    let mut invalid = request.checkpoint();
+    invalid.adopted = true;
+    assert!(Request::restore(client, invalid).is_err());
+    let other = "abcdef0123456789abcdef0123456789";
+    assert!(Request::restore(other, request.checkpoint()).is_err());
+}
+
 const CLIENT: &str = "0123456789abcdef0123456789abcdef";
 
 fn request() -> Request {
@@ -89,4 +105,13 @@ fn invalid_frame_never_becomes_a_transmittable_request() {
         Request::new(CLIENT, 1, &["x".repeat(reovim_service::MAX_LINE)]),
         Err(Error::Invalid),
     ));
+}
+
+#[test]
+fn extensible_error_codes_keep_the_full_interface_width() {
+    let mut request = request();
+    request.send().unwrap();
+    request.record("error\tfailed\t18446744073709551615\t\t".into()).unwrap();
+    request.adopt().unwrap();
+    assert!(request.release().is_ok());
 }

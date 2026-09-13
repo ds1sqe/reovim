@@ -1,0 +1,32 @@
+[package]
+name = "reovim-tui"
+workspace = "../../product"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+reovim-client-tui = { path = "../../clients/tui" }
+reovim-service = { path = "../../host/service" }
+reovim-kernel-interface = { path = "../../kernel/interface" }
+reovim-module-text = { path = "../../modules/text" }
+
+[features]
+default = []
+std = ["reovim-service/std", "dep:crossterm"]
+
+[[bin]]
+name = "reovim-tui"
+path = "src/main.rs"
+required-features = ["std"]
+
+[dependencies.crossterm]
+version = "=0.29.0"
+default-features = false
+features = ["events", "bracketed-paste"]
+optional = true
+
+[lints]
+workspace = true
