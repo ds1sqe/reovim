@@ -1,5 +1,6 @@
 //! Delivery correlation is separate from the invoked module's contract.
 
+use reovim_service::request::Request;
 use std::io;
 
 pub fn call(
@@ -15,27 +16,43 @@ pub fn call(
         .parse::<u64>()
         .map_err(io::Error::other)?
         .to_string();
-    let mut request = vec![client.into(), "call".into(), id.clone()];
-    request.extend_from_slice(fields);
-    let frame = match crate::encode_frame(&request) {
-        Ok(frame) => frame,
+    let mut request = match Request::new(
+        client,
+        id.parse().map_err(io::Error::other)?,
+        fields,
+    ) {
+        Ok(request) => request,
         Err(error) => {
             release(address, client, &id);
-            return Err(error);
+            return Err(io::Error::other(error));
         }
     };
-    let reply = crate::send_frame(address, &frame).map_err(|error| {
+    let frame = request.send().map_err(io::Error::other)?;
+    let reply = crate::send_frame(address, frame).map_err(|error| {
         io::Error::other(format!(
             "outcome unknown; client={client} request={id}: {error}"
         ))
     })?;
-    if reply.starts_with("error\tunknown\t") {
+    request.record(reply.clone()).map_err(|error| {
+        io::Error::other(format!(
+            "invalid outcome; client={client} request={id}: {error}"
+        ))
+    })?;
+    if let Err(error) = request.adopt() {
         return Err(io::Error::other(format!(
-            "{reply}; client={client} request={id}"
+            "{reply}; client={client} request={id}: {error}"
         )));
     }
     // A complete known response is adopted before its receipt is released.
-    release(address, client, &id);
+    let cleanup = crate::send_frame(
+        address,
+        &request.release().map_err(io::Error::other)?,
+    )
+    .and_then(crate::accept)
+    .and_then(|reply| request.released(&reply).map_err(io::Error::other));
+    if let Err(error) = cleanup {
+        eprintln!("receipt {id} could not be released: {error}");
+    }
     crate::accept(reply)
 }
 

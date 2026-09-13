@@ -6,6 +6,8 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
+pub mod request;
+
 use alloc::{string::String, vec::Vec};
 
 pub const MAX_LINE: usize = 65_536;

@@ -83,3 +83,23 @@ write removes only its observer; its receipt/execution stays with the client.
 Pending receipts and live Buffer/Session state keep the client recoverable;
 adopt results and explicitly close state before retrying a Busy teardown.
 Successful teardown is idempotent within the bounded recently closed token set.
+
+## Rust receipt custody
+
+`request::Request` is a portable caller-owned reservation/outcome state used by
+the CLI. Construct it after reservation with the exact client, request identity
+and operation fields. `send` marks transmission before returning the immutable
+frame and rejects a second call. After uncertain I/O, `recover` requests the
+original result. `record` retains a complete outcome; it rejects malformed or
+contradictory replies without authorizing another execution.
+
+Validate the module result and adopt its Resource owners before `adopt`.
+Unknown cannot be adopted as ordinary failure. `release` then supplies retryable
+receipt cleanup, and `released` records confirmed success while preserving the
+adopted result. Transport errors do not consume this owner. The CLI presents
+unresolved receipt identities for explicit recovery by its user.
+
+This value supplies neither I/O nor a native Connection implementation. It
+does not own returned Resources, perform startup or implement journal restart
+restoration. A hosted TUI still needs its own transport, persistence and
+semantic consumer; this profile is not the complete Rust remote SDK.
