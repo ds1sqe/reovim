@@ -108,6 +108,12 @@ its result remains partial, including any atomicity violation. This permits
 evidence cleanup; it never advances the Buffer base or marks the state saved.
 Unsupported settlement supplies no proof and leaves Work retained.
 
+Runtime shutdown fences new caller work while retaining providers needed by
+save recovery. Runtime-driven descendants of an admitted save can still acquire
+readers, capture granted access, publish evidence and complete backend calls.
+Ordinary grants and capacity limits still apply. Shutdown stays Busy until
+the save's result and cleanup ownership are released.
+
 Close Work after adopting its proof. Unresolved effects reject release;
 settled effects may first return Busy while Runtime releases backend evidence.
 Retained release requests prevent uncertain cleanup from becoming a new call.

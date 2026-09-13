@@ -16,6 +16,24 @@ use reovim_kernel_interface::{
 
 mod dispatch;
 
+/// Only Runtime-driven descendants of retained saves may continue at shutdown.
+pub fn continuing(shared: &Shared) -> bool {
+    let mut active = shared.active;
+    for _ in 0..shared.requests.len() {
+        let Some(id) = active else { return false };
+        let Some(record) = shared.requests.iter().find(|r| r.borrow().id == id)
+        else {
+            return false;
+        };
+        let record = record.borrow();
+        if record.save.is_some() {
+            return true;
+        }
+        active = record.parent;
+    }
+    false
+}
+
 pub struct Save {
     pub buffer: Rc<RefCell<Editing>>,
     state: State,

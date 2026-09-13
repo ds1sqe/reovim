@@ -26,7 +26,7 @@ pub fn acquire_root(
 ) -> Result<(u64, Connection), Error> {
     let (provider, owner) = {
         let registry = shared.borrow();
-        if registry.closing {
+        if registry.closing && !crate::saving::continuing(&registry) {
             return Err(Error::CLOSED);
         }
         let scope = scope.borrow();

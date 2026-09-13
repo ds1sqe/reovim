@@ -72,7 +72,7 @@ fn validate(
     name: &str,
     provider: &ResourceProvider,
 ) -> Result<Owner, Error> {
-    if shared.closing {
+    if shared.closing && !crate::saving::continuing(shared) {
         return Err(Error::CLOSED);
     }
     crate::namespace::validate(name, shared.limits.path_bytes)?;

@@ -59,7 +59,7 @@ impl Access for Caller {
     ) -> Result<Connection, Error> {
         self.check()?;
         let shared = self.shared.borrow();
-        if shared.closing {
+        if shared.closing && !crate::saving::continuing(&shared) {
             return Err(Error::CLOSED);
         }
         let mut scope = self.scope.borrow_mut();
@@ -299,6 +299,7 @@ impl Caller {
             return self.recovery(&mut shared, request, method, rights, input);
         }
         if shared.closing
+            && !crate::saving::continuing(&shared)
             && !(matches!(target, Kind::Module(_))
                 && crate::modules::during_close(method, &input.contract))
         {

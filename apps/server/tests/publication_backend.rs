@@ -20,6 +20,8 @@ mod device;
 mod model;
 #[path = "publication_backend/save.rs"]
 mod save;
+#[path = "publication_backend/shutdown.rs"]
+mod shutdown;
 #[path = "publication_backend/transfer.rs"]
 mod transfer;
 #[path = "publication_backend/violation.rs"]

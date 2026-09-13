@@ -268,6 +268,15 @@ impl Runtime {
     /// Busy means requests or results still have owners to settle.
     pub fn close(&mut self) -> Result<(), Error> {
         self.shared.borrow_mut().closing = true;
+        if self
+            .shared
+            .borrow()
+            .requests
+            .iter()
+            .any(|r| r.borrow().save.is_some())
+        {
+            return Err(Error::BUSY);
+        }
         owned::close_all(&self.shared)?;
         read_views::reclaim(&self.shared);
         owned::reclaim(&self.shared);
