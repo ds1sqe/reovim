@@ -246,7 +246,7 @@ fn base_view() -> ResourceProvider {
 
 #[test]
 #[allow(unsafe_code)]
-fn native_model_capture_keeps_a_borrowed_base_view_after_buffer_close() {
+fn native_model_and_backing_survive_snapshot_and_buffer_close() {
     let directory = build("association");
     let mut runtime = Runtime::new(245, Limits::default()).unwrap();
     runtime.start().unwrap();
@@ -287,22 +287,25 @@ fn native_model_capture_keeps_a_borrowed_base_view_after_buffer_close() {
         &finish(&mut runtime, buffer::retain(&client, opened.state)).unwrap(),
     )
     .unwrap();
+    let independent = client.read_view(held.id).unwrap();
+    client.close(held.id).into_inner().unwrap();
     finish(
         &mut runtime,
         buffer::close(&client, opened.state, ClosePolicy::RejectModified),
     )
     .unwrap();
     runtime.unregister(source).unwrap();
+    assert_eq!(runtime.unregister(model), Err(Error::BUSY));
     let value = finish(
         &mut runtime,
-        client.read(
-            held.id,
+        independent.read(
+            independent.root().into_inner().unwrap(),
             &Message::new(Contract::new("backed.value", 1), &[]),
         ),
     )
     .unwrap();
     assert_eq!(value.data.as_ref(), &[73]);
-    client.close(held.id).into_inner().unwrap();
+    drop(independent);
     runtime.advance(&mut Context::from_waker(Waker::noop())).unwrap();
     runtime.unregister(model).unwrap();
     runtime.close().unwrap();

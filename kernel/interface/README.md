@@ -49,3 +49,25 @@ the shared source or independently retained working state.
 This is the initial association mechanism under the
 [Buffer contract](../../Documentation/Design/02-buffer.md). It does not implement
 file saving, Save As, rebinding, or filesystem publication guarantees.
+
+## Backend publication evidence
+
+`publication::backend` supplies the first coordinator/backend protocol:
+`resource.publish` consumes immutable selected-data/base READ slots under target
+WRITE authority and returns an independently retained evidence Resource plus
+an opaque release key. Evidence reads classify the effect; reconciliation
+progresses only that original effect. Explicit release at the original target
+rejects unresolved or captured evidence. Required ownership does not live in
+optional Error.id diagnostics.
+
+Applied evidence supplies an independent view of its exact committed base,
+not a refreshed source. Retained Model snapshots now also supply independent
+data-only read views, so a backend can read selected state after the original
+snapshot and Buffer close. Native details and concrete Model data stay behind
+their providers.
+
+The public test witness publishes a non-byte logical value conditionally and
+exercises old-base rejection, lost reply recovery, unresolved evidence and
+independent committed-base lifetime. Kernel save admission, published-node
+advancement, generic Work reconciliation and actual file saving remain
+unimplemented; this backend protocol does not establish those behaviors.

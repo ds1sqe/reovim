@@ -24,6 +24,7 @@ pub fn observing(value: &Contract) -> bool {
     value == &Contract::new("kernel.buffer.observe", 1)
 }
 
+#[derive(Clone)]
 struct ReadState {
     state: State,
     model: Rc<RefCell<ModelProvider>>,
@@ -70,13 +71,7 @@ impl Runtime {
             input: Box::new([]),
             output: Box::new([]),
         };
-        let provider = ResourceProvider::new(
-            context,
-            ResourceOps { unload: None, read, write: unsupported },
-            Box::new([surface]),
-            Rc::new(()),
-        )
-        .owned(|| {});
+        let provider = state_reader(context, surface).owned(|| {});
         let mut reply = Message::new(
             record.input.contract.clone(),
             &[
@@ -122,6 +117,18 @@ impl Runtime {
         }
         Ok(reply)
     }
+}
+
+fn state_reader(context: ReadState, surface: Surface) -> ResourceProvider {
+    let view = context.clone();
+    let declaration = surface.clone();
+    ResourceProvider::new(
+        context,
+        ResourceOps { unload: None, read, write: unsupported },
+        Box::new([surface]),
+        Rc::new(()),
+    )
+    .with_read_view(move || Ok(state_reader(view.clone(), declaration.clone())))
 }
 
 fn publish(

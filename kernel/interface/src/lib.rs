@@ -14,6 +14,7 @@ pub mod module;
 pub mod namespace;
 pub mod notify;
 pub mod provider;
+pub mod publication;
 pub mod requests;
 pub mod resource;
 pub mod session;

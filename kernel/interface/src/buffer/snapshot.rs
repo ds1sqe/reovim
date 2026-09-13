@@ -5,6 +5,8 @@ use crate::{Connection, Contract, Error, Message, ResourceId, access::Reply};
 ///
 /// Read `id` using the Model's read contract and payload; close it to release.
 /// Copying this metadata does not create another access.
+/// `Connection::read_view` acquires an independent data-only reader of this
+/// selected state. It survives close of the original owned snapshot access.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RetainedState {
     pub id: ResourceId,
