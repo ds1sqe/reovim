@@ -132,7 +132,11 @@ fn quiescent(shared: &Shared, owner: u64, root: u64) -> Result<(), Error> {
         .collect();
     if shared.requests.iter().any(|record| {
         let record = record.borrow();
-        record.scope.borrow().owner == owner
+        let custodian = record
+            .save
+            .as_ref()
+            .and_then(|save| save.borrow().custodian.clone());
+        custodian.as_ref().unwrap_or(&record.scope).borrow().owner == owner
             || keys.contains(&ResourceId(record.subject))
             || keys.iter().any(|id| record.references(*id))
     }) {

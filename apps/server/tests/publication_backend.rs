@@ -20,6 +20,8 @@ mod device;
 mod model;
 #[path = "publication_backend/save.rs"]
 mod save;
+#[path = "publication_backend/transfer.rs"]
+mod transfer;
 
 const fn code(error: &RequestError) -> Error {
     match error {

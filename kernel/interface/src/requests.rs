@@ -6,6 +6,32 @@ use alloc::vec::Vec;
 
 const NAME: &str = "kernel.request.result";
 
+/// Accepts recovery custody of an existing save Work in this caller's scope.
+///
+/// Requires both READ and WRITE Work authority. The original effect, locator
+/// and admission provenance remain unchanged. Adoption transfers neither
+/// Buffer ownership nor providers in another client's private namespace;
+/// their live references can still prevent that client's retirement.
+///
+/// # Errors
+/// Rejects non-save Work, active execution/readers and insufficient authority.
+#[allow(clippy::future_not_send)]
+pub async fn adopt(
+    connection: &Connection,
+    work: ResourceId,
+) -> Result<(), RequestError> {
+    let contract = Contract::new("kernel.request.adopt", 1);
+    let reply =
+        connection.write(work, &Message::new(contract.clone(), &[])).await?;
+    if reply.contract != contract
+        || reply.data.as_ref() != b"adopted"
+        || !reply.resources.is_empty()
+    {
+        return Err(RequestError::Failed(Error::PROVIDER));
+    }
+    Ok(())
+}
+
 /// Retrieves the original outcome without repeating its effect.
 ///
 /// Reads refer to the same work and returned Resource ownership. Publication

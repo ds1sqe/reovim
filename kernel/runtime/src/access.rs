@@ -296,7 +296,7 @@ impl Caller {
             .filter(|rights| rights.allows(method))
             .ok_or(Error::DENIED)?;
         if let Kind::Work { request, .. } = target {
-            return self.recovery(&mut shared, request, method, input);
+            return self.recovery(&mut shared, request, method, rights, input);
         }
         if shared.closing
             && !(matches!(target, Kind::Module(_))
@@ -431,6 +431,7 @@ impl Caller {
         shared: &mut Shared,
         id: u64,
         method: Method,
+        rights: Permissions,
         input: &Message,
     ) -> Result<Reply, Error> {
         if !input.data.is_empty() || !input.resources.is_empty() {
@@ -480,6 +481,9 @@ impl Caller {
             }
             (Method::Write, "kernel.request.reconcile", 1) => {
                 return self.reconcile_save(shared, record);
+            }
+            (Method::Write, "kernel.request.adopt", 1) => {
+                crate::saving::adopt(shared, &record, &self.scope, rights)?
             }
             (Method::Read, "kernel.request.status", 1) => {
                 Message::new(input.contract.clone(), status)

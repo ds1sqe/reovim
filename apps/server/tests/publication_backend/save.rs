@@ -1,7 +1,7 @@
 use super::*;
 use reovim_kernel_interface::publication;
 
-fn edit(f: &mut Fixture, active: bool) {
+pub fn edit(f: &mut Fixture, active: bool) {
     let mut input = Message::reference(
         Contract::new("logical.set", 1),
         f.buffer.state.buffer,
@@ -21,7 +21,11 @@ fn retire(f: &mut Fixture, work: ResourceId) {
     close_work(&mut f.runtime, &f.client, work);
 }
 
-fn close_work(runtime: &mut Runtime, client: &Connection, work: ResourceId) {
+pub fn close_work(
+    runtime: &mut Runtime,
+    client: &Connection,
+    work: ResourceId,
+) {
     for _ in 0..128 {
         match client.close(work).into_inner() {
             Ok(()) => return,

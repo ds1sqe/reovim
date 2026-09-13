@@ -27,6 +27,7 @@ pub struct Save {
     node: usize,
     parameters: Box<[u8]>,
     context: Option<(Rc<RefCell<Scope>>, Connection)>,
+    pub custodian: Option<Rc<RefCell<Scope>>>,
     receipt: Option<backend::Receipt>,
     evidence: Option<(u64, Kind)>,
     publisher: Option<u64>,
@@ -94,6 +95,7 @@ pub fn capture(
         node: value.state.node(),
         parameters: input.data[8..].into(),
         context: None,
+        custodian: None,
         receipt: None,
         evidence: None,
         publisher: None,
@@ -201,6 +203,32 @@ pub fn resume(
             dispatch::run(&shared, &save, true).await
         }
     }))
+}
+
+pub fn adopt(
+    shared: &Shared,
+    record: &RefCell<crate::request::Record>,
+    scope: &Rc<RefCell<Scope>>,
+    rights: Permissions,
+) -> Result<Message, Error> {
+    if shared.closing {
+        return Err(Error::CLOSED);
+    }
+    if !rights.contains(Permissions::ALL) {
+        return Err(Error::DENIED);
+    }
+    let record = record.borrow();
+    let save = record.save.as_ref().ok_or(Error::UNSUPPORTED)?;
+    if record.work.is_some() || record.readers != 0 {
+        return Err(Error::BUSY);
+    }
+    let mut save = save.borrow_mut();
+    let (context, _) = save.context.as_ref().ok_or(Error::UNAVAILABLE)?;
+    let reply =
+        Message::new(Contract::new("kernel.request.adopt", 1), b"adopted");
+    context.borrow_mut().owner = scope.borrow().owner;
+    save.custodian = Some(scope.clone());
+    Ok(reply)
 }
 
 fn reserve_reply(save: &mut Save) -> Result<(), Error> {
