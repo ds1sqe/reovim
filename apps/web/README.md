@@ -20,14 +20,21 @@ existing policy. A lost close reply is recovered without another context update.
 A rejected close leaves the Buffer owned, ends that close decision, and does
 not roll back the accepted context removal. Observe and make a new decision;
 unseen concurrent edits are never silently discarded by refreshing the revision.
-Opening sources and following another participant's context still use their
-existing separate operations; this is not a complete Session workspace.
+With a live context, creating, opening or joining adopts Buffer ownership first,
+then updates membership/focus, then acquires Text. The opening intent survives
+reload and recovery never repeats preparation. A rejected context update leaves
+the adopted Buffer owned without a new view; refresh/reselect explicitly.
+Following another participant's context still needs view-selection policy;
+this is not a complete Session workspace.
 Run `node apps/web/switching-e2e.mjs BROWSER_URL` on the private source/Text
 fixture, or add `files` with `one.md` containing `first\n` and `two.md` containing
 `second\n` plus file/open providers. The journey checks dirty state, independent
 History, lost cleanup/reload, failed opening and eventual client cleanup.
 `context-switching-e2e.mjs BROWSER_URL` additionally requires the per-client
 context provider and checks focus/view/cleanup loss, reload and stale focus.
+`context-opening-e2e.mjs BROWSER_URL create|file|join` checks all three opening
+stages through loss/reload and stale focus. File mode needs `draft.md` containing
+`opened\n`; join mode needs a shared Buffer containing `shared`.
 
 The editing trial's **Open file** control calls the separately loaded
 [open command](../../modules/open/README.md). Composition supplies per-client

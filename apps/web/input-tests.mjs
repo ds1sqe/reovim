@@ -28,6 +28,8 @@ test('view transitions suspend typing and History across observation changes', a
   adapter.suspend(true);
   assert.equal(field.emit('beforeinput', { inputType: 'insertText' }), false);
   await assert.rejects(adapter.history('undo'), /view change/);
+  adapter.update(undefined);
+  assert.equal(field.value, '');
   adapter.update(window('second'));
   assert.equal(field.readOnly, true);
   assert.equal(field.value, 'second');

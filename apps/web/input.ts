@@ -44,7 +44,7 @@ export function input(element: HTMLTextAreaElement,
       if (basis) {
         projection = project(basis);
         if (element.value !== projection.value) element.value = projection.value;
-      }
+      } else element.value = '';
     }
     if (halted && draft) element.value = draft.value;
     element.readOnly = suspended || halted || !basis || historyPending;

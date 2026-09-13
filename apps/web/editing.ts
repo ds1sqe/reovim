@@ -240,31 +240,31 @@ export class Editing {
     return client;
   }
 
-  async create(bytes: Uint8Array): Promise<void> {
+  async create(bytes: Uint8Array, observe = true): Promise<void> {
     const client = await this.ready();
     if (this.journal.source) throw new Error('Keep the current source open or close it first');
     this.journal.openingName = `Untitled ${(this.journal.inactive?.length ?? 0) + 1}`;
     this.persist();
     await this.send(client, ['write', 'source', 'source.initial', '1', hex(bytes)]);
-    await this.observe();
+    if (observe) await this.observe();
   }
 
-  async join(): Promise<void> {
+  async join(observe = true): Promise<void> {
     const client = await this.ready();
     if (this.journal.source) throw new Error('Detach the existing source first');
     await this.send(client, ['read', 'buffer', 'kernel.buffer.describe', '1']);
-    await this.observe();
+    if (observe) await this.observe();
   }
 
   async openFile(name: string, command = 'open', directory = 'modules/files',
-    model = 'file_source'): Promise<void> {
+    model = 'file_source', observe = true): Promise<void> {
     if (!name) throw new Error('Choose a file first');
     const client = await this.ready();
     if (this.journal.source) throw new Error('Keep the current source open or close it first');
     this.journal.openingName = name; this.persist();
     await this.send(client, ['write', command, 'command.open', '1',
       hex(new TextEncoder().encode(name)), `${directory},${model}`]);
-    await this.observe();
+    if (observe) await this.observe();
   }
 
   async observe(start = 0n, count = 1024n): Promise<void> {
