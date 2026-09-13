@@ -42,6 +42,7 @@ impl Permissions {
 }
 
 /// Slots declare operation rights; publication determines access ownership.
+/// Empty slot permissions convey identity without granting operations.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Surface {
     pub contract: Contract,

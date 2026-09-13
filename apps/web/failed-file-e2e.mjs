@@ -22,6 +22,7 @@ assert.ok((await client.send(lookup)).startsWith('error\trejected\t2\t'));
 await client.release(lookup.id);
 await editing.openFile('draft.md');
 assert.ok(state.source && state.window);
+assert.ok(state.source.backing);
 await editing.close();
 const deadline = performance.now() + 5000;
 for (;;) {

@@ -56,6 +56,7 @@ await editing.recover();
 assert.equal(state.receipt, undefined); assert.equal(state.resuming, undefined);
 assert.equal(openings, 1); assert.equal(resumes, 2);
 assert.ok(state.source && !state.source.shared);
+assert.ok(state.source.backing);
 await editing.observe();
 const expected = [...'# nested\n'].map(scalar => ({ scalar }));
 assert.deepEqual(state.window.units, expected);

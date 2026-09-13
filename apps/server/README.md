@@ -96,8 +96,9 @@ that UTF-8 name with no references and withdraws the idle selection. It rejects
 captured or in-flight use; closing one Buffer does not close the shared source.
 The directory owns selections until explicit release or module unload, within
 Runtime resource limits. This read-only profile supplies exact original content
-as base evidence, not conditional save support. The existing `command.open`
-still uses anonymous snapshots pending its backed-response/recovery integration.
+as base evidence, not conditional save support. The loaded `command.open`
+composes selection and backed opening, releasing its capture without closing
+the shared source. Its Client journals the descriptor and retained recovery work.
 
 An installed user supplies only a compatible module package and configuration;
 adding it requires neither a Reovim checkout nor a server/CLI rebuild. The ABI is

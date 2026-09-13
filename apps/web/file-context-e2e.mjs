@@ -35,6 +35,8 @@ state = JSON.parse(JSON.stringify(state));
 editing = new Editing(state, () => {}, `${origin}/rpc`);
 await editing.recover();
 assert.equal(state.source.buffer, opened.resources[0]);
+assert.equal(state.source.backing, opened.resources[2]);
+assert.ok(state.source.backing);
 assert.equal(state.source.shared, undefined);
 assert.equal(openingRequests.size, 1, 'recovery cannot submit another opening');
 await editing.observe();

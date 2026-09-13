@@ -38,8 +38,8 @@ impl Fault {
             return false;
         }
         match input.contract.name.as_ref() {
-            "host.files.capture" => !self.state.capture.replace(true),
-            "source.open" => !self.state.initialize.replace(true),
+            "host.files.select" => !self.state.capture.replace(true),
+            "kernel.buffer.open" => !self.state.initialize.replace(true),
             _ => false,
         }
     }
@@ -56,13 +56,13 @@ impl Fault {
     ) -> Result<Message, RequestError> {
         let root = self.kernel.resolve("requests").into_inner()?;
         let before = self.kernel.children(root).into_inner()?;
-        if input.contract.name.as_ref() == "host.files.capture" {
+        if input.contract.name.as_ref() == "host.files.select" {
             self.state
                 .fail_initialization
                 .set(input.data.as_ref() == b"fail.md");
         }
         let mut input = input.clone();
-        if input.contract.name.as_ref() == "source.open"
+        if input.contract.name.as_ref() == "kernel.buffer.open"
             && self.state.fail_initialization.get()
         {
             input.data = Box::new([1]);

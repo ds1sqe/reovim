@@ -151,7 +151,7 @@ pub(super) unsafe fn slots(
 ) -> Result<Box<[Permissions]>, Error> {
     unsafe { elements(pointer, count)? }
         .iter()
-        .map(|value| permissions(*value))
+        .map(|value| Permissions::from_bits(*value).ok_or(Error::INVALID))
         .collect()
 }
 

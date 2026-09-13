@@ -82,7 +82,7 @@ class FileCapture(Scenario):
         self.close_access(held)
         self.unload(module)
 
-    def test_loaded_open_command_releases_capture_and_preserves_buffer(self):
+    def test_loaded_open_command_retains_backing_and_preserves_buffer(self):
         model = self.load(
             self.build_module("reovim-module-source", "source_open"),
             "native/source", imports="")
@@ -97,9 +97,11 @@ class FileCapture(Scenario):
                   success=False)
         opened = self.call("write", "native/open", "command.open", "1",
                            b"draft".hex(), "modules/files,native/source")
-        buffer, history = opened.resources
-        self.assertEqual(opened.data[16:], u64(len(self.original)))
-        self.unload("modules/host/files-0")
+        buffer, history, source = opened.resources
+        self.assertEqual(opened.data, u64(0))
+        metadata = self.call("read", buffer, "kernel.buffer.describe", "1")
+        self.assertEqual(metadata.resources, (buffer, history, source))
+        self.unload("modules/host/files-0", success=False)
         self.unload(command)
         held = self.call("read", buffer, "kernel.buffer.retain", "1",
                          u64(0).hex()).resources[1]
@@ -113,6 +115,7 @@ class FileCapture(Scenario):
         self.call("write", history, "kernel.history.undo", "1",
                   u64(1).hex(), buffer)
         self.call("write", buffer, "kernel.buffer.close", "1",
-                  (u64(2) + b"\x01").hex(), buffer)
+                  (u64(2) + b"\x00").hex(), buffer)
+        self.unload("modules/host/files-0")
         self.close_access(held)
         self.unload(model)

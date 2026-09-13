@@ -113,3 +113,35 @@ class FileSelection(Scenario):
         self.release(replaced)
         self.unload("modules/host/files-0")
         self.unload("modules/host/files-1")
+
+    def test_loaded_command_opens_independent_buffers_without_closing_backing(self):
+        model = self.load(
+            self.build_module("reovim-module-source", "source_open"),
+            "native/source", imports="")
+        command = self.load(
+            self.build_module("reovim-module-open", "open"),
+            "native/open", imports="")
+        first = self.call("write", "native/open", "command.open", "1",
+                          b"draft".hex(), "modules/files,native/source")
+        old = self.retain(first.resources[0])
+        self.path.write_bytes(b"after!\xfe\r\n")
+        second = self.call("write", "native/open", "command.open", "1",
+                           b"draft".hex(), "modules/files,native/source")
+        current = self.retain(second.resources[0])
+        self.assertEqual(first.data, u64(0))
+        self.assertEqual(second.data, u64(0))
+        self.assertNotEqual(first.resources[0], second.resources[0])
+        self.assertNotEqual(first.resources[1], second.resources[1])
+        self.assertEqual(first.resources[2], second.resources[2])
+        self.unload(command)
+        self.close_buffer(first.resources[0])
+        self.unload("modules/host/files-0", success=False)
+        self.assertEqual(self.read(old), b"before\xff\r\n")
+        self.assertEqual(self.read(current), b"after!\xfe\r\n")
+        self.close_buffer(second.resources[0])
+        self.unload("modules/host/files-0")
+        self.assertEqual(self.read(old), b"before\xff\r\n")
+        self.assertEqual(self.read(current), b"after!\xfe\r\n")
+        self.close(old)
+        self.close(current)
+        self.unload(model)

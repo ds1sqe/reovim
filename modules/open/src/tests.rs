@@ -133,34 +133,33 @@ fn finish<T>(runtime: &mut Runtime, future: impl Future<Output = T>) -> T {
 }
 
 #[test]
-fn failed_close_retains_cleanup_until_retry_succeeds() {
-    let ready = Rc::new(Cell::new(false));
+fn cleanup_releases_its_capture_without_closing_the_shared_source() {
     let closed = Rc::new(Cell::new(false));
-    let can_close = ready.clone();
     let did_close = closed.clone();
-    let provider = reader().try_owned(move || {
-        if !can_close.get() {
-            return Err(Error::BUSY);
-        }
+    let provider = reader().owned(move || {
         did_close.set(true);
-        Ok(())
     });
     let (mut runtime, kernel, snapshot) = setup(provider);
     let command = Command::new(kernel);
     let active = command.reserve().unwrap();
-    active.0.snapshot.set(Some(snapshot));
+    *active.0.source.borrow_mut() =
+        Some(command.kernel.capture(snapshot, Permissions::READ).unwrap());
     drop(active);
-    assert_eq!(command.unload(), Err(Error::BUSY));
-    assert!(!closed.get());
-    assert!(
-        command
-            .pending
-            .borrow()
-            .iter()
-            .any(|job| { job.snapshot.get() == Some(snapshot) })
-    );
-    ready.set(true);
     command.unload().unwrap();
+    assert!(!closed.get());
+    let reply = finish(
+        &mut runtime,
+        command.kernel.read(
+            snapshot,
+            &Message::new(
+                reovim_kernel_interface::Contract::new("bytes", 1),
+                &[],
+            ),
+        ),
+    )
+    .unwrap();
+    assert_eq!(reply.data.as_ref(), b"data");
+    command.kernel.close(snapshot).into_inner().unwrap();
     assert!(closed.get());
     command.unload().unwrap();
     stop(&mut runtime, &command.kernel);
@@ -202,8 +201,7 @@ fn stop(runtime: &mut Runtime, kernel: &Connection) {
 #[test]
 fn explicit_drain_leaves_exposed_recovery_for_the_original_caller() {
     let reads = Rc::new(Cell::new(0));
-    let (mut runtime, kernel, snapshot) =
-        setup(counted_reader(reads.clone()).owned(|| {}));
+    let (mut runtime, kernel, snapshot) = setup(counted_reader(reads.clone()));
     let wait = kernel.read(
         snapshot,
         &Message::new(reovim_kernel_interface::Contract::new("bytes", 1), &[]),
@@ -217,7 +215,8 @@ fn explicit_drain_leaves_exposed_recovery_for_the_original_caller() {
     let recovery = recovery.clone();
     let command = Command::new(fault::once(kernel));
     let active = command.reserve().unwrap();
-    active.0.snapshot.set(Some(snapshot));
+    *active.0.source.borrow_mut() =
+        Some(command.kernel.capture(snapshot, Permissions::READ).unwrap());
     assert!(matches!(
         finish(&mut runtime, command.settle(&active.0, lost)),
         Err(RequestError::Unknown { .. })

@@ -14,6 +14,13 @@ struct Fault {
 }
 
 impl Access for Fault {
+    fn capture(
+        &self,
+        id: ResourceId,
+        rights: Permissions,
+    ) -> Result<Connection, Error> {
+        self.kernel.capture(id, rights)
+    }
     fn root(&self) -> Result<ResourceId, Error> {
         self.kernel.root().into_inner().map_err(|error| code(&error))
     }

@@ -57,7 +57,14 @@ fn capture(reads: Rc<Cell<u32>>) -> ResourceProvider {
         }]),
         Rc::new(()),
     )
-    .owned(|| {})
+    .with_read_view(|| Ok(base()))
+}
+
+fn base() -> ResourceProvider {
+    let mut provider = reader();
+    provider.surfaces[0].contract =
+        reovim_kernel_interface::Contract::new("resource.base", 1);
+    provider.with_read_view(|| Ok(base()))
 }
 
 fn run(after_capture: bool) {
@@ -67,13 +74,7 @@ fn run(after_capture: bool) {
     model(&mut runtime, calls.clone());
     let target = kernel.resolve("model").into_inner().unwrap();
     let waiting = if after_capture {
-        kernel.write(
-            target,
-            &Message::reference(
-                reovim_kernel_interface::Contract::new("source.open", 1),
-                snapshot,
-            ),
-        )
+        buffer::open(&kernel, target, snapshot, &[])
     } else {
         kernel.read(
             snapshot,
@@ -95,7 +96,8 @@ fn run(after_capture: bool) {
     let active = command.reserve().unwrap();
     *active.0.model.borrow_mut() = Some((command.kernel.clone(), target));
     if after_capture {
-        active.0.snapshot.set(Some(snapshot));
+        *active.0.source.borrow_mut() =
+            Some(command.kernel.capture(snapshot, Permissions::READ).unwrap());
     }
     assert!(matches!(
         finish(&mut runtime, command.settle(&active.0, lost)),
@@ -108,11 +110,13 @@ fn run(after_capture: bool) {
         reovim_kernel_interface::Contract::new("command.open.resume", 1),
         work,
     );
-    let resumed =
+    let mut resumed =
         finish(&mut runtime, command.resume(ResourceId(0), input.clone()))
             .unwrap();
-    let opened = buffer::observation(resumed).unwrap();
-    assert_eq!(opened.value.data.as_ref(), &9_u64.to_le_bytes());
+    resumed.contract =
+        reovim_kernel_interface::Contract::new("kernel.buffer.open", 1);
+    let opened = buffer::descriptor(&resumed).unwrap();
+    assert_eq!(opened.backing, Some(snapshot));
     assert_eq!(calls.get(), 1, "resume must not create another Buffer");
     assert_eq!(reads.get(), u32::from(!after_capture));
     assert!(

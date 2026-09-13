@@ -5,7 +5,7 @@ import { result as retainedResult } from '../../sdk/typescript/requests.js';
 import * as text from '../../modules/text/api/typescript.js';
 
 interface Source { buffer: ResourceId; history: ResourceId; revision: string;
-  shared?: boolean }
+  shared?: boolean; backing?: ResourceId }
 interface AcceptedInput { client: string; id: string; revision: string; buffer: ResourceId }
 export interface Journal {
   token?: string; opening?: Opening; receipt?: Receipt;
@@ -150,15 +150,18 @@ export class Editing {
       delete state.openingCleanup; return;
     }
     if (['source.initial', 'text.replace', 'command.open', 'command.open.resume'].includes(fields[2]!)) {
+      const backed = fields[2] === 'command.open' || fields[2] === 'command.open.resume';
       const contract = fields[2] === 'source.initial' ? 'source.bytes' : fields[2];
       if (value.contract !== contract || value.schema !== 1
-          || value.resources.length !== 2 || value.data.length !== 24) {
+          || value.resources.length !== (backed ? 3 : 2)
+          || value.data.length !== (backed ? 8 : 24)) {
         throw new Error('invalid source acceptance');
       }
       if (state.source && state.source.buffer !== value.resources[0]) {
         throw new Error('foreign source acceptance');
       }
       state.source = { shared: state.source?.shared,
+        backing: backed ? value.resources[2] : state.source?.backing,
         buffer: value.resources[0]!, history: value.resources[1]!,
         revision: new DataView(value.data.buffer).getBigUint64(0, true).toString() };
       if (fields[2] === 'command.open.resume') {
@@ -177,6 +180,7 @@ export class Editing {
           || value.data.length !== 8 || value.resources.length < 2
           || value.resources.length > 3) throw new Error('invalid Buffer descriptor');
       state.source = { shared: true, buffer: value.resources[0]!, history: value.resources[1]!,
+        backing: value.resources[2],
         revision: new DataView(value.data.buffer).getBigUint64(0, true).toString() };
     } else if (fields[2] === 'kernel.history.undo' || fields[2] === 'kernel.history.redo') {
       if (value.contract !== fields[2] || value.schema !== 1

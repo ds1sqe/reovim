@@ -1,7 +1,7 @@
 #![no_std]
 #![forbid(unsafe_code)]
 #![allow(clippy::future_not_send)]
-//! Per-client file opening through granted capture and Source Resources.
+//! Per-client backed opening through granted file and Model Resources.
 
 extern crate alloc;
 
@@ -18,16 +18,16 @@ use reovim_module::{
 
 const OPEN: Contract = Contract::new("command.open", 1)
     .input(&[Permissions::WRITE, Permissions::WRITE])
-    .output(&[Permissions::ALL, Permissions::ALL]);
+    .output(&[Permissions::ALL, Permissions::ALL, Permissions::empty()]);
 const DRAIN: Contract = Contract::new("command.open.cleanup", 1);
 const RESUME: Contract = Contract::new("command.open.resume", 1)
     .input(&[Permissions::READ])
-    .output(&[Permissions::ALL, Permissions::ALL]);
+    .output(&[Permissions::ALL, Permissions::ALL, Permissions::empty()]);
 const INFO: Contract = Contract::new("resource.bytes", 1);
 
 struct Pending {
     model: RefCell<Option<(Connection, ResourceId)>>,
-    snapshot: Cell<Option<ResourceId>>,
+    source: RefCell<Option<Connection>>,
     recovery: RefCell<Option<Box<str>>>,
     work: RefCell<Vec<ResourceId>>,
     running: Cell<bool>,
@@ -59,7 +59,7 @@ impl Command {
         work.try_reserve_exact(recovery::LIMIT).map_err(|_| Error::PRESSURE)?;
         let job = Rc::new(Pending {
             model: RefCell::new(None),
-            snapshot: Cell::new(None),
+            source: RefCell::new(None),
             recovery: RefCell::new(None),
             work: RefCell::new(work),
             running: Cell::new(true),
@@ -81,8 +81,7 @@ impl Command {
         let active = self.reserve()?;
         let result = self.execute(&active.0, &input).await;
         drop(active);
-        // Cleanup retains any rejected close for retry and module unload.
-        // A created Buffer remains the successful result even if close fails.
+        // Retained work cleanup can fail after a Buffer is successfully opened.
         let _ = self.cleanup();
         result
     }
@@ -95,36 +94,31 @@ impl Command {
         let model = input.resources[1];
         *pending.model.borrow_mut() =
             Some((self.kernel.capture(model, Permissions::WRITE)?, model));
-        let capture = self.kernel.write(
+        let selection = self.kernel.write(
             input.resources[0],
             &Message::new(
-                reovim_kernel_interface::Contract::new("host.files.capture", 1),
+                reovim_kernel_interface::Contract::new("host.files.select", 1),
                 &input.data,
             ),
         );
-        let captured = self.settle(pending, capture.await).await?;
-        self.open_captured(pending, captured, &input.contract).await
+        let selected = self.settle(pending, selection.await).await?;
+        self.open_selected(pending, selected, &input.contract).await
     }
 
-    async fn open_captured(
+    async fn open_selected(
         &self,
         pending: &Pending,
-        captured: Message,
+        selected: Message,
         contract: &reovim_kernel_interface::Contract,
     ) -> Result<Message, RequestError> {
-        let [snapshot] = captured.resources.as_ref() else {
+        let [source] = selected.resources.as_ref() else {
             return Err(Error::PROVIDER.into());
         };
-        pending.snapshot.set(Some(*snapshot));
+        *pending.source.borrow_mut() =
+            Some(self.kernel.capture(*source, Permissions::READ)?);
         let (kernel, model) =
             pending.model.borrow().clone().ok_or(Error::PROVIDER)?;
-        let opened = kernel.write(
-            model,
-            &Message::reference(
-                reovim_kernel_interface::Contract::new("source.open", 1),
-                *snapshot,
-            ),
-        );
+        let opened = buffer::open(&kernel, model, *source, &[]);
         let reply = self.settle(pending, opened.await).await?;
         Self::accepted(reply, contract)
     }
@@ -133,13 +127,7 @@ impl Command {
         mut reply: Message,
         contract: &reovim_kernel_interface::Contract,
     ) -> Result<Message, RequestError> {
-        let observed = buffer::observation(reply.clone())?;
-        if observed.value.contract
-            != reovim_kernel_interface::Contract::new("source.bytes", 1)
-            || observed.value.data.len() != 8
-        {
-            return Err(Error::PROVIDER.into());
-        }
+        buffer::descriptor(&reply).map_err(|_| Error::PROVIDER)?;
         reply.contract = contract.clone();
         Ok(reply)
     }
@@ -194,10 +182,10 @@ impl Command {
             recovery: path,
         });
         let result = self.settle(job, unknown).await?;
-        if job.snapshot.get().is_some() {
+        if job.source.borrow().is_some() {
             Self::accepted(result, contract)
         } else {
-            self.open_captured(job, result, contract).await
+            self.open_selected(job, result, contract).await
         }
     }
 
@@ -216,7 +204,6 @@ impl Command {
         }
         self.pending.borrow_mut().retain(|job| {
             job.running.get()
-                || job.snapshot.get().is_some()
                 || !job.work.borrow().is_empty()
                 || job.recovery.borrow().is_some()
         });
@@ -227,15 +214,10 @@ impl Command {
         if job.running.get() || job.recovery.borrow().is_some() {
             return Ok(());
         }
-        self.close(&job.snapshot)?;
+        // The directory owns the shared subject. Dropping this capture must
+        // never fence the source retained by this or another Buffer.
+        job.source.borrow_mut().take();
         recovery::release(&self.kernel, job)
-    }
-
-    fn close(&self, slot: &Cell<Option<ResourceId>>) -> Result<(), Error> {
-        let Some(id) = slot.get() else { return Ok(()) };
-        self.kernel.close(id).into_inner().map_err(|error| code(&error))?;
-        slot.set(None);
-        Ok(())
     }
 
     fn unload(&self) -> Result<(), Error> {
@@ -274,24 +256,9 @@ impl Command {
         if let Err(error @ RequestError::Unknown { .. }) = result {
             return Err(error);
         }
-        if job.snapshot.get().is_none() {
-            Self::recovered_capture(job, &result)?;
-        }
         // The original caller still owns this exposed recovery result. Drain
-        // settles capture cleanup without closing that caller's work access.
+        // settles cleanup without closing that caller's work or shared source.
         job.recovery.borrow_mut().take();
-        Ok(())
-    }
-
-    fn recovered_capture(
-        job: &Pending,
-        result: &Result<Message, RequestError>,
-    ) -> Result<(), Error> {
-        let Ok(reply) = result else { return Ok(()) };
-        let [snapshot] = reply.resources.as_ref() else {
-            return Err(Error::PROVIDER);
-        };
-        job.snapshot.set(Some(*snapshot));
         Ok(())
     }
 

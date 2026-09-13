@@ -4,8 +4,9 @@ The editing trial's **Open file** control calls the separately loaded
 [open command](../../modules/open/README.md). Composition supplies per-client
 `open` and `file_source` (the Source opening Model), plus a granted directory
 at `modules/files`. It also needs the existing per-client Text provider.
-The filename is relative to that explicit Host grant. This does not associate
-the working Buffer with a save destination.
+The filename is relative to that explicit Host grant. Opening returns a backed
+Buffer descriptor; its source identity grants no incidental source operations.
+The current backing is read-only. Conditional saving remains unimplemented.
 
 Opening persists its receipt and adopts the owned Buffer before Text observation
 or context attachment. Recover a lost response before another opening; changing
@@ -26,6 +27,8 @@ new opening is allowed. Unknown or unavailable evidence remains owned.
 artifact to test both stopped stages and interrupted lookup/receipt retirement.
 `failed-file-e2e.mjs BROWSER_URL` selects its `fail.md` initialization fault and
 checks failure cleanup followed by a successful new opening.
+`backed-file-e2e.mjs BROWSER_URL` uses a `draft.md` containing `# peers\n` to
+check two Clients' shared backing, independent state/History and close ownership.
 
 The editing trial can dynamically load the first-party uppercase contribution,
 run it on the textarea's highlighted selection, and unload it. It uses only the

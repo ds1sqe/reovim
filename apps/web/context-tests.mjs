@@ -47,7 +47,7 @@ test('nested opening recovery retains its work across original receipt retiremen
     }
     if (request[2] === 'command.open') return `error\tunknown\t5\t\t${locator}`;
     assert.deepEqual(request, ['write', 'open', 'command.open.resume', '1', '', '@33']);
-    return `ok\tcommand.open.resume\t1\t${hex(u64(0n))}${hex(u64(0n))}${hex(u64(9n))}\t@7,@8`;
+    return `ok\tcommand.open.resume\t1\t${hex(u64(0n))}\t@7,@8,@40`;
   });
   let editing = new Editing(state, () => {});
   await assert.rejects(editing.openFile('draft.md'), /Unknown outcome/);
@@ -69,7 +69,7 @@ test('nested opening recovery retains its work across original receipt retiremen
 
 test('lost file opening adopts the original Buffer after journal reload', async t => {
   let state = { token: 'client', retiring: [] }, calls = 0, lost = true;
-  const opened = `ok\tcommand.open\t1\t${hex(u64(0n))}${hex(u64(0n))}${hex(u64(9n))}\t@7,@8`;
+  const opened = `ok\tcommand.open\t1\t${hex(u64(0n))}\t@7,@8,@40`;
   t.mock.method(Client.prototype, 'wire', async fields => {
     if (fields[1] === 'reserve') return 'ok\t1';
     if (fields[1] === 'release') return 'ok';
@@ -90,10 +90,28 @@ test('lost file opening adopts the original Buffer after journal reload', async 
   await assert.rejects(editing.openFile('different.md'), /Recover/);
   assert.equal(calls, 1);
   await editing.recover();
-  assert.deepEqual(state.source, { buffer: '@7', history: '@8', revision: '0', shared: undefined });
+  assert.deepEqual(state.source, { buffer: '@7', history: '@8', revision: '0',
+    shared: undefined, backing: '@40' });
   assert.equal(state.receipt, undefined);
   assert.equal(calls, 2, 'same receipt retrieves the server-retained result');
   await assert.rejects(editing.openFile('different.md'), /Close the existing/);
+});
+
+test('opening rejects legacy or incomplete descriptors without adopting a Buffer', async t => {
+  let response;
+  t.mock.method(Client.prototype, 'wire', async fields => {
+    if (fields[1] === 'reserve') return 'ok\t1';
+    assert.equal(fields[1], 'call'); return response;
+  });
+  for (const [data, refs] of [[hex(u64(0n)).repeat(3), '@7,@8'],
+    [hex(u64(0n)), '@7,@8'], [hex(u64(0n)), '@7,@8,@9,@10']]) {
+    const state = { token: 'client', retiring: [] };
+    response = `ok\tcommand.open\t1\t${data}\t${refs}`;
+    await assert.rejects(new Editing(state, () => {}).openFile('draft.md'),
+      /invalid source acceptance/);
+    assert.equal(state.source, undefined);
+    assert.equal(state.receipt.response, response);
+  }
 });
 
 test('checkpoint recovery keeps its separate owner and does not replace the selected view', async () => {
