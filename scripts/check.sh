@@ -39,7 +39,8 @@ runs uncached checks and cache fixtures; use it in CI and before checkpoints.
 
 The current workspace contains portable contracts and public consumers.
 Checks include x86_64-unknown-none library compilation, hosted tests, Clippy,
-and rustdoc. Both targets must already be installed. Warm runtime targets
+and rustdoc. Both targets must already be installed. --full also runs the
+editor through git in tmux (apps/reovim/smoke.sh). Warm runtime targets
 about one minute; this gate does not qualify a release or custom host.
 EOF
 }
@@ -115,6 +116,9 @@ run_full_checks() {
     echo "==> documentation"
     ./scripts/check-documentation.sh
     run_product_checks --workspace
+    echo "==> editor role in tmux"
+    ./apps/reovim/smoke.sh \
+        "$PRODUCT_TARGET_DIR/$PRODUCT_TARGET/release/reovim"
 }
 
 component_package() {

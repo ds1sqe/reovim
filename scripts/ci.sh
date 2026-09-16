@@ -29,9 +29,10 @@ scripts/check.sh --full. This uses the network and your Rustup home; Rustup
 itself is not updated. The manifest is never changed by running checks.
 --help and --matrix are read-only/network-free; --matrix requires Perl.
 
-Prerequisites: x86_64 Linux, Rustup, Git, Perl, ripgrep, and the Node/TypeScript
-versions declared in apps/web/package.json. Browser tools must be installed
-before this runner; it does not install them locally. The exact resolved
+Prerequisites: x86_64 Linux, Rustup, Git, Perl, ripgrep, tmux, and the
+Node/TypeScript versions declared in apps/web/package.json. Browser tools
+must be installed before this runner; it does not install them locally.
+The exact resolved
 compiler versions are printed. Local and GitHub runs share the testing window,
 prerequisites, fetch, and checks; they do not share an identical OS image.
 To change the window, edit ci.json and pass the full matrix before committing.
@@ -184,7 +185,7 @@ contains_line() {
 require_programs() {
     local program
 
-    for program in rustup git perl rg mktemp uname; do
+    for program in rustup git perl rg mktemp uname tmux; do
         command -v "$program" >/dev/null || \
             fail CI_TOOL_MISSING "required program: $program" 3
     done
