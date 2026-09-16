@@ -4,7 +4,6 @@
 
 use std::fmt::Write as _;
 use std::io::Write;
-use std::time::Duration;
 
 use reovim_client::{Client, Fault, Key};
 use reovim_client_tui::{Frame, Step, Tui};
@@ -28,21 +27,45 @@ pub fn remote(socket: &str, file: &str) -> Result<(), Fail> {
     run(client, file, &mut || Ok(()))
 }
 
-/// Bare `reovim`: the server on this thread, served between keys.
+/// Bare `reovim`: the server on this thread over `/`, listening only
+/// at a `socket` given, served between keys.
 pub fn bare(
-    socket: &str,
-    root: &str,
+    socket: Option<&str>,
     log: Option<&str>,
     file: &str,
 ) -> Result<(), Fail> {
-    let (kernel, _modules) = boot(root)?;
-    let mut links = Links::listen(socket)?;
+    let (kernel, _modules) = boot("/")?;
+    let mut links = socket.map(Links::listen).transpose()?;
     let mut sink = log.map(|path| Sink::open(&kernel, path)).transpose()?;
+    let file = absolute(&reovim_host::dirs::work()?, file);
     let client = Local::client(&kernel)?;
-    run(client, file, &mut || {
-        while links.step(&kernel, Some(Duration::ZERO)) {}
+    run(client, &file, &mut || {
+        if let Some(links) = &mut links {
+            links.drain(&kernel);
+        }
         sink.as_mut().map_or(Ok(()), Sink::step)
     })
+}
+
+/// `path` under `work` unless it is absolute, `.` and `..` resolved
+/// lexically, without the leading slash: its name under the fs root.
+fn absolute(work: &str, path: &str) -> String {
+    let joined = if path.starts_with('/') {
+        path.to_string()
+    } else {
+        format!("{work}/{path}")
+    };
+    let mut parts: Vec<&str> = Vec::new();
+    for part in joined.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            part => parts.push(part),
+        }
+    }
+    parts.join("/")
 }
 
 /// The loop under raw mode on the alternate screen; both undone on
@@ -115,5 +138,19 @@ const fn map(key: term::Key) -> Key {
         term::Key::End => Key::End,
         term::Key::Ctrl(c) => Key::Ctrl(c),
         term::Key::Esc => Key::Esc,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::absolute;
+
+    #[test]
+    fn absolute_names_the_file_under_the_root() {
+        assert_eq!(absolute("/home/me", "note"), "home/me/note");
+        assert_eq!(absolute("/home/me", "./a/../b/"), "home/me/b");
+        assert_eq!(absolute("/home/me", "/tmp/x"), "tmp/x");
+        assert_eq!(absolute("/", "../../etc/hosts"), "etc/hosts");
+        assert_eq!(absolute("/home/me", "/"), "");
     }
 }

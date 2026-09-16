@@ -87,6 +87,11 @@ impl Links {
         let _ = item.answer.send(end.handle(kernel, &bytes, &mut self.files));
         true
     }
+
+    /// Serve every message already waiting, then return.
+    pub fn drain(&mut self, kernel: &Kernel) {
+        while self.step(kernel, Some(Duration::ZERO)) {}
+    }
 }
 
 impl Links {

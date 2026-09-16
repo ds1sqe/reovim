@@ -61,14 +61,14 @@ const USAGE: &str = "\
 usage: reovim server [--socket PATH] [--root DIR] [--log PATH]
        reovim cli [--socket PATH] [COMMAND...]
        reovim tui [--socket PATH] FILE
-       reovim [--socket PATH] [--root DIR] [--log PATH] FILE
-defaults: --socket <runtime dir>/reovim.sock, --root <working directory>";
+       reovim [--socket PATH] [--log PATH] FILE
+defaults: --socket <runtime dir>/reovim.sock, --root <working directory>;
+the bare form edits any FILE and listens only when given --socket";
 
-/// `--socket`, `--root` and `--log` taken off the front of `args`,
-/// defaults from the host filled in.
+/// `--socket`, `--root` and `--log` taken off the front of `args`.
 struct Options {
-    socket: String,
-    root: String,
+    socket: Option<String>,
+    root: Option<String>,
     log: Option<String>,
     rest: Vec<String>,
 }
@@ -91,15 +91,15 @@ fn options(args: Vec<String>) -> Result<Options, Fail> {
             }
         }
     }
-    let socket = match socket {
-        Some(socket) => socket,
-        None => format!("{}/reovim.sock", reovim_host::dirs::runtime()?),
-    };
-    let root = match root {
-        Some(root) => root,
-        None => reovim_host::dirs::work()?,
-    };
     Ok(Options { socket, root, log, rest })
+}
+
+/// `--socket`, or the one in the runtime directory.
+fn socket(given: Option<String>) -> Result<String, Fail> {
+    match given {
+        Some(socket) => Ok(socket),
+        None => Ok(format!("{}/reovim.sock", reovim_host::dirs::runtime()?)),
+    }
 }
 
 fn usage() -> Fail {
@@ -112,12 +112,20 @@ fn run(args: Vec<String>) -> Result<(), Fail> {
         Some("server" | "cli" | "tui") => args.next(),
         _ => None,
     };
-    let Options { socket, root, log, rest } = options(args.collect())?;
+    let Options { socket: given, root, log, rest } = options(args.collect())?;
     match (command.as_deref(), rest.as_slice()) {
-        (Some("server"), []) => server::run(&socket, &root, log.as_deref()),
-        (Some("cli"), rest) => cli::run(&socket, rest),
-        (Some("tui"), [file]) => tui::remote(&socket, file),
-        (None, [file]) => tui::bare(&socket, &root, log.as_deref(), file),
+        (Some("server"), []) => {
+            let root = match root {
+                Some(root) => root,
+                None => reovim_host::dirs::work()?,
+            };
+            server::run(&socket(given)?, &root, log.as_deref())
+        }
+        (Some("cli"), rest) => cli::run(&socket(given)?, rest),
+        (Some("tui"), [file]) => tui::remote(&socket(given)?, file),
+        (None, [file]) if root.is_none() => {
+            tui::bare(given.as_deref(), log.as_deref(), file)
+        }
         _ => Err(usage()),
     }
 }

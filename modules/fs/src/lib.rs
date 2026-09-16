@@ -56,6 +56,11 @@ pub struct Fs {
     nodes: RefCell<BTreeMap<Rd, Node>>,
 }
 
+/// `name` below `dir`, with one slash between even for a root of `/`.
+fn join(dir: &str, name: &str) -> String {
+    format!("{}/{name}", dir.trim_end_matches('/'))
+}
+
 /// One path segment the mirror accepts.
 fn valid(name: &str) -> bool {
     !name.is_empty()
@@ -152,7 +157,7 @@ impl Fs {
         if !valid(name) {
             return Err(Error::Invalid);
         }
-        let path = format!("{path}/{name}");
+        let path = join(&path, name);
         let dir = match fs::stat(&path) {
             Ok(stat) => stat.kind == reovim_host::Kind::Dir,
             // Not on disk: an empty file until it is written.
@@ -166,7 +171,7 @@ impl Fs {
         let entries = fs::list(path).map_err(map)?;
         for entry in entries.iter().filter(|e| valid(&e.name)) {
             let dir = entry.kind == reovim_host::Kind::Dir;
-            let child = format!("{path}/{}", entry.name);
+            let child = join(path, &entry.name);
             self.add(ctx, rd, &entry.name, child, dir)?;
         }
         Ok(rd)
@@ -221,7 +226,7 @@ impl Fs {
         if !valid(name) {
             return Err(Error::Invalid);
         }
-        let path = format!("{path}/{name}");
+        let path = join(&path, name);
         fs::create(&path).map_err(map)?;
         self.add(ctx, rd, name, path, false)
     }
