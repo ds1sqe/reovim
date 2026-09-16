@@ -185,8 +185,12 @@ pub mod link {
     }
 }
 
-/// The terminal: raw mode, keys and size. Drawing is the caller's, as
-/// bytes on stdout.
+/// The terminal: raw mode on the alternate screen, keys and size.
+///
+/// Drawing is the caller's, as bytes on stdout. Whatever way the
+/// process leaves, the terminal is as it was found: [`term::leave`] runs
+/// from a panic hook, and SIGTERM or SIGHUP end the key wait so the
+/// caller's loop can leave.
 pub mod term {
     use super::{Error, backend};
 
@@ -214,8 +218,9 @@ pub mod term {
         backend::is_tty()
     }
 
-    /// Raw mode: keys arrive one by one, nothing is echoed, and output
-    /// lines need `\r\n`.
+    /// Raw mode on the alternate screen: keys arrive one by one,
+    /// nothing is echoed, and output lines need `\r\n`. The first call
+    /// installs the panic hook and the signal handlers.
     ///
     /// # Errors
     /// `Io` from the host; `Unsupported` without a backend.
@@ -223,7 +228,8 @@ pub mod term {
         backend::enter()
     }
 
-    /// Back to the mode before [`enter`]; twice is fine.
+    /// The terminal as it was before [`enter`], the cursor shown;
+    /// twice is fine.
     ///
     /// # Errors
     /// As [`enter`].
@@ -231,8 +237,15 @@ pub mod term {
         backend::leave()
     }
 
+    /// Whether SIGTERM or SIGHUP arrived; [`poll`] answers `None` at
+    /// once from then on.
+    #[must_use]
+    pub fn stopped() -> bool {
+        backend::stopped()
+    }
+
     /// The next key within `ms` milliseconds, or `None`. An event that
-    /// is not a key ends the wait early with `None`.
+    /// is not a key, or a signal, ends the wait early with `None`.
     ///
     /// # Errors
     /// As [`enter`].

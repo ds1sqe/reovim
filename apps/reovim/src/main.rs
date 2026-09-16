@@ -27,6 +27,8 @@ pub enum Fail {
     Usage(String),
     Host(reovim_host::Error),
     Client(Fault),
+    /// SIGTERM or SIGHUP: the terminal restored, nothing written.
+    Signal,
 }
 
 impl fmt::Display for Fail {
@@ -35,6 +37,7 @@ impl fmt::Display for Fail {
             Self::Usage(text) => write!(f, "{text}"),
             Self::Host(error) => write!(f, "host: {error:?}"),
             Self::Client(fault) => write!(f, "{fault}"),
+            Self::Signal => write!(f, "ended by a signal"),
         }
     }
 }

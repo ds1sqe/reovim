@@ -68,15 +68,12 @@ fn absolute(work: &str, path: &str) -> String {
     parts.join("/")
 }
 
-/// The loop under raw mode on the alternate screen; both undone on
-/// every exit, a fault printed after.
+/// The loop in the host's terminal mode, left on every exit, a fault
+/// printed after.
 fn run(client: Client, file: &str, serve: Serve) -> Result<(), Fail> {
     let mut tui = Tui::open(client, file)?;
     term::enter()?;
-    let result = out(b"\x1b[?1049h\x1b[?25l")
-        .map_err(Fail::from)
-        .and_then(|()| drive(&mut tui, serve));
-    let _ = out(b"\x1b[?25h\x1b[?1049l");
+    let result = drive(&mut tui, serve);
     let _ = term::leave();
     result
 }
@@ -87,6 +84,7 @@ fn drive(tui: &mut Tui, serve: Serve) -> Result<(), Fail> {
         serve()?;
         let step = match term::poll(20)? {
             Some(key) => tui.key(map(key))?,
+            None if term::stopped() => return Err(Fail::Signal),
             None => tui.tick()?,
         };
         match step {
@@ -97,7 +95,8 @@ fn drive(tui: &mut Tui, serve: Serve) -> Result<(), Fail> {
     }
 }
 
-/// The whole frame: text rows, the status row inverted, the cursor.
+/// The whole frame: text rows, the status row inverted, the cursor
+/// hidden while it is drawn and placed after.
 fn draw(tui: &mut Tui) -> Result<(), Fail> {
     let (cols, rows) = term::size()?;
     let Frame { lines, cursor, status } = tui.frame(cols, rows);
@@ -105,7 +104,7 @@ fn draw(tui: &mut Tui) -> Result<(), Fail> {
     let blank = String::new();
     let rest =
         std::iter::repeat_n(&blank, text_rows.saturating_sub(lines.len()));
-    let mut screen = String::from("\x1b[H");
+    let mut screen = String::from("\x1b[?25l\x1b[H");
     for line in lines.iter().chain(rest) {
         let _ = write!(screen, "\x1b[2K{line}\r\n");
     }

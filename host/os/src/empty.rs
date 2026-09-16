@@ -89,6 +89,10 @@ pub fn leave() -> Result<(), Error> {
     Err(Error::Unsupported)
 }
 
+pub const fn stopped() -> bool {
+    false
+}
+
 pub fn poll(_: u64) -> Result<Option<Key>, Error> {
     Err(Error::Unsupported)
 }

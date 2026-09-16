@@ -1,13 +1,16 @@
 //! The std backend: `std::fs` and `SystemTime`, times in nanoseconds
 //! since the Unix epoch.
 
+use alloc::boxed::Box;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use core::sync::atomic::{AtomicBool, Ordering};
 use std::fs::{File, Metadata, OpenOptions};
 use std::io::{self, ErrorKind, IsTerminal, Read, Seek, SeekFrom, Write};
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
+use std::sync::Once;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crossterm::event::{
@@ -169,7 +172,7 @@ pub fn close(link: Link) {
     drop(link);
 }
 
-/// The dynamic loader. The only `unsafe` in the host: three libc calls.
+/// The dynamic loader: three libc calls.
 #[allow(unsafe_code)]
 mod dl {
     use alloc::ffi::CString;
@@ -243,19 +246,74 @@ pub fn is_tty() -> bool {
     std::io::stdin().is_terminal()
 }
 
+/// Set by SIGTERM or SIGHUP; `poll` ends and `stopped` says so.
+static STOP: AtomicBool = AtomicBool::new(false);
+static INSTALLED: Once = Once::new();
+
+/// Raw mode on the alternate screen. The first call installs the
+/// panic hook and the signal handlers.
 pub fn enter() -> Result<(), Error> {
     terminal::enable_raw_mode()?;
+    screen(b"\x1b[?1049h")?;
+    INSTALLED.call_once(|| {
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            let _ = leave();
+            previous(info);
+        }));
+        sig::install();
+    });
     Ok(())
 }
 
+/// The cursor shown, the main screen, cooked mode.
 pub fn leave() -> Result<(), Error> {
+    screen(b"\x1b[?25h\x1b[?1049l")?;
     terminal::disable_raw_mode()?;
     Ok(())
 }
 
-/// One event within `ms`; a key is decoded, anything else is `None`.
+fn screen(bytes: &[u8]) -> io::Result<()> {
+    let mut out = io::stdout();
+    out.write_all(bytes)?;
+    out.flush()
+}
+
+pub fn stopped() -> bool {
+    STOP.load(Ordering::Relaxed)
+}
+
+/// SIGTERM and SIGHUP store one bool; the loop leaves the normal way.
+#[allow(unsafe_code)]
+mod sig {
+    use core::ffi::c_int;
+    use core::sync::atomic::Ordering;
+
+    const SIGHUP: c_int = 1;
+    const SIGTERM: c_int = 15;
+
+    unsafe extern "C" {
+        fn signal(sig: c_int, handler: extern "C" fn(c_int)) -> usize;
+    }
+
+    extern "C" fn stop(_: c_int) {
+        super::STOP.store(true, Ordering::Relaxed);
+    }
+
+    pub fn install() {
+        // SAFETY: `stop` stores one bool and calls nothing, so it may
+        // run at any point; the old handlers are not needed back.
+        unsafe {
+            signal(SIGHUP, stop);
+            signal(SIGTERM, stop);
+        }
+    }
+}
+
+/// One event within `ms`; a key is decoded, anything else is `None`,
+/// and nothing is waited for after a signal.
 pub fn poll(ms: u64) -> Result<Option<Key>, Error> {
-    if !event::poll(Duration::from_millis(ms))? {
+    if stopped() || !event::poll(Duration::from_millis(ms))? {
         return Ok(None);
     }
     match event::read()? {
