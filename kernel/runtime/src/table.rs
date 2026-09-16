@@ -137,6 +137,11 @@ impl Table {
         self.rds.get_mut(&rd).ok_or(Error::Invalid)
     }
 
+    /// Every rd with its entry.
+    pub fn all(&self) -> impl Iterator<Item = (Rd, &Entry)> {
+        self.rds.iter().map(|(rd, entry)| (*rd, entry))
+    }
+
     pub fn exists(&self, rd: Rd) -> bool {
         self.rds.contains_key(&rd)
     }

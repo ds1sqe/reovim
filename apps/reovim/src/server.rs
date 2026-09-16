@@ -30,7 +30,7 @@ pub fn boot(root: &str) -> Result<(Rc<Kernel>, Vec<Booted>), Fail> {
     let mut booted = Vec::new();
     for (name, boot) in MODULES {
         let module = boot(root);
-        kernel.load(name, module.module.as_ref(), module.drivers.clone())?;
+        kernel.load(name, module.module.clone(), module.drivers.clone())?;
         booted.push(module);
     }
     Ok((Rc::new(kernel), booted))

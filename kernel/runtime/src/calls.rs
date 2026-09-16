@@ -70,14 +70,8 @@ impl Calls for ModuleCalls<'_> {
 
     fn unregister(&self, rd: Rd) -> Result<(), Error> {
         let mut s = self.kernel.state.borrow_mut();
-        let parent = owned(&s, rd, self.module)?.parent;
-        for gone in s.table.subtree(rd) {
-            s.emit(gone, Kind::Gone, None);
-            s.table.remove(gone);
-        }
-        if let Some(parent) = parent {
-            s.emit(parent, Kind::Delete, Some(rd));
-        }
+        let parent = owned(&s, rd, self.module)?.parent.ok_or(Error::Denied)?;
+        s.unregister(rd, parent);
         Ok(())
     }
 

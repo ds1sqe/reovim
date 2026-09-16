@@ -39,10 +39,17 @@ impl Default for Limits {
 
 pub struct Loaded {
     pub name: String,
+    /// The Module while loaded; `None` after `unload`.
+    pub module: Option<Rc<dyn Module>>,
     /// Global driver indexes, in `DriverId` order.
     pub drivers: Vec<usize>,
     pub caller: Caller,
 }
+
+/// What an unloaded Module's Driver slots hold: every op `Unsupported`.
+struct Unloaded;
+
+impl Driver for Unloaded {}
 
 /// One open handle.
 #[derive(Clone)]
@@ -117,6 +124,69 @@ impl State {
             .map_or("caller", |m| m.name.as_str())
     }
 
+    /// The loaded Module named `name`, taken out of its slot once no
+    /// handle it serves or holds is open.
+    fn take_module(
+        &mut self,
+        name: &str,
+    ) -> Result<(usize, Rc<dyn Module>), Error> {
+        let index = self
+            .modules
+            .iter()
+            .position(|m| m.name == name && m.module.is_some())
+            .ok_or(Error::Invalid)?;
+        let id = ModuleId(u32::try_from(index).map_err(|_| Error::Invalid)?);
+        let caller = self.modules[index].caller;
+        let held = |slot: &Slot| {
+            slot.caller == caller || slot.served.is_some_and(|(m, _)| m == id)
+        };
+        if self.handles.values().any(held) {
+            return Err(Error::Busy);
+        }
+        let module = self.modules[index].module.take().ok_or(Error::Invalid)?;
+        Ok((index, module))
+    }
+
+    /// Every rd the Module at `index` serves, its home included, gone
+    /// with the events of `unregister`; its Drivers and caller dropped.
+    fn remove_module(&mut self, index: usize) {
+        let id = ModuleId(u32::try_from(index).unwrap_or(u32::MAX));
+        let served = |owner: Owner| match owner {
+            Owner::Driver { module, .. }
+            | Owner::Kernel(Node::Home(module)) => module == id,
+            Owner::Kernel(_) => false,
+        };
+        let mine: Vec<Rd> = self
+            .table
+            .all()
+            .filter(|(_, e)| served(e.owner))
+            .map(|(rd, _)| rd)
+            .collect();
+        let parent_of = |rd: Rd| self.table.get(rd).ok().and_then(|e| e.parent);
+        let roots: Vec<(Rd, Rd)> = mine
+            .iter()
+            .filter_map(|rd| parent_of(*rd).map(|p| (*rd, p)))
+            .filter(|(_, p)| !mine.contains(p))
+            .collect();
+        for (root, parent) in roots {
+            self.unregister(root, parent);
+        }
+        for i in core::mem::take(&mut self.modules[index].drivers) {
+            self.drivers[i] = Rc::new(Unloaded);
+        }
+        let caller = self.modules[index].caller;
+        self.callers.remove(&caller);
+    }
+
+    /// `rd` and its subtree gone, `Delete` on `parent`.
+    pub fn unregister(&mut self, rd: Rd, parent: Rd) {
+        for gone in self.table.subtree(rd) {
+            self.emit(gone, Kind::Gone, None);
+            self.table.remove(gone);
+        }
+        self.emit(parent, Kind::Delete, Some(rd));
+    }
+
     fn new_caller(&mut self, module: Option<ModuleId>) -> Caller {
         let caller = Caller(self.next_caller);
         self.next_caller += 1;
@@ -174,14 +244,15 @@ impl Kernel {
     /// # Errors
     /// `Invalid` for a malformed or taken name; whatever `start` returns.
     /// A failed `start` leaves the Module loaded with what it registered;
-    /// unload comes with milestone 3.
+    /// `unload` takes it out.
     pub fn load(
         &self,
         name: &str,
-        module: &dyn Module,
+        module: Rc<dyn Module>,
         drivers: Vec<Rc<dyn Driver>>,
     ) -> Result<ModuleId, Error> {
         let now = self.now();
+        let starter = module.clone();
         let (id, home) = {
             let mut s = self.state.borrow_mut();
             s.table.check_name(MODULES, Some(name))?;
@@ -195,13 +266,36 @@ impl Kernel {
             let owner = Owner::Kernel(Node::Home(id));
             let home = s.table.insert(MODULES, Some(name), owner, OPEN, now);
             s.emit(MODULES, Kind::Create, Some(home));
-            let loaded =
-                Loaded { name: String::from(name), drivers: indexes, caller };
+            let loaded = Loaded {
+                name: String::from(name),
+                module: Some(module),
+                drivers: indexes,
+                caller,
+            };
             s.modules.push(loaded);
             (id, home)
         };
-        module.start(&self.calls(id), home)?;
+        starter.start(&self.calls(id), home)?;
         Ok(id)
+    }
+
+    /// Unload the Module named `name`: `stop`, then every rd it serves
+    /// is gone, its Drivers are dropped and its id answers `Invalid`.
+    /// Logged under `kernel`.
+    ///
+    /// # Errors
+    /// `Invalid` when no such Module is loaded; `Busy` while a handle on
+    /// an rd it serves, or one it holds itself, is open. Nothing is
+    /// revoked.
+    pub fn unload(&self, name: &str) -> Result<(), Error> {
+        let now = self.now();
+        let (index, module) = self.state.borrow_mut().take_module(name)?;
+        module.stop();
+        let mut s = self.state.borrow_mut();
+        s.remove_module(index);
+        let line = alloc::format!("unload module={name}");
+        s.log(now, "kernel", line.into_bytes());
+        Ok(())
     }
 
     /// The seven calls as Module `module` makes them.

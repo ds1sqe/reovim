@@ -46,7 +46,7 @@ impl Rig {
         let kernel = Kernel::new(clock::now, Limits::default());
         let fs = Rc::new(Fs::new(dir.0.to_str().unwrap().to_string()));
         let driver: Rc<dyn Driver> = fs.clone();
-        kernel.load("fs", fs.as_ref(), vec![driver]).unwrap();
+        kernel.load("fs", fs, vec![driver]).unwrap();
         let caller = kernel.caller_new();
         let seq = std::cell::Cell::new(0);
         let mut rig = Self { dir, kernel, caller, seq, root: ROOT };

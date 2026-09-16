@@ -182,7 +182,7 @@ impl Rig {
         let kernel = Kernel::new(tick, limits);
         let test = Rc::new(Test::default());
         let driver: Rc<dyn Driver> = test.clone();
-        let module = kernel.load("t", test.as_ref(), vec![driver]).unwrap();
+        let module = kernel.load("t", test.clone(), vec![driver]).unwrap();
         let caller = kernel.caller_new();
         Self { kernel, module, test, caller, seq: std::cell::Cell::new(0) }
     }
@@ -309,7 +309,7 @@ fn load_makes_home_and_start_registers_below_it() {
     assert_eq!(info.name.as_deref(), Some("cell"));
     assert_eq!(info.flags, Flags::READ | Flags::WRITE);
     assert_eq!(info.apis, vec![api()]);
-    let again = rig.kernel.load("t", rig.test.as_ref(), vec![]);
+    let again = rig.kernel.load("t", rig.test.clone(), vec![]);
     assert_eq!(again.err(), Some(Error::Invalid));
 }
 
@@ -335,7 +335,7 @@ fn register_follows_the_parent_owner() {
     let rig = Rig::default();
     let other = Rc::new(Test::default());
     let driver: Rc<dyn Driver> = other.clone();
-    let u = rig.kernel.load("u", other.as_ref(), vec![driver]).unwrap();
+    let u = rig.kernel.load("u", other, vec![driver]).unwrap();
     let calls = rig.kernel.calls(u);
     let home_t = rig.lookup(rig.lookup(ROOT, "module"), "t");
     assert_eq!(calls.register(DriverId(0), home_t, None), Err(Error::Denied));

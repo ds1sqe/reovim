@@ -43,7 +43,7 @@ struct Rig {
 type Node = (u64, u64, String);
 
 fn load(kernel: &Kernel, name: &str, booted: &Booted) {
-    kernel.load(name, booted.module.as_ref(), booted.drivers.clone()).unwrap();
+    kernel.load(name, booted.module.clone(), booted.drivers.clone()).unwrap();
 }
 
 fn u64_at(bytes: &[u8], at: usize) -> u64 {
