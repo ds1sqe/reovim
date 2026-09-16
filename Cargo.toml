@@ -7,6 +7,7 @@ members = [
     "kernel/runtime",
     "host/os",
     "modules/fs",
+    "modules/buffer",
 ]
 default-members = [
     "lib/bitflags",
@@ -15,6 +16,7 @@ default-members = [
     "kernel/runtime",
     "host/os",
     "modules/fs",
+    "modules/buffer",
 ]
 
 [workspace.package]

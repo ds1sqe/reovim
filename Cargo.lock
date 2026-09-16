@@ -25,6 +25,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-module-buffer"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-host",
+ "reovim-kernel-interface",
+ "reovim-kernel-runtime",
+ "reovim-module-fs",
+]
+
+[[package]]
 name = "reovim-module-fs"
 version = "0.16.0-dev"
 dependencies = [
