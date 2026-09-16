@@ -27,14 +27,9 @@ v0.17 follows with Neovim feature parity.
 
 ## Check the current code
 
-Run the [local editing reference](apps/server/README.md):
-
-```sh
-cargo run --manifest-path product/Cargo.toml -p reovim-server --features std
-```
-
-It boots two public consumers, edits heading/keyed state, traverses retained
-branches, observes results, closes owners and exports diagnostics to stderr.
+The implementation is being rebuilt on the [core design](Documentation/Design/00-core.md).
+The Cargo workspace holds only the kernel crates and the small libraries they
+use; server, clients and modules rejoin it milestone by milestone.
 Contributor checks:
 
 ```sh
@@ -47,7 +42,6 @@ components plus dependents. The second runs the same full matrix as GitHub CI,
 using the exact stable/nightly versions in [ci.json](ci.json). It installs the
 selected toolchains/targets and fetches dependencies; network access is needed.
 Normal runs do not change the window. See CONTRIBUTING.md for updates.
-Product Cargo commands use --manifest-path product/Cargo.toml.
 
 The specification is a target, not evidence that the editor is implemented.
 Release scope and SDK obligations are stated once in Documentation.

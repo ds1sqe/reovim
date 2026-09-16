@@ -51,8 +51,7 @@ it does not claim identical host OS, system libraries or physical hardware.
 The current runner requires Linux x86_64 and an existing rustup installation.
 
 The gate checks style, links, product formatting, builds/tests, Clippy,
-rustdoc and portable library compilation. Cargo commands use
---manifest-path product/Cargo.toml. Review actual Cargo dependencies and
+rustdoc and portable library compilation. Review actual Cargo dependencies and
 public types: bare-target compilation alone proves neither core-only
 Foundation nor absence of every forbidden architectural edge.
 

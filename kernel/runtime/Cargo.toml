@@ -1,6 +1,5 @@
 [package]
 name = "reovim-kernel-runtime"
-workspace = "../../product"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,10 +11,6 @@ publish = false
 [features]
 default = []
 std = []
-
-[dependencies.reovim-kernel-interface]
-path = "../interface"
-version = "=0.16.0-dev"
 
 [lints]
 workspace = true

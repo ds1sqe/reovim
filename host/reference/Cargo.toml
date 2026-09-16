@@ -1,6 +1,5 @@
 [package]
 name = "reovim-host-reference"
-workspace = "../../product"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

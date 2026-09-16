@@ -1,14 +1,7 @@
 #![no_std]
 #![forbid(unsafe_code)]
-//! Resource admission and execution with Runtime-owned request custody.
+//! Kernel runtime: the Resource table, dispatch, watch and log.
 //!
-//! Example: assembly registers providers, grants a Caller, then drives advance
-//! independently of that caller's result polling.
+//! Filled in by unit 01.2 of the resource-based refoundation.
 
 extern crate alloc;
-
-mod engine;
-pub use engine::{
-    Activation, Binding, Grant, Limits, ModuleProbe, ModuleSelection,
-    PublicationGrant, Runtime, SelectedModule,
-};

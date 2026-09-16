@@ -268,7 +268,7 @@ export CARGO_HOME="$CI_CARGO_HOME" RUSTUP_TOOLCHAIN="$TOOLCHAIN"
 
 printf 'ci.sh: %s: fetching locked dependencies\n' "$lane"
 rustup run "$TOOLCHAIN" cargo fetch \
-    --manifest-path "$ROOT/product/Cargo.toml" --locked || \
+    --manifest-path "$ROOT/Cargo.toml" --locked || \
     fail CI_FETCH_FAILED "$lane locked dependency fetch failed" 5
 printf 'ci.sh: %s: uncached contributor checks\n' "$lane"
 rustup run "$TOOLCHAIN" bash "$ROOT/scripts/check.sh" --full || \

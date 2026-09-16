@@ -1,6 +1,5 @@
 [package]
 name = "reovim-kernel-interface"
-workspace = "../../product"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -16,8 +15,3 @@ std = []
 [lints]
 workspace = true
 
-[dependencies.reovim-bitflags]
-path = "../../lib/bitflags"
-
-[dependencies.reovim-vtable]
-path = "../../lib/vtable"

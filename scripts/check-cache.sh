@@ -778,13 +778,12 @@ check_cache_load_graph() {
         && -O "$metadata_target" ]] || return 1
     check_cache_capture_metadata \
         "$product_metadata" "$metadata_target" \
-        --manifest-path "$ROOT/product/Cargo.toml" || return 1
+        --manifest-path "$ROOT/Cargo.toml" || return 1
     check_cache_validate_metadata_target \
         "$product_metadata" "$metadata_target" || return 1
     {
         check_cache_emit_workspace_graph \
-            "$product_metadata" product product/Cargo.toml \
-            product/Cargo.lock
+            "$product_metadata" product Cargo.toml Cargo.lock
     } | check_cache_bound_byte_stream "$CHECK_CACHE_MAX_GRAPH_BYTES" \
         | LC_ALL=C sort -u >"$graph" || return 1
     check_cache_file_size_within \
@@ -823,7 +822,7 @@ check_cache_owner_for_path() {
     local graph="$2"
 
     case "$path" in
-        product/Cargo.toml | product/Cargo.lock)
+        Cargo.toml | Cargo.lock)
             printf '%s\n' 'workspace:product'
             return
             ;;
@@ -934,7 +933,7 @@ check_cache_snapshot() {
     done
     find "$ROOT" \
         \( -path "$ROOT/.git" -o -path "$ROOT/target" \
-            -o -path "$ROOT/tmp" -o -path "$ROOT/product/target" \) \
+            -o -path "$ROOT/tmp" \) \
         -prune -o -type d -print0 \
         | check_cache_bound_nul_stream \
             "$CHECK_CACHE_MAX_DIRECTORIES" \
