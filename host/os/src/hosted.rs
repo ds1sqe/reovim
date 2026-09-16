@@ -10,6 +10,7 @@ use std::io::{self, ErrorKind, IsTerminal, Read, Seek, SeekFrom, Write};
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
+use std::process::{Command, Stdio};
 use std::sync::Once;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -223,6 +224,61 @@ mod dl {
 }
 
 pub use dl::{Library, load, symbol};
+
+/// The clipboard tools in the order tried: what reads, what writes.
+const CLIPBOARDS: [(&[&str], &[&str]); 4] = [
+    (&["wl-paste", "--no-newline"], &["wl-copy"]),
+    (
+        &["xclip", "-selection", "clipboard", "-o"],
+        &["xclip", "-selection", "clipboard"],
+    ),
+    (&["xsel", "--clipboard", "--output"], &["xsel", "--clipboard", "--input"]),
+    (&["pbpaste"], &["pbcopy"]),
+];
+
+/// `tool` run to its end; `None` when it is not on PATH.
+fn read_tool(tool: &[&str]) -> Option<Result<Vec<u8>, Error>> {
+    let run =
+        Command::new(tool[0]).args(&tool[1..]).stderr(Stdio::null()).output();
+    match run {
+        Err(error) if error.kind() == ErrorKind::NotFound => None,
+        Ok(out) if out.status.success() => Some(Ok(out.stdout)),
+        _ => Some(Err(Error::Io)),
+    }
+}
+
+/// `tool` given `bytes` on its stdin; `None` when it is not on PATH.
+fn write_tool(tool: &[&str], bytes: &[u8]) -> Option<Result<(), Error>> {
+    let child = Command::new(tool[0])
+        .args(&tool[1..])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn();
+    let mut child = match child {
+        Err(error) if error.kind() == ErrorKind::NotFound => return None,
+        Err(_) => return Some(Err(Error::Io)),
+        Ok(child) => child,
+    };
+    let fed =
+        child.stdin.take().map_or(Ok(()), |mut stdin| stdin.write_all(bytes));
+    let done = fed.and_then(|()| child.wait());
+    Some(done.map(|_| ()).map_err(|_| Error::Io))
+}
+
+pub fn clipboard_read() -> Result<Vec<u8>, Error> {
+    CLIPBOARDS
+        .iter()
+        .find_map(|(read, _)| read_tool(read))
+        .unwrap_or(Err(Error::Unsupported))
+}
+
+pub fn clipboard_write(bytes: &[u8]) -> Result<(), Error> {
+    CLIPBOARDS
+        .iter()
+        .find_map(|(_, write)| write_tool(write, bytes))
+        .unwrap_or(Err(Error::Unsupported))
+}
 
 /// `$XDG_RUNTIME_DIR`, else `/tmp/reovim-<uid>`; made if missing.
 pub fn runtime() -> Result<String, Error> {

@@ -299,3 +299,30 @@ fn the_command_line_runs_the_quit_commands_and_refuses_the_rest() {
     assert_eq!(typed(&mut vim, "<C-s>"), Effect::Moved, "no longer a key");
     assert_eq!(typed(&mut vim, "<C-q>"), Effect::Nothing);
 }
+
+#[test]
+fn the_clipboard_registers_go_through_the_tui() {
+    let mut vim = on("one\ntwo\n");
+    assert_eq!(typed(&mut vim, "\"+yy"), Effect::Moved);
+    assert_eq!(vim.take_clipboard(), Some("one\n".to_string()), "linewise");
+    assert_eq!(vim.take_clipboard(), None, "taken once");
+    assert_eq!(typed(&mut vim, "\"*yiw"), Effect::Moved);
+    assert_eq!(vim.take_clipboard(), Some("one".to_string()));
+
+    assert_eq!(typed(&mut vim, "j\"+p"), Effect::Clipboard, "wants the text");
+    assert_eq!(vim.pasted(Some("x\n".to_string())), edit(8, 0, "x\n", false));
+    assert_eq!(vim.text(), "one\ntwo\nx\n");
+    assert_eq!(typed(&mut vim, "\"+P"), Effect::Clipboard);
+    assert_eq!(vim.pasted(None), Effect::Moved, "no clipboard");
+    assert!(vim.frame(80, 24).status.starts_with("E353"));
+    assert_eq!(typed(&mut vim, "\"+p"), Effect::Clipboard);
+    assert_eq!(vim.pasted(Some("ab".to_string())), edit(9, 0, "ab", false));
+    assert_eq!(vim.text(), "one\ntwo\nxab\n", "charwise after the cursor");
+    let again = Effect::Edits(vec![Edit {
+        at: 11,
+        len: 0,
+        text: "ab".into(),
+        join: false,
+    }]);
+    assert_eq!(typed(&mut vim, "."), again, "repeats");
+}

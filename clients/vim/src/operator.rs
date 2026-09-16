@@ -400,7 +400,7 @@ impl Vim {
         } else {
             &self.text[at..at + len]
         };
-        self.register = Register { text: text.into(), linewise };
+        self.store(Register { text: text.into(), linewise });
         match op {
             Operator::Delete => self.deleted(at, len, linewise),
             Operator::Change if linewise => self.change_lines(from, to),
@@ -562,10 +562,80 @@ impl Vim {
         self.edit(start, end - start, indent)
     }
 
+    /// What an operator took, into the unnamed register and the one
+    /// `"x` named: `a`-`z` hold, `A`-`Z` append, `_` drops, `+` and
+    /// `*` go to the clipboard.
+    pub(crate) fn store(&mut self, taken: Register) {
+        let end = if taken.linewise {
+            "
+"
+        } else {
+            ""
+        };
+        match self.pending.register.take() {
+            Some('_') => return,
+            Some('+' | '*') => {
+                self.clipboard = Some(alloc::format!("{}{end}", taken.text));
+            }
+            Some(name @ 'a'..='z') => {
+                self.registers.insert(name, taken.clone());
+            }
+            Some(name @ 'A'..='Z') => {
+                self.append(name.to_ascii_lowercase(), &taken);
+            }
+            _ => {}
+        }
+        self.register = taken;
+    }
+
+    /// `taken` onto register `name`: lines on their own line, chars
+    /// straight after.
+    fn append(&mut self, name: char, taken: &Register) {
+        let entry = self.registers.entry(name).or_default();
+        let separated =
+            !entry.text.is_empty() && (entry.linewise || taken.linewise);
+        if separated {
+            entry.text.push('\n');
+        }
+        entry.text.push_str(&taken.text);
+        entry.linewise |= taken.linewise;
+    }
+
+    /// The register a put reads: the one `"x` named, else the unnamed;
+    /// `None` for the clipboard, which the tui must bring.
+    pub(crate) fn fetch(&mut self) -> Option<Register> {
+        match self.pending.register.take() {
+            // `.` puts what the clipboard gave the last time.
+            Some('+' | '*') if self.repeat.replaying => {
+                Some(self.last_clip.clone())
+            }
+            Some('+' | '*') => None,
+            Some('_') => Some(Register::default()),
+            Some(name @ ('a'..='z' | 'A'..='Z')) => {
+                let name = name.to_ascii_lowercase();
+                Some(self.registers.get(&name).cloned().unwrap_or_default())
+            }
+            _ => Some(self.register.clone()),
+        }
+    }
+
     /// `p` after the cursor or `P` before it, `n` times; a linewise
     /// register goes on lines of its own.
     pub(crate) fn paste(&mut self, after: bool, n: usize) -> Effect {
-        let Register { text, linewise } = self.register.clone();
+        let Some(register) = self.fetch() else {
+            self.put = Some((after, n, None));
+            return Effect::Clipboard;
+        };
+        self.paste_register(register, after, n)
+    }
+
+    pub(crate) fn paste_register(
+        &mut self,
+        register: Register,
+        after: bool,
+        n: usize,
+    ) -> Effect {
+        let Register { text, linewise } = register;
         if text.is_empty() {
             Effect::Nothing
         } else if linewise {

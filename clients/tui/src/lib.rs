@@ -24,6 +24,8 @@ pub enum Step {
     Changed,
     /// Leave with this exit code: 0 says use the file.
     Quit(u8),
+    /// A put wants the clipboard: read it and answer with `pasted`.
+    Clipboard,
 }
 
 /// What `:q` says to unsaved changes.
@@ -96,8 +98,35 @@ impl Tui {
     /// # Errors
     /// What the Client says.
     pub fn key(&mut self, key: Key) -> Result<Step, Fault> {
-        match self.vim.key(key) {
+        let effect = self.vim.key(key);
+        self.act(effect)
+    }
+
+    /// The clipboard's answer to `Step::Clipboard`: `None` when there
+    /// is no clipboard.
+    ///
+    /// # Errors
+    /// What the Client says.
+    pub fn pasted(&mut self, text: Option<String>) -> Result<Step, Fault> {
+        let effect = self.vim.pasted(text);
+        self.act(effect)
+    }
+
+    /// Text a yank left for the clipboard, once.
+    pub const fn take_clipboard(&mut self) -> Option<String> {
+        self.vim.take_clipboard()
+    }
+
+    /// A message in the status row until the next key.
+    pub fn notice(&mut self, message: &str) {
+        self.vim.notice(message);
+    }
+
+    /// What an effect asks of the Client, and what to draw after.
+    fn act(&mut self, effect: Effect) -> Result<Step, Fault> {
+        match effect {
             Effect::Nothing => return Ok(Step::Same),
+            Effect::Clipboard => return Ok(Step::Clipboard),
             Effect::Moved => return Ok(Step::Changed),
             Effect::Edit(edit) => self.edit(edit)?,
             Effect::Edits(edits) => self.edits(edits)?,

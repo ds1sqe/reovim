@@ -20,6 +20,7 @@ mod search;
 mod visual;
 mod word;
 
+use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -55,6 +56,8 @@ pub enum Effect {
     Redo,
     Save,
     Quit(Quit),
+    /// A put wants the clipboard's text: `pasted` finishes it.
+    Clipboard,
 }
 
 /// How a quit was asked for; what it does with unsaved changes is
@@ -113,6 +116,8 @@ struct Pending {
     key: Option<char>,
     /// An operator waiting for its motion, with its own count.
     operator: Option<(Operator, usize)>,
+    /// `"x` typed: the register the next operator or put uses.
+    register: Option<char>,
     /// A motion is being run for an operator, not for the cursor.
     running: bool,
 }
@@ -147,6 +152,15 @@ pub struct Vim {
     /// nothing is typed on the line.
     indent: usize,
     register: Register,
+    /// `"a` to `"z`.
+    registers: BTreeMap<char, Register>,
+    /// Text for the clipboard, until the tui takes it.
+    clipboard: Option<String>,
+    /// A put waiting for the clipboard: after the cursor, its count,
+    /// and the selection it goes over.
+    put: Option<(bool, usize, Option<Visual>)>,
+    /// What the clipboard last gave, for `.` to put again.
+    last_clip: Register,
     /// The last `f`, `t`, `F` or `T`, for `;` and `,`.
     find: Option<(Find, char)>,
     repeat: Repeat,
@@ -322,7 +336,7 @@ impl Vim {
             return self.motion(motion, n);
         }
         let effect = match key {
-            Key::Char(first @ ('g' | 'f' | 't' | 'F' | 'T')) => {
+            Key::Char(first @ ('g' | 'f' | 't' | 'F' | 'T' | '"')) => {
                 return self.wait(first, count);
             }
             Key::Char(first @ ('i' | 'a'))
@@ -403,6 +417,7 @@ impl Vim {
             ('g', Key::Char('U')) => return self.operator(Operator::Upper, n),
             ('g', Key::Char('~')) => return self.operator(Operator::Toggle, n),
             ('g', Key::Char('v')) => return self.reselect(),
+            ('"', Key::Char(name)) => return self.named(name, count),
             ('i' | 'a', Key::Char(kind)) => {
                 Motion::Object { inner: first == 'i', kind }
             }
@@ -422,6 +437,54 @@ impl Vim {
             self.find = Some((kind, c));
         }
         self.motion(motion, n)
+    }
+
+    /// `"x`: the register `name` for what comes next; the count waits.
+    pub(crate) const fn named(&mut self, name: char, count: usize) -> Effect {
+        self.pending.register = Some(name);
+        self.pending.count = count;
+        self.keep_want = true;
+        Effect::Nothing
+    }
+
+    /// The text a `"+` or `"*` yank left for the clipboard.
+    pub const fn take_clipboard(&mut self) -> Option<String> {
+        self.clipboard.take()
+    }
+
+    /// The clipboard's answer to `Effect::Clipboard`: the put goes on
+    /// with `text`, or E353 when there is none.
+    pub fn pasted(&mut self, text: Option<String>) -> Effect {
+        let Some((after, n, over)) = self.put.take() else {
+            return Effect::Nothing;
+        };
+        let effect = if let Some(text) = text {
+            self.put_text(&text, after, n, over)
+        } else {
+            self.message = String::from("E353: Nothing in register +");
+            Effect::Moved
+        };
+        self.settle(&effect);
+        effect
+    }
+
+    /// The clipboard's `text` put: lines of its own when it ends in a
+    /// newline, as nvim reads it.
+    fn put_text(
+        &mut self,
+        text: &str,
+        after: bool,
+        n: usize,
+        over: Option<Visual>,
+    ) -> Effect {
+        let linewise = text.ends_with('\n');
+        let text = String::from(text.strip_suffix('\n').unwrap_or(text));
+        let register = Register { text, linewise };
+        self.last_clip = register.clone();
+        match over {
+            Some(kind) => self.paste_over(kind, register),
+            None => self.paste_register(register, after, n),
+        }
     }
 
     /// `first` waits for its second key; the count waits with it.
@@ -480,6 +543,7 @@ impl Vim {
             Effect::Edit(_) | Effect::Edits(_) => {
                 self.repeat.last = core::mem::take(&mut self.repeat.record);
             }
+            Effect::Clipboard => {}
             _ => self.repeat.record.clear(),
         }
     }

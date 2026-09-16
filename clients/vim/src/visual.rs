@@ -98,7 +98,7 @@ impl Vim {
         }
         match key {
             Key::Char(
-                first @ ('g' | 'f' | 't' | 'F' | 'T' | 'i' | 'a' | 'r'),
+                first @ ('g' | 'f' | 't' | 'F' | 'T' | 'i' | 'a' | 'r' | '"'),
             ) => self.wait(first, count),
             Key::Esc => self.leave_visual(),
             Key::Char('v') => self.enter_visual(Visual::Char),
@@ -129,6 +129,7 @@ impl Vim {
         let n = count.max(1);
         let motion = match (first, key) {
             ('r', Key::Char(c)) => return self.visual_replace(c),
+            ('"', Key::Char(name)) => return self.named(name, count),
             ('g', Key::Char('g')) => Motion::Line(count.saturating_sub(1)),
             ('f', Key::Char(c)) => Motion::Find(Find::Forward, c),
             ('t', Key::Char(c)) => Motion::Find(Find::ForwardTo, c),
@@ -259,7 +260,8 @@ impl Vim {
         self.leave_visual();
         match op {
             Operator::Yank => {
-                self.register = self.block_register(&ranges);
+                let register = self.block_register(&ranges);
+                self.store(register);
                 self.cursor = top_left;
                 Effect::Moved
             }
@@ -288,7 +290,8 @@ impl Vim {
         lines: (usize, usize),
         top_left: usize,
     ) -> Effect {
-        self.register = self.block_register(ranges);
+        let register = self.block_register(ranges);
+        self.store(register);
         let column = self.position_of(top_left).1;
         let effect = self.block_edits(ranges, |_| String::new());
         self.cursor = top_left;
@@ -377,7 +380,20 @@ impl Vim {
     /// `p` over a selection: the selection goes, the register's text
     /// comes, on lines of its own when it is linewise.
     fn visual_paste(&mut self, kind: Visual) -> Effect {
-        let Register { text, linewise } = self.register.clone();
+        let Some(register) = self.fetch() else {
+            self.put = Some((true, 1, Some(kind)));
+            return Effect::Clipboard;
+        };
+        self.paste_over(kind, register)
+    }
+
+    /// `register` in place of the selection.
+    pub(crate) fn paste_over(
+        &mut self,
+        kind: Visual,
+        register: Register,
+    ) -> Effect {
+        let Register { text, linewise } = register;
         let (from, to, span_kind) = self.selection(kind);
         let (at, len) = if span_kind == Kind::Linewise {
             self.whole_lines(from, to)
@@ -392,8 +408,10 @@ impl Vim {
         let taken = self.text[at..at + len].trim_end_matches('\n').into();
         self.leave_visual();
         self.text.replace_range(at..at + len, &put);
-        self.register =
-            Register { text: taken, linewise: span_kind == Kind::Linewise };
+        self.store(Register {
+            text: taken,
+            linewise: span_kind == Kind::Linewise,
+        });
         self.cursor = at + usize::from(put.starts_with('\n'));
         self.clamp();
         self.joining = false;

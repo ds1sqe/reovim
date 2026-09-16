@@ -291,6 +291,31 @@ pub mod native {
     }
 }
 
+/// The system clipboard, through the first tool found on PATH:
+/// `wl-paste`/`wl-copy`, `xclip`, `xsel`, `pbpaste`/`pbcopy`.
+pub mod clipboard {
+    use alloc::vec::Vec;
+
+    use super::{Error, backend};
+
+    /// What the clipboard holds.
+    ///
+    /// # Errors
+    /// `Unsupported` when no tool is found or without a backend; `Io`
+    /// when the tool fails.
+    pub fn read() -> Result<Vec<u8>, Error> {
+        backend::clipboard_read()
+    }
+
+    /// `bytes` onto the clipboard.
+    ///
+    /// # Errors
+    /// As [`read`].
+    pub fn write(bytes: &[u8]) -> Result<(), Error> {
+        backend::clipboard_write(bytes)
+    }
+}
+
 /// Where things go by default, so every argument has a value.
 pub mod dirs {
     use alloc::string::String;

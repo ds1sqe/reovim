@@ -69,6 +69,14 @@ pub fn symbol(_: &Library) -> Result<*const core::ffi::c_void, Error> {
     Err(Error::Unsupported)
 }
 
+pub fn clipboard_read() -> Result<Vec<u8>, Error> {
+    Err(Error::Unsupported)
+}
+
+pub fn clipboard_write(_: &[u8]) -> Result<(), Error> {
+    Err(Error::Unsupported)
+}
+
 pub fn runtime() -> Result<String, Error> {
     Err(Error::Unsupported)
 }
