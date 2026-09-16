@@ -162,3 +162,36 @@ fn main() -> ExitCode {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{file_at, options};
+
+    fn args(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| (*s).to_string()).collect()
+    }
+
+    #[test]
+    fn options_stop_at_the_first_positional() {
+        let given = ["--socket", "s", "--log", "l", "+3", "f", "--root", "r"];
+        let found = options(args(&given)).ok().unwrap();
+        assert_eq!(found.socket.as_deref(), Some("s"));
+        assert_eq!(found.log.as_deref(), Some("l"));
+        assert_eq!(found.root, None);
+        assert_eq!(found.rest, args(&["+3", "f", "--root", "r"]));
+        assert!(
+            options(args(&["--socket"])).is_err(),
+            "a flag needs its value"
+        );
+        assert_eq!(options(args(&[])).ok().unwrap().rest, Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_file_may_carry_its_line() {
+        assert_eq!(file_at(&args(&["f"])).ok(), Some((None, "f")));
+        assert_eq!(file_at(&args(&["+7", "f"])).ok(), Some((Some(7), "f")));
+        assert!(file_at(&args(&["+x", "f"])).is_err());
+        assert!(file_at(&args(&[])).is_err());
+        assert!(file_at(&args(&["a", "b"])).is_err());
+    }
+}

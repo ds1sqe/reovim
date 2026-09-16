@@ -383,3 +383,124 @@ fn escape(x: Option<char>, text: &str, caps: &Captures) -> String {
 fn capture<'a>(text: &'a str, caps: &Captures, n: usize) -> &'a str {
     caps.get(n).copied().flatten().map_or("", |(a, b)| &text[a..b])
 }
+
+#[cfg(test)]
+mod tests {
+    use alloc::string::String;
+    use alloc::vec;
+
+    use super::{Pattern, expand};
+
+    fn parse(source: &str) -> Pattern {
+        Pattern::parse(source, false, false).unwrap()
+    }
+
+    fn found(pattern: &str, text: &str) -> Option<(usize, usize)> {
+        parse(pattern).find(text, 0).map(|(a, b, _)| (a, b))
+    }
+
+    fn folded(pattern: &str, ic: bool, scs: bool, text: &str) -> Option<usize> {
+        Pattern::parse(pattern, ic, scs)?.find(text, 0).map(|m| m.0)
+    }
+
+    #[test]
+    fn the_subset_parses_and_the_rest_is_refused() {
+        for bad in ["a\\{2}", "\\zs", "\\(ab", "[ab", "a\\@!", "\\%d"] {
+            assert!(Pattern::parse(bad, false, false).is_none(), "{bad}");
+        }
+        let good = [
+            "a.c",
+            "^ab$",
+            "[a-z_]\\+",
+            "\\d\\D\\w\\W\\s\\S",
+            "\\<w\\>",
+            "\\(a\\|b\\)*",
+            "a\\?b",
+            "x\\n",
+            "\\t",
+            "",
+            "$",
+            "a^",
+        ];
+        for pattern in good {
+            assert!(
+                Pattern::parse(pattern, false, false).is_some(),
+                "{pattern}"
+            );
+        }
+    }
+
+    #[test]
+    fn atoms_match_what_they_name() {
+        assert_eq!(found("a.c", "xabcx"), Some((1, 4)));
+        assert_eq!(found("a.c", "a\nc"), None, "`.` is not a newline");
+        assert_eq!(found("^ab", "xab\nab"), Some((4, 6)));
+        assert_eq!(found("b$", "ab\nb"), Some((1, 2)));
+        assert_eq!(found("a^", "a^"), Some((0, 2)), "`^` later is a char");
+        assert_eq!(found("[b-d]\\+", "abcde"), Some((1, 4)));
+        assert_eq!(found("[^a-c]", "abcd"), Some((3, 4)));
+        assert_eq!(found("[]a]", "x]"), Some((1, 2)), "a first `]` is one");
+        assert_eq!(found("[a\\]]", "]"), Some((0, 1)), "escaped in a class");
+        assert_eq!(found("\\d\\+", "ab12c"), Some((2, 4)));
+        assert_eq!(found("\\D", "12c"), Some((2, 3)));
+        assert_eq!(found("\\w\\+", "--ab_1-"), Some((2, 6)));
+        assert_eq!(found("\\W", "ab-"), Some((2, 3)));
+        assert_eq!(found("\\s\\S", "a \tb"), Some((2, 4)));
+        assert_eq!(found("\\<is\\>", "this is"), Some((5, 7)));
+        assert_eq!(found("x\\n", "ax\nb"), Some((1, 3)));
+        assert_eq!(found("\\t", "a\tb"), Some((1, 2)));
+        assert_eq!(found("a\\.b", "a.b ab"), Some((0, 3)));
+        assert_eq!(found("é.", "aéb"), Some((1, 4)), "chars, not bytes");
+    }
+
+    #[test]
+    fn quantifiers_backtrack_and_zero_width_atoms_match_once() {
+        assert_eq!(found("a*ab", "aaab"), Some((0, 4)));
+        assert_eq!(found("a\\+", "baa"), Some((1, 3)));
+        assert_eq!(found("ab\\?c", "ac abc"), Some((0, 2)));
+        assert_eq!(found("ab\\=c", "abc"), Some((0, 3)));
+        assert_eq!(found("^*a", "a"), Some((0, 1)));
+        assert_eq!(found("x*", "abc"), Some((0, 0)), "an empty match");
+        let (start, end, caps) = parse("a*").find("bbb", 1).unwrap();
+        assert_eq!((start, end, caps), (1, 1, vec![Some((1, 1))]));
+        assert_eq!(parse("z").find("abc", 0), None);
+        assert_eq!(parse("b").match_at("abc", 0), None, "exactly there");
+        assert_eq!(parse("b").match_at("abc", 1).map(|m| m.0), Some(2));
+    }
+
+    #[test]
+    fn groups_alternate_and_capture() {
+        let pattern = parse("\\(foo\\|ba\\(r\\|z\\)\\)!");
+        let (start, end, caps) = pattern.find("xbaz!", 0).unwrap();
+        assert_eq!((start, end), (1, 5));
+        assert_eq!(caps, vec![Some((1, 5)), Some((1, 4)), Some((3, 4))]);
+        let text = expand("[&|\\1|\\2|\\0]", "xbaz!", &caps);
+        assert_eq!(text, "[baz!|baz|z|baz!]");
+        let (_, _, caps) = pattern.find("foo!", 0).unwrap();
+        assert_eq!(caps[2], None, "an alternative not taken holds nothing");
+        assert_eq!(expand("\\2-", "foo!", &caps), "-");
+        assert_eq!(found("a\\|b", "cb"), Some((1, 2)));
+        assert_eq!(found("\\(ab\\)*c", "ababc"), Some((0, 5)));
+    }
+
+    #[test]
+    fn replacements_expand_their_escapes() {
+        let caps = vec![Some((0, 2))];
+        let text = expand("x\\ry\\n\\t\\\\\\&", "ab", &caps);
+        assert_eq!(text, String::from("x\ny\t\\&"));
+        assert_eq!(expand("\\", "ab", &caps), "\\", "a last backslash stays");
+        assert_eq!(expand("\\9", "ab", &caps), "", "an unset group is empty");
+        assert_eq!(expand("\\q", "ab", &caps), "q", "any other is itself");
+    }
+
+    #[test]
+    fn case_folds_by_option_or_flag() {
+        assert_eq!(folded("ab", true, false, "xAB"), Some(1));
+        assert_eq!(folded("Ab", true, true, "ab"), None, "smartcase");
+        assert_eq!(folded("ab", true, true, "AB"), Some(0));
+        assert_eq!(folded("\\cAB", false, false, "ab"), Some(0));
+        assert_eq!(folded("\\Cab", true, false, "AB"), None);
+        assert_eq!(folded("[a-c]", true, false, "B"), Some(0), "a class too");
+        assert_eq!(folded("ab", false, false, "AB"), None);
+    }
+}

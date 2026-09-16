@@ -1,6 +1,6 @@
 //! The std backend over a fresh directory.
 
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::PathBuf;
 
 use reovim_host::{Error, Kind, clock, fs};
@@ -106,4 +106,16 @@ fn replace_makes_keeps_the_mode_and_writes_through_a_link() {
     let names: Vec<String> =
         fs::list(&dir.path("")).unwrap().into_iter().map(|e| e.name).collect();
     assert_eq!(names.len(), 2, "no temporary left: {names:?}");
+}
+
+#[test]
+fn replace_writes_a_hard_link_in_place() {
+    let dir = Dir::new("hardlink");
+    let (file, other) = (dir.path("f"), dir.path("g"));
+    fs::replace(&file, b"one").unwrap();
+    std::fs::hard_link(&file, &other).unwrap();
+    let inode = std::fs::metadata(&file).unwrap().ino();
+    assert_eq!(fs::replace(&file, b"two"), Ok(()));
+    assert_eq!(fs::read(&other, 0, 8).unwrap(), b"two", "through the link");
+    assert_eq!(std::fs::metadata(&file).unwrap().ino(), inode, "in place");
 }

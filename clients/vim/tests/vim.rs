@@ -1,27 +1,10 @@
-//! Vim alone: keys in, text and frames out.
+//! Vim alone, rung 1: keys in, text and frames out.
 
+mod common;
+
+use common::{edit, on, typed};
 use reovim_client_vim::notation::keys;
-use reovim_client_vim::{Edit, Effect, Key, Mode, Quit, Vim};
-
-fn edit(at: usize, len: usize, text: &str, join: bool) -> Effect {
-    Effect::Edit(Edit { at, len, text: text.to_string(), join })
-}
-
-/// Every key of `text` in Vim notation; the last effect.
-fn typed(vim: &mut Vim, text: &str) -> Effect {
-    let mut last = Effect::Nothing;
-    for key in keys(text).unwrap() {
-        last = vim.key(key);
-    }
-    last
-}
-
-/// A Vim on `text`, in normal mode at the start.
-fn on(text: &str) -> Vim {
-    let mut vim = Vim::default();
-    vim.loaded(text.as_bytes());
-    vim
-}
+use reovim_client_vim::{Edit, Effect, Key, Mode, Quit};
 
 #[test]
 fn insert_edits_join_and_esc_steps_back() {

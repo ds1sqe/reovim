@@ -294,3 +294,49 @@ fn address(line: &str, here: usize, last: usize) -> (usize, &str) {
     let number: usize = line[..digits].parse().unwrap_or(here + 1);
     (number.saturating_sub(1).min(last), &line[digits..])
 }
+
+#[cfg(test)]
+mod tests {
+    use alloc::string::String;
+    use alloc::vec;
+
+    use super::{address, split_unescaped, substituted};
+    use crate::pattern::Pattern;
+
+    fn subst(line: &str, pat: &str, rep: &str, all: bool) -> Option<String> {
+        let pattern = Pattern::parse(pat, false, false).unwrap();
+        substituted(line, &pattern, rep, all)
+    }
+
+    #[test]
+    fn substitution_replaces_the_first_match_or_every_one() {
+        assert_eq!(subst("a a a", "a", "b", false), Some("b a a".into()));
+        assert_eq!(subst("a a a", "a", "b", true), Some("b b b".into()));
+        assert_eq!(subst("abc", "x", "y", true), None);
+        assert_eq!(subst("abc", "", "-", true), Some("-a-b-c".into()));
+        assert_eq!(subst("", "^", "> ", true), Some("> ".into()));
+        assert_eq!(subst("ab", "$", ";", true), Some("ab;".into()));
+        assert_eq!(subst("a,b", ",", "\\r", false), Some("a\nb".into()));
+        assert_eq!(subst("héllo", "l", "L", true), Some("héLLo".into()));
+        assert_eq!(subst("aaa", "a*", "b", true), Some("b".into()));
+    }
+
+    #[test]
+    fn a_backslash_keeps_a_separator() {
+        assert_eq!(split_unescaped("a/b/c", '/'), vec!["a", "b", "c"]);
+        assert_eq!(split_unescaped("a\\/b/c", '/'), vec!["a\\/b", "c"]);
+        assert_eq!(split_unescaped("a\\\\/b", '/'), vec!["a\\\\", "b"]);
+        assert_eq!(split_unescaped("", '/'), vec![""]);
+        assert_eq!(split_unescaped("a/", '/'), vec!["a", ""]);
+    }
+
+    #[test]
+    fn an_address_is_a_line_from_one_clamped() {
+        assert_eq!(address(".x", 4, 9), (4, "x"));
+        assert_eq!(address("$", 4, 9), (9, ""));
+        assert_eq!(address("3,", 4, 9), (2, ","));
+        assert_eq!(address("0", 4, 9), (0, ""));
+        assert_eq!(address("50", 4, 9), (9, ""));
+        assert_eq!(address("s/a/b/", 4, 9), (4, "s/a/b/"), "none: this line");
+    }
+}

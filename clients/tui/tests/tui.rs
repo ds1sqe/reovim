@@ -162,3 +162,40 @@ fn a_tui_behind_a_full_ring_reads_everything_again() {
     assert_eq!(tui.frame(80, 24).lines, vec!["three"]);
     assert!(tui.frame(80, 24).status.contains("r4[+]"));
 }
+
+#[test]
+fn many_edits_are_one_revision() {
+    let rig = Rig::new("many");
+    rig.file("note", b"x\nx\nx\n");
+    let mut tui = Tui::open(rig.client(), "note").unwrap();
+    assert_eq!(typed(&mut tui, ":%s/x/y/g<CR>"), Ok(Step::Changed));
+    let frame = tui.frame(80, 24);
+    assert_eq!(frame.lines, vec!["y", "y", "y"]);
+    assert!(frame.status.contains("3:1  r2[+]"), "{}", frame.status);
+    assert_eq!(tui.key(Key::Char('u')), Ok(Step::Changed));
+    let frame = tui.frame(80, 24);
+    assert_eq!(frame.lines, vec!["x", "x", "x"]);
+    assert!(frame.status.contains("1:1  r1   "), "{}", frame.status);
+    assert_eq!(typed(&mut tui, "<C-v>jjcz<Esc>"), Ok(Step::Changed));
+    assert_eq!(tui.frame(80, 24).lines, vec!["z", "z", "z"]);
+    assert_eq!(tui.key(Key::Char('u')), Ok(Step::Changed), "one step back");
+    assert_eq!(tui.frame(80, 24).lines, vec!["x", "x", "x"]);
+}
+
+#[test]
+fn the_clipboard_is_asked_of_the_app() {
+    let rig = Rig::new("clip");
+    rig.file("note", b"one\n");
+    let mut tui = Tui::open(rig.client(), "note").unwrap();
+    assert_eq!(typed(&mut tui, "\"+yy"), Ok(Step::Changed));
+    assert_eq!(tui.take_clipboard(), Some("one\n".to_string()));
+    assert_eq!(tui.take_clipboard(), None, "taken once");
+    assert_eq!(typed(&mut tui, "\"+p"), Ok(Step::Clipboard));
+    assert_eq!(tui.pasted(Some("two\n".to_string())), Ok(Step::Changed));
+    assert_eq!(tui.frame(80, 24).lines, vec!["one", "two"]);
+    assert_eq!(typed(&mut tui, "\"+p"), Ok(Step::Clipboard));
+    assert_eq!(tui.pasted(None), Ok(Step::Changed));
+    assert!(tui.frame(80, 24).status.contains("E353"));
+    tui.goto_line(1);
+    assert_eq!(tui.frame(80, 24).cursor, (0, 0));
+}

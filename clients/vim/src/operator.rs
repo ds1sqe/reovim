@@ -852,3 +852,53 @@ pub fn whitespace(from: usize, to: usize) -> String {
     out.push_str(&" ".repeat(to - reached));
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{Operator, gap, recase, shift, whitespace};
+
+    #[test]
+    fn shift_moves_an_indent_by_eight_cells_in_tabs() {
+        assert_eq!(shift("ab", true), "\tab");
+        assert_eq!(shift("  ab", true), "\t  ab");
+        assert_eq!(shift("\t  ab", true), "\t\t  ab");
+        assert_eq!(
+            shift("     \tab", true),
+            "\t\tab",
+            "a tab reaches its stop"
+        );
+        assert_eq!(shift("", true), "", "an empty line stays");
+        assert_eq!(shift("\t\t  ab", false), "\t  ab");
+        assert_eq!(shift("   ab", false), "ab");
+        assert_eq!(shift("ab", false), "ab");
+    }
+
+    #[test]
+    fn whitespace_fills_cells_with_tabs_where_a_stop_fits() {
+        assert_eq!(whitespace(0, 0), "");
+        assert_eq!(whitespace(0, 8), "\t");
+        assert_eq!(whitespace(1, 9), "\t ");
+        assert_eq!(whitespace(1, 17), "\t\t ");
+        assert_eq!(whitespace(3, 7), "    ");
+        assert_eq!(whitespace(8, 8), "");
+    }
+
+    #[test]
+    fn a_join_puts_one_space_unless_a_paren_or_a_blank_says_not() {
+        assert_eq!(gap("ab", "cd"), " ");
+        assert_eq!(gap("ab", ")"), "");
+        assert_eq!(gap("ab ", "cd"), "");
+        assert_eq!(gap("ab\t", "cd"), "");
+        assert_eq!(gap("ab", ""), "");
+    }
+
+    #[test]
+    fn recase_keeps_a_char_that_would_become_two() {
+        assert_eq!(recase(Operator::Upper, 'a'), 'A');
+        assert_eq!(recase(Operator::Lower, 'É'), 'é');
+        assert_eq!(recase(Operator::Toggle, 'a'), 'A');
+        assert_eq!(recase(Operator::Toggle, 'A'), 'a');
+        assert_eq!(recase(Operator::Toggle, '1'), '1');
+        assert_eq!(recase(Operator::Upper, 'ß'), 'ß', "SS would be two");
+    }
+}
