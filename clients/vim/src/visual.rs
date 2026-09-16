@@ -18,10 +18,10 @@ pub enum Visual {
 /// A selection, kept for `gv`.
 #[derive(Clone, Copy, Debug)]
 pub struct Selection {
-    kind: Visual,
-    anchor: usize,
-    cursor: usize,
-    to_end: bool,
+    pub kind: Visual,
+    pub anchor: usize,
+    pub cursor: usize,
+    pub to_end: bool,
 }
 
 /// An insert on the first line of a block, to be copied onto the
@@ -120,6 +120,7 @@ impl Vim {
             Key::Char('p' | 'P') => self.visual_paste(kind),
             Key::Char('I') if kind == Visual::Block => self.block_insert(false),
             Key::Char('A') if kind == Visual::Block => self.block_insert(true),
+            Key::Char(c @ ('/' | '?' | ':')) => self.prompt(c, count),
             _ => Effect::Nothing,
         }
     }
@@ -229,7 +230,7 @@ impl Vim {
     }
 
     /// The line and column of `at`, in chars from 0.
-    fn position_of(&self, at: usize) -> (usize, usize) {
+    pub(crate) fn position_of(&self, at: usize) -> (usize, usize) {
         let before = &self.text[..at];
         let line = before.matches('\n').count();
         let column = before.rsplit('\n').next().unwrap_or("").chars().count();

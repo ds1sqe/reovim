@@ -112,16 +112,23 @@ fn drive(tui: &mut Tui, serve: Serve) -> Result<u8, Fail> {
 /// hidden while it is drawn and placed after.
 fn draw(tui: &mut Tui) -> Result<(), Fail> {
     let (cols, rows) = term::size()?;
-    let Frame { lines, cursor, selection, status } = tui.frame(cols, rows);
+    let Frame { lines, cursor, selection, marks, status } =
+        tui.frame(cols, rows);
     let text_rows = usize::from(rows.saturating_sub(1));
     let blank = String::new();
     let rest =
         std::iter::repeat_n(&blank, text_rows.saturating_sub(lines.len()));
     let mut screen = String::from("\x1b[?25l\x1b[H");
     for (row, line) in lines.iter().chain(rest).enumerate() {
-        let cells = selection.iter().find(|s| usize::from(s.0) == row);
-        let shown =
-            cells.map_or_else(|| line.clone(), |s| inverted(line, s.1, s.2));
+        let on = |cells: &[(u16, u16, u16)]| {
+            cells.iter().find(|s| usize::from(s.0) == row).map(|s| (s.1, s.2))
+        };
+        // A selection shows inverted, a search match underlined.
+        let shown = match (on(&selection), on(&marks)) {
+            (Some((from, to)), _) => styled(line, from, to, "7"),
+            (None, Some((from, to))) => styled(line, from, to, "4"),
+            (None, None) => line.clone(),
+        };
         let _ = write!(screen, "\x1b[2K{shown}\r\n");
     }
     let status: String = status.chars().take(usize::from(cols)).collect();
@@ -131,9 +138,9 @@ fn draw(tui: &mut Tui) -> Result<(), Fail> {
     Ok(out(screen.as_bytes())?)
 }
 
-/// `line` with the columns `from..to` inverted; a column past the
-/// line's end is the newline's cell, shown as a space.
-fn inverted(line: &str, from: u16, to: u16) -> String {
+/// `line` with the columns `from..to` in the SGR style `code`; a
+/// column past the line's end is the newline's cell, shown as a space.
+fn styled(line: &str, from: u16, to: u16, code: &str) -> String {
     let (from, to) = (usize::from(from), usize::from(to));
     let chars: Vec<char> = line.chars().collect();
     let take = |a: usize, b: usize| -> String {
@@ -145,7 +152,7 @@ fn inverted(line: &str, from: u16, to: u16) -> String {
     };
     let tail = if to > chars.len() { " " } else { "" };
     format!(
-        "{}\x1b[7m{}{tail}\x1b[0m{}",
+        "{}\x1b[{code}m{}{tail}\x1b[0m{}",
         take(0, from),
         take(from, to),
         take(to, chars.len())

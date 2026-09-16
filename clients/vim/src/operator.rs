@@ -95,6 +95,18 @@ pub enum Motion {
         inner: bool,
         kind: char,
     },
+    /// `/` and `?` run: the last pattern in that direction.
+    Search {
+        forward: bool,
+    },
+    /// `n` and `N`.
+    SearchAgain {
+        reversed: bool,
+    },
+    /// `*` and `#`.
+    Star {
+        forward: bool,
+    },
 }
 
 /// What an operator does at a span's end.
@@ -126,6 +138,10 @@ impl Motion {
             Key::Char(';') => Self::FindAgain { reversed: false },
             Key::Char(',') => Self::FindAgain { reversed: true },
             Key::Char('%') => Self::Percent,
+            Key::Char('n') => Self::SearchAgain { reversed: false },
+            Key::Char('N') => Self::SearchAgain { reversed: true },
+            Key::Char('*') => Self::Star { forward: true },
+            Key::Char('#') => Self::Star { forward: false },
             _ => return None,
         };
         Some(motion)
@@ -171,6 +187,11 @@ impl Vim {
             Motion::FindAgain { reversed } => self.find_again(n, reversed),
             Motion::Percent => self.percent(),
             Motion::Lines | Motion::Object { .. } => Effect::Nothing,
+            Motion::Search { forward } => self.search(forward, n),
+            Motion::SearchAgain { reversed } => {
+                self.search(self.search.forward != reversed, n)
+            }
+            Motion::Star { forward } => self.star(forward, n),
         }
     }
 

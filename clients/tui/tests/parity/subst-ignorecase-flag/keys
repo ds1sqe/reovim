@@ -1,0 +1,1 @@
+:s/foo/x/gi<CR>:wq<CR>

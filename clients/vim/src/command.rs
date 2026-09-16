@@ -1,16 +1,37 @@
-//! The command line: `:` and what a person types after it.
+//! The command line: `:` and what a person types after it, and the
+//! `/` and `?` prompts that share it.
 
 use alloc::string::String;
+use alloc::vec::Vec;
 
-use crate::{Effect, Key, Mode, Quit, Vim};
+use crate::pattern::{Pattern, expand};
+use crate::{Edit, Effect, Key, Mode, Motion, Quit, Vim};
+
+/// Lines from 0, both ends included.
+type Lines = (usize, usize);
 
 impl Vim {
+    /// `:`, `/` or `?`: the prompt opens, the mode to return to kept.
+    pub(crate) fn prompt(&mut self, prompt: char, count: usize) -> Effect {
+        self.line.clear();
+        // `:` from a selection leaves it and names its lines.
+        if prompt == ':' && matches!(self.mode, Mode::Visual(_)) {
+            self.leave_visual();
+            self.line.push_str("'<,'>");
+        }
+        self.before = self.mode;
+        self.mode = Mode::Command;
+        self.prompt = prompt;
+        self.pending.count = count;
+        Effect::Moved
+    }
+
     /// One key on the command line: it grows, shrinks, is left, or
     /// runs.
     pub(crate) fn command(&mut self, key: Key) -> Effect {
         match key {
             Key::Char(c) => self.line.push(c),
-            Key::Backspace if self.line.is_empty() => self.mode = Mode::Normal,
+            Key::Backspace if self.line.is_empty() => self.leave_command(),
             Key::Backspace => {
                 self.line.pop();
             }
@@ -22,22 +43,57 @@ impl Vim {
     }
 
     fn leave_command(&mut self) {
-        self.mode = Mode::Normal;
+        self.mode = self.before;
         self.line.clear();
+        self.pending.count = 0;
+        self.pending.operator = None;
+        self.repeat.record.clear();
     }
 
-    /// The line as a command: `w`, `q`, `q!`, `wq`, `x`, `cq`; any
-    /// other is E492.
+    /// The line run: a search for `/` and `?`, else a command.
     fn run(&mut self) -> Effect {
         let line = core::mem::take(&mut self.line);
-        self.mode = Mode::Normal;
-        match line.trim() {
-            "" => Effect::Moved,
+        self.mode = self.before;
+        let count = core::mem::take(&mut self.pending.count);
+        if self.prompt != ':' {
+            return self.searched(line, self.prompt == '/', count.max(1));
+        }
+        self.repeat.record.clear();
+        let effect = self.ex(&line);
+        self.settle(&effect);
+        effect
+    }
+
+    /// `/pat` or `?pat` entered: the last pattern unless empty, then
+    /// the motion, for the cursor or the operator waiting.
+    fn searched(&mut self, line: String, forward: bool, n: usize) -> Effect {
+        if !line.is_empty() {
+            self.search.pattern = line;
+        }
+        self.search.forward = forward;
+        self.motion(Motion::Search { forward }, n)
+    }
+
+    /// `w`, `q`, `q!`, `wq`, `x`, `cq`, `noh`, `set`, `s` with a range;
+    /// any other is E492.
+    fn ex(&mut self, line: &str) -> Effect {
+        let (range, rest) = self.range(line.trim());
+        let command = rest.trim();
+        match command {
+            "" | "set" => Effect::Moved,
             "w" => Effect::Save,
             "q" => Effect::Quit(Quit::Ask),
             "q!" => Effect::Quit(Quit::Force),
             "wq" | "x" => Effect::Quit(Quit::Write),
             "cq" => Effect::Quit(Quit::Abort),
+            "noh" | "nohlsearch" => {
+                self.search.stale = true;
+                Effect::Moved
+            }
+            _ if command.starts_with("set ") => self.set(&command[4..]),
+            _ if command.starts_with("s/") => {
+                self.substitute(range, &command[2..])
+            }
             other => {
                 self.message =
                     alloc::format!("E492: Not an editor command: {other}");
@@ -46,9 +102,188 @@ impl Vim {
         }
     }
 
+    /// `[range]` off the front: `%`, `'<,'>`, `N`, `.`, `$`, `A,B`;
+    /// the current line alone when there is none.
+    fn range<'a>(&self, line: &'a str) -> (Lines, &'a str) {
+        let here = self.position().0;
+        let last = self.line_count() - 1;
+        if let Some(rest) = line.strip_prefix('%') {
+            return ((0, last), rest);
+        }
+        if let Some(rest) = line.strip_prefix("'<,'>") {
+            return (self.visual_lines().unwrap_or((here, here)), rest);
+        }
+        let (from, rest) = address(line, here, last);
+        let Some(after_comma) = rest.strip_prefix(',') else {
+            return ((from, from), rest);
+        };
+        let (to, rest) = address(after_comma, here, last);
+        ((from.min(to), from.max(to)), rest)
+    }
+
+    /// The lines of the last selection.
+    fn visual_lines(&self) -> Option<Lines> {
+        let last = self.line_count() - 1;
+        let v = self.last_visual?;
+        let (a, c) =
+            (self.position_of(v.anchor).0, self.position_of(v.cursor).0);
+        Some((a.min(c).min(last), a.max(c).min(last)))
+    }
+
+    /// `:set` with its arguments: the search options, `no` off, long
+    /// or short names, `incsearch` taken and left as nvim has it;
+    /// E518 for the rest.
+    fn set(&mut self, args: &str) -> Effect {
+        args.split_whitespace().all(|arg| self.set_one(arg));
+        Effect::Moved
+    }
+
+    /// One `:set` argument; false with E518 for one not known.
+    fn set_one(&mut self, arg: &str) -> bool {
+        let (name, on) =
+            arg.strip_prefix("no").map_or((arg, true), |n| (n, false));
+        if matches!(name, "is" | "incsearch") {
+            return true;
+        }
+        let Some(option) = self.option(name) else {
+            self.message = alloc::format!("E518: Unknown option: {arg}");
+            return false;
+        };
+        *option = on;
+        true
+    }
+
+    /// The option `name` names.
+    fn option(&mut self, name: &str) -> Option<&mut bool> {
+        let options = &mut self.search.options;
+        let option = match name {
+            "ic" | "ignorecase" => &mut options.ignorecase,
+            "scs" | "smartcase" => &mut options.smartcase,
+            "hls" | "hlsearch" => &mut options.hlsearch,
+            _ => return None,
+        };
+        Some(option)
+    }
+
+    /// `:s/pat/rep/[g][i]` over `lines`: each line's replacements one
+    /// edit, bottom-up so no offset moves under another, all one
+    /// revision; the cursor on the last line changed.
+    fn substitute(&mut self, lines: Lines, args: &str) -> Effect {
+        let parts: Vec<&str> = split_unescaped(args, '/');
+        let (pattern, replacement) = (
+            parts.first().copied().unwrap_or(""),
+            parts.get(1).copied().unwrap_or(""),
+        );
+        let flags = parts.get(2).copied().unwrap_or("");
+        let (global, ignore) = (flags.contains('g'), flags.contains('i'));
+        let source = if pattern.is_empty() {
+            self.search.pattern.clone()
+        } else {
+            pattern.into()
+        };
+        self.search.pattern.clone_from(&source);
+        let options = self.search.options;
+        let ignorecase = ignore || (options.ignorecase && !flags.contains('I'));
+        let Some(pattern) =
+            Pattern::parse(&source, ignorecase, options.smartcase && !ignore)
+        else {
+            return self.not_found(&source);
+        };
+        let starts = (lines.0..=lines.1).rev().filter_map(|l| self.line_at(l));
+        let changes: Vec<(usize, usize, String)> = starts
+            .map(|start| (start, self.line_end(start)))
+            .filter_map(|(start, end)| {
+                let line = &self.text[start..end];
+                substituted(line, &pattern, replacement, global)
+                    .map(|text| (start, end, text))
+            })
+            .collect();
+        let mut edits = Vec::new();
+        for (start, end, text) in changes {
+            self.text.replace_range(start..end, &text);
+            let join = !edits.is_empty();
+            edits.push(Edit { at: start, len: end - start, text, join });
+        }
+        let Some(first) = edits.first() else { return self.not_found(&source) };
+        self.cursor = self.first_non_blank(first.at);
+        self.clamp();
+        self.joining = false;
+        Effect::Edits(edits)
+    }
+
+    fn not_found(&mut self, source: &str) -> Effect {
+        self.message = alloc::format!("E486: Pattern not found: {source}");
+        Effect::Moved
+    }
+
     /// A message shown in the status row until the next key, as
     /// Vim's own are: the tui's E37, for one.
     pub fn notice(&mut self, message: &str) {
         self.message = String::from(message);
     }
+}
+
+/// `line` with its matches replaced, or `None` when there are none.
+/// An empty match at the line's end is not one after the first try.
+fn substituted(
+    line: &str,
+    pattern: &Pattern,
+    replacement: &str,
+    global: bool,
+) -> Option<String> {
+    let mut out = String::new();
+    let mut col = 0;
+    let mut first = true;
+    let mut found = pattern.find(line, col);
+    while let Some((start, end, caps)) =
+        found.filter(|m| first || m.0 < line.len())
+    {
+        out.push_str(&line[col..start]);
+        out.push_str(&expand(replacement, line, &caps));
+        first = false;
+        let width = line[start..].chars().next().map_or(0, char::len_utf8);
+        // An empty match keeps the char it sat on and moves past it.
+        out.push_str(if end > start {
+            ""
+        } else {
+            &line[start..start + width]
+        });
+        col = if end > start { end } else { start + width };
+        found = (global && col < line.len())
+            .then(|| pattern.find(line, col))
+            .flatten();
+    }
+    if first {
+        return None;
+    }
+    out.push_str(&line[col.min(line.len())..]);
+    Some(out)
+}
+
+/// `args` split at `sep`, a backslash escaping one.
+fn split_unescaped(args: &str, sep: char) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut start = 0;
+    let mut escaped = false;
+    for (i, c) in args.char_indices() {
+        let cut = c == sep && !escaped;
+        parts.extend(cut.then(|| &args[start..i]));
+        start = if cut { i + 1 } else { start };
+        escaped = c == '\\' && !escaped;
+    }
+    parts.push(&args[start..]);
+    parts
+}
+
+/// One address: `.`, `$`, digits, or nothing for the current line.
+fn address(line: &str, here: usize, last: usize) -> (usize, &str) {
+    if let Some(rest) = line.strip_prefix('.') {
+        return (here, rest);
+    }
+    if let Some(rest) = line.strip_prefix('$') {
+        return (last, rest);
+    }
+    let digits = line.chars().take_while(char::is_ascii_digit).count();
+    let number: usize = line[..digits].parse().unwrap_or(here + 1);
+    (number.saturating_sub(1).min(last), &line[digits..])
 }

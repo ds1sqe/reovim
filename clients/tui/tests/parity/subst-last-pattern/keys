@@ -1,0 +1,1 @@
+/bar<CR>:s//baz/<CR>:wq<CR>

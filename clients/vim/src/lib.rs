@@ -15,6 +15,8 @@ mod motion;
 pub mod notation;
 mod object;
 mod operator;
+mod pattern;
+mod search;
 mod visual;
 mod word;
 
@@ -26,6 +28,7 @@ pub use reovim_client::Key;
 pub use visual::Visual;
 
 use operator::{Find, Operator};
+use search::Search;
 use visual::{BlockInsert, Selection};
 
 /// One change to the text, already applied here: `len` bytes at
@@ -79,6 +82,8 @@ pub struct Frame {
     pub lines: Vec<String>,
     pub cursor: (u16, u16),
     pub selection: Vec<(u16, u16, u16)>,
+    /// `hlsearch`'s matches, in the selection's shape.
+    pub marks: Vec<(u16, u16, u16)>,
     pub status: String,
 }
 
@@ -153,6 +158,11 @@ pub struct Vim {
     last_visual: Option<Selection>,
     /// A block insert under way.
     block: Option<BlockInsert>,
+    search: Search,
+    /// `:`, `/` or `?`: what the command line is for.
+    prompt: char,
+    /// The mode the command line returns to.
+    before: Mode,
     /// The command line being typed.
     line: String,
     /// Shown until the next key.
@@ -274,7 +284,7 @@ impl Vim {
             _ if !self.message.is_empty() => self.message.clone(),
             Mode::Normal => String::new(),
             Mode::Insert => String::from("-- INSERT --"),
-            Mode::Command => alloc::format!(":{}", self.line),
+            Mode::Command => alloc::format!("{}{}", self.prompt, self.line),
             Mode::Visual(Visual::Char) => String::from("-- VISUAL --"),
             Mode::Visual(Visual::Line) => String::from("-- VISUAL LINE --"),
             Mode::Visual(Visual::Block) => String::from("-- VISUAL BLOCK --"),
@@ -283,7 +293,8 @@ impl Vim {
             Mode::Visual(kind) => self.selection_cells(kind, self.top, height),
             _ => Vec::new(),
         };
-        Frame { lines, cursor: (row, col), selection, status }
+        let marks = self.search_marks(self.top, height);
+        Frame { lines, cursor: (row, col), selection, marks, status }
     }
 
     fn normal(&mut self, key: Key) -> Effect {
@@ -327,6 +338,7 @@ impl Vim {
             Key::Char('y') => return self.operator(Operator::Yank, n),
             Key::Char('>') => return self.operator(Operator::ShiftRight, n),
             Key::Char('<') => return self.operator(Operator::ShiftLeft, n),
+            Key::Char(c @ ('/' | '?')) => return self.prompt(c, count),
             _ if self.pending.operator.take().is_some() => Effect::Nothing,
             Key::Char('~') => self.tilde(n),
             Key::Char('v') => self.enter_visual(Visual::Char),
@@ -375,10 +387,7 @@ impl Vim {
             Key::Char('.') => return self.replay(count),
             Key::Char('u') => Effect::Undo,
             Key::Ctrl('r') => Effect::Redo,
-            Key::Char(':') => {
-                self.mode = Mode::Command;
-                Effect::Moved
-            }
+            Key::Char(':') => self.prompt(':', count),
             _ => Effect::Nothing,
         };
         self.settle(&effect);
