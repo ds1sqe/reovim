@@ -125,6 +125,16 @@ keys other i "x" Escape : w Enter : q ! Enter
 [[ "$(cat "$DIR/other")" == x ]] || fail "second editor not written"
 [[ ! -e "$XDG_RUNTIME_DIR" ]] || fail "the runtime directory was touched"
 
+# --- no file: an unnamed buffer, E32 on :w, nothing written ---------
+start unnamed "$DIR" "$BIN"
+editing unnamed '\[No Name\]'
+keys unnamed i "hi" Escape : w Enter
+shown unnamed "E32: No file name"
+keys unnamed : q ! Enter
+[[ "$(ended unnamed)" == 0 ]] || fail "the unnamed buffer did not quit"
+[[ ! -e "$DIR/[No Name]" && ! -e "$DIR/No Name" ]] \
+    || fail "the unnamed buffer wrote a file"
+
 # --- SIGTERM: the terminal cooked, the file untouched, exit 1 -------
 start term "$DIR" "$BIN other; echo \$? > '$DIR/exit-term'; \
     stty -a > '$DIR/stty'; sleep 30"

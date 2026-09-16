@@ -8,9 +8,11 @@ extern crate alloc;
 use reovim_sdk::declare;
 
 declare! {
-    /// `/module/text/open`: a Buffer over any rd.
+    /// `/module/text/open`: a Buffer over any rd, or over nothing:
+    /// `new` makes one that is empty and cannot save.
     api open ver 1 {
         0 open(source: Rd) -> Rd: WRITE;
+        1 new() -> Rd: WRITE;
     }
 }
 

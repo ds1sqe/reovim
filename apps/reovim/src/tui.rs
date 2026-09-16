@@ -1,5 +1,5 @@
-//! `reovim tui FILE` over the link, and bare `reovim FILE` with the
-//! server in the same process: the terminal loop, drawing in plain
+//! `reovim tui [FILE]` over the link, and bare `reovim [FILE]` with
+//! the server in the same process: the terminal loop, drawing in plain
 //! ANSI. Keys go to the tui, the frame comes back.
 
 use std::fmt::Write as _;
@@ -28,7 +28,7 @@ type Editor = Tui<Vim>;
 pub fn remote(
     socket: &str,
     line: Option<usize>,
-    file: &str,
+    file: Option<&str>,
 ) -> Result<u8, Fail> {
     let credential = format!("tui:{}", std::process::id()).into_bytes();
     let client = Remote::client(socket, credential)?;
@@ -41,14 +41,15 @@ pub fn bare(
     socket: Option<&str>,
     log: Option<&str>,
     line: Option<usize>,
-    file: &str,
+    file: Option<&str>,
 ) -> Result<u8, Fail> {
     let (kernel, _modules) = boot("/")?;
     let mut links = socket.map(Links::listen).transpose()?;
     let mut sink = log.map(|path| Sink::open(&kernel, path)).transpose()?;
-    let file = absolute(&reovim_host::dirs::work()?, file);
+    let work = reovim_host::dirs::work()?;
+    let file = file.map(|file| absolute(&work, file));
     let client = Local::client(&kernel)?;
-    run(client, line, &file, &mut || {
+    run(client, line, file.as_deref(), &mut || {
         if let Some(links) = &mut links {
             links.drain(&kernel);
         }
@@ -82,7 +83,7 @@ fn absolute(work: &str, path: &str) -> String {
 fn run(
     client: Client,
     line: Option<usize>,
-    file: &str,
+    file: Option<&str>,
     serve: Serve,
 ) -> Result<u8, Fail> {
     let mut tui = Tui::open(client, file, Vim::default())?;

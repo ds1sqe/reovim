@@ -31,15 +31,21 @@ pub enum Step {
 
 /// What `:q` says to unsaved changes.
 const E37: &str = "E37: No write since last change (add ! to override)";
+/// What a write says on a Buffer over nothing.
+const E32: &str = "E32: No file name";
+/// The name of a Buffer over nothing, as nvim shows it.
+const UNNAMED: &str = "[No Name]";
 
-/// One Buffer over `/module/fs/root/FILE`, watched, with its draft in
-/// a `Plugin` and its head and published revisions from `tree`. The
-/// source is watched too: a save by anyone is a Modify there.
+/// One Buffer over `/module/fs/root/FILE`, or over nothing, watched.
+///
+/// Its draft is in a `Plugin`, its head and published revisions from
+/// `tree`. The source is watched too: a save by anyone is a Modify
+/// there.
 pub struct Tui<P: Plugin> {
     client: Client,
     plugin: P,
     buffer: Rd,
-    source: Rd,
+    source: Option<Rd>,
     h: Handle,
     name: String,
     head: u64,
@@ -49,31 +55,42 @@ pub struct Tui<P: Plugin> {
 }
 
 impl<P: Plugin> Tui<P> {
-    /// Open `file` as a Buffer, watch it and load the draft into
-    /// `plugin`. The name shown is the source's, read through the
-    /// `source` pointer.
+    /// Open `file` as a Buffer, or one over nothing when there is no
+    /// file, watch it and load the draft into `plugin`.
     ///
     /// # Errors
     /// What the Client says; `Kernel(Invalid)` for a file that is not
     /// under the root.
     pub fn open(
         mut client: Client,
-        file: &str,
+        file: Option<&str>,
         mut plugin: P,
     ) -> Result<Self, Fault> {
         client.capability(b"tui".to_vec())?;
-        let source = client.resolve(&format!("/module/fs/root/{file}"))?;
+        let source = match file {
+            Some(file) => {
+                Some(client.resolve(&format!("/module/fs/root/{file}"))?)
+            }
+            None => None,
+        };
         let opener = client.resolve("/module/text/open")?;
         let opening = client.open(opener, Rights::WRITE)?;
-        let buffer = open::Call(&mut client, opening).open(source)?;
+        let mut open = open::Call(&mut client, opening);
+        let buffer = match source {
+            Some(source) => open.open(source)?,
+            None => open.new()?,
+        };
         client.close(opening)?;
-        let pointer = client.lookup(buffer, "source")?;
-        let source: Rd = reovim_sdk::decode(&client.read_all(pointer)?)?;
-        let name = client.name(source)?;
+        let name = match source {
+            Some(source) => client.name(source)?,
+            None => String::from(UNNAMED),
+        };
         let h = client.open(buffer, Rights::READ.union(Rights::WRITE))?;
         client.watch(h, true)?;
-        let watched = client.open(source, Rights::READ)?;
-        client.watch(watched, true)?;
+        if let Some(source) = source {
+            let watched = client.open(source, Rights::READ)?;
+            client.watch(watched, true)?;
+        }
         plugin.loaded(&client.read_whole(h)?);
         plugin.goto_line(1);
         let clipboard = client.resolve("/module/clipboard/text").ok();
@@ -152,6 +169,17 @@ impl<P: Plugin> Tui<P> {
                 return Ok(Step::Changed);
             }
             Effect::Quit(Quit::Ask | Quit::Force) => return Ok(Step::Quit(0)),
+            // Over nothing: `:x` on an untouched Buffer leaves, a changed
+            // one has no file to write.
+            Effect::Quit(Quit::Write)
+                if self.source.is_none() && self.head == self.published =>
+            {
+                return Ok(Step::Quit(0));
+            }
+            Effect::Quit(Quit::Write) if self.source.is_none() => {
+                self.plugin.notice(E32);
+                return Ok(Step::Changed);
+            }
             Effect::Quit(Quit::Write) => {
                 self.save()?;
                 return Ok(Step::Quit(0));
@@ -178,10 +206,8 @@ impl<P: Plugin> Tui<P> {
         }
         // Overflow: the ring moved past us, so everything is read again.
         let overflow = events.iter().any(|e| e.kind == Kind::Overflow);
-        if !overflow
-            && !on(self.buffer, Kind::Modify)
-            && !on(self.source, Kind::Modify)
-        {
+        let source = self.source.is_some_and(|s| on(s, Kind::Modify));
+        if !overflow && !on(self.buffer, Kind::Modify) && !source {
             return Ok(Step::Same);
         }
         let bytes = self.client.read_whole(self.h)?;
@@ -240,8 +266,13 @@ impl<P: Plugin> Tui<P> {
         }
     }
 
-    /// The head written to the source, after the Plugin's last word.
+    /// The head written to the source, after the Plugin's last word;
+    /// E32 over nothing.
     fn save(&mut self) -> Result<(), Fault> {
+        if self.source.is_none() {
+            self.plugin.notice(E32);
+            return Ok(());
+        }
         if let Some(edit) = self.plugin.saving() {
             self.edit(edit)?;
         }

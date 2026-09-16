@@ -63,10 +63,11 @@ impl From<reovim_kernel_interface::Error> for Fail {
 const USAGE: &str = "\
 usage: reovim server [--socket PATH] [--root DIR] [--log PATH]
        reovim cli [--socket PATH] [COMMAND...]
-       reovim tui [--socket PATH] [+N] FILE
-       reovim [--socket PATH] [--log PATH] [+N] FILE
+       reovim tui [--socket PATH] [+N] [FILE]
+       reovim [--socket PATH] [--log PATH] [+N] [FILE]
 defaults: --socket <runtime dir>/reovim.sock, --root <working directory>;
-the bare form edits any FILE and listens only when given --socket";
+the bare form edits any FILE, or none, and listens only when given
+--socket";
 
 /// `--socket`, `--root` and `--log` taken off the front of `args`.
 struct Options {
@@ -141,14 +142,17 @@ fn run(args: Vec<String>) -> Result<ExitCode, Fail> {
     }
 }
 
-/// `[+N] FILE`: the line to start on, if given, and the file.
-fn file_at(rest: &[String]) -> Result<(Option<usize>, &str), Fail> {
-    match rest {
-        [file] => Ok((None, file)),
-        [line, file] if line.starts_with('+') => {
-            let line = line[1..].parse().map_err(|_| usage())?;
-            Ok((Some(line), file))
+/// `[+N] [FILE]`: the line to start on and the file, each if given.
+fn file_at(rest: &[String]) -> Result<(Option<usize>, Option<&str>), Fail> {
+    let (line, rest) = match rest {
+        [line, rest @ ..] if line.starts_with('+') => {
+            (Some(line[1..].parse().map_err(|_| usage())?), rest)
         }
+        _ => (None, rest),
+    };
+    match rest {
+        [] => Ok((line, None)),
+        [file] => Ok((line, Some(file.as_str()))),
         _ => Err(usage()),
     }
 }
@@ -187,11 +191,14 @@ mod tests {
     }
 
     #[test]
-    fn a_file_may_carry_its_line() {
-        assert_eq!(file_at(&args(&["f"])).ok(), Some((None, "f")));
-        assert_eq!(file_at(&args(&["+7", "f"])).ok(), Some((Some(7), "f")));
+    fn a_file_may_carry_its_line_and_may_be_none() {
+        let (file, both) = (args(&["f"]), args(&["+7", "f"]));
+        let (none, line) = (args(&[]), args(&["+7"]));
+        assert_eq!(file_at(&file).ok(), Some((None, Some("f"))));
+        assert_eq!(file_at(&both).ok(), Some((Some(7), Some("f"))));
+        assert_eq!(file_at(&none).ok(), Some((None, None)));
+        assert_eq!(file_at(&line).ok(), Some((Some(7), None)));
         assert!(file_at(&args(&["+x", "f"])).is_err());
-        assert!(file_at(&args(&[])).is_err());
         assert!(file_at(&args(&["a", "b"])).is_err());
     }
 }

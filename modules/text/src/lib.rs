@@ -1,10 +1,11 @@
 #![no_std]
 #![forbid(unsafe_code)]
-//! The text Driver: a Buffer over any rd it can open, as
-//! 01-core-runtime.md describes one. Every accepted edit is a stored
-//! state, `history` walks them and `publish.save` writes the head back
-//! to the source. It speaks to the Kernel only: the source is opened
-//! READ once at `open` and WRITE once at `save`, never watched.
+//! The text Driver: a Buffer over any rd it can open, or over nothing,
+//! as 01-core-runtime.md describes one. Every accepted edit is a
+//! stored state, `history` walks them and `publish.save` writes the
+//! head back to the source. It speaks to the Kernel only: the source
+//! is opened READ once at `open` and WRITE once at `save`, never
+//! watched.
 
 extern crate alloc;
 
@@ -33,8 +34,9 @@ const CHUNK: u32 = 64 * 1024;
 
 enum Node {
     Open,
+    /// A Buffer; over nothing when it has no source.
     Buffer {
-        source: Rd,
+        source: Option<Rd>,
         history: History,
     },
     /// The `source` child of a Buffer: reads give the source rd id.
@@ -47,6 +49,8 @@ struct State {
     nodes: BTreeMap<Rd, Node>,
     /// Source rd to its one Buffer.
     opened: BTreeMap<Rd, Rd>,
+    /// Buffers over nothing made so far, for their names.
+    unnamed: u64,
     /// Bytes held across every state of every Buffer.
     held: usize,
 }
@@ -228,13 +232,26 @@ impl Text {
         }
         self.state.borrow_mut().held += bytes.len();
         let history = History::new("open", bytes);
-        let node = Node::Buffer { source, history };
+        let node = Node::Buffer { source: Some(source), history };
         let name = source.0.to_string();
         let rd = self.add(ctx, home, &name, BUFFER, &self.decls[1..], node)?;
         let pointer = Node::Pointer(source);
         self.add(ctx, rd, "source", Flags::READ, &[], pointer)?;
         self.state.borrow_mut().opened.insert(source, rd);
         Ok(rd)
+    }
+
+    /// A Buffer over nothing: empty, named `new<n>`, without a
+    /// `source` child.
+    fn unnamed(&self, ctx: &dyn Calls) -> Result<Rd, Error> {
+        let mut state = self.state.borrow_mut();
+        let home = state.home.ok_or(Error::Invalid)?;
+        state.unnamed += 1;
+        let name = alloc::format!("new{}", state.unnamed);
+        drop(state);
+        let history = History::new("new", Vec::new());
+        let node = Node::Buffer { source: None, history };
+        self.add(ctx, home, &name, BUFFER, &self.decls[1..], node)
     }
 
     fn read(&self, rd: Rd, at: u64, len: usize) -> Result<Vec<u8>, Error> {
@@ -288,14 +305,16 @@ impl Text {
         })
     }
 
-    /// The head stored to the source, then published.
+    /// The head stored to the source, then published; a Buffer over
+    /// nothing has nowhere to store it.
     fn store_head(&self, ctx: &dyn Calls, rd: Rd) -> Result<(), Error> {
         let state = self.state.borrow();
         let Some(Node::Buffer { source, history }) = state.nodes.get(&rd)
         else {
             return Err(Error::Unsupported);
         };
-        let (source, draft) = (*source, history.draft().to_vec());
+        let source = source.ok_or(Error::Invalid)?;
+        let draft = history.draft().to_vec();
         drop(state);
         store(ctx, source, &draft)?;
         let mut state = self.state.borrow_mut();
@@ -345,6 +364,10 @@ impl Text {
 impl open::Api for Text {
     fn open(&self, ctx: &dyn Calls, _: Rd, source: Rd) -> Result<Rd, Error> {
         self.buffer(ctx, source)
+    }
+
+    fn new(&self, ctx: &dyn Calls, _: Rd) -> Result<Rd, Error> {
+        self.unnamed(ctx)
     }
 }
 

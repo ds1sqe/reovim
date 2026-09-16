@@ -176,6 +176,15 @@ impl Rig {
         }
     }
 
+    /// `open.new`: a Buffer over nothing.
+    fn new_buffer(&self) -> Rd {
+        let h = self.open(self.open, Rights::WRITE);
+        match self.call(h, "open", 1, encode(&())) {
+            Reply::Ready(Ok(Out::Bytes(bytes))) => decode(&bytes).unwrap(),
+            other => panic!("{other:?}"),
+        }
+    }
+
     fn replace(&self, h: Handle, at: u64, len: u64, text: &str) -> Reply<Out> {
         let edit = text::Edit { at, len, text: text.to_string() };
         self.call(h, "text", 0, encode(&edit))
@@ -374,4 +383,20 @@ fn replace_many_is_one_state_behind_a_precondition() {
     );
     let (events, _) = rig.since(cursor);
     assert_eq!(events.len(), 2);
+}
+
+#[test]
+fn a_buffer_over_nothing_edits_but_never_saves() {
+    let rig = Rig::new("unnamed");
+    let buffer = rig.new_buffer();
+    assert_eq!(rig.name(buffer), "new1");
+    assert_eq!(rig.read(buffer), b"");
+    let source = rig.submit(Op::Lookup { rd: buffer, name: "source".into() });
+    assert!(matches!(source, Reply::Ready(Err(_))), "{source:?}");
+    let (h, _) = rig.watch(buffer);
+    assert_eq!(rig.replace(h, 0, 0, "hi"), DONE);
+    assert_eq!(rig.read(buffer), b"hi");
+    assert_eq!(rig.tree(h).0, [node(1, 0, "new"), node(2, 1, "replace")]);
+    assert_eq!(rig.save(h), Reply::err(Error::Invalid));
+    assert_eq!(rig.name(rig.new_buffer()), "new2", "each its own");
 }
