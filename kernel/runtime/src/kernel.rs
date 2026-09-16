@@ -15,7 +15,7 @@ use reovim_kernel_interface::{
 use crate::calls::ModuleCalls;
 use crate::log::Log;
 use crate::pending::Pending;
-use crate::table::{MODULES, Node, OPEN, Owner, SESSIONS, Table};
+use crate::table::{CONTAINER, MODULES, Node, OPEN, Owner, SESSIONS, Table};
 use crate::watch::Ring;
 
 /// Sizes of the bounded Kernel state.
@@ -76,6 +76,7 @@ pub struct State {
     pub events: Ring,
     pub log: Log,
     pub next_session: u64,
+    pub next_client: u64,
 }
 
 impl State {
@@ -147,6 +148,7 @@ impl Kernel {
             events: Ring::new(limits.watch_ring),
             log: Log::new(),
             next_session: 1,
+            next_client: 1,
         };
         Self { clock, limits, state: RefCell::new(state) }
     }
@@ -217,6 +219,36 @@ impl Kernel {
         let rd = s.table.insert(SESSIONS, Some(&name), owner, OPEN, now);
         s.emit(SESSIONS, Kind::Create, Some(rd));
         rd
+    }
+
+    /// A new client under `session`: `/session/<id>/client/<cid>`, the
+    /// connection as a Resource. Logged under `kernel`.
+    ///
+    /// # Errors
+    /// `Invalid` unless `session` came from `session_new`.
+    pub fn client_new(&self, session: Rd) -> Result<Rd, Error> {
+        let now = self.now();
+        let mut s = self.state.borrow_mut();
+        let entry = s.table.get(session)?;
+        if entry.parent != Some(SESSIONS) {
+            return Err(Error::Invalid);
+        }
+        let owner = Owner::Kernel(Node::Container);
+        let clients = s.table.child(session, "client").unwrap_or_else(|| {
+            let name = Some("client");
+            let rd = s.table.insert(session, name, owner, CONTAINER, now);
+            s.emit(session, Kind::Create, Some(rd));
+            rd
+        });
+        let cid = s.next_client;
+        s.next_client += 1;
+        let name = alloc::format!("{cid}");
+        let rd = s.table.insert(clients, Some(&name), owner, CONTAINER, now);
+        s.emit(clients, Kind::Create, Some(rd));
+        let line =
+            alloc::format!("connect session={} client={}", session.0, rd.0);
+        s.log.append(now, "kernel", 0, line.into_bytes());
+        Ok(rd)
     }
 
     /// One request. A `seq` seen before is answered from memory and the

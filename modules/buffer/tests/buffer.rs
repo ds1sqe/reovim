@@ -1,15 +1,13 @@
 //! Both Drivers in one Kernel: a Buffer over a fs file.
 
 use std::path::PathBuf;
-use std::rc::Rc;
 
 use reovim_host::clock;
 use reovim_kernel_interface::{
-    Caller, Driver, Error, Handle, Kind, Op, Out, Rd, Reply, Rights,
+    Booted, Caller, Error, Handle, Kind, Op, Out, Rd, Reply, Rights,
 };
 use reovim_kernel_runtime::{Kernel, Limits, ROOT};
-use reovim_module_buffer::{Buffers, attach_decl, buffer_decl};
-use reovim_module_fs::Fs;
+use reovim_module_buffer::{attach_decl, buffer_decl};
 
 /// A directory of its own for one test, removed on drop.
 struct Dir(PathBuf);
@@ -40,21 +38,16 @@ struct Rig {
     attach: Rd,
 }
 
-fn load<M>(kernel: &Kernel, name: &str, module: M)
-where
-    M: reovim_kernel_interface::Module + Driver + 'static,
-{
-    let module = Rc::new(module);
-    let driver: Rc<dyn Driver> = module.clone();
-    kernel.load(name, module.as_ref(), vec![driver]).unwrap();
+fn load(kernel: &Kernel, name: &str, booted: &Booted) {
+    kernel.load(name, booted.module.as_ref(), booted.drivers.clone()).unwrap();
 }
 
 impl Rig {
     fn new(test: &str) -> Self {
         let dir = Dir::new(test);
         let kernel = Kernel::new(clock::now, Limits::default());
-        load(&kernel, "fs", Fs::new(dir.0.to_str().unwrap().to_string()));
-        load(&kernel, "buffer", Buffers::new());
+        load(&kernel, "fs", &reovim_module_fs::boot(dir.0.to_str().unwrap()));
+        load(&kernel, "buffer", &reovim_module_buffer::boot(""));
         let caller = kernel.caller_new();
         let seq = std::cell::Cell::new(0);
         let mut rig =

@@ -1,0 +1,31 @@
+[package]
+name = "reovim"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+build = "build.rs"
+
+[[bin]]
+name = "reovim"
+path = "src/main.rs"
+required-features = ["std"]
+
+[features]
+# On by default; the portable check turns it off so the workspace-wide
+# feature set stays no_std there.
+default = ["std"]
+std = ["reovim-host/std"]
+
+[dependencies]
+reovim-host = { path = "../../host/os" }
+reovim-kernel-interface = { path = "../../kernel/interface" }
+reovim-kernel-runtime = { path = "../../kernel/runtime" }
+reovim-module-buffer = { path = "../../modules/buffer" }
+reovim-module-fs = { path = "../../modules/fs" }
+
+[lints]
+workspace = true

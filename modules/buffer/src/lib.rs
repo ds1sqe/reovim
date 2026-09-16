@@ -9,14 +9,15 @@
 extern crate alloc;
 
 use alloc::collections::BTreeMap;
+use alloc::rc::Rc;
 use alloc::string::ToString;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::cell::RefCell;
 
 use reovim_kernel_interface::{
-    Calls, Decl, Driver, DriverId, Error, Flags, Handle, Hash, Kind, Method,
-    Module, Op, Out, Rd, Reply, Rights, Ty,
+    Booted, Calls, Decl, Driver, DriverId, Error, Flags, Handle, Hash, Kind,
+    Method, Module, Op, Out, Rd, Reply, Rights, Ty,
 };
 
 /// `/module/buffer/attach`: `0 attach(source: Rd) -> Rd`, WRITE.
@@ -130,6 +131,13 @@ fn slice(bytes: &[u8], at: u64, len: usize) -> Vec<u8> {
 fn source_of(input: &[u8]) -> Result<Rd, Error> {
     let bytes = input.try_into().map_err(|_| Error::Invalid)?;
     Ok(Rd(u64::from_le_bytes(bytes)))
+}
+
+/// The buffer Module, ready for `load`; `root` is unused.
+#[must_use]
+pub fn boot(_root: &str) -> Booted {
+    let buffers = Rc::new(Buffers::new());
+    Booted { module: buffers.clone(), drivers: alloc::vec![buffers] }
 }
 
 impl Default for Buffers {

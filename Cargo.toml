@@ -8,6 +8,7 @@ members = [
     "host/os",
     "modules/fs",
     "modules/buffer",
+    "apps/reovim",
 ]
 default-members = [
     "lib/bitflags",
@@ -17,6 +18,7 @@ default-members = [
     "host/os",
     "modules/fs",
     "modules/buffer",
+    "apps/reovim",
 ]
 
 [workspace.package]

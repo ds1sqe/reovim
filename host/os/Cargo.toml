@@ -16,5 +16,9 @@ std = []
 name = "fs"
 required-features = ["std"]
 
+[[test]]
+name = "link"
+required-features = ["std"]
+
 [lints]
 workspace = true

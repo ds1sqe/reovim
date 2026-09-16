@@ -112,3 +112,89 @@ pub mod clock {
         backend::now()
     }
 }
+
+/// Links that carry whole messages between two ends.
+///
+/// What a name is, and how bytes are framed, checked or ordered below a
+/// message, is the backend's own; the std backend names a Unix socket
+/// path and frames each message with a `u32` length.
+pub mod link {
+    use alloc::vec::Vec;
+
+    use super::{Error, backend};
+
+    /// One listening end.
+    pub struct Listener(backend::Listener);
+
+    /// One connected end.
+    pub struct Link(backend::Link);
+
+    /// Listen at `name`; a stale name from an earlier run is replaced.
+    ///
+    /// # Errors
+    /// `Denied` or `Io` from the host; `Unsupported` without a backend.
+    pub fn listen(name: &str) -> Result<Listener, Error> {
+        backend::listen(name).map(Listener)
+    }
+
+    /// The next link to `listener`, blocking.
+    ///
+    /// # Errors
+    /// As [`listen`].
+    pub fn accept(listener: &Listener) -> Result<Link, Error> {
+        backend::accept(&listener.0).map(Link)
+    }
+
+    /// A link to whoever listens at `name`.
+    ///
+    /// # Errors
+    /// `NotFound` when nothing listens there; otherwise as [`listen`].
+    pub fn open(name: &str) -> Result<Link, Error> {
+        backend::open(name).map(Link)
+    }
+
+    /// One whole message.
+    ///
+    /// # Errors
+    /// `Io` when the other end is gone.
+    pub fn send(link: &Link, bytes: &[u8]) -> Result<(), Error> {
+        backend::send(&link.0, bytes)
+    }
+
+    /// The next whole message, blocking.
+    ///
+    /// # Errors
+    /// `Io` when the other end is gone or sent something that is not a
+    /// message.
+    pub fn recv(link: &Link) -> Result<Vec<u8>, Error> {
+        backend::recv(&link.0)
+    }
+
+    /// End the link; the other end sees `Io`.
+    pub fn close(link: Link) {
+        backend::close(link.0);
+    }
+}
+
+/// Where things go by default, so every argument has a value.
+pub mod dirs {
+    use alloc::string::String;
+
+    use super::{Error, backend};
+
+    /// Per-user runtime files such as the socket; created if missing.
+    ///
+    /// # Errors
+    /// `Io` when it cannot be made; `Unsupported` without a backend.
+    pub fn runtime() -> Result<String, Error> {
+        backend::runtime()
+    }
+
+    /// The working directory.
+    ///
+    /// # Errors
+    /// `Io` when there is none; `Unsupported` without a backend.
+    pub fn work() -> Result<String, Error> {
+        backend::work()
+    }
+}

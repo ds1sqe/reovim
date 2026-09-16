@@ -7,6 +7,7 @@ use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
 
+use crate::codec::{Reader, put_str, put_u16, put_u32};
 use crate::types::{Error, Hash, Rights};
 
 /// Largest canonical form the Kernel stores.
@@ -119,6 +120,31 @@ impl Ty {
         }
     }
 
+    /// One type from the canonical form, at most `MAX_DEPTH` deep.
+    fn read(r: &mut Reader, depth: usize) -> Option<Self> {
+        if depth > MAX_DEPTH {
+            return None;
+        }
+        let ty = match r.u8()? {
+            0 => Self::Unit,
+            1 => Self::Bool,
+            2 => Self::U8,
+            3 => Self::U32,
+            4 => Self::U64,
+            5 => Self::I64,
+            6 => Self::F64,
+            7 => Self::Bytes(r.u32()?),
+            8 => Self::Utf8(r.u32()?),
+            9 => Self::Record(read_fields(r, depth)?),
+            10 => Self::Sequence(r.u32()?, Box::new(Self::read(r, depth + 1)?)),
+            11 => Self::Array(r.u32()?, Box::new(Self::read(r, depth + 1)?)),
+            12 => Self::Choice(read_fields(r, depth)?),
+            13 => Self::Rd,
+            _ => return None,
+        };
+        Some(ty)
+    }
+
     fn depth(&self) -> usize {
         match self {
             Self::Record(fields) | Self::Choice(fields) => {
@@ -130,15 +156,6 @@ impl Ty {
     }
 }
 
-fn put_u32(out: &mut Vec<u8>, value: u32) {
-    out.extend_from_slice(&value.to_le_bytes());
-}
-
-fn put_str(out: &mut Vec<u8>, text: &str) {
-    put_u32(out, u32::try_from(text.len()).unwrap_or(u32::MAX));
-    out.extend_from_slice(text.as_bytes());
-}
-
 fn put_fields(out: &mut Vec<u8>, fields: &[Field]) {
     put_u32(out, u32::try_from(fields.len()).unwrap_or(u32::MAX));
     for field in fields {
@@ -147,7 +164,24 @@ fn put_fields(out: &mut Vec<u8>, fields: &[Field]) {
     }
 }
 
+fn read_fields(r: &mut Reader, depth: usize) -> Option<Vec<Field>> {
+    let n = r.u32()?;
+    (0..n)
+        .map(|_| Some(Field { name: r.str()?, ty: Ty::read(r, depth + 1)? }))
+        .collect()
+}
+
 impl Method {
+    fn read(r: &mut Reader) -> Option<Self> {
+        Some(Self {
+            number: r.u16()?,
+            name: r.str()?,
+            input: Ty::read(r, 1)?,
+            output: Ty::read(r, 1)?,
+            right: Rights::from_bits(r.u32()?)?,
+        })
+    }
+
     fn is_bounded(&self) -> bool {
         let deep = self.input.depth().max(self.output.depth());
         let one_right =
@@ -167,13 +201,36 @@ impl Decl {
         put_u32(&mut out, self.ver);
         put_u32(&mut out, u32::try_from(methods.len()).unwrap_or(u32::MAX));
         for method in methods {
-            out.extend_from_slice(&method.number.to_le_bytes());
+            put_u16(&mut out, method.number);
             put_str(&mut out, &method.name);
             method.input.write(&mut out);
             method.output.write(&mut out);
             put_u32(&mut out, method.right.bits());
         }
         out
+    }
+
+    /// The declaration whose canonical bytes these are.
+    ///
+    /// # Errors
+    /// `Invalid` unless `bytes` is exactly one canonical form that passes
+    /// `check`.
+    pub fn parse(bytes: &[u8]) -> Result<Self, Error> {
+        let mut r = Reader::new(bytes);
+        let decl = Self::read(&mut r).ok_or(Error::Invalid)?;
+        if !r.done() {
+            return Err(Error::Invalid);
+        }
+        decl.check()?;
+        Ok(decl)
+    }
+
+    fn read(r: &mut Reader) -> Option<Self> {
+        let api = r.str()?;
+        let ver = r.u32()?;
+        let n = r.u32()?;
+        let methods = (0..n).map(|_| Method::read(r)).collect::<Option<_>>()?;
+        Some(Self { api, ver, methods })
     }
 
     /// The identity: FNV-1a 64 over the canonical bytes.

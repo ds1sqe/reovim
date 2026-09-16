@@ -1,6 +1,7 @@
 //! The two sides of the contract: what a Driver answers and what a
 //! Module may ask the Kernel. Seven slots, seven calls, never more.
 
+use alloc::rc::Rc;
 use alloc::vec::Vec;
 
 use crate::decl::Decl;
@@ -145,4 +146,14 @@ pub trait Module {
 
     /// Called before unload. Nothing is served after it.
     fn stop(&self) {}
+}
+
+/// A Module built and ready for `load`: the Module and its Drivers in
+/// `DriverId` order. What a module crate's `boot` returns, so the binary
+/// that links it names nothing else.
+pub struct Booted {
+    /// The Module, started by `load`.
+    pub module: Rc<dyn Module>,
+    /// Its Drivers; `drivers[i]` is `DriverId(i)`.
+    pub drivers: Vec<Rc<dyn Driver>>,
 }

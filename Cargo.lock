@@ -3,6 +3,17 @@
 version = 4
 
 [[package]]
+name = "reovim"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-host",
+ "reovim-kernel-interface",
+ "reovim-kernel-runtime",
+ "reovim-module-buffer",
+ "reovim-module-fs",
+]
+
+[[package]]
 name = "reovim-bitflags"
 version = "0.16.0-dev"
 

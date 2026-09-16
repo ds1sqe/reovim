@@ -1,10 +1,13 @@
 //! The std backend: `std::fs` and `SystemTime`, times in nanoseconds
 //! since the Unix epoch.
 
-use alloc::string::ToString;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use std::fs::{File, Metadata, OpenOptions};
 use std::io::{self, ErrorKind, Read, Seek, SeekFrom, Write};
+use std::os::unix::fs::MetadataExt;
+use std::os::unix::net::{UnixListener, UnixStream};
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{Entry, Error, Kind, Stat};
@@ -80,4 +83,64 @@ pub fn create(path: &str) -> Result<(), Error> {
 
 pub fn now() -> u64 {
     nanos(SystemTime::now())
+}
+
+pub struct Listener(UnixListener);
+pub struct Link(UnixStream);
+
+pub fn listen(name: &str) -> Result<Listener, Error> {
+    if Path::new(name).exists() {
+        std::fs::remove_file(name)?;
+    }
+    Ok(Listener(UnixListener::bind(name)?))
+}
+
+pub fn accept(listener: &Listener) -> Result<Link, Error> {
+    Ok(Link(listener.0.accept()?.0))
+}
+
+pub fn open(name: &str) -> Result<Link, Error> {
+    Ok(Link(UnixStream::connect(name)?))
+}
+
+/// `u32` little-endian length, then the bytes.
+pub fn send(link: &Link, bytes: &[u8]) -> Result<(), Error> {
+    let len = u32::try_from(bytes.len()).map_err(|_| Error::Io)?;
+    let mut stream = &link.0;
+    stream.write_all(&len.to_le_bytes())?;
+    stream.write_all(bytes)?;
+    Ok(())
+}
+
+pub fn recv(link: &Link) -> Result<Vec<u8>, Error> {
+    let mut stream = &link.0;
+    let mut head = [0; 4];
+    stream.read_exact(&mut head)?;
+    let len =
+        usize::try_from(u32::from_le_bytes(head)).map_err(|_| Error::Io)?;
+    let mut bytes = alloc::vec![0; len];
+    stream.read_exact(&mut bytes)?;
+    Ok(bytes)
+}
+
+pub fn close(link: Link) {
+    drop(link);
+}
+
+/// `$XDG_RUNTIME_DIR`, else `/tmp/reovim-<uid>`; made if missing.
+pub fn runtime() -> Result<String, Error> {
+    let dir = match std::env::var("XDG_RUNTIME_DIR") {
+        Ok(dir) if !dir.is_empty() => dir,
+        _ => {
+            let uid = std::fs::metadata("/proc/self")?.uid();
+            alloc::format!("/tmp/reovim-{uid}")
+        }
+    };
+    std::fs::create_dir_all(&dir)?;
+    Ok(dir)
+}
+
+pub fn work() -> Result<String, Error> {
+    let dir = std::env::current_dir()?;
+    dir.into_os_string().into_string().map_err(|_| Error::Io)
 }

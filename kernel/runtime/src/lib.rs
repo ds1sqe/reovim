@@ -9,6 +9,7 @@
 extern crate alloc;
 
 mod calls;
+mod connection;
 mod dispatch;
 mod kernel;
 mod log;
@@ -17,5 +18,6 @@ mod table;
 mod watch;
 
 pub use calls::ModuleCalls;
+pub use connection::Connection;
 pub use kernel::{Kernel, Limits};
 pub use table::{ROOT, SYS};

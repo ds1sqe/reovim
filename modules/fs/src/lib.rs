@@ -10,6 +10,7 @@
 extern crate alloc;
 
 use alloc::collections::BTreeMap;
+use alloc::rc::Rc;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use alloc::{format, vec};
@@ -17,8 +18,8 @@ use core::cell::RefCell;
 
 use reovim_host::fs;
 use reovim_kernel_interface::{
-    Calls, Decl, Driver, DriverId, Error, Flags, Hash, Kind, Method, Module,
-    Rd, Reply, Rights, Ty,
+    Booted, Calls, Decl, Driver, DriverId, Error, Flags, Hash, Kind, Method,
+    Module, Rd, Reply, Rights, Ty,
 };
 
 /// The api every directory offers: `0 create(name: Utf8(255)) -> Rd`,
@@ -78,6 +79,13 @@ const fn map(error: reovim_host::Error) -> Error {
 fn utf8(input: &[u8]) -> Result<&str, Error> {
     let bytes = input.get(4..).ok_or(Error::Invalid)?;
     core::str::from_utf8(bytes).map_err(|_| Error::Invalid)
+}
+
+/// The fs Module over `root`, ready for `load`.
+#[must_use]
+pub fn boot(root: &str) -> Booted {
+    let fs = Rc::new(Fs::new(String::from(root)));
+    Booted { module: fs.clone(), drivers: alloc::vec![fs] }
 }
 
 impl Fs {
