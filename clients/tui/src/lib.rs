@@ -8,10 +8,13 @@ extern crate alloc;
 mod editor;
 
 use alloc::format;
-use alloc::string::{String, ToString};
+use alloc::string::String;
 use alloc::vec::Vec;
 
-use reovim_client::{Client, Error, Fault, Handle, Key, Kind, Rd, Rights};
+use reovim_client::value::{self, Value};
+use reovim_client::{
+    Client, Decl, Error, Fault, Handle, Hash, Key, Kind, Method, Rd, Rights,
+};
 
 pub use editor::{Editor, Effect, Frame};
 
@@ -25,18 +28,24 @@ pub enum Step {
 }
 
 /// One Buffer over `/module/fs/root/FILE`, watched, with its draft in
-/// an `Editor`.
+/// an `Editor` and its head and published revisions from `tree`. The
+/// source is watched too: a save by anyone is a Modify there.
 pub struct Tui {
     client: Client,
     editor: Editor,
     buffer: Rd,
+    source: Rd,
     h: Handle,
+    /// What the Buffer offers, read once.
+    decls: Vec<(Hash, Decl)>,
     name: String,
-    dirty: bool,
+    head: u64,
+    published: u64,
 }
 
 impl Tui {
-    /// Open `file` as a Buffer, watch it and load the draft.
+    /// Open `file` as a Buffer, watch it and load the draft. The name
+    /// shown is the source's, read through the `source` pointer.
     ///
     /// # Errors
     /// What the Client says; `Kernel(Invalid)` for a file that is not
@@ -46,15 +55,31 @@ impl Tui {
         let open = client.resolve("/module/text/open")?;
         let input = source.0.to_le_bytes().to_vec();
         let out = client.call_by_name(open, "open", input)?;
-        let id: [u8; 8] = out[..].try_into().map_err(|_| Fault::Wire)?;
-        let buffer = Rd(u64::from_le_bytes(id));
+        let buffer = Rd(rd_of(&out)?);
+        let pointer = client.lookup(buffer, "source")?;
+        let source = Rd(rd_of(&client.read_all(pointer)?)?);
+        let name = client.name(source)?;
         let h = client.open(buffer, Rights::READ.union(Rights::WRITE))?;
         client.watch(h, true)?;
+        let watched = client.open(source, Rights::READ)?;
+        client.watch(watched, true)?;
+        let decls = client.decls(buffer)?;
         let mut editor = Editor::default();
         editor.loaded(&client.read_whole(h)?);
         client.since()?;
-        let name = file.to_string();
-        Ok(Self { client, editor, buffer, h, name, dirty: false })
+        let mut tui = Self {
+            client,
+            editor,
+            buffer,
+            source,
+            h,
+            decls,
+            name,
+            head: 0,
+            published: 0,
+        };
+        tui.refresh()?;
+        Ok(tui)
     }
 
     /// The Buffer rd.
@@ -63,61 +88,117 @@ impl Tui {
         self.buffer
     }
 
-    /// One key: a change writes the whole draft, Ctrl-S saves.
+    /// One key: an edit is a `replace`, Ctrl-Z and Ctrl-Y move the
+    /// head, Ctrl-S saves.
     ///
     /// # Errors
     /// What the Client says.
     pub fn key(&mut self, key: Key) -> Result<Step, Fault> {
         match self.editor.key(key) {
-            Effect::Nothing => Ok(Step::Same),
-            Effect::Moved => Ok(Step::Changed),
-            Effect::Changed => {
-                let text = self.editor.text().as_bytes().to_vec();
-                self.client.write(self.h, 0, text)?;
-                self.dirty = true;
-                Ok(Step::Changed)
+            Effect::Nothing => return Ok(Step::Same),
+            Effect::Moved => return Ok(Step::Changed),
+            Effect::Edit { at, len, text } => {
+                self.call("replace", edit(at, len, &text)?)?;
             }
+            Effect::Undo => self.moved("undo")?,
+            Effect::Redo => self.moved("redo")?,
             Effect::Save => {
-                self.client.call_by_name(self.buffer, "save", Vec::new())?;
-                self.dirty = false;
-                Ok(Step::Changed)
+                self.call("save", Vec::new())?;
             }
-            Effect::Quit => Ok(Step::Quit),
+            Effect::Quit => return Ok(Step::Quit),
         }
+        self.refresh()?;
+        Ok(Step::Changed)
     }
 
-    /// What happened to the Buffer since: a Modify re-reads the draft.
+    /// What happened since: a Modify on the Buffer or its source
+    /// re-reads the draft and the tree.
     ///
     /// # Errors
     /// `Kernel(Gone)` once the Buffer is gone; otherwise what the
     /// Client says.
     pub fn tick(&mut self) -> Result<Step, Fault> {
         let events = self.client.since()?;
-        let on = |kind: Kind| {
-            events.iter().any(|e| e.rd == self.buffer && e.kind == kind)
+        let on = |rd: Rd, kind: Kind| {
+            events.iter().any(|e| e.rd == rd && e.kind == kind)
         };
-        if on(Kind::Gone) {
+        if on(self.buffer, Kind::Gone) {
             return Err(Fault::Kernel(Error::Gone));
         }
-        if !on(Kind::Modify) {
+        if !on(self.buffer, Kind::Modify) && !on(self.source, Kind::Modify) {
             return Ok(Step::Same);
         }
         let bytes = self.client.read_whole(self.h)?;
-        if !self.editor.loaded(&bytes) {
-            return Ok(Step::Same);
-        }
-        self.dirty = true;
-        Ok(Step::Changed)
+        let text = self.editor.loaded(&bytes);
+        let tree = self.refresh()?;
+        Ok(if text || tree { Step::Changed } else { Step::Same })
     }
 
     /// The frame with the status row filled in.
     pub fn frame(&mut self, cols: u16, rows: u16) -> Frame {
         let mut frame = self.editor.frame(cols, rows);
-        let mark = if self.dirty { "  [+]" } else { "" };
+        let mark = if self.head == self.published { "" } else { "[+]" };
         frame.status = format!(
-            "{}  {}{mark}   Ctrl-S save  Ctrl-Q quit",
-            self.name, frame.status
+            "{}  {}  r{}{mark}   Ctrl-S save  Ctrl-Z undo  Ctrl-Y redo  \
+             Ctrl-Q quit",
+            self.name, frame.status, self.head
         );
         frame
     }
+
+    /// The method `name` among what the Buffer offers.
+    fn method(&self, name: &str) -> Result<(Hash, Method), Fault> {
+        let found = self.decls.iter().find_map(|(hash, decl)| {
+            decl.methods
+                .iter()
+                .find(|m| m.name == name)
+                .map(|m| (*hash, m.clone()))
+        });
+        found.ok_or_else(|| Fault::Usage(format!("no method `{name}`")))
+    }
+
+    /// `name` on the Buffer's own handle.
+    fn call(&mut self, name: &str, input: Vec<u8>) -> Result<Vec<u8>, Fault> {
+        let (hash, method) = self.method(name)?;
+        self.client.call(self.h, hash, method.number, input)
+    }
+
+    /// A move of head; the draft is read again.
+    fn moved(&mut self, name: &str) -> Result<(), Fault> {
+        self.call(name, Vec::new())?;
+        let bytes = self.client.read_whole(self.h)?;
+        self.editor.loaded(&bytes);
+        Ok(())
+    }
+
+    /// Head and published from `tree`; true when either moved.
+    fn refresh(&mut self) -> Result<bool, Fault> {
+        let (_, method) = self.method("tree")?;
+        let tree =
+            value::decode(&method.output, &self.call("tree", Vec::new())?)?;
+        let number = |name| tree.field(name).and_then(Value::number);
+        let (head, published) = (
+            number("head").ok_or(Fault::Wire)?,
+            number("published").ok_or(Fault::Wire)?,
+        );
+        let moved = (head, published) != (self.head, self.published);
+        (self.head, self.published) = (head, published);
+        Ok(moved)
+    }
+}
+
+/// The `Edit` record of `replace`.
+fn edit(at: usize, len: usize, text: &str) -> Result<Vec<u8>, Fault> {
+    let mut input = (at as u64).to_le_bytes().to_vec();
+    input.extend_from_slice(&(len as u64).to_le_bytes());
+    let n = u32::try_from(text.len()).map_err(|_| Fault::Wire)?;
+    input.extend_from_slice(&n.to_le_bytes());
+    input.extend_from_slice(text.as_bytes());
+    Ok(input)
+}
+
+/// An `Rd` answer.
+fn rd_of(bytes: &[u8]) -> Result<u64, Fault> {
+    let id: [u8; 8] = bytes.try_into().map_err(|_| Fault::Wire)?;
+    Ok(u64::from_le_bytes(id))
 }

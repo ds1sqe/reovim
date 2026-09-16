@@ -3,10 +3,16 @@
 use reovim_client::Key;
 use reovim_client_tui::{Editor, Effect};
 
+fn edit(at: usize, len: usize, text: &str) -> Effect {
+    Effect::Edit { at, len, text: text.to_string() }
+}
+
+/// Every char goes in at the cursor as one edit.
 fn typed(editor: &mut Editor, text: &str) {
     for c in text.chars() {
         let key = if c == '\n' { Key::Enter } else { Key::Char(c) };
-        assert_eq!(editor.key(key), Effect::Changed);
+        let at = editor.text().len();
+        assert_eq!(editor.key(key), edit(at, 0, &c.to_string()));
     }
 }
 
@@ -16,7 +22,7 @@ fn keys_edit_and_move() {
     typed(&mut editor, "ab\ncd");
     assert_eq!(editor.text(), "ab\ncd");
     assert_eq!(editor.position(), (1, 2));
-    assert_eq!(editor.key(Key::Backspace), Effect::Changed);
+    assert_eq!(editor.key(Key::Backspace), edit(4, 1, ""));
     assert_eq!(editor.text(), "ab\nc");
     assert_eq!(editor.key(Key::Right), Effect::Nothing);
     assert_eq!(editor.key(Key::Up), Effect::Moved);
@@ -30,13 +36,15 @@ fn keys_edit_and_move() {
     assert_eq!(editor.key(Key::Home), Effect::Nothing);
     assert_eq!(editor.key(Key::Left), Effect::Moved);
     assert_eq!(editor.position(), (0, 2));
-    typed(&mut editor, "é");
+    assert_eq!(editor.key(Key::Char('é')), edit(2, 0, "é"));
     assert_eq!(editor.text(), "abé\nc");
     assert_eq!(editor.key(Key::Left), Effect::Moved);
-    assert_eq!(editor.key(Key::Backspace), Effect::Changed);
+    assert_eq!(editor.key(Key::Backspace), edit(1, 1, ""));
     assert_eq!(editor.text(), "aé\nc");
     assert_eq!(editor.key(Key::Up), Effect::Nothing);
     assert_eq!(editor.key(Key::Tab), Effect::Nothing);
+    assert_eq!(editor.key(Key::Ctrl('z')), Effect::Undo);
+    assert_eq!(editor.key(Key::Ctrl('y')), Effect::Redo);
     assert_eq!(editor.key(Key::Ctrl('s')), Effect::Save);
     assert_eq!(editor.key(Key::Ctrl('q')), Effect::Quit);
     assert_eq!(editor.key(Key::Esc), Effect::Quit);

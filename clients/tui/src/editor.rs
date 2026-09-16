@@ -7,13 +7,19 @@ use alloc::vec::Vec;
 use reovim_client::Key;
 
 /// What a key did.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Effect {
     Nothing,
     /// The cursor moved; the text did not.
     Moved,
-    /// The whole text is to be written.
-    Changed,
+    /// `len` bytes at `at` became `text`, already applied here.
+    Edit {
+        at: usize,
+        len: usize,
+        text: String,
+    },
+    Undo,
+    Redo,
     Save,
     Quit,
 }
@@ -69,6 +75,8 @@ impl Editor {
             Key::Down => self.vertical(true),
             Key::Home => self.go(self.line_start(self.position().0)),
             Key::End => self.go(self.line_end(self.cursor)),
+            Key::Ctrl('z') => Effect::Undo,
+            Key::Ctrl('y') => Effect::Redo,
             Key::Ctrl('s') => Effect::Save,
             Key::Ctrl('q') | Key::Esc => Effect::Quit,
             Key::Tab | Key::Ctrl(_) => Effect::Nothing,
@@ -109,9 +117,10 @@ impl Editor {
     }
 
     fn insert(&mut self, c: char) -> Effect {
-        self.text.insert(self.cursor, c);
+        let at = self.cursor;
+        self.text.insert(at, c);
         self.cursor += c.len_utf8();
-        Effect::Changed
+        Effect::Edit { at, len: 0, text: c.into() }
     }
 
     fn backspace(&mut self) -> Effect {
@@ -120,7 +129,7 @@ impl Editor {
         };
         self.cursor -= c.len_utf8();
         self.text.remove(self.cursor);
-        Effect::Changed
+        Effect::Edit { at: self.cursor, len: c.len_utf8(), text: String::new() }
     }
 
     fn left(&mut self) -> Effect {

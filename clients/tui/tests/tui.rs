@@ -1,9 +1,9 @@
-//! The tui on a Kernel with fs and buffer, beside a second Client.
+//! The tui on a Kernel with fs and text, beside a second Client.
 
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use reovim_client::{Carrier, Client, Fault, Key, Rd};
+use reovim_client::{Carrier, Client, Error, Fault, Key, Rd};
 use reovim_client_tui::{Step, Tui};
 use reovim_host::clock;
 use reovim_kernel_interface::Booted;
@@ -94,13 +94,47 @@ fn keys_change_the_draft_and_save_reaches_disk() {
     let frame = tui.frame(80, 24);
     assert_eq!(frame.lines, vec!["xfirst!", ""]);
     assert_eq!(frame.cursor, (0, 7));
-    assert!(frame.status.starts_with("note  1:8  [+]"), "{}", frame.status);
+    assert!(frame.status.starts_with("note  1:8  r3[+]"), "{}", frame.status);
 
-    assert_eq!(tui.tick(), Ok(Step::Same), "its own write changes nothing");
+    assert_eq!(tui.tick(), Ok(Step::Same), "its own edits change nothing");
     assert_eq!(tui.key(Key::Ctrl('s')), Ok(Step::Changed));
     assert_eq!(rig.disk("note"), b"xfirst!\n");
-    assert!(tui.frame(80, 24).status.starts_with("note  1:8   Ctrl"));
+    assert!(tui.frame(80, 24).status.starts_with("note  1:8  r3   Ctrl"));
     assert_eq!(tui.key(Key::Ctrl('q')), Ok(Step::Quit));
+}
+
+#[test]
+fn undo_and_redo_walk_the_revisions() {
+    let rig = Rig::new("undo");
+    rig.file("note", b"first\n");
+    let mut tui = Tui::open(rig.client(), "note").unwrap();
+    let mut other = rig.client();
+    let buffer = buffer_of(&mut other, &tui);
+
+    assert_eq!(tui.key(Key::Char('x')), Ok(Step::Changed));
+    assert_eq!(tui.key(Key::Ctrl('s')), Ok(Step::Changed));
+    assert_eq!(tui.key(Key::Char('y')), Ok(Step::Changed));
+    assert!(tui.frame(80, 24).status.contains("r3[+]"));
+    assert_eq!(tui.key(Key::Ctrl('z')), Ok(Step::Changed));
+    let frame = tui.frame(80, 24);
+    assert_eq!(frame.lines, vec!["xfirst", ""]);
+    assert!(frame.status.contains("1:3  r2   "), "{}", frame.status);
+    assert_eq!(tui.tick(), Ok(Step::Same));
+    assert_eq!(tui.key(Key::Ctrl('y')), Ok(Step::Changed));
+    assert_eq!(tui.frame(80, 24).lines, vec!["xyfirst", ""]);
+    assert_eq!(tui.key(Key::Ctrl('z')), Ok(Step::Changed));
+    assert_eq!(tui.key(Key::Ctrl('z')), Ok(Step::Changed));
+    assert_eq!(tui.key(Key::Ctrl('z')), Err(Fault::Kernel(Error::Invalid)));
+
+    other.call_by_name(buffer, "redo", Vec::new()).unwrap();
+    assert_eq!(tui.tick(), Ok(Step::Changed));
+    let frame = tui.frame(80, 24);
+    assert_eq!(frame.lines, vec!["xfirst", ""]);
+    assert!(frame.status.contains("r2   "), "{}", frame.status);
+    other.call_by_name(buffer, "redo", Vec::new()).unwrap();
+    other.call_by_name(buffer, "save", Vec::new()).unwrap();
+    assert_eq!(tui.tick(), Ok(Step::Changed), "a save by another shows");
+    assert!(tui.frame(80, 24).status.contains("r3   "));
 }
 
 #[test]
@@ -126,5 +160,5 @@ fn a_write_from_another_client_shows_after_tick() {
 fn a_missing_file_does_not_open() {
     let rig = Rig::new("missing");
     let Err(fault) = Tui::open(rig.client(), "none") else { panic!("opened") };
-    assert_eq!(fault, Fault::Kernel(reovim_client::Error::Invalid));
+    assert_eq!(fault, Fault::Kernel(Error::Invalid));
 }
