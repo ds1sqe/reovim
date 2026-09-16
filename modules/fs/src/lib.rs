@@ -212,7 +212,13 @@ impl Fs {
         bytes: &[u8],
     ) -> Result<usize, Error> {
         let path = self.check(ctx, rd)?;
-        let count = fs::write(&path, at, bytes).map_err(map)?;
+        // The whole file is replaced or left alone; a tail is written.
+        let count = if at == 0 {
+            fs::replace(&path, bytes).map(|()| bytes.len())
+        } else {
+            fs::write(&path, at, bytes)
+        };
+        let count = count.map_err(map)?;
         let mtime = fs::stat(&path).ok().map(|s| s.mtime);
         if let Some(node) = self.nodes.borrow_mut().get_mut(&rd) {
             node.seen = mtime;

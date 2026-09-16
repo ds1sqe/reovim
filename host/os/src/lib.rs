@@ -93,6 +93,15 @@ pub mod fs {
         backend::write(path, at, bytes)
     }
 
+    /// The whole of `path` becomes `bytes`, or nothing changes; made
+    /// when there is none. A symlink stays a symlink.
+    ///
+    /// # Errors
+    /// As [`list`].
+    pub fn replace(path: &str, bytes: &[u8]) -> Result<(), Error> {
+        backend::replace(path, bytes)
+    }
+
     /// A new empty file at `path`.
     ///
     /// # Errors

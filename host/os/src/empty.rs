@@ -22,6 +22,10 @@ pub fn write(_: &str, _: u64, _: &[u8]) -> Result<usize, Error> {
     Err(Error::Unsupported)
 }
 
+pub fn replace(_: &str, _: &[u8]) -> Result<(), Error> {
+    Err(Error::Unsupported)
+}
+
 pub fn create(_: &str) -> Result<(), Error> {
     Err(Error::Unsupported)
 }

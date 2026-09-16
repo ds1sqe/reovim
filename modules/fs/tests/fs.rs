@@ -262,3 +262,18 @@ fn a_file_deleted_on_disk_is_gone_and_unregistered() {
     assert_eq!(rig.err(Op::Info { rd: file }), Error::Invalid);
     assert_eq!(rig.err(read()), Error::Gone);
 }
+
+#[test]
+fn a_whole_write_through_a_symlink_keeps_the_link() {
+    let rig = Rig::new("symlink");
+    let target = rig.dir.path("target");
+    std::fs::write(&target, b"old").unwrap();
+    std::os::unix::fs::symlink(&target, rig.dir.path("link")).unwrap();
+    let link = rig.lookup(rig.root, "link");
+    let h = rig.open(link, Rights::READ | Rights::WRITE);
+    assert_eq!(rig.write(h, b"new"), 3);
+    assert!(
+        std::fs::symlink_metadata(rig.dir.path("link")).unwrap().is_symlink()
+    );
+    assert_eq!(std::fs::read(&target).unwrap(), b"new");
+}

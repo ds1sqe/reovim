@@ -86,6 +86,38 @@ pub fn write(path: &str, at: u64, bytes: &[u8]) -> Result<usize, Error> {
     Ok(bytes.len())
 }
 
+/// A sibling temporary renamed over the path, synced first. A symlink,
+/// a file with more than one link, or a directory that refuses the
+/// temporary gets the bytes in place, as Vim's `backupcopy=auto` does.
+pub fn replace(path: &str, bytes: &[u8]) -> Result<(), Error> {
+    let old = std::fs::symlink_metadata(path).ok();
+    let linked = old
+        .as_ref()
+        .is_some_and(|m| m.file_type().is_symlink() || m.nlink() > 1);
+    let temporary = alloc::format!("{path}.{}~", std::process::id());
+    let fresh = if linked {
+        None
+    } else {
+        OpenOptions::new().write(true).create_new(true).open(&temporary).ok()
+    };
+    let Some(mut file) = fresh else {
+        return write(path, 0, bytes).map(|_| ());
+    };
+    let done = file
+        .write_all(bytes)
+        .and_then(|()| file.sync_all())
+        .and_then(|()| {
+            old.map_or(Ok(()), |meta| {
+                std::fs::set_permissions(&temporary, meta.permissions())
+            })
+        })
+        .and_then(|()| std::fs::rename(&temporary, path));
+    if done.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    Ok(done?)
+}
+
 pub fn create(path: &str) -> Result<(), Error> {
     OpenOptions::new().write(true).create_new(true).open(path)?;
     Ok(())

@@ -1,5 +1,6 @@
 //! The std backend over a fresh directory.
 
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
 use reovim_host::{Error, Kind, clock, fs};
@@ -80,4 +81,29 @@ fn mtime_moves_with_writes() {
     fs::write(&file, 0, b"y").unwrap();
     let second = fs::stat(&file).unwrap().mtime;
     assert!(first < second && second <= clock::now());
+}
+
+#[test]
+fn replace_makes_keeps_the_mode_and_writes_through_a_link() {
+    let dir = Dir::new("replace");
+    let file = dir.path("f");
+    assert_eq!(fs::replace(&file, b"one"), Ok(()));
+    assert_eq!(fs::read(&file, 0, 8).unwrap(), b"one");
+
+    let mode = std::fs::Permissions::from_mode(0o640);
+    std::fs::set_permissions(&file, mode).unwrap();
+    assert_eq!(fs::replace(&file, b"two"), Ok(()));
+    assert_eq!(fs::read(&file, 0, 8).unwrap(), b"two");
+    let mode = std::fs::metadata(&file).unwrap().permissions().mode();
+    assert_eq!(mode & 0o777, 0o640, "the mode survives the rename");
+
+    let link = dir.path("l");
+    std::os::unix::fs::symlink(&file, &link).unwrap();
+    assert_eq!(fs::replace(&link, b"three"), Ok(()));
+    assert!(std::fs::symlink_metadata(&link).unwrap().is_symlink());
+    assert_eq!(fs::read(&file, 0, 8).unwrap(), b"three");
+
+    let names: Vec<String> =
+        fs::list(&dir.path("")).unwrap().into_iter().map(|e| e.name).collect();
+    assert_eq!(names.len(), 2, "no temporary left: {names:?}");
 }
