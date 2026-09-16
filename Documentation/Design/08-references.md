@@ -1,4 +1,4 @@
-# 08 — Behavioral references and reuse evidence
+# Behavioral references
 
 These sources explain the design questions, not compatibility or feature-parity
 promises. The implications below are Reovim's interpretations; the owning
@@ -43,10 +43,9 @@ This selects no universal parser-node schema or compiler-level semantics.
 [Parser objects][treesitter-objects]; [queries][treesitter-queries].
 
 Linux [sysfs][sysfs] routes attribute reads/writes to show/store callbacks.
-For example, writing 1 to fbcon/rotate requests clockwise console rotation
-under [fbcon's interface][fbcon]. Reovim uses that direct-write idea with whole
-request/result contracts; it adopts no universal text or byte-file format.
-Lookup and observation never activate settings or hardware.
+Its [fbcon interface][fbcon] illustrates why an attribute can have effects.
+Reovim declares such control explicitly through ioctl or exec; byte writes
+remain data transfer. Lookup and observation activate no settings or hardware.
 
 Linux [filesystem registration and file operations][vfs] motivate separate
 provider registration, caller access and implementation lifetime. Reovim's
@@ -55,35 +54,12 @@ every Resource to behave like a byte file or device node.
 
 [UDP][udp], [Linux GPIO][gpio] and [WebSocket][websocket] expose different
 message, sample and connection lifetimes. Their concrete implications and
-failure cases belong to [live examples](07-examples.md). A connection being
+failure cases belong to [live examples](07.1-live-io.md). A connection being
 inspected is not the transport carrying Reovim's own service requests.
 
-## Existing code
-
-Current implementation evidence is deliberately narrower than this design:
-
-- [Resource journeys](../../apps/server/tests/resources.rs) exercise dynamic
-  registration, namespace isolation, recovery and two distinct state models.
-- [Core installation](../../kernel/runtime/src/history.rs) changes immutable state
-  and History under one authority. This is not a measured lock-cost claim.
-- [Native loading](../../apps/server/tests/native.rs) builds a C Resource
-  provider after Runtime starts and invokes it through the common API.
-  [Native models](../../apps/server/tests/native_model.rs) exercise edit/Undo;
-  [C callers](../../apps/server/tests/c_caller.rs) use the caller table.
-  Complete lifecycle and compatibility conformance remain incomplete.
-- [Diagnostics](../../kernel/runtime/src/diagnostics.rs) records bounded
-  request transitions. It is not yet a live log Resource/Buffer adapter.
-
-A log Resource must preserve stream identity, visible gaps, redaction and
-independent bounded readers. It must not make an unbounded shadow copy or
-generate its own content indefinitely. Startup/freeze diagnostics must remain
-available without Buffer readiness. [Debugging](../debugging.md) owns that
-contract; [performance](../performance.md) owns measurement.
-
-Prior code is a behavior donor, never the authority for ownership or domain
-shape. A selected migration must retain useful fixtures, reject invalid text
-coupling and prove the new public path. Source inspection alone cannot claim
-runtime support, public API compatibility or a completed migration.
+Implementation evidence and migration status belong to execution plans and
+tests. [Debugging](../debugging.md) and [performance](../performance.md) own
+diagnostics and measurement contracts.
 
 [blender-uv]: https://docs.blender.org/manual/en/4.5/editors/uv/selecting.html
 [blender-ops]:

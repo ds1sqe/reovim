@@ -12,6 +12,3 @@ path = "../../kernel/interface"
 
 [lints]
 workspace = true
-
-[dependencies.reovim-service]
-path = "../../host/service"

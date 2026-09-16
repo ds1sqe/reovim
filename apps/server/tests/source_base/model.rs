@@ -1,3 +1,6 @@
+#[path = "../support/memory.rs"]
+mod memory;
+
 use super::*;
 use reovim_kernel_interface::{
     buffer::{self, ModelOps, ModelProvider, State},
@@ -172,6 +175,7 @@ fn association_is_installed_with_state_and_preserves_independent_buffers() {
             .unwrap(),
     )
     .unwrap();
+    reject_save(&mut f, &changed);
     assert_eq!(
         finish(
             &mut f.runtime,
@@ -223,6 +227,21 @@ fn association_is_installed_with_state_and_preserves_independent_buffers() {
     f.kernel.close(old.id).into_inner().unwrap();
     f.runtime.unregister(f.model).unwrap();
     f.runtime.close().unwrap();
+}
+
+fn reject_save(f: &mut Fixture, changed: &buffer::Observation) {
+    let mut save = Message::reference(
+        Contract::new("kernel.buffer.save", 1),
+        changed.state.buffer,
+    );
+    save.data = changed.state.revision.to_le_bytes().into();
+    assert_eq!(
+        finish(&mut f.runtime, f.kernel.write(changed.state.buffer, &save)),
+        Err(RequestError::Rejected(Error::DENIED))
+    );
+    assert_eq!(current(f, changed.state.buffer).value.data, changed.value.data);
+    assert_eq!(f.state.current.borrow().base, b"second");
+    assert!(!f.state.current.borrow().active);
 }
 
 fn current(f: &mut Fixture, id: ResourceId) -> buffer::Observation {
@@ -397,8 +416,8 @@ fn a_data_snapshot_without_a_base_cannot_become_a_backing() {
         .runtime
         .register(
             "input",
-            reovim_resource_local::memory(b"input")
-                .with_read_view(|| Ok(reovim_resource_local::memory(b"input"))),
+            memory::provider(b"input")
+                .with_read_view(|| Ok(memory::provider(b"input"))),
         )
         .map_err(|(error, _)| error)
         .unwrap();

@@ -1,3 +1,6 @@
+#[path = "support/memory.rs"]
+mod memory;
+
 use reovim_host_reference::run;
 use reovim_kernel_interface::{
     Contract, Error, Message, RequestError, ResourceId,
@@ -36,7 +39,7 @@ fn diagnostic_ids_are_scoped_and_do_not_disclose_hidden_subjects() {
         .map_err(|(error, _)| error)
         .unwrap();
     let hidden = runtime
-        .register("hidden", reovim_resource_local::memory(b"private"))
+        .register("hidden", memory::provider(b"private"))
         .map_err(|(error, _)| error)
         .unwrap();
     let client = reovim_sdk::local(

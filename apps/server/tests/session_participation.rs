@@ -1,3 +1,6 @@
+#[path = "support/memory.rs"]
+mod memory;
+
 use reovim_kernel_interface::{
     Connection, Contract, Error, Message, RequestError, ResourceId,
     provider::Permissions,
@@ -216,10 +219,7 @@ fn private_client_retirement_releases_view_without_closing_shared_session() {
         .name;
     let shared = runtime.resource(&format!("sessions/{name}")).unwrap();
     runtime
-        .register(
-            "clients/peer/marker",
-            reovim_resource_local::memory(b"private"),
-        )
+        .register("clients/peer/marker", memory::provider(b"private"))
         .map_err(|(error, _)| error)
         .unwrap();
     let root = runtime.resource("clients/peer").unwrap();
@@ -283,10 +283,8 @@ fn failed_snapshot_copy_preserves_historical_selection() {
 }
 
 fn blocker(runtime: &mut Runtime, index: usize) -> Option<ResourceId> {
-    match runtime.register(
-        &format!("held-{index}"),
-        reovim_resource_local::memory(b"held"),
-    ) {
+    match runtime.register(&format!("held-{index}"), memory::provider(b"held"))
+    {
         Ok(id) => Some(id),
         Err((error, _)) => {
             assert_eq!(error, Error::PRESSURE);

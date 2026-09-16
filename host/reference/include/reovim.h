@@ -1,222 +1,354 @@
 #ifndef RV_ABI_H
 #define RV_ABI_H
-#define RV_ABI_VERSION { 0, 1, 0, 0 } /* Until official release. */
+
 #include <stddef.h>
 #include <stdint.h>
 
-struct rv_version {
+/* Exact experimental ABI. Example: advertise RV_ABI_VERSION at entry. */
+#define RV_ABI_VERSION { 0, 1, 0, 0 }
+typedef struct rv_version {
     uint32_t major, minor, patch;
     uint32_t reserved; /* Must be zero. */
-};
-static inline int rv_abi_compatible(struct rv_version version) {
-    const struct rv_version current = RV_ABI_VERSION;
+} rv_version;
+
+/* Example: reject an entry before reading its tables on mismatch. */
+static inline int rv_abi_compatible(rv_version version) {
+    const rv_version current = RV_ABI_VERSION;
     return version.major == current.major && version.minor == current.minor
         && version.patch == current.patch && version.reserved == 0;
 }
 
-struct rv_access;
-struct rv_provider;
-struct rv_resource_export;
-struct rv_pending;
-struct rv_state_pending;
-struct rv_failure;
-struct rv_connection { void *context; const struct rv_access *table; };
-
-struct rv_bytes { const uint8_t *data; size_t len; };
-struct rv_contract { struct rv_bytes name; uint32_t version; };
-struct rv_request {
-    uint32_t method;
-    uint64_t subject;
-    struct rv_contract contract;
-    struct rv_bytes data;
-    const uint64_t *resources;
-    size_t resource_count;
+/* Callback statuses, not effect certainty; unknown machine errors survive. */
+enum {
+    RV_OK = 0, RV_NOT_READY = 1, RV_CLOSED = 2, RV_BUSY = 3,
+    RV_INVALID = 4, RV_DENIED = 5, RV_UNSUPPORTED = 6, RV_PRESSURE = 7,
+    RV_CONFLICT = 8, RV_UNAVAILABLE = 9, RV_CANCELLED = 10,
+    RV_PROVIDER = 11, RV_GAP = 12, RV_INCOMPLETE = 13
 };
-struct rv_reply {
-    uint64_t error;
-    struct rv_bytes data;
-    void *state;
-    uint64_t state_bytes;
-    const uint64_t *resources;
-    size_t resource_count;
-};
-struct rv_module {
-    struct rv_version version;
-    uint32_t size, kind;
-    const void *declaration;
-    struct rv_contract create_contract;
-    /* Borrowed initialization slots; capture rights to retain access in state. */
-    const uint32_t *initial_input;
-    size_t initial_input_count;
-    struct rv_contract read_contract, edit_contract;
-    void *(*create)(const void *, const struct rv_connection *);
-    void (*destroy)(void *);
-    struct rv_reply (*call)(void *, const struct rv_request *);
-    struct rv_reply (*initialize)(void *, const struct rv_request *);
-    struct rv_reply (*prepare)(void *, const void *, const struct rv_request *);
-    /* Async slots supersede finite callbacks. Copy request views on entry;
-     * old state and context stay borrowed until state_pending.release. */
-    struct rv_state_pending (*initialize_async)(void *, const struct rv_request *);
-    struct rv_state_pending (*prepare_async)(void *, const void *, const struct rv_request *);
-    struct rv_reply (*observe)(void *, const void *, const struct rv_request *);
-    struct rv_pending (*inspect)(void *, const void *, const struct rv_request *);
-    void (*release)(void *, struct rv_reply *);
-    void (*drop_state)(void *, void *);
-    uint64_t (*unload)(void *);
-    size_t exports;
-    struct rv_failure (*describe)(const void *, size_t, struct rv_resource_export *);
-    struct rv_pending (*request)(void *, size_t, const struct rv_request *);
-    /* Passive catalog identity and requirements; no construction required. */
-    struct rv_contract identity;
-    const struct rv_contract *dependencies;
-    size_t dependency_count;
-    uint32_t references;
-};
+enum { RV_POLL_PENDING = 0, RV_POLL_READY = 1 };
+enum { RV_CANCEL_ACCEPTED = 0, RV_CANCEL_TOO_LATE = 1 };
+enum { RV_OUTCOME_OK = 0, RV_OUTCOME_FAILED = 1, RV_OUTCOME_UNKNOWN = 2 };
+enum { RV_READ = 1, RV_WRITE = 2, RV_EXEC = 4 };
 
-/* Experimental module ABI 0.1.0. Kind: Resource=1, Model=2.
- * Methods: read=1, write=2.
- * Inputs are borrowed during a call. Copy anything needed afterwards.
- * Output byte/reference views live until release. State transfers to the host:
- * release sees state=NULL; drop_state eventually destroys the transferred state.
- * Resource request and optional Model inspect return owned pending results.
- * Model initialize/prepare/observe settle synchronously. No callback may unwind.
- * Model observe receives read_contract with no resource slots. Empty data
- * requests the finite acceptance descriptor; other data is model-defined.
- * Each read uses the exact immutable state, including retained older states.
- * Optional Model inspect returns Pending for deferred state reads. The host
- * pins the state through Pending.release. Its input is borrowed only for the
- * callback. Success uses read_contract and no references; failures are model
- * error codes, with no external-effect recovery outcome in this profile.
- * Unload happens only after contexts, calls, results and states have drained.
- */
-/* create receives optional borrowed caller access: retain before storing.
- * Factory state is inert: metadata lookup is allowed, starting work is not.
- * unload returns 0 only after all external callbacks/work have drained;
- * readiness always leaves the provider usable: another grouped member may
- * return busy (8). destroy follows the owner's successful removal of the set.
- */
-const struct rv_module *rv_module_entry(void);
+/* Caller-scoped access; copying a token neither grants nor retains it. */
+typedef uint64_t rv_access;
+/* Copied diagnostic/subject identity; e.g. not accepted as access. */
+typedef struct rv_identity { uint8_t epoch[16]; uint64_t serial; } rv_identity;
+/* Borrowed spans; e.g. null with length zero denotes Unit/no slots. */
+typedef struct rv_bytes { const uint8_t *ptr; size_t len; } rv_bytes;
+typedef struct rv_refs { const rv_access *ptr; size_t len; } rv_refs;
+/* A declared value; e.g. Ref bytes contain an index into refs. */
+typedef struct rv_args { rv_bytes data; rv_refs refs; } rv_args;
+/* Optional detail is all zero when absent; it never supplies recovery access. */
+typedef struct rv_error { uint32_t code; rv_identity detail; } rv_error;
 
-/* Caller ABI. Views are borrowed unless a release callback is supplied. */
-struct rv_failure { uint64_t code, resource; };
-struct rv_entry { struct rv_bytes name; uint64_t resource; };
-struct rv_listing {
-    const struct rv_entry *entries;
-    size_t count;
+/* Poll borrows wake. Example: retain before asynchronous use, release after
+ * the last signal. Callbacks are nonnull and may be called across threads. */
+typedef struct rv_wake {
+    void *context;
+    void (*wake)(void *);
+    void (*retain)(void *);
+    void (*release)(void *);
+} rv_wake;
+
+/* One owned generation. Example: take -> validate/copy/adopt -> release(owner).
+ * UNKNOWN has declared progress and no returned access; FAILED has no value.
+ * Result release and request finish are separate lifetime obligations. */
+typedef struct rv_outcome {
+    uint32_t status;
+    uint32_t activity; /* Known READ=1, WRITE=2, STATUS=4 within declaration. */
+    rv_error error;
+    rv_args value;
     void *owner;
     void (*release)(void *);
+} rv_outcome;
+
+/* Example: poll observes readiness; take transfers once per generation.
+ * Reconcile after taken UNKNOWN refines the same effect, never re-executes.
+ * Finish OK invalidates context; Busy leaves it owned and progressable.
+ * bytes is exactly sizeof(rv_pending_ops); only reconcile may be null. */
+typedef struct rv_pending_ops {
+    size_t bytes;
+    uint32_t (*poll)(void *, rv_wake);
+    uint32_t (*take)(void *, rv_outcome *);
+    uint32_t (*cancel)(void *);
+    uint32_t (*reconcile)(void *);
+    uint32_t (*finish)(void *);
+} rv_pending_ops;
+/* Owned until finish succeeds; e.g. dropping a delivery view cannot free it. */
+typedef struct rv_pending {
+    void *context;
+    const rv_pending_ops *ops;
+} rv_pending;
+
+/* Begin OK transfers pending. Error fills error, leaves output untouched and
+ * proves no effect/retained input from begin. Copy borrowed input before return.
+ * Example: exec has no command; ioctl takes a bound interface's nonzero command.
+ * Every sized table requires exact sizeof, not compatibility negotiation. */
+typedef struct rv_exec_ops {
+    size_t bytes;
+    uint32_t (*exec)(void *, const rv_args *, rv_pending *, rv_error *);
+} rv_exec_ops;
+typedef struct rv_control_ops {
+    size_t bytes;
+    uint32_t (*ioctl)(void *, uint32_t, const rv_args *, rv_pending *, rv_error *);
+} rv_control_ops;
+
+typedef struct rv_provider rv_provider;
+typedef struct rv_edit_ops rv_edit_ops;
+typedef struct rv_factory_ops rv_factory_ops;
+typedef struct rv_open_ops rv_open_ops;
+typedef struct rv_io_ops rv_io_ops;
+typedef struct rv_namespace_ops rv_namespace_ops;
+typedef struct rv_creation rv_creation;
+typedef struct rv_write rv_write;
+
+/* Example: dispatch selects the table from the retained canonical declaration.
+ * Missing families are null; ordinary callbacks cannot install Buffer edits. */
+typedef struct rv_interface {
+    size_t bytes;
+    void *context;
+    rv_bytes declaration;
+    const rv_exec_ops *exec;
+    const rv_control_ops *control;
+    const rv_edit_ops *edit;
+    const rv_factory_ops *factory;
+} rv_interface;
+
+/* Stage takes provider ownership only on OK. Example: code remains pinned
+ * through stop, all request/result cleanup, and the final destroy callback. */
+struct rv_provider {
+    size_t bytes;
+    void *context;
+    const rv_interface *interfaces;
+    size_t interface_count;
+    const rv_open_ops *open;
+    const rv_io_ops *io;
+    const rv_namespace_ops *namespace_ops;
+    uint32_t (*stop)(void *);
+    void (*destroy)(void *);
 };
-struct rv_wake {
-    const void *context;
+/* Scoped publication; e.g. relative paths cannot escape the granted mount. */
+typedef struct rv_registrar {
+    size_t bytes;
+    void *context;
+    uint32_t (*stage)(void *, rv_bytes, const rv_provider *);
+} rv_registrar;
+
+/* Example: History retains private immutable state; snapshot creates an inert
+ * readonly provider without I/O/waiting. Its output transfers only on OK. */
+typedef struct rv_state_ops {
+    size_t bytes;
     void (*retain)(const void *);
     void (*release)(const void *);
-    void (*wake)(const void *);
-};
-struct rv_outcome {
-    uint32_t status; /* 0 pending, 1 success, 2 rejected, 3 failed, 4 unknown */
-    struct rv_failure error;
-    struct rv_contract contract;
-    struct rv_bytes data;
-    const uint64_t *resources;
-    size_t resource_count;
-    struct rv_bytes recovery;
-};
-struct rv_pending {
+    uint32_t (*snapshot)(const void *, rv_provider *, rv_error *);
+} rv_state_ops;
+typedef struct rv_state {
+    const void *data;
+    const rv_state_ops *ops;
+    uint64_t cost; /* Declared quota, not measured physical memory. */
+} rv_state;
+
+/* Example: propose retains one candidate; provider releases its own reference.
+ * Runtime alone revalidates and atomically installs outside provider callbacks. */
+typedef struct rv_edit {
+    const void *before;
     void *context;
-    struct rv_outcome (*poll)(void *, struct rv_wake);
-    void (*release)(void *);
+    uint32_t (*propose)(void *, const rv_state *);
+} rv_edit;
+struct rv_edit_ops {
+    size_t bytes;
+    uint32_t (*prepare)(void *, uint32_t, const rv_edit *, const rv_args *,
+                        rv_pending *, rv_error *);
+    uint32_t (*write)(void *, const rv_edit *, const rv_write *,
+                      rv_pending *, rv_error *);
 };
-struct rv_state_poll { uint32_t status; uint64_t error; };
-struct rv_state_pending {
+/* Example: non-byte state leaves byte_edits null instead of exposing writes. */
+typedef struct rv_state_init {
+    rv_state initial;
+    rv_provider implementation;
+    const rv_edit_ops *byte_edits;
+} rv_state_init;
+/* Example: publish retains original uncertain target effects for reconcile. */
+typedef struct rv_backing_ops {
+    size_t bytes;
+    uint32_t (*refresh)(void *, const rv_edit *, const rv_args *,
+                        rv_pending *, rv_error *);
+    uint32_t (*publish)(void *, const void *, const rv_args *,
+                        rv_pending *, rv_error *);
+} rv_backing_ops;
+/* Example: source attachments and initial state install as one creation. */
+typedef struct rv_buffer_init {
+    rv_state_init state;
+    rv_args attachments;
+    const rv_backing_ops *backing;
+} rv_buffer_init;
+/* Stage exactly one primary; e.g. Parse stages resource, Buffer factory buffer.
+ * Auxiliary access remains provisional until the declared result is accepted. */
+struct rv_creation {
+    uint32_t (*keyed)(void *, rv_bytes key, const rv_provider *);
     void *context;
-    struct rv_state_poll (*poll)(void *, struct rv_wake);
-    struct rv_reply (*take)(void *);
-    void (*release)(void *);
+    uint32_t (*resource)(void *, const rv_provider *);
+    uint32_t (*buffer)(void *, const rv_buffer_init *);
+    uint32_t (*retained)(void *, const rv_state_init *);
+    uint32_t (*auxiliary)(void *, const rv_provider *, rv_access *);
 };
-/* State poll: 0 pending, 1 ready, 2 failed. Poll never transfers state.
- * After ready, take transfers exactly one owned Reply state; the Model's
- * release/drop_state callbacks apply. Pending release destroys untaken state.
- */
-struct rv_access {
-    struct rv_version version;
-    uint32_t size;
-    void (*retain)(void *);
-    void (*release)(void *);
-    struct rv_failure (*root)(void *, uint64_t *);
-    struct rv_failure (*resolve)(void *, uint64_t, struct rv_bytes, uint64_t *);
-    struct rv_failure (*children)(void *, uint64_t, struct rv_listing *);
-    struct rv_pending (*request)(void *, const struct rv_request *);
-    struct rv_failure (*close)(void *, uint64_t);
-    struct rv_failure (*reconnect)(void *, struct rv_connection *);
-    struct rv_failure (*withdraw)(void *, uint64_t);
-    struct rv_failure (*publish)(void *, uint64_t, struct rv_bytes,
-        const struct rv_provider *, uint64_t *);
-    struct rv_failure (*capture)(void *, uint64_t, uint32_t,
-        struct rv_connection *);
-    struct rv_failure (*read_view)(void *, uint64_t, struct rv_connection *);
-};
-/* Connection/Pending own one reference, released through their own table.
- * read_view optionally acquires an independent data-only READ connection.
- * Its root is the new view; retain/release own its lifetime. Acquisition does
- * not perform I/O or wait. NULL means unsupported. Original close is separate.
- * capture retains selected existing rights in this namespace through its
- * returned Connection; release does not close the shared Resource.
- * Access is single-threaded. Wake retain/release/wake must be thread-safe;
- * poll borrows Wake, so retaining it requires retain. request copies inputs.
- * Poll observes results only: the implementation owner drives execution.
- * Terminal Outcome views live until Pending.release. Listing owns its views
- * until Listing.release. Failed metadata calls leave output pointers untouched.
- * Every callback must obey the no-unwind rule. resource=0 means no error subject.
- */
-/* Resource exports share one inert context. Empty path
- * denotes the chosen mount. Surface methods and slots use read=1/write=2 bits.
- * describe returns immutable views valid while the library remains loaded.
- * Runtime invokes call and polls Pending on one thread outside registry guards.
- * Provider polling advances its own work and can await imported Kernel calls.
- * call copies borrowed input. Release each Pending before destroying context.
- * unload returns busy while imports, wakes or retained work need native code.
- */
-struct rv_surface {
-    struct rv_contract contract;
-    uint32_t methods;
-    const uint32_t *input;
-    size_t input_count;
-    const uint32_t *output;
-    size_t output_count;
-};
-struct rv_resource_export {
-    struct rv_bytes path;
-    const struct rv_surface *surfaces;
-    size_t surface_count;
-    uint32_t forwarding; /* 0 fixed slots; 1 complete Messages and grants. */
+struct rv_factory_ops {
+    size_t bytes;
+    uint32_t (*create)(void *, uint32_t, const rv_creation *, const rv_args *,
+                       rv_pending *, rv_error *);
 };
 
-/* A borrowed provider descriptor. Success retains; rejection retains nothing. */
-struct rv_provider_ops {
-    struct rv_version version;
-    uint32_t size;
-    void (*retain)(void *);
-    void (*release)(void *);
-    struct rv_pending (*request)(void *, const struct rv_request *);
-    /* Owned access: fence delivery and wake pending calls; cannot fail. */
-    struct rv_failure (*close)(void *);
-    struct rv_failure (*unload)(void *);
-    struct rv_failure (*read_view)(void *, struct rv_provider *);
-};
-/* An owned provider close fences operations before cleanup. Failure retains
- * context and code for a retry; successful cleanup is not invoked again.
- * The callback must tolerate its own partial cleanup from earlier attempts.
- * read_view returns one owned, self-contained provider descriptor on success.
- * It has only READ surfaces, no reference slots, forwarding or close callback.
- * Failure leaves output untouched; NULL means no independent-view support.
- */
-struct rv_provider {
+/* Example: open stages cursor state with the same Resource identity and zero
+ * operation rights. Bind and capture do not invoke open again. */
+typedef struct rv_open {
     void *context;
-    const struct rv_provider_ops *table;
-    const struct rv_surface *surfaces;
-    size_t surface_count;
-    uint32_t forwarding;
-    uint32_t owned;
+    uint32_t (*stage)(void *, const rv_provider *);
+} rv_open;
+struct rv_open_ops {
+    size_t bytes;
+    uint32_t (*begin)(void *, const rv_open *, rv_pending *, rv_error *);
 };
+/* Example: sequential calls set positional=0 and offset=0. */
+typedef struct rv_read {
+    uint32_t positional;
+    uint64_t offset, maximum;
+} rv_read;
+struct rv_write {
+    uint32_t positional;
+    uint64_t offset;
+    rv_bytes data;
+};
+/* Example: positional readonly uses read_modes=2, write_modes=0, write=NULL.
+ * Packet declarations are empty exactly when the corresponding callback is
+ * absent. Offset/transfer alignment and limits are checked before effects. */
+struct rv_io_ops {
+    size_t bytes;
+    uint32_t read_modes, write_modes;
+    uint64_t alignment, transfer_limit;
+    rv_bytes receive_type, send_type;
+    uint32_t (*read)(void *, const rv_read *, rv_pending *, rv_error *);
+    uint32_t (*write)(void *, const rv_write *, rv_pending *, rv_error *);
+    uint32_t (*receive)(void *, const rv_args *, rv_pending *, rv_error *);
+    uint32_t (*send)(void *, const rv_args *, rv_pending *, rv_error *);
+};
+/* Example: lookup/list return stable provider keys; materialize revalidates
+ * the selected key. Names affect association, never grants or object identity. */
+struct rv_namespace_ops {
+    size_t bytes;
+    /* Required U32 flags: CONTAINER=1, CONTAINER|EMPTY=3; zero activity. */
+    uint32_t (*flags)(void *, rv_pending *, rv_error *);
+    uint32_t (*lookup)(void *, rv_bytes, rv_pending *, rv_error *);
+    uint32_t (*list)(void *, uint64_t, uint64_t, rv_pending *, rv_error *);
+    uint32_t (*materialize)(void *, rv_bytes, const rv_creation *,
+                            rv_pending *, rv_error *);
+    uint32_t (*create)(void *, rv_bytes, const rv_creation *,
+                       rv_pending *, rv_error *);
+    uint32_t (*remove)(void *, rv_bytes, rv_bytes, rv_pending *, rv_error *);
+    /* Same mounted namespace: destination name and retained source key. */
+    uint32_t (*link)(void *, rv_bytes, rv_bytes, rv_pending *, rv_error *);
+    /* Record(name, key, Choice(Root Unit=0, Key Bytes=1), new_name); no refs. */
+    uint32_t (*rename)(void *, const rv_args *, rv_pending *, rv_error *);
+};
+
+/* Example: expected is entirely zero when absent, or present=1 with state. */
+typedef struct rv_expected {
+    uint32_t present;
+    rv_identity subject;
+    uint64_t revision;
+} rv_expected;
+/* Example: identical resubmit joins; changed fields under the same reserved
+ * request reject Conflict. Input is copied before submission returns. */
+typedef struct rv_call {
+    uint64_t request;
+    uint32_t operation;
+    rv_access subject;
+    uint32_t command;
+    rv_expected expected;
+    rv_args input;
+} rv_call;
+/* Example: reserve -> submit -> result after lost delivery -> adopt -> release.
+ * Pending results are delivery views; their finish never drops request custody.
+ * Reserved result returns RV_NOT_READY without a view. Caller-view poll accepts
+ * an all-zero wake for passive lookup; nonempty wakes require every callback.
+ * All callbacks are required; the context stays owned by the supplying host. */
+typedef struct rv_caller_ops {
+    size_t bytes;
+    uint32_t (*reserve)(void *, uint64_t *);
+    uint32_t (*submit)(void *, const rv_call *, rv_pending *, rv_error *);
+    uint32_t (*result)(void *, uint64_t, rv_pending *, rv_error *);
+    uint32_t (*cancel)(void *, uint64_t);
+    uint32_t (*reconcile)(void *, uint64_t);
+    uint32_t (*adopt)(void *, uint64_t);
+    uint32_t (*release)(void *, uint64_t);
+} rv_caller_ops;
+typedef struct rv_caller { void *context; const rv_caller_ops *ops; } rv_caller;
+
+/* Module entry is passive metadata; construction creates one inert instance. */
+typedef struct rv_module_context {
+    size_t bytes;
+    rv_identity instance;
+    uint32_t scope; /* Global=0, Session=1. */
+    rv_identity session; /* Zero for Global. */
+    rv_identity namespace_resource;
+    rv_caller imports;
+    rv_registrar exports;
+} rv_module_context;
+/* Failed alone carries a nonzero failure. All other errors are zero. */
+enum { RV_CONSTRUCTED=0, RV_STARTING=1, RV_READY=2,
+       RV_CLOSING=3, RV_MODULE_CLOSED=4, RV_MODULE_FAILED=5 };
+enum { RV_MORE=0, RV_IDLE=1, RV_STOPPED=2 };
+typedef struct rv_module_status {
+    uint32_t phase;
+    rv_error failure;
+} rv_module_status;
+/* Required callbacks; all module calls are serialized without unwinding. */
+typedef struct rv_module_driver {
+    size_t bytes;
+    uint32_t (*status)(void *, rv_module_status *);
+    uint32_t (*advance)(void *, rv_wake, uint32_t *, rv_error *);
+    uint32_t (*close)(void *, rv_error *);
+} rv_module_driver;
+/* destroy runs once, after Closed and the final dependent owner. */
+typedef struct rv_module_instance {
+    size_t bytes;
+    void *context;
+    const rv_module_driver *driver;
+    void (*destroy)(void *);
+} rv_module_instance;
+/* Requested export and complete API; metadata itself grants no access. */
+typedef struct rv_module_import {
+    rv_bytes name, export_path, declaration;
+    uint32_t access, create_access, retain_loans;
+} rv_module_import;
+
+/* Exact package dependency: scope Same=0 or Global=1; optional is 0 or 1. */
+typedef struct rv_module_dependency {
+    uint8_t module[16];
+    uint32_t revision;
+    uint32_t scope;
+    uint32_t optional;
+    const rv_module_import *imports;
+    size_t import_count;
+} rv_module_dependency;
+/* Required paths and callable metadata remain valid under the artifact lease.
+ * construct borrows context. OK transfers an instance; error leaves output
+ * zero and retains no context/effect. Required/export bounds are at most 256. */
+typedef struct rv_module {
+    size_t bytes;
+    rv_version version;
+    uint8_t id[16];
+    rv_bytes name;
+    uint32_t revision;
+    uint32_t scopes; /* Global=1, Session=2. */
+    const rv_module_dependency *dependencies;
+    size_t dependency_count;
+    const rv_bytes *required;
+    size_t required_count;
+    size_t export_limit;
+    uint32_t (*construct)(const rv_module_context *, rv_module_instance *,
+                          rv_error *);
+} rv_module;
+/* Example export: const rv_module *rv_module_entry(void). */
 
 #endif

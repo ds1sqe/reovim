@@ -1,3 +1,6 @@
+#[path = "support/memory.rs"]
+mod memory;
+
 use reovim_host_reference::run_with;
 use reovim_kernel_interface::{
     Connection, Contract, Error, Message, RequestError, ResourceId,
@@ -269,7 +272,7 @@ fn constructor_failure_rolls_back_new_dependency_and_retains_cleanup() {
 fn failed_driver_keeps_dependency_usable_until_its_state_is_destroyed() {
     let mut runtime = runtime();
     runtime
-        .register("services/seed", reovim_resource_local::memory(b"seed"))
+        .register("services/seed", memory::provider(b"seed"))
         .map_err(|(error, _)| error)
         .unwrap();
     let services = runtime.resource("services").unwrap();

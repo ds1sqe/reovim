@@ -1,3 +1,6 @@
+#[path = "support/memory.rs"]
+mod memory;
+
 use reovim_host_reference::run;
 use reovim_kernel_interface::{
     Connection, Contract, Error, Message, RequestError, ResourceId,
@@ -50,7 +53,7 @@ fn borrowed_capture_retains_exact_rights_and_admitted_work_through_c_abi() {
     let mut runtime = Runtime::new(203, Limits::default()).unwrap();
     runtime.start().unwrap();
     let source = runtime
-        .register("source", reovim_resource_local::memory(b"exact"))
+        .register("source", memory::provider(b"exact"))
         .map_err(|(error, _)| error)
         .unwrap();
     let binding = runtime.bind(&[]).unwrap();

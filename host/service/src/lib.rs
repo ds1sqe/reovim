@@ -1,15 +1,16 @@
 #![no_std]
 #![forbid(unsafe_code)]
-//! Bounded line framing for the experimental local command service.
+//! Bounded framing and caller records for the experimental local service.
 
 extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
-pub mod request;
+pub mod protocol;
 
 use alloc::{string::String, vec::Vec};
 
+/// Maximum frame bytes including newline; reject larger input before parse.
 pub const MAX_LINE: usize = 65_536;
 
 /// ```
@@ -57,20 +58,9 @@ pub mod transport {
     use alloc::{string::String, vec::Vec};
     use std::io::{self, BufRead, Read, Write};
 
-    /// Reads the final response while the peer reports a pending operation.
-    /// # Errors
-    /// Rejects invalid frames, disconnected peers and underlying I/O errors.
-    pub fn response(reader: &mut impl BufRead) -> io::Result<String> {
-        let mut frame = receive(reader)?;
-        while frame == "pending" {
-            frame = receive(reader)?;
-        }
-        Ok(frame)
-    }
-
     /// ```
-    /// let mut input = std::io::Cursor::new(b"v1\tread\n");
-    /// assert_eq!(reovim_service::transport::receive(&mut input)?, "v1\tread");
+    /// let mut input = std::io::Cursor::new(b"accepted\n");
+    /// assert_eq!(reovim_service::transport::receive(&mut input)?, "accepted");
     /// # Ok::<(), std::io::Error>(())
     /// ```
     /// # Errors

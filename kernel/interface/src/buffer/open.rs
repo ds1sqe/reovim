@@ -1,6 +1,12 @@
 use crate::{Connection, Contract, Message, ResourceId, access::Reply};
 
-/// Opens a prepared source and retains its coherent data/base association.
+/// Creates a Buffer from a prepared source with a retained base association.
+///
+/// This is source-backed creation, not namespace access to an existing Buffer.
+/// Source READ rights suffice. Buffer editing does not write the source.
+/// Saving back separately requires publication support and source authority.
+/// A consuming stream without a coherent view/base is unsupported here; import
+/// captured observations into model state instead of treating them as a base.
 ///
 /// The Model must accept one READ initialization slot. Its initializer receives
 /// the independent source view; `data` retains that Model's own meaning.

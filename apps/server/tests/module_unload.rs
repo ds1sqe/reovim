@@ -1,3 +1,6 @@
+#[path = "support/memory.rs"]
+mod memory;
+
 use reovim_host_reference::run_with;
 use reovim_kernel_interface::{
     Connection, Contract, Error, Message, RequestError, ResourceId,
@@ -72,7 +75,7 @@ fn setup() -> (Runtime, Connection, ResourceId, Rc<Control>) {
         },
         vec![Contribution::Resource {
             path: "service".into(),
-            provider: reovim_resource_local::memory(b"live service"),
+            provider: memory::provider(b"live service"),
         }],
         Rc::new(()),
     );

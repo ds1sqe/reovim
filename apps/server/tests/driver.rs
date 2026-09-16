@@ -1,3 +1,6 @@
+#[path = "support/memory.rs"]
+mod memory;
+
 use reovim_host_reference::run_with;
 use reovim_kernel_interface::{
     Contract, Error, Message, RequestError,
@@ -11,7 +14,7 @@ use std::task::{Context, Waker};
 fn interface_driver_starts_executes_and_retains_results_while_closing() {
     let mut runtime = Runtime::new(116, Limits::default()).unwrap();
     let source = runtime
-        .register("source", reovim_resource_local::memory(b"\xffretained"))
+        .register("source", memory::provider(b"\xffretained"))
         .map_err(|(error, _)| error)
         .unwrap();
     let client = reovim_sdk::local(

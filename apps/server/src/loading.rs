@@ -1,318 +1,203 @@
-//! Hosted native loading, driven outside Runtime callbacks and registry guards.
+//! Host package admission outside Runtime callbacks and registry guards.
 
-use alloc::{boxed::Box, format, rc::Rc, string::String, vec::Vec};
-use core::{
-    cell::RefCell,
-    future::poll_fn,
-    task::{Context, Poll, Waker},
-};
+use alloc::{boxed::Box, rc::Rc, vec::Vec};
+use core::{cell::RefCell, task::Context};
 use reovim_kernel_interface::{
-    Connection, Contract, Error, Message, RequestError, ResourceId,
-    access::Reply,
-    driver::{DriverOps, Lifecycle, Progress},
-    module::Module,
-    provider::{
-        Contribution, Permissions, ResourceOps, ResourceProvider, Surface,
-    },
+    Error, Outcome, ResourceId, declaration::ValueLimits, driver::Progress,
+    provider::ResourceProvider,
 };
-use reovim_kernel_runtime::{Binding, Runtime};
+use reovim_kernel_runtime::{Binding, Grant, Runtime};
+use reovim_sdk::NativeModule;
 
-struct Job {
-    contract: Contract,
-    library: String,
-    export: String,
-    import: Option<reovim_kernel_interface::ResourceId>,
-    result: Rc<RefCell<Completion>>,
-    ready: Option<(reovim_kernel_interface::ResourceId, Reply)>,
-    rejected: Option<(Error, Module)>,
+mod queue;
+
+/// Host policy admits a selected artifact, including its native ABI trust.
+///
+/// Example: a Linux adapter checks an allowed path before `native::load`.
+/// This callback runs only from `Loader::advance`, never a provider callback.
+pub type Admit = Rc<dyn Fn(&[u8]) -> Result<NativeModule, Error>>;
+
+/// Explicit publication, import and recipient authority for one loader.
+/// Example: one client can admit packages into its configured namespace.
+pub struct Target {
+    pub registry: ResourceId,
+    pub namespace: ResourceId,
+    pub imports: Rc<Binding>,
+    pub recipient: Rc<Binding>,
+    /// Names approved against each package's immutable dependency requests.
+    pub approved: Box<[Box<str>]>,
 }
 
-#[derive(Default)]
-struct Completion {
-    result: Option<Result<Message, Error>>,
-    waker: Option<Waker>,
+struct Admitted {
+    path: Box<[u8]>,
+    package: ResourceId,
 }
 
+/// Composition drives this owner alongside Runtime. Its provider only queues.
+/// Dropping it fences admission and completes queued requests as Closed.
 pub struct Loader {
-    owner: Binding,
-    root: ResourceId,
-    grants: Vec<(ResourceId, Permissions)>,
-    pending: Rc<RefCell<Option<Job>>>,
-    next: u64,
+    target: Target,
+    admit: Admit,
+    queue: Rc<RefCell<queue::Queue>>,
+    admitted: Vec<Admitted>,
+    capacity: usize,
+    values: ValueLimits,
 }
 
 impl Loader {
+    /// Constructs a bounded loader without executing artifact code.
+    /// `capacity` bounds both queued requests and retained package selections.
+    /// # Errors
+    /// Invalid budgets, approval names or allocation pressure reject.
     pub fn new(
-        owner: Binding,
-        root: ResourceId,
-        grants: Vec<(ResourceId, Permissions)>,
-    ) -> Self {
-        Self { owner, root, grants, pending: Rc::default(), next: 0 }
+        target: Target,
+        admit: Admit,
+        capacity: usize,
+        values: ValueLimits,
+    ) -> Result<Self, Error> {
+        if capacity == 0 || capacity > 256 || target.approved.len() > 256 {
+            return Err(Error::INVALID);
+        }
+        validate_approvals(&target.approved)?;
+        let mut admitted = Vec::new();
+        admitted.try_reserve_exact(capacity).map_err(|_| Error::PRESSURE)?;
+        Ok(Self {
+            target,
+            admit,
+            queue: Rc::new(RefCell::new(queue::Queue::new(capacity)?)),
+            admitted,
+            capacity,
+            values,
+        })
     }
 
-    pub(crate) const fn binding(&self) -> &Binding {
-        &self.owner
+    /// Declares Exec(Bytes path <=4096) -> `ResourceId`, requiring EXEC.
+    /// Success grants READ|EXEC on that passive package to the configured
+    /// recipient. It does not activate the package or grant its exports.
+    /// # Errors
+    /// Declaration/provider allocation failure rejects without host execution.
+    pub fn provider(&self) -> Result<ResourceProvider, Error> {
+        queue::provider(self.queue.clone())
     }
 
-    pub fn is_pending(&self) -> bool {
-        self.pending.borrow().is_some()
+    /// Fences admission and settles queued work, e.g. on process termination.
+    /// Already admitted package and request custody stays with Runtime.
+    pub fn close(&self) {
+        queue::close(&self.queue);
     }
 
-    pub fn provider(&self) -> ResourceProvider {
-        ResourceProvider::new(
-            Rc::clone(&self.pending),
-            ResourceOps {
-                unload: None,
-                read: |_, _, _| {
-                    Box::pin(core::future::ready(Err(Error::UNSUPPORTED)))
-                },
-                write: |pending, _, input| submit(pending, &input),
-            },
-            Box::new([
-                Surface {
-                    contract: Contract::new("host.module.load", 1),
-                    methods: Permissions::WRITE,
-                    input: Box::new([]),
-                    output: Box::new([Permissions::READ]),
-                },
-                Surface {
-                    contract: Contract::new("host.module.load-with", 1),
-                    methods: Permissions::WRITE,
-                    input: Box::new([Permissions::ALL]),
-                    output: Box::new([Permissions::READ]),
-                },
-            ]),
-            Rc::new(()),
-        )
-    }
-
+    /// Executes at most one queued admission outside Runtime provider calls.
+    /// Repeating a path reuses its retained package, not changed file contents.
+    /// A failed recipient grant retains the admitted package as error context;
+    /// a new request retries that grant without loading the artifact again.
     pub fn advance(
         &mut self,
         runtime: &mut Runtime,
-        kernel: &Connection,
-        wake: &mut Context<'_>,
-    ) {
-        let Some(mut job) = self.pending.borrow_mut().take() else {
-            return;
+        cx: &Context<'_>,
+    ) -> Progress {
+        let Some(request) = queue::next(&self.queue, cx) else {
+            return Progress::Idle;
         };
-        let result = step(self, runtime, kernel, &mut job, wake);
-        let Some(result) = result else {
-            *self.pending.borrow_mut() = Some(job);
-            return;
+        let Some(mut work) = queue::start(&request) else {
+            return Progress::More;
         };
-        let mut completion = job.result.borrow_mut();
-        completion.result = Some(result);
-        let waker = completion.waker.take();
-        drop(completion);
-        if let Some(waker) = waker {
-            waker.wake();
-        }
+        let result = self.load(runtime, work.path);
+        let outcome = match result {
+            Ok(package) => {
+                work.output.data[..16].copy_from_slice(&package.epoch);
+                work.output.data[16..]
+                    .copy_from_slice(&package.serial.to_le_bytes());
+                Outcome::Ok(work.output)
+            }
+            Err(error) => Outcome::Failed(error),
+        };
+        queue::complete(&request, outcome);
+        Progress::More
     }
 
-    fn start(
+    fn load(
         &mut self,
         runtime: &mut Runtime,
-        kernel: &Connection,
-        job: &mut Job,
-    ) -> Result<(reovim_kernel_interface::ResourceId, Reply), Error> {
-        self.next = self.next.checked_add(1).ok_or(Error::PRESSURE)?;
-        let grants = if job.import == Some(self.root) {
-            self.grants.clone()
-        } else {
-            job.import.into_iter().map(|id| (id, Permissions::ALL)).collect()
-        };
-        let binding = runtime.bind_for(&self.owner, &grants)?;
-        let imports = binding.connection();
-        let export = self.owner.publication_path(&job.export)?;
-        let contributions = load(&job.library, &export, Some(&imports))?;
-        let module = module(contributions);
-        if let Err(error) = validate_exports(&self.owner, &module) {
-            job.rejected = Some((error, module));
-            return Err(error);
+        path: Box<[u8]>,
+    ) -> Result<ResourceId, Error> {
+        let package =
+            match self.admitted.iter().find(|entry| entry.path == path) {
+                Some(entry) => entry.package,
+                None => self.admit(runtime, path)?,
+            };
+        runtime
+            .grant(
+                &self.target.recipient,
+                Grant {
+                    resource: package,
+                    access: 5,
+                    create_access: 0,
+                    retain_loans: false,
+                },
+            )
+            .map_err(|error| Error::with_id(error.code.0, package))?;
+        Ok(package)
+    }
+
+    fn admit(
+        &mut self,
+        runtime: &mut Runtime,
+        path: Box<[u8]>,
+    ) -> Result<ResourceId, Error> {
+        if self.admitted.len() == self.capacity {
+            return Err(Error::PRESSURE);
         }
-        let local_path = format!("instances/native-{}", self.next);
-        let path = self.owner.publication_path(&local_path)?;
-        let id = match runtime.activate_bound_module(&binding, &path, module) {
-            Ok(id) => id,
-            Err((error, module)) => {
-                job.rejected = Some((error, module));
-                return Err(error);
-            }
-        };
-        let ready = match kernel.resolve(&local_path).into_inner() {
-            Ok(local) => kernel.read(
-                local,
-                &Message::new(Contract::new("kernel.module.ready", 1), &[]),
-            ),
-            Err(error) => Box::pin(core::future::ready(Err(error))),
-        };
-        Ok((id, ready))
+        let native = (self.admit)(&path)?;
+        let definition =
+            Rc::new(native.definition(self.values, self.capacity)?);
+        let package = register(runtime, &self.target, definition)?;
+        self.admitted.push(Admitted { path, package });
+        Ok(package)
     }
 }
 
-fn module(contributions: Vec<Contribution>) -> Module {
-    Module::new(
-        Lifecycle::Constructed,
-        DriverOps {
-            status: |state| *state,
-            advance: |state, _| {
-                if *state == Lifecycle::Closed {
-                    return Ok(Progress::Stopped);
-                }
-                *state = Lifecycle::Ready;
-                Ok(Progress::Idle)
-            },
-            close: |state| {
-                *state = Lifecycle::Closed;
-                Ok(())
-            },
-        },
-        contributions,
-        Rc::new(()),
+/// Register a captured definition using the same authority for boot and load.
+pub(crate) fn register(
+    runtime: &mut Runtime,
+    target: &Target,
+    definition: Rc<reovim_kernel_interface::module::Definition>,
+) -> Result<ResourceId, Error> {
+    let mut approved = Vec::new();
+    approved
+        .try_reserve_exact(target.approved.len())
+        .map_err(|_| Error::PRESSURE)?;
+    approved.extend(target.approved.iter().map(AsRef::as_ref));
+    runtime.register_module(
+        target.registry,
+        target.namespace,
+        definition,
+        &target.imports,
+        &approved,
     )
 }
 
-fn step(
-    loader: &mut Loader,
-    runtime: &mut Runtime,
-    kernel: &Connection,
-    job: &mut Job,
-    wake: &mut Context<'_>,
-) -> Option<Result<Message, Error>> {
-    if job.rejected.is_some() {
-        return cleanup(job);
+impl Drop for Loader {
+    fn drop(&mut self) {
+        queue::close(&self.queue);
     }
-    if let Some((id, ready)) = job.ready.as_mut() {
-        return match ready.as_mut().poll(wake) {
-            Poll::Pending => None,
-            Poll::Ready(reply) => {
-                Some(Ok(installed(&job.contract, *id, reply)))
-            }
-        };
-    }
-    match loader.start(runtime, kernel, job) {
-        Ok(ready) => {
-            job.ready = Some(ready);
-            None
+}
+
+fn validate_approvals(names: &[Box<str>]) -> Result<(), Error> {
+    for (index, name) in names.iter().enumerate() {
+        if name.is_empty()
+            || name.len() > 255
+            || !name.is_ascii()
+            || name.contains(['\0', '/'])
+            || matches!(name.as_ref(), "." | "..")
+        {
+            return Err(Error::INVALID);
         }
-        Err(_) if job.rejected.is_some() => None,
-        Err(error) => Some(Err(error)),
-    }
-}
-
-fn cleanup(job: &mut Job) -> Option<Result<Message, Error>> {
-    let (error, module) = job.rejected.as_mut()?;
-    for contribution in &mut module.contributions {
-        let result = match contribution {
-            Contribution::Resource { provider, .. } => provider.unload(),
-            Contribution::Model { provider, .. } => provider.unload(),
-        };
-        if result.is_err() {
-            return None;
+        if names[..index].contains(name) {
+            return Err(Error::CONFLICT);
         }
-    }
-    let error = *error;
-    job.rejected = None;
-    Some(Err(error))
-}
-
-fn submit(
-    pending: &Rc<RefCell<Option<Job>>>,
-    input: &Message,
-) -> reovim_kernel_interface::provider::ProviderReply {
-    let parsed = core::str::from_utf8(&input.data)
-        .ok()
-        .and_then(|value| value.split_once('\0'));
-    let Some((library, export)) = parsed else {
-        return Box::pin(core::future::ready(Err(Error::INVALID)));
-    };
-    if library.is_empty() || export.contains('\0') {
-        return Box::pin(core::future::ready(Err(Error::INVALID)));
-    }
-    if pending.borrow().is_some() {
-        return Box::pin(core::future::ready(Err(Error::BUSY)));
-    }
-    let result = Rc::new(RefCell::new(Completion::default()));
-    *pending.borrow_mut() = Some(Job {
-        contract: input.contract.clone(),
-        library: library.into(),
-        export: export.into(),
-        import: input.resources.first().copied(),
-        result: Rc::clone(&result),
-        ready: None,
-        rejected: None,
-    });
-    Box::pin(poll_fn(move |context| {
-        let mut completion = result.borrow_mut();
-        if let Some(result) = completion.result.take() {
-            return Poll::Ready(result);
-        }
-        completion.waker = Some(context.waker().clone());
-        Poll::Pending
-    }))
-}
-
-fn installed(
-    contract: &Contract,
-    id: ResourceId,
-    ready: Result<Message, RequestError>,
-) -> Message {
-    let data = match ready {
-        Ok(_) => "ready".into(),
-        Err(RequestError::Rejected(error) | RequestError::Failed(error)) => {
-            format!("readiness-error\t{}", error.code.0)
-        }
-        Err(RequestError::Unknown { cause, recovery }) => {
-            format!("readiness-unknown\t{}\t{recovery}", cause.code.0)
-        }
-    };
-    let mut reply = Message::reference(contract.clone(), id);
-    reply.data = data.into_bytes().into();
-    reply
-}
-
-#[cfg(target_os = "linux")]
-#[allow(unsafe_code)]
-fn load(
-    path: &str,
-    export: &str,
-    kernel: Option<&Connection>,
-) -> Result<Vec<Contribution>, Error> {
-    // This local control scope admits code obeying the current native ABI.
-    // Loading is host execution, outside the Kernel's provider callbacks.
-    unsafe {
-        reovim_host_reference::native::load_contributions(
-            std::path::Path::new(path),
-            export,
-            kernel,
-        )
-    }
-}
-
-#[cfg(not(target_os = "linux"))]
-fn load(
-    _: &str,
-    _: &str,
-    _: Option<&Connection>,
-) -> Result<Vec<Contribution>, Error> {
-    Err(Error::UNSUPPORTED)
-}
-
-#[cfg(all(test, target_os = "linux"))]
-mod tests;
-
-fn validate_exports(owner: &Binding, module: &Module) -> Result<(), Error> {
-    let root = owner.publication_path("")?;
-    for contribution in &module.contributions {
-        let path = contribution.path();
-        let relative = if root.is_empty() {
-            path
-        } else {
-            path.strip_prefix(&*root)
-                .and_then(|path| path.strip_prefix('/'))
-                .ok_or(Error::DENIED)?
-        };
-        owner.publication_path(relative)?;
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests;

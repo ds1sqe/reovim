@@ -1,245 +1,166 @@
-//! Local control service with retained, isolated client namespaces.
+//! Hosted framing and driving over retained Caller endpoints.
 
-mod clients;
-mod files;
-mod pending;
-mod requests;
-mod state;
+#[path = "service/transport.rs"]
 mod transport;
 
-use crate::boot::{Config, Modules, Scope};
-use alloc::{boxed::Box, format, string::String, vec::Vec};
-use clients::Clients;
-use pending::{Pending, Response};
-use reovim_kernel_interface::provider::Permissions;
-use reovim_kernel_interface::{
-    Connection, Contract, Message, RequestError, ResourceId, driver::Progress,
-};
-use reovim_kernel_runtime::{Limits, Runtime};
-use reovim_service::{hex, unhex};
+use crate::{clients::Clients, loading::Loader};
+use alloc::{string::String, sync::Arc};
+use reovim_kernel_interface::{Error, driver::Progress};
+use reovim_kernel_runtime::Runtime;
+use reovim_service::protocol::{Frame, Reply};
 use std::{
     io,
     net::TcpListener,
-    sync::Arc,
+    sync::atomic::{AtomicBool, Ordering},
     task::{Context, Wake, Waker},
     thread,
     time::Duration,
 };
 
-/// Runs the experimental local control service until the process exits.
-/// ```no_run
-/// reovim_server::service::serve("127.0.0.1:7878")?;
-/// # Ok::<(), std::io::Error>(())
-/// ```
+/// Serves already authorized Callers and drives configured loaders and Runtime.
+///
+/// Composition owns boot, credentials and grants. Stop ends socket admission
+/// and joins transport workers; it does not discard Caller or loader custody.
+/// The caller retains those owners to drain or retire them after this returns.
 /// # Errors
-/// Reports bind/startup errors. Individual connection failures are isolated.
-pub fn serve(address: &str) -> io::Result<()> {
-    serve_configured(address, Config::default())
+/// Reports listener/driver failure; malformed frames and lost socket observers
+/// remain local to their connections. Oversized result delivery closes its
+/// socket without inventing an operation error or releasing the receipt.
+pub fn serve(
+    listener: TcpListener,
+    runtime: &mut Runtime,
+    clients: &Clients,
+    loaders: &mut [Loader],
+    stop: &AtomicBool,
+) -> io::Result<()> {
+    serve_mode(listener, runtime, clients, loaders, stop, false)
 }
 
-/// Discovers configured native contracts before admitting clients.
+/// Serves until termination is requested and Runtime cleanup actually finishes.
+///
+/// For example, a process keeps original result/reconcile/release access alive
+/// while closing; Busy and Incomplete do not terminate its listener.
 /// # Errors
-/// Reports discovery, contract selection, startup or listener failures.
-pub fn serve_configured(address: &str, mut config: Config) -> io::Result<()> {
-    let exports = config
-        .output
-        .take()
-        .as_deref()
-        .map(|path| {
-            reovim_host_reference::export::Directory::open(path)?
-                .create(&format!("run-{}", clients::token()?))
-        })
-        .transpose()?;
-    let listener = TcpListener::bind(address)?;
+/// Reports transport or driver failure without claiming completed cleanup.
+pub fn serve_closing(
+    listener: TcpListener,
+    runtime: &mut Runtime,
+    clients: &Clients,
+    loaders: &mut [Loader],
+    stop: &AtomicBool,
+) -> io::Result<()> {
+    serve_mode(listener, runtime, clients, loaders, stop, true)
+}
+
+fn serve_mode(
+    listener: TcpListener,
+    runtime: &mut Runtime,
+    clients: &Clients,
+    loaders: &mut [Loader],
+    stop: &AtomicBool,
+    close_runtime: bool,
+) -> io::Result<()> {
     if !listener.local_addr()?.ip().is_loopback() {
-        return Err(io::Error::other("the control service requires loopback"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "the control service requires loopback",
+        ));
     }
-    // Retained clients each need import scopes and private module publications.
-    let limits = Limits { resources: 1024, callers: 256, ..Limits::default() };
-    let mut runtime = Runtime::new(1, limits).map_err(io::Error::other)?;
-    runtime.start().map_err(io::Error::other)?;
-    let root =
-        runtime.register_namespace("server").map_err(io::Error::other)?;
-    let models = runtime
-        .register_namespace("server/models")
-        .map_err(io::Error::other)?;
-    let owner = runtime
-        .bind_at(root, &[(root, Permissions::ALL)])
-        .map_err(io::Error::other)?;
-    for snapshot in config.snapshots.drain(..) {
-        let path = owner
-            .publication_path(&snapshot.mount)
-            .map_err(io::Error::other)?;
-        let provider = reovim_host_reference::snapshot::capture(
-            &snapshot.source,
-            &snapshot.scratch,
-        )?;
-        runtime
-            .register(&path, provider)
-            .map_err(|(error, _)| io::Error::other(error))?;
-    }
-    let selected_session = config.session.take();
-    let selected_buffer = config.buffer.take();
-    files::install(&mut runtime, &owner, core::mem::take(&mut config.files))?;
-    let modules = Modules::discover(config).map_err(io::Error::other)?;
-    let startup = modules
-        .prepare(&mut runtime, &owner, Scope::Server)
-        .map_err(io::Error::other)?;
-    state::finish(&mut runtime, startup)?;
-    let mut shared = alloc::vec![("modules", root), ("models", models)];
-    if let Some(selected) = selected_buffer {
-        let buffer = state::buffer(&mut runtime, &owner, &selected)?;
-        shared.push(("buffer", buffer));
-    }
-    if let Some(selected) = selected_session {
-        let session = state::create(&mut runtime, &owner, &selected)?;
-        shared.push(("session", session));
-    }
-    let mut clients =
-        Clients::new(owner.connection(), exports, shared, modules);
-    std::println!("listening {}", listener.local_addr()?);
-    let commands = transport::start(listener)?;
+    let mut transport = transport::Transport::start(listener)?;
     let waker = Waker::from(Arc::new(OwnerWake(thread::current())));
     let mut context = Context::from_waker(&waker);
-    let mut pending = Vec::new();
+    let result = drive(
+        &transport,
+        runtime,
+        clients,
+        loaders,
+        stop,
+        close_runtime,
+        &mut context,
+    );
+    let shutdown = transport.stop();
+    result.and(shutdown)
+}
+
+fn drive(
+    transport: &transport::Transport,
+    runtime: &mut Runtime,
+    clients: &Clients,
+    loaders: &mut [Loader],
+    stop: &AtomicBool,
+    close_runtime: bool,
+    context: &mut Context<'_>,
+) -> io::Result<()> {
     loop {
-        pending::receive(&commands, &mut runtime, &mut clients, &mut pending)?;
-        advance(&mut runtime, &mut clients, &mut pending, &mut context)?;
+        if stopping(runtime, loaders, stop, close_runtime)? {
+            return Ok(());
+        }
+        let mut more = dispatch(transport, clients)? == transport::CAPACITY;
+        for loader in &mut *loaders {
+            more |= loader.advance(runtime, context) == Progress::More;
+        }
+        more |= runtime.advance(context).map_err(io::Error::other)?
+            == Progress::More;
+        if !more {
+            // Wakes retain a token; the timeout also observes an external stop.
+            thread::park_timeout(Duration::from_millis(100));
+        }
     }
+}
+
+fn stopping(
+    runtime: &mut Runtime,
+    loaders: &[Loader],
+    stop: &AtomicBool,
+    close_runtime: bool,
+) -> io::Result<bool> {
+    if !stop.load(Ordering::Acquire) {
+        return Ok(false);
+    }
+    if !close_runtime {
+        return Ok(true);
+    }
+    for loader in loaders {
+        loader.close();
+    }
+    match runtime.close() {
+        Ok(()) => Ok(true),
+        Err(Error::BUSY | Error::INCOMPLETE) => Ok(false),
+        Err(error) => Err(io::Error::other(error)),
+    }
+}
+
+fn dispatch(
+    transport: &transport::Transport,
+    clients: &Clients,
+) -> io::Result<usize> {
+    let mut received = 0;
+    while received < transport::CAPACITY {
+        let Some(command) = transport.next()? else { break };
+        // Execute even after socket loss. Caller owns the admitted action.
+        if let Ok(reply) = response(clients, &command.line) {
+            let _ = command.reply.send(reply);
+        }
+        received += 1;
+    }
+    Ok(received)
+}
+
+fn response(clients: &Clients, line: &str) -> Result<String, Error> {
+    let reply = match Frame::decode(line) {
+        Ok(frame) => clients.dispatch(frame),
+        Err(error) => Reply::Error(error),
+    };
+    reply.encode()
 }
 
 struct OwnerWake(thread::Thread);
-
 impl Wake for OwnerWake {
     fn wake(self: Arc<Self>) {
         self.0.unpark();
     }
 }
 
-fn advance(
-    runtime: &mut Runtime,
-    clients: &mut Clients,
-    pending: &mut Vec<Pending>,
-    context: &mut Context<'_>,
-) -> io::Result<()> {
-    for _ in 0..64 {
-        Pending::poll(pending, context);
-        clients.advance(runtime, context);
-        let progress = runtime.advance(context).map_err(io::Error::other)?;
-        if progress != Progress::More && !clients.is_pending() {
-            // unpark retains a token when a wake races this sleep.
-            thread::park();
-            return Ok(());
-        }
-    }
-    // Lifecycle cleanup can still require retries without a provider wake.
-    // Bound those turns and return to command admission between quanta.
-    thread::park_timeout(Duration::from_millis(1));
-    Ok(())
-}
-
-fn dispatch(line: &str, kernel: &Connection) -> Result<Response, String> {
-    let fields: Vec<_> = line.split('\t').collect();
-    match fields.as_slice() {
-        ["resolve", path] => {
-            let subject = resolve(kernel, path)?;
-            Ok(Box::pin(core::future::ready(Ok(format!("ok\t@{}", subject.0)))))
-        }
-        ["close", path] => {
-            let subject = resolve(kernel, path)?;
-            kernel.close(subject).into_inner().map_err(failure)?;
-            Ok(Box::pin(core::future::ready(Ok("ok".into()))))
-        }
-        ["ls", path] => {
-            let subject = resolve(kernel, path)?;
-            let entries =
-                kernel.children(subject).into_inner().map_err(failure)?;
-            let names: Vec<_> = entries
-                .into_iter()
-                .map(|e| format!("{}=@{}", e.name, e.resource.0))
-                .collect();
-            let reply = format!("ok\t{}", names.join("\t"));
-            Ok(Box::pin(core::future::ready(Ok(reply))))
-        }
-        [method, path, contract, version, rest @ ..]
-            if matches!(*method, "read" | "write") && rest.len() <= 2 =>
-        {
-            let mut input = Message::new(
-                Contract::new(
-                    contract,
-                    version.parse().map_err(|_| "invalid contract version")?,
-                ),
-                &unhex(
-                    rest.first()
-                        .copied()
-                        .filter(|value| *value != "-")
-                        .unwrap_or(""),
-                )
-                .ok_or("invalid hex payload")?,
-            );
-            if let Some(references) = rest.get(1) {
-                input.resources = references
-                    .split(',')
-                    .map(|reference| resolve(kernel, reference))
-                    .collect::<Result<Vec<_>, _>>()?
-                    .into();
-            }
-            call(kernel, method, path, &input)
-        }
-        _ => Err("expected v1 resolve/ls/read/write/close command".into()),
-    }
-}
-
-fn resolve(kernel: &Connection, path: &str) -> Result<ResourceId, String> {
-    if let Some(reference) = path.strip_prefix('@') {
-        let (id, suffix) = reference.split_once('/').unwrap_or((reference, ""));
-        let id = ResourceId(id.parse().map_err(|_| "invalid resource ID")?);
-        if suffix.is_empty() {
-            return Ok(id);
-        }
-        return kernel.resolve_at(id, suffix).into_inner().map_err(failure);
-    }
-    kernel.resolve(path).into_inner().map_err(failure)
-}
-
-fn call(
-    kernel: &Connection,
-    method: &str,
-    path: &str,
-    input: &Message,
-) -> Result<Response, String> {
-    let subject = resolve(kernel, path)?;
-    let request = if method == "read" {
-        kernel.read(subject, input)
-    } else {
-        kernel.write(subject, input)
-    };
-    Ok(Box::pin(async move {
-        let reply = request.await.map_err(failure)?;
-        Ok(encode(&reply))
-    }))
-}
-
-fn encode(reply: &Message) -> String {
-    let references: Vec<_> =
-        reply.resources.iter().map(|id| format!("@{}", id.0)).collect();
-    format!(
-        "ok\t{}\t{}\t{}\t{}",
-        reply.contract.name,
-        reply.contract.version,
-        hex(&reply.data),
-        references.join(",")
-    )
-}
-
-fn failure(error: RequestError) -> String {
-    let (kind, error, recovery) = match error {
-        RequestError::Rejected(error) => ("rejected", error, String::new()),
-        RequestError::Failed(error) => ("failed", error, String::new()),
-        RequestError::Unknown { cause, recovery } => {
-            ("unknown", cause, hex(recovery.as_bytes()))
-        }
-    };
-    let id = error.id.map_or_else(String::new, |id| format!("@{}", id.0));
-    format!("{kind}\t{}\t{id}\t{recovery}", error.code.0)
-}
+#[cfg(test)]
+#[path = "service/tests.rs"]
+mod tests;

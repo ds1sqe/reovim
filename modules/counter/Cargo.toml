@@ -14,8 +14,8 @@ version = "=0.16.0-dev"
 [lints]
 workspace = true
 
-[dependencies.reovim-module]
-path = "../../lib/module"
+[dev-dependencies.reovim-sdk]
+path = "../../sdk/rust"
 
 [[example]]
 name = "counter"

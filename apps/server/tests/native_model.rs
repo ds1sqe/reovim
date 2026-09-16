@@ -1,5 +1,8 @@
 #![cfg(all(feature = "std", target_os = "linux"))]
 
+#[path = "support/memory.rs"]
+mod memory;
+
 use reovim_host_reference::{native::load_model, run};
 use reovim_kernel_interface::{
     Contract, Error, Message,
@@ -38,8 +41,8 @@ fn native_nontext_model_edits_and_undoes_through_the_same_authority() {
     .unwrap();
     let initial = observation(initial).unwrap();
     let keys = reovim_domain_basic::decode_keys(&initial.value.data).unwrap();
-    assert_eq!(keys.0.get(&17), Some(&true));
-    assert_eq!(keys.0.get(&9001), Some(&false));
+    assert_eq!(keys.get(&17), Some(&true));
+    assert_eq!(keys.get(&9001), Some(&false));
     let snapshot = retained(
         &finish(&mut runtime, retain(&client, initial.state)).unwrap(),
     )
@@ -58,8 +61,8 @@ fn native_nontext_model_edits_and_undoes_through_the_same_authority() {
             .unwrap();
     let changed = observation(changed).unwrap();
     let keys = reovim_domain_basic::decode_keys(&changed.value.data).unwrap();
-    assert_eq!(keys.0.get(&17), Some(&true));
-    assert_eq!(keys.0.get(&9001), Some(&true));
+    assert_eq!(keys.get(&17), Some(&true));
+    assert_eq!(keys.get(&9001), Some(&true));
     let selected = Message::new(Contract::new("native.keys", 1), &[1]);
     let old =
         finish(&mut runtime, client.read(snapshot.id, &selected)).unwrap();
@@ -144,7 +147,7 @@ fn cancelled_preparation(
 
 fn still_live(runtime: &mut Runtime) {
     let fresh = runtime
-        .register("still-live", reovim_resource_local::memory(b"alive"))
+        .register("still-live", memory::provider(b"alive"))
         .map_err(|(error, _)| error)
         .unwrap();
     let reader = runtime.connect(&[(fresh, Permissions::READ)]).unwrap();

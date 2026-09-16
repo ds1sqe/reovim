@@ -2,6 +2,7 @@
 
 use alloc::{format, string::String, vec, vec::Vec};
 use core::fmt::Write as _;
+use reovim_kernel_interface::resource::ResourceFlags;
 use reovim_kernel_interface::{Connection, Error, RequestError, ResourceId};
 
 const NODES: usize = 256;
@@ -58,6 +59,12 @@ async fn descend(
 ) -> Result<(), RequestError> {
     if visit.ancestors.contains(&visit.resource) {
         note(output, &visit, "[cycle; not expanded]");
+        return Ok(());
+    }
+    if let Ok(flags) = kernel.flags(visit.resource).await
+        && (!flags.contains(ResourceFlags::CONTAINER)
+            || flags.contains(ResourceFlags::EMPTY))
+    {
         return Ok(());
     }
     let children = match kernel.children(visit.resource).await {

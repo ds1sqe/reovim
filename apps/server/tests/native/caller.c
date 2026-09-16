@@ -7,6 +7,11 @@ int reovim_client_start(struct rv_connection connection, struct rv_pending *pend
     if (api->root(connection.context, &root).code) return 2;
     struct rv_bytes path = { (const uint8_t *)"counter", 7 };
     if (api->resolve(connection.context, root, path, &counter).code) return 3;
+    uint32_t flags = 0;
+    if (!api->flags || api->flags(connection.context, root, &flags).code) return 5;
+    if (flags != RV_RESOURCE_CONTAINER) return 6;
+    if (api->flags(connection.context, counter, &flags).code) return 7;
+    if (flags != (RV_RESOURCE_CONTAINER | RV_RESOURCE_EMPTY)) return 8;
     const uint8_t increment[] = { 11, 0, 0, 0, 0, 0, 0, 0 };
     struct rv_request request = {
         .method = 2, .subject = counter,

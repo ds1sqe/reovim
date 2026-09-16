@@ -1,153 +1,90 @@
-# Minimal server
+# Server composition
 
-Build from the repository root:
+`assemble(epoch, limits)` starts an empty Kernel Runtime. Composition owns this
+execution context, admits module implementations and supplies granted Callers
+to consumers. The server links no memory, text, heading or keyed provider and
+exposes no domain-specific demo Resource fields.
 
-```sh
-cargo build --manifest-path product/Cargo.toml \
-  -p reovim-server -p reovim-cli --features std
-product/target/debug/reovim-server 127.0.0.1:7878
-```
+The `native_module` integration test uses this assembly and the production Host
+loader. After startup it compiles a C module, loads it, removes the artifact,
+then discovers and binds both exported APIs. Calls return their distinct values;
+shutdown verifies that module data outlives embedded providers and late cleanup.
+A second journey builds the Rust counter artifact after Runtime starts, loads
+it through the same entry, discovers its declaration, adds 37 and reads 37.
+A memory factory journey creates separate Resources, preserves unrestricted
+bytes and positional EOF behavior, and checks creation and read-only grants.
+Neither implementation is linked into the server test binary. These Rust
+artifacts enter the Kernel registry as Interface definitions; exact revision
+selection supplies the implementation and admitted imports for activation.
 
-Open the [Resource shell](../cli/README.md) in another terminal:
+`loading::Loader` offers a declared admission Resource. Its callback only queues;
+composition drives artifact policy and registration, then grants the package to
+an existing recipient Caller. Native path bytes remain unrestricted. Repeated
+paths reuse the captured package even after artifact deletion; activation is a
+separate ordinary package call. Cancellation, bounded queues and loader shutdown
+retain original receipt outcomes. The hosted service drives it beside Runtime;
+boot now captures Definitions through the same Host policy.
 
-```sh
-product/target/debug/reovim-cli 127.0.0.1:7878
-```
+`clients::Clients` retains Host-issued credentials and exact Caller bindings.
+It dispatches canonical service frames and preserves recovery during retirement;
+retired credentials never retarget a replacement. Credential retention is bounded
+separately from Runtime's active Caller slots. It selects no providers and stores
+no duplicate receipts. Process composition issues one random credential.
 
-Follow the shell's explicit loading example to install the separate `read`
-and `write` command artifacts. Command implementations are not linked into
-this server; an independently built Resource module can add another command
-without a CLI or Kernel rebuild.
-
-Without configuration, the service starts with private client roots and no
-concrete modules or Session. On Linux, process arguments select native artifacts
-by their passive contract declarations:
-
-```sh
-reovim-server 127.0.0.1:7878 \
-  --module counter /opt/reovim/modules/counter.so counter \
-  --start counter 1 \
-  --client-module environment /opt/reovim/modules/env.so '' \
-  --grant '' all --client-start env 1
-```
-
-`--module LABEL LIBRARY MOUNT` declares a server-owned catalog entry.
-`--client-module` declares a fresh instance template for every retained client.
-`--start CONTRACT SCHEMA` and `--client-start` select exact required identities.
-Dependencies come from the artifact and use the existing catalog graph; missing,
-incompatible, ambiguous and cyclic selections fail startup. Discovery retains
-the exact executable, reads metadata and does not call the module constructor.
-Dynamic linker constructors and the ABI entry point still execute native code.
-
-`--grant PATH read|write|all` applies to the preceding declaration. Paths refer
-to existing Resources in that context; an empty path grants its root subtree.
-No grants are implicit. Dependency selection does not grant data access.
-Shared aliases need their own named grants, such as `--grant modules read`;
-granting the private root alone does not grant the alias targets.
-Server and client dependency catalogs have separate selection scopes.
-Server publications appear under the client's `modules` alias; private client
-publications and `catalog/LABEL` appear in its own root. Ordinary activation of
-an unstarted catalog remains available. Each context admits at most 64 configured
-declarations and 64 required roots, subject to Runtime capacity.
-The service reserves limits of 1024 Resources and 256 caller/import scopes;
-other Runtime limits retain their defaults. Sixteen client contexts with private
-env templates are exercised together; richer configurations can exhaust a
-different bound first and return pressure.
-
-For a shared Session, select a native Model and pass
-`--session MODEL_PATH INPUT_CONTRACT SCHEMA HEX_DATA`. The server contains no
-heading schema or constructor choice. `--export-root DIRECTORY` separately
-grants filesystem output; see [dump](../../modules/dump/README.md).
-
-`--buffer MODEL_PATH INPUT_CONTRACT SCHEMA HEX_DATA` creates one server-owned
-Buffer through the selected Model's public creation contract. It is mounted as
-`buffer` in each independent Client scope. Clients receive read/write access
-and share its History, but the server remains the close owner. Each Client
-attaches/detaches its own Text interpretation; shared content implies no focus
-or view sharing. Buffer and Session configuration remain separate choices.
-
-`--snapshot MOUNT SOURCE SCRATCH_DIRECTORY` grants an immutable file snapshot
-at `modules/MOUNT`. The Linux Host prefers an atomic clone into anonymous
-scratch. Linux x86_64 can instead copy under a read lease, including across
-filesystems. This requires owned input and `/proc/self/fd`; existing writers,
-lease breaks or unsupported protection reject capture. Source and scratch
-are explicit process grants;
-this does not expose arbitrary filesystem paths to modules. See the
-[source model](../../modules/source/README.md) for lazy working-state opening.
-
-`--files MOUNT DIRECTORY SCRATCH_DIRECTORY` grants fresh capture after boot.
-Write a UTF-8 relative filename to `modules/MOUNT` with `host.files.capture` v1;
-the result owns one READ snapshot Resource. Every path component stays beneath
-the pinned directory grant; absolute paths, `..`, symlinks and non-regular files
-reject. Capture runs on a bounded Host worker and publishes only on success.
-Pass the snapshot to `source.open`, then close it after its working states and
-retained reads no longer need the backing. Explicit source-access close fences
-future reads; it is not the same operation as shared Buffer close. Replaying
-one retained request returns its original snapshot; a new request captures a
-new cut. Capture never falls back to unprotected copying or timestamp checks.
-
-`host.files.select` v1 on the same directory selects a shared file source and
-prepares an immutable data/base view. Pass its READ reference to the selected
-Model with `kernel.buffer.open` v1 to install a backed Buffer. Repeated selection
-of the same pinned file, including hard links, reuses its subject within that
-directory provider. Replacing a pathname selects a different file. Each Buffer
-retains its own base and working state; a later selection cannot change them.
-
-Selection response data names the Resource child. `host.files.release` v1 takes
-that UTF-8 name with no references and withdraws the idle selection. It rejects
-captured or in-flight use; closing one Buffer does not close the shared source.
-The directory owns selections until explicit release or module unload, within
-Runtime resource limits. This read-only profile supplies exact original content
-as base evidence, not conditional save support. The loaded `command.open`
-composes selection and backed opening, releasing its capture without closing
-the shared source. Its Client journals the descriptor and retained recovery work.
-
-An installed user supplies only a compatible module package and configuration;
-adding it requires neither a Reovim checkout nor a server/CLI rebuild. The ABI is
-SemVer 0.1.0 with reserved u32 zero until official release; operation and module
-contract schemas are separate u32 identities. Installation performs no network
-fetch. The native and output adapters currently support Linux.
-
-`kernel/modules/load` also loads standalone native Resource or State Model
-providers after startup; see [native-counter](../../modules/native-counter/README.md).
-Artifacts declaring dependencies must use the catalog path.
-`host.module.load-with` accepts one Resource reference as the module's granted
-import subtree; [native-forward](../../modules/native-forward/README.md) calls
-another module through that connection.
-
-The [command transport](../../host/service/README.md) retains separate client
-roots selected by connection tokens. Each has its own diagnostic access and
-native loader; configured server services and an optional selected Session
-are explicitly shared. Each client keeps its own env instance and namespace;
-Session access does not share CWD.
-A module loaded into a client's root cannot publish through shared aliases.
-Selecting that full root as its imports includes the client's authorized shared
-aliases; selecting a narrower Resource grants only that subject's subtree.
-State lasts until explicit client teardown or process exit. Teardown refuses to
-discard live Buffer/Session state or unadopted receipts. Delivery receipts retain
-client startup as well as ordinary requests. `--connect` returns only after its
-required contracts are ready and acknowledges that startup receipt; a failed
-startup reports its retained client token and receipt for recovery/cleanup.
-
-Socket workers use bounded channels and retain no Kernel execution. Waiting
-responses and incomplete frames do not block other clients. A disconnected
-observer leaves its request and delivery receipt alive until explicit adoption.
-The Runtime owner sleeps until work wakes it; lifecycle cleanup keeps bounded
-turns with a 1 ms park when it still needs advancement.
-
-`host.module.load` and `host.module.load-with` return the installed instance
-reference once installation has happened. Result data is `ready`,
-`readiness-error<TAB>CODE`, or
-`readiness-unknown<TAB>CODE<TAB>RECOVERY`. A readiness observation failure does
-not discard the known instance or authorize another load. Its ordinary
-`kernel.module.ready`/status operations remain available. Rejection before
-installation remains an error.
-
-Run the process scenarios after building:
+With `std`, `service::serve` accepts an already bound listener, Runtime, Clients,
+loaders and a stop flag. It dispatches canonical frames, drives the supplied
+owners and joins listener/workers when stopped. Runtime custody remains with
+composition after transport stops. `serve_closing` keeps recovery service alive
+after termination until Runtime cleanup finishes; Busy/Incomplete do not exit.
 
 ```sh
-python3 scripts/e2e.py
+cargo test --manifest-path product/Cargo.toml \
+  -p reovim-server --features std --lib --test clients --test native_module \
+  --test process
 ```
 
-The [scenario guide](../../scripts/e2e_cases/README.md) covers selection,
-retained logs and adding independent journeys. Each test owns a fresh server.
+`boot::Modules` captures configured artifacts through a supplied Host admission
+policy. Labels select those exact Definitions; `register` receives the actual
+registry, mount, immutable imports, approved dependency names and recipient.
+A failed recipient grant preserves the admitted package identity. Discovery and
+registration remain passive; startup invokes ordinary package activation.
+`boot::Startup` drives required package activation through ordinary Caller
+receipts. It retains the original request across submission/observation failure,
+returns Ready identity after closing temporary accesses, and leaves UNKNOWN
+custody available for reconciliation. Composition must drive it beside Runtime.
+Configuration accepts `--module LABEL LIBRARY` and `--start LABEL`. Client/state
+constructor flags are retired; their owning module/Client migrations remain open.
+
+The Linux executable consumes required startup labels before announcing
+readiness. It issues an OS-random epoch and one credential, grants the initial
+exports, and supplies `/load` for later admission through a trusted directory:
+
+```sh
+cargo run --manifest-path product/Cargo.toml -p reovim-server --features std -- \
+  127.0.0.1:7878 --trusted-module-root /srv/reovim/modules \
+  --module device /srv/reovim/modules/device.so --start device
+```
+
+The readiness line is `ready ADDRESS CREDENTIAL`; its credential authorizes the
+launcher's Client. Native code under the selected root must obey the ABI; root
+selection is not a native-code sandbox. SIGINT/SIGTERM fences new work while
+original receipt recovery remains available. Release held receipts to complete
+shutdown. A process test reads a configured native export and verifies this
+recovery after SIGTERM. Another builds an artifact after process readiness,
+admits it through `/load`, deletes it and activates the captured package, then
+lists `/loaded`, acquires the returned identities, discovers their declarations
+and reads both new backend APIs through the same process.
+
+Current process policy grants all operation flags on initial exports, zero
+factory creation flags and no dependency import approvals. Late admission grants
+package access. An explicit Global publication grant at the loader mount admits
+its future exports; unrelated subjects with similar paths gain no authority.
+The actual base Client process and native namespace materialization remain open.
+The old service-source inclusion test is removed: hosted unit and actual process
+tests now compile the real library and executable together.
+
+Continue those consumers on Caller, declared operations, Info/Interfaces and the
+common module loader/Runtime activation. Registry selection, joined activation,
+request recovery, retained clients, Session scope and individual unload remain
+required. File and state providers enter through modules with granted Host
+capabilities; concrete constructors do not return to generic server assembly.

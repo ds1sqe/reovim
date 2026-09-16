@@ -22,15 +22,19 @@ context or supplying semantic preview data does not transfer those Client
 responsibilities to Kernel.
 
 [Composition](Design/05.1-composition.md) supplies granted Resource access.
-Ordinary callers read/write requests and await results; module API packages
+Ordinary callers invoke bound operations and await results; module API packages
 can supply typed helpers without extending the common SDK.
-[Kernel modules](Design/06-modules.md) add Resource, State Model, Domain and
-Representation providers without rebuilding or restarting Kernel. Client
+[Kernel modules](Design/05.2-modules.md) add Resource, state factory, editing and
+semantic providers without rebuilding or restarting Kernel. Client
 modules use their own lifecycle and can depend on Kernel services; the
-[navigation/help example](Design/06.3-module-composition.md) shows both owners.
+[navigation/help example](Design/07.3-navigation.md) shows both owners.
 Compatible independent Clients, Kernels and module hosts share the
 [public behavior](Design/00-overview.md) and negotiated
-[ABI or service protocol](Design/06.4-native-modules.md).
+[ABI or service protocol](Design/06.1-native-abi.md).
+
+[Future design directions](Design/09-future.md) connect Client module schemas,
+user configuration and additional interaction methods to these owners. Their
+open interfaces do not change the release requirements below.
 
 ## Release scope
 

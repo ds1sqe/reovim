@@ -14,3 +14,6 @@ std = []
 
 [lints]
 workspace = true
+
+[dependencies.reovim-kernel-interface]
+path = "../../kernel/interface"

@@ -75,6 +75,22 @@ pub enum Method {
 /// Common adapter boundary. Read-view factories only construct inert access;
 /// request execution remains with Runtime.
 pub trait Access {
+    /// Inspects structural state without acquiring access or executing code.
+    ///
+    /// ```
+    /// use reovim_kernel_interface::{ResourceId, access::Access};
+    /// fn inspect(access: &dyn Access, id: ResourceId) {
+    ///     let _result = access.flags(id);
+    /// }
+    /// ```
+    /// # Errors
+    /// Rejects unsupported inspection, stale identities or denied visibility.
+    fn flags(
+        &self,
+        _: ResourceId,
+    ) -> Result<crate::resource::ResourceFlags, Error> {
+        Err(Error::UNSUPPORTED)
+    }
     /// Acquires a producer-offered independent, data-only read view.
     /// # Errors
     /// Unsupported, denied and capacity failures preserve the original access.
@@ -142,6 +158,36 @@ pub trait Access {
 pub struct Connection(Rc<dyn Access>);
 
 impl Connection {
+    /// Returns copied structure for the caller-visible namespace at this point.
+    ///
+    /// No provider executes; the result retains and grants nothing.
+    /// ```
+    /// use reovim_kernel_interface::{Connection, RequestError};
+    /// use reovim_kernel_interface::resource::ResourceFlags;
+    /// async fn empty_root(
+    ///     connection: &Connection,
+    /// ) -> Result<bool, RequestError> {
+    ///     let root = connection.root().await?;
+    ///     let flags = connection.flags(root).await?;
+    ///     Ok(flags.contains(ResourceFlags::EMPTY))
+    /// }
+    /// ```
+    /// # Errors
+    /// Rejects unavailable, stale, closed or unauthorized access.
+    pub fn flags(
+        &self,
+        subject: ResourceId,
+    ) -> Ready<Result<crate::resource::ResourceFlags, RequestError>> {
+        ready(
+            self.0
+                .flags(subject)
+                .and_then(|flags| {
+                    crate::resource::ResourceFlags::from_bits(flags.bits())
+                        .ok_or(Error::PROVIDER)
+                })
+                .map_err(RequestError::Rejected),
+        )
+    }
     /// Owns an independent read view whose root is the view subject.
     /// Clones share its lifetime; dropping the last owner releases the view.
     /// Acquisition performs no I/O. Requests still execute through Runtime.

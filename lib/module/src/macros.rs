@@ -29,6 +29,9 @@ macro_rules! rv_module {
             } $(,)?
         }
     ) => {
+        #[doc = concat!(
+            "Passive Model declaration; inspection does not activate it.",
+            "\n```text\nlet table = ", stringify!($name), ".table();\n```\n")]
         $visibility static $name: $crate::__private::ModelDefinition =
             $crate::__private::ModelDefinition {
                 identity: $crate::__private::Identity::new($identity, $version),
@@ -71,6 +74,9 @@ macro_rules! rv_module {
             } $(,)?
         }
     ) => {
+        #[doc = concat!(
+            "Passive Resource declaration; inspection does not activate it.",
+            "\n```text\nlet table = ", stringify!($name), ".table();\n```\n")]
         $visibility static $name: $crate::__private::Definition = {
             fn construct(kernel: $crate::Connection)
                 -> $crate::__private::Vec<$crate::__private::ResourceProvider>
@@ -170,6 +176,10 @@ macro_rules! rv_module_entry {
     ($definition:path) => {
         #[allow(unsafe_code)]
         #[unsafe(no_mangle)]
+        /// Borrows the module table while the library remains loaded.
+        /// ```text
+        /// const struct rv_module *table = rv_module_entry();
+        /// ```
         pub const extern "C" fn rv_module_entry()
         -> *const $crate::__private::abi::Module {
             const TABLE: $crate::__private::abi::Module = $definition.table();

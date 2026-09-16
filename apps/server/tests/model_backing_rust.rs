@@ -1,5 +1,8 @@
 #![allow(unsafe_code)]
 
+#[path = "support/memory.rs"]
+mod memory;
+
 use reovim_kernel_interface::{
     Connection, Contract, Error, Message, abi,
     buffer::{State, StateReply},
@@ -51,7 +54,7 @@ fn safe_initializer_uses_composition_connection_after_constructor_borrow() {
     let mut runtime = Runtime::new(210, Limits::default()).unwrap();
     runtime.start().unwrap();
     let source = runtime
-        .register("source", reovim_resource_local::memory(b"raw"))
+        .register("source", memory::provider(b"raw"))
         .map_err(|(error, _)| error)
         .unwrap();
     let binding = runtime.bind(&[(source, Permissions::READ)]).unwrap();

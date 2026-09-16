@@ -1,47 +1,32 @@
-//! Explicit process configuration; module identity comes from native metadata.
+//! Explicit artifact selections; native metadata owns package identities.
 
 use alloc::{string::String, vec::Vec};
-use reovim_kernel_interface::{Contract, Message, provider::Permissions};
+use reovim_kernel_interface::Error;
 use std::{io, path::PathBuf};
 
-#[derive(Clone, Copy, Eq, PartialEq)]
-pub enum Scope {
-    Server,
-    Client,
+/// One configured artifact, e.g. label `memory`, library `/modules/memory.so`.
+pub struct Source {
+    /// Local configuration name; not a package or API identity.
+    pub label: String,
+    /// Native path passed unchanged to the Host admission policy.
+    pub library: PathBuf,
 }
 
-pub struct Source {
-    pub scope: Scope,
-    pub label: String,
-    pub library: PathBuf,
-    pub mount: String,
-    pub grants: Vec<(String, Permissions)>,
-}
-pub struct Initial {
-    pub model: String,
-    pub initial: Message,
-}
-pub struct Snapshot {
-    pub mount: String,
-    pub source: PathBuf,
-    pub scratch: PathBuf,
-}
+/// Passive artifacts and required startup labels, e.g. `--start memory`.
+/// Actual mounts, grants and Client module policy belong to composition.
 #[derive(Default)]
 pub struct Config {
+    /// At most 64 distinct artifact selections.
     pub sources: Vec<Source>,
-    pub start: Vec<Contract>,
-    pub client_start: Vec<Contract>,
-    pub session: Option<Initial>,
-    pub buffer: Option<Initial>,
-    pub output: Option<PathBuf>,
-    pub snapshots: Vec<Snapshot>,
-    pub files: Vec<Snapshot>,
+    /// Required labels, resolved before admission effects.
+    pub start: Vec<String>,
 }
 
 impl Config {
-    /// Parses native declarations and required startup contracts.
+    /// Parses `--module LABEL LIBRARY` and `--start LABEL`.
+    /// Use programmatic `PathBuf` values for non-UTF-8 native paths.
     /// # Errors
-    /// Rejects unknown options, missing fields, invalid schemas or grant modes.
+    /// Unknown options, missing/duplicate selections and invalid names reject.
     pub fn parse(
         mut arguments: impl Iterator<Item = String>,
     ) -> io::Result<Self> {
@@ -49,6 +34,7 @@ impl Config {
         while let Some(option) = arguments.next() {
             config.option(&option, &mut arguments)?;
         }
+        config.validate().map_err(|_| invalid("invalid boot selections"))?;
         Ok(config)
     }
 
@@ -58,110 +44,66 @@ impl Config {
         args: &mut impl Iterator<Item = String>,
     ) -> io::Result<()> {
         match option {
-            "--module" | "--client-module" => self.source(option, args)?,
-            "--grant" => self.grant(args)?,
-            "--start" => required(&mut self.start, args)?,
-            "--client-start" => required(&mut self.client_start, args)?,
-            "--session" if self.session.is_none() => {
-                self.session = Some(initial(args)?);
-            }
-            "--buffer" if self.buffer.is_none() => {
-                self.buffer = Some(initial(args)?);
-            }
-            "--export-root" if self.output.is_none() => {
-                self.output = Some(field(args)?.into());
-            }
-            "--snapshot" if self.snapshots.len() < 64 => {
-                self.snapshots.push(Snapshot {
-                    mount: field(args)?,
-                    source: field(args)?.into(),
-                    scratch: field(args)?.into(),
+            "--module" if self.sources.len() < 64 => {
+                self.sources.push(Source {
+                    label: field(args)?,
+                    library: field(args)?.into(),
                 });
             }
-            "--files" if self.files.len() < 64 => {
-                self.files.push(Snapshot {
-                    mount: field(args)?,
-                    source: field(args)?.into(),
-                    scratch: field(args)?.into(),
-                });
+            "--start" if self.start.len() < 64 => {
+                self.start.push(field(args)?);
             }
-            _ => return Err(invalid("unknown boot option")),
+            _ => return Err(invalid("unknown boot option or capacity")),
         }
         Ok(())
     }
 
-    fn source(
-        &mut self,
-        option: &str,
-        args: &mut impl Iterator<Item = String>,
-    ) -> io::Result<()> {
-        if self.sources.len() == 64 {
-            return Err(invalid("module capacity"));
+    pub(super) fn validate(&self) -> Result<(), Error> {
+        if self.sources.len() > 64 || self.start.len() > 64 {
+            return Err(Error::PRESSURE);
         }
-        self.sources.push(Source {
-            scope: if option == "--module" {
-                Scope::Server
-            } else {
-                Scope::Client
-            },
-            label: field(args)?,
-            library: field(args)?.into(),
-            mount: field(args)?,
-            grants: Vec::new(),
-        });
+        for (index, source) in self.sources.iter().enumerate() {
+            validate_source(source, &self.sources[..index])?;
+        }
+        for (index, label) in self.start.iter().enumerate() {
+            validate_start(label, &self.start[..index], &self.sources)?;
+        }
         Ok(())
     }
+}
 
-    fn grant(
-        &mut self,
-        args: &mut impl Iterator<Item = String>,
-    ) -> io::Result<()> {
-        let source = self
-            .sources
-            .last_mut()
-            .ok_or_else(|| invalid("grant needs a module"))?;
-        if source.grants.len() == 64 {
-            return Err(invalid("grant capacity"));
-        }
-        let path = field(args)?;
-        let permissions = match field(args)?.as_str() {
-            "read" => Permissions::READ,
-            "write" => Permissions::WRITE,
-            "all" => Permissions::ALL,
-            _ => return Err(invalid("expected read, write or all grant")),
-        };
-        source.grants.push((path, permissions));
-        Ok(())
+fn validate_source(source: &Source, previous: &[Source]) -> Result<(), Error> {
+    if source.label.is_empty()
+        || source.label.len() > 255
+        || !source.label.is_ascii()
+        || source.label.bytes().any(|b| b.is_ascii_control() || b == b'/')
+        || matches!(source.label.as_str(), "." | "..")
+        || source.library.as_os_str().is_empty()
+    {
+        return Err(Error::INVALID);
     }
-}
-fn field(args: &mut impl Iterator<Item = String>) -> io::Result<String> {
-    args.next().ok_or_else(|| invalid("missing boot option field"))
-}
-fn contract(args: &mut impl Iterator<Item = String>) -> io::Result<Contract> {
-    let name = field(args)?;
-    if name.is_empty() || name.len() > 1024 {
-        return Err(invalid("invalid contract name"));
+    if previous.iter().any(|old| old.label == source.label) {
+        return Err(Error::CONFLICT);
     }
-    let schema =
-        field(args)?.parse().map_err(|_| invalid("invalid contract schema"))?;
-    Ok(Contract::new(&name, schema))
-}
-fn required(
-    selected: &mut Vec<Contract>,
-    args: &mut impl Iterator<Item = String>,
-) -> io::Result<()> {
-    if selected.len() == 64 {
-        return Err(invalid("startup capacity"));
-    }
-    selected.push(contract(args)?);
     Ok(())
 }
-fn initial(args: &mut impl Iterator<Item = String>) -> io::Result<Initial> {
-    let model = field(args)?;
-    let contract = contract(args)?;
-    let data = reovim_service::unhex(&field(args)?)
-        .ok_or_else(|| invalid("invalid initial hex"))?;
-    Ok(Initial { model, initial: Message::new(contract, &data) })
+
+fn validate_start(
+    label: &str,
+    previous: &[String],
+    sources: &[Source],
+) -> Result<(), Error> {
+    if previous.iter().any(|old| old == label) {
+        return Err(Error::CONFLICT);
+    }
+    if !sources.iter().any(|source| source.label == label) {
+        return Err(Error::UNAVAILABLE);
+    }
+    Ok(())
+}
+
+fn field(args: &mut impl Iterator<Item = String>) -> io::Result<String> {
+    args.next().ok_or_else(|| invalid("missing boot option field"))
 }
 fn invalid(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, message)

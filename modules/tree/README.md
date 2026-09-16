@@ -13,6 +13,9 @@ the selected path so the location stays clear:
 
 Nodes are Resources: a callable Resource can also have children. The command
 does not classify them as filesystem files/directories or guess an execute flag.
+It uses public CONTAINER/EMPTY inspection to avoid listing leaf/empty subjects.
+Those flags describe the caller-visible children, independently of data size;
+older access adapters without inspection retain the ordinary listing path.
 Control characters in names are escaped. Unavailable children are reported.
 Traversal is sampled, bounded to 256 nodes, depth 16 and 16 KiB of output;
 an explicit marker identifies truncation. Cycles are reported without recursion.

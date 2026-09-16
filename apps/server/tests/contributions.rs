@@ -1,3 +1,6 @@
+#[path = "support/memory.rs"]
+mod memory;
+
 use reovim_host_reference::run;
 use reovim_kernel_interface::{
     Contract, Error, Message, RequestError,
@@ -9,7 +12,7 @@ fn contributions() -> Vec<Contribution> {
     vec![
         Contribution::Resource {
             path: "resource/notes".into(),
-            provider: reovim_resource_local::memory(b"# a\n\xffkept"),
+            provider: memory::provider(b"# a\n\xffkept"),
         },
         Contribution::Model {
             path: "models/heading".into(),
@@ -64,7 +67,7 @@ fn callable_parents_keep_children_in_either_publication_order() {
         let values = paths
             .map(|path| Contribution::Resource {
                 path: path.into(),
-                provider: reovim_resource_local::memory(path.as_bytes()),
+                provider: memory::provider(path.as_bytes()),
             })
             .into();
         let installed = runtime
@@ -103,11 +106,11 @@ fn child_grant_allows_traversal_without_calling_its_parent() {
     let mut runtime = Runtime::new(116, Limits::default()).unwrap();
     runtime.start().unwrap();
     let parent = runtime
-        .register("module", reovim_resource_local::memory(b"private"))
+        .register("module", memory::provider(b"private"))
         .map_err(|(error, _)| error)
         .unwrap();
     let child = runtime
-        .register("module/info", reovim_resource_local::memory(b"help"))
+        .register("module/info", memory::provider(b"help"))
         .map_err(|(error, _)| error)
         .unwrap();
     let client = runtime.connect(&[(child, Permissions::READ)]).unwrap();
@@ -134,14 +137,14 @@ fn grouped_removal_retires_implicit_descendants_and_preserves_other_owners() {
     let values =
         ["module", "module/nested/info"].map(|path| Contribution::Resource {
             path: path.into(),
-            provider: reovim_resource_local::memory(b"owned"),
+            provider: memory::provider(b"owned"),
         });
     let installed = runtime
         .register_contributions(values.into())
         .map_err(|(error, _)| error)
         .unwrap();
     let foreign = runtime
-        .register("module/other", reovim_resource_local::memory(b"other"))
+        .register("module/other", memory::provider(b"other"))
         .map_err(|(error, _)| error)
         .unwrap();
     assert_eq!(runtime.unregister_contributions(&installed), Err(Error::BUSY));
@@ -151,7 +154,7 @@ fn grouped_removal_retires_implicit_descendants_and_preserves_other_owners() {
     runtime.unregister_contributions(&installed).unwrap();
     assert_eq!(runtime.resource("module/nested"), Err(Error::UNAVAILABLE));
     let replacement = runtime
-        .register("module", reovim_resource_local::memory(b"replacement"))
+        .register("module", memory::provider(b"replacement"))
         .map_err(|(error, _)| error)
         .unwrap();
     assert_ne!(replacement, installed[0]);
@@ -164,7 +167,7 @@ fn duplicate_exports_reject_the_whole_batch() {
     let values = ["module/info", "module", "module"].map(|path| {
         Contribution::Resource {
             path: path.into(),
-            provider: reovim_resource_local::memory(b"unpublished"),
+            provider: memory::provider(b"unpublished"),
         }
     });
     let Err((error, _)) = runtime.register_contributions(values.into()) else {
@@ -182,7 +185,7 @@ fn batch_capacity_counts_shared_directories_once() {
     runtime.start().unwrap();
     let values = ["module/a", "module/b"].map(|path| Contribution::Resource {
         path: path.into(),
-        provider: reovim_resource_local::memory(path.as_bytes()),
+        provider: memory::provider(path.as_bytes()),
     });
     let installed = runtime
         .register_contributions(values.into())
@@ -210,7 +213,7 @@ fn capacity_failure_does_not_publish_an_earlier_contribution() {
     let mut runtime = Runtime::new(114, limits).unwrap();
     let values = ["first", "second"].map(|path| Contribution::Resource {
         path: path.into(),
-        provider: reovim_resource_local::memory(path.as_bytes()),
+        provider: memory::provider(path.as_bytes()),
     });
     let Err((error, values)) = runtime.register_contributions(values.into())
     else {

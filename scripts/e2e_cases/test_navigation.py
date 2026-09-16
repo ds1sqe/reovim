@@ -34,6 +34,17 @@ class Navigation(Scenario):
         self.assertEqual(self.cli("./pwd"), "/bin\n")
         self.assertEqual(self.cli("/bin/pwd"), "/bin\n")
 
+    def test_flags_inspection_preserves_original_service_result(self):
+        created = self.rpc("write", "module/env/create", "env.create", "1",
+                           b"FLAG_VALUE\0nonempty data".hex())
+        request = self.wire("reserve").split("\t")[1]
+        inspected = self.wire("call", request, "flags", created.resources[0])
+        self.assertEqual(inspected, "ok\t3")  # Container with no children.
+        self.rpc("write", "module/env/remove", "env.remove", "1",
+                 b"FLAG_VALUE".hex())
+        self.assertEqual(self.wire("result", request), inspected)
+        self.assertEqual(self.wire("release", request), "ok")
+
     def test_path_order_empty_path_and_explicit_repair(self):
         library = self.build_module("reovim-module-example", "example")
         self.load(library, "bin/hello")

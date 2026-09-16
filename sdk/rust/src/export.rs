@@ -58,7 +58,26 @@ static TABLE: abi::Access = reovim_vtable::rv_vtable!(abi::Access {
     withdraw,
     capture,
     read_view: Some(read_view),
+    flags: Some(flags),
 });
+
+unsafe extern "C" fn flags(
+    context: *mut c_void,
+    subject: u64,
+    output: *mut u32,
+) -> abi::Failure {
+    if output.is_null() {
+        return failure(Error::INVALID);
+    }
+    let owner = unsafe { &*context.cast::<Exported>() };
+    match owner.flags(ResourceId(subject)).into_inner() {
+        Ok(flags) => {
+            unsafe { output.write(flags.bits()) };
+            SUCCESS
+        }
+        Err(error) => rejected(&error),
+    }
+}
 
 unsafe extern "C" fn retain(context: *mut c_void) {
     unsafe {

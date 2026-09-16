@@ -1,3 +1,6 @@
+#[path = "support/memory.rs"]
+mod memory;
+
 use reovim_host_reference::run;
 use reovim_kernel_interface::{
     Connection, Contract, Error, Message, RequestError,
@@ -248,7 +251,7 @@ fn semantic_and_metadata_slots_fit_before_observation_is_published() {
             .unwrap();
     runtime.start().unwrap();
     let source = runtime
-        .register("value", reovim_resource_local::memory(b"value"))
+        .register("value", memory::provider(b"value"))
         .map_err(|(e, _)| e)
         .unwrap();
     let binding = runtime.bind(&[]).unwrap();

@@ -1,3 +1,6 @@
+#[path = "support/memory.rs"]
+mod memory;
+
 use reovim_host_reference::run;
 use reovim_kernel_interface::{
     Connection, Contract, Error, Message, ResourceId,
@@ -89,7 +92,7 @@ fn root_shutdown_preserves_busy_provider_ownership_for_retry() {
 fn busy_member_restores_the_entire_contribution_set() {
     let (mut runtime, client, state, ready, destroyed) = setup();
     let source = runtime
-        .register("source", reovim_resource_local::memory(b"still available"))
+        .register("source", memory::provider(b"still available"))
         .map_err(|(error, _)| error)
         .unwrap();
     assert_eq!(

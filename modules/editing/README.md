@@ -5,7 +5,7 @@ Buffer/History authority; the module imports Interface and provider APIs.
 Retained Buffers keep the module loaded until explicitly closed.
 
 Caller helpers follow the usage in
-[07-examples.md](../../Documentation/Design/07-examples.md):
+[07.1-live-io.md](../../Documentation/Design/07.1-live-io.md):
 
 ```rust
 // Inside an async caller with granted kernel access.

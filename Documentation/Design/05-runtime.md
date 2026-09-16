@@ -1,7 +1,7 @@
-# 05 — Runtime execution
+# Runtime execution
 
 Runtime owns live contexts, execution and lifecycle.
-[Resource calls](01.2-resource-access.md) submit work to it; its owner drives
+[Resource calls](01.2-operations.md) submit work to it; its owner drives
 execution independently of callers reading their results.
 
 ```text
@@ -11,34 +11,10 @@ close     -> stop admission -> settle owned work -> Stopped
 // A closing Runtime still permits result recovery and cleanup.
 ```
 
-## Source ownership
-
-```text
-assembly selects and binds implementations
-server/client orchestration -> Interface
-Kernel implementation (Runtime + Core) -> Interface
-consumer -> language adapter -> C ABI <- implementation adapter
-```
-
-| Source home | Responsibility |
-| --- | --- |
-| kernel/interface | Public values, typed tables and provider contracts |
-| kernel/core | Atomic neutral state/History installation |
-| kernel/runtime | Live contexts, admission, execution and lifecycle |
-| resource/, domain/, representation/ | Access, meaning and interpretation |
-| host/, protocol/, presentation/ | Environment, transport and drawing |
-| clients/, sdk/, extensions/ | Client policy and author-facing APIs |
-| apps/ composition | Construct and bind concrete providers |
-
-Consumers import Interface; composition may import implementations. Each layer
-needs a distinct purpose; do not duplicate public catalogs. Core is an internal
-authority, not a caller dependency. Small helpers stay private to their owner.
-Portable Kernel/applicable Rust Client code uses `no_std + alloc`.
-
-[Composition](05.1-composition.md) owns construction and provider wiring.
-Runtime's compiled type cannot enumerate dynamically loaded providers.
-Client Runtime executes [input and presentation](04-clients.md). Kernel may
-retain opaque versioned Session data and provide semantic observations.
+[Composition](05.1-composition.md) owns source dependencies and wiring.
+Kernel Runtime executes Resource operations; Client Runtime executes
+[input and presentation](04-clients.md). Consumers access either owner through
+its public contracts and receive no concrete Core authority.
 
 ## Driver and readiness
 
@@ -92,7 +68,7 @@ Stopped. Driver release also waits for Stopped. Timeout proves no rollback
 and cannot permit unsafe unload. Provider work and teardown run outside Core
 commit authority.
 
-Kernel Runtime also drives its [module instances](06-modules.md) through
+Kernel Runtime also drives its [module instances](05.2-modules.md) through
 this lifecycle contract. Runtime pairs the constructed state with its declared
 driver; modules receive no driver for the containing Runtime. Instance
 readiness and public contribution publication remain separately checked.
@@ -106,6 +82,7 @@ compilation alone proves no runtime support. Missing grants never fall back to
 ambient I/O.
 
 A remote SDK owns its connection, codec and correlation state. The server
-authenticates calls and submits them to the same Runtime boundary. Reconnect
-creates a new access lifetime while retained outcomes remain recoverable; it
-proves no prior failure. Native pointers/handles do not cross the wire.
+authenticates calls and submits them to the same Runtime boundary.
+[Caller resumption](06.5-caller-protocol.md) preserves its access lifetime and
+request custody across reconnect. A new Caller has separate access; neither
+case proves prior failure. Native pointers/handles do not cross the wire.

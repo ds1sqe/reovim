@@ -20,5 +20,13 @@ version = "=0.16.0-dev"
 [lints]
 workspace = true
 
+[dev-dependencies.reovim-kernel-runtime]
+path = "../../kernel/runtime"
+version = "=0.16.0-dev"
+
+[dev-dependencies.reovim-service]
+path = "../../host/service"
+features = ["std"]
+
 [dependencies.reovim-vtable]
 path = "../../lib/vtable"

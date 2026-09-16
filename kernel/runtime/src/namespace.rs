@@ -39,6 +39,17 @@ pub enum Kind {
 }
 
 impl Kind {
+    pub const fn lists_children(&self) -> bool {
+        matches!(
+            self,
+            Self::Directory
+                | Self::Provider(_)
+                | Self::Model(_)
+                | Self::Buffer(_)
+                | Self::Session(_)
+                | Self::ClosedSession { .. }
+        )
+    }
     pub const fn accepts_children(&self) -> bool {
         matches!(
             self,
@@ -171,15 +182,10 @@ impl Scope {
         let mut entries: Vec<_> = shared
             .entries
             .iter()
-            .filter(|entry| entry.parent == parent && entry.key != parent)
+            .filter(|entry| self.visible_child(shared, entry, parent))
             .map(|entry| (entry.name.clone(), entry.key))
             .collect();
         let aliases = self.aliases.borrow();
-        entries.retain(|(name, key)| {
-            self.visible(shared, *key)
-                && (parent != self.root
-                    || !aliases.iter().any(|(alias, _)| alias == name))
-        });
         entries.extend(
             aliases
                 .iter()
@@ -189,6 +195,36 @@ impl Scope {
                 .cloned(),
         );
         entries
+    }
+
+    pub fn has_children(&self, shared: &Shared, parent: u64) -> bool {
+        shared
+            .entries
+            .iter()
+            .any(|entry| self.visible_child(shared, entry, parent))
+            || (parent == self.root
+                && self
+                    .aliases
+                    .borrow()
+                    .iter()
+                    .any(|(_, key)| self.visible(shared, *key)))
+    }
+
+    fn visible_child(
+        &self,
+        shared: &Shared,
+        entry: &Entry,
+        parent: u64,
+    ) -> bool {
+        entry.parent == parent
+            && entry.key != parent
+            && self.visible(shared, entry.key)
+            && (parent != self.root
+                || !self
+                    .aliases
+                    .borrow()
+                    .iter()
+                    .any(|(name, _)| name == &entry.name))
     }
 
     pub fn export(

@@ -6,19 +6,17 @@ extern crate alloc;
 
 #[allow(unsafe_code)]
 pub mod abi;
-pub mod access;
-pub mod buffer;
+pub mod call;
+pub mod caller;
+pub mod declaration;
 pub mod driver;
 pub mod error;
 pub mod module;
 pub mod namespace;
 pub mod notify;
 pub mod provider;
-pub mod publication;
-pub mod requests;
 pub mod resource;
-pub mod session;
 
-pub use access::{Connection, Contract, Message, RequestError};
+pub use call::{Outcome, Pending, Value};
 pub use error::{Error, ErrorCode};
 pub use resource::ResourceId;

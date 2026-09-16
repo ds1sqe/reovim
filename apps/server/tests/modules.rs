@@ -1,3 +1,6 @@
+#[path = "support/memory.rs"]
+mod memory;
+
 use reovim_host_reference::run;
 use reovim_kernel_interface::{
     Contract, Error, Message,
@@ -55,7 +58,7 @@ fn module(advances: Rc<Cell<u64>>, destroyed: Rc<Cell<bool>>) -> Module {
         },
         vec![Contribution::Resource {
             path: "service/value".into(),
-            provider: reovim_resource_local::memory(b"ready value"),
+            provider: memory::provider(b"ready value"),
         }],
         Rc::new(()),
     )
@@ -243,7 +246,7 @@ fn mixed_module_stays_usable_until_its_buffer_and_history_are_closed() {
     editing.contributions = vec![
         Contribution::Resource {
             path: "resource/notes".into(),
-            provider: reovim_resource_local::memory(b"# a\n\xffopaque"),
+            provider: memory::provider(b"# a\n\xffopaque"),
         },
         Contribution::Model {
             path: "models/heading".into(),
@@ -340,7 +343,7 @@ fn stopped_driver_cannot_publish_ready_contributions() {
         },
         vec![Contribution::Resource {
             path: "invalid/export".into(),
-            provider: reovim_resource_local::memory(b"must stay hidden"),
+            provider: memory::provider(b"must stay hidden"),
         }],
         Rc::new(()),
     );

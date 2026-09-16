@@ -189,7 +189,7 @@ fn two_models_share_the_same_erased_runtime_and_preserve_history() {
     )
     .unwrap();
     let values = reovim_domain_basic::decode_keys(&toggled.value.data).unwrap();
-    assert_eq!(values.0.get(&9001), Some(&true));
+    assert_eq!(values.get(&9001), Some(&true));
     assert_eq!(service.runtime.unregister(service.heading), Err(Error::BUSY));
     service.runtime.close().unwrap();
 }

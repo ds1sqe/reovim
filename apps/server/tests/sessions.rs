@@ -1,3 +1,6 @@
+#[path = "support/memory.rs"]
+mod memory;
+
 use reovim_host_reference::run_with;
 use reovim_kernel_interface::{
     Connection, Contract, Error, Message, RequestError, ResourceId,
@@ -453,10 +456,8 @@ fn reconnect_recovers_the_created_session_and_snapshot() {
 }
 
 fn blocker(runtime: &mut Runtime, index: usize) -> Option<ResourceId> {
-    match runtime.register(
-        &format!("held-{index}"),
-        reovim_resource_local::memory(b"held"),
-    ) {
+    match runtime.register(&format!("held-{index}"), memory::provider(b"held"))
+    {
         Ok(id) => Some(id),
         Err((error, _)) => {
             assert_eq!(error, Error::PRESSURE);
@@ -583,11 +584,11 @@ fn session_services_have_separate_names_and_block_premature_close() {
     let second_path =
         format!("sessions/{}/modules/service", name(second.session));
     let one = runtime
-        .register(&first_path, reovim_resource_local::memory(b"first"))
+        .register(&first_path, memory::provider(b"first"))
         .map_err(|(error, _)| error)
         .unwrap();
     let two = runtime
-        .register(&second_path, reovim_resource_local::memory(b"second"))
+        .register(&second_path, memory::provider(b"second"))
         .map_err(|(error, _)| error)
         .unwrap();
     for (session, expected) in [
@@ -626,7 +627,7 @@ fn session_services_have_separate_names_and_block_premature_close() {
     .unwrap()
     .unwrap();
     let error = runtime
-        .register(&first_path, reovim_resource_local::memory(b"closed"))
+        .register(&first_path, memory::provider(b"closed"))
         .err()
         .unwrap()
         .0;

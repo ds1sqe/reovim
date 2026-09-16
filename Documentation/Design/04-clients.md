@@ -1,4 +1,4 @@
-# 04 — Clients, context and input
+# Clients, context and input
 
 Clients own all user input handling, user views, rendering and user-facing
 output. Kernel owns none of those behaviors. Kernel APIs exchange semantic
@@ -20,7 +20,7 @@ These code homes describe the official Clients.
 An independent Client can use another language, internal architecture or
 extension system. Interoperation follows the public
 [compatibility contract](00-overview.md).
-Optional [Client Resources](07.3-client-resources.md) expose granted state or
+Optional [Client Resources](07.5-client-resources.md) expose granted state or
 services without making Kernel own input or presentation.
 
 ## Session participation
@@ -31,31 +31,13 @@ Server storage grants Kernel no input/view/rendering responsibility or
 automatic referenced-data access. A Session is the retained virtual editing
 space; each Client uses its own by default. Attaching another Client to it or
 sharing selected module state is explicit. One lost participant cannot stop
-others. [Kernel modules](06-modules.md) may have Session/global state; Client
+others. [Kernel modules](05.2-modules.md) may have Session/global state; Client
 extensions can retain their own separately owned Session Resources.
-
-```text
-attach Session -> open/join Buffer -> attach Representation -> observe
-// Attach returns participation; read/follow obtains context.
-// A granted headless caller may edit without a Session.
-
-switch active Buffer -> update Session context
-// Preserve unsaved Buffers. This changes neither content nor History.
-
-seek retained context -> select this participation's historical view
-follow                -> obtain an authorized current checkpoint + watch
-// Seek does not change live context, Undo a Buffer or replay effects.
-// Missing/unsupported history is unavailable, never a latest-state fallback.
-
-detach -> end participation; Session survives under its retention owner
-close  -> release declared references; unrelated shared Buffers survive
-// Retention is bounded and does not promise disk/server-crash persistence.
-```
 
 ## Client modules
 
 Within one official client family, Client Core enforces local contracts and
-dispatches; Client modules supply policy through Contract;
+dispatches; Client modules supply policy through declared Client interfaces;
 Runtime executes and owns lifetime. This Client module system has no implicit
 relationship to Kernel modprobe or its module ABI. It creates no second
 Buffer authority or cross-client synchronization.
@@ -64,8 +46,14 @@ Client modules can logically depend on Kernel services and on other Client
 modules. [Composition](05.1-composition.md) supplies that granted public access;
 each Runtime retains its own lifecycle and grants.
 
+One Client module can serve several families through compatible public
+interfaces. Each hosting Runtime retains its instances and context. The
+[Client module direction](09.1-client-modules.md) develops schema exports,
+shared behavior and additional interaction methods; exact authoring APIs
+remain open.
+
 Clients own mode, focus, cursors, selections, scrolling, layout, hit-testing
-and drawing. Family contracts expose applicable
+and drawing. Client contracts expose applicable
 input/commands/views/decorations/ output; a CLI can produce bounded output
 without a viewport. Extensions use public contracts, never another family's
 internals.
@@ -83,7 +71,7 @@ Emacs: prefix commands, mark/selection, kill-ring behavior and key bindings
 // Upstream plugin/runtime compatibility is not implied by these behaviors.
 ```
 
-The [semantic module example](06.3-module-composition.md) shows Vim/Emacs using
+The [semantic module example](07.3-navigation.md) shows Vim/Emacs using
 generic navigation Resources and a vim-motion-helper that reads semantic
 items, observes pending input and renders only this Client's help surface.
 Shared Session membership does not share pending commands or help visibility.
@@ -100,6 +88,9 @@ Position/Selection/translation.
 Client Core normalizes input and runs resolver mechanics. Client extension
 policy maps active context and input to commands. Device adapters supply no
 edit meaning.
+
+[Configuration research](09.2-user-configuration.md) describes owner-applied
+settings and Client-filtered bindings over these mechanics.
 
 ```rust
 // Proposed Client APIs; keymaps and resolver are granted Client APIs.
@@ -129,6 +120,10 @@ never enter Kernel editing state. Input recovery cannot replay an uncertain
 edit.
 
 ## Presentation
+
+Clients may have zero or multiple cursors, or a selection alone. Combined
+[semantic positions and selections](03.1-representation.md) must describe a
+coherent Buffer/space/state. Each Client chooses how to follow observed changes.
 
 View layout, drawing and delivery to the user are Client responsibilities,
 including terminal output, GUI frames and SSR. Hosting a renderer in a server
@@ -160,7 +155,7 @@ context sharing.
 Peer focus can be an observed Session participation Resource. The receiving
 Client maps its semantic anchors and chooses whether to follow. Framebuffer
 inspection is a separate optional export; neither makes Kernel render a view.
-See the [future focus surface](07.3-client-resources.md).
+See the [future focus surface](07.5-client-resources.md).
 
 Input-to-presentation diagnostics follow [debugging](../debugging.md);
 [performance](../performance.md) measures the actual Client and transport paths.

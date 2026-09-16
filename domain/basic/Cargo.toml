@@ -19,7 +19,3 @@ version = "=0.16.0-dev"
 
 [lints]
 workspace = true
-
-[dependencies.reovim-resource-local]
-path = "../../resource/local"
-version = "=0.16.0-dev"

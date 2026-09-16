@@ -1,4 +1,4 @@
-# 00 — An editing journey
+# An editing journey
 
 Reovim lets several Clients edit one working document through public APIs.
 A Client handles input and rendering. The Kernel runs requests and retains
@@ -17,10 +17,10 @@ Optional typed helpers encode requests over the common Resource API.
 for interrupted work. Runtime keeps executing independently of that wait.
 
 ```rust
-// Proposed wrappers; tree, buffers, history, markdown and files are inputs.
-// Each helper uses caller access; root is the granted namespace root.
-let source = tree.resolve_at(root, "files/notes.md").await?;
-let draft = buffers.open(source).await?; // Independent state + History.
+// Inside a Client workflow module; services use its granted API access.
+let source = k.open(b"/files/notes.md").await?;
+source.set_access(Access::READ).await?;
+let draft = k.buffers.create(&source).await?; // Independent state + History.
 let representation = markdown.attach(draft.state.buffer).await?;
 let view = markdown.observe(representation).await?;
 
@@ -53,8 +53,8 @@ an unknown save outcome needs recovery, not an automatic second write.
 ```rust
 // Proposed wrappers using the GUI's separately granted caller access.
 // Composition exposes the same Buffer under this name.
-let reference = gui_tree.resolve_at(gui_root, "buffers/draft").await?;
-let joined = gui_buffers.join(reference).await?; // Same Buffer and History.
+let reference = gui.open(b"/buffers/draft").await?;
+let joined = gui.buffers.find(reference.id()).await?; // Same state/History.
 let preview = preview_api.attach(joined.state.buffer).await?;
 let observed = preview_api.observe(preview).await?;
 // GUI renders preview data. TUI keeps its own cursor, layout and input state.
@@ -81,7 +81,7 @@ same Kernel module -> compatible Rust or C module host
 ```
 
 Compatibility covers schemas, grants, currentness, operation outcomes,
-cancellation, event gaps and lifecycle. Required support is negotiated before
+cancellation, event gaps and lifecycle. Required support is checked before
 calls; optional differences have explicit behavior. Matching signatures alone
 does not establish compatibility.
 
@@ -90,9 +90,6 @@ the binary calling and data contract, for a declared platform/architecture.
 Reusing one native artifact also requires compatible imports and that ABI.
 Client extensions follow their Client's separate extension contract.
 Exact binary and service profiles are described in
-[native and service boundaries](06.4-native-modules.md).
+[native and service boundaries](06.1-native-abi.md).
 
-These chapters describe the target design. Rust blocks show declarations and
-usage; comments mark proposed SDK methods. Text blocks show trees and diagrams.
-Source paths name intended homes. [Product goals](../README.md) own release
-scope and API stability.
+[The Design index](README.md) owns reading order and specification status.

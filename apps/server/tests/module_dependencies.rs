@@ -1,3 +1,6 @@
+#[path = "support/memory.rs"]
+mod memory;
+
 use reovim_host_reference::run_with;
 use reovim_kernel_interface::{
     Contract, Error, RequestError, ResourceId,
@@ -45,7 +48,7 @@ fn factory(
                 },
                 vec![Contribution::Resource {
                     path: format!("services/{name}").into(),
-                    provider: reovim_resource_local::memory(name.as_bytes()),
+                    provider: memory::provider(name.as_bytes()),
                 }],
                 Rc::new(()),
             ))
@@ -79,7 +82,7 @@ fn dependency_is_ready_before_dependant_and_retained_until_cleanup() {
     let trace = Trace::default();
     let b = register(&mut runtime, "b", &trace, &[]);
     runtime
-        .register("services/seed", reovim_resource_local::memory(b"seed"))
+        .register("services/seed", memory::provider(b"seed"))
         .map_err(|(error, _)| error)
         .unwrap();
     let services = runtime.resource("services").unwrap();
@@ -225,7 +228,7 @@ fn partial_selection_pressure_rolls_back_and_retry_succeeds() {
     for name in ["v", "w", "x", "y", "z"] {
         blockers.push(
             runtime
-                .register(name, reovim_resource_local::memory(b"held"))
+                .register(name, memory::provider(b"held"))
                 .map_err(|(error, _)| error)
                 .unwrap(),
         );

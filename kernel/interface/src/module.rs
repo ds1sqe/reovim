@@ -1,97 +1,68 @@
-//! Inert same-build module ownership, supplied by composition.
+//! Module construction and private execution, supplied through Interface.
+//!
+//! Example: composition constructs an inert module with granted imports and a
+//! Registrar; Runtime drives it and publishes staged exports only after Ready.
 
-mod factory;
-pub use factory::Factory;
+pub mod activation;
+pub mod control;
+mod declaration;
+mod definition;
+mod import;
+pub use declaration::{Declaration, Dependency, DependencyScope, ModuleId};
+pub use definition::Definition;
+pub use import::Import;
 
-use alloc::{boxed::Box, rc::Rc, vec::Vec};
+use alloc::{boxed::Box, rc::Rc};
 use core::{any::Any, task::Context};
 
 use crate::{
-    Connection, Contract, Error, Message, RequestError, ResourceId,
+    Error, ResourceId,
     driver::{DriverOps, Lifecycle, Progress},
-    provider::Contribution,
+    provider::Registrar,
 };
 
-/// Observes readiness of this exact instance without starting another one.
-/// # Errors
-/// Retains ordinary request recovery; readiness grants no lifetime lease.
-#[allow(clippy::future_not_send)] // Connections belong to one executor.
-pub async fn ready(
-    connection: &Connection,
-    instance: ResourceId,
-) -> Result<(), RequestError> {
-    let contract = Contract::new("kernel.module.ready", 1);
-    let reply =
-        connection.read(instance, &Message::new(contract.clone(), &[])).await?;
-    if reply.contract != contract
-        || reply.data.as_ref() != b"ready"
-        || !reply.resources.is_empty()
-    {
-        return Err(RequestError::Failed(Error::PROVIDER));
-    }
-    Ok(())
+/// Instance state scope; for example, Global is shared only in this Runtime.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ModuleScope {
+    /// One shared instance within its owning Kernel Runtime.
+    Global,
+    /// State in an authorized Session, identified by its Resource identity.
+    Session(ResourceId),
 }
 
-/// Activates or joins the exact factory selected by this catalog Resource.
-/// # Errors
-/// Ordinary request failures/recovery apply; success returns a ready instance.
-#[allow(clippy::future_not_send)] // Connections belong to one executor.
-pub async fn activate(
-    connection: &Connection,
-    catalog: ResourceId,
-) -> Result<ResourceId, RequestError> {
-    let contract = Contract::new("kernel.module.activate", 1);
-    let reply =
-        connection.write(catalog, &Message::new(contract.clone(), &[])).await?;
-    match reply.resources.as_ref() {
-        [instance] if reply.contract == contract && reply.data.is_empty() => {
-            Ok(*instance)
-        }
-        _ => Err(RequestError::Failed(Error::PROVIDER)),
-    }
+/// Granted activation context; IDs alone convey no operation rights.
+/// Example: imports hold a Caller while exports stage below the bound mount.
+pub struct ModuleContext<Imports> {
+    /// Exact instance Resource; replacement never reuses this identity.
+    pub instance: ResourceId,
+    /// Granted state scope, e.g. Global.
+    pub scope: ModuleScope,
+    /// Actual namespace Resource selected by composition.
+    pub namespace: ResourceId,
+    /// Module-defined granted services, e.g. a Caller and typed API helpers.
+    pub imports: Imports,
+    /// Provisional exports; retaining a clone cannot reopen activation.
+    pub exports: Registrar,
 }
 
-/// Unloads this exact instance through its separately granted write access.
-/// # Errors
-/// Busy preserves live contributions before teardown. Accepted cleanup and its
-/// result remain owned by Runtime across cancellation or a disconnected wait.
-#[allow(clippy::future_not_send)] // Connections belong to one executor.
-pub async fn unload(
-    connection: &Connection,
-    instance: ResourceId,
-) -> Result<(), RequestError> {
-    let contract = Contract::new("kernel.module.unload", 1);
-    let reply = connection
-        .write(instance, &Message::new(contract.clone(), &[]))
-        .await?;
-    if reply.contract != contract
-        || !reply.data.is_empty()
-        || !reply.resources.is_empty()
-    {
-        return Err(RequestError::Failed(Error::PROVIDER));
-    }
-    Ok(())
-}
+/// Inert constructor; rejection returns the unchanged context without effects.
+/// The error keeps context inline so rejection requires no allocation.
+pub type Construct<State, Imports> =
+    fn(
+        ModuleContext<Imports>,
+    ) -> Result<State, (ModuleContext<Imports>, Error)>;
 
-/// Withdraws a catalog entry after its selected instance finishes cleanup.
-/// # Errors
-/// Requires catalog write permission; a live selection returns Busy. A later
-/// registration at the same path has a different identity and grants.
-#[allow(clippy::future_not_send)] // Connections belong to one executor.
-pub async fn withdraw(
-    connection: &Connection,
-    catalog: ResourceId,
-) -> Result<(), RequestError> {
-    let contract = Contract::new("kernel.module.withdraw", 1);
-    let reply =
-        connection.write(catalog, &Message::new(contract.clone(), &[])).await?;
-    if reply.contract != contract
-        || !reply.data.is_empty()
-        || !reply.resources.is_empty()
-    {
-        return Err(RequestError::Failed(Error::PROVIDER));
-    }
-    Ok(())
+/// Callbacks for constructing and driving one module instance.
+///
+/// State is private instance data; Imports contains granted capabilities.
+/// For example, construct stores a Registrar, advance stages exports, and
+/// close releases the module's work before reporting Closed.
+pub struct ModuleImplementation<State, Imports> {
+    /// Creates private state without external effects.
+    /// Rejection returns the supplied context to its owner.
+    pub construct: Construct<State, Imports>,
+    /// Inspects lifecycle, advances work, and closes this instance.
+    pub driver: DriverOps<State>,
 }
 
 trait Drive {
@@ -104,61 +75,93 @@ struct Implementation<State> {
     state: State,
     driver: DriverOps<State>,
 }
+
 impl<State> Drive for Implementation<State> {
     fn status(&self) -> Lifecycle {
         (self.driver.status)(&self.state)
     }
+
     fn advance(&mut self, wake: &mut Context<'_>) -> Result<Progress, Error> {
         (self.driver.advance)(&mut self.state, wake)
     }
+
     fn close(&mut self) -> Result<(), Error> {
         (self.driver.close)(&mut self.state)
     }
 }
 
-/// An inert instance and its complete provisional contributions.
-///
-/// Composition supplies granted imports inside State. Runtime alone drives
-/// activation, publishes the contributions and retains unfinished cleanup.
-/// This ownership carrier is same-build Rust, not a native ABI table.
+/// Owned state, driver and code; for example, Runtime retains this during Busy.
+/// Dropping unfinished native work cannot prove teardown, so it retains owners.
 pub struct Module {
-    pub contributions: Vec<Contribution>,
-    implementation: Box<dyn Drive>,
+    implementation: Option<Box<dyn Drive>>,
     code: Rc<dyn Any>,
+    closed: bool,
 }
 
 impl Module {
-    #[must_use]
-    pub fn new<State: 'static>(
-        state: State,
-        driver: DriverOps<State>,
-        contributions: Vec<Contribution>,
+    /// Constructs outside registry guards using the selected implementation.
+    /// # Errors
+    /// Inert rejection returns its cause and releases the unchanged context.
+    pub fn construct<State: 'static, Imports>(
+        implementation: ModuleImplementation<State, Imports>,
+        context: ModuleContext<Imports>,
         code: Rc<dyn Any>,
-    ) -> Self {
-        Self {
-            contributions,
-            implementation: Box::new(Implementation { state, driver }),
+    ) -> Result<Self, Error> {
+        let state = (implementation.construct)(context).map_err(|(_, e)| e)?;
+        Ok(Self {
+            implementation: Some(Box::new(Implementation {
+                state,
+                driver: implementation.driver,
+            })),
             code,
-        }
+            closed: false,
+        })
     }
 
+    /// Observes the exact instance, e.g. Ready does not itself publish exports.
     #[must_use]
     pub fn status(&self) -> Lifecycle {
-        self.implementation.status()
+        self.implementation.as_ref().map_or(Lifecycle::Closed, |i| i.status())
     }
 
+    /// Drives one bounded turn outside registry guards.
     /// # Errors
-    /// Driver failure retains the instance and its cleanup obligations.
+    /// Failure retains cleanup ownership. Stopped without Closed is invalid.
     pub fn advance(
         &mut self,
         wake: &mut Context<'_>,
     ) -> Result<Progress, Error> {
-        self.implementation.advance(wake)
+        if self.closed {
+            return Ok(Progress::Stopped);
+        }
+        let progress =
+            self.implementation.as_mut().ok_or(Error::CLOSED)?.advance(wake)?;
+        let lifecycle = self.status();
+        if progress == Progress::Stopped && lifecycle != Lifecycle::Closed {
+            return Err(Error::PROVIDER);
+        }
+        self.closed = lifecycle == Lifecycle::Closed;
+        Ok(progress)
     }
 
+    /// Begins or joins teardown; for example, Busy requires further driving.
     /// # Errors
-    /// Busy retains ownership; the execution owner must continue driving.
+    /// Failure keeps state/code; OK requires observed Closed before disposal.
     pub fn close(&mut self) -> Result<(), Error> {
-        self.implementation.close()
+        if self.closed {
+            return Ok(());
+        }
+        self.implementation.as_mut().ok_or(Error::CLOSED)?.close()?;
+        self.closed = self.status() == Lifecycle::Closed;
+        if self.closed { Ok(()) } else { Err(Error::BUSY) }
+    }
+}
+
+impl Drop for Module {
+    fn drop(&mut self) {
+        if !self.closed {
+            core::mem::forget(self.implementation.take());
+            core::mem::forget(self.code.clone());
+        }
     }
 }

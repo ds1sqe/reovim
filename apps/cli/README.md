@@ -1,110 +1,74 @@
 # Resource shell
 
-The CLI resolves a Resource and submits one complete write Message. Commands
-are runtime-loaded Kernel modules. Each built-in command has its own crate;
-an extension can expose its own command alongside its other Resource exports.
+The CLI discovers Resource interfaces and invokes their declared methods through
+public Caller frames. It has no backend implementations or domain schemas.
+Paths acquire zero-right access; each invocation selects its declaration's
+operation and required access before calling the bound interface.
 
-Bare command names search `env/PATH`, independently of `env/CWD`. PATH is an
-ordinary module-owned value containing colon-separated absolute Resource
-directories; when absent it defaults to `/bin`. An empty value disables bare
-command lookup. Empty components are ignored; relative components reject.
-At most 32 directories and 4096 PATH bytes are accepted.
-
-Place commands under `/bin` in composition. `ls` lists CWD, `ls /` lists the
-root, and `tree` displays the selected hierarchy with its root label. After
-`cd /env`, `ls` still selects `/bin/ls` and lists `/env`. Explicit `/bin/ls`,
-`./name`, relative paths containing `/`, and caller-local `@ID` remain direct
-Resource calls. Arguments and borrowed-reference paths use CWD.
-
-Build the [server](../server/README.md) and these two command artifacts:
+Build the CLI with `--features std`. Start the
+[server](../server/README.md), then use its announced address and Caller token:
 
 ```sh
-cargo build --manifest-path product/Cargo.toml \
-  -p reovim-module-read -p reovim-module-write --examples
+product/target/debug/reovim-cli ADDRESS TOKEN JOURNAL inspect /load
 ```
 
-On Linux, load them into the running server using explicit encoded requests:
+`JOURNAL` is one persistent file for that Caller and address. Reuse it on every
+CLI restart while the server retains the Caller. One coordinator owns each
+credential: do not use another journal or independent client with the same
+credential. The journal takes an exclusive file lock and contains the credential
+and complete input/output frames; new Unix files use mode 0600. A new server
+issues a new credential and needs a separate journal.
 
-```sh
-cli=product/target/debug/reovim-cli
-export REOVIM_CLIENT=$($cli 127.0.0.1:7878 --connect)
-for name in read write; do
-  module_payload=$(printf '%s\0%s' \
-    "$PWD/product/target/debug/examples/lib$name.so" "bin/$name" | \
-    od -An -v -tx1 | tr -d ' \n')
-  $cli 127.0.0.1:7878 --refs / --contract host.module.load-with 1 \
-    --hex "$module_payload" /kernel/modules/load
-done
-```
+## Commands
 
-This local example grants each module the root subtree. Assembly can supply a
-smaller import subtree instead. Loading returns the module-instance reference.
+| Command | Result |
+| --- | --- |
+| `inspect PATH` | API identities, method names, operations and value types |
+| `ls PATH` | Direct names as hex and Resource identities as `@HEX` |
+| `invoke PATH METHOD HEX` | Call the uniquely named declared method |
+| `close ACCESS` | Close a returned or retained opened access |
+| `receipts` | IDs whose receipt custody is still retained |
+| `retry` | Repeat the exact pending frame after interrupted observation |
+| `result ID` | Original request's current evidence |
+| `adopt ID` | Adopt successful returned access |
+| `release ID` | Release receipt custody |
+| `cancel ID` | Request cancellation; acknowledgement is not rollback |
+| `reconcile ID` | Refine the original uncertain effect |
+| `exit` | Exit the shell; the server retains the Caller |
 
-```sh
-$cli 127.0.0.1:7878 write /modules/catalog/counter \
-  --contract kernel.module.activate 1
-$cli 127.0.0.1:7878 write /modules/counter/value \
-  --contract external.counter 1 --hex 0700000000000000
-$cli 127.0.0.1:7878 read /modules/counter/value \
-  --contract external.counter 1
-```
+`PATH` is an absolute Resource path or an `@HEX` Resource identity returned by
+listing. `ACCESS` is a caller-local opened access number, a different identity.
+`HEX` encodes canonical value bytes; `-` means empty data. Input reference slots
+and qualified selection between same-named methods are not yet exposed.
+Outputs print their data as hex and their returned access numbers. Contents
+remain unrestricted bytes. Method names come from declarations, including the
+loader's `admit` and the package's `activate`; the CLI does not hard-code them.
 
-Without an explicit invocation contract, the CLI reads the Resource's ordinary
-`info` child for its default write contract, argument encoding and output mode.
-Options before the Resource path belong to the CLI; arguments after it belong
-to the module. Omitted arguments supply empty data. The `read` and `write`
-modules accept `PATH --contract NAME VERSION [--hex DATA]` as their arguments.
+Without a command, terminal input uses line editing and 100 in-memory history
+entries. Ctrl-C clears input and Ctrl-D exits. Piped input prints `ready`, then
+`ok` or `failed` after each command. Lines are bounded to 16 KiB. Discovery is
+bounded to 256 pages and 256 interfaces; namespace rows stream as pages arrive.
 
-Use CLI `--refs PATH,@ID` to supply checked Resource reference slots. A loaded
-read/write module selects a passed subject with `@0`, `@1`, and so on; these
-are slot indices, not raw IDs in the module's private namespace. Reply Messages
-preserve contract, encoded data and returned caller-local references.
+## Recovery and migration status
 
-Run the CLI with only an address for an interactive session. Input splits on
-whitespace. Tab completes command names from PATH or Resource paths from CWD;
-completion reads namespace metadata and never invokes a command. Ambiguous
-completion follows the terminal editor's list/common-prefix behavior. Paths
-containing whitespace/control characters remain available through explicit
-encoded calls but are not offered as completion candidates.
-Up/Down navigate input history; Left/Right, Home/End, Backspace and Delete edit
-the current line. Ctrl-C clears pending input; Ctrl-D exits an empty prompt.
-History stays in memory for this CLI process, with up to 100 entries of at most
-16 KiB each. Piped input retains the existing plain line loop. See the
-[terminal dependency review](DEPENDENCIES.md).
+Each outgoing frame is flushed before transmission. Each reply is flushed
+before advancing. A lost exchange blocks further frames until `retry` recovers
+that exact exchange, including an allocation whose reply was lost. Disk-write
+failure stops exchanges until the CLI reopens and reconstructs the transcript.
+A torn final record is discarded; malformed complete records reject opening.
+File and parent-directory flushes execute on Unix. Other platforms do not yet
+have equivalent directory durability qualification.
 
-Relative Resource paths use the conventional `env/CWD` value when available.
-Each new client has its own namespace and loader. `--connect` prints a token
-for a retained client; reuse it with `--client TOKEN` before the Resource path
-or `REOVIM_CLIENT` for several CLI processes. Without a selected token, an
-interactive session or one-shot invocation opens a new client. Tokens remain
-valid only in this live server. The native env module owns per-client values,
-CWD and independent observation. Failed one-shot requests exit nonzero;
-disconnected effects are never replayed.
+Normal calls adopt returned access and release their receipt. Failed or unknown
+outcomes retain the request ID for explicit recovery. Errors after acquisition
+report the opened access to close after recovery; no cleanup call replaces an
+unresolved frame. The journal retains raw successful output even if observation
+ends before it is printed. It currently grows without compaction. This is not
+complete durable user-input/session recovery or a server restart journal.
 
-Each exchange reserves a delivery identity before sending its operation. A
-known response is adopted and its receipt released. An interrupted or unknown
-response reports its client and request identity; it is never replayed under a
-new identity. On that same client, use `--requests`, `--request-status ID`,
-`--request-info ID` and `--recover ID` to inspect retained delivery evidence.
-After adoption, `--forget ID` releases its receipt, not returned Resource access.
-These connection/delivery options precede ordinary Resource invocation.
-
-The [env module](../../modules/env/README.md) declares sibling `env` and
-`module/env` paths and loads with an empty export mount. Absolute Resource paths
-and caller-local IDs bypass CWD; relative reference arguments still use it.
-An ID can also name a child, such as `@ID/info`, through ordinary scoped lookup.
-The separately loaded `cd` and `pwd` modules use the env instance's CWD value.
-
-Use `--client TOKEN --disconnect` for explicit retained-client cleanup. It
-closes that client's watches first, waking pending reads with Closed. Outstanding
-receipts keep teardown Busy: recover/adopt them and use `--forget ID`, then
-retry. Live private Buffers and Sessions must be closed through their declared
-policies first; disconnect never silently discards edited state. Busy keeps the
-connection usable for recovery and those cleanup calls.
-
-Once work is adopted, disconnect releases the client's snapshots, unloads its
-private modules, removes its private namespace and revokes its Connections.
-Shared Session/alias targets and other clients remain alive. Module cleanup may
-need another retry while its driver finishes. The service remembers the last
-16 completed disconnect tokens for idempotent retry; ordinary calls with a
-closed token reject. Socket loss and exiting a CLI alone are not disconnect.
+Retired Contract/Message/default-write dispatch has been replaced. The retained
+`invocation.rs` and `shell/completion.rs` / `shell/interactive.rs` are uncompiled
+donors: CWD/PATH, semantic argument authoring and completion still need migration
+through declared services. The new terminal loop preserves basic line editing;
+see the [dependency review](DEPENDENCIES.md). Full Client extension, Session and
+cross-language SDK journeys remain in the implementation plan.

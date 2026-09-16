@@ -1,3 +1,6 @@
+#[path = "support/memory.rs"]
+mod memory;
+
 use reovim_host_reference::run_with;
 use reovim_kernel_interface::{
     Connection, Contract, Error, Message, ResourceId,
@@ -66,7 +69,7 @@ fn construct(imports: &Imports, instance: ResourceId) -> Result<Module, Error> {
         },
         vec![Contribution::Resource {
             path: "module/value".into(),
-            provider: reovim_resource_local::memory(b"constructed once"),
+            provider: memory::provider(b"constructed once"),
         }],
         Rc::new(()), // Factory ownership must supply the executable pin.
     ))
@@ -77,7 +80,7 @@ fn runtime_constructs_once_and_keeps_factory_code_through_cleanup() {
     let mut runtime = Runtime::new(127, Limits::default()).unwrap();
     runtime.start().unwrap();
     let input = runtime
-        .register("input", reovim_resource_local::memory(b"in"))
+        .register("input", memory::provider(b"in"))
         .map_err(|(error, _)| error)
         .unwrap();
     let imports = runtime.connect(&[(input, Permissions::READ)]).unwrap();
@@ -152,7 +155,7 @@ fn missing_import_grant_fails_construction_without_exports() {
     let mut runtime = Runtime::new(129, Limits::default()).unwrap();
     runtime.start().unwrap();
     runtime
-        .register("input", reovim_resource_local::memory(b"private"))
+        .register("input", memory::provider(b"private"))
         .map_err(|(error, _)| error)
         .unwrap();
     let constructed = Rc::new(Cell::new(None));
@@ -187,7 +190,7 @@ fn noninert_constructor_is_rejected_but_state_still_gets_cleanup() {
     let mut runtime = Runtime::new(130, Limits::default()).unwrap();
     runtime.start().unwrap();
     let input = runtime
-        .register("input", reovim_resource_local::memory(b"in"))
+        .register("input", memory::provider(b"in"))
         .map_err(|(error, _)| error)
         .unwrap();
     let destroyed = Rc::new(Cell::new(false));

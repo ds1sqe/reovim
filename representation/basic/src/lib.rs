@@ -4,12 +4,11 @@
 
 extern crate alloc;
 
-use alloc::{boxed::Box, rc::Rc};
+use alloc::{boxed::Box, collections::BTreeMap, rc::Rc, vec::Vec};
 use reovim_kernel_interface::buffer::{
     ModelOps, ModelProvider, State, StateReply, integer,
 };
 use reovim_kernel_interface::{Contract, Error, Message};
-use reovim_resource_local::{Bytes, Keys};
 
 #[must_use]
 pub fn heading() -> ModelProvider {
@@ -55,9 +54,9 @@ pub fn keyed() -> ModelProvider {
 /// # Errors
 /// Rejects a source without a supported heading.
 pub fn heading_initial(input: Message) -> Result<State, Error> {
-    let bytes = Bytes(input.data.into_vec());
+    let bytes = input.data.into_vec();
     reovim_domain_basic::replace_heading(&bytes, b"check")?;
-    let cost = bytes.0.len() as u64;
+    let cost = bytes.len() as u64;
     Ok(State::new(bytes, cost))
 }
 
@@ -66,13 +65,13 @@ pub fn heading_initial(input: Message) -> Result<State, Error> {
 /// Rejects foreign state or an unsupported heading edit.
 pub fn heading_edit(state: &State, input: Message) -> Result<State, Error> {
     let result = state
-        .get::<Bytes>()
+        .get::<Vec<u8>>()
         .ok_or(Error::UNSUPPORTED)
         .and_then(|source| {
             reovim_domain_basic::replace_heading(source, &input.data)
         })
         .map(|value| {
-            let cost = value.0.len() as u64;
+            let cost = value.len() as u64;
             State::new(value, cost)
         });
     drop(input);
@@ -87,27 +86,27 @@ pub fn heading_read(state: &State, input: Message) -> Result<Message, Error> {
         return Err(Error::INVALID);
     }
     drop(input);
-    let bytes = state.get::<Bytes>().ok_or(Error::UNSUPPORTED)?;
-    Ok(Message::new(Contract::new("heading.source", 1), &bytes.0))
+    let bytes = state.get::<Vec<u8>>().ok_or(Error::UNSUPPORTED)?;
+    Ok(Message::new(Contract::new("heading.source", 1), bytes))
 }
 
 fn keys_initial(_: &mut (), input: Message) -> StateReply {
     Box::pin(async move {
         let values = reovim_domain_basic::decode_keys(&input.data)?;
-        let cost = values.0.len() as u64 * 32;
+        let cost = values.len() as u64 * 32;
         Ok(State::new(values, cost))
     })
 }
 
 fn keys_edit(_: &mut (), state: &State, input: Message) -> StateReply {
     let result = state
-        .get::<Keys>()
+        .get::<BTreeMap<u64, bool>>()
         .ok_or(Error::UNSUPPORTED)
         .and_then(|source| {
             reovim_domain_basic::toggle(source, integer(&input.data)?)
         })
         .map(|value| {
-            let cost = value.0.len() as u64 * 32;
+            let cost = value.len() as u64 * 32;
             State::new(value, cost)
         });
     drop(input);
@@ -123,7 +122,8 @@ fn keys_read(
         return Err(Error::INVALID);
     }
     drop(input);
-    let values = state.get::<Keys>().ok_or(Error::UNSUPPORTED)?;
+    let values =
+        state.get::<BTreeMap<u64, bool>>().ok_or(Error::UNSUPPORTED)?;
     Ok(Message::new(
         Contract::new("keys.values", 1),
         &reovim_domain_basic::encode_keys(values),

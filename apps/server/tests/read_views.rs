@@ -1,3 +1,6 @@
+#[path = "support/memory.rs"]
+mod memory;
+
 use reovim_host_reference::run_with;
 use reovim_kernel_interface::{
     Connection, Contract, Error, Message, RequestError, ResourceId,
@@ -150,8 +153,8 @@ fn unsupported_and_overgranted_factories_preserve_original_access() {
     let source = runtime
         .register(
             "source",
-            reovim_resource_local::memory(b"original").with_read_view(|| {
-                let mut view = reovim_resource_local::memory(b"invalid view");
+            memory::provider(b"original").with_read_view(|| {
+                let mut view = memory::provider(b"invalid view");
                 view.surfaces[0].methods = Permissions::ALL;
                 Ok(view)
             }),
@@ -159,7 +162,7 @@ fn unsupported_and_overgranted_factories_preserve_original_access() {
         .map_err(|(error, _)| error)
         .unwrap();
     let plain = runtime
-        .register("plain", reovim_resource_local::memory(b"plain"))
+        .register("plain", memory::provider(b"plain"))
         .map_err(|(error, _)| error)
         .unwrap();
     let client = reovim_sdk::local(
@@ -274,13 +277,11 @@ fn denied_and_capacity_failures_do_not_leak_a_constructed_view() {
     let source = runtime
         .register(
             "source",
-            reovim_resource_local::memory(b"original").with_read_view(
-                move || {
-                    factory_called.set(true);
-                    factory_released.set(false);
-                    Ok(reader(Rc::new(Code(factory_released.clone()))))
-                },
-            ),
+            memory::provider(b"original").with_read_view(move || {
+                factory_called.set(true);
+                factory_released.set(false);
+                Ok(reader(Rc::new(Code(factory_released.clone()))))
+            }),
         )
         .map_err(|(error, _)| error)
         .unwrap();

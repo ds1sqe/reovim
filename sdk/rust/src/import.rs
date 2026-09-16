@@ -45,6 +45,18 @@ impl Drop for Remote {
 }
 struct Imported(Rc<Remote>);
 impl Access for Imported {
+    fn flags(
+        &self,
+        subject: ResourceId,
+    ) -> Result<reovim_kernel_interface::resource::ResourceFlags, Error> {
+        let inspect = self.0.table().flags.ok_or(Error::UNSUPPORTED)?;
+        let mut bits = 0;
+        check(unsafe {
+            inspect(self.0.raw.context, subject.0, &raw mut bits)
+        })?;
+        reovim_kernel_interface::resource::ResourceFlags::from_bits(bits)
+            .ok_or(Error::PROVIDER)
+    }
     fn read_view(&self, subject: ResourceId) -> Result<Connection, Error> {
         let mut output = MaybeUninit::uninit();
         let acquire = self.0.table().read_view.ok_or(Error::UNSUPPORTED)?;

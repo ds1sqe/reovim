@@ -11,8 +11,8 @@ publish = false
 path = "../../host/service"
 version = "=0.16.0-dev"
 
-[dependencies.reovim-call]
-path = "../../lib/call"
+[dependencies.reovim-kernel-interface]
+path = "../../kernel/interface"
 
 [dependencies.rustyline]
 version = "=18.0.1"

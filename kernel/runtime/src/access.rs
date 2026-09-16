@@ -48,6 +48,27 @@ pub fn view_connection(
 }
 
 impl Access for Caller {
+    fn flags(
+        &self,
+        subject: ResourceId,
+    ) -> Result<reovim_kernel_interface::resource::ResourceFlags, Error> {
+        use reovim_kernel_interface::resource::ResourceFlags;
+        self.check()?;
+        let shared = self.shared.borrow();
+        let scope = self.scope.borrow();
+        let key = scope.key(subject)?;
+        scope.require_visible(&shared, key)?;
+        let kind = &shared.entries[shared.entry_index(key)?].kind;
+        if !kind.lists_children() {
+            return Ok(ResourceFlags::from_bits(0).expect("no structure flags"));
+        }
+        let flags = ResourceFlags::CONTAINER;
+        Ok(if scope.has_children(&shared, key) {
+            flags
+        } else {
+            flags | ResourceFlags::EMPTY
+        })
+    }
     fn read_view(&self, subject: ResourceId) -> Result<Connection, Error> {
         self.check()?;
         crate::read_views::acquire(&self.shared, &self.scope, subject)
@@ -170,15 +191,7 @@ impl Access for Caller {
             return Err(Error::DENIED);
         }
         let kind = &shared.entries[shared.entry_index(key)?].kind;
-        if !matches!(
-            kind,
-            Kind::Directory
-                | Kind::Provider(_)
-                | Kind::Model(_)
-                | Kind::Buffer(_)
-                | Kind::Session(_)
-                | Kind::ClosedSession { .. }
-        ) {
+        if !kind.lists_children() {
             return Err(Error::UNSUPPORTED);
         }
         let entries = scope.children(&shared, key);

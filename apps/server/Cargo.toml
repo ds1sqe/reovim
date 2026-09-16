@@ -11,7 +11,7 @@ publish = false
 
 [features]
 default = []
-std = ["reovim-host-reference/std", "dep:reovim-service", "reovim-service/std"]
+std = ["reovim-host-reference/std", "reovim-service/std"]
 
 [dependencies.reovim-kernel-interface]
 path = "../../kernel/interface"
@@ -19,18 +19,6 @@ version = "=0.16.0-dev"
 
 [dependencies.reovim-kernel-runtime]
 path = "../../kernel/runtime"
-version = "=0.16.0-dev"
-
-[dependencies.reovim-resource-local]
-path = "../../resource/local"
-version = "=0.16.0-dev"
-
-[dependencies.reovim-domain-basic]
-path = "../../domain/basic"
-version = "=0.16.0-dev"
-
-[dependencies.reovim-representation-basic]
-path = "../../representation/basic"
 version = "=0.16.0-dev"
 
 [dependencies.reovim-host-reference]
@@ -45,10 +33,6 @@ required-features = ["std"]
 [lints]
 workspace = true
 
-[dev-dependencies.reovim-module-counter]
-path = "../../modules/counter"
-version = "=0.16.0-dev"
-
 [dependencies.reovim-sdk]
 path = "../../sdk/rust"
 version = "=0.16.0-dev"
@@ -56,8 +40,14 @@ version = "=0.16.0-dev"
 [dependencies.reovim-service]
 path = "../../host/service"
 version = "=0.16.0-dev"
-optional = true
 
-[dev-dependencies.reovim-module-editing]
-path = "../../modules/editing"
+
+[dev-dependencies.reovim-host-reference]
+path = "../../host/reference"
 version = "=0.16.0-dev"
+features = ["std"]
+
+[dev-dependencies.reovim-service]
+path = "../../host/service"
+version = "=0.16.0-dev"
+features = ["std"]

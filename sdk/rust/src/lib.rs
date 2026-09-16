@@ -1,42 +1,61 @@
 #![no_std]
 #![deny(unsafe_code)]
-//! Rust adapters for the language-independent Kernel ABI.
+//! Rust adapters for declared operations over the language-independent ABI.
+//!
+//! Example: composition imports an independently built provider with
+//! `import_provider`; Runtime receives only its safe Interface operations.
+//! Rust suppliers use `ExportedProvider` for calls, factories and I/O,
+//! and `export_pending` for owned results. Native module entry constructors
+//! use `export_module!` with their ordinary Rust implementation; the underlying
+//! `export_module_instance` owns driver and imported capability cleanup.
 
 extern crate alloc;
 
 #[allow(unsafe_code)]
-mod export;
+mod native;
 
-pub use export::{
-    decode_request, export, export_reply, export_state_reply, export_with_code,
+#[allow(unsafe_code)]
+mod pending;
+
+#[allow(unsafe_code)]
+mod raw;
+
+pub use native::{
+    ExportedRegistrar, ModuleImports, NativeModule, import_provider,
+    import_state, import_state_init, module_implementation,
 };
 
-#[allow(unsafe_code)]
-mod provider;
+mod request;
+pub use request::Request;
 
 #[allow(unsafe_code)]
-mod import;
-
-pub use import::{import, import_reply, import_state_reply};
-
-#[allow(unsafe_code)]
-pub mod module;
-
-/// Connects a local implementation through both C ABI adapters.
-#[must_use]
-pub fn local(
-    connection: reovim_kernel_interface::Connection,
-) -> reovim_kernel_interface::Connection {
-    local::connect(connection)
-}
+mod caller_export;
+pub use caller_export::ExportedCaller;
 
 #[allow(unsafe_code)]
-mod local {
-    use alloc::rc::Rc;
-    use reovim_kernel_interface::Connection;
+mod caller_import;
+pub use caller_import::{ImportedCaller, import_caller};
 
-    pub fn connect(connection: Connection) -> Connection {
-        // Our exporter supplies ABI 0.1.0; its code is part of this same image.
-        unsafe { super::import(super::export(connection), Rc::new(())) }
-    }
-}
+#[allow(unsafe_code)]
+mod outcome_export;
+#[allow(unsafe_code)]
+mod pending_export;
+pub use pending_export::export_pending;
+
+#[allow(unsafe_code)]
+mod provider_export;
+pub use provider_export::ExportedProvider;
+
+#[allow(unsafe_code)]
+mod state_export;
+pub use state_export::ExportedState;
+
+#[allow(unsafe_code)]
+mod registrar_import;
+pub use registrar_import::ImportedRegistrar;
+
+#[allow(unsafe_code)]
+mod module_export;
+pub use module_export::export_module_instance;
+
+mod namespace_value;

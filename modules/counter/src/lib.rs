@@ -1,126 +1,174 @@
 #![no_std]
 #![forbid(unsafe_code)]
-//! A loadable counter service using only Kernel Interface contracts.
+//! A non-byte Resource service, staged through ordinary module activation.
 
 extern crate alloc;
 
 use alloc::{boxed::Box, rc::Rc, vec};
 use core::{
     cell::Cell,
-    future::{Ready, ready},
+    task::{Context, Poll},
 };
 use reovim_kernel_interface::{
-    Contract, Error, Message, ResourceId,
-    buffer::integer,
+    Error, Outcome, Pending, Value,
+    call::{Cancellation, Completion, PendingOps},
+    caller::Caller,
+    declaration::{Declaration, Operation},
     driver::{DriverOps, Lifecycle, Progress},
-    module::{Factory, Module},
-    provider::{
-        Contribution, Permissions, ResourceOps, ResourceProvider, Surface,
-    },
+    module::{ModuleContext, ModuleImplementation},
+    provider::{ProviderInterface, Registrar, ResourceOps, ResourceProvider},
 };
 
-/// Declares an inert counter; Runtime drives construction and publication.
-/// ```
-/// let factory = reovim_module_counter::factory();
-/// assert!(factory.dependencies.is_empty());
-/// ```
-#[must_use]
-pub fn factory() -> Factory {
-    Factory::new((), |(), _| Ok(construct()), Rc::new(()))
+struct State {
+    phase: Lifecycle,
+    exports: Registrar,
 }
 
-fn construct() -> Module {
-    Module::new(
-        Lifecycle::Constructed,
-        DriverOps {
-            status: |state| *state,
-            advance: |state, _| {
-                if *state == Lifecycle::Closed {
-                    return Ok(Progress::Stopped);
-                }
-                *state = Lifecycle::Ready;
-                Ok(Progress::Idle)
-            },
+/// Supplies an inert module whose first driven turn stages `value`.
+#[must_use]
+pub fn implementation() -> ModuleImplementation<impl Sized, Caller> {
+    ModuleImplementation {
+        construct,
+        driver: DriverOps {
+            status: |state| state.phase,
+            advance,
             close: |state| {
-                *state = Lifecycle::Closed;
+                state.phase = Lifecycle::Closed;
                 Ok(())
             },
         },
-        vec![Contribution::Resource {
-            path: "modules/counter/value".into(),
-            provider: provider(Rc::new(Cell::new(0))),
-        }],
-        Rc::new(()),
-    )
+    }
 }
 
-/// Adds little-endian u64 values through `external.counter` v1.
-/// ```
-/// use std::{cell::Cell, rc::Rc};
-/// let value = Rc::new(Cell::new(0));
-/// let provider = reovim_module_counter::provider(value.clone());
-/// // Assembly registers provider; reads observe value, writes add to it.
-/// assert_eq!(value.get(), 0);
-/// ```
-#[must_use]
-pub fn provider(value: Rc<Cell<u64>>) -> ResourceProvider {
+#[allow(
+    clippy::result_large_err,
+    clippy::unnecessary_wraps,
+    reason = "the module constructor ABI returns unchanged context on rejection"
+)]
+fn construct(
+    context: ModuleContext<Caller>,
+) -> Result<State, (ModuleContext<Caller>, Error)> {
+    Ok(State { phase: Lifecycle::Constructed, exports: context.exports })
+}
+
+fn advance(state: &mut State, _: &mut Context<'_>) -> Result<Progress, Error> {
+    if state.phase == Lifecycle::Closed {
+        return Ok(Progress::Stopped);
+    }
+    if state.phase == Lifecycle::Ready {
+        return Ok(Progress::Idle);
+    }
+    state.phase = Lifecycle::Starting;
+    let provider = provider()?;
+    if let Err((error, mut provider)) = state.exports.stage(b"value", provider)
+    {
+        provider.stop()?;
+        state.phase = Lifecycle::Failed(error);
+        return Err(error);
+    }
+    state.phase = Lifecycle::Ready;
+    Ok(Progress::Idle)
+}
+
+fn declaration() -> Result<Declaration, Error> {
+    let mut bytes = vec![0xc1; 16];
+    // Two ordinary methods: exec add(u64)->u64 with EXEC/WRITE activity,
+    // and ioctl 1 read(unit)->u64 with READ access/activity. No byte I/O.
+    bytes.extend_from_slice(&2_u32.to_le_bytes());
+    bytes.extend_from_slice(&[
+        1, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 3, 0, b'a', b'd', b'd', 4, 4, 0,
+    ]);
+    bytes.extend_from_slice(&[
+        2, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0, b'r', b'e', b'a', b'd', 0, 4, 0,
+    ]);
+    Declaration::decode(&bytes)
+}
+
+fn provider() -> Result<ResourceProvider, Error> {
     ResourceProvider::new(
-        value,
-        ResourceOps {
-            unload: None,
-            read: |value, subject, input| {
-                Box::pin(read_value(value, subject, input))
-            },
-            write: |value, subject, input| {
-                Box::pin(add_value(value, subject, input))
-            },
-        },
-        Box::new([Surface {
-            contract: Contract::new("external.counter", 1),
-            methods: Permissions::ALL,
-            input: Box::new([]),
-            output: Box::new([]),
+        Cell::new(0_u64),
+        ResourceOps { open: None, namespace: None, io: None, stop: |_| Ok(()) },
+        Box::new([ProviderInterface {
+            prepare: None,
+            declaration: declaration()?,
+            begin: Some(begin),
+            create: None,
         }]),
         Rc::new(()),
     )
+    .map_err(|(error, _)| error)
 }
 
-fn read_value(
-    value: &Cell<u64>,
-    _: ResourceId,
-    input: Message,
-) -> Ready<Result<Message, Error>> {
-    ready(if input.data.is_empty() {
-        Ok(Message::new(input.contract, &value.get().to_le_bytes()))
-    } else {
-        Err(Error::INVALID)
-    })
-}
-fn add_value(
-    value: &Cell<u64>,
-    _: ResourceId,
-    input: Message,
-) -> Ready<Result<Message, Error>> {
-    ready(integer(&input.data).and_then(|amount| {
-        let next = value.get().checked_add(amount).ok_or(Error::PRESSURE)?;
-        value.set(next);
-        Ok(Message::new(input.contract, &next.to_le_bytes()))
-    }))
-}
-fn native_state(_: reovim_module::Connection) -> Cell<u64> {
-    Cell::new(0)
-}
-const COUNTER: reovim_module::Contract =
-    reovim_module::Contract::new("external.counter", 1);
-reovim_module::rv_module! {
-    pub MODULE {
-        contract: ("counter", 1),
-        state: native_state,
-        resources: {
-            "value" => {
-                read COUNTER => read_value,
-                write COUNTER => add_value,
-            },
+fn begin(
+    state: &mut Cell<u64>,
+    _: usize,
+    operation: Operation,
+    input: &Value,
+) -> Result<Pending, Error> {
+    let (next, activity) = match operation {
+        Operation::Exec => {
+            let amount = u64::from_le_bytes(
+                input.data.as_ref().try_into().map_err(|_| Error::INVALID)?,
+            );
+            (state.get().checked_add(amount).ok_or(Error::PRESSURE)?, 2)
+        }
+        Operation::Ioctl(1) if input.data.is_empty() => (state.get(), 1),
+        Operation::Ioctl(_) => return Err(Error::UNSUPPORTED),
+    };
+    let value = Value::copy(&next.to_le_bytes(), &[])?;
+    state.set(next);
+    Ok(Pending::new(
+        Some(Completion { outcome: Outcome::Ok(value), activity, owner: None }),
+        PendingOps {
+            poll: |_, _| Ok(Poll::Ready(())),
+            take: |value| value.take().ok_or(Error::CLOSED),
+            cancel: |_| Ok(Cancellation::TooLate),
+            reconcile: |_| Err(Error::UNSUPPORTED),
+            finish: |_| Ok(()),
         },
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use core::task::Waker;
+
+    fn result(pending: &mut Pending) -> u64 {
+        assert_eq!(
+            pending.poll(&mut Context::from_waker(Waker::noop())),
+            Ok(Poll::Ready(()))
+        );
+        let completion = pending.take().unwrap();
+        let Outcome::Ok(value) = &completion.outcome else {
+            panic!("no value")
+        };
+        let result =
+            u64::from_le_bytes(value.data.as_ref().try_into().unwrap());
+        drop(completion);
+        pending.finish().unwrap();
+        result
+    }
+
+    #[test]
+    fn invalid_add_and_overflow_preserve_the_counter() {
+        let mut provider = provider().unwrap();
+        assert!(provider.io().is_none());
+        let maximum = Value::copy(&u64::MAX.to_le_bytes(), &[]).unwrap();
+        let mut pending = provider.begin(0, Operation::Exec, &maximum).unwrap();
+        assert_eq!(result(&mut pending), u64::MAX);
+        let one = Value::copy(&1_u64.to_le_bytes(), &[]).unwrap();
+        assert!(matches!(
+            provider.begin(0, Operation::Exec, &one),
+            Err(Error::PRESSURE)
+        ));
+        assert!(matches!(
+            provider.begin(0, Operation::Exec, &Value::unit()),
+            Err(Error::INVALID)
+        ));
+        let mut read =
+            provider.begin(0, Operation::Ioctl(1), &Value::unit()).unwrap();
+        assert_eq!(result(&mut read), u64::MAX);
+        provider.stop().unwrap();
     }
 }

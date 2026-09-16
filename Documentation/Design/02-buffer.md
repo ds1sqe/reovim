@@ -1,143 +1,199 @@
-# 02 — Buffer
+# Buffer state, editing and lifetime
 
-A Buffer owns working state and its History. Opening a source creates a new
-Buffer; joining an existing Buffer shares its state and History.
+This chapter owns working state, edit acceptance, snapshots and shared close.
+[Resource access](01-resources.md) owns identity and handles;
+[source relationships](02.2-sources.md) own live attachments and capture.
 
-```rust
-// Proposed Buffer wrapper; source is a granted file containing "# Draft".
-let draft = buffers.open(source).await?;
-let copy = buffers.open(source).await?; // Independent edits and History.
-let joined = buffers.join(draft.state.buffer).await?; // Shares draft.
-// Saving draft does not merge or synchronize copy.
-```
+## Buffer identity and lookup
 
-For the Markdown example, these roles separate storage from interpretation:
-
-| Role | Example responsibility |
-| --- | --- |
-| State Model | Store working source units and define valid initial state |
-| Domain | Define Text/Markdown values, valid positions and edit meaning |
-| Representation | Read that meaning from working state and map edits back |
-| Client | Turn semantic data into its own source or preview view |
-
-A Domain can reuse an existing State Model. A new storage structure needs a
-model provider; it does not need a new kind of Kernel Buffer.
-
-Models, Domains and Representations can be supplied by
-[loaded providers](06.1-providers.md). Their public contracts must admit new
-working-state types without rebuilding Kernel. Buffer/History retains the
-data and provider code needed by accepted states; unload cannot invalidate it.
-
-Continue with [History](02.1-history.md), [observation](03-observation.md),
-[Representation](03.1-representation.md), [editing](03.2-editing.md) and
-[publication](03.3-publication.md). Calls use ordinary
-[Resource access](01.2-resource-access.md) and its request outcomes.
-
-## Observed state
+A Buffer is a Resource with editable working state, revision and History.
+A snapshot is owned read access to an immutable selected state. Neither a source
+path nor a data-interface type identifies a Buffer. All Buffer access uses the
+common Resource identity and lifecycle; there is no parallel Buffer registry.
 
 ```rust
-// Path: kernel/interface/src/buffer.rs; module: interface::buffer
 pub struct BufferState {
     pub buffer: ResourceId,
-    pub revision: u64, // Currentness within this Buffer lifetime.
+    pub revision: u64,
 }
 pub struct BufferDescriptor {
     pub state: BufferState,
     pub history: ResourceId,
-    pub backing: Option<ResourceId>, // Not an input link or export target.
 }
 ```
 
-Currentness identifies the exact state against which a request is valid.
-BufferState is an observation, not mutation authority. Core advances its
-revision with working state; a History node is a separate identity. Changing
-backing invalidates prior observations without creating a History node.
-
-## Access and initial input
-
-The selected State Model defines its initial value and encoding. There is
-no universal Initial type to import. This logical model supplies a boolean:
+BufferState is copied currentness metadata, granting and retaining nothing.
+Every accepted edit or attachment change advances the revision. Returning to
+an equal value, including through Undo, cannot revive an old precondition.
+Buffer wrappers own granted Resource access; their state/history observations
+are metadata returned by describe as BufferDescriptor. Source association data
+is inspected separately. Snapshot wrappers own independent read access to state.
 
 ```rust
-// Path: domain/logical/src/initial.rs; module: logical::initial
-pub struct LogicalInitial {
-    pub active: bool, // Initial logical working value, with no hardware effect.
+impl BufferService {
+    async fn find(&self, id: ResourceId) -> Result<Buffer, RequestError>;
+    async fn for_source(&self, id: ResourceId)
+        -> Result<Vec<ResourceId>, RequestError>;
+    async fn create(&self, source: &ResourceHandle)
+        -> Result<Buffer, RequestError>;
 }
 ```
 
-```rust
-// Path: kernel/interface/src/buffer/api.rs; module: interface::buffer::api
-pub enum ClosePolicy {
-    RejectModified, // Refuse loss of unpublished working state.
-    DiscardLocal,   // Authorized local loss, never external-effect rollback.
-}
+find accepts an existing Buffer's ID, never a source ID with implicit selection.
+It acquires available caller-granted Buffer access; restricted callers may
+observe while editing still rejects. set_access narrows that handle when needed.
+for_source lists visible associated Buffer IDs; enumeration retains no access
+and its results may become stale before find. Large enumerations use bounded
+pages. Two find calls share state/History; two create calls create independent
+state/History even when supplied the same source.
+
+create uses the service's explicitly configured factory, which defines supported
+source/initialization interfaces. A different factory is selected through its
+ordinary declared exec/ioctl, as in the [domain examples](07-domain-apis.md).
+Factories also accept unbacked initial values or typed multiple inputs.
+
+## A graph, with distinct relationship meanings
+
+Multiple sources can feed one Buffer; one source can feed multiple Buffers.
+Buffers can be nested in these relationships without implying recursive save
+or a single-parent ownership tree. Namespace containment and History branches
+are separate relationships, with their own traversal and lifetime rules.
+
+| Relationship | State/History | Forward operation | Reverse operation |
+| --- | --- | --- | --- |
+| Alternate view | Same Buffer and History | Interpret selected state | Declared edit mapping |
+| Derived Buffer | Independent Buffer and History | Capture/import/transform | Explicit supported publication |
+| Combined inputs | One result, several input states | Declared composition | Explicit target mapping |
+| Naming | No state copy | Locate subject | None |
+
+One Buffer may support Bytes and Text views while preserving one authoritative
+state. A hex display is presentation of Bytes; it need not create new editable
+state. Users can still create an independent byte/hex working Buffer when that
+is the intended workflow. A view binding performs no implicit transformation.
+
+An ELF parser can produce custom structural, Tree and textual interfaces.
+Those may be views over one lossless ELF state or separately derived Buffers.
+The provider declares which; neither the type name nor a path establishes it.
+
+```mermaid
+flowchart LR
+    E[ELF Resource] --> B[Bytes Buffer / hex view]
+    E --> S[ELF structural Buffer]
+    S --> T[Tree view or derived Tree Buffer]
+    S --> X[Text view or derived Text Buffer]
+    B --> A[Combined analysis Buffer]
+    T --> A
+    Y[Symbols Resource] --> A
 ```
 
-A Buffer helper encodes the selected model input over Resource access.
-Runtime validates compatibility and grants; Rust types alone establish
-neither. Descriptors are SDK-owned metadata, not mutable state or leases.
+The diagram shows permitted flow, not five compulsory allocations. Exact views
+versus derived Buffers are selected by the declared operation. A Tree node or
+Mesh vertex need not become a Resource solely because it appears in a view.
 
-| Call | Result |
-| --- | --- |
-| create(initial) | Independent state/History from model input; backing is absent |
-| open(source) | Independent state/History from supported source state and its base |
-| join(buffer) | Access to existing state/History and its retained base |
-| describe(buffer) | Coherent current metadata; no active-Buffer switch or close |
-| close(expected, policy) | Close this shared Buffer under owner authority and exact currentness |
+## Aggregate state
 
-Create needs no filename or mmap. Open preserves uninterpreted source units;
-partial residency is not absence. Live endpoints without state access reject.
-Settle startup races before publishing a descriptor; failure keeps unfinished
-rollback owned and exposes no half-open Buffer. Joining neither reopens the
-source nor merges independent Buffers. Lookup uses the
-[namespace](01.1-resource-tree.md); file syntax belongs to its adapter.
+A repository-style aggregate is a direct many-Resource-to-one-Buffer case:
 
-## Caller
-
-```rust
-// Proposed model helper; buffers uses caller access and the logical contract.
-let initial = LogicalInitial { active: false };
-let buffer = buffers.create(&initial).await?;
-// buffer is the actual descriptor. RequestError carries any unknown outcome.
+```mermaid
+flowchart LR
+    R[README Resource] --> G[Repository Buffer]
+    S[src/main.rs Resource] --> G
+    C[Cargo.toml Resource] --> G
+    G --> H[One History]
 ```
 
-Independent-Buffer synchronization still needs a defined sharing scope,
-authority, conflict behavior and receiving History effect. Sharing Client
-context does not supply that contract; join is the way to share one Buffer.
+The Repository Buffer owns one editable state mapping logical paths to selected
+member contents/identities. Members need not be Buffers, and their contents are
+not concatenated into one byte string. The provider defines repository-wide
+operations such as changing several entries, adding/removing entries and
+renaming a path. One accepted aggregate edit produces one Buffer
+revision/History edge.
 
-## Close and retained memory
+Its snapshot retains the selected aggregate state and per-member provenance.
+An input change is not an automatic edit of that snapshot or working state.
+Refresh/import must reconcile the selected member set and local edits. Saving
+or exporting the aggregate uses declared per-member mappings and the publisher's
+actual commit scope; one Buffer edit does not prove atomic external filesystem
+updates. A Git index/commit protocol, if offered, is a separate domain API.
 
-Close checks shared-Buffer authority and exact currentness. RejectModified
-protects unpublished state, including unbound/unexported data. DiscardLocal
-authorizes local loss; it cannot roll back an external effect.
+copy of a Buffer captures its current state into a new Buffer with fresh History
+and no inherited live source/publication bindings. It requires the provider's
+state-copy/factory support and returns Unsupported only where that operation is
+unavailable. Copying History or live subscriptions is a separate explicit
+action.
+
+## Atomic installation
+
+An edit changes working state through an ordinary Resource request, including
+supported byte writes and accepted imports. [Domain APIs](07-domain-apis.md)
+supply typed snapshots and edits; [semantic values](03.1-representation.md)
+qualify intent with the exact interpretation/state it used.
+
+The commit cut begins the infallible installation of state and History:
 
 ```text
-save selected state -> await proved Applied -> describe current Buffer
-  -> close(current.state, RejectModified)
-// Later edits survive. Save completion never authorizes their discard.
+semantic intent + observed state
+  -> Runtime: authorize, prepare and validate outside Core authority
+  -> Core: recheck currentness, grants and the selected History edge
+  -> commit cut: install working state + History atomically
+  -> Runtime: release retired state/candidates outside Core authority
+
+// Rejection changes neither state nor History.
+// After the cut, under Core authority: no I/O, wait, callback or fallible step.
+// Clients submit semantic edits, never native plans, nodes or executor jobs.
+// Source observation is read-only; an accepted import uses this edit path.
 ```
 
-Admission is not teardown completion. Runtime fences new work and drains or
-transfers ownership; incomplete-shutdown stays progressable. Close is
-idempotent for that lifetime; stale references never close replacement subjects.
-Releasing a descriptor or caller view leaves shared state alive. Buffer close
-deletes no backing and stops no independently owned source.
+Only the authorized [preparation provider](06.3-state-providers.md) supplies
+candidates; ordinary modules call the semantic edit API. Before acceptance,
+the request owns its candidate. Acceptance transfers retained state to History
+and updates the Buffer's selected node. Retired/rejected state is released
+outside guards; observer wakes happen after installation outside state guards.
+Event delivery and result adoption are independent.
 
-The initial `kernel.buffer.close` v1 profile writes little-endian revision:u64
-followed by policy:u8 (0 = RejectModified, 1 = DiscardLocal), with one reference
-to the expected Buffer. The creating caller scope owns shared close; ordinary
-write permission alone does not transfer that authority. Retained work can
-return busy before teardown. Closed identity metadata permits idempotent close
-without retaining model code. Current unbound Buffers require DiscardLocal;
-publication must establish the evidence for RejectModified success.
+The first profile accepts one transaction per History step. Grouped typing,
+dragging and painting still need defined intermediate feedback, peer visibility,
+confirm/cancel behavior and an Undo unit. Grouping Buffers creates no
+cross-Resource transaction. [History](02.1-history.md) owns branching, edge
+selection and retained inspection.
 
-Selected data is owned or read-leased; a revision alone retains nothing.
-Sparse/partial residency is normal. Borrowed inputs last for the call; queued
-work captures needed input before handoff. Caller input stays unchanged;
-SDK-owned results use that SDK's allocator. Kernel never retains/frees
-caller-owned output.
+Accepted changes report exact request/state/transition. Client cursor, selection
+and follow policy do not gate acceptance. Authored masks/styles are content;
+zoom and computed layout are Client policy. [Publication](02.3-publication.md)
+is a separate external effect that Undo cannot retract.
 
-Direct views stay pinned through their borrows. Checked reads may expire;
-pointers cannot dangle. Close drains/transfers borrows and recovery ownership
-while protecting unsaved/unexported data. See
-[request lifetime](01.3-requests.md) for result ownership.
+## State retention
+
+History retains accepted state; a snapshot retains its selected immutable value
+independently of later edits or shared close. Neither requires copying all data
+or making all content resident. Sparse/deferred reads must preserve that exact
+state and report unavailable/expired data rather than substituting current data.
+[State providers](06.3-state-providers.md) own retention and snapshot callbacks.
+
+Quota accounting covers retained state, snapshots, candidates and pending work.
+Reserve capacity before acceptance; pressure cannot discard a committed result
+or unresolved cleanup. Reclaiming backing still needed by an admitted operation
+requires transfer to another owner, not merely dropping the caller's wait.
+
+## Shared close and graph lifetime
+
+Handle close releases access; shared Buffer close ends editing under owner and
+currentness checks. Modified-state policy, outstanding work and attachment
+cleanup are explicit. Independent immutable snapshots can survive shared close.
+No namespace removal or backing detach silently discards unsaved state.
+History access cannot keep a closed Buffer editable or authorize shared close.
+
+Strong access, dataflow, namespace and module dependency graphs have different
+cycle rules. A self-reference cannot become implicit permanent ownership.
+Creation of a cyclic live derivation must either be rejected by its declared
+composition interface or include an explicit bounded evaluation/fixpoint policy.
+There is no automatic recursive evaluator implied by this API. Explicit retained
+snapshot inputs remain ordinary immutable dependencies, not live subscriptions.
+
+`ClosePolicy::RejectModified` protects unpublished state, including unbound
+or unexported data. `DiscardLocal` explicitly authorizes local loss; it cannot
+roll back external effects. The creating lifecycle scope owns shared close;
+ordinary WRITE alone does not transfer that authority. Save completion never
+authorizes discarding later edits: capture fresh state before requesting close.
+Closed identity metadata permits idempotent close without retaining provider
+code. Incomplete shutdown stays fenced and progressable under Runtime custody.

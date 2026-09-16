@@ -1,0 +1,22 @@
+[package]
+name = "reovim-module-memory"
+workspace = "../../product"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies.reovim-kernel-interface]
+path = "../../kernel/interface"
+version = "=0.16.0-dev"
+
+[lints]
+workspace = true
+
+[dev-dependencies.reovim-sdk]
+path = "../../sdk/rust"
+
+[[example]]
+name = "memory"
+crate-type = ["cdylib"]

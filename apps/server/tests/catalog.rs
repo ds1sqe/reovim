@@ -1,3 +1,6 @@
+#[path = "support/memory.rs"]
+mod memory;
+
 use reovim_host_reference::run_with;
 use reovim_kernel_interface::{
     Contract, Error, Message, RequestError, ResourceId,
@@ -40,9 +43,7 @@ fn factory(constructed: Rc<Cell<Option<ResourceId>>>) -> Factory {
                 },
                 vec![Contribution::Resource {
                     path: "service/value".into(),
-                    provider: reovim_resource_local::memory(
-                        b"catalog instance",
-                    ),
+                    provider: memory::provider(b"catalog instance"),
                 }],
                 Rc::new(()),
             ))
@@ -259,7 +260,7 @@ fn selection_pressure_keeps_the_factory_unconstructed_and_retryable() {
     for name in ["a", "b", "c"] {
         blockers.push(
             runtime
-                .register(name, reovim_resource_local::memory(b"held"))
+                .register(name, memory::provider(b"held"))
                 .map_err(|(error, _)| error)
                 .unwrap(),
         );

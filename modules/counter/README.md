@@ -1,20 +1,31 @@
 # Counter module
 
-An Interface-only implementation with an inert factory and driven lifecycle.
-Activation publishes `modules/counter/value`; unload removes it.
+A non-byte Resource using ordinary module activation. The implementation depends
+only on Interface. Its inert constructor retains the scoped Registrar; Runtime
+advance stages `value` under the mount selected by composition.
 
-| `external.counter` v1 | Payload | Result |
+| Declared operation | Input | Result |
 | --- | --- | --- |
-| Read | Empty | Current u64, little-endian |
-| Write | u64, little-endian | Add the amount and return the new value |
+| exec `add` | u64 | New counter value |
+| ioctl 1 `read` | Unit | Current u64 |
 
-Invalid input and overflow preserve the value. Each factory construction owns
-fresh state. Rustdoc shows the public factory/provider usage.
+Values use the canonical little-endian encoding. Invalid input and overflow
+preserve the counter. Each activation starts at zero. The Resource offers no
+byte I/O; callers discover the declaration, bind it and select opened access.
 
-The `counter` cdylib example exports those same operations through `rv_module!`,
-declaring the passive `counter` schema 1 identity. A boot configuration mounts
-its `value` child wherever selected; no counter implementation is linked into
-the hosted server.
+The `counter` cdylib example uses SDK `export_module!` with the same Rust
+implementation. The macro emits `rv_module_entry`; SDK owns the native driver
+callbacks and imported Caller/Registrar lifetime cleanup.
 
-The [server walkthrough](../../apps/server/README.md) exercises live activation
-and unload through ordinary Resource requests.
+```sh
+cargo build --manifest-path product/Cargo.toml \
+  -p reovim-module-counter --example counter
+cargo test --manifest-path product/Cargo.toml \
+  -p reovim-server --test native_module
+```
+
+The server integration test builds the artifact after Runtime starts, loads it
+through the production Host loader and removes the file before invocation.
+It discovers/binds the API, adds a value, reads it back and closes Runtime.
+This establishes native composition; the server/base Client process journey
+and individual module unload remain execution-plan work.

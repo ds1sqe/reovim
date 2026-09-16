@@ -1,137 +1,114 @@
-//! Native declarations feed the existing scoped catalog and activation graph.
+//! Passive configured artifacts; composition supplies registration authority.
 
+#[path = "boot/config.rs"]
 mod config;
-pub use config::{Config, Initial, Scope, Snapshot, Source};
+pub use config::{Config, Source};
+#[path = "boot/startup.rs"]
+mod startup;
+pub use startup::Startup;
 
-use alloc::{boxed::Box, format, vec::Vec};
-use reovim_host_reference::native::Artifact;
+use alloc::{rc::Rc, vec::Vec};
 use reovim_kernel_interface::{
-    Contract, Error, RequestError, module, provider::Permissions,
+    Error, ResourceId, declaration::ValueLimits, module::Definition,
 };
-use reovim_kernel_runtime::{Binding, Runtime};
+use reovim_kernel_runtime::{Grant, Runtime};
+#[cfg(target_os = "linux")]
+use std::os::unix::ffi::OsStrExt;
 
+use crate::loading::{Admit, Target};
+
+/// Captured native definitions, selected by explicit configuration labels.
+/// Discovery runs Host admission but never constructs a module instance.
 pub struct Modules {
-    sources: Vec<(Source, Artifact)>,
-    start: Vec<Contract>,
-    client_start: Vec<Contract>,
+    config: Config,
+    definitions: Vec<Rc<Definition>>,
 }
-pub type Startup = core::pin::Pin<
-    Box<dyn core::future::Future<Output = Result<(), RequestError>>>,
->;
+
 impl Modules {
-    /// Discovers declared artifacts without constructing module instances.
+    /// Captures configured artifacts through the supplied Host trust policy.
+    /// For example, an allowlisted `Admit` can call the native Host loader.
     /// # Errors
-    /// Rejects inaccessible or malformed native declarations.
-    pub fn discover(config: Config) -> Result<Self, Error> {
-        let sources = config
-            .sources
-            .into_iter()
-            .map(discover)
-            .collect::<Result<_, _>>()?;
-        Ok(Self {
-            sources,
-            start: config.start,
-            client_start: config.client_start,
-        })
+    /// Invalid configuration, denied artifacts or invalid metadata reject
+    /// before any Runtime registration or module construction.
+    pub fn discover(
+        config: Config,
+        admit: &Admit,
+        values: ValueLimits,
+        capacity: usize,
+    ) -> Result<Self, Error> {
+        config.validate()?;
+        let mut definitions = Vec::new();
+        definitions
+            .try_reserve_exact(config.sources.len())
+            .map_err(|_| Error::PRESSURE)?;
+        for source in &config.sources {
+            let native = admit_source(source, admit)?;
+            definitions.push(Rc::new(native.definition(values, capacity)?));
+        }
+        Ok(Self { config, definitions })
     }
 
-    /// Installs declarations and returns owned startup work for this context.
+    /// Returns the captured configuration, e.g. required startup labels.
+    #[must_use]
+    pub const fn config(&self) -> &Config {
+        &self.config
+    }
+
+    /// Registers an exact configured definition and grants its recipient.
+    /// The Target supplies actual registry, mount and immutable import owners.
+    /// This admits a passive package; startup uses its ordinary activation API.
     /// # Errors
-    /// Preserves catalog/instance ownership on registration or startup failure.
-    pub fn prepare(
+    /// Unknown labels and registration failures reject. A failed recipient
+    /// grant retains the registered package identity in the error. Retrying
+    /// uses the same captured definition, even if the artifact was replaced.
+    pub fn register(
         &self,
+        label: &str,
         runtime: &mut Runtime,
-        owner: &Binding,
-        scope: Scope,
-    ) -> Result<Startup, RequestError> {
-        let catalog_path = owner.publication_path("catalog")?;
-        let catalog = runtime.register_namespace(&catalog_path)?;
-        let mut declarations = Vec::new();
-        for (source, artifact) in
-            self.sources.iter().filter(|(s, _)| s.scope == scope)
-        {
-            let path = register(runtime, owner, source, artifact)?;
-            declarations.push((artifact.identity(), path));
-        }
-        let required = match scope {
-            Scope::Server => &self.start,
-            Scope::Client => &self.client_start,
-        };
-        let selected = required
+        target: &Target,
+    ) -> Result<ResourceId, Error> {
+        let index = self
+            .config
+            .sources
             .iter()
-            .map(|identity| select(&declarations, identity))
-            .collect::<Result<Vec<_>, _>>()?;
-        // Dependency resolution sees this context's catalog, independently of
-        // the provider's data imports and the client's shared aliases.
-        let control = runtime.connect(&[(catalog, Permissions::ALL)])?;
-        let resources = selected
-            .into_iter()
-            .map(|path| control.resolve(path).into_inner())
-            .collect::<Result<Vec<_>, _>>()?;
-        Ok(activate(control, resources))
+            .position(|source| source.label == label)
+            .ok_or(Error::UNAVAILABLE)?;
+        let package = crate::loading::register(
+            runtime,
+            target,
+            self.definitions[index].clone(),
+        )?;
+        runtime
+            .grant(
+                &target.recipient,
+                Grant {
+                    resource: package,
+                    access: 5,
+                    create_access: 0,
+                    retain_loans: false,
+                },
+            )
+            .map_err(|error| Error::with_id(error.code.0, package))?;
+        Ok(package)
     }
 }
-fn activate(
-    control: reovim_kernel_interface::Connection,
-    resources: Vec<reovim_kernel_interface::ResourceId>,
-) -> Startup {
-    Box::pin(async move {
-        for resource in resources {
-            module::activate(&control, resource).await?;
-        }
-        Ok(())
-    })
-}
-#[allow(unsafe_code)]
-fn discover(source: Source) -> Result<(Source, Artifact), Error> {
-    // Process configuration explicitly admits artifacts obeying the native ABI.
-    let artifact = unsafe { Artifact::open(&source.library)? };
-    Ok((source, artifact))
-}
-fn register(
-    runtime: &mut Runtime,
-    owner: &Binding,
+
+#[cfg(target_os = "linux")]
+fn admit_source(
     source: &Source,
-    artifact: &Artifact,
-) -> Result<Box<str>, Error> {
-    let grants = source
-        .grants
-        .iter()
-        .map(|(path, rights)| {
-            owner.resource(path).map(|resource| (resource, *rights))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let binding = runtime.bind_for(owner, &grants)?;
-    let mount = owner.publication_path(&source.mount)?;
-    let path = owner.publication_path(&format!("catalog/{}", source.label))?;
-    let factory = artifact.factory(&mount, binding.connection());
-    runtime
-        .register_bound_factory(
-            &binding,
-            &path,
-            artifact.identity().clone(),
-            factory,
-        )
-        .map_err(|(error, _, _)| error)?;
-    Ok(path)
+    admit: &Admit,
+) -> Result<reovim_sdk::NativeModule, Error> {
+    admit(source.library.as_os_str().as_bytes())
 }
-fn select<'a>(
-    declarations: &'a [(&Contract, Box<str>)],
-    identity: &Contract,
-) -> Result<&'a str, Error> {
-    let mut matching =
-        declarations.iter().filter(|(declared, _)| *declared == identity);
-    let missing = if declarations
-        .iter()
-        .any(|(declared, _)| declared.name == identity.name)
-    {
-        Error::UNSUPPORTED
-    } else {
-        Error::UNAVAILABLE
-    };
-    let selected = matching.next().ok_or(missing)?;
-    if matching.next().is_some() {
-        return Err(Error::INVALID);
-    }
-    Ok(&selected.1)
+
+#[cfg(not(target_os = "linux"))]
+fn admit_source(
+    _: &Source,
+    _: &Admit,
+) -> Result<reovim_sdk::NativeModule, Error> {
+    Err(Error::UNSUPPORTED)
 }
+
+#[cfg(all(test, target_os = "linux"))]
+#[path = "boot/tests.rs"]
+mod tests;

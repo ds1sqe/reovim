@@ -1,3 +1,6 @@
+#[path = "support/memory.rs"]
+mod memory;
+
 use reovim_host_reference::run_with;
 use reovim_kernel_interface::{
     Connection, Contract, Error, Message, RequestError, ResourceId,
@@ -424,10 +427,7 @@ fn client_retirement_settles_its_parked_watch_without_closing_shared_context() {
         .name;
     let shared = h.runtime.resource(&format!("sessions/{name}")).unwrap();
     h.runtime
-        .register(
-            "clients/peer/marker",
-            reovim_resource_local::memory(b"private"),
-        )
+        .register("clients/peer/marker", memory::provider(b"private"))
         .map_err(|(error, _)| error)
         .unwrap();
     let root = h.runtime.resource("clients/peer").unwrap();

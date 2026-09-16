@@ -68,6 +68,14 @@ still govern where C-specific mechanics do not apply.
 - Make the code show how it works. Comments record purpose, invariants,
   non-obvious constraints, safety, or why a rejected alternative is unsafe.
 - Public Rust APIs use Rust documentation where their contract is load-bearing.
+- Every public item must have a docstring with a small usage example. Cover
+  public modules, types, functions, methods, traits, macros, constants, fields
+  and variants, including C and TypeScript public surfaces in their native
+  documentation format. Explain purpose and applicable ownership, errors and
+  safety requirements. Examples must use public interfaces and show meaningful
+  behavior; execute or compile them where supported. Generated public items
+  receive documentation from their declaration. Reduce unnecessary visibility
+  instead of hiding an undocumented public API from the documentation output.
 - Diagnostics are concise, correctly spelled, unambiguous, and tied to the
   responsible mechanism.
 - Do not add editor modelines or repository-local editor overrides to source
