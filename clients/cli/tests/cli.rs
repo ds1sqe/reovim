@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use reovim_client::{Carrier, Client, Fault};
+use reovim_client::{Carrier, Client, Fault, Rd};
 use reovim_client_cli::{complete, input};
 use reovim_host::clock;
 use reovim_kernel_interface::{Booted, Error};
@@ -108,8 +108,8 @@ fn the_script_of_the_process_test_runs_in_process() {
     let source =
         input(&mut client, &["read".to_string(), pointer[5..].to_string()])
             .unwrap();
-    let id = u64::from_le_bytes(source[..].try_into().unwrap());
-    assert_eq!(id.to_string(), file);
+    let id: Rd = reovim_sdk::decode(&source).unwrap();
+    assert_eq!(id.0.to_string(), file);
 
     // The log: every entry from 1, then from a later seq only.
     let all = line(&mut client, "log");

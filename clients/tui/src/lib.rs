@@ -9,12 +9,9 @@ mod editor;
 
 use alloc::format;
 use alloc::string::String;
-use alloc::vec::Vec;
 
-use reovim_client::value::{self, Value};
-use reovim_client::{
-    Client, Decl, Error, Fault, Handle, Hash, Key, Kind, Method, Rd, Rights,
-};
+use reovim_client::{Client, Error, Fault, Handle, Key, Kind, Rd, Rights};
+use reovim_text_api::{history, open, publish, text};
 
 pub use editor::{Editor, Effect, Frame};
 
@@ -37,8 +34,6 @@ pub struct Tui {
     buffer: Rd,
     source: Rd,
     h: Handle,
-    /// What the Buffer offers, read once.
-    decls: Vec<(Hash, Decl)>,
     name: String,
     head: u64,
     published: u64,
@@ -56,18 +51,17 @@ impl Tui {
     pub fn open(mut client: Client, file: &str) -> Result<Self, Fault> {
         client.capability(b"tui".to_vec())?;
         let source = client.resolve(&format!("/module/fs/root/{file}"))?;
-        let open = client.resolve("/module/text/open")?;
-        let input = source.0.to_le_bytes().to_vec();
-        let out = client.call_by_name(open, "open", input)?;
-        let buffer = Rd(rd_of(&out)?);
+        let opener = client.resolve("/module/text/open")?;
+        let opening = client.open(opener, Rights::WRITE)?;
+        let buffer = open::Call(&mut client, opening).open(source)?;
+        client.close(opening)?;
         let pointer = client.lookup(buffer, "source")?;
-        let source = Rd(rd_of(&client.read_all(pointer)?)?);
+        let source: Rd = reovim_sdk::decode(&client.read_all(pointer)?)?;
         let name = client.name(source)?;
         let h = client.open(buffer, Rights::READ.union(Rights::WRITE))?;
         client.watch(h, true)?;
         let watched = client.open(source, Rights::READ)?;
         client.watch(watched, true)?;
-        let decls = client.decls(buffer)?;
         let mut editor = Editor::default();
         editor.loaded(&client.read_whole(h)?);
         client.since()?;
@@ -77,7 +71,6 @@ impl Tui {
             buffer,
             source,
             h,
-            decls,
             name,
             head: 0,
             published: 0,
@@ -106,13 +99,18 @@ impl Tui {
             Effect::Nothing => return Ok(Step::Same),
             Effect::Moved => return Ok(Step::Changed),
             Effect::Edit { at, len, text } => {
-                self.call("replace", edit(at, len, &text)?)?;
+                let edit = text::Edit { at: at as u64, len: len as u64, text };
+                text::Call(&mut self.client, self.h).replace(edit)?;
             }
-            Effect::Undo => self.moved("undo")?,
-            Effect::Redo => self.moved("redo")?,
-            Effect::Save => {
-                self.call("save", Vec::new())?;
+            Effect::Undo => {
+                history::Call(&mut self.client, self.h).undo()?;
+                self.reload()?;
             }
+            Effect::Redo => {
+                history::Call(&mut self.client, self.h).redo()?;
+                self.reload()?;
+            }
+            Effect::Save => publish::Call(&mut self.client, self.h).save()?,
             Effect::Quit if self.head != self.published && !guarded => {
                 self.guard = true;
                 return Ok(Step::Changed);
@@ -168,26 +166,8 @@ impl Tui {
         frame
     }
 
-    /// The method `name` among what the Buffer offers.
-    fn method(&self, name: &str) -> Result<(Hash, Method), Fault> {
-        let found = self.decls.iter().find_map(|(hash, decl)| {
-            decl.methods
-                .iter()
-                .find(|m| m.name == name)
-                .map(|m| (*hash, m.clone()))
-        });
-        found.ok_or_else(|| Fault::Usage(format!("no method `{name}`")))
-    }
-
-    /// `name` on the Buffer's own handle.
-    fn call(&mut self, name: &str, input: Vec<u8>) -> Result<Vec<u8>, Fault> {
-        let (hash, method) = self.method(name)?;
-        self.client.call(self.h, hash, method.number, input)
-    }
-
-    /// A move of head; the draft is read again.
-    fn moved(&mut self, name: &str) -> Result<(), Fault> {
-        self.call(name, Vec::new())?;
+    /// The draft read again after a move of head.
+    fn reload(&mut self) -> Result<(), Fault> {
         let bytes = self.client.read_whole(self.h)?;
         self.editor.loaded(&bytes);
         Ok(())
@@ -195,32 +175,9 @@ impl Tui {
 
     /// Head and published from `tree`; true when either moved.
     fn refresh(&mut self) -> Result<bool, Fault> {
-        let (_, method) = self.method("tree")?;
-        let tree =
-            value::decode(&method.output, &self.call("tree", Vec::new())?)?;
-        let number = |name| tree.field(name).and_then(Value::number);
-        let (head, published) = (
-            number("head").ok_or(Fault::Wire)?,
-            number("published").ok_or(Fault::Wire)?,
-        );
-        let moved = (head, published) != (self.head, self.published);
-        (self.head, self.published) = (head, published);
+        let tree = history::Call(&mut self.client, self.h).tree()?;
+        let moved = (tree.head, tree.published) != (self.head, self.published);
+        (self.head, self.published) = (tree.head, tree.published);
         Ok(moved)
     }
-}
-
-/// The `Edit` record of `replace`.
-fn edit(at: usize, len: usize, text: &str) -> Result<Vec<u8>, Fault> {
-    let mut input = (at as u64).to_le_bytes().to_vec();
-    input.extend_from_slice(&(len as u64).to_le_bytes());
-    let n = u32::try_from(text.len()).map_err(|_| Fault::Wire)?;
-    input.extend_from_slice(&n.to_le_bytes());
-    input.extend_from_slice(text.as_bytes());
-    Ok(input)
-}
-
-/// An `Rd` answer.
-fn rd_of(bytes: &[u8]) -> Result<u64, Fault> {
-    let id: [u8; 8] = bytes.try_into().map_err(|_| Fault::Wire)?;
-    Ok(u64::from_le_bytes(id))
 }

@@ -1,4 +1,4 @@
-//! `declare!` against the text Module's hand-built declarations: the
+//! `declare!` against the text Module's published declarations: the
 //! same bytes, a Driver answering through `dispatch`, a caller through
 //! the wrapper.
 
@@ -29,9 +29,9 @@ declare! {
 
 #[test]
 fn the_declared_bytes_are_the_hand_built_ones() {
-    assert_eq!(history::decl(), reovim_module_text::history::decl());
-    assert_eq!(history::hash(), reovim_module_text::history::hash());
-    assert_eq!(text::decl(), reovim_module_text::text::decl());
+    assert_eq!(history::decl(), reovim_text_api::history::decl());
+    assert_eq!(history::hash(), reovim_text_api::history::hash());
+    assert_eq!(text::decl(), reovim_text_api::text::decl());
 }
 
 /// A Driver with one revision that refuses to move.

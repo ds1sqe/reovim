@@ -10,6 +10,8 @@ publish = false
 
 [dependencies]
 reovim-client = { path = "../core" }
+reovim-sdk = { path = "../../sdk/rust" }
+reovim-text-api = { path = "../../modules/text/api" }
 
 [dev-dependencies]
 reovim-host = { path = "../../host/os", features = ["std"] }

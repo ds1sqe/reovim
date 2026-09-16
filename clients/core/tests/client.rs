@@ -215,7 +215,7 @@ fn a_typed_call_and_a_watched_write() {
     let input = value::encode_arg(&method.input, Some(&note.0.to_string()));
     let out = client.call_by_name(open, "open", input.unwrap()).unwrap();
     let shown = value::show(&method.output, &out).unwrap();
-    let buffer = Rd(u64::from_le_bytes(out[..].try_into().unwrap()));
+    let buffer: Rd = reovim_sdk::decode(&out).unwrap();
     assert_eq!(shown, format!("{}\n", buffer.0).into_bytes());
     let home = client.resolve("/module/text").unwrap();
     assert_eq!(client.parent(buffer).unwrap(), home);

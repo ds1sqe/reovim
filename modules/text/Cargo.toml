@@ -11,6 +11,7 @@ publish = false
 [dependencies]
 reovim-kernel-interface = { path = "../../kernel/interface" }
 reovim-sdk = { path = "../../sdk/rust" }
+reovim-text-api = { path = "api" }
 
 [dev-dependencies]
 reovim-host = { path = "../../host/os", features = ["std"] }

@@ -460,3 +460,18 @@ const fn unit(out: &Out) -> Result<(), Fault> {
         _ => Err(Fault::Wire),
     }
 }
+
+/// A `declare!`d api's caller side runs on a Client.
+impl reovim_sdk::Call for Client {
+    type Error = Fault;
+
+    fn call(
+        &mut self,
+        h: Handle,
+        api: Hash,
+        number: u16,
+        input: Vec<u8>,
+    ) -> Result<Vec<u8>, Fault> {
+        Self::call(self, h, api, number, input)
+    }
+}
