@@ -1,10 +1,10 @@
 //! Vim alone: keys in, text and frames out.
 
 use reovim_client_vim::notation::keys;
-use reovim_client_vim::{Effect, Key, Mode, Quit, Vim};
+use reovim_client_vim::{Edit, Effect, Key, Mode, Quit, Vim};
 
 fn edit(at: usize, len: usize, text: &str, join: bool) -> Effect {
-    Effect::Edit { at, len, text: text.to_string(), join }
+    Effect::Edit(Edit { at, len, text: text.to_string(), join })
 }
 
 /// Every key of `text` in Vim notation; the last effect.

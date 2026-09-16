@@ -87,6 +87,34 @@ impl Vim {
         self.go_clamped(self.skip(at, Class::Blank))
     }
 
+    /// `w` for the last count under an operator: stops at the end of
+    /// the line it is on rather than crossing it, and at the text's
+    /// end.
+    pub(crate) fn word_forward_op(&mut self) -> Effect {
+        if self.cursor >= self.text.len() {
+            return Effect::Nothing;
+        }
+        let end = self.line_end(self.cursor);
+        let start = self.class_at(self.cursor);
+        let mut at = self.forward(self.cursor);
+        if start != Class::Blank {
+            at = self.skip(at, start);
+        }
+        at = self.skip(at, Class::Blank);
+        self.go(at.min(end))
+    }
+
+    /// Whether the char at `next` is of another class than the one at
+    /// `at`: `at` is a word's last char.
+    pub(crate) fn class_changes(&self, at: usize, next: usize) -> bool {
+        self.class_at(at) != self.class_at(next)
+    }
+
+    /// The cursor is on a blank.
+    pub(crate) fn on_blank(&self) -> bool {
+        self.class_at(self.cursor) == Class::Blank
+    }
+
     /// `e`: the end of the word, or of the next one when on an end.
     pub(crate) fn word_end(&mut self) -> Effect {
         if self.cursor >= self.text.len() {

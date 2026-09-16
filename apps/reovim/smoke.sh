@@ -82,17 +82,21 @@ git add a
 
 start commit "$DIR/repo" "git commit"
 editing commit COMMIT_EDITMSG
-keys commit i "second" Escape : w q Enter
+# "the second" typed, `dw` takes "the ", `yyp` and `.` make three lines,
+# `dd` takes one back: a two-line message.
+keys commit i "the second" Escape 0 d w y y p . d d : w q Enter
 [[ "$(ended commit)" == 0 ]] || fail "git commit failed"
-[[ "$(git log -1 --format=%s)" == second ]] || fail "message not used"
+[[ "$(git log -1 --format=%B)" == $'second\nsecond' ]] \
+    || fail "message not used: $(git log -1 --format=%B)"
 
 echo three > a
 git add a
+head="$(git rev-parse HEAD)"
 start abort "$DIR/repo" "git commit"
 editing abort COMMIT_EDITMSG
 keys abort i "third" Escape : c q Enter
-[[ "$(ended abort)" != 0 ]] || fail "git commit went on after Ctrl-C"
-[[ "$(git log -1 --format=%s)" == second ]] || fail "abort committed"
+[[ "$(ended abort)" != 0 ]] || fail "git commit went on after :cq"
+[[ "$(git rev-parse HEAD)" == "$head" ]] || fail "abort committed"
 
 # --- a rebase todo: pick made reword, then the new message ----------
 git commit -q -m third

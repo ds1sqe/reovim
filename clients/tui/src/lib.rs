@@ -8,9 +8,10 @@ extern crate alloc;
 
 use alloc::format;
 use alloc::string::String;
+use alloc::vec::Vec;
 
 use reovim_client::{Client, Error, Fault, Handle, Key, Kind, Rd, Rights};
-use reovim_client_vim::{Effect, Quit, Vim};
+use reovim_client_vim::{Edit, Effect, Quit, Vim};
 use reovim_text_api::{history, open, publish, text};
 
 pub use reovim_client_vim::Frame;
@@ -98,10 +99,8 @@ impl Tui {
         match self.vim.key(key) {
             Effect::Nothing => return Ok(Step::Same),
             Effect::Moved => return Ok(Step::Changed),
-            Effect::Edit { at, len, text, join } => {
-                let edit = text::Edit { at: at as u64, len: len as u64, text };
-                self.edit(edit, join)?;
-            }
+            Effect::Edit(edit) => self.edit(edit)?,
+            Effect::Edits(edits) => self.edits(edits)?,
             Effect::Undo => {
                 let moved = history::Call(&mut self.client, self.h).undo();
                 self.moved(moved, "Already at oldest change")?;
@@ -174,9 +173,8 @@ impl Tui {
     /// The head written to the source, after the newline Vim adds to
     /// a last line without one.
     fn save(&mut self) -> Result<(), Fault> {
-        if let Some(Effect::Edit { at, len, text, join }) = self.vim.fix_eol() {
-            let edit = text::Edit { at: at as u64, len: len as u64, text };
-            self.edit(edit, join)?;
+        if let Some(Effect::Edit(edit)) = self.vim.fix_eol() {
+            self.edit(edit)?;
         }
         publish::Call(&mut self.client, self.h).save()
     }
@@ -187,9 +185,19 @@ impl Tui {
         self.vim.goto_line(n);
     }
 
+    /// `edits` in order, as `.` replayed them.
+    fn edits(&mut self, edits: Vec<Edit>) -> Result<(), Fault> {
+        for edit in edits {
+            self.edit(edit)?;
+        }
+        Ok(())
+    }
+
     /// `edit` as a new revision, or into the head one when it joins
     /// the insert under way.
-    fn edit(&mut self, edit: text::Edit, join: bool) -> Result<(), Fault> {
+    fn edit(&mut self, edit: Edit) -> Result<(), Fault> {
+        let Edit { at, len, text, join } = edit;
+        let edit = text::Edit { at: at as u64, len: len as u64, text };
         let mut call = text::Call(&mut self.client, self.h);
         if join { call.amend(edit) } else { call.replace(edit) }
     }

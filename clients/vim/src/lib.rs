@@ -13,12 +13,27 @@ extern crate alloc;
 mod command;
 mod motion;
 pub mod notation;
+mod operator;
 mod word;
 
 use alloc::string::String;
 use alloc::vec::Vec;
 
+pub use operator::Motion;
 pub use reovim_client::Key;
+
+use operator::{Find, Operator};
+
+/// One change to the text, already applied here: `len` bytes at
+/// `at` became `text`. With `join` the edit belongs to the head
+/// revision, not a new one: one insert is one undo step.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Edit {
+    pub at: usize,
+    pub len: usize,
+    pub text: String,
+    pub join: bool,
+}
 
 /// What a key did.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -26,15 +41,9 @@ pub enum Effect {
     Nothing,
     /// The cursor or the mode moved; the text did not.
     Moved,
-    /// `len` bytes at `at` became `text`, already applied here. With
-    /// `join` the edit belongs to the head revision, not a new one:
-    /// one insert is one undo step.
-    Edit {
-        at: usize,
-        len: usize,
-        text: String,
-        join: bool,
-    },
+    Edit(Edit),
+    /// Several edits in order, as `.` replays them.
+    Edits(Vec<Edit>),
     Undo,
     Redo,
     Save,
@@ -73,6 +82,37 @@ pub enum Mode {
     Command,
 }
 
+/// What the unnamed register holds: text, and whether it came from
+/// whole lines.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct Register {
+    pub text: String,
+    pub linewise: bool,
+}
+
+/// What a normal-mode command has typed so far.
+#[derive(Debug, Default)]
+struct Pending {
+    /// Digits typed before a command; 0 is none.
+    count: usize,
+    /// A `g`, `d`, `Z`, `f` or the like waiting for its second key.
+    key: Option<char>,
+    /// An operator waiting for its motion, with its own count.
+    operator: Option<(Operator, usize)>,
+    /// A motion is being run for an operator, not for the cursor.
+    running: bool,
+}
+
+/// What `.` needs: the keys of the command under way and of the last
+/// change.
+#[derive(Debug, Default)]
+struct Repeat {
+    record: Vec<Key>,
+    last: Vec<Key>,
+    /// `.` is feeding keys back in.
+    replaying: bool,
+}
+
 /// The text, the cursor as a byte index on a char boundary, the first
 /// line shown, and the mode. In normal mode the cursor sits on a
 /// char, never past the last one of its line; insert may sit past it.
@@ -82,10 +122,7 @@ pub struct Vim {
     cursor: usize,
     top: usize,
     mode: Mode,
-    /// Digits typed before a command; 0 is none.
-    count: usize,
-    /// A `g`, `d` or `Z` waiting for its second key.
-    pending: Option<char>,
+    pending: Pending,
     /// The next insert edit joins the head revision.
     joining: bool,
     /// The column a vertical motion wants, `usize::MAX` after `$`.
@@ -95,6 +132,10 @@ pub struct Vim {
     /// Bytes of indent `o`, `O` or Enter just copied, dropped again if
     /// nothing is typed on the line.
     indent: usize,
+    register: Register,
+    /// The last `f`, `t`, `F` or `T`, for `;` and `,`.
+    find: Option<(Find, char)>,
+    repeat: Repeat,
     /// The command line being typed.
     line: String,
     /// Shown until the next key.
@@ -110,6 +151,11 @@ impl Vim {
     #[must_use]
     pub const fn mode(&self) -> Mode {
         self.mode
+    }
+
+    #[must_use]
+    pub const fn register(&self) -> &Register {
+        &self.register
     }
 
     /// `bytes` as the text, lossily; the cursor stays where it can.
@@ -132,6 +178,9 @@ impl Vim {
 
     /// One key in the current mode; a message showing goes with it.
     pub fn key(&mut self, key: Key) -> Effect {
+        if !self.repeat.replaying {
+            self.repeat.record.push(key);
+        }
         let shown = !self.message.is_empty();
         self.message.clear();
         let effect = match self.mode {
@@ -162,7 +211,8 @@ impl Vim {
         }
         let at = self.text.len();
         self.text.push('\n');
-        Some(Effect::Edit { at, len: 0, text: String::from("\n"), join: false })
+        let text = String::from("\n");
+        Some(Effect::Edit(Edit { at, len: 0, text, join: false }))
     }
 
     /// The cursor's line and column, in chars from 0.
@@ -206,44 +256,37 @@ impl Vim {
 
     fn normal(&mut self, key: Key) -> Effect {
         if let Key::Char(digit @ '0'..='9') = key
-            && (digit != '0' || self.count > 0)
+            && (digit != '0' || self.pending.count > 0)
         {
             let digit = digit as usize - '0' as usize;
-            self.count = self.count.saturating_mul(10).saturating_add(digit);
+            self.pending.count =
+                self.pending.count.saturating_mul(10).saturating_add(digit);
             self.keep_want = true;
             return Effect::Nothing;
         }
-        let count = core::mem::take(&mut self.count);
+        let count = core::mem::take(&mut self.pending.count);
         let n = count.max(1);
-        if let Some(first) = self.pending.take() {
-            return match (first, key) {
-                ('g', Key::Char('g')) => self.jump(n - 1),
-                ('d', Key::Char('d')) => self.delete_lines(n),
-                ('Z', Key::Char('Z')) => Effect::Quit(Quit::Write),
-                ('Z', Key::Char('Q')) => Effect::Quit(Quit::Force),
-                _ => Effect::Nothing,
-            };
+        if let Some(first) = self.pending.key.take() {
+            return self.second(first, key, count);
         }
-        match key {
-            Key::Char('h') | Key::Left => self.repeat(n, Self::left),
-            Key::Char('l') | Key::Right => self.repeat(n, Self::right),
-            Key::Char('j') | Key::Down => self.repeat(n, |v| v.vertical(true)),
-            Key::Char('k') | Key::Up => self.repeat(n, |v| v.vertical(false)),
-            Key::Char('0') | Key::Home => self.go(self.line_start(self.cursor)),
-            Key::Char('^') => self.go(self.first_non_blank(self.cursor)),
-            Key::Char('$') | Key::End => self.line_end_motion(n),
-            Key::Char('w') => self.repeat(n, Self::word_forward),
-            Key::Char('b') => self.repeat(n, Self::word_back),
-            Key::Char('e') => self.repeat(n, Self::word_end),
-            Key::Char(first @ ('g' | 'd' | 'Z')) => {
-                self.pending = Some(first);
-                self.count = count;
-                self.keep_want = true;
-                Effect::Nothing
+        if let Some(motion) = Motion::of(key, count) {
+            return self.motion(motion, n);
+        }
+        let effect = match key {
+            Key::Char(first @ ('g' | 'f' | 't' | 'F' | 'T')) => {
+                return self.wait(first, count);
             }
-            Key::Char('G') => {
-                self.jump(count.checked_sub(1).unwrap_or(usize::MAX))
+            Key::Char('Z') if self.pending.operator.is_none() => {
+                return self.wait('Z', count);
             }
+            Key::Char('d') => {
+                return self.operator(Operator::Delete, n);
+            }
+            Key::Char('c') => {
+                return self.operator(Operator::Change, n);
+            }
+            Key::Char('y') => return self.operator(Operator::Yank, n),
+            _ if self.pending.operator.take().is_some() => Effect::Nothing,
             Key::Char('i') => self.enter_insert(),
             Key::Char('a') => {
                 self.cursor = self.append_at();
@@ -272,9 +315,19 @@ impl Vim {
                 self.indent = indent.len();
                 effect
             }
-            Key::Char('x') => self.delete_chars(n),
-            Key::Char('X') => self.delete_before(n),
-            Key::Char('D') => self.delete_to_end(),
+            Key::Char('x') => self.operate(Operator::Delete, n, Motion::Right),
+            Key::Char('X') => self.operate(Operator::Delete, n, Motion::Left),
+            Key::Char('D') => {
+                self.operate(Operator::Delete, n, Motion::LineEnd)
+            }
+            Key::Char('C') => {
+                self.operate(Operator::Change, n, Motion::LineEnd)
+            }
+            Key::Char('Y') => self.operate(Operator::Yank, n, Motion::Lines),
+            Key::Char('p') => self.paste(true, n),
+            Key::Char('P') => self.paste(false, n),
+            Key::Char('J') => self.join(n),
+            Key::Char('.') => return self.replay(count),
             Key::Char('u') => Effect::Undo,
             Key::Ctrl('r') => Effect::Redo,
             Key::Char(':') => {
@@ -282,7 +335,106 @@ impl Vim {
                 Effect::Moved
             }
             _ => Effect::Nothing,
+        };
+        self.settle(&effect);
+        effect
+    }
+
+    /// The second key of a pair: `gg`, `dd`, `ZZ`, `fx` and the like.
+    fn second(&mut self, first: char, key: Key, count: usize) -> Effect {
+        let n = count.max(1);
+        let motion = match (first, key) {
+            ('g', Key::Char('g')) => Motion::Line(count.saturating_sub(1)),
+            ('f', Key::Char(c)) => Motion::Find(Find::Forward, c),
+            ('t', Key::Char(c)) => Motion::Find(Find::ForwardTo, c),
+            ('F', Key::Char(c)) => Motion::Find(Find::Backward, c),
+            ('T', Key::Char(c)) => Motion::Find(Find::BackwardTo, c),
+            ('Z', Key::Char('Z')) => return Effect::Quit(Quit::Write),
+            ('Z', Key::Char('Q')) => return Effect::Quit(Quit::Force),
+            _ => {
+                self.pending.operator = None;
+                self.repeat.record.clear();
+                return Effect::Nothing;
+            }
+        };
+        if let Motion::Find(kind, c) = motion {
+            self.find = Some((kind, c));
         }
+        self.motion(motion, n)
+    }
+
+    /// `first` waits for its second key; the count waits with it.
+    const fn wait(&mut self, first: char, count: usize) -> Effect {
+        self.pending.key = Some(first);
+        self.pending.count = count;
+        self.keep_want = true;
+        Effect::Nothing
+    }
+
+    /// An operator key: the operator waits for a motion, or doubled
+    /// (`dd`, `cc`, `yy`) takes `n` lines.
+    fn operator(&mut self, op: Operator, n: usize) -> Effect {
+        match self.pending.operator.take() {
+            Some((waiting, count)) if waiting == op => {
+                let effect = self.operate(op, count * n, Motion::Lines);
+                self.settle(&effect);
+                effect
+            }
+            Some(_) => {
+                self.repeat.record.clear();
+                Effect::Nothing
+            }
+            None => {
+                self.pending.operator = Some((op, n));
+                self.keep_want = true;
+                Effect::Nothing
+            }
+        }
+    }
+
+    /// `motion` `n` times for the cursor, or for the operator waiting.
+    fn motion(&mut self, motion: Motion, n: usize) -> Effect {
+        let effect = match self.pending.operator.take() {
+            Some((op, count)) => self.operate(op, count * n, motion),
+            None => self.move_by(motion, n),
+        };
+        self.settle(&effect);
+        effect
+    }
+
+    /// The command is over: a change is what `.` repeats, anything
+    /// else is forgotten. An insert goes on recording until Esc.
+    fn settle(&mut self, effect: &Effect) {
+        if self.repeat.replaying || self.mode == Mode::Insert {
+            return;
+        }
+        match effect {
+            Effect::Edit(_) | Effect::Edits(_) => {
+                self.repeat.last = core::mem::take(&mut self.repeat.record);
+            }
+            _ => self.repeat.record.clear(),
+        }
+    }
+
+    /// `.`: the last change's keys fed back in, its count replaced
+    /// by `count` when there is one; every edit they make, in order.
+    fn replay(&mut self, count: usize) -> Effect {
+        self.repeat.record.clear();
+        let mut keys: Vec<Key> = self.repeat.last.clone();
+        if count > 0 {
+            let digits = keys.iter().take_while(|k| is_digit(**k)).count();
+            keys.drain(..digits);
+            let count = alloc::format!("{count}");
+            keys.splice(0..0, count.chars().map(Key::Char));
+        }
+        self.repeat.replaying = true;
+        let mut edits = Vec::new();
+        for key in keys {
+            let effect = self.key(key);
+            collect(&mut edits, effect);
+        }
+        self.repeat.replaying = false;
+        if edits.is_empty() { Effect::Nothing } else { Effect::Edits(edits) }
     }
 
     fn insert(&mut self, key: Key) -> Effect {
@@ -300,14 +452,21 @@ impl Vim {
             Key::Down => self.arrow(|v| v.vertical(true)),
             Key::Home => self.arrow(|v| v.go(v.line_start(v.cursor))),
             Key::End => self.arrow(|v| v.go(v.line_end(v.cursor))),
-            Key::Esc => {
-                self.mode = Mode::Normal;
-                let dropped = self.drop_indent();
-                self.cursor = self.stepped_back();
-                dropped.unwrap_or(Effect::Moved)
-            }
+            Key::Esc => self.leave_insert(),
             Key::Ctrl(_) => Effect::Nothing,
         }
+    }
+
+    /// Esc: back to normal mode, the insert being the last change,
+    /// a pending indent dropped, the cursor stepped back.
+    fn leave_insert(&mut self) -> Effect {
+        self.mode = Mode::Normal;
+        if !self.repeat.replaying {
+            self.repeat.last = core::mem::take(&mut self.repeat.record);
+        }
+        let dropped = self.drop_indent();
+        self.cursor = self.stepped_back();
+        dropped.unwrap_or(Effect::Moved)
     }
 
     /// A new line after the cursor with `indent` copied onto it, as
@@ -334,28 +493,6 @@ impl Vim {
         self.text.replace_range(at..self.cursor, "");
         self.cursor = at;
         Some(self.edit(at, pending, String::new()))
-    }
-
-    /// `$` with a count: `n - 1` lines down, then the last char; a
-    /// vertical motion after it wants the end of its line too.
-    fn line_end_motion(&mut self, n: usize) -> Effect {
-        let down = self.repeat(n - 1, |v| v.vertical(true));
-        let end = self.go(self.last_char(self.cursor));
-        self.want = usize::MAX;
-        self.keep_want = true;
-        if down == Effect::Moved { down } else { end }
-    }
-
-    /// Line `line` from 0, clamped to the last, at the wanted column.
-    fn jump(&mut self, line: usize) -> Effect {
-        let from = self.position().0;
-        let line = line.min(self.line_count() - 1);
-        self.keep_want = true;
-        if line == from {
-            return Effect::Nothing;
-        }
-        let start = self.line_at(line).unwrap_or(0);
-        self.go_clamped(self.at_column(start, self.want))
     }
 
     /// Insert mode at the cursor; the first edit starts a revision.
@@ -401,77 +538,18 @@ impl Vim {
     /// an insert is under way.
     const fn edit(&mut self, at: usize, len: usize, text: String) -> Effect {
         let join = core::mem::replace(&mut self.joining, true);
-        Effect::Edit { at, len, text, join }
+        Effect::Edit(Edit { at, len, text, join })
     }
 
-    /// `x`: up to `n` chars from the cursor on its line, a revision.
-    fn delete_chars(&mut self, n: usize) -> Effect {
-        let end = self.line_end(self.cursor);
-        let len: usize = self.text[self.cursor..end]
-            .chars()
-            .take(n)
-            .map(char::len_utf8)
-            .sum();
-        self.remove(self.cursor, len)
-    }
-
-    /// `X`: up to `n` chars before the cursor on its line.
-    fn delete_before(&mut self, n: usize) -> Effect {
-        let start = self.line_start(self.cursor);
-        let len: usize = self.text[start..self.cursor]
-            .chars()
-            .rev()
-            .take(n)
-            .map(char::len_utf8)
-            .sum();
-        self.cursor -= len;
-        self.remove(self.cursor, len)
-    }
-
-    /// `dd`: `n` lines from the cursor's, the last line taking the
-    /// newline before it; the cursor lands on the first non-blank.
-    fn delete_lines(&mut self, n: usize) -> Effect {
-        let start = self.line_start(self.cursor);
-        let mut end = self.line_end(self.cursor);
-        for _ in 1..n {
-            end = self.next_line_end(end);
-        }
-        let (at, len) = if end < self.text.len() {
-            (start, end + 1 - start)
-        } else {
-            let at = start.saturating_sub(1);
-            (at, self.text.len() - at)
-        };
-        let effect = self.remove(at, len);
-        let at = at.min(self.bound());
-        self.cursor = self.first_non_blank(self.line_start(at));
-        self.clamp();
-        effect
-    }
-
-    /// The end of the line after the one ending at `end`, or `end` at
-    /// the text's end.
-    fn next_line_end(&self, end: usize) -> usize {
-        if end >= self.text.len() { end } else { self.line_end(end + 1) }
-    }
-
-    /// `D`: from the cursor to the end of its line.
-    fn delete_to_end(&mut self) -> Effect {
-        let len = self.line_end(self.cursor) - self.cursor;
-        self.remove(self.cursor, len)
-    }
-
-    /// `len` bytes at `at` gone as a revision of their own; the cursor
-    /// clamped after. Nothing when there is nothing to remove.
+    /// `len` bytes at `at` gone as a revision of their own. Nothing
+    /// when there is nothing to remove.
     fn remove(&mut self, at: usize, len: usize) -> Effect {
         if len == 0 {
             return Effect::Nothing;
         }
         self.text.replace_range(at..at + len, "");
-        self.cursor = self.cursor.min(at);
-        self.clamp();
         self.joining = false;
-        Effect::Edit { at, len, text: String::new(), join: false }
+        self.edit(at, len, String::new())
     }
 
     /// `motion` `n` times, or until one goes nowhere; `Moved` if any
@@ -480,5 +558,18 @@ impl Vim {
         let moved =
             (0..n).take_while(|_| motion(self) == Effect::Moved).count();
         if moved > 0 { Effect::Moved } else { Effect::Nothing }
+    }
+}
+
+const fn is_digit(key: Key) -> bool {
+    matches!(key, Key::Char('0'..='9'))
+}
+
+/// The edits `effect` made, onto `edits`.
+fn collect(edits: &mut Vec<Edit>, effect: Effect) {
+    match effect {
+        Effect::Edit(edit) => edits.push(edit),
+        Effect::Edits(more) => edits.extend(more),
+        _ => {}
     }
 }

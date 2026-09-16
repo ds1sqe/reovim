@@ -114,10 +114,18 @@ impl Vim {
         self.go(self.prev_char(self.cursor))
     }
 
-    /// Right by one char; in normal mode not onto the line's end.
+    /// The next char boundary after `at`, or `at` at the text's end.
+    pub(crate) fn forward_char(&self, at: usize) -> usize {
+        let c = self.text[at.min(self.text.len())..].chars().next();
+        c.map_or(at, |c| at + c.len_utf8())
+    }
+
+    /// Right by one char; in normal mode not onto the line's end,
+    /// unless an operator is asking.
     pub(crate) fn right(&mut self) -> Effect {
         let limit = match self.mode {
             Mode::Insert => self.line_end(self.cursor),
+            _ if self.pending.running => self.line_end(self.cursor),
             Mode::Normal | Mode::Command => self.last_char(self.cursor),
         };
         match self.text[self.cursor..].chars().next() {
