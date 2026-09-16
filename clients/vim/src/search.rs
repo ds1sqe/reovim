@@ -25,28 +25,21 @@ pub struct Search {
     pub options: Options,
 }
 
-/// Every match's start in `text`, in order.
-fn starts(pattern: &Pattern, text: &str) -> Vec<usize> {
-    let mut found = Vec::new();
-    let mut col = 0;
-    let mut next = pattern.find(text, col);
-    while let Some((start, end, _)) = next {
-        found.push(start);
-        let width = text[start..].chars().next().map_or(1, char::len_utf8);
-        col = if end > start { end } else { start + width };
-        next = (start < text.len()).then(|| pattern.find(text, col)).flatten();
-    }
-    found
-}
-
 impl Vim {
+    /// E486 for the last pattern; nothing moved.
+    pub(crate) fn not_found(&mut self) -> Effect {
+        let pattern = &self.search.pattern;
+        self.message = alloc::format!("E486: Pattern not found: {pattern}");
+        Effect::Nothing
+    }
+
     /// The last pattern as a `Pattern`, or E486.
     fn pattern(&mut self) -> Option<Pattern> {
         let Search { pattern, options, .. } = &self.search;
         let parsed =
             Pattern::parse(pattern, options.ignorecase, options.smartcase);
         if parsed.is_none() {
-            self.message = alloc::format!("E486: Pattern not found: {pattern}");
+            self.not_found();
         }
         parsed
     }
@@ -59,16 +52,32 @@ impl Vim {
         for _ in 0..n {
             at = at.and_then(|from| self.nth(&pattern, from, forward));
         }
-        let Some(at) = at else {
-            self.message = alloc::format!(
-                "E486: Pattern not found: {}",
-                self.search.pattern
-            );
-            return Effect::Nothing;
-        };
+        let Some(at) = at else { return self.not_found() };
         self.search.stale = false;
         self.go(at);
         Effect::Moved
+    }
+
+    /// Every match starting from `from` up to `limit`, each found
+    /// after the one before: past its end, or one char on for an
+    /// empty one.
+    fn matches(
+        &self,
+        pattern: &Pattern,
+        from: usize,
+        limit: usize,
+    ) -> Vec<usize> {
+        let mut found = Vec::new();
+        let mut col = from;
+        let mut next = pattern.find(&self.text, col);
+        while let Some((start, end, _)) = next.filter(|m| m.0 <= limit) {
+            found.push(start);
+            col = self.past(start, end);
+            next = (col <= limit && start < self.text.len())
+                .then(|| pattern.find(&self.text, col))
+                .flatten();
+        }
+        found
     }
 
     fn nth(
@@ -84,12 +93,19 @@ impl Vim {
         }
     }
 
+    /// Where to look after a match: its end, or the next char for an
+    /// empty one.
+    fn past(&self, start: usize, end: usize) -> usize {
+        if end > start { end } else { self.forward_char(start) }
+    }
+
     /// The first match after `cursor`, as nvim's `cpo-c` has it: a
     /// match at or before the cursor is passed by continuing from its
     /// end; then the lines after; then from the top.
     fn next_match(&self, pattern: &Pattern, cursor: usize) -> Option<usize> {
         let line_end = self.line_end(cursor);
-        let on_line = self.line_matches(pattern, cursor, line_end);
+        let line_start = self.line_start(cursor);
+        let on_line = self.matches(pattern, line_start, line_end);
         let later = on_line.into_iter().find(|start| *start > cursor);
         let after = (line_end < self.text.len())
             .then(|| pattern.find(&self.text, line_end + 1));
@@ -98,36 +114,9 @@ impl Vim {
             .or_else(|| pattern.find(&self.text, 0).map(|(start, _, _)| start))
     }
 
-    /// The matches on the cursor's line, each found from the end of
-    /// the one before, up to the line's end.
-    fn line_matches(
-        &self,
-        pattern: &Pattern,
-        cursor: usize,
-        line_end: usize,
-    ) -> Vec<usize> {
-        let mut found = Vec::new();
-        let mut col = self.line_start(cursor);
-        let mut next = pattern.find(&self.text, col);
-        while let Some((start, end, _)) = next.filter(|m| m.0 <= line_end) {
-            found.push(start);
-            col = self.past(start, end);
-            next = (col <= line_end)
-                .then(|| pattern.find(&self.text, col))
-                .flatten();
-        }
-        found
-    }
-
-    /// Where to look after a match: its end, or the next char for an
-    /// empty one.
-    fn past(&self, start: usize, end: usize) -> usize {
-        if end > start { end } else { self.forward_char(start) }
-    }
-
     /// The last match before `cursor`, else the last in the text.
     fn prev_match(&self, pattern: &Pattern, cursor: usize) -> Option<usize> {
-        let all = starts(pattern, &self.text);
+        let all = self.matches(pattern, 0, self.text.len());
         let before = all.iter().rev().find(|s| **s < cursor);
         before.or_else(|| all.last()).copied()
     }
@@ -176,7 +165,7 @@ impl Vim {
         };
         let cell = |n: usize| u16::try_from(n).unwrap_or(u16::MAX);
         let shown = |line: usize| line >= top && line < top + height;
-        starts(&pattern, &self.text)
+        self.matches(&pattern, 0, self.text.len())
             .into_iter()
             .map(|start| (start, self.position_of(start)))
             .filter(|(_, (line, _))| shown(*line))

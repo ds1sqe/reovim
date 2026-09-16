@@ -5,7 +5,7 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use crate::{Edit, Effect, Key, Kind, Mode, Register, Vim};
+use crate::{Edit, Effect, Key, Kind, Mode, Put, Register, Vim, moved};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Operator {
@@ -150,7 +150,7 @@ impl Motion {
 
     /// `$` under an operator already stops past the last char, so it
     /// is exclusive here.
-    const fn kind(self, find: Option<(Find, char)>) -> Extent {
+    const fn extent(self, find: Option<(Find, char)>) -> Extent {
         let last_forward = match find {
             Some((kind, _)) => kind.forward(),
             None => false,
@@ -231,11 +231,9 @@ impl Vim {
     }
 
     fn repeat_find(&mut self, n: usize, kind: Find, c: char) -> Effect {
-        let once = |v: &mut Self| {
+        self.repeat(n, |v| {
             v.found(kind, c).map_or(Effect::Nothing, |to| v.go(to))
-        };
-        let moved = (0..n).take_while(|_| once(self) == Effect::Moved).count();
-        if moved > 0 { Effect::Moved } else { Effect::Nothing }
+        })
     }
 
     /// Where `c` is on the cursor's line in `kind`'s direction; for
@@ -308,7 +306,7 @@ impl Vim {
             return self.object_span(inner, kind);
         }
         let (start, want) = (self.cursor, self.want);
-        let mut kind = motion.kind(self.find);
+        let mut kind = motion.extent(self.find);
         self.pending.running = true;
         let moved = match motion {
             Motion::Lines => self.lines_down(n - 1),
@@ -350,11 +348,7 @@ impl Vim {
     fn words_for_operator(&mut self, n: usize) -> Effect {
         let before = self.repeat(n - 1, Self::word_forward);
         let last = self.word_forward_op();
-        if before == Effect::Moved || last == Effect::Moved {
-            Effect::Moved
-        } else {
-            Effect::Nothing
-        }
+        moved(before == Effect::Moved || last == Effect::Moved)
     }
 
     /// `op` over `motion`, `n` times: the register filled, the text
@@ -439,12 +433,11 @@ impl Vim {
             })
             .collect::<Vec<_>>()
             .join("\n");
-        self.text.replace_range(start..end, &block);
+        let effect = self.replace(start, end - start, block);
         self.cursor = self.at_screen_column(start, self.want);
         self.keep_want = true;
         self.clamp();
-        self.joining = false;
-        self.edit(start, end - start, block)
+        effect
     }
 
     /// `gu`, `gU`, `g~` over `len` bytes at `at`, the cursor where the
@@ -466,11 +459,10 @@ impl Vim {
         };
         let cased: String =
             self.text[at..at + len].chars().map(|c| recase(op, c)).collect();
-        self.text.replace_range(at..at + len, &cased);
+        let effect = self.replace(at, len, cased);
         self.cursor = from;
         self.clamp();
-        self.joining = false;
-        self.edit(at, len, cased)
+        effect
     }
 
     /// `~`: the case of `n` chars from the cursor on its line
@@ -490,11 +482,10 @@ impl Vim {
             .chars()
             .map(|c| recase(Operator::Toggle, c))
             .collect();
-        self.text.replace_range(at..at + len, &cased);
+        let effect = self.replace(at, len, cased);
         self.cursor = at + len;
         self.clamp();
-        self.joining = false;
-        self.edit(at, len, cased)
+        effect
     }
 
     /// After a yank: the cursor where the span began, so `yy` does not
@@ -509,18 +500,11 @@ impl Vim {
     /// has it. Chars taken down to nothing leave one empty line, as
     /// Vim's buffer always has a line.
     fn deleted(&mut self, at: usize, len: usize, linewise: bool) -> Effect {
-        let removed = self.remove(at, len);
-        let emptied = !linewise && self.text.is_empty();
-        let effect = if emptied {
-            self.text.push('\n');
-            Effect::Edit(Edit {
-                at: 0,
-                len,
-                text: String::from("\n"),
-                join: false,
-            })
+        let whole = !linewise && at == 0 && len == self.text.len();
+        let effect = if whole {
+            self.replace(0, len, String::from("\n"))
         } else {
-            removed
+            self.remove(at, len)
         };
         let start = at.min(self.bound());
         let line = self.line_start(start);
@@ -579,12 +563,11 @@ impl Vim {
         let start = self.line_start(from);
         let end = self.line_end(to);
         let indent = self.indent_of(from);
-        self.text.replace_range(start..end, &indent);
+        let effect = self.replace(start, end - start, indent.clone());
         self.cursor = start + indent.len();
         self.mode = Mode::Insert;
         self.indent = indent.len();
-        self.joining = false;
-        self.edit(start, end - start, indent)
+        effect
     }
 
     /// What an operator took, into the unnamed register and the one
@@ -652,7 +635,7 @@ impl Vim {
     /// register goes on lines of its own.
     pub(crate) fn paste(&mut self, after: bool, n: usize) -> Effect {
         let Some(register) = self.fetch() else {
-            self.put = Some((after, n, None));
+            self.put = Some(Put { after, count: n, over: None });
             return Effect::Clipboard;
         };
         self.paste_register(register, after, n)
@@ -692,22 +675,21 @@ impl Vim {
         } else {
             block
         };
-        self.text.insert_str(at, &put);
-        self.joining = false;
+        let effect = self.replace(at, 0, put);
         let first = at + usize::from(after && last);
         self.cursor = self.first_non_blank(first);
         self.clamp();
-        self.edit(at, 0, put)
+        effect
     }
 
     fn paste_chars(&mut self, after: bool, n: usize, text: &str) -> Effect {
         let put = text.repeat(n);
         let at = if after { self.append_at() } else { self.cursor };
-        self.text.insert_str(at, &put);
-        self.joining = false;
-        let end = self.prev_char(at + put.len());
-        self.cursor = if put.contains('\n') { at } else { end };
-        self.edit(at, 0, put)
+        let lines = put.contains('\n');
+        let effect = self.replace(at, 0, put);
+        let end = self.prev_char(at + effect_len(&effect));
+        self.cursor = if lines { at } else { end };
+        effect
     }
 
     /// A block register put: piece `i` onto the line `i` below the
@@ -791,11 +773,18 @@ impl Vim {
             out.push_str(piece);
             end = next;
         }
-        self.text.replace_range(start..end, &out);
+        let effect = self.replace(start, end - start, out);
         self.cursor = seam;
         self.clamp();
-        self.joining = false;
-        self.edit(start, end - start, out)
+        effect
+    }
+}
+
+/// The bytes an edit put in.
+const fn effect_len(effect: &Effect) -> usize {
+    match effect {
+        Effect::Edit(edit) => edit.text.len(),
+        _ => 0,
     }
 }
 

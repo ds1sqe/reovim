@@ -28,13 +28,7 @@ fn class(c: Option<char>) -> Class {
 
 impl Vim {
     fn class_at(&self, at: usize) -> Class {
-        class(self.text[at.min(self.text.len())..].chars().next())
-    }
-
-    /// The next char boundary, or the end of the text.
-    fn forward(&self, at: usize) -> usize {
-        let c = self.text[at..].chars().next();
-        c.map_or(at, |c| at + c.len_utf8())
+        class(self.char_at(at))
     }
 
     /// `at` is an empty line: on a `\n` that starts its line.
@@ -48,7 +42,7 @@ impl Vim {
         let word = |at| class == Class::Blank && self.empty_line(at);
         let len = self.text.len();
         while at < len && self.class_at(at) == class && !word(at) {
-            at = self.forward(at);
+            at = self.forward_char(at);
         }
         at
     }
@@ -56,7 +50,7 @@ impl Vim {
     /// Forward over blanks, empty lines included.
     fn skip_blanks(&self, mut at: usize) -> usize {
         while at < self.text.len() && self.class_at(at) == Class::Blank {
-            at = self.forward(at);
+            at = self.forward_char(at);
         }
         at
     }
@@ -85,7 +79,7 @@ impl Vim {
             return Effect::Nothing;
         }
         let start = self.class_at(self.cursor);
-        let mut at = self.forward(self.cursor);
+        let mut at = self.forward_char(self.cursor);
         if start != Class::Blank {
             at = self.skip(at, start);
         }
@@ -101,7 +95,7 @@ impl Vim {
         }
         let end = self.line_end(self.cursor);
         let start = self.class_at(self.cursor);
-        let mut at = self.forward(self.cursor);
+        let mut at = self.forward_char(self.cursor);
         if start != Class::Blank {
             at = self.skip(at, start);
         }
@@ -126,7 +120,7 @@ impl Vim {
             return Effect::Nothing;
         }
         let start = self.class_at(self.cursor);
-        let mut at = self.forward(self.cursor);
+        let mut at = self.forward_char(self.cursor);
         if start == Class::Blank || self.class_at(at) != start {
             at = self.skip_blanks(at);
         }

@@ -1,9 +1,22 @@
 //! Where things are in the text: lines, columns, chars, and the
 //! moves that keep the cursor where Vim keeps it.
 
-use crate::{Effect, Mode, Vim};
+use crate::{Effect, Mode, Vim, moved};
 
 impl Vim {
+    /// The line and column of `at`, in chars from 0.
+    pub(crate) fn position_of(&self, at: usize) -> (usize, usize) {
+        let before = &self.text[..at];
+        let line = before.matches('\n').count();
+        let column = before.rsplit('\n').next().unwrap_or("").chars().count();
+        (line, column)
+    }
+
+    /// The char at `at`, if the text reaches it.
+    pub(crate) fn char_at(&self, at: usize) -> Option<char> {
+        self.text[at.min(self.text.len())..].chars().next()
+    }
+
     /// The last byte index the cursor may take: before a final `\n`,
     /// else the end of the text.
     pub(crate) fn bound(&self) -> usize {
@@ -159,12 +172,11 @@ impl Vim {
     /// Right by one char; in normal mode not onto the line's end,
     /// unless an operator is asking.
     pub(crate) fn right(&mut self) -> Effect {
-        let limit = match self.mode {
-            Mode::Insert => self.line_end(self.cursor),
-            _ if self.pending.running => self.line_end(self.cursor),
-            Mode::Normal | Mode::Command | Mode::Visual(_) => {
-                self.last_char(self.cursor)
-            }
+        let past = self.mode == Mode::Insert || self.pending.running;
+        let limit = if past {
+            self.line_end(self.cursor)
+        } else {
+            self.last_char(self.cursor)
         };
         match self.text[self.cursor..].chars().next() {
             Some(c) if self.cursor < limit => {
@@ -196,15 +208,13 @@ impl Vim {
         let from = self.cursor;
         self.cursor = to;
         self.clamp();
-        if self.cursor == from { Effect::Nothing } else { Effect::Moved }
+        moved(self.cursor != from)
     }
 
     pub(crate) const fn go(&mut self, to: usize) -> Effect {
-        if to == self.cursor {
-            return Effect::Nothing;
-        }
+        let from = self.cursor;
         self.cursor = to;
-        Effect::Moved
+        moved(to != from)
     }
 }
 

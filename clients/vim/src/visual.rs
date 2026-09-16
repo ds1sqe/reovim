@@ -5,8 +5,8 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use crate::operator::{Extent, Find, Operator, Span};
-use crate::{Edit, Effect, Key, Kind, Mode, Motion, Register, Vim};
+use crate::operator::{Extent, Operator, Span};
+use crate::{Edit, Effect, Key, Kind, Mode, Motion, Put, Register, Vim};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Visual {
@@ -82,13 +82,7 @@ impl Vim {
 
     /// One key in visual mode `kind`.
     pub(crate) fn visual(&mut self, kind: Visual, key: Key) -> Effect {
-        if let Key::Char(digit @ '0'..='9') = key
-            && (digit != '0' || self.pending.count > 0)
-        {
-            let digit = digit as usize - '0' as usize;
-            self.pending.count =
-                self.pending.count.saturating_mul(10).saturating_add(digit);
-            self.keep_want = true;
+        if self.digit(key) {
             return Effect::Nothing;
         }
         let count = core::mem::take(&mut self.pending.count);
@@ -136,23 +130,16 @@ impl Vim {
 
     fn visual_second(&mut self, first: char, key: Key, count: usize) -> Effect {
         let n = count.max(1);
-        let motion = match (first, key) {
+        match (first, key) {
             ('r', Key::Char(c)) => return self.visual_replace(c),
             ('"', Key::Char(name)) => return self.named(name, count),
-            ('g', Key::Char('g')) => Motion::Line(count.saturating_sub(1)),
-            ('f', Key::Char(c)) => Motion::Find(Find::Forward, c),
-            ('t', Key::Char(c)) => Motion::Find(Find::ForwardTo, c),
-            ('F', Key::Char(c)) => Motion::Find(Find::Backward, c),
-            ('T', Key::Char(c)) => Motion::Find(Find::BackwardTo, c),
             ('i' | 'a', Key::Char(kind)) => {
                 return self.extend(first == 'i', kind);
             }
-            _ => return Effect::Nothing,
-        };
-        if let Motion::Find(kind, c) = motion {
-            self.find = Some((kind, c));
+            _ => {}
         }
-        self.visual_motion(motion, n)
+        let motion = self.pair(first, key, count);
+        motion.map_or(Effect::Nothing, |motion| self.visual_motion(motion, n))
     }
 
     /// A motion moves the cursor end of the selection; `$` takes the
@@ -171,8 +158,7 @@ impl Vim {
     /// `iw`, `ap` and the like: the object under the cursor joins the
     /// selection; a paragraph makes it linewise.
     fn extend(&mut self, inner: bool, kind: char) -> Effect {
-        let (lo, hi) =
-            (self.anchor.min(self.cursor), self.anchor.max(self.cursor));
+        let (lo, hi) = self.ends();
         // A selection already made grows by the object after it.
         let at = if lo == hi { self.cursor } else { self.forward_char(hi) };
         let at = at.min(self.bound());
@@ -196,8 +182,7 @@ impl Vim {
     /// The selection as an operator's span: chars through the cursor's
     /// (a newline included after `$`), or whole lines.
     fn selection(&self, kind: Visual) -> Span {
-        let (lo, hi) =
-            (self.anchor.min(self.cursor), self.anchor.max(self.cursor));
+        let (lo, hi) = self.ends();
         match kind {
             // A `V` selection begins at its first line's start.
             Visual::Line => (self.line_start(lo), hi, Extent::Linewise),
@@ -213,10 +198,7 @@ impl Vim {
     /// top to bottom; on a line short of the block's left column it
     /// is empty, at the line's end.
     fn block_ranges(&self) -> Vec<(usize, usize)> {
-        let (a, c) =
-            (self.position_of(self.anchor), self.position_of(self.cursor));
-        let (top, bottom) = (a.0.min(c.0), a.0.max(c.0));
-        let (left, right) = (a.1.min(c.1), a.1.max(c.1));
+        let ((top, bottom), (left, right)) = self.corners();
         (top..=bottom)
             .filter_map(|line| self.line_at(line))
             .map(|start| self.block_range(start, left, right))
@@ -234,14 +216,6 @@ impl Vim {
         let to =
             if self.to_end { end } else { self.at_column(start, right + 1) };
         (from, to)
-    }
-
-    /// The line and column of `at`, in chars from 0.
-    pub(crate) fn position_of(&self, at: usize) -> (usize, usize) {
-        let before = &self.text[..at];
-        let line = before.matches('\n').count();
-        let column = before.rsplit('\n').next().unwrap_or("").chars().count();
-        (line, column)
     }
 
     /// An operator over the selection, `n` being its count, which
@@ -272,7 +246,7 @@ impl Vim {
         if ranges.is_empty() {
             return self.leave_visual();
         }
-        let (lines, left) = self.corners();
+        let (lines, (left, _)) = self.corners();
         self.leave_visual();
         let top_left = self.at_column(self.line_at(lines.0).unwrap_or(0), left);
         match op {
@@ -293,11 +267,17 @@ impl Vim {
         }
     }
 
-    /// The selection's first and last line, and its left column.
-    fn corners(&self) -> ((usize, usize), usize) {
+    /// The selection's byte ends, low then high.
+    fn ends(&self) -> (usize, usize) {
+        (self.anchor.min(self.cursor), self.anchor.max(self.cursor))
+    }
+
+    /// The selection's first and last line, and its left and right
+    /// column.
+    fn corners(&self) -> ((usize, usize), (usize, usize)) {
         let (a, c) =
             (self.position_of(self.anchor), self.position_of(self.cursor));
-        ((a.0.min(c.0), a.0.max(c.0)), a.1.min(c.1))
+        ((a.0.min(c.0), a.0.max(c.0)), (a.1.min(c.1), a.1.max(c.1)))
     }
 
     /// `>` and `<` on a block, `times` over: the whitespace at the
@@ -445,8 +425,7 @@ impl Vim {
 
     /// `J` over the selected lines.
     fn visual_join(&mut self) -> Effect {
-        let (lo, hi) =
-            (self.anchor.min(self.cursor), self.anchor.max(self.cursor));
+        let (lo, hi) = self.ends();
         let lines = self.position_of(hi).0 - self.position_of(lo).0 + 1;
         self.leave_visual();
         self.cursor = lo;
@@ -459,7 +438,7 @@ impl Vim {
     /// comes, on lines of its own when it is linewise.
     fn visual_paste(&mut self, kind: Visual) -> Effect {
         let Some(register) = self.fetch() else {
-            self.put = Some((true, 1, Some(kind)));
+            self.put = Some(Put { after: true, count: 1, over: Some(kind) });
             return Effect::Clipboard;
         };
         self.paste_over(kind, register)
@@ -487,13 +466,13 @@ impl Vim {
         };
         let taken = self.text[at..at + len].trim_end_matches('\n').into();
         self.leave_visual();
-        self.text.replace_range(at..at + len, &put);
+        let below = put.starts_with('\n');
+        let effect = self.replace(at, len, put);
         let kind = if lines { Kind::Line } else { Kind::Char };
         self.store(Register { text: taken, kind });
-        self.cursor = at + usize::from(put.starts_with('\n'));
+        self.cursor = at + usize::from(below);
         self.clamp();
-        self.joining = false;
-        self.edit(at, len, put)
+        effect
     }
 
     /// `p` over a block: the block goes to the register; a charwise
@@ -501,7 +480,7 @@ impl Vim {
     /// after the block's last line, a block where the block was.
     fn paste_over_block(&mut self, register: Register) -> Effect {
         let ranges = self.block_ranges();
-        let (lines, left) = self.corners();
+        let (lines, (left, _)) = self.corners();
         self.leave_visual();
         let taken = self.block_register(&ranges);
         self.store(taken);
@@ -535,11 +514,8 @@ impl Vim {
     /// `I` or `A` on a block: insert mode on the first line, the
     /// typing copied onto the others at Esc.
     fn block_insert(&mut self, append: bool) -> Effect {
-        let (a, c) =
-            (self.position_of(self.anchor), self.position_of(self.cursor));
-        let (top, bottom) = (a.0.min(c.0), a.0.max(c.0));
-        let left = a.1.min(c.1);
-        let column = if append { a.1.max(c.1) + 1 } else { left };
+        let ((top, bottom), (left, right)) = self.corners();
+        let column = if append { right + 1 } else { left };
         let to_end = append && self.to_end;
         self.leave_visual();
         self.begin_block_insert(top, bottom, (column, left), to_end);
@@ -613,10 +589,7 @@ impl Vim {
         top: usize,
         height: usize,
     ) -> Vec<(u16, u16, u16)> {
-        let (a, c) =
-            (self.position_of(self.anchor), self.position_of(self.cursor));
-        let (first, last) = (a.0.min(c.0), a.0.max(c.0));
-        let (left, right) = (a.1.min(c.1), a.1.max(c.1));
+        let ((first, last), (left, right)) = self.corners();
         let rows = first.max(top)..=last.min(top + height - 1);
         let cell = |n: usize| u16::try_from(n).unwrap_or(u16::MAX);
         let mut cells = Vec::new();
@@ -643,8 +616,7 @@ impl Vim {
         lines: (usize, usize),
         len: usize,
     ) -> (usize, usize) {
-        let (lo, hi) =
-            (self.anchor.min(self.cursor), self.anchor.max(self.cursor));
+        let (lo, hi) = self.ends();
         let from = if line == lines.0 { self.position_of(lo).1 } else { 0 };
         let to =
             if line == lines.1 { self.position_of(hi).1 + 1 } else { len + 1 };

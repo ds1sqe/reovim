@@ -22,10 +22,6 @@ fn around(quotes: &[usize], col: usize) -> Option<(usize, usize)> {
 }
 
 impl Vim {
-    fn char_at(&self, at: usize) -> Option<char> {
-        self.text[at.min(self.text.len())..].chars().next()
-    }
-
     /// The object `kind` around the cursor, `inner` or with what
     /// Vim adds around it.
     pub(crate) fn object_span(&self, inner: bool, kind: char) -> Option<Span> {

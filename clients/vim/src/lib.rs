@@ -141,6 +141,25 @@ struct Repeat {
     replaying: bool,
 }
 
+/// A put waiting for the clipboard's text.
+#[derive(Clone, Copy, Debug)]
+struct Put {
+    after: bool,
+    count: usize,
+    /// The selection it goes over, if any.
+    over: Option<Visual>,
+}
+
+/// The command line: what it is for, what is typed, and the mode it
+/// returns to.
+#[derive(Debug, Default)]
+struct Line {
+    /// `:`, `/` or `?`.
+    prompt: char,
+    text: String,
+    before: Mode,
+}
+
 /// Where the cursor was before each change, for undo to put it back
 /// as nvim does, and how many of those changes stand undone.
 #[derive(Debug, Default)]
@@ -176,9 +195,7 @@ pub struct Vim {
     registers: BTreeMap<char, Register>,
     /// Text for the clipboard, until the tui takes it.
     clipboard: Option<String>,
-    /// A put waiting for the clipboard: after the cursor, its count,
-    /// and the selection it goes over.
-    put: Option<(bool, usize, Option<Visual>)>,
+    put: Option<Put>,
     /// What the clipboard last gave, for `.` to put again.
     last_clip: Register,
     /// The last `f`, `t`, `F` or `T`, for `;` and `,`.
@@ -194,12 +211,7 @@ pub struct Vim {
     /// A block insert under way.
     block: Option<BlockInsert>,
     search: Search,
-    /// `:`, `/` or `?`: what the command line is for.
-    prompt: char,
-    /// The mode the command line returns to.
-    before: Mode,
-    /// The command line being typed.
-    line: String,
+    line: Line,
     /// Shown until the next key.
     message: String,
 }
@@ -292,7 +304,8 @@ impl Vim {
         }
     }
 
-    /// One key in the current mode; a message showing goes with it.
+    /// One key in the current mode; a message showing or shown goes
+    /// with it, so the frame is drawn again.
     pub fn key(&mut self, key: Key) -> Effect {
         if !self.repeat.replaying {
             self.repeat.record.push(key);
@@ -318,7 +331,12 @@ impl Vim {
         if matches!(self.mode, Mode::Visual(_)) {
             self.to_end = self.want == usize::MAX;
         }
-        if shown && effect == Effect::Nothing { Effect::Moved } else { effect }
+        let message = shown || !self.message.is_empty();
+        if message && effect == Effect::Nothing {
+            Effect::Moved
+        } else {
+            effect
+        }
     }
 
     /// The cursor to line `n`, counted from 1 and clamped, at its first
@@ -345,10 +363,7 @@ impl Vim {
     /// The cursor's line and column, in chars from 0.
     #[must_use]
     pub fn position(&self) -> (usize, usize) {
-        let before = &self.text[..self.cursor];
-        let line = before.matches('\n').count();
-        let column = before.rsplit('\n').next().unwrap_or("").chars().count();
-        (line, column)
+        self.position_of(self.cursor)
     }
 
     /// The frame for `cols` by `rows`; `top` moves to keep the cursor
@@ -376,7 +391,9 @@ impl Vim {
             _ if !self.message.is_empty() => self.message.clone(),
             Mode::Normal => String::new(),
             Mode::Insert => String::from("-- INSERT --"),
-            Mode::Command => alloc::format!("{}{}", self.prompt, self.line),
+            Mode::Command => {
+                alloc::format!("{}{}", self.line.prompt, self.line.text)
+            }
             Mode::Visual(Visual::Char) => String::from("-- VISUAL --"),
             Mode::Visual(Visual::Line) => String::from("-- VISUAL LINE --"),
             Mode::Visual(Visual::Block) => String::from("-- VISUAL BLOCK --"),
@@ -389,14 +406,22 @@ impl Vim {
         Frame { lines, cursor: (row, col), selection, marks, status }
     }
 
+    /// A digit onto the count: `0` only after another, being a motion
+    /// else.
+    const fn digit(&mut self, key: Key) -> bool {
+        let Key::Char(digit @ '0'..='9') = key else { return false };
+        if digit == '0' && self.pending.count == 0 {
+            return false;
+        }
+        let digit = digit as usize - '0' as usize;
+        self.pending.count =
+            self.pending.count.saturating_mul(10).saturating_add(digit);
+        self.keep_want = true;
+        true
+    }
+
     fn normal(&mut self, key: Key) -> Effect {
-        if let Key::Char(digit @ '0'..='9') = key
-            && (digit != '0' || self.pending.count > 0)
-        {
-            let digit = digit as usize - '0' as usize;
-            self.pending.count =
-                self.pending.count.saturating_mul(10).saturating_add(digit);
-            self.keep_want = true;
+        if self.digit(key) {
             return Effect::Nothing;
         }
         let count = core::mem::take(&mut self.pending.count);
@@ -490,32 +515,48 @@ impl Vim {
     /// The second key of a pair: `gg`, `dd`, `ZZ`, `fx` and the like.
     fn second(&mut self, first: char, key: Key, count: usize) -> Effect {
         let n = count.max(1);
-        let motion = match (first, key) {
-            ('g', Key::Char('g')) => Motion::Line(count.saturating_sub(1)),
-            ('g', Key::Char('u')) => return self.operator(Operator::Lower, n),
-            ('g', Key::Char('U')) => return self.operator(Operator::Upper, n),
-            ('g', Key::Char('~')) => return self.operator(Operator::Toggle, n),
-            ('g', Key::Char('v')) => return self.reselect(),
-            ('"', Key::Char(name)) => return self.named(name, count),
-            ('i' | 'a', Key::Char(kind)) => {
-                Motion::Object { inner: first == 'i', kind }
-            }
-            ('f', Key::Char(c)) => Motion::Find(Find::Forward, c),
-            ('t', Key::Char(c)) => Motion::Find(Find::ForwardTo, c),
-            ('F', Key::Char(c)) => Motion::Find(Find::Backward, c),
-            ('T', Key::Char(c)) => Motion::Find(Find::BackwardTo, c),
-            ('Z', Key::Char('Z')) => return Effect::Quit(Quit::Write),
-            ('Z', Key::Char('Q')) => return Effect::Quit(Quit::Force),
+        if let Some(motion) = self.pair(first, key, count) {
+            return self.motion(motion, n);
+        }
+        match (first, key) {
+            ('g', Key::Char('u')) => self.operator(Operator::Lower, n),
+            ('g', Key::Char('U')) => self.operator(Operator::Upper, n),
+            ('g', Key::Char('~')) => self.operator(Operator::Toggle, n),
+            ('g', Key::Char('v')) => self.reselect(),
+            ('"', Key::Char(name)) => self.named(name, count),
+            ('Z', Key::Char('Z')) => Effect::Quit(Quit::Write),
+            ('Z', Key::Char('Q')) => Effect::Quit(Quit::Force),
             _ => {
                 self.pending.operator = None;
                 self.repeat.record.clear();
-                return Effect::Nothing;
+                Effect::Nothing
             }
+        }
+    }
+
+    /// The motion a pair names, in normal and visual mode alike:
+    /// `gg`, an object after `i` or `a`, or a find, which `;` and `,`
+    /// then repeat.
+    pub(crate) const fn pair(
+        &mut self,
+        first: char,
+        key: Key,
+        count: usize,
+    ) -> Option<Motion> {
+        let Key::Char(c) = key else { return None };
+        let motion = match first {
+            'g' if c == 'g' => Motion::Line(count.saturating_sub(1)),
+            'i' | 'a' => Motion::Object { inner: first == 'i', kind: c },
+            'f' => Motion::Find(Find::Forward, c),
+            't' => Motion::Find(Find::ForwardTo, c),
+            'F' => Motion::Find(Find::Backward, c),
+            'T' => Motion::Find(Find::BackwardTo, c),
+            _ => return None,
         };
         if let Motion::Find(kind, c) = motion {
             self.find = Some((kind, c));
         }
-        self.motion(motion, n)
+        Some(motion)
     }
 
     /// `"x`: the register `name` for what comes next; the count waits.
@@ -534,12 +575,10 @@ impl Vim {
     /// The clipboard's answer to `Effect::Clipboard`: the put goes on
     /// with `text`, or E353 when there is none.
     pub fn pasted(&mut self, text: Option<String>) -> Effect {
-        let Some((after, n, over)) = self.put.take() else {
-            return Effect::Nothing;
-        };
+        let Some(put) = self.put.take() else { return Effect::Nothing };
         let before = self.position();
         let effect = if let Some(text) = text {
-            self.put_text(&text, after, n, over)
+            self.put_text(&text, put)
         } else {
             self.message = String::from("E353: Nothing in register +");
             Effect::Moved
@@ -551,20 +590,14 @@ impl Vim {
 
     /// The clipboard's `text` put: lines of its own when it ends in a
     /// newline, as nvim reads it.
-    fn put_text(
-        &mut self,
-        text: &str,
-        after: bool,
-        n: usize,
-        over: Option<Visual>,
-    ) -> Effect {
+    fn put_text(&mut self, text: &str, put: Put) -> Effect {
         let kind = if text.ends_with('\n') { Kind::Line } else { Kind::Char };
         let text = String::from(text.strip_suffix('\n').unwrap_or(text));
         let register = Register { text, kind };
         self.last_clip = register.clone();
-        match over {
+        match put.over {
             Some(kind) => self.paste_over(kind, register),
-            None => self.paste_register(register, after, n),
+            None => self.paste_register(register, put.after, put.count),
         }
     }
 
@@ -759,28 +792,42 @@ impl Vim {
         Effect::Edit(Edit { at, len, text, join })
     }
 
+    /// `len` bytes at `at` become `text`, as a revision of their own.
+    fn replace(&mut self, at: usize, len: usize, text: String) -> Effect {
+        self.text.replace_range(at..at + len, &text);
+        self.joining = false;
+        self.edit(at, len, text)
+    }
+
     /// `len` bytes at `at` gone as a revision of their own. Nothing
     /// when there is nothing to remove.
     fn remove(&mut self, at: usize, len: usize) -> Effect {
         if len == 0 {
             return Effect::Nothing;
         }
-        self.text.replace_range(at..at + len, "");
-        self.joining = false;
-        self.edit(at, len, String::new())
+        self.replace(at, len, String::new())
     }
 
     /// `motion` `n` times, or until one goes nowhere; `Moved` if any
     /// of them moved.
-    fn repeat(&mut self, n: usize, motion: fn(&mut Self) -> Effect) -> Effect {
-        let moved =
+    fn repeat(
+        &mut self,
+        n: usize,
+        mut motion: impl FnMut(&mut Self) -> Effect,
+    ) -> Effect {
+        let count =
             (0..n).take_while(|_| motion(self) == Effect::Moved).count();
-        if moved > 0 { Effect::Moved } else { Effect::Nothing }
+        moved(count > 0)
     }
 }
 
 const fn is_digit(key: Key) -> bool {
     matches!(key, Key::Char('0'..='9'))
+}
+
+/// `Moved` when something did.
+const fn moved(yes: bool) -> Effect {
+    if yes { Effect::Moved } else { Effect::Nothing }
 }
 
 /// The edits `effect` made, onto `edits`.

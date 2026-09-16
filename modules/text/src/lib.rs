@@ -147,14 +147,25 @@ fn many(
     for edit in &many.edits {
         next = spliced(&next, edit.at, edit.len, edit.text.as_bytes())?;
     }
-    let took = fits(next.len(), room)?;
-    history.commit("replace", next);
-    Ok(((), took))
+    Ok(((), stored(history, room, "replace", next)?))
 }
 
 /// `len` when a state of that size fits in `room`; `NoSpace` otherwise.
 const fn fits(len: usize, room: usize) -> Result<usize, Error> {
     if len > room { Err(Error::NoSpace) } else { Ok(len) }
+}
+
+/// `next` as a new state labelled `label`, when it fits in `room`;
+/// the bytes it took.
+fn stored(
+    history: &mut History,
+    room: usize,
+    label: &str,
+    next: Vec<u8>,
+) -> Result<usize, Error> {
+    let took = fits(next.len(), room)?;
+    history.commit(label, next);
+    Ok(took)
 }
 
 /// The text Module, ready for `load`; `root` is unused.
@@ -182,12 +193,7 @@ impl Text {
     pub fn with_limit(limit: usize) -> Self {
         let decls =
             [open::decl(), text::decl(), history::decl(), publish::decl()];
-        let hashes = [
-            decls[0].hash(),
-            decls[1].hash(),
-            decls[2].hash(),
-            decls[3].hash(),
-        ];
+        let hashes = decls.each_ref().map(Decl::hash);
         Self { decls, hashes, state: RefCell::new(State::default()), limit }
     }
 
@@ -278,9 +284,7 @@ impl Text {
             let draft = history.draft();
             let len = draft.len() as u64 - at.min(draft.len() as u64);
             let next = spliced(draft, at, len, bytes)?;
-            let took = fits(next.len(), room)?;
-            history.commit("write", next);
-            Ok((bytes.len(), took))
+            Ok((bytes.len(), stored(history, room, "write", next)?))
         })
     }
 
@@ -354,9 +358,7 @@ impl text::Api for Text {
         self.change(ctx, rd, |history, room| {
             let text = edit.text.as_bytes();
             let next = spliced(history.draft(), edit.at, edit.len, text)?;
-            let took = fits(next.len(), room)?;
-            history.commit("replace", next);
-            Ok(((), took))
+            Ok(((), stored(history, room, "replace", next)?))
         })
     }
 

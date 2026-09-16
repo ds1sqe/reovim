@@ -103,14 +103,14 @@ fn hlsearch_marks_every_match_until_noh() {
     assert_eq!(vim.frame(80, 24).marks, Vec::new());
     assert_eq!(typed(&mut vim, ":set ic hls<CR>/B<CR>"), Effect::Moved);
     assert_eq!(vim.frame(80, 24).marks.len(), 2, "ignorecase");
-    assert_eq!(typed(&mut vim, ":set noic<CR>/B<CR>"), Effect::Nothing);
+    assert_eq!(typed(&mut vim, ":set noic<CR>/B<CR>"), Effect::Moved);
     assert_eq!(vim.frame(80, 24).status, "E486: Pattern not found: B");
 }
 
 #[test]
 fn messages_read_as_nvims() {
     let mut vim = on("  \nx\n");
-    assert_eq!(typed(&mut vim, "*"), Effect::Nothing);
+    assert_eq!(typed(&mut vim, "*"), Effect::Moved, "a message is a change");
     assert_eq!(vim.frame(80, 24).status, "E348: No string under cursor");
     assert_eq!(typed(&mut vim, ":set foo<CR>"), Effect::Moved);
     assert_eq!(vim.frame(80, 24).status, "E518: Unknown option: foo");

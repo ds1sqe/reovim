@@ -13,15 +13,15 @@ type Lines = (usize, usize);
 impl Vim {
     /// `:`, `/` or `?`: the prompt opens, the mode to return to kept.
     pub(crate) fn prompt(&mut self, prompt: char, count: usize) -> Effect {
-        self.line.clear();
+        self.line.text.clear();
         // `:` from a selection leaves it and names its lines.
         if prompt == ':' && matches!(self.mode, Mode::Visual(_)) {
             self.leave_visual();
-            self.line.push_str("'<,'>");
+            self.line.text.push_str("'<,'>");
         }
-        self.before = self.mode;
+        self.line.before = self.mode;
+        self.line.prompt = prompt;
         self.mode = Mode::Command;
-        self.prompt = prompt;
         self.pending.count = count;
         Effect::Moved
     }
@@ -30,10 +30,10 @@ impl Vim {
     /// runs.
     pub(crate) fn command(&mut self, key: Key) -> Effect {
         match key {
-            Key::Char(c) => self.line.push(c),
-            Key::Backspace if self.line.is_empty() => self.leave_command(),
+            Key::Char(c) => self.line.text.push(c),
+            Key::Backspace if self.line.text.is_empty() => self.leave_command(),
             Key::Backspace => {
-                self.line.pop();
+                self.line.text.pop();
             }
             Key::Esc => self.leave_command(),
             Key::Enter => return self.run(),
@@ -43,8 +43,8 @@ impl Vim {
     }
 
     fn leave_command(&mut self) {
-        self.mode = self.before;
-        self.line.clear();
+        self.mode = self.line.before;
+        self.line.text.clear();
         self.pending.count = 0;
         self.pending.operator = None;
         self.repeat.record.clear();
@@ -52,11 +52,12 @@ impl Vim {
 
     /// The line run: a search for `/` and `?`, else a command.
     fn run(&mut self) -> Effect {
-        let line = core::mem::take(&mut self.line);
-        self.mode = self.before;
+        let line = core::mem::take(&mut self.line.text);
+        self.mode = self.line.before;
         let count = core::mem::take(&mut self.pending.count);
-        if self.prompt != ':' {
-            return self.searched(line, self.prompt == '/', count.max(1));
+        if self.line.prompt != ':' {
+            let forward = self.line.prompt == '/';
+            return self.searched(line, forward, count.max(1));
         }
         self.repeat.record.clear();
         let effect = self.ex(&line);
@@ -187,7 +188,7 @@ impl Vim {
         let Some(pattern) =
             Pattern::parse(&source, ignorecase, options.smartcase && !ignore)
         else {
-            return self.not_found(&source);
+            return self.not_found();
         };
         let starts = (lines.0..=lines.1).rev().filter_map(|l| self.line_at(l));
         let changes: Vec<(usize, usize, String)> = starts
@@ -211,16 +212,11 @@ impl Vim {
             let join = !edits.is_empty();
             edits.push(Edit { at: start, len: end - start, text, join });
         }
-        let Some(line) = last else { return self.not_found(&source) };
+        let Some(line) = last else { return self.not_found() };
         self.cursor = self.first_non_blank(line);
         self.clamp();
         self.joining = false;
         Effect::Edits(edits)
-    }
-
-    fn not_found(&mut self, source: &str) -> Effect {
-        self.message = alloc::format!("E486: Pattern not found: {source}");
-        Effect::Moved
     }
 
     /// A message shown in the status row until the next key, as
