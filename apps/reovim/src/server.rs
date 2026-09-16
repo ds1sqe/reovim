@@ -80,15 +80,21 @@ impl Links {
         };
         let Some(item) = item else { return false };
         let Some(bytes) = item.bytes else {
-            self.connections.remove(&item.link);
+            self.ended(kernel, item.link);
             return true;
         };
-        let end = self
-            .connections
-            .entry(item.link)
-            .or_insert_with(|| Connection::new(kernel));
+        let end = self.connections.entry(item.link).or_default();
         let _ = item.answer.send(end.handle(kernel, &bytes, &mut self.files));
         true
+    }
+}
+
+impl Links {
+    /// The link is gone: its connection ends.
+    fn ended(&mut self, kernel: &Kernel, link: u64) {
+        if let Some(mut end) = self.connections.remove(&link) {
+            end.end(kernel);
+        }
     }
 }
 

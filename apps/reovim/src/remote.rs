@@ -1,23 +1,34 @@
-//! A Client over the link: one message out, the next message in.
+//! A Client over the link: one message out, the next message in; a
+//! fresh link to the same socket when the old one is gone.
 
 use reovim_client::{Carrier, Client, Fault};
 use reovim_host::link::{self, Link};
 
 use crate::Fail;
 
-pub struct Remote(Link);
+pub struct Remote {
+    link: Link,
+    socket: String,
+}
 
 impl Remote {
-    /// A connected Client on whoever listens at `socket`.
-    pub fn client(socket: &str) -> Result<Client, Fail> {
-        let end = link::open(socket)?;
-        Ok(Client::connect(Box::new(Self(end)), Vec::new())?)
+    /// A Client on whoever listens at `socket`, connected as
+    /// `credential`.
+    pub fn client(socket: &str, credential: Vec<u8>) -> Result<Client, Fail> {
+        let link = link::open(socket)?;
+        let remote = Self { link, socket: socket.to_string() };
+        Ok(Client::connect(Box::new(remote), credential)?)
     }
 }
 
 impl Carrier for Remote {
     fn exchange(&mut self, bytes: &[u8]) -> Result<Vec<u8>, Fault> {
-        link::send(&self.0, bytes).map_err(|_| Fault::Carrier)?;
-        link::recv(&self.0).map_err(|_| Fault::Carrier)
+        link::send(&self.link, bytes).map_err(|_| Fault::Carrier)?;
+        link::recv(&self.link).map_err(|_| Fault::Carrier)
+    }
+
+    fn reconnect(&mut self) -> Result<(), Fault> {
+        self.link = link::open(&self.socket).map_err(|_| Fault::Carrier)?;
+        Ok(())
     }
 }

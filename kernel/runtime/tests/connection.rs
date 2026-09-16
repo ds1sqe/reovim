@@ -21,7 +21,7 @@ struct Rig {
 impl Rig {
     fn new() -> Self {
         let kernel = Kernel::new(tick, Limits::default());
-        let link = Connection::new(&kernel);
+        let link = Connection::new();
         Self { kernel, link, seq: 0 }
     }
 
@@ -109,7 +109,7 @@ fn connect_makes_the_session_and_the_client_rd() {
     assert!(rig.log().contains(&line), "log lacks {line}");
 
     // A second client joins the same Session.
-    let mut other = Connection::new(&rig.kernel);
+    let mut other = Connection::new();
     let join =
         Message::Connect { credential: Vec::new(), session: Some(session) };
     let answer =
@@ -174,6 +174,7 @@ impl Loader for Counting {
 #[test]
 fn load_and_unload_go_to_the_loader_under_the_reply_window() {
     let mut rig = Rig::new();
+    rig.connect(None);
     let load = encode(9, &Message::Load { path: "/x.rvm".to_string() });
     let unload = encode(10, &Message::Unload { name: "x".to_string() });
     let mut counting = Counting(0);
@@ -191,4 +192,83 @@ fn load_and_unload_go_to_the_loader_under_the_reply_window() {
     let none = encode(11, &Message::Load { path: "/y.rvm".to_string() });
     let nothing = rig.link.handle(&rig.kernel, &none, &mut NoLoader);
     assert_eq!(reply(nothing), Reply::err(Error::Unsupported));
+}
+
+/// `Connect` as `credential` on `link`; the reply.
+fn named(
+    link: &mut Connection,
+    kernel: &Kernel,
+    seq: u64,
+    credential: &[u8],
+    session: Option<Rd>,
+) -> Reply<Out> {
+    let connect = Message::Connect { credential: credential.to_vec(), session };
+    let bytes = encode(seq, &connect);
+    let answer = link.handle(kernel, &bytes, &mut NoLoader).unwrap();
+    match decode(&answer) {
+        Some((_, Message::Reply(reply))) => reply,
+        other => panic!("{other:?}"),
+    }
+}
+
+/// One request on `link` at `seq`; the reply.
+fn ask(link: &mut Connection, kernel: &Kernel, seq: u64, op: Op) -> Reply<Out> {
+    let bytes = encode(seq, &Message::Request(op));
+    let answer = link.handle(kernel, &bytes, &mut NoLoader).unwrap();
+    match decode(&answer) {
+        Some((at, Message::Reply(reply))) if at == seq => reply,
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn a_named_caller_survives_its_link_and_an_unnamed_one_ends() {
+    let mut rig = Rig::new();
+    let me = Message::Connect { credential: b"me".to_vec(), session: None };
+    let Reply::Ready(Ok(Out::Rds(ids))) = rig.send(&me) else {
+        panic!("connect")
+    };
+    let session = ids[0];
+    let log = rig.lookup(SYS, "log");
+    let open = Op::Open { rd: log, rights: Rights::READ };
+    let Reply::Ready(Ok(Out::Handle(h))) = rig.request(open.clone()) else {
+        panic!("open")
+    };
+    let mut other = Connection::new();
+    let busy = named(&mut other, &rig.kernel, 1, b"me", Some(session));
+    assert_eq!(busy, Reply::err(Error::Busy), "the first link is on it");
+
+    rig.link.end(&rig.kernel);
+    // The sequence goes on where the old link left it: the reply window
+    // is the caller's, and a low seq would replay an old answer.
+    let again = named(&mut other, &rig.kernel, 20, b"me", Some(session));
+    assert_eq!(again, Reply::ok(Out::Rds(ids)), "the same ids");
+    let read = Op::Read { h, at: 0, len: 8 };
+    let got = ask(&mut other, &rig.kernel, 21, read);
+    assert!(matches!(got, Reply::Ready(Ok(Out::Bytes(_)))), "{got:?}");
+    let stranger = named(&mut Connection::new(), &rig.kernel, 1, b"me", None);
+    let Reply::Ready(Ok(Out::Rds(new))) = stranger else { panic!("connect") };
+    assert_ne!(new[0], session, "another Session, another caller");
+
+    let mut unnamed = Connection::new();
+    let joined = named(&mut unnamed, &rig.kernel, 1, b"", Some(session));
+    assert!(matches!(joined, Reply::Ready(Ok(Out::Rds(_)))), "{joined:?}");
+    let Reply::Ready(Ok(Out::Handle(h2))) =
+        ask(&mut unnamed, &rig.kernel, 2, open)
+    else {
+        panic!("open")
+    };
+    unnamed.end(&rig.kernel);
+    let mut third = Connection::new();
+    named(&mut third, &rig.kernel, 1, b"", Some(session));
+    let gone =
+        ask(&mut third, &rig.kernel, 2, Op::Read { h: h2, at: 0, len: 8 });
+    assert_eq!(
+        gone,
+        Reply::err(Error::Invalid),
+        "the handle went with the link"
+    );
+    let early =
+        ask(&mut Connection::new(), &rig.kernel, 1, Op::Info { rd: ROOT });
+    assert_eq!(early, Reply::err(Error::Invalid), "nothing before Connect");
 }

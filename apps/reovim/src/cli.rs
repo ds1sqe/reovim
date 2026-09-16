@@ -15,7 +15,7 @@ const PROMPT: &str = "> ";
 
 /// Run `command`, or an interactive session when it is empty.
 pub fn run(socket: &str, command: &[String]) -> Result<(), Fail> {
-    let mut client = Remote::client(socket)?;
+    let mut client = Remote::client(socket, Vec::new())?;
     if !command.is_empty() {
         let out = input(&mut client, &filled(command)?)?;
         return Ok(write(&out)?);

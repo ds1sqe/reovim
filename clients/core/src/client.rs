@@ -24,13 +24,22 @@ pub trait Carrier {
     /// # Errors
     /// `Carrier` when the other end is gone.
     fn exchange(&mut self, bytes: &[u8]) -> Result<Vec<u8>, Fault>;
+
+    /// A fresh link to the same end, after `Carrier`. None by default.
+    ///
+    /// # Errors
+    /// `Carrier` when there is no way back.
+    fn reconnect(&mut self) -> Result<(), Fault> {
+        Err(Fault::Carrier)
+    }
 }
 
-/// One connected Client: its Session, its client rd and its watch
-/// cursor.
+/// One connected Client: its credential, its Session, its client rd
+/// and its watch cursor.
 pub struct Client {
     carrier: Box<dyn Carrier>,
     endpoint: Endpoint,
+    credential: Vec<u8>,
     session: Rd,
     cid: Rd,
     cursor: u64,
@@ -46,15 +55,29 @@ impl Client {
         carrier: Box<dyn Carrier>,
         credential: Vec<u8>,
     ) -> Result<Self, Fault> {
-        let endpoint = Endpoint::default();
-        let mut client =
-            Self { carrier, endpoint, session: ROOT, cid: ROOT, cursor: 0 };
-        let connect = Message::Connect { credential, session: None };
-        match client.exchange(&connect)? {
+        let mut client = Self {
+            carrier,
+            endpoint: Endpoint::default(),
+            credential,
+            session: ROOT,
+            cid: ROOT,
+            cursor: 0,
+        };
+        let connect = Message::Connect {
+            credential: client.credential.clone(),
+            session: None,
+        };
+        let out = client.exchange(&connect)?;
+        client.connected(&out)?;
+        Ok(client)
+    }
+
+    /// The `Connect` answer: the Session and the client rd.
+    fn connected(&mut self, out: &Out) -> Result<(), Fault> {
+        match out {
             Out::Rds(ids) if ids.len() == 2 => {
-                client.session = ids[0];
-                client.cid = ids[1];
-                Ok(client)
+                (self.session, self.cid) = (ids[0], ids[1]);
+                Ok(())
             }
             _ => Err(Fault::Wire),
         }
@@ -94,8 +117,11 @@ impl Client {
     /// One message out, the reply to it back; a Pending reply is asked
     /// until it is not Busy.
     fn exchange(&mut self, message: &Message) -> Result<Out, Fault> {
-        let (_, bytes) = self.endpoint.send(message);
-        let answer = self.carrier.exchange(&bytes)?;
+        let (seq, bytes) = self.endpoint.send(message);
+        let answer = match self.carrier.exchange(&bytes) {
+            Err(Fault::Carrier) => self.recover(seq)?,
+            other => other?,
+        };
         let Some((_, Message::Reply(reply))) = self.endpoint.receive(&answer)
         else {
             return Err(Fault::Wire);
@@ -105,6 +131,26 @@ impl Client {
             Reply::Ready(Err(error)) => Err(Fault::Kernel(error)),
             Reply::Pending(token) => self.wait(token),
         }
+    }
+
+    /// The link is gone: a fresh one, `Connect` again with the same
+    /// credential into the same Session, then everything unanswered
+    /// again in order. The answer to `seq` comes back raw.
+    fn recover(&mut self, seq: u64) -> Result<Vec<u8>, Fault> {
+        self.carrier.reconnect()?;
+        let connect = Message::Connect {
+            credential: self.credential.clone(),
+            session: Some(self.session),
+        };
+        let (_, bytes) = self.endpoint.send(&connect);
+        let answer = self.carrier.exchange(&bytes)?;
+        match self.endpoint.receive(&answer) {
+            Some((_, Message::Reply(Reply::Ready(Ok(out))))) => {
+                self.connected(&out)?;
+            }
+            _ => return Err(Fault::Carrier),
+        }
+        resend(&mut self.endpoint, self.carrier.as_mut(), seq)
     }
 
     fn wait(&mut self, token: Token) -> Result<Out, Fault> {
@@ -376,6 +422,25 @@ impl Client {
     pub fn name(&mut self, rd: Rd) -> Result<String, Fault> {
         Ok(self.info(rd)?.name.unwrap_or_default())
     }
+}
+
+/// Everything unanswered again, in order; the answer to `seq` raw, the
+/// others into the `Endpoint`.
+fn resend(
+    endpoint: &mut Endpoint,
+    carrier: &mut dyn Carrier,
+    seq: u64,
+) -> Result<Vec<u8>, Fault> {
+    let mut ours = None;
+    for (at, bytes) in endpoint.unanswered().to_vec() {
+        let answer = carrier.exchange(&bytes)?;
+        if at == seq {
+            ours = Some(answer);
+        } else {
+            endpoint.receive(&answer);
+        }
+    }
+    ours.ok_or(Fault::Carrier)
 }
 
 /// `Out::Unit` or a wrong shape.

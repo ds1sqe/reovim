@@ -59,7 +59,7 @@ impl Rig {
     }
 
     fn client(&self) -> Client {
-        let connection = Connection::new(&self.kernel);
+        let connection = Connection::new();
         let carrier = Local { kernel: self.kernel.clone(), connection };
         Client::connect(Box::new(carrier), Vec::new()).unwrap()
     }

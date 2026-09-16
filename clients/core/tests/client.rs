@@ -84,10 +84,18 @@ struct Local {
     connection: Connection,
     slow: Rc<Slow>,
     asks: Rc<Cell<u32>>,
+    /// Exchanges left before the link is cut once; `None` never cuts.
+    cut: Option<u32>,
 }
 
 impl Carrier for Local {
     fn exchange(&mut self, bytes: &[u8]) -> Result<Vec<u8>, Fault> {
+        if self.cut == Some(0) {
+            self.cut = None;
+            self.connection.end(&self.kernel);
+            return Err(Fault::Carrier);
+        }
+        self.cut = self.cut.map(|n| n - 1);
         let answer = self
             .connection
             .handle(&self.kernel, bytes, &mut NoLoader)
@@ -109,6 +117,11 @@ impl Carrier for Local {
             self.kernel.submit(self.kernel.caller_new(), 1, poke);
         }
         Ok(answer)
+    }
+
+    fn reconnect(&mut self) -> Result<(), Fault> {
+        self.connection = Connection::new();
+        Ok(())
     }
 }
 
@@ -138,13 +151,19 @@ impl Rig {
     }
 
     fn client(&self) -> Client {
+        self.named(Vec::new(), None)
+    }
+
+    /// A Client as `credential` whose link is cut after `cut` exchanges.
+    fn named(&self, credential: Vec<u8>, cut: Option<u32>) -> Client {
         let carrier = Local {
             kernel: self.kernel.clone(),
-            connection: Connection::new(&self.kernel),
+            connection: Connection::new(),
             slow: self.slow.clone(),
             asks: self.asks.clone(),
+            cut,
         };
-        Client::connect(Box::new(carrier), Vec::new()).unwrap()
+        Client::connect(Box::new(carrier), credential).unwrap()
     }
 
     fn file(&self, name: &str, content: &[u8]) {
@@ -272,4 +291,26 @@ fn the_log_parses_whole_entries_only() {
     assert_eq!(cut.len(), whole.len() - 1);
     let line = whole[0].line();
     assert!(line.starts_with("1 ") && line.ends_with('\n'), "{line}");
+}
+
+#[test]
+fn a_named_client_goes_on_after_its_link_is_cut() {
+    let rig = Rig::new("cut");
+    rig.file("note", b"kept");
+    let mut client = rig.named(b"me".to_vec(), Some(7));
+    let note = client.resolve("/module/fs/root/note").unwrap();
+    let h = client.open(note, Rights::READ).unwrap();
+    client.watch(h, true).unwrap();
+    let (session, cid) = (client.session(), client.cid());
+    // The cut lands on this read; the answer still comes.
+    assert_eq!(client.read(h, 0, 16).unwrap(), b"kept");
+    assert_eq!((client.session(), client.cid()), (session, cid));
+    assert_eq!(client.read(h, 0, 16).unwrap(), b"kept", "the handle lives");
+    assert!(client.since().is_ok(), "the cursor goes on");
+
+    let mut unnamed = rig.named(Vec::new(), Some(2));
+    let h = unnamed.open(note, Rights::READ).unwrap();
+    let old = unnamed.cid();
+    assert_eq!(unnamed.read(h, 0, 16), Err(Fault::Kernel(Error::Invalid)));
+    assert_ne!(unnamed.cid(), old, "a new client rd, the handle gone");
 }

@@ -1,5 +1,6 @@
 //! One link's loop: message in, message out. No io, no threads; whoever
-//! moves the bytes calls `handle` and sends back what it returns.
+//! moves the bytes calls `handle` and sends back what it returns, and
+//! `end` when the link is gone.
 
 use alloc::vec::Vec;
 
@@ -41,19 +42,20 @@ impl Loader for NoLoader {
     }
 }
 
-/// One connection: a caller, and once connected its Session and client
-/// rd. The `Connect` sequence is kept so a repeated `Connect` after a
-/// lost reply is answered again rather than refused.
+/// One connection: once `Connect` was answered, its caller, Session
+/// and client rd. The `Connect` sequence is kept so a repeated
+/// `Connect` after a lost reply is answered again rather than refused.
+#[derive(Default)]
 pub struct Connection {
-    caller: Caller,
+    caller: Option<Caller>,
     connected: Option<(u64, Rd, Rd)>,
 }
 
 impl Connection {
-    /// A fresh caller on `kernel`.
+    /// A link that has not connected yet.
     #[must_use]
-    pub fn new(kernel: &Kernel) -> Self {
-        Self { caller: kernel.caller_new(), connected: None }
+    pub const fn new() -> Self {
+        Self { caller: None, connected: None }
     }
 
     /// The client rd once `Connect` was answered.
@@ -63,8 +65,9 @@ impl Connection {
     }
 
     /// One message in, its reply out. Bytes that are not a message, and a
-    /// `Reply` sent this way, answer nothing. `load` and `unload` go to
-    /// `loader` under the same reply window as a request.
+    /// `Reply` sent this way, answer nothing; anything before `Connect`
+    /// is `Invalid`. `load` and `unload` go to `loader` under the same
+    /// reply window as a request.
     pub fn handle(
         &mut self,
         kernel: &Kernel,
@@ -73,24 +76,38 @@ impl Connection {
     ) -> Option<Vec<u8>> {
         let (seq, message) = decode(bytes)?;
         let unit = |r: Result<(), Error>| r.map(|()| Out::Unit).into();
-        let reply = match message {
-            Message::Connect { session, .. } => {
-                self.connect(kernel, seq, session)
+        let reply = match (message, self.caller) {
+            (Message::Connect { credential, session }, _) => {
+                self.connect(kernel, seq, &credential, session)
             }
-            Message::Request(op) => kernel.submit(self.caller, seq, op),
-            Message::Reply(_) => return None,
-            Message::Load { path } => kernel
-                .once(self.caller, seq, || unit(loader.load(kernel, &path))),
-            Message::Unload { name } => kernel
-                .once(self.caller, seq, || unit(loader.unload(kernel, &name))),
+            (Message::Reply(_), _) => return None,
+            (_, None) => Reply::err(Error::Invalid),
+            (Message::Request(op), Some(caller)) => {
+                kernel.submit(caller, seq, op)
+            }
+            (Message::Load { path }, Some(caller)) => {
+                kernel.once(caller, seq, || unit(loader.load(kernel, &path)))
+            }
+            (Message::Unload { name }, Some(caller)) => {
+                kernel.once(caller, seq, || unit(loader.unload(kernel, &name)))
+            }
         };
         Some(encode(seq, &Message::Reply(reply)))
+    }
+
+    /// The link is gone; what the caller keeps is the Kernel's rule.
+    pub fn end(&mut self, kernel: &Kernel) {
+        if let Some(caller) = self.caller.take() {
+            kernel.caller_end(caller);
+        }
+        self.connected = None;
     }
 
     fn connect(
         &mut self,
         kernel: &Kernel,
         seq: u64,
+        credential: &[u8],
         session: Option<Rd>,
     ) -> Reply<Out> {
         match self.connected {
@@ -101,8 +118,9 @@ impl Connection {
             None => {}
         }
         let session = session.unwrap_or_else(|| kernel.session_new());
-        match kernel.client_new(session) {
-            Ok(client) => {
+        match kernel.connect(session, credential) {
+            Ok((caller, client)) => {
+                self.caller = Some(caller);
                 self.connected = Some((seq, session, client));
                 Reply::ok(Out::Rds(alloc::vec![session, client]))
             }

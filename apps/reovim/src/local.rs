@@ -14,7 +14,7 @@ pub struct Local {
 impl Local {
     /// A connected Client on `kernel`.
     pub fn client(kernel: &Rc<Kernel>) -> Result<Client, Fault> {
-        let connection = Connection::new(kernel);
+        let connection = Connection::new();
         let local = Self { kernel: kernel.clone(), connection };
         Client::connect(Box::new(local), Vec::new())
     }

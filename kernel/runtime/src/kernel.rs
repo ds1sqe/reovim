@@ -70,6 +70,13 @@ pub struct CallerState {
     pub last_seq: Option<u64>,
     pub window: VecDeque<(u64, Reply<Out>)>,
     pub watched: BTreeMap<Rd, usize>,
+    /// What a connection presented; empty for a Module or an unnamed
+    /// link. A named caller survives its link for the next `Connect`.
+    pub credential: Vec<u8>,
+    /// The Session and client rd of a connection.
+    pub client: Option<(Rd, Rd)>,
+    /// A link is on it now.
+    pub live: bool,
 }
 
 pub struct State {
@@ -195,9 +202,50 @@ impl State {
             last_seq: None,
             window: VecDeque::new(),
             watched: BTreeMap::new(),
+            credential: Vec::new(),
+            client: None,
+            live: false,
         };
         self.callers.insert(caller, state);
         caller
+    }
+
+    /// The caller's link ended: `None` when it is kept for its next
+    /// `Connect`, else the handles to close before it goes.
+    fn ending(&mut self, caller: Caller) -> Option<Vec<Handle>> {
+        let state = self.callers.get_mut(&caller)?;
+        state.live = false;
+        if !state.credential.is_empty() {
+            return None;
+        }
+        let mine = self.handles.iter().filter(|(_, s)| s.caller == caller);
+        Some(mine.map(|(h, _)| *h).collect())
+    }
+
+    /// The caller `credential` named in `session` before, taken over
+    /// by a new link; `Busy` while its old link is still on it.
+    fn adopt(
+        &mut self,
+        session: Rd,
+        credential: &[u8],
+    ) -> Result<Option<(Caller, Rd)>, Error> {
+        if credential.is_empty() {
+            return Ok(None);
+        }
+        let named = |c: &CallerState| {
+            c.credential == credential
+                && c.client.is_some_and(|(at, _)| at == session)
+        };
+        let Some((caller, state)) =
+            self.callers.iter_mut().find(|(_, c)| named(c))
+        else {
+            return Ok(None);
+        };
+        if state.live {
+            return Err(Error::Busy);
+        }
+        state.live = true;
+        Ok(state.client.map(|(_, client)| (*caller, client)))
     }
 }
 
@@ -325,17 +373,27 @@ impl Kernel {
         rd
     }
 
-    /// A new client under `session`: `/session/<id>/client/<cid>`, the
-    /// connection as a Resource. Logged under `kernel`.
+    /// `Connect`: the caller and client rd for `credential` in
+    /// `session`. An empty credential is a new client rd
+    /// `/session/<id>/client/<cid>` every time; a named one is made
+    /// once and taken over by every later link. Logged under `kernel`.
     ///
     /// # Errors
-    /// `Invalid` unless `session` came from `session_new`.
-    pub fn client_new(&self, session: Rd) -> Result<Rd, Error> {
+    /// `Invalid` unless `session` came from `session_new`; `Busy`
+    /// while the caller that credential names still has its link.
+    pub fn connect(
+        &self,
+        session: Rd,
+        credential: &[u8],
+    ) -> Result<(Caller, Rd), Error> {
         let now = self.now();
         let mut s = self.state.borrow_mut();
         let entry = s.table.get(session)?;
         if entry.parent != Some(SESSIONS) {
             return Err(Error::Invalid);
+        }
+        if let Some(known) = s.adopt(session, credential)? {
+            return Ok(known);
         }
         let owner = Owner::Kernel(Node::Container);
         let clients = s.table.child(session, "client").unwrap_or_else(|| {
@@ -352,7 +410,27 @@ impl Kernel {
         let line =
             alloc::format!("connect session={} client={}", session.0, rd.0);
         s.log(now, "kernel", line.into_bytes());
-        Ok(rd)
+        let caller = s.new_caller(None);
+        if let Some(state) = s.callers.get_mut(&caller) {
+            state.credential = credential.to_vec();
+            state.client = Some((session, rd));
+            state.live = true;
+        }
+        Ok((caller, rd))
+    }
+
+    /// The caller's link ended. A named caller waits for its next
+    /// `Connect` with everything it holds; any other is over: its
+    /// handles closed, its watches and reply window dropped. The client
+    /// rd stays.
+    pub fn caller_end(&self, caller: Caller) {
+        let Some(handles) = self.state.borrow_mut().ending(caller) else {
+            return;
+        };
+        for h in handles {
+            let _ = self.run(caller, Op::Close { h });
+        }
+        self.state.borrow_mut().callers.remove(&caller);
     }
 
     /// One request. A `seq` seen before is answered from memory and the

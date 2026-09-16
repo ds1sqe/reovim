@@ -20,9 +20,11 @@ use crate::server::{Links, boot};
 /// the bare form.
 type Serve<'a> = &'a mut dyn FnMut() -> Result<(), Fail>;
 
-/// `reovim tui`: a Client over the link.
+/// `reovim tui`: a Client over the link, named so a cut link can be
+/// taken up again.
 pub fn remote(socket: &str, file: &str) -> Result<(), Fail> {
-    let client = Remote::client(socket)?;
+    let credential = format!("tui:{}", std::process::id()).into_bytes();
+    let client = Remote::client(socket, credential)?;
     run(client, file, &mut || Ok(()))
 }
 
