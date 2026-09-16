@@ -9,9 +9,8 @@ use reovim_kernel_interface::{
     Booted, Caller, Error, Handle, Kind, Op, Out, Rd, Reply, Rights,
 };
 use reovim_kernel_runtime::{Kernel, Limits, ROOT};
-use reovim_module_text::{
-    Text, history_decl, open_decl, publish_decl, text_decl,
-};
+use reovim_module_text::{Text, history, open, publish, text};
+use reovim_sdk::{decode, encode};
 
 /// A directory of its own for one test, removed on drop.
 struct Dir(PathBuf);
@@ -49,25 +48,11 @@ fn load(kernel: &Kernel, name: &str, booted: &Booted) {
     kernel.load(name, booted.module.clone(), booted.drivers.clone()).unwrap();
 }
 
-fn u64_at(bytes: &[u8], at: usize) -> u64 {
-    u64::from_le_bytes(bytes[at..at + 8].try_into().unwrap())
-}
-
-/// The `Tree` record: nodes, head, published.
+/// The `Tree`: its nodes as tuples, head, published.
 fn tree_of(bytes: &[u8]) -> (Vec<Node>, u64, u64) {
-    let count = u32::from_le_bytes(bytes[..4].try_into().unwrap());
-    let mut at = 4;
-    let mut nodes = Vec::new();
-    for _ in 0..count {
-        let (id, parent) = (u64_at(bytes, at), u64_at(bytes, at + 8));
-        let len =
-            u32::from_le_bytes(bytes[at + 16..at + 20].try_into().unwrap());
-        let end = at + 20 + len as usize;
-        let label = String::from_utf8(bytes[at + 20..end].to_vec()).unwrap();
-        nodes.push((id, parent, label));
-        at = end;
-    }
-    (nodes, u64_at(bytes, at), u64_at(bytes, at + 8))
+    let tree: history::Tree = decode(bytes).unwrap();
+    let nodes = tree.nodes.into_iter().map(|n| (n.id, n.parent, n.label));
+    (nodes.collect(), tree.head, tree.published)
 }
 
 impl Rig {
@@ -171,37 +156,29 @@ impl Rig {
         input: Vec<u8>,
     ) -> Reply<Out> {
         let api = match api {
-            "open" => open_decl(),
-            "text" => text_decl(),
-            "history" => history_decl(),
-            _ => publish_decl(),
-        }
-        .hash();
+            "open" => open::hash(),
+            "text" => text::hash(),
+            "history" => history::hash(),
+            _ => publish::hash(),
+        };
         self.submit(Op::Call { h, api, method, input })
     }
 
     fn open_call(&self, source: Rd) -> Reply<Out> {
         let h = self.open(self.open, Rights::WRITE);
-        self.call(h, "open", 0, source.0.to_le_bytes().to_vec())
+        self.call(h, "open", 0, encode(&source))
     }
 
     fn buffer(&self, source: Rd) -> Rd {
         match self.open_call(source) {
-            Reply::Ready(Ok(Out::Bytes(bytes))) => {
-                Rd(u64::from_le_bytes(bytes.try_into().unwrap()))
-            }
+            Reply::Ready(Ok(Out::Bytes(bytes))) => decode(&bytes).unwrap(),
             other => panic!("{other:?}"),
         }
     }
 
     fn replace(&self, h: Handle, at: u64, len: u64, text: &str) -> Reply<Out> {
-        let mut input = at.to_le_bytes().to_vec();
-        input.extend_from_slice(&len.to_le_bytes());
-        input.extend_from_slice(
-            &u32::try_from(text.len()).unwrap().to_le_bytes(),
-        );
-        input.extend_from_slice(text.as_bytes());
-        self.call(h, "text", 0, input)
+        let edit = text::Edit { at, len, text: text.to_string() };
+        self.call(h, "text", 0, encode(&edit))
     }
 
     /// `replace_many` with `expected`; each edit `(at, len, text)`.
@@ -211,19 +188,14 @@ impl Rig {
         expected: u64,
         edits: &[(u64, u64, &str)],
     ) -> Reply<Out> {
-        let mut input = expected.to_le_bytes().to_vec();
-        input.extend_from_slice(
-            &u32::try_from(edits.len()).unwrap().to_le_bytes(),
-        );
-        for (at, len, text) in edits {
-            input.extend_from_slice(&at.to_le_bytes());
-            input.extend_from_slice(&len.to_le_bytes());
-            input.extend_from_slice(
-                &u32::try_from(text.len()).unwrap().to_le_bytes(),
-            );
-            input.extend_from_slice(text.as_bytes());
-        }
-        self.call(h, "text", 1, input)
+        let edit = |&(at, len, text): &(u64, u64, &str)| text::Edit {
+            at,
+            len,
+            text: text.to_string(),
+        };
+        let many =
+            text::Many { expected, edits: edits.iter().map(edit).collect() };
+        self.call(h, "text", 1, encode(&many))
     }
 
     /// `undo`, `redo` or `goto`.
@@ -257,7 +229,7 @@ fn walkthrough_one_open_edit_undo_save() {
     assert_eq!(rig.name(buffer), source.0.to_string());
     assert_eq!(rig.read(buffer), b"abc");
     let pointer = rig.lookup(buffer, "source");
-    assert_eq!(rig.read(pointer), source.0.to_le_bytes());
+    assert_eq!(rig.read(pointer), encode(&source));
 
     let (h, cursor) = rig.watch(buffer);
     rig.watch(source);
@@ -300,7 +272,7 @@ fn write_makes_a_state_and_an_edit_after_undo_branches() {
     assert_eq!((nodes[1].1, nodes[2].1, nodes[2].2.as_str()), (1, 1, "write"));
     assert_eq!(head, 3);
 
-    assert_eq!(rig.history(h, 1, 1u64.to_le_bytes().to_vec()), DONE);
+    assert_eq!(rig.history(h, 1, encode(&1u64)), DONE);
     assert_eq!(rig.read(buffer), b"abc");
     assert_eq!(rig.history(h, 3, Vec::new()), DONE);
     assert_eq!(rig.read(buffer), b"abcd");
@@ -309,10 +281,10 @@ fn write_makes_a_state_and_an_edit_after_undo_branches() {
 
     let invalid = Reply::err(Error::Invalid);
     assert_eq!(rig.history(h, 3, Vec::new()), invalid);
-    assert_eq!(rig.history(h, 1, 9u64.to_le_bytes().to_vec()), invalid);
+    assert_eq!(rig.history(h, 1, encode(&9u64)), invalid);
     assert_eq!(rig.write(h, 9, b"x"), invalid);
     assert_eq!(rig.replace(h, 3, 2, ""), invalid);
-    assert_eq!(rig.history(h, 1, 1u64.to_le_bytes().to_vec()), DONE);
+    assert_eq!(rig.history(h, 1, encode(&1u64)), DONE);
     assert_eq!(rig.history(h, 2, Vec::new()), invalid);
     let (events, _) = rig.since(cursor);
     assert_eq!(events, [(buffer, Kind::Modify)]);
@@ -333,7 +305,7 @@ fn a_read_only_source_opens_but_never_saves() {
     let pointer = rig.lookup(rig.buffer(source), "source");
 
     let buffer = rig.buffer(pointer);
-    assert_eq!(rig.read(buffer), source.0.to_le_bytes());
+    assert_eq!(rig.read(buffer), encode(&source));
     let h = rig.open(buffer, Rights::WRITE);
     assert_eq!(rig.save(h), Reply::err(Error::Denied));
 }

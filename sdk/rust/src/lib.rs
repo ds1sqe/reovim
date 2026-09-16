@@ -19,6 +19,10 @@ pub use typed::{Decode, Encode, Typed, decode, encode};
 /// What the macros name; not for callers.
 #[doc(hidden)]
 pub mod __interface {
+    pub use alloc::boxed::Box;
+    pub use alloc::string::{String, ToString};
+    pub use alloc::vec;
+    pub use alloc::vec::Vec;
     pub use reovim_kernel_interface::{
         Calls, Decl, Error, Field, Handle, Hash, Method, Rd, Rights, Ty,
     };

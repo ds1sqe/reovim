@@ -8,11 +8,12 @@ use std::rc::Rc;
 
 use reovim_host::clock;
 use reovim_kernel_interface::{
-    Booted, Caller, Calls, Decl, Driver, DriverId, Error, Field, Flags, Handle,
-    Hash, Method, Module, Op, Out, Rd, Reply, Rights, Token, Ty,
+    Booted, Caller, Calls, Driver, DriverId, Error, Flags, Handle, Hash,
+    Module, Op, Out, Rd, Reply, Rights, Token,
 };
 use reovim_kernel_runtime::{Kernel, Limits, ROOT};
-use reovim_module_text::{history_decl, open_decl, text_decl};
+use reovim_module_text::{history, open, text};
+use reovim_sdk::{declare, decode, encode};
 
 struct Dir(PathBuf);
 
@@ -31,29 +32,12 @@ impl Drop for Dir {
     }
 }
 
-fn field(name: &str, ty: Ty) -> Field {
-    Field { name: name.to_string(), ty }
-}
-
-/// `lsp.rename({buffers, at, name}) -> {applied, stale}`, WRITE.
-fn lsp_decl() -> Decl {
-    let input = Ty::Record(vec![
-        field("buffers", Ty::Sequence(16, Box::new(Ty::Rd))),
-        field("at", Ty::U64),
-        field("name", Ty::Utf8(64)),
-    ]);
-    let output = Ty::Record(vec![
-        field("applied", Ty::U32),
-        field("stale", Ty::Sequence(16, Box::new(Ty::Rd))),
-    ]);
-    let rename = Method {
-        number: 0,
-        name: "rename".to_string(),
-        input,
-        output,
-        right: Rights::WRITE,
-    };
-    Decl { api: "lsp".to_string(), ver: 1, methods: vec![rename] }
+declare! {
+    api lsp ver 1 {
+        0 rename(job: Rename) -> Report: WRITE;
+    }
+    record Rename { buffers: [Rd; 16], at: u64, name: utf8(64) }
+    record Report { applied: u32, stale: [Rd; 16] }
 }
 
 /// One rename in flight: per Buffer the head revision seen at the
@@ -61,17 +45,13 @@ fn lsp_decl() -> Decl {
 struct Job {
     buffers: Vec<(Rd, u64)>,
     at: u64,
-    name: Vec<u8>,
+    name: String,
 }
 
 #[derive(Default)]
 struct Lsp {
     rename: Cell<Option<Rd>>,
     job: RefCell<Option<Job>>,
-}
-
-fn u64_at(bytes: &[u8], at: usize) -> u64 {
-    u64::from_le_bytes(bytes[at..at + 8].try_into().unwrap())
 }
 
 fn ready(reply: Reply<Out>) -> Result<Out, Error> {
@@ -85,12 +65,12 @@ impl Lsp {
     /// The head revision of `buffer` now, through `history.tree`.
     fn head(ctx: &dyn Calls, buffer: Rd) -> Result<u64, Error> {
         let h = ctx.open(buffer, Rights::READ)?;
-        let api = history_decl().hash();
+        let api = history::hash();
         let tree = Op::Call { h, api, method: 0, input: Vec::new() };
         let out = ready(ctx.submit(tree));
         let _ = ctx.submit(Op::Close { h });
         let Out::Bytes(bytes) = out? else { return Err(Error::Invalid) };
-        Ok(u64_at(&bytes, bytes.len() - 16))
+        Ok(decode::<history::Tree>(&bytes)?.head)
     }
 
     /// `replace_many` with the revision seen; `Stale` if it moved.
@@ -101,15 +81,9 @@ impl Lsp {
         rev: u64,
     ) -> Result<(), Error> {
         let h = ctx.open(buffer, Rights::WRITE)?;
-        let mut input = rev.to_le_bytes().to_vec();
-        input.extend_from_slice(&1u32.to_le_bytes());
-        input.extend_from_slice(&job.at.to_le_bytes());
-        input.extend_from_slice(&3u64.to_le_bytes());
-        input.extend_from_slice(
-            &u32::try_from(job.name.len()).unwrap().to_le_bytes(),
-        );
-        input.extend_from_slice(&job.name);
-        let api = text_decl().hash();
+        let edit = text::Edit { at: job.at, len: 3, text: job.name.clone() };
+        let input = encode(&text::Many { expected: rev, edits: vec![edit] });
+        let api = text::hash();
         let out = ready(ctx.submit(Op::Call { h, api, method: 1, input }));
         let _ = ctx.submit(Op::Close { h });
         out.map(|_| ())
@@ -127,14 +101,8 @@ impl Lsp {
                 Err(other) => return Err(other),
             }
         }
-        let mut out = applied.to_le_bytes().to_vec();
-        out.extend_from_slice(
-            &u32::try_from(stale.len()).unwrap().to_le_bytes(),
-        );
-        for rd in stale {
-            out.extend_from_slice(&rd.0.to_le_bytes());
-        }
-        ctx.done(Token(1), Ok(Out::Bytes(out)))
+        let report = lsp::Report { applied, stale };
+        ctx.done(Token(1), Ok(Out::Bytes(encode(&report))))
     }
 }
 
@@ -143,7 +111,7 @@ impl Module for Lsp {
         let actions = ctx.register(DriverId(0), home, Some("actions"))?;
         ctx.report(actions, Flags::READ | Flags::CONTAINER, &[])?;
         let rename = ctx.register(DriverId(0), actions, Some("rename"))?;
-        ctx.report(rename, Flags::READ | Flags::WRITE, &[lsp_decl()])?;
+        ctx.report(rename, Flags::READ | Flags::WRITE, &[lsp::decl()])?;
         self.rename.set(Some(rename));
         Ok(())
     }
@@ -168,19 +136,19 @@ impl Driver for Lsp {
         _: u16,
         input: &[u8],
     ) -> Reply<Vec<u8>> {
-        let count = u32::from_le_bytes(input[..4].try_into().unwrap()) as usize;
+        let rename = match decode::<lsp::Rename>(input) {
+            Ok(rename) => rename,
+            Err(error) => return Reply::err(error),
+        };
         let mut buffers = Vec::new();
-        for i in 0..count {
-            let rd = Rd(u64_at(input, 4 + i * 8));
+        for rd in rename.buffers {
             match Self::head(ctx, rd) {
                 Ok(rev) => buffers.push((rd, rev)),
                 Err(error) => return Reply::err(error),
             }
         }
-        let rest = &input[4 + count * 8..];
-        let at = u64_at(rest, 0);
-        let name = rest[12..].to_vec();
-        *self.job.borrow_mut() = Some(Job { buffers, at, name });
+        let job = Job { buffers, at: rename.at, name: rename.name };
+        *self.job.borrow_mut() = Some(job);
         Reply::Pending(Token(1))
     }
 }
@@ -235,10 +203,9 @@ impl Rig {
         let file = self.resolve(&format!("/module/fs/root/{name}"));
         let open = self.resolve("/module/text/open");
         let h = self.open(open, Rights::WRITE);
-        let api = open_decl().hash();
-        let input = file.0.to_le_bytes().to_vec();
-        match self.ok(Op::Call { h, api, method: 0, input }) {
-            Out::Bytes(bytes) => Rd(u64_at(&bytes, 0)),
+        let api = open::hash();
+        match self.ok(Op::Call { h, api, method: 0, input: encode(&file) }) {
+            Out::Bytes(bytes) => decode(&bytes).unwrap(),
             other => panic!("{other:?}"),
         }
     }
@@ -262,14 +229,10 @@ fn rename_across_five_buffers_reports_the_stale_one() {
         (1..=5).map(|i| rig.buffer(&format!("f{i}"), b"old text")).collect();
     let rename = rig.resolve("/module/lsp/actions/rename");
     let h = rig.open(rename, Rights::WRITE);
-    let mut input = 5u32.to_le_bytes().to_vec();
-    for rd in &buffers {
-        input.extend_from_slice(&rd.0.to_le_bytes());
-    }
-    input.extend_from_slice(&0u64.to_le_bytes());
-    input.extend_from_slice(&3u32.to_le_bytes());
-    input.extend_from_slice(b"new");
-    let api = lsp_decl().hash();
+    let job =
+        lsp::Rename { buffers: buffers.clone(), at: 0, name: "new".into() };
+    let input = encode(&job);
+    let api = lsp::hash();
     let Reply::Pending(token) =
         rig.submit(Op::Call { h, api, method: 0, input })
     else {
@@ -284,10 +247,9 @@ fn rename_across_five_buffers_reports_the_stale_one() {
     assert_eq!(rig.submit(go), Reply::err(Error::Invalid));
 
     let Out::Bytes(report) = rig.ok(Op::Ask { token }) else { panic!("ask") };
-    let applied = u32::from_le_bytes(report[..4].try_into().unwrap());
-    let stale = u32::from_le_bytes(report[4..8].try_into().unwrap());
-    assert_eq!((applied, stale), (4, 1));
-    assert_eq!(Rd(u64_at(&report, 8)), buffers[2]);
+    let report: lsp::Report = decode(&report).unwrap();
+    assert_eq!((report.applied, report.stale.len()), (4, 1));
+    assert_eq!(report.stale[0], buffers[2]);
     for (i, rd) in buffers.iter().enumerate() {
         let expected: &[u8] = if i == 2 { b"typed" } else { b"new text" };
         assert_eq!(rig.read(*rd), expected, "buffer {i}");

@@ -11,30 +11,24 @@
 extern crate alloc;
 
 use alloc::collections::BTreeMap;
+use alloc::format;
 use alloc::rc::Rc;
-use alloc::string::{String, ToString};
+use alloc::string::String;
 use alloc::vec::Vec;
-use alloc::{format, vec};
 use core::cell::RefCell;
 
-use reovim_host::fs;
+use reovim_host::fs as host;
 use reovim_kernel_interface::{
-    Booted, Calls, Decl, Driver, DriverId, Error, Flags, Hash, Kind, Method,
-    Module, Rd, Reply, Rights, Ty,
+    Booted, Calls, Decl, Driver, DriverId, Error, Flags, Hash, Kind, Module,
+    Rd, Reply, Rights,
 };
+use reovim_sdk::declare;
 
-/// The api every directory offers: `0 create(name: Utf8(255)) -> Rd`,
-/// WRITE.
-#[must_use]
-pub fn decl() -> Decl {
-    let create = Method {
-        number: 0,
-        name: "create".to_string(),
-        input: Ty::Utf8(255),
-        output: Ty::Rd,
-        right: Rights::WRITE,
-    };
-    Decl { api: "fs".to_string(), ver: 1, methods: vec![create] }
+declare! {
+    /// Every directory: a new empty file below it.
+    api fs ver 1 {
+        0 create(name: utf8(255)) -> Rd: WRITE;
+    }
 }
 
 /// A directory: Container, WRITE for `create`.
@@ -81,12 +75,6 @@ const fn map(error: reovim_host::Error) -> Error {
     }
 }
 
-/// The `Utf8` payload of `create`, already checked to fit.
-fn utf8(input: &[u8]) -> Result<&str, Error> {
-    let bytes = input.get(4..).ok_or(Error::Invalid)?;
-    core::str::from_utf8(bytes).map_err(|_| Error::Invalid)
-}
-
 /// The fs Module over `root`, ready for `load`.
 #[must_use]
 pub fn boot(root: &str) -> Booted {
@@ -98,7 +86,7 @@ impl Fs {
     /// Mirror the directory at `root`.
     #[must_use]
     pub fn new(root: String) -> Self {
-        Self { root, decl: decl(), nodes: RefCell::new(BTreeMap::new()) }
+        Self { root, decl: fs::decl(), nodes: RefCell::new(BTreeMap::new()) }
     }
 
     fn path(&self, rd: Rd) -> Result<(String, bool), Error> {
@@ -158,7 +146,7 @@ impl Fs {
             return Err(Error::Invalid);
         }
         let path = join(&path, name);
-        let dir = match fs::stat(&path) {
+        let dir = match host::stat(&path) {
             Ok(stat) => stat.kind == reovim_host::Kind::Dir,
             // Not on disk: an empty file until it is written.
             Err(reovim_host::Error::NotFound) => false,
@@ -168,7 +156,7 @@ impl Fs {
     }
 
     fn list(&self, ctx: &dyn Calls, rd: Rd, path: &str) -> Result<Rd, Error> {
-        let entries = fs::list(path).map_err(map)?;
+        let entries = host::list(path).map_err(map)?;
         for entry in entries.iter().filter(|e| valid(&e.name)) {
             let dir = entry.kind == reovim_host::Kind::Dir;
             let child = join(path, &entry.name);
@@ -185,7 +173,7 @@ impl Fs {
         if dir {
             return Err(Error::Unsupported);
         }
-        let mtime = match fs::stat(&path) {
+        let mtime = match host::stat(&path) {
             Ok(stat) => Some(stat.mtime),
             Err(reovim_host::Error::NotFound) => None,
             Err(other) => return Err(map(other)),
@@ -214,12 +202,12 @@ impl Fs {
         let path = self.check(ctx, rd)?;
         // The whole file is replaced or left alone; a tail is written.
         let count = if at == 0 {
-            fs::replace(&path, bytes).map(|()| bytes.len())
+            host::replace(&path, bytes).map(|()| bytes.len())
         } else {
-            fs::write(&path, at, bytes)
+            host::write(&path, at, bytes)
         };
         let count = count.map_err(map)?;
-        let mtime = fs::stat(&path).ok().map(|s| s.mtime);
+        let mtime = host::stat(&path).ok().map(|s| s.mtime);
         if let Some(node) = self.nodes.borrow_mut().get_mut(&rd) {
             node.seen = mtime;
         }
@@ -227,13 +215,13 @@ impl Fs {
         Ok(count)
     }
 
-    fn create(&self, ctx: &dyn Calls, rd: Rd, name: &str) -> Result<Rd, Error> {
+    fn make(&self, ctx: &dyn Calls, rd: Rd, name: &str) -> Result<Rd, Error> {
         let (path, _) = self.path(rd)?;
         if !valid(name) {
             return Err(Error::Invalid);
         }
         let path = join(&path, name);
-        fs::create(&path).map_err(map)?;
+        host::create(&path).map_err(map)?;
         self.add(ctx, rd, name, path, false)
     }
 }
@@ -261,7 +249,7 @@ impl Driver for Fs {
         len: usize,
     ) -> Reply<Vec<u8>> {
         let bytes = self.check(ctx, Rd(h)).and_then(|path| {
-            match fs::read(&path, at, len) {
+            match host::read(&path, at, len) {
                 // Not written yet.
                 Err(reovim_host::Error::NotFound) => Ok(Vec::new()),
                 bytes => bytes.map_err(map),
@@ -285,10 +273,20 @@ impl Driver for Fs {
         ctx: &dyn Calls,
         h: u64,
         _: Hash,
-        _: u16,
+        number: u16,
         input: &[u8],
     ) -> Reply<Vec<u8>> {
-        let made = utf8(input).and_then(|name| self.create(ctx, Rd(h), name));
-        made.map(|rd| rd.0.to_le_bytes().to_vec()).into()
+        fs::dispatch(self, ctx, Rd(h), number, input).into()
+    }
+}
+
+impl fs::Api for Fs {
+    fn create(
+        &self,
+        ctx: &dyn Calls,
+        rd: Rd,
+        name: String,
+    ) -> Result<Rd, Error> {
+        self.make(ctx, rd, &name)
     }
 }

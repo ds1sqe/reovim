@@ -5,7 +5,6 @@
 extern crate alloc;
 
 use reovim_kernel_interface::{Calls, Error, Handle, Hash, Rd};
-use reovim_module_text::{history_decl, text_decl};
 use reovim_sdk::declare;
 
 declare! {
@@ -30,9 +29,9 @@ declare! {
 
 #[test]
 fn the_declared_bytes_are_the_hand_built_ones() {
-    assert_eq!(history::decl(), history_decl());
-    assert_eq!(history::hash(), history_decl().hash());
-    assert_eq!(text::decl(), text_decl());
+    assert_eq!(history::decl(), reovim_module_text::history::decl());
+    assert_eq!(history::hash(), reovim_module_text::history::hash());
+    assert_eq!(text::decl(), reovim_module_text::text::decl());
 }
 
 /// A Driver with one revision that refuses to move.

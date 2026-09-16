@@ -5,6 +5,8 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
+use crate::history::{Node, Tree};
+
 /// One stored state: its parent's revision (0 for the first), the
 /// method that made it and the whole draft.
 struct State {
@@ -89,24 +91,15 @@ impl History {
         true
     }
 
-    /// The declared `Tree` record: the nodes in revision order, then
-    /// head and published.
-    pub fn tree(&self) -> Vec<u8> {
-        let mut out = Vec::new();
-        put_u32(&mut out, self.states.len());
-        for (index, state) in self.states.iter().enumerate() {
-            out.extend_from_slice(&(index as u64 + 1).to_le_bytes());
-            out.extend_from_slice(&state.parent.to_le_bytes());
-            put_u32(&mut out, state.label.len());
-            out.extend_from_slice(state.label.as_bytes());
-        }
-        out.extend_from_slice(&self.head.to_le_bytes());
-        out.extend_from_slice(&self.published.to_le_bytes());
-        out
+    /// The declared `Tree`: the nodes in revision order, then head
+    /// and published.
+    pub fn tree(&self) -> Tree {
+        let node = |(index, state): (usize, &State)| Node {
+            id: index as u64 + 1,
+            parent: state.parent,
+            label: state.label.clone(),
+        };
+        let nodes = self.states.iter().enumerate().map(node).collect();
+        Tree { nodes, head: self.head, published: self.published }
     }
-}
-
-fn put_u32(out: &mut Vec<u8>, value: usize) {
-    let value = u32::try_from(value).unwrap_or(u32::MAX);
-    out.extend_from_slice(&value.to_le_bytes());
 }

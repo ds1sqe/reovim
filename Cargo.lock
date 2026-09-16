@@ -217,6 +217,7 @@ dependencies = [
  "reovim-host",
  "reovim-kernel-interface",
  "reovim-kernel-runtime",
+ "reovim-sdk",
 ]
 
 [[package]]
@@ -227,6 +228,7 @@ dependencies = [
  "reovim-kernel-interface",
  "reovim-kernel-runtime",
  "reovim-module-fs",
+ "reovim-sdk",
 ]
 
 [[package]]

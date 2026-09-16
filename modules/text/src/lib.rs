@@ -8,94 +8,59 @@
 
 extern crate alloc;
 
-mod history;
+mod states;
 
 use alloc::collections::BTreeMap;
 use alloc::rc::Rc;
 use alloc::string::ToString;
-use alloc::vec;
 use alloc::vec::Vec;
 use core::cell::RefCell;
 
 use reovim_kernel_interface::{
-    Booted, Calls, Decl, Driver, DriverId, Error, Field, Flags, Handle, Hash,
-    Kind, Method, Module, Op, Out, Rd, Reply, Rights, Ty,
+    Booted, Calls, Decl, Driver, DriverId, Error, Flags, Handle, Hash, Kind,
+    Module, Op, Out, Rd, Reply, Rights,
 };
+use reovim_sdk::declare;
 
-use history::History;
+use states::History;
 
-fn method(
-    number: u16,
-    name: &str,
-    input: Ty,
-    output: Ty,
-    right: Rights,
-) -> Method {
-    Method { number, name: name.to_string(), input, output, right }
+declare! {
+    /// `/module/text/open`: a Buffer over any rd.
+    api open ver 1 {
+        0 open(source: Rd) -> Rd: WRITE;
+    }
 }
 
-fn field(name: &str, ty: Ty) -> Field {
-    Field { name: name.to_string(), ty }
+declare! {
+    /// Every Buffer: the edits of one call are one state; `expected`
+    /// is the head revision the caller saw, 0 for any, and a different
+    /// one is `Stale`.
+    api text ver 1 {
+        0 replace(edit: Edit) -> (): WRITE;
+        1 replace_many(many: Many) -> (): WRITE;
+    }
+    record Edit { at: u64, len: u64, text: utf8(1 << 20) }
+    record Many { expected: u64, edits: [Edit; 256] }
 }
 
-/// `/module/text/open`: `0 open(source: Rd) -> Rd`, WRITE.
-#[must_use]
-pub fn open_decl() -> Decl {
-    let open = method(0, "open", Ty::Rd, Ty::Rd, Rights::WRITE);
-    Decl { api: "open".to_string(), ver: 1, methods: vec![open] }
+declare! {
+    /// Every Buffer: the `history` api of 00-core.md. Revisions count
+    /// from 1; 0 is "none" as a parent or as `published`.
+    api history ver 1 {
+        0 tree() -> Tree: READ;
+        1 goto(rev: u64) -> (): WRITE;
+        2 undo() -> (): WRITE;
+        3 redo() -> (): WRITE;
+    }
+    record Tree { nodes: [Node; 4096], head: u64, published: u64 }
+    record Node { id: u64, parent: u64, label: utf8(16) }
 }
 
-/// Every Buffer: `0 replace(Edit{at, len, text}) -> Unit` and
-/// `1 replace_many({expected, edits: [Edit]}) -> Unit`, WRITE.
-///
-/// The edits of one call are one state; `expected` is the head
-/// revision the caller saw, 0 for any, and a different one is `Stale`.
-#[must_use]
-pub fn text_decl() -> Decl {
-    let edit = Ty::Record(vec![
-        field("at", Ty::U64),
-        field("len", Ty::U64),
-        field("text", Ty::Utf8(1 << 20)),
-    ]);
-    let many = Ty::Record(vec![
-        field("expected", Ty::U64),
-        field("edits", Ty::Sequence(256, alloc::boxed::Box::new(edit.clone()))),
-    ]);
-    let methods = vec![
-        method(0, "replace", edit, Ty::Unit, Rights::WRITE),
-        method(1, "replace_many", many, Ty::Unit, Rights::WRITE),
-    ];
-    Decl { api: "text".to_string(), ver: 1, methods }
-}
-
-/// Every Buffer: the `history` api of 00-core.md. Revisions count
-/// from 1; 0 is "none" as a parent or as `published`.
-#[must_use]
-pub fn history_decl() -> Decl {
-    let node = Ty::Record(vec![
-        field("id", Ty::U64),
-        field("parent", Ty::U64),
-        field("label", Ty::Utf8(16)),
-    ]);
-    let tree = Ty::Record(vec![
-        field("nodes", Ty::Sequence(4096, alloc::boxed::Box::new(node))),
-        field("head", Ty::U64),
-        field("published", Ty::U64),
-    ]);
-    let methods = vec![
-        method(0, "tree", Ty::Unit, tree, Rights::READ),
-        method(1, "goto", Ty::U64, Ty::Unit, Rights::WRITE),
-        method(2, "undo", Ty::Unit, Ty::Unit, Rights::WRITE),
-        method(3, "redo", Ty::Unit, Ty::Unit, Rights::WRITE),
-    ];
-    Decl { api: "history".to_string(), ver: 1, methods }
-}
-
-/// Every Buffer: `0 save() -> Unit`, WRITE.
-#[must_use]
-pub fn publish_decl() -> Decl {
-    let save = method(0, "save", Ty::Unit, Ty::Unit, Rights::WRITE);
-    Decl { api: "publish".to_string(), ver: 1, methods: vec![save] }
+declare! {
+    /// Every Buffer: the head written back to the source.
+    api publish ver 1 {
+        0 save() -> (): WRITE;
+    }
 }
 
 /// The api rd.
@@ -207,67 +172,28 @@ fn spliced(
     Ok(out)
 }
 
-/// `edits` on one copy of the draft as one state, once the head is
-/// `expected` (0 for any); how many bytes the state took.
+/// `many`'s edits on one copy of the draft as one state, once the head
+/// is what it expected (0 for any); how many bytes the state took.
 fn many(
     history: &mut History,
     room: usize,
-    expected: u64,
-    edits: &[Edit<'_>],
-) -> Result<(Vec<u8>, usize), Error> {
-    if expected != 0 && history.head() != expected {
+    many: &text::Many,
+) -> Result<((), usize), Error> {
+    if many.expected != 0 && history.head() != many.expected {
         return Err(Error::Stale);
     }
     let mut next = history.draft().to_vec();
-    for (at, len, text) in edits {
-        next = spliced(&next, *at, *len, text)?;
+    for edit in &many.edits {
+        next = spliced(&next, edit.at, edit.len, edit.text.as_bytes())?;
     }
     let took = fits(next.len(), room)?;
     history.commit("replace", next);
-    Ok((Vec::new(), took))
+    Ok(((), took))
 }
 
 /// `len` when a state of that size fits in `room`; `NoSpace` otherwise.
 const fn fits(len: usize, room: usize) -> Result<usize, Error> {
     if len > room { Err(Error::NoSpace) } else { Ok(len) }
-}
-
-/// A `U64` or `Rd` payload, already checked to fit.
-fn u64_of(input: &[u8]) -> Result<u64, Error> {
-    let bytes = input.try_into().map_err(|_| Error::Invalid)?;
-    Ok(u64::from_le_bytes(bytes))
-}
-
-/// One edit: `at`, `len`, `text`.
-type Edit<'a> = (u64, u64, &'a [u8]);
-
-/// The `Edit` record: `at`, `len`, then `text` with its length.
-fn edit_of(input: &[u8]) -> Result<Edit<'_>, Error> {
-    let at = u64_of(input.get(..8).ok_or(Error::Invalid)?)?;
-    let len = u64_of(input.get(8..16).ok_or(Error::Invalid)?)?;
-    let text = input.get(20..).ok_or(Error::Invalid)?;
-    Ok((at, len, text))
-}
-
-/// The `replace_many` record: `expected`, then the edits in order.
-fn edits_of(input: &[u8]) -> Result<(u64, Vec<Edit<'_>>), Error> {
-    let expected = u64_of(input.get(..8).ok_or(Error::Invalid)?)?;
-    let count = input.get(8..12).ok_or(Error::Invalid)?;
-    let count =
-        u32::from_le_bytes(count.try_into().map_err(|_| Error::Invalid)?);
-    let mut at = 12;
-    let mut edits = Vec::new();
-    for _ in 0..count {
-        let head = input.get(at..at + 20).ok_or(Error::Invalid)?;
-        let n = u32::from_le_bytes(
-            head[16..20].try_into().map_err(|_| Error::Invalid)?,
-        );
-        let end = at + 20 + n as usize;
-        let text = input.get(at + 20..end).ok_or(Error::Invalid)?;
-        edits.push((u64_of(&head[..8])?, u64_of(&head[8..16])?, text));
-        at = end;
-    }
-    Ok((expected, edits))
 }
 
 /// The text Module, ready for `load`; `root` is unused.
@@ -293,7 +219,8 @@ impl Text {
     /// A Driver holding at most `limit` bytes of states.
     #[must_use]
     pub fn with_limit(limit: usize) -> Self {
-        let decls = [open_decl(), text_decl(), history_decl(), publish_decl()];
+        let decls =
+            [open::decl(), text::decl(), history::decl(), publish::decl()];
         let hashes = [
             decls[0].hash(),
             decls[1].hash(),
@@ -320,7 +247,7 @@ impl Text {
     }
 
     /// The Buffer for `source`, made now if there is none.
-    fn open(&self, ctx: &dyn Calls, source: Rd) -> Result<Rd, Error> {
+    fn buffer(&self, ctx: &dyn Calls, source: Rd) -> Result<Rd, Error> {
         let state = self.state.borrow();
         let (home, known) = (state.home, state.opened.get(&source).copied());
         drop(state);
@@ -350,7 +277,7 @@ impl Text {
                 Ok(slice(history.draft(), at, len))
             }
             Some(Node::Pointer(source)) => {
-                Ok(slice(&source.0.to_le_bytes(), at, len))
+                Ok(slice(&reovim_sdk::encode(source), at, len))
             }
             _ => Err(Error::Unsupported),
         }
@@ -396,37 +323,8 @@ impl Text {
         })
     }
 
-    /// The `Edit` of `replace` as a new state.
-    fn replace(
-        &self,
-        ctx: &dyn Calls,
-        rd: Rd,
-        input: &[u8],
-    ) -> Result<Vec<u8>, Error> {
-        let (at, len, text) = edit_of(input)?;
-        self.change(ctx, rd, |history, room| {
-            let next = spliced(history.draft(), at, len, text)?;
-            let took = fits(next.len(), room)?;
-            history.commit("replace", next);
-            Ok((Vec::new(), took))
-        })
-    }
-
-    /// Every edit of `replace_many` on one copy as one state, once the
-    /// head is what the caller expected.
-    fn replace_many(
-        &self,
-        ctx: &dyn Calls,
-        rd: Rd,
-        input: &[u8],
-    ) -> Result<Vec<u8>, Error> {
-        let (expected, edits) = edits_of(input)?;
-        self.change(ctx, rd, |history, room| {
-            many(history, room, expected, &edits)
-        })
-    }
-
-    fn save(&self, ctx: &dyn Calls, rd: Rd) -> Result<(), Error> {
+    /// The head stored to the source, then published.
+    fn store_head(&self, ctx: &dyn Calls, rd: Rd) -> Result<(), Error> {
         let state = self.state.borrow();
         let Some(Node::Buffer { source, history }) = state.nodes.get(&rd)
         else {
@@ -448,20 +346,14 @@ impl Text {
         ctx: &dyn Calls,
         rd: Rd,
         f: impl FnOnce(&mut History) -> bool,
-    ) -> Result<Vec<u8>, Error> {
+    ) -> Result<(), Error> {
         let ok = |history: &mut History, _: usize| {
             f(history).then_some(((), 0)).ok_or(Error::Invalid)
         };
-        self.change(ctx, rd, ok).map(|()| Vec::new())
+        self.change(ctx, rd, ok)
     }
 
-    fn tree(&self, rd: Rd) -> Result<Vec<u8>, Error> {
-        match self.state.borrow().nodes.get(&rd) {
-            Some(Node::Buffer { history, .. }) => Ok(history.tree()),
-            _ => Err(Error::Unsupported),
-        }
-    }
-
+    /// The api `api` on `rd`: each of the four dispatches its own.
     fn call(
         &self,
         ctx: &dyn Calls,
@@ -471,23 +363,76 @@ impl Text {
         input: &[u8],
     ) -> Result<Vec<u8>, Error> {
         let [open, text, history, publish] = self.hashes;
-        match (api, number) {
-            (a, 0) if a == open => {
-                let made = self.open(ctx, Rd(u64_of(input)?))?;
-                Ok(made.0.to_le_bytes().to_vec())
+        match api {
+            a if a == open => open::dispatch(self, ctx, rd, number, input),
+            a if a == text => text::dispatch(self, ctx, rd, number, input),
+            a if a == history => {
+                history::dispatch(self, ctx, rd, number, input)
             }
-            (a, 0) if a == text => self.replace(ctx, rd, input),
-            (a, 1) if a == text => self.replace_many(ctx, rd, input),
-            (a, 0) if a == history => self.tree(rd),
-            (a, 1) if a == history => {
-                let rev = u64_of(input)?;
-                self.moved(ctx, rd, |h| h.goto(rev))
+            a if a == publish => {
+                publish::dispatch(self, ctx, rd, number, input)
             }
-            (a, 2) if a == history => self.moved(ctx, rd, History::undo),
-            (a, 3) if a == history => self.moved(ctx, rd, History::redo),
-            (a, 0) if a == publish => self.save(ctx, rd).map(|()| Vec::new()),
             _ => Err(Error::Unsupported),
         }
+    }
+}
+
+impl open::Api for Text {
+    fn open(&self, ctx: &dyn Calls, _: Rd, source: Rd) -> Result<Rd, Error> {
+        self.buffer(ctx, source)
+    }
+}
+
+impl text::Api for Text {
+    fn replace(
+        &self,
+        ctx: &dyn Calls,
+        rd: Rd,
+        edit: text::Edit,
+    ) -> Result<(), Error> {
+        self.change(ctx, rd, |history, room| {
+            let text = edit.text.as_bytes();
+            let next = spliced(history.draft(), edit.at, edit.len, text)?;
+            let took = fits(next.len(), room)?;
+            history.commit("replace", next);
+            Ok(((), took))
+        })
+    }
+
+    fn replace_many(
+        &self,
+        ctx: &dyn Calls,
+        rd: Rd,
+        edits: text::Many,
+    ) -> Result<(), Error> {
+        self.change(ctx, rd, |history, room| many(history, room, &edits))
+    }
+}
+
+impl history::Api for Text {
+    fn tree(&self, _: &dyn Calls, rd: Rd) -> Result<history::Tree, Error> {
+        match self.state.borrow().nodes.get(&rd) {
+            Some(Node::Buffer { history, .. }) => Ok(history.tree()),
+            _ => Err(Error::Unsupported),
+        }
+    }
+
+    fn goto(&self, ctx: &dyn Calls, rd: Rd, rev: u64) -> Result<(), Error> {
+        self.moved(ctx, rd, |history| history.goto(rev))
+    }
+
+    fn undo(&self, ctx: &dyn Calls, rd: Rd) -> Result<(), Error> {
+        self.moved(ctx, rd, History::undo)
+    }
+
+    fn redo(&self, ctx: &dyn Calls, rd: Rd) -> Result<(), Error> {
+        self.moved(ctx, rd, History::redo)
+    }
+}
+
+impl publish::Api for Text {
+    fn save(&self, ctx: &dyn Calls, rd: Rd) -> Result<(), Error> {
+        self.store_head(ctx, rd)
     }
 }
 

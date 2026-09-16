@@ -8,7 +8,8 @@ use reovim_kernel_interface::{
     Driver, Error, Flags, Handle, Kind, Op, Out, Rd, Reply, Rights,
 };
 use reovim_kernel_runtime::{Kernel, Limits, ROOT};
-use reovim_module_fs::{Fs, decl};
+use reovim_module_fs::{Fs, fs};
+use reovim_sdk::{decode, encode};
 
 /// A directory of its own for one test, removed on drop.
 struct Dir(PathBuf);
@@ -128,19 +129,14 @@ impl Rig {
     }
 
     fn create(&self, h: Handle, name: &str) -> Reply<Out> {
-        let mut input =
-            u32::try_from(name.len()).unwrap().to_le_bytes().to_vec();
-        input.extend_from_slice(name.as_bytes());
-        let api = decl().hash();
-        self.submit(Op::Call { h, api, method: 0, input })
+        let input = encode(&name.to_string());
+        self.submit(Op::Call { h, api: fs::hash(), method: 0, input })
     }
 }
 
 fn rd_of(reply: Reply<Out>) -> Rd {
     match reply {
-        Reply::Ready(Ok(Out::Bytes(bytes))) => {
-            Rd(u64::from_le_bytes(bytes.try_into().unwrap()))
-        }
+        Reply::Ready(Ok(Out::Bytes(bytes))) => decode(&bytes).unwrap(),
         other => panic!("{other:?}"),
     }
 }

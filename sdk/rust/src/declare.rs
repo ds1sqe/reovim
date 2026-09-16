@@ -44,10 +44,12 @@ pub trait Call {
 ///
 /// Types: `()`, `bool`, `u8`, `u32`, `u64`, `i64`, `f64`, `Rd`,
 /// `utf8(max)`, `[T; max]` (a Sequence) and a record's name. A method
-/// takes no argument or one.
+/// takes no argument or one. Doc comments before `api` document the
+/// module.
 #[macro_export]
 macro_rules! declare {
     (
+        $( #[$meta:meta] )*
         api $api:ident ver $ver:literal {
             $( $number:literal $method:ident
                 ( $( $arg:ident : $in:tt $( ( $inb:expr ) )? )? )
@@ -57,16 +59,14 @@ macro_rules! declare {
             $( $field:ident : $ft:tt $( ( $fb:expr ) )? ),* $(,)?
         } )*
     ) => {
+        $( #[$meta] )*
         #[allow(clippy::module_name_repetitions)]
         pub mod $api {
             use $crate::__interface::{
-                Calls, Decl, Error, Field, Handle, Hash, Method, Rd, Rights,
-                Ty,
+                Box, Calls, Decl, Error, Field, Handle, Hash, Method, Rd,
+                Rights, ToString, Ty, Vec, vec,
             };
             use $crate::{Decode, Encode, Reader, Typed};
-            use ::alloc::string::ToString;
-            use ::alloc::vec::Vec;
-            use ::alloc::{boxed::Box, vec};
 
             /// The declaration, as the Kernel hashes it.
             #[must_use]
@@ -183,9 +183,9 @@ macro_rules! __ty {
 macro_rules! __rust {
     () => { () };
     (()) => { () };
-    (utf8 ($max:expr)) => { ::alloc::string::String };
+    (utf8 ($max:expr)) => { $crate::__interface::String };
     ([$item:tt $( ( $b:expr ) )? ; $max:expr]) => {
-        ::alloc::vec::Vec<$crate::__rust!($item $( ( $b ) )?)>
+        $crate::__interface::Vec<$crate::__rust!($item $( ( $b ) )?)>
     };
     ($name:ident) => { $name };
 }

@@ -3,7 +3,7 @@
 use reovim_client::value::{Value, decode, show};
 use reovim_client::{Fault, Rd, Ty};
 use reovim_kernel_interface::Field;
-use reovim_module_text::history_decl;
+use reovim_module_text::history;
 
 fn field(name: &str, ty: Ty) -> Field {
     Field { name: name.to_string(), ty }
@@ -23,7 +23,7 @@ fn tree() -> Vec<u8> {
 
 #[test]
 fn a_tree_decodes_by_name_and_prints_on_one_line() {
-    let ty = history_decl().method(0).unwrap().output.clone();
+    let ty = history::decl().method(0).unwrap().output.clone();
     let value = decode(&ty, &tree()).unwrap();
     assert_eq!(value.field("head").and_then(Value::number), Some(1));
     let nodes = value.field("nodes").unwrap();
