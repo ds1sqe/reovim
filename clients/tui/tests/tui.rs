@@ -7,7 +7,7 @@ use reovim_client::{Carrier, Client, Error, Fault, Key, Rd};
 use reovim_client_tui::{Step, Tui};
 use reovim_host::clock;
 use reovim_kernel_interface::Booted;
-use reovim_kernel_runtime::{Connection, Kernel, Limits};
+use reovim_kernel_runtime::{Connection, Kernel, Limits, NoLoader};
 
 struct Dir(PathBuf);
 
@@ -33,7 +33,9 @@ struct Local {
 
 impl Carrier for Local {
     fn exchange(&mut self, bytes: &[u8]) -> Result<Vec<u8>, Fault> {
-        self.connection.handle(&self.kernel, bytes).ok_or(Fault::Wire)
+        self.connection
+            .handle(&self.kernel, bytes, &mut NoLoader)
+            .ok_or(Fault::Wire)
     }
 }
 

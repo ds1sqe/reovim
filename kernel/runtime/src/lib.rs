@@ -18,6 +18,6 @@ mod table;
 mod watch;
 
 pub use calls::ModuleCalls;
-pub use connection::Connection;
+pub use connection::{Connection, Loader, NoLoader};
 pub use kernel::{Kernel, Limits};
 pub use table::{LOG, ROOT, SYS};

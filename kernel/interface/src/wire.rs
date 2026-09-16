@@ -28,6 +28,10 @@ pub enum Message {
     Request(Op),
     /// The answer to the request with the same sequence.
     Reply(Reply<Out>),
+    /// Load the Module in the file at `path`; answered with `Out::Unit`.
+    Load { path: String },
+    /// Unload the Module named `name`; answered with `Out::Unit`.
+    Unload { name: String },
 }
 
 /// `seq` then the message.
@@ -49,6 +53,14 @@ pub fn encode(seq: u64, message: &Message) -> Vec<u8> {
             put_u8(&mut out, 2);
             put_reply(&mut out, reply);
         }
+        Message::Load { path } => {
+            put_u8(&mut out, 3);
+            put_str(&mut out, path);
+        }
+        Message::Unload { name } => {
+            put_u8(&mut out, 4);
+            put_str(&mut out, name);
+        }
     }
     out
 }
@@ -66,6 +78,8 @@ pub fn decode(bytes: &[u8]) -> Option<(u64, Message)> {
         }
         1 => Message::Request(get_op(&mut r)?),
         2 => Message::Reply(get_reply(&mut r)?),
+        3 => Message::Load { path: r.str()? },
+        4 => Message::Unload { name: r.str()? },
         _ => return None,
     };
     r.done().then_some((seq, message))

@@ -133,6 +133,7 @@ dependencies = [
  "reovim-client-cli",
  "reovim-client-tui",
  "reovim-host",
+ "reovim-kernel-abi",
  "reovim-kernel-interface",
  "reovim-kernel-runtime",
  "reovim-module-fs",

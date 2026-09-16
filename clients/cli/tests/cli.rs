@@ -8,7 +8,7 @@ use reovim_client::{Carrier, Client, Fault};
 use reovim_client_cli::{complete, input};
 use reovim_host::clock;
 use reovim_kernel_interface::{Booted, Error};
-use reovim_kernel_runtime::{Connection, Kernel, Limits};
+use reovim_kernel_runtime::{Connection, Kernel, Limits, NoLoader};
 
 struct Dir(PathBuf);
 
@@ -34,7 +34,9 @@ struct Local {
 
 impl Carrier for Local {
     fn exchange(&mut self, bytes: &[u8]) -> Result<Vec<u8>, Fault> {
-        self.connection.handle(&self.kernel, bytes).ok_or(Fault::Wire)
+        self.connection
+            .handle(&self.kernel, bytes, &mut NoLoader)
+            .ok_or(Fault::Wire)
     }
 }
 
@@ -151,7 +153,7 @@ fn completion_offers_commands_paths_and_methods() {
     };
 
     assert_eq!(offer(&mut client, "loo"), (0, vec!["lookup".to_string()]));
-    assert_eq!(offer(&mut client, "lo").1.len(), 2, "lookup and log");
+    assert_eq!(offer(&mut client, "lo").1.len(), 3, "lookup, log, load");
     let (_, all) = offer(&mut client, "");
     assert!(all.contains(&"quit".to_string()) && all.len() > 5, "{all:?}");
     assert_eq!(

@@ -110,6 +110,8 @@ fn every_message_round_trips() {
         round_trip(u64::MAX, &Message::Reply(Reply::err(error)));
     }
     round_trip(3, &Message::Reply(Reply::Pending(Token(4))));
+    round_trip(5, &Message::Load { path: "/x/hello.rvm".to_string() });
+    round_trip(6, &Message::Unload { name: "hello".to_string() });
 }
 
 #[test]

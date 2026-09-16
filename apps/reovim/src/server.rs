@@ -8,8 +8,8 @@ use std::thread;
 use std::time::Duration;
 
 use reovim_host::{clock, link};
-use reovim_kernel_interface::Booted;
-use reovim_kernel_runtime::{Connection, Kernel, Limits};
+use reovim_kernel_interface::{Booted, Error};
+use reovim_kernel_runtime::{Connection, Kernel, Limits, Loader};
 
 use crate::Fail;
 use crate::link::MODULES;
@@ -36,28 +36,47 @@ pub fn boot(root: &str) -> Result<(Rc<Kernel>, Vec<Booted>), Fail> {
     Ok((Rc::new(kernel), booted))
 }
 
+/// `load` and `unload` on a link: `.rvm` files through kernel/abi; the
+/// Modules of the `modules` table are the binary's and stay.
+struct Files;
+
+impl Loader for Files {
+    fn load(&mut self, kernel: &Kernel, path: &str) -> Result<(), Error> {
+        let (name, booted) = reovim_kernel_abi::load(path)?;
+        kernel.load(&name, booted.module, booted.drivers).map(|_| ())
+    }
+
+    fn unload(&mut self, kernel: &Kernel, name: &str) -> Result<(), Error> {
+        if MODULES.iter().any(|(linked, _)| *linked == name) {
+            return Err(Error::Denied);
+        }
+        kernel.unload(name)
+    }
+}
+
 /// The links: an acceptor thread, an io thread per link, and on this
 /// thread one `Connection` per link.
 pub struct Links {
-    from_links: Receiver<Inbound>,
+    inbound: Receiver<Inbound>,
     connections: BTreeMap<u64, Connection>,
+    files: Files,
 }
 
 impl Links {
     /// Listen at `socket`.
     pub fn listen(socket: &str) -> Result<Self, Fail> {
         let listener = link::listen(socket)?;
-        let (inbound, from_links) = channel();
-        thread::spawn(move || accept_loop(&listener, &inbound));
-        Ok(Self { from_links, connections: BTreeMap::new() })
+        let (sender, inbound) = channel();
+        thread::spawn(move || accept_loop(&listener, &sender));
+        Ok(Self { inbound, connections: BTreeMap::new(), files: Files })
     }
 
     /// Serve one message if one arrives within `wait`, forever with
     /// `None`. True when something was served.
     pub fn step(&mut self, kernel: &Kernel, wait: Option<Duration>) -> bool {
         let item = match wait {
-            None => self.from_links.recv().ok(),
-            Some(wait) => self.from_links.recv_timeout(wait).ok(),
+            None => self.inbound.recv().ok(),
+            Some(wait) => self.inbound.recv_timeout(wait).ok(),
         };
         let Some(item) = item else { return false };
         let Some(bytes) = item.bytes else {
@@ -68,7 +87,7 @@ impl Links {
             .connections
             .entry(item.link)
             .or_insert_with(|| Connection::new(kernel));
-        let _ = item.answer.send(end.handle(kernel, &bytes));
+        let _ = item.answer.send(end.handle(kernel, &bytes, &mut self.files));
         true
     }
 }

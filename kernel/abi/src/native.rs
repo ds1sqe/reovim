@@ -13,6 +13,7 @@ use core::cell::RefCell;
 use core::ffi::{CStr, c_char, c_void};
 use core::ptr;
 
+use reovim_host::native;
 use reovim_kernel_interface::wire::{self, Message};
 use reovim_kernel_interface::{
     Booted, Calls, Decl, Driver, DriverId, Error, Flags, Hash, Kind, Module,
@@ -89,6 +90,31 @@ pub unsafe fn boot(
         .collect();
     let module: Rc<dyn Module> = Rc::new(Native { table: module, _keep: keep });
     Ok((String::from(name), Booted { module, drivers }))
+}
+
+/// `rv_module_entry`.
+type Entry = unsafe extern "C" fn() -> *const RvModule;
+
+/// The Module in the `.rvm` file at `path`, ready for `Kernel::load`;
+/// the file stays open as long as the Module.
+///
+/// # Errors
+/// `Invalid` when there is no such file or its descriptor is refused;
+/// `Unsupported` when the loader refuses the file or it exports no
+/// entry, and where nothing can be loaded.
+pub fn load(path: &str) -> Result<(String, Booted), Error> {
+    let library = native::load(path).map_err(|e| match e {
+        reovim_host::Error::NotFound => Error::Invalid,
+        _ => Error::Unsupported,
+    })?;
+    let symbol = native::entry(&library).map_err(|_| Error::Unsupported)?;
+    // SAFETY: the symbol is `rv_module_entry` of a file the caller
+    // trusts, and the library is kept as long as the Module.
+    let entry: Entry = unsafe { core::mem::transmute(symbol) };
+    // SAFETY: as above.
+    let descriptor = unsafe { entry() };
+    // SAFETY: as above.
+    unsafe { boot(descriptor, Rc::new(library)) }
 }
 
 /// A C string as `&str`; null is `None`.

@@ -12,7 +12,7 @@ use core::ffi::{c_char, c_void};
 
 use reovim_kernel_interface::Error;
 
-pub use native::{Native, boot};
+pub use native::{Native, boot, load};
 
 /// `RV_MAGIC`: "RVM1" little endian.
 pub const MAGIC: u32 = 0x314d_5652;

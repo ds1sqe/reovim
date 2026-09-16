@@ -28,12 +28,16 @@ read <target>                   bytes to stdout
 write <target> [bytes]          bytes, or stdin without them, at 0
 call <target> <method> [arg]    output decoded by the declaration
 log [FROM]                      entries from seq FROM, default 1
+load <path>                     the Module in that .rvm file
+unload <name>                   the Module of that name
 quit                            end an interactive session
 <target> is a path from / or rd:<n>";
 
 /// The command names, for completion.
-const COMMANDS: [&str; 8] =
-    ["lookup", "info", "children", "read", "write", "call", "log", "quit"];
+const COMMANDS: [&str; 10] = [
+    "lookup", "info", "children", "read", "write", "call", "log", "load",
+    "unload", "quit",
+];
 
 /// One command already split into words; what goes to stdout, text or
 /// raw bytes. `write` without bytes needs stdin, so the app fills the
@@ -44,8 +48,11 @@ const COMMANDS: [&str; 8] =
 /// otherwise what the Client says.
 pub fn input(client: &mut Client, words: &[String]) -> Result<Vec<u8>, Fault> {
     let word = |i: usize| words.get(i).map(String::as_str).ok_or_else(usage);
-    if word(0)? == "log" {
-        return log_from(client, words.get(1));
+    match (word(0)?, words.len()) {
+        ("log", _) => return log_from(client, words.get(1)),
+        ("load", 2) => return client.load(word(1)?).map(|()| Vec::new()),
+        ("unload", 2) => return client.unload(word(1)?).map(|()| Vec::new()),
+        _ => {}
     }
     let target = client.resolve(word(1)?)?;
     match (word(0)?, words.len()) {

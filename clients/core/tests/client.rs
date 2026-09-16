@@ -12,7 +12,7 @@ use reovim_kernel_interface::{
     Booted, Calls, Driver, Error, Flags, Kind, Module, Op, Out, Rd, Reply,
     Rights, Token, Ty,
 };
-use reovim_kernel_runtime::{Connection, Kernel, Limits};
+use reovim_kernel_runtime::{Connection, Kernel, Limits, NoLoader};
 
 /// A directory of its own for one test, removed on drop.
 struct Dir(PathBuf);
@@ -88,8 +88,10 @@ struct Local {
 
 impl Carrier for Local {
     fn exchange(&mut self, bytes: &[u8]) -> Result<Vec<u8>, Fault> {
-        let answer =
-            self.connection.handle(&self.kernel, bytes).ok_or(Fault::Wire)?;
+        let answer = self
+            .connection
+            .handle(&self.kernel, bytes, &mut NoLoader)
+            .ok_or(Fault::Wire)?;
         let asking = matches!(
             decode(bytes),
             Some((_, Message::Request(Op::Ask { .. })))
@@ -262,9 +264,10 @@ fn the_log_parses_whole_entries_only() {
     let rd = client.resolve("/sys/log").unwrap();
     let bytes = client.read_all(rd).unwrap();
     let whole = log::parse(&bytes);
-    assert_eq!(whole.len(), 1, "the connect line: {whole:?}");
+    assert_eq!(whole.len(), 4, "three loads and the connect: {whole:?}");
     assert_eq!(whole[0].seq, 1);
     assert_eq!(whole[0].mark, "kernel");
+    assert!(whole[3].bytes.starts_with(b"connect "), "{whole:?}");
     let cut = log::parse(&bytes[..bytes.len() - 1]);
     assert_eq!(cut.len(), whole.len() - 1);
     let line = whole[0].line();

@@ -2,7 +2,9 @@
 
 use reovim_kernel_interface::wire::{Message, decode, encode};
 use reovim_kernel_interface::{Error, Op, Out, Rd, Reply, Rights};
-use reovim_kernel_runtime::{Connection, Kernel, Limits, ROOT, SYS};
+use reovim_kernel_runtime::{
+    Connection, Kernel, Limits, Loader, NoLoader, ROOT, SYS,
+};
 
 fn tick() -> u64 {
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -31,7 +33,10 @@ impl Rig {
 
     fn send_at(&mut self, seq: u64, message: &Message) -> Reply<Out> {
         let bytes = encode(seq, message);
-        let answer = self.link.handle(&self.kernel, &bytes).expect("a reply");
+        let answer = self
+            .link
+            .handle(&self.kernel, &bytes, &mut NoLoader)
+            .expect("a reply");
         match decode(&answer) {
             Some((at, Message::Reply(reply))) if at == seq => reply,
             other => panic!("not the reply to {seq}: {other:?}"),
@@ -107,7 +112,8 @@ fn connect_makes_the_session_and_the_client_rd() {
     let mut other = Connection::new(&rig.kernel);
     let join =
         Message::Connect { credential: Vec::new(), session: Some(session) };
-    let answer = other.handle(&rig.kernel, &encode(1, &join)).unwrap();
+    let answer =
+        other.handle(&rig.kernel, &encode(1, &join), &mut NoLoader).unwrap();
     let (_, reply) = decode(&answer).unwrap();
     let Message::Reply(Reply::Ready(Ok(Out::Rds(ids)))) = reply else {
         panic!("join: {reply:?}");
@@ -145,7 +151,44 @@ fn a_repeated_sequence_is_answered_without_running() {
     assert_eq!(rig.atime(log), stamped, "the read ran twice");
 
     // Not a message, or a Reply: nothing comes back.
-    assert!(rig.link.handle(&rig.kernel, b"junk").is_none());
+    assert!(rig.link.handle(&rig.kernel, b"junk", &mut NoLoader).is_none());
     let reply = encode(9, &Message::Reply(Reply::ok(Out::Unit)));
-    assert!(rig.link.handle(&rig.kernel, &reply).is_none());
+    assert!(rig.link.handle(&rig.kernel, &reply, &mut NoLoader).is_none());
+}
+
+/// A loader that counts; `unload` is refused.
+struct Counting(u32);
+
+impl Loader for Counting {
+    fn load(&mut self, _: &Kernel, path: &str) -> Result<(), Error> {
+        assert_eq!(path, "/x.rvm");
+        self.0 += 1;
+        Ok(())
+    }
+
+    fn unload(&mut self, _: &Kernel, _: &str) -> Result<(), Error> {
+        Err(Error::Denied)
+    }
+}
+
+#[test]
+fn load_and_unload_go_to_the_loader_under_the_reply_window() {
+    let mut rig = Rig::new();
+    let load = encode(9, &Message::Load { path: "/x.rvm".to_string() });
+    let unload = encode(10, &Message::Unload { name: "x".to_string() });
+    let mut counting = Counting(0);
+    let reply = |bytes: Option<Vec<u8>>| match decode(&bytes.unwrap()) {
+        Some((_, Message::Reply(reply))) => reply,
+        other => panic!("{other:?}"),
+    };
+    let once = rig.link.handle(&rig.kernel, &load, &mut counting);
+    assert_eq!(reply(once), Reply::ok(Out::Unit));
+    let again = rig.link.handle(&rig.kernel, &load, &mut counting);
+    assert_eq!(reply(again), Reply::ok(Out::Unit));
+    assert_eq!(counting.0, 1, "answered from the window");
+    let refused = rig.link.handle(&rig.kernel, &unload, &mut counting);
+    assert_eq!(reply(refused), Reply::err(Error::Denied));
+    let none = encode(11, &Message::Load { path: "/y.rvm".to_string() });
+    let nothing = rig.link.handle(&rig.kernel, &none, &mut NoLoader);
+    assert_eq!(reply(nothing), Reply::err(Error::Unsupported));
 }

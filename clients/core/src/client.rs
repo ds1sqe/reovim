@@ -60,6 +60,25 @@ impl Client {
         }
     }
 
+    /// `load <path>`: the Module in that file, on the server's side.
+    ///
+    /// # Errors
+    /// What the server says; `Unsupported` where nothing can be loaded.
+    pub fn load(&mut self, path: &str) -> Result<(), Fault> {
+        let load = Message::Load { path: path.into() };
+        unit(&self.exchange(&load)?)
+    }
+
+    /// `unload <name>`.
+    ///
+    /// # Errors
+    /// What the server says; `Busy` while a handle on the Module is
+    /// open.
+    pub fn unload(&mut self, name: &str) -> Result<(), Fault> {
+        let unload = Message::Unload { name: name.into() };
+        unit(&self.exchange(&unload)?)
+    }
+
     /// `/session/<id>`.
     #[must_use]
     pub const fn session(&self) -> Rd {
@@ -356,5 +375,13 @@ impl Client {
     /// As [`Self::info`].
     pub fn name(&mut self, rd: Rd) -> Result<String, Fault> {
         Ok(self.info(rd)?.name.unwrap_or_default())
+    }
+}
+
+/// `Out::Unit` or a wrong shape.
+const fn unit(out: &Out) -> Result<(), Fault> {
+    match out {
+        Out::Unit => Ok(()),
+        _ => Err(Fault::Wire),
     }
 }

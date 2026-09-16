@@ -273,6 +273,8 @@ impl Kernel {
                 caller,
             };
             s.modules.push(loaded);
+            let line = alloc::format!("load module={name}");
+            s.log(now, "kernel", line.into_bytes());
             (id, home)
         };
         starter.start(&self.calls(id), home)?;
@@ -356,12 +358,23 @@ impl Kernel {
     /// One request. A `seq` seen before is answered from memory and the
     /// op is not run; one older than the window is `Stale`.
     pub fn submit(&self, caller: Caller, seq: u64, op: Op) -> Reply<Out> {
+        self.once(caller, seq, || self.run(caller, op))
+    }
+
+    /// `run` under the reply window: a `seq` seen before is answered
+    /// from memory and `run` is not called.
+    pub fn once(
+        &self,
+        caller: Caller,
+        seq: u64,
+        run: impl FnOnce() -> Reply<Out>,
+    ) -> Reply<Out> {
         match self.replay(caller, seq) {
             Ok(Some(reply)) => return reply,
             Ok(None) => {}
             Err(error) => return Reply::err(error),
         }
-        let reply = self.run(caller, op);
+        let reply = run();
         self.remember(caller, seq, reply.clone());
         reply
     }

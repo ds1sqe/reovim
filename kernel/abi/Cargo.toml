@@ -9,6 +9,7 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+reovim-host = { path = "../../host/os" }
 reovim-kernel-interface = { path = "../interface" }
 
 [dev-dependencies]

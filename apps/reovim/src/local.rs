@@ -4,7 +4,7 @@
 use std::rc::Rc;
 
 use reovim_client::{Carrier, Client, Fault};
-use reovim_kernel_runtime::{Connection, Kernel};
+use reovim_kernel_runtime::{Connection, Kernel, NoLoader};
 
 pub struct Local {
     kernel: Rc<Kernel>,
@@ -22,6 +22,8 @@ impl Local {
 
 impl Carrier for Local {
     fn exchange(&mut self, bytes: &[u8]) -> Result<Vec<u8>, Fault> {
-        self.connection.handle(&self.kernel, bytes).ok_or(Fault::Wire)
+        self.connection
+            .handle(&self.kernel, bytes, &mut NoLoader)
+            .ok_or(Fault::Wire)
     }
 }

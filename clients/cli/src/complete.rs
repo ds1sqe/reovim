@@ -25,7 +25,9 @@ pub fn complete(client: &mut Client, line: &str) -> Completion {
     let command = line.split_whitespace().next().unwrap_or_default();
     let candidates = match index {
         0 => commands(word),
-        1 if command != "log" => path(client, word),
+        1 if !matches!(command, "log" | "load" | "unload") => {
+            path(client, word)
+        }
         2 if command == "call" => methods(client, line, word),
         _ => Vec::new(),
     };
