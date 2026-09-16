@@ -76,8 +76,8 @@ impl Drop for Server {
 #[test]
 fn the_log_file_holds_every_entry() {
     let server = Server::start("file", true);
-    // The two loads and the sink's own connect line, before any link.
-    let first = server.file(3);
+    // The three loads and the sink's own connect line, before any link.
+    let first = server.file(4);
     assert!(first.starts_with("1 "), "{first}");
     assert!(first.contains(" kernel 0 load module=fs\n"), "{first}");
     assert!(first.contains(" kernel 0 connect session="), "{first}");
@@ -85,19 +85,19 @@ fn the_log_file_holds_every_entry() {
     let made = server.cli(&["call", "/module/fs/root", "create", "made"]);
     assert!(made.trim().parse::<u64>().is_ok(), "{made}");
     // The cli's connect line and the call pair.
-    let text = server.file(6);
+    let text = server.file(7);
     let lines: Vec<&str> = text.lines().collect();
-    assert_eq!(lines.len(), 6, "{text}");
-    assert!(lines[3].contains("connect session="), "{text}");
-    assert!(lines[4].contains("call rd=") && lines[4].ends_with(" dispatch"));
-    assert!(lines[5].contains("call rd=") && lines[5].ends_with(" reply"));
+    assert_eq!(lines.len(), 7, "{text}");
+    assert!(lines[4].contains("connect session="), "{text}");
+    assert!(lines[5].contains("call rd=") && lines[5].ends_with(" dispatch"));
+    assert!(lines[6].contains("call rd=") && lines[6].ends_with(" reply"));
 
     // `cli log` shows the same entries, and its own connect after them.
     let shown = server.cli(&["log"]);
     assert!(shown.starts_with(&text), "{shown}");
-    assert_eq!(shown.lines().count(), 7, "{shown}");
-    let from = server.cli(&["log", "5"]);
-    assert!(from.starts_with(lines[4]), "{from}");
+    assert_eq!(shown.lines().count(), 8, "{shown}");
+    let from = server.cli(&["log", "6"]);
+    assert!(from.starts_with(lines[5]), "{from}");
 }
 
 #[test]

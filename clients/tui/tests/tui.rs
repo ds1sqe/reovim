@@ -184,19 +184,17 @@ fn many_edits_are_one_revision() {
 }
 
 #[test]
-fn the_clipboard_is_asked_of_the_app() {
+fn the_clipboard_is_an_rd_of_its_module() {
     let rig = Rig::new("clip");
     rig.file("note", b"one\n");
     let mut tui = Tui::open(rig.client(), "note", Vim::default()).unwrap();
     assert_eq!(typed(&mut tui, "\"+yy"), Ok(Step::Changed));
-    assert_eq!(tui.take_clipboard(), Some("one\n".to_string()));
-    assert_eq!(tui.take_clipboard(), None, "taken once");
-    assert_eq!(typed(&mut tui, "\"+p"), Ok(Step::Clipboard));
-    assert_eq!(tui.pasted(Some("two\n".to_string())), Ok(Step::Changed));
+    assert_eq!(rig.clipboard(), b"one\n", "written through the rd");
+    rig.clip(b"two\n");
+    assert_eq!(typed(&mut tui, "\"+p"), Ok(Step::Changed));
     assert_eq!(tui.frame(80, 24).lines, vec!["one", "two"]);
-    assert_eq!(typed(&mut tui, "\"+p"), Ok(Step::Clipboard));
-    assert_eq!(tui.pasted(None), Ok(Step::Changed));
-    assert!(tui.frame(80, 24).status.contains("E353"));
+    assert_eq!(typed(&mut tui, "\"+yiw"), Ok(Step::Changed));
+    assert_eq!(rig.clipboard(), b"two");
     tui.goto_line(1);
     assert_eq!(tui.frame(80, 24).cursor, (0, 0));
 }

@@ -1,8 +1,9 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![forbid(unsafe_code)]
 //! What a client test stands on: a Kernel with fs over a directory of
-//! its own and text, and Clients on it through an in-process
-//! `Connection`. For tests only; no product crate links it.
+//! its own, text, and a clipboard over a store of its own, and
+//! Clients on it through an in-process `Connection`. For tests only;
+//! no product crate links it.
 
 #[cfg(feature = "std")]
 mod rig;

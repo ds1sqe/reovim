@@ -8,7 +8,7 @@ use std::io::Write;
 use reovim_client::{Client, Fault, Key};
 use reovim_client_tui::{Frame, Step, Tui};
 use reovim_client_vim::Vim;
-use reovim_host::{clipboard as clip, term};
+use reovim_host::term;
 
 use crate::Fail;
 use crate::local::Local;
@@ -104,36 +104,10 @@ fn drive(tui: &mut Editor, serve: Serve) -> Result<u8, Fail> {
             None if term::stopped() => return Err(Fail::Signal),
             None => tui.tick()?,
         };
-        let step = clipboard(tui, step)?;
         match step {
             Step::Same => {}
             Step::Changed => draw(tui)?,
             Step::Quit(code) => return Ok(code),
-            Step::Clipboard => unreachable!("answered above"),
-        }
-    }
-}
-
-/// The clipboard's part: a put that wants it gets what the host
-/// reads, a yank that filled it is written out; no tool is a message.
-fn clipboard(tui: &mut Editor, step: Step) -> Result<Step, Fail> {
-    let step = if step == Step::Clipboard {
-        let text =
-            clip::read().ok().map(|b| String::from_utf8_lossy(&b).into_owned());
-        tui.pasted(text)?
-    } else {
-        step
-    };
-    let Some(text) = tui.take_clipboard() else { return Ok(step) };
-    match clip::write(text.as_bytes()) {
-        Ok(()) => Ok(step),
-        Err(reovim_host::Error::Unsupported) => {
-            tui.notice("no clipboard tool: wl-copy, xclip, xsel or pbcopy");
-            Ok(Step::Changed)
-        }
-        Err(_) => {
-            tui.notice("clipboard: the tool failed");
-            Ok(Step::Changed)
         }
     }
 }

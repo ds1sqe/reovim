@@ -1,8 +1,9 @@
 #![no_std]
 #![forbid(unsafe_code)]
 //! The tui: one file in one Buffer, keys to calls through a `Client`,
-//! a frame from the draft. It sees neither a link nor a terminal; the
-//! keys are a `Plugin`'s to read.
+//! a frame from the draft, the clipboard an rd like any other. It
+//! sees neither a link nor a terminal; the keys are a `Plugin`'s to
+//! read.
 
 extern crate alloc;
 
@@ -26,8 +27,6 @@ pub enum Step {
     Changed,
     /// Leave with this exit code: 0 says use the file.
     Quit(u8),
-    /// A put wants the clipboard: read it and answer with `pasted`.
-    Clipboard,
 }
 
 /// What `:q` says to unsaved changes.
@@ -45,6 +44,8 @@ pub struct Tui<P: Plugin> {
     name: String,
     head: u64,
     published: u64,
+    /// `/module/clipboard/text`, when that Module is there.
+    clipboard: Option<Rd>,
 }
 
 impl<P: Plugin> Tui<P> {
@@ -75,6 +76,7 @@ impl<P: Plugin> Tui<P> {
         client.watch(watched, true)?;
         plugin.loaded(&client.read_whole(h)?);
         plugin.goto_line(1);
+        let clipboard = client.resolve("/module/clipboard/text").ok();
         client.since()?;
         let mut tui = Self {
             client,
@@ -85,6 +87,7 @@ impl<P: Plugin> Tui<P> {
             name,
             head: 0,
             published: 0,
+            clipboard,
         };
         tui.refresh()?;
         Ok(tui)
@@ -104,30 +107,18 @@ impl<P: Plugin> Tui<P> {
 
     /// One key to the Plugin: an edit is a `replace`, or an `amend`
     /// when it joins the insert under way; undo and redo move the
-    /// head; a save writes. `Quit::Ask` is refused with E37 while
-    /// there are unsaved changes, `Force` leaves them, `Write` saves
-    /// first, `Abort` exits 1.
+    /// head; a save writes; a put from the clipboard reads its rd and
+    /// a yank into it writes there. `Quit::Ask` is refused with E37
+    /// while there are unsaved changes, `Force` leaves them, `Write`
+    /// saves first, `Abort` exits 1.
     ///
     /// # Errors
     /// What the Client says.
     pub fn key(&mut self, key: Key) -> Result<Step, Fault> {
         let effect = self.plugin.key(key);
-        self.act(effect)
-    }
-
-    /// The clipboard's answer to `Step::Clipboard`: `None` when there
-    /// is no clipboard.
-    ///
-    /// # Errors
-    /// What the Client says.
-    pub fn pasted(&mut self, text: Option<String>) -> Result<Step, Fault> {
-        let effect = self.plugin.pasted(text);
-        self.act(effect)
-    }
-
-    /// Text a yank left for the clipboard, once.
-    pub fn take_clipboard(&mut self) -> Option<String> {
-        self.plugin.take_clipboard()
+        let step = self.act(effect)?;
+        self.yanked()?;
+        Ok(step)
     }
 
     /// A message in the status row until the next key.
@@ -139,7 +130,11 @@ impl<P: Plugin> Tui<P> {
     fn act(&mut self, effect: Effect) -> Result<Step, Fault> {
         match effect {
             Effect::Nothing => return Ok(Step::Same),
-            Effect::Clipboard => return Ok(Step::Clipboard),
+            Effect::Clipboard => {
+                let text = self.clipboard()?;
+                let effect = self.plugin.pasted(text);
+                return self.act(effect);
+            }
             Effect::Moved => return Ok(Step::Changed),
             Effect::Edit(edit) => self.edit(edit)?,
             Effect::Edits(edits) => self.edits(edits)?,
@@ -210,6 +205,39 @@ impl<P: Plugin> Tui<P> {
             frame.status
         );
         frame
+    }
+
+    /// What the clipboard holds, through its rd; `None` when there is
+    /// no Module or no tool.
+    fn clipboard(&mut self) -> Result<Option<String>, Fault> {
+        let Some(rd) = self.clipboard else { return Ok(None) };
+        match self.client.read_all(rd) {
+            Ok(bytes) => Ok(Some(String::from_utf8_lossy(&bytes).into_owned())),
+            Err(Fault::Kernel(Error::Unsupported | Error::Busy)) => Ok(None),
+            Err(fault) => Err(fault),
+        }
+    }
+
+    /// What a yank left for the clipboard, written to its rd; no
+    /// Module or no tool is a message.
+    fn yanked(&mut self) -> Result<(), Fault> {
+        let Some(text) = self.plugin.take_clipboard() else { return Ok(()) };
+        let unsupported = Err(Fault::Kernel(Error::Unsupported));
+        let written = self.clipboard.map_or(unsupported, |rd| {
+            self.client.write_all(rd, text.into_bytes())
+        });
+        match written {
+            Ok(_) => Ok(()),
+            Err(Fault::Kernel(Error::Unsupported)) => {
+                self.plugin.notice("clipboard: no tool on PATH");
+                Ok(())
+            }
+            Err(Fault::Kernel(Error::Busy)) => {
+                self.plugin.notice("clipboard: the tool failed");
+                Ok(())
+            }
+            Err(fault) => Err(fault),
+        }
     }
 
     /// The head written to the source, after the Plugin's last word.

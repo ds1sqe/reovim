@@ -1,9 +1,11 @@
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use reovim_client::{Carrier, Client, Fault};
 use reovim_host::clock;
 use reovim_kernel_runtime::{Connection, Kernel, Limits, NoLoader};
+use reovim_module_clipboard::Clipboard;
 
 /// A Carrier over a `Connection` on this thread, no link.
 struct Local {
@@ -19,11 +21,12 @@ impl Carrier for Local {
     }
 }
 
-/// One Kernel with fs mirroring a fresh directory and text loaded;
-/// the directory goes with it.
+/// One Kernel with fs mirroring a fresh directory, text, and a
+/// clipboard over a store of its own; the directory goes with it.
 pub struct Rig {
     dir: PathBuf,
     kernel: Rc<Kernel>,
+    clipboard: Rc<RefCell<Vec<u8>>>,
 }
 
 impl Rig {
@@ -46,6 +49,14 @@ impl Rig {
         let dir = std::env::temp_dir().join(name);
         std::fs::create_dir_all(&dir).unwrap();
         let kernel = Kernel::new(clock::now, limits);
+        let clipboard = Rc::new(RefCell::new(Vec::new()));
+        let (reads, writes) = (clipboard.clone(), clipboard.clone());
+        let read = move || Ok(reads.borrow().clone());
+        let write = move |bytes: &[u8]| {
+            *writes.borrow_mut() = bytes.to_vec();
+            Ok(())
+        };
+        let clip = Rc::new(Clipboard::new(Box::new(read), Box::new(write)));
         let booted = [
             ("fs", reovim_module_fs::boot(dir.to_str().unwrap())),
             ("text", reovim_module_text::boot("")),
@@ -53,7 +64,19 @@ impl Rig {
         for (name, module) in booted {
             kernel.load(name, module.module, module.drivers).unwrap();
         }
-        Self { dir, kernel: Rc::new(kernel) }
+        kernel.load("clipboard", clip.clone(), vec![clip]).unwrap();
+        Self { dir, kernel: Rc::new(kernel), clipboard }
+    }
+
+    /// What the clipboard holds.
+    #[must_use]
+    pub fn clipboard(&self) -> Vec<u8> {
+        self.clipboard.borrow().clone()
+    }
+
+    /// The clipboard holds `bytes`, as if another program put them.
+    pub fn clip(&self, bytes: &[u8]) {
+        *self.clipboard.borrow_mut() = bytes.to_vec();
     }
 
     /// A connected Client of its own.
