@@ -104,7 +104,7 @@ start rebase "$DIR/repo" "git rebase -i HEAD~1"
 editing rebase git-rebase-todo
 keys rebase x x x x i "reword" Escape : w q Enter
 editing rebase COMMIT_EDITMSG
-keys rebase i "reworded " Escape Z Z
+keys rebase : s / t h i r d / r e w o r d e d " " t h i r d / Enter Z Z
 [[ "$(ended rebase)" == 0 ]] || fail "rebase failed"
 [[ "$(git log -1 --format=%s)" == "reworded third" ]] \
     || fail "reword not used: $(git log -1 --format=%s)"
