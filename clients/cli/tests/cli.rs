@@ -1,77 +1,10 @@
 //! The cli library in-process: the 01.5 script through `input`, and
 //! completion from the tree, without a terminal.
 
-use std::path::PathBuf;
-use std::rc::Rc;
-
-use reovim_client::{Carrier, Client, Fault, Rd};
+use reovim_client::{Client, Fault, Rd};
 use reovim_client_cli::{complete, input};
-use reovim_host::clock;
-use reovim_kernel_interface::{Booted, Error};
-use reovim_kernel_runtime::{Connection, Kernel, Limits, NoLoader};
-
-struct Dir(PathBuf);
-
-impl Dir {
-    fn new(test: &str) -> Self {
-        let name = format!("reovim-cli-lib-{}-{test}", std::process::id());
-        let path = std::env::temp_dir().join(name);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for Dir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-struct Local {
-    kernel: Rc<Kernel>,
-    connection: Connection,
-}
-
-impl Carrier for Local {
-    fn exchange(&mut self, bytes: &[u8]) -> Result<Vec<u8>, Fault> {
-        self.connection
-            .handle(&self.kernel, bytes, &mut NoLoader)
-            .ok_or(Fault::Wire)
-    }
-}
-
-struct Rig {
-    dir: Dir,
-    kernel: Rc<Kernel>,
-}
-
-fn load(kernel: &Kernel, name: &str, booted: &Booted) {
-    kernel.load(name, booted.module.clone(), booted.drivers.clone()).unwrap();
-}
-
-impl Rig {
-    fn new(test: &str) -> Self {
-        let dir = Dir::new(test);
-        let kernel = Kernel::new(clock::now, Limits::default());
-        load(&kernel, "fs", &reovim_module_fs::boot(dir.0.to_str().unwrap()));
-        load(&kernel, "text", &reovim_module_text::boot(""));
-        Self { dir, kernel: Rc::new(kernel) }
-    }
-
-    fn client(&self) -> Client {
-        let connection = Connection::new();
-        let carrier = Local { kernel: self.kernel.clone(), connection };
-        Client::connect(Box::new(carrier), Vec::new()).unwrap()
-    }
-
-    fn file(&self, name: &str, content: &[u8]) {
-        std::fs::write(self.dir.0.join(name), content).unwrap();
-    }
-
-    fn disk(&self, name: &str) -> Vec<u8> {
-        std::fs::read(self.dir.0.join(name)).unwrap()
-    }
-}
+use reovim_kernel_interface::Error;
+use reovim_rig::Rig;
 
 /// One command line; its output as text.
 fn run(client: &mut Client, line: &str) -> Result<String, Fault> {
@@ -138,7 +71,7 @@ fn faults_before_and_after_sending() {
     assert_eq!(refused, Fault::Kernel(Error::Invalid));
     let made = line(&mut client, "call /module/fs/root create made");
     assert!(made.parse::<u64>().is_ok(), "an rd: {made}");
-    assert!(rig.dir.0.join("made").exists());
+    assert!(rig.dir().join("made").exists());
 }
 
 #[test]

@@ -12,12 +12,9 @@ publish = false
 reovim-client = { path = "../core" }
 
 [dev-dependencies]
-reovim-host = { path = "../../host/os", features = ["std"] }
-reovim-sdk = { path = "../../sdk/rust" }
 reovim-kernel-interface = { path = "../../kernel/interface" }
-reovim-kernel-runtime = { path = "../../kernel/runtime" }
-reovim-module-text = { path = "../../modules/text" }
-reovim-module-fs = { path = "../../modules/fs" }
+reovim-rig = { path = "../rig" }
+reovim-sdk = { path = "../../sdk/rust" }
 
 [lints]
 workspace = true

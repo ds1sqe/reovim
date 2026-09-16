@@ -1,80 +1,8 @@
 //! The tui on a Kernel with fs and text, beside a second Client.
 
-use std::path::PathBuf;
-use std::rc::Rc;
-
-use reovim_client::{Carrier, Client, Error, Fault, Key, Rd};
+use reovim_client::{Client, Error, Fault, Key, Rd};
 use reovim_client_tui::{Step, Tui};
-use reovim_host::clock;
-use reovim_kernel_interface::Booted;
-use reovim_kernel_runtime::{Connection, Kernel, Limits, NoLoader};
-
-struct Dir(PathBuf);
-
-impl Dir {
-    fn new(test: &str) -> Self {
-        let name = format!("reovim-tui-{}-{test}", std::process::id());
-        let path = std::env::temp_dir().join(name);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for Dir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-struct Local {
-    kernel: Rc<Kernel>,
-    connection: Connection,
-}
-
-impl Carrier for Local {
-    fn exchange(&mut self, bytes: &[u8]) -> Result<Vec<u8>, Fault> {
-        self.connection
-            .handle(&self.kernel, bytes, &mut NoLoader)
-            .ok_or(Fault::Wire)
-    }
-}
-
-struct Rig {
-    dir: Dir,
-    kernel: Rc<Kernel>,
-}
-
-fn load(kernel: &Kernel, name: &str, booted: &Booted) {
-    kernel.load(name, booted.module.clone(), booted.drivers.clone()).unwrap();
-}
-
-impl Rig {
-    fn new(test: &str) -> Self {
-        Self::with(test, Limits::default())
-    }
-
-    fn with(test: &str, limits: Limits) -> Self {
-        let dir = Dir::new(test);
-        let kernel = Kernel::new(clock::now, limits);
-        load(&kernel, "fs", &reovim_module_fs::boot(dir.0.to_str().unwrap()));
-        load(&kernel, "text", &reovim_module_text::boot(""));
-        Self { dir, kernel: Rc::new(kernel) }
-    }
-
-    fn client(&self) -> Client {
-        let connection = Connection::new();
-        let carrier = Local { kernel: self.kernel.clone(), connection };
-        Client::connect(Box::new(carrier), Vec::new()).unwrap()
-    }
-
-    fn file(&self, name: &str, content: &[u8]) {
-        std::fs::write(self.dir.0.join(name), content).unwrap();
-    }
-
-    fn disk(&self, name: &str) -> Vec<u8> {
-        std::fs::read(self.dir.0.join(name)).unwrap()
-    }
-}
+use reovim_rig::{Limits, Rig};
 
 fn buffer_of(client: &mut Client, tui: &Tui) -> Rd {
     let buffer = tui.buffer();
@@ -194,7 +122,7 @@ fn a_missing_file_opens_empty_and_appears_on_save() {
     let mut tui = Tui::open(rig.client(), "none").unwrap();
     assert_eq!(tui.frame(80, 24).lines, vec![""]);
     assert_eq!(tui.key(Key::Char('x')), Ok(Step::Changed));
-    assert!(!rig.dir.0.join("none").exists(), "nothing on disk yet");
+    assert!(!rig.dir().join("none").exists(), "nothing on disk yet");
     assert_eq!(tui.key(Key::Ctrl('s')), Ok(Step::Changed));
     assert_eq!(rig.disk("none"), b"x");
 }

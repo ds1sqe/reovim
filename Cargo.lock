@@ -161,11 +161,8 @@ name = "reovim-client-cli"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-client",
- "reovim-host",
  "reovim-kernel-interface",
- "reovim-kernel-runtime",
- "reovim-module-fs",
- "reovim-module-text",
+ "reovim-rig",
  "reovim-sdk",
 ]
 
@@ -174,11 +171,7 @@ name = "reovim-client-tui"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-client",
- "reovim-host",
- "reovim-kernel-interface",
- "reovim-kernel-runtime",
- "reovim-module-fs",
- "reovim-module-text",
+ "reovim-rig",
  "reovim-sdk",
  "reovim-text-api",
 ]
@@ -233,6 +226,17 @@ dependencies = [
  "reovim-module-fs",
  "reovim-sdk",
  "reovim-text-api",
+]
+
+[[package]]
+name = "reovim-rig"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-client",
+ "reovim-host",
+ "reovim-kernel-runtime",
+ "reovim-module-fs",
+ "reovim-module-text",
 ]
 
 [[package]]

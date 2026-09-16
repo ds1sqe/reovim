@@ -14,11 +14,7 @@ reovim-sdk = { path = "../../sdk/rust" }
 reovim-text-api = { path = "../../modules/text/api" }
 
 [dev-dependencies]
-reovim-host = { path = "../../host/os", features = ["std"] }
-reovim-kernel-interface = { path = "../../kernel/interface" }
-reovim-kernel-runtime = { path = "../../kernel/runtime" }
-reovim-module-text = { path = "../../modules/text" }
-reovim-module-fs = { path = "../../modules/fs" }
+reovim-rig = { path = "../rig" }
 
 [lints]
 workspace = true
