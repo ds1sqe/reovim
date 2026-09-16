@@ -110,14 +110,21 @@ struct State {
     nodes: BTreeMap<Rd, Node>,
     /// Source rd to its one Buffer.
     opened: BTreeMap<Rd, Rd>,
+    /// Bytes held across every state of every Buffer.
+    held: usize,
 }
 
 /// The Driver and its Module in one; pass it twice at `load`.
+///
+/// It holds at most `limit` bytes across every state of every Buffer
+/// and answers `NoSpace` past that, as 01-core-runtime.md leaves
+/// pressure to the Driver.
 pub struct Text {
     /// `open`, then what a Buffer offers: `text`, `history`, `publish`.
     decls: [Decl; 4],
     hashes: [Hash; 4],
     state: RefCell<State>,
+    limit: usize,
 }
 
 /// A `Reply` the Driver needs now: `Pending` is `Busy`, it cannot wait.
@@ -189,6 +196,11 @@ fn spliced(
     Ok(out)
 }
 
+/// `len` when a state of that size fits in `room`; `NoSpace` otherwise.
+const fn fits(len: usize, room: usize) -> Result<usize, Error> {
+    if len > room { Err(Error::NoSpace) } else { Ok(len) }
+}
+
 /// A `U64` or `Rd` payload, already checked to fit.
 fn u64_of(input: &[u8]) -> Result<u64, Error> {
     let bytes = input.try_into().map_err(|_| Error::Invalid)?;
@@ -211,15 +223,9 @@ pub fn boot(_root: &str) -> Booted {
 }
 
 impl Default for Text {
+    /// 64 MiB of states.
     fn default() -> Self {
-        let decls = [open_decl(), text_decl(), history_decl(), publish_decl()];
-        let hashes = [
-            decls[0].hash(),
-            decls[1].hash(),
-            decls[2].hash(),
-            decls[3].hash(),
-        ];
-        Self { decls, hashes, state: RefCell::new(State::default()) }
+        Self::with_limit(64 << 20)
     }
 }
 
@@ -227,6 +233,19 @@ impl Text {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// A Driver holding at most `limit` bytes of states.
+    #[must_use]
+    pub fn with_limit(limit: usize) -> Self {
+        let decls = [open_decl(), text_decl(), history_decl(), publish_decl()];
+        let hashes = [
+            decls[0].hash(),
+            decls[1].hash(),
+            decls[2].hash(),
+            decls[3].hash(),
+        ];
+        Self { decls, hashes, state: RefCell::new(State::default()), limit }
     }
 
     /// Register `name` under `parent` and record what it is.
@@ -254,7 +273,12 @@ impl Text {
             return Ok(rd);
         }
         let home = home.ok_or(Error::Invalid)?;
-        let history = History::new("open", fetch(ctx, source)?);
+        let bytes = fetch(ctx, source)?;
+        if bytes.len() > self.limit - self.state.borrow().held {
+            return Err(Error::NoSpace);
+        }
+        self.state.borrow_mut().held += bytes.len();
+        let history = History::new("open", bytes);
         let node = Node::Buffer { source, history };
         let name = source.0.to_string();
         let rd = self.add(ctx, home, &name, BUFFER, &self.decls[1..], node)?;
@@ -278,19 +302,22 @@ impl Text {
     }
 
     /// One change of head on the Buffer `rd`: `f` moves it or makes a
-    /// state, and its `Ok` is one Modify.
+    /// state within `room` bytes, answering how many it took, and its
+    /// `Ok` is one Modify.
     fn change<T>(
         &self,
         ctx: &dyn Calls,
         rd: Rd,
-        f: impl FnOnce(&mut History) -> Result<T, Error>,
+        f: impl FnOnce(&mut History, usize) -> Result<(T, usize), Error>,
     ) -> Result<T, Error> {
         let mut state = self.state.borrow_mut();
+        let room = self.limit - state.held;
         let Some(Node::Buffer { history, .. }) = state.nodes.get_mut(&rd)
         else {
             return Err(Error::Unsupported);
         };
-        let value = f(history)?;
+        let (value, took) = f(history, room)?;
+        state.held += took;
         drop(state);
         ctx.changed(rd, Kind::Modify)?;
         Ok(value)
@@ -304,12 +331,13 @@ impl Text {
         at: u64,
         bytes: &[u8],
     ) -> Result<usize, Error> {
-        self.change(ctx, rd, |history| {
+        self.change(ctx, rd, |history, room| {
             let draft = history.draft();
             let len = draft.len() as u64 - at.min(draft.len() as u64);
             let next = spliced(draft, at, len, bytes)?;
+            let took = fits(next.len(), room)?;
             history.commit("write", next);
-            Ok(bytes.len())
+            Ok((bytes.len(), took))
         })
     }
 
@@ -321,10 +349,11 @@ impl Text {
         input: &[u8],
     ) -> Result<Vec<u8>, Error> {
         let (at, len, text) = edit_of(input)?;
-        self.change(ctx, rd, |history| {
+        self.change(ctx, rd, |history, room| {
             let next = spliced(history.draft(), at, len, text)?;
+            let took = fits(next.len(), room)?;
             history.commit("replace", next);
-            Ok(Vec::new())
+            Ok((Vec::new(), took))
         })
     }
 
@@ -351,8 +380,8 @@ impl Text {
         rd: Rd,
         f: impl FnOnce(&mut History) -> bool,
     ) -> Result<Vec<u8>, Error> {
-        let ok = |history: &mut History| {
-            f(history).then_some(()).ok_or(Error::Invalid)
+        let ok = |history: &mut History, _: usize| {
+            f(history).then_some(((), 0)).ok_or(Error::Invalid)
         };
         self.change(ctx, rd, ok).map(|()| Vec::new())
     }

@@ -112,8 +112,8 @@ impl Tui {
         Ok(Step::Changed)
     }
 
-    /// What happened since: a Modify on the Buffer or its source
-    /// re-reads the draft and the tree.
+    /// What happened since: a Modify on the Buffer or its source, or an
+    /// Overflow, re-reads the draft and the tree.
     ///
     /// # Errors
     /// `Kernel(Gone)` once the Buffer is gone; otherwise what the
@@ -126,7 +126,12 @@ impl Tui {
         if on(self.buffer, Kind::Gone) {
             return Err(Fault::Kernel(Error::Gone));
         }
-        if !on(self.buffer, Kind::Modify) && !on(self.source, Kind::Modify) {
+        // Overflow: the ring moved past us, so everything is read again.
+        let overflow = events.iter().any(|e| e.kind == Kind::Overflow);
+        if !overflow
+            && !on(self.buffer, Kind::Modify)
+            && !on(self.source, Kind::Modify)
+        {
             return Ok(Step::Same);
         }
         let bytes = self.client.read_whole(self.h)?;

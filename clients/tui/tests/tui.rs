@@ -50,8 +50,12 @@ fn load(kernel: &Kernel, name: &str, booted: &Booted) {
 
 impl Rig {
     fn new(test: &str) -> Self {
+        Self::with(test, Limits::default())
+    }
+
+    fn with(test: &str, limits: Limits) -> Self {
         let dir = Dir::new(test);
-        let kernel = Kernel::new(clock::now, Limits::default());
+        let kernel = Kernel::new(clock::now, limits);
         load(&kernel, "fs", &reovim_module_fs::boot(dir.0.to_str().unwrap()));
         load(&kernel, "text", &reovim_module_text::boot(""));
         Self { dir, kernel: Rc::new(kernel) }
@@ -168,4 +172,20 @@ fn a_missing_file_does_not_open() {
     let rig = Rig::new("missing");
     let Err(fault) = Tui::open(rig.client(), "none") else { panic!("opened") };
     assert_eq!(fault, Fault::Kernel(Error::Invalid));
+}
+
+#[test]
+fn a_tui_behind_a_full_ring_reads_everything_again() {
+    let rig =
+        Rig::with("overflow", Limits { watch_ring: 2, ..Limits::default() });
+    rig.file("note", b"first\n");
+    let mut tui = Tui::open(rig.client(), "note").unwrap();
+    let mut other = rig.client();
+    let buffer = buffer_of(&mut other, &tui);
+    for text in [b"one".as_slice(), b"two", b"three"] {
+        other.write_all(buffer, text.to_vec()).unwrap();
+    }
+    assert_eq!(tui.tick(), Ok(Step::Changed));
+    assert_eq!(tui.frame(80, 24).lines, vec!["three"]);
+    assert!(tui.frame(80, 24).status.contains("r4[+]"));
 }

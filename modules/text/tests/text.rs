@@ -2,13 +2,16 @@
 //! text Buffer over a fs file.
 
 use std::path::PathBuf;
+use std::rc::Rc;
 
 use reovim_host::clock;
 use reovim_kernel_interface::{
     Booted, Caller, Error, Handle, Kind, Op, Out, Rd, Reply, Rights,
 };
 use reovim_kernel_runtime::{Kernel, Limits, ROOT};
-use reovim_module_text::{history_decl, open_decl, publish_decl, text_decl};
+use reovim_module_text::{
+    Text, history_decl, open_decl, publish_decl, text_decl,
+};
 
 /// A directory of its own for one test, removed on drop.
 struct Dir(PathBuf);
@@ -69,10 +72,17 @@ fn tree_of(bytes: &[u8]) -> (Vec<Node>, u64, u64) {
 
 impl Rig {
     fn new(test: &str) -> Self {
+        Self::with_limit(test, 64 << 20)
+    }
+
+    /// A text Driver holding at most `limit` bytes of states.
+    fn with_limit(test: &str, limit: usize) -> Self {
         let dir = Dir::new(test);
         let kernel = Kernel::new(clock::now, Limits::default());
         load(&kernel, "fs", &reovim_module_fs::boot(dir.0.to_str().unwrap()));
-        load(&kernel, "text", &reovim_module_text::boot(""));
+        let driver = Rc::new(Text::with_limit(limit));
+        let booted = Booted { module: driver.clone(), drivers: vec![driver] };
+        load(&kernel, "text", &booted);
         let caller = kernel.caller_new();
         let seq = std::cell::Cell::new(0);
         let mut rig = Self { dir, kernel, caller, seq, root: ROOT, open: ROOT };
@@ -304,4 +314,22 @@ fn a_read_only_source_opens_but_never_saves() {
     assert_eq!(rig.read(buffer), source.0.to_le_bytes());
     let h = rig.open(buffer, Rights::WRITE);
     assert_eq!(rig.save(h), Reply::err(Error::Denied));
+}
+
+#[test]
+fn the_driver_holds_no_more_than_its_limit() {
+    let rig = Rig::with_limit("limit", 16);
+    let source = rig.file("f", b"abc");
+    let buffer = rig.buffer(source);
+    let (h, cursor) = rig.watch(buffer);
+    assert_eq!(rig.replace(h, 3, 0, "d"), DONE, "3 + 4 held");
+    let big = rig.write(h, 0, b"0123456789");
+    assert_eq!(big, Reply::err(Error::NoSpace), "10 past the 9 left");
+    assert_eq!(rig.read(buffer), b"abcd", "nothing changed");
+    assert_eq!(rig.tree(h).1, 2);
+    assert_eq!(rig.write(h, 0, b"012345678"), Reply::ok(Out::Len(9)));
+    let (events, _) = rig.since(cursor);
+    assert_eq!(events.len(), 2, "one Modify per accepted change");
+    let other = rig.file("g", b"x");
+    assert_eq!(rig.open_call(other), Reply::err(Error::NoSpace), "full");
 }
