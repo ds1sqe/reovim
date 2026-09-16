@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # What nvim does with a case: `out`, `exit` and `state` written beside
-# its `in` and `keys`; `state` is the cursor as line:column (chars,
-# from 1), the unnamed register's type (v, V, ^V{width} or empty) and
-# its bytes at exit. These flags are the definition of "what nvim
-# does".
+# its `in` and `keys`; `state` is the cursor as line:column:cell (the
+# column in chars, the cell on the screen, all from 1), the unnamed
+# register's type (v, V, ^V{width} or empty) and its bytes at exit.
+# These flags are the definition of "what nvim does".
 #
 #   clients/tui/tests/parity/record.sh CASE...     directories
 set -euo pipefail
@@ -20,8 +20,11 @@ for case in "$@"; do
     # would leave the cursor at column 1, where nvim itself starts it
     # on the first non-blank.
     state="$work/state"
+    # The cell the cursor is shown at: a tab's last, any other's first.
+    cell="(strpart(getline('.'), col('.') - 1, 1) ==# \"\\t\" \
+        ? virtcol('.', 1)[1] : virtcol('.', 1)[0])"
     leave="autocmd VimLeavePre * call writefile([line('.') . ':' \
-        . charcol('.'), getregtype('\"')], '$state') \
+        . charcol('.') . ':' . $cell, getregtype('\"')], '$state') \
         | call writefile(split(getreg('\"'), \"\\n\", 1), '$state', 'ab')"
     set +e
     (cd "$work" && nvim --headless --clean -i NONE -n file --cmd "$leave" \

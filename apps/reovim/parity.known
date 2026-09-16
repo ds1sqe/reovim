@@ -1,0 +1,9 @@
+# Cases that differ from nvim end to end until 07.2 draws in
+# screen cells: the cursor on a tab is placed at its char index,
+# where nvim shows it at the tab's last cell. One name per line.
+ctrl-v-gt
+ctrl-v-gt-2
+ctrl-v-gt-short
+shift-count-and-motion
+shift-ip
+V-shift-and-case

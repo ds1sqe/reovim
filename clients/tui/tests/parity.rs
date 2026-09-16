@@ -11,11 +11,13 @@ use reovim_client_vim::notation::keys;
 use reovim_client_vim::{Kind, Register, Vim};
 use reovim_rig::Rig;
 
-/// nvim's `state` file: the cursor as `line:column`, the register's
-/// type, then its bytes.
+/// nvim's `state` file: the cursor as `line:column:cell` (the cell
+/// being the screen column, which apps/reovim/parity.sh judges), the
+/// register's type, then its bytes.
 fn state(bytes: &[u8]) -> Option<(String, String, Vec<u8>)> {
     let text = String::from_utf8_lossy(bytes);
     let (cursor, rest) = text.split_once('\n')?;
+    let (cursor, _) = cursor.rsplit_once(':')?;
     let (kind, register) = rest.split_once('\n')?;
     Some((cursor.into(), kind.into(), register.as_bytes().to_vec()))
 }
