@@ -24,8 +24,8 @@ for case in "$@"; do
         . charcol('.'), getregtype('\"')], '$state') \
         | call writefile(split(getreg('\"'), \"\\n\", 1), '$state', 'ab')"
     set +e
-    nvim --headless --clean -i NONE -n "$work/file" --cmd "$leave" \
-        -c "call feedkeys(\"$keys\", 'tx')" -c 'cquit 2' 2>/dev/null
+    (cd "$work" && nvim --headless --clean -i NONE -n file --cmd "$leave" \
+        -c "call feedkeys(\"$keys\", 'tx')" -c 'cquit 2' 2>/dev/null)
     code=$?
     set -e
     if [[ "$code" == 2 ]]; then

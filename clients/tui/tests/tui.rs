@@ -32,7 +32,7 @@ fn keys_change_the_draft_and_save_reaches_disk() {
     let rig = Rig::new("keys");
     rig.file("note", b"first\n");
     let mut tui =
-        Tui::open(rig.client(), Some("note"), Vim::default()).unwrap();
+        Tui::open(rig.client(), "", Some("note"), Vim::default()).unwrap();
     let mut other = rig.client();
     let buffer = buffer_of(&mut other, &tui);
 
@@ -63,7 +63,7 @@ fn the_quit_commands_map_onto_the_three_outcomes() {
     let rig = Rig::new("quit");
     rig.file("note", b"first\n");
     let mut tui =
-        Tui::open(rig.client(), Some("note"), Vim::default()).unwrap();
+        Tui::open(rig.client(), "", Some("note"), Vim::default()).unwrap();
     assert_eq!(typed(&mut tui, ":q<CR>"), Ok(Step::Quit(0)), "nothing unsaved");
 
     assert_eq!(typed(&mut tui, "ix<Esc>:q<CR>"), Ok(Step::Changed), "E37");
@@ -90,7 +90,7 @@ fn undo_and_redo_walk_the_revisions() {
     let rig = Rig::new("undo");
     rig.file("note", b"first\n");
     let mut tui =
-        Tui::open(rig.client(), Some("note"), Vim::default()).unwrap();
+        Tui::open(rig.client(), "", Some("note"), Vim::default()).unwrap();
     let mut other = rig.client();
     let buffer = buffer_of(&mut other, &tui);
 
@@ -126,7 +126,7 @@ fn a_write_from_another_client_shows_after_tick() {
     let rig = Rig::new("modify");
     rig.file("note", b"first\n");
     let mut tui =
-        Tui::open(rig.client(), Some("note"), Vim::default()).unwrap();
+        Tui::open(rig.client(), "", Some("note"), Vim::default()).unwrap();
     let mut other = rig.client();
     let buffer = buffer_of(&mut other, &tui);
 
@@ -145,7 +145,7 @@ fn a_write_from_another_client_shows_after_tick() {
 fn a_missing_file_opens_empty_and_appears_on_save() {
     let rig = Rig::new("missing");
     let mut tui =
-        Tui::open(rig.client(), Some("none"), Vim::default()).unwrap();
+        Tui::open(rig.client(), "", Some("none"), Vim::default()).unwrap();
     assert_eq!(tui.frame(80, 24).lines, vec![""]);
     assert_eq!(typed(&mut tui, "ix<Esc>"), Ok(Step::Changed));
     assert!(!rig.dir().join("none").exists(), "nothing on disk yet");
@@ -159,7 +159,7 @@ fn a_tui_behind_a_full_ring_reads_everything_again() {
         Rig::with("overflow", Limits { watch_ring: 2, ..Limits::default() });
     rig.file("note", b"first\n");
     let mut tui =
-        Tui::open(rig.client(), Some("note"), Vim::default()).unwrap();
+        Tui::open(rig.client(), "", Some("note"), Vim::default()).unwrap();
     let mut other = rig.client();
     let buffer = buffer_of(&mut other, &tui);
     for text in [b"one".as_slice(), b"two", b"three"] {
@@ -175,7 +175,7 @@ fn many_edits_are_one_revision() {
     let rig = Rig::new("many");
     rig.file("note", b"x\nx\nx\n");
     let mut tui =
-        Tui::open(rig.client(), Some("note"), Vim::default()).unwrap();
+        Tui::open(rig.client(), "", Some("note"), Vim::default()).unwrap();
     assert_eq!(typed(&mut tui, ":%s/x/y/g<CR>"), Ok(Step::Changed));
     let frame = tui.frame(80, 24);
     assert_eq!(frame.lines, vec!["y", "y", "y"]);
@@ -195,7 +195,7 @@ fn the_clipboard_is_an_rd_of_its_module() {
     let rig = Rig::new("clip");
     rig.file("note", b"one\n");
     let mut tui =
-        Tui::open(rig.client(), Some("note"), Vim::default()).unwrap();
+        Tui::open(rig.client(), "", Some("note"), Vim::default()).unwrap();
     assert_eq!(typed(&mut tui, "\"+yy"), Ok(Step::Changed));
     assert_eq!(rig.clipboard(), b"one\n", "written through the rd");
     rig.clip(b"two\n");
@@ -210,7 +210,7 @@ fn the_clipboard_is_an_rd_of_its_module() {
 #[test]
 fn a_buffer_over_nothing_has_no_file_to_write() {
     let rig = Rig::new("unnamed");
-    let mut tui = Tui::open(rig.client(), None, Vim::default()).unwrap();
+    let mut tui = Tui::open(rig.client(), "", None, Vim::default()).unwrap();
     assert_eq!(tui.frame(80, 24).status, "[No Name]  1:1  r1   ");
     assert_eq!(typed(&mut tui, "ZZ"), Ok(Step::Quit(0)), "nothing to write");
     assert_eq!(typed(&mut tui, "ihi<Esc>:w<CR>"), Ok(Step::Changed));
@@ -223,4 +223,28 @@ fn a_buffer_over_nothing_has_no_file_to_write() {
     assert_eq!(typed(&mut tui, ":q!<CR>"), Ok(Step::Quit(0)));
     let written = std::fs::read_dir(rig.dir()).unwrap().count();
     assert_eq!(written, 0, "nothing written");
+}
+
+#[test]
+fn w_name_writes_a_copy_and_names_a_buffer_over_nothing() {
+    let rig = Rig::new("saveas");
+    rig.file("note", b"one\n");
+    let mut tui =
+        Tui::open(rig.client(), "", Some("note"), Vim::default()).unwrap();
+    assert_eq!(typed(&mut tui, "ix<Esc>:w copy<CR>"), Ok(Step::Changed));
+    assert_eq!(rig.disk("copy"), b"xone\n");
+    assert_eq!(rig.disk("note"), b"one\n", "the file itself waits");
+    let status = tui.frame(80, 24).status;
+    assert!(status.starts_with("note  1:1  r2[+]"), "{status}");
+    assert_eq!(typed(&mut tui, ":w note<CR>"), Ok(Step::Changed), "its own");
+    assert_eq!(rig.disk("note"), b"xone\n");
+    assert!(tui.frame(80, 24).status.contains("r2   "));
+
+    let mut tui = Tui::open(rig.client(), "", None, Vim::default()).unwrap();
+    assert_eq!(typed(&mut tui, "ihi<Esc>:w fresh<CR>"), Ok(Step::Changed));
+    assert_eq!(rig.disk("fresh"), b"hi\n");
+    let status = tui.frame(80, 24).status;
+    assert!(status.starts_with("fresh  1:2  r2   "), "{status}");
+    assert_eq!(typed(&mut tui, "ax<Esc>:wq<CR>"), Ok(Step::Quit(0)));
+    assert_eq!(rig.disk("fresh"), b"hix\n");
 }

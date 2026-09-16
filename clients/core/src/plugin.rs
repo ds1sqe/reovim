@@ -30,6 +30,9 @@ pub enum Effect {
     Undo,
     Redo,
     Save,
+    /// `:w NAME`: the draft written to that file, which the Client
+    /// resolves; a Buffer over nothing becomes the file's.
+    SaveAs(String),
     Quit(Quit),
     /// A put wants the clipboard's text: `pasted` finishes it.
     Clipboard,

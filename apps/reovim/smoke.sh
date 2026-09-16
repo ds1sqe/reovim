@@ -135,6 +135,15 @@ keys unnamed : q ! Enter
 [[ ! -e "$DIR/[No Name]" && ! -e "$DIR/No Name" ]] \
     || fail "the unnamed buffer wrote a file"
 
+# --- :w NAME from an unnamed buffer names it -------------------------
+start named "$DIR" "$BIN"
+editing named '\[No Name\]'
+keys named i "hi" Escape : w " " n o t e Enter
+editing named note
+keys named : q Enter
+[[ "$(ended named)" == 0 ]] || fail ":w NAME then :q failed"
+[[ "$(cat "$DIR/note")" == hi ]] || fail ":w NAME did not write"
+
 # --- SIGTERM: the terminal cooked, the file untouched, exit 1 -------
 start term "$DIR" "$BIN other; echo \$? > '$DIR/exit-term'; \
     stty -a > '$DIR/stty'; sleep 30"

@@ -6,7 +6,7 @@ use std::fmt::Write as _;
 use std::io::Write;
 
 use reovim_client::{Client, Fault, Key};
-use reovim_client_tui::{Frame, Step, Tui};
+use reovim_client_tui::{Frame, Step, Tui, under};
 use reovim_client_vim::Vim;
 use reovim_host::term;
 
@@ -32,7 +32,7 @@ pub fn remote(
 ) -> Result<u8, Fail> {
     let credential = format!("tui:{}", std::process::id()).into_bytes();
     let client = Remote::client(socket, credential)?;
-    run(client, line, file, &mut || Ok(()))
+    run(client, line, ("", file), &mut || Ok(()))
 }
 
 /// Bare `reovim`: the server on this thread over `/`, listening only
@@ -46,10 +46,10 @@ pub fn bare(
     let (kernel, _modules) = boot("/")?;
     let mut links = socket.map(Links::listen).transpose()?;
     let mut sink = log.map(|path| Sink::open(&kernel, path)).transpose()?;
-    let work = reovim_host::dirs::work()?;
-    let file = file.map(|file| absolute(&work, file));
+    let dir = under("", &reovim_host::dirs::work()?);
+    let file = file.map(|file| under(&dir, file));
     let client = Local::client(&kernel)?;
-    run(client, line, file.as_deref(), &mut || {
+    run(client, line, (&dir, file.as_deref()), &mut || {
         if let Some(links) = &mut links {
             links.drain(&kernel);
         }
@@ -57,36 +57,15 @@ pub fn bare(
     })
 }
 
-/// `path` under `work` unless it is absolute, `.` and `..` resolved
-/// lexically, without the leading slash: its name under the fs root.
-fn absolute(work: &str, path: &str) -> String {
-    let joined = if path.starts_with('/') {
-        path.to_string()
-    } else {
-        format!("{work}/{path}")
-    };
-    let mut parts: Vec<&str> = Vec::new();
-    for part in joined.split('/') {
-        match part {
-            "" | "." => {}
-            ".." => {
-                parts.pop();
-            }
-            part => parts.push(part),
-        }
-    }
-    parts.join("/")
-}
-
 /// The loop in the host's terminal mode, left on every exit, a fault
 /// printed after; the exit code the tui asked for.
 fn run(
     client: Client,
     line: Option<usize>,
-    file: Option<&str>,
+    (dir, file): (&str, Option<&str>),
     serve: Serve,
 ) -> Result<u8, Fail> {
-    let mut tui = Tui::open(client, file, Vim::default())?;
+    let mut tui = Tui::open(client, dir, file, Vim::default())?;
     if let Some(line) = line {
         tui.goto_line(line);
     }
@@ -186,19 +165,5 @@ const fn map(key: term::Key) -> Key {
         term::Key::End => Key::End,
         term::Key::Ctrl(c) => Key::Ctrl(c),
         term::Key::Esc => Key::Esc,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::absolute;
-
-    #[test]
-    fn absolute_names_the_file_under_the_root() {
-        assert_eq!(absolute("/home/me", "note"), "home/me/note");
-        assert_eq!(absolute("/home/me", "./a/../b/"), "home/me/b");
-        assert_eq!(absolute("/home/me", "/tmp/x"), "tmp/x");
-        assert_eq!(absolute("/", "../../etc/hosts"), "etc/hosts");
-        assert_eq!(absolute("/home/me", "/"), "");
     }
 }

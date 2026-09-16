@@ -264,6 +264,7 @@ fn the_command_line_runs_the_quit_commands_and_refuses_the_rest() {
     assert_eq!(typed(&mut vim, ":<CR>"), Effect::Moved, "an empty line");
 
     assert_eq!(typed(&mut vim, ":w<CR>"), Effect::Save);
+    assert_eq!(typed(&mut vim, ":w  a b <CR>"), Effect::SaveAs("a b".into()));
     assert_eq!(typed(&mut vim, ":q<CR>"), Effect::Quit(Quit::Ask));
     assert_eq!(typed(&mut vim, ":q!<CR>"), Effect::Quit(Quit::Force));
     assert_eq!(typed(&mut vim, ":wq<CR>"), Effect::Quit(Quit::Write));

@@ -47,6 +47,8 @@ pub struct Tui<P: Plugin> {
     buffer: Rd,
     source: Option<Rd>,
     h: Handle,
+    /// Where a relative name in `:w NAME` starts, under the root.
+    dir: String,
     name: String,
     head: u64,
     published: u64,
@@ -55,42 +57,31 @@ pub struct Tui<P: Plugin> {
 }
 
 impl<P: Plugin> Tui<P> {
-    /// Open `file` as a Buffer, or one over nothing when there is no
-    /// file, watch it and load the draft into `plugin`.
+    /// Open `file`, a name under the root, as a Buffer, or one over
+    /// nothing when there is no file; watch it and load the draft
+    /// into `plugin`. `dir`, under the root too, is where a relative
+    /// `:w NAME` starts.
     ///
     /// # Errors
     /// What the Client says; `Kernel(Invalid)` for a file that is not
     /// under the root.
     pub fn open(
         mut client: Client,
+        dir: &str,
         file: Option<&str>,
         mut plugin: P,
     ) -> Result<Self, Fault> {
         client.capability(b"tui".to_vec())?;
         let source = match file {
-            Some(file) => {
-                Some(client.resolve(&format!("/module/fs/root/{file}"))?)
-            }
+            Some(file) => Some(file_rd(&mut client, file)?),
             None => None,
         };
-        let opener = client.resolve("/module/text/open")?;
-        let opening = client.open(opener, Rights::WRITE)?;
-        let mut open = open::Call(&mut client, opening);
-        let buffer = match source {
-            Some(source) => open.open(source)?,
-            None => open.new()?,
-        };
-        client.close(opening)?;
+        let buffer = buffer_over(&mut client, source)?;
         let name = match source {
             Some(source) => client.name(source)?,
             None => String::from(UNNAMED),
         };
-        let h = client.open(buffer, Rights::READ.union(Rights::WRITE))?;
-        client.watch(h, true)?;
-        if let Some(source) = source {
-            let watched = client.open(source, Rights::READ)?;
-            client.watch(watched, true)?;
-        }
+        let h = watched(&mut client, buffer, source)?;
         plugin.loaded(&client.read_whole(h)?);
         plugin.goto_line(1);
         let clipboard = client.resolve("/module/clipboard/text").ok();
@@ -101,6 +92,7 @@ impl<P: Plugin> Tui<P> {
             buffer,
             source,
             h,
+            dir: String::from(dir),
             name,
             head: 0,
             published: 0,
@@ -164,6 +156,7 @@ impl<P: Plugin> Tui<P> {
                 self.moved(moved, "Already at newest change")?;
             }
             Effect::Save => self.save()?,
+            Effect::SaveAs(name) => self.save_as(&name)?,
             Effect::Quit(Quit::Ask) if self.head != self.published => {
                 self.plugin.notice(E37);
                 return Ok(Step::Changed);
@@ -279,6 +272,40 @@ impl<P: Plugin> Tui<P> {
         publish::Call(&mut self.client, self.h).save()
     }
 
+    /// `:w NAME`: the draft written to the file `name` through a
+    /// Buffer over it, replaced whole and saved; its own name is a
+    /// save. A Buffer over nothing goes on as that file's Buffer, its
+    /// history starting there.
+    fn save_as(&mut self, name: &str) -> Result<(), Fault> {
+        let target = file_rd(&mut self.client, &under(&self.dir, name))?;
+        if Some(target) == self.source {
+            return self.save();
+        }
+        if let Some(edit) = self.plugin.saving() {
+            self.edit(edit)?;
+        }
+        let draft = self.client.read_whole(self.h)?;
+        let buffer = buffer_over(&mut self.client, Some(target))?;
+        let h = self.client.open(buffer, Rights::READ.union(Rights::WRITE))?;
+        let len = self.client.read_whole(h)?.len() as u64;
+        let text = String::from_utf8_lossy(&draft).into_owned();
+        text::Call(&mut self.client, h).replace(text::Edit {
+            at: 0,
+            len,
+            text,
+        })?;
+        publish::Call(&mut self.client, h).save()?;
+        self.client.close(h)?;
+        if self.source.is_some() {
+            return Ok(());
+        }
+        self.client.close(self.h)?;
+        self.h = watched(&mut self.client, buffer, Some(target))?;
+        (self.buffer, self.source) = (buffer, Some(target));
+        self.name = self.client.name(target)?;
+        Ok(())
+    }
+
     /// The cursor to line `n`, counted from 1: `+N` on the command
     /// line.
     pub fn goto_line(&mut self, n: usize) {
@@ -328,5 +355,76 @@ impl<P: Plugin> Tui<P> {
         let moved = (tree.head, tree.published) != (self.head, self.published);
         (self.head, self.published) = (tree.head, tree.published);
         Ok(moved)
+    }
+}
+
+/// The rd of `file`, a name under the root.
+fn file_rd(client: &mut Client, file: &str) -> Result<Rd, Fault> {
+    client.resolve(&format!("/module/fs/root/{file}"))
+}
+
+/// A Buffer over `source`, or over nothing.
+fn buffer_over(client: &mut Client, source: Option<Rd>) -> Result<Rd, Fault> {
+    let opener = client.resolve("/module/text/open")?;
+    let opening = client.open(opener, Rights::WRITE)?;
+    let mut open = open::Call(&mut *client, opening);
+    let buffer = match source {
+        Some(source) => open.open(source),
+        None => open.new(),
+    };
+    client.close(opening)?;
+    buffer
+}
+
+/// A handle on `buffer`, watched, with the `source` watched too.
+fn watched(
+    client: &mut Client,
+    buffer: Rd,
+    source: Option<Rd>,
+) -> Result<Handle, Fault> {
+    let h = client.open(buffer, Rights::READ.union(Rights::WRITE))?;
+    client.watch(h, true)?;
+    if let Some(source) = source {
+        let watched = client.open(source, Rights::READ)?;
+        client.watch(watched, true)?;
+    }
+    Ok(h)
+}
+
+/// `path` under `dir` unless it is absolute, `.` and `..` resolved
+/// lexically, without the leading slash: its name under the root.
+/// `dir` is a name under the root already.
+#[must_use]
+pub fn under(dir: &str, path: &str) -> String {
+    let joined = if path.starts_with('/') {
+        String::from(path)
+    } else {
+        format!("{dir}/{path}")
+    };
+    let mut parts: Vec<&str> = Vec::new();
+    for part in joined.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            part => parts.push(part),
+        }
+    }
+    parts.join("/")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::under;
+
+    #[test]
+    fn under_names_the_file_under_the_root() {
+        assert_eq!(under("home/me", "note"), "home/me/note");
+        assert_eq!(under("home/me", "./a/../b/"), "home/me/b");
+        assert_eq!(under("home/me", "/tmp/x"), "tmp/x");
+        assert_eq!(under("", "../../etc/hosts"), "etc/hosts");
+        assert_eq!(under("", "/home/me"), "home/me");
+        assert_eq!(under("home/me", "/"), "");
     }
 }

@@ -75,8 +75,8 @@ impl Vim {
         self.motion(Motion::Search { forward }, n)
     }
 
-    /// `w`, `q`, `q!`, `wq`, `x`, `cq`, `noh`, `set`, `s` with a range;
-    /// any other is E492.
+    /// `w`, `w NAME`, `q`, `q!`, `wq`, `x`, `cq`, `noh`, `set`, `s`
+    /// with a range; any other is E492.
     fn ex(&mut self, line: &str) -> Effect {
         let (range, rest) = self.range(line.trim());
         let command = rest.trim();
@@ -92,6 +92,9 @@ impl Vim {
                 Effect::Moved
             }
             _ if command.starts_with("set ") => self.set(&command[4..]),
+            _ if command.starts_with("w ") => {
+                Effect::SaveAs(command[2..].trim().into())
+            }
             _ if command.starts_with("s/") => {
                 self.substitute(range, &command[2..])
             }
