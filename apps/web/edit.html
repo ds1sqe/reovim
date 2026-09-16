@@ -1,56 +1,11 @@
 <!doctype html>
-<html lang="en"><meta charset="utf-8">
-<meta name="viewport" content="width=device-width">
-<title>Reovim Text editing trial</title>
-<main><h1>Text editing trial</h1>
-<p>Ranges count Unicode scalars and opaque source bytes. Opaque bytes display
-as ⟦ff⟧; this notation is not replacement text. This is a contract trial.</p>
-<label>Initial source bytes (hex)
-<input id="initial" size="64" value="2320ed959ceab88020f09fa6800d0aff007461696c"></label>
-<button id="create">Create source</button>
-<label>File <input id="filename" value="draft.md"></label>
-<button id="open-file">Open file</button>
-<button id="join">Join shared source</button>
-<button id="park-source">Keep source open</button>
-<label>Other open sources <select id="open-sources"></select></label>
-<button id="switch-source">Switch source</button>
-<button id="observe">Observe current Text</button>
-<button id="follow">Check changes and refresh</button>
-<button id="recover">Recover pending request</button>
-<pre id="status" aria-live="polite"></pre>
-<p id="changes" aria-live="polite"></p>
-<p id="focus-status" aria-live="polite"></p>
-<p id="focus-change" aria-live="polite"></p>
-<p id="context-checkpoint" aria-live="polite"></p>
-<p><button id="create-context">Create private context</button>
-<button id="join-context">Join shared context</button>
-<button id="focus-source">Focus current source</button>
-<button id="clear-focus">Clear focus</button>
-<button id="refresh-context">Refresh context</button>
-<button id="follow-context">Follow live context</button>
-<button id="remember-context">Retain context checkpoint</button>
-<button id="seek-context">View retained context</button>
-<button id="close-context">Close or detach context</button>
-<button id="recover-context">Recover context request</button></p>
-<p id="range"></p><pre id="content"></pre>
-<label>Type in the observed window
-<textarea id="typing" rows="8" cols="72" readonly spellcheck="false"></textarea></label>
-<p id="draft-status" aria-live="polite"></p>
-<button id="discard-draft">Discard local input draft</button>
-<button id="resume-input">Recover and resume queued input</button>
-<p>The object marker represents one opaque byte. Unchanged line endings and
-opaque bytes remain in the source. Recover pending work before discarding a
-retained local draft.</p>
-<label>Window start <input id="window-start" value="0" inputmode="numeric"></label>
-<button id="read">Read window</button>
-<p><label>Range start <input id="start" value="2" inputmode="numeric"></label>
-<label>Range end <input id="end" value="4" inputmode="numeric"></label>
-<label>Replacement <input id="replacement" value="é漢"></label></p>
-<button id="replace">Replace range</button><button id="undo">Undo</button>
-<button id="redo">Redo</button>
-<p><button id="load-contribution">Load uppercase contribution</button>
-<button id="uppercase">Uppercase selected range (Ctrl+K, Ctrl+U)</button>
-<button id="unload-contribution">Unload contribution</button></p>
-<p id="contribution-status" aria-live="polite">Contribution not loaded.</p>
-<button id="close">Detach shared source / discard private source</button>
-</main><script type="module" src="/edit.js"></script></html>
+<meta charset="utf-8">
+<title>reovim</title>
+<style>
+  body { margin: 0; font: 14px monospace; }
+  #text { width: 100vw; height: calc(100vh - 1.5em); box-sizing: border-box; border: 0; font: inherit; resize: none; }
+  #status { height: 1.5em; background: #000; color: #fff; padding: 0 .5em; white-space: pre; }
+</style>
+<textarea id="text" spellcheck="false"></textarea>
+<div id="status">connecting</div>
+<script type="module" src="/js/apps/web/edit.js"></script>

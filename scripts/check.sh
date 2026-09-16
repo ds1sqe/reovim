@@ -165,9 +165,8 @@ run_selected_checks() {
     run_product_checks "${selected[@]}"
 }
 
-# Browser checks return with milestone 5 of the resource-based refoundation;
-# apps/web and clients/gui still import the removed text/context modules.
-echo '==> Browser build and transport tests: skipped until milestone 5'
+echo '==> Browser build and Node tests'
+"$ROOT/apps/web/check.sh"
 
 selection_directory="$(mktemp -d)"
 if [[ -z "$selection_directory" || "$selection_directory" != /* \
