@@ -88,6 +88,13 @@ pub struct Vim {
     pending: Option<char>,
     /// The next insert edit joins the head revision.
     joining: bool,
+    /// The column a vertical motion wants, `usize::MAX` after `$`.
+    want: usize,
+    /// The last key kept `want` rather than setting it.
+    keep_want: bool,
+    /// Bytes of indent `o`, `O` or Enter just copied, dropped again if
+    /// nothing is typed on the line.
+    indent: usize,
     /// The command line being typed.
     line: String,
     /// Shown until the next key.
@@ -132,6 +139,9 @@ impl Vim {
             Mode::Insert => self.insert(key),
             Mode::Command => self.command(key),
         };
+        if !core::mem::take(&mut self.keep_want) {
+            self.want = self.position().1;
+        }
         if shown && effect == Effect::Nothing { Effect::Moved } else { effect }
     }
 
@@ -200,6 +210,7 @@ impl Vim {
         {
             let digit = digit as usize - '0' as usize;
             self.count = self.count.saturating_mul(10).saturating_add(digit);
+            self.keep_want = true;
             return Effect::Nothing;
         }
         let count = core::mem::take(&mut self.count);
@@ -227,6 +238,7 @@ impl Vim {
             Key::Char(first @ ('g' | 'd' | 'Z')) => {
                 self.pending = Some(first);
                 self.count = count;
+                self.keep_want = true;
                 Effect::Nothing
             }
             Key::Char('G') => {
@@ -246,16 +258,18 @@ impl Vim {
                 self.enter_insert()
             }
             Key::Char('o') => {
+                let indent = self.indent_of(self.cursor);
                 self.cursor = self.line_end(self.cursor);
                 self.enter_insert();
-                self.put('\n')
+                self.open_line(&indent)
             }
             Key::Char('O') => {
-                let at = self.line_start(self.cursor);
-                self.cursor = at;
+                let indent = self.indent_of(self.cursor);
+                self.cursor = self.line_start(self.cursor);
                 self.enter_insert();
-                let effect = self.put('\n');
-                self.cursor = at;
+                let effect = self.put_str(&alloc::format!("{indent}\n"));
+                self.cursor -= 1;
+                self.indent = indent.len();
                 effect
             }
             Key::Char('x') => self.delete_chars(n),
@@ -274,7 +288,10 @@ impl Vim {
     fn insert(&mut self, key: Key) -> Effect {
         match key {
             Key::Char(c) => self.put(c),
-            Key::Enter => self.put('\n'),
+            Key::Enter => {
+                let indent = self.indent_of(self.cursor);
+                self.open_line(&indent)
+            }
             Key::Tab => self.put('\t'),
             Key::Backspace => self.backspace(),
             Key::Left => self.arrow(Self::left),
@@ -285,29 +302,60 @@ impl Vim {
             Key::End => self.arrow(|v| v.go(v.line_end(v.cursor))),
             Key::Esc => {
                 self.mode = Mode::Normal;
+                let dropped = self.drop_indent();
                 self.cursor = self.stepped_back();
-                Effect::Moved
+                dropped.unwrap_or(Effect::Moved)
             }
             Key::Ctrl(_) => Effect::Nothing,
         }
     }
 
-    /// `$` with a count: `n - 1` lines down, then the last char.
+    /// A new line after the cursor with `indent` copied onto it, as
+    /// `autoindent` does; an indent still pending on the old line goes
+    /// with the same edit, so that line is left empty.
+    fn open_line(&mut self, indent: &str) -> Effect {
+        let pending = core::mem::take(&mut self.indent);
+        let at = self.cursor - pending;
+        let text = alloc::format!("\n{indent}");
+        self.text.replace_range(at..self.cursor, &text);
+        self.cursor = at + text.len();
+        self.indent = indent.len();
+        self.edit(at, pending, text)
+    }
+
+    /// The indent nothing was typed after, removed; the cursor at
+    /// the line's start.
+    fn drop_indent(&mut self) -> Option<Effect> {
+        let pending = core::mem::take(&mut self.indent);
+        if pending == 0 {
+            return None;
+        }
+        let at = self.cursor - pending;
+        self.text.replace_range(at..self.cursor, "");
+        self.cursor = at;
+        Some(self.edit(at, pending, String::new()))
+    }
+
+    /// `$` with a count: `n - 1` lines down, then the last char; a
+    /// vertical motion after it wants the end of its line too.
     fn line_end_motion(&mut self, n: usize) -> Effect {
         let down = self.repeat(n - 1, |v| v.vertical(true));
         let end = self.go(self.last_char(self.cursor));
+        self.want = usize::MAX;
+        self.keep_want = true;
         if down == Effect::Moved { down } else { end }
     }
 
-    /// Line `line` from 0, clamped to the last, at the same column.
+    /// Line `line` from 0, clamped to the last, at the wanted column.
     fn jump(&mut self, line: usize) -> Effect {
-        let (from, column) = self.position();
+        let from = self.position().0;
         let line = line.min(self.line_count() - 1);
+        self.keep_want = true;
         if line == from {
             return Effect::Nothing;
         }
         let start = self.line_at(line).unwrap_or(0);
-        self.go_clamped(self.at_column(start, column))
+        self.go_clamped(self.at_column(start, self.want))
     }
 
     /// Insert mode at the cursor; the first edit starts a revision.
@@ -317,21 +365,30 @@ impl Vim {
         Effect::Moved
     }
 
-    /// A move inside an insert ends its undo step, as in Vim.
+    /// A move inside an insert ends its undo step, as in Vim, and
+    /// keeps whatever indent was copied.
     fn arrow(&mut self, motion: impl FnOnce(&mut Self) -> Effect) -> Effect {
         self.joining = false;
+        self.indent = 0;
         motion(self)
     }
 
     /// `c` at the cursor.
     fn put(&mut self, c: char) -> Effect {
+        self.indent = 0;
+        self.put_str(&String::from(c))
+    }
+
+    /// `text` at the cursor.
+    fn put_str(&mut self, text: &str) -> Effect {
         let at = self.cursor;
-        self.text.insert(at, c);
-        self.cursor += c.len_utf8();
-        self.edit(at, 0, c.into())
+        self.text.insert_str(at, text);
+        self.cursor += text.len();
+        self.edit(at, 0, String::from(text))
     }
 
     fn backspace(&mut self) -> Effect {
+        self.indent = 0;
         let Some(c) = self.text[..self.cursor].chars().next_back() else {
             return Effect::Nothing;
         };

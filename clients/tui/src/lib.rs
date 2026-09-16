@@ -65,6 +65,7 @@ impl Tui {
         client.watch(watched, true)?;
         let mut vim = Vim::default();
         vim.loaded(&client.read_whole(h)?);
+        vim.goto_line(1);
         client.since()?;
         let mut tui = Self {
             client,
@@ -102,12 +103,12 @@ impl Tui {
                 self.edit(edit, join)?;
             }
             Effect::Undo => {
-                history::Call(&mut self.client, self.h).undo()?;
-                self.reload()?;
+                let moved = history::Call(&mut self.client, self.h).undo();
+                self.moved(moved, "Already at oldest change")?;
             }
             Effect::Redo => {
-                history::Call(&mut self.client, self.h).redo()?;
-                self.reload()?;
+                let moved = history::Call(&mut self.client, self.h).redo();
+                self.moved(moved, "Already at newest change")?;
             }
             Effect::Save => self.save()?,
             Effect::Quit(Quit::Ask) if self.head != self.published => {
@@ -193,8 +194,21 @@ impl Tui {
         if join { call.amend(edit) } else { call.replace(edit) }
     }
 
-    /// The draft read again after a move of head.
-    fn reload(&mut self) -> Result<(), Fault> {
+    /// After a move of head: the draft read again, or `refused` shown
+    /// when the Driver had nowhere to go.
+    fn moved(
+        &mut self,
+        moved: Result<(), Fault>,
+        refused: &str,
+    ) -> Result<(), Fault> {
+        match moved {
+            Ok(()) => {}
+            Err(Fault::Kernel(Error::Invalid)) => {
+                self.vim.notice(refused);
+                return Ok(());
+            }
+            Err(fault) => return Err(fault),
+        }
         let bytes = self.client.read_whole(self.h)?;
         self.vim.loaded(&bytes);
         Ok(())

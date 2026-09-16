@@ -1,6 +1,6 @@
 //! The tui on a Kernel with fs and text, beside a second Client.
 
-use reovim_client::{Client, Error, Fault, Key, Rd};
+use reovim_client::{Client, Fault, Key, Rd};
 use reovim_client_tui::{Step, Tui};
 use reovim_client_vim::notation::keys;
 use reovim_rig::{Limits, Rig};
@@ -103,7 +103,8 @@ fn undo_and_redo_walk_the_revisions() {
     assert_eq!(tui.frame(80, 24).lines, vec!["yxfirst"]);
     assert_eq!(tui.key(Key::Char('u')), Ok(Step::Changed));
     assert_eq!(tui.key(Key::Char('u')), Ok(Step::Changed));
-    assert_eq!(tui.key(Key::Char('u')), Err(Fault::Kernel(Error::Invalid)));
+    assert_eq!(tui.key(Key::Char('u')), Ok(Step::Changed), "a message");
+    assert!(tui.frame(80, 24).status.contains("Already at oldest change"));
 
     other.call_by_name(buffer, "redo", Vec::new()).unwrap();
     assert_eq!(tui.tick(), Ok(Step::Changed));

@@ -4,10 +4,11 @@ use alloc::vec::Vec;
 
 use crate::Key;
 
-/// The keys of `text`; `<Esc>`, `<CR>`, `<BS>`, `<Tab>`, `<Left>`,
-/// `<Right>`, `<Up>`, `<Down>`, `<Home>`, `<End>`, `<C-x>` and `<lt>`
-/// as Vim writes them, any other char as itself. `None` for a `<`
-/// that names nothing.
+/// The keys of `text`, as Vim writes them.
+///
+/// `<Esc>`, `<CR>`, `<BS>`, `<Tab>`, `<Left>`, `<Right>`, `<Up>`,
+/// `<Down>`, `<Home>`, `<End>`, `<C-x>` and `<lt>` are named; any
+/// other char is itself. `None` for a `<` that names nothing.
 #[must_use]
 pub fn keys(text: &str) -> Option<Vec<Key>> {
     let mut keys = Vec::new();

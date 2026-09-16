@@ -51,6 +51,12 @@ impl Vim {
         start + blanks
     }
 
+    /// The blanks a line starts with: what `autoindent` copies.
+    pub(crate) fn indent_of(&self, at: usize) -> alloc::string::String {
+        let start = self.line_start(at);
+        self.text[start..self.first_non_blank(at)].into()
+    }
+
     /// The last char of the line `at` is on, or its start when empty.
     pub(crate) fn last_char(&self, at: usize) -> usize {
         let (start, end) = (self.line_start(at), self.line_end(at));
@@ -122,13 +128,14 @@ impl Vim {
         }
     }
 
-    /// The line above or below, at the same column or as far as the
+    /// The line above or below, at the column wanted or as far as the
     /// line goes.
     pub(crate) fn vertical(&mut self, down: bool) -> Effect {
-        let (line, column) = self.position();
+        let line = self.position().0;
         let target = if down { line + 1 } else { line.wrapping_sub(1) };
+        self.keep_want = true;
         let Some(start) = self.line_at(target) else { return Effect::Nothing };
-        let to = self.at_column(start, column);
+        let to = self.at_column(start, self.want);
         match self.mode {
             Mode::Insert => self.go(to),
             Mode::Normal | Mode::Command => self.go_clamped(to),
