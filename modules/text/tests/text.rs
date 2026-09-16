@@ -204,6 +204,28 @@ impl Rig {
         self.call(h, "text", 0, input)
     }
 
+    /// `replace_many` with `expected`; each edit `(at, len, text)`.
+    fn replace_many(
+        &self,
+        h: Handle,
+        expected: u64,
+        edits: &[(u64, u64, &str)],
+    ) -> Reply<Out> {
+        let mut input = expected.to_le_bytes().to_vec();
+        input.extend_from_slice(
+            &u32::try_from(edits.len()).unwrap().to_le_bytes(),
+        );
+        for (at, len, text) in edits {
+            input.extend_from_slice(&at.to_le_bytes());
+            input.extend_from_slice(&len.to_le_bytes());
+            input.extend_from_slice(
+                &u32::try_from(text.len()).unwrap().to_le_bytes(),
+            );
+            input.extend_from_slice(text.as_bytes());
+        }
+        self.call(h, "text", 1, input)
+    }
+
     /// `undo`, `redo` or `goto`.
     fn history(&self, h: Handle, method: u16, input: Vec<u8>) -> Reply<Out> {
         self.call(h, "history", method, input)
@@ -332,4 +354,29 @@ fn the_driver_holds_no_more_than_its_limit() {
     assert_eq!(events.len(), 2, "one Modify per accepted change");
     let other = rig.file("g", b"x");
     assert_eq!(rig.open_call(other), Reply::err(Error::NoSpace), "full");
+}
+
+#[test]
+fn replace_many_is_one_state_behind_a_precondition() {
+    let rig = Rig::new("many");
+    let source = rig.file("f", b"abcdef");
+    let buffer = rig.buffer(source);
+    let (h, cursor) = rig.watch(buffer);
+    let edits = [(0, 1, "A"), (5, 1, "F")];
+    assert_eq!(rig.replace_many(h, 1, &edits), DONE);
+    assert_eq!(rig.read(buffer), b"AbcdeF");
+    let (nodes, head, _) = rig.tree(h);
+    assert_eq!((nodes.len(), head), (2, 2), "one state for two edits");
+    assert_eq!(
+        rig.replace_many(h, 1, &[(0, 0, "x")]),
+        Reply::err(Error::Stale)
+    );
+    assert_eq!(rig.read(buffer), b"AbcdeF", "nothing changed");
+    assert_eq!(rig.replace_many(h, 0, &[(0, 0, "x")]), DONE, "0 is any");
+    assert_eq!(
+        rig.replace_many(h, 3, &[(9, 0, "x")]),
+        Reply::err(Error::Invalid)
+    );
+    let (events, _) = rig.since(cursor);
+    assert_eq!(events.len(), 2);
 }

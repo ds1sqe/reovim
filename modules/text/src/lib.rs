@@ -45,7 +45,11 @@ pub fn open_decl() -> Decl {
     Decl { api: "open".to_string(), ver: 1, methods: vec![open] }
 }
 
-/// Every Buffer: `0 replace(Edit{at, len, text}) -> Unit`, WRITE.
+/// Every Buffer: `0 replace(Edit{at, len, text}) -> Unit` and
+/// `1 replace_many({expected, edits: [Edit]}) -> Unit`, WRITE.
+///
+/// The edits of one call are one state; `expected` is the head
+/// revision the caller saw, 0 for any, and a different one is `Stale`.
 #[must_use]
 pub fn text_decl() -> Decl {
     let edit = Ty::Record(vec![
@@ -53,8 +57,15 @@ pub fn text_decl() -> Decl {
         field("len", Ty::U64),
         field("text", Ty::Utf8(1 << 20)),
     ]);
-    let replace = method(0, "replace", edit, Ty::Unit, Rights::WRITE);
-    Decl { api: "text".to_string(), ver: 1, methods: vec![replace] }
+    let many = Ty::Record(vec![
+        field("expected", Ty::U64),
+        field("edits", Ty::Sequence(256, alloc::boxed::Box::new(edit.clone()))),
+    ]);
+    let methods = vec![
+        method(0, "replace", edit, Ty::Unit, Rights::WRITE),
+        method(1, "replace_many", many, Ty::Unit, Rights::WRITE),
+    ];
+    Decl { api: "text".to_string(), ver: 1, methods }
 }
 
 /// Every Buffer: the `history` api of 00-core.md. Revisions count
@@ -196,6 +207,26 @@ fn spliced(
     Ok(out)
 }
 
+/// `edits` on one copy of the draft as one state, once the head is
+/// `expected` (0 for any); how many bytes the state took.
+fn many(
+    history: &mut History,
+    room: usize,
+    expected: u64,
+    edits: &[Edit<'_>],
+) -> Result<(Vec<u8>, usize), Error> {
+    if expected != 0 && history.head() != expected {
+        return Err(Error::Stale);
+    }
+    let mut next = history.draft().to_vec();
+    for (at, len, text) in edits {
+        next = spliced(&next, *at, *len, text)?;
+    }
+    let took = fits(next.len(), room)?;
+    history.commit("replace", next);
+    Ok((Vec::new(), took))
+}
+
 /// `len` when a state of that size fits in `room`; `NoSpace` otherwise.
 const fn fits(len: usize, room: usize) -> Result<usize, Error> {
     if len > room { Err(Error::NoSpace) } else { Ok(len) }
@@ -207,12 +238,36 @@ fn u64_of(input: &[u8]) -> Result<u64, Error> {
     Ok(u64::from_le_bytes(bytes))
 }
 
+/// One edit: `at`, `len`, `text`.
+type Edit<'a> = (u64, u64, &'a [u8]);
+
 /// The `Edit` record: `at`, `len`, then `text` with its length.
-fn edit_of(input: &[u8]) -> Result<(u64, u64, &[u8]), Error> {
+fn edit_of(input: &[u8]) -> Result<Edit<'_>, Error> {
     let at = u64_of(input.get(..8).ok_or(Error::Invalid)?)?;
     let len = u64_of(input.get(8..16).ok_or(Error::Invalid)?)?;
     let text = input.get(20..).ok_or(Error::Invalid)?;
     Ok((at, len, text))
+}
+
+/// The `replace_many` record: `expected`, then the edits in order.
+fn edits_of(input: &[u8]) -> Result<(u64, Vec<Edit<'_>>), Error> {
+    let expected = u64_of(input.get(..8).ok_or(Error::Invalid)?)?;
+    let count = input.get(8..12).ok_or(Error::Invalid)?;
+    let count =
+        u32::from_le_bytes(count.try_into().map_err(|_| Error::Invalid)?);
+    let mut at = 12;
+    let mut edits = Vec::new();
+    for _ in 0..count {
+        let head = input.get(at..at + 20).ok_or(Error::Invalid)?;
+        let n = u32::from_le_bytes(
+            head[16..20].try_into().map_err(|_| Error::Invalid)?,
+        );
+        let end = at + 20 + n as usize;
+        let text = input.get(at + 20..end).ok_or(Error::Invalid)?;
+        edits.push((u64_of(&head[..8])?, u64_of(&head[8..16])?, text));
+        at = end;
+    }
+    Ok((expected, edits))
 }
 
 /// The text Module, ready for `load`; `root` is unused.
@@ -357,6 +412,20 @@ impl Text {
         })
     }
 
+    /// Every edit of `replace_many` on one copy as one state, once the
+    /// head is what the caller expected.
+    fn replace_many(
+        &self,
+        ctx: &dyn Calls,
+        rd: Rd,
+        input: &[u8],
+    ) -> Result<Vec<u8>, Error> {
+        let (expected, edits) = edits_of(input)?;
+        self.change(ctx, rd, |history, room| {
+            many(history, room, expected, &edits)
+        })
+    }
+
     fn save(&self, ctx: &dyn Calls, rd: Rd) -> Result<(), Error> {
         let state = self.state.borrow();
         let Some(Node::Buffer { source, history }) = state.nodes.get(&rd)
@@ -408,6 +477,7 @@ impl Text {
                 Ok(made.0.to_le_bytes().to_vec())
             }
             (a, 0) if a == text => self.replace(ctx, rd, input),
+            (a, 1) if a == text => self.replace_many(ctx, rd, input),
             (a, 0) if a == history => self.tree(rd),
             (a, 1) if a == history => {
                 let rev = u64_of(input)?;

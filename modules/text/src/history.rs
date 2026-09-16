@@ -37,6 +37,10 @@ impl History {
         self.state(self.head).map_or(&[], |s| &s.bytes)
     }
 
+    pub const fn head(&self) -> u64 {
+        self.head
+    }
+
     /// `bytes` as a new child of head; head moves there.
     pub fn commit(&mut self, label: &str, bytes: Vec<u8>) {
         let label = String::from(label);
