@@ -24,7 +24,8 @@ pub enum Step {
     Same,
     /// Draw again.
     Changed,
-    Quit,
+    /// Leave with this exit code: 0 says use the file.
+    Quit(u8),
 }
 
 /// One Buffer over `/module/fs/root/FILE`, watched, with its draft in
@@ -41,6 +42,8 @@ pub struct Tui {
     name: String,
     head: u64,
     published: u64,
+    /// A quit was refused on unsaved changes; the next one discards.
+    guard: bool,
 }
 
 impl Tui {
@@ -78,6 +81,7 @@ impl Tui {
             name,
             head: 0,
             published: 0,
+            guard: false,
         };
         tui.refresh()?;
         Ok(tui)
@@ -90,12 +94,15 @@ impl Tui {
     }
 
     /// One key: an edit is a `replace`, Ctrl-Z and Ctrl-Y move the
-    /// head, Ctrl-S saves.
+    /// head, Ctrl-S saves. Ctrl-Q quits, refusing once while there is
+    /// something unsaved; Ctrl-C aborts with 1.
     ///
     /// # Errors
     /// What the Client says.
     pub fn key(&mut self, key: Key) -> Result<Step, Fault> {
+        let guarded = core::mem::take(&mut self.guard);
         match self.editor.key(key) {
+            Effect::Nothing if guarded => return Ok(Step::Changed),
             Effect::Nothing => return Ok(Step::Same),
             Effect::Moved => return Ok(Step::Changed),
             Effect::Edit { at, len, text } => {
@@ -106,7 +113,12 @@ impl Tui {
             Effect::Save => {
                 self.call("save", Vec::new())?;
             }
-            Effect::Quit => return Ok(Step::Quit),
+            Effect::Quit if self.head != self.published && !guarded => {
+                self.guard = true;
+                return Ok(Step::Changed);
+            }
+            Effect::Quit => return Ok(Step::Quit(0)),
+            Effect::Abort => return Ok(Step::Quit(1)),
         }
         self.refresh()?;
         Ok(Step::Changed)
@@ -144,9 +156,13 @@ impl Tui {
     pub fn frame(&mut self, cols: u16, rows: u16) -> Frame {
         let mut frame = self.editor.frame(cols, rows);
         let mark = if self.head == self.published { "" } else { "[+]" };
+        let hint = if self.guard {
+            "unsaved: Ctrl-Q again discards, Ctrl-S saves"
+        } else {
+            "Ctrl-S save  Ctrl-Z undo  Ctrl-Y redo  Ctrl-Q quit"
+        };
         frame.status = format!(
-            "{}  {}  r{}{mark}   Ctrl-S save  Ctrl-Z undo  Ctrl-Y redo  \
-             Ctrl-Q quit",
+            "{}  {}  r{}{mark}   {hint}",
             self.name, frame.status, self.head
         );
         frame

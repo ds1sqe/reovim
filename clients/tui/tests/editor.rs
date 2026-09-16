@@ -47,7 +47,8 @@ fn keys_edit_and_move() {
     assert_eq!(editor.key(Key::Ctrl('y')), Effect::Redo);
     assert_eq!(editor.key(Key::Ctrl('s')), Effect::Save);
     assert_eq!(editor.key(Key::Ctrl('q')), Effect::Quit);
-    assert_eq!(editor.key(Key::Esc), Effect::Quit);
+    assert_eq!(editor.key(Key::Ctrl('c')), Effect::Abort);
+    assert_eq!(editor.key(Key::Esc), Effect::Nothing);
     assert_eq!(editor.key(Key::Ctrl('x')), Effect::Nothing);
 }
 

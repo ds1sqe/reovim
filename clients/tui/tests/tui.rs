@@ -111,7 +111,28 @@ fn keys_change_the_draft_and_save_reaches_disk() {
     assert_eq!(tui.key(Key::Ctrl('s')), Ok(Step::Changed));
     assert_eq!(rig.disk("note"), b"xfirst!\n");
     assert!(tui.frame(80, 24).status.starts_with("note  1:8  r3   Ctrl"));
-    assert_eq!(tui.key(Key::Ctrl('q')), Ok(Step::Quit));
+    assert_eq!(tui.key(Key::Ctrl('q')), Ok(Step::Quit(0)));
+}
+
+#[test]
+fn quit_refuses_once_on_unsaved_changes_and_ctrl_c_aborts() {
+    let rig = Rig::new("quit");
+    rig.file("note", b"first\n");
+    let mut tui = Tui::open(rig.client(), "note").unwrap();
+    assert_eq!(tui.key(Key::Esc), Ok(Step::Same));
+    assert_eq!(tui.key(Key::Ctrl('q')), Ok(Step::Quit(0)), "nothing unsaved");
+
+    assert_eq!(tui.key(Key::Char('x')), Ok(Step::Changed));
+    assert_eq!(tui.key(Key::Ctrl('q')), Ok(Step::Changed), "refused once");
+    let status = tui.frame(80, 24).status;
+    assert!(status.contains("unsaved: Ctrl-Q again discards"), "{status}");
+    assert_eq!(tui.key(Key::Tab), Ok(Step::Changed), "a key clears the note");
+    assert!(!tui.frame(80, 24).status.contains("unsaved"));
+    assert_eq!(tui.key(Key::Ctrl('q')), Ok(Step::Changed));
+    assert_eq!(tui.key(Key::Ctrl('q')), Ok(Step::Quit(0)), "discarded");
+    assert_eq!(rig.disk("note"), b"first\n");
+
+    assert_eq!(tui.key(Key::Ctrl('c')), Ok(Step::Quit(1)));
 }
 
 #[test]

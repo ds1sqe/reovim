@@ -21,7 +21,7 @@ type Serve<'a> = &'a mut dyn FnMut() -> Result<(), Fail>;
 
 /// `reovim tui`: a Client over the link, named so a cut link can be
 /// taken up again.
-pub fn remote(socket: &str, file: &str) -> Result<(), Fail> {
+pub fn remote(socket: &str, file: &str) -> Result<u8, Fail> {
     let credential = format!("tui:{}", std::process::id()).into_bytes();
     let client = Remote::client(socket, credential)?;
     run(client, file, &mut || Ok(()))
@@ -33,7 +33,7 @@ pub fn bare(
     socket: Option<&str>,
     log: Option<&str>,
     file: &str,
-) -> Result<(), Fail> {
+) -> Result<u8, Fail> {
     let (kernel, _modules) = boot("/")?;
     let mut links = socket.map(Links::listen).transpose()?;
     let mut sink = log.map(|path| Sink::open(&kernel, path)).transpose()?;
@@ -69,8 +69,8 @@ fn absolute(work: &str, path: &str) -> String {
 }
 
 /// The loop in the host's terminal mode, left on every exit, a fault
-/// printed after.
-fn run(client: Client, file: &str, serve: Serve) -> Result<(), Fail> {
+/// printed after; the exit code the tui asked for.
+fn run(client: Client, file: &str, serve: Serve) -> Result<u8, Fail> {
     let mut tui = Tui::open(client, file)?;
     term::enter()?;
     let result = drive(&mut tui, serve);
@@ -78,7 +78,7 @@ fn run(client: Client, file: &str, serve: Serve) -> Result<(), Fail> {
     result
 }
 
-fn drive(tui: &mut Tui, serve: Serve) -> Result<(), Fail> {
+fn drive(tui: &mut Tui, serve: Serve) -> Result<u8, Fail> {
     draw(tui)?;
     loop {
         serve()?;
@@ -90,7 +90,7 @@ fn drive(tui: &mut Tui, serve: Serve) -> Result<(), Fail> {
         match step {
             Step::Same => {}
             Step::Changed => draw(tui)?,
-            Step::Quit => return Ok(()),
+            Step::Quit(code) => return Ok(code),
         }
     }
 }

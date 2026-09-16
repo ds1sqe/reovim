@@ -109,7 +109,7 @@ fn usage() -> Fail {
     Fail::Usage(USAGE.to_string())
 }
 
-fn run(args: Vec<String>) -> Result<(), Fail> {
+fn run(args: Vec<String>) -> Result<ExitCode, Fail> {
     let mut args = args.into_iter().peekable();
     let command = match args.peek().map(String::as_str) {
         Some("server" | "cli" | "tui") => args.next(),
@@ -123,11 +123,17 @@ fn run(args: Vec<String>) -> Result<(), Fail> {
                 None => reovim_host::dirs::work()?,
             };
             server::run(&socket(given)?, &root, log.as_deref())
+                .map(|()| ExitCode::SUCCESS)
         }
-        (Some("cli"), rest) => cli::run(&socket(given)?, rest),
-        (Some("tui"), [file]) => tui::remote(&socket(given)?, file),
+        (Some("cli"), rest) => {
+            cli::run(&socket(given)?, rest).map(|()| ExitCode::SUCCESS)
+        }
+        (Some("tui"), [file]) => {
+            tui::remote(&socket(given)?, file).map(ExitCode::from)
+        }
         (None, [file]) if root.is_none() => {
             tui::bare(given.as_deref(), log.as_deref(), file)
+                .map(ExitCode::from)
         }
         _ => Err(usage()),
     }
@@ -135,7 +141,7 @@ fn run(args: Vec<String>) -> Result<(), Fail> {
 
 fn main() -> ExitCode {
     match run(std::env::args().skip(1).collect()) {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(code) => code,
         Err(fail) => {
             eprintln!("reovim: {fail}");
             ExitCode::FAILURE

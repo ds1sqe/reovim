@@ -22,6 +22,8 @@ pub enum Effect {
     Redo,
     Save,
     Quit,
+    /// Leave with 1, whatever the Buffer holds.
+    Abort,
 }
 
 /// What to draw: `rows - 1` text rows, the cursor as (row, column) on
@@ -78,8 +80,9 @@ impl Editor {
             Key::Ctrl('z') => Effect::Undo,
             Key::Ctrl('y') => Effect::Redo,
             Key::Ctrl('s') => Effect::Save,
-            Key::Ctrl('q') | Key::Esc => Effect::Quit,
-            Key::Tab | Key::Ctrl(_) => Effect::Nothing,
+            Key::Ctrl('q') => Effect::Quit,
+            Key::Ctrl('c') => Effect::Abort,
+            Key::Esc | Key::Tab | Key::Ctrl(_) => Effect::Nothing,
         }
     }
 
