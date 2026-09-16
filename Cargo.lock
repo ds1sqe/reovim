@@ -153,6 +153,7 @@ dependencies = [
  "reovim-kernel-runtime",
  "reovim-module-fs",
  "reovim-module-text",
+ "reovim-sdk",
 ]
 
 [[package]]
@@ -226,6 +227,13 @@ dependencies = [
  "reovim-kernel-interface",
  "reovim-kernel-runtime",
  "reovim-module-fs",
+]
+
+[[package]]
+name = "reovim-sdk"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-kernel-interface",
 ]
 
 [[package]]

@@ -1,5 +1,6 @@
 //! Byte helpers for the value encoding: little-endian scalars, u32 length
-//! then payload. Shared by the canonical declaration form and the wire.
+//! then payload. Shared by the canonical declaration form, the wire and
+//! the SDK's two value forms.
 
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -36,11 +37,13 @@ pub struct Reader<'a> {
 }
 
 impl<'a> Reader<'a> {
+    #[must_use]
     pub const fn new(bytes: &'a [u8]) -> Self {
         Self { bytes, at: 0 }
     }
 
     /// Every byte was consumed.
+    #[must_use]
     pub const fn done(&self) -> bool {
         self.at == self.bytes.len()
     }
@@ -65,6 +68,14 @@ impl<'a> Reader<'a> {
 
     pub fn u64(&mut self) -> Option<u64> {
         self.take(8)?.try_into().ok().map(u64::from_le_bytes)
+    }
+
+    pub fn i64(&mut self) -> Option<i64> {
+        self.take(8)?.try_into().ok().map(i64::from_le_bytes)
+    }
+
+    pub fn f64(&mut self) -> Option<f64> {
+        self.take(8)?.try_into().ok().map(f64::from_le_bytes)
     }
 
     pub fn bool(&mut self) -> Option<bool> {

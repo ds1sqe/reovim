@@ -7,7 +7,7 @@
 
 extern crate alloc;
 
-mod codec;
+pub mod codec;
 mod decl;
 mod driver;
 mod op;
