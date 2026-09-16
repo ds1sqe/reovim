@@ -14,6 +14,7 @@ use reovim_kernel_interface::{
 pub const ROOT: Rd = Rd(0);
 pub const SYS: Rd = Rd(1);
 pub const DECLS: Rd = Rd(2);
+pub const LOG: Rd = Rd(3);
 pub const MODULES: Rd = Rd(4);
 pub const SESSIONS: Rd = Rd(5);
 const FIRST: u64 = 100;

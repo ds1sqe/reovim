@@ -8,6 +8,8 @@ members = [
     "host/os",
     "modules/fs",
     "modules/buffer",
+    "clients/core",
+    "clients/cli",
     "apps/reovim",
 ]
 default-members = [
@@ -18,6 +20,8 @@ default-members = [
     "host/os",
     "modules/fs",
     "modules/buffer",
+    "clients/core",
+    "clients/cli",
     "apps/reovim",
 ]
 

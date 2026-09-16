@@ -21,6 +21,8 @@ default = ["std"]
 std = ["reovim-host/std"]
 
 [dependencies]
+reovim-client = { path = "../../clients/core" }
+reovim-client-cli = { path = "../../clients/cli" }
 reovim-host = { path = "../../host/os" }
 reovim-kernel-interface = { path = "../../kernel/interface" }
 reovim-kernel-runtime = { path = "../../kernel/runtime" }

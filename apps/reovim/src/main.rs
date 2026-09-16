@@ -3,6 +3,8 @@
 //! module behind one link; `cli` drives a server from the shell.
 
 mod cli;
+mod local;
+mod log;
 mod server;
 
 /// The module table build.rs wrote from `modules`.
@@ -14,13 +16,13 @@ mod link {
 use std::fmt;
 use std::process::ExitCode;
 
+use reovim_client::Fault;
+
 /// Why the binary stops, printed once on stderr.
 pub enum Fail {
     Usage(String),
     Host(reovim_host::Error),
-    Kernel(reovim_kernel_interface::Error),
-    /// The other end sent something the wire does not describe.
-    Wire,
+    Client(Fault),
 }
 
 impl fmt::Display for Fail {
@@ -28,8 +30,7 @@ impl fmt::Display for Fail {
         match self {
             Self::Usage(text) => write!(f, "{text}"),
             Self::Host(error) => write!(f, "host: {error:?}"),
-            Self::Kernel(error) => write!(f, "{error:?}"),
-            Self::Wire => write!(f, "not a message"),
+            Self::Client(fault) => write!(f, "{fault}"),
         }
     }
 }
@@ -40,34 +41,43 @@ impl From<reovim_host::Error> for Fail {
     }
 }
 
+impl From<Fault> for Fail {
+    fn from(fault: Fault) -> Self {
+        Self::Client(fault)
+    }
+}
+
 impl From<reovim_kernel_interface::Error> for Fail {
     fn from(error: reovim_kernel_interface::Error) -> Self {
-        Self::Kernel(error)
+        Self::Client(Fault::Kernel(error))
     }
 }
 
 const USAGE: &str = "\
-usage: reovim server [--socket PATH] [--root DIR]
+usage: reovim server [--socket PATH] [--root DIR] [--log PATH]
        reovim cli [--socket PATH] [COMMAND...]
 defaults: --socket <runtime dir>/reovim.sock, --root <working directory>";
 
-/// `--socket` and `--root` taken off the front of `args`, defaults from
-/// the host filled in.
+/// `--socket`, `--root` and `--log` taken off the front of `args`,
+/// defaults from the host filled in.
 struct Options {
     socket: String,
     root: String,
+    log: Option<String>,
     rest: Vec<String>,
 }
 
 fn options(args: Vec<String>) -> Result<Options, Fail> {
     let mut socket = None;
     let mut root = None;
+    let mut log = None;
     let mut args = args.into_iter();
     let mut rest = Vec::new();
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--socket" => socket = Some(args.next().ok_or_else(usage)?),
             "--root" => root = Some(args.next().ok_or_else(usage)?),
+            "--log" => log = Some(args.next().ok_or_else(usage)?),
             _ => {
                 rest.push(arg);
                 rest.extend(args);
@@ -83,7 +93,7 @@ fn options(args: Vec<String>) -> Result<Options, Fail> {
         Some(root) => root,
         None => reovim_host::dirs::work()?,
     };
-    Ok(Options { socket, root, rest })
+    Ok(Options { socket, root, log, rest })
 }
 
 fn usage() -> Fail {
@@ -96,7 +106,7 @@ fn run(args: Vec<String>) -> Result<(), Fail> {
     let options = options(args.collect())?;
     match command.as_str() {
         "server" if options.rest.is_empty() => {
-            server::run(&options.socket, &options.root)
+            server::run(&options.socket, &options.root, options.log.as_deref())
         }
         "cli" => cli::run(&options.socket, &options.rest),
         _ => Err(usage()),

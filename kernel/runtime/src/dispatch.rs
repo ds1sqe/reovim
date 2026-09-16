@@ -3,8 +3,8 @@
 use alloc::vec::Vec;
 
 use reovim_kernel_interface::{
-    Caller, Error, Flags, Handle, Hash, Kind, ModuleId, Op, Out, Rd, Reply,
-    Rights, value,
+    Caller, Error, Flags, Handle, Hash, ModuleId, Op, Out, Rd, Reply, Rights,
+    value,
 };
 
 use crate::kernel::{Kernel, Slot, State};
@@ -365,8 +365,7 @@ fn kernel_write(
         return Err(Error::Unsupported);
     }
     let mark = alloc::string::String::from(s.mark(caller));
-    s.log.append(now, &mark, 0, bytes.to_vec());
-    s.emit(rd, Kind::Modify, None);
+    s.log(now, &mark, bytes.to_vec());
     Ok(bytes.len())
 }
 
@@ -378,5 +377,5 @@ fn stamp(k: &Kernel, rd: Rd, api: Hash, method: u16, phase: &str) {
         rd.0,
         api.0
     );
-    k.state.borrow_mut().log.append(now, "kernel", 0, line.into_bytes());
+    k.state.borrow_mut().log(now, "kernel", line.into_bytes());
 }

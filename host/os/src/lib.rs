@@ -176,6 +176,70 @@ pub mod link {
     }
 }
 
+/// The terminal: raw mode, keys and size. Drawing is the caller's, as
+/// bytes on stdout.
+pub mod term {
+    use super::{Error, backend};
+
+    /// One key, decoded. Control and a letter is `Ctrl` with the
+    /// letter in lower case.
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum Key {
+        Char(char),
+        Enter,
+        Tab,
+        Backspace,
+        Left,
+        Right,
+        Up,
+        Down,
+        Home,
+        End,
+        Ctrl(char),
+        Esc,
+    }
+
+    /// Whether stdin is a terminal. The empty backend says no.
+    #[must_use]
+    pub fn is_tty() -> bool {
+        backend::is_tty()
+    }
+
+    /// Raw mode: keys arrive one by one, nothing is echoed, and output
+    /// lines need `\r\n`.
+    ///
+    /// # Errors
+    /// `Io` from the host; `Unsupported` without a backend.
+    pub fn enter() -> Result<(), Error> {
+        backend::enter()
+    }
+
+    /// Back to the mode before [`enter`]; twice is fine.
+    ///
+    /// # Errors
+    /// As [`enter`].
+    pub fn leave() -> Result<(), Error> {
+        backend::leave()
+    }
+
+    /// The next key within `ms` milliseconds, or `None`. An event that
+    /// is not a key ends the wait early with `None`.
+    ///
+    /// # Errors
+    /// As [`enter`].
+    pub fn poll(ms: u64) -> Result<Option<Key>, Error> {
+        backend::poll(ms)
+    }
+
+    /// Columns and rows.
+    ///
+    /// # Errors
+    /// As [`enter`].
+    pub fn size() -> Result<(u16, u16), Error> {
+        backend::size()
+    }
+}
+
 /// Where things go by default, so every argument has a value.
 pub mod dirs {
     use alloc::string::String;

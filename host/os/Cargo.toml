@@ -10,7 +10,15 @@ publish = false
 
 [features]
 default = []
-std = []
+std = ["dep:crossterm"]
+
+# The terminal of the std backend: raw mode, keys, size. The only
+# external crate, named here only.
+[dependencies.crossterm]
+version = "=0.29.0"
+default-features = false
+features = ["events"]
+optional = true
 
 [[test]]
 name = "fs"

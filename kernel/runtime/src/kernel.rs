@@ -15,7 +15,9 @@ use reovim_kernel_interface::{
 use crate::calls::ModuleCalls;
 use crate::log::Log;
 use crate::pending::Pending;
-use crate::table::{CONTAINER, MODULES, Node, OPEN, Owner, SESSIONS, Table};
+use crate::table::{
+    CONTAINER, LOG, MODULES, Node, OPEN, Owner, SESSIONS, Table,
+};
 use crate::watch::Ring;
 
 /// Sizes of the bounded Kernel state.
@@ -82,6 +84,12 @@ pub struct State {
 impl State {
     pub fn emit(&mut self, rd: Rd, kind: Kind, child: Option<Rd>) {
         self.events.push(rd, kind, child);
+    }
+
+    /// One `/sys/log` entry; its watchers get `Modify`.
+    pub fn log(&mut self, now: u64, mark: &str, bytes: Vec<u8>) {
+        self.log.append(now, mark, 0, bytes);
+        self.emit(LOG, Kind::Modify, None);
     }
 
     pub fn driver_index(
@@ -247,7 +255,7 @@ impl Kernel {
         s.emit(clients, Kind::Create, Some(rd));
         let line =
             alloc::format!("connect session={} client={}", session.0, rd.0);
-        s.log.append(now, "kernel", 0, line.into_bytes());
+        s.log(now, "kernel", line.into_bytes());
         Ok(rd)
     }
 

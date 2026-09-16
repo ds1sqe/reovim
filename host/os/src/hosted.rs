@@ -4,12 +4,18 @@
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use std::fs::{File, Metadata, OpenOptions};
-use std::io::{self, ErrorKind, Read, Seek, SeekFrom, Write};
+use std::io::{self, ErrorKind, IsTerminal, Read, Seek, SeekFrom, Write};
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use crossterm::event::{
+    self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
+};
+use crossterm::terminal;
+
+use crate::term::Key;
 use crate::{Entry, Error, Kind, Stat};
 
 impl From<io::Error> for Error {
@@ -143,4 +149,56 @@ pub fn runtime() -> Result<String, Error> {
 pub fn work() -> Result<String, Error> {
     let dir = std::env::current_dir()?;
     dir.into_os_string().into_string().map_err(|_| Error::Io)
+}
+
+pub fn is_tty() -> bool {
+    std::io::stdin().is_terminal()
+}
+
+pub fn enter() -> Result<(), Error> {
+    terminal::enable_raw_mode()?;
+    Ok(())
+}
+
+pub fn leave() -> Result<(), Error> {
+    terminal::disable_raw_mode()?;
+    Ok(())
+}
+
+/// One event within `ms`; a key is decoded, anything else is `None`.
+pub fn poll(ms: u64) -> Result<Option<Key>, Error> {
+    if !event::poll(Duration::from_millis(ms))? {
+        return Ok(None);
+    }
+    match event::read()? {
+        Event::Key(key) => Ok(decode(key)),
+        _ => Ok(None),
+    }
+}
+
+pub fn size() -> Result<(u16, u16), Error> {
+    Ok(terminal::size()?)
+}
+
+fn decode(key: KeyEvent) -> Option<Key> {
+    if key.kind == KeyEventKind::Release {
+        return None;
+    }
+    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    let decoded = match key.code {
+        KeyCode::Char(c) if ctrl => Key::Ctrl(c.to_ascii_lowercase()),
+        KeyCode::Char(c) => Key::Char(c),
+        KeyCode::Enter => Key::Enter,
+        KeyCode::Tab => Key::Tab,
+        KeyCode::Backspace => Key::Backspace,
+        KeyCode::Left => Key::Left,
+        KeyCode::Right => Key::Right,
+        KeyCode::Up => Key::Up,
+        KeyCode::Down => Key::Down,
+        KeyCode::Home => Key::Home,
+        KeyCode::End => Key::End,
+        KeyCode::Esc => Key::Esc,
+        _ => return None,
+    };
+    Some(decoded)
 }

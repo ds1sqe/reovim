@@ -3,6 +3,7 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
+use crate::term::Key;
 use crate::{Entry, Error, Stat};
 
 pub fn list(_: &str) -> Result<Vec<Entry>, Error> {
@@ -59,5 +60,25 @@ pub fn runtime() -> Result<String, Error> {
 }
 
 pub fn work() -> Result<String, Error> {
+    Err(Error::Unsupported)
+}
+
+pub const fn is_tty() -> bool {
+    false
+}
+
+pub fn enter() -> Result<(), Error> {
+    Err(Error::Unsupported)
+}
+
+pub fn leave() -> Result<(), Error> {
+    Err(Error::Unsupported)
+}
+
+pub fn poll(_: u64) -> Result<Option<Key>, Error> {
+    Err(Error::Unsupported)
+}
+
+pub fn size() -> Result<(u16, u16), Error> {
     Err(Error::Unsupported)
 }
