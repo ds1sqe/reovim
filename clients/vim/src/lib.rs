@@ -132,6 +132,16 @@ struct Repeat {
     replaying: bool,
 }
 
+/// Where the cursor was before each change, for undo to put it back
+/// as nvim does, and how many of those changes stand undone.
+#[derive(Debug, Default)]
+struct Undone {
+    before: Vec<(usize, usize)>,
+    count: usize,
+    /// An undo (`false`) or redo (`true`) is waiting for its reload.
+    walking: Option<bool>,
+}
+
 /// The text, the cursor as a byte index on a char boundary, the first
 /// line shown, and the mode. In normal mode the cursor sits on a
 /// char, never past the last one of its line; insert may sit past it.
@@ -144,7 +154,8 @@ pub struct Vim {
     pending: Pending,
     /// The next insert edit joins the head revision.
     joining: bool,
-    /// The column a vertical motion wants, `usize::MAX` after `$`.
+    /// The screen column a vertical motion wants, `usize::MAX` after
+    /// `$`.
     want: usize,
     /// The last key kept `want` rather than setting it.
     keep_want: bool,
@@ -164,6 +175,7 @@ pub struct Vim {
     /// The last `f`, `t`, `F` or `T`, for `;` and `,`.
     find: Option<(Find, char)>,
     repeat: Repeat,
+    undone: Undone,
     /// The selection's other end in visual mode.
     anchor: usize,
     /// `$` was the last motion of a selection: it reaches every line's
@@ -203,11 +215,18 @@ impl Vim {
     /// True when the text differs from before.
     pub fn loaded(&mut self, bytes: &[u8]) -> bool {
         let text = String::from_utf8_lossy(bytes);
+        let walking = self.undone.walking.take();
         if text == self.text {
             return false;
         }
+        let common =
+            self.text.bytes().zip(text.bytes()).take_while(|(a, b)| a == b);
+        let top = self.text[..common.count()].matches('\n').count();
         self.text = text.into_owned();
-        self.cursor = self.cursor.min(self.bound());
+        match walking {
+            Some(redo) => self.undone_cursor(top, redo),
+            None => self.cursor = self.cursor.min(self.bound()),
+        }
         while !self.text.is_char_boundary(self.cursor) {
             self.cursor -= 1;
         }
@@ -217,6 +236,53 @@ impl Vim {
         true
     }
 
+    /// After an undo or redo, as nvim places it: on the first changed
+    /// line (`top`), at the column the cursor had before that change
+    /// when this was its line, one line up for a change made by `o`,
+    /// else at the wanted column.
+    fn undone_cursor(&mut self, top: usize, redo: bool) {
+        let made = self.undone.before.len() - self.undone.count;
+        let before = if redo {
+            self.undone.count = self.undone.count.saturating_sub(1);
+            self.undone.before.get(made)
+        } else {
+            self.undone.count = (self.undone.count + 1).min(made.max(1));
+            made.checked_sub(1).and_then(|i| self.undone.before.get(i))
+        };
+        let line = match before {
+            Some(&(was, _)) if was + 1 == top && top > 0 => was,
+            _ => top,
+        };
+        let start = self.line_at(line).unwrap_or_else(|| {
+            self.line_at(self.line_count() - 1).unwrap_or(0)
+        });
+        self.cursor = match before {
+            Some(&(was, column)) if was == line => {
+                self.at_column(start, column)
+            }
+            _ => self.at_screen_column(start, self.want),
+        };
+        self.want = self.wanted();
+    }
+
+    /// A change is being made: the cursor `before` it kept for undo;
+    /// what stood undone is forgotten, as a new change ends redo.
+    fn changing(&mut self, before: (usize, usize), effect: &Effect) {
+        let change = match effect {
+            Effect::Edit(edit) => !edit.join,
+            Effect::Edits(_) => true,
+            Effect::Undo => return self.undone.walking = Some(false),
+            Effect::Redo => return self.undone.walking = Some(true),
+            _ => false,
+        };
+        if change && !self.repeat.replaying {
+            let made = self.undone.before.len() - self.undone.count;
+            self.undone.before.truncate(made);
+            self.undone.before.push(before);
+            self.undone.count = 0;
+        }
+    }
+
     /// One key in the current mode; a message showing goes with it.
     pub fn key(&mut self, key: Key) -> Effect {
         if !self.repeat.replaying {
@@ -224,6 +290,8 @@ impl Vim {
         }
         let shown = !self.message.is_empty();
         self.message.clear();
+        self.undone.walking = None;
+        let before = self.position();
         let effect = match self.mode {
             Mode::Normal => self.normal(key),
             Mode::Insert => self.insert(key),
@@ -234,8 +302,9 @@ impl Vim {
                 effect
             }
         };
+        self.changing(before, &effect);
         if !core::mem::take(&mut self.keep_want) {
-            self.want = self.position().1;
+            self.want = self.wanted();
         }
         if matches!(self.mode, Mode::Visual(_)) {
             self.to_end = self.want == usize::MAX;
@@ -394,7 +463,8 @@ impl Vim {
             Key::Char('C') => {
                 self.operate(Operator::Change, n, Motion::LineEnd)
             }
-            Key::Char('Y') => self.operate(Operator::Yank, n, Motion::Lines),
+            // nvim maps `Y` to `y$`.
+            Key::Char('Y') => self.operate(Operator::Yank, n, Motion::LineEnd),
             Key::Char('p') => self.paste(true, n),
             Key::Char('P') => self.paste(false, n),
             Key::Char('J') => self.join(n),
@@ -458,12 +528,14 @@ impl Vim {
         let Some((after, n, over)) = self.put.take() else {
             return Effect::Nothing;
         };
+        let before = self.position();
         let effect = if let Some(text) = text {
             self.put_text(&text, after, n, over)
         } else {
             self.message = String::from("E353: Nothing in register +");
             Effect::Moved
         };
+        self.changing(before, &effect);
         self.settle(&effect);
         effect
     }

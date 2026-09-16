@@ -199,13 +199,20 @@ impl Vim {
             })
             .collect();
         let mut edits = Vec::new();
+        // The cursor goes to the last line substituted, after any
+        // newline a `\r` brought in; each line changed above moves it.
+        let mut last = None;
         for (start, end, text) in changes {
             self.text.replace_range(start..end, &text);
+            last = Some(last.map_or_else(
+                || start + text.rfind('\n').map_or(0, |i| i + 1),
+                |below| below + text.len() - (end - start),
+            ));
             let join = !edits.is_empty();
             edits.push(Edit { at: start, len: end - start, text, join });
         }
-        let Some(first) = edits.first() else { return self.not_found(&source) };
-        self.cursor = self.first_non_blank(first.at);
+        let Some(line) = last else { return self.not_found(&source) };
+        self.cursor = self.first_non_blank(line);
         self.clamp();
         self.joining = false;
         Effect::Edits(edits)

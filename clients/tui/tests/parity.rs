@@ -1,12 +1,41 @@
 //! The corpus under tests/parity, each case what nvim did with its
 //! keys on its text (recorded by record.sh), replayed through the tui
-//! on the rig: the file after and the exit code must be nvim's.
+//! on the rig: the file after, the exit code, the cursor and the
+//! unnamed register must be nvim's.
 
+use std::fmt::Write as _;
 use std::path::Path;
 
 use reovim_client_tui::{Step, Tui};
 use reovim_client_vim::notation::keys;
+use reovim_client_vim::{Register, Vim};
 use reovim_rig::Rig;
+
+/// nvim's `state` file: the cursor as `line:column`, the register's
+/// type, then its bytes.
+fn state(bytes: &[u8]) -> Option<(String, String, Vec<u8>)> {
+    let text = String::from_utf8_lossy(bytes);
+    let (cursor, rest) = text.split_once('\n')?;
+    let (kind, register) = rest.split_once('\n')?;
+    Some((cursor.into(), kind.into(), register.as_bytes().to_vec()))
+}
+
+/// What nvim would write for Vim's cursor and register: the register
+/// as `getreg` gives it, a linewise one ending in its newline.
+fn state_of(vim: &Vim) -> (String, String, Vec<u8>) {
+    let (line, column) = vim.position();
+    let Register { text, linewise } = vim.register();
+    let kind = match (linewise, text.is_empty()) {
+        (true, _) => "V",
+        (false, true) => "",
+        (false, false) => "v",
+    };
+    let mut bytes = text.clone().into_bytes();
+    if *linewise {
+        bytes.push(b'\n');
+    }
+    (format!("{}:{}", line + 1, column + 1), kind.into(), bytes)
+}
 
 /// One case: the keys run to their quit, the file and the code after.
 fn replay(case: &Path) -> Result<(), String> {
@@ -18,6 +47,8 @@ fn replay(case: &Path) -> Result<(), String> {
     let (input, out) = (read("in")?, read("out")?);
     let exit: u8 =
         String::from_utf8_lossy(&read("exit")?).trim().parse().unwrap();
+    let theirs = state(&read("state")?)
+        .ok_or_else(|| format!("{name}: state is not nvim's"))?;
     let line = String::from_utf8(read("keys")?).unwrap();
     let keys =
         keys(line.trim_end()).ok_or_else(|| format!("{name}: bad notation"))?;
@@ -35,15 +66,30 @@ fn replay(case: &Path) -> Result<(), String> {
     }
     let code = quit.ok_or_else(|| format!("{name}: the keys did not quit"))?;
     let file = rig.disk("file");
-    if (code, &file) == (exit, &out) {
+    let mut ours = state_of(tui.vim());
+    // A blockwise register (`^V{width}`) is not judged until Vim has
+    // the kind; the file and the cursor still are.
+    if theirs.1.starts_with('\u{16}') {
+        (ours.1, ours.2) = (theirs.1.clone(), theirs.2.clone());
+    }
+    if (code, &file, &ours) == (exit, &out, &theirs) {
         return Ok(());
     }
-    let (ours, theirs) =
-        (String::from_utf8_lossy(&file), String::from_utf8_lossy(&out));
-    Err(format!(
-        "{name}: exit {code}, nvim {exit}\n\
-         --- ours ---\n{ours}--- nvim ---\n{theirs}"
-    ))
+    let show = |bytes: &[u8]| String::from_utf8_lossy(bytes).into_owned();
+    let mut report = format!("{name}: exit {code}, nvim {exit}");
+    if file != out {
+        let (a, b) = (show(&file), show(&out));
+        let _ = write!(report, "\n--- ours ---\n{a}--- nvim ---\n{b}");
+    }
+    if ours.0 != theirs.0 {
+        let _ = write!(report, "\ncursor {}, nvim {}", ours.0, theirs.0);
+    }
+    if (&ours.1, &ours.2) != (&theirs.1, &theirs.2) {
+        let (a, b) = (show(&ours.2), show(&theirs.2));
+        let (x, y) = (&ours.1, &theirs.1);
+        let _ = write!(report, "\nregister {x:?} {a:?}, nvim {y:?} {b:?}");
+    }
+    Err(report)
 }
 
 #[test]

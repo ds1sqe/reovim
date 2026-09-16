@@ -90,6 +90,12 @@ impl Tui {
         self.buffer
     }
 
+    /// The Vim behind the keys, for a test to judge its state.
+    #[must_use]
+    pub const fn vim(&self) -> &Vim {
+        &self.vim
+    }
+
     /// One key to Vim: an edit is a `replace`, or an `amend` when it
     /// joins the insert under way; `u` and Ctrl-R move the head; `:w`
     /// saves. `:q` is refused with E37 while there are unsaved

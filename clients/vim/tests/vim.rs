@@ -205,10 +205,10 @@ fn lines_are_reached_by_number_and_deleted_with_their_newline() {
 
     assert_eq!(typed(&mut vim, "dd"), edit(4, 6, "", false));
     assert_eq!(vim.text(), "one\nthree\n");
-    assert_eq!(vim.position(), (1, 0));
+    assert_eq!(vim.position(), (1, 4), "`$` still wants the end");
     assert_eq!(typed(&mut vim, "dd"), edit(4, 6, "", false), "the last");
     assert_eq!(vim.text(), "one\n");
-    assert_eq!(vim.position(), (0, 0));
+    assert_eq!(vim.position(), (0, 2));
     assert_eq!(typed(&mut vim, "dd"), edit(0, 4, "", false));
     assert_eq!(vim.text(), "");
     assert_eq!(typed(&mut vim, "dd"), Effect::Nothing);

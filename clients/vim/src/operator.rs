@@ -220,7 +220,7 @@ impl Vim {
             return Effect::Nothing;
         }
         let start = self.line_at(line).unwrap_or(0);
-        self.go_clamped(self.at_column(start, self.want))
+        self.go_clamped(self.at_screen_column(start, self.want))
     }
 
     fn find_again(&mut self, n: usize, reversed: bool) -> Effect {
@@ -373,7 +373,15 @@ impl Vim {
         } else {
             self.span(motion, n)
         };
-        let Some(span) = span else { return Effect::Nothing };
+        let Some(mut span) = span else { return Effect::Nothing };
+        // `gUU` and its kin start at the first non-blank, as nvim's
+        // doubled case operators move there first; with a count the
+        // move ends on a later line and the start keeps its column.
+        let cased =
+            matches!(op, Operator::Upper | Operator::Lower | Operator::Toggle);
+        if motion == Motion::Lines && cased && n == 1 {
+            span.0 = span.0.min(self.first_non_blank(span.0));
+        }
         self.apply(op, span)
     }
 
@@ -391,7 +399,7 @@ impl Vim {
         };
         match op {
             Operator::Upper | Operator::Lower | Operator::Toggle => {
-                return self.recased(op, at, len, linewise);
+                return self.recased(op, from, (at, len), linewise);
             }
             _ => {}
         }
@@ -405,13 +413,14 @@ impl Vim {
             Operator::Delete => self.deleted(at, len, linewise),
             Operator::Change if linewise => self.change_lines(from, to),
             Operator::Change => self.changed(at, len),
-            _ => self.yanked(at, linewise),
+            _ => self.yanked(from),
         }
     }
 
     /// `>` and `<` over the lines `from` to `to`: each non-empty
     /// line's indent moved by `shiftwidth` and written with tabs, as
-    /// nvim's defaults have it.
+    /// nvim's defaults have it; the cursor on the first line at the
+    /// column wanted, as `nostartofline` leaves it.
     fn shifted(&mut self, from: usize, to: usize, right: bool) -> Effect {
         let start = self.line_start(from);
         let end = self.line_end(to);
@@ -421,19 +430,20 @@ impl Vim {
             .collect::<alloc::vec::Vec<_>>()
             .join("\n");
         self.text.replace_range(start..end, &block);
-        self.cursor = self.first_non_blank(start);
+        self.cursor = self.at_screen_column(start, self.want);
+        self.keep_want = true;
         self.clamp();
         self.joining = false;
         self.edit(start, end - start, block)
     }
 
-    /// `gu`, `gU`, `g~` over `len` bytes at `at`, the cursor at the
-    /// start; on whole lines their newlines stay.
+    /// `gu`, `gU`, `g~` over `len` bytes at `at`, the cursor where the
+    /// span began; on whole lines their newlines stay.
     fn recased(
         &mut self,
         op: Operator,
-        at: usize,
-        len: usize,
+        from: usize,
+        (at, len): (usize, usize),
         linewise: bool,
     ) -> Effect {
         let (at, len) = if linewise {
@@ -447,7 +457,7 @@ impl Vim {
         let cased: String =
             self.text[at..at + len].chars().map(|c| recase(op, c)).collect();
         self.text.replace_range(at..at + len, &cased);
-        self.cursor = if linewise { self.first_non_blank(at) } else { at };
+        self.cursor = from;
         self.clamp();
         self.joining = false;
         self.edit(at, len, cased)
@@ -477,17 +487,17 @@ impl Vim {
         self.edit(at, len, cased)
     }
 
-    /// After a yank: the cursor at the span's start.
-    fn yanked(&mut self, at: usize, linewise: bool) -> Effect {
-        let start = at.min(self.bound());
-        let to = if linewise { self.first_non_blank(start) } else { start };
-        self.go_clamped(to);
+    /// After a yank: the cursor where the span began, so `yy` does not
+    /// move and `yk` keeps its column on the line above.
+    fn yanked(&mut self, from: usize) -> Effect {
+        self.go_clamped(from.min(self.bound()));
         Effect::Moved
     }
 
-    /// After a delete: the cursor where the span was, on a line's
-    /// first non-blank when lines went. Chars taken down to nothing
-    /// leave one empty line, as Vim's buffer always has a line.
+    /// After a delete: the cursor where the span was, or at the wanted
+    /// column of the line left when lines went, as `nostartofline`
+    /// has it. Chars taken down to nothing leave one empty line, as
+    /// Vim's buffer always has a line.
     fn deleted(&mut self, at: usize, len: usize, linewise: bool) -> Effect {
         let removed = self.remove(at, len);
         let emptied = !linewise && self.text.is_empty();
@@ -504,7 +514,12 @@ impl Vim {
         };
         let start = at.min(self.bound());
         let line = self.line_start(start);
-        self.cursor = if linewise { self.first_non_blank(line) } else { start };
+        self.cursor = if linewise {
+            self.keep_want = true;
+            self.at_screen_column(line, self.want)
+        } else {
+            start
+        };
         self.clamp();
         effect
     }
@@ -564,28 +579,29 @@ impl Vim {
 
     /// What an operator took, into the unnamed register and the one
     /// `"x` named: `a`-`z` hold, `A`-`Z` append, `_` drops, `+` and
-    /// `*` go to the clipboard.
+    /// `*` go to the clipboard. The unnamed register is then the
+    /// named one whole, as Vim's points at the register last written.
     pub(crate) fn store(&mut self, taken: Register) {
-        let end = if taken.linewise {
-            "
-"
-        } else {
-            ""
-        };
-        match self.pending.register.take() {
+        let end = if taken.linewise { "\n" } else { "" };
+        let named = match self.pending.register.take() {
             Some('_') => return,
             Some('+' | '*') => {
                 self.clipboard = Some(alloc::format!("{}{end}", taken.text));
+                None
             }
             Some(name @ 'a'..='z') => {
                 self.registers.insert(name, taken.clone());
+                Some(name)
             }
             Some(name @ 'A'..='Z') => {
-                self.append(name.to_ascii_lowercase(), &taken);
+                let name = name.to_ascii_lowercase();
+                self.append(name, &taken);
+                Some(name)
             }
-            _ => {}
-        }
-        self.register = taken;
+            _ => None,
+        };
+        let whole = named.and_then(|name| self.registers.get(&name).cloned());
+        self.register = whole.unwrap_or(taken);
     }
 
     /// `taken` onto register `name`: lines on their own line, chars
@@ -661,7 +677,7 @@ impl Vim {
         };
         self.text.insert_str(at, &put);
         self.joining = false;
-        let first = at + usize::from(put.starts_with('\n'));
+        let first = at + usize::from(after && last);
         self.cursor = self.first_non_blank(first);
         self.clamp();
         self.edit(at, 0, put)

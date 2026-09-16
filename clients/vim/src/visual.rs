@@ -30,7 +30,10 @@ pub struct Selection {
 pub struct BlockInsert {
     first: usize,
     last: usize,
+    /// The column the typing goes to on every line.
     column: usize,
+    /// The block's left column, where the cursor ends.
+    left: usize,
     to_end: bool,
     /// Where the typing began.
     from: usize,
@@ -190,7 +193,8 @@ impl Vim {
         let (lo, hi) =
             (self.anchor.min(self.cursor), self.anchor.max(self.cursor));
         match kind {
-            Visual::Line => (lo, hi, Kind::Linewise),
+            // A `V` selection begins at its first line's start.
+            Visual::Line => (self.line_start(lo), hi, Kind::Linewise),
             _ => (
                 lo,
                 self.forward_char(hi).min(self.text.len()),
@@ -296,7 +300,7 @@ impl Vim {
         let effect = self.block_edits(ranges, |_| String::new());
         self.cursor = top_left;
         if op == Operator::Change {
-            self.begin_block_insert(lines.0, lines.1, column, false);
+            self.begin_block_insert(lines.0, lines.1, (column, column), false);
         } else {
             self.clamp();
         }
@@ -424,18 +428,21 @@ impl Vim {
         let (a, c) =
             (self.position_of(self.anchor), self.position_of(self.cursor));
         let (top, bottom) = (a.0.min(c.0), a.0.max(c.0));
-        let column = if append { a.1.max(c.1) + 1 } else { a.1.min(c.1) };
+        let left = a.1.min(c.1);
+        let column = if append { a.1.max(c.1) + 1 } else { left };
         let to_end = append && self.to_end;
         self.leave_visual();
-        self.begin_block_insert(top, bottom, column, to_end);
+        self.begin_block_insert(top, bottom, (column, left), to_end);
         Effect::Moved
     }
 
+    /// Insert mode at `column` on line `first`, the block's `left`
+    /// column being where the cursor ends.
     fn begin_block_insert(
         &mut self,
         first: usize,
         last: usize,
-        column: usize,
+        (column, left): (usize, usize),
         to_end: bool,
     ) {
         let start = self.line_at(first).unwrap_or(0);
@@ -447,17 +454,21 @@ impl Vim {
         self.cursor = from;
         self.mode = Mode::Insert;
         self.indent = 0;
-        self.block = Some(BlockInsert { first, last, column, to_end, from });
+        self.block =
+            Some(BlockInsert { first, last, column, left, to_end, from });
     }
 
     /// Esc after a block insert: what was typed on the first line,
-    /// onto every other line of the block, as part of the revision.
+    /// onto every other line of the block, as part of the revision;
+    /// the cursor at the block's top-left, as nvim leaves it.
     pub(crate) fn finish_block(&mut self, block: BlockInsert) -> Effect {
         let typed = self
             .text
             .get(block.from..self.cursor)
             .map(String::from)
             .filter(|t| !t.is_empty() && !t.contains('\n'));
+        let top = self.line_at(block.first).unwrap_or(0);
+        self.cursor = self.at_column(top, block.left);
         let Some(typed) = typed else { return Effect::Moved };
         let columns: Vec<usize> = (block.first + 1..=block.last)
             .rev()
@@ -468,7 +479,6 @@ impl Vim {
             self.text.insert_str(at, &typed);
             edits.push(Edit { at, len: 0, text: typed.clone(), join: true });
         }
-        self.cursor = block.from;
         if edits.is_empty() { Effect::Moved } else { Effect::Edits(edits) }
     }
 

@@ -80,6 +80,37 @@ impl Vim {
         start + offset
     }
 
+    /// The char whose screen cells reach `column` on the line
+    /// starting at `start`, tabs eight wide, or as far as the line
+    /// goes: where a wanted column lands.
+    pub(crate) fn at_screen_column(
+        &self,
+        start: usize,
+        column: usize,
+    ) -> usize {
+        let end = self.line_end(start);
+        let mut cell = 0;
+        let reached = |(at, c): (usize, char)| {
+            cell = next_cell(cell, c);
+            (cell > column).then_some(start + at)
+        };
+        self.text[start..end].char_indices().find_map(reached).unwrap_or(end)
+    }
+
+    /// The screen column the cursor wants: its char's last cell, so a
+    /// tab wants its end, as nvim's `curswant` has it.
+    pub(crate) fn wanted(&self) -> usize {
+        let start = self.line_start(self.cursor);
+        let cells = self.text[start..self.cursor].chars().fold(0, next_cell);
+        let here = self.text[self.cursor..].chars().next();
+        match here {
+            Some(c) if c != '\n' && self.mode != Mode::Insert => {
+                next_cell(cells, c) - 1
+            }
+            _ => cells,
+        }
+    }
+
     /// Where `a` inserts: after the cursor's char, unless the line is
     /// empty.
     pub(crate) fn append_at(&self) -> usize {
@@ -145,7 +176,7 @@ impl Vim {
         let target = if down { line + 1 } else { line.wrapping_sub(1) };
         self.keep_want = true;
         let Some(start) = self.line_at(target) else { return Effect::Nothing };
-        let to = self.at_column(start, self.want);
+        let to = self.at_screen_column(start, self.want);
         match self.mode {
             Mode::Insert => self.go(to),
             Mode::Normal | Mode::Command | Mode::Visual(_) => {
@@ -170,4 +201,10 @@ impl Vim {
         self.cursor = to;
         Effect::Moved
     }
+}
+
+/// The screen cell after `c` drawn at `cell`: a tab reaches the next
+/// stop of eight.
+const fn next_cell(cell: usize, c: char) -> usize {
+    if c == '\t' { cell / 8 * 8 + 8 } else { cell + 1 }
 }

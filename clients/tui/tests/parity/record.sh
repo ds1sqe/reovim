@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# What nvim does with a case: `out` and `exit` written beside its `in`
-# and `keys`. These flags are the definition of "what nvim does".
+# What nvim does with a case: `out`, `exit` and `state` written beside
+# its `in` and `keys`; `state` is the cursor as line:column (chars,
+# from 1), the unnamed register's type (v, V, ^V{width} or empty) and
+# its bytes at exit. These flags are the definition of "what nvim
+# does".
 #
 #   clients/tui/tests/parity/record.sh CASE...     directories
 set -euo pipefail
@@ -13,8 +16,15 @@ for case in "$@"; do
     cp "$case/in" "$work/file"
     # The keys as a Vim string: `<` escaped, so `<Esc>` is `\<Esc>`.
     keys="$(sed 's/\\/\\\\/g; s/"/\\"/g; s/</\\</g' "$case/keys")"
+    # The state at exit. Through --cmd: a -c before the feedkeys one
+    # would leave the cursor at column 1, where nvim itself starts it
+    # on the first non-blank.
+    state="$work/state"
+    leave="autocmd VimLeavePre * call writefile([line('.') . ':' \
+        . charcol('.'), getregtype('\"')], '$state') \
+        | call writefile(split(getreg('\"'), \"\\n\", 1), '$state', 'ab')"
     set +e
-    nvim --headless --clean -i NONE -n "$work/file" \
+    nvim --headless --clean -i NONE -n "$work/file" --cmd "$leave" \
         -c "call feedkeys(\"$keys\", 'tx')" -c 'cquit 2' 2>/dev/null
     code=$?
     set -e
@@ -24,6 +34,7 @@ for case in "$@"; do
         exit 1
     fi
     cp "$work/file" "$case/out"
+    cp "$state" "$case/state"
     printf '%s\n' "$code" >"$case/exit"
     rm -rf "$work"
     printf 'record.sh: %s exit %s, %s bytes\n' "$case" "$code" \
