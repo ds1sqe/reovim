@@ -133,6 +133,58 @@ pub fn close(link: Link) {
     drop(link);
 }
 
+/// The dynamic loader. The only `unsafe` in the host: three libc calls.
+#[allow(unsafe_code)]
+mod dl {
+    use alloc::ffi::CString;
+    use core::ffi::{c_char, c_int, c_void};
+
+    use crate::Error;
+
+    const RTLD_NOW: c_int = 2;
+
+    unsafe extern "C" {
+        fn dlopen(path: *const c_char, flags: c_int) -> *mut c_void;
+        fn dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void;
+        fn dlclose(handle: *mut c_void) -> c_int;
+    }
+
+    /// One `dlopen` handle.
+    pub struct Library(*mut c_void);
+
+    impl Drop for Library {
+        fn drop(&mut self) {
+            // SAFETY: `0` came from a successful `dlopen` and is closed
+            // once, here.
+            unsafe { dlclose(self.0) };
+        }
+    }
+
+    pub fn load(path: &str) -> Result<Library, Error> {
+        if std::fs::metadata(path).is_err() {
+            return Err(Error::NotFound);
+        }
+        let path = CString::new(path).map_err(|_| Error::Io)?;
+        // SAFETY: `path` is NUL-terminated; the caller trusts the file.
+        let handle = unsafe { dlopen(path.as_ptr(), RTLD_NOW) };
+        if handle.is_null() {
+            return Err(Error::Io);
+        }
+        Ok(Library(handle))
+    }
+
+    pub fn symbol(library: &Library) -> Result<*const c_void, Error> {
+        // SAFETY: the handle is live and the name NUL-terminated.
+        let symbol = unsafe { dlsym(library.0, c"rv_module_entry".as_ptr()) };
+        if symbol.is_null() {
+            return Err(Error::Unsupported);
+        }
+        Ok(symbol.cast_const())
+    }
+}
+
+pub use dl::{Library, load, symbol};
+
 /// `$XDG_RUNTIME_DIR`, else `/tmp/reovim-<uid>`; made if missing.
 pub fn runtime() -> Result<String, Error> {
     let dir = match std::env::var("XDG_RUNTIME_DIR") {

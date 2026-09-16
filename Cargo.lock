@@ -189,6 +189,7 @@ dependencies = [
 name = "reovim-kernel-abi"
 version = "0.16.0-dev"
 dependencies = [
+ "reovim-host",
  "reovim-kernel-interface",
  "reovim-kernel-runtime",
 ]
@@ -225,10 +226,6 @@ dependencies = [
  "reovim-kernel-runtime",
  "reovim-module-fs",
 ]
-
-[[package]]
-name = "reovim-vtable"
-version = "0.16.0-dev"
 
 [[package]]
 name = "rustix"

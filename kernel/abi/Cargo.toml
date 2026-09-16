@@ -12,6 +12,7 @@ publish = false
 reovim-kernel-interface = { path = "../interface" }
 
 [dev-dependencies]
+reovim-host = { path = "../../host/os", features = ["std"] }
 reovim-kernel-runtime = { path = "../runtime" }
 
 [lints]

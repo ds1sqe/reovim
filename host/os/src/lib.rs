@@ -1,5 +1,5 @@
 #![no_std]
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 //! The machine, as plain functions. This is the only crate that knows
 //! the host; everything above it stays `no_std` + alloc and calls in here.
 //!
@@ -237,6 +237,35 @@ pub mod term {
     /// As [`enter`].
     pub fn size() -> Result<(u16, u16), Error> {
         backend::size()
+    }
+}
+
+/// Loadable code: a `.rvm` file is a shared object with one exported
+/// symbol, `rv_module_entry`. Loading runs its initializers; the caller
+/// trusts the file.
+pub mod native {
+    use core::ffi::c_void;
+
+    use super::{Error, backend};
+
+    /// One loaded file, closed on drop.
+    pub struct Library(backend::Library);
+
+    /// Load `path`.
+    ///
+    /// # Errors
+    /// `NotFound` when there is no such file, `Io` when the loader
+    /// refuses it; `Unsupported` without a backend.
+    pub fn load(path: &str) -> Result<Library, Error> {
+        backend::load(path).map(Library)
+    }
+
+    /// The address of `rv_module_entry` in `library`.
+    ///
+    /// # Errors
+    /// `Unsupported` when the file exports no such symbol.
+    pub fn entry(library: &Library) -> Result<*const c_void, Error> {
+        backend::symbol(&library.0)
     }
 }
 

@@ -55,6 +55,16 @@ pub fn recv(_: &Link) -> Result<Vec<u8>, Error> {
 
 pub const fn close(_: Link) {}
 
+pub struct Library;
+
+pub fn load(_: &str) -> Result<Library, Error> {
+    Err(Error::Unsupported)
+}
+
+pub fn symbol(_: &Library) -> Result<*const core::ffi::c_void, Error> {
+    Err(Error::Unsupported)
+}
+
 pub fn runtime() -> Result<String, Error> {
     Err(Error::Unsupported)
 }
