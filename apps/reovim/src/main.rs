@@ -63,8 +63,8 @@ impl From<reovim_kernel_interface::Error> for Fail {
 const USAGE: &str = "\
 usage: reovim server [--socket PATH] [--root DIR] [--log PATH]
        reovim cli [--socket PATH] [COMMAND...]
-       reovim tui [--socket PATH] FILE
-       reovim [--socket PATH] [--log PATH] FILE
+       reovim tui [--socket PATH] [+N] FILE
+       reovim [--socket PATH] [--log PATH] [+N] FILE
 defaults: --socket <runtime dir>/reovim.sock, --root <working directory>;
 the bare form edits any FILE and listens only when given --socket";
 
@@ -128,12 +128,26 @@ fn run(args: Vec<String>) -> Result<ExitCode, Fail> {
         (Some("cli"), rest) => {
             cli::run(&socket(given)?, rest).map(|()| ExitCode::SUCCESS)
         }
-        (Some("tui"), [file]) => {
-            tui::remote(&socket(given)?, file).map(ExitCode::from)
+        (Some("tui"), rest) => {
+            let (line, file) = file_at(rest)?;
+            tui::remote(&socket(given)?, line, file).map(ExitCode::from)
         }
-        (None, [file]) if root.is_none() => {
-            tui::bare(given.as_deref(), log.as_deref(), file)
+        (None, rest) if root.is_none() => {
+            let (line, file) = file_at(rest)?;
+            tui::bare(given.as_deref(), log.as_deref(), line, file)
                 .map(ExitCode::from)
+        }
+        _ => Err(usage()),
+    }
+}
+
+/// `[+N] FILE`: the line to start on, if given, and the file.
+fn file_at(rest: &[String]) -> Result<(Option<usize>, &str), Fail> {
+    match rest {
+        [file] => Ok((None, file)),
+        [line, file] if line.starts_with('+') => {
+            let line = line[1..].parse().map_err(|_| usage())?;
+            Ok((Some(line), file))
         }
         _ => Err(usage()),
     }

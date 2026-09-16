@@ -44,7 +44,7 @@ fn keys_change_the_draft_and_save_reaches_disk() {
     assert_eq!(other.read_all(buffer).unwrap(), b"xfirst!\n");
     assert_eq!(rig.disk("note"), b"first\n", "disk waits for save");
     let frame = tui.frame(80, 24);
-    assert_eq!(frame.lines, vec!["xfirst!", ""]);
+    assert_eq!(frame.lines, vec!["xfirst!"]);
     assert_eq!(frame.cursor, (0, 7));
     assert!(frame.status.starts_with("note  1:8  r3[+]"), "{}", frame.status);
 
@@ -91,11 +91,11 @@ fn undo_and_redo_walk_the_revisions() {
     assert!(tui.frame(80, 24).status.contains("r3[+]"));
     assert_eq!(tui.key(Key::Ctrl('z')), Ok(Step::Changed));
     let frame = tui.frame(80, 24);
-    assert_eq!(frame.lines, vec!["xfirst", ""]);
+    assert_eq!(frame.lines, vec!["xfirst"]);
     assert!(frame.status.contains("1:1  r2   "), "{}", frame.status);
     assert_eq!(tui.tick(), Ok(Step::Same));
     assert_eq!(tui.key(Key::Ctrl('y')), Ok(Step::Changed));
-    assert_eq!(tui.frame(80, 24).lines, vec!["yxfirst", ""]);
+    assert_eq!(tui.frame(80, 24).lines, vec!["yxfirst"]);
     assert_eq!(tui.key(Key::Ctrl('z')), Ok(Step::Changed));
     assert_eq!(tui.key(Key::Ctrl('z')), Ok(Step::Changed));
     assert_eq!(tui.key(Key::Ctrl('z')), Err(Fault::Kernel(Error::Invalid)));
@@ -103,7 +103,7 @@ fn undo_and_redo_walk_the_revisions() {
     other.call_by_name(buffer, "redo", Vec::new()).unwrap();
     assert_eq!(tui.tick(), Ok(Step::Changed));
     let frame = tui.frame(80, 24);
-    assert_eq!(frame.lines, vec!["xfirst", ""]);
+    assert_eq!(frame.lines, vec!["xfirst"]);
     assert!(frame.status.contains("r2   "), "{}", frame.status);
     other.call_by_name(buffer, "redo", Vec::new()).unwrap();
     other.call_by_name(buffer, "save", Vec::new()).unwrap();
@@ -138,7 +138,7 @@ fn a_missing_file_opens_empty_and_appears_on_save() {
     assert_eq!(typed(&mut tui, "ix<Esc>"), Ok(Step::Changed));
     assert!(!rig.dir().join("none").exists(), "nothing on disk yet");
     assert_eq!(tui.key(Key::Ctrl('s')), Ok(Step::Changed));
-    assert_eq!(rig.disk("none"), b"x");
+    assert_eq!(rig.disk("none"), b"x\n", "the newline Vim adds");
 }
 
 #[test]

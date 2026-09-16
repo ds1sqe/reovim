@@ -4,13 +4,27 @@
 use crate::{Effect, Mode, Vim};
 
 impl Vim {
+    /// The last byte index the cursor may take: before a final `\n`,
+    /// else the end of the text.
+    pub(crate) fn bound(&self) -> usize {
+        self.text.len() - usize::from(self.text.ends_with('\n'))
+    }
+
+    /// How many lines: one more than the `\n`s, except that a final
+    /// `\n` ends a line instead of starting one; an empty text is one
+    /// empty line.
+    pub(crate) fn line_count(&self) -> usize {
+        self.text.matches('\n').count() + 1
+            - usize::from(self.text.ends_with('\n'))
+    }
+
     /// Byte index where line `n` starts, if there is one.
     pub(crate) fn line_at(&self, n: usize) -> Option<usize> {
         let mut at = 0;
         for _ in 0..n {
             at += self.text[at..].find('\n')? + 1;
         }
-        Some(at)
+        (at <= self.bound()).then_some(at)
     }
 
     /// Byte index where the line `at` is on starts.
@@ -48,6 +62,18 @@ impl Vim {
         self.text[..at].chars().next_back().map_or(at, |c| at - c.len_utf8())
     }
 
+    /// `column` chars into the line starting at `start`, or as far as
+    /// the line goes.
+    pub(crate) fn at_column(&self, start: usize, column: usize) -> usize {
+        let end = self.line_end(start);
+        let offset: usize = self.text[start..end]
+            .chars()
+            .take(column)
+            .map(char::len_utf8)
+            .sum();
+        start + offset
+    }
+
     /// Where `a` inserts: after the cursor's char, unless the line is
     /// empty.
     pub(crate) fn append_at(&self) -> usize {
@@ -68,6 +94,7 @@ impl Vim {
 
     /// Normal mode's cursor: on the last char, not past it.
     pub(crate) fn clamp(&mut self) {
+        self.cursor = self.cursor.min(self.bound());
         let end = self.line_end(self.cursor);
         if self.cursor == end {
             self.cursor = self.last_char(self.cursor);
@@ -101,17 +128,20 @@ impl Vim {
         let (line, column) = self.position();
         let target = if down { line + 1 } else { line.wrapping_sub(1) };
         let Some(start) = self.line_at(target) else { return Effect::Nothing };
-        let end = self.line_end(start);
-        let offset: usize = self.text[start..end]
-            .chars()
-            .take(column)
-            .map(char::len_utf8)
-            .sum();
-        let effect = self.go(start + offset);
-        if self.mode == Mode::Normal {
-            self.clamp();
+        let to = self.at_column(start, column);
+        match self.mode {
+            Mode::Normal => self.go_clamped(to),
+            Mode::Insert => self.go(to),
         }
-        effect
+    }
+
+    /// `to`, then normal mode's clamp; `Moved` if the cursor ended
+    /// elsewhere than it began.
+    pub(crate) fn go_clamped(&mut self, to: usize) -> Effect {
+        let from = self.cursor;
+        self.cursor = to;
+        self.clamp();
+        if self.cursor == from { Effect::Nothing } else { Effect::Moved }
     }
 
     pub(crate) const fn go(&mut self, to: usize) -> Effect {

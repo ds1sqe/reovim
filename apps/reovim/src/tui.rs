@@ -21,10 +21,14 @@ type Serve<'a> = &'a mut dyn FnMut() -> Result<(), Fail>;
 
 /// `reovim tui`: a Client over the link, named so a cut link can be
 /// taken up again.
-pub fn remote(socket: &str, file: &str) -> Result<u8, Fail> {
+pub fn remote(
+    socket: &str,
+    line: Option<usize>,
+    file: &str,
+) -> Result<u8, Fail> {
     let credential = format!("tui:{}", std::process::id()).into_bytes();
     let client = Remote::client(socket, credential)?;
-    run(client, file, &mut || Ok(()))
+    run(client, line, file, &mut || Ok(()))
 }
 
 /// Bare `reovim`: the server on this thread over `/`, listening only
@@ -32,6 +36,7 @@ pub fn remote(socket: &str, file: &str) -> Result<u8, Fail> {
 pub fn bare(
     socket: Option<&str>,
     log: Option<&str>,
+    line: Option<usize>,
     file: &str,
 ) -> Result<u8, Fail> {
     let (kernel, _modules) = boot("/")?;
@@ -39,7 +44,7 @@ pub fn bare(
     let mut sink = log.map(|path| Sink::open(&kernel, path)).transpose()?;
     let file = absolute(&reovim_host::dirs::work()?, file);
     let client = Local::client(&kernel)?;
-    run(client, &file, &mut || {
+    run(client, line, &file, &mut || {
         if let Some(links) = &mut links {
             links.drain(&kernel);
         }
@@ -70,8 +75,16 @@ fn absolute(work: &str, path: &str) -> String {
 
 /// The loop in the host's terminal mode, left on every exit, a fault
 /// printed after; the exit code the tui asked for.
-fn run(client: Client, file: &str, serve: Serve) -> Result<u8, Fail> {
+fn run(
+    client: Client,
+    line: Option<usize>,
+    file: &str,
+    serve: Serve,
+) -> Result<u8, Fail> {
     let mut tui = Tui::open(client, file)?;
+    if let Some(line) = line {
+        tui.goto_line(line);
+    }
     term::enter()?;
     let result = drive(&mut tui, serve);
     let _ = term::leave();

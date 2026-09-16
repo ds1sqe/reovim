@@ -3,11 +3,16 @@
 //! Vim: keys in, effects and a frame out, over the text and the cursor
 //! it holds. It sees no Client, no rd and no terminal; the tui turns
 //! an `Effect` into a call and a `Frame` into a screen.
+//!
+//! The text is the Buffer's bytes. A `\n` ends a line; the last one
+//! ends the last line rather than starting an empty one, as Vim has
+//! it, and a text without one is a last line without an end.
 
 extern crate alloc;
 
 mod motion;
 pub mod notation;
+mod word;
 
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -64,6 +69,8 @@ pub struct Vim {
     mode: Mode,
     /// Digits typed before a command; 0 is none.
     count: usize,
+    /// A `g` or `d` waiting for its second key.
+    pending: Option<char>,
     /// The next insert edit joins the head revision.
     joining: bool,
 }
@@ -87,7 +94,7 @@ impl Vim {
             return false;
         }
         self.text = text.into_owned();
-        self.cursor = self.cursor.min(self.text.len());
+        self.cursor = self.cursor.min(self.bound());
         while !self.text.is_char_boundary(self.cursor) {
             self.cursor -= 1;
         }
@@ -103,6 +110,26 @@ impl Vim {
             Mode::Normal => self.normal(key),
             Mode::Insert => self.insert(key),
         }
+    }
+
+    /// The cursor to line `n`, counted from 1 and clamped, at its first
+    /// non-blank: `+N` on the command line.
+    pub fn goto_line(&mut self, n: usize) {
+        let last = self.line_count() - 1;
+        let start = self.line_at(n.saturating_sub(1).min(last)).unwrap_or(0);
+        self.cursor = self.first_non_blank(start);
+        self.clamp();
+    }
+
+    /// The `\n` Vim writes at the end of a last line that has none, as
+    /// `fixendofline` does; `None` when there is nothing to fix.
+    pub fn fix_eol(&mut self) -> Option<Effect> {
+        if self.text.is_empty() || self.text.ends_with('\n') {
+            return None;
+        }
+        let at = self.text.len();
+        self.text.push('\n');
+        Some(Effect::Edit { at, len: 0, text: String::from("\n"), join: false })
     }
 
     /// The cursor's line and column, in chars from 0.
@@ -128,6 +155,7 @@ impl Vim {
         let lines = self
             .text
             .split('\n')
+            .take(self.line_count())
             .skip(self.top)
             .take(height)
             .map(|l| l.chars().take(width).collect())
@@ -149,7 +177,15 @@ impl Vim {
             self.count = self.count.saturating_mul(10).saturating_add(digit);
             return Effect::Nothing;
         }
-        let n = core::mem::take(&mut self.count).max(1);
+        let count = core::mem::take(&mut self.count);
+        let n = count.max(1);
+        if let Some(first) = self.pending.take() {
+            return match (first, key) {
+                ('g', Key::Char('g')) => self.jump(n - 1),
+                ('d', Key::Char('d')) => self.delete_lines(n),
+                _ => Effect::Nothing,
+            };
+        }
         match key {
             Key::Char('h') | Key::Left => self.repeat(n, Self::left),
             Key::Char('l') | Key::Right => self.repeat(n, Self::right),
@@ -158,6 +194,17 @@ impl Vim {
             Key::Char('0') | Key::Home => self.go(self.line_start(self.cursor)),
             Key::Char('^') => self.go(self.first_non_blank(self.cursor)),
             Key::Char('$') | Key::End => self.line_end_motion(n),
+            Key::Char('w') => self.repeat(n, Self::word_forward),
+            Key::Char('b') => self.repeat(n, Self::word_back),
+            Key::Char('e') => self.repeat(n, Self::word_end),
+            Key::Char(first @ ('g' | 'd')) => {
+                self.pending = Some(first);
+                self.count = count;
+                Effect::Nothing
+            }
+            Key::Char('G') => {
+                self.jump(count.checked_sub(1).unwrap_or(usize::MAX))
+            }
             Key::Char('i') => self.enter_insert(),
             Key::Char('a') => {
                 self.cursor = self.append_at();
@@ -184,8 +231,11 @@ impl Vim {
                 self.cursor = at;
                 effect
             }
-            Key::Ctrl('z') => Effect::Undo,
-            Key::Ctrl('y') => Effect::Redo,
+            Key::Char('x') => self.delete_chars(n),
+            Key::Char('X') => self.delete_before(n),
+            Key::Char('D') => self.delete_to_end(),
+            Key::Char('u') | Key::Ctrl('z') => Effect::Undo,
+            Key::Ctrl('r' | 'y') => Effect::Redo,
             Key::Ctrl('s') => Effect::Save,
             Key::Ctrl('q') => Effect::Quit,
             Key::Ctrl('c') => Effect::Abort,
@@ -219,6 +269,17 @@ impl Vim {
         let down = self.repeat(n - 1, |v| v.vertical(true));
         let end = self.go(self.last_char(self.cursor));
         if down == Effect::Moved { down } else { end }
+    }
+
+    /// Line `line` from 0, clamped to the last, at the same column.
+    fn jump(&mut self, line: usize) -> Effect {
+        let (from, column) = self.position();
+        let line = line.min(self.line_count() - 1);
+        if line == from {
+            return Effect::Nothing;
+        }
+        let start = self.line_at(line).unwrap_or(0);
+        self.go_clamped(self.at_column(start, column))
     }
 
     /// Insert mode at the cursor; the first edit starts a revision.
@@ -256,6 +317,76 @@ impl Vim {
     const fn edit(&mut self, at: usize, len: usize, text: String) -> Effect {
         let join = core::mem::replace(&mut self.joining, true);
         Effect::Edit { at, len, text, join }
+    }
+
+    /// `x`: up to `n` chars from the cursor on its line, a revision.
+    fn delete_chars(&mut self, n: usize) -> Effect {
+        let end = self.line_end(self.cursor);
+        let len: usize = self.text[self.cursor..end]
+            .chars()
+            .take(n)
+            .map(char::len_utf8)
+            .sum();
+        self.remove(self.cursor, len)
+    }
+
+    /// `X`: up to `n` chars before the cursor on its line.
+    fn delete_before(&mut self, n: usize) -> Effect {
+        let start = self.line_start(self.cursor);
+        let len: usize = self.text[start..self.cursor]
+            .chars()
+            .rev()
+            .take(n)
+            .map(char::len_utf8)
+            .sum();
+        self.cursor -= len;
+        self.remove(self.cursor, len)
+    }
+
+    /// `dd`: `n` lines from the cursor's, the last line taking the
+    /// newline before it; the cursor lands on the first non-blank.
+    fn delete_lines(&mut self, n: usize) -> Effect {
+        let start = self.line_start(self.cursor);
+        let mut end = self.line_end(self.cursor);
+        for _ in 1..n {
+            end = self.next_line_end(end);
+        }
+        let (at, len) = if end < self.text.len() {
+            (start, end + 1 - start)
+        } else {
+            let at = start.saturating_sub(1);
+            (at, self.text.len() - at)
+        };
+        let effect = self.remove(at, len);
+        let at = at.min(self.bound());
+        self.cursor = self.first_non_blank(self.line_start(at));
+        self.clamp();
+        effect
+    }
+
+    /// The end of the line after the one ending at `end`, or `end` at
+    /// the text's end.
+    fn next_line_end(&self, end: usize) -> usize {
+        if end >= self.text.len() { end } else { self.line_end(end + 1) }
+    }
+
+    /// `D`: from the cursor to the end of its line.
+    fn delete_to_end(&mut self) -> Effect {
+        let len = self.line_end(self.cursor) - self.cursor;
+        self.remove(self.cursor, len)
+    }
+
+    /// `len` bytes at `at` gone as a revision of their own; the cursor
+    /// clamped after. Nothing when there is nothing to remove.
+    fn remove(&mut self, at: usize, len: usize) -> Effect {
+        if len == 0 {
+            return Effect::Nothing;
+        }
+        self.text.replace_range(at..at + len, "");
+        self.cursor = self.cursor.min(at);
+        self.clamp();
+        self.joining = false;
+        Effect::Edit { at, len, text: String::new(), join: false }
     }
 
     /// `motion` `n` times, or until one goes nowhere; `Moved` if any

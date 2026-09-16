@@ -111,7 +111,7 @@ impl Tui {
                 history::Call(&mut self.client, self.h).redo()?;
                 self.reload()?;
             }
-            Effect::Save => publish::Call(&mut self.client, self.h).save()?,
+            Effect::Save => self.save()?,
             Effect::Quit if self.head != self.published && !guarded => {
                 self.guard = true;
                 return Ok(Step::Changed);
@@ -172,6 +172,22 @@ impl Tui {
             self.head
         );
         frame
+    }
+
+    /// The head written to the source, after the newline Vim adds to
+    /// a last line without one.
+    fn save(&mut self) -> Result<(), Fault> {
+        if let Some(Effect::Edit { at, len, text, join }) = self.vim.fix_eol() {
+            let edit = text::Edit { at: at as u64, len: len as u64, text };
+            self.edit(edit, join)?;
+        }
+        publish::Call(&mut self.client, self.h).save()
+    }
+
+    /// The cursor to line `n`, counted from 1: `+N` on the command
+    /// line.
+    pub fn goto_line(&mut self, n: usize) {
+        self.vim.goto_line(n);
     }
 
     /// `edit` as a new revision, or into the head one when it joins
