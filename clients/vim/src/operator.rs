@@ -11,6 +11,31 @@ pub enum Operator {
     Delete,
     Change,
     Yank,
+    ShiftRight,
+    ShiftLeft,
+    Upper,
+    Lower,
+    Toggle,
+}
+
+impl Operator {
+    /// The key that, typed again, makes the operator take lines.
+    pub(crate) const fn key(self) -> char {
+        match self {
+            Self::Delete => 'd',
+            Self::Change => 'c',
+            Self::Yank => 'y',
+            Self::ShiftRight => '>',
+            Self::ShiftLeft => '<',
+            Self::Upper => 'U',
+            Self::Lower => 'u',
+            Self::Toggle => '~',
+        }
+    }
+
+    const fn linewise(self) -> bool {
+        matches!(self, Self::ShiftRight | Self::ShiftLeft)
+    }
 }
 
 /// `f`, `t`, `F`, `T`.
@@ -65,18 +90,23 @@ pub enum Motion {
     Percent,
     /// `dd`, `cc`, `yy`: whole lines.
     Lines,
+    /// `iw`, `a(`, `ip` and the like.
+    Object {
+        inner: bool,
+        kind: char,
+    },
 }
 
 /// What an operator does at a span's end.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum Kind {
+pub enum Kind {
     Exclusive,
     Inclusive,
     Linewise,
 }
 
 /// A span for an operator: `to` is exclusive of the char there.
-type Span = (usize, usize, Kind);
+pub type Span = (usize, usize, Kind);
 
 impl Motion {
     /// The motion one key names, `count` being the digits before it.
@@ -140,7 +170,7 @@ impl Vim {
             Motion::Find(kind, c) => self.repeat_find(n, kind, c),
             Motion::FindAgain { reversed } => self.find_again(n, reversed),
             Motion::Percent => self.percent(),
-            Motion::Lines => Effect::Nothing,
+            Motion::Lines | Motion::Object { .. } => Effect::Nothing,
         }
     }
 
@@ -252,6 +282,9 @@ impl Vim {
     /// earlier it takes whole lines (rule 2). `None` when the motion
     /// goes nowhere.
     fn span(&mut self, motion: Motion, n: usize) -> Option<Span> {
+        if let Motion::Object { inner, kind } = motion {
+            return self.object_span(inner, kind);
+        }
         let (start, want) = (self.cursor, self.want);
         let mut kind = motion.kind(self.find);
         self.pending.running = true;
@@ -263,7 +296,7 @@ impl Vim {
         self.pending.running = false;
         let end = self.cursor;
         (self.cursor, self.want) = (start, want);
-        if moved == Effect::Nothing && motion != Motion::Lines {
+        if moved == Effect::Nothing {
             return None;
         }
         let (from, to) = if end >= start { (start, end) } else { (end, start) };
@@ -280,8 +313,12 @@ impl Vim {
         Some((from, to.min(self.text.len()), kind))
     }
 
-    /// `n` lines down for `dd` and the like; always a span.
+    /// `n` lines down for `dd` and the like: a span unless fewer
+    /// lines are left, when the whole command fails as Vim's does.
     fn lines_down(&mut self, n: usize) -> Effect {
+        if self.position().0 + n >= self.line_count() {
+            return Effect::Nothing;
+        }
         self.repeat(n, |v| v.vertical(true));
         Effect::Moved
     }
@@ -316,21 +353,101 @@ impl Vim {
             self.span(motion, n)
         };
         let Some((from, to, kind)) = span else { return Effect::Nothing };
-        let linewise = kind == Kind::Linewise;
+        let linewise = kind == Kind::Linewise || op.linewise();
+        if op.linewise() {
+            return self.shifted(from, to, op == Operator::ShiftRight);
+        }
         let (at, len) = if linewise {
             self.whole_lines(from, to)
         } else {
             (from, to - from)
         };
-        let taken = &self.text[at..at + len];
-        let text = if linewise { taken.trim_matches('\n') } else { taken };
+        match op {
+            Operator::Upper | Operator::Lower | Operator::Toggle => {
+                return self.recased(op, at, len, linewise);
+            }
+            _ => {}
+        }
+        let text = if linewise {
+            &self.text[self.line_start(from)..self.line_end(to)]
+        } else {
+            &self.text[at..at + len]
+        };
         self.register = Register { text: text.into(), linewise };
         match op {
-            Operator::Yank => self.yanked(at, linewise),
             Operator::Delete => self.deleted(at, len, linewise),
             Operator::Change if linewise => self.change_lines(from, to),
             Operator::Change => self.changed(at, len),
+            _ => self.yanked(at, linewise),
         }
+    }
+
+    /// `>` and `<` over the lines `from` to `to`: each non-empty
+    /// line's indent moved by `shiftwidth` and written with tabs, as
+    /// nvim's defaults have it.
+    fn shifted(&mut self, from: usize, to: usize, right: bool) -> Effect {
+        let start = self.line_start(from);
+        let end = self.line_end(to);
+        let block = self.text[start..end]
+            .split('\n')
+            .map(|line| shift(line, right))
+            .collect::<alloc::vec::Vec<_>>()
+            .join("\n");
+        self.text.replace_range(start..end, &block);
+        self.cursor = self.first_non_blank(start);
+        self.clamp();
+        self.joining = false;
+        self.edit(start, end - start, block)
+    }
+
+    /// `gu`, `gU`, `g~` over `len` bytes at `at`, the cursor at the
+    /// start; on whole lines their newlines stay.
+    fn recased(
+        &mut self,
+        op: Operator,
+        at: usize,
+        len: usize,
+        linewise: bool,
+    ) -> Effect {
+        let (at, len) = if linewise {
+            let end =
+                at + len - usize::from(self.text[at..at + len].ends_with('\n'));
+            let at = at + usize::from(self.text[at..].starts_with('\n'));
+            (at, end - at)
+        } else {
+            (at, len)
+        };
+        let cased: String =
+            self.text[at..at + len].chars().map(|c| recase(op, c)).collect();
+        self.text.replace_range(at..at + len, &cased);
+        self.cursor = if linewise { self.first_non_blank(at) } else { at };
+        self.clamp();
+        self.joining = false;
+        self.edit(at, len, cased)
+    }
+
+    /// `~`: the case of `n` chars from the cursor on its line
+    /// toggled, the cursor moved past them.
+    pub(crate) fn tilde(&mut self, n: usize) -> Effect {
+        let end = self.line_end(self.cursor);
+        let len: usize = self.text[self.cursor..end]
+            .chars()
+            .take(n)
+            .map(char::len_utf8)
+            .sum();
+        if len == 0 {
+            return Effect::Nothing;
+        }
+        let at = self.cursor;
+        let cased: String = self.text[at..at + len]
+            .chars()
+            .map(|c| recase(Operator::Toggle, c))
+            .collect();
+        self.text.replace_range(at..at + len, &cased);
+        self.cursor = at + len;
+        self.clamp();
+        self.joining = false;
+        self.edit(at, len, cased)
     }
 
     /// After a yank: the cursor at the span's start.
@@ -486,4 +603,40 @@ fn gap(out: &str, piece: &str) -> &'static str {
         || piece.starts_with(')')
         || out.ends_with([' ', '\t']);
     if none { "" } else { " " }
+}
+
+/// One char in `op`'s case.
+fn recase(op: Operator, c: char) -> char {
+    let upper = match op {
+        Operator::Upper => true,
+        Operator::Lower => false,
+        _ => c.is_lowercase(),
+    };
+    let cased: alloc::vec::Vec<char> = if upper {
+        c.to_uppercase().collect()
+    } else {
+        c.to_lowercase().collect()
+    };
+    match cased[..] {
+        [one] => one,
+        _ => c,
+    }
+}
+
+/// `line` with its indent moved by `shiftwidth` (8) to the right or
+/// left, tabs first; an empty line stays.
+fn shift(line: &str, right: bool) -> String {
+    if line.is_empty() {
+        return String::new();
+    }
+    let rest = line.trim_start_matches([' ', '\t']);
+    let columns =
+        line[..line.len() - rest.len()].chars().fold(0usize, |col, c| {
+            if c == '\t' { col / 8 * 8 + 8 } else { col + 1 }
+        });
+    let columns = if right { columns + 8 } else { columns.saturating_sub(8) };
+    let mut out = "\t".repeat(columns / 8);
+    out.push_str(&" ".repeat(columns % 8));
+    out.push_str(rest);
+    out
 }

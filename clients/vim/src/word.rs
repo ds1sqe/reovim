@@ -11,6 +11,11 @@ enum Class {
     Other,
 }
 
+/// Whether two chars are of one class, for the word objects.
+pub fn same_class(a: Option<char>, b: Option<char>) -> bool {
+    class(a) == class(b)
+}
+
 fn class(c: Option<char>) -> Class {
     match c {
         None | Some(' ' | '\t' | '\n') => Class::Blank,

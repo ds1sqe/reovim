@@ -13,6 +13,7 @@ extern crate alloc;
 mod command;
 mod motion;
 pub mod notation;
+mod object;
 mod operator;
 mod word;
 
@@ -269,6 +270,12 @@ impl Vim {
         if let Some(first) = self.pending.key.take() {
             return self.second(first, key, count);
         }
+        if let Some((op, first)) = self.pending.operator
+            && key == Key::Char(op.key())
+        {
+            self.pending.operator = None;
+            return self.lines(op, first * n);
+        }
         if let Some(motion) = Motion::of(key, count) {
             return self.motion(motion, n);
         }
@@ -276,17 +283,21 @@ impl Vim {
             Key::Char(first @ ('g' | 'f' | 't' | 'F' | 'T')) => {
                 return self.wait(first, count);
             }
+            Key::Char(first @ ('i' | 'a'))
+                if self.pending.operator.is_some() =>
+            {
+                return self.wait(first, count);
+            }
             Key::Char('Z') if self.pending.operator.is_none() => {
                 return self.wait('Z', count);
             }
-            Key::Char('d') => {
-                return self.operator(Operator::Delete, n);
-            }
-            Key::Char('c') => {
-                return self.operator(Operator::Change, n);
-            }
+            Key::Char('d') => return self.operator(Operator::Delete, n),
+            Key::Char('c') => return self.operator(Operator::Change, n),
             Key::Char('y') => return self.operator(Operator::Yank, n),
+            Key::Char('>') => return self.operator(Operator::ShiftRight, n),
+            Key::Char('<') => return self.operator(Operator::ShiftLeft, n),
             _ if self.pending.operator.take().is_some() => Effect::Nothing,
+            Key::Char('~') => self.tilde(n),
             Key::Char('i') => self.enter_insert(),
             Key::Char('a') => {
                 self.cursor = self.append_at();
@@ -345,6 +356,12 @@ impl Vim {
         let n = count.max(1);
         let motion = match (first, key) {
             ('g', Key::Char('g')) => Motion::Line(count.saturating_sub(1)),
+            ('g', Key::Char('u')) => return self.operator(Operator::Lower, n),
+            ('g', Key::Char('U')) => return self.operator(Operator::Upper, n),
+            ('g', Key::Char('~')) => return self.operator(Operator::Toggle, n),
+            ('i' | 'a', Key::Char(kind)) => {
+                Motion::Object { inner: first == 'i', kind }
+            }
             ('f', Key::Char(c)) => Motion::Find(Find::Forward, c),
             ('t', Key::Char(c)) => Motion::Find(Find::ForwardTo, c),
             ('F', Key::Char(c)) => Motion::Find(Find::Backward, c),
@@ -372,13 +389,11 @@ impl Vim {
     }
 
     /// An operator key: the operator waits for a motion, or doubled
-    /// (`dd`, `cc`, `yy`) takes `n` lines.
+    /// (`dd`, `cc`, `yy`, `gUgU`) takes `n` lines.
     fn operator(&mut self, op: Operator, n: usize) -> Effect {
         match self.pending.operator.take() {
             Some((waiting, count)) if waiting == op => {
-                let effect = self.operate(op, count * n, Motion::Lines);
-                self.settle(&effect);
-                effect
+                self.lines(op, count * n)
             }
             Some(_) => {
                 self.repeat.record.clear();
@@ -390,6 +405,13 @@ impl Vim {
                 Effect::Nothing
             }
         }
+    }
+
+    /// `op` over `n` whole lines from the cursor's.
+    fn lines(&mut self, op: Operator, n: usize) -> Effect {
+        let effect = self.operate(op, n, Motion::Lines);
+        self.settle(&effect);
+        effect
     }
 
     /// `motion` `n` times for the cursor, or for the operator waiting.
