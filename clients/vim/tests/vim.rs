@@ -4,7 +4,7 @@ mod common;
 
 use common::{edit, on, typed};
 use reovim_client_vim::notation::keys;
-use reovim_client_vim::{Edit, Effect, Key, Mode, Quit};
+use reovim_client_vim::{Edit, Effect, Key, Mode, Plugin, Quit};
 
 #[test]
 fn insert_edits_join_and_esc_steps_back() {
@@ -237,13 +237,14 @@ fn chars_are_deleted_on_the_line_and_undo_is_a_key() {
 #[test]
 fn a_last_line_without_a_newline_gets_one_before_a_write() {
     let mut vim = on("abc");
-    assert_eq!(vim.fix_eol(), Some(edit(3, 0, "\n", false)));
-    assert_eq!(vim.fix_eol(), None);
+    let eol = Edit { at: 3, len: 0, text: "\n".into(), join: false };
+    assert_eq!(vim.saving(), Some(eol));
+    assert_eq!(vim.saving(), None);
     assert_eq!(vim.text(), "abc\n");
     assert_eq!(vim.frame(80, 24).lines, vec!["abc"], "one line, ended");
     assert_eq!(typed(&mut vim, "j"), Effect::Nothing);
     let mut empty = on("");
-    assert_eq!(empty.fix_eol(), None);
+    assert_eq!(empty.saving(), None);
     assert_eq!(empty.frame(80, 24).lines, vec![""]);
 }
 

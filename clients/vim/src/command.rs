@@ -218,12 +218,6 @@ impl Vim {
         self.joining = false;
         Effect::Edits(edits)
     }
-
-    /// A message shown in the status row until the next key, as
-    /// Vim's own are: the tui's E37, for one.
-    pub fn notice(&mut self, message: &str) {
-        self.message = String::from(message);
-    }
 }
 
 /// `line` with its matches replaced, or `None` when there are none.

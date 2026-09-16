@@ -58,7 +58,7 @@ fn replay(case: &Path) -> Result<(), String> {
 
     let rig = Rig::new(name);
     rig.file("file", &input);
-    let mut tui = Tui::open(rig.client(), "file").unwrap();
+    let mut tui = Tui::open(rig.client(), "file", Vim::default()).unwrap();
     let mut quit = None;
     for key in keys {
         let step = tui.key(key).map_err(|fault| format!("{name}: {fault}"))?;
@@ -69,7 +69,7 @@ fn replay(case: &Path) -> Result<(), String> {
     }
     let code = quit.ok_or_else(|| format!("{name}: the keys did not quit"))?;
     let file = rig.disk("file");
-    let ours = state_of(tui.vim());
+    let ours = state_of(tui.plugin());
     if (code, &file, &ours) == (exit, &out, &theirs) {
         return Ok(());
     }

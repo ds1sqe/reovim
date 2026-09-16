@@ -132,6 +132,7 @@ dependencies = [
  "reovim-client",
  "reovim-client-cli",
  "reovim-client-tui",
+ "reovim-client-vim",
  "reovim-host",
  "reovim-kernel-abi",
  "reovim-kernel-interface",

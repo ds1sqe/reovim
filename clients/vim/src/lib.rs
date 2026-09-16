@@ -1,8 +1,9 @@
 #![no_std]
 #![forbid(unsafe_code)]
 //! Vim: keys in, effects and a frame out, over the text and the cursor
-//! it holds. It sees no Client, no rd and no terminal; the tui turns
-//! an `Effect` into a call and a `Frame` into a screen.
+//! it holds; the `Plugin` of clients/core. It sees no Client, no rd
+//! and no terminal; the Client turns an `Effect` into a call and a
+//! `Frame` into a screen.
 //!
 //! The text is the Buffer's bytes. A `\n` ends a line; the last one
 //! ends the last line rather than starting an empty one, as Vim has
@@ -25,70 +26,12 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 pub use operator::Motion;
-pub use reovim_client::Key;
+pub use reovim_client::{Edit, Effect, Frame, Key, Plugin, Quit};
 pub use visual::Visual;
 
 use operator::{Find, Operator};
 use search::Search;
 use visual::{BlockInsert, Selection};
-
-/// One change to the text, already applied here: `len` bytes at
-/// `at` became `text`. With `join` the edit belongs to the head
-/// revision, not a new one: one insert is one undo step.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Edit {
-    pub at: usize,
-    pub len: usize,
-    pub text: String,
-    pub join: bool,
-}
-
-/// What a key did.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Effect {
-    Nothing,
-    /// The cursor or the mode moved; the text did not.
-    Moved,
-    Edit(Edit),
-    /// Several edits in order, as `.` replays them.
-    Edits(Vec<Edit>),
-    Undo,
-    Redo,
-    Save,
-    Quit(Quit),
-    /// A put wants the clipboard's text: `pasted` finishes it.
-    Clipboard,
-}
-
-/// How a quit was asked for; what it does with unsaved changes is
-/// the tui's to decide, since only it knows whether there are any.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Quit {
-    /// `:q`: refused with E37 while there are unsaved changes.
-    Ask,
-    /// `:q!`, `ZQ`: whatever the Buffer holds, exit 0.
-    Force,
-    /// `:wq`, `:x`, `ZZ`: written, then exit 0.
-    Write,
-    /// `:cq`: exit 1, so the caller uses nothing.
-    Abort,
-}
-
-/// What to draw.
-///
-/// `rows - 1` text rows, the cursor as (row, column) on them, the
-/// selected cells as `(row, from, to)` with `to` exclusive, and Vim's
-/// own word for the status row: a message, the command line, the
-/// mode, or nothing.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct Frame {
-    pub lines: Vec<String>,
-    pub cursor: (u16, u16),
-    pub selection: Vec<(u16, u16, u16)>,
-    /// `hlsearch`'s matches, in the selection's shape.
-    pub marks: Vec<(u16, u16, u16)>,
-    pub status: String,
-}
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum Mode {
@@ -232,31 +175,6 @@ impl Vim {
         &self.register
     }
 
-    /// `bytes` as the text, lossily; the cursor stays where it can.
-    /// True when the text differs from before.
-    pub fn loaded(&mut self, bytes: &[u8]) -> bool {
-        let text = String::from_utf8_lossy(bytes);
-        let walking = self.undone.walking.take();
-        if text == self.text {
-            return false;
-        }
-        let common =
-            self.text.bytes().zip(text.bytes()).take_while(|(a, b)| a == b);
-        let top = self.text[..common.count()].matches('\n').count();
-        self.text = text.into_owned();
-        match walking {
-            Some(redo) => self.undone_cursor(top, redo),
-            None => self.cursor = self.cursor.min(self.bound()),
-        }
-        while !self.text.is_char_boundary(self.cursor) {
-            self.cursor -= 1;
-        }
-        if self.mode == Mode::Normal {
-            self.clamp();
-        }
-        true
-    }
-
     /// After an undo or redo, as nvim places it: on the first changed
     /// line (`top`), at the column the cursor had before that change
     /// when this was its line, one line up for a change made by `o`,
@@ -304,106 +222,10 @@ impl Vim {
         }
     }
 
-    /// One key in the current mode; a message showing or shown goes
-    /// with it, so the frame is drawn again.
-    pub fn key(&mut self, key: Key) -> Effect {
-        if !self.repeat.replaying {
-            self.repeat.record.push(key);
-        }
-        let shown = !self.message.is_empty();
-        self.message.clear();
-        self.undone.walking = None;
-        let before = self.position();
-        let effect = match self.mode {
-            Mode::Normal => self.normal(key),
-            Mode::Insert => self.insert(key),
-            Mode::Command => self.command(key),
-            Mode::Visual(kind) => {
-                let effect = self.visual(kind, key);
-                self.settle(&effect);
-                effect
-            }
-        };
-        self.changing(before, &effect);
-        if !core::mem::take(&mut self.keep_want) {
-            self.want = self.wanted();
-        }
-        if matches!(self.mode, Mode::Visual(_)) {
-            self.to_end = self.want == usize::MAX;
-        }
-        let message = shown || !self.message.is_empty();
-        if message && effect == Effect::Nothing {
-            Effect::Moved
-        } else {
-            effect
-        }
-    }
-
-    /// The cursor to line `n`, counted from 1 and clamped, at its first
-    /// non-blank: `+N` on the command line.
-    pub fn goto_line(&mut self, n: usize) {
-        let last = self.line_count() - 1;
-        let start = self.line_at(n.saturating_sub(1).min(last)).unwrap_or(0);
-        self.cursor = self.first_non_blank(start);
-        self.clamp();
-    }
-
-    /// The `\n` Vim writes at the end of a last line that has none, as
-    /// `fixendofline` does; `None` when there is nothing to fix.
-    pub fn fix_eol(&mut self) -> Option<Effect> {
-        if self.text.is_empty() || self.text.ends_with('\n') {
-            return None;
-        }
-        let at = self.text.len();
-        self.text.push('\n');
-        let text = String::from("\n");
-        Some(Effect::Edit(Edit { at, len: 0, text, join: false }))
-    }
-
     /// The cursor's line and column, in chars from 0.
     #[must_use]
     pub fn position(&self) -> (usize, usize) {
         self.position_of(self.cursor)
-    }
-
-    /// The frame for `cols` by `rows`; `top` moves to keep the cursor
-    /// on screen.
-    pub fn frame(&mut self, cols: u16, rows: u16) -> Frame {
-        let width = usize::from(cols.max(1));
-        let height = usize::from(rows.saturating_sub(1).max(1));
-        let (line, column) = self.position();
-        if line < self.top {
-            self.top = line;
-        } else if line >= self.top + height {
-            self.top = line + 1 - height;
-        }
-        let lines = self
-            .text
-            .split('\n')
-            .take(self.line_count())
-            .skip(self.top)
-            .take(height)
-            .map(|l| l.chars().take(width).collect())
-            .collect();
-        let row = u16::try_from(line - self.top).unwrap_or(u16::MAX);
-        let col = u16::try_from(column.min(width - 1)).unwrap_or(u16::MAX);
-        let status = match self.mode {
-            _ if !self.message.is_empty() => self.message.clone(),
-            Mode::Normal => String::new(),
-            Mode::Insert => String::from("-- INSERT --"),
-            Mode::Command => {
-                alloc::format!("{}{}", self.line.prompt, self.line.text)
-            }
-            Mode::Visual(Visual::Char) => String::from("-- VISUAL --"),
-            Mode::Visual(Visual::Line) => String::from("-- VISUAL LINE --"),
-            Mode::Visual(Visual::Block) => String::from("-- VISUAL BLOCK --"),
-        };
-        let selection = match self.mode {
-            Mode::Visual(kind) => self.selection_cells(kind, self.top, height),
-            _ => Vec::new(),
-        };
-        let marks = self.search_marks(self.top, height);
-        Frame { lines, cursor: (row, col), selection, marks, status }
     }
 
     /// A digit onto the count: `0` only after another, being a motion
@@ -565,27 +387,6 @@ impl Vim {
         self.pending.count = count;
         self.keep_want = true;
         Effect::Nothing
-    }
-
-    /// The text a `"+` or `"*` yank left for the clipboard.
-    pub const fn take_clipboard(&mut self) -> Option<String> {
-        self.clipboard.take()
-    }
-
-    /// The clipboard's answer to `Effect::Clipboard`: the put goes on
-    /// with `text`, or E353 when there is none.
-    pub fn pasted(&mut self, text: Option<String>) -> Effect {
-        let Some(put) = self.put.take() else { return Effect::Nothing };
-        let before = self.position();
-        let effect = if let Some(text) = text {
-            self.put_text(&text, put)
-        } else {
-            self.message = String::from("E353: Nothing in register +");
-            Effect::Moved
-        };
-        self.changing(before, &effect);
-        self.settle(&effect);
-        effect
     }
 
     /// The clipboard's `text` put: lines of its own when it ends in a
@@ -818,6 +619,158 @@ impl Vim {
         let count =
             (0..n).take_while(|_| motion(self) == Effect::Moved).count();
         moved(count > 0)
+    }
+}
+
+impl Plugin for Vim {
+    /// `bytes` as the text, lossily; the cursor stays where it can.
+    /// True when the text differs from before.
+    fn loaded(&mut self, bytes: &[u8]) -> bool {
+        let text = String::from_utf8_lossy(bytes);
+        let walking = self.undone.walking.take();
+        if text == self.text {
+            return false;
+        }
+        let common =
+            self.text.bytes().zip(text.bytes()).take_while(|(a, b)| a == b);
+        let top = self.text[..common.count()].matches('\n').count();
+        self.text = text.into_owned();
+        match walking {
+            Some(redo) => self.undone_cursor(top, redo),
+            None => self.cursor = self.cursor.min(self.bound()),
+        }
+        while !self.text.is_char_boundary(self.cursor) {
+            self.cursor -= 1;
+        }
+        if self.mode == Mode::Normal {
+            self.clamp();
+        }
+        true
+    }
+
+    /// One key in the current mode; a message showing or shown goes
+    /// with it, so the frame is drawn again.
+    fn key(&mut self, key: Key) -> Effect {
+        if !self.repeat.replaying {
+            self.repeat.record.push(key);
+        }
+        let shown = !self.message.is_empty();
+        self.message.clear();
+        self.undone.walking = None;
+        let before = self.position();
+        let effect = match self.mode {
+            Mode::Normal => self.normal(key),
+            Mode::Insert => self.insert(key),
+            Mode::Command => self.command(key),
+            Mode::Visual(kind) => {
+                let effect = self.visual(kind, key);
+                self.settle(&effect);
+                effect
+            }
+        };
+        self.changing(before, &effect);
+        if !core::mem::take(&mut self.keep_want) {
+            self.want = self.wanted();
+        }
+        if matches!(self.mode, Mode::Visual(_)) {
+            self.to_end = self.want == usize::MAX;
+        }
+        let message = shown || !self.message.is_empty();
+        if message && effect == Effect::Nothing {
+            Effect::Moved
+        } else {
+            effect
+        }
+    }
+
+    /// The clipboard's answer to `Effect::Clipboard`: the put goes on
+    /// with `text`, or E353 when there is none.
+    fn pasted(&mut self, text: Option<String>) -> Effect {
+        let Some(put) = self.put.take() else { return Effect::Nothing };
+        let before = self.position();
+        let effect = if let Some(text) = text {
+            self.put_text(&text, put)
+        } else {
+            self.message = String::from("E353: Nothing in register +");
+            Effect::Moved
+        };
+        self.changing(before, &effect);
+        self.settle(&effect);
+        effect
+    }
+
+    /// The text a `"+` or `"*` yank left for the clipboard.
+    fn take_clipboard(&mut self) -> Option<String> {
+        self.clipboard.take()
+    }
+
+    /// The `\n` Vim writes at the end of a last line that has none, as
+    /// `fixendofline` does.
+    fn saving(&mut self) -> Option<Edit> {
+        if self.text.is_empty() || self.text.ends_with('\n') {
+            return None;
+        }
+        let at = self.text.len();
+        self.text.push('\n');
+        Some(Edit { at, len: 0, text: String::from("\n"), join: false })
+    }
+
+    /// The cursor to line `n`, counted from 1 and clamped, at its first
+    /// non-blank: `+N` on the command line.
+    fn goto_line(&mut self, n: usize) {
+        let last = self.line_count() - 1;
+        let start = self.line_at(n.saturating_sub(1).min(last)).unwrap_or(0);
+        self.cursor = self.first_non_blank(start);
+        self.clamp();
+    }
+
+    /// The frame for `cols` by `rows`; `top` moves to keep the cursor
+    /// on screen.
+    fn frame(&mut self, cols: u16, rows: u16) -> Frame {
+        let width = usize::from(cols.max(1));
+        let height = usize::from(rows.saturating_sub(1).max(1));
+        let (line, column) = self.position();
+        if line < self.top {
+            self.top = line;
+        } else if line >= self.top + height {
+            self.top = line + 1 - height;
+        }
+        let lines = self
+            .text
+            .split('\n')
+            .take(self.line_count())
+            .skip(self.top)
+            .take(height)
+            .map(|l| l.chars().take(width).collect())
+            .collect();
+        let row = u16::try_from(line - self.top).unwrap_or(u16::MAX);
+        let col = u16::try_from(column.min(width - 1)).unwrap_or(u16::MAX);
+        let status = match self.mode {
+            _ if !self.message.is_empty() => self.message.clone(),
+            Mode::Normal => String::new(),
+            Mode::Insert => String::from("-- INSERT --"),
+            Mode::Command => {
+                alloc::format!("{}{}", self.line.prompt, self.line.text)
+            }
+            Mode::Visual(Visual::Char) => String::from("-- VISUAL --"),
+            Mode::Visual(Visual::Line) => String::from("-- VISUAL LINE --"),
+            Mode::Visual(Visual::Block) => String::from("-- VISUAL BLOCK --"),
+        };
+        let selection = match self.mode {
+            Mode::Visual(kind) => self.selection_cells(kind, self.top, height),
+            _ => Vec::new(),
+        };
+        let marks = self.search_marks(self.top, height);
+        Frame { lines, cursor: (row, col), selection, marks, status }
+    }
+
+    fn position(&self) -> (usize, usize) {
+        Self::position(self)
+    }
+
+    /// As Vim's own messages are shown: the tui's E37, for one.
+    fn notice(&mut self, message: &str) {
+        self.message = String::from(message);
     }
 }
 

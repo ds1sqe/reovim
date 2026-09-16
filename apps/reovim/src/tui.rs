@@ -7,6 +7,7 @@ use std::io::Write;
 
 use reovim_client::{Client, Fault, Key};
 use reovim_client_tui::{Frame, Step, Tui};
+use reovim_client_vim::Vim;
 use reovim_host::{clipboard as clip, term};
 
 use crate::Fail;
@@ -18,6 +19,9 @@ use crate::server::{Links, boot};
 /// What runs between keys: nothing over the link, the server's step in
 /// the bare form.
 type Serve<'a> = &'a mut dyn FnMut() -> Result<(), Fail>;
+
+/// The tui over the Vim Plugin: the one editor the binary offers.
+type Editor = Tui<Vim>;
 
 /// `reovim tui`: a Client over the link, named so a cut link can be
 /// taken up again.
@@ -81,7 +85,7 @@ fn run(
     file: &str,
     serve: Serve,
 ) -> Result<u8, Fail> {
-    let mut tui = Tui::open(client, file)?;
+    let mut tui = Tui::open(client, file, Vim::default())?;
     if let Some(line) = line {
         tui.goto_line(line);
     }
@@ -91,7 +95,7 @@ fn run(
     result
 }
 
-fn drive(tui: &mut Tui, serve: Serve) -> Result<u8, Fail> {
+fn drive(tui: &mut Editor, serve: Serve) -> Result<u8, Fail> {
     draw(tui)?;
     loop {
         serve()?;
@@ -112,7 +116,7 @@ fn drive(tui: &mut Tui, serve: Serve) -> Result<u8, Fail> {
 
 /// The clipboard's part: a put that wants it gets what the host
 /// reads, a yank that filled it is written out; no tool is a message.
-fn clipboard(tui: &mut Tui, step: Step) -> Result<Step, Fail> {
+fn clipboard(tui: &mut Editor, step: Step) -> Result<Step, Fail> {
     let step = if step == Step::Clipboard {
         let text =
             clip::read().ok().map(|b| String::from_utf8_lossy(&b).into_owned());
@@ -136,7 +140,7 @@ fn clipboard(tui: &mut Tui, step: Step) -> Result<Step, Fail> {
 
 /// The whole frame: text rows, the status row inverted, the cursor
 /// hidden while it is drawn and placed after.
-fn draw(tui: &mut Tui) -> Result<(), Fail> {
+fn draw(tui: &mut Editor) -> Result<(), Fail> {
     let (cols, rows) = term::size()?;
     let Frame { lines, cursor, selection, marks, status } =
         tui.frame(cols, rows);

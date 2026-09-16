@@ -5,7 +5,7 @@
 mod common;
 
 use common::{edit, edits, on, typed};
-use reovim_client_vim::{Edit, Effect, Kind, Mode, Register, Visual};
+use reovim_client_vim::{Edit, Effect, Kind, Mode, Plugin, Register, Visual};
 
 fn register(text: &str, kind: Kind) -> Register {
     Register { text: text.into(), kind }

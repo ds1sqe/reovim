@@ -2,11 +2,12 @@
 
 use reovim_client::{Client, Fault, Key, Rd};
 use reovim_client_tui::{Step, Tui};
+use reovim_client_vim::Vim;
 use reovim_client_vim::notation::keys;
 use reovim_rig::{Limits, Rig};
 
 /// `text` in Vim notation, key by key; the last step.
-fn typed(tui: &mut Tui, text: &str) -> Result<Step, Fault> {
+fn typed(tui: &mut Tui<Vim>, text: &str) -> Result<Step, Fault> {
     let mut last = Ok(Step::Same);
     for key in keys(text).unwrap() {
         last = tui.key(key);
@@ -14,7 +15,7 @@ fn typed(tui: &mut Tui, text: &str) -> Result<Step, Fault> {
     last
 }
 
-fn buffer_of(client: &mut Client, tui: &Tui) -> Rd {
+fn buffer_of(client: &mut Client, tui: &Tui<Vim>) -> Rd {
     let buffer = tui.buffer();
     let name = client.name(buffer).unwrap();
     assert_eq!(client.resolve(&format!("/module/text/{name}")), Ok(buffer));
@@ -30,7 +31,7 @@ fn buffer_of(client: &mut Client, tui: &Tui) -> Rd {
 fn keys_change_the_draft_and_save_reaches_disk() {
     let rig = Rig::new("keys");
     rig.file("note", b"first\n");
-    let mut tui = Tui::open(rig.client(), "note").unwrap();
+    let mut tui = Tui::open(rig.client(), "note", Vim::default()).unwrap();
     let mut other = rig.client();
     let buffer = buffer_of(&mut other, &tui);
 
@@ -60,7 +61,7 @@ fn keys_change_the_draft_and_save_reaches_disk() {
 fn the_quit_commands_map_onto_the_three_outcomes() {
     let rig = Rig::new("quit");
     rig.file("note", b"first\n");
-    let mut tui = Tui::open(rig.client(), "note").unwrap();
+    let mut tui = Tui::open(rig.client(), "note", Vim::default()).unwrap();
     assert_eq!(typed(&mut tui, ":q<CR>"), Ok(Step::Quit(0)), "nothing unsaved");
 
     assert_eq!(typed(&mut tui, "ix<Esc>:q<CR>"), Ok(Step::Changed), "E37");
@@ -86,7 +87,7 @@ fn the_quit_commands_map_onto_the_three_outcomes() {
 fn undo_and_redo_walk_the_revisions() {
     let rig = Rig::new("undo");
     rig.file("note", b"first\n");
-    let mut tui = Tui::open(rig.client(), "note").unwrap();
+    let mut tui = Tui::open(rig.client(), "note", Vim::default()).unwrap();
     let mut other = rig.client();
     let buffer = buffer_of(&mut other, &tui);
 
@@ -121,7 +122,7 @@ fn undo_and_redo_walk_the_revisions() {
 fn a_write_from_another_client_shows_after_tick() {
     let rig = Rig::new("modify");
     rig.file("note", b"first\n");
-    let mut tui = Tui::open(rig.client(), "note").unwrap();
+    let mut tui = Tui::open(rig.client(), "note", Vim::default()).unwrap();
     let mut other = rig.client();
     let buffer = buffer_of(&mut other, &tui);
 
@@ -139,7 +140,7 @@ fn a_write_from_another_client_shows_after_tick() {
 #[test]
 fn a_missing_file_opens_empty_and_appears_on_save() {
     let rig = Rig::new("missing");
-    let mut tui = Tui::open(rig.client(), "none").unwrap();
+    let mut tui = Tui::open(rig.client(), "none", Vim::default()).unwrap();
     assert_eq!(tui.frame(80, 24).lines, vec![""]);
     assert_eq!(typed(&mut tui, "ix<Esc>"), Ok(Step::Changed));
     assert!(!rig.dir().join("none").exists(), "nothing on disk yet");
@@ -152,7 +153,7 @@ fn a_tui_behind_a_full_ring_reads_everything_again() {
     let rig =
         Rig::with("overflow", Limits { watch_ring: 2, ..Limits::default() });
     rig.file("note", b"first\n");
-    let mut tui = Tui::open(rig.client(), "note").unwrap();
+    let mut tui = Tui::open(rig.client(), "note", Vim::default()).unwrap();
     let mut other = rig.client();
     let buffer = buffer_of(&mut other, &tui);
     for text in [b"one".as_slice(), b"two", b"three"] {
@@ -167,7 +168,7 @@ fn a_tui_behind_a_full_ring_reads_everything_again() {
 fn many_edits_are_one_revision() {
     let rig = Rig::new("many");
     rig.file("note", b"x\nx\nx\n");
-    let mut tui = Tui::open(rig.client(), "note").unwrap();
+    let mut tui = Tui::open(rig.client(), "note", Vim::default()).unwrap();
     assert_eq!(typed(&mut tui, ":%s/x/y/g<CR>"), Ok(Step::Changed));
     let frame = tui.frame(80, 24);
     assert_eq!(frame.lines, vec!["y", "y", "y"]);
@@ -186,7 +187,7 @@ fn many_edits_are_one_revision() {
 fn the_clipboard_is_asked_of_the_app() {
     let rig = Rig::new("clip");
     rig.file("note", b"one\n");
-    let mut tui = Tui::open(rig.client(), "note").unwrap();
+    let mut tui = Tui::open(rig.client(), "note", Vim::default()).unwrap();
     assert_eq!(typed(&mut tui, "\"+yy"), Ok(Step::Changed));
     assert_eq!(tui.take_clipboard(), Some("one\n".to_string()));
     assert_eq!(tui.take_clipboard(), None, "taken once");
