@@ -131,6 +131,7 @@ version = "0.16.0-dev"
 dependencies = [
  "reovim-client",
  "reovim-client-cli",
+ "reovim-client-tui",
  "reovim-host",
  "reovim-kernel-interface",
  "reovim-kernel-runtime",
@@ -155,6 +156,18 @@ dependencies = [
 
 [[package]]
 name = "reovim-client-cli"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-client",
+ "reovim-host",
+ "reovim-kernel-interface",
+ "reovim-kernel-runtime",
+ "reovim-module-buffer",
+ "reovim-module-fs",
+]
+
+[[package]]
+name = "reovim-client-tui"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-client",

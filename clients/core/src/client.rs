@@ -249,13 +249,22 @@ impl Client {
     /// As [`Self::lookup`].
     pub fn read_all(&mut self, rd: Rd) -> Result<Vec<u8>, Fault> {
         let h = self.open(rd, Rights::READ)?;
+        let out = self.read_whole(h);
+        self.close(h)?;
+        out
+    }
+
+    /// Everything readable through `h`, from 0 until an empty `Read`.
+    ///
+    /// # Errors
+    /// As [`Self::lookup`].
+    pub fn read_whole(&mut self, h: Handle) -> Result<Vec<u8>, Fault> {
         let mut out = Vec::new();
         let mut chunk = self.read(h, 0, CHUNK)?;
         while !chunk.is_empty() {
             out.extend_from_slice(&chunk);
             chunk = self.read(h, out.len() as u64, CHUNK)?;
         }
-        self.close(h)?;
         Ok(out)
     }
 

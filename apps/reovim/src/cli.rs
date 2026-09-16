@@ -4,29 +4,18 @@
 
 use std::io::{Read, Write};
 
-use reovim_client::{Carrier, Client, Fault, Key};
+use reovim_client::{Client, Fault, Key};
 use reovim_client_cli::{Act, Line, complete, input};
-use reovim_host::link::{self, Link};
 use reovim_host::term;
 
 use crate::Fail;
+use crate::remote::Remote;
 
 const PROMPT: &str = "> ";
 
-/// The link as a Carrier: one message out, the next message in.
-struct Remote(Link);
-
-impl Carrier for Remote {
-    fn exchange(&mut self, bytes: &[u8]) -> Result<Vec<u8>, Fault> {
-        link::send(&self.0, bytes).map_err(|_| Fault::Carrier)?;
-        link::recv(&self.0).map_err(|_| Fault::Carrier)
-    }
-}
-
 /// Run `command`, or an interactive session when it is empty.
 pub fn run(socket: &str, command: &[String]) -> Result<(), Fail> {
-    let end = link::open(socket)?;
-    let mut client = Client::connect(Box::new(Remote(end)), Vec::new())?;
+    let mut client = Remote::client(socket)?;
     if !command.is_empty() {
         let out = input(&mut client, &filled(command)?)?;
         return Ok(write(&out)?);

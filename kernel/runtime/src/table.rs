@@ -8,9 +8,11 @@ use reovim_kernel_interface::{
     DriverId, Error, Flags, Hash, Info, ModuleId, Rd,
 };
 
-/// Fixed ids, allocated in this order: `/` 0, `/sys` 1, `/sys/decls` 2,
-/// `/sys/log` 3, `/module` 4, `/session` 5, `/var` 6. Ids below `FIRST`
-/// are reserved for the Kernel; everything registered later starts there.
+/// Fixed ids, allocated in this order.
+///
+/// `/` 0, `/sys` 1, `/sys/decls` 2, `/sys/log` 3, `/module` 4,
+/// `/session` 5, `/var` 6. Ids below `FIRST` are reserved for the
+/// Kernel; everything registered later starts there.
 pub const ROOT: Rd = Rd(0);
 pub const SYS: Rd = Rd(1);
 pub const DECLS: Rd = Rd(2);

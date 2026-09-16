@@ -10,6 +10,7 @@ members = [
     "modules/buffer",
     "clients/core",
     "clients/cli",
+    "clients/tui",
     "apps/reovim",
 ]
 default-members = [
@@ -22,6 +23,7 @@ default-members = [
     "modules/buffer",
     "clients/core",
     "clients/cli",
+    "clients/tui",
     "apps/reovim",
 ]
 

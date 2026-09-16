@@ -1,11 +1,15 @@
 #![forbid(unsafe_code)]
 //! The `reovim` binary: `server` boots the Kernel with every linked
-//! module behind one link; `cli` drives a server from the shell.
+//! module behind one link; `cli` and `tui` drive a server from the
+//! shell and the terminal; bare `reovim FILE` is server and tui in one
+//! process.
 
 mod cli;
 mod local;
 mod log;
+mod remote;
 mod server;
+mod tui;
 
 /// The module table build.rs wrote from `modules`.
 mod link {
@@ -56,6 +60,8 @@ impl From<reovim_kernel_interface::Error> for Fail {
 const USAGE: &str = "\
 usage: reovim server [--socket PATH] [--root DIR] [--log PATH]
        reovim cli [--socket PATH] [COMMAND...]
+       reovim tui [--socket PATH] FILE
+       reovim [--socket PATH] [--root DIR] [--log PATH] FILE
 defaults: --socket <runtime dir>/reovim.sock, --root <working directory>";
 
 /// `--socket`, `--root` and `--log` taken off the front of `args`,
@@ -101,14 +107,17 @@ fn usage() -> Fail {
 }
 
 fn run(args: Vec<String>) -> Result<(), Fail> {
-    let mut args = args.into_iter();
-    let command = args.next().ok_or_else(usage)?;
-    let options = options(args.collect())?;
-    match command.as_str() {
-        "server" if options.rest.is_empty() => {
-            server::run(&options.socket, &options.root, options.log.as_deref())
-        }
-        "cli" => cli::run(&options.socket, &options.rest),
+    let mut args = args.into_iter().peekable();
+    let command = match args.peek().map(String::as_str) {
+        Some("server" | "cli" | "tui") => args.next(),
+        _ => None,
+    };
+    let Options { socket, root, log, rest } = options(args.collect())?;
+    match (command.as_deref(), rest.as_slice()) {
+        (Some("server"), []) => server::run(&socket, &root, log.as_deref()),
+        (Some("cli"), rest) => cli::run(&socket, rest),
+        (Some("tui"), [file]) => tui::remote(&socket, file),
+        (None, [file]) => tui::bare(&socket, &root, log.as_deref(), file),
         _ => Err(usage()),
     }
 }
