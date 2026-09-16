@@ -171,9 +171,17 @@ name = "reovim-client-tui"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-client",
+ "reovim-client-vim",
  "reovim-rig",
  "reovim-sdk",
  "reovim-text-api",
+]
+
+[[package]]
+name = "reovim-client-vim"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-client",
 ]
 
 [[package]]

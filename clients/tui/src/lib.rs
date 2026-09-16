@@ -1,19 +1,19 @@
 #![no_std]
 #![forbid(unsafe_code)]
 //! The tui: one file in one Buffer, keys to calls through a `Client`,
-//! a frame from the draft. It sees neither a link nor a terminal.
+//! a frame from the draft. It sees neither a link nor a terminal; the
+//! keys are Vim's.
 
 extern crate alloc;
-
-mod editor;
 
 use alloc::format;
 use alloc::string::String;
 
 use reovim_client::{Client, Error, Fault, Handle, Key, Kind, Rd, Rights};
+use reovim_client_vim::{Effect, Vim};
 use reovim_text_api::{history, open, publish, text};
 
-pub use editor::{Editor, Effect, Frame};
+pub use reovim_client_vim::Frame;
 
 /// What a key or a tick did.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -26,11 +26,11 @@ pub enum Step {
 }
 
 /// One Buffer over `/module/fs/root/FILE`, watched, with its draft in
-/// an `Editor` and its head and published revisions from `tree`. The
+/// a `Vim` and its head and published revisions from `tree`. The
 /// source is watched too: a save by anyone is a Modify there.
 pub struct Tui {
     client: Client,
-    editor: Editor,
+    vim: Vim,
     buffer: Rd,
     source: Rd,
     h: Handle,
@@ -62,12 +62,12 @@ impl Tui {
         client.watch(h, true)?;
         let watched = client.open(source, Rights::READ)?;
         client.watch(watched, true)?;
-        let mut editor = Editor::default();
-        editor.loaded(&client.read_whole(h)?);
+        let mut vim = Vim::default();
+        vim.loaded(&client.read_whole(h)?);
         client.since()?;
         let mut tui = Self {
             client,
-            editor,
+            vim,
             buffer,
             source,
             h,
@@ -86,21 +86,22 @@ impl Tui {
         self.buffer
     }
 
-    /// One key: an edit is a `replace`, Ctrl-Z and Ctrl-Y move the
-    /// head, Ctrl-S saves. Ctrl-Q quits, refusing once while there is
+    /// One key to Vim: an edit is a `replace`, or an `amend` when it
+    /// joins the insert under way; Ctrl-Z and Ctrl-Y move the head,
+    /// Ctrl-S saves. Ctrl-Q quits, refusing once while there is
     /// something unsaved; Ctrl-C aborts with 1.
     ///
     /// # Errors
     /// What the Client says.
     pub fn key(&mut self, key: Key) -> Result<Step, Fault> {
         let guarded = core::mem::take(&mut self.guard);
-        match self.editor.key(key) {
+        match self.vim.key(key) {
             Effect::Nothing if guarded => return Ok(Step::Changed),
             Effect::Nothing => return Ok(Step::Same),
             Effect::Moved => return Ok(Step::Changed),
-            Effect::Edit { at, len, text } => {
+            Effect::Edit { at, len, text, join } => {
                 let edit = text::Edit { at: at as u64, len: len as u64, text };
-                text::Call(&mut self.client, self.h).replace(edit)?;
+                self.edit(edit, join)?;
             }
             Effect::Undo => {
                 history::Call(&mut self.client, self.h).undo()?;
@@ -145,31 +146,45 @@ impl Tui {
             return Ok(Step::Same);
         }
         let bytes = self.client.read_whole(self.h)?;
-        let text = self.editor.loaded(&bytes);
+        let text = self.vim.loaded(&bytes);
         let tree = self.refresh()?;
         Ok(if text || tree { Step::Changed } else { Step::Same })
     }
 
-    /// The frame with the status row filled in.
+    /// The frame with the status row filled in: the name, the
+    /// position, the revision, then Vim's word or the key hints.
     pub fn frame(&mut self, cols: u16, rows: u16) -> Frame {
-        let mut frame = self.editor.frame(cols, rows);
+        let mut frame = self.vim.frame(cols, rows);
+        let (line, column) = self.vim.position();
         let mark = if self.head == self.published { "" } else { "[+]" };
         let hint = if self.guard {
             "unsaved: Ctrl-Q again discards, Ctrl-S saves"
-        } else {
+        } else if frame.status.is_empty() {
             "Ctrl-S save  Ctrl-Z undo  Ctrl-Y redo  Ctrl-Q quit"
+        } else {
+            frame.status.as_str()
         };
         frame.status = format!(
-            "{}  {}  r{}{mark}   {hint}",
-            self.name, frame.status, self.head
+            "{}  {}:{}  r{}{mark}   {hint}",
+            self.name,
+            line + 1,
+            column + 1,
+            self.head
         );
         frame
+    }
+
+    /// `edit` as a new revision, or into the head one when it joins
+    /// the insert under way.
+    fn edit(&mut self, edit: text::Edit, join: bool) -> Result<(), Fault> {
+        let mut call = text::Call(&mut self.client, self.h);
+        if join { call.amend(edit) } else { call.replace(edit) }
     }
 
     /// The draft read again after a move of head.
     fn reload(&mut self) -> Result<(), Fault> {
         let bytes = self.client.read_whole(self.h)?;
-        self.editor.loaded(&bytes);
+        self.vim.loaded(&bytes);
         Ok(())
     }
 

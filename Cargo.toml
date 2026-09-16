@@ -13,6 +13,7 @@ members = [
     "clients/core",
     "clients/cli",
     "clients/tui",
+    "clients/vim",
     "clients/rig",
     "apps/reovim",
 ]
@@ -29,6 +30,7 @@ default-members = [
     "clients/core",
     "clients/cli",
     "clients/tui",
+    "clients/vim",
     "clients/rig",
     "apps/reovim",
 ]

@@ -368,6 +368,32 @@ impl text::Api for Text {
     ) -> Result<(), Error> {
         self.change(ctx, rd, |history, room| many(history, room, &edits))
     }
+
+    /// The head state with `edit` applied, in place: the room it had
+    /// is free again, and a head that is the first state is `Invalid`.
+    fn amend(
+        &self,
+        ctx: &dyn Calls,
+        rd: Rd,
+        edit: text::Edit,
+    ) -> Result<(), Error> {
+        let mut state = self.state.borrow_mut();
+        let held = state.held;
+        let Some(Node::Buffer { history, .. }) = state.nodes.get_mut(&rd)
+        else {
+            return Err(Error::Unsupported);
+        };
+        let had = history.draft().len();
+        let text = edit.text.as_bytes();
+        let next = spliced(history.draft(), edit.at, edit.len, text)?;
+        let took = fits(next.len(), self.limit - held + had)?;
+        if !history.amend(next) {
+            return Err(Error::Invalid);
+        }
+        state.held = held - had + took;
+        drop(state);
+        ctx.changed(rd, Kind::Modify)
+    }
 }
 
 impl history::Api for Text {

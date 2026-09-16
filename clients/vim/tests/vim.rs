@@ -1,0 +1,153 @@
+//! Vim alone: keys in, text and frames out.
+
+use reovim_client_vim::notation::keys;
+use reovim_client_vim::{Effect, Key, Mode, Vim};
+
+fn edit(at: usize, len: usize, text: &str, join: bool) -> Effect {
+    Effect::Edit { at, len, text: text.to_string(), join }
+}
+
+/// Every key of `text` in Vim notation; the last effect.
+fn typed(vim: &mut Vim, text: &str) -> Effect {
+    let mut last = Effect::Nothing;
+    for key in keys(text).unwrap() {
+        last = vim.key(key);
+    }
+    last
+}
+
+/// A Vim on `text`, in normal mode at the start.
+fn on(text: &str) -> Vim {
+    let mut vim = Vim::default();
+    vim.loaded(text.as_bytes());
+    vim
+}
+
+#[test]
+fn insert_edits_join_and_esc_steps_back() {
+    let mut vim = on("");
+    assert_eq!(vim.key(Key::Char('i')), Effect::Moved);
+    assert_eq!(vim.mode(), Mode::Insert);
+    assert_eq!(vim.key(Key::Char('a')), edit(0, 0, "a", false));
+    assert_eq!(vim.key(Key::Char('b')), edit(1, 0, "b", true));
+    assert_eq!(vim.key(Key::Enter), edit(2, 0, "\n", true));
+    assert_eq!(vim.key(Key::Char('c')), edit(3, 0, "c", true));
+    assert_eq!(vim.position(), (1, 1));
+    assert_eq!(vim.key(Key::Backspace), edit(3, 1, "", true));
+    assert_eq!(vim.key(Key::Backspace), edit(2, 1, "", true), "across");
+    assert_eq!(vim.text(), "ab");
+    assert_eq!(vim.key(Key::Left), Effect::Moved, "an arrow ends the step");
+    assert_eq!(vim.key(Key::Char('é')), edit(1, 0, "é", false));
+    assert_eq!(vim.key(Key::Esc), Effect::Moved);
+    assert_eq!(vim.mode(), Mode::Normal);
+    assert_eq!(vim.position(), (0, 1), "back onto the char inserted");
+    assert_eq!(vim.key(Key::Esc), Effect::Nothing);
+    assert_eq!(vim.key(Key::Char('x')), Effect::Nothing, "not yet a key");
+}
+
+#[test]
+fn the_entry_keys_put_the_cursor_where_vim_does() {
+    let mut vim = on("  ab\ncd\n");
+    assert_eq!(typed(&mut vim, "a1<Esc>"), Effect::Moved);
+    assert_eq!(vim.text(), " 1 ab\ncd\n", "after the cursor's char");
+    assert_eq!(vim.position(), (0, 1));
+    assert_eq!(typed(&mut vim, "A2<Esc>"), Effect::Moved);
+    assert_eq!(vim.text(), " 1 ab2\ncd\n");
+    assert_eq!(typed(&mut vim, "I3<Esc>"), Effect::Moved);
+    assert_eq!(vim.text(), " 31 ab2\ncd\n", "at the first non-blank");
+    assert_eq!(typed(&mut vim, "o4<Esc>"), Effect::Moved);
+    assert_eq!(vim.text(), " 31 ab2\n4\ncd\n", "below, nothing copied");
+    assert_eq!(vim.position(), (1, 0));
+    assert_eq!(typed(&mut vim, "O5<Esc>"), Effect::Moved);
+    assert_eq!(vim.text(), " 31 ab2\n5\n4\ncd\n");
+    assert_eq!(vim.position(), (1, 0));
+    let mut empty = on("\n");
+    assert_eq!(typed(&mut empty, "ax<Esc>"), Effect::Moved);
+    assert_eq!(empty.text(), "x\n", "an empty line appends in place");
+}
+
+#[test]
+fn normal_motions_stay_on_chars_and_take_counts() {
+    let mut vim = on("abc\n\nlonger line\n  x\n");
+    assert_eq!(typed(&mut vim, "l"), Effect::Moved);
+    assert_eq!(typed(&mut vim, "5l"), Effect::Moved);
+    assert_eq!(vim.position(), (0, 2), "not past the last char");
+    assert_eq!(typed(&mut vim, "l"), Effect::Nothing);
+    assert_eq!(typed(&mut vim, "j"), Effect::Moved);
+    assert_eq!(vim.position(), (1, 0), "an empty line");
+    assert_eq!(typed(&mut vim, "j$"), Effect::Moved);
+    assert_eq!(vim.position(), (2, 10));
+    assert_eq!(typed(&mut vim, "k"), Effect::Moved);
+    assert_eq!(vim.position(), (1, 0));
+    assert_eq!(typed(&mut vim, "2j"), Effect::Moved);
+    assert_eq!(vim.position(), (3, 0), "the column is kept");
+    assert_eq!(typed(&mut vim, "k$j"), Effect::Moved);
+    assert_eq!(vim.position(), (3, 2), "clamped to the last char");
+    assert_eq!(typed(&mut vim, "0"), Effect::Moved);
+    assert_eq!(vim.position(), (3, 0));
+    assert_eq!(typed(&mut vim, "^"), Effect::Moved);
+    assert_eq!(vim.position(), (3, 2));
+    assert_eq!(typed(&mut vim, "10h"), Effect::Moved);
+    assert_eq!(vim.position(), (3, 0));
+    assert_eq!(typed(&mut vim, "gg"), Effect::Nothing, "not yet");
+    assert_eq!(typed(&mut vim, "3k2$"), Effect::Moved);
+    assert_eq!(vim.position(), (1, 0), "2$ is the end of the next line");
+    assert_eq!(typed(&mut vim, "9<Esc>l"), Effect::Nothing, "Esc drops 9");
+}
+
+#[test]
+fn loaded_replaces_and_clamps() {
+    let mut vim = on("hello");
+    assert_eq!(typed(&mut vim, "$"), Effect::Moved);
+    assert!(!vim.loaded(b"hello"), "the same text");
+    assert!(vim.loaded(b"hi"));
+    assert_eq!(vim.position(), (0, 1), "clamped onto the last char");
+    assert!(vim.loaded("aé".as_bytes()));
+    assert_eq!(vim.position(), (0, 1), "clamped to a char boundary");
+    assert!(vim.loaded(b"\xff"));
+    assert_eq!(vim.text(), "\u{fffd}", "lossy");
+    assert_eq!(typed(&mut vim, "A"), Effect::Moved);
+    assert!(vim.loaded(b"xy"));
+    assert_eq!(vim.position(), (0, 2), "insert may sit past the end");
+}
+
+#[test]
+fn a_frame_keeps_the_cursor_on_screen_and_cuts_lines() {
+    let mut vim = on("1\n2\n3\n4\n5 is long");
+    typed(&mut vim, "4j$");
+    let frame = vim.frame(4, 3);
+    assert_eq!(frame.lines, vec!["4", "5 is"]);
+    assert_eq!(frame.cursor, (1, 3), "the last column when past it");
+    assert_eq!(frame.status, "");
+    typed(&mut vim, "4k");
+    let frame = vim.frame(4, 3);
+    assert_eq!(frame.lines, vec!["1", "2"]);
+    assert_eq!(frame.cursor, (0, 0));
+    typed(&mut vim, "2j");
+    let frame = vim.frame(80, 3);
+    assert_eq!(frame.lines, vec!["2", "3"]);
+    assert_eq!(frame.cursor, (1, 0));
+    assert_eq!(vim.frame(80, 1).lines, vec!["3"], "one row still shows");
+    typed(&mut vim, "i");
+    assert_eq!(vim.frame(80, 3).status, "-- INSERT --");
+}
+
+#[test]
+fn notation_names_the_keys_vim_names() {
+    let parsed = keys("a<Esc>:wq<CR><C-r><BS><lt>é").unwrap();
+    let expected = [
+        Key::Char('a'),
+        Key::Esc,
+        Key::Char(':'),
+        Key::Char('w'),
+        Key::Char('q'),
+        Key::Enter,
+        Key::Ctrl('r'),
+        Key::Backspace,
+        Key::Char('<'),
+        Key::Char('é'),
+    ];
+    assert_eq!(parsed, expected);
+    assert_eq!(keys("<Nope>"), None);
+    assert_eq!(keys("<C-"), None);
+}

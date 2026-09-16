@@ -45,10 +45,15 @@ shown() {
     fail "$name never showed $pattern"
 }
 
+# Keys one at a time, as a person types them: an Esc that arrives in
+# the same read as the next key would be an escape sequence.
 keys() {
-    local name="$1"
+    local name="$1" key
     shift
-    "${TMUX[@]}" send-keys -t "$name" "$@"
+    for key in "$@"; do
+        "${TMUX[@]}" send-keys -t "$name" "$key"
+        sleep 0.02
+    done
 }
 
 # The exit code of the pane `name`, once it has ended.
@@ -77,7 +82,7 @@ git add a
 
 start commit "$DIR/repo" "git commit"
 editing commit COMMIT_EDITMSG
-keys commit "second" C-s C-q
+keys commit i "second" Escape C-s C-q
 [[ "$(ended commit)" == 0 ]] || fail "git commit failed"
 [[ "$(git log -1 --format=%s)" == second ]] || fail "message not used"
 
@@ -85,7 +90,7 @@ echo three > a
 git add a
 start abort "$DIR/repo" "git commit"
 editing abort COMMIT_EDITMSG
-keys abort "third" C-c
+keys abort i "third" Escape C-c
 [[ "$(ended abort)" != 0 ]] || fail "git commit went on after Ctrl-C"
 [[ "$(git log -1 --format=%s)" == second ]] || fail "abort committed"
 
@@ -93,10 +98,10 @@ keys abort "third" C-c
 git commit -q -m third
 start rebase "$DIR/repo" "git rebase -i HEAD~1"
 editing rebase git-rebase-todo
-keys rebase Right Right Right Right BSpace BSpace BSpace BSpace "reword" \
-    C-s C-q
+keys rebase i Right Right Right Right BSpace BSpace BSpace BSpace "reword" \
+    Escape C-s C-q
 editing rebase COMMIT_EDITMSG
-keys rebase "reworded " C-s C-q
+keys rebase i "reworded " Escape C-s C-q
 [[ "$(ended rebase)" == 0 ]] || fail "rebase failed"
 [[ "$(git log -1 --format=%s)" == "reworded third" ]] \
     || fail "reword not used: $(git log -1 --format=%s)"
@@ -107,11 +112,11 @@ start new "$DIR" "$BIN $DIR/new/note"
 start other "$DIR/new" "$BIN ../other"
 editing new note
 editing other other
-keys new "fresh" C-q
+keys new i "fresh" Escape C-q
 sleep 0.05
 [[ ! -e "$DIR/new/note" ]] || fail "a new file exists before its save"
 keys new C-s C-q
-keys other "x" C-s C-q
+keys other i "x" Escape C-s C-q
 [[ "$(ended new)" == 0 && "$(ended other)" == 0 ]] || fail "quit failed"
 [[ "$(cat "$DIR/new/note")" == fresh ]] || fail "new file not written"
 [[ "$(cat "$DIR/other")" == x ]] || fail "second editor not written"
@@ -121,7 +126,7 @@ keys other "x" C-s C-q
 start term "$DIR" "$BIN other; echo \$? > '$DIR/exit-term'; \
     stty -a > '$DIR/stty'; sleep 30"
 editing term other
-keys term "zz"
+keys term i "zz" Escape
 sleep 0.05
 pkill -TERM -f "^$BIN other\$"
 [[ "$(ended term)" == 1 ]] || fail "SIGTERM did not exit 1"

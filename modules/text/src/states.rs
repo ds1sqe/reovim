@@ -50,6 +50,19 @@ impl History {
         self.head = self.states.len() as u64;
     }
 
+    /// `bytes` in place of head's; false at the first state, which
+    /// `open` made.
+    pub fn amend(&mut self, bytes: Vec<u8>) -> bool {
+        let head = usize::try_from(self.head).unwrap_or(0);
+        match (head, self.states.get_mut(head.wrapping_sub(1))) {
+            (0 | 1, _) | (_, None) => false,
+            (_, Some(state)) => {
+                state.bytes = bytes;
+                true
+            }
+        }
+    }
+
     /// Head is what a `save` just stored.
     pub const fn published(&mut self) {
         self.published = self.head;

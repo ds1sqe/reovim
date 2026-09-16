@@ -257,6 +257,29 @@ fn walkthrough_one_open_edit_undo_save() {
 }
 
 #[test]
+fn amend_keeps_the_revision_and_refuses_the_first_state() {
+    let rig = Rig::new("amend");
+    let source = rig.file("f", b"abc");
+    let buffer = rig.buffer(source);
+    let (h, cursor) = rig.watch(buffer);
+    let amend = |at, text: &str| {
+        let edit = text::Edit { at, len: 0, text: text.to_string() };
+        rig.call(h, "text", 2, encode(&edit))
+    };
+    assert_eq!(amend(0, "x"), Reply::err(Error::Invalid), "open's state");
+    assert_eq!(rig.replace(h, 0, 0, "1"), DONE);
+    assert_eq!(amend(1, "2"), DONE);
+    assert_eq!(amend(2, "3"), DONE);
+    assert_eq!(rig.read(buffer), b"123abc");
+    let (nodes, head, _) = rig.tree(h);
+    assert_eq!((nodes.len(), head), (2, 2), "one revision for all three");
+    let (events, _) = rig.since(cursor);
+    assert_eq!(events.len(), 3, "a Modify each");
+    assert_eq!(rig.history(h, 2, Vec::new()), DONE);
+    assert_eq!(rig.read(buffer), b"abc", "undone as one");
+}
+
+#[test]
 fn write_makes_a_state_and_an_edit_after_undo_branches() {
     let rig = Rig::new("branch");
     let source = rig.file("f", b"abc");
