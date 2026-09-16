@@ -234,6 +234,7 @@ name = "reovim-sdk"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-kernel-interface",
+ "reovim-module-text",
 ]
 
 [[package]]

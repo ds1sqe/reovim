@@ -11,5 +11,8 @@ publish = false
 [dependencies]
 reovim-kernel-interface = { path = "../../kernel/interface" }
 
+[dev-dependencies]
+reovim-module-text = { path = "../../modules/text" }
+
 [lints]
 workspace = true
