@@ -52,6 +52,9 @@ pub enum Node {
     /// `/sys/decls/<hash>`; reads give the canonical bytes.
     Decl(Hash),
     Log,
+    /// Bytes the Kernel stores and serves, never parses:
+    /// `/session/<id>/client/<cid>/capability`.
+    Cell,
 }
 
 /// One row of the table.

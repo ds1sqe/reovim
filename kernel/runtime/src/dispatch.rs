@@ -7,6 +7,8 @@ use reovim_kernel_interface::{
     value,
 };
 
+use reovim_kernel_interface::Kind;
+
 use crate::kernel::{Kernel, Slot, State};
 use crate::table::{Node, Owner};
 
@@ -149,7 +151,7 @@ fn write(
     let slot = k.slot(caller, h, Rights::WRITE)?;
     room(k, &slot)?;
     let reply = match slot.served {
-        None => Reply::Ready(kernel_write(k, caller, slot.rd, bytes)),
+        None => Reply::Ready(kernel_write(k, caller, slot.rd, at, bytes)),
         Some((module, index)) => {
             k.driver(index).write(&k.calls(module), slot.cookie, at, bytes)
         }
@@ -348,24 +350,46 @@ fn kernel_read(
             Ok(bytes[start..end].to_vec())
         }
         Node::Log => Ok(s.log.read(at, len)),
+        Node::Cell => {
+            let bytes = s.cells.get(&rd).ok_or(Error::Gone)?;
+            let start =
+                usize::try_from(at).unwrap_or(usize::MAX).min(bytes.len());
+            let end = start.saturating_add(len).min(bytes.len());
+            Ok(bytes[start..end].to_vec())
+        }
         Node::Container | Node::Home(_) => Err(Error::Unsupported),
     }
 }
 
-/// The one Kernel-served write: a log entry, marked by the caller.
+/// The Kernel-served writes: a log entry, marked by the caller, or a
+/// cell's bytes from `at` on.
 fn kernel_write(
     k: &Kernel,
     caller: Caller,
     rd: Rd,
+    at: u64,
     bytes: &[u8],
 ) -> Result<usize, Error> {
     let now = k.now();
     let mut s = k.state.borrow_mut();
-    if s.table.get(rd)?.owner != Owner::Kernel(Node::Log) {
-        return Err(Error::Unsupported);
+    match s.table.get(rd)?.owner {
+        Owner::Kernel(Node::Log) => {
+            let mark = alloc::string::String::from(s.mark(caller));
+            s.log(now, &mark, bytes.to_vec());
+        }
+        Owner::Kernel(Node::Cell) => {
+            let cell = s.cells.get_mut(&rd).ok_or(Error::Gone)?;
+            let at = usize::try_from(at).map_err(|_| Error::Invalid)?;
+            if at > cell.len() {
+                return Err(Error::Invalid);
+            }
+            cell.truncate(at);
+            cell.extend_from_slice(bytes);
+            s.table.get_mut(rd)?.mtime = now;
+            s.emit(rd, Kind::Modify, None);
+        }
+        _ => return Err(Error::Unsupported),
     }
-    let mark = alloc::string::String::from(s.mark(caller));
-    s.log(now, &mark, bytes.to_vec());
     Ok(bytes.len())
 }
 

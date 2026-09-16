@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 use core::cell::RefCell;
 
 use reovim_kernel_interface::{
-    Caller, Decl, Driver, DriverId, Error, Handle, Hash, Kind, Module,
+    Caller, Decl, Driver, DriverId, Error, Flags, Handle, Hash, Kind, Module,
     ModuleId, Op, Out, Rd, Reply, Rights,
 };
 
@@ -91,6 +91,8 @@ pub struct State {
     pub pending: Pending,
     pub events: Ring,
     pub log: Log,
+    /// The bytes of every `Node::Cell`.
+    pub cells: BTreeMap<Rd, Vec<u8>>,
     pub next_session: u64,
     pub next_client: u64,
 }
@@ -273,6 +275,7 @@ impl Kernel {
             pending: Pending::new(),
             events: Ring::new(limits.watch_ring),
             log: Log::new(),
+            cells: BTreeMap::new(),
             next_session: 1,
             next_client: 1,
         };
@@ -407,6 +410,12 @@ impl Kernel {
         let name = alloc::format!("{cid}");
         let rd = s.table.insert(clients, Some(&name), owner, CONTAINER, now);
         s.emit(clients, Kind::Create, Some(rd));
+        let cell = Owner::Kernel(Node::Cell);
+        let flags = Flags::READ.union(Flags::WRITE);
+        let capability =
+            s.table.insert(rd, Some("capability"), cell, flags, now);
+        s.cells.insert(capability, Vec::new());
+        s.emit(rd, Kind::Create, Some(capability));
         let line =
             alloc::format!("connect session={} client={}", session.0, rd.0);
         s.log(now, "kernel", line.into_bytes());

@@ -76,6 +76,11 @@ fn buffer_of(client: &mut Client, tui: &Tui) -> Rd {
     let buffer = tui.buffer();
     let name = client.name(buffer).unwrap();
     assert_eq!(client.resolve(&format!("/module/text/{name}")), Ok(buffer));
+    // The tui was the first to connect: session 1, its one client.
+    let clients = client.resolve("/session/1/client").unwrap();
+    let first = client.children(clients).unwrap()[0];
+    let capability = client.lookup(first, "capability").unwrap();
+    assert_eq!(client.read_all(capability).unwrap(), b"tui");
     buffer
 }
 

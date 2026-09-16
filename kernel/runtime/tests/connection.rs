@@ -272,3 +272,27 @@ fn a_named_caller_survives_its_link_and_an_unnamed_one_ends() {
         ask(&mut Connection::new(), &rig.kernel, 1, Op::Info { rd: ROOT });
     assert_eq!(early, Reply::err(Error::Invalid), "nothing before Connect");
 }
+
+#[test]
+fn the_client_rd_carries_a_capability_cell() {
+    let mut rig = Rig::new();
+    let Reply::Ready(Ok(Out::Rds(ids))) = rig.connect(None) else {
+        panic!("connect")
+    };
+    let capability = rig.lookup(ids[1], "capability");
+    let open =
+        Op::Open { rd: capability, rights: Rights::READ | Rights::WRITE };
+    let Reply::Ready(Ok(Out::Handle(h))) = rig.request(open) else {
+        panic!("open")
+    };
+    let read = |rig: &mut Rig| rig.request(Op::Read { h, at: 0, len: 16 });
+    assert_eq!(read(&mut rig), Reply::ok(Out::Bytes(Vec::new())));
+    let write = Op::Write { h, at: 0, bytes: b"vim keys".to_vec() };
+    assert_eq!(rig.request(write), Reply::ok(Out::Len(8)));
+    assert_eq!(read(&mut rig), Reply::ok(Out::Bytes(b"vim keys".to_vec())));
+    let past = Op::Write { h, at: 9, bytes: b"x".to_vec() };
+    assert_eq!(rig.request(past), Reply::err(Error::Invalid));
+    let shorter = Op::Write { h, at: 3, bytes: Vec::new() };
+    assert_eq!(rig.request(shorter), Reply::ok(Out::Len(0)));
+    assert_eq!(read(&mut rig), Reply::ok(Out::Bytes(b"vim".to_vec())));
+}

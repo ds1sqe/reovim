@@ -51,6 +51,7 @@ impl Tui {
     /// What the Client says; `Kernel(Invalid)` for a file that is not
     /// under the root.
     pub fn open(mut client: Client, file: &str) -> Result<Self, Fault> {
+        client.capability(b"tui".to_vec())?;
         let source = client.resolve(&format!("/module/fs/root/{file}"))?;
         let open = client.resolve("/module/text/open")?;
         let input = source.0.to_le_bytes().to_vec();

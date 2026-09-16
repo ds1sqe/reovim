@@ -102,6 +102,16 @@ impl Client {
         unit(&self.exchange(&unload)?)
     }
 
+    /// `bytes` as this Client's `capability`, the Read rd under its
+    /// client rd that its Plugins understand; the Kernel keeps them.
+    ///
+    /// # Errors
+    /// What the Client says.
+    pub fn capability(&mut self, bytes: Vec<u8>) -> Result<(), Fault> {
+        let rd = self.lookup(self.cid, "capability")?;
+        self.write_all(rd, bytes).map(|_| ())
+    }
+
     /// `/session/<id>`.
     #[must_use]
     pub const fn session(&self) -> Rd {
