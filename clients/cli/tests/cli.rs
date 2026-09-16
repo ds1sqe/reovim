@@ -52,7 +52,7 @@ impl Rig {
         let dir = Dir::new(test);
         let kernel = Kernel::new(clock::now, Limits::default());
         load(&kernel, "fs", &reovim_module_fs::boot(dir.0.to_str().unwrap()));
-        load(&kernel, "buffer", &reovim_module_buffer::boot(""));
+        load(&kernel, "text", &reovim_module_text::boot(""));
         Self { dir, kernel: Rc::new(kernel) }
     }
 
@@ -88,8 +88,8 @@ fn the_script_of_the_process_test_runs_in_process() {
     rig.file("note", b"first\n");
     let mut client = rig.client();
     let file = line(&mut client, "lookup /module/fs/root/note");
-    let attach = format!("call /module/buffer/attach attach {file}");
-    let buffer = line(&mut client, &attach);
+    let open = format!("call /module/text/open open {file}");
+    let buffer = line(&mut client, &open);
     let target = format!("rd:{buffer}");
 
     assert_eq!(line(&mut client, &format!("write {target} second")), "6");
@@ -98,11 +98,11 @@ fn the_script_of_the_process_test_runs_in_process() {
     assert_eq!(line(&mut client, &format!("call {target} save")), "");
     assert_eq!(rig.disk("note"), b"second");
 
-    let listed = line(&mut client, "children /module/buffer");
+    let listed = line(&mut client, "children /module/text");
     assert!(listed.contains(&format!("{buffer} {file}")), "{listed}");
     let info = line(&mut client, &format!("info {target}"));
     assert!(info.contains("flags=READ|WRITE|CONTAINER"), "{info}");
-    let pointer = format!("read /module/buffer/{file}/source");
+    let pointer = format!("read /module/text/{file}/source");
     let source =
         input(&mut client, &["read".to_string(), pointer[5..].to_string()])
             .unwrap();
@@ -165,8 +165,8 @@ fn completion_offers_commands_paths_and_methods() {
     let (_, both) = offer(&mut client, "read /module/fs/root/");
     assert_eq!(both.len(), 2, "{both:?}");
     assert_eq!(
-        offer(&mut client, "call /module/buffer/attach at"),
-        (27, vec!["attach".to_string()])
+        offer(&mut client, "call /module/text/open op"),
+        (23, vec!["open".to_string()])
     );
     assert_eq!(
         offer(&mut client, "call /module/fs/root "),

@@ -118,8 +118,7 @@ fn a_draft_reaches_disk_on_save_through_the_cli() {
     let server = Server::start("save");
     let original = server.file("note", b"first\n");
     let file = server.line(&["lookup", "/module/fs/root/note"]);
-    let buffer =
-        server.line(&["call", "/module/buffer/attach", "attach", &file]);
+    let buffer = server.line(&["call", "/module/text/open", "open", &file]);
     let target = format!("rd:{buffer}");
 
     assert_eq!(server.line(&["write", &target, "second"]), "6");
@@ -129,12 +128,12 @@ fn a_draft_reaches_disk_on_save_through_the_cli() {
     assert_eq!(server.disk("note"), b"second");
 
     // Children and info through the cli, and the pointer child.
-    let listed = server.line(&["children", "/module/buffer"]);
+    let listed = server.line(&["children", "/module/text"]);
     assert!(listed.contains(&format!("{buffer} {file}")), "{listed}");
     let info = server.line(&["info", &target]);
     assert!(info.contains("flags=READ|WRITE|CONTAINER"), "{info}");
     // A Buffer is named by its source rd; `source` reads that rd raw.
-    let pointer = format!("/module/buffer/{file}/source");
+    let pointer = format!("/module/text/{file}/source");
     let source = server.cli(&["read", &pointer], b"").unwrap();
     let id = u64::from_le_bytes(source[..].try_into().unwrap());
     assert_eq!(id.to_string(), file);
@@ -146,11 +145,11 @@ fn one_interactive_session_does_the_same() {
     server.file("note", b"first\n");
     let file = server.line(&["lookup", "/module/fs/root/note"]);
     let script = format!(
-        "call /module/buffer/attach attach {file}\n\
-         write /module/buffer/{file} third\n\
-         read /module/buffer/{file}\n\
-         call /module/buffer/{file} nothing\n\
-         call /module/buffer/{file} save\n\
+        "call /module/text/open open {file}\n\
+         write /module/text/{file} third\n\
+         read /module/text/{file}\n\
+         call /module/text/{file} nothing\n\
+         call /module/text/{file} save\n\
          quit\n\
          lookup /\n"
     );

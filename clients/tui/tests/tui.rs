@@ -51,7 +51,7 @@ impl Rig {
         let dir = Dir::new(test);
         let kernel = Kernel::new(clock::now, Limits::default());
         load(&kernel, "fs", &reovim_module_fs::boot(dir.0.to_str().unwrap()));
-        load(&kernel, "buffer", &reovim_module_buffer::boot(""));
+        load(&kernel, "text", &reovim_module_text::boot(""));
         Self { dir, kernel: Rc::new(kernel) }
     }
 
@@ -73,7 +73,7 @@ impl Rig {
 fn buffer_of(client: &mut Client, tui: &Tui) -> Rd {
     let buffer = tui.buffer();
     let name = client.name(buffer).unwrap();
-    assert_eq!(client.resolve(&format!("/module/buffer/{name}")), Ok(buffer));
+    assert_eq!(client.resolve(&format!("/module/text/{name}")), Ok(buffer));
     buffer
 }
 

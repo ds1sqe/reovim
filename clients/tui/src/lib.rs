@@ -36,16 +36,16 @@ pub struct Tui {
 }
 
 impl Tui {
-    /// Attach `file`, open the Buffer, watch it and load the draft.
+    /// Open `file` as a Buffer, watch it and load the draft.
     ///
     /// # Errors
     /// What the Client says; `Kernel(Invalid)` for a file that is not
     /// under the root.
     pub fn open(mut client: Client, file: &str) -> Result<Self, Fault> {
         let source = client.resolve(&format!("/module/fs/root/{file}"))?;
-        let attach = client.resolve("/module/buffer/attach")?;
+        let open = client.resolve("/module/text/open")?;
         let input = source.0.to_le_bytes().to_vec();
-        let out = client.call_by_name(attach, "attach", input)?;
+        let out = client.call_by_name(open, "open", input)?;
         let id: [u8; 8] = out[..].try_into().map_err(|_| Fault::Wire)?;
         let buffer = Rd(u64::from_le_bytes(id));
         let h = client.open(buffer, Rights::READ.union(Rights::WRITE))?;

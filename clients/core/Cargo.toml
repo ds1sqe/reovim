@@ -14,7 +14,7 @@ reovim-kernel-interface = { path = "../../kernel/interface" }
 [dev-dependencies]
 reovim-host = { path = "../../host/os", features = ["std"] }
 reovim-kernel-runtime = { path = "../../kernel/runtime" }
-reovim-module-buffer = { path = "../../modules/buffer" }
+reovim-module-text = { path = "../../modules/text" }
 reovim-module-fs = { path = "../../modules/fs" }
 
 [lints]

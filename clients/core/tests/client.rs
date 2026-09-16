@@ -126,7 +126,7 @@ impl Rig {
         let dir = Dir::new(test);
         let kernel = Kernel::new(clock::now, Limits::default());
         load(&kernel, "fs", &reovim_module_fs::boot(dir.0.to_str().unwrap()));
-        load(&kernel, "buffer", &reovim_module_buffer::boot(""));
+        load(&kernel, "text", &reovim_module_text::boot(""));
         let slow = Rc::new(Slow::default());
         let booted =
             Booted { module: slow.clone(), drivers: vec![slow.clone()] };
@@ -187,16 +187,16 @@ fn a_typed_call_and_a_watched_write() {
     rig.file("note", b"first\n");
     let mut client = rig.client();
     let note = client.resolve("/module/fs/root/note").unwrap();
-    let attach = client.resolve("/module/buffer/attach").unwrap();
+    let open = client.resolve("/module/text/open").unwrap();
 
-    let (_, method) = client.method(attach, "attach").unwrap();
+    let (_, method) = client.method(open, "open").unwrap();
     assert_eq!(method.input, Ty::Rd);
     let input = value::encode_arg(&method.input, Some(&note.0.to_string()));
-    let out = client.call_by_name(attach, "attach", input.unwrap()).unwrap();
+    let out = client.call_by_name(open, "open", input.unwrap()).unwrap();
     let shown = value::show(&method.output, &out).unwrap();
     let buffer = Rd(u64::from_le_bytes(out[..].try_into().unwrap()));
     assert_eq!(shown, format!("{}\n", buffer.0).into_bytes());
-    let home = client.resolve("/module/buffer").unwrap();
+    let home = client.resolve("/module/text").unwrap();
     assert_eq!(client.parent(buffer).unwrap(), home);
     assert_eq!(client.name(buffer).unwrap(), note.0.to_string());
 

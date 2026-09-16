@@ -135,8 +135,8 @@ dependencies = [
  "reovim-host",
  "reovim-kernel-interface",
  "reovim-kernel-runtime",
- "reovim-module-buffer",
  "reovim-module-fs",
+ "reovim-module-text",
 ]
 
 [[package]]
@@ -150,8 +150,8 @@ dependencies = [
  "reovim-host",
  "reovim-kernel-interface",
  "reovim-kernel-runtime",
- "reovim-module-buffer",
  "reovim-module-fs",
+ "reovim-module-text",
 ]
 
 [[package]]
@@ -162,8 +162,8 @@ dependencies = [
  "reovim-host",
  "reovim-kernel-interface",
  "reovim-kernel-runtime",
- "reovim-module-buffer",
  "reovim-module-fs",
+ "reovim-module-text",
 ]
 
 [[package]]
@@ -174,8 +174,8 @@ dependencies = [
  "reovim-host",
  "reovim-kernel-interface",
  "reovim-kernel-runtime",
- "reovim-module-buffer",
  "reovim-module-fs",
+ "reovim-module-text",
 ]
 
 [[package]]
@@ -200,22 +200,22 @@ dependencies = [
 ]
 
 [[package]]
-name = "reovim-module-buffer"
-version = "0.16.0-dev"
-dependencies = [
- "reovim-host",
- "reovim-kernel-interface",
- "reovim-kernel-runtime",
- "reovim-module-fs",
-]
-
-[[package]]
 name = "reovim-module-fs"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-host",
  "reovim-kernel-interface",
  "reovim-kernel-runtime",
+]
+
+[[package]]
+name = "reovim-module-text"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-host",
+ "reovim-kernel-interface",
+ "reovim-kernel-runtime",
+ "reovim-module-fs",
 ]
 
 [[package]]
