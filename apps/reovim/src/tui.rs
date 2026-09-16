@@ -112,20 +112,44 @@ fn drive(tui: &mut Tui, serve: Serve) -> Result<u8, Fail> {
 /// hidden while it is drawn and placed after.
 fn draw(tui: &mut Tui) -> Result<(), Fail> {
     let (cols, rows) = term::size()?;
-    let Frame { lines, cursor, status } = tui.frame(cols, rows);
+    let Frame { lines, cursor, selection, status } = tui.frame(cols, rows);
     let text_rows = usize::from(rows.saturating_sub(1));
     let blank = String::new();
     let rest =
         std::iter::repeat_n(&blank, text_rows.saturating_sub(lines.len()));
     let mut screen = String::from("\x1b[?25l\x1b[H");
-    for line in lines.iter().chain(rest) {
-        let _ = write!(screen, "\x1b[2K{line}\r\n");
+    for (row, line) in lines.iter().chain(rest).enumerate() {
+        let cells = selection.iter().find(|s| usize::from(s.0) == row);
+        let shown =
+            cells.map_or_else(|| line.clone(), |s| inverted(line, s.1, s.2));
+        let _ = write!(screen, "\x1b[2K{shown}\r\n");
     }
     let status: String = status.chars().take(usize::from(cols)).collect();
     let _ = write!(screen, "\x1b[2K\x1b[7m{status}\x1b[0m");
     let (row, col) = (cursor.0 + 1, cursor.1 + 1);
     let _ = write!(screen, "\x1b[{row};{col}H\x1b[?25h");
     Ok(out(screen.as_bytes())?)
+}
+
+/// `line` with the columns `from..to` inverted; a column past the
+/// line's end is the newline's cell, shown as a space.
+fn inverted(line: &str, from: u16, to: u16) -> String {
+    let (from, to) = (usize::from(from), usize::from(to));
+    let chars: Vec<char> = line.chars().collect();
+    let take = |a: usize, b: usize| -> String {
+        chars
+            .get(a.min(chars.len())..b.min(chars.len()))
+            .unwrap_or(&[])
+            .iter()
+            .collect()
+    };
+    let tail = if to > chars.len() { " " } else { "" };
+    format!(
+        "{}\x1b[7m{}{tail}\x1b[0m{}",
+        take(0, from),
+        take(from, to),
+        take(to, chars.len())
+    )
 }
 
 fn out(bytes: &[u8]) -> Result<(), Fault> {

@@ -126,7 +126,9 @@ impl Vim {
         let limit = match self.mode {
             Mode::Insert => self.line_end(self.cursor),
             _ if self.pending.running => self.line_end(self.cursor),
-            Mode::Normal | Mode::Command => self.last_char(self.cursor),
+            Mode::Normal | Mode::Command | Mode::Visual(_) => {
+                self.last_char(self.cursor)
+            }
         };
         match self.text[self.cursor..].chars().next() {
             Some(c) if self.cursor < limit => {
@@ -146,7 +148,9 @@ impl Vim {
         let to = self.at_column(start, self.want);
         match self.mode {
             Mode::Insert => self.go(to),
-            Mode::Normal | Mode::Command => self.go_clamped(to),
+            Mode::Normal | Mode::Command | Mode::Visual(_) => {
+                self.go_clamped(to)
+            }
         }
     }
 

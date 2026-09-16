@@ -4,7 +4,7 @@
 
 use alloc::string::String;
 
-use crate::{Effect, Key, Mode, Register, Vim};
+use crate::{Edit, Effect, Key, Mode, Register, Vim};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Operator {
@@ -352,7 +352,13 @@ impl Vim {
         } else {
             self.span(motion, n)
         };
-        let Some((from, to, kind)) = span else { return Effect::Nothing };
+        let Some(span) = span else { return Effect::Nothing };
+        self.apply(op, span)
+    }
+
+    /// `op` over `span`.
+    pub(crate) fn apply(&mut self, op: Operator, span: Span) -> Effect {
+        let (from, to, kind) = span;
         let linewise = kind == Kind::Linewise || op.linewise();
         if op.linewise() {
             return self.shifted(from, to, op == Operator::ShiftRight);
@@ -459,9 +465,22 @@ impl Vim {
     }
 
     /// After a delete: the cursor where the span was, on a line's
-    /// first non-blank when lines went.
+    /// first non-blank when lines went. Chars taken down to nothing
+    /// leave one empty line, as Vim's buffer always has a line.
     fn deleted(&mut self, at: usize, len: usize, linewise: bool) -> Effect {
-        let effect = self.remove(at, len);
+        let removed = self.remove(at, len);
+        let emptied = !linewise && self.text.is_empty();
+        let effect = if emptied {
+            self.text.push('\n');
+            Effect::Edit(Edit {
+                at: 0,
+                len,
+                text: String::from("\n"),
+                join: false,
+            })
+        } else {
+            removed
+        };
         let start = at.min(self.bound());
         let line = self.line_start(start);
         self.cursor = if linewise { self.first_non_blank(line) } else { start };
@@ -497,7 +516,7 @@ impl Vim {
 
     /// The lines from the one `from` is on to the one `to` is on, as
     /// a byte range with the newline after them, or before the last.
-    fn whole_lines(&self, from: usize, to: usize) -> (usize, usize) {
+    pub(crate) fn whole_lines(&self, from: usize, to: usize) -> (usize, usize) {
         let start = self.line_start(from);
         let end = self.line_end(to);
         if end < self.text.len() {
@@ -606,7 +625,7 @@ fn gap(out: &str, piece: &str) -> &'static str {
 }
 
 /// One char in `op`'s case.
-fn recase(op: Operator, c: char) -> char {
+pub fn recase(op: Operator, c: char) -> char {
     let upper = match op {
         Operator::Upper => true,
         Operator::Lower => false,

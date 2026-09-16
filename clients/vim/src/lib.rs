@@ -15,6 +15,7 @@ mod motion;
 pub mod notation;
 mod object;
 mod operator;
+mod visual;
 mod word;
 
 use alloc::string::String;
@@ -22,8 +23,10 @@ use alloc::vec::Vec;
 
 pub use operator::Motion;
 pub use reovim_client::Key;
+pub use visual::Visual;
 
 use operator::{Find, Operator};
+use visual::{BlockInsert, Selection};
 
 /// One change to the text, already applied here: `len` bytes at
 /// `at` became `text`. With `join` the edit belongs to the head
@@ -65,13 +68,17 @@ pub enum Quit {
     Abort,
 }
 
-/// What to draw: `rows - 1` text rows, the cursor as (row, column) on
-/// them, and Vim's own word for the status row: a message, the command
-/// line, the mode, or nothing.
+/// What to draw.
+///
+/// `rows - 1` text rows, the cursor as (row, column) on them, the
+/// selected cells as `(row, from, to)` with `to` exclusive, and Vim's
+/// own word for the status row: a message, the command line, the
+/// mode, or nothing.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Frame {
     pub lines: Vec<String>,
     pub cursor: (u16, u16),
+    pub selection: Vec<(u16, u16, u16)>,
     pub status: String,
 }
 
@@ -81,6 +88,7 @@ pub enum Mode {
     Normal,
     Insert,
     Command,
+    Visual(Visual),
 }
 
 /// What the unnamed register holds: text, and whether it came from
@@ -137,6 +145,14 @@ pub struct Vim {
     /// The last `f`, `t`, `F` or `T`, for `;` and `,`.
     find: Option<(Find, char)>,
     repeat: Repeat,
+    /// The selection's other end in visual mode.
+    anchor: usize,
+    /// `$` was the last motion of a selection: it reaches every line's
+    /// end.
+    to_end: bool,
+    last_visual: Option<Selection>,
+    /// A block insert under way.
+    block: Option<BlockInsert>,
     /// The command line being typed.
     line: String,
     /// Shown until the next key.
@@ -188,9 +204,17 @@ impl Vim {
             Mode::Normal => self.normal(key),
             Mode::Insert => self.insert(key),
             Mode::Command => self.command(key),
+            Mode::Visual(kind) => {
+                let effect = self.visual(kind, key);
+                self.settle(&effect);
+                effect
+            }
         };
         if !core::mem::take(&mut self.keep_want) {
             self.want = self.position().1;
+        }
+        if matches!(self.mode, Mode::Visual(_)) {
+            self.to_end = self.want == usize::MAX;
         }
         if shown && effect == Effect::Nothing { Effect::Moved } else { effect }
     }
@@ -251,8 +275,15 @@ impl Vim {
             Mode::Normal => String::new(),
             Mode::Insert => String::from("-- INSERT --"),
             Mode::Command => alloc::format!(":{}", self.line),
+            Mode::Visual(Visual::Char) => String::from("-- VISUAL --"),
+            Mode::Visual(Visual::Line) => String::from("-- VISUAL LINE --"),
+            Mode::Visual(Visual::Block) => String::from("-- VISUAL BLOCK --"),
         };
-        Frame { lines, cursor: (row, col), status }
+        let selection = match self.mode {
+            Mode::Visual(kind) => self.selection_cells(kind, self.top, height),
+            _ => Vec::new(),
+        };
+        Frame { lines, cursor: (row, col), selection, status }
     }
 
     fn normal(&mut self, key: Key) -> Effect {
@@ -298,6 +329,9 @@ impl Vim {
             Key::Char('<') => return self.operator(Operator::ShiftLeft, n),
             _ if self.pending.operator.take().is_some() => Effect::Nothing,
             Key::Char('~') => self.tilde(n),
+            Key::Char('v') => self.enter_visual(Visual::Char),
+            Key::Char('V') => self.enter_visual(Visual::Line),
+            Key::Ctrl('v') => self.enter_visual(Visual::Block),
             Key::Char('i') => self.enter_insert(),
             Key::Char('a') => {
                 self.cursor = self.append_at();
@@ -359,6 +393,7 @@ impl Vim {
             ('g', Key::Char('u')) => return self.operator(Operator::Lower, n),
             ('g', Key::Char('U')) => return self.operator(Operator::Upper, n),
             ('g', Key::Char('~')) => return self.operator(Operator::Toggle, n),
+            ('g', Key::Char('v')) => return self.reselect(),
             ('i' | 'a', Key::Char(kind)) => {
                 Motion::Object { inner: first == 'i', kind }
             }
@@ -427,7 +462,9 @@ impl Vim {
     /// The command is over: a change is what `.` repeats, anything
     /// else is forgotten. An insert goes on recording until Esc.
     fn settle(&mut self, effect: &Effect) {
-        if self.repeat.replaying || self.mode == Mode::Insert {
+        if self.repeat.replaying
+            || matches!(self.mode, Mode::Insert | Mode::Visual(_))
+        {
             return;
         }
         match effect {
@@ -485,6 +522,11 @@ impl Vim {
         self.mode = Mode::Normal;
         if !self.repeat.replaying {
             self.repeat.last = core::mem::take(&mut self.repeat.record);
+        }
+        if let Some(block) = self.block.take() {
+            let effect = self.finish_block(block);
+            self.clamp();
+            return effect;
         }
         let dropped = self.drop_indent();
         self.cursor = self.stepped_back();
