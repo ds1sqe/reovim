@@ -126,6 +126,11 @@ fn a_draft_reaches_disk_on_save_through_the_cli() {
     assert_eq!(server.disk("note"), original, "unchanged before save");
     assert_eq!(server.line(&["call", &target, "save"]), "");
     assert_eq!(server.disk("note"), b"second");
+    assert_eq!(
+        server.line(&["call", &target, "tree"]),
+        "{nodes=[{id=1 parent=0 label=open} {id=2 parent=1 label=write}] \
+         head=2 published=2}"
+    );
 
     // Children and info through the cli, and the pointer child.
     let listed = server.line(&["children", "/module/text"]);
