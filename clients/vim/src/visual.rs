@@ -5,8 +5,8 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use crate::operator::{Find, Kind, Operator, Span};
-use crate::{Edit, Effect, Key, Mode, Motion, Register, Vim};
+use crate::operator::{Extent, Find, Operator, Span};
+use crate::{Edit, Effect, Key, Kind, Mode, Motion, Register, Vim};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Visual {
@@ -111,14 +111,20 @@ impl Vim {
                 core::mem::swap(&mut self.anchor, &mut self.cursor);
                 Effect::Moved
             }
-            Key::Char('d' | 'x') => self.visual_operate(kind, Operator::Delete),
-            Key::Char('c' | 's') => self.visual_operate(kind, Operator::Change),
-            Key::Char('y') => self.visual_operate(kind, Operator::Yank),
-            Key::Char('>') => self.visual_operate(kind, Operator::ShiftRight),
-            Key::Char('<') => self.visual_operate(kind, Operator::ShiftLeft),
-            Key::Char('u') => self.visual_operate(kind, Operator::Lower),
-            Key::Char('U') => self.visual_operate(kind, Operator::Upper),
-            Key::Char('~') => self.visual_operate(kind, Operator::Toggle),
+            Key::Char('d' | 'x') => {
+                self.visual_operate(kind, Operator::Delete, n)
+            }
+            Key::Char('c' | 's') => {
+                self.visual_operate(kind, Operator::Change, n)
+            }
+            Key::Char('y') => self.visual_operate(kind, Operator::Yank, n),
+            Key::Char('>') => {
+                self.visual_operate(kind, Operator::ShiftRight, n)
+            }
+            Key::Char('<') => self.visual_operate(kind, Operator::ShiftLeft, n),
+            Key::Char('u') => self.visual_operate(kind, Operator::Lower, n),
+            Key::Char('U') => self.visual_operate(kind, Operator::Upper, n),
+            Key::Char('~') => self.visual_operate(kind, Operator::Toggle, n),
             Key::Char('J') => self.visual_join(),
             Key::Char('p' | 'P') => self.visual_paste(kind),
             Key::Char('I') if kind == Visual::Block => self.block_insert(false),
@@ -174,12 +180,12 @@ impl Vim {
         let span = self.object_span(inner, kind);
         self.cursor = here;
         let Some((from, to, span_kind)) = span else { return Effect::Nothing };
-        let last = if span_kind == Kind::Linewise {
+        let last = if span_kind == Extent::Linewise {
             to
         } else {
             self.prev_char(to.max(from + 1))
         };
-        if span_kind == Kind::Linewise {
+        if span_kind == Extent::Linewise {
             self.mode = Mode::Visual(Visual::Line);
         }
         self.anchor = if lo == hi { from } else { lo.min(from) };
@@ -194,18 +200,18 @@ impl Vim {
             (self.anchor.min(self.cursor), self.anchor.max(self.cursor));
         match kind {
             // A `V` selection begins at its first line's start.
-            Visual::Line => (self.line_start(lo), hi, Kind::Linewise),
+            Visual::Line => (self.line_start(lo), hi, Extent::Linewise),
             _ => (
                 lo,
                 self.forward_char(hi).min(self.text.len()),
-                Kind::Exclusive,
+                Extent::Exclusive,
             ),
         }
     }
 
     /// The byte range of the block's columns on each of its lines,
-    /// top to bottom; a line too short for the block's left column
-    /// has none.
+    /// top to bottom; on a line short of the block's left column it
+    /// is empty, at the line's end.
     fn block_ranges(&self) -> Vec<(usize, usize)> {
         let (a, c) =
             (self.position_of(self.anchor), self.position_of(self.cursor));
@@ -213,7 +219,7 @@ impl Vim {
         let (left, right) = (a.1.min(c.1), a.1.max(c.1));
         (top..=bottom)
             .filter_map(|line| self.line_at(line))
-            .filter_map(|start| self.block_range(start, left, right))
+            .map(|start| self.block_range(start, left, right))
             .collect()
     }
 
@@ -222,16 +228,12 @@ impl Vim {
         start: usize,
         left: usize,
         right: usize,
-    ) -> Option<(usize, usize)> {
+    ) -> (usize, usize) {
         let end = self.line_end(start);
-        let chars = self.text[start..end].chars().count();
-        if chars <= left {
-            return None;
-        }
         let from = self.at_column(start, left);
         let to =
             if self.to_end { end } else { self.at_column(start, right + 1) };
-        Some((from, to))
+        (from, to)
     }
 
     /// The line and column of `at`, in chars from 0.
@@ -242,26 +244,37 @@ impl Vim {
         (line, column)
     }
 
-    fn visual_operate(&mut self, kind: Visual, op: Operator) -> Effect {
+    /// An operator over the selection, `n` being its count, which
+    /// only a shift uses: `3>` shifts three times.
+    fn visual_operate(
+        &mut self,
+        kind: Visual,
+        op: Operator,
+        n: usize,
+    ) -> Effect {
         if kind == Visual::Block {
-            return self.block_operate(op);
+            return self.block_operate(op, n);
         }
-        let span = self.selection(kind);
+        let (from, to, extent) = self.selection(kind);
         self.leave_visual();
-        self.apply(op, span)
+        match op {
+            Operator::ShiftRight | Operator::ShiftLeft => {
+                self.shifted(from, to, op == Operator::ShiftRight, n)
+            }
+            _ => self.apply(op, (from, to, extent)),
+        }
     }
 
     /// An operator over the block: one edit per line, all one
     /// revision, applied bottom-up so no offset moves under another.
-    fn block_operate(&mut self, op: Operator) -> Effect {
+    fn block_operate(&mut self, op: Operator, n: usize) -> Effect {
         let ranges = self.block_ranges();
-        let Some(&(top_left, _)) = ranges.first() else {
+        if ranges.is_empty() {
             return self.leave_visual();
-        };
-        let (first, last) =
-            (self.position_of(self.anchor).0, self.position_of(self.cursor).0);
-        let lines = (first.min(last), first.max(last));
+        }
+        let (lines, left) = self.corners();
         self.leave_visual();
+        let top_left = self.at_column(self.line_at(lines.0).unwrap_or(0), left);
         match op {
             Operator::Yank => {
                 let register = self.block_register(&ranges);
@@ -270,20 +283,80 @@ impl Vim {
                 Effect::Moved
             }
             Operator::Delete | Operator::Change => {
-                self.block_removed(op, &ranges, lines, top_left)
+                self.block_removed(op, &ranges, lines, left)
             }
             Operator::ShiftRight | Operator::ShiftLeft => {
-                let (from, to) = (ranges[0].0, ranges[ranges.len() - 1].0);
-                self.apply(op, (from, to, Kind::Linewise))
+                let right = op == Operator::ShiftRight;
+                self.block_shifted(&ranges, left, (right, n))
             }
             _ => self.block_recased(op, &ranges, top_left),
         }
     }
 
+    /// The selection's first and last line, and its left column.
+    fn corners(&self) -> ((usize, usize), usize) {
+        let (a, c) =
+            (self.position_of(self.anchor), self.position_of(self.cursor));
+        ((a.0.min(c.0), a.0.max(c.0)), a.1.min(c.1))
+    }
+
+    /// `>` and `<` on a block, `times` over: the whitespace at the
+    /// block's `left` column rebuilt `shiftwidth` cells wider or
+    /// narrower, as nvim does; a line short of the column stays.
+    fn block_shifted(
+        &mut self,
+        ranges: &[(usize, usize)],
+        left: usize,
+        (right, times): (bool, usize),
+    ) -> Effect {
+        let reaching: Vec<usize> = ranges
+            .iter()
+            .map(|&(from, _)| from)
+            .filter(|&from| self.position_of(from).1 >= left)
+            .collect();
+        let mut edits = Vec::new();
+        for from in reaching.into_iter().rev() {
+            let (a, b, text) = self.block_shift_at(from, right, 8 * times);
+            self.text.replace_range(a..b, &text);
+            let join = !edits.is_empty();
+            edits.push(Edit { at: a, len: b - a, text, join });
+        }
+        let start = self.line_at(self.position_of(ranges[0].0).0).unwrap_or(0);
+        self.cursor = self.at_column(start, left);
+        self.clamp();
+        self.joining = false;
+        Effect::Edits(edits)
+    }
+
+    /// The whitespace to rebuild around the block's column `from`:
+    /// a right shift takes the blanks before the column and grows
+    /// them by `cells`, a left shift takes the blanks after it and
+    /// shrinks them by up to `cells`; the range and its new text.
+    fn block_shift_at(
+        &self,
+        from: usize,
+        right: bool,
+        cells: usize,
+    ) -> (usize, usize, String) {
+        let start = self.line_start(from);
+        let blank = |c: char| c == ' ' || c == '\t';
+        if right {
+            let before = self.text[start..from].trim_end_matches(blank).len();
+            let ws = start + before;
+            let (a, b) = (self.cells(start, ws), self.cells(start, from));
+            return (ws, from, crate::operator::whitespace(a, b + cells));
+        }
+        let run = self.text[from..].len()
+            - self.text[from..].trim_start_matches(blank).len();
+        let ws = from + run;
+        let (a, b) = (self.cells(start, from), self.cells(start, ws));
+        (from, ws, crate::operator::whitespace(a, b - (b - a).min(cells)))
+    }
+
     fn block_register(&self, ranges: &[(usize, usize)]) -> Register {
         let pieces: Vec<&str> =
             ranges.iter().map(|&(a, b)| &self.text[a..b]).collect();
-        Register { text: pieces.join("\n"), linewise: false }
+        Register { text: pieces.join("\n"), kind: Kind::Block }
     }
 
     /// The block taken out; `c` goes on to type onto every line.
@@ -292,15 +365,15 @@ impl Vim {
         op: Operator,
         ranges: &[(usize, usize)],
         lines: (usize, usize),
-        top_left: usize,
+        left: usize,
     ) -> Effect {
         let register = self.block_register(ranges);
         self.store(register);
-        let column = self.position_of(top_left).1;
         let effect = self.block_edits(ranges, |_| String::new());
-        self.cursor = top_left;
+        let start = self.line_at(lines.0).unwrap_or(0);
+        self.cursor = self.at_column(start, left);
         if op == Operator::Change {
-            self.begin_block_insert(lines.0, lines.1, (column, column), false);
+            self.begin_block_insert(lines.0, lines.1, (left, left), false);
         } else {
             self.clamp();
         }
@@ -329,7 +402,8 @@ impl Vim {
         with: impl Fn(&str) -> String,
     ) -> Effect {
         let mut edits = Vec::new();
-        for &(from, to) in ranges.iter().rev() {
+        // An empty range is a line short of the block: nothing to do.
+        for &(from, to) in ranges.iter().rev().filter(|&&(a, b)| a < b) {
             let text = with(&self.text[from..to]);
             self.text.replace_range(from..to, &text);
             edits.push(Edit {
@@ -397,14 +471,16 @@ impl Vim {
         kind: Visual,
         register: Register,
     ) -> Effect {
-        let Register { text, linewise } = register;
-        let (from, to, span_kind) = self.selection(kind);
-        let (at, len) = if span_kind == Kind::Linewise {
-            self.whole_lines(from, to)
-        } else {
-            (from, to - from)
-        };
-        let put = match (span_kind == Kind::Linewise, linewise) {
+        if kind == Visual::Block {
+            return self.paste_over_block(register);
+        }
+        let Register { text, kind: shape } = register;
+        let (from, to, extent) = self.selection(kind);
+        let lines = extent == Extent::Linewise;
+        let (at, len) =
+            if lines { self.whole_lines(from, to) } else { (from, to - from) };
+        // A block register over chars goes in as its lines joined.
+        let put = match (lines, shape == Kind::Line) {
             (true, _) => alloc::format!("{text}\n"),
             (false, true) => alloc::format!("\n{text}\n"),
             (false, false) => text,
@@ -412,14 +488,48 @@ impl Vim {
         let taken = self.text[at..at + len].trim_end_matches('\n').into();
         self.leave_visual();
         self.text.replace_range(at..at + len, &put);
-        self.store(Register {
-            text: taken,
-            linewise: span_kind == Kind::Linewise,
-        });
+        let kind = if lines { Kind::Line } else { Kind::Char };
+        self.store(Register { text: taken, kind });
         self.cursor = at + usize::from(put.starts_with('\n'));
         self.clamp();
         self.joining = false;
         self.edit(at, len, put)
+    }
+
+    /// `p` over a block: the block goes to the register; a charwise
+    /// register's text onto every line of the block, a linewise one
+    /// after the block's last line, a block where the block was.
+    fn paste_over_block(&mut self, register: Register) -> Effect {
+        let ranges = self.block_ranges();
+        let (lines, left) = self.corners();
+        self.leave_visual();
+        let taken = self.block_register(&ranges);
+        self.store(taken);
+        let Register { text, kind } = register;
+        let mut edits = Vec::new();
+        let start = self.line_at(lines.0).unwrap_or(0);
+        if kind == Kind::Char {
+            let effect = self.block_edits(&ranges, |_| text.clone());
+            self.cursor = self.at_column(start, left);
+            self.joining = false;
+            return effect;
+        }
+        crate::collect(
+            &mut edits,
+            self.block_edits(&ranges, |_| String::new()),
+        );
+        let line = if kind == Kind::Line { lines.1 } else { lines.0 };
+        self.cursor = self.at_column(self.line_at(line).unwrap_or(start), left);
+        let put = if kind == Kind::Line {
+            self.paste_lines(true, 1, &text)
+        } else {
+            self.paste_block(false, 1, &text)
+        };
+        crate::collect(&mut edits, put);
+        for (i, edit) in edits.iter_mut().enumerate() {
+            edit.join = i > 0;
+        }
+        Effect::Edits(edits)
     }
 
     /// `I` or `A` on a block: insert mode on the first line, the

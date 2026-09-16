@@ -97,11 +97,16 @@ impl Vim {
         self.text[start..end].char_indices().find_map(reached).unwrap_or(end)
     }
 
+    /// Screen cells from `start` to `at` on one line.
+    pub(crate) fn cells(&self, start: usize, at: usize) -> usize {
+        self.text[start..at].chars().fold(0, next_cell)
+    }
+
     /// The screen column the cursor wants: its char's last cell, so a
     /// tab wants its end, as nvim's `curswant` has it.
     pub(crate) fn wanted(&self) -> usize {
         let start = self.line_start(self.cursor);
-        let cells = self.text[start..self.cursor].chars().fold(0, next_cell);
+        let cells = self.cells(start, self.cursor);
         let here = self.text[self.cursor..].chars().next();
         match here {
             Some(c) if c != '\n' && self.mode != Mode::Insert => {

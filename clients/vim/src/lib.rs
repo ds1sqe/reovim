@@ -99,12 +99,21 @@ pub enum Mode {
     Visual(Visual),
 }
 
-/// What the unnamed register holds: text, and whether it came from
-/// whole lines.
+/// What a register holds: text, and its shape.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Register {
     pub text: String,
-    pub linewise: bool,
+    pub kind: Kind,
+}
+
+/// The shape of a register's text: chars, whole lines, or a block of
+/// columns, whose lines the text holds joined by newlines.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum Kind {
+    #[default]
+    Char,
+    Line,
+    Block,
 }
 
 /// What a normal-mode command has typed so far.
@@ -549,9 +558,9 @@ impl Vim {
         n: usize,
         over: Option<Visual>,
     ) -> Effect {
-        let linewise = text.ends_with('\n');
+        let kind = if text.ends_with('\n') { Kind::Line } else { Kind::Char };
         let text = String::from(text.strip_suffix('\n').unwrap_or(text));
-        let register = Register { text, linewise };
+        let register = Register { text, kind };
         self.last_clip = register.clone();
         match over {
             Some(kind) => self.paste_over(kind, register),

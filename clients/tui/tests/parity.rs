@@ -8,7 +8,7 @@ use std::path::Path;
 
 use reovim_client_tui::{Step, Tui};
 use reovim_client_vim::notation::keys;
-use reovim_client_vim::{Register, Vim};
+use reovim_client_vim::{Kind, Register, Vim};
 use reovim_rig::Rig;
 
 /// nvim's `state` file: the cursor as `line:column`, the register's
@@ -21,20 +21,23 @@ fn state(bytes: &[u8]) -> Option<(String, String, Vec<u8>)> {
 }
 
 /// What nvim would write for Vim's cursor and register: the register
-/// as `getreg` gives it, a linewise one ending in its newline.
+/// as `getreg` gives it, a linewise one ending in its newline, a
+/// block's type carrying its width.
 fn state_of(vim: &Vim) -> (String, String, Vec<u8>) {
     let (line, column) = vim.position();
-    let Register { text, linewise } = vim.register();
-    let kind = match (linewise, text.is_empty()) {
-        (true, _) => "V",
-        (false, true) => "",
-        (false, false) => "v",
+    let Register { text, kind } = vim.register();
+    let width = text.split('\n').map(|p| p.chars().count()).max();
+    let kind = match kind {
+        Kind::Line => "V".to_string(),
+        Kind::Block => format!("\u{16}{}", width.unwrap_or(0)),
+        Kind::Char if text.is_empty() => String::new(),
+        Kind::Char => "v".to_string(),
     };
     let mut bytes = text.clone().into_bytes();
-    if *linewise {
+    if kind == "V" {
         bytes.push(b'\n');
     }
-    (format!("{}:{}", line + 1, column + 1), kind.into(), bytes)
+    (format!("{}:{}", line + 1, column + 1), kind, bytes)
 }
 
 /// One case: the keys run to their quit, the file and the code after.
@@ -66,12 +69,7 @@ fn replay(case: &Path) -> Result<(), String> {
     }
     let code = quit.ok_or_else(|| format!("{name}: the keys did not quit"))?;
     let file = rig.disk("file");
-    let mut ours = state_of(tui.vim());
-    // A blockwise register (`^V{width}`) is not judged until Vim has
-    // the kind; the file and the cursor still are.
-    if theirs.1.starts_with('\u{16}') {
-        (ours.1, ours.2) = (theirs.1.clone(), theirs.2.clone());
-    }
+    let ours = state_of(tui.vim());
     if (code, &file, &ours) == (exit, &out, &theirs) {
         return Ok(());
     }

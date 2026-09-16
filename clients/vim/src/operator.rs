@@ -3,8 +3,9 @@
 //! operators, the register, `p`, `P` and `J`.
 
 use alloc::string::String;
+use alloc::vec::Vec;
 
-use crate::{Edit, Effect, Key, Mode, Register, Vim};
+use crate::{Edit, Effect, Key, Kind, Mode, Register, Vim};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Operator {
@@ -109,16 +110,16 @@ pub enum Motion {
     },
 }
 
-/// What an operator does at a span's end.
+/// How far a span reaches at its end.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Kind {
+pub enum Extent {
     Exclusive,
     Inclusive,
     Linewise,
 }
 
 /// A span for an operator: `to` is exclusive of the char there.
-pub type Span = (usize, usize, Kind);
+pub type Span = (usize, usize, Extent);
 
 impl Motion {
     /// The motion one key names, `count` being the digits before it.
@@ -149,21 +150,21 @@ impl Motion {
 
     /// `$` under an operator already stops past the last char, so it
     /// is exclusive here.
-    const fn kind(self, find: Option<(Find, char)>) -> Kind {
+    const fn kind(self, find: Option<(Find, char)>) -> Extent {
         let last_forward = match find {
             Some((kind, _)) => kind.forward(),
             None => false,
         };
         match self {
             Self::Up | Self::Down | Self::Line(_) | Self::Lines => {
-                Kind::Linewise
+                Extent::Linewise
             }
-            Self::WordEnd | Self::Percent => Kind::Inclusive,
-            Self::Find(kind, _) if kind.forward() => Kind::Inclusive,
+            Self::WordEnd | Self::Percent => Extent::Inclusive,
+            Self::Find(kind, _) if kind.forward() => Extent::Inclusive,
             Self::FindAgain { reversed } if last_forward != reversed => {
-                Kind::Inclusive
+                Extent::Inclusive
             }
-            _ => Kind::Exclusive,
+            _ => Extent::Exclusive,
         }
     }
 }
@@ -321,15 +322,15 @@ impl Vim {
             return None;
         }
         let (from, to) = if end >= start { (start, end) } else { (end, start) };
-        let inclusive = kind == Kind::Inclusive;
+        let inclusive = kind == Extent::Inclusive;
         let mut to = if inclusive { self.forward_char(to) } else { to };
         let rule1 =
-            kind == Kind::Exclusive && to > from && self.line_start(to) == to;
+            kind == Extent::Exclusive && to > from && self.line_start(to) == to;
         if rule1 {
             to = self.prev_char(to);
         }
         if rule1 && from <= self.first_non_blank(from) && from != to {
-            kind = Kind::Linewise;
+            kind = Extent::Linewise;
         }
         Some((from, to.min(self.text.len()), kind))
     }
@@ -388,9 +389,9 @@ impl Vim {
     /// `op` over `span`.
     pub(crate) fn apply(&mut self, op: Operator, span: Span) -> Effect {
         let (from, to, kind) = span;
-        let linewise = kind == Kind::Linewise || op.linewise();
+        let linewise = kind == Extent::Linewise || op.linewise();
         if op.linewise() {
-            return self.shifted(from, to, op == Operator::ShiftRight);
+            return self.shifted(from, to, op == Operator::ShiftRight, 1);
         }
         let (at, len) = if linewise {
             self.whole_lines(from, to)
@@ -408,7 +409,8 @@ impl Vim {
         } else {
             &self.text[at..at + len]
         };
-        self.store(Register { text: text.into(), linewise });
+        let kind = if linewise { Kind::Line } else { Kind::Char };
+        self.store(Register { text: text.into(), kind });
         match op {
             Operator::Delete => self.deleted(at, len, linewise),
             Operator::Change if linewise => self.change_lines(from, to),
@@ -417,17 +419,25 @@ impl Vim {
         }
     }
 
-    /// `>` and `<` over the lines `from` to `to`: each non-empty
-    /// line's indent moved by `shiftwidth` and written with tabs, as
-    /// nvim's defaults have it; the cursor on the first line at the
-    /// column wanted, as `nostartofline` leaves it.
-    fn shifted(&mut self, from: usize, to: usize, right: bool) -> Effect {
+    /// `>` and `<` over the lines `from` to `to`, `times` over: each
+    /// non-empty line's indent moved by `shiftwidth` and written with
+    /// tabs, as nvim's defaults have it; the cursor on the first line
+    /// at the column wanted, as `nostartofline` leaves it.
+    pub(crate) fn shifted(
+        &mut self,
+        from: usize,
+        to: usize,
+        right: bool,
+        times: usize,
+    ) -> Effect {
         let start = self.line_start(from);
         let end = self.line_end(to);
         let block = self.text[start..end]
             .split('\n')
-            .map(|line| shift(line, right))
-            .collect::<alloc::vec::Vec<_>>()
+            .map(|line| {
+                (0..times).fold(String::from(line), |l, _| shift(&l, right))
+            })
+            .collect::<Vec<_>>()
             .join("\n");
         self.text.replace_range(start..end, &block);
         self.cursor = self.at_screen_column(start, self.want);
@@ -544,7 +554,7 @@ impl Vim {
             return Some((
                 self.cursor,
                 next.min(self.text.len()),
-                Kind::Exclusive,
+                Extent::Exclusive,
             ));
         }
         self.span(Motion::WordEnd, n)
@@ -582,7 +592,7 @@ impl Vim {
     /// `*` go to the clipboard. The unnamed register is then the
     /// named one whole, as Vim's points at the register last written.
     pub(crate) fn store(&mut self, taken: Register) {
-        let end = if taken.linewise { "\n" } else { "" };
+        let end = if taken.kind == Kind::Line { "\n" } else { "" };
         let named = match self.pending.register.take() {
             Some('_') => return,
             Some('+' | '*') => {
@@ -608,13 +618,16 @@ impl Vim {
     /// straight after.
     fn append(&mut self, name: char, taken: &Register) {
         let entry = self.registers.entry(name).or_default();
-        let separated =
-            !entry.text.is_empty() && (entry.linewise || taken.linewise);
-        if separated {
+        let lines = entry.kind != Kind::Char || taken.kind != Kind::Char;
+        if !entry.text.is_empty() && lines {
             entry.text.push('\n');
         }
         entry.text.push_str(&taken.text);
-        entry.linewise |= taken.linewise;
+        entry.kind = match (entry.kind, taken.kind) {
+            (Kind::Line, _) | (_, Kind::Line) => Kind::Line,
+            (Kind::Block, _) | (_, Kind::Block) => Kind::Block,
+            (Kind::Char, Kind::Char) => Kind::Char,
+        };
     }
 
     /// The register a put reads: the one `"x` named, else the unnamed;
@@ -651,17 +664,21 @@ impl Vim {
         after: bool,
         n: usize,
     ) -> Effect {
-        let Register { text, linewise } = register;
-        if text.is_empty() {
-            Effect::Nothing
-        } else if linewise {
-            self.paste_lines(after, n, &text)
-        } else {
-            self.paste_chars(after, n, &text)
+        let Register { text, kind } = register;
+        match kind {
+            _ if text.is_empty() => Effect::Nothing,
+            Kind::Line => self.paste_lines(after, n, &text),
+            Kind::Block => self.paste_block(after, n, &text),
+            Kind::Char => self.paste_chars(after, n, &text),
         }
     }
 
-    fn paste_lines(&mut self, after: bool, n: usize, text: &str) -> Effect {
+    pub(crate) fn paste_lines(
+        &mut self,
+        after: bool,
+        n: usize,
+        text: &str,
+    ) -> Effect {
         let block = alloc::format!("{text}\n").repeat(n);
         let end = self.line_end(self.cursor);
         let last = end >= self.text.len();
@@ -691,6 +708,66 @@ impl Vim {
         let end = self.prev_char(at + put.len());
         self.cursor = if put.contains('\n') { at } else { end };
         self.edit(at, 0, put)
+    }
+
+    /// A block register put: piece `i` onto the line `i` below the
+    /// cursor's at its column (after it for `p`), a count repeating
+    /// each piece; the cursor at the first line's column.
+    pub(crate) fn paste_block(
+        &mut self,
+        after: bool,
+        n: usize,
+        text: &str,
+    ) -> Effect {
+        let pieces: Vec<String> =
+            text.split('\n').map(|piece| piece.repeat(n)).collect();
+        let width = pieces.iter().map(|p| p.chars().count()).max();
+        let (line, column) = self.position();
+        let on_char = self.cursor < self.line_end(self.cursor);
+        let column = column + usize::from(after && on_char);
+        let mut edits = Vec::new();
+        for (i, piece) in pieces.iter().enumerate() {
+            let (at, text) =
+                self.block_piece(line + i, column, piece, width.unwrap_or(0));
+            self.text.insert_str(at, &text);
+            edits.push(Edit { at, len: 0, text, join: i > 0 });
+        }
+        let start = self.line_at(line).unwrap_or(0);
+        self.cursor = self.at_column(start, column);
+        self.joining = false;
+        Effect::Edits(edits)
+    }
+
+    /// Where `piece` goes on line `line` at `column`, and as what:
+    /// the line padded with spaces to reach the column, the piece
+    /// padded to `width` when text follows it, a line past the end
+    /// appended, as nvim does.
+    fn block_piece(
+        &self,
+        line: usize,
+        column: usize,
+        piece: &str,
+        width: usize,
+    ) -> (usize, String) {
+        let Some(start) = self.line_at(line) else {
+            return self.appended(column, piece);
+        };
+        let end = self.line_end(start);
+        let chars = self.text[start..end].chars().count();
+        let at = self.at_column(start, column);
+        let pad = " ".repeat(column.saturating_sub(chars));
+        let fill = if at < end { width - piece.chars().count() } else { 0 };
+        (at, alloc::format!("{pad}{piece}{}", " ".repeat(fill)))
+    }
+
+    /// A new last line for a block piece: `piece` at `column`, on its
+    /// own line after the text, ended as the text is.
+    fn appended(&self, column: usize, piece: &str) -> (usize, String) {
+        let pad = " ".repeat(column);
+        let ends = self.text.ends_with('\n');
+        let (before, after) = if ends { ("", "\n") } else { ("\n", "") };
+        let text = alloc::format!("{before}{pad}{piece}{after}");
+        (self.text.len(), text)
     }
 
     /// `J`: `n` lines (at least two) made one, a space between unless
@@ -761,8 +838,17 @@ fn shift(line: &str, right: bool) -> String {
             if c == '\t' { col / 8 * 8 + 8 } else { col + 1 }
         });
     let columns = if right { columns + 8 } else { columns.saturating_sub(8) };
-    let mut out = "\t".repeat(columns / 8);
-    out.push_str(&" ".repeat(columns % 8));
+    let mut out = whitespace(0, columns);
     out.push_str(rest);
+    out
+}
+
+/// Whitespace from screen cell `from` to `to`: tabs while a stop
+/// fits, spaces after, as `noexpandtab` writes it.
+pub fn whitespace(from: usize, to: usize) -> String {
+    let stops = (from / 8 * 8 + 8..=to).step_by(8).count();
+    let mut out = "\t".repeat(stops);
+    let reached = if stops == 0 { from } else { from / 8 * 8 + 8 * stops };
+    out.push_str(&" ".repeat(to - reached));
     out
 }

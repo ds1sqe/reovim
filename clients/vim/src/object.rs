@@ -4,7 +4,7 @@
 use alloc::vec::Vec;
 
 use crate::Vim;
-use crate::operator::{Kind, Span};
+use crate::operator::{Extent, Span};
 
 /// A word for `iw` and `aw`: same class; for `iW` and `aW`: not blank.
 fn same(big: bool, a: Option<char>, b: Option<char>) -> bool {
@@ -70,7 +70,7 @@ impl Vim {
         let (mut from, mut to) = self.word_run(self.cursor, big);
         let on_blank = blank(self.char_at(self.cursor));
         if inner {
-            return Some((from, to, Kind::Exclusive));
+            return Some((from, to, Extent::Exclusive));
         }
         let before = self.prev_char(from);
         if on_blank || blank(self.char_at(to)) {
@@ -78,7 +78,7 @@ impl Vim {
         } else if from > self.line_start(from) && blank(self.char_at(before)) {
             from = self.word_run(before, big).0;
         }
-        Some((from, to, Kind::Exclusive))
+        Some((from, to, Extent::Exclusive))
     }
 
     /// The innermost `open`..`close` pair around the cursor.
@@ -86,7 +86,7 @@ impl Vim {
         let start = self.opener_before(open, close)?;
         let end = self.closer_after(start, open, close)?;
         if !inner {
-            return Some((start, end + 1, Kind::Exclusive));
+            return Some((start, end + 1, Extent::Exclusive));
         }
         // Brackets on lines of their own hold whole lines.
         let after_open = start + 1;
@@ -97,10 +97,10 @@ impl Vim {
             return Some((
                 after_open + 1,
                 self.line_start(end) - 1,
-                Kind::Linewise,
+                Extent::Linewise,
             ));
         }
-        Some((after_open, end, Kind::Exclusive))
+        Some((after_open, end, Extent::Exclusive))
     }
 
     /// The `open` at or before the cursor that no `close` between
@@ -149,10 +149,10 @@ impl Vim {
             .find(|(a, b)| *a <= col && col <= *b);
         let (open, close) = inside.or_else(|| around(&quotes, col))?;
         if inner {
-            return Some((open + 1, close, Kind::Exclusive));
+            return Some((open + 1, close, Extent::Exclusive));
         }
         let (from, to) = self.with_blanks(start, end, open, close + 1);
-        Some((from, to, Kind::Exclusive))
+        Some((from, to, Extent::Exclusive))
     }
 
     /// `from..to` with the blanks after it on the line, or those
@@ -216,6 +216,6 @@ impl Vim {
         }
         let from = self.line_at(first)?;
         let to = self.line_at(last)?;
-        Some((from, to, Kind::Linewise))
+        Some((from, to, Extent::Linewise))
     }
 }
