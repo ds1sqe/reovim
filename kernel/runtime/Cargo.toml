@@ -8,6 +8,9 @@ license.workspace = true
 repository.workspace = true
 publish = false
 
+[dependencies]
+reovim-kernel-interface = { path = "../interface" }
+
 [features]
 default = []
 std = []

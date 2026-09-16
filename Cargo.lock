@@ -9,10 +9,16 @@ version = "0.16.0-dev"
 [[package]]
 name = "reovim-kernel-interface"
 version = "0.16.0-dev"
+dependencies = [
+ "reovim-bitflags",
+]
 
 [[package]]
 name = "reovim-kernel-runtime"
 version = "0.16.0-dev"
+dependencies = [
+ "reovim-kernel-interface",
+]
 
 [[package]]
 name = "reovim-vtable"

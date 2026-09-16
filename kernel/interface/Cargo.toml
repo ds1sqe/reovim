@@ -8,10 +8,12 @@ license.workspace = true
 repository.workspace = true
 publish = false
 
+[dependencies]
+reovim-bitflags = { path = "../../lib/bitflags" }
+
 [features]
 default = []
 std = []
 
 [lints]
 workspace = true
-
