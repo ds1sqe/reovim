@@ -197,7 +197,7 @@ fn connect_resolve_and_read_whole() {
     assert!(matches!(client.resolve("note"), Err(Fault::Usage(_))));
     assert!(matches!(client.resolve("rd:x"), Err(Fault::Usage(_))));
     assert_eq!(
-        client.resolve("/module/fs/root/none"),
+        client.resolve("/module/fs/root/.."),
         Err(Fault::Kernel(Error::Invalid))
     );
 }

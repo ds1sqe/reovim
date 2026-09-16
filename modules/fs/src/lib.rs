@@ -2,7 +2,8 @@
 #![forbid(unsafe_code)]
 //! The fs Driver: one directory mirrored under `/module/fs/root`.
 //! Directories are Containers whose children appear on `lookup`; files
-//! are Read/Write byte rds. It speaks to the machine through host/os
+//! are Read/Write byte rds. A name that is not on disk is an empty
+//! file until it is written. It speaks to the machine through host/os
 //! only and learns of edits behind its back by comparing `mtime` on
 //! the next `read`, so an edit inside the host's timestamp tick after
 //! the Driver's own write goes unseen.
@@ -152,8 +153,13 @@ impl Fs {
             return Err(Error::Invalid);
         }
         let path = format!("{path}/{name}");
-        let stat = fs::stat(&path).map_err(map)?;
-        self.add(ctx, rd, name, path, stat.kind == reovim_host::Kind::Dir)
+        let dir = match fs::stat(&path) {
+            Ok(stat) => stat.kind == reovim_host::Kind::Dir,
+            // Not on disk: an empty file until it is written.
+            Err(reovim_host::Error::NotFound) => false,
+            Err(other) => return Err(map(other)),
+        };
+        self.add(ctx, rd, name, path, dir)
     }
 
     fn list(&self, ctx: &dyn Calls, rd: Rd, path: &str) -> Result<Rd, Error> {
@@ -166,26 +172,31 @@ impl Fs {
         Ok(rd)
     }
 
-    /// `stat` the file behind `rd`; a moved `mtime` is a Modify.
+    /// `stat` the file behind `rd`; a moved `mtime` is a Modify, a
+    /// file that was there and is not is Gone. One that never was is
+    /// still empty.
     fn check(&self, ctx: &dyn Calls, rd: Rd) -> Result<String, Error> {
         let (path, dir) = self.path(rd)?;
         if dir {
             return Err(Error::Unsupported);
         }
-        let stat = match fs::stat(&path) {
-            Ok(stat) => stat,
-            Err(reovim_host::Error::NotFound) => {
-                return Err(self.lost(ctx, rd, &path));
-            }
+        let mtime = match fs::stat(&path) {
+            Ok(stat) => Some(stat.mtime),
+            Err(reovim_host::Error::NotFound) => None,
             Err(other) => return Err(map(other)),
         };
         let mut nodes = self.nodes.borrow_mut();
-        let seen = nodes.get_mut(&rd).and_then(|n| n.seen.replace(stat.mtime));
+        let node = nodes.get_mut(&rd).ok_or(Error::Invalid)?;
+        let seen = core::mem::replace(&mut node.seen, mtime);
         drop(nodes);
-        if seen.is_some_and(|last| last != stat.mtime) {
-            ctx.changed(rd, Kind::Modify)?;
+        match (seen, mtime) {
+            (Some(_), None) => Err(self.lost(ctx, rd, &path)),
+            (Some(last), Some(now)) if last != now => {
+                ctx.changed(rd, Kind::Modify)?;
+                Ok(path)
+            }
+            _ => Ok(path),
         }
-        Ok(path)
     }
 
     fn write(
@@ -238,9 +249,13 @@ impl Driver for Fs {
         at: u64,
         len: usize,
     ) -> Reply<Vec<u8>> {
-        let bytes = self
-            .check(ctx, Rd(h))
-            .and_then(|path| fs::read(&path, at, len).map_err(map));
+        let bytes = self.check(ctx, Rd(h)).and_then(|path| {
+            match fs::read(&path, at, len) {
+                // Not written yet.
+                Err(reovim_host::Error::NotFound) => Ok(Vec::new()),
+                bytes => bytes.map_err(map),
+            }
+        });
         bytes.into()
     }
 

@@ -75,7 +75,11 @@ pub fn read(path: &str, at: u64, len: usize) -> Result<Vec<u8>, Error> {
 }
 
 pub fn write(path: &str, at: u64, bytes: &[u8]) -> Result<usize, Error> {
-    let mut file = OpenOptions::new().write(true).open(path)?;
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(path)?;
     file.seek(SeekFrom::Start(at))?;
     file.write_all(bytes)?;
     file.set_len(at + bytes.len() as u64)?;

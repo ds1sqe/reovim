@@ -160,8 +160,6 @@ fn lookup_mirrors_files_and_directories() {
         Flags::READ | Flags::WRITE | Flags::CONTAINER
     );
 
-    let missing = Op::Lookup { rd: rig.root, name: "none".to_string() };
-    assert_eq!(rig.err(missing), Error::Invalid);
     let escape = Op::Lookup { rd: rig.root, name: "..".to_string() };
     assert_eq!(rig.err(escape), Error::Invalid);
     let below_file = Op::Lookup { rd: file, name: "x".to_string() };
@@ -209,6 +207,27 @@ fn read_write_and_a_change_behind_the_driver() {
     assert_eq!(rig.read(h), b"edited");
     let (kinds, _) = rig.since(cursor);
     assert_eq!(kinds, [Kind::Modify]);
+}
+
+#[test]
+fn a_name_not_on_disk_is_an_empty_file_until_written() {
+    let rig = Rig::new("new");
+    let path = rig.dir.path("new");
+    let file = rig.lookup(rig.root, "new");
+    assert_eq!(rig.flags(file), Flags::READ | Flags::WRITE);
+    let h = rig.open(file, Rights::READ | Rights::WRITE);
+    assert_eq!(rig.read(h), b"");
+    assert!(!path.exists(), "nothing on disk before a write");
+
+    assert_eq!(rig.write(h, b"first"), 5);
+    assert_eq!(std::fs::read(&path).unwrap(), b"first");
+    assert_eq!(rig.read(h), b"first");
+    let root = rig.open(rig.root, Rights::WRITE);
+    assert_eq!(rig.create(root, "new"), Reply::err(Error::Invalid));
+
+    // Once seen, its removal is Gone as for any file.
+    std::fs::remove_file(&path).unwrap();
+    assert_eq!(rig.err(Op::Read { h, at: 0, len: 8 }), Error::Gone);
 }
 
 #[test]

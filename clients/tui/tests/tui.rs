@@ -168,10 +168,14 @@ fn a_write_from_another_client_shows_after_tick() {
 }
 
 #[test]
-fn a_missing_file_does_not_open() {
+fn a_missing_file_opens_empty_and_appears_on_save() {
     let rig = Rig::new("missing");
-    let Err(fault) = Tui::open(rig.client(), "none") else { panic!("opened") };
-    assert_eq!(fault, Fault::Kernel(Error::Invalid));
+    let mut tui = Tui::open(rig.client(), "none").unwrap();
+    assert_eq!(tui.frame(80, 24).lines, vec![""]);
+    assert_eq!(tui.key(Key::Char('x')), Ok(Step::Changed));
+    assert!(!rig.dir.0.join("none").exists(), "nothing on disk yet");
+    assert_eq!(tui.key(Key::Ctrl('s')), Ok(Step::Changed));
+    assert_eq!(rig.disk("none"), b"x");
 }
 
 #[test]

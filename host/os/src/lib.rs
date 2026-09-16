@@ -84,8 +84,8 @@ pub mod fs {
         backend::read(path, at, len)
     }
 
-    /// Write `bytes` at offset `at` and end the file there. Returns the
-    /// count written.
+    /// Write `bytes` at offset `at` and end the file there, making the
+    /// file when there is none. Returns the count written.
     ///
     /// # Errors
     /// As [`list`].

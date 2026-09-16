@@ -62,6 +62,10 @@ fn read_write_create_round_trip() {
     assert_eq!(fs::write(&file, 6, b"you"), Ok(3));
     assert_eq!(fs::read(&file, 0, 100).unwrap(), b"hello you");
     assert_eq!(fs::stat(&file).unwrap().len, 9);
+
+    // A write makes the file it does not find.
+    assert_eq!(fs::write(&dir.path("made"), 0, b"new"), Ok(3));
+    assert_eq!(fs::read(&dir.path("made"), 0, 8).unwrap(), b"new");
 }
 
 #[test]
