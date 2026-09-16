@@ -68,7 +68,7 @@ ended() {
 
 # The editor holds the pane; the status row says which file.
 editing() {
-    shown "$1" "$2 .*Ctrl-Q quit"
+    shown "$1" "$2  [0-9]*:[0-9]*  r[0-9]*"
 }
 
 # --- a repository, a commit message written and one aborted ---------
@@ -82,7 +82,7 @@ git add a
 
 start commit "$DIR/repo" "git commit"
 editing commit COMMIT_EDITMSG
-keys commit i "second" Escape C-s C-q
+keys commit i "second" Escape : w q Enter
 [[ "$(ended commit)" == 0 ]] || fail "git commit failed"
 [[ "$(git log -1 --format=%s)" == second ]] || fail "message not used"
 
@@ -90,7 +90,7 @@ echo three > a
 git add a
 start abort "$DIR/repo" "git commit"
 editing abort COMMIT_EDITMSG
-keys abort i "third" Escape C-c
+keys abort i "third" Escape : c q Enter
 [[ "$(ended abort)" != 0 ]] || fail "git commit went on after Ctrl-C"
 [[ "$(git log -1 --format=%s)" == second ]] || fail "abort committed"
 
@@ -98,10 +98,9 @@ keys abort i "third" Escape C-c
 git commit -q -m third
 start rebase "$DIR/repo" "git rebase -i HEAD~1"
 editing rebase git-rebase-todo
-keys rebase i Right Right Right Right BSpace BSpace BSpace BSpace "reword" \
-    Escape C-s C-q
+keys rebase x x x x i "reword" Escape : w q Enter
 editing rebase COMMIT_EDITMSG
-keys rebase i "reworded " Escape C-s C-q
+keys rebase i "reworded " Escape Z Z
 [[ "$(ended rebase)" == 0 ]] || fail "rebase failed"
 [[ "$(git log -1 --format=%s)" == "reworded third" ]] \
     || fail "reword not used: $(git log -1 --format=%s)"
@@ -112,11 +111,11 @@ start new "$DIR" "$BIN $DIR/new/note"
 start other "$DIR/new" "$BIN ../other"
 editing new note
 editing other other
-keys new i "fresh" Escape C-q
-sleep 0.05
+keys new i "fresh" Escape : q Enter
+shown new "E37: No write since last change"
 [[ ! -e "$DIR/new/note" ]] || fail "a new file exists before its save"
-keys new C-s C-q
-keys other i "x" Escape C-s C-q
+keys new : w q Enter
+keys other i "x" Escape : w Enter : q ! Enter
 [[ "$(ended new)" == 0 && "$(ended other)" == 0 ]] || fail "quit failed"
 [[ "$(cat "$DIR/new/note")" == fresh ]] || fail "new file not written"
 [[ "$(cat "$DIR/other")" == x ]] || fail "second editor not written"

@@ -111,8 +111,8 @@ impl Vim {
     /// Right by one char; in normal mode not onto the line's end.
     pub(crate) fn right(&mut self) -> Effect {
         let limit = match self.mode {
-            Mode::Normal => self.last_char(self.cursor),
             Mode::Insert => self.line_end(self.cursor),
+            Mode::Normal | Mode::Command => self.last_char(self.cursor),
         };
         match self.text[self.cursor..].chars().next() {
             Some(c) if self.cursor < limit => {
@@ -130,8 +130,8 @@ impl Vim {
         let Some(start) = self.line_at(target) else { return Effect::Nothing };
         let to = self.at_column(start, column);
         match self.mode {
-            Mode::Normal => self.go_clamped(to),
             Mode::Insert => self.go(to),
+            Mode::Normal | Mode::Command => self.go_clamped(to),
         }
     }
 

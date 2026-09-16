@@ -10,7 +10,7 @@ use alloc::format;
 use alloc::string::String;
 
 use reovim_client::{Client, Error, Fault, Handle, Key, Kind, Rd, Rights};
-use reovim_client_vim::{Effect, Vim};
+use reovim_client_vim::{Effect, Quit, Vim};
 use reovim_text_api::{history, open, publish, text};
 
 pub use reovim_client_vim::Frame;
@@ -25,6 +25,9 @@ pub enum Step {
     Quit(u8),
 }
 
+/// What `:q` says to unsaved changes.
+const E37: &str = "E37: No write since last change (add ! to override)";
+
 /// One Buffer over `/module/fs/root/FILE`, watched, with its draft in
 /// a `Vim` and its head and published revisions from `tree`. The
 /// source is watched too: a save by anyone is a Modify there.
@@ -37,8 +40,6 @@ pub struct Tui {
     name: String,
     head: u64,
     published: u64,
-    /// A quit was refused on unsaved changes; the next one discards.
-    guard: bool,
 }
 
 impl Tui {
@@ -74,7 +75,6 @@ impl Tui {
             name,
             head: 0,
             published: 0,
-            guard: false,
         };
         tui.refresh()?;
         Ok(tui)
@@ -87,16 +87,14 @@ impl Tui {
     }
 
     /// One key to Vim: an edit is a `replace`, or an `amend` when it
-    /// joins the insert under way; Ctrl-Z and Ctrl-Y move the head,
-    /// Ctrl-S saves. Ctrl-Q quits, refusing once while there is
-    /// something unsaved; Ctrl-C aborts with 1.
+    /// joins the insert under way; `u` and Ctrl-R move the head; `:w`
+    /// saves. `:q` is refused with E37 while there are unsaved
+    /// changes, `:q!` leaves them, `:wq` saves first, `:cq` exits 1.
     ///
     /// # Errors
     /// What the Client says.
     pub fn key(&mut self, key: Key) -> Result<Step, Fault> {
-        let guarded = core::mem::take(&mut self.guard);
         match self.vim.key(key) {
-            Effect::Nothing if guarded => return Ok(Step::Changed),
             Effect::Nothing => return Ok(Step::Same),
             Effect::Moved => return Ok(Step::Changed),
             Effect::Edit { at, len, text, join } => {
@@ -112,12 +110,16 @@ impl Tui {
                 self.reload()?;
             }
             Effect::Save => self.save()?,
-            Effect::Quit if self.head != self.published && !guarded => {
-                self.guard = true;
+            Effect::Quit(Quit::Ask) if self.head != self.published => {
+                self.vim.notice(E37);
                 return Ok(Step::Changed);
             }
-            Effect::Quit => return Ok(Step::Quit(0)),
-            Effect::Abort => return Ok(Step::Quit(1)),
+            Effect::Quit(Quit::Ask | Quit::Force) => return Ok(Step::Quit(0)),
+            Effect::Quit(Quit::Write) => {
+                self.save()?;
+                return Ok(Step::Quit(0));
+            }
+            Effect::Quit(Quit::Abort) => return Ok(Step::Quit(1)),
         }
         self.refresh()?;
         Ok(Step::Changed)
@@ -152,24 +154,18 @@ impl Tui {
     }
 
     /// The frame with the status row filled in: the name, the
-    /// position, the revision, then Vim's word or the key hints.
+    /// position, the revision, then Vim's word.
     pub fn frame(&mut self, cols: u16, rows: u16) -> Frame {
         let mut frame = self.vim.frame(cols, rows);
         let (line, column) = self.vim.position();
         let mark = if self.head == self.published { "" } else { "[+]" };
-        let hint = if self.guard {
-            "unsaved: Ctrl-Q again discards, Ctrl-S saves"
-        } else if frame.status.is_empty() {
-            "Ctrl-S save  Ctrl-Z undo  Ctrl-Y redo  Ctrl-Q quit"
-        } else {
-            frame.status.as_str()
-        };
         frame.status = format!(
-            "{}  {}:{}  r{}{mark}   {hint}",
+            "{}  {}:{}  r{}{mark}   {}",
             self.name,
             line + 1,
             column + 1,
-            self.head
+            self.head,
+            frame.status
         );
         frame
     }

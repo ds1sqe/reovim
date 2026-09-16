@@ -10,6 +10,7 @@
 
 extern crate alloc;
 
+mod command;
 mod motion;
 pub mod notation;
 mod word;
@@ -37,13 +38,26 @@ pub enum Effect {
     Undo,
     Redo,
     Save,
-    Quit,
-    /// Leave with 1, whatever the Buffer holds.
+    Quit(Quit),
+}
+
+/// How a quit was asked for; what it does with unsaved changes is
+/// the tui's to decide, since only it knows whether there are any.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Quit {
+    /// `:q`: refused with E37 while there are unsaved changes.
+    Ask,
+    /// `:q!`, `ZQ`: whatever the Buffer holds, exit 0.
+    Force,
+    /// `:wq`, `:x`, `ZZ`: written, then exit 0.
+    Write,
+    /// `:cq`: exit 1, so the caller uses nothing.
     Abort,
 }
 
 /// What to draw: `rows - 1` text rows, the cursor as (row, column) on
-/// them, and Vim's own word for the status row: the mode, or nothing.
+/// them, and Vim's own word for the status row: a message, the command
+/// line, the mode, or nothing.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Frame {
     pub lines: Vec<String>,
@@ -56,6 +70,7 @@ pub enum Mode {
     #[default]
     Normal,
     Insert,
+    Command,
 }
 
 /// The text, the cursor as a byte index on a char boundary, the first
@@ -69,10 +84,14 @@ pub struct Vim {
     mode: Mode,
     /// Digits typed before a command; 0 is none.
     count: usize,
-    /// A `g` or `d` waiting for its second key.
+    /// A `g`, `d` or `Z` waiting for its second key.
     pending: Option<char>,
     /// The next insert edit joins the head revision.
     joining: bool,
+    /// The command line being typed.
+    line: String,
+    /// Shown until the next key.
+    message: String,
 }
 
 impl Vim {
@@ -104,12 +123,16 @@ impl Vim {
         true
     }
 
-    /// One key in the current mode.
+    /// One key in the current mode; a message showing goes with it.
     pub fn key(&mut self, key: Key) -> Effect {
-        match self.mode {
+        let shown = !self.message.is_empty();
+        self.message.clear();
+        let effect = match self.mode {
             Mode::Normal => self.normal(key),
             Mode::Insert => self.insert(key),
-        }
+            Mode::Command => self.command(key),
+        };
+        if shown && effect == Effect::Nothing { Effect::Moved } else { effect }
     }
 
     /// The cursor to line `n`, counted from 1 and clamped, at its first
@@ -163,8 +186,10 @@ impl Vim {
         let row = u16::try_from(line - self.top).unwrap_or(u16::MAX);
         let col = u16::try_from(column.min(width - 1)).unwrap_or(u16::MAX);
         let status = match self.mode {
+            _ if !self.message.is_empty() => self.message.clone(),
             Mode::Normal => String::new(),
             Mode::Insert => String::from("-- INSERT --"),
+            Mode::Command => alloc::format!(":{}", self.line),
         };
         Frame { lines, cursor: (row, col), status }
     }
@@ -183,6 +208,8 @@ impl Vim {
             return match (first, key) {
                 ('g', Key::Char('g')) => self.jump(n - 1),
                 ('d', Key::Char('d')) => self.delete_lines(n),
+                ('Z', Key::Char('Z')) => Effect::Quit(Quit::Write),
+                ('Z', Key::Char('Q')) => Effect::Quit(Quit::Force),
                 _ => Effect::Nothing,
             };
         }
@@ -197,7 +224,7 @@ impl Vim {
             Key::Char('w') => self.repeat(n, Self::word_forward),
             Key::Char('b') => self.repeat(n, Self::word_back),
             Key::Char('e') => self.repeat(n, Self::word_end),
-            Key::Char(first @ ('g' | 'd')) => {
+            Key::Char(first @ ('g' | 'd' | 'Z')) => {
                 self.pending = Some(first);
                 self.count = count;
                 Effect::Nothing
@@ -234,11 +261,12 @@ impl Vim {
             Key::Char('x') => self.delete_chars(n),
             Key::Char('X') => self.delete_before(n),
             Key::Char('D') => self.delete_to_end(),
-            Key::Char('u') | Key::Ctrl('z') => Effect::Undo,
-            Key::Ctrl('r' | 'y') => Effect::Redo,
-            Key::Ctrl('s') => Effect::Save,
-            Key::Ctrl('q') => Effect::Quit,
-            Key::Ctrl('c') => Effect::Abort,
+            Key::Char('u') => Effect::Undo,
+            Key::Ctrl('r') => Effect::Redo,
+            Key::Char(':') => {
+                self.mode = Mode::Command;
+                Effect::Moved
+            }
             _ => Effect::Nothing,
         }
     }

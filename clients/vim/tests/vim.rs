@@ -1,7 +1,7 @@
 //! Vim alone: keys in, text and frames out.
 
 use reovim_client_vim::notation::keys;
-use reovim_client_vim::{Effect, Key, Mode, Vim};
+use reovim_client_vim::{Effect, Key, Mode, Quit, Vim};
 
 fn edit(at: usize, len: usize, text: &str, join: bool) -> Effect {
     Effect::Edit { at, len, text: text.to_string(), join }
@@ -258,4 +258,40 @@ fn a_last_line_without_a_newline_gets_one_before_a_write() {
     let mut empty = on("");
     assert_eq!(empty.fix_eol(), None);
     assert_eq!(empty.frame(80, 24).lines, vec![""]);
+}
+
+#[test]
+fn the_command_line_runs_the_quit_commands_and_refuses_the_rest() {
+    let mut vim = on("abc\n");
+    assert_eq!(typed(&mut vim, ":"), Effect::Moved);
+    assert_eq!(vim.mode(), Mode::Command);
+    assert_eq!(typed(&mut vim, "wq"), Effect::Moved);
+    assert_eq!(vim.frame(80, 24).status, ":wq");
+    assert_eq!(typed(&mut vim, "<BS><BS>"), Effect::Moved);
+    assert_eq!(vim.frame(80, 24).status, ":");
+    assert_eq!(typed(&mut vim, "<BS>"), Effect::Moved, "leaves");
+    assert_eq!(vim.mode(), Mode::Normal);
+    assert_eq!(typed(&mut vim, ":q<Esc>"), Effect::Moved);
+    assert_eq!(vim.mode(), Mode::Normal);
+    assert_eq!(typed(&mut vim, ":<CR>"), Effect::Moved, "an empty line");
+
+    assert_eq!(typed(&mut vim, ":w<CR>"), Effect::Save);
+    assert_eq!(typed(&mut vim, ":q<CR>"), Effect::Quit(Quit::Ask));
+    assert_eq!(typed(&mut vim, ":q!<CR>"), Effect::Quit(Quit::Force));
+    assert_eq!(typed(&mut vim, ":wq<CR>"), Effect::Quit(Quit::Write));
+    assert_eq!(typed(&mut vim, ": x <CR>"), Effect::Quit(Quit::Write));
+    assert_eq!(typed(&mut vim, ":cq<CR>"), Effect::Quit(Quit::Abort));
+    assert_eq!(typed(&mut vim, "ZZ"), Effect::Quit(Quit::Write));
+    assert_eq!(typed(&mut vim, "ZQ"), Effect::Quit(Quit::Force));
+    assert_eq!(typed(&mut vim, "Zx"), Effect::Nothing);
+
+    assert_eq!(typed(&mut vim, ":xyz<CR>"), Effect::Moved);
+    let status = vim.frame(80, 24).status;
+    assert_eq!(status, "E492: Not an editor command: xyz");
+    assert_eq!(typed(&mut vim, "<Esc>"), Effect::Moved, "the message goes");
+    assert_eq!(vim.frame(80, 24).status, "");
+    vim.notice("E37: No write since last change (add ! to override)");
+    assert!(vim.frame(80, 24).status.starts_with("E37"));
+    assert_eq!(typed(&mut vim, "<C-s>"), Effect::Moved, "no longer a key");
+    assert_eq!(typed(&mut vim, "<C-q>"), Effect::Nothing);
 }
