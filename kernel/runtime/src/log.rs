@@ -1,6 +1,8 @@
-//! `/sys/log`: a plain, growing list of stamped entries. Trimming waits
-//! for milestone 4.
+//! `/sys/log`: one bounded ring of stamped entries; the oldest are
+//! trimmed. A reader that fell behind continues from the oldest kept
+//! and sees the gap in the seqs.
 
+use alloc::collections::VecDeque;
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -13,20 +15,25 @@ pub struct Entry {
 }
 
 pub struct Log {
-    entries: Vec<Entry>,
+    entries: VecDeque<Entry>,
     next_seq: u64,
+    cap: usize,
 }
 
 impl Log {
-    pub const fn new() -> Self {
-        Self { entries: Vec::new(), next_seq: 1 }
+    /// Keeps the newest `cap` entries.
+    pub const fn new(cap: usize) -> Self {
+        Self { entries: VecDeque::new(), next_seq: 1, cap }
     }
 
     pub fn append(&mut self, time: u64, mark: &str, level: u8, bytes: Vec<u8>) {
         let seq = self.next_seq;
         self.next_seq += 1;
         let mark = String::from(mark);
-        self.entries.push(Entry { seq, time, mark, level, bytes });
+        self.entries.push_back(Entry { seq, time, mark, level, bytes });
+        while self.entries.len() > self.cap {
+            self.entries.pop_front();
+        }
     }
 
     /// Whole entries from `seq` on, encoded, while they fit in `max`.

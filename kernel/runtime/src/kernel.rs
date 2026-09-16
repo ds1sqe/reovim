@@ -29,11 +29,18 @@ pub struct Limits {
     pub pending_per_handle: usize,
     /// Replies remembered per caller for a repeated sequence.
     pub reply_window: usize,
+    /// Entries kept in `/sys/log`.
+    pub log_ring: usize,
 }
 
 impl Default for Limits {
     fn default() -> Self {
-        Self { watch_ring: 1024, pending_per_handle: 16, reply_window: 64 }
+        Self {
+            watch_ring: 1024,
+            pending_per_handle: 16,
+            reply_window: 64,
+            log_ring: 4096,
+        }
     }
 }
 
@@ -274,7 +281,7 @@ impl Kernel {
             next_caller: 1,
             pending: Pending::new(),
             events: Ring::new(limits.watch_ring),
-            log: Log::new(),
+            log: Log::new(limits.log_ring),
             cells: BTreeMap::new(),
             next_session: 1,
             next_client: 1,

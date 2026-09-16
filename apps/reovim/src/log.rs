@@ -50,8 +50,13 @@ impl Sink {
         self.dirty = false;
         let entries = log::read(&mut self.client, self.h, self.next)?;
         let Some(last) = entries.last() else { return Ok(()) };
+        // The ring moved past us: say so, then go on from what is kept.
+        let mut text = match entries[0].seq {
+            first if first > self.next => format!("# trimmed to {first}\n"),
+            _ => String::new(),
+        };
         self.next = last.seq + 1;
-        let text: String = entries.iter().map(log::Entry::line).collect();
+        text.extend(entries.iter().map(log::Entry::line));
         let at = fs::stat(&self.path)?.len;
         fs::write(&self.path, at, text.as_bytes())?;
         Ok(())
