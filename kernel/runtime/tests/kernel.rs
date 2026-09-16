@@ -1,8 +1,9 @@
 //! The Kernel against one test Module: a byte cell with an api, and a
 //! Container whose children appear on `lookup`.
 
+use std::rc::Rc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
 
 use reovim_kernel_interface::{
     Caller, Calls, Decl, Driver, DriverId, Error, Event, Flags, Handle, Hash,
@@ -171,7 +172,7 @@ const fn pending<T>(inner: &mut Inner) -> Reply<T> {
 struct Rig {
     kernel: Kernel,
     module: ModuleId,
-    test: Arc<Test>,
+    test: Rc<Test>,
     caller: Caller,
     seq: std::cell::Cell<u64>,
 }
@@ -179,8 +180,8 @@ struct Rig {
 impl Rig {
     fn new(limits: Limits) -> Self {
         let kernel = Kernel::new(tick, limits);
-        let test = Arc::new(Test::default());
-        let driver: Arc<dyn Driver> = test.clone();
+        let test = Rc::new(Test::default());
+        let driver: Rc<dyn Driver> = test.clone();
         let module = kernel.load("t", test.as_ref(), vec![driver]).unwrap();
         let caller = kernel.caller_new();
         Self { kernel, module, test, caller, seq: std::cell::Cell::new(0) }
@@ -332,8 +333,8 @@ fn lookup_registers_the_child_inside_the_slot() {
 #[test]
 fn register_follows_the_parent_owner() {
     let rig = Rig::default();
-    let other = Arc::new(Test::default());
-    let driver: Arc<dyn Driver> = other.clone();
+    let other = Rc::new(Test::default());
+    let driver: Rc<dyn Driver> = other.clone();
     let u = rig.kernel.load("u", other.as_ref(), vec![driver]).unwrap();
     let calls = rig.kernel.calls(u);
     let home_t = rig.lookup(rig.lookup(ROOT, "module"), "t");

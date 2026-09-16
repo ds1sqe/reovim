@@ -2,8 +2,8 @@
 //! across a vtable call, so a Driver may call back in from any slot.
 
 use alloc::collections::{BTreeMap, BTreeSet, VecDeque};
+use alloc::rc::Rc;
 use alloc::string::String;
-use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::cell::RefCell;
 
@@ -67,7 +67,7 @@ pub struct State {
     pub table: Table,
     pub decls: BTreeMap<Hash, Decl>,
     pub modules: Vec<Loaded>,
-    pub drivers: Vec<Arc<dyn Driver>>,
+    pub drivers: Vec<Rc<dyn Driver>>,
     pub handles: BTreeMap<Handle, Slot>,
     pub next_handle: u64,
     pub callers: BTreeMap<Caller, CallerState>,
@@ -169,7 +169,7 @@ impl Kernel {
         &self,
         name: &str,
         module: &dyn Module,
-        drivers: Vec<Arc<dyn Driver>>,
+        drivers: Vec<Rc<dyn Driver>>,
     ) -> Result<ModuleId, Error> {
         let now = self.now();
         let (id, home) = {
@@ -261,7 +261,7 @@ impl Kernel {
 
     /// The Driver at a global index, cloned out so no borrow is held
     /// while it runs.
-    pub(crate) fn driver(&self, index: usize) -> Arc<dyn Driver> {
+    pub(crate) fn driver(&self, index: usize) -> Rc<dyn Driver> {
         self.state.borrow().drivers[index].clone()
     }
 
@@ -270,7 +270,7 @@ impl Kernel {
         &self,
         module: ModuleId,
         driver: DriverId,
-    ) -> Result<(usize, Arc<dyn Driver>), Error> {
+    ) -> Result<(usize, Rc<dyn Driver>), Error> {
         let s = self.state.borrow();
         let index = s.driver_index(module, driver)?;
         Ok((index, s.drivers[index].clone()))

@@ -1,0 +1,20 @@
+[package]
+name = "reovim-module-fs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+reovim-host = { path = "../../host/os" }
+reovim-kernel-interface = { path = "../../kernel/interface" }
+
+[dev-dependencies]
+reovim-host = { path = "../../host/os", features = ["std"] }
+reovim-kernel-runtime = { path = "../../kernel/runtime" }
+
+[lints]
+workspace = true

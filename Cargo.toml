@@ -5,12 +5,16 @@ members = [
     "lib/vtable",
     "kernel/interface",
     "kernel/runtime",
+    "host/os",
+    "modules/fs",
 ]
 default-members = [
     "lib/bitflags",
     "lib/vtable",
     "kernel/interface",
     "kernel/runtime",
+    "host/os",
+    "modules/fs",
 ]
 
 [workspace.package]

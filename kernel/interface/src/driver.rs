@@ -19,7 +19,7 @@ use crate::types::{
 /// answer `Pending`; the token is the Driver's own value, unique among
 /// its outstanding ones, and `done` names it again.
 #[allow(unused_variables)]
-pub trait Driver: Send + Sync {
+pub trait Driver {
     /// Register the child `name` under `rd` and return it. An empty
     /// name means "register all children now".
     fn lookup(&self, ctx: &dyn Calls, rd: Rd, name: &str) -> Reply<Rd> {
@@ -136,7 +136,7 @@ pub trait Calls {
 }
 
 /// A unit of loading: one `start`, one `stop`, zero or more Drivers.
-pub trait Module: Send + Sync {
+pub trait Module {
     /// Called once after load. `home` is `/module/<name>`.
     ///
     /// # Errors
