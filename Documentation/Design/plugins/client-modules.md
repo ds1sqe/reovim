@@ -1,10 +1,10 @@
 # Client modules, schemas and execution
 
-This [future direction](09-future.md) describes the Client module authoring
+This [future direction](future.md) describes the Client module authoring
 surface. A Client module supplies interaction and presentation policy through
 public Client APIs. CLM refers to this Client-owned module concept. Its owning
 Client Runtime executes it and retains its live state and contributions.
-[Clients](04-clients.md) owns the underlying responsibility boundary.
+[Clients](../02-client.md) owns the underlying responsibility boundary.
 
 ## One module across Clients
 
@@ -19,7 +19,7 @@ as clients: [cli, tui, web] cannot establish compatibility. A new Client can
 use existing behavior when it provides the required contracts; a new rendering
 or input contract may require additional implementation in map-client.
 Optional contributions declare their unavailable behavior. Required interface
-loss follows [Client readiness](04-clients.md).
+loss follows [Client readiness](../02-client.md).
 
 | Contribution | Required support |
 | --- | --- |
@@ -39,7 +39,7 @@ another Client's camera.
 One module definition permits multiple instances and multiple Map contexts.
 Each owning Runtime retains its instances; camera, selection and pending input
 stay specific to their context unless sharing is explicitly configured under
-the [Session/sharing contracts](04.1-session.md). Sharing code or a Buffer does
+the [Session/sharing contracts](../02-client.md). Sharing code or a Buffer does
 not merge that state.
 
 ## Code and contract locations
@@ -60,10 +60,10 @@ Client families implementing the same public contract share its declaration
 at its API owner. The concrete home for shared Client contracts should follow
 the first real consumers; it does not require another execution layer.
 Interested extensions import Map APIs. Common Client, Kernel and server code
-use neutral contracts, as required by [composition](05.1-composition.md).
+use neutral contracts, as required by [composition](../00-core.md).
 
 A provider is an implementation contribution supplied by a module. It is not
-another module category. [Kernel module terminology](05.2-modules.md) owns
+another module category. [Kernel module terminology](../00-core.md) owns
 provider tables and Runtime DriverOps. Client modules use their own declared
 activation interfaces; they do not inherit the Kernel module loader or ABI.
 
@@ -74,7 +74,7 @@ The module's API package owns it and optional typed helpers. Reading a passive
 declaration does not activate the implementation. No separately activated
 schema module is needed.
 
-Reuse [API identity and checked value declarations](06-declarations.md) where
+Reuse [API identity and checked value declarations](../00-core.md) where
 applicable. Matching uses the API key and full declaration; a method name is
 useful for configuration and help but has no implicit dot-path dispatch rule.
 Client registration and invocation remain Client contracts. Their exact
@@ -83,9 +83,9 @@ records, results and settings metadata need specification before an SDK.
 This sketches an author-facing declaration, not the complete ABI record.
 MAP_CLIENT_API_ID and MAP_CLIENT_MODULE_ID stand for owner-supplied opaque
 keys. F64, Bool and Unit use the common value types. Delta is an XYZ offset
-in the [Map journey's](07.6-map-journey.md) world frame; BufferState is the
+in the [Map journey's](../03-walkthroughs.md) world frame; BufferState is the
 accepted edit result. MapSettings declares the setting metadata described in
-[configuration](09.2-user-configuration.md).
+[configuration](user-configuration.md).
 
 ```text
 Delta = Record(dx: F64, dy: F64, dz: F64)
@@ -154,10 +154,10 @@ Binding follows this sequence:
 The owner retains pending work and registration lifetime. Removal fences new
 use and pending input; admitted work keeps its required context/code until
 settled. Replacement by the same name cannot retarget old bound commands.
-[Client keymaps](04-clients.md) owns resolver precedence and fencing.
+[Client keymaps](../02-client.md) owns resolver precedence and fencing.
 
 Local export discovery does not require a Kernel Resource for every method.
-Optional [Client Resource exports](07.5-client-resources.md) can provide a
+Optional [Client Resource exports](../02-client.md) can provide a
 separately granted remote surface; their transport and reconnect rules remain
 their own protocol work.
 
@@ -178,7 +178,7 @@ key / button / CLI invocation
 ```
 
 zoom_in changes Client camera state and requests presentation. Moving a stored
-object uses the semantic edit path in the [Map journey](07.6-map-journey.md).
+object uses the semantic edit path in the [Map journey](../03-walkthroughs.md).
 An authorized caller with complete semantic arguments can call that Kernel
 operation directly without a Client command registration.
 
@@ -191,7 +191,7 @@ an undefined map.action nor a global action namespace is required.
 
 Client describes responsibility and execution ownership. Its Runtime can live
 in a terminal application, a browser, or a server-hosted Client service. A
-server-side renderer remains Client-owned under [presentation](04-clients.md).
+server-side renderer remains Client-owned under [presentation](../02-client.md).
 The Kernel service adapter only serves its declared Kernel requests; sharing
 a process does not give it ownership of Client commands or rendering.
 
@@ -199,9 +199,9 @@ A single module definition does not guarantee one executable artifact works
 in every runtime. Compatible Client/language adapters must supply the actual
 execution path. Shared logic and private output helpers can still belong to
 one map-client module. Choose artifacts and adapters from concrete consumers;
-the [release matrix](../README.md) remains unchanged.
+the [release matrix](../../README.md) remains unchanged.
 
-[User configuration](09.2-user-configuration.md) separates configuration
+[User configuration](user-configuration.md) separates configuration
 language, implementation language and presentation location. Server-side
 rendering alone does not determine where interactive commands execute.
 

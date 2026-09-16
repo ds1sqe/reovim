@@ -1,6 +1,6 @@
 # User configuration, settings and input bindings
 
-This [future direction](09-future.md) describes configuration over public
+This [future direction](future.md) describes configuration over public
 module APIs. Configuration selects implementations, supplies settings and
 connects user interaction to exported behavior. A configuration host executes
 the user's configuration and applies it through the responsible owners' APIs.
@@ -43,14 +43,14 @@ affect appearance.
 
 Kernel and Client configuration can be authored together; the configuration
 host dispatches each change to its actual owner through
-[composition](05.1-composition.md). Retaining values in a Session Resource does
+[composition](../00-core.md). Retaining values in a Session Resource does
 not transfer their application or execution to Kernel.
 
 The public settings schema includes type, default, supported scope, constraints
 and application timing. Module validation handles semantic constraints, such
 as finite positive movement_step or zoom_factor greater than one. A schema is
 also usable for help, completion and settings UI. The exact metadata records
-remain part of the future [Client module surface](09.1-client-modules.md).
+remain part of the future [Client module surface](client-modules.md).
 
 For a setting supporting these scopes, the proposed order is module default,
 user baseline, matching Client override, Session override, then specific Map
@@ -74,7 +74,7 @@ does not mutate an anonymous global owned by another module.
 Validate replacement settings and bindings before publishing them in the
 affected owner's scope. Failed validation preserves that scope's prior usable
 configuration. Retiring bindings fences pending input under
-[Client resolver rules](04-clients.md). A coordinated change across owners
+[Client resolver rules](../02-client.md). A coordinated change across owners
 reports each result; a Client/Kernel-wide atomic configuration transaction is
 not implied. Settings that require restart or reopening say so in their schema.
 Exact update/callback ordering and per-owner publication cuts remain to be
@@ -125,20 +125,20 @@ An omitted Client receives no binding from this declaration. Disabling or
 replacing an existing binding is explicit and identifies its owner. Default
 bindings are module-owned contributions that users can override through that
 same public registration system. Scope/priority/ambiguity behavior remains
-owned by [keymaps and resolver](04-clients.md), including pending-chord fencing.
+owned by [keymaps and resolver](../02-client.md), including pending-chord fencing.
 
 CLI argument parsing can invoke the same exported methods without installing
 keymaps. A controller or neural input module can bind its interpreted events
 to those methods using its applicable input contract. A Web Client may offer
 keyboard, VR and neural input together. Interface-based selection complements
-family selectors; [Client modules](09.1-client-modules.md) owns compatibility
+family selectors; [Client modules](client-modules.md) owns compatibility
 and continuous input/presentation behavior.
 
 ## Configuration files are Resources
 
 A configuration file uses the ordinary File Resource interface. It can also
 be edited through a text Buffer with a source attachment. Those are separate
-identities, as in the [Map file journey](07.6-map-journey.md).
+identities, as in the [Map file journey](../03-walkthroughs.md).
 
 ```text
 configuration File Resource -> text Buffer -> edit -> explicit Save
@@ -178,7 +178,7 @@ A server-hosted configuration runtime can use Python or another supported
 hosted language. Server-side rendering (SSR) keeps presentation under Client
 ownership. A Python configuration host does not imply Python code executes in
 the browser, nor does the existing Kernel Server SDK supply a Client adapter.
-The [release language matrix](../README.md) remains the scope owner.
+The [release language matrix](../../README.md) remains the scope owner.
 
 ```text
 hosted configuration, for example Python

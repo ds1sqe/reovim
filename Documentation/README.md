@@ -11,30 +11,19 @@ presentation direction; its framework and deployment remain open.
 
 ## Design
 
-Start with [one editing journey](Design/00-overview.md). The
-[design chapters](Design/README.md) introduce Resources and public calls,
-Buffer/History, observation and edits, Clients, execution and modules.
-These are target contracts; source and tests establish implementation status.
+Start with the [core](Design/00-core.md): everything is a Resource, a
+Module serves it through one fixed vtable, and the Kernel has no domain
+word. The [client chapter](Design/02-client.md) is the wire; the
+[walkthroughs](Design/03-walkthroughs.md) test both. These are target
+contracts; source and tests establish implementation status.
 
-Kernel owns Resource access, execution and atomic Buffer/History installation.
-Clients own input, views, rendering and user-facing output. Retaining Session
-context or supplying semantic preview data does not transfer those Client
-responsibilities to Kernel.
+The Kernel enforces the tree, rights, declarations, replies and events.
+Everything else is a Driver's or a Plugin's choice. Clients own input,
+views, rendering and user-facing output; raw keys never reach the Kernel.
 
-[Composition](Design/05.1-composition.md) supplies granted Resource access.
-Ordinary callers invoke bound operations and await results; module API packages
-can supply typed helpers without extending the common SDK.
-[Kernel modules](Design/05.2-modules.md) add Resource, state factory, editing and
-semantic providers without rebuilding or restarting Kernel. Client
-modules use their own lifecycle and can depend on Kernel services; the
-[navigation/help example](Design/07.3-navigation.md) shows both owners.
-Compatible independent Clients, Kernels and module hosts share the
-[public behavior](Design/00-overview.md) and negotiated
-[ABI or service protocol](Design/06.1-native-abi.md).
-
-[Future design directions](Design/09-future.md) connect Client module schemas,
-user configuration and additional interaction methods to these owners. Their
-open interfaces do not change the release requirements below.
+[Plugin research](Design/plugins/future.md) covers Client module schemas,
+user configuration and additional interaction methods. Its open
+interfaces do not change the release requirements below.
 
 ## Release scope
 

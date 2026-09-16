@@ -155,5 +155,5 @@ and open/save operations despite the no-I/O goal. Loader examples also placed
 hosted dependencies beneath a claimed pure boundary.
 
 These inconsistencies explain why this proposal is a historical design step.
-Current [architecture](../Design/05-runtime.md) defines the domain-neutral owners,
+Current [architecture](../Design/00-core.md) defines the domain-neutral owners,
 Host contracts, and public state boundary.

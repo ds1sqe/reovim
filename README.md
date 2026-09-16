@@ -19,7 +19,7 @@ v0.17 follows with Neovim feature parity.
 ## Start here
 
 - [Product goals](Documentation/README.md)
-- [One editing journey](Documentation/Design/00-overview.md)
+- [Core design](Documentation/Design/00-core.md)
 - [Design chapters](Documentation/Design/README.md)
 - [Debugging](Documentation/debugging.md) and
   [performance](Documentation/performance.md)

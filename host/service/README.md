@@ -2,7 +2,7 @@
 
 `protocol::Frame` and `Reply` encode the common caller records. `Endpoint`
 binds a host-issued credential to an Interface Caller; sockets reconnect to
-that retained owner. The [caller protocol](../../Documentation/Design/06.5-caller-protocol.md)
+that retained owner. The [caller protocol](../../Documentation/Design/02-client.md)
 owns exact fields, bounds and error/outcome distinctions.
 
 The local transport sends UTF-8 tab-separated frames terminated by a newline,

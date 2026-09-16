@@ -49,12 +49,12 @@ remain data transfer. Lookup and observation activate no settings or hardware.
 
 Linux [filesystem registration and file operations][vfs] motivate separate
 provider registration, caller access and implementation lifetime. Reovim's
-[composition](05.1-composition.md) uses typed contracts without requiring
+[composition](00-core.md) uses typed contracts without requiring
 every Resource to behave like a byte file or device node.
 
 [UDP][udp], [Linux GPIO][gpio] and [WebSocket][websocket] expose different
 message, sample and connection lifetimes. Their concrete implications and
-failure cases belong to [live examples](07.1-live-io.md). A connection being
+failure cases belong to [live examples](03-walkthroughs.md). A connection being
 inspected is not the transport carrying Reovim's own service requests.
 
 Implementation evidence and migration status belong to execution plans and
