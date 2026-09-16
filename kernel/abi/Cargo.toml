@@ -1,0 +1,18 @@
+[package]
+name = "reovim-kernel-abi"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+reovim-kernel-interface = { path = "../interface" }
+
+[dev-dependencies]
+reovim-kernel-runtime = { path = "../runtime" }
+
+[lints]
+workspace = true

@@ -186,6 +186,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-kernel-abi"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-kernel-interface",
+ "reovim-kernel-runtime",
+]
+
+[[package]]
 name = "reovim-kernel-interface"
 version = "0.16.0-dev"
 dependencies = [

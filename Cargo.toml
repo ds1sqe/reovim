@@ -2,9 +2,9 @@
 resolver = "3"
 members = [
     "lib/bitflags",
-    "lib/vtable",
     "kernel/interface",
     "kernel/runtime",
+    "kernel/abi",
     "host/os",
     "modules/fs",
     "modules/text",
@@ -15,9 +15,9 @@ members = [
 ]
 default-members = [
     "lib/bitflags",
-    "lib/vtable",
     "kernel/interface",
     "kernel/runtime",
+    "kernel/abi",
     "host/os",
     "modules/fs",
     "modules/text",
