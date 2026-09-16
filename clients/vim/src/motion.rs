@@ -115,15 +115,16 @@ impl Vim {
         self.text[start..at].chars().fold(0, next_cell)
     }
 
-    /// The screen column the cursor wants: its char's last cell, so a
-    /// tab wants its end, as nvim's `curswant` has it.
+    /// The screen cell the cursor wants and is shown at: its char's
+    /// first cell, but a tab's last in normal mode, as nvim's
+    /// `curswant` and cursor have it.
     pub(crate) fn wanted(&self) -> usize {
         let start = self.line_start(self.cursor);
         let cells = self.cells(start, self.cursor);
         let here = self.text[self.cursor..].chars().next();
         match here {
-            Some(c) if c != '\n' && self.mode != Mode::Insert => {
-                next_cell(cells, c) - 1
+            Some('\t') if self.mode != Mode::Insert => {
+                next_cell(cells, '\t') - 1
             }
             _ => cells,
         }
@@ -219,7 +220,7 @@ impl Vim {
 }
 
 /// The screen cell after `c` drawn at `cell`: a tab reaches the next
-/// stop of eight.
-const fn next_cell(cell: usize, c: char) -> usize {
-    if c == '\t' { cell / 8 * 8 + 8 } else { cell + 1 }
+/// stop of eight, a wide char two cells on.
+pub const fn next_cell(cell: usize, c: char) -> usize {
+    if c == '\t' { cell / 8 * 8 + 8 } else { cell + reovim_client::width(c) }
 }

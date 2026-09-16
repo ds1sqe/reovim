@@ -2,8 +2,7 @@
 # The corpus through the binary in tmux: each case's keys typed into
 # `reovim file`, then the file, the exit code and the screen cursor
 # compared with what nvim recorded (`out`, `exit`, `state`). Needs
-# tmux, no nvim. Cases named in parity.known may differ; the exit
-# code is the number of others that do.
+# tmux, no nvim. The exit code is the number of cases that differ.
 #
 #   apps/reovim/parity.sh BINARY [CASE...]     default: every case
 set -euo pipefail
@@ -11,9 +10,8 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 BIN="$(realpath "${1:-target/debug/reovim}")"
 shift || true
 CORPUS="${PARITY_CORPUS:-clients/tui/tests/parity}"
-KNOWN="apps/reovim/parity.known"
 DIR="$(mktemp -d /tmp/reovim-parity.XXXXXXXX)"
-readonly BIN CORPUS KNOWN DIR
+readonly BIN CORPUS DIR
 TMUX=(tmux -L "reovim-parity-$$")
 # The session of the case under way, one per case on one server.
 SESSION=""
@@ -123,19 +121,12 @@ run_case() {
 }
 
 failed=0
-unknown=0
 [[ $# -gt 0 ]] || set -- "$CORPUS"/*/
 for case in "$@"; do
     case="${case%/}"
     [[ -d "$case" ]] || case="$CORPUS/$case"
-    if ! run_case "$case"; then
-        failed=$((failed + 1))
-        if ! grep -qx "$(basename "$case")" "$KNOWN" 2>/dev/null; then
-            unknown=$((unknown + 1))
-        fi
-    fi
+    run_case "$case" || failed=$((failed + 1))
 done
 total="$(ls -d "$CORPUS"/*/ | wc -l)"
-printf 'parity.sh: %s of %s cases differ from nvim, %s not known\n' \
-    "$failed" "$total" "$unknown"
-exit "$unknown"
+printf 'parity.sh: %s of %s cases differ from nvim\n' "$failed" "$total"
+exit "$failed"

@@ -5,7 +5,7 @@
 use std::fmt::Write as _;
 use std::io::Write;
 
-use reovim_client::{Client, Fault, Key};
+use reovim_client::{Client, Fault, Key, width};
 use reovim_client_tui::{Frame, Step, Tui, under};
 use reovim_client_vim::Vim;
 use reovim_host::term;
@@ -122,25 +122,29 @@ fn draw(tui: &mut Editor) -> Result<(), Fail> {
     Ok(out(screen.as_bytes())?)
 }
 
-/// `line` with the columns `from..to` in the SGR style `code`; a
-/// column past the line's end is the newline's cell, shown as a space.
+/// `line` with the cells `from..to` in the SGR style `code`; a cell
+/// past the line's end is the newline's, shown as a space.
 fn styled(line: &str, from: u16, to: u16, code: &str) -> String {
     let (from, to) = (usize::from(from), usize::from(to));
-    let chars: Vec<char> = line.chars().collect();
-    let take = |a: usize, b: usize| -> String {
-        chars
-            .get(a.min(chars.len())..b.min(chars.len()))
-            .unwrap_or(&[])
-            .iter()
-            .collect()
-    };
-    let tail = if to > chars.len() { " " } else { "" };
-    format!(
-        "{}\x1b[{code}m{}{tail}\x1b[0m{}",
-        take(0, from),
-        take(from, to),
-        take(to, chars.len())
-    )
+    let (head, rest) = line.split_at(byte_at_cell(line, from));
+    let (mid, tail) =
+        rest.split_at(byte_at_cell(rest, to.saturating_sub(from)));
+    let cells: usize = line.chars().map(width).sum();
+    let newline = if to > cells { " " } else { "" };
+    format!("{head}\x1b[{code}m{mid}{newline}\x1b[0m{tail}")
+}
+
+/// The byte index in `line` where screen cell `cell` starts, or the
+/// end.
+fn byte_at_cell(line: &str, cell: usize) -> usize {
+    let mut cells = 0;
+    for (at, c) in line.char_indices() {
+        if cells >= cell {
+            return at;
+        }
+        cells += width(c);
+    }
+    line.len()
 }
 
 fn out(bytes: &[u8]) -> Result<(), Fault> {

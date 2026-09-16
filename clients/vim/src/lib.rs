@@ -160,6 +160,21 @@ pub struct Vim {
 }
 
 impl Vim {
+    /// `spans` of `(row, from, to)` in chars of the rows shown, as
+    /// screen cells; a column past the line's end is its newline
+    /// cell.
+    fn in_cells(&self, spans: Vec<(u16, u16, u16)>) -> Vec<(u16, u16, u16)> {
+        let cell = |n: usize| u16::try_from(n).unwrap_or(u16::MAX);
+        spans
+            .into_iter()
+            .map(|(r, from, to)| {
+                let line = self.line_at(self.top + usize::from(r)).unwrap_or(0);
+                let text = &self.text[line..self.line_end(line)];
+                (r, cell(cells_at(text, from)), cell(cells_at(text, to)))
+            })
+            .collect()
+    }
+
     #[must_use]
     pub fn text(&self) -> &str {
         &self.text
@@ -724,12 +739,12 @@ impl Plugin for Vim {
         self.clamp();
     }
 
-    /// The frame for `cols` by `rows`; `top` moves to keep the cursor
-    /// on screen.
+    /// The frame for `cols` by `rows`, in screen cells; `top` moves to
+    /// keep the cursor on screen.
     fn frame(&mut self, cols: u16, rows: u16) -> Frame {
         let width = usize::from(cols.max(1));
         let height = usize::from(rows.saturating_sub(1).max(1));
-        let (line, column) = self.position();
+        let line = self.position().0;
         if line < self.top {
             self.top = line;
         } else if line >= self.top + height {
@@ -741,10 +756,11 @@ impl Plugin for Vim {
             .take(self.line_count())
             .skip(self.top)
             .take(height)
-            .map(|l| l.chars().take(width).collect())
+            .map(|l| row(l, width))
             .collect();
         let row = u16::try_from(line - self.top).unwrap_or(u16::MAX);
-        let col = u16::try_from(column.min(width - 1)).unwrap_or(u16::MAX);
+        let col =
+            u16::try_from(self.wanted().min(width - 1)).unwrap_or(u16::MAX);
         let status = match self.mode {
             _ if !self.message.is_empty() => self.message.clone(),
             Mode::Normal => String::new(),
@@ -760,7 +776,8 @@ impl Plugin for Vim {
             Mode::Visual(kind) => self.selection_cells(kind, self.top, height),
             _ => Vec::new(),
         };
-        let marks = self.search_marks(self.top, height);
+        let selection = self.in_cells(selection);
+        let marks = self.in_cells(self.search_marks(self.top, height));
         Frame { lines, cursor: (row, col), selection, marks, status }
     }
 
@@ -781,6 +798,35 @@ const fn is_digit(key: Key) -> bool {
 /// `Moved` when something did.
 const fn moved(yes: bool) -> Effect {
     if yes { Effect::Moved } else { Effect::Nothing }
+}
+
+/// The screen cell where char `column` of `text` starts; past the
+/// end, the newline's cell and on.
+fn cells_at(text: &str, column: u16) -> usize {
+    let column = usize::from(column);
+    let chars = text.chars().count();
+    let cells = text.chars().take(column).fold(0, motion::next_cell);
+    cells + column.saturating_sub(chars)
+}
+
+/// `line` as the terminal shows it in `width` cells: a tab as the
+/// spaces to its stop, a wide char kept whole or left out at the
+/// edge.
+fn row(line: &str, width: usize) -> String {
+    let mut out = String::new();
+    let mut cell = 0;
+    for c in line.chars() {
+        let next = motion::next_cell(cell, c);
+        if next > width {
+            break;
+        }
+        match c {
+            '\t' => out.extend(core::iter::repeat_n(' ', next - cell)),
+            c => out.push(c),
+        }
+        cell = next;
+    }
+    out
 }
 
 /// The edits `effect` made, onto `edits`.

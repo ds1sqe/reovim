@@ -21,7 +21,7 @@ pub mod value;
 pub use client::{Carrier, Client, ROOT};
 pub use fault::Fault;
 pub use input::Key;
-pub use plugin::{Edit, Effect, Frame, Plugin, Quit};
+pub use plugin::{Edit, Effect, Frame, Plugin, Quit, width};
 // The contract types a consumer of the Client names, so it depends on
 // this crate only.
 pub use reovim_kernel_interface::{

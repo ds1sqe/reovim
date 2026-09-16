@@ -52,12 +52,13 @@ pub enum Quit {
     Abort,
 }
 
-/// What to draw.
+/// What to draw, in screen cells.
 ///
-/// `rows - 1` text rows, the cursor as (row, column) on them, the
-/// selected cells as `(row, from, to)` with `to` exclusive, and the
-/// Plugin's own word for the status row: a message, the command
-/// line, the mode, or nothing.
+/// `rows - 1` text rows as the terminal shows them (a tab already
+/// the spaces to its stop, a wide char two cells), the cursor as
+/// (row, cell) on them, the selected cells as `(row, from, to)` with
+/// `to` exclusive, and the Plugin's own word for the status row: a
+/// message, the command line, the mode, or nothing.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Frame {
     pub lines: Vec<String>,
@@ -104,4 +105,32 @@ pub trait Plugin {
 
     /// What to draw for `cols` by `rows`.
     fn frame(&mut self, cols: u16, rows: u16) -> Frame;
+}
+
+/// The cells `c` takes on the screen.
+///
+/// Two for the East Asian wide and fullwidth chars a terminal draws
+/// double (Hangul, the CJK ideographs, kana, the fullwidth forms,
+/// emoji), one for the rest. A tab is the caller's, as its width
+/// depends on where it stands.
+#[must_use]
+pub const fn width(c: char) -> usize {
+    let wide = matches!(
+        c as u32,
+        0x1100..=0x115F
+            | 0x2E80..=0x303E
+            | 0x3041..=0x33FF
+            | 0x3400..=0x4DBF
+            | 0x4E00..=0x9FFF
+            | 0xA000..=0xA4CF
+            | 0xAC00..=0xD7A3
+            | 0xF900..=0xFAFF
+            | 0xFE30..=0xFE4F
+            | 0xFF00..=0xFF60
+            | 0xFFE0..=0xFFE6
+            | 0x1F300..=0x1F64F
+            | 0x1F900..=0x1F9FF
+            | 0x20000..=0x3FFFD
+    );
+    if wide { 2 } else { 1 }
 }
