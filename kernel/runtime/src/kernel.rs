@@ -830,7 +830,9 @@ const fn yes(set: bool) -> &'static str {
 }
 
 /// The rights in a flags or rights word, as a listing writes them.
-const fn rw(read: bool, write: bool) -> &'static str {
+/// The core says an rd's flags and a handle's rights with it, and the
+/// trace says the rights an `open` asked for.
+pub const fn rw(read: bool, write: bool) -> &'static str {
     match (read, write) {
         (true, true) => "rw",
         (true, false) => "r",

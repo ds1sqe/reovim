@@ -10,7 +10,7 @@ use reovim_kernel_interface::{
 
 use reovim_kernel_interface::Kind;
 
-use crate::kernel::{Kernel, Slot, State, core, mem};
+use crate::kernel::{Kernel, Slot, State, core, mem, rw};
 use crate::log::{self, DEBUG, NOTICE, WARN, level_of};
 use crate::table::{Node, Owner, momentary, untraced};
 
@@ -130,7 +130,11 @@ fn words(k: &Kernel, caller: Caller, op: &Op) -> Option<String> {
             ("lookup", Some(*rd), alloc::format!(" name={name}"))
         }
         Op::Open { rd, rights } => {
-            ("open", Some(*rd), alloc::format!(" rights={}", asked(*rights)))
+            let asked = rw(
+                rights.contains(Rights::READ),
+                rights.contains(Rights::WRITE),
+            );
+            ("open", Some(*rd), alloc::format!(" rights={asked}"))
         }
         Op::Read { h, at, len } => {
             ("read", of(h), alloc::format!(" h={} at={at} len={len}", h.0))
@@ -164,16 +168,6 @@ fn words(k: &Kernel, caller: Caller, op: &Op) -> Option<String> {
         return None;
     }
     Some(alloc::format!("op={name} caller={} rd={}{rest}", caller.0, rd.0))
-}
-
-/// The rights a handle was asked for, as a listing writes a cell's.
-const fn asked(rights: Rights) -> &'static str {
-    match (rights.contains(Rights::READ), rights.contains(Rights::WRITE)) {
-        (true, true) => "rw",
-        (true, false) => "r",
-        (false, true) => "w",
-        (false, false) => "-",
-    }
 }
 
 /// What the op answered: the one number its `Out` carries, or the name
