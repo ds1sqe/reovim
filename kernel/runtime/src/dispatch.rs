@@ -18,7 +18,14 @@ type Answer = Result<Reply<Out>, Error>;
 
 impl Kernel {
     /// Run one op as `caller`, outside the reply window.
+    ///
+    /// An op a slot submits from inside another runs here too, one
+    /// step deeper; past `Limits::reentry` the op is refused so the
+    /// chain ends at an error instead of at the stack.
     pub(crate) fn run(&self, caller: Caller, op: Op) -> Reply<Out> {
+        let Some(_depth) = self.deeper() else {
+            return Reply::err(too_deep(self, caller));
+        };
         let answer = match op {
             Op::Lookup { rd, name } => lookup(self, rd, &name),
             Op::Open { rd, rights } => open(self, caller, rd, rights),
@@ -399,6 +406,16 @@ fn kernel_write(
         _ => return Err(Error::Unsupported),
     }
     Ok(bytes.len())
+}
+
+/// The op refused for standing too deep: one `warn` line naming the
+/// caller whose chain it is and the depth it was refused at.
+fn too_deep(k: &Kernel, caller: Caller) -> Error {
+    let now = k.now();
+    let line =
+        alloc::format!("reentry caller={} depth={}", caller.0, k.depth());
+    k.state.borrow_mut().log(now, "kernel", WARN, line.into_bytes());
+    Error::Busy
 }
 
 /// The Kernel measures every `call` with a pair of log entries.

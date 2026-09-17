@@ -124,6 +124,39 @@ fn cd_back_from_where_nothing_came_before_says_so() {
     assert_eq!(shell.cwd(), client.resolve("/sys").unwrap());
 }
 
+#[test]
+fn pwd_past_the_depth_is_the_rd() {
+    let rig = Rig::new("shell-deep");
+    // `/module/fs/root` is three names, so this chain stands 67 deep,
+    // past the 64 a prompt will show.
+    let names: Vec<String> = (0..64).map(|i| format!("d{i}")).collect();
+    let deep = names.iter().fold(rig.dir().to_path_buf(), |at, n| at.join(n));
+    std::fs::create_dir_all(&deep).unwrap();
+    std::fs::write(deep.join("note"), b"bottom\n").unwrap();
+    let mut client = rig.client();
+    let mut shell = Shell::default();
+    let mut go =
+        |client: &mut Client, command: &str| run(client, &mut shell, command);
+
+    // The walk is by name, one segment at a time, however deep it
+    // goes; only the prompt gives up and says the rd.
+    let root = format!("/module/fs/root/{}", names.join("/"));
+    assert_eq!(go(&mut client, &format!("cd {root}")), "");
+    let rd = go(&mut client, "pwd");
+    assert!(rd.starts_with("rd:"), "past 64 names: {rd}");
+    assert_eq!(go(&mut client, "ls"), "note\n");
+    assert_eq!(go(&mut client, "cat note"), "bottom\n", "ops are per rd");
+
+    // Back up to where the names fit again, and the path is a path.
+    for _ in 0..3 {
+        assert_eq!(go(&mut client, "cd .."), "");
+    }
+    let above = format!("/module/fs/root/{}\n", names[..61].join("/"));
+    assert_eq!(go(&mut client, "pwd"), above);
+    assert_eq!(go(&mut client, "cd ../.."), "");
+    assert_eq!(go(&mut client, "cat d59/d60/d61/d62/d63/note"), "bottom\n");
+}
+
 /// The chars of `text`, one key at a time.
 fn typed(line: &mut Line, text: &str) {
     for c in text.chars() {

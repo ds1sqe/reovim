@@ -5,7 +5,7 @@ use alloc::collections::{BTreeMap, BTreeSet, VecDeque};
 use alloc::rc::Rc;
 use alloc::string::String;
 use alloc::vec::Vec;
-use core::cell::RefCell;
+use core::cell::{Cell, RefCell};
 
 use reovim_kernel_interface::{
     Caller, Decl, Driver, DriverId, Error, Flags, Handle, Hash, Kind, Module,
@@ -31,6 +31,10 @@ pub struct Limits {
     pub reply_window: usize,
     /// Entries kept in `/sys/log`.
     pub log_ring: usize,
+    /// How deep one op may stand inside another before the Kernel
+    /// answers `Busy`; a Driver served from inside its own op is the
+    /// chain this bounds.
+    pub reentry: u8,
 }
 
 impl Default for Limits {
@@ -40,6 +44,7 @@ impl Default for Limits {
             pending_per_handle: 16,
             reply_window: 64,
             log_ring: 4096,
+            reentry: 8,
         }
     }
 }
@@ -290,10 +295,24 @@ impl State {
     }
 }
 
+/// How deep `run` stands while one call is in it. It falls on drop,
+/// so an early return, an error or a panic in a slot leaves the count
+/// where it found it.
+pub struct Depth<'k>(&'k Cell<u8>);
+
+impl Drop for Depth<'_> {
+    fn drop(&mut self) {
+        self.0.set(self.0.get().saturating_sub(1));
+    }
+}
+
 /// The Kernel. See the crate docs.
 pub struct Kernel {
     clock: fn() -> u64,
     limits: Limits,
+    /// Ops standing inside ops. The Kernel is single-threaded, so the
+    /// re-entrant chain is the only chain this can be counting.
+    depth: Cell<u8>,
     pub(crate) state: RefCell<State>,
 }
 
@@ -318,7 +337,8 @@ impl Kernel {
             next_session: 1,
             next_client: 1,
         };
-        Self { clock, limits, state: RefCell::new(state) }
+        let depth = Cell::new(0);
+        Self { clock, limits, depth, state: RefCell::new(state) }
     }
 
     pub(crate) fn now(&self) -> u64 {
@@ -327,6 +347,22 @@ impl Kernel {
 
     pub(crate) const fn limits(&self) -> &Limits {
         &self.limits
+    }
+
+    /// One step deeper into `run`, or `None` at `Limits::reentry`:
+    /// the guard is what holds the step, and dropping it takes it back.
+    pub(crate) fn deeper(&self) -> Option<Depth<'_>> {
+        let depth = self.depth.get();
+        if depth >= self.limits.reentry {
+            return None;
+        }
+        self.depth.set(depth + 1);
+        Some(Depth(&self.depth))
+    }
+
+    /// How deep `run` stands now.
+    pub(crate) const fn depth(&self) -> u8 {
+        self.depth.get()
     }
 
     /// Load a Module: make `/module/<name>`, then `start` it.

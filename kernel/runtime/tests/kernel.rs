@@ -1,6 +1,8 @@
-//! The Kernel against one test Module: a byte cell with an api, and a
-//! Container whose children appear on `lookup`.
+//! The Kernel against two test Modules: one with a byte cell with an
+//! api and a Container whose children appear on `lookup`, and one
+//! whose Driver goes back through the Kernel for its own work.
 
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -648,4 +650,183 @@ fn the_log_holds_the_call_pair_and_module_lines() {
         "mark is the Module name"
     );
     assert_eq!(rig.ok(Op::Read { h, at: 0, len: 4 }), Out::Bytes(vec![]));
+}
+
+/// A Module whose Driver goes back through the Kernel for its own
+/// work: the `read` of `loop` reads `loop`, and the listing of `dir`
+/// asks for that listing. Both are the shapes a Module reaches by
+/// accident when it opens a Resource it happens to serve itself.
+#[derive(Default)]
+struct Mirror {
+    /// The cell whose `read` serves itself.
+    own: Cell<Option<Rd>>,
+    /// The cell that answers bytes without going anywhere.
+    plain: Cell<Option<Rd>>,
+    dir: Cell<Option<Rd>>,
+    /// Driver `read` runs, the nested ones counted too.
+    reads: Cell<usize>,
+    /// Driver `lookup` runs.
+    lookups: Cell<usize>,
+    /// What the `Children` from inside the listing answered.
+    inside: RefCell<Vec<Rd>>,
+}
+
+impl Module for Mirror {
+    fn start(&self, ctx: &dyn Calls, home: Rd) -> Result<(), Error> {
+        let cell = |name| -> Result<Rd, Error> {
+            let rd = ctx.register(DriverId(0), home, Some(name))?;
+            ctx.report(rd, Flags::READ, &[])?;
+            Ok(rd)
+        };
+        self.own.set(Some(cell("loop")?));
+        self.plain.set(Some(cell("plain")?));
+        let dir = ctx.register(DriverId(0), home, Some("dir"))?;
+        ctx.report(dir, Flags::READ | Flags::CONTAINER, &[])?;
+        self.dir.set(Some(dir));
+        Ok(())
+    }
+}
+
+impl Driver for Mirror {
+    fn lookup(&self, ctx: &dyn Calls, rd: Rd, name: &str) -> Reply<Rd> {
+        self.lookups.set(self.lookups.get() + 1);
+        if name.is_empty() {
+            *self.inside.borrow_mut() = listing(ctx, rd);
+            return Reply::Ready(child(ctx, rd, "x"));
+        }
+        Reply::Ready(child(ctx, rd, name))
+    }
+
+    /// The cookie is the rd, so `read` knows which of the two it is on.
+    fn open(&self, _: &dyn Calls, rd: Rd, _: Rights) -> Reply<u64> {
+        Reply::ok(rd.0)
+    }
+
+    fn read(
+        &self,
+        ctx: &dyn Calls,
+        h: u64,
+        at: u64,
+        len: usize,
+    ) -> Reply<Vec<u8>> {
+        self.reads.set(self.reads.get() + 1);
+        if self.own.get() != Some(Rd(h)) {
+            return Reply::ok(b"plain".to_vec());
+        }
+        again(ctx, Rd(h), at, len)
+    }
+
+    fn close(&self, _: &dyn Calls, _: u64) -> Reply<()> {
+        Reply::ok(())
+    }
+}
+
+/// The children of `rd` as the Kernel has them, asked for from inside
+/// the listing of `rd` itself.
+fn listing(ctx: &dyn Calls, rd: Rd) -> Vec<Rd> {
+    match ctx.submit(Op::Children { rd }) {
+        Reply::Ready(Ok(Out::Rds(rds))) => rds,
+        other => panic!("children from inside the listing: {other:?}"),
+    }
+}
+
+/// The read a Driver makes of the rd it is being read for: the chain
+/// the Kernel has to end, and what it ended with.
+fn again(ctx: &dyn Calls, rd: Rd, at: u64, len: usize) -> Reply<Vec<u8>> {
+    let h = match ctx.open(rd, Rights::READ) {
+        Ok(h) => h,
+        Err(error) => return Reply::err(error),
+    };
+    let len = u32::try_from(len).unwrap_or(u32::MAX);
+    let inner = ctx.submit(Op::Read { h, at, len });
+    let _ = ctx.submit(Op::Close { h });
+    match inner {
+        Reply::Ready(Ok(Out::Bytes(bytes))) => Reply::ok(bytes),
+        Reply::Ready(Err(error)) => Reply::err(error),
+        _ => Reply::err(Error::Unsupported),
+    }
+}
+
+/// The `(level, text)` of every `/sys/log` entry, in the encoding
+/// `Op::Read` of the log serves: seq, time, mark, level, text.
+fn entries(bytes: &[u8]) -> Vec<(u8, String)> {
+    let mut out = Vec::new();
+    let mut rest = bytes;
+    while rest.len() > 24 {
+        let len = |at: usize| {
+            let four = rest[at..at + 4].try_into().unwrap();
+            u32::from_le_bytes(four) as usize
+        };
+        let level = 20 + len(16);
+        let end = level + 5 + len(level + 1);
+        let text = String::from_utf8_lossy(&rest[level + 5..end]);
+        out.push((rest[level], text.into_owned()));
+        rest = &rest[end..];
+    }
+    out
+}
+
+/// The Mirror Module loaded beside the Test one, with its rds.
+fn mirror(rig: &Rig) -> Rc<Mirror> {
+    let mirror = Rc::new(Mirror::default());
+    let driver: Rc<dyn Driver> = mirror.clone();
+    rig.kernel.load("m", mirror.clone(), vec![driver]).unwrap();
+    mirror
+}
+
+/// Everything `/sys/log` holds now, read by the rig's caller.
+fn log(rig: &Rig) -> Vec<(u8, String)> {
+    let h = rig.open(rig.lookup(SYS, "log"), Rights::READ);
+    let Out::Bytes(bytes) = rig.ok(Op::Read { h, at: 1, len: 1 << 20 }) else {
+        panic!("log")
+    };
+    rig.ok(Op::Close { h });
+    entries(&bytes)
+}
+
+#[test]
+fn a_driver_serving_itself_is_refused_not_hung() {
+    let rig = Rig::default();
+    let mirror = mirror(&rig);
+    let deep = usize::from(Limits::default().reentry);
+    let h = rig.open(mirror.own.get().unwrap(), Rights::READ);
+
+    // The chain ends where the Kernel says it does, and the answer
+    // is an ordinary error on the outermost read.
+    assert_eq!(rig.err(Op::Read { h, at: 0, len: 4 }), Error::Busy);
+    assert_eq!(mirror.reads.get(), deep, "one read per depth, then Busy");
+    let said = log(&rig);
+    let refusals: Vec<&(u8, String)> =
+        said.iter().filter(|(_, text)| text.starts_with("reentry ")).collect();
+    assert_eq!(refusals.len(), 1, "one line per refusal: {said:?}");
+    assert_eq!(refusals[0].0, 4, "at warn");
+    assert!(refusals[0].1.ends_with(&format!("depth={deep}")), "{said:?}");
+
+    // The counter came back down with the calls: the same read is
+    // refused the same way, and an ordinary read is served.
+    assert_eq!(rig.err(Op::Read { h, at: 0, len: 4 }), Error::Busy);
+    assert_eq!(mirror.reads.get(), 2 * deep);
+    let lines =
+        log(&rig).into_iter().filter(|(_, t)| t.starts_with("reentry "));
+    assert_eq!(lines.count(), 2);
+    let plain = rig.open(mirror.plain.get().unwrap(), Rights::READ);
+    let read = Op::Read { h: plain, at: 0, len: 8 };
+    assert_eq!(rig.ok(read), Out::Bytes(b"plain".to_vec()));
+}
+
+#[test]
+fn listing_from_inside_the_listing_sees_the_cache() {
+    let rig = Rig::default();
+    let mirror = mirror(&rig);
+    let dir = mirror.dir.get().unwrap();
+    let a = rig.lookup(dir, "a");
+
+    // The listing is marked before the Driver runs, so the Children
+    // the Driver submits from inside it answers the cache as it
+    // stands and the Driver is not asked a second time.
+    let listed = rig.ok(Op::Children { rd: dir });
+    let x = rig.lookup(dir, "x");
+    assert_eq!(listed, Out::Rds(vec![a, x]));
+    assert_eq!(*mirror.inside.borrow(), vec![a], "the cache as it stood");
+    assert_eq!(mirror.lookups.get(), 2, "the name, then the listing");
 }
