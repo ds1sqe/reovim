@@ -15,11 +15,15 @@ mod line;
 
 use alloc::format;
 use alloc::string::{String, ToString};
+use alloc::vec;
 use alloc::vec::Vec;
 use core::fmt;
 use core::fmt::Write as _;
 
-use reovim_client::{Client, Decl, Error, Fault, Hash, Rd, log, value};
+use reovim_client::{
+    Client, Decl, Error, Fault, Field, Flags, Hash, Info, Rd, Rights, Ty, log,
+    value,
+};
 
 pub use complete::{Completion, complete};
 pub use line::{Act, Line};
@@ -27,6 +31,10 @@ pub use line::{Act, Line};
 /// The commands, one per line: the word, what it takes, what it does.
 /// The source of `help` and of the usage line of a word used wrongly.
 pub const USAGE: &str = "\
+ls [-l] [-a] [TARGET..]         children by name; -l long, -a rds
+cat <target>..                  the bytes of each in turn
+stat <target>                   the long line, the times, the apis
+tree [-L N] [TARGET]            the tree under it, N levels deep
 lookup <target>                 rd
 info <target>                   name, flags, times, apis
 children <target>               rd and name per line
@@ -41,9 +49,9 @@ quit                            end an interactive session
 <target> is a path from / or rd:<n>";
 
 /// The command names, for completion.
-const COMMANDS: [&str; 11] = [
-    "lookup", "info", "children", "read", "write", "call", "log", "load",
-    "unload", "help", "quit",
+const COMMANDS: [&str; 15] = [
+    "ls", "cat", "stat", "tree", "lookup", "info", "children", "read", "write",
+    "call", "log", "load", "unload", "help", "quit",
 ];
 
 /// Why one command did not run: the word and the target as typed, and
@@ -104,6 +112,7 @@ pub const CAUSES: &[(&str, Step, Error, &str)] = &[
     ("", Step::Resolve, Error::Denied, "denied ({})"),
     ("call", Step::Method, Error::Unsupported, "no method {}; it offers: {}"),
     ("read", Step::Op, Error::Unsupported, "a Container has no bytes; ls it"),
+    ("cat", Step::Op, Error::Unsupported, "a Container has no bytes; ls it"),
     ("write", Step::Op, Error::Denied, "not writable"),
     ("write", Step::Op, Error::Unsupported, "a Container takes no bytes"),
     ("", Step::Op, Error::Denied, "denied"),
@@ -118,13 +127,21 @@ pub const CAUSES: &[(&str, Step, Error, &str)] = &[
 ];
 
 /// One command already split into words; what goes to stdout, text or
-/// raw bytes. `write` without bytes needs stdin, so the app fills the
-/// argument before calling.
+/// raw bytes.
+///
+/// `write` without bytes needs stdin, so the app fills the argument
+/// before calling. `width` is the terminal's columns, which `ls` lays
+/// its names out across; `None` when the output is a pipe, and then
+/// one name per line.
 ///
 /// # Errors
 /// `Miss` for an unknown word, the wrong number of words, `quit`
 /// outside an interactive session, or whatever the Client says.
-pub fn input(client: &mut Client, words: &[String]) -> Result<Vec<u8>, Miss> {
+pub fn input(
+    client: &mut Client,
+    words: &[String],
+    width: Option<u16>,
+) -> Result<Vec<u8>, Miss> {
     if let Some(text) = help(words) {
         return text.map(String::into_bytes);
     }
@@ -135,6 +152,10 @@ pub fn input(client: &mut Client, words: &[String]) -> Result<Vec<u8>, Miss> {
         ("quit", _) => {
             return Err(Miss::line("quit ends an interactive session"));
         }
+        ("ls", _) => return ls(client, &words[1..], width),
+        ("cat", 2..) => return cat(client, &words[1..]),
+        ("stat", 2) => return stat(client, &words[1]),
+        ("tree", _) => return tree(client, &words[1..]),
         ("log", 1 | 2) => return log_from(client, words.get(1)),
         ("load", 2) => {
             let path = &words[1];
@@ -152,9 +173,7 @@ pub fn input(client: &mut Client, words: &[String]) -> Result<Vec<u8>, Miss> {
         _ => return Err(misuse(word)),
     }
     let target = &words[1];
-    let rd = client
-        .resolve_at(target)
-        .map_err(|(at, f)| miss(word, target, Step::Resolve, &f, &[&at]))?;
+    let rd = resolved(client, word, target)?;
     let refused = |fault: Fault| miss(word, target, Step::Op, &fault, &[]);
     match word {
         "lookup" => Ok(format!("{}\n", rd.0).into_bytes()),
@@ -363,4 +382,400 @@ fn log_from(
         out.push_str(&entry.line());
     }
     Ok(out.into_bytes())
+}
+
+/// The rd of `target`, or the Miss naming the segment that stopped the
+/// walk.
+fn resolved(client: &mut Client, word: &str, target: &str) -> Result<Rd, Miss> {
+    let stopped = |(at, f): (String, Fault)| {
+        miss(word, target, Step::Resolve, &f, &[&at])
+    };
+    client.resolve_at(target).map_err(stopped)
+}
+
+/// Where a target that names no path starts; 10.3 puts the cwd here.
+const CWD: &str = "/";
+
+/// One listed rd: its number, the name it shows under, and what the
+/// Kernel caches about it.
+struct Entry {
+    rd: Rd,
+    name: String,
+    info: Info,
+}
+
+/// How `ls` writes a listing: `-l` the long line, `-a` the rd first.
+#[derive(Clone, Copy)]
+struct Form {
+    long: bool,
+    rds: bool,
+}
+
+/// The children of each target by name, sorted; in columns across
+/// `width` and one per line without it. A cell lists itself.
+fn ls(
+    client: &mut Client,
+    args: &[String],
+    width: Option<u16>,
+) -> Result<Vec<u8>, Miss> {
+    let Some((form, mut targets)) = options(args) else {
+        return Err(misuse("ls"));
+    };
+    if targets.is_empty() {
+        targets.push(CWD);
+    }
+    let many = targets.len() > 1;
+    let mut out = String::new();
+    for target in targets {
+        let gap = if out.is_empty() { "" } else { "\n" };
+        if many {
+            let _ = writeln!(out, "{gap}{target}:");
+        }
+        out.push_str(&listing(client, target, form, width)?);
+    }
+    Ok(out.into_bytes())
+}
+
+/// The `-l` and `-a` of `args` and the targets after them; `None` for
+/// a flag `ls` does not take.
+fn options(args: &[String]) -> Option<(Form, Vec<&str>)> {
+    let mut form = Form { long: false, rds: false };
+    let mut targets = Vec::new();
+    for arg in args {
+        match flags(arg) {
+            None => targets.push(arg.as_str()),
+            Some("l") => form.long = true,
+            Some("a") => form.rds = true,
+            Some("la" | "al") => form = Form { long: true, rds: true },
+            Some(_) => return None,
+        }
+    }
+    Some((form, targets))
+}
+
+/// The letters of a flag word, or `None` for a target.
+fn flags(word: &str) -> Option<&str> {
+    word.strip_prefix('-').filter(|letters| !letters.is_empty())
+}
+
+/// One target's listing: a Container's children, or the target itself.
+fn listing(
+    client: &mut Client,
+    target: &str,
+    form: Form,
+    width: Option<u16>,
+) -> Result<String, Miss> {
+    let rd = resolved(client, "ls", target)?;
+    let refused = |fault: Fault| miss("ls", target, Step::Op, &fault, &[]);
+    let info = client.info(rd).map_err(refused)?;
+    let listed = if info.flags.contains(Flags::CONTAINER) {
+        entries(client, rd).map_err(refused)?
+    } else {
+        vec![Entry { name: named(rd, &info), rd, info }]
+    };
+    if form.long {
+        let mut out = String::new();
+        for entry in &listed {
+            let line = long_line(client, entry, form.rds).map_err(refused)?;
+            out.push_str(&line);
+        }
+        return Ok(out);
+    }
+    let text = |entry: &Entry| {
+        if form.rds {
+            format!("{} {}", entry.rd.0, entry.name)
+        } else {
+            entry.name.clone()
+        }
+    };
+    let names: Vec<String> = listed.iter().map(text).collect();
+    Ok(width.map_or_else(
+        || lines(&names),
+        |width| columns(&names, usize::from(width)),
+    ))
+}
+
+/// Every child of `rd`, named and sorted by name.
+fn entries(client: &mut Client, rd: Rd) -> Result<Vec<Entry>, Fault> {
+    let mut entries = Vec::new();
+    for child in client.children(rd)? {
+        let info = client.info(child)?;
+        entries.push(Entry { rd: child, name: named(child, &info), info });
+    }
+    entries.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(entries)
+}
+
+/// The name an rd shows under; one the Kernel does not name is `rd:N`.
+fn named(rd: Rd, info: &Info) -> String {
+    info.name.clone().unwrap_or_else(|| format!("rd:{}", rd.0))
+}
+
+/// `TYPE RIGHTS  MTIME  APIS  NAME`, the rd number first under `-a`.
+fn long_line(
+    client: &mut Client,
+    entry: &Entry,
+    rds: bool,
+) -> Result<String, Fault> {
+    let flags = entry.info.flags;
+    let kind = if flags.contains(Flags::CONTAINER) { 'c' } else { '-' };
+    let read = if flags.contains(Flags::READ) { 'r' } else { '-' };
+    let write = if flags.contains(Flags::WRITE) { 'w' } else { '-' };
+    let mut apis = Vec::new();
+    for hash in &entry.info.apis {
+        apis.push(client.decl(*hash)?.api);
+    }
+    let apis = if apis.is_empty() { "-".to_string() } else { apis.join(",") };
+    let number = if rds { format!("{} ", entry.rd.0) } else { String::new() };
+    let at = date(entry.info.mtime);
+    Ok(format!("{number}{kind} {read}{write}  {at}  {apis}  {}\n", entry.name))
+}
+
+/// One name per line, as a pipe wants them.
+fn lines(names: &[String]) -> String {
+    let mut out = String::new();
+    for name in names {
+        let _ = writeln!(out, "{name}");
+    }
+    out
+}
+
+/// `names` down columns as `ls` lays them out: the most columns whose
+/// widths and two-space gaps fit in `width`, read down and then across.
+fn columns(names: &[String], width: usize) -> String {
+    let rows = |columns: usize| names.len().div_ceil(columns);
+    let widths = |columns: usize| -> Vec<usize> {
+        let widest =
+            |column: &[String]| column.iter().map(|name| cells(name)).max();
+        names.chunks(rows(columns)).map(|c| widest(c).unwrap_or(0)).collect()
+    };
+    let fits = |columns: &usize| {
+        let widths = widths(*columns);
+        widths.len() == *columns
+            && widths.iter().sum::<usize>() + 2 * (columns - 1) <= width
+    };
+    let count = (1..=names.len()).rev().find(fits).unwrap_or(1);
+    let (rows, widths) = (rows(count), widths(count));
+    let mut out = String::new();
+    for row in 0..rows {
+        let at = |column: usize| names.get(column * rows + row);
+        let cell = |column: usize| Some((at(column)?, widths[column]));
+        let pad = |(name, width): (&String, usize)| {
+            format!("{name}{}", " ".repeat(width - cells(name) + 2))
+        };
+        let line: String = (0..count).filter_map(cell).map(pad).collect();
+        let _ = writeln!(out, "{}", line.trim_end());
+    }
+    out
+}
+
+/// The cells `text` takes on a terminal row.
+fn cells(text: &str) -> usize {
+    text.chars().map(reovim_client::width).sum()
+}
+
+/// `YYYY-MM-DD HH:MM:SS` in UTC from the Kernel clock's nanoseconds,
+/// by the civil-from-days arithmetic, which needs no table and no host.
+fn date(nanos: u64) -> String {
+    let seconds = nanos / 1_000_000_000;
+    let (days, rest) = (seconds / 86_400, seconds % 86_400);
+    // Counting the year from March, so the leap day is the last day.
+    let shifted = days + 719_468;
+    let (era, doe) = (shifted / 146_097, shifted % 146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = era * 400 + yoe + u64::from(month <= 2);
+    let (hour, minute) = (rest / 3600, rest % 3600 / 60);
+    format!(
+        "{year:04}-{month:02}-{day:02} {hour:02}:{minute:02}:{:02}",
+        rest % 60
+    )
+}
+
+/// The bytes of each target in turn.
+fn cat(client: &mut Client, targets: &[String]) -> Result<Vec<u8>, Miss> {
+    let mut out = Vec::new();
+    for target in targets {
+        let rd = resolved(client, "cat", target)?;
+        let refused = |f: Fault| miss("cat", target, Step::Op, &f, &[]);
+        out.extend(client.read_all(rd).map_err(refused)?);
+    }
+    Ok(out)
+}
+
+/// The long line, the three times as dates, then every api with its
+/// methods as the declaration shows them.
+fn stat(client: &mut Client, target: &str) -> Result<Vec<u8>, Miss> {
+    let rd = resolved(client, "stat", target)?;
+    let refused = |fault: Fault| miss("stat", target, Step::Op, &fault, &[]);
+    let info = client.info(rd).map_err(refused)?;
+    let entry = Entry { name: named(rd, &info), rd, info };
+    let mut out = long_line(client, &entry, false).map_err(refused)?;
+    let times = [
+        ("rd", entry.rd.0.to_string()),
+        ("ctime", date(entry.info.ctime)),
+        ("mtime", date(entry.info.mtime)),
+        ("atime", date(entry.info.atime)),
+    ];
+    for (key, value) in times {
+        let _ = writeln!(out, "{key} {value}");
+    }
+    for hash in &entry.info.apis {
+        let decl = client.decl(*hash).map_err(refused)?;
+        let _ = writeln!(out, "{} v{}", decl.api, decl.ver);
+        out.push_str(&methods(&decl));
+    }
+    Ok(out.into_bytes())
+}
+
+/// Every method of `decl` under its api, one per line, as the
+/// declaration writes it: `0 replace({at: u64}) -> () WRITE`.
+fn methods(decl: &Decl) -> String {
+    let mut out = String::new();
+    for method in &decl.methods {
+        let right =
+            if method.right.contains(Rights::WRITE) { "WRITE" } else { "READ" };
+        let input = match &method.input {
+            Ty::Unit => String::new(),
+            ty => shown(ty),
+        };
+        let (number, name) = (method.number, &method.name);
+        let output = shown(&method.output);
+        let _ = writeln!(out, "  {number} {name}({input}) -> {output} {right}");
+    }
+    out
+}
+
+/// A type as the declaration's text form writes it; a Record and a
+/// Choice by their fields, since the canonical bytes keep no name for
+/// the type itself.
+fn shown(ty: &Ty) -> String {
+    match ty {
+        Ty::Unit => "()".to_string(),
+        Ty::Bool => "bool".to_string(),
+        Ty::U8 => "u8".to_string(),
+        Ty::U32 => "u32".to_string(),
+        Ty::U64 => "u64".to_string(),
+        Ty::I64 => "i64".to_string(),
+        Ty::F64 => "f64".to_string(),
+        Ty::Rd => "Rd".to_string(),
+        Ty::Bytes(max) => format!("bytes({max})"),
+        Ty::Utf8(max) => format!("utf8({max})"),
+        Ty::Sequence(max, item) | Ty::Array(max, item) => {
+            format!("[{}; {max}]", shown(item))
+        }
+        Ty::Record(fields) | Ty::Choice(fields) => {
+            let part = |f: &Field| format!("{}: {}", f.name, shown(&f.ty));
+            let parts: Vec<String> = fields.iter().map(part).collect();
+            let (open, sep, close) = match ty {
+                Ty::Choice(_) => ("<", " | ", ">"),
+                _ => ("{", ", ", "}"),
+            };
+            format!("{open}{}{close}", parts.join(sep))
+        }
+    }
+}
+
+/// The target and what is under it as `tree` draws it, ending with the
+/// count of what was drawn.
+fn tree(client: &mut Client, args: &[String]) -> Result<Vec<u8>, Miss> {
+    let Some((depth, target)) = levels(args) else {
+        return Err(misuse("tree"));
+    };
+    let rd = resolved(client, "tree", target)?;
+    let refused = |fault: Fault| miss("tree", target, Step::Op, &fault, &[]);
+    let info = client.info(rd).map_err(refused)?;
+    let mut out = format!("{target}\n");
+    let mut count = (0, 0);
+    if info.flags.contains(Flags::CONTAINER) {
+        let kids = ordered(entries(client, rd).map_err(refused)?);
+        draw(client, &kids, "", depth, &mut out, &mut count);
+    }
+    let _ = write!(out, "\n{} containers, {} cells\n", count.0, count.1);
+    Ok(out.into_bytes())
+}
+
+/// The `-L N` of `args` and the one target after it; `None` for a flag
+/// `tree` does not take or a depth that is not a number above zero.
+fn levels(args: &[String]) -> Option<(usize, &str)> {
+    let (mut depth, mut target) = (usize::MAX, CWD);
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
+        match flags(arg) {
+            None => target = arg,
+            Some("L") => {
+                depth = args.next()?.parse().ok().filter(|n| *n > 0)?;
+            }
+            Some(_) => return None,
+        }
+    }
+    Some((depth, target))
+}
+
+/// Containers first and then cells, each by name, as `tree` draws them.
+fn ordered(mut kids: Vec<Entry>) -> Vec<Entry> {
+    let cell = |entry: &Entry| !entry.info.flags.contains(Flags::CONTAINER);
+    kids.sort_by(|a, b| {
+        cell(a).cmp(&cell(b)).then_with(|| a.name.cmp(&b.name))
+    });
+    kids
+}
+
+/// `kids` under `prefix`, each Container `depth` levels deeper; what
+/// cannot be listed says why on its own line and the walk goes on.
+fn draw(
+    client: &mut Client,
+    kids: &[Entry],
+    prefix: &str,
+    depth: usize,
+    out: &mut String,
+    count: &mut (usize, usize),
+) {
+    for (at, kid) in kids.iter().enumerate() {
+        let last = at + 1 == kids.len();
+        let stem = if last { "└── " } else { "├── " };
+        let below = if last { "    " } else { "│   " };
+        let container = kid.info.flags.contains(Flags::CONTAINER);
+        if container {
+            count.0 += 1;
+        } else {
+            count.1 += 1;
+        }
+        let under = (container && depth > 1).then(|| entries(client, kid.rd));
+        match under {
+            Some(Err(fault)) => {
+                let why = cause("tree", Step::Op, &fault, &[]);
+                let _ = writeln!(out, "{prefix}{stem}{}: {why}", kid.name);
+            }
+            Some(Ok(kids)) => {
+                let _ = writeln!(out, "{prefix}{stem}{}", kid.name);
+                let deeper = format!("{prefix}{below}");
+                draw(client, &ordered(kids), &deeper, depth - 1, out, count);
+            }
+            None => {
+                let _ = writeln!(out, "{prefix}{stem}{}", kid.name);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::date;
+
+    /// Two instants a calendar can be held against: the epoch, and
+    /// 2026-09-17 12:34:56 UTC, which is 1789648496 seconds after it.
+    #[test]
+    fn the_date_of_a_kernel_instant_is_the_civil_date_in_utc() {
+        assert_eq!(date(0), "1970-01-01 00:00:00");
+        assert_eq!(date(999_999_999), "1970-01-01 00:00:00");
+        assert_eq!(date(1_000_000_000), "1970-01-01 00:00:01");
+        assert_eq!(date(1_789_648_496_000_000_000), "2026-09-17 12:34:56");
+        // The last second of a leap year, and the leap day before it.
+        assert_eq!(date(1_709_208_000_000_000_000), "2024-02-29 12:00:00");
+        assert_eq!(date(1_735_689_599_000_000_000), "2024-12-31 23:59:59");
+    }
 }

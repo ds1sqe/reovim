@@ -11,7 +11,7 @@ use reovim_rig::Rig;
 fn line(client: &mut Client, command: &str) -> String {
     let words: Vec<String> =
         command.split_whitespace().map(str::to_string).collect();
-    match input(client, &words) {
+    match input(client, &words, None) {
         Ok(out) => String::from_utf8(out).unwrap(),
         Err(miss) => miss.to_string(),
     }

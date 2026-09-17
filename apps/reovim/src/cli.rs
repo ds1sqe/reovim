@@ -21,10 +21,19 @@ pub fn run(socket: &str, command: &[String]) -> Result<(), Fail> {
     }
     let mut client = linked(socket)?;
     if !command.is_empty() {
-        let out = input(&mut client, &filled(command)?)?;
+        let out = input(&mut client, &filled(command)?, width())?;
         return Ok(write(&out)?);
     }
     if term::is_tty() { terminal(&mut client) } else { piped(&mut client) }
+}
+
+/// The terminal's columns, which `ls` lays its names out across; `None`
+/// when stdout is a pipe, and the library writes one name per line.
+fn width() -> Option<u16> {
+    if !term::is_tty() {
+        return None;
+    }
+    term::size().ok().map(|(columns, _)| columns)
 }
 
 /// A Client on the server at `socket`; a link that never opened says
@@ -69,7 +78,7 @@ fn piped(client: &mut Client) -> Result<(), Fail> {
             None => {}
             Some("quit") => break,
             Some(_) => report(
-                input(client, &words)
+                input(client, &words, None)
                     .and_then(|o| write(&o).map_err(|f| plain(&f, None))),
             ),
         }
@@ -133,7 +142,7 @@ fn submit(client: &mut Client, text: &str) -> Result<bool, Fail> {
         None => Ok(true),
         Some("quit") => Ok(false),
         Some(_) => {
-            match input(client, &words) {
+            match input(client, &words, width()) {
                 Ok(out) => shown(&out)?,
                 Err(miss) => raw(format!("reovim: {miss}\n").as_bytes())?,
             }

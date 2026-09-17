@@ -28,7 +28,8 @@ pub use plugin::{Ctx, Plugin, Start};
 // The contract types a consumer of the Client names, so it depends on
 // this crate only.
 pub use reovim_kernel_interface::{
-    Decl, Error, Event, Flags, Handle, Hash, Info, Kind, Method, Rd, Rights, Ty,
+    Decl, Error, Event, Field, Flags, Handle, Hash, Info, Kind, Method, Rd,
+    Rights, Ty,
 };
 
 /// The cells `c` takes on the screen.

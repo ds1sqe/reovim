@@ -9,7 +9,7 @@ use reovim_rig::Rig;
 fn run(client: &mut Client, line: &str) -> Result<String, Miss> {
     let words: Vec<String> =
         line.split_whitespace().map(str::to_string).collect();
-    input(client, &words).map(|out| String::from_utf8(out).unwrap())
+    input(client, &words, None).map(|out| String::from_utf8(out).unwrap())
 }
 
 fn line(client: &mut Client, command: &str) -> String {
@@ -37,9 +37,12 @@ fn the_script_of_the_process_test_runs_in_process() {
     let info = line(&mut client, &format!("info {target}"));
     assert!(info.contains("flags=READ|WRITE|CONTAINER"), "{info}");
     let pointer = format!("read /module/text/{file}/source");
-    let source =
-        input(&mut client, &["read".to_string(), pointer[5..].to_string()])
-            .unwrap();
+    let source = input(
+        &mut client,
+        &["read".to_string(), pointer[5..].to_string()],
+        None,
+    )
+    .unwrap();
     let id: Rd = reovim_sdk::decode(&source).unwrap();
     assert_eq!(id.0.to_string(), file);
 

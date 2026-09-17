@@ -29,6 +29,8 @@ pub fn complete(client: &mut Client, line: &str) -> Completion {
             path(client, word)
         }
         2 if command == "call" => methods(client, line, word),
+        // `ls` and `cat` take targets until the end of the line.
+        _ if matches!(command, "ls" | "cat") => path(client, word),
         _ => Vec::new(),
     };
     Completion { from, candidates }
