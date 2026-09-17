@@ -44,6 +44,38 @@ use reovim_client_cli::{Line, Shell, Word};
 use search::Search;
 use visual::{BlockInsert, Selection};
 
+/// One behaviour reovim's default has of its own, where nvim has
+/// another: the keys it is on, what they do here, and what they do
+/// under `:set vi`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Divergence {
+    /// The keys the two ways part on.
+    pub keys: &'static str,
+    /// What the default does, which is reovim's own style.
+    pub ours: &'static str,
+    /// What `:set vi` does instead, which is nvim's way.
+    pub vi: &'static str,
+}
+
+/// Every behaviour the default has of its own: the one list of them,
+/// so none is hidden. `:set vi` takes each back to nvim's way, and
+/// `:help divergences` prints the table.
+///
+/// A row is documentation; the switch is the branch on
+/// `Options::vi` at the one place the behaviour lives. A divergence
+/// added without its row, or a row without its branch, is the pinned
+/// count in tests/tab.rs to change on purpose.
+///
+/// The three Vim-versus-nvim divergences the corpus carries (`Y`, the
+/// column a file opens at, `Vjd` under `nostartofline`) are Vim's
+/// against nvim's, not reovim's: the default follows nvim on all
+/// three, so `:set vi` leaves them alone and they are no rows.
+pub const DIVERGENCES: &[Divergence] = &[Divergence {
+    keys: "Tab on the : line",
+    ours: "the word expanded, with its argument form and its help",
+    vi: "the wildmenu, one candidate as several, and no help",
+}];
+
 /// One change to the text, already made in Vim: `len` bytes at `at`
 /// became `text`. With `join` the edit belongs to the head revision,
 /// not a new one: one insert is one undo step.

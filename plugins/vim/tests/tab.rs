@@ -10,8 +10,8 @@
 
 use reovim_client::Plugin;
 use reovim_client_tui::{Step, Table, Tui, Want};
-use reovim_plugin_vim::Vim;
 use reovim_plugin_vim::notation::keys;
+use reovim_plugin_vim::{DIVERGENCES, Vim};
 use reovim_rig::Rig;
 
 /// The one editor a test drives.
@@ -137,7 +137,7 @@ fn set_completes_the_options_and_their_no_forms() {
     assert_eq!(after(&mut tui, ":set i<Tab>"), ":set ignorecase ");
     assert_eq!(
         said_after(&mut tui, ":set no<Tab>"),
-        ":set noignorecase   [noignorecase]  nosmartcase  nohlsearch"
+        ":set noignorecase   [noignorecase]  nosmartcase  nohlsearch  novi"
     );
     typed(&mut tui, "<Esc>");
     assert_eq!(after(&mut tui, ":set zz<Tab>"), ":set zz");
@@ -282,4 +282,56 @@ fn the_prompt_takes_the_keys_the_cli_line_takes() {
     // was left with.
     assert_eq!(said_after(&mut tui, ":abc<Esc>:"), ":");
     typed(&mut tui, "<Esc>");
+}
+
+#[test]
+fn under_vi_one_word_is_listed_as_several_are() {
+    let (_rig, mut tui) = over("tab-vi");
+
+    // The default: the one word expanded, its argument form and its
+    // help, which is the one row of `DIVERGENCES`.
+    assert_eq!(
+        after(&mut tui, ":wr<Tab>"),
+        ":write   [PATH]  the buffer, to PATH if one is given"
+    );
+
+    // `vi` is an option like the search's, and Tab writes its name
+    // out: `:set v` has no other option to be.
+    assert_eq!(after(&mut tui, ":set v<Tab>"), ":set vi ");
+    typed(&mut tui, ":set vi<CR>");
+
+    // Under it, one candidate is the wildmenu the several are: the
+    // line takes the word, the status row holds it in brackets, and
+    // there is no argument form and no help. Tab and Ctrl-P walk the
+    // one candidate, which is itself.
+    assert_eq!(said_after(&mut tui, ":wr<Tab>"), ":write   [write]");
+    assert_eq!(said_after(&mut tui, "<Tab>"), ":write   [write]");
+    assert_eq!(said_after(&mut tui, "<C-p>"), ":write   [write]");
+    typed(&mut tui, "<Esc>");
+    assert_eq!(after(&mut tui, ":nohl<Tab>"), ":nohlsearch   [nohlsearch]");
+
+    // Everything else on the line is the same code under both: the
+    // menu of several, and a path argument from the tree.
+    assert_eq!(said_after(&mut tui, ":w<Tab>"), ":write   [write]  wq  watch");
+    typed(&mut tui, "<Esc>");
+    assert_eq!(after(&mut tui, ":w al<Tab>"), ":write alpha ");
+
+    // `:set novi` is the way back, through the same option.
+    typed(&mut tui, ":set novi<CR>");
+    assert_eq!(
+        after(&mut tui, ":wr<Tab>"),
+        ":write   [PATH]  the buffer, to PATH if one is given"
+    );
+    assert_eq!(said_after(&mut tui, ":w<Tab>"), ":write   [write]  wq  watch");
+    typed(&mut tui, "<Esc>");
+}
+
+#[test]
+fn the_divergences_are_one_row() {
+    // The one list of what reovim's default does of its own, and the
+    // rows the tests above are of. A divergence added without its row,
+    // or a row without its branch on `:set vi`, is this count to
+    // change on purpose.
+    assert_eq!(DIVERGENCES.len(), 1);
+    assert_eq!(DIVERGENCES[0].keys, "Tab on the : line");
 }

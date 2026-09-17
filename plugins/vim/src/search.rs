@@ -7,12 +7,19 @@ use alloc::vec::Vec;
 use crate::pattern::Pattern;
 use crate::{Effect, Vim};
 
-/// `:set`'s part in searching.
+/// What `:set` holds: the search's options, and the personality.
+///
+/// A row of booleans is what `:set` is, one field per name it takes,
+/// which is why the lint against four of them is off here.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Options {
     pub ignorecase: bool,
     pub smartcase: bool,
     pub hlsearch: bool,
+    /// `:set vi`: nvim's way wherever reovim's default has one of its
+    /// own, which is every row of [`crate::DIVERGENCES`].
+    pub vi: bool,
 }
 
 /// The last search: its pattern, its direction, and whether `:noh`

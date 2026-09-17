@@ -192,7 +192,9 @@ impl Vim {
     pub(crate) fn prompt_status(&self) -> String {
         let line = alloc::format!("{}{}", self.prompt.at, self.prompt.text());
         let mut parts = alloc::vec![line];
-        parts.extend(self.wild.as_ref().map(found).unwrap_or_default());
+        let vi = self.search.options.vi;
+        let said = self.wild.as_ref().map(|wild| found(wild, vi));
+        parts.extend(said.unwrap_or_default());
         parts.join("  ")
     }
 
@@ -352,6 +354,9 @@ impl Vim {
             "ic" | "ignorecase" => &mut options.ignorecase,
             "scs" | "smartcase" => &mut options.smartcase,
             "hls" | "hlsearch" => &mut options.hlsearch,
+            // No short form, and no `compatible`: that is Vim's own
+            // option with Vim's own meaning, which this is not.
+            "vi" => &mut options.vi,
             _ => return None,
         };
         Some(option)
@@ -451,8 +456,14 @@ fn substituted(
 /// What Tab found, as the status row says it after the line: the one
 /// word's argument form, where it takes any, and its help; several as
 /// nvim's wildmenu lists them, the one the line holds in brackets.
-fn found(wild: &Wild) -> Vec<String> {
-    if let [Found::Word(one)] = &wild.candidates[..] {
+///
+/// This is where the `Tab on the : line` row of [`crate::DIVERGENCES`]
+/// is: under `vi` one word is listed as several are, with no argument
+/// form and no help, which is nvim's way.
+fn found(wild: &Wild, vi: bool) -> Vec<String> {
+    if let [Found::Word(one)] = &wild.candidates[..]
+        && !vi
+    {
         let args = (!one.args.is_empty()).then(|| one.args.to_string());
         return args.into_iter().chain([one.help.to_string()]).collect();
     }
@@ -471,11 +482,11 @@ fn found(wild: &Wild) -> Vec<String> {
 }
 
 /// The options `:set` takes, as Tab writes them out: the long name of
-/// each, which [`Vim::option`] knows by this and by its short form.
-/// The short forms are not offered, a completion that left `hls` on
-/// the line having written nothing out, and neither is `incsearch`,
-/// which is taken and does nothing.
-const OPTIONS: &[&str] = &["ignorecase", "smartcase", "hlsearch"];
+/// each, which [`Vim::option`] knows by this and, where there is one,
+/// by its short form. The short forms are not offered, a completion
+/// that left `hls` on the line having written nothing out, and neither
+/// is `incsearch`, which is taken and does nothing.
+const OPTIONS: &[&str] = &["ignorecase", "smartcase", "hlsearch", "vi"];
 
 /// The option names that begin as `word` does, the plain ones before
 /// the `no` forms that turn each off.
