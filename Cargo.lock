@@ -156,6 +156,7 @@ dependencies = [
  "reovim-kernel-runtime",
  "reovim-module-fs",
  "reovim-module-text",
+ "reovim-rig",
  "reovim-sdk",
 ]
 

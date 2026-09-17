@@ -13,13 +13,13 @@ use alloc::vec::Vec;
 
 use reovim_client::{
     BAR, BLOCK, Caps, Ctx, Error, Event, Fault, Flags, Handle, Hash, Key, Kind,
-    MATCH, Plugin, Rd, Rights, SELECTION, Start, Tree, grid, keys, open,
+    MATCH, Plugin, Rd, Rights, SELECTION, Start, Tree, grid, keys, open, paths,
     process, under,
 };
-use reovim_client_cli::{Out, Shell, input};
+use reovim_client_cli::{Out, Shell, complete, input};
 use reovim_text_api::{history, open as text_open, publish, text};
 
-use crate::{Edit, Effect, Mode, Quit, Vim};
+use crate::{Ask, Edit, Effect, Mode, Quit, Vim};
 
 /// What `:q` says to unsaved changes.
 const E37: &str = "E37: No write since last change (add ! to override)";
@@ -159,6 +159,7 @@ impl Vim {
                 return self.edited(tree, caps, &name, bang);
             }
             Effect::Cli(words) => return Ok(self.ran(tree, &words)),
+            Effect::Complete(ask) => return self.completing(tree, ask),
         }
         Ok(true)
     }
@@ -454,7 +455,59 @@ impl Vim {
             Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
             Err(miss) => format!("{miss}"),
         };
+        self.rebased();
         self.says(out.lines().next().unwrap_or_default())
+    }
+
+    /// Where `:cd` left the Shell, taken as the directory Vim works
+    /// in too, which is what nvim's `:cd` does: `:w NAME`, `:edit
+    /// NAME` and `:explore NAME` resolve there from now on, and Tab
+    /// completes there. A cwd outside the mirror leaves it where it
+    /// was, no file of the editor's being under one.
+    fn rebased(&mut self) {
+        let path = self.shell.path();
+        let Some(rest) = path.strip_prefix(MIRROR) else { return };
+        if !(rest.is_empty() || rest.starts_with('/')) {
+            return;
+        }
+        self.dir = rest.trim_start_matches('/').into();
+    }
+
+    /// Tab on the `:` line past its first word: what may stand where
+    /// the last word does, found over the tree, which the line and
+    /// the wildmenu then take. The words Vim runs itself take a name
+    /// under the directory it works in; every other word is the
+    /// cli's, and the cli completes its own line from where the Shell
+    /// stands.
+    fn completing(&mut self, tree: &mut Tree, ask: Ask) -> Result<bool, Fault> {
+        let (from, found) = match ask {
+            Ask::Path { from, word } => (from, self.names(tree, &word)?),
+            Ask::Cli { line } => {
+                let found = complete(tree, &self.shell, &line);
+                (found.from, found.candidates)
+            }
+        };
+        self.offer(from, found);
+        Ok(true)
+    }
+
+    /// The names that may stand where `word` does: the children of
+    /// the mirror of the directory Vim works in, or of what `word`
+    /// names under it.
+    ///
+    /// A leading `/` is the mirror's own root, where `:w /NAME`
+    /// writes, and not the tree's, so it comes off the word and goes
+    /// back on what is found.
+    fn names(&self, tree: &mut Tree, word: &str) -> Result<Vec<String>, Fault> {
+        let Some(root) = resolved(tree, "")? else {
+            return Ok(Vec::new());
+        };
+        let Some(rest) = word.strip_prefix('/') else {
+            let under = resolved(tree, &self.dir)?.unwrap_or(root);
+            return Ok(paths(tree, under, word));
+        };
+        let found = paths(tree, root, rest);
+        Ok(found.into_iter().map(|name| format!("/{name}")).collect())
     }
 
     /// Where `:explore` with no name looks: the directory the Buffer's

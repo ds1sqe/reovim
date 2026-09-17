@@ -3,11 +3,10 @@
 //! come from the tree; a path that resolves nowhere offers nothing and
 //! is not a fault.
 
-use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-use reovim_client::{Flags, Rd, Tree, log};
+use reovim_client::{Tree, log, paths};
 
 use crate::{Shell, Words, locate};
 
@@ -99,32 +98,11 @@ fn commands(prefix: &str) -> Vec<String> {
         .collect()
 }
 
-/// The children of the part before the last `/`, named with the rest;
-/// without a `/`, the children of the cwd. A Container gets a trailing
-/// `/`, so the next Tab goes on under it.
+/// The names under the shell's cwd that may replace `word`, which
+/// clients/core reads from the tree: the one path completion, the
+/// same for a Plugin's line as for this one.
 fn path(tree: &mut Tree, shell: &Shell, word: &str) -> Vec<String> {
-    let (dir, prefix) = word
-        .rfind('/')
-        .map_or(("", word), |cut| (&word[..=cut], &word[cut + 1..]));
-    let Ok(rd) = locate(tree, shell, dir) else { return Vec::new() };
-    let Ok(children) = tree.children(rd) else { return Vec::new() };
-    children
-        .into_iter()
-        .filter_map(|child| named(tree, child, prefix))
-        .map(|(name, container)| {
-            let end = if container { "/" } else { "" };
-            format!("{dir}{name}{end}")
-        })
-        .collect()
-}
-
-/// The child's name when it starts with `prefix`, and whether it is a
-/// Container.
-fn named(tree: &mut Tree, child: Rd, prefix: &str) -> Option<(String, bool)> {
-    let info = tree.info(child).ok()?;
-    let name = info.name?;
-    name.starts_with(prefix)
-        .then(|| (name, info.flags.contains(Flags::CONTAINER)))
+    paths(tree, shell.cwd(), word)
 }
 
 /// Method names the target of `call` offers.

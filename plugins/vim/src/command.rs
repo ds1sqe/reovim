@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 use reovim_client_cli::{Act, Word, Words};
 
 use crate::pattern::{Pattern, expand};
-use crate::{Edit, Effect, Key, Mode, Motion, Quit, Vim, Wild};
+use crate::{Ask, Edit, Effect, Found, Key, Mode, Motion, Quit, Vim, Wild};
 
 /// Lines from 0, both ends included.
 type Lines = (usize, usize);
@@ -97,20 +97,70 @@ impl Vim {
         }
     }
 
-    /// Tab on the `:` line: the words the typed one begins, the first
-    /// of them on the line. Nothing for `/` and `?`, which complete
-    /// nothing, nothing past the first word, whose arguments do not
-    /// complete yet, and nothing for a word no table has.
+    /// Tab on the `:` line. Nothing for `/` and `?`, which complete
+    /// nothing.
+    ///
+    /// On a line with no space yet: the words the typed one begins,
+    /// the first of them on the line, and nothing for a name no table
+    /// has. Past the first word: that word expanded to its full name,
+    /// so `:w Ca` Tab is `:write Cargo.toml`, and then the argument,
+    /// which `:set` answers here and the tree answers through the
+    /// Client.
     fn complete(&mut self) -> Effect {
-        if self.prompt.at != ':' || self.prompt.text().contains(' ') {
+        if self.prompt.at != ':' {
             return Effect::Nothing;
         }
-        let candidates = table().starting(self.prompt.text());
-        if candidates.is_empty() {
+        let text = String::from(self.prompt.text());
+        let Some((typed, rest)) = text.split_once(' ') else {
+            return self.words(&text);
+        };
+        let Some(found) = table().resolve(typed) else {
+            return Effect::Nothing;
+        };
+        let line = alloc::format!("{} {rest}", found.name);
+        self.prompt.line().put(0, &line);
+        let from = line.rfind(' ').map_or(0, |at| at + 1);
+        let word = String::from(&line[from..]);
+        match found.name {
+            "set" => self.offer(from, options(&word)),
+            "write" | "edit" | "explore" => {
+                Effect::Complete(Ask::Path { from, word })
+            }
+            // Every other word of Vim's takes no name from the tree.
+            name if WORDS.iter().any(|word| word.name == name) => Effect::Moved,
+            _ => Effect::Complete(Ask::Cli { line }),
+        }
+    }
+
+    /// Tab on a line with no space on it: the words the typed one
+    /// begins, which the wildmenu walks where there is more than one.
+    fn words(&mut self, typed: &str) -> Effect {
+        let found = table().starting(typed);
+        if found.is_empty() {
             return Effect::Nothing;
         }
-        self.wild = Some(Wild { candidates, at: 0 });
+        let candidates = found.into_iter().map(Found::Word).collect();
+        self.wild = Some(Wild { candidates, at: 0, from: 0 });
         self.take()
+    }
+
+    /// What Tab found over the tree, or among the options of `:set`:
+    /// one name is simply put on the line, as the cli's `apply` puts
+    /// it, since nothing is left to choose between and the next Tab
+    /// goes on under a Container it named; several are the wildmenu.
+    /// Nothing found leaves the line as the expansion left it.
+    pub(crate) fn offer(&mut self, from: usize, found: Vec<String>) -> Effect {
+        if found.is_empty() {
+            return Effect::Moved;
+        }
+        let alone = found.len() == 1;
+        let candidates = found.into_iter().map(Found::Text).collect();
+        self.wild = Some(Wild { candidates, at: 0, from });
+        let effect = self.take();
+        if alone {
+            self.wild = None;
+        }
+        effect
     }
 
     /// Tab and Ctrl-P in the wildmenu: the next candidate or the one
@@ -123,14 +173,16 @@ impl Vim {
         self.take()
     }
 
-    /// The line takes the candidate the menu stands on: its whole
-    /// name and a space, where a completion puts the cursor.
+    /// The line takes the candidate the menu stands on: the whole of
+    /// it from the byte it replaces, and the space a completion
+    /// leaves after it unless it ends in `/`, where the next Tab goes
+    /// on under it.
     fn take(&mut self) -> Effect {
         let Some(wild) = &self.wild else { return Effect::Nothing };
-        let name = wild.candidates[wild.at].name;
-        // Tab only fires on a line with no space on it, so the word
-        // it expands starts at the front.
-        self.prompt.line().put(0, &alloc::format!("{name} "));
+        let text = wild.candidates[wild.at].text();
+        let end = if text.ends_with('/') { "" } else { " " };
+        let (from, word) = (wild.from, alloc::format!("{text}{end}"));
+        self.prompt.line().put(from, &word);
         Effect::Moved
     }
 
@@ -400,21 +452,37 @@ fn substituted(
 /// word's argument form, where it takes any, and its help; several as
 /// nvim's wildmenu lists them, the one the line holds in brackets.
 fn found(wild: &Wild) -> Vec<String> {
-    if let [one] = wild.candidates[..] {
+    if let [Found::Word(one)] = &wild.candidates[..] {
         let args = (!one.args.is_empty()).then(|| one.args.to_string());
         return args.into_iter().chain([one.help.to_string()]).collect();
     }
     wild.candidates
         .iter()
         .enumerate()
-        .map(|(at, word)| {
+        .map(|(at, found)| {
+            let text = found.text();
             if at == wild.at {
-                alloc::format!("[{}]", word.name)
+                alloc::format!("[{text}]")
             } else {
-                word.name.to_string()
+                text.to_string()
             }
         })
         .collect()
+}
+
+/// The options `:set` takes, as Tab writes them out: the long name of
+/// each, which [`Vim::option`] knows by this and by its short form.
+/// The short forms are not offered, a completion that left `hls` on
+/// the line having written nothing out, and neither is `incsearch`,
+/// which is taken and does nothing.
+const OPTIONS: &[&str] = &["ignorecase", "smartcase", "hlsearch"];
+
+/// The option names that begin as `word` does, the plain ones before
+/// the `no` forms that turn each off.
+fn options(word: &str) -> Vec<String> {
+    let off = OPTIONS.iter().map(|name| alloc::format!("no{name}"));
+    let all = OPTIONS.iter().map(ToString::to_string).chain(off);
+    all.filter(|name| name.starts_with(word)).collect()
 }
 
 /// A `:` line past its range, as the table reads it.

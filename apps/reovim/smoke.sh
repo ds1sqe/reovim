@@ -394,6 +394,23 @@ keys tab : q Enter
 [[ "$(ended tab)" == 0 ]] || fail ":q after Tab did not quit"
 [[ "$(cat "$DIR/words/note")" == xone ]] || fail "Tab then Enter did not write"
 
+# --- Tab past the word: the argument from the tree -------------------
+# A name half typed after a word is completed from the tree the editor
+# works over, and the word is expanded with it. The space a completed
+# file gets is where the next word begins, which is where the `x`
+# lands; tmux would not show it at the end of the row.
+mkdir -p "$DIR/wild"
+: > "$DIR/wild/Cargo.toml"
+echo one > "$DIR/wild/note"
+start wild "$DIR/wild" "$BIN note"
+editing wild note
+keys wild : w " " C a Tab
+shown wild ":write Cargo.toml"
+keys wild x
+shown wild ":write Cargo.toml x"
+keys wild Escape : q Enter
+[[ "$(ended wild)" == 0 ]] || fail ":q after the argument Tab did not quit"
+
 # --- no file: an unnamed buffer, E32 on :w, nothing written ---------
 start unnamed "$DIR" "$BIN"
 editing unnamed '\[No Name\]'

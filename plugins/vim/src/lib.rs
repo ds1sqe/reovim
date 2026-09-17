@@ -86,8 +86,25 @@ pub enum Effect {
     /// A word of the cli's, typed on the `:` line: the line as
     /// clients/cli takes it, the word by its full name.
     Cli(Vec<String>),
+    /// Tab on the `:` line past its first word, which the line
+    /// already holds expanded: what may stand where the last word
+    /// does, which only the Client can find over the tree, and hands
+    /// back to the line.
+    Complete(Ask),
     /// A put wants the clipboard's text: `pasted` finishes it.
     Clipboard,
+}
+
+/// What Tab on the `:` line asks the Client to find over the tree.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Ask {
+    /// A name under the directory Vim works in, which `:write`,
+    /// `:edit` and `:explore` take: the word as typed, and the byte
+    /// of the line it begins at.
+    Path { from: usize, word: String },
+    /// A word of the cli's: the whole line, which clients/cli
+    /// completes from where the Shell stands.
+    Cli { line: String },
 }
 
 /// How a quit was asked for; what it does with unsaved changes
@@ -192,14 +209,37 @@ impl Prompt {
     }
 }
 
-/// What the last Tab on the `:` line found: the words the typed one
-/// begins, and which of them the line holds now. One of them is a
-/// word expanded, whose help the status row says; several are the
-/// wildmenu, which Tab and Ctrl-P walk.
+/// One thing Tab found: a word of the table, whose argument form and
+/// help the status row says, or a name in the tree, which has
+/// neither.
+#[derive(Debug)]
+enum Found {
+    Word(&'static Word),
+    Text(String),
+}
+
+impl Found {
+    /// What the line takes when the menu stands on it.
+    fn text(&self) -> &str {
+        match self {
+            Self::Word(word) => word.name,
+            Self::Text(text) => text,
+        }
+    }
+}
+
+/// What the last Tab on the `:` line found: the candidates, which of
+/// them the line holds now, and the byte of the line they replace.
+///
+/// Several are the wildmenu, which Tab and Ctrl-P walk. One word
+/// expanded is kept as the one candidate, for the help the status row
+/// says of it; one name found in the tree is not kept at all, there
+/// being nothing left to choose between.
 #[derive(Debug)]
 struct Wild {
-    candidates: Vec<&'static Word>,
+    candidates: Vec<Found>,
     at: usize,
+    from: usize,
 }
 
 /// Where the cursor was before each change, for undo to put it back
