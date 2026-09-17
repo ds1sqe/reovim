@@ -10,9 +10,10 @@
 //! records, encoded. A key is a `keys::Press`, a resize a
 //! `grid::Resized`.
 
+use alloc::string::String;
 use alloc::vec::Vec;
 
-use reovim_kernel_interface::{Error, Handle, Hash};
+use reovim_kernel_interface::{Error, Handle, Hash, Rd};
 use reovim_sdk::{decode, encode};
 
 use crate::{Fault, Key};
@@ -29,19 +30,36 @@ reovim_sdk::declare! {
     /// is and shows what belongs in it. `Resized` arrives as an input
     /// when it has become another size.
     ///
-    /// A `View` is in bytes of the Buffer the Plugin was started on:
-    /// the first byte shown, where the cursor is and what shape it
-    /// takes, styled spans, and the Plugin's own word for its region.
-    /// How that becomes a picture is the Client's.
+    /// A `View` names the rd it is in the bytes of and is otherwise in
+    /// those bytes: the first byte shown, where the cursor is and what
+    /// shape it takes, styled spans, and the Plugin's own word for its
+    /// region. How that becomes a picture is the Client's, which reads
+    /// `over` for the text to lay the View out on.
     api grid ver 1 {
         0 size() -> Size: READ;
         1 show(view: View) -> (): WRITE;
     }
     record Size { cols: u64, rows: u64 }
-    record View { top: u64, cursor: u64, shape: u64,
+    record View { over: u64, top: u64, cursor: u64, shape: u64,
                   spans: [Span; 4096], status: utf8(4096) }
     record Span { from: u64, to: u64, style: u64 }
     record Resized { cols: u64, rows: u64 }
+}
+
+reovim_sdk::declare! {
+    /// The region itself: a Plugin asks its Client to show `target`
+    /// here, in the Plugin `plugin` names, or, with an empty name, in
+    /// the one the Client's table gives that rd's shape.
+    ///
+    /// The call answers nothing, the asking Plugin being on the stack:
+    /// the Client records the ask and acts on it once the call it is
+    /// inside has returned, which is when the Plugin that made it may
+    /// be dropped. A Client with no Plugin for the ask leaves the
+    /// region as it is and says so in the log.
+    api open ver 1 {
+        0 open(ask: Ask) -> (): WRITE;
+    }
+    record Ask { target: u64, plugin: utf8(64) }
 }
 
 reovim_sdk::declare! {
@@ -122,7 +140,7 @@ impl Key {
 ///
 /// One entry is one region: the handle names it, so a Client with two
 /// grid regions serves `grid` twice and each Plugin holds its own
-/// handle. This one holds the state of the three capabilities that
+/// handle. This one holds the state of the four capabilities that
 /// land with it.
 #[derive(Debug, Default)]
 pub struct Caps {
@@ -134,6 +152,8 @@ pub struct Caps {
     /// last asked.
     view: Option<grid::View>,
     shown: bool,
+    /// What `open::open` asked to be shown here, until it is taken.
+    asked: Option<(Rd, String)>,
     /// The code `process::exit` gave.
     exit: Option<u8>,
 }
@@ -169,6 +189,13 @@ impl Caps {
         core::mem::replace(&mut self.shown, false)
     }
 
+    /// What a Plugin asked to be shown in this region, and in which
+    /// Plugin by name, once: the Client acts on it after the call it
+    /// was asked inside, so it is handed over and forgotten.
+    pub const fn asked(&mut self) -> Option<(Rd, String)> {
+        self.asked.take()
+    }
+
     /// The code a Plugin asked to end with.
     #[must_use]
     pub const fn exit(&self) -> Option<u8> {
@@ -186,6 +213,17 @@ impl Caps {
             }
             _ => Err(Error::Unsupported.into()),
         }
+    }
+
+    /// `open`: the rd to show here and the Plugin to show it in,
+    /// recorded for the Client to act on.
+    fn opening(&mut self, number: u16, input: &[u8]) -> Result<Vec<u8>, Fault> {
+        if number != 0 {
+            return Err(Error::Unsupported.into());
+        }
+        let ask: open::Ask = decode(input)?;
+        self.asked = Some((Rd(ask.target), ask.plugin));
+        Ok(Vec::new())
     }
 
     /// `process`: the code to end with.
@@ -218,6 +256,9 @@ impl reovim_sdk::Call for Caps {
         if api == grid::hash() {
             return self.grid(number, &input);
         }
+        if api == open::hash() {
+            return self.opening(number, &input);
+        }
         if api == process::hash() {
             return self.process(number, &input);
         }
@@ -227,10 +268,11 @@ impl reovim_sdk::Call for Caps {
 
 #[cfg(test)]
 mod tests {
+    use alloc::string::String;
     use alloc::vec;
 
-    use super::{Caps, grid, keys, process};
-    use crate::{Fault, Key};
+    use super::{Caps, grid, keys, open, process};
+    use crate::{Fault, Key, Rd};
 
     /// Every key there is, in the order `Key` declares them.
     fn every() -> alloc::vec::Vec<Key> {
@@ -285,6 +327,7 @@ mod tests {
         );
         assert!(!caps.shown(), "nothing shown yet");
         let view = grid::View {
+            over: 12,
             top: 0,
             cursor: 3,
             shape: super::BAR,
@@ -295,6 +338,7 @@ mod tests {
         assert!(caps.shown(), "and once only");
         assert!(!caps.shown());
         assert_eq!(caps.view(), Some(&view));
+        assert_eq!(caps.view().map(|v| v.over), Some(12), "the rd it is in");
         assert_eq!(caps.exit(), None);
         assert_eq!(process::Call(&mut caps, process).exit(3), Ok(()));
         assert_eq!(caps.exit(), Some(3));
@@ -303,5 +347,24 @@ mod tests {
             wrong,
             Err(Fault::Kernel(reovim_kernel_interface::Error::Denied))
         );
+    }
+
+    #[test]
+    fn what_a_plugin_asked_to_be_shown_is_handed_over_once() {
+        let mut caps = Caps::default();
+        let opening = caps.serve(open::hash());
+        assert_eq!(caps.asked(), None, "nothing asked yet");
+        let ask = open::Ask { target: 7, plugin: "vim".into() };
+        assert_eq!(open::Call(&mut caps, opening).open(ask), Ok(()));
+        assert_eq!(caps.asked(), Some((Rd(7), "vim".into())));
+        assert_eq!(caps.asked(), None, "the Client acts on it once");
+
+        // An empty name is the ask that leaves the Plugin to the
+        // Client's table; the last ask is the one that stands.
+        for target in [8, 9] {
+            let ask = open::Ask { target, plugin: String::new() };
+            assert_eq!(open::Call(&mut caps, opening).open(ask), Ok(()));
+        }
+        assert_eq!(caps.asked(), Some((Rd(9), String::new())));
     }
 }

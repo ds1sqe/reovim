@@ -16,7 +16,7 @@ use reovim_client::{
     MATCH, Plugin, Rd, Rights, SELECTION, Start, Tree, grid, keys, process,
     under,
 };
-use reovim_text_api::{history, publish, text};
+use reovim_text_api::{history, open, publish, text};
 
 use crate::{Edit, Effect, Mode, Quit, Vim};
 
@@ -35,14 +35,17 @@ const OLDEST: &str = "Already at oldest change";
 const NEWEST: &str = "Already at newest change";
 
 impl Plugin for Vim {
-    /// The Buffer opened to read and write, the clipboard found if
+    /// A Buffer of its own over what the region was opened on, read
+    /// and written through a handle it keeps, the clipboard found if
     /// there is one, the region asked how big it is, and the text read
-    /// and shown.
+    /// and shown from the line it was told to begin at.
     fn start(&mut self, ctx: Ctx<'_>, at: Start) -> Result<(), Fault> {
         let Ctx { tree, caps } = ctx;
+        let buffer = buffer_over(tree, at.over)?;
         let rights = Rights::READ.union(Rights::WRITE);
-        self.h = Some(tree.open(at.buffer, rights)?);
-        self.source = at.source;
+        self.buffer = Some(buffer);
+        self.h = Some(tree.open(buffer, rights)?);
+        self.source = at.over;
         self.name = at.name;
         self.dir = at.dir;
         self.clip = tree.resolve("/module/clipboard/text").ok();
@@ -53,7 +56,8 @@ impl Plugin for Vim {
         }
         let bytes = tree.read_whole(self.handle()?)?;
         self.loaded(&bytes);
-        self.begin(count(at.at));
+        let at = at.line.map_or(0, |line| self.at_line(count(line)));
+        self.begin(at);
         self.announce(tree)?;
         self.show(caps)
     }
@@ -107,6 +111,14 @@ impl Vim {
     /// The Buffer `start` opened; `Closed` before it has.
     fn handle(&self) -> Result<Handle, Fault> {
         self.h.ok_or(Fault::Kernel(Error::Closed))
+    }
+
+    /// The byte line `n` starts at, counted from 1 and clamped to the
+    /// last line: the tty's `+N`, which only whoever holds the text
+    /// can find.
+    fn at_line(&self, n: usize) -> usize {
+        let line = n.max(1) - 1;
+        self.line_at(line.min(self.line_count() - 1)).unwrap_or(0)
     }
 
     /// What `effect` asks of the Client; true when something is to be
@@ -393,6 +405,7 @@ impl Vim {
             selected.into_iter().map(span(SELECTION)).collect();
         spans.extend(marks.into_iter().map(span(MATCH)));
         grid::View {
+            over: self.buffer.map_or(0, |buffer| buffer.0),
             top: self.line_at(self.top).unwrap_or(0) as u64,
             cursor: self.cursor as u64,
             // Insert puts the cursor between chars, as nvim draws it;
@@ -477,6 +490,21 @@ fn made(
     let input = reovim_sdk::encode(&String::from(name));
     let out = tree.call_by_name(dir, method, input)?;
     Ok(reovim_sdk::decode(&out)?)
+}
+
+/// A Buffer over `source`, or over nothing: the one the Plugin shows,
+/// made through `/module/text/open` and kept by the handle `start`
+/// opens on it.
+fn buffer_over(tree: &mut Tree, source: Option<Rd>) -> Result<Rd, Fault> {
+    let opener = tree.resolve("/module/text/open")?;
+    let opening = tree.open(opener, Rights::WRITE)?;
+    let mut call = open::Call(tree, opening);
+    let buffer = match source {
+        Some(source) => call.open(source),
+        None => call.new(),
+    };
+    tree.close(opening)?;
+    buffer
 }
 
 /// A byte range of the text as a span of `style`.

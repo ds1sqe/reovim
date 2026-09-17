@@ -6,7 +6,7 @@
 use std::fmt::Write as _;
 use std::path::Path;
 
-use reovim_client_tui::{Step, Tui};
+use reovim_client_tui::{Step, Table, Tui};
 use reovim_plugin_vim::notation::keys;
 use reovim_plugin_vim::{Kind, Register, Vim};
 use reovim_rig::Rig;
@@ -62,9 +62,9 @@ fn replay(case: &Path) -> Result<(), String> {
 
     let rig = Rig::new(name);
     rig.file("file", &input);
+    let table: Table<Vim> = Box::new(|_| Some(Vim::default()));
     let mut tui =
-        Tui::open(rig.client(), "", Some("file"), None, Vim::default())
-            .unwrap();
+        Tui::open(rig.client(), "", Some("file"), None, table).unwrap();
     let mut quit = None;
     for key in keys {
         let step = tui.key(key).map_err(|fault| format!("{name}: {fault}"))?;

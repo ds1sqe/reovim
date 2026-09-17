@@ -8,6 +8,7 @@
 //! runs, and a Client that serves more than a grid needs no new
 //! contract.
 
+use alloc::boxed::Box;
 use alloc::string::String;
 
 use reovim_kernel_interface::{Event, Hash, Rd};
@@ -23,27 +24,32 @@ pub struct Ctx<'a> {
     pub caps: &'a mut Caps,
 }
 
-/// What the Client had opened before the Plugin's first call.
+/// What the region the Plugin was started in is to show.
 ///
-/// Its own client rd, the Buffer to work on and what that Buffer is
-/// over, the name under the root a relative one starts from, and the
-/// byte to begin at.
+/// Its own client rd, the rd the region was opened on, the name under
+/// the root a relative one starts from, and the line to begin at. What
+/// to open over `over` is the Plugin's: a Container has no Buffer, and
+/// one that shows text makes its own.
 pub struct Start {
     pub client: Rd,
-    pub buffer: Rd,
-    pub source: Option<Rd>,
-    /// The name under the root a Buffer over nothing was opened with,
+    /// The rd the region was opened on: a cell to show, a Container to
+    /// list. `None` is a region over nothing, which with a `name` is a
+    /// file that is not on disk.
+    pub over: Option<Rd>,
+    /// The name under the root a region over nothing was opened with,
     /// there being no such file: the one its first write makes. `None`
-    /// for a Buffer with a `source` and for one opened with no name.
+    /// for a region opened on an rd and for one opened with no name.
     pub name: Option<String>,
     pub dir: String,
-    pub at: u64,
+    /// The line to begin at, counted from 1, clamped to the last line
+    /// by whoever has the text. `None` begins at the first.
+    pub line: Option<u64>,
 }
 
 /// Inputs in, calls out.
 ///
-/// Dyn-compatible on purpose: one Client may hold several, each
-/// started on the same Buffer with handles of its own.
+/// Dyn-compatible on purpose: one Client may hold several, each over
+/// an rd of its own with handles of its own.
 pub trait Plugin {
     /// The Client is ready.
     ///
@@ -64,10 +70,31 @@ pub trait Plugin {
         bytes: &[u8],
     ) -> Result<(), Fault>;
 
-    /// What happened on the watched rds; the Buffer may have been
-    /// written by somebody else.
+    /// What happened on the watched rds; what the Plugin shows may
+    /// have been written by somebody else.
     ///
     /// # Errors
     /// As [`Self::start`].
     fn changed(&mut self, ctx: Ctx<'_>, events: &[Event]) -> Result<(), Fault>;
+}
+
+/// A Plugin in a box is a Plugin, so a Client that holds one region's
+/// Plugin behind `Box<dyn Plugin>` needs no Plugin of its own.
+impl<P: Plugin + ?Sized> Plugin for Box<P> {
+    fn start(&mut self, ctx: Ctx<'_>, at: Start) -> Result<(), Fault> {
+        (**self).start(ctx, at)
+    }
+
+    fn input(
+        &mut self,
+        ctx: Ctx<'_>,
+        from: Hash,
+        bytes: &[u8],
+    ) -> Result<(), Fault> {
+        (**self).input(ctx, from, bytes)
+    }
+
+    fn changed(&mut self, ctx: Ctx<'_>, events: &[Event]) -> Result<(), Fault> {
+        (**self).changed(ctx, events)
+    }
 }

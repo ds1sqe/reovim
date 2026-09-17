@@ -1,27 +1,33 @@
 #![no_std]
 #![forbid(unsafe_code)]
-//! The tui: one file in one Buffer, watched, with a `Plugin` on it.
+//! The tui: one region of a terminal, with a `Plugin` showing an rd in
+//! it.
 //!
-//! It serves three capabilities and nothing else. `keys` carries every
+//! It serves four capabilities and nothing else. `keys` carries every
 //! key to the Plugin; `grid` is the one region it draws, whose size it
-//! answers and whose View it keeps; `process` is the code it leaves
-//! with. The Plugin makes its own calls on the tree, so what a key
-//! means, what it edits and what it says are none of the tui's
-//! business: it lays the View out over its own copy of the text.
+//! answers and whose View it keeps; `open` is how a Plugin asks for
+//! another rd to be shown here, in another Plugin; `process` is the
+//! code it leaves with. The Plugin makes its own calls on the tree, so
+//! what a key means, what it edits and what it says are none of the
+//! tui's business: it lays the View out over its own copy of the text
+//! of the rd that View names.
 //!
-//! It sees neither a link nor a terminal.
+//! Which Plugin a name or a shape stands for is the app's, given as a
+//! `Table`; the tui knows no Plugin name and no Plugin type. It sees
+//! neither a link nor a terminal.
 
 extern crate alloc;
 
+use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
 use reovim_client::{
-    BAR, Caps, Client, Ctx, Error, Fault, Handle, Key, Kind, MATCH, Plugin, Rd,
-    Rights, SELECTION, Start, grid, keys, process,
+    BAR, Caps, Client, Ctx, Error, Event, Fault, Flags, Handle, Key, Kind,
+    MATCH, Plugin, Rd, Rights, SELECTION, Start, grid, keys, open, process,
 };
-use reovim_text_api::{history, open};
+use reovim_text_api::history;
 
 /// The cells a char takes: the Client's own, drawn on here and by the
 /// app above.
@@ -36,6 +42,23 @@ pub enum Step {
     /// Leave with this exit code: 0 says use the file.
     Quit(u8),
 }
+
+/// What a Client asks its table for.
+///
+/// A name is the one a Plugin gave `open`; a shape is what the rd to
+/// be shown is, a Container or a cell, for an `open` that named no
+/// Plugin.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Want<'a> {
+    Named(&'a str),
+    Container,
+    Cell,
+}
+
+/// How the region's Plugin is made, which is the app's to say: the
+/// names and the types are the app's, and a Want it has no Plugin for
+/// is `None`.
+pub type Table<P> = Box<dyn FnMut(Want<'_>) -> Option<P>>;
 
 /// What to draw, in screen cells.
 ///
@@ -60,27 +83,41 @@ pub struct Frame {
 /// The name of a Buffer over nothing, as nvim shows it.
 const UNNAMED: &str = "[No Name]";
 /// What it serves, one name per line: its capability cell.
-const SERVES: &[u8] = b"keys\ngrid\nprocess\n";
+const SERVES: &[u8] = b"keys\ngrid\nopen\nprocess\n";
 /// The size it takes the terminal for until the app has drawn once.
 const FIRST: (u16, u16) = (80, 24);
+/// The level an entry the tui writes to `/sys/log` goes in at.
+const WARN: &str = "<4>";
 
-/// One Buffer over `/module/fs/root/FILE`, or over nothing, watched,
-/// with the Plugin that reads it.
-pub struct Tui<P: Plugin> {
-    client: Client,
-    plugin: P,
-    caps: Caps,
-    buffer: Rd,
-    source: Option<Rd>,
+/// The rd a View named, laid out here: the handle the tui reads and
+/// watches it through, what that rd is over once it is over anything,
+/// its bytes as the tui last read them, and where its history stands.
+struct Laid {
+    rd: Rd,
     h: Handle,
-    /// The path under the root a Buffer over nothing was opened with,
-    /// there being no such file: what a write makes.
-    new_name: Option<String>,
-    name: String,
-    /// The Buffer's bytes, as the tui last read them.
+    source: Option<(Rd, Handle)>,
     text: String,
     head: u64,
     published: u64,
+}
+
+/// One region over one rd, with the Plugin that shows it.
+pub struct Tui<P: Plugin> {
+    client: Client,
+    plugin: P,
+    table: Table<P>,
+    caps: Caps,
+    /// The rd the region was opened on, when it was opened on one.
+    target: Option<Rd>,
+    /// The path under the root the tui was opened with while there is
+    /// no such file: what a write makes.
+    opened: Option<String>,
+    /// Where a relative name the Plugin resolves starts.
+    dir: String,
+    /// What the View last named, opened and watched here.
+    laid: Option<Laid>,
+    /// What the status row calls the region.
+    name: String,
     /// The size `frame` was last asked for.
     size: (u16, u16),
     /// The text or the revisions moved since the last step.
@@ -88,78 +125,77 @@ pub struct Tui<P: Plugin> {
 }
 
 impl<P: Plugin> Tui<P> {
-    /// Open `file`, a name under the root, as a Buffer, or one over
-    /// nothing when there is no file; watch it and start `plugin` on
-    /// it at `line`, counted from 1. `dir`, under the root too, is
-    /// where a relative name the Plugin resolves starts.
+    /// The region over `file`, a name under the root, or over nothing
+    /// when there is no such file; the Plugin `table` gives for a cell
+    /// started on it at `line`, counted from 1. `dir`, under the root
+    /// too, is where a relative name the Plugin resolves starts.
     ///
-    /// A `file` that is not on disk is a Buffer over nothing that
-    /// keeps the name: the Plugin's first write makes the file.
+    /// What to open over that rd is the Plugin's: the tui opens no
+    /// Buffer, and lays out whatever rd the View it is shown names.
     ///
     /// # Errors
-    /// What the Client says; `Kernel(Invalid)` for a file that is not
-    /// under the root.
+    /// What the Client says; `Usage` when the table has no Plugin for
+    /// a cell.
     pub fn open(
         mut client: Client,
         dir: &str,
         file: Option<&str>,
         line: Option<usize>,
-        plugin: P,
+        mut table: Table<P>,
     ) -> Result<Self, Fault> {
         client.capability(SERVES.to_vec())?;
-        let source = match file {
+        let target = match file {
             Some(file) => file_rd(&mut client, file)?,
             None => None,
         };
-        let new_name = match source {
+        let opened = match target {
             Some(_) => None,
             None => file.map(String::from),
         };
-        let buffer = buffer_over(&mut client, source)?;
-        let h = watched(&mut client, buffer, source)?;
-        let text = String::from_utf8_lossy(&client.read_whole(h)?).into_owned();
-        client.since()?;
+        let Some(plugin) = table(Want::Cell) else {
+            let text = String::from("no Plugin for a cell");
+            return Err(Fault::Usage(text));
+        };
         let mut caps = Caps::default();
-        for api in [keys::hash(), grid::hash(), process::hash()] {
+        for api in [keys::hash(), grid::hash(), open::hash(), process::hash()] {
             caps.serve(api);
         }
         caps.sized(u64::from(FIRST.0), u64::from(FIRST.1 - 1));
-        let at = line.map_or(0, |line| at_line(&text, line));
         let mut tui = Self {
             client,
             plugin,
+            table,
             caps,
-            buffer,
-            source,
-            h,
-            new_name,
+            target,
+            opened,
+            dir: String::from(dir),
+            laid: None,
             name: String::from(UNNAMED),
-            text,
-            head: 0,
-            published: 0,
             size: FIRST,
             moved: false,
         };
         tui.name = tui.named()?;
         let start = Start {
             client: tui.client.cid(),
-            buffer,
-            source,
-            name: tui.new_name.clone(),
+            over: target,
+            name: tui.opened.clone(),
             dir: String::from(dir),
-            at: at as u64,
+            line: line.map(count),
         };
         let ctx = Ctx { tree: tui.client.tree(), caps: &mut tui.caps };
         tui.plugin.start(ctx, start)?;
-        tui.refresh()?;
+        tui.settled()?;
+        // What the Plugin's own opening left on the watched rds is
+        // already in the text read with them.
+        tui.client.since()?;
         tui.moved = false;
         Ok(tui)
     }
 
-    /// The Buffer rd.
+    /// The rd laid out now: what the last View named.
     #[must_use]
-    pub const fn buffer(&self) -> Rd {
-        self.buffer
+    pub fn over(&self) -> Option<Rd> {
+        self.laid.as_ref().map(|laid| laid.rd)
     }
 
     /// The Plugin behind the keys, for a test to judge its state.
@@ -177,22 +213,25 @@ impl<P: Plugin> Tui<P> {
         let ctx = Ctx { tree: self.client.tree(), caps: &mut self.caps };
         self.plugin.input(ctx, keys::hash(), &press)?;
         self.after()?;
+        self.settled()?;
         Ok(self.step())
     }
 
     /// What happened since, to the Plugin.
     ///
     /// # Errors
-    /// `Kernel(Gone)` once the Buffer is gone; otherwise what the
+    /// `Kernel(Gone)` once what is laid out is gone; otherwise what the
     /// Client says.
     pub fn tick(&mut self) -> Result<Step, Fault> {
         self.after()?;
+        self.settled()?;
         Ok(self.step())
     }
 
     /// What to draw for `cols` by `rows`: the View laid out over the
-    /// tui's own text. A size the Plugin has not been told of reaches
-    /// it first, as a `grid::Resized`, so it can move the View.
+    /// tui's own copy of the text it names. A size the Plugin has not
+    /// been told of reaches it first, as a `grid::Resized`, so it can
+    /// move the View.
     ///
     /// # Errors
     /// What the Client says.
@@ -205,40 +244,162 @@ impl<P: Plugin> Tui<P> {
             let resized = reovim_sdk::encode(&grid::Resized { cols, rows });
             let ctx = Ctx { tree: self.client.tree(), caps: &mut self.caps };
             self.plugin.input(ctx, grid::hash(), &resized)?;
+            // A View is laid out wherever it arrives; an ask waits for
+            // the next step, a frame not being one.
+            self.lay()?;
         }
         Ok(self.laid_out(cols, rows))
     }
 
-    /// The events drained: the tui's own copy of the text read again
-    /// on a Modify or an Overflow, the revisions and the name after
-    /// it, then the Plugin told what happened.
+    /// The events drained: the laid text read again on a Modify or an
+    /// Overflow, the revisions and the name after it, then the Plugin
+    /// told what happened. Nothing happened is nothing asked of the
+    /// tree, so an idle editor makes one call a tick.
     fn after(&mut self) -> Result<(), Fault> {
         let events = self.client.since()?;
         if events.is_empty() {
             return Ok(());
         }
-        let on = |rd: Rd, kind: Kind| {
-            events.iter().any(|e| e.rd == rd && e.kind == kind)
-        };
-        if on(self.buffer, Kind::Gone) {
-            return Err(Fault::Kernel(Error::Gone));
-        }
-        // Overflow: the ring moved past us, so everything is read again.
-        let overflow = events.iter().any(|e| e.kind == Kind::Overflow);
-        let source = self.source.is_some_and(|s| on(s, Kind::Modify));
-        if overflow || on(self.buffer, Kind::Modify) || source {
-            let bytes = self.client.read_whole(self.h)?;
-            let text = String::from_utf8_lossy(&bytes).into_owned();
-            self.moved |= text != self.text;
-            self.text = text;
-        }
+        self.reread(&events)?;
         self.refresh()?;
         let ctx = Ctx { tree: self.client.tree(), caps: &mut self.caps };
         self.plugin.changed(ctx, &events)
     }
 
+    /// What the Plugin's calls left behind: the region opened
+    /// elsewhere if it asked for that, and the rd the View names laid
+    /// out. A View over what is laid already asks nothing of the tree.
+    fn settled(&mut self) -> Result<(), Fault> {
+        self.swapped()?;
+        self.lay()
+    }
+
+    /// The tui's own copy of the laid text, read again when the events
+    /// say it moved: a Modify on it or on what it is over, or a ring
+    /// that overflowed past the tui. Its going is the end of the
+    /// editor.
+    fn reread(&mut self, events: &[Event]) -> Result<(), Fault> {
+        let Some(laid) = &self.laid else { return Ok(()) };
+        let (rd, h) = (laid.rd, laid.h);
+        let source = laid.source.map(|(source, _)| source);
+        let on = |rd: Rd, kind: Kind| {
+            events.iter().any(|e| e.rd == rd && e.kind == kind)
+        };
+        if on(rd, Kind::Gone) {
+            return Err(Fault::Kernel(Error::Gone));
+        }
+        // Overflow: the ring moved past us, so everything is read again.
+        let overflow = events.iter().any(|e| e.kind == Kind::Overflow);
+        let over = source.is_some_and(|source| on(source, Kind::Modify));
+        if !overflow && !on(rd, Kind::Modify) && !over {
+            return Ok(());
+        }
+        let bytes = self.client.read_whole(h)?;
+        let text = String::from_utf8_lossy(&bytes).into_owned();
+        if let Some(laid) = &mut self.laid {
+            self.moved |= text != laid.text;
+            laid.text = text;
+        }
+        Ok(())
+    }
+
+    /// The rd the View names, laid out: opened READ, watched, read,
+    /// and what was laid before closed. A View over what is laid
+    /// already leaves it where it is.
+    fn lay(&mut self) -> Result<(), Fault> {
+        let named = self.caps.view().map(|view| Rd(view.over));
+        let Some(rd) = named else { return Ok(()) };
+        if self.over() == Some(rd) {
+            return Ok(());
+        }
+        let laid = lay_on(&mut self.client, rd)?;
+        if let Some(before) = self.laid.replace(laid) {
+            unlay(&mut self.client, &before)?;
+        }
+        self.moved = true;
+        // The name first: it is what takes the source, which the
+        // revisions after it then see.
+        self.name = self.named()?;
+        self.refresh()
+    }
+
+    /// What a Plugin asked of `open`, acted on now that its call has
+    /// returned: the Plugin the table gives, the handles the Plugin
+    /// being replaced left closed for it, and the region started over
+    /// the rd asked for.
+    ///
+    /// One ask per step, so a Plugin that asks in its own `start` is
+    /// served at the next: the tui answers keys, it does not chase
+    /// them.
+    fn swapped(&mut self) -> Result<(), Fault> {
+        let Some((target, plugin)) = self.caps.asked() else { return Ok(()) };
+        let Some(made) = self.made(target, &plugin)? else {
+            return self.unsupported(target, &plugin);
+        };
+        self.shut()?;
+        self.plugin = made;
+        self.target = Some(target);
+        self.opened = None;
+        let start = Start {
+            client: self.client.cid(),
+            over: Some(target),
+            name: None,
+            dir: self.dir.clone(),
+            line: None,
+        };
+        let ctx = Ctx { tree: self.client.tree(), caps: &mut self.caps };
+        self.plugin.start(ctx, start)
+    }
+
+    /// The Plugin for an ask: the one the name stands for, or, with no
+    /// name, the one the target's shape stands for.
+    fn made(&mut self, target: Rd, plugin: &str) -> Result<Option<P>, Fault> {
+        if !plugin.is_empty() {
+            return Ok((self.table)(Want::Named(plugin)));
+        }
+        let flags = self.client.info(target)?.flags;
+        let want = if flags.contains(Flags::CONTAINER) {
+            Want::Container
+        } else {
+            Want::Cell
+        };
+        Ok((self.table)(want))
+    }
+
+    /// An ask the table has no Plugin for: the region stays as it is
+    /// and the log says so, `open` carrying no answer back to the
+    /// Plugin that asked.
+    fn unsupported(&mut self, target: Rd, plugin: &str) -> Result<(), Fault> {
+        let entry = self.client.resolve("/sys/log")?;
+        let said =
+            format!("{WARN}open rd={} plugin={plugin} unsupported", target.0);
+        self.client.write_all(entry, said.into_bytes()).map(|_| ())
+    }
+
+    /// Every handle the Tree holds but the ones the tui lays out with:
+    /// what the Plugin being replaced opened, closed for it, nothing
+    /// else holding a Plugin's end.
+    fn shut(&mut self) -> Result<(), Fault> {
+        let mut kept: Vec<Handle> = Vec::new();
+        if let Some(laid) = &self.laid {
+            kept.push(laid.h);
+            kept.extend(laid.source.map(|(_, watched)| watched));
+        }
+        let theirs: Vec<Handle> = self
+            .client
+            .handles()
+            .iter()
+            .copied()
+            .filter(|h| !kept.contains(h))
+            .collect();
+        for h in theirs {
+            shut_one(&mut self.client, h)?;
+        }
+        Ok(())
+    }
+
     /// Quit once the Plugin has asked to exit; Changed once it has
-    /// shown something or the Buffer has moved under it.
+    /// shown something or what is laid out has moved under it.
     fn step(&mut self) -> Step {
         if let Some(code) = self.caps.exit() {
             return Step::Quit(code);
@@ -248,37 +409,64 @@ impl<P: Plugin> Tui<P> {
         if shown || moved { Step::Changed } else { Step::Same }
     }
 
-    /// Head and published from `tree`, and the name the Buffer goes by
+    /// Head and published from `tree`, and the name the region goes by
     /// now: a `:w NAME` on a Buffer over nothing gives it one.
     fn refresh(&mut self) -> Result<(), Fault> {
-        let tree = history::Call(self.client.tree(), self.h).tree()?;
-        let moved = (tree.head, tree.published) != (self.head, self.published);
-        self.moved |= moved;
-        (self.head, self.published) = (tree.head, tree.published);
-        // A Buffer over nothing may have taken a source since.
-        if self.source.is_none() {
+        let Some(laid) = &self.laid else { return Ok(()) };
+        let (h, over) = (laid.h, laid.source.is_some());
+        let tree = history::Call(self.client.tree(), h).tree()?;
+        if let Some(laid) = &mut self.laid {
+            let moved =
+                (tree.head, tree.published) != (laid.head, laid.published);
+            self.moved |= moved;
+            (laid.head, laid.published) = (tree.head, tree.published);
+        }
+        // What is laid out may have taken a source since.
+        if !over {
             self.name = self.named()?;
         }
         Ok(())
     }
 
-    /// What the Buffer is over, by name; the name a new file will go
-    /// by while it is over nothing, or `[No Name]`. A Buffer that has
-    /// taken a source is watched from then on, as its own was.
+    /// What the region goes by: the name of what the laid rd is over,
+    /// else the name of the rd the region was opened on, else the name
+    /// the tui was opened with, else `[No Name]`.
     fn named(&mut self) -> Result<String, Fault> {
-        if let Some(source) = self.source {
+        if let Some(source) = self.source()? {
             return self.client.name(source);
         }
-        let Ok(child) = self.client.lookup(self.buffer, "source") else {
-            let new = self.new_name.as_deref().map(own_name);
-            return Ok(String::from(new.unwrap_or(UNNAMED)));
+        if let Some(target) = self.target {
+            return self.client.name(target);
+        }
+        let opened = self.opened.as_deref().map(own_name);
+        Ok(String::from(opened.unwrap_or(UNNAMED)))
+    }
+
+    /// What the laid rd is over, once it is over anything: its
+    /// `source` child, read once and watched from then on, as a
+    /// Buffer opened over a file is.
+    fn source(&mut self) -> Result<Option<Rd>, Fault> {
+        let Some(laid) = &self.laid else { return Ok(None) };
+        if let Some((source, _)) = laid.source {
+            return Ok(Some(source));
+        }
+        let Ok(child) = self.client.lookup(laid.rd, "source") else {
+            return Ok(None);
         };
         let source: Rd = reovim_sdk::decode(&self.client.read_all(child)?)?;
         let watched = self.client.open(source, Rights::READ)?;
         self.client.watch(watched, true)?;
-        self.source = Some(source);
+        if let Some(laid) = &mut self.laid {
+            laid.source = Some((source, watched));
+        }
         self.moved = true;
-        self.client.name(source)
+        Ok(Some(source))
+    }
+
+    /// The bytes the View is in, as the tui last read them; nothing
+    /// before the first View.
+    fn text(&self) -> &str {
+        self.laid.as_ref().map_or("", |laid| laid.text.as_str())
     }
 
     /// The View in cells: the lines from its top, the spans and the
@@ -286,22 +474,22 @@ impl<P: Plugin> Tui<P> {
     fn laid_out(&self, cols: u16, rows: u16) -> Frame {
         let width = usize::from(cols.max(1));
         let height = usize::from(rows.saturating_sub(1).max(1));
+        let text = self.text();
         let Some(view) = self.caps.view() else {
             return Frame { status: self.status(0, ""), ..Frame::default() };
         };
-        let cursor = boundary(&self.text, at_of(view.cursor));
+        let cursor = boundary(text, at_of(view.cursor));
         let mut frame = Frame {
             status: self.status(cursor, &view.status),
             shape: view.shape,
             ..Frame::default()
         };
-        let mut at =
-            start_of(&self.text, boundary(&self.text, at_of(view.top)));
-        let last = self.text.len() - usize::from(self.text.ends_with('\n'));
+        let mut at = start_of(text, boundary(text, at_of(view.top)));
+        let last = text.len() - usize::from(text.ends_with('\n'));
         while frame.lines.len() < height && at <= last {
-            let end = end_of(&self.text, at);
+            let end = end_of(text, at);
             let row = cell(frame.lines.len());
-            frame.lines.push(shown(&self.text[at..end], width));
+            frame.lines.push(shown(&text[at..end], width));
             self.on_row(&mut frame, view, row, (at, end), (cursor, width));
             at = end + 1;
         }
@@ -318,7 +506,7 @@ impl<P: Plugin> Tui<P> {
         (at, end): (usize, usize),
         (cursor, width): (usize, usize),
     ) {
-        let line = &self.text[at..end];
+        let line = &self.text()[at..end];
         let cells = |span: &grid::Span| {
             span_on(line, at, end, span).map(|at| (span.style, at))
         };
@@ -339,17 +527,45 @@ impl<P: Plugin> Tui<P> {
     /// The status row: the name, where the cursor is, the revision and
     /// whether it is written, then the Plugin's own word.
     fn status(&self, cursor: usize, word: &str) -> String {
-        let before = &self.text[..boundary(&self.text, cursor)];
+        let text = self.text();
+        let before = &text[..boundary(text, cursor)];
         let line = before.matches('\n').count() + 1;
         let column = before.rsplit('\n').next().unwrap_or("").chars().count();
-        let mark = if self.head == self.published { "" } else { "[+]" };
-        format!(
-            "{}  {line}:{}  r{}{mark}   {word}",
-            self.name,
-            column + 1,
-            self.head
-        )
+        let (head, published) = self
+            .laid
+            .as_ref()
+            .map_or((0, 0), |laid| (laid.head, laid.published));
+        let mark = if head == published { "" } else { "[+]" };
+        format!("{}  {line}:{}  r{head}{mark}   {word}", self.name, column + 1)
     }
+}
+
+/// `rd` as the tui lays a View out over it: opened READ, watched, and
+/// read whole.
+fn lay_on(client: &mut Client, rd: Rd) -> Result<Laid, Fault> {
+    let h = client.open(rd, Rights::READ)?;
+    client.watch(h, true)?;
+    let text = String::from_utf8_lossy(&client.read_whole(h)?).into_owned();
+    Ok(Laid { rd, h, source: None, text, head: 0, published: 0 })
+}
+
+/// One handle of the Plugin being replaced, closed. A handle whose rd
+/// went while the Plugin held it is gone with it; what matters is that
+/// nothing of the Plugin's is left open.
+fn shut_one(client: &mut Client, h: Handle) -> Result<(), Fault> {
+    match client.close(h) {
+        Ok(()) | Err(Fault::Kernel(_)) => Ok(()),
+        Err(fault) => Err(fault),
+    }
+}
+
+/// What was laid out before, let go: its handle and the one on what it
+/// was over.
+fn unlay(client: &mut Client, laid: &Laid) -> Result<(), Fault> {
+    if let Some((_, watched)) = laid.source {
+        client.close(watched)?;
+    }
+    client.close(laid.h)
 }
 
 /// What a file under the root goes by on its own: the last segment of
@@ -359,7 +575,7 @@ fn own_name(path: &str) -> &str {
 }
 
 /// The rd of `file`, a name under the root, or `None` when there is
-/// no such file: what a Buffer over nothing is opened for. The two
+/// no such file: what a region over nothing is opened for. The two
 /// ways the tree says nothing is there are a name not on disk and a
 /// name below a file.
 fn file_rd(client: &mut Client, file: &str) -> Result<Option<Rd>, Fault> {
@@ -369,48 +585,12 @@ fn file_rd(client: &mut Client, file: &str) -> Result<Option<Rd>, Fault> {
     }
 }
 
-/// A Buffer over `source`, or over nothing.
-fn buffer_over(client: &mut Client, source: Option<Rd>) -> Result<Rd, Fault> {
-    let opener = client.resolve("/module/text/open")?;
-    let opening = client.open(opener, Rights::WRITE)?;
-    let mut open = open::Call(client.tree(), opening);
-    let buffer = match source {
-        Some(source) => open.open(source),
-        None => open.new(),
-    };
-    client.close(opening)?;
-    buffer
+/// A count as the contract carries it, however far it goes.
+fn count(n: usize) -> u64 {
+    u64::try_from(n).unwrap_or(u64::MAX)
 }
 
-/// A handle on `buffer`, watched, with the `source` watched too.
-fn watched(
-    client: &mut Client,
-    buffer: Rd,
-    source: Option<Rd>,
-) -> Result<Handle, Fault> {
-    let h = client.open(buffer, Rights::READ.union(Rights::WRITE))?;
-    client.watch(h, true)?;
-    if let Some(source) = source {
-        let watched = client.open(source, Rights::READ)?;
-        client.watch(watched, true)?;
-    }
-    Ok(h)
-}
-
-/// The byte line `n` starts at, counted from 1 and clamped to the last
-/// line: the tty's `+N`.
-fn at_line(text: &str, n: usize) -> usize {
-    let mut at = 0;
-    for _ in 1..n.max(1) {
-        match text[at..].find('\n') {
-            Some(i) if at + i + 1 < text.len() => at += i + 1,
-            _ => break,
-        }
-    }
-    at
-}
-
-/// A byte of the Buffer as an index, however far the Plugin put it.
+/// A byte of the laid rd as an index, however far the Plugin put it.
 fn at_of(at: u64) -> usize {
     usize::try_from(at).unwrap_or(usize::MAX)
 }

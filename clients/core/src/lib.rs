@@ -20,7 +20,7 @@ pub mod log;
 mod plugin;
 pub mod value;
 
-pub use caps::{BAR, BLOCK, Caps, MATCH, SELECTION, grid, keys, process};
+pub use caps::{BAR, BLOCK, Caps, MATCH, SELECTION, grid, keys, open, process};
 pub use client::{Carrier, Client, ROOT, Tree, under};
 pub use fault::Fault;
 pub use input::Key;

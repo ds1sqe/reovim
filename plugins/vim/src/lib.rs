@@ -215,7 +215,10 @@ pub struct Vim {
     line: Line,
     /// Shown until the next key.
     message: String,
-    /// The Buffer `start` opened, READ and WRITE.
+    /// The Buffer `start` opened over what the region is on: what the
+    /// View it shows is in the bytes of.
+    buffer: Option<Rd>,
+    /// That Buffer's handle, READ and WRITE.
     h: Option<Handle>,
     /// What that Buffer is over, once it is over anything.
     source: Option<Rd>,

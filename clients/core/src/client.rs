@@ -47,6 +47,10 @@ pub struct Tree {
     credential: Vec<u8>,
     session: Rd,
     cid: Rd,
+    /// Opened here and not closed here: a mirror of the handles the
+    /// Kernel holds for this caller, so whoever replaces a Plugin can
+    /// close what it left behind.
+    handles: Vec<Handle>,
 }
 
 /// One connected Client: a `Tree`, and the watch cursor it drains.
@@ -71,6 +75,7 @@ impl Client {
             credential,
             session: ROOT,
             cid: ROOT,
+            handles: Vec::new(),
         };
         let mut client = Self { tree, cursor: 0 };
         let connect = Message::Connect {
@@ -167,6 +172,13 @@ impl Tree {
     #[must_use]
     pub const fn cid(&self) -> Rd {
         self.cid
+    }
+
+    /// The handles open on this caller, in the order they were
+    /// opened: exactly what `close` has not been called on.
+    #[must_use]
+    pub fn handles(&self) -> &[Handle] {
+        &self.handles
     }
 
     /// One message out, the reply to it back; a Pending reply is asked
@@ -277,7 +289,10 @@ impl Tree {
     /// As [`Self::lookup`].
     pub fn open(&mut self, rd: Rd, rights: Rights) -> Result<Handle, Fault> {
         match self.request(Op::Open { rd, rights })? {
-            Out::Handle(h) => Ok(h),
+            Out::Handle(h) => {
+                self.handles.push(h);
+                Ok(h)
+            }
             _ => Err(Fault::Wire),
         }
     }
@@ -328,6 +343,10 @@ impl Tree {
     /// # Errors
     /// As [`Self::lookup`].
     pub fn close(&mut self, h: Handle) -> Result<(), Fault> {
+        // The Kernel drops the handle whatever it answers, and what it
+        // refuses was never this caller's; either way it is not held
+        // here any more.
+        self.handles.retain(|open| *open != h);
         self.unit(Op::Close { h })
     }
 

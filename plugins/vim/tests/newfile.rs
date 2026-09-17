@@ -1,9 +1,11 @@
-//! A name that is not on disk, through the tui on the rig: what the
-//! status says on the first frame, what `:q` leaves, and what the
-//! first write makes. The corpus cannot judge this: nvim records no
-//! message, and a case's file is always there.
+//! What the tui hands Vim when it starts it, through the tui on the
+//! rig: a name that is not on disk — what the status says on the
+//! first frame, what `:q` leaves, what the first write makes — and
+//! the line `+N` begins at. The corpus cannot judge these: nvim
+//! records no message, a case's file is always there, and a case
+//! always begins at the first line.
 
-use reovim_client_tui::{Step, Tui};
+use reovim_client_tui::{Step, Table, Tui};
 use reovim_plugin_vim::Vim;
 use reovim_plugin_vim::notation::keys;
 use reovim_rig::Rig;
@@ -13,9 +15,15 @@ const E13: &str = "E13: File exists (add ! to override)";
 /// What a write says when the host would not make the file.
 const E212: &str = "E212: Can't open file for writing";
 
+/// The table an editor of Vim alone is made with: Vim whatever the
+/// region is asked to show.
+fn vim() -> Table<Vim> {
+    Box::new(|_| Some(Vim::default()))
+}
+
 /// `file`, a name under the root, in an editor of its own.
 fn open(rig: &Rig, file: &str) -> Tui<Vim> {
-    Tui::open(rig.client(), "", Some(file), None, Vim::default()).unwrap()
+    Tui::open(rig.client(), "", Some(file), None, vim()).unwrap()
 }
 
 /// Every key of `text` in Vim notation; what the last one did.
@@ -112,11 +120,27 @@ fn the_new_name_is_said_as_the_person_gave_it() {
     std::fs::create_dir(rig.dir().join("d")).unwrap();
     // The Client started in `d`, so `d/memo.md` was typed `memo.md`.
     let mut tui =
-        Tui::open(rig.client(), "d", Some("d/memo.md"), None, Vim::default())
-            .unwrap();
+        Tui::open(rig.client(), "d", Some("d/memo.md"), None, vim()).unwrap();
     assert_eq!(status(&mut tui), "memo.md  1:1  r1   \"memo.md\" [New]");
     assert_eq!(typed(&mut tui, "iz<Esc>:w<CR>"), Step::Changed);
     assert_eq!(rig.disk("d/memo.md"), b"z\n");
+}
+
+#[test]
+fn the_line_of_the_command_line_is_where_vim_begins() {
+    let rig = Rig::new("plus-line");
+    rig.file("note", b"one\n  two\nthree\n");
+    let at = |line| {
+        let tui =
+            Tui::open(rig.client(), "", Some("note"), line, vim()).unwrap();
+        tui.plugin().position()
+    };
+    // Counted from 1, on the line's first non-blank, as `+N` lands.
+    assert_eq!(at(None), (0, 0), "the first line without one");
+    assert_eq!(at(Some(1)), (0, 0));
+    assert_eq!(at(Some(2)), (1, 2), "past the indent");
+    assert_eq!(at(Some(3)), (2, 0));
+    assert_eq!(at(Some(9)), (2, 0), "clamped to the last line");
 }
 
 #[test]
@@ -137,8 +161,7 @@ fn a_file_where_a_directory_is_wanted_is_e212() {
 #[test]
 fn a_buffer_with_no_name_at_all_still_has_no_file_to_write() {
     let rig = Rig::new("new-file-none");
-    let mut tui =
-        Tui::open(rig.client(), "", None, None, Vim::default()).unwrap();
+    let mut tui = Tui::open(rig.client(), "", None, None, vim()).unwrap();
     assert_eq!(status(&mut tui), "[No Name]  1:1  r1   ");
     assert_eq!(typed(&mut tui, "ihi<Esc>:w<CR>"), Step::Changed);
     assert!(status(&mut tui).ends_with("E32: No file name"));

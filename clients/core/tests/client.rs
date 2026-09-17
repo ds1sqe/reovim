@@ -281,6 +281,45 @@ fn a_pending_reply_is_asked_until_ready() {
 }
 
 #[test]
+fn the_handles_a_client_holds_are_the_ones_the_kernel_holds_for_it() {
+    let rig = Rig::new("handles");
+    rig.file("note", b"first\n");
+    let mut client = rig.client();
+    let note = client.resolve("/module/fs/root/note").unwrap();
+    assert_eq!(client.handles(), [], "nothing opened yet");
+
+    let read = client.open(note, Rights::READ).unwrap();
+    let write = client.open(note, Rights::WRITE).unwrap();
+    assert_eq!(client.handles(), [read, write], "in the order opened");
+    // The helpers open and close for themselves, so they leave none.
+    client.read_all(note).unwrap();
+    assert_eq!(client.handles(), [read, write]);
+
+    // What the Kernel holds for this caller, from its own core, read
+    // through a handle that is itself one of them.
+    let core = client.resolve("/sys/core").unwrap();
+    let reading = client.open(core, Rights::READ).unwrap();
+    let text = String::from_utf8(client.read_whole(reading).unwrap()).unwrap();
+    let held: Vec<u64> = text
+        .lines()
+        .filter_map(|line| line.strip_prefix("handle "))
+        .filter_map(|line| {
+            line.split(' ').nth(1)?.strip_prefix("h=")?.parse().ok()
+        })
+        .collect();
+    let ours: Vec<u64> = client.handles().iter().map(|h| h.0).collect();
+    assert_eq!(held, ours, "exactly the handles open on the caller");
+    client.close(reading).unwrap();
+
+    client.close(read).unwrap();
+    assert_eq!(client.handles(), [write], "close forgets");
+    // A handle closed twice is the Kernel's to refuse; the mirror has
+    // let it go either way.
+    assert_eq!(client.close(read), Err(Fault::Kernel(Error::Invalid)));
+    assert_eq!(client.handles(), [write]);
+}
+
+#[test]
 fn the_log_parses_whole_entries_only() {
     let rig = Rig::new("log");
     let mut client = rig.client();

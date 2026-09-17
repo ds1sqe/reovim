@@ -5,8 +5,8 @@
 use std::fmt::Write as _;
 use std::io::Write;
 
-use reovim_client::{BAR, Client, Fault, Key, under};
-use reovim_client_tui::{Frame, Step, Tui, width};
+use reovim_client::{BAR, Client, Fault, Key, Plugin, under};
+use reovim_client_tui::{Frame, Step, Table, Tui, Want, width};
 use reovim_host::term;
 use reovim_plugin_vim::Vim;
 
@@ -20,8 +20,19 @@ use crate::server::{Links, boot};
 /// the bare form.
 type Serve<'a> = &'a mut dyn FnMut() -> Result<(), Fail>;
 
-/// The tui over the Vim Plugin: the one editor the binary offers.
-type Editor = Tui<Vim>;
+/// The tui over whichever Plugin the table gives: the one editor the
+/// binary offers.
+type Editor = Tui<Box<dyn Plugin>>;
+
+/// Which Plugin the binary makes for what a region is asked to show:
+/// Vim by name and for a cell, and nothing else yet. The names are
+/// the app's; the tui knows none of them.
+fn table() -> Table<Box<dyn Plugin>> {
+    Box::new(|want| match want {
+        Want::Named("vim") | Want::Cell => Some(Box::new(Vim::default())),
+        _ => None,
+    })
+}
 
 /// `reovim tui`: a Client over the link, named so a cut link can be
 /// taken up again.
@@ -73,7 +84,7 @@ fn run(
     (dir, file): (&str, Option<&str>),
     serve: Serve,
 ) -> Result<u8, Fail> {
-    let mut tui = Tui::open(client, dir, file, line, Vim::default())?;
+    let mut tui = Tui::open(client, dir, file, line, table())?;
     term::enter()?;
     let result = drive(&mut tui, serve);
     let _ = term::leave();

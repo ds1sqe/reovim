@@ -188,7 +188,7 @@ editing other other
 [[ "$("$BIN" cli children /session/1/client)" == *" 1" ]] \
     || fail "the running editor has no client rd 1"
 serves="$("$BIN" cli read /session/1/client/1/capability)"
-[[ "$serves" == $'keys\ngrid\nprocess' ]] \
+[[ "$serves" == $'keys\ngrid\nopen\nprocess' ]] \
     || fail "the running editor's client serves $serves"
 # A wrong command: one line on stderr, naming the word and the target,
 # and exit 1.
