@@ -303,7 +303,7 @@ impl Vim {
     /// goes nowhere.
     fn span(&mut self, motion: Motion, n: usize) -> Option<Span> {
         if let Motion::Object { inner, kind } = motion {
-            return self.object_span(inner, kind);
+            return self.object_span(inner, kind, n);
         }
         let (start, want) = (self.cursor, self.want);
         let mut kind = motion.extent(self.find);
@@ -497,9 +497,13 @@ impl Vim {
 
     /// After a delete: the cursor where the span was, or at the wanted
     /// column of the line left when lines went, as `nostartofline`
-    /// has it. Chars taken down to nothing leave one empty line, as
-    /// Vim's buffer always has a line.
+    /// has it.
+    ///
+    /// Chars taken down to nothing leave one empty line, as Vim's
+    /// buffer always has a line. An empty span takes nothing, yet the
+    /// cursor still lands at it: `di"` within `""` goes to the close.
     fn deleted(&mut self, at: usize, len: usize, linewise: bool) -> Effect {
+        let before = self.cursor;
         let whole = !linewise && at == 0 && len == self.text.len();
         let effect = if whole {
             self.replace(0, len, String::from("\n"))
@@ -515,6 +519,9 @@ impl Vim {
             start
         };
         self.clamp();
+        if effect == Effect::Nothing {
+            return moved(self.cursor != before);
+        }
         effect
     }
 

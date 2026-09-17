@@ -134,7 +134,7 @@ impl Vim {
             ('r', Key::Char(c)) => return self.visual_replace(c),
             ('"', Key::Char(name)) => return self.named(name, count),
             ('i' | 'a', Key::Char(kind)) => {
-                return self.extend(first == 'i', kind);
+                return self.extend(first == 'i', kind, n);
             }
             _ => {}
         }
@@ -157,13 +157,13 @@ impl Vim {
 
     /// `iw`, `ap` and the like: the object under the cursor joins the
     /// selection; a paragraph makes it linewise.
-    fn extend(&mut self, inner: bool, kind: char) -> Effect {
+    fn extend(&mut self, inner: bool, kind: char, n: usize) -> Effect {
         let (lo, hi) = self.ends();
         // A selection already made grows by the object after it.
         let at = if lo == hi { self.cursor } else { self.forward_char(hi) };
         let at = at.min(self.bound());
         let here = core::mem::replace(&mut self.cursor, at);
-        let span = self.object_span(inner, kind);
+        let span = self.object_span(inner, kind, n);
         self.cursor = here;
         let Some((from, to, span_kind)) = span else { return Effect::Nothing };
         let last = if span_kind == Extent::Linewise {

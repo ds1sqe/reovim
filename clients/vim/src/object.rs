@@ -12,26 +12,46 @@ fn same(big: bool, a: Option<char>, b: Option<char>) -> bool {
     if big { blank(a) == blank(b) } else { crate::word::same_class(a, b) }
 }
 
-/// The quotes before and after `col`, or the first pair on the line.
+/// The quotes before and after `col`, or the first pair on the line
+/// when none is before it.
 fn around(quotes: &[usize], col: usize) -> Option<(usize, usize)> {
-    let before = quotes.iter().rev().find(|q| **q < col);
-    let after = quotes.iter().find(|q| **q > col);
-    let open = before.or_else(|| quotes.first()).copied()?;
-    let close = after.or_else(|| quotes.get(1)).copied()?;
-    Some((open, close))
+    let Some(open) = quotes.iter().rev().find(|q| **q < col) else {
+        return Some((*quotes.first()?, *quotes.get(1)?));
+    };
+    let close = quotes.iter().find(|q| **q > col)?;
+    Some((*open, *close))
+}
+
+/// The `quote`s in `line`, which starts at `start` in the text; a
+/// `\`, as `quoteescape` has it, makes the char after it text.
+fn quotes(line: &str, start: usize, quote: char) -> Vec<usize> {
+    let mut escaped = false;
+    line.char_indices()
+        .filter(|&(_, c)| {
+            let found = !escaped && c == quote;
+            escaped = !escaped && c == '\\';
+            found
+        })
+        .map(|(i, _)| start + i)
+        .collect()
 }
 
 impl Vim {
     /// The object `kind` around the cursor, `inner` or with what
     /// Vim adds around it.
-    pub(crate) fn object_span(&self, inner: bool, kind: char) -> Option<Span> {
+    pub(crate) fn object_span(
+        &self,
+        inner: bool,
+        kind: char,
+        n: usize,
+    ) -> Option<Span> {
         match kind {
             'w' | 'W' => self.word_object(inner, kind == 'W'),
             '(' | ')' | 'b' => self.bracket_object(inner, b'(', b')'),
             '[' | ']' => self.bracket_object(inner, b'[', b']'),
             '{' | '}' | 'B' => self.bracket_object(inner, b'{', b'}'),
             '<' | '>' => self.bracket_object(inner, b'<', b'>'),
-            '"' | '\'' | '`' => self.quote_object(inner, kind),
+            '"' | '\'' | '`' => self.quote_object(inner, kind, n),
             'p' => self.paragraph_object(inner),
             _ => None,
         }
@@ -128,14 +148,14 @@ impl Vim {
     }
 
     /// The quoted text the cursor is in, else between the quotes
-    /// before and after it, else the first pair after it; `a` takes
-    /// the quotes and the blanks after them, or before when none.
-    fn quote_object(&self, inner: bool, quote: char) -> Option<Span> {
+    /// before and after it, else the first pair after it.
+    ///
+    /// `i` with a count of its own takes the quotes too; `a` takes
+    /// them and the blanks after them, or before when none.
+    fn quote_object(&self, inner: bool, quote: char, n: usize) -> Option<Span> {
         let (start, end) =
             (self.line_start(self.cursor), self.line_end(self.cursor));
-        let line = &self.text[start..end];
-        let quotes: Vec<usize> =
-            line.match_indices(quote).map(|(i, _)| start + i).collect();
+        let quotes = quotes(&self.text[start..end], start, quote);
         let col = self.cursor;
         let inside = quotes
             .as_chunks::<2>()
@@ -144,10 +164,11 @@ impl Vim {
             .map(|[a, b]| (*a, *b))
             .find(|(a, b)| *a <= col && col <= *b);
         let (open, close) = inside.or_else(|| around(&quotes, col))?;
-        if inner {
-            return Some((open + 1, close, Extent::Exclusive));
-        }
-        let (from, to) = self.with_blanks(start, end, open, close + 1);
+        let (from, to) = match (inner, n) {
+            (true, 1) => (open + 1, close),
+            (true, _) => (open, close + 1),
+            _ => self.with_blanks(start, end, open, close + 1),
+        };
         Some((from, to, Extent::Exclusive))
     }
 
