@@ -214,7 +214,9 @@ fn the_table_computes_the_short_form_of_every_word() {
         reovim_plugin_vim::WORDS.iter().map(|w| words.abbrev(w)).collect();
     // `cquit` is `c` and not nvim's `cq`: no `change` stands before it
     // in this table, and the cli's `cat` stands behind Vim's words.
-    assert_eq!(short, ["w", "wq", "q", "x", "c", "s", "se", "n", "e", "ex"]);
+    // `cli` stands behind `cquit`, so it is `cl`.
+    let all = ["w", "wq", "q", "x", "c", "s", "se", "n", "e", "ex", "cl"];
+    assert_eq!(short, all);
     // The cli's own words are behind these, so `:w` is the write and
     // `:wa` the watch.
     assert_eq!(words.resolve("wa").map(|w| w.name), Some("watch"));

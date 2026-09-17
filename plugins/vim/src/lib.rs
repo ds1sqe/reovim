@@ -117,7 +117,11 @@ pub enum Effect {
     Open(String, bool),
     /// A word of the cli's, typed on the `:` line: the line as
     /// clients/cli takes it, the word by its full name.
-    Cli(Vec<String>),
+    Line(Vec<String>),
+    /// `:cli[!]`: the cli's words in a region of their own, asked for
+    /// by name over where the `:` line's own words stand. `true` for
+    /// `:cli!`, which goes although the draft is unsaved.
+    Cli(bool),
     /// Tab on the `:` line past its first word, which the line
     /// already holds expanded: what may stand where the last word
     /// does, which only the Client can find over the tree, and hands

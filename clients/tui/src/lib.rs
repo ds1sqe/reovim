@@ -112,6 +112,12 @@ pub struct Tui<P: Plugin> {
     /// The path under the root the tui was opened with while there is
     /// no such file: what a write makes.
     opened: Option<String>,
+    /// What the region was over before the last swap, which `back`
+    /// goes to: one step, not a stack.
+    before: Option<(Option<Rd>, Option<String>)>,
+    /// The code a step back with no step to take leaves with, the
+    /// buffer that asked having been the first thing shown.
+    done: Option<u8>,
     /// Where a relative name the Plugin resolves starts.
     dir: String,
     /// What the View last named, opened and watched here.
@@ -175,6 +181,8 @@ impl<P: Plugin> Tui<P> {
             caps,
             target,
             opened,
+            before: None,
+            done: None,
             dir: String::from(dir),
             laid: None,
             name: String::from(UNNAMED),
@@ -287,6 +295,7 @@ impl<P: Plugin> Tui<P> {
     /// out. A View over what is laid already asks nothing of the tree.
     fn settled(&mut self) -> Result<(), Fault> {
         self.swapped()?;
+        self.went_back()?;
         self.lay()
     }
 
@@ -352,14 +361,51 @@ impl<P: Plugin> Tui<P> {
         let Some(made) = self.made(target, &plugin)? else {
             return self.unsupported(target, &plugin);
         };
+        // What the region was over is the one step `back` takes.
+        self.before = Some((self.target, self.opened.clone()));
+        self.begun(made, Some(target), None)
+    }
+
+    /// What a Plugin asked of `open::back`, acted on where an ask is:
+    /// the step the last swap left, in a Plugin the table makes afresh
+    /// by the shape of what it was over. There being no step is the
+    /// buffer that asked having been the first thing shown, and the
+    /// Client leaves with 0, as an exit of that code would end it.
+    fn went_back(&mut self) -> Result<(), Fault> {
+        if !self.caps.backed() {
+            return Ok(());
+        }
+        let Some((target, opened)) = self.before.take() else {
+            self.done = Some(0);
+            return Ok(());
+        };
+        let want = match target {
+            Some(target) => want_of(&mut self.client, target)?,
+            None => Want::Cell,
+        };
+        let Some(made) = (self.table)(want) else {
+            return self.nowhere(want);
+        };
+        self.begun(made, target, opened)
+    }
+
+    /// The region given to `made`, over `target` under the name
+    /// `opened`: what the Plugin being replaced left open closed for
+    /// it, and the new one started there.
+    fn begun(
+        &mut self,
+        made: P,
+        target: Option<Rd>,
+        opened: Option<String>,
+    ) -> Result<(), Fault> {
         self.shut()?;
         self.plugin = made;
-        self.target = Some(target);
-        self.opened = None;
+        self.target = target;
+        self.opened.clone_from(&opened);
         let start = Start {
             client: self.client.cid(),
-            over: Some(target),
-            name: None,
+            over: target,
+            name: opened,
             dir: self.dir.clone(),
             line: None,
         };
@@ -384,6 +430,15 @@ impl<P: Plugin> Tui<P> {
         let entry = self.client.resolve("/sys/log")?;
         let said =
             format!("{WARN}open rd={} plugin={plugin} unsupported", target.0);
+        self.client.write_all(entry, said.into_bytes()).map(|_| ())
+    }
+
+    /// A step back the table has no Plugin for, which is the table
+    /// having changed its mind: the region stays as it is and the log
+    /// says so, as an ask it has no Plugin for does.
+    fn nowhere(&mut self, want: Want<'_>) -> Result<(), Fault> {
+        let entry = self.client.resolve("/sys/log")?;
+        let said = format!("{WARN}back to {} unsupported", shape(want));
         self.client.write_all(entry, said.into_bytes()).map(|_| ())
     }
 
@@ -412,7 +467,7 @@ impl<P: Plugin> Tui<P> {
     /// Quit once the Plugin has asked to exit; Changed once it has
     /// shown something or what is laid out has moved under it.
     fn step(&mut self) -> Step {
-        if let Some(code) = self.caps.exit() {
+        if let Some(code) = self.caps.exit().or(self.done) {
             return Step::Quit(code);
         }
         let shown = self.caps.shown();

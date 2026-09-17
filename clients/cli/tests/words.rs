@@ -67,6 +67,13 @@ fn ls_names_the_children_sorted_down_columns_or_one_per_line() {
         run(&mut client, "ls -z", None),
         "usage: ls [-l] [-a] [-w] [TARGET..]; help ls says more"
     );
+
+    // A directory with nothing under it prints nothing, laid out
+    // across a terminal's columns as much as down a pipe.
+    std::fs::create_dir(rig.dir().join("empty")).unwrap();
+    let empty = format!("ls {root}/empty");
+    assert_eq!(run(&mut client, &empty, Some(80)), "");
+    assert_eq!(run(&mut client, &empty, None), "");
 }
 
 #[test]

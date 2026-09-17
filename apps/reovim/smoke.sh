@@ -355,6 +355,28 @@ keys explored : q Enter
 [[ "$(ended explored)" == 0 ]] || fail ":q left the listing :explore made"
 [[ "$(cat "$DIR/tree/note")" == one ]] || fail ":explore! wrote the draft"
 
+# --- :cli: the cli's words in a region of their own ------------------
+# `:cli` is Vim asking its Client for this region in the Plugin the
+# name `cli` stands for, over where the `:` line's own words stand:
+# the directory the file is in. A line is typed at the prompt, run and
+# answered above the next one; `quit` gives the region back to the
+# file it came from, which is a fresh Vim over it.
+mkdir -p "$DIR/shell"
+echo one > "$DIR/shell/note"
+echo a > "$DIR/shell/alpha"
+start clibuf "$DIR/shell" "$BIN note"
+editing clibuf note
+keys clibuf : c l i Enter
+# The pane keeps no trailing space, so the prompt ends at the `>`.
+shown clibuf "^/module/fs/root$DIR/shell >$"
+keys clibuf l s Enter
+shown clibuf '^alpha  note$'
+keys clibuf q u i t Enter
+editing clibuf note
+shown clibuf '^one$'
+keys clibuf : q Enter
+[[ "$(ended clibuf)" == 0 ]] || fail ":q after the cli buffer did not quit"
+
 # --- the : line runs the cli's words too -----------------------------
 # A word the editor has none of is the cli's, run over the tree from
 # the directory the file is in: `:ls` lists that directory and `:pwd`

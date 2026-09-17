@@ -15,9 +15,9 @@ type Lines = (usize, usize);
 /// Vim's words, in the order a `:` line resolves a name by.
 ///
 /// `:w` is `write` because it stands before `wq`, `:s` is
-/// `substitute` before `set`, and `:e` is `edit` before `explore`.
-/// The cli's own words follow these, so a name none of these begins
-/// is a cli line.
+/// `substitute` before `set`, `:e` is `edit` before `explore`, and
+/// `:c` is `cquit` before `cli`, which takes `:cl`. The cli's own
+/// words follow these, so a name none of these begins is a cli line.
 pub const WORDS: &[Word] = &[
     Word {
         name: "write",
@@ -41,6 +41,7 @@ pub const WORDS: &[Word] = &[
         args: "[DIR]",
         help: "a listing of DIR, or of the file's own",
     },
+    Word { name: "cli", args: "", help: "the cli in this region" },
 ];
 
 /// The table a `:` line is read with: Vim's words while Vim is open,
@@ -281,7 +282,8 @@ impl Vim {
             "explore" => {
                 Effect::Explore((!arg.is_empty()).then(|| arg.into()), bang)
             }
-            name => Effect::Cli(line_of(name, arg)),
+            "cli" => Effect::Cli(bang),
+            name => Effect::Line(line_of(name, arg)),
         }
     }
 

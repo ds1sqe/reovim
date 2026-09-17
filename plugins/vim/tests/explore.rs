@@ -64,12 +64,16 @@ impl Plugin for Stub {
 }
 
 /// The app's table in the small: Vim for a cell, the stub for a
-/// Container.
+/// Container and for the name `cli`, which no shape gives. What the
+/// cli buffer does with the region is judged by its own tests; what
+/// is judged here is what Vim asked for.
 fn table(seen: &Listed) -> Table<Box<dyn Plugin>> {
     let seen = seen.clone();
     Box::new(move |want| match want {
         Want::Cell => Some(Box::new(Vim::default()) as Box<dyn Plugin>),
-        Want::Container => Some(Box::new(Stub(seen.clone()))),
+        Want::Container | Want::Named("cli") => {
+            Some(Box::new(Stub(seen.clone())))
+        }
         Want::Named(_) => None,
     })
 }
@@ -213,4 +217,46 @@ fn every_beginning_the_table_resolves_is_the_one_command() {
         assert_eq!(status(&mut tui), format!("f  1:1  r1   {said}"));
     }
     assert!(seen.borrow().is_empty(), "no ask was made");
+}
+
+#[test]
+fn cli_asks_for_the_cli_buffer_where_the_line_s_words_stand() {
+    let rig = work("cli-here");
+    let seen = Listed::default();
+    let mut tui = over(&rig, &seen);
+    // The region goes to the Plugin the name `cli` stands for, over
+    // the directory the `:` line's own words stand in.
+    assert_eq!(typed(&mut tui, ":cli<CR>"), Step::Changed);
+    assert_eq!(*seen.borrow(), [Some(rd(&rig, "d"))], "`d`, not the root");
+    assert_eq!(status(&mut tui), "d  1:1  r1   -- LISTING --");
+}
+
+#[test]
+fn cd_moves_what_cli_opens_over() {
+    let rig = work("cli-cd");
+    let seen = Listed::default();
+    let mut tui = over(&rig, &seen);
+    // `:cd` is the cli's own word, and it moves the Shell `:cli`
+    // opens over as it moves what `:ls` lists.
+    assert_eq!(typed(&mut tui, ":cd sub<CR>"), Step::Changed);
+    assert_eq!(typed(&mut tui, ":cli<CR>"), Step::Changed);
+    assert_eq!(*seen.borrow(), [Some(rd(&rig, "d/sub"))]);
+}
+
+#[test]
+fn cl_is_cli_and_a_draft_holds_the_region_until_the_bang() {
+    let rig = work("cli-e37");
+    let seen = Listed::default();
+    let mut tui = over(&rig, &seen);
+    assert_eq!(typed(&mut tui, "ix<Esc>"), Step::Changed);
+
+    // `:c` is `cquit`, which would leave with 1; `:cl` is the buffer.
+    assert_eq!(typed(&mut tui, ":cl<CR>"), Step::Changed);
+    assert_eq!(status(&mut tui), format!("f  1:1  r2[+]   {E37}"));
+    assert!(seen.borrow().is_empty(), "the draft would have gone with it");
+
+    assert_eq!(typed(&mut tui, ":cli!<CR>"), Step::Changed);
+    assert_eq!(*seen.borrow(), [Some(rd(&rig, "d"))], "the bang goes");
+    assert_eq!(status(&mut tui), "d  1:1  r1   -- LISTING --");
+    assert_eq!(rig.disk("d/f"), b"one\ntwo\n", "the draft was never written");
 }

@@ -47,6 +47,8 @@ enum Act {
     Second(String),
     /// That rd asked of the Client, in the Plugin the name says.
     Open(Rd, String),
+    /// The region back to what it showed before the last ask.
+    Back,
     /// Leave with that code.
     Exit(u8),
 }
@@ -164,6 +166,10 @@ impl Stub {
                 let ask =
                     open::Ask { target: target.0, plugin: plugin.clone() };
                 open::Call(caps, opening).open(ask)
+            }
+            Act::Back => {
+                let opening = self.0.borrow().opening.unwrap();
+                open::Call(caps, opening).back()
             }
             Act::Exit(code) => {
                 let ending = self.0.borrow().ending.unwrap();
@@ -650,6 +656,67 @@ fn open_by_name_swaps_to_the_plugin_the_table_knows() {
     assert_eq!(press(&mut tui, ask), Ok(Step::Same));
     let (_, over, _, _, _) = tui.plugin().started();
     assert_eq!(over, Some(target), "the Plugin the name stands for");
+}
+
+#[test]
+fn back_gives_the_region_to_the_plugin_of_the_step_before_it() {
+    let rig = Rig::new("back");
+    rig.file("note", b"first\n");
+    rig.file("other", b"second\n");
+    let known = only(|want| matches!(want, Want::Cell | Want::Named("cli")));
+    let mut tui =
+        Tui::open(rig.client(), "", Some("note"), None, known).unwrap();
+    let mut other = rig.client();
+    let note = other.resolve("/module/fs/root/note").unwrap();
+    let target = other.resolve("/module/fs/root/other").unwrap();
+    let ask = Act::Open(target, "cli".into());
+    assert_eq!(press(&mut tui, ask), Ok(Step::Same));
+    let (_, over, _, _, _) = tui.plugin().started();
+    assert_eq!(over, Some(target), "the region went there");
+
+    // The step back is the file the region was over, in a Plugin the
+    // table makes afresh by its shape.
+    assert_eq!(press(&mut tui, Act::Back), Ok(Step::Same));
+    let (_, over, name, dir, line) = tui.plugin().started();
+    assert_eq!(over, Some(note), "started over the rd it was over");
+    assert_eq!((name, dir, line), (None, String::new(), None));
+    assert_eq!(press(&mut tui, Act::Show(view(0, ""))), Ok(Step::Changed));
+    assert_eq!(frame(&mut tui).lines, ["first"], "the file is back");
+
+    // One step, and no stack: the step is spent.
+    assert_eq!(press(&mut tui, Act::Back), Ok(Step::Quit(0)));
+}
+
+#[test]
+fn back_with_no_step_leaves_with_nothing_lost() {
+    let rig = Rig::new("back-first");
+    rig.file("note", b"first\n");
+    let mut tui =
+        Tui::open(rig.client(), "", Some("note"), None, one()).unwrap();
+    // The first Plugin was the first thing shown, so there is nowhere
+    // to go: the Client ends, as an exit of 0 would end it.
+    assert_eq!(press(&mut tui, Act::Back), Ok(Step::Quit(0)));
+    assert_eq!(tui.key(Key::Char('x')), Ok(Step::Quit(0)), "and stays ended");
+}
+
+#[test]
+fn back_to_a_region_over_nothing_keeps_the_name_it_was_opened_with() {
+    let rig = Rig::new("back-unnamed");
+    rig.file("other", b"second\n");
+    let known = only(|want| matches!(want, Want::Cell | Want::Named("cli")));
+    let mut tui =
+        Tui::open(rig.client(), "", Some("note"), None, known).unwrap();
+    assert_eq!(press(&mut tui, Act::Show(view(0, ""))), Ok(Step::Changed));
+    let mut other = rig.client();
+    let there = other.resolve("/module/fs/root/other").unwrap();
+    let ask = Act::Open(there, "cli".into());
+    assert_eq!(press(&mut tui, ask), Ok(Step::Same));
+    assert_eq!(press(&mut tui, Act::Back), Ok(Step::Same));
+    let (_, over, name, _, _) = tui.plugin().started();
+    assert_eq!(over, None, "there was no such file, and still is not");
+    assert_eq!(name, Some(String::from("note")), "the name a write makes");
+    assert_eq!(press(&mut tui, Act::Show(view(0, ""))), Ok(Step::Changed));
+    assert_eq!(frame(&mut tui).status, "note  1:1  r1   ");
 }
 
 #[test]

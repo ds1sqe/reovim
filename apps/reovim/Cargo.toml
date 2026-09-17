@@ -24,6 +24,7 @@ std = ["reovim-host/std"]
 reovim-client = { path = "../../clients/core" }
 reovim-client-cli = { path = "../../clients/cli" }
 reovim-client-tui = { path = "../../clients/tui" }
+reovim-plugin-cli = { path = "../../plugins/cli" }
 reovim-plugin-explorer = { path = "../../plugins/explorer" }
 reovim-plugin-vim = { path = "../../plugins/vim" }
 reovim-host = { path = "../../host/os" }

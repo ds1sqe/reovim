@@ -893,7 +893,11 @@ fn lines(names: &[String]) -> String {
 
 /// `names` down columns as `ls` lays them out: the most columns whose
 /// widths and two-space gaps fit in `width`, read down and then across.
+/// Nothing to lay out is nothing printed, as an empty listing is.
 fn columns(names: &[String], width: usize) -> String {
+    if names.is_empty() {
+        return String::new();
+    }
     let rows = |columns: usize| names.len().div_ceil(columns);
     let widths = |columns: usize| -> Vec<usize> {
         let widest =

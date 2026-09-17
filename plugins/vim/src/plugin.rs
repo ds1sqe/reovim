@@ -158,7 +158,8 @@ impl Vim {
             Effect::Open(name, bang) => {
                 return self.edited(tree, caps, &name, bang);
             }
-            Effect::Cli(words) => return Ok(self.ran(tree, &words)),
+            Effect::Line(words) => return Ok(self.ran(tree, &words)),
+            Effect::Cli(bang) => return self.cli(tree, caps, bang),
             Effect::Complete(ask) => return self.completing(tree, ask),
         }
         Ok(true)
@@ -405,7 +406,7 @@ impl Vim {
             let said = name.unwrap_or(&self.dir);
             return Ok(self.says(&format!("{E344} \"{said}\" in cdpath")));
         };
-        self.shown(tree, caps, target, bang)
+        self.shown(tree, caps, target, "", bang)
     }
 
     /// `:e[dit][!] PATH`: the file that name holds in this region,
@@ -421,25 +422,41 @@ impl Vim {
         let Some(target) = resolved(tree, &under(&self.dir, name))? else {
             return Ok(self.says(&format!("{E345} \"{name}\" in path")));
         };
-        self.shown(tree, caps, target, bang)
+        self.shown(tree, caps, target, "", bang)
     }
 
-    /// The Client asked to show `target` in this region, which is the
-    /// end of this Vim: the swap takes the draft with it, so unsaved
-    /// changes are E37 without the bang, as `:q` has it. Nothing is
-    /// shown again here; the Plugin that comes shows itself.
+    /// `:cli[!]`: the cli's words in this region, which the Client's
+    /// table gives by name and no shape gives at all. It opens where
+    /// the `:` line's own words stand, the Shell's cwd, so `:cd` moves
+    /// what `:cli` opens over as it moves what `:ls` lists.
+    fn cli(
+        &mut self,
+        tree: &mut Tree,
+        caps: &mut Caps,
+        bang: bool,
+    ) -> Result<bool, Fault> {
+        self.shown(tree, caps, self.shell.cwd(), "cli", bang)
+    }
+
+    /// The Client asked to show `target` in this region, in the Plugin
+    /// `plugin` names or, with an empty name, in the one its table
+    /// gives that rd's shape. This is the end of this Vim: the swap
+    /// takes the draft with it, so unsaved changes are E37 without the
+    /// bang, as `:q` has it. Nothing is shown again here; the Plugin
+    /// that comes shows itself.
     fn shown(
         &mut self,
         tree: &mut Tree,
         caps: &mut Caps,
         target: Rd,
+        plugin: &str,
         bang: bool,
     ) -> Result<bool, Fault> {
         if !bang && self.unsaved(tree)? {
             return Ok(self.says(E37));
         }
         let Some(opener) = self.opener else { return Ok(false) };
-        let ask = open::Ask { target: target.0, plugin: String::new() };
+        let ask = open::Ask { target: target.0, plugin: String::from(plugin) };
         open::Call(caps, opener).open(ask)?;
         Ok(false)
     }

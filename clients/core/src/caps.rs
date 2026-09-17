@@ -56,8 +56,14 @@ reovim_sdk::declare! {
     /// inside has returned, which is when the Plugin that made it may
     /// be dropped. A Client with no Plugin for the ask leaves the
     /// region as it is and says so in the log.
+    ///
+    /// `back` is the other way: the region shows again what it showed
+    /// before the last `open`, in a Plugin made afresh. A region that
+    /// has taken no step yet has nothing to go back to, and the
+    /// Client ends there.
     api open ver 1 {
         0 open(ask: Ask) -> (): WRITE;
+        1 back() -> (): WRITE;
     }
     record Ask { target: u64, plugin: utf8(64) }
 }
@@ -154,6 +160,8 @@ pub struct Caps {
     shown: bool,
     /// What `open::open` asked to be shown here, until it is taken.
     asked: Option<(Rd, String)>,
+    /// Whether `open::back` was called, until it is taken.
+    back: bool,
     /// The code `process::exit` gave.
     exit: Option<u8>,
 }
@@ -196,6 +204,12 @@ impl Caps {
         self.asked.take()
     }
 
+    /// Whether a Plugin asked for the step back, once: the Client acts
+    /// on it where it acts on an ask, and forgets it the same way.
+    pub const fn backed(&mut self) -> bool {
+        core::mem::replace(&mut self.back, false)
+    }
+
     /// The code a Plugin asked to end with.
     #[must_use]
     pub const fn exit(&self) -> Option<u8> {
@@ -215,15 +229,21 @@ impl Caps {
         }
     }
 
-    /// `open`: the rd to show here and the Plugin to show it in,
-    /// recorded for the Client to act on.
+    /// `open`: the rd to show here and the Plugin to show it in, or
+    /// the step back, recorded for the Client to act on.
     fn opening(&mut self, number: u16, input: &[u8]) -> Result<Vec<u8>, Fault> {
-        if number != 0 {
-            return Err(Error::Unsupported.into());
+        match number {
+            0 => {
+                let ask: open::Ask = decode(input)?;
+                self.asked = Some((Rd(ask.target), ask.plugin));
+                Ok(Vec::new())
+            }
+            1 => {
+                self.back = true;
+                Ok(Vec::new())
+            }
+            _ => Err(Error::Unsupported.into()),
         }
-        let ask: open::Ask = decode(input)?;
-        self.asked = Some((Rd(ask.target), ask.plugin));
-        Ok(Vec::new())
     }
 
     /// `process`: the code to end with.
@@ -366,5 +386,15 @@ mod tests {
             assert_eq!(open::Call(&mut caps, opening).open(ask), Ok(()));
         }
         assert_eq!(caps.asked(), Some((Rd(9), String::new())));
+    }
+
+    #[test]
+    fn the_step_back_is_handed_over_once_too() {
+        let mut caps = Caps::default();
+        let opening = caps.serve(open::hash());
+        assert!(!caps.backed(), "nothing asked yet");
+        assert_eq!(open::Call(&mut caps, opening).back(), Ok(()));
+        assert!(caps.backed(), "the Client acts on it once");
+        assert!(!caps.backed());
     }
 }
