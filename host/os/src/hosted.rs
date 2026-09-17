@@ -326,9 +326,10 @@ pub fn enter() -> Result<(), Error> {
     Ok(())
 }
 
-/// The cursor shown, the main screen, cooked mode.
+/// The cursor shown in the shape the terminal chooses, the main
+/// screen, cooked mode.
 pub fn leave() -> Result<(), Error> {
-    screen(b"\x1b[?25h\x1b[?1049l")?;
+    screen(b"\x1b[?25h\x1b[0 q\x1b[?1049l")?;
     terminal::disable_raw_mode()?;
     Ok(())
 }

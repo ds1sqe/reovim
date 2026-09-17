@@ -236,8 +236,8 @@ pub mod term {
         backend::enter()
     }
 
-    /// The terminal as it was before [`enter`], the cursor shown;
-    /// twice is fine.
+    /// The terminal as it was before [`enter`], the cursor shown in
+    /// the shape the terminal chooses; twice is fine.
     ///
     /// # Errors
     /// As [`enter`].

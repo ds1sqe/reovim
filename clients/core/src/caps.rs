@@ -30,16 +30,16 @@ reovim_sdk::declare! {
     /// when it has become another size.
     ///
     /// A `View` is in bytes of the Buffer the Plugin was started on:
-    /// the first byte shown, where the cursor is, styled spans, and
-    /// the Plugin's own word for its region. How that becomes a
-    /// picture is the Client's.
+    /// the first byte shown, where the cursor is and what shape it
+    /// takes, styled spans, and the Plugin's own word for its region.
+    /// How that becomes a picture is the Client's.
     api grid ver 1 {
         0 size() -> Size: READ;
         1 show(view: View) -> (): WRITE;
     }
     record Size { cols: u64, rows: u64 }
-    record View { top: u64, cursor: u64, spans: [Span; 4096],
-                  status: utf8(4096) }
+    record View { top: u64, cursor: u64, shape: u64,
+                  spans: [Span; 4096], status: utf8(4096) }
     record Span { from: u64, to: u64, style: u64 }
     record Resized { cols: u64, rows: u64 }
 }
@@ -56,6 +56,12 @@ reovim_sdk::declare! {
 pub const SELECTION: u64 = 1;
 /// A span that matches what the Plugin last searched for.
 pub const MATCH: u64 = 2;
+
+/// A cursor drawn over the cell it is on.
+pub const BLOCK: u64 = 0;
+/// A cursor drawn as a bar before the cell it is on, which is where a
+/// char begins however many cells it takes.
+pub const BAR: u64 = 1;
 
 /// Where the named keys start, past the last scalar a char can be.
 const NAMED: u64 = 0x11_0000;
@@ -281,6 +287,7 @@ mod tests {
         let view = grid::View {
             top: 0,
             cursor: 3,
+            shape: super::BAR,
             spans: vec![grid::Span { from: 0, to: 2, style: super::SELECTION }],
             status: "-- VISUAL --".into(),
         };

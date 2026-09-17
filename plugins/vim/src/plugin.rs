@@ -12,8 +12,8 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use reovim_client::{
-    Caps, Ctx, Error, Event, Fault, Handle, Hash, Key, Kind, MATCH, Plugin,
-    Rights, SELECTION, Start, Tree, grid, keys, process, under,
+    BAR, BLOCK, Caps, Ctx, Error, Event, Fault, Handle, Hash, Key, Kind, MATCH,
+    Plugin, Rights, SELECTION, Start, Tree, grid, keys, process, under,
 };
 use reovim_text_api::{history, publish, text};
 
@@ -289,8 +289,8 @@ impl Vim {
 
     /// What to show in a region of `rows` rows: the first byte of the
     /// first line shown, which moves to keep the cursor in it, the
-    /// cursor itself, the selection and the search matches as byte
-    /// spans, and the status word.
+    /// cursor itself and its shape, the selection and the search
+    /// matches as byte spans, and the status word.
     pub fn view(&mut self, rows: usize) -> grid::View {
         let height = rows.max(1);
         let line = self.position().0;
@@ -310,6 +310,9 @@ impl Vim {
         grid::View {
             top: self.line_at(self.top).unwrap_or(0) as u64,
             cursor: self.cursor as u64,
+            // Insert puts the cursor between chars, as nvim draws it;
+            // every other mode is on one.
+            shape: if self.mode == Mode::Insert { BAR } else { BLOCK },
             spans,
             status: self.status(),
         }

@@ -13,8 +13,8 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 
 use reovim_client::{
-    Client, Ctx, Event, Fault, Handle, Hash, Key, Kind, MATCH, Plugin, Rd,
-    Rights, SELECTION, Start, grid, keys, process,
+    BAR, BLOCK, Client, Ctx, Event, Fault, Handle, Hash, Key, Kind, MATCH,
+    Plugin, Rd, Rights, SELECTION, Start, grid, keys, process,
 };
 use reovim_client_tui::{Frame, Step, Tui};
 use reovim_rig::{Limits, Rig};
@@ -168,9 +168,15 @@ impl Plugin for Stub {
     }
 }
 
-/// A View over the whole text, with the cursor at that byte.
+/// A View over the whole text, with a block cursor at that byte.
 fn view(cursor: u64, status: &str) -> grid::View {
-    grid::View { top: 0, cursor, spans: Vec::new(), status: status.into() }
+    grid::View {
+        top: 0,
+        cursor,
+        shape: BLOCK,
+        spans: Vec::new(),
+        status: status.into(),
+    }
 }
 
 /// A styled span of bytes.
@@ -267,6 +273,27 @@ fn a_view_is_laid_out_over_the_tui_s_own_text() {
     let frame = tui.frame(4, 3).unwrap();
     assert_eq!(frame.lines, ["한글", "last"], "a wide char is kept whole");
     assert_eq!(frame.cursor, (1, 0));
+}
+
+#[test]
+fn the_cursor_s_shape_says_which_cell_of_a_tab_it_takes() {
+    let rig = Rig::new("shape");
+    rig.file("note", b"\tx\n");
+    let mut tui =
+        Tui::open(rig.client(), "", Some("note"), None, Stub::default())
+            .unwrap();
+    let shown = view(0, "");
+    assert_eq!(press(&mut tui, Act::Show(shown)), Ok(Step::Changed));
+    let normal = frame(&mut tui);
+    assert_eq!(normal.cursor, (0, 7), "a block is on the tab's last cell");
+    assert_eq!(normal.shape, BLOCK, "and the app draws it as one");
+
+    let mut shown = view(0, "-- INSERT --");
+    shown.shape = BAR;
+    assert_eq!(press(&mut tui, Act::Show(shown)), Ok(Step::Changed));
+    let inserting = frame(&mut tui);
+    assert_eq!(inserting.cursor, (0, 0), "a bar stands before the tab");
+    assert_eq!(inserting.shape, BAR);
 }
 
 #[test]

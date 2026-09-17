@@ -5,7 +5,7 @@
 use std::fmt::Write as _;
 use std::io::Write;
 
-use reovim_client::{Client, Fault, Key, under};
+use reovim_client::{BAR, Client, Fault, Key, under};
 use reovim_client_tui::{Frame, Step, Tui, width};
 use reovim_host::term;
 use reovim_plugin_vim::Vim;
@@ -76,7 +76,10 @@ fn run(
 }
 
 fn drive(tui: &mut Editor, serve: Serve) -> Result<u8, Fail> {
-    draw(tui)?;
+    // The shape the terminal was last told of: it is told again only
+    // when the Plugin has changed it.
+    let mut shape = None;
+    draw(tui, &mut shape)?;
     loop {
         serve()?;
         let step = match term::poll(20)? {
@@ -86,17 +89,18 @@ fn drive(tui: &mut Editor, serve: Serve) -> Result<u8, Fail> {
         };
         match step {
             Step::Same => {}
-            Step::Changed => draw(tui)?,
+            Step::Changed => draw(tui, &mut shape)?,
             Step::Quit(code) => return Ok(code),
         }
     }
 }
 
 /// The whole frame: text rows, the status row inverted, the cursor
-/// hidden while it is drawn and placed after.
-fn draw(tui: &mut Editor) -> Result<(), Fail> {
+/// hidden while it is drawn, placed after and given its shape when
+/// that is not the shape `shape` says the terminal already has.
+fn draw(tui: &mut Editor, shape: &mut Option<u64>) -> Result<(), Fail> {
     let (cols, rows) = term::size()?;
-    let Frame { lines, cursor, selection, marks, status } =
+    let Frame { lines, cursor, shape: wanted, selection, marks, status } =
         tui.frame(cols, rows)?;
     let text_rows = usize::from(rows.saturating_sub(1));
     let blank = String::new();
@@ -118,7 +122,13 @@ fn draw(tui: &mut Editor) -> Result<(), Fail> {
     let status: String = status.chars().take(usize::from(cols)).collect();
     let _ = write!(screen, "\x1b[2K\x1b[7m{status}\x1b[0m");
     let (row, col) = (cursor.0 + 1, cursor.1 + 1);
-    let _ = write!(screen, "\x1b[{row};{col}H\x1b[?25h");
+    let _ = write!(screen, "\x1b[{row};{col}H");
+    if *shape != Some(wanted) {
+        // DECSCUSR: a steady bar or a steady block.
+        screen.push_str(if wanted == BAR { "\x1b[6 q" } else { "\x1b[2 q" });
+        *shape = Some(wanted);
+    }
+    screen.push_str("\x1b[?25h");
     Ok(out(screen.as_bytes())?)
 }
 

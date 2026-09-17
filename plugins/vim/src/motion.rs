@@ -1,6 +1,8 @@
 //! Where things are in the text: lines, columns, chars, and the
 //! moves that keep the cursor where Vim keeps it.
 
+use reovim_client::width;
+
 use crate::{Effect, Mode, Vim, moved};
 
 impl Vim {
@@ -221,32 +223,9 @@ impl Vim {
 
 /// The screen cell after `c` drawn at `cell`: a tab reaches the next
 /// stop of eight, a wide char two cells on.
+///
+/// Vim counts in cells where the eye does: `curswant` is a cell, so
+/// `j` from a Hangul syllable lands where it looks like it should.
 pub const fn next_cell(cell: usize, c: char) -> usize {
     if c == '\t' { cell / 8 * 8 + 8 } else { cell + width(c) }
-}
-
-/// The cells `c` takes on the screen.
-///
-/// Vim's own, for the column a vertical motion wants: `curswant` is
-/// in cells, so `j` from a Hangul syllable lands where the eye is.
-/// What the screen actually shows is the Client's.
-const fn width(c: char) -> usize {
-    let wide = matches!(
-        c as u32,
-        0x1100..=0x115F
-            | 0x2E80..=0x303E
-            | 0x3041..=0x33FF
-            | 0x3400..=0x4DBF
-            | 0x4E00..=0x9FFF
-            | 0xA000..=0xA4CF
-            | 0xAC00..=0xD7A3
-            | 0xF900..=0xFAFF
-            | 0xFE30..=0xFE4F
-            | 0xFF00..=0xFF60
-            | 0xFFE0..=0xFFE6
-            | 0x1F300..=0x1F64F
-            | 0x1F900..=0x1F9FF
-            | 0x20000..=0x3FFFD
-    );
-    if wide { 2 } else { 1 }
 }

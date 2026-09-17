@@ -3,6 +3,7 @@
 mod common;
 
 use common::{edit, on, typed};
+use reovim_client::{BAR, BLOCK};
 use reovim_plugin_vim::notation::keys;
 use reovim_plugin_vim::{Edit, Effect, Key, Mode, Quit};
 
@@ -113,7 +114,11 @@ fn a_view_keeps_the_cursor_in_the_region() {
     assert_eq!((view.top, view.cursor), (2, 4), "one line at a time");
     assert_eq!(vim.view(1).top, 4, "one row shows the cursor's line");
     typed(&mut vim, "i");
-    assert_eq!(vim.view(2).status, "-- INSERT --");
+    let view = vim.view(2);
+    assert_eq!(view.status, "-- INSERT --");
+    assert_eq!(view.shape, BAR, "insert stands between chars");
+    typed(&mut vim, "<Esc>");
+    assert_eq!(vim.view(2).shape, BLOCK, "every other mode is on one");
 }
 
 #[test]

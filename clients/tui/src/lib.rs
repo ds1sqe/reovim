@@ -18,10 +18,14 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use reovim_client::{
-    Caps, Client, Ctx, Error, Fault, Handle, Key, Kind, MATCH, Plugin, Rd,
+    BAR, Caps, Client, Ctx, Error, Fault, Handle, Key, Kind, MATCH, Plugin, Rd,
     Rights, SELECTION, Start, grid, keys, process,
 };
 use reovim_text_api::{history, open};
+
+/// The cells a char takes: the Client's own, drawn on here and by the
+/// app above.
+pub use reovim_client::width;
 
 /// What a key or a tick did.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -43,6 +47,10 @@ pub enum Step {
 pub struct Frame {
     pub lines: Vec<String>,
     pub cursor: (u16, u16),
+    /// The cursor's shape, `BLOCK` or `BAR`, for the app to set on the
+    /// terminal: the cell it names is the one it is drawn over, or the
+    /// one it stands before.
+    pub shape: u64,
     pub selection: Vec<(u16, u16, u16)>,
     /// Search matches, in the selection's shape.
     pub marks: Vec<(u16, u16, u16)>,
@@ -270,6 +278,7 @@ impl<P: Plugin> Tui<P> {
         let cursor = boundary(&self.text, at_of(view.cursor));
         let mut frame = Frame {
             status: self.status(cursor, &view.status),
+            shape: view.shape,
             ..Frame::default()
         };
         let mut at =
@@ -308,8 +317,8 @@ impl<P: Plugin> Tui<P> {
             marked.push((row, cell(from), cell(to)));
         }
         if (at..=end).contains(&cursor) {
-            frame.cursor =
-                (row, cell(cell_at(line, cursor - at).min(width - 1)));
+            let at = cell_at(line, cursor - at, view.shape);
+            frame.cursor = (row, cell(at.min(width - 1)));
         }
     }
 
@@ -419,11 +428,12 @@ fn cells_upto(line: &str, n: usize) -> usize {
 }
 
 /// The cell the cursor is drawn at when it is on byte `at`: where that
-/// char starts, but a tab's last cell, as nvim draws it.
-fn cell_at(line: &str, at: usize) -> usize {
+/// char starts, but a block on a tab takes the tab's last cell, as
+/// nvim draws it. A bar stands before the char, so it keeps the first.
+fn cell_at(line: &str, at: usize, shape: u64) -> usize {
     let cells = cells_upto(line, at);
     match line[at.min(line.len())..].chars().next() {
-        Some('\t') => next_cell(cells, '\t') - 1,
+        Some('\t') if shape != BAR => next_cell(cells, '\t') - 1,
         _ => cells,
     }
 }
@@ -471,32 +481,4 @@ fn shown(line: &str, width: usize) -> String {
 /// stop of eight, a wide char two cells on.
 const fn next_cell(cell: usize, c: char) -> usize {
     if c == '\t' { cell / 8 * 8 + 8 } else { cell + width(c) }
-}
-
-/// The cells `c` takes on the screen.
-///
-/// Two for the East Asian wide and fullwidth chars a terminal draws
-/// double (Hangul, the CJK ideographs, kana, the fullwidth forms,
-/// emoji), one for the rest. A tab is the caller's, as its width
-/// depends on where it stands.
-#[must_use]
-pub const fn width(c: char) -> usize {
-    let wide = matches!(
-        c as u32,
-        0x1100..=0x115F
-            | 0x2E80..=0x303E
-            | 0x3041..=0x33FF
-            | 0x3400..=0x4DBF
-            | 0x4E00..=0x9FFF
-            | 0xA000..=0xA4CF
-            | 0xAC00..=0xD7A3
-            | 0xF900..=0xFAFF
-            | 0xFE30..=0xFE4F
-            | 0xFF00..=0xFF60
-            | 0xFFE0..=0xFFE6
-            | 0x1F300..=0x1F64F
-            | 0x1F900..=0x1F9FF
-            | 0x20000..=0x3FFFD
-    );
-    if wide { 2 } else { 1 }
 }
