@@ -724,3 +724,28 @@ fn the_line_of_the_command_line_is_handed_to_the_plugin() {
     // handed over as it was given: plugins/vim judges where it lands.
     assert_eq!(open(Some(9)), ("d".into(), Some(9)));
 }
+
+#[test]
+fn the_first_plugin_is_asked_for_by_the_target_s_shape() {
+    let rig = Rig::new("first-shape");
+    rig.file("note", b"first\n");
+    std::fs::create_dir(rig.dir().join("sub")).unwrap();
+    let wants: Rc<RefCell<Vec<String>>> = Rc::default();
+    // A table with no Plugin at all, which says what it was asked
+    // for: `reovim DIR` is a region over a Container, and the tui
+    // knows no Plugin for either shape.
+    let asked = |file| {
+        let seen = wants.clone();
+        let table: Table<Stub> = Box::new(move |want| {
+            seen.borrow_mut().push(format!("{want:?}"));
+            None
+        });
+        Tui::open(rig.client(), "", file, None, table).err()
+    };
+    let refused =
+        |shape: &str| Some(Fault::Usage(format!("no Plugin for {shape}")));
+    assert_eq!(asked(Some("sub")), refused("a Container"));
+    assert_eq!(asked(Some("note")), refused("a cell"));
+    assert_eq!(asked(None), refused("a cell"), "nothing is a cell");
+    assert_eq!(*wants.borrow(), ["Container", "Cell", "Cell"]);
+}

@@ -309,6 +309,30 @@ keys deep i "deep" Escape : w q Enter
 [[ -d "$DIR/new/a/b" ]] || fail "the directories on the way were not made"
 [[ "$(cat "$DIR/new/a/b/x")" == deep ]] || fail "the deep file not written"
 
+# --- a directory: the listing, Enter into a file, :q -----------------
+# `reovim .` is a region over a Container, which is the explorer's
+# shape and not Vim's: one entry a line, `../` first, then the
+# directories with a `/`, then the files. Enter hands the file under
+# the cursor to Vim, and the status row is named after it.
+mkdir -p "$DIR/tree/sub"
+echo one > "$DIR/tree/note"
+start explore "$DIR/tree" "$BIN ."
+editing explore tree
+shown explore '^\.\./'
+keys explore j j Enter
+editing explore note
+shown explore '^one$'
+keys explore : q Enter
+[[ "$(ended explore)" == 0 ]] || fail ":q left the file the listing opened"
+
+# A directory named on the command line is listed the same way, and
+# `:q` in a listing leaves with 0, there being nothing to lose.
+start subdir "$DIR" "$BIN tree/sub"
+editing subdir sub
+shown subdir '^\.\./'
+keys subdir : q Enter
+[[ "$(ended subdir)" == 0 ]] || fail ":q in the listing did not quit"
+
 # --- no file: an unnamed buffer, E32 on :w, nothing written ---------
 start unnamed "$DIR" "$BIN"
 editing unnamed '\[No Name\]'

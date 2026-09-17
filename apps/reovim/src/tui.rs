@@ -8,6 +8,7 @@ use std::io::Write;
 use reovim_client::{BAR, Client, Fault, Key, Plugin, under};
 use reovim_client_tui::{Frame, Step, Table, Tui, Want, width};
 use reovim_host::term;
+use reovim_plugin_explorer::Explorer;
 use reovim_plugin_vim::Vim;
 
 use crate::Fail;
@@ -25,12 +26,15 @@ type Serve<'a> = &'a mut dyn FnMut() -> Result<(), Fail>;
 type Editor = Tui<Box<dyn Plugin>>;
 
 /// Which Plugin the binary makes for what a region is asked to show:
-/// Vim by name and for a cell, and nothing else yet. The names are
-/// the app's; the tui knows none of them.
+/// Vim by name and for a cell, the explorer by name and for a
+/// Container. The names are the app's; the tui knows none of them.
 fn table() -> Table<Box<dyn Plugin>> {
     Box::new(|want| match want {
         Want::Named("vim") | Want::Cell => Some(Box::new(Vim::default())),
-        _ => None,
+        Want::Named("explorer") | Want::Container => {
+            Some(Box::new(Explorer::default()))
+        }
+        Want::Named(_) => None,
     })
 }
 

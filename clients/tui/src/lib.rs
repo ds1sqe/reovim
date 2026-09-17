@@ -126,16 +126,17 @@ pub struct Tui<P: Plugin> {
 
 impl<P: Plugin> Tui<P> {
     /// The region over `file`, a name under the root, or over nothing
-    /// when there is no such file; the Plugin `table` gives for a cell
-    /// started on it at `line`, counted from 1. `dir`, under the root
-    /// too, is where a relative name the Plugin resolves starts.
+    /// when there is no such file; the Plugin `table` gives for what
+    /// that rd is, a Container or a cell, started on it at `line`,
+    /// counted from 1. `dir`, under the root too, is where a relative
+    /// name the Plugin resolves starts.
     ///
     /// What to open over that rd is the Plugin's: the tui opens no
     /// Buffer, and lays out whatever rd the View it is shown names.
     ///
     /// # Errors
     /// What the Client says; `Usage` when the table has no Plugin for
-    /// a cell.
+    /// that shape.
     pub fn open(
         mut client: Client,
         dir: &str,
@@ -152,9 +153,15 @@ impl<P: Plugin> Tui<P> {
             Some(_) => None,
             None => file.map(String::from),
         };
-        let Some(plugin) = table(Want::Cell) else {
-            let text = String::from("no Plugin for a cell");
-            return Err(Fault::Usage(text));
+        // `reovim DIR` is a region over a Container, which is the
+        // explorer's shape, not Vim's: the first Plugin comes from the
+        // table by the same shape a later `open` asks it for.
+        let want = match target {
+            Some(target) => want_of(&mut client, target)?,
+            None => Want::Cell,
+        };
+        let Some(plugin) = table(want) else {
+            return Err(Fault::Usage(format!("no Plugin for {}", shape(want))));
         };
         let mut caps = Caps::default();
         for api in [keys::hash(), grid::hash(), open::hash(), process::hash()] {
@@ -223,7 +230,14 @@ impl<P: Plugin> Tui<P> {
     /// `Kernel(Gone)` once what is laid out is gone; otherwise what the
     /// Client says.
     pub fn tick(&mut self) -> Result<Step, Fault> {
-        self.after()?;
+        // What the Plugin did about what happened is itself something
+        // that happened: after a key its calls are drained by the
+        // `after` below `input`, and after a tick by this second one,
+        // so a listing that refills on a watch is in this frame and
+        // not the next. A tick that found nothing still asks once.
+        if self.after()? {
+            self.after()?;
+        }
         self.settled()?;
         Ok(self.step())
     }
@@ -253,17 +267,19 @@ impl<P: Plugin> Tui<P> {
 
     /// The events drained: the laid text read again on a Modify or an
     /// Overflow, the revisions and the name after it, then the Plugin
-    /// told what happened. Nothing happened is nothing asked of the
-    /// tree, so an idle editor makes one call a tick.
-    fn after(&mut self) -> Result<(), Fault> {
+    /// told what happened. True when there was anything. Nothing
+    /// happened is nothing asked of the tree, so an idle editor makes
+    /// one call a tick.
+    fn after(&mut self) -> Result<bool, Fault> {
         let events = self.client.since()?;
         if events.is_empty() {
-            return Ok(());
+            return Ok(false);
         }
         self.reread(&events)?;
         self.refresh()?;
         let ctx = Ctx { tree: self.client.tree(), caps: &mut self.caps };
-        self.plugin.changed(ctx, &events)
+        self.plugin.changed(ctx, &events)?;
+        Ok(true)
     }
 
     /// What the Plugin's calls left behind: the region opened
@@ -357,12 +373,7 @@ impl<P: Plugin> Tui<P> {
         if !plugin.is_empty() {
             return Ok((self.table)(Want::Named(plugin)));
         }
-        let flags = self.client.info(target)?.flags;
-        let want = if flags.contains(Flags::CONTAINER) {
-            Want::Container
-        } else {
-            Want::Cell
-        };
+        let want = want_of(&mut self.client, target)?;
         Ok((self.table)(want))
     }
 
@@ -537,6 +548,24 @@ impl<P: Plugin> Tui<P> {
             .map_or((0, 0), |laid| (laid.head, laid.published));
         let mark = if head == published { "" } else { "[+]" };
         format!("{}  {line}:{}  r{head}{mark}   {word}", self.name, column + 1)
+    }
+}
+
+/// What the table is asked for an rd: the Plugin of a Container, or
+/// the Plugin of a cell, nothing on disk being a cell's shape too.
+fn want_of(client: &mut Client, target: Rd) -> Result<Want<'static>, Fault> {
+    let flags = client.info(target)?.flags;
+    if flags.contains(Flags::CONTAINER) {
+        return Ok(Want::Container);
+    }
+    Ok(Want::Cell)
+}
+
+/// What a shape is called where the tui says it has no Plugin for one.
+const fn shape(want: Want<'_>) -> &'static str {
+    match want {
+        Want::Container => "a Container",
+        _ => "a cell",
     }
 }
 
