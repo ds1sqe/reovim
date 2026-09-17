@@ -370,10 +370,52 @@ mod sig {
     }
 }
 
+/// The tty's own state, since crossterm only ever asks for input.
+#[allow(unsafe_code)]
+mod tty {
+    use core::ffi::{c_int, c_short, c_ulong};
+
+    const POLLIN: c_short = 0x001;
+    /// What the kernel sets whether or not it was asked for: `POLLERR`,
+    /// `POLLHUP`, `POLLNVAL`.
+    const GONE: c_short = 0x008 | 0x010 | 0x020;
+
+    #[repr(C)]
+    struct Pollfd {
+        fd: c_int,
+        events: c_short,
+        revents: c_short,
+    }
+
+    unsafe extern "C" {
+        fn poll(fds: *mut Pollfd, count: c_ulong, ms: c_int) -> c_int;
+    }
+
+    /// Up to `ms` for stdin to have something; true when what it has
+    /// is a hangup.
+    pub fn hungup(ms: u64) -> bool {
+        let mut fds = Pollfd { fd: 0, events: POLLIN, revents: 0 };
+        let ms = c_int::try_from(ms).unwrap_or(c_int::MAX);
+        // SAFETY: one initialised `Pollfd` is passed as the one entry,
+        // and `poll` writes nothing of it but `revents`.
+        let ready = unsafe { poll(&raw mut fds, 1, ms) };
+        ready > 0 && fds.revents & GONE != 0
+    }
+}
+
 /// One event within `ms`; a key is decoded, anything else is `None`,
-/// and nothing is waited for after a signal.
+/// and nothing is waited for after a signal. The wait is on stdin
+/// here: crossterm's own spins forever on a terminal that has gone
+/// away, and it is asked only for what has already arrived. A hangup
+/// stops the editor the way SIGHUP does.
 pub fn poll(ms: u64) -> Result<Option<Key>, Error> {
-    if stopped() || !event::poll(Duration::from_millis(ms))? {
+    if stopped() {
+        return Ok(None);
+    }
+    if !event::poll(Duration::ZERO)? {
+        if tty::hungup(ms) {
+            STOP.store(true, Ordering::Relaxed);
+        }
         return Ok(None);
     }
     match event::read()? {

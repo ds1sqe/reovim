@@ -18,9 +18,20 @@ TMUX=(tmux -L "reovim-parity-$$")
 export XDG_RUNTIME_DIR="$DIR/run"
 # The session of the case under way, one per case on one server.
 SESSION=""
+# tmux kills the pane's shell, not the editor under it, so an editor
+# that slept through its terminal going away would be left behind
+# spinning. The socket names are per-pid but $BIN is not, so a stray
+# editor is looked for by binary; check.sh runs the scripts serially.
 cleanup() {
+    local code=$? i
     "${TMUX[@]}" kill-server 2>/dev/null || true
     rm -rf -- "$DIR"
+    for ((i = 0; i < 100; i++)); do
+        pgrep -f "^$BIN( |\$)" >/dev/null || exit "$code"
+        sleep 0.01
+    done
+    printf 'parity.sh: an editor outlived the run\n' >&2
+    exit 1
 }
 trap cleanup EXIT
 

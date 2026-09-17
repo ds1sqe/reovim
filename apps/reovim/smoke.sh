@@ -14,9 +14,20 @@ export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 export GIT_AUTHOR_NAME=smoke GIT_AUTHOR_EMAIL=smoke@reovim
 export GIT_COMMITTER_NAME=smoke GIT_COMMITTER_EMAIL=smoke@reovim
 export GIT_EDITOR="$BIN" GIT_SEQUENCE_EDITOR="$BIN"
+# tmux kills the pane's shell, not the editor under it, so an editor
+# that slept through its terminal going away would be left behind
+# spinning. The socket names are per-pid but $BIN is not, so a stray
+# editor is looked for by binary; check.sh runs the scripts serially.
 cleanup() {
+    local code=$? i
     "${TMUX[@]}" kill-server 2>/dev/null || true
     rm -rf -- "$DIR"
+    for ((i = 0; i < 100; i++)); do
+        pgrep -f "^$BIN( |\$)" >/dev/null || exit "$code"
+        sleep 0.01
+    done
+    printf 'smoke.sh: an editor outlived the run\n' >&2
+    exit 1
 }
 trap cleanup EXIT
 
@@ -169,12 +180,25 @@ alternate="$("${TMUX[@]}" display -p -t term '#{alternate_on}')"
 [[ "$alternate" == 0 ]] || fail "alternate screen left on after SIGTERM"
 [[ "$(cat "$DIR/other")" == x ]] || fail "SIGTERM wrote the file"
 
+# --- the terminal gone: the editor goes with it ---------------------
+start hangup "$DIR" "$BIN other"
+editing hangup other
+"${TMUX[@]}" kill-session -t hangup
+for ((i = 0; i < 100; i++)); do
+    pgrep -f "^$BIN other\$" >/dev/null || break
+    sleep 0.01
+done
+if pgrep -f "^$BIN other\$" >/dev/null; then
+    fail "the editor outlived its terminal"
+fi
+
 # --- start to first frame -------------------------------------------
 before="$EPOCHREALTIME"
 start time "$DIR" "$BIN other"
 editing time other
 after="$EPOCHREALTIME"
-keys time C-q
+keys time : q ! Enter
+[[ "$(ended time)" == 0 ]] || fail "the timed editor did not quit"
 millis="$(printf '%s %s\n' "$after" "$before" \
     | awk '{ printf "%d", ($1 - $2) * 1000 }')"
 printf 'smoke.sh: start to first frame %s ms (tmux included)\n' "$millis"
