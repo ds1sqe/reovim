@@ -9,11 +9,12 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use reovim_client::{
-    BLOCK, Ctx, Error, Event, Fault, Hash, Key, Plugin, Rd, Rights, Start, grid,
+    BLOCK, Client, Ctx, Error, Event, Fault, Hash, Key, Plugin, Rd, Rights,
+    Start, grid,
 };
 use reovim_client_tui::{Frame, Step, Table, Tui, Want};
 use reovim_plugin_explorer::Explorer;
-use reovim_rig::Rig;
+use reovim_rig::{Limits, Rig};
 use reovim_text_api::open as text_open;
 
 /// The one editor a test drives, over whichever Plugin the table gives.
@@ -74,11 +75,21 @@ fn table(seen: &Opened) -> Table<Box<dyn Plugin>> {
 
 /// A rig whose root holds `work`, which holds `a`, `b` and `sub`.
 fn work(test: &str) -> Rig {
-    let rig = Rig::new(test);
+    filled(Rig::new(test))
+}
+
+/// That directory, in a rig the test made with limits of its own.
+fn filled(rig: Rig) -> Rig {
     std::fs::create_dir_all(rig.dir().join("work/sub")).unwrap();
     rig.file("work/b", b"second\n");
     rig.file("work/a", b"first\n");
     rig
+}
+
+/// `name` made under `dir` as the fs Module makes a file.
+fn made(client: &mut Client, dir: Rd, name: &str) {
+    let input = reovim_sdk::encode(&String::from(name));
+    client.call_by_name(dir, "create", input).unwrap();
 }
 
 /// The region opened on `name`, a name under the root.
@@ -211,13 +222,31 @@ fn a_child_made_under_the_container_shows_at_the_next_tick() {
     press(&mut tui, Key::Char('G'));
     let mut other = rig.client();
     let dir = other.resolve("/module/fs/root/work").unwrap();
-    let input = reovim_sdk::encode(&String::from("c"));
-    other.call_by_name(dir, "create", input).unwrap();
+    made(&mut other, dir, "c");
     assert_eq!(tui.tick(), Ok(Step::Changed), "the watch said so");
     let frame = frame(&mut tui);
     assert_eq!(frame.lines, ["../", "sub/", "a", "b", "c"]);
     assert_eq!(frame.cursor, (3, 0), "the selection stays on `b`");
     assert_eq!(tui.tick(), Ok(Step::Same), "and nothing more happened");
+}
+
+#[test]
+fn a_listing_behind_a_full_ring_is_read_again() {
+    // A ring that moved past the explorer hands it one Overflow on
+    // the tree's root and nothing else: what happened under the
+    // Container is gone with it, so the listing is read again.
+    let small = Limits { watch_ring: 2, ..Limits::default() };
+    let rig = filled(Rig::with("overflow", small));
+    let seen = Opened::default();
+    let mut tui = over(&rig, &seen);
+    let mut other = rig.client();
+    let dir = other.resolve("/module/fs/root/work").unwrap();
+    for name in ["c", "d", "e"] {
+        made(&mut other, dir, name);
+    }
+    assert_eq!(tui.tick(), Ok(Step::Changed), "the ring overflowed");
+    let whole = ["../", "sub/", "a", "b", "c", "d", "e"];
+    assert_eq!(frame(&mut tui).lines, whole, "every child, read again");
 }
 
 #[test]

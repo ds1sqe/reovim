@@ -146,19 +146,23 @@ impl Plugin for Explorer {
     }
 
     /// A child that appeared, went or was renamed under the Container
-    /// is a listing that has moved. The Container's own going leaves
-    /// the last listing where it is: the tree says so at the next key
-    /// that asks it anything.
+    /// is a listing that has moved, and so is a ring that overflowed
+    /// past the explorer, which names no rd of its own and stands for
+    /// whatever was dropped. The Container's own going leaves the last
+    /// listing where it is: the tree says so at the next key that asks
+    /// it anything.
     ///
     /// # Errors
     /// As [`Self::start`].
     fn changed(&mut self, ctx: Ctx<'_>, events: &[Event]) -> Result<(), Fault> {
         let Ctx { tree, caps } = ctx;
         let Some(dir) = self.dir else { return Ok(()) };
-        let moved = |kind: Kind| {
-            matches!(kind, Kind::Create | Kind::Delete | Kind::Move)
+        let moved = |e: &Event| {
+            let below =
+                matches!(e.kind, Kind::Create | Kind::Delete | Kind::Move);
+            e.kind == Kind::Overflow || (below && e.rd == dir)
         };
-        if !events.iter().any(|e| e.rd == dir && moved(e.kind)) {
+        if !events.iter().any(moved) {
             return Ok(());
         }
         self.fill(tree)?;
