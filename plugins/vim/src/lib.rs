@@ -71,6 +71,12 @@ pub enum Effect {
     /// directory the Client started Vim in; `true` for `:w! NAME`.
     SaveAs(String, bool),
     Quit(Quit),
+    /// `:exp[lore][!] [NAME]`: the Client asked to show an rd in this
+    /// region, in the Plugin its table gives that rd's shape. The name
+    /// given, resolved as `:w NAME` is, or the directory the file is
+    /// in with none; `true` for `:explore!`, which goes although the
+    /// draft is unsaved.
+    Explore(Option<String>, bool),
     /// A put wants the clipboard's text: `pasted` finishes it.
     Clipboard,
 }
@@ -231,6 +237,9 @@ pub struct Vim {
     clip: Option<Rd>,
     /// The grid region it shows in, when its Client serves one.
     region: Option<Handle>,
+    /// `open`, when its Client serves it: how `:explore` asks for
+    /// another rd in this region.
+    opener: Option<Handle>,
     /// `process`, when its Client serves it.
     ending: Option<Handle>,
     /// How many rows that region has: what `top` scrolls by.

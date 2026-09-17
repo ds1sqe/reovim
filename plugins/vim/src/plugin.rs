@@ -13,10 +13,10 @@ use alloc::vec::Vec;
 
 use reovim_client::{
     BAR, BLOCK, Caps, Ctx, Error, Event, Fault, Flags, Handle, Hash, Key, Kind,
-    MATCH, Plugin, Rd, Rights, SELECTION, Start, Tree, grid, keys, process,
-    under,
+    MATCH, Plugin, Rd, Rights, SELECTION, Start, Tree, grid, keys, open,
+    process, under,
 };
-use reovim_text_api::{history, open, publish, text};
+use reovim_text_api::{history, open as text_open, publish, text};
 
 use crate::{Edit, Effect, Mode, Quit, Vim};
 
@@ -28,6 +28,9 @@ const E32: &str = "E32: No file name";
 const E13: &str = "E13: File exists (add ! to override)";
 /// What a write says when the host would not make the file.
 const E212: &str = "E212: Can't open file for writing";
+/// What `:explore` says to a name that is not on disk: Vim's word for
+/// a directory it cannot find, the name as the person typed it.
+const E344: &str = "E344: Can't find directory";
 /// Where the fs Module mirrors the directory the editor runs over.
 const MIRROR: &str = "/module/fs/root";
 /// What undo and redo say at the ends of the history.
@@ -50,6 +53,7 @@ impl Plugin for Vim {
         self.dir = at.dir;
         self.clip = tree.resolve("/module/clipboard/text").ok();
         self.region = caps.open(grid::hash());
+        self.opener = caps.open(open::hash());
         self.ending = caps.open(process::hash());
         if let Some(region) = self.region {
             self.rows = count(grid::Call(caps, region).size()?.rows);
@@ -144,6 +148,9 @@ impl Vim {
             }
             Effect::Clipboard => return self.pasting(tree, caps),
             Effect::Quit(how) => return self.quit(tree, caps, how),
+            Effect::Explore(name, bang) => {
+                return self.explore(tree, caps, name.as_deref(), bang);
+            }
         }
         Ok(true)
     }
@@ -364,6 +371,49 @@ impl Vim {
         Ok(self.save(tree, false)?.then_some(0))
     }
 
+    /// `:exp[lore][!] [NAME]`: the Client asked to show an rd in this
+    /// region, which is the end of this Vim. `NAME` is resolved under
+    /// the directory the Client started in, as `:w NAME` is, and with
+    /// no name it is the directory the file is in. Whatever is there
+    /// goes to the Client's table, a Container to a listing and a cell
+    /// to another Vim; a name that is not there is E344. The swap
+    /// takes the draft with it, so unsaved changes are E37 without the
+    /// bang, as `:q` has it.
+    fn explore(
+        &mut self,
+        tree: &mut Tree,
+        caps: &mut Caps,
+        name: Option<&str>,
+        bang: bool,
+    ) -> Result<bool, Fault> {
+        let target = match name {
+            Some(name) => resolved(tree, &under(&self.dir, name))?,
+            None => self.here(tree)?,
+        };
+        // Nothing is being left for a name that leads nowhere, so
+        // there is nothing for the bang to override yet.
+        let Some(target) = target else {
+            let said = name.unwrap_or(&self.dir);
+            return Ok(self.says(&format!("{E344} \"{said}\" in cdpath")));
+        };
+        if !bang && self.unsaved(tree)? {
+            return Ok(self.says(E37));
+        }
+        let Some(opener) = self.opener else { return Ok(false) };
+        let ask = open::Ask { target: target.0, plugin: String::new() };
+        open::Call(caps, opener).open(ask)?;
+        Ok(false)
+    }
+
+    /// Where `:explore` with no name looks: the directory the Buffer's
+    /// source is in, or, over nothing, the one the Client started in.
+    fn here(&self, tree: &mut Tree) -> Result<Option<Rd>, Fault> {
+        match self.source {
+            Some(source) => tree.parent(source).map(Some),
+            None => resolved(tree, &self.dir),
+        }
+    }
+
     /// Whether the Buffer holds what its source has not.
     fn unsaved(&self, tree: &mut Tree) -> Result<bool, Fault> {
         let revisions = history::Call(tree, self.handle()?).tree()?;
@@ -498,7 +548,7 @@ fn made(
 fn buffer_over(tree: &mut Tree, source: Option<Rd>) -> Result<Rd, Fault> {
     let opener = tree.resolve("/module/text/open")?;
     let opening = tree.open(opener, Rights::WRITE)?;
-    let mut call = open::Call(tree, opening);
+    let mut call = text_open::Call(tree, opening);
     let buffer = match source {
         Some(source) => call.open(source),
         None => call.new(),

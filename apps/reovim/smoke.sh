@@ -333,6 +333,28 @@ shown subdir '^\.\./'
 keys subdir : q Enter
 [[ "$(ended subdir)" == 0 ]] || fail ":q in the listing did not quit"
 
+# --- :explore from a file: its directory, and back into the file -----
+# `:exp[lore]` is Vim asking its Client for another rd in this region.
+# With no name it is the directory the file is in, which the table
+# gives the listing; Enter on the file comes back to Vim. The swap
+# takes the draft with it, so it waits for the bang.
+start explored "$DIR/tree" "$BIN note"
+editing explored note
+keys explored : e x p Enter
+editing explored tree
+shown explored '^\.\./'
+keys explored j j Enter
+editing explored note
+shown explored '^one$'
+keys explored i x Escape : e x p l o r e Enter
+shown explored "E37: No write since last change"
+keys explored : e x p l o r e ! Enter
+editing explored tree
+shown explored '^\.\./'
+keys explored : q Enter
+[[ "$(ended explored)" == 0 ]] || fail ":q left the listing :explore made"
+[[ "$(cat "$DIR/tree/note")" == one ]] || fail ":explore! wrote the draft"
+
 # --- no file: an unnamed buffer, E32 on :w, nothing written ---------
 start unnamed "$DIR" "$BIN"
 editing unnamed '\[No Name\]'

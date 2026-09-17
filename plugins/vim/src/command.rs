@@ -76,7 +76,7 @@ impl Vim {
     }
 
     /// `w`, `w!`, `w NAME`, `q`, `q!`, `wq`, `x`, `cq`, `noh`, `set`,
-    /// `s` with a range; any other is E492.
+    /// `s` with a range, `exp[lore][!] [NAME]`; any other is E492.
     fn ex(&mut self, line: &str) -> Effect {
         let (range, rest) = self.range(line.trim());
         let command = rest.trim();
@@ -102,11 +102,11 @@ impl Vim {
             _ if command.starts_with("s/") => {
                 self.substitute(range, &command[2..])
             }
-            other => {
+            other => explore(other).unwrap_or_else(|| {
                 self.message =
                     alloc::format!("E492: Not an editor command: {other}");
                 Effect::Moved
-            }
+            }),
         }
     }
 
@@ -262,6 +262,22 @@ fn substituted(
     }
     out.push_str(&line[col.min(line.len())..]);
     Some(out)
+}
+
+/// `:exp[lore][!] [NAME]`, abbreviated from `exp` as Vim abbreviates
+/// it: the bang on the word itself, the name after a space. `None`
+/// for a line that is some other word, which is the caller's E492.
+fn explore(command: &str) -> Option<Effect> {
+    let (word, name) = command.split_once(' ').unwrap_or((command, ""));
+    let (word, bang) =
+        word.strip_suffix('!').map_or((word, false), |w| (w, true));
+    // `e` and `ex` are none of it: `:ex` is the `vi` personality's.
+    if word.len() < 3 || !"explore".starts_with(word) {
+        return None;
+    }
+    let name = name.trim();
+    let named = (!name.is_empty()).then(|| String::from(name));
+    Some(Effect::Explore(named, bang))
 }
 
 /// `args` split at `sep`, a backslash escaping one.
