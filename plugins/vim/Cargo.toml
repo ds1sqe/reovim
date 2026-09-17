@@ -1,5 +1,5 @@
 [package]
-name = "reovim-client-vim"
+name = "reovim-plugin-vim"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,7 +9,7 @@ repository.workspace = true
 publish = false
 
 [dependencies]
-reovim-client = { path = "../core" }
+reovim-client = { path = "../../clients/core" }
 
 [lints]
 workspace = true

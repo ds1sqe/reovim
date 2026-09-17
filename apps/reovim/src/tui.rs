@@ -7,8 +7,8 @@ use std::io::Write;
 
 use reovim_client::{Client, Fault, Key, width};
 use reovim_client_tui::{Frame, Step, Tui, under};
-use reovim_client_vim::Vim;
 use reovim_host::term;
+use reovim_plugin_vim::Vim;
 
 use crate::Fail;
 use crate::local::Local;

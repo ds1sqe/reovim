@@ -2,8 +2,8 @@
 
 use reovim_client::{Client, Fault, Key, Rd};
 use reovim_client_tui::{Step, Tui};
-use reovim_client_vim::Vim;
-use reovim_client_vim::notation::keys;
+use reovim_plugin_vim::Vim;
+use reovim_plugin_vim::notation::keys;
 use reovim_rig::{Limits, Rig};
 
 /// `text` in Vim notation, key by key; the last step.

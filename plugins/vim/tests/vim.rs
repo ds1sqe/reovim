@@ -3,8 +3,8 @@
 mod common;
 
 use common::{edit, on, typed};
-use reovim_client_vim::notation::keys;
-use reovim_client_vim::{Edit, Effect, Key, Mode, Plugin, Quit};
+use reovim_plugin_vim::notation::keys;
+use reovim_plugin_vim::{Edit, Effect, Key, Mode, Plugin, Quit};
 
 #[test]
 fn insert_edits_join_and_esc_steps_back() {

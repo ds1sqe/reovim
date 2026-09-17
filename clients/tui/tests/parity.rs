@@ -7,8 +7,8 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use reovim_client_tui::{Step, Tui};
-use reovim_client_vim::notation::keys;
-use reovim_client_vim::{Kind, Register, Vim};
+use reovim_plugin_vim::notation::keys;
+use reovim_plugin_vim::{Kind, Register, Vim};
 use reovim_rig::Rig;
 
 /// nvim's `state` file: the cursor as `line:column:cell` (the cell

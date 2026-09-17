@@ -14,7 +14,7 @@ reovim-sdk = { path = "../../sdk/rust" }
 reovim-text-api = { path = "../../modules/text/api" }
 
 [dev-dependencies]
-reovim-client-vim = { path = "../vim" }
+reovim-plugin-vim = { path = "../../plugins/vim" }
 reovim-rig = { path = "../rig" }
 
 [lints]

@@ -132,7 +132,6 @@ dependencies = [
  "reovim-client",
  "reovim-client-cli",
  "reovim-client-tui",
- "reovim-client-vim",
  "reovim-host",
  "reovim-kernel-abi",
  "reovim-kernel-interface",
@@ -140,6 +139,7 @@ dependencies = [
  "reovim-module-clipboard",
  "reovim-module-fs",
  "reovim-module-text",
+ "reovim-plugin-vim",
 ]
 
 [[package]]
@@ -173,17 +173,10 @@ name = "reovim-client-tui"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-client",
- "reovim-client-vim",
+ "reovim-plugin-vim",
  "reovim-rig",
  "reovim-sdk",
  "reovim-text-api",
-]
-
-[[package]]
-name = "reovim-client-vim"
-version = "0.16.0-dev"
-dependencies = [
- "reovim-client",
 ]
 
 [[package]]
@@ -245,6 +238,13 @@ dependencies = [
  "reovim-module-fs",
  "reovim-sdk",
  "reovim-text-api",
+]
+
+[[package]]
+name = "reovim-plugin-vim"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-client",
 ]
 
 [[package]]

@@ -11,10 +11,10 @@ members = [
     "modules/text",
     "modules/text/api",
     "sdk/rust",
+    "plugins/vim",
     "clients/core",
     "clients/cli",
     "clients/tui",
-    "clients/vim",
     "clients/rig",
     "apps/reovim",
 ]
@@ -29,10 +29,10 @@ default-members = [
     "modules/text",
     "modules/text/api",
     "sdk/rust",
+    "plugins/vim",
     "clients/core",
     "clients/cli",
     "clients/tui",
-    "clients/vim",
     "clients/rig",
     "apps/reovim",
 ]
