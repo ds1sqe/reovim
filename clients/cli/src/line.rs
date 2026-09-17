@@ -77,8 +77,15 @@ impl Line {
         if completion.candidates.len() == 1 && !first.ends_with('/') {
             word.push(' ');
         }
-        self.text.truncate(completion.from);
-        self.text.push_str(&word);
+        self.put(completion.from, &word);
+    }
+
+    /// Everything from byte `from` becomes `word`, the cursor after
+    /// it: what a completion puts in, and what a menu walked by hand
+    /// puts on the line as it goes. `put(0, "")` empties the line.
+    pub fn put(&mut self, from: usize, word: &str) {
+        self.text.truncate(from);
+        self.text.push_str(word);
         self.cursor = self.text.len();
         self.edited();
     }

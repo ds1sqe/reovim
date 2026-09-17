@@ -372,6 +372,28 @@ shown words "note  1:1  r1   /module/fs/root$DIR/words"
 keys words : q Enter
 [[ "$(ended words)" == 0 ]] || fail ":q after a cli word did not quit"
 
+# --- Tab on the : line: the word expanded, its help, the wildmenu ----
+# A name only one word begins is expanded to that word and its
+# argument form and help stand in the status row. `:w` is three of
+# them — Vim's `write` and `wq`, then the cli's `watch` — so it is the
+# wildmenu instead, `write` current and the line holding it; Tab walks
+# to the next. Enter on the expanded line runs it, which writes.
+start tab "$DIR/words" "$BIN note"
+editing tab note
+keys tab : w r Tab
+shown tab ":write   \[PATH\]  the buffer, to PATH if one is given"
+keys tab Escape : q Tab
+shown tab ":quit   quit; ! leaves the draft"
+keys tab Escape i x Escape : w Tab
+shown tab ":write   \[write\]  wq  watch"
+keys tab Tab
+shown tab ":wq   write  \[wq\]  watch"
+keys tab Escape : w Tab Enter
+editing tab note
+keys tab : q Enter
+[[ "$(ended tab)" == 0 ]] || fail ":q after Tab did not quit"
+[[ "$(cat "$DIR/words/note")" == xone ]] || fail "Tab then Enter did not write"
+
 # --- no file: an unnamed buffer, E32 on :w, nothing written ---------
 start unnamed "$DIR" "$BIN"
 editing unnamed '\[No Name\]'

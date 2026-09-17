@@ -194,6 +194,21 @@ impl<'a> Words<'a> {
         self.all().find(|word| word.name.starts_with(typed))
     }
 
+    /// Every word `prefix` begins, in the order they resolve in: what
+    /// Tab on a line offers. A name two tables hold is one candidate,
+    /// the first of them, since the one behind can never be reached.
+    /// An empty prefix begins them all.
+    #[must_use]
+    pub fn starting(&self, prefix: &str) -> Vec<&'a Word> {
+        let mut found: Vec<&'a Word> = Vec::new();
+        let begins = self.all().filter(|word| word.name.starts_with(prefix));
+        for word in begins {
+            let fresh = !found.iter().any(|seen| seen.name == word.name);
+            found.extend(fresh.then_some(word));
+        }
+        found
+    }
+
     /// The shortest beginning of `word` that [`Self::resolve`]s to it:
     /// its abbreviation, computed from the order. The whole name for a
     /// word another before it shadows, which then has none of its own.

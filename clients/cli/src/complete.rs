@@ -9,7 +9,7 @@ use alloc::vec::Vec;
 
 use reovim_client::{Flags, Rd, Tree, log};
 
-use crate::{Shell, WORDS, locate};
+use crate::{Shell, Words, locate};
 
 /// What may replace the word starting at byte `from` of the line.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -92,11 +92,10 @@ fn marks(tree: &mut Tree) -> Vec<String> {
 
 /// The cli's words that begin as `prefix` does, in the table's order.
 fn commands(prefix: &str) -> Vec<String> {
-    WORDS
-        .iter()
-        .map(|word| word.name)
-        .filter(|name| name.starts_with(prefix))
-        .map(ToString::to_string)
+    Words::cli()
+        .starting(prefix)
+        .into_iter()
+        .map(|word| word.name.to_string())
         .collect()
 }
 

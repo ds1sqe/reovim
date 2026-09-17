@@ -69,4 +69,13 @@ fn a_completion_replaces_the_word() {
     assert_eq!(line.render("").1, 17);
     line.apply(&Completion::default());
     assert_eq!(line.text(), "lookup /module/fs");
+
+    // What `apply` puts in by itself: a word from `from` on, the
+    // cursor after it, and nothing at all for `put(0, "")`.
+    line.put(7, "/sys");
+    assert_eq!(line.text(), "lookup /sys");
+    assert_eq!(line.render("").1, 11);
+    line.put(0, "");
+    assert_eq!(line.text(), "");
+    assert_eq!(line.render("> "), ("> ".to_string(), 2));
 }

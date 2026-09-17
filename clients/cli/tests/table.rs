@@ -85,6 +85,54 @@ fn an_abbreviation_is_the_shortest_beginning_that_resolves() {
 }
 
 #[test]
+fn a_prefix_begins_the_words_tab_offers() {
+    let words = Words::cli();
+    let starting = |prefix: &str| -> Vec<&str> {
+        words.starting(prefix).into_iter().map(|word| word.name).collect()
+    };
+
+    // In the table's order, which is the order they resolve in.
+    assert_eq!(starting("l"), ["ls", "lookup", "log", "load"]);
+    assert_eq!(starting("lo"), ["lookup", "log", "load"]);
+    assert_eq!(starting("lookup"), ["lookup"]);
+    assert_eq!(starting("w"), ["watch", "write"]);
+    assert_eq!(starting("pwd"), ["pwd"]);
+
+    // A name no word begins with offers none; nothing begins them all.
+    assert_eq!(starting("zz"), [] as [&str; 0]);
+    assert_eq!(starting("lsx"), [] as [&str; 0]);
+    assert_eq!(starting("").len(), WORDS.len());
+
+    // Every word is offered by its own abbreviation, and the one that
+    // resolves is the first offered.
+    for word in WORDS {
+        let abbrev = words.abbrev(word);
+        let offered = starting(abbrev);
+        let resolved = words.resolve(abbrev).unwrap().name;
+        assert_eq!(offered.first(), Some(&resolved), "{}", word.name);
+        assert!(offered.contains(&word.name), "{}", word.name);
+    }
+}
+
+#[test]
+fn a_shadowed_name_is_offered_once_and_by_the_table_that_has_it_first() {
+    let first = &[
+        Word { name: "write", args: "[PATH]", help: "the buffer" },
+        Word { name: "wq", args: "", help: "write, then quit" },
+    ];
+    let words = Words { first, then: WORDS };
+    let starting = |prefix: &str| -> Vec<&Word> { words.starting(prefix) };
+
+    // The Plugin's two, then the cli's `watch`; the cli's own `write`,
+    // which no beginning can reach, is not a second `write`.
+    let names: Vec<&str> = starting("w").iter().map(|w| w.name).collect();
+    assert_eq!(names, ["write", "wq", "watch"]);
+    assert_eq!(starting("w")[0], &first[0], "the Plugin's, not the cli's");
+    assert_eq!(starting("write"), [&first[0]]);
+    assert_eq!(starting("wa").len(), 1, "the cli's watch alone");
+}
+
+#[test]
 fn a_plugins_words_come_first_and_shadow_the_clis() {
     let first = &[
         Word { name: "write", args: "[PATH]", help: "the buffer" },

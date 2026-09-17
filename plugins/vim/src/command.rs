@@ -4,10 +4,10 @@
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-use reovim_client_cli::{Word, Words};
+use reovim_client_cli::{Act, Word, Words};
 
 use crate::pattern::{Pattern, expand};
-use crate::{Edit, Effect, Key, Mode, Motion, Quit, Vim};
+use crate::{Edit, Effect, Key, Mode, Motion, Quit, Vim, Wild};
 
 /// Lines from 0, both ends included.
 type Lines = (usize, usize);
@@ -51,52 +51,121 @@ const fn table() -> Words<'static> {
 }
 
 impl Vim {
-    /// `:`, `/` or `?`: the prompt opens, the mode to return to kept.
+    /// `:`, `/` or `?`: the prompt opens over an empty line of the
+    /// two, the mode to return to kept.
     pub(crate) fn prompt(&mut self, prompt: char, count: usize) -> Effect {
-        self.line.text.clear();
+        self.prompt.at = prompt;
+        self.prompt.line().put(0, "");
         // `:` from a selection leaves it and names its lines.
         if prompt == ':' && matches!(self.mode, Mode::Visual(_)) {
             self.leave_visual();
-            self.line.text.push_str("'<,'>");
+            self.prompt.line().put(0, "'<,'>");
         }
-        self.line.before = self.mode;
-        self.line.prompt = prompt;
+        self.prompt.before = self.mode;
         self.mode = Mode::Command;
         self.pending.count = count;
+        self.wild = None;
         Effect::Moved
     }
 
-    /// One key on the command line: it grows, shrinks, is left, or
-    /// runs.
+    /// One key on the command line, which is the cli's line editor:
+    /// its acts, and before them the keys Vim reads itself, the two
+    /// ways out of the prompt and the wildmenu's own.
     pub(crate) fn command(&mut self, key: Key) -> Effect {
         match key {
-            Key::Char(c) => self.line.text.push(c),
-            Key::Backspace if self.line.text.is_empty() => self.leave_command(),
-            Key::Backspace => {
-                self.line.text.pop();
+            // The line editor makes nothing of Esc, and keeps the line
+            // on a Backspace that has nothing to take; here both leave
+            // the prompt, as they always have.
+            Key::Esc => return self.leave_prompt(),
+            Key::Backspace if self.prompt.text().is_empty() => {
+                return self.leave_prompt();
             }
-            Key::Esc => self.leave_command(),
-            Key::Enter => return self.run(),
-            _ => return Effect::Nothing,
+            // The wildmenu's own two keys, while one is open.
+            Key::Tab if self.wild.is_some() => return self.menu(true),
+            Key::Ctrl('p') if self.wild.is_some() => return self.menu(false),
+            _ => {}
         }
+        // Every other key leaves the menu and is itself.
+        self.wild = None;
+        match self.prompt.line().key(key) {
+            Act::Nothing | Act::Clear => Effect::Nothing,
+            Act::Redraw => Effect::Moved,
+            Act::Complete => self.complete(),
+            Act::Submit(line) => self.run(line),
+            // Ctrl-C, and Ctrl-D on an empty line: Esc's way out.
+            Act::Quit => self.leave_prompt(),
+        }
+    }
+
+    /// Tab on the `:` line: the words the typed one begins, the first
+    /// of them on the line. Nothing for `/` and `?`, which complete
+    /// nothing, nothing past the first word, whose arguments do not
+    /// complete yet, and nothing for a word no table has.
+    fn complete(&mut self) -> Effect {
+        if self.prompt.at != ':' || self.prompt.text().contains(' ') {
+            return Effect::Nothing;
+        }
+        let candidates = table().starting(self.prompt.text());
+        if candidates.is_empty() {
+            return Effect::Nothing;
+        }
+        self.wild = Some(Wild { candidates, at: 0 });
+        self.take()
+    }
+
+    /// Tab and Ctrl-P in the wildmenu: the next candidate or the one
+    /// before it, wrapping at either end.
+    fn menu(&mut self, forward: bool) -> Effect {
+        let Some(wild) = &mut self.wild else { return Effect::Nothing };
+        let last = wild.candidates.len();
+        let step = if forward { 1 } else { last - 1 };
+        wild.at = (wild.at + step) % last;
+        self.take()
+    }
+
+    /// The line takes the candidate the menu stands on: its whole
+    /// name and a space, where a completion puts the cursor.
+    fn take(&mut self) -> Effect {
+        let Some(wild) = &self.wild else { return Effect::Nothing };
+        let name = wild.candidates[wild.at].name;
+        // Tab only fires on a line with no space on it, so the word
+        // it expands starts at the front.
+        self.prompt.line().put(0, &alloc::format!("{name} "));
+        Effect::Moved
+    }
+
+    /// The status word while a prompt is open: the line after its
+    /// character, and after Tab the one word's argument form and help
+    /// or the menu of the several, the current one in brackets.
+    pub(crate) fn prompt_status(&self) -> String {
+        let line = alloc::format!("{}{}", self.prompt.at, self.prompt.text());
+        let mut parts = alloc::vec![line];
+        parts.extend(self.wild.as_ref().map(found).unwrap_or_default());
+        parts.join("  ")
+    }
+
+    /// Esc, Ctrl-C, or Backspace on an empty line: the prompt goes and
+    /// the mode it was opened from comes back.
+    fn leave_prompt(&mut self) -> Effect {
+        self.leave_command();
         Effect::Moved
     }
 
     fn leave_command(&mut self) {
-        self.mode = self.line.before;
-        self.line.text.clear();
+        self.mode = self.prompt.before;
+        self.prompt.line().put(0, "");
+        self.wild = None;
         self.pending.count = 0;
         self.pending.operator = None;
         self.repeat.record.clear();
     }
 
     /// The line run: a search for `/` and `?`, else a command.
-    fn run(&mut self) -> Effect {
-        let line = core::mem::take(&mut self.line.text);
-        self.mode = self.line.before;
+    fn run(&mut self, line: String) -> Effect {
+        self.mode = self.prompt.before;
         let count = core::mem::take(&mut self.pending.count);
-        if self.line.prompt != ':' {
-            let forward = self.line.prompt == '/';
+        if self.prompt.at != ':' {
+            let forward = self.prompt.at == '/';
             return self.searched(line, forward, count.max(1));
         }
         self.repeat.record.clear();
@@ -325,6 +394,27 @@ fn substituted(
     }
     out.push_str(&line[col.min(line.len())..]);
     Some(out)
+}
+
+/// What Tab found, as the status row says it after the line: the one
+/// word's argument form, where it takes any, and its help; several as
+/// nvim's wildmenu lists them, the one the line holds in brackets.
+fn found(wild: &Wild) -> Vec<String> {
+    if let [one] = wild.candidates[..] {
+        let args = (!one.args.is_empty()).then(|| one.args.to_string());
+        return args.into_iter().chain([one.help.to_string()]).collect();
+    }
+    wild.candidates
+        .iter()
+        .enumerate()
+        .map(|(at, word)| {
+            if at == wild.at {
+                alloc::format!("[{}]", word.name)
+            } else {
+                word.name.to_string()
+            }
+        })
+        .collect()
 }
 
 /// A `:` line past its range, as the table reads it.

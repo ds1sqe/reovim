@@ -40,7 +40,7 @@ pub use visual::Visual;
 
 use operator::{Find, Operator};
 use reovim_client::{Handle, Rd};
-use reovim_client_cli::Shell;
+use reovim_client_cli::{Line, Shell, Word};
 use search::Search;
 use visual::{BlockInsert, Selection};
 
@@ -164,14 +164,42 @@ struct Put {
     over: Option<Visual>,
 }
 
-/// The command line: what it is for, what is typed, and the mode it
-/// returns to.
+/// The command line: what it is for, the mode it returns to, and the
+/// lines themselves, which are the cli's line editor and nothing of
+/// Vim's own.
+///
+/// There are two of them because nvim keeps two histories: everything
+/// typed after `:` walks with the `:` lines, everything after `/` and
+/// `?` with the searches.
 #[derive(Debug, Default)]
-struct Line {
+struct Prompt {
     /// `:`, `/` or `?`.
-    prompt: char,
-    text: String,
+    at: char,
     before: Mode,
+    ex: Line,
+    search: Line,
+}
+
+impl Prompt {
+    /// The line the open prompt is over.
+    const fn line(&mut self) -> &mut Line {
+        if self.at == ':' { &mut self.ex } else { &mut self.search }
+    }
+
+    /// What stands on it.
+    fn text(&self) -> &str {
+        if self.at == ':' { self.ex.text() } else { self.search.text() }
+    }
+}
+
+/// What the last Tab on the `:` line found: the words the typed one
+/// begins, and which of them the line holds now. One of them is a
+/// word expanded, whose help the status row says; several are the
+/// wildmenu, which Tab and Ctrl-P walk.
+#[derive(Debug)]
+struct Wild {
+    candidates: Vec<&'static Word>,
+    at: usize,
 }
 
 /// Where the cursor was before each change, for undo to put it back
@@ -227,7 +255,9 @@ pub struct Vim {
     /// A block insert under way.
     block: Option<BlockInsert>,
     search: Search,
-    line: Line,
+    prompt: Prompt,
+    /// What Tab last found on the `:` line; any other key drops it.
+    wild: Option<Wild>,
     /// Shown until the next key.
     message: String,
     /// Where a cli word typed on the `:` line stands: the mirror of
@@ -834,9 +864,7 @@ impl Vim {
             _ if !self.message.is_empty() => self.message.clone(),
             Mode::Normal => String::new(),
             Mode::Insert => String::from("-- INSERT --"),
-            Mode::Command => {
-                alloc::format!("{}{}", self.line.prompt, self.line.text)
-            }
+            Mode::Command => self.prompt_status(),
             Mode::Visual(Visual::Char) => String::from("-- VISUAL --"),
             Mode::Visual(Visual::Line) => String::from("-- VISUAL LINE --"),
             Mode::Visual(Visual::Block) => String::from("-- VISUAL BLOCK --"),
