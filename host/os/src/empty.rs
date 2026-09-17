@@ -30,6 +30,10 @@ pub fn create(_: &str) -> Result<(), Error> {
     Err(Error::Unsupported)
 }
 
+pub fn mkdir(_: &str) -> Result<(), Error> {
+    Err(Error::Unsupported)
+}
+
 pub fn remove(_: &str) -> Result<(), Error> {
     Err(Error::Unsupported)
 }

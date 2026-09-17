@@ -20,6 +20,10 @@ use reovim_client_tui::{Frame, Step, Tui};
 use reovim_rig::{Limits, Rig};
 use reovim_text_api::{history, publish, text};
 
+/// What the tui gave `start`: the Buffer, what it is over, the name
+/// of a file that is not there yet, the directory and the first byte.
+type Started = (Rd, Option<Rd>, Option<String>, String, u64);
+
 /// What a scripted Plugin does with the next input.
 #[derive(Clone, Debug)]
 enum Act {
@@ -34,6 +38,8 @@ enum Act {
     /// The draft written to that file, which names a Buffer over
     /// nothing.
     SaveAs(String),
+    /// That file made under the root, as the fs Module makes one.
+    Make(String),
     /// Leave with that code.
     Exit(u8),
 }
@@ -42,7 +48,7 @@ enum Act {
 #[derive(Default)]
 struct Script {
     /// What `start` was given, and what it found there.
-    start: Option<(Rd, Option<Rd>, String, u64)>,
+    start: Option<Started>,
     size: Option<grid::Size>,
     h: Option<Handle>,
     region: Option<Handle>,
@@ -121,6 +127,11 @@ impl Stub {
                 let target = tree.resolve(&path)?;
                 publish::Call(tree, h).save_as(target)
             }
+            Act::Make(name) => {
+                let root = tree.resolve("/module/fs/root")?;
+                let input = reovim_sdk::encode(name);
+                tree.call_by_name(root, "create", input).map(|_| ())
+            }
             Act::Exit(code) => {
                 let ending = self.0.borrow().ending.unwrap();
                 process::Call(caps, ending).exit(u64::from(*code))
@@ -141,7 +152,7 @@ impl Plugin for Stub {
             None => None,
         };
         let script = &mut *self.0.borrow_mut();
-        script.start = Some((at.buffer, at.source, at.dir, at.at));
+        script.start = Some((at.buffer, at.source, at.name, at.dir, at.at));
         (script.h, script.region, script.size) = (Some(h), region, size);
         script.ending = ending;
         Ok(())
@@ -220,9 +231,10 @@ fn the_capability_cell_names_what_the_tui_serves() {
     let script = tui.plugin().0.borrow();
     assert!(script.region.is_some() && script.ending.is_some());
     assert_eq!(script.size, Some(grid::Size { cols: 80, rows: 23 }));
-    let (buffer, source, dir, at) = script.start.clone().unwrap();
+    let (buffer, source, name, dir, at) = script.start.clone().unwrap();
     assert_eq!((buffer, dir, at), (tui.buffer(), String::new(), 0));
     assert!(source.is_some(), "the file the Buffer is over");
+    assert_eq!(name, None, "a file that is there needs no making");
 }
 
 #[test]
@@ -421,20 +433,31 @@ fn a_tui_behind_a_full_ring_reads_everything_again() {
 }
 
 #[test]
-fn a_missing_file_opens_empty_and_appears_on_save() {
+fn a_missing_file_is_a_buffer_over_nothing_that_keeps_its_name() {
     let rig = Rig::new("missing");
     let mut tui =
         Tui::open(rig.client(), "", Some("none"), None, Stub::default())
             .unwrap();
+    // Over nothing, but named: the Plugin is handed the name to make.
+    let start = tui.plugin().0.borrow().start.clone().unwrap();
+    assert_eq!((start.1, start.2), (None, Some("none".to_string())));
+    assert_eq!(frame(&mut tui).status, "none  1:1  r1   ");
     assert_eq!(press(&mut tui, Act::Show(view(0, ""))), Ok(Step::Changed));
     assert_eq!(frame(&mut tui).lines, [""], "one empty line");
+    assert!(!rig.dir().join("none").exists(), "nothing on disk yet");
+
     assert_eq!(
         press(&mut tui, Act::Edit(0, 0, "x\n".into())),
         Ok(Step::Changed)
     );
-    assert!(!rig.dir().join("none").exists(), "nothing on disk yet");
-    assert_eq!(press(&mut tui, Act::Save), Ok(Step::Changed));
+    assert!(!rig.dir().join("none").exists(), "nor after an edit");
+
+    // The Plugin makes the file and the Buffer goes on as its: the
+    // tui follows the source it took.
+    assert_eq!(press(&mut tui, Act::Make("none".into())), Ok(Step::Same));
+    assert_eq!(press(&mut tui, Act::SaveAs("none".into())), Ok(Step::Changed));
     assert_eq!(rig.disk("none"), b"x\n");
+    assert_eq!(frame(&mut tui).status, "none  1:1  r2   ");
 }
 
 #[test]
@@ -443,7 +466,8 @@ fn the_tui_names_its_buffer_when_that_buffer_takes_a_source() {
     let mut tui =
         Tui::open(rig.client(), "", None, None, Stub::default()).unwrap();
     assert_eq!(frame(&mut tui).status, "[No Name]  1:1  r1   ");
-    assert_eq!(tui.plugin().0.borrow().start.clone().unwrap().1, None);
+    let start = tui.plugin().0.borrow().start.clone().unwrap();
+    assert_eq!((start.1, start.2), (None, None), "no source, no name");
     assert_eq!(
         press(&mut tui, Act::Edit(0, 0, "hi\n".into())),
         Ok(Step::Changed)
@@ -451,6 +475,7 @@ fn the_tui_names_its_buffer_when_that_buffer_takes_a_source() {
     assert_eq!(frame(&mut tui).status, "[No Name]  1:1  r2[+]   ");
     // `:w NAME` is the Plugin's, and the Buffer it saves goes on as
     // that file's: the tui follows it by name.
+    assert_eq!(press(&mut tui, Act::Make("note".into())), Ok(Step::Same));
     let named = Act::SaveAs("note".into());
     assert_eq!(press(&mut tui, named), Ok(Step::Changed));
     assert_eq!(rig.disk("note"), b"hi\n");
@@ -471,7 +496,7 @@ fn the_line_of_the_command_line_is_where_the_plugin_begins() {
         let tui =
             Tui::open(rig.client(), "d", Some("note"), line, Stub::default());
         let start = tui.unwrap().plugin().0.borrow().start.clone().unwrap();
-        (start.2, start.3)
+        (start.3, start.4)
     };
     assert_eq!(open(None), ("d".into(), 0), "the dir, and the first byte");
     assert_eq!(open(Some(1)), ("d".into(), 0));

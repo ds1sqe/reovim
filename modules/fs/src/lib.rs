@@ -2,11 +2,11 @@
 #![forbid(unsafe_code)]
 //! The fs Driver: one directory mirrored under `/module/fs/root`.
 //! Directories are Containers whose children appear on `lookup`; files
-//! are Read/Write byte rds. A name that is not on disk is an empty
-//! file until it is written. It speaks to the machine through host/os
-//! only and learns of edits behind its back by comparing `mtime` on
-//! the next `read`, so an edit inside the host's timestamp tick after
-//! the Driver's own write goes unseen.
+//! are Read/Write byte rds. A name that is not on disk is no rd at
+//! all: `create` and `mkdir` are the two ways to make one. It speaks
+//! to the machine through host/os only and learns of edits behind its
+//! back by comparing `mtime` on the next `read`, so an edit inside the
+//! host's timestamp tick after the Driver's own write goes unseen.
 
 extern crate alloc;
 
@@ -25,13 +25,16 @@ use reovim_kernel_interface::{
 use reovim_sdk::declare;
 
 declare! {
-    /// Every directory: a new empty file below it.
+    /// Every directory: a new empty file or a new directory below it.
+    /// A name already on disk is `Stale`, one the mirror does not
+    /// accept is `Invalid`.
     api fs ver 1 {
         0 create(name: utf8(255)) -> Rd: WRITE;
+        1 mkdir(name: utf8(255)) -> Rd: WRITE;
     }
 }
 
-/// A directory: Container, WRITE for `create`.
+/// A directory: Container, WRITE for `create` and `mkdir`.
 const DIR: Flags = Flags::READ.union(Flags::WRITE).union(Flags::CONTAINER);
 /// A file: bytes.
 const FILE: Flags = Flags::READ.union(Flags::WRITE);
@@ -63,12 +66,12 @@ fn valid(name: &str) -> bool {
         && name != ".."
 }
 
-/// Host failures on a path that is not (yet) an rd.
+/// Host failures on a path that is not (yet) an rd. A name already
+/// taken is `Stale`: the caller asked for one that was free.
 const fn map(error: reovim_host::Error) -> Error {
     match error {
-        reovim_host::Error::NotFound | reovim_host::Error::Exists => {
-            Error::Invalid
-        }
+        reovim_host::Error::NotFound => Error::Invalid,
+        reovim_host::Error::Exists => Error::Stale,
         reovim_host::Error::Denied => Error::Denied,
         reovim_host::Error::Io => Error::Busy,
         reovim_host::Error::Unsupported => Error::Unsupported,
@@ -148,8 +151,8 @@ impl Fs {
         let path = join(&path, name);
         let dir = match host::stat(&path) {
             Ok(stat) => stat.kind == reovim_host::Kind::Dir,
-            // Not on disk: an empty file until it is written.
-            Err(reovim_host::Error::NotFound) => false,
+            // Nothing is there, so there is nothing to hand back.
+            Err(reovim_host::Error::NotFound) => return Err(Error::Gone),
             Err(other) => return Err(map(other)),
         };
         self.add(ctx, rd, name, path, dir)
@@ -165,9 +168,8 @@ impl Fs {
         Ok(rd)
     }
 
-    /// `stat` the file behind `rd`; a moved `mtime` is a Modify, a
-    /// file that was there and is not is Gone. One that never was is
-    /// still empty.
+    /// `stat` the file behind `rd`; a moved `mtime` is a Modify, and
+    /// a file that is no longer on disk is Gone.
     fn check(&self, ctx: &dyn Calls, rd: Rd) -> Result<String, Error> {
         let (path, dir) = self.path(rd)?;
         if dir {
@@ -183,7 +185,7 @@ impl Fs {
         let seen = core::mem::replace(&mut node.seen, mtime);
         drop(nodes);
         match (seen, mtime) {
-            (Some(_), None) => Err(self.lost(ctx, rd, &path)),
+            (_, None) => Err(self.lost(ctx, rd, &path)),
             (Some(last), Some(now)) if last != now => {
                 ctx.changed(rd, Kind::Modify)?;
                 Ok(path)
@@ -215,14 +217,22 @@ impl Fs {
         Ok(count)
     }
 
-    fn make(&self, ctx: &dyn Calls, rd: Rd, name: &str) -> Result<Rd, Error> {
+    /// A new file, or a new directory, under the directory `rd`.
+    fn make(
+        &self,
+        ctx: &dyn Calls,
+        rd: Rd,
+        name: &str,
+        dir: bool,
+    ) -> Result<Rd, Error> {
         let (path, _) = self.path(rd)?;
         if !valid(name) {
             return Err(Error::Invalid);
         }
         let path = join(&path, name);
-        host::create(&path).map_err(map)?;
-        self.add(ctx, rd, name, path, false)
+        if dir { host::mkdir(&path) } else { host::create(&path) }
+            .map_err(map)?;
+        self.add(ctx, rd, name, path, dir)
     }
 }
 
@@ -248,13 +258,9 @@ impl Driver for Fs {
         at: u64,
         len: usize,
     ) -> Reply<Vec<u8>> {
-        let bytes = self.check(ctx, Rd(h)).and_then(|path| {
-            match host::read(&path, at, len) {
-                // Not written yet.
-                Err(reovim_host::Error::NotFound) => Ok(Vec::new()),
-                bytes => bytes.map_err(map),
-            }
-        });
+        let bytes = self
+            .check(ctx, Rd(h))
+            .and_then(|path| host::read(&path, at, len).map_err(map));
         bytes.into()
     }
 
@@ -287,6 +293,15 @@ impl fs::Api for Fs {
         rd: Rd,
         name: String,
     ) -> Result<Rd, Error> {
-        self.make(ctx, rd, &name)
+        self.make(ctx, rd, &name, false)
+    }
+
+    fn mkdir(
+        &self,
+        ctx: &dyn Calls,
+        rd: Rd,
+        name: String,
+    ) -> Result<Rd, Error> {
+        self.make(ctx, rd, &name, true)
     }
 }

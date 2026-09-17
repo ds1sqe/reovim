@@ -73,6 +73,9 @@ pub struct Tui<P: Plugin> {
     buffer: Rd,
     source: Option<Rd>,
     h: Handle,
+    /// The path under the root a Buffer over nothing was opened with,
+    /// there being no such file: what a write makes.
+    new_name: Option<String>,
     name: String,
     /// The Buffer's bytes, as the tui last read them.
     text: String,
@@ -90,6 +93,9 @@ impl<P: Plugin> Tui<P> {
     /// it at `line`, counted from 1. `dir`, under the root too, is
     /// where a relative name the Plugin resolves starts.
     ///
+    /// A `file` that is not on disk is a Buffer over nothing that
+    /// keeps the name: the Plugin's first write makes the file.
+    ///
     /// # Errors
     /// What the Client says; `Kernel(Invalid)` for a file that is not
     /// under the root.
@@ -102,8 +108,12 @@ impl<P: Plugin> Tui<P> {
     ) -> Result<Self, Fault> {
         client.capability(SERVES.to_vec())?;
         let source = match file {
-            Some(file) => Some(file_rd(&mut client, file)?),
+            Some(file) => file_rd(&mut client, file)?,
             None => None,
+        };
+        let new_name = match source {
+            Some(_) => None,
+            None => file.map(String::from),
         };
         let buffer = buffer_over(&mut client, source)?;
         let h = watched(&mut client, buffer, source)?;
@@ -122,6 +132,7 @@ impl<P: Plugin> Tui<P> {
             buffer,
             source,
             h,
+            new_name,
             name: String::from(UNNAMED),
             text,
             head: 0,
@@ -134,6 +145,7 @@ impl<P: Plugin> Tui<P> {
             client: tui.client.cid(),
             buffer,
             source,
+            name: tui.new_name.clone(),
             dir: String::from(dir),
             at: at as u64,
         };
@@ -250,14 +262,16 @@ impl<P: Plugin> Tui<P> {
         Ok(())
     }
 
-    /// What the Buffer is over, by name, or `[No Name]`. A Buffer that
-    /// has taken a source is watched from then on, as its own was.
+    /// What the Buffer is over, by name; the name a new file will go
+    /// by while it is over nothing, or `[No Name]`. A Buffer that has
+    /// taken a source is watched from then on, as its own was.
     fn named(&mut self) -> Result<String, Fault> {
         if let Some(source) = self.source {
             return self.client.name(source);
         }
         let Ok(child) = self.client.lookup(self.buffer, "source") else {
-            return Ok(String::from(UNNAMED));
+            let new = self.new_name.as_deref().map(own_name);
+            return Ok(String::from(new.unwrap_or(UNNAMED)));
         };
         let source: Rd = reovim_sdk::decode(&self.client.read_all(child)?)?;
         let watched = self.client.open(source, Rights::READ)?;
@@ -338,9 +352,21 @@ impl<P: Plugin> Tui<P> {
     }
 }
 
-/// The rd of `file`, a name under the root.
-fn file_rd(client: &mut Client, file: &str) -> Result<Rd, Fault> {
-    client.resolve(&format!("/module/fs/root/{file}"))
+/// What a file under the root goes by on its own: the last segment of
+/// `path`, which is the name its rd has under its directory.
+fn own_name(path: &str) -> &str {
+    path.rsplit('/').next().unwrap_or(path)
+}
+
+/// The rd of `file`, a name under the root, or `None` when there is
+/// no such file: what a Buffer over nothing is opened for. The two
+/// ways the tree says nothing is there are a name not on disk and a
+/// name below a file.
+fn file_rd(client: &mut Client, file: &str) -> Result<Option<Rd>, Fault> {
+    match client.resolve(&format!("/module/fs/root/{file}")) {
+        Err(Fault::Kernel(Error::Gone | Error::Unsupported)) => Ok(None),
+        found => found.map(Some),
+    }
 }
 
 /// A Buffer over `source`, or over nothing.

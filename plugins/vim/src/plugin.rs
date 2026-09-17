@@ -12,8 +12,9 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use reovim_client::{
-    BAR, BLOCK, Caps, Ctx, Error, Event, Fault, Handle, Hash, Key, Kind, MATCH,
-    Plugin, Rights, SELECTION, Start, Tree, grid, keys, process, under,
+    BAR, BLOCK, Caps, Ctx, Error, Event, Fault, Flags, Handle, Hash, Key, Kind,
+    MATCH, Plugin, Rd, Rights, SELECTION, Start, Tree, grid, keys, process,
+    under,
 };
 use reovim_text_api::{history, publish, text};
 
@@ -23,6 +24,12 @@ use crate::{Edit, Effect, Mode, Quit, Vim};
 const E37: &str = "E37: No write since last change (add ! to override)";
 /// What a write says on a Buffer over nothing.
 const E32: &str = "E32: No file name";
+/// What a write says when the file it would make is there already.
+const E13: &str = "E13: File exists (add ! to override)";
+/// What a write says when the host would not make the file.
+const E212: &str = "E212: Can't open file for writing";
+/// Where the fs Module mirrors the directory the editor runs over.
+const MIRROR: &str = "/module/fs/root";
 /// What undo and redo say at the ends of the history.
 const OLDEST: &str = "Already at oldest change";
 const NEWEST: &str = "Already at newest change";
@@ -36,6 +43,7 @@ impl Plugin for Vim {
         let rights = Rights::READ.union(Rights::WRITE);
         self.h = Some(tree.open(at.buffer, rights)?);
         self.source = at.source;
+        self.name = at.name;
         self.dir = at.dir;
         self.clip = tree.resolve("/module/clipboard/text").ok();
         self.region = caps.open(grid::hash());
@@ -46,6 +54,7 @@ impl Plugin for Vim {
         let bytes = tree.read_whole(self.handle()?)?;
         self.loaded(&bytes);
         self.begin(count(at.at));
+        self.announce(tree)?;
         self.show(caps)
     }
 
@@ -115,8 +124,12 @@ impl Vim {
             Effect::Edits(edits) => self.send_each(tree, edits)?,
             Effect::Undo => self.walk(tree, true)?,
             Effect::Redo => self.walk(tree, false)?,
-            Effect::Save => self.save(tree)?,
-            Effect::SaveAs(name) => self.save_as(tree, &name)?,
+            Effect::Save(bang) => {
+                self.save(tree, bang)?;
+            }
+            Effect::SaveAs(name, bang) => {
+                self.save_as(tree, &name, bang)?;
+            }
             Effect::Clipboard => return self.pasting(tree, caps),
             Effect::Quit(how) => return self.quit(tree, caps, how),
         }
@@ -164,31 +177,86 @@ impl Vim {
         Ok(())
     }
 
-    /// The head published to its source; a Buffer over nothing has no
-    /// file to write.
-    fn save(&mut self, tree: &mut Tree) -> Result<(), Fault> {
-        if self.source.is_none() {
-            self.message = String::from(E32);
-            return Ok(());
+    /// A Buffer over nothing that was opened for a file says so on
+    /// the first frame, as nvim does; the directory it is to go in is
+    /// not there either when it says `[New DIRECTORY]`.
+    fn announce(&mut self, tree: &mut Tree) -> Result<(), Fault> {
+        let Some(name) = self.name.clone() else { return Ok(()) };
+        let dir = name.rsplit_once('/').map_or("", |(dir, _)| dir);
+        let word =
+            if directory(tree, dir)? { "[New]" } else { "[New DIRECTORY]" };
+        let said = as_given(&self.dir, &name);
+        self.message = format!("\"{said}\" {word}");
+        Ok(())
+    }
+
+    /// The head published to its source; a Buffer over nothing writes
+    /// the file it was opened for, and has no file name without one.
+    /// False when it said why it did not write.
+    fn save(&mut self, tree: &mut Tree, bang: bool) -> Result<bool, Fault> {
+        if self.source.is_some() {
+            self.fixing(tree)?;
+            publish::Call(tree, self.handle()?).save()?;
+            return Ok(true);
         }
-        self.fixing(tree)?;
-        publish::Call(tree, self.handle()?).save()
+        let Some(name) = self.name.clone() else {
+            return Ok(self.says(E32));
+        };
+        self.written_to(tree, &name, bang)
     }
 
     /// `:w NAME`: the head written to that file, `NAME` resolved under
-    /// the directory the Client started in. Its own name is a save. A
-    /// Buffer over nothing goes on as that file's, its history
-    /// starting there.
-    fn save_as(&mut self, tree: &mut Tree, name: &str) -> Result<(), Fault> {
+    /// the directory the Client started in. Its own name is a save,
+    /// and a name that is not on disk is made first. A Buffer over
+    /// nothing goes on as that file's, its history starting there.
+    fn save_as(
+        &mut self,
+        tree: &mut Tree,
+        name: &str,
+        bang: bool,
+    ) -> Result<bool, Fault> {
         let path = under(&self.dir, name);
-        let target = tree.resolve(&format!("/module/fs/root/{path}"))?;
+        let Some(target) = resolved(tree, &path)? else {
+            return self.written_to(tree, &path, bang);
+        };
         if Some(target) == self.source {
-            return self.save(tree);
+            return self.save(tree, bang);
         }
+        self.published_to(tree, target)
+    }
+
+    /// The file `path` names made under the root and the head written
+    /// to it: every missing directory on the way by `mkdir`, then
+    /// `create`. A file that appeared since is E13 unless `bang` says
+    /// to write over it; anything that refuses to make the file, the
+    /// host and a file where a directory is wanted alike, is E212.
+    fn written_to(
+        &mut self,
+        tree: &mut Tree,
+        path: &str,
+        bang: bool,
+    ) -> Result<bool, Fault> {
+        match making(tree, path, bang) {
+            Ok(Some(target)) => self.published_to(tree, target),
+            Ok(None) => Ok(self.says(E13)),
+            // Refused, or asked of an rd that makes nothing: either
+            // way there is no file to write. Only the link is fatal.
+            Err(Fault::Kernel(_) | Fault::Usage(_)) => Ok(self.says(E212)),
+            Err(fault) => Err(fault),
+        }
+    }
+
+    /// The head written to `target`, which a Buffer over nothing goes
+    /// on as, watched by its Client from then on.
+    fn published_to(
+        &mut self,
+        tree: &mut Tree,
+        target: Rd,
+    ) -> Result<bool, Fault> {
         self.fixing(tree)?;
         publish::Call(tree, self.handle()?).save_as(target)?;
         self.source = self.source.or(Some(target));
-        Ok(())
+        Ok(true)
     }
 
     /// The newline `fixendofline` writes at the end of a last line
@@ -242,8 +310,9 @@ impl Vim {
 
     /// `:q` while the Buffer holds what its source has not; `:q!` and
     /// `ZQ` whatever it holds; `:wq`, `:x` and `ZZ` written first,
-    /// which over nothing leaves an untouched Buffer and is E32 for a
-    /// changed one; `:cq` with 1, so the caller uses nothing.
+    /// which over nothing leaves an untouched Buffer and makes the
+    /// file of a changed one, or is E32 without a name; `:cq` with 1,
+    /// so the caller uses nothing.
     fn quit(
         &mut self,
         tree: &mut Tree,
@@ -251,20 +320,36 @@ impl Vim {
         how: Quit,
     ) -> Result<bool, Fault> {
         let unsaved = self.unsaved(tree)?;
-        let code: u8 = match how {
-            Quit::Abort => 1,
-            Quit::Ask if unsaved => return Ok(self.says(E37)),
-            Quit::Write if self.source.is_some() => {
-                self.save(tree)?;
-                0
-            }
-            // Over nothing: `:x` on a changed Buffer has no file.
-            Quit::Write if unsaved => return Ok(self.says(E32)),
-            _ => 0,
+        if how == Quit::Ask && unsaved {
+            return Ok(self.says(E37));
+        }
+        let code = match how {
+            Quit::Abort => Some(1),
+            Quit::Write => self.written(tree, unsaved)?,
+            _ => Some(0),
         };
+        // The write said why it did not happen; the editor stays.
+        let Some(code) = code else { return Ok(true) };
         let Some(ending) = self.ending else { return Ok(false) };
         process::Call(caps, ending).exit(u64::from(code))?;
         Ok(false)
+    }
+
+    /// What `:wq`, `:x` and `ZZ` write before they leave: the source
+    /// of a Buffer that has one, and the file a changed Buffer over
+    /// nothing was opened for. `None` when that write did not happen,
+    /// and the editor stays where it is having said why.
+    fn written(
+        &mut self,
+        tree: &mut Tree,
+        unsaved: bool,
+    ) -> Result<Option<u8>, Fault> {
+        // Over nothing and untouched: `:x` writes nothing, as Vim has
+        // it, and there is no file to make.
+        if self.source.is_none() && !unsaved {
+            return Ok(Some(0));
+        }
+        Ok(self.save(tree, false)?.then_some(0))
     }
 
     /// Whether the Buffer holds what its source has not.
@@ -317,6 +402,81 @@ impl Vim {
             status: self.status(),
         }
     }
+}
+
+/// The file as the person named it: `name`, a path under the root,
+/// read from `dir`, the directory the Client started in, when it is
+/// below it, as nvim says the path it was given.
+fn as_given<'a>(dir: &str, name: &'a str) -> &'a str {
+    name.strip_prefix(dir)
+        .and_then(|rest| rest.strip_prefix('/'))
+        .unwrap_or(name)
+}
+
+/// Whether `path` under the root is a directory there; the root
+/// itself, which the empty path names, always is.
+fn directory(tree: &mut Tree, path: &str) -> Result<bool, Fault> {
+    if path.is_empty() {
+        return Ok(true);
+    }
+    let Some(rd) = resolved(tree, path)? else { return Ok(false) };
+    Ok(tree.info(rd)?.flags.contains(Flags::CONTAINER))
+}
+
+/// The rd `path` names under the root, or `None` when the tree has
+/// nothing there: the walk stops at the first name that is not.
+fn resolved(tree: &mut Tree, path: &str) -> Result<Option<Rd>, Fault> {
+    match tree.resolve(&format!("{MIRROR}/{path}")) {
+        Err(Fault::Kernel(_)) => Ok(None),
+        found => found.map(Some),
+    }
+}
+
+/// The rd of the file `path` names under the root, made: every
+/// missing directory on the way by `mkdir`, then `create` for the
+/// file itself. `None` when a file is there already and `bang` does
+/// not say to write over it.
+fn making(
+    tree: &mut Tree,
+    path: &str,
+    bang: bool,
+) -> Result<Option<Rd>, Fault> {
+    let names: Vec<&str> = path.split('/').filter(|n| !n.is_empty()).collect();
+    let Some((name, dirs)) = names.split_last() else {
+        return Err(Fault::Kernel(Error::Invalid));
+    };
+    let mut dir = tree.resolve(MIRROR)?;
+    for step in dirs {
+        dir = below(tree, dir, step)?;
+    }
+    match made(tree, dir, "create", name) {
+        Err(Fault::Kernel(Error::Stale)) if bang => {
+            tree.lookup(dir, name).map(Some)
+        }
+        Err(Fault::Kernel(Error::Stale)) => Ok(None),
+        made => made.map(Some),
+    }
+}
+
+/// The directory `name` under `dir`, made when it is not there yet.
+fn below(tree: &mut Tree, dir: Rd, name: &str) -> Result<Rd, Fault> {
+    match tree.lookup(dir, name) {
+        Err(Fault::Kernel(Error::Gone)) => made(tree, dir, "mkdir", name),
+        found => found,
+    }
+}
+
+/// `create` or `mkdir` of the fs api on the directory `dir`: the rd
+/// it made.
+fn made(
+    tree: &mut Tree,
+    dir: Rd,
+    method: &str,
+    name: &str,
+) -> Result<Rd, Fault> {
+    let input = reovim_sdk::encode(&String::from(name));
+    let out = tree.call_by_name(dir, method, input)?;
+    Ok(reovim_sdk::decode(&out)?)
 }
 
 /// A byte range of the text as a span of `style`.

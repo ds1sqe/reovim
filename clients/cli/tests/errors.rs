@@ -58,15 +58,17 @@ fn a_refused_command_says_its_word_its_target_and_why() {
         says(&mut client, "read /module/fs/root/note/below"),
         "read /module/fs/root/note/below: no such rd (below)"
     );
-    // A name that is not on disk is an empty file until it is written
-    // (modules/fs), so it resolves and reads empty; the cli knows no
-    // Module and has nothing to say about it.
-    assert_eq!(says(&mut client, "read /module/fs/root/nope"), "");
+    // A name that is not on disk is no rd (modules/fs), so it is the
+    // same miss as any other name that does not resolve.
+    assert_eq!(
+        says(&mut client, "read /module/fs/root/nope"),
+        "read /module/fs/root/nope: no such rd (nope)"
+    );
 
     // A method the rd does not offer lists the ones it does.
     assert_eq!(
         says(&mut client, "call /module/fs/root nothing"),
-        "call /module/fs/root: no method nothing; it offers: create"
+        "call /module/fs/root: no method nothing; it offers: create, mkdir"
     );
     assert_eq!(
         says(&mut client, "call /module/fs/root/note nothing"),

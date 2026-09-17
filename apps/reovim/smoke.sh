@@ -139,9 +139,13 @@ keys rebase : s / t h i r d / r e w o r d e d " " t h i r d / Enter Z Z
     || fail "reword not used: $(git log -1 --format=%s)"
 
 # --- a new file by absolute path, absent until saved; two at once ---
+# A name that is not on disk is no rd: the editor opens a Buffer over
+# nothing that keeps the name and says so on the first frame, as nvim
+# does, and the first write makes the file.
 mkdir "$DIR/new"
 start new "$DIR" "$BIN $DIR/new/note"
 editing new note
+shown new '"new/note" \[New\]'
 
 # dmesg reads the editor's log as the real one does: a stamp on every
 # line and the line the editor wrote where it listens; nothing at err
@@ -207,6 +211,23 @@ keys other i "x" Escape : w Enter : q ! Enter
 [[ "$(cat "$DIR/new/note")" == fresh ]] || fail "new file not written"
 [[ "$(cat "$DIR/other")" == x ]] || fail "second editor not written"
 [[ "$(sockets)" == 0 ]] || fail "a socket was left behind"
+
+# --- a new file left unwritten leaves nothing behind -----------------
+start gone "$DIR" "$BIN $DIR/new/gone"
+editing gone gone
+shown gone '"new/gone" \[New\]'
+keys gone : q Enter
+[[ "$(ended gone)" == 0 ]] || fail ":q on a new file did not quit"
+[[ ! -e "$DIR/new/gone" ]] || fail ":q on a new file left one behind"
+
+# --- a new file below a directory that is not there ------------------
+start deep "$DIR" "$BIN $DIR/new/a/b/x"
+editing deep x
+shown deep '"new/a/b/x" \[New DIRECTORY\]'
+keys deep i "deep" Escape : w q Enter
+[[ "$(ended deep)" == 0 ]] || fail "the deep new file did not quit"
+[[ -d "$DIR/new/a/b" ]] || fail "the directories on the way were not made"
+[[ "$(cat "$DIR/new/a/b/x")" == deep ]] || fail "the deep file not written"
 
 # --- no file: an unnamed buffer, E32 on :w, nothing written ---------
 start unnamed "$DIR" "$BIN"

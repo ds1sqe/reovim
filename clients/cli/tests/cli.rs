@@ -110,7 +110,7 @@ fn completion_offers_commands_paths_and_methods() {
     );
     assert_eq!(
         offer(&mut client, "call /module/fs/root "),
-        (21, vec!["create".to_string()])
+        (21, vec!["create".to_string(), "mkdir".to_string()])
     );
     // A word with no slash is a name under the cwd, the root here.
     assert_eq!(

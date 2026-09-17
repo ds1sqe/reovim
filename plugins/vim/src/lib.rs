@@ -64,10 +64,12 @@ pub enum Effect {
     Edits(Vec<Edit>),
     Undo,
     Redo,
-    Save,
+    /// `:w`; `true` for `:w!`, which writes over a file that appeared
+    /// under the name a Buffer over nothing was opened with.
+    Save(bool),
     /// `:w NAME`: the draft written to that file, resolved under the
-    /// directory the Client started Vim in.
-    SaveAs(String),
+    /// directory the Client started Vim in; `true` for `:w! NAME`.
+    SaveAs(String, bool),
     Quit(Quit),
     /// A put wants the clipboard's text: `pasted` finishes it.
     Clipboard,
@@ -217,6 +219,9 @@ pub struct Vim {
     h: Option<Handle>,
     /// What that Buffer is over, once it is over anything.
     source: Option<Rd>,
+    /// The file a Buffer over nothing was opened for while there is
+    /// no such file: what its first write makes.
+    name: Option<String>,
     /// Where a relative `:w NAME` starts, under the root.
     dir: String,
     /// `/module/clipboard/text`, when that Module is there.

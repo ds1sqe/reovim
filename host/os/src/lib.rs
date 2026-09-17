@@ -110,6 +110,15 @@ pub mod fs {
         backend::create(path)
     }
 
+    /// A new empty directory at `path`; its parent must be there.
+    ///
+    /// # Errors
+    /// `Exists` when the name is taken, `NotFound` when the parent is
+    /// not there; otherwise as [`list`].
+    pub fn mkdir(path: &str) -> Result<(), Error> {
+        backend::mkdir(path)
+    }
+
     /// The file at `path` is gone.
     ///
     /// # Errors

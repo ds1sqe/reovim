@@ -70,6 +70,22 @@ fn read_write_create_round_trip() {
 }
 
 #[test]
+fn mkdir_makes_one_directory_and_says_what_is_in_the_way() {
+    let dir = Dir::new("mkdir");
+    let made = dir.path("made");
+    assert_eq!(fs::mkdir(&made), Ok(()));
+    assert_eq!(fs::stat(&made).unwrap().kind, Kind::Dir);
+    assert_eq!(fs::mkdir(&made), Err(Error::Exists));
+
+    // One level at a time: a parent that is not there is not made.
+    let deep = dir.path("none/deep");
+    assert_eq!(fs::mkdir(&deep), Err(Error::NotFound));
+    let file = dir.path("f");
+    fs::create(&file).unwrap();
+    assert_eq!(fs::mkdir(&file), Err(Error::Exists));
+}
+
+#[test]
 fn mtime_moves_with_writes() {
     let dir = Dir::new("mtime");
     let file = dir.path("f");

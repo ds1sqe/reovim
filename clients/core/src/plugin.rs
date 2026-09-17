@@ -32,6 +32,10 @@ pub struct Start {
     pub client: Rd,
     pub buffer: Rd,
     pub source: Option<Rd>,
+    /// The name under the root a Buffer over nothing was opened with,
+    /// there being no such file: the one its first write makes. `None`
+    /// for a Buffer with a `source` and for one opened with no name.
+    pub name: Option<String>,
     pub dir: String,
     pub at: u64,
 }

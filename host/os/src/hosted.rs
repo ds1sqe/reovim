@@ -127,6 +127,10 @@ pub fn create(path: &str) -> Result<(), Error> {
     Ok(())
 }
 
+pub fn mkdir(path: &str) -> Result<(), Error> {
+    Ok(std::fs::create_dir(path)?)
+}
+
 pub fn remove(path: &str) -> Result<(), Error> {
     Ok(std::fs::remove_file(path)?)
 }

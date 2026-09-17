@@ -129,8 +129,16 @@ impl Rig {
     }
 
     fn create(&self, h: Handle, name: &str) -> Reply<Out> {
+        self.make(h, 0, name)
+    }
+
+    fn mkdir(&self, h: Handle, name: &str) -> Reply<Out> {
+        self.make(h, 1, name)
+    }
+
+    fn make(&self, h: Handle, method: u16, name: &str) -> Reply<Out> {
         let input = encode(&name.to_string());
-        self.submit(Op::Call { h, api: fs::hash(), method: 0, input })
+        self.submit(Op::Call { h, api: fs::hash(), method, input })
     }
 }
 
@@ -206,23 +214,25 @@ fn read_write_and_a_change_behind_the_driver() {
 }
 
 #[test]
-fn a_name_not_on_disk_is_an_empty_file_until_written() {
+fn a_name_not_on_disk_is_not_an_rd() {
     let rig = Rig::new("new");
-    let path = rig.dir.path("new");
+    let missing = Op::Lookup { rd: rig.root, name: "new".to_string() };
+    assert_eq!(rig.err(missing), Error::Gone);
+    assert!(!rig.dir.path("new").exists(), "and nothing was made");
+
+    // The file appears behind the Driver: the same lookup finds it.
+    std::fs::write(rig.dir.path("new"), b"first").unwrap();
     let file = rig.lookup(rig.root, "new");
     assert_eq!(rig.flags(file), Flags::READ | Flags::WRITE);
     let h = rig.open(file, Rights::READ | Rights::WRITE);
-    assert_eq!(rig.read(h), b"");
-    assert!(!path.exists(), "nothing on disk before a write");
-
-    assert_eq!(rig.write(h, b"first"), 5);
-    assert_eq!(std::fs::read(&path).unwrap(), b"first");
     assert_eq!(rig.read(h), b"first");
-    let root = rig.open(rig.root, Rights::WRITE);
-    assert_eq!(rig.create(root, "new"), Reply::err(Error::Invalid));
 
-    // Once seen, its removal is Gone as for any file.
-    std::fs::remove_file(&path).unwrap();
+    // And a file taken away before its first read is Gone, not empty.
+    let other = rig.dir.path("other");
+    std::fs::write(&other, b"x").unwrap();
+    let gone = rig.lookup(rig.root, "other");
+    let h = rig.open(gone, Rights::READ);
+    std::fs::remove_file(&other).unwrap();
     assert_eq!(rig.err(Op::Read { h, at: 0, len: 8 }), Error::Gone);
 }
 
@@ -236,11 +246,35 @@ fn create_through_call_registers_the_file() {
     assert!(rig.dir.path("new.txt").is_file());
     assert_eq!(rig.lookup(rig.root, "new.txt"), made);
 
-    assert_eq!(rig.create(h, "new.txt"), Reply::err(Error::Invalid));
+    // A name already on disk is Stale; one the mirror refuses,
+    // Invalid. The two answers are what tells a caller which it is.
+    assert_eq!(rig.create(h, "new.txt"), Reply::err(Error::Stale));
     assert_eq!(rig.create(h, "bad/name"), Reply::err(Error::Invalid));
 
     let read_only = rig.open(rig.root, Rights::READ);
     assert_eq!(rig.create(read_only, "x"), Reply::err(Error::Denied));
+}
+
+#[test]
+fn mkdir_makes_a_directory_that_takes_children() {
+    let rig = Rig::new("mkdir");
+    let h = rig.open(rig.root, Rights::WRITE);
+
+    let made = rd_of(rig.mkdir(h, "sub"));
+    assert_eq!(rig.name(made), "sub");
+    assert!(rig.dir.path("sub").is_dir());
+    assert_eq!(rig.flags(made), Flags::READ | Flags::WRITE | Flags::CONTAINER);
+    assert_eq!(rig.lookup(rig.root, "sub"), made);
+
+    // It is a directory like any other: a file goes in it.
+    let below = rig.open(made, Rights::WRITE);
+    let file = rd_of(rig.create(below, "deep"));
+    assert_eq!(rig.lookup(made, "deep"), file);
+    assert!(rig.dir.path("sub/deep").is_file());
+
+    assert_eq!(rig.mkdir(h, "sub"), Reply::err(Error::Stale));
+    assert_eq!(rig.create(h, "sub"), Reply::err(Error::Stale));
+    assert_eq!(rig.mkdir(h, "a/b"), Reply::err(Error::Invalid));
 }
 
 #[test]
