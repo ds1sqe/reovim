@@ -72,6 +72,11 @@ impl Pending {
         outcome
     }
 
+    /// Every outstanding token with its wait; the core writes them.
+    pub fn all(&self) -> impl Iterator<Item = (Token, &Wait)> {
+        self.by_token.iter().map(|(token, wait)| (*token, wait))
+    }
+
     /// Mark a waiting token; a finished one is left alone.
     pub fn cancel(&mut self, token: Token) -> Result<(), Error> {
         let wait = self.by_token.get_mut(&token).ok_or(Error::Invalid)?;

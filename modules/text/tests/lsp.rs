@@ -11,7 +11,7 @@ use reovim_kernel_interface::{
     Booted, Caller, Calls, Driver, DriverId, Error, Flags, Handle, Hash,
     Module, Op, Out, Rd, Reply, Rights, Token,
 };
-use reovim_kernel_runtime::{Kernel, Limits, ROOT};
+use reovim_kernel_runtime::{Heap, Kernel, Limits, ROOT};
 use reovim_module_text::{history, open, text};
 use reovim_sdk::{declare, decode, encode};
 
@@ -214,7 +214,7 @@ impl Rig {
 #[test]
 fn rename_across_five_buffers_reports_the_stale_one() {
     let dir = Dir::new();
-    let kernel = Kernel::new(clock::now, Limits::default());
+    let kernel = Kernel::new(clock::now, Heap::default, Limits::default());
     let load = |name: &str, booted: Booted| {
         kernel.load(name, booted.module, booted.drivers).unwrap();
     };

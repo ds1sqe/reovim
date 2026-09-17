@@ -41,10 +41,15 @@ pub fn remote(
 pub fn bare(
     socket: &str,
     log: Option<&str>,
+    sys: &[(String, String)],
     line: Option<usize>,
     file: Option<&str>,
 ) -> Result<u8, Fail> {
-    let (kernel, _modules) = boot("/")?;
+    let (kernel, _modules) = boot("/", sys)?;
+    // Before the terminal is taken: the hook `enter` installs wraps
+    // this one, so a panic gives the terminal back, then says where
+    // the core went.
+    crate::dump::watch(&kernel);
     let mut links = Links::listen(socket)?;
     let mut sink = log.map(|path| Sink::open(&kernel, path)).transpose()?;
     let dir = under("", &reovim_host::dirs::work()?);

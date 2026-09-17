@@ -13,7 +13,7 @@ use reovim_kernel_interface::wire::{self, Message};
 use reovim_kernel_interface::{
     Caller, Decl, Error, Handle, Kind, Method, Op, Out, Rd, Reply, Rights, Ty,
 };
-use reovim_kernel_runtime::{Kernel, Limits, ROOT};
+use reovim_kernel_runtime::{Heap, Kernel, Limits, ROOT};
 
 /// The counter, its rd and the token of a call answered pending.
 static COUNT: AtomicU64 = AtomicU64::new(0);
@@ -253,7 +253,7 @@ fn a_descriptor_serves_through_the_kernel() {
     let (name, booted) =
         unsafe { boot(&raw const MODULE, Rc::new(())) }.unwrap();
     assert_eq!(name, "native");
-    let kernel = Kernel::new(|| 1, Limits::default());
+    let kernel = Kernel::new(|| 1, Heap::default, Limits::default());
     kernel.load(&name, booted.module, booted.drivers).unwrap();
     let caller = kernel.caller_new();
     let rig = Rig { kernel, caller, seq: Cell::new(0) };

@@ -10,21 +10,28 @@ use crate::table::ROOT;
 pub struct Ring {
     events: VecDeque<Event>,
     next_seq: u64,
-    cap: usize,
 }
 
 impl Ring {
-    pub const fn new(cap: usize) -> Self {
-        Self { events: VecDeque::new(), next_seq: 1, cap }
+    /// Empty. How many events it keeps is `/sys/limit/watch_ring`,
+    /// given to every push, so the ring holds no second copy of it.
+    pub const fn new() -> Self {
+        Self { events: VecDeque::new(), next_seq: 1 }
     }
 
-    pub fn push(&mut self, rd: Rd, kind: Kind, child: Option<Rd>) {
+    /// One event, the oldest trimmed until `cap` are left.
+    pub fn push(&mut self, rd: Rd, kind: Kind, child: Option<Rd>, cap: usize) {
         let seq = self.next_seq;
         self.next_seq += 1;
         self.events.push_back(Event { seq, rd, kind, child });
-        while self.events.len() > self.cap {
+        while self.events.len() > cap {
             self.events.pop_front();
         }
+    }
+
+    /// Every event kept, oldest first; the core writes them all.
+    pub fn events(&self) -> impl Iterator<Item = &Event> {
+        self.events.iter()
     }
 
     /// Position of the newest event; the cursor after reading all.

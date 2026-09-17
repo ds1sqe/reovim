@@ -55,14 +55,15 @@ pub struct Entry {
 pub struct Log {
     entries: VecDeque<Entry>,
     next_seq: u64,
-    cap: usize,
     level: u8,
 }
 
 impl Log {
-    /// Keeps the newest `cap` entries at `INFO` and above.
-    pub const fn new(cap: usize) -> Self {
-        Self { entries: VecDeque::new(), next_seq: 1, cap, level: INFO }
+    /// Empty, at `INFO` and above. How many entries it keeps is not
+    /// its own: `/sys/limit/log_ring` is the one source and every
+    /// append is given it, so the two can never drift.
+    pub const fn new() -> Self {
+        Self { entries: VecDeque::new(), next_seq: 1, level: INFO }
     }
 
     /// The level the ring keeps up to, printk's `console_loglevel` made
@@ -81,14 +82,28 @@ impl Log {
         level <= self.level
     }
 
-    pub fn append(&mut self, time: u64, mark: &str, level: u8, bytes: Vec<u8>) {
+    /// One entry, the oldest trimmed until `cap` are left: a `cap`
+    /// smaller than the ring is applied here, on the next append.
+    pub fn append(
+        &mut self,
+        time: u64,
+        mark: &str,
+        level: u8,
+        bytes: Vec<u8>,
+        cap: usize,
+    ) {
         let seq = self.next_seq;
         self.next_seq += 1;
         let mark = String::from(mark);
         self.entries.push_back(Entry { seq, time, mark, level, bytes });
-        while self.entries.len() > self.cap {
+        while self.entries.len() > cap {
             self.entries.pop_front();
         }
+    }
+
+    /// Every entry kept, oldest first; the core writes them all.
+    pub fn entries(&self) -> impl Iterator<Item = &Entry> {
+        self.entries.iter()
     }
 
     /// Whole entries from `seq` on, encoded, while they fit in `max`.

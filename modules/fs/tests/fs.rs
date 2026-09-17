@@ -7,7 +7,7 @@ use reovim_host::clock;
 use reovim_kernel_interface::{
     Driver, Error, Flags, Handle, Kind, Op, Out, Rd, Reply, Rights,
 };
-use reovim_kernel_runtime::{Kernel, Limits, ROOT};
+use reovim_kernel_runtime::{Heap, Kernel, Limits, ROOT};
 use reovim_module_fs::{Fs, fs};
 use reovim_sdk::{decode, encode};
 
@@ -44,7 +44,7 @@ struct Rig {
 impl Rig {
     fn new(test: &str) -> Self {
         let dir = Dir::new(test);
-        let kernel = Kernel::new(clock::now, Limits::default());
+        let kernel = Kernel::new(clock::now, Heap::default, Limits::default());
         let fs = Rc::new(Fs::new(dir.0.to_str().unwrap().to_string()));
         let driver: Rc<dyn Driver> = fs.clone();
         kernel.load("fs", fs, vec![driver]).unwrap();

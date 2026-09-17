@@ -8,7 +8,7 @@ use reovim_kernel_interface::{
     Caller, Calls, Decl, Driver, DriverId, Error, Flags, Hash, Method, Module,
     Op, Out, Rd, Reply, Rights, Ty,
 };
-use reovim_kernel_runtime::{Kernel, LOG, LOGLEVEL, Limits};
+use reovim_kernel_runtime::{Heap, Kernel, LOG, LOGLEVEL, Limits};
 
 fn ok(kernel: &Kernel, caller: Caller, seq: u64, op: Op) -> Out {
     match kernel.submit(caller, seq, op) {
@@ -20,7 +20,7 @@ fn ok(kernel: &Kernel, caller: Caller, seq: u64, op: Op) -> Out {
 #[test]
 fn the_oldest_entries_are_trimmed() {
     let limits = Limits { log_ring: 3, ..Limits::default() };
-    let kernel = Kernel::new(|| 7, limits);
+    let kernel = Kernel::new(|| 7, Heap::default, limits);
     let caller = kernel.caller_new();
     let open = Op::Open { rd: LOG, rights: Rights::READ | Rights::WRITE };
     let Out::Handle(h) = ok(&kernel, caller, 1, open) else { panic!("open") };
@@ -88,7 +88,7 @@ impl Driver for Broken {}
 
 #[test]
 fn a_written_entry_takes_its_level_from_the_printk_prefix() {
-    let kernel = Kernel::new(|| 7, Limits::default());
+    let kernel = Kernel::new(|| 7, Heap::default, Limits::default());
     let caller = kernel.caller_new();
     let open = Op::Open { rd: LOG, rights: Rights::READ | Rights::WRITE };
     let Out::Handle(h) = ok(&kernel, caller, 1, open) else { panic!("open") };
@@ -115,7 +115,7 @@ fn a_written_entry_takes_its_level_from_the_printk_prefix() {
 #[test]
 fn every_level_the_kernel_writes_has_its_source() {
     let limits = Limits { watch_ring: 2, ..Limits::default() };
-    let kernel = Kernel::new(|| 7, limits);
+    let kernel = Kernel::new(|| 7, Heap::default, limits);
     let broken = Rc::new(Broken);
     assert!(kernel.load("broken", broken.clone(), vec![broken]).is_err());
 
@@ -160,19 +160,25 @@ fn texts(kernel: &Kernel) -> Vec<String> {
     written(kernel).into_iter().map(|(_, _, text)| text).collect()
 }
 
-/// A traced line without its measure: what the clock counted is the
-/// host's, and only that the Kernel measured it at all belongs here.
+/// A traced line without its measure: what the clock and the host's
+/// allocator counted are the host's, and only that the Kernel measured
+/// the op at all belongs here.
 fn measured(line: &str) -> String {
-    let (head, took) = line.rsplit_once(" took=").unwrap_or_else(|| {
+    let (words, spent) = line.rsplit_once(" took=").unwrap_or_else(|| {
         panic!("no took=: {line}");
     });
-    assert!(took.parse::<u64>().unwrap() > 0, "{line}");
-    head.to_string()
+    let (nanos, bytes) = spent.split_once(" heap=").unwrap_or_else(|| {
+        panic!("no heap=: {line}");
+    });
+    assert!(nanos.parse::<u64>().unwrap() > 0, "{line}");
+    assert!(bytes.starts_with(['+', '-']), "{line}");
+    assert!(bytes[1..].parse::<u64>().is_ok(), "{line}");
+    words.to_string()
 }
 
 #[test]
 fn the_level_is_read_back_by_name_and_written_by_name_or_number() {
-    let kernel = Kernel::new(tick, Limits::default());
+    let kernel = Kernel::new(tick, Heap::default, Limits::default());
     let caller = kernel.caller_new();
     let open = Op::Open { rd: LOGLEVEL, rights: Rights::READ | Rights::WRITE };
     let Out::Handle(h) = ok(&kernel, caller, 1, open) else { panic!("open") };
@@ -211,7 +217,7 @@ fn the_level_is_read_back_by_name_and_written_by_name_or_number() {
 
 #[test]
 fn at_debug_every_op_on_a_resource_is_one_line() {
-    let kernel = Kernel::new(tick, Limits::default());
+    let kernel = Kernel::new(tick, Heap::default, Limits::default());
     let session = kernel.session_new();
     let (caller, client) = kernel.connect(session, b"").unwrap();
     set_level(&kernel, "debug");
@@ -273,7 +279,7 @@ fn at_debug_every_op_on_a_resource_is_one_line() {
 
 #[test]
 fn at_info_no_trace_is_kept() {
-    let kernel = Kernel::new(tick, Limits::default());
+    let kernel = Kernel::new(tick, Heap::default, Limits::default());
     let session = kernel.session_new();
     let (caller, client) = kernel.connect(session, b"").unwrap();
     let look = Op::Lookup { rd: client, name: "capability".to_string() };
@@ -296,7 +302,7 @@ fn connected(session: Rd, client: Rd) -> String {
 
 #[test]
 fn a_link_that_ends_says_it_disconnected() {
-    let kernel = Kernel::new(tick, Limits::default());
+    let kernel = Kernel::new(tick, Heap::default, Limits::default());
     let session = kernel.session_new();
     let (caller, client) = kernel.connect(session, b"").unwrap();
     kernel.caller_end(caller);
@@ -362,7 +368,7 @@ impl Driver for Api {
 
 #[test]
 fn a_call_is_a_pair_and_the_reply_says_what_it_took() {
-    let kernel = Kernel::new(tick, Limits::default());
+    let kernel = Kernel::new(tick, Heap::default, Limits::default());
     let module = Rc::new(Api::default());
     kernel.load("api", module.clone(), vec![module.clone()]).unwrap();
     let cell = module.0.get().unwrap();

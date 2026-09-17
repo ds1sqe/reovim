@@ -11,7 +11,7 @@ use reovim_kernel_interface::{
     Caller, Calls, Decl, Driver, DriverId, Error, Event, Flags, Handle, Hash,
     Kind, Method, Module, ModuleId, Op, Out, Rd, Reply, Rights, Token, Ty,
 };
-use reovim_kernel_runtime::{Kernel, Limits, ROOT, SYS};
+use reovim_kernel_runtime::{Heap, Kernel, Limits, ROOT, SYS};
 
 static CLOCK: AtomicU64 = AtomicU64::new(1);
 
@@ -181,7 +181,7 @@ struct Rig {
 
 impl Rig {
     fn new(limits: Limits) -> Self {
-        let kernel = Kernel::new(tick, limits);
+        let kernel = Kernel::new(tick, Heap::default, limits);
         let test = Rc::new(Test::default());
         let driver: Rc<dyn Driver> = test.clone();
         let module = kernel.load("t", test.clone(), vec![driver]).unwrap();
@@ -294,10 +294,23 @@ fn fixed_tree_is_reachable_from_root() {
     let log = rig.lookup(SYS, "log");
     let decls = rig.lookup(SYS, "decls");
     let level = rig.lookup(SYS, "loglevel");
+    let limit = rig.lookup(SYS, "limit");
+    let mem = rig.lookup(SYS, "mem");
+    let core = rig.lookup(SYS, "core");
+    // A new one is appended, so no fixed id ever moves.
     assert_eq!(
         rig.ok(Op::Children { rd: SYS }),
-        Out::Rds(vec![decls, log, level])
+        Out::Rds(vec![decls, log, level, limit, mem, core])
     );
+    let five = [
+        "watch_ring",
+        "pending_per_handle",
+        "reply_window",
+        "log_ring",
+        "reentry",
+    ];
+    let cells: Vec<Rd> = five.iter().map(|n| rig.lookup(limit, n)).collect();
+    assert_eq!(rig.ok(Op::Children { rd: limit }), Out::Rds(cells));
     assert_eq!(
         rig.err(Op::Lookup { rd: ROOT, name: "none".into() }),
         Error::Invalid
@@ -820,6 +833,41 @@ fn a_driver_serving_itself_is_refused_not_hung() {
     let plain = rig.open(mirror.plain.get().unwrap(), Rights::READ);
     let read = Op::Read { h: plain, at: 0, len: 8 };
     assert_eq!(rig.ok(read), Out::Bytes(b"plain".to_vec()));
+}
+
+/// The cell `/sys/limit/<name>` written `value` by a caller of its own.
+fn limit(rig: &Rig, name: &str, value: &str) -> Reply<Out> {
+    let rd = rig.lookup(rig.lookup(SYS, "limit"), name);
+    let h = rig.open(rd, Rights::WRITE);
+    rig.submit(Op::Write { h, at: 0, bytes: value.as_bytes().to_vec() })
+}
+
+#[test]
+fn a_limit_written_holds_from_the_next_op_on() {
+    let rig = Rig::default();
+    let mirror = mirror(&rig);
+    let deep = usize::from(Limits::default().reentry);
+    let h = rig.open(mirror.own.get().unwrap(), Rights::READ);
+
+    // The chain the default `reentry` bounds, and the same chain two
+    // steps longer once the parameter says so: a limit is applied
+    // where it is read, so the very next op stands under the new one.
+    assert_eq!(rig.err(Op::Read { h, at: 0, len: 4 }), Error::Busy);
+    assert_eq!(mirror.reads.get(), deep);
+    assert!(matches!(limit(&rig, "reentry", "10"), Reply::Ready(Ok(_))));
+    assert_eq!(rig.err(Op::Read { h, at: 0, len: 4 }), Error::Busy);
+    assert_eq!(mirror.reads.get(), deep + 10, "ten more before Busy");
+
+    // And a Pending cap of one: the second wait on a handle is `Busy`
+    // where sixteen were before, with no Kernel made anew.
+    assert!(matches!(
+        limit(&rig, "pending_per_handle", "1"),
+        Reply::Ready(Ok(_))
+    ));
+    let cell = rig.open(rig.cell(), Rights::READ | Rights::WRITE);
+    let slow = || Op::Call { h: cell, api: api(), method: 2, input: vec![] };
+    assert!(matches!(rig.submit(slow()), Reply::Pending(_)));
+    assert_eq!(rig.err(slow()), Error::Busy, "one wait is the cap now");
 }
 
 #[test]

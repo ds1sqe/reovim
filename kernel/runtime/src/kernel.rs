@@ -6,6 +6,7 @@ use alloc::rc::Rc;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::cell::{Cell, RefCell};
+use core::fmt::Write as _;
 
 use reovim_kernel_interface::{
     Caller, Decl, Driver, DriverId, Error, Flags, Handle, Hash, Kind, Module,
@@ -13,14 +14,30 @@ use reovim_kernel_interface::{
 };
 
 use crate::calls::ModuleCalls;
-use crate::log::{DEBUG, ERR, INFO, Log, NOTICE};
-use crate::pending::Pending;
+use crate::log::{self, DEBUG, ERR, INFO, Log, NOTICE};
+use crate::pending::{Pending, State as Waiting};
 use crate::table::{
-    CONTAINER, LOG, LOGLEVEL, MODULES, Node, OPEN, Owner, SESSIONS, Table,
+    CONTAINER, LOG, LOGLEVEL, MODULES, Node, OPEN, Owner, Param, SESSIONS,
+    Table,
 };
 use crate::watch::Ring;
 
-/// Sizes of the bounded Kernel state.
+/// What the host's allocator counts of the process heap: the Kernel
+/// owns no allocator, so it takes this reading the way it takes time.
+/// `/sys/mem` is one of these, and a trace line says what its op cost.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct Heap {
+    /// Bytes handed out and not given back.
+    pub live: u64,
+    /// The largest `live` ever reached.
+    pub peak: u64,
+    /// Allocations made since the process began.
+    pub allocs: u64,
+}
+
+/// Sizes of the bounded Kernel state. Each is one cell under
+/// `/sys/limit`, read and written there and applied as it is written;
+/// this is the one place each number is kept.
 #[derive(Clone, Copy, Debug)]
 pub struct Limits {
     /// Events kept for `Since`.
@@ -35,6 +52,48 @@ pub struct Limits {
     /// answers `Busy`; a Driver served from inside its own op is the
     /// chain this bounds.
     pub reentry: u8,
+}
+
+impl Limits {
+    /// The field `param` names, as its cell reads it.
+    #[must_use]
+    pub fn get(&self, param: Param) -> u64 {
+        let size = |n: usize| u64::try_from(n).unwrap_or(u64::MAX);
+        match param {
+            Param::WatchRing => size(self.watch_ring),
+            Param::Pending => size(self.pending_per_handle),
+            Param::ReplyWindow => size(self.reply_window),
+            Param::LogRing => size(self.log_ring),
+            Param::Reentry => u64::from(self.reentry),
+        }
+    }
+
+    /// The field `param` names set to `value`, or `Invalid` when the
+    /// Kernel cannot hold that number. Every one of the five is a size
+    /// the Kernel needs, so `0` is refused for all of them: at `0` a
+    /// ring keeps nothing, a cap refuses everything, and `reentry` 0
+    /// would refuse every op before it began.
+    pub(crate) fn set(
+        &mut self,
+        param: Param,
+        value: u64,
+    ) -> Result<(), Error> {
+        if value == 0 {
+            return Err(Error::Invalid);
+        }
+        let size = || usize::try_from(value).map_err(|_| Error::Invalid);
+        match param {
+            Param::WatchRing => self.watch_ring = size()?,
+            Param::Pending => self.pending_per_handle = size()?,
+            Param::ReplyWindow => self.reply_window = size()?,
+            Param::LogRing => self.log_ring = size()?,
+            Param::Reentry => {
+                self.reentry =
+                    u8::try_from(value).map_err(|_| Error::Invalid)?;
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Default for Limits {
@@ -96,6 +155,11 @@ pub struct CallerState {
 pub struct State {
     /// The host's monotonic tick, so an entry stamps itself.
     clock: fn() -> u64,
+    /// The host's count of the process heap; `/sys/mem` is this read.
+    heap: fn() -> Heap,
+    /// The five parameters, the one place each is kept. The cells
+    /// under `/sys/limit` read and write them here.
+    pub limits: Limits,
     pub table: Table,
     pub decls: BTreeMap<Hash, Decl>,
     pub modules: Vec<Loaded>,
@@ -109,6 +173,11 @@ pub struct State {
     pub log: Log,
     /// The bytes of every `Node::Cell`.
     pub cells: BTreeMap<Rd, Vec<u8>>,
+    /// The core each open handle on `/sys/core` serves. A core is one
+    /// moment, so the text is made when the handle opens and read from
+    /// there: a reader walking it in chunks is never torn by what the
+    /// Kernel did between two of them.
+    pub cores: BTreeMap<Handle, Vec<u8>>,
     pub next_session: u64,
     pub next_client: u64,
 }
@@ -118,11 +187,16 @@ impl State {
         (self.clock)()
     }
 
+    /// What the host's allocator counts now.
+    pub fn heap(&self) -> Heap {
+        (self.heap)()
+    }
+
     /// One event on `rd`, and at `debug` one line saying so. The log's
     /// own rds are left out: the line an event on them would write
     /// emits an event of its own, which would write the next.
     pub fn emit(&mut self, rd: Rd, kind: Kind, child: Option<Rd>) {
-        self.events.push(rd, kind, child);
+        self.events.push(rd, kind, child, self.limits.watch_ring);
         if rd == LOG || rd == LOGLEVEL {
             return;
         }
@@ -145,7 +219,7 @@ impl State {
             return;
         }
         let now = self.now();
-        self.log.append(now, mark, level, bytes);
+        self.log.append(now, mark, level, bytes, self.limits.log_ring);
         self.emit(LOG, Kind::Modify, None);
     }
 
@@ -357,7 +431,7 @@ impl Drop for Depth<'_> {
 /// The Kernel. See the crate docs.
 pub struct Kernel {
     clock: fn() -> u64,
-    limits: Limits,
+    heap: fn() -> Heap,
     /// Ops standing inside ops. The Kernel is single-threaded, so the
     /// re-entrant chain is the only chain this can be counting.
     depth: Cell<u8>,
@@ -365,12 +439,17 @@ pub struct Kernel {
 }
 
 impl Kernel {
-    /// `clock` is the host's monotonic tick; the Kernel stamps times and
-    /// log entries with it.
+    /// `clock` is the host's monotonic tick, which stamps times and log
+    /// entries; `heap` is the host's count of the process heap, which
+    /// `/sys/mem` and the `heap=` on a trace line read. `limits` are
+    /// the parameters the Kernel starts with; `/sys/limit` holds them
+    /// from then on.
     #[must_use]
-    pub fn new(clock: fn() -> u64, limits: Limits) -> Self {
+    pub fn new(clock: fn() -> u64, heap: fn() -> Heap, limits: Limits) -> Self {
         let state = State {
             clock,
+            heap,
+            limits,
             table: Table::new(clock()),
             decls: BTreeMap::new(),
             modules: Vec::new(),
@@ -380,18 +459,34 @@ impl Kernel {
             callers: BTreeMap::new(),
             next_caller: 1,
             pending: Pending::new(),
-            events: Ring::new(limits.watch_ring),
-            log: Log::new(limits.log_ring),
+            events: Ring::new(),
+            log: Log::new(),
             cells: BTreeMap::new(),
+            cores: BTreeMap::new(),
             next_session: 1,
             next_client: 1,
         };
         let depth = Cell::new(0);
-        Self { clock, limits, depth, state: RefCell::new(state) }
+        Self { clock, heap, depth, state: RefCell::new(state) }
     }
 
     pub(crate) fn now(&self) -> u64 {
         (self.clock)()
+    }
+
+    /// What the host's allocator counts now.
+    pub(crate) fn heap(&self) -> Heap {
+        (self.heap)()
+    }
+
+    /// Everything the Kernel holds, as the text `/sys/core` serves, or
+    /// `None` while the `State` is borrowed. A Kernel that cannot take
+    /// its own lock says nothing, which is what a panic under the
+    /// borrow leaves; the caller is a panic hook, and a hook that
+    /// panicked itself would take the process down twice.
+    #[must_use]
+    pub fn core(&self) -> Option<Vec<u8>> {
+        self.state.try_borrow().ok().map(|s| core(&s))
     }
 
     /// One `kernel` entry, built only when the level keeps it.
@@ -404,15 +499,17 @@ impl Kernel {
         self.state.borrow().log.keeps(level)
     }
 
-    pub(crate) const fn limits(&self) -> &Limits {
-        &self.limits
+    /// The parameters as they stand now, which a write to
+    /// `/sys/limit/<name>` may have moved since boot.
+    pub(crate) fn limits(&self) -> Limits {
+        self.state.borrow().limits
     }
 
     /// One step deeper into `run`, or `None` at `Limits::reentry`:
     /// the guard is what holds the step, and dropping it takes it back.
     pub(crate) fn deeper(&self) -> Option<Depth<'_>> {
         let depth = self.depth.get();
-        if depth >= self.limits.reentry {
+        if depth >= self.limits().reentry {
             return None;
         }
         self.depth.set(depth + 1);
@@ -663,10 +760,11 @@ impl Kernel {
 
     fn remember(&self, caller: Caller, seq: u64, reply: Reply<Out>) {
         let mut s = self.state.borrow_mut();
+        let window = s.limits.reply_window;
         let Some(state) = s.callers.get_mut(&caller) else { return };
         state.last_seq = Some(seq);
         state.window.push_back((seq, reply));
-        while state.window.len() > self.limits.reply_window {
+        while state.window.len() > window {
             state.window.pop_front();
         }
     }
@@ -687,4 +785,250 @@ impl Kernel {
         let index = s.driver_index(module, driver)?;
         Ok((index, s.drivers[index].clone()))
     }
+}
+
+/// Everything the `State` holds, as one text: `key=value` lines in the
+/// log's own form, one line per thing, each beginning with the word of
+/// its section. The sections come in one order — `limit`, `module`,
+/// `rd`, `cell`, `decl`, `caller`, `handle`, `pending`, `event`, `log`,
+/// `mem` — so two cores of the same Kernel differ only where it did.
+/// `mem` is last, being the one line that moves as the core is made.
+///
+/// Nothing here is a Module's: the design gives a Module its own
+/// memory, and a Module that wants its state in a core offers a Read
+/// rd, which the tree already holds.
+pub fn core(s: &State) -> Vec<u8> {
+    let mut out = String::new();
+    limits(s, &mut out);
+    modules(s, &mut out);
+    rds(s, &mut out);
+    cells(s, &mut out);
+    decls(s, &mut out);
+    callers(s, &mut out);
+    handles(s, &mut out);
+    pendings(s, &mut out);
+    events(s, &mut out);
+    entries(s, &mut out);
+    out.push_str(&mem(s.heap()));
+    out.into_bytes()
+}
+
+/// The `/sys/mem` line: what the host's allocator counts.
+pub fn mem(heap: Heap) -> String {
+    let Heap { live, peak, allocs } = heap;
+    alloc::format!("live={live} peak={peak} allocs={allocs}")
+}
+
+/// A number that may be missing, as the core writes one: `-`.
+fn or_dash(value: Option<u64>) -> String {
+    value.map_or_else(|| String::from("-"), |n| alloc::format!("{n}"))
+}
+
+/// `yes` or `no`, the core's word for a flag.
+const fn yes(set: bool) -> &'static str {
+    if set { "yes" } else { "no" }
+}
+
+/// The rights in a flags or rights word, as a listing writes them.
+const fn rw(read: bool, write: bool) -> &'static str {
+    match (read, write) {
+        (true, true) => "rw",
+        (true, false) => "r",
+        (false, true) => "w",
+        (false, false) => "-",
+    }
+}
+
+fn limits(s: &State, out: &mut String) {
+    for param in Param::ALL {
+        let _ = writeln!(out, "limit {}={}", param.name(), s.limits.get(param));
+    }
+    let _ = writeln!(out, "limit loglevel={}", log::name(s.log.level()));
+}
+
+fn modules(s: &State, out: &mut String) {
+    for (id, loaded) in s.modules.iter().enumerate() {
+        let _ = writeln!(
+            out,
+            "module id={id} name={} loaded={} caller={}",
+            loaded.name,
+            yes(loaded.module.is_some()),
+            loaded.caller.0
+        );
+    }
+}
+
+fn rds(s: &State, out: &mut String) {
+    for (rd, entry) in s.table.all() {
+        let (node, module) = owner(entry.owner);
+        let flags = rw(
+            entry.flags.contains(Flags::READ),
+            entry.flags.contains(Flags::WRITE),
+        );
+        let _ = writeln!(
+            out,
+            "rd rd={} parent={} name={} node={node} flags={flags} \
+             ctime={} mtime={} atime={} module={module} apis={}",
+            rd.0,
+            or_dash(entry.parent.map(|p| p.0)),
+            entry.name.as_deref().unwrap_or("-"),
+            entry.ctime,
+            entry.mtime,
+            entry.atime,
+            hashes(&entry.apis),
+        );
+    }
+}
+
+/// The apis an rd offers, by hash, or `-` when it offers none.
+fn hashes(apis: &[Hash]) -> String {
+    if apis.is_empty() {
+        return String::from("-");
+    }
+    let mut out = String::new();
+    for (at, hash) in apis.iter().enumerate() {
+        let comma = if at == 0 { "" } else { "," };
+        let _ = write!(out, "{comma}{:016x}", hash.0);
+    }
+    out
+}
+
+/// What an rd is and whose it is, in the Kernel's own words.
+fn owner(owner: Owner) -> (&'static str, String) {
+    let module = |id: ModuleId| alloc::format!("{}", id.0);
+    match owner {
+        Owner::Driver { module: id, .. } => ("driver", module(id)),
+        Owner::Kernel(Node::Home(id)) => ("home", module(id)),
+        Owner::Kernel(node) => (kind_of(node), String::from("-")),
+    }
+}
+
+const fn kind_of(node: Node) -> &'static str {
+    match node {
+        Node::Container => "container",
+        Node::Home(_) => "home",
+        Node::Decl(_) => "decl",
+        Node::Log => "log",
+        Node::Level => "level",
+        Node::Limit(_) => "limit",
+        Node::Mem => "mem",
+        Node::Core => "core",
+        Node::Cell => "cell",
+    }
+}
+
+fn cells(s: &State, out: &mut String) {
+    for (rd, bytes) in &s.cells {
+        let mut hex = String::new();
+        for byte in bytes {
+            let _ = write!(hex, "{byte:02x}");
+        }
+        let _ =
+            writeln!(out, "cell rd={} len={} bytes={hex}", rd.0, bytes.len());
+    }
+}
+
+fn decls(s: &State, out: &mut String) {
+    for (hash, decl) in &s.decls {
+        let _ = writeln!(
+            out,
+            "decl hash={:016x} api={} ver={}",
+            hash.0, decl.api, decl.ver
+        );
+    }
+}
+
+fn callers(s: &State, out: &mut String) {
+    for (caller, state) in &s.callers {
+        let _ = writeln!(
+            out,
+            "caller id={} named={} live={} session={} client={} module={}",
+            caller.0,
+            yes(!state.credential.is_empty()),
+            yes(state.live),
+            or_dash(state.client.map(|(at, _)| at.0)),
+            or_dash(state.client.map(|(_, rd)| rd.0)),
+            or_dash(state.module.map(|m| u64::from(m.0))),
+        );
+    }
+}
+
+fn handles(s: &State, out: &mut String) {
+    for (h, slot) in &s.handles {
+        let rights = rw(
+            slot.rights.contains(Rights::READ),
+            slot.rights.contains(Rights::WRITE),
+        );
+        let _ = writeln!(
+            out,
+            "handle caller={} h={} rd={} rights={rights} watch={}",
+            slot.caller.0,
+            h.0,
+            slot.rd.0,
+            if slot.watching { "on" } else { "off" }
+        );
+    }
+}
+
+fn pendings(s: &State, out: &mut String) {
+    for (token, wait) in s.pending.all() {
+        let caller = s.handles.get(&wait.handle).map(|slot| slot.caller.0);
+        let state = match wait.state {
+            Waiting::Waiting => "waiting",
+            Waiting::Done(_) => "done",
+            Waiting::Cancelled => "cancelled",
+        };
+        let _ = writeln!(
+            out,
+            "pending token={} caller={} handle={} state={state}",
+            token.0,
+            or_dash(caller),
+            wait.handle.0
+        );
+    }
+}
+
+fn events(s: &State, out: &mut String) {
+    for event in s.events.events() {
+        let _ = writeln!(
+            out,
+            "event seq={} rd={} kind={} child={}",
+            event.seq,
+            event.rd.0,
+            kind_name(event.kind),
+            or_dash(event.child.map(|c| c.0))
+        );
+    }
+}
+
+fn entries(s: &State, out: &mut String) {
+    for entry in s.log.entries() {
+        let _ = writeln!(
+            out,
+            "log seq={} time={} mark={} level={} text={}",
+            entry.seq,
+            entry.time,
+            entry.mark,
+            entry.level,
+            escaped(&entry.bytes)
+        );
+    }
+}
+
+/// A log entry's bytes on one line: a newline, a backslash and anything
+/// outside printable ASCII are escaped, so one entry is one line
+/// however it was written and grep finds it whole.
+fn escaped(bytes: &[u8]) -> String {
+    let mut out = String::new();
+    for byte in bytes {
+        match byte {
+            b'\\' => out.push_str("\\\\"),
+            b'\n' => out.push_str("\\n"),
+            0x20..=0x7e => out.push(char::from(*byte)),
+            other => {
+                let _ = write!(out, "\\x{other:02x}");
+            }
+        }
+    }
+    out
 }

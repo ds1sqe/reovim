@@ -8,7 +8,7 @@ use reovim_host::clock;
 use reovim_kernel_interface::{
     Driver, Error, Handle, Op, Out, Rd, Reply, Rights,
 };
-use reovim_kernel_runtime::{Kernel, Limits, ROOT};
+use reovim_kernel_runtime::{Heap, Kernel, Limits, ROOT};
 use reovim_module_clipboard::Clipboard;
 
 struct Rig {
@@ -36,7 +36,7 @@ impl Rig {
         };
         let module = Rc::new(Clipboard::new(Box::new(read), Box::new(write)));
         let driver: Rc<dyn Driver> = module.clone();
-        let kernel = Kernel::new(clock::now, Limits::default());
+        let kernel = Kernel::new(clock::now, Heap::default, Limits::default());
         kernel.load("clipboard", module, vec![driver]).unwrap();
         let caller = kernel.caller_new();
         Self { kernel, caller, seq: Cell::new(0), store }

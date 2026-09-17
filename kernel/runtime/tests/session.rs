@@ -10,7 +10,7 @@ use reovim_kernel_interface::{
     Caller, Calls, Driver, DriverId, Error, Flags, Kind, Module, ModuleId, Op,
     Out, Rd, Reply, Rights,
 };
-use reovim_kernel_runtime::{Kernel, Limits, ROOT};
+use reovim_kernel_runtime::{Heap, Kernel, Limits, ROOT};
 
 static CLOCK: AtomicU64 = AtomicU64::new(1);
 
@@ -50,7 +50,7 @@ struct Rig {
 
 impl Rig {
     fn new() -> Self {
-        let kernel = Kernel::new(tick, Limits::default());
+        let kernel = Kernel::new(tick, Heap::default, Limits::default());
         let store = Rc::new(Store);
         let driver: Rc<dyn Driver> = store.clone();
         let module = kernel.load("store", store, vec![driver]).unwrap();

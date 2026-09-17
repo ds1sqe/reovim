@@ -12,7 +12,7 @@ use reovim_kernel_interface::{
     Booted, Calls, Driver, Error, Flags, Kind, Module, Op, Out, Rd, Reply,
     Rights, Token, Ty,
 };
-use reovim_kernel_runtime::{Connection, Kernel, Limits, NoLoader};
+use reovim_kernel_runtime::{Connection, Heap, Kernel, Limits, NoLoader};
 
 /// A directory of its own for one test, removed on drop.
 struct Dir(PathBuf);
@@ -139,7 +139,7 @@ fn load(kernel: &Kernel, name: &str, booted: &Booted) {
 impl Rig {
     fn new(test: &str) -> Self {
         let dir = Dir::new(test);
-        let kernel = Kernel::new(clock::now, Limits::default());
+        let kernel = Kernel::new(clock::now, Heap::default, Limits::default());
         load(&kernel, "fs", &reovim_module_fs::boot(dir.0.to_str().unwrap()));
         load(&kernel, "text", &reovim_module_text::boot(""));
         let slow = Rc::new(Slow::default());

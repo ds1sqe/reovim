@@ -11,8 +11,10 @@ use reovim_kernel_interface::{
 /// Fixed ids, allocated in this order.
 ///
 /// `/` 0, `/sys` 1, `/sys/decls` 2, `/sys/log` 3, `/module` 4,
-/// `/session` 5, `/var` 6, `/sys/loglevel` 7. Ids below `FIRST` are
-/// reserved for the Kernel; everything registered later starts there.
+/// `/session` 5, `/var` 6, `/sys/loglevel` 7, `/sys/limit` 8 with its
+/// five cells 9 to 13, `/sys/mem` 14, `/sys/core` 15. A new one is
+/// appended so no id ever moves. Ids below `FIRST` are reserved for
+/// the Kernel; everything registered later starts there.
 pub const ROOT: Rd = Rd(0);
 pub const SYS: Rd = Rd(1);
 pub const DECLS: Rd = Rd(2);
@@ -20,6 +22,9 @@ pub const LOG: Rd = Rd(3);
 pub const MODULES: Rd = Rd(4);
 pub const SESSIONS: Rd = Rd(5);
 pub const LOGLEVEL: Rd = Rd(7);
+pub const LIMITS: Rd = Rd(8);
+pub const MEM: Rd = Rd(14);
+pub const CORE: Rd = Rd(15);
 const FIRST: u64 = 100;
 
 /// A Kernel Container.
@@ -30,7 +35,11 @@ pub const OPEN: Flags = CONTAINER.union(Flags::WRITE);
 /// A Kernel cell a caller may read and write.
 const RW: Flags = Flags::READ.union(Flags::WRITE);
 
-const FIXED: [(Rd, &str, Node, Flags); 7] = [
+/// A cell the Kernel reads and serves on the spot; a core is one
+/// moment, so nothing may be written to either.
+const R: Flags = Flags::READ;
+
+const FIXED: [(Rd, &str, Node, Flags); 15] = [
     (ROOT, "sys", Node::Container, CONTAINER),
     (SYS, "decls", Node::Container, CONTAINER),
     (SYS, "log", Node::Log, RW),
@@ -38,7 +47,65 @@ const FIXED: [(Rd, &str, Node, Flags); 7] = [
     (ROOT, "session", Node::Container, CONTAINER),
     (ROOT, "var", Node::Container, OPEN),
     (SYS, "loglevel", Node::Level, RW),
+    (SYS, "limit", Node::Container, CONTAINER),
+    (LIMITS, "watch_ring", Node::Limit(Param::WatchRing), RW),
+    (LIMITS, "pending_per_handle", Node::Limit(Param::Pending), RW),
+    (LIMITS, "reply_window", Node::Limit(Param::ReplyWindow), RW),
+    (LIMITS, "log_ring", Node::Limit(Param::LogRing), RW),
+    (LIMITS, "reentry", Node::Limit(Param::Reentry), RW),
+    (SYS, "mem", Node::Mem, R),
+    (SYS, "core", Node::Core, R),
 ];
+
+/// An rd whose ops are never traced: the log and the level a follower
+/// reads, which a line about would feed, and the two the Kernel makes
+/// at the read, which a trace would make a reading of itself.
+#[must_use]
+pub fn untraced(rd: Rd) -> bool {
+    [LOG, LOGLEVEL, MEM, CORE].contains(&rd)
+}
+
+/// An rd the Kernel makes at the read out of what it already holds.
+/// Reading one changes nothing, so it leaves no atime behind either.
+#[must_use]
+pub fn momentary(rd: Rd) -> bool {
+    rd == MEM || rd == CORE
+}
+
+/// One field of `Limits`, the cell under `/sys/limit` that holds it.
+/// The cells are the Kernel's parameters, as `/proc/sys/kernel/*` are
+/// Linux's: one value per file.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Param {
+    WatchRing,
+    Pending,
+    ReplyWindow,
+    LogRing,
+    Reentry,
+}
+
+impl Param {
+    /// The five in the order `/sys/limit` holds them.
+    pub const ALL: [Self; 5] = [
+        Self::WatchRing,
+        Self::Pending,
+        Self::ReplyWindow,
+        Self::LogRing,
+        Self::Reentry,
+    ];
+
+    /// The cell's name, which is the field's.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::WatchRing => "watch_ring",
+            Self::Pending => "pending_per_handle",
+            Self::ReplyWindow => "reply_window",
+            Self::LogRing => "log_ring",
+            Self::Reentry => "reentry",
+        }
+    }
+}
 
 /// Who serves an rd.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -59,6 +126,12 @@ pub enum Node {
     Log,
     /// `/sys/loglevel`; the level the log keeps up to, by name.
     Level,
+    /// `/sys/limit/<name>`; one field of `Limits` in decimal ASCII.
+    Limit(Param),
+    /// `/sys/mem`; what the host's allocator counts, at the read.
+    Mem,
+    /// `/sys/core`; everything the `State` holds, as text.
+    Core,
     /// Bytes the Kernel stores and serves, never parses:
     /// `/session/<id>/client/<cid>/capability`.
     Cell,

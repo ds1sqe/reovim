@@ -11,7 +11,7 @@ use reovim_kernel_abi::{RvModule, boot};
 use reovim_kernel_interface::{
     Caller, Error, Kind, Op, Out, Rd, Reply, Rights,
 };
-use reovim_kernel_runtime::{Kernel, Limits, ROOT};
+use reovim_kernel_runtime::{Heap, Kernel, Limits, ROOT};
 
 type Entry = unsafe extern "C" fn() -> *const RvModule;
 
@@ -80,7 +80,7 @@ fn hello_loads_serves_and_unloads() {
     let (name, booted) = unsafe { boot(descriptor, keep) }.unwrap();
     assert_eq!(name, "hello");
 
-    let kernel = Kernel::new(|| 1, Limits::default());
+    let kernel = Kernel::new(|| 1, Heap::default, Limits::default());
     kernel.load(&name, booted.module, booted.drivers).unwrap();
     let caller = kernel.caller_new();
     let rig = Rig { kernel, caller, seq: Cell::new(0) };

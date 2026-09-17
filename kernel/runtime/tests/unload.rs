@@ -8,7 +8,7 @@ use reovim_kernel_interface::{
     Caller, Calls, Decl, Driver, DriverId, Error, Flags, Handle, Kind, Method,
     Module, Op, Out, Rd, Reply, Rights, Ty,
 };
-use reovim_kernel_runtime::{Kernel, Limits, ROOT};
+use reovim_kernel_runtime::{Heap, Kernel, Limits, ROOT};
 
 /// One rd under home and one under `/var`; `start` keeps a handle on
 /// the first until method `release` closes it.
@@ -77,7 +77,7 @@ struct Rig {
 
 impl Rig {
     fn new() -> Self {
-        let kernel = Kernel::new(|| 1, Limits::default());
+        let kernel = Kernel::new(|| 1, Heap::default, Limits::default());
         let test = Rc::new(Test::default());
         let driver: Rc<dyn Driver> = test.clone();
         kernel.load("t", test.clone(), vec![driver]).unwrap();

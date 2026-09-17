@@ -7,9 +7,9 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread;
 use std::time::Duration;
 
-use reovim_host::{clock, fs, link};
-use reovim_kernel_interface::{Booted, Error};
-use reovim_kernel_runtime::{Connection, Kernel, Limits, Loader};
+use reovim_host::{clock, fs, link, mem};
+use reovim_kernel_interface::{Booted, Error, Op, Out, Reply, Rights};
+use reovim_kernel_runtime::{Connection, Heap, Kernel, Limits, Loader, ROOT};
 
 use crate::Fail;
 use crate::link::MODULES;
@@ -23,10 +23,30 @@ struct Inbound {
     answer: Sender<Option<Vec<u8>>>,
 }
 
+/// The process heap as the host counts it, in the Kernel's own shape.
+/// The Kernel owns no allocator, so it takes this reading as it takes
+/// the clock.
+fn heap() -> Heap {
+    let counted = mem::heap();
+    Heap { live: counted.live, peak: counted.peak, allocs: counted.allocs }
+}
+
 /// The Kernel with every linked module loaded over `root`. The modules
 /// live as long as the Kernel does.
-pub fn boot(root: &str) -> Result<(Rc<Kernel>, Vec<Booted>), Fail> {
-    let kernel = Kernel::new(clock::now, Limits::default());
+///
+/// `sys` are the `--sys NAME=VALUE` of the command line, each written
+/// to `/sys/NAME` before the first Module is there to see it, as the
+/// kernel command line's `loglevel=7` is set before init runs. A write
+/// the Kernel refuses refuses the boot.
+pub fn boot(
+    root: &str,
+    sys: &[(String, String)],
+) -> Result<(Rc<Kernel>, Vec<Booted>), Fail> {
+    let kernel = Kernel::new(clock::now, heap, Limits::default());
+    for (name, value) in sys {
+        set(&kernel, name, value)
+            .map_err(|error| Fail::Sys(name.clone(), value.clone(), error))?;
+    }
     let mut booted = Vec::new();
     for (name, boot) in MODULES {
         let module = boot(root);
@@ -34,6 +54,46 @@ pub fn boot(root: &str) -> Result<(Rc<Kernel>, Vec<Booted>), Fail> {
         booted.push(module);
     }
     Ok((Rc::new(kernel), booted))
+}
+
+/// `/sys/<name>` written `value`, on a caller of the boot's own that
+/// ends with the write.
+fn set(kernel: &Kernel, name: &str, value: &str) -> Result<(), Error> {
+    let caller = kernel.caller_new();
+    let written = written(kernel, caller, name, value);
+    kernel.caller_end(caller);
+    written
+}
+
+fn written(
+    kernel: &Kernel,
+    caller: reovim_kernel_interface::Caller,
+    name: &str,
+    value: &str,
+) -> Result<(), Error> {
+    let seq = std::cell::Cell::new(0);
+    let step = |op: Op| -> Result<Out, Error> {
+        seq.set(seq.get() + 1);
+        match kernel.submit(caller, seq.get(), op) {
+            Reply::Ready(result) => result,
+            Reply::Pending(_) => Err(Error::Unsupported),
+        }
+    };
+    let mut rd = ROOT;
+    for part in format!("sys/{name}").split('/') {
+        let name = part.to_string();
+        let Out::Rd(next) = step(Op::Lookup { rd, name })? else {
+            return Err(Error::Invalid);
+        };
+        rd = next;
+    }
+    let Out::Handle(h) = step(Op::Open { rd, rights: Rights::WRITE })? else {
+        return Err(Error::Invalid);
+    };
+    let bytes = value.as_bytes().to_vec();
+    step(Op::Write { h, at: 0, bytes })?;
+    step(Op::Close { h })?;
+    Ok(())
 }
 
 /// `load` and `unload` on a link: `.rvm` files through kernel/abi; the
@@ -117,8 +177,14 @@ impl Links {
 
 /// Serve `socket` from the directory `root` until killed; with `log`,
 /// every log entry goes to that file too.
-pub fn run(socket: &str, root: &str, log: Option<&str>) -> Result<(), Fail> {
-    let (kernel, _modules) = boot(root)?;
+pub fn run(
+    socket: &str,
+    root: &str,
+    log: Option<&str>,
+    sys: &[(String, String)],
+) -> Result<(), Fail> {
+    let (kernel, _modules) = boot(root, sys)?;
+    crate::dump::watch(&kernel);
     let mut links = Links::listen(socket)?;
     let mut sink = log.map(|path| Sink::open(&kernel, path)).transpose()?;
     eprintln!("reovim server: {socket} root {root}");

@@ -19,5 +19,5 @@ mod watch;
 
 pub use calls::ModuleCalls;
 pub use connection::{Connection, Loader, NoLoader};
-pub use kernel::{Kernel, Limits};
-pub use table::{LOG, LOGLEVEL, ROOT, SYS};
+pub use kernel::{Heap, Kernel, Limits};
+pub use table::{CORE, LIMITS, LOG, LOGLEVEL, MEM, Param, ROOT, SYS};

@@ -240,10 +240,15 @@ fn a_kernel_line_says_the_rd_the_api_and_the_method_in_words() {
         format!("call rd={root} api=fs method=create dispatch")
     );
     let head = format!("call rd={root} api=fs method=create reply took=");
-    let took = pair[1].strip_prefix(&head).unwrap_or_else(|| panic!("{said}"));
+    let spent = pair[1].strip_prefix(&head).unwrap_or_else(|| panic!("{said}"));
+    // What the round trip took and what it cost the heap; `heap=` is
+    // bytes already, so `dmesg` leaves it as the Kernel wrote it.
+    let (span, bytes) = spent.split_once(" heap=").unwrap();
     // A unit, not the Kernel's bare nanoseconds.
-    assert!(took.ends_with('s') && !took.ends_with("=s"), "{said}");
-    assert!(took.starts_with(|c: char| c.is_ascii_digit()), "{said}");
+    assert!(span.ends_with('s') && !span.ends_with("=s"), "{said}");
+    assert!(span.starts_with(|c: char| c.is_ascii_digit()), "{said}");
+    assert!(bytes.starts_with(['+', '-']), "{said}");
+    assert!(bytes[1..].parse::<u64>().is_ok(), "{said}");
     // The op the call was, and the ops around it, name the same path.
     let ops = said.lines().filter(|line| line.starts_with("op="));
     let call = ops.clone().find(|line| line.starts_with("op=call ")).unwrap();

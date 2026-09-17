@@ -5,6 +5,7 @@
 //! process.
 
 mod cli;
+mod dump;
 mod local;
 mod log;
 mod remote;
@@ -30,6 +31,8 @@ pub enum Fail {
     Client(Fault),
     /// One command of the cli, in the cli's own words.
     Cli(Miss),
+    /// A `--sys NAME=VALUE` the Kernel refused; nothing has started.
+    Sys(String, String, reovim_kernel_interface::Error),
     /// SIGTERM or SIGHUP: the terminal restored, nothing written.
     Signal,
 }
@@ -41,6 +44,9 @@ impl fmt::Display for Fail {
             Self::Host(error) => write!(f, "host: {error:?}"),
             Self::Client(fault) => write!(f, "{fault}"),
             Self::Cli(miss) => write!(f, "{miss}"),
+            Self::Sys(name, value, error) => {
+                write!(f, "--sys {name}={value}: {}", Fault::Kernel(*error))
+            }
             Self::Signal => write!(f, "ended by a signal"),
         }
     }
@@ -71,13 +77,16 @@ impl From<reovim_kernel_interface::Error> for Fail {
 }
 
 const USAGE: &str = "\
-usage: reovim server [--socket PATH] [--root DIR] [--log PATH]
+usage: reovim server [--socket PATH] [--root DIR] [--log PATH] [--sys N=V]
        reovim cli [--socket PATH] [--color[=WHEN]] [COMMAND...]
        reovim tui [--socket PATH] [+N] [FILE]
-       reovim [--socket PATH] [--log PATH] [+N] [FILE]
+       reovim [--socket PATH] [--log PATH] [--sys N=V] [+N] [FILE]
 defaults: --socket <runtime dir>/reovim.sock, --root <working directory>;
 the bare form edits any FILE, or none, and listens at the default
-socket, or at reovim-<pid>.sock while another editor holds it";
+socket, or at reovim-<pid>.sock while another editor holds it;
+--sys NAME=VALUE writes /sys/NAME before the first module loads, and
+may be given more than once (--sys loglevel=debug --sys
+limit/log_ring=65536)";
 
 /// When the output may carry color: `--color=WHEN`, and `--color`
 /// alone as GNU ls takes it.
@@ -88,13 +97,15 @@ enum When {
     Never,
 }
 
-/// `--socket`, `--root`, `--log` and `--color` taken off the front of
-/// `args`.
+/// `--socket`, `--root`, `--log`, `--color` and every `--sys` taken
+/// off the front of `args`.
 struct Options {
     socket: Option<String>,
     root: Option<String>,
     log: Option<String>,
     color: When,
+    /// Each `--sys NAME=VALUE`, in the order given.
+    sys: Vec<(String, String)>,
     rest: Vec<String>,
 }
 
@@ -103,6 +114,7 @@ fn options(args: Vec<String>) -> Result<Options, Fail> {
     let mut root = None;
     let mut log = None;
     let mut color = When::Auto;
+    let mut sys = Vec::new();
     let mut args = args.into_iter();
     let mut rest = Vec::new();
     while let Some(arg) = args.next() {
@@ -110,6 +122,7 @@ fn options(args: Vec<String>) -> Result<Options, Fail> {
             "--socket" => socket = Some(args.next().ok_or_else(usage)?),
             "--root" => root = Some(args.next().ok_or_else(usage)?),
             "--log" => log = Some(args.next().ok_or_else(usage)?),
+            "--sys" => sys.push(named(&args.next().ok_or_else(usage)?)?),
             "--color" | "--color=always" => color = When::Always,
             "--color=never" => color = When::Never,
             "--color=auto" => color = When::Auto,
@@ -120,7 +133,17 @@ fn options(args: Vec<String>) -> Result<Options, Fail> {
             }
         }
     }
-    Ok(Options { socket, root, log, color, rest })
+    Ok(Options { socket, root, log, color, sys, rest })
+}
+
+/// One `--sys` argument split at its first `=`; a name with no value
+/// is a usage error, since every parameter is written something.
+fn named(arg: &str) -> Result<(String, String), Fail> {
+    let (name, value) = arg.split_once('=').ok_or_else(usage)?;
+    if name.is_empty() {
+        return Err(usage());
+    }
+    Ok((name.to_string(), value.to_string()))
 }
 
 /// `--socket`, or the one in the runtime directory.
@@ -174,29 +197,32 @@ fn run(args: Vec<String>) -> Result<ExitCode, Fail> {
         Some("server" | "cli" | "tui") => args.next(),
         _ => None,
     };
-    let Options { socket: given, root, log, color, rest } =
+    let Options { socket: given, root, log, color, sys, rest } =
         options(args.collect())?;
+    // Only the two forms that hold a Kernel take a parameter for one.
+    let plain = sys.is_empty();
     match (command.as_deref(), rest.as_slice()) {
         (Some("server"), []) => {
             let root = match root {
                 Some(root) => root,
                 None => reovim_host::dirs::work()?,
             };
-            server::run(&socket(given)?, &root, log.as_deref())
+            server::run(&socket(given)?, &root, log.as_deref(), &sys)
                 .map(|()| ExitCode::SUCCESS)
         }
-        (Some("cli"), rest) => {
+        (Some("cli"), rest) if plain => {
             let out = cli::out(colored(color));
             cli::run(&socket(given)?, rest, out).map(|()| ExitCode::SUCCESS)
         }
-        (Some("tui"), rest) => {
+        (Some("tui"), rest) if plain => {
             let (line, file) = file_at(rest)?;
             tui::remote(&socket(given)?, line, file).map(ExitCode::from)
         }
         (None, rest) if root.is_none() => {
             let (line, file) = file_at(rest)?;
             let socket = free_socket(given)?;
-            tui::bare(&socket, log.as_deref(), line, file).map(ExitCode::from)
+            tui::bare(&socket, log.as_deref(), &sys, line, file)
+                .map(ExitCode::from)
         }
         _ => Err(usage()),
     }

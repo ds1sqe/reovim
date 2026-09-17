@@ -43,6 +43,8 @@ fn kind(meta: &Metadata) -> Option<Kind> {
     }
 }
 
+pub use crate::counting::heap;
+
 fn nanos(time: SystemTime) -> u64 {
     let since = time.duration_since(UNIX_EPOCH).unwrap_or_default();
     u64::try_from(since.as_nanos()).unwrap_or(u64::MAX)

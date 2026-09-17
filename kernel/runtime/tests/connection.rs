@@ -3,7 +3,7 @@
 use reovim_kernel_interface::wire::{Message, decode, encode};
 use reovim_kernel_interface::{Error, Op, Out, Rd, Reply, Rights};
 use reovim_kernel_runtime::{
-    Connection, Kernel, Limits, Loader, NoLoader, ROOT, SYS,
+    Connection, Heap, Kernel, Limits, Loader, NoLoader, ROOT, SYS,
 };
 
 fn tick() -> u64 {
@@ -20,7 +20,7 @@ struct Rig {
 
 impl Rig {
     fn new() -> Self {
-        let kernel = Kernel::new(tick, Limits::default());
+        let kernel = Kernel::new(tick, Heap::default, Limits::default());
         let link = Connection::new();
         Self { kernel, link, seq: 0 }
     }

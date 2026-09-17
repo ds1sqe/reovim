@@ -228,7 +228,8 @@ grep -qE '^\[ *[0-9]+\.[0-9]{6} < *[0-9]+\.[0-9]{6}>\] ' <<< "$said" \
     || fail "dmesg -d says no delta: $(head -1 <<< "$said")"
 grep -q 'call rd=/module/text/.* api=text method=replace dispatch' <<< "$said" \
     || fail "the call pair is not in words: $(grep -m1 'call ' <<< "$said")"
-grep -qE 'api=text method=replace reply took=[0-9.]+[^ ]*s$' <<< "$said" \
+grep -qE 'api=text method=replace reply took=[0-9.]+[^ ]*s heap=[-+][0-9]+$' \
+    <<< "$said" \
     || fail "the reply says no round trip: $(grep -m1 reply <<< "$said")"
 grep -q 'op=read caller=' <<< "$said" || fail "no op is traced at debug"
 [[ "$said" != *"rd=/sys/log"* ]] || fail "the log traced its own reading"
@@ -237,6 +238,51 @@ count="$("$BIN" cli dmesg -l debug | wc -l)"
 "$BIN" cli ls /module > /dev/null
 [[ "$("$BIN" cli dmesg -l debug | wc -l)" == "$count" ]] \
     || fail "the trace goes on after the level says info"
+
+# --- /sys as sysfs: the parameters, the heap, the core --------------
+# A file per parameter under /sys/limit, each in decimal and each
+# settable; /sys/mem is what the host's allocator counts; /sys/core is
+# everything the Kernel holds, saved in one read as a core is.
+rights="$("$BIN" cli ls -l /sys)"
+[[ "$(grep -c . <<< "$rights")" == 6 ]] || fail "/sys holds: $rights"
+grep -qE '^- r-  .*  core$' <<< "$rights" || fail "/sys/core is not r"
+grep -qE '^- r-  .*  mem$' <<< "$rights" || fail "/sys/mem is not r"
+limits="$("$BIN" cli ls -l /sys/limit)"
+[[ "$(grep -c '^- rw  ' <<< "$limits")" == 5 ]] \
+    || fail "the five parameters are not rw: $limits"
+[[ "$("$BIN" cli cat /sys/limit/log_ring)" == 4096 ]] \
+    || fail "log_ring at boot is $("$BIN" cli cat /sys/limit/log_ring)"
+# A ring told to keep eight keeps eight from that write on.
+"$BIN" cli write /sys/limit/log_ring 8 > /dev/null
+[[ "$("$BIN" cli dmesg | wc -l)" == 8 ]] \
+    || fail "a ring of eight kept $("$BIN" cli dmesg | wc -l) lines"
+"$BIN" cli dmesg -t -l notice \
+    | grep -q 'limit name=log_ring was=4096 now=8 caller=' \
+    || fail "the parameter write is not in the log it sized"
+said="$("$BIN" cli write /sys/limit/reentry x 2>&1 >/dev/null)" \
+    && code=0 || code=$?
+[[ "$said" == "reovim: write /sys/limit/reentry: invalid" ]] \
+    || fail "a parameter that is no number says: $said"
+[[ "$code" == 1 ]] || fail "a refused parameter exits $code"
+"$BIN" cli write /sys/limit/log_ring 4096 > /dev/null
+
+[[ "$("$BIN" cli cat /sys/mem)" == live=* ]] \
+    || fail "/sys/mem says $("$BIN" cli cat /sys/mem)"
+"$BIN" cli cat /sys/core > "$DIR/core"
+[[ "$(head -1 "$DIR/core")" == limit\ * ]] \
+    || fail "a core begins $(head -1 "$DIR/core")"
+[[ "$(grep -c '^rd ' "$DIR/core")" -gt 20 ]] \
+    || fail "a core holds $(grep -c '^rd ' "$DIR/core") rds"
+grep -q '^live=' <<< "$(tail -1 "$DIR/core")" \
+    || fail "a core does not end at the heap"
+
+# A boot parameter: an editor started at `debug` is already there.
+start sysed "$DIR" "$BIN --socket $DIR/sys.sock --sys loglevel=debug sysfile"
+editing sysed sysfile
+[[ "$("$BIN" cli --socket "$DIR/sys.sock" cat /sys/loglevel)" == debug ]] \
+    || fail "--sys did not set the level before the modules loaded"
+keys sysed : q ! Enter
+[[ "$(ended sysed)" == 0 ]] || fail "the --sys editor did not quit"
 
 [[ ! -e "$DIR/new/note" ]] || fail "a new file exists before its save"
 keys new : w q Enter

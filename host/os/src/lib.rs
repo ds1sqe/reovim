@@ -19,6 +19,9 @@ use alloc::vec::Vec;
 #[cfg_attr(not(feature = "std"), path = "empty.rs")]
 mod backend;
 
+#[cfg(feature = "std")]
+mod counting;
+
 /// What the host can say went wrong. Closed; a Driver maps it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
@@ -125,6 +128,29 @@ pub mod fs {
     /// As [`list`].
     pub fn remove(path: &str) -> Result<(), Error> {
         backend::remove(path)
+    }
+}
+
+/// What the host's allocator has handed out. Without a backend there
+/// is no allocator to count, and the three are 0.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct Heap {
+    /// Bytes handed out and not given back.
+    pub live: u64,
+    /// The largest `live` ever reached.
+    pub peak: u64,
+    /// Allocations made since the process began.
+    pub allocs: u64,
+}
+
+/// The process heap, as the allocator counts it.
+pub mod mem {
+    use super::{Heap, backend};
+
+    /// What the allocator has handed out now.
+    #[must_use]
+    pub fn heap() -> Heap {
+        backend::heap()
     }
 }
 

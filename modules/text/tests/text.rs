@@ -8,7 +8,7 @@ use reovim_host::clock;
 use reovim_kernel_interface::{
     Booted, Caller, Error, Handle, Kind, Op, Out, Rd, Reply, Rights,
 };
-use reovim_kernel_runtime::{Kernel, Limits, ROOT};
+use reovim_kernel_runtime::{Heap, Kernel, Limits, ROOT};
 use reovim_module_text::{Text, history, open, publish, text};
 use reovim_sdk::{decode, encode};
 
@@ -63,7 +63,7 @@ impl Rig {
     /// A text Driver holding at most `limit` bytes of states.
     fn with_limit(test: &str, limit: usize) -> Self {
         let dir = Dir::new(test);
-        let kernel = Kernel::new(clock::now, Limits::default());
+        let kernel = Kernel::new(clock::now, Heap::default, Limits::default());
         load(&kernel, "fs", &reovim_module_fs::boot(dir.0.to_str().unwrap()));
         let driver = Rc::new(Text::with_limit(limit));
         let booted = Booted { module: driver.clone(), drivers: vec![driver] };

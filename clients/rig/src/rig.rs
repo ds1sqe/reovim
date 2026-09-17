@@ -3,9 +3,17 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use reovim_client::{Carrier, Client, Fault};
-use reovim_host::clock;
-use reovim_kernel_runtime::{Connection, Kernel, Limits, NoLoader};
+use reovim_host::{clock, mem};
+use reovim_kernel_runtime::{Connection, Heap, Kernel, Limits, NoLoader};
 use reovim_module_clipboard::Clipboard;
+
+/// The process heap as the host counts it, in the Kernel's own shape.
+/// The rig passes what the server passes, so a test reading `/sys/mem`
+/// reads the same numbers the editor does.
+fn heap() -> Heap {
+    let counted = mem::heap();
+    Heap { live: counted.live, peak: counted.peak, allocs: counted.allocs }
+}
 
 /// A Carrier over a `Connection` on this thread, no link.
 struct Local {
@@ -48,7 +56,7 @@ impl Rig {
         let name = format!("reovim-rig-{}-{test}", std::process::id());
         let dir = std::env::temp_dir().join(name);
         std::fs::create_dir_all(&dir).unwrap();
-        let kernel = Kernel::new(clock::now, limits);
+        let kernel = Kernel::new(clock::now, heap, limits);
         let clipboard = Rc::new(RefCell::new(Vec::new()));
         let (reads, writes) = (clipboard.clone(), clipboard.clone());
         let read = move || Ok(reads.borrow().clone());

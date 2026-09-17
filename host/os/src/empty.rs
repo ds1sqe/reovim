@@ -4,7 +4,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use crate::term::Key;
-use crate::{Entry, Error, Stat};
+use crate::{Entry, Error, Heap, Stat};
 
 pub fn list(_: &str) -> Result<Vec<Entry>, Error> {
     Err(Error::Unsupported)
@@ -40,6 +40,11 @@ pub fn remove(_: &str) -> Result<(), Error> {
 
 pub const fn now() -> u64 {
     0
+}
+
+/// No allocator to count: the three stand at 0.
+pub const fn heap() -> Heap {
+    Heap { live: 0, peak: 0, allocs: 0 }
 }
 
 pub const fn is_tty_out() -> bool {
