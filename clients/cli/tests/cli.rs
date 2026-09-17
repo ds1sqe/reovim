@@ -2,7 +2,7 @@
 //! completion from the tree, without a terminal.
 
 use reovim_client::{Client, Rd};
-use reovim_client_cli::{Miss, Out, complete, input};
+use reovim_client_cli::{Miss, Out, Shell, complete, input};
 use reovim_rig::Rig;
 
 /// One command line; its output as text.
@@ -10,7 +10,7 @@ fn run(client: &mut Client, line: &str) -> Result<String, Miss> {
     let words: Vec<String> =
         line.split_whitespace().map(str::to_string).collect();
     let shown = |out: Vec<u8>| String::from_utf8(out).unwrap();
-    input(client, &words, Out::plain()).map(shown)
+    input(client, &mut Shell::default(), &words, Out::plain()).map(shown)
 }
 
 fn line(client: &mut Client, command: &str) -> String {
@@ -38,12 +38,9 @@ fn the_script_of_the_process_test_runs_in_process() {
     let info = line(&mut client, &format!("info {target}"));
     assert!(info.contains("flags=READ|WRITE|CONTAINER"), "{info}");
     let pointer = format!("read /module/text/{file}/source");
-    let source = input(
-        &mut client,
-        &["read".to_string(), pointer[5..].to_string()],
-        Out::plain(),
-    )
-    .unwrap();
+    let read = ["read".to_string(), pointer[5..].to_string()];
+    let source =
+        input(&mut client, &mut Shell::default(), &read, Out::plain()).unwrap();
     let id: Rd = reovim_sdk::decode(&source).unwrap();
     assert_eq!(id.0.to_string(), file);
 
@@ -89,7 +86,7 @@ fn completion_offers_commands_paths_and_methods() {
     rig.file("other", b"");
     let mut client = rig.client();
     let offer = |client: &mut Client, line: &str| {
-        let c = complete(client, line);
+        let c = complete(client, &Shell::default(), line);
         (c.from, c.candidates)
     };
 
@@ -115,11 +112,14 @@ fn completion_offers_commands_paths_and_methods() {
         offer(&mut client, "call /module/fs/root "),
         (21, vec!["create".to_string()])
     );
-    // Nowhere, no slash, an rd, a third word, `log`: nothing.
+    // A word with no slash is a name under the cwd, the root here.
+    assert_eq!(
+        offer(&mut client, "lookup mod"),
+        (7, vec!["module/".to_string()])
+    );
+    // Nowhere, an rd, a third word, `log`: nothing.
     let none: Vec<String> = Vec::new();
-    for line in
-        ["lookup /none/x", "lookup mod", "lookup rd:3", "lookup / /", "log /"]
-    {
+    for line in ["lookup /none/x", "lookup rd:3", "lookup / /", "log /"] {
         assert_eq!(offer(&mut client, line).1, none, "{line}");
     }
 }

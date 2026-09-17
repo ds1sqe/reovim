@@ -24,7 +24,7 @@ use core::fmt::Write as _;
 
 use reovim_client::{
     Client, Decl, Error, Event, Fault, Field, Flags, Handle, Hash, Info, Kind,
-    Rd, Rights, Ty, log, value,
+    ROOT, Rd, Rights, Ty, log, value,
 };
 
 pub use complete::{Completion, complete};
@@ -40,6 +40,8 @@ stat <target>                   the long line, the times, the apis
 tree [-L N] [TARGET]            the tree under it, N levels deep
 dmesg [-tTHxkwW] [-l LEVELS]    the log as dmesg reads it; -w follows
 watch <target>                  seq kind name, per event, as they come
+cd [TARGET]                     go there; none is /, - the one before
+pwd                             where the line stands now
 lookup <target>                 rd
 info <target>                   name, flags, times, apis
 children <target>               rd and name per line
@@ -51,13 +53,19 @@ load <path>                     the Module in that .rvm file
 unload <name>                   the Module of that name
 help [WORD]                     these lines, or the one for WORD
 quit                            end an interactive session
-<target> is a path from / or rd:<n>";
+<target> is a path from /, a name under the cwd, . or .., or rd:<n>
+
+the line: Tab completes, Up and Down walk the lines that begin as this
+one does, Ctrl-A the start, Ctrl-E the end, Ctrl-U cuts to the start,
+Ctrl-W the word before the cursor, Ctrl-L clears the screen; Ctrl-D
+deletes under the cursor, and ends the session on an empty line, as
+Ctrl-C does";
 
 /// The command names, for completion.
-const COMMANDS: [&str; 17] = [
-    "ls", "cat", "stat", "tree", "dmesg", "watch", "lookup", "info",
-    "children", "read", "write", "call", "log", "load", "unload", "help",
-    "quit",
+const COMMANDS: [&str; 19] = [
+    "ls", "cat", "stat", "tree", "dmesg", "watch", "cd", "pwd", "lookup",
+    "info", "children", "read", "write", "call", "log", "load", "unload",
+    "help", "quit",
 ];
 
 /// Why one command did not run: the word and the target as typed, and
@@ -119,6 +127,7 @@ pub const CAUSES: &[(&str, Step, Error, &str)] = &[
     ("call", Step::Method, Error::Unsupported, "no method {}; it offers: {}"),
     ("read", Step::Op, Error::Unsupported, "a Container has no bytes; ls it"),
     ("cat", Step::Op, Error::Unsupported, "a Container has no bytes; ls it"),
+    ("cd", Step::Op, Error::Unsupported, "not a Container; cat it"),
     ("write", Step::Op, Error::Denied, "not writable"),
     ("write", Step::Op, Error::Unsupported, "a Container takes no bytes"),
     ("", Step::Op, Error::Denied, "denied"),
@@ -160,7 +169,8 @@ impl Out {
 }
 
 /// One command already split into words; what goes to stdout, text or
-/// raw bytes.
+/// raw bytes. `shell` is where the line stands: what a relative target
+/// is read from, and what `cd` moves.
 ///
 /// `write` without bytes needs stdin, so the app fills the argument
 /// before calling. A word that follows the tree prints here what it
@@ -172,6 +182,7 @@ impl Out {
 /// outside an interactive session, or whatever the Client says.
 pub fn input(
     client: &mut Client,
+    shell: &mut Shell,
     words: &[String],
     out: Out,
 ) -> Result<Vec<u8>, Miss> {
@@ -185,10 +196,12 @@ pub fn input(
         ("quit", _) => {
             return Err(Miss::line("quit ends an interactive session"));
         }
-        ("ls", _) => return ls(client, &words[1..], out),
-        ("cat", 2..) => return cat(client, &words[1..]),
-        ("stat", 2) => return stat(client, &words[1], out),
-        ("tree", _) => return tree(client, &words[1..], out),
+        ("cd", 1 | 2) => return cd(client, shell, words.get(1)),
+        ("pwd", 1) => return Ok(format!("{}\n", shell.path).into_bytes()),
+        ("ls", _) => return ls(client, shell, &words[1..], out),
+        ("cat", 2..) => return cat(client, shell, &words[1..]),
+        ("stat", 2) => return stat(client, shell, &words[1], out),
+        ("tree", _) => return tree(client, shell, &words[1..], out),
         ("dmesg", _) => return dmesg_now(client, &words[1..], out),
         ("log", 1 | 2) => return log_from(client, words.get(1)),
         ("load", 2) => {
@@ -207,7 +220,7 @@ pub fn input(
         _ => return Err(misuse(word)),
     }
     let target = &words[1];
-    let rd = resolved(client, word, target)?;
+    let rd = resolved(client, shell, word, target)?;
     let refused = |fault: Fault| miss(word, target, Step::Op, &fault, &[]);
     match word {
         "lookup" => Ok(format!("{}\n", rd.0).into_bytes()),
@@ -420,17 +433,154 @@ fn log_from(
     Ok(out.into_bytes())
 }
 
+/// Where the line stands in the tree: the rd a relative target is read
+/// from, the path the prompt and `pwd` show, and the one before it,
+/// which `cd -` goes back to.
+///
+/// The app holds one for a session of lines and passes it to every
+/// word; a single command has its own, which starts and stays at the
+/// root.
+#[derive(Clone, Debug)]
+pub struct Shell {
+    cwd: Rd,
+    path: String,
+    back: Option<(Rd, String)>,
+}
+
+impl Default for Shell {
+    /// The root, where every session starts.
+    fn default() -> Self {
+        Self { cwd: ROOT, path: "/".to_string(), back: None }
+    }
+}
+
+impl Shell {
+    /// The rd a relative target is read from.
+    #[must_use]
+    pub const fn cwd(&self) -> Rd {
+        self.cwd
+    }
+
+    /// Where the line stands, as `pwd` prints it.
+    #[must_use]
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
+    /// `<path> > `, the prompt the line is drawn after.
+    #[must_use]
+    pub fn prompt(&self) -> String {
+        format!("{} > ", self.path)
+    }
+
+    /// To `rd`, which is at `path`; where it stood is where `cd -` now
+    /// goes.
+    fn go(&mut self, rd: Rd, path: String) {
+        let was = (self.cwd, core::mem::replace(&mut self.path, path));
+        self.cwd = rd;
+        self.back = Some(was);
+    }
+}
+
+/// `cd`: the root with no target, the one before it under `-`, else
+/// the Container the target names, whose path the prompt then shows.
+fn cd(
+    client: &mut Client,
+    shell: &mut Shell,
+    target: Option<&String>,
+) -> Result<Vec<u8>, Miss> {
+    let target = target.map_or("/", String::as_str);
+    if target == "-" {
+        let Some((rd, path)) = shell.back.clone() else {
+            let (word, target) = ("cd".to_string(), target.to_string());
+            let cause = "nowhere to go back to".to_string();
+            return Err(Miss { word, target, cause });
+        };
+        shell.go(rd, path);
+        return Ok(Vec::new());
+    }
+    let rd = resolved(client, shell, "cd", target)?;
+    let refused = |fault: Fault| miss("cd", target, Step::Op, &fault, &[]);
+    let info = client.info(rd).map_err(refused)?;
+    if !info.flags.contains(Flags::CONTAINER) {
+        return Err(refused(Fault::Kernel(Error::Unsupported)));
+    }
+    let path = where_is(client, rd).map_err(refused)?;
+    shell.go(rd, path);
+    Ok(Vec::new())
+}
+
+/// As deep a path as a prompt will show; below that the rd says where
+/// it is instead.
+const DEEP: usize = 64;
+
+/// The path of `rd`, read from the tree itself: its name under each
+/// parent up to the root, so the prompt says where the cwd is however
+/// it was named. An rd the Kernel does not name, or one deeper than
+/// [`DEEP`], has no path to show and is `rd:<n>`.
+fn where_is(client: &mut Client, rd: Rd) -> Result<String, Fault> {
+    let mut names: Vec<String> = Vec::new();
+    let mut at = rd;
+    while at != ROOT {
+        let name = client.name(at)?;
+        if name.is_empty() || names.len() == DEEP {
+            return Ok(format!("rd:{}", rd.0));
+        }
+        names.push(name);
+        at = client.parent(at)?;
+    }
+    names.reverse();
+    Ok(format!("/{}", names.join("/")))
+}
+
+/// The rd of `target` from where the shell stands, the one walk every
+/// word takes.
+///
+/// `rd:<n>` is that rd wherever the line stands. Anything else is
+/// walked segment by segment, from the root when it begins with `/`
+/// and from the cwd when it does not, `.` staying where it is and `..`
+/// going to the parent; so a `.` or a `..` inside an absolute path is
+/// a move and never a name to look up.
+fn locate(
+    client: &mut Client,
+    shell: &Shell,
+    target: &str,
+) -> Result<Rd, (String, Fault)> {
+    if target.starts_with("rd:") {
+        return client.resolve_at(target);
+    }
+    let mut rd = if target.starts_with('/') { ROOT } else { shell.cwd };
+    let named = |name: &&str| !name.is_empty() && *name != ".";
+    for name in target.split('/').filter(named) {
+        let step =
+            if name == ".." { up(client, rd) } else { client.lookup(rd, name) };
+        rd = step.map_err(|fault| (name.to_string(), fault))?;
+    }
+    Ok(rd)
+}
+
+/// The parent of `rd`; the root is its own parent, as `cd /..` in a
+/// shell is `/`.
+fn up(client: &mut Client, rd: Rd) -> Result<Rd, Fault> {
+    if rd == ROOT {
+        return Ok(ROOT);
+    }
+    client.parent(rd)
+}
+
 /// The rd of `target`, or the Miss naming the segment that stopped the
 /// walk.
-fn resolved(client: &mut Client, word: &str, target: &str) -> Result<Rd, Miss> {
+fn resolved(
+    client: &mut Client,
+    shell: &Shell,
+    word: &str,
+    target: &str,
+) -> Result<Rd, Miss> {
     let stopped = |(at, f): (String, Fault)| {
         miss(word, target, Step::Resolve, &f, &[&at])
     };
-    client.resolve_at(target).map_err(stopped)
+    locate(client, shell, target).map_err(stopped)
 }
-
-/// Where a target that names no path starts; 10.3 puts the cwd here.
-const CWD: &str = "/";
 
 /// One listed rd: its number, the name it shows under, and what the
 /// Kernel caches about it.
@@ -451,12 +601,17 @@ struct Form {
 
 /// The children of each target by name, sorted; in columns across
 /// `width` and one per line without it. A cell lists itself.
-fn ls(client: &mut Client, args: &[String], out: Out) -> Result<Vec<u8>, Miss> {
+fn ls(
+    client: &mut Client,
+    shell: &Shell,
+    args: &[String],
+    out: Out,
+) -> Result<Vec<u8>, Miss> {
     let Some((form, mut targets)) = options(args) else {
         return Err(misuse("ls"));
     };
     if targets.is_empty() {
-        targets.push(CWD);
+        targets.push(&shell.path);
     }
     let many = targets.len() > 1;
     let mut text = String::new();
@@ -465,7 +620,7 @@ fn ls(client: &mut Client, args: &[String], out: Out) -> Result<Vec<u8>, Miss> {
         if many {
             let _ = writeln!(text, "{gap}{target}:");
         }
-        text.push_str(&listing(client, target, form, out)?);
+        text.push_str(&listing(client, shell, target, form, out)?);
     }
     Ok(text.into_bytes())
 }
@@ -500,11 +655,12 @@ fn flags(word: &str) -> Option<&str> {
 /// One target's listing: a Container's children, or the target itself.
 fn listing(
     client: &mut Client,
+    shell: &Shell,
     target: &str,
     form: Form,
     out: Out,
 ) -> Result<String, Miss> {
-    let rd = resolved(client, "ls", target)?;
+    let rd = resolved(client, shell, "ls", target)?;
     let refused = |fault: Fault| miss("ls", target, Step::Op, &fault, &[]);
     let info = client.info(rd).map_err(refused)?;
     let listed = if info.flags.contains(Flags::CONTAINER) {
@@ -526,10 +682,18 @@ fn listing(
         if form.rds { format!("{} {name}", entry.rd.0) } else { name }
     };
     let names: Vec<String> = listed.iter().map(text).collect();
-    Ok(out.width.map_or_else(
-        || lines(&names),
-        |width| columns(&names, usize::from(width)),
-    ))
+    Ok(laid_out(&names, out.width))
+}
+
+/// `names` as a listing shows them: down the columns that fit in
+/// `width`, one per line without it. What Tab shows of several
+/// candidates, laid out the way `ls` lays out a listing.
+#[must_use]
+pub fn laid_out(names: &[String], width: Option<u16>) -> String {
+    width.map_or_else(
+        || lines(names),
+        |width| columns(names, usize::from(width)),
+    )
 }
 
 /// A name as a listing shows it: a Container bold blue, a cell that
@@ -713,13 +877,17 @@ fn reading(args: &[String]) -> Option<(Reading, Vec<&str>)> {
 }
 
 /// The bytes of each target in turn.
-fn cat(client: &mut Client, args: &[String]) -> Result<Vec<u8>, Miss> {
+fn cat(
+    client: &mut Client,
+    shell: &Shell,
+    args: &[String],
+) -> Result<Vec<u8>, Miss> {
     let Some((_, targets)) = reading(args) else {
         return Err(misuse("cat"));
     };
     let mut out = Vec::new();
     for target in targets {
-        let rd = resolved(client, "cat", target)?;
+        let rd = resolved(client, shell, "cat", target)?;
         let refused = |f: Fault| miss("cat", target, Step::Op, &f, &[]);
         out.extend(client.read_all(rd).map_err(refused)?);
     }
@@ -728,8 +896,13 @@ fn cat(client: &mut Client, args: &[String]) -> Result<Vec<u8>, Miss> {
 
 /// The long line, the three times as dates, then every api with its
 /// methods as the declaration shows them.
-fn stat(client: &mut Client, target: &str, out: Out) -> Result<Vec<u8>, Miss> {
-    let rd = resolved(client, "stat", target)?;
+fn stat(
+    client: &mut Client,
+    shell: &Shell,
+    target: &str,
+    out: Out,
+) -> Result<Vec<u8>, Miss> {
+    let rd = resolved(client, shell, "stat", target)?;
     let refused = |fault: Fault| miss("stat", target, Step::Op, &fault, &[]);
     let info = client.info(rd).map_err(refused)?;
     let entry = Entry { name: named(rd, &info), rd, info };
@@ -804,13 +977,14 @@ fn shown(ty: &Ty) -> String {
 /// count of what was drawn.
 fn tree(
     client: &mut Client,
+    shell: &Shell,
     args: &[String],
     out: Out,
 ) -> Result<Vec<u8>, Miss> {
-    let Some((depth, target)) = levels(args) else {
+    let Some((depth, target)) = levels(args, &shell.path) else {
         return Err(misuse("tree"));
     };
-    let rd = resolved(client, "tree", target)?;
+    let rd = resolved(client, shell, "tree", target)?;
     let refused = |fault: Fault| miss("tree", target, Step::Op, &fault, &[]);
     let info = client.info(rd).map_err(refused)?;
     let mut text = format!("{target}\n");
@@ -824,10 +998,11 @@ fn tree(
     Ok(text.into_bytes())
 }
 
-/// The `-L N` of `args` and the one target after it; `None` for a flag
-/// `tree` does not take or a depth that is not a number above zero.
-fn levels(args: &[String]) -> Option<(usize, &str)> {
-    let (mut depth, mut target) = (usize::MAX, CWD);
+/// The `-L N` of `args` and the one target after it, `here` without
+/// one; `None` for a flag `tree` does not take or a depth that is not
+/// a number above zero.
+fn levels<'a>(args: &'a [String], here: &'a str) -> Option<(usize, &'a str)> {
+    let (mut depth, mut target) = (usize::MAX, here);
     let mut args = args.iter();
     while let Some(arg) = args.next() {
         match flags(arg) {
@@ -941,8 +1116,9 @@ enum Watching {
     Cell { rds: Vec<Rd> },
     /// `watch`: `seq kind name` for each event on the target.
     Events { rd: Rd, name: String, paint: Paint },
-    /// `ls -w`: the listing again after every event under the target.
-    List { rds: Vec<Rd>, args: Vec<String>, out: Out },
+    /// `ls -w`: the listing again after every event under the target,
+    /// from where the line stood when it was typed.
+    List { rds: Vec<Rd>, args: Vec<String>, shell: Shell, out: Out },
 }
 
 /// `dmesg -w` between events: the watched log, the sequence to read
@@ -987,6 +1163,7 @@ impl Tailing {
 /// while it opens and watches the target.
 pub fn following(
     client: &mut Client,
+    shell: &Shell,
     words: &[String],
     out: Out,
 ) -> Result<Option<Follow>, Miss> {
@@ -995,10 +1172,10 @@ pub fn following(
     };
     let args = &words[1..];
     match (word, words.len()) {
-        ("dmesg", _) => dmesg_follow(client, args, out),
-        ("cat", 2..) => cat_follow(client, args, out),
-        ("ls", _) => ls_follow(client, args, out),
-        ("watch", 2) => watch_follow(client, &words[1], out).map(Some),
+        ("dmesg", _) => dmesg_follow(client, shell, args, out),
+        ("cat", 2..) => cat_follow(client, shell, args, out),
+        ("ls", _) => ls_follow(client, shell, args, out),
+        ("watch", 2) => watch_follow(client, shell, &words[1], out).map(Some),
         _ => Ok(None),
     }
 }
@@ -1026,6 +1203,7 @@ fn watching(
 
 fn dmesg_follow(
     client: &mut Client,
+    shell: &Shell,
     args: &[String],
     out: Out,
 ) -> Result<Option<Follow>, Miss> {
@@ -1033,7 +1211,7 @@ fn dmesg_follow(
     if tail == dmesg::Tail::No {
         return Ok(None);
     }
-    let rd = resolved(client, "dmesg", LOG)?;
+    let rd = resolved(client, shell, "dmesg", LOG)?;
     let h = watching(client, "dmesg", LOG, rd)?;
     drain(client, "dmesg")?;
     let refused = |f: Fault| miss("dmesg", LOG, Step::Op, &f, &[]);
@@ -1056,6 +1234,7 @@ fn dmesg_follow(
 
 fn cat_follow(
     client: &mut Client,
+    shell: &Shell,
     args: &[String],
     out: Out,
 ) -> Result<Option<Follow>, Miss> {
@@ -1068,12 +1247,12 @@ fn cat_follow(
     let mut handles = Vec::new();
     let mut rds = Vec::new();
     for target in &targets {
-        let rd = resolved(client, "cat", target)?;
+        let rd = resolved(client, shell, "cat", target)?;
         handles.push(watching(client, "cat", target, rd)?);
         rds.push(rd);
     }
     drain(client, "cat")?;
-    let first = cat(client, args)?;
+    let first = cat(client, shell, args)?;
     let what = Watching::Cell { rds };
     let _ = out;
     Ok(Some(Follow { handles, first, limit: form.stop, what }))
@@ -1081,6 +1260,7 @@ fn cat_follow(
 
 fn ls_follow(
     client: &mut Client,
+    shell: &Shell,
     args: &[String],
     out: Out,
 ) -> Result<Option<Follow>, Miss> {
@@ -1091,28 +1271,29 @@ fn ls_follow(
         return Ok(None);
     }
     if targets.is_empty() {
-        targets.push(CWD);
+        targets.push(&shell.path);
     }
     let mut handles = Vec::new();
     let mut rds = Vec::new();
     for target in &targets {
-        let rd = resolved(client, "ls", target)?;
+        let rd = resolved(client, shell, "ls", target)?;
         handles.push(watching(client, "ls", target, rd)?);
         rds.push(rd);
     }
     drain(client, "ls")?;
-    let first = ls(client, args, out)?;
-    let args = args.to_vec();
-    let what = Watching::List { rds, args, out };
+    let first = ls(client, shell, args, out)?;
+    let (args, shell) = (args.to_vec(), shell.clone());
+    let what = Watching::List { rds, args, shell, out };
     Ok(Some(Follow { handles, first, limit: None, what }))
 }
 
 fn watch_follow(
     client: &mut Client,
+    shell: &Shell,
     target: &str,
     out: Out,
 ) -> Result<Follow, Miss> {
-    let rd = resolved(client, "watch", target)?;
+    let rd = resolved(client, shell, "watch", target)?;
     let h = watching(client, "watch", target, rd)?;
     drain(client, "watch")?;
     let refused = |f: Fault| miss("watch", target, Step::Op, &f, &[]);
@@ -1142,9 +1323,9 @@ impl Follow {
                 let line = || happened(client, event, name, *paint);
                 Ok(shown.then(line).map(String::into_bytes))
             }
-            Watching::List { rds, args, out } => {
+            Watching::List { rds, args, shell, out } => {
                 let shown = rds.contains(&event.rd);
-                shown.then(|| ls(client, args, *out)).transpose()
+                shown.then(|| ls(client, shell, args, *out)).transpose()
             }
         }
     }

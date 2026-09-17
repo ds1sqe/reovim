@@ -149,6 +149,20 @@ shown follow 'smoke-follows'
 pkill -INT -f "^$BIN cli dmesg -w\$"
 [[ "$(ended follow)" == 0 ]] || fail "dmesg -w did not end on SIGINT"
 
+# The cli as a shell in a terminal of its own: the prompt says where
+# the line stands, `cd` moves it, a listing comes from there, and
+# Ctrl-D on an empty line ends the session.
+start shell "$DIR" "$BIN cli"
+shown shell '^/ >'
+keys shell c d " " / m o d u l e Enter
+shown shell '^/module >'
+keys shell l s Enter
+shown shell 'clipboard  fs  text'
+keys shell p w d Enter
+shown shell '^/module$'
+keys shell C-d
+[[ "$(ended shell)" == 0 ]] || fail "Ctrl-D did not end the cli"
+
 start other "$DIR/new" "$BIN ../other"
 editing other other
 # The first editor has the default socket, the second one of its own;

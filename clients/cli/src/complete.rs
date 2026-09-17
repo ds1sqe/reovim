@@ -1,6 +1,7 @@
-//! Tab completion: commands, paths from the tree's children, method
-//! names from the declarations. Candidates come from the tree; a path
-//! that resolves nowhere offers nothing and is not a fault.
+//! Tab completion: commands, targets from where the line stands, the
+//! flags a word takes, method names from the declarations. Candidates
+//! come from the tree; a path that resolves nowhere offers nothing and
+//! is not a fault.
 
 use alloc::format;
 use alloc::string::{String, ToString};
@@ -8,7 +9,7 @@ use alloc::vec::Vec;
 
 use reovim_client::{Client, Flags, Rd, log};
 
-use crate::COMMANDS;
+use crate::{COMMANDS, Shell, locate};
 
 /// What may replace the word starting at byte `from` of the line.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -17,8 +18,23 @@ pub struct Completion {
     pub candidates: Vec<String>,
 }
 
-/// Candidates for the last word of `line`, which may be empty.
-pub fn complete(client: &mut Client, line: &str) -> Completion {
+/// The flags each word takes, for a word that begins with `-`.
+const FLAGS: [(&str, &[&str]); 4] = [
+    ("ls", &["-l", "-a", "-w"]),
+    ("cat", &["-f", "-n", "-w"]),
+    ("tree", &["-L"]),
+    (
+        "dmesg",
+        &[
+            "-t", "-T", "-H", "-x", "-k", "-w", "-W", "-f", "-l", "-L",
+            "--color",
+        ],
+    ),
+];
+
+/// Candidates for the last word of `line`, which may be empty, from
+/// where `shell` stands.
+pub fn complete(client: &mut Client, shell: &Shell, line: &str) -> Completion {
     let from = line.rfind(' ').map_or(0, |at| at + 1);
     let word = &line[from..];
     let index = line[..from].split_whitespace().count();
@@ -26,14 +42,28 @@ pub fn complete(client: &mut Client, line: &str) -> Completion {
     let before = line[..from].split_whitespace().last();
     let candidates = match (command, index) {
         (_, 0) => commands(word),
+        _ if word.starts_with('-') => flags(command, word),
         ("dmesg", _) => flag_values(client, before, word),
         ("log" | "load" | "unload", _) => Vec::new(),
-        ("call", 2) => methods(client, line, word),
-        // `ls` and `cat` take targets until the end of the line.
-        ("ls" | "cat", _) | (_, 1) => path(client, word),
+        ("call", 2) => methods(client, shell, line, word),
+        // `ls`, `cat` and `tree` take targets past their flags.
+        ("ls" | "cat" | "tree", _) | (_, 1) => path(client, shell, word),
         _ => Vec::new(),
     };
     Completion { from, candidates }
+}
+
+/// The flags of `command` that begin as `word` does.
+fn flags(command: &str, word: &str) -> Vec<String> {
+    let Some((_, flags)) = FLAGS.iter().find(|(name, _)| *name == command)
+    else {
+        return Vec::new();
+    };
+    flags
+        .iter()
+        .filter(|flag| flag.starts_with(word))
+        .map(ToString::to_string)
+        .collect()
 }
 
 /// What a `dmesg` flag takes: the marks the log's own entries carry
@@ -69,18 +99,20 @@ fn commands(prefix: &str) -> Vec<String> {
 }
 
 /// The children of the part before the last `/`, named with the rest;
-/// a Container gets a trailing `/`.
-fn path(client: &mut Client, word: &str) -> Vec<String> {
-    let Some(cut) = word.rfind('/') else { return Vec::new() };
-    let (parent, prefix) = (&word[..=cut], &word[cut + 1..]);
-    let Ok(rd) = client.resolve(parent) else { return Vec::new() };
+/// without a `/`, the children of the cwd. A Container gets a trailing
+/// `/`, so the next Tab goes on under it.
+fn path(client: &mut Client, shell: &Shell, word: &str) -> Vec<String> {
+    let (dir, prefix) = word
+        .rfind('/')
+        .map_or(("", word), |cut| (&word[..=cut], &word[cut + 1..]));
+    let Ok(rd) = locate(client, shell, dir) else { return Vec::new() };
     let Ok(children) = client.children(rd) else { return Vec::new() };
     children
         .into_iter()
         .filter_map(|child| named(client, child, prefix))
         .map(|(name, container)| {
             let end = if container { "/" } else { "" };
-            format!("{parent}{name}{end}")
+            format!("{dir}{name}{end}")
         })
         .collect()
 }
@@ -99,11 +131,16 @@ fn named(
 }
 
 /// Method names the target of `call` offers.
-fn methods(client: &mut Client, line: &str, word: &str) -> Vec<String> {
+fn methods(
+    client: &mut Client,
+    shell: &Shell,
+    line: &str,
+    word: &str,
+) -> Vec<String> {
     let Some(target) = line.split_whitespace().nth(1) else {
         return Vec::new();
     };
-    let Ok(rd) = client.resolve(target) else { return Vec::new() };
+    let Ok(rd) = locate(client, shell, target) else { return Vec::new() };
     let Ok(decls) = client.decls(rd) else { return Vec::new() };
     decls
         .into_iter()

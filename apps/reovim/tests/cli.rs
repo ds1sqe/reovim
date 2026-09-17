@@ -149,21 +149,26 @@ fn one_interactive_session_does_the_same() {
     let server = Server::start("interactive");
     server.file("note", b"first\n");
     let file = server.line(&["lookup", "/module/fs/root/note"]);
+    // A session of lines keeps where it stands, so every target after
+    // the `cd` is a name under it.
     let script = format!(
-        "call /module/text/open open {file}\n\
-         write /module/text/{file} third\n\
-         read /module/text/{file}\n\
-         call /module/text/{file} nothing\n\
-         call /module/text/{file} save\n\
+        "cd /module/text\n\
+         pwd\n\
+         call open open {file}\n\
+         write {file} third\n\
+         read {file}\n\
+         call {file} nothing\n\
+         call {file} save\n\
          quit\n\
          lookup /\n"
     );
     let out = String::from_utf8(server.cli(&[], script.as_bytes()).unwrap());
     let out = out.unwrap();
     let lines: Vec<&str> = out.lines().collect();
-    assert_eq!(lines.len(), 3, "{out}");
-    assert_eq!(lines[1], "5");
-    assert_eq!(lines[2], "third");
+    assert_eq!(lines.len(), 4, "{out}");
+    assert_eq!(lines[0], "/module/text");
+    assert_eq!(lines[2], "5");
+    assert_eq!(lines[3], "third");
     assert_eq!(server.disk("note"), b"third");
 }
 

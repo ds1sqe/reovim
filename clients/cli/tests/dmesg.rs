@@ -5,7 +5,7 @@
 use reovim_client::log::Entry;
 use reovim_client::{Client, Rights};
 use reovim_client_cli::dmesg::{Form, Tail, boot, form, show};
-use reovim_client_cli::{Out, Paint, following, input};
+use reovim_client_cli::{Out, Paint, Shell, following, input};
 use reovim_rig::Rig;
 
 /// 2026-09-17 12:34:56 UTC, where the Kernel's first entry stands.
@@ -37,7 +37,7 @@ fn printed(entries: &[Entry], line: &str) -> String {
 /// One command line over the rig; its output, or the line a fault
 /// would print.
 fn run(client: &mut Client, command: &str, out: Out) -> String {
-    match input(client, &flags(command), out) {
+    match input(client, &mut Shell::default(), &flags(command), out) {
         Ok(bytes) => String::from_utf8(bytes).unwrap(),
         Err(miss) => miss.to_string(),
     }
@@ -191,7 +191,9 @@ fn a_follow_prints_the_entry_another_client_writes() {
     // `-W` takes only what comes after it; the err entry the other
     // client writes with printk's `<3>` in front.
     let words = flags("dmesg -W -t -l err");
-    let mut plan = following(&mut client, &words, out).unwrap().unwrap();
+    let mut plan = following(&mut client, &Shell::default(), &words, out)
+        .unwrap()
+        .unwrap();
     assert_eq!(plan.first, Vec::<u8>::new());
     let log = other.resolve("/sys/log").unwrap();
     other.write_all(log, b"<3>boom".to_vec()).unwrap();
@@ -218,7 +220,9 @@ fn watch_says_what_happened_under_a_container() {
     let root = "/module/fs/root";
 
     let words = flags(&format!("watch {root}"));
-    let mut plan = following(&mut client, &words, Out::plain()).unwrap();
+    let mut plan =
+        following(&mut client, &Shell::default(), &words, Out::plain())
+            .unwrap();
     let mut plan = plan.take().unwrap();
     // `input` prints nothing for it: the loop is the app's.
     assert_eq!(run(&mut client, &format!("watch {root}"), Out::plain()), "");
@@ -249,7 +253,9 @@ fn cat_follows_a_cell_and_stops_after_the_count() {
     let target = "/module/fs/root/note";
 
     let words = flags(&format!("cat -f -n 1 {target}"));
-    let mut plan = following(&mut client, &words, Out::plain()).unwrap();
+    let mut plan =
+        following(&mut client, &Shell::default(), &words, Out::plain())
+            .unwrap();
     let mut plan = plan.take().unwrap();
     assert_eq!(plan.first, b"first\n".to_vec());
     assert_eq!(plan.limit, Some(1));
@@ -275,7 +281,9 @@ fn only_a_following_word_asks_for_the_loop() {
     let mut client = rig.client();
     let out = Out::plain();
     let none = |client: &mut Client, line: &str| {
-        following(client, &flags(line), out).unwrap().is_none()
+        following(client, &Shell::default(), &flags(line), out)
+            .unwrap()
+            .is_none()
     };
     assert!(none(&mut client, "dmesg"));
     assert!(none(&mut client, "ls /module"));
@@ -284,7 +292,9 @@ fn only_a_following_word_asks_for_the_loop() {
     assert!(none(&mut client, ""));
 
     let words = flags("ls -w /module");
-    let plan = following(&mut client, &words, out).unwrap().unwrap();
+    let plan = following(&mut client, &Shell::default(), &words, out)
+        .unwrap()
+        .unwrap();
     let listed = String::from_utf8(plan.first).unwrap();
     assert_eq!(listed, "clipboard\nfs\ntext\n");
     let (form, tail) = form(&flags("-wT"), Paint::off()).unwrap();

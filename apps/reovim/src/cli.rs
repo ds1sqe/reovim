@@ -8,15 +8,17 @@ use std::time::Duration;
 
 use reovim_client::{Client, Fault, Key};
 use reovim_client_cli::{
-    Act, Follow, Line, Miss, Out, Paint, complete, following, help, input,
-    plain,
+    Act, Follow, Line, Miss, Out, Paint, Shell, complete, following, help,
+    input, laid_out, plain,
 };
 use reovim_host::term;
 
 use crate::Fail;
 use crate::remote::Remote;
 
-const PROMPT: &str = "> ";
+/// Ctrl-L, as a shell answers it: the screen empty and the line drawn
+/// again at the top of it.
+const CLEAR: &[u8] = b"\x1b[2J\x1b[H";
 
 /// Between one `since` and the next. The wire is request and reply, so
 /// a following word asks; when the link learns to push, this wait
@@ -39,7 +41,10 @@ pub fn run(socket: &str, command: &[String], out: Out) -> Result<(), Fail> {
     }
     let mut client = linked(socket)?;
     if !command.is_empty() {
-        return once(&mut client, &filled(command)?, out, Mode::Cooked);
+        // One command has no session to stand in: it runs at the root.
+        let mut shell = Shell::default();
+        let words = filled(command)?;
+        return once(&mut client, &mut shell, &words, out, Mode::Cooked);
     }
     if term::is_tty() {
         terminal(&mut client, out)
@@ -95,14 +100,15 @@ impl Mode {
 /// anything else prints once.
 fn once(
     client: &mut Client,
+    shell: &mut Shell,
     words: &[String],
     out: Out,
     mode: Mode,
 ) -> Result<(), Fail> {
-    if let Some(plan) = following(client, words, out)? {
+    if let Some(plan) = following(client, shell, words, out)? {
         return follow(client, plan, mode);
     }
-    Ok(mode.show(&input(client, words, out)?)?)
+    Ok(mode.show(&input(client, shell, words, out)?)?)
 }
 
 /// The one watch loop: what the word prints now, then what it makes of
@@ -180,6 +186,7 @@ fn write(bytes: &[u8]) -> Result<(), Fault> {
 /// line, not the session.
 fn piped(client: &mut Client, out: Out) -> Result<(), Fail> {
     let stdin = std::io::stdin();
+    let mut shell = Shell::default();
     let mut line = String::new();
     while stdin.read_line(&mut line).map_err(|_| Fault::Carrier)? != 0 {
         let words = split(&line);
@@ -187,7 +194,9 @@ fn piped(client: &mut Client, out: Out) -> Result<(), Fail> {
         match words.first().map(String::as_str) {
             None => {}
             Some("quit") => break,
-            Some(_) => report(once(client, &words, out, Mode::Cooked)),
+            Some(_) => {
+                report(once(client, &mut shell, &words, out, Mode::Cooked));
+            }
         }
     }
     Ok(())
@@ -214,7 +223,8 @@ fn terminal(client: &mut Client, out: Out) -> Result<(), Fail> {
 
 fn edit(client: &mut Client, out: Out) -> Result<(), Fail> {
     let mut line = Line::default();
-    draw(&line)?;
+    let mut shell = Shell::default();
+    draw(&line, &shell)?;
     loop {
         // A signal or a terminal that went away ends the wait for
         // good; without this the loop would spin on an empty poll.
@@ -225,23 +235,30 @@ fn edit(client: &mut Client, out: Out) -> Result<(), Fail> {
         let go_on = match line.key(map(key)) {
             Act::Nothing => continue,
             Act::Redraw => true,
-            Act::Complete => offer(client, &mut line)?,
-            Act::Submit(text) => submit(client, &text, out)?,
+            Act::Clear => write(CLEAR).map(|()| true)?,
+            Act::Complete => offer(client, &shell, &mut line, sized(out))?,
+            Act::Submit(text) => submit(client, &mut shell, &text, out)?,
             Act::Quit => false,
         };
         if !go_on {
             return Ok(raw(b"\n")?);
         }
-        draw(&line)?;
+        draw(&line, &shell)?;
     }
 }
 
-/// Tab: one candidate goes into the line, several are shown.
-fn offer(client: &mut Client, line: &mut Line) -> Result<bool, Fail> {
-    let completion = complete(client, line.text());
+/// Tab: one candidate goes into the line, several are shown as `ls`
+/// shows a listing.
+fn offer(
+    client: &mut Client,
+    shell: &Shell,
+    line: &mut Line,
+    out: Out,
+) -> Result<bool, Fail> {
+    let completion = complete(client, shell, line.text());
     if completion.candidates.len() > 1 {
-        let shown = completion.candidates.join("  ");
-        raw(format!("\n{shown}\n").as_bytes())?;
+        let shown = laid_out(&completion.candidates, out.width);
+        raw(format!("\n{shown}").as_bytes())?;
     }
     line.apply(&completion);
     Ok(true)
@@ -249,14 +266,19 @@ fn offer(client: &mut Client, line: &mut Line) -> Result<bool, Fail> {
 
 /// Enter: the command runs; false on `quit`. A word that follows runs
 /// until Ctrl-C, which is a key here, and the line comes back after.
-fn submit(client: &mut Client, text: &str, out: Out) -> Result<bool, Fail> {
+fn submit(
+    client: &mut Client,
+    shell: &mut Shell,
+    text: &str,
+    out: Out,
+) -> Result<bool, Fail> {
     raw(b"\n")?;
     let words = split(text);
     match words.first().map(String::as_str) {
         None => Ok(true),
         Some("quit") => Ok(false),
         Some(_) => {
-            let ran = once(client, &words, sized(out), Mode::Raw);
+            let ran = once(client, shell, &words, sized(out), Mode::Raw);
             if let Err(fail) = ran {
                 raw(format!("reovim: {fail}\n").as_bytes())?;
             }
@@ -266,8 +288,8 @@ fn submit(client: &mut Client, text: &str, out: Out) -> Result<bool, Fail> {
 }
 
 /// The prompt and the line on the current row, cursor placed.
-fn draw(line: &Line) -> Result<(), Fault> {
-    let (text, column) = line.render(PROMPT);
+fn draw(line: &Line, shell: &Shell) -> Result<(), Fault> {
+    let (text, column) = line.render(&shell.prompt());
     let right =
         if column > 0 { format!("\x1b[{column}C") } else { String::new() };
     write(format!("\r\x1b[2K{text}\r{right}").as_bytes())

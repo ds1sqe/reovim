@@ -4,14 +4,16 @@
 //! itself where it cannot.
 
 use reovim_client::{Client, Error, Fault};
-use reovim_client_cli::{CAUSES, Miss, Out, Step, USAGE, help, input, plain};
+use reovim_client_cli::{
+    CAUSES, Miss, Out, Shell, Step, USAGE, help, input, plain,
+};
 use reovim_rig::Rig;
 
 /// One command line; the line it would print, or its output as text.
 fn line(client: &mut Client, command: &str) -> String {
     let words: Vec<String> =
         command.split_whitespace().map(str::to_string).collect();
-    match input(client, &words, Out::plain()) {
+    match input(client, &mut Shell::default(), &words, Out::plain()) {
         Ok(out) => String::from_utf8(out).unwrap(),
         Err(miss) => miss.to_string(),
     }
@@ -79,10 +81,16 @@ fn a_refused_command_says_its_word_its_target_and_why() {
         "write /module/fs: a Container takes no bytes"
     );
 
-    // A target that is neither a path nor an rd, said before sending.
+    // A name is read under the cwd, which is the root here, and says
+    // the segment that did not resolve; an rd that is not a number is
+    // neither a path nor an rd, and is said before anything is sent.
     assert_eq!(
         says(&mut client, "lookup here"),
-        "lookup here: not a path or rd:<n>: here"
+        "lookup here: no such rd (here)"
+    );
+    assert_eq!(
+        says(&mut client, "lookup rd:x"),
+        "lookup rd:x: not a path or rd:<n>: rd:x"
     );
 }
 

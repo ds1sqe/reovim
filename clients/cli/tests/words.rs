@@ -3,7 +3,7 @@
 //! `ls` lays its names out across is the test's to give.
 
 use reovim_client::Client;
-use reovim_client_cli::{Out, input};
+use reovim_client_cli::{Out, Shell, input};
 use reovim_rig::Rig;
 
 /// One command line; its output, or the line a fault would print.
@@ -11,7 +11,7 @@ fn run(client: &mut Client, command: &str, width: Option<u16>) -> String {
     let words: Vec<String> =
         command.split_whitespace().map(str::to_string).collect();
     let out = Out { width, paint: reovim_client_cli::Paint::off() };
-    match input(client, &words, out) {
+    match input(client, &mut Shell::default(), &words, out) {
         Ok(out) => String::from_utf8(out).unwrap(),
         Err(miss) => miss.to_string(),
     }
