@@ -3,14 +3,15 @@
 //! `ls` lays its names out across is the test's to give.
 
 use reovim_client::Client;
-use reovim_client_cli::input;
+use reovim_client_cli::{Out, input};
 use reovim_rig::Rig;
 
 /// One command line; its output, or the line a fault would print.
 fn run(client: &mut Client, command: &str, width: Option<u16>) -> String {
     let words: Vec<String> =
         command.split_whitespace().map(str::to_string).collect();
-    match input(client, &words, width) {
+    let out = Out { width, paint: reovim_client_cli::Paint::off() };
+    match input(client, &words, out) {
         Ok(out) => String::from_utf8(out).unwrap(),
         Err(miss) => miss.to_string(),
     }
@@ -64,7 +65,7 @@ fn ls_names_the_children_sorted_down_columns_or_one_per_line() {
     );
     assert_eq!(
         run(&mut client, "ls -z", None),
-        "usage: ls [-l] [-a] [TARGET..]; help ls says more"
+        "usage: ls [-l] [-a] [-w] [TARGET..]; help ls says more"
     );
 }
 

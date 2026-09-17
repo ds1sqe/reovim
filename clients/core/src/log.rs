@@ -21,7 +21,35 @@ pub struct Entry {
     pub bytes: Vec<u8>,
 }
 
+/// syslog's eight, `emerg` 0 to `debug` 7, as the level byte counts
+/// them. The Kernel writes its own entries at these and takes a
+/// writer's `<N>` into the byte.
+pub const LEVELS: [&str; 8] =
+    ["emerg", "alert", "crit", "err", "warn", "notice", "info", "debug"];
+
+/// The byte a level name stands for; `None` for a name that is not one
+/// of the eight.
+#[must_use]
+pub fn level(name: &str) -> Option<u8> {
+    let at = LEVELS.iter().position(|level| *level == name)?;
+    u8::try_from(at).ok()
+}
+
 impl Entry {
+    /// The name of this entry's level; a byte past the eight is
+    /// `debug`, the least urgent of them.
+    #[must_use]
+    pub fn level_name(&self) -> &'static str {
+        let at = usize::from(self.level);
+        LEVELS.get(at).copied().unwrap_or("debug")
+    }
+
+    /// The text, lossy UTF-8.
+    #[must_use]
+    pub fn text(&self) -> String {
+        String::from_utf8_lossy(&self.bytes).into_owned()
+    }
+
     /// `seq time mark level text` and a newline, text lossy UTF-8.
     #[must_use]
     pub fn line(&self) -> String {

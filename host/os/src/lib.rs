@@ -226,6 +226,14 @@ pub mod term {
         backend::is_tty()
     }
 
+    /// Whether stdout is a terminal: whether a listing may lay itself
+    /// out in columns, and color may be written. The empty backend
+    /// says no.
+    #[must_use]
+    pub fn is_tty_out() -> bool {
+        backend::is_tty_out()
+    }
+
     /// Raw mode on the alternate screen: keys arrive one by one,
     /// nothing is echoed, and output lines need `\r\n`. The first call
     /// installs the panic hook and the signal handlers.
@@ -250,6 +258,23 @@ pub mod term {
     #[must_use]
     pub fn stopped() -> bool {
         backend::stopped()
+    }
+
+    /// Catch SIGINT from here on.
+    ///
+    /// Ctrl-C on a cooked terminal then sets the flag [`interrupted`]
+    /// takes instead of killing the process. Only a loop that reads
+    /// that flag calls this: a tui in raw mode gets Ctrl-C as a key and
+    /// wants the default death for the signal.
+    pub fn catch_interrupt() {
+        backend::catch_interrupt();
+    }
+
+    /// Whether SIGINT arrived since the last call, which takes it.
+    /// Always false without [`catch_interrupt`].
+    #[must_use]
+    pub fn interrupted() -> bool {
+        backend::interrupted()
     }
 
     /// The next key within `ms` milliseconds, or `None`. An event that

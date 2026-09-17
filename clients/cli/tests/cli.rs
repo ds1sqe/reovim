@@ -2,14 +2,15 @@
 //! completion from the tree, without a terminal.
 
 use reovim_client::{Client, Rd};
-use reovim_client_cli::{Miss, complete, input};
+use reovim_client_cli::{Miss, Out, complete, input};
 use reovim_rig::Rig;
 
 /// One command line; its output as text.
 fn run(client: &mut Client, line: &str) -> Result<String, Miss> {
     let words: Vec<String> =
         line.split_whitespace().map(str::to_string).collect();
-    input(client, &words, None).map(|out| String::from_utf8(out).unwrap())
+    let shown = |out: Vec<u8>| String::from_utf8(out).unwrap();
+    input(client, &words, Out::plain()).map(shown)
 }
 
 fn line(client: &mut Client, command: &str) -> String {
@@ -40,7 +41,7 @@ fn the_script_of_the_process_test_runs_in_process() {
     let source = input(
         &mut client,
         &["read".to_string(), pointer[5..].to_string()],
-        None,
+        Out::plain(),
     )
     .unwrap();
     let id: Rd = reovim_sdk::decode(&source).unwrap();

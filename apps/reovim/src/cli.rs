@@ -3,9 +3,14 @@
 //! an edited line with completion on a terminal.
 
 use std::io::{Read, Write};
+use std::thread::sleep;
+use std::time::Duration;
 
 use reovim_client::{Client, Fault, Key};
-use reovim_client_cli::{Act, Line, Miss, complete, help, input, plain};
+use reovim_client_cli::{
+    Act, Follow, Line, Miss, Out, Paint, complete, following, help, input,
+    plain,
+};
 use reovim_host::term;
 
 use crate::Fail;
@@ -13,27 +18,132 @@ use crate::remote::Remote;
 
 const PROMPT: &str = "> ";
 
+/// Between one `since` and the next. The wire is request and reply, so
+/// a following word asks; when the link learns to push, this wait
+/// becomes a wake (a Series B number).
+const TICK: u64 = 50;
+
+/// Where this run's output goes: the terminal's columns when stdout is
+/// one, and the color the app decided on.
+#[must_use]
+pub fn out(color: bool) -> Out {
+    let paint = if color { Paint::on() } else { Paint::off() };
+    Out { width: width(), paint }
+}
+
 /// Run `command`, or an interactive session when it is empty. `help`
 /// and `--help` are answered without a link; anything else needs one.
-pub fn run(socket: &str, command: &[String]) -> Result<(), Fail> {
+pub fn run(socket: &str, command: &[String], out: Out) -> Result<(), Fail> {
     if let Some(text) = help(command) {
         return Ok(write(text?.as_bytes())?);
     }
     let mut client = linked(socket)?;
     if !command.is_empty() {
-        let out = input(&mut client, &filled(command)?, width())?;
-        return Ok(write(&out)?);
+        return once(&mut client, &filled(command)?, out, Mode::Cooked);
     }
-    if term::is_tty() { terminal(&mut client) } else { piped(&mut client) }
+    if term::is_tty() {
+        terminal(&mut client, out)
+    } else {
+        piped(&mut client, out)
+    }
 }
 
 /// The terminal's columns, which `ls` lays its names out across; `None`
 /// when stdout is a pipe, and the library writes one name per line.
 fn width() -> Option<u16> {
-    if !term::is_tty() {
+    if !term::is_tty_out() {
         return None;
     }
     term::size().ok().map(|(columns, _)| columns)
+}
+
+/// The columns again, in case the terminal was resized between two
+/// commands; the color is the run's.
+fn sized(out: Out) -> Out {
+    Out { width: width(), paint: out.paint }
+}
+
+/// How a following word waits and writes: a cooked terminal or a pipe,
+/// where Ctrl-C arrives as SIGINT and a newline is a newline; or raw
+/// mode, where Ctrl-C is a key and every newline needs its return.
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum Mode {
+    Cooked,
+    Raw,
+}
+
+impl Mode {
+    fn show(self, bytes: &[u8]) -> Result<(), Fault> {
+        match self {
+            Self::Cooked => write(bytes),
+            Self::Raw => shown(bytes),
+        }
+    }
+
+    /// Up to `TICK` milliseconds for Ctrl-C; false once it has come.
+    fn wait(self) -> Result<bool, Fail> {
+        if self == Self::Cooked {
+            sleep(Duration::from_millis(TICK));
+            return Ok(!term::interrupted() && !term::stopped());
+        }
+        let key = term::poll(TICK)?;
+        Ok(!term::stopped() && key != Some(term::Key::Ctrl('c')))
+    }
+}
+
+/// One command: a word that follows the tree runs the loop, and
+/// anything else prints once.
+fn once(
+    client: &mut Client,
+    words: &[String],
+    out: Out,
+    mode: Mode,
+) -> Result<(), Fail> {
+    if let Some(plan) = following(client, words, out)? {
+        return follow(client, plan, mode);
+    }
+    Ok(mode.show(&input(client, words, out)?)?)
+}
+
+/// The one watch loop: what the word prints now, then what it makes of
+/// every event until Ctrl-C or the count. The handles it watched are
+/// closed on the way out; Ctrl-C is not a failure.
+fn follow(
+    client: &mut Client,
+    mut plan: Follow,
+    mode: Mode,
+) -> Result<(), Fail> {
+    if mode == Mode::Cooked {
+        term::catch_interrupt();
+    }
+    mode.show(&plan.first)?;
+    let mut left = plan.limit;
+    while left != Some(0) && mode.wait()? {
+        left = step(client, &mut plan, mode, left)?;
+    }
+    for h in &plan.handles {
+        let _ = client.close(*h);
+    }
+    Ok(())
+}
+
+/// Everything that happened since the last ask, and how many prints
+/// are left after it.
+fn step(
+    client: &mut Client,
+    plan: &mut Follow,
+    mode: Mode,
+    mut left: Option<usize>,
+) -> Result<Option<usize>, Fail> {
+    for event in client.since()? {
+        if left == Some(0) {
+            break;
+        }
+        let Some(bytes) = plan.event(client, event)? else { continue };
+        mode.show(&bytes)?;
+        left = left.map(|n| n.saturating_sub(1));
+    }
+    Ok(left)
 }
 
 /// A Client on the server at `socket`; a link that never opened says
@@ -68,7 +178,7 @@ fn write(bytes: &[u8]) -> Result<(), Fault> {
 
 /// One command per stdin line until EOF or `quit`; a fault ends the
 /// line, not the session.
-fn piped(client: &mut Client) -> Result<(), Fail> {
+fn piped(client: &mut Client, out: Out) -> Result<(), Fail> {
     let stdin = std::io::stdin();
     let mut line = String::new();
     while stdin.read_line(&mut line).map_err(|_| Fault::Carrier)? != 0 {
@@ -77,10 +187,7 @@ fn piped(client: &mut Client) -> Result<(), Fail> {
         match words.first().map(String::as_str) {
             None => {}
             Some("quit") => break,
-            Some(_) => report(
-                input(client, &words, None)
-                    .and_then(|o| write(&o).map_err(|f| plain(&f, None))),
-            ),
+            Some(_) => report(once(client, &words, out, Mode::Cooked)),
         }
     }
     Ok(())
@@ -90,30 +197,36 @@ fn split(line: &str) -> Vec<String> {
     line.split_whitespace().map(str::to_string).collect()
 }
 
-fn report(result: Result<(), Miss>) {
-    if let Err(miss) = result {
-        eprintln!("reovim: {miss}");
+/// One line's fault ends the line, not the session.
+fn report(result: Result<(), Fail>) {
+    if let Err(fail) = result {
+        eprintln!("reovim: {fail}");
     }
 }
 
 /// The line editor under raw mode; back to cooked on every exit.
-fn terminal(client: &mut Client) -> Result<(), Fail> {
+fn terminal(client: &mut Client, out: Out) -> Result<(), Fail> {
     term::enter()?;
-    let result = edit(client);
+    let result = edit(client, out);
     let _ = term::leave();
     result
 }
 
-fn edit(client: &mut Client) -> Result<(), Fail> {
+fn edit(client: &mut Client, out: Out) -> Result<(), Fail> {
     let mut line = Line::default();
     draw(&line)?;
     loop {
+        // A signal or a terminal that went away ends the wait for
+        // good; without this the loop would spin on an empty poll.
+        if term::stopped() {
+            return Err(Fail::Signal);
+        }
         let Some(key) = term::poll(1000)? else { continue };
         let go_on = match line.key(map(key)) {
             Act::Nothing => continue,
             Act::Redraw => true,
             Act::Complete => offer(client, &mut line)?,
-            Act::Submit(text) => submit(client, &text)?,
+            Act::Submit(text) => submit(client, &text, out)?,
             Act::Quit => false,
         };
         if !go_on {
@@ -134,17 +247,18 @@ fn offer(client: &mut Client, line: &mut Line) -> Result<bool, Fail> {
     Ok(true)
 }
 
-/// Enter: the command runs; false on `quit`.
-fn submit(client: &mut Client, text: &str) -> Result<bool, Fail> {
+/// Enter: the command runs; false on `quit`. A word that follows runs
+/// until Ctrl-C, which is a key here, and the line comes back after.
+fn submit(client: &mut Client, text: &str, out: Out) -> Result<bool, Fail> {
     raw(b"\n")?;
     let words = split(text);
     match words.first().map(String::as_str) {
         None => Ok(true),
         Some("quit") => Ok(false),
         Some(_) => {
-            match input(client, &words, width()) {
-                Ok(out) => shown(&out)?,
-                Err(miss) => raw(format!("reovim: {miss}\n").as_bytes())?,
+            let ran = once(client, &words, sized(out), Mode::Raw);
+            if let Err(fail) = ran {
+                raw(format!("reovim: {fail}\n").as_bytes())?;
             }
             Ok(true)
         }

@@ -10,6 +10,7 @@ use reovim_kernel_interface::{
 use reovim_kernel_interface::Kind;
 
 use crate::kernel::{Kernel, Slot, State};
+use crate::log::{INFO, WARN, level_of};
 use crate::table::{Node, Owner};
 
 /// An op's answer; `Err` becomes `Ready(Err)` at the caller.
@@ -211,9 +212,15 @@ fn close(k: &Kernel, caller: Caller, h: Handle) -> Answer {
 }
 
 fn since(k: &Kernel, caller: Caller, cursor: u64) -> Answer {
-    let s = k.state.borrow();
+    let now = k.now();
+    let mut s = k.state.borrow_mut();
     s.callers.get(&caller).ok_or(Error::Invalid)?;
     let (events, cursor) = s.events.since(cursor, &s.watched(caller));
+    if events.iter().any(|e| e.kind == Kind::Overflow) {
+        let caller = caller.0;
+        let line = alloc::format!("overflow caller={caller} cursor={cursor}");
+        s.log(now, "kernel", WARN, line.into_bytes());
+    }
     Ok(Reply::ok(Out::Events { events, cursor }))
 }
 
@@ -375,7 +382,8 @@ fn kernel_write(
     match s.table.get(rd)?.owner {
         Owner::Kernel(Node::Log) => {
             let mark = alloc::string::String::from(s.mark(caller));
-            s.log(now, &mark, bytes.to_vec());
+            let (level, text) = level_of(bytes);
+            s.log(now, &mark, level, text.to_vec());
         }
         Owner::Kernel(Node::Cell) => {
             let cell = s.cells.get_mut(&rd).ok_or(Error::Gone)?;
@@ -401,5 +409,5 @@ fn stamp(k: &Kernel, rd: Rd, api: Hash, method: u16, phase: &str) {
         rd.0,
         api.0
     );
-    k.state.borrow_mut().log(now, "kernel", line.into_bytes());
+    k.state.borrow_mut().log(now, "kernel", INFO, line.into_bytes());
 }

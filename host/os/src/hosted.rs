@@ -306,9 +306,17 @@ pub fn is_tty() -> bool {
     std::io::stdin().is_terminal()
 }
 
+pub fn is_tty_out() -> bool {
+    std::io::stdout().is_terminal()
+}
+
 /// Set by SIGTERM or SIGHUP; `poll` ends and `stopped` says so.
 static STOP: AtomicBool = AtomicBool::new(false);
+/// Set by SIGINT, and taken by `interrupted`; nothing else reads it,
+/// so a loop that does not ask keeps the default it never installed.
+static INTERRUPT: AtomicBool = AtomicBool::new(false);
 static INSTALLED: Once = Once::new();
+static CATCHING: Once = Once::new();
 
 /// Raw mode on the alternate screen. The first call installs the
 /// panic hook and the signal handlers.
@@ -344,13 +352,25 @@ pub fn stopped() -> bool {
     STOP.load(Ordering::Relaxed)
 }
 
-/// SIGTERM and SIGHUP store one bool; the loop leaves the normal way.
+pub fn catch_interrupt() {
+    CATCHING.call_once(sig::interrupt_install);
+}
+
+pub fn interrupted() -> bool {
+    INTERRUPT.swap(false, Ordering::Relaxed)
+}
+
+/// SIGTERM and SIGHUP store one bool, SIGINT another; the loop leaves
+/// the normal way. SIGINT is installed on its own, by whoever waits
+/// for it: a process that never asks keeps the default death, which is
+/// what a tui in raw mode, where Ctrl-C is a key, wants.
 #[allow(unsafe_code)]
 mod sig {
     use core::ffi::c_int;
     use core::sync::atomic::Ordering;
 
     const SIGHUP: c_int = 1;
+    const SIGINT: c_int = 2;
     const SIGTERM: c_int = 15;
 
     unsafe extern "C" {
@@ -361,12 +381,23 @@ mod sig {
         super::STOP.store(true, Ordering::Relaxed);
     }
 
+    extern "C" fn interrupt(_: c_int) {
+        super::INTERRUPT.store(true, Ordering::Relaxed);
+    }
+
     pub fn install() {
         // SAFETY: `stop` stores one bool and calls nothing, so it may
         // run at any point; the old handlers are not needed back.
         unsafe {
             signal(SIGHUP, stop);
             signal(SIGTERM, stop);
+        }
+    }
+
+    pub fn interrupt_install() {
+        // SAFETY: as `install`; `interrupt` stores one bool.
+        unsafe {
+            signal(SIGINT, interrupt);
         }
     }
 }

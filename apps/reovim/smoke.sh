@@ -129,6 +129,26 @@ keys rebase : s / t h i r d / r e w o r d e d " " t h i r d / Enter Z Z
 mkdir "$DIR/new"
 start new "$DIR" "$BIN $DIR/new/note"
 editing new note
+
+# dmesg reads the editor's log as the real one does: a stamp on every
+# line and the line the editor wrote where it listens; nothing at err
+# on a clean run. Then one follows in a pane, and sees what arrives
+# while it runs: a connect of its own, and an entry a later cli writes
+# with printk's `<4>` in front. SIGINT, which is what Ctrl-C makes on
+# a cooked terminal, ends it with exit 0; the pane's own shell is not
+# in a job of its own, so the signal is sent to the cli alone.
+said="$("$BIN" cli dmesg)"
+[[ "$said" == "["* ]] || fail "dmesg has no stamp: $said"
+[[ "$said" == *"listen $XDG_RUNTIME_DIR/reovim.sock"* ]] \
+    || fail "dmesg does not say where the editor listens: $said"
+[[ -z "$("$BIN" cli dmesg -l err)" ]] || fail "dmesg -l err is not empty"
+start follow "$DIR" "$BIN cli dmesg -w"
+shown follow 'connect session='
+"$BIN" cli write /sys/log '<4>smoke-follows' >/dev/null
+shown follow 'smoke-follows'
+pkill -INT -f "^$BIN cli dmesg -w\$"
+[[ "$(ended follow)" == 0 ]] || fail "dmesg -w did not end on SIGINT"
+
 start other "$DIR/new" "$BIN ../other"
 editing other other
 # The first editor has the default socket, the second one of its own;

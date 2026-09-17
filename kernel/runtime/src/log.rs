@@ -6,6 +6,24 @@ use alloc::collections::VecDeque;
 use alloc::string::String;
 use alloc::vec::Vec;
 
+/// syslog's eight levels, `emerg` 0 to `debug` 7, in the entry's byte.
+/// The Kernel writes at these; a writer to `/sys/log` says which with
+/// a `<N>` in front, as printk does.
+pub const ERR: u8 = 3;
+pub const WARN: u8 = 4;
+pub const NOTICE: u8 = 5;
+pub const INFO: u8 = 6;
+
+/// The `<N>` a written entry may start with, and the bytes after it.
+/// No prefix, or one that is not a single digit of the eight, is
+/// `INFO` and the bytes as they came.
+pub fn level_of(bytes: &[u8]) -> (u8, &[u8]) {
+    match bytes {
+        [b'<', digit @ b'0'..=b'7', b'>', rest @ ..] => (digit - b'0', rest),
+        _ => (INFO, bytes),
+    }
+}
+
 pub struct Entry {
     pub seq: u64,
     pub time: u64,

@@ -11,7 +11,9 @@
 extern crate alloc;
 
 mod complete;
+pub mod dmesg;
 mod line;
+mod paint;
 
 use alloc::format;
 use alloc::string::{String, ToString};
@@ -21,20 +23,23 @@ use core::fmt;
 use core::fmt::Write as _;
 
 use reovim_client::{
-    Client, Decl, Error, Fault, Field, Flags, Hash, Info, Rd, Rights, Ty, log,
-    value,
+    Client, Decl, Error, Event, Fault, Field, Flags, Handle, Hash, Info, Kind,
+    Rd, Rights, Ty, log, value,
 };
 
 pub use complete::{Completion, complete};
 pub use line::{Act, Line};
+pub use paint::Paint;
 
 /// The commands, one per line: the word, what it takes, what it does.
 /// The source of `help` and of the usage line of a word used wrongly.
 pub const USAGE: &str = "\
-ls [-l] [-a] [TARGET..]         children by name; -l long, -a rds
-cat <target>..                  the bytes of each in turn
+ls [-l] [-a] [-w] [TARGET..]    children by name; -l long, -a rds
+cat [-f] [-n N] <target>..      the bytes of each in turn; -f follows
 stat <target>                   the long line, the times, the apis
 tree [-L N] [TARGET]            the tree under it, N levels deep
+dmesg [-tTHxkwW] [-l LEVELS]    the log as dmesg reads it; -w follows
+watch <target>                  seq kind name, per event, as they come
 lookup <target>                 rd
 info <target>                   name, flags, times, apis
 children <target>               rd and name per line
@@ -49,9 +54,10 @@ quit                            end an interactive session
 <target> is a path from / or rd:<n>";
 
 /// The command names, for completion.
-const COMMANDS: [&str; 15] = [
-    "ls", "cat", "stat", "tree", "lookup", "info", "children", "read", "write",
-    "call", "log", "load", "unload", "help", "quit",
+const COMMANDS: [&str; 17] = [
+    "ls", "cat", "stat", "tree", "dmesg", "watch", "lookup", "info",
+    "children", "read", "write", "call", "log", "load", "unload", "help",
+    "quit",
 ];
 
 /// Why one command did not run: the word and the target as typed, and
@@ -126,13 +132,40 @@ pub const CAUSES: &[(&str, Step, Error, &str)] = &[
     ("", Step::Op, Error::Cancelled, "cancelled"),
 ];
 
+/// Where the output goes.
+///
+/// The terminal's columns, which `ls` lays its names out across, are
+/// `None` for a pipe and then it writes one name per line; the palette
+/// is on when the app allows color. The app knows both, and this crate
+/// asks neither the terminal nor the environment.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct Out {
+    pub width: Option<u16>,
+    pub paint: Paint,
+}
+
+impl Out {
+    /// A pipe: one name per line, no color.
+    #[must_use]
+    pub const fn plain() -> Self {
+        Self { width: None, paint: Paint::off() }
+    }
+
+    /// A terminal `width` columns wide, colored or not.
+    #[must_use]
+    pub const fn screen(width: u16, color: bool) -> Self {
+        let paint = if color { Paint::on() } else { Paint::off() };
+        Self { width: Some(width), paint }
+    }
+}
+
 /// One command already split into words; what goes to stdout, text or
 /// raw bytes.
 ///
 /// `write` without bytes needs stdin, so the app fills the argument
-/// before calling. `width` is the terminal's columns, which `ls` lays
-/// its names out across; `None` when the output is a pipe, and then
-/// one name per line.
+/// before calling. A word that follows the tree prints here what it
+/// has now and nothing more: the loop after it is the app's, from
+/// [`following`].
 ///
 /// # Errors
 /// `Miss` for an unknown word, the wrong number of words, `quit`
@@ -140,7 +173,7 @@ pub const CAUSES: &[(&str, Step, Error, &str)] = &[
 pub fn input(
     client: &mut Client,
     words: &[String],
-    width: Option<u16>,
+    out: Out,
 ) -> Result<Vec<u8>, Miss> {
     if let Some(text) = help(words) {
         return text.map(String::into_bytes);
@@ -152,10 +185,11 @@ pub fn input(
         ("quit", _) => {
             return Err(Miss::line("quit ends an interactive session"));
         }
-        ("ls", _) => return ls(client, &words[1..], width),
+        ("ls", _) => return ls(client, &words[1..], out),
         ("cat", 2..) => return cat(client, &words[1..]),
-        ("stat", 2) => return stat(client, &words[1]),
-        ("tree", _) => return tree(client, &words[1..]),
+        ("stat", 2) => return stat(client, &words[1], out),
+        ("tree", _) => return tree(client, &words[1..], out),
+        ("dmesg", _) => return dmesg_now(client, &words[1..], out),
         ("log", 1 | 2) => return log_from(client, words.get(1)),
         ("load", 2) => {
             let path = &words[1];
@@ -167,7 +201,7 @@ pub fn input(
             let gone = client.unload(name).map(|()| Vec::new());
             return gone.map_err(|f| miss(word, name, Step::Op, &f, &[]));
         }
-        ("lookup" | "info" | "children" | "read", 2)
+        ("lookup" | "info" | "children" | "read" | "watch", 2)
         | ("write", 3)
         | ("call", 3 | 4) => {}
         _ => return Err(misuse(word)),
@@ -177,6 +211,8 @@ pub fn input(
     let refused = |fault: Fault| miss(word, target, Step::Op, &fault, &[]);
     match word {
         "lookup" => Ok(format!("{}\n", rd.0).into_bytes()),
+        // `watch` prints nothing until an event; the loop is the app's.
+        "watch" => Ok(Vec::new()),
         "info" => info(client, rd).map_err(refused),
         "children" => children(client, rd).map_err(refused),
         "read" => client.read_all(rd).map_err(refused),
@@ -404,20 +440,18 @@ struct Entry {
     info: Info,
 }
 
-/// How `ls` writes a listing: `-l` the long line, `-a` the rd first.
-#[derive(Clone, Copy)]
+/// How `ls` writes a listing: `-l` the long line, `-a` the rd first,
+/// `-w` the listing again after every event under the target.
+#[derive(Clone, Copy, Default)]
 struct Form {
     long: bool,
     rds: bool,
+    follow: bool,
 }
 
 /// The children of each target by name, sorted; in columns across
 /// `width` and one per line without it. A cell lists itself.
-fn ls(
-    client: &mut Client,
-    args: &[String],
-    width: Option<u16>,
-) -> Result<Vec<u8>, Miss> {
+fn ls(client: &mut Client, args: &[String], out: Out) -> Result<Vec<u8>, Miss> {
     let Some((form, mut targets)) = options(args) else {
         return Err(misuse("ls"));
     };
@@ -425,29 +459,34 @@ fn ls(
         targets.push(CWD);
     }
     let many = targets.len() > 1;
-    let mut out = String::new();
+    let mut text = String::new();
     for target in targets {
-        let gap = if out.is_empty() { "" } else { "\n" };
+        let gap = if text.is_empty() { "" } else { "\n" };
         if many {
-            let _ = writeln!(out, "{gap}{target}:");
+            let _ = writeln!(text, "{gap}{target}:");
         }
-        out.push_str(&listing(client, target, form, width)?);
+        text.push_str(&listing(client, target, form, out)?);
     }
-    Ok(out.into_bytes())
+    Ok(text.into_bytes())
 }
 
 /// The `-l` and `-a` of `args` and the targets after them; `None` for
 /// a flag `ls` does not take.
 fn options(args: &[String]) -> Option<(Form, Vec<&str>)> {
-    let mut form = Form { long: false, rds: false };
+    let mut form = Form::default();
     let mut targets = Vec::new();
     for arg in args {
-        match flags(arg) {
-            None => targets.push(arg.as_str()),
-            Some("l") => form.long = true,
-            Some("a") => form.rds = true,
-            Some("la" | "al") => form = Form { long: true, rds: true },
-            Some(_) => return None,
+        let Some(letters) = flags(arg) else {
+            targets.push(arg.as_str());
+            continue;
+        };
+        for letter in letters.chars() {
+            match letter {
+                'l' => form.long = true,
+                'a' => form.rds = true,
+                'w' => form.follow = true,
+                _ => return None,
+            }
         }
     }
     Some((form, targets))
@@ -463,7 +502,7 @@ fn listing(
     client: &mut Client,
     target: &str,
     form: Form,
-    width: Option<u16>,
+    out: Out,
 ) -> Result<String, Miss> {
     let rd = resolved(client, "ls", target)?;
     let refused = |fault: Fault| miss("ls", target, Step::Op, &fault, &[]);
@@ -474,25 +513,36 @@ fn listing(
         vec![Entry { name: named(rd, &info), rd, info }]
     };
     if form.long {
-        let mut out = String::new();
+        let mut text = String::new();
         for entry in &listed {
-            let line = long_line(client, entry, form.rds).map_err(refused)?;
-            out.push_str(&line);
+            let paint = out.paint;
+            let line = long_line(client, entry, form.rds, paint);
+            text.push_str(&line.map_err(refused)?);
         }
-        return Ok(out);
+        return Ok(text);
     }
     let text = |entry: &Entry| {
-        if form.rds {
-            format!("{} {}", entry.rd.0, entry.name)
-        } else {
-            entry.name.clone()
-        }
+        let name = painted(entry, out.paint);
+        if form.rds { format!("{} {name}", entry.rd.0) } else { name }
     };
     let names: Vec<String> = listed.iter().map(text).collect();
-    Ok(width.map_or_else(
+    Ok(out.width.map_or_else(
         || lines(&names),
         |width| columns(&names, usize::from(width)),
     ))
+}
+
+/// A name as a listing shows it: a Container bold blue, a cell that
+/// offers an api green, anything else as it is.
+fn painted(entry: &Entry, paint: Paint) -> String {
+    let name = &entry.name;
+    if entry.info.flags.contains(Flags::CONTAINER) {
+        paint.blue(name)
+    } else if entry.info.apis.is_empty() {
+        name.clone()
+    } else {
+        paint.green(name)
+    }
 }
 
 /// Every child of `rd`, named and sorted by name.
@@ -516,6 +566,7 @@ fn long_line(
     client: &mut Client,
     entry: &Entry,
     rds: bool,
+    paint: Paint,
 ) -> Result<String, Fault> {
     let flags = entry.info.flags;
     let kind = if flags.contains(Flags::CONTAINER) { 'c' } else { '-' };
@@ -528,7 +579,8 @@ fn long_line(
     let apis = if apis.is_empty() { "-".to_string() } else { apis.join(",") };
     let number = if rds { format!("{} ", entry.rd.0) } else { String::new() };
     let at = date(entry.info.mtime);
-    Ok(format!("{number}{kind} {read}{write}  {at}  {apis}  {}\n", entry.name))
+    let name = painted(entry, paint);
+    Ok(format!("{number}{kind} {read}{write}  {at}  {apis}  {name}\n"))
 }
 
 /// One name per line, as a pipe wants them.
@@ -569,14 +621,34 @@ fn columns(names: &[String], width: usize) -> String {
     out
 }
 
-/// The cells `text` takes on a terminal row.
+/// The cells `text` takes on a terminal row; an SGR sequence from
+/// `paint` takes none, so a colored name lays out as its bare one.
 fn cells(text: &str) -> usize {
-    text.chars().map(reovim_client::width).sum()
+    let mut cells = 0;
+    let mut rest = text;
+    while let Some(at) = rest.find('\x1b') {
+        cells += rest[..at].chars().map(reovim_client::width).sum::<usize>();
+        let end = rest[at..].find('m').map_or(rest.len(), |m| at + m + 1);
+        rest = &rest[end..];
+    }
+    cells + rest.chars().map(reovim_client::width).sum::<usize>()
 }
 
-/// `YYYY-MM-DD HH:MM:SS` in UTC from the Kernel clock's nanoseconds,
-/// by the civil-from-days arithmetic, which needs no table and no host.
-fn date(nanos: u64) -> String {
+/// One instant of the Kernel clock as a calendar reads it, in UTC.
+/// `weekday` counts Sunday 0, as `dmesg -T` names the day.
+struct Civil {
+    year: u64,
+    month: u64,
+    day: u64,
+    hour: u64,
+    minute: u64,
+    second: u64,
+    weekday: u64,
+}
+
+/// The civil date of the Kernel clock's nanoseconds, by the
+/// civil-from-days arithmetic, which needs no table and no host.
+fn civil(nanos: u64) -> Civil {
     let seconds = nanos / 1_000_000_000;
     let (days, rest) = (seconds / 86_400, seconds % 86_400);
     // Counting the year from March, so the leap day is the last day.
@@ -588,15 +660,63 @@ fn date(nanos: u64) -> String {
     let day = doy - (153 * mp + 2) / 5 + 1;
     let month = if mp < 10 { mp + 3 } else { mp - 9 };
     let year = era * 400 + yoe + u64::from(month <= 2);
-    let (hour, minute) = (rest / 3600, rest % 3600 / 60);
+    // 1970-01-01 was a Thursday, the fourth day of the week.
+    Civil {
+        year,
+        month,
+        day,
+        hour: rest / 3600,
+        minute: rest % 3600 / 60,
+        second: rest % 60,
+        weekday: (days + 4) % 7,
+    }
+}
+
+/// `YYYY-MM-DD HH:MM:SS` in UTC, as `ls -l` and `stat` write a time.
+fn date(nanos: u64) -> String {
+    let c = civil(nanos);
+    let (year, month, day) = (c.year, c.month, c.day);
     format!(
-        "{year:04}-{month:02}-{day:02} {hour:02}:{minute:02}:{:02}",
-        rest % 60
+        "{year:04}-{month:02}-{day:02} {:02}:{:02}:{:02}",
+        c.hour, c.minute, c.second
     )
 }
 
+/// How `cat` reads: `-f` (or `-w`) goes on printing the bytes after
+/// every Modify, `-n N` until N of them.
+#[derive(Clone, Copy, Default)]
+struct Reading {
+    follow: bool,
+    stop: Option<usize>,
+}
+
+/// The flags of `cat` and the targets after them; `None` for a flag it
+/// does not take, a count that is not a number, or no target at all.
+fn reading(args: &[String]) -> Option<(Reading, Vec<&str>)> {
+    let mut form = Reading::default();
+    let mut targets = Vec::new();
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
+        let Some(letters) = flags(arg) else {
+            targets.push(arg.as_str());
+            continue;
+        };
+        for letter in letters.chars() {
+            match letter {
+                'f' | 'w' => form.follow = true,
+                'n' => form.stop = Some(args.next()?.parse().ok()?),
+                _ => return None,
+            }
+        }
+    }
+    (!targets.is_empty()).then_some((form, targets))
+}
+
 /// The bytes of each target in turn.
-fn cat(client: &mut Client, targets: &[String]) -> Result<Vec<u8>, Miss> {
+fn cat(client: &mut Client, args: &[String]) -> Result<Vec<u8>, Miss> {
+    let Some((_, targets)) = reading(args) else {
+        return Err(misuse("cat"));
+    };
     let mut out = Vec::new();
     for target in targets {
         let rd = resolved(client, "cat", target)?;
@@ -608,12 +728,13 @@ fn cat(client: &mut Client, targets: &[String]) -> Result<Vec<u8>, Miss> {
 
 /// The long line, the three times as dates, then every api with its
 /// methods as the declaration shows them.
-fn stat(client: &mut Client, target: &str) -> Result<Vec<u8>, Miss> {
+fn stat(client: &mut Client, target: &str, out: Out) -> Result<Vec<u8>, Miss> {
     let rd = resolved(client, "stat", target)?;
     let refused = |fault: Fault| miss("stat", target, Step::Op, &fault, &[]);
     let info = client.info(rd).map_err(refused)?;
     let entry = Entry { name: named(rd, &info), rd, info };
-    let mut out = long_line(client, &entry, false).map_err(refused)?;
+    let line = long_line(client, &entry, false, out.paint);
+    let mut out = line.map_err(refused)?;
     let times = [
         ("rd", entry.rd.0.to_string()),
         ("ctime", date(entry.info.ctime)),
@@ -681,21 +802,26 @@ fn shown(ty: &Ty) -> String {
 
 /// The target and what is under it as `tree` draws it, ending with the
 /// count of what was drawn.
-fn tree(client: &mut Client, args: &[String]) -> Result<Vec<u8>, Miss> {
+fn tree(
+    client: &mut Client,
+    args: &[String],
+    out: Out,
+) -> Result<Vec<u8>, Miss> {
     let Some((depth, target)) = levels(args) else {
         return Err(misuse("tree"));
     };
     let rd = resolved(client, "tree", target)?;
     let refused = |fault: Fault| miss("tree", target, Step::Op, &fault, &[]);
     let info = client.info(rd).map_err(refused)?;
-    let mut out = format!("{target}\n");
+    let mut text = format!("{target}\n");
     let mut count = (0, 0);
     if info.flags.contains(Flags::CONTAINER) {
         let kids = ordered(entries(client, rd).map_err(refused)?);
-        draw(client, &kids, "", depth, &mut out, &mut count);
+        let deeper = Deeper { prefix: String::new(), depth, paint: out.paint };
+        draw(client, &kids, &deeper, &mut text, &mut count);
     }
-    let _ = write!(out, "\n{} containers, {} cells\n", count.0, count.1);
-    Ok(out.into_bytes())
+    let _ = write!(text, "\n{} containers, {} cells\n", count.0, count.1);
+    Ok(text.into_bytes())
 }
 
 /// The `-L N` of `args` and the one target after it; `None` for a flag
@@ -724,18 +850,26 @@ fn ordered(mut kids: Vec<Entry>) -> Vec<Entry> {
     kids
 }
 
-/// `kids` under `prefix`, each Container `depth` levels deeper; what
+/// Where `draw` is: what each line starts with, how many levels are
+/// left, and the palette the names are written in.
+struct Deeper {
+    prefix: String,
+    depth: usize,
+    paint: Paint,
+}
+
+/// `kids` under `at.prefix`, each Container a level deeper; what
 /// cannot be listed says why on its own line and the walk goes on.
 fn draw(
     client: &mut Client,
     kids: &[Entry],
-    prefix: &str,
-    depth: usize,
+    at: &Deeper,
     out: &mut String,
     count: &mut (usize, usize),
 ) {
-    for (at, kid) in kids.iter().enumerate() {
-        let last = at + 1 == kids.len();
+    let prefix = &at.prefix;
+    for (i, kid) in kids.iter().enumerate() {
+        let last = i + 1 == kids.len();
         let stem = if last { "└── " } else { "├── " };
         let below = if last { "    " } else { "│   " };
         let container = kid.info.flags.contains(Flags::CONTAINER);
@@ -744,21 +878,324 @@ fn draw(
         } else {
             count.1 += 1;
         }
-        let under = (container && depth > 1).then(|| entries(client, kid.rd));
+        let name = painted(kid, at.paint);
+        let under =
+            (container && at.depth > 1).then(|| entries(client, kid.rd));
         match under {
             Some(Err(fault)) => {
                 let why = cause("tree", Step::Op, &fault, &[]);
-                let _ = writeln!(out, "{prefix}{stem}{}: {why}", kid.name);
+                let _ = writeln!(out, "{prefix}{stem}{name}: {why}");
             }
             Some(Ok(kids)) => {
-                let _ = writeln!(out, "{prefix}{stem}{}", kid.name);
-                let deeper = format!("{prefix}{below}");
-                draw(client, &ordered(kids), &deeper, depth - 1, out, count);
+                let _ = writeln!(out, "{prefix}{stem}{name}");
+                let deeper = Deeper {
+                    prefix: format!("{prefix}{below}"),
+                    depth: at.depth - 1,
+                    paint: at.paint,
+                };
+                draw(client, &ordered(kids), &deeper, out, count);
             }
             None => {
-                let _ = writeln!(out, "{prefix}{stem}{}", kid.name);
+                let _ = writeln!(out, "{prefix}{stem}{name}");
             }
         }
+    }
+}
+
+/// Where `dmesg` reads from; the cli knows no Module, and this is a
+/// path in the tree like any other.
+const LOG: &str = "/sys/log";
+
+/// What `dmesg` prints of everything the log holds now.
+fn dmesg_now(
+    client: &mut Client,
+    args: &[String],
+    out: Out,
+) -> Result<Vec<u8>, Miss> {
+    let (form, _) = dmesg::form(args, out.paint)?;
+    let refused = |f: Fault| miss("dmesg", LOG, Step::Op, &f, &[]);
+    let entries = log::tail(client, 1).map_err(refused)?;
+    let boot = dmesg::boot(&entries);
+    let mut last = None;
+    Ok(dmesg::show(&entries, boot, &mut last, &form).into_bytes())
+}
+
+/// A word that goes on printing after the line is typed: what the app
+/// watches, what it prints at once, and what it makes of each event
+/// after that. One loop in the app serves all of them.
+pub struct Follow {
+    /// The handles watched; the app closes them when the loop ends.
+    pub handles: Vec<Handle>,
+    /// What to print before the first event.
+    pub first: Vec<u8>,
+    /// How many prints end the loop; `None` until Ctrl-C.
+    pub limit: Option<usize>,
+    what: Watching,
+}
+
+/// What each following word makes of an event.
+enum Watching {
+    /// `dmesg -w`: every new entry, in the form the line asked for.
+    Log(Tailing),
+    /// `cat -f`: the bytes of the cell again on every Modify.
+    Cell { rds: Vec<Rd> },
+    /// `watch`: `seq kind name` for each event on the target.
+    Events { rd: Rd, name: String, paint: Paint },
+    /// `ls -w`: the listing again after every event under the target.
+    List { rds: Vec<Rd>, args: Vec<String>, out: Out },
+}
+
+/// `dmesg -w` between events: the watched log, the sequence to read
+/// from, and what the forms need to write the next line.
+struct Tailing {
+    h: Handle,
+    rd: Rd,
+    from: u64,
+    boot: u64,
+    last: Option<u64>,
+    form: dmesg::Form,
+}
+
+impl Tailing {
+    /// Whatever the log gained, in the form the line asked for.
+    fn event(
+        &mut self,
+        client: &mut Client,
+        event: Event,
+    ) -> Result<Option<Vec<u8>>, Miss> {
+        if event.rd != self.rd || event.kind != Kind::Modify {
+            return Ok(None);
+        }
+        let refused = |f: Fault| miss("dmesg", LOG, Step::Op, &f, &[]);
+        let got = log::read(client, self.h, self.from).map_err(refused)?;
+        let Some(newest) = got.last() else { return Ok(None) };
+        self.from = newest.seq + 1;
+        let text = dmesg::show(&got, self.boot, &mut self.last, &self.form);
+        Ok(some(text.into_bytes()))
+    }
+}
+
+/// The plan for a line that follows the tree, or `None` for an
+/// ordinary command, which [`input`] runs whole.
+///
+/// The handles are open and watched when this returns; the app polls
+/// `since`, gives each event to [`Follow::event`] and closes the
+/// handles when its loop ends.
+///
+/// # Errors
+/// As [`input`]: the flags of the word, and whatever the Client says
+/// while it opens and watches the target.
+pub fn following(
+    client: &mut Client,
+    words: &[String],
+    out: Out,
+) -> Result<Option<Follow>, Miss> {
+    let Some(word) = words.first().map(String::as_str) else {
+        return Ok(None);
+    };
+    let args = &words[1..];
+    match (word, words.len()) {
+        ("dmesg", _) => dmesg_follow(client, args, out),
+        ("cat", 2..) => cat_follow(client, args, out),
+        ("ls", _) => ls_follow(client, args, out),
+        ("watch", 2) => watch_follow(client, &words[1], out).map(Some),
+        _ => Ok(None),
+    }
+}
+
+/// What the ring already holds is not a following word's to print: the
+/// cursor starts at what has happened by now, and the word prints the
+/// state it reads after that.
+fn drain(client: &mut Client, word: &str) -> Result<(), Miss> {
+    let refused = |f: Fault| miss(word, "", Step::Op, &f, &[]);
+    client.since().map(|_| ()).map_err(refused)
+}
+
+/// A handle on `rd` open and watching, its faults named as the word's.
+fn watching(
+    client: &mut Client,
+    word: &str,
+    target: &str,
+    rd: Rd,
+) -> Result<Handle, Miss> {
+    let refused = |f: Fault| miss(word, target, Step::Op, &f, &[]);
+    let h = client.open(rd, Rights::READ).map_err(refused)?;
+    client.watch(h, true).map_err(refused)?;
+    Ok(h)
+}
+
+fn dmesg_follow(
+    client: &mut Client,
+    args: &[String],
+    out: Out,
+) -> Result<Option<Follow>, Miss> {
+    let (form, tail) = dmesg::form(args, out.paint)?;
+    if tail == dmesg::Tail::No {
+        return Ok(None);
+    }
+    let rd = resolved(client, "dmesg", LOG)?;
+    let h = watching(client, "dmesg", LOG, rd)?;
+    drain(client, "dmesg")?;
+    let refused = |f: Fault| miss("dmesg", LOG, Step::Op, &f, &[]);
+    let entries = log::read(client, h, 1).map_err(refused)?;
+    let boot = dmesg::boot(&entries);
+    let from = entries.last().map_or(1, |entry| entry.seq + 1);
+    let mut last = None;
+    let first = match tail {
+        dmesg::Tail::All => dmesg::show(&entries, boot, &mut last, &form),
+        _ => String::new(),
+    };
+    let what = Watching::Log(Tailing { h, rd, from, boot, last, form });
+    Ok(Some(Follow {
+        handles: vec![h],
+        first: first.into_bytes(),
+        limit: None,
+        what,
+    }))
+}
+
+fn cat_follow(
+    client: &mut Client,
+    args: &[String],
+    out: Out,
+) -> Result<Option<Follow>, Miss> {
+    let Some((form, targets)) = reading(args) else {
+        return Err(misuse("cat"));
+    };
+    if !form.follow {
+        return Ok(None);
+    }
+    let mut handles = Vec::new();
+    let mut rds = Vec::new();
+    for target in &targets {
+        let rd = resolved(client, "cat", target)?;
+        handles.push(watching(client, "cat", target, rd)?);
+        rds.push(rd);
+    }
+    drain(client, "cat")?;
+    let first = cat(client, args)?;
+    let what = Watching::Cell { rds };
+    let _ = out;
+    Ok(Some(Follow { handles, first, limit: form.stop, what }))
+}
+
+fn ls_follow(
+    client: &mut Client,
+    args: &[String],
+    out: Out,
+) -> Result<Option<Follow>, Miss> {
+    let Some((form, mut targets)) = options(args) else {
+        return Err(misuse("ls"));
+    };
+    if !form.follow {
+        return Ok(None);
+    }
+    if targets.is_empty() {
+        targets.push(CWD);
+    }
+    let mut handles = Vec::new();
+    let mut rds = Vec::new();
+    for target in &targets {
+        let rd = resolved(client, "ls", target)?;
+        handles.push(watching(client, "ls", target, rd)?);
+        rds.push(rd);
+    }
+    drain(client, "ls")?;
+    let first = ls(client, args, out)?;
+    let args = args.to_vec();
+    let what = Watching::List { rds, args, out };
+    Ok(Some(Follow { handles, first, limit: None, what }))
+}
+
+fn watch_follow(
+    client: &mut Client,
+    target: &str,
+    out: Out,
+) -> Result<Follow, Miss> {
+    let rd = resolved(client, "watch", target)?;
+    let h = watching(client, "watch", target, rd)?;
+    drain(client, "watch")?;
+    let refused = |f: Fault| miss("watch", target, Step::Op, &f, &[]);
+    let info = client.info(rd).map_err(refused)?;
+    let name = named(rd, &info);
+    let what = Watching::Events { rd, name, paint: out.paint };
+    Ok(Follow { handles: vec![h], first: Vec::new(), limit: None, what })
+}
+
+impl Follow {
+    /// What this event prints, if anything; `None` for an event on
+    /// something else, or one this word has nothing to say about, and
+    /// then it counts for nothing.
+    ///
+    /// # Errors
+    /// Whatever the Client says while it reads what the event names.
+    pub fn event(
+        &mut self,
+        client: &mut Client,
+        event: Event,
+    ) -> Result<Option<Vec<u8>>, Miss> {
+        match &mut self.what {
+            Watching::Log(tail) => tail.event(client, event),
+            Watching::Cell { rds } => again(client, event, rds),
+            Watching::Events { rd, name, paint } => {
+                let shown = event.rd == *rd;
+                let line = || happened(client, event, name, *paint);
+                Ok(shown.then(line).map(String::into_bytes))
+            }
+            Watching::List { rds, args, out } => {
+                let shown = rds.contains(&event.rd);
+                shown.then(|| ls(client, args, *out)).transpose()
+            }
+        }
+    }
+}
+
+/// `cat -f`: the bytes of the cell that changed, all of them again.
+fn again(
+    client: &mut Client,
+    event: Event,
+    rds: &[Rd],
+) -> Result<Option<Vec<u8>>, Miss> {
+    if event.kind != Kind::Modify || !rds.contains(&event.rd) {
+        return Ok(None);
+    }
+    let target = format!("rd:{}", event.rd.0);
+    let refused = |f: Fault| miss("cat", &target, Step::Op, &f, &[]);
+    Ok(some(client.read_all(event.rd).map_err(refused)?))
+}
+
+/// Bytes worth printing; nothing for nothing.
+fn some(bytes: Vec<u8>) -> Option<Vec<u8>> {
+    (!bytes.is_empty()).then_some(bytes)
+}
+
+/// One event as `watch` prints it: `seq kind name`, the name of the
+/// child where there is one, else of the target itself.
+fn happened(
+    client: &mut Client,
+    event: Event,
+    name: &str,
+    paint: Paint,
+) -> String {
+    let named_child = |child: Rd| {
+        let info = client.info(child).ok();
+        info.map_or_else(|| format!("rd:{}", child.0), |i| named(child, &i))
+    };
+    let name = event.child.map_or_else(|| name.to_string(), named_child);
+    format!("{} {} {name}\n", event.seq, happening(event.kind, paint))
+}
+
+/// The kind of an event, colored as what it did: a Create green, a
+/// removal red, an Attrib or a Move yellow, a Modify as it is.
+fn happening(kind: Kind, paint: Paint) -> String {
+    match kind {
+        Kind::Modify => "Modify".to_string(),
+        Kind::Attrib => paint.yellow("Attrib"),
+        Kind::Create => paint.green("Create"),
+        Kind::Delete => paint.red("Delete"),
+        Kind::Move => paint.yellow("Move"),
+        Kind::Gone => paint.red("Gone"),
+        Kind::Overflow => paint.bold("Overflow"),
     }
 }
 

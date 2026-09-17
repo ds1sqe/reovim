@@ -13,7 +13,7 @@ use reovim_kernel_interface::{
 };
 
 use crate::calls::ModuleCalls;
-use crate::log::Log;
+use crate::log::{ERR, INFO, Log, NOTICE};
 use crate::pending::Pending;
 use crate::table::{
     CONTAINER, LOG, MODULES, Node, OPEN, Owner, SESSIONS, Table,
@@ -109,9 +109,9 @@ impl State {
         self.events.push(rd, kind, child);
     }
 
-    /// One `/sys/log` entry; its watchers get `Modify`.
-    pub fn log(&mut self, now: u64, mark: &str, bytes: Vec<u8>) {
-        self.log.append(now, mark, 0, bytes);
+    /// One `/sys/log` entry at `level`; its watchers get `Modify`.
+    pub fn log(&mut self, now: u64, mark: &str, level: u8, bytes: Vec<u8>) {
+        self.log.append(now, mark, level, bytes);
         self.emit(LOG, Kind::Modify, None);
     }
 
@@ -311,32 +311,55 @@ impl Kernel {
     ) -> Result<ModuleId, Error> {
         let now = self.now();
         let starter = module.clone();
-        let (id, home) = {
-            let mut s = self.state.borrow_mut();
-            s.table.check_name(MODULES, Some(name))?;
-            let id = ModuleId(
-                u32::try_from(s.modules.len()).map_err(|_| Error::NoSpace)?,
-            );
-            let first = s.drivers.len();
-            s.drivers.extend(drivers);
-            let indexes = (first..s.drivers.len()).collect();
-            let caller = s.new_caller(Some(id));
-            let owner = Owner::Kernel(Node::Home(id));
-            let home = s.table.insert(MODULES, Some(name), owner, OPEN, now);
-            s.emit(MODULES, Kind::Create, Some(home));
-            let loaded = Loaded {
-                name: String::from(name),
-                module: Some(module),
-                drivers: indexes,
-                caller,
-            };
-            s.modules.push(loaded);
-            let line = alloc::format!("load module={name}");
-            s.log(now, "kernel", line.into_bytes());
-            (id, home)
+        let (id, home) = match self.enter(now, name, module, drivers) {
+            Ok(both) => both,
+            Err(error) => return Err(self.refused(now, name, error)),
         };
-        starter.start(&self.calls(id), home)?;
+        starter
+            .start(&self.calls(id), home)
+            .map_err(|error| self.refused(now, name, error))?;
         Ok(id)
+    }
+
+    /// The Module in the table with its home, before `start` runs.
+    fn enter(
+        &self,
+        now: u64,
+        name: &str,
+        module: Rc<dyn Module>,
+        drivers: Vec<Rc<dyn Driver>>,
+    ) -> Result<(ModuleId, Rd), Error> {
+        let mut s = self.state.borrow_mut();
+        s.table.check_name(MODULES, Some(name))?;
+        let id = ModuleId(
+            u32::try_from(s.modules.len()).map_err(|_| Error::NoSpace)?,
+        );
+        let first = s.drivers.len();
+        s.drivers.extend(drivers);
+        let indexes = (first..s.drivers.len()).collect();
+        let caller = s.new_caller(Some(id));
+        let owner = Owner::Kernel(Node::Home(id));
+        let home = s.table.insert(MODULES, Some(name), owner, OPEN, now);
+        s.emit(MODULES, Kind::Create, Some(home));
+        let loaded = Loaded {
+            name: String::from(name),
+            module: Some(module),
+            drivers: indexes,
+            caller,
+        };
+        s.modules.push(loaded);
+        let line = alloc::format!("load module={name}");
+        s.log(now, "kernel", INFO, line.into_bytes());
+        Ok((id, home))
+    }
+
+    /// A load the Kernel refused, or a Module whose `start` failed:
+    /// one `err` entry, and the error back to the caller.
+    fn refused(&self, now: u64, name: &str, error: Error) -> Error {
+        let line = alloc::format!("load module={name} refused={error:?}");
+        let mut s = self.state.borrow_mut();
+        s.log(now, "kernel", ERR, line.into_bytes());
+        error
     }
 
     /// Unload the Module named `name`: `stop`, then every rd it serves
@@ -354,7 +377,7 @@ impl Kernel {
         let mut s = self.state.borrow_mut();
         s.remove_module(index);
         let line = alloc::format!("unload module={name}");
-        s.log(now, "kernel", line.into_bytes());
+        s.log(now, "kernel", INFO, line.into_bytes());
         Ok(())
     }
 
@@ -425,7 +448,7 @@ impl Kernel {
         s.emit(rd, Kind::Create, Some(capability));
         let line =
             alloc::format!("connect session={} client={}", session.0, rd.0);
-        s.log(now, "kernel", line.into_bytes());
+        s.log(now, "kernel", INFO, line.into_bytes());
         let caller = s.new_caller(None);
         if let Some(state) = s.callers.get_mut(&caller) {
             state.credential = credential.to_vec();
@@ -443,6 +466,16 @@ impl Kernel {
         let Some(handles) = self.state.borrow_mut().ending(caller) else {
             return;
         };
+        if !handles.is_empty() {
+            let now = self.now();
+            let line = alloc::format!(
+                "caller end caller={} handles={}",
+                caller.0,
+                handles.len()
+            );
+            let mut s = self.state.borrow_mut();
+            s.log(now, "kernel", NOTICE, line.into_bytes());
+        }
         for h in handles {
             let _ = self.run(caller, Op::Close { h });
         }

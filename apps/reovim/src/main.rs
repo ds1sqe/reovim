@@ -72,18 +72,29 @@ impl From<reovim_kernel_interface::Error> for Fail {
 
 const USAGE: &str = "\
 usage: reovim server [--socket PATH] [--root DIR] [--log PATH]
-       reovim cli [--socket PATH] [COMMAND...]
+       reovim cli [--socket PATH] [--color[=WHEN]] [COMMAND...]
        reovim tui [--socket PATH] [+N] [FILE]
        reovim [--socket PATH] [--log PATH] [+N] [FILE]
 defaults: --socket <runtime dir>/reovim.sock, --root <working directory>;
 the bare form edits any FILE, or none, and listens at the default
 socket, or at reovim-<pid>.sock while another editor holds it";
 
-/// `--socket`, `--root` and `--log` taken off the front of `args`.
+/// When the output may carry color: `--color=WHEN`, and `--color`
+/// alone as GNU ls takes it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum When {
+    Auto,
+    Always,
+    Never,
+}
+
+/// `--socket`, `--root`, `--log` and `--color` taken off the front of
+/// `args`.
 struct Options {
     socket: Option<String>,
     root: Option<String>,
     log: Option<String>,
+    color: When,
     rest: Vec<String>,
 }
 
@@ -91,6 +102,7 @@ fn options(args: Vec<String>) -> Result<Options, Fail> {
     let mut socket = None;
     let mut root = None;
     let mut log = None;
+    let mut color = When::Auto;
     let mut args = args.into_iter();
     let mut rest = Vec::new();
     while let Some(arg) = args.next() {
@@ -98,6 +110,9 @@ fn options(args: Vec<String>) -> Result<Options, Fail> {
             "--socket" => socket = Some(args.next().ok_or_else(usage)?),
             "--root" => root = Some(args.next().ok_or_else(usage)?),
             "--log" => log = Some(args.next().ok_or_else(usage)?),
+            "--color" | "--color=always" => color = When::Always,
+            "--color=never" => color = When::Never,
+            "--color=auto" => color = When::Auto,
             _ => {
                 rest.push(arg);
                 rest.extend(args);
@@ -105,7 +120,7 @@ fn options(args: Vec<String>) -> Result<Options, Fail> {
             }
         }
     }
-    Ok(Options { socket, root, log, rest })
+    Ok(Options { socket, root, log, color, rest })
 }
 
 /// `--socket`, or the one in the runtime directory.
@@ -141,13 +156,26 @@ fn usage() -> Fail {
     Fail::Usage(USAGE.to_string())
 }
 
+/// Whether the output carries color: forced either way by `--color`,
+/// else on when stdout is a terminal and `NO_COLOR` is unset or empty,
+/// as no-color.org asks. The library is told; it never asks itself.
+fn colored(when: When) -> bool {
+    let no_color = std::env::var("NO_COLOR").is_ok_and(|set| !set.is_empty());
+    match when {
+        When::Always => true,
+        When::Never => false,
+        When::Auto => reovim_host::term::is_tty_out() && !no_color,
+    }
+}
+
 fn run(args: Vec<String>) -> Result<ExitCode, Fail> {
     let mut args = args.into_iter().peekable();
     let command = match args.peek().map(String::as_str) {
         Some("server" | "cli" | "tui") => args.next(),
         _ => None,
     };
-    let Options { socket: given, root, log, rest } = options(args.collect())?;
+    let Options { socket: given, root, log, color, rest } =
+        options(args.collect())?;
     match (command.as_deref(), rest.as_slice()) {
         (Some("server"), []) => {
             let root = match root {
@@ -158,7 +186,8 @@ fn run(args: Vec<String>) -> Result<ExitCode, Fail> {
                 .map(|()| ExitCode::SUCCESS)
         }
         (Some("cli"), rest) => {
-            cli::run(&socket(given)?, rest).map(|()| ExitCode::SUCCESS)
+            let out = cli::out(colored(color));
+            cli::run(&socket(given)?, rest, out).map(|()| ExitCode::SUCCESS)
         }
         (Some("tui"), rest) => {
             let (line, file) = file_at(rest)?;
@@ -200,7 +229,7 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
-    use super::{file_at, options};
+    use super::{When, file_at, options};
 
     fn args(list: &[&str]) -> Vec<String> {
         list.iter().map(|s| (*s).to_string()).collect()
@@ -208,9 +237,20 @@ mod tests {
 
     #[test]
     fn options_stop_at_the_first_positional() {
-        let given = ["--socket", "s", "--log", "l", "+3", "f", "--root", "r"];
+        let given = [
+            "--socket",
+            "s",
+            "--log",
+            "l",
+            "--color=never",
+            "+3",
+            "f",
+            "--root",
+            "r",
+        ];
         let found = options(args(&given)).ok().unwrap();
         assert_eq!(found.socket.as_deref(), Some("s"));
+        assert!(found.color == When::Never);
         assert_eq!(found.log.as_deref(), Some("l"));
         assert_eq!(found.root, None);
         assert_eq!(found.rest, args(&["+3", "f", "--root", "r"]));
@@ -218,7 +258,9 @@ mod tests {
             options(args(&["--socket"])).is_err(),
             "a flag needs its value"
         );
-        assert_eq!(options(args(&[])).ok().unwrap().rest, Vec::<String>::new());
+        let none = options(args(&[])).ok().unwrap();
+        assert_eq!(none.rest, Vec::<String>::new());
+        assert!(none.color == When::Auto, "no --color asks the terminal");
     }
 
     #[test]

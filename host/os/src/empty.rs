@@ -38,6 +38,16 @@ pub const fn now() -> u64 {
     0
 }
 
+pub const fn is_tty_out() -> bool {
+    false
+}
+
+pub const fn catch_interrupt() {}
+
+pub const fn interrupted() -> bool {
+    false
+}
+
 pub struct Listener;
 pub struct Link;
 

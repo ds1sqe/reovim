@@ -6,7 +6,7 @@ use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-use reovim_client::{Client, Flags, Rd};
+use reovim_client::{Client, Flags, Rd, log};
 
 use crate::COMMANDS;
 
@@ -23,17 +23,41 @@ pub fn complete(client: &mut Client, line: &str) -> Completion {
     let word = &line[from..];
     let index = line[..from].split_whitespace().count();
     let command = line.split_whitespace().next().unwrap_or_default();
-    let candidates = match index {
-        0 => commands(word),
-        1 if !matches!(command, "log" | "load" | "unload") => {
-            path(client, word)
-        }
-        2 if command == "call" => methods(client, line, word),
+    let before = line[..from].split_whitespace().last();
+    let candidates = match (command, index) {
+        (_, 0) => commands(word),
+        ("dmesg", _) => flag_values(client, before, word),
+        ("log" | "load" | "unload", _) => Vec::new(),
+        ("call", 2) => methods(client, line, word),
         // `ls` and `cat` take targets until the end of the line.
-        _ if matches!(command, "ls" | "cat") => path(client, word),
+        ("ls" | "cat", _) | (_, 1) => path(client, word),
         _ => Vec::new(),
     };
     Completion { from, candidates }
+}
+
+/// What a `dmesg` flag takes: the marks the log's own entries carry
+/// after `-f`, the eight level names after `-l`.
+fn flag_values(
+    client: &mut Client,
+    before: Option<&str>,
+    word: &str,
+) -> Vec<String> {
+    let values = match before {
+        Some("-f") => marks(client),
+        Some("-l") => log::LEVELS.iter().map(ToString::to_string).collect(),
+        _ => Vec::new(),
+    };
+    values.into_iter().filter(|value| value.starts_with(word)).collect()
+}
+
+/// Every mark in the log now, each once, sorted.
+fn marks(client: &mut Client) -> Vec<String> {
+    let Ok(entries) = log::tail(client, 1) else { return Vec::new() };
+    let mut marks: Vec<String> = entries.into_iter().map(|e| e.mark).collect();
+    marks.sort();
+    marks.dedup();
+    marks
 }
 
 fn commands(prefix: &str) -> Vec<String> {

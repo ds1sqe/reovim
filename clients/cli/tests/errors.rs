@@ -4,14 +4,14 @@
 //! itself where it cannot.
 
 use reovim_client::{Client, Error, Fault};
-use reovim_client_cli::{CAUSES, Miss, Step, USAGE, help, input, plain};
+use reovim_client_cli::{CAUSES, Miss, Out, Step, USAGE, help, input, plain};
 use reovim_rig::Rig;
 
 /// One command line; the line it would print, or its output as text.
 fn line(client: &mut Client, command: &str) -> String {
     let words: Vec<String> =
         command.split_whitespace().map(str::to_string).collect();
-    match input(client, &words, None) {
+    match input(client, &words, Out::plain()) {
         Ok(out) => String::from_utf8(out).unwrap(),
         Err(miss) => miss.to_string(),
     }

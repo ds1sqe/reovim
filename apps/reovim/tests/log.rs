@@ -79,8 +79,9 @@ fn the_log_file_holds_every_entry() {
     // The three loads and the sink's own connect line, before any link.
     let first = server.file(4);
     assert!(first.starts_with("1 "), "{first}");
-    assert!(first.contains(" kernel 0 load module=fs\n"), "{first}");
-    assert!(first.contains(" kernel 0 connect session="), "{first}");
+    // Each at its level: the Kernel's own are `info`, which is 6.
+    assert!(first.contains(" kernel 6 load module=fs\n"), "{first}");
+    assert!(first.contains(" kernel 6 connect session="), "{first}");
 
     let made = server.cli(&["call", "/module/fs/root", "create", "made"]);
     assert!(made.trim().parse::<u64>().is_ok(), "{made}");
