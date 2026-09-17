@@ -92,25 +92,6 @@ impl Client {
         &mut self.tree
     }
 
-    /// `load <path>`: the Module in that file, on the server's side.
-    ///
-    /// # Errors
-    /// What the server says; `Unsupported` where nothing can be loaded.
-    pub fn load(&mut self, path: &str) -> Result<(), Fault> {
-        let load = Message::Load { path: path.into() };
-        unit(&self.tree.exchange(&load)?)
-    }
-
-    /// `unload <name>`.
-    ///
-    /// # Errors
-    /// What the server says; `Busy` while a handle on the Module is
-    /// open.
-    pub fn unload(&mut self, name: &str) -> Result<(), Fault> {
-        let unload = Message::Unload { name: name.into() };
-        unit(&self.tree.exchange(&unload)?)
-    }
-
     /// `bytes` as this Client's `capability`, the Read rd under its
     /// client rd that its Plugins understand; the Kernel keeps them.
     ///
@@ -179,6 +160,26 @@ impl Tree {
     #[must_use]
     pub fn handles(&self) -> &[Handle] {
         &self.handles
+    }
+
+    /// `load <path>`: the Module in that file, on the server's side.
+    /// Not an op but a message of its own, as `unload` is.
+    ///
+    /// # Errors
+    /// What the server says; `Unsupported` where nothing can be loaded.
+    pub fn load(&mut self, path: &str) -> Result<(), Fault> {
+        let load = Message::Load { path: path.into() };
+        unit(&self.exchange(&load)?)
+    }
+
+    /// `unload <name>`.
+    ///
+    /// # Errors
+    /// What the server says; `Busy` while a handle on the Module is
+    /// open.
+    pub fn unload(&mut self, name: &str) -> Result<(), Fault> {
+        let unload = Message::Unload { name: name.into() };
+        unit(&self.exchange(&unload)?)
     }
 
     /// One message out, the reply to it back; a Pending reply is asked

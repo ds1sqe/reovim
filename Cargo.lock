@@ -256,6 +256,7 @@ name = "reovim-plugin-vim"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-client",
+ "reovim-client-cli",
  "reovim-client-tui",
  "reovim-rig",
  "reovim-sdk",

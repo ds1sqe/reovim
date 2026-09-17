@@ -1,14 +1,54 @@
 //! The command line: `:` and what a person types after it, and the
 //! `/` and `?` prompts that share it.
 
-use alloc::string::String;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+
+use reovim_client_cli::{Word, Words};
 
 use crate::pattern::{Pattern, expand};
 use crate::{Edit, Effect, Key, Mode, Motion, Quit, Vim};
 
 /// Lines from 0, both ends included.
 type Lines = (usize, usize);
+
+/// Vim's words, in the order a `:` line resolves a name by.
+///
+/// `:w` is `write` because it stands before `wq`, `:s` is
+/// `substitute` before `set`, and `:e` is `edit` before `explore`.
+/// The cli's own words follow these, so a name none of these begins
+/// is a cli line.
+pub const WORDS: &[Word] = &[
+    Word {
+        name: "write",
+        args: "[PATH]",
+        help: "the buffer, to PATH if one is given",
+    },
+    Word { name: "wq", args: "", help: "write the buffer and quit" },
+    Word { name: "quit", args: "", help: "quit; ! leaves the draft" },
+    Word { name: "xit", args: "", help: "write if it changed, then quit" },
+    Word { name: "cquit", args: "", help: "quit with 1, so the caller stops" },
+    Word {
+        name: "substitute",
+        args: "/PAT/REP/[g]",
+        help: "PAT becomes REP over the range",
+    },
+    Word { name: "set", args: "OPTION", help: "an option on, no OPTION off" },
+    Word { name: "nohlsearch", args: "", help: "stop marking the last search" },
+    Word { name: "edit", args: "PATH", help: "that file, in this region" },
+    Word {
+        name: "explore",
+        args: "[DIR]",
+        help: "a listing of DIR, or of the file's own",
+    },
+];
+
+/// The table a `:` line is read with: Vim's words while Vim is open,
+/// then the cli's, which is what makes `:ls` a listing and `:w` a
+/// write although the cli has a `write` of its own.
+const fn table() -> Words<'static> {
+    Words { first: WORDS, then: reovim_client_cli::WORDS }
+}
 
 impl Vim {
     /// `:`, `/` or `?`: the prompt opens, the mode to return to kept.
@@ -75,39 +115,62 @@ impl Vim {
         self.motion(Motion::Search { forward }, n)
     }
 
-    /// `w`, `w!`, `w NAME`, `q`, `q!`, `wq`, `x`, `cq`, `noh`, `set`,
-    /// `s` with a range, `exp[lore][!] [NAME]`; any other is E492.
+    /// One `:` line: the range off the front, then the word it names
+    /// and what follows that.
+    ///
+    /// A word of Vim's own is one of these effects, by its full name
+    /// or by any beginning of it the table resolves; a word of the
+    /// cli's is a line for clients/cli, which the Plugin runs over the
+    /// tree, the range being none of its business; a name no table has
+    /// is E492, as it always was.
     fn ex(&mut self, line: &str) -> Effect {
-        let (range, rest) = self.range(line.trim());
+        let line = line.trim();
+        let (range, rest) = self.range(line);
         let command = rest.trim();
-        match command {
-            "" | "set" => Effect::Moved,
-            "w" => Effect::Save(false),
-            "w!" => Effect::Save(true),
-            "q" => Effect::Quit(Quit::Ask),
-            "q!" => Effect::Quit(Quit::Force),
-            "wq" | "x" => Effect::Quit(Quit::Write),
-            "cq" => Effect::Quit(Quit::Abort),
-            "noh" | "nohlsearch" => {
+        if command.is_empty() {
+            return self.addressed(range, rest.len() < line.len());
+        }
+        let Typed { word, bang, arg } = typed(command);
+        let Some(found) = table().resolve(word) else {
+            self.message =
+                alloc::format!("E492: Not an editor command: {command}");
+            return Effect::Moved;
+        };
+        match found.name {
+            "write" if arg.is_empty() => Effect::Save(bang),
+            "write" => Effect::SaveAs(arg.into(), bang),
+            "wq" | "xit" => Effect::Quit(Quit::Write),
+            "quit" if bang => Effect::Quit(Quit::Force),
+            "quit" => Effect::Quit(Quit::Ask),
+            "cquit" => Effect::Quit(Quit::Abort),
+            // `:s` writes its pattern straight after the word.
+            "substitute" => {
+                self.substitute(range, arg.strip_prefix('/').unwrap_or(arg))
+            }
+            "set" => self.set(arg),
+            "nohlsearch" => {
                 self.search.stale = true;
                 Effect::Moved
             }
-            _ if command.starts_with("set ") => self.set(&command[4..]),
-            _ if command.starts_with("w ") => {
-                Effect::SaveAs(command[2..].trim().into(), false)
+            // `:e` without a name would reload the file; nothing here.
+            "edit" if arg.is_empty() => Effect::Moved,
+            "edit" => Effect::Open(arg.into(), bang),
+            "explore" => {
+                Effect::Explore((!arg.is_empty()).then(|| arg.into()), bang)
             }
-            _ if command.starts_with("w! ") => {
-                Effect::SaveAs(command[3..].trim().into(), true)
-            }
-            _ if command.starts_with("s/") => {
-                self.substitute(range, &command[2..])
-            }
-            other => explore(other).unwrap_or_else(|| {
-                self.message =
-                    alloc::format!("E492: Not an editor command: {other}");
-                Effect::Moved
-            }),
+            name => Effect::Cli(line_of(name, arg)),
         }
+    }
+
+    /// A `:` line with no word on it: the cursor to the last line the
+    /// range names, at its first non-blank, where `:12` and `:$` leave
+    /// it; nothing at all for a line that named no range either.
+    fn addressed(&mut self, range: Lines, named: bool) -> Effect {
+        if !named {
+            return Effect::Moved;
+        }
+        let at = self.line_at(range.1).unwrap_or(self.cursor);
+        self.go_clamped(self.first_non_blank(at))
     }
 
     /// `[range]` off the front: `%`, `'<,'>`, `N`, `.`, `$`, `A,B`;
@@ -264,20 +327,34 @@ fn substituted(
     Some(out)
 }
 
-/// `:exp[lore][!] [NAME]`, abbreviated from `exp` as Vim abbreviates
-/// it: the bang on the word itself, the name after a space. `None`
-/// for a line that is some other word, which is the caller's E492.
-fn explore(command: &str) -> Option<Effect> {
-    let (word, name) = command.split_once(' ').unwrap_or((command, ""));
-    let (word, bang) =
-        word.strip_suffix('!').map_or((word, false), |w| (w, true));
-    // `e` and `ex` are none of it: `:ex` is the `vi` personality's.
-    if word.len() < 3 || !"explore".starts_with(word) {
-        return None;
-    }
-    let name = name.trim();
-    let named = (!name.is_empty()).then(|| String::from(name));
-    Some(Effect::Explore(named, bang))
+/// A `:` line past its range, as the table reads it.
+struct Typed<'a> {
+    /// The run of letters at the front; empty for a line that names
+    /// no word at all.
+    word: &'a str,
+    /// A `!` straight after the word.
+    bang: bool,
+    /// What follows, trimmed; `:s` keeps the `/` its pattern starts
+    /// with, which is the one word that needs no space.
+    arg: &'a str,
+}
+
+/// `command` read: the word, the bang on it, and the argument.
+fn typed(command: &str) -> Typed<'_> {
+    let letters = command.bytes().take_while(u8::is_ascii_alphabetic).count();
+    let (word, rest) = command.split_at(letters);
+    let (bang, rest) =
+        rest.strip_prefix('!').map_or((false, rest), |r| (true, r));
+    Typed { word, bang, arg: rest.trim() }
+}
+
+/// A cli word and its argument as a command line: the word by its
+/// full name, however short the beginning typed was, and what follows
+/// split as the cli splits a line.
+fn line_of(name: &str, arg: &str) -> Vec<String> {
+    let mut words = alloc::vec![name.to_string()];
+    words.extend(arg.split_whitespace().map(ToString::to_string));
+    words
 }
 
 /// `args` split at `sep`, a backslash escaping one.

@@ -355,6 +355,23 @@ keys explored : q Enter
 [[ "$(ended explored)" == 0 ]] || fail ":q left the listing :explore made"
 [[ "$(cat "$DIR/tree/note")" == one ]] || fail ":explore! wrote the draft"
 
+# --- the : line runs the cli's words too -----------------------------
+# A word the editor has none of is the cli's, run over the tree from
+# the directory the file is in: `:ls` lists that directory and `:pwd`
+# says where it stands, the first line of what it printed in the
+# status row.
+mkdir -p "$DIR/words"
+echo a > "$DIR/words/alpha"
+echo one > "$DIR/words/note"
+start words "$DIR/words" "$BIN note"
+editing words note
+keys words : l s Enter
+shown words "note  1:1  r1   alpha"
+keys words : p w d Enter
+shown words "note  1:1  r1   /module/fs/root$DIR/words"
+keys words : q Enter
+[[ "$(ended words)" == 0 ]] || fail ":q after a cli word did not quit"
+
 # --- no file: an unnamed buffer, E32 on :w, nothing written ---------
 start unnamed "$DIR" "$BIN"
 editing unnamed '\[No Name\]'

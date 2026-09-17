@@ -5,7 +5,7 @@
 
 use reovim_client::{Client, Error, Fault};
 use reovim_client_cli::{
-    CAUSES, Miss, Out, Shell, Step, USAGE, help, input, plain,
+    CAUSES, Miss, Out, Shell, Step, help, input, plain, usage,
 };
 use reovim_rig::Rig;
 
@@ -128,7 +128,7 @@ fn a_wrong_word_or_count_gets_one_line_and_points_at_help() {
     assert_eq!(says(&mut client, "quit"), "quit ends an interactive session");
 
     // `help` is the table, `help WORD` one entry, to stdout.
-    assert_eq!(says(&mut client, "help"), format!("{USAGE}\n"));
+    assert_eq!(says(&mut client, "help"), format!("{}\n", usage()));
     assert_eq!(
         says(&mut client, "help read"),
         "read <target>                   bytes to stdout\n"
@@ -146,7 +146,10 @@ fn a_wrong_word_or_count_gets_one_line_and_points_at_help() {
     };
     // The app answers these before it opens a link; anything else is
     // not a help request.
-    assert_eq!(help(&words("--help")).unwrap().unwrap(), format!("{USAGE}\n"));
+    assert_eq!(
+        help(&words("--help")).unwrap().unwrap(),
+        format!("{}\n", usage())
+    );
     assert!(help(&words("-h read")).unwrap().unwrap().starts_with("read "));
     assert!(help(&words("read /")).is_none());
     assert!(help(&words("")).is_none());
@@ -178,7 +181,7 @@ fn every_row_of_the_cause_table_is_one_word_of_the_usage_and_no_two_are_one() {
         seen.push(key);
         assert!(
             word.is_empty()
-                || USAGE
+                || usage()
                     .lines()
                     .any(|line| line.starts_with(&format!("{word} "))),
             "{word} is not a word of the usage"

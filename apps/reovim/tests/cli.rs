@@ -223,7 +223,7 @@ fn a_command_says_its_line_and_help_needs_no_server() {
     };
     let helped = cli(&["--help"]);
     assert!(helped.status.success());
-    let table = reovim_client_cli::USAGE.lines().count();
+    let table = reovim_client_cli::usage().lines().count();
     assert_eq!(
         String::from_utf8(helped.stdout).unwrap().lines().count(),
         table

@@ -186,9 +186,11 @@ fn a_draft_holds_the_region_until_the_bang() {
 }
 
 #[test]
-fn every_abbreviation_of_the_word_is_the_one_command() {
+fn every_beginning_the_table_resolves_is_the_one_command() {
     let rig = work("explore-exp");
-    for word in ["exp", "expl", "explo", "explor", "explore"] {
+    // `ex` is the shortest the table leaves it, `edit` standing
+    // before `explore` and taking `e` and `ed`.
+    for word in ["ex", "exp", "expl", "explo", "explor", "explore"] {
         let seen = Listed::default();
         let mut tui = over(&rig, &seen);
         let line = format!(":{word}<CR>");
@@ -196,11 +198,16 @@ fn every_abbreviation_of_the_word_is_the_one_command() {
         assert_eq!(*seen.borrow(), [Some(rd(&rig, "d"))], "{line}");
     }
 
-    // `e` and `ex` are none of it, and neither is any other word: what
-    // the command line does not know is E492, as it always was.
     let seen = Listed::default();
     let mut tui = over(&rig, &seen);
-    for word in ["e", "ex", "expo", "exploree", "Explore"] {
+    // `:edit` without a name reloads the file in Vim and does nothing
+    // here, and says nothing either way.
+    for word in ["e", "ed", "edi", "edit"] {
+        assert_eq!(typed(&mut tui, &format!(":{word}<CR>")), Step::Changed);
+        assert_eq!(status(&mut tui), "f  1:1  r1   ", "{word}");
+    }
+    // A name no word of either table begins is E492, as it always was.
+    for word in ["expo", "exploree", "Explore"] {
         assert_eq!(typed(&mut tui, &format!(":{word}<CR>")), Step::Changed);
         let said = format!("E492: Not an editor command: {word}");
         assert_eq!(status(&mut tui), format!("f  1:1  r1   {said}"));

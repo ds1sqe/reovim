@@ -33,12 +33,14 @@ use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
 
+pub use command::WORDS;
 pub use operator::Motion;
 pub use reovim_client::{Key, Plugin};
 pub use visual::Visual;
 
 use operator::{Find, Operator};
 use reovim_client::{Handle, Rd};
+use reovim_client_cli::Shell;
 use search::Search;
 use visual::{BlockInsert, Selection};
 
@@ -77,6 +79,13 @@ pub enum Effect {
     /// in with none; `true` for `:explore!`, which goes although the
     /// draft is unsaved.
     Explore(Option<String>, bool),
+    /// `:e[dit][!] PATH`: the same ask over the file that name holds,
+    /// which comes back a Vim of its own. A name that is not there is
+    /// E345, where `:explore`'s is E344.
+    Open(String, bool),
+    /// A word of the cli's, typed on the `:` line: the line as
+    /// clients/cli takes it, the word by its full name.
+    Cli(Vec<String>),
     /// A put wants the clipboard's text: `pasted` finishes it.
     Clipboard,
 }
@@ -221,6 +230,10 @@ pub struct Vim {
     line: Line,
     /// Shown until the next key.
     message: String,
+    /// Where a cli word typed on the `:` line stands: the mirror of
+    /// the directory the Client started in, which `:cd` moves and
+    /// `:pwd` says.
+    shell: Shell,
     /// The Buffer `start` opened over what the region is on: what the
     /// View it shows is in the bytes of.
     buffer: Option<Rd>,

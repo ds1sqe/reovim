@@ -1,8 +1,8 @@
 #![no_std]
 #![forbid(unsafe_code)]
-//! The cli: a command line in, text out, through a `Client`. Generic
-//! over the tree; it knows no Module. The process boundary (stdin,
-//! stdout, the link, the terminal) is the app's.
+//! The cli: a command line in, text out, over a `Tree`. Generic over
+//! the tree; it knows no Module and no Plugin. The process boundary
+//! (stdin, stdout, the link, the terminal) is the app's.
 //!
 //! A command that does not run gives a `Miss`: the word, the target as
 //! typed, and the cli's sentence for what went wrong, which the app
@@ -24,35 +24,120 @@ use core::fmt::Write as _;
 
 use reovim_client::{
     Client, Decl, Error, Event, Fault, Field, Flags, Handle, Hash, Info, Kind,
-    ROOT, Rd, Rights, Ty, log, value,
+    ROOT, Rd, Rights, Tree, Ty, log, value,
 };
 
 pub use complete::{Completion, complete};
 pub use line::{Act, Line};
 pub use paint::Paint;
 
-/// The commands, one per line: the word, what it takes, what it does.
-/// The source of `help` and of the usage line of a word used wrongly.
-pub const USAGE: &str = "\
-ls [-l] [-a] [-w] [TARGET..]    children by name; -l long, -a rds
-cat [-f] [-n N] <target>..      the bytes of each in turn; -f follows
-stat <target>                   the long line, the times, the apis
-tree [-L N] [TARGET]            the tree under it, N levels deep
-dmesg [-tTHxdrkwW] [-l LEVELS]  the log as dmesg reads it; -w follows
-watch <target>                  seq kind name, per event, as they come
-cd [TARGET]                     go there; none is /, - the one before
-pwd                             where the line stands now
-lookup <target>                 rd
-info <target>                   name, flags, times, apis
-children <target>               rd and name per line
-read <target>                   bytes to stdout
-write <target> [bytes]          bytes, or stdin without them, at 0
-call <target> <method> [arg]    output decoded by the declaration
-log [FROM]                      entries from seq FROM, default 1
-load <path>                     the Module in that .rvm file
-unload <name>                   the Module of that name
-help [WORD]                     these lines, or the one for WORD
-quit                            end an interactive session
+/// One word of a command line: its name, what it takes after it, and
+/// the one line `help` says of it.
+///
+/// A table of these is what a line is read with and what `help`
+/// prints; no abbreviation is listed, since [`Words::abbrev`] computes
+/// each from the table's order.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Word {
+    pub name: &'static str,
+    pub args: &'static str,
+    pub help: &'static str,
+}
+
+impl Word {
+    /// What the word takes, as a usage line writes it: the name, and
+    /// its arguments after it where it has any.
+    #[must_use]
+    pub fn form(&self) -> String {
+        if self.args.is_empty() {
+            return self.name.to_string();
+        }
+        format!("{} {}", self.name, self.args)
+    }
+
+    /// The line `help` lists it on: the form, then the help at [`HELP`].
+    fn line(&self) -> String {
+        let form = self.form();
+        let pad = HELP.saturating_sub(cells(&form));
+        format!("{form}{}{}", " ".repeat(pad), self.help)
+    }
+}
+
+/// The column a usage line's help begins at.
+const HELP: usize = 32;
+
+/// The cli's own words, in the order `help` lists them, which is also
+/// the order an abbreviation resolves by. A Plugin's words come before
+/// these while that Plugin is open.
+pub const WORDS: &[Word] = &[
+    Word {
+        name: "ls",
+        args: "[-l] [-a] [-w] [TARGET..]",
+        help: "children by name; -l long, -a rds",
+    },
+    Word {
+        name: "cat",
+        args: "[-f] [-n N] <target>..",
+        help: "the bytes of each in turn; -f follows",
+    },
+    Word {
+        name: "stat",
+        args: "<target>",
+        help: "the long line, the times, the apis",
+    },
+    Word {
+        name: "tree",
+        args: "[-L N] [TARGET]",
+        help: "the tree under it, N levels deep",
+    },
+    Word {
+        name: "dmesg",
+        args: "[-tTHxdrkwW] [-l LEVELS]",
+        help: "the log as dmesg reads it; -w follows",
+    },
+    Word {
+        name: "watch",
+        args: "<target>",
+        help: "seq kind name, per event, as they come",
+    },
+    Word {
+        name: "cd",
+        args: "[TARGET]",
+        help: "go there; none is /, - the one before",
+    },
+    Word { name: "pwd", args: "", help: "where the line stands now" },
+    Word { name: "lookup", args: "<target>", help: "rd" },
+    Word { name: "info", args: "<target>", help: "name, flags, times, apis" },
+    Word { name: "children", args: "<target>", help: "rd and name per line" },
+    Word { name: "read", args: "<target>", help: "bytes to stdout" },
+    Word {
+        name: "write",
+        args: "<target> [bytes]",
+        help: "bytes, or stdin without them, at 0",
+    },
+    Word {
+        name: "call",
+        args: "<target> <method> [arg]",
+        help: "output decoded by the declaration",
+    },
+    Word {
+        name: "log",
+        args: "[FROM]",
+        help: "entries from seq FROM, default 1",
+    },
+    Word { name: "load", args: "<path>", help: "the Module in that .rvm file" },
+    Word { name: "unload", args: "<name>", help: "the Module of that name" },
+    Word {
+        name: "help",
+        args: "[WORD]",
+        help: "these lines, or the one for WORD",
+    },
+    Word { name: "quit", args: "", help: "end an interactive session" },
+];
+
+/// What `help` says after the words: what a target may be, and the
+/// keys the line takes, which belong to no one word.
+const AFTER: &str = "\
 <target> is a path from /, a name under the cwd, . or .., or rd:<n>
 
 the line: Tab completes, Up and Down walk the lines that begin as this
@@ -61,12 +146,66 @@ Ctrl-W the word before the cursor, Ctrl-L clears the screen; Ctrl-D
 deletes under the cursor, and ends the session on an empty line, as
 Ctrl-C does";
 
-/// The command names, for completion.
-const COMMANDS: [&str; 19] = [
-    "ls", "cat", "stat", "tree", "dmesg", "watch", "cd", "pwd", "lookup",
-    "info", "children", "read", "write", "call", "log", "load", "unload",
-    "help", "quit",
-];
+/// The commands, one per line: the word, what it takes, what it does,
+/// then the paragraphs that belong to no one word. What `help` prints
+/// and what the usage line of a word used wrongly is read from.
+#[must_use]
+pub fn usage() -> String {
+    let mut out = String::new();
+    for word in WORDS {
+        let _ = writeln!(out, "{}", word.line());
+    }
+    out.push_str(AFTER);
+    out
+}
+
+/// The words a line is read with: a Plugin's first, the cli's after,
+/// so a name both tables hold is the Plugin's while it is open.
+///
+/// A name resolves to the first word in that order it begins, which is
+/// Vim's ex rule: the table's order is what makes `:s` `substitute`
+/// and `:se` `set`, and nothing lists a short form by hand.
+#[derive(Clone, Copy, Debug)]
+pub struct Words<'a> {
+    pub first: &'a [Word],
+    pub then: &'a [Word],
+}
+
+impl<'a> Words<'a> {
+    /// The cli's own words alone, as the process cli reads a line.
+    #[must_use]
+    pub const fn cli() -> Self {
+        Self { first: &[], then: WORDS }
+    }
+
+    /// Every word, in the order they resolve in.
+    fn all(&self) -> impl Iterator<Item = &'a Word> {
+        self.first.iter().chain(self.then)
+    }
+
+    /// The word `typed` names: the first, in order, that it equals or
+    /// is the beginning of. `None` for an empty name and for one no
+    /// word begins with.
+    #[must_use]
+    pub fn resolve(&self, typed: &str) -> Option<&'a Word> {
+        if typed.is_empty() {
+            return None;
+        }
+        self.all().find(|word| word.name.starts_with(typed))
+    }
+
+    /// The shortest beginning of `word` that [`Self::resolve`]s to it:
+    /// its abbreviation, computed from the order. The whole name for a
+    /// word another before it shadows, which then has none of its own.
+    #[must_use]
+    pub fn abbrev(&self, word: &Word) -> &'static str {
+        let name = word.name;
+        let resolves = |n: &usize| {
+            self.resolve(&name[..*n]).is_some_and(|found| found == word)
+        };
+        &name[..(1..=name.len()).find(resolves).unwrap_or(name.len())]
+    }
+}
 
 /// Why one command did not run: the word and the target as typed, and
 /// the cause, with the way out after a semicolon where there is one.
@@ -179,9 +318,9 @@ impl Out {
 ///
 /// # Errors
 /// `Miss` for an unknown word, the wrong number of words, `quit`
-/// outside an interactive session, or whatever the Client says.
+/// outside an interactive session, or whatever the tree says.
 pub fn input(
-    client: &mut Client,
+    tree: &mut Tree,
     shell: &mut Shell,
     words: &[String],
     out: Out,
@@ -196,22 +335,22 @@ pub fn input(
         ("quit", _) => {
             return Err(Miss::line("quit ends an interactive session"));
         }
-        ("cd", 1 | 2) => return cd(client, shell, words.get(1)),
+        ("cd", 1 | 2) => return cd(tree, shell, words.get(1)),
         ("pwd", 1) => return Ok(format!("{}\n", shell.path).into_bytes()),
-        ("ls", _) => return ls(client, shell, &words[1..], out),
-        ("cat", 2..) => return cat(client, shell, &words[1..]),
-        ("stat", 2) => return stat(client, shell, &words[1], out),
-        ("tree", _) => return tree(client, shell, &words[1..], out),
-        ("dmesg", _) => return dmesg_now(client, &words[1..], out),
-        ("log", 1 | 2) => return log_from(client, words.get(1)),
+        ("ls", _) => return ls(tree, shell, &words[1..], out),
+        ("cat", 2..) => return cat(tree, shell, &words[1..]),
+        ("stat", 2) => return stat(tree, shell, &words[1], out),
+        ("tree", _) => return drawn(tree, shell, &words[1..], out),
+        ("dmesg", _) => return dmesg_now(tree, &words[1..], out),
+        ("log", 1 | 2) => return log_from(tree, words.get(1)),
         ("load", 2) => {
             let path = &words[1];
-            let loaded = client.load(path).map(|()| Vec::new());
+            let loaded = tree.load(path).map(|()| Vec::new());
             return loaded.map_err(|f| miss(word, path, Step::Op, &f, &[]));
         }
         ("unload", 2) => {
             let name = &words[1];
-            let gone = client.unload(name).map(|()| Vec::new());
+            let gone = tree.unload(name).map(|()| Vec::new());
             return gone.map_err(|f| miss(word, name, Step::Op, &f, &[]));
         }
         ("lookup" | "info" | "children" | "read" | "watch", 2)
@@ -220,21 +359,21 @@ pub fn input(
         _ => return Err(misuse(word)),
     }
     let target = &words[1];
-    let rd = resolved(client, shell, word, target)?;
+    let rd = resolved(tree, shell, word, target)?;
     let refused = |fault: Fault| miss(word, target, Step::Op, &fault, &[]);
     match word {
         "lookup" => Ok(format!("{}\n", rd.0).into_bytes()),
         // `watch` prints nothing until an event; the loop is the app's.
         "watch" => Ok(Vec::new()),
-        "info" => info(client, rd).map_err(refused),
-        "children" => children(client, rd).map_err(refused),
-        "read" => client.read_all(rd).map_err(refused),
+        "info" => info(tree, rd).map_err(refused),
+        "children" => children(tree, rd).map_err(refused),
+        "read" => tree.read_all(rd).map_err(refused),
         "write" => {
             let bytes = words[2].as_bytes().to_vec();
-            let len = client.write_all(rd, bytes).map_err(refused)?;
+            let len = tree.write_all(rd, bytes).map_err(refused)?;
             Ok(format!("{len}\n").into_bytes())
         }
-        _ => call(client, rd, target, &words[2], words.get(3)),
+        _ => call(tree, rd, target, &words[2], words.get(3)),
     }
 }
 
@@ -251,9 +390,11 @@ pub fn help(words: &[String]) -> Option<Result<String, Miss>> {
         return None;
     }
     Some(match (words.get(1).map(String::as_str), words.len()) {
-        (None, _) => Ok(format!("{USAGE}\n")),
-        (Some(asked), 2) => entry(asked)
-            .map_or_else(|| Err(unknown(asked)), |l| Ok(format!("{l}\n"))),
+        (None, _) => Ok(format!("{}\n", usage())),
+        (Some(asked), 2) => entry(asked).map_or_else(
+            || Err(unknown(asked)),
+            |word| Ok(format!("{}\n", word.line())),
+        ),
         _ => Err(misuse("help")),
     })
 }
@@ -270,11 +411,14 @@ pub fn plain(fault: &Fault, socket: Option<&str>) -> Miss {
     }
 }
 
-/// The word used wrongly: its own usage line, or no such word.
+/// The word used wrongly: its own form, or no such word.
 fn misuse(word: &str) -> Miss {
-    form(word).map_or_else(
+    entry(word).map_or_else(
         || unknown(word),
-        |form| Miss::line(&format!("usage: {form}; help {word} says more")),
+        |w| {
+            let form = w.form();
+            Miss::line(&format!("usage: {form}; help {word} says more"))
+        },
     )
 }
 
@@ -282,17 +426,10 @@ fn unknown(word: &str) -> Miss {
     Miss::line(&format!("unknown word {word}; help lists them"))
 }
 
-/// The `USAGE` line of `word`.
-fn entry(word: &str) -> Option<&'static str> {
-    if !COMMANDS.contains(&word) {
-        return None;
-    }
-    USAGE.lines().find(|line| line.split_whitespace().next() == Some(word))
-}
-
-/// What the word takes: the left column of its entry.
-fn form(word: &str) -> Option<&'static str> {
-    entry(word).map(|line| line.split("  ").next().unwrap_or(line))
+/// The cli's word of that name, which is the only one it runs: the
+/// table resolves a beginning, `input` a name.
+fn entry(name: &str) -> Option<&'static Word> {
+    WORDS.iter().find(|word| word.name == name)
 }
 
 /// The Miss for `fault` under `word` on `target`, `details` filling the
@@ -347,8 +484,8 @@ fn fill(cause: &str, details: &[&str]) -> String {
     out
 }
 
-fn info(client: &mut Client, rd: Rd) -> Result<Vec<u8>, Fault> {
-    let info = client.info(rd)?;
+fn info(tree: &mut Tree, rd: Rd) -> Result<Vec<u8>, Fault> {
+    let info = tree.info(rd)?;
     let flags = ["READ", "WRITE", "CONTAINER"]
         .iter()
         .zip([1, 2, 4])
@@ -369,10 +506,10 @@ fn info(client: &mut Client, rd: Rd) -> Result<Vec<u8>, Fault> {
     Ok(line.into_bytes())
 }
 
-fn children(client: &mut Client, rd: Rd) -> Result<Vec<u8>, Fault> {
+fn children(tree: &mut Tree, rd: Rd) -> Result<Vec<u8>, Fault> {
     let mut out = String::new();
-    for child in client.children(rd)? {
-        let name = client.name(child)?;
+    for child in tree.children(rd)? {
+        let name = tree.name(child)?;
         let _ = writeln!(out, "{} {name}", child.0);
     }
     Ok(out.into_bytes())
@@ -381,14 +518,14 @@ fn children(client: &mut Client, rd: Rd) -> Result<Vec<u8>, Fault> {
 /// The method by name among what the rd offers, so a name that is not
 /// there says what is.
 fn call(
-    client: &mut Client,
+    tree: &mut Tree,
     rd: Rd,
     target: &str,
     name: &str,
     arg: Option<&String>,
 ) -> Result<Vec<u8>, Miss> {
     let refused = |fault: Fault| miss("call", target, Step::Op, &fault, &[]);
-    let decls = client
+    let decls = tree
         .decls(rd)
         .map_err(|f| miss("call", target, Step::Method, &f, &[]))?;
     let asked = |(hash, decl): &(Hash, Decl)| {
@@ -400,8 +537,7 @@ fn call(
     };
     let input = value::encode_arg(&method.input, arg.map(String::as_str))
         .map_err(refused)?;
-    let output =
-        client.call_method(rd, api, &method, input).map_err(refused)?;
+    let output = tree.call_method(rd, api, &method, input).map_err(refused)?;
     value::show(&method.output, &output).map_err(refused)
 }
 
@@ -418,14 +554,11 @@ fn offered(target: &str, name: &str, decls: &[(Hash, Decl)]) -> Miss {
     miss("call", target, Step::Method, &none, &[name, &offers])
 }
 
-fn log_from(
-    client: &mut Client,
-    from: Option<&String>,
-) -> Result<Vec<u8>, Miss> {
+fn log_from(tree: &mut Tree, from: Option<&String>) -> Result<Vec<u8>, Miss> {
     let from = from
         .map_or(Ok(1), |text| text.parse::<u64>().map_err(|_| misuse("log")))?;
     let mut out = String::new();
-    let tail = log::tail(client, from)
+    let tail = log::tail(tree, from)
         .map_err(|f| miss("log", "", Step::Op, &f, &[]))?;
     for entry in tail {
         out.push_str(&entry.line());
@@ -439,7 +572,7 @@ fn log_from(
 ///
 /// The app holds one for a session of lines and passes it to every
 /// word; a single command has its own, which starts and stays at the
-/// root.
+/// root, and a Plugin's stands where the Plugin does.
 #[derive(Clone, Debug)]
 pub struct Shell {
     cwd: Rd,
@@ -455,6 +588,14 @@ impl Default for Shell {
 }
 
 impl Shell {
+    /// A line standing at `rd`, which is at `path`: what a Plugin
+    /// gives the words it runs, so a relative target of theirs is
+    /// read from where the Plugin is and not from the root.
+    #[must_use]
+    pub const fn at(cwd: Rd, path: String) -> Self {
+        Self { cwd, path, back: None }
+    }
+
     /// The rd a relative target is read from.
     #[must_use]
     pub const fn cwd(&self) -> Rd {
@@ -485,7 +626,7 @@ impl Shell {
 /// `cd`: the root with no target, the one before it under `-`, else
 /// the Container the target names, whose path the prompt then shows.
 fn cd(
-    client: &mut Client,
+    tree: &mut Tree,
     shell: &mut Shell,
     target: Option<&String>,
 ) -> Result<Vec<u8>, Miss> {
@@ -499,13 +640,13 @@ fn cd(
         shell.go(rd, path);
         return Ok(Vec::new());
     }
-    let rd = resolved(client, shell, "cd", target)?;
+    let rd = resolved(tree, shell, "cd", target)?;
     let refused = |fault: Fault| miss("cd", target, Step::Op, &fault, &[]);
-    let info = client.info(rd).map_err(refused)?;
+    let info = tree.info(rd).map_err(refused)?;
     if !info.flags.contains(Flags::CONTAINER) {
         return Err(refused(Fault::Kernel(Error::Unsupported)));
     }
-    let path = where_is(client, rd).map_err(refused)?;
+    let path = where_is(tree, rd).map_err(refused)?;
     shell.go(rd, path);
     Ok(Vec::new())
 }
@@ -518,16 +659,16 @@ const DEEP: usize = 64;
 /// parent up to the root, so the prompt says where the cwd is however
 /// it was named. An rd the Kernel does not name, or one deeper than
 /// [`DEEP`], has no path to show and is `rd:<n>`.
-fn where_is(client: &mut Client, rd: Rd) -> Result<String, Fault> {
+fn where_is(tree: &mut Tree, rd: Rd) -> Result<String, Fault> {
     let mut names: Vec<String> = Vec::new();
     let mut at = rd;
     while at != ROOT {
-        let name = client.name(at)?;
+        let name = tree.name(at)?;
         if name.is_empty() || names.len() == DEEP {
             return Ok(format!("rd:{}", rd.0));
         }
         names.push(name);
-        at = client.parent(at)?;
+        at = tree.parent(at)?;
     }
     names.reverse();
     Ok(format!("/{}", names.join("/")))
@@ -542,18 +683,18 @@ fn where_is(client: &mut Client, rd: Rd) -> Result<String, Fault> {
 /// going to the parent; so a `.` or a `..` inside an absolute path is
 /// a move and never a name to look up.
 fn locate(
-    client: &mut Client,
+    tree: &mut Tree,
     shell: &Shell,
     target: &str,
 ) -> Result<Rd, (String, Fault)> {
     if target.starts_with("rd:") {
-        return client.resolve_at(target);
+        return tree.resolve_at(target);
     }
     let mut rd = if target.starts_with('/') { ROOT } else { shell.cwd };
     let named = |name: &&str| !name.is_empty() && *name != ".";
     for name in target.split('/').filter(named) {
         let step =
-            if name == ".." { up(client, rd) } else { client.lookup(rd, name) };
+            if name == ".." { up(tree, rd) } else { tree.lookup(rd, name) };
         rd = step.map_err(|fault| (name.to_string(), fault))?;
     }
     Ok(rd)
@@ -561,17 +702,17 @@ fn locate(
 
 /// The parent of `rd`; the root is its own parent, as `cd /..` in a
 /// shell is `/`.
-fn up(client: &mut Client, rd: Rd) -> Result<Rd, Fault> {
+fn up(tree: &mut Tree, rd: Rd) -> Result<Rd, Fault> {
     if rd == ROOT {
         return Ok(ROOT);
     }
-    client.parent(rd)
+    tree.parent(rd)
 }
 
 /// The rd of `target`, or the Miss naming the segment that stopped the
 /// walk.
 fn resolved(
-    client: &mut Client,
+    tree: &mut Tree,
     shell: &Shell,
     word: &str,
     target: &str,
@@ -579,7 +720,7 @@ fn resolved(
     let stopped = |(at, f): (String, Fault)| {
         miss(word, target, Step::Resolve, &f, &[&at])
     };
-    locate(client, shell, target).map_err(stopped)
+    locate(tree, shell, target).map_err(stopped)
 }
 
 /// One listed rd: its number, the name it shows under, and what the
@@ -602,7 +743,7 @@ struct Form {
 /// The children of each target by name, sorted; in columns across
 /// `width` and one per line without it. A cell lists itself.
 fn ls(
-    client: &mut Client,
+    tree: &mut Tree,
     shell: &Shell,
     args: &[String],
     out: Out,
@@ -620,7 +761,7 @@ fn ls(
         if many {
             let _ = writeln!(text, "{gap}{target}:");
         }
-        text.push_str(&listing(client, shell, target, form, out)?);
+        text.push_str(&listing(tree, shell, target, form, out)?);
     }
     Ok(text.into_bytes())
 }
@@ -654,17 +795,17 @@ fn flags(word: &str) -> Option<&str> {
 
 /// One target's listing: a Container's children, or the target itself.
 fn listing(
-    client: &mut Client,
+    tree: &mut Tree,
     shell: &Shell,
     target: &str,
     form: Form,
     out: Out,
 ) -> Result<String, Miss> {
-    let rd = resolved(client, shell, "ls", target)?;
+    let rd = resolved(tree, shell, "ls", target)?;
     let refused = |fault: Fault| miss("ls", target, Step::Op, &fault, &[]);
-    let info = client.info(rd).map_err(refused)?;
+    let info = tree.info(rd).map_err(refused)?;
     let listed = if info.flags.contains(Flags::CONTAINER) {
-        entries(client, rd).map_err(refused)?
+        entries(tree, rd).map_err(refused)?
     } else {
         vec![Entry { name: named(rd, &info), rd, info }]
     };
@@ -672,7 +813,7 @@ fn listing(
         let mut text = String::new();
         for entry in &listed {
             let paint = out.paint;
-            let line = long_line(client, entry, form.rds, paint);
+            let line = long_line(tree, entry, form.rds, paint);
             text.push_str(&line.map_err(refused)?);
         }
         return Ok(text);
@@ -710,10 +851,10 @@ fn painted(entry: &Entry, paint: Paint) -> String {
 }
 
 /// Every child of `rd`, named and sorted by name.
-fn entries(client: &mut Client, rd: Rd) -> Result<Vec<Entry>, Fault> {
+fn entries(tree: &mut Tree, rd: Rd) -> Result<Vec<Entry>, Fault> {
     let mut entries = Vec::new();
-    for child in client.children(rd)? {
-        let info = client.info(child)?;
+    for child in tree.children(rd)? {
+        let info = tree.info(child)?;
         entries.push(Entry { rd: child, name: named(child, &info), info });
     }
     entries.sort_by(|a, b| a.name.cmp(&b.name));
@@ -727,7 +868,7 @@ fn named(rd: Rd, info: &Info) -> String {
 
 /// `TYPE RIGHTS  MTIME  APIS  NAME`, the rd number first under `-a`.
 fn long_line(
-    client: &mut Client,
+    tree: &mut Tree,
     entry: &Entry,
     rds: bool,
     paint: Paint,
@@ -738,7 +879,7 @@ fn long_line(
     let write = if flags.contains(Flags::WRITE) { 'w' } else { '-' };
     let mut apis = Vec::new();
     for hash in &entry.info.apis {
-        apis.push(client.decl(*hash)?.api);
+        apis.push(tree.decl(*hash)?.api);
     }
     let apis = if apis.is_empty() { "-".to_string() } else { apis.join(",") };
     let number = if rds { format!("{} ", entry.rd.0) } else { String::new() };
@@ -878,7 +1019,7 @@ fn reading(args: &[String]) -> Option<(Reading, Vec<&str>)> {
 
 /// The bytes of each target in turn.
 fn cat(
-    client: &mut Client,
+    tree: &mut Tree,
     shell: &Shell,
     args: &[String],
 ) -> Result<Vec<u8>, Miss> {
@@ -887,9 +1028,9 @@ fn cat(
     };
     let mut out = Vec::new();
     for target in targets {
-        let rd = resolved(client, shell, "cat", target)?;
+        let rd = resolved(tree, shell, "cat", target)?;
         let refused = |f: Fault| miss("cat", target, Step::Op, &f, &[]);
-        out.extend(client.read_all(rd).map_err(refused)?);
+        out.extend(tree.read_all(rd).map_err(refused)?);
     }
     Ok(out)
 }
@@ -897,16 +1038,16 @@ fn cat(
 /// The long line, the three times as dates, then every api with its
 /// methods as the declaration shows them.
 fn stat(
-    client: &mut Client,
+    tree: &mut Tree,
     shell: &Shell,
     target: &str,
     out: Out,
 ) -> Result<Vec<u8>, Miss> {
-    let rd = resolved(client, shell, "stat", target)?;
+    let rd = resolved(tree, shell, "stat", target)?;
     let refused = |fault: Fault| miss("stat", target, Step::Op, &fault, &[]);
-    let info = client.info(rd).map_err(refused)?;
+    let info = tree.info(rd).map_err(refused)?;
     let entry = Entry { name: named(rd, &info), rd, info };
-    let line = long_line(client, &entry, false, out.paint);
+    let line = long_line(tree, &entry, false, out.paint);
     let mut out = line.map_err(refused)?;
     let times = [
         ("rd", entry.rd.0.to_string()),
@@ -918,7 +1059,7 @@ fn stat(
         let _ = writeln!(out, "{key} {value}");
     }
     for hash in &entry.info.apis {
-        let decl = client.decl(*hash).map_err(refused)?;
+        let decl = tree.decl(*hash).map_err(refused)?;
         let _ = writeln!(out, "{} v{}", decl.api, decl.ver);
         out.push_str(&methods(&decl));
     }
@@ -975,8 +1116,8 @@ fn shown(ty: &Ty) -> String {
 
 /// The target and what is under it as `tree` draws it, ending with the
 /// count of what was drawn.
-fn tree(
-    client: &mut Client,
+fn drawn(
+    tree: &mut Tree,
     shell: &Shell,
     args: &[String],
     out: Out,
@@ -984,15 +1125,15 @@ fn tree(
     let Some((depth, target)) = levels(args, &shell.path) else {
         return Err(misuse("tree"));
     };
-    let rd = resolved(client, shell, "tree", target)?;
+    let rd = resolved(tree, shell, "tree", target)?;
     let refused = |fault: Fault| miss("tree", target, Step::Op, &fault, &[]);
-    let info = client.info(rd).map_err(refused)?;
+    let info = tree.info(rd).map_err(refused)?;
     let mut text = format!("{target}\n");
     let mut count = (0, 0);
     if info.flags.contains(Flags::CONTAINER) {
-        let kids = ordered(entries(client, rd).map_err(refused)?);
+        let kids = ordered(entries(tree, rd).map_err(refused)?);
         let deeper = Deeper { prefix: String::new(), depth, paint: out.paint };
-        draw(client, &kids, &deeper, &mut text, &mut count);
+        draw(tree, &kids, &deeper, &mut text, &mut count);
     }
     let _ = write!(text, "\n{} containers, {} cells\n", count.0, count.1);
     Ok(text.into_bytes())
@@ -1036,7 +1177,7 @@ struct Deeper {
 /// `kids` under `at.prefix`, each Container a level deeper; what
 /// cannot be listed says why on its own line and the walk goes on.
 fn draw(
-    client: &mut Client,
+    tree: &mut Tree,
     kids: &[Entry],
     at: &Deeper,
     out: &mut String,
@@ -1054,8 +1195,7 @@ fn draw(
             count.1 += 1;
         }
         let name = painted(kid, at.paint);
-        let under =
-            (container && at.depth > 1).then(|| entries(client, kid.rd));
+        let under = (container && at.depth > 1).then(|| entries(tree, kid.rd));
         match under {
             Some(Err(fault)) => {
                 let why = cause("tree", Step::Op, &fault, &[]);
@@ -1068,7 +1208,7 @@ fn draw(
                     depth: at.depth - 1,
                     paint: at.paint,
                 };
-                draw(client, &ordered(kids), &deeper, out, count);
+                draw(tree, &ordered(kids), &deeper, out, count);
             }
             None => {
                 let _ = writeln!(out, "{prefix}{stem}{name}");
@@ -1083,15 +1223,15 @@ const LOG: &str = "/sys/log";
 
 /// What `dmesg` prints of everything the log holds now.
 fn dmesg_now(
-    client: &mut Client,
+    tree: &mut Tree,
     args: &[String],
     out: Out,
 ) -> Result<Vec<u8>, Miss> {
     let (form, _) = dmesg::form(args, out.paint)?;
     let refused = |f: Fault| miss("dmesg", LOG, Step::Op, &f, &[]);
-    let entries = log::tail(client, 1).map_err(refused)?;
+    let entries = log::tail(tree, 1).map_err(refused)?;
     let mut names = dmesg::Names::default();
-    learn(client, &entries, &mut names);
+    learn(tree, &entries, &mut names);
     let boot = dmesg::boot(&entries);
     let mut last = None;
     Ok(dmesg::show(&entries, boot, &mut last, &form, &names).into_bytes())
@@ -1100,19 +1240,15 @@ fn dmesg_now(
 /// What the Kernel's own lines name, looked up once each: an rd's path
 /// from the tree, an api's declaration from `/sys/decls`. The Kernel
 /// writes the numbers it has; these are the words for them.
-fn learn(
-    client: &mut Client,
-    entries: &[log::Entry],
-    names: &mut dmesg::Names,
-) {
+fn learn(tree: &mut Tree, entries: &[log::Entry], names: &mut dmesg::Names) {
     let (rds, apis) = names.unknown(entries);
     for rd in rds {
         let gone = |_| format!("rd:{rd}");
-        let path = where_is(client, Rd(rd)).unwrap_or_else(gone);
+        let path = where_is(tree, Rd(rd)).unwrap_or_else(gone);
         names.paths.insert(rd, path);
     }
     for hash in apis {
-        names.apis.insert(hash, client.decl(Hash(hash)).ok());
+        names.apis.insert(hash, tree.decl(Hash(hash)).ok());
     }
 }
 
@@ -1158,17 +1294,17 @@ impl Tailing {
     /// Whatever the log gained, in the form the line asked for.
     fn event(
         &mut self,
-        client: &mut Client,
+        tree: &mut Tree,
         event: Event,
     ) -> Result<Option<Vec<u8>>, Miss> {
         if event.rd != self.rd || event.kind != Kind::Modify {
             return Ok(None);
         }
         let refused = |f: Fault| miss("dmesg", LOG, Step::Op, &f, &[]);
-        let got = log::read(client, self.h, self.from).map_err(refused)?;
+        let got = log::read(tree, self.h, self.from).map_err(refused)?;
         let Some(newest) = got.last() else { return Ok(None) };
         self.from = newest.seq + 1;
-        learn(client, &got, &mut self.names);
+        learn(tree, &got, &mut self.names);
         let last = &mut self.last;
         let text = dmesg::show(&got, self.boot, last, &self.form, &self.names);
         Ok(some(text.into_bytes()))
@@ -1180,7 +1316,8 @@ impl Tailing {
 ///
 /// The handles are open and watched when this returns; the app polls
 /// `since`, gives each event to [`Follow::event`] and closes the
-/// handles when its loop ends.
+/// handles when its loop ends. A following word takes the Client and
+/// not the tree, the watch cursor it drains being the Client's own.
 ///
 /// # Errors
 /// As [`input`]: the flags of the word, and whatever the Client says
@@ -1214,14 +1351,14 @@ fn drain(client: &mut Client, word: &str) -> Result<(), Miss> {
 
 /// A handle on `rd` open and watching, its faults named as the word's.
 fn watching(
-    client: &mut Client,
+    tree: &mut Tree,
     word: &str,
     target: &str,
     rd: Rd,
 ) -> Result<Handle, Miss> {
     let refused = |f: Fault| miss(word, target, Step::Op, &f, &[]);
-    let h = client.open(rd, Rights::READ).map_err(refused)?;
-    client.watch(h, true).map_err(refused)?;
+    let h = tree.open(rd, Rights::READ).map_err(refused)?;
+    tree.watch(h, true).map_err(refused)?;
     Ok(h)
 }
 

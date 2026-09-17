@@ -1,4 +1,4 @@
-//! `/sys/log` as a Client reads it: whole entries from a sequence.
+//! `/sys/log` as the tree reads it: whole entries from a sequence.
 
 use alloc::format;
 use alloc::string::String;
@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 
 use reovim_kernel_interface::{Handle, Rd, Rights};
 
-use crate::{Client, Fault};
+use crate::{Fault, Tree};
 
 /// Bytes asked of the log per `Read`.
 const CHUNK: u32 = 64 * 1024;
@@ -101,16 +101,16 @@ fn blob_at(bytes: &[u8]) -> Option<(&[u8], &[u8])> {
 /// READ. A `Read` at a sequence answers whole entries from there.
 ///
 /// # Errors
-/// As `Client::read`.
+/// As `Tree::read`.
 pub fn read(
-    client: &mut Client,
+    tree: &mut Tree,
     h: Handle,
     from: u64,
 ) -> Result<Vec<Entry>, Fault> {
     let mut entries: Vec<Entry> = Vec::new();
     let mut next = from;
     loop {
-        let got = parse(&client.read(h, next, CHUNK)?);
+        let got = parse(&tree.read(h, next, CHUNK)?);
         let Some(last) = got.last() else { return Ok(entries) };
         next = last.seq + 1;
         entries.extend(got);
@@ -121,19 +121,15 @@ pub fn read(
 /// opened and closed here.
 ///
 /// # Errors
-/// As `Client::resolve` and [`read`].
-pub fn tail(client: &mut Client, from: u64) -> Result<Vec<Entry>, Fault> {
-    let rd = client.resolve("/sys/log")?;
-    read_rd(client, rd, from)
+/// As `Tree::resolve` and [`read`].
+pub fn tail(tree: &mut Tree, from: u64) -> Result<Vec<Entry>, Fault> {
+    let rd = tree.resolve("/sys/log")?;
+    read_rd(tree, rd, from)
 }
 
-fn read_rd(
-    client: &mut Client,
-    rd: Rd,
-    from: u64,
-) -> Result<Vec<Entry>, Fault> {
-    let h = client.open(rd, Rights::READ)?;
-    let entries = read(client, h, from);
-    client.close(h)?;
+fn read_rd(tree: &mut Tree, rd: Rd, from: u64) -> Result<Vec<Entry>, Fault> {
+    let h = tree.open(rd, Rights::READ)?;
+    let entries = read(tree, h, from);
+    tree.close(h)?;
     entries
 }

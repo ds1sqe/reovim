@@ -7,9 +7,9 @@ use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-use reovim_client::{Client, Flags, Rd, log};
+use reovim_client::{Flags, Rd, Tree, log};
 
-use crate::{COMMANDS, Shell, locate};
+use crate::{Shell, WORDS, locate};
 
 /// What may replace the word starting at byte `from` of the line.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -34,7 +34,7 @@ const FLAGS: [(&str, &[&str]); 4] = [
 
 /// Candidates for the last word of `line`, which may be empty, from
 /// where `shell` stands.
-pub fn complete(client: &mut Client, shell: &Shell, line: &str) -> Completion {
+pub fn complete(tree: &mut Tree, shell: &Shell, line: &str) -> Completion {
     let from = line.rfind(' ').map_or(0, |at| at + 1);
     let word = &line[from..];
     let index = line[..from].split_whitespace().count();
@@ -43,11 +43,11 @@ pub fn complete(client: &mut Client, shell: &Shell, line: &str) -> Completion {
     let candidates = match (command, index) {
         (_, 0) => commands(word),
         _ if word.starts_with('-') => flags(command, word),
-        ("dmesg", _) => flag_values(client, before, word),
+        ("dmesg", _) => flag_values(tree, before, word),
         ("log" | "load" | "unload", _) => Vec::new(),
-        ("call", 2) => methods(client, shell, line, word),
+        ("call", 2) => methods(tree, shell, line, word),
         // `ls`, `cat` and `tree` take targets past their flags.
-        ("ls" | "cat" | "tree", _) | (_, 1) => path(client, shell, word),
+        ("ls" | "cat" | "tree", _) | (_, 1) => path(tree, shell, word),
         _ => Vec::new(),
     };
     Completion { from, candidates }
@@ -69,12 +69,12 @@ fn flags(command: &str, word: &str) -> Vec<String> {
 /// What a `dmesg` flag takes: the marks the log's own entries carry
 /// after `-f`, the eight level names after `-l`.
 fn flag_values(
-    client: &mut Client,
+    tree: &mut Tree,
     before: Option<&str>,
     word: &str,
 ) -> Vec<String> {
     let values = match before {
-        Some("-f") => marks(client),
+        Some("-f") => marks(tree),
         Some("-l") => log::LEVELS.iter().map(ToString::to_string).collect(),
         _ => Vec::new(),
     };
@@ -82,18 +82,20 @@ fn flag_values(
 }
 
 /// Every mark in the log now, each once, sorted.
-fn marks(client: &mut Client) -> Vec<String> {
-    let Ok(entries) = log::tail(client, 1) else { return Vec::new() };
+fn marks(tree: &mut Tree) -> Vec<String> {
+    let Ok(entries) = log::tail(tree, 1) else { return Vec::new() };
     let mut marks: Vec<String> = entries.into_iter().map(|e| e.mark).collect();
     marks.sort();
     marks.dedup();
     marks
 }
 
+/// The cli's words that begin as `prefix` does, in the table's order.
 fn commands(prefix: &str) -> Vec<String> {
-    COMMANDS
+    WORDS
         .iter()
-        .filter(|c| c.starts_with(prefix))
+        .map(|word| word.name)
+        .filter(|name| name.starts_with(prefix))
         .map(ToString::to_string)
         .collect()
 }
@@ -101,15 +103,15 @@ fn commands(prefix: &str) -> Vec<String> {
 /// The children of the part before the last `/`, named with the rest;
 /// without a `/`, the children of the cwd. A Container gets a trailing
 /// `/`, so the next Tab goes on under it.
-fn path(client: &mut Client, shell: &Shell, word: &str) -> Vec<String> {
+fn path(tree: &mut Tree, shell: &Shell, word: &str) -> Vec<String> {
     let (dir, prefix) = word
         .rfind('/')
         .map_or(("", word), |cut| (&word[..=cut], &word[cut + 1..]));
-    let Ok(rd) = locate(client, shell, dir) else { return Vec::new() };
-    let Ok(children) = client.children(rd) else { return Vec::new() };
+    let Ok(rd) = locate(tree, shell, dir) else { return Vec::new() };
+    let Ok(children) = tree.children(rd) else { return Vec::new() };
     children
         .into_iter()
-        .filter_map(|child| named(client, child, prefix))
+        .filter_map(|child| named(tree, child, prefix))
         .map(|(name, container)| {
             let end = if container { "/" } else { "" };
             format!("{dir}{name}{end}")
@@ -119,12 +121,8 @@ fn path(client: &mut Client, shell: &Shell, word: &str) -> Vec<String> {
 
 /// The child's name when it starts with `prefix`, and whether it is a
 /// Container.
-fn named(
-    client: &mut Client,
-    child: Rd,
-    prefix: &str,
-) -> Option<(String, bool)> {
-    let info = client.info(child).ok()?;
+fn named(tree: &mut Tree, child: Rd, prefix: &str) -> Option<(String, bool)> {
+    let info = tree.info(child).ok()?;
     let name = info.name?;
     name.starts_with(prefix)
         .then(|| (name, info.flags.contains(Flags::CONTAINER)))
@@ -132,7 +130,7 @@ fn named(
 
 /// Method names the target of `call` offers.
 fn methods(
-    client: &mut Client,
+    tree: &mut Tree,
     shell: &Shell,
     line: &str,
     word: &str,
@@ -140,8 +138,8 @@ fn methods(
     let Some(target) = line.split_whitespace().nth(1) else {
         return Vec::new();
     };
-    let Ok(rd) = locate(client, shell, target) else { return Vec::new() };
-    let Ok(decls) = client.decls(rd) else { return Vec::new() };
+    let Ok(rd) = locate(tree, shell, target) else { return Vec::new() };
+    let Ok(decls) = tree.decls(rd) else { return Vec::new() };
     decls
         .into_iter()
         .flat_map(|(_, decl)| decl.methods)

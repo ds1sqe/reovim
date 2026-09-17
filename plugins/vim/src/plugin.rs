@@ -16,6 +16,7 @@ use reovim_client::{
     MATCH, Plugin, Rd, Rights, SELECTION, Start, Tree, grid, keys, open,
     process, under,
 };
+use reovim_client_cli::{Out, Shell, input};
 use reovim_text_api::{history, open as text_open, publish, text};
 
 use crate::{Edit, Effect, Mode, Quit, Vim};
@@ -31,6 +32,8 @@ const E212: &str = "E212: Can't open file for writing";
 /// What `:explore` says to a name that is not on disk: Vim's word for
 /// a directory it cannot find, the name as the person typed it.
 const E344: &str = "E344: Can't find directory";
+/// What `:edit` says to one: the same, for a file.
+const E345: &str = "E345: Can't find file";
 /// Where the fs Module mirrors the directory the editor runs over.
 const MIRROR: &str = "/module/fs/root";
 /// What undo and redo say at the ends of the history.
@@ -51,6 +54,7 @@ impl Plugin for Vim {
         self.source = at.over;
         self.name = at.name;
         self.dir = at.dir;
+        self.shell = standing(tree, &self.dir)?;
         self.clip = tree.resolve("/module/clipboard/text").ok();
         self.region = caps.open(grid::hash());
         self.opener = caps.open(open::hash());
@@ -151,6 +155,10 @@ impl Vim {
             Effect::Explore(name, bang) => {
                 return self.explore(tree, caps, name.as_deref(), bang);
             }
+            Effect::Open(name, bang) => {
+                return self.edited(tree, caps, &name, bang);
+            }
+            Effect::Cli(words) => return Ok(self.ran(tree, &words)),
         }
         Ok(true)
     }
@@ -396,6 +404,36 @@ impl Vim {
             let said = name.unwrap_or(&self.dir);
             return Ok(self.says(&format!("{E344} \"{said}\" in cdpath")));
         };
+        self.shown(tree, caps, target, bang)
+    }
+
+    /// `:e[dit][!] PATH`: the file that name holds in this region,
+    /// which the Client's table gives another Vim. The name is
+    /// resolved as `:explore`'s is; one that is not there is E345.
+    fn edited(
+        &mut self,
+        tree: &mut Tree,
+        caps: &mut Caps,
+        name: &str,
+        bang: bool,
+    ) -> Result<bool, Fault> {
+        let Some(target) = resolved(tree, &under(&self.dir, name))? else {
+            return Ok(self.says(&format!("{E345} \"{name}\" in path")));
+        };
+        self.shown(tree, caps, target, bang)
+    }
+
+    /// The Client asked to show `target` in this region, which is the
+    /// end of this Vim: the swap takes the draft with it, so unsaved
+    /// changes are E37 without the bang, as `:q` has it. Nothing is
+    /// shown again here; the Plugin that comes shows itself.
+    fn shown(
+        &mut self,
+        tree: &mut Tree,
+        caps: &mut Caps,
+        target: Rd,
+        bang: bool,
+    ) -> Result<bool, Fault> {
         if !bang && self.unsaved(tree)? {
             return Ok(self.says(E37));
         }
@@ -403,6 +441,20 @@ impl Vim {
         let ask = open::Ask { target: target.0, plugin: String::new() };
         open::Call(caps, opener).open(ask)?;
         Ok(false)
+    }
+
+    /// A cli word typed on the `:` line: the line run through
+    /// clients/cli over this tree, from where the Shell stands, and
+    /// its first line of output said in the status row. A `Miss` is
+    /// said in the cli's own words, as the process cli prints it after
+    /// `reovim: `. Lines past the first are dropped until 13's cli
+    /// buffer, which is where more than one line goes.
+    fn ran(&mut self, tree: &mut Tree, words: &[String]) -> bool {
+        let out = match input(tree, &mut self.shell, words, Out::plain()) {
+            Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+            Err(miss) => format!("{miss}"),
+        };
+        self.says(out.lines().next().unwrap_or_default())
     }
 
     /// Where `:explore` with no name looks: the directory the Buffer's
@@ -540,6 +592,21 @@ fn made(
     let input = reovim_sdk::encode(&String::from(name));
     let out = tree.call_by_name(dir, method, input)?;
     Ok(reovim_sdk::decode(&out)?)
+}
+
+/// Where the `:` line's cli words stand: the mirror of the directory
+/// the Client started Vim in, so `:ls` lists the buffer's own
+/// directory and `:pwd` says where it is. The root of the tree where
+/// there is no mirror of that directory, which is a place to stand
+/// although no file of the editor's is under it.
+fn standing(tree: &mut Tree, dir: &str) -> Result<Shell, Fault> {
+    let path = if dir.is_empty() {
+        String::from(MIRROR)
+    } else {
+        format!("{MIRROR}/{dir}")
+    };
+    let standing = resolved(tree, dir)?;
+    Ok(standing.map_or_else(Shell::default, |cwd| Shell::at(cwd, path)))
 }
 
 /// A Buffer over `source`, or over nothing: the one the Plugin shows,

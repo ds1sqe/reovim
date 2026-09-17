@@ -1,0 +1,298 @@
+//! The `:` line over the tui and the rig: one table of words, Vim's
+//! before the cli's, and every word of Vim's by its full name and by
+//! the beginning the table computes for it.
+//!
+//! The corpus judges the short forms it uses and nothing else, so
+//! what the full names and the cli's words do is judged here, by what
+//! happened: the step the editor ended in, the status row, the text,
+//! the file on disk, the search marks, and what a listing was started
+//! over.
+
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use reovim_client::{
+    BLOCK, Ctx, Event, Fault, Hash, Plugin, Rd, Rights, Start, grid,
+};
+use reovim_client_cli::Words;
+use reovim_client_tui::{Step, Table, Tui, Want};
+use reovim_plugin_vim::Vim;
+use reovim_plugin_vim::notation::keys;
+use reovim_rig::Rig;
+use reovim_text_api::open as text_open;
+
+/// The one editor a test drives, over whichever Plugin the table gives.
+type Editor = Tui<Box<dyn Plugin>>;
+
+/// What each start of the table's Container Plugin was over, in order.
+type Listed = Rc<RefCell<Vec<Option<Rd>>>>;
+
+/// The Container Plugin of the table, as explore.rs has it: it records
+/// what it was started over and shows a scratch Buffer of its own, so
+/// the region has text and a word no Vim would give it.
+struct Stub(Listed);
+
+impl Plugin for Stub {
+    fn start(&mut self, ctx: Ctx<'_>, at: Start) -> Result<(), Fault> {
+        let Ctx { tree, caps } = ctx;
+        self.0.borrow_mut().push(at.over);
+        let opener = tree.resolve("/module/text/open")?;
+        let opening = tree.open(opener, Rights::WRITE)?;
+        let buffer = text_open::Call(tree, opening).new()?;
+        tree.close(opening)?;
+        let Some(region) = caps.open(grid::hash()) else { return Ok(()) };
+        let view = grid::View {
+            over: buffer.0,
+            top: 0,
+            cursor: 0,
+            shape: BLOCK,
+            spans: Vec::new(),
+            status: String::from("-- LISTING --"),
+        };
+        grid::Call(caps, region).show(view)
+    }
+
+    fn input(&mut self, _: Ctx<'_>, _: Hash, _: &[u8]) -> Result<(), Fault> {
+        Ok(())
+    }
+
+    fn changed(&mut self, _: Ctx<'_>, _: &[Event]) -> Result<(), Fault> {
+        Ok(())
+    }
+}
+
+/// The app's table in the small: Vim for a cell, the stub for a
+/// Container.
+fn table(seen: &Listed) -> Table<Box<dyn Plugin>> {
+    let seen = seen.clone();
+    Box::new(move |want| match want {
+        Want::Cell => Some(Box::new(Vim::default()) as Box<dyn Plugin>),
+        Want::Container => Some(Box::new(Stub(seen.clone()))),
+        Want::Named(_) => None,
+    })
+}
+
+/// A rig whose root holds `d`, which holds `alpha`, `note`, `other`
+/// and `sub`. The editor is over `note` and was started in `d`.
+fn work(test: &str) -> Rig {
+    let rig = Rig::new(test);
+    std::fs::create_dir_all(rig.dir().join("d/sub")).unwrap();
+    rig.file("d/alpha", b"");
+    rig.file("d/note", b"one\ntwo\n");
+    rig.file("d/other", b"three\n");
+    rig
+}
+
+/// Every key of `text` in Vim notation; what the last one did.
+fn typed(tui: &mut Editor, text: &str) -> Step {
+    let mut step = Step::Same;
+    for key in keys(text).unwrap() {
+        step = tui.key(key).unwrap();
+    }
+    step
+}
+
+/// What `text` did to an editor of its own, in one line: the step it
+/// ended in, the status row, the text shown, what `note` holds on
+/// disk, how many search marks are on the frame, and how many
+/// listings were started.
+fn done(name: &str, keys: &str) -> String {
+    let rig = work(name);
+    let seen = Listed::default();
+    let mut tui =
+        Tui::open(rig.client(), "d", Some("d/note"), None, table(&seen))
+            .unwrap();
+    let step = typed(&mut tui, keys);
+    let frame = tui.frame(80, 24).unwrap();
+    let disk = String::from_utf8(rig.disk("d/note")).unwrap();
+    // The editor that quit never showed itself again, so its status
+    // row still holds the command line as it was typed, which nobody
+    // sees and which is not what the word did.
+    let status = match step {
+        Step::Quit(_) => String::from("quit"),
+        _ => frame.status.clone(),
+    };
+    format!(
+        "{step:?} [{status}] {:?} disk={disk:?} marks={} listed={}",
+        frame.lines,
+        frame.marks.len(),
+        seen.borrow().len()
+    )
+}
+
+/// One word of Vim's: a line that uses it by its full name, the same
+/// line by its abbreviation, and what both do.
+struct Case {
+    full: &'static str,
+    short: &'static str,
+    done: &'static str,
+}
+
+#[test]
+fn every_word_runs_by_its_full_name_and_by_its_abbreviation() {
+    let cases = [
+        Case {
+            full: "ix<Esc>:write<CR>",
+            short: "ix<Esc>:w<CR>",
+            done: "Changed [note  1:1  r2   ] [\"xone\", \"two\"] \
+                   disk=\"xone\\ntwo\\n\" marks=0 listed=0",
+        },
+        Case {
+            full: "ix<Esc>:wq<CR>",
+            short: "ix<Esc>:wq<CR>",
+            done: "Quit(0) [quit] [\"xone\", \"two\"] \
+                   disk=\"xone\\ntwo\\n\" marks=0 listed=0",
+        },
+        Case {
+            full: ":quit<CR>",
+            short: ":q<CR>",
+            done: "Quit(0) [quit] [\"one\", \"two\"] \
+                   disk=\"one\\ntwo\\n\" marks=0 listed=0",
+        },
+        Case {
+            full: "ix<Esc>:xit<CR>",
+            short: "ix<Esc>:x<CR>",
+            done: "Quit(0) [quit] [\"xone\", \"two\"] \
+                   disk=\"xone\\ntwo\\n\" marks=0 listed=0",
+        },
+        Case {
+            full: ":cquit<CR>",
+            short: ":c<CR>",
+            done: "Quit(1) [quit] [\"one\", \"two\"] \
+                   disk=\"one\\ntwo\\n\" marks=0 listed=0",
+        },
+        Case {
+            full: ":substitute/one/ONE/<CR>",
+            short: ":s/one/ONE/<CR>",
+            done: "Changed [note  1:1  r2[+]   ] [\"ONE\", \"two\"] \
+                   disk=\"one\\ntwo\\n\" marks=0 listed=0",
+        },
+        Case {
+            full: ":set nothere<CR>",
+            short: ":se nothere<CR>",
+            done: "Changed [note  1:1  r1   E518: Unknown option: nothere] \
+                   [\"one\", \"two\"] disk=\"one\\ntwo\\n\" marks=0 listed=0",
+        },
+        Case {
+            full: ":set hls<CR>/one<CR>:nohlsearch<CR>",
+            short: ":set hls<CR>/one<CR>:n<CR>",
+            done: "Changed [note  1:1  r1   ] [\"one\", \"two\"] \
+                   disk=\"one\\ntwo\\n\" marks=0 listed=0",
+        },
+        Case {
+            full: ":edit other<CR>",
+            short: ":e other<CR>",
+            done: "Changed [other  1:1  r1   ] [\"three\"] \
+                   disk=\"one\\ntwo\\n\" marks=0 listed=0",
+        },
+        Case {
+            full: ":explore<CR>",
+            short: ":ex<CR>",
+            done: "Changed [d  1:1  r1   -- LISTING --] [\"\"] \
+                   disk=\"one\\ntwo\\n\" marks=0 listed=1",
+        },
+    ];
+    for (at, case) in cases.iter().enumerate() {
+        let full = done(&format!("words-full-{at}"), case.full);
+        let short = done(&format!("words-short-{at}"), case.short);
+        assert_eq!(full, case.done, "{}", case.full);
+        assert_eq!(short, case.done, "{}", case.short);
+    }
+
+    // The marks the search left are what `:nohlsearch` took away.
+    let marked = done("words-marked", ":set hls<CR>/one<CR>");
+    assert!(marked.contains("marks=1"), "{marked}");
+}
+
+#[test]
+fn the_table_computes_the_short_form_of_every_word() {
+    let words = Words {
+        first: reovim_plugin_vim::WORDS,
+        then: reovim_client_cli::WORDS,
+    };
+    let short: Vec<&str> =
+        reovim_plugin_vim::WORDS.iter().map(|w| words.abbrev(w)).collect();
+    // `cquit` is `c` and not nvim's `cq`: no `change` stands before it
+    // in this table, and the cli's `cat` stands behind Vim's words.
+    assert_eq!(short, ["w", "wq", "q", "x", "c", "s", "se", "n", "e", "ex"]);
+    // The cli's own words are behind these, so `:w` is the write and
+    // `:wa` the watch.
+    assert_eq!(words.resolve("wa").map(|w| w.name), Some("watch"));
+    assert_eq!(words.resolve("l").map(|w| w.name), Some("ls"));
+}
+
+#[test]
+fn a_cli_word_runs_where_the_buffer_is() {
+    let rig = work("words-cli");
+    let seen = Listed::default();
+    let mut tui =
+        Tui::open(rig.client(), "d", Some("d/note"), None, table(&seen))
+            .unwrap();
+    let said = |tui: &mut Editor| {
+        let status = tui.frame(80, 24).unwrap().status;
+        status.split_once("r1   ").map(|(_, said)| said.to_string()).unwrap()
+    };
+
+    // `:ls` lists the directory the file is in, and only its first
+    // line is said: the rest waits for the cli buffer.
+    assert_eq!(typed(&mut tui, ":ls<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), "alpha");
+    assert_eq!(typed(&mut tui, ":pwd<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), "/module/fs/root/d");
+
+    // `:cd` moves that line and nothing else.
+    assert_eq!(typed(&mut tui, ":cd sub<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), "");
+    assert_eq!(typed(&mut tui, ":pwd<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), "/module/fs/root/d/sub");
+    assert_eq!(typed(&mut tui, ":cd -<CR>:pwd<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), "/module/fs/root/d");
+
+    // A word that did not run says why in the cli's own words, and a
+    // name no table has is E492, as it always was.
+    assert_eq!(typed(&mut tui, ":ls /nothere<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), "ls /nothere: no such rd (nothere)");
+    assert_eq!(typed(&mut tui, ":zz<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), "E492: Not an editor command: zz");
+
+    // The text is the Buffer's throughout: a cli word reads the tree,
+    // it does not write the file.
+    assert_eq!(tui.frame(80, 24).unwrap().lines, ["one", "two"]);
+    assert_eq!(rig.disk("d/note"), b"one\ntwo\n");
+}
+
+#[test]
+fn a_file_that_is_not_there_is_e345_and_the_region_stays() {
+    let rig = work("words-e345");
+    let seen = Listed::default();
+    let mut tui =
+        Tui::open(rig.client(), "d", Some("d/note"), None, table(&seen))
+            .unwrap();
+    assert_eq!(typed(&mut tui, ":edit nothere<CR>"), Step::Changed);
+    let frame = tui.frame(80, 24).unwrap();
+    let said = "E345: Can't find file \"nothere\" in path";
+    assert_eq!(frame.status, format!("note  1:1  r1   {said}"));
+    assert_eq!(frame.lines, ["one", "two"], "the file is still it");
+}
+
+#[test]
+fn a_line_that_is_only_a_range_is_that_line() {
+    let rig = work("words-range");
+    let seen = Listed::default();
+    let mut tui =
+        Tui::open(rig.client(), "d", Some("d/note"), None, table(&seen))
+            .unwrap();
+    let at = |tui: &mut Editor| {
+        let status = tui.frame(80, 24).unwrap().status;
+        status.split_whitespace().nth(1).unwrap().to_string()
+    };
+    assert_eq!(typed(&mut tui, ":2<CR>"), Step::Changed);
+    assert_eq!(at(&mut tui), "2:1");
+    assert_eq!(typed(&mut tui, ":1<CR>"), Step::Changed);
+    assert_eq!(at(&mut tui), "1:1");
+    assert_eq!(typed(&mut tui, ":$<CR>"), Step::Changed);
+    assert_eq!(at(&mut tui), "2:1");
+    // A line with nothing on it at all is nothing.
+    assert_eq!(typed(&mut tui, ":<CR>"), Step::Changed);
+    assert_eq!(at(&mut tui), "2:1");
+}
