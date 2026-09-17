@@ -133,7 +133,9 @@ pub struct Vim {
     /// Bytes of indent `o`, `O` or Enter just copied, dropped again if
     /// nothing is typed on the line.
     indent: usize,
-    register: Register,
+    /// The unnamed register, `None` until something fills it; an
+    /// empty yank fills it, an empty delete does not.
+    register: Option<Register>,
     /// `"a` to `"z`.
     registers: BTreeMap<char, Register>,
     /// Text for the clipboard, until the tui takes it.
@@ -185,9 +187,11 @@ impl Vim {
         self.mode
     }
 
+    /// The unnamed register, `None` while nothing has been yanked
+    /// or deleted into it.
     #[must_use]
-    pub const fn register(&self) -> &Register {
-        &self.register
+    pub const fn register(&self) -> Option<&Register> {
+        self.register.as_ref()
     }
 
     /// After an undo or redo, as nvim places it: on the first changed

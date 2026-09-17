@@ -159,15 +159,24 @@ impl Vim {
     /// selection; a paragraph makes it linewise.
     fn extend(&mut self, inner: bool, kind: char, n: usize) -> Effect {
         let (lo, hi) = self.ends();
-        // A selection already made grows by the object after it.
-        let at = if lo == hi { self.cursor } else { self.forward_char(hi) };
+        let lines = self.mode == Mode::Visual(Visual::Line);
+        // A selection already made grows by the object after it: the
+        // line after its last when it holds whole lines, else the
+        // char after its end.
+        let at = match (lo == hi, lines) {
+            (true, _) => self.cursor,
+            (false, true) => self.line_end(hi) + 1,
+            (false, false) => self.forward_char(hi),
+        };
         let at = at.min(self.bound());
         let here = core::mem::replace(&mut self.cursor, at);
         let span = self.object_span(inner, kind, n);
         self.cursor = here;
         let Some((from, to, span_kind)) = span else { return Effect::Nothing };
         let last = if span_kind == Extent::Linewise {
-            to
+            // Whole lines leave the cursor at the last line's start,
+            // as nvim's paragraph does.
+            self.line_start(to)
         } else {
             self.prev_char(to.max(from + 1))
         };

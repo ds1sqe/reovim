@@ -24,15 +24,17 @@ fn state(bytes: &[u8]) -> Option<(String, String, Vec<u8>)> {
 
 /// What nvim would write for Vim's cursor and register: the register
 /// as `getreg` gives it, a linewise one ending in its newline, a
-/// block's type carrying its width.
+/// block's type carrying its width, an empty type for a register
+/// nothing has filled.
 fn state_of(vim: &Vim) -> (String, String, Vec<u8>) {
     let (line, column) = vim.position();
-    let Register { text, kind } = vim.register();
+    let Some(Register { text, kind }) = vim.register() else {
+        return (format!("{}:{}", line + 1, column + 1), String::new(), vec![]);
+    };
     let width = text.split('\n').map(|p| p.chars().count()).max();
     let kind = match kind {
         Kind::Line => "V".to_string(),
         Kind::Block => format!("\u{16}{}", width.unwrap_or(0)),
-        Kind::Char if text.is_empty() => String::new(),
         Kind::Char => "v".to_string(),
     };
     let mut bytes = text.clone().into_bytes();

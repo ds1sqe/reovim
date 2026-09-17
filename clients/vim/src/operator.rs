@@ -148,6 +148,18 @@ impl Motion {
         Some(motion)
     }
 
+    /// An inner bracket object: the one object whose span over whole
+    /// lines leaves the cursor on the first non-blank.
+    const fn inner_block(self) -> bool {
+        matches!(
+            self,
+            Self::Object {
+                inner: true,
+                kind: '(' | ')' | 'b' | '[' | ']' | '{' | '}' | 'B' | '<' | '>',
+            }
+        )
+    }
+
     /// `$` under an operator already stops past the last char, so it
     /// is exclusive here.
     const fn extent(self, find: Option<(Find, char)>) -> Extent {
@@ -377,7 +389,40 @@ impl Vim {
         if motion == Motion::Lines && cased && n == 1 {
             span.0 = span.0.min(self.first_non_blank(span.0));
         }
-        self.apply(op, span)
+        if op == Operator::Delete {
+            span = self.as_lines(span);
+        }
+        let effect = self.apply(op, span);
+        // nvim's inner bracket over whole lines is a charwise span
+        // that `:help exclusive` makes linewise, so its delete ends
+        // on the first non-blank of the line left behind; `dd`, `dj`
+        // and `dap`, linewise from the start, keep their column.
+        if op == Operator::Delete
+            && span.2 == Extent::Linewise
+            && motion.inner_block()
+        {
+            self.cursor = self.first_non_blank(self.cursor);
+            self.keep_want = false;
+        }
+        effect
+    }
+
+    /// nvim's `op_delete`: a charwise delete over more than one line
+    /// that starts in a line's indent and ends in blanks takes whole
+    /// lines instead, Vi's own strangeness. A change, a yank and
+    /// visual mode keep their chars.
+    fn as_lines(&self, span: Span) -> Span {
+        let (from, to, kind) = span;
+        let one_line = self.line_start(from) == self.line_start(to);
+        if kind == Extent::Linewise || one_line {
+            return span;
+        }
+        let rest = &self.text[to..self.line_end(to)];
+        let blank = rest.bytes().all(|b| b == b' ' || b == b'\t');
+        if blank && from <= self.first_non_blank(from) {
+            return (from, to, Extent::Linewise);
+        }
+        span
     }
 
     /// `op` over `span`.
@@ -404,7 +449,14 @@ impl Vim {
             &self.text[at..at + len]
         };
         let kind = if linewise { Kind::Line } else { Kind::Char };
-        self.store(Register { text: text.into(), kind });
+        // nvim's `op_delete` returns before the register on an empty
+        // region, so a delete or a change of one leaves what stands
+        // there; a yank of one still empties the register.
+        if len > 0 || linewise || op == Operator::Yank {
+            self.store(Register { text: text.into(), kind });
+        } else {
+            self.pending.register = None;
+        }
         match op {
             Operator::Delete => self.deleted(at, len, linewise),
             Operator::Change if linewise => self.change_lines(from, to),
@@ -601,7 +653,7 @@ impl Vim {
             _ => None,
         };
         let whole = named.and_then(|name| self.registers.get(&name).cloned());
-        self.register = whole.unwrap_or(taken);
+        self.register = Some(whole.unwrap_or(taken));
     }
 
     /// `taken` onto register `name`: lines on their own line, chars
@@ -634,7 +686,7 @@ impl Vim {
                 let name = name.to_ascii_lowercase();
                 Some(self.registers.get(&name).cloned().unwrap_or_default())
             }
-            _ => Some(self.register.clone()),
+            _ => Some(self.register.clone().unwrap_or_default()),
         }
     }
 

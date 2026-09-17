@@ -149,16 +149,16 @@ fn dot_repeats_a_visual_operator_over_the_same_size() {
 fn registers_have_three_kinds_and_named_ones_append() {
     let mut vim = on("ab\ncd\n");
     typed(&mut vim, "\"ayw");
-    assert_eq!(*vim.register(), register("ab", Kind::Char));
+    assert_eq!(vim.register(), Some(&register("ab", Kind::Char)));
     typed(&mut vim, "j\"Ayw");
-    assert_eq!(*vim.register(), register("abcd", Kind::Char), "appended");
+    assert_eq!(vim.register(), Some(&register("abcd", Kind::Char)), "appended");
     typed(&mut vim, "\"byy\"Byy");
-    assert_eq!(*vim.register(), register("cd\ncd", Kind::Line));
+    assert_eq!(vim.register(), Some(&register("cd\ncd", Kind::Line)));
     typed(&mut vim, "\"_dd");
-    assert_eq!(*vim.register(), register("cd\ncd", Kind::Line), "kept");
+    assert_eq!(vim.register(), Some(&register("cd\ncd", Kind::Line)), "kept");
     assert_eq!(vim.text(), "ab\n");
     typed(&mut vim, "<C-v>y");
-    assert_eq!(*vim.register(), register("a", Kind::Block));
+    assert_eq!(vim.register(), Some(&register("a", Kind::Block)));
     assert_eq!(typed(&mut vim, "\"ap"), edit(1, 0, "abcd", false));
     assert_eq!(typed(&mut vim, "\"bp"), edit(7, 0, "cd\ncd\n", false));
     assert_eq!(vim.text(), "aabcdb\ncd\ncd\n");

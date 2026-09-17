@@ -32,7 +32,7 @@ impl Vim {
     }
 
     /// `at` is an empty line: on a `\n` that starts its line.
-    fn empty_line(&self, at: usize) -> bool {
+    pub(crate) fn empty_line(&self, at: usize) -> bool {
         self.text[at..].starts_with('\n') && self.line_start(at) == at
     }
 
