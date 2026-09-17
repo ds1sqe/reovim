@@ -6,14 +6,19 @@
 //! by tests and the follow in the app prints each new entry the same
 //! way as the first read did.
 
+use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
+use reovim_client::Decl;
 use reovim_client::log::{self, Entry};
 
 use crate::paint::Paint;
 use crate::{Miss, civil, misuse};
+
+/// The mark of the Kernel's own entries, the ones written in numbers.
+const KERNEL: &str = "kernel";
 
 /// The stamp in front of each line.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -45,6 +50,10 @@ pub enum Tail {
 #[derive(Clone, Debug, Default)]
 pub struct Form {
     pub stamp: Stamp,
+    /// `-d`: the time since the line before, inside the stamp.
+    pub delta: bool,
+    /// `-r`: the text as the Kernel wrote it, and nothing else.
+    pub raw: bool,
     /// `-x`: the mark and the level decoded in front.
     pub decode: bool,
     /// `-k` and `-f`: the marks to show, all of them when empty.
@@ -76,6 +85,8 @@ pub fn form(args: &[String], paint: Paint) -> Result<(Form, Tail), Miss> {
                 't' => form.stamp = Stamp::None,
                 'T' => form.stamp = Stamp::Ctime,
                 'H' => form.stamp = Stamp::Human,
+                'd' => form.delta = true,
+                'r' => form.raw = true,
                 'x' => form.decode = true,
                 'k' => form.marks.push("kernel".to_string()),
                 'w' => follow = Tail::All,
@@ -136,32 +147,40 @@ fn shown(entry: &Entry, form: &Form) -> bool {
     marked && leveled
 }
 
-/// Every entry `form` shows, in order. `last` is the time of the entry
-/// printed before the first of these, which `-H` counts its deltas
-/// from; `None` starts a fresh run.
+/// Every entry `form` shows, in order.
+///
+/// `last` is the time of the entry printed before the first of these,
+/// which `-H` and `-d` count their deltas from; `None` starts a fresh
+/// run. `names` is what the numbers of the Kernel's lines stand for.
 #[must_use]
 pub fn show(
     entries: &[Entry],
     boot: u64,
     last: &mut Option<u64>,
     form: &Form,
+    names: &Names,
 ) -> String {
     let mut out = String::new();
     for entry in entries.iter().filter(|entry| shown(entry, form)) {
-        out.push_str(&line(entry, boot, *last, form));
+        out.push_str(&line(entry, boot, *last, form, names));
         *last = Some(entry.time);
     }
     out
 }
 
 /// One entry: the `-x` decode, the stamp, the text, and a newline.
+/// Under `-r` the text alone, as the Kernel wrote it.
 #[must_use]
 pub fn line(
     entry: &Entry,
     boot: u64,
     last: Option<u64>,
     form: &Form,
+    names: &Names,
 ) -> String {
+    if form.raw {
+        return format!("{}\n", entry.text());
+    }
     let paint = &form.paint;
     let decode = if form.decode {
         let mark = &entry.mark;
@@ -169,21 +188,42 @@ pub fn line(
     } else {
         String::new()
     };
-    format!("{decode}{}{}\n", stamp(entry, boot, last, form), text(entry, form))
+    let stamp = stamp(entry, boot, last, form);
+    format!("{decode}{stamp}{}\n", text(entry, form, names))
 }
 
-/// The stamp and the space after it, colored; empty under `-t`.
+/// The stamp and the space after it, colored; empty under `-t` unless
+/// `-d` asks for the delta, which has nothing else to stand in.
 fn stamp(entry: &Entry, boot: u64, last: Option<u64>, form: &Form) -> String {
     let paint = &form.paint;
+    let since = || delta(entry.time, last, form);
     match form.stamp {
-        Stamp::None => String::new(),
+        Stamp::None if !form.delta => String::new(),
+        Stamp::None => {
+            paint.green(&format!("[{}]", since().trim_start())) + " "
+        }
         Stamp::Delta => {
             let (seconds, micros) = split(entry.time.saturating_sub(boot));
-            paint.green(&format!("[{seconds:>5}.{micros:06}]")) + " "
+            let at = format!("[{seconds:>5}.{micros:06}{}]", since());
+            paint.green(&at) + " "
         }
-        Stamp::Ctime => paint.green(&format!("[{}]", ctime(entry.time))) + " ",
+        Stamp::Ctime => {
+            let at = format!("[{}{}]", ctime(entry.time), since());
+            paint.green(&at) + " "
+        }
+        // `-H` already says the time since the line before.
         Stamp::Human => human(entry.time, last, *paint) + " ",
     }
+}
+
+/// `-d`: ` <    0.000008>`, the time since the line before, as
+/// util-linux writes it; nothing without it.
+fn delta(time: u64, last: Option<u64>, form: &Form) -> String {
+    if !form.delta {
+        return String::new();
+    }
+    let (seconds, micros) = split(time.saturating_sub(last.unwrap_or(time)));
+    format!(" <{seconds:>5}.{micros:06}>")
 }
 
 /// `-H`: the minute when it changes, else the delta from `last`.
@@ -203,16 +243,138 @@ fn human(time: u64, last: Option<u64>, paint: Paint) -> String {
     paint.green(&format!("[  +{seconds}.{micros:06}]"))
 }
 
-/// The text, colored by how urgent the entry is: `err` red, `crit` and
-/// above bold red, `warn` bold, the rest as it is.
-fn text(entry: &Entry, form: &Form) -> String {
-    let (paint, text) = (&form.paint, entry.text());
+/// The text, the Kernel's own numbers said in words, colored by how
+/// urgent the entry is: `err` red, `crit` and above bold red, `warn`
+/// bold, the rest as it is.
+fn text(entry: &Entry, form: &Form, names: &Names) -> String {
+    let text = entry.text();
+    let text = if entry.mark == KERNEL { decoded(&text, names) } else { text };
+    let paint = &form.paint;
     match entry.level {
         0..=2 => paint.red_bold(&text),
         3 => paint.red(&text),
         4 => paint.bold(&text),
         _ => text,
     }
+}
+
+/// What the numbers of the Kernel's own lines stand for.
+///
+/// The Kernel writes an rd, an api hash and a method number, because
+/// those are what it has; the words are the tree's and the
+/// declarations'. Each is looked up once per `dmesg` run, and an rd id
+/// is never reused, so what is learned here stays true.
+#[derive(Clone, Debug, Default)]
+pub struct Names {
+    /// The path of an rd, or `rd:<n>` when it has none.
+    pub paths: BTreeMap<u64, String>,
+    /// The declaration of an api hash; `None` when there is none.
+    pub apis: BTreeMap<u64, Option<Decl>>,
+}
+
+impl Names {
+    /// The rds and the api hashes these entries name that are not
+    /// known yet, for the caller to look up and put in.
+    #[must_use]
+    pub fn unknown(&self, entries: &[Entry]) -> (Vec<u64>, Vec<u64>) {
+        let (rds, apis) = numbers(entries);
+        (fresh(rds, &self.paths), fresh(apis, &self.apis))
+    }
+}
+
+/// The rds and the api hashes the Kernel's own entries name, in the
+/// order they say them.
+fn numbers(entries: &[Entry]) -> (Vec<u64>, Vec<u64>) {
+    let (mut rds, mut apis) = (Vec::new(), Vec::new());
+    for entry in entries.iter().filter(|entry| entry.mark == KERNEL) {
+        named_in(&entry.text(), &mut rds, &mut apis);
+    }
+    (rds, apis)
+}
+
+/// What one line names, added to what the lines before it named.
+fn named_in(text: &str, rds: &mut Vec<u64>, apis: &mut Vec<u64>) {
+    let words = text.split(' ').filter_map(|word| word.split_once('='));
+    for (key, value) in words {
+        match key {
+            "rd" => rds.extend(value.parse::<u64>().ok()),
+            "api" => apis.extend(hash(value)),
+            _ => {}
+        }
+    }
+}
+
+/// The values `known` has not learned, each of them once.
+fn fresh<T>(values: Vec<u64>, known: &BTreeMap<u64, T>) -> Vec<u64> {
+    let mut out: Vec<u64> = Vec::new();
+    for value in values {
+        if !known.contains_key(&value) && !out.contains(&value) {
+            out.push(value);
+        }
+    }
+    out
+}
+
+fn hash(value: &str) -> Option<u64> {
+    u64::from_str_radix(value, 16).ok()
+}
+
+/// The Kernel's own line said in words: `rd=` as its path, `api=` as
+/// the declaration's name, `method=` as that declaration's name for
+/// the number, `took=` as a time with its unit. The keys stay, so a
+/// decoded line is as greppable as the one the Kernel wrote.
+fn decoded(text: &str, names: &Names) -> String {
+    let mut api: Option<&Decl> = None;
+    let mut out = Vec::new();
+    for word in text.split(' ') {
+        let Some((key, value)) = word.split_once('=') else {
+            out.push(word.to_string());
+            continue;
+        };
+        let said = match key {
+            "rd" => value.parse().ok().map(|rd| path(names, rd)),
+            "api" => {
+                api = hash(value)
+                    .and_then(|hash| names.apis.get(&hash))
+                    .and_then(Option::as_ref);
+                api.map(|decl| decl.api.clone())
+            }
+            "method" => method(api, value.parse().ok()),
+            "took" => value.parse().ok().map(took),
+            _ => None,
+        };
+        let word = said
+            .map_or_else(|| word.to_string(), |said| format!("{key}={said}"));
+        out.push(word);
+    }
+    out.join(" ")
+}
+
+/// The path of an rd, or `rd:<n>` for one that is gone or unnamed.
+fn path(names: &Names, rd: u64) -> String {
+    names.paths.get(&rd).cloned().unwrap_or_else(|| format!("rd:{rd}"))
+}
+
+/// The declaration's own name for a method number.
+fn method(api: Option<&Decl>, number: Option<u16>) -> Option<String> {
+    Some(api?.method(number?)?.name.clone())
+}
+
+/// A span of nanoseconds in the unit that shows it: `812ns`,
+/// `8.123µs`, `1.2ms`, `1.5s`; three decimals, the trailing zeros of
+/// them dropped.
+fn took(nanos: u64) -> String {
+    const UNITS: [(u64, &str); 3] =
+        [(1_000_000_000, "s"), (1_000_000, "ms"), (1_000, "µs")];
+    let Some((scale, unit)) =
+        UNITS.into_iter().find(|(scale, _)| nanos >= *scale)
+    else {
+        return format!("{nanos}ns");
+    };
+    let rest = nanos % scale * 1000 / scale;
+    let count = format!("{}.{rest:03}", nanos / scale);
+    let count = count.trim_end_matches('0').trim_end_matches('.');
+    format!("{count}{unit}")
 }
 
 /// Whole seconds and microseconds of a span of nanoseconds.

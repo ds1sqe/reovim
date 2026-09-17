@@ -258,9 +258,13 @@ fn a_bad_argument_is_usage_and_nothing_is_sent() {
     assert!(lines.iter().any(|l| l.contains("connect session=")), "{lines:?}");
     assert!(!lines.iter().any(|l| l.contains("call rd=")), "{lines:?}");
 
-    // A fit argument reaches the Driver and the Kernel stamps the pair.
+    // A fit argument reaches the Driver and the Kernel stamps the
+    // pair, which the log keeps once the level asks for it.
+    let level = client.resolve("/sys/loglevel").unwrap();
+    client.write_all(level, b"debug".to_vec()).unwrap();
     let input = value::encode_arg(&create.input, Some("made")).unwrap();
     client.call_by_name(root, "create", input).unwrap();
+    client.write_all(level, b"info".to_vec()).unwrap();
     let entries = log::tail(&mut client, 1).unwrap();
     let pair = entries.iter().filter(|e| e.line().contains("call rd=")).count();
     assert_eq!(pair, 2);

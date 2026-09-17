@@ -11,14 +11,15 @@ use reovim_kernel_interface::{
 /// Fixed ids, allocated in this order.
 ///
 /// `/` 0, `/sys` 1, `/sys/decls` 2, `/sys/log` 3, `/module` 4,
-/// `/session` 5, `/var` 6. Ids below `FIRST` are reserved for the
-/// Kernel; everything registered later starts there.
+/// `/session` 5, `/var` 6, `/sys/loglevel` 7. Ids below `FIRST` are
+/// reserved for the Kernel; everything registered later starts there.
 pub const ROOT: Rd = Rd(0);
 pub const SYS: Rd = Rd(1);
 pub const DECLS: Rd = Rd(2);
 pub const LOG: Rd = Rd(3);
 pub const MODULES: Rd = Rd(4);
 pub const SESSIONS: Rd = Rd(5);
+pub const LOGLEVEL: Rd = Rd(7);
 const FIRST: u64 = 100;
 
 /// A Kernel Container.
@@ -26,13 +27,17 @@ pub const CONTAINER: Flags = Flags::READ.union(Flags::CONTAINER);
 /// A Kernel Container any Module may register under.
 pub const OPEN: Flags = CONTAINER.union(Flags::WRITE);
 
-const FIXED: [(Rd, &str, Node, Flags); 6] = [
+/// A Kernel cell a caller may read and write.
+const RW: Flags = Flags::READ.union(Flags::WRITE);
+
+const FIXED: [(Rd, &str, Node, Flags); 7] = [
     (ROOT, "sys", Node::Container, CONTAINER),
     (SYS, "decls", Node::Container, CONTAINER),
-    (SYS, "log", Node::Log, Flags::READ.union(Flags::WRITE)),
+    (SYS, "log", Node::Log, RW),
     (ROOT, "module", Node::Container, CONTAINER),
     (ROOT, "session", Node::Container, CONTAINER),
     (ROOT, "var", Node::Container, OPEN),
+    (SYS, "loglevel", Node::Level, RW),
 ];
 
 /// Who serves an rd.
@@ -52,6 +57,8 @@ pub enum Node {
     /// `/sys/decls/<hash>`; reads give the canonical bytes.
     Decl(Hash),
     Log,
+    /// `/sys/loglevel`; the level the log keeps up to, by name.
+    Level,
     /// Bytes the Kernel stores and serves, never parses:
     /// `/session/<id>/client/<cid>/capability`.
     Cell,

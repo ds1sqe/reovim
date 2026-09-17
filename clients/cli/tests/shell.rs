@@ -93,7 +93,7 @@ fn every_word_reads_its_target_from_where_the_line_stands() {
     assert_eq!(go(&mut client, "ls sub"), "deep\n");
     assert_eq!(go(&mut client, "cat sub/deep"), "x");
     assert_eq!(go(&mut client, "ls .."), "root\n");
-    assert_eq!(go(&mut client, "ls /sys"), "decls\nlog\n");
+    assert_eq!(go(&mut client, "ls /sys"), "decls\nlog\nloglevel\n");
     assert!(go(&mut client, "stat note").starts_with("- rw "));
     assert_eq!(go(&mut client, "write note there"), "5\n");
     assert_eq!(go(&mut client, "read note"), "there");

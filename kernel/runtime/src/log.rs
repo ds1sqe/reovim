@@ -13,6 +13,26 @@ pub const ERR: u8 = 3;
 pub const WARN: u8 = 4;
 pub const NOTICE: u8 = 5;
 pub const INFO: u8 = 6;
+pub const DEBUG: u8 = 7;
+
+/// The eight in level order; `/sys/loglevel` says the level by name.
+const NAMES: [&str; 8] =
+    ["emerg", "alert", "crit", "err", "warn", "notice", "info", "debug"];
+
+/// The name of a level; a byte past the eight is `debug`, the least
+/// urgent of them.
+pub fn name(level: u8) -> &'static str {
+    NAMES.get(usize::from(level)).copied().unwrap_or("debug")
+}
+
+/// The level a name or its number stands for: `debug` and `7` are the
+/// same level, and nothing else is one.
+pub fn level_named(text: &str) -> Option<u8> {
+    if let Some(at) = NAMES.iter().position(|name| *name == text) {
+        return u8::try_from(at).ok();
+    }
+    text.parse().ok().filter(|level| usize::from(*level) < NAMES.len())
+}
 
 /// The `<N>` a written entry may start with, and the bytes after it.
 /// No prefix, or one that is not a single digit of the eight, is
@@ -36,12 +56,29 @@ pub struct Log {
     entries: VecDeque<Entry>,
     next_seq: u64,
     cap: usize,
+    level: u8,
 }
 
 impl Log {
-    /// Keeps the newest `cap` entries.
+    /// Keeps the newest `cap` entries at `INFO` and above.
     pub const fn new(cap: usize) -> Self {
-        Self { entries: VecDeque::new(), next_seq: 1, cap }
+        Self { entries: VecDeque::new(), next_seq: 1, cap, level: INFO }
+    }
+
+    /// The level the ring keeps up to, printk's `console_loglevel` made
+    /// the ring's own; `/sys/loglevel` reads and writes it.
+    pub const fn level(&self) -> u8 {
+        self.level
+    }
+
+    pub const fn set_level(&mut self, level: u8) {
+        self.level = level;
+    }
+
+    /// Whether an entry at `level` is kept at all. An entry above it is
+    /// never built, so what the level turns off costs nothing.
+    pub const fn keeps(&self, level: u8) -> bool {
+        level <= self.level
     }
 
     pub fn append(&mut self, time: u64, mark: &str, level: u8, bytes: Vec<u8>) {

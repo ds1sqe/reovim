@@ -4,7 +4,7 @@
 
 use reovim_client::log::Entry;
 use reovim_client::{Client, Rights};
-use reovim_client_cli::dmesg::{Form, Tail, boot, form, show};
+use reovim_client_cli::dmesg::{Form, Names, Tail, boot, form, show};
 use reovim_client_cli::{Out, Paint, Shell, following, input};
 use reovim_rig::Rig;
 
@@ -31,7 +31,7 @@ fn flags(line: &str) -> Vec<String> {
 fn printed(entries: &[Entry], line: &str) -> String {
     let (form, _) = form(&flags(line), Paint::off()).unwrap();
     let mut last = None;
-    show(entries, boot(entries), &mut last, &form)
+    show(entries, boot(entries), &mut last, &form, &Names::default())
 }
 
 /// One command line over the rig; its output, or the line a fault
@@ -154,7 +154,115 @@ fn color_paints_the_stamp_and_what_is_urgent() {
     // `--color=never` takes it away again, whatever the app allowed.
     let (never, _) = form(&flags("--color=never"), Paint::on()).unwrap();
     let mut last = None;
-    assert!(!show(&entries, BOOT, &mut last, &never).contains('\x1b'));
+    let plain = show(&entries, BOOT, &mut last, &never, &Names::default());
+    assert!(!plain.contains('\x1b'));
+}
+
+#[test]
+fn the_delta_form_says_the_time_since_the_line_before() {
+    let entries = [
+        entry(1, 0, "kernel", 6, "first"),
+        entry(2, 1_545_690_000, "kernel", 6, "second"),
+        entry(3, 1_545_698_000, "kernel", 6, "third"),
+    ];
+    let third = |line: &str| {
+        printed(&entries, line).lines().nth(2).unwrap().to_string()
+    };
+    // `-d`, as util-linux writes it: the stamp, then the time since the
+    // line printed before, six decimals right in twelve.
+    assert_eq!(third("-d"), "[    1.545698 <    0.000008>] third");
+    assert_eq!(
+        third("-d -T"),
+        "[Thu Sep 17 12:34:57 2026 <    0.000008>] third"
+    );
+    // `-H` already says the time since the line before; `-d` adds
+    // nothing to it. With no stamp at all the delta stands alone.
+    assert_eq!(third("-d -H"), third("-H"));
+    assert_eq!(third("-d -H"), "[  +0.000008] third");
+    assert_eq!(third("-d -t"), "[<    0.000008>] third");
+    // The first line of a run has nothing before it to count from.
+    assert!(
+        printed(&entries, "-d").starts_with("[    0.000000 <    0.000000>]")
+    );
+}
+
+#[test]
+fn a_number_no_one_can_name_stays_the_number() {
+    let call = "call rd=120 api=30d1a3b10a4306ee method=2 reply took=8123";
+    let entries = [
+        entry(1, 0, "kernel", 7, call),
+        entry(2, 1000, "kernel", 7, "op=read caller=3 rd=120 took=1200000"),
+        entry(3, 2000, "kernel", 7, "op=write caller=3 rd=120 took=1500000000"),
+        entry(4, 3000, "kernel", 7, "op=close caller=3 rd=120 took=812"),
+        entry(5, 4000, "fs", 6, "rd=120 is the Module's own word"),
+    ];
+    // An rd the tree no longer has is `rd:<n>`, which is what the cli
+    // takes as a target for it; a hash with no declaration stays the
+    // hash, and a method with none to name it stays the number. The
+    // keys stay whatever the value becomes. `took=` is the cli's to
+    // say in a unit.
+    let said = printed(&entries, "-t");
+    let lines: Vec<&str> = said.lines().collect();
+    assert_eq!(
+        lines[0],
+        "call rd=rd:120 api=30d1a3b10a4306ee method=2 reply took=8.123\u{b5}s"
+    );
+    assert_eq!(lines[1], "op=read caller=3 rd=rd:120 took=1.2ms");
+    assert_eq!(lines[2], "op=write caller=3 rd=rd:120 took=1.5s");
+    assert_eq!(lines[3], "op=close caller=3 rd=rd:120 took=812ns");
+    // Only the Kernel writes in numbers; another mark's words stand.
+    assert_eq!(lines[4], "rd=120 is the Module's own word");
+    // `-r` is the entry as the Kernel wrote it, whatever else is asked.
+    assert_eq!(printed(&entries, "-r -T").lines().next().unwrap(), call);
+}
+
+#[test]
+fn a_kernel_line_says_the_rd_the_api_and_the_method_in_words() {
+    let rig = Rig::new("dmesg-decode");
+    let mut client = rig.client();
+    let out = Out::plain();
+    let root = "/module/fs/root";
+
+    // The trace and the `call` pair are measurement, kept at `debug`;
+    // the level goes back to `info` so the `dmesg` below adds nothing.
+    assert_eq!(run(&mut client, "write /sys/loglevel debug", out), "5\n");
+    assert_eq!(run(&mut client, "cat /sys/loglevel", out), "debug");
+    let made = run(&mut client, &format!("call {root} create made"), out);
+    assert!(made.trim().parse::<u64>().is_ok(), "{made}");
+    run(&mut client, "write /sys/loglevel info", out);
+
+    let said = run(&mut client, "dmesg -t -l debug", out);
+    let pair: Vec<&str> =
+        said.lines().filter(|line| line.starts_with("call ")).collect();
+    assert_eq!(pair.len(), 2, "{said}");
+    assert_eq!(
+        pair[0],
+        format!("call rd={root} api=fs method=create dispatch")
+    );
+    let head = format!("call rd={root} api=fs method=create reply took=");
+    let took = pair[1].strip_prefix(&head).unwrap_or_else(|| panic!("{said}"));
+    // A unit, not the Kernel's bare nanoseconds.
+    assert!(took.ends_with('s') && !took.ends_with("=s"), "{said}");
+    assert!(took.starts_with(|c: char| c.is_ascii_digit()), "{said}");
+    // The op the call was, and the ops around it, name the same path.
+    let ops = said.lines().filter(|line| line.starts_with("op="));
+    let call = ops.clone().find(|line| line.starts_with("op=call ")).unwrap();
+    assert!(call.contains(&format!(" rd={root} ")), "{call}");
+    assert!(call.contains(" api=fs method=create "), "{call}");
+    assert!(ops.clone().any(|line| line.starts_with("op=open ")), "{said}");
+    // Nothing the log's own reading did is in it.
+    assert!(!said.contains("rd=/sys/log"), "{said}");
+
+    // `-r` is what the Kernel wrote: the numbers it had.
+    let rd = client.resolve(root).unwrap();
+    let (hash, decl) = client.decls(rd).unwrap().pop().unwrap();
+    let raw = run(&mut client, "dmesg -r -l debug", out);
+    let number = decl.methods.iter().find(|m| m.name == "create").unwrap();
+    let head = format!(
+        "call rd={} api={:016x} method={} dispatch",
+        rd.0, hash.0, number.number
+    );
+    assert!(raw.lines().any(|line| line == head), "{raw}");
 }
 
 #[test]

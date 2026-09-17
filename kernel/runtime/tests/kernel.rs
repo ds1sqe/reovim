@@ -293,7 +293,11 @@ fn fixed_tree_is_reachable_from_root() {
     }
     let log = rig.lookup(SYS, "log");
     let decls = rig.lookup(SYS, "decls");
-    assert_eq!(rig.ok(Op::Children { rd: SYS }), Out::Rds(vec![decls, log]));
+    let level = rig.lookup(SYS, "loglevel");
+    assert_eq!(
+        rig.ok(Op::Children { rd: SYS }),
+        Out::Rds(vec![decls, log, level])
+    );
     assert_eq!(
         rig.err(Op::Lookup { rd: ROOT, name: "none".into() }),
         Error::Invalid
@@ -627,6 +631,10 @@ fn close_implies_unwatch() {
 #[test]
 fn the_log_holds_the_call_pair_and_module_lines() {
     let rig = Rig::default();
+    // The pair is measurement, not news: it is kept at `debug`.
+    let level = rig.lookup(SYS, "loglevel");
+    let hd = rig.open(level, Rights::WRITE);
+    rig.ok(Op::Write { h: hd, at: 0, bytes: b"debug".to_vec() });
     let h = rig.open(rig.cell(), Rights::READ);
     rig.ok(Op::Call { h, api: api(), method: 0, input: vec![] });
     let log = rig.lookup(SYS, "log");

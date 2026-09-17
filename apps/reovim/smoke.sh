@@ -202,8 +202,42 @@ said="$("$BIN" cli read /session 2>&1 >/dev/null)" && code=0 || code=$?
 listed="$(sessions 2)"
 [[ "$(wc -l <<< "$listed")" == 2 && "$listed" == $'1\n'* ]] \
     || fail "the cli runs left /session holding $(tr '\n' ' ' <<< "$listed")"
+
+# The log level is the Kernel's mode, printk's console_loglevel made
+# the ring's own: at `debug` it keeps a trace of every op and the pair
+# it stamps around each `call`, with what the round trip took. `dmesg`
+# says the rd as a path and the api and the method by name, from the
+# tree and the declarations, since the Kernel writes only numbers.
+level=("$BIN" cli write /sys/loglevel)
+[[ "$("$BIN" cli cat /sys/loglevel)" == info ]] \
+    || fail "the level at boot is $("$BIN" cli cat /sys/loglevel)"
+said="$("${level[@]}" loud 2>&1 >/dev/null)" && code=0 || code=$?
+[[ "$said" == "reovim: write /sys/loglevel: invalid" ]] \
+    || fail "a word that is not a level says: $said"
+[[ "$code" == 1 ]] || fail "a word that is not a level exits $code"
+"${level[@]}" debug > /dev/null
+
+# The insert below is one `text` call, and the trace holds it.
 keys new i "fresh" Escape : q Enter
 shown new "E37: No write since last change"
+said="$("$BIN" cli dmesg -d -l debug)"
+"${level[@]}" 6 > /dev/null
+[[ "$("$BIN" cli cat /sys/loglevel)" == info ]] \
+    || fail "the level written as 6 does not read back as info"
+grep -qE '^\[ *[0-9]+\.[0-9]{6} < *[0-9]+\.[0-9]{6}>\] ' <<< "$said" \
+    || fail "dmesg -d says no delta: $(head -1 <<< "$said")"
+grep -q 'call rd=/module/text/.* api=text method=replace dispatch' <<< "$said" \
+    || fail "the call pair is not in words: $(grep -m1 'call ' <<< "$said")"
+grep -qE 'api=text method=replace reply took=[0-9.]+[^ ]*s$' <<< "$said" \
+    || fail "the reply says no round trip: $(grep -m1 reply <<< "$said")"
+grep -q 'op=read caller=' <<< "$said" || fail "no op is traced at debug"
+[[ "$said" != *"rd=/sys/log"* ]] || fail "the log traced its own reading"
+# Back at `info`, an op that would have been traced adds nothing.
+count="$("$BIN" cli dmesg -l debug | wc -l)"
+"$BIN" cli ls /module > /dev/null
+[[ "$("$BIN" cli dmesg -l debug | wc -l)" == "$count" ]] \
+    || fail "the trace goes on after the level says info"
+
 [[ ! -e "$DIR/new/note" ]] || fail "a new file exists before its save"
 keys new : w q Enter
 keys other i "x" Escape : w Enter : q ! Enter

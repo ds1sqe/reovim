@@ -1,5 +1,6 @@
 //! Caller ops: right and declaration checks, then the vtable.
 
+use alloc::string::String;
 use alloc::vec::Vec;
 
 use reovim_kernel_interface::{
@@ -10,8 +11,8 @@ use reovim_kernel_interface::{
 use reovim_kernel_interface::Kind;
 
 use crate::kernel::{Kernel, Slot, State};
-use crate::log::{INFO, WARN, level_of};
-use crate::table::{Node, Owner};
+use crate::log::{self, DEBUG, WARN, level_of};
+use crate::table::{LOG, LOGLEVEL, Node, Owner};
 
 /// An op's answer; `Err` becomes `Ready(Err)` at the caller.
 type Answer = Result<Reply<Out>, Error>;
@@ -22,10 +23,14 @@ impl Kernel {
     /// An op a slot submits from inside another runs here too, one
     /// step deeper; past `Limits::reentry` the op is refused so the
     /// chain ends at an error instead of at the stack.
+    ///
+    /// At `debug` the op is one traced line, its outcome and its own
+    /// round trip in it.
     pub(crate) fn run(&self, caller: Caller, op: Op) -> Reply<Out> {
         let Some(_depth) = self.deeper() else {
             return Reply::err(too_deep(self, caller));
         };
+        let trace = tracing(self, caller, &op);
         let answer = match op {
             Op::Lookup { rd, name } => lookup(self, rd, &name),
             Op::Open { rd, rights } => open(self, caller, rd, rights),
@@ -56,6 +61,11 @@ impl Kernel {
             Op::Parent { rd } => parent(self, rd),
             Op::Children { rd } => children(self, rd),
         };
+        if let Some((words, at)) = trace {
+            let took = self.now().saturating_sub(at);
+            let end = outcome(&answer);
+            self.say(DEBUG, || alloc::format!("{words} {end} took={took}"));
+        }
         answer.unwrap_or_else(Reply::err)
     }
 
@@ -79,6 +89,96 @@ impl Kernel {
             return Err(Error::Denied);
         }
         Ok(slot.clone())
+    }
+}
+
+/// The op begun, in the trace's words and at the instant it began, or
+/// `None` when nothing is traced.
+fn tracing(k: &Kernel, caller: Caller, op: &Op) -> Option<(String, u64)> {
+    if !k.logs(DEBUG) {
+        return None;
+    }
+    let words = words(k, caller, op)?;
+    Some((words, k.now()))
+}
+
+/// The op in the trace's words, or `None` for one that is never
+/// traced: an op on the log or on the level cell, which a follower
+/// reading the log would otherwise feed, and one that names no
+/// Resource, which is a caller asking after what it asked for already.
+fn words(k: &Kernel, caller: Caller, op: &Op) -> Option<String> {
+    let of = |h: &Handle| k.state.borrow().handles.get(h).map(|slot| slot.rd);
+    let empty = String::new;
+    let (name, rd, rest) = match op {
+        Op::Lookup { rd, name } => {
+            ("lookup", Some(*rd), alloc::format!(" name={name}"))
+        }
+        Op::Open { rd, rights } => {
+            ("open", Some(*rd), alloc::format!(" rights={}", asked(*rights)))
+        }
+        Op::Read { h, at, len } => {
+            ("read", of(h), alloc::format!(" h={} at={at} len={len}", h.0))
+        }
+        Op::Write { h, at, bytes } => (
+            "write",
+            of(h),
+            alloc::format!(" h={} at={at} len={}", h.0, bytes.len()),
+        ),
+        Op::Call { h, api, method, input } => (
+            "call",
+            of(h),
+            alloc::format!(
+                " h={} api={:016x} method={method} len={}",
+                h.0,
+                api.0,
+                input.len()
+            ),
+        ),
+        Op::Watch { h, on } => {
+            ("watch", of(h), alloc::format!(" h={} on={on}", h.0))
+        }
+        Op::Close { h } => ("close", of(h), alloc::format!(" h={}", h.0)),
+        Op::Info { rd } => ("info", Some(*rd), empty()),
+        Op::Parent { rd } => ("parent", Some(*rd), empty()),
+        Op::Children { rd } => ("children", Some(*rd), empty()),
+        Op::Ask { .. } | Op::Cancel { .. } | Op::Since { .. } => return None,
+    };
+    let rd = rd?;
+    if rd == LOG || rd == LOGLEVEL {
+        return None;
+    }
+    Some(alloc::format!("op={name} caller={} rd={}{rest}", caller.0, rd.0))
+}
+
+/// The rights a handle was asked for, as a listing writes a cell's.
+const fn asked(rights: Rights) -> &'static str {
+    match (rights.contains(Rights::READ), rights.contains(Rights::WRITE)) {
+        (true, true) => "rw",
+        (true, false) => "r",
+        (false, true) => "w",
+        (false, false) => "-",
+    }
+}
+
+/// What the op answered: the one number its `Out` carries, or the name
+/// of the error that refused it.
+fn outcome(answer: &Answer) -> String {
+    let out = match answer {
+        Err(error) | Ok(Reply::Ready(Err(error))) => {
+            return alloc::format!("err={error:?}");
+        }
+        Ok(Reply::Pending(token)) => {
+            return alloc::format!("pending={}", token.0);
+        }
+        Ok(Reply::Ready(Ok(out))) => out,
+    };
+    match out {
+        Out::Rd(rd) => alloc::format!("ok={}", rd.0),
+        Out::Handle(h) => alloc::format!("ok={}", h.0),
+        Out::Len(len) => alloc::format!("ok={len}"),
+        Out::Bytes(bytes) => alloc::format!("ok={}", bytes.len()),
+        Out::Rds(rds) => alloc::format!("ok={}", rds.len()),
+        Out::Unit | Out::Info(_) | Out::Events { .. } => String::from("ok"),
     }
 }
 
@@ -180,10 +280,12 @@ fn call(
     check_call(&k.state.borrow(), &slot, api, method, input)?;
     room(k, &slot)?;
     let (module, index) = slot.served.ok_or(Error::Unsupported)?;
-    stamp(k, slot.rd, api, method, "dispatch");
+    let at = k.logs(DEBUG).then(|| k.now());
+    stamp(k, slot.rd, api, method, "dispatch", None);
     let reply =
         k.driver(index).call(&k.calls(module), slot.cookie, api, method, input);
-    stamp(k, slot.rd, api, method, "reply");
+    let took = at.map(|at| k.now().saturating_sub(at));
+    stamp(k, slot.rd, api, method, "reply", took);
     finish(k, h, slot.served, reply, Out::Bytes)
 }
 
@@ -219,14 +321,14 @@ fn close(k: &Kernel, caller: Caller, h: Handle) -> Answer {
 }
 
 fn since(k: &Kernel, caller: Caller, cursor: u64) -> Answer {
-    let now = k.now();
     let mut s = k.state.borrow_mut();
     s.callers.get(&caller).ok_or(Error::Invalid)?;
     let (events, cursor) = s.events.since(cursor, &s.watched(caller));
     if events.iter().any(|e| e.kind == Kind::Overflow) {
         let caller = caller.0;
-        let line = alloc::format!("overflow caller={caller} cursor={cursor}");
-        s.log(now, "kernel", WARN, line.into_bytes());
+        s.say(WARN, || {
+            alloc::format!("overflow caller={caller} cursor={cursor}")
+        });
     }
     Ok(Reply::ok(Out::Events { events, cursor }))
 }
@@ -358,25 +460,27 @@ fn kernel_read(
     match node {
         Node::Decl(hash) => {
             let bytes = s.decls.get(&hash).ok_or(Error::Gone)?.canonical();
-            let start =
-                usize::try_from(at).unwrap_or(usize::MAX).min(bytes.len());
-            let end = start.saturating_add(len).min(bytes.len());
-            Ok(bytes[start..end].to_vec())
+            Ok(part(&bytes, at, len))
         }
         Node::Log => Ok(s.log.read(at, len)),
+        Node::Level => Ok(part(log::name(s.log.level()).as_bytes(), at, len)),
         Node::Cell => {
             let bytes = s.cells.get(&rd).ok_or(Error::Gone)?;
-            let start =
-                usize::try_from(at).unwrap_or(usize::MAX).min(bytes.len());
-            let end = start.saturating_add(len).min(bytes.len());
-            Ok(bytes[start..end].to_vec())
+            Ok(part(bytes, at, len))
         }
         Node::Container | Node::Home(_) => Err(Error::Unsupported),
     }
 }
 
-/// The Kernel-served writes: a log entry, marked by the caller, or a
-/// cell's bytes from `at` on.
+/// Up to `len` bytes from `at`, or as many as there are.
+fn part(bytes: &[u8], at: u64, len: usize) -> Vec<u8> {
+    let start = usize::try_from(at).unwrap_or(usize::MAX).min(bytes.len());
+    let end = start.saturating_add(len).min(bytes.len());
+    bytes[start..end].to_vec()
+}
+
+/// The Kernel-served writes: a log entry, marked by the caller, the
+/// level by its name or its number, or a cell's bytes from `at` on.
 fn kernel_write(
     k: &Kernel,
     caller: Caller,
@@ -388,9 +492,20 @@ fn kernel_write(
     let mut s = k.state.borrow_mut();
     match s.table.get(rd)?.owner {
         Owner::Kernel(Node::Log) => {
-            let mark = alloc::string::String::from(s.mark(caller));
+            let mark = String::from(s.mark(caller));
             let (level, text) = level_of(bytes);
-            s.log(now, &mark, level, text.to_vec());
+            s.log(&mark, level, text.to_vec());
+        }
+        Owner::Kernel(Node::Level) => {
+            if at != 0 {
+                return Err(Error::Invalid);
+            }
+            let text =
+                core::str::from_utf8(bytes).map_err(|_| Error::Invalid)?;
+            let level = log::level_named(text.trim()).ok_or(Error::Invalid)?;
+            s.log.set_level(level);
+            s.table.get_mut(rd)?.mtime = now;
+            s.emit(rd, Kind::Modify, None);
         }
         Owner::Kernel(Node::Cell) => {
             let cell = s.cells.get_mut(&rd).ok_or(Error::Gone)?;
@@ -411,20 +526,30 @@ fn kernel_write(
 /// The op refused for standing too deep: one `warn` line naming the
 /// caller whose chain it is and the depth it was refused at.
 fn too_deep(k: &Kernel, caller: Caller) -> Error {
-    let now = k.now();
-    let line =
-        alloc::format!("reentry caller={} depth={}", caller.0, k.depth());
-    k.state.borrow_mut().log(now, "kernel", WARN, line.into_bytes());
+    k.say(WARN, || {
+        alloc::format!("reentry caller={} depth={}", caller.0, k.depth())
+    });
     Error::Busy
 }
 
-/// The Kernel measures every `call` with a pair of log entries.
-fn stamp(k: &Kernel, rd: Rd, api: Hash, method: u16, phase: &str) {
-    let now = k.now();
-    let line = alloc::format!(
-        "call rd={} api={:016x} method={method} {phase}",
-        rd.0,
-        api.0
-    );
-    k.state.borrow_mut().log(now, "kernel", INFO, line.into_bytes());
+/// The Kernel measures every `call` with a pair of log entries: one at
+/// dispatch, one at the reply, which carries the round trip between
+/// them in the clock's unit.
+fn stamp(
+    k: &Kernel,
+    rd: Rd,
+    api: Hash,
+    method: u16,
+    phase: &str,
+    took: Option<u64>,
+) {
+    k.say(DEBUG, || {
+        let took =
+            took.map_or_else(String::new, |n| alloc::format!(" took={n}"));
+        alloc::format!(
+            "call rd={} api={:016x} method={method} {phase}{took}",
+            rd.0,
+            api.0
+        )
+    });
 }

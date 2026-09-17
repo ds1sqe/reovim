@@ -85,20 +85,31 @@ fn the_log_file_holds_every_entry() {
 
     let made = server.cli(&["call", "/module/fs/root", "create", "made"]);
     assert!(made.trim().parse::<u64>().is_ok(), "{made}");
-    // The cli's connect line and the call pair.
-    let text = server.file(7);
+    // The cli's link, from its connect to the disconnect its end
+    // writes; the `call` pair the op made is measurement, kept at
+    // `debug`, so it is not here.
+    let text = server.file(6);
     let lines: Vec<&str> = text.lines().collect();
-    assert_eq!(lines.len(), 7, "{text}");
-    assert!(lines[4].contains("connect session="), "{text}");
-    assert!(lines[5].contains("call rd=") && lines[5].ends_with(" dispatch"));
-    assert!(lines[6].contains("call rd=") && lines[6].ends_with(" reply"));
+    assert_eq!(lines.len(), 6, "{text}");
+    let link = lines[4].split_once(" kernel 6 connect ").unwrap().1;
+    assert!(lines[5].ends_with(&format!("disconnect {link}")), "{text}");
+    assert!(!text.contains("call rd="), "{text}");
 
     // `cli log` shows the same entries, and its own connect after them.
     let shown = server.cli(&["log"]);
     assert!(shown.starts_with(&text), "{shown}");
-    assert_eq!(shown.lines().count(), 8, "{shown}");
+    assert_eq!(shown.lines().count(), 7, "{shown}");
     let from = server.cli(&["log", "6"]);
     assert!(from.starts_with(lines[5]), "{from}");
+
+    // The same run as `dmesg` reads it: what a link did, and nothing
+    // of what it asked for.
+    let said = server.cli(&["dmesg", "-t", "-l", "info"]);
+    assert!(said.starts_with("load module="), "{said}");
+    assert!(said.contains("load module=fs\n"), "{said}");
+    assert!(said.contains(&format!("disconnect {link}\n")), "{said}");
+    assert!(!said.contains("call "), "{said}");
+    assert!(!said.contains("op="), "{said}");
 }
 
 #[test]

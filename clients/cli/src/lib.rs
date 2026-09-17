@@ -38,7 +38,7 @@ ls [-l] [-a] [-w] [TARGET..]    children by name; -l long, -a rds
 cat [-f] [-n N] <target>..      the bytes of each in turn; -f follows
 stat <target>                   the long line, the times, the apis
 tree [-L N] [TARGET]            the tree under it, N levels deep
-dmesg [-tTHxkwW] [-l LEVELS]    the log as dmesg reads it; -w follows
+dmesg [-tTHxdrkwW] [-l LEVELS]  the log as dmesg reads it; -w follows
 watch <target>                  seq kind name, per event, as they come
 cd [TARGET]                     go there; none is /, - the one before
 pwd                             where the line stands now
@@ -1090,9 +1090,30 @@ fn dmesg_now(
     let (form, _) = dmesg::form(args, out.paint)?;
     let refused = |f: Fault| miss("dmesg", LOG, Step::Op, &f, &[]);
     let entries = log::tail(client, 1).map_err(refused)?;
+    let mut names = dmesg::Names::default();
+    learn(client, &entries, &mut names);
     let boot = dmesg::boot(&entries);
     let mut last = None;
-    Ok(dmesg::show(&entries, boot, &mut last, &form).into_bytes())
+    Ok(dmesg::show(&entries, boot, &mut last, &form, &names).into_bytes())
+}
+
+/// What the Kernel's own lines name, looked up once each: an rd's path
+/// from the tree, an api's declaration from `/sys/decls`. The Kernel
+/// writes the numbers it has; these are the words for them.
+fn learn(
+    client: &mut Client,
+    entries: &[log::Entry],
+    names: &mut dmesg::Names,
+) {
+    let (rds, apis) = names.unknown(entries);
+    for rd in rds {
+        let gone = |_| format!("rd:{rd}");
+        let path = where_is(client, Rd(rd)).unwrap_or_else(gone);
+        names.paths.insert(rd, path);
+    }
+    for hash in apis {
+        names.apis.insert(hash, client.decl(Hash(hash)).ok());
+    }
 }
 
 /// A word that goes on printing after the line is typed: what the app
@@ -1130,6 +1151,7 @@ struct Tailing {
     boot: u64,
     last: Option<u64>,
     form: dmesg::Form,
+    names: dmesg::Names,
 }
 
 impl Tailing {
@@ -1146,7 +1168,9 @@ impl Tailing {
         let got = log::read(client, self.h, self.from).map_err(refused)?;
         let Some(newest) = got.last() else { return Ok(None) };
         self.from = newest.seq + 1;
-        let text = dmesg::show(&got, self.boot, &mut self.last, &self.form);
+        learn(client, &got, &mut self.names);
+        let last = &mut self.last;
+        let text = dmesg::show(&got, self.boot, last, &self.form, &self.names);
         Ok(some(text.into_bytes()))
     }
 }
@@ -1216,14 +1240,19 @@ fn dmesg_follow(
     drain(client, "dmesg")?;
     let refused = |f: Fault| miss("dmesg", LOG, Step::Op, &f, &[]);
     let entries = log::read(client, h, 1).map_err(refused)?;
+    let mut names = dmesg::Names::default();
     let boot = dmesg::boot(&entries);
     let from = entries.last().map_or(1, |entry| entry.seq + 1);
     let mut last = None;
     let first = match tail {
-        dmesg::Tail::All => dmesg::show(&entries, boot, &mut last, &form),
+        dmesg::Tail::All => {
+            learn(client, &entries, &mut names);
+            dmesg::show(&entries, boot, &mut last, &form, &names)
+        }
         _ => String::new(),
     };
-    let what = Watching::Log(Tailing { h, rd, from, boot, last, form });
+    let tailing = Tailing { h, rd, from, boot, last, form, names };
+    let what = Watching::Log(tailing);
     Ok(Some(Follow {
         handles: vec![h],
         first: first.into_bytes(),

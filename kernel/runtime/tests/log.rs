@@ -2,11 +2,13 @@
 //! read from before the oldest starts at the oldest.
 
 use std::rc::Rc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use reovim_kernel_interface::{
-    Caller, Calls, Driver, Error, Module, Op, Out, Rd, Reply, Rights,
+    Caller, Calls, Decl, Driver, DriverId, Error, Flags, Hash, Method, Module,
+    Op, Out, Rd, Reply, Rights, Ty,
 };
-use reovim_kernel_runtime::{Kernel, LOG, Limits};
+use reovim_kernel_runtime::{Kernel, LOG, LOGLEVEL, Limits};
 
 fn ok(kernel: &Kernel, caller: Caller, seq: u64, op: Op) -> Out {
     match kernel.submit(caller, seq, op) {
@@ -135,4 +137,250 @@ fn every_level_the_kernel_writes_has_its_source() {
     assert!(at(4).unwrap().starts_with("overflow caller="), "{said:?}");
     assert!(at(5).unwrap().starts_with("caller end caller="), "{said:?}");
     assert!(said.iter().all(|e| e.0 == "kernel"), "{said:?}");
+}
+
+static CLOCK: AtomicU64 = AtomicU64::new(1);
+
+/// A clock that moves, so a measured span is more than nothing.
+fn tick() -> u64 {
+    CLOCK.fetch_add(1, Ordering::Relaxed)
+}
+
+/// The level cell written, as a caller of its own writes it.
+fn set_level(kernel: &Kernel, level: &str) {
+    let caller = kernel.caller_new();
+    let open = Op::Open { rd: LOGLEVEL, rights: Rights::WRITE };
+    let Out::Handle(h) = ok(kernel, caller, 1, open) else { panic!("open") };
+    let write = Op::Write { h, at: 0, bytes: level.as_bytes().to_vec() };
+    ok(kernel, caller, 2, write);
+}
+
+/// The text of every entry now.
+fn texts(kernel: &Kernel) -> Vec<String> {
+    written(kernel).into_iter().map(|(_, _, text)| text).collect()
+}
+
+/// A traced line without its measure: what the clock counted is the
+/// host's, and only that the Kernel measured it at all belongs here.
+fn measured(line: &str) -> String {
+    let (head, took) = line.rsplit_once(" took=").unwrap_or_else(|| {
+        panic!("no took=: {line}");
+    });
+    assert!(took.parse::<u64>().unwrap() > 0, "{line}");
+    head.to_string()
+}
+
+#[test]
+fn the_level_is_read_back_by_name_and_written_by_name_or_number() {
+    let kernel = Kernel::new(tick, Limits::default());
+    let caller = kernel.caller_new();
+    let open = Op::Open { rd: LOGLEVEL, rights: Rights::READ | Rights::WRITE };
+    let Out::Handle(h) = ok(&kernel, caller, 1, open) else { panic!("open") };
+    let seq = std::cell::Cell::new(1);
+    let next = || {
+        seq.set(seq.get() + 1);
+        seq.get()
+    };
+    let read = || {
+        let op = Op::Read { h, at: 0, len: 64 };
+        let Out::Bytes(bytes) = ok(&kernel, caller, next(), op) else {
+            panic!("read")
+        };
+        String::from_utf8(bytes).unwrap()
+    };
+    assert_eq!(read(), "info", "the level at boot");
+
+    let write = |at: u64, bytes: &[u8]| {
+        let op = Op::Write { h, at, bytes: bytes.to_vec() };
+        kernel.submit(caller, next(), op)
+    };
+    // A name, its number, and the trailing newline of a write by hand.
+    assert_eq!(write(0, b"debug"), Reply::ok(Out::Len(5)));
+    assert_eq!(read(), "debug");
+    assert_eq!(write(0, b"4"), Reply::ok(Out::Len(1)));
+    assert_eq!(read(), "warn");
+    write(0, b"info\n");
+    assert_eq!(read(), "info");
+    // A word that is not one of the eight, a number past them, and a
+    // write that is not at the front: the level stands where it was.
+    assert_eq!(write(0, b"loud"), Reply::err(Error::Invalid));
+    assert_eq!(write(0, b"8"), Reply::err(Error::Invalid));
+    assert_eq!(write(1, b"debug"), Reply::err(Error::Invalid));
+    assert_eq!(read(), "info");
+}
+
+#[test]
+fn at_debug_every_op_on_a_resource_is_one_line() {
+    let kernel = Kernel::new(tick, Limits::default());
+    let session = kernel.session_new();
+    let (caller, client) = kernel.connect(session, b"").unwrap();
+    set_level(&kernel, "debug");
+
+    // The capability cell of this link: a Resource the Kernel serves
+    // itself, so the trace needs no Module.
+    let look = Op::Lookup { rd: client, name: "capability".to_string() };
+    let Out::Rd(cell) = ok(&kernel, caller, 1, look) else { panic!("lookup") };
+    let open = Op::Open { rd: cell, rights: Rights::READ | Rights::WRITE };
+    let Out::Handle(h) = ok(&kernel, caller, 2, open) else { panic!("open") };
+    ok(&kernel, caller, 3, Op::Write { h, at: 0, bytes: b"hi".to_vec() });
+    ok(&kernel, caller, 4, Op::Read { h, at: 0, len: 64 });
+    // A handle that holds no WRITE: the refusal is the same one line.
+    let open = Op::Open { rd: cell, rights: Rights::READ };
+    let Out::Handle(r) = ok(&kernel, caller, 5, open) else { panic!("open") };
+    let write = Op::Write { h: r, at: 0, bytes: b"no".to_vec() };
+    assert_eq!(kernel.submit(caller, 6, write), Reply::err(Error::Denied));
+
+    let said = texts(&kernel);
+    let one = |head: String| {
+        let mut found = said.iter().filter(|text| text.starts_with(&head));
+        let line = found.next().unwrap_or_else(|| panic!("{head}: {said:?}"));
+        assert!(found.next().is_none(), "{head} twice: {said:?}");
+        measured(line)
+    };
+    let (c, rd) = (caller.0, cell.0);
+    assert_eq!(
+        one(format!("op=lookup caller={c} rd={}", client.0)),
+        format!("op=lookup caller={c} rd={} name=capability ok={rd}", client.0)
+    );
+    assert_eq!(
+        one(format!("op=open caller={c} rd={rd} rights=rw")),
+        format!("op=open caller={c} rd={rd} rights=rw ok={}", h.0)
+    );
+    assert_eq!(
+        one(format!("op=write caller={c} rd={rd} h={}", h.0)),
+        format!("op=write caller={c} rd={rd} h={} at=0 len=2 ok=2", h.0)
+    );
+    assert_eq!(
+        one(format!("op=read caller={c} rd={rd}")),
+        format!("op=read caller={c} rd={rd} h={} at=0 len=64 ok=2", h.0)
+    );
+    assert_eq!(
+        one(format!("op=write caller={c} rd={rd} h={}", r.0)),
+        format!("op=write caller={c} rd={rd} h={} at=0 len=2 err=Denied", r.0)
+    );
+    // The write moved the cell, so the event it emitted is a line too.
+    let event = format!("event rd={rd} kind=modify seq=");
+    assert!(said.iter().any(|text| text.starts_with(&event)), "{said:?}");
+
+    // Nothing the log's own reading does reaches the log: neither the
+    // ops on it nor the ops on the level beside it.
+    let traced = || said.iter().filter(|text| text.starts_with("op="));
+    let quiet = |rd: Rd| format!(" rd={} ", rd.0);
+    assert!(traced().all(|text| !text.contains(&quiet(LOG))), "{said:?}");
+    assert!(traced().all(|text| !text.contains(&quiet(LOGLEVEL))), "{said:?}");
+    assert_eq!(texts(&kernel).len(), said.len(), "reading the log is quiet");
+}
+
+#[test]
+fn at_info_no_trace_is_kept() {
+    let kernel = Kernel::new(tick, Limits::default());
+    let session = kernel.session_new();
+    let (caller, client) = kernel.connect(session, b"").unwrap();
+    let look = Op::Lookup { rd: client, name: "capability".to_string() };
+    let Out::Rd(cell) = ok(&kernel, caller, 1, look) else { panic!("lookup") };
+    let open = Op::Open { rd: cell, rights: Rights::WRITE };
+    let Out::Handle(h) = ok(&kernel, caller, 2, open) else { panic!("open") };
+    ok(&kernel, caller, 3, Op::Write { h, at: 0, bytes: b"hi".to_vec() });
+
+    let said = texts(&kernel);
+    let traced =
+        |text: &String| text.starts_with("op=") || text.starts_with("event ");
+    assert!(!said.iter().any(traced), "{said:?}");
+    assert_eq!(said.len(), 1, "the connect line alone: {said:?}");
+}
+
+/// The `connect` line of a link, which its `disconnect` answers.
+fn connected(session: Rd, client: Rd) -> String {
+    format!("connect session={} client={}", session.0, client.0)
+}
+
+#[test]
+fn a_link_that_ends_says_it_disconnected() {
+    let kernel = Kernel::new(tick, Limits::default());
+    let session = kernel.session_new();
+    let (caller, client) = kernel.connect(session, b"").unwrap();
+    kernel.caller_end(caller);
+    // A named caller keeps its client rd for the next `Connect` and
+    // says its link ended all the same.
+    let named = kernel.session_new();
+    let (caller, kept) = kernel.connect(named, b"tui").unwrap();
+    kernel.caller_end(caller);
+
+    let said = texts(&kernel);
+    let gone = |session: Rd, client: Rd| {
+        format!("disconnect session={} client={}", session.0, client.0)
+    };
+    let at = |text: &String| said.iter().position(|said| said == text);
+    assert!(at(&gone(session, client)).is_some(), "{said:?}");
+    assert!(at(&gone(named, kept)).is_some(), "{said:?}");
+    assert!(at(&gone(session, client)) > at(&connected(session, client)));
+}
+
+/// A Module with one cell and one method on it, so a `call` has a pair.
+#[derive(Default)]
+struct Api(core::cell::Cell<Option<Rd>>);
+
+fn decl() -> Decl {
+    Decl {
+        api: "say".to_string(),
+        ver: 1,
+        methods: vec![Method {
+            number: 2,
+            name: "hello".to_string(),
+            input: Ty::Unit,
+            output: Ty::Unit,
+            right: Rights::READ,
+        }],
+    }
+}
+
+impl Module for Api {
+    fn start(&self, ctx: &dyn Calls, home: Rd) -> Result<(), Error> {
+        let cell = ctx.register(DriverId(0), home, Some("cell"))?;
+        ctx.report(cell, Flags::READ, &[decl()])?;
+        self.0.set(Some(cell));
+        Ok(())
+    }
+}
+
+impl Driver for Api {
+    fn open(&self, _: &dyn Calls, rd: Rd, _: Rights) -> Reply<u64> {
+        Reply::ok(rd.0)
+    }
+
+    fn call(
+        &self,
+        _: &dyn Calls,
+        _: u64,
+        _: Hash,
+        _: u16,
+        _: &[u8],
+    ) -> Reply<Vec<u8>> {
+        Reply::ok(Vec::new())
+    }
+}
+
+#[test]
+fn a_call_is_a_pair_and_the_reply_says_what_it_took() {
+    let kernel = Kernel::new(tick, Limits::default());
+    let module = Rc::new(Api::default());
+    kernel.load("api", module.clone(), vec![module.clone()]).unwrap();
+    let cell = module.0.get().unwrap();
+    set_level(&kernel, "debug");
+
+    let caller = kernel.caller_new();
+    let open = Op::Open { rd: cell, rights: Rights::READ };
+    let Out::Handle(h) = ok(&kernel, caller, 1, open) else { panic!("open") };
+    let api = decl().hash();
+    let hello = Op::Call { h, api, method: 2, input: Vec::new() };
+    ok(&kernel, caller, 2, hello);
+
+    let said = texts(&kernel);
+    let pair: Vec<&String> =
+        said.iter().filter(|text| text.starts_with("call ")).collect();
+    let head = format!("call rd={} api={:016x} method=2", cell.0, api.0);
+    assert_eq!(pair.len(), 2, "{said:?}");
+    assert_eq!(*pair[0], format!("{head} dispatch"));
+    // The round trip is the Kernel's own measure, in the clock's unit.
+    assert_eq!(measured(pair[1]), format!("{head} reply"));
 }

@@ -44,11 +44,12 @@ fn the_script_of_the_process_test_runs_in_process() {
     let id: Rd = reovim_sdk::decode(&source).unwrap();
     assert_eq!(id.0.to_string(), file);
 
-    // The log: every entry from 1, then from a later seq only.
+    // The log: every entry from 1, then from a later seq only. The
+    // `call` pair is measurement, kept at `debug`, so it is not here.
     let all = line(&mut client, "log");
     assert!(all.lines().count() > 3, "{all}");
     assert!(all.contains("connect session="), "{all}");
-    assert!(all.contains("call rd="), "{all}");
+    assert!(!all.contains("call rd="), "{all}");
     let last = all.lines().last().unwrap();
     let seq: u64 = last.split(' ').next().unwrap().parse().unwrap();
     assert_eq!(line(&mut client, &format!("log {seq}")), last);

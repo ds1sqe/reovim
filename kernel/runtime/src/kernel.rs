@@ -13,10 +13,10 @@ use reovim_kernel_interface::{
 };
 
 use crate::calls::ModuleCalls;
-use crate::log::{ERR, INFO, Log, NOTICE};
+use crate::log::{DEBUG, ERR, INFO, Log, NOTICE};
 use crate::pending::Pending;
 use crate::table::{
-    CONTAINER, LOG, MODULES, Node, OPEN, Owner, SESSIONS, Table,
+    CONTAINER, LOG, LOGLEVEL, MODULES, Node, OPEN, Owner, SESSIONS, Table,
 };
 use crate::watch::Ring;
 
@@ -94,6 +94,8 @@ pub struct CallerState {
 }
 
 pub struct State {
+    /// The host's monotonic tick, so an entry stamps itself.
+    clock: fn() -> u64,
     pub table: Table,
     pub decls: BTreeMap<Hash, Decl>,
     pub modules: Vec<Loaded>,
@@ -112,14 +114,47 @@ pub struct State {
 }
 
 impl State {
-    pub fn emit(&mut self, rd: Rd, kind: Kind, child: Option<Rd>) {
-        self.events.push(rd, kind, child);
+    pub fn now(&self) -> u64 {
+        (self.clock)()
     }
 
-    /// One `/sys/log` entry at `level`; its watchers get `Modify`.
-    pub fn log(&mut self, now: u64, mark: &str, level: u8, bytes: Vec<u8>) {
+    /// One event on `rd`, and at `debug` one line saying so. The log's
+    /// own rds are left out: the line an event on them would write
+    /// emits an event of its own, which would write the next.
+    pub fn emit(&mut self, rd: Rd, kind: Kind, child: Option<Rd>) {
+        self.events.push(rd, kind, child);
+        if rd == LOG || rd == LOGLEVEL {
+            return;
+        }
+        let seq = self.events.head();
+        self.say(DEBUG, || {
+            let child = child
+                .map_or(String::new(), |c| alloc::format!(" child={}", c.0));
+            alloc::format!(
+                "event rd={} kind={} seq={seq}{child}",
+                rd.0,
+                kind_name(kind)
+            )
+        });
+    }
+
+    /// One `/sys/log` entry at `level`, kept only when the level keeps
+    /// it; its watchers get `Modify`.
+    pub fn log(&mut self, mark: &str, level: u8, bytes: Vec<u8>) {
+        if !self.log.keeps(level) {
+            return;
+        }
+        let now = self.now();
         self.log.append(now, mark, level, bytes);
         self.emit(LOG, Kind::Modify, None);
+    }
+
+    /// One `kernel` entry, built only when the level keeps it: a line
+    /// the level turns off is never formatted.
+    pub fn say(&mut self, level: u8, line: impl FnOnce() -> String) {
+        if self.log.keeps(level) {
+            self.log("kernel", level, line().into_bytes());
+        }
     }
 
     pub fn driver_index(
@@ -295,6 +330,19 @@ impl State {
     }
 }
 
+/// The kinds in the Kernel's own words, as a traced event says them.
+const fn kind_name(kind: Kind) -> &'static str {
+    match kind {
+        Kind::Modify => "modify",
+        Kind::Attrib => "attrib",
+        Kind::Create => "create",
+        Kind::Delete => "delete",
+        Kind::Move => "move",
+        Kind::Gone => "gone",
+        Kind::Overflow => "overflow",
+    }
+}
+
 /// How deep `run` stands while one call is in it. It falls on drop,
 /// so an early return, an error or a panic in a slot leaves the count
 /// where it found it.
@@ -322,6 +370,7 @@ impl Kernel {
     #[must_use]
     pub fn new(clock: fn() -> u64, limits: Limits) -> Self {
         let state = State {
+            clock,
             table: Table::new(clock()),
             decls: BTreeMap::new(),
             modules: Vec::new(),
@@ -343,6 +392,16 @@ impl Kernel {
 
     pub(crate) fn now(&self) -> u64 {
         (self.clock)()
+    }
+
+    /// One `kernel` entry, built only when the level keeps it.
+    pub(crate) fn say(&self, level: u8, line: impl FnOnce() -> String) {
+        self.state.borrow_mut().say(level, line);
+    }
+
+    /// Whether an entry at `level` would be kept.
+    pub(crate) fn logs(&self, level: u8) -> bool {
+        self.state.borrow().log.keeps(level)
     }
 
     pub(crate) const fn limits(&self) -> &Limits {
@@ -381,11 +440,11 @@ impl Kernel {
         let starter = module.clone();
         let (id, home) = match self.enter(now, name, module, drivers) {
             Ok(both) => both,
-            Err(error) => return Err(self.refused(now, name, error)),
+            Err(error) => return Err(self.refused(name, error)),
         };
         starter
             .start(&self.calls(id), home)
-            .map_err(|error| self.refused(now, name, error))?;
+            .map_err(|error| self.refused(name, error))?;
         Ok(id)
     }
 
@@ -416,17 +475,16 @@ impl Kernel {
             caller,
         };
         s.modules.push(loaded);
-        let line = alloc::format!("load module={name}");
-        s.log(now, "kernel", INFO, line.into_bytes());
+        s.say(INFO, || alloc::format!("load module={name}"));
         Ok((id, home))
     }
 
     /// A load the Kernel refused, or a Module whose `start` failed:
     /// one `err` entry, and the error back to the caller.
-    fn refused(&self, now: u64, name: &str, error: Error) -> Error {
-        let line = alloc::format!("load module={name} refused={error:?}");
-        let mut s = self.state.borrow_mut();
-        s.log(now, "kernel", ERR, line.into_bytes());
+    fn refused(&self, name: &str, error: Error) -> Error {
+        self.say(ERR, || {
+            alloc::format!("load module={name} refused={error:?}")
+        });
         error
     }
 
@@ -439,13 +497,10 @@ impl Kernel {
     /// an rd it serves, or one it holds itself, is open. Nothing is
     /// revoked.
     pub fn unload(&self, name: &str) -> Result<(), Error> {
-        let now = self.now();
         let (index, module) = self.state.borrow_mut().take_module(name)?;
         module.stop();
-        let mut s = self.state.borrow_mut();
-        s.remove_module(index);
-        let line = alloc::format!("unload module={name}");
-        s.log(now, "kernel", INFO, line.into_bytes());
+        self.state.borrow_mut().remove_module(index);
+        self.say(INFO, || alloc::format!("unload module={name}"));
         Ok(())
     }
 
@@ -514,9 +569,9 @@ impl Kernel {
             s.table.insert(rd, Some("capability"), cell, flags, now);
         s.cells.insert(capability, Vec::new());
         s.emit(rd, Kind::Create, Some(capability));
-        let line =
-            alloc::format!("connect session={} client={}", session.0, rd.0);
-        s.log(now, "kernel", INFO, line.into_bytes());
+        s.say(INFO, || {
+            alloc::format!("connect session={} client={}", session.0, rd.0)
+        });
         let caller = s.new_caller(None);
         if let Some(state) = s.callers.get_mut(&caller) {
             state.credential = credential.to_vec();
@@ -535,23 +590,34 @@ impl Kernel {
     /// and so none that could be adopted, the Kernel unregisters it
     /// with everything under it and `/session` sees the `Delete`.
     pub fn caller_end(&self, caller: Caller) {
+        self.disconnected(caller);
         let Some(handles) = self.state.borrow_mut().ending(caller) else {
             return;
         };
         if !handles.is_empty() {
-            let now = self.now();
-            let line = alloc::format!(
-                "caller end caller={} handles={}",
-                caller.0,
-                handles.len()
-            );
-            let mut s = self.state.borrow_mut();
-            s.log(now, "kernel", NOTICE, line.into_bytes());
+            let (caller, open) = (caller.0, handles.len());
+            let line =
+                || alloc::format!("caller end caller={caller} handles={open}");
+            self.say(NOTICE, line);
         }
         for h in handles {
             let _ = self.run(caller, Op::Close { h });
         }
         self.state.borrow_mut().forget(caller);
+    }
+
+    /// The counterpart of `connect`: the link on this caller's client
+    /// rd is over. A named caller keeps the rd for its next `Connect`
+    /// and says so all the same.
+    fn disconnected(&self, caller: Caller) {
+        let state = self.state.borrow();
+        let client = state.callers.get(&caller).and_then(|c| c.client);
+        drop(state);
+        let Some((session, rd)) = client else { return };
+        let (session, client) = (session.0, rd.0);
+        let line =
+            || alloc::format!("disconnect session={session} client={client}");
+        self.say(INFO, line);
     }
 
     /// One request. A `seq` seen before is answered from memory and the
