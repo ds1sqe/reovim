@@ -11,5 +11,9 @@ publish = false
 [dependencies]
 reovim-client = { path = "../../clients/core" }
 
+[dev-dependencies]
+reovim-client-tui = { path = "../../clients/tui" }
+reovim-rig = { path = "../../clients/rig" }
+
 [lints]
 workspace = true

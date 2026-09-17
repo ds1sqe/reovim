@@ -9,7 +9,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 BIN="$(realpath "${1:-target/debug/reovim}")"
 shift || true
-CORPUS="${PARITY_CORPUS:-clients/tui/tests/parity}"
+CORPUS="${PARITY_CORPUS:-plugins/vim/tests/parity}"
 DIR="$(mktemp -d /tmp/reovim-parity.XXXXXXXX)"
 readonly BIN CORPUS DIR
 TMUX=(tmux -L "reovim-parity-$$")

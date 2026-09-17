@@ -5,7 +5,7 @@
 # register's type (v, V, ^V{width} or empty) and its bytes at exit.
 # These flags are the definition of "what nvim does".
 #
-#   clients/tui/tests/parity/record.sh CASE...     directories
+#   plugins/vim/tests/parity/record.sh CASE...     directories
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 for case in "$@"; do
