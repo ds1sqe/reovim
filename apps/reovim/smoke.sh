@@ -136,8 +136,9 @@ editing other other
 [[ "$(sockets)" == 2 ]] || fail "two editors have $(sockets) sockets"
 [[ "$("$BIN" cli children /session/1/client)" == *" 1" ]] \
     || fail "the running editor has no client rd 1"
-[[ "$("$BIN" cli read /session/1/client/1/capability)" == tui ]] \
-    || fail "the client of the running editor is not the tui"
+serves="$("$BIN" cli read /session/1/client/1/capability)"
+[[ "$serves" == $'keys\ngrid\nprocess' ]] \
+    || fail "the running editor's client serves $serves"
 keys new i "fresh" Escape : q Enter
 shown new "E37: No write since last change"
 [[ ! -e "$DIR/new/note" ]] || fail "a new file exists before its save"

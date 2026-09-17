@@ -1,9 +1,16 @@
 #![no_std]
 #![forbid(unsafe_code)]
-//! Vim: keys in, effects and a frame out, over the text and the cursor
-//! it holds; the `Plugin` of clients/core. It sees no Client, no rd
-//! and no terminal; the Client turns an `Effect` into a call and a
-//! `Frame` into a screen.
+//! Vim: keys in, calls out, over the text and the cursor it holds; the
+//! `Plugin` of clients/core.
+//!
+//! The engine below is pure: a key becomes an `Effect`, which is what
+//! the keys asked for and has already happened to Vim's own copy of
+//! the text. `impl Plugin for Vim`, at the bottom, is what performs
+//! one: the edits go to the Buffer, the undo to its history, the save
+//! to its source, and what it all looks like goes to the `grid` the
+//! Client serves, as a View in bytes. Nothing of the screen is Vim's:
+//! it keeps the first line shown and the cursor, and the Client turns
+//! those into cells.
 //!
 //! The text is the Buffer's bytes. A `\n` ends a line; the last one
 //! ends the last line rather than starting an empty one, as Vim has
@@ -17,6 +24,7 @@ pub mod notation;
 mod object;
 mod operator;
 mod pattern;
+mod plugin;
 mod search;
 mod visual;
 mod word;
@@ -26,12 +34,58 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 pub use operator::Motion;
-pub use reovim_client::{Edit, Effect, Frame, Key, Plugin, Quit};
+pub use reovim_client::{Key, Plugin};
 pub use visual::Visual;
 
 use operator::{Find, Operator};
+use reovim_client::{Handle, Rd};
 use search::Search;
 use visual::{BlockInsert, Selection};
+
+/// One change to the text, already made in Vim: `len` bytes at `at`
+/// became `text`. With `join` the edit belongs to the head revision,
+/// not a new one: one insert is one undo step.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Edit {
+    pub at: usize,
+    pub len: usize,
+    pub text: String,
+    pub join: bool,
+}
+
+/// What a key did, before the calls it asks for are made.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Effect {
+    Nothing,
+    /// The cursor or the mode moved; the text did not.
+    Moved,
+    Edit(Edit),
+    /// Several edits in order, as a repeat replays them.
+    Edits(Vec<Edit>),
+    Undo,
+    Redo,
+    Save,
+    /// `:w NAME`: the draft written to that file, resolved under the
+    /// directory the Client started Vim in.
+    SaveAs(String),
+    Quit(Quit),
+    /// A put wants the clipboard's text: `pasted` finishes it.
+    Clipboard,
+}
+
+/// How a quit was asked for; what it does with unsaved changes
+/// depends on the Buffer's revisions.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Quit {
+    /// `:q`: refused with E37 while there are unsaved changes.
+    Ask,
+    /// `:q!`, `ZQ`: whatever the Buffer holds, exit 0.
+    Force,
+    /// `:wq`, `:x`, `ZZ`: written, then exit 0.
+    Write,
+    /// `:cq`: exit 1, so the caller uses nothing.
+    Abort,
+}
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum Mode {
@@ -159,24 +213,23 @@ pub struct Vim {
     line: Line,
     /// Shown until the next key.
     message: String,
+    /// The Buffer `start` opened, READ and WRITE.
+    h: Option<Handle>,
+    /// What that Buffer is over, once it is over anything.
+    source: Option<Rd>,
+    /// Where a relative `:w NAME` starts, under the root.
+    dir: String,
+    /// `/module/clipboard/text`, when that Module is there.
+    clip: Option<Rd>,
+    /// The grid region it shows in, when its Client serves one.
+    region: Option<Handle>,
+    /// `process`, when its Client serves it.
+    ending: Option<Handle>,
+    /// How many rows that region has: what `top` scrolls by.
+    rows: usize,
 }
 
 impl Vim {
-    /// `spans` of `(row, from, to)` in chars of the rows shown, as
-    /// screen cells; a column past the line's end is its newline
-    /// cell.
-    fn in_cells(&self, spans: Vec<(u16, u16, u16)>) -> Vec<(u16, u16, u16)> {
-        let cell = |n: usize| u16::try_from(n).unwrap_or(u16::MAX);
-        spans
-            .into_iter()
-            .map(|(r, from, to)| {
-                let line = self.line_at(self.top + usize::from(r)).unwrap_or(0);
-                let text = &self.text[line..self.line_end(line)];
-                (r, cell(cells_at(text, from)), cell(cells_at(text, to)))
-            })
-            .collect()
-    }
-
     #[must_use]
     pub fn text(&self) -> &str {
         &self.text
@@ -192,6 +245,11 @@ impl Vim {
     #[must_use]
     pub const fn register(&self) -> Option<&Register> {
         self.register.as_ref()
+    }
+
+    /// Text a `"+` or `"*` yank left for the clipboard, once.
+    pub const fn clipped(&mut self) -> Option<String> {
+        self.clipboard.take()
     }
 
     /// After an undo or redo, as nvim places it: on the first changed
@@ -641,10 +699,12 @@ impl Vim {
     }
 }
 
-impl Plugin for Vim {
+/// The engine's own calls: what a key does, and what the Plugin at
+/// the bottom of this file needs of it.
+impl Vim {
     /// `bytes` as the text, lossily; the cursor stays where it can.
     /// True when the text differs from before.
-    fn loaded(&mut self, bytes: &[u8]) -> bool {
+    pub fn loaded(&mut self, bytes: &[u8]) -> bool {
         let text = String::from_utf8_lossy(bytes);
         let walking = self.undone.walking.take();
         if text == self.text {
@@ -668,8 +728,8 @@ impl Plugin for Vim {
     }
 
     /// One key in the current mode; a message showing or shown goes
-    /// with it, so the frame is drawn again.
-    fn key(&mut self, key: Key) -> Effect {
+    /// with it, so the View is shown again.
+    pub fn key(&mut self, key: Key) -> Effect {
         if !self.repeat.replaying {
             self.repeat.record.push(key);
         }
@@ -704,7 +764,7 @@ impl Plugin for Vim {
 
     /// The clipboard's answer to `Effect::Clipboard`: the put goes on
     /// with `text`, or E353 when there is none.
-    fn pasted(&mut self, text: Option<String>) -> Effect {
+    pub fn pasted(&mut self, text: Option<String>) -> Effect {
         let Some(put) = self.put.take() else { return Effect::Nothing };
         let before = self.position();
         let effect = if let Some(text) = text {
@@ -718,14 +778,9 @@ impl Plugin for Vim {
         effect
     }
 
-    /// The text a `"+` or `"*` yank left for the clipboard.
-    fn take_clipboard(&mut self) -> Option<String> {
-        self.clipboard.take()
-    }
-
     /// The `\n` Vim writes at the end of a last line that has none, as
     /// `fixendofline` does.
-    fn saving(&mut self) -> Option<Edit> {
+    pub fn fixed_eol(&mut self) -> Option<Edit> {
         if self.text.is_empty() || self.text.ends_with('\n') {
             return None;
         }
@@ -734,38 +789,18 @@ impl Plugin for Vim {
         Some(Edit { at, len: 0, text: String::from("\n"), join: false })
     }
 
-    /// The cursor to line `n`, counted from 1 and clamped, at its first
-    /// non-blank: `+N` on the command line.
-    fn goto_line(&mut self, n: usize) {
-        let last = self.line_count() - 1;
-        let start = self.line_at(n.saturating_sub(1).min(last)).unwrap_or(0);
-        self.cursor = self.first_non_blank(start);
+    /// The cursor to the byte `at`, at its line's first non-blank:
+    /// where the Client said to begin.
+    pub fn begin(&mut self, at: usize) {
+        self.cursor = self.first_non_blank(at.min(self.bound()));
         self.clamp();
     }
 
-    /// The frame for `cols` by `rows`, in screen cells; `top` moves to
-    /// keep the cursor on screen.
-    fn frame(&mut self, cols: u16, rows: u16) -> Frame {
-        let width = usize::from(cols.max(1));
-        let height = usize::from(rows.saturating_sub(1).max(1));
-        let line = self.position().0;
-        if line < self.top {
-            self.top = line;
-        } else if line >= self.top + height {
-            self.top = line + 1 - height;
-        }
-        let lines = self
-            .text
-            .split('\n')
-            .take(self.line_count())
-            .skip(self.top)
-            .take(height)
-            .map(|l| row(l, width))
-            .collect();
-        let row = u16::try_from(line - self.top).unwrap_or(u16::MAX);
-        let col =
-            u16::try_from(self.wanted().min(width - 1)).unwrap_or(u16::MAX);
-        let status = match self.mode {
+    /// The status word: a message, the command line being typed, or
+    /// the mode.
+    #[must_use]
+    pub fn status(&self) -> String {
+        match self.mode {
             _ if !self.message.is_empty() => self.message.clone(),
             Mode::Normal => String::new(),
             Mode::Insert => String::from("-- INSERT --"),
@@ -775,23 +810,7 @@ impl Plugin for Vim {
             Mode::Visual(Visual::Char) => String::from("-- VISUAL --"),
             Mode::Visual(Visual::Line) => String::from("-- VISUAL LINE --"),
             Mode::Visual(Visual::Block) => String::from("-- VISUAL BLOCK --"),
-        };
-        let selection = match self.mode {
-            Mode::Visual(kind) => self.selection_cells(kind, self.top, height),
-            _ => Vec::new(),
-        };
-        let selection = self.in_cells(selection);
-        let marks = self.in_cells(self.search_marks(self.top, height));
-        Frame { lines, cursor: (row, col), selection, marks, status }
-    }
-
-    fn position(&self) -> (usize, usize) {
-        Self::position(self)
-    }
-
-    /// As Vim's own messages are shown: the tui's E37, for one.
-    fn notice(&mut self, message: &str) {
-        self.message = String::from(message);
+        }
     }
 }
 
@@ -802,35 +821,6 @@ const fn is_digit(key: Key) -> bool {
 /// `Moved` when something did.
 const fn moved(yes: bool) -> Effect {
     if yes { Effect::Moved } else { Effect::Nothing }
-}
-
-/// The screen cell where char `column` of `text` starts; past the
-/// end, the newline's cell and on.
-fn cells_at(text: &str, column: u16) -> usize {
-    let column = usize::from(column);
-    let chars = text.chars().count();
-    let cells = text.chars().take(column).fold(0, motion::next_cell);
-    cells + column.saturating_sub(chars)
-}
-
-/// `line` as the terminal shows it in `width` cells: a tab as the
-/// spaces to its stop, a wide char kept whole or left out at the
-/// edge.
-fn row(line: &str, width: usize) -> String {
-    let mut out = String::new();
-    let mut cell = 0;
-    for c in line.chars() {
-        let next = motion::next_cell(cell, c);
-        if next > width {
-            break;
-        }
-        match c {
-            '\t' => out.extend(core::iter::repeat_n(' ', next - cell)),
-            c => out.push(c),
-        }
-        cell = next;
-    }
-    out
 }
 
 /// The edits `effect` made, onto `edits`.

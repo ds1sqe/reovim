@@ -246,6 +246,8 @@ dependencies = [
  "reovim-client",
  "reovim-client-tui",
  "reovim-rig",
+ "reovim-sdk",
+ "reovim-text-api",
 ]
 
 [[package]]

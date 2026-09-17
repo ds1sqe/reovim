@@ -3,7 +3,7 @@
 #![allow(dead_code)]
 
 use reovim_plugin_vim::notation::keys;
-use reovim_plugin_vim::{Edit, Effect, Plugin, Vim};
+use reovim_plugin_vim::{Edit, Effect, Vim};
 
 pub fn edit(at: usize, len: usize, text: &str, join: bool) -> Effect {
     Effect::Edit(Edit { at, len, text: text.to_string(), join })

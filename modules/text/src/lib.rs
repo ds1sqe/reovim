@@ -324,6 +324,40 @@ impl Text {
         Ok(())
     }
 
+    /// The head stored to `target`. A Buffer over nothing takes it as
+    /// its source, publishes its head there and gains its `source`
+    /// child, so it goes on as that rd's Buffer; one that has a source
+    /// keeps it, the copy being all that was asked for.
+    fn store_as(
+        &self,
+        ctx: &dyn Calls,
+        rd: Rd,
+        target: Rd,
+    ) -> Result<(), Error> {
+        let state = self.state.borrow();
+        let Some(Node::Buffer { source, history }) = state.nodes.get(&rd)
+        else {
+            return Err(Error::Unsupported);
+        };
+        let adopt = source.is_none() && !state.opened.contains_key(&target);
+        let draft = history.draft().to_vec();
+        drop(state);
+        store(ctx, target, &draft)?;
+        if !adopt {
+            return Ok(());
+        }
+        let mut state = self.state.borrow_mut();
+        if let Some(Node::Buffer { source, history }) = state.nodes.get_mut(&rd)
+        {
+            *source = Some(target);
+            history.published();
+        }
+        state.opened.insert(target, rd);
+        drop(state);
+        self.add(ctx, rd, "source", Flags::READ, &[], Node::Pointer(target))?;
+        Ok(())
+    }
+
     /// A move of head; a refused one is `Invalid` and emits nothing.
     fn moved(
         &self,
@@ -445,6 +479,15 @@ impl history::Api for Text {
 impl publish::Api for Text {
     fn save(&self, ctx: &dyn Calls, rd: Rd) -> Result<(), Error> {
         self.store_head(ctx, rd)
+    }
+
+    fn save_as(
+        &self,
+        ctx: &dyn Calls,
+        rd: Rd,
+        target: Rd,
+    ) -> Result<(), Error> {
+        self.store_as(ctx, rd, target)
     }
 }
 

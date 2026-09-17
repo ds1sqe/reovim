@@ -63,7 +63,8 @@ fn replay(case: &Path) -> Result<(), String> {
     let rig = Rig::new(name);
     rig.file("file", &input);
     let mut tui =
-        Tui::open(rig.client(), "", Some("file"), Vim::default()).unwrap();
+        Tui::open(rig.client(), "", Some("file"), None, Vim::default())
+            .unwrap();
     let mut quit = None;
     for key in keys {
         let step = tui.key(key).map_err(|fault| format!("{name}: {fault}"))?;

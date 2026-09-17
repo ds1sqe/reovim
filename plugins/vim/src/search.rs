@@ -147,13 +147,14 @@ impl Vim {
         Some(line[first..stop].into())
     }
 
-    /// `hlsearch`'s cells on the rows shown: every match of the last
-    /// pattern, until `:noh`.
-    pub(crate) fn search_marks(
+    /// `hlsearch`'s byte spans on the lines shown: every match of the
+    /// last pattern, until `:noh`. An empty match takes the char it
+    /// sits on, as nvim shows one.
+    pub(crate) fn search_spans(
         &self,
         top: usize,
         height: usize,
-    ) -> Vec<(u16, u16, u16)> {
+    ) -> Vec<(usize, usize)> {
         let Search { pattern, options, stale, .. } = &self.search;
         if !options.hlsearch || *stale || pattern.is_empty() {
             return Vec::new();
@@ -163,18 +164,15 @@ impl Vim {
         else {
             return Vec::new();
         };
-        let cell = |n: usize| u16::try_from(n).unwrap_or(u16::MAX);
         let shown = |line: usize| line >= top && line < top + height;
         self.matches(&pattern, 0, self.text.len())
             .into_iter()
-            .map(|start| (start, self.position_of(start)))
-            .filter(|(_, (line, _))| shown(*line))
-            .map(|(start, (line, column))| {
+            .filter(|&start| shown(self.position_of(start).0))
+            .map(|start| {
                 let end = pattern
                     .match_at(&self.text, start)
                     .map_or(start, |(e, _)| e);
-                let width = self.text[start..end].chars().count().max(1);
-                (cell(line - top), cell(column), cell(column + width))
+                (start, end.max(self.forward_char(start)))
             })
             .collect()
     }

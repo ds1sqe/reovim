@@ -4,7 +4,7 @@ mod common;
 
 use common::{edit, on, typed};
 use reovim_plugin_vim::notation::keys;
-use reovim_plugin_vim::{Edit, Effect, Key, Mode, Plugin, Quit};
+use reovim_plugin_vim::{Edit, Effect, Key, Mode, Quit};
 
 #[test]
 fn insert_edits_join_and_esc_steps_back() {
@@ -99,24 +99,21 @@ fn loaded_replaces_and_clamps() {
 }
 
 #[test]
-fn a_frame_keeps_the_cursor_on_screen_and_cuts_lines() {
+fn a_view_keeps_the_cursor_in_the_region() {
     let mut vim = on("1\n2\n3\n4\n5 is long");
     typed(&mut vim, "4j$");
-    let frame = vim.frame(4, 3);
-    assert_eq!(frame.lines, vec!["4", "5 is"]);
-    assert_eq!(frame.cursor, (1, 3), "the last column when past it");
-    assert_eq!(frame.status, "");
+    let view = vim.view(2);
+    assert_eq!((view.top, view.cursor), (6, 16), "scrolled to the last line");
+    assert_eq!(view.status, "");
     typed(&mut vim, "4k");
-    let frame = vim.frame(4, 3);
-    assert_eq!(frame.lines, vec!["1", "2"]);
-    assert_eq!(frame.cursor, (0, 0));
+    let view = vim.view(2);
+    assert_eq!((view.top, view.cursor), (0, 0), "and back to the first");
     typed(&mut vim, "2j");
-    let frame = vim.frame(80, 3);
-    assert_eq!(frame.lines, vec!["2", "3"]);
-    assert_eq!(frame.cursor, (1, 0));
-    assert_eq!(vim.frame(80, 1).lines, vec!["3"], "one row still shows");
+    let view = vim.view(2);
+    assert_eq!((view.top, view.cursor), (2, 4), "one line at a time");
+    assert_eq!(vim.view(1).top, 4, "one row shows the cursor's line");
     typed(&mut vim, "i");
-    assert_eq!(vim.frame(80, 3).status, "-- INSERT --");
+    assert_eq!(vim.view(2).status, "-- INSERT --");
 }
 
 #[test]
@@ -205,7 +202,7 @@ fn lines_are_reached_by_number_and_deleted_with_their_newline() {
     assert_eq!(vim.position(), (0, 0));
     let mut vim = on("");
     assert_eq!(typed(&mut vim, "G"), Effect::Nothing);
-    vim.goto_line(5);
+    vim.begin(9);
     assert_eq!(vim.position(), (0, 0));
 }
 
@@ -238,14 +235,13 @@ fn chars_are_deleted_on_the_line_and_undo_is_a_key() {
 fn a_last_line_without_a_newline_gets_one_before_a_write() {
     let mut vim = on("abc");
     let eol = Edit { at: 3, len: 0, text: "\n".into(), join: false };
-    assert_eq!(vim.saving(), Some(eol));
-    assert_eq!(vim.saving(), None);
+    assert_eq!(vim.fixed_eol(), Some(eol));
+    assert_eq!(vim.fixed_eol(), None);
     assert_eq!(vim.text(), "abc\n");
-    assert_eq!(vim.frame(80, 24).lines, vec!["abc"], "one line, ended");
     assert_eq!(typed(&mut vim, "j"), Effect::Nothing);
     let mut empty = on("");
-    assert_eq!(empty.saving(), None);
-    assert_eq!(empty.frame(80, 24).lines, vec![""]);
+    assert_eq!(empty.fixed_eol(), None);
+    assert_eq!(empty.text(), "", "and an empty text needs none");
 }
 
 #[test]
@@ -254,9 +250,9 @@ fn the_command_line_runs_the_quit_commands_and_refuses_the_rest() {
     assert_eq!(typed(&mut vim, ":"), Effect::Moved);
     assert_eq!(vim.mode(), Mode::Command);
     assert_eq!(typed(&mut vim, "wq"), Effect::Moved);
-    assert_eq!(vim.frame(80, 24).status, ":wq");
+    assert_eq!(vim.status(), ":wq");
     assert_eq!(typed(&mut vim, "<BS><BS>"), Effect::Moved);
-    assert_eq!(vim.frame(80, 24).status, ":");
+    assert_eq!(vim.status(), ":");
     assert_eq!(typed(&mut vim, "<BS>"), Effect::Moved, "leaves");
     assert_eq!(vim.mode(), Mode::Normal);
     assert_eq!(typed(&mut vim, ":q<Esc>"), Effect::Moved);
@@ -275,31 +271,29 @@ fn the_command_line_runs_the_quit_commands_and_refuses_the_rest() {
     assert_eq!(typed(&mut vim, "Zx"), Effect::Nothing);
 
     assert_eq!(typed(&mut vim, ":xyz<CR>"), Effect::Moved);
-    let status = vim.frame(80, 24).status;
+    let status = vim.status();
     assert_eq!(status, "E492: Not an editor command: xyz");
     assert_eq!(typed(&mut vim, "<Esc>"), Effect::Moved, "the message goes");
-    assert_eq!(vim.frame(80, 24).status, "");
-    vim.notice("E37: No write since last change (add ! to override)");
-    assert!(vim.frame(80, 24).status.starts_with("E37"));
-    assert_eq!(typed(&mut vim, "<C-s>"), Effect::Moved, "no longer a key");
+    assert_eq!(vim.status(), "");
+    assert_eq!(typed(&mut vim, "<C-s>"), Effect::Nothing, "no longer a key");
     assert_eq!(typed(&mut vim, "<C-q>"), Effect::Nothing);
 }
 
 #[test]
-fn the_clipboard_registers_go_through_the_tui() {
+fn the_clipboard_registers_wait_for_their_rd() {
     let mut vim = on("one\ntwo\n");
     assert_eq!(typed(&mut vim, "\"+yy"), Effect::Moved);
-    assert_eq!(vim.take_clipboard(), Some("one\n".to_string()), "linewise");
-    assert_eq!(vim.take_clipboard(), None, "taken once");
+    assert_eq!(vim.clipped(), Some("one\n".to_string()), "linewise");
+    assert_eq!(vim.clipped(), None, "taken once");
     assert_eq!(typed(&mut vim, "\"*yiw"), Effect::Moved);
-    assert_eq!(vim.take_clipboard(), Some("one".to_string()));
+    assert_eq!(vim.clipped(), Some("one".to_string()));
 
     assert_eq!(typed(&mut vim, "j\"+p"), Effect::Clipboard, "wants the text");
     assert_eq!(vim.pasted(Some("x\n".to_string())), edit(8, 0, "x\n", false));
     assert_eq!(vim.text(), "one\ntwo\nx\n");
     assert_eq!(typed(&mut vim, "\"+P"), Effect::Clipboard);
     assert_eq!(vim.pasted(None), Effect::Moved, "no clipboard");
-    assert!(vim.frame(80, 24).status.starts_with("E353"));
+    assert!(vim.status().starts_with("E353"));
     assert_eq!(typed(&mut vim, "\"+p"), Effect::Clipboard);
     assert_eq!(vim.pasted(Some("ab".to_string())), edit(9, 0, "ab", false));
     assert_eq!(vim.text(), "one\ntwo\nxab\n", "charwise after the cursor");

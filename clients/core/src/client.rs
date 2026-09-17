@@ -1,4 +1,5 @@
-//! The Client over a `Carrier`: the ops, and the helpers above them.
+//! The tree over a `Carrier`: the ops, and the helpers above them;
+//! and the Client, which is a `Tree` and the watch cursor it drains.
 
 use alloc::boxed::Box;
 use alloc::format;
@@ -34,14 +35,23 @@ pub trait Carrier {
     }
 }
 
-/// One connected Client: its credential, its Session, its client rd
-/// and its watch cursor.
-pub struct Client {
+/// The tree a Client reaches: its credential, its Session and its
+/// client rd, with the seven ops and the helpers above them.
+///
+/// This is what a `Plugin` is handed: everything the tree offers, and
+/// nothing of the Client's own, the watch cursor above all, which one
+/// reader drains for every Plugin at once.
+pub struct Tree {
     carrier: Box<dyn Carrier>,
     endpoint: Endpoint,
     credential: Vec<u8>,
     session: Rd,
     cid: Rd,
+}
+
+/// One connected Client: a `Tree`, and the watch cursor it drains.
+pub struct Client {
+    tree: Tree,
     cursor: u64,
 }
 
@@ -55,32 +65,26 @@ impl Client {
         carrier: Box<dyn Carrier>,
         credential: Vec<u8>,
     ) -> Result<Self, Fault> {
-        let mut client = Self {
+        let tree = Tree {
             carrier,
             endpoint: Endpoint::default(),
             credential,
             session: ROOT,
             cid: ROOT,
-            cursor: 0,
         };
+        let mut client = Self { tree, cursor: 0 };
         let connect = Message::Connect {
-            credential: client.credential.clone(),
+            credential: client.tree.credential.clone(),
             session: None,
         };
-        let out = client.exchange(&connect)?;
-        client.connected(&out)?;
+        let out = client.tree.exchange(&connect)?;
+        client.tree.connected(&out)?;
         Ok(client)
     }
 
-    /// The `Connect` answer: the Session and the client rd.
-    fn connected(&mut self, out: &Out) -> Result<(), Fault> {
-        match out {
-            Out::Rds(ids) if ids.len() == 2 => {
-                (self.session, self.cid) = (ids[0], ids[1]);
-                Ok(())
-            }
-            _ => Err(Fault::Wire),
-        }
+    /// The tree itself, for whoever makes calls on it.
+    pub const fn tree(&mut self) -> &mut Tree {
+        &mut self.tree
     }
 
     /// `load <path>`: the Module in that file, on the server's side.
@@ -89,7 +93,7 @@ impl Client {
     /// What the server says; `Unsupported` where nothing can be loaded.
     pub fn load(&mut self, path: &str) -> Result<(), Fault> {
         let load = Message::Load { path: path.into() };
-        unit(&self.exchange(&load)?)
+        unit(&self.tree.exchange(&load)?)
     }
 
     /// `unload <name>`.
@@ -99,7 +103,7 @@ impl Client {
     /// open.
     pub fn unload(&mut self, name: &str) -> Result<(), Fault> {
         let unload = Message::Unload { name: name.into() };
-        unit(&self.exchange(&unload)?)
+        unit(&self.tree.exchange(&unload)?)
     }
 
     /// `bytes` as this Client's `capability`, the Read rd under its
@@ -108,8 +112,49 @@ impl Client {
     /// # Errors
     /// What the Client says.
     pub fn capability(&mut self, bytes: Vec<u8>) -> Result<(), Fault> {
-        let rd = self.lookup(self.cid, "capability")?;
-        self.write_all(rd, bytes).map(|_| ())
+        let rd = self.tree.lookup(self.tree.cid, "capability")?;
+        self.tree.write_all(rd, bytes).map(|_| ())
+    }
+
+    /// Events on the watched rds since the last call; the cursor moves.
+    ///
+    /// # Errors
+    /// As [`Tree::lookup`].
+    pub fn since(&mut self) -> Result<Vec<Event>, Fault> {
+        match self.tree.request(Op::Since { cursor: self.cursor })? {
+            Out::Events { events, cursor } => {
+                self.cursor = cursor;
+                Ok(events)
+            }
+            _ => Err(Fault::Wire),
+        }
+    }
+}
+
+impl core::ops::Deref for Client {
+    type Target = Tree;
+
+    fn deref(&self) -> &Tree {
+        &self.tree
+    }
+}
+
+impl core::ops::DerefMut for Client {
+    fn deref_mut(&mut self) -> &mut Tree {
+        &mut self.tree
+    }
+}
+
+impl Tree {
+    /// The `Connect` answer: the Session and the client rd.
+    fn connected(&mut self, out: &Out) -> Result<(), Fault> {
+        match out {
+            Out::Rds(ids) if ids.len() == 2 => {
+                (self.session, self.cid) = (ids[0], ids[1]);
+                Ok(())
+            }
+            _ => Err(Fault::Wire),
+        }
     }
 
     /// `/session/<id>`.
@@ -286,20 +331,6 @@ impl Client {
         self.unit(Op::Close { h })
     }
 
-    /// Events on the watched rds since the last call; the cursor moves.
-    ///
-    /// # Errors
-    /// As [`Self::lookup`].
-    pub fn since(&mut self) -> Result<Vec<Event>, Fault> {
-        match self.request(Op::Since { cursor: self.cursor })? {
-            Out::Events { events, cursor } => {
-                self.cursor = cursor;
-                Ok(events)
-            }
-            _ => Err(Fault::Wire),
-        }
-    }
-
     /// `/a/b/c` by `lookup` from the root, or `rd:<n>`.
     ///
     /// # Errors
@@ -461,8 +492,8 @@ const fn unit(out: &Out) -> Result<(), Fault> {
     }
 }
 
-/// A `declare!`d api's caller side runs on a Client.
-impl reovim_sdk::Call for Client {
+/// A `declare!`d api's caller side runs on the tree.
+impl reovim_sdk::Call for Tree {
     type Error = Fault;
 
     fn call(
@@ -473,5 +504,43 @@ impl reovim_sdk::Call for Client {
         input: Vec<u8>,
     ) -> Result<Vec<u8>, Fault> {
         Self::call(self, h, api, number, input)
+    }
+}
+
+/// `path` under `dir` unless it is absolute, `.` and `..` resolved
+/// lexically, without the leading slash: its name under the root.
+/// `dir` is a name under the root already.
+#[must_use]
+pub fn under(dir: &str, path: &str) -> String {
+    let joined = if path.starts_with('/') {
+        String::from(path)
+    } else {
+        format!("{dir}/{path}")
+    };
+    let mut parts: Vec<&str> = Vec::new();
+    for part in joined.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            part => parts.push(part),
+        }
+    }
+    parts.join("/")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::under;
+
+    #[test]
+    fn under_names_the_file_under_the_root() {
+        assert_eq!(under("home/me", "note"), "home/me/note");
+        assert_eq!(under("home/me", "./a/../b/"), "home/me/b");
+        assert_eq!(under("home/me", "/tmp/x"), "tmp/x");
+        assert_eq!(under("", "../../etc/hosts"), "etc/hosts");
+        assert_eq!(under("", "/home/me"), "home/me");
+        assert_eq!(under("home/me", "/"), "");
     }
 }

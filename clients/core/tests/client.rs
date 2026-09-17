@@ -181,8 +181,8 @@ fn connect_resolve_and_read_whole() {
     rig.file("note", b"hello\n");
     let mut client = rig.client();
     assert_ne!(client.session(), ROOT);
-    assert_eq!(client.parent(client.cid()).unwrap(), {
-        let session = client.session();
+    let (session, cid) = (client.session(), client.cid());
+    assert_eq!(client.parent(cid).unwrap(), {
         client.lookup(session, "client").unwrap()
     });
 

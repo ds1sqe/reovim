@@ -222,6 +222,10 @@ impl Rig {
     fn save(&self, h: Handle) -> Reply<Out> {
         self.call(h, "publish", 0, Vec::new())
     }
+
+    fn save_as(&self, h: Handle, target: Rd) -> Reply<Out> {
+        self.call(h, "publish", 1, encode(&target))
+    }
 }
 
 const DONE: Reply<Out> = Reply::Ready(Ok(Out::Bytes(Vec::new())));
@@ -399,4 +403,34 @@ fn a_buffer_over_nothing_edits_but_never_saves() {
     assert_eq!(rig.tree(h).0, [node(1, 0, "new"), node(2, 1, "replace")]);
     assert_eq!(rig.save(h), Reply::err(Error::Invalid));
     assert_eq!(rig.name(rig.new_buffer()), "new2", "each its own");
+}
+
+#[test]
+fn save_as_writes_a_copy_and_gives_a_scratch_buffer_its_source() {
+    let rig = Rig::new("saveas");
+    let scratch = rig.new_buffer();
+    let (h, _) = rig.watch(scratch);
+    assert_eq!(rig.replace(h, 0, 0, "hi\n"), DONE);
+    let note = rig.file("note", b"");
+    assert_eq!(rig.save_as(h, note), DONE);
+    assert_eq!(rig.disk("note"), b"hi\n");
+    // It is that file's Buffer now: its head is published there, its
+    // `source` child says which rd, and `open` finds it again.
+    assert_eq!(rig.tree(h).1, rig.tree(h).2, "head is published");
+    let source = rig.lookup(scratch, "source");
+    assert_eq!(decode::<Rd>(&rig.read(source)), Ok(note));
+    assert_eq!(rig.buffer(note), scratch, "no second Buffer over it");
+    assert_eq!(rig.replace(h, 0, 0, "oh "), DONE);
+    assert_eq!(rig.save(h), DONE, "and `save` writes there");
+    assert_eq!(rig.disk("note"), b"oh hi\n");
+
+    // A Buffer that has a source keeps it: the copy is all it asked
+    // for, and what it holds is still unsaved.
+    let copy = rig.file("copy", b"");
+    assert_eq!(rig.replace(h, 0, 0, "x"), DONE);
+    assert_eq!(rig.save_as(h, copy), DONE);
+    assert_eq!(rig.disk("copy"), b"xoh hi\n");
+    assert_eq!(rig.disk("note"), b"oh hi\n", "the file itself waits");
+    let (nodes, head, published) = rig.tree(h);
+    assert_eq!((head, published), (nodes.len() as u64, head - 1));
 }

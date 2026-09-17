@@ -5,8 +5,8 @@
 use std::fmt::Write as _;
 use std::io::Write;
 
-use reovim_client::{Client, Fault, Key, width};
-use reovim_client_tui::{Frame, Step, Tui, under};
+use reovim_client::{Client, Fault, Key, under};
+use reovim_client_tui::{Frame, Step, Tui, width};
 use reovim_host::term;
 use reovim_plugin_vim::Vim;
 
@@ -68,10 +68,7 @@ fn run(
     (dir, file): (&str, Option<&str>),
     serve: Serve,
 ) -> Result<u8, Fail> {
-    let mut tui = Tui::open(client, dir, file, Vim::default())?;
-    if let Some(line) = line {
-        tui.goto_line(line);
-    }
+    let mut tui = Tui::open(client, dir, file, line, Vim::default())?;
     term::enter()?;
     let result = drive(&mut tui, serve);
     let _ = term::leave();
@@ -100,7 +97,7 @@ fn drive(tui: &mut Editor, serve: Serve) -> Result<u8, Fail> {
 fn draw(tui: &mut Editor) -> Result<(), Fail> {
     let (cols, rows) = term::size()?;
     let Frame { lines, cursor, selection, marks, status } =
-        tui.frame(cols, rows);
+        tui.frame(cols, rows)?;
     let text_rows = usize::from(rows.saturating_sub(1));
     let blank = String::new();
     let rest =

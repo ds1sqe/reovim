@@ -589,47 +589,39 @@ impl Vim {
         (chars >= block.column).then(|| self.at_column(start, block.column))
     }
 
-    /// The selected cells of the rows shown: `(row, from, to)` in
-    /// columns, `to` exclusive and one past a line's end for the
-    /// newline cell.
-    pub(crate) fn selection_cells(
+    /// What is selected, as byte spans of the text, `to` exclusive and
+    /// one past a line's end where its newline belongs to the
+    /// selection. Charwise and linewise are one span; a block is one
+    /// per line, of the lines `top` and `height` show.
+    pub(crate) fn selection_spans(
         &self,
         kind: Visual,
         top: usize,
         height: usize,
-    ) -> Vec<(u16, u16, u16)> {
-        let ((first, last), (left, right)) = self.corners();
-        let rows = first.max(top)..=last.min(top + height - 1);
-        let cell = |n: usize| u16::try_from(n).unwrap_or(u16::MAX);
-        let mut cells = Vec::new();
-        for (line, start) in
-            rows.filter_map(|l| self.line_at(l).map(|s| (l, s)))
-        {
-            let len = self.text[start..self.line_end(start)].chars().count();
-            let (from, to) = match kind {
-                Visual::Line => (0, len + 1),
-                Visual::Block if self.to_end => (left, len + 1),
-                Visual::Block => (left, right + 1),
-                Visual::Char => self.char_cells(line, (first, last), len),
-            };
-            cells.push((cell(line - top), cell(from), cell(to)));
+    ) -> Vec<(usize, usize)> {
+        let (lo, hi) = self.ends();
+        match kind {
+            Visual::Char => {
+                alloc::vec![(lo, self.forward_char(hi))]
+            }
+            Visual::Line => {
+                alloc::vec![(self.line_start(lo), self.line_end(hi) + 1)]
+            }
+            Visual::Block => self.block_spans(top, height),
         }
-        cells
     }
 
-    /// A charwise selection's columns on `line`: from its start on
-    /// the first line, to its end on the last, whole lines between.
-    fn char_cells(
-        &self,
-        line: usize,
-        lines: (usize, usize),
-        len: usize,
-    ) -> (usize, usize) {
-        let (lo, hi) = self.ends();
-        let from = if line == lines.0 { self.position_of(lo).1 } else { 0 };
-        let to =
-            if line == lines.1 { self.position_of(hi).1 + 1 } else { len + 1 };
-        (from, to)
+    /// A block's span on each line shown: its columns, or through the
+    /// line's newline after `$`.
+    fn block_spans(&self, top: usize, height: usize) -> Vec<(usize, usize)> {
+        let ((first, last), (left, right)) = self.corners();
+        let rows = first.max(top)..=last.min(top + height - 1);
+        rows.filter_map(|line| self.line_at(line))
+            .map(|start| {
+                let (from, to) = self.block_range(start, left, right);
+                (from, to + usize::from(self.to_end))
+            })
+            .collect()
     }
 }
 

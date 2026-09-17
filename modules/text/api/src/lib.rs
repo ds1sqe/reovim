@@ -45,8 +45,12 @@ declare! {
 }
 
 declare! {
-    /// Every Buffer: the head written back to the source.
+    /// Every Buffer: the head written back to the source. `save_as`
+    /// writes it to another rd instead; a Buffer over nothing takes
+    /// that rd as its source and goes on as its Buffer, which is what
+    /// `:w NAME` on a scratch Buffer asks for.
     api publish ver 1 {
         0 save() -> (): WRITE;
+        1 save_as(target: Rd) -> (): WRITE;
     }
 }

@@ -1,14 +1,35 @@
 //! Vim alone, rung 2: what the corpus cannot see. The revisions an
-//! operator makes, the cells a frame marks, the messages, `.` over
+//! operator makes, the spans a View marks, the messages, `.` over
 //! a selection, the registers' kinds.
 
 mod common;
 
 use common::{edit, edits, on, typed};
-use reovim_plugin_vim::{Edit, Effect, Kind, Mode, Plugin, Register, Visual};
+use reovim_client::{MATCH, SELECTION};
+use reovim_plugin_vim::{Edit, Effect, Kind, Mode, Register, Vim, Visual};
 
 fn register(text: &str, kind: Kind) -> Register {
     Register { text: text.into(), kind }
+}
+
+/// The View's spans of one style, as byte ranges.
+fn spans(vim: &mut Vim, rows: usize, style: u64) -> Vec<(u64, u64)> {
+    vim.view(rows)
+        .spans
+        .iter()
+        .filter(|span| span.style == style)
+        .map(|span| (span.from, span.to))
+        .collect()
+}
+
+/// What it would select in a region tall enough for anything.
+fn selected(vim: &mut Vim) -> Vec<(u64, u64)> {
+    spans(vim, 24, SELECTION)
+}
+
+/// What it would mark as a search match.
+fn marked(vim: &mut Vim) -> Vec<(u64, u64)> {
+    spans(vim, 24, MATCH)
 }
 
 #[test]
@@ -56,70 +77,64 @@ fn many_places_change_as_one_revision() {
 }
 
 #[test]
-fn a_frame_marks_the_selection_in_cells() {
+fn a_view_spans_the_selection_in_bytes() {
     let mut vim = on("abc\nde\nfghi\n");
     typed(&mut vim, "vj");
-    let cells = vim.frame(80, 24).selection;
-    assert_eq!(cells, vec![(0, 0, 4), (1, 0, 1)], "to the newline cell");
-    assert_eq!(vim.frame(80, 24).status, "-- VISUAL --");
+    let span = selected(&mut vim);
+    assert_eq!(span, [(0, 5)], "through the newline");
+    assert_eq!(vim.status(), "-- VISUAL --");
     typed(&mut vim, "o");
     assert_eq!(vim.position(), (0, 0), "`o` swaps the ends");
-    assert_eq!(vim.frame(80, 24).selection, cells);
+    assert_eq!(selected(&mut vim), span);
     typed(&mut vim, "V");
-    assert_eq!(vim.frame(80, 24).selection, vec![(0, 0, 4), (1, 0, 3)]);
-    assert_eq!(vim.frame(80, 24).status, "-- VISUAL LINE --");
+    assert_eq!(selected(&mut vim), [(0, 7)], "whole lines");
+    assert_eq!(vim.status(), "-- VISUAL LINE --");
     typed(&mut vim, "<Esc>");
-    assert_eq!(vim.frame(80, 24).selection, Vec::new());
+    assert_eq!(selected(&mut vim), Vec::new());
     typed(&mut vim, "gv");
     assert_eq!(vim.mode(), Mode::Visual(Visual::Line), "`gv` brings it back");
     typed(&mut vim, "<Esc>l<C-v>jj");
-    assert_eq!(
-        vim.frame(80, 24).selection,
-        vec![(0, 1, 2), (1, 1, 2), (2, 1, 2)]
-    );
-    assert_eq!(vim.frame(80, 24).status, "-- VISUAL BLOCK --");
+    assert_eq!(selected(&mut vim), [(1, 2), (5, 6), (8, 9)], "one per line");
+    assert_eq!(vim.status(), "-- VISUAL BLOCK --");
     typed(&mut vim, "$");
-    let cells = vim.frame(80, 24).selection;
-    assert_eq!(
-        cells,
-        vec![(0, 1, 4), (1, 1, 3), (2, 1, 5)],
-        "`$` reaches every end"
-    );
-    assert_eq!(vim.frame(80, 2).selection, vec![(0, 1, 5)], "rows scrolled");
+    let span = selected(&mut vim);
+    assert_eq!(span, [(1, 4), (5, 7), (8, 12)], "`$` reaches every end");
+    let scrolled = spans(&mut vim, 1, SELECTION);
+    assert_eq!(scrolled, [(8, 12)], "one row shows one line of it");
 }
 
 #[test]
 fn hlsearch_marks_every_match_until_noh() {
     let mut vim = on("ab\nb\n");
     assert_eq!(typed(&mut vim, "/b<CR>"), Effect::Moved);
-    assert_eq!(vim.frame(80, 24).marks, Vec::new(), "off by default");
+    assert_eq!(marked(&mut vim), Vec::new(), "off by default");
     assert_eq!(typed(&mut vim, ":set hls<CR>"), Effect::Moved);
-    assert_eq!(vim.frame(80, 24).marks, vec![(0, 1, 2), (1, 0, 1)]);
+    assert_eq!(marked(&mut vim), [(1, 2), (3, 4)], "every match");
     assert_eq!(typed(&mut vim, ":noh<CR>"), Effect::Moved);
-    assert_eq!(vim.frame(80, 24).marks, Vec::new());
+    assert_eq!(marked(&mut vim), Vec::new());
     assert_eq!(typed(&mut vim, "n"), Effect::Moved);
-    assert_eq!(vim.frame(80, 24).marks.len(), 2, "back with the next search");
+    assert_eq!(marked(&mut vim).len(), 2, "back with the next search");
     assert_eq!(typed(&mut vim, ":set nohlsearch<CR>"), Effect::Moved);
-    assert_eq!(vim.frame(80, 24).marks, Vec::new());
+    assert_eq!(marked(&mut vim), Vec::new());
     assert_eq!(typed(&mut vim, ":set ic hls<CR>/B<CR>"), Effect::Moved);
-    assert_eq!(vim.frame(80, 24).marks.len(), 2, "ignorecase");
+    assert_eq!(marked(&mut vim).len(), 2, "ignorecase");
     assert_eq!(typed(&mut vim, ":set noic<CR>/B<CR>"), Effect::Moved);
-    assert_eq!(vim.frame(80, 24).status, "E486: Pattern not found: B");
+    assert_eq!(vim.status(), "E486: Pattern not found: B");
 }
 
 #[test]
 fn messages_read_as_nvims() {
     let mut vim = on("  \nx\n");
     assert_eq!(typed(&mut vim, "*"), Effect::Moved, "a message is a change");
-    assert_eq!(vim.frame(80, 24).status, "E348: No string under cursor");
+    assert_eq!(vim.status(), "E348: No string under cursor");
     assert_eq!(typed(&mut vim, ":set foo<CR>"), Effect::Moved);
-    assert_eq!(vim.frame(80, 24).status, "E518: Unknown option: foo");
+    assert_eq!(vim.status(), "E518: Unknown option: foo");
     assert_eq!(typed(&mut vim, ":s/[/x/<CR>"), Effect::Moved);
-    assert_eq!(vim.frame(80, 24).status, "E486: Pattern not found: [");
+    assert_eq!(vim.status(), "E486: Pattern not found: [");
     assert_eq!(typed(&mut vim, ":frob<CR>"), Effect::Moved);
-    assert_eq!(vim.frame(80, 24).status, "E492: Not an editor command: frob");
+    assert_eq!(vim.status(), "E492: Not an editor command: frob");
     assert_eq!(typed(&mut vim, "j"), Effect::Moved, "the message goes");
-    assert_eq!(vim.frame(80, 24).status, "");
+    assert_eq!(vim.status(), "");
 }
 
 #[test]
