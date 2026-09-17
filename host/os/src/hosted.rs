@@ -127,6 +127,10 @@ pub fn create(path: &str) -> Result<(), Error> {
     Ok(())
 }
 
+pub fn remove(path: &str) -> Result<(), Error> {
+    Ok(std::fs::remove_file(path)?)
+}
+
 pub fn now() -> u64 {
     nanos(SystemTime::now())
 }

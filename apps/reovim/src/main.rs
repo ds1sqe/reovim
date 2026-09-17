@@ -66,8 +66,8 @@ usage: reovim server [--socket PATH] [--root DIR] [--log PATH]
        reovim tui [--socket PATH] [+N] [FILE]
        reovim [--socket PATH] [--log PATH] [+N] [FILE]
 defaults: --socket <runtime dir>/reovim.sock, --root <working directory>;
-the bare form edits any FILE, or none, and listens only when given
---socket";
+the bare form edits any FILE, or none, and listens at the default
+socket, or at reovim-<pid>.sock while another editor holds it";
 
 /// `--socket`, `--root` and `--log` taken off the front of `args`.
 struct Options {
@@ -106,6 +106,27 @@ fn socket(given: Option<String>) -> Result<String, Fail> {
     }
 }
 
+/// Where the bare editor listens: `--socket` as given, else the
+/// default socket while nothing answers there, else one named by this
+/// process, so a second editor neither takes the first one's socket nor
+/// goes without.
+fn free_socket(given: Option<String>) -> Result<String, Fail> {
+    if given.is_some() {
+        return socket(given);
+    }
+    let dir = reovim_host::dirs::runtime()?;
+    let default = format!("{dir}/reovim.sock");
+    // A link that opens says someone listens there; the probe ends
+    // before it is served. Anything else is a free name, or a socket
+    // file a killed editor left for `listen` to replace.
+    let taken =
+        reovim_host::link::open(&default).map(reovim_host::link::close).is_ok();
+    if taken {
+        return Ok(format!("{dir}/reovim-{}.sock", std::process::id()));
+    }
+    Ok(default)
+}
+
 fn usage() -> Fail {
     Fail::Usage(USAGE.to_string())
 }
@@ -135,8 +156,8 @@ fn run(args: Vec<String>) -> Result<ExitCode, Fail> {
         }
         (None, rest) if root.is_none() => {
             let (line, file) = file_at(rest)?;
-            tui::bare(given.as_deref(), log.as_deref(), line, file)
-                .map(ExitCode::from)
+            let socket = free_socket(given)?;
+            tui::bare(&socket, log.as_deref(), line, file).map(ExitCode::from)
         }
         _ => Err(usage()),
     }

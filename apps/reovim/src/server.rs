@@ -7,7 +7,7 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread;
 use std::time::Duration;
 
-use reovim_host::{clock, link};
+use reovim_host::{clock, fs, link};
 use reovim_kernel_interface::{Booted, Error};
 use reovim_kernel_runtime::{Connection, Kernel, Limits, Loader};
 
@@ -60,15 +60,27 @@ pub struct Links {
     inbound: Receiver<Inbound>,
     connections: BTreeMap<u64, Connection>,
     files: Files,
+    socket: String,
+}
+
+/// The socket file is this process's while the links live, so it goes
+/// with them and the name is free again. A killed process leaves one
+/// behind; the next [`Links::listen`] takes it over.
+impl Drop for Links {
+    fn drop(&mut self) {
+        let _ = fs::remove(&self.socket);
+    }
 }
 
 impl Links {
-    /// Listen at `socket`.
+    /// Listen at `socket`, replacing a socket file left by an earlier
+    /// run.
     pub fn listen(socket: &str) -> Result<Self, Fail> {
         let listener = link::listen(socket)?;
         let (sender, inbound) = channel();
         thread::spawn(move || accept_loop(&listener, &sender));
-        Ok(Self { inbound, connections: BTreeMap::new(), files: Files })
+        let socket = socket.to_string();
+        Ok(Self { inbound, connections: BTreeMap::new(), files: Files, socket })
     }
 
     /// Serve one message if one arrives within `wait`, forever with

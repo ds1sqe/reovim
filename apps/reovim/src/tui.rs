@@ -35,24 +35,27 @@ pub fn remote(
     run(client, line, ("", file), &mut || Ok(()))
 }
 
-/// Bare `reovim`: the server on this thread over `/`, listening only
-/// at a `socket` given, served between keys.
+/// Bare `reovim`: the server on this thread over `/`, listening at
+/// `socket` and served between keys, so a cli or another tui reaches
+/// this editor.
 pub fn bare(
-    socket: Option<&str>,
+    socket: &str,
     log: Option<&str>,
     line: Option<usize>,
     file: Option<&str>,
 ) -> Result<u8, Fail> {
     let (kernel, _modules) = boot("/")?;
-    let mut links = socket.map(Links::listen).transpose()?;
+    let mut links = Links::listen(socket)?;
     let mut sink = log.map(|path| Sink::open(&kernel, path)).transpose()?;
     let dir = under("", &reovim_host::dirs::work()?);
     let file = file.map(|file| under(&dir, file));
-    let client = Local::client(&kernel)?;
+    let mut client = Local::client(&kernel)?;
+    // The terminal is the editor's, so where it listens is said in the
+    // log the `server` form prints on stderr.
+    let entry = client.resolve("/sys/log")?;
+    client.write_all(entry, format!("listen {socket}").into_bytes())?;
     run(client, line, (&dir, file.as_deref()), &mut || {
-        if let Some(links) = &mut links {
-            links.drain(&kernel);
-        }
+        links.drain(&kernel);
         sink.as_mut().map_or(Ok(()), Sink::step)
     })
 }

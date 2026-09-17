@@ -13,6 +13,9 @@ CORPUS="${PARITY_CORPUS:-clients/tui/tests/parity}"
 DIR="$(mktemp -d /tmp/reovim-parity.XXXXXXXX)"
 readonly BIN CORPUS DIR
 TMUX=(tmux -L "reovim-parity-$$")
+# Each case's editor listens; its socket goes here, not in the user's
+# runtime directory.
+export XDG_RUNTIME_DIR="$DIR/run"
 # The session of the case under way, one per case on one server.
 SESSION=""
 cleanup() {

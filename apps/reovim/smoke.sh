@@ -71,6 +71,11 @@ editing() {
     shown "$1" "$2  [0-9]*:[0-9]*  r[0-9]*"
 }
 
+# How many sockets the runtime directory holds.
+sockets() {
+    ls "$XDG_RUNTIME_DIR" | grep -c '\.sock$' || true
+}
+
 # --- a repository, a commit message written and one aborted ---------
 git init -q "$DIR/repo"
 cd "$DIR/repo"
@@ -112,9 +117,16 @@ keys rebase : s / t h i r d / r e w o r d e d " " t h i r d / Enter Z Z
 # --- a new file by absolute path, absent until saved; two at once ---
 mkdir "$DIR/new"
 start new "$DIR" "$BIN $DIR/new/note"
-start other "$DIR/new" "$BIN ../other"
 editing new note
+start other "$DIR/new" "$BIN ../other"
 editing other other
+# The first editor has the default socket, the second one of its own;
+# the cli reaches the first and finds the tui that holds its terminal.
+[[ "$(sockets)" == 2 ]] || fail "two editors have $(sockets) sockets"
+[[ "$("$BIN" cli children /session/1/client)" == *" 1" ]] \
+    || fail "the running editor has no client rd 1"
+[[ "$("$BIN" cli read /session/1/client/1/capability)" == tui ]] \
+    || fail "the client of the running editor is not the tui"
 keys new i "fresh" Escape : q Enter
 shown new "E37: No write since last change"
 [[ ! -e "$DIR/new/note" ]] || fail "a new file exists before its save"
@@ -123,7 +135,7 @@ keys other i "x" Escape : w Enter : q ! Enter
 [[ "$(ended new)" == 0 && "$(ended other)" == 0 ]] || fail "quit failed"
 [[ "$(cat "$DIR/new/note")" == fresh ]] || fail "new file not written"
 [[ "$(cat "$DIR/other")" == x ]] || fail "second editor not written"
-[[ ! -e "$XDG_RUNTIME_DIR" ]] || fail "the runtime directory was touched"
+[[ "$(sockets)" == 0 ]] || fail "a socket was left behind"
 
 # --- no file: an unnamed buffer, E32 on :w, nothing written ---------
 start unnamed "$DIR" "$BIN"

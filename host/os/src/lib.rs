@@ -109,6 +109,14 @@ pub mod fs {
     pub fn create(path: &str) -> Result<(), Error> {
         backend::create(path)
     }
+
+    /// The file at `path` is gone.
+    ///
+    /// # Errors
+    /// As [`list`].
+    pub fn remove(path: &str) -> Result<(), Error> {
+        backend::remove(path)
+    }
 }
 
 /// Time, in the same units as [`Stat::mtime`].
