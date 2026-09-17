@@ -308,9 +308,13 @@ fn a_named_client_goes_on_after_its_link_is_cut() {
     assert_eq!(client.read(h, 0, 16).unwrap(), b"kept", "the handle lives");
     assert!(client.since().is_ok(), "the cursor goes on");
 
+    // An empty credential names nothing the Kernel could give back:
+    // the Session ended with the last caller in it, so there is no
+    // Session left for the next Connect to take up.
     let mut unnamed = rig.named(Vec::new(), Some(2));
     let h = unnamed.open(note, Rights::READ).unwrap();
-    let old = unnamed.cid();
-    assert_eq!(unnamed.read(h, 0, 16), Err(Fault::Kernel(Error::Invalid)));
-    assert_ne!(unnamed.cid(), old, "a new client rd, the handle gone");
+    let gone = unnamed.session();
+    assert_eq!(unnamed.read(h, 0, 16), Err(Fault::Carrier));
+    let mut other = rig.client();
+    assert_eq!(other.info(gone), Err(Fault::Kernel(Error::Invalid)));
 }

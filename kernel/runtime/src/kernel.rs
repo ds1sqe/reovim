@@ -80,7 +80,9 @@ pub struct CallerState {
     /// What a connection presented; empty for a Module or an unnamed
     /// link. A named caller survives its link for the next `Connect`.
     pub credential: Vec<u8>,
-    /// The Session and client rd of a connection.
+    /// The Session and client rd of a connection. A Session keeps no
+    /// list of its own: the callers it has are the callers this field
+    /// names it in, and it ends when none is left.
     pub client: Option<(Rd, Rd)>,
     /// A link is on it now.
     pub live: bool,
@@ -191,16 +193,46 @@ impl State {
             self.drivers[i] = Rc::new(Unloaded);
         }
         let caller = self.modules[index].caller;
-        self.callers.remove(&caller);
+        self.forget(caller);
     }
 
-    /// `rd` and its subtree gone, `Delete` on `parent`.
+    /// `rd` and its subtree gone, `Delete` on `parent`. The bytes of a
+    /// cell go with it; an rd id is never given out twice, so what is
+    /// left behind here is left forever.
     pub fn unregister(&mut self, rd: Rd, parent: Rd) {
         for gone in self.table.subtree(rd) {
             self.emit(gone, Kind::Gone, None);
+            self.cells.remove(&gone);
             self.table.remove(gone);
         }
         self.emit(parent, Kind::Delete, Some(rd));
+    }
+
+    /// The caller is gone: its client rd goes with it, and the Session
+    /// it was in ends once no caller is left in it. A named caller is
+    /// never forgotten this way, so a Session it is in stays for the
+    /// `Connect` that adopts it.
+    fn forget(&mut self, caller: Caller) {
+        let client = self.callers.remove(&caller).and_then(|c| c.client);
+        let Some((session, rd)) = client else { return };
+        if let Some(parent) = self.table.get(rd).ok().and_then(|e| e.parent) {
+            self.unregister(rd, parent);
+        }
+        let inside =
+            |c: &CallerState| c.client.is_some_and(|(at, _)| at == session);
+        if self.callers.values().any(inside) {
+            return;
+        }
+        self.session_end(session);
+    }
+
+    /// The Session is over: its subtree is unregistered deepest first,
+    /// every Module's per-session state with it, and `/session` sees
+    /// the `Delete`.
+    fn session_end(&mut self, session: Rd) {
+        if self.table.exists(session) {
+            self.unregister(session, SESSIONS);
+        }
     }
 
     fn new_caller(&mut self, module: Option<ModuleId>) -> Caller {
@@ -460,8 +492,12 @@ impl Kernel {
 
     /// The caller's link ended. A named caller waits for its next
     /// `Connect` with everything it holds; any other is over: its
-    /// handles closed, its watches and reply window dropped. The client
-    /// rd stays.
+    /// handles closed, its watches and reply window dropped, its client
+    /// rd unregistered.
+    ///
+    /// The Session goes with its last caller: once none is left in it,
+    /// and so none that could be adopted, the Kernel unregisters it
+    /// with everything under it and `/session` sees the `Delete`.
     pub fn caller_end(&self, caller: Caller) {
         let Some(handles) = self.state.borrow_mut().ending(caller) else {
             return;
@@ -479,7 +515,7 @@ impl Kernel {
         for h in handles {
             let _ = self.run(caller, Op::Close { h });
         }
-        self.state.borrow_mut().callers.remove(&caller);
+        self.state.borrow_mut().forget(caller);
     }
 
     /// One request. A `seq` seen before is answered from memory and the

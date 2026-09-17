@@ -87,6 +87,19 @@ sockets() {
     ls "$XDG_RUNTIME_DIR" | grep -c '\.sock$' || true
 }
 
+# What `/session` holds, once it holds `wanted` Sessions or two seconds
+# have gone. A link's end reaches the editor a moment after the cli
+# process that held it is done, so the listing is asked for again.
+sessions() {
+    local wanted="$1" i listed
+    for ((i = 0; i < 200; i++)); do
+        listed="$("$BIN" cli ls /session)"
+        [[ "$(wc -l <<< "$listed")" == "$wanted" ]] && break
+        sleep 0.01
+    done
+    printf '%s\n' "$listed"
+}
+
 # --- a repository, a commit message written and one aborted ---------
 git init -q "$DIR/repo"
 cd "$DIR/repo"
@@ -179,6 +192,12 @@ said="$("$BIN" cli read /session 2>&1 >/dev/null)" && code=0 || code=$?
 [[ "$said" == "reovim: read /session: a Container has no bytes; ls it" ]] \
     || fail "a Container read says: $said"
 [[ "$code" == 1 ]] || fail "a Container read exits $code"
+# Every cli run above made a Session of its own and took it away with
+# it; what `/session` holds is the editor's, 1, and the one the cli
+# doing the listing stands in.
+listed="$(sessions 2)"
+[[ "$(wc -l <<< "$listed")" == 2 && "$listed" == $'1\n'* ]] \
+    || fail "the cli runs left /session holding $(tr '\n' ' ' <<< "$listed")"
 keys new i "fresh" Escape : q Enter
 shown new "E37: No write since last change"
 [[ ! -e "$DIR/new/note" ]] || fail "a new file exists before its save"

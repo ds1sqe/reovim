@@ -70,6 +70,26 @@ impl Server {
         let out = String::from_utf8(self.cli(args, b"").unwrap()).unwrap();
         out.trim_end().to_string()
     }
+
+    /// The names under `/session`, once there are `wanted` of them or
+    /// two seconds have gone. A link's end reaches the server a moment
+    /// after the cli process that held it is done, so the count is
+    /// asked for again until it settles.
+    fn sessions(&self, wanted: usize) -> Vec<String> {
+        let start = Instant::now();
+        let over = || start.elapsed() > Duration::from_secs(2);
+        let mut names = self.listed();
+        while names.len() != wanted && !over() {
+            std::thread::sleep(Duration::from_millis(10));
+            names = self.listed();
+        }
+        names
+    }
+
+    /// The names under `/session`, one per line into a pipe.
+    fn listed(&self) -> Vec<String> {
+        self.line(&["ls", "/session"]).lines().map(str::to_string).collect()
+    }
 }
 
 impl Drop for Server {
@@ -235,4 +255,38 @@ fn a_bad_call_fails_before_anything_is_sent() {
     let made = server.line(&["call", "/module/fs/root", "create", "made"]);
     assert!(made.parse::<u64>().is_ok(), "an rd: {made}");
     assert!(server.dir.join("made").exists());
+}
+
+/// Every cli run makes a Session of its own and takes it away again:
+/// after ten of them `/session` holds only the one the cli that asks
+/// is in, and a watcher on `/session` sees a run arrive and leave.
+#[test]
+fn a_cli_run_takes_its_session_with_it() {
+    let server = Server::start("sessions");
+    for _ in 0..10 {
+        assert_eq!(server.line(&["lookup", "/"]), "0");
+    }
+    let listed = server.sessions(1);
+    assert_eq!(listed.len(), 1, "ten runs left {listed:?}");
+    assert!(listed[0].parse::<u64>().is_ok(), "a Session id: {listed:?}");
+
+    // A watcher in a run of its own, which the listing shows once it
+    // has connected; then one more run for it to watch.
+    let watcher = Command::new(env!("CARGO_BIN_EXE_reovim"))
+        .args(["cli", "--socket", &server.socket, "watch", "/session"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    assert_eq!(server.sessions(2).len(), 2, "the watcher never connected");
+    server.line(&["lookup", "/"]);
+    std::thread::sleep(Duration::from_millis(200));
+    let pid = watcher.id().to_string();
+    // SIGINT is what Ctrl-C makes; the loop ends and exits 0.
+    Command::new("kill").args(["-INT", &pid]).status().unwrap();
+    let out = watcher.wait_with_output().unwrap();
+    let seen = String::from_utf8(out.stdout).unwrap();
+    assert!(out.status.success(), "{seen}");
+    assert!(seen.contains(" Create "), "no Create: {seen}");
+    assert!(seen.contains(" Delete "), "no Delete: {seen}");
 }
