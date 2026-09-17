@@ -336,14 +336,27 @@ impl Tree {
     /// # Errors
     /// `Usage` for another shape; otherwise as [`Self::lookup`].
     pub fn resolve(&mut self, target: &str) -> Result<Rd, Fault> {
-        let bad = || Fault::Usage(format!("not a path or rd:<n>: {target}"));
+        self.resolve_at(target).map_err(|(_, fault)| fault)
+    }
+
+    /// [`Self::resolve`], with the name it stopped at: the first
+    /// segment that did not resolve, for whoever says where it stopped.
+    ///
+    /// # Errors
+    /// As [`Self::resolve`], the name beside the fault; the whole
+    /// target for a shape that is neither a path nor `rd:<n>`.
+    pub fn resolve_at(&mut self, target: &str) -> Result<Rd, (String, Fault)> {
+        let bad = || {
+            let text = format!("not a path or rd:<n>: {target}");
+            (target.to_string(), Fault::Usage(text))
+        };
         if let Some(number) = target.strip_prefix("rd:") {
             return number.parse().map(Rd).map_err(|_| bad());
         }
         let path = target.strip_prefix('/').ok_or_else(bad)?;
         let mut rd = ROOT;
         for name in path.split('/').filter(|n| !n.is_empty()) {
-            rd = self.lookup(rd, name)?;
+            rd = self.lookup(rd, name).map_err(|f| (name.to_string(), f))?;
         }
         Ok(rd)
     }

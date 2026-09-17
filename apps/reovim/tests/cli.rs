@@ -167,6 +167,46 @@ fn one_interactive_session_does_the_same() {
     assert_eq!(server.disk("note"), b"third");
 }
 
+/// `reovim cli` without a server: what the word could not do, and
+/// `--help`, which needs no link at all.
+#[test]
+fn a_command_says_its_line_and_help_needs_no_server() {
+    let server = Server::start("lines");
+    let read = server.cli(&["read", "/module/fs/root"], b"").unwrap_err();
+    assert_eq!(
+        read,
+        "reovim: read /module/fs/root: a Container has no bytes; ls it\n"
+    );
+    let nonsense = server.cli(&["nonsense"], b"").unwrap_err();
+    assert_eq!(nonsense, "reovim: unknown word nonsense; help lists them\n");
+    let entry = server.cli(&["help", "read"], b"").unwrap();
+    assert_eq!(
+        String::from_utf8(entry).unwrap(),
+        "read <target>                   bytes to stdout\n"
+    );
+
+    // No link is opened for `--help`, and a socket nobody listens at
+    // is said with its path.
+    let nowhere = server.dir.join("nowhere.sock");
+    let nowhere = nowhere.to_str().unwrap();
+    let cli = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_reovim"))
+            .args(["cli", "--socket", nowhere])
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    let helped = cli(&["--help"]);
+    assert!(helped.status.success());
+    assert_eq!(String::from_utf8(helped.stdout).unwrap().lines().count(), 12);
+    let missing = cli(&["read", "/"]);
+    assert_eq!(missing.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8(missing.stderr).unwrap(),
+        format!("reovim: no server at {nowhere}\n")
+    );
+}
+
 #[test]
 fn a_bad_call_fails_before_anything_is_sent() {
     let server = Server::start("bad");
@@ -178,7 +218,11 @@ fn a_bad_call_fails_before_anything_is_sent() {
         server.cli(&["call", "/module/fs/root", "nothing"], b"").unwrap_err();
     assert!(err.contains("no method"), "{err}");
     let err = server.cli(&["call", "/module/fs/root", "create", "a/b"], b"");
-    assert!(err.unwrap_err().contains("Invalid"), "the Driver refuses a slash");
+    assert_eq!(
+        err.unwrap_err(),
+        "reovim: call /module/fs/root: invalid\n",
+        "the Driver refuses a slash"
+    );
     let made = server.line(&["call", "/module/fs/root", "create", "made"]);
     assert!(made.parse::<u64>().is_ok(), "an rd: {made}");
     assert!(server.dir.join("made").exists());

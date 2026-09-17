@@ -85,12 +85,12 @@ fn hello_loads_and_unloads_through_the_cli() {
     let hello = server.hello();
     assert_eq!(
         server.cli(&["load", "/nowhere.rvm"]),
-        Err("reovim: Invalid".into())
+        Err("reovim: load /nowhere.rvm: invalid".into())
     );
     assert_eq!(server.cli(&["load", &hello]), Ok(String::new()));
     assert_eq!(
         server.cli(&["load", &hello]),
-        Err("reovim: Invalid".into()),
+        Err(format!("reovim: load {hello}: invalid")),
         "taken"
     );
     assert_eq!(server.cli(&["read", "/module/hello/count"]), Ok("0".into()));
@@ -99,7 +99,10 @@ fn hello_loads_and_unloads_through_the_cli() {
         Ok("1".into())
     );
     assert_eq!(server.cli(&["read", "/module/hello/count"]), Ok("7".into()));
-    assert_eq!(server.cli(&["unload", "fs"]), Err("reovim: Denied".into()));
+    assert_eq!(
+        server.cli(&["unload", "fs"]),
+        Err("reovim: unload fs: denied".into())
+    );
 
     // A raw link holds a handle open: unload waits for it.
     let end = link::open(&server.socket).unwrap();
@@ -122,12 +125,15 @@ fn hello_loads_and_unloads_through_the_cli() {
     else {
         panic!("open")
     };
-    assert_eq!(server.cli(&["unload", "hello"]), Err("reovim: Busy".into()));
+    assert_eq!(
+        server.cli(&["unload", "hello"]),
+        Err("reovim: unload hello: busy; try again".into())
+    );
     ask(&Message::Request(Op::Close { h }));
     assert_eq!(server.cli(&["unload", "hello"]), Ok(String::new()));
     assert_eq!(
         server.cli(&["lookup", "/module/hello"]),
-        Err("reovim: Invalid".into())
+        Err("reovim: lookup /module/hello: no such rd (hello)".into())
     );
     let log = server.cli(&["log"]).unwrap();
     assert!(

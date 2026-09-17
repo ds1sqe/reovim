@@ -1,13 +1,12 @@
 //! The cli library in-process: the 01.5 script through `input`, and
 //! completion from the tree, without a terminal.
 
-use reovim_client::{Client, Fault, Rd};
-use reovim_client_cli::{complete, input};
-use reovim_kernel_interface::Error;
+use reovim_client::{Client, Rd};
+use reovim_client_cli::{Miss, complete, input};
 use reovim_rig::Rig;
 
 /// One command line; its output as text.
-fn run(client: &mut Client, line: &str) -> Result<String, Fault> {
+fn run(client: &mut Client, line: &str) -> Result<String, Miss> {
     let words: Vec<String> =
         line.split_whitespace().map(str::to_string).collect();
     input(client, &words).map(|out| String::from_utf8(out).unwrap())
@@ -58,17 +57,22 @@ fn the_script_of_the_process_test_runs_in_process() {
 fn faults_before_and_after_sending() {
     let rig = Rig::new("faults");
     let mut client = rig.client();
-    let err = |r: Result<String, Fault>| r.unwrap_err();
-    assert!(matches!(err(run(&mut client, "")), Fault::Usage(_)));
-    assert!(matches!(err(run(&mut client, "nothing /")), Fault::Usage(_)));
-    assert!(matches!(err(run(&mut client, "lookup")), Fault::Usage(_)));
-    assert!(matches!(err(run(&mut client, "lookup / x")), Fault::Usage(_)));
+    let err = |r: Result<String, Miss>| r.unwrap_err().to_string();
+    for (line, said) in [
+        ("", "help lists them"),
+        ("nothing /", "unknown word nothing"),
+        ("lookup", "usage: lookup <target>"),
+        ("lookup / x", "usage: lookup <target>"),
+    ] {
+        let miss = err(run(&mut client, line));
+        assert!(miss.contains(said), "{line}: {miss}");
+    }
     let bad = err(run(&mut client, "call /module/fs/root create"));
-    assert!(bad.to_string().contains("does not fit"), "{bad}");
+    assert!(bad.contains("does not fit"), "{bad}");
     let none = err(run(&mut client, "call /module/fs/root nothing"));
-    assert!(none.to_string().contains("no method"), "{none}");
+    assert!(none.contains("no method"), "{none}");
     let refused = err(run(&mut client, "call /module/fs/root create a/b"));
-    assert_eq!(refused, Fault::Kernel(Error::Invalid));
+    assert_eq!(refused, "call /module/fs/root: invalid");
     let made = line(&mut client, "call /module/fs/root create made");
     assert!(made.parse::<u64>().is_ok(), "an rd: {made}");
     assert!(rig.dir().join("made").exists());

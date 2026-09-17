@@ -21,12 +21,15 @@ use std::fmt;
 use std::process::ExitCode;
 
 use reovim_client::Fault;
+use reovim_client_cli::Miss;
 
 /// Why the binary stops, printed once on stderr.
 pub enum Fail {
     Usage(String),
     Host(reovim_host::Error),
     Client(Fault),
+    /// One command of the cli, in the cli's own words.
+    Cli(Miss),
     /// SIGTERM or SIGHUP: the terminal restored, nothing written.
     Signal,
 }
@@ -37,6 +40,7 @@ impl fmt::Display for Fail {
             Self::Usage(text) => write!(f, "{text}"),
             Self::Host(error) => write!(f, "host: {error:?}"),
             Self::Client(fault) => write!(f, "{fault}"),
+            Self::Cli(miss) => write!(f, "{miss}"),
             Self::Signal => write!(f, "ended by a signal"),
         }
     }
@@ -51,6 +55,12 @@ impl From<reovim_host::Error> for Fail {
 impl From<Fault> for Fail {
     fn from(fault: Fault) -> Self {
         Self::Client(fault)
+    }
+}
+
+impl From<Miss> for Fail {
+    fn from(miss: Miss) -> Self {
+        Self::Cli(miss)
     }
 }
 

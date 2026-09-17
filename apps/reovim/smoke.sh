@@ -139,6 +139,12 @@ editing other other
 serves="$("$BIN" cli read /session/1/client/1/capability)"
 [[ "$serves" == $'keys\ngrid\nprocess' ]] \
     || fail "the running editor's client serves $serves"
+# A wrong command: one line on stderr, naming the word and the target,
+# and exit 1.
+said="$("$BIN" cli read /session 2>&1 >/dev/null)" && code=0 || code=$?
+[[ "$said" == "reovim: read /session: a Container has no bytes; ls it" ]] \
+    || fail "a Container read says: $said"
+[[ "$code" == 1 ]] || fail "a Container read exits $code"
 keys new i "fresh" Escape : q Enter
 shown new "E37: No write since last change"
 [[ ! -e "$DIR/new/note" ]] || fail "a new file exists before its save"

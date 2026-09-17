@@ -5,7 +5,7 @@
 use std::io::{Read, Write};
 
 use reovim_client::{Client, Fault, Key};
-use reovim_client_cli::{Act, Line, complete, input};
+use reovim_client_cli::{Act, Line, Miss, complete, help, input, plain};
 use reovim_host::term;
 
 use crate::Fail;
@@ -13,14 +13,29 @@ use crate::remote::Remote;
 
 const PROMPT: &str = "> ";
 
-/// Run `command`, or an interactive session when it is empty.
+/// Run `command`, or an interactive session when it is empty. `help`
+/// and `--help` are answered without a link; anything else needs one.
 pub fn run(socket: &str, command: &[String]) -> Result<(), Fail> {
-    let mut client = Remote::client(socket, Vec::new())?;
+    if let Some(text) = help(command) {
+        return Ok(write(text?.as_bytes())?);
+    }
+    let mut client = linked(socket)?;
     if !command.is_empty() {
         let out = input(&mut client, &filled(command)?)?;
         return Ok(write(&out)?);
     }
     if term::is_tty() { terminal(&mut client) } else { piped(&mut client) }
+}
+
+/// A Client on the server at `socket`; a link that never opened says
+/// so with the path, which only the app knows.
+fn linked(socket: &str) -> Result<Client, Fail> {
+    match Remote::client(socket, Vec::new()) {
+        Err(Fail::Host(_) | Fail::Client(Fault::Carrier)) => {
+            Err(plain(&Fault::Carrier, Some(socket)).into())
+        }
+        other => other,
+    }
 }
 
 /// `write <target>` takes its bytes from stdin.
@@ -30,7 +45,7 @@ fn filled(words: &[String]) -> Result<Vec<String>, Fail> {
         let mut bytes = Vec::new();
         std::io::stdin().read_to_end(&mut bytes).map_err(|_| Fault::Carrier)?;
         let text = String::from_utf8(bytes)
-            .map_err(|_| Fault::Usage("stdin is not UTF-8".to_string()))?;
+            .map_err(|_| Miss::line("stdin is not UTF-8"))?;
         words.push(text);
     }
     Ok(words)
@@ -53,7 +68,10 @@ fn piped(client: &mut Client) -> Result<(), Fail> {
         match words.first().map(String::as_str) {
             None => {}
             Some("quit") => break,
-            Some(_) => report(input(client, &words).and_then(|o| write(&o))),
+            Some(_) => report(
+                input(client, &words)
+                    .and_then(|o| write(&o).map_err(|f| plain(&f, None))),
+            ),
         }
     }
     Ok(())
@@ -63,9 +81,9 @@ fn split(line: &str) -> Vec<String> {
     line.split_whitespace().map(str::to_string).collect()
 }
 
-fn report(result: Result<(), Fault>) {
-    if let Err(fault) = result {
-        eprintln!("reovim: {fault}");
+fn report(result: Result<(), Miss>) {
+    if let Err(miss) = result {
+        eprintln!("reovim: {miss}");
     }
 }
 
@@ -117,7 +135,7 @@ fn submit(client: &mut Client, text: &str) -> Result<bool, Fail> {
         Some(_) => {
             match input(client, &words) {
                 Ok(out) => shown(&out)?,
-                Err(fault) => raw(format!("reovim: {fault}\n").as_bytes())?,
+                Err(miss) => raw(format!("reovim: {miss}\n").as_bytes())?,
             }
             Ok(true)
         }
