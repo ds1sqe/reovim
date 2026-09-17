@@ -24,7 +24,7 @@ use core::fmt::Write as _;
 
 use reovim_client::{
     Client, Decl, Error, Event, Fault, Field, Flags, Handle, Hash, Info, Kind,
-    ROOT, Rd, Rights, Tree, Ty, log, value,
+    ROOT, Rd, Rights, Tree, Ty, log, value, walk,
 };
 
 pub use complete::{Completion, complete};
@@ -690,13 +690,8 @@ fn where_is(tree: &mut Tree, rd: Rd) -> Result<String, Fault> {
 }
 
 /// The rd of `target` from where the shell stands, the one walk every
-/// word takes.
-///
-/// `rd:<n>` is that rd wherever the line stands. Anything else is
-/// walked segment by segment, from the root when it begins with `/`
-/// and from the cwd when it does not, `.` staying where it is and `..`
-/// going to the parent; so a `.` or a `..` inside an absolute path is
-/// a move and never a name to look up.
+/// word takes: `rd:<n>` is that rd wherever the line stands, and
+/// anything else is the tree's own [`walk`] from the cwd.
 fn locate(
     tree: &mut Tree,
     shell: &Shell,
@@ -705,23 +700,7 @@ fn locate(
     if target.starts_with("rd:") {
         return tree.resolve_at(target);
     }
-    let mut rd = if target.starts_with('/') { ROOT } else { shell.cwd };
-    let named = |name: &&str| !name.is_empty() && *name != ".";
-    for name in target.split('/').filter(named) {
-        let step =
-            if name == ".." { up(tree, rd) } else { tree.lookup(rd, name) };
-        rd = step.map_err(|fault| (name.to_string(), fault))?;
-    }
-    Ok(rd)
-}
-
-/// The parent of `rd`; the root is its own parent, as `cd /..` in a
-/// shell is `/`.
-fn up(tree: &mut Tree, rd: Rd) -> Result<Rd, Fault> {
-    if rd == ROOT {
-        return Ok(ROOT);
-    }
-    tree.parent(rd)
+    walk(tree, shell.cwd, target)
 }
 
 /// The rd of `target`, or the Miss naming the segment that stopped the

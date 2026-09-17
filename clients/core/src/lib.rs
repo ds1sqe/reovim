@@ -23,7 +23,7 @@ pub mod value;
 
 pub use caps::{BAR, BLOCK, Caps, MATCH, SELECTION, grid, keys, open, process};
 pub use client::{Carrier, Client, ROOT, Tree, under};
-pub use complete::paths;
+pub use complete::{paths, walk};
 pub use fault::Fault;
 pub use input::Key;
 pub use plugin::{Ctx, Plugin, Start};

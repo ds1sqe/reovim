@@ -1,13 +1,14 @@
-//! The one path completion: the names that may stand where a partly
-//! typed one does, read from the tree itself.
+//! Walking the tree by name, and the one path completion above it:
+//! the names that may stand where a partly typed one does, read from
+//! the tree itself.
 //!
-//! The cli completes a target with it from where its `Shell` stands,
-//! and a Plugin the argument of a word from where the Plugin works.
-//! Neither knows a Module: these are the children of a Container,
-//! whatever put them there.
+//! The cli walks a target with [`walk`] and completes one with
+//! [`paths`], both from where its `Shell` stands; a Plugin does the
+//! same from where the Plugin works. Neither knows a Module: these
+//! are the children of a Container, whatever put them there.
 
 use alloc::format;
-use alloc::string::String;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use reovim_kernel_interface::{Flags, Rd};
@@ -45,13 +46,28 @@ pub fn paths(tree: &mut Tree, under: Rd, word: &str) -> Vec<String> {
     names
 }
 
-/// The Container `dir` names from `under`, or from the root where it
-/// begins with `/`.
-fn walk(tree: &mut Tree, under: Rd, dir: &str) -> Result<Rd, Fault> {
-    let mut rd = if dir.starts_with('/') { ROOT } else { under };
+/// The rd `path` names, walked segment by segment: the one walk every
+/// user of a path takes.
+///
+/// From the tree's root when `path` begins with `/` and from `from`
+/// when it does not, `.` staying where it is and `..` going to the
+/// parent; so a `.` or a `..` inside an absolute path is a move and
+/// never a name to look up.
+///
+/// # Errors
+/// The name that stopped the walk beside the fault, as
+/// [`Tree::resolve_at`] gives it, for whoever says where it stopped.
+pub fn walk(
+    tree: &mut Tree,
+    from: Rd,
+    path: &str,
+) -> Result<Rd, (String, Fault)> {
+    let mut rd = if path.starts_with('/') { ROOT } else { from };
     let step = |name: &&str| !name.is_empty() && *name != ".";
-    for name in dir.split('/').filter(step) {
-        rd = if name == ".." { up(tree, rd)? } else { tree.lookup(rd, name)? };
+    for name in path.split('/').filter(step) {
+        let found =
+            if name == ".." { up(tree, rd) } else { tree.lookup(rd, name) };
+        rd = found.map_err(|fault| (name.to_string(), fault))?;
     }
     Ok(rd)
 }
