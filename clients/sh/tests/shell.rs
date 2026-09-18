@@ -34,6 +34,7 @@ fn cd_moves_the_line_and_pwd_says_where_it_stands() {
     assert_eq!(go(&mut client, "cd .."), "");
     assert_eq!(go(&mut client, "pwd"), "/module/fs\n");
     assert_eq!(go(&mut client, "cd ."), "");
+    assert_eq!(go(&mut client, "pwd"), "/module/fs\n");
     assert_eq!(go(&mut client, "cd root/../../text"), "");
     assert_eq!(go(&mut client, "pwd"), "/module/text\n");
 
@@ -44,6 +45,9 @@ fn cd_moves_the_line_and_pwd_says_where_it_stands() {
     assert_eq!(go(&mut client, "ls /module/./fs"), "root\n");
     assert_eq!(go(&mut client, "cd /.."), "");
     assert_eq!(go(&mut client, "pwd"), "/\n");
+    assert_eq!(go(&mut client, "cd /module/text/../fs/root/./"), "");
+    assert_eq!(go(&mut client, "pwd"), "/module/fs/root\n");
+    assert_eq!(go(&mut client, "cat /module/fs/root/../root/note"), "hi\n");
 
     // `cd -` is the one before, twice over; no target is the root.
     assert_eq!(go(&mut client, "cd /module/fs"), "");
@@ -106,6 +110,15 @@ fn pwd_past_the_depth_is_the_rd() {
     assert!(rd.starts_with("rd:"), "past 64 names: {rd}");
     assert_eq!(go(&mut client, "ls"), "note\n");
     assert_eq!(go(&mut client, "cat note"), "bottom\n", "ops are per rd");
+
+    // Back up to where the names fit again, and the path is a path.
+    for _ in 0..3 {
+        assert_eq!(go(&mut client, "cd .."), "");
+    }
+    let above = format!("/module/fs/root/{}\n", names[..61].join("/"));
+    assert_eq!(go(&mut client, "pwd"), above);
+    assert_eq!(go(&mut client, "cd ../.."), "");
+    assert_eq!(go(&mut client, "cat d59/d60/d61/d62/d63/note"), "bottom\n");
 }
 
 #[test]

@@ -194,11 +194,14 @@ fn connect_resolve_and_read_whole() {
     let root = client.resolve("/module/fs/root").unwrap();
     assert_eq!(client.children(root).unwrap(), vec![note]);
 
-    assert!(matches!(client.resolve("note"), Err(Fault::Usage(_))));
-    assert!(matches!(client.resolve("rd:x"), Err(Fault::Usage(_))));
+    // One walk answers for every shape: a name with no `/` is read
+    // under the root, an `rd:` that is no number is an ordinary name
+    // there, and a `..` inside a path is a move and never a name.
+    assert_eq!(client.resolve("note"), Err(Fault::Kernel(Error::Invalid)));
+    assert_eq!(client.resolve("rd:x"), Err(Fault::Kernel(Error::Invalid)));
     assert_eq!(
         client.resolve("/module/fs/root/.."),
-        Err(Fault::Kernel(Error::Invalid))
+        client.resolve("/module/fs")
     );
 }
 

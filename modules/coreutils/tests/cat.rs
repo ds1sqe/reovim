@@ -1,13 +1,10 @@
-//! `cat` over the rig: what one run's output cell holds, beside the
-//! bytes the cli's own `cat` prints of the same targets, and what a
-//! target that holds no bytes does to the run.
+//! `cat` over the rig: the bytes of each target in turn in one run's
+//! output cell, and what a target that holds no bytes does to the run.
 //!
-//! Under `f` the cell goes on, and the reads of it stand beside the
-//! cli's own follower of the same line in the same rig, event for
-//! event.
+//! Under `f` the cell goes on, and a read at its end answers whatever a
+//! second client wrote into the target since the read before.
 
 use reovim_client::{Client, Error, Fault, Handle, ROOT, Rd, Rights};
-use reovim_client_cli::{Follow, Out, Shell, following, input};
 use reovim_module_coreutils::bins::cat::Args;
 use reovim_rig::Rig;
 
@@ -46,43 +43,10 @@ fn drain(client: &mut Client, rd: Rd) -> String {
     String::from_utf8(bytes).unwrap()
 }
 
-/// The run and the cli line that are the same bytes: those bytes, once
-/// both have printed them. `at` is where the line stands, which the
-/// cli keeps as a path and the run as the `cwd` of its record.
-fn same(
-    client: &mut Client,
-    at: (Rd, &str),
-    args: &Args,
-    line: &str,
-) -> String {
+/// The bytes one run's output cell holds, read to its end.
+fn text(client: &mut Client, args: &Args) -> String {
     let cell = run(client, args).unwrap();
-    let said = drain(client, cell);
-    let words: Vec<String> =
-        line.split_whitespace().map(str::to_string).collect();
-    let mut shell = Shell::at(at.0, at.1.to_string());
-    let printed = input(client, &mut shell, &words, Out::plain()).unwrap();
-    assert_eq!(said, String::from_utf8(printed).unwrap(), "{line}");
-    said
-}
-
-/// The cli's own follower of `line`, begun in this rig beside the run
-/// it is compared with.
-fn planned(client: &mut Client, line: &str) -> Follow {
-    let words: Vec<String> =
-        line.split_whitespace().map(str::to_string).collect();
-    following(client, &Shell::default(), &words, Out::plain()).unwrap().unwrap()
-}
-
-/// Everything the cli's follower prints of what has happened since it
-/// was asked last.
-fn printed(client: &mut Client, plan: &mut Follow) -> String {
-    let mut said = Vec::new();
-    for event in client.since().unwrap() {
-        if let Some(bytes) = plan.event(client, event).unwrap() {
-            said.extend(bytes);
-        }
-    }
-    String::from_utf8(said).unwrap()
+    drain(client, cell)
 }
 
 /// The cell read at `at`, as a shell reads a following one: the bytes,
@@ -110,20 +74,15 @@ fn a_run_writes_the_bytes_of_each_target_in_turn() {
     rig.file("two", b"second\n");
     let mut client = rig.client();
     let root = "/module/fs/root";
-    let here = (ROOT, "/");
 
     let one = format!("{root}/one");
     let two = format!("{root}/two");
-    let said = same(&mut client, here, &args(&[&one]), &format!("cat {one}"));
-    assert_eq!(said, "first\n");
-    let both = args(&[&one, &two]);
-    let said = same(&mut client, here, &both, &format!("cat {one} {two}"));
-    assert_eq!(said, "first\nsecond\n");
+    assert_eq!(text(&mut client, &args(&[&one])), "first\n");
+    assert_eq!(text(&mut client, &args(&[&one, &two])), "first\nsecond\n");
 
     // A cell of the Kernel's own reads the same way a file does.
-    let level =
-        same(&mut client, here, &args(&["/sys/loglevel"]), "cat /sys/loglevel");
-    assert!(!level.is_empty(), "the level the Kernel logs at");
+    let level = text(&mut client, &args(&["/sys/loglevel"]));
+    assert_eq!(level, "info", "the level the Kernel logs at");
 }
 
 #[test]
@@ -134,19 +93,18 @@ fn a_target_is_walked_from_the_cwd_the_run_was_given() {
     std::fs::write(rig.dir().join("sub/deep"), b"x").unwrap();
     let mut client = rig.client();
     let root = client.resolve("/module/fs/root").unwrap();
-    let at = (root, "/module/fs/root");
 
-    for target in ["note", "sub/deep", "./sub/../note"] {
+    for (target, bytes) in
+        [("note", "hi\n"), ("sub/deep", "x"), ("./sub/../note", "hi\n")]
+    {
         let mut relative = args(&[target]);
         relative.cwd = root;
-        same(&mut client, at, &relative, &format!("cat {target}"));
+        assert_eq!(text(&mut client, &relative), bytes, "{target}");
     }
     // An rd names the same cell wherever the line stands.
     let note = client.resolve("/module/fs/root/note").unwrap();
     let rd = format!("rd:{}", note.0);
-    let said =
-        same(&mut client, (ROOT, "/"), &args(&[&rd]), &format!("cat {rd}"));
-    assert_eq!(said, "hi\n");
+    assert_eq!(text(&mut client, &args(&[&rd])), "hi\n");
 }
 
 #[test]
@@ -156,12 +114,12 @@ fn a_target_that_holds_no_bytes_fails_the_run_and_leaves_no_cell() {
     let mut client = rig.client();
     let cat = client.resolve("/bin/cat").unwrap();
 
-    // A Container has no bytes, as the cli says of the same target.
+    // A Container has no bytes.
     assert_eq!(
         run(&mut client, &args(&["/module/fs/root"])),
         Err(Fault::Kernel(Error::Unsupported))
     );
-    // A run stops at the first target that fails, as the cli does.
+    // A run stops at the first target that fails.
     assert_eq!(
         run(&mut client, &args(&["/module/fs/root/note", "/nowhere"])),
         Err(Fault::Kernel(Error::Invalid))
@@ -189,22 +147,18 @@ fn a_following_run_answers_what_a_second_client_writes() {
     let target = "/module/fs/root/note";
     let rd = client.resolve(target).unwrap();
 
-    // Both watch before anything is written: the run, and the cli's own
-    // follower of the same line.
+    // The target is watched before it is read, so nothing written
+    // between the two is missed.
     let cell = run(&mut client, &Args { f: true, ..args(&[target]) }).unwrap();
-    let mut plan = planned(&mut client, &format!("cat -f {target}"));
     let h = client.open(cell, Rights::READ).unwrap();
     assert_eq!(next(&mut client, h, 0).unwrap(), "first\n");
-    assert_eq!(plan.first, b"first\n".to_vec());
 
     // At the end of what the cell holds, with nothing new: not the end,
     // which an empty read would be.
     assert_eq!(next(&mut client, h, 6), Err(Fault::Kernel(Error::Busy)));
 
     other.write_all(rd, b"second\n".to_vec()).unwrap();
-    let said = next(&mut client, h, 6).unwrap();
-    assert_eq!(said, printed(&mut client, &mut plan));
-    assert_eq!(said, "second\n");
+    assert_eq!(next(&mut client, h, 6).unwrap(), "second\n");
     assert_eq!(next(&mut client, h, 13), Err(Fault::Kernel(Error::Busy)));
 
     // The cell grew where it stood: every offset stays readable.
@@ -223,15 +177,11 @@ fn a_run_that_counts_its_answers_ends_after_them() {
 
     let counted = Args { f: true, n: 1, ..args(&[target]) };
     let cell = run(&mut client, &counted).unwrap();
-    let mut plan = planned(&mut client, &format!("cat -f -n 1 {target}"));
-    assert_eq!(plan.limit, Some(1));
     let h = client.open(cell, Rights::READ).unwrap();
     assert_eq!(next(&mut client, h, 0).unwrap(), "first\n");
 
     other.write_all(rd, b"second\n".to_vec()).unwrap();
-    let said = next(&mut client, h, 6).unwrap();
-    assert_eq!(said, printed(&mut client, &mut plan));
-    assert_eq!(said, "second\n");
+    assert_eq!(next(&mut client, h, 6).unwrap(), "second\n");
     // The one answer is spent, so the read past it is the empty read
     // that ends any cell.
     assert_eq!(next(&mut client, h, 13).unwrap(), "");

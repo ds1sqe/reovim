@@ -418,3 +418,61 @@ fn row(step: Step, error: Error) -> &'static str {
     };
     at(step).or_else(|| at(Step::Op)).unwrap_or("refused")
 }
+
+#[cfg(test)]
+mod tests {
+    use alloc::string::ToString;
+    use alloc::vec::Vec;
+
+    use reovim_client::{Error, Fault};
+
+    use super::{CAUSES, Miss, Step, cause, row};
+
+    /// The nine the Kernel may answer with.
+    const ERRORS: [Error; 9] = [
+        Error::Denied,
+        Error::Unsupported,
+        Error::Invalid,
+        Error::Stale,
+        Error::Busy,
+        Error::NoSpace,
+        Error::Closed,
+        Error::Gone,
+        Error::Cancelled,
+    ];
+
+    #[test]
+    fn every_row_of_the_cause_table_is_its_own_and_no_error_is_nameless() {
+        let mut seen: Vec<(Step, Error)> = Vec::new();
+        for (step, error, text) in CAUSES {
+            let key = (*step, *error);
+            assert!(!seen.contains(&key), "{step:?} {error:?} twice");
+            seen.push(key);
+            assert!(!text.is_empty() && !text.ends_with(' '), "{text}");
+            // `{}` is filled by the call site: the name that stopped a
+            // walk, which only a resolve has.
+            let holes = text.matches("{}").count();
+            assert_eq!(holes, usize::from(*step == Step::Resolve), "{text}");
+        }
+        // The op step answers for all nine, so no error is ever
+        // nameless at either step.
+        for error in ERRORS {
+            assert!(seen.contains(&(Step::Op, error)), "{error:?} has no row");
+            assert_ne!(row(Step::Resolve, error), "refused", "{error:?}");
+        }
+    }
+
+    #[test]
+    fn a_fault_that_is_not_the_kernels_is_said_as_the_shell_has_it() {
+        // The link and the wire are the shell's own two sentences; what
+        // a caller already said in words is said again as it is.
+        assert_eq!(cause(Step::Op, &Fault::Carrier, ""), "link gone");
+        assert_eq!(
+            cause(Step::Op, &Fault::Wire, ""),
+            "not a message from the server"
+        );
+        let own = Fault::Usage("said as it is".to_string());
+        assert_eq!(cause(Step::Op, &own, ""), "said as it is");
+        assert_eq!(Miss::line("said as it is").to_string(), "said as it is");
+    }
+}

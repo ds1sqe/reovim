@@ -321,3 +321,112 @@ fn day_name(weekday: u64) -> &'static str {
     const DAYS: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     DAYS[usize::try_from(weekday % 7).unwrap_or(0)]
 }
+
+#[cfg(test)]
+mod tests {
+    use alloc::string::{String, ToString};
+
+    use reovim_sdk::log::Entry;
+
+    use super::{Args, Form, show};
+    use crate::names::Names;
+
+    /// 2026-09-17 12:34:56 UTC, where these entries' boot stands. A run
+    /// over the rig is stamped with the Kernel's own clock, so the two
+    /// forms below are read from entries made here instead.
+    const BOOT: u64 = 1_789_648_496_000_000_000;
+
+    /// A run with nothing asked for.
+    fn plain() -> Args {
+        Args {
+            t: false,
+            T: false,
+            H: false,
+            d: false,
+            r: false,
+            x: false,
+            k: false,
+            w: false,
+            W: false,
+            f: String::new(),
+            l: String::new(),
+            color: false,
+        }
+    }
+
+    /// One entry `after` nanoseconds past the boot.
+    fn entry(seq: u64, after: u64, mark: &str, level: u8, text: &str) -> Entry {
+        Entry {
+            seq,
+            time: BOOT + after,
+            mark: mark.to_string(),
+            level,
+            bytes: text.as_bytes().to_vec(),
+        }
+    }
+
+    /// What a run of `args` writes of `entries`, stamped from the first
+    /// one's time and knowing no name for any number they hold.
+    fn shown(entries: &[Entry], args: Args) -> String {
+        let form = Form::of(args).unwrap();
+        let boot = entries.first().map_or(0, |entry| entry.time);
+        let mut last = None;
+        show(entries, boot, &mut last, &form, &Names::default())
+    }
+
+    #[test]
+    fn the_human_form_says_the_minute_once() {
+        let entries = [
+            entry(1, 0, "kernel", 6, "first"),
+            entry(2, 12_345_000, "kernel", 6, "within"),
+            entry(3, 61_000_000_000, "kernel", 6, "later"),
+        ];
+        let said = shown(&entries, Args { H: true, ..plain() });
+        assert_eq!(
+            said,
+            "[Sep17 12:34] first\n\
+             [  +0.012345] within\n\
+             [Sep17 12:35] later\n"
+        );
+    }
+
+    #[test]
+    fn a_number_no_one_can_name_stays_the_number() {
+        let call = "call rd=120 api=30d1a3b10a4306ee method=2 reply took=8123";
+        let entries = [
+            entry(1, 0, "kernel", 7, call),
+            entry(2, 1000, "kernel", 7, "op=read caller=3 rd=120 took=1200000"),
+            entry(
+                3,
+                2000,
+                "kernel",
+                7,
+                "op=write caller=3 rd=120 took=1500000000",
+            ),
+            entry(4, 3000, "kernel", 7, "op=close caller=3 rd=120 took=812"),
+            entry(5, 4000, "fs", 6, "rd=120 is the Module's own word"),
+        ];
+        // An rd the tree no longer has is `rd:<n>`, which is what a
+        // shell takes as a target for it; a hash with no declaration
+        // stays the hash, and a method with none to name it stays the
+        // number. The keys stay whatever the value becomes, and `took=`
+        // is said in a unit.
+        let said = shown(&entries, Args { t: true, ..plain() });
+        let lines: [&str; 5] = [
+            "call rd=rd:120 api=30d1a3b10a4306ee method=2 reply \
+             took=8.123\u{b5}s",
+            "op=read caller=3 rd=rd:120 took=1.2ms",
+            "op=write caller=3 rd=rd:120 took=1.5s",
+            "op=close caller=3 rd=rd:120 took=812ns",
+            // Only the Kernel writes in numbers; another mark's words
+            // stand.
+            "rd=120 is the Module's own word",
+        ];
+        assert_eq!(said.lines().collect::<alloc::vec::Vec<_>>(), lines);
+
+        // `r` is the entry as the Kernel wrote it, whatever else is
+        // asked.
+        let raw = shown(&entries, Args { r: true, T: true, ..plain() });
+        assert_eq!(raw.lines().next(), Some(call));
+    }
+}

@@ -12,7 +12,6 @@ publish = false
 reovim-client = { path = "../core" }
 
 [dev-dependencies]
-reovim-client-cli = { path = "../cli" }
 reovim-module-coreutils = { path = "../../modules/coreutils" }
 reovim-rig = { path = "../rig" }
 reovim-sdk = { path = "../../sdk/rust" }

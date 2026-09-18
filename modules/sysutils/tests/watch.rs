@@ -1,9 +1,7 @@
-//! `watch` over the rig: a cell that holds nothing and goes on, whose
-//! reads stand beside the cli's own follower of the same line in the
-//! same rig, event for event.
+//! `watch` over the rig: a cell that holds nothing and goes on, one
+//! line per event under its target.
 
 use reovim_client::{Client, Error, Fault, Handle, ROOT, Rd, Rights};
-use reovim_client_cli::{Follow, Out, Paint, Shell, following};
 use reovim_module_sysutils::bins::watch::Args;
 use reovim_rig::Rig;
 
@@ -19,26 +17,6 @@ fn run(client: &mut Client, args: &Args) -> Result<Rd, Fault> {
     let watch = client.resolve("/bin/watch")?;
     let out = client.call_by_name(watch, "run", reovim_sdk::encode(args))?;
     Ok(reovim_sdk::decode(&out)?)
-}
-
-/// The cli's own follower of `line`, begun in this rig beside the run
-/// it is compared with.
-fn planned(client: &mut Client, line: &str, out: Out) -> Follow {
-    let words: Vec<String> =
-        line.split_whitespace().map(str::to_string).collect();
-    following(client, &Shell::default(), &words, out).unwrap().unwrap()
-}
-
-/// Everything the cli's follower prints of what has happened since it
-/// was asked last.
-fn printed(client: &mut Client, plan: &mut Follow) -> String {
-    let mut said = Vec::new();
-    for event in client.since().unwrap() {
-        if let Some(bytes) = plan.event(client, event).unwrap() {
-            said.extend(bytes);
-        }
-    }
-    String::from_utf8(said).unwrap()
 }
 
 /// Everything the cell holds from `at` on, read as a shell reads a
@@ -81,7 +59,6 @@ fn a_run_says_what_happened_under_a_container() {
     client.children(rd).unwrap();
 
     let cell = run(&mut client, &args(root)).unwrap();
-    let mut plan = planned(&mut client, &format!("watch {root}"), Out::plain());
     let h = client.open(cell, Rights::READ).unwrap();
     // A cell that holds nothing is not over: nothing has happened yet.
     assert_eq!(client.read(h, 0, 64), Err(Fault::Kernel(Error::Busy)));
@@ -89,7 +66,6 @@ fn a_run_says_what_happened_under_a_container() {
     let made = reovim_sdk::encode(&"made".to_string());
     other.call_by_name(rd, "create", made).unwrap();
     let said = so_far(&mut client, h, 0);
-    assert_eq!(said, printed(&mut client, &mut plan));
 
     // The Create of the new child, with its own seq, and nothing the
     // ring held before the run began.
@@ -111,15 +87,11 @@ fn color_paints_the_kind_of_what_happened() {
 
     let painted = Args { color: true, ..args(root) };
     let cell = run(&mut client, &painted).unwrap();
-    let line = format!("watch {root}");
-    let lit = Out { width: None, paint: Paint::on() };
-    let mut plan = planned(&mut client, &line, lit);
     let h = client.open(cell, Rights::READ).unwrap();
 
     let made = reovim_sdk::encode(&"made".to_string());
     other.call_by_name(rd, "create", made).unwrap();
     let said = so_far(&mut client, h, 0);
-    assert_eq!(said, printed(&mut client, &mut plan));
     assert!(said.contains("\x1b[32mCreate\x1b[0m made\n"), "{said}");
 }
 
@@ -144,12 +116,23 @@ fn the_close_takes_the_watch_the_cell_and_the_rd() {
 #[test]
 fn a_target_that_is_not_there_fails_the_run_and_leaves_no_cell() {
     let rig = Rig::new("watch-missing");
+    rig.file("note", b"hi\n");
     let mut client = rig.client();
     let watch = client.resolve("/bin/watch").unwrap();
 
+    // The error is the Container's that was asked, not the Driver's:
+    // the Kernel's own root answers `Invalid`, as
+    // modules/coreutils/tests/ls.rs has it, and fs answers `Gone` for a
+    // name that is not on disk. The shell's table says both as they
+    // are, so the hosts print `ls /nothere: invalid` beside `watch
+    // nothere: gone`.
     assert_eq!(
         run(&mut client, &args("/nowhere")),
         Err(Fault::Kernel(Error::Invalid))
+    );
+    assert_eq!(
+        run(&mut client, &args("/module/fs/root/nothere")),
+        Err(Fault::Kernel(Error::Gone))
     );
     assert_eq!(client.children(watch), Ok(Vec::new()));
 }

@@ -1,10 +1,7 @@
 //! A typed line over the rig: the name resolved under `/bin`, the
 //! record filled from the tokens, and the output cell read to its end.
-//! Every line of clients/cli/tests/words.rs that the rule can spell
-//! prints here what the cli prints for it in the same tree.
 
 use reovim_client::{Client, Error, Fault};
-use reovim_client_cli::{Out, Paint, Shell as Cli, input};
 use reovim_client_sh::{Shell, run};
 use reovim_rig::Rig;
 
@@ -17,30 +14,15 @@ fn typed(client: &mut Client, shell: &mut Shell, line: &str) -> String {
     }
 }
 
-/// What the cli prints of the same line, from the root, on a screen of
-/// the same width.
-fn cli(client: &mut Client, line: &str, width: Option<u16>) -> String {
-    let words: Vec<String> =
-        line.split_whitespace().map(str::to_string).collect();
-    let out = Out { width, paint: Paint::off() };
-    match input(client, &mut Cli::default(), &words, out) {
-        Ok(said) => String::from_utf8(said).unwrap(),
-        Err(miss) => miss.to_string(),
-    }
-}
-
-/// The line the shell and the cli print the same: that text, once both
-/// have printed it.
-fn same(client: &mut Client, line: &str, width: Option<u16>) -> String {
+/// One typed line from the root, on a screen `width` wide; its output.
+fn shown(client: &mut Client, line: &str, width: Option<u16>) -> String {
     let mut shell = Shell::default();
     shell.screen(u64::from(width.unwrap_or(0)), false);
-    let said = typed(client, &mut shell, line);
-    assert_eq!(said, cli(client, line, width), "{line}");
-    said
+    typed(client, &mut shell, line)
 }
 
 #[test]
-fn a_listing_is_the_one_the_cli_prints_of_the_same_targets() {
+fn a_listing_is_laid_out_across_the_screen_the_shell_gives() {
     let rig = Rig::new("sh-ls");
     for name in ["gamma", "alpha", "beta"] {
         rig.file(name, b"");
@@ -50,23 +32,23 @@ fn a_listing_is_the_one_the_cli_prints_of_the_same_targets() {
 
     // A pipe: one name a line, sorted; a screen: down the columns that
     // fit across it.
-    let piped = same(&mut client, &format!("ls {root}"), None);
+    let piped = shown(&mut client, &format!("ls {root}"), None);
     assert_eq!(piped, "alpha\nbeta\ngamma\n");
-    let wide = same(&mut client, &format!("ls {root}"), Some(80));
+    let wide = shown(&mut client, &format!("ls {root}"), Some(80));
     assert_eq!(wide, "alpha  beta  gamma\n");
-    let narrow = same(&mut client, &format!("ls {root}"), Some(12));
+    let narrow = shown(&mut client, &format!("ls {root}"), Some(12));
     assert_eq!(narrow, "alpha  gamma\nbeta\n");
 
     // No target is the cwd of the record, which is where the line
     // stands; a cell lists itself.
     assert_eq!(
-        same(&mut client, "ls", None),
+        shown(&mut client, "ls", None),
         "bin\nmodule\nsession\nsys\nvar\n"
     );
-    assert_eq!(same(&mut client, &format!("ls {root}/beta"), None), "beta\n");
+    assert_eq!(shown(&mut client, &format!("ls {root}/beta"), None), "beta\n");
 
     // More than one target names each listing.
-    let both = same(&mut client, &format!("ls /module {root}"), None);
+    let both = shown(&mut client, &format!("ls /module {root}"), None);
     assert_eq!(
         both,
         format!(
@@ -79,8 +61,8 @@ fn a_listing_is_the_one_the_cli_prints_of_the_same_targets() {
     // much as down a pipe.
     std::fs::create_dir(rig.dir().join("empty")).unwrap();
     let empty = format!("ls {root}/empty");
-    assert_eq!(same(&mut client, &empty, Some(80)), "");
-    assert_eq!(same(&mut client, &empty, None), "");
+    assert_eq!(shown(&mut client, &empty, Some(80)), "");
+    assert_eq!(shown(&mut client, &empty, None), "");
 }
 
 #[test]
@@ -90,32 +72,32 @@ fn the_long_line_says_type_rights_mtime_apis_and_name() {
     let mut client = rig.client();
     let root = "/module/fs/root";
 
-    let modules = same(&mut client, "ls -l /module", None);
+    let modules = shown(&mut client, "ls -l /module", None);
     let fs = modules.lines().find(|l| l.ends_with("  fs")).unwrap();
     assert!(fs.starts_with("c rw  "), "{fs}");
-    let open = same(&mut client, "ls -l /module/text", None);
+    let open = shown(&mut client, "ls -l /module/text", None);
     assert!(open.trim_end().ends_with("  open  open"), "{open}");
 
     // `-a` puts the rd number first, in both forms; `-l -a` and `-la`
     // are the same two fields set.
     let rd = client.resolve(&format!("{root}/note")).unwrap();
     assert_eq!(
-        same(&mut client, &format!("ls -a {root}"), None),
+        shown(&mut client, &format!("ls -a {root}"), None),
         format!("{} note\n", rd.0)
     );
-    let long = same(&mut client, &format!("ls -la {root}"), None);
-    assert_eq!(long, same(&mut client, &format!("ls -l -a {root}"), None));
+    let long = shown(&mut client, &format!("ls -la {root}"), None);
+    assert_eq!(long, shown(&mut client, &format!("ls -l -a {root}"), None));
     assert!(long.starts_with(&format!("{} - rw  ", rd.0)), "{long}");
 
     // An rd the Kernel does not name shows as its number.
-    let first = same(&mut client, "stat /", None);
+    let first = shown(&mut client, "stat /", None);
     let root = client.resolve("/").unwrap();
     let line = first.lines().next().unwrap();
     assert!(line.ends_with(&format!("  rd:{}", root.0)), "{line}");
 }
 
 #[test]
-fn the_bytes_the_times_and_the_drawing_are_the_clis_own() {
+fn the_bytes_the_times_and_the_drawing_one_line_prints() {
     let rig = Rig::new("sh-text");
     rig.file("one", b"first\n");
     rig.file("two", b"second\n");
@@ -124,34 +106,73 @@ fn the_bytes_the_times_and_the_drawing_are_the_clis_own() {
     let mut client = rig.client();
     let root = "/module/fs/root";
 
-    let one = same(&mut client, &format!("cat {root}/one"), None);
+    let one = shown(&mut client, &format!("cat {root}/one"), None);
     assert_eq!(one, "first\n");
-    let both = same(&mut client, &format!("cat {root}/one {root}/two"), None);
+    let both = shown(&mut client, &format!("cat {root}/one {root}/two"), None);
     assert_eq!(both, "first\nsecond\n");
 
-    let said = same(&mut client, "stat /module/text/open", None);
+    let said = shown(&mut client, "stat /module/text/open", None);
     let lines: Vec<&str> = said.lines().collect();
     assert_eq!(lines[5], "open v1");
     assert_eq!(lines[6], "  0 open(Rd) -> Rd WRITE");
     assert_eq!(lines.len(), 8, "{said}");
 
-    let drawn = same(&mut client, &format!("tree {root}"), None);
+    let drawn = shown(&mut client, &format!("tree {root}"), None);
     assert_eq!(
         drawn,
         "/module/fs/root\n├── sub\n│   └── deep\n\
          ├── one\n└── two\n\n1 containers, 3 cells\n"
     );
     assert_eq!(
-        same(&mut client, &format!("tree {root} -L 1"), None),
+        shown(&mut client, &format!("tree {root} -L 1"), None),
         "/module/fs/root\n├── sub\n├── one\n└── two\n\n\
          1 containers, 2 cells\n"
     );
     assert_eq!(
-        same(&mut client, &format!("tree {root}/one"), None),
+        shown(&mut client, &format!("tree {root}/one"), None),
         "/module/fs/root/one\n\n0 containers, 0 cells\n"
     );
-    let top = same(&mut client, "tree -L 1", None);
+    let top = shown(&mut client, "tree -L 1", None);
     assert!(top.starts_with("/\n├── bin\n├── module\n"), "{top}");
+}
+
+#[test]
+fn every_name_reads_its_target_from_where_the_line_stands() {
+    let rig = Rig::new("sh-targets");
+    rig.file("note", b"hi\n");
+    std::fs::create_dir(rig.dir().join("sub")).unwrap();
+    std::fs::write(rig.dir().join("sub/deep"), b"x").unwrap();
+    let mut client = rig.client();
+    let mut shell = Shell::default();
+    let mut go =
+        |client: &mut Client, line: &str| typed(client, &mut shell, line);
+
+    assert_eq!(go(&mut client, "cd /module/fs/root"), "");
+    // No target is the cwd the shell fills, for a listing and for the
+    // tree under it.
+    assert_eq!(go(&mut client, "ls"), "note\nsub\n");
+    assert_eq!(
+        go(&mut client, "tree -L 1"),
+        "/module/fs/root\n├── sub\n└── note\n\n1 containers, 1 cells\n"
+    );
+    assert_eq!(go(&mut client, "ls sub"), "deep\n");
+    assert_eq!(go(&mut client, "cat sub/deep"), "x");
+    assert_eq!(go(&mut client, "ls .."), "root\n");
+    assert_eq!(
+        go(&mut client, "ls /sys"),
+        "core\ndecls\nlimit\nlog\nloglevel\nmem\n"
+    );
+    assert!(go(&mut client, "stat note").starts_with("- rw "));
+
+    // What a name under the cwd cannot be. (A name that is not on
+    // disk is a file fs makes on the first write, so the one that
+    // resolves nowhere here is under a Container of the Kernel's.)
+    assert_eq!(
+        go(&mut client, "cat ../../nope/x"),
+        "cat ../../nope/x: invalid"
+    );
+    assert_eq!(go(&mut client, "cd note"), "cd note: unsupported");
+    assert_eq!(go(&mut client, "pwd"), "/module/fs/root\n");
 }
 
 #[test]
@@ -318,6 +339,14 @@ fn a_redirect_puts_a_runs_output_in_the_target() {
         typed(&mut client, &mut shell, "pwd > /nope"),
         "pwd: a redirect takes a run's output"
     );
+    // A target that takes no bytes is the one place a line writes and
+    // is refused; the run's own cell goes with the Miss.
+    let ls = client.resolve("/bin/ls").unwrap();
+    assert_eq!(
+        typed(&mut client, &mut shell, "ls / > /sys/mem"),
+        "ls /: denied"
+    );
+    assert_eq!(client.children(ls), Ok(Vec::new()));
 }
 
 #[test]

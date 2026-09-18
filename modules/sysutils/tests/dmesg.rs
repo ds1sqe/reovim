@@ -1,14 +1,15 @@
-//! `dmesg` over the rig: what one run's output cell holds, beside what
-//! the cli's own `dmesg` prints of the same `/sys/log` with the same
-//! flags. Nothing either of them does is written at the level the
-//! Kernel logs at, so the two read one log and the stamps agree.
+//! `dmesg` over the rig: what one run's output cell holds of `/sys/log`
+//! under each form. Nothing a run does is written at the level the
+//! Kernel logs at, so two runs read one log and their stamps agree.
 //!
-//! Under `w` and `W` the cell goes on, and the reads of it stand beside
-//! the cli's own follower of the same line in the same rig, entry for
-//! entry.
+//! The wall clock is the Kernel's own, so what a run stamps with it is
+//! the rig's time and only its shape is here; the forms over entries
+//! made by hand are unit tests beside `show`.
+//!
+//! Under `w` and `W` the cell goes on, and a read at its end answers
+//! whatever the log gained since the read before.
 
 use reovim_client::{Client, Error, Fault, Handle, Rd, Rights};
-use reovim_client_cli::{Follow, Out, Paint, Shell, following, input};
 use reovim_module_sysutils::bins::dmesg::Args;
 use reovim_rig::Rig;
 
@@ -56,37 +57,15 @@ fn drain(client: &mut Client, rd: Rd) -> String {
     String::from_utf8(bytes).unwrap()
 }
 
-/// The run and the cli line that are the same text: that text, once
-/// both have printed it.
-fn same(client: &mut Client, args: &Args, line: &str) -> String {
+/// The text one run's output cell holds, read to its end.
+fn text(client: &mut Client, args: &Args) -> String {
     let cell = run(client, args).unwrap();
-    let said = drain(client, cell);
-    let words: Vec<String> =
-        line.split_whitespace().map(str::to_string).collect();
-    let out = Out { width: None, paint: Paint::off() };
-    let printed = input(client, &mut Shell::default(), &words, out).unwrap();
-    assert_eq!(said, String::from_utf8(printed).unwrap(), "{line}");
-    said
+    drain(client, cell)
 }
 
-/// The cli's own follower of `line`, begun in this rig beside the run
-/// it is compared with.
-fn planned(client: &mut Client, line: &str) -> Follow {
-    let words: Vec<String> =
-        line.split_whitespace().map(str::to_string).collect();
-    following(client, &Shell::default(), &words, Out::plain()).unwrap().unwrap()
-}
-
-/// Everything the cli's follower prints of what has happened since it
-/// was asked last.
-fn printed(client: &mut Client, plan: &mut Follow) -> String {
-    let mut said = Vec::new();
-    for event in client.since().unwrap() {
-        if let Some(bytes) = plan.event(client, event).unwrap() {
-            said.extend(bytes);
-        }
-    }
-    String::from_utf8(said).unwrap()
+/// The first line of it, which every form stamps its own way.
+fn first(said: &str) -> &str {
+    said.lines().next().unwrap()
 }
 
 /// Everything the cell holds from `at` on, read as a shell reads a
@@ -109,18 +88,31 @@ fn every_form_writes_its_own_stamp() {
     let rig = Rig::new("dmesg-stamp");
     let mut client = rig.client();
 
-    let said = same(&mut client, &plain(), "dmesg");
+    // The default: seconds since the Kernel's first entry.
+    let said = text(&mut client, &plain());
     assert!(said.starts_with("[    0.000000] load module=fs"), "{said}");
-    same(&mut client, &Args { t: true, ..plain() }, "dmesg -t");
-    same(&mut client, &Args { T: true, ..plain() }, "dmesg -T");
-    same(&mut client, &Args { H: true, ..plain() }, "dmesg -H");
-    same(&mut client, &Args { r: true, ..plain() }, "dmesg -r");
+
+    // `t` drops the stamp, and `r` is the entry as the Kernel wrote it,
+    // which for one with no number in it is that same text.
+    let bare = text(&mut client, &Args { t: true, ..plain() });
+    assert_eq!(first(&bare), "load module=fs");
+    let raw = text(&mut client, &Args { r: true, ..plain() });
+    assert_eq!(first(&raw), "load module=fs");
+
+    // `T` is the Kernel's wall clock and `H` its minute, so the stamp
+    // is the rig's own time; the forms themselves are the unit tests.
+    let ctime = text(&mut client, &Args { T: true, ..plain() });
+    assert!(first(&ctime).ends_with("] load module=fs"), "{ctime}");
+    assert!(first(&ctime).starts_with('['), "{ctime}");
+    let human = text(&mut client, &Args { H: true, ..plain() });
+    assert!(first(&human).ends_with("] load module=fs"), "{human}");
 
     // `x` decodes the mark and the level in front of the stamp, and the
-    // letters combine as the cli's flags do.
-    let decoded = same(&mut client, &Args { x: true, ..plain() }, "dmesg -x");
+    // letters combine.
+    let decoded = text(&mut client, &Args { x: true, ..plain() });
     assert!(decoded.starts_with("kernel:info  : ["), "{decoded}");
-    same(&mut client, &Args { t: true, x: true, ..plain() }, "dmesg -tx");
+    let both = text(&mut client, &Args { t: true, x: true, ..plain() });
+    assert_eq!(first(&both), "kernel:info  : load module=fs");
 }
 
 #[test]
@@ -128,14 +120,17 @@ fn the_delta_form_says_the_time_since_the_line_before() {
     let rig = Rig::new("dmesg-delta");
     let mut client = rig.client();
 
-    let said = same(&mut client, &Args { d: true, ..plain() }, "dmesg -d");
+    // The first line of a run has nothing before it to count from.
+    let said = text(&mut client, &Args { d: true, ..plain() });
     assert!(said.starts_with("[    0.000000 <    0.000000>]"), "{said}");
-    same(&mut client, &Args { d: true, T: true, ..plain() }, "dmesg -d -T");
+    let ctime = text(&mut client, &Args { d: true, T: true, ..plain() });
+    assert!(first(&ctime).contains(" <    0.000000>] "), "{ctime}");
+
     // `H` already says the time since the line before; `d` adds nothing
     // to it. With no stamp at all the delta stands alone.
-    same(&mut client, &Args { d: true, H: true, ..plain() }, "dmesg -d -H");
-    let alone =
-        same(&mut client, &Args { d: true, t: true, ..plain() }, "dmesg -d -t");
+    let human = text(&mut client, &Args { d: true, H: true, ..plain() });
+    assert_eq!(human, text(&mut client, &Args { H: true, ..plain() }));
+    let alone = text(&mut client, &Args { d: true, t: true, ..plain() });
     assert!(alone.starts_with("[<    0.000000>]"), "{alone}");
 }
 
@@ -151,12 +146,20 @@ fn the_filters_choose_the_marks_and_the_levels() {
 
     let marks = |f: &str| Args { t: true, f: f.to_string(), ..plain() };
     let levels = |l: &str| Args { t: true, l: l.to_string(), ..plain() };
-    same(&mut client, &Args { t: true, k: true, ..plain() }, "dmesg -tk");
-    same(&mut client, &marks("kernel"), "dmesg -t -f kernel");
-    let boom = same(&mut client, &levels("err"), "dmesg -t -l err");
+
+    // `k` is the kernel mark named, so the entry another mark wrote is
+    // not in either listing.
+    let kernel = text(&mut client, &Args { t: true, k: true, ..plain() });
+    assert_eq!(kernel, text(&mut client, &marks("kernel")));
+    assert!(kernel.starts_with("load module=fs\n"), "{kernel}");
+    assert!(!kernel.contains("boom"), "{kernel}");
+
+    let boom = text(&mut client, &levels("err"));
     assert_eq!(boom, "boom\n");
-    assert_eq!(same(&mut client, &levels("emerg"), "dmesg -t -l emerg"), "");
-    same(&mut client, &levels("err,info"), "dmesg -t -l err,info");
+    assert_eq!(text(&mut client, &levels("emerg")), "");
+    // A comma list is every level in it.
+    let both = text(&mut client, &levels("err,info"));
+    assert!(both.contains("load module=fs\n") && both.ends_with("boom\n"));
 
     // A level that is not one of the eight fails the run and leaves no
     // cell; naming the eight is the shell's, not the Driver's.
@@ -176,17 +179,17 @@ fn color_paints_the_stamp_and_what_is_urgent() {
     let log = other.resolve("/sys/log").unwrap();
     other.write_all(log, b"<3>boom".to_vec()).unwrap();
 
-    // `color` is what the cli's `-L` asks the app for; the stamp goes
-    // green and an `err` entry red.
+    // `color` is what the shell fills from the host's screen; the
+    // stamp goes green and an `err` entry red.
     let painted = Args { color: true, ..plain() };
-    let said = same(&mut client, &painted, "dmesg -L");
+    let said = text(&mut client, &painted);
     assert!(said.starts_with("\x1b[32m[    0.000000]\x1b[0m "), "{said}");
     let last = said.lines().next_back().unwrap();
     assert!(last.ends_with("\x1b[31mboom\x1b[0m"), "{said}");
 
     // The `H` minute break is bold blue and the `x` decode dim.
     let human = Args { H: true, x: true, color: true, ..plain() };
-    let said = same(&mut client, &human, "dmesg -HxL");
+    let said = text(&mut client, &human);
     assert!(
         said.starts_with("\x1b[2mkernel:info  : \x1b[0m\x1b[1;34m[")
             && said.contains("]\x1b[0m load module=fs\n"),
@@ -257,8 +260,6 @@ fn a_tailing_run_writes_the_entry_another_client_writes() {
     // is not over: the read at its end is sent back.
     let new = Args { W: true, t: true, l: "err".to_string(), ..plain() };
     let cell = run(&mut client, &new).unwrap();
-    let mut plan = planned(&mut client, "dmesg -W -t -l err");
-    assert_eq!(plan.first, Vec::<u8>::new());
     let h = client.open(cell, Rights::READ).unwrap();
     assert_eq!(client.read(h, 0, 64), Err(Fault::Kernel(Error::Busy)));
 
@@ -266,9 +267,7 @@ fn a_tailing_run_writes_the_entry_another_client_writes() {
     // front of it.
     let log = other.resolve("/sys/log").unwrap();
     other.write_all(log, b"<3>boom".to_vec()).unwrap();
-    let said = so_far(&mut client, h, 0);
-    assert_eq!(said, printed(&mut client, &mut plan));
-    assert_eq!(said, "boom\n");
+    assert_eq!(so_far(&mut client, h, 0), "boom\n");
 }
 
 #[test]
@@ -279,17 +278,13 @@ fn w_writes_what_the_log_held_and_then_what_it_gains() {
 
     let all = Args { w: true, t: true, ..plain() };
     let cell = run(&mut client, &all).unwrap();
-    let mut plan = planned(&mut client, "dmesg -w -t");
     let h = client.open(cell, Rights::READ).unwrap();
     let held = so_far(&mut client, h, 0);
-    assert_eq!(held, String::from_utf8(plan.first.clone()).unwrap());
     assert!(held.starts_with("load module=fs\n"), "{held}");
 
     let log = other.resolve("/sys/log").unwrap();
     other.write_all(log, b"<3>boom".to_vec()).unwrap();
-    let said = so_far(&mut client, h, held.len() as u64);
-    assert_eq!(said, printed(&mut client, &mut plan));
-    assert_eq!(said, "boom\n");
+    assert_eq!(so_far(&mut client, h, held.len() as u64), "boom\n");
 }
 
 #[test]

@@ -1,9 +1,8 @@
-//! `call` over the rig: what one run's output cell holds, beside what
-//! the cli's own `call` prints of the same method, and what a method
-//! that is not there, or an argument that does not fit, answers.
+//! `call` over the rig: what one run's output cell holds of what the
+//! target's method answered, and what a method that is not there, or an
+//! argument that does not fit, answers.
 
 use reovim_client::{Client, Error, Fault, ROOT, Rd, Rights};
-use reovim_client_cli::{Out, Shell, input};
 use reovim_module_sysutils::bins::call::Args;
 use reovim_rig::Rig;
 
@@ -42,26 +41,15 @@ fn drain(client: &mut Client, rd: Rd) -> String {
     String::from_utf8(bytes).unwrap()
 }
 
-/// What the cli's own `call` prints of the same run.
-fn cli(client: &mut Client, args: &Args) -> String {
-    let mut words =
-        vec!["call".to_string(), args.target.clone(), args.method.clone()];
-    if !args.arg.is_empty() {
-        words.push(args.arg.clone());
-    }
-    let said = input(client, &mut Shell::default(), &words, Out::plain());
-    String::from_utf8(said.unwrap()).unwrap()
-}
-
 #[test]
-fn a_run_answers_what_the_method_answered_as_the_cli_shows_it() {
+fn a_run_answers_what_the_method_answered() {
     let rig = Rig::new("call-run");
     rig.file("note", b"hi\n");
     let mut client = rig.client();
     let note = client.resolve("/module/fs/root/note").unwrap();
 
-    // One Buffer per source, so the run and the cli line answer the
-    // same rd, decoded by the declaration that says it is one.
+    // One Buffer per source, so a second run of the same method answers
+    // that same rd, decoded by the declaration that says it is one.
     let open =
         Args { arg: note.0.to_string(), ..args("/module/text/open", "open") };
     let cell = run(&mut client, &open).unwrap();
@@ -69,7 +57,9 @@ fn a_run_answers_what_the_method_answered_as_the_cli_shows_it() {
     let buffer: u64 = said.trim_end().parse().unwrap_or_else(|_| {
         panic!("an rd: {said}");
     });
-    assert_eq!(said, cli(&mut client, &open));
+    assert_eq!(said, format!("{buffer}\n"));
+    let cell = run(&mut client, &open).unwrap();
+    assert_eq!(drain(&mut client, cell), said);
 
     // A method that answers nothing says nothing.
     let save = args(&format!("rd:{buffer}"), "save");
@@ -77,13 +67,14 @@ fn a_run_answers_what_the_method_answered_as_the_cli_shows_it() {
     assert_eq!(drain(&mut client, cell), "");
     assert_eq!(rig.disk("note"), b"hi\n");
 
-    // `new` is a Buffer of its own per run, so the two answer two rds,
+    // `new` is a Buffer of its own per run, so two runs answer two rds,
     // both printed the same way.
     let new = args("/module/text/open", "new");
     let cell = run(&mut client, &new).unwrap();
     let made = drain(&mut client, cell);
     assert!(client.info(Rd(made.trim_end().parse().unwrap())).is_ok());
-    let other = cli(&mut client, &new);
+    let cell = run(&mut client, &new).unwrap();
+    let other = drain(&mut client, cell);
     assert_ne!(made, other);
     assert!(other.trim_end().parse::<u64>().is_ok(), "an rd: {other}");
 

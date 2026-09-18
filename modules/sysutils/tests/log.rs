@@ -1,9 +1,7 @@
-//! `log` over the rig: what one run's output cell holds, beside the
-//! lines the cli's own `log` prints of the same `/sys/log`, and what
-//! the cell is once its reader lets go of it.
+//! `log` over the rig: what one run's output cell holds of `/sys/log`,
+//! and what the cell is once its reader lets go of it.
 
 use reovim_client::{Client, Error, Fault, Rd, Rights};
-use reovim_client_cli::{Out, Shell, input};
 use reovim_module_sysutils::bins::log::Args;
 use reovim_rig::Rig;
 
@@ -33,34 +31,23 @@ fn drain(client: &mut Client, rd: Rd) -> String {
     String::from_utf8(bytes).unwrap()
 }
 
-/// What the cli's own `log` prints, for the comparison.
-fn cli(client: &mut Client, args: &[&str]) -> String {
-    let mut words = vec!["log".to_string()];
-    words.extend(args.iter().map(ToString::to_string));
-    let said = input(client, &mut Shell::default(), &words, Out::plain());
-    String::from_utf8(said.unwrap()).unwrap()
-}
-
 #[test]
-fn a_run_says_what_the_cli_says_of_the_same_log() {
+fn a_run_says_the_entries_of_the_log_from_a_sequence_on() {
     let rig = Rig::new("log-lines");
     let mut client = rig.client();
 
-    // Nothing either run does is written at the level the Kernel logs
-    // at, so the two read the same entries: `seq time mark level text`.
+    // One line per entry, from the first: `seq time mark level text`.
     let cell = run(&mut client, 0).unwrap();
     let said = drain(&mut client, cell);
-    assert_eq!(said, cli(&mut client, &[]));
     assert!(said.starts_with("1 "), "{said}");
     assert!(said.contains(" kernel 6 load module=fs\n"), "{said}");
 
-    // From a sequence on, as the cli reads it from the same one.
+    // From a sequence on, which is that entry and nothing before it.
     let last = said.lines().next_back().unwrap();
     let seq: u64 = last.split(' ').next().unwrap().parse().unwrap();
     let cell = run(&mut client, seq).unwrap();
     let from = drain(&mut client, cell);
-    assert_eq!(from, cli(&mut client, &[&seq.to_string()]));
-    assert_eq!(from.lines().count(), 1, "{from}");
+    assert_eq!(from, format!("{last}\n"));
 
     // Past the last sequence there is nothing to say.
     let cell = run(&mut client, seq + 1).unwrap();

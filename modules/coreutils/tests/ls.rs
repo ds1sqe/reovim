@@ -1,14 +1,12 @@
-//! `ls` over the rig: what one run's output cell holds, beside the
-//! listing the cli's own `ls` prints of the same targets in the same
-//! tree, with the same width and color.
+//! `ls` over the rig: the listing one run's output cell holds of each
+//! target, laid out across the width its record carries and painted by
+//! its `color`.
 //!
-//! Under `w` the cell goes on, and the reads of it stand beside the
-//! cli's own follower of the same line in the same rig, event for
-//! event.
+//! Under `w` the cell goes on, and a read at its end answers the
+//! listing again for every event under one of the targets.
 
 use reovim_client::log::{self, Entry};
 use reovim_client::{Client, Error, Fault, Handle, ROOT, Rd, Rights};
-use reovim_client_cli::{Follow, Out, Paint, Shell, following, input};
 use reovim_module_coreutils::bins::ls::Args;
 use reovim_rig::Rig;
 
@@ -51,44 +49,10 @@ fn drain(client: &mut Client, rd: Rd) -> String {
     String::from_utf8(bytes).unwrap()
 }
 
-/// The run and the cli line that are the same text: that text, once
-/// both have printed it. `at` is where the line stands, which the cli
-/// keeps as a path and the run as the `cwd` of its record.
-fn same(
-    client: &mut Client,
-    at: (Rd, &str),
-    args: &Args,
-    line: &str,
-    out: Out,
-) -> String {
+/// The text one run's output cell holds, read to its end.
+fn text(client: &mut Client, args: &Args) -> String {
     let cell = run(client, args).unwrap();
-    let said = drain(client, cell);
-    let words: Vec<String> =
-        line.split_whitespace().map(str::to_string).collect();
-    let mut shell = Shell::at(at.0, at.1.to_string());
-    let printed = input(client, &mut shell, &words, out).unwrap();
-    assert_eq!(said, String::from_utf8(printed).unwrap(), "{line}");
-    said
-}
-
-/// The cli's own follower of `line`, begun in this rig beside the run
-/// it is compared with.
-fn planned(client: &mut Client, line: &str) -> Follow {
-    let words: Vec<String> =
-        line.split_whitespace().map(str::to_string).collect();
-    following(client, &Shell::default(), &words, Out::plain()).unwrap().unwrap()
-}
-
-/// Everything the cli's follower prints of what has happened since it
-/// was asked last.
-fn printed(client: &mut Client, plan: &mut Follow) -> String {
-    let mut said = Vec::new();
-    for event in client.since().unwrap() {
-        if let Some(bytes) = plan.event(client, event).unwrap() {
-            said.extend(bytes);
-        }
-    }
-    String::from_utf8(said).unwrap()
+    drain(client, cell)
 }
 
 /// The cell read at `at`, as a shell reads a following one: the bytes,
@@ -129,43 +93,27 @@ fn a_listing_is_laid_out_down_the_columns_that_fit_the_width() {
     }
     let mut client = rig.client();
     let root = "/module/fs/root";
-    let here = (ROOT, "/");
 
     // No width is one name a line, as a pipe wants them; a width lays
     // them out down the columns that fit in it.
-    let listed = same(
-        &mut client,
-        here,
-        &args(&[root]),
-        "ls /module/fs/root",
-        Out::plain(),
-    );
-    assert_eq!(listed, "alpha\nbeta\ngamma\n");
-    for width in [80, 12] {
+    assert_eq!(text(&mut client, &args(&[root])), "alpha\nbeta\ngamma\n");
+    for (width, laid) in
+        [(80, "alpha  beta  gamma\n"), (12, "alpha  gamma\nbeta\n")]
+    {
         let mut wide = args(&[root]);
-        wide.width = u64::from(width);
-        let out = Out::screen(width, false);
-        same(&mut client, here, &wide, "ls /module/fs/root", out);
+        wide.width = width;
+        assert_eq!(text(&mut client, &wide), laid, "width {width}");
     }
 
     // No target at all is the `cwd` the run was given; a target that
     // is no Container lists itself.
-    let all = same(&mut client, here, &args(&[]), "ls", Out::plain());
+    let all = text(&mut client, &args(&[]));
     assert_eq!(all, "bin\nmodule\nsession\nsys\nvar\n");
     let one = args(&[&format!("{root}/beta")]);
-    let beta =
-        same(&mut client, here, &one, &format!("ls {root}/beta"), Out::plain());
-    assert_eq!(beta, "beta\n");
+    assert_eq!(text(&mut client, &one), "beta\n");
 
     // More than one target names each listing, as `ls` does.
-    let both = args(&["/module", root]);
-    let listed = same(
-        &mut client,
-        here,
-        &both,
-        &format!("ls /module {root}"),
-        Out::plain(),
-    );
+    let listed = text(&mut client, &args(&["/module", root]));
     assert_eq!(
         listed,
         format!(
@@ -178,17 +126,10 @@ fn a_listing_is_laid_out_down_the_columns_that_fit_the_width() {
     // across a width as much as down a pipe.
     std::fs::create_dir(rig.dir().join("empty")).unwrap();
     let empty = format!("{root}/empty");
-    let line = format!("ls {empty}");
-    assert_eq!(
-        same(&mut client, here, &args(&[&empty]), &line, Out::plain()),
-        ""
-    );
+    assert_eq!(text(&mut client, &args(&[&empty])), "");
     let mut wide = args(&[&empty]);
     wide.width = 80;
-    assert_eq!(
-        same(&mut client, here, &wide, &line, Out::screen(80, false)),
-        ""
-    );
+    assert_eq!(text(&mut client, &wide), "");
 }
 
 #[test]
@@ -197,36 +138,28 @@ fn the_long_line_and_the_rds_are_the_flags_the_record_carries() {
     rig.file("note", b"hi\n");
     let mut client = rig.client();
     let root = "/module/fs/root";
-    let here = (ROOT, "/");
 
-    for target in ["/module", root, "/module/text"] {
-        let mut long = args(&[target]);
-        long.long = true;
-        let line = format!("ls -l {target}");
-        let said = same(&mut client, here, &long, &line, Out::plain());
-        assert!(said.ends_with('\n'), "{said}");
-
-        // `-a` puts the rd number first, in both forms.
-        let mut rds = args(&[target]);
-        rds.all = true;
-        same(&mut client, here, &rds, &format!("ls -a {target}"), Out::plain());
-        long.all = true;
-        same(
-            &mut client,
-            here,
-            &long,
-            &format!("ls -la {target}"),
-            Out::plain(),
-        );
-    }
-
-    // The long line of a Container of the Kernel's own, and of a cell
-    // that offers an api, as the cli writes them.
-    let mut long = args(&["/module"]);
-    long.long = true;
-    let modules = same(&mut client, here, &long, "ls -l /module", Out::plain());
+    // The long line: type, rights, mtime, apis, name. A Container of
+    // the Kernel's own, a plain cell, and a cell that offers an api.
+    let modules = text(&mut client, &Args { long: true, ..args(&["/module"]) });
     let fs = modules.lines().find(|l| l.ends_with("  fs")).unwrap();
     assert!(fs.starts_with("c rw  "), "{fs}");
+    let note = text(&mut client, &Args { long: true, ..args(&[root]) });
+    let fields: Vec<&str> = note.trim_end().split("  ").collect();
+    assert_eq!(fields.len(), 4, "{note}");
+    assert_eq!((fields[0], fields[2], fields[3]), ("- rw", "-", "note"));
+    assert!(fields[1].starts_with("20") && fields[1].len() == 19, "{note}");
+    let text_module =
+        text(&mut client, &Args { long: true, ..args(&["/module/text"]) });
+    assert!(text_module.trim_end().ends_with("  open  open"), "{text_module}");
+
+    // `-a` puts the rd number first, in both forms.
+    let rd = client.resolve(&format!("{root}/note")).unwrap();
+    let rds = text(&mut client, &Args { all: true, ..args(&[root]) });
+    assert_eq!(rds, format!("{} note\n", rd.0));
+    let long = Args { long: true, all: true, ..args(&[root]) };
+    let both = text(&mut client, &long);
+    assert!(both.starts_with(&format!("{} - rw  ", rd.0)), "{both}");
 }
 
 #[test]
@@ -234,24 +167,20 @@ fn color_wears_the_kind_and_the_columns_count_the_name_only() {
     let rig = Rig::new("ls-color");
     rig.file("note", b"hi\n");
     let mut client = rig.client();
-    let here = (ROOT, "/");
 
     let mut painted = args(&["/module"]);
     painted.color = true;
     painted.width = 20;
-    let out = Out { width: Some(20), paint: Paint::on() };
-    let two = same(&mut client, here, &painted, "ls /module", out);
+    let two = text(&mut client, &painted);
     assert_eq!(
         two.lines().next().unwrap(),
         "\x1b[1;34mclipboard\x1b[0m  \x1b[1;34msysutils\x1b[0m"
     );
 
     // A cell that offers an api is green, a plain one is as it is.
-    let mut text = args(&["/module/text", "/module/fs/root"]);
-    text.color = true;
-    let out = Out { width: None, paint: Paint::on() };
-    let said =
-        same(&mut client, here, &text, "ls /module/text /module/fs/root", out);
+    let mut both = args(&["/module/text", "/module/fs/root"]);
+    both.color = true;
+    let said = text(&mut client, &both);
     assert!(said.contains("\x1b[32mopen\x1b[0m\n"), "{said}");
     assert!(said.ends_with("note\n"), "{said}");
 }
@@ -264,30 +193,23 @@ fn a_target_is_walked_from_the_cwd_the_run_was_given() {
     std::fs::write(rig.dir().join("sub/deep"), b"x").unwrap();
     let mut client = rig.client();
     let root = client.resolve("/module/fs/root").unwrap();
-    let at = (root, "/module/fs/root");
 
     let mut here = args(&[]);
     here.cwd = root;
-    let listed = same(&mut client, at, &here, "ls", Out::plain());
-    assert_eq!(listed, "note\nsub\n");
-    for target in ["sub", "..", "./sub/../sub"] {
+    assert_eq!(text(&mut client, &here), "note\nsub\n");
+    for (target, listed) in
+        [("sub", "deep\n"), ("..", "root\n"), ("./sub/../sub", "deep\n")]
+    {
         let mut relative = args(&[target]);
         relative.cwd = root;
-        same(&mut client, at, &relative, &format!("ls {target}"), Out::plain());
+        assert_eq!(text(&mut client, &relative), listed, "{target}");
     }
 
     // An rd names the same Container wherever the line stands.
     let rd = format!("rd:{}", root.0);
     let mut named = args(&[&rd]);
     named.cwd = ROOT;
-    let said = same(
-        &mut client,
-        (ROOT, "/"),
-        &named,
-        &format!("ls {rd}"),
-        Out::plain(),
-    );
-    assert_eq!(said, "note\nsub\n");
+    assert_eq!(text(&mut client, &named), "note\nsub\n");
 }
 
 #[test]
@@ -296,6 +218,9 @@ fn a_target_that_is_not_there_fails_the_run_and_leaves_no_cell() {
     let mut client = rig.client();
     let ls = client.resolve("/bin/ls").unwrap();
 
+    // The Kernel's own root answers `Invalid` for a name it does not
+    // hold, which is what a host prints as `ls /nothere: invalid`; fs
+    // answers `Gone`, the pair modules/sysutils/tests/watch.rs holds.
     assert_eq!(
         run(&mut client, &args(&["/module", "/nowhere"])),
         Err(Fault::Kernel(Error::Invalid))
@@ -315,20 +240,16 @@ fn a_watching_run_lists_again_for_every_event_under_its_target() {
     // first listing registers them, and a registration is an event.
     client.children(rd).unwrap();
 
-    // Both watch before the child appears: the run, and the cli's own
-    // follower of the same line.
+    // The targets are watched before the first listing, so a child that
+    // appears between the two is not missed.
     let cell = run(&mut client, &Args { w: true, ..args(&[root]) }).unwrap();
-    let mut plan = planned(&mut client, &format!("ls -w {root}"));
     let h = client.open(cell, Rights::READ).unwrap();
     assert_eq!(next(&mut client, h, 0).unwrap(), "note\n");
-    assert_eq!(plan.first, b"note\n".to_vec());
     assert_eq!(next(&mut client, h, 5), Err(Fault::Kernel(Error::Busy)));
 
     let made = reovim_sdk::encode(&"made".to_string());
     other.call_by_name(rd, "create", made).unwrap();
-    let said = next(&mut client, h, 5).unwrap();
-    assert_eq!(said, printed(&mut client, &mut plan));
-    assert_eq!(said, "made\nnote\n");
+    assert_eq!(next(&mut client, h, 5).unwrap(), "made\nnote\n");
     assert_eq!(next(&mut client, h, 15), Err(Fault::Kernel(Error::Busy)));
 }
 

@@ -1,9 +1,7 @@
-//! `tree` over the rig: what one run's output cell holds, beside the
-//! drawing the cli's own `tree` prints of the same target in the same
-//! tree.
+//! `tree` over the rig: the drawing one run's output cell holds of the
+//! tree under its target, and the counts under it.
 
 use reovim_client::{Client, Error, Fault, ROOT, Rd, Rights};
-use reovim_client_cli::{Out, Paint, Shell, input};
 use reovim_module_coreutils::bins::tree::Args;
 use reovim_rig::Rig;
 
@@ -38,24 +36,10 @@ fn drain(client: &mut Client, rd: Rd) -> String {
     String::from_utf8(bytes).unwrap()
 }
 
-/// The run and the cli line that are the same text: that text, once
-/// both have printed it. `at` is where the line stands, which the cli
-/// keeps as a path and the run as the `cwd` of its record.
-fn same(
-    client: &mut Client,
-    at: (Rd, &str),
-    args: &Args,
-    line: &str,
-    out: Out,
-) -> String {
+/// The text one run's output cell holds, read to its end.
+fn text(client: &mut Client, args: &Args) -> String {
     let cell = run(client, args).unwrap();
-    let said = drain(client, cell);
-    let words: Vec<String> =
-        line.split_whitespace().map(str::to_string).collect();
-    let mut shell = Shell::at(at.0, at.1.to_string());
-    let printed = input(client, &mut shell, &words, out).unwrap();
-    assert_eq!(said, String::from_utf8(printed).unwrap(), "{line}");
-    said
+    drain(client, cell)
 }
 
 #[test]
@@ -66,15 +50,8 @@ fn a_drawing_puts_containers_first_and_counts_what_it_drew() {
     std::fs::write(rig.dir().join("sub/deep"), b"x").unwrap();
     let mut client = rig.client();
     let root = "/module/fs/root";
-    let here = (ROOT, "/");
 
-    let drawn = same(
-        &mut client,
-        here,
-        &args(root),
-        &format!("tree {root}"),
-        Out::plain(),
-    );
+    let drawn = text(&mut client, &args(root));
     assert_eq!(
         drawn,
         "/module/fs/root\n├── sub\n│   └── deep\n└── note\n\n\
@@ -85,32 +62,19 @@ fn a_drawing_puts_containers_first_and_counts_what_it_drew() {
     // it, which is the run the line without `-L` makes.
     let mut one = args(root);
     one.L = 1;
-    let stopped = same(
-        &mut client,
-        here,
-        &one,
-        &format!("tree {root} -L 1"),
-        Out::plain(),
-    );
     assert_eq!(
-        stopped,
+        text(&mut client, &one),
         "/module/fs/root\n├── sub\n└── note\n\n1 containers, 1 cells\n"
     );
 
     // A cell has nothing under it, and the root of the tree draws the
     // Kernel's own Containers.
     let note = format!("{root}/note");
-    let said = same(
-        &mut client,
-        here,
-        &args(&note),
-        &format!("tree {note}"),
-        Out::plain(),
-    );
+    let said = text(&mut client, &args(&note));
     assert_eq!(said, format!("{note}\n\n0 containers, 0 cells\n"));
     let mut top = args("/");
     top.L = 1;
-    let said = same(&mut client, here, &top, "tree / -L 1", Out::plain());
+    let said = text(&mut client, &top);
     assert!(said.starts_with("/\n├── bin\n├── module\n"), "{said}");
 }
 
@@ -125,28 +89,16 @@ fn no_target_is_the_cwd_and_the_first_line_says_where_that_is() {
     let mut here = args("");
     here.cwd = root;
     here.L = 1;
-    let said = same(
-        &mut client,
-        (root, "/module/fs/root"),
-        &here,
-        "tree -L 1",
-        Out::plain(),
-    );
     assert_eq!(
-        said,
+        text(&mut client, &here),
         "/module/fs/root\n├── sub\n└── note\n\n1 containers, 1 cells\n"
     );
 
-    // A relative target is walked from the same `cwd`.
+    // A relative target is walked from the same `cwd`, and the first
+    // line is the target as it was named.
     let mut sub = args("sub");
     sub.cwd = root;
-    same(
-        &mut client,
-        (root, "/module/fs/root"),
-        &sub,
-        "tree sub",
-        Out::plain(),
-    );
+    assert_eq!(text(&mut client, &sub), "sub\n\n0 containers, 0 cells\n");
 }
 
 #[test]
@@ -165,7 +117,7 @@ fn a_cwd_too_deep_for_a_path_says_its_rd_on_the_first_line() {
 
     let mut here = args("");
     here.cwd = at;
-    let said = same(&mut client, (at, &rd), &here, "tree", Out::plain());
+    let said = text(&mut client, &here);
     assert_eq!(said, format!("{rd}\n└── note\n\n0 containers, 1 cells\n"));
 }
 
@@ -175,9 +127,7 @@ fn color_wears_the_kind_of_every_name_drawn() {
     let mut client = rig.client();
     let mut painted = args("/module/text");
     painted.color = true;
-    let out = Out { width: None, paint: Paint::on() };
-    let said =
-        same(&mut client, (ROOT, "/"), &painted, "tree /module/text", out);
+    let said = text(&mut client, &painted);
     assert!(said.contains("└── \x1b[32mopen\x1b[0m\n"), "{said}");
 }
 

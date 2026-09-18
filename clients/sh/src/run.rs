@@ -169,7 +169,10 @@ pub fn under_path(
     };
     let out = match into {
         Some((rd, at)) => {
-            written(tree, rd, at, bytes).map_err(refused)?;
+            if let Err(fault) = written(tree, rd, at, bytes) {
+                let _ = open.close(tree);
+                return Err(refused(fault));
+            }
             Vec::new()
         }
         None => bytes,

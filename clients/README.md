@@ -4,8 +4,6 @@ The client side: the Clients themselves and the libraries they link.
 
 - `core`: the library every Client and Plugin host links: the
   Client, the Tree, capabilities, input.
-- `cli`: the command-line Client: a line in, text out, over the
-  Tree; knows no Module and no Plugin.
 - `sh`: the shell: a typed line in, text out, over the Tree; the
   line and its editing, PATH, and the decoder from a line to the
   record a Driver under `/bin` declares.

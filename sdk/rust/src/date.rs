@@ -50,3 +50,32 @@ pub fn civil(nanos: u64) -> Civil {
         weekday: (days + 4) % 7,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::civil;
+
+    /// The instants a calendar can be held against: the epoch, the
+    /// second that has not come yet, 2026-09-17 12:34:56 UTC, and the
+    /// two a leap year is read by.
+    #[test]
+    fn a_kernel_instant_is_the_civil_date_in_utc() {
+        let at = |nanos| {
+            let c = civil(nanos);
+            ((c.year, c.month, c.day), (c.hour, c.minute, c.second))
+        };
+        assert_eq!(at(0), ((1970, 1, 1), (0, 0, 0)));
+        assert_eq!(at(999_999_999), ((1970, 1, 1), (0, 0, 0)));
+        assert_eq!(at(1_000_000_000), ((1970, 1, 1), (0, 0, 1)));
+        assert_eq!(
+            at(1_789_648_496_000_000_000),
+            ((2026, 9, 17), (12, 34, 56))
+        );
+        // The leap day of a leap year, and the last second of it.
+        assert_eq!(at(1_709_208_000_000_000_000), ((2024, 2, 29), (12, 0, 0)));
+        assert_eq!(
+            at(1_735_689_599_000_000_000),
+            ((2024, 12, 31), (23, 59, 59))
+        );
+    }
+}

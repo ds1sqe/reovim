@@ -1,9 +1,8 @@
-//! `stat` over the rig: what one run's output cell holds, beside the
-//! text the cli's own `stat` prints of the same rd in the same tree,
-//! and what the cell is once its reader lets go of it.
+//! `stat` over the rig: the long line, the rd, the times and every api
+//! of one rd in one run's output cell, and what the cell is once its
+//! reader lets go of it.
 
 use reovim_client::{Client, Error, Fault, ROOT, Rd, Rights};
-use reovim_client_cli::{Out, Paint, Shell, input};
 use reovim_module_coreutils::bins::stat::Args;
 use reovim_rig::Rig;
 
@@ -33,32 +32,41 @@ fn drain(client: &mut Client, rd: Rd) -> String {
     String::from_utf8(bytes).unwrap()
 }
 
-/// What the cli's own `stat` prints of `target`, for the comparison.
-fn cli(client: &mut Client, target: &str) -> String {
-    let words = ["stat".to_string(), target.to_string()];
-    let out = Out { width: None, paint: Paint::off() };
-    let said = input(client, &mut Shell::default(), &words, out).unwrap();
-    String::from_utf8(said).unwrap()
+/// The text one run's output cell holds, read to its end.
+fn text(client: &mut Client, cwd: Rd, target: &str) -> String {
+    let cell = run(client, cwd, target).unwrap();
+    drain(client, cell)
 }
 
 #[test]
-fn a_run_says_what_the_cli_says_of_the_same_rd() {
+fn a_run_says_the_long_line_the_rd_the_times_and_every_api() {
     let rig = Rig::new("stat-text");
     let mut client = rig.client();
 
-    // A Container with no api of its own, and a cell with one: the
-    // long line, the times, then every method of every api.
-    for target in ["/module/text", "/module/text/open", "/bin/stat"] {
-        let cell = run(&mut client, ROOT, target).unwrap();
-        assert_eq!(
-            drain(&mut client, cell),
-            cli(&mut client, target),
-            "{target}"
-        );
+    // A cell that offers an api: the long line, the rd, the three
+    // times, then every method of every api as the declaration shows
+    // it — the number, the types and the right.
+    let said = text(&mut client, ROOT, "/module/text/open");
+    let lines: Vec<&str> = said.lines().collect();
+    assert!(lines[0].ends_with("  open  open"), "{said}");
+    let open = client.resolve("/module/text/open").unwrap();
+    assert_eq!(lines[1], format!("rd {}", open.0));
+    for (at, key) in [(2, "ctime"), (3, "mtime"), (4, "atime")] {
+        let (said, date) = lines[at].split_once(' ').unwrap();
+        assert_eq!(said, key);
+        assert!(date.starts_with("20") && date.len() == 19, "{key}: {date}");
     }
+    assert_eq!(lines[5], "open v1");
+    assert_eq!(lines[6], "  0 open(Rd) -> Rd WRITE");
+    assert_eq!(lines[7], "  1 new() -> Rd WRITE");
+    assert_eq!(lines.len(), 8, "{said}");
 
-    // `stat`'s own declaration, as the shell will read it.
-    let said = cli(&mut client, "/bin/stat");
+    // A Container with no api of its own stops after the times.
+    let said = text(&mut client, ROOT, "/module/text");
+    assert_eq!(said.lines().count(), 5, "{said}");
+
+    // `stat`'s own declaration, as the shell reads it.
+    let said = text(&mut client, ROOT, "/bin/stat");
     assert!(said.contains("\nstat v1\n"), "{said}");
     assert!(
         said.contains(

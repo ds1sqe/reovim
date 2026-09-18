@@ -2,7 +2,7 @@
 //! the names that may stand where a partly typed one does, read from
 //! the tree itself.
 //!
-//! The cli walks a target with [`walk`] and completes one with
+//! The shell walks a target with [`walk`] and completes one with
 //! [`paths`], both from where its `Shell` stands; a Plugin does the
 //! same from where the Plugin works. Neither knows a Module: these
 //! are the children of a Container, whatever put them there.
@@ -24,8 +24,8 @@ use crate::fault::Fault;
 /// with a `/` after it so the next Tab goes on under it.
 ///
 /// `a/b` looks under `a`, a word with no `/` under `under` itself, and
-/// a word beginning with `/` from the tree's root, as the cli reads a
-/// target; `.` stays where it is and `..` goes to the parent. A word
+/// a word beginning with `/` from the tree's root, as the shell reads
+/// a target; `.` stays where it is and `..` goes to the parent. A word
 /// whose directory part resolves nowhere offers nothing, which is not
 /// a fault: a name that is not there yet is the ordinary case.
 #[must_use]
@@ -52,8 +52,8 @@ pub fn paths(tree: &mut Tree, under: Rd, word: &str) -> Vec<String> {
 /// Client's tree.
 ///
 /// # Errors
-/// The name that stopped the walk beside the fault, as
-/// [`Tree::resolve_at`] gives it, for whoever says where it stopped.
+/// The name that stopped the walk beside the fault, for whoever says
+/// where it stopped; [`Tree::resolve`] is this walk from the root.
 pub fn walk(
     tree: &mut Tree,
     from: Rd,

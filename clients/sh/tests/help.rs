@@ -98,9 +98,18 @@ fn tab_offers_the_names_the_flags_of_one_and_the_paths_under_the_cwd() {
     let none: [&str; 0] = [];
     assert_eq!(offer(&mut client, &shell, "pwd -"), none, "no declaration");
 
-    // Anything else is a path from where the line stands.
+    // Anything else is a path from where the line stands: a name under
+    // the cwd, a path from the root, and a `..` walked as the shell
+    // walks one. A Container gets the slash the next Tab goes on from,
+    // and a bare token offers every child.
     assert_eq!(typed(&mut client, &mut shell, "cd /module/fs/root"), "");
     assert_eq!(offer(&mut client, &shell, "cat no"), ["note"]);
+    assert_eq!(offer(&mut client, &shell, "cat "), ["note", "other"]);
+    assert_eq!(offer(&mut client, &shell, "ls ../../fs"), ["../../fs/"]);
+    assert_eq!(offer(&mut client, &shell, "ls ../../fs/"), ["../../fs/root/"]);
     assert_eq!(offer(&mut client, &shell, "ls /mod"), ["/module/"]);
+    // A path that resolves nowhere offers nothing and is not a fault,
+    // and no token past the first offers a value.
+    assert_eq!(offer(&mut client, &shell, "cat nowhere/n"), none);
     assert_eq!(offer(&mut client, &shell, "call open op"), none);
 }

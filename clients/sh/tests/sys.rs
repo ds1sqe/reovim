@@ -1,32 +1,33 @@
-//! `/sys` from the shell: the parameters read and written as files,
-//! the rights a listing shows, the heap, and a core saved in one `cat`.
+//! `/sys` from the shell: the parameters read as files, the rights a
+//! listing shows, the heap, and a core read in one `cat`. What a write
+//! of a parameter does is kernel/runtime/tests/sys.rs's.
 
 use reovim_client::Client;
-use reovim_client_cli::{Out, Shell, input};
+use reovim_client_sh::{Shell, run};
 use reovim_rig::Rig;
 
-/// One command line; its output, or the line a fault would print.
-fn run(client: &mut Client, command: &str) -> String {
-    let words: Vec<String> =
-        command.split_whitespace().map(str::to_string).collect();
-    let out = Out { width: None, paint: reovim_client_cli::Paint::off() };
-    match input(client, &mut Shell::default(), &words, out) {
-        Ok(out) => String::from_utf8(out).unwrap(),
+/// One typed line; its output, or the line a Miss would print.
+fn typed(client: &mut Client, shell: &mut Shell, line: &str) -> String {
+    match run(client, shell, line) {
+        Ok(ran) => String::from_utf8(ran.out).unwrap(),
         Err(miss) => miss.to_string(),
     }
 }
 
 #[test]
 fn a_parameter_is_a_file_under_sys_limit() {
-    let rig = Rig::new("sys-limit");
+    let rig = Rig::new("sh-sys-limit");
     let mut client = rig.client();
+    let mut shell = Shell::default();
+    let mut go =
+        |client: &mut Client, line: &str| typed(client, &mut shell, line);
 
-    // One value per file, in decimal, as `/proc/sys/kernel/*` holds
-    // one; the five are settable, so the listing says `rw`.
-    assert_eq!(run(&mut client, "cat /sys/limit/log_ring"), "4096");
-    assert_eq!(run(&mut client, "write /sys/limit/log_ring 65536"), "5\n");
-    assert_eq!(run(&mut client, "cat /sys/limit/log_ring"), "65536");
-    let listed = run(&mut client, "ls -l /sys/limit");
+    // One value per file, in decimal, as `/proc/sys/kernel/*` holds one.
+    assert_eq!(go(&mut client, "cat /sys/limit/log_ring"), "4096");
+    assert_eq!(go(&mut client, "cat /sys/limit/reentry"), "8");
+
+    // The five are settable, so the listing says `rw`.
+    let listed = go(&mut client, "ls -l /sys/limit");
     let rows: Vec<&str> = listed.lines().collect();
     assert_eq!(rows.len(), 5, "{listed}");
     assert!(rows.iter().all(|row| row.starts_with("- rw  ")), "{listed}");
@@ -42,27 +43,19 @@ fn a_parameter_is_a_file_under_sys_limit() {
             "watch_ring"
         ]
     );
-
-    // A word that is no number, and a number the Kernel cannot hold.
-    assert_eq!(
-        run(&mut client, "write /sys/limit/reentry x"),
-        "write /sys/limit/reentry: invalid"
-    );
-    assert_eq!(
-        run(&mut client, "write /sys/limit/reentry 0"),
-        "write /sys/limit/reentry: invalid"
-    );
-    assert_eq!(run(&mut client, "cat /sys/limit/reentry"), "8");
 }
 
 #[test]
 fn the_heap_and_the_core_are_read_and_never_written() {
-    let rig = Rig::new("sys-core");
+    let rig = Rig::new("sh-sys-core");
     let mut client = rig.client();
+    let mut shell = Shell::default();
+    let mut go =
+        |client: &mut Client, line: &str| typed(client, &mut shell, line);
 
     // `ls -l /sys` shows what each of them is: the two the Kernel
     // makes at the read are `r`, the parameters beside them `rw`.
-    let listed = run(&mut client, "ls -l /sys");
+    let listed = go(&mut client, "ls -l /sys");
     let row = |name: &str| {
         listed
             .lines()
@@ -74,14 +67,15 @@ fn the_heap_and_the_core_are_read_and_never_written() {
     assert!(row("core").starts_with("- r-  "), "{listed}");
     assert!(row("limit").starts_with("c r-  "), "{listed}");
     assert!(row("loglevel").starts_with("- rw  "), "{listed}");
-    assert_eq!(
-        run(&mut client, "write /sys/mem 0"),
-        "write /sys/mem: not writable"
-    );
+    // A redirect is the only way bytes go into an rd, and the heap
+    // takes none: the shell says the table's sentence for what it was
+    // refused with.
+    assert_eq!(go(&mut client, "pwd"), "/\n");
+    assert_eq!(go(&mut client, "ls / > /sys/mem"), "ls /: denied");
 
     // The heap the host counts, three numbers; it moves as the
     // process takes memory.
-    let mem = run(&mut client, "cat /sys/mem");
+    let mem = go(&mut client, "cat /sys/mem");
     assert_eq!(mem.split(' ').count(), 3, "{mem}");
     let live = |text: &str| {
         let number = text.split(' ').next().unwrap();
@@ -90,17 +84,17 @@ fn the_heap_and_the_core_are_read_and_never_written() {
     assert!(live(&mem) > 0, "{mem}");
     // Held past the read, or a release build would never take it.
     let held = std::hint::black_box(vec![7_u8; 4 << 20]);
-    let grown = run(&mut client, "cat /sys/mem");
+    let grown = go(&mut client, "cat /sys/mem");
     drop(std::hint::black_box(held));
     assert!(live(&grown) > live(&mem) + (1 << 20), "{mem} then {grown}");
 
     // A core is everything the Kernel holds, in one read: the
     // parameters first, the heap last, one line per thing between.
-    let core = run(&mut client, "cat /sys/core");
+    let core = go(&mut client, "cat /sys/core");
     assert!(core.starts_with("limit watch_ring="), "{core}");
     assert!(core.lines().next_back().unwrap().starts_with("live="), "{core}");
     // Its `rd` lines are the tree's rds, as `tree /` counts them.
-    let counted = run(&mut client, "tree /");
+    let counted = go(&mut client, "tree /");
     let tail = counted.lines().next_back().unwrap();
     let (containers, cells) = tail.split_once(", ").unwrap();
     let number =
