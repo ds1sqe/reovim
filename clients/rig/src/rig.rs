@@ -2,10 +2,9 @@ use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use reovim_client::{Carrier, Client, Fault, Host};
+use reovim_client::{Carrier, Client, Clip, Fault, Host};
 use reovim_host::{clock, mem};
 use reovim_kernel_runtime::{Connection, Heap, Kernel, Limits, NoLoader};
-use reovim_module_clipboard::Clipboard;
 
 /// The process heap as the host counts it, in the Kernel's own shape.
 /// The rig passes what the server passes, so a test reading `/sys/mem`
@@ -29,9 +28,9 @@ impl Carrier for Local {
     }
 }
 
-/// One Kernel with fs mirroring a fresh directory, text, a clipboard
-/// over a store of its own, and the Drivers under `/bin` the server
-/// links; the directory goes with it.
+/// One Kernel with fs mirroring a fresh directory, text and the
+/// Drivers under `/bin` the server links, beside a clipboard store of
+/// its own a Client takes as its machine's; the directory goes with it.
 pub struct Rig {
     dir: PathBuf,
     kernel: Rc<Kernel>,
@@ -58,14 +57,6 @@ impl Rig {
         let dir = std::env::temp_dir().join(name);
         std::fs::create_dir_all(&dir).unwrap();
         let kernel = Kernel::new(clock::now, heap, limits);
-        let clipboard = Rc::new(RefCell::new(Vec::new()));
-        let (reads, writes) = (clipboard.clone(), clipboard.clone());
-        let read = move || Ok(reads.borrow().clone());
-        let write = move |bytes: &[u8]| {
-            *writes.borrow_mut() = bytes.to_vec();
-            Ok(())
-        };
-        let clip = Rc::new(Clipboard::new(Box::new(read), Box::new(write)));
         let booted = [
             ("fs", reovim_module_fs::boot(dir.to_str().unwrap())),
             ("text", reovim_module_text::boot("")),
@@ -75,7 +66,7 @@ impl Rig {
         for (name, module) in booted {
             kernel.load(name, module.module, module.drivers).unwrap();
         }
-        kernel.load("clipboard", clip.clone(), vec![clip]).unwrap();
+        let clipboard = Rc::new(RefCell::new(Vec::new()));
         Self { dir, kernel: Rc::new(kernel), clipboard }
     }
 
@@ -88,6 +79,20 @@ impl Rig {
     /// The clipboard holds `bytes`, as if another program put them.
     pub fn clip(&self, bytes: &[u8]) {
         *self.clipboard.borrow_mut() = bytes.to_vec();
+    }
+
+    /// This store as the machine a Client is given, for `dev::boot`:
+    /// what [`Self::clip`] sets and [`Self::clipboard`] reads back.
+    #[must_use]
+    pub fn clipping(&self) -> Clip {
+        let (reads, writes) = (self.clipboard.clone(), self.clipboard.clone());
+        Clip::new(
+            Box::new(move || Ok(reads.borrow().clone())),
+            Box::new(move |bytes: &[u8]| {
+                *writes.borrow_mut() = bytes.to_vec();
+                Ok(())
+            }),
+        )
     }
 
     /// A connected Client of its own.

@@ -7,12 +7,12 @@ use std::io::Write;
 use std::rc::Rc;
 
 use reovim_client::dev::{self, Table, Want};
-use reovim_client::{Fault, Host};
+use reovim_client::{Clip, Error, Fault, Host};
 use reovim_client_api::{
     BAR, BLUE, BOLD, DIM, GREEN, Key, RED, RED_BOLD, YELLOW,
 };
 use reovim_client_tui::{Frame, Step, Tui, width};
-use reovim_host::{clock, term};
+use reovim_host::{clipboard, clock, term};
 use reovim_sdk::path::under;
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, ops};
@@ -46,6 +46,29 @@ fn table() -> Table {
         };
         Some((String::from(made.0), made.1))
     })
+}
+
+/// The clipboard of the machine this binary runs on, which is the one
+/// the person sits at: the host's tool behind two closures, the only
+/// std in the path from it to `/self/dev/clipboard`.
+fn clip() -> Clip {
+    Clip::new(
+        Box::new(|| clipboard::read().map_err(mapped)),
+        Box::new(|bytes| clipboard::write(bytes).map_err(mapped)),
+    )
+}
+
+/// Host failures as the tree's: no tool is `Unsupported`, a tool that
+/// failed is `Busy`.
+const fn mapped(error: reovim_host::Error) -> Error {
+    match error {
+        reovim_host::Error::NotFound | reovim_host::Error::Exists => {
+            Error::Invalid
+        }
+        reovim_host::Error::Denied => Error::Denied,
+        reovim_host::Error::Io => Error::Busy,
+        reovim_host::Error::Unsupported => Error::Unsupported,
+    }
 }
 
 /// `reovim tui`: a Client over the link, named so a cut link can be
@@ -103,7 +126,7 @@ fn run(
     // the region is given away, which `Calls` cannot spell.
     let host = Rc::new(host);
     let line = line.map(|line| u64::try_from(line).unwrap_or(u64::MAX));
-    let dev = dev::boot(&host, table(), dir, file, line)?;
+    let dev = dev::boot(&host, table(), clip(), dir, file, line)?;
     let mut tui = Tui::open(host, dev)?;
     term::enter()?;
     let result = drive(&mut tui, serve);

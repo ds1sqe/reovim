@@ -10,7 +10,7 @@
 
 use std::rc::Rc;
 
-use reovim_client::dev::{self, Table, Want};
+use reovim_client::dev::{self, Clip, Table, Want};
 
 use reovim_client_tui::{Frame, Step, Tui};
 use reovim_kernel_interface::Rd;
@@ -53,7 +53,9 @@ fn work(test: &str) -> Rig {
 /// relative name the command gives is resolved under that.
 fn over(rig: &Rig, seen: &Seen) -> Editor {
     let host = Rc::new(rig.host());
-    let dev = dev::boot(&host, table(seen), "d", Some("d/f"), None).unwrap();
+    let dev =
+        dev::boot(&host, table(seen), Clip::none(), "d", Some("d/f"), None)
+            .unwrap();
     Tui::open(host, dev).unwrap()
 }
 

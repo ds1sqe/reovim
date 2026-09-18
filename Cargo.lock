@@ -137,7 +137,6 @@ dependencies = [
  "reovim-kernel-abi",
  "reovim-kernel-interface",
  "reovim-kernel-runtime",
- "reovim-module-clipboard",
  "reovim-module-coreutils",
  "reovim-module-fs",
  "reovim-module-sysutils",
@@ -225,15 +224,6 @@ name = "reovim-kernel-runtime"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-kernel-interface",
-]
-
-[[package]]
-name = "reovim-module-clipboard"
-version = "0.16.0-dev"
-dependencies = [
- "reovim-host",
- "reovim-kernel-interface",
- "reovim-kernel-runtime",
 ]
 
 [[package]]
@@ -328,7 +318,6 @@ dependencies = [
  "reovim-host",
  "reovim-kernel-interface",
  "reovim-kernel-runtime",
- "reovim-module-clipboard",
  "reovim-module-coreutils",
  "reovim-module-fs",
  "reovim-module-sysutils",

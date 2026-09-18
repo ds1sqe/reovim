@@ -19,7 +19,7 @@ mod host;
 pub mod log;
 
 pub use client::{Carrier, Client, ROOT, Tree};
-pub use dev::{Table, Want};
+pub use dev::{Clip, Table, Want};
 pub use fault::Fault;
 pub use host::{Host, HostCalls, LOCAL_BASE, SELF};
 // The contract types a consumer of the Client names, so it depends on

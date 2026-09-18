@@ -10,7 +10,7 @@
 
 use std::rc::Rc;
 
-use reovim_client::dev::{self, Table, Want};
+use reovim_client::dev::{self, Clip, Table, Want};
 use reovim_client_tui::{Step, Tui};
 use reovim_plugin_vim::DIVERGENCES;
 use reovim_plugin_vim::notation::keys;
@@ -36,7 +36,9 @@ fn over(test: &str) -> (Rig, Editor) {
     rig.file("d/note", b"one\ntwo\n");
     rig.file("d/sub/deep", b"");
     let host = Rc::new(rig.host());
-    let dev = dev::boot(&host, table(), "d", Some("d/note"), None).unwrap();
+    let dev =
+        dev::boot(&host, table(), Clip::none(), "d", Some("d/note"), None)
+            .unwrap();
     let tui = Tui::open(host, dev).unwrap();
     (rig, tui)
 }

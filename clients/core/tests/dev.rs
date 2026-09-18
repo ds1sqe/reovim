@@ -15,7 +15,7 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 
 use reovim_client::dev::{self, Table, Want};
-use reovim_client::{Client, Host, HostCalls, SELF, log};
+use reovim_client::{Client, Clip, Host, HostCalls, SELF, log};
 use reovim_client_api::{Frames, Key, NONE, Region, keyboard, open, window};
 use reovim_host::clock;
 use reovim_kernel_interface::{
@@ -211,7 +211,7 @@ struct Dev {
 
 impl Dev {
     /// `dev` over `rig` with `table`, the region opened over `file` in
-    /// `dir`, at `line`.
+    /// `dir`, at `line`, and no machine behind the clipboard.
     fn boot(
         rig: &Rig,
         table: Table,
@@ -220,7 +220,16 @@ impl Dev {
         line: Option<u64>,
     ) -> Self {
         let host = Rc::new(rig.host());
-        let rd = dev::boot(&host, table, dir, file, line).unwrap();
+        let rd =
+            dev::boot(&host, table, Clip::none(), dir, file, line).unwrap();
+        Self { host, rd }
+    }
+
+    /// `dev` over `rig` with `clip` for its machine and no Plugin at
+    /// all: what the two cases of the clipboard cell ask.
+    fn clipped(rig: &Rig, clip: Clip) -> Self {
+        let host = Rc::new(rig.host());
+        let rd = dev::boot(&host, none(), clip, "", None, None).unwrap();
         Self { host, rd }
     }
 
@@ -347,7 +356,10 @@ fn the_cells_of_dev_are_where_the_tree_says_they_are() {
     rig.file("note", b"first\n");
     let it = Dev::boot(&rig, none(), "", Some("note"), None);
 
-    assert_eq!(it.names(it.rd), ["cwd", "exit", "input", "open", "windows"]);
+    assert_eq!(
+        it.names(it.rd),
+        ["clipboard", "cwd", "exit", "input", "open", "windows"]
+    );
     assert_eq!(it.names(it.at("windows/0")), ["ask", "size", "view"]);
     let size = it.at("windows/0/size");
     let at = ops::where_is(&it.calls(), size).unwrap();
@@ -367,6 +379,49 @@ fn the_cells_of_dev_are_where_the_tree_says_they_are() {
     assert_eq!(it.exit(), b"");
     it.put(it.at("exit"), b"3".to_vec());
     assert_eq!(it.exit(), b"3");
+}
+
+#[test]
+fn the_clipboard_cell_reads_and_writes_the_machine_whole() {
+    let rig = Rig::new("dev-clipboard");
+    let it = Dev::clipped(&rig, rig.clipping());
+    let own = it.calls();
+    let ctx: &dyn Calls = &own;
+    let rights = Rights::READ.union(Rights::WRITE);
+    let h = ctx.open(it.at("clipboard"), rights).unwrap();
+
+    // Each read asks the machine, from the offset it was given; the
+    // cell holds nothing of its own.
+    rig.clip(b"one");
+    assert_eq!(ops::read(ctx, h, 0, CHUNK), Ok(b"one".to_vec()));
+    assert_eq!(ops::read(ctx, h, 1, 1), Ok(b"n".to_vec()));
+    assert_eq!(ops::read(ctx, h, 3, CHUNK), Ok(Vec::new()), "past the end");
+
+    // A write is the bytes whole, and only at 0.
+    assert_eq!(ops::write(ctx, h, 0, b"two\n".to_vec()), Ok(4));
+    assert_eq!(rig.clipboard(), b"two\n");
+    assert_eq!(
+        ops::write(ctx, h, 1, b"two\n".to_vec()),
+        Err(Error::Invalid),
+        "whole or not at all"
+    );
+    ops::shut(ctx, &[h]);
+}
+
+#[test]
+fn a_client_given_no_machine_answers_the_clipboard_unsupported() {
+    let rig = Rig::new("dev-clipboard-none");
+    let it = Dev::clipped(&rig, Clip::none());
+    let own = it.calls();
+    let ctx: &dyn Calls = &own;
+    let rights = Rights::READ.union(Rights::WRITE);
+    let h = ctx.open(it.at("clipboard"), rights).unwrap();
+
+    // What a host with no tool on PATH answers, so a Plugin reaches
+    // its own sentence by the one road.
+    assert_eq!(ops::read(ctx, h, 0, CHUNK), Err(Error::Unsupported));
+    assert_eq!(ops::write(ctx, h, 0, b"x".to_vec()), Err(Error::Unsupported));
+    ops::shut(ctx, &[h]);
 }
 
 #[test]

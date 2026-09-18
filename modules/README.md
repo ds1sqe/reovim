@@ -2,8 +2,6 @@
 
 Modules the Kernel loads. Each Module holds one or more Drivers.
 
-- `clipboard`: the clipboard Driver: the system clipboard as one
-  rd, read and written through the host's tool.
 - `coreutils`: the Module that provides the Drivers under `/bin`:
   `stat`, `ls`, `tree`, and `cat`.
 - `fs`: the fs Driver: a directory on disk mirrored under one rd,

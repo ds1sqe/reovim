@@ -8,7 +8,7 @@
 use std::rc::Rc;
 
 use reovim_client::Host;
-use reovim_client::dev::{self, Table};
+use reovim_client::dev::{self, Clip, Table};
 use reovim_client_tui::{Step, Tui};
 use reovim_plugin_vim::Editor;
 use reovim_plugin_vim::notation::keys;
@@ -32,7 +32,7 @@ fn editor(
     let table: Table =
         Box::new(move |_| Some((String::from("vim"), one.booted())));
     let host: Rc<Host> = Rc::new(rig.host());
-    let dev = dev::boot(&host, table, dir, file, line).unwrap();
+    let dev = dev::boot(&host, table, Clip::none(), dir, file, line).unwrap();
     (Tui::open(host, dev).unwrap(), vim)
 }
 

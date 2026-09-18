@@ -273,7 +273,12 @@ fn write_tool(tool: &[&str], bytes: &[u8]) -> Option<Result<(), Error>> {
     let fed =
         child.stdin.take().map_or(Ok(()), |mut stdin| stdin.write_all(bytes));
     let done = fed.and_then(|()| child.wait());
-    Some(done.map(|_| ()).map_err(|_| Error::Io))
+    // A tool that ran and refused the bytes is a tool that failed, as
+    // one that could not be read from is: `read_tool` says the same.
+    Some(match done {
+        Ok(status) if status.success() => Ok(()),
+        _ => Err(Error::Io),
+    })
 }
 
 pub fn clipboard_read() -> Result<Vec<u8>, Error> {

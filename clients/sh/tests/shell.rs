@@ -140,8 +140,8 @@ fn a_builtin_takes_its_own_tokens_and_no_redirect() {
     // The rig loads its Modules itself and serves neither.
     let loaded = go(ctx, "load /nowhere.rvm");
     assert_eq!(loaded, "load /nowhere.rvm: unsupported");
-    let gone = go(ctx, "unload clipboard");
-    assert_eq!(gone, "unload clipboard: unsupported");
+    let gone = go(ctx, "unload text");
+    assert_eq!(gone, "unload text: unsupported");
 }
 
 /// From the Host the shell stands on both sides, so `cd /self` works

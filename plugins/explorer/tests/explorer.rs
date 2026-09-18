@@ -9,7 +9,7 @@
 use std::rc::Rc;
 
 use reovim_client::Client;
-use reovim_client::dev::{self, Table, Want};
+use reovim_client::dev::{self, Clip, Table, Want};
 use reovim_client_api::Key;
 use reovim_client_tui::{Frame, Step, Tui};
 use reovim_kernel_interface::{Error, Rd};
@@ -53,7 +53,7 @@ fn made(client: &mut Client, dir: Rd, name: &str) {
 /// The tui over `rig` with `table`, opened over the name `file`.
 fn editor(rig: &Rig, table: Table, file: Option<&str>) -> Result<Tui, Error> {
     let host = Rc::new(rig.host());
-    let dev = dev::boot(&host, table, "", file, None)?;
+    let dev = dev::boot(&host, table, Clip::none(), "", file, None)?;
     Tui::open(host, dev)
 }
 
@@ -168,8 +168,7 @@ fn minus_walks_the_tree_up_to_the_root_and_stops_there() {
     press(&mut tui, Key::Char('-'));
     assert_eq!(frame(&mut tui).lines, ["../", "root/"], "/module/fs");
     press(&mut tui, Key::Char('-'));
-    let modules =
-        ["../", "clipboard/", "coreutils/", "fs/", "sysutils/", "text/"];
+    let modules = ["../", "coreutils/", "fs/", "sysutils/", "text/"];
     assert_eq!(frame(&mut tui).lines, modules, "/module");
     press(&mut tui, Key::Char('-'));
     // The root the Client sees is the server's with one name more,

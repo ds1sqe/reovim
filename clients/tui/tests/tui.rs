@@ -14,7 +14,7 @@ use std::cell::{OnceCell, RefCell};
 use std::collections::VecDeque;
 use std::rc::Rc;
 
-use reovim_client::dev::{self, Table};
+use reovim_client::dev::{self, Clip, Table};
 use reovim_client::{Client, ROOT};
 use reovim_client_api::{
     BAR, BLOCK, BLUE, Frames, GREEN, Key, MATCH, NONE, RED, Region, SELECTION,
@@ -251,7 +251,7 @@ fn over(rig: &Rig, file: Option<&str>) -> (Tui, Stub) {
     let table: Table =
         Box::new(move |_| Some((String::from("stub"), one.booted())));
     let host = Rc::new(rig.host());
-    let dev = dev::boot(&host, table, "", file, None).unwrap();
+    let dev = dev::boot(&host, table, Clip::none(), "", file, None).unwrap();
     (Tui::open(host, dev).unwrap(), stub)
 }
 

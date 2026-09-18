@@ -356,7 +356,7 @@ pub struct Vim {
     name: Option<String>,
     /// Where a relative `:w NAME` starts, under the root.
     dir: String,
-    /// `/module/clipboard/text`, when that Module is there.
+    /// `/self/dev/clipboard`, when the Client serves one.
     clip: Option<Rd>,
     /// Where it stands in the one stream of events.
     cursor_at: u64,

@@ -52,7 +52,7 @@ fn a_listing_is_laid_out_across_the_screen_the_shell_gives() {
     assert_eq!(
         both,
         format!(
-            "/module:\nclipboard\ncoreutils\nfs\nsysutils\ntext\n\n\
+            "/module:\ncoreutils\nfs\nsysutils\ntext\n\n\
              {root}:\nalpha\nbeta\ngamma\n"
         )
     );

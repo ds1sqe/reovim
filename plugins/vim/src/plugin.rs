@@ -114,7 +114,7 @@ impl Module for Editor {
         let rights = Rights::READ.union(Rights::WRITE);
         let h = ctx.open(buffer, rights)?;
         let shell = standing(ctx, &dir)?;
-        let clip = cell::resolve(ctx, ROOT, "/module/clipboard/text").ok();
+        let clip = cell::resolve(ctx, ROOT, "/self/dev/clipboard").ok();
         {
             let mut vim = self.vim.borrow_mut();
             vim.buffer = Some(buffer);
@@ -391,8 +391,8 @@ impl Editor {
         self.act(ctx, effect)
     }
 
-    /// What the clipboard holds, through its rd; `None` when there is
-    /// no Module or no tool.
+    /// What the clipboard holds, through its rd; `None` when the
+    /// Client serves no cell or the machine has no tool.
     fn clipboard(&self, ctx: &dyn Calls) -> Result<Option<String>, Error> {
         let Some(rd) = self.vim.borrow().clip else { return Ok(None) };
         match ops::bytes(ctx, rd) {
@@ -403,7 +403,7 @@ impl Editor {
     }
 
     /// What a `"+` yank left for the clipboard, written to its rd; no
-    /// Module or no tool is a message.
+    /// cell or no tool is a message.
     fn write_clipped(&self, ctx: &dyn Calls) -> Result<(), Error> {
         let (text, clip) = {
             let mut vim = self.vim.borrow_mut();

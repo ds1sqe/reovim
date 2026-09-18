@@ -11,7 +11,7 @@
 
 use std::rc::Rc;
 
-use reovim_client::dev::{self, Table, Want};
+use reovim_client::dev::{self, Clip, Table, Want};
 
 use reovim_client_tui::{Step, Tui};
 use reovim_plugin_vim::notation::keys;
@@ -49,7 +49,9 @@ fn work(test: &str) -> Rig {
 /// An editor over `d/note`, started in `d`.
 fn over(rig: &Rig, seen: &Seen) -> Editor {
     let host = Rc::new(rig.host());
-    let dev = dev::boot(&host, table(seen), "d", Some("d/note"), None).unwrap();
+    let dev =
+        dev::boot(&host, table(seen), Clip::none(), "d", Some("d/note"), None)
+            .unwrap();
     Tui::open(host, dev).unwrap()
 }
 

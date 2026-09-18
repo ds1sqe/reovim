@@ -6,6 +6,7 @@
 //!
 //! ```text
 //! /self/dev/
+//!   clipboard        read/write: the machine's clipboard, whole
 //!   cwd              read: where the Client stands, text
 //!   exit             read/write: the code in decimal; empty for none
 //!   input/keyboard   read/write: the stream of presses
@@ -70,9 +71,45 @@ pub enum Want<'a> {
 /// the app has no Plugin for is `None`.
 pub type Table = Box<dyn Fn(Want<'_>) -> Option<(String, Booted)>>;
 
+/// What reads the machine's clipboard.
+pub type Read = Box<dyn Fn() -> Result<Vec<u8>, Error>>;
+
+/// What writes it.
+pub type Write = Box<dyn Fn(&[u8]) -> Result<(), Error>>;
+
+/// The clipboard of the machine the person sits at, as the pair of
+/// closures the app injects.
+///
+/// The Client links no host crate, so the tool is reached this way and
+/// its failures arrive as the Kernel's: no tool is `Unsupported`, a
+/// tool that failed is `Busy`.
+pub struct Clip {
+    read: Read,
+    write: Write,
+}
+
+impl Clip {
+    /// One over `read` and `write`.
+    #[must_use]
+    pub const fn new(read: Read, write: Write) -> Self {
+        Self { read, write }
+    }
+
+    /// A Client that was given no machine: both `Unsupported`, which
+    /// is what a host with no tool on PATH answers.
+    #[must_use]
+    pub fn none() -> Self {
+        Self::new(
+            Box::new(|| Err(Error::Unsupported)),
+            Box::new(|_| Err(Error::Unsupported)),
+        )
+    }
+}
+
 /// Which cell of `dev` an rd is.
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum Held {
+    Clipboard,
     Cwd,
     Exit,
     Keyboard,
@@ -173,26 +210,29 @@ pub struct Dev {
     /// there, which `Calls` cannot spell.
     host: Weak<Host>,
     table: Table,
+    clip: Clip,
     state: RefCell<State>,
 }
 
 /// `/self/dev` loaded at `host`, over the region `file` names: its rd.
 ///
-/// `dir` is where the Client stands, `file` a name under the root or
-/// nothing, and `line` the line to begin at, counted from 1. The first
-/// Plugin comes of the ask this leaves in `windows/0/ask`, at the first
-/// read of the view.
+/// `clip` is the machine's clipboard, [`Clip::none`] for a Client that
+/// was given none. `dir` is where the Client stands, `file` a name
+/// under the root or nothing, and `line` the line to begin at, counted
+/// from 1. The first Plugin comes of the ask this leaves in
+/// `windows/0/ask`, at the first read of the view.
 ///
 /// # Errors
 /// What `load` says, and `Invalid` if `dev` did not register.
 pub fn boot(
     host: &Rc<Host>,
     table: Table,
+    clip: Clip,
     dir: &str,
     file: Option<&str>,
     line: Option<u64>,
 ) -> Result<Rd, Error> {
-    let dev = Rc::new(Dev::new(host, table, dir, file, line));
+    let dev = Rc::new(Dev::new(host, table, clip, dir, file, line));
     host.load("dev", dev.clone(), alloc::vec![dev.clone()])?;
     dev.state.borrow().home.ok_or(Error::Invalid)
 }
@@ -201,6 +241,7 @@ impl Dev {
     fn new(
         host: &Rc<Host>,
         table: Table,
+        clip: Clip,
         dir: &str,
         file: Option<&str>,
         line: Option<u64>,
@@ -228,7 +269,12 @@ impl Dev {
             region: None,
             keys: Stream { held: VecDeque::new(), first: 0 },
         };
-        Self { host: Rc::downgrade(host), table, state: RefCell::new(state) }
+        Self {
+            host: Rc::downgrade(host),
+            table,
+            clip,
+            state: RefCell::new(state),
+        }
     }
 
     /// One cell under `parent`, kept by what it is.
@@ -436,6 +482,7 @@ impl Module for Dev {
         let read = (Flags::READ, &[][..]);
         let rw = (Flags::READ.union(Flags::WRITE), &[][..]);
         let dir = (Flags::READ.union(Flags::CONTAINER), &[][..]);
+        self.add(ctx, home, "clipboard", rw, Held::Clipboard)?;
         self.add(ctx, home, "cwd", read, Held::Cwd)?;
         self.add(ctx, home, "exit", rw, Held::Exit)?;
         let input = self.add(ctx, home, "input", dir, Held::Dir)?;
@@ -487,8 +534,14 @@ impl Driver for Dev {
         self.reading(ctx, h, at, len).into()
     }
 
-    fn write(&self, _: &dyn Calls, h: u64, _: u64, buf: &[u8]) -> Reply<usize> {
-        self.writing(h, buf).into()
+    fn write(
+        &self,
+        _: &dyn Calls,
+        h: u64,
+        at: u64,
+        buf: &[u8],
+    ) -> Reply<usize> {
+        self.writing(h, at, buf).into()
     }
 
     fn call(
@@ -541,12 +594,14 @@ impl Dev {
             Held::View => {
                 self.viewed(ctx, at, u32::try_from(len).unwrap_or(u32::MAX))
             }
+            // Each read asks the machine: the cell holds nothing.
+            Held::Clipboard => Ok(part(&(self.clip.read)()?, at, len)),
             Held::Open | Held::Dir => Err(Error::Unsupported),
             kept => Ok(part(&self.kept(kept)?, at, len)),
         }
     }
 
-    fn writing(&self, h: u64, buf: &[u8]) -> Result<usize, Error> {
+    fn writing(&self, h: u64, at: u64, buf: &[u8]) -> Result<usize, Error> {
         let (held, _, _) = self.slot(h)?;
         match held {
             Held::Keyboard => self.typed(buf),
@@ -555,6 +610,11 @@ impl Dev {
                 self.state.borrow_mut().size = decode(buf)?;
                 Ok(buf.len())
             }
+            // The bytes whole, at 0 only: the machine takes no offset.
+            Held::Clipboard if at == 0 => {
+                (self.clip.write)(buf).map(|()| buf.len())
+            }
+            Held::Clipboard => Err(Error::Invalid),
             _ => Err(Error::Unsupported),
         }
     }
