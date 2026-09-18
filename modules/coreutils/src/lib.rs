@@ -3,14 +3,14 @@
 //! coreutils: the Module that provides the Drivers a typed line runs,
 //! under the `bin` of whichever host loaded it.
 //!
-//! One Module and one Driver serving four declared apis: `stat`, `ls`,
-//! `tree` and `cat`. `start` registers a name under the nearest `bin`
-//! above its home per api, and a call names the api it belongs to, so
-//! the rd called on and the hash together say what to run. Method 0 of
-//! each answers with the rd of one output cell; whoever opened that
-//! cell reads it at an offset to the empty read that ends it and
-//! closes it, which takes it out of the tree. A run that fails
-//! registers nothing.
+//! One Module and one Driver serving five declared apis: `stat`, `ls`,
+//! `tree`, `cat` and `grep`. `start` registers a name under the
+//! nearest `bin` above its home per api, and a call names the api it
+//! belongs to, so the rd called on and the hash together say what to
+//! run. Method 0 of each answers with the rd of one output cell;
+//! whoever opened that cell reads it at an offset to the empty read
+//! that ends it and closes it, which takes it out of the tree. A run
+//! that fails registers nothing.
 //!
 //! Each api is a file of `bins`, holding its declaration and its `run`.
 //! The text more than one of them prints is `format`; what they ask the
@@ -31,7 +31,7 @@ use reovim_sdk::cell::{self, Follow};
 pub mod bins;
 mod format;
 
-use bins::{cat, ls, stat, tree};
+use bins::{cat, grep, ls, stat, tree};
 
 /// The one Driver, which is `Booted::drivers[0]`: every name this
 /// Module registers is served by it, and so is every output cell.
@@ -44,13 +44,13 @@ const NODE: Flags = Flags::READ.union(Flags::CONTAINER);
 
 /// What is registered under the `bin`, in the order of `decls`
 /// and `hashes`.
-const NAMES: [&str; 4] = ["stat", "ls", "tree", "cat"];
+const NAMES: [&str; 5] = ["stat", "ls", "tree", "cat", "grep"];
 
 /// The Module and its Driver in one; pass it twice at `load`.
 pub struct Coreutils {
     /// One per name of [`NAMES`], reported at that name's rd.
-    decls: [Decl; 4],
-    hashes: [Hash; 4],
+    decls: [Decl; 5],
+    hashes: [Hash; 5],
     cells: cell::Cells,
 }
 
@@ -71,7 +71,8 @@ impl Coreutils {
     /// The Module, before it is loaded.
     #[must_use]
     pub fn new() -> Self {
-        let decls = [stat::decl(), ls::decl(), tree::decl(), cat::decl()];
+        let decls =
+            [stat::decl(), ls::decl(), tree::decl(), cat::decl(), grep::decl()];
         let hashes = decls.each_ref().map(Decl::hash);
         Self { decls, hashes, cells: cell::Cells::default() }
     }
@@ -136,13 +137,14 @@ impl Driver for Coreutils {
         number: u16,
         input: &[u8],
     ) -> Reply<Vec<u8>> {
-        let [stat, ls, tree, cat] = self.hashes;
+        let [stat, ls, tree, cat, grep] = self.hashes;
         let rd = Rd(h);
         let ran = match api {
             a if a == stat => stat::dispatch(self, ctx, rd, number, input),
             a if a == ls => ls::dispatch(self, ctx, rd, number, input),
             a if a == tree => tree::dispatch(self, ctx, rd, number, input),
             a if a == cat => cat::dispatch(self, ctx, rd, number, input),
+            a if a == grep => grep::dispatch(self, ctx, rd, number, input),
             _ => Err(Error::Unsupported),
         };
         ran.into()

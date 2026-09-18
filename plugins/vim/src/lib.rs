@@ -22,7 +22,6 @@ mod motion;
 pub mod notation;
 mod object;
 mod operator;
-mod pattern;
 mod plugin;
 mod search;
 mod visual;

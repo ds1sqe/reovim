@@ -299,7 +299,7 @@ grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$' \
 said="$("$BIN" cli uptime)"
 grep -qE '^up ([0-9]+d )?[0-9]+h [0-9]+m [0-9]+s$' <<< "$said" \
     || fail "uptime says $said"
-[[ "$("$BIN" cli ls /bin | wc -w)" == 10 ]] \
+[[ "$("$BIN" cli ls /bin | wc -w)" == 11 ]] \
     || fail "/bin holds $("$BIN" cli ls /bin)"
 "$BIN" cli stat /bin/uptime | grep -q '0 run({}) -> Rd READ' \
     || fail "uptime's run takes a field: $("$BIN" cli stat /bin/uptime)"

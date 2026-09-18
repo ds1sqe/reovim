@@ -234,6 +234,7 @@ version = "0.16.0-dev"
 dependencies = [
  "reovim-client",
  "reovim-kernel-interface",
+ "reovim-pattern",
  "reovim-rig",
  "reovim-sdk",
 ]
@@ -269,6 +270,10 @@ dependencies = [
  "reovim-sdk",
  "reovim-text-api",
 ]
+
+[[package]]
+name = "reovim-pattern"
+version = "0.16.0-dev"
 
 [[package]]
 name = "reovim-plugin-cli"
@@ -307,6 +312,7 @@ dependencies = [
  "reovim-client-tui",
  "reovim-kernel-interface",
  "reovim-module-coreutils",
+ "reovim-pattern",
  "reovim-rig",
  "reovim-sdk",
  "reovim-text-api",

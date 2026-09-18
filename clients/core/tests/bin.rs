@@ -84,10 +84,10 @@ fn a_module_registers_under_the_bin_above_its_home() {
 
     // The same Module the server links, loaded here: `start` walks up
     // from `/self/coreutils`, finds `/self/bin` in two ops, and
-    // registers its four there in declared order.
+    // registers its five there in declared order.
     let coreutils = reovim_module_coreutils::boot("");
     host.load("coreutils", coreutils.module, coreutils.drivers).unwrap();
-    let held = ["load", "unload", "stat", "ls", "tree", "cat"];
+    let held = ["load", "unload", "stat", "ls", "tree", "cat", "grep"];
     assert_eq!(names(ctx, bin), held);
     assert_eq!(ops::where_is(ctx, at(ctx, "/self/bin/ls")).unwrap(), {
         "/self/bin/ls"
@@ -97,7 +97,7 @@ fn a_module_registers_under_the_bin_above_its_home() {
     assert_eq!(names(ctx, at(ctx, "/self/coreutils")), Vec::<String>::new());
 
     // The server's own `/bin` gained nothing and lost nothing.
-    assert_eq!(names(ctx, at(ctx, "/bin")).len(), 10);
+    assert_eq!(names(ctx, at(ctx, "/bin")).len(), 11);
 
     // A Client that was given no files loads nothing of its own.
     let load = at(ctx, "/self/bin/load");
@@ -107,7 +107,7 @@ fn a_module_registers_under_the_bin_above_its_home() {
     );
 
     // `unload` takes every rd the Module serves, by owner and not by
-    // subtree, so the four under `/self/bin` go with the home.
+    // subtree, so the five under `/self/bin` go with the home.
     host.unload("coreutils").unwrap();
     assert_eq!(names(ctx, bin), ["load", "unload"]);
     assert_eq!(
@@ -169,7 +169,7 @@ fn load_gives_this_client_the_module_the_rvm_answered_with() {
     // cell it answers with holds nothing, as neither name prints.
     assert_eq!(run(ctx, load, &loading(true, "anything.rvm")).unwrap(), "");
     assert_eq!(asked.get(), 1);
-    let held = ["load", "unload", "stat", "ls", "tree", "cat"];
+    let held = ["load", "unload", "stat", "ls", "tree", "cat", "grep"];
     assert_eq!(names(ctx, bin), held);
     let mine = at(ctx, "/self/bin/ls");
     assert_eq!(run(ctx, mine, &listing(SELF)).unwrap(), "bin\ncoreutils\n");

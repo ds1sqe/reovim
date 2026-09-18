@@ -265,7 +265,7 @@ fn the_drivers_under_bin_come_of_linked_modules() {
     let server = Server::start("bin");
     assert_eq!(
         server.line(&["ls", "/bin"]),
-        "call\ncat\ndate\ndmesg\nlog\nls\nstat\ntree\nuptime\nwatch"
+        "call\ncat\ndate\ndmesg\ngrep\nlog\nls\nstat\ntree\nuptime\nwatch"
     );
     for name in ["coreutils", "sysutils"] {
         let rd = server.rd(&format!("/module/{name}"));

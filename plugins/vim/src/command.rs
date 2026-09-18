@@ -5,8 +5,8 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use reovim_client_sh::Act;
+use reovim_pattern::{Pattern, expand};
 
-use crate::pattern::{Pattern, expand};
 use crate::{Ask, Edit, Effect, Found, Key, Mode, Motion, Quit, Vim, Wild};
 
 /// Lines from 0, both ends included.
@@ -587,8 +587,9 @@ mod tests {
     use alloc::string::String;
     use alloc::vec;
 
+    use reovim_pattern::Pattern;
+
     use super::{address, split_unescaped, substituted};
-    use crate::pattern::Pattern;
 
     fn subst(line: &str, pat: &str, rep: &str, all: bool) -> Option<String> {
         let pattern = Pattern::parse(pat, false, false).unwrap();

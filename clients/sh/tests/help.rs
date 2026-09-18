@@ -42,12 +42,13 @@ fn help_is_the_builtins_and_then_one_line_per_name_under_path() {
     // among them now, Drivers of the Client's own under `/self/bin`,
     // and `-l` is the `local` field a token never matches.
     assert_eq!(
-        lines[3..15],
+        lines[3..16],
         [
             "call [target] [method] [arg]",
             "cat [-f] [-n N] [targets..]",
             "date",
             "dmesg [-t] [-T] [-H] [-d] [-r] [-x] [-k] [-w] [-W] [-f F] [-l L]",
+            "grep [pattern] [targets..]",
             "load [-l] [path]",
             "log [from]",
             "ls [-l] [-a] [-w] [targets..]",

@@ -10,6 +10,7 @@ publish = false
 
 [dependencies]
 reovim-kernel-interface = { path = "../../kernel/interface" }
+reovim-pattern = { path = "../../lib/pattern" }
 reovim-sdk = { path = "../../sdk/rust" }
 
 [dev-dependencies]

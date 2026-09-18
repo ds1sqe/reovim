@@ -4,7 +4,8 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use crate::pattern::Pattern;
+use reovim_pattern::Pattern;
+
 use crate::{Effect, Vim};
 
 /// What `:set` holds: the search's options, and the personality.

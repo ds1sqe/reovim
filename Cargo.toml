@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "lib/bitflags",
+    "lib/pattern",
     "kernel/interface",
     "kernel/runtime",
     "kernel/abi",
@@ -24,6 +25,7 @@ members = [
 ]
 default-members = [
     "lib/bitflags",
+    "lib/pattern",
     "kernel/interface",
     "kernel/runtime",
     "kernel/abi",

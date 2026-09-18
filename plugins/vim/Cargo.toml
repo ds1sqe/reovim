@@ -12,6 +12,7 @@ publish = false
 reovim-client-api = { path = "../../clients/core/api" }
 reovim-kernel-interface = { path = "../../kernel/interface" }
 reovim-client-sh = { path = "../../clients/sh" }
+reovim-pattern = { path = "../../lib/pattern" }
 reovim-sdk = { path = "../../sdk/rust" }
 reovim-text-api = { path = "../../modules/text/api" }
 

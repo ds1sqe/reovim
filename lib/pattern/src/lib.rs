@@ -1,7 +1,12 @@
-//! The part of Vim's patterns a person types without thinking, matched
-//! by hand: literals, `.`, `*`, `\+`, `\?`, `^`, `$`, `[...]`, `\<`,
-//! `\>`, `\d \w \s` and their negations, `\c`, `\C`, `\(...\)`,
-//! `\|`, `\n`; magic as nvim's default. Anything else is E486.
+#![no_std]
+#![forbid(unsafe_code)]
+//! Patterns in Vim's dialect, matched by hand: literals, `.`, `*`,
+//! `\+`, `\?`, `^`, `$`, `[...]`, `\<`, `\>`, `\d \w \s` and their
+//! negations, `\c`, `\C`, `\(...\)`, `\|`, `\n`; magic as nvim's
+//! default. Anything else parses to nothing, and the refusal is the
+//! caller's to word.
+
+extern crate alloc;
 
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -76,6 +81,7 @@ impl Pattern {
     }
 
     /// The leftmost match starting at or after `from`.
+    #[must_use]
     pub fn find(
         &self,
         text: &str,
@@ -93,6 +99,7 @@ impl Pattern {
     }
 
     /// A match starting exactly at `at`: its end and captures.
+    #[must_use]
     pub fn match_at(&self, text: &str, at: usize) -> Option<(usize, Captures)> {
         let mut caps = alloc::vec![None; self.groups + 1];
         let end = self.alts.iter().find_map(|alt| {
@@ -353,6 +360,7 @@ impl Parser<'_> {
 /// `replacement` for a match with `caps` in `text`: `&` and `\0` the
 /// whole, `\1`..`\9` the groups, `\r` a newline, `\&` and `\\` as
 /// themselves.
+#[must_use]
 pub fn expand(replacement: &str, text: &str, caps: &Captures) -> String {
     let mut out = String::new();
     let mut chars = replacement.chars();
