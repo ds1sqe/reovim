@@ -12,6 +12,7 @@
 
 extern crate alloc;
 
+mod buffers;
 mod client;
 pub mod dev;
 mod fault;

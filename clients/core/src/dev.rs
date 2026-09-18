@@ -1,11 +1,12 @@
 //! `/self/dev`, the Client's own devices as cells.
 //!
-//! One Module, one Driver, one `RefCell`. What a Client used to answer
-//! in Rust is a tree here: where it stands, what was typed, how big the
-//! region is, what is shown in it, and the code it leaves with.
+//! One Module, two Drivers, one `RefCell` each. What a Client used to
+//! answer in Rust is a tree here: where it stands, what was typed, how
+//! big the region is, what is shown in it, and the code it leaves with.
 //!
 //! ```text
 //! /self/dev/
+//!   buffers          call: the Client's own Buffers, crate::buffers
 //!   clipboard        read/write: the machine's clipboard, whole
 //!   cwd              read: where the Client stands, text
 //!   exit             read/write: the code in decimal; empty for none
@@ -38,6 +39,7 @@ use reovim_kernel_interface::{
 };
 use reovim_sdk::{cell, decode, encode, ops};
 
+use crate::buffers::Buffers;
 use crate::client::ROOT;
 use crate::host::{Host, SELF};
 
@@ -211,6 +213,8 @@ pub struct Dev {
     host: Weak<Host>,
     table: Table,
     clip: Clip,
+    /// The second Driver, which holds the drafts and nothing else.
+    buffers: Rc<Buffers>,
     state: RefCell<State>,
 }
 
@@ -233,7 +237,9 @@ pub fn boot(
     line: Option<u64>,
 ) -> Result<Rd, Error> {
     let dev = Rc::new(Dev::new(host, table, clip, dir, file, line));
-    host.load("dev", dev.clone(), alloc::vec![dev.clone()])?;
+    let drivers: Vec<Rc<dyn Driver>> =
+        alloc::vec![dev.clone(), dev.buffers.clone()];
+    host.load("dev", dev.clone(), drivers)?;
     dev.state.borrow().home.ok_or(Error::Invalid)
 }
 
@@ -273,6 +279,7 @@ impl Dev {
             host: Rc::downgrade(host),
             table,
             clip,
+            buffers: Rc::new(Buffers::new()),
             state: RefCell::new(state),
         }
     }
@@ -482,6 +489,7 @@ impl Module for Dev {
         let read = (Flags::READ, &[][..]);
         let rw = (Flags::READ.union(Flags::WRITE), &[][..]);
         let dir = (Flags::READ.union(Flags::CONTAINER), &[][..]);
+        self.buffers.start(ctx, home)?;
         self.add(ctx, home, "clipboard", rw, Held::Clipboard)?;
         self.add(ctx, home, "cwd", read, Held::Cwd)?;
         self.add(ctx, home, "exit", rw, Held::Exit)?;

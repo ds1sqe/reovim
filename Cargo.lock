@@ -163,6 +163,7 @@ dependencies = [
  "reovim-module-text",
  "reovim-rig",
  "reovim-sdk",
+ "reovim-text-api",
 ]
 
 [[package]]

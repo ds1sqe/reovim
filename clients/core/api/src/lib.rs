@@ -87,6 +87,39 @@ declare! {
     record Ask { target: Rd, plugin: utf8(64), name: utf8(4096), line: u64 }
 }
 
+declare! {
+    /// `/self/dev/buffers`: the Buffers this Client holds, each a
+    /// draft over one of the server's.
+    ///
+    /// `open` takes the rd a `text.open` would take, the caller having
+    /// resolved it, and a source a draft is already over answers that
+    /// draft, so a region shown twice costs one Buffer. `scratch` is a
+    /// draft over nothing, which gains a source at a `save_as`.
+    /// `close` takes the draft out of the tree with the handle it held
+    /// on its Buffer; what was pending goes with it.
+    api buffers ver 1 {
+        0 open(source: Rd) -> Rd: WRITE;
+        1 scratch() -> Rd: WRITE;
+        2 close(draft: Rd) -> (): WRITE;
+    }
+}
+
+declare! {
+    /// `/self/dev/buffers/N`: the draft's own api, beside the `text`,
+    /// `history` and `publish` every Buffer offers.
+    ///
+    /// A `replace` on a draft joins the pending revision and `sync` is
+    /// what makes it a state on the server, which is the one place a
+    /// draft and a server Buffer differ: a caller that wants a
+    /// revision boundary asks for one. The answer is whether the
+    /// draft's bytes moved under the caller, which is the only thing
+    /// it cannot see for itself: true where another run landed in
+    /// front of this one, false otherwise.
+    api draft ver 1 {
+        0 sync() -> bool: WRITE;
+    }
+}
+
 /// A span that is part of what the Plugin has selected.
 pub const SELECTION: u64 = 1;
 /// A span that matches what the Plugin last searched for.

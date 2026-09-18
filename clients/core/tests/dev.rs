@@ -358,7 +358,7 @@ fn the_cells_of_dev_are_where_the_tree_says_they_are() {
 
     assert_eq!(
         it.names(it.rd),
-        ["clipboard", "cwd", "exit", "input", "open", "windows"]
+        ["buffers", "clipboard", "cwd", "exit", "input", "open", "windows"]
     );
     assert_eq!(it.names(it.at("windows/0")), ["ask", "size", "view"]);
     let size = it.at("windows/0/size");

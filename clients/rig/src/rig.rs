@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -14,14 +14,18 @@ fn heap() -> Heap {
     Heap { live: counted.live, peak: counted.peak, allocs: counted.allocs }
 }
 
-/// A Carrier over a `Connection` on this thread, no link.
+/// A Carrier over a `Connection` on this thread, no link; every
+/// message it moves is counted, which is how a case says an op reached
+/// the server and how one says none did.
 struct Local {
     kernel: Rc<Kernel>,
     connection: Connection,
+    sent: Rc<Cell<u32>>,
 }
 
 impl Carrier for Local {
     fn exchange(&mut self, bytes: &[u8]) -> Result<Vec<u8>, Fault> {
+        self.sent.set(self.sent.get() + 1);
         self.connection
             .handle(&self.kernel, bytes, &mut NoLoader)
             .ok_or(Fault::Wire)
@@ -35,6 +39,8 @@ pub struct Rig {
     dir: PathBuf,
     kernel: Rc<Kernel>,
     clipboard: Rc<RefCell<Vec<u8>>>,
+    /// Messages every Client of this rig has put on the link.
+    sent: Rc<Cell<u32>>,
 }
 
 impl Rig {
@@ -67,7 +73,8 @@ impl Rig {
             kernel.load(name, module.module, module.drivers).unwrap();
         }
         let clipboard = Rc::new(RefCell::new(Vec::new()));
-        Self { dir, kernel: Rc::new(kernel), clipboard }
+        let sent = Rc::new(Cell::new(0));
+        Self { dir, kernel: Rc::new(kernel), clipboard, sent }
     }
 
     /// What the clipboard holds.
@@ -102,7 +109,8 @@ impl Rig {
     #[must_use]
     pub fn client(&self) -> Client {
         let connection = Connection::new();
-        let carrier = Local { kernel: self.kernel.clone(), connection };
+        let kernel = self.kernel.clone();
+        let carrier = Local { kernel, connection, sent: self.sent.clone() };
         Client::connect(Box::new(carrier), Vec::new()).unwrap()
     }
 
@@ -114,6 +122,13 @@ impl Rig {
     #[must_use]
     pub fn host(&self) -> Host {
         Host::over(self.client(), clock::now)
+    }
+
+    /// How many messages the Clients of this rig have sent, which a
+    /// case counts around what it claims costs none.
+    #[must_use]
+    pub fn sent(&self) -> u32 {
+        self.sent.get()
     }
 
     /// The directory fs mirrors.
