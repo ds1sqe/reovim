@@ -10,12 +10,12 @@
 //! Nothing here is a second line editor either; the keys go to the
 //! shell's own `Line`, history and all.
 //!
-//! What it owns is a scratch Buffer holding the transcript: every line
-//! run as `<path> > <line>` with what it printed under it, and last
-//! the prompt with the line being typed. One `text.replace` of the
-//! whole text per change, as the explorer refills its listing, so a
-//! key is one revision and the View is laid out over the Buffer the
-//! Client already reads.
+//! What it owns is a scratch draft of `/self/dev/buffers` holding the
+//! transcript: every line run as `<path> > <line>` with what it
+//! printed under it, and last the prompt with the line being typed.
+//! One `text.replace` of the whole text per change, as the explorer
+//! refills its listing; nothing ever flushes it, so the transcript is
+//! this Client's own and the View is laid out over bytes it holds.
 //!
 //! One cell is served, `view`: a whole read of it is one frame. A run
 //! that came back open is a Driver that follows, and each frame asks
@@ -35,16 +35,15 @@ use core::cell::{OnceCell, RefCell};
 
 use reovim_client_api::{
     BAR, BLUE, BOLD, DIM, Frames, GREEN, Key, NONE, RED, RED_BOLD, Region,
-    YELLOW, count, window,
+    YELLOW, count, drafted, window,
 };
 use reovim_client_sh::{Act, Line, Open, Ran, Shell, complete, run};
 use reovim_kernel_interface::{
     Booted, Calls, Driver, DriverId, Error, Flags, Handle, Module, Rd, Reply,
     Rights,
 };
-use reovim_sdk::walk::ROOT;
-use reovim_sdk::{cell, encode, ops};
-use reovim_text_api::{open as text_open, text};
+use reovim_sdk::encode;
+use reovim_text_api::text;
 
 /// The cli buffer, ready for a Client to load.
 #[must_use]
@@ -110,7 +109,7 @@ impl Module for Loaded {
         ctx.report(view, Flags::READ, &[])?;
         let region = Region::of(ctx)?;
         let over = region.ask(ctx)?.target;
-        let buffer = scratch(ctx)?;
+        let buffer = drafted(ctx, None)?;
         let rights = Rights::READ.union(Rights::WRITE);
         let h = ctx.open(buffer, rights)?;
         {
@@ -438,16 +437,6 @@ fn style(code: &str) -> Option<u64> {
         "2" => DIM,
         _ => return None,
     })
-}
-
-/// A Buffer of the buffer's own, over nothing: what the transcript is
-/// written into and what its View names.
-fn scratch(mut ctx: &dyn Calls) -> Result<Rd, Error> {
-    let opener = cell::resolve(ctx, ROOT, "/module/text/open")?;
-    let opening = ctx.open(opener, Rights::WRITE)?;
-    let buffer = text_open::Call(&mut ctx, opening).new();
-    ops::close(ctx, opening)?;
-    buffer
 }
 
 #[cfg(test)]

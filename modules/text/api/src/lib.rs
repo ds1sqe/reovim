@@ -19,13 +19,11 @@ declare! {
 declare! {
     /// Every Buffer: the edits of one call are one state; `expected`
     /// is the head revision the caller saw, 0 for any, and a different
-    /// one is `Stale`. `amend` puts its edit into the head state
-    /// instead of a new one, so one insert can be one undo step;
-    /// the first state, which `open` made, takes none.
+    /// one is `Stale`. What makes one insert one undo step is the
+    /// draft a Client holds, which sends a session as one call.
     api text ver 1 {
         0 replace(edit: Edit) -> (): WRITE;
         1 replace_many(many: Many) -> (): WRITE;
-        2 amend(edit: Edit) -> (): WRITE;
     }
     record Edit { at: u64, len: u64, text: utf8(1 << 20) }
     record Many { expected: u64, edits: [Edit; 256] }

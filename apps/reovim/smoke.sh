@@ -230,7 +230,9 @@ said="$(poured /sys/loglevel loud 2>&1 >/dev/null)" && code=0 || code=$?
 [[ "$code" == 1 ]] || fail "a token that is not a level exits $code"
 poured /sys/loglevel debug > /dev/null
 
-# The insert below is one `text` call, and the trace holds it.
+# The keys below go into the draft this Client holds and cost no call
+# at all; the Esc flushes them as one `replace_many`, and the trace
+# holds that one.
 keys new i "fresh" Escape : q Enter
 shown new "E37: No write since last change"
 said="$("$BIN" cli dmesg -d -l debug)"
@@ -239,12 +241,15 @@ poured /sys/loglevel 6 > /dev/null
     || fail "the level written as 6 does not read back as info"
 grep -qE '^\[ *[0-9]+\.[0-9]{6} < *[0-9]+\.[0-9]{6}>\] ' <<< "$said" \
     || fail "dmesg -d says no delta: $(head -1 <<< "$said")"
-grep -q 'call rd=/module/text/.* api=text method=replace dispatch' <<< "$said" \
-    || fail "the call pair is not in words: $(grep -m1 'call ' <<< "$said")"
-grep -qE 'api=text method=replace reply took=[0-9.]+[^ ]*s heap=[-+][0-9]+$' \
+grep -q 'call rd=/module/text/.* api=text method=replace_many dispatch' \
     <<< "$said" \
+    || fail "the call pair is not in words: $(grep -m1 'call ' <<< "$said")"
+round='api=text method=replace_many reply took=[0-9.]+[^ ]*s heap='
+grep -qE "$round[-+][0-9]+$" <<< "$said" \
     || fail "the reply says no round trip: $(grep -m1 reply <<< "$said")"
-grep -q 'op=read caller=' <<< "$said" || fail "no op is traced at debug"
+# No read of the Buffer crosses any more, the draft being the Client's:
+# the op the trace holds is the flush's own call.
+grep -q 'op=call caller=' <<< "$said" || fail "no op is traced at debug"
 [[ "$said" != *"rd=/sys/log"* ]] || fail "the log traced its own reading"
 # Back at `info`, an op that would have been traced adds nothing.
 count="$("$BIN" cli dmesg -l debug | wc -l)"

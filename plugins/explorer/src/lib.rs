@@ -7,9 +7,9 @@
 //! tree says is one, and its listing is `children`, `info` and the
 //! name each child has under it: `../` first where there is a parent,
 //! then the Containers with a `/` after the name, then the cells. The
-//! listing goes into a scratch Buffer the explorer opens for itself,
-//! whole, so a refill is one revision, and the View names that Buffer,
-//! which is what the Client lays out.
+//! listing goes into a scratch draft of `/self/dev/buffers`, whole, so
+//! a refill is one write and no wire message, and the View names that
+//! draft, which is what the Client lays out.
 //!
 //! Nothing here opens what it lists. Enter asks the Client to show the
 //! entry under the cursor, naming no Plugin, so which Plugin a
@@ -28,14 +28,15 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::cell::{OnceCell, RefCell};
 
-use reovim_client_api::{BLOCK, Frames, Key, NONE, Region, count, window};
+use reovim_client_api::{
+    BLOCK, Frames, Key, NONE, Region, count, drafted, window,
+};
 use reovim_kernel_interface::{
     Booted, Calls, Driver, DriverId, Error, Event, Flags, Handle, Kind, Module,
     Rd, Reply, Rights,
 };
-use reovim_sdk::walk::ROOT;
-use reovim_sdk::{cell, encode, ops};
-use reovim_text_api::{open as text_open, text};
+use reovim_sdk::{encode, ops};
+use reovim_text_api::text;
 
 /// What the prompt says to a line that is no command of the
 /// explorer's, as nvim says it.
@@ -124,7 +125,7 @@ impl Module for Loaded {
         ctx.report(view, Flags::READ, &[])?;
         let region = Region::of(ctx)?;
         let dir = container(ctx, region.ask(ctx)?.target)?;
-        let buffer = scratch(ctx)?;
+        let buffer = drafted(ctx, None)?;
         let rights = Rights::READ.union(Rights::WRITE);
         let h = ctx.open(buffer, rights)?;
         ops::watch(ctx, dir)?;
@@ -378,16 +379,6 @@ fn container(ctx: &dyn Calls, over: Rd) -> Result<Rd, Error> {
         return Ok(over);
     }
     Err(Error::Unsupported)
-}
-
-/// A Buffer of the explorer's own, over nothing: what the listing is
-/// written into and what its View names.
-fn scratch(mut ctx: &dyn Calls) -> Result<Rd, Error> {
-    let opener = cell::resolve(ctx, ROOT, "/module/text/open")?;
-    let opening = ctx.open(opener, Rights::WRITE)?;
-    let buffer = text_open::Call(&mut ctx, opening).new();
-    ops::close(ctx, opening)?;
-    buffer
 }
 
 /// What the Container holds: `../` first where there is a parent, the

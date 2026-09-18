@@ -2,17 +2,23 @@
 //!
 //! The engine below is pure: a key becomes an `Effect`, which has
 //! already happened to Vim's own copy of the text; here it becomes
-//! calls. An edit is a `replace`, or an `amend` when it joins the
-//! insert under way; undo and redo move the Buffer's head and the text
-//! is read back; a save publishes it to its source; a put reads the
-//! clipboard rd and a `"+` yank writes it; a quit writes
-//! `/self/dev/exit`, and what all of it looks like is the View that
-//! ends the frame.
+//! calls. An edit is a `replace` on the draft `/self/dev/buffers`
+//! gave, which costs no wire message and joins the revision the draft
+//! holds; undo and redo move the Buffer's head and the text is read
+//! back; a save publishes it to its source; a put reads the clipboard
+//! rd and a `"+` yank writes it; a quit writes `/self/dev/exit`, and
+//! what all of it looks like is the View that ends the frame.
+//!
+//! Where a revision ends is Vim's to say, in two lines: an edit that
+//! does not join the one under way flushes first, and a frame that
+//! ends out of insert flushes. Where the flush answers that the
+//! draft's bytes moved under Vim — another Client's run landing in
+//! front of this one — the engine takes them again.
 //!
 //! The cells served are `view` and Vim's own state. A whole read of
-//! `view` is one frame: the keys Vim has not taken, each run; what
-//! changed on the Buffer since the last frame; the rows the region has
-//! now; then the View. The rest — the mode, the keys of a command that
+//! `view` is one frame: the keys Vim has not taken, each run; the
+//! flush that ends a revision; the rows the region has now; then the
+//! View. The rest — the mode, the keys of a command that
 //! has not fired, the registers — are made at the read out of what the
 //! engine holds, so nothing is stored twice and nothing goes stale. No
 //! borrow of the engine outlives an op, so a Driver of Vim's own that
@@ -25,19 +31,19 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::cell::{OnceCell, Ref, RefCell};
 
-use reovim_client_api::{Frames, NONE, Region, count, part};
+use reovim_client_api::{Frames, NONE, Region, count, draft, drafted, part};
 use reovim_client_sh::{self as sh, Ran, Shell};
 use reovim_kernel_interface::{
-    Booted, Calls, Decl, Driver, DriverId, Error, Event, Flags, Handle, Hash,
-    Kind, Module, Rd, Reply, Rights,
+    Booted, Calls, Decl, Driver, DriverId, Error, Flags, Handle, Hash, Module,
+    Rd, Reply, Rights,
 };
 use reovim_sdk::dynamic::Value;
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, decode, encode, ops};
-use reovim_text_api::{history, open as text_open, publish, text};
+use reovim_text_api::{history, publish, text};
 
 use crate::command::{Typed, options, typed};
-use crate::{Edit, Effect, Ex, Quit, Vim, bins};
+use crate::{Edit, Effect, Ex, Mode, Quit, Vim, bins};
 
 /// What `:q` says to unsaved changes.
 const E37: &str = "E37: No write since last change (add ! to override)";
@@ -124,7 +130,7 @@ impl Editor {
 }
 
 impl Module for Editor {
-    /// A Buffer of its own over what the region was opened on, read
+    /// A draft of its own over what the region was opened on, read
     /// and written through a handle it keeps, the clipboard found if
     /// there is one, and the text shown from the line it was told to
     /// begin at.
@@ -134,7 +140,7 @@ impl Module for Editor {
         let ask = region.ask(ctx)?;
         let dir = region.cwd(ctx)?;
         let source = (ask.target != NONE).then_some(ask.target);
-        let buffer = buffer_over(ctx, source)?;
+        let buffer = drafted(ctx, source)?;
         let rights = Rights::READ.union(Rights::WRITE);
         let h = ctx.open(buffer, rights)?;
         // The fs Module mirrors the directory the editor runs over, so
@@ -163,13 +169,7 @@ impl Module for Editor {
         self.sized(ctx)?;
         let bytes = ops::whole(ctx, h)?;
         self.vim.borrow_mut().opened(&bytes, ask.line);
-        self.announce(ctx)?;
-        // Where the stream stands once the Buffer is open and read: a
-        // cursor of 0 against a ring that never reached it is one
-        // Overflow, and what opening it left is already in the text.
-        let (_, cursor) = ops::since(ctx, 0)?;
-        self.vim.borrow_mut().cursor_at = cursor;
-        Ok(())
+        self.announce(ctx)
     }
 }
 
@@ -245,9 +245,9 @@ impl Editor {
         self.region.get().ok_or(Error::Closed)
     }
 
-    /// One frame: every key it has not taken, run; what moved on the
-    /// Buffer since the last one; the rows the region has now; the
-    /// View.
+    /// One frame: every key it has not taken, run; the revision they
+    /// made ended where the mode says it is over; the rows the region
+    /// has now; the View.
     fn framed(&self, ctx: &dyn Calls) -> Result<Vec<u8>, Error> {
         let keys = self.region()?.keys(ctx)?;
         for key in keys {
@@ -255,21 +255,32 @@ impl Editor {
             self.act(ctx, effect)?;
             self.write_clipped(ctx)?;
         }
-        self.changed(ctx)?;
+        // The second of the two flushes: an insert session ends at its
+        // Esc, and every other edit at the frame that made it.
+        let mode = self.vim.borrow().mode();
+        if mode != Mode::Insert {
+            self.sync(ctx)?;
+        }
         let rows = self.sized(ctx)?;
         Ok(encode(&self.vim.borrow_mut().view(rows)))
     }
 
-    /// A Modify on the Buffer, or a ring that overflowed: the text is
-    /// read again, which is how another Client's write arrives.
-    fn changed(&self, ctx: &dyn Calls) -> Result<(), Error> {
-        let cursor = self.vim.borrow().cursor_at;
-        let (events, next) = ops::since(ctx, cursor)?;
-        self.vim.borrow_mut().cursor_at = next;
-        let moved = |e: &Event| matches!(e.kind, Kind::Modify | Kind::Overflow);
-        if !events.iter().any(moved) {
-            return Ok(());
+    /// The draft flushed: what it holds goes down as one revision. An
+    /// answer of true is bytes that moved under Vim, another Client's
+    /// run having landed in front of this one, and the engine takes
+    /// them again; nothing else reads the Buffer back.
+    fn sync(&self, mut ctx: &dyn Calls) -> Result<(), Error> {
+        let h = self.handle()?;
+        if draft::Call(&mut ctx, h).sync()? {
+            self.reloaded(ctx)
+        } else {
+            Ok(())
         }
+    }
+
+    /// The draft read whole into the engine: what a flush that moved
+    /// the bytes and a walk of the history both end with.
+    fn reloaded(&self, ctx: &dyn Calls) -> Result<(), Error> {
         let bytes = ops::whole(ctx, self.handle()?)?;
         self.vim.borrow_mut().loaded(&bytes);
         Ok(())
@@ -371,13 +382,16 @@ impl Editor {
         Ok(listed.find(|name| name.starts_with(token)))
     }
 
-    /// `edit` as a new revision, or into the head one when it joins
-    /// the insert under way.
+    /// `edit` into the revision the draft holds. The first of the two
+    /// flushes: one that does not join ends the revision that was
+    /// there, whatever made it.
     fn send(&self, mut ctx: &dyn Calls, edit: Edit) -> Result<(), Error> {
         let Edit { at, len, text, join } = edit;
+        if !join {
+            self.sync(ctx)?;
+        }
         let edit = text::Edit { at: at as u64, len: len as u64, text };
-        let mut call = text::Call(&mut ctx, self.handle()?);
-        if join { call.amend(edit) } else { call.replace(edit) }
+        text::Call(&mut ctx, self.handle()?).replace(edit)
     }
 
     /// Those edits, in order, as a repeat replayed them.
@@ -407,9 +421,7 @@ impl Editor {
             }
             Err(error) => return Err(error),
         }
-        let bytes = ops::whole(ctx, h)?;
-        self.vim.borrow_mut().loaded(&bytes);
-        Ok(())
+        self.reloaded(ctx)
     }
 
     /// A Buffer over nothing that was opened for a file says so on
@@ -973,19 +985,4 @@ fn printed(ctx: &dyn Calls, ran: Ran) -> String {
         let _ = open.close(ctx);
     }
     String::from_utf8_lossy(&out).into_owned()
-}
-
-/// A Buffer over `source`, or over nothing: the one the Plugin shows,
-/// made through `/module/text/open` and kept by the handle `start`
-/// opens on it.
-fn buffer_over(mut ctx: &dyn Calls, source: Option<Rd>) -> Result<Rd, Error> {
-    let opener = cell::resolve(ctx, ROOT, "/module/text/open")?;
-    let opening = ctx.open(opener, Rights::WRITE)?;
-    let mut call = text_open::Call(&mut ctx, opening);
-    let buffer = match source {
-        Some(source) => call.open(source),
-        None => call.new(),
-    };
-    ops::close(ctx, opening)?;
-    buffer
 }

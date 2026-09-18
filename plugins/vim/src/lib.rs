@@ -77,8 +77,11 @@ pub const DIVERGENCES: &[Divergence] = &[Divergence {
 }];
 
 /// One change to the text, already made in Vim: `len` bytes at `at`
-/// became `text`. With `join` the edit belongs to the head revision,
-/// not a new one: one insert is one undo step.
+/// became `text`.
+///
+/// With `join` the edit belongs to the revision under way and not a
+/// new one, so one insert is one undo step; without it the Plugin ends
+/// that revision before this edit goes into the next.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Edit {
     pub at: usize,
@@ -300,7 +303,7 @@ pub struct Vim {
     top: usize,
     mode: Mode,
     pending: Pending,
-    /// The next insert edit joins the head revision.
+    /// The next insert edit joins the revision under way.
     joining: bool,
     /// The screen column a vertical motion wants, `usize::MAX` after
     /// `$`.
@@ -342,12 +345,12 @@ pub struct Vim {
     /// mirror of the directory the Client started in, which `:cd`
     /// moves and `:pwd` says.
     shell: Shell,
-    /// The Buffer `start` opened over what the region is on: what the
+    /// The draft `start` opened over what the region is on: what the
     /// View it shows is in the bytes of.
     buffer: Option<Rd>,
-    /// That Buffer's handle, READ and WRITE.
+    /// That draft's handle, READ and WRITE.
     h: Option<Handle>,
-    /// What that Buffer is over, once it is over anything.
+    /// What the Buffer under it is over, once it is over anything.
     source: Option<Rd>,
     /// The file a Buffer over nothing was opened for while there is
     /// no such file: what its first write makes.
@@ -362,8 +365,6 @@ pub struct Vim {
     cwd: Option<Rd>,
     /// `/self/dev/clipboard`, when the Client serves one.
     clip: Option<Rd>,
-    /// Where it stands in the one stream of events.
-    cursor_at: u64,
     /// How many rows the region has: what `top` scrolls by.
     rows: usize,
 }
@@ -836,8 +837,8 @@ impl Vim {
         self.edit(self.cursor, c.len_utf8(), String::new())
     }
 
-    /// An edit already applied to the text, joined to the head when
-    /// an insert is under way.
+    /// An edit already applied to the text, joined to the revision
+    /// under way when an insert is.
     const fn edit(&mut self, at: usize, len: usize, text: String) -> Effect {
         let join = core::mem::replace(&mut self.joining, true);
         Effect::Edit(Edit { at, len, text, join })

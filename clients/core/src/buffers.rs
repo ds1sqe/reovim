@@ -67,11 +67,15 @@ struct Draft {
 impl Draft {
     /// The revision a reader sees: the last flushed one, or the one
     /// the flush will make while edits are pending.
+    ///
+    /// modules/text numbers a state by how many it holds and not by
+    /// its parent, so the one the flush will make is one past the
+    /// last, which after an undo is not one past head.
     const fn revision(&self) -> u64 {
         if self.pending.is_empty() {
             self.tree.head
         } else {
-            self.tree.head + 1
+            self.tree.nodes.len() as u64 + 1
         }
     }
 
@@ -321,7 +325,10 @@ impl Buffers {
     }
 
     /// The server's truth, whole: the Buffer read and its history
-    /// taken, and nothing of the draft's own left over.
+    /// taken, and nothing of the draft's own left over. The bytes
+    /// moved under whoever reads them, so the Modify says so; the
+    /// borrow is gone before it, what a watcher does with it
+    /// re-entering this Host.
     fn reread(
         &self,
         mut ctx: &dyn Calls,
@@ -334,7 +341,8 @@ impl Buffers {
             draft.bytes = bytes;
             draft.tree = tree;
             draft.pending.clear();
-        })
+        })?;
+        ctx.changed(rd, Kind::Modify)
     }
 
     /// Head one revision back or on: what is pending goes down first,
@@ -351,8 +359,7 @@ impl Buffers {
         let h = self.handle(rd)?;
         let mut call = history::Call(&mut ctx, h);
         if back { call.undo() } else { call.redo() }?;
-        self.reread(ctx, rd, h)?;
-        ctx.changed(rd, Kind::Modify)
+        self.reread(ctx, rd, h)
     }
 
     /// What a `save_as` may have made of the draft: one over nothing
@@ -469,13 +476,6 @@ impl text::Api for Buffers {
         many: text::Many,
     ) -> Result<(), Error> {
         self.edited(ctx, rd, many.expected, many.edits)
-    }
-
-    /// `Unsupported`: on a draft a `replace` joins the pending
-    /// revision already, so there is no head state of its own to
-    /// amend.
-    fn amend(&self, _: &dyn Calls, _: Rd, _: text::Edit) -> Result<(), Error> {
-        Err(Error::Unsupported)
     }
 }
 

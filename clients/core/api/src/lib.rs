@@ -468,6 +468,27 @@ impl Frames {
     }
 }
 
+/// The draft over `source`, or over nothing: the Client's own copy of
+/// a Buffer, which every Plugin that shows text opens this one way.
+///
+/// The caller resolved `source`, as [`buffers::Api::open`] takes an
+/// rd; a source a draft is already over answers that draft.
+///
+/// # Errors
+/// What the Client says; `Invalid` where there is no
+/// `/self/dev/buffers`, which is a Client this Plugin is not for.
+pub fn drafted(mut ctx: &dyn Calls, source: Option<Rd>) -> Result<Rd, Error> {
+    let list = cell::resolve(ctx, ROOT, "/self/dev/buffers")?;
+    let h = ctx.open(list, Rights::WRITE)?;
+    let mut call = buffers::Call(&mut ctx, h);
+    let draft = match source {
+        Some(source) => call.open(source),
+        None => call.scratch(),
+    };
+    ops::close(ctx, h)?;
+    draft
+}
+
 /// Up to `len` bytes of `bytes` from `at`, or as many as there are:
 /// what a cell answers a read at an offset with.
 #[must_use]

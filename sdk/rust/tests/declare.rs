@@ -22,7 +22,6 @@ declare! {
     api text ver 1 {
         0 replace(edit: Edit) -> (): WRITE;
         1 replace_many(edits: Many) -> (): WRITE;
-        2 amend(edit: Edit) -> (): WRITE;
     }
     record Edit { at: u64, len: u64, text: utf8(1 << 20) }
     record Many { expected: u64, edits: [Edit; 256] }

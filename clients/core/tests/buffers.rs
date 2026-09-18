@@ -360,6 +360,15 @@ fn undo_and_redo_walk_the_servers_history_and_the_draft_follows() {
     // Buffer already reads it.
     it.walk(draft, true).unwrap();
     assert_eq!(it.walk(draft, true), Err(Error::Invalid));
+
+    // A state is numbered by how many the server holds, so the node an
+    // edit after an undo predicts is one past the last and not one
+    // past head: the revision a status row shows is read off it.
+    it.edit(draft, 0, 0, "x").unwrap();
+    assert_eq!(it.tree(draft).head, 3, "the branch the flush will make");
+    assert!(!it.sync(draft));
+    let over = it.points(draft, "over");
+    assert_eq!(history_of(&mut other, over).head, 3, "as the server made it");
 }
 
 #[test]
