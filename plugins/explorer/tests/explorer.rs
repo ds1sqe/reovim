@@ -15,6 +15,8 @@ use reovim_client::{
 use reovim_client_tui::{Frame, Step, Table, Tui, Want};
 use reovim_plugin_explorer::Explorer;
 use reovim_rig::{Limits, Rig};
+use reovim_sdk::walk::ROOT;
+use reovim_sdk::{cell, ops};
 use reovim_text_api::open as text_open;
 
 /// The one editor a test drives, over whichever Plugin the table gives.
@@ -28,17 +30,17 @@ type Opened = Rc<RefCell<Vec<Option<Rd>>>>;
 struct Stub(Opened);
 
 impl Plugin for Stub {
-    fn start(&mut self, ctx: Ctx<'_>, at: Start) -> Result<(), Fault> {
-        let Ctx { tree, caps } = ctx;
+    fn start(&mut self, ctx: Ctx<'_>, at: Start) -> Result<(), Error> {
+        let Ctx { mut ctx, caps } = ctx;
         self.0.borrow_mut().push(at.over);
-        let opener = tree.resolve("/module/text/open")?;
-        let opening = tree.open(opener, Rights::WRITE)?;
-        let mut call = text_open::Call(tree, opening);
+        let opener = cell::resolve(ctx, ROOT, "/module/text/open")?;
+        let opening = ctx.open(opener, Rights::WRITE)?;
+        let mut call = text_open::Call(&mut ctx, opening);
         let buffer = match at.over {
             Some(source) => call.open(source)?,
             None => call.new()?,
         };
-        tree.close(opening)?;
+        ops::close(ctx, opening)?;
         let Some(region) = caps.open(grid::hash()) else { return Ok(()) };
         let view = grid::View {
             over: buffer.0,
@@ -51,11 +53,11 @@ impl Plugin for Stub {
         grid::Call(caps, region).show(view)
     }
 
-    fn input(&mut self, _: Ctx<'_>, _: Hash, _: &[u8]) -> Result<(), Fault> {
+    fn input(&mut self, _: Ctx<'_>, _: Hash, _: &[u8]) -> Result<(), Error> {
         Ok(())
     }
 
-    fn changed(&mut self, _: Ctx<'_>, _: &[Event]) -> Result<(), Fault> {
+    fn changed(&mut self, _: Ctx<'_>, _: &[Event]) -> Result<(), Error> {
         Ok(())
     }
 }
@@ -94,7 +96,7 @@ fn made(client: &mut Client, dir: Rd, name: &str) {
 
 /// The region opened on `name`, a name under the root.
 fn over(rig: &Rig, seen: &Opened) -> Editor {
-    Tui::open(rig.client(), "", Some("work"), None, table(seen)).unwrap()
+    Tui::open(rig.host(), "", Some("work"), None, table(seen)).unwrap()
 }
 
 /// The frame at the size the app always asks for.
@@ -207,7 +209,9 @@ fn minus_walks_the_tree_up_to_the_root_and_stops_there() {
         ["../", "clipboard/", "coreutils/", "fs/", "sysutils/", "text/"];
     assert_eq!(frame(&mut tui).lines, modules, "/module");
     press(&mut tui, Key::Char('-'));
-    let root = ["bin/", "module/", "session/", "sys/", "var/"];
+    // The root the Client sees is the server's with one name more,
+    // its own tree, which the listing shows like any other child.
+    let root = ["bin/", "module/", "self/", "session/", "sys/", "var/"];
     assert_eq!(frame(&mut tui).lines, root, "the root has no `../`");
     let listing = tui.over();
     press(&mut tui, Key::Char('-'));
@@ -302,7 +306,7 @@ fn a_region_over_a_cell_is_none_of_the_explorer_s() {
     // the explorer's to show, and it says so before anything is drawn.
     let table: Table<Box<dyn Plugin>> =
         Box::new(|_| Some(Box::new(Explorer::default()) as Box<dyn Plugin>));
-    let opened = Tui::open(rig.client(), "", Some("work/a"), None, table);
+    let opened = Tui::open(rig.host(), "", Some("work/a"), None, table);
     let refused = Fault::Kernel(Error::Unsupported);
     assert_eq!(opened.err(), Some(refused));
 }

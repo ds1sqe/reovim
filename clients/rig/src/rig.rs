@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use reovim_client::{Carrier, Client, Fault};
+use reovim_client::{Carrier, Client, Fault, Host};
 use reovim_host::{clock, mem};
 use reovim_kernel_runtime::{Connection, Heap, Kernel, Limits, NoLoader};
 use reovim_module_clipboard::Clipboard;
@@ -99,6 +99,16 @@ impl Rig {
         let connection = Connection::new();
         let carrier = Local { kernel: self.kernel.clone(), connection };
         Client::connect(Box::new(carrier), Vec::new()).unwrap()
+    }
+
+    /// A Client of its own behind the one door, which is what
+    /// everything above the Client takes its ops through.
+    ///
+    /// # Panics
+    /// As [`Self::client`].
+    #[must_use]
+    pub fn host(&self) -> Host {
+        Host::over(self.client(), clock::now)
     }
 
     /// The directory fs mirrors.

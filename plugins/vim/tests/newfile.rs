@@ -23,7 +23,7 @@ fn vim() -> Table<Vim> {
 
 /// `file`, a name under the root, in an editor of its own.
 fn open(rig: &Rig, file: &str) -> Tui<Vim> {
-    Tui::open(rig.client(), "", Some(file), None, vim()).unwrap()
+    Tui::open(rig.host(), "", Some(file), None, vim()).unwrap()
 }
 
 /// Every key of `text` in Vim notation; what the last one did.
@@ -120,7 +120,7 @@ fn the_new_name_is_said_as_the_person_gave_it() {
     std::fs::create_dir(rig.dir().join("d")).unwrap();
     // The Client started in `d`, so `d/memo.md` was typed `memo.md`.
     let mut tui =
-        Tui::open(rig.client(), "d", Some("d/memo.md"), None, vim()).unwrap();
+        Tui::open(rig.host(), "d", Some("d/memo.md"), None, vim()).unwrap();
     assert_eq!(status(&mut tui), "memo.md  1:1  r1   \"memo.md\" [New]");
     assert_eq!(typed(&mut tui, "iz<Esc>:w<CR>"), Step::Changed);
     assert_eq!(rig.disk("d/memo.md"), b"z\n");
@@ -131,8 +131,7 @@ fn the_line_of_the_command_line_is_where_vim_begins() {
     let rig = Rig::new("plus-line");
     rig.file("note", b"one\n  two\nthree\n");
     let at = |line| {
-        let tui =
-            Tui::open(rig.client(), "", Some("note"), line, vim()).unwrap();
+        let tui = Tui::open(rig.host(), "", Some("note"), line, vim()).unwrap();
         tui.plugin().position()
     };
     // Counted from 1, on the line's first non-blank, as `+N` lands.
@@ -161,7 +160,7 @@ fn a_file_where_a_directory_is_wanted_is_e212() {
 #[test]
 fn a_buffer_with_no_name_at_all_still_has_no_file_to_write() {
     let rig = Rig::new("new-file-none");
-    let mut tui = Tui::open(rig.client(), "", None, None, vim()).unwrap();
+    let mut tui = Tui::open(rig.host(), "", None, None, vim()).unwrap();
     assert_eq!(status(&mut tui), "[No Name]  1:1  r1   ");
     assert_eq!(typed(&mut tui, "ihi<Esc>:w<CR>"), Step::Changed);
     assert!(status(&mut tui).ends_with("E32: No file name"));

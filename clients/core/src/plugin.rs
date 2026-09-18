@@ -11,16 +11,14 @@
 use alloc::boxed::Box;
 use alloc::string::String;
 
-use reovim_kernel_interface::{Event, Hash, Rd};
+use reovim_kernel_interface::{Calls, Error, Event, Hash, Rd};
 
-use crate::Fault;
 use crate::caps::Caps;
-use crate::client::Tree;
 
-/// What a Plugin is given for the length of one call: the tree its
-/// calls go to, and the table of what its Client serves.
+/// What a Plugin is given for the length of one call: the one door its
+/// ops go through, and the table of what its Client serves.
 pub struct Ctx<'a> {
-    pub tree: &'a mut Tree,
+    pub ctx: &'a dyn Calls,
     pub caps: &'a mut Caps,
 }
 
@@ -55,7 +53,7 @@ pub trait Plugin {
     ///
     /// # Errors
     /// What a call it made says.
-    fn start(&mut self, ctx: Ctx<'_>, at: Start) -> Result<(), Fault>;
+    fn start(&mut self, ctx: Ctx<'_>, at: Start) -> Result<(), Error>;
 
     /// One input of the capability `from`: `bytes` is one of its
     /// records. An input of an api the Plugin does not know is not an
@@ -68,20 +66,20 @@ pub trait Plugin {
         ctx: Ctx<'_>,
         from: Hash,
         bytes: &[u8],
-    ) -> Result<(), Fault>;
+    ) -> Result<(), Error>;
 
     /// What happened on the watched rds; what the Plugin shows may
     /// have been written by somebody else.
     ///
     /// # Errors
     /// As [`Self::start`].
-    fn changed(&mut self, ctx: Ctx<'_>, events: &[Event]) -> Result<(), Fault>;
+    fn changed(&mut self, ctx: Ctx<'_>, events: &[Event]) -> Result<(), Error>;
 }
 
 /// A Plugin in a box is a Plugin, so a Client that holds one region's
 /// Plugin behind `Box<dyn Plugin>` needs no Plugin of its own.
 impl<P: Plugin + ?Sized> Plugin for Box<P> {
-    fn start(&mut self, ctx: Ctx<'_>, at: Start) -> Result<(), Fault> {
+    fn start(&mut self, ctx: Ctx<'_>, at: Start) -> Result<(), Error> {
         (**self).start(ctx, at)
     }
 
@@ -90,11 +88,11 @@ impl<P: Plugin + ?Sized> Plugin for Box<P> {
         ctx: Ctx<'_>,
         from: Hash,
         bytes: &[u8],
-    ) -> Result<(), Fault> {
+    ) -> Result<(), Error> {
         (**self).input(ctx, from, bytes)
     }
 
-    fn changed(&mut self, ctx: Ctx<'_>, events: &[Event]) -> Result<(), Fault> {
+    fn changed(&mut self, ctx: Ctx<'_>, events: &[Event]) -> Result<(), Error> {
         (**self).changed(ctx, events)
     }
 }

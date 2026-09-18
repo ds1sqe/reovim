@@ -3,15 +3,17 @@
 //! each answers with holds the same bytes. The declaration is the whole
 //! of what the shell reads, so this is the rule and nothing else.
 
-use reovim_client::{Client, ROOT, Rd, Rights};
 use reovim_client_sh::{Shell, run};
+use reovim_kernel_interface::{Calls, Rd, Rights};
 use reovim_module_coreutils::bins::ls;
 use reovim_rig::Rig;
+use reovim_sdk::walk::ROOT;
+use reovim_sdk::{cell, ops};
 
 /// One typed line from where `shell` stands; its output, or the line a
 /// Miss would print.
-fn typed(client: &mut Client, shell: &mut Shell, line: &str) -> String {
-    match run(client, shell, line) {
+fn typed(ctx: &dyn Calls, shell: &mut Shell, line: &str) -> String {
+    match run(ctx, shell, line) {
         Ok(ran) => String::from_utf8(ran.out).unwrap(),
         Err(miss) => miss.to_string(),
     }
@@ -20,28 +22,29 @@ fn typed(client: &mut Client, shell: &mut Shell, line: &str) -> String {
 /// `call /bin/<name> run <bytes>`, its output cell read at an offset to
 /// the empty read that ends it and closed, which is how a shell reads
 /// one.
-fn called(client: &mut Client, name: &str, input: Vec<u8>) -> String {
-    let rd = client.resolve(&format!("/bin/{name}")).unwrap();
-    let out = client.call_by_name(rd, "run", input).unwrap();
+fn called(ctx: &dyn Calls, name: &str, input: Vec<u8>) -> String {
+    let rd = cell::resolve(ctx, ROOT, &format!("/bin/{name}")).unwrap();
+    let out = ops::call_by_name(ctx, rd, "run", input).unwrap();
     let cell: Rd = reovim_sdk::decode(&out).unwrap();
-    let h = client.open(cell, Rights::READ).unwrap();
+    let h = ctx.open(cell, Rights::READ).unwrap();
     let mut bytes = Vec::new();
     loop {
         let at = bytes.len() as u64;
-        let chunk = client.read(h, at, 64).unwrap();
+        let chunk = ops::read(ctx, h, at, 64).unwrap();
         if chunk.is_empty() {
             break;
         }
         bytes.extend(chunk);
     }
-    client.close(h).unwrap();
+    ops::close(ctx, h).unwrap();
     String::from_utf8(bytes).unwrap()
 }
 
 #[test]
 fn a_line_fills_the_record_the_declaration_asks_for() {
     let rig = Rig::new("sh-decode");
-    let mut client = rig.client();
+    let host = rig.host();
+    let ctx = &host.own();
     let mut shell = Shell::default();
     shell.screen(80, true);
 
@@ -57,10 +60,10 @@ fn a_line_fills_the_record_the_declaration_asks_for() {
         color: true,
         targets: vec!["/bin".to_string()],
     };
-    let by_hand = called(&mut client, "ls", reovim_sdk::encode(&args));
-    assert_eq!(typed(&mut client, &mut shell, "ls -l -a /bin"), by_hand);
+    let by_hand = called(ctx, "ls", reovim_sdk::encode(&args));
+    assert_eq!(typed(ctx, &mut shell, "ls -l -a /bin"), by_hand);
     assert!(by_hand.contains("\x1b["), "color is the shell's to fill");
 
     // The same two fields in one token under a dash.
-    assert_eq!(typed(&mut client, &mut shell, "ls -la /bin"), by_hand);
+    assert_eq!(typed(ctx, &mut shell, "ls -la /bin"), by_hand);
 }

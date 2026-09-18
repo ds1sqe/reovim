@@ -1,7 +1,8 @@
 #![no_std]
 #![forbid(unsafe_code)]
-//! The shell: a typed line in, text out, over a `Tree`. It names no
-//! Driver. The first token is a name under PATH, whose declaration says
+//! The shell: a typed line in, text out, over a `Calls`. It names no
+//! Driver and no side: the tree it runs on is whatever its host hands
+//! it. The first token is a name under PATH, whose declaration says
 //! what the rest of the line fills; the run answers with an output cell
 //! the shell reads to its end.
 //!
@@ -24,7 +25,9 @@ use alloc::vec::Vec;
 use core::fmt;
 use core::fmt::Write as _;
 
-use reovim_client::{Error, Fault, Flags, ROOT, Rd, Tree, walk};
+use reovim_kernel_interface::{Calls, Error, Flags, Rd};
+use reovim_sdk::walk::{self, ROOT};
+use reovim_sdk::{cell, ops};
 
 pub use complete::{Completion, complete};
 pub use line::{Act, Line};
@@ -40,6 +43,9 @@ struct Builtin {
 
 /// The column a usage line's help begins at.
 const HELP: usize = 32;
+
+/// Where the cells for the two messages stand: the Client's own tree.
+const MESSAGES: &str = "/self/bin";
 
 /// The names the shell runs itself, in the order `help` lists them:
 /// where the line stands, what the server loads, and `help` itself.
@@ -245,7 +251,7 @@ const CAUSES: &[(Step, Error, &str)] = &[
 /// `Miss` for a name PATH does not hold, a token no field takes, or
 /// whatever the tree says.
 pub fn run(
-    tree: &mut Tree,
+    ctx: &dyn Calls,
     shell: &mut Shell,
     text: &str,
 ) -> Result<Ran, Miss> {
@@ -255,7 +261,7 @@ pub fn run(
         return Err(Miss::line("no name; help lists them"));
     };
     if builtin(name).is_none() {
-        return run::under_path(tree, shell, name, args, sink);
+        return run::under_path(ctx, shell, name, args, sink);
     }
     if sink.is_some() {
         let cause = "a redirect takes a run's output".to_string();
@@ -263,38 +269,38 @@ pub fn run(
         let name = (*name).to_string();
         return Err(Miss { name, target, cause, unknown: false });
     }
-    let out = ran(tree, shell, name, args)?;
+    let out = ran(ctx, shell, name, args)?;
     Ok(Ran { out, open: None })
 }
 
 /// The five the shell runs itself; what a builtin prints.
 fn ran(
-    tree: &mut Tree,
+    ctx: &dyn Calls,
     shell: &mut Shell,
     name: &str,
     args: &[&str],
 ) -> Result<Vec<u8>, Miss> {
     match (name, args.len()) {
-        ("cd", 0 | 1) => cd(tree, shell, args.first().copied()),
+        ("cd", 0 | 1) => cd(ctx, shell, args.first().copied()),
         ("pwd", 0) => Ok(format!("{}\n", shell.path).into_bytes()),
-        ("load", 1) => served(tree.load(args[0]), name, args[0]),
-        ("unload", 1) => served(tree.unload(args[0]), name, args[0]),
+        ("load" | "unload", 1) => loading(ctx, name, args[0]),
         ("help", 0 | 1) => {
-            help(tree, args.first().copied()).map(String::into_bytes)
+            help(ctx, args.first().copied()).map(String::into_bytes)
         }
         _ => Err(misused(name, args)),
     }
 }
 
-/// `load` and `unload` print nothing; what the server refuses is the
-/// shell's own line, since neither is an op.
-fn served(
-    done: Result<(), Fault>,
-    name: &str,
-    target: &str,
-) -> Result<Vec<u8>, Miss> {
-    done.map(|()| Vec::new())
-        .map_err(|fault| miss(name, target, Step::Op, &fault, ""))
+/// `load` and `unload`, which are the server's two messages and not
+/// ops: a write of the path, or of the name, to the cell the Client
+/// keeps for it, which is the Client's to send since it holds the
+/// link. Neither prints anything.
+fn loading(ctx: &dyn Calls, name: &str, target: &str) -> Result<Vec<u8>, Miss> {
+    let refused = |error: Error| miss(name, target, Step::Op, error, "");
+    let path = format!("{MESSAGES}/{name}");
+    let rd = cell::resolve(ctx, ROOT, &path).map_err(refused)?;
+    ops::put(ctx, rd, target.as_bytes().to_vec()).map_err(refused)?;
+    Ok(Vec::new())
 }
 
 /// A builtin given more or fewer tokens than it takes: its own form.
@@ -308,28 +314,28 @@ fn misused(name: &str, args: &[&str]) -> Miss {
 /// `help`, and `help NAME`: the lines the shell can run, read from the
 /// builtins and from the declaration of every name under PATH, or the
 /// one line of that name.
-fn help(tree: &mut Tree, asked: Option<&str>) -> Result<String, Miss> {
+fn help(ctx: &dyn Calls, asked: Option<&str>) -> Result<String, Miss> {
     let Some(name) = asked else {
         let mut out = String::new();
         for entry in &BUILTINS {
             let _ = writeln!(out, "{}", entry.line());
         }
-        for name in run::names(tree) {
-            let _ = writeln!(out, "{}", run::form(tree, &name)?);
+        for name in run::names(ctx) {
+            let _ = writeln!(out, "{}", run::form(ctx, &name)?);
         }
         out.push_str(AFTER);
         return Ok(format!("{out}\n"));
     };
     match builtin(name) {
         Some(entry) => Ok(format!("{}\n", entry.line())),
-        None => Ok(format!("{}\n", run::form(tree, name)?)),
+        None => Ok(format!("{}\n", run::form(ctx, name)?)),
     }
 }
 
 /// `cd`: the root with no target, the one before it under `-`, else the
 /// Container the target names, whose path the prompt then shows.
 fn cd(
-    tree: &mut Tree,
+    ctx: &dyn Calls,
     shell: &mut Shell,
     target: Option<&str>,
 ) -> Result<Vec<u8>, Miss> {
@@ -343,71 +349,47 @@ fn cd(
         shell.go(rd, path);
         return Ok(Vec::new());
     }
-    let rd = resolved(tree, shell, "cd", target)?;
-    let refused = |fault: Fault| miss("cd", target, Step::Op, &fault, "");
-    let info = tree.info(rd).map_err(refused)?;
+    let rd = resolved(ctx, shell, "cd", target)?;
+    let refused = |error: Error| miss("cd", target, Step::Op, error, "");
+    let info = ops::info(ctx, rd).map_err(refused)?;
     if !info.flags.contains(Flags::CONTAINER) {
-        return Err(refused(Fault::Kernel(Error::Unsupported)));
+        return Err(refused(Error::Unsupported));
     }
-    let path = where_is(tree, rd).map_err(refused)?;
+    let path = ops::where_is(ctx, rd).map_err(refused)?;
     shell.go(rd, path);
     Ok(Vec::new())
 }
 
-/// As deep a path as a prompt will show; below that the rd says where
-/// it is instead.
-const DEEP: usize = 64;
-
-/// The path of `rd`, read from the tree itself: its name under each
-/// parent up to the root, so the prompt says where the cwd is however
-/// it was named. An rd the Kernel does not name, or one deeper than
-/// [`DEEP`], has no path to show and is `rd:<n>`.
-fn where_is(tree: &mut Tree, rd: Rd) -> Result<String, Fault> {
-    let mut names: Vec<String> = Vec::new();
-    let mut at = rd;
-    while at != ROOT {
-        let name = tree.name(at)?;
-        if name.is_empty() || names.len() == DEEP {
-            return Ok(format!("rd:{}", rd.0));
-        }
-        names.push(name);
-        at = tree.parent(at)?;
-    }
-    names.reverse();
-    Ok(format!("/{}", names.join("/")))
-}
-
 /// The rd of `target` from where the shell stands, or the Miss naming
 /// the segment that stopped the walk.
+///
+/// The walk is spelled here and not [`reovim_sdk::cell::resolve`]
+/// because that one answers an `Error` with no name in it, and the
+/// Miss says which segment was not there.
 fn resolved(
-    tree: &mut Tree,
+    ctx: &dyn Calls,
     shell: &Shell,
     name: &str,
     target: &str,
 ) -> Result<Rd, Miss> {
-    let stopped = |(at, fault): (String, Fault)| {
-        miss(name, target, Step::Resolve, &fault, &at)
+    let stepped = |step: walk::Step<'_>| match step {
+        walk::Step::Child { rd, name } => {
+            ops::lookup(ctx, rd, name).map_err(|e| (name.to_string(), e))
+        }
+        walk::Step::Parent { rd } => {
+            ops::parent(ctx, rd).map_err(|e| ("..".to_string(), e))
+        }
     };
-    walk(tree, shell.cwd, target).map_err(stopped)
+    walk::walk(shell.cwd, target, stepped)
+        .map_err(|(at, error)| miss(name, target, Step::Resolve, error, &at))
 }
 
-/// The Miss for `fault` under `name` on `target`, `at` filling the
+/// The Miss for `error` under `name` on `target`, `at` filling the
 /// row's `{}`.
-fn miss(name: &str, target: &str, step: Step, fault: &Fault, at: &str) -> Miss {
-    let cause = cause(step, fault, at);
+fn miss(name: &str, target: &str, step: Step, error: Error, at: &str) -> Miss {
+    let cause = row(step, error).replace("{}", at);
     let (name, target) = (name.to_string(), target.to_string());
     Miss { name, target, cause, unknown: false }
-}
-
-/// The shell's sentence for `fault`: the table for the Kernel's
-/// errors, the link and the input as they are.
-fn cause(step: Step, fault: &Fault, at: &str) -> String {
-    match fault {
-        Fault::Kernel(error) => row(step, *error).replace("{}", at),
-        Fault::Carrier => "link gone".to_string(),
-        Fault::Wire => "not a message from the server".to_string(),
-        Fault::Usage(text) => text.clone(),
-    }
 }
 
 /// The row for this error at this step, else the one for its op.
@@ -424,9 +406,9 @@ mod tests {
     use alloc::string::ToString;
     use alloc::vec::Vec;
 
-    use reovim_client::{Error, Fault};
+    use reovim_kernel_interface::Error;
 
-    use super::{CAUSES, Miss, Step, cause, row};
+    use super::{CAUSES, Miss, Step, row};
 
     /// The nine the Kernel may answer with.
     const ERRORS: [Error; 9] = [
@@ -463,16 +445,9 @@ mod tests {
     }
 
     #[test]
-    fn a_fault_that_is_not_the_kernels_is_said_as_the_shell_has_it() {
-        // The link and the wire are the shell's own two sentences; what
-        // a caller already said in words is said again as it is.
-        assert_eq!(cause(Step::Op, &Fault::Carrier, ""), "link gone");
-        assert_eq!(
-            cause(Step::Op, &Fault::Wire, ""),
-            "not a message from the server"
-        );
-        let own = Fault::Usage("said as it is".to_string());
-        assert_eq!(cause(Step::Op, &own, ""), "said as it is");
+    fn a_line_that_names_nothing_says_its_cause_as_it_is() {
+        // A Miss the shell made itself carries a whole sentence, and
+        // there is no name or target to put around it.
         assert_eq!(Miss::line("said as it is").to_string(), "said as it is");
     }
 }

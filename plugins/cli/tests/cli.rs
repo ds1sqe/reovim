@@ -11,12 +11,14 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use reovim_client::{
-    BLOCK, BLUE, Ctx, Event, Fault, Handle, Hash, Key, Plugin, Rd, Rights,
+    BLOCK, BLUE, Ctx, Error, Event, Handle, Hash, Key, Plugin, Rd, Rights,
     Start, grid, open,
 };
 use reovim_client_tui::{Frame, Step, Table, Tui, Want};
 use reovim_plugin_cli::Cli;
 use reovim_rig::Rig;
+use reovim_sdk::walk::ROOT;
+use reovim_sdk::{cell, ops};
 use reovim_text_api::open as text_open;
 
 /// The one editor a test drives, over whichever Plugin the table gives.
@@ -35,19 +37,19 @@ struct Stub {
 }
 
 impl Plugin for Stub {
-    fn start(&mut self, ctx: Ctx<'_>, at: Start) -> Result<(), Fault> {
-        let Ctx { tree, caps } = ctx;
+    fn start(&mut self, ctx: Ctx<'_>, at: Start) -> Result<(), Error> {
+        let Ctx { mut ctx, caps } = ctx;
         self.seen.borrow_mut().push(at.over);
         self.over = at.over;
         self.opening = caps.open(open::hash());
-        let opener = tree.resolve("/module/text/open")?;
-        let opening = tree.open(opener, Rights::WRITE)?;
-        let mut call = text_open::Call(tree, opening);
+        let opener = cell::resolve(ctx, ROOT, "/module/text/open")?;
+        let opening = ctx.open(opener, Rights::WRITE)?;
+        let mut call = text_open::Call(&mut ctx, opening);
         let buffer = match at.over {
             Some(source) => call.open(source)?,
             None => call.new()?,
         };
-        tree.close(opening)?;
+        ops::close(ctx, opening)?;
         let Some(region) = caps.open(grid::hash()) else { return Ok(()) };
         let view = grid::View {
             over: buffer.0,
@@ -60,17 +62,17 @@ impl Plugin for Stub {
         grid::Call(caps, region).show(view)
     }
 
-    fn input(&mut self, ctx: Ctx<'_>, _: Hash, _: &[u8]) -> Result<(), Fault> {
-        let Ctx { tree, caps } = ctx;
+    fn input(&mut self, ctx: Ctx<'_>, _: Hash, _: &[u8]) -> Result<(), Error> {
+        let Ctx { ctx, caps } = ctx;
         let (Some(over), Some(opening)) = (self.over, self.opening) else {
             return Ok(());
         };
-        let dir = tree.parent(over)?;
+        let dir = ops::parent(ctx, over)?;
         let ask = open::Ask { target: dir.0, plugin: String::from("cli") };
         open::Call(caps, opening).open(ask)
     }
 
-    fn changed(&mut self, _: Ctx<'_>, _: &[Event]) -> Result<(), Fault> {
+    fn changed(&mut self, _: Ctx<'_>, _: &[Event]) -> Result<(), Error> {
         Ok(())
     }
 }
@@ -103,7 +105,7 @@ fn work(test: &str) -> Rig {
 fn buffer(rig: &Rig, seen: &Opened) -> Editor {
     let table = table(seen);
     let mut tui =
-        Tui::open(rig.client(), "", Some("work/a"), None, table).unwrap();
+        Tui::open(rig.host(), "", Some("work/a"), None, table).unwrap();
     assert_eq!(tui.key(Key::Char('x')), Ok(Step::Changed), "the cli shows");
     tui
 }
@@ -300,8 +302,7 @@ fn a_cli_buffer_that_was_the_first_thing_shown_leaves_with_nothing() {
     // there is no step back, so the way out is the way out.
     let table: Table<Box<dyn Plugin>> =
         Box::new(|_| Some(Box::new(Cli::default()) as Box<dyn Plugin>));
-    let mut tui =
-        Tui::open(rig.client(), "", Some("work"), None, table).unwrap();
+    let mut tui = Tui::open(rig.host(), "", Some("work"), None, table).unwrap();
     assert_eq!(frame(&mut tui).lines, [prompt("work")]);
     assert_eq!(keys(&mut tui, &[Key::Ctrl('d')]), Step::Quit(0));
 }
@@ -314,7 +315,7 @@ fn a_region_over_a_cell_leaves_the_line_at_the_root() {
     let table: Table<Box<dyn Plugin>> =
         Box::new(|_| Some(Box::new(Cli::default()) as Box<dyn Plugin>));
     let mut tui =
-        Tui::open(rig.client(), "", Some("work/a"), None, table).unwrap();
+        Tui::open(rig.host(), "", Some("work/a"), None, table).unwrap();
     assert_eq!(frame(&mut tui).lines, ["/ > "]);
     line(&mut tui, "ls");
     let shown = ["/ > ls", "bin  module  session  sys  var", "/ > "];

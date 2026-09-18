@@ -5,7 +5,8 @@
 //!
 //! It knows no Module and no name: every line is run by clients/sh,
 //! the same `run` the process cli runs and the same `complete`, over
-//! the tree the Client has and from where a `Shell` of its own stands.
+//! the one door the Client hands it and from where a `Shell` of its
+//! own stands.
 //! Nothing here is a second line editor either; the keys go to the
 //! shell's own `Line`, history and all.
 //!
@@ -26,11 +27,12 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use reovim_client::{
-    BAR, BLUE, BOLD, Caps, Ctx, DIM, Error, Event, Fault, GREEN, Handle, Hash,
-    Key, Plugin, RED, RED_BOLD, Rd, Rights, Start, Tree, YELLOW, grid, keys,
-    open,
+    BAR, BLUE, BOLD, Calls, Caps, Ctx, DIM, Error, Event, GREEN, Handle, Hash,
+    Key, Plugin, RED, RED_BOLD, Rd, Rights, Start, YELLOW, grid, keys, open,
 };
 use reovim_client_sh::{Act, Line, Ran, Shell, complete, run};
+use reovim_sdk::walk::ROOT;
+use reovim_sdk::{cell, ops};
 use reovim_text_api::{open as text_open, text};
 
 /// A shell in a region: the transcript, the line being typed at the
@@ -72,12 +74,12 @@ impl Plugin for Cli {
     ///
     /// # Errors
     /// What a call it made says.
-    fn start(&mut self, ctx: Ctx<'_>, at: Start) -> Result<(), Fault> {
-        let Ctx { tree, caps } = ctx;
-        let buffer = scratch(tree)?;
+    fn start(&mut self, ctx: Ctx<'_>, at: Start) -> Result<(), Error> {
+        let Ctx { ctx, caps } = ctx;
+        let buffer = scratch(ctx)?;
         let rights = Rights::READ.union(Rights::WRITE);
         self.buffer = Some(buffer);
-        self.h = Some(tree.open(buffer, rights)?);
+        self.h = Some(ctx.open(buffer, rights)?);
         self.region = caps.open(grid::hash());
         self.opener = caps.open(open::hash());
         if let Some(region) = self.region {
@@ -86,8 +88,8 @@ impl Plugin for Cli {
             self.rows = count(size.rows);
         }
         self.screen();
-        self.stand(tree, at.over);
-        self.fill(tree)?;
+        self.stand(ctx, at.over);
+        self.fill(ctx)?;
         self.show(caps)
     }
 
@@ -101,8 +103,8 @@ impl Plugin for Cli {
         ctx: Ctx<'_>,
         from: Hash,
         bytes: &[u8],
-    ) -> Result<(), Fault> {
-        let Ctx { tree, caps } = ctx;
+    ) -> Result<(), Error> {
+        let Ctx { ctx, caps } = ctx;
         if from == grid::hash() {
             let resized: grid::Resized = reovim_sdk::decode(bytes)?;
             self.cols = resized.cols;
@@ -115,7 +117,7 @@ impl Plugin for Cli {
         }
         let press: keys::Press = reovim_sdk::decode(bytes)?;
         let Some(key) = Key::of(press.key) else { return Ok(()) };
-        self.pressed(tree, caps, key)
+        self.pressed(ctx, caps, key)
     }
 
     /// Nothing: the cli buffer watches no rd of its own, and its own
@@ -124,15 +126,15 @@ impl Plugin for Cli {
     ///
     /// # Errors
     /// Never.
-    fn changed(&mut self, _: Ctx<'_>, _: &[Event]) -> Result<(), Fault> {
+    fn changed(&mut self, _: Ctx<'_>, _: &[Event]) -> Result<(), Error> {
         Ok(())
     }
 }
 
 impl Cli {
     /// The Buffer `start` opened; `Closed` before it has.
-    fn handle(&self) -> Result<Handle, Fault> {
-        self.h.ok_or(Fault::Kernel(Error::Closed))
+    fn handle(&self) -> Result<Handle, Error> {
+        self.h.ok_or(Error::Closed)
     }
 
     /// Where the line starts: the rd the region was opened on, named
@@ -140,9 +142,9 @@ impl Cli {
     /// shows is the one the shell itself finds and no path is spelled
     /// here. A target that is no Container is that `cd`'s own refusal,
     /// and the line stands at the root with nothing said.
-    fn stand(&mut self, tree: &mut Tree, over: Option<Rd>) {
+    fn stand(&mut self, ctx: &dyn Calls, over: Option<Rd>) {
         let Some(rd) = over else { return };
-        let _ = run(tree, &mut self.shell, &format!("cd rd:{}", rd.0));
+        let _ = run(ctx, &mut self.shell, &format!("cd rd:{}", rd.0));
     }
 
     /// What a run writes for: the region's columns, which a listing
@@ -156,17 +158,17 @@ impl Cli {
     /// two that leave the region are `back`.
     fn pressed(
         &mut self,
-        tree: &mut Tree,
+        ctx: &dyn Calls,
         caps: &mut Caps,
         key: Key,
-    ) -> Result<(), Fault> {
+    ) -> Result<(), Error> {
         match self.line.key(key) {
             Act::Nothing => return Ok(()),
             // The text or the cursor moved; the prompt line holds it.
             Act::Redraw => {}
-            Act::Submit(line) => self.ran(tree, &line),
+            Act::Submit(line) => self.ran(ctx, &line),
             Act::Complete => {
-                let found = complete(tree, &self.shell, self.line.text());
+                let found = complete(ctx, &self.shell, self.line.text());
                 self.line.apply(&found);
             }
             // Ctrl-L: what has been run and answered goes, and the
@@ -178,7 +180,7 @@ impl Cli {
             // Ctrl-C, and Ctrl-D on an empty line.
             Act::Quit => return self.leave(caps),
         }
-        self.fill(tree)?;
+        self.fill(ctx)?;
         self.show(caps)
     }
 
@@ -190,7 +192,7 @@ impl Cli {
     /// cell holds at this one read is what the buffer shows, and the
     /// cell is closed after it, a Plugin having no tick to read it
     /// again.
-    fn ran(&mut self, tree: &mut Tree, line: &str) {
+    fn ran(&mut self, ctx: &dyn Calls, line: &str) {
         // The prompt the line was typed at, which a `cd` in it moves.
         self.transcript.push_str(&self.shell.prompt());
         self.transcript.push_str(line);
@@ -198,8 +200,8 @@ impl Cli {
         if line.trim().is_empty() {
             return;
         }
-        let said = match run(tree, &mut self.shell, line) {
-            Ok(ran) => printed(tree, ran),
+        let said = match run(ctx, &mut self.shell, line) {
+            Ok(ran) => printed(ctx, ran),
             Err(miss) => format!("{miss}\n"),
         };
         self.said(&said);
@@ -223,7 +225,7 @@ impl Cli {
     /// Ctrl-C, or Ctrl-D on an empty line: the region goes back to
     /// what it showed before this buffer, which is the Client's to do
     /// and the end of this Plugin.
-    fn leave(&self, caps: &mut Caps) -> Result<(), Fault> {
+    fn leave(&self, caps: &mut Caps) -> Result<(), Error> {
         let Some(opener) = self.opener else { return Ok(()) };
         open::Call(caps, opener).back()
     }
@@ -231,7 +233,7 @@ impl Cli {
     /// The Buffer filled with what the region shows now, whole, so a
     /// change is one revision. A key that moved the cursor alone
     /// leaves the text as it was and writes nothing.
-    fn fill(&mut self, tree: &mut Tree) -> Result<(), Fault> {
+    fn fill(&mut self, mut ctx: &dyn Calls) -> Result<(), Error> {
         let text = format!(
             "{}{}{}",
             self.transcript,
@@ -247,11 +249,11 @@ impl Cli {
             len: was.len() as u64,
             text: self.text.clone(),
         };
-        text::Call(tree, self.handle()?).replace(edit)
+        text::Call(&mut ctx, self.handle()?).replace(edit)
     }
 
     /// The View to the region, if the Client has one.
-    fn show(&self, caps: &mut Caps) -> Result<(), Fault> {
+    fn show(&self, caps: &mut Caps) -> Result<(), Error> {
         let Some(region) = self.region else { return Ok(()) };
         let view = self.view();
         grid::Call(caps, region).show(view)
@@ -354,21 +356,21 @@ fn style(code: &str) -> Option<u64> {
 /// What a run printed, its cell closed where the run came back open: a
 /// Driver that follows is read this once and no more, a Plugin having
 /// no tick to read it again.
-fn printed(tree: &mut Tree, ran: Ran) -> String {
+fn printed(ctx: &dyn Calls, ran: Ran) -> String {
     let Ran { out, open } = ran;
     if let Some(mut open) = open {
-        let _ = open.close(tree);
+        let _ = open.close(ctx);
     }
     String::from_utf8_lossy(&out).into_owned()
 }
 
 /// A Buffer of the buffer's own, over nothing: what the transcript is
 /// written into and what its View names.
-fn scratch(tree: &mut Tree) -> Result<Rd, Fault> {
-    let opener = tree.resolve("/module/text/open")?;
-    let opening = tree.open(opener, Rights::WRITE)?;
-    let buffer = text_open::Call(tree, opening).new();
-    tree.close(opening)?;
+fn scratch(mut ctx: &dyn Calls) -> Result<Rd, Error> {
+    let opener = cell::resolve(ctx, ROOT, "/module/text/open")?;
+    let opening = ctx.open(opener, Rights::WRITE)?;
+    let buffer = text_open::Call(&mut ctx, opening).new();
+    ops::close(ctx, opening)?;
     buffer
 }
 

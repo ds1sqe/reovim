@@ -8,9 +8,10 @@ use alloc::vec::Vec;
 
 use reovim_kernel_interface::wire::{Endpoint, Message};
 use reovim_kernel_interface::{
-    Decl, Error, Event, Handle, Hash, Info, Method, Op, Out, Rd, Reply, Rights,
-    Token,
+    Decl, Error, Event, Handle, Hash, Info, Op, Out, Rd, Reply, Rights, Token,
 };
+
+use reovim_sdk::walk::Step;
 
 use crate::Fault;
 
@@ -353,12 +354,15 @@ impl Tree {
 
     /// The rd `target` names, walked from the root: a path from `/`, a
     /// name under it, or `rd:<n>`, all through the one
-    /// [`crate::walk`].
+    /// [`reovim_sdk::walk::walk`].
     ///
     /// # Errors
     /// As [`Self::lookup`], for the segment that stopped the walk.
     pub fn resolve(&mut self, target: &str) -> Result<Rd, Fault> {
-        crate::walk(self, ROOT, target).map_err(|(_, fault)| fault)
+        reovim_sdk::walk::walk(ROOT, target, |step| match step {
+            Step::Child { rd, name } => self.lookup(rd, name),
+            Step::Parent { rd } => self.parent(rd),
+        })
     }
 
     /// Everything readable at `rd`, through a handle opened and closed
@@ -368,16 +372,13 @@ impl Tree {
     /// As [`Self::lookup`].
     pub fn read_all(&mut self, rd: Rd) -> Result<Vec<u8>, Fault> {
         let h = self.open(rd, Rights::READ)?;
-        let out = self.read_whole(h);
+        let out = self.whole(h);
         self.close(h)?;
         out
     }
 
     /// Everything readable through `h`, from 0 until an empty `Read`.
-    ///
-    /// # Errors
-    /// As [`Self::lookup`].
-    pub fn read_whole(&mut self, h: Handle) -> Result<Vec<u8>, Fault> {
+    fn whole(&mut self, h: Handle) -> Result<Vec<u8>, Fault> {
         let mut out = Vec::new();
         let mut chunk = self.read(h, 0, CHUNK)?;
         while !chunk.is_empty() {
@@ -420,53 +421,28 @@ impl Tree {
         Ok(decls)
     }
 
-    /// The first method named `name` among what `rd` offers.
+    /// The first method named `name` among what `rd` offers, run with
+    /// `input` already encoded, through a handle opened with the
+    /// method's right and closed here.
     ///
     /// # Errors
-    /// `Usage` when there is none; otherwise as [`Self::decl`].
-    pub fn method(
-        &mut self,
-        rd: Rd,
-        name: &str,
-    ) -> Result<(Hash, Method), Fault> {
-        let named = |(hash, decl): (Hash, Decl)| {
-            decl.methods.into_iter().find(|m| m.name == name).map(|m| (hash, m))
-        };
-        self.decls(rd)?.into_iter().find_map(named).ok_or_else(|| {
-            Fault::Usage(format!("no method `{name}` on rd {}", rd.0))
-        })
-    }
-
-    /// Run `method` on `rd` with `input` already encoded, through a
-    /// handle opened with the method's right and closed here.
-    ///
-    /// # Errors
-    /// As [`Self::lookup`].
-    pub fn call_method(
-        &mut self,
-        rd: Rd,
-        api: Hash,
-        method: &Method,
-        input: Vec<u8>,
-    ) -> Result<Vec<u8>, Fault> {
-        let h = self.open(rd, method.right)?;
-        let output = self.call(h, api, method.number, input);
-        self.close(h)?;
-        output
-    }
-
-    /// [`Self::method`] then [`Self::call_method`].
-    ///
-    /// # Errors
-    /// As both.
+    /// `Unsupported` when no api of `rd` declares that name; otherwise
+    /// as [`Self::decl`].
     pub fn call_by_name(
         &mut self,
         rd: Rd,
         name: &str,
         input: Vec<u8>,
     ) -> Result<Vec<u8>, Fault> {
-        let (api, method) = self.method(rd, name)?;
-        self.call_method(rd, api, &method, input)
+        let named = |(hash, decl): (Hash, Decl)| {
+            decl.methods.into_iter().find(|m| m.name == name).map(|m| (hash, m))
+        };
+        let found = self.decls(rd)?.into_iter().find_map(named);
+        let (api, method) = found.ok_or(Fault::Kernel(Error::Unsupported))?;
+        let h = self.open(rd, method.right)?;
+        let output = self.call(h, api, method.number, input);
+        self.close(h)?;
+        output
     }
 
     /// The name of `rd` under its parent, empty for the root.
@@ -517,43 +493,5 @@ impl reovim_sdk::Call for Tree {
         input: Vec<u8>,
     ) -> Result<Vec<u8>, Fault> {
         Self::call(self, h, api, number, input)
-    }
-}
-
-/// `path` under `dir` unless it is absolute, `.` and `..` resolved
-/// lexically, without the leading slash: its name under the root.
-/// `dir` is a name under the root already.
-#[must_use]
-pub fn under(dir: &str, path: &str) -> String {
-    let joined = if path.starts_with('/') {
-        String::from(path)
-    } else {
-        format!("{dir}/{path}")
-    };
-    let mut parts: Vec<&str> = Vec::new();
-    for part in joined.split('/') {
-        match part {
-            "" | "." => {}
-            ".." => {
-                parts.pop();
-            }
-            part => parts.push(part),
-        }
-    }
-    parts.join("/")
-}
-
-#[cfg(test)]
-mod tests {
-    use super::under;
-
-    #[test]
-    fn under_names_the_file_under_the_root() {
-        assert_eq!(under("home/me", "note"), "home/me/note");
-        assert_eq!(under("home/me", "./a/../b/"), "home/me/b");
-        assert_eq!(under("home/me", "/tmp/x"), "tmp/x");
-        assert_eq!(under("", "../../etc/hosts"), "etc/hosts");
-        assert_eq!(under("", "/home/me"), "home/me");
-        assert_eq!(under("home/me", "/"), "");
     }
 }

@@ -14,12 +14,14 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 
 use reovim_client::{
-    BAR, BLOCK, BLUE, Client, Ctx, Event, Fault, GREEN, Handle, Hash, Key,
-    Kind, MATCH, Plugin, RED, Rd, Rights, SELECTION, Start, Tree, grid, keys,
-    log, open, process,
+    BAR, BLOCK, BLUE, Calls, Client, Ctx, Error, Event, Fault, GREEN, Handle,
+    Hash, Key, Kind, MATCH, Plugin, RED, Rd, Rights, SELECTION, Start, grid,
+    keys, log, open, process,
 };
 use reovim_client_tui::{Frame, Step, Table, Tui, Want};
 use reovim_rig::{Limits, Rig};
+use reovim_sdk::walk::ROOT;
+use reovim_sdk::{cell, ops};
 use reovim_text_api::{history, open as text_open, publish, text};
 
 /// What the tui gave `start`, and the Buffer the stub opened for it:
@@ -133,8 +135,8 @@ impl Stub {
     }
 
     /// The one act, performed.
-    fn act(&self, ctx: Ctx<'_>, act: &Act) -> Result<(), Fault> {
-        let Ctx { tree, caps } = ctx;
+    fn act(&self, ctx: Ctx<'_>, act: &Act) -> Result<(), Error> {
+        let Ctx { mut ctx, caps } = ctx;
         let (h, region) = {
             let script = self.0.borrow();
             (script.h.unwrap(), script.region.unwrap())
@@ -144,24 +146,24 @@ impl Stub {
             Act::Edit(at, len, text) => {
                 let edit =
                     text::Edit { at: *at, len: *len, text: text.clone() };
-                text::Call(tree, h).replace(edit)
+                text::Call(&mut ctx, h).replace(edit)
             }
             Act::Undo(view) => {
-                history::Call(tree, h).undo()?;
+                history::Call(&mut ctx, h).undo()?;
                 grid::Call(caps, region).show(self.over(view))
             }
-            Act::Save => publish::Call(tree, h).save(),
+            Act::Save => publish::Call(&mut ctx, h).save(),
             Act::SaveAs(name) => {
                 let path = format!("/module/fs/root/{name}");
-                let target = tree.resolve(&path)?;
-                publish::Call(tree, h).save_as(target)
+                let target = cell::resolve(ctx, ROOT, &path)?;
+                publish::Call(&mut ctx, h).save_as(target)
             }
             Act::Make(name) => {
-                let root = tree.resolve("/module/fs/root")?;
+                let root = cell::resolve(ctx, ROOT, "/module/fs/root")?;
                 let input = reovim_sdk::encode(name);
-                tree.call_by_name(root, "create", input).map(|_| ())
+                ops::call_by_name(ctx, root, "create", input).map(|_| ())
             }
-            Act::Second(text) => self.second(tree, text),
+            Act::Second(text) => self.second(ctx, text),
             Act::Open(target, plugin) => {
                 let opening = self.0.borrow().opening.unwrap();
                 let ask =
@@ -181,22 +183,22 @@ impl Stub {
 
     /// A Buffer of its own over nothing, holding `text`: what a Plugin
     /// drawing something that is not the Client's file makes.
-    fn second(&self, tree: &mut Tree, text: &str) -> Result<(), Fault> {
-        let buffer = buffer_over(tree, None)?;
-        let h = tree.open(buffer, Rights::READ.union(Rights::WRITE))?;
+    fn second(&self, mut ctx: &dyn Calls, text: &str) -> Result<(), Error> {
+        let buffer = buffer_over(ctx, None)?;
+        let h = ctx.open(buffer, Rights::READ.union(Rights::WRITE))?;
         let edit = text::Edit { at: 0, len: 0, text: String::from(text) };
-        text::Call(tree, h).replace(edit)?;
+        text::Call(&mut ctx, h).replace(edit)?;
         self.0.borrow_mut().shows = Some(buffer);
         Ok(())
     }
 }
 
 impl Plugin for Stub {
-    fn start(&mut self, ctx: Ctx<'_>, at: Start) -> Result<(), Fault> {
-        let Ctx { tree, caps } = ctx;
-        let buffer = buffer_over(tree, at.over)?;
+    fn start(&mut self, ctx: Ctx<'_>, at: Start) -> Result<(), Error> {
+        let Ctx { ctx, caps } = ctx;
+        let buffer = buffer_over(ctx, at.over)?;
         let rights = Rights::READ.union(Rights::WRITE);
-        let h = tree.open(buffer, rights)?;
+        let h = ctx.open(buffer, rights)?;
         let region = caps.open(grid::hash());
         let (opening, ending) =
             (caps.open(open::hash()), caps.open(process::hash()));
@@ -217,7 +219,7 @@ impl Plugin for Stub {
         ctx: Ctx<'_>,
         from: Hash,
         bytes: &[u8],
-    ) -> Result<(), Fault> {
+    ) -> Result<(), Error> {
         let act = {
             let script = &mut *self.0.borrow_mut();
             script.inputs.push((from, bytes.to_vec()));
@@ -226,7 +228,7 @@ impl Plugin for Stub {
         act.map_or(Ok(()), |act| self.act(ctx, &act))
     }
 
-    fn changed(&mut self, _: Ctx<'_>, events: &[Event]) -> Result<(), Fault> {
+    fn changed(&mut self, _: Ctx<'_>, events: &[Event]) -> Result<(), Error> {
         let mut script = self.0.borrow_mut();
         script.events.extend(events.iter().map(|e| (e.rd, e.kind)));
         Ok(())
@@ -235,15 +237,15 @@ impl Plugin for Stub {
 
 /// A Buffer over `source`, or over nothing, as every Plugin that shows
 /// text opens its own.
-fn buffer_over(tree: &mut Tree, source: Option<Rd>) -> Result<Rd, Fault> {
-    let opener = tree.resolve("/module/text/open")?;
-    let opening = tree.open(opener, Rights::WRITE)?;
-    let mut call = text_open::Call(tree, opening);
+fn buffer_over(mut ctx: &dyn Calls, source: Option<Rd>) -> Result<Rd, Error> {
+    let opener = cell::resolve(ctx, ROOT, "/module/text/open")?;
+    let opening = ctx.open(opener, Rights::WRITE)?;
+    let mut call = text_open::Call(&mut ctx, opening);
     let buffer = match source {
         Some(source) => call.open(source),
         None => call.new(),
     };
-    tree.close(opening)?;
+    ops::close(ctx, opening)?;
     buffer
 }
 
@@ -318,7 +320,7 @@ fn open_on(client: &mut Client, rd: Rd) -> usize {
 fn the_capability_cell_names_what_the_tui_serves() {
     let rig = Rig::new("capability");
     rig.file("note", b"first\n");
-    let tui = Tui::open(rig.client(), "", Some("note"), None, one()).unwrap();
+    let tui = Tui::open(rig.host(), "", Some("note"), None, one()).unwrap();
     let mut other = rig.client();
     // The tui was the first to connect: session 1, its one client.
     let clients = other.resolve("/session/1/client").unwrap();
@@ -347,8 +349,7 @@ fn the_capability_cell_names_what_the_tui_serves() {
 fn keys_reach_the_plugin_as_presses_and_a_resize_before_the_frame() {
     let rig = Rig::new("presses");
     rig.file("note", b"first\n");
-    let mut tui =
-        Tui::open(rig.client(), "", Some("note"), None, one()).unwrap();
+    let mut tui = Tui::open(rig.host(), "", Some("note"), None, one()).unwrap();
     for key in [Key::Char('한'), Key::Ctrl('r'), Key::Esc, Key::Tab] {
         tui.plugin().will(Act::Show(view(0, "")));
         assert_eq!(tui.key(key), Ok(Step::Changed), "a show is a draw");
@@ -369,8 +370,7 @@ fn keys_reach_the_plugin_as_presses_and_a_resize_before_the_frame() {
 fn a_view_is_laid_out_over_the_tui_s_own_text() {
     let rig = Rig::new("layout");
     rig.file("note", "a\tb\n한글x\nlast\n".as_bytes());
-    let mut tui =
-        Tui::open(rig.client(), "", Some("note"), None, one()).unwrap();
+    let mut tui = Tui::open(rig.host(), "", Some("note"), None, one()).unwrap();
     // The cursor on `b`, the second line selected, `x` a match.
     let mut shown = view(2, "-- VISUAL LINE --");
     shown.spans = vec![span(4, 12, SELECTION), span(10, 11, MATCH)];
@@ -395,8 +395,7 @@ fn a_view_is_laid_out_over_the_tui_s_own_text() {
 fn a_span_of_any_other_style_reaches_the_frame_with_its_number() {
     let rig = Rig::new("styled");
     rig.file("note", "bin  ls\n한글x\n".as_bytes());
-    let mut tui =
-        Tui::open(rig.client(), "", Some("note"), None, one()).unwrap();
+    let mut tui = Tui::open(rig.host(), "", Some("note"), None, one()).unwrap();
     // The two names of the first row and a wide one of the second, in
     // styles the tui draws neither of itself.
     let mut shown = view(0, "");
@@ -412,8 +411,7 @@ fn a_span_of_any_other_style_reaches_the_frame_with_its_number() {
 fn a_view_over_another_buffer_is_laid_out_over_that_one() {
     let rig = Rig::new("over");
     rig.file("note", b"first\n");
-    let mut tui =
-        Tui::open(rig.client(), "", Some("note"), None, one()).unwrap();
+    let mut tui = Tui::open(rig.host(), "", Some("note"), None, one()).unwrap();
     assert_eq!(press(&mut tui, Act::Show(view(0, ""))), Ok(Step::Changed));
     let own = tui.over().unwrap();
     assert_eq!(frame(&mut tui).lines, ["first"]);
@@ -441,8 +439,7 @@ fn a_view_over_another_buffer_is_laid_out_over_that_one() {
 fn the_cursor_s_shape_says_which_cell_of_a_tab_it_takes() {
     let rig = Rig::new("shape");
     rig.file("note", b"\tx\n");
-    let mut tui =
-        Tui::open(rig.client(), "", Some("note"), None, one()).unwrap();
+    let mut tui = Tui::open(rig.host(), "", Some("note"), None, one()).unwrap();
     let shown = view(0, "");
     assert_eq!(press(&mut tui, Act::Show(shown)), Ok(Step::Changed));
     let normal = frame(&mut tui);
@@ -461,8 +458,7 @@ fn the_cursor_s_shape_says_which_cell_of_a_tab_it_takes() {
 fn the_status_row_is_the_tui_s_own() {
     let rig = Rig::new("status");
     rig.file("note", "한글\nx\n".as_bytes());
-    let mut tui =
-        Tui::open(rig.client(), "", Some("note"), None, one()).unwrap();
+    let mut tui = Tui::open(rig.host(), "", Some("note"), None, one()).unwrap();
     // Nothing is laid out before the first View, so there are no
     // revisions to name; the region is the file it was opened on.
     assert_eq!(frame(&mut tui).status, "note  1:1  r0   ", "before a show");
@@ -482,8 +478,7 @@ fn the_status_row_is_the_tui_s_own() {
 fn a_plugin_that_never_shows_draws_an_empty_frame() {
     let rig = Rig::new("quiet");
     rig.file("note", b"first\n");
-    let mut tui =
-        Tui::open(rig.client(), "", Some("note"), None, one()).unwrap();
+    let mut tui = Tui::open(rig.host(), "", Some("note"), None, one()).unwrap();
     let frame = frame(&mut tui);
     assert_eq!(frame.lines, Vec::<String>::new(), "nothing to draw");
     assert_eq!(frame.cursor, (0, 0));
@@ -495,8 +490,7 @@ fn a_plugin_that_never_shows_draws_an_empty_frame() {
 fn the_exit_code_is_the_plugin_s() {
     let rig = Rig::new("exit");
     rig.file("note", b"first\n");
-    let mut tui =
-        Tui::open(rig.client(), "", Some("note"), None, one()).unwrap();
+    let mut tui = Tui::open(rig.host(), "", Some("note"), None, one()).unwrap();
     assert_eq!(press(&mut tui, Act::Show(view(0, ""))), Ok(Step::Changed));
     assert_eq!(press(&mut tui, Act::Exit(3)), Ok(Step::Quit(3)));
     assert_eq!(tui.tick(), Ok(Step::Quit(3)), "and it stays gone");
@@ -506,8 +500,7 @@ fn the_exit_code_is_the_plugin_s() {
 fn keys_change_the_draft_and_save_reaches_disk() {
     let rig = Rig::new("keys");
     rig.file("note", b"first\n");
-    let mut tui =
-        Tui::open(rig.client(), "", Some("note"), None, one()).unwrap();
+    let mut tui = Tui::open(rig.host(), "", Some("note"), None, one()).unwrap();
     assert_eq!(press(&mut tui, Act::Show(view(0, ""))), Ok(Step::Changed));
     let mut other = rig.client();
     let buffer = buffer_of(&mut other, &tui);
@@ -527,8 +520,7 @@ fn keys_change_the_draft_and_save_reaches_disk() {
 fn undo_and_redo_walk_the_revisions() {
     let rig = Rig::new("undo");
     rig.file("note", b"first\n");
-    let mut tui =
-        Tui::open(rig.client(), "", Some("note"), None, one()).unwrap();
+    let mut tui = Tui::open(rig.host(), "", Some("note"), None, one()).unwrap();
     assert_eq!(press(&mut tui, Act::Edit(0, 0, "x".into())), Ok(Step::Same));
     assert_eq!(press(&mut tui, Act::Show(view(0, ""))), Ok(Step::Changed));
     assert_eq!(frame(&mut tui).lines, ["xfirst"]);
@@ -542,8 +534,7 @@ fn undo_and_redo_walk_the_revisions() {
 fn a_write_from_another_client_shows_after_tick() {
     let rig = Rig::new("modify");
     rig.file("note", b"first\n");
-    let mut tui =
-        Tui::open(rig.client(), "", Some("note"), None, one()).unwrap();
+    let mut tui = Tui::open(rig.host(), "", Some("note"), None, one()).unwrap();
     assert_eq!(press(&mut tui, Act::Show(view(0, ""))), Ok(Step::Changed));
     let mut other = rig.client();
     let buffer = buffer_of(&mut other, &tui);
@@ -565,8 +556,7 @@ fn a_tui_behind_a_full_ring_reads_everything_again() {
     let rig =
         Rig::with("overflow", Limits { watch_ring: 2, ..Limits::default() });
     rig.file("note", b"first\n");
-    let mut tui =
-        Tui::open(rig.client(), "", Some("note"), None, one()).unwrap();
+    let mut tui = Tui::open(rig.host(), "", Some("note"), None, one()).unwrap();
     assert_eq!(press(&mut tui, Act::Show(view(0, ""))), Ok(Step::Changed));
     let mut other = rig.client();
     let buffer = buffer_of(&mut other, &tui);
@@ -582,8 +572,7 @@ fn a_tui_behind_a_full_ring_reads_everything_again() {
 #[test]
 fn a_missing_file_is_a_region_over_nothing_that_keeps_its_name() {
     let rig = Rig::new("missing");
-    let mut tui =
-        Tui::open(rig.client(), "", Some("none"), None, one()).unwrap();
+    let mut tui = Tui::open(rig.host(), "", Some("none"), None, one()).unwrap();
     // Over nothing, but named: the Plugin is handed the name to make.
     let (_, over, name, _, _) = tui.plugin().started();
     assert_eq!((over, name), (None, Some("none".to_string())));
@@ -609,7 +598,7 @@ fn a_missing_file_is_a_region_over_nothing_that_keeps_its_name() {
 #[test]
 fn the_tui_names_the_laid_rd_when_it_takes_a_source() {
     let rig = Rig::new("unnamed");
-    let mut tui = Tui::open(rig.client(), "", None, None, one()).unwrap();
+    let mut tui = Tui::open(rig.host(), "", None, None, one()).unwrap();
     assert_eq!(frame(&mut tui).status, "[No Name]  1:1  r0   ");
     let (_, over, name, _, _) = tui.plugin().started();
     assert_eq!((over, name), (None, None), "no rd, no name");
@@ -634,8 +623,7 @@ fn open_swaps_the_region_to_the_plugin_the_table_gives_the_shape() {
     rig.file("note", b"first\n");
     rig.file("other", b"second\n");
     let cells = only(|want| matches!(want, Want::Cell));
-    let mut tui =
-        Tui::open(rig.client(), "", Some("note"), None, cells).unwrap();
+    let mut tui = Tui::open(rig.host(), "", Some("note"), None, cells).unwrap();
     assert_eq!(press(&mut tui, Act::Show(view(0, ""))), Ok(Step::Changed));
     let mut other = rig.client();
     let first = tui.over().unwrap();
@@ -666,8 +654,7 @@ fn open_by_name_swaps_to_the_plugin_the_table_knows() {
     rig.file("note", b"first\n");
     rig.file("other", b"second\n");
     let known = only(|want| matches!(want, Want::Cell | Want::Named("stub")));
-    let mut tui =
-        Tui::open(rig.client(), "", Some("note"), None, known).unwrap();
+    let mut tui = Tui::open(rig.host(), "", Some("note"), None, known).unwrap();
     let mut other = rig.client();
     let target = other.resolve("/module/fs/root/other").unwrap();
     let ask = Act::Open(target, "stub".into());
@@ -682,8 +669,7 @@ fn back_gives_the_region_to_the_plugin_of_the_step_before_it() {
     rig.file("note", b"first\n");
     rig.file("other", b"second\n");
     let known = only(|want| matches!(want, Want::Cell | Want::Named("cli")));
-    let mut tui =
-        Tui::open(rig.client(), "", Some("note"), None, known).unwrap();
+    let mut tui = Tui::open(rig.host(), "", Some("note"), None, known).unwrap();
     let mut other = rig.client();
     let note = other.resolve("/module/fs/root/note").unwrap();
     let target = other.resolve("/module/fs/root/other").unwrap();
@@ -709,8 +695,7 @@ fn back_gives_the_region_to_the_plugin_of_the_step_before_it() {
 fn back_with_no_step_leaves_with_nothing_lost() {
     let rig = Rig::new("back-first");
     rig.file("note", b"first\n");
-    let mut tui =
-        Tui::open(rig.client(), "", Some("note"), None, one()).unwrap();
+    let mut tui = Tui::open(rig.host(), "", Some("note"), None, one()).unwrap();
     // The first Plugin was the first thing shown, so there is nowhere
     // to go: the Client ends, as an exit of 0 would end it.
     assert_eq!(press(&mut tui, Act::Back), Ok(Step::Quit(0)));
@@ -722,8 +707,7 @@ fn back_to_a_region_over_nothing_keeps_the_name_it_was_opened_with() {
     let rig = Rig::new("back-unnamed");
     rig.file("other", b"second\n");
     let known = only(|want| matches!(want, Want::Cell | Want::Named("cli")));
-    let mut tui =
-        Tui::open(rig.client(), "", Some("note"), None, known).unwrap();
+    let mut tui = Tui::open(rig.host(), "", Some("note"), None, known).unwrap();
     assert_eq!(press(&mut tui, Act::Show(view(0, ""))), Ok(Step::Changed));
     let mut other = rig.client();
     let there = other.resolve("/module/fs/root/other").unwrap();
@@ -742,8 +726,7 @@ fn an_open_the_table_has_no_plugin_for_leaves_the_region_and_warns() {
     let rig = Rig::new("open-none");
     rig.file("note", b"first\n");
     let cells = only(|want| matches!(want, Want::Cell));
-    let mut tui =
-        Tui::open(rig.client(), "", Some("note"), None, cells).unwrap();
+    let mut tui = Tui::open(rig.host(), "", Some("note"), None, cells).unwrap();
     assert_eq!(press(&mut tui, Act::Show(view(0, ""))), Ok(Step::Changed));
     let laid = tui.over().unwrap();
     let mut other = rig.client();
@@ -788,8 +771,7 @@ fn a_boxed_plugin_is_the_plugin_an_app_s_table_gives() {
     rig.file("note", b"first\n");
     let table: Table<Box<dyn Plugin>> =
         Box::new(|_| Some(Box::new(Stub::default()) as Box<dyn Plugin>));
-    let mut tui =
-        Tui::open(rig.client(), "", Some("note"), None, table).unwrap();
+    let mut tui = Tui::open(rig.host(), "", Some("note"), None, table).unwrap();
     assert_eq!(tui.key(Key::Char('x')), Ok(Step::Same), "a Box is a Plugin");
     assert_eq!(tui.tick(), Ok(Step::Same));
 }
@@ -799,7 +781,7 @@ fn the_line_of_the_command_line_is_handed_to_the_plugin() {
     let rig = Rig::new("plus");
     rig.file("note", b"one\ntwo\nthree\n");
     let open = |line| {
-        let tui = Tui::open(rig.client(), "d", Some("note"), line, one());
+        let tui = Tui::open(rig.host(), "d", Some("note"), line, one());
         let (_, _, _, dir, line) = tui.unwrap().plugin().started();
         (dir, line)
     };
@@ -825,7 +807,7 @@ fn the_first_plugin_is_asked_for_by_the_target_s_shape() {
             seen.borrow_mut().push(format!("{want:?}"));
             None
         });
-        Tui::open(rig.client(), "", file, None, table).err()
+        Tui::open(rig.host(), "", file, None, table).err()
     };
     let refused =
         |shape: &str| Some(Fault::Usage(format!("no Plugin for {shape}")));

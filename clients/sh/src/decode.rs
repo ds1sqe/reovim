@@ -19,8 +19,9 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use core::fmt::Write as _;
 
-use reovim_client::value::{self, Value};
-use reovim_client::{Field, ROOT, Ty};
+use reovim_kernel_interface::{Field, Ty};
+use reovim_sdk::dynamic::{self, Value};
+use reovim_sdk::walk::ROOT;
 
 use crate::{Miss, Shell};
 
@@ -49,7 +50,7 @@ pub fn record(
     positionals(fields, name, &left, &mut values)?;
     let named = fields.iter().map(|field| field.name.clone());
     let record = Value::Record(named.zip(values).collect());
-    let typed = value::encode(ty, &record);
+    let typed = dynamic::encode(ty, &record);
     typed.map_err(|_| missed(name, &tokens.join(" "), fields))
 }
 

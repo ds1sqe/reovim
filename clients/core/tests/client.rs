@@ -5,14 +5,24 @@ use std::cell::Cell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use reovim_client::{Carrier, Client, Fault, ROOT, log, value};
+use reovim_client::{Carrier, Client, Fault, ROOT, log};
 use reovim_host::clock;
 use reovim_kernel_interface::wire::{Message, decode};
 use reovim_kernel_interface::{
-    Booted, Calls, Driver, Error, Flags, Kind, Module, Op, Out, Rd, Reply,
-    Rights, Token, Ty,
+    Booted, Calls, Decl, Driver, Error, Flags, Hash, Kind, Method, Module, Op,
+    Out, Rd, Reply, Rights, Token, Ty,
 };
 use reovim_kernel_runtime::{Connection, Heap, Kernel, Limits, NoLoader};
+use reovim_sdk::dynamic;
+
+/// The first method named `name` among what `rd` offers, which is what
+/// a caller reads a declaration for.
+fn method(client: &mut Client, rd: Rd, name: &str) -> Option<(Hash, Method)> {
+    let named = |(hash, decl): (Hash, Decl)| {
+        decl.methods.into_iter().find(|m| m.name == name).map(|m| (hash, m))
+    };
+    client.decls(rd).unwrap().into_iter().find_map(named)
+}
 
 /// A directory of its own for one test, removed on drop.
 struct Dir(PathBuf);
@@ -213,11 +223,11 @@ fn a_typed_call_and_a_watched_write() {
     let note = client.resolve("/module/fs/root/note").unwrap();
     let open = client.resolve("/module/text/open").unwrap();
 
-    let (_, method) = client.method(open, "open").unwrap();
-    assert_eq!(method.input, Ty::Rd);
-    let input = value::encode_arg(&method.input, Some(&note.0.to_string()));
+    let (_, opening) = method(&mut client, open, "open").unwrap();
+    assert_eq!(opening.input, Ty::Rd);
+    let input = dynamic::encode_arg(&opening.input, Some(&note.0.to_string()));
     let out = client.call_by_name(open, "open", input.unwrap()).unwrap();
-    let shown = value::show(&method.output, &out).unwrap();
+    let shown = dynamic::show(&opening.output, &out).unwrap();
     let buffer: Rd = reovim_sdk::decode(&out).unwrap();
     assert_eq!(shown, format!("{}\n", buffer.0).into_bytes());
     let home = client.resolve("/module/text").unwrap();
@@ -244,17 +254,17 @@ fn a_typed_call_and_a_watched_write() {
 }
 
 #[test]
-fn a_bad_argument_is_usage_and_nothing_is_sent() {
+fn a_bad_argument_is_refused_and_nothing_is_sent() {
     let rig = Rig::new("usage");
     let mut client = rig.client();
     let root = client.resolve("/module/fs/root").unwrap();
-    let (_, create) = client.method(root, "create").unwrap();
-    let missing = value::encode_arg(&create.input, None);
-    assert!(matches!(missing, Err(Fault::Usage(_))), "{missing:?}");
-    let unfit = value::encode_arg(&Ty::U32, Some("x"));
-    assert!(matches!(unfit, Err(Fault::Usage(_))), "{unfit:?}");
-    let none = client.method(root, "nothing");
-    assert!(matches!(none, Err(Fault::Usage(_))), "{none:?}");
+    let (_, create) = method(&mut client, root, "create").unwrap();
+    let missing = dynamic::encode_arg(&create.input, None);
+    assert_eq!(missing, Err(Error::Invalid), "{missing:?}");
+    let unfit = dynamic::encode_arg(&Ty::U32, Some("x"));
+    assert_eq!(unfit, Err(Error::Invalid), "{unfit:?}");
+    let none = client.call_by_name(root, "nothing", Vec::new());
+    assert_eq!(none, Err(Fault::Kernel(Error::Unsupported)), "{none:?}");
 
     let entries = log::tail(&mut client, 1).unwrap();
     let lines: Vec<String> = entries.iter().map(log::Entry::line).collect();
@@ -265,7 +275,7 @@ fn a_bad_argument_is_usage_and_nothing_is_sent() {
     // pair, which the log keeps once the level asks for it.
     let level = client.resolve("/sys/loglevel").unwrap();
     client.write_all(level, b"debug".to_vec()).unwrap();
-    let input = value::encode_arg(&create.input, Some("made")).unwrap();
+    let input = dynamic::encode_arg(&create.input, Some("made")).unwrap();
     client.call_by_name(root, "create", input).unwrap();
     client.write_all(level, b"info".to_vec()).unwrap();
     let entries = log::tail(&mut client, 1).unwrap();
@@ -302,7 +312,10 @@ fn the_handles_a_client_holds_are_the_ones_the_kernel_holds_for_it() {
     // through a handle that is itself one of them.
     let core = client.resolve("/sys/core").unwrap();
     let reading = client.open(core, Rights::READ).unwrap();
-    let text = String::from_utf8(client.read_whole(reading).unwrap()).unwrap();
+    // Read through that handle and not by path: a helper would open
+    // one of its own, and the core is the one cell that names them.
+    let bytes = client.read(reading, 0, 64 * 1024).unwrap();
+    let text = String::from_utf8(bytes).unwrap();
     let held: Vec<u64> = text
         .lines()
         .filter_map(|line| line.strip_prefix("handle "))

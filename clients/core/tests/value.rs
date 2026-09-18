@@ -1,9 +1,8 @@
 //! The value decoder and printer, on the history Driver's `Tree`.
 
-use reovim_client::value::{Value, decode, show};
-use reovim_client::{Fault, Rd, Ty};
-use reovim_kernel_interface::Field;
+use reovim_kernel_interface::{Error, Field, Rd, Ty};
 use reovim_module_text::history;
+use reovim_sdk::dynamic::{Value, decode, show};
 
 fn field(name: &str, ty: Ty) -> Field {
     Field { name: name.to_string(), ty }
@@ -33,10 +32,10 @@ fn a_tree_decodes_by_name_and_prints_on_one_line() {
         show(&ty, &tree()).unwrap(),
         b"{nodes=[{id=1 parent=0 label=open}] head=1 published=1}\n"
     );
-    assert_eq!(decode(&ty, &tree()[..10]), Err(Fault::Wire));
+    assert_eq!(decode(&ty, &tree()[..10]), Err(Error::Invalid));
     let mut long = tree();
     long.push(0);
-    assert_eq!(decode(&ty, &long), Err(Fault::Wire));
+    assert_eq!(decode(&ty, &long), Err(Error::Invalid));
 }
 
 #[test]
@@ -47,7 +46,7 @@ fn every_scalar_a_choice_and_an_array_print() {
     some.extend_from_slice(&7u64.to_le_bytes());
     assert_eq!(show(&choice, &some).unwrap(), b"some(7)\n");
     assert_eq!(show(&choice, &[0]).unwrap(), b"none()\n");
-    assert_eq!(decode(&choice, &[2]), Err(Fault::Wire));
+    assert_eq!(decode(&choice, &[2]), Err(Error::Invalid));
 
     let pair = Ty::Array(2, Box::new(Ty::U8));
     assert_eq!(show(&pair, &[3, 4]).unwrap(), b"[3 4]\n");

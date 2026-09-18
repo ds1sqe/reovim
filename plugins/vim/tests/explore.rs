@@ -12,12 +12,14 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use reovim_client::{
-    BLOCK, Ctx, Event, Fault, Hash, Plugin, Rd, Rights, Start, grid,
+    BLOCK, Ctx, Error, Event, Hash, Plugin, Rd, Rights, Start, grid,
 };
 use reovim_client_tui::{Frame, Step, Table, Tui, Want};
 use reovim_plugin_vim::Vim;
 use reovim_plugin_vim::notation::keys;
 use reovim_rig::Rig;
+use reovim_sdk::walk::ROOT;
+use reovim_sdk::{cell, ops};
 use reovim_text_api::open as text_open;
 
 /// What `:q` and `:explore` say to unsaved changes.
@@ -35,13 +37,13 @@ type Listed = Rc<RefCell<Vec<Option<Rd>>>>;
 struct Stub(Listed);
 
 impl Plugin for Stub {
-    fn start(&mut self, ctx: Ctx<'_>, at: Start) -> Result<(), Fault> {
-        let Ctx { tree, caps } = ctx;
+    fn start(&mut self, ctx: Ctx<'_>, at: Start) -> Result<(), Error> {
+        let Ctx { mut ctx, caps } = ctx;
         self.0.borrow_mut().push(at.over);
-        let opener = tree.resolve("/module/text/open")?;
-        let opening = tree.open(opener, Rights::WRITE)?;
-        let buffer = text_open::Call(tree, opening).new()?;
-        tree.close(opening)?;
+        let opener = cell::resolve(ctx, ROOT, "/module/text/open")?;
+        let opening = ctx.open(opener, Rights::WRITE)?;
+        let buffer = text_open::Call(&mut ctx, opening).new()?;
+        ops::close(ctx, opening)?;
         let Some(region) = caps.open(grid::hash()) else { return Ok(()) };
         let view = grid::View {
             over: buffer.0,
@@ -54,11 +56,11 @@ impl Plugin for Stub {
         grid::Call(caps, region).show(view)
     }
 
-    fn input(&mut self, _: Ctx<'_>, _: Hash, _: &[u8]) -> Result<(), Fault> {
+    fn input(&mut self, _: Ctx<'_>, _: Hash, _: &[u8]) -> Result<(), Error> {
         Ok(())
     }
 
-    fn changed(&mut self, _: Ctx<'_>, _: &[Event]) -> Result<(), Fault> {
+    fn changed(&mut self, _: Ctx<'_>, _: &[Event]) -> Result<(), Error> {
         Ok(())
     }
 }
@@ -89,13 +91,15 @@ fn work(test: &str) -> Rig {
 /// An editor over `d/f`, started in `d` as the app starts it there: a
 /// relative name the command gives is resolved under that.
 fn over(rig: &Rig, seen: &Listed) -> Editor {
-    Tui::open(rig.client(), "d", Some("d/f"), None, table(seen)).unwrap()
+    Tui::open(rig.host(), "d", Some("d/f"), None, table(seen)).unwrap()
 }
 
 /// The rd of `path`, a name under the root, through a Client of its
 /// own: what the ask is judged against.
 fn rd(rig: &Rig, path: &str) -> Rd {
-    rig.client().resolve(&format!("/module/fs/root/{path}")).unwrap()
+    let host = rig.host();
+    cell::resolve(&host.own(), ROOT, &format!("/module/fs/root/{path}"))
+        .unwrap()
 }
 
 /// Every key of `text` in Vim notation; what the last one did.

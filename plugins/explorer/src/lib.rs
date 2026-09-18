@@ -23,9 +23,11 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use reovim_client::{
-    BLOCK, Caps, Ctx, Error, Event, Fault, Flags, Handle, Hash, Key, Kind,
-    Plugin, Rd, Rights, Start, Tree, grid, keys, open, process,
+    BLOCK, Calls, Caps, Ctx, Error, Event, Flags, Handle, Hash, Key, Kind,
+    Plugin, Rd, Rights, Start, grid, keys, open, process,
 };
+use reovim_sdk::walk::ROOT;
+use reovim_sdk::{cell, ops};
 use reovim_text_api::{open as text_open, text};
 
 /// What the prompt says to a line that is no command of the
@@ -97,23 +99,22 @@ impl Plugin for Explorer {
     /// # Errors
     /// `Unsupported` over a cell or over nothing, the region being
     /// none of the explorer's; otherwise what a call it made says.
-    fn start(&mut self, ctx: Ctx<'_>, at: Start) -> Result<(), Fault> {
-        let Ctx { tree, caps } = ctx;
-        let dir = container(tree, at.over)?;
+    fn start(&mut self, ctx: Ctx<'_>, at: Start) -> Result<(), Error> {
+        let Ctx { ctx, caps } = ctx;
+        let dir = container(ctx, at.over)?;
         self.dir = Some(dir);
-        let buffer = scratch(tree)?;
+        let buffer = scratch(ctx)?;
         let rights = Rights::READ.union(Rights::WRITE);
         self.buffer = Some(buffer);
-        self.h = Some(tree.open(buffer, rights)?);
-        let watched = tree.open(dir, Rights::READ)?;
-        tree.watch(watched, true)?;
+        self.h = Some(ctx.open(buffer, rights)?);
+        ops::watch(ctx, dir)?;
         self.region = caps.open(grid::hash());
         self.opening = caps.open(open::hash());
         self.ending = caps.open(process::hash());
         if let Some(region) = self.region {
             self.rows = count(grid::Call(caps, region).size()?.rows);
         }
-        self.fill(tree)?;
+        self.fill(ctx)?;
         self.show(caps)
     }
 
@@ -127,8 +128,8 @@ impl Plugin for Explorer {
         ctx: Ctx<'_>,
         from: Hash,
         bytes: &[u8],
-    ) -> Result<(), Fault> {
-        let Ctx { tree, caps } = ctx;
+    ) -> Result<(), Error> {
+        let Ctx { ctx, caps } = ctx;
         if from == grid::hash() {
             let resized: grid::Resized = reovim_sdk::decode(bytes)?;
             self.rows = count(resized.rows);
@@ -141,7 +142,7 @@ impl Plugin for Explorer {
         let Some(key) = Key::of(press.key) else { return Ok(()) };
         // What the last key had to say stood until this one.
         self.message = String::new();
-        self.pressed(tree, caps, key)?;
+        self.pressed(ctx, caps, key)?;
         self.show(caps)
     }
 
@@ -154,8 +155,8 @@ impl Plugin for Explorer {
     ///
     /// # Errors
     /// As [`Self::start`].
-    fn changed(&mut self, ctx: Ctx<'_>, events: &[Event]) -> Result<(), Fault> {
-        let Ctx { tree, caps } = ctx;
+    fn changed(&mut self, ctx: Ctx<'_>, events: &[Event]) -> Result<(), Error> {
+        let Ctx { ctx, caps } = ctx;
         let Some(dir) = self.dir else { return Ok(()) };
         let moved = |e: &Event| {
             let below =
@@ -165,25 +166,25 @@ impl Plugin for Explorer {
         if !events.iter().any(moved) {
             return Ok(());
         }
-        self.fill(tree)?;
+        self.fill(ctx)?;
         self.show(caps)
     }
 }
 
 impl Explorer {
     /// The Buffer `start` opened; `Closed` before it has.
-    fn handle(&self) -> Result<Handle, Fault> {
-        self.h.ok_or(Fault::Kernel(Error::Closed))
+    fn handle(&self) -> Result<Handle, Error> {
+        self.h.ok_or(Error::Closed)
     }
 
     /// One key: the prompt's while one is open, the second half of a
     /// `gg`, or the listing's own.
     fn pressed(
         &mut self,
-        tree: &mut Tree,
+        ctx: &dyn Calls,
         caps: &mut Caps,
         key: Key,
-    ) -> Result<(), Fault> {
+    ) -> Result<(), Error> {
         if self.prompt.is_some() {
             return self.typed(caps, key);
         }
@@ -197,7 +198,7 @@ impl Explorer {
             Key::Char('G') => self.at = self.last(),
             Key::Char('g') => self.half_g = true,
             Key::Char(':') => self.prompt = Some(String::new()),
-            Key::Char('-') => return self.parent(tree, caps),
+            Key::Char('-') => return self.parent(ctx, caps),
             Key::Enter => return self.entered(caps),
             _ => {}
         }
@@ -214,7 +215,7 @@ impl Explorer {
 
     /// One key at the `:` line: it is typed into, dropped, or run.
     /// Backspace over an empty line drops it, as nvim has it.
-    fn typed(&mut self, caps: &mut Caps, key: Key) -> Result<(), Fault> {
+    fn typed(&mut self, caps: &mut Caps, key: Key) -> Result<(), Error> {
         let Some(mut line) = self.prompt.take() else { return Ok(()) };
         match key {
             Key::Char(c) => line.push(c),
@@ -234,7 +235,7 @@ impl Explorer {
     /// listing holding nothing anybody could lose. An empty line is
     /// nothing at all, and anything else is what nvim says to a
     /// command it has not got.
-    fn ran(&mut self, caps: &mut Caps, line: &str) -> Result<(), Fault> {
+    fn ran(&mut self, caps: &mut Caps, line: &str) -> Result<(), Error> {
         if line.is_empty() {
             return Ok(());
         }
@@ -247,23 +248,23 @@ impl Explorer {
     }
 
     /// Enter: the entry under the cursor, asked of the Client.
-    fn entered(&self, caps: &mut Caps) -> Result<(), Fault> {
+    fn entered(&self, caps: &mut Caps) -> Result<(), Error> {
         let Some(entry) = self.entries.get(self.at) else { return Ok(()) };
         self.asks(caps, entry.rd)
     }
 
     /// `-`: the Container above this one, which the tree's root has
     /// not got.
-    fn parent(&self, tree: &mut Tree, caps: &mut Caps) -> Result<(), Fault> {
+    fn parent(&self, ctx: &dyn Calls, caps: &mut Caps) -> Result<(), Error> {
         let Some(dir) = self.dir else { return Ok(()) };
-        let Some(parent) = parent_of(tree, dir)? else { return Ok(()) };
+        let Some(parent) = parent_of(ctx, dir)? else { return Ok(()) };
         self.asks(caps, parent)
     }
 
     /// `open` naming no Plugin: which one `target` is shown in is the
     /// Client's table's, and the region is swapped once this call has
     /// returned. A Client with no region to open in shows nothing.
-    fn asks(&self, caps: &mut Caps, target: Rd) -> Result<(), Fault> {
+    fn asks(&self, caps: &mut Caps, target: Rd) -> Result<(), Error> {
         let Some(opening) = self.opening else { return Ok(()) };
         let ask = open::Ask { target: target.0, plugin: String::new() };
         open::Call(caps, opening).open(ask)
@@ -283,19 +284,19 @@ impl Explorer {
     /// The listing read again and written whole, so that a refill is
     /// one revision. The selection stays on the name it was on while
     /// that name is still there, and is clamped where it is not.
-    fn fill(&mut self, tree: &mut Tree) -> Result<(), Fault> {
+    fn fill(&mut self, mut ctx: &dyn Calls) -> Result<(), Error> {
         let Some(dir) = self.dir else { return Ok(()) };
         let was = self.entries.get(self.at).map(|entry| entry.name.clone());
-        self.entries = listing(tree, dir)?;
+        self.entries = listing(ctx, dir)?;
         self.at = kept(&self.entries, was.as_deref(), self.at);
         let text = shown(&self.entries);
         let len = core::mem::replace(&mut self.len, text.len() as u64);
         let edit = text::Edit { at: 0, len, text };
-        text::Call(tree, self.handle()?).replace(edit)
+        text::Call(&mut ctx, self.handle()?).replace(edit)
     }
 
     /// The View to the region, if the Client has one.
-    fn show(&mut self, caps: &mut Caps) -> Result<(), Fault> {
+    fn show(&mut self, caps: &mut Caps) -> Result<(), Error> {
         let Some(region) = self.region else { return Ok(()) };
         let view = self.view();
         grid::Call(caps, region).show(view)
@@ -331,37 +332,36 @@ impl Explorer {
 
 /// The Container the region was opened on. A region over a cell or
 /// over nothing is not the explorer's to show.
-fn container(tree: &mut Tree, over: Option<Rd>) -> Result<Rd, Fault> {
-    let refused = || Fault::Kernel(Error::Unsupported);
-    let Some(rd) = over else { return Err(refused()) };
-    if tree.info(rd)?.flags.contains(Flags::CONTAINER) {
+fn container(ctx: &dyn Calls, over: Option<Rd>) -> Result<Rd, Error> {
+    let Some(rd) = over else { return Err(Error::Unsupported) };
+    if ops::info(ctx, rd)?.flags.contains(Flags::CONTAINER) {
         return Ok(rd);
     }
-    Err(refused())
+    Err(Error::Unsupported)
 }
 
 /// A Buffer of the explorer's own, over nothing: what the listing is
 /// written into and what its View names.
-fn scratch(tree: &mut Tree) -> Result<Rd, Fault> {
-    let opener = tree.resolve("/module/text/open")?;
-    let opening = tree.open(opener, Rights::WRITE)?;
-    let buffer = text_open::Call(tree, opening).new();
-    tree.close(opening)?;
+fn scratch(mut ctx: &dyn Calls) -> Result<Rd, Error> {
+    let opener = cell::resolve(ctx, ROOT, "/module/text/open")?;
+    let opening = ctx.open(opener, Rights::WRITE)?;
+    let buffer = text_open::Call(&mut ctx, opening).new();
+    ops::close(ctx, opening)?;
     buffer
 }
 
 /// What the Container holds: `../` first where there is a parent, the
 /// Containers below it, then the cells, each group by name as bytes,
 /// which is the order `str` compares in.
-fn listing(tree: &mut Tree, dir: Rd) -> Result<Vec<Entry>, Fault> {
+fn listing(ctx: &dyn Calls, dir: Rd) -> Result<Vec<Entry>, Error> {
     let mut entries = Vec::new();
-    if let Some(parent) = parent_of(tree, dir)? {
+    if let Some(parent) = parent_of(ctx, dir)? {
         let name = String::from("..");
         entries.push(Entry { rd: parent, name, container: true });
     }
     let mut below = Vec::new();
-    for rd in tree.children(dir)? {
-        below.push(entry(tree, rd)?);
+    for rd in ops::children(ctx, dir)? {
+        below.push(entry(ctx, rd)?);
     }
     let (mut dirs, mut cells): (Vec<Entry>, Vec<Entry>) =
         below.into_iter().partition(|entry| entry.container);
@@ -373,17 +373,17 @@ fn listing(tree: &mut Tree, dir: Rd) -> Result<Vec<Entry>, Fault> {
 }
 
 /// One child as the listing has it.
-fn entry(tree: &mut Tree, rd: Rd) -> Result<Entry, Fault> {
-    let info = tree.info(rd)?;
+fn entry(ctx: &dyn Calls, rd: Rd) -> Result<Entry, Error> {
+    let info = ops::info(ctx, rd)?;
     let container = info.flags.contains(Flags::CONTAINER);
     Ok(Entry { rd, name: info.name.unwrap_or_default(), container })
 }
 
 /// The Container above `dir`, or nothing at the tree's root, which has
 /// no parent to go to.
-fn parent_of(tree: &mut Tree, dir: Rd) -> Result<Option<Rd>, Fault> {
-    match tree.parent(dir) {
-        Err(Fault::Kernel(Error::Invalid)) => Ok(None),
+fn parent_of(ctx: &dyn Calls, dir: Rd) -> Result<Option<Rd>, Error> {
+    match ops::parent(ctx, dir) {
+        Err(Error::Invalid) => Ok(None),
         found => found.map(Some),
     }
 }

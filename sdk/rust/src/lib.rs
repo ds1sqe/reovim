@@ -4,9 +4,10 @@
 //! the bytes of Documentation/Design/00-core.md. Values in two forms,
 //! typed (`Encode`, `Decode`, `Typed`) and dynamic (`Value`, by a
 //! `Ty` at runtime), `declare!`, an api as the design writes it, the
-//! one `walk` from a path to an rd, and the output cell a Driver
+//! one `walk` from a path to an rd, a path resolved by spelling
+//! alone, and the output cell a Driver
 //! under `/bin` answers a run with. Beside them what both sides of a
-//! Resource read the same way: the log's entries, the reads a Driver
+//! Resource read the same way: the log's entries, the ops anything
 //! makes over its own `Calls`, and a Kernel instant as a calendar
 //! reads it. It links kernel/interface and nothing else.
 
@@ -18,6 +19,7 @@ mod declare;
 pub mod dynamic;
 pub mod log;
 pub mod ops;
+pub mod path;
 mod typed;
 pub mod walk;
 

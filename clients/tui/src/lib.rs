@@ -24,9 +24,11 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use reovim_client::{
-    BAR, Caps, Client, Ctx, Error, Event, Fault, Flags, Handle, Key, Kind,
-    MATCH, Plugin, Rd, Rights, SELECTION, Start, grid, keys, open, process,
+    BAR, Calls, Caps, Ctx, Error, Event, Fault, Flags, Handle, Hash, Host, Key,
+    Kind, MATCH, Plugin, Rd, SELECTION, Start, grid, keys, open, process,
 };
+use reovim_sdk::walk::ROOT;
+use reovim_sdk::{cell, ops};
 use reovim_text_api::history;
 
 /// The cells a char takes: the Client's own, drawn on here and by the
@@ -108,7 +110,7 @@ struct Laid {
 
 /// One region over one rd, with the Plugin that shows it.
 pub struct Tui<P: Plugin> {
-    client: Client,
+    host: Host,
     plugin: P,
     table: Table<P>,
     caps: Caps,
@@ -133,6 +135,9 @@ pub struct Tui<P: Plugin> {
     size: (u16, u16),
     /// The text or the revisions moved since the last step.
     moved: bool,
+    /// Where this Client stands in the one stream of events, which the
+    /// Host numbers for both sides.
+    cursor: u64,
 }
 
 impl<P: Plugin> Tui<P> {
@@ -149,15 +154,15 @@ impl<P: Plugin> Tui<P> {
     /// What the Client says; `Usage` when the table has no Plugin for
     /// that shape.
     pub fn open(
-        mut client: Client,
+        host: Host,
         dir: &str,
         file: Option<&str>,
         line: Option<usize>,
         mut table: Table<P>,
     ) -> Result<Self, Fault> {
-        client.capability(SERVES.to_vec())?;
+        host.wire().capability(SERVES.to_vec())?;
         let target = match file {
-            Some(file) => file_rd(&mut client, file)?,
+            Some(file) => file_rd(&host.own(), file)?,
             None => None,
         };
         let opened = match target {
@@ -168,7 +173,7 @@ impl<P: Plugin> Tui<P> {
         // explorer's shape, not Vim's: the first Plugin comes from the
         // table by the same shape a later `open` asks it for.
         let want = match target {
-            Some(target) => want_of(&mut client, target)?,
+            Some(target) => want_of(&host.own(), target)?,
             None => Want::Cell,
         };
         let Some(plugin) = table(want) else {
@@ -180,7 +185,7 @@ impl<P: Plugin> Tui<P> {
         }
         caps.sized(u64::from(FIRST.0), u64::from(FIRST.1 - 1));
         let mut tui = Self {
-            client,
+            host,
             plugin,
             table,
             caps,
@@ -193,21 +198,23 @@ impl<P: Plugin> Tui<P> {
             name: String::from(UNNAMED),
             size: FIRST,
             moved: false,
+            cursor: 0,
         };
         tui.name = tui.named()?;
         let start = Start {
-            client: tui.client.cid(),
+            client: tui.host.wire().cid(),
             over: target,
             name: tui.opened.clone(),
             dir: String::from(dir),
             line: line.map(count),
         };
-        let ctx = Ctx { tree: tui.client.tree(), caps: &mut tui.caps };
+        let own = tui.host.own();
+        let ctx = Ctx { ctx: &own, caps: &mut tui.caps };
         tui.plugin.start(ctx, start)?;
         tui.settled()?;
         // What the Plugin's own opening left on the watched rds is
         // already in the text read with them.
-        tui.client.since()?;
+        tui.since()?;
         tui.moved = false;
         Ok(tui)
     }
@@ -230,8 +237,7 @@ impl<P: Plugin> Tui<P> {
     /// What the Client says.
     pub fn key(&mut self, key: Key) -> Result<Step, Fault> {
         let press = reovim_sdk::encode(&keys::Press { key: key.code() });
-        let ctx = Ctx { tree: self.client.tree(), caps: &mut self.caps };
-        self.plugin.input(ctx, keys::hash(), &press)?;
+        self.told(keys::hash(), &press)?;
         self.after()?;
         self.settled()?;
         Ok(self.step())
@@ -269,8 +275,7 @@ impl<P: Plugin> Tui<P> {
                 (u64::from(cols), u64::from(rows.saturating_sub(1)));
             self.caps.sized(cols, rows);
             let resized = reovim_sdk::encode(&grid::Resized { cols, rows });
-            let ctx = Ctx { tree: self.client.tree(), caps: &mut self.caps };
-            self.plugin.input(ctx, grid::hash(), &resized)?;
+            self.told(grid::hash(), &resized)?;
             // A View is laid out wherever it arrives; an ask waits for
             // the next step, a frame not being one.
             self.lay()?;
@@ -284,15 +289,31 @@ impl<P: Plugin> Tui<P> {
     /// happened is nothing asked of the tree, so an idle editor makes
     /// one call a tick.
     fn after(&mut self) -> Result<bool, Fault> {
-        let events = self.client.since()?;
+        let events = self.since()?;
         if events.is_empty() {
             return Ok(false);
         }
         self.reread(&events)?;
         self.refresh()?;
-        let ctx = Ctx { tree: self.client.tree(), caps: &mut self.caps };
+        let own = self.host.own();
+        let ctx = Ctx { ctx: &own, caps: &mut self.caps };
         self.plugin.changed(ctx, &events)?;
         Ok(true)
+    }
+
+    /// One input to the Plugin, of the capability `from`.
+    fn told(&mut self, from: Hash, bytes: &[u8]) -> Result<(), Fault> {
+        let own = self.host.own();
+        let ctx = Ctx { ctx: &own, caps: &mut self.caps };
+        Ok(self.plugin.input(ctx, from, bytes)?)
+    }
+
+    /// What happened on the watched rds since the last ask, the cursor
+    /// moved on: one stream over both sides, the Host numbering it.
+    fn since(&mut self) -> Result<Vec<Event>, Fault> {
+        let (events, cursor) = ops::since(&self.host.own(), self.cursor)?;
+        self.cursor = cursor;
+        Ok(events)
     }
 
     /// What the Plugin's calls left behind: the region opened
@@ -324,7 +345,7 @@ impl<P: Plugin> Tui<P> {
         if !overflow && !on(rd, Kind::Modify) && !over {
             return Ok(());
         }
-        let bytes = self.client.read_whole(h)?;
+        let bytes = ops::whole(&self.host.own(), h)?;
         let text = String::from_utf8_lossy(&bytes).into_owned();
         if let Some(laid) = &mut self.laid {
             self.moved |= text != laid.text;
@@ -342,9 +363,9 @@ impl<P: Plugin> Tui<P> {
         if self.over() == Some(rd) {
             return Ok(());
         }
-        let laid = lay_on(&mut self.client, rd)?;
+        let laid = lay_on(&self.host.own(), rd)?;
         if let Some(before) = self.laid.replace(laid) {
-            unlay(&mut self.client, &before)?;
+            unlay(&self.host.own(), &before)?;
         }
         self.moved = true;
         // The name first: it is what takes the source, which the
@@ -385,7 +406,7 @@ impl<P: Plugin> Tui<P> {
             return Ok(());
         };
         let want = match target {
-            Some(target) => want_of(&mut self.client, target)?,
+            Some(target) => want_of(&self.host.own(), target)?,
             None => Want::Cell,
         };
         let Some(made) = (self.table)(want) else {
@@ -403,19 +424,20 @@ impl<P: Plugin> Tui<P> {
         target: Option<Rd>,
         opened: Option<String>,
     ) -> Result<(), Fault> {
-        self.shut()?;
+        self.shut();
         self.plugin = made;
         self.target = target;
         self.opened.clone_from(&opened);
         let start = Start {
-            client: self.client.cid(),
+            client: self.host.wire().cid(),
             over: target,
             name: opened,
             dir: self.dir.clone(),
             line: None,
         };
-        let ctx = Ctx { tree: self.client.tree(), caps: &mut self.caps };
-        self.plugin.start(ctx, start)
+        let own = self.host.own();
+        let ctx = Ctx { ctx: &own, caps: &mut self.caps };
+        Ok(self.plugin.start(ctx, start)?)
     }
 
     /// The Plugin for an ask: the one the name stands for, or, with no
@@ -424,49 +446,53 @@ impl<P: Plugin> Tui<P> {
         if !plugin.is_empty() {
             return Ok((self.table)(Want::Named(plugin)));
         }
-        let want = want_of(&mut self.client, target)?;
+        let want = want_of(&self.host.own(), target)?;
         Ok((self.table)(want))
     }
 
     /// An ask the table has no Plugin for: the region stays as it is
     /// and the log says so, `open` carrying no answer back to the
     /// Plugin that asked.
-    fn unsupported(&mut self, target: Rd, plugin: &str) -> Result<(), Fault> {
-        let entry = self.client.resolve("/sys/log")?;
+    fn unsupported(&self, target: Rd, plugin: &str) -> Result<(), Fault> {
         let said =
             format!("{WARN}open rd={} plugin={plugin} unsupported", target.0);
-        self.client.write_all(entry, said.into_bytes()).map(|_| ())
+        self.logged(said)
     }
 
     /// A step back the table has no Plugin for, which is the table
     /// having changed its mind: the region stays as it is and the log
     /// says so, as an ask it has no Plugin for does.
-    fn nowhere(&mut self, want: Want<'_>) -> Result<(), Fault> {
-        let entry = self.client.resolve("/sys/log")?;
+    fn nowhere(&self, want: Want<'_>) -> Result<(), Fault> {
         let said = format!("{WARN}back to {} unsupported", shape(want));
-        self.client.write_all(entry, said.into_bytes()).map(|_| ())
+        self.logged(said)
     }
 
-    /// Every handle the Tree holds but the ones the tui lays out with:
+    /// One line of the tui's own into `/sys/log`.
+    fn logged(&self, said: String) -> Result<(), Fault> {
+        let own = self.host.own();
+        let entry = cell::resolve(&own, ROOT, "/sys/log")?;
+        ops::put(&own, entry, said.into_bytes())?;
+        Ok(())
+    }
+
+    /// Every handle the wire holds but the ones the tui lays out with:
     /// what the Plugin being replaced opened, closed for it, nothing
     /// else holding a Plugin's end.
-    fn shut(&mut self) -> Result<(), Fault> {
+    fn shut(&self) {
         let mut kept: Vec<Handle> = Vec::new();
         if let Some(laid) = &self.laid {
             kept.push(laid.h);
             kept.extend(laid.source.map(|(_, watched)| watched));
         }
         let theirs: Vec<Handle> = self
-            .client
+            .host
+            .wire()
             .handles()
             .iter()
             .copied()
             .filter(|h| !kept.contains(h))
             .collect();
-        for h in theirs {
-            shut_one(&mut self.client, h)?;
-        }
-        Ok(())
+        ops::shut(&self.host.own(), &theirs);
     }
 
     /// Quit once the Plugin has asked to exit; Changed once it has
@@ -485,7 +511,9 @@ impl<P: Plugin> Tui<P> {
     fn refresh(&mut self) -> Result<(), Fault> {
         let Some(laid) = &self.laid else { return Ok(()) };
         let (h, over) = (laid.h, laid.source.is_some());
-        let tree = history::Call(self.client.tree(), h).tree()?;
+        let own = self.host.own();
+        let mut ctx: &dyn Calls = &own;
+        let tree = history::Call(&mut ctx, h).tree()?;
         if let Some(laid) = &mut self.laid {
             let moved =
                 (tree.head, tree.published) != (laid.head, laid.published);
@@ -504,10 +532,10 @@ impl<P: Plugin> Tui<P> {
     /// the tui was opened with, else `[No Name]`.
     fn named(&mut self) -> Result<String, Fault> {
         if let Some(source) = self.source()? {
-            return self.client.name(source);
+            return Ok(name_of(&self.host.own(), source)?);
         }
         if let Some(target) = self.target {
-            return self.client.name(target);
+            return Ok(name_of(&self.host.own(), target)?);
         }
         let opened = self.opened.as_deref().map(own_name);
         Ok(String::from(opened.unwrap_or(UNNAMED)))
@@ -521,12 +549,12 @@ impl<P: Plugin> Tui<P> {
         if let Some((source, _)) = laid.source {
             return Ok(Some(source));
         }
-        let Ok(child) = self.client.lookup(laid.rd, "source") else {
+        let Ok(child) = ops::lookup(&self.host.own(), laid.rd, "source") else {
             return Ok(None);
         };
-        let source: Rd = reovim_sdk::decode(&self.client.read_all(child)?)?;
-        let watched = self.client.open(source, Rights::READ)?;
-        self.client.watch(watched, true)?;
+        let held = ops::bytes(&self.host.own(), child)?;
+        let source: Rd = reovim_sdk::decode(&held)?;
+        let watched = ops::watch(&self.host.own(), source)?;
         if let Some(laid) = &mut self.laid {
             laid.source = Some((source, watched));
         }
@@ -613,8 +641,8 @@ impl<P: Plugin> Tui<P> {
 
 /// What the table is asked for an rd: the Plugin of a Container, or
 /// the Plugin of a cell, nothing on disk being a cell's shape too.
-fn want_of(client: &mut Client, target: Rd) -> Result<Want<'static>, Fault> {
-    let flags = client.info(target)?.flags;
+fn want_of(ctx: &dyn Calls, target: Rd) -> Result<Want<'static>, Fault> {
+    let flags = ops::info(ctx, target)?.flags;
     if flags.contains(Flags::CONTAINER) {
         return Ok(Want::Container);
     }
@@ -631,30 +659,24 @@ const fn shape(want: Want<'_>) -> &'static str {
 
 /// `rd` as the tui lays a View out over it: opened READ, watched, and
 /// read whole.
-fn lay_on(client: &mut Client, rd: Rd) -> Result<Laid, Fault> {
-    let h = client.open(rd, Rights::READ)?;
-    client.watch(h, true)?;
-    let text = String::from_utf8_lossy(&client.read_whole(h)?).into_owned();
+fn lay_on(ctx: &dyn Calls, rd: Rd) -> Result<Laid, Fault> {
+    let h = ops::watch(ctx, rd)?;
+    let text = String::from_utf8_lossy(&ops::whole(ctx, h)?).into_owned();
     Ok(Laid { rd, h, source: None, text, head: 0, published: 0 })
-}
-
-/// One handle of the Plugin being replaced, closed. A handle whose rd
-/// went while the Plugin held it is gone with it; what matters is that
-/// nothing of the Plugin's is left open.
-fn shut_one(client: &mut Client, h: Handle) -> Result<(), Fault> {
-    match client.close(h) {
-        Ok(()) | Err(Fault::Kernel(_)) => Ok(()),
-        Err(fault) => Err(fault),
-    }
 }
 
 /// What was laid out before, let go: its handle and the one on what it
 /// was over.
-fn unlay(client: &mut Client, laid: &Laid) -> Result<(), Fault> {
+fn unlay(ctx: &dyn Calls, laid: &Laid) -> Result<(), Fault> {
     if let Some((_, watched)) = laid.source {
-        client.close(watched)?;
+        ops::close(ctx, watched)?;
     }
-    client.close(laid.h)
+    Ok(ops::close(ctx, laid.h)?)
+}
+
+/// The name of `rd` under its parent, empty for the root.
+fn name_of(ctx: &dyn Calls, rd: Rd) -> Result<String, Error> {
+    Ok(ops::info(ctx, rd)?.name.unwrap_or_default())
 }
 
 /// What a file under the root goes by on its own: the last segment of
@@ -667,10 +689,11 @@ fn own_name(path: &str) -> &str {
 /// no such file: what a region over nothing is opened for. The two
 /// ways the tree says nothing is there are a name not on disk and a
 /// name below a file.
-fn file_rd(client: &mut Client, file: &str) -> Result<Option<Rd>, Fault> {
-    match client.resolve(&format!("/module/fs/root/{file}")) {
-        Err(Fault::Kernel(Error::Gone | Error::Unsupported)) => Ok(None),
-        found => found.map(Some),
+fn file_rd(ctx: &dyn Calls, file: &str) -> Result<Option<Rd>, Fault> {
+    let path = format!("/module/fs/root/{file}");
+    match cell::resolve(ctx, ROOT, &path) {
+        Err(Error::Gone | Error::Unsupported) => Ok(None),
+        found => Ok(found.map(Some)?),
     }
 }
 

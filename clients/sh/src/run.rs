@@ -13,8 +13,12 @@ use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-use reovim_client::value::Value;
-use reovim_client::{Error, Fault, Field, Handle, Rd, Rights, Tree, Ty, value};
+use reovim_kernel_interface::{
+    Calls, Error, Field, Handle, Op, Rd, Rights, Ty,
+};
+use reovim_sdk::dynamic::{self, Value};
+use reovim_sdk::walk::ROOT;
+use reovim_sdk::{cell, ops};
 
 use crate::{Miss, Shell, Step, decode, miss, resolved};
 
@@ -57,10 +61,10 @@ impl Open {
     ///
     /// # Errors
     /// Whatever the read says.
-    pub fn more(&mut self, tree: &mut Tree) -> Result<(Vec<u8>, bool), Miss> {
-        let (bytes, ended) = reading(tree, &self.name, self.h, &mut self.at)?;
+    pub fn more(&mut self, ctx: &dyn Calls) -> Result<(Vec<u8>, bool), Miss> {
+        let (bytes, ended) = reading(ctx, &self.name, self.h, &mut self.at)?;
         if ended {
-            self.close(tree)?;
+            self.close(ctx)?;
         }
         Ok((bytes, ended))
     }
@@ -70,9 +74,9 @@ impl Open {
     ///
     /// # Errors
     /// Whatever the close says.
-    pub fn close(&mut self, tree: &mut Tree) -> Result<(), Miss> {
-        let refused = |f: Fault| miss(&self.name, "", Step::Op, &f, "");
-        tree.close(self.h).map_err(refused)
+    pub fn close(&mut self, ctx: &dyn Calls) -> Result<(), Miss> {
+        let refused = |e: Error| miss(&self.name, "", Step::Op, e, "");
+        closed(ctx, self.h).map_err(refused)
     }
 }
 
@@ -93,11 +97,12 @@ pub fn split<'a>(
 }
 
 /// The names under PATH, sorted, whatever order the tree lists them in.
-pub fn names(tree: &mut Tree) -> Vec<String> {
-    let Ok(at) = tree.resolve(PATH) else { return Vec::new() };
-    let Ok(children) = tree.children(at) else { return Vec::new() };
+pub fn names(ctx: &dyn Calls) -> Vec<String> {
+    let Ok(at) = cell::resolve(ctx, ROOT, PATH) else { return Vec::new() };
+    let Ok(children) = ops::children(ctx, at) else { return Vec::new() };
+    let under = |rd| ops::info(ctx, rd).ok()?.name;
     let mut names: Vec<String> =
-        children.into_iter().filter_map(|rd| tree.name(rd).ok()).collect();
+        children.into_iter().filter_map(under).collect();
     names.sort();
     names
 }
@@ -105,9 +110,9 @@ pub fn names(tree: &mut Tree) -> Vec<String> {
 /// The fields the run of `name` takes; `None` for a name PATH does not
 /// hold or a declaration that cannot be read, which Tab offers nothing
 /// for and never faults over.
-pub fn fields(tree: &mut Tree, name: &str) -> Option<Vec<Field>> {
-    let rd = lookup(tree, name)?;
-    let (_, method) = tree.method(rd, "run").ok()?;
+pub fn fields(ctx: &dyn Calls, name: &str) -> Option<Vec<Field>> {
+    let rd = lookup(ctx, name)?;
+    let (_, method) = ops::method(ctx, rd, "run").ok()?;
     match method.input {
         Ty::Record(fields) => Some(fields),
         _ => None,
@@ -118,8 +123,8 @@ pub fn fields(tree: &mut Tree, name: &str) -> Option<Vec<Field>> {
 ///
 /// # Errors
 /// `Miss` for a name PATH does not hold.
-pub fn form(tree: &mut Tree, name: &str) -> Result<String, Miss> {
-    let Some(fields) = fields(tree, name) else {
+pub fn form(ctx: &dyn Calls, name: &str) -> Result<String, Miss> {
+    let Some(fields) = fields(ctx, name) else {
         return Err(not_under(name));
     };
     Ok(decode::form(name, &fields))
@@ -132,46 +137,46 @@ pub fn form(tree: &mut Tree, name: &str) -> Result<String, Miss> {
 /// `Miss` for a name PATH does not hold, a token no field takes, a
 /// redirect whose target is not there, or whatever the run says.
 pub fn under_path(
-    tree: &mut Tree,
+    ctx: &dyn Calls,
     shell: &Shell,
     name: &str,
     args: &[&str],
     sink: Option<Sink<'_>>,
 ) -> Result<Ran, Miss> {
-    let Some(rd) = lookup(tree, name) else {
+    let Some(rd) = lookup(ctx, name) else {
         // The line named this one, so the Miss is the one a host tells
         // from the rest: Vim's `:` line says E492 of it.
         return Err(Miss { unknown: true, ..not_under(name) });
     };
     let typed = args.join(" ");
-    let refused = |f: Fault| miss(name, &typed, Step::Op, &f, "");
-    let (api, method) = tree.method(rd, "run").map_err(refused)?;
+    let refused = |e: Error| miss(name, &typed, Step::Op, e, "");
+    let (api, method) = ops::method(ctx, rd, "run").map_err(refused)?;
     let input = decode::record(shell, name, &method.input, args)?;
     // The target resolves first, so a bad one runs nothing.
     let into = match sink {
-        Some(sink) => Some(poured(tree, shell, name, &sink)?),
+        Some(sink) => Some(poured(ctx, shell, name, &sink)?),
         None => None,
     };
-    let out = tree.call_method(rd, api, &method, input).map_err(refused)?;
-    let answered = value::decode(&method.output, &out).map_err(refused)?;
+    let out = ops::call(ctx, rd, api, &method, input).map_err(refused)?;
+    let answered = dynamic::decode(&method.output, &out).map_err(refused)?;
     let Value::Rd(cell) = answered else {
-        return Err(refused(Fault::Wire));
+        return Err(refused(Error::Invalid));
     };
-    let h = tree.open(cell, Rights::READ).map_err(refused)?;
+    let h = ctx.open(cell, Rights::READ).map_err(refused)?;
     let mut open = Open { name: name.to_string(), h, at: 0 };
-    let read = reading(tree, name, h, &mut open.at);
+    let read = reading(ctx, name, h, &mut open.at);
     let (bytes, ended) = match read {
         Ok(got) => got,
         Err(stopped) => {
-            let _ = open.close(tree);
+            let _ = open.close(ctx);
             return Err(stopped);
         }
     };
     let out = match into {
         Some((rd, at)) => {
-            if let Err(fault) = written(tree, rd, at, bytes) {
-                let _ = open.close(tree);
-                return Err(refused(fault));
+            if let Err(error) = written(ctx, rd, at, bytes) {
+                let _ = open.close(ctx);
+                return Err(refused(error));
             }
             Vec::new()
         }
@@ -180,14 +185,14 @@ pub fn under_path(
     if !ended {
         return Ok(Ran { out, open: Some(open) });
     }
-    open.close(tree)?;
+    open.close(ctx)?;
     Ok(Ran { out, open: None })
 }
 
 /// The rd of a name PATH does not hold: none.
-fn lookup(tree: &mut Tree, name: &str) -> Option<Rd> {
-    let at = tree.resolve(PATH).ok()?;
-    tree.lookup(at, name).ok()
+fn lookup(ctx: &dyn Calls, name: &str) -> Option<Rd> {
+    let at = cell::resolve(ctx, ROOT, PATH).ok()?;
+    ops::lookup(ctx, at, name).ok()
 }
 
 /// A name no directory of PATH holds, as `help NAME` and a line that
@@ -202,22 +207,22 @@ fn not_under(name: &str) -> Miss {
 /// that stopped it was the empty one that ends a cell. A `Busy` is a
 /// follower at the end of what it has now, and the cell goes on.
 fn reading(
-    tree: &mut Tree,
+    ctx: &dyn Calls,
     name: &str,
     h: Handle,
     at: &mut u64,
 ) -> Result<(Vec<u8>, bool), Miss> {
     let mut out = Vec::new();
     loop {
-        match tree.read(h, *at, CHUNK) {
+        match ops::read(ctx, h, *at, CHUNK) {
             Ok(chunk) if chunk.is_empty() => return Ok((out, true)),
             Ok(chunk) => {
                 *at += chunk.len() as u64;
                 out.extend(chunk);
             }
-            Err(Fault::Kernel(Error::Busy)) => return Ok((out, false)),
-            Err(fault) => {
-                return Err(miss(name, "", Step::Op, &fault, ""));
+            Err(Error::Busy) => return Ok((out, false)),
+            Err(error) => {
+                return Err(miss(name, "", Step::Op, error, ""));
             }
         }
     }
@@ -227,29 +232,34 @@ fn reading(
 /// and the offset, 0 for `>` and what the target holds for `>>`, which
 /// a whole read counts since `Info` carries no size.
 fn poured(
-    tree: &mut Tree,
+    ctx: &dyn Calls,
     shell: &Shell,
     name: &str,
     sink: &Sink<'_>,
 ) -> Result<(Rd, u64), Miss> {
-    let rd = resolved(tree, shell, name, sink.target)?;
+    let rd = resolved(ctx, shell, name, sink.target)?;
     if !sink.append {
         return Ok((rd, 0));
     }
-    let refused = |f: Fault| miss(name, sink.target, Step::Op, &f, "");
-    let held = tree.read_all(rd).map_err(refused)?;
+    let refused = |e: Error| miss(name, sink.target, Step::Op, e, "");
+    let held = ops::bytes(ctx, rd).map_err(refused)?;
     Ok((rd, held.len() as u64))
 }
 
 /// `bytes` into `rd` at `at`, through a handle opened and closed here.
 fn written(
-    tree: &mut Tree,
+    ctx: &dyn Calls,
     rd: Rd,
     at: u64,
     bytes: Vec<u8>,
-) -> Result<(), Fault> {
-    let h = tree.open(rd, Rights::WRITE)?;
-    let written = tree.write(h, at, bytes);
-    tree.close(h)?;
+) -> Result<(), Error> {
+    let h = ctx.open(rd, Rights::WRITE)?;
+    let written = ops::write(ctx, h, at, bytes);
+    closed(ctx, h)?;
     written.map(|_| ())
+}
+
+/// One handle closed.
+fn closed(ctx: &dyn Calls, h: Handle) -> Result<(), Error> {
+    ops::ready(ctx.submit(Op::Close { h })).map(|_| ())
 }

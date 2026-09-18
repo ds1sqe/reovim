@@ -11,14 +11,12 @@
 
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
-use alloc::string::ToString;
 use alloc::vec::Vec;
 use core::cell::RefCell;
 
-use reovim_kernel_interface::{
-    Calls, DriverId, Error, Flags, Op, Out, Rd, Reply,
-};
+use reovim_kernel_interface::{Calls, DriverId, Error, Flags, Rd};
 
+use crate::ops;
 use crate::walk::{ROOT, Step, walk};
 
 /// The root's `bin`, the Container a Driver that a typed line runs
@@ -34,7 +32,7 @@ use crate::walk::{ROOT, Step, walk};
 /// # Errors
 /// As `Op::Lookup`; `Invalid` when the root has no `bin`.
 pub fn bin(ctx: &dyn Calls) -> Result<Rd, Error> {
-    found(ctx.submit(Op::Lookup { rd: ROOT, name: "bin".to_string() }))
+    ops::lookup(ctx, ROOT, "bin")
 }
 
 /// The rd `path` names, from `from` when it is relative, as [`walk`]
@@ -49,21 +47,9 @@ pub fn bin(ctx: &dyn Calls) -> Result<Rd, Error> {
 /// not there.
 pub fn resolve(ctx: &dyn Calls, from: Rd, path: &str) -> Result<Rd, Error> {
     walk(from, path, |step| match step {
-        Step::Child { rd, name } => {
-            found(ctx.submit(Op::Lookup { rd, name: name.to_string() }))
-        }
-        Step::Parent { rd } => found(ctx.submit(Op::Parent { rd })),
+        Step::Child { rd, name } => ops::lookup(ctx, rd, name),
+        Step::Parent { rd } => ops::parent(ctx, rd),
     })
-}
-
-/// The rd a finished `Lookup` or `Parent` answered; neither answers
-/// anything else, and neither may block.
-fn found(reply: Reply<Out>) -> Result<Rd, Error> {
-    let Reply::Ready(result) = reply else { return Err(Error::Invalid) };
-    match result? {
-        Out::Rd(rd) => Ok(rd),
-        _ => Err(Error::Invalid),
-    }
 }
 
 /// What a following run does at the end of what its cell holds.

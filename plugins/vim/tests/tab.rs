@@ -33,7 +33,7 @@ fn over(test: &str) -> (Rig, Editor) {
     rig.file("d/alpha", b"");
     rig.file("d/note", b"one\ntwo\n");
     rig.file("d/sub/deep", b"");
-    let tui = Tui::open(rig.client(), "d", Some("d/note"), None, table());
+    let tui = Tui::open(rig.host(), "d", Some("d/note"), None, table());
     (rig, tui.unwrap())
 }
 

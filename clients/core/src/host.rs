@@ -63,6 +63,11 @@ enum Owner {
     /// The cell of a declaration a local `report` published, which
     /// stands under the server's `/sys/decls`.
     Decl(Hash),
+    /// A cell a write of sends one of the two wire messages that are
+    /// not ops: `unload` of a Module's name, else `load` of a path.
+    /// The Client may speak to the link, so it is the Client that
+    /// serves them; a caller reaches them as it reaches anything.
+    Loader { unload: bool },
 }
 
 /// One row of the local table: the Kernel's `Entry` less what a Client
@@ -287,15 +292,16 @@ pub struct Host {
 }
 
 impl Host {
-    /// The Host over `wire`, holding `/self` and the Client's own
-    /// `ModuleId(0)`, which serves nothing yet. `clock` is the host's
+    /// The Host over `wire`, holding `/self` with the two cells the
+    /// Client writes a wire message by, and the Client's own
+    /// `ModuleId(0)`, which serves no Driver yet. `clock` is the host's
     /// monotonic tick, which stamps the times of a local rd.
     #[must_use]
     pub fn over(wire: Client, clock: fn() -> u64) -> Self {
         let now = clock();
         let flags = Flags::READ.union(Flags::CONTAINER);
         let root = Node::new(Owner::Container, ROOT, Some("self"), flags, now);
-        let state = State {
+        let mut state = State {
             nodes: BTreeMap::from([(SELF, root)]),
             next_rd: LOCAL_BASE + 1,
             handles: BTreeMap::new(),
@@ -306,6 +312,11 @@ impl Host {
             events: VecDeque::new(),
             next_seq: 1,
         };
+        let bin = state.insert(SELF, Some("bin"), Owner::Container, flags, now);
+        for name in ["load", "unload"] {
+            let owner = Owner::Loader { unload: name == "unload" };
+            state.insert(bin, Some(name), owner, Flags::WRITE, now);
+        }
         let depth = Cell::new(0);
         Self {
             wire: RefCell::new(wire),
@@ -502,7 +513,7 @@ fn check_parent(s: &State, parent: Rd, module: ModuleId) -> Result<(), Error> {
     let allowed = match node.owner {
         Owner::Container => true,
         Owner::Driver { module: m, .. } => m == module,
-        Owner::Decl(_) => false,
+        Owner::Decl(_) | Owner::Loader { .. } => false,
     };
     if allowed { Ok(()) } else { Err(Error::Denied) }
 }
@@ -646,7 +657,7 @@ fn open(host: &Host, rd: Rd, rights: Rights) -> Answer {
             let d = host.driver(module, driver)?;
             ready(d.open(&host.calls(module), rd, rights))?
         }
-        Owner::Container | Owner::Decl(_) => 0,
+        Owner::Container | Owner::Decl(_) | Owner::Loader { .. } => 0,
     };
     let mut s = host.state.borrow_mut();
     let h = Handle(s.next_handle);
@@ -670,7 +681,9 @@ fn read(host: &Host, h: Handle, at: u64, len: u32) -> Answer {
             let s = host.state.borrow();
             part(&s.decls.get(&hash).ok_or(Error::Gone)?.canonical(), at, len)
         }
-        Owner::Container => return Err(Error::Unsupported),
+        Owner::Container | Owner::Loader { .. } => {
+            return Err(Error::Unsupported);
+        }
     };
     let now = host.now();
     if let Ok(node) = host.state.borrow_mut().node_mut(slot.rd) {
@@ -684,6 +697,9 @@ fn write(host: &Host, h: Handle, at: u64, bytes: Vec<u8>) -> Answer {
         return host.sent(Op::Write { h, at, bytes });
     }
     let (slot, owner) = held(host, h, Rights::WRITE)?;
+    if let Owner::Loader { unload } = owner {
+        return sent_message(host, unload, &bytes);
+    }
     let Owner::Driver { module, driver } = owner else {
         return Err(Error::Unsupported);
     };
@@ -691,6 +707,19 @@ fn write(host: &Host, h: Handle, at: u64, bytes: Vec<u8>) -> Answer {
     let calls = host.calls(module);
     let took = ready(d.write(&calls, slot.cookie, at, &bytes))?;
     Ok(Out::Len(u32::try_from(took).unwrap_or(u32::MAX)))
+}
+
+/// One of the two messages, sent: the borrow of the wire lasts exactly
+/// the statement that speaks, as every wire op's does.
+fn sent_message(host: &Host, unload: bool, bytes: &[u8]) -> Answer {
+    let text = core::str::from_utf8(bytes).map_err(|_| Error::Invalid)?;
+    let sent = if unload {
+        host.wire.borrow_mut().unload(text)
+    } else {
+        host.wire.borrow_mut().load(text)
+    };
+    sent.map_err(|f| refused(&f))?;
+    Ok(Out::Len(u32::try_from(bytes.len()).unwrap_or(u32::MAX)))
 }
 
 /// What the Kernel checks before the slot, because a Driver's `call` is

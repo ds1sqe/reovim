@@ -2,13 +2,13 @@
 //! listing shows, the heap, and a core read in one `cat`. What a write
 //! of a parameter does is kernel/runtime/tests/sys.rs's.
 
-use reovim_client::Client;
 use reovim_client_sh::{Shell, run};
+use reovim_kernel_interface::Calls;
 use reovim_rig::Rig;
 
 /// One typed line; its output, or the line a Miss would print.
-fn typed(client: &mut Client, shell: &mut Shell, line: &str) -> String {
-    match run(client, shell, line) {
+fn typed(ctx: &dyn Calls, shell: &mut Shell, line: &str) -> String {
+    match run(ctx, shell, line) {
         Ok(ran) => String::from_utf8(ran.out).unwrap(),
         Err(miss) => miss.to_string(),
     }
@@ -17,17 +17,17 @@ fn typed(client: &mut Client, shell: &mut Shell, line: &str) -> String {
 #[test]
 fn a_parameter_is_a_file_under_sys_limit() {
     let rig = Rig::new("sh-sys-limit");
-    let mut client = rig.client();
+    let host = rig.host();
+    let ctx = &host.own();
     let mut shell = Shell::default();
-    let mut go =
-        |client: &mut Client, line: &str| typed(client, &mut shell, line);
+    let mut go = |ctx: &dyn Calls, line: &str| typed(ctx, &mut shell, line);
 
     // One value per file, in decimal, as `/proc/sys/kernel/*` holds one.
-    assert_eq!(go(&mut client, "cat /sys/limit/log_ring"), "4096");
-    assert_eq!(go(&mut client, "cat /sys/limit/reentry"), "8");
+    assert_eq!(go(ctx, "cat /sys/limit/log_ring"), "4096");
+    assert_eq!(go(ctx, "cat /sys/limit/reentry"), "8");
 
     // The five are settable, so the listing says `rw`.
-    let listed = go(&mut client, "ls -l /sys/limit");
+    let listed = go(ctx, "ls -l /sys/limit");
     let rows: Vec<&str> = listed.lines().collect();
     assert_eq!(rows.len(), 5, "{listed}");
     assert!(rows.iter().all(|row| row.starts_with("- rw  ")), "{listed}");
@@ -48,14 +48,14 @@ fn a_parameter_is_a_file_under_sys_limit() {
 #[test]
 fn the_heap_and_the_core_are_read_and_never_written() {
     let rig = Rig::new("sh-sys-core");
-    let mut client = rig.client();
+    let host = rig.host();
+    let ctx = &host.own();
     let mut shell = Shell::default();
-    let mut go =
-        |client: &mut Client, line: &str| typed(client, &mut shell, line);
+    let mut go = |ctx: &dyn Calls, line: &str| typed(ctx, &mut shell, line);
 
     // `ls -l /sys` shows what each of them is: the two the Kernel
     // makes at the read are `r`, the parameters beside them `rw`.
-    let listed = go(&mut client, "ls -l /sys");
+    let listed = go(ctx, "ls -l /sys");
     let row = |name: &str| {
         listed
             .lines()
@@ -70,12 +70,12 @@ fn the_heap_and_the_core_are_read_and_never_written() {
     // A redirect is the only way bytes go into an rd, and the heap
     // takes none: the shell says the table's sentence for what it was
     // refused with.
-    assert_eq!(go(&mut client, "pwd"), "/\n");
-    assert_eq!(go(&mut client, "ls / > /sys/mem"), "ls /: denied");
+    assert_eq!(go(ctx, "pwd"), "/\n");
+    assert_eq!(go(ctx, "ls / > /sys/mem"), "ls /: denied");
 
     // The heap the host counts, three numbers; it moves as the
     // process takes memory.
-    let mem = go(&mut client, "cat /sys/mem");
+    let mem = go(ctx, "cat /sys/mem");
     assert_eq!(mem.split(' ').count(), 3, "{mem}");
     let live = |text: &str| {
         let number = text.split(' ').next().unwrap();
@@ -84,17 +84,17 @@ fn the_heap_and_the_core_are_read_and_never_written() {
     assert!(live(&mem) > 0, "{mem}");
     // Held past the read, or a release build would never take it.
     let held = std::hint::black_box(vec![7_u8; 4 << 20]);
-    let grown = go(&mut client, "cat /sys/mem");
+    let grown = go(ctx, "cat /sys/mem");
     drop(std::hint::black_box(held));
     assert!(live(&grown) > live(&mem) + (1 << 20), "{mem} then {grown}");
 
     // A core is everything the Kernel holds, in one read: the
     // parameters first, the heap last, one line per thing between.
-    let core = go(&mut client, "cat /sys/core");
+    let core = go(ctx, "cat /sys/core");
     assert!(core.starts_with("limit watch_ring="), "{core}");
     assert!(core.lines().next_back().unwrap().starts_with("live="), "{core}");
     // Its `rd` lines are the tree's rds, as `tree /` counts them.
-    let counted = go(&mut client, "tree /");
+    let counted = go(ctx, "tree /");
     let tail = counted.lines().next_back().unwrap();
     let (containers, cells) = tail.split_once(", ").unwrap();
     let number =

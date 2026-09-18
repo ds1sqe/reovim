@@ -144,6 +144,7 @@ dependencies = [
  "reovim-plugin-cli",
  "reovim-plugin-explorer",
  "reovim-plugin-vim",
+ "reovim-sdk",
 ]
 
 [[package]]
@@ -168,6 +169,7 @@ name = "reovim-client-sh"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-client",
+ "reovim-kernel-interface",
  "reovim-module-coreutils",
  "reovim-rig",
  "reovim-sdk",

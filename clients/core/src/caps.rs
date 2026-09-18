@@ -16,7 +16,7 @@ use alloc::vec::Vec;
 use reovim_kernel_interface::{Error, Handle, Hash, Rd};
 use reovim_sdk::{decode, encode};
 
-use crate::{Fault, Key};
+use crate::Key;
 
 reovim_sdk::declare! {
     /// What a person did with the input the Client has. It declares no
@@ -234,7 +234,7 @@ impl Caps {
     }
 
     /// `grid` on the one region: its size, or the View it is shown.
-    fn grid(&mut self, number: u16, input: &[u8]) -> Result<Vec<u8>, Fault> {
+    fn grid(&mut self, number: u16, input: &[u8]) -> Result<Vec<u8>, Error> {
         match number {
             0 => Ok(encode(&grid::Size { cols: self.cols, rows: self.rows })),
             1 => {
@@ -242,13 +242,13 @@ impl Caps {
                 self.shown = true;
                 Ok(Vec::new())
             }
-            _ => Err(Error::Unsupported.into()),
+            _ => Err(Error::Unsupported),
         }
     }
 
     /// `open`: the rd to show here and the Plugin to show it in, or
     /// the step back, recorded for the Client to act on.
-    fn opening(&mut self, number: u16, input: &[u8]) -> Result<Vec<u8>, Fault> {
+    fn opening(&mut self, number: u16, input: &[u8]) -> Result<Vec<u8>, Error> {
         match number {
             0 => {
                 let ask: open::Ask = decode(input)?;
@@ -259,14 +259,14 @@ impl Caps {
                 self.back = true;
                 Ok(Vec::new())
             }
-            _ => Err(Error::Unsupported.into()),
+            _ => Err(Error::Unsupported),
         }
     }
 
     /// `process`: the code to end with.
-    fn process(&mut self, number: u16, input: &[u8]) -> Result<Vec<u8>, Fault> {
+    fn process(&mut self, number: u16, input: &[u8]) -> Result<Vec<u8>, Error> {
         if number != 0 {
-            return Err(Error::Unsupported.into());
+            return Err(Error::Unsupported);
         }
         let code: u64 = decode(input)?;
         self.exit = Some(u8::try_from(code).unwrap_or(u8::MAX));
@@ -278,7 +278,7 @@ impl Caps {
 /// way it calls a Module: by hash and method number, on the handle the
 /// table gave it.
 impl reovim_sdk::Call for Caps {
-    type Error = Fault;
+    type Error = Error;
 
     fn call(
         &mut self,
@@ -286,9 +286,9 @@ impl reovim_sdk::Call for Caps {
         api: Hash,
         number: u16,
         input: Vec<u8>,
-    ) -> Result<Vec<u8>, Fault> {
+    ) -> Result<Vec<u8>, Error> {
         if self.open(api) != Some(h) {
-            return Err(Error::Denied.into());
+            return Err(Error::Denied);
         }
         if api == grid::hash() {
             return self.grid(number, &input);
@@ -299,7 +299,7 @@ impl reovim_sdk::Call for Caps {
         if api == process::hash() {
             return self.process(number, &input);
         }
-        Err(Error::Unsupported.into())
+        Err(Error::Unsupported)
     }
 }
 
@@ -309,7 +309,7 @@ mod tests {
     use alloc::vec;
 
     use super::{Caps, grid, keys, open, process};
-    use crate::{Fault, Key, Rd};
+    use crate::{Error, Key, Rd};
 
     /// Every key there is, in the order `Key` declares them.
     fn every() -> alloc::vec::Vec<Key> {
@@ -380,10 +380,7 @@ mod tests {
         assert_eq!(process::Call(&mut caps, process).exit(3), Ok(()));
         assert_eq!(caps.exit(), Some(3));
         let wrong = grid::Call(&mut caps, process).size();
-        assert_eq!(
-            wrong,
-            Err(Fault::Kernel(reovim_kernel_interface::Error::Denied))
-        );
+        assert_eq!(wrong, Err(Error::Denied));
     }
 
     #[test]

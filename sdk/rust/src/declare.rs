@@ -5,7 +5,9 @@
 
 use alloc::vec::Vec;
 
-use reovim_kernel_interface::{Error, Handle, Hash};
+use reovim_kernel_interface::{Calls, Error, Handle, Hash};
+
+use crate::ops;
 
 /// What a caller-side wrapper calls: a `call` on a handle by hash
 /// and method number, as a `Client` does.
@@ -25,6 +27,23 @@ pub trait Call {
         number: u16,
         input: Vec<u8>,
     ) -> Result<Vec<u8>, Self::Error>;
+}
+
+/// A declared api is called the same way on either side of the door:
+/// whatever holds a `Calls` — a Driver, a Plugin, a Client — runs a
+/// method with the wrapper the Driver's own side is written against.
+impl Call for &dyn Calls {
+    type Error = Error;
+
+    fn call(
+        &mut self,
+        h: Handle,
+        api: Hash,
+        number: u16,
+        input: Vec<u8>,
+    ) -> Result<Vec<u8>, Error> {
+        ops::called(*self, h, api, number, input)
+    }
 }
 
 /// An api as 00-core.md writes it. One module per api holding

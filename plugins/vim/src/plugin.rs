@@ -12,11 +12,13 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use reovim_client::{
-    BAR, BLOCK, Caps, Ctx, Error, Event, Fault, Flags, Handle, Hash, Key, Kind,
-    MATCH, Plugin, Rd, Rights, SELECTION, Start, Tree, grid, keys, open, paths,
-    process, under,
+    BAR, BLOCK, Calls, Caps, Ctx, Error, Event, Flags, Handle, Hash, Key, Kind,
+    MATCH, Plugin, Rd, Rights, SELECTION, Start, grid, keys, open, process,
 };
 use reovim_client_sh::{Ran, Shell, complete, run};
+use reovim_sdk::path::under;
+use reovim_sdk::walk::ROOT;
+use reovim_sdk::{cell, ops};
 use reovim_text_api::{history, open as text_open, publish, text};
 
 use crate::{Ask, Edit, Effect, Mode, Quit, Vim};
@@ -48,28 +50,28 @@ impl Plugin for Vim {
     /// and written through a handle it keeps, the clipboard found if
     /// there is one, the region asked how big it is, and the text read
     /// and shown from the line it was told to begin at.
-    fn start(&mut self, ctx: Ctx<'_>, at: Start) -> Result<(), Fault> {
-        let Ctx { tree, caps } = ctx;
-        let buffer = buffer_over(tree, at.over)?;
+    fn start(&mut self, ctx: Ctx<'_>, at: Start) -> Result<(), Error> {
+        let Ctx { ctx, caps } = ctx;
+        let buffer = buffer_over(ctx, at.over)?;
         let rights = Rights::READ.union(Rights::WRITE);
         self.buffer = Some(buffer);
-        self.h = Some(tree.open(buffer, rights)?);
+        self.h = Some(ctx.open(buffer, rights)?);
         self.source = at.over;
         self.name = at.name;
         self.dir = at.dir;
-        self.shell = standing(tree, &self.dir)?;
-        self.clip = tree.resolve("/module/clipboard/text").ok();
+        self.shell = standing(ctx, &self.dir)?;
+        self.clip = cell::resolve(ctx, ROOT, "/module/clipboard/text").ok();
         self.region = caps.open(grid::hash());
         self.opener = caps.open(open::hash());
         self.ending = caps.open(process::hash());
         if let Some(region) = self.region {
             self.rows = count(grid::Call(caps, region).size()?.rows);
         }
-        let bytes = tree.read_whole(self.handle()?)?;
+        let bytes = ops::whole(ctx, self.handle()?)?;
         self.loaded(&bytes);
         let at = at.line.map_or(0, |line| self.at_line(count(line)));
         self.begin(at);
-        self.announce(tree)?;
+        self.announce(ctx)?;
         self.show(caps)
     }
 
@@ -81,8 +83,8 @@ impl Plugin for Vim {
         ctx: Ctx<'_>,
         from: Hash,
         bytes: &[u8],
-    ) -> Result<(), Fault> {
-        let Ctx { tree, caps } = ctx;
+    ) -> Result<(), Error> {
+        let Ctx { ctx, caps } = ctx;
         if from == grid::hash() {
             let resized: grid::Resized = reovim_sdk::decode(bytes)?;
             self.rows = count(resized.rows);
@@ -94,8 +96,8 @@ impl Plugin for Vim {
         let press: keys::Press = reovim_sdk::decode(bytes)?;
         let Some(key) = Key::of(press.key) else { return Ok(()) };
         let effect = self.key(key);
-        let acted = self.act(tree, caps, effect)?;
-        let said = self.write_clipped(tree)?;
+        let acted = self.act(ctx, caps, effect)?;
+        let said = self.write_clipped(ctx)?;
         if acted || said {
             self.show(caps)?;
         }
@@ -104,13 +106,13 @@ impl Plugin for Vim {
 
     /// A Modify on the Buffer, or a ring that overflowed: the text is
     /// read again, which is how another Client's write arrives.
-    fn changed(&mut self, ctx: Ctx<'_>, events: &[Event]) -> Result<(), Fault> {
-        let Ctx { tree, caps } = ctx;
+    fn changed(&mut self, ctx: Ctx<'_>, events: &[Event]) -> Result<(), Error> {
+        let Ctx { ctx, caps } = ctx;
         let moved = |e: &Event| matches!(e.kind, Kind::Modify | Kind::Overflow);
         if !events.iter().any(moved) {
             return Ok(());
         }
-        let bytes = tree.read_whole(self.handle()?)?;
+        let bytes = ops::whole(ctx, self.handle()?)?;
         if !self.loaded(&bytes) {
             return Ok(());
         }
@@ -120,8 +122,8 @@ impl Plugin for Vim {
 
 impl Vim {
     /// The Buffer `start` opened; `Closed` before it has.
-    fn handle(&self) -> Result<Handle, Fault> {
-        self.h.ok_or(Fault::Kernel(Error::Closed))
+    fn handle(&self) -> Result<Handle, Error> {
+        self.h.ok_or(Error::Closed)
     }
 
     /// The byte line `n` starts at, counted from 1 and clamped to the
@@ -136,75 +138,75 @@ impl Vim {
     /// shown again.
     fn act(
         &mut self,
-        tree: &mut Tree,
+        ctx: &dyn Calls,
         caps: &mut Caps,
         effect: Effect,
-    ) -> Result<bool, Fault> {
+    ) -> Result<bool, Error> {
         match effect {
             Effect::Nothing => return Ok(false),
             Effect::Moved => {}
-            Effect::Edit(edit) => self.send(tree, edit)?,
-            Effect::Edits(edits) => self.send_each(tree, edits)?,
-            Effect::Undo => self.walk(tree, true)?,
-            Effect::Redo => self.walk(tree, false)?,
+            Effect::Edit(edit) => self.send(ctx, edit)?,
+            Effect::Edits(edits) => self.send_each(ctx, edits)?,
+            Effect::Undo => self.walk(ctx, true)?,
+            Effect::Redo => self.walk(ctx, false)?,
             Effect::Save(bang) => {
-                self.save(tree, bang)?;
+                self.save(ctx, bang)?;
             }
             Effect::SaveAs(name, bang) => {
-                self.save_as(tree, &name, bang)?;
+                self.save_as(ctx, &name, bang)?;
             }
-            Effect::Clipboard => return self.pasting(tree, caps),
-            Effect::Quit(how) => return self.quit(tree, caps, how),
+            Effect::Clipboard => return self.pasting(ctx, caps),
+            Effect::Quit(how) => return self.quit(ctx, caps, how),
             Effect::Explore(name, bang) => {
-                return self.explore(tree, caps, name.as_deref(), bang);
+                return self.explore(ctx, caps, name.as_deref(), bang);
             }
             Effect::Open(name, bang) => {
-                return self.edited(tree, caps, &name, bang);
+                return self.edited(ctx, caps, &name, bang);
             }
-            Effect::Line(line) => return Ok(self.ran(tree, &line)),
-            Effect::Cli(bang) => return self.cli(tree, caps, bang),
-            Effect::Complete(ask) => return self.completing(tree, ask),
+            Effect::Line(line) => return Ok(self.ran(ctx, &line)),
+            Effect::Cli(bang) => return self.cli(ctx, caps, bang),
+            Effect::Complete(ask) => return self.completing(ctx, ask),
         }
         Ok(true)
     }
 
     /// `edit` as a new revision, or into the head one when it joins
     /// the insert under way.
-    fn send(&self, tree: &mut Tree, edit: Edit) -> Result<(), Fault> {
+    fn send(&self, mut ctx: &dyn Calls, edit: Edit) -> Result<(), Error> {
         let Edit { at, len, text, join } = edit;
         let edit = text::Edit { at: at as u64, len: len as u64, text };
-        let mut call = text::Call(tree, self.handle()?);
+        let mut call = text::Call(&mut ctx, self.handle()?);
         if join { call.amend(edit) } else { call.replace(edit) }
     }
 
     /// Those edits, in order, as a repeat replayed them.
     fn send_each(
         &self,
-        tree: &mut Tree,
+        ctx: &dyn Calls,
         edits: Vec<Edit>,
-    ) -> Result<(), Fault> {
+    ) -> Result<(), Error> {
         for edit in edits {
-            self.send(tree, edit)?;
+            self.send(ctx, edit)?;
         }
         Ok(())
     }
 
     /// Head one revision back or on, the text read again after it; the
     /// end of the history is a message.
-    fn walk(&mut self, tree: &mut Tree, back: bool) -> Result<(), Fault> {
+    fn walk(&mut self, mut ctx: &dyn Calls, back: bool) -> Result<(), Error> {
         let h = self.handle()?;
-        let mut call = history::Call(tree, h);
+        let mut call = history::Call(&mut ctx, h);
         let (moved, end) =
             if back { (call.undo(), OLDEST) } else { (call.redo(), NEWEST) };
         match moved {
             Ok(()) => {}
-            Err(Fault::Kernel(Error::Invalid)) => {
+            Err(Error::Invalid) => {
                 self.says(end);
                 return Ok(());
             }
-            Err(fault) => return Err(fault),
+            Err(error) => return Err(error),
         }
-        let bytes = tree.read_whole(h)?;
+        let bytes = ops::whole(ctx, h)?;
         self.loaded(&bytes);
         Ok(())
     }
@@ -212,11 +214,11 @@ impl Vim {
     /// A Buffer over nothing that was opened for a file says so on
     /// the first frame, as nvim does; the directory it is to go in is
     /// not there either when it says `[New DIRECTORY]`.
-    fn announce(&mut self, tree: &mut Tree) -> Result<(), Fault> {
+    fn announce(&mut self, ctx: &dyn Calls) -> Result<(), Error> {
         let Some(name) = self.name.clone() else { return Ok(()) };
         let dir = name.rsplit_once('/').map_or("", |(dir, _)| dir);
         let word =
-            if directory(tree, dir)? { "[New]" } else { "[New DIRECTORY]" };
+            if directory(ctx, dir)? { "[New]" } else { "[New DIRECTORY]" };
         let said = as_given(&self.dir, &name);
         self.message = format!("\"{said}\" {word}");
         Ok(())
@@ -225,16 +227,16 @@ impl Vim {
     /// The head published to its source; a Buffer over nothing writes
     /// the file it was opened for, and has no file name without one.
     /// False when it said why it did not write.
-    fn save(&mut self, tree: &mut Tree, bang: bool) -> Result<bool, Fault> {
+    fn save(&mut self, mut ctx: &dyn Calls, bang: bool) -> Result<bool, Error> {
         if self.source.is_some() {
-            self.fixing(tree)?;
-            publish::Call(tree, self.handle()?).save()?;
+            self.fixing(ctx)?;
+            publish::Call(&mut ctx, self.handle()?).save()?;
             return Ok(true);
         }
         let Some(name) = self.name.clone() else {
             return Ok(self.says(E32));
         };
-        self.written_to(tree, &name, bang)
+        self.written_to(ctx, &name, bang)
     }
 
     /// `:w NAME`: the head written to that file, `NAME` resolved under
@@ -243,18 +245,18 @@ impl Vim {
     /// nothing goes on as that file's, its history starting there.
     fn save_as(
         &mut self,
-        tree: &mut Tree,
+        ctx: &dyn Calls,
         name: &str,
         bang: bool,
-    ) -> Result<bool, Fault> {
+    ) -> Result<bool, Error> {
         let path = under(&self.dir, name);
-        let Some(target) = resolved(tree, &path)? else {
-            return self.written_to(tree, &path, bang);
+        let Some(target) = resolved(ctx, &path)? else {
+            return self.written_to(ctx, &path, bang);
         };
         if Some(target) == self.source {
-            return self.save(tree, bang);
+            return self.save(ctx, bang);
         }
-        self.published_to(tree, target)
+        self.published_to(ctx, target)
     }
 
     /// The file `path` names made under the root and the head written
@@ -264,17 +266,16 @@ impl Vim {
     /// host and a file where a directory is wanted alike, is E212.
     fn written_to(
         &mut self,
-        tree: &mut Tree,
+        ctx: &dyn Calls,
         path: &str,
         bang: bool,
-    ) -> Result<bool, Fault> {
-        match making(tree, path, bang) {
-            Ok(Some(target)) => self.published_to(tree, target),
+    ) -> Result<bool, Error> {
+        match making(ctx, path, bang) {
+            Ok(Some(target)) => self.published_to(ctx, target),
             Ok(None) => Ok(self.says(E13)),
             // Refused, or asked of an rd that makes nothing: either
-            // way there is no file to write. Only the link is fatal.
-            Err(Fault::Kernel(_) | Fault::Usage(_)) => Ok(self.says(E212)),
-            Err(fault) => Err(fault),
+            // way there is no file to write.
+            Err(_) => Ok(self.says(E212)),
         }
     }
 
@@ -282,61 +283,59 @@ impl Vim {
     /// on as, watched by its Client from then on.
     fn published_to(
         &mut self,
-        tree: &mut Tree,
+        mut ctx: &dyn Calls,
         target: Rd,
-    ) -> Result<bool, Fault> {
-        self.fixing(tree)?;
-        publish::Call(tree, self.handle()?).save_as(target)?;
+    ) -> Result<bool, Error> {
+        self.fixing(ctx)?;
+        publish::Call(&mut ctx, self.handle()?).save_as(target)?;
         self.source = self.source.or(Some(target));
         Ok(true)
     }
 
     /// The newline `fixendofline` writes at the end of a last line
     /// that has none, before the write itself.
-    fn fixing(&mut self, tree: &mut Tree) -> Result<(), Fault> {
-        self.fixed_eol().map_or(Ok(()), |edit| self.send(tree, edit))
+    fn fixing(&mut self, ctx: &dyn Calls) -> Result<(), Error> {
+        self.fixed_eol().map_or(Ok(()), |edit| self.send(ctx, edit))
     }
 
     /// A put waiting for the clipboard: what it holds, then the put
     /// itself, which is an effect like any other.
     fn pasting(
         &mut self,
-        tree: &mut Tree,
+        ctx: &dyn Calls,
         caps: &mut Caps,
-    ) -> Result<bool, Fault> {
-        let text = self.clipboard(tree)?;
+    ) -> Result<bool, Error> {
+        let text = self.clipboard(ctx)?;
         let effect = self.pasted(text);
-        self.act(tree, caps, effect)
+        self.act(ctx, caps, effect)
     }
 
     /// What the clipboard holds, through its rd; `None` when there is
     /// no Module or no tool.
-    fn clipboard(&self, tree: &mut Tree) -> Result<Option<String>, Fault> {
+    fn clipboard(&self, ctx: &dyn Calls) -> Result<Option<String>, Error> {
         let Some(rd) = self.clip else { return Ok(None) };
-        match tree.read_all(rd) {
+        match ops::bytes(ctx, rd) {
             Ok(bytes) => Ok(Some(String::from_utf8_lossy(&bytes).into_owned())),
-            Err(Fault::Kernel(Error::Unsupported | Error::Busy)) => Ok(None),
-            Err(fault) => Err(fault),
+            Err(Error::Unsupported | Error::Busy) => Ok(None),
+            Err(error) => Err(error),
         }
     }
 
     /// What a `"+` yank left for the clipboard, written to its rd; no
     /// Module or no tool is a message, which is true when it is one.
-    fn write_clipped(&mut self, tree: &mut Tree) -> Result<bool, Fault> {
+    fn write_clipped(&mut self, ctx: &dyn Calls) -> Result<bool, Error> {
         let Some(text) = self.clipped() else { return Ok(false) };
-        let unsupported = Err(Fault::Kernel(Error::Unsupported));
+        let unsupported = Err(Error::Unsupported);
         let written = self
             .clip
-            .map_or(unsupported, |rd| tree.write_all(rd, text.into_bytes()));
+            .map_or(unsupported, |rd| ops::put(ctx, rd, text.into_bytes()));
         match written {
             Ok(_) => Ok(false),
-            Err(Fault::Kernel(Error::Unsupported)) => {
+            Err(Error::Unsupported) => {
                 Ok(self.says("clipboard: no tool on PATH"))
             }
-            Err(Fault::Kernel(Error::Busy)) => {
-                Ok(self.says("clipboard: the tool failed"))
-            }
-            Err(fault) => Err(fault),
+            Err(Error::Busy) => Ok(self.says("clipboard: the tool failed")),
+            Err(error) => Err(error),
         }
     }
 
@@ -347,17 +346,17 @@ impl Vim {
     /// so the caller uses nothing.
     fn quit(
         &mut self,
-        tree: &mut Tree,
+        ctx: &dyn Calls,
         caps: &mut Caps,
         how: Quit,
-    ) -> Result<bool, Fault> {
-        let unsaved = self.unsaved(tree)?;
+    ) -> Result<bool, Error> {
+        let unsaved = self.unsaved(ctx)?;
         if how == Quit::Ask && unsaved {
             return Ok(self.says(E37));
         }
         let code = match how {
             Quit::Abort => Some(1),
-            Quit::Write => self.written(tree, unsaved)?,
+            Quit::Write => self.written(ctx, unsaved)?,
             _ => Some(0),
         };
         // The write said why it did not happen; the editor stays.
@@ -373,15 +372,15 @@ impl Vim {
     /// and the editor stays where it is having said why.
     fn written(
         &mut self,
-        tree: &mut Tree,
+        ctx: &dyn Calls,
         unsaved: bool,
-    ) -> Result<Option<u8>, Fault> {
+    ) -> Result<Option<u8>, Error> {
         // Over nothing and untouched: `:x` writes nothing, as Vim has
         // it, and there is no file to make.
         if self.source.is_none() && !unsaved {
             return Ok(Some(0));
         }
-        Ok(self.save(tree, false)?.then_some(0))
+        Ok(self.save(ctx, false)?.then_some(0))
     }
 
     /// `:exp[lore][!] [NAME]`: the Client asked to show an rd in this
@@ -394,14 +393,14 @@ impl Vim {
     /// bang, as `:q` has it.
     fn explore(
         &mut self,
-        tree: &mut Tree,
+        ctx: &dyn Calls,
         caps: &mut Caps,
         name: Option<&str>,
         bang: bool,
-    ) -> Result<bool, Fault> {
+    ) -> Result<bool, Error> {
         let target = match name {
-            Some(name) => resolved(tree, &under(&self.dir, name))?,
-            None => self.here(tree)?,
+            Some(name) => resolved(ctx, &under(&self.dir, name))?,
+            None => self.here(ctx)?,
         };
         // Nothing is being left for a name that leads nowhere, so
         // there is nothing for the bang to override yet.
@@ -409,7 +408,7 @@ impl Vim {
             let said = name.unwrap_or(&self.dir);
             return Ok(self.says(&format!("{E344} \"{said}\" in cdpath")));
         };
-        self.shown(tree, caps, target, "", bang)
+        self.shown(ctx, caps, target, "", bang)
     }
 
     /// `:e[dit][!] PATH`: the file that name holds in this region,
@@ -417,15 +416,15 @@ impl Vim {
     /// resolved as `:explore`'s is; one that is not there is E345.
     fn edited(
         &mut self,
-        tree: &mut Tree,
+        ctx: &dyn Calls,
         caps: &mut Caps,
         name: &str,
         bang: bool,
-    ) -> Result<bool, Fault> {
-        let Some(target) = resolved(tree, &under(&self.dir, name))? else {
+    ) -> Result<bool, Error> {
+        let Some(target) = resolved(ctx, &under(&self.dir, name))? else {
             return Ok(self.says(&format!("{E345} \"{name}\" in path")));
         };
-        self.shown(tree, caps, target, "", bang)
+        self.shown(ctx, caps, target, "", bang)
     }
 
     /// `:cli[!]`: a shell in this region, which the Client's table
@@ -434,11 +433,11 @@ impl Vim {
     /// `:cli` opens over as it moves what `:ls` lists.
     fn cli(
         &mut self,
-        tree: &mut Tree,
+        ctx: &dyn Calls,
         caps: &mut Caps,
         bang: bool,
-    ) -> Result<bool, Fault> {
-        self.shown(tree, caps, self.shell.cwd(), "cli", bang)
+    ) -> Result<bool, Error> {
+        self.shown(ctx, caps, self.shell.cwd(), "cli", bang)
     }
 
     /// The Client asked to show `target` in this region, in the Plugin
@@ -449,13 +448,13 @@ impl Vim {
     /// that comes shows itself.
     fn shown(
         &mut self,
-        tree: &mut Tree,
+        ctx: &dyn Calls,
         caps: &mut Caps,
         target: Rd,
         plugin: &str,
         bang: bool,
-    ) -> Result<bool, Fault> {
-        if !bang && self.unsaved(tree)? {
+    ) -> Result<bool, Error> {
+        if !bang && self.unsaved(ctx)? {
             return Ok(self.says(E37));
         }
         let Some(opener) = self.opener else { return Ok(false) };
@@ -473,9 +472,9 @@ impl Vim {
     /// A run that came back open is a Driver that follows: what its
     /// cell holds at this one read is what is said, and the cell is
     /// closed after it, a Plugin having no tick to read it again.
-    fn ran(&mut self, tree: &mut Tree, line: &str) -> bool {
-        let out = match run(tree, &mut self.shell, line) {
-            Ok(ran) => printed(tree, ran),
+    fn ran(&mut self, ctx: &dyn Calls, line: &str) -> bool {
+        let out = match run(ctx, &mut self.shell, line) {
+            Ok(ran) => printed(ctx, ran),
             Err(miss) if miss.unknown => format!("{E492} {line}"),
             Err(miss) => format!("{miss}"),
         };
@@ -503,16 +502,16 @@ impl Vim {
     /// Vim runs itself take a name under the directory it works in;
     /// every other line is the shell's, which completes it from where
     /// the Shell stands.
-    fn completing(&mut self, tree: &mut Tree, ask: Ask) -> Result<bool, Fault> {
+    fn completing(&mut self, ctx: &dyn Calls, ask: Ask) -> Result<bool, Error> {
         let (from, found) = match ask {
             Ask::Names { word } => {
-                let found = complete(tree, &self.shell, &word);
+                let found = complete(ctx, &self.shell, &word);
                 self.words(&word, found.candidates);
                 return Ok(true);
             }
-            Ask::Path { from, word } => (from, self.names(tree, &word)?),
+            Ask::Path { from, word } => (from, self.names(ctx, &word)?),
             Ask::Line { line } => {
-                let found = complete(tree, &self.shell, &line);
+                let found = complete(ctx, &self.shell, &line);
                 (found.from, found.candidates)
             }
         };
@@ -527,30 +526,28 @@ impl Vim {
     /// A leading `/` is the mirror's own root, where `:w /NAME`
     /// writes, and not the tree's, so it comes off the word and goes
     /// back on what is found.
-    fn names(&self, tree: &mut Tree, word: &str) -> Result<Vec<String>, Fault> {
-        let Some(root) = resolved(tree, "")? else {
+    fn names(&self, ctx: &dyn Calls, word: &str) -> Result<Vec<String>, Error> {
+        let Some(root) = resolved(ctx, "")? else {
             return Ok(Vec::new());
         };
         let Some(rest) = word.strip_prefix('/') else {
-            let under = resolved(tree, &self.dir)?.unwrap_or(root);
-            return Ok(paths(tree, under, word));
+            let under = resolved(ctx, &self.dir)?.unwrap_or(root);
+            return Ok(ops::paths(ctx, under, word));
         };
-        let found = paths(tree, root, rest);
+        let found = ops::paths(ctx, root, rest);
         Ok(found.into_iter().map(|name| format!("/{name}")).collect())
     }
 
     /// Where `:explore` with no name looks: the directory the Buffer's
     /// source is in, or, over nothing, the one the Client started in.
-    fn here(&self, tree: &mut Tree) -> Result<Option<Rd>, Fault> {
-        match self.source {
-            Some(source) => tree.parent(source).map(Some),
-            None => resolved(tree, &self.dir),
-        }
+    fn here(&self, ctx: &dyn Calls) -> Result<Option<Rd>, Error> {
+        let here = |source| ops::parent(ctx, source).map(Some);
+        self.source.map_or_else(|| resolved(ctx, &self.dir), here)
     }
 
     /// Whether the Buffer holds what its source has not.
-    fn unsaved(&self, tree: &mut Tree) -> Result<bool, Fault> {
-        let revisions = history::Call(tree, self.handle()?).tree()?;
+    fn unsaved(&self, mut ctx: &dyn Calls) -> Result<bool, Error> {
+        let revisions = history::Call(&mut ctx, self.handle()?).tree()?;
         Ok(revisions.head != revisions.published)
     }
 
@@ -562,7 +559,7 @@ impl Vim {
     }
 
     /// The View to the region, if the Client has one.
-    fn show(&mut self, caps: &mut Caps) -> Result<(), Fault> {
+    fn show(&mut self, caps: &mut Caps) -> Result<(), Error> {
         let Some(region) = self.region else { return Ok(()) };
         let view = self.view(self.rows);
         grid::Call(caps, region).show(view)
@@ -612,19 +609,19 @@ fn as_given<'a>(dir: &str, name: &'a str) -> &'a str {
 
 /// Whether `path` under the root is a directory there; the root
 /// itself, which the empty path names, always is.
-fn directory(tree: &mut Tree, path: &str) -> Result<bool, Fault> {
+fn directory(ctx: &dyn Calls, path: &str) -> Result<bool, Error> {
     if path.is_empty() {
         return Ok(true);
     }
-    let Some(rd) = resolved(tree, path)? else { return Ok(false) };
-    Ok(tree.info(rd)?.flags.contains(Flags::CONTAINER))
+    let Some(rd) = resolved(ctx, path)? else { return Ok(false) };
+    Ok(ops::info(ctx, rd)?.flags.contains(Flags::CONTAINER))
 }
 
 /// The rd `path` names under the root, or `None` when the tree has
 /// nothing there: the walk stops at the first name that is not.
-fn resolved(tree: &mut Tree, path: &str) -> Result<Option<Rd>, Fault> {
-    match tree.resolve(&format!("{MIRROR}/{path}")) {
-        Err(Fault::Kernel(_)) => Ok(None),
+fn resolved(ctx: &dyn Calls, path: &str) -> Result<Option<Rd>, Error> {
+    match cell::resolve(ctx, ROOT, &format!("{MIRROR}/{path}")) {
+        Err(_) => Ok(None),
         found => found.map(Some),
     }
 }
@@ -634,31 +631,29 @@ fn resolved(tree: &mut Tree, path: &str) -> Result<Option<Rd>, Fault> {
 /// file itself. `None` when a file is there already and `bang` does
 /// not say to write over it.
 fn making(
-    tree: &mut Tree,
+    ctx: &dyn Calls,
     path: &str,
     bang: bool,
-) -> Result<Option<Rd>, Fault> {
+) -> Result<Option<Rd>, Error> {
     let names: Vec<&str> = path.split('/').filter(|n| !n.is_empty()).collect();
     let Some((name, dirs)) = names.split_last() else {
-        return Err(Fault::Kernel(Error::Invalid));
+        return Err(Error::Invalid);
     };
-    let mut dir = tree.resolve(MIRROR)?;
+    let mut dir = cell::resolve(ctx, ROOT, MIRROR)?;
     for step in dirs {
-        dir = below(tree, dir, step)?;
+        dir = below(ctx, dir, step)?;
     }
-    match made(tree, dir, "create", name) {
-        Err(Fault::Kernel(Error::Stale)) if bang => {
-            tree.lookup(dir, name).map(Some)
-        }
-        Err(Fault::Kernel(Error::Stale)) => Ok(None),
+    match made(ctx, dir, "create", name) {
+        Err(Error::Stale) if bang => ops::lookup(ctx, dir, name).map(Some),
+        Err(Error::Stale) => Ok(None),
         made => made.map(Some),
     }
 }
 
 /// The directory `name` under `dir`, made when it is not there yet.
-fn below(tree: &mut Tree, dir: Rd, name: &str) -> Result<Rd, Fault> {
-    match tree.lookup(dir, name) {
-        Err(Fault::Kernel(Error::Gone)) => made(tree, dir, "mkdir", name),
+fn below(ctx: &dyn Calls, dir: Rd, name: &str) -> Result<Rd, Error> {
+    match ops::lookup(ctx, dir, name) {
+        Err(Error::Gone) => made(ctx, dir, "mkdir", name),
         found => found,
     }
 }
@@ -666,23 +661,23 @@ fn below(tree: &mut Tree, dir: Rd, name: &str) -> Result<Rd, Fault> {
 /// `create` or `mkdir` of the fs api on the directory `dir`: the rd
 /// it made.
 fn made(
-    tree: &mut Tree,
+    ctx: &dyn Calls,
     dir: Rd,
     method: &str,
     name: &str,
-) -> Result<Rd, Fault> {
+) -> Result<Rd, Error> {
     let input = reovim_sdk::encode(&String::from(name));
-    let out = tree.call_by_name(dir, method, input)?;
-    Ok(reovim_sdk::decode(&out)?)
+    let out = ops::call_by_name(ctx, dir, method, input)?;
+    reovim_sdk::decode(&out)
 }
 
 /// What a run printed, its cell closed where the run came back open: a
 /// Driver that follows is read this once and no more, a Plugin having
 /// no tick to read it again.
-fn printed(tree: &mut Tree, ran: Ran) -> String {
+fn printed(ctx: &dyn Calls, ran: Ran) -> String {
     let Ran { out, open } = ran;
     if let Some(mut open) = open {
-        let _ = open.close(tree);
+        let _ = open.close(ctx);
     }
     String::from_utf8_lossy(&out).into_owned()
 }
@@ -692,28 +687,28 @@ fn printed(tree: &mut Tree, ran: Ran) -> String {
 /// directory and `:pwd` says where it is. The root of the tree where
 /// there is no mirror of that directory, which is a place to stand
 /// although no file of the editor's is under it.
-fn standing(tree: &mut Tree, dir: &str) -> Result<Shell, Fault> {
+fn standing(ctx: &dyn Calls, dir: &str) -> Result<Shell, Error> {
     let path = if dir.is_empty() {
         String::from(MIRROR)
     } else {
         format!("{MIRROR}/{dir}")
     };
-    let standing = resolved(tree, dir)?;
+    let standing = resolved(ctx, dir)?;
     Ok(standing.map_or_else(Shell::default, |cwd| Shell::at(cwd, path)))
 }
 
 /// A Buffer over `source`, or over nothing: the one the Plugin shows,
 /// made through `/module/text/open` and kept by the handle `start`
 /// opens on it.
-fn buffer_over(tree: &mut Tree, source: Option<Rd>) -> Result<Rd, Fault> {
-    let opener = tree.resolve("/module/text/open")?;
-    let opening = tree.open(opener, Rights::WRITE)?;
-    let mut call = text_open::Call(tree, opening);
+fn buffer_over(mut ctx: &dyn Calls, source: Option<Rd>) -> Result<Rd, Error> {
+    let opener = cell::resolve(ctx, ROOT, "/module/text/open")?;
+    let opening = ctx.open(opener, Rights::WRITE)?;
+    let mut call = text_open::Call(&mut ctx, opening);
     let buffer = match source {
         Some(source) => call.open(source),
         None => call.new(),
     };
-    tree.close(opening)?;
+    ops::close(ctx, opening)?;
     buffer
 }
 
