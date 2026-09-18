@@ -14,8 +14,9 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 
 use reovim_client::{
-    BAR, BLOCK, Client, Ctx, Event, Fault, Handle, Hash, Key, Kind, MATCH,
-    Plugin, Rd, Rights, SELECTION, Start, Tree, grid, keys, log, open, process,
+    BAR, BLOCK, BLUE, Client, Ctx, Event, Fault, GREEN, Handle, Hash, Key,
+    Kind, MATCH, Plugin, RED, Rd, Rights, SELECTION, Start, Tree, grid, keys,
+    log, open, process,
 };
 use reovim_client_tui::{Frame, Step, Table, Tui, Want};
 use reovim_rig::{Limits, Rig};
@@ -388,6 +389,23 @@ fn a_view_is_laid_out_over_the_tui_s_own_text() {
     let frame = tui.frame(4, 3).unwrap();
     assert_eq!(frame.lines, ["한글", "last"], "a wide char is kept whole");
     assert_eq!(frame.cursor, (1, 0));
+}
+
+#[test]
+fn a_span_of_any_other_style_reaches_the_frame_with_its_number() {
+    let rig = Rig::new("styled");
+    rig.file("note", "bin  ls\n한글x\n".as_bytes());
+    let mut tui =
+        Tui::open(rig.client(), "", Some("note"), None, one()).unwrap();
+    // The two names of the first row and a wide one of the second, in
+    // styles the tui draws neither of itself.
+    let mut shown = view(0, "");
+    shown.spans = vec![span(0, 3, BLUE), span(5, 7, GREEN), span(8, 14, RED)];
+    assert_eq!(press(&mut tui, Act::Show(shown)), Ok(Step::Changed));
+    let frame = frame(&mut tui);
+    let styled = [(0, 0, 3, BLUE), (0, 5, 7, GREEN), (1, 0, 4, RED)];
+    assert_eq!(frame.styled, styled, "each run of a row, in cells");
+    assert_eq!((frame.selection, frame.marks), (Vec::new(), Vec::new()));
 }
 
 #[test]

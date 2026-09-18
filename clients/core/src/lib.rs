@@ -22,7 +22,10 @@ pub mod log;
 mod plugin;
 pub mod value;
 
-pub use caps::{BAR, BLOCK, Caps, MATCH, SELECTION, grid, keys, open, process};
+pub use caps::{
+    BAR, BLOCK, BLUE, BOLD, Caps, DIM, GREEN, MATCH, RED, RED_BOLD, SELECTION,
+    YELLOW, grid, keys, open, process,
+};
 pub use client::{Carrier, Client, ROOT, Tree, under};
 pub use complete::{paths, walk};
 pub use fault::Fault;

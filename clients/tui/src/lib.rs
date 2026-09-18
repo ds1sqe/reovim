@@ -65,7 +65,8 @@ pub type Table<P> = Box<dyn FnMut(Want<'_>) -> Option<P>>;
 /// `rows - 1` text rows as the terminal shows them (a tab already the
 /// spaces to its stop, a wide char two cells), the cursor as (row,
 /// cell) on them, the selected cells as `(row, from, to)` with `to`
-/// exclusive, and the status row.
+/// exclusive, the spans of every other style in that shape with the
+/// style after them, and the status row.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Frame {
     pub lines: Vec<String>,
@@ -77,6 +78,10 @@ pub struct Frame {
     pub selection: Vec<(u16, u16, u16)>,
     /// Search matches, in the selection's shape.
     pub marks: Vec<(u16, u16, u16)>,
+    /// Every span of a style the tui does not draw itself, in that
+    /// shape with the style the View gave it: what a style means is
+    /// the app's, which has the terminal.
+    pub styled: Vec<(u16, u16, u16, u64)>,
     pub status: String,
 }
 
@@ -577,12 +582,12 @@ impl<P: Plugin> Tui<P> {
             span_on(line, at, end, span).map(|at| (span.style, at))
         };
         for (style, (from, to)) in view.spans.iter().filter_map(cells) {
-            let marked = match style {
-                SELECTION => &mut frame.selection,
-                MATCH => &mut frame.marks,
-                _ => continue,
-            };
-            marked.push((row, cell(from), cell(to)));
+            let (from, to) = (cell(from), cell(to));
+            match style {
+                SELECTION => frame.selection.push((row, from, to)),
+                MATCH => frame.marks.push((row, from, to)),
+                style => frame.styled.push((row, from, to, style)),
+            }
         }
         if (at..=end).contains(&cursor) {
             let at = cell_at(line, cursor - at, view.shape);

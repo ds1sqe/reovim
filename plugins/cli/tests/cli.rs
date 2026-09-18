@@ -11,8 +11,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use reovim_client::{
-    BLOCK, Ctx, Event, Fault, Handle, Hash, Key, Plugin, Rd, Rights, Start,
-    grid, open,
+    BLOCK, BLUE, Ctx, Event, Fault, Handle, Hash, Key, Plugin, Rd, Rights,
+    Start, grid, open,
 };
 use reovim_client_tui::{Frame, Step, Table, Tui, Want};
 use reovim_plugin_cli::Cli;
@@ -219,6 +219,35 @@ fn a_following_line_prints_what_its_cell_holds_and_closes_it() {
     let mut other = rig.client();
     let cat = other.resolve("/bin/cat").unwrap();
     assert_eq!(other.children(cat), Ok(Vec::new()), "no cell was left");
+}
+
+#[test]
+fn a_listing_leaves_no_escape_in_the_text_and_a_span_per_name() {
+    let rig = work("color");
+    let seen = Opened::default();
+    let mut tui = buffer(&rig, &seen);
+    line(&mut tui, "ls");
+    let listed = frame(&mut tui);
+    assert_eq!(listed.lines[1], "a  b  sub", "the text the Buffer holds");
+    // `sub` is the one Container; `a` and `b` offer no api and were
+    // written plain.
+    let at = u16::try_from("a  b  ".len()).unwrap();
+    assert_eq!(listed.styled, [(1, at, at + 3, BLUE)], "where it stood");
+
+    // Every name of the tree's own root is a Container: each is a run
+    // of its own on the one row.
+    line(&mut tui, "ls /");
+    let root = frame(&mut tui);
+    assert_eq!(root.lines[3], "bin  module  session  sys  var");
+    let names = ["bin", "module", "session", "sys", "var"];
+    let mut spans = vec![(1, at, at + 3, BLUE)];
+    let mut from = 0u16;
+    for name in names {
+        let wide = u16::try_from(name.len()).unwrap();
+        spans.push((3, from, from + wide, BLUE));
+        from += wide + 2;
+    }
+    assert_eq!(root.styled, spans, "five runs on the one row");
 }
 
 #[test]

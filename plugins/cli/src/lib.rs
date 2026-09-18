@@ -26,8 +26,9 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use reovim_client::{
-    BAR, Caps, Ctx, Error, Event, Fault, Handle, Hash, Key, Plugin, Rd, Rights,
-    Start, Tree, grid, keys, open,
+    BAR, BLUE, BOLD, Caps, Ctx, DIM, Error, Event, Fault, GREEN, Handle, Hash,
+    Key, Plugin, RED, RED_BOLD, Rd, Rights, Start, Tree, YELLOW, grid, keys,
+    open,
 };
 use reovim_client_sh::{Act, Line, Ran, Shell, complete, run};
 use reovim_text_api::{open as text_open, text};
@@ -47,8 +48,12 @@ pub struct Cli {
     shell: Shell,
     /// The line being typed, with the lines submitted before it.
     line: Line,
-    /// What has been run and answered, above the prompt.
+    /// What has been run and answered, above the prompt, with the SGR
+    /// escapes a Driver wrote taken out of it.
     transcript: String,
+    /// Where those escapes stood, as spans of the Buffer's bytes: what
+    /// the View carries for the Client to color.
+    spans: Vec<grid::Span>,
     /// What the Buffer holds, as the last fill wrote it: what the next
     /// one replaces, and what says a fill would write nothing.
     text: String,
@@ -141,9 +146,10 @@ impl Cli {
     }
 
     /// What a run writes for: the region's columns, which a listing
-    /// lays its names across, and no color until 01.8.
+    /// lays its names across, and color, which the region has the rows
+    /// to show and [`read`] takes back out of the text.
     fn screen(&mut self) {
-        self.shell.screen(self.cols.max(1), false);
+        self.shell.screen(self.cols.max(1), true);
     }
 
     /// One key, which is the shell's line editor's: its acts, and the
@@ -165,7 +171,10 @@ impl Cli {
             }
             // Ctrl-L: what has been run and answered goes, and the
             // line being typed stands where it stood.
-            Act::Clear => self.transcript.clear(),
+            Act::Clear => {
+                self.transcript.clear();
+                self.spans.clear();
+            }
             // Ctrl-C, and Ctrl-D on an empty line.
             Act::Quit => return self.leave(caps),
         }
@@ -196,14 +205,17 @@ impl Cli {
         self.said(&said);
     }
 
-    /// What a line printed, under it: its own lines, and a last one
-    /// that ends in no newline gets one, the prompt following it.
+    /// What a line printed, under it: its own lines with the escapes
+    /// taken out and a span where each run of one stood, and a last
+    /// line that ends in no newline gets one, the prompt following it.
     fn said(&mut self, out: &str) {
         if out.is_empty() {
             return;
         }
-        self.transcript.push_str(out);
-        if !out.ends_with('\n') {
+        let (text, spans) = read(out, self.transcript.len() as u64);
+        self.transcript.push_str(&text);
+        self.spans.extend(spans);
+        if !text.ends_with('\n') {
             self.transcript.push('\n');
         }
     }
@@ -249,16 +261,24 @@ impl Cli {
     /// prompt line the last of the rows the region has, and nothing in
     /// the status row, which the frame already names.
     fn view(&self) -> grid::View {
+        let top = self.top() as u64;
         grid::View {
             over: self.buffer.map_or(0, |buffer| buffer.0),
-            top: self.top() as u64,
+            top,
             cursor: self.cursor() as u64,
             // The line is always being typed into, so the cursor
             // stands before the char it is on, as a prompt's does.
             shape: BAR,
-            spans: Vec::new(),
+            spans: self.shown(top),
             status: String::new(),
         }
+    }
+
+    /// The spans from the first byte shown, as Vim's are: a View
+    /// carries a bounded sequence, and one above `top` has no cell of
+    /// the region to stand on.
+    fn shown(&self, top: u64) -> Vec<grid::Span> {
+        self.spans.iter().filter(|span| span.to > top).cloned().collect()
     }
 
     /// The byte the cursor is on: the transcript, then what the prompt
@@ -286,6 +306,51 @@ impl Cli {
     }
 }
 
+/// What a Driver's SGR sequence begins with; `m` ends it.
+const ESC: &str = "\x1b[";
+
+/// The text `said` holds with the escapes taken out, and one span per
+/// run of one, in the Buffer's bytes from `at`.
+///
+/// A Driver writes one shape and never nests it: `\x1b[<code>m`, the
+/// run, `\x1b[0m`. The reset ends the run open, and so does a code
+/// that stands for no style.
+fn read(said: &str, at: u64) -> (String, Vec<grid::Span>) {
+    let (mut text, mut spans) = (String::new(), Vec::new());
+    let mut open: Option<grid::Span> = None;
+    let mut rest = said;
+    while let Some(esc) = rest.find(ESC) {
+        let tail = &rest[esc + ESC.len()..];
+        let Some(end) = tail.find('m') else { break };
+        text.push_str(&rest[..esc]);
+        let at = at + text.len() as u64;
+        let ended = |run: grid::Span| grid::Span { to: at, ..run };
+        match style(&tail[..end]) {
+            Some(style) => open = Some(grid::Span { from: at, to: at, style }),
+            None => spans.extend(open.take().map(ended)),
+        }
+        rest = &tail[end + 1..];
+    }
+    text.push_str(rest);
+    (text, spans)
+}
+
+/// The style a Driver's SGR parameter stands for: the one place the
+/// two spellings meet, the escape being the Driver's and the number
+/// the Client's. Anything else is no style, the reset first.
+fn style(code: &str) -> Option<u64> {
+    Some(match code {
+        "1;34" => BLUE,
+        "32" => GREEN,
+        "31" => RED,
+        "1;31" => RED_BOLD,
+        "1" => BOLD,
+        "33" => YELLOW,
+        "2" => DIM,
+        _ => return None,
+    })
+}
+
 /// What a run printed, its cell closed where the run came back open: a
 /// Driver that follows is read this once and no more, a Plugin having
 /// no tick to read it again.
@@ -310,4 +375,64 @@ fn scratch(tree: &mut Tree) -> Result<Rd, Fault> {
 /// A count the Client gave, as far as this machine counts.
 fn count(n: u64) -> usize {
     usize::try_from(n).unwrap_or(usize::MAX)
+}
+
+#[cfg(test)]
+mod tests {
+    use alloc::format;
+    use alloc::vec;
+
+    use reovim_client::{BLUE, BOLD, DIM, GREEN, RED, RED_BOLD, YELLOW, grid};
+
+    use super::read;
+
+    /// The seven a Driver under `/bin` writes, and the style each
+    /// stands for: coreutils' listing, and sysutils' through its `sgr`.
+    const CODES: [(&str, u64); 7] = [
+        ("1;34", BLUE),
+        ("32", GREEN),
+        ("31", RED),
+        ("1;31", RED_BOLD),
+        ("1", BOLD),
+        ("33", YELLOW),
+        ("2", DIM),
+    ];
+
+    /// One span of the Buffer's bytes.
+    const fn span(from: u64, to: u64, style: u64) -> grid::Span {
+        grid::Span { from, to, style }
+    }
+
+    #[test]
+    fn every_code_a_driver_writes_round_trips_to_its_style() {
+        for (code, style) in CODES {
+            let said = format!("one \x1b[{code}mtwo\x1b[0m three\n");
+            let (text, spans) = read(&said, 10);
+            assert_eq!(text, "one two three\n", "no escape is left");
+            assert_eq!(spans, [span(14, 17, style)], "where the run stood");
+        }
+    }
+
+    #[test]
+    fn each_name_of_a_listing_is_a_span_of_its_own() {
+        let said = "\x1b[1;34mbin\x1b[0m  \x1b[32mls\x1b[0m  plain\n";
+        let (text, spans) = read(said, 0);
+        assert_eq!(text, "bin  ls  plain\n");
+        let shown = vec![span(0, 3, BLUE), span(5, 7, GREEN)];
+        assert_eq!(spans, shown, "what was written plain is no span");
+    }
+
+    #[test]
+    fn a_run_a_driver_wrote_without_color_is_no_span() {
+        let (text, spans) = read("a  b  sub\n", 0);
+        assert_eq!(text, "a  b  sub\n");
+        assert_eq!(spans, [], "nothing to take out and nothing to color");
+    }
+
+    #[test]
+    fn a_code_that_stands_for_no_style_ends_the_run_and_is_dropped() {
+        let (text, spans) = read("\x1b[7mone\x1b[0m two\n", 0);
+        assert_eq!(text, "one two\n", "the escape goes either way");
+        assert_eq!(spans, [], "a style the Client does not name is none");
+    }
 }

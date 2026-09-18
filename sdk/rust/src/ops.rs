@@ -90,8 +90,10 @@ pub fn shut(ctx: &dyn Calls, handles: &[Handle]) {
 }
 
 /// The events after `cursor` on every rd this Module watches, and the
-/// cursor for the next ask. The Kernel keeps no cursor of its own, so
-/// each follower holds one and takes its own rds out of what it gets.
+/// cursor for the next ask.
+///
+/// The Kernel keeps no cursor of its own, so each follower holds one
+/// and takes its own rds out of what it gets.
 ///
 /// # Errors
 /// As `Op::Since`.
