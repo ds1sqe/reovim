@@ -9,11 +9,13 @@ repository.workspace = true
 publish = false
 
 [dependencies]
-reovim-client = { path = "../../clients/core" }
+reovim-client-api = { path = "../../clients/core/api" }
+reovim-kernel-interface = { path = "../../kernel/interface" }
 reovim-sdk = { path = "../../sdk/rust" }
 reovim-text-api = { path = "../../modules/text/api" }
 
 [dev-dependencies]
+reovim-client = { path = "../../clients/core" }
 reovim-client-tui = { path = "../../clients/tui" }
 reovim-rig = { path = "../../clients/rig" }
 

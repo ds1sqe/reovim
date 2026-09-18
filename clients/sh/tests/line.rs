@@ -1,7 +1,7 @@
 //! The line editor: keys in, acts out, no terminal and no tree. The
 //! history and the cuts are the line's; the screen is the host's.
 
-use reovim_client::Key;
+use reovim_client_api::Key;
 use reovim_client_sh::{Act, Completion, Line};
 
 /// The chars of `text`, one key at a time.

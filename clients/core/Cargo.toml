@@ -9,6 +9,7 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+reovim-client-api = { path = "api" }
 reovim-kernel-interface = { path = "../../kernel/interface" }
 reovim-sdk = { path = "../../sdk/rust" }
 

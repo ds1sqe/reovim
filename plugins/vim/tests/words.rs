@@ -9,67 +9,28 @@
 //! text, the file on disk, the search marks, and what a listing was
 //! started over.
 
-use std::cell::RefCell;
 use std::rc::Rc;
 
-use reovim_client::{
-    BLOCK, Ctx, Error, Event, Hash, Plugin, Rd, Rights, Start, grid,
-};
-use reovim_client_tui::{Step, Table, Tui, Want};
+use reovim_client::dev::{self, Table, Want};
+
+use reovim_client_tui::{Step, Tui};
 use reovim_plugin_vim::notation::keys;
-use reovim_plugin_vim::{Vim, WORDS, Word, resolve};
-use reovim_rig::Rig;
-use reovim_sdk::walk::ROOT;
-use reovim_sdk::{cell, ops};
-use reovim_text_api::open as text_open;
+use reovim_plugin_vim::{WORDS, Word, resolve};
+use reovim_rig::{Rig, Seen, Stub};
 
 /// The one editor a test drives, over whichever Plugin the table gives.
-type Editor = Tui<Box<dyn Plugin>>;
-
-/// What each start of the table's Container Plugin was over, in order.
-type Listed = Rc<RefCell<Vec<Option<Rd>>>>;
-
-/// The Container Plugin of the table, as explore.rs has it: it records
-/// what it was started over and shows a scratch Buffer of its own, so
-/// the region has text and a word no Vim would give it.
-struct Stub(Listed);
-
-impl Plugin for Stub {
-    fn start(&mut self, ctx: Ctx<'_>, at: Start) -> Result<(), Error> {
-        let Ctx { mut ctx, caps } = ctx;
-        self.0.borrow_mut().push(at.over);
-        let opener = cell::resolve(ctx, ROOT, "/module/text/open")?;
-        let opening = ctx.open(opener, Rights::WRITE)?;
-        let buffer = text_open::Call(&mut ctx, opening).new()?;
-        ops::close(ctx, opening)?;
-        let Some(region) = caps.open(grid::hash()) else { return Ok(()) };
-        let view = grid::View {
-            over: buffer.0,
-            top: 0,
-            cursor: 0,
-            shape: BLOCK,
-            spans: Vec::new(),
-            status: String::from("-- LISTING --"),
-        };
-        grid::Call(caps, region).show(view)
-    }
-
-    fn input(&mut self, _: Ctx<'_>, _: Hash, _: &[u8]) -> Result<(), Error> {
-        Ok(())
-    }
-
-    fn changed(&mut self, _: Ctx<'_>, _: &[Event]) -> Result<(), Error> {
-        Ok(())
-    }
-}
+type Editor = Tui;
 
 /// The app's table in the small: Vim for a cell, the stub for a
 /// Container.
-fn table(seen: &Listed) -> Table<Box<dyn Plugin>> {
+fn table(seen: &Seen) -> Table {
     let seen = seen.clone();
     Box::new(move |want| match want {
-        Want::Cell => Some(Box::new(Vim::default()) as Box<dyn Plugin>),
-        Want::Container => Some(Box::new(Stub(seen.clone()))),
+        Want::Cell => Some((String::from("vim"), reovim_plugin_vim::boot())),
+        Want::Container => Some((
+            String::from("listing"),
+            Stub::booted(&seen, "-- LISTING --"),
+        )),
         Want::Named(_) => None,
     })
 }
@@ -83,6 +44,13 @@ fn work(test: &str) -> Rig {
     rig.file("d/note", b"one\ntwo\n");
     rig.file("d/other", b"three\n");
     rig
+}
+
+/// An editor over `d/note`, started in `d`.
+fn over(rig: &Rig, seen: &Seen) -> Editor {
+    let host = Rc::new(rig.host());
+    let dev = dev::boot(&host, table(seen), "d", Some("d/note"), None).unwrap();
+    Tui::open(host, dev).unwrap()
 }
 
 /// Every key of `text` in Vim notation; what the last one did.
@@ -100,9 +68,8 @@ fn typed(tui: &mut Editor, text: &str) -> Step {
 /// listings were started.
 fn done(name: &str, keys: &str) -> String {
     let rig = work(name);
-    let seen = Listed::default();
-    let mut tui =
-        Tui::open(rig.host(), "d", Some("d/note"), None, table(&seen)).unwrap();
+    let seen = Seen::default();
+    let mut tui = over(&rig, &seen);
     let step = typed(&mut tui, keys);
     let frame = tui.frame(80, 24).unwrap();
     let disk = String::from_utf8(rig.disk("d/note")).unwrap();
@@ -232,9 +199,8 @@ fn the_order_computes_the_short_form_of_every_word() {
 #[test]
 fn a_line_of_the_shells_runs_where_the_buffer_is() {
     let rig = work("words-cli");
-    let seen = Listed::default();
-    let mut tui =
-        Tui::open(rig.host(), "d", Some("d/note"), None, table(&seen)).unwrap();
+    let seen = Seen::default();
+    let mut tui = over(&rig, &seen);
     let said = |tui: &mut Editor| {
         let status = tui.frame(80, 24).unwrap().status;
         status.split_once("r1   ").map(|(_, said)| said.to_string()).unwrap()
@@ -272,9 +238,8 @@ fn a_line_of_the_shells_runs_where_the_buffer_is() {
 #[test]
 fn a_following_line_is_read_once_and_its_cell_closed() {
     let rig = work("words-follow");
-    let seen = Listed::default();
-    let mut tui =
-        Tui::open(rig.host(), "d", Some("d/note"), None, table(&seen)).unwrap();
+    let seen = Seen::default();
+    let mut tui = over(&rig, &seen);
     // `-f` follows: the status row says what the cell held at the one
     // read, a Plugin having no tick to read it again, and the cell is
     // closed after it, which ends the follow.
@@ -289,9 +254,8 @@ fn a_following_line_is_read_once_and_its_cell_closed() {
 #[test]
 fn a_file_that_is_not_there_is_e345_and_the_region_stays() {
     let rig = work("words-e345");
-    let seen = Listed::default();
-    let mut tui =
-        Tui::open(rig.host(), "d", Some("d/note"), None, table(&seen)).unwrap();
+    let seen = Seen::default();
+    let mut tui = over(&rig, &seen);
     assert_eq!(typed(&mut tui, ":edit nothere<CR>"), Step::Changed);
     let frame = tui.frame(80, 24).unwrap();
     let said = "E345: Can't find file \"nothere\" in path";
@@ -302,9 +266,8 @@ fn a_file_that_is_not_there_is_e345_and_the_region_stays() {
 #[test]
 fn a_line_that_is_only_a_range_is_that_line() {
     let rig = work("words-range");
-    let seen = Listed::default();
-    let mut tui =
-        Tui::open(rig.host(), "d", Some("d/note"), None, table(&seen)).unwrap();
+    let seen = Seen::default();
+    let mut tui = over(&rig, &seen);
     let at = |tui: &mut Editor| {
         let status = tui.frame(80, 24).unwrap().status;
         status.split_whitespace().nth(1).unwrap().to_string()

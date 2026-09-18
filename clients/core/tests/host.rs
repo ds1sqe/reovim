@@ -226,6 +226,16 @@ impl Driver for Deep {
     }
 }
 
+/// A Module that serves nothing of its own: what `/self/x` and
+/// `/self/deep` are registered through is the test's own `Calls`.
+struct Nothing;
+
+impl Module for Nothing {
+    fn start(&self, _: &dyn Calls, _: Rd) -> Result<(), Error> {
+        Ok(())
+    }
+}
+
 /// The api `/self/x` offers.
 fn decl() -> Decl {
     let put = Method {
@@ -246,7 +256,8 @@ fn over(rig: &Rig) -> (Host, ModuleId) {
         note: Cell::new(None),
         bytes: RefCell::new(b"local\n".to_vec()),
     });
-    let module = host.load(vec![store, Rc::new(Deep)]);
+    let drivers: Vec<Rc<dyn Driver>> = vec![store, Rc::new(Deep)];
+    let module = host.load("test", Rc::new(Nothing), drivers).unwrap();
     let calls = host.calls(module);
     let rw = Flags::READ.union(Flags::WRITE);
     let x = calls.register(DriverId(0), SELF, Some("x")).unwrap();

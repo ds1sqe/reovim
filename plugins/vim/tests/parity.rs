@@ -5,10 +5,12 @@
 
 use std::fmt::Write as _;
 use std::path::Path;
+use std::rc::Rc;
 
-use reovim_client_tui::{Step, Table, Tui};
+use reovim_client::dev::{self, Table};
+use reovim_client_tui::{Step, Tui};
 use reovim_plugin_vim::notation::keys;
-use reovim_plugin_vim::{Kind, Register, Vim};
+use reovim_plugin_vim::{Editor, Kind, Register, Vim};
 use reovim_rig::Rig;
 
 /// nvim's `state` file: the cursor as `line:column:cell` (the cell
@@ -62,11 +64,18 @@ fn replay(case: &Path) -> Result<(), String> {
 
     let rig = Rig::new(name);
     rig.file("file", &input);
-    let table: Table<Vim> = Box::new(|_| Some(Vim::default()));
-    let mut tui = Tui::open(rig.host(), "", Some("file"), None, table).unwrap();
+    let vim = Editor::new();
+    let one = vim.clone();
+    let table: Table =
+        Box::new(move |_| Some((String::from("vim"), one.booted())));
+    let host = Rc::new(rig.host());
+    let dev = dev::boot(&host, table, "", Some("file"), None)
+        .map_err(|error| format!("{name}: {error:?}"))?;
+    let mut tui = Tui::open(host, dev).map_err(|e| format!("{name}: {e:?}"))?;
     let mut quit = None;
     for key in keys {
-        let step = tui.key(key).map_err(|fault| format!("{name}: {fault}"))?;
+        let step =
+            tui.key(key).map_err(|fault| format!("{name}: {fault:?}"))?;
         if let Step::Quit(code) = step {
             quit = Some(code);
             break;
@@ -74,7 +83,7 @@ fn replay(case: &Path) -> Result<(), String> {
     }
     let code = quit.ok_or_else(|| format!("{name}: the keys did not quit"))?;
     let file = rig.disk("file");
-    let ours = state_of(tui.plugin());
+    let ours = state_of(&vim.engine());
     if (code, &file, &ours) == (exit, &out, &theirs) {
         return Ok(());
     }

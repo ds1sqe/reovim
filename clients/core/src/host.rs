@@ -23,8 +23,10 @@ use core::cell::{Cell, RefCell, RefMut};
 
 use reovim_kernel_interface::{
     Calls, Decl, Driver, DriverId, Error, Event, Flags, Handle, Hash, Info,
-    Kind, ModuleId, Op, Out, Outcome, Rd, Reply, Rights, Token, value,
+    Kind, Module, ModuleId, Op, Out, Outcome, Rd, Reply, Rights, Token, value,
 };
+
+use reovim_client_api::part;
 
 use crate::client::{Client, ROOT};
 use crate::fault::Fault;
@@ -58,6 +60,9 @@ const fn local(id: u64) -> bool {
 enum Owner {
     /// `/self` itself.
     Container,
+    /// `/self/<name>`, a Module's home: it registers under it and
+    /// `unload` takes it with the rest.
+    Home(ModuleId),
     /// A Driver this Client loaded.
     Driver { module: ModuleId, driver: DriverId },
     /// The cell of a declaration a local `report` published, which
@@ -130,6 +135,13 @@ struct Slot {
     watching: bool,
 }
 
+/// A Module this Client loaded: its name under `/self` and its home,
+/// which `unload` names it by and takes with it.
+struct Loaded {
+    name: String,
+    module: Rc<dyn Module>,
+}
+
 /// Everything the Host holds: the tree it serves, the handles on it,
 /// the Drivers behind it and the one event ring.
 struct State {
@@ -140,6 +152,12 @@ struct State {
     /// The Drivers loaded here, by `ModuleId` then `DriverId`, as the
     /// Kernel indexes them.
     drivers: Vec<Vec<Rc<dyn Driver>>>,
+    /// The Modules behind them, by `ModuleId`; `None` for the Client's
+    /// own and for one that has been unloaded.
+    modules: Vec<Option<Loaded>>,
+    /// Which Module opened each handle, either side of the union: what
+    /// `unload` closes for a Module that is going.
+    openers: BTreeMap<Handle, ModuleId>,
     /// What a local `report` published, by hash.
     decls: BTreeMap<Hash, Decl>,
     /// The server's `/sys/decls`, once a lookup has walked to it.
@@ -256,6 +274,59 @@ impl State {
         }
     }
 
+    /// The Module loaded under `name`, taken out of the table: it is
+    /// loaded no more, whatever the rest of `unload` then does.
+    fn take_module(&mut self, name: &str) -> Result<(ModuleId, Loaded), Error> {
+        let named = |m: &&mut Option<Loaded>| {
+            m.as_ref().is_some_and(|m| m.name == name)
+        };
+        let at = self.modules.iter_mut().position(|m| named(&m));
+        let index = at.ok_or(Error::Invalid)?;
+        let id = ModuleId(u32::try_from(index).map_err(|_| Error::Invalid)?);
+        let loaded = self.modules[index].take().ok_or(Error::Invalid)?;
+        Ok((id, loaded))
+    }
+
+    /// Every handle `module` opened, either side of the union, and
+    /// every handle anybody holds on the rds `mine`.
+    fn held_by(&self, module: ModuleId, mine: &[Rd]) -> Vec<Handle> {
+        let on_mine =
+            |(h, slot): (&Handle, &Slot)| mine.contains(&slot.rd).then_some(*h);
+        let opened = self.openers.iter().filter(|(_, m)| **m == module);
+        let mut held: Vec<Handle> =
+            self.handles.iter().filter_map(on_mine).collect();
+        held.extend(opened.map(|(h, _)| *h));
+        held
+    }
+
+    /// The rds of `mine` whose parent is not one of them: what
+    /// `unregister` takes, each with the subtree below it.
+    fn roots_of(&self, mine: &[Rd]) -> Vec<(Rd, Rd)> {
+        let outside = |rd: &&Rd| {
+            let parent = self.nodes.get(rd).map(|node| node.parent);
+            parent.is_some_and(|parent| !mine.contains(&parent))
+        };
+        mine.iter()
+            .filter(outside)
+            .map(|rd| (*rd, self.nodes[rd].parent))
+            .collect()
+    }
+
+    /// Every rd `module` serves, its home included, by owner and not by
+    /// subtree: a Module may register outside its home, as one under a
+    /// `bin` does.
+    fn served_by(&self, module: ModuleId) -> Vec<Rd> {
+        let mine = |owner: Owner| match owner {
+            Owner::Driver { module: m, .. } | Owner::Home(m) => m == module,
+            Owner::Container | Owner::Decl(_) | Owner::Loader { .. } => false,
+        };
+        self.nodes
+            .iter()
+            .filter(|(_, node)| mine(node.owner))
+            .map(|(rd, _)| *rd)
+            .collect()
+    }
+
     /// Events after `cursor` and the cursor for the next ask. A cursor
     /// the ring no longer covers yields one `Overflow` on `ROOT`.
     fn since(&self, cursor: u64) -> (Vec<Event>, u64) {
@@ -307,6 +378,8 @@ impl Host {
             handles: BTreeMap::new(),
             next_handle: LOCAL_BASE,
             drivers: alloc::vec![Vec::new()],
+            modules: alloc::vec![None],
+            openers: BTreeMap::new(),
             decls: BTreeMap::new(),
             decls_rd: None,
             events: VecDeque::new(),
@@ -334,13 +407,64 @@ impl Host {
         self.wire.borrow_mut()
     }
 
-    /// A Module's Drivers, in `DriverId` order; the Module registers
-    /// what it serves through the `Calls` this answers with.
-    pub fn load(&self, drivers: Vec<Rc<dyn Driver>>) -> ModuleId {
+    /// Load a Module: make `/self/<name>`, then `start` it, as the
+    /// Kernel loads one under `/module`.
+    ///
+    /// # Errors
+    /// `Invalid` for a malformed or taken name; whatever `start`
+    /// returns. A failed `start` leaves the Module loaded with what it
+    /// registered, and [`Self::unload`] takes it out.
+    pub fn load(
+        &self,
+        name: &str,
+        module: Rc<dyn Module>,
+        drivers: Vec<Rc<dyn Driver>>,
+    ) -> Result<ModuleId, Error> {
+        let now = self.now();
+        let starter = module.clone();
+        let (id, home) = {
+            let mut s = self.state.borrow_mut();
+            s.check_name(SELF, Some(name))?;
+            let index = s.modules.len();
+            let id =
+                ModuleId(u32::try_from(index).map_err(|_| Error::NoSpace)?);
+            s.drivers.push(drivers);
+            let flags = Flags::READ.union(Flags::CONTAINER);
+            let home = s.insert(SELF, Some(name), Owner::Home(id), flags, now);
+            let name = name.to_string();
+            s.modules.push(Some(Loaded { name, module }));
+            s.emit(SELF, Kind::Create, Some(home));
+            (id, home)
+        };
+        starter.start(&self.calls(id), home)?;
+        Ok(id)
+    }
+
+    /// Unload the Module named `name`: every handle it opened and every
+    /// handle on what it serves closed, then `stop`, then every rd it
+    /// serves gone.
+    ///
+    /// Where the Kernel refuses an open handle a Client must not: the
+    /// Module is going and nobody is left to close for it.
+    ///
+    /// # Errors
+    /// `Invalid` when no such Module is loaded.
+    pub fn unload(&self, name: &str) -> Result<(), Error> {
+        let (id, loaded) = self.state.borrow_mut().take_module(name)?;
+        let mine = self.state.borrow().served_by(id);
+        // The borrow is gone before a handle closes: a Driver's own
+        // `close` slot may ask this Host anything.
+        let held = self.state.borrow().held_by(id, &mine);
+        for h in held {
+            let _ = self.run(id, Op::Close { h });
+        }
+        loaded.module.stop();
         let mut s = self.state.borrow_mut();
-        let id = u32::try_from(s.drivers.len()).unwrap_or(u32::MAX);
-        s.drivers.push(drivers);
-        ModuleId(id)
+        for (root, parent) in s.roots_of(&mine) {
+            s.unregister(root, parent);
+        }
+        s.drivers[id.0 as usize] = Vec::new();
+        Ok(())
     }
 
     /// What `module` holds to speak to this Host, so one Module cannot
@@ -356,7 +480,7 @@ impl Host {
         self.calls(ModuleId(0))
     }
 
-    fn now(&self) -> u64 {
+    pub(crate) fn now(&self) -> u64 {
         (self.clock)()
     }
 
@@ -388,14 +512,17 @@ impl Host {
 
     /// One op on the union, one step deeper; past the cap it is `Busy`,
     /// so a chain of Drivers ends at an error and not at the stack.
-    fn run(&self, op: Op) -> Answer {
+    ///
+    /// `module` is who is asking, which only `Open` uses: a handle is
+    /// remembered as its opener's, so `unload` closes it.
+    fn run(&self, module: ModuleId, op: Op) -> Answer {
         let Some(_depth) = self.deeper() else { return Err(Error::Busy) };
         match op {
             Op::Lookup { rd, name } => lookup(self, rd, &name),
             Op::Info { rd } => info(self, rd),
             Op::Parent { rd } => parent(self, rd),
             Op::Children { rd } => children(self, rd),
-            Op::Open { rd, rights } => open(self, rd, rights),
+            Op::Open { rd, rights } => open(self, module, rd, rights),
             Op::Read { h, at, len } => read(self, h, at, len),
             Op::Write { h, at, bytes } => write(self, h, at, bytes),
             Op::Call { h, api, method, input } => {
@@ -492,14 +619,14 @@ impl Calls for HostCalls<'_> {
     }
 
     fn open(&self, rd: Rd, rights: Rights) -> Result<Handle, Error> {
-        match self.host.run(Op::Open { rd, rights })? {
+        match self.host.run(self.module, Op::Open { rd, rights })? {
             Out::Handle(handle) => Ok(handle),
             _ => Err(Error::Unsupported),
         }
     }
 
     fn submit(&self, op: Op) -> Reply<Out> {
-        Reply::Ready(self.host.run(op))
+        Reply::Ready(self.host.run(self.module, op))
     }
 }
 
@@ -512,7 +639,7 @@ fn check_parent(s: &State, parent: Rd, module: ModuleId) -> Result<(), Error> {
     }
     let allowed = match node.owner {
         Owner::Container => true,
-        Owner::Driver { module: m, .. } => m == module,
+        Owner::Driver { module: m, .. } | Owner::Home(m) => m == module,
         Owner::Decl(_) | Owner::Loader { .. } => false,
     };
     if allowed { Ok(()) } else { Err(Error::Denied) }
@@ -639,10 +766,12 @@ fn children(host: &Host, rd: Rd) -> Answer {
     Ok(Out::Rds(host.state.borrow().node(rd)?.children.clone()))
 }
 
-fn open(host: &Host, rd: Rd, rights: Rights) -> Answer {
+fn open(host: &Host, module: ModuleId, rd: Rd, rights: Rights) -> Answer {
     if !local(rd.0) {
         let opened = host.wire.borrow_mut().open(rd, rights);
-        return Ok(Out::Handle(opened.map_err(|f| refused(&f))?));
+        let h = opened.map_err(|f| refused(&f))?;
+        host.state.borrow_mut().openers.insert(h, module);
+        return Ok(Out::Handle(h));
     }
     let owner = {
         let s = host.state.borrow();
@@ -657,12 +786,16 @@ fn open(host: &Host, rd: Rd, rights: Rights) -> Answer {
             let d = host.driver(module, driver)?;
             ready(d.open(&host.calls(module), rd, rights))?
         }
-        Owner::Container | Owner::Decl(_) | Owner::Loader { .. } => 0,
+        Owner::Container
+        | Owner::Home(_)
+        | Owner::Decl(_)
+        | Owner::Loader { .. } => 0,
     };
     let mut s = host.state.borrow_mut();
     let h = Handle(s.next_handle);
     s.next_handle += 1;
     s.handles.insert(h, Slot { rd, rights, cookie, watching: false });
+    s.openers.insert(h, module);
     Ok(Out::Handle(h))
 }
 
@@ -681,7 +814,7 @@ fn read(host: &Host, h: Handle, at: u64, len: u32) -> Answer {
             let s = host.state.borrow();
             part(&s.decls.get(&hash).ok_or(Error::Gone)?.canonical(), at, len)
         }
-        Owner::Container | Owner::Loader { .. } => {
+        Owner::Container | Owner::Home(_) | Owner::Loader { .. } => {
             return Err(Error::Unsupported);
         }
     };
@@ -785,6 +918,7 @@ fn watch(host: &Host, h: Handle, on: bool) -> Answer {
 }
 
 fn close(host: &Host, h: Handle) -> Answer {
+    host.state.borrow_mut().openers.remove(&h);
     if !local(h.0) {
         host.wire.borrow_mut().close(h).map_err(|f| refused(&f))?;
         return Ok(Out::Unit);
@@ -851,19 +985,12 @@ fn found(answer: Answer) -> Option<Rd> {
     }
 }
 
-/// Up to `len` bytes of `bytes` from `at`, or as many as there are.
-fn part(bytes: &[u8], at: u64, len: usize) -> Vec<u8> {
-    let start = usize::try_from(at).unwrap_or(usize::MAX).min(bytes.len());
-    let end = start.saturating_add(len).min(bytes.len());
-    bytes[start..end].to_vec()
-}
-
 /// What the link failed with, in the one closed error set: a link that
 /// is gone is `Gone`, bytes that are no reply are `Invalid`.
 const fn refused(fault: &Fault) -> Error {
     match fault {
         Fault::Kernel(error) => *error,
         Fault::Carrier => Error::Gone,
-        Fault::Wire | Fault::Usage(_) => Error::Invalid,
+        Fault::Wire => Error::Invalid,
     }
 }

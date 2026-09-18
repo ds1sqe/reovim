@@ -130,6 +130,7 @@ name = "reovim"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-client",
+ "reovim-client-api",
  "reovim-client-sh",
  "reovim-client-tui",
  "reovim-host",
@@ -155,6 +156,7 @@ version = "0.16.0-dev"
 name = "reovim-client"
 version = "0.16.0-dev"
 dependencies = [
+ "reovim-client-api",
  "reovim-host",
  "reovim-kernel-interface",
  "reovim-kernel-runtime",
@@ -165,10 +167,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-client-api"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-kernel-interface",
+ "reovim-sdk",
+]
+
+[[package]]
 name = "reovim-client-sh"
 version = "0.16.0-dev"
 dependencies = [
- "reovim-client",
+ "reovim-client-api",
  "reovim-kernel-interface",
  "reovim-module-coreutils",
  "reovim-rig",
@@ -180,6 +190,8 @@ name = "reovim-client-tui"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-client",
+ "reovim-client-api",
+ "reovim-kernel-interface",
  "reovim-rig",
  "reovim-sdk",
  "reovim-text-api",
@@ -271,8 +283,10 @@ name = "reovim-plugin-cli"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-client",
+ "reovim-client-api",
  "reovim-client-sh",
  "reovim-client-tui",
+ "reovim-kernel-interface",
  "reovim-rig",
  "reovim-sdk",
  "reovim-text-api",
@@ -283,7 +297,9 @@ name = "reovim-plugin-explorer"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-client",
+ "reovim-client-api",
  "reovim-client-tui",
+ "reovim-kernel-interface",
  "reovim-rig",
  "reovim-sdk",
  "reovim-text-api",
@@ -294,8 +310,10 @@ name = "reovim-plugin-vim"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-client",
+ "reovim-client-api",
  "reovim-client-sh",
  "reovim-client-tui",
+ "reovim-kernel-interface",
  "reovim-rig",
  "reovim-sdk",
  "reovim-text-api",
@@ -306,13 +324,17 @@ name = "reovim-rig"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-client",
+ "reovim-client-api",
  "reovim-host",
+ "reovim-kernel-interface",
  "reovim-kernel-runtime",
  "reovim-module-clipboard",
  "reovim-module-coreutils",
  "reovim-module-fs",
  "reovim-module-sysutils",
  "reovim-module-text",
+ "reovim-sdk",
+ "reovim-text-api",
 ]
 
 [[package]]

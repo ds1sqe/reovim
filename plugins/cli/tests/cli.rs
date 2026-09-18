@@ -1,91 +1,46 @@
 //! The cli buffer on a Kernel with fs and text, shown through the tui.
 //!
-//! The table gives the cli buffer to the name `cli` and a recording
-//! stub to a cell, so a region that goes into the buffer and comes
-//! back out of it is judged by what that stub was started over. What a
-//! typed line does is clients/sh's and is judged there; what these
-//! tests judge is the buffer: the prompt, the transcript, the line,
-//! and the way out.
+//! The table gives the cli buffer to the name `cli` and the rig's
+//! recording stub to a cell, so a region that goes into the buffer and
+//! comes back out of it is judged by what that stub was started over.
+//! What a typed line does is clients/sh's and is judged there; what
+//! these tests judge is the buffer: the prompt, the transcript, the
+//! line, and the way out.
 
-use std::cell::RefCell;
 use std::rc::Rc;
 
-use reovim_client::{
-    BLOCK, BLUE, Ctx, Error, Event, Handle, Hash, Key, Plugin, Rd, Rights,
-    Start, grid, open,
-};
-use reovim_client_tui::{Frame, Step, Table, Tui, Want};
-use reovim_plugin_cli::Cli;
-use reovim_rig::Rig;
-use reovim_sdk::walk::ROOT;
-use reovim_sdk::{cell, ops};
-use reovim_text_api::open as text_open;
+use reovim_client::dev::{self, Table, Want};
+use reovim_client_api::{BLUE, Key, Region};
+use reovim_client_tui::{Frame, Step, Tui};
+use reovim_kernel_interface::{Calls, Error, Rd};
+use reovim_rig::{Rig, Seen, Stub};
+use reovim_sdk::ops;
 
-/// The one editor a test drives, over whichever Plugin the table gives.
-type Editor = Tui<Box<dyn Plugin>>;
-
-/// What each start of the table's cell Plugin was over, in order.
-type Opened = Rc<RefCell<Vec<Option<Rd>>>>;
-
-/// A cell Plugin that records what it was started over, shows a Buffer
-/// over it, and on any key asks for the cli buffer over the directory
-/// that file is in, which is what `:cli` asks for.
-struct Stub {
-    seen: Opened,
+/// What the stub does on any key: the cli buffer asked for over the
+/// directory the file it was started over is in, which is what `:cli`
+/// asks for.
+fn asks(
+    ctx: &dyn Calls,
+    region: &Region,
     over: Option<Rd>,
-    opening: Option<Handle>,
-}
-
-impl Plugin for Stub {
-    fn start(&mut self, ctx: Ctx<'_>, at: Start) -> Result<(), Error> {
-        let Ctx { mut ctx, caps } = ctx;
-        self.seen.borrow_mut().push(at.over);
-        self.over = at.over;
-        self.opening = caps.open(open::hash());
-        let opener = cell::resolve(ctx, ROOT, "/module/text/open")?;
-        let opening = ctx.open(opener, Rights::WRITE)?;
-        let mut call = text_open::Call(&mut ctx, opening);
-        let buffer = match at.over {
-            Some(source) => call.open(source)?,
-            None => call.new()?,
-        };
-        ops::close(ctx, opening)?;
-        let Some(region) = caps.open(grid::hash()) else { return Ok(()) };
-        let view = grid::View {
-            over: buffer.0,
-            top: 0,
-            cursor: 0,
-            shape: BLOCK,
-            spans: Vec::new(),
-            status: String::from("-- STUB --"),
-        };
-        grid::Call(caps, region).show(view)
-    }
-
-    fn input(&mut self, ctx: Ctx<'_>, _: Hash, _: &[u8]) -> Result<(), Error> {
-        let Ctx { ctx, caps } = ctx;
-        let (Some(over), Some(opening)) = (self.over, self.opening) else {
-            return Ok(());
-        };
-        let dir = ops::parent(ctx, over)?;
-        let ask = open::Ask { target: dir.0, plugin: String::from("cli") };
-        open::Call(caps, opening).open(ask)
-    }
-
-    fn changed(&mut self, _: Ctx<'_>, _: &[Event]) -> Result<(), Error> {
-        Ok(())
-    }
+) -> Result<(), Error> {
+    let Some(over) = over else { return Ok(()) };
+    region.opens(ctx, ops::parent(ctx, over)?, "cli")
 }
 
 /// The app's table in the small: the cli buffer by name, the stub for
-/// a cell.
-fn table(seen: &Opened) -> Table<Box<dyn Plugin>> {
+/// a cell. On any key the stub asks for the cli buffer over the
+/// directory the file it was started over is in, which is what `:cli`
+/// asks for.
+fn table(seen: &Seen) -> Table {
     let seen = seen.clone();
     Box::new(move |want| match want {
-        Want::Named("cli") => Some(Box::new(Cli::default()) as Box<dyn Plugin>),
+        Want::Named("cli") => {
+            Some((String::from("cli"), reovim_plugin_cli::boot()))
+        }
         Want::Cell => {
-            let stub = Stub { seen: seen.clone(), over: None, opening: None };
-            Some(Box::new(stub))
+            let stub = Stub::typing(&seen, "-- STUB --", Box::new(asks));
+            Some((String::from("stub"), stub))
         }
         Want::Named(_) | Want::Container => None,
     })
@@ -100,23 +55,28 @@ fn work(test: &str) -> Rig {
     rig
 }
 
+/// The tui over `rig` with `table`, opened over the name `file`.
+fn editor(rig: &Rig, table: Table, file: Option<&str>) -> Tui {
+    let host = Rc::new(rig.host());
+    let dev = dev::boot(&host, table, "", file, None).unwrap();
+    Tui::open(host, dev).unwrap()
+}
+
 /// The region on `work/a` in the stub, then the key that hands it to
 /// the cli buffer over `work`.
-fn buffer(rig: &Rig, seen: &Opened) -> Editor {
-    let table = table(seen);
-    let mut tui =
-        Tui::open(rig.host(), "", Some("work/a"), None, table).unwrap();
+fn buffer(rig: &Rig, seen: &Seen) -> Tui {
+    let mut tui = editor(rig, table(seen), Some("work/a"));
     assert_eq!(tui.key(Key::Char('x')), Ok(Step::Changed), "the cli shows");
     tui
 }
 
 /// The frame at the size the app always asks for.
-fn frame(tui: &mut Editor) -> Frame {
+fn frame(tui: &mut Tui) -> Frame {
     tui.frame(80, 24).unwrap()
 }
 
 /// Those keys, in order, and what the last one did.
-fn keys(tui: &mut Editor, keys: &[Key]) -> Step {
+fn keys(tui: &mut Tui, keys: &[Key]) -> Step {
     let mut step = Step::Same;
     for key in keys {
         step = tui.key(*key).unwrap();
@@ -125,7 +85,7 @@ fn keys(tui: &mut Editor, keys: &[Key]) -> Step {
 }
 
 /// That line typed and submitted.
-fn line(tui: &mut Editor, text: &str) -> Step {
+fn line(tui: &mut Tui, text: &str) -> Step {
     let mut typed: Vec<Key> = text.chars().map(Key::Char).collect();
     typed.push(Key::Enter);
     keys(tui, &typed)
@@ -140,7 +100,7 @@ fn prompt(under: &str) -> String {
 #[test]
 fn the_first_frame_is_the_prompt_where_the_region_was_opened() {
     let rig = work("prompt");
-    let seen = Opened::default();
+    let seen = Seen::default();
     let mut tui = buffer(&rig, &seen);
     let frame = frame(&mut tui);
     // The Shell stands where the region was opened, and the path is
@@ -156,7 +116,7 @@ fn the_first_frame_is_the_prompt_where_the_region_was_opened() {
 #[test]
 fn a_line_is_run_and_answered_above_the_next_prompt() {
     let rig = work("ls");
-    let seen = Opened::default();
+    let seen = Seen::default();
     let mut tui = buffer(&rig, &seen);
     assert_eq!(line(&mut tui, "ls"), Step::Changed);
     let at = prompt("work");
@@ -185,7 +145,7 @@ fn a_line_is_run_and_answered_above_the_next_prompt() {
 #[test]
 fn cd_moves_the_prompt_and_what_a_name_is_read_from() {
     let rig = work("cd");
-    let seen = Opened::default();
+    let seen = Seen::default();
     let mut tui = buffer(&rig, &seen);
     line(&mut tui, "cd sub");
     let (was, now) = (prompt("work"), prompt("work/sub"));
@@ -199,7 +159,7 @@ fn cd_moves_the_prompt_and_what_a_name_is_read_from() {
 #[test]
 fn a_line_that_does_not_run_prints_the_miss_the_shell_prints() {
     let rig = work("miss");
-    let seen = Opened::default();
+    let seen = Seen::default();
     let mut tui = buffer(&rig, &seen);
     line(&mut tui, "ls /x");
     let at = prompt("work");
@@ -208,25 +168,37 @@ fn a_line_that_does_not_run_prints_the_miss_the_shell_prints() {
 }
 
 #[test]
-fn a_following_line_prints_what_its_cell_holds_and_closes_it() {
+fn a_following_line_goes_on_printing_with_no_key_pressed() {
     let rig = work("follow");
-    let seen = Opened::default();
+    let seen = Seen::default();
     let mut tui = buffer(&rig, &seen);
-    // `-f` follows: the buffer reads the cell once, a Plugin having no
-    // tick to read it again, and closes it, which ends the follow.
+    // `-f` follows, and the run comes back open: the buffer keeps it
+    // and every frame asks it for what its Driver has since.
     assert_eq!(line(&mut tui, "cat -f a"), Step::Changed);
     let at = prompt("work");
-    let shown = [format!("{at}cat -f a"), "first".into(), at];
+    let shown = [format!("{at}cat -f a"), "first".into(), at.clone()];
     assert_eq!(frame(&mut tui).lines, shown, "what the cell held");
     let mut other = rig.client();
     let cat = other.resolve("/bin/cat").unwrap();
-    assert_eq!(other.children(cat), Ok(Vec::new()), "no cell was left");
+    assert_eq!(other.children(cat).unwrap().len(), 1, "the cell it follows");
+
+    let a = other.resolve("/module/fs/root/work/a").unwrap();
+    other.write_all(a, b"first\nsecond\n".to_vec()).unwrap();
+    assert_eq!(tui.tick(), Ok(Step::Changed), "no key was pressed");
+    let shown = [
+        format!("{at}cat -f a"),
+        "first".into(),
+        "first".into(),
+        "second".into(),
+        at,
+    ];
+    assert_eq!(frame(&mut tui).lines, shown, "what the target holds now");
 }
 
 #[test]
 fn a_listing_leaves_no_escape_in_the_text_and_a_span_per_name() {
     let rig = work("color");
-    let seen = Opened::default();
+    let seen = Seen::default();
     let mut tui = buffer(&rig, &seen);
     line(&mut tui, "ls");
     let listed = frame(&mut tui);
@@ -255,7 +227,7 @@ fn a_listing_leaves_no_escape_in_the_text_and_a_span_per_name() {
 #[test]
 fn tab_completes_a_name_from_where_the_line_stands() {
     let rig = work("tab");
-    let seen = Opened::default();
+    let seen = Seen::default();
     let mut tui = buffer(&rig, &seen);
     keys(&mut tui, &[Key::Char('c'), Key::Char('d'), Key::Char(' ')]);
     keys(&mut tui, &[Key::Char('s'), Key::Tab]);
@@ -270,7 +242,7 @@ fn tab_completes_a_name_from_where_the_line_stands() {
 #[test]
 fn ctrl_l_empties_what_was_run_and_keeps_the_line() {
     let rig = work("clear");
-    let seen = Opened::default();
+    let seen = Seen::default();
     let mut tui = buffer(&rig, &seen);
     line(&mut tui, "ls");
     keys(&mut tui, &[Key::Char('p'), Key::Char('w')]);
@@ -282,7 +254,7 @@ fn ctrl_l_empties_what_was_run_and_keeps_the_line() {
 #[test]
 fn ctrl_d_gives_the_region_back_to_what_it_came_from() {
     let rig = work("back");
-    let seen = Opened::default();
+    let seen = Seen::default();
     let mut tui = buffer(&rig, &seen);
     let mut other = rig.client();
     let a = other.resolve("/module/fs/root/work/a").unwrap();
@@ -300,9 +272,9 @@ fn a_cli_buffer_that_was_the_first_thing_shown_leaves_with_nothing() {
     let rig = work("first");
     // A table that gives the cli buffer the region the editor opened:
     // there is no step back, so the way out is the way out.
-    let table: Table<Box<dyn Plugin>> =
-        Box::new(|_| Some(Box::new(Cli::default()) as Box<dyn Plugin>));
-    let mut tui = Tui::open(rig.host(), "", Some("work"), None, table).unwrap();
+    let table: Table =
+        Box::new(|_| Some((String::from("cli"), reovim_plugin_cli::boot())));
+    let mut tui = editor(&rig, table, Some("work"));
     assert_eq!(frame(&mut tui).lines, [prompt("work")]);
     assert_eq!(keys(&mut tui, &[Key::Ctrl('d')]), Step::Quit(0));
 }
@@ -312,10 +284,9 @@ fn a_region_over_a_cell_leaves_the_line_at_the_root() {
     let rig = work("cell");
     // `cd` is the shell's own and a file is no Container: the shell
     // refuses it, nothing is said, and the line stands at the root.
-    let table: Table<Box<dyn Plugin>> =
-        Box::new(|_| Some(Box::new(Cli::default()) as Box<dyn Plugin>));
-    let mut tui =
-        Tui::open(rig.host(), "", Some("work/a"), None, table).unwrap();
+    let table: Table =
+        Box::new(|_| Some((String::from("cli"), reovim_plugin_cli::boot())));
+    let mut tui = editor(&rig, table, Some("work/a"));
     assert_eq!(frame(&mut tui).lines, ["/ > "]);
     line(&mut tui, "ls");
     let shown = ["/ > ls", "bin  module  session  sys  var", "/ > "];
@@ -325,7 +296,7 @@ fn a_region_over_a_cell_leaves_the_line_at_the_root() {
 #[test]
 fn a_transcript_longer_than_the_region_keeps_the_prompt_in_it() {
     let rig = work("scroll");
-    let seen = Opened::default();
+    let seen = Seen::default();
     let mut tui = buffer(&rig, &seen);
     // Two lines each: the line as it was typed and what it printed.
     for _ in 0..30 {

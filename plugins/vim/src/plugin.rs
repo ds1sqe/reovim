@@ -1,27 +1,38 @@
-//! `impl Plugin for Vim`: what the keys asked for, done.
+//! Vim as a Module a Client loads: what the keys asked for, done.
 //!
-//! The engine hands back an `Effect` over its own copy of the text;
-//! here it becomes calls. An edit is a `replace`, or an `amend` when
-//! it joins the insert under way; undo and redo move the Buffer's
-//! head and the text is read back; a save publishes it to its source;
-//! a put reads the clipboard rd and a `"+` yank writes it; a quit is
-//! `process::exit`, and what all of it looks like is one `grid::show`.
+//! The engine below is pure: a key becomes an `Effect`, which has
+//! already happened to Vim's own copy of the text; here it becomes
+//! calls. An edit is a `replace`, or an `amend` when it joins the
+//! insert under way; undo and redo move the Buffer's head and the text
+//! is read back; a save publishes it to its source; a put reads the
+//! clipboard rd and a `"+` yank writes it; a quit writes
+//! `/self/dev/exit`, and what all of it looks like is the View that
+//! ends the frame.
+//!
+//! One cell is served, `view`. A whole read of it is one frame: the
+//! keys Vim has not taken, each run; what changed on the Buffer since
+//! the last frame; the rows the region has now; then the View. No
+//! borrow of the engine outlives an op, so a Driver of Vim's own that
+//! a run re-enters finds the state free.
 
 use alloc::format;
+use alloc::rc::Rc;
 use alloc::string::String;
 use alloc::vec::Vec;
+use core::cell::{OnceCell, Ref, RefCell};
 
-use reovim_client::{
-    BAR, BLOCK, Calls, Caps, Ctx, Error, Event, Flags, Handle, Hash, Key, Kind,
-    MATCH, Plugin, Rd, Rights, SELECTION, Start, grid, keys, open, process,
-};
+use reovim_client_api::{Frames, NONE, Region, count};
 use reovim_client_sh::{Ran, Shell, complete, run};
+use reovim_kernel_interface::{
+    Booted, Calls, Driver, DriverId, Error, Event, Flags, Handle, Kind, Module,
+    Rd, Reply, Rights,
+};
 use reovim_sdk::path::under;
 use reovim_sdk::walk::ROOT;
-use reovim_sdk::{cell, ops};
+use reovim_sdk::{cell, decode, encode, ops};
 use reovim_text_api::{history, open as text_open, publish, text};
 
-use crate::{Ask, Edit, Effect, Mode, Quit, Vim};
+use crate::{Ask, Edit, Effect, Quit, Vim};
 
 /// What `:q` says to unsaved changes.
 const E37: &str = "E37: No write since last change (add ! to override)";
@@ -45,129 +56,186 @@ const MIRROR: &str = "/module/fs/root";
 const OLDEST: &str = "Already at oldest change";
 const NEWEST: &str = "Already at newest change";
 
-impl Plugin for Vim {
-    /// A Buffer of its own over what the region was opened on, read
-    /// and written through a handle it keeps, the clipboard found if
-    /// there is one, the region asked how big it is, and the text read
-    /// and shown from the line it was told to begin at.
-    fn start(&mut self, ctx: Ctx<'_>, at: Start) -> Result<(), Error> {
-        let Ctx { ctx, caps } = ctx;
-        let buffer = buffer_over(ctx, at.over)?;
-        let rights = Rights::READ.union(Rights::WRITE);
-        self.buffer = Some(buffer);
-        self.h = Some(ctx.open(buffer, rights)?);
-        self.source = at.over;
-        self.name = at.name;
-        self.dir = at.dir;
-        self.shell = standing(ctx, &self.dir)?;
-        self.clip = cell::resolve(ctx, ROOT, "/module/clipboard/text").ok();
-        self.region = caps.open(grid::hash());
-        self.opener = caps.open(open::hash());
-        self.ending = caps.open(process::hash());
-        if let Some(region) = self.region {
-            self.rows = count(grid::Call(caps, region).size()?.rows);
-        }
-        let bytes = ops::whole(ctx, self.handle()?)?;
-        self.loaded(&bytes);
-        let at = at.line.map_or(0, |line| self.at_line(count(line)));
-        self.begin(at);
-        self.announce(ctx)?;
-        self.show(caps)
+/// Vim at a Client: the engine behind one `RefCell`, and the one cell
+/// a Plugin serves.
+#[derive(Default)]
+pub struct Editor {
+    vim: RefCell<Vim>,
+    /// The cells of `/self/dev`, found once at `start`: they never
+    /// change, so no borrow of the engine is held over an op.
+    region: OnceCell<Region>,
+    view: Frames,
+}
+
+/// Vim, ready for a Client to load.
+#[must_use]
+pub fn boot() -> Booted {
+    Editor::new().booted()
+}
+
+impl Editor {
+    /// One, which a table gives a Client and a test reads back.
+    #[must_use]
+    pub fn new() -> Rc<Self> {
+        Rc::new(Self::default())
     }
 
-    /// A key run through the engine and its effect performed, or a
-    /// resize taken for what the View is laid out over. An input of
-    /// anything else is not Vim's.
-    fn input(
-        &mut self,
-        ctx: Ctx<'_>,
-        from: Hash,
-        bytes: &[u8],
-    ) -> Result<(), Error> {
-        let Ctx { ctx, caps } = ctx;
-        if from == grid::hash() {
-            let resized: grid::Resized = reovim_sdk::decode(bytes)?;
-            self.rows = count(resized.rows);
-            return self.show(caps);
+    /// Its Module and its one Driver, for a table to give.
+    #[must_use]
+    pub fn booted(self: &Rc<Self>) -> Booted {
+        Booted { module: self.clone(), drivers: alloc::vec![self.clone()] }
+    }
+
+    /// What the engine holds now, for a test to judge what the keys
+    /// did: no borrow of it outlives an op, so this one is free.
+    ///
+    /// # Panics
+    /// While a frame of its own holds it, which no caller of this can
+    /// be inside.
+    #[must_use]
+    pub fn engine(&self) -> Ref<'_, Vim> {
+        self.vim.borrow()
+    }
+}
+
+impl Module for Editor {
+    /// A Buffer of its own over what the region was opened on, read
+    /// and written through a handle it keeps, the clipboard found if
+    /// there is one, and the text shown from the line it was told to
+    /// begin at.
+    fn start(&self, ctx: &dyn Calls, home: Rd) -> Result<(), Error> {
+        let view = ctx.register(DriverId(0), home, Some("view"))?;
+        ctx.report(view, Flags::READ, &[])?;
+        let region = Region::of(ctx)?;
+        let ask = region.ask(ctx)?;
+        let dir = region.cwd(ctx)?;
+        let source = (ask.target != NONE).then_some(ask.target);
+        let buffer = buffer_over(ctx, source)?;
+        let rights = Rights::READ.union(Rights::WRITE);
+        let h = ctx.open(buffer, rights)?;
+        let shell = standing(ctx, &dir)?;
+        let clip = cell::resolve(ctx, ROOT, "/module/clipboard/text").ok();
+        {
+            let mut vim = self.vim.borrow_mut();
+            vim.buffer = Some(buffer);
+            vim.h = Some(h);
+            vim.source = source;
+            vim.name = (!ask.name.is_empty()).then(|| ask.name.clone());
+            vim.dir = dir;
+            vim.shell = shell;
+            vim.clip = clip;
         }
-        if from != keys::hash() {
-            return Ok(());
-        }
-        let press: keys::Press = reovim_sdk::decode(bytes)?;
-        let Some(key) = Key::of(press.key) else { return Ok(()) };
-        let effect = self.key(key);
-        let acted = self.act(ctx, caps, effect)?;
-        let said = self.write_clipped(ctx)?;
-        if acted || said {
-            self.show(caps)?;
-        }
+        let _ = self.region.set(region);
+        self.sized(ctx)?;
+        let bytes = ops::whole(ctx, h)?;
+        self.vim.borrow_mut().opened(&bytes, ask.line);
+        self.announce(ctx)?;
+        // Where the stream stands once the Buffer is open and read: a
+        // cursor of 0 against a ring that never reached it is one
+        // Overflow, and what opening it left is already in the text.
+        let (_, cursor) = ops::since(ctx, 0)?;
+        self.vim.borrow_mut().cursor_at = cursor;
         Ok(())
+    }
+}
+
+impl Driver for Editor {
+    fn open(&self, _: &dyn Calls, rd: Rd, _: Rights) -> Reply<u64> {
+        Reply::ok(rd.0)
+    }
+
+    /// One whole read is one frame: the work at its head, its bytes to
+    /// their end.
+    fn read(
+        &self,
+        ctx: &dyn Calls,
+        _: u64,
+        at: u64,
+        len: usize,
+    ) -> Reply<Vec<u8>> {
+        self.view.read(at, len, || self.framed(ctx))
+    }
+}
+
+impl Editor {
+    /// The cells of `/self/dev` this Plugin holds; `Closed` before
+    /// `start` has found them.
+    fn region(&self) -> Result<&Region, Error> {
+        self.region.get().ok_or(Error::Closed)
+    }
+
+    /// One frame: every key it has not taken, run; what moved on the
+    /// Buffer since the last one; the rows the region has now; the
+    /// View.
+    fn framed(&self, ctx: &dyn Calls) -> Result<Vec<u8>, Error> {
+        let keys = self.region()?.keys(ctx)?;
+        for key in keys {
+            let effect = self.vim.borrow_mut().key(key);
+            self.act(ctx, effect)?;
+            self.write_clipped(ctx)?;
+        }
+        self.changed(ctx)?;
+        let rows = self.sized(ctx)?;
+        Ok(encode(&self.vim.borrow_mut().view(rows)))
     }
 
     /// A Modify on the Buffer, or a ring that overflowed: the text is
     /// read again, which is how another Client's write arrives.
-    fn changed(&mut self, ctx: Ctx<'_>, events: &[Event]) -> Result<(), Error> {
-        let Ctx { ctx, caps } = ctx;
+    fn changed(&self, ctx: &dyn Calls) -> Result<(), Error> {
+        let cursor = self.vim.borrow().cursor_at;
+        let (events, next) = ops::since(ctx, cursor)?;
+        self.vim.borrow_mut().cursor_at = next;
         let moved = |e: &Event| matches!(e.kind, Kind::Modify | Kind::Overflow);
         if !events.iter().any(moved) {
             return Ok(());
         }
         let bytes = ops::whole(ctx, self.handle()?)?;
-        if !self.loaded(&bytes) {
-            return Ok(());
-        }
-        self.show(caps)
+        self.vim.borrow_mut().loaded(&bytes);
+        Ok(())
     }
-}
 
-impl Vim {
+    /// The rows the region has now, as `windows/0/size` says.
+    fn sized(&self, ctx: &dyn Calls) -> Result<usize, Error> {
+        let rows = count(self.region()?.size(ctx)?.rows);
+        self.vim.borrow_mut().rows = rows;
+        Ok(rows)
+    }
+
     /// The Buffer `start` opened; `Closed` before it has.
     fn handle(&self) -> Result<Handle, Error> {
-        self.h.ok_or(Error::Closed)
+        self.vim.borrow().h.ok_or(Error::Closed)
     }
 
-    /// The byte line `n` starts at, counted from 1 and clamped to the
-    /// last line: the tty's `+N`, which only whoever holds the text
-    /// can find.
-    fn at_line(&self, n: usize) -> usize {
-        let line = n.max(1) - 1;
-        self.line_at(line.min(self.line_count() - 1)).unwrap_or(0)
+    /// `message` until the next key.
+    fn says(&self, message: &str) {
+        self.vim.borrow_mut().message = String::from(message);
     }
 
-    /// What `effect` asks of the Client; true when something is to be
-    /// shown again.
-    fn act(
-        &mut self,
-        ctx: &dyn Calls,
-        caps: &mut Caps,
-        effect: Effect,
-    ) -> Result<bool, Error> {
+    /// What `effect` asks of the Client.
+    fn act(&self, ctx: &dyn Calls, effect: Effect) -> Result<(), Error> {
         match effect {
-            Effect::Nothing => return Ok(false),
-            Effect::Moved => {}
-            Effect::Edit(edit) => self.send(ctx, edit)?,
-            Effect::Edits(edits) => self.send_each(ctx, edits)?,
-            Effect::Undo => self.walk(ctx, true)?,
-            Effect::Redo => self.walk(ctx, false)?,
-            Effect::Save(bang) => {
-                self.save(ctx, bang)?;
-            }
+            Effect::Nothing | Effect::Moved => Ok(()),
+            Effect::Edit(edit) => self.send(ctx, edit),
+            Effect::Edits(edits) => self.send_each(ctx, edits),
+            Effect::Undo => self.walk(ctx, true),
+            Effect::Redo => self.walk(ctx, false),
+            Effect::Save(bang) => self.save(ctx, bang).map(|_| ()),
             Effect::SaveAs(name, bang) => {
-                self.save_as(ctx, &name, bang)?;
+                self.save_as(ctx, &name, bang).map(|_| ())
             }
-            Effect::Clipboard => return self.pasting(ctx, caps),
-            Effect::Quit(how) => return self.quit(ctx, caps, how),
+            Effect::Clipboard => self.pasting(ctx),
+            Effect::Quit(how) => self.quit(ctx, how),
             Effect::Explore(name, bang) => {
-                return self.explore(ctx, caps, name.as_deref(), bang);
+                self.explore(ctx, name.as_deref(), bang)
             }
-            Effect::Open(name, bang) => {
-                return self.edited(ctx, caps, &name, bang);
+            Effect::Open(name, bang) => self.edited(ctx, &name, bang),
+            Effect::Line(line) => {
+                self.ran(ctx, &line);
+                Ok(())
             }
-            Effect::Line(line) => return Ok(self.ran(ctx, &line)),
-            Effect::Cli(bang) => return self.cli(ctx, caps, bang),
-            Effect::Complete(ask) => return self.completing(ctx, ask),
+            Effect::Cli(bang) => self.cli(ctx, bang),
+            Effect::Complete(ask) => self.completing(ctx, ask),
         }
-        Ok(true)
     }
 
     /// `edit` as a new revision, or into the head one when it joins
@@ -193,7 +261,7 @@ impl Vim {
 
     /// Head one revision back or on, the text read again after it; the
     /// end of the history is a message.
-    fn walk(&mut self, mut ctx: &dyn Calls, back: bool) -> Result<(), Error> {
+    fn walk(&self, mut ctx: &dyn Calls, back: bool) -> Result<(), Error> {
         let h = self.handle()?;
         let mut call = history::Call(&mut ctx, h);
         let (moved, end) =
@@ -207,34 +275,43 @@ impl Vim {
             Err(error) => return Err(error),
         }
         let bytes = ops::whole(ctx, h)?;
-        self.loaded(&bytes);
+        self.vim.borrow_mut().loaded(&bytes);
         Ok(())
     }
 
     /// A Buffer over nothing that was opened for a file says so on
     /// the first frame, as nvim does; the directory it is to go in is
     /// not there either when it says `[New DIRECTORY]`.
-    fn announce(&mut self, ctx: &dyn Calls) -> Result<(), Error> {
-        let Some(name) = self.name.clone() else { return Ok(()) };
-        let dir = name.rsplit_once('/').map_or("", |(dir, _)| dir);
+    fn announce(&self, ctx: &dyn Calls) -> Result<(), Error> {
+        let (name, dir) = {
+            let vim = self.vim.borrow();
+            (vim.name.clone(), vim.dir.clone())
+        };
+        let Some(name) = name else { return Ok(()) };
+        let at = name.rsplit_once('/').map_or("", |(at, _)| at);
         let word =
-            if directory(ctx, dir)? { "[New]" } else { "[New DIRECTORY]" };
-        let said = as_given(&self.dir, &name);
-        self.message = format!("\"{said}\" {word}");
+            if directory(ctx, at)? { "[New]" } else { "[New DIRECTORY]" };
+        let said = as_given(&dir, &name);
+        self.vim.borrow_mut().message = format!("\"{said}\" {word}");
         Ok(())
     }
 
     /// The head published to its source; a Buffer over nothing writes
     /// the file it was opened for, and has no file name without one.
     /// False when it said why it did not write.
-    fn save(&mut self, mut ctx: &dyn Calls, bang: bool) -> Result<bool, Error> {
-        if self.source.is_some() {
+    fn save(&self, mut ctx: &dyn Calls, bang: bool) -> Result<bool, Error> {
+        let (source, name) = {
+            let vim = self.vim.borrow();
+            (vim.source, vim.name.clone())
+        };
+        if source.is_some() {
             self.fixing(ctx)?;
             publish::Call(&mut ctx, self.handle()?).save()?;
             return Ok(true);
         }
-        let Some(name) = self.name.clone() else {
-            return Ok(self.says(E32));
+        let Some(name) = name else {
+            self.says(E32);
+            return Ok(false);
         };
         self.written_to(ctx, &name, bang)
     }
@@ -244,16 +321,16 @@ impl Vim {
     /// and a name that is not on disk is made first. A Buffer over
     /// nothing goes on as that file's, its history starting there.
     fn save_as(
-        &mut self,
+        &self,
         ctx: &dyn Calls,
         name: &str,
         bang: bool,
     ) -> Result<bool, Error> {
-        let path = under(&self.dir, name);
+        let path = under(&self.vim.borrow().dir.clone(), name);
         let Some(target) = resolved(ctx, &path)? else {
             return self.written_to(ctx, &path, bang);
         };
-        if Some(target) == self.source {
+        if Some(target) == self.vim.borrow().source {
             return self.save(ctx, bang);
         }
         self.published_to(ctx, target)
@@ -265,55 +342,59 @@ impl Vim {
     /// to write over it; anything that refuses to make the file, the
     /// host and a file where a directory is wanted alike, is E212.
     fn written_to(
-        &mut self,
+        &self,
         ctx: &dyn Calls,
         path: &str,
         bang: bool,
     ) -> Result<bool, Error> {
         match making(ctx, path, bang) {
             Ok(Some(target)) => self.published_to(ctx, target),
-            Ok(None) => Ok(self.says(E13)),
+            Ok(None) => {
+                self.says(E13);
+                Ok(false)
+            }
             // Refused, or asked of an rd that makes nothing: either
             // way there is no file to write.
-            Err(_) => Ok(self.says(E212)),
+            Err(_) => {
+                self.says(E212);
+                Ok(false)
+            }
         }
     }
 
     /// The head written to `target`, which a Buffer over nothing goes
     /// on as, watched by its Client from then on.
     fn published_to(
-        &mut self,
+        &self,
         mut ctx: &dyn Calls,
         target: Rd,
     ) -> Result<bool, Error> {
         self.fixing(ctx)?;
         publish::Call(&mut ctx, self.handle()?).save_as(target)?;
-        self.source = self.source.or(Some(target));
+        let mut vim = self.vim.borrow_mut();
+        vim.source = vim.source.or(Some(target));
         Ok(true)
     }
 
     /// The newline `fixendofline` writes at the end of a last line
     /// that has none, before the write itself.
-    fn fixing(&mut self, ctx: &dyn Calls) -> Result<(), Error> {
-        self.fixed_eol().map_or(Ok(()), |edit| self.send(ctx, edit))
+    fn fixing(&self, ctx: &dyn Calls) -> Result<(), Error> {
+        let edit = self.vim.borrow_mut().fixed_eol();
+        edit.map_or(Ok(()), |edit| self.send(ctx, edit))
     }
 
     /// A put waiting for the clipboard: what it holds, then the put
     /// itself, which is an effect like any other.
-    fn pasting(
-        &mut self,
-        ctx: &dyn Calls,
-        caps: &mut Caps,
-    ) -> Result<bool, Error> {
+    fn pasting(&self, ctx: &dyn Calls) -> Result<(), Error> {
         let text = self.clipboard(ctx)?;
-        let effect = self.pasted(text);
-        self.act(ctx, caps, effect)
+        let effect = self.vim.borrow_mut().pasted(text);
+        self.act(ctx, effect)
     }
 
     /// What the clipboard holds, through its rd; `None` when there is
     /// no Module or no tool.
     fn clipboard(&self, ctx: &dyn Calls) -> Result<Option<String>, Error> {
-        let Some(rd) = self.clip else { return Ok(None) };
+        let Some(rd) = self.vim.borrow().clip else { return Ok(None) };
         match ops::bytes(ctx, rd) {
             Ok(bytes) => Ok(Some(String::from_utf8_lossy(&bytes).into_owned())),
             Err(Error::Unsupported | Error::Busy) => Ok(None),
@@ -322,19 +403,26 @@ impl Vim {
     }
 
     /// What a `"+` yank left for the clipboard, written to its rd; no
-    /// Module or no tool is a message, which is true when it is one.
-    fn write_clipped(&mut self, ctx: &dyn Calls) -> Result<bool, Error> {
-        let Some(text) = self.clipped() else { return Ok(false) };
+    /// Module or no tool is a message.
+    fn write_clipped(&self, ctx: &dyn Calls) -> Result<(), Error> {
+        let (text, clip) = {
+            let mut vim = self.vim.borrow_mut();
+            (vim.clipped(), vim.clip)
+        };
+        let Some(text) = text else { return Ok(()) };
         let unsupported = Err(Error::Unsupported);
-        let written = self
-            .clip
-            .map_or(unsupported, |rd| ops::put(ctx, rd, text.into_bytes()));
+        let written =
+            clip.map_or(unsupported, |rd| ops::put(ctx, rd, text.into_bytes()));
         match written {
-            Ok(_) => Ok(false),
+            Ok(_) => Ok(()),
             Err(Error::Unsupported) => {
-                Ok(self.says("clipboard: no tool on PATH"))
+                self.says("clipboard: no tool on PATH");
+                Ok(())
             }
-            Err(Error::Busy) => Ok(self.says("clipboard: the tool failed")),
+            Err(Error::Busy) => {
+                self.says("clipboard: the tool failed");
+                Ok(())
+            }
             Err(error) => Err(error),
         }
     }
@@ -344,15 +432,11 @@ impl Vim {
     /// which over nothing leaves an untouched Buffer and makes the
     /// file of a changed one, or is E32 without a name; `:cq` with 1,
     /// so the caller uses nothing.
-    fn quit(
-        &mut self,
-        ctx: &dyn Calls,
-        caps: &mut Caps,
-        how: Quit,
-    ) -> Result<bool, Error> {
+    fn quit(&self, ctx: &dyn Calls, how: Quit) -> Result<(), Error> {
         let unsaved = self.unsaved(ctx)?;
         if how == Quit::Ask && unsaved {
-            return Ok(self.says(E37));
+            self.says(E37);
+            return Ok(());
         }
         let code = match how {
             Quit::Abort => Some(1),
@@ -360,10 +444,8 @@ impl Vim {
             _ => Some(0),
         };
         // The write said why it did not happen; the editor stays.
-        let Some(code) = code else { return Ok(true) };
-        let Some(ending) = self.ending else { return Ok(false) };
-        process::Call(caps, ending).exit(u64::from(code))?;
-        Ok(false)
+        let Some(code) = code else { return Ok(()) };
+        self.region()?.ends(ctx, code)
     }
 
     /// What `:wq`, `:x` and `ZZ` write before they leave: the source
@@ -371,13 +453,13 @@ impl Vim {
     /// nothing was opened for. `None` when that write did not happen,
     /// and the editor stays where it is having said why.
     fn written(
-        &mut self,
+        &self,
         ctx: &dyn Calls,
         unsaved: bool,
     ) -> Result<Option<u8>, Error> {
         // Over nothing and untouched: `:x` writes nothing, as Vim has
         // it, and there is no file to make.
-        if self.source.is_none() && !unsaved {
+        if self.vim.borrow().source.is_none() && !unsaved {
             return Ok(Some(0));
         }
         Ok(self.save(ctx, false)?.then_some(0))
@@ -392,52 +474,50 @@ impl Vim {
     /// takes the draft with it, so unsaved changes are E37 without the
     /// bang, as `:q` has it.
     fn explore(
-        &mut self,
+        &self,
         ctx: &dyn Calls,
-        caps: &mut Caps,
         name: Option<&str>,
         bang: bool,
-    ) -> Result<bool, Error> {
+    ) -> Result<(), Error> {
+        let dir = self.vim.borrow().dir.clone();
         let target = match name {
-            Some(name) => resolved(ctx, &under(&self.dir, name))?,
+            Some(name) => resolved(ctx, &under(&dir, name))?,
             None => self.here(ctx)?,
         };
         // Nothing is being left for a name that leads nowhere, so
         // there is nothing for the bang to override yet.
         let Some(target) = target else {
-            let said = name.unwrap_or(&self.dir);
-            return Ok(self.says(&format!("{E344} \"{said}\" in cdpath")));
+            let said = name.unwrap_or(&dir);
+            self.says(&format!("{E344} \"{said}\" in cdpath"));
+            return Ok(());
         };
-        self.shown(ctx, caps, target, "", bang)
+        self.shown(ctx, target, "", bang)
     }
 
     /// `:e[dit][!] PATH`: the file that name holds in this region,
     /// which the Client's table gives another Vim. The name is
     /// resolved as `:explore`'s is; one that is not there is E345.
     fn edited(
-        &mut self,
+        &self,
         ctx: &dyn Calls,
-        caps: &mut Caps,
         name: &str,
         bang: bool,
-    ) -> Result<bool, Error> {
-        let Some(target) = resolved(ctx, &under(&self.dir, name))? else {
-            return Ok(self.says(&format!("{E345} \"{name}\" in path")));
+    ) -> Result<(), Error> {
+        let dir = self.vim.borrow().dir.clone();
+        let Some(target) = resolved(ctx, &under(&dir, name))? else {
+            self.says(&format!("{E345} \"{name}\" in path"));
+            return Ok(());
         };
-        self.shown(ctx, caps, target, "", bang)
+        self.shown(ctx, target, "", bang)
     }
 
     /// `:cli[!]`: a shell in this region, which the Client's table
     /// gives by name and no shape gives at all. It opens where the `:`
     /// line's own lines stand, the Shell's cwd, so `:cd` moves what
     /// `:cli` opens over as it moves what `:ls` lists.
-    fn cli(
-        &mut self,
-        ctx: &dyn Calls,
-        caps: &mut Caps,
-        bang: bool,
-    ) -> Result<bool, Error> {
-        self.shown(ctx, caps, self.shell.cwd(), "cli", bang)
+    fn cli(&self, ctx: &dyn Calls, bang: bool) -> Result<(), Error> {
+        let cwd = self.vim.borrow().shell.cwd();
+        self.shown(ctx, cwd, "cli", bang)
     }
 
     /// The Client asked to show `target` in this region, in the Plugin
@@ -447,20 +527,17 @@ impl Vim {
     /// bang, as `:q` has it. Nothing is shown again here; the Plugin
     /// that comes shows itself.
     fn shown(
-        &mut self,
+        &self,
         ctx: &dyn Calls,
-        caps: &mut Caps,
         target: Rd,
         plugin: &str,
         bang: bool,
-    ) -> Result<bool, Error> {
+    ) -> Result<(), Error> {
         if !bang && self.unsaved(ctx)? {
-            return Ok(self.says(E37));
+            self.says(E37);
+            return Ok(());
         }
-        let Some(opener) = self.opener else { return Ok(false) };
-        let ask = open::Ask { target: target.0, plugin: String::from(plugin) };
-        open::Call(caps, opener).open(ask)?;
-        Ok(false)
+        self.region()?.opens(ctx, target, plugin)
     }
 
     /// A line Vim's list has none of, typed on the `:` line: run
@@ -471,15 +548,21 @@ impl Vim {
     ///
     /// A run that came back open is a Driver that follows: what its
     /// cell holds at this one read is what is said, and the cell is
-    /// closed after it, a Plugin having no tick to read it again.
-    fn ran(&mut self, ctx: &dyn Calls, line: &str) -> bool {
-        let out = match run(ctx, &mut self.shell, line) {
+    /// closed after it, one row having nowhere to put more.
+    fn ran(&self, ctx: &dyn Calls, line: &str) {
+        // The borrow is gone before the line runs: a Driver of this
+        // Client's own may come back in here.
+        let mut shell = core::mem::take(&mut self.vim.borrow_mut().shell);
+        let outcome = run(ctx, &mut shell, line);
+        let out = match outcome {
             Ok(ran) => printed(ctx, ran),
             Err(miss) if miss.unknown => format!("{E492} {line}"),
             Err(miss) => format!("{miss}"),
         };
-        self.rebased();
-        self.says(out.lines().next().unwrap_or_default())
+        let path = String::from(shell.path());
+        self.vim.borrow_mut().shell = shell;
+        self.rebased(&path);
+        self.says(out.lines().next().unwrap_or_default());
     }
 
     /// Where `:cd` left the Shell, taken as the directory Vim works
@@ -487,13 +570,12 @@ impl Vim {
     /// NAME` and `:explore NAME` resolve there from now on, and Tab
     /// completes there. A cwd outside the mirror leaves it where it
     /// was, no file of the editor's being under one.
-    fn rebased(&mut self) {
-        let path = self.shell.path();
+    fn rebased(&self, path: &str) {
         let Some(rest) = path.strip_prefix(MIRROR) else { return };
         if !(rest.is_empty() || rest.starts_with('/')) {
             return;
         }
-        self.dir = rest.trim_start_matches('/').into();
+        self.vim.borrow_mut().dir = rest.trim_start_matches('/').into();
     }
 
     /// Tab on the `:` line: what may stand where the last word does,
@@ -502,21 +584,22 @@ impl Vim {
     /// Vim runs itself take a name under the directory it works in;
     /// every other line is the shell's, which completes it from where
     /// the Shell stands.
-    fn completing(&mut self, ctx: &dyn Calls, ask: Ask) -> Result<bool, Error> {
+    fn completing(&self, ctx: &dyn Calls, ask: Ask) -> Result<(), Error> {
+        let shell = self.vim.borrow().shell.clone();
         let (from, found) = match ask {
             Ask::Names { word } => {
-                let found = complete(ctx, &self.shell, &word);
-                self.words(&word, found.candidates);
-                return Ok(true);
+                let found = complete(ctx, &shell, &word);
+                self.vim.borrow_mut().words(&word, found.candidates);
+                return Ok(());
             }
             Ask::Path { from, word } => (from, self.names(ctx, &word)?),
             Ask::Line { line } => {
-                let found = complete(ctx, &self.shell, &line);
+                let found = complete(ctx, &shell, &line);
                 (found.from, found.candidates)
             }
         };
-        self.offer(from, found);
-        Ok(true)
+        self.vim.borrow_mut().offer(from, found);
+        Ok(())
     }
 
     /// The names that may stand where `word` does: the children of
@@ -531,7 +614,8 @@ impl Vim {
             return Ok(Vec::new());
         };
         let Some(rest) = word.strip_prefix('/') else {
-            let under = resolved(ctx, &self.dir)?.unwrap_or(root);
+            let dir = self.vim.borrow().dir.clone();
+            let under = resolved(ctx, &dir)?.unwrap_or(root);
             return Ok(ops::paths(ctx, under, word));
         };
         let found = ops::paths(ctx, root, rest);
@@ -541,60 +625,18 @@ impl Vim {
     /// Where `:explore` with no name looks: the directory the Buffer's
     /// source is in, or, over nothing, the one the Client started in.
     fn here(&self, ctx: &dyn Calls) -> Result<Option<Rd>, Error> {
+        let (source, dir) = {
+            let vim = self.vim.borrow();
+            (vim.source, vim.dir.clone())
+        };
         let here = |source| ops::parent(ctx, source).map(Some);
-        self.source.map_or_else(|| resolved(ctx, &self.dir), here)
+        source.map_or_else(|| resolved(ctx, &dir), here)
     }
 
     /// Whether the Buffer holds what its source has not.
     fn unsaved(&self, mut ctx: &dyn Calls) -> Result<bool, Error> {
         let revisions = history::Call(&mut ctx, self.handle()?).tree()?;
         Ok(revisions.head != revisions.published)
-    }
-
-    /// `message` until the next key; true, as an effect that has
-    /// something to show answers.
-    fn says(&mut self, message: &str) -> bool {
-        self.message = String::from(message);
-        true
-    }
-
-    /// The View to the region, if the Client has one.
-    fn show(&mut self, caps: &mut Caps) -> Result<(), Error> {
-        let Some(region) = self.region else { return Ok(()) };
-        let view = self.view(self.rows);
-        grid::Call(caps, region).show(view)
-    }
-
-    /// What to show in a region of `rows` rows: the first byte of the
-    /// first line shown, which moves to keep the cursor in it, the
-    /// cursor itself and its shape, the selection and the search
-    /// matches as byte spans, and the status word.
-    pub fn view(&mut self, rows: usize) -> grid::View {
-        let height = rows.max(1);
-        let line = self.position().0;
-        if line < self.top {
-            self.top = line;
-        } else if line >= self.top + height {
-            self.top = line + 1 - height;
-        }
-        let selected = match self.mode {
-            Mode::Visual(kind) => self.selection_spans(kind, self.top, height),
-            _ => Vec::new(),
-        };
-        let marks = self.search_spans(self.top, height);
-        let mut spans: Vec<grid::Span> =
-            selected.into_iter().map(span(SELECTION)).collect();
-        spans.extend(marks.into_iter().map(span(MATCH)));
-        grid::View {
-            over: self.buffer.map_or(0, |buffer| buffer.0),
-            top: self.line_at(self.top).unwrap_or(0) as u64,
-            cursor: self.cursor as u64,
-            // Insert puts the cursor between chars, as nvim draws it;
-            // every other mode is on one.
-            shape: if self.mode == Mode::Insert { BAR } else { BLOCK },
-            spans,
-            status: self.status(),
-        }
     }
 }
 
@@ -666,14 +708,14 @@ fn made(
     method: &str,
     name: &str,
 ) -> Result<Rd, Error> {
-    let input = reovim_sdk::encode(&String::from(name));
+    let input = encode(&String::from(name));
     let out = ops::call_by_name(ctx, dir, method, input)?;
-    reovim_sdk::decode(&out)
+    decode(&out)
 }
 
 /// What a run printed, its cell closed where the run came back open: a
-/// Driver that follows is read this once and no more, a Plugin having
-/// no tick to read it again.
+/// Driver that follows is read this once and no more, one row of a
+/// status line having nowhere to put more.
 fn printed(ctx: &dyn Calls, ran: Ran) -> String {
     let Ran { out, open } = ran;
     if let Some(mut open) = open {
@@ -710,14 +752,4 @@ fn buffer_over(mut ctx: &dyn Calls, source: Option<Rd>) -> Result<Rd, Error> {
     };
     ops::close(ctx, opening)?;
     buffer
-}
-
-/// A byte range of the text as a span of `style`.
-fn span(style: u64) -> impl Fn((usize, usize)) -> grid::Span {
-    move |(from, to)| grid::Span { from: from as u64, to: to as u64, style }
-}
-
-/// A count the Client gave, as far as this machine counts.
-fn count(n: u64) -> usize {
-    usize::try_from(n).unwrap_or(usize::MAX)
 }

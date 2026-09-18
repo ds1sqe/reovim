@@ -22,6 +22,7 @@ std = ["reovim-host/std"]
 
 [dependencies]
 reovim-client = { path = "../../clients/core" }
+reovim-client-api = { path = "../../clients/core/api" }
 reovim-client-sh = { path = "../../clients/sh" }
 reovim-client-tui = { path = "../../clients/tui" }
 reovim-plugin-cli = { path = "../../plugins/cli" }

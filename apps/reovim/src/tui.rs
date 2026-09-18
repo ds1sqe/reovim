@@ -4,16 +4,15 @@
 
 use std::fmt::Write as _;
 use std::io::Write;
+use std::rc::Rc;
 
-use reovim_client::{
-    BAR, BLUE, BOLD, DIM, Fault, GREEN, Host, Key, Plugin, RED, RED_BOLD,
-    YELLOW,
+use reovim_client::dev::{self, Table, Want};
+use reovim_client::{Fault, Host};
+use reovim_client_api::{
+    BAR, BLUE, BOLD, DIM, GREEN, Key, RED, RED_BOLD, YELLOW,
 };
-use reovim_client_tui::{Frame, Step, Table, Tui, Want, width};
+use reovim_client_tui::{Frame, Step, Tui, width};
 use reovim_host::{clock, term};
-use reovim_plugin_cli::Cli;
-use reovim_plugin_explorer::Explorer;
-use reovim_plugin_vim::Vim;
 use reovim_sdk::path::under;
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, ops};
@@ -28,22 +27,24 @@ use crate::server::{Links, boot};
 /// the bare form.
 type Serve<'a> = &'a mut dyn FnMut() -> Result<(), Fail>;
 
-/// The tui over whichever Plugin the table gives: the one editor the
-/// binary offers.
-type Editor = Tui<Box<dyn Plugin>>;
-
-/// Which Plugin the binary makes for what a region is asked to show:
-/// Vim by name and for a cell, the explorer by name and for a
-/// Container, the cli buffer by name alone, no rd being of its shape.
-/// The names are the app's; the tui knows none of them.
-fn table() -> Table<Box<dyn Plugin>> {
-    Box::new(|want| match want {
-        Want::Named("vim") | Want::Cell => Some(Box::new(Vim::default())),
-        Want::Named("explorer") | Want::Container => {
-            Some(Box::new(Explorer::default()))
-        }
-        Want::Named("cli") => Some(Box::new(Cli::default())),
-        Want::Named(_) => None,
+/// Which Plugin the binary makes for what a region is asked to show,
+/// and the name it is loaded under at `/self`: Vim by name and for a
+/// cell, the explorer by name and for a Container, the cli buffer by
+/// name alone, no rd being of its shape. The names are the app's; the
+/// tui knows none of them.
+fn table() -> Table {
+    Box::new(|want| {
+        let made = match want {
+            Want::Named("vim") | Want::Cell => {
+                ("vim", reovim_plugin_vim::boot())
+            }
+            Want::Named("explorer") | Want::Container => {
+                ("explorer", reovim_plugin_explorer::boot())
+            }
+            Want::Named("cli") => ("cli", reovim_plugin_cli::boot()),
+            Want::Named(_) => return None,
+        };
+        Some((String::from(made.0), made.1))
     })
 }
 
@@ -98,14 +99,19 @@ fn run(
     (dir, file): (&str, Option<&str>),
     serve: Serve,
 ) -> Result<u8, Fail> {
-    let mut tui = Tui::open(host, dir, file, line, table())?;
+    // The Host is shared: `dev` loads and unloads a Plugin at it when
+    // the region is given away, which `Calls` cannot spell.
+    let host = Rc::new(host);
+    let line = line.map(|line| u64::try_from(line).unwrap_or(u64::MAX));
+    let dev = dev::boot(&host, table(), dir, file, line)?;
+    let mut tui = Tui::open(host, dev)?;
     term::enter()?;
     let result = drive(&mut tui, serve);
     let _ = term::leave();
     result
 }
 
-fn drive(tui: &mut Editor, serve: Serve) -> Result<u8, Fail> {
+fn drive(tui: &mut Tui, serve: Serve) -> Result<u8, Fail> {
     // The shape the terminal was last told of: it is told again only
     // when the Plugin has changed it.
     let mut shape = None;
@@ -128,7 +134,7 @@ fn drive(tui: &mut Editor, serve: Serve) -> Result<u8, Fail> {
 /// The whole frame: text rows, the status row inverted, the cursor
 /// hidden while it is drawn, placed after and given its shape when
 /// that is not the shape `shape` says the terminal already has.
-fn draw(tui: &mut Editor, shape: &mut Option<u64>) -> Result<(), Fail> {
+fn draw(tui: &mut Tui, shape: &mut Option<u64>) -> Result<(), Fail> {
     let (cols, rows) = term::size()?;
     let frame = tui.frame(cols, rows)?;
     let Frame { lines, cursor, shape: wanted, status, .. } = &frame;
@@ -249,7 +255,7 @@ const fn map(key: term::Key) -> Key {
 
 #[cfg(test)]
 mod tests {
-    use reovim_client::{BLUE, GREEN};
+    use reovim_client_api::{BLUE, GREEN};
     use reovim_client_tui::Frame;
 
     use super::{painted, runs};

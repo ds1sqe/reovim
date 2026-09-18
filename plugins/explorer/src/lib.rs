@@ -1,7 +1,7 @@
 #![no_std]
 #![forbid(unsafe_code)]
 //! The explorer: a Container listed in a Buffer of its own, and the
-//! few keys that walk it; the `Plugin` of clients/core.
+//! few keys that walk it; a Module a Client loads.
 //!
 //! It knows no filesystem and no Module. A Container is whatever the
 //! tree says is one, and its listing is `children`, `info` and the
@@ -15,24 +15,38 @@
 //! entry under the cursor, naming no Plugin, so which Plugin a
 //! directory or a file gets is the Client's table's; `-` asks for the
 //! parent the same way. The keys are netrw's hand-full, not an engine.
+//!
+//! One cell is served, `view`: a whole read of it is one frame, and
+//! the frame is where the work happens. The keys it has not taken, what
+//! changed under the Container since its last frame, and the View.
 
 extern crate alloc;
 
 use alloc::format;
+use alloc::rc::Rc;
 use alloc::string::String;
 use alloc::vec::Vec;
+use core::cell::{OnceCell, RefCell};
 
-use reovim_client::{
-    BLOCK, Calls, Caps, Ctx, Error, Event, Flags, Handle, Hash, Key, Kind,
-    Plugin, Rd, Rights, Start, grid, keys, open, process,
+use reovim_client_api::{BLOCK, Frames, Key, NONE, Region, count, window};
+use reovim_kernel_interface::{
+    Booted, Calls, Driver, DriverId, Error, Event, Flags, Handle, Kind, Module,
+    Rd, Reply, Rights,
 };
 use reovim_sdk::walk::ROOT;
-use reovim_sdk::{cell, ops};
+use reovim_sdk::{cell, encode, ops};
 use reovim_text_api::{open as text_open, text};
 
 /// What the prompt says to a line that is no command of the
 /// explorer's, as nvim says it.
 const E492: &str = "E492: Not an editor command: ";
+
+/// The explorer, ready for a Client to load.
+#[must_use]
+pub fn boot() -> Booted {
+    let explorer = Rc::new(Loaded::default());
+    Booted { module: explorer.clone(), drivers: alloc::vec![explorer] }
+}
 
 /// One line of the listing: what it is called, what Enter opens, and
 /// whether it is itself a Container.
@@ -66,7 +80,7 @@ impl Entry {
 /// selection, the rows the region has, and the `:` line while one is
 /// being typed.
 #[derive(Default)]
-pub struct Explorer {
+struct Explorer {
     /// The Container listed, and watched for what appears under it.
     dir: Option<Rd>,
     /// The scratch Buffer the listing is in, and the handle on it.
@@ -78,7 +92,7 @@ pub struct Explorer {
     /// The selected entry, and the first one shown.
     at: usize,
     top: usize,
-    /// The rows the region has, as `grid` last said.
+    /// The rows the region has, as `size` last said.
     rows: usize,
     /// The `:` line without its colon, while one is being typed.
     prompt: Option<String>,
@@ -86,64 +100,82 @@ pub struct Explorer {
     message: String,
     /// A `g` seen, waiting for the second one.
     half_g: bool,
-    region: Option<Handle>,
-    opening: Option<Handle>,
-    ending: Option<Handle>,
+    /// Where it stands in the one stream of events.
+    cursor: u64,
 }
 
-impl Plugin for Explorer {
+/// The explorer's state behind one `RefCell`: no borrow of it outlives
+/// an op, so a Driver that re-enters finds it free.
+#[derive(Default)]
+struct Loaded {
+    state: RefCell<Explorer>,
+    /// The cells of `/self/dev`, found once at `start`: they never
+    /// change, so no borrow of the state is held over an op.
+    region: OnceCell<Region>,
+    view: Frames,
+}
+
+impl Module for Loaded {
     /// The Container the region was opened on, listed: a scratch
-    /// Buffer of its own, a watch on the Container, the region asked
-    /// how big it is, and the listing filled in and shown.
-    ///
-    /// # Errors
-    /// `Unsupported` over a cell or over nothing, the region being
-    /// none of the explorer's; otherwise what a call it made says.
-    fn start(&mut self, ctx: Ctx<'_>, at: Start) -> Result<(), Error> {
-        let Ctx { ctx, caps } = ctx;
-        let dir = container(ctx, at.over)?;
-        self.dir = Some(dir);
+    /// Buffer of its own, a watch on the Container, and the one cell a
+    /// Plugin serves, `view`.
+    fn start(&self, ctx: &dyn Calls, home: Rd) -> Result<(), Error> {
+        let view = ctx.register(DriverId(0), home, Some("view"))?;
+        ctx.report(view, Flags::READ, &[])?;
+        let region = Region::of(ctx)?;
+        let dir = container(ctx, region.ask(ctx)?.target)?;
         let buffer = scratch(ctx)?;
         let rights = Rights::READ.union(Rights::WRITE);
-        self.buffer = Some(buffer);
-        self.h = Some(ctx.open(buffer, rights)?);
+        let h = ctx.open(buffer, rights)?;
         ops::watch(ctx, dir)?;
-        self.region = caps.open(grid::hash());
-        self.opening = caps.open(open::hash());
-        self.ending = caps.open(process::hash());
-        if let Some(region) = self.region {
-            self.rows = count(grid::Call(caps, region).size()?.rows);
-        }
+        let mut it = self.state.borrow_mut();
+        it.dir = Some(dir);
+        it.buffer = Some(buffer);
+        it.h = Some(h);
+        drop(it);
+        let _ = self.region.set(region);
+        self.sized(ctx)?;
         self.fill(ctx)?;
-        self.show(caps)
+        // Where the stream stands once the first listing is in: a
+        // cursor of 0 against a ring that never reached it is one
+        // Overflow, and what the listing itself registered under the
+        // Container is already in it.
+        let (_, cursor) = ops::since(ctx, 0)?;
+        self.state.borrow_mut().cursor = cursor;
+        Ok(())
+    }
+}
+
+impl Driver for Loaded {
+    fn open(&self, _: &dyn Calls, rd: Rd, _: Rights) -> Reply<u64> {
+        Reply::ok(rd.0)
     }
 
-    /// A key walked or typed, or a resize taken for what the View is
-    /// laid out over. An input of anything else is not the explorer's.
-    ///
-    /// # Errors
-    /// As [`Self::start`].
-    fn input(
-        &mut self,
-        ctx: Ctx<'_>,
-        from: Hash,
-        bytes: &[u8],
-    ) -> Result<(), Error> {
-        let Ctx { ctx, caps } = ctx;
-        if from == grid::hash() {
-            let resized: grid::Resized = reovim_sdk::decode(bytes)?;
-            self.rows = count(resized.rows);
-            return self.show(caps);
+    fn read(
+        &self,
+        ctx: &dyn Calls,
+        _: u64,
+        at: u64,
+        len: usize,
+    ) -> Reply<Vec<u8>> {
+        self.view.read(at, len, || self.framed(ctx))
+    }
+}
+
+impl Loaded {
+    /// One frame: every key it has not taken, what appeared or went
+    /// under the Container since the last one, the rows it has now,
+    /// and the View.
+    fn framed(&self, ctx: &dyn Calls) -> Result<Vec<u8>, Error> {
+        let keys = self.region()?.keys(ctx)?;
+        for key in keys {
+            // What the last key had to say stood until this one.
+            self.state.borrow_mut().message = String::new();
+            self.pressed(ctx, key)?;
         }
-        if from != keys::hash() {
-            return Ok(());
-        }
-        let press: keys::Press = reovim_sdk::decode(bytes)?;
-        let Some(key) = Key::of(press.key) else { return Ok(()) };
-        // What the last key had to say stood until this one.
-        self.message = String::new();
-        self.pressed(ctx, caps, key)?;
-        self.show(caps)
+        self.changed(ctx)?;
+        self.sized(ctx)?;
+        Ok(encode(&self.state.borrow_mut().view()))
     }
 
     /// A child that appeared, went or was renamed under the Container
@@ -152,57 +184,125 @@ impl Plugin for Explorer {
     /// whatever was dropped. The Container's own going leaves the last
     /// listing where it is: the tree says so at the next key that asks
     /// it anything.
-    ///
-    /// # Errors
-    /// As [`Self::start`].
-    fn changed(&mut self, ctx: Ctx<'_>, events: &[Event]) -> Result<(), Error> {
-        let Ctx { ctx, caps } = ctx;
-        let Some(dir) = self.dir else { return Ok(()) };
+    fn changed(&self, ctx: &dyn Calls) -> Result<(), Error> {
+        let cursor = self.state.borrow().cursor;
+        let (events, next) = ops::since(ctx, cursor)?;
+        if !self.state.borrow_mut().moved(next, &events) {
+            return Ok(());
+        }
+        self.fill(ctx)
+    }
+
+    /// The rows the region has now, as `windows/0/size` says.
+    fn sized(&self, ctx: &dyn Calls) -> Result<(), Error> {
+        let rows = self.region()?.size(ctx)?.rows;
+        self.state.borrow_mut().rows = count(rows);
+        Ok(())
+    }
+
+    /// The cells of `/self/dev` this Plugin holds; `Closed` before
+    /// `start` has found them.
+    fn region(&self) -> Result<&Region, Error> {
+        self.region.get().ok_or(Error::Closed)
+    }
+
+    /// One key: the prompt's while one is open, the second half of a
+    /// `gg`, or the listing's own.
+    fn pressed(&self, ctx: &dyn Calls, key: Key) -> Result<(), Error> {
+        let mut it = self.state.borrow_mut();
+        if it.prompt.is_some() {
+            let line = it.typed(key);
+            drop(it);
+            return line.map_or(Ok(()), |line| self.ran(ctx, &line));
+        }
+        if core::mem::take(&mut it.half_g) {
+            it.after_g(key);
+            return Ok(());
+        }
+        match key {
+            Key::Char('j') | Key::Down => it.at = it.below(),
+            Key::Char('k') | Key::Up => it.at = it.at.saturating_sub(1),
+            Key::Char('G') => it.at = it.last(),
+            Key::Char('g') => it.half_g = true,
+            Key::Char(':') => it.prompt = Some(String::new()),
+            Key::Char('-') => {
+                let dir = it.dir;
+                drop(it);
+                return self.parent(ctx, dir);
+            }
+            Key::Enter => {
+                let entry = it.entries.get(it.at).map(|entry| entry.rd);
+                drop(it);
+                return entry.map_or(Ok(()), |rd| self.asks(ctx, rd));
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// The line at the `:` prompt, run: `q` and `q!` leave with 0, the
+    /// listing holding nothing anybody could lose. An empty line is
+    /// nothing at all, and anything else is what nvim says to a
+    /// command it has not got.
+    fn ran(&self, ctx: &dyn Calls, line: &str) -> Result<(), Error> {
+        if line.is_empty() {
+            return Ok(());
+        }
+        if line != "q" && line != "q!" {
+            self.state.borrow_mut().message = format!("{E492}{line}");
+            return Ok(());
+        }
+        self.region()?.ends(ctx, 0)
+    }
+
+    /// `-`: the Container above this one, which the tree's root has
+    /// not got.
+    fn parent(&self, ctx: &dyn Calls, dir: Option<Rd>) -> Result<(), Error> {
+        let Some(dir) = dir else { return Ok(()) };
+        let Some(parent) = parent_of(ctx, dir)? else { return Ok(()) };
+        self.asks(ctx, parent)
+    }
+
+    /// `open` naming no Plugin: which one `target` is shown in is the
+    /// Client's table's, and the region is swapped at the next frame.
+    fn asks(&self, ctx: &dyn Calls, target: Rd) -> Result<(), Error> {
+        self.region()?.opens(ctx, target, "")
+    }
+
+    /// The listing read again and written whole, so that a refill is
+    /// one revision. The selection stays on the name it was on while
+    /// that name is still there, and is clamped where it is not.
+    fn fill(&self, mut ctx: &dyn Calls) -> Result<(), Error> {
+        let Some(dir) = self.state.borrow().dir else { return Ok(()) };
+        let was = {
+            let it = self.state.borrow();
+            it.entries.get(it.at).map(|entry| entry.name.clone())
+        };
+        let entries = listing(ctx, dir)?;
+        let (h, edit) = {
+            let mut it = self.state.borrow_mut();
+            it.entries = entries;
+            it.at = kept(&it.entries, was.as_deref(), it.at);
+            let text = shown(&it.entries);
+            let len = core::mem::replace(&mut it.len, text.len() as u64);
+            (it.h.ok_or(Error::Closed)?, text::Edit { at: 0, len, text })
+        };
+        text::Call(&mut ctx, h).replace(edit)
+    }
+}
+
+impl Explorer {
+    /// Whether the events say the listing moved, the cursor taken on
+    /// either way.
+    fn moved(&mut self, next: u64, events: &[Event]) -> bool {
+        self.cursor = next;
+        let Some(dir) = self.dir else { return false };
         let moved = |e: &Event| {
             let below =
                 matches!(e.kind, Kind::Create | Kind::Delete | Kind::Move);
             e.kind == Kind::Overflow || (below && e.rd == dir)
         };
-        if !events.iter().any(moved) {
-            return Ok(());
-        }
-        self.fill(ctx)?;
-        self.show(caps)
-    }
-}
-
-impl Explorer {
-    /// The Buffer `start` opened; `Closed` before it has.
-    fn handle(&self) -> Result<Handle, Error> {
-        self.h.ok_or(Error::Closed)
-    }
-
-    /// One key: the prompt's while one is open, the second half of a
-    /// `gg`, or the listing's own.
-    fn pressed(
-        &mut self,
-        ctx: &dyn Calls,
-        caps: &mut Caps,
-        key: Key,
-    ) -> Result<(), Error> {
-        if self.prompt.is_some() {
-            return self.typed(caps, key);
-        }
-        if core::mem::take(&mut self.half_g) {
-            self.after_g(key);
-            return Ok(());
-        }
-        match key {
-            Key::Char('j') | Key::Down => self.at = self.below(),
-            Key::Char('k') | Key::Up => self.at = self.at.saturating_sub(1),
-            Key::Char('G') => self.at = self.last(),
-            Key::Char('g') => self.half_g = true,
-            Key::Char(':') => self.prompt = Some(String::new()),
-            Key::Char('-') => return self.parent(ctx, caps),
-            Key::Enter => return self.entered(caps),
-            _ => {}
-        }
-        Ok(())
+        events.iter().any(moved)
     }
 
     /// The key after a `g`: `gg` is the first entry, and a `g` before
@@ -213,61 +313,23 @@ impl Explorer {
         }
     }
 
-    /// One key at the `:` line: it is typed into, dropped, or run.
-    /// Backspace over an empty line drops it, as nvim has it.
-    fn typed(&mut self, caps: &mut Caps, key: Key) -> Result<(), Error> {
-        let Some(mut line) = self.prompt.take() else { return Ok(()) };
+    /// One key at the `:` line: it is typed into, dropped, or run,
+    /// which gives the line back. Backspace over an empty line drops
+    /// it, as nvim has it.
+    fn typed(&mut self, key: Key) -> Option<String> {
+        let mut line = self.prompt.take()?;
         match key {
             Key::Char(c) => line.push(c),
-            Key::Backspace if line.is_empty() => return Ok(()),
+            Key::Backspace if line.is_empty() => return None,
             Key::Backspace => {
                 line.pop();
             }
-            Key::Esc => return Ok(()),
-            Key::Enter => return self.ran(caps, &line),
+            Key::Esc => return None,
+            Key::Enter => return Some(line),
             _ => {}
         }
         self.prompt = Some(line);
-        Ok(())
-    }
-
-    /// The line at the `:` prompt, run: `q` and `q!` leave with 0, the
-    /// listing holding nothing anybody could lose. An empty line is
-    /// nothing at all, and anything else is what nvim says to a
-    /// command it has not got.
-    fn ran(&mut self, caps: &mut Caps, line: &str) -> Result<(), Error> {
-        if line.is_empty() {
-            return Ok(());
-        }
-        if line != "q" && line != "q!" {
-            self.message = format!("{E492}{line}");
-            return Ok(());
-        }
-        let Some(ending) = self.ending else { return Ok(()) };
-        process::Call(caps, ending).exit(0)
-    }
-
-    /// Enter: the entry under the cursor, asked of the Client.
-    fn entered(&self, caps: &mut Caps) -> Result<(), Error> {
-        let Some(entry) = self.entries.get(self.at) else { return Ok(()) };
-        self.asks(caps, entry.rd)
-    }
-
-    /// `-`: the Container above this one, which the tree's root has
-    /// not got.
-    fn parent(&self, ctx: &dyn Calls, caps: &mut Caps) -> Result<(), Error> {
-        let Some(dir) = self.dir else { return Ok(()) };
-        let Some(parent) = parent_of(ctx, dir)? else { return Ok(()) };
-        self.asks(caps, parent)
-    }
-
-    /// `open` naming no Plugin: which one `target` is shown in is the
-    /// Client's table's, and the region is swapped once this call has
-    /// returned. A Client with no region to open in shows nothing.
-    fn asks(&self, caps: &mut Caps, target: Rd) -> Result<(), Error> {
-        let Some(opening) = self.opening else { return Ok(()) };
-        let ask = open::Ask { target: target.0, plugin: String::new() };
-        open::Call(caps, opening).open(ask)
+        None
     }
 
     /// The entry below the selected one; the selection stops at the
@@ -281,39 +343,18 @@ impl Explorer {
         self.entries.len().saturating_sub(1)
     }
 
-    /// The listing read again and written whole, so that a refill is
-    /// one revision. The selection stays on the name it was on while
-    /// that name is still there, and is clamped where it is not.
-    fn fill(&mut self, mut ctx: &dyn Calls) -> Result<(), Error> {
-        let Some(dir) = self.dir else { return Ok(()) };
-        let was = self.entries.get(self.at).map(|entry| entry.name.clone());
-        self.entries = listing(ctx, dir)?;
-        self.at = kept(&self.entries, was.as_deref(), self.at);
-        let text = shown(&self.entries);
-        let len = core::mem::replace(&mut self.len, text.len() as u64);
-        let edit = text::Edit { at: 0, len, text };
-        text::Call(&mut ctx, self.handle()?).replace(edit)
-    }
-
-    /// The View to the region, if the Client has one.
-    fn show(&mut self, caps: &mut Caps) -> Result<(), Error> {
-        let Some(region) = self.region else { return Ok(()) };
-        let view = self.view();
-        grid::Call(caps, region).show(view)
-    }
-
     /// What to show: the cursor on the first byte of the selected
     /// line, the first line shown moved to keep it in the rows the
     /// region has, and the `:` line or the last message as the status.
-    fn view(&mut self) -> grid::View {
+    fn view(&mut self) -> window::View {
         let height = self.rows.max(1);
         if self.at < self.top {
             self.top = self.at;
         } else if self.at >= self.top + height {
             self.top = self.at + 1 - height;
         }
-        grid::View {
-            over: self.buffer.map_or(0, |buffer| buffer.0),
+        window::View {
+            over: self.buffer.unwrap_or(NONE),
             top: byte_at(&self.entries, self.top),
             cursor: byte_at(&self.entries, self.at),
             shape: BLOCK,
@@ -332,10 +373,9 @@ impl Explorer {
 
 /// The Container the region was opened on. A region over a cell or
 /// over nothing is not the explorer's to show.
-fn container(ctx: &dyn Calls, over: Option<Rd>) -> Result<Rd, Error> {
-    let Some(rd) = over else { return Err(Error::Unsupported) };
-    if ops::info(ctx, rd)?.flags.contains(Flags::CONTAINER) {
-        return Ok(rd);
+fn container(ctx: &dyn Calls, over: Rd) -> Result<Rd, Error> {
+    if over != NONE && ops::info(ctx, over)?.flags.contains(Flags::CONTAINER) {
+        return Ok(over);
     }
     Err(Error::Unsupported)
 }
@@ -411,9 +451,4 @@ fn kept(entries: &[Entry], was: Option<&str>, at: usize) -> usize {
     let same = |name: &str| entries.iter().position(|e| e.name == name);
     let clamped = || at.min(entries.len().saturating_sub(1));
     was.and_then(same).unwrap_or_else(clamped)
-}
-
-/// A count the Client gave, as far as this machine counts.
-fn count(n: u64) -> usize {
-    usize::try_from(n).unwrap_or(usize::MAX)
 }

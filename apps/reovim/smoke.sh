@@ -199,9 +199,11 @@ editing other other
 [[ "$(sockets)" == 2 ]] || fail "two editors have $(sockets) sockets"
 [[ "$("$BIN" cli ls -a /session/1/client)" == *" 1" ]] \
     || fail "the running editor has no client rd 1"
+# What this Client serves is `ls /self/dev` inside it; the cell a
+# second Client would read it from holds nothing until `/self` is on
+# the wire.
 serves="$("$BIN" cli cat /session/1/client/1/capability)"
-[[ "$serves" == $'keys\ngrid\nopen\nprocess' ]] \
-    || fail "the running editor's client serves $serves"
+[[ -z "$serves" ]] || fail "the running editor's client serves $serves"
 # A line that cannot run: one line on stderr, naming the Driver and the
 # target, and exit 1.
 said="$("$BIN" cli cat /session 2>&1 >/dev/null)" && code=0 || code=$?

@@ -9,9 +9,8 @@ repository.workspace = true
 publish = false
 
 [dependencies]
-# For `Key` alone, which line.rs edits a line with; it leaves with the
-# declarations `Press` and `Key` move into.
-reovim-client = { path = "../core" }
+# For `Key` alone, which line.rs edits a line with.
+reovim-client-api = { path = "../core/api" }
 reovim-kernel-interface = { path = "../../kernel/interface" }
 reovim-sdk = { path = "../../sdk/rust" }
 

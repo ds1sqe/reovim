@@ -15,13 +15,17 @@ std = ["reovim-host/std"]
 
 [dependencies]
 reovim-client = { path = "../core" }
+reovim-client-api = { path = "../core/api" }
 reovim-host = { path = "../../host/os" }
+reovim-kernel-interface = { path = "../../kernel/interface" }
 reovim-kernel-runtime = { path = "../../kernel/runtime" }
 reovim-module-clipboard = { path = "../../modules/clipboard" }
 reovim-module-coreutils = { path = "../../modules/coreutils" }
 reovim-module-fs = { path = "../../modules/fs" }
 reovim-module-sysutils = { path = "../../modules/sysutils" }
 reovim-module-text = { path = "../../modules/text" }
+reovim-sdk = { path = "../../sdk/rust" }
+reovim-text-api = { path = "../../modules/text/api" }
 
 [lints]
 workspace = true

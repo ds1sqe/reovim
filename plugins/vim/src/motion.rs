@@ -1,7 +1,7 @@
 //! Where things are in the text: lines, columns, chars, and the
 //! moves that keep the cursor where Vim keeps it.
 
-use reovim_client::width;
+use reovim_client_api::width;
 
 use crate::{Effect, Mode, Vim, moved};
 

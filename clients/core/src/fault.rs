@@ -1,6 +1,5 @@
 //! Why a Client call did not happen or did not finish.
 
-use alloc::string::String;
 use core::fmt;
 
 use reovim_kernel_interface::Error;
@@ -13,8 +12,6 @@ pub enum Fault {
     Carrier,
     /// Bytes that are not a message, or a reply of the wrong shape.
     Wire,
-    /// The input was refused before anything was sent.
-    Usage(String),
 }
 
 impl fmt::Display for Fault {
@@ -23,7 +20,6 @@ impl fmt::Display for Fault {
             Self::Kernel(error) => write!(f, "{}", word(*error)),
             Self::Carrier => write!(f, "link gone"),
             Self::Wire => write!(f, "not a message"),
-            Self::Usage(text) => write!(f, "{text}"),
         }
     }
 }

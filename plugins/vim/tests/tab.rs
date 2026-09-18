@@ -8,19 +8,21 @@
 //! a walk through the history put back on the line. What a completed
 //! path ends as is nvim's own, and the corpus judges that.
 
-use reovim_client::Plugin;
-use reovim_client_tui::{Step, Table, Tui, Want};
+use std::rc::Rc;
+
+use reovim_client::dev::{self, Table, Want};
+use reovim_client_tui::{Step, Tui};
+use reovim_plugin_vim::DIVERGENCES;
 use reovim_plugin_vim::notation::keys;
-use reovim_plugin_vim::{DIVERGENCES, Vim};
 use reovim_rig::Rig;
 
 /// The one editor a test drives.
-type Editor = Tui<Box<dyn Plugin>>;
+type Editor = Tui;
 
 /// Vim for a cell; nothing else is opened here.
-fn table() -> Table<Box<dyn Plugin>> {
+fn table() -> Table {
     Box::new(|want| match want {
-        Want::Cell => Some(Box::new(Vim::default()) as Box<dyn Plugin>),
+        Want::Cell => Some((String::from("vim"), reovim_plugin_vim::boot())),
         _ => None,
     })
 }
@@ -33,8 +35,10 @@ fn over(test: &str) -> (Rig, Editor) {
     rig.file("d/alpha", b"");
     rig.file("d/note", b"one\ntwo\n");
     rig.file("d/sub/deep", b"");
-    let tui = Tui::open(rig.host(), "d", Some("d/note"), None, table());
-    (rig, tui.unwrap())
+    let host = Rc::new(rig.host());
+    let dev = dev::boot(&host, table(), "d", Some("d/note"), None).unwrap();
+    let tui = Tui::open(host, dev).unwrap();
+    (rig, tui)
 }
 
 /// Every key of `text` in Vim notation; what the last one did.

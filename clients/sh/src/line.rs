@@ -3,7 +3,7 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use reovim_client::Key;
+use reovim_client_api::Key;
 
 use crate::Completion;
 

@@ -1,76 +1,32 @@
 //! The explorer on a Kernel with fs and text, shown through the tui.
 //!
 //! The table gives the explorer whatever Container the region is asked
-//! for and a recording stub for a cell, so what the listing hands on
-//! is judged by what that stub was started over: the explorer's tests
-//! never use Vim, and Vim is judged by its own corpus.
+//! for and the rig's recording stub for a cell, so what the listing
+//! hands on is judged by what that stub was started over: the
+//! explorer's tests never use Vim, and Vim is judged by its own
+//! corpus.
 
-use std::cell::RefCell;
 use std::rc::Rc;
 
-use reovim_client::{
-    BLOCK, Client, Ctx, Error, Event, Fault, Hash, Key, Plugin, Rd, Rights,
-    Start, grid,
-};
-use reovim_client_tui::{Frame, Step, Table, Tui, Want};
-use reovim_plugin_explorer::Explorer;
-use reovim_rig::{Limits, Rig};
-use reovim_sdk::walk::ROOT;
-use reovim_sdk::{cell, ops};
-use reovim_text_api::open as text_open;
-
-/// The one editor a test drives, over whichever Plugin the table gives.
-type Editor = Tui<Box<dyn Plugin>>;
-
-/// What each start of the table's cell Plugin was over, in order.
-type Opened = Rc<RefCell<Vec<Option<Rd>>>>;
-
-/// A cell Plugin that records what it was started over and shows a
-/// Buffer over it, so the region has a name and text of its own.
-struct Stub(Opened);
-
-impl Plugin for Stub {
-    fn start(&mut self, ctx: Ctx<'_>, at: Start) -> Result<(), Error> {
-        let Ctx { mut ctx, caps } = ctx;
-        self.0.borrow_mut().push(at.over);
-        let opener = cell::resolve(ctx, ROOT, "/module/text/open")?;
-        let opening = ctx.open(opener, Rights::WRITE)?;
-        let mut call = text_open::Call(&mut ctx, opening);
-        let buffer = match at.over {
-            Some(source) => call.open(source)?,
-            None => call.new()?,
-        };
-        ops::close(ctx, opening)?;
-        let Some(region) = caps.open(grid::hash()) else { return Ok(()) };
-        let view = grid::View {
-            over: buffer.0,
-            top: 0,
-            cursor: 0,
-            shape: BLOCK,
-            spans: Vec::new(),
-            status: String::from("-- STUB --"),
-        };
-        grid::Call(caps, region).show(view)
-    }
-
-    fn input(&mut self, _: Ctx<'_>, _: Hash, _: &[u8]) -> Result<(), Error> {
-        Ok(())
-    }
-
-    fn changed(&mut self, _: Ctx<'_>, _: &[Event]) -> Result<(), Error> {
-        Ok(())
-    }
-}
+use reovim_client::Client;
+use reovim_client::dev::{self, Table, Want};
+use reovim_client_api::Key;
+use reovim_client_tui::{Frame, Step, Tui};
+use reovim_kernel_interface::{Error, Rd};
+use reovim_rig::{Limits, Rig, Seen, Stub};
+use reovim_sdk::encode;
 
 /// The app's table in the small: the explorer for a Container, the
 /// stub for a cell.
-fn table(seen: &Opened) -> Table<Box<dyn Plugin>> {
+fn table(seen: &Seen) -> Table {
     let seen = seen.clone();
     Box::new(move |want| match want {
         Want::Container => {
-            Some(Box::new(Explorer::default()) as Box<dyn Plugin>)
+            Some((String::from("explorer"), reovim_plugin_explorer::boot()))
         }
-        Want::Cell => Some(Box::new(Stub(seen.clone()))),
+        Want::Cell => {
+            Some((String::from("stub"), Stub::booted(&seen, "-- STUB --")))
+        }
         Want::Named(_) => None,
     })
 }
@@ -90,27 +46,34 @@ fn filled(rig: Rig) -> Rig {
 
 /// `name` made under `dir` as the fs Module makes a file.
 fn made(client: &mut Client, dir: Rd, name: &str) {
-    let input = reovim_sdk::encode(&String::from(name));
+    let input = encode(&String::from(name));
     client.call_by_name(dir, "create", input).unwrap();
 }
 
+/// The tui over `rig` with `table`, opened over the name `file`.
+fn editor(rig: &Rig, table: Table, file: Option<&str>) -> Result<Tui, Error> {
+    let host = Rc::new(rig.host());
+    let dev = dev::boot(&host, table, "", file, None)?;
+    Tui::open(host, dev)
+}
+
 /// The region opened on `name`, a name under the root.
-fn over(rig: &Rig, seen: &Opened) -> Editor {
-    Tui::open(rig.host(), "", Some("work"), None, table(seen)).unwrap()
+fn over(rig: &Rig, seen: &Seen) -> Tui {
+    editor(rig, table(seen), Some("work")).unwrap()
 }
 
 /// The frame at the size the app always asks for.
-fn frame(tui: &mut Editor) -> Frame {
+fn frame(tui: &mut Tui) -> Frame {
     tui.frame(80, 24).unwrap()
 }
 
 /// One key, whatever it did.
-fn press(tui: &mut Editor, key: Key) -> Step {
+fn press(tui: &mut Tui, key: Key) -> Step {
     tui.key(key).unwrap()
 }
 
 /// Those keys, in order, and what the last one did.
-fn keys(tui: &mut Editor, keys: &[Key]) -> Step {
+fn keys(tui: &mut Tui, keys: &[Key]) -> Step {
     let mut step = Step::Same;
     for key in keys {
         step = press(tui, *key);
@@ -119,14 +82,14 @@ fn keys(tui: &mut Editor, keys: &[Key]) -> Step {
 }
 
 /// The row the cursor is on, which is the entry selected.
-fn row(tui: &mut Editor) -> u16 {
+fn row(tui: &mut Tui) -> u16 {
     frame(tui).cursor.0
 }
 
 #[test]
 fn the_listing_is_the_parent_then_the_containers_then_the_cells() {
     let rig = work("listing");
-    let seen = Opened::default();
+    let seen = Seen::default();
     let mut tui = over(&rig, &seen);
     let frame = frame(&mut tui);
     assert_eq!(frame.lines, ["../", "sub/", "a", "b"], "each group sorted");
@@ -140,7 +103,7 @@ fn the_listing_is_the_parent_then_the_containers_then_the_cells() {
 #[test]
 fn the_selection_walks_the_entries_and_stops_at_both_ends() {
     let rig = work("walk");
-    let seen = Opened::default();
+    let seen = Seen::default();
     let mut tui = over(&rig, &seen);
     assert_eq!(press(&mut tui, Key::Char('j')), Step::Changed);
     assert_eq!(row(&mut tui), 1);
@@ -164,7 +127,7 @@ fn the_selection_walks_the_entries_and_stops_at_both_ends() {
 #[test]
 fn enter_on_a_cell_gives_the_region_to_the_cell_s_plugin() {
     let rig = work("enter");
-    let seen = Opened::default();
+    let seen = Seen::default();
     let mut tui = over(&rig, &seen);
     let mut other = rig.client();
     let a = other.resolve("/module/fs/root/work/a").unwrap();
@@ -179,7 +142,7 @@ fn enter_on_a_cell_gives_the_region_to_the_cell_s_plugin() {
 #[test]
 fn enter_on_a_container_lists_it_and_minus_lists_the_parent() {
     let rig = work("down-up");
-    let seen = Opened::default();
+    let seen = Seen::default();
     let mut tui = over(&rig, &seen);
     keys(&mut tui, &[Key::Char('j'), Key::Enter]);
     let below = frame(&mut tui);
@@ -196,7 +159,7 @@ fn enter_on_a_container_lists_it_and_minus_lists_the_parent() {
 #[test]
 fn minus_walks_the_tree_up_to_the_root_and_stops_there() {
     let rig = work("root");
-    let seen = Opened::default();
+    let seen = Seen::default();
     let mut tui = over(&rig, &seen);
     // The explorer names no Module: what is above a directory is
     // whatever the tree has above it.
@@ -222,7 +185,7 @@ fn minus_walks_the_tree_up_to_the_root_and_stops_there() {
 #[test]
 fn a_child_made_under_the_container_shows_at_the_next_tick() {
     let rig = work("appears");
-    let seen = Opened::default();
+    let seen = Seen::default();
     let mut tui = over(&rig, &seen);
     press(&mut tui, Key::Char('G'));
     let mut other = rig.client();
@@ -242,7 +205,7 @@ fn a_listing_behind_a_full_ring_is_read_again() {
     // Container is gone with it, so the listing is read again.
     let small = Limits { watch_ring: 2, ..Limits::default() };
     let rig = filled(Rig::with("overflow", small));
-    let seen = Opened::default();
+    let seen = Seen::default();
     let mut tui = over(&rig, &seen);
     let mut other = rig.client();
     let dir = other.resolve("/module/fs/root/work").unwrap();
@@ -257,7 +220,7 @@ fn a_listing_behind_a_full_ring_is_read_again() {
 #[test]
 fn the_prompt_is_the_status_and_esc_drops_it() {
     let rig = work("prompt");
-    let seen = Opened::default();
+    let seen = Seen::default();
     let mut tui = over(&rig, &seen);
     press(&mut tui, Key::Char(':'));
     assert_eq!(frame(&mut tui).status, "work  1:1  r2[+]   :");
@@ -276,7 +239,7 @@ fn the_prompt_is_the_status_and_esc_drops_it() {
 #[test]
 fn a_line_the_explorer_has_not_got_is_the_message_nvim_gives() {
     let rig = work("e492");
-    let seen = Opened::default();
+    let seen = Seen::default();
     let mut tui = over(&rig, &seen);
     let typed = [Key::Char(':'), Key::Char('x'), Key::Enter];
     assert_eq!(keys(&mut tui, &typed), Step::Changed);
@@ -290,7 +253,7 @@ fn a_line_the_explorer_has_not_got_is_the_message_nvim_gives() {
 fn q_and_q_bang_leave_with_nothing_to_lose() {
     for line in ["q", "q!"] {
         let rig = work("quit");
-        let seen = Opened::default();
+        let seen = Seen::default();
         let mut tui = over(&rig, &seen);
         let mut typed = vec![Key::Char(':')];
         typed.extend(line.chars().map(Key::Char));
@@ -304,9 +267,9 @@ fn a_region_over_a_cell_is_none_of_the_explorer_s() {
     let rig = work("cell");
     // A table that hands the explorer a region over a file: it is not
     // the explorer's to show, and it says so before anything is drawn.
-    let table: Table<Box<dyn Plugin>> =
-        Box::new(|_| Some(Box::new(Explorer::default()) as Box<dyn Plugin>));
-    let opened = Tui::open(rig.host(), "", Some("work/a"), None, table);
-    let refused = Fault::Kernel(Error::Unsupported);
-    assert_eq!(opened.err(), Some(refused));
+    let table: Table = Box::new(|_| {
+        Some((String::from("explorer"), reovim_plugin_explorer::boot()))
+    });
+    let opened = editor(&rig, table, Some("work/a"));
+    assert_eq!(opened.err(), Some(Error::Unsupported));
 }

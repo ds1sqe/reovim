@@ -6,7 +6,8 @@ use std::io::Write as _;
 use std::thread::sleep;
 use std::time::Duration;
 
-use reovim_client::{Calls, Fault, Host, Key};
+use reovim_client::{Calls, Fault, Host};
+use reovim_client_api::Key;
 use reovim_client_sh::{Act, Line, Miss, Open, Ran, Shell, complete};
 use reovim_host::{clock, term};
 

@@ -1,16 +1,15 @@
 #![no_std]
 #![forbid(unsafe_code)]
-//! Vim: keys in, calls out, over the text and the cursor it holds; the
-//! `Plugin` of clients/core.
+//! Vim: keys in, calls out, over the text and the cursor it holds; a
+//! Module a Client loads.
 //!
 //! The engine below is pure: a key becomes an `Effect`, which is what
 //! the keys asked for and has already happened to Vim's own copy of
-//! the text. `impl Plugin for Vim`, at the bottom, is what performs
-//! one: the edits go to the Buffer, the undo to its history, the save
-//! to its source, and what it all looks like goes to the `grid` the
-//! Client serves, as a View in bytes. Nothing of the screen is Vim's:
-//! it keeps the first line shown and the cursor, and the Client turns
-//! those into cells.
+//! the text. plugin.rs is what performs one: the edits go to the
+//! Buffer, the undo to its history, the save to its source, and what
+//! it all looks like is the View the region's one read answers with.
+//! Nothing of the screen is Vim's: it keeps the first line shown and
+//! the cursor, and the Client turns those into cells.
 //!
 //! The text is the Buffer's bytes. A `\n` ends a line; the last one
 //! ends the last line rather than starting an empty one, as Vim has
@@ -35,12 +34,14 @@ use alloc::vec::Vec;
 
 pub use command::{WORDS, Word, resolve};
 pub use operator::Motion;
-pub use reovim_client::{Key, Plugin};
+pub use plugin::{Editor, boot};
+pub use reovim_client_api::Key;
 pub use visual::Visual;
 
 use operator::{Find, Operator};
-use reovim_client::{Handle, Rd};
+use reovim_client_api::{BAR, BLOCK, MATCH, NONE, SELECTION, window};
 use reovim_client_sh::{Line, Shell};
+use reovim_kernel_interface::{Handle, Rd};
 use search::Search;
 use visual::{BlockInsert, Selection};
 
@@ -357,14 +358,9 @@ pub struct Vim {
     dir: String,
     /// `/module/clipboard/text`, when that Module is there.
     clip: Option<Rd>,
-    /// The grid region it shows in, when its Client serves one.
-    region: Option<Handle>,
-    /// `open`, when its Client serves it: how `:explore` asks for
-    /// another rd in this region.
-    opener: Option<Handle>,
-    /// `process`, when its Client serves it.
-    ending: Option<Handle>,
-    /// How many rows that region has: what `top` scrolls by.
+    /// Where it stands in the one stream of events.
+    cursor_at: u64,
+    /// How many rows the region has: what `top` scrolls by.
     rows: usize,
 }
 
@@ -935,6 +931,60 @@ impl Vim {
         self.clamp();
     }
 
+    /// The text the Buffer held when it was opened, and the cursor at
+    /// the line the Client was started at, counted from 1; 0 is the
+    /// first line, where it begins without one.
+    pub(crate) fn opened(&mut self, bytes: &[u8], line: u64) {
+        self.loaded(bytes);
+        let at = if line == 0 {
+            0
+        } else {
+            self.at_line(usize::try_from(line).unwrap_or(usize::MAX))
+        };
+        self.begin(at);
+    }
+
+    /// The byte line `n` starts at, counted from 1 and clamped to the
+    /// last line: the tty's `+N`, which only whoever holds the text
+    /// can find.
+    pub(crate) fn at_line(&self, n: usize) -> usize {
+        let line = n.max(1) - 1;
+        self.line_at(line.min(self.line_count() - 1)).unwrap_or(0)
+    }
+
+    /// What to show in a region of `rows` rows: the first byte of the
+    /// first line shown, which moves to keep the cursor in it, the
+    /// cursor itself and its shape, the selection and the search
+    /// matches as byte spans, and the status word.
+    #[must_use]
+    pub fn view(&mut self, rows: usize) -> window::View {
+        let height = rows.max(1);
+        let line = self.position().0;
+        if line < self.top {
+            self.top = line;
+        } else if line >= self.top + height {
+            self.top = line + 1 - height;
+        }
+        let selected = match self.mode {
+            Mode::Visual(kind) => self.selection_spans(kind, self.top, height),
+            _ => Vec::new(),
+        };
+        let marks = self.search_spans(self.top, height);
+        let mut spans: Vec<window::Span> =
+            selected.into_iter().map(span(SELECTION)).collect();
+        spans.extend(marks.into_iter().map(span(MATCH)));
+        window::View {
+            over: self.buffer.unwrap_or(NONE),
+            top: self.line_at(self.top).unwrap_or(0) as u64,
+            cursor: self.cursor as u64,
+            // Insert puts the cursor between chars, as nvim draws it;
+            // every other mode is on one.
+            shape: if self.mode == Mode::Insert { BAR } else { BLOCK },
+            spans,
+            status: self.status(),
+        }
+    }
+
     /// The status word: a message, the command line being typed, or
     /// the mode.
     #[must_use]
@@ -949,6 +999,11 @@ impl Vim {
             Mode::Visual(Visual::Block) => String::from("-- VISUAL BLOCK --"),
         }
     }
+}
+
+/// A byte range of the text as a span of `style`.
+fn span(style: u64) -> impl Fn((usize, usize)) -> window::Span {
+    move |(from, to)| window::Span { from: from as u64, to: to as u64, style }
 }
 
 const fn is_digit(key: Key) -> bool {

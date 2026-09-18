@@ -5,7 +5,7 @@
 mod common;
 
 use common::{edit, edits, on, typed};
-use reovim_client::{MATCH, SELECTION};
+use reovim_client_api::{MATCH, SELECTION};
 use reovim_plugin_vim::{Edit, Effect, Kind, Mode, Register, Vim, Visual};
 
 fn register(text: &str, kind: Kind) -> Register {

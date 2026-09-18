@@ -3,7 +3,7 @@
 mod common;
 
 use common::{edit, on, typed};
-use reovim_client::{BAR, BLOCK};
+use reovim_client_api::{BAR, BLOCK};
 use reovim_plugin_vim::notation::keys;
 use reovim_plugin_vim::{Edit, Effect, Key, Mode, Quit};
 
