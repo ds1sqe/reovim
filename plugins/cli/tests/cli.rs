@@ -7,8 +7,6 @@
 //! these tests judge is the buffer: the prompt, the transcript, the
 //! line, and the way out.
 
-use std::rc::Rc;
-
 use reovim_client::dev::{self, Clip, Table, Want};
 use reovim_client_api::{BLUE, Key, Region};
 use reovim_client_tui::{Frame, Step, Tui};
@@ -57,7 +55,7 @@ fn work(test: &str) -> Rig {
 
 /// The tui over `rig` with `table`, opened over the name `file`.
 fn editor(rig: &Rig, table: Table, file: Option<&str>) -> Tui {
-    let host = Rc::new(rig.host());
+    let host = rig.host();
     let dev = dev::boot(&host, table, Clip::none(), "", file, None).unwrap();
     Tui::open(host, dev).unwrap()
 }

@@ -3,13 +3,14 @@
 //! pipe or as an edited line with completion on a terminal.
 
 use std::io::Write as _;
+use std::rc::Rc;
 use std::thread::sleep;
 use std::time::Duration;
 
 use reovim_client::{Calls, Fault, Host};
 use reovim_client_api::Key;
 use reovim_client_sh::{Act, Line, Miss, Open, Ran, Shell, complete};
-use reovim_host::{clock, term};
+use reovim_host::term;
 
 use crate::Fail;
 use crate::remote::Remote;
@@ -109,12 +110,12 @@ fn follow(ctx: &dyn Calls, mut open: Open, mode: Mode) -> Result<(), Fail> {
 
 /// A Client on the server at `socket`, behind the one door; a link
 /// that never opened says so with the path, which only the app knows.
-fn linked(socket: &str) -> Result<Host, Fail> {
+fn linked(socket: &str) -> Result<Rc<Host>, Fail> {
     match Remote::client(socket, Vec::new()) {
         Err(Fail::Host(_) | Fail::Client(Fault::Carrier)) => {
             Err(Miss::line(&format!("no server at {socket}")).into())
         }
-        other => Ok(Host::over(other?, clock::now)),
+        other => crate::client::over(other?),
     }
 }
 

@@ -68,11 +68,6 @@ enum Owner {
     /// The cell of a declaration a local `report` published, which
     /// stands under the server's `/sys/decls`.
     Decl(Hash),
-    /// A cell a write of sends one of the two wire messages that are
-    /// not ops: `unload` of a Module's name, else `load` of a path.
-    /// The Client may speak to the link, so it is the Client that
-    /// serves them; a caller reaches them as it reaches anything.
-    Loader { unload: bool },
 }
 
 /// One row of the local table: the Kernel's `Entry` less what a Client
@@ -142,6 +137,38 @@ struct Loaded {
     module: Rc<dyn Module>,
 }
 
+/// The rds on the way to the server's `/sys/decls`, remembered as a
+/// lookup walks to them. Both are fixed rows of the Kernel's table, so
+/// what was found once stays found: the walk the sdk makes to read a
+/// declaration costs one pair of messages per Client and no more, and
+/// a run of a local Driver after that reaches the link for nothing.
+#[derive(Clone, Copy, Default)]
+struct Fixed {
+    sys: Option<Rd>,
+    decls: Option<Rd>,
+}
+
+impl Fixed {
+    /// The rd of `name` under `rd`, when it is one of the two steps and
+    /// the walk has been made already.
+    fn known(self, rd: Rd, name: &str) -> Option<Rd> {
+        match name {
+            "sys" if rd == ROOT => self.sys,
+            "decls" if Some(rd) == self.sys => self.decls,
+            _ => None,
+        }
+    }
+
+    /// One answered step remembered; every other lookup passes.
+    fn saw(&mut self, rd: Rd, name: &str, found: Rd) {
+        match name {
+            "sys" if rd == ROOT => self.sys = Some(found),
+            "decls" if Some(rd) == self.sys => self.decls = Some(found),
+            _ => {}
+        }
+    }
+}
+
 /// Everything the Host holds: the tree it serves, the handles on it,
 /// the Drivers behind it and the one event ring.
 struct State {
@@ -160,8 +187,8 @@ struct State {
     openers: BTreeMap<Handle, ModuleId>,
     /// What a local `report` published, by hash.
     decls: BTreeMap<Hash, Decl>,
-    /// The server's `/sys/decls`, once a lookup has walked to it.
-    decls_rd: Option<Rd>,
+    /// The two rds on the way to the server's `/sys/decls`.
+    fixed: Fixed,
     events: VecDeque<Event>,
     next_seq: u64,
 }
@@ -318,7 +345,7 @@ impl State {
     fn served_by(&self, module: ModuleId) -> Vec<Rd> {
         let mine = |owner: Owner| match owner {
             Owner::Driver { module: m, .. } | Owner::Home(m) => m == module,
-            Owner::Container | Owner::Decl(_) | Owner::Loader { .. } => false,
+            Owner::Container | Owner::Decl(_) => false,
         };
         self.nodes
             .iter()
@@ -363,10 +390,11 @@ pub struct Host {
 }
 
 impl Host {
-    /// The Host over `wire`, holding `/self` with the two cells the
-    /// Client writes a wire message by, and the Client's own
-    /// `ModuleId(0)`, which serves no Driver yet. `clock` is the host's
-    /// monotonic tick, which stamps the times of a local rd.
+    /// The Host over `wire`, holding `/self` and the `bin` a Module
+    /// this Client loads registers its names under, and the Client's
+    /// own `ModuleId(0)`, whose Driver [`Self::serves`] gives it.
+    /// `clock` is the host's monotonic tick, which stamps the times of
+    /// a local rd.
     #[must_use]
     pub fn over(wire: Client, clock: fn() -> u64) -> Self {
         let now = clock();
@@ -381,15 +409,14 @@ impl Host {
             modules: alloc::vec![None],
             openers: BTreeMap::new(),
             decls: BTreeMap::new(),
-            decls_rd: None,
+            fixed: Fixed::default(),
             events: VecDeque::new(),
             next_seq: 1,
         };
-        let bin = state.insert(SELF, Some("bin"), Owner::Container, flags, now);
-        for name in ["load", "unload"] {
-            let owner = Owner::Loader { unload: name == "unload" };
-            state.insert(bin, Some(name), owner, Flags::WRITE, now);
-        }
+        // A Container of the Host's own, as `/bin` is a fixed row of
+        // the Kernel's table: a Module the Client loads registers its
+        // names here, and `check_parent` admits any Module under it.
+        state.insert(SELF, Some("bin"), Owner::Container, flags, now);
         let depth = Cell::new(0);
         Self {
             wire: RefCell::new(wire),
@@ -465,6 +492,14 @@ impl Host {
         }
         s.drivers[id.0 as usize] = Vec::new();
         Ok(())
+    }
+
+    /// The Client's own Driver, `ModuleId(0)`'s `DriverId(0)`: what
+    /// the Host serves itself, standing under no Module and no home,
+    /// so no `unload` reaches it. [`Self::own`] is what registers its
+    /// names, `/self/bin`'s `load` and `unload` being the two.
+    pub fn serves(&self, driver: Rc<dyn Driver>) {
+        self.state.borrow_mut().drivers[0] = alloc::vec![driver];
     }
 
     /// What `module` holds to speak to this Host, so one Module cannot
@@ -640,7 +675,7 @@ fn check_parent(s: &State, parent: Rd, module: ModuleId) -> Result<(), Error> {
     let allowed = match node.owner {
         Owner::Container => true,
         Owner::Driver { module: m, .. } | Owner::Home(m) => m == module,
-        Owner::Decl(_) | Owner::Loader { .. } => false,
+        Owner::Decl(_) => false,
     };
     if allowed { Ok(()) } else { Err(Error::Denied) }
 }
@@ -666,10 +701,17 @@ fn lookup(host: &Host, rd: Rd, name: &str) -> Answer {
         return Ok(Out::Rd(SELF));
     }
     if !local(rd.0) {
+        if let Some(known) = host.state.borrow().fixed.known(rd, name) {
+            return Ok(Out::Rd(known));
+        }
         if let Some(cell) = published(host, rd, name) {
             return Ok(Out::Rd(cell));
         }
-        return host.sent(Op::Lookup { rd, name: name.to_string() });
+        let out = host.sent(Op::Lookup { rd, name: name.to_string() })?;
+        if let Out::Rd(found) = out {
+            host.state.borrow_mut().fixed.saw(rd, name, found);
+        }
+        return Ok(out);
     }
     let (owner, child) = {
         let s = host.state.borrow();
@@ -711,14 +753,15 @@ fn published(host: &Host, rd: Rd, name: &str) -> Option<Rd> {
 
 /// The server's `/sys/decls`, walked to once and kept. It is asked for
 /// only when a lookup names a hash this Host published, so no other
-/// local op pays a wire message for it.
+/// local op pays a wire message for it; a reader that walked there
+/// itself has left the way in [`Fixed`] already.
 fn decls_rd(host: &Host) -> Option<Rd> {
-    if let Some(rd) = host.state.borrow().decls_rd {
+    if let Some(rd) = host.state.borrow().fixed.decls {
         return Some(rd);
     }
     let sys = found(host.sent(Op::Lookup { rd: ROOT, name: "sys".into() }))?;
     let rd = found(host.sent(Op::Lookup { rd: sys, name: "decls".into() }))?;
-    host.state.borrow_mut().decls_rd = Some(rd);
+    host.state.borrow_mut().fixed = Fixed { sys: Some(sys), decls: Some(rd) };
     Some(rd)
 }
 
@@ -786,10 +829,7 @@ fn open(host: &Host, module: ModuleId, rd: Rd, rights: Rights) -> Answer {
             let d = host.driver(module, driver)?;
             ready(d.open(&host.calls(module), rd, rights))?
         }
-        Owner::Container
-        | Owner::Home(_)
-        | Owner::Decl(_)
-        | Owner::Loader { .. } => 0,
+        Owner::Container | Owner::Home(_) | Owner::Decl(_) => 0,
     };
     let mut s = host.state.borrow_mut();
     let h = Handle(s.next_handle);
@@ -814,9 +854,7 @@ fn read(host: &Host, h: Handle, at: u64, len: u32) -> Answer {
             let s = host.state.borrow();
             part(&s.decls.get(&hash).ok_or(Error::Gone)?.canonical(), at, len)
         }
-        Owner::Container | Owner::Home(_) | Owner::Loader { .. } => {
-            return Err(Error::Unsupported);
-        }
+        Owner::Container | Owner::Home(_) => return Err(Error::Unsupported),
     };
     let now = host.now();
     if let Ok(node) = host.state.borrow_mut().node_mut(slot.rd) {
@@ -830,9 +868,6 @@ fn write(host: &Host, h: Handle, at: u64, bytes: Vec<u8>) -> Answer {
         return host.sent(Op::Write { h, at, bytes });
     }
     let (slot, owner) = held(host, h, Rights::WRITE)?;
-    if let Owner::Loader { unload } = owner {
-        return sent_message(host, unload, &bytes);
-    }
     let Owner::Driver { module, driver } = owner else {
         return Err(Error::Unsupported);
     };
@@ -840,19 +875,6 @@ fn write(host: &Host, h: Handle, at: u64, bytes: Vec<u8>) -> Answer {
     let calls = host.calls(module);
     let took = ready(d.write(&calls, slot.cookie, at, &bytes))?;
     Ok(Out::Len(u32::try_from(took).unwrap_or(u32::MAX)))
-}
-
-/// One of the two messages, sent: the borrow of the wire lasts exactly
-/// the statement that speaks, as every wire op's does.
-fn sent_message(host: &Host, unload: bool, bytes: &[u8]) -> Answer {
-    let text = core::str::from_utf8(bytes).map_err(|_| Error::Invalid)?;
-    let sent = if unload {
-        host.wire.borrow_mut().unload(text)
-    } else {
-        host.wire.borrow_mut().load(text)
-    };
-    sent.map_err(|f| refused(&f))?;
-    Ok(Out::Len(u32::try_from(bytes.len()).unwrap_or(u32::MAX)))
 }
 
 /// What the Kernel checks before the slot, because a Driver's `call` is
@@ -987,7 +1009,7 @@ fn found(answer: Answer) -> Option<Rd> {
 
 /// What the link failed with, in the one closed error set: a link that
 /// is gone is `Gone`, bytes that are no reply are `Invalid`.
-const fn refused(fault: &Fault) -> Error {
+pub const fn refused(fault: &Fault) -> Error {
     match fault {
         Fault::Kernel(error) => *error,
         Fault::Carrier => Error::Gone,

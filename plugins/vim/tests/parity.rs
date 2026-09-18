@@ -5,7 +5,6 @@
 
 use std::fmt::Write as _;
 use std::path::Path;
-use std::rc::Rc;
 
 use reovim_client::dev::{self, Clip, Table};
 use reovim_client_tui::{Step, Tui};
@@ -68,7 +67,7 @@ fn replay(case: &Path) -> Result<(), String> {
     let one = vim.clone();
     let table: Table =
         Box::new(move |_| Some((String::from("vim"), one.booted())));
-    let host = Rc::new(rig.host());
+    let host = rig.host();
     let dev = dev::boot(&host, table, Clip::none(), "", Some("file"), None)
         .map_err(|error| format!("{name}: {error:?}"))?;
     let mut tui = Tui::open(host, dev).map_err(|e| format!("{name}: {e:?}"))?;

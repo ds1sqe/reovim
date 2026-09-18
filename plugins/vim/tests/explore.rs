@@ -8,8 +8,6 @@
 //! netrw draws a buffer of its own and the runner records Vim's
 //! frames, not netrw's — so smoke.sh judges the picture by hand.
 
-use std::rc::Rc;
-
 use reovim_client::dev::{self, Clip, Table, Want};
 
 use reovim_client_tui::{Frame, Step, Tui};
@@ -52,7 +50,7 @@ fn work(test: &str) -> Rig {
 /// An editor over `d/f`, started in `d` as the app starts it there: a
 /// relative name the command gives is resolved under that.
 fn over(rig: &Rig, seen: &Seen) -> Editor {
-    let host = Rc::new(rig.host());
+    let host = rig.host();
     let dev =
         dev::boot(&host, table(seen), Clip::none(), "d", Some("d/f"), None)
             .unwrap();

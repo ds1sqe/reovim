@@ -18,6 +18,7 @@ reovim-text-api = { path = "../../modules/text/api" }
 reovim-host = { path = "../../host/os", features = ["std"] }
 reovim-kernel-runtime = { path = "../../kernel/runtime" }
 reovim-rig = { path = "../rig" }
+reovim-module-coreutils = { path = "../../modules/coreutils" }
 reovim-module-text = { path = "../../modules/text" }
 reovim-module-fs = { path = "../../modules/fs" }
 

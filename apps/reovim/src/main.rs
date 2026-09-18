@@ -5,6 +5,7 @@
 //! process.
 
 mod cli;
+mod client;
 mod dump;
 mod local;
 mod log;
@@ -88,7 +89,7 @@ socket, or at reovim-<pid>.sock while another editor holds it;
 may be given more than once (--sys loglevel=debug --sys
 limit/log_ring=65536);
 the cli runs one typed LINE and exits, or reads lines until the end of
-the input; help typed at it lists what is under /bin";
+the input; help typed at it lists every name PATH holds";
 
 /// When the output may carry color: `--color=WHEN`, and `--color`
 /// alone as GNU ls takes it.

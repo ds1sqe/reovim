@@ -260,7 +260,8 @@ fn a_token_too_many_is_a_miss_with_the_form() {
     assert_eq!(go(ctx, "uptime x"), "uptime x: usage: uptime");
 
     // A name PATH does not hold, and a line that names none.
-    assert_eq!(go(ctx, "lookup /"), "lookup: not under /bin; help lists them");
+    let held = "lookup: not under /self/vim/bin /self/bin /bin";
+    assert_eq!(go(ctx, "lookup /"), format!("{held}; help lists them"));
     assert_eq!(go(ctx, "   "), "no name; help lists them");
 }
 

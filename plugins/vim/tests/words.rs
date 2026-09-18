@@ -9,8 +9,6 @@
 //! text, the file on disk, the search marks, and what a listing was
 //! started over.
 
-use std::rc::Rc;
-
 use reovim_client::dev::{self, Clip, Table, Want};
 
 use reovim_client_tui::{Step, Tui};
@@ -48,7 +46,7 @@ fn work(test: &str) -> Rig {
 
 /// An editor over `d/note`, started in `d`.
 fn over(rig: &Rig, seen: &Seen) -> Editor {
-    let host = Rc::new(rig.host());
+    let host = rig.host();
     let dev =
         dev::boot(&host, table(seen), Clip::none(), "d", Some("d/note"), None)
             .unwrap();

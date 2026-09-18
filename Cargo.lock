@@ -159,6 +159,7 @@ dependencies = [
  "reovim-host",
  "reovim-kernel-interface",
  "reovim-kernel-runtime",
+ "reovim-module-coreutils",
  "reovim-module-fs",
  "reovim-module-text",
  "reovim-rig",

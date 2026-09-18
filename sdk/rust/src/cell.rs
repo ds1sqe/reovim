@@ -6,8 +6,8 @@
 //! empty and closes it, which takes it out of the tree. A run that
 //! follows gives its cell a [`Follow`], and then the end of the bytes
 //! is not the end: the read there does the following's work. Beside the
-//! cells, the two lookups such a Driver makes: the root's `bin`, where
-//! it registers itself, and the rd a path names.
+//! cells, the two lookups such a Driver makes: the nearest `bin` above
+//! its home, where it registers itself, and the rd a path names.
 
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
@@ -17,22 +17,38 @@ use core::cell::RefCell;
 use reovim_kernel_interface::{Calls, DriverId, Error, Flags, Rd};
 
 use crate::ops;
-use crate::walk::{ROOT, Step, walk};
+use crate::walk::{Step, walk};
 
-/// The root's `bin`, the Container a Driver that a typed line runs
-/// registers itself under at `start`.
+/// The nearest `bin` above `home`, the Container a Driver that a typed
+/// line runs registers itself under at `start`.
+///
+/// The walk goes up and takes the first ancestor that holds a `bin`:
+/// `/bin` from `/module/coreutils` at a Kernel, `/self/bin` from
+/// `/self/coreutils` at a Client, one rule and nothing in the Module
+/// saying which host it is under. It never looks under `home` itself,
+/// so a Module serving a child called `bin` is not taken for one
+/// standing beside it.
 ///
 /// ```ignore
-/// fn start(&self, ctx: &dyn Calls, _: Rd) -> Result<(), Error> {
-///     let rd = ctx.register(DriverId(0), cell::bin(ctx)?, Some("stat"))?;
+/// fn start(&self, ctx: &dyn Calls, home: Rd) -> Result<(), Error> {
+///     let bin = cell::bin(ctx, home)?;
+///     let rd = ctx.register(DriverId(0), bin, Some("stat"))?;
 ///     ctx.report(rd, READ_CONTAINER, &[self.decl.clone()])
 /// }
 /// ```
 ///
 /// # Errors
-/// As `Op::Lookup`; `Invalid` when the root has no `bin`.
-pub fn bin(ctx: &dyn Calls) -> Result<Rd, Error> {
-    ops::lookup(ctx, ROOT, "bin")
+/// As `Op::Parent`: `Invalid` when no ancestor of `home` holds a
+/// `bin`, the walk ending above the root.
+pub fn bin(ctx: &dyn Calls, home: Rd) -> Result<Rd, Error> {
+    let mut at = home;
+    loop {
+        // Above the root `Parent` is `Invalid`, which ends the walk.
+        at = ops::parent(ctx, at)?;
+        if let Ok(bin) = ops::lookup(ctx, at, "bin") {
+            return Ok(bin);
+        }
+    }
 }
 
 /// The rd `path` names, from `from` when it is relative, as [`walk`]

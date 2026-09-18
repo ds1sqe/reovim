@@ -8,7 +8,7 @@
 //! method of whatever api an rd offers, `watch` says what happens to an
 //! rd, and `date` and `uptime` spell two of the facts under
 //! `/sys/info`. The shape is coreutils' own: one Module and one Driver
-//! serving six declared apis, a name under the root's `bin` per api,
+//! serving six declared apis, a name under the nearest `bin` per api,
 //! and a run answering with the rd of one output cell that its reader
 //! drains and closes.
 //!
@@ -49,7 +49,7 @@ const DRIVER: DriverId = DriverId(0);
 /// for.
 const NODE: Flags = Flags::READ.union(Flags::CONTAINER);
 
-/// What is registered under the root's `bin`, in the order of `decls`
+/// What is registered under the `bin`, in the order of `decls`
 /// and `hashes`.
 const NAMES: [&str; 6] = ["log", "dmesg", "call", "watch", "date", "uptime"];
 
@@ -115,8 +115,8 @@ impl Sysutils {
 }
 
 impl Module for Sysutils {
-    fn start(&self, ctx: &dyn Calls, _home: Rd) -> Result<(), Error> {
-        let bin = cell::bin(ctx)?;
+    fn start(&self, ctx: &dyn Calls, home: Rd) -> Result<(), Error> {
+        let bin = cell::bin(ctx, home)?;
         for (name, decl) in NAMES.iter().zip(&self.decls) {
             let rd = ctx.register(DRIVER, bin, Some(name))?;
             ctx.report(rd, NODE, core::slice::from_ref(decl))?;

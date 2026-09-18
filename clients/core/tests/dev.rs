@@ -219,7 +219,7 @@ impl Dev {
         file: Option<&str>,
         line: Option<u64>,
     ) -> Self {
-        let host = Rc::new(rig.host());
+        let host = rig.host();
         let rd =
             dev::boot(&host, table, Clip::none(), dir, file, line).unwrap();
         Self { host, rd }
@@ -228,7 +228,7 @@ impl Dev {
     /// `dev` over `rig` with `clip` for its machine and no Plugin at
     /// all: what the two cases of the clipboard cell ask.
     fn clipped(rig: &Rig, clip: Clip) -> Self {
-        let host = Rc::new(rig.host());
+        let host = rig.host();
         let rd = dev::boot(&host, none(), clip, "", None, None).unwrap();
         Self { host, rd }
     }

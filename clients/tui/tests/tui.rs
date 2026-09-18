@@ -250,7 +250,7 @@ fn over(rig: &Rig, file: Option<&str>) -> (Tui, Stub) {
     let one = stub.clone();
     let table: Table =
         Box::new(move |_| Some((String::from("stub"), one.booted())));
-    let host = Rc::new(rig.host());
+    let host = rig.host();
     let dev = dev::boot(&host, table, Clip::none(), "", file, None).unwrap();
     (Tui::open(host, dev).unwrap(), stub)
 }

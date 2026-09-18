@@ -1,7 +1,9 @@
 //! A name under PATH and the run of it.
 //!
-//! The name resolves by lookup under PATH, by its exact name and never
-//! by a table: what is there is what runs. The declaration its rd
+//! The name resolves by lookup under each directory of PATH in turn,
+//! by its exact name and never by a table: the first directory that
+//! holds it wins and what is there is what runs. Nothing about a name
+//! says which side of the door it is on. The declaration its rd
 //! reports says what the line fills; the run answers with the rd of one
 //! output cell, which the shell opens, reads at an offset to the empty
 //! read that ends it, and closes, which takes the cell out of the tree.
@@ -22,9 +24,11 @@ use reovim_sdk::{cell, ops};
 
 use crate::{Miss, Shell, Step, decode, miss, resolved};
 
-/// Where a name is looked up. One Container in this milestone, and a
-/// name is taken from it by its exact spelling.
-const PATH: &str = "/bin";
+/// Where a name is looked up, in the order a name resolves: this
+/// Client's Vim, this Client's own userland, then the server's. A
+/// directory that is not there is skipped, so a Client with no Vim and
+/// a shell with no Host of its own both work.
+const PATH: [&str; 3] = ["/self/vim/bin", "/self/bin", "/bin"];
 
 /// Bytes asked per read of an output cell.
 const CHUNK: u32 = 64 * 1024;
@@ -96,15 +100,27 @@ pub fn split<'a>(
     Ok((tokens, Some(sink)))
 }
 
-/// The names under PATH, sorted, whatever order the tree lists them in.
+/// The names PATH holds, in the order a name resolves: PATH's order,
+/// and inside a directory the order the tree lists it, the first
+/// spelling of a name winning so each appears once. A listing that
+/// reads better sorted sorts this itself.
 pub fn names(ctx: &dyn Calls) -> Vec<String> {
-    let Ok(at) = cell::resolve(ctx, ROOT, PATH) else { return Vec::new() };
-    let Ok(children) = ops::children(ctx, at) else { return Vec::new() };
+    let held = |at| ops::children(ctx, at).unwrap_or_default();
     let under = |rd| ops::info(ctx, rd).ok()?.name;
-    let mut names: Vec<String> =
-        children.into_iter().filter_map(under).collect();
-    names.sort();
+    let mut names: Vec<String> = Vec::new();
+    for name in dirs(ctx).flat_map(held).filter_map(under) {
+        // The first spelling of a name wins, so each appears once.
+        if !names.contains(&name) {
+            names.push(name);
+        }
+    }
     names
+}
+
+/// The directories of PATH that resolve, in PATH's order. It is lazy,
+/// so a name the first directory holds costs no walk to the rest.
+fn dirs(ctx: &dyn Calls) -> impl Iterator<Item = Rd> + '_ {
+    PATH.iter().filter_map(|path| cell::resolve(ctx, ROOT, path).ok())
 }
 
 /// The fields the run of `name` takes; `None` for a name PATH does not
@@ -189,16 +205,16 @@ pub fn under_path(
     Ok(Ran { out, open: None })
 }
 
-/// The rd of a name PATH does not hold: none.
+/// The rd of `name` under the first directory of PATH that holds it;
+/// none where no directory does.
 fn lookup(ctx: &dyn Calls, name: &str) -> Option<Rd> {
-    let at = cell::resolve(ctx, ROOT, PATH).ok()?;
-    ops::lookup(ctx, at, name).ok()
+    dirs(ctx).find_map(|at| ops::lookup(ctx, at, name).ok())
 }
 
 /// A name no directory of PATH holds, as `help NAME` and a line that
 /// names one are both refused.
 fn not_under(name: &str) -> Miss {
-    let cause = format!("not under {PATH}; help lists them");
+    let cause = format!("not under {}; help lists them", PATH.join(" "));
     let (name, target) = (name.to_string(), String::new());
     Miss { name, target, cause, unknown: false }
 }

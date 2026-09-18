@@ -12,6 +12,7 @@
 
 extern crate alloc;
 
+pub mod bin;
 mod buffers;
 mod client;
 pub mod dev;
@@ -19,6 +20,7 @@ mod fault;
 mod host;
 pub mod log;
 
+pub use bin::Rvm;
 pub use client::{Carrier, Client, ROOT, Tree};
 pub use dev::{Clip, Table, Want};
 pub use fault::Fault;

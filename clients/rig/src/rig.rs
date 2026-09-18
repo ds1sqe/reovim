@@ -2,7 +2,7 @@ use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use reovim_client::{Carrier, Client, Clip, Fault, Host};
+use reovim_client::{Carrier, Client, Clip, Fault, Host, Rvm, bin};
 use reovim_host::{clock, mem};
 use reovim_kernel_runtime::{Connection, Heap, Kernel, Limits, NoLoader};
 
@@ -115,13 +115,19 @@ impl Rig {
     }
 
     /// A Client of its own behind the one door, which is what
-    /// everything above the Client takes its ops through.
+    /// everything above the Client takes its ops through: `/self/bin`
+    /// served, with no `.rvm` files behind `-l` and no Module loaded
+    /// of its own, so a typed line resolves at the server's `/bin` as
+    /// it did before there was a Host. It is an `Rc`, a Driver of the
+    /// Client's own holding the Host it speaks for.
     ///
     /// # Panics
-    /// As [`Self::client`].
+    /// As [`Self::client`], and when `/self/bin` refuses the two names.
     #[must_use]
-    pub fn host(&self) -> Host {
-        Host::over(self.client(), clock::now)
+    pub fn host(&self) -> Rc<Host> {
+        let host = Rc::new(Host::over(self.client(), clock::now));
+        bin::boot(&host, Rvm::none()).unwrap();
+        host
     }
 
     /// How many messages the Clients of this rig have sent, which a

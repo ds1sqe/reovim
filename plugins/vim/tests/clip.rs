@@ -6,8 +6,6 @@
 //! this one follows the bytes out of the Plugin, through the cell, to
 //! the store the rig stands in for the machine's tool.
 
-use std::rc::Rc;
-
 use reovim_client::dev::{self, Clip, Table, Want};
 use reovim_client_tui::Tui;
 use reovim_plugin_vim::notation::keys;
@@ -27,7 +25,7 @@ fn over(test: &str, clip: impl FnOnce(&Rig) -> Clip) -> (Rig, Tui) {
     let rig = Rig::new(test);
     rig.file("note", b"one\ntwo\n");
     let clip = clip(&rig);
-    let host = Rc::new(rig.host());
+    let host = rig.host();
     let dev = dev::boot(&host, table(), clip, "", Some("note"), None).unwrap();
     let tui = Tui::open(host, dev).unwrap();
     (rig, tui)

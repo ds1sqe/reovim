@@ -1,6 +1,7 @@
 //! Where a line stands in the tree, and the names the shell runs
-//! itself: `cd` and `pwd` move and say, `load` and `unload` are the
-//! server's two messages, and neither takes a redirect.
+//! itself: `cd` and `pwd` move and say, and neither takes a redirect.
+//! `load` and `unload` are runs now, Drivers of the Client's own under
+//! `/self/bin`, so they are here as any name under PATH is.
 
 use reovim_client_sh::{Shell, run};
 use reovim_kernel_interface::Calls;
@@ -129,42 +130,50 @@ fn a_builtin_takes_its_own_tokens_and_no_redirect() {
 
     assert_eq!(go(ctx, "pwd here"), "pwd here: usage: pwd");
     assert_eq!(go(ctx, "cd a b"), "cd a b: usage: cd [target]");
-    assert_eq!(go(ctx, "load"), "load: usage: load <path>");
     assert_eq!(
         go(ctx, "pwd > /module/fs/root/out"),
         "pwd: a redirect takes a run's output"
     );
 
-    // `load` and `unload` are the server's own two messages and no op
-    // of the tree, so what it refuses is one line of the shell's table.
-    // The rig loads its Modules itself and serves neither.
+    // `load` is a run, so a path nobody typed is the Driver's own
+    // answer and not a usage line of the shell's: a declaration says
+    // which fields a run has and not which it needs.
+    assert_eq!(go(ctx, "load"), "load: invalid");
+
+    // Without `-l` both speak to the link, and what the server says
+    // comes back through the shell's one table. The rig loads its
+    // Modules itself and reads no file for anyone.
     let loaded = go(ctx, "load /nowhere.rvm");
     assert_eq!(loaded, "load /nowhere.rvm: unsupported");
     let gone = go(ctx, "unload text");
     assert_eq!(gone, "unload text: unsupported");
+
+    // With `-l` it is this Client, which was given no files at all.
+    let own = go(ctx, "load -l /nowhere.rvm");
+    assert_eq!(own, "load -l /nowhere.rvm: unsupported");
 }
 
-/// From the Host the shell stands on both sides, so `cd /self` works
-/// and a name under `/bin` can be handed a cwd of the Client's own.
-/// That name runs at the server, which has never heard of such an rd:
-/// the refusal is right and is pinned here rather than hidden. It stops
-/// mattering once the same Drivers stand under `/self/bin` too.
+/// From the Host the shell stands on both sides, so a line walks into
+/// the Client's own tree as it walks into the server's, and the two
+/// names the Host serves are where PATH looks first. What a Driver of
+/// the Client's own reads, and what the server's refuses, is pinned by
+/// clients/core/tests/bin.rs over a Host that loaded a userland.
 #[test]
-fn a_name_under_bin_handed_a_local_cwd_is_refused() {
+fn the_clients_own_tree_stands_at_the_root_beside_the_servers() {
     let rig = Rig::new("sh-self");
     let host = rig.host();
     let ctx = &host.own();
     let mut shell = Shell::default();
     let mut go = |ctx: &dyn Calls, line: &str| typed(ctx, &mut shell, line);
 
-    // The Client's own tree stands at the root beside the server's.
     assert_eq!(go(ctx, "cd /self"), "");
     assert_eq!(go(ctx, "pwd"), "/self\n");
     assert_eq!(go(ctx, "cd bin"), "");
     assert_eq!(go(ctx, "pwd"), "/self/bin\n");
 
-    // `/bin` is the server's userland: the cwd it is given is no rd of
-    // the tree it reads, whichever way the line names it.
-    assert_eq!(go(ctx, "ls"), "ls: invalid");
-    assert_eq!(go(ctx, "ls /self"), "ls /self: invalid");
+    // The first directory of PATH that holds the name wins, and this
+    // Client holds `load` itself; `ls` it has not, so that one is the
+    // server's, as `help` says of every name here.
+    assert_eq!(go(ctx, "help load"), "load [-l] [path]\n");
+    assert_eq!(go(ctx, "help ls"), "ls [-l] [-a] [-w] [targets..]\n");
 }

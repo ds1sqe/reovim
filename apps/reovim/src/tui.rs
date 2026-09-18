@@ -12,7 +12,7 @@ use reovim_client_api::{
     BAR, BLUE, BOLD, DIM, GREEN, Key, RED, RED_BOLD, YELLOW,
 };
 use reovim_client_tui::{Frame, Step, Tui, width};
-use reovim_host::{clipboard, clock, term};
+use reovim_host::{clipboard, term};
 use reovim_sdk::path::under;
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, ops};
@@ -80,7 +80,7 @@ pub fn remote(
 ) -> Result<u8, Fail> {
     let credential = format!("tui:{}", std::process::id()).into_bytes();
     let client = Remote::client(socket, credential)?;
-    run(Host::over(client, clock::now), line, ("", file), &mut || Ok(()))
+    run(crate::client::over(client)?, line, ("", file), &mut || Ok(()))
 }
 
 /// Bare `reovim`: the server on this thread over `/`, listening at
@@ -103,7 +103,7 @@ pub fn bare(
     let dir = under("", &reovim_host::dirs::work()?);
     let file = file.map(|file| under(&dir, file));
     let client = Local::client(&kernel)?;
-    let host = Host::over(client, clock::now);
+    let host = crate::client::over(client)?;
     // The terminal is the editor's, so where it listens is said in the
     // log the `server` form prints on stderr.
     let entry = cell::resolve(&host.own(), ROOT, "/sys/log")?;
@@ -117,14 +117,11 @@ pub fn bare(
 /// The loop in the host's terminal mode, left on every exit, a fault
 /// printed after; the exit code the tui asked for.
 fn run(
-    host: Host,
+    host: Rc<Host>,
     line: Option<usize>,
     (dir, file): (&str, Option<&str>),
     serve: Serve,
 ) -> Result<u8, Fail> {
-    // The Host is shared: `dev` loads and unloads a Plugin at it when
-    // the region is given away, which `Calls` cannot spell.
-    let host = Rc::new(host);
     let line = line.map(|line| u64::try_from(line).unwrap_or(u64::MAX));
     let dev = dev::boot(&host, table(), clip(), dir, file, line)?;
     let mut tui = Tui::open(host, dev)?;

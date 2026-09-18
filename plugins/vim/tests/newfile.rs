@@ -31,7 +31,7 @@ fn editor(
     let one = vim.clone();
     let table: Table =
         Box::new(move |_| Some((String::from("vim"), one.booted())));
-    let host: Rc<Host> = Rc::new(rig.host());
+    let host: Rc<Host> = rig.host();
     let dev = dev::boot(&host, table, Clip::none(), dir, file, line).unwrap();
     (Tui::open(host, dev).unwrap(), vim)
 }

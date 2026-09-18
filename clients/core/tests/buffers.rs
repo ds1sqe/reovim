@@ -39,7 +39,7 @@ impl Drafts {
     /// cases judge the list and what stands under it, and nothing ever
     /// holds the region.
     fn over(rig: &Rig) -> Self {
-        let host = Rc::new(rig.host());
+        let host = rig.host();
         let table: Table = Box::new(|_| None);
         let dev =
             dev::boot(&host, table, Clip::none(), "", None, None).unwrap();

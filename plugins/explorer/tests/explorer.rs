@@ -6,8 +6,6 @@
 //! explorer's tests never use Vim, and Vim is judged by its own
 //! corpus.
 
-use std::rc::Rc;
-
 use reovim_client::Client;
 use reovim_client::dev::{self, Clip, Table, Want};
 use reovim_client_api::Key;
@@ -52,7 +50,7 @@ fn made(client: &mut Client, dir: Rd, name: &str) {
 
 /// The tui over `rig` with `table`, opened over the name `file`.
 fn editor(rig: &Rig, table: Table, file: Option<&str>) -> Result<Tui, Error> {
-    let host = Rc::new(rig.host());
+    let host = rig.host();
     let dev = dev::boot(&host, table, Clip::none(), "", file, None)?;
     Tui::open(host, dev)
 }

@@ -1,15 +1,16 @@
 #![no_std]
 #![forbid(unsafe_code)]
-//! coreutils: the Module that provides the Drivers under `/bin` the
-//! server links.
+//! coreutils: the Module that provides the Drivers a typed line runs,
+//! under the `bin` of whichever host loaded it.
 //!
 //! One Module and one Driver serving four declared apis: `stat`, `ls`,
-//! `tree` and `cat`. `start` registers a name under the root's `bin`
-//! per api, and a call names the api it belongs to, so the rd called on
-//! and the hash together say what to run. Method 0 of each answers with
-//! the rd of one output cell; whoever opened that cell reads it at an
-//! offset to the empty read that ends it and closes it, which takes it
-//! out of the tree. A run that fails registers nothing.
+//! `tree` and `cat`. `start` registers a name under the nearest `bin`
+//! above its home per api, and a call names the api it belongs to, so
+//! the rd called on and the hash together say what to run. Method 0 of
+//! each answers with the rd of one output cell; whoever opened that
+//! cell reads it at an offset to the empty read that ends it and
+//! closes it, which takes it out of the tree. A run that fails
+//! registers nothing.
 //!
 //! Each api is a file of `bins`, holding its declaration and its `run`.
 //! The text more than one of them prints is `format`; what they ask the
@@ -41,7 +42,7 @@ const DRIVER: DriverId = DriverId(0);
 /// for.
 const NODE: Flags = Flags::READ.union(Flags::CONTAINER);
 
-/// What is registered under the root's `bin`, in the order of `decls`
+/// What is registered under the `bin`, in the order of `decls`
 /// and `hashes`.
 const NAMES: [&str; 4] = ["stat", "ls", "tree", "cat"];
 
@@ -100,8 +101,8 @@ impl Coreutils {
 }
 
 impl Module for Coreutils {
-    fn start(&self, ctx: &dyn Calls, _home: Rd) -> Result<(), Error> {
-        let bin = cell::bin(ctx)?;
+    fn start(&self, ctx: &dyn Calls, home: Rd) -> Result<(), Error> {
+        let bin = cell::bin(ctx, home)?;
         for (name, decl) in NAMES.iter().zip(&self.decls) {
             let rd = ctx.register(DRIVER, bin, Some(name))?;
             ctx.report(rd, NODE, core::slice::from_ref(decl))?;

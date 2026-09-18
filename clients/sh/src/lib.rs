@@ -8,7 +8,7 @@
 //!
 //! What it owns is what changes the shell and not the tree: the line
 //! and its editing, where the line stands (`cd`, `pwd`), PATH, `help`,
-//! `load` and `unload`, `>` and `>>`, Tab. A line that does not run
+//! `>` and `>>`, Tab. A line that does not run
 //! gives a [`Miss`]: the name, what the cause is about, and the shell's
 //! sentence for it, which the host prints as one line.
 
@@ -26,8 +26,8 @@ use core::fmt;
 use core::fmt::Write as _;
 
 use reovim_kernel_interface::{Calls, Error, Flags, Rd};
+use reovim_sdk::ops;
 use reovim_sdk::walk::{self, ROOT};
-use reovim_sdk::{cell, ops};
 
 pub use complete::{Completion, complete};
 pub use line::{Act, Line};
@@ -44,25 +44,16 @@ struct Builtin {
 /// The column a usage line's help begins at.
 const HELP: usize = 32;
 
-/// Where the cells for the two messages stand: the Client's own tree.
-const MESSAGES: &str = "/self/bin";
-
 /// The names the shell runs itself, in the order `help` lists them:
-/// where the line stands, what the server loads, and `help` itself.
-/// Everything else is a name under PATH.
-const BUILTINS: [Builtin; 5] = [
+/// where the line stands, and `help` itself. Everything else is a name
+/// under PATH.
+const BUILTINS: [Builtin; 3] = [
     Builtin {
         name: "cd",
         args: "[target]",
         help: "go there; none is /, - the one before",
     },
     Builtin { name: "pwd", args: "", help: "where the line stands now" },
-    Builtin {
-        name: "load",
-        args: "<path>",
-        help: "the Module in that .rvm file",
-    },
-    Builtin { name: "unload", args: "<name>", help: "the Module of that name" },
     Builtin {
         name: "help",
         args: "[name]",
@@ -219,7 +210,7 @@ impl Miss {
 enum Step {
     /// Walking a target's path, which only `cd` and a redirect do now.
     Resolve,
-    /// Everything else: the run, the reads of its cell, `load`.
+    /// Everything else: the run and the reads of its cell.
     Op,
 }
 
@@ -273,7 +264,7 @@ pub fn run(
     Ok(Ran { out, open: None })
 }
 
-/// The five the shell runs itself; what a builtin prints.
+/// The three the shell runs itself; what a builtin prints.
 fn ran(
     ctx: &dyn Calls,
     shell: &mut Shell,
@@ -283,24 +274,11 @@ fn ran(
     match (name, args.len()) {
         ("cd", 0 | 1) => cd(ctx, shell, args.first().copied()),
         ("pwd", 0) => Ok(format!("{}\n", shell.path).into_bytes()),
-        ("load" | "unload", 1) => loading(ctx, name, args[0]),
         ("help", 0 | 1) => {
             help(ctx, args.first().copied()).map(String::into_bytes)
         }
         _ => Err(misused(name, args)),
     }
-}
-
-/// `load` and `unload`, which are the server's two messages and not
-/// ops: a write of the path, or of the name, to the cell the Client
-/// keeps for it, which is the Client's to send since it holds the
-/// link. Neither prints anything.
-fn loading(ctx: &dyn Calls, name: &str, target: &str) -> Result<Vec<u8>, Miss> {
-    let refused = |error: Error| miss(name, target, Step::Op, error, "");
-    let path = format!("{MESSAGES}/{name}");
-    let rd = cell::resolve(ctx, ROOT, &path).map_err(refused)?;
-    ops::put(ctx, rd, target.as_bytes().to_vec()).map_err(refused)?;
-    Ok(Vec::new())
 }
 
 /// A builtin given more or fewer tokens than it takes: its own form.
@@ -313,14 +291,18 @@ fn misused(name: &str, args: &[&str]) -> Miss {
 
 /// `help`, and `help NAME`: the lines the shell can run, read from the
 /// builtins and from the declaration of every name under PATH, or the
-/// one line of that name.
+/// one line of that name. The listing is sorted, a listing reading
+/// better that way; Tab is not, a completion having to offer first
+/// what the line would run.
 fn help(ctx: &dyn Calls, asked: Option<&str>) -> Result<String, Miss> {
     let Some(name) = asked else {
         let mut out = String::new();
         for entry in &BUILTINS {
             let _ = writeln!(out, "{}", entry.line());
         }
-        for name in run::names(ctx) {
+        let mut names = run::names(ctx);
+        names.sort();
+        for name in names {
             let _ = writeln!(out, "{}", run::form(ctx, &name)?);
         }
         out.push_str(AFTER);

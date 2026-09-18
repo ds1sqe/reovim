@@ -212,7 +212,11 @@ fn a_line_says_what_it_could_not_do_and_help_needs_no_server() {
     let held = server.cli(&["cat", "/module/fs/root"], b"").unwrap_err();
     assert_eq!(held, "reovim: cat /module/fs/root: unsupported\n");
     let nonsense = server.cli(&["nonsense"], b"").unwrap_err();
-    assert_eq!(nonsense, "reovim: nonsense: not under /bin; help lists them\n");
+    let under = "/self/vim/bin /self/bin /bin";
+    assert_eq!(
+        nonsense,
+        format!("reovim: nonsense: not under {under}; help lists them\n")
+    );
     let entry = server.cli(&["help", "cat"], b"").unwrap();
     assert_eq!(
         String::from_utf8(entry).unwrap(),
@@ -242,7 +246,7 @@ fn a_line_says_what_it_could_not_do_and_help_needs_no_server() {
         "{text}"
     );
     assert!(
-        text.contains("help typed at it lists what is under /bin"),
+        text.contains("help typed at it lists every name PATH holds"),
         "{text}"
     );
     let missing = cli(&["cat", "/"]);
