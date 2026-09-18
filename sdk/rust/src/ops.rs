@@ -9,7 +9,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use reovim_kernel_interface::{
-    Calls, Decl, Error, Handle, Hash, Info, Op, Out, Rd, Reply, Rights,
+    Calls, Decl, Error, Event, Handle, Hash, Info, Op, Out, Rd, Reply, Rights,
 };
 
 use crate::cell;
@@ -54,6 +54,52 @@ pub fn bytes(ctx: &dyn Calls, rd: Rd) -> Result<Vec<u8>, Error> {
     let read = read_all(ctx, h);
     let _ = ctx.submit(Op::Close { h });
     read
+}
+
+/// A handle on `rd`, open and watching it, which is what a run that
+/// follows keeps: closing it stops the watch.
+///
+/// # Errors
+/// As `Op::Open` and `Op::Watch`.
+pub fn watch(ctx: &dyn Calls, rd: Rd) -> Result<Handle, Error> {
+    let h = ctx.open(rd, Rights::READ)?;
+    ready(ctx.submit(Op::Watch { h, on: true }))?;
+    Ok(h)
+}
+
+/// A handle on each of `rds`, open and watching, or none at all: what
+/// a run that follows several targets keeps.
+///
+/// # Errors
+/// As [`watch`]; a failure closes the handles opened before it, so a
+/// run that fails leaves nothing open.
+pub fn watch_all(ctx: &dyn Calls, rds: &[Rd]) -> Result<Vec<Handle>, Error> {
+    let mut handles = Vec::new();
+    for rd in rds {
+        let opened = watch(ctx, *rd).inspect_err(|_| shut(ctx, &handles));
+        handles.push(opened?);
+    }
+    Ok(handles)
+}
+
+/// Every one of `handles` closed, whatever each close answers.
+pub fn shut(ctx: &dyn Calls, handles: &[Handle]) {
+    for h in handles {
+        let _ = ctx.submit(Op::Close { h: *h });
+    }
+}
+
+/// The events after `cursor` on every rd this Module watches, and the
+/// cursor for the next ask. The Kernel keeps no cursor of its own, so
+/// each follower holds one and takes its own rds out of what it gets.
+///
+/// # Errors
+/// As `Op::Since`.
+pub fn since(ctx: &dyn Calls, cursor: u64) -> Result<(Vec<Event>, u64), Error> {
+    match ready(ctx.submit(Op::Since { cursor }))? {
+        Out::Events { events, cursor } => Ok((events, cursor)),
+        _ => Err(Error::Invalid),
+    }
 }
 
 /// The declaration `hash` names, as the Kernel publishes it at

@@ -244,7 +244,7 @@ fn the_drivers_under_bin_come_of_linked_modules() {
     let server = Server::start("bin");
     assert_eq!(
         server.line(&["ls", "/bin"]),
-        "call\ncat\ndmesg\nlog\nls\nstat\ntree"
+        "call\ncat\ndmesg\nlog\nls\nstat\ntree\nwatch"
     );
     for name in ["coreutils", "sysutils"] {
         let rd = server.line(&["lookup", &format!("/module/{name}")]);
@@ -260,7 +260,7 @@ fn the_drivers_under_bin_come_of_linked_modules() {
     assert!(said.contains("\nls v1\n"), "{said}");
     assert!(
         said.contains(
-            "  0 run({long: bool, all: bool, cwd: Rd, width: u64, \
+            "  0 run({long: bool, all: bool, w: bool, cwd: Rd, width: u64, \
              color: bool, targets: [utf8(256); 64]}) -> Rd READ"
         ),
         "{said}"
@@ -270,8 +270,8 @@ fn the_drivers_under_bin_come_of_linked_modules() {
     assert!(
         said.contains(
             "  0 run({t: bool, T: bool, H: bool, d: bool, r: bool, \
-             x: bool, k: bool, f: utf8(256), l: utf8(256), \
-             color: bool}) -> Rd READ"
+             x: bool, k: bool, w: bool, W: bool, f: utf8(256), \
+             l: utf8(256), color: bool}) -> Rd READ"
         ),
         "{said}"
     );

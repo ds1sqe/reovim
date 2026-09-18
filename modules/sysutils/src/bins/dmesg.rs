@@ -6,20 +6,25 @@
 //! Kernel's own numbers said in words, filtered by mark and level. The
 //! fields are dmesg's own letters, which a shell takes literally, so
 //! `-T` fills `T`; every form is a function of an entry, the boot time,
-//! the entry printed before it and the record, and nothing of the run
-//! is remembered past it.
+//! the entry printed before it and the record.
+//!
+//! Under `w` or `W` the cell goes on: the run keeps its handle on the
+//! log, and a read at the cell's end answers whatever the log gained
+//! past the last sequence it saw, in the same form. `w` writes what the
+//! log already held first, `W` only what comes after.
 
+use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-use reovim_kernel_interface::{Calls, Error, Rd};
+use reovim_kernel_interface::{Calls, Error, Handle, Op, Rd};
+use reovim_sdk::cell::Follow;
 use reovim_sdk::date::civil;
 use reovim_sdk::log::{self, Entry};
 
-use crate::Sysutils;
-use crate::entries;
 use crate::names::{KERNEL, Names, decoded};
+use crate::{Sysutils, entries, sgr};
 
 reovim_sdk::declare! {
     api dmesg ver 1 {
@@ -33,6 +38,8 @@ reovim_sdk::declare! {
         r: bool,
         x: bool,
         k: bool,
+        w: bool,
+        W: bool,
         f: utf8(256),
         l: utf8(256),
         color: bool
@@ -58,12 +65,56 @@ const BOLD: &str = "1";
 
 impl dmesg::Api for Sysutils {
     fn run(&self, ctx: &dyn Calls, rd: Rd, args: Args) -> Result<Rd, Error> {
+        let (tails, held) = (args.w || args.W, !args.W);
         let form = Form::of(args)?;
-        let entries = entries::from(ctx, 0)?;
-        let names = Names::of(ctx, &entries);
+        let h = entries::open(ctx)?;
+        let entries = entries::from(ctx, h, 0)?;
         let boot = entries.first().map_or(0, |entry| entry.time);
-        let text = show(&entries, boot, &form, &names);
-        self.cell(ctx, rd, text.into_bytes())
+        let from = entries.last().map_or(0, |entry| entry.seq + 1);
+        let mut names = Names::default();
+        let mut last = None;
+        // `W` is the new entries only, and learns nothing of the ones
+        // it does not write.
+        let text = if held {
+            names.learn(ctx, &entries);
+            show(&entries, boot, &mut last, &form, &names)
+        } else {
+            String::new()
+        };
+        if !tails {
+            let _ = ctx.submit(Op::Close { h });
+            return self.cell(ctx, rd, text.into_bytes());
+        }
+        let tailing = Tailing { h, from, boot, last, form, names };
+        self.following(ctx, rd, text.into_bytes(), Box::new(tailing))
+    }
+}
+
+/// `w` and `W` between reads: the handle the run kept on the log, the
+/// sequence to read from, and what the forms need to write the next
+/// line.
+struct Tailing {
+    h: Handle,
+    from: u64,
+    boot: u64,
+    last: Option<u64>,
+    form: Form,
+    names: Names,
+}
+
+impl Follow for Tailing {
+    fn more(&mut self, ctx: &dyn Calls) -> Result<Option<Vec<u8>>, Error> {
+        let got = entries::from(ctx, self.h, self.from)?;
+        let Some(newest) = got.last() else { return Ok(Some(Vec::new())) };
+        self.from = newest.seq + 1;
+        self.names.learn(ctx, &got);
+        let text =
+            show(&got, self.boot, &mut self.last, &self.form, &self.names);
+        Ok(Some(text.into_bytes()))
+    }
+
+    fn end(&mut self, ctx: &dyn Calls) {
+        let _ = ctx.submit(Op::Close { h: self.h });
     }
 }
 
@@ -132,12 +183,21 @@ fn parts(list: &str) -> Vec<String> {
 
 /// Every entry `form` shows, in order, each counting its deltas from
 /// the one printed before it.
-fn show(entries: &[Entry], boot: u64, form: &Form, names: &Names) -> String {
+///
+/// `last` is the time of the entry written before the first of these,
+/// which a following read carries from the read before it; `None`
+/// starts fresh.
+fn show(
+    entries: &[Entry],
+    boot: u64,
+    last: &mut Option<u64>,
+    form: &Form,
+    names: &Names,
+) -> String {
     let mut out = String::new();
-    let mut last = None;
     for entry in entries.iter().filter(|entry| form.shows(entry)) {
-        out.push_str(&line(entry, boot, last, form, names));
-        last = Some(entry.time);
+        out.push_str(&line(entry, boot, *last, form, names));
+        *last = Some(entry.time);
     }
     out
 }
@@ -230,12 +290,6 @@ fn text(entry: &Entry, form: &Form, names: &Names) -> String {
         4 => sgr(color, BOLD, &text),
         _ => text,
     }
-}
-
-/// `text` in one SGR sequence when the run asked for color, reset after
-/// it, so a line never leaks a color into the next.
-fn sgr(color: bool, code: &str, text: &str) -> String {
-    if color { format!("\x1b[{code}m{text}\x1b[0m") } else { text.to_string() }
 }
 
 /// Whole seconds and microseconds of a span of nanoseconds.

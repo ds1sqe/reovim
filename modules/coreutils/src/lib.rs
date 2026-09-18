@@ -17,6 +17,7 @@
 
 extern crate alloc;
 
+use alloc::boxed::Box;
 use alloc::rc::Rc;
 use alloc::vec::Vec;
 
@@ -24,7 +25,7 @@ use reovim_kernel_interface::{
     Booted, Calls, Decl, Driver, DriverId, Error, Flags, Hash, Module, Rd,
     Reply, Rights,
 };
-use reovim_sdk::cell;
+use reovim_sdk::cell::{self, Follow};
 
 pub mod bins;
 mod format;
@@ -84,6 +85,18 @@ impl Coreutils {
     ) -> Result<Rd, Error> {
         self.cells.open(ctx, DRIVER, rd, bytes)
     }
+
+    /// The output cell of a run that goes on past what it found now:
+    /// `follow` is what a read at the cell's end asks.
+    fn following(
+        &self,
+        ctx: &dyn Calls,
+        rd: Rd,
+        bytes: Vec<u8>,
+        follow: Box<dyn Follow>,
+    ) -> Result<Rd, Error> {
+        self.cells.follow(ctx, DRIVER, rd, bytes, follow)
+    }
 }
 
 impl Module for Coreutils {
@@ -104,12 +117,12 @@ impl Driver for Coreutils {
 
     fn read(
         &self,
-        _: &dyn Calls,
+        ctx: &dyn Calls,
         h: u64,
         at: u64,
         len: usize,
     ) -> Reply<Vec<u8>> {
-        self.cells.read(Rd(h), at, len).into()
+        self.cells.read(ctx, Rd(h), at, len).into()
     }
 
     /// The api the Kernel checked the rd offers says which run this is;

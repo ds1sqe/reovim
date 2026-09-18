@@ -18,22 +18,22 @@ const CHUNK: u32 = 64 * 1024;
 /// Where the log is; a Driver names no Module to reach it.
 const LOG: &str = "/sys/log";
 
-/// Every entry from `from` on, 0 being from the first the ring holds,
-/// through a handle opened and closed here.
+/// A handle on the log, open for READ; a run that tails it keeps one,
+/// so a following read is the reads alone and no lookup.
 ///
 /// # Errors
-/// As `Op::Open` and `Op::Read`, and `Invalid` when the root has no
-/// `/sys/log`.
-pub fn from(ctx: &dyn Calls, from: u64) -> Result<Vec<Entry>, Error> {
+/// As `Op::Open`, and `Invalid` when the root has no `/sys/log`.
+pub fn open(ctx: &dyn Calls) -> Result<Handle, Error> {
     let rd = cell::resolve(ctx, ROOT, LOG)?;
-    let h = ctx.open(rd, Rights::READ)?;
-    let read = read_all(ctx, h, from);
-    let _ = ctx.submit(Op::Close { h });
-    read
+    ctx.open(rd, Rights::READ)
 }
 
-/// Every entry from `from` through `h`, one `Read` at a time.
-fn read_all(
+/// Every entry from `from` on through `h`, 0 being from the first the
+/// ring holds, one `Read` at a time.
+///
+/// # Errors
+/// As `Op::Read`.
+pub fn from(
     ctx: &dyn Calls,
     h: Handle,
     from: u64,

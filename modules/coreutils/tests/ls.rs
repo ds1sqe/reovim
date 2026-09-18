@@ -1,9 +1,14 @@
 //! `ls` over the rig: what one run's output cell holds, beside the
 //! listing the cli's own `ls` prints of the same targets in the same
 //! tree, with the same width and color.
+//!
+//! Under `w` the cell goes on, and the reads of it stand beside the
+//! cli's own follower of the same line in the same rig, event for
+//! event.
 
-use reovim_client::{Client, Error, Fault, ROOT, Rd, Rights};
-use reovim_client_cli::{Out, Paint, Shell, input};
+use reovim_client::log::{self, Entry};
+use reovim_client::{Client, Error, Fault, Handle, ROOT, Rd, Rights};
+use reovim_client_cli::{Follow, Out, Paint, Shell, following, input};
 use reovim_module_coreutils::bins::ls::Args;
 use reovim_rig::Rig;
 
@@ -13,6 +18,7 @@ fn args(targets: &[&str]) -> Args {
     Args {
         long: false,
         all: false,
+        w: false,
         cwd: ROOT,
         width: 0,
         color: false,
@@ -63,6 +69,56 @@ fn same(
     let printed = input(client, &mut shell, &words, out).unwrap();
     assert_eq!(said, String::from_utf8(printed).unwrap(), "{line}");
     said
+}
+
+/// The cli's own follower of `line`, begun in this rig beside the run
+/// it is compared with.
+fn planned(client: &mut Client, line: &str) -> Follow {
+    let words: Vec<String> =
+        line.split_whitespace().map(str::to_string).collect();
+    following(client, &Shell::default(), &words, Out::plain()).unwrap().unwrap()
+}
+
+/// Everything the cli's follower prints of what has happened since it
+/// was asked last.
+fn printed(client: &mut Client, plan: &mut Follow) -> String {
+    let mut said = Vec::new();
+    for event in client.since().unwrap() {
+        if let Some(bytes) = plan.event(client, event).unwrap() {
+            said.extend(bytes);
+        }
+    }
+    String::from_utf8(said).unwrap()
+}
+
+/// The cell read at `at`, as a shell reads a following one: the bytes,
+/// or the fault it was sent back with.
+fn next(client: &mut Client, h: Handle, at: u64) -> Result<String, Fault> {
+    Ok(String::from_utf8(client.read(h, at, 64)?).unwrap())
+}
+
+/// The id of the caller the Module named `name` submits its own ops as,
+/// as `/sys/core` says it.
+fn caller_of(client: &mut Client, name: &str) -> u64 {
+    let core = client.resolve("/sys/core").unwrap();
+    let text = String::from_utf8(client.read_all(core).unwrap()).unwrap();
+    let named = format!(" name={name} ");
+    let mine =
+        |line: &&str| line.starts_with("module ") && line.contains(&named);
+    let line = text.lines().find(mine).unwrap();
+    line.rsplit_once("caller=").unwrap().1.parse().unwrap()
+}
+
+/// The Kernel's own trace lines of the ops `caller` has submitted; the
+/// trace is kept at `debug` and `/sys/log` writes none of its own.
+fn traced(client: &mut Client, caller: u64) -> Vec<String> {
+    let mark = format!(" caller={caller} ");
+    log::tail(client, 0)
+        .unwrap()
+        .iter()
+        .map(Entry::text)
+        .filter(|text| text.contains(&mark))
+        .collect()
 }
 
 #[test]
@@ -245,4 +301,68 @@ fn a_target_that_is_not_there_fails_the_run_and_leaves_no_cell() {
         Err(Fault::Kernel(Error::Invalid))
     );
     assert_eq!(client.children(ls), Ok(Vec::new()), "a cell for a failed run");
+}
+
+#[test]
+fn a_watching_run_lists_again_for_every_event_under_its_target() {
+    let rig = Rig::new("ls-watching");
+    rig.file("note", b"hi\n");
+    let mut client = rig.client();
+    let mut other = rig.client();
+    let root = "/module/fs/root";
+    let rd = client.resolve(root).unwrap();
+    // The children stand in the tree before either follower begins: a
+    // first listing registers them, and a registration is an event.
+    client.children(rd).unwrap();
+
+    // Both watch before the child appears: the run, and the cli's own
+    // follower of the same line.
+    let cell = run(&mut client, &Args { w: true, ..args(&[root]) }).unwrap();
+    let mut plan = planned(&mut client, &format!("ls -w {root}"));
+    let h = client.open(cell, Rights::READ).unwrap();
+    assert_eq!(next(&mut client, h, 0).unwrap(), "note\n");
+    assert_eq!(plan.first, b"note\n".to_vec());
+    assert_eq!(next(&mut client, h, 5), Err(Fault::Kernel(Error::Busy)));
+
+    let made = reovim_sdk::encode(&"made".to_string());
+    other.call_by_name(rd, "create", made).unwrap();
+    let said = next(&mut client, h, 5).unwrap();
+    assert_eq!(said, printed(&mut client, &mut plan));
+    assert_eq!(said, "made\nnote\n");
+    assert_eq!(next(&mut client, h, 15), Err(Fault::Kernel(Error::Busy)));
+}
+
+#[test]
+fn a_watching_run_submits_nothing_while_nobody_reads() {
+    let rig = Rig::new("ls-idle");
+    rig.file("note", b"hi\n");
+    let mut client = rig.client();
+    let mut other = rig.client();
+    let root = "/module/fs/root";
+    let rd = client.resolve(root).unwrap();
+    let ls = client.resolve("/bin/ls").unwrap();
+    client.children(rd).unwrap();
+
+    // A listing leaves no atime, so the trace is what says the Module
+    // stood still; it is written at `debug`.
+    let level = client.resolve("/sys/loglevel").unwrap();
+    client.write_all(level, b"debug".to_vec()).unwrap();
+    let module = caller_of(&mut client, "coreutils");
+
+    let cell = run(&mut client, &Args { w: true, ..args(&[root]) }).unwrap();
+    let h = client.open(cell, Rights::READ).unwrap();
+    assert_eq!(next(&mut client, h, 0).unwrap(), "note\n");
+
+    let idle = traced(&mut client, module).len();
+    let made = reovim_sdk::encode(&"made".to_string());
+    other.call_by_name(rd, "create", made).unwrap();
+    // Nothing delivers the event into the Driver, and the watch costs
+    // nothing until the next read of the cell asks for it.
+    assert_eq!(traced(&mut client, module).len(), idle, "nobody was reading");
+    assert_eq!(next(&mut client, h, 5).unwrap(), "made\nnote\n");
+    assert!(traced(&mut client, module).len() > idle);
+
+    client.close(h).unwrap();
+    assert_eq!(client.children(ls), Ok(Vec::new()));
+    assert_eq!(client.info(cell), Err(Fault::Kernel(Error::Invalid)));
 }

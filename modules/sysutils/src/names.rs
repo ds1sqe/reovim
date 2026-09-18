@@ -2,8 +2,9 @@
 //!
 //! The Kernel writes an rd, an api hash and a method number, because
 //! those are what it has; the words are the tree's and the
-//! declarations'. Each is looked up once per run, and an rd id is never
-//! reused, so what is learned here stays true.
+//! declarations'. Each is looked up once, and an rd id is never reused,
+//! so what is learned here stays true and a run that tails the log
+//! learns only what its new entries name.
 
 use alloc::collections::BTreeMap;
 use alloc::format;
@@ -17,7 +18,8 @@ use reovim_sdk::ops;
 /// The mark of the Kernel's own entries, the ones written in numbers.
 pub const KERNEL: &str = "kernel";
 
-/// The paths and the declarations one run's entries name.
+/// The paths and the declarations a run's entries name.
+#[derive(Default)]
 pub struct Names {
     /// The path of an rd, or `rd:<n>` when it has none.
     paths: BTreeMap<u64, String>,
@@ -26,21 +28,19 @@ pub struct Names {
 }
 
 impl Names {
-    /// Every number `entries` name, looked up once each. An rd the
-    /// tree no longer has, and a hash it does not publish, keep the
-    /// number the Kernel wrote.
-    pub fn of(ctx: &dyn Calls, entries: &[Entry]) -> Self {
+    /// Every number `entries` name that is not known here yet, looked
+    /// up once each and kept. An rd the tree no longer has, and a hash
+    /// it does not publish, keep the number the Kernel wrote.
+    pub fn learn(&mut self, ctx: &dyn Calls, entries: &[Entry]) {
         let (rds, apis) = numbers(entries);
-        let mut names = Self { paths: BTreeMap::new(), apis: BTreeMap::new() };
-        for rd in rds {
+        for rd in fresh(rds, &self.paths) {
             let gone = |_| format!("rd:{rd}");
             let path = ops::where_is(ctx, Rd(rd)).unwrap_or_else(gone);
-            names.paths.insert(rd, path);
+            self.paths.insert(rd, path);
         }
-        for hash in apis {
-            names.apis.insert(hash, ops::decl(ctx, Hash(hash)).ok());
+        for hash in fresh(apis, &self.apis) {
+            self.apis.insert(hash, ops::decl(ctx, Hash(hash)).ok());
         }
-        names
     }
 }
 
@@ -75,14 +75,14 @@ pub fn decoded(text: &str, names: &Names) -> String {
     out.join(" ")
 }
 
-/// The rds and the api hashes the Kernel's own entries name, each of
-/// them once, in the order they say them.
+/// The rds and the api hashes the Kernel's own entries name, in the
+/// order they say them.
 fn numbers(entries: &[Entry]) -> (Vec<u64>, Vec<u64>) {
     let (mut rds, mut apis) = (Vec::new(), Vec::new());
     for entry in entries.iter().filter(|entry| entry.mark == KERNEL) {
         named_in(&entry.text(), &mut rds, &mut apis);
     }
-    (once(rds), once(apis))
+    (rds, apis)
 }
 
 /// What one line names, added to what the lines before it named.
@@ -97,11 +97,12 @@ fn named_in(text: &str, rds: &mut Vec<u64>, apis: &mut Vec<u64>) {
     }
 }
 
-/// `values` without the repeats, in the order they first came.
-fn once(values: Vec<u64>) -> Vec<u64> {
+/// The values `known` has not learned, each of them once, in the order
+/// they first came.
+fn fresh<T>(values: Vec<u64>, known: &BTreeMap<u64, T>) -> Vec<u64> {
     let mut out: Vec<u64> = Vec::new();
     for value in values {
-        if !out.contains(&value) {
+        if !known.contains_key(&value) && !out.contains(&value) {
             out.push(value);
         }
     }

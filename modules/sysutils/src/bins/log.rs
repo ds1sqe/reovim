@@ -7,7 +7,7 @@
 
 use alloc::string::String;
 
-use reovim_kernel_interface::{Calls, Error, Rd};
+use reovim_kernel_interface::{Calls, Error, Op, Rd};
 
 use crate::Sysutils;
 use crate::entries;
@@ -25,8 +25,11 @@ pub(crate) use log::{decl, dispatch};
 
 impl log::Api for Sysutils {
     fn run(&self, ctx: &dyn Calls, rd: Rd, args: Args) -> Result<Rd, Error> {
+        let h = entries::open(ctx)?;
+        let read = entries::from(ctx, h, args.from);
+        let _ = ctx.submit(Op::Close { h });
         let mut text = String::new();
-        for entry in entries::from(ctx, args.from)? {
+        for entry in read? {
             text.push_str(&entry.line());
         }
         self.cell(ctx, rd, text.into_bytes())

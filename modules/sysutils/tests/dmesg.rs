@@ -2,9 +2,13 @@
 //! the cli's own `dmesg` prints of the same `/sys/log` with the same
 //! flags. Nothing either of them does is written at the level the
 //! Kernel logs at, so the two read one log and the stamps agree.
+//!
+//! Under `w` and `W` the cell goes on, and the reads of it stand beside
+//! the cli's own follower of the same line in the same rig, entry for
+//! entry.
 
-use reovim_client::{Client, Error, Fault, Rd, Rights};
-use reovim_client_cli::{Out, Paint, Shell, input};
+use reovim_client::{Client, Error, Fault, Handle, Rd, Rights};
+use reovim_client_cli::{Follow, Out, Paint, Shell, following, input};
 use reovim_module_sysutils::bins::dmesg::Args;
 use reovim_rig::Rig;
 
@@ -19,6 +23,8 @@ const fn plain() -> Args {
         r: false,
         x: false,
         k: false,
+        w: false,
+        W: false,
         f: String::new(),
         l: String::new(),
         color: false,
@@ -61,6 +67,41 @@ fn same(client: &mut Client, args: &Args, line: &str) -> String {
     let printed = input(client, &mut Shell::default(), &words, out).unwrap();
     assert_eq!(said, String::from_utf8(printed).unwrap(), "{line}");
     said
+}
+
+/// The cli's own follower of `line`, begun in this rig beside the run
+/// it is compared with.
+fn planned(client: &mut Client, line: &str) -> Follow {
+    let words: Vec<String> =
+        line.split_whitespace().map(str::to_string).collect();
+    following(client, &Shell::default(), &words, Out::plain()).unwrap().unwrap()
+}
+
+/// Everything the cli's follower prints of what has happened since it
+/// was asked last.
+fn printed(client: &mut Client, plan: &mut Follow) -> String {
+    let mut said = Vec::new();
+    for event in client.since().unwrap() {
+        if let Some(bytes) = plan.event(client, event).unwrap() {
+            said.extend(bytes);
+        }
+    }
+    String::from_utf8(said).unwrap()
+}
+
+/// Everything the cell holds from `at` on, read as a shell reads a
+/// following one, to the `Busy` that says it has nothing more yet.
+fn so_far(client: &mut Client, h: Handle, at: u64) -> String {
+    let mut bytes: Vec<u8> = Vec::new();
+    loop {
+        let read = client.read(h, at + bytes.len() as u64, 64);
+        let Ok(chunk) = read else {
+            assert_eq!(read, Err(Fault::Kernel(Error::Busy)));
+            return String::from_utf8(bytes).unwrap();
+        };
+        assert!(!chunk.is_empty(), "a follower is never over");
+        bytes.extend(chunk);
+    }
 }
 
 #[test]
@@ -204,4 +245,73 @@ fn a_kernel_line_says_the_rd_the_api_and_the_method_in_words() {
         root.0, hash.0, number.number
     );
     assert!(said.lines().any(|said| said == line), "{said}");
+}
+
+#[test]
+fn a_tailing_run_writes_the_entry_another_client_writes() {
+    let rig = Rig::new("dmesg-tail");
+    let mut client = rig.client();
+    let mut other = rig.client();
+
+    // `W` takes only what comes after it, so the cell holds nothing and
+    // is not over: the read at its end is sent back.
+    let new = Args { W: true, t: true, l: "err".to_string(), ..plain() };
+    let cell = run(&mut client, &new).unwrap();
+    let mut plan = planned(&mut client, "dmesg -W -t -l err");
+    assert_eq!(plan.first, Vec::<u8>::new());
+    let h = client.open(cell, Rights::READ).unwrap();
+    assert_eq!(client.read(h, 0, 64), Err(Fault::Kernel(Error::Busy)));
+
+    // The err entry the other client writes, with printk's `<3>` in
+    // front of it.
+    let log = other.resolve("/sys/log").unwrap();
+    other.write_all(log, b"<3>boom".to_vec()).unwrap();
+    let said = so_far(&mut client, h, 0);
+    assert_eq!(said, printed(&mut client, &mut plan));
+    assert_eq!(said, "boom\n");
+}
+
+#[test]
+fn w_writes_what_the_log_held_and_then_what_it_gains() {
+    let rig = Rig::new("dmesg-tail-all");
+    let mut client = rig.client();
+    let mut other = rig.client();
+
+    let all = Args { w: true, t: true, ..plain() };
+    let cell = run(&mut client, &all).unwrap();
+    let mut plan = planned(&mut client, "dmesg -w -t");
+    let h = client.open(cell, Rights::READ).unwrap();
+    let held = so_far(&mut client, h, 0);
+    assert_eq!(held, String::from_utf8(plan.first.clone()).unwrap());
+    assert!(held.starts_with("load module=fs\n"), "{held}");
+
+    let log = other.resolve("/sys/log").unwrap();
+    other.write_all(log, b"<3>boom".to_vec()).unwrap();
+    let said = so_far(&mut client, h, held.len() as u64);
+    assert_eq!(said, printed(&mut client, &mut plan));
+    assert_eq!(said, "boom\n");
+}
+
+#[test]
+fn a_tailing_run_closes_its_handle_on_the_log_with_the_cell() {
+    let rig = Rig::new("dmesg-close");
+    let mut client = rig.client();
+    let dmesg = client.resolve("/bin/dmesg").unwrap();
+    let log = client.resolve("/sys/log").unwrap();
+    let held = |client: &mut Client| {
+        let core = client.resolve("/sys/core").unwrap();
+        let text = String::from_utf8(client.read_all(core).unwrap()).unwrap();
+        let on = format!(" rd={} ", log.0);
+        text.lines().filter(|line| line.contains(&on)).count()
+    };
+
+    let before = held(&mut client);
+    let cell = run(&mut client, &Args { W: true, ..plain() }).unwrap();
+    let h = client.open(cell, Rights::READ).unwrap();
+    assert_eq!(held(&mut client), before + 1, "the handle the run kept");
+
+    client.close(h).unwrap();
+    assert_eq!(held(&mut client), before);
+    assert_eq!(client.children(dmesg), Ok(Vec::new()));
+    assert_eq!(client.info(cell), Err(Fault::Kernel(Error::Invalid)));
 }

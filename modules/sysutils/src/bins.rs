@@ -4,3 +4,4 @@
 pub mod call;
 pub mod dmesg;
 pub mod log;
+pub mod watch;
