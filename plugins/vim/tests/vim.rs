@@ -283,11 +283,11 @@ fn the_command_line_runs_the_quit_commands_and_refuses_the_rest() {
     assert_eq!(typed(&mut vim, "ZQ"), Effect::Quit(Quit::Force));
     assert_eq!(typed(&mut vim, "Zx"), Effect::Nothing);
 
-    assert_eq!(typed(&mut vim, ":xyz<CR>"), Effect::Moved);
-    let status = vim.status();
-    assert_eq!(status, "E492: Not an editor command: xyz");
-    assert_eq!(typed(&mut vim, "<Esc>"), Effect::Moved, "the message goes");
-    assert_eq!(vim.status(), "");
+    // A name Vim's list has not is the line handed to the shell, whole
+    // and as it was typed; E492 comes back from there, where there is
+    // a tree to answer it (tests/explore.rs).
+    assert_eq!(typed(&mut vim, ":xyz<CR>"), Effect::Line("xyz".into()));
+    assert_eq!(vim.status(), "", "nothing is said without a tree");
     assert_eq!(typed(&mut vim, "<C-s>"), Effect::Nothing, "no longer a key");
     assert_eq!(typed(&mut vim, "<C-q>"), Effect::Nothing);
 }

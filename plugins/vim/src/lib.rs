@@ -33,14 +33,14 @@ use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
 
-pub use command::WORDS;
+pub use command::{WORDS, Word, resolve};
 pub use operator::Motion;
 pub use reovim_client::{Key, Plugin};
 pub use visual::Visual;
 
 use operator::{Find, Operator};
 use reovim_client::{Handle, Rd};
-use reovim_client_cli::{Line, Shell, Word};
+use reovim_client_sh::{Line, Shell};
 use search::Search;
 use visual::{BlockInsert, Selection};
 
@@ -115,17 +115,17 @@ pub enum Effect {
     /// which comes back a Vim of its own. A name that is not there is
     /// E345, where `:explore`'s is E344.
     Open(String, bool),
-    /// A word of the cli's, typed on the `:` line: the line as
-    /// clients/cli takes it, the word by its full name.
-    Line(Vec<String>),
-    /// `:cli[!]`: the cli's words in a region of their own, asked for
-    /// by name over where the `:` line's own words stand. `true` for
-    /// `:cli!`, which goes although the draft is unsaved.
+    /// A name Vim's list has not, typed on the `:` line: the line past
+    /// its range, whole, as clients/sh takes it.
+    Line(String),
+    /// `:cli[!]`: a shell in a region of its own, asked for by name
+    /// over where the `:` line's own lines stand. `true` for `:cli!`,
+    /// which goes although the draft is unsaved.
     Cli(bool),
-    /// Tab on the `:` line past its first word, which the line
-    /// already holds expanded: what may stand where the last word
-    /// does, which only the Client can find over the tree, and hands
-    /// back to the line.
+    /// Tab on the `:` line: what may stand where the last word does,
+    /// which only the Client can find over the tree, and hands back to
+    /// the line. Past the first word the line already holds that word
+    /// expanded.
     Complete(Ask),
     /// A put wants the clipboard's text: `pasted` finishes it.
     Clipboard,
@@ -134,13 +134,16 @@ pub enum Effect {
 /// What Tab on the `:` line asks the Client to find over the tree.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Ask {
+    /// The first token of the line: the names PATH holds that it
+    /// begins, which stand after Vim's own in the wildmenu.
+    Names { word: String },
     /// A name under the directory Vim works in, which `:write`,
     /// `:edit` and `:explore` take: the word as typed, and the byte
     /// of the line it begins at.
     Path { from: usize, word: String },
-    /// A word of the cli's: the whole line, which clients/cli
+    /// A line of the shell's: the whole of it, which clients/sh
     /// completes from where the Shell stands.
-    Cli { line: String },
+    Line { line: String },
 }
 
 /// How a quit was asked for; what it does with unsaved changes
@@ -218,8 +221,8 @@ struct Put {
 }
 
 /// The command line: what it is for, the mode it returns to, and the
-/// lines themselves, which are the cli's line editor and nothing of
-/// Vim's own.
+/// lines themselves, which are the shell's line editor and nothing
+/// of Vim's own.
 ///
 /// There are two of them because nvim keeps two histories: everything
 /// typed after `:` walks with the `:` lines, everything after `/` and
@@ -245,8 +248,8 @@ impl Prompt {
     }
 }
 
-/// One thing Tab found: a word of the table, whose argument form and
-/// help the status row says, or a name in the tree, which has
+/// One thing Tab found: a word of Vim's own list, whose argument form
+/// and help the status row says, or a name in the tree, which has
 /// neither.
 #[derive(Debug)]
 enum Found {
@@ -336,9 +339,9 @@ pub struct Vim {
     wild: Option<Wild>,
     /// Shown until the next key.
     message: String,
-    /// Where a cli word typed on the `:` line stands: the mirror of
-    /// the directory the Client started in, which `:cd` moves and
-    /// `:pwd` says.
+    /// Where a line of the shell's typed on the `:` line stands: the
+    /// mirror of the directory the Client started in, which `:cd`
+    /// moves and `:pwd` says.
     shell: Shell,
     /// The Buffer `start` opened over what the region is on: what the
     /// View it shows is in the bytes of.

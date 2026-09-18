@@ -4,7 +4,7 @@
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-use reovim_client_cli::{Act, Word, Words};
+use reovim_client_sh::Act;
 
 use crate::pattern::{Pattern, expand};
 use crate::{Ask, Edit, Effect, Found, Key, Mode, Motion, Quit, Vim, Wild};
@@ -12,12 +12,24 @@ use crate::{Ask, Edit, Effect, Found, Key, Mode, Motion, Quit, Vim, Wild};
 /// Lines from 0, both ends included.
 type Lines = (usize, usize);
 
+/// One word of the `:` line: its name, what it takes after it, and the
+/// one line the status row says of it after Tab.
+///
+/// [`WORDS`] is what a line is read with; no abbreviation is listed,
+/// since the order computes each.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Word {
+    pub name: &'static str,
+    pub args: &'static str,
+    pub help: &'static str,
+}
+
 /// Vim's words, in the order a `:` line resolves a name by.
 ///
 /// `:w` is `write` because it stands before `wq`, `:s` is
 /// `substitute` before `set`, `:e` is `edit` before `explore`, and
-/// `:c` is `cquit` before `cli`, which takes `:cl`. The cli's own
-/// words follow these, so a name none of these begins is a cli line.
+/// `:c` is `cquit` before `cli`, which takes `:cl`. A name none of
+/// these begins is no word of Vim's and the line goes to the shell.
 pub const WORDS: &[Word] = &[
     Word {
         name: "write",
@@ -44,11 +56,26 @@ pub const WORDS: &[Word] = &[
     Word { name: "cli", args: "", help: "the cli in this region" },
 ];
 
-/// The table a `:` line is read with: Vim's words while Vim is open,
-/// then the cli's, which is what makes `:ls` a listing and `:w` a
-/// write although the cli has a `write` of its own.
-const fn table() -> Words<'static> {
-    Words { first: WORDS, then: reovim_client_cli::WORDS }
+/// The word `typed` names: the first of [`WORDS`], in order, that it
+/// equals or is the beginning of. `None` for an empty name and for one
+/// no word begins, which is the line the shell is handed.
+///
+/// This is Vim's ex rule: the order is what makes `:s` `substitute`
+/// and `:se` `set`, and nothing lists a short form by hand. A name
+/// under PATH has none of it: the shell resolves by exact name.
+#[must_use]
+pub fn resolve(typed: &str) -> Option<&'static Word> {
+    if typed.is_empty() {
+        return None;
+    }
+    WORDS.iter().find(|word| word.name.starts_with(typed))
+}
+
+/// Every word of Vim's `prefix` begins, in the order they resolve in:
+/// what Tab on a line offers before PATH's names. An empty prefix
+/// begins them all.
+fn starting(prefix: &str) -> impl Iterator<Item = &'static Word> {
+    WORDS.iter().filter(move |word| word.name.starts_with(prefix))
 }
 
 impl Vim {
@@ -69,7 +96,7 @@ impl Vim {
         Effect::Moved
     }
 
-    /// One key on the command line, which is the cli's line editor:
+    /// One key on the command line, which is the shell's line editor:
     /// its acts, and before them the keys Vim reads itself, the two
     /// ways out of the prompt and the wildmenu's own.
     pub(crate) fn command(&mut self, key: Key) -> Effect {
@@ -101,22 +128,23 @@ impl Vim {
     /// Tab on the `:` line. Nothing for `/` and `?`, which complete
     /// nothing.
     ///
-    /// On a line with no space yet: the words the typed one begins,
-    /// the first of them on the line, and nothing for a name no table
-    /// has. Past the first word: that word expanded to its full name,
+    /// On a line with no space yet: the names the typed one begins,
+    /// Vim's own and then PATH's, which only the Client can read.
+    /// Past the first word: a word of Vim's expanded to its full name,
     /// so `:w Ca` Tab is `:write Cargo.toml`, and then the argument,
     /// which `:set` answers here and the tree answers through the
-    /// Client.
+    /// Client; a line of the shell's goes to it as it was typed, PATH
+    /// having no abbreviation to expand.
     fn complete(&mut self) -> Effect {
         if self.prompt.at != ':' {
             return Effect::Nothing;
         }
         let text = String::from(self.prompt.text());
         let Some((typed, rest)) = text.split_once(' ') else {
-            return self.words(&text);
+            return Effect::Complete(Ask::Names { word: text });
         };
-        let Some(found) = table().resolve(typed) else {
-            return Effect::Nothing;
+        let Some(found) = resolve(typed) else {
+            return Effect::Complete(Ask::Line { line: text });
         };
         let line = alloc::format!("{} {rest}", found.name);
         self.prompt.line().put(0, &line);
@@ -128,27 +156,35 @@ impl Vim {
                 Effect::Complete(Ask::Path { from, word })
             }
             // Every other word of Vim's takes no name from the tree.
-            name if WORDS.iter().any(|word| word.name == name) => Effect::Moved,
-            _ => Effect::Complete(Ask::Cli { line }),
+            _ => Effect::Moved,
         }
     }
 
-    /// Tab on a line with no space on it: the words the typed one
-    /// begins, which the wildmenu walks where there is more than one.
-    fn words(&mut self, typed: &str) -> Effect {
-        let found = table().starting(typed);
-        if found.is_empty() {
+    /// Tab on a line with no space on it: Vim's own words the typed
+    /// one begins and then the names PATH holds, which the wildmenu
+    /// walks where there is more than one. A word of Vim's is kept as
+    /// itself, for the argument form and the help the status row says
+    /// of one alone.
+    pub(crate) fn words(&mut self, typed: &str, under: Vec<String>) -> Effect {
+        let mine: Vec<&'static Word> = starting(typed).collect();
+        // A name of Vim's is the one that runs, so PATH's own is no
+        // second candidate.
+        let shadowed = |name: &String| mine.iter().any(|w| w.name == name);
+        let path = under.into_iter().filter(|name| !shadowed(name));
+        let words = mine.iter().copied().map(Found::Word);
+        let candidates: Vec<Found> =
+            words.chain(path.map(Found::Text)).collect();
+        if candidates.is_empty() {
             return Effect::Nothing;
         }
-        let candidates = found.into_iter().map(Found::Word).collect();
         self.wild = Some(Wild { candidates, at: 0, from: 0 });
         self.take()
     }
 
     /// What Tab found over the tree, or among the options of `:set`:
-    /// one name is simply put on the line, as the cli's `apply` puts
-    /// it, since nothing is left to choose between and the next Tab
-    /// goes on under a Container it named; several are the wildmenu.
+    /// one name is simply put on the line, as the line's own `apply`
+    /// puts it, since nothing is left to choose between and the next
+    /// Tab goes on under a Container it named; several are the wildmenu.
     /// Nothing found leaves the line as the expansion left it.
     pub(crate) fn offer(&mut self, from: usize, found: Vec<String>) -> Effect {
         if found.is_empty() {
@@ -243,10 +279,11 @@ impl Vim {
     /// and what follows that.
     ///
     /// A word of Vim's own is one of these effects, by its full name
-    /// or by any beginning of it the table resolves; a word of the
-    /// cli's is a line for clients/cli, which the Plugin runs over the
-    /// tree, the range being none of its business; a name no table has
-    /// is E492, as it always was.
+    /// or by any beginning of it the list resolves; a name Vim's list
+    /// has not is the line for clients/sh, whole and as it was typed,
+    /// which the Plugin runs over the tree, the range being none of
+    /// its business; E492 comes back from there for a first token PATH
+    /// has not, as it always did.
     fn ex(&mut self, line: &str) -> Effect {
         let line = line.trim();
         let (range, rest) = self.range(line);
@@ -255,10 +292,8 @@ impl Vim {
             return self.addressed(range, rest.len() < line.len());
         }
         let Typed { word, bang, arg } = typed(command);
-        let Some(found) = table().resolve(word) else {
-            self.message =
-                alloc::format!("E492: Not an editor command: {command}");
-            return Effect::Moved;
+        let Some(found) = resolve(word) else {
+            return Effect::Line(String::from(command));
         };
         match found.name {
             "write" if arg.is_empty() => Effect::Save(bang),
@@ -282,8 +317,8 @@ impl Vim {
             "explore" => {
                 Effect::Explore((!arg.is_empty()).then(|| arg.into()), bang)
             }
-            "cli" => Effect::Cli(bang),
-            name => Effect::Line(line_of(name, arg)),
+            // `cli`, the last of `WORDS` and the only one left.
+            _ => Effect::Cli(bang),
         }
     }
 
@@ -517,15 +552,6 @@ fn typed(command: &str) -> Typed<'_> {
     let (bang, rest) =
         rest.strip_prefix('!').map_or((false, rest), |r| (true, r));
     Typed { word, bang, arg: rest.trim() }
-}
-
-/// A cli word and its argument as a command line: the word by its
-/// full name, however short the beginning typed was, and what follows
-/// split as the cli splits a line.
-fn line_of(name: &str, arg: &str) -> Vec<String> {
-    let mut words = alloc::vec![name.to_string()];
-    words.extend(arg.split_whitespace().map(ToString::to_string));
-    words
 }
 
 /// `args` split at `sep`, a backslash escaping one.

@@ -1,12 +1,13 @@
-//! The `:` line over the tui and the rig: one table of words, Vim's
-//! before the cli's, and every word of Vim's by its full name and by
-//! the beginning the table computes for it.
+//! The `:` line over the tui and the rig: Vim's own list of words,
+//! every one of them by its full name and by the beginning the order
+//! computes for it, and a line that is none of them, which goes to the
+//! shell.
 //!
 //! The corpus judges the short forms it uses and nothing else, so
-//! what the full names and the cli's words do is judged here, by what
-//! happened: the step the editor ended in, the status row, the text,
-//! the file on disk, the search marks, and what a listing was started
-//! over.
+//! what the full names and the shell's lines do is judged here, by
+//! what happened: the step the editor ended in, the status row, the
+//! text, the file on disk, the search marks, and what a listing was
+//! started over.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -14,10 +15,9 @@ use std::rc::Rc;
 use reovim_client::{
     BLOCK, Ctx, Event, Fault, Hash, Plugin, Rd, Rights, Start, grid,
 };
-use reovim_client_cli::Words;
 use reovim_client_tui::{Step, Table, Tui, Want};
-use reovim_plugin_vim::Vim;
 use reovim_plugin_vim::notation::keys;
+use reovim_plugin_vim::{Vim, WORDS, Word, resolve};
 use reovim_rig::Rig;
 use reovim_text_api::open as text_open;
 
@@ -204,27 +204,32 @@ fn every_word_runs_by_its_full_name_and_by_its_abbreviation() {
     assert!(marked.contains("marks=1"), "{marked}");
 }
 
-#[test]
-fn the_table_computes_the_short_form_of_every_word() {
-    let words = Words {
-        first: reovim_plugin_vim::WORDS,
-        then: reovim_client_cli::WORDS,
-    };
-    let short: Vec<&str> =
-        reovim_plugin_vim::WORDS.iter().map(|w| words.abbrev(w)).collect();
-    // `cquit` is `c` and not nvim's `cq`: no `change` stands before it
-    // in this table, and the cli's `cat` stands behind Vim's words.
-    // `cli` stands behind `cquit`, so it is `cl`.
-    let all = ["w", "wq", "q", "x", "c", "s", "se", "n", "e", "ex", "cl"];
-    assert_eq!(short, all);
-    // The cli's own words are behind these, so `:w` is the write and
-    // `:wa` the watch.
-    assert_eq!(words.resolve("wa").map(|w| w.name), Some("watch"));
-    assert_eq!(words.resolve("l").map(|w| w.name), Some("ls"));
+/// The shortest beginning of `word` that resolves to it: its
+/// abbreviation, which the order of the list computes and nothing
+/// lists by hand.
+fn short(word: &Word) -> &'static str {
+    let name = word.name;
+    let resolves = |n: &usize| resolve(&name[..*n]).is_some_and(|w| w == word);
+    &name[..(1..=name.len()).find(resolves).unwrap_or(name.len())]
 }
 
 #[test]
-fn a_cli_word_runs_where_the_buffer_is() {
+fn the_order_computes_the_short_form_of_every_word() {
+    let short: Vec<&str> = WORDS.iter().map(short).collect();
+    // `cquit` is `c` and not nvim's `cq`: no `change` stands before it
+    // in this list, and no name under PATH stands behind it. `cli`
+    // stands behind `cquit`, so it is `cl`.
+    let all = ["w", "wq", "q", "x", "c", "s", "se", "n", "e", "ex", "cl"];
+    assert_eq!(short, all);
+    // Nothing under PATH is reached by a beginning of its name: `wa`
+    // is no word of Vim's and the line goes to the shell whole, where
+    // `watch` is `watch`.
+    assert_eq!(resolve("wa"), None);
+    assert_eq!(resolve("l"), None);
+}
+
+#[test]
+fn a_line_of_the_shells_runs_where_the_buffer_is() {
     let rig = work("words-cli");
     let seen = Listed::default();
     let mut tui =
@@ -250,17 +255,36 @@ fn a_cli_word_runs_where_the_buffer_is() {
     assert_eq!(typed(&mut tui, ":cd -<CR>:pwd<CR>"), Step::Changed);
     assert_eq!(said(&mut tui), "/module/fs/root/d");
 
-    // A word that did not run says why in the cli's own words, and a
-    // name no table has is E492, as it always was.
+    // A line that did not run says why as the shell says it, and a
+    // first token under no directory of PATH is E492, as it always
+    // was.
     assert_eq!(typed(&mut tui, ":ls /nothere<CR>"), Step::Changed);
-    assert_eq!(said(&mut tui), "ls /nothere: no such rd (nothere)");
+    assert_eq!(said(&mut tui), "ls /nothere: invalid");
     assert_eq!(typed(&mut tui, ":zz<CR>"), Step::Changed);
     assert_eq!(said(&mut tui), "E492: Not an editor command: zz");
 
-    // The text is the Buffer's throughout: a cli word reads the tree,
-    // it does not write the file.
+    // The text is the Buffer's throughout: a line of the shell's reads
+    // the tree, it does not write the file.
     assert_eq!(tui.frame(80, 24).unwrap().lines, ["one", "two"]);
     assert_eq!(rig.disk("d/note"), b"one\ntwo\n");
+}
+
+#[test]
+fn a_following_line_is_read_once_and_its_cell_closed() {
+    let rig = work("words-follow");
+    let seen = Listed::default();
+    let mut tui =
+        Tui::open(rig.client(), "d", Some("d/note"), None, table(&seen))
+            .unwrap();
+    // `-f` follows: the status row says what the cell held at the one
+    // read, a Plugin having no tick to read it again, and the cell is
+    // closed after it, which ends the follow.
+    assert_eq!(typed(&mut tui, ":cat -f note<CR>"), Step::Changed);
+    let status = tui.frame(80, 24).unwrap().status;
+    assert_eq!(status.split_once("r1   ").map(|(_, said)| said), Some("one"));
+    let mut other = rig.client();
+    let cat = other.resolve("/bin/cat").unwrap();
+    assert_eq!(other.children(cat), Ok(Vec::new()), "no cell was left");
 }
 
 #[test]

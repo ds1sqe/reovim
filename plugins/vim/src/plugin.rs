@@ -16,7 +16,7 @@ use reovim_client::{
     MATCH, Plugin, Rd, Rights, SELECTION, Start, Tree, grid, keys, open, paths,
     process, under,
 };
-use reovim_client_cli::{Out, Shell, complete, input};
+use reovim_client_sh::{Ran, Shell, complete, run};
 use reovim_text_api::{history, open as text_open, publish, text};
 
 use crate::{Ask, Edit, Effect, Mode, Quit, Vim};
@@ -29,6 +29,9 @@ const E32: &str = "E32: No file name";
 const E13: &str = "E13: File exists (add ! to override)";
 /// What a write says when the host would not make the file.
 const E212: &str = "E212: Can't open file for writing";
+/// What a `:` line says of a first token neither Vim's own list nor
+/// PATH has.
+const E492: &str = "E492: Not an editor command:";
 /// What `:explore` says to a name that is not on disk: Vim's word for
 /// a directory it cannot find, the name as the person typed it.
 const E344: &str = "E344: Can't find directory";
@@ -158,7 +161,7 @@ impl Vim {
             Effect::Open(name, bang) => {
                 return self.edited(tree, caps, &name, bang);
             }
-            Effect::Line(words) => return Ok(self.ran(tree, &words)),
+            Effect::Line(line) => return Ok(self.ran(tree, &line)),
             Effect::Cli(bang) => return self.cli(tree, caps, bang),
             Effect::Complete(ask) => return self.completing(tree, ask),
         }
@@ -425,10 +428,10 @@ impl Vim {
         self.shown(tree, caps, target, "", bang)
     }
 
-    /// `:cli[!]`: the cli's words in this region, which the Client's
-    /// table gives by name and no shape gives at all. It opens where
-    /// the `:` line's own words stand, the Shell's cwd, so `:cd` moves
-    /// what `:cli` opens over as it moves what `:ls` lists.
+    /// `:cli[!]`: a shell in this region, which the Client's table
+    /// gives by name and no shape gives at all. It opens where the `:`
+    /// line's own lines stand, the Shell's cwd, so `:cd` moves what
+    /// `:cli` opens over as it moves what `:ls` lists.
     fn cli(
         &mut self,
         tree: &mut Tree,
@@ -461,15 +464,19 @@ impl Vim {
         Ok(false)
     }
 
-    /// A cli word typed on the `:` line: the line run through
-    /// clients/cli over this tree, from where the Shell stands, and
-    /// its first line of output said in the status row. A `Miss` is
-    /// said in the cli's own words, as the process cli prints it after
-    /// `reovim: `. Lines past the first are dropped until 13's cli
-    /// buffer, which is where more than one line goes.
-    fn ran(&mut self, tree: &mut Tree, words: &[String]) -> bool {
-        let out = match input(tree, &mut self.shell, words, Out::plain()) {
-            Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+    /// A line Vim's list has none of, typed on the `:` line: run
+    /// through clients/sh over this tree, from where the Shell stands,
+    /// and its first line of output said in the status row, which is
+    /// all one row shows. A first token PATH has not is E492, which is
+    /// Vim's own; every other `Miss` is said as the shell says it.
+    ///
+    /// A run that came back open is a Driver that follows: what its
+    /// cell holds at this one read is what is said, and the cell is
+    /// closed after it, a Plugin having no tick to read it again.
+    fn ran(&mut self, tree: &mut Tree, line: &str) -> bool {
+        let out = match run(tree, &mut self.shell, line) {
+            Ok(ran) => printed(tree, ran),
+            Err(miss) if miss.unknown => format!("{E492} {line}"),
             Err(miss) => format!("{miss}"),
         };
         self.rebased();
@@ -490,16 +497,21 @@ impl Vim {
         self.dir = rest.trim_start_matches('/').into();
     }
 
-    /// Tab on the `:` line past its first word: what may stand where
-    /// the last word does, found over the tree, which the line and
-    /// the wildmenu then take. The words Vim runs itself take a name
-    /// under the directory it works in; every other word is the
-    /// cli's, and the cli completes its own line from where the Shell
-    /// stands.
+    /// Tab on the `:` line: what may stand where the last word does,
+    /// found over the tree, which the line and the wildmenu then take.
+    /// The first token is Vim's own names and then PATH's; the words
+    /// Vim runs itself take a name under the directory it works in;
+    /// every other line is the shell's, which completes it from where
+    /// the Shell stands.
     fn completing(&mut self, tree: &mut Tree, ask: Ask) -> Result<bool, Fault> {
         let (from, found) = match ask {
+            Ask::Names { word } => {
+                let found = complete(tree, &self.shell, &word);
+                self.words(&word, found.candidates);
+                return Ok(true);
+            }
             Ask::Path { from, word } => (from, self.names(tree, &word)?),
-            Ask::Cli { line } => {
+            Ask::Line { line } => {
                 let found = complete(tree, &self.shell, &line);
                 (found.from, found.candidates)
             }
@@ -664,7 +676,18 @@ fn made(
     Ok(reovim_sdk::decode(&out)?)
 }
 
-/// Where the `:` line's cli words stand: the mirror of the directory
+/// What a run printed, its cell closed where the run came back open: a
+/// Driver that follows is read this once and no more, a Plugin having
+/// no tick to read it again.
+fn printed(tree: &mut Tree, ran: Ran) -> String {
+    let Ran { out, open } = ran;
+    if let Some(mut open) = open {
+        let _ = open.close(tree);
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// Where the `:` line's shell lines stand: the mirror of the directory
 /// the Client started Vim in, so `:ls` lists the buffer's own
 /// directory and `:pwd` says where it is. The root of the tree where
 /// there is no mirror of that directory, which is a place to stand

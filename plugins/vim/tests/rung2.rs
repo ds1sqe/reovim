@@ -131,10 +131,13 @@ fn messages_read_as_nvims() {
     assert_eq!(vim.status(), "E518: Unknown option: foo");
     assert_eq!(typed(&mut vim, ":s/[/x/<CR>"), Effect::Moved);
     assert_eq!(vim.status(), "E486: Pattern not found: [");
-    assert_eq!(typed(&mut vim, ":frob<CR>"), Effect::Moved);
-    assert_eq!(vim.status(), "E492: Not an editor command: frob");
     assert_eq!(typed(&mut vim, "j"), Effect::Moved, "the message goes");
     assert_eq!(vim.status(), "");
+    // A name Vim's list has not is the line to the shell, whole; E492
+    // comes back from there, where there is a tree to answer it
+    // (tests/explore.rs).
+    assert_eq!(typed(&mut vim, ":frob<CR>"), Effect::Line("frob".into()));
+    assert_eq!(vim.status(), "", "nothing is said without a tree");
 }
 
 #[test]

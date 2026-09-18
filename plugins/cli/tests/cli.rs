@@ -2,8 +2,8 @@
 //!
 //! The table gives the cli buffer to the name `cli` and a recording
 //! stub to a cell, so a region that goes into the buffer and comes
-//! back out of it is judged by what that stub was started over. The
-//! words themselves are clients/cli's and are judged there; what these
+//! back out of it is judged by what that stub was started over. What a
+//! typed line does is clients/sh's and is judged there; what these
 //! tests judge is the buffer: the prompt, the transcript, the line,
 //! and the way out.
 
@@ -130,7 +130,7 @@ fn line(tui: &mut Editor, text: &str) -> Step {
 }
 
 /// The prompt the line stands after, which is where the Shell stands:
-/// the mirror of the directory `under` names, as the cli writes it.
+/// the mirror of the directory `under` names, as the shell writes it.
 fn prompt(under: &str) -> String {
     format!("/module/fs/root/{under} > ")
 }
@@ -142,12 +142,12 @@ fn the_first_frame_is_the_prompt_where_the_region_was_opened() {
     let mut tui = buffer(&rig, &seen);
     let frame = frame(&mut tui);
     // The Shell stands where the region was opened, and the path is
-    // the one the cli itself finds from the rd.
+    // the one the shell itself finds from the rd.
     assert_eq!(frame.lines, [prompt("work")]);
     let column = prompt("work").chars().count();
     assert_eq!(frame.cursor, (0, u16::try_from(column).unwrap()));
-    // A Buffer of the cli's own, one revision, and no word of its own
-    // in the status row.
+    // A Buffer of the buffer's own, one revision, and nothing of its
+    // own in the status row.
     assert_eq!(frame.status, format!("work  1:{}  r2[+]   ", column + 1));
 }
 
@@ -195,14 +195,30 @@ fn cd_moves_the_prompt_and_what_a_name_is_read_from() {
 }
 
 #[test]
-fn a_line_that_does_not_run_prints_the_miss_the_cli_prints() {
+fn a_line_that_does_not_run_prints_the_miss_the_shell_prints() {
     let rig = work("miss");
     let seen = Opened::default();
     let mut tui = buffer(&rig, &seen);
     line(&mut tui, "ls /x");
     let at = prompt("work");
-    let said = "ls /x: no such rd (x)";
+    let said = "ls /x: invalid";
     assert_eq!(frame(&mut tui).lines, [format!("{at}ls /x"), said.into(), at]);
+}
+
+#[test]
+fn a_following_line_prints_what_its_cell_holds_and_closes_it() {
+    let rig = work("follow");
+    let seen = Opened::default();
+    let mut tui = buffer(&rig, &seen);
+    // `-f` follows: the buffer reads the cell once, a Plugin having no
+    // tick to read it again, and closes it, which ends the follow.
+    assert_eq!(line(&mut tui, "cat -f a"), Step::Changed);
+    let at = prompt("work");
+    let shown = [format!("{at}cat -f a"), "first".into(), at];
+    assert_eq!(frame(&mut tui).lines, shown, "what the cell held");
+    let mut other = rig.client();
+    let cat = other.resolve("/bin/cat").unwrap();
+    assert_eq!(other.children(cat), Ok(Vec::new()), "no cell was left");
 }
 
 #[test]
@@ -233,25 +249,19 @@ fn ctrl_l_empties_what_was_run_and_keeps_the_line() {
 }
 
 #[test]
-fn quit_and_ctrl_d_give_the_region_back_to_what_it_came_from() {
-    for out in ["quit", "\u{4}"] {
-        let rig = work("back");
-        let seen = Opened::default();
-        let mut tui = buffer(&rig, &seen);
-        let mut other = rig.client();
-        let a = other.resolve("/module/fs/root/work/a").unwrap();
-        assert_eq!(*seen.borrow(), [Some(a)], "the stub, once");
-        let step = if out == "quit" {
-            line(&mut tui, out)
-        } else {
-            keys(&mut tui, &[Key::Ctrl('d')])
-        };
-        assert_eq!(step, Step::Changed, "{out}: the file is shown again");
-        assert_eq!(*seen.borrow(), [Some(a), Some(a)], "over the same rd");
-        let frame = frame(&mut tui);
-        assert_eq!(frame.lines, ["first"], "what that file holds");
-        assert_eq!(frame.status, "a  1:1  r1   -- STUB --");
-    }
+fn ctrl_d_gives_the_region_back_to_what_it_came_from() {
+    let rig = work("back");
+    let seen = Opened::default();
+    let mut tui = buffer(&rig, &seen);
+    let mut other = rig.client();
+    let a = other.resolve("/module/fs/root/work/a").unwrap();
+    assert_eq!(*seen.borrow(), [Some(a)], "the stub, once");
+    let step = keys(&mut tui, &[Key::Ctrl('d')]);
+    assert_eq!(step, Step::Changed, "the file is shown again");
+    assert_eq!(*seen.borrow(), [Some(a), Some(a)], "over the same rd");
+    let frame = frame(&mut tui);
+    assert_eq!(frame.lines, ["first"], "what that file holds");
+    assert_eq!(frame.status, "a  1:1  r1   -- STUB --");
 }
 
 #[test]
@@ -264,13 +274,13 @@ fn a_cli_buffer_that_was_the_first_thing_shown_leaves_with_nothing() {
     let mut tui =
         Tui::open(rig.client(), "", Some("work"), None, table).unwrap();
     assert_eq!(frame(&mut tui).lines, [prompt("work")]);
-    assert_eq!(line(&mut tui, "quit"), Step::Quit(0));
+    assert_eq!(keys(&mut tui, &[Key::Ctrl('d')]), Step::Quit(0));
 }
 
 #[test]
 fn a_region_over_a_cell_leaves_the_line_at_the_root() {
     let rig = work("cell");
-    // `cd` is the cli's own word and a file is no Container: the cli
+    // `cd` is the shell's own and a file is no Container: the shell
     // refuses it, nothing is said, and the line stands at the root.
     let table: Table<Box<dyn Plugin>> =
         Box::new(|_| Some(Box::new(Cli::default()) as Box<dyn Plugin>));

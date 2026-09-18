@@ -365,11 +365,11 @@ keys explored : q Enter
 [[ "$(ended explored)" == 0 ]] || fail ":q left the listing :explore made"
 [[ "$(cat "$DIR/tree/note")" == one ]] || fail ":explore! wrote the draft"
 
-# --- :cli: the cli's words in a region of their own ------------------
+# --- :cli: a shell in a region of its own ----------------------------
 # `:cli` is Vim asking its Client for this region in the Plugin the
-# name `cli` stands for, over where the `:` line's own words stand:
+# name `cli` stands for, over where the `:` line's own lines stand:
 # the directory the file is in. A line is typed at the prompt, run and
-# answered above the next one; `quit` gives the region back to the
+# answered above the next one; Ctrl-D gives the region back to the
 # file it came from, which is a fresh Vim over it.
 mkdir -p "$DIR/shell"
 echo one > "$DIR/shell/note"
@@ -381,17 +381,17 @@ keys clibuf : c l i Enter
 shown clibuf "^/module/fs/root$DIR/shell >$"
 keys clibuf l s Enter
 shown clibuf '^alpha  note$'
-keys clibuf q u i t Enter
+keys clibuf C-d
 editing clibuf note
 shown clibuf '^one$'
 keys clibuf : q Enter
 [[ "$(ended clibuf)" == 0 ]] || fail ":q after the cli buffer did not quit"
 
-# --- the : line runs the cli's words too -----------------------------
-# A word the editor has none of is the cli's, run over the tree from
-# the directory the file is in: `:ls` lists that directory and `:pwd`
-# says where it stands, the first line of what it printed in the
-# status row.
+# --- the : line runs a Driver under /bin too -------------------------
+# A name Vim's own list has not is the shell's line, run over the tree
+# from the directory the file is in: `:ls` lists that directory and
+# `:pwd` says where it stands, the first line of what it printed in
+# the status row.
 mkdir -p "$DIR/words"
 echo a > "$DIR/words/alpha"
 echo one > "$DIR/words/note"
@@ -402,14 +402,14 @@ shown words "note  1:1  r1   alpha"
 keys words : p w d Enter
 shown words "note  1:1  r1   /module/fs/root$DIR/words"
 keys words : q Enter
-[[ "$(ended words)" == 0 ]] || fail ":q after a cli word did not quit"
+[[ "$(ended words)" == 0 ]] || fail ":q after a shell line did not quit"
 
 # --- Tab on the : line: the word expanded, its help, the wildmenu ----
-# A name only one word begins is expanded to that word and its
-# argument form and help stand in the status row. `:w` is three of
-# them — Vim's `write` and `wq`, then the cli's `watch` — so it is the
-# wildmenu instead, `write` current and the line holding it; Tab walks
-# to the next. Enter on the expanded line runs it, which writes.
+# A name only one word of Vim's begins is expanded to that word and
+# its argument form and help stand in the status row. `:w` is three
+# names — Vim's `write` and `wq`, then `watch` under `/bin` — so it is
+# the wildmenu instead, `write` current and the line holding it; Tab
+# walks to the next. Enter on the expanded line runs it, which writes.
 start tab "$DIR/words" "$BIN note"
 editing tab note
 keys tab : w r Tab

@@ -283,7 +283,7 @@ name = "reovim-plugin-cli"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-client",
- "reovim-client-cli",
+ "reovim-client-sh",
  "reovim-client-tui",
  "reovim-rig",
  "reovim-sdk",
@@ -306,7 +306,7 @@ name = "reovim-plugin-vim"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-client",
- "reovim-client-cli",
+ "reovim-client-sh",
  "reovim-client-tui",
  "reovim-rig",
  "reovim-sdk",

@@ -221,11 +221,11 @@ fn the_expanded_line_runs_the_word_it_names() {
     assert_eq!(typed(&mut tui, "ix<Esc>:w<Tab><CR>"), Step::Changed);
     assert_eq!(rig.disk("d/note"), b"xone\ntwo\n");
 
-    // The wildmenu walked to another word runs that one: `watch` is
-    // the cli's, and a target that is not there is the cli's own
-    // sentence, not E492.
+    // The wildmenu walked to another name runs that one: `watch` is a
+    // Driver under `/bin`, and a target that is not there is what the
+    // shell says of the run that failed, not E492.
     typed(&mut tui, ":w<Tab><Tab><Tab>nothere<CR>");
-    assert_eq!(said(&mut tui), "watch nothere: no such rd (nothere)");
+    assert_eq!(said(&mut tui), "watch nothere: gone");
 
     // `:q` Tab Enter quits, the draft being written.
     assert_eq!(typed(&mut tui, ":q<Tab><CR>"), Step::Quit(0));

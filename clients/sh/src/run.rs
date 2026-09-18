@@ -120,7 +120,7 @@ pub fn fields(tree: &mut Tree, name: &str) -> Option<Vec<Field>> {
 /// `Miss` for a name PATH does not hold.
 pub fn form(tree: &mut Tree, name: &str) -> Result<String, Miss> {
     let Some(fields) = fields(tree, name) else {
-        return Err(unknown(name));
+        return Err(not_under(name));
     };
     Ok(decode::form(name, &fields))
 }
@@ -139,7 +139,9 @@ pub fn under_path(
     sink: Option<Sink<'_>>,
 ) -> Result<Ran, Miss> {
     let Some(rd) = lookup(tree, name) else {
-        return Err(unknown(name));
+        // The line named this one, so the Miss is the one a host tells
+        // from the rest: Vim's `:` line says E492 of it.
+        return Err(Miss { unknown: true, ..not_under(name) });
     };
     let typed = args.join(" ");
     let refused = |f: Fault| miss(name, &typed, Step::Op, &f, "");
@@ -185,9 +187,12 @@ fn lookup(tree: &mut Tree, name: &str) -> Option<Rd> {
     tree.lookup(at, name).ok()
 }
 
-fn unknown(name: &str) -> Miss {
+/// A name no directory of PATH holds, as `help NAME` and a line that
+/// names one are both refused.
+fn not_under(name: &str) -> Miss {
     let cause = format!("not under {PATH}; help lists them");
-    Miss { name: name.to_string(), target: String::new(), cause }
+    let (name, target) = (name.to_string(), String::new());
+    Miss { name, target, cause, unknown: false }
 }
 
 /// One reading of the cell from `at`: the bytes, and whether the read

@@ -272,5 +272,6 @@ fn empty(ty: &Ty) -> Value {
 /// A token no field could take: the form `help` prints for this name.
 fn missed(name: &str, token: &str, fields: &[Field]) -> Miss {
     let cause = format!("usage: {}", form(name, fields));
-    Miss { name: name.to_string(), target: token.to_string(), cause }
+    let (name, target) = (name.to_string(), token.to_string());
+    Miss { name, target, cause, unknown: false }
 }

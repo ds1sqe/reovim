@@ -181,6 +181,11 @@ pub struct Miss {
     pub target: String,
     /// What went wrong, as the shell says it.
     pub cause: String,
+    /// The name is under no directory of PATH: the one Miss a host
+    /// tells from the rest, every other being said as the shell says
+    /// it. Vim's `:` line says E492 of this one, the line having named
+    /// nothing either table has.
+    pub unknown: bool,
 }
 
 impl fmt::Display for Miss {
@@ -198,7 +203,7 @@ impl Miss {
     #[must_use]
     pub fn line(cause: &str) -> Self {
         let (name, target) = (String::new(), String::new());
-        Self { name, target, cause: cause.to_string() }
+        Self { name, target, cause: cause.to_string(), unknown: false }
     }
 }
 
@@ -255,7 +260,8 @@ pub fn run(
     if sink.is_some() {
         let cause = "a redirect takes a run's output".to_string();
         let target = args.join(" ");
-        return Err(Miss { name: (*name).to_string(), target, cause });
+        let name = (*name).to_string();
+        return Err(Miss { name, target, cause, unknown: false });
     }
     let out = ran(tree, shell, name, args)?;
     Ok(Ran { out, open: None })
@@ -295,7 +301,8 @@ fn served(
 fn misused(name: &str, args: &[&str]) -> Miss {
     let form = builtin(name).map(Builtin::form).unwrap_or_default();
     let cause = format!("usage: {form}");
-    Miss { name: name.to_string(), target: args.join(" "), cause }
+    let (name, target) = (name.to_string(), args.join(" "));
+    Miss { name, target, cause, unknown: false }
 }
 
 /// `help`, and `help NAME`: the lines the shell can run, read from the
@@ -331,7 +338,7 @@ fn cd(
         let Some((rd, path)) = shell.back.clone() else {
             let (name, target) = ("cd".to_string(), target.to_string());
             let cause = "nowhere to go back to".to_string();
-            return Err(Miss { name, target, cause });
+            return Err(Miss { name, target, cause, unknown: false });
         };
         shell.go(rd, path);
         return Ok(Vec::new());
@@ -388,7 +395,8 @@ fn resolved(
 /// row's `{}`.
 fn miss(name: &str, target: &str, step: Step, fault: &Fault, at: &str) -> Miss {
     let cause = cause(step, fault, at);
-    Miss { name: name.to_string(), target: target.to_string(), cause }
+    let (name, target) = (name.to_string(), target.to_string());
+    Miss { name, target, cause, unknown: false }
 }
 
 /// The shell's sentence for `fault`: the table for the Kernel's
