@@ -87,6 +87,18 @@ sockets() {
     ls "$XDG_RUNTIME_DIR" | grep -c '\.sock$' || true
 }
 
+# `value` into the rd `target`. Bytes typed into an rd have one
+# spelling in the shell, a run's output through `>`, so the value goes
+# to a file on disk first and `cat` of that file writes it; the editor
+# boots fs at `/`, so the file is under the run's directory there.
+VALUE="/module/fs/root$DIR/value"
+readonly VALUE
+poured() {
+    local target="$1" value="$2"
+    printf '%s' "$value" > "$DIR/value"
+    "$BIN" cli cat "$VALUE" '>' "$target"
+}
+
 # What `/session` holds, once it holds `wanted` Sessions or two seconds
 # have gone. A link's end reaches the editor a moment after the cli
 # process that held it is done, so the listing is asked for again.
@@ -161,7 +173,7 @@ said="$("$BIN" cli dmesg)"
 [[ -z "$("$BIN" cli dmesg -l err)" ]] || fail "dmesg -l err is not empty"
 start follow "$DIR" "$BIN cli dmesg -w"
 shown follow 'connect session='
-"$BIN" cli write /sys/log '<4>smoke-follows' >/dev/null
+poured /sys/log '<4>smoke-follows' >/dev/null
 shown follow 'smoke-follows'
 pkill -INT -f "^$BIN cli dmesg -w\$"
 [[ "$(ended follow)" == 0 ]] || fail "dmesg -w did not end on SIGINT"
@@ -185,15 +197,15 @@ editing other other
 # The first editor has the default socket, the second one of its own;
 # the cli reaches the first and finds the tui that holds its terminal.
 [[ "$(sockets)" == 2 ]] || fail "two editors have $(sockets) sockets"
-[[ "$("$BIN" cli children /session/1/client)" == *" 1" ]] \
+[[ "$("$BIN" cli ls -a /session/1/client)" == *" 1" ]] \
     || fail "the running editor has no client rd 1"
-serves="$("$BIN" cli read /session/1/client/1/capability)"
+serves="$("$BIN" cli cat /session/1/client/1/capability)"
 [[ "$serves" == $'keys\ngrid\nopen\nprocess' ]] \
     || fail "the running editor's client serves $serves"
-# A wrong command: one line on stderr, naming the word and the target,
-# and exit 1.
-said="$("$BIN" cli read /session 2>&1 >/dev/null)" && code=0 || code=$?
-[[ "$said" == "reovim: read /session: a Container has no bytes; ls it" ]] \
+# A line that cannot run: one line on stderr, naming the Driver and the
+# target, and exit 1.
+said="$("$BIN" cli cat /session 2>&1 >/dev/null)" && code=0 || code=$?
+[[ "$said" == "reovim: cat /session: unsupported" ]] \
     || fail "a Container read says: $said"
 [[ "$code" == 1 ]] || fail "a Container read exits $code"
 # Every cli run above made a Session of its own and took it away with
@@ -208,20 +220,19 @@ listed="$(sessions 2)"
 # it stamps around each `call`, with what the round trip took. `dmesg`
 # says the rd as a path and the api and the method by name, from the
 # tree and the declarations, since the Kernel writes only numbers.
-level=("$BIN" cli write /sys/loglevel)
 [[ "$("$BIN" cli cat /sys/loglevel)" == info ]] \
     || fail "the level at boot is $("$BIN" cli cat /sys/loglevel)"
-said="$("${level[@]}" loud 2>&1 >/dev/null)" && code=0 || code=$?
-[[ "$said" == "reovim: write /sys/loglevel: invalid" ]] \
-    || fail "a word that is not a level says: $said"
-[[ "$code" == 1 ]] || fail "a word that is not a level exits $code"
-"${level[@]}" debug > /dev/null
+said="$(poured /sys/loglevel loud 2>&1 >/dev/null)" && code=0 || code=$?
+[[ "$said" == "reovim: cat $VALUE: invalid" ]] \
+    || fail "a token that is not a level says: $said"
+[[ "$code" == 1 ]] || fail "a token that is not a level exits $code"
+poured /sys/loglevel debug > /dev/null
 
 # The insert below is one `text` call, and the trace holds it.
 keys new i "fresh" Escape : q Enter
 shown new "E37: No write since last change"
 said="$("$BIN" cli dmesg -d -l debug)"
-"${level[@]}" 6 > /dev/null
+poured /sys/loglevel 6 > /dev/null
 [[ "$("$BIN" cli cat /sys/loglevel)" == info ]] \
     || fail "the level written as 6 does not read back as info"
 grep -qE '^\[ *[0-9]+\.[0-9]{6} < *[0-9]+\.[0-9]{6}>\] ' <<< "$said" \
@@ -253,18 +264,17 @@ limits="$("$BIN" cli ls -l /sys/limit)"
 [[ "$("$BIN" cli cat /sys/limit/log_ring)" == 4096 ]] \
     || fail "log_ring at boot is $("$BIN" cli cat /sys/limit/log_ring)"
 # A ring told to keep eight keeps eight from that write on.
-"$BIN" cli write /sys/limit/log_ring 8 > /dev/null
+poured /sys/limit/log_ring 8 > /dev/null
 [[ "$("$BIN" cli dmesg | wc -l)" == 8 ]] \
     || fail "a ring of eight kept $("$BIN" cli dmesg | wc -l) lines"
 "$BIN" cli dmesg -t -l notice \
     | grep -q 'limit name=log_ring was=4096 now=8 caller=' \
     || fail "the parameter write is not in the log it sized"
-said="$("$BIN" cli write /sys/limit/reentry x 2>&1 >/dev/null)" \
-    && code=0 || code=$?
-[[ "$said" == "reovim: write /sys/limit/reentry: invalid" ]] \
+said="$(poured /sys/limit/reentry x 2>&1 >/dev/null)" && code=0 || code=$?
+[[ "$said" == "reovim: cat $VALUE: invalid" ]] \
     || fail "a parameter that is no number says: $said"
 [[ "$code" == 1 ]] || fail "a refused parameter exits $code"
-"$BIN" cli write /sys/limit/log_ring 4096 > /dev/null
+poured /sys/limit/log_ring 4096 > /dev/null
 
 [[ "$("$BIN" cli cat /sys/mem)" == live=* ]] \
     || fail "/sys/mem says $("$BIN" cli cat /sys/mem)"

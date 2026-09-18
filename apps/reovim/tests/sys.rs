@@ -67,16 +67,18 @@ fn place(test: &str) -> (PathBuf, String) {
 
 #[test]
 fn a_boot_parameter_is_set_before_the_first_module() {
-    let sys = ["loglevel=debug", "limit/log_ring=64"];
+    let sys = ["loglevel=debug", "limit/log_ring=256"];
     let server = Server::start("boot", &sys);
-    assert_eq!(server.cli(&["cat", "/sys/loglevel"]), "debug");
-    assert_eq!(server.cli(&["cat", "/sys/limit/log_ring"]), "64");
     // The level was already `debug` when the Modules loaded, so their
-    // loading was traced; the ring was already 64, so it kept 64.
+    // loading was traced; the ring was already 256, so it kept 256. Read
+    // before anything else: at debug a run under `/bin` traces a couple
+    // of dozen ops, and the ring keeps the boot for only a few of them.
     let said = server.cli(&["dmesg", "-t"]);
     assert!(said.contains("load module=fs"), "{said}");
-    assert!(said.lines().count() <= 64, "{said}");
+    assert!(said.lines().count() <= 256, "{said}");
     assert!(said.lines().any(|line| line.starts_with("op=")), "{said}");
+    assert_eq!(server.cli(&["cat", "/sys/loglevel"]), "debug");
+    assert_eq!(server.cli(&["cat", "/sys/limit/log_ring"]), "256");
 }
 
 #[test]

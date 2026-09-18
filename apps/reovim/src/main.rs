@@ -22,14 +22,14 @@ use std::fmt;
 use std::process::ExitCode;
 
 use reovim_client::Fault;
-use reovim_client_cli::Miss;
+use reovim_client_sh::Miss;
 
 /// Why the binary stops, printed once on stderr.
 pub enum Fail {
     Usage(String),
     Host(reovim_host::Error),
     Client(Fault),
-    /// One command of the cli, in the cli's own words.
+    /// One typed line, as the shell says it.
     Cli(Miss),
     /// A `--sys NAME=VALUE` the Kernel refused; nothing has started.
     Sys(String, String, reovim_kernel_interface::Error),
@@ -78,7 +78,7 @@ impl From<reovim_kernel_interface::Error> for Fail {
 
 const USAGE: &str = "\
 usage: reovim server [--socket PATH] [--root DIR] [--log PATH] [--sys N=V]
-       reovim cli [--socket PATH] [--color[=WHEN]] [COMMAND...]
+       reovim cli [--socket PATH] [--color[=WHEN]] [--help] [LINE...]
        reovim tui [--socket PATH] [+N] [FILE]
        reovim [--socket PATH] [--log PATH] [--sys N=V] [+N] [FILE]
 defaults: --socket <runtime dir>/reovim.sock, --root <working directory>;
@@ -86,7 +86,9 @@ the bare form edits any FILE, or none, and listens at the default
 socket, or at reovim-<pid>.sock while another editor holds it;
 --sys NAME=VALUE writes /sys/NAME before the first module loads, and
 may be given more than once (--sys loglevel=debug --sys
-limit/log_ring=65536)";
+limit/log_ring=65536);
+the cli runs one typed LINE and exits, or reads lines until the end of
+the input; help typed at it lists what is under /bin";
 
 /// When the output may carry color: `--color=WHEN`, and `--color`
 /// alone as GNU ls takes it.
@@ -210,9 +212,15 @@ fn run(args: Vec<String>) -> Result<ExitCode, Fail> {
             server::run(&socket(given)?, &root, log.as_deref(), &sys)
                 .map(|()| ExitCode::SUCCESS)
         }
+        // The app's own usage, which opens no link; the shell's `help`
+        // is the one that reads the tree.
+        (Some("cli"), [asked]) if asked == "--help" => {
+            println!("{USAGE}");
+            Ok(ExitCode::SUCCESS)
+        }
         (Some("cli"), rest) if plain => {
-            let out = cli::out(colored(color));
-            cli::run(&socket(given)?, rest, out).map(|()| ExitCode::SUCCESS)
+            cli::run(&socket(given)?, rest, colored(color))
+                .map(|()| ExitCode::SUCCESS)
         }
         (Some("tui"), rest) if plain => {
             let (line, file) = file_at(rest)?;

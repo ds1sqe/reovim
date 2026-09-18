@@ -71,6 +71,13 @@ impl Server {
         out.trim_end().to_string()
     }
 
+    /// The rd of a target, read from the `rd` line of `stat`.
+    fn rd(&self, target: &str) -> String {
+        let said = self.line(&["stat", target]);
+        let line = said.lines().find(|line| line.starts_with("rd ")).unwrap();
+        line["rd ".len()..].to_string()
+    }
+
     /// The names under `/session`, once there are `wanted` of them or
     /// two seconds have gone. A link's end reaches the server a moment
     /// after the cli process that held it is done, so the count is
@@ -137,12 +144,16 @@ fn the_server_answers_a_raw_endpoint() {
 fn a_draft_reaches_disk_on_save_through_the_cli() {
     let server = Server::start("save");
     let original = server.file("note", b"first\n");
-    let file = server.line(&["lookup", "/module/fs/root/note"]);
+    server.file("second", b"second");
+    let file = server.rd("/module/fs/root/note");
     let buffer = server.line(&["call", "/module/text/open", "open", &file]);
     let target = format!("rd:{buffer}");
 
-    assert_eq!(server.line(&["write", &target, "second"]), "6");
-    assert_eq!(server.line(&["read", &target]), "second");
+    // `>` is the shell's own and copies a run's output, so what the
+    // draft takes is the bytes of a second file on disk.
+    let poured = ["cat", "/module/fs/root/second", ">", &target];
+    assert_eq!(server.line(&poured), "");
+    assert_eq!(server.line(&["cat", &target]), "second");
     assert_eq!(server.disk("note"), original, "unchanged before save");
     assert_eq!(server.line(&["call", &target, "save"]), "");
     assert_eq!(server.disk("note"), b"second");
@@ -152,14 +163,16 @@ fn a_draft_reaches_disk_on_save_through_the_cli() {
          head=2 published=2}"
     );
 
-    // Children and info through the cli, and the pointer child.
-    let listed = server.line(&["children", "/module/text"]);
+    // The children and the record through the cli, and the pointer
+    // child.
+    let listed = server.line(&["ls", "-a", "/module/text"]);
     assert!(listed.contains(&format!("{buffer} {file}")), "{listed}");
-    let info = server.line(&["info", &target]);
-    assert!(info.contains("flags=READ|WRITE|CONTAINER"), "{info}");
+    let said = server.line(&["stat", &target]);
+    assert!(said.starts_with("c rw  "), "{said}");
+    assert!(said.contains("\ntext v1\n"), "{said}");
     // A Buffer is named by its source rd; `source` reads that rd raw.
     let pointer = format!("/module/text/{file}/source");
-    let source = server.cli(&["read", &pointer], b"").unwrap();
+    let source = server.cli(&["cat", &pointer], b"").unwrap();
     let id = u64::from_le_bytes(source[..].try_into().unwrap());
     assert_eq!(id.to_string(), file);
 }
@@ -168,50 +181,47 @@ fn a_draft_reaches_disk_on_save_through_the_cli() {
 fn one_interactive_session_does_the_same() {
     let server = Server::start("interactive");
     server.file("note", b"first\n");
-    let file = server.line(&["lookup", "/module/fs/root/note"]);
+    server.file("third", b"third");
+    let file = server.rd("/module/fs/root/note");
     // A session of lines keeps where it stands, so every target after
-    // the `cd` is a name under it.
+    // the `cd` is a name under it; the end of the input ends it, as it
+    // ends sh.
     let script = format!(
         "cd /module/text\n\
          pwd\n\
          call open open {file}\n\
-         write {file} third\n\
-         read {file}\n\
+         cat /module/fs/root/third > {file}\n\
+         cat {file}\n\
          call {file} nothing\n\
-         call {file} save\n\
-         quit\n\
-         lookup /\n"
+         call {file} save\n"
     );
     let out = String::from_utf8(server.cli(&[], script.as_bytes()).unwrap());
     let out = out.unwrap();
     let lines: Vec<&str> = out.lines().collect();
-    assert_eq!(lines.len(), 4, "{out}");
+    assert_eq!(lines.len(), 3, "{out}");
     assert_eq!(lines[0], "/module/text");
-    assert_eq!(lines[2], "5");
-    assert_eq!(lines[3], "third");
+    assert_eq!(lines[2], "third");
     assert_eq!(server.disk("note"), b"third");
 }
 
-/// `reovim cli` without a server: what the word could not do, and
+/// `reovim cli` without a server: what a run could not do, and
 /// `--help`, which needs no link at all.
 #[test]
-fn a_command_says_its_line_and_help_needs_no_server() {
+fn a_line_says_what_it_could_not_do_and_help_needs_no_server() {
     let server = Server::start("lines");
-    let read = server.cli(&["read", "/module/fs/root"], b"").unwrap_err();
-    assert_eq!(
-        read,
-        "reovim: read /module/fs/root: a Container has no bytes; ls it\n"
-    );
+    let held = server.cli(&["cat", "/module/fs/root"], b"").unwrap_err();
+    assert_eq!(held, "reovim: cat /module/fs/root: unsupported\n");
     let nonsense = server.cli(&["nonsense"], b"").unwrap_err();
-    assert_eq!(nonsense, "reovim: unknown word nonsense; help lists them\n");
-    let entry = server.cli(&["help", "read"], b"").unwrap();
+    assert_eq!(nonsense, "reovim: nonsense: not under /bin; help lists them\n");
+    let entry = server.cli(&["help", "cat"], b"").unwrap();
     assert_eq!(
         String::from_utf8(entry).unwrap(),
-        "read <target>                   bytes to stdout\n"
+        "cat [-f] [-n N] [targets..]\n"
     );
 
-    // No link is opened for `--help`, and a socket nobody listens at
-    // is said with its path.
+    // No link is opened for `--help`, which is the app's own usage and
+    // no second spelling of the shell's `help`; a socket nobody listens
+    // at is said with its path.
     let nowhere = server.dir.join("nowhere.sock");
     let nowhere = nowhere.to_str().unwrap();
     let cli = |args: &[&str]| {
@@ -223,12 +233,19 @@ fn a_command_says_its_line_and_help_needs_no_server() {
     };
     let helped = cli(&["--help"]);
     assert!(helped.status.success());
-    let table = reovim_client_cli::usage().lines().count();
-    assert_eq!(
-        String::from_utf8(helped.stdout).unwrap().lines().count(),
-        table
+    let text = String::from_utf8(helped.stdout).unwrap();
+    assert!(text.starts_with("usage: reovim server "), "{text}");
+    assert!(
+        text.contains(
+            "reovim cli [--socket PATH] [--color[=WHEN]] [--help] [LINE...]"
+        ),
+        "{text}"
     );
-    let missing = cli(&["read", "/"]);
+    assert!(
+        text.contains("help typed at it lists what is under /bin"),
+        "{text}"
+    );
+    let missing = cli(&["cat", "/"]);
     assert_eq!(missing.status.code(), Some(1));
     assert_eq!(
         String::from_utf8(missing.stderr).unwrap(),
@@ -247,7 +264,7 @@ fn the_drivers_under_bin_come_of_linked_modules() {
         "call\ncat\ndmesg\nlog\nls\nstat\ntree\nwatch"
     );
     for name in ["coreutils", "sysutils"] {
-        let rd = server.line(&["lookup", &format!("/module/{name}")]);
+        let rd = server.rd(&format!("/module/{name}"));
         assert!(rd.parse::<u64>().is_ok(), "{rd}");
         assert_eq!(
             server.cli(&["unload", name], b"").unwrap_err(),
@@ -283,14 +300,14 @@ fn a_bad_call_fails_before_anything_is_sent() {
     server.file("note", b"");
     let err =
         server.cli(&["call", "/module/fs/root", "create"], b"").unwrap_err();
-    assert!(err.contains("does not fit"), "{err}");
+    assert_eq!(err, "reovim: call /module/fs/root create: invalid\n");
     let err =
         server.cli(&["call", "/module/fs/root", "nothing"], b"").unwrap_err();
-    assert!(err.contains("no method"), "{err}");
+    assert_eq!(err, "reovim: call /module/fs/root nothing: unsupported\n");
     let err = server.cli(&["call", "/module/fs/root", "create", "a/b"], b"");
     assert_eq!(
         err.unwrap_err(),
-        "reovim: call /module/fs/root: invalid\n",
+        "reovim: call /module/fs/root create a/b: invalid\n",
         "the Driver refuses a slash"
     );
     let made = server.line(&["call", "/module/fs/root", "create", "made"]);
@@ -305,7 +322,7 @@ fn a_bad_call_fails_before_anything_is_sent() {
 fn a_cli_run_takes_its_session_with_it() {
     let server = Server::start("sessions");
     for _ in 0..10 {
-        assert_eq!(server.line(&["lookup", "/"]), "0");
+        assert_eq!(server.rd("/"), "0");
     }
     let listed = server.sessions(1);
     assert_eq!(listed.len(), 1, "ten runs left {listed:?}");
@@ -320,7 +337,7 @@ fn a_cli_run_takes_its_session_with_it() {
         .spawn()
         .unwrap();
     assert_eq!(server.sessions(2).len(), 2, "the watcher never connected");
-    server.line(&["lookup", "/"]);
+    server.rd("/");
     std::thread::sleep(Duration::from_millis(200));
     let pid = watcher.id().to_string();
     // SIGINT is what Ctrl-C makes; the loop ends and exits 0.

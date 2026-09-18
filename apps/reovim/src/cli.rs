@@ -1,16 +1,13 @@
-//! `reovim cli`: one link and one Client. One command runs and exits;
-//! none reads commands until EOF or `quit`, as lines from a pipe or as
-//! an edited line with completion on a terminal.
+//! `reovim cli`: one link and one Client. One typed line runs and
+//! exits; none reads lines until the end of the input, as lines from a
+//! pipe or as an edited line with completion on a terminal.
 
-use std::io::{Read, Write};
+use std::io::Write as _;
 use std::thread::sleep;
 use std::time::Duration;
 
 use reovim_client::{Client, Fault, Key};
-use reovim_client_cli::{
-    Act, Follow, Line, Miss, Out, Paint, Shell, complete, following, help,
-    input, laid_out, plain,
-};
+use reovim_client_sh::{Act, Line, Miss, Open, Ran, Shell, complete};
 use reovim_host::term;
 
 use crate::Fail;
@@ -20,57 +17,39 @@ use crate::remote::Remote;
 /// again at the top of it.
 const CLEAR: &[u8] = b"\x1b[2J\x1b[H";
 
-/// Between one `since` and the next. The wire is request and reply, so
-/// a following word asks; when the link learns to push, this wait
-/// becomes a wake (a Series B number).
+/// Between one read of an open run's cell and the next. A Driver that
+/// follows does its work inside that read, so the tick is how often one
+/// is asked; when the link learns to push, this wait becomes a wake.
 const TICK: u64 = 50;
 
-/// Where this run's output goes: the terminal's columns when stdout is
-/// one, and the color the app decided on.
-#[must_use]
-pub fn out(color: bool) -> Out {
-    let paint = if color { Paint::on() } else { Paint::off() };
-    Out { width: width(), paint }
-}
-
-/// Run `command`, or an interactive session when it is empty. `help`
-/// and `--help` are answered without a link; anything else needs one.
-pub fn run(socket: &str, command: &[String], out: Out) -> Result<(), Fail> {
-    if let Some(text) = help(command) {
-        return Ok(write(text?.as_bytes())?);
-    }
+/// Run `line`, or an interactive session when it is empty.
+pub fn run(socket: &str, line: &[String], color: bool) -> Result<(), Fail> {
     let mut client = linked(socket)?;
-    if !command.is_empty() {
-        // One command has no session to stand in: it runs at the root.
+    if !line.is_empty() {
+        // One line has no session to stand in: it runs at the root.
         let mut shell = Shell::default();
-        let words = filled(command)?;
-        return once(&mut client, &mut shell, &words, out, Mode::Cooked);
+        let text = line.join(" ");
+        return once(&mut client, &mut shell, &text, color, Mode::Cooked);
     }
     if term::is_tty() {
-        terminal(&mut client, out)
+        terminal(&mut client, color)
     } else {
-        piped(&mut client, out)
+        piped(&mut client, color)
     }
 }
 
-/// The terminal's columns, which `ls` lays its names out across; `None`
-/// when stdout is a pipe, and the library writes one name per line.
-fn width() -> Option<u16> {
+/// The terminal's columns, which a listing lays its names out across; 0
+/// when stdout is a pipe, and then one name goes per line.
+fn width() -> u64 {
     if !term::is_tty_out() {
-        return None;
+        return 0;
     }
-    term::size().ok().map(|(columns, _)| columns)
+    term::size().map_or(0, |(columns, _)| u64::from(columns))
 }
 
-/// The columns again, in case the terminal was resized between two
-/// commands; the color is the run's.
-fn sized(out: Out) -> Out {
-    Out { width: width(), paint: out.paint }
-}
-
-/// How a following word waits and writes: a cooked terminal or a pipe,
-/// where Ctrl-C arrives as SIGINT and a newline is a newline; or raw
-/// mode, where Ctrl-C is a key and every newline needs its return.
+/// How an open run writes and waits: a cooked terminal or a pipe, where
+/// Ctrl-C arrives as SIGINT and a newline is a newline; or raw mode,
+/// where Ctrl-C is a key and every newline needs its return.
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum Mode {
     Cooked,
@@ -96,60 +75,38 @@ impl Mode {
     }
 }
 
-/// One command: a word that follows the tree runs the loop, and
-/// anything else prints once.
+/// One typed line: what the run printed, and the loop for one that came
+/// back open.
 fn once(
     client: &mut Client,
     shell: &mut Shell,
-    words: &[String],
-    out: Out,
+    text: &str,
+    color: bool,
     mode: Mode,
 ) -> Result<(), Fail> {
-    if let Some(plan) = following(client, shell, words, out)? {
-        return follow(client, plan, mode);
-    }
-    Ok(mode.show(&input(client, shell, words, out)?)?)
+    // Asked again each time, in case the terminal was resized.
+    shell.screen(width(), color);
+    let Ran { out, open } = reovim_client_sh::run(client, shell, text)?;
+    mode.show(&out)?;
+    let Some(open) = open else { return Ok(()) };
+    follow(client, open, mode)
 }
 
-/// The one watch loop: what the word prints now, then what it makes of
-/// every event until Ctrl-C or the count. The handles it watched are
-/// closed on the way out; Ctrl-C is not a failure.
-fn follow(
-    client: &mut Client,
-    mut plan: Follow,
-    mode: Mode,
-) -> Result<(), Fail> {
+/// A run still open, read on every tick: what the cell holds now is
+/// printed and nothing is printed between, the empty read that ends the
+/// cell ends the loop, and Ctrl-C closes the cell and is no failure.
+fn follow(client: &mut Client, mut open: Open, mode: Mode) -> Result<(), Fail> {
     if mode == Mode::Cooked {
         term::catch_interrupt();
     }
-    mode.show(&plan.first)?;
-    let mut left = plan.limit;
-    while left != Some(0) && mode.wait()? {
-        left = step(client, &mut plan, mode, left)?;
-    }
-    for h in &plan.handles {
-        let _ = client.close(*h);
-    }
-    Ok(())
-}
-
-/// Everything that happened since the last ask, and how many prints
-/// are left after it.
-fn step(
-    client: &mut Client,
-    plan: &mut Follow,
-    mode: Mode,
-    mut left: Option<usize>,
-) -> Result<Option<usize>, Fail> {
-    for event in client.since()? {
-        if left == Some(0) {
-            break;
-        }
-        let Some(bytes) = plan.event(client, event)? else { continue };
+    while mode.wait()? {
+        let (bytes, ended) = open.more(client)?;
         mode.show(&bytes)?;
-        left = left.map(|n| n.saturating_sub(1));
+        if ended {
+            return Ok(());
+        }
     }
-    Ok(left)
+    Ok(open.close(client)?)
 }
 
 /// A Client on the server at `socket`; a link that never opened says
@@ -157,23 +114,10 @@ fn step(
 fn linked(socket: &str) -> Result<Client, Fail> {
     match Remote::client(socket, Vec::new()) {
         Err(Fail::Host(_) | Fail::Client(Fault::Carrier)) => {
-            Err(plain(&Fault::Carrier, Some(socket)).into())
+            Err(Miss::line(&format!("no server at {socket}")).into())
         }
         other => other,
     }
-}
-
-/// `write <target>` takes its bytes from stdin.
-fn filled(words: &[String]) -> Result<Vec<String>, Fail> {
-    let mut words = words.to_vec();
-    if words.len() == 2 && words[0] == "write" {
-        let mut bytes = Vec::new();
-        std::io::stdin().read_to_end(&mut bytes).map_err(|_| Fault::Carrier)?;
-        let text = String::from_utf8(bytes)
-            .map_err(|_| Miss::line("stdin is not UTF-8"))?;
-        words.push(text);
-    }
-    Ok(words)
 }
 
 /// To stdout, flushed; a closed stdout is `Carrier`.
@@ -182,28 +126,19 @@ fn write(bytes: &[u8]) -> Result<(), Fault> {
     out.write_all(bytes).and_then(|()| out.flush()).map_err(|_| Fault::Carrier)
 }
 
-/// One command per stdin line until EOF or `quit`; a fault ends the
-/// line, not the session.
-fn piped(client: &mut Client, out: Out) -> Result<(), Fail> {
+/// One typed line per stdin line until the end of the input, which ends
+/// the session; a fault ends the line, not the session.
+fn piped(client: &mut Client, color: bool) -> Result<(), Fail> {
     let stdin = std::io::stdin();
     let mut shell = Shell::default();
     let mut line = String::new();
     while stdin.read_line(&mut line).map_err(|_| Fault::Carrier)? != 0 {
-        let words = split(&line);
-        line.clear();
-        match words.first().map(String::as_str) {
-            None => {}
-            Some("quit") => break,
-            Some(_) => {
-                report(once(client, &mut shell, &words, out, Mode::Cooked));
-            }
+        if !line.trim().is_empty() {
+            report(once(client, &mut shell, &line, color, Mode::Cooked));
         }
+        line.clear();
     }
     Ok(())
-}
-
-fn split(line: &str) -> Vec<String> {
-    line.split_whitespace().map(str::to_string).collect()
 }
 
 /// One line's fault ends the line, not the session.
@@ -214,14 +149,14 @@ fn report(result: Result<(), Fail>) {
 }
 
 /// The line editor under raw mode; back to cooked on every exit.
-fn terminal(client: &mut Client, out: Out) -> Result<(), Fail> {
+fn terminal(client: &mut Client, color: bool) -> Result<(), Fail> {
     term::enter()?;
-    let result = edit(client, out);
+    let result = edit(client, color);
     let _ = term::leave();
     result
 }
 
-fn edit(client: &mut Client, out: Out) -> Result<(), Fail> {
+fn edit(client: &mut Client, color: bool) -> Result<(), Fail> {
     let mut line = Line::default();
     let mut shell = Shell::default();
     draw(&line, &shell)?;
@@ -232,59 +167,49 @@ fn edit(client: &mut Client, out: Out) -> Result<(), Fail> {
             return Err(Fail::Signal);
         }
         let Some(key) = term::poll(1000)? else { continue };
-        let go_on = match line.key(map(key)) {
+        match line.key(map(key)) {
             Act::Nothing => continue,
-            Act::Redraw => true,
-            Act::Clear => write(CLEAR).map(|()| true)?,
-            Act::Complete => offer(client, &shell, &mut line, sized(out))?,
-            Act::Submit(text) => submit(client, &mut shell, &text, out)?,
-            Act::Quit => false,
-        };
-        if !go_on {
-            return Ok(raw(b"\n")?);
+            Act::Redraw => {}
+            Act::Clear => write(CLEAR)?,
+            Act::Complete => offer(client, &shell, &mut line)?,
+            Act::Submit(text) => submit(client, &mut shell, &text, color)?,
+            Act::Quit => return Ok(raw(b"\n")?),
         }
         draw(&line, &shell)?;
     }
 }
 
-/// Tab: one candidate goes into the line, several are shown as `ls`
-/// shows a listing.
+/// Tab: one candidate goes into the line, several are printed one a
+/// line above it.
 fn offer(
     client: &mut Client,
     shell: &Shell,
     line: &mut Line,
-    out: Out,
-) -> Result<bool, Fail> {
+) -> Result<(), Fault> {
     let completion = complete(client, shell, line.text());
     if completion.candidates.len() > 1 {
-        let shown = laid_out(&completion.candidates, out.width);
-        raw(format!("\n{shown}").as_bytes())?;
+        raw(format!("\n{}\n", completion.candidates.join("\n")).as_bytes())?;
     }
     line.apply(&completion);
-    Ok(true)
+    Ok(())
 }
 
-/// Enter: the command runs; false on `quit`. A word that follows runs
-/// until Ctrl-C, which is a key here, and the line comes back after.
+/// Enter: the line runs. A run that follows runs until Ctrl-C, which is
+/// a key here, and the line comes back after.
 fn submit(
     client: &mut Client,
     shell: &mut Shell,
     text: &str,
-    out: Out,
-) -> Result<bool, Fail> {
+    color: bool,
+) -> Result<(), Fault> {
     raw(b"\n")?;
-    let words = split(text);
-    match words.first().map(String::as_str) {
-        None => Ok(true),
-        Some("quit") => Ok(false),
-        Some(_) => {
-            let ran = once(client, shell, &words, sized(out), Mode::Raw);
-            if let Err(fail) = ran {
-                raw(format!("reovim: {fail}\n").as_bytes())?;
-            }
-            Ok(true)
-        }
+    if text.trim().is_empty() {
+        return Ok(());
     }
+    if let Err(fail) = once(client, shell, text, color, Mode::Raw) {
+        raw(format!("reovim: {fail}\n").as_bytes())?;
+    }
+    Ok(())
 }
 
 /// The prompt and the line on the current row, cursor placed.

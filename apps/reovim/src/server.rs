@@ -96,9 +96,11 @@ fn written(
     Ok(())
 }
 
-/// `load` and `unload` on a link: `.rvm` files through kernel/abi; the
-/// Modules of the `modules` table are the binary's and stay.
-struct Files;
+/// `load` and `unload`: `.rvm` files through kernel/abi; the Modules of
+/// the `modules` table are the binary's and stay. The socket server
+/// serves it, and so does the Client inside the bare editor, so a load
+/// reaches the same ABI either way.
+pub struct Files;
 
 impl Loader for Files {
     fn load(&mut self, kernel: &Kernel, path: &str) -> Result<(), Error> {

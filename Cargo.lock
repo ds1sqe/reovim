@@ -130,7 +130,7 @@ name = "reovim"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-client",
- "reovim-client-cli",
+ "reovim-client-sh",
  "reovim-client-tui",
  "reovim-host",
  "reovim-kernel-abi",

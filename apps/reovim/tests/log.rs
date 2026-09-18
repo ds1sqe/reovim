@@ -115,6 +115,6 @@ fn the_log_file_holds_every_entry() {
 #[test]
 fn without_the_option_no_file_is_touched() {
     let server = Server::start("none", false);
-    server.cli(&["lookup", "/"]);
+    server.cli(&["stat", "/"]);
     assert!(!server.dir.join("log").exists());
 }

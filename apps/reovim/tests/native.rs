@@ -93,12 +93,13 @@ fn hello_loads_and_unloads_through_the_cli() {
         Err(format!("reovim: load {hello}: invalid")),
         "taken"
     );
-    assert_eq!(server.cli(&["read", "/module/hello/count"]), Ok("0".into()));
-    assert_eq!(
-        server.cli(&["write", "/module/hello/count", "7"]),
-        Ok("1".into())
-    );
-    assert_eq!(server.cli(&["read", "/module/hello/count"]), Ok("7".into()));
+    assert_eq!(server.cli(&["cat", "/module/hello/count"]), Ok("0".into()));
+    // `>` is what puts bytes into an rd: the output of a run, here the
+    // one byte a file on the server's own disk holds.
+    std::fs::write(server.dir.join("seven"), b"7").unwrap();
+    let poured = ["cat", "/module/fs/root/seven", ">", "/module/hello/count"];
+    assert_eq!(server.cli(&poured), Ok(String::new()));
+    assert_eq!(server.cli(&["cat", "/module/hello/count"]), Ok("7".into()));
     assert_eq!(
         server.cli(&["unload", "fs"]),
         Err("reovim: unload fs: denied".into())
@@ -114,11 +115,9 @@ fn hello_loads_and_unloads_through_the_cli() {
         reply
     };
     ask(&Message::Connect { credential: Vec::new(), session: None });
-    let count: u64 = server
-        .cli(&["lookup", "/module/hello/count"])
-        .unwrap()
-        .parse()
-        .unwrap();
+    let said = server.cli(&["stat", "/module/hello/count"]).unwrap();
+    let line = said.lines().find(|line| line.starts_with("rd ")).unwrap();
+    let count: u64 = line["rd ".len()..].parse().unwrap();
     let open = Op::Open { rd: Rd(count), rights: Rights::READ };
     let Message::Reply(Reply::Ready(Ok(Out::Handle(h)))) =
         ask(&Message::Request(open))
@@ -132,8 +131,8 @@ fn hello_loads_and_unloads_through_the_cli() {
     ask(&Message::Request(Op::Close { h }));
     assert_eq!(server.cli(&["unload", "hello"]), Ok(String::new()));
     assert_eq!(
-        server.cli(&["lookup", "/module/hello"]),
-        Err("reovim: lookup /module/hello: no such rd (hello)".into())
+        server.cli(&["stat", "/module/hello"]),
+        Err("reovim: stat /module/hello: invalid".into())
     );
     let log = server.cli(&["log"]).unwrap();
     assert!(
