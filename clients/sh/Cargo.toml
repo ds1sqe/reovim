@@ -1,0 +1,21 @@
+[package]
+name = "reovim-client-sh"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+reovim-client = { path = "../core" }
+
+[dev-dependencies]
+reovim-client-cli = { path = "../cli" }
+reovim-module-coreutils = { path = "../../modules/coreutils" }
+reovim-rig = { path = "../rig" }
+reovim-sdk = { path = "../../sdk/rust" }
+
+[lints]
+workspace = true

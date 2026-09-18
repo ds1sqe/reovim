@@ -7,11 +7,11 @@ use reovim_client_cli::{Out, Paint, Shell, input};
 use reovim_module_coreutils::bins::stat::Args;
 use reovim_rig::Rig;
 
-/// `call /bin/stat run {cwd, target}`: the rd of the output cell, or
+/// `call /bin/stat run {cwd, color, target}`: the rd of the output cell, or
 /// the fault the call answered with.
 fn run(client: &mut Client, cwd: Rd, target: &str) -> Result<Rd, Fault> {
     let stat = client.resolve("/bin/stat")?;
-    let args = Args { cwd, target: target.to_string() };
+    let args = Args { cwd, color: false, target: target.to_string() };
     let out = client.call_by_name(stat, "run", reovim_sdk::encode(&args))?;
     Ok(reovim_sdk::decode(&out)?)
 }
@@ -61,7 +61,9 @@ fn a_run_says_what_the_cli_says_of_the_same_rd() {
     let said = cli(&mut client, "/bin/stat");
     assert!(said.contains("\nstat v1\n"), "{said}");
     assert!(
-        said.contains("  0 run({cwd: Rd, target: utf8(256)}) -> Rd READ\n"),
+        said.contains(
+            "  0 run({cwd: Rd, color: bool, target: utf8(256)}) -> Rd READ\n"
+        ),
         "{said}"
     );
 }

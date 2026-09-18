@@ -6,7 +6,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::fmt;
 
-use reovim_kernel_interface::codec::{Reader, put_bytes};
+use reovim_kernel_interface::codec::{Reader, put_bytes, put_u32};
 use reovim_kernel_interface::{Error, Field, Rd, Ty, value};
 
 /// One decoded value, shaped by its `Ty`.
@@ -47,6 +47,73 @@ impl Value {
     }
 }
 
+/// `value` in the encoding of `ty`: the one writer of a value's bytes,
+/// as [`decode`] is the one reader of them.
+///
+/// # Errors
+/// `Invalid` when `value` is not one value of `ty`, its bounds
+/// included.
+pub fn encode(ty: &Ty, value: &Value) -> Result<Vec<u8>, Error> {
+    let mut out = Vec::new();
+    put(ty, value, &mut out).ok_or(Error::Invalid)?;
+    if !value::fits(&out, ty) {
+        return Err(Error::Invalid);
+    }
+    Ok(out)
+}
+
+/// One value of `ty` appended; `None` when it is of another shape. The
+/// bounds are `value::fits`', so a Sequence past its maximum is written
+/// here and refused there.
+fn put(ty: &Ty, value: &Value, out: &mut Vec<u8>) -> Option<()> {
+    match (ty, value) {
+        (Ty::Unit, Value::Unit) => {}
+        (Ty::Bool, Value::Bool(b)) => out.push(u8::from(*b)),
+        (Ty::U8, Value::U8(n)) => out.push(*n),
+        (Ty::U32, Value::U32(n)) => out.extend_from_slice(&n.to_le_bytes()),
+        (Ty::U64, Value::U64(n)) => out.extend_from_slice(&n.to_le_bytes()),
+        (Ty::I64, Value::I64(n)) => out.extend_from_slice(&n.to_le_bytes()),
+        (Ty::F64, Value::F64(n)) => out.extend_from_slice(&n.to_le_bytes()),
+        (Ty::Rd, Value::Rd(rd)) => out.extend_from_slice(&rd.0.to_le_bytes()),
+        (Ty::Bytes(_), Value::Bytes(bytes)) => put_bytes(out, bytes),
+        (Ty::Utf8(_), Value::Utf8(text)) => put_bytes(out, text.as_bytes()),
+        (Ty::Record(fields), Value::Record(named)) => {
+            return put_record(fields, named, out);
+        }
+        (Ty::Sequence(_, item), Value::Sequence(items)) => {
+            put_u32(out, u32::try_from(items.len()).ok()?);
+            return items.iter().try_for_each(|v| put(item, v, out));
+        }
+        (Ty::Array(_, item), Value::Sequence(items)) => {
+            return items.iter().try_for_each(|v| put(item, v, out));
+        }
+        (Ty::Choice(fields), Value::Choice(name, item)) => {
+            let at = fields.iter().position(|f| f.name == *name)?;
+            out.push(u8::try_from(at).ok()?);
+            put(&fields[at].ty, item, out)?;
+        }
+        _ => return None,
+    }
+    Some(())
+}
+
+/// Each field of a Record in declared order, the names matching one for
+/// one, as [`record`] reads them back.
+fn put_record(
+    fields: &[Field],
+    named: &[(String, Value)],
+    out: &mut Vec<u8>,
+) -> Option<()> {
+    if fields.len() != named.len() {
+        return None;
+    }
+    for (field, (name, item)) in fields.iter().zip(named) {
+        (field.name == *name).then_some(())?;
+        put(&field.ty, item, out)?;
+    }
+    Some(())
+}
+
 /// `arg` in the encoding of `ty`: `Unit` takes none, `Rd`, `U64` and
 /// `U32` a number, `Utf8` and `Bytes` the text.
 ///
@@ -54,26 +121,20 @@ impl Value {
 /// `Invalid` when `arg` is not one value of `ty`.
 pub fn encode_arg(ty: &Ty, arg: Option<&str>) -> Result<Vec<u8>, Error> {
     let number = || arg.and_then(|a| a.parse::<u64>().ok());
-    let bytes = match (ty, arg) {
-        (Ty::Unit, None) => Some(Vec::new()),
-        (Ty::Rd | Ty::U64, Some(_)) => {
-            number().map(|n| n.to_le_bytes().to_vec())
+    let value = match (ty, arg) {
+        (Ty::Unit, None) => Some(Value::Unit),
+        (Ty::Rd, Some(_)) => number().map(|n| Value::Rd(Rd(n))),
+        (Ty::U64, Some(_)) => number().map(Value::U64),
+        (Ty::U32, Some(_)) => {
+            number().and_then(|n| u32::try_from(n).ok()).map(Value::U32)
         }
-        (Ty::U32, Some(_)) => number()
-            .and_then(|n| u32::try_from(n).ok())
-            .map(|n| n.to_le_bytes().to_vec()),
-        (Ty::Utf8(_) | Ty::Bytes(_), Some(text)) => {
-            let mut out = Vec::new();
-            put_bytes(&mut out, text.as_bytes());
-            Some(out)
+        (Ty::Utf8(_), Some(text)) => Some(Value::Utf8(text.into())),
+        (Ty::Bytes(_), Some(text)) => {
+            Some(Value::Bytes(text.as_bytes().to_vec()))
         }
         _ => None,
     };
-    let bytes = bytes.ok_or(Error::Invalid)?;
-    if !value::fits(&bytes, ty) {
-        return Err(Error::Invalid);
-    }
-    Ok(bytes)
+    encode(ty, &value.ok_or(Error::Invalid)?)
 }
 
 /// `bytes` as one value of `ty`.

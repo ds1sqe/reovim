@@ -3,9 +3,10 @@
 //!
 //! One run answers with an output cell holding the long line of one
 //! rd, its number, its three times, and every method of every api it
-//! offers as the declarations spell them. It asks the Kernel and
-//! nothing else: `Info` and `Parent` for the rd and `/sys/decls` for
-//! each api it names.
+//! offers as the declarations spell them. Its first line is a listing's
+//! own, so `color` paints the name there as a listing paints it. It
+//! asks the Kernel and nothing else: `Info` and `Parent` for the rd and
+//! `/sys/decls` for each api it names.
 
 use alloc::format;
 use alloc::string::{String, ToString};
@@ -22,7 +23,7 @@ reovim_sdk::declare! {
     api stat ver 1 {
         0 run(args: Args) -> Rd: READ;
     }
-    record Args { cwd: Rd, target: utf8(256) }
+    record Args { cwd: Rd, color: bool, target: utf8(256) }
 }
 
 /// What a run takes, beside the api it belongs to.
@@ -32,17 +33,17 @@ pub(crate) use stat::{decl, dispatch};
 impl stat::Api for Coreutils {
     fn run(&self, ctx: &dyn Calls, rd: Rd, args: Args) -> Result<Rd, Error> {
         let target = cell::resolve(ctx, args.cwd, &args.target)?;
-        let text = text(ctx, target)?;
+        let text = text(ctx, target, args.color)?;
         self.cell(ctx, rd, text.into_bytes())
     }
 }
 
 /// The long line, the three times as dates, then every api with its
 /// methods as the declaration shows them.
-fn text(ctx: &dyn Calls, rd: Rd) -> Result<String, Error> {
+fn text(ctx: &dyn Calls, rd: Rd, color: bool) -> Result<String, Error> {
     let info = ops::info(ctx, rd)?;
     let entry = Entry { name: format::named(rd, &info), rd, info };
-    let mut out = format::long_line(ctx, &entry, false, false)?;
+    let mut out = format::long_line(ctx, &entry, false, color)?;
     let times = [
         ("rd", entry.rd.0.to_string()),
         ("ctime", format::date(entry.info.ctime)),

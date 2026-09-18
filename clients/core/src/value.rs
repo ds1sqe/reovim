@@ -10,6 +10,15 @@ pub use reovim_sdk::dynamic::Value;
 
 use crate::Fault;
 
+/// `value` in the encoding of `ty`; see [`reovim_sdk::dynamic::encode`].
+///
+/// # Errors
+/// `Usage` when `value` is not one value of `ty`, so nothing is sent.
+pub fn encode(ty: &Ty, value: &Value) -> Result<Vec<u8>, Fault> {
+    reovim_sdk::dynamic::encode(ty, value)
+        .map_err(|_| Fault::Usage(format!("value does not fit {ty:?}")))
+}
+
 /// `arg` in the encoding of `ty`; see [`reovim_sdk::dynamic::encode_arg`].
 ///
 /// # Errors

@@ -8,14 +8,7 @@ use alloc::vec::Vec;
 
 use reovim_client::{Tree, log, paths};
 
-use crate::{Shell, Words, locate};
-
-/// What may replace the word starting at byte `from` of the line.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct Completion {
-    pub from: usize,
-    pub candidates: Vec<String>,
-}
+use crate::{Completion, Shell, Words, locate};
 
 /// The flags each word takes, for a word that begins with `-`.
 const FLAGS: [(&str, &[&str]); 4] = [

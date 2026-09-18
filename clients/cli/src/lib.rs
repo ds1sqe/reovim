@@ -12,7 +12,6 @@ extern crate alloc;
 
 mod complete;
 pub mod dmesg;
-mod line;
 mod paint;
 
 use alloc::format;
@@ -27,9 +26,11 @@ use reovim_client::{
     ROOT, Rd, Rights, Tree, Ty, log, value, walk,
 };
 
-pub use complete::{Completion, complete};
-pub use line::{Act, Line};
+pub use complete::complete;
 pub use paint::Paint;
+// The line and its editing are clients/sh's, which this crate's hosts
+// take from here until they take the shell itself.
+pub use reovim_client_sh::{Act, Completion, Line};
 
 /// One word of a command line: its name, what it takes after it, and
 /// the one line `help` says of it.

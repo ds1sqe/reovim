@@ -10,6 +10,7 @@ publish = false
 
 [dependencies]
 reovim-client = { path = "../core" }
+reovim-client-sh = { path = "../sh" }
 
 [dev-dependencies]
 reovim-kernel-interface = { path = "../../kernel/interface" }

@@ -168,7 +168,19 @@ name = "reovim-client-cli"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-client",
+ "reovim-client-sh",
  "reovim-kernel-interface",
+ "reovim-rig",
+ "reovim-sdk",
+]
+
+[[package]]
+name = "reovim-client-sh"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-client",
+ "reovim-client-cli",
+ "reovim-module-coreutils",
  "reovim-rig",
  "reovim-sdk",
 ]
