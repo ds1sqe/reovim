@@ -3,18 +3,20 @@
 //! sysutils: the Module that provides the Drivers under `/bin` that
 //! face the Kernel itself.
 //!
-//! coreutils has the tree and its bytes; these four have what only the
+//! coreutils has the tree and its bytes; these six have what only the
 //! Kernel holds: `log` and `dmesg` read `/sys/log`, `call` runs a
-//! method of whatever api an rd offers, and `watch` says what happens
-//! to an rd. The shape is coreutils' own: one Module and one Driver
-//! serving four declared apis, a name under the root's `bin` per api,
+//! method of whatever api an rd offers, `watch` says what happens to an
+//! rd, and `date` and `uptime` spell two of the facts under
+//! `/sys/info`. The shape is coreutils' own: one Module and one Driver
+//! serving six declared apis, a name under the root's `bin` per api,
 //! and a run answering with the rd of one output cell that its reader
 //! drains and closes.
 //!
 //! Each api is a file of `bins`. Beside them the two things more than
 //! one of them reads: `entries`, the log from a sequence, and `names`,
 //! what the numbers of the Kernel's own lines stand for; and here the
-//! escape `dmesg` and `watch` both write.
+//! escape `dmesg` and `watch` both write and the fact the two readers
+//! both read.
 
 extern crate alloc;
 
@@ -29,12 +31,14 @@ use reovim_kernel_interface::{
     Reply, Rights,
 };
 use reovim_sdk::cell::{self, Follow};
+use reovim_sdk::ops;
+use reovim_sdk::walk::ROOT;
 
 pub mod bins;
 mod entries;
 mod names;
 
-use bins::{call, dmesg, log, watch};
+use bins::{call, date, dmesg, log, uptime, watch};
 
 /// The one Driver, which is `Booted::drivers[0]`: every name this
 /// Module registers is served by it, and so is every output cell.
@@ -47,13 +51,13 @@ const NODE: Flags = Flags::READ.union(Flags::CONTAINER);
 
 /// What is registered under the root's `bin`, in the order of `decls`
 /// and `hashes`.
-const NAMES: [&str; 4] = ["log", "dmesg", "call", "watch"];
+const NAMES: [&str; 6] = ["log", "dmesg", "call", "watch", "date", "uptime"];
 
 /// The Module and its Driver in one; pass it twice at `load`.
 pub struct Sysutils {
     /// One per name of [`NAMES`], reported at that name's rd.
-    decls: [Decl; 4],
-    hashes: [Hash; 4],
+    decls: [Decl; 6],
+    hashes: [Hash; 6],
     cells: cell::Cells,
 }
 
@@ -74,7 +78,14 @@ impl Sysutils {
     /// The Module, before it is loaded.
     #[must_use]
     pub fn new() -> Self {
-        let decls = [log::decl(), dmesg::decl(), call::decl(), watch::decl()];
+        let decls = [
+            log::decl(),
+            dmesg::decl(),
+            call::decl(),
+            watch::decl(),
+            date::decl(),
+            uptime::decl(),
+        ];
         let hashes = decls.each_ref().map(Decl::hash);
         Self { decls, hashes, cells: cell::Cells::default() }
     }
@@ -139,13 +150,15 @@ impl Driver for Sysutils {
         number: u16,
         input: &[u8],
     ) -> Reply<Vec<u8>> {
-        let [log, dmesg, call, watch] = self.hashes;
+        let [log, dmesg, call, watch, date, uptime] = self.hashes;
         let rd = Rd(h);
         let ran = match api {
             a if a == log => log::dispatch(self, ctx, rd, number, input),
             a if a == dmesg => dmesg::dispatch(self, ctx, rd, number, input),
             a if a == call => call::dispatch(self, ctx, rd, number, input),
             a if a == watch => watch::dispatch(self, ctx, rd, number, input),
+            a if a == date => date::dispatch(self, ctx, rd, number, input),
+            a if a == uptime => uptime::dispatch(self, ctx, rd, number, input),
             _ => Err(Error::Unsupported),
         };
         ran.into()
@@ -154,6 +167,18 @@ impl Driver for Sysutils {
     fn close(&self, ctx: &dyn Calls, h: u64) -> Reply<()> {
         self.cells.close(ctx, Rd(h)).into()
     }
+}
+
+/// The number the fact at `path` holds, which is the whole of what a
+/// reader under `/bin` is a wording of. The path is absolute and the
+/// walk starts at the root, so the same reader loaded at a Client reads
+/// the server's own; a cell that is no number is `Invalid`, which no
+/// reader guesses a value for.
+fn fact(ctx: &dyn Calls, path: &str) -> Result<u64, Error> {
+    let rd = cell::resolve(ctx, ROOT, path)?;
+    let bytes = ops::bytes(ctx, rd)?;
+    let text = core::str::from_utf8(&bytes).map_err(|_| Error::Invalid)?;
+    text.parse().map_err(|_| Error::Invalid)
 }
 
 /// `text` in one SGR sequence when the run asked for color, reset after

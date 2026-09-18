@@ -254,8 +254,10 @@ fn a_token_too_many_is_a_miss_with_the_form() {
     assert_eq!(go(ctx, "ls -z"), "ls -z: usage: ls [-l] [-a] [-w] [targets..]");
     assert_eq!(go(ctx, "tree -L x"), "tree x: usage: tree [-L L] [target]");
     assert_eq!(go(ctx, "tree -L"), "tree -L: usage: tree [-L L] [target]");
-    // A number that is not one.
+    // A number that is not one, and a run whose record has no field at
+    // all, so nothing is left for a token to be.
     assert_eq!(go(ctx, "log x"), "log x: usage: log [from]");
+    assert_eq!(go(ctx, "uptime x"), "uptime x: usage: uptime");
 
     // A name PATH does not hold, and a line that names none.
     assert_eq!(go(ctx, "lookup /"), "lookup: not under /bin; help lists them");

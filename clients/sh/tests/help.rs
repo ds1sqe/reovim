@@ -35,19 +35,22 @@ fn help_is_the_builtins_and_then_one_line_per_name_under_path() {
             "help [name]                     these lines, or the one for name",
         ]
     );
-    // Then the eight names under `/bin`, each a part per field the
+    // Then the ten names under `/bin`, each a part per field the
     // declaration holds and nothing else: a `bool` under its letter, a
-    // flag of another type taking one after it, and the positionals.
+    // flag of another type taking one after it, and the positionals. A
+    // run that takes nothing is the bare name.
     assert_eq!(
-        lines[5..13],
+        lines[5..15],
         [
             "call [target] [method] [arg]",
             "cat [-f] [-n N] [targets..]",
+            "date",
             "dmesg [-t] [-T] [-H] [-d] [-r] [-x] [-k] [-w] [-W] [-f F] [-l L]",
             "log [from]",
             "ls [-l] [-a] [-w] [targets..]",
             "stat [target]",
             "tree [-L L] [target]",
+            "uptime",
             "watch [target]",
         ]
     );
@@ -57,6 +60,7 @@ fn help_is_the_builtins_and_then_one_line_per_name_under_path() {
     // One name is its own line, from the same two places.
     let one = typed(ctx, &mut shell, "help ls");
     assert_eq!(one, "ls [-l] [-a] [-w] [targets..]\n");
+    assert_eq!(typed(ctx, &mut shell, "help date"), "date\n");
     assert_eq!(typed(ctx, &mut shell, "help pwd"), format!("{}\n", lines[1]));
     assert_eq!(
         typed(ctx, &mut shell, "help nope"),
