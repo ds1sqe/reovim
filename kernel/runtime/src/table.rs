@@ -12,9 +12,9 @@ use reovim_kernel_interface::{
 ///
 /// `/` 0, `/sys` 1, `/sys/decls` 2, `/sys/log` 3, `/module` 4,
 /// `/session` 5, `/var` 6, `/sys/loglevel` 7, `/sys/limit` 8 with its
-/// five cells 9 to 13, `/sys/mem` 14, `/sys/core` 15. A new one is
-/// appended so no id ever moves. Ids below `FIRST` are reserved for
-/// the Kernel; everything registered later starts there.
+/// five cells 9 to 13, `/sys/mem` 14, `/sys/core` 15, `/bin` 16. A new
+/// one is appended so no id ever moves. Ids below `FIRST` are reserved
+/// for the Kernel; everything registered later starts there.
 pub const ROOT: Rd = Rd(0);
 pub const SYS: Rd = Rd(1);
 pub const DECLS: Rd = Rd(2);
@@ -39,7 +39,7 @@ const RW: Flags = Flags::READ.union(Flags::WRITE);
 /// moment, so nothing may be written to either.
 const R: Flags = Flags::READ;
 
-const FIXED: [(Rd, &str, Node, Flags); 15] = [
+const FIXED: [(Rd, &str, Node, Flags); 16] = [
     (ROOT, "sys", Node::Container, CONTAINER),
     (SYS, "decls", Node::Container, CONTAINER),
     (SYS, "log", Node::Log, RW),
@@ -55,6 +55,7 @@ const FIXED: [(Rd, &str, Node, Flags); 15] = [
     (LIMITS, "reentry", Node::Limit(Param::Reentry), RW),
     (SYS, "mem", Node::Mem, R),
     (SYS, "core", Node::Core, R),
+    (ROOT, "bin", Node::Container, OPEN),
 ];
 
 /// An rd whose ops are never traced: the log and the level a follower

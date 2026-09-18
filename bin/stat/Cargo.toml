@@ -1,0 +1,21 @@
+[package]
+name = "reovim-bin-stat"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+reovim-kernel-interface = { path = "../../kernel/interface" }
+reovim-sdk = { path = "../../sdk/rust" }
+
+[dev-dependencies]
+reovim-client = { path = "../../clients/core" }
+reovim-client-cli = { path = "../../clients/cli" }
+reovim-rig = { path = "../../clients/rig" }
+
+[lints]
+workspace = true

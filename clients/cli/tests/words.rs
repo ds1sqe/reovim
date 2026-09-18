@@ -52,7 +52,7 @@ fn ls_names_the_children_sorted_down_columns_or_one_per_line() {
 
     // No target is the root of the tree; a cell lists itself.
     let all = run(&mut client, "ls", None);
-    assert_eq!(all, "module\nsession\nsys\nvar\n");
+    assert_eq!(all, "bin\nmodule\nsession\nsys\nvar\n");
     assert_eq!(run(&mut client, &format!("ls {root}/beta"), None), "beta\n");
 
     // More than one target names each listing, as ls does.
@@ -60,7 +60,8 @@ fn ls_names_the_children_sorted_down_columns_or_one_per_line() {
     assert_eq!(
         both,
         format!(
-            "/module:\nclipboard\nfs\ntext\n\n{root}:\nalpha\nbeta\ngamma\n"
+            "/module:\nclipboard\nfs\nstat\ntext\n\n\
+             {root}:\nalpha\nbeta\ngamma\n"
         )
     );
     assert_eq!(
@@ -182,7 +183,7 @@ fn tree_draws_containers_first_and_counts_what_it_drew() {
     );
     // No target is the root; a cell has nothing under it.
     let top = run(&mut client, "tree -L 1", None);
-    assert!(top.starts_with("/\n├── module\n"), "{top}");
+    assert!(top.starts_with("/\n├── bin\n├── module\n"), "{top}");
     assert_eq!(
         run(&mut client, "tree /module/fs/root/note", None),
         "/module/fs/root/note\n\n0 containers, 0 cells\n"

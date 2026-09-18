@@ -3,14 +3,18 @@
 //! The SDK: what a Module or a Client says in Rust and how it becomes
 //! the bytes of Documentation/Design/00-core.md. Values in two forms,
 //! typed (`Encode`, `Decode`, `Typed`) and dynamic (`Value`, by a
-//! `Ty` at runtime), and `declare!`, an api as the design writes it.
-//! It links kernel/interface and nothing else.
+//! `Ty` at runtime), `declare!`, an api as the design writes it, the
+//! one `walk` from a path to an rd, and the output cell a Driver
+//! under `/bin` answers a run with. It links kernel/interface and
+//! nothing else.
 
 extern crate alloc;
 
+pub mod cell;
 mod declare;
 pub mod dynamic;
 mod typed;
+pub mod walk;
 
 pub use declare::Call;
 pub use reovim_kernel_interface::codec::Reader;

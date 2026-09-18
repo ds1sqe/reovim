@@ -287,7 +287,7 @@ fn fixed_tree_is_reachable_from_root() {
     let rig = Rig::default();
     assert!(rig.cell().0 >= 100, "registered rds start at 100");
     assert_eq!(rig.lookup(ROOT, "sys"), SYS);
-    for name in ["module", "session", "var"] {
+    for name in ["bin", "module", "session", "var"] {
         let rd = rig.lookup(ROOT, name);
         assert_eq!(rig.ok(Op::Parent { rd }), Out::Rd(ROOT));
     }

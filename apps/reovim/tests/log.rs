@@ -76,8 +76,8 @@ impl Drop for Server {
 #[test]
 fn the_log_file_holds_every_entry() {
     let server = Server::start("file", true);
-    // The three loads and the sink's own connect line, before any link.
-    let first = server.file(4);
+    // The four loads and the sink's own connect line, before any link.
+    let first = server.file(5);
     assert!(first.starts_with("1 "), "{first}");
     // Each at its level: the Kernel's own are `info`, which is 6.
     assert!(first.contains(" kernel 6 load module=fs\n"), "{first}");
@@ -88,19 +88,19 @@ fn the_log_file_holds_every_entry() {
     // The cli's link, from its connect to the disconnect its end
     // writes; the `call` pair the op made is measurement, kept at
     // `debug`, so it is not here.
-    let text = server.file(6);
+    let text = server.file(7);
     let lines: Vec<&str> = text.lines().collect();
-    assert_eq!(lines.len(), 6, "{text}");
-    let link = lines[4].split_once(" kernel 6 connect ").unwrap().1;
-    assert!(lines[5].ends_with(&format!("disconnect {link}")), "{text}");
+    assert_eq!(lines.len(), 7, "{text}");
+    let link = lines[5].split_once(" kernel 6 connect ").unwrap().1;
+    assert!(lines[6].ends_with(&format!("disconnect {link}")), "{text}");
     assert!(!text.contains("call rd="), "{text}");
 
     // `cli log` shows the same entries, and its own connect after them.
     let shown = server.cli(&["log"]);
     assert!(shown.starts_with(&text), "{shown}");
-    assert_eq!(shown.lines().count(), 7, "{shown}");
-    let from = server.cli(&["log", "6"]);
-    assert!(from.starts_with(lines[5]), "{from}");
+    assert_eq!(shown.lines().count(), 8, "{shown}");
+    let from = server.cli(&["log", "7"]);
+    assert!(from.starts_with(lines[6]), "{from}");
 
     // The same run as `dmesg` reads it: what a link did, and nothing
     // of what it asked for.

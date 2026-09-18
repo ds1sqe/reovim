@@ -236,6 +236,28 @@ fn a_command_says_its_line_and_help_needs_no_server() {
     );
 }
 
+/// A Driver under `/bin` is linked as a Module like any other: it
+/// loads at `/module/<name>`, registers itself under the root's `bin`,
+/// and `unload` refuses it as it refuses fs.
+#[test]
+fn a_driver_under_bin_is_one_of_the_linked_modules() {
+    let server = Server::start("bin");
+    assert_eq!(server.line(&["ls", "/bin"]), "stat");
+    assert!(server.line(&["lookup", "/module/stat"]).parse::<u64>().is_ok());
+    assert_eq!(
+        server.cli(&["unload", "stat"], b"").unwrap_err(),
+        "reovim: unload stat: denied\n"
+    );
+
+    // What it offers, as the shell will read it from the tree.
+    let said = server.line(&["stat", "/bin/stat"]);
+    assert!(said.contains("\nstat v1\n"), "{said}");
+    assert!(
+        said.contains("  0 run({cwd: Rd, target: utf8(256)}) -> Rd READ"),
+        "{said}"
+    );
+}
+
 #[test]
 fn a_bad_call_fails_before_anything_is_sent() {
     let server = Server::start("bad");

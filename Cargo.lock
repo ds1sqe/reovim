@@ -129,6 +129,7 @@ dependencies = [
 name = "reovim"
 version = "0.16.0-dev"
 dependencies = [
+ "reovim-bin-stat",
  "reovim-client",
  "reovim-client-cli",
  "reovim-client-tui",
@@ -142,6 +143,17 @@ dependencies = [
  "reovim-plugin-cli",
  "reovim-plugin-explorer",
  "reovim-plugin-vim",
+]
+
+[[package]]
+name = "reovim-bin-stat"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-client",
+ "reovim-client-cli",
+ "reovim-kernel-interface",
+ "reovim-rig",
+ "reovim-sdk",
 ]
 
 [[package]]
@@ -281,6 +293,7 @@ dependencies = [
 name = "reovim-rig"
 version = "0.16.0-dev"
 dependencies = [
+ "reovim-bin-stat",
  "reovim-client",
  "reovim-host",
  "reovim-kernel-runtime",

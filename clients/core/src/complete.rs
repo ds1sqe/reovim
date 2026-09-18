@@ -12,8 +12,9 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use reovim_kernel_interface::{Flags, Rd};
+use reovim_sdk::walk::Step;
 
-use crate::client::{ROOT, Tree};
+use crate::client::Tree;
 use crate::fault::Fault;
 
 /// The names that may replace `word`, in name order.
@@ -47,12 +48,8 @@ pub fn paths(tree: &mut Tree, under: Rd, word: &str) -> Vec<String> {
 }
 
 /// The rd `path` names, walked segment by segment: the one walk every
-/// user of a path takes.
-///
-/// From the tree's root when `path` begins with `/` and from `from`
-/// when it does not, `.` staying where it is and `..` going to the
-/// parent; so a `.` or a `..` inside an absolute path is a move and
-/// never a name to look up.
+/// user of a path takes, which is [`reovim_sdk::walk::walk`] over this
+/// Client's tree.
 ///
 /// # Errors
 /// The name that stopped the walk beside the fault, as
@@ -62,23 +59,14 @@ pub fn walk(
     from: Rd,
     path: &str,
 ) -> Result<Rd, (String, Fault)> {
-    let mut rd = if path.starts_with('/') { ROOT } else { from };
-    let step = |name: &&str| !name.is_empty() && *name != ".";
-    for name in path.split('/').filter(step) {
-        let found =
-            if name == ".." { up(tree, rd) } else { tree.lookup(rd, name) };
-        rd = found.map_err(|fault| (name.to_string(), fault))?;
-    }
-    Ok(rd)
-}
-
-/// The parent of `rd`; the root is its own parent, as `cd /..` in a
-/// shell is `/`.
-fn up(tree: &mut Tree, rd: Rd) -> Result<Rd, Fault> {
-    if rd == ROOT {
-        return Ok(ROOT);
-    }
-    tree.parent(rd)
+    reovim_sdk::walk::walk(from, path, |step| match step {
+        Step::Child { rd, name } => {
+            tree.lookup(rd, name).map_err(|f| (name.to_string(), f))
+        }
+        Step::Parent { rd } => {
+            tree.parent(rd).map_err(|f| ("..".to_string(), f))
+        }
+    })
 }
 
 /// The child's name when it begins as `prefix` does, and whether it is

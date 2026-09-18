@@ -29,8 +29,9 @@ impl Carrier for Local {
     }
 }
 
-/// One Kernel with fs mirroring a fresh directory, text, and a
-/// clipboard over a store of its own; the directory goes with it.
+/// One Kernel with fs mirroring a fresh directory, text, a clipboard
+/// over a store of its own, and the Drivers under `/bin` the server
+/// links; the directory goes with it.
 pub struct Rig {
     dir: PathBuf,
     kernel: Rc<Kernel>,
@@ -68,6 +69,7 @@ impl Rig {
         let booted = [
             ("fs", reovim_module_fs::boot(dir.to_str().unwrap())),
             ("text", reovim_module_text::boot("")),
+            ("stat", reovim_bin_stat::boot("")),
         ];
         for (name, module) in booted {
             kernel.load(name, module.module, module.drivers).unwrap();

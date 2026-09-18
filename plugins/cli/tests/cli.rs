@@ -278,7 +278,7 @@ fn a_region_over_a_cell_leaves_the_line_at_the_root() {
         Tui::open(rig.client(), "", Some("work/a"), None, table).unwrap();
     assert_eq!(frame(&mut tui).lines, ["/ > "]);
     line(&mut tui, "ls");
-    let shown = ["/ > ls", "module  session  sys  var", "/ > "];
+    let shown = ["/ > ls", "bin  module  session  sys  var", "/ > "];
     assert_eq!(frame(&mut tui).lines, shown, "the tree's own root");
 }
 

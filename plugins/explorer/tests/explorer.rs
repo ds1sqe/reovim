@@ -203,10 +203,10 @@ fn minus_walks_the_tree_up_to_the_root_and_stops_there() {
     press(&mut tui, Key::Char('-'));
     assert_eq!(frame(&mut tui).lines, ["../", "root/"], "/module/fs");
     press(&mut tui, Key::Char('-'));
-    let modules = ["../", "clipboard/", "fs/", "text/"];
+    let modules = ["../", "clipboard/", "fs/", "stat/", "text/"];
     assert_eq!(frame(&mut tui).lines, modules, "/module");
     press(&mut tui, Key::Char('-'));
-    let root = ["module/", "session/", "sys/", "var/"];
+    let root = ["bin/", "module/", "session/", "sys/", "var/"];
     assert_eq!(frame(&mut tui).lines, root, "the root has no `../`");
     let listing = tui.over();
     press(&mut tui, Key::Char('-'));
