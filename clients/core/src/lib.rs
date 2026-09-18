@@ -16,6 +16,7 @@ mod caps;
 mod client;
 mod complete;
 mod fault;
+mod host;
 pub mod input;
 pub mod log;
 mod plugin;
@@ -25,6 +26,7 @@ pub use caps::{BAR, BLOCK, Caps, MATCH, SELECTION, grid, keys, open, process};
 pub use client::{Carrier, Client, ROOT, Tree, under};
 pub use complete::{paths, walk};
 pub use fault::Fault;
+pub use host::{Host, HostCalls, LOCAL_BASE, SELF};
 pub use input::Key;
 pub use plugin::{Ctx, Plugin, Start};
 // The contract types a consumer of the Client names, so it depends on

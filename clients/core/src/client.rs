@@ -230,7 +230,7 @@ impl Tree {
         answer
     }
 
-    fn request(&mut self, op: Op) -> Result<Out, Fault> {
+    pub(crate) fn request(&mut self, op: Op) -> Result<Out, Fault> {
         self.exchange(&Message::Request(op))
     }
 
