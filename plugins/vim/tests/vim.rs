@@ -5,7 +5,13 @@ mod common;
 use common::{edit, on, typed};
 use reovim_client_api::{BAR, BLOCK};
 use reovim_plugin_vim::notation::keys;
-use reovim_plugin_vim::{Edit, Effect, Key, Mode, Quit};
+use reovim_plugin_vim::{Edit, Effect, Ex, Key, Mode, Quit};
+
+/// The `:` line `keys` left for the Client to run: the range it read
+/// off the front, and the rest of it as it was typed.
+fn ex(from: u64, to: u64, line: &str) -> Effect {
+    Effect::Line(Ex { from, to, line: line.to_string() })
+}
 
 #[test]
 fn insert_edits_join_and_esc_steps_back() {
@@ -250,8 +256,8 @@ fn a_last_line_without_a_newline_gets_one_before_a_write() {
 }
 
 #[test]
-fn the_command_line_runs_the_quit_commands_and_refuses_the_rest() {
-    let mut vim = on("abc\n");
+fn the_command_line_hands_its_line_on_with_the_range_it_read() {
+    let mut vim = on("abc\ndef\n");
     assert_eq!(typed(&mut vim, ":"), Effect::Moved);
     assert_eq!(vim.mode(), Mode::Command);
     assert_eq!(typed(&mut vim, "wq"), Effect::Moved);
@@ -264,30 +270,27 @@ fn the_command_line_runs_the_quit_commands_and_refuses_the_rest() {
     assert_eq!(vim.mode(), Mode::Normal);
     assert_eq!(typed(&mut vim, ":<CR>"), Effect::Moved, "an empty line");
 
-    assert_eq!(typed(&mut vim, ":w<CR>"), Effect::Save(false));
-    assert_eq!(typed(&mut vim, ":w!<CR>"), Effect::Save(true));
-    assert_eq!(
-        typed(&mut vim, ":w  a b <CR>"),
-        Effect::SaveAs("a b".into(), false)
-    );
-    assert_eq!(
-        typed(&mut vim, ":w! a b<CR>"),
-        Effect::SaveAs("a b".into(), true)
-    );
-    assert_eq!(typed(&mut vim, ":q<CR>"), Effect::Quit(Quit::Ask));
-    assert_eq!(typed(&mut vim, ":q!<CR>"), Effect::Quit(Quit::Force));
-    assert_eq!(typed(&mut vim, ":wq<CR>"), Effect::Quit(Quit::Write));
-    assert_eq!(typed(&mut vim, ": x <CR>"), Effect::Quit(Quit::Write));
-    assert_eq!(typed(&mut vim, ":cq<CR>"), Effect::Quit(Quit::Abort));
+    // The engine reads the range and nothing else: what the rest names
+    // is the Client's to resolve over the tree, and the argument is
+    // one argument, spaces and all, by Vim's own rule.
+    assert_eq!(typed(&mut vim, ":w<CR>"), ex(0, 0, "w"));
+    assert_eq!(typed(&mut vim, ":w!<CR>"), ex(0, 0, "w!"));
+    assert_eq!(typed(&mut vim, ":w  a b <CR>"), ex(0, 0, "w  a b"));
+    assert_eq!(typed(&mut vim, ":w! a b<CR>"), ex(0, 0, "w! a b"));
+    assert_eq!(typed(&mut vim, ": x <CR>"), ex(0, 0, "x"));
+    assert_eq!(typed(&mut vim, ":%s/a/b/g<CR>"), ex(0, 1, "s/a/b/g"));
+    assert_eq!(typed(&mut vim, ":2s/a/b/<CR>"), ex(1, 1, "s/a/b/"));
+    assert_eq!(typed(&mut vim, ":1,$d<CR>"), ex(0, 1, "d"));
+    // A name Vim has none of goes the same way, whole and as it was
+    // typed; E492 comes back from the tree, where there is one to
+    // answer it (tests/explore.rs).
+    assert_eq!(typed(&mut vim, ":xyz<CR>"), ex(0, 0, "xyz"));
+    assert_eq!(vim.status(), "", "nothing is said without a tree");
+
+    // The two quits that are keys and not lines stay the engine's.
     assert_eq!(typed(&mut vim, "ZZ"), Effect::Quit(Quit::Write));
     assert_eq!(typed(&mut vim, "ZQ"), Effect::Quit(Quit::Force));
     assert_eq!(typed(&mut vim, "Zx"), Effect::Nothing);
-
-    // A name Vim's list has not is the line handed to the shell, whole
-    // and as it was typed; E492 comes back from there, where there is
-    // a tree to answer it (tests/explore.rs).
-    assert_eq!(typed(&mut vim, ":xyz<CR>"), Effect::Line("xyz".into()));
-    assert_eq!(vim.status(), "", "nothing is said without a tree");
     assert_eq!(typed(&mut vim, "<C-s>"), Effect::Nothing, "no longer a key");
     assert_eq!(typed(&mut vim, "<C-q>"), Effect::Nothing);
 }

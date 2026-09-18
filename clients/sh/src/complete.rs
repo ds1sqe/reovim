@@ -26,7 +26,7 @@ pub fn complete(ctx: &dyn Calls, shell: &Shell, line: &str) -> Completion {
     let candidates = if first {
         names(ctx, token)
     } else if let Some(letters) = token.strip_prefix('-') {
-        dashes(ctx, line, letters)
+        dashes(ctx, shell, line, letters)
     } else {
         ops::paths(ctx, shell.cwd, token)
     };
@@ -42,7 +42,12 @@ fn names(ctx: &dyn Calls, prefix: &str) -> Vec<String> {
 
 /// The flag fields of the Driver the line names; a name PATH does not
 /// hold offers nothing.
-fn dashes(ctx: &dyn Calls, line: &str, letters: &str) -> Vec<String> {
+fn dashes(
+    ctx: &dyn Calls,
+    shell: &Shell,
+    line: &str,
+    letters: &str,
+) -> Vec<String> {
     let Some(name) = line.split_whitespace().next() else {
         return Vec::new();
     };
@@ -50,5 +55,5 @@ fn dashes(ctx: &dyn Calls, line: &str, letters: &str) -> Vec<String> {
         return Vec::new();
     };
     let begins = |flag: &String| flag[1..].starts_with(letters);
-    decode::dashes(&fields).into_iter().filter(begins).collect()
+    decode::dashes(shell, &fields).into_iter().filter(begins).collect()
 }

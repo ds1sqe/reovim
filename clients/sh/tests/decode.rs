@@ -7,6 +7,7 @@ use reovim_client_sh::{Shell, run};
 use reovim_kernel_interface::{Calls, Rd, Rights};
 use reovim_module_coreutils::bins::ls;
 use reovim_rig::Rig;
+use reovim_sdk::dynamic::Value;
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, ops};
 
@@ -66,4 +67,42 @@ fn a_line_fills_the_record_the_declaration_asks_for() {
 
     // The same two fields in one token under a dash.
     assert_eq!(typed(ctx, &mut shell, "ls -la /bin"), by_hand);
+}
+
+#[test]
+fn a_field_the_host_gave_a_value_for_is_no_token_of_the_line() {
+    let rig = Rig::new("sh-env");
+    let host = rig.host();
+    let ctx = &host.own();
+    let mut shell = Shell::default();
+    shell.screen(80, true);
+
+    // The shell names no field of anyone's: `width` and `color` are
+    // what `screen` put in the environment, and a host with a language
+    // of its own puts its own names there beside them. `long` given is
+    // `ls -l` with no flag on the line.
+    shell.give("long", Value::Bool(true));
+    let args = ls::Args {
+        long: true,
+        all: false,
+        w: false,
+        cwd: ROOT,
+        width: 80,
+        color: true,
+        targets: vec!["/bin".to_string()],
+    };
+    let by_hand = called(ctx, "ls", reovim_sdk::encode(&args));
+    assert_eq!(typed(ctx, &mut shell, "ls /bin"), by_hand);
+
+    // And the token that used to name it is nobody's, the usage line
+    // no longer holding it either.
+    assert_eq!(
+        typed(ctx, &mut shell, "ls -l /bin"),
+        "ls -l: usage: ls [-a] [-w] [targets..]"
+    );
+
+    // A value of the wrong type is no environment at all: the field is
+    // a flag again and the line reads as it always did.
+    shell.give("long", Value::Utf8("yes".to_string()));
+    assert_eq!(typed(ctx, &mut shell, "ls -l /bin"), by_hand);
 }

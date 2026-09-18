@@ -72,29 +72,24 @@ fn after(tui: &mut Editor, text: &str) -> String {
 }
 
 #[test]
-fn one_candidate_is_the_word_expanded_and_its_help() {
+fn one_candidate_is_the_name_expanded_and_its_usage_line() {
     let (_rig, mut tui) = over("tab-one");
 
-    // `q` is `quit` in both tables, so it is one candidate: the whole
-    // name and a space on the line, then the help. A word that takes
-    // nothing says nothing where the argument form would stand.
-    assert_eq!(after(&mut tui, ":q<Tab>"), ":quit   quit; ! leaves the draft");
-    assert_eq!(
-        after(&mut tui, ":wr<Tab>"),
-        ":write   [PATH]  the buffer, to PATH if one is given"
-    );
-    assert_eq!(
-        after(&mut tui, ":nohl<Tab>"),
-        ":nohlsearch   stop marking the last search"
-    );
+    // `q` is `quit` and nothing else under PATH, so it is one
+    // candidate: the whole name and a space on the line, then the
+    // usage line its declaration gives. A name that takes nothing is
+    // that name alone.
+    assert_eq!(after(&mut tui, ":q<Tab>"), ":quit   quit");
+    assert_eq!(after(&mut tui, ":wr<Tab>"), ":write   write [path]");
+    assert_eq!(after(&mut tui, ":nohl<Tab>"), ":nohlsearch   nohlsearch");
 
-    // A name no table has offers nothing, and the line stands as it
+    // A name PATH has not offers nothing, and the line stands as it
     // was typed.
     assert_eq!(after(&mut tui, ":zz<Tab>"), ":zz");
     assert_eq!(after(&mut tui, ":w!<Tab>"), ":w!");
 
-    // Past the word the argument completes, and the word is expanded
-    // with it: one name is simply put on the line.
+    // Past the name the argument completes, and the name is written
+    // out with it: one is simply put on the line.
     assert_eq!(after(&mut tui, ":write al<Tab>"), ":write alpha ");
 }
 
@@ -163,7 +158,7 @@ fn a_cli_word_completes_as_the_cli_completes_it() {
     assert_eq!(after(&mut tui, ":ls -a<Tab>"), ":ls -a ");
     assert_eq!(after(&mut tui, ":ls /mod<Tab>"), ":ls /module/");
 
-    // A word of Vim's that takes no name takes nothing from the tree.
+    // A name of Vim's that takes no path takes nothing from the tree.
     assert_eq!(after(&mut tui, ":q a<Tab>"), ":quit a");
 }
 
@@ -171,8 +166,8 @@ fn a_cli_word_completes_as_the_cli_completes_it() {
 fn cd_moves_the_directory_a_name_resolves_under() {
     let (rig, mut tui) = over("tab-cd");
 
-    // `:cd` moves the Shell the cli words stand on, and with it the
-    // directory Vim's own names resolve under, as nvim's `:cd` does.
+    // `:cd` moves the Shell the shell's lines stand on, and with it
+    // the directory Vim's own names resolve under, as nvim's does.
     typed(&mut tui, ":cd sub<CR>");
     assert_eq!(after(&mut tui, ":w d<Tab>"), ":write deep ");
     typed(&mut tui, ":w x<CR>");
@@ -199,8 +194,8 @@ fn several_candidates_are_a_wildmenu_tab_and_ctrl_p_walk() {
         format!(":{}   {}", menu[at], listed.join("  "))
     };
 
-    // Vim's `write` and `wq` before the cli's `watch`; the cli's own
-    // `write`, which Vim's shadows, is not a second entry.
+    // Vim's own `write` and `wq`, whose bin is first under PATH,
+    // before `watch`, which is under `/bin`.
     assert_eq!(said_after(&mut tui, ":w<Tab>"), shown(0));
     assert_eq!(said_after(&mut tui, "<Tab>"), shown(1));
     assert_eq!(said_after(&mut tui, "<Tab>"), shown(2));
@@ -218,7 +213,7 @@ fn several_candidates_are_a_wildmenu_tab_and_ctrl_p_walk() {
 }
 
 #[test]
-fn the_expanded_line_runs_the_word_it_names() {
+fn the_expanded_line_runs_the_name_it_holds() {
     let (rig, mut tui) = over("tab-runs");
 
     // `:w` Tab Enter is `:write`, which writes the draft.
@@ -289,15 +284,12 @@ fn the_prompt_takes_the_keys_the_cli_line_takes() {
 }
 
 #[test]
-fn under_vi_one_word_is_listed_as_several_are() {
+fn under_vi_one_candidate_is_listed_as_several_are() {
     let (_rig, mut tui) = over("tab-vi");
 
-    // The default: the one word expanded, its argument form and its
-    // help, which is the one row of `DIVERGENCES`.
-    assert_eq!(
-        after(&mut tui, ":wr<Tab>"),
-        ":write   [PATH]  the buffer, to PATH if one is given"
-    );
+    // The default: the one name expanded and the usage line it
+    // declares, which is the one row of `DIVERGENCES`.
+    assert_eq!(after(&mut tui, ":wr<Tab>"), ":write   write [path]");
 
     // `vi` is an option like the search's, and Tab writes its name
     // out: `:set v` has no other option to be.
@@ -305,9 +297,9 @@ fn under_vi_one_word_is_listed_as_several_are() {
     typed(&mut tui, ":set vi<CR>");
 
     // Under it, one candidate is the wildmenu the several are: the
-    // line takes the word, the status row holds it in brackets, and
-    // there is no argument form and no help. Tab and Ctrl-P walk the
-    // one candidate, which is itself.
+    // line takes the name, the status row holds it in brackets, and
+    // there is no usage line. Tab and Ctrl-P walk the one candidate,
+    // which is itself.
     assert_eq!(said_after(&mut tui, ":wr<Tab>"), ":write   [write]");
     assert_eq!(said_after(&mut tui, "<Tab>"), ":write   [write]");
     assert_eq!(said_after(&mut tui, "<C-p>"), ":write   [write]");
@@ -322,10 +314,7 @@ fn under_vi_one_word_is_listed_as_several_are() {
 
     // `:set novi` is the way back, through the same option.
     typed(&mut tui, ":set novi<CR>");
-    assert_eq!(
-        after(&mut tui, ":wr<Tab>"),
-        ":write   [PATH]  the buffer, to PATH if one is given"
-    );
+    assert_eq!(after(&mut tui, ":wr<Tab>"), ":write   write [path]");
     assert_eq!(said_after(&mut tui, ":w<Tab>"), ":write   [write]  wq  watch");
     typed(&mut tui, "<Esc>");
 }

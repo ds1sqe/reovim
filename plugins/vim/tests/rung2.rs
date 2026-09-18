@@ -12,6 +12,19 @@ fn register(text: &str, kind: Kind) -> Register {
     Register { text: text.into(), kind }
 }
 
+/// What `/self/vim/bin/substitute` does to the engine, which is what
+/// the run of it calls: the Driver and its declaration are the tree's
+/// business (tests/ex.rs), and this is the work.
+fn subst(vim: &mut Vim, from: usize, to: usize, spec: &str) -> Vec<Edit> {
+    let mut all = Vec::new();
+    match vim.substitute((from, to), spec) {
+        Effect::Edit(edit) => all.push(edit),
+        Effect::Edits(more) => all.extend(more),
+        _ => {}
+    }
+    all
+}
+
 /// The View's spans of one style, as byte ranges.
 fn spans(vim: &mut Vim, rows: usize, style: u64) -> Vec<(u64, u64)> {
     vim.view(rows)
@@ -55,7 +68,7 @@ fn an_operator_is_one_revision_and_a_change_types_into_it() {
 #[test]
 fn many_places_change_as_one_revision() {
     let mut vim = on("a a\na\n");
-    let all = edits(&mut vim, ":%s/a/b/g<CR>");
+    let all = subst(&mut vim, 0, 1, "a/b/g");
     assert_eq!(
         all,
         vec![
@@ -108,17 +121,22 @@ fn hlsearch_marks_every_match_until_noh() {
     let mut vim = on("ab\nb\n");
     assert_eq!(typed(&mut vim, "/b<CR>"), Effect::Moved);
     assert_eq!(marked(&mut vim), Vec::new(), "off by default");
-    assert_eq!(typed(&mut vim, ":set hls<CR>"), Effect::Moved);
+    // What `/self/vim/bin/set` and `.../nohlsearch` do to the engine;
+    // the runs themselves are tests/ex.rs.
+    assert_eq!(vim.set("hls"), Effect::Moved);
     assert_eq!(marked(&mut vim), [(1, 2), (3, 4)], "every match");
-    assert_eq!(typed(&mut vim, ":noh<CR>"), Effect::Moved);
+    assert_eq!(vim.nohlsearch(), Effect::Moved);
     assert_eq!(marked(&mut vim), Vec::new());
     assert_eq!(typed(&mut vim, "n"), Effect::Moved);
     assert_eq!(marked(&mut vim).len(), 2, "back with the next search");
-    assert_eq!(typed(&mut vim, ":set nohlsearch<CR>"), Effect::Moved);
+    assert_eq!(vim.set("nohlsearch"), Effect::Moved);
     assert_eq!(marked(&mut vim), Vec::new());
-    assert_eq!(typed(&mut vim, ":set ic hls<CR>/B<CR>"), Effect::Moved);
+    // The options are one argument, which splits itself.
+    assert_eq!(vim.set("ic hls"), Effect::Moved);
+    assert_eq!(typed(&mut vim, "/B<CR>"), Effect::Moved);
     assert_eq!(marked(&mut vim).len(), 2, "ignorecase");
-    assert_eq!(typed(&mut vim, ":set noic<CR>/B<CR>"), Effect::Moved);
+    assert_eq!(vim.set("noic"), Effect::Moved);
+    assert_eq!(typed(&mut vim, "/B<CR>"), Effect::Moved);
     assert_eq!(vim.status(), "E486: Pattern not found: B");
 }
 
@@ -127,17 +145,14 @@ fn messages_read_as_nvims() {
     let mut vim = on("  \nx\n");
     assert_eq!(typed(&mut vim, "*"), Effect::Moved, "a message is a change");
     assert_eq!(vim.status(), "E348: No string under cursor");
-    assert_eq!(typed(&mut vim, ":set foo<CR>"), Effect::Moved);
+    assert_eq!(vim.set("foo"), Effect::Moved);
     assert_eq!(vim.status(), "E518: Unknown option: foo");
-    assert_eq!(typed(&mut vim, ":s/[/x/<CR>"), Effect::Moved);
+    // A pattern that does not parse changes nothing and says so; the
+    // saying is the run's output cell, or the next key's own redraw.
+    assert_eq!(vim.substitute((0, 0), "[/x/"), Effect::Nothing);
     assert_eq!(vim.status(), "E486: Pattern not found: [");
     assert_eq!(typed(&mut vim, "j"), Effect::Moved, "the message goes");
     assert_eq!(vim.status(), "");
-    // A name Vim's list has not is the line to the shell, whole; E492
-    // comes back from there, where there is a tree to answer it
-    // (tests/explore.rs).
-    assert_eq!(typed(&mut vim, ":frob<CR>"), Effect::Line("frob".into()));
-    assert_eq!(vim.status(), "", "nothing is said without a tree");
 }
 
 #[test]

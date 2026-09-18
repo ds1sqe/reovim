@@ -26,16 +26,18 @@ use alloc::vec::Vec;
 use core::cell::{OnceCell, Ref, RefCell};
 
 use reovim_client_api::{Frames, NONE, Region, count, part};
-use reovim_client_sh::{Ran, Shell, complete, run};
+use reovim_client_sh::{self as sh, Ran, Shell};
 use reovim_kernel_interface::{
-    Booted, Calls, Driver, DriverId, Error, Event, Flags, Handle, Kind, Module,
-    Rd, Reply, Rights,
+    Booted, Calls, Decl, Driver, DriverId, Error, Event, Flags, Handle, Hash,
+    Kind, Module, Rd, Reply, Rights,
 };
+use reovim_sdk::dynamic::Value;
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, decode, encode, ops};
 use reovim_text_api::{history, open as text_open, publish, text};
 
-use crate::{Ask, Edit, Effect, Quit, Vim};
+use crate::command::{Typed, options, typed};
+use crate::{Edit, Effect, Ex, Quit, Vim, bins};
 
 /// What `:q` says to unsaved changes.
 const E37: &str = "E37: No write since last change (add ! to override)";
@@ -57,6 +59,10 @@ const E345: &str = "E345: Can't find file";
 const OLDEST: &str = "Already at oldest change";
 const NEWEST: &str = "Already at newest change";
 
+/// The one Driver of this Module: every rd it registers is served by
+/// it, its own cells and the output of every run alike.
+const DRIVER: DriverId = DriverId(0);
+
 /// Vim at a Client: the engine behind one `RefCell`, and the cells
 /// it serves.
 #[derive(Default)]
@@ -68,15 +74,22 @@ pub struct Editor {
     /// The rds under Vim's home, as `start` was answered with them.
     cells: OnceCell<Cells>,
     view: Frames,
+    /// What the runs of Vim's own names printed, until each is read
+    /// and closed.
+    outputs: cell::Cells,
 }
 
-/// What a read of one of Vim's own rds is a read of.
+/// What a read of one of Vim's own rds is a read of: the rds `start`
+/// registered under Vim's home.
 struct Cells {
     view: Rd,
     mode: Rd,
     pending: Rd,
     /// One rd per register that can exist, by its name.
     registers: BTreeMap<Rd, char>,
+    /// `/self/vim/bin`, whose listing is the order a `:` line resolves
+    /// a name in.
+    bin: Rd,
 }
 
 /// Vim, ready for a Client to load.
@@ -130,7 +143,8 @@ impl Module for Editor {
         // tree's own root, which is a place to stand.
         let root = cell::resolve(ctx, ROOT, "/module/fs/root").unwrap_or(ROOT);
         let cwd = cell::resolve(ctx, root, &dir).unwrap_or(root);
-        let shell = Shell::at(cwd, ops::where_is(ctx, cwd)?);
+        let mut shell = Shell::at(cwd, ops::where_is(ctx, cwd)?);
+        ranged(&mut shell, 0, 0, false);
         let clip = cell::resolve(ctx, ROOT, "/self/dev/clipboard").ok();
         {
             let mut vim = self.vim.borrow_mut();
@@ -166,7 +180,7 @@ impl Driver for Editor {
 
     /// A whole read of `view` is one frame: the work at its head, its
     /// bytes to their end. Every other cell is a reading of the state,
-    /// made here and kept nowhere.
+    /// made here and kept nowhere, or the output of a run.
     fn read(
         &self,
         ctx: &dyn Calls,
@@ -177,29 +191,52 @@ impl Driver for Editor {
         let Some(cells) = self.cells.get() else {
             return Reply::err(Error::Closed);
         };
-        if Rd(h) == cells.view {
+        let rd = Rd(h);
+        if rd == cells.view {
             return self.view.read(at, len, || self.framed(ctx));
         }
-        self.held(cells, Rd(h)).map(|held| part(&held, at, len)).into()
+        let output = || self.outputs.read(ctx, rd, at, len).into();
+        self.held(cells, rd)
+            .map_or_else(output, |held| Reply::ok(part(&held, at, len)))
+    }
+
+    /// One of Vim's own names run: the rd called on is which name.
+    fn call(
+        &self,
+        ctx: &dyn Calls,
+        h: u64,
+        _: Hash,
+        number: u16,
+        input: &[u8],
+    ) -> Reply<Vec<u8>> {
+        bins::dispatch(self, ctx, Rd(h), number, input).into()
+    }
+
+    fn close(&self, ctx: &dyn Calls, h: u64) -> Reply<()> {
+        self.outputs.close(ctx, Rd(h)).into()
     }
 }
 
 impl Editor {
     /// What a cell of Vim's state reads, made out of the engine at the
     /// read: the borrow is this statement's, and Vim's own frame has
-    /// returned by the time another Plugin asks.
-    fn held(&self, cells: &Cells, rd: Rd) -> Result<Vec<u8>, Error> {
+    /// returned by the time another Plugin asks. `None` for an rd that
+    /// is no cell of the state's.
+    fn held(&self, cells: &Cells, rd: Rd) -> Option<Vec<u8>> {
         let vim = self.vim.borrow();
         let read = if rd == cells.mode {
             format!("{}\n", vim.mode().name())
         } else if rd == cells.pending {
             vim.showcmd()
-        } else if let Some(&name) = cells.registers.get(&rd) {
-            vim.stored(name)
         } else {
-            return Err(Error::Unsupported);
+            vim.stored(*cells.registers.get(&rd)?)
         };
-        Ok(read.into_bytes())
+        Some(read.into_bytes())
+    }
+
+    /// The rds `start` registered; `Closed` before it has.
+    fn cells(&self) -> Result<&Cells, Error> {
+        self.cells.get().ok_or(Error::Closed)
     }
 
     /// The cells of `/self/dev` this Plugin holds; `Closed` before
@@ -273,13 +310,65 @@ impl Editor {
                 self.explore(ctx, name.as_deref(), bang)
             }
             Effect::Open(name, bang) => self.edited(ctx, &name, bang),
-            Effect::Line(line) => self.ran(ctx, &line),
+            Effect::Line(ex) => self.ran(ctx, &ex),
             Effect::Cli(bang) => self.cli(ctx, bang),
-            Effect::Complete(ask) => {
-                self.completing(ctx, ask);
-                Ok(())
-            }
+            Effect::Complete(line) => self.completing(ctx, &line),
         }
+    }
+
+    /// One of Vim's own names run: the effect it asks for, with the
+    /// bookkeeping a key's own effect gets, then done, and what Vim
+    /// would have said in its status row as the bytes of the run's
+    /// output cell.
+    ///
+    /// The borrow of the engine is that block's and is gone before
+    /// anything is submitted, which is what lets a run of one of these
+    /// come back into this Plugin while the key that typed the line is
+    /// still on the stack.
+    ///
+    /// # Errors
+    /// Whatever the effect's own calls fail with, and as
+    /// `cell::Cells::open`.
+    pub(crate) fn did(
+        &self,
+        ctx: &dyn Calls,
+        rd: Rd,
+        made: impl FnOnce(&mut Vim) -> Effect,
+    ) -> Result<Rd, Error> {
+        let effect = {
+            let mut vim = self.vim.borrow_mut();
+            vim.message.clear();
+            let before = vim.position();
+            let effect = made(&mut vim);
+            vim.changing(before, &effect);
+            vim.settle(&effect);
+            effect
+        };
+        self.act(ctx, effect)?;
+        let said = core::mem::take(&mut self.vim.borrow_mut().message);
+        self.outputs.open(ctx, DRIVER, rd, said.into_bytes())
+    }
+
+    /// The name a first token stands for: the first under Vim's own
+    /// `bin`, in the order the tree lists them, that it begins. `None`
+    /// for an empty token and for one no name begins, which is the
+    /// line the shell is handed.
+    ///
+    /// This is Vim's ex rule, and the listing is the whole of it: no
+    /// table stands beside the declarations. A name under PATH has
+    /// none of it, the shell resolving by exact name.
+    fn expanded(
+        &self,
+        ctx: &dyn Calls,
+        token: &str,
+    ) -> Result<Option<String>, Error> {
+        if token.is_empty() {
+            return Ok(None);
+        }
+        let under = ops::children(ctx, self.cells()?.bin)?;
+        let held = |rd: Rd| named(ctx, rd).ok();
+        let mut listed = under.into_iter().filter_map(held);
+        Ok(listed.find(|name| name.starts_with(token)))
     }
 
     /// `edit` as a new revision, or into the head one when it joins
@@ -581,7 +670,35 @@ impl Editor {
         self.region()?.opens(ctx, target, plugin)
     }
 
-    /// A line Vim's list has none of, typed on the `:` line: run
+    /// One `:` line past its range: the name its first token stands
+    /// for, run under Vim's own `bin` with the rest of the line as one
+    /// argument and the range and the bang as the environment; a first
+    /// token no name of Vim's begins is the shell's own line, whole and
+    /// as it was typed.
+    ///
+    /// The Shell is a copy for the run, taken and not borrowed: the
+    /// Driver it reaches is this Plugin, whose state the key that typed
+    /// the line is running over, and which finds it as it left it.
+    fn ran(&self, ctx: &dyn Calls, ex: &Ex) -> Result<(), Error> {
+        let Typed { name, bang, arg } = typed(&ex.line);
+        let Some(name) = self.expanded(ctx, name)? else {
+            return self.shelled(ctx, &ex.line);
+        };
+        let mut shell = self.vim.borrow().shell.clone();
+        ranged(&mut shell, ex.from, ex.to, bang);
+        // The rest of the line is one argument by Vim's own rule, and
+        // an empty one is no argument at all.
+        let one = [arg];
+        let args = if arg.is_empty() { &one[..0] } else { &one[..] };
+        let out = match sh::ran(ctx, &shell, &name, args) {
+            Ok(ran) => printed(ctx, ran),
+            Err(miss) => format!("{miss}"),
+        };
+        self.says(out.lines().next().unwrap_or_default());
+        Ok(())
+    }
+
+    /// A line no name of Vim's begins, typed on the `:` line: run
     /// through clients/sh over this tree, from where the Shell stands,
     /// and its first line of output said in the status row, which is
     /// all one row shows. A first token PATH has not is E492, which is
@@ -590,12 +707,12 @@ impl Editor {
     /// A run that came back open is a Driver that follows: what its
     /// cell holds at this one read is what is said, and the cell is
     /// closed after it, one row having nowhere to put more.
-    fn ran(&self, ctx: &dyn Calls, line: &str) -> Result<(), Error> {
+    fn shelled(&self, ctx: &dyn Calls, line: &str) -> Result<(), Error> {
         // The borrow is gone before the line runs: a Driver of this
         // Client's own may come back in here.
         let mut shell = core::mem::take(&mut self.vim.borrow_mut().shell);
         let was = shell.cwd();
-        let outcome = run(ctx, &mut shell, line);
+        let outcome = sh::run(ctx, &mut shell, line);
         let out = match outcome {
             Ok(ran) => printed(ctx, ran),
             Err(miss) if miss.unknown => format!("{E492} {line}"),
@@ -624,27 +741,44 @@ impl Editor {
         Ok(())
     }
 
-    /// Tab on the `:` line: what may stand where the last word does,
+    /// Tab on the `:` line: what may stand where the last token does,
     /// found over the tree, which the line and the wildmenu then take.
-    /// The first token is Vim's own names and then PATH's; the words
-    /// Vim runs itself take a name under the directory it works in;
-    /// every other line is the shell's, which completes it from where
-    /// the Shell stands.
-    fn completing(&self, ctx: &dyn Calls, ask: Ask) {
+    ///
+    /// The first token is the names PATH holds, whose first directory
+    /// is Vim's own `bin`, so a completion offers first what the line
+    /// would run and one alone says the usage line it declares. Past
+    /// it, the name is written out and its argument is `set`'s options,
+    /// a name under the directory the editor works in, or nothing at
+    /// all; a line no name of Vim's begins is the shell's, which
+    /// completes it from where the Shell stands.
+    fn completing(&self, ctx: &dyn Calls, line: &str) -> Result<(), Error> {
         let shell = self.vim.borrow().shell.clone();
-        let (from, found) = match ask {
-            Ask::Names { word } => {
-                let found = complete(ctx, &shell, &word);
-                self.vim.borrow_mut().words(&word, found.candidates);
-                return;
-            }
-            Ask::Path { from, word } => (from, self.names(ctx, &word)),
-            Ask::Line { line } => {
-                let found = complete(ctx, &shell, &line);
-                (found.from, found.candidates)
-            }
+        let Some((first, rest)) = line.split_once(' ') else {
+            let found = sh::complete(ctx, &shell, line);
+            let alone = match &found.candidates[..] {
+                [one] => sh::form(ctx, &shell, one),
+                _ => None,
+            };
+            self.vim.borrow_mut().listed(found.from, found.candidates, alone);
+            return Ok(());
+        };
+        let Some(name) = self.expanded(ctx, first)? else {
+            let found = sh::complete(ctx, &shell, line);
+            self.vim.borrow_mut().offer(found.from, found.candidates);
+            return Ok(());
+        };
+        let line = format!("{name} {rest}");
+        let from = line.rfind(' ').map_or(0, |at| at + 1);
+        let word = String::from(&line[from..]);
+        self.vim.borrow_mut().expand(&line);
+        let found = match name.as_str() {
+            "set" => options(&word),
+            "write" | "edit" | "explore" => self.names(ctx, &word),
+            // Every other name of Vim's takes nothing from the tree.
+            _ => Vec::new(),
         };
         self.vim.borrow_mut().offer(from, found);
+        Ok(())
     }
 
     /// The names that may stand where `word` does: the children of
@@ -743,29 +877,59 @@ fn as_given<'a>(dir: &str, name: &'a str) -> &'a str {
         .unwrap_or(name)
 }
 
-/// The cells under Vim's home, in the order `ls` shows them: its
-/// frame, and the state it holds read out of the engine.
+/// What Vim registers under its home, in the order `ls` shows them:
+/// its frame, the state it holds read out of the engine, and `bin`,
+/// whose eleven names are the `:` line's own.
 ///
 /// Every register that can exist is registered here, filled or not,
 /// because the Host asks a Container to list itself once and answers
 /// from its table ever after: one first filled later would never be
 /// listed.
+///
+/// A name under `bin` is a Container, so a run's output cell goes under
+/// it, and READ, so whoever runs it may hold the right `run` asks for.
 fn registered(ctx: &dyn Calls, home: Rd) -> Result<Cells, Error> {
-    let read = |at, name: &str, flags| {
-        let rd = ctx.register(DriverId(0), at, Some(name))?;
-        ctx.report(rd, flags, &[])?;
+    let node = |at, name: &str, flags, decls: &[Decl]| {
+        let rd = ctx.register(DRIVER, at, Some(name))?;
+        ctx.report(rd, flags, decls)?;
         Ok::<Rd, Error>(rd)
     };
+    let read = |at, name: &str, flags| node(at, name, flags, &[]);
     let one = Flags::READ;
+    let held = one.union(Flags::CONTAINER);
     let view = read(home, "view", one)?;
     let mode = read(home, "mode", one)?;
     let pending = read(home, "pending", one)?;
-    let held = read(home, "registers", one.union(Flags::CONTAINER))?;
+    let under = read(home, "registers", held)?;
     let mut registers = BTreeMap::new();
     for name in core::iter::once('"').chain('a'..='z') {
-        registers.insert(read(held, &format!("{name}"), one)?, name);
+        registers.insert(read(under, &format!("{name}"), one)?, name);
     }
-    Ok(Cells { view, mode, pending, registers })
+    let bin = read(home, "bin", held)?;
+    for (name, decl) in bins::declared() {
+        node(bin, name, held, core::slice::from_ref(&decl))?;
+    }
+    Ok(Cells { view, mode, pending, registers, bin })
+}
+
+/// Vim's own language in the environment of the Shell a run reads: the
+/// range and the bang, which the `:` line reads off its front before
+/// the name and never spells as tokens.
+///
+/// They stand there from `start`, so no usage line of one of Vim's
+/// names holds them either, and every line writes its own over them.
+fn ranged(shell: &mut Shell, from: u64, to: u64, bang: bool) {
+    shell.give("from", Value::U64(from));
+    shell.give("to", Value::U64(to));
+    shell.give("bang", Value::Bool(bang));
+}
+
+/// The name an rd stands at, which is which of the eleven a call is on.
+///
+/// # Errors
+/// As `Op::Info`; `Unsupported` for an rd with no name.
+pub fn named(ctx: &dyn Calls, rd: Rd) -> Result<String, Error> {
+    ops::info(ctx, rd)?.name.ok_or(Error::Unsupported)
 }
 
 /// `path`, which is under the mirror's own root, as a path of the

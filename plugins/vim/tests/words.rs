@@ -1,7 +1,7 @@
-//! The `:` line over the tui and the rig: Vim's own list of words,
-//! every one of them by its full name and by the beginning the order
-//! computes for it, and a line that is none of them, which goes to the
-//! shell.
+//! The `:` line over the tui and the rig: every name under
+//! `/self/vim/bin` by its full spelling and by the beginning the
+//! listing's order computes for it, and a line that is none of them,
+//! which goes to the shell.
 //!
 //! The corpus judges the short forms it uses and nothing else, so
 //! what the full names and the shell's lines do is judged here, by
@@ -9,12 +9,15 @@
 //! text, the file on disk, the search marks, and what a listing was
 //! started over.
 
-use reovim_client::dev::{self, Clip, Table, Want};
+use std::rc::Rc;
 
+use reovim_client::Host;
+use reovim_client::dev::{self, Clip, Table, Want};
 use reovim_client_tui::{Step, Tui};
 use reovim_plugin_vim::notation::keys;
-use reovim_plugin_vim::{WORDS, Word, resolve};
 use reovim_rig::{Rig, Seen, Stub};
+use reovim_sdk::walk::ROOT;
+use reovim_sdk::{cell, ops};
 
 /// The one editor a test drives, over whichever Plugin the table gives.
 type Editor = Tui;
@@ -44,13 +47,31 @@ fn work(test: &str) -> Rig {
     rig
 }
 
-/// An editor over `d/note`, started in `d`.
-fn over(rig: &Rig, seen: &Seen) -> Editor {
+/// An editor over `d/note` and the Host it stands in, which is how
+/// anything else at this Client reads the tree it registered in.
+fn hosted(rig: &Rig, seen: &Seen) -> (Rc<Host>, Editor) {
     let host = rig.host();
     let dev =
         dev::boot(&host, table(seen), Clip::none(), "d", Some("d/note"), None)
             .unwrap();
-    Tui::open(host, dev).unwrap()
+    let tui = Tui::open(host.clone(), dev).unwrap();
+    (host, tui)
+}
+
+/// An editor over `d/note`, started in `d`.
+fn over(rig: &Rig, seen: &Seen) -> Editor {
+    hosted(rig, seen).1
+}
+
+/// The names `ls` lists under `path`, in the order the tree holds them.
+fn ls(host: &Rc<Host>, path: &str) -> Vec<String> {
+    let ctx = host.own();
+    let rd = cell::resolve(&ctx, ROOT, path).unwrap();
+    ops::children(&ctx, rd)
+        .unwrap()
+        .into_iter()
+        .map(|child| ops::info(&ctx, child).unwrap().name.unwrap())
+        .collect()
 }
 
 /// Every key of `text` in Vim notation; what the last one did.
@@ -88,8 +109,8 @@ fn done(name: &str, keys: &str) -> String {
     )
 }
 
-/// One word of Vim's: a line that uses it by its full name, the same
-/// line by its abbreviation, and what both do.
+/// One name of Vim's: a line that uses it in full, the same line by
+/// its abbreviation, and what both do.
 struct Case {
     full: &'static str,
     short: &'static str,
@@ -97,7 +118,7 @@ struct Case {
 }
 
 #[test]
-fn every_word_runs_by_its_full_name_and_by_its_abbreviation() {
+fn every_name_runs_by_its_full_spelling_and_by_its_abbreviation() {
     let cases = [
         Case {
             full: "ix<Esc>:write<CR>",
@@ -172,28 +193,51 @@ fn every_word_runs_by_its_full_name_and_by_its_abbreviation() {
     assert!(marked.contains("marks=1"), "{marked}");
 }
 
-/// The shortest beginning of `word` that resolves to it: its
-/// abbreviation, which the order of the list computes and nothing
-/// lists by hand.
-fn short(word: &Word) -> &'static str {
-    let name = word.name;
-    let resolves = |n: &usize| resolve(&name[..*n]).is_some_and(|w| w == word);
-    &name[..(1..=name.len()).find(resolves).unwrap_or(name.len())]
+/// The shortest beginning of `name` the listing resolves to it: its
+/// abbreviation, which the order computes and nothing lists by hand.
+fn short(names: &[String], name: &str) -> String {
+    let first = |n: &usize| {
+        let begins = |held: &&String| held.starts_with(&name[..*n]);
+        names.iter().find(begins).is_some_and(|held| held == name)
+    };
+    name[..(1..=name.len()).find(first).unwrap_or(name.len())].to_string()
 }
 
 #[test]
-fn the_order_computes_the_short_form_of_every_word() {
-    let short: Vec<&str> = WORDS.iter().map(short).collect();
+fn the_listing_computes_the_short_form_of_every_name() {
+    let rig = work("words-order");
+    let seen = Seen::default();
+    let (host, _tui) = hosted(&rig, &seen);
+    let names = ls(&host, "/self/vim/bin");
+    let all = [
+        "write",
+        "wq",
+        "quit",
+        "xit",
+        "cquit",
+        "substitute",
+        "set",
+        "nohlsearch",
+        "edit",
+        "explore",
+        "cli",
+    ];
+    assert_eq!(names, all, "the order a `:` line resolves a name in");
+
     // `cquit` is `c` and not nvim's `cq`: no `change` stands before it
-    // in this list, and no name under PATH stands behind it. `cli`
-    // stands behind `cquit`, so it is `cl`.
-    let all = ["w", "wq", "q", "x", "c", "s", "se", "n", "e", "ex", "cl"];
-    assert_eq!(short, all);
+    // here, and no name under PATH stands behind it. `cli` stands
+    // behind `cquit`, so it is `cl`.
+    let short: Vec<String> = names.iter().map(|n| short(&names, n)).collect();
+    assert_eq!(
+        short,
+        ["w", "wq", "q", "x", "c", "s", "se", "n", "e", "ex", "cl"]
+    );
+
     // Nothing under PATH is reached by a beginning of its name: `wa`
-    // is no word of Vim's and the line goes to the shell whole, where
+    // is no name of Vim's and the line goes to the shell whole, where
     // `watch` is `watch`.
-    assert_eq!(resolve("wa"), None);
-    assert_eq!(resolve("l"), None);
+    assert!(!names.iter().any(|name| name.starts_with("wa")));
+    assert!(!names.iter().any(|name| name.starts_with('l')));
 }
 
 #[test]

@@ -17,6 +17,7 @@
 
 extern crate alloc;
 
+pub mod bins;
 mod command;
 mod motion;
 pub mod notation;
@@ -31,7 +32,6 @@ use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
 
-pub use command::{WORDS, Word, resolve};
 pub use operator::Motion;
 pub use plugin::{Editor, boot};
 pub use reovim_client_api::Key;
@@ -72,7 +72,7 @@ pub struct Divergence {
 /// three, so `:set vi` leaves them alone and they are no rows.
 pub const DIVERGENCES: &[Divergence] = &[Divergence {
     keys: "Tab on the : line",
-    ours: "the word expanded, with its argument form and its help",
+    ours: "the name expanded, with the usage line it declares",
     vi: "the wildmenu, one candidate as several, and no help",
 }];
 
@@ -115,35 +115,33 @@ pub enum Effect {
     /// which comes back a Vim of its own. A name that is not there is
     /// E345, where `:explore`'s is E344.
     Open(String, bool),
-    /// A name Vim's list has not, typed on the `:` line: the line past
-    /// its range, whole, as clients/sh takes it.
-    Line(String),
+    /// A `:` line with a name on it: the range Vim read off its front,
+    /// and the rest of it, which the Client runs.
+    Line(Ex),
     /// `:cli[!]`: a shell in a region of its own, asked for by name
     /// over where the `:` line's own lines stand. `true` for `:cli!`,
     /// which goes although the draft is unsaved.
     Cli(bool),
-    /// Tab on the `:` line: what may stand where the last word does,
-    /// which only the Client can find over the tree, and hands back to
-    /// the line. Past the first word the line already holds that word
-    /// expanded.
-    Complete(Ask),
+    /// Tab on the `:` line: the line as it stands, which only the
+    /// Client can complete, the names and the paths both being in the
+    /// tree. What it finds it hands back to the line.
+    Complete(String),
     /// A put wants the clipboard's text: `pasted` finishes it.
     Clipboard,
 }
 
-/// What Tab on the `:` line asks the Client to find over the tree.
+/// One `:` line as Vim read it: the range off its front, in lines from
+/// 0 as the engine counts them, and the rest of it, whole and as it was
+/// typed.
+///
+/// What the first token names is none of the engine's business: the
+/// Client expands it under Vim's own `bin` and runs it there, or hands
+/// the whole line to the shell.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Ask {
-    /// The first token of the line: the names PATH holds that it
-    /// begins, which stand after Vim's own in the wildmenu.
-    Names { word: String },
-    /// A name under the directory Vim works in, which `:write`,
-    /// `:edit` and `:explore` take: the word as typed, and the byte
-    /// of the line it begins at.
-    Path { from: usize, word: String },
-    /// A line of the shell's: the whole of it, which clients/sh
-    /// completes from where the Shell stands.
-    Line { line: String },
+pub struct Ex {
+    pub from: u64,
+    pub to: u64,
+    pub line: String,
 }
 
 /// How a quit was asked for; what it does with unsaved changes
@@ -265,37 +263,21 @@ impl Prompt {
     }
 }
 
-/// One thing Tab found: a word of Vim's own list, whose argument form
-/// and help the status row says, or a name in the tree, which has
-/// neither.
-#[derive(Debug)]
-enum Found {
-    Word(&'static Word),
-    Text(String),
-}
-
-impl Found {
-    /// What the line takes when the menu stands on it.
-    fn text(&self) -> &str {
-        match self {
-            Self::Word(word) => word.name,
-            Self::Text(text) => text,
-        }
-    }
-}
-
 /// What the last Tab on the `:` line found: the candidates, which of
-/// them the line holds now, and the byte of the line they replace.
+/// them the line holds now, the byte of the line they replace, and the
+/// usage line the status row says where there is one candidate and it
+/// is a name that may run.
 ///
-/// Several are the wildmenu, which Tab and Ctrl-P walk. One word
-/// expanded is kept as the one candidate, for the help the status row
-/// says of it; one name found in the tree is not kept at all, there
-/// being nothing left to choose between.
+/// Several are the wildmenu, which Tab and Ctrl-P walk. One name that
+/// may run is kept as the one candidate, for that usage line; one name
+/// found under a Container is not kept at all, there being nothing
+/// left to choose between and the next Tab going on under it.
 #[derive(Debug)]
 struct Wild {
-    candidates: Vec<Found>,
+    candidates: Vec<String>,
     at: usize,
     from: usize,
+    form: Option<String>,
 }
 
 /// Where the cursor was before each change, for undo to put it back

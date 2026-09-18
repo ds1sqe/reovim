@@ -144,7 +144,7 @@ fn the_registers_are_listed_by_every_name_one_can_have() {
 
     assert_eq!(
         ls(&host, "/self/vim"),
-        ["view", "mode", "pending", "registers"]
+        ["view", "mode", "pending", "registers", "bin"]
     );
     let names = ls(&host, "/self/vim/registers");
     assert_eq!(names.len(), 27, "the unnamed one and `a` to `z`");
@@ -157,7 +157,7 @@ fn the_registers_are_listed_by_every_name_one_can_have() {
 
 #[test]
 fn a_cell_read_from_inside_vims_own_frame_finds_the_state_free() {
-    let (_rig, mut tui, host) = over("cells-reentry");
+    let (rig, mut tui, host) = over("cells-reentry");
     // The Client's own coreutils, as the app loads it: the server's
     // `cat` would be handed a local rd, which is milestone 5's.
     let booted = reovim_module_coreutils::boot("");
@@ -169,4 +169,11 @@ fn a_cell_read_from_inside_vims_own_frame_finds_the_state_free() {
     typed(&mut tui, ":cat /self/vim/mode<CR>");
     assert_eq!(said(&mut tui), "normal", "the mode the line ran in");
     assert_eq!(cat(&host, "mode"), "normal\n", "and the cell is still it");
+
+    // A name of Vim's own is a Driver under `/self/vim/bin`, so the
+    // run comes back into this Plugin's `call` slot from inside the
+    // same frame, and takes the state as that frame left it.
+    typed(&mut tui, "ix<Esc>:w<CR>");
+    assert_eq!(said(&mut tui), "", "the write said nothing");
+    assert_eq!(rig.disk("note"), b"xone\ntwo\n");
 }

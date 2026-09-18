@@ -26,6 +26,7 @@ use core::fmt;
 use core::fmt::Write as _;
 
 use reovim_kernel_interface::{Calls, Error, Flags, Rd};
+use reovim_sdk::dynamic::Value;
 use reovim_sdk::ops;
 use reovim_sdk::walk::{self, ROOT};
 
@@ -95,31 +96,26 @@ fn builtin(name: &str) -> Option<&'static Builtin> {
     BUILTINS.iter().find(|entry| entry.name == name)
 }
 
-/// Where the line stands in the tree and what the host's screen is.
+/// Where the line stands in the tree, and the environment its host set.
 ///
 /// The rd a relative target is read from, the path the prompt and `pwd`
-/// show, the one before it, which `cd -` goes back to, and the two
-/// fields of a run's environment beside the cwd. The host holds one for
-/// a session of lines; a Plugin's stands where the Plugin does.
+/// show, the one before it, which `cd -` goes back to, and what the host
+/// put there for a run to read. The host holds one for a session of
+/// lines; a Plugin's stands where the Plugin does.
 #[derive(Clone, Debug)]
 pub struct Shell {
     cwd: Rd,
     path: String,
     back: Option<(Rd, String)>,
-    width: u64,
-    color: bool,
+    /// What the host gave, by name: a field declared with this name and
+    /// this value's type is filled from here and no token matches it.
+    env: Vec<(String, Value)>,
 }
 
 impl Default for Shell {
     /// The root, where every session starts, on a screen of no width.
     fn default() -> Self {
-        Self {
-            cwd: ROOT,
-            path: "/".to_string(),
-            back: None,
-            width: 0,
-            color: false,
-        }
+        Self::at(ROOT, "/".to_string())
     }
 }
 
@@ -128,16 +124,33 @@ impl Shell {
     /// the lines it runs, so a relative target of theirs is read from
     /// where the Plugin is and not from the root.
     #[must_use]
-    pub const fn at(cwd: Rd, path: String) -> Self {
-        Self { cwd, path, back: None, width: 0, color: false }
+    pub fn at(cwd: Rd, path: String) -> Self {
+        let mut shell = Self { cwd, path, back: None, env: Vec::new() };
+        shell.screen(0, false);
+        shell
     }
 
     /// The screen a run writes for: the columns a listing lays its names
     /// out across, 0 for a pipe, and whether the text is painted. The
     /// host knows both, and this crate asks no terminal.
-    pub const fn screen(&mut self, width: u64, color: bool) {
-        self.width = width;
-        self.color = color;
+    pub fn screen(&mut self, width: u64, color: bool) {
+        self.give("width", Value::U64(width));
+        self.give("color", Value::Bool(color));
+    }
+
+    /// One name of the environment a run reads, as the host of this
+    /// shell sets it: a field declared with this name and this value's
+    /// type is filled with it and takes no token, and a field no value
+    /// here names is a positional like any other.
+    ///
+    /// A host with a language of its own puts what that language read
+    /// here — Vim's `:` line, whose range and bang are read before the
+    /// name and never spelled as tokens.
+    pub fn give(&mut self, name: &str, value: Value) {
+        match self.env.iter_mut().find(|(held, _)| held == name) {
+            Some(held) => held.1 = value,
+            None => self.env.push((name.to_string(), value)),
+        }
     }
 
     /// The rd a relative target is read from.
@@ -260,12 +273,38 @@ pub fn run(
         let name = (*name).to_string();
         return Err(Miss { name, target, cause, unknown: false });
     }
-    let out = ran(ctx, shell, name, args)?;
+    let out = builtin_ran(ctx, shell, name, args)?;
     Ok(Ran { out, open: None })
 }
 
+/// One name run with the tokens its host split for it.
+///
+/// This is what a host with a language of its own hands the shell:
+/// Vim's `:` line reads the name itself and gives the rest of the line
+/// as one token, by its own rule and not the shell's.
+///
+/// # Errors
+/// As [`run`], a redirect being the shell's own and none of this.
+pub fn ran(
+    ctx: &dyn Calls,
+    shell: &Shell,
+    name: &str,
+    args: &[&str],
+) -> Result<Ran, Miss> {
+    run::under_path(ctx, shell, name, args, None)
+}
+
+/// What the line takes after `name`, as a usage line writes it: a
+/// builtin's own form, else the one the declaration of a name under
+/// PATH gives. `None` for a name the shell cannot run.
+#[must_use]
+pub fn form(ctx: &dyn Calls, shell: &Shell, name: &str) -> Option<String> {
+    let under = || run::form(ctx, shell, name).ok();
+    builtin(name).map_or_else(under, |entry| Some(entry.form()))
+}
+
 /// The three the shell runs itself; what a builtin prints.
-fn ran(
+fn builtin_ran(
     ctx: &dyn Calls,
     shell: &mut Shell,
     name: &str,
@@ -275,7 +314,7 @@ fn ran(
         ("cd", 0 | 1) => cd(ctx, shell, args.first().copied()),
         ("pwd", 0) => Ok(format!("{}\n", shell.path).into_bytes()),
         ("help", 0 | 1) => {
-            help(ctx, args.first().copied()).map(String::into_bytes)
+            help(ctx, shell, args.first().copied()).map(String::into_bytes)
         }
         _ => Err(misused(name, args)),
     }
@@ -294,7 +333,11 @@ fn misused(name: &str, args: &[&str]) -> Miss {
 /// one line of that name. The listing is sorted, a listing reading
 /// better that way; Tab is not, a completion having to offer first
 /// what the line would run.
-fn help(ctx: &dyn Calls, asked: Option<&str>) -> Result<String, Miss> {
+fn help(
+    ctx: &dyn Calls,
+    shell: &Shell,
+    asked: Option<&str>,
+) -> Result<String, Miss> {
     let Some(name) = asked else {
         let mut out = String::new();
         for entry in &BUILTINS {
@@ -303,14 +346,14 @@ fn help(ctx: &dyn Calls, asked: Option<&str>) -> Result<String, Miss> {
         let mut names = run::names(ctx);
         names.sort();
         for name in names {
-            let _ = writeln!(out, "{}", run::form(ctx, &name)?);
+            let _ = writeln!(out, "{}", run::form(ctx, shell, &name)?);
         }
         out.push_str(AFTER);
         return Ok(format!("{out}\n"));
     };
     match builtin(name) {
         Some(entry) => Ok(format!("{}\n", entry.line())),
-        None => Ok(format!("{}\n", run::form(ctx, name)?)),
+        None => Ok(format!("{}\n", run::form(ctx, shell, name)?)),
     }
 }
 

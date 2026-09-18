@@ -7,76 +7,10 @@ use alloc::vec::Vec;
 use reovim_client_sh::Act;
 use reovim_pattern::{Pattern, expand};
 
-use crate::{Ask, Edit, Effect, Found, Key, Mode, Motion, Quit, Vim, Wild};
+use crate::{Edit, Effect, Ex, Key, Mode, Motion, Vim, Wild};
 
 /// Lines from 0, both ends included.
 type Lines = (usize, usize);
-
-/// One word of the `:` line: its name, what it takes after it, and the
-/// one line the status row says of it after Tab.
-///
-/// [`WORDS`] is what a line is read with; no abbreviation is listed,
-/// since the order computes each.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Word {
-    pub name: &'static str,
-    pub args: &'static str,
-    pub help: &'static str,
-}
-
-/// Vim's words, in the order a `:` line resolves a name by.
-///
-/// `:w` is `write` because it stands before `wq`, `:s` is
-/// `substitute` before `set`, `:e` is `edit` before `explore`, and
-/// `:c` is `cquit` before `cli`, which takes `:cl`. A name none of
-/// these begins is no word of Vim's and the line goes to the shell.
-pub const WORDS: &[Word] = &[
-    Word {
-        name: "write",
-        args: "[PATH]",
-        help: "the buffer, to PATH if one is given",
-    },
-    Word { name: "wq", args: "", help: "write the buffer and quit" },
-    Word { name: "quit", args: "", help: "quit; ! leaves the draft" },
-    Word { name: "xit", args: "", help: "write if it changed, then quit" },
-    Word { name: "cquit", args: "", help: "quit with 1, so the caller stops" },
-    Word {
-        name: "substitute",
-        args: "/PAT/REP/[g]",
-        help: "PAT becomes REP over the range",
-    },
-    Word { name: "set", args: "OPTION", help: "an option on, no OPTION off" },
-    Word { name: "nohlsearch", args: "", help: "stop marking the last search" },
-    Word { name: "edit", args: "PATH", help: "that file, in this region" },
-    Word {
-        name: "explore",
-        args: "[DIR]",
-        help: "a listing of DIR, or of the file's own",
-    },
-    Word { name: "cli", args: "", help: "the cli in this region" },
-];
-
-/// The word `typed` names: the first of [`WORDS`], in order, that it
-/// equals or is the beginning of. `None` for an empty name and for one
-/// no word begins, which is the line the shell is handed.
-///
-/// This is Vim's ex rule: the order is what makes `:s` `substitute`
-/// and `:se` `set`, and nothing lists a short form by hand. A name
-/// under PATH has none of it: the shell resolves by exact name.
-#[must_use]
-pub fn resolve(typed: &str) -> Option<&'static Word> {
-    if typed.is_empty() {
-        return None;
-    }
-    WORDS.iter().find(|word| word.name.starts_with(typed))
-}
-
-/// Every word of Vim's `prefix` begins, in the order they resolve in:
-/// what Tab on a line offers before PATH's names. An empty prefix
-/// begins them all.
-fn starting(prefix: &str) -> impl Iterator<Item = &'static Word> {
-    WORDS.iter().filter(move |word| word.name.starts_with(prefix))
-}
 
 impl Vim {
     /// `:`, `/` or `?`: the prompt opens over an empty line of the
@@ -125,59 +59,30 @@ impl Vim {
         }
     }
 
-    /// Tab on the `:` line. Nothing for `/` and `?`, which complete
-    /// nothing.
-    ///
-    /// On a line with no space yet: the names the typed one begins,
-    /// Vim's own and then PATH's, which only the Client can read.
-    /// Past the first word: a word of Vim's expanded to its full name,
-    /// so `:w Ca` Tab is `:write Cargo.toml`, and then the argument,
-    /// which `:set` answers here and the tree answers through the
-    /// Client; a line of the shell's goes to it as it was typed, PATH
-    /// having no abbreviation to expand.
-    fn complete(&mut self) -> Effect {
+    /// Tab on the `:` line, which only the Client can answer: the names
+    /// and the paths a completion offers are both in the tree. Nothing
+    /// for `/` and `?`, which complete nothing.
+    fn complete(&self) -> Effect {
         if self.prompt.at != ':' {
             return Effect::Nothing;
         }
-        let text = String::from(self.prompt.text());
-        let Some((typed, rest)) = text.split_once(' ') else {
-            return Effect::Complete(Ask::Names { word: text });
-        };
-        let Some(found) = resolve(typed) else {
-            return Effect::Complete(Ask::Line { line: text });
-        };
-        let line = alloc::format!("{} {rest}", found.name);
-        self.prompt.line().put(0, &line);
-        let from = line.rfind(' ').map_or(0, |at| at + 1);
-        let word = String::from(&line[from..]);
-        match found.name {
-            "set" => self.offer(from, options(&word)),
-            "write" | "edit" | "explore" => {
-                Effect::Complete(Ask::Path { from, word })
-            }
-            // Every other word of Vim's takes no name from the tree.
-            _ => Effect::Moved,
-        }
+        Effect::Complete(String::from(self.prompt.text()))
     }
 
-    /// Tab on a line with no space on it: Vim's own words the typed
-    /// one begins and then the names PATH holds, which the wildmenu
-    /// walks where there is more than one. A word of Vim's is kept as
-    /// itself, for the argument form and the help the status row says
-    /// of one alone.
-    pub(crate) fn words(&mut self, typed: &str, under: Vec<String>) -> Effect {
-        let mine: Vec<&'static Word> = starting(typed).collect();
-        // A name of Vim's is the one that runs, so PATH's own is no
-        // second candidate.
-        let shadowed = |name: &String| mine.iter().any(|w| w.name == name);
-        let path = under.into_iter().filter(|name| !shadowed(name));
-        let words = mine.iter().copied().map(Found::Word);
-        let candidates: Vec<Found> =
-            words.chain(path.map(Found::Text)).collect();
-        if candidates.is_empty() {
+    /// What Tab found where the first token stands: the names that may
+    /// run there, which the wildmenu walks. One alone is kept as the
+    /// one candidate, so the status row can say the usage line `form`
+    /// gives for it, where an argument's one name is not kept at all.
+    pub(crate) fn listed(
+        &mut self,
+        from: usize,
+        found: Vec<String>,
+        form: Option<String>,
+    ) -> Effect {
+        if found.is_empty() {
             return Effect::Nothing;
         }
-        self.wild = Some(Wild { candidates, at: 0, from: 0 });
+        self.wild = Some(Wild { candidates: found, at: 0, from, form });
         self.take()
     }
 
@@ -191,13 +96,19 @@ impl Vim {
             return Effect::Moved;
         }
         let alone = found.len() == 1;
-        let candidates = found.into_iter().map(Found::Text).collect();
-        self.wild = Some(Wild { candidates, at: 0, from });
+        self.wild = Some(Wild { candidates: found, at: 0, from, form: None });
         let effect = self.take();
         if alone {
             self.wild = None;
         }
         effect
+    }
+
+    /// The line with its first token written out as the name it stands
+    /// for, which Tab does before it completes the argument, so `:w Ca`
+    /// Tab is `:write Cargo.toml`.
+    pub(crate) fn expand(&mut self, line: &str) {
+        self.prompt.line().put(0, line);
     }
 
     /// Tab and Ctrl-P in the wildmenu: the next candidate or the one
@@ -216,7 +127,7 @@ impl Vim {
     /// on under it.
     fn take(&mut self) -> Effect {
         let Some(wild) = &self.wild else { return Effect::Nothing };
-        let text = wild.candidates[wild.at].text();
+        let text = &wild.candidates[wild.at];
         let end = if text.ends_with('/') { "" } else { " " };
         let (from, word) = (wild.from, alloc::format!("{text}{end}"));
         self.prompt.line().put(from, &word);
@@ -275,51 +186,26 @@ impl Vim {
         self.motion(Motion::Search { forward }, n)
     }
 
-    /// One `:` line: the range off the front, then the word it names
-    /// and what follows that.
+    /// One `:` line: the range off the front, and the rest of it.
     ///
-    /// A word of Vim's own is one of these effects, by its full name
-    /// or by any beginning of it the list resolves; a name Vim's list
-    /// has not is the line for clients/sh, whole and as it was typed,
-    /// which the Plugin runs over the tree, the range being none of
-    /// its business; E492 comes back from there for a first token PATH
-    /// has not, as it always did.
+    /// What the rest names is the Client's to say, every name a person
+    /// can type being a Driver it resolves: a name under Vim's own
+    /// `bin` is run there with the range and the bang it read, and a
+    /// first token no such name begins is the line for clients/sh,
+    /// whole and as it was typed. E492 comes back from there for a
+    /// first token PATH has not, as it always did.
     fn ex(&mut self, line: &str) -> Effect {
         let line = line.trim();
         let (range, rest) = self.range(line);
-        let command = rest.trim();
-        if command.is_empty() {
+        let rest = rest.trim();
+        if rest.is_empty() {
             return self.addressed(range, rest.len() < line.len());
         }
-        let Typed { word, bang, arg } = typed(command);
-        let Some(found) = resolve(word) else {
-            return Effect::Line(String::from(command));
-        };
-        match found.name {
-            "write" if arg.is_empty() => Effect::Save(bang),
-            "write" => Effect::SaveAs(arg.into(), bang),
-            "wq" | "xit" => Effect::Quit(Quit::Write),
-            "quit" if bang => Effect::Quit(Quit::Force),
-            "quit" => Effect::Quit(Quit::Ask),
-            "cquit" => Effect::Quit(Quit::Abort),
-            // `:s` writes its pattern straight after the word.
-            "substitute" => {
-                self.substitute(range, arg.strip_prefix('/').unwrap_or(arg))
-            }
-            "set" => self.set(arg),
-            "nohlsearch" => {
-                self.search.stale = true;
-                Effect::Moved
-            }
-            // `:e` without a name would reload the file; nothing here.
-            "edit" if arg.is_empty() => Effect::Moved,
-            "edit" => Effect::Open(arg.into(), bang),
-            "explore" => {
-                Effect::Explore((!arg.is_empty()).then(|| arg.into()), bang)
-            }
-            // `cli`, the last of `WORDS` and the only one left.
-            _ => Effect::Cli(bang),
-        }
+        Effect::Line(Ex {
+            from: range.0 as u64,
+            to: range.1 as u64,
+            line: String::from(rest),
+        })
     }
 
     /// A `:` line with no word on it: the cursor to the last line the
@@ -361,11 +247,21 @@ impl Vim {
         Some((a.min(c).min(last), a.max(c).min(last)))
     }
 
-    /// `:set` with its arguments: the search options, `no` off, long
-    /// or short names, `incsearch` taken and left as nvim has it;
-    /// E518 for the rest.
-    fn set(&mut self, args: &str) -> Effect {
+    /// `:set` with its arguments, which `/self/vim/bin/set` runs: the
+    /// search options, `no` off, long or short names, `incsearch` taken
+    /// and left as nvim has it; E518 for the rest.
+    ///
+    /// The arguments are the rest of the line, whitespace and all, so
+    /// they are split here and not by the shell.
+    pub fn set(&mut self, args: &str) -> Effect {
         args.split_whitespace().all(|arg| self.set_one(arg));
+        Effect::Moved
+    }
+
+    /// `:nohlsearch`, which `/self/vim/bin/nohlsearch` runs: the marks
+    /// of the last search stop being drawn until the next one.
+    pub const fn nohlsearch(&mut self) -> Effect {
+        self.search.stale = true;
         Effect::Moved
     }
 
@@ -399,11 +295,16 @@ impl Vim {
         Some(option)
     }
 
-    /// `:s/pat/rep/[g][i]` over `lines`: each line's replacements one
+    /// `:s/pat/rep/[g][i]` over `lines`, which
+    /// `/self/vim/bin/substitute` runs: each line's replacements one
     /// edit, bottom-up so no offset moves under another, all one
     /// revision; the cursor on the last line changed.
-    fn substitute(&mut self, lines: Lines, args: &str) -> Effect {
-        let parts: Vec<&str> = split_unescaped(args, '/');
+    ///
+    /// `lines` are lines from 0, both ends included, and `spec` is the
+    /// rest of the line past the name, spaces and all, which is why it
+    /// reaches this parser whole and not as tokens.
+    pub fn substitute(&mut self, lines: Lines, spec: &str) -> Effect {
+        let parts: Vec<&str> = split_unescaped(spec, '/');
         let (pattern, replacement) = (
             parts.first().copied().unwrap_or(""),
             parts.get(1).copied().unwrap_or(""),
@@ -490,29 +391,28 @@ fn substituted(
     Some(out)
 }
 
-/// What Tab found, as the status row says it after the line: the one
-/// word's argument form, where it takes any, and its help; several as
-/// nvim's wildmenu lists them, the one the line holds in brackets.
+/// What Tab found, as the status row says it after the line: the usage
+/// line of the one name that may run, as its declaration gives it;
+/// several as nvim's wildmenu lists them, the one the line holds in
+/// brackets.
 ///
 /// This is where the `Tab on the : line` row of [`crate::DIVERGENCES`]
-/// is: under `vi` one word is listed as several are, with no argument
-/// form and no help, which is nvim's way.
+/// is: under `vi` one candidate is listed as several are, with no
+/// usage line, which is nvim's way.
 fn found(wild: &Wild, vi: bool) -> Vec<String> {
-    if let [Found::Word(one)] = &wild.candidates[..]
+    if let ([_], Some(form)) = (&wild.candidates[..], &wild.form)
         && !vi
     {
-        let args = (!one.args.is_empty()).then(|| one.args.to_string());
-        return args.into_iter().chain([one.help.to_string()]).collect();
+        return alloc::vec![form.clone()];
     }
     wild.candidates
         .iter()
         .enumerate()
-        .map(|(at, found)| {
-            let text = found.text();
+        .map(|(at, text)| {
             if at == wild.at {
                 alloc::format!("[{text}]")
             } else {
-                text.to_string()
+                text.clone()
             }
         })
         .collect()
@@ -527,31 +427,34 @@ const OPTIONS: &[&str] = &["ignorecase", "smartcase", "hlsearch", "vi"];
 
 /// The option names that begin as `word` does, the plain ones before
 /// the `no` forms that turn each off.
-fn options(word: &str) -> Vec<String> {
+pub fn options(word: &str) -> Vec<String> {
     let off = OPTIONS.iter().map(|name| alloc::format!("no{name}"));
     let all = OPTIONS.iter().map(ToString::to_string).chain(off);
     all.filter(|name| name.starts_with(word)).collect()
 }
 
-/// A `:` line past its range, as the table reads it.
-struct Typed<'a> {
-    /// The run of letters at the front; empty for a line that names
-    /// no word at all.
-    word: &'a str,
-    /// A `!` straight after the word.
-    bang: bool,
-    /// What follows, trimmed; `:s` keeps the `/` its pattern starts
-    /// with, which is the one word that needs no space.
-    arg: &'a str,
+/// A `:` line past its range, as Vim's own rule reads it: `name[!] arg`,
+/// the argument being everything left.
+pub struct Typed<'a> {
+    /// The run of letters at the front; empty for a line that begins
+    /// with none, which no name of Vim's can be.
+    pub name: &'a str,
+    /// A `!` straight after the name.
+    pub bang: bool,
+    /// What follows, trimmed, which is one argument and never tokens:
+    /// `:%s/^/> /` and `:w my file` both hold a space. `:s` keeps the
+    /// `/` its pattern starts with, which is the one name that needs
+    /// no space after it.
+    pub arg: &'a str,
 }
 
-/// `command` read: the word, the bang on it, and the argument.
-fn typed(command: &str) -> Typed<'_> {
-    let letters = command.bytes().take_while(u8::is_ascii_alphabetic).count();
-    let (word, rest) = command.split_at(letters);
+/// `line` read by that rule: the name, the bang on it, the argument.
+pub fn typed(line: &str) -> Typed<'_> {
+    let letters = line.bytes().take_while(u8::is_ascii_alphabetic).count();
+    let (name, rest) = line.split_at(letters);
     let (bang, rest) =
         rest.strip_prefix('!').map_or((false, rest), |r| (true, r));
-    Typed { word, bang, arg: rest.trim() }
+    Typed { name, bang, arg: rest.trim() }
 }
 
 /// `args` split at `sep`, a backslash escaping one.

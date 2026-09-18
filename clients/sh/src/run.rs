@@ -139,11 +139,15 @@ pub fn fields(ctx: &dyn Calls, name: &str) -> Option<Vec<Field>> {
 ///
 /// # Errors
 /// `Miss` for a name PATH does not hold.
-pub fn form(ctx: &dyn Calls, name: &str) -> Result<String, Miss> {
+pub fn form(
+    ctx: &dyn Calls,
+    shell: &Shell,
+    name: &str,
+) -> Result<String, Miss> {
     let Some(fields) = fields(ctx, name) else {
         return Err(not_under(name));
     };
-    Ok(decode::form(name, &fields))
+    Ok(decode::form(shell, name, &fields))
 }
 
 /// The run of `name`: the record filled from the tokens, the call, and

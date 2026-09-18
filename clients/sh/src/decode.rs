@@ -1,10 +1,11 @@
 //! A typed line into the record a run takes, and that rule run
 //! backwards, which is the form `help` prints and a Miss shows.
 //!
-//! Three kinds of field, told from the declaration alone, which carries
-//! names and types. The environment, `cwd: Rd`, `width: u64` and
-//! `color: bool`, the shell fills from where the line stands and what
-//! the host's screen is, and no token ever matches it. A flag is a
+//! Three kinds of field, told from the declaration and the shell's own
+//! environment, which carry names and types. An environment field is
+//! one the host of the shell gave a value of that name and type for,
+//! beside `cwd: Rd`, which is where the line stands; the shell fills it
+//! and no token ever matches it. A flag is a
 //! `bool` field or any field named by one letter, which a token under a
 //! dash names: by the field's whole name, a `bool` set and any other
 //! type taking the next token, or letter by letter, each letter naming
@@ -37,30 +38,26 @@ pub fn record(
     tokens: &[&str],
 ) -> Result<Vec<u8>, Miss> {
     let Ty::Record(fields) = ty else {
-        return Err(missed(name, "", &[]));
+        return Err(missed(shell, name, "", &[]));
     };
-    let filled = |field: &Field| {
-        if environment(field) {
-            return env(shell, &field.name);
-        }
-        empty(&field.ty)
-    };
+    let filled =
+        |field: &Field| given(shell, field).unwrap_or_else(|| empty(&field.ty));
     let mut values: Vec<Value> = fields.iter().map(filled).collect();
-    let left = flags(fields, name, tokens, &mut values)?;
-    positionals(fields, name, &left, &mut values)?;
+    let left = flags(shell, fields, name, tokens, &mut values)?;
+    positionals(shell, fields, name, &left, &mut values)?;
     let named = fields.iter().map(|field| field.name.clone());
     let record = Value::Record(named.zip(values).collect());
     let typed = dynamic::encode(ty, &record);
-    typed.map_err(|_| missed(name, &tokens.join(" "), fields))
+    typed.map_err(|_| missed(shell, name, &tokens.join(" "), fields))
 }
 
 /// The line `help` prints for `name`: a part per field a token fills,
 /// every one bracketed, since a declaration says which fields exist and
 /// not which are needed.
-pub fn form(name: &str, fields: &[Field]) -> String {
+pub fn form(shell: &Shell, name: &str, fields: &[Field]) -> String {
     let mut out = name.to_string();
     for field in fields {
-        if environment(field) {
+        if given(shell, field).is_some() {
             continue;
         }
         let at = &field.name;
@@ -81,9 +78,9 @@ pub fn form(name: &str, fields: &[Field]) -> String {
 
 /// Every flag field as a token under a dash spells it. What Tab offers
 /// under a dash.
-pub fn dashes(fields: &[Field]) -> Vec<String> {
-    let flags = fields.iter().filter(|f| !environment(f) && flag(f));
-    flags.map(dash).collect()
+pub fn dashes(shell: &Shell, fields: &[Field]) -> Vec<String> {
+    let mine = |f: &&Field| given(shell, f).is_none() && flag(f);
+    fields.iter().filter(mine).map(dash).collect()
 }
 
 /// One flag field under a dash: its own one letter, which is the first
@@ -96,6 +93,7 @@ fn dash(field: &Field) -> String {
 /// Every token under a dash taken by the flag field it names; what is
 /// left over is the positionals', in the order it was typed.
 fn flags<'a>(
+    shell: &Shell,
     fields: &[Field],
     name: &str,
     tokens: &[&'a str],
@@ -104,31 +102,37 @@ fn flags<'a>(
     let mut left = Vec::new();
     let mut tokens = tokens.iter().copied();
     while let Some(token) = tokens.next() {
+        let missed = |token| missed(shell, name, token, fields);
         let Some(letters) = dashed(token) else {
             left.push(token);
             continue;
         };
-        let Some(at) = whole(fields, letters) else {
-            let each = each(fields, letters, values);
-            each.ok_or_else(|| missed(name, token, fields))?;
+        let Some(at) = whole(shell, fields, letters) else {
+            let each = each(shell, fields, letters, values);
+            each.ok_or_else(|| missed(token))?;
             continue;
         };
         if fields[at].ty == Ty::Bool {
             values[at] = Value::Bool(true);
             continue;
         }
-        let next = tokens.next().ok_or_else(|| missed(name, token, fields))?;
+        let next = tokens.next().ok_or_else(|| missed(token))?;
         let value = taken(&fields[at].ty, next);
-        values[at] = value.ok_or_else(|| missed(name, next, fields))?;
+        values[at] = value.ok_or_else(|| missed(next))?;
     }
     Ok(left)
 }
 
 /// Every letter of a token under a dash naming a `bool` flag, each of
 /// them set; `None` where one letter names none.
-fn each(fields: &[Field], letters: &str, values: &mut [Value]) -> Option<()> {
+fn each(
+    shell: &Shell,
+    fields: &[Field],
+    letters: &str,
+    values: &mut [Value],
+) -> Option<()> {
     for letter in letters.chars() {
-        values[letter_of(fields, letter)?] = Value::Bool(true);
+        values[letter_of(shell, fields, letter)?] = Value::Bool(true);
     }
     Some(())
 }
@@ -137,14 +141,16 @@ fn each(fields: &[Field], letters: &str, values: &mut [Value]) -> Option<()> {
 /// and then the sequence, which takes everything left. A token with no
 /// field left to take it is the Miss.
 fn positionals(
+    shell: &Shell,
     fields: &[Field],
     name: &str,
     left: &[&str],
     values: &mut [Value],
 ) -> Result<(), Miss> {
+    let missed = |token| missed(shell, name, token, fields);
     let (mut scalars, mut rest) = (Vec::new(), None);
     for (at, field) in fields.iter().enumerate() {
-        if environment(field) || flag(field) {
+        if given(shell, field).is_some() || flag(field) {
             continue;
         }
         match &field.ty {
@@ -156,27 +162,47 @@ fn positionals(
     for (at, field) in scalars {
         let Some(token) = left.next() else { return Ok(()) };
         let value = taken(&field.ty, token);
-        values[at] = value.ok_or_else(|| missed(name, token, fields))?;
+        values[at] = value.ok_or_else(|| missed(token))?;
     }
     let Some((at, item)) = rest else {
         let over = left.next();
-        return over.map_or(Ok(()), |token| Err(missed(name, token, fields)));
+        return over.map_or(Ok(()), |token| Err(missed(token)));
     };
     let mut items = Vec::new();
     for token in left {
         let value = taken(item, token);
-        items.push(value.ok_or_else(|| missed(name, token, fields))?);
+        items.push(value.ok_or_else(|| missed(token))?);
     }
     values[at] = Value::Sequence(items);
     Ok(())
 }
 
-/// The three fields the shell fills and no token matches, told by their
-/// names and their types together.
-fn environment(field: &Field) -> bool {
+/// What the shell fills a field with and no token matches: the cwd,
+/// which is the shell's own and which `cd` moves, and whatever the host
+/// gave a value of this name and this type for. `None` for a field the
+/// host named nothing of, which is then a positional or a flag like any
+/// other, so a Driver of anyone's may declare `bang` and mean a flag.
+fn given(shell: &Shell, field: &Field) -> Option<Value> {
+    if field.name == "cwd" && field.ty == Ty::Rd {
+        return Some(Value::Rd(shell.cwd));
+    }
+    let held = shell.env.iter().find(|(name, _)| *name == field.name)?;
+    fits(&held.1, &field.ty).then(|| held.1.clone())
+}
+
+/// Whether a value the host gave is of the type a field declares.
+const fn fits(value: &Value, ty: &Ty) -> bool {
     matches!(
-        (field.name.as_str(), &field.ty),
-        ("cwd", Ty::Rd) | ("width", Ty::U64) | ("color", Ty::Bool)
+        (value, ty),
+        (Value::Bool(_), Ty::Bool)
+            | (Value::U8(_), Ty::U8)
+            | (Value::U32(_), Ty::U32)
+            | (Value::U64(_), Ty::U64)
+            | (Value::I64(_), Ty::I64)
+            | (Value::F64(_), Ty::F64)
+            | (Value::Rd(_), Ty::Rd)
+            | (Value::Bytes(_), Ty::Bytes(_))
+            | (Value::Utf8(_), Ty::Utf8(_))
     )
 }
 
@@ -192,18 +218,18 @@ fn dashed(token: &str) -> Option<&str> {
 }
 
 /// The flag field `letters` is the whole name of.
-fn whole(fields: &[Field], letters: &str) -> Option<usize> {
+fn whole(shell: &Shell, fields: &[Field], letters: &str) -> Option<usize> {
     let named = |field: &Field| {
-        !environment(field) && flag(field) && field.name == letters
+        given(shell, field).is_none() && flag(field) && field.name == letters
     };
     fields.iter().position(named)
 }
 
 /// The `bool` flag `letter` names: by its own one-letter name, else by
 /// its first letter, so `t` and `T` are two fields and not one.
-fn letter_of(fields: &[Field], letter: char) -> Option<usize> {
+fn letter_of(shell: &Shell, fields: &[Field], letter: char) -> Option<usize> {
     let begins = |field: &Field| {
-        !environment(field)
+        given(shell, field).is_none()
             && field.ty == Ty::Bool
             && field.name.starts_with(letter)
     };
@@ -215,16 +241,6 @@ fn letter_of(fields: &[Field], letter: char) -> Option<usize> {
 fn one(name: &str) -> bool {
     let mut letters = name.chars();
     letters.next().is_some() && letters.next().is_none()
-}
-
-/// The environment field of that name, from where the line stands and
-/// what the host's screen is.
-fn env(shell: &Shell, name: &str) -> Value {
-    match name {
-        "cwd" => Value::Rd(shell.cwd),
-        "width" => Value::U64(shell.width),
-        _ => Value::Bool(shell.color),
-    }
 }
 
 /// `token` as one value of `ty`: a `utf8` takes it, a number takes it
@@ -271,8 +287,8 @@ fn empty(ty: &Ty) -> Value {
 }
 
 /// A token no field could take: the form `help` prints for this name.
-fn missed(name: &str, token: &str, fields: &[Field]) -> Miss {
-    let cause = format!("usage: {}", form(name, fields));
+fn missed(shell: &Shell, name: &str, token: &str, fields: &[Field]) -> Miss {
+    let cause = format!("usage: {}", form(shell, name, fields));
     let (name, target) = (name.to_string(), token.to_string());
     Miss { name, target, cause, unknown: false }
 }

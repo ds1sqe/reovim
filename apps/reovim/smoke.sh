@@ -413,10 +413,10 @@ keys clibuf : q Enter
 [[ "$(ended clibuf)" == 0 ]] || fail ":q after the cli buffer did not quit"
 
 # --- the : line runs a Driver under /bin too -------------------------
-# A name Vim's own list has not is the shell's line, run over the tree
-# from the directory the file is in: `:ls` lists that directory and
-# `:pwd` says where it stands, the first line of what it printed in
-# the status row.
+# A first token no name under `/self/vim/bin` begins is the shell's
+# line, run over the tree from the directory the file is in: `:ls`
+# lists that directory and `:pwd` says where it stands, the first line
+# of what it printed in the status row.
 mkdir -p "$DIR/words"
 echo a > "$DIR/words/alpha"
 echo one > "$DIR/words/note"
@@ -429,18 +429,19 @@ shown words "note  1:1  r1   /module/fs/root$DIR/words"
 keys words : q Enter
 [[ "$(ended words)" == 0 ]] || fail ":q after a shell line did not quit"
 
-# --- Tab on the : line: the word expanded, its help, the wildmenu ----
-# A name only one word of Vim's begins is expanded to that word and
-# its argument form and help stand in the status row. `:w` is three
-# names — Vim's `write` and `wq`, then `watch` under `/bin` — so it is
-# the wildmenu instead, `write` current and the line holding it; Tab
-# walks to the next. Enter on the expanded line runs it, which writes.
+# --- Tab on the : line: the name expanded, its usage line, the menu --
+# A token only one name under PATH begins is expanded to that name and
+# the usage line its declaration gives stands in the status row. `:w`
+# is three names — Vim's own `write` and `wq`, then `watch` under
+# `/bin` — so it is the wildmenu instead, `write` current and the line
+# holding it; Tab walks to the next. Enter on the expanded line runs
+# it, which writes.
 start tab "$DIR/words" "$BIN note"
 editing tab note
 keys tab : w r Tab
-shown tab ":write   \[PATH\]  the buffer, to PATH if one is given"
+shown tab ":write   write \[path\]"
 keys tab Escape : q Tab
-shown tab ":quit   quit; ! leaves the draft"
+shown tab ":quit   quit"
 keys tab Escape i x Escape : w Tab
 shown tab ":write   \[write\]  wq  watch"
 keys tab Tab
@@ -451,10 +452,11 @@ keys tab : q Enter
 [[ "$(ended tab)" == 0 ]] || fail ":q after Tab did not quit"
 [[ "$(cat "$DIR/words/note")" == xone ]] || fail "Tab then Enter did not write"
 
-# --- Tab past the word: the argument from the tree -------------------
-# A name half typed after a word is completed from the tree the editor
-# works over, and the word is expanded with it. The space a completed
-# file gets is where the next word begins, which is where the `x`
+# --- Tab past the name: the argument from the tree -------------------
+# A path half typed after a name is completed from the tree the editor
+# works over, and the name is written out with it. The space a
+# completed file gets is where the next token begins, which is where
+# the `x`
 # lands; tmux would not show it at the end of the row.
 mkdir -p "$DIR/wild"
 : > "$DIR/wild/Cargo.toml"
