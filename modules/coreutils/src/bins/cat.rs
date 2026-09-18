@@ -8,10 +8,9 @@
 use alloc::vec::Vec;
 
 use reovim_kernel_interface::{Calls, Error, Rd};
-use reovim_sdk::cell;
+use reovim_sdk::{cell, ops};
 
 use crate::Coreutils;
-use crate::ops;
 
 reovim_sdk::declare! {
     api cat ver 1 {

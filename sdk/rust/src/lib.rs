@@ -5,14 +5,19 @@
 //! typed (`Encode`, `Decode`, `Typed`) and dynamic (`Value`, by a
 //! `Ty` at runtime), `declare!`, an api as the design writes it, the
 //! one `walk` from a path to an rd, and the output cell a Driver
-//! under `/bin` answers a run with. It links kernel/interface and
-//! nothing else.
+//! under `/bin` answers a run with. Beside them what both sides of a
+//! Resource read the same way: the log's entries, the reads a Driver
+//! makes over its own `Calls`, and a Kernel instant as a calendar
+//! reads it. It links kernel/interface and nothing else.
 
 extern crate alloc;
 
 pub mod cell;
+pub mod date;
 mod declare;
 pub mod dynamic;
+pub mod log;
+pub mod ops;
 mod typed;
 pub mod walk;
 

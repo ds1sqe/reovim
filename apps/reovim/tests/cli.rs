@@ -236,27 +236,42 @@ fn a_command_says_its_line_and_help_needs_no_server() {
     );
 }
 
-/// The Drivers under `/bin` come of a Module like any other: it loads
-/// at `/module/coreutils`, registers each of them under the root's
-/// `bin`, and `unload` refuses it as it refuses fs.
+/// The Drivers under `/bin` come of Modules like any other: each loads
+/// at `/module/<name>`, registers its own under the root's `bin`, and
+/// `unload` refuses it as it refuses fs.
 #[test]
-fn the_drivers_under_bin_come_of_one_linked_module() {
+fn the_drivers_under_bin_come_of_linked_modules() {
     let server = Server::start("bin");
-    assert_eq!(server.line(&["ls", "/bin"]), "cat\nls\nstat\ntree");
-    let rd = server.line(&["lookup", "/module/coreutils"]);
-    assert!(rd.parse::<u64>().is_ok(), "{rd}");
     assert_eq!(
-        server.cli(&["unload", "coreutils"], b"").unwrap_err(),
-        "reovim: unload coreutils: denied\n"
+        server.line(&["ls", "/bin"]),
+        "call\ncat\ndmesg\nlog\nls\nstat\ntree"
     );
+    for name in ["coreutils", "sysutils"] {
+        let rd = server.line(&["lookup", &format!("/module/{name}")]);
+        assert!(rd.parse::<u64>().is_ok(), "{rd}");
+        assert_eq!(
+            server.cli(&["unload", name], b"").unwrap_err(),
+            format!("reovim: unload {name}: denied\n")
+        );
+    }
 
-    // What one of them offers, as the shell will read it from the tree.
+    // What one of each offers, as the shell will read it from the tree.
     let said = server.line(&["stat", "/bin/ls"]);
     assert!(said.contains("\nls v1\n"), "{said}");
     assert!(
         said.contains(
             "  0 run({long: bool, all: bool, cwd: Rd, width: u64, \
              color: bool, targets: [utf8(256); 64]}) -> Rd READ"
+        ),
+        "{said}"
+    );
+    let said = server.line(&["stat", "/bin/dmesg"]);
+    assert!(said.contains("\ndmesg v1\n"), "{said}");
+    assert!(
+        said.contains(
+            "  0 run({t: bool, T: bool, H: bool, d: bool, r: bool, \
+             x: bool, k: bool, f: utf8(256), l: utf8(256), \
+             color: bool}) -> Rd READ"
         ),
         "{said}"
     );

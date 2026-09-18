@@ -8,8 +8,8 @@ use alloc::vec::Vec;
 use core::fmt::Write as _;
 
 use reovim_kernel_interface::{Calls, Error, Flags, Info, Rd};
-
-use crate::ops;
+use reovim_sdk::date::civil;
+use reovim_sdk::ops;
 
 /// One listed rd: its number, the name it shows under, and what the
 /// Kernel caches about it.
@@ -82,22 +82,15 @@ pub fn long_line(
     Ok(format!("{number}{kind} {read}{write}  {at}  {apis}  {name}\n"))
 }
 
-/// `YYYY-MM-DD HH:MM:SS` in UTC of one instant of the Kernel clock, by
-/// the civil-from-days arithmetic, which needs no table and no host.
+/// `YYYY-MM-DD HH:MM:SS` in UTC of one instant of the Kernel clock, as
+/// a long line and `stat` write a time.
 pub fn date(nanos: u64) -> String {
-    let seconds = nanos / 1_000_000_000;
-    let (days, rest) = (seconds / 86_400, seconds % 86_400);
-    // Counting the year from March, so the leap day is the last day.
-    let shifted = days + 719_468;
-    let (era, doe) = (shifted / 146_097, shifted % 146_097);
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let day = doy - (153 * mp + 2) / 5 + 1;
-    let month = if mp < 10 { mp + 3 } else { mp - 9 };
-    let year = era * 400 + yoe + u64::from(month <= 2);
-    let (hour, minute, second) = (rest / 3600, rest % 3600 / 60, rest % 60);
-    format!("{year:04}-{month:02}-{day:02} {hour:02}:{minute:02}:{second:02}")
+    let at = civil(nanos);
+    let (year, month, day) = (at.year, at.month, at.day);
+    format!(
+        "{year:04}-{month:02}-{day:02} {:02}:{:02}:{:02}",
+        at.hour, at.minute, at.second
+    )
 }
 
 /// `names` as a listing shows them: down the columns that fit in

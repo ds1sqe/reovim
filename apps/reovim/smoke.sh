@@ -174,7 +174,7 @@ shown shell '^/ >'
 keys shell c d " " / m o d u l e Enter
 shown shell '^/module >'
 keys shell l s Enter
-shown shell 'clipboard  coreutils  fs  text'
+shown shell 'clipboard  coreutils  fs  sysutils  text'
 keys shell p w d Enter
 shown shell '^/module$'
 keys shell C-d

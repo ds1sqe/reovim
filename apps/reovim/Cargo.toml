@@ -35,6 +35,7 @@ reovim-module-clipboard = { path = "../../modules/clipboard" }
 reovim-module-coreutils = { path = "../../modules/coreutils" }
 reovim-module-text = { path = "../../modules/text" }
 reovim-module-fs = { path = "../../modules/fs" }
+reovim-module-sysutils = { path = "../../modules/sysutils" }
 
 [lints]
 workspace = true

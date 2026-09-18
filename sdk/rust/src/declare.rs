@@ -94,6 +94,9 @@ macro_rules! declare {
             $(
                 // A record may hold an `f64`, so `Eq` is not promised.
                 #[allow(clippy::derive_partial_eq_without_eq)]
+                // A field's name is the declaration's, which a shell
+                // spells back at a caller (`dmesg -T`), not Rust's.
+                #[allow(non_snake_case)]
                 #[derive(Clone, Debug, PartialEq)]
                 pub struct $record {
                     $( pub $field: $crate::__rust!( $ft $( ( $fb ) )? ), )*

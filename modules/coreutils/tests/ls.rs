@@ -113,7 +113,7 @@ fn a_listing_is_laid_out_down_the_columns_that_fit_the_width() {
     assert_eq!(
         listed,
         format!(
-            "/module:\nclipboard\ncoreutils\nfs\ntext\n\n\
+            "/module:\nclipboard\ncoreutils\nfs\nsysutils\ntext\n\n\
              {root}:\nalpha\nbeta\ngamma\n"
         )
     );
@@ -187,7 +187,7 @@ fn color_wears_the_kind_and_the_columns_count_the_name_only() {
     let two = same(&mut client, here, &painted, "ls /module", out);
     assert_eq!(
         two.lines().next().unwrap(),
-        "\x1b[1;34mclipboard\x1b[0m  \x1b[1;34mfs\x1b[0m"
+        "\x1b[1;34mclipboard\x1b[0m  \x1b[1;34msysutils\x1b[0m"
     );
 
     // A cell that offers an api is green, a plain one is as it is.

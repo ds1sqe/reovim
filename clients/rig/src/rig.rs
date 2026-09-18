@@ -70,6 +70,7 @@ impl Rig {
             ("fs", reovim_module_fs::boot(dir.to_str().unwrap())),
             ("text", reovim_module_text::boot("")),
             ("coreutils", reovim_module_coreutils::boot("")),
+            ("sysutils", reovim_module_sysutils::boot("")),
         ];
         for (name, module) in booted {
             kernel.load(name, module.module, module.drivers).unwrap();

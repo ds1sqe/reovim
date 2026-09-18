@@ -12,9 +12,8 @@
 //! out of the tree. A run that fails registers nothing.
 //!
 //! Each api is a file of `bins`, holding its declaration and its `run`.
-//! The text more than one of them prints is `format`, what more than
-//! one asks the Kernel is `ops`; neither is anyone else's, so neither
-//! is in the SDK.
+//! The text more than one of them prints is `format`; what they ask the
+//! Kernel is the sdk's `ops`.
 
 extern crate alloc;
 
@@ -29,7 +28,6 @@ use reovim_sdk::cell;
 
 pub mod bins;
 mod format;
-mod ops;
 
 use bins::{cat, ls, stat, tree};
 

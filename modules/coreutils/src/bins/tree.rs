@@ -3,7 +3,7 @@
 //!
 //! One run answers with an output cell holding the target and what is
 //! under it, Containers first and then cells, each by name, ending
-//! with the count of what was drawn. `levels` stops the walk that many
+//! with the count of what was drawn. `L` stops the walk that many
 //! levels down and 0 does not stop it; an empty target is the `cwd`
 //! the run was given, whose path the first line then says.
 
@@ -13,27 +13,21 @@ use alloc::vec::Vec;
 use core::fmt::Write as _;
 
 use reovim_kernel_interface::{Calls, Error, Flags, Rd};
-use reovim_sdk::cell;
-use reovim_sdk::walk::ROOT;
+use reovim_sdk::{cell, ops};
 
 use crate::Coreutils;
 use crate::format::{self, Entry};
-use crate::ops;
 
 reovim_sdk::declare! {
     api tree ver 1 {
         0 run(args: Args) -> Rd: READ;
     }
-    record Args { levels: u64, cwd: Rd, color: bool, target: utf8(256) }
+    record Args { L: u64, cwd: Rd, color: bool, target: utf8(256) }
 }
 
 /// What a run takes, beside the api it belongs to.
 pub use tree::Args;
 pub(crate) use tree::{decl, dispatch};
-
-/// Names of a path past which the first line says the rd instead, as
-/// the depth of a walk is nobody's to trust.
-const DEEP: usize = 64;
 
 impl tree::Api for Coreutils {
     fn run(&self, ctx: &dyn Calls, rd: Rd, args: Args) -> Result<Rd, Error> {
@@ -47,7 +41,7 @@ fn text(ctx: &dyn Calls, args: &Args) -> Result<String, Error> {
     let rd = cell::resolve(ctx, args.cwd, &args.target)?;
     let info = ops::info(ctx, rd)?;
     let head = if args.target.is_empty() {
-        where_is(ctx, rd)?
+        ops::where_is(ctx, rd)?
     } else {
         args.target.clone()
     };
@@ -55,7 +49,7 @@ fn text(ctx: &dyn Calls, args: &Args) -> Result<String, Error> {
     let mut count = (0, 0);
     if info.flags.contains(Flags::CONTAINER) {
         let kids = ordered(format::entries(ctx, rd)?);
-        let depth = match usize::try_from(args.levels).unwrap_or(usize::MAX) {
+        let depth = match usize::try_from(args.L).unwrap_or(usize::MAX) {
             0 => usize::MAX,
             levels => levels,
         };
@@ -64,27 +58,6 @@ fn text(ctx: &dyn Calls, args: &Args) -> Result<String, Error> {
     }
     let _ = write!(text, "\n{} containers, {} cells\n", count.0, count.1);
     Ok(text)
-}
-
-/// The path of `rd`, as the first line says where a run with no target
-/// stood. One that is not named the whole way up, or stands deeper
-/// than [`DEEP`], has no path to show and is `rd:<n>`.
-fn where_is(ctx: &dyn Calls, rd: Rd) -> Result<String, Error> {
-    let mut names: Vec<String> = Vec::new();
-    let mut at = rd;
-    while at != ROOT {
-        let Some(name) = ops::info(ctx, at)?.name else {
-            return Ok(format!("rd:{}", rd.0));
-        };
-        if names.len() == DEEP {
-            return Ok(format!("rd:{}", rd.0));
-        }
-        names.push(name);
-        // `..` is the walk's own move to the parent.
-        at = cell::resolve(ctx, at, "..")?;
-    }
-    names.reverse();
-    Ok(format!("/{}", names.join("/")))
 }
 
 /// Containers first and then cells, each by name, as a drawing wants

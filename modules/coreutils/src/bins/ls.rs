@@ -13,11 +13,10 @@ use alloc::{format, vec};
 use core::fmt::Write as _;
 
 use reovim_kernel_interface::{Calls, Error, Flags, Rd};
-use reovim_sdk::cell;
+use reovim_sdk::{cell, ops};
 
 use crate::Coreutils;
 use crate::format::{self, Entry};
-use crate::ops;
 
 reovim_sdk::declare! {
     api ls ver 1 {

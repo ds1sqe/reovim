@@ -10,7 +10,7 @@ use reovim_rig::Rig;
 /// A run of `target`, as a shell fills the record: every level, no
 /// color, from the root.
 fn args(target: &str) -> Args {
-    Args { levels: 0, cwd: ROOT, color: false, target: target.to_string() }
+    Args { L: 0, cwd: ROOT, color: false, target: target.to_string() }
 }
 
 /// `call /bin/tree run {..}`: the rd of the output cell, or the fault
@@ -81,10 +81,10 @@ fn a_drawing_puts_containers_first_and_counts_what_it_drew() {
          1 containers, 2 cells\n"
     );
 
-    // `levels` stops the walk that many levels down; 0 does not stop
+    // `L` stops the walk that many levels down; 0 does not stop
     // it, which is the run the line without `-L` makes.
     let mut one = args(root);
-    one.levels = 1;
+    one.L = 1;
     let stopped = same(
         &mut client,
         here,
@@ -109,7 +109,7 @@ fn a_drawing_puts_containers_first_and_counts_what_it_drew() {
     );
     assert_eq!(said, format!("{note}\n\n0 containers, 0 cells\n"));
     let mut top = args("/");
-    top.levels = 1;
+    top.L = 1;
     let said = same(&mut client, here, &top, "tree / -L 1", Out::plain());
     assert!(said.starts_with("/\n├── bin\n├── module\n"), "{said}");
 }
@@ -124,7 +124,7 @@ fn no_target_is_the_cwd_and_the_first_line_says_where_that_is() {
 
     let mut here = args("");
     here.cwd = root;
-    here.levels = 1;
+    here.L = 1;
     let said = same(
         &mut client,
         (root, "/module/fs/root"),

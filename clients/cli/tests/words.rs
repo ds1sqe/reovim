@@ -60,7 +60,7 @@ fn ls_names_the_children_sorted_down_columns_or_one_per_line() {
     assert_eq!(
         both,
         format!(
-            "/module:\nclipboard\ncoreutils\nfs\ntext\n\n\
+            "/module:\nclipboard\ncoreutils\nfs\nsysutils\ntext\n\n\
              {root}:\nalpha\nbeta\ngamma\n"
         )
     );
