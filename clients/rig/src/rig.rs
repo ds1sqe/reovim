@@ -69,7 +69,7 @@ impl Rig {
         let booted = [
             ("fs", reovim_module_fs::boot(dir.to_str().unwrap())),
             ("text", reovim_module_text::boot("")),
-            ("stat", reovim_bin_stat::boot("")),
+            ("coreutils", reovim_module_coreutils::boot("")),
         ];
         for (name, module) in booted {
             kernel.load(name, module.module, module.drivers).unwrap();

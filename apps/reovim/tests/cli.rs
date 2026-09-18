@@ -236,24 +236,28 @@ fn a_command_says_its_line_and_help_needs_no_server() {
     );
 }
 
-/// A Driver under `/bin` is linked as a Module like any other: it
-/// loads at `/module/<name>`, registers itself under the root's `bin`,
-/// and `unload` refuses it as it refuses fs.
+/// The Drivers under `/bin` come of a Module like any other: it loads
+/// at `/module/coreutils`, registers each of them under the root's
+/// `bin`, and `unload` refuses it as it refuses fs.
 #[test]
-fn a_driver_under_bin_is_one_of_the_linked_modules() {
+fn the_drivers_under_bin_come_of_one_linked_module() {
     let server = Server::start("bin");
-    assert_eq!(server.line(&["ls", "/bin"]), "stat");
-    assert!(server.line(&["lookup", "/module/stat"]).parse::<u64>().is_ok());
+    assert_eq!(server.line(&["ls", "/bin"]), "cat\nls\nstat\ntree");
+    let rd = server.line(&["lookup", "/module/coreutils"]);
+    assert!(rd.parse::<u64>().is_ok(), "{rd}");
     assert_eq!(
-        server.cli(&["unload", "stat"], b"").unwrap_err(),
-        "reovim: unload stat: denied\n"
+        server.cli(&["unload", "coreutils"], b"").unwrap_err(),
+        "reovim: unload coreutils: denied\n"
     );
 
-    // What it offers, as the shell will read it from the tree.
-    let said = server.line(&["stat", "/bin/stat"]);
-    assert!(said.contains("\nstat v1\n"), "{said}");
+    // What one of them offers, as the shell will read it from the tree.
+    let said = server.line(&["stat", "/bin/ls"]);
+    assert!(said.contains("\nls v1\n"), "{said}");
     assert!(
-        said.contains("  0 run({cwd: Rd, target: utf8(256)}) -> Rd READ"),
+        said.contains(
+            "  0 run({long: bool, all: bool, cwd: Rd, width: u64, \
+             color: bool, targets: [utf8(256); 64]}) -> Rd READ"
+        ),
         "{said}"
     );
 }

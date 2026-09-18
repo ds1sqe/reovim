@@ -290,7 +290,7 @@ fn the_words_of_a_listing_wear_their_kind() {
     let two = run(&mut client, "ls /module", wide);
     assert_eq!(
         two.lines().next().unwrap(),
-        "\x1b[1;34mclipboard\x1b[0m  \x1b[1;34mstat\x1b[0m"
+        "\x1b[1;34mclipboard\x1b[0m  \x1b[1;34mfs\x1b[0m"
     );
 }
 
@@ -409,7 +409,7 @@ fn only_a_following_word_asks_for_the_loop() {
         .unwrap()
         .unwrap();
     let listed = String::from_utf8(plan.first).unwrap();
-    assert_eq!(listed, "clipboard\nfs\nstat\ntext\n");
+    assert_eq!(listed, "clipboard\ncoreutils\nfs\ntext\n");
     let (form, tail) = form(&flags("-wT"), Paint::off()).unwrap();
     assert!(tail == Tail::All, "-w follows");
     assert!(matches!(form, Form { decode: false, .. }));

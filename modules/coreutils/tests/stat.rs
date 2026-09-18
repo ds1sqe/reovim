@@ -2,9 +2,9 @@
 //! text the cli's own `stat` prints of the same rd in the same tree,
 //! and what the cell is once its reader lets go of it.
 
-use reovim_bin_stat::Args;
 use reovim_client::{Client, Error, Fault, ROOT, Rd, Rights};
 use reovim_client_cli::{Out, Paint, Shell, input};
+use reovim_module_coreutils::bins::stat::Args;
 use reovim_rig::Rig;
 
 /// `call /bin/stat run {cwd, target}`: the rd of the output cell, or

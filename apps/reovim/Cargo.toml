@@ -21,7 +21,6 @@ default = ["std"]
 std = ["reovim-host/std"]
 
 [dependencies]
-reovim-bin-stat = { path = "../../bin/stat" }
 reovim-client = { path = "../../clients/core" }
 reovim-client-cli = { path = "../../clients/cli" }
 reovim-client-tui = { path = "../../clients/tui" }
@@ -33,6 +32,7 @@ reovim-kernel-abi = { path = "../../kernel/abi" }
 reovim-kernel-interface = { path = "../../kernel/interface" }
 reovim-kernel-runtime = { path = "../../kernel/runtime" }
 reovim-module-clipboard = { path = "../../modules/clipboard" }
+reovim-module-coreutils = { path = "../../modules/coreutils" }
 reovim-module-text = { path = "../../modules/text" }
 reovim-module-fs = { path = "../../modules/fs" }
 
