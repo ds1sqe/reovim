@@ -35,7 +35,9 @@ pub enum Op {
     Info { rd: Rd },
     /// Parent rd; needs no handle.
     Parent { rd: Rd },
-    /// Child rds; needs no handle. Asks the Driver to list once.
+    /// Child rds; needs no handle. Asks the Driver to list once, and
+    /// answers from the Kernel's own table unless that listing went
+    /// `Pending`, in which case the Driver's `done` is the listing.
     Children { rd: Rd },
 }
 

@@ -136,6 +136,9 @@ pub struct Slot {
     pub cookie: u64,
     pub pending: usize,
     pub watching: bool,
+    /// The `open` that made this slot has not answered: the cookie is
+    /// not the Driver's yet and no op may use the handle.
+    pub opening: bool,
 }
 
 pub struct CallerState {
@@ -314,6 +317,7 @@ impl State {
         for i in core::mem::take(&mut self.modules[index].drivers) {
             self.drivers[i] = Rc::new(Unloaded);
         }
+        self.pending.ended(id);
         let caller = self.modules[index].caller;
         self.forget(caller);
     }
@@ -1024,7 +1028,7 @@ fn handles(s: &State, out: &mut String) {
 
 fn pendings(s: &State, out: &mut String) {
     for (token, wait) in s.pending.all() {
-        let caller = s.handles.get(&wait.handle).map(|slot| slot.caller.0);
+        let slot = wait.handle.and_then(|h| s.handles.get(&h));
         let state = match wait.state {
             Waiting::Waiting => "waiting",
             Waiting::Done(_) => "done",
@@ -1034,8 +1038,8 @@ fn pendings(s: &State, out: &mut String) {
             out,
             "pending token={} caller={} handle={} state={state}",
             token.0,
-            or_dash(caller),
-            wait.handle.0
+            or_dash(slot.map(|slot| slot.caller.0)),
+            or_dash(wait.handle.map(|h| h.0))
         );
     }
 }

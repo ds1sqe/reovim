@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use reovim_kernel_interface::{
     Caller, Calls, Decl, Driver, DriverId, Error, Flags, Handle, Kind, Method,
-    Module, Op, Out, Rd, Reply, Rights, Ty,
+    Module, Op, Out, Rd, Reply, Rights, Token, Ty,
 };
 use reovim_kernel_runtime::{Heap, Kernel, Limits, ROOT};
 
@@ -16,6 +16,8 @@ use reovim_kernel_runtime::{Heap, Kernel, Limits, ROOT};
 struct Test {
     held: Cell<Option<Handle>>,
     stopped: Cell<bool>,
+    /// `read` answers `Pending` and never finishes.
+    later: Cell<bool>,
 }
 
 fn decl() -> Decl {
@@ -50,6 +52,9 @@ impl Driver for Test {
     }
 
     fn read(&self, _: &dyn Calls, _: u64, _: u64, _: usize) -> Reply<Vec<u8>> {
+        if self.later.get() {
+            return Reply::Pending(Token(1));
+        }
         Reply::ok(Vec::new())
     }
 
@@ -174,4 +179,41 @@ fn unload_waits_for_handles_then_removes_everything() {
     let driver: Rc<dyn Driver> = again.clone();
     assert!(rig.kernel.load("t", again, vec![driver]).is_ok());
     assert!(rig.resolve("/module/t/cell").is_ok());
+}
+
+#[test]
+fn a_module_that_leaves_takes_its_waits_with_it() {
+    let rig = Rig::new();
+    let cell = rig.resolve("/module/t/cell").unwrap();
+    let h = rig.open(cell, Rights::WRITE).unwrap();
+    let api = decl().hash();
+    rig.submit(Op::Call { h, api, method: 0, input: Vec::new() });
+    rig.submit(Op::Close { h });
+
+    rig.test.later.set(true);
+    let h = rig.open(cell, Rights::READ).unwrap();
+    let Reply::Pending(token) = rig.submit(Op::Read { h, at: 0, len: 4 })
+    else {
+        panic!("expected Pending")
+    };
+    // The handle goes, so nothing the Module serves is open; the wait
+    // it left behind is the Module's, and the Driver that would finish
+    // it is about to be dropped.
+    rig.submit(Op::Close { h });
+    assert_eq!(rig.kernel.unload("t"), Ok(()));
+
+    assert_eq!(
+        rig.submit(Op::Ask { token }),
+        Reply::err(Error::Cancelled),
+        "not Busy for ever"
+    );
+    let core = rig.resolve("/sys/core").unwrap();
+    let h = rig.open(core, Rights::READ).unwrap();
+    let Reply::Ready(Ok(Out::Bytes(bytes))) =
+        rig.submit(Op::Read { h, at: 0, len: 65535 })
+    else {
+        panic!("core")
+    };
+    let text = String::from_utf8(bytes).unwrap();
+    assert!(!text.contains("state=waiting"), "{text}");
 }

@@ -91,8 +91,12 @@ impl Calls for ModuleCalls<'_> {
 
     fn done(&self, token: Token, outcome: Outcome) -> Result<(), Error> {
         let mut s = self.kernel.state.borrow_mut();
+        let outcome = match s.pending.cookie_of(self.module, token.0) {
+            Some(h) => opened(&mut s, h, outcome),
+            None => outcome,
+        };
         let handle = s.pending.done(self.module, token.0, outcome)?;
-        if let Some(slot) = s.handles.get_mut(&handle) {
+        if let Some(slot) = handle.and_then(|h| s.handles.get_mut(&h)) {
             slot.pending = slot.pending.saturating_sub(1);
         }
         Ok(())
@@ -108,6 +112,26 @@ impl Calls for ModuleCalls<'_> {
 
     fn submit(&self, op: Op) -> Reply<Out> {
         self.kernel.run(self.caller(), op)
+    }
+}
+
+/// The cookie the Driver answered written into the slot its `open`
+/// made, and the caller's own handle in its place. A refusal, a wrong
+/// shape, or a handle that was closed meanwhile takes the slot with it.
+fn opened(s: &mut State, h: Handle, outcome: Outcome) -> Outcome {
+    let Some(slot) = s.handles.get_mut(&h) else {
+        return Err(Error::Gone);
+    };
+    match outcome {
+        Ok(Out::Handle(cookie)) => {
+            slot.cookie = cookie.0;
+            slot.opening = false;
+            Ok(Out::Handle(h))
+        }
+        answer => {
+            s.handles.remove(&h);
+            Err(answer.err().unwrap_or(Error::Invalid))
+        }
     }
 }
 

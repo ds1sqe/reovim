@@ -16,9 +16,15 @@ use crate::types::{
 ///
 /// `ctx` is the Kernel as seen by the Driver's Module. The `u64` handle
 /// in `open` and after is the Driver's own value; the Kernel maps its
-/// `Handle` to it. A slot may block. Only `read`, `write` and `call` may
-/// answer `Pending`; the token is the Driver's own value, unique among
-/// its outstanding ones, and `done` names it again.
+/// `Handle` to it. A slot may block.
+///
+/// Any slot may answer `Pending`: the token is the Driver's own value,
+/// unique among its outstanding ones, and `done` names it again with
+/// the `Out` its op answers — `Rd` for `lookup` a name, `Rds` for
+/// `lookup` the whole listing, `Handle` for `open`, `Bytes` for `read`
+/// and `call`, `Len` for `write`. `watch` and `close` need no token:
+/// the Kernel's answer to either does not depend on the slot's, so a
+/// `Pending` from them is discarded with the rest of the reply.
 #[allow(unused_variables)]
 pub trait Driver {
     /// Register the child `name` under `rd` and return it. An empty
@@ -28,6 +34,13 @@ pub trait Driver {
     }
 
     /// Open `rd` with `rights`, already capped by the Kernel.
+    ///
+    /// A `Pending` here is finished by a `done` carrying
+    /// `Ok(Out::Handle(Handle(cookie)))`: this Driver's own value in
+    /// the one `Out` that holds one, since the Kernel's handle does
+    /// not exist for the Driver to name. The Kernel writes the cookie
+    /// into the slot the wait made and answers the caller with that
+    /// handle instead.
     fn open(&self, ctx: &dyn Calls, rd: Rd, rights: Rights) -> Reply<u64> {
         Reply::err(Error::Unsupported)
     }

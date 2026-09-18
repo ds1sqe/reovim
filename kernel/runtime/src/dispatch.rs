@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 
 use reovim_kernel_interface::{
     Caller, Error, Flags, Handle, Hash, ModuleId, Op, Out, Rd, Reply, Rights,
-    value,
+    Token, value,
 };
 
 use reovim_kernel_interface::Kind;
@@ -44,13 +44,7 @@ impl Kernel {
             Op::Ask { token } => {
                 self.state.borrow_mut().pending.ask(token).map(Reply::ok)
             }
-            // No vtable slot carries a cancel; a later `done` is dropped.
-            Op::Cancel { token } => self
-                .state
-                .borrow_mut()
-                .pending
-                .cancel(token)
-                .map(|()| Reply::ok(Out::Unit)),
+            Op::Cancel { token } => cancel(self, token),
             Op::Since { cursor } => since(self, caller, cursor),
             Op::Info { rd } => self
                 .state
@@ -84,6 +78,11 @@ impl Kernel {
         let slot = s.handles.get(&h).ok_or(Error::Invalid)?;
         if slot.caller != caller {
             return Err(Error::Denied);
+        }
+        // The `open` that made it has not answered: there is no cookie
+        // behind this number yet, so its owner tries again later.
+        if slot.opening {
+            return Err(Error::Busy);
         }
         if !s.table.exists(slot.rd) {
             return Err(Error::Gone);
@@ -202,9 +201,9 @@ fn lookup(k: &Kernel, rd: Rd, name: &str) -> Answer {
     let Owner::Driver { module, driver } = owner else {
         return Err(Error::Invalid);
     };
-    let (_, d) = k.served(module, driver)?;
-    let child = ready_only(d.lookup(&k.calls(module), rd, name))?;
-    Ok(Reply::ok(Out::Rd(child)))
+    let (index, d) = k.served(module, driver)?;
+    let reply = d.lookup(&k.calls(module), rd, name);
+    finish(k, None, Some((module, index)), reply, Out::Rd)
 }
 
 fn open(k: &Kernel, caller: Caller, rd: Rd, rights: Rights) -> Answer {
@@ -216,27 +215,48 @@ fn open(k: &Kernel, caller: Caller, rd: Rd, rights: Rights) -> Answer {
         }
         entry.owner
     };
-    let (served, cookie) = match owner {
-        Owner::Kernel(_) => (None, 0),
+    let (served, reply) = match owner {
+        Owner::Kernel(_) => (None, Reply::ok(0)),
         Owner::Driver { module, driver } => {
             let (index, d) = k.served(module, driver)?;
-            let cookie = ready_only(d.open(&k.calls(module), rd, rights))?;
-            (Some((module, index)), cookie)
+            (Some((module, index)), d.open(&k.calls(module), rd, rights))
         }
+    };
+    // A Driver that must ask before it answers leaves the handle
+    // without its cookie: the slot is made here all the same, so the
+    // `done` has somewhere to put the cookie, and no op may use the
+    // number until it lands.
+    let (cookie, own) = match reply {
+        Reply::Ready(result) => (result?, None),
+        Reply::Pending(token) => (0, Some(token.0)),
     };
     let mut s = k.state.borrow_mut();
     let h = Handle(s.next_handle);
+    // The token before the slot: a Driver that names an outstanding
+    // one leaves no half-open handle behind.
+    let token = match own {
+        None => None,
+        Some(own) => {
+            let (module, _) = served.ok_or(Error::Unsupported)?;
+            Some(s.pending.opening(module, own, h)?)
+        }
+    };
     s.next_handle += 1;
+    let opening = token.is_some();
     let slot = Slot {
         caller,
         rd,
         rights,
         served,
         cookie,
-        pending: 0,
+        pending: usize::from(opening),
         watching: false,
+        opening,
     };
     s.handles.insert(h, slot);
+    if let Some(token) = token {
+        return Ok(Reply::Pending(token));
+    }
     // A core is one moment: the handle takes the text here and serves
     // it, so reading it in chunks reads one Kernel and not several.
     if owner == Owner::Kernel(Node::Core) {
@@ -267,7 +287,7 @@ fn read(k: &Kernel, caller: Caller, h: Handle, at: u64, len: u32) -> Answer {
             entry.atime = k.now();
         }
     }
-    finish(k, h, slot.served, reply, Out::Bytes)
+    finish(k, Some(h), slot.served, reply, Out::Bytes)
 }
 
 fn write(
@@ -286,7 +306,7 @@ fn write(
         }
     };
     let len = |n| Out::Len(u32::try_from(n).unwrap_or(u32::MAX));
-    finish(k, h, slot.served, reply, len)
+    finish(k, Some(h), slot.served, reply, len)
 }
 
 fn call(
@@ -309,7 +329,7 @@ fn call(
         (k.now().saturating_sub(at), grew(before, k.heap().live))
     });
     stamp(k, slot.rd, api, method, "reply", spent);
-    finish(k, h, slot.served, reply, Out::Bytes)
+    finish(k, Some(h), slot.served, reply, Out::Bytes)
 }
 
 fn watch(k: &Kernel, caller: Caller, h: Handle, on: bool) -> Answer {
@@ -371,10 +391,18 @@ fn children(k: &Kernel, rd: Rd) -> Answer {
         first.then_some(entry.owner)
     };
     if let Some(Owner::Driver { module, driver }) = first_time {
-        // The cache is what `Children` answers from; the reply itself
-        // carries nothing.
+        // A Ready listing registers as it goes, so the cache is what
+        // `Children` answers from and the reply itself carries
+        // nothing. A Driver that must ask first answers `Pending`, and
+        // then its own `done` is the listing: this is the one place
+        // the answer does not come from the Kernel's table, the table
+        // not being full yet when the op returns.
         let (_, d) = k.served(module, driver)?;
-        let _ = d.lookup(&k.calls(module), rd, "");
+        if let Reply::Pending(own) = d.lookup(&k.calls(module), rd, "") {
+            let token =
+                k.state.borrow_mut().pending.open(module, own.0, None)?;
+            return Ok(Reply::Pending(token));
+        }
     }
     let children = k.state.borrow().table.get(rd)?.children.clone();
     Ok(Reply::ok(Out::Rds(children)))
@@ -419,10 +447,10 @@ fn check_call(
 }
 
 /// Turn a slot's answer into the caller's: a Pending token is scoped by
-/// the Module and counted on the handle.
+/// the Module and counted on the handle the op names, if it names one.
 fn finish<T>(
     k: &Kernel,
-    h: Handle,
+    h: Option<Handle>,
     served: Option<(ModuleId, usize)>,
     reply: Reply<T>,
     out: impl FnOnce(T) -> Out,
@@ -434,18 +462,21 @@ fn finish<T>(
     let (module, _) = served.ok_or(Error::Unsupported)?;
     let mut s = k.state.borrow_mut();
     let token = s.pending.open(module, own, h)?;
-    if let Some(slot) = s.handles.get_mut(&h) {
+    if let Some(slot) = h.and_then(|h| s.handles.get_mut(&h)) {
         slot.pending += 1;
     }
     Ok(Reply::Pending(token))
 }
 
-/// Only `read`, `write` and `call` may go Pending.
-fn ready_only<T>(reply: Reply<T>) -> Result<T, Error> {
-    match reply {
-        Reply::Ready(result) => result,
-        Reply::Pending(_) => Err(Error::Unsupported),
+/// No vtable slot carries a cancel; a later `done` is dropped. The
+/// slot an `open` that was still waiting made goes with the token,
+/// its cookie being one nothing will ever deliver.
+fn cancel(k: &Kernel, token: Token) -> Answer {
+    let mut s = k.state.borrow_mut();
+    if let Some(h) = s.pending.cancel(token)? {
+        s.handles.remove(&h);
     }
+    Ok(Reply::ok(Out::Unit))
 }
 
 fn set_watch(s: &mut State, caller: Caller, h: Handle, rd: Rd, on: bool) {
