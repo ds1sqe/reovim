@@ -250,14 +250,18 @@ count="$("$BIN" cli dmesg -l debug | wc -l)"
 [[ "$("$BIN" cli dmesg -l debug | wc -l)" == "$count" ]] \
     || fail "the trace goes on after the level says info"
 
-# --- /sys as sysfs: the parameters, the heap, the core --------------
+# --- /sys as sysfs: the parameters, the facts, the core -------------
 # A file per parameter under /sys/limit, each in decimal and each
-# settable; /sys/mem is what the host's allocator counts; /sys/core is
-# everything the Kernel holds, saved in one read as a core is.
+# settable; a file per fact under /sys/info, each made at the read and
+# written by nobody; /sys/core is everything the Kernel holds, saved in
+# one read as a core is.
 rights="$("$BIN" cli ls -l /sys)"
 [[ "$(grep -c . <<< "$rights")" == 6 ]] || fail "/sys holds: $rights"
 grep -qE '^- r-  .*  core$' <<< "$rights" || fail "/sys/core is not r"
-grep -qE '^- r-  .*  mem$' <<< "$rights" || fail "/sys/mem is not r"
+grep -qE '^c r-  .*  info$' <<< "$rights" || fail "/sys/info is not a c r"
+facts="$("$BIN" cli ls -l /sys/info)"
+[[ "$(grep -c '^- r-  ' <<< "$facts")" == 5 ]] \
+    || fail "the five facts are not read-only: $facts"
 limits="$("$BIN" cli ls -l /sys/limit)"
 [[ "$(grep -c '^- rw  ' <<< "$limits")" == 5 ]] \
     || fail "the five parameters are not rw: $limits"
@@ -276,8 +280,15 @@ said="$(poured /sys/limit/reentry x 2>&1 >/dev/null)" && code=0 || code=$?
 [[ "$code" == 1 ]] || fail "a refused parameter exits $code"
 poured /sys/limit/log_ring 4096 > /dev/null
 
-[[ "$("$BIN" cli cat /sys/mem)" == live=* ]] \
-    || fail "/sys/mem says $("$BIN" cli cat /sys/mem)"
+[[ "$("$BIN" cli cat /sys/info/mem)" == live=* ]] \
+    || fail "/sys/info/mem says $("$BIN" cli cat /sys/info/mem)"
+# One fact, one path: what stood loose under /sys is not there.
+"$BIN" cli cat /sys/mem > /dev/null 2>&1 && code=0 || code=$?
+[[ "$code" == 1 ]] || fail "/sys/mem answered a read and exited $code"
+# The clock runs while the server does.
+up="$("$BIN" cli cat /sys/info/uptime)"
+[[ "$("$BIN" cli cat /sys/info/uptime)" -gt "$up" ]] \
+    || fail "/sys/info/uptime stood still at $up"
 "$BIN" cli cat /sys/core > "$DIR/core"
 [[ "$(head -1 "$DIR/core")" == limit\ * ]] \
     || fail "a core begins $(head -1 "$DIR/core")"

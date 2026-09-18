@@ -1,7 +1,8 @@
 //! `/sys` as sysfs: the five parameters under `/sys/limit`, each read
-//! and written in decimal and applied where it is used; `/sys/mem`, the
-//! host's count of the heap; `/sys/core`, everything the Kernel holds
-//! in one read that changes nothing.
+//! and written in decimal and applied where it is used; the five facts
+//! under `/sys/info`, each made at the read and written by nobody;
+//! `/sys/core`, everything the Kernel holds in one read that changes
+//! nothing.
 
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -11,13 +12,13 @@ use reovim_kernel_interface::{
     Reply, Rights, Ty,
 };
 use reovim_kernel_runtime::{
-    CORE, Heap, Kernel, LIMITS, LOG, LOGLEVEL, Limits, MEM, SYS,
+    CORE, Heap, Kernel, LIMITS, LOG, LOGLEVEL, Limits, MEM, ROOT, SYS,
 };
 
 static CLOCK: AtomicU64 = AtomicU64::new(1);
 /// What the stand-in host has handed out. The Kernel crate links no
-/// allocator, so `/sys/mem` is tested against the one seam it has: the
-/// function the host passes.
+/// allocator, so `/sys/info/mem` is tested against the one seam it
+/// has: the function the host passes.
 static LIVE: AtomicU64 = AtomicU64::new(64);
 
 fn tick() -> u64 {
@@ -213,11 +214,83 @@ fn the_level_is_a_parameter_and_says_so_at_notice() {
 fn mem_is_what_the_host_counts_at_the_read() {
     let kernel = Kernel::new(tick, heap, Limits::default());
     LIVE.store(64, Ordering::Relaxed);
-    assert_eq!(cat(&kernel, "mem"), "live=64 peak=128 allocs=7");
+    assert_eq!(cat(&kernel, "info/mem"), "live=64 peak=128 allocs=7");
     LIVE.store(4096, Ordering::Relaxed);
-    assert_eq!(cat(&kernel, "mem"), "live=4096 peak=8192 allocs=7");
-    // Read-only: nothing is written to a reading.
-    assert_eq!(write(&kernel, "mem", "0"), Reply::err(Error::Denied));
+    assert_eq!(cat(&kernel, "info/mem"), "live=4096 peak=8192 allocs=7");
+    // The fact has one path: what stood loose under `/sys` is gone.
+    let caller = kernel.caller_new();
+    let look = Op::Lookup { rd: SYS, name: "mem".into() };
+    assert_eq!(kernel.submit(caller, 1, look), Reply::err(Error::Invalid));
+}
+
+#[test]
+fn the_one_clock_is_time_and_the_moment_it_began_is_uptime() {
+    let kernel = Kernel::new(tick, heap, Limits::default());
+    let Out::Info(root) = ok(&kernel, Op::Info { rd: ROOT }) else {
+        panic!("info")
+    };
+    let number = |path: &str| cat(&kernel, path).parse::<u64>().unwrap();
+    // The root is stamped with the clock the Kernel was made with, so
+    // `uptime` is `time` less that, read a few ticks later.
+    let time = number("info/time");
+    let uptime = number("info/uptime");
+    assert!(time > root.ctime, "the clock stands where the root was made");
+    assert!(uptime >= time - root.ctime, "uptime is time less the ctime");
+    // A step of the test clock apart, each is that step further on.
+    assert!(number("info/time") > time, "time stood still");
+    assert!(number("info/uptime") > uptime, "uptime stood still");
+    // One word, the release this Kernel was built as.
+    assert_eq!(cat(&kernel, "info/version"), env!("CARGO_PKG_VERSION"));
+}
+
+#[test]
+fn watchers_counts_the_open_handles_that_are_watching() {
+    let kernel = Kernel::new(tick, heap, Limits::default());
+    assert_eq!(cat(&kernel, "info/watchers"), "0");
+    let caller = kernel.caller_new();
+    let open = Op::Open { rd: LOG, rights: R };
+    let Out::Handle(h) = step(&kernel, caller, 1, open) else { panic!("open") };
+    assert_eq!(cat(&kernel, "info/watchers"), "0", "an open is not a watch");
+    step(&kernel, caller, 2, Op::Watch { h, on: true });
+    assert_eq!(cat(&kernel, "info/watchers"), "1");
+    step(&kernel, caller, 3, Op::Close { h });
+    assert_eq!(cat(&kernel, "info/watchers"), "0", "the close took it");
+}
+
+#[test]
+fn a_fact_is_read_only_and_its_read_leaves_nothing_behind() {
+    let kernel = Kernel::new(tick, heap, Limits::default());
+    let atime = |path: &str| {
+        let rd = resolve(&kernel, path);
+        match ok(&kernel, Op::Info { rd }) {
+            Out::Info(info) => info.atime,
+            other => panic!("{other:?}"),
+        }
+    };
+    let five = [
+        "info/mem",
+        "info/time",
+        "info/uptime",
+        "info/version",
+        "info/watchers",
+    ];
+    // Reading the log is itself a read, so the entries are counted
+    // before the atimes and again after the reads between them.
+    let entries = said(&kernel).len();
+    let before: Vec<u64> = five.iter().copied().map(atime).collect();
+    for path in five {
+        assert!(!cat(&kernel, path).is_empty(), "{path} says nothing");
+    }
+    let after: Vec<u64> = five.iter().copied().map(atime).collect();
+    assert_eq!(before, after, "a fact read moved an atime");
+    assert_eq!(said(&kernel).len(), entries, "a fact read wrote a line");
+    // A cell with no WRITE in its flags refuses the handle and not the
+    // bytes, which is what `/sys/mem` answered a write with before the
+    // fact stood here.
+    for path in five {
+        let refused = write(&kernel, path, "0");
+        assert_eq!(refused, Reply::err(Error::Denied), "{path} took a write");
+    }
 }
 
 /// A Module with one cell under an api, so a core has a `decl` line

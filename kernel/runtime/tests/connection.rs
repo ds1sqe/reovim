@@ -76,6 +76,23 @@ impl Rig {
         }
     }
 
+    /// The whole of a Kernel cell holding one number, read and closed.
+    fn number(&mut self, rd: Rd) -> u64 {
+        let open = Op::Open { rd, rights: Rights::READ };
+        let h = match self.request(open) {
+            Reply::Ready(Ok(Out::Handle(h))) => h,
+            other => panic!("not a handle: {other:?}"),
+        };
+        let text = match self.request(Op::Read { h, at: 0, len: 32 }) {
+            Reply::Ready(Ok(Out::Bytes(bytes))) => {
+                String::from_utf8(bytes).unwrap()
+            }
+            other => panic!("not bytes: {other:?}"),
+        };
+        self.request(Op::Close { h });
+        text.parse().unwrap_or_else(|_| panic!("not a number: {text}"))
+    }
+
     fn log(&mut self) -> String {
         let log = self.lookup(SYS, "log");
         let h = match self.request(Op::Open { rd: log, rights: Rights::READ }) {
@@ -271,6 +288,77 @@ fn a_named_caller_survives_its_link_and_an_unnamed_one_ends() {
     let early =
         ask(&mut Connection::new(), &rig.kernel, 1, Op::Info { rd: ROOT });
     assert_eq!(early, Reply::err(Error::Invalid), "nothing before Connect");
+}
+
+#[test]
+fn heard_is_the_clock_at_that_callers_last_message() {
+    let mut rig = Rig::new();
+    let Reply::Ready(Ok(Out::Rds(ids))) = rig.connect(None) else {
+        panic!("connect")
+    };
+    let (session, client) = (ids[0], ids[1]);
+    // The two names the Kernel keeps under a client rd.
+    assert_eq!(rig.rds(client).len(), 2, "capability and heard");
+
+    // A second link that says nothing after its `Connect`.
+    let mut idle = Connection::new();
+    let joined = named(&mut idle, &rig.kernel, 1, b"", Some(session));
+    let Reply::Ready(Ok(Out::Rds(ids))) = joined else { panic!("join") };
+    let theirs = rig.lookup(ids[1], "heard");
+    let at_connect = rig.number(theirs);
+
+    // The reader's own moves with every op it sends; the idle link's
+    // stands still however many the reader sends.
+    let mine = rig.lookup(client, "heard");
+    let first = rig.number(mine);
+    assert!(rig.number(mine) > first, "the reader spoke twice");
+    assert_eq!(rig.number(theirs), at_connect, "the idle link said nothing");
+
+    // Every message counts as speech: a `Since`, which an idle tui
+    // asks on its loop and an idle cli does not; the same sequence
+    // sent again, answered from the window without running; and a
+    // `Load` this Kernel refuses.
+    let since = Op::Since { cursor: 0 };
+    ask(&mut idle, &rig.kernel, 2, since.clone());
+    let spoke = rig.number(theirs);
+    assert!(spoke > at_connect, "a Since is speech");
+    ask(&mut idle, &rig.kernel, 2, since);
+    let repeated = rig.number(theirs);
+    assert!(repeated > spoke, "a repeated sequence is speech");
+    let load = encode(3, &Message::Load { path: "/x.rvm".to_string() });
+    idle.handle(&rig.kernel, &load, &mut NoLoader).expect("a reply");
+    assert!(rig.number(theirs) > repeated, "a refused Load is speech");
+
+    // An unnamed caller's cell goes with its client rd.
+    idle.end(&rig.kernel);
+    let gone = rig.request(Op::Info { rd: theirs });
+    assert_eq!(gone, Reply::err(Error::Invalid), "the cell outlived the link");
+}
+
+#[test]
+fn a_named_callers_heard_stands_where_its_link_left_it() {
+    let mut rig = Rig::new();
+    let Reply::Ready(Ok(Out::Rds(ids))) = rig.connect(None) else {
+        panic!("connect")
+    };
+    let session = ids[0];
+    let mut link = Connection::new();
+    let Reply::Ready(Ok(Out::Rds(theirs))) =
+        named(&mut link, &rig.kernel, 1, b"me", Some(session))
+    else {
+        panic!("connect")
+    };
+    let heard = rig.lookup(theirs[1], "heard");
+    let at_connect = rig.number(heard);
+
+    // The caller waits for its next `Connect` with everything it
+    // holds, the moment it last spoke among them.
+    link.end(&rig.kernel);
+    assert_eq!(rig.number(heard), at_connect, "an ended link is not speech");
+    let mut again = Connection::new();
+    let back = named(&mut again, &rig.kernel, 20, b"me", Some(session));
+    assert_eq!(back, Reply::ok(Out::Rds(theirs)), "the same ids");
+    assert!(rig.number(heard) > at_connect, "the Connect is its moment");
 }
 
 #[test]

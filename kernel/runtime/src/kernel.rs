@@ -17,14 +17,16 @@ use crate::calls::ModuleCalls;
 use crate::log::{self, DEBUG, ERR, INFO, Log, NOTICE};
 use crate::pending::{Pending, State as Waiting};
 use crate::table::{
-    CONTAINER, LOG, LOGLEVEL, MODULES, Node, OPEN, Owner, Param, SESSIONS,
-    Table,
+    CONTAINER, Fact, LOG, LOGLEVEL, MODULES, Node, OPEN, Owner, Param, ROOT,
+    SESSIONS, Table,
 };
 use crate::watch::Ring;
 
-/// What the host's allocator counts of the process heap: the Kernel
-/// owns no allocator, so it takes this reading the way it takes time.
-/// `/sys/mem` is one of these, and a trace line says what its op cost.
+/// What the host's allocator counts of the process heap.
+///
+/// The Kernel owns no allocator, so it takes this reading the way it
+/// takes time. `/sys/info/mem` is one of these, and a trace line says
+/// what its op cost.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct Heap {
     /// Bytes handed out and not given back.
@@ -150,12 +152,18 @@ pub struct CallerState {
     pub client: Option<(Rd, Rd)>,
     /// A link is on it now.
     pub live: bool,
+    /// The clock at the moment this caller's last message arrived, and
+    /// never what the message was. `/session/<id>/client/<cid>/heard`
+    /// is this number; a Module's caller sends no message, so its own
+    /// stands where it was made.
+    pub heard: u64,
 }
 
 pub struct State {
-    /// The host's monotonic tick, so an entry stamps itself.
+    /// The host's clock, so an entry stamps itself.
     clock: fn() -> u64,
-    /// The host's count of the process heap; `/sys/mem` is this read.
+    /// The host's count of the process heap; `/sys/info/mem` is this
+    /// read.
     heap: fn() -> Heap,
     /// The five parameters, the one place each is kept. The cells
     /// under `/sys/limit` read and write them here.
@@ -360,6 +368,7 @@ impl State {
             credential: Vec::new(),
             client: None,
             live: false,
+            heard: self.now(),
         };
         self.callers.insert(caller, state);
         caller
@@ -387,6 +396,7 @@ impl State {
         if credential.is_empty() {
             return Ok(None);
         }
+        let now = self.now();
         let named = |c: &CallerState| {
             c.credential == credential
                 && c.client.is_some_and(|(at, _)| at == session)
@@ -400,6 +410,9 @@ impl State {
             return Err(Error::Busy);
         }
         state.live = true;
+        // The `Connect` that takes the caller over is the first thing
+        // this link says, so `heard` goes on from here.
+        state.heard = now;
         Ok(state.client.map(|(_, client)| (*caller, client)))
     }
 }
@@ -439,11 +452,13 @@ pub struct Kernel {
 }
 
 impl Kernel {
-    /// `clock` is the host's monotonic tick, which stamps times and log
-    /// entries; `heap` is the host's count of the process heap, which
-    /// `/sys/mem` and the `heap=` on a trace line read. `limits` are
-    /// the parameters the Kernel starts with; `/sys/limit` holds them
-    /// from then on.
+    /// `clock` is the host's tick, which stamps times and log entries
+    /// and which `/sys/info/time` reads; it need not be monotonic, the
+    /// std host giving wall nanoseconds, so `/sys/info/uptime` is the
+    /// difference of two of them and saturates. `heap` is the host's
+    /// count of the process heap, which `/sys/info/mem` and the `heap=`
+    /// on a trace line read. `limits` are the parameters the Kernel
+    /// starts with; `/sys/limit` holds them from then on.
     #[must_use]
     pub fn new(clock: fn() -> u64, heap: fn() -> Heap, limits: Limits) -> Self {
         let state = State {
@@ -675,6 +690,9 @@ impl Kernel {
             state.client = Some((session, rd));
             state.live = true;
         }
+        let owner = Owner::Kernel(Node::Heard(caller));
+        let heard = s.table.insert(rd, Some("heard"), owner, Flags::READ, now);
+        s.emit(rd, Kind::Create, Some(heard));
         Ok((caller, rd))
     }
 
@@ -724,13 +742,20 @@ impl Kernel {
     }
 
     /// `run` under the reply window: a `seq` seen before is answered
-    /// from memory and `run` is not called.
+    /// from memory and `run` is not called. Every message that arrives
+    /// here is speech, so it moves the caller's `heard` first: a
+    /// sequence sent twice and an op that is refused both count, and
+    /// only a link that says nothing leaves the number standing.
     pub fn once(
         &self,
         caller: Caller,
         seq: u64,
         run: impl FnOnce() -> Reply<Out>,
     ) -> Reply<Out> {
+        let now = self.now();
+        if let Some(state) = self.state.borrow_mut().callers.get_mut(&caller) {
+            state.heard = now;
+        }
         match self.replay(caller, seq) {
             Ok(Some(reply)) => return reply,
             Ok(None) => {}
@@ -813,10 +838,32 @@ pub fn core(s: &State) -> Vec<u8> {
     out.into_bytes()
 }
 
-/// The `/sys/mem` line: what the host's allocator counts.
+/// The `/sys/info/mem` line: what the host's allocator counts.
 pub fn mem(heap: Heap) -> String {
     let Heap { live, peak, allocs } = heap;
     alloc::format!("live={live} peak={peak} allocs={allocs}")
+}
+
+/// One cell of `/sys/info`, made now out of what the Kernel already
+/// holds and kept nowhere. A fact of one number is that number in
+/// decimal, as a parameter's cell is; `mem` is several fields, so it is
+/// `key=value` words on one line, as the core's last line is.
+pub fn fact(s: &State, fact: Fact) -> String {
+    match fact {
+        Fact::Mem => mem(s.heap()),
+        Fact::Time => alloc::format!("{}", s.now()),
+        // The root is stamped with the clock the Kernel was made with,
+        // so the moment it began is in the table already.
+        Fact::Uptime => {
+            let born = s.table.get(ROOT).map_or(0, |entry| entry.ctime);
+            alloc::format!("{}", s.now().saturating_sub(born))
+        }
+        Fact::Version => String::from(env!("CARGO_PKG_VERSION")),
+        Fact::Watchers => {
+            let watching = s.handles.values().filter(|slot| slot.watching);
+            alloc::format!("{}", watching.count())
+        }
+    }
 }
 
 /// A number that may be missing, as the core writes one: `-`.
@@ -913,8 +960,9 @@ const fn kind_of(node: Node) -> &'static str {
         Node::Log => "log",
         Node::Level => "level",
         Node::Limit(_) => "limit",
-        Node::Mem => "mem",
+        Node::Info(_) => "info",
         Node::Core => "core",
+        Node::Heard(_) => "heard",
         Node::Cell => "cell",
     }
 }
@@ -944,13 +992,15 @@ fn callers(s: &State, out: &mut String) {
     for (caller, state) in &s.callers {
         let _ = writeln!(
             out,
-            "caller id={} named={} live={} session={} client={} module={}",
+            "caller id={} named={} live={} session={} client={} \
+             module={} heard={}",
             caller.0,
             yes(!state.credential.is_empty()),
             yes(state.live),
             or_dash(state.client.map(|(at, _)| at.0)),
             or_dash(state.client.map(|(_, rd)| rd.0)),
             or_dash(state.module.map(|m| u64::from(m.0))),
+            state.heard,
         );
     }
 }

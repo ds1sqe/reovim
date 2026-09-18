@@ -10,7 +10,7 @@ use reovim_kernel_interface::{
 
 use reovim_kernel_interface::Kind;
 
-use crate::kernel::{Kernel, Slot, State, core, mem, rw};
+use crate::kernel::{Kernel, Slot, State, core, fact, rw};
 use crate::log::{self, DEBUG, NOTICE, WARN, level_of};
 use crate::table::{Node, Owner, momentary, untraced};
 
@@ -256,13 +256,15 @@ fn read(k: &Kernel, caller: Caller, h: Handle, at: u64, len: u32) -> Answer {
             k.driver(index).read(&k.calls(module), slot.cookie, at, len)
         }
     };
-    // A core and the heap line are made at the read out of what the
-    // Kernel already holds; reading one leaves nothing behind, atime
-    // included.
-    if matches!(reply, Reply::Ready(Ok(_))) && !momentary(slot.rd) {
-        let now = k.now();
-        if let Ok(entry) = k.state.borrow_mut().table.get_mut(slot.rd) {
-            entry.atime = now;
+    // A fact, a core and a heard time are made at the read out of what
+    // the Kernel already holds; reading one leaves nothing behind,
+    // atime included.
+    if matches!(reply, Reply::Ready(Ok(_))) {
+        let mut s = k.state.borrow_mut();
+        if let Ok(entry) = s.table.get_mut(slot.rd)
+            && !matches!(entry.owner, Owner::Kernel(node) if momentary(node))
+        {
+            entry.atime = k.now();
         }
     }
     finish(k, h, slot.served, reply, Out::Bytes)
@@ -468,8 +470,9 @@ fn unwatch(s: &mut State, caller: Caller, rd: Rd) {
     }
 }
 
-/// The Kernel-served reads: declaration bytes, the log, a parameter,
-/// the heap and the core the handle took when it opened.
+/// The Kernel-served reads: declaration bytes, the log, a parameter, a
+/// fact, a caller's heard time and the core the handle took when it
+/// opened.
 fn kernel_read(
     k: &Kernel,
     h: Handle,
@@ -492,8 +495,13 @@ fn kernel_read(
             let value = alloc::format!("{}", s.limits.get(param));
             Ok(part(value.as_bytes(), at, len))
         }
-        Node::Mem => Ok(part(mem(s.heap()).as_bytes(), at, len)),
+        Node::Info(which) => Ok(part(fact(&s, which).as_bytes(), at, len)),
         Node::Core => Ok(part(s.cores.get(&h).ok_or(Error::Gone)?, at, len)),
+        Node::Heard(caller) => {
+            let state = s.callers.get(&caller).ok_or(Error::Gone)?;
+            let heard = alloc::format!("{}", state.heard);
+            Ok(part(heard.as_bytes(), at, len))
+        }
         Node::Cell => {
             let bytes = s.cells.get(&rd).ok_or(Error::Gone)?;
             Ok(part(bytes, at, len))

@@ -295,22 +295,28 @@ fn fixed_tree_is_reachable_from_root() {
     let decls = rig.lookup(SYS, "decls");
     let level = rig.lookup(SYS, "loglevel");
     let limit = rig.lookup(SYS, "limit");
-    let mem = rig.lookup(SYS, "mem");
     let core = rig.lookup(SYS, "core");
-    // A new one is appended, so no fixed id ever moves.
+    let info = rig.lookup(SYS, "info");
+    // The fixed rows are made afresh at every boot, so they stand in
+    // the order the table lists them and not in the order they grew.
     assert_eq!(
         rig.ok(Op::Children { rd: SYS }),
-        Out::Rds(vec![decls, log, level, limit, mem, core])
+        Out::Rds(vec![decls, log, level, limit, core, info])
     );
-    let five = [
+    let limits = [
         "watch_ring",
         "pending_per_handle",
         "reply_window",
         "log_ring",
         "reentry",
     ];
-    let cells: Vec<Rd> = five.iter().map(|n| rig.lookup(limit, n)).collect();
+    let cells: Vec<Rd> = limits.iter().map(|n| rig.lookup(limit, n)).collect();
     assert_eq!(rig.ok(Op::Children { rd: limit }), Out::Rds(cells));
+    // The parameters are one order and the facts another: a fact is
+    // named in `Fact::ALL` and `/sys/info` holds them as it lists them.
+    let facts = ["mem", "time", "uptime", "version", "watchers"];
+    let cells: Vec<Rd> = facts.iter().map(|n| rig.lookup(info, n)).collect();
+    assert_eq!(rig.ok(Op::Children { rd: info }), Out::Rds(cells));
     assert_eq!(
         rig.err(Op::Lookup { rd: ROOT, name: "none".into() }),
         Error::Invalid

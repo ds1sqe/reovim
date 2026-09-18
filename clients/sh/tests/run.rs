@@ -160,7 +160,7 @@ fn every_name_reads_its_target_from_where_the_line_stands() {
     assert_eq!(go(ctx, "ls sub"), "deep\n");
     assert_eq!(go(ctx, "cat sub/deep"), "x");
     assert_eq!(go(ctx, "ls .."), "root\n");
-    assert_eq!(go(ctx, "ls /sys"), "core\ndecls\nlimit\nlog\nloglevel\nmem\n");
+    assert_eq!(go(ctx, "ls /sys"), "core\ndecls\ninfo\nlimit\nlog\nloglevel\n");
     assert!(go(ctx, "stat note").starts_with("- rw "));
 
     // What a name under the cwd cannot be. (A name that is not on
@@ -230,10 +230,10 @@ fn an_environment_field_is_never_matched_by_a_token() {
     // The screen the host gives is what a listing is laid out across.
     shell.screen(80, false);
     let across = typed(ctx, &mut shell, "ls /sys");
-    assert_eq!(across, "core  decls  limit  log  loglevel  mem\n");
+    assert_eq!(across, "core  decls  info  limit  log  loglevel\n");
     shell.screen(0, false);
     let down = typed(ctx, &mut shell, "ls /sys");
-    assert_eq!(down, "core\ndecls\nlimit\nlog\nloglevel\nmem\n");
+    assert_eq!(down, "core\ndecls\ninfo\nlimit\nlog\nloglevel\n");
 }
 
 #[test]
@@ -322,7 +322,8 @@ fn a_redirect_puts_a_runs_output_in_the_target() {
     // A target that takes no bytes is the one place a line writes and
     // is refused; the run's own cell goes with the Miss.
     let ls = cell::resolve(ctx, ROOT, "/bin/ls").unwrap();
-    assert_eq!(typed(ctx, &mut shell, "ls / > /sys/mem"), "ls /: denied");
+    let line = "ls / > /sys/info/mem";
+    assert_eq!(typed(ctx, &mut shell, line), "ls /: denied");
     assert_eq!(ops::children(ctx, ls), Ok(Vec::new()));
 }
 

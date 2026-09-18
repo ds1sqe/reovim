@@ -101,7 +101,7 @@ fn a_method_that_is_not_there_fails_the_run_and_leaves_no_cell() {
     );
     // An rd that offers no api at all answers the same way.
     assert_eq!(
-        run(&mut client, &args("/sys/mem", "nothing")),
+        run(&mut client, &args("/sys/info/mem", "nothing")),
         Err(Fault::Kernel(Error::Unsupported))
     );
     assert_eq!(client.children(call), Ok(Vec::new()));

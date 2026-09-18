@@ -5,16 +5,19 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use reovim_kernel_interface::{
-    DriverId, Error, Flags, Hash, Info, ModuleId, Rd,
+    Caller, DriverId, Error, Flags, Hash, Info, ModuleId, Rd,
 };
 
 /// Fixed ids, allocated in this order.
 ///
 /// `/` 0, `/sys` 1, `/sys/decls` 2, `/sys/log` 3, `/module` 4,
 /// `/session` 5, `/var` 6, `/sys/loglevel` 7, `/sys/limit` 8 with its
-/// five cells 9 to 13, `/sys/mem` 14, `/sys/core` 15, `/bin` 16. A new
-/// one is appended so no id ever moves. Ids below `FIRST` are reserved
-/// for the Kernel; everything registered later starts there.
+/// five cells 9 to 13, `/sys/core` 14, `/bin` 15, `/sys/info` 16 with
+/// its five cells 17 to 21. These rows are made afresh at every boot,
+/// so one of them moves when the tree it names moves; an id a run
+/// hands out never does, being taken one at a time from `FIRST` and
+/// never given twice. Ids below `FIRST` are reserved for the Kernel;
+/// everything registered later starts there.
 pub const ROOT: Rd = Rd(0);
 pub const SYS: Rd = Rd(1);
 pub const DECLS: Rd = Rd(2);
@@ -23,8 +26,9 @@ pub const MODULES: Rd = Rd(4);
 pub const SESSIONS: Rd = Rd(5);
 pub const LOGLEVEL: Rd = Rd(7);
 pub const LIMITS: Rd = Rd(8);
-pub const MEM: Rd = Rd(14);
-pub const CORE: Rd = Rd(15);
+pub const CORE: Rd = Rd(14);
+pub const INFO: Rd = Rd(16);
+pub const MEM: Rd = Rd(17);
 const FIRST: u64 = 100;
 
 /// A Kernel Container.
@@ -53,9 +57,9 @@ const FIXED: [(Rd, &str, Node, Flags); 16] = [
     (LIMITS, "reply_window", Node::Limit(Param::ReplyWindow), RW),
     (LIMITS, "log_ring", Node::Limit(Param::LogRing), RW),
     (LIMITS, "reentry", Node::Limit(Param::Reentry), RW),
-    (SYS, "mem", Node::Mem, R),
     (SYS, "core", Node::Core, R),
     (ROOT, "bin", Node::Container, OPEN),
+    (SYS, "info", Node::Container, CONTAINER),
 ];
 
 /// An rd whose ops are never traced: the log and the level a follower
@@ -66,11 +70,11 @@ pub fn untraced(rd: Rd) -> bool {
     [LOG, LOGLEVEL, MEM, CORE].contains(&rd)
 }
 
-/// An rd the Kernel makes at the read out of what it already holds.
+/// A node the Kernel makes at the read out of what it already holds.
 /// Reading one changes nothing, so it leaves no atime behind either.
 #[must_use]
-pub fn momentary(rd: Rd) -> bool {
-    rd == MEM || rd == CORE
+pub const fn momentary(node: Node) -> bool {
+    matches!(node, Node::Info(_) | Node::Core | Node::Heard(_))
 }
 
 /// One field of `Limits`, the cell under `/sys/limit` that holds it.
@@ -108,6 +112,37 @@ impl Param {
     }
 }
 
+/// One thing the Kernel knows about itself, the cell under `/sys/info`
+/// that holds it. `/sys/limit` runs the other way: a parameter is
+/// written and applied where it is used, a fact is made at the read out
+/// of state the Kernel already holds and is kept nowhere.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Fact {
+    Mem,
+    Time,
+    Uptime,
+    Version,
+    Watchers,
+}
+
+impl Fact {
+    /// The five in the order `/sys/info` holds them.
+    pub const ALL: [Self; 5] =
+        [Self::Mem, Self::Time, Self::Uptime, Self::Version, Self::Watchers];
+
+    /// The cell's name.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Mem => "mem",
+            Self::Time => "time",
+            Self::Uptime => "uptime",
+            Self::Version => "version",
+            Self::Watchers => "watchers",
+        }
+    }
+}
+
 /// Who serves an rd.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Owner {
@@ -129,10 +164,13 @@ pub enum Node {
     Level,
     /// `/sys/limit/<name>`; one field of `Limits` in decimal ASCII.
     Limit(Param),
-    /// `/sys/mem`; what the host's allocator counts, at the read.
-    Mem,
+    /// `/sys/info/<name>`; one fact, made at the read.
+    Info(Fact),
     /// `/sys/core`; everything the `State` holds, as text.
     Core,
+    /// `/session/<id>/client/<cid>/heard`; the clock at the moment that
+    /// caller's last message arrived.
+    Heard(Caller),
     /// Bytes the Kernel stores and serves, never parses:
     /// `/session/<id>/client/<cid>/capability`.
     Cell,
@@ -190,6 +228,13 @@ impl Table {
         let mut table = Self { rds: BTreeMap::from([(ROOT, root)]), next: 1 };
         for (parent, name, node, flags) in FIXED {
             table.insert(parent, Some(name), Owner::Kernel(node), flags, now);
+        }
+        // The cells of `/sys/info`, so one list says which facts there
+        // are, what each is named and the order the Container holds
+        // them in.
+        for fact in Fact::ALL {
+            let owner = Owner::Kernel(Node::Info(fact));
+            table.insert(INFO, Some(fact.name()), owner, R, now);
         }
         table.next = FIRST;
         table
