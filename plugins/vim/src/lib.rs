@@ -170,6 +170,23 @@ pub enum Mode {
     Visual(Visual),
 }
 
+impl Mode {
+    /// The mode's name, which `/self/vim/mode` reads. It is a name and
+    /// not the status row's words: a reader that wants `-- INSERT --`
+    /// is drawing a statusline and can spell it.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Normal => "normal",
+            Self::Insert => "insert",
+            Self::Command => "command",
+            Self::Visual(Visual::Char) => "visual",
+            Self::Visual(Visual::Line) => "visual line",
+            Self::Visual(Visual::Block) => "visual block",
+        }
+    }
+}
+
 /// What a register holds: text, and its shape.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Register {
@@ -354,8 +371,14 @@ pub struct Vim {
     /// The file a Buffer over nothing was opened for while there is
     /// no such file: what its first write makes.
     name: Option<String>,
-    /// Where a relative `:w NAME` starts, under the root.
+    /// Where the Client started, under the root: what the announce
+    /// says a new file's name by, and nothing else.
     dir: String,
+    /// The mirror's own root, where a leading `/` starts, and where
+    /// the editor stands, which `:cd` moves: both `None` until
+    /// `start` has found them.
+    root: Option<Rd>,
+    cwd: Option<Rd>,
     /// `/self/dev/clipboard`, when the Client serves one.
     clip: Option<Rd>,
     /// Where it stands in the one stream of events.
@@ -380,6 +403,40 @@ impl Vim {
     #[must_use]
     pub const fn register(&self) -> Option<&Register> {
         self.register.as_ref()
+    }
+
+    /// What showcmd shows, which `/self/vim/pending` reads: the
+    /// register, the operator's count where it is more than one, the
+    /// operator's key, the count typed after it, and the key waiting
+    /// for its second. Empty once the command has fired.
+    #[must_use]
+    pub fn showcmd(&self) -> String {
+        let Pending { count, key, operator, register, .. } = &self.pending;
+        let named = register.map(|name| alloc::format!("\"{name}"));
+        let twice = operator.filter(|(_, n)| *n > 1);
+        let after = (*count > 0).then(|| alloc::format!("{count}"));
+        let mut out = named.unwrap_or_default();
+        out.extend(twice.map(|(_, n)| alloc::format!("{n}")));
+        out.extend(operator.map(|(op, _)| op.key()));
+        out.extend(after);
+        out.extend(*key);
+        out
+    }
+
+    /// What register `name` holds, `"` being the unnamed one, with the
+    /// newline a linewise one ends in, which is what the clipboard is
+    /// handed: the kind is in the bytes as Vim treats it. Empty for a
+    /// register nothing has been put in.
+    #[must_use]
+    pub fn stored(&self, name: char) -> String {
+        let held = if name == '"' {
+            self.register.as_ref()
+        } else {
+            self.registers.get(&name)
+        };
+        let Some(held) = held else { return String::new() };
+        let end = if held.kind == Kind::Line { "\n" } else { "" };
+        alloc::format!("{}{end}", held.text)
     }
 
     /// Text a `"+` or `"*` yank left for the clipboard, once.

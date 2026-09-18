@@ -9,25 +9,28 @@
 //! `/self/dev/exit`, and what all of it looks like is the View that
 //! ends the frame.
 //!
-//! One cell is served, `view`. A whole read of it is one frame: the
-//! keys Vim has not taken, each run; what changed on the Buffer since
-//! the last frame; the rows the region has now; then the View. No
+//! The cells served are `view` and Vim's own state. A whole read of
+//! `view` is one frame: the keys Vim has not taken, each run; what
+//! changed on the Buffer since the last frame; the rows the region has
+//! now; then the View. The rest — the mode, the keys of a command that
+//! has not fired, the registers — are made at the read out of what the
+//! engine holds, so nothing is stored twice and nothing goes stale. No
 //! borrow of the engine outlives an op, so a Driver of Vim's own that
 //! a run re-enters finds the state free.
 
+use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::rc::Rc;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::cell::{OnceCell, Ref, RefCell};
 
-use reovim_client_api::{Frames, NONE, Region, count};
+use reovim_client_api::{Frames, NONE, Region, count, part};
 use reovim_client_sh::{Ran, Shell, complete, run};
 use reovim_kernel_interface::{
     Booted, Calls, Driver, DriverId, Error, Event, Flags, Handle, Kind, Module,
     Rd, Reply, Rights,
 };
-use reovim_sdk::path::under;
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, decode, encode, ops};
 use reovim_text_api::{history, open as text_open, publish, text};
@@ -50,21 +53,30 @@ const E492: &str = "E492: Not an editor command:";
 const E344: &str = "E344: Can't find directory";
 /// What `:edit` says to one: the same, for a file.
 const E345: &str = "E345: Can't find file";
-/// Where the fs Module mirrors the directory the editor runs over.
-const MIRROR: &str = "/module/fs/root";
 /// What undo and redo say at the ends of the history.
 const OLDEST: &str = "Already at oldest change";
 const NEWEST: &str = "Already at newest change";
 
-/// Vim at a Client: the engine behind one `RefCell`, and the one cell
-/// a Plugin serves.
+/// Vim at a Client: the engine behind one `RefCell`, and the cells
+/// it serves.
 #[derive(Default)]
 pub struct Editor {
     vim: RefCell<Vim>,
     /// The cells of `/self/dev`, found once at `start`: they never
     /// change, so no borrow of the engine is held over an op.
     region: OnceCell<Region>,
+    /// The rds under Vim's home, as `start` was answered with them.
+    cells: OnceCell<Cells>,
     view: Frames,
+}
+
+/// What a read of one of Vim's own rds is a read of.
+struct Cells {
+    view: Rd,
+    mode: Rd,
+    pending: Rd,
+    /// One rd per register that can exist, by its name.
+    registers: BTreeMap<Rd, char>,
 }
 
 /// Vim, ready for a Client to load.
@@ -104,8 +116,7 @@ impl Module for Editor {
     /// there is one, and the text shown from the line it was told to
     /// begin at.
     fn start(&self, ctx: &dyn Calls, home: Rd) -> Result<(), Error> {
-        let view = ctx.register(DriverId(0), home, Some("view"))?;
-        ctx.report(view, Flags::READ, &[])?;
+        let cells = registered(ctx, home)?;
         let region = Region::of(ctx)?;
         let ask = region.ask(ctx)?;
         let dir = region.cwd(ctx)?;
@@ -113,7 +124,13 @@ impl Module for Editor {
         let buffer = buffer_over(ctx, source)?;
         let rights = Rights::READ.union(Rights::WRITE);
         let h = ctx.open(buffer, rights)?;
-        let shell = standing(ctx, &dir)?;
+        // The fs Module mirrors the directory the editor runs over, so
+        // every name of the person's is under it and a leading `/` is
+        // its root. A tree with no mirror leaves the editor at the
+        // tree's own root, which is a place to stand.
+        let root = cell::resolve(ctx, ROOT, "/module/fs/root").unwrap_or(ROOT);
+        let cwd = cell::resolve(ctx, root, &dir).unwrap_or(root);
+        let shell = Shell::at(cwd, ops::where_is(ctx, cwd)?);
         let clip = cell::resolve(ctx, ROOT, "/self/dev/clipboard").ok();
         {
             let mut vim = self.vim.borrow_mut();
@@ -122,9 +139,12 @@ impl Module for Editor {
             vim.source = source;
             vim.name = (!ask.name.is_empty()).then(|| ask.name.clone());
             vim.dir = dir;
+            vim.root = Some(root);
+            vim.cwd = Some(cwd);
             vim.shell = shell;
             vim.clip = clip;
         }
+        let _ = self.cells.set(cells);
         let _ = self.region.set(region);
         self.sized(ctx)?;
         let bytes = ops::whole(ctx, h)?;
@@ -144,20 +164,44 @@ impl Driver for Editor {
         Reply::ok(rd.0)
     }
 
-    /// One whole read is one frame: the work at its head, its bytes to
-    /// their end.
+    /// A whole read of `view` is one frame: the work at its head, its
+    /// bytes to their end. Every other cell is a reading of the state,
+    /// made here and kept nowhere.
     fn read(
         &self,
         ctx: &dyn Calls,
-        _: u64,
+        h: u64,
         at: u64,
         len: usize,
     ) -> Reply<Vec<u8>> {
-        self.view.read(at, len, || self.framed(ctx))
+        let Some(cells) = self.cells.get() else {
+            return Reply::err(Error::Closed);
+        };
+        if Rd(h) == cells.view {
+            return self.view.read(at, len, || self.framed(ctx));
+        }
+        self.held(cells, Rd(h)).map(|held| part(&held, at, len)).into()
     }
 }
 
 impl Editor {
+    /// What a cell of Vim's state reads, made out of the engine at the
+    /// read: the borrow is this statement's, and Vim's own frame has
+    /// returned by the time another Plugin asks.
+    fn held(&self, cells: &Cells, rd: Rd) -> Result<Vec<u8>, Error> {
+        let vim = self.vim.borrow();
+        let read = if rd == cells.mode {
+            format!("{}\n", vim.mode().name())
+        } else if rd == cells.pending {
+            vim.showcmd()
+        } else if let Some(&name) = cells.registers.get(&rd) {
+            vim.stored(name)
+        } else {
+            return Err(Error::Unsupported);
+        };
+        Ok(read.into_bytes())
+    }
+
     /// The cells of `/self/dev` this Plugin holds; `Closed` before
     /// `start` has found them.
     fn region(&self) -> Result<&Region, Error> {
@@ -229,12 +273,12 @@ impl Editor {
                 self.explore(ctx, name.as_deref(), bang)
             }
             Effect::Open(name, bang) => self.edited(ctx, &name, bang),
-            Effect::Line(line) => {
-                self.ran(ctx, &line);
+            Effect::Line(line) => self.ran(ctx, &line),
+            Effect::Cli(bang) => self.cli(ctx, bang),
+            Effect::Complete(ask) => {
+                self.completing(ctx, ask);
                 Ok(())
             }
-            Effect::Cli(bang) => self.cli(ctx, bang),
-            Effect::Complete(ask) => self.completing(ctx, ask),
         }
     }
 
@@ -288,9 +332,11 @@ impl Editor {
             (vim.name.clone(), vim.dir.clone())
         };
         let Some(name) = name else { return Ok(()) };
-        let at = name.rsplit_once('/').map_or("", |(at, _)| at);
+        // The ask's name is under the mirror's own root, wherever the
+        // editor stands, so it is read from there.
+        let at = rooted(name.rsplit_once('/').map_or("", |(at, _)| at));
         let word =
-            if directory(ctx, at)? { "[New]" } else { "[New DIRECTORY]" };
+            if self.directory(ctx, &at)? { "[New]" } else { "[New DIRECTORY]" };
         let said = as_given(&dir, &name);
         self.vim.borrow_mut().message = format!("\"{said}\" {word}");
         Ok(())
@@ -313,11 +359,11 @@ impl Editor {
             self.says(E32);
             return Ok(false);
         };
-        self.written_to(ctx, &name, bang)
+        self.written_to(ctx, &rooted(&name), bang)
     }
 
-    /// `:w NAME`: the head written to that file, `NAME` resolved under
-    /// the directory the Client started in. Its own name is a save,
+    /// `:w NAME`: the head written to that file, `NAME` resolved
+    /// where the editor stands. Its own name is a save,
     /// and a name that is not on disk is made first. A Buffer over
     /// nothing goes on as that file's, its history starting there.
     fn save_as(
@@ -326,9 +372,8 @@ impl Editor {
         name: &str,
         bang: bool,
     ) -> Result<bool, Error> {
-        let path = under(&self.vim.borrow().dir.clone(), name);
-        let Some(target) = resolved(ctx, &path)? else {
-            return self.written_to(ctx, &path, bang);
+        let Some(target) = self.at(ctx, name)? else {
+            return self.written_to(ctx, name, bang);
         };
         if Some(target) == self.vim.borrow().source {
             return self.save(ctx, bang);
@@ -347,7 +392,7 @@ impl Editor {
         path: &str,
         bang: bool,
     ) -> Result<bool, Error> {
-        match making(ctx, path, bang) {
+        match self.making(ctx, path, bang) {
             Ok(Some(target)) => self.published_to(ctx, target),
             Ok(None) => {
                 self.says(E13);
@@ -466,8 +511,8 @@ impl Editor {
     }
 
     /// `:exp[lore][!] [NAME]`: the Client asked to show an rd in this
-    /// region, which is the end of this Vim. `NAME` is resolved under
-    /// the directory the Client started in, as `:w NAME` is, and with
+    /// region, which is the end of this Vim. `NAME` is resolved where
+    /// the editor stands, as `:w NAME` is, and with
     /// no name it is the directory the file is in. Whatever is there
     /// goes to the Client's table, a Container to a listing and a cell
     /// to another Vim; a name that is not there is E344. The swap
@@ -479,16 +524,13 @@ impl Editor {
         name: Option<&str>,
         bang: bool,
     ) -> Result<(), Error> {
-        let dir = self.vim.borrow().dir.clone();
-        let target = match name {
-            Some(name) => resolved(ctx, &under(&dir, name))?,
-            None => self.here(ctx)?,
+        let Some(name) = name else {
+            return self.shown(ctx, self.here(ctx)?, "", bang);
         };
         // Nothing is being left for a name that leads nowhere, so
         // there is nothing for the bang to override yet.
-        let Some(target) = target else {
-            let said = name.unwrap_or(&dir);
-            self.says(&format!("{E344} \"{said}\" in cdpath"));
+        let Some(target) = self.at(ctx, name)? else {
+            self.says(&format!("{E344} \"{name}\" in cdpath"));
             return Ok(());
         };
         self.shown(ctx, target, "", bang)
@@ -503,8 +545,7 @@ impl Editor {
         name: &str,
         bang: bool,
     ) -> Result<(), Error> {
-        let dir = self.vim.borrow().dir.clone();
-        let Some(target) = resolved(ctx, &under(&dir, name))? else {
+        let Some(target) = self.at(ctx, name)? else {
             self.says(&format!("{E345} \"{name}\" in path"));
             return Ok(());
         };
@@ -549,20 +590,21 @@ impl Editor {
     /// A run that came back open is a Driver that follows: what its
     /// cell holds at this one read is what is said, and the cell is
     /// closed after it, one row having nowhere to put more.
-    fn ran(&self, ctx: &dyn Calls, line: &str) {
+    fn ran(&self, ctx: &dyn Calls, line: &str) -> Result<(), Error> {
         // The borrow is gone before the line runs: a Driver of this
         // Client's own may come back in here.
         let mut shell = core::mem::take(&mut self.vim.borrow_mut().shell);
+        let was = shell.cwd();
         let outcome = run(ctx, &mut shell, line);
         let out = match outcome {
             Ok(ran) => printed(ctx, ran),
             Err(miss) if miss.unknown => format!("{E492} {line}"),
             Err(miss) => format!("{miss}"),
         };
-        let path = String::from(shell.path());
+        let moved = shell.cwd();
         self.vim.borrow_mut().shell = shell;
-        self.rebased(&path);
         self.says(out.lines().next().unwrap_or_default());
+        if moved == was { Ok(()) } else { self.rebased(ctx, moved) }
     }
 
     /// Where `:cd` left the Shell, taken as the directory Vim works
@@ -570,12 +612,16 @@ impl Editor {
     /// NAME` and `:explore NAME` resolve there from now on, and Tab
     /// completes there. A cwd outside the mirror leaves it where it
     /// was, no file of the editor's being under one.
-    fn rebased(&self, path: &str) {
-        let Some(rest) = path.strip_prefix(MIRROR) else { return };
-        if !(rest.is_empty() || rest.starts_with('/')) {
-            return;
+    fn rebased(&self, ctx: &dyn Calls, cwd: Rd) -> Result<(), Error> {
+        let root = self.vim.borrow().root.unwrap_or(ROOT);
+        let mut at = cwd;
+        while at != root && at != ROOT {
+            at = ops::parent(ctx, at)?;
         }
-        self.vim.borrow_mut().dir = rest.trim_start_matches('/').into();
+        if at == root {
+            self.vim.borrow_mut().cwd = Some(cwd);
+        }
+        Ok(())
     }
 
     /// Tab on the `:` line: what may stand where the last word does,
@@ -584,53 +630,101 @@ impl Editor {
     /// Vim runs itself take a name under the directory it works in;
     /// every other line is the shell's, which completes it from where
     /// the Shell stands.
-    fn completing(&self, ctx: &dyn Calls, ask: Ask) -> Result<(), Error> {
+    fn completing(&self, ctx: &dyn Calls, ask: Ask) {
         let shell = self.vim.borrow().shell.clone();
         let (from, found) = match ask {
             Ask::Names { word } => {
                 let found = complete(ctx, &shell, &word);
                 self.vim.borrow_mut().words(&word, found.candidates);
-                return Ok(());
+                return;
             }
-            Ask::Path { from, word } => (from, self.names(ctx, &word)?),
+            Ask::Path { from, word } => (from, self.names(ctx, &word)),
             Ask::Line { line } => {
                 let found = complete(ctx, &shell, &line);
                 (found.from, found.candidates)
             }
         };
         self.vim.borrow_mut().offer(from, found);
-        Ok(())
     }
 
     /// The names that may stand where `word` does: the children of
-    /// the mirror of the directory Vim works in, or of what `word`
-    /// names under it.
+    /// where the editor stands, or of what `word` names under it.
     ///
     /// A leading `/` is the mirror's own root, where `:w /NAME`
     /// writes, and not the tree's, so it comes off the word and goes
     /// back on what is found.
-    fn names(&self, ctx: &dyn Calls, word: &str) -> Result<Vec<String>, Error> {
-        let Some(root) = resolved(ctx, "")? else {
-            return Ok(Vec::new());
-        };
-        let Some(rest) = word.strip_prefix('/') else {
-            let dir = self.vim.borrow().dir.clone();
-            let under = resolved(ctx, &dir)?.unwrap_or(root);
-            return Ok(ops::paths(ctx, under, word));
-        };
-        let found = ops::paths(ctx, root, rest);
-        Ok(found.into_iter().map(|name| format!("/{name}")).collect())
+    fn names(&self, ctx: &dyn Calls, word: &str) -> Vec<String> {
+        let (from, rest) = self.from(word);
+        let found = ops::paths(ctx, from, rest);
+        if !word.starts_with('/') {
+            return found;
+        }
+        found.into_iter().map(|name| format!("/{name}")).collect()
     }
 
     /// Where `:explore` with no name looks: the directory the Buffer's
-    /// source is in, or, over nothing, the one the Client started in.
-    fn here(&self, ctx: &dyn Calls) -> Result<Option<Rd>, Error> {
-        let (source, dir) = {
+    /// source is in, or, over nothing, the one the editor stands in.
+    fn here(&self, ctx: &dyn Calls) -> Result<Rd, Error> {
+        let (source, cwd) = {
             let vim = self.vim.borrow();
-            (vim.source, vim.dir.clone())
+            (vim.source, vim.cwd.unwrap_or(ROOT))
         };
-        let here = |source| ops::parent(ctx, source).map(Some);
-        source.map_or_else(|| resolved(ctx, &dir), here)
+        source.map_or(Ok(cwd), |source| ops::parent(ctx, source))
+    }
+
+    /// The rd `path` names, or `None` where the tree has nothing
+    /// there: the walk stops at the first name that is not.
+    fn at(&self, ctx: &dyn Calls, path: &str) -> Result<Option<Rd>, Error> {
+        let (from, rest) = self.from(path);
+        match cell::resolve(ctx, from, rest) {
+            Err(_) => Ok(None),
+            found => found.map(Some),
+        }
+    }
+
+    /// Where a path of the person's starts and what is left of it: the
+    /// mirror's own root for a leading `/`, where `:w /NAME` writes
+    /// and not the tree's, else where the editor stands.
+    fn from<'a>(&self, path: &'a str) -> (Rd, &'a str) {
+        let vim = self.vim.borrow();
+        let (from, rest) = path
+            .strip_prefix('/')
+            .map_or((vim.cwd, path), |rest| (vim.root, rest));
+        (from.unwrap_or(ROOT), rest)
+    }
+
+    /// Whether `path` is a directory in the tree; the empty path
+    /// names where the editor stands, which always is.
+    fn directory(&self, ctx: &dyn Calls, path: &str) -> Result<bool, Error> {
+        let Some(rd) = self.at(ctx, path)? else { return Ok(false) };
+        Ok(ops::info(ctx, rd)?.flags.contains(Flags::CONTAINER))
+    }
+
+    /// The rd of the file `path` names, made: every missing directory
+    /// on the way by `mkdir`, then `create` for the file itself.
+    /// `None` when a file is there already and `bang` does not say to
+    /// write over it.
+    fn making(
+        &self,
+        ctx: &dyn Calls,
+        path: &str,
+        bang: bool,
+    ) -> Result<Option<Rd>, Error> {
+        let (from, rest) = self.from(path);
+        let steps = rest.split('/').filter(|n| !n.is_empty() && *n != ".");
+        let names: Vec<&str> = steps.collect();
+        let Some((name, dirs)) = names.split_last() else {
+            return Err(Error::Invalid);
+        };
+        let mut dir = from;
+        for step in dirs {
+            dir = below(ctx, dir, step)?;
+        }
+        match made(ctx, dir, "create", name) {
+            Err(Error::Stale) if bang => ops::lookup(ctx, dir, name).map(Some),
+            Err(Error::Stale) => Ok(None),
+            made => made.map(Some),
+        }
     }
 
     /// Whether the Buffer holds what its source has not.
@@ -649,51 +743,44 @@ fn as_given<'a>(dir: &str, name: &'a str) -> &'a str {
         .unwrap_or(name)
 }
 
-/// Whether `path` under the root is a directory there; the root
-/// itself, which the empty path names, always is.
-fn directory(ctx: &dyn Calls, path: &str) -> Result<bool, Error> {
-    if path.is_empty() {
-        return Ok(true);
-    }
-    let Some(rd) = resolved(ctx, path)? else { return Ok(false) };
-    Ok(ops::info(ctx, rd)?.flags.contains(Flags::CONTAINER))
-}
-
-/// The rd `path` names under the root, or `None` when the tree has
-/// nothing there: the walk stops at the first name that is not.
-fn resolved(ctx: &dyn Calls, path: &str) -> Result<Option<Rd>, Error> {
-    match cell::resolve(ctx, ROOT, &format!("{MIRROR}/{path}")) {
-        Err(_) => Ok(None),
-        found => found.map(Some),
-    }
-}
-
-/// The rd of the file `path` names under the root, made: every
-/// missing directory on the way by `mkdir`, then `create` for the
-/// file itself. `None` when a file is there already and `bang` does
-/// not say to write over it.
-fn making(
-    ctx: &dyn Calls,
-    path: &str,
-    bang: bool,
-) -> Result<Option<Rd>, Error> {
-    let names: Vec<&str> = path.split('/').filter(|n| !n.is_empty()).collect();
-    let Some((name, dirs)) = names.split_last() else {
-        return Err(Error::Invalid);
+/// The cells under Vim's home, in the order `ls` shows them: its
+/// frame, and the state it holds read out of the engine.
+///
+/// Every register that can exist is registered here, filled or not,
+/// because the Host asks a Container to list itself once and answers
+/// from its table ever after: one first filled later would never be
+/// listed.
+fn registered(ctx: &dyn Calls, home: Rd) -> Result<Cells, Error> {
+    let read = |at, name: &str, flags| {
+        let rd = ctx.register(DriverId(0), at, Some(name))?;
+        ctx.report(rd, flags, &[])?;
+        Ok::<Rd, Error>(rd)
     };
-    let mut dir = cell::resolve(ctx, ROOT, MIRROR)?;
-    for step in dirs {
-        dir = below(ctx, dir, step)?;
+    let one = Flags::READ;
+    let view = read(home, "view", one)?;
+    let mode = read(home, "mode", one)?;
+    let pending = read(home, "pending", one)?;
+    let held = read(home, "registers", one.union(Flags::CONTAINER))?;
+    let mut registers = BTreeMap::new();
+    for name in core::iter::once('"').chain('a'..='z') {
+        registers.insert(read(held, &format!("{name}"), one)?, name);
     }
-    match made(ctx, dir, "create", name) {
-        Err(Error::Stale) if bang => ops::lookup(ctx, dir, name).map(Some),
-        Err(Error::Stale) => Ok(None),
-        made => made.map(Some),
-    }
+    Ok(Cells { view, mode, pending, registers })
 }
 
-/// The directory `name` under `dir`, made when it is not there yet.
+/// `path`, which is under the mirror's own root, as a path of the
+/// person's: the leading `/` that says to read it from there and not
+/// from where the editor stands.
+fn rooted(path: &str) -> String {
+    format!("/{path}")
+}
+
+/// The directory `name` under `dir`, made when it is not there yet;
+/// `..` is the walk's own move and makes nothing.
 fn below(ctx: &dyn Calls, dir: Rd, name: &str) -> Result<Rd, Error> {
+    if name == ".." {
+        return ops::parent(ctx, dir);
+    }
     match ops::lookup(ctx, dir, name) {
         Err(Error::Gone) => made(ctx, dir, "mkdir", name),
         found => found,
@@ -722,21 +809,6 @@ fn printed(ctx: &dyn Calls, ran: Ran) -> String {
         let _ = open.close(ctx);
     }
     String::from_utf8_lossy(&out).into_owned()
-}
-
-/// Where the `:` line's shell lines stand: the mirror of the directory
-/// the Client started Vim in, so `:ls` lists the buffer's own
-/// directory and `:pwd` says where it is. The root of the tree where
-/// there is no mirror of that directory, which is a place to stand
-/// although no file of the editor's is under it.
-fn standing(ctx: &dyn Calls, dir: &str) -> Result<Shell, Error> {
-    let path = if dir.is_empty() {
-        String::from(MIRROR)
-    } else {
-        format!("{MIRROR}/{dir}")
-    };
-    let standing = resolved(ctx, dir)?;
-    Ok(standing.map_or_else(Shell::default, |cwd| Shell::at(cwd, path)))
 }
 
 /// A Buffer over `source`, or over nothing: the one the Plugin shows,

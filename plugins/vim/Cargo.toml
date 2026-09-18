@@ -18,6 +18,7 @@ reovim-text-api = { path = "../../modules/text/api" }
 [dev-dependencies]
 reovim-client = { path = "../../clients/core" }
 reovim-client-tui = { path = "../../clients/tui" }
+reovim-module-coreutils = { path = "../../modules/coreutils" }
 reovim-rig = { path = "../../clients/rig" }
 
 [lints]

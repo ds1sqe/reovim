@@ -306,6 +306,7 @@ dependencies = [
  "reovim-client-sh",
  "reovim-client-tui",
  "reovim-kernel-interface",
+ "reovim-module-coreutils",
  "reovim-rig",
  "reovim-sdk",
  "reovim-text-api",
