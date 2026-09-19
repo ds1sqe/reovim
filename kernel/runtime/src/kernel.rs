@@ -1079,7 +1079,6 @@ fn handles(s: &State, out: &mut String) {
 
 fn pendings(s: &State, out: &mut String) {
     for (token, wait) in s.pending.all() {
-        let slot = wait.handle.and_then(|h| s.handles.get(&h));
         let state = match wait.state {
             Waiting::Waiting => "waiting",
             Waiting::Done(_) => "done",
@@ -1089,7 +1088,7 @@ fn pendings(s: &State, out: &mut String) {
             out,
             "pending token={} caller={} handle={} state={state}",
             token.0,
-            or_dash(slot.map(|slot| slot.caller.0)),
+            wait.caller.0,
             or_dash(wait.handle.map(|h| h.0))
         );
     }

@@ -6,7 +6,7 @@ use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::vec::Vec;
 
 use reovim_kernel_interface::{
-    Caller, Error, Handle, ModuleId, Outcome, Token,
+    Caller, Error, Handle, ModuleId, Outcome, Rd, Token,
 };
 
 pub enum State {
@@ -27,7 +27,25 @@ pub struct Wait {
     /// This wait is the `open` that made `handle`: its `done` carries
     /// the Driver's cookie where every other carries the answer.
     pub opening: bool,
+    /// The Container this wait is the listing of: its `done` is what
+    /// fills that rd's cache, so the rd counts as listed when the rows
+    /// land and not when the op was run.
+    pub listing: Option<Rd>,
     pub state: State,
+}
+
+impl Wait {
+    /// A wait that fills nothing of the Kernel's own in, which is what
+    /// every op but an `open` and a `children` makes.
+    const fn new(caller: Caller, handle: Option<Handle>) -> Self {
+        Self {
+            caller,
+            handle,
+            opening: false,
+            listing: None,
+            state: State::Waiting,
+        }
+    }
 }
 
 pub struct Pending {
@@ -49,7 +67,7 @@ impl Pending {
         caller: Caller,
         handle: Option<Handle>,
     ) -> Result<Token, Error> {
-        self.begin(module, own, caller, handle, false)
+        self.begin(module, own, Wait::new(caller, handle))
     }
 
     /// The same for the `open` that made `handle`, whose `done` the
@@ -61,16 +79,30 @@ impl Pending {
         caller: Caller,
         handle: Handle,
     ) -> Result<Token, Error> {
-        self.begin(module, own, caller, Some(handle), true)
+        let mut wait = Wait::new(caller, Some(handle));
+        wait.opening = true;
+        self.begin(module, own, wait)
+    }
+
+    /// The same for the `children` of `rd`, whose `done` is the
+    /// listing that rd's cache then answers from.
+    pub fn listing(
+        &mut self,
+        module: ModuleId,
+        own: u64,
+        caller: Caller,
+        rd: Rd,
+    ) -> Result<Token, Error> {
+        let mut wait = Wait::new(caller, None);
+        wait.listing = Some(rd);
+        self.begin(module, own, wait)
     }
 
     fn begin(
         &mut self,
         module: ModuleId,
         own: u64,
-        caller: Caller,
-        handle: Option<Handle>,
-        opening: bool,
+        wait: Wait,
     ) -> Result<Token, Error> {
         if self.by_driver.contains_key(&(module, own)) {
             return Err(Error::Invalid);
@@ -78,7 +110,6 @@ impl Pending {
         let token = Token(self.next);
         self.next += 1;
         self.by_driver.insert((module, own), token);
-        let wait = Wait { caller, handle, opening, state: State::Waiting };
         self.by_token.insert(token, wait);
         Ok(token)
     }
@@ -90,6 +121,14 @@ impl Pending {
         let token = self.by_driver.get(&(module, own))?;
         let wait = self.by_token.get(token)?;
         if wait.opening { wait.handle } else { None }
+    }
+
+    /// The Container an outstanding listing of `module` is of, and
+    /// `None` for every other wait: what tells a `done` that fills a
+    /// cache from one that does not.
+    pub fn listed_of(&self, module: ModuleId, own: u64) -> Option<Rd> {
+        let token = self.by_driver.get(&(module, own))?;
+        self.by_token.get(token)?.listing
     }
 
     /// The Driver finished; returns the handle the wait counted against.

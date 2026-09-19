@@ -350,9 +350,13 @@ fn call(
 
 fn watch(k: &Kernel, caller: Caller, h: Handle, on: bool) -> Answer {
     let slot = k.slot(caller, h, Rights::READ)?;
-    if slot.watching != on {
-        set_watch(&mut k.state.borrow_mut(), caller, h, slot.rd, on);
+    // Nothing changed, so nothing is said: a Driver that counts the
+    // hints, as the Driver standing for a Client does, hears one per
+    // handle that watches and not one per op a caller sends.
+    if slot.watching == on {
+        return Ok(Reply::ok(Out::Unit));
     }
+    set_watch(&mut k.state.borrow_mut(), caller, h, slot.rd, on);
     if let Some((module, index)) = slot.served {
         // A hint only; the Driver's answer does not change the watch.
         let _ = k.driver(index).watch(&k.calls(module), slot.rd, on);
@@ -408,14 +412,12 @@ fn parent(k: &Kernel, rd: Rd) -> Answer {
 }
 
 fn children(k: &Kernel, caller: Caller, rd: Rd) -> Answer {
-    let first_time = {
-        let mut s = k.state.borrow_mut();
-        let entry = s.table.get_mut(rd)?;
-        let first = !entry.listed;
-        entry.listed = true;
-        first.then_some(entry.owner)
+    let unlisted = {
+        let s = k.state.borrow();
+        let entry = s.table.get(rd)?;
+        (!entry.listed).then_some(entry.owner)
     };
-    if let Some(Owner::Driver { module, driver }) = first_time {
+    if let Some(Owner::Driver { module, driver }) = unlisted {
         // A Ready listing registers as it goes, so the cache is what
         // `Children` answers from and the reply itself carries
         // nothing. A Driver that must ask first answers `Pending`, and
@@ -423,14 +425,31 @@ fn children(k: &Kernel, caller: Caller, rd: Rd) -> Answer {
         // the answer does not come from the Kernel's table, the table
         // not being full yet when the op returns.
         let (_, d) = k.served(module, driver)?;
+        // Marked while the Driver runs, so a `Children` it submits
+        // from inside its own listing answers the cache as it stands
+        // and the Driver is not asked again.
+        mark(k, rd, true);
         if let Reply::Pending(own) = d.lookup(&k.calls(module), rd, "") {
+            // It has listed nothing yet: the mark goes back until the
+            // rows land, so a listing that is cancelled or refused
+            // leaves the next `Children` to make it rather than every
+            // later one answering from a cache nobody filled.
+            mark(k, rd, false);
             let mut s = k.state.borrow_mut();
-            let token = s.pending.open(module, own.0, caller, None)?;
+            let token = s.pending.listing(module, own.0, caller, rd)?;
             return Ok(Reply::Pending(token));
         }
     }
     let children = k.state.borrow().table.get(rd)?.children.clone();
     Ok(Reply::ok(Out::Rds(children)))
+}
+
+/// The cache of `rd`'s children full or not. An rd that went while its
+/// Driver ran has no cache left to mark.
+fn mark(k: &Kernel, rd: Rd, full: bool) {
+    if let Ok(entry) = k.state.borrow_mut().table.get_mut(rd) {
+        entry.listed = full;
+    }
 }
 
 /// `Busy` when the handle is at its Pending cap.

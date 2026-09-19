@@ -544,6 +544,153 @@ fn a_watch_costs_the_client_one_open_and_one_watch_however_many_hold_it() {
 }
 
 #[test]
+fn a_second_watch_off_leaves_another_handles_watch_alone() {
+    let mut rig = Rig::new();
+    let root = rig.root();
+    let mode = rig.lookup(root, "mode");
+    let mut first = rig.other();
+    let mut second = rig.other();
+    let h = rig.watch(&mut first, mode);
+    rig.watch(&mut second, mode);
+    rig.settled();
+
+    // The same `off` twice is one unwatch: the hint follows the slot's
+    // own state, so the second says nothing and the count the proxy
+    // keeps still holds the watcher that is left.
+    let at = rig.client.served();
+    for _ in 0..2 {
+        let off = Op::Watch { h, on: false };
+        assert_eq!(rig.by(&mut first, off), Ok(Out::Unit));
+        rig.settled();
+    }
+    assert_eq!(rig.client.since(at), "", "one watcher is left");
+}
+
+#[test]
+fn a_second_watch_on_costs_nothing_and_the_close_still_ends_it() {
+    let (mut rig, mut remote, _, h) = watching();
+
+    // A slot that watches already is told nothing, so the count does
+    // not climb past the one handle and the close that ends the watch
+    // brings it back to none.
+    let at = rig.client.served();
+    let on = Op::Watch { h, on: true };
+    assert_eq!(rig.by(&mut remote, on), Ok(Out::Unit));
+    rig.settled();
+    assert_eq!(rig.client.since(at), "", "the slot watched already");
+    assert_eq!(rig.by(&mut remote, Op::Close { h }), Ok(Out::Unit));
+    rig.settled();
+    let both = "Close Close";
+    assert_eq!(rig.client.since(at), both, "the remote's and the proxy's");
+}
+
+#[test]
+fn a_watch_flipped_while_its_open_is_in_flight_queues_nothing_more() {
+    let mut rig = Rig::new();
+    let root = rig.root();
+    let mode = rig.lookup(root, "mode");
+    let mut side = rig.other();
+    let open = Op::Open { rd: mode, rights: Rights::READ };
+    let h = handle(rig.by(&mut side, open));
+
+    // The row holds what is wanted and makes its op once: a remote
+    // that never lets the Client answer flips the watch as often as it
+    // likes and the queue does not grow with it.
+    let at = rig.client.served();
+    for on in [true, false, true, false, true, false] {
+        assert_eq!(rig.by(&mut side, Op::Watch { h, on }), Ok(Out::Unit));
+    }
+    rig.settled();
+    let both = "Open Close";
+    assert_eq!(rig.client.since(at), both, "the open and its own close");
+}
+
+#[test]
+fn a_watch_whose_open_the_client_refuses_leaves_the_rd_to_the_next() {
+    let mut rig = Rig::new();
+    let root = rig.root();
+    let mode = rig.lookup(root, "mode");
+    let mut side = rig.other();
+    let open = Op::Open { rd: mode, rights: Rights::READ };
+    let h = handle(rig.by(&mut side, open));
+    assert_eq!(rig.by(&mut side, Op::Watch { h, on: true }), Ok(Out::Unit));
+
+    // The Client refuses the proxy's own `open`, by hand: the row has
+    // no handle and never will.
+    let (_, serve) = rig.client.side.since(&rig.kernel);
+    let [(own, Op::Open { .. })] = serve.as_slice() else {
+        panic!("not the watch's open alone: {serve:?}")
+    };
+    let done = Op::Done { token: *own, outcome: Err(Error::Denied) };
+    let answered = rig.client.side.request(&rig.kernel, done);
+    assert_eq!(answered, Reply::ok(Out::Unit));
+
+    // A later watcher of the same rd costs the `Open` it should: the
+    // refusal took the row with it rather than standing in the way of
+    // every watch of this rd for ever.
+    let mut other = rig.other();
+    let at = rig.client.served();
+    let open = Op::Open { rd: mode, rights: Rights::READ };
+    let second = handle(rig.by(&mut other, open));
+    let on = Op::Watch { h: second, on: true };
+    assert_eq!(rig.by(&mut other, on), Ok(Out::Unit));
+    rig.settled();
+    let all = "Open Open Watch";
+    assert_eq!(rig.client.since(at), all, "the remote's and the proxy's");
+}
+
+#[test]
+fn a_close_past_the_queue_still_reaches_the_client() {
+    let mut rig = Rig::new();
+    let root = rig.root();
+    let mode = rig.lookup(root, "mode");
+    let h = rig.opened(mode);
+    for at in 0..64 {
+        let op = Op::Lookup { rd: root, name: format!("n{at}") };
+        let reply = rig.remote.request(&rig.kernel, op);
+        assert!(matches!(reply, Reply::Pending(_)), "{at}: {reply:?}");
+    }
+    let over = Op::Lookup { rd: root, name: "n64".to_string() };
+    assert_eq!(rig.remote.request(&rig.kernel, over), Reply::err(Error::Busy));
+
+    // The handle is gone at the Kernel, so its close is not one of the
+    // ops the bound refuses: dropping it would leave a handle at the
+    // Client for ever and no record of it anywhere.
+    let close = rig.remote.request(&rig.kernel, Op::Close { h });
+    assert_eq!(close, Reply::ok(Out::Unit));
+    let at = rig.client.served();
+    rig.settled();
+    let asked = rig.client.since(at);
+    assert!(asked.split(' ').any(|op| op == "Close"), "{asked}");
+}
+
+#[test]
+fn an_answer_of_a_shape_the_op_never_promises_is_invalid() {
+    let mut rig = Rig::new();
+    let root = rig.root();
+    let dev = rig.lookup(root, "dev");
+    let cwd = rig.lookup(dev, "cwd");
+    let h = rig.opened(cwd);
+    let read = Op::Read { h, at: 0, len: 4 };
+    let Reply::Pending(token) = rig.remote.request(&rig.kernel, read) else {
+        panic!("the read waits on the Client")
+    };
+
+    // A Client may answer with anything; what is not the shape the op
+    // promises is no answer to it, and the caller hears so rather than
+    // a handle out of a read.
+    let (_, serve) = rig.client.side.since(&rig.kernel);
+    let [(own, Op::Read { .. })] = serve.as_slice() else {
+        panic!("not the read alone: {serve:?}")
+    };
+    let done = Op::Done { token: *own, outcome: Ok(Out::Handle(Handle(7))) };
+    let answered = rig.client.side.request(&rig.kernel, done);
+    assert_eq!(answered, Reply::ok(Out::Unit));
+    let ask = rig.remote.request(&rig.kernel, Op::Ask { token });
+    assert_eq!(ask, Reply::Ready(Err(Error::Invalid)));
+}
+
+#[test]
 fn a_remote_that_closes_without_unwatching_drops_the_forwarded_watch() {
     let (mut rig, mut remote, _, h) = watching();
 

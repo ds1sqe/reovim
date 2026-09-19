@@ -168,18 +168,46 @@ fn a_cancel_before_the_done_answers_cancelled() {
 }
 
 #[test]
-fn a_core_says_dash_for_a_wait_that_names_no_handle() {
+fn a_core_names_the_caller_of_a_wait_that_holds_no_handle() {
     let (rig, slow) = fresh();
     let lookup = rig.waits(Op::Lookup { rd: slow.dir(), name: "a".into() });
     let children = rig.waits(Op::Children { rd: slow.dir() });
     let core = rig.core();
+    // The wait records the caller it is owed to whether or not it
+    // names a handle, so only the handle is a dash.
     for token in [lookup, children] {
         let line = format!(
-            "pending token={} caller=- handle=- state=waiting",
-            token.0
+            "pending token={} caller={} handle=- state=waiting",
+            token.0, rig.caller.0
         );
         assert!(core.lines().any(|l| l == line), "{line}: {core}");
     }
+}
+
+#[test]
+fn a_listing_that_never_lands_leaves_the_rd_unlisted() {
+    let (rig, slow) = fresh();
+    let token = rig.waits(Op::Children { rd: slow.dir() });
+    assert_eq!(rig.ok(Op::Cancel { token }), Out::Unit);
+
+    // The Driver listed nothing, so the next `Children` asks it again
+    // rather than answering for ever from a cache nobody filled.
+    let again = rig.waits(Op::Children { rd: slow.dir() });
+    let a = child(&rig, slow.dir(), "a");
+    rig.calls().done(Token(2), Ok(Out::Rds(vec![a]))).unwrap();
+    assert_eq!(rig.ok(Op::Ask { token: again }), Out::Rds(vec![a]));
+    // Landed now: the cache is what answers and the Driver is done
+    // with it.
+    assert_eq!(rig.ok(Op::Children { rd: slow.dir() }), Out::Rds(vec![a]));
+}
+
+#[test]
+fn a_listing_the_driver_refuses_leaves_the_rd_unlisted() {
+    let (rig, slow) = fresh();
+    let token = rig.waits(Op::Children { rd: slow.dir() });
+    rig.done(Err(Error::Denied));
+    assert_eq!(rig.err(Op::Ask { token }), Error::Denied);
+    rig.waits(Op::Children { rd: slow.dir() });
 }
 
 #[test]

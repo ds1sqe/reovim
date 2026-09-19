@@ -24,10 +24,24 @@ use crate::kernel::{Kernel, kind_name};
 use crate::log::DEBUG;
 use crate::table::ROOT;
 
-/// Ops one link may have outstanding. The bound is the Driver's own
-/// (01-core-runtime.md:120-122): past it every slot answers `Busy`, and
-/// it is the whole of what holds a Client that answers nothing, there
-/// being no clock here to time one out.
+/// Ops one link holds: made and not sent, plus sent and not answered.
+/// The bound is the Driver's own (01-core-runtime.md:120-122) and it
+/// counts every job, but only a job a caller waits on is refused by
+/// it: past the bound a `lookup`, an `open`, a `read`, a `write` or a
+/// `call` answers `Busy` and queues nothing, and that is the whole of
+/// what holds a Client that answers nothing, there being no clock here
+/// to time one out.
+///
+/// A job nobody waits on is queued whatever the count: the link's own
+/// root lookup, the `Info` of a walk whose caller is counted already,
+/// the `Open`, `Watch` and `Close` a watch costs, and the `Close` of a
+/// handle the Kernel has already taken. Each stands for state the
+/// Kernel has moved, so dropping one would leave the Client's apart
+/// from it for ever, and none of them grows without bound: a walk's
+/// `Info` is one per counted op, a close is one per handle its caller
+/// holds, and a watched row makes one op at a time and none while its
+/// last is in flight, so a remote flipping a watch on and off queues
+/// nothing.
 const QUEUE: usize = 64;
 
 /// What a caller asked for, which says how the rows answer it.
@@ -64,11 +78,24 @@ impl Walk {
     }
 }
 
+/// The one `Out` a forwarded op promises its caller. A Client may
+/// answer with anything; what is not the op's own shape is no answer
+/// to the op the caller ran.
+#[derive(Clone, Copy)]
+enum Promise {
+    /// `open`: the Client's own handle.
+    Handle,
+    /// `read` and `call`: the bytes.
+    Bytes,
+    /// `write`: how many bytes were taken.
+    Len,
+}
+
 /// What the proxy does with the Client's answer.
 enum Then {
     /// `open`, `read`, `write` and `call`: the Client's outcome is the
-    /// caller's, as it stands.
-    Answer,
+    /// caller's, where it is the shape the op promises.
+    Answer(Promise),
     /// Nobody waits: a `close`, whose handle is gone at the Kernel
     /// whatever the Client says of it.
     Drop,
@@ -89,13 +116,18 @@ enum Then {
 
 /// A mirrored rd somebody watches, and what the proxy holds at the
 /// Client for it: one handle whatever the number of remotes, opened at
-/// the first watcher and closed with the last.
+/// the first watcher and closed with the last. The row stands from the
+/// `Open` to the `Close`, so what it wants — `n > 0` — may turn over as
+/// often as a remote likes and the ops it costs are still the two.
 #[derive(Default)]
 struct Watched {
-    /// How many remote watches the Kernel has told this Driver of.
+    /// How many remote watches the Kernel has told this Driver of,
+    /// which is how many handles watch the row: the Kernel hints where
+    /// a slot's own state changed and nowhere else.
     n: u32,
     /// The Client's handle, once its `open` has answered; the watch
-    /// goes out behind it.
+    /// goes out behind it. `None` while that `open` is in flight,
+    /// which is what says a second is not to be made.
     h: Option<Handle>,
 }
 
@@ -245,7 +277,9 @@ impl Proxy {
         });
         match then.ok_or(Error::Invalid)? {
             Then::Drop => Ok(()),
-            Then::Answer => kernel.calls(id).done(token, outcome),
+            Then::Answer(promise) => {
+                kernel.calls(id).done(token, promised(promise, outcome))
+            }
             Then::Root { rd } => self.rooted(rd, &outcome),
             Then::Found { at, want } => {
                 let rest = match outcome {
@@ -270,15 +304,17 @@ impl Proxy {
     /// behind it, or, where the last remote left while the `open` was
     /// in flight, a close does and the handle is nobody's.
     fn opened(&self, token: Token, rd: Rd, outcome: &Outcome) {
-        let Ok(Out::Handle(h)) = *outcome else { return };
         let mut s = self.state.borrow_mut();
-        let op = match s.watched.get_mut(&rd) {
-            Some(row) => {
-                row.h = Some(h);
-                Op::Watch { h, on: true }
-            }
-            None => Op::Close { h },
+        let Ok(Out::Handle(h)) = *outcome else {
+            // Refused: the row has no handle and never will, so it
+            // goes rather than standing in the way of the `Open` the
+            // next watcher of this rd costs. Whoever watches it now
+            // hears nothing until one of them watches again, which is
+            // what a refused `open` left them before.
+            s.watched.remove(&rd);
+            return;
         };
+        let op = held(&mut s, rd, h);
         s.queue.push_back(Job { token, op, then: Then::Drop });
     }
 
@@ -290,10 +326,10 @@ impl Proxy {
     fn watching(&self, rd: Rd, on: bool) {
         let mut s = self.state.borrow_mut();
         let op = if on { first(&mut s, rd) } else { last(&mut s, rd) };
+        drop(s);
         let Some(op) = op else { return };
-        let token = s.token();
         let then = if on { Then::Watching { rd } } else { Then::Drop };
-        s.queue.push_back(Job { token, op, then });
+        self.own(op, then);
     }
 
     /// A change the Client announced, put on the mirror row for the rd
@@ -390,10 +426,18 @@ impl Proxy {
     }
 
     /// One more op on a token a caller is already waiting on: it goes
-    /// behind whatever else is queued and is counted with the rest.
+    /// behind whatever else is queued, counted with the rest and
+    /// refused by nothing ([`QUEUE`]).
     fn hold(&self, token: Token, op: Op, then: Then) {
         let mut s = self.state.borrow_mut();
         s.queue.push_back(Job { token, op, then });
+    }
+
+    /// The same on a token of the proxy's own, for the ops no caller
+    /// ever waits on: a watch's and a close's.
+    fn own(&self, op: Op, then: Then) {
+        let token = self.state.borrow_mut().token();
+        self.hold(token, op, then);
     }
 
     /// One op for the Client and the token the caller waits on, or
@@ -425,7 +469,7 @@ impl Driver for Proxy {
         // The cookie the Kernel writes into the slot is the Client's
         // own handle, so every op after this one names it already and
         // the proxy keeps one table and not two.
-        self.queue(Op::Open { rd, rights }, Then::Answer)
+        self.queue(Op::Open { rd, rights }, Then::Answer(Promise::Handle))
     }
 
     fn read(
@@ -436,7 +480,8 @@ impl Driver for Proxy {
         len: usize,
     ) -> Reply<Vec<u8>> {
         let len = u32::try_from(len).unwrap_or(u32::MAX);
-        self.queue(Op::Read { h: Handle(h), at, len }, Then::Answer)
+        let op = Op::Read { h: Handle(h), at, len };
+        self.queue(op, Then::Answer(Promise::Bytes))
     }
 
     fn write(
@@ -447,7 +492,8 @@ impl Driver for Proxy {
         buf: &[u8],
     ) -> Reply<usize> {
         let bytes = buf.to_vec();
-        self.queue(Op::Write { h: Handle(h), at, bytes }, Then::Answer)
+        let op = Op::Write { h: Handle(h), at, bytes };
+        self.queue(op, Then::Answer(Promise::Len))
     }
 
     fn call(
@@ -459,7 +505,8 @@ impl Driver for Proxy {
         input: &[u8],
     ) -> Reply<Vec<u8>> {
         let input = input.to_vec();
-        self.queue(Op::Call { h: Handle(h), api, method, input }, Then::Answer)
+        let op = Op::Call { h: Handle(h), api, method, input };
+        self.queue(op, Then::Answer(Promise::Bytes))
     }
 
     fn watch(&self, _: &dyn Calls, rd: Rd, on: bool) -> Reply<()> {
@@ -476,31 +523,64 @@ impl Driver for Proxy {
     fn close(&self, _: &dyn Calls, h: u64) -> Reply<()> {
         // The handle is gone at the Kernel whatever the Client says,
         // so the remote is answered here and the Client hears of it
-        // with the next `Since`.
-        let _: Reply<()> = self.queue(Op::Close { h: Handle(h) }, Then::Drop);
+        // with the next `Since`. [`QUEUE`] does not refuse this one: a
+        // close it dropped would leave a handle at the Client for ever
+        // and no record of it anywhere.
+        self.own(Op::Close { h: Handle(h) }, Then::Drop);
         Reply::ok(())
     }
 }
 
-/// One watcher more on `rd`: the `Open` the first of them costs, and
-/// nothing for any after it.
+/// One watcher more on `rd`: the `Open` the row costs when it is made,
+/// and nothing for any watcher after it. A row whose `open` is still
+/// in flight is one of those: its `done` reads the count and needs no
+/// second `Open` to find it.
 fn first(s: &mut State, rd: Rd) -> Option<Op> {
-    let row = s.watched.entry(rd).or_default();
-    row.n += 1;
-    (row.n == 1).then_some(Op::Open { rd, rights: Rights::READ })
+    let made = !s.watched.contains_key(&rd);
+    s.watched.entry(rd).or_default().n += 1;
+    made.then_some(Op::Open { rd, rights: Rights::READ })
 }
 
 /// One watcher fewer on `rd`: the `Close` the last of them costs, and
 /// nothing while another holds it. A row whose `open` has not answered
-/// leaves no op here; the `done` it lands with closes the handle.
+/// leaves no op here and stands where it is; the `done` it lands with
+/// closes the handle.
 fn last(s: &mut State, rd: Rd) -> Option<Op> {
     let row = s.watched.get_mut(&rd)?;
     row.n = row.n.saturating_sub(1);
-    if row.n > 0 {
+    if row.n > 0 || row.h.is_none() {
         return None;
     }
     let held = s.watched.remove(&rd)?.h?;
     Some(Op::Close { h: held })
+}
+
+/// The handle a watched row's `Open` answered: the `Watch` that goes
+/// out behind it, or the `Close` that makes it nobody's where the last
+/// remote left while that `open` was in flight.
+fn held(s: &mut State, rd: Rd, h: Handle) -> Op {
+    if s.watched.get(&rd).is_none_or(|row| row.n == 0) {
+        s.watched.remove(&rd);
+        return Op::Close { h };
+    }
+    if let Some(row) = s.watched.get_mut(&rd) {
+        row.h = Some(h);
+    }
+    Op::Watch { h, on: true }
+}
+
+/// The outcome as the op promises it: an `Err` whatever the op, every
+/// op being allowed to fail, the one `Out` the shape names, and
+/// `Invalid` for anything else a Client may have sent, which is no
+/// answer to the op its caller ran.
+fn promised(promise: Promise, outcome: Outcome) -> Outcome {
+    let Ok(out) = &outcome else { return outcome };
+    match (promise, out) {
+        (Promise::Handle, Out::Handle(_))
+        | (Promise::Bytes, Out::Bytes(_))
+        | (Promise::Len, Out::Len(_)) => outcome,
+        _ => Err(Error::Invalid),
+    }
 }
 
 /// One mirror row for a Client's rd: registered under `at` with the

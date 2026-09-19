@@ -95,6 +95,15 @@ impl Calls for ModuleCalls<'_> {
             Some(h) => opened(&mut s, h, outcome),
             None => outcome,
         };
+        // A listing the Driver has now made is what its rd's cache
+        // answers from: the rd counts as listed here, so one that is
+        // refused leaves the cache to the next `Children`.
+        let listing = s.pending.listed_of(self.module, token.0);
+        if let (Some(rd), true) = (listing, outcome.is_ok())
+            && let Ok(entry) = s.table.get_mut(rd)
+        {
+            entry.listed = true;
+        }
         let handle = s.pending.done(self.module, token.0, outcome)?;
         if let Some(slot) = handle.and_then(|h| s.handles.get_mut(&h)) {
             slot.pending = slot.pending.saturating_sub(1);
