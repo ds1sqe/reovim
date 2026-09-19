@@ -249,7 +249,7 @@ shown shell '^/ >'
 keys shell c d " " / m o d u l e Enter
 shown shell '^/module >'
 keys shell l s Enter
-shown shell 'coreutils  fs  sysutils  text'
+shown shell 'coreutils  fs  search  sysutils  text'
 # `|` puts one run's output into the next run's input; every stage but
 # the last writes for no screen, so `grep` matches a name and no escape.
 keys shell l s " " "|" " " g r e p " " t e x t Enter
@@ -840,7 +840,7 @@ ended words
 # at all, so neither the buffer's color nor anyone's width reaches the
 # target, where 01.8 left the escapes in.
 for host in "$DIR/f" "$DIR/shell/f" "$DIR/words/f"; do
-    [[ "$(cat "$host")" == $'coreutils\nfs\nsysutils\ntext' ]] \
+    [[ "$(cat "$host")" == $'coreutils\nfs\nsearch\nsysutils\ntext' ]] \
         || fail "$host holds $(tr '\n' ' ' < "$host")"
 done
 

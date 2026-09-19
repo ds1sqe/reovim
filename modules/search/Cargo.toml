@@ -1,0 +1,23 @@
+[package]
+name = "reovim-module-search"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+reovim-kernel-interface = { path = "../../kernel/interface" }
+reovim-pattern = { path = "../../lib/pattern" }
+reovim-sdk = { path = "../../sdk/rust" }
+reovim-search-api = { path = "api" }
+
+[dev-dependencies]
+reovim-client = { path = "../../clients/core" }
+reovim-client-api = { path = "../../clients/core/api" }
+reovim-rig = { path = "../../clients/rig" }
+
+[lints]
+workspace = true

@@ -16,11 +16,12 @@ use crate::Fail;
 use crate::link::MODULES;
 
 /// What the Client loads of its own, by the names `modules` lists:
-/// the two whose Drivers a typed line runs. fs and text are the
-/// server's, holding what is on its disk.
-const MINE: [&str; 2] = ["coreutils", "sysutils"];
+/// coreutils and sysutils, whose Drivers a typed line runs under
+/// `/self/bin`, and search, whose home is `/self/search` on its own.
+/// fs and text are the server's, holding what is on its disk.
+const MINE: [&str; 3] = ["coreutils", "search", "sysutils"];
 
-/// The Host over `client`: the two Modules loaded under `/self`, and
+/// The Host over `client`: the three Modules loaded under `/self`, and
 /// `/self/bin`'s `load` and `unload` over the `.rvm` files of this
 /// machine.
 pub fn over(client: Client) -> Result<Rc<Host>, Fail> {

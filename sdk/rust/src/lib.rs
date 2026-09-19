@@ -9,8 +9,10 @@
 //! and the output cell one of them answers a run with. Beside them
 //! what both sides of a Resource read the same way: the log's
 //! entries, the ops anything makes over its own `Calls`, a look and
-//! the meanings a theme resolves to one, and a Kernel instant as a
-//! calendar reads it. It links kernel/interface and nothing else.
+//! the meanings a theme resolves to one, a Kernel instant as a
+//! calendar reads it, and `progress`, a long fill's two numbers and
+//! the arithmetic of `eta`, caring for no render policy of its own.
+//! It links kernel/interface and nothing else.
 
 extern crate alloc;
 
@@ -23,6 +25,7 @@ pub mod log;
 pub mod look;
 pub mod ops;
 pub mod path;
+pub mod progress;
 pub mod sgr;
 mod typed;
 pub mod walk;

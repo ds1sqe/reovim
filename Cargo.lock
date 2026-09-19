@@ -140,6 +140,7 @@ dependencies = [
  "reovim-kernel-runtime",
  "reovim-module-coreutils",
  "reovim-module-fs",
+ "reovim-module-search",
  "reovim-module-sysutils",
  "reovim-module-text",
  "reovim-plugin-cli",
@@ -263,6 +264,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-module-search"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-client",
+ "reovim-client-api",
+ "reovim-kernel-interface",
+ "reovim-pattern",
+ "reovim-rig",
+ "reovim-sdk",
+ "reovim-search-api",
+]
+
+[[package]]
 name = "reovim-module-sysutils"
 version = "0.16.0-dev"
 dependencies = [
@@ -360,6 +374,13 @@ version = "0.16.0-dev"
 dependencies = [
  "reovim-kernel-interface",
  "reovim-text-api",
+]
+
+[[package]]
+name = "reovim-search-api"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-sdk",
 ]
 
 [[package]]

@@ -8,6 +8,8 @@ Modules the Kernel loads. Each Module holds one or more Drivers.
   as Containers and byte rds.
 - `hello`: a C example Driver, showing the module ABI from outside
   the workspace.
+- `search`: the search Driver: `open` starts a view over any rd it
+  can read, filling with a pattern's matches a slice at a time.
 - `sysutils`: the Module that provides the Drivers under `/bin` that
   face the Kernel itself: `log`, `dmesg`, `call`, `watch`, `date`,
   `uptime`, `capture`, and `keys`.
