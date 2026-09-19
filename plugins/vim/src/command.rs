@@ -213,18 +213,15 @@ impl Vim {
 
     /// A `:` line with no word on it: the cursor to the last line the
     /// range names, at its first non-blank, where `:12` and `:$` leave
-    /// it, `'` set first when it moves; nothing at all for a line
-    /// that named no range either.
+    /// it; nothing at all for a line that named no range either. A
+    /// bare address is not a jump: it pushes nothing of its own, so
+    /// `'` is not this door's to set.
     fn addressed(&mut self, range: Lines, named: bool) -> Effect {
         if !named {
             return Effect::Moved;
         }
         let at = self.line_at(range.1).unwrap_or(self.cursor);
-        let to = self.first_non_blank(at);
-        if to != self.cursor {
-            self.set_previous();
-        }
-        self.go_clamped(to)
+        self.go_clamped(self.first_non_blank(at))
     }
 
     /// `[range]` off the front: `%`, `'a,'b` (`'<,'>` among them, `<`

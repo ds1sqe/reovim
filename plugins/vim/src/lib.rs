@@ -19,6 +19,7 @@ extern crate alloc;
 
 pub mod bins;
 mod command;
+mod jumps;
 mod marks;
 mod motion;
 mod object;
@@ -38,6 +39,7 @@ pub use plugin::Editor;
 pub use reovim_client_api::{Key, notation};
 pub use visual::Visual;
 
+use jumps::{Jump, Jumps};
 use marks::Marks;
 use operator::{Find, Operator};
 use reovim_client_api::{BAR, BLOCK, MATCH, NONE, SELECTION, window};
@@ -137,11 +139,12 @@ pub enum Effect {
     Complete(String),
     /// A put wants the clipboard's text: `pasted` finishes it.
     Clipboard,
-    /// A file mark whose source is not the loaded Buffer's: the
-    /// source to show here instead, and the position and its
-    /// exactness, for the Plugin to read into `arrive` once the ask
-    /// has gone out; see that field for the rest of the story.
-    Goto(Rd, Pos, bool),
+    /// A file mark or a jump list entry whose source is not the
+    /// loaded Buffer's: the source to show here instead, and the
+    /// position and how it lands, for the Plugin to read into
+    /// `arrive` once the ask has gone out; see that field for the
+    /// rest of the story.
+    Goto(Rd, Pos, Land),
 }
 
 /// One `:` line as Vim read it: the range off its front, in lines from
@@ -170,6 +173,20 @@ pub enum Quit {
     Write,
     /// `:cq`: exit 1, so the caller uses nothing.
     Abort,
+}
+
+/// Where a jump lands.
+///
+/// `'x`'s own `Line`, to the first non-blank; `` `x ``'s own `Exact`,
+/// on the mark's own column; `<C-o>`'s and `<Tab>`'s own `Walked`,
+/// exact like `Exact` but not itself a jump — `jump_to` sets neither
+/// `'` nor a jump-list entry for it, and `leave` reads it straight off
+/// `arrive` to know a walk of the list from a real jump.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Land {
+    Line,
+    Exact,
+    Walked,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -426,16 +443,20 @@ pub struct Vim {
     /// `A`-`Z`, by source: not one Buffer's, and not moved by an edit
     /// in a Buffer that is not the one they name.
     files: BTreeMap<char, (Rd, Pos)>,
-    /// A file mark named by a Buffer that is not the loaded one: set
-    /// by the Plugin once `Effect::Goto`'s ask has gone out, never by
-    /// the engine itself, so a refused ask leaves nothing here to
-    /// set. `start` takes it at its very own top, before the fallible
-    /// work between the swap and its own `opened`, which is passed
-    /// what was taken: a `start` that fails drops it with the local
-    /// it became, rather than leaving it here for a later, unrelated
-    /// `start` to find. Not `left`'s to reset: it must outlive the
-    /// `leave` and `start` the swap runs between.
-    arrive: Option<(Rd, Pos, bool)>,
+    /// `<C-o>` and `<Tab>`'s own list: one for every Buffer, moved
+    /// through `marked` as the file marks are.
+    jumps: Jumps,
+    /// A file mark or a jump list entry named by a Buffer that is not
+    /// the loaded one: set by the Plugin once `Effect::Goto`'s ask has
+    /// gone out, never by the engine itself, so a refused ask leaves
+    /// nothing here to set. `start` takes it at its very own top,
+    /// before the fallible work between the swap and its own
+    /// `opened`, which is passed what was taken: a `start` that fails
+    /// drops it with the local it became, rather than leaving it here
+    /// for a later, unrelated `start` to find. Not `left`'s to reset:
+    /// it must outlive the `leave` and `start` the swap runs between,
+    /// which is what lets `leave` read its own `Land` (see that type).
+    arrive: Option<(Rd, Pos, Land)>,
 }
 
 impl Vim {
@@ -639,7 +660,7 @@ impl Vim {
     /// and sets no `[`, `]` or `.`.
     fn marked(&mut self, edit: &Edit) {
         let source = self.source;
-        self.marks.moved(edit, &mut self.files, source);
+        self.marks.moved(edit, &mut self.files, &mut self.jumps.list, source);
     }
 
     /// The last real char before byte `end` of the text now held, a
@@ -731,6 +752,8 @@ impl Vim {
             Key::Char('<') => return self.operator(Operator::ShiftLeft, n),
             Key::Char(c @ ('/' | '?')) => return self.prompt(c, count),
             _ if self.pending.operator.take().is_some() => Effect::Nothing,
+            Key::Ctrl('o') => return self.jumped(true, n),
+            Key::Tab => return self.jumped(false, n),
             Key::Char('~') => self.tilde(n),
             Key::Char('v') => self.enter_visual(Visual::Char),
             Key::Char('V') => self.enter_visual(Visual::Line),
@@ -1218,11 +1241,23 @@ impl Vim {
     /// when `arrive` (see that field) names this source, is it jumped
     /// to: a file mark elsewhere must land on the Buffer's own kept
     /// place, undo list and local marks, not before they are there.
+    /// `jump_to`'s own `Land` tells a jump-list crossing from a file
+    /// mark's, so 01.1's one line still does the whole of it.
+    ///
+    /// An empty jump list is seeded here at line 0 of this Buffer:
+    /// nvim's own list already holds one entry from the start, `'`
+    /// already the valid mark there too (`found_mark`'s own default
+    /// answers the same position without needing an entry for it).
+    /// `start` sets `source` before calling this, so the seed is
+    /// named. The list is empty again only when its one entry was
+    /// never named and a later `leave` forgot it, or a walk found it
+    /// standing on the cursor's own line and dropped it (`Jumps::
+    /// clean`) — seeding the new Buffer's own line 0 then is sound.
     pub(crate) fn opened(
         &mut self,
         bytes: &[u8],
         line: u64,
-        arrive: Option<(Rd, Pos, bool)>,
+        arrive: Option<(Rd, Pos, Land)>,
     ) {
         self.text.clear();
         self.marks = Marks::default();
@@ -1241,10 +1276,14 @@ impl Vim {
             }
             None => self.begin(self.beginning(line)),
         }
-        if let Some((rd, pos, exact)) = arrive
+        if self.jumps.list.is_empty() {
+            let source = self.source;
+            self.jumps.push(Jump { source, pos: Pos::default() });
+        }
+        if let Some((rd, pos, land)) = arrive
             && Some(rd) == self.source
         {
-            self.jump_to(pos, exact);
+            self.jump_to(pos, land);
         }
     }
 
@@ -1265,7 +1304,20 @@ impl Vim {
     /// untouched. A second call, `start` having failed before a draft
     /// was opened, finds no buffer and writes no `Place` over a good
     /// one.
+    ///
+    /// Every door a Buffer is left by is a jump, the cursor's own
+    /// place pushed, unless the stay ends by a walk of the jump list
+    /// itself: `arrive`'s own `Land::Walked` tells that door from
+    /// every other one, set after the ask went out and read here
+    /// before the swap's own `start` can take it. The entries naming
+    /// no source at all are then dropped, nothing left to come back
+    /// to a Buffer over nothing by.
     pub(crate) fn leave(&mut self) {
+        let walked = matches!(self.arrive, Some((_, _, Land::Walked)));
+        if self.buffer.is_some() && !walked {
+            let pos = self.pos_at(self.cursor);
+            self.jumps.push(Jump { source: self.source, pos });
+        }
         if let Some(buffer) = self.buffer.take() {
             self.places.insert(
                 buffer,
@@ -1278,6 +1330,7 @@ impl Vim {
                 },
             );
         }
+        self.jumps.forget_unnamed();
         self.mode = Mode::default();
         self.pending = Pending::default();
         self.joining = false;
@@ -1298,6 +1351,14 @@ impl Vim {
         self.h = None;
         self.source = None;
         self.name = None;
+    }
+
+    /// A Buffer over nothing gains `rd` as its source: every jump it
+    /// made while it had none is `rd`'s now, so it is still tracked
+    /// once this Buffer is left and later found again by name.
+    pub(crate) fn sourced(&mut self, rd: Rd) {
+        self.jumps.named(rd);
+        self.source = self.source.or(Some(rd));
     }
 
     /// The byte line `n` starts at, counted from 1 and clamped to the

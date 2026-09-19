@@ -7,8 +7,9 @@ use alloc::vec::Vec;
 
 use reovim_kernel_interface::Rd;
 
+use crate::jumps::Jump;
 use crate::{
-    Edit, Effect, Key, Kind, Mode, Pos, Put, Register, Vim, Visual, moved,
+    Edit, Effect, Key, Kind, Land, Mode, Pos, Put, Register, Vim, Visual, moved,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -337,21 +338,26 @@ impl Vim {
     }
 
     /// `'` set to the cursor's own position, before a jump moves it:
-    /// `Line`, `Percent`, the three searches, `Mark` and `addressed`
-    /// when the cursor moved.
+    /// `Line`, `Percent`, the three searches, `Mark`, and `jump_to`'s
+    /// own arrival by a file mark. The departing place is kept in the
+    /// jump list too.
     pub(crate) fn set_previous(&mut self) {
         let pos = self.pos_at(self.cursor);
         self.marks.local.insert('\'', pos);
+        self.jumps.push(Jump { source: self.source, pos });
     }
 
     /// Where `name` points, and the source elsewhere than this
     /// Buffer's when it is a file mark that names one. `None` for a
     /// name not set: the tables only ever hold valid names, so
     /// nothing here filters `name` first. The quote and the backtick
-    /// both read `'`, the one previous-position mark.
+    /// both read `'`, the one previous-position mark, valid from the
+    /// start at line 0 even before anything has set it (nvim's own
+    /// default there).
     pub(crate) fn found_mark(&self, name: char) -> Option<(Option<Rd>, Pos)> {
         let key = if name == '`' { '\'' } else { name };
-        if let Some(&pos) = self.marks.local.get(&key) {
+        let default = (key == '\'').then(Pos::default);
+        if let Some(pos) = self.marks.local.get(&key).copied().or(default) {
             return Some((None, self.visual_end(key, pos)));
         }
         let &(rd, pos) = self.files.get(&name)?;
@@ -386,19 +392,55 @@ impl Vim {
             self.message = String::from("E20: Mark not set");
             return Effect::Nothing;
         };
-        let Some(rd) = elsewhere else { return self.jump_to(pos, exact) };
+        let land = if exact { Land::Exact } else { Land::Line };
+        let Some(rd) = elsewhere else { return self.jump_to(pos, land) };
         if self.pending.running {
             return Effect::Nothing;
         }
-        Effect::Goto(rd, pos, exact)
+        Effect::Goto(rd, pos, land)
     }
 
-    /// `pos`, exact or linewise to its first non-blank.
-    pub(crate) fn jump_to(&mut self, pos: Pos, exact: bool) -> Effect {
-        self.set_previous();
+    /// `pos`, landed as `land` says (see that type).
+    pub(crate) fn jump_to(&mut self, pos: Pos, land: Land) -> Effect {
+        if land != Land::Walked {
+            self.set_previous();
+        }
         let at = self.byte_at(pos);
-        let to = if exact { at } else { self.first_non_blank(at) };
+        let to = if land == Land::Line { self.first_non_blank(at) } else { at };
         self.go_clamped(to)
+    }
+
+    /// `<C-o>` (`back`) and `<Tab>`, `n` at a time: `Jumps::walk` does
+    /// the walking; `None` moves nothing. An entry of another source
+    /// asks the Client to arrive there (`Effect::Goto`, `Land::
+    /// Walked`); one of this source lands here (`landed`). `'` is set
+    /// to where the walk stood if it began at the newest end.
+    pub(crate) fn jumped(&mut self, back: bool, n: usize) -> Effect {
+        let here = Jump { source: self.source, pos: self.pos_at(self.cursor) };
+        let newest = self.jumps.at == self.jumps.list.len();
+        let Some(jump) = self.jumps.walk(back, n, here) else {
+            return Effect::Nothing;
+        };
+        if newest {
+            self.marks.local.insert('\'', here.pos);
+        }
+        let effect =
+            jump.source.filter(|_| jump.source != self.source).map_or_else(
+                || self.landed(jump.pos),
+                |source| Effect::Goto(source, jump.pos, Land::Walked),
+            );
+        self.settle(&effect);
+        effect
+    }
+
+    /// `jumped`'s own entry of this source: E19 for a line the Buffer
+    /// no longer has, else landed as a walk lands.
+    fn landed(&mut self, pos: Pos) -> Effect {
+        if pos.line >= self.line_count() {
+            self.message = String::from("E19: Mark has invalid line number");
+            return Effect::Nothing;
+        }
+        self.jump_to(pos, Land::Walked)
     }
 
     /// The span `motion` covers from the cursor, `n` times, for an

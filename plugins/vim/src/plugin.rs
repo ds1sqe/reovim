@@ -47,7 +47,7 @@ use reovim_sdk::{cell, decode, encode, ops};
 use reovim_text_api::{history, publish, text};
 
 use crate::command::{Typed, options, typed};
-use crate::{Edit, Effect, Ex, Mode, Pos, Quit, Vim, bins};
+use crate::{Edit, Effect, Ex, Land, Mode, Pos, Quit, Vim, bins};
 
 /// What `:q` says to unsaved changes.
 const E37: &str = "E37: No write since last change (add ! to override)";
@@ -81,8 +81,8 @@ const DRIVER: DriverId = DriverId(0);
 /// over, and one stay at the Plugin.
 ///
 /// The engine is not part of a stay: registers, the last search and
-/// the rest of what settlement 2 keeps must outlive it, and the per-
-/// Buffer record `left` (lib.rs) keeps outlives it too. `stay` is
+/// the rest of what is kept across a restart must outlive it, and the
+/// per-Buffer record `left` (lib.rs) keeps outlives it too. `stay` is
 /// `None` before the first `start` and while one has failed; a second
 /// `Rc` clone of it never outlives an op, so no read finds it held.
 #[derive(Default)]
@@ -119,6 +119,8 @@ struct Cells {
     /// A line a mark: `NAME LINE COLUMN`, a file mark's followed by
     /// where its source is.
     marks: Rd,
+    /// `jumps_listed`'s own rd.
+    jumps: Rd,
     /// `/self/vim/bin`, whose listing is the order a `:` line resolves
     /// a name in.
     bin: Rd,
@@ -132,8 +134,8 @@ impl Editor {
     }
 
     /// Its Module and its one Driver, for a table to give. Every start
-    /// is this same Editor's, so the state settlement 2 keeps outlives
-    /// every swap of the region.
+    /// is this same Editor's, so the state kept across a restart
+    /// outlives every swap of the region.
     #[must_use]
     pub fn booted(self: &Rc<Self>) -> Booted {
         Booted { module: self.clone(), drivers: alloc::vec![self.clone()] }
@@ -280,6 +282,8 @@ impl Editor {
             vim.showcmd()
         } else if rd == cells.marks {
             marks_listed(ctx, &vim)
+        } else if rd == cells.jumps {
+            jumps_listed(ctx, &vim)
         } else {
             vim.stored(*cells.registers.get(&rd)?)
         };
@@ -388,23 +392,22 @@ impl Editor {
             // The empty name, as `edited` uses: the Client's table
             // answers by the rd's shape, there being no second Vim to
             // ask for by name; see `arrive` for the rest.
-            Effect::Goto(rd, pos, exact) => self.arriving(ctx, rd, pos, exact),
+            Effect::Goto(rd, pos, land) => self.arriving(ctx, rd, pos, land),
         })
     }
 
-    /// `Effect::Goto`'s own arm, kept apart from it: inlined into the
-    /// `match` above, its own `if` nests one level past what clippy's
-    /// `excessive_nesting` allows there (the `match` is already one
-    /// deep inside `stale`'s own closure).
+    /// `Effect::Goto`'s own arm, apart for clippy's nesting bound. A
+    /// refused ask sets `arrive` nothing, so there is nothing here for
+    /// a later, unrelated `leave` to mistake for one.
     fn arriving(
         &self,
         ctx: &dyn Calls,
         rd: Rd,
         pos: Pos,
-        exact: bool,
+        land: Land,
     ) -> Result<(), Error> {
         if self.shown(ctx, rd, "", false)? {
-            self.vim.borrow_mut().arrive = Some((rd, pos, exact));
+            self.vim.borrow_mut().arrive = Some((rd, pos, land));
         }
         Ok(())
     }
@@ -600,8 +603,7 @@ impl Editor {
     ) -> Result<bool, Error> {
         self.fixing(ctx)?;
         publish::Call(&mut ctx, self.handle()?).save_as(target)?;
-        let mut vim = self.vim.borrow_mut();
-        vim.source = vim.source.or(Some(target));
+        self.vim.borrow_mut().sourced(target);
         Ok(true)
     }
 
@@ -1046,11 +1048,12 @@ fn registered(ctx: &dyn Calls, home: Rd, view: Rd) -> Result<Cells, Error> {
         registers.insert(read(under, &format!("{name}"), one)?, name);
     }
     let marks = read(home, "marks", one)?;
+    let jumps = read(home, "jumps", one)?;
     let bin = read(home, "bin", held)?;
     for (name, decl) in bins::declared() {
         node(bin, name, held, core::slice::from_ref(&decl))?;
     }
-    Ok(Cells { view, mode, pending, registers, marks, bin })
+    Ok(Cells { view, mode, pending, registers, marks, jumps, bin })
 }
 
 /// `/self/vim/marks`: a line a mark, `NAME LINE COLUMN`, the line
@@ -1069,6 +1072,24 @@ fn marks_listed(ctx: &dyn Calls, vim: &Vim) -> String {
     for (&name, &(source, pos)) in &vim.files {
         let path = ops::where_is(ctx, source).unwrap_or_default();
         let _ = writeln!(out, "{name} {} {} {path}", pos.line + 1, pos.column);
+    }
+    out
+}
+
+/// `/self/vim/jumps`: a line a jump, oldest first, `>` before the one
+/// the list stands at and a space before the rest, then `LINE COLUMN`
+/// as the `marks` cell counts them, then where a jump of another
+/// source than this Buffer's is.
+fn jumps_listed(ctx: &dyn Calls, vim: &Vim) -> String {
+    let mut out = String::new();
+    for (i, jump) in vim.jumps.list.iter().enumerate() {
+        let mark = if i == vim.jumps.at { '>' } else { ' ' };
+        let _ = write!(out, "{mark}{} {}", jump.pos.line + 1, jump.pos.column);
+        if let Some(source) = jump.source.filter(|&s| Some(s) != vim.source) {
+            let path = ops::where_is(ctx, source).unwrap_or_default();
+            let _ = write!(out, " {path}");
+        }
+        let _ = writeln!(out);
     }
     out
 }

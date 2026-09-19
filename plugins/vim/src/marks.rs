@@ -1,7 +1,6 @@
 //! Positions that survive edits: a line and a column, never a byte
 //! offset into the text, one Buffer's local table of them, and
-//! `moved`, the one door through which every edit reaches them
-//! (settlement 3 of 01-rung3.md; 01.1-marks.md).
+//! `moved`, the one door through which every edit reaches them.
 //!
 //! The bytes an edit removed are gone by the time `Vim::marked` sees
 //! it, so a mark cannot be found by re-reading the text: `starts`
@@ -14,13 +13,14 @@ use alloc::vec::Vec;
 use reovim_kernel_interface::Rd;
 
 use crate::Edit;
+use crate::jumps::Jump;
 
 /// A line and a column, both from 0, the column in bytes.
 ///
 /// How nvim keeps a position (`:help getpos`), and so how `moved`
 /// keeps one too, one unit with the edits it moves through, which are
 /// bytes themselves.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct Pos {
     pub line: usize,
     pub column: usize,
@@ -51,10 +51,8 @@ impl Default for Marks {
 }
 
 /// `starts` and `length` together, `moved`'s own two threaded through
-/// every free function below it as one argument, short enough at
-/// each call's own line to stay a plain expression, not a block: the
-/// nested block a call needing its own would be is one past what
-/// clippy's `excessive_nesting` allows in `moved`.
+/// every free function below it as one argument, apart for clippy's
+/// nesting bound in `moved`.
 type Index<'a> = (&'a [usize], usize);
 
 /// The line byte `at` falls on.
@@ -162,8 +160,7 @@ fn retain_file(
 }
 
 /// Every file mark of `source`, moved with `edit` and kept: a free
-/// function, not `moved`'s own `if let Some(source)` block, whose
-/// nesting there is one past what clippy's `excessive_nesting` allows.
+/// function, apart for clippy's nesting bound.
 fn retain_files(
     index: Index<'_>,
     source: Rd,
@@ -174,13 +171,17 @@ fn retain_files(
 }
 
 impl Marks {
-    /// Every local mark and, of `files`, every one whose source is
-    /// `source`, moved by `edit`; `starts` and `length` brought up to
-    /// date after.
+    /// Every local mark, of `files` every one whose source is
+    /// `source`, and of `jumps` every one of `source` too (`None`
+    /// included, a Buffer over nothing moving its own; never dropped
+    /// for a wholly taken line, `retain_local`'s own rule for `'` and
+    /// the other special marks), moved by `edit`; `starts` and
+    /// `length` brought up to date after.
     pub(crate) fn moved(
         &mut self,
         edit: &Edit,
         files: &mut BTreeMap<char, (Rd, Pos)>,
+        jumps: &mut [Jump],
         source: Option<Rd>,
     ) {
         let Self { local, starts, length } = self;
@@ -188,6 +189,9 @@ impl Marks {
         local.retain(|&name, pos| retain_local(index, name, pos, edit));
         if let Some(source) = source {
             retain_files(index, source, files, edit);
+        }
+        for jump in jumps.iter_mut().filter(|jump| jump.source == source) {
+            retain_local(index, '\'', &mut jump.pos, edit);
         }
         self.reindex_after(edit);
     }
@@ -222,6 +226,7 @@ mod tests {
 
     use super::{Marks, Pos, move_one};
     use crate::Edit;
+    use crate::jumps::Jump;
 
     fn edit(at: usize, len: usize, text: &str) -> Edit {
         Edit { at, len, text: String::from(text), join: false }
@@ -253,7 +258,8 @@ mod tests {
             marks.local.insert(name, pos);
         }
         let mut files = BTreeMap::new();
-        marks.moved(edit, &mut files, None);
+        let mut jumps = Vec::new();
+        marks.moved(edit, &mut files, &mut jumps, None);
         let mut after = String::from(text);
         after.replace_range(edit.at..edit.at + edit.len, &edit.text);
         let want = fresh(&after);
@@ -443,12 +449,43 @@ mod tests {
         let mut files = BTreeMap::new();
         files.insert('A', (source, at(2, 0)));
         files.insert('B', (elsewhere, at(2, 0)));
-        marks.moved(&edit(0, 0, "new\n"), &mut files, Some(source));
+        let mut jumps = Vec::new();
+        marks.moved(&edit(0, 0, "new\n"), &mut files, &mut jumps, Some(source));
         assert_eq!(files[&'A'], (source, at(3, 0)), "shifted with its source");
         assert_eq!(
             files[&'B'],
             (elsewhere, at(2, 0)),
             "another source, untouched"
         );
+    }
+
+    #[test]
+    fn a_jump_below_an_edit_shifts_and_one_of_another_source_stands() {
+        let (starts, length) = fresh("a\nb\nc\n");
+        let mut marks = Marks { starts, length, ..Marks::default() };
+        let source = Rd(1);
+        let elsewhere = Rd(2);
+        let mut files = BTreeMap::new();
+        let mut jumps = vec![
+            Jump { source: Some(source), pos: at(2, 0) },
+            Jump { source: Some(elsewhere), pos: at(2, 0) },
+        ];
+        marks.moved(&edit(0, 0, "new\n"), &mut files, &mut jumps, Some(source));
+        assert_eq!(jumps[0].pos, at(3, 0), "shifted with its source");
+        assert_eq!(jumps[1].pos, at(2, 0), "another source, untouched");
+    }
+
+    #[test]
+    fn a_jump_on_a_removed_line_goes_to_the_edits_first_line() {
+        // Unlike a letter mark (dropped), a jump is relocated, never
+        // lost: `dd` of "b" (the jump's own line) lands it where the
+        // edit began.
+        let (starts, length) = fresh("a\nb\nc\n");
+        let mut marks = Marks { starts, length, ..Marks::default() };
+        let source = Rd(1);
+        let mut files = BTreeMap::new();
+        let mut jumps = vec![Jump { source: Some(source), pos: at(1, 0) }];
+        marks.moved(&edit(2, 2, ""), &mut files, &mut jumps, Some(source));
+        assert_eq!(jumps[0].pos, at(1, 0), "the edit's own first line");
     }
 }

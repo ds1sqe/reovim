@@ -772,6 +772,30 @@ keys marks : q Enter
 ended marks
 [[ "$ENDED" == 0 ]] || fail "the marks pane did not quit"
 
+# --- G, gg, C-o, C-o, Tab: the jump list; /self/vim/jumps ------------
+mkdir "$DIR/jumps"
+printf 'one\ntwo\nthree\nfour\nfive\n' > "$DIR/jumps/a"
+start jumps "$DIR/jumps" "$BIN a"
+editing jumps a
+keys jumps G
+shown jumps 'a  5:1'
+keys jumps g g
+shown jumps 'a  1:1'
+keys jumps C-o
+shown jumps 'a  5:1'
+# Past the oldest end, no count typed: moves nothing, still line 5.
+keys jumps C-o
+shown jumps 'a  5:1'
+# Ctrl-I: no terminal tells it from Tab, which is what a real one
+# gives crossterm and `decode` answers `Key::Tab` from.
+keys jumps C-i
+shown jumps 'a  1:1'
+keys jumps : c a t Space / s e l f / v i m / j u m p s Enter
+shown jumps ' 5 0'
+keys jumps : q Enter
+ended jumps
+[[ "$ENDED" == 0 ]] || fail "the jumps pane did not quit"
+
 # --- :cli: a shell in a region of its own ----------------------------
 # `:cli` is Vim asking its Client for this region in the Plugin the
 # name `cli` stands for, over where the `:` line's own lines stand:
