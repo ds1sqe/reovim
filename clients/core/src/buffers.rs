@@ -5,6 +5,13 @@
 //! and a `sync` sends what is pending as one `replace_many`, which is
 //! one state on the server and one undo step for the person.
 //!
+//! Once the server refuses a flush because another Client's run
+//! landed in front of this one, the draft is stale: what was typed
+//! and what was pending both stay exactly as they were, and every
+//! further `sync`, undo, redo, save and edit answers `Stale` too,
+//! with no wire message, until `reload` takes the server's head in
+//! their place.
+//!
 //! ```text
 //! /self/dev/buffers/         call: open, scratch, close
 //! /self/dev/buffers/0        read/write, a Container: the draft's
@@ -62,6 +69,9 @@ struct Draft {
     /// revision the pending edits are taken against.
     tree: history::Tree,
     pending: Vec<text::Edit>,
+    /// Set once a flush the server answered `Stale` was not sent
+    /// again: cleared only by `reload`, with `pending`.
+    stale: bool,
 }
 
 impl Draft {
@@ -198,7 +208,8 @@ impl Buffers {
             (s.made - 1).to_string()
         };
         let pending = Vec::new();
-        let draft = Draft { over, h, source, bytes, tree, pending };
+        let draft =
+            Draft { over, h, source, bytes, tree, pending, stale: false };
         let rd = self.add(
             ctx,
             list,
@@ -250,8 +261,8 @@ impl Buffers {
     }
 
     /// `edits` into the draft `rd` as part of the pending revision:
-    /// the budget first, then the bytes, then one local Modify, which
-    /// is what makes the screen follow.
+    /// stale first, then the budget, then the bytes, then one local
+    /// Modify, which is what makes the screen follow.
     ///
     /// `expected` is the revision the caller saw, 0 for any, and one
     /// that is not what [`Draft::tree`] reports is `Stale`.
@@ -262,6 +273,9 @@ impl Buffers {
         expected: u64,
         edits: Vec<text::Edit>,
     ) -> Result<(), Error> {
+        if self.on(rd, |draft| draft.stale)? {
+            return Err(Error::Stale);
+        }
         let more = edits.len();
         if self.on(rd, |draft| draft.pending.len() + more > EDITS)? {
             self.flushed(ctx, rd)?;
@@ -285,28 +299,29 @@ impl Buffers {
         ctx.changed(rd, Kind::Modify)
     }
 
-    /// The pending revision as one `replace_many` on `over`, and
-    /// whether the draft's bytes moved under the caller. Nothing
-    /// pending is nothing at all.
-    fn flushed(&self, ctx: &dyn Calls, rd: Rd) -> Result<bool, Error> {
+    /// The pending revision as one `replace_many` on `over`. A draft
+    /// already `stale` answers so before `pending` is even read, so no
+    /// message goes; nothing pending otherwise is nothing at all.
+    fn flushed(&self, ctx: &dyn Calls, rd: Rd) -> Result<(), Error> {
+        if self.on(rd, |draft| draft.stale)? {
+            return Err(Error::Stale);
+        }
         // Nothing of the borrow outlives the call: it goes down the
         // wire, and what it answers is put back in a borrow of its own.
         let Some((h, expected, edits)) = self.pending(rd)? else {
-            return Ok(false);
+            return Ok(());
         };
         match sent(ctx, h, expected, &edits) {
-            Ok(()) => self.landed(rd).map(|()| false),
-            // The head moved under the pending edits. They go again on
-            // top of what moved it, landing in the server's sequence
-            // order, and a second attempt whose offsets no longer fit
-            // is refused and makes no state. Either way the draft ends
-            // holding what the server holds, and says so.
-            Err(Error::Stale) => match sent(ctx, h, 0, &edits) {
-                Ok(()) | Err(Error::Invalid) => {
-                    self.reread(ctx, rd, h).map(|()| true)
-                }
-                Err(other) => Err(other),
-            },
+            Ok(()) => self.landed(rd),
+            // The head moved under the pending edits: they are not
+            // sent again. The draft keeps them, pending, and is
+            // `stale` from here on, answering every further flush the
+            // same way with no wire message, until `reload` takes the
+            // server's head in their place.
+            Err(Error::Stale) => {
+                self.on(rd, |draft| draft.stale = true)?;
+                Err(Error::Stale)
+            }
             Err(other) => Err(other),
         }
     }
@@ -339,10 +354,10 @@ impl Buffers {
     }
 
     /// The server's truth, whole: the Buffer read and its history
-    /// taken, and nothing of the draft's own left over. The bytes
-    /// moved under whoever reads them, so the Modify says so; the
-    /// borrow is gone before it, what a watcher does with it
-    /// re-entering this Host.
+    /// taken, and nothing of the draft's own left over, `stale`
+    /// included. The bytes moved under whoever reads them, so the
+    /// Modify says so; the borrow is gone before it, what a watcher
+    /// does with it re-entering this Host.
     fn reread(
         &self,
         mut ctx: &dyn Calls,
@@ -355,6 +370,7 @@ impl Buffers {
             draft.bytes = bytes;
             draft.tree = tree;
             draft.pending.clear();
+            draft.stale = false;
         })?;
         ctx.changed(rd, Kind::Modify)
     }
@@ -467,14 +483,16 @@ impl buffers::Api for Buffers {
     /// The end of the draft and not of what was typed into it: what is
     /// pending goes down as one revision first, and then the rd, the
     /// children below it and the handle all go. The Buffer stays,
-    /// modules/text having no way to free one.
+    /// modules/text having no way to free one. A `stale` draft closes
+    /// the same way and answers `Stale`, as it answers any refused
+    /// flush: what was typed did not go down.
     ///
     /// Every step runs whatever the one before answered, so a draft
     /// that is closing is closed whatever fails; the first error is
     /// what the caller is told.
     fn close(&self, ctx: &dyn Calls, _: Rd, draft: Rd) -> Result<(), Error> {
         let h = self.handle(draft)?;
-        let sent = self.flushed(ctx, draft).map(|_| ());
+        let sent = self.flushed(ctx, draft);
         let below = ops::children(ctx, draft);
         self.forgotten(draft, below.as_deref().unwrap_or(&[]));
         let gone = ctx.unregister(draft);
@@ -545,8 +563,15 @@ impl publish::Api for Buffers {
 }
 
 impl draft::Api for Buffers {
-    fn sync(&self, ctx: &dyn Calls, rd: Rd) -> Result<bool, Error> {
+    fn sync(&self, ctx: &dyn Calls, rd: Rd) -> Result<(), Error> {
         self.flushed(ctx, rd)
+    }
+
+    /// The other way out of `Stale`: the server's head, whole,
+    /// whatever was pending dropped and `stale` cleared with it.
+    fn reload(&self, ctx: &dyn Calls, rd: Rd) -> Result<(), Error> {
+        let h = self.handle(rd)?;
+        self.reread(ctx, rd, h)
     }
 }
 

@@ -11,9 +11,11 @@
 //!
 //! Where a revision ends is Vim's to say, in two lines: an edit that
 //! does not join the one under way flushes first, and a frame that
-//! ends out of insert flushes. Where the flush answers that the
-//! draft's bytes moved under Vim — another Client's run landing in
-//! front of this one — the engine takes them again.
+//! ends out of insert flushes, unless the stay is already stale. Where
+//! the flush answers `Stale` — another Client's run landing in front
+//! of this one — nothing is sent again: the draft reads back whole,
+//! so an edit it refused is off the screen too, and the row says W12
+//! until the next key.
 //!
 //! The cells served are `view` and Vim's own state. A whole read of
 //! `view` is one frame: the keys Vim has not taken, each run; the
@@ -29,7 +31,7 @@ use alloc::format;
 use alloc::rc::Rc;
 use alloc::string::String;
 use alloc::vec::Vec;
-use core::cell::{Ref, RefCell};
+use core::cell::{Cell, Ref, RefCell};
 
 use reovim_client_api::{NONE, draft, part};
 use reovim_client_region::{Region, Surface, count, drafted};
@@ -65,6 +67,10 @@ const E345: &str = "E345: Can't find file";
 /// What undo and redo say at the ends of the history.
 const OLDEST: &str = "Already at oldest change";
 const NEWEST: &str = "Already at newest change";
+/// What a stale draft says: the Buffer on the screen, which the status
+/// row already names, so the message names nothing itself and fits
+/// beside a short file name at 80 columns.
+const W12: &str = "W12: changed in another Client and here; :e! takes theirs";
 
 /// The one Driver of this Module: every rd it registers is served by
 /// it, its own cells and the output of every run alike.
@@ -95,6 +101,10 @@ struct Stay {
     /// What the runs of Vim's own names printed, until each is read
     /// and closed.
     outputs: cell::Cells,
+    /// Set while the draft is stale: `framed` makes no closing `sync`
+    /// then, so W12 is one row until the next key and not every
+    /// frame's. False again at the next `start`.
+    stale: Cell<bool>,
 }
 
 /// What a read of one of Vim's own rds is a read of: the rds `start`
@@ -172,7 +182,12 @@ impl Module for Editor {
         let kept = fresh.then(|| kept_of(ctx, region)).transpose()?;
         let rows = count(region.size(ctx)?.rows);
         let bytes = ops::whole(ctx, h)?;
-        let stay = Stay { surface, cells, outputs: cell::Cells::default() };
+        let stay = Stay {
+            surface,
+            cells,
+            outputs: cell::Cells::default(),
+            stale: Cell::new(false),
+        };
         *self.stay.borrow_mut() = Some(Rc::new(stay));
         let mut vim = self.vim.borrow_mut();
         vim.buffer = Some(buffer);
@@ -271,25 +286,43 @@ impl Editor {
             self.write_clipped(ctx)?;
         }
         // The second of the two flushes: an insert session ends at its
-        // Esc, and every other edit at the frame that made it.
+        // Esc, and every other edit at the frame that made it. A stay
+        // already stale skips it: the row already says W12, and a
+        // flush of a draft already known stale would cost a read of
+        // it back for nothing.
         let mode = self.vim.borrow().mode();
-        if mode != Mode::Insert {
-            self.sync(ctx)?;
+        if mode != Mode::Insert && !self.stay()?.stale.get() {
+            self.stale(ctx, |ctx| self.sync(ctx))?;
         }
         let rows = self.sized(ctx)?;
         Ok(encode(&self.vim.borrow_mut().view(rows)))
     }
 
-    /// The draft flushed: what it holds goes down as one revision. An
-    /// answer of true is bytes that moved under Vim, another Client's
-    /// run having landed in front of this one, and the engine takes
-    /// them again; nothing else reads the Buffer back.
+    /// The draft flushed: what it holds goes down as one revision, or
+    /// `Stale` where the server refused it — read by [`Self::stale`],
+    /// the one place that answer is read.
     fn sync(&self, mut ctx: &dyn Calls) -> Result<(), Error> {
-        let h = self.handle()?;
-        if draft::Call(&mut ctx, h).sync()? {
-            self.reloaded(ctx)
-        } else {
-            Ok(())
+        draft::Call(&mut ctx, self.handle()?).sync()
+    }
+
+    /// Every `Err(Stale)` `done` may answer, caught in one place: the
+    /// draft read back whole, so an edit it refused is off the screen
+    /// too; W12 said until the next key; the stay marked so `framed`'s
+    /// own closing `sync` says it once and not every frame's. Any
+    /// other answer, `done`'s own.
+    fn stale(
+        &self,
+        ctx: &dyn Calls,
+        done: impl FnOnce(&dyn Calls) -> Result<(), Error>,
+    ) -> Result<(), Error> {
+        match done(ctx) {
+            Err(Error::Stale) => {
+                self.reloaded(ctx)?;
+                self.says(W12);
+                self.stay()?.stale.set(true);
+                Ok(())
+            }
+            other => other,
         }
     }
 
@@ -318,9 +351,10 @@ impl Editor {
         self.vim.borrow_mut().message = String::from(message);
     }
 
-    /// What `effect` asks of the Client.
+    /// What `effect` asks of the Client, every `Stale` it may answer
+    /// caught in [`Self::stale`].
     fn act(&self, ctx: &dyn Calls, effect: Effect) -> Result<(), Error> {
-        match effect {
+        self.stale(ctx, |ctx| match effect {
             Effect::Nothing | Effect::Moved => Ok(()),
             Effect::Edit(edit) => self.send(ctx, edit),
             Effect::Edits(edits) => self.send_each(ctx, edits),
@@ -336,10 +370,11 @@ impl Editor {
                 self.explore(ctx, name.as_deref(), bang)
             }
             Effect::Open(name, bang) => self.edited(ctx, &name, bang),
+            Effect::Reload(bang) => self.reload(ctx, bang),
             Effect::Line(ex) => self.ran(ctx, &ex),
             Effect::Cli(bang) => self.cli(ctx, bang),
             Effect::Complete(line) => self.completing(ctx, &line),
-        }
+        })
     }
 
     /// One of Vim's own names run: the effect it asks for, with the
@@ -666,6 +701,21 @@ impl Editor {
             return Ok(());
         };
         self.shown(ctx, target, "", bang)
+    }
+
+    /// `:e` with no name: the Buffer read again, taking what another
+    /// Client did. Without the bang a pending edit is flushed first,
+    /// so a stale draft says W12 and reads nothing; the bang drops
+    /// what has not gone down whatever it is. No E37: only what has
+    /// not gone down is dropped, and a draft that is not stale has
+    /// nothing pending at a `:` line.
+    fn reload(&self, mut ctx: &dyn Calls, bang: bool) -> Result<(), Error> {
+        if !bang {
+            self.sync(ctx)?;
+        }
+        draft::Call(&mut ctx, self.handle()?).reload()?;
+        self.stay()?.stale.set(false);
+        self.reloaded(ctx)
     }
 
     /// `:cli[!]`: a shell in this region, which the Client's table

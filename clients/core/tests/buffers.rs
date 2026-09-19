@@ -183,14 +183,20 @@ impl Drafts {
         self.on(|ctx| text::Call(ctx, draft.h).replace(edit))
     }
 
-    /// The flush, and whether the draft's bytes moved under it.
-    fn sync(&self, draft: Draft) -> bool {
-        self.synced(draft).unwrap()
+    /// The flush.
+    fn sync(&self, draft: Draft) -> Result<(), Error> {
+        self.synced(draft)
     }
 
     /// The same as the caller sees it, a refused one included.
-    fn synced(&self, draft: Draft) -> Result<bool, Error> {
+    fn synced(&self, draft: Draft) -> Result<(), Error> {
         self.on(|ctx| draft::Call(ctx, draft.h).sync())
+    }
+
+    /// The other way out of `Stale`: the server's head, whole,
+    /// whatever was pending dropped.
+    fn reload(&self, draft: Draft) -> Result<(), Error> {
+        self.on(|ctx| draft::Call(ctx, draft.h).reload())
     }
 
     /// What the draft answers `history.tree` with.
@@ -306,7 +312,7 @@ fn one_sync_is_one_call_and_one_revision_holding_every_edit() {
         it.edit(draft, at, 0, "x").unwrap();
     }
     let sent = rig.sent();
-    assert!(!it.sync(draft), "nothing moved under the caller");
+    it.sync(draft).unwrap();
     assert_eq!(rig.sent() - sent, 1, "one call, whatever the session typed");
     assert_eq!(other.read_all(over).unwrap(), b"xxxone\ntwo\n");
 
@@ -317,12 +323,12 @@ fn one_sync_is_one_call_and_one_revision_holding_every_edit() {
 
     // And nothing pending is nothing at all.
     let sent = rig.sent();
-    assert!(!it.sync(draft));
+    it.sync(draft).unwrap();
     assert_eq!(rig.sent(), sent, "no message for a flush with nothing in it");
 }
 
 #[test]
-fn a_sync_that_found_the_head_moved_lands_behind_what_moved_it() {
+fn a_flush_that_found_the_head_moved_is_refused_and_keeps_the_edits() {
     let rig = Rig::new("buffers-stale");
     rig.file("note", b"one\ntwo\n");
     let it = Drafts::over(&rig);
@@ -331,26 +337,48 @@ fn a_sync_that_found_the_head_moved_lands_behind_what_moved_it() {
     let draft = it.open(note);
     let over = it.points(draft, "over");
 
-    // A second Client's run between the edit and the flush: the first
-    // attempt is Stale, and the edits go again on top of what landed.
-    it.edit(draft, 0, 0, "first\n").unwrap();
-    let append = text::Edit { at: 8, len: 0, text: String::from("three\n") };
-    other.call_by_name(over, "replace", encode(&append)).unwrap();
-    assert!(it.sync(draft), "the draft's bytes moved under the caller");
+    // The draft's own edit, pending; another Client's run lands first
+    // and moves the head it would be taken against.
+    it.edit(draft, 4, 0, "TWO\n").unwrap();
+    let pending = it.tree(draft);
+    let insert = text::Edit { at: 0, len: 0, text: String::from("zero\n") };
+    other.call_by_name(over, "replace", encode(&insert)).unwrap();
+    assert_eq!(it.synced(draft), Err(Error::Stale));
 
-    // Both runs landed, in the server's order, and the draft holds
-    // exactly what the server holds.
-    let held = b"first\none\ntwo\nthree\n";
+    // The server holds only the other's run.
+    let held = b"zero\none\ntwo\n";
     assert_eq!(other.read_all(over).unwrap(), held);
-    assert_eq!(it.bytes(draft.rd), held);
     let server = history_of(&mut other, over);
-    assert_eq!(server.nodes.len(), 3, "the open, the other run, and ours");
-    assert_eq!(it.tree(draft).head, server.head, "the head it took");
+    assert_eq!(server.nodes.len(), 2, "the open, and the other's run");
+
+    // The draft keeps its own bytes and what it was still predicting:
+    // nothing the person typed is lost, and none of it landed either.
+    assert_eq!(it.bytes(draft.rd), b"one\nTWO\ntwo\n");
+    assert_eq!(it.tree(draft), pending, "still predicting the same node");
+
+    // Stale from here on: every one of these answers it without ever
+    // asking the server again.
+    let sent = rig.sent();
+    assert_eq!(it.synced(draft), Err(Error::Stale));
+    assert_eq!(it.edit(draft, 0, 0, "x"), Err(Error::Stale));
+    assert_eq!(it.walk(draft, true), Err(Error::Stale));
+    let saved = it.on(|ctx| publish::Call(ctx, draft.h).save());
+    assert_eq!(saved, Err(Error::Stale));
+    assert_eq!(rig.sent(), sent, "none of it reached the server");
+
+    // `reload` takes the server's head, and an edit and a flush land
+    // again from there.
+    it.reload(draft).unwrap();
+    assert_eq!(it.bytes(draft.rd), held);
+    assert_eq!(it.tree(draft).head, server.head);
+    it.edit(draft, 0, 0, "y").unwrap();
+    it.sync(draft).unwrap();
+    assert_eq!(other.read_all(over).unwrap(), b"yzero\none\ntwo\n");
 }
 
 #[test]
-fn edits_the_server_no_longer_has_room_for_end_at_its_head() {
-    let rig = Rig::new("buffers-refused");
+fn a_reload_drops_what_was_pending_and_takes_the_head() {
+    let rig = Rig::new("buffers-reload");
     rig.file("note", b"one\ntwo\n");
     let it = Drafts::over(&rig);
     let mut other = rig.client();
@@ -358,17 +386,41 @@ fn edits_the_server_no_longer_has_room_for_end_at_its_head() {
     let draft = it.open(note);
     let over = it.points(draft, "over");
 
-    // The pending edit is taken against bytes the server has left, so
-    // the second attempt is refused and makes no state.
+    // The pending edit is taken against bytes the server no longer
+    // has, the other Client having written the whole file over.
     it.edit(draft, 4, 4, "TWO\n").unwrap();
     other.write_all(over, b"x\n".to_vec()).unwrap();
-    assert!(it.sync(draft), "and it says so");
+    assert_eq!(it.synced(draft), Err(Error::Stale));
 
-    assert_eq!(it.bytes(draft.rd), b"x\n", "the server head, whole");
-    assert_eq!(other.read_all(over).unwrap(), b"x\n");
+    // `reload` drops what was pending and takes the server's head:
+    // two nodes there, and the draft's own head equal to it.
+    it.reload(draft).unwrap();
+    assert_eq!(it.bytes(draft.rd), b"x\n");
     let server = history_of(&mut other, over);
-    assert_eq!(server.nodes.len(), 2, "nothing was merged silently");
+    assert_eq!(server.nodes.len(), 2, "the open, and the other's write");
     assert_eq!(it.tree(draft).head, server.head);
+}
+
+#[test]
+fn a_stale_draft_closes_and_says_what_did_not_go_down() {
+    let server = Server::new();
+    let it = Drafts::hosted(server.host());
+    let mut other = server.client();
+    let draft = it.scratch();
+    let over = it.points(draft, "over");
+
+    // The draft's own edit, pending; another Client's run lands first.
+    it.edit(draft, 0, 0, "typed\n").unwrap();
+    let append = text::Edit { at: 0, len: 0, text: String::from("theirs\n") };
+    other.call_by_name(over, "replace", encode(&append)).unwrap();
+    assert_eq!(it.synced(draft), Err(Error::Stale));
+
+    // The close still closes: what did not go down is said, not
+    // dropped silently, and the draft is out of the tree either way.
+    assert_eq!(it.close(draft), Err(Error::Stale));
+    assert_eq!(it.names(it.list), [] as [String; 0]);
+    assert_eq!(handles_on(&mut other, over), 0);
+    assert_eq!(other.read_all(over).unwrap(), b"theirs\n", "the other's alone");
 }
 
 #[test]
@@ -394,7 +446,7 @@ fn the_edit_past_the_budget_flushes_the_ones_before_it() {
 
     // A session longer than the budget is two states, and nothing else
     // flushes without being asked.
-    assert!(!it.sync(draft));
+    it.sync(draft).unwrap();
     assert_eq!(history_of(&mut other, over).nodes.len(), 3);
 }
 
@@ -420,7 +472,7 @@ fn a_draft_with_edits_pending_reports_the_node_the_flush_will_make() {
     assert_eq!(pending.nodes, [opened.nodes[0].clone(), made]);
 
     // The flush makes that node, numbered as the draft said it would.
-    assert!(!it.sync(draft));
+    it.sync(draft).unwrap();
     assert_eq!(it.tree(draft), pending);
     assert_eq!(history_of(&mut other, over).nodes, pending.nodes);
 
@@ -458,7 +510,7 @@ fn undo_and_redo_walk_the_servers_history_and_the_draft_follows() {
     // past head: the revision a status row shows is read off it.
     it.edit(draft, 0, 0, "x").unwrap();
     assert_eq!(it.tree(draft).head, 3, "the branch the flush will make");
-    assert!(!it.sync(draft));
+    it.sync(draft).unwrap();
     let over = it.points(draft, "over");
     assert_eq!(history_of(&mut other, over).head, 3, "as the server made it");
 }
@@ -541,7 +593,7 @@ fn a_sync_the_server_refuses_keeps_the_draft_and_the_edits_pending() {
     it.edit(draft, 0, 0, "two\n").unwrap();
     assert_eq!(it.bytes(draft.rd), b"two\none\n");
     server.refuses(None);
-    assert!(!it.sync(draft));
+    it.sync(draft).unwrap();
     assert_eq!(other.read_all(over).unwrap(), b"two\none\n");
     assert_eq!(history_of(&mut other, over).nodes.len(), 2, "one state");
 }

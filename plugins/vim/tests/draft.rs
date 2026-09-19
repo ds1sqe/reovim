@@ -8,12 +8,13 @@
 use std::rc::Rc;
 
 use reovim_client::dev::{Clip, Table};
-use reovim_client::{Client, Host, Rd};
+use reovim_client::{Client, Host, Rd, SELF};
+use reovim_client_api::Key;
 use reovim_client_tui::{Step, Tui};
 use reovim_plugin_vim::Editor;
 use reovim_plugin_vim::notation::keys;
-use reovim_rig::{Rig, lines, opened, status, typed};
-use reovim_sdk::{decode, encode};
+use reovim_rig::{Rig, lines, opened, said, status, typed};
+use reovim_sdk::{cell, decode, encode, ops};
 use reovim_text_api::{history, text};
 
 /// The editor `file` opens in on `host`, its first frame drawn so that
@@ -58,6 +59,23 @@ fn buffer(client: &mut Client, file: &str) -> Rd {
 fn revisions(client: &mut Client, buffer: Rd) -> history::Tree {
     let out = client.call_by_name(buffer, "tree", encode(&())).unwrap();
     decode(&out).unwrap()
+}
+
+/// What a stale draft says: nothing names the Buffer, the status row
+/// already doing that.
+const W12: &str = "W12: changed in another Client and here; :e! takes theirs";
+
+/// `keys` as one write to the keyboard, so they land in the same
+/// frame: what `tui.key` costs one write and one frame each, this
+/// spends in a single one of either.
+fn typed_together(host: &Rc<Host>, keys: &[Key]) {
+    let ctx = host.own();
+    let keyboard = cell::resolve(&ctx, SELF, "dev/input/keyboard").unwrap();
+    let mut codes = Vec::new();
+    for key in keys {
+        codes.extend(key.code().to_le_bytes());
+    }
+    ops::put(&ctx, keyboard, codes).unwrap();
 }
 
 #[test]
@@ -124,20 +142,93 @@ fn three_deletes_are_three_revisions_and_undo_walks_back_through_them() {
 }
 
 #[test]
-fn another_clients_run_reaches_the_screen_at_the_flush() {
+fn the_second_flush_says_w12_and_keeps_the_typing() {
     let rig = Rig::new("draft-stale");
+    rig.file("note", b"one\n");
+    let mut first = editor(&rig.host(), "note");
+    let mut second = editor(&rig.host(), "note");
+    let mut other = rig.client();
+    let buffer = buffer(&mut other, "note");
+
+    // One pending in the first, uncommitted; the second's own flush,
+    // at its Esc, lands first and moves the head.
+    typed(&mut first, "A!");
+    assert_eq!(typed(&mut second, "Ozero<Esc>"), Step::Changed);
+    assert_eq!(other.read_all(buffer).unwrap(), b"zero\none\n");
+
+    // The first one's own flush, at its Esc, finds the head moved:
+    // refused, and said. What it typed stays on its own screen, and
+    // nothing of it reaches the server.
+    assert_eq!(typed(&mut first, "<Esc>"), Step::Changed);
+    assert_eq!(said(&mut first), W12);
+    assert_eq!(lines(&mut first), ["one!"]);
+    assert_eq!(other.read_all(buffer).unwrap(), b"zero\none\n");
+
+    // Stale from here on: `u` is a call straight on the open handle
+    // and the flush it would have made costs no message, so it is an
+    // idle frame's cost exactly. `:w`'s own dispatch, through the
+    // shell, costs what it always does; the flush it would have made
+    // costs no message either, one less than a save that lands (as
+    // `three_deletes...` above spends `idle + 3` on a landing one).
+    let idle = idle(&rig, &mut first);
+    assert_eq!(cost(&rig, &mut first, "u"), [idle]);
+    assert_eq!(said(&mut first), W12);
+    assert_eq!(cost(&rig, &mut first, ":w<CR>"), [idle, idle, idle + 2]);
+    assert_eq!(said(&mut first), W12);
+    assert_eq!(rig.disk("note"), b"one\n", "neither Client has written it");
+
+    // `:e!` takes the server's head and drops what was pending; the
+    // yank taken before it survives, and a further edit and save land
+    // again from there.
+    typed(&mut first, "yy:e!<CR>p");
+    assert_eq!(lines(&mut first), ["zero", "one!", "one"]);
+    assert_eq!(typed(&mut first, ":w<CR>"), Step::Changed);
+    assert_eq!(rig.disk("note"), b"zero\none!\none\n");
+}
+
+#[test]
+fn an_edit_is_not_sent_after_a_flush_that_was_refused() {
+    let rig = Rig::new("draft-two-keys");
+    rig.file("note", b"one\n");
+    let host = rig.host();
+    let mut tui = editor(&host, "note");
+    let mut other = rig.client();
+    let buffer = buffer(&mut other, "note");
+
+    // Another Client's run lands first, moving the head this Client's
+    // next flush is taken against.
+    let append = text::Edit { at: 4, len: 0, text: String::from("two\n") };
+    other.call_by_name(buffer, "replace", encode(&append)).unwrap();
+
+    // Two keys as one write, one tick: both land in the same frame,
+    // so the flush the second `x` ends its own revision with — which
+    // sends the first `x`'s edit — finds the head already moved, and
+    // the second `x` is never sent at all.
+    typed_together(&host, &[Key::Char('x'), Key::Char('x')]);
+    assert_eq!(tui.tick().unwrap(), Step::Changed);
+
+    assert_eq!(lines(&mut tui), ["ne"], "one x gone, not two");
+    assert_eq!(said(&mut tui), W12);
+    assert_eq!(
+        other.read_all(buffer).unwrap(),
+        b"one\ntwo\n",
+        "the other's alone"
+    );
+}
+
+#[test]
+fn e_takes_what_another_client_did() {
+    let rig = Rig::new("draft-e");
     rig.file("note", b"one\n");
     let mut tui = editor(&rig.host(), "note");
     let mut other = rig.client();
     let buffer = buffer(&mut other, "note");
 
-    typed(&mut tui, "ihello");
     let append = text::Edit { at: 4, len: 0, text: String::from("two\n") };
     other.call_by_name(buffer, "replace", encode(&append)).unwrap();
-    assert_eq!(lines(&mut tui), ["helloone"], "not before the flush");
+    assert_eq!(lines(&mut tui), ["one"], "an idle draft does not follow it");
 
-    // The flush lands behind what landed in front of it and says the
-    // bytes moved; Vim reads the draft whole and lays the View again.
-    assert_eq!(typed(&mut tui, "<Esc>"), Step::Changed);
-    assert_eq!(lines(&mut tui), ["helloone", "two"]);
+    assert_eq!(typed(&mut tui, ":e<CR>"), Step::Changed);
+    assert_eq!(lines(&mut tui), ["one", "two"]);
+    assert_eq!(said(&mut tui), "");
 }

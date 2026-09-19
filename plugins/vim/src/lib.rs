@@ -117,6 +117,10 @@ pub enum Effect {
     /// which comes back a Vim of its own. A name that is not there is
     /// E345, where `:explore`'s is E344.
     Open(String, bool),
+    /// `:e` with no name: the Buffer read again. `true` for `:e!`,
+    /// which drops what has not gone down whatever it is; without it
+    /// a stale draft says W12 instead and reads nothing.
+    Reload(bool),
     /// A `:` line with a name on it: the range Vim read off its front,
     /// and the rest of it, which the Client runs.
     Line(Ex),

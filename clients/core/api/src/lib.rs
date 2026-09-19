@@ -144,12 +144,15 @@ declare! {
     /// A `replace` on a draft joins the pending revision and `sync` is
     /// what makes it a state on the server, which is the one place a
     /// draft and a server Buffer differ: a caller that wants a
-    /// revision boundary asks for one. The answer is whether the
-    /// draft's bytes moved under the caller, which is the only thing
-    /// it cannot see for itself: true where another run landed in
-    /// front of this one, false otherwise.
+    /// revision boundary asks for one. Once the server refuses a
+    /// flush because another Client's run landed in front of this
+    /// one, the draft is stale from then on: `sync`, an undo or redo,
+    /// a save and any further edit all answer `Stale` too, with no
+    /// wire message, keeping what was typed and what was pending
+    /// alike, until `reload` takes the server's head in their place.
     api draft ver 1 {
-        0 sync() -> bool: WRITE;
+        0 sync() -> (): WRITE;
+        1 reload() -> (): WRITE;
     }
 }
 

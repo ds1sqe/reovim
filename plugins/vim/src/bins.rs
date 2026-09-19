@@ -171,8 +171,7 @@ impl file::Api for Editor {
             "write" if held => Effect::SaveAs(path, bang),
             "write" => Effect::Save(bang),
             "edit" if held => Effect::Open(path, bang),
-            // `:e` without a name would reload the file; nothing here.
-            "edit" => Effect::Moved,
+            "edit" => Effect::Reload(bang),
             "explore" => Effect::Explore(held.then_some(path), bang),
             _ => return Err(Error::Unsupported),
         };
