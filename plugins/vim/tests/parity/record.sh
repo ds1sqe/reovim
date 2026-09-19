@@ -3,7 +3,10 @@
 # its `in` and `keys`; `state` is the cursor as line:column:cell (the
 # column in chars, the cell on the screen, all from 1), the unnamed
 # register's type (v, V, ^V{width} or empty) and its bytes at exit.
-# These flags are the definition of "what nvim does".
+# These flags are the definition of "what nvim does". A case may hold
+# `in.NAME` beside `in`, another file the keys reach by that name
+# (`:e other`, say); each is copied to `NAME` beside `file`, and after
+# the run each `NAME` back out as `out.NAME`.
 #
 #   plugins/vim/tests/parity/record.sh CASE...     directories
 set -euo pipefail
@@ -14,6 +17,10 @@ for case in "$@"; do
         || { echo "record.sh: $case needs in and keys" >&2; exit 1; }
     work="$(mktemp -d)"
     cp "$case/in" "$work/file"
+    for extra in "$case"/in.*; do
+        [[ -e "$extra" ]] || continue
+        cp "$extra" "$work/${extra##*/in.}"
+    done
     # The keys as a Vim string: `<` escaped, so `<Esc>` is `\<Esc>`.
     keys="$(sed 's/\\/\\\\/g; s/"/\\"/g; s/</\\</g' "$case/keys")"
     # The state at exit. Through --cmd: a -c before the feedkeys one
@@ -37,6 +44,11 @@ for case in "$@"; do
         exit 1
     fi
     cp "$work/file" "$case/out"
+    for extra in "$case"/in.*; do
+        [[ -e "$extra" ]] || continue
+        name="${extra##*/in.}"
+        cp "$work/$name" "$case/out.$name"
+    done
     cp "$state" "$case/state"
     printf '%s\n' "$code" >"$case/exit"
     rm -rf "$work"

@@ -85,14 +85,19 @@ cursor() {
 }
 
 run_case() {
-    local case="$1" name work keys quit token
+    local case="$1" name work keys quit token extra
     name="$(basename "$case")"
     work="$DIR/$name"
     mkdir -p "$work"
     cp "$case/in" "$work/file"
+    for extra in "$case"/in.*; do
+        [[ -e "$extra" ]] || continue
+        cp "$extra" "$work/${extra##*/in.}"
+    done
     keys="$(tr -d '\n' <"$case/keys")"
     # The keys end in a quit; the cursor is read before it.
-    for quit in ':wq<CR>' ':q!<CR>' ':q<CR>' ':x<CR>' ':cq<CR>' 'ZZ' 'ZQ'; do
+    for quit in ':wq<CR>' ':q!<CR>' ':q<CR>' ':x<CR>' ':cq<CR>' 'ZZ' 'ZQ' \
+        ':qa!<CR>' ':wqa<CR>'; do
         [[ "$keys" == *"$quit" ]] && break
         quit=""
     done
@@ -129,6 +134,11 @@ run_case() {
     expect="$((line - 1)) $((vcol - 1))"
     local bad=""
     cmp -s "$work/file" "$case/out" || bad+=" file"
+    for extra in "$case"/in.*; do
+        [[ -e "$extra" ]] || continue
+        extra="${extra##*/in.}"
+        cmp -s "$work/$extra" "$case/out.$extra" || bad+=" $extra"
+    done
     [[ "$code" == "$(cat "$case/exit")" ]] || bad+=" exit($code)"
     [[ "$at" == "$expect" ]] || bad+=" cursor($at, nvim $expect)"
     [[ -z "$bad" ]] || { echo "$name:$bad"; return 1; }

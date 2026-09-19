@@ -23,10 +23,14 @@ type Editor = Tui;
 
 /// The app's table in the small: Vim for a cell, the stub for a
 /// Container.
+///
+/// One `Editor` across every swap, as the app's own table gives one
+/// (01.0).
 fn table(seen: &Seen) -> Table {
     let seen = seen.clone();
+    let vim = reovim_plugin_vim::Editor::new();
     Box::new(move |want| match want {
-        Want::Cell => Some((String::from("vim"), reovim_plugin_vim::boot())),
+        Want::Cell => Some((String::from("vim"), vim.booted())),
         Want::Container => Some((
             String::from("listing"),
             Stub::booted(&seen, "-- LISTING --"),

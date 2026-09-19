@@ -32,7 +32,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 pub use operator::Motion;
-pub use plugin::{Editor, boot};
+pub use plugin::Editor;
 pub use reovim_client_api::{Key, notation};
 pub use visual::Visual;
 
@@ -289,61 +289,59 @@ struct Undone {
     before: Vec<(usize, usize)>,
     count: usize,
     /// An undo (`false`) or redo (`true`) is waiting for its reload.
+    /// Never outlives one key, so a `Place` carries it for free.
     walking: Option<bool>,
+}
+
+/// What one Buffer keeps of Vim between a `left` and the `opened` that
+/// finds it again: the cursor, the first line shown, the undo cursor
+/// list and the visual marks. Kept in [`Vim::places`], by the draft's
+/// rd.
+#[derive(Debug, Default)]
+struct Place {
+    cursor: usize,
+    top: usize,
+    undone: Undone,
+    last_visual: Option<Selection>,
 }
 
 /// The text, the cursor as a byte index on a char boundary, the first
 /// line shown, and the mode. In normal mode the cursor sits on a
 /// char, never past the last one of its line; insert may sit past it.
+///
+/// The fields below are of three kinds: one stay at the Plugin, reset
+/// by `left` and filled again by the next `start`; one Buffer, kept in
+/// a `Place` across a `left` and restored by the `opened` that finds
+/// the same draft again; and kept, which no swap touches.
 #[derive(Debug, Default)]
 pub struct Vim {
-    text: String,
-    cursor: usize,
-    top: usize,
+    // One stay.
     mode: Mode,
     pending: Pending,
     /// The next insert edit joins the revision under way.
     joining: bool,
-    /// The screen column a vertical motion wants, `usize::MAX` after
-    /// `$`.
-    want: usize,
     /// The last key kept `want` rather than setting it.
     keep_want: bool,
     /// Bytes of indent `o`, `O` or Enter just copied, dropped again if
     /// nothing is typed on the line.
     indent: usize,
-    /// The unnamed register, `None` until something fills it; an
-    /// empty yank fills it, an empty delete does not.
-    register: Option<Register>,
-    /// `"a` to `"z`.
-    registers: BTreeMap<char, Register>,
     /// Text for the clipboard, until the tui takes it.
     clipboard: Option<String>,
     put: Option<Put>,
-    /// What the clipboard last gave, for `.` to put again.
-    last_clip: Register,
-    /// The last `f`, `t`, `F` or `T`, for `;` and `,`.
-    find: Option<(Find, char)>,
-    repeat: Repeat,
-    undone: Undone,
     /// The selection's other end in visual mode.
     anchor: usize,
     /// `$` was the last motion of a selection: it reaches every line's
     /// end.
     to_end: bool,
-    last_visual: Option<Selection>,
     /// A block insert under way.
     block: Option<BlockInsert>,
-    search: Search,
-    prompt: Prompt,
     /// What Tab last found on the `:` line; any other key drops it.
     wild: Option<Wild>,
     /// Shown until the next key.
     message: String,
-    /// Where a line of the shell's typed on the `:` line stands: the
-    /// mirror of the directory the Client started in, which `:cd`
-    /// moves and `:pwd` says.
-    shell: Shell,
+    /// `at` and `before`, and what stands on the two lines, reset;
+    /// their histories are kept.
+    prompt: Prompt,
     /// The draft `start` opened over what the region is on: what the
     /// View it shows is in the bytes of.
     buffer: Option<Rd>,
@@ -354,6 +352,37 @@ pub struct Vim {
     /// The file a Buffer over nothing was opened for while there is
     /// no such file: what its first write makes.
     name: Option<String>,
+
+    // One Buffer, in a `Place`.
+    text: String,
+    cursor: usize,
+    top: usize,
+    undone: Undone,
+    last_visual: Option<Selection>,
+
+    // Kept.
+    /// The unnamed register, `None` until something fills it; an
+    /// empty yank fills it, an empty delete does not.
+    register: Option<Register>,
+    /// `"a` to `"z`.
+    registers: BTreeMap<char, Register>,
+    /// What the clipboard last gave, for `.` to put again.
+    last_clip: Register,
+    /// The last `f`, `t`, `F` or `T`, for `;` and `,`.
+    find: Option<(Find, char)>,
+    /// `.record` is reset by `left`; `.last` is kept.
+    repeat: Repeat,
+    search: Search,
+    /// A Buffer's `Place`, from its `left` to the `opened` that finds
+    /// the same draft again.
+    places: BTreeMap<Rd, Place>,
+    /// The screen column a vertical motion wants, `usize::MAX` after
+    /// `$`.
+    want: usize,
+    /// Where a line of the shell's typed on the `:` line stands: the
+    /// mirror of the directory the Client started in, which `:cd`
+    /// moves and `:pwd` says.
+    shell: Shell,
     /// Where the Client started, under the root: what the announce
     /// says a new file's name by, and nothing else.
     dir: String,
@@ -891,13 +920,20 @@ impl Vim {
             Some(redo) => self.undone_cursor(top, redo),
             None => self.cursor = self.cursor.min(self.bound()),
         }
+        self.resettled();
+        true
+    }
+
+    /// The cursor onto a char boundary, then Normal mode's clamp: what
+    /// `loaded` leaves the cursor at, and what a `Place` restored by
+    /// `opened` is put through too.
+    fn resettled(&mut self) {
         while !self.text.is_char_boundary(self.cursor) {
             self.cursor -= 1;
         }
         if self.mode == Mode::Normal {
             self.clamp();
         }
-        true
     }
 
     /// One key in the current mode; a message showing or shown goes
@@ -969,17 +1005,78 @@ impl Vim {
         self.clamp();
     }
 
-    /// The text the Buffer held when it was opened, and the cursor at
-    /// the line the Client was started at, counted from 1; 0 is the
-    /// first line, where it begins without one.
+    /// The text the Buffer held when it was opened, whole: cleared
+    /// first, so two files of the same bytes are two Buffers and
+    /// `loaded`'s own diff, which is for the one Buffer changing under
+    /// it, never runs here. Then the `Place` this draft left behind
+    /// when there is one and `line` is 0, else the cursor at the line
+    /// the Client was started at, counted from 1; 0 is the first line,
+    /// where it begins without one.
     pub(crate) fn opened(&mut self, bytes: &[u8], line: u64) {
+        self.text.clear();
         self.loaded(bytes);
-        let at = if line == 0 {
+        let place = (line == 0)
+            .then(|| self.buffer.and_then(|rd| self.places.remove(&rd)))
+            .flatten();
+        let Some(Place { cursor, top, undone, last_visual }) = place else {
+            return self.begin(self.beginning(line));
+        };
+        self.cursor = cursor;
+        self.top = top;
+        self.undone = undone;
+        self.last_visual = last_visual;
+        self.resettled();
+    }
+
+    /// Where `opened` begins with no kept `Place`: the byte line
+    /// `line` starts at, counted from 1, or the text's start with 0.
+    fn beginning(&self, line: u64) -> usize {
+        if line == 0 {
             0
         } else {
             self.at_line(usize::try_from(line).unwrap_or(usize::MAX))
-        };
-        self.begin(at);
+        }
+    }
+
+    /// A stay at the Plugin ends: `self.buffer` says which draft it
+    /// was over, and what belongs to it is kept in a `Place`, by that
+    /// rd, for the `opened` that finds it again. What belongs to the
+    /// stay itself goes back to its defaults; what is kept goes
+    /// untouched. A second call, `start` having failed before a draft
+    /// was opened, finds no buffer and writes no `Place` over a good
+    /// one.
+    pub(crate) fn leave(&mut self) {
+        if let Some(buffer) = self.buffer.take() {
+            self.places.insert(
+                buffer,
+                Place {
+                    cursor: self.cursor,
+                    top: self.top,
+                    undone: core::mem::take(&mut self.undone),
+                    last_visual: self.last_visual.take(),
+                },
+            );
+        }
+        self.mode = Mode::default();
+        self.pending = Pending::default();
+        self.joining = false;
+        self.keep_want = false;
+        self.indent = 0;
+        self.clipboard = None;
+        self.put = None;
+        self.anchor = 0;
+        self.to_end = false;
+        self.block = None;
+        self.wild = None;
+        self.message.clear();
+        self.repeat.record.clear();
+        self.prompt.at = char::default();
+        self.prompt.before = Mode::default();
+        self.prompt.ex.put(0, "");
+        self.prompt.search.put(0, "");
+        self.h = None;
+        self.source = None;
+        self.name = None;
     }
 
     /// The byte line `n` starts at, counted from 1 and clamped to the

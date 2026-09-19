@@ -29,10 +29,10 @@ use alloc::format;
 use alloc::rc::Rc;
 use alloc::string::String;
 use alloc::vec::Vec;
-use core::cell::{OnceCell, Ref, RefCell};
+use core::cell::{Ref, RefCell};
 
 use reovim_client_api::{NONE, draft, part};
-use reovim_client_region::{Surface, count, drafted};
+use reovim_client_region::{Region, Surface, count, drafted};
 use reovim_client_sh::{self as sh, Ran, Shell};
 use reovim_kernel_interface::{
     Booted, Calls, Decl, Driver, DriverId, Error, Flags, Handle, Hash, Module,
@@ -70,14 +70,28 @@ const NEWEST: &str = "Already at newest change";
 /// it, its own cells and the output of every run alike.
 const DRIVER: DriverId = DriverId(0);
 
-/// Vim at a Client: the engine behind one `RefCell`, and the cells
-/// it serves.
+/// Vim at a Client: the engine, which one stay after another is made
+/// over, and one stay at the Plugin.
+///
+/// The engine is not part of a stay: registers, the last search and
+/// the rest of what settlement 2 keeps must outlive it, and the per-
+/// Buffer record `left` (lib.rs) keeps outlives it too. `stay` is
+/// `None` before the first `start` and while one has failed; a second
+/// `Rc` clone of it never outlives an op, so no read finds it held.
 #[derive(Default)]
 pub struct Editor {
     vim: RefCell<Vim>,
+    stay: RefCell<Option<Rc<Stay>>>,
+}
+
+/// What one stay at the Plugin is: the region this Vim holds for it,
+/// the rds registered under its home, and the output of its own runs.
+/// Made whole at `start`, once every fallible call it needs has
+/// answered, and dropped at `stop`.
+struct Stay {
     surface: Surface,
     /// The rds under Vim's home, as `start` was answered with them.
-    cells: OnceCell<Cells>,
+    cells: Cells,
     /// What the runs of Vim's own names printed, until each is read
     /// and closed.
     outputs: cell::Cells,
@@ -96,12 +110,6 @@ struct Cells {
     bin: Rd,
 }
 
-/// Vim, ready for a Client to load.
-#[must_use]
-pub fn boot() -> Booted {
-    Editor::new().booted()
-}
-
 impl Editor {
     /// One, which a table gives a Client and a test reads back.
     #[must_use]
@@ -109,7 +117,9 @@ impl Editor {
         Rc::new(Self::default())
     }
 
-    /// Its Module and its one Driver, for a table to give.
+    /// Its Module and its one Driver, for a table to give. Every start
+    /// is this same Editor's, so the state settlement 2 keeps outlives
+    /// every swap of the region.
     #[must_use]
     pub fn booted(self: &Rc<Self>) -> Booted {
         Booted { module: self.clone(), drivers: alloc::vec![self.clone()] }
@@ -125,49 +135,69 @@ impl Editor {
     pub fn engine(&self) -> Ref<'_, Vim> {
         self.vim.borrow()
     }
+
+    /// The current stay, a clone of the `Rc` so no borrow of it
+    /// outlives an op; `Closed` before `start` or after `stop`.
+    fn stay(&self) -> Result<Rc<Stay>, Error> {
+        self.stay.borrow().clone().ok_or(Error::Closed)
+    }
 }
 
 impl Module for Editor {
+    /// A stay at the Plugin: its own `Surface`, cells and outputs,
+    /// made once every fallible call this needs has answered, so a
+    /// `start` that fails leaves nothing half made and no borrow of
+    /// the engine outstanding; the engine is filled only after, and
+    /// `announce` alone comes later still.
+    ///
     /// A draft of its own over what the region was opened on, read
     /// and written through a handle it keeps, the clipboard found if
     /// there is one, and the text shown from the line it was told to
-    /// begin at.
+    /// begin at, or the `Place` this draft kept from its last stay.
+    /// `dir`, `root`, `cwd`, `shell` and `clip` are kept across every
+    /// stay: `root` is `None` only before the very first `start`, so
+    /// they are found once there and never again, `:cd` and the
+    /// shell's own state living on through every swap since.
     fn start(&self, ctx: &dyn Calls, home: Rd) -> Result<(), Error> {
-        let view = self.surface.start(ctx, home)?;
+        let surface = Surface::default();
+        let view = surface.start(ctx, home)?;
         let cells = registered(ctx, home, view)?;
-        let ask = self.surface.region()?.ask(ctx)?;
-        let dir = self.surface.region()?.cwd(ctx)?;
+        let region = surface.region()?;
+        let ask = region.ask(ctx)?;
         let source = (ask.target != NONE).then_some(ask.target);
         let buffer = drafted(ctx, source)?;
         let rights = Rights::READ.union(Rights::WRITE);
         let h = ctx.open(buffer, rights)?;
-        // The fs Module mirrors the directory the editor runs over, so
-        // every name of the person's is under it and a leading `/` is
-        // its root. A tree with no mirror leaves the editor at the
-        // tree's own root, which is a place to stand.
-        let root = cell::resolve(ctx, ROOT, "/module/fs/root").unwrap_or(ROOT);
-        let cwd = cell::resolve(ctx, root, &dir).unwrap_or(root);
-        let mut shell = Shell::at(cwd, ops::where_is(ctx, cwd)?);
-        shell.first("/self/vim/bin");
-        ranged(&mut shell, 0, 0, false);
-        let clip = cell::resolve(ctx, ROOT, "/self/dev/clipboard").ok();
-        {
-            let mut vim = self.vim.borrow_mut();
-            vim.buffer = Some(buffer);
-            vim.h = Some(h);
-            vim.source = source;
-            vim.name = (!ask.name.is_empty()).then(|| ask.name.clone());
-            vim.dir = dir;
-            vim.root = Some(root);
-            vim.cwd = Some(cwd);
-            vim.shell = shell;
-            vim.clip = clip;
-        }
-        let _ = self.cells.set(cells);
-        self.sized(ctx)?;
+        let fresh = self.vim.borrow().root.is_none();
+        let kept = fresh.then(|| kept_of(ctx, region)).transpose()?;
+        let rows = count(region.size(ctx)?.rows);
         let bytes = ops::whole(ctx, h)?;
-        self.vim.borrow_mut().opened(&bytes, ask.line);
+        let stay = Stay { surface, cells, outputs: cell::Cells::default() };
+        *self.stay.borrow_mut() = Some(Rc::new(stay));
+        let mut vim = self.vim.borrow_mut();
+        vim.buffer = Some(buffer);
+        vim.h = Some(h);
+        vim.source = source;
+        vim.name = (!ask.name.is_empty()).then(|| ask.name.clone());
+        if let Some(kept) = kept {
+            vim.dir = kept.dir;
+            vim.root = Some(kept.root);
+            vim.cwd = Some(kept.cwd);
+            vim.shell = kept.shell;
+            vim.clip = kept.clip;
+        }
+        vim.rows = rows;
+        vim.opened(&bytes, ask.line);
+        drop(vim);
         self.announce(ctx)
+    }
+
+    /// Before unload, by every door a stay ends by: what belongs to
+    /// the Buffer just left is kept for its return, and the stay
+    /// itself goes.
+    fn stop(&self) {
+        self.vim.borrow_mut().leave();
+        *self.stay.borrow_mut() = None;
     }
 }
 
@@ -186,15 +216,13 @@ impl Driver for Editor {
         at: u64,
         len: usize,
     ) -> Reply<Vec<u8>> {
-        let Some(cells) = self.cells.get() else {
-            return Reply::err(Error::Closed);
-        };
+        let Ok(stay) = self.stay() else { return Reply::err(Error::Closed) };
         let rd = Rd(h);
-        if rd == cells.view {
-            return self.surface.read(at, len, || self.framed(ctx));
+        if rd == stay.cells.view {
+            return stay.surface.read(at, len, || self.framed(ctx));
         }
-        let output = || self.outputs.read(ctx, rd, at, len).into();
-        self.held(cells, rd)
+        let output = || stay.outputs.read(ctx, rd, at, len).into();
+        self.held(&stay.cells, rd)
             .map_or_else(output, |held| Reply::ok(part(&held, at, len)))
     }
 
@@ -211,7 +239,7 @@ impl Driver for Editor {
     }
 
     fn close(&self, ctx: &dyn Calls, h: u64) -> Reply<()> {
-        self.outputs.close(ctx, Rd(h)).into()
+        self.stay().and_then(|stay| stay.outputs.close(ctx, Rd(h))).into()
     }
 }
 
@@ -232,16 +260,11 @@ impl Editor {
         Some(read.into_bytes())
     }
 
-    /// The rds `start` registered; `Closed` before it has.
-    fn cells(&self) -> Result<&Cells, Error> {
-        self.cells.get().ok_or(Error::Closed)
-    }
-
     /// One frame: every key it has not taken, run; the revision they
     /// made ended where the mode says it is over; the rows the region
     /// has now; the View.
     fn framed(&self, ctx: &dyn Calls) -> Result<Vec<u8>, Error> {
-        let keys = self.surface.region()?.keys(ctx)?;
+        let keys = self.stay()?.surface.region()?.keys(ctx)?;
         for key in keys {
             let effect = self.vim.borrow_mut().key(key);
             self.act(ctx, effect)?;
@@ -280,7 +303,7 @@ impl Editor {
 
     /// The rows the region has now, as `windows/0/size` says.
     fn sized(&self, ctx: &dyn Calls) -> Result<usize, Error> {
-        let rows = count(self.surface.region()?.size(ctx)?.rows);
+        let rows = count(self.stay()?.surface.region()?.size(ctx)?.rows);
         self.vim.borrow_mut().rows = rows;
         Ok(rows)
     }
@@ -349,7 +372,7 @@ impl Editor {
         };
         self.act(ctx, effect)?;
         let said = core::mem::take(&mut self.vim.borrow_mut().message);
-        self.outputs.open(ctx, DRIVER, rd, said.into_bytes())
+        self.stay()?.outputs.open(ctx, DRIVER, rd, said.into_bytes())
     }
 
     /// The name a first token stands for: the first under Vim's own
@@ -368,7 +391,7 @@ impl Editor {
         if token.is_empty() {
             return Ok(None);
         }
-        let under = ops::children(ctx, self.cells()?.bin)?;
+        let under = ops::children(ctx, self.stay()?.cells.bin)?;
         let held = |rd: Rd| named(ctx, rd).ok();
         let mut listed = under.into_iter().filter_map(held);
         Ok(listed.find(|name| name.starts_with(token)))
@@ -583,7 +606,7 @@ impl Editor {
         };
         // The write said why it did not happen; the editor stays.
         let Some(code) = code else { return Ok(()) };
-        self.surface.region()?.ends(ctx, code)
+        self.stay()?.surface.region()?.ends(ctx, code)
     }
 
     /// What `:wq`, `:x` and `ZZ` write before they leave: the source
@@ -671,7 +694,7 @@ impl Editor {
             self.says(E37);
             return Ok(());
         }
-        self.surface.region()?.opens(ctx, target, plugin)
+        self.stay()?.surface.region()?.opens(ctx, target, plugin)
     }
 
     /// One `:` line past its range: the name its first token stands
@@ -879,6 +902,35 @@ fn as_given<'a>(dir: &str, name: &'a str) -> &'a str {
     name.strip_prefix(dir)
         .and_then(|rest| rest.strip_prefix('/'))
         .unwrap_or(name)
+}
+
+/// What `start` finds once, the very first time, and every later
+/// `start` leaves as `:cd` and the shell's own runs left it.
+struct Kept {
+    dir: String,
+    root: Rd,
+    cwd: Rd,
+    shell: Shell,
+    clip: Option<Rd>,
+}
+
+/// Where the editor stands, found from `region`: the directory the
+/// Client started in, the mirror's own root, where that directory is
+/// under it, a Shell over it with Vim's own `bin` first on its PATH,
+/// and the clipboard rd when the Client serves one.
+fn kept_of(ctx: &dyn Calls, region: &Region) -> Result<Kept, Error> {
+    let dir = region.cwd(ctx)?;
+    // The fs Module mirrors the directory the editor runs over, so
+    // every name of the person's is under it and a leading `/` is its
+    // root. A tree with no mirror leaves the editor at the tree's own
+    // root, which is a place to stand.
+    let root = cell::resolve(ctx, ROOT, "/module/fs/root").unwrap_or(ROOT);
+    let cwd = cell::resolve(ctx, root, &dir).unwrap_or(root);
+    let mut shell = Shell::at(cwd, ops::where_is(ctx, cwd)?);
+    shell.first("/self/vim/bin");
+    ranged(&mut shell, 0, 0, false);
+    let clip = cell::resolve(ctx, ROOT, "/self/dev/clipboard").ok();
+    Ok(Kept { dir, root, cwd, shell, clip })
 }
 
 /// What Vim registers under its home, in the order `ls` shows them,

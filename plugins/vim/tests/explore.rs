@@ -25,10 +25,14 @@ type Editor = Tui;
 /// Container and for the name `cli`, which no shape gives. What the
 /// cli buffer does with the region is judged by its own tests; what
 /// is judged here is what Vim asked for.
+///
+/// One `Editor` across every swap, as the app's own table gives one
+/// (01.0).
 fn table(seen: &Seen) -> Table {
     let seen = seen.clone();
+    let vim = reovim_plugin_vim::Editor::new();
     Box::new(move |want| match want {
-        Want::Cell => Some((String::from("vim"), reovim_plugin_vim::boot())),
+        Want::Cell => Some((String::from("vim"), vim.booted())),
         Want::Container | Want::Named("cli") => Some((
             String::from("listing"),
             Stub::booted(&seen, "-- LISTING --"),
@@ -88,17 +92,18 @@ fn a_name_is_resolved_under_the_directory_the_client_started_in() {
 }
 
 #[test]
-fn a_cell_goes_to_the_table_the_same_way_and_comes_back_a_fresh_vim() {
+fn a_cell_goes_to_the_table_the_same_way_and_keeps_its_place() {
     let rig = work("explore-cell");
     let seen = Seen::default();
     let mut tui = over(&rig, &seen);
-    // The cursor moves, so a Vim that kept its place would say 2:1.
+    // The cursor moves, and this is the one Vim across the swap
+    // (01.0), so it comes back to 2:1 and not 1:1.
     assert_eq!(typed(&mut tui, "j"), Step::Changed);
     assert_eq!(status(&mut tui), "f  2:1  r1   ");
 
     assert_eq!(typed(&mut tui, ":explore f<CR>"), Step::Changed);
     assert!(seen.borrow().is_empty(), "a cell is no Container");
-    assert_eq!(status(&mut tui), "f  1:1  r1   ", "another Vim over it");
+    assert_eq!(status(&mut tui), "f  2:1  r1   ", "the place was kept");
     assert_eq!(frame(&mut tui).lines, ["one", "two"]);
 }
 

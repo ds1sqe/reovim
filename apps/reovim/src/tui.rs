@@ -32,12 +32,15 @@ type Serve<'a> = &'a mut dyn FnMut() -> Result<(), Fail>;
 /// cell, the explorer by name and for a Container, the cli buffer by
 /// name alone, no rd being of its shape. The names are the app's; the
 /// tui knows none of them.
+///
+/// One `Editor` across every swap of the region (01.0): what a stay
+/// keeps of Vim's state outlives it, and a second stay is a second
+/// `Stay` over the one engine, not a fresh one.
 fn table() -> Table {
-    Box::new(|want| {
+    let vim = reovim_plugin_vim::Editor::new();
+    Box::new(move |want| {
         let made = match want {
-            Want::Named("vim") | Want::Cell => {
-                ("vim", reovim_plugin_vim::boot())
-            }
+            Want::Named("vim") | Want::Cell => ("vim", vim.booted()),
             Want::Named("explorer") | Want::Container => {
                 ("explorer", reovim_plugin_explorer::boot())
             }

@@ -16,10 +16,12 @@ use reovim_rig::{Rig, opened, said, typed};
 /// The one editor a test drives.
 type Editor = Tui;
 
-/// Vim for a cell; nothing else is opened here.
+/// Vim for a cell; nothing else is opened here. One `Editor` across
+/// every swap, as the app's own table gives one (01.0).
 fn table() -> Table {
-    Box::new(|want| match want {
-        Want::Cell => Some((String::from("vim"), reovim_plugin_vim::boot())),
+    let vim = reovim_plugin_vim::Editor::new();
+    Box::new(move |want| match want {
+        Want::Cell => Some((String::from("vim"), vim.booted())),
         _ => None,
     })
 }

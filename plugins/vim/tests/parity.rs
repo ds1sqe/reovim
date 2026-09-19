@@ -45,7 +45,20 @@ fn state_of(vim: &Vim) -> (String, String, Vec<u8>) {
     (format!("{}:{}", line + 1, column + 1), kind, bytes)
 }
 
-/// One case: the keys run to their quit, the file and the code after.
+/// The other files a case carries, `in.NAME` beside `in`: `NAME`, in
+/// the order `record.sh` writes `out.NAME`.
+fn others(case: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(case)
+        .unwrap()
+        .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
+        .filter_map(|name| name.strip_prefix("in.").map(String::from))
+        .collect();
+    names.sort();
+    names
+}
+
+/// One case: the keys run to their quit, `file` and every `NAME` a
+/// second file, and the code after.
 fn replay(case: &Path) -> Result<(), String> {
     let name = case.file_name().unwrap().to_str().unwrap();
     let read = |file: &str| {
@@ -60,9 +73,17 @@ fn replay(case: &Path) -> Result<(), String> {
     let line = String::from_utf8(read("keys")?).unwrap();
     let keys =
         keys(line.trim_end()).ok_or_else(|| format!("{name}: bad notation"))?;
+    let others = others(case);
+    let expected = others
+        .iter()
+        .map(|other| read(&format!("out.{other}")))
+        .collect::<Result<Vec<Vec<u8>>, _>>()?;
 
     let rig = Rig::new(name);
     rig.file("file", &input);
+    for other in &others {
+        rig.file(other, &read(&format!("in.{other}"))?);
+    }
     let vim = Editor::new();
     let one = vim.clone();
     let table: Table =
@@ -83,7 +104,11 @@ fn replay(case: &Path) -> Result<(), String> {
     let code = quit.ok_or_else(|| format!("{name}: the keys did not quit"))?;
     let file = rig.disk("file");
     let ours = state_of(&vim.engine());
-    if (code, &file, &ours) == (exit, &out, &theirs) {
+    let theirs_of: Vec<Vec<u8>> =
+        others.iter().map(|other| rig.disk(other)).collect();
+    let matched =
+        (code, &file, &ours) == (exit, &out, &theirs) && theirs_of == expected;
+    if matched {
         return Ok(());
     }
     let show = |bytes: &[u8]| String::from_utf8_lossy(bytes).into_owned();
@@ -91,6 +116,14 @@ fn replay(case: &Path) -> Result<(), String> {
     if file != out {
         let (a, b) = (show(&file), show(&out));
         let _ = write!(report, "\n--- ours ---\n{a}--- nvim ---\n{b}");
+    }
+    for ((other, ours), theirs) in others.iter().zip(&theirs_of).zip(&expected)
+    {
+        if ours != theirs {
+            let (a, b) = (show(ours), show(theirs));
+            let _ =
+                write!(report, "\n--- ours {other} ---\n{a}--- nvim ---\n{b}");
+        }
     }
     if ours.0 != theirs.0 {
         let _ = write!(report, "\ncursor {}, nvim {}", ours.0, theirs.0);

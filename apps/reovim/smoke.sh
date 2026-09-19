@@ -740,6 +740,26 @@ ended explored
 [[ "$ENDED" == 0 ]] || fail ":q left the listing :explore made"
 [[ "$(cat "$DIR/tree/note")" == one ]] || fail ":explore! wrote the draft"
 
+# --- one Vim across a swap: a register crosses a listing and a pick -
+# The editor is one `Editor` started again at each swap (01.0), so a
+# register survives `:explore` and the pick that follows it, as it
+# survives any other swap.
+mkdir "$DIR/kept"
+echo alpha > "$DIR/kept/a"
+echo beta > "$DIR/kept/b"
+start kept "$DIR/kept" "$BIN a"
+editing kept a
+keys kept y y : e x p Enter
+editing kept kept
+shown kept '^\.\./'
+keys kept j j Enter
+editing kept b
+keys kept p : w q Enter
+ended kept
+[[ "$ENDED" == 0 ]] || fail "the kept tree did not quit"
+[[ "$(cat "$DIR/kept/b")" == $'beta\nalpha' ]] \
+    || fail "the register did not cross :explore: $(cat "$DIR/kept/b")"
+
 # --- :cli: a shell in a region of its own ----------------------------
 # `:cli` is Vim asking its Client for this region in the Plugin the
 # name `cli` stands for, over where the `:` line's own lines stand:
