@@ -40,14 +40,18 @@ impl Ring {
     }
 
     /// Events after `cursor` on `watched`, and the new cursor. A cursor
-    /// the ring no longer covers yields one `Overflow` on `ROOT`.
+    /// the ring no longer covers yields one `Overflow` on `ROOT`; one
+    /// at or past the head yields nothing.
     pub fn since(
         &self,
         cursor: u64,
         watched: &BTreeSet<Rd>,
     ) -> (Vec<Event>, u64) {
         let oldest = self.events.front().map_or(self.next_seq, |e| e.seq);
-        if cursor + 1 < oldest {
+        // The cursor is a caller's number and `u64::MAX` is one it may
+        // send: saturating, that reads as a cursor past the head, which
+        // is behind nothing and so no `Overflow`.
+        if cursor.saturating_add(1) < oldest {
             let event = Event {
                 seq: self.head(),
                 rd: ROOT,

@@ -32,7 +32,7 @@ impl Kernel {
         };
         let trace = tracing(self, caller, &op);
         let answer = match op {
-            Op::Lookup { rd, name } => lookup(self, rd, &name),
+            Op::Lookup { rd, name } => lookup(self, caller, rd, &name),
             Op::Open { rd, rights } => open(self, caller, rd, rights),
             Op::Read { h, at, len } => read(self, caller, h, at, len),
             Op::Write { h, at, bytes } => write(self, caller, h, at, &bytes),
@@ -42,9 +42,10 @@ impl Kernel {
             Op::Watch { h, on } => watch(self, caller, h, on),
             Op::Close { h } => close(self, caller, h),
             Op::Ask { token } => {
-                self.state.borrow_mut().pending.ask(token).map(Reply::ok)
+                let mut s = self.state.borrow_mut();
+                s.pending.ask(caller, token).map(Reply::ok)
             }
-            Op::Cancel { token } => cancel(self, token),
+            Op::Cancel { token } => cancel(self, caller, token),
             Op::Since { cursor } => since(self, caller, cursor),
             Op::Info { rd } => self
                 .state
@@ -53,7 +54,7 @@ impl Kernel {
                 .info(rd)
                 .map(|i| Reply::ok(Out::Info(i))),
             Op::Parent { rd } => parent(self, rd),
-            Op::Children { rd } => children(self, rd),
+            Op::Children { rd } => children(self, caller, rd),
             // A caller's answer to what it was asked to serve, and what
             // it announces of the rds it serves, are the link's
             // business and not the tree's; whoever moves the bytes
@@ -202,7 +203,7 @@ fn outcome(answer: &Answer) -> String {
     }
 }
 
-fn lookup(k: &Kernel, rd: Rd, name: &str) -> Answer {
+fn lookup(k: &Kernel, caller: Caller, rd: Rd, name: &str) -> Answer {
     let s = k.state.borrow();
     let owner = s.table.get(rd)?.owner;
     if let Some(child) = s.table.child(rd, name) {
@@ -214,7 +215,7 @@ fn lookup(k: &Kernel, rd: Rd, name: &str) -> Answer {
     };
     let (index, d) = k.served(module, driver)?;
     let reply = d.lookup(&k.calls(module), rd, name);
-    finish(k, None, Some((module, index)), reply, Out::Rd)
+    finish(k, caller, None, Some((module, index)), reply, Out::Rd)
 }
 
 fn open(k: &Kernel, caller: Caller, rd: Rd, rights: Rights) -> Answer {
@@ -249,7 +250,7 @@ fn open(k: &Kernel, caller: Caller, rd: Rd, rights: Rights) -> Answer {
         None => None,
         Some(own) => {
             let (module, _) = served.ok_or(Error::Unsupported)?;
-            Some(s.pending.opening(module, own, h)?)
+            Some(s.pending.opening(module, own, caller, h)?)
         }
     };
     s.next_handle += 1;
@@ -298,7 +299,7 @@ fn read(k: &Kernel, caller: Caller, h: Handle, at: u64, len: u32) -> Answer {
             entry.atime = k.now();
         }
     }
-    finish(k, Some(h), slot.served, reply, Out::Bytes)
+    finish(k, caller, Some(h), slot.served, reply, Out::Bytes)
 }
 
 fn write(
@@ -317,7 +318,7 @@ fn write(
         }
     };
     let len = |n| Out::Len(u32::try_from(n).unwrap_or(u32::MAX));
-    finish(k, Some(h), slot.served, reply, len)
+    finish(k, caller, Some(h), slot.served, reply, len)
 }
 
 fn call(
@@ -344,7 +345,7 @@ fn call(
         (k.now().saturating_sub(at), grew(before, k.heap().live))
     });
     stamp(k, slot.rd, api, method, "reply", spent);
-    finish(k, Some(h), slot.served, reply, Out::Bytes)
+    finish(k, caller, Some(h), slot.served, reply, Out::Bytes)
 }
 
 fn watch(k: &Kernel, caller: Caller, h: Handle, on: bool) -> Answer {
@@ -406,7 +407,7 @@ fn parent(k: &Kernel, rd: Rd) -> Answer {
     Ok(Reply::ok(Out::Rd(parent.ok_or(Error::Invalid)?)))
 }
 
-fn children(k: &Kernel, rd: Rd) -> Answer {
+fn children(k: &Kernel, caller: Caller, rd: Rd) -> Answer {
     let first_time = {
         let mut s = k.state.borrow_mut();
         let entry = s.table.get_mut(rd)?;
@@ -423,8 +424,8 @@ fn children(k: &Kernel, rd: Rd) -> Answer {
         // not being full yet when the op returns.
         let (_, d) = k.served(module, driver)?;
         if let Reply::Pending(own) = d.lookup(&k.calls(module), rd, "") {
-            let token =
-                k.state.borrow_mut().pending.open(module, own.0, None)?;
+            let mut s = k.state.borrow_mut();
+            let token = s.pending.open(module, own.0, caller, None)?;
             return Ok(Reply::Pending(token));
         }
     }
@@ -442,9 +443,11 @@ fn room(k: &Kernel, slot: &Slot) -> Result<(), Error> {
 }
 
 /// Turn a slot's answer into the caller's: a Pending token is scoped by
-/// the Module and counted on the handle the op names, if it names one.
+/// the Module, owed to `caller` and to no other, and counted on the
+/// handle the op names, if it names one.
 fn finish<T>(
     k: &Kernel,
+    caller: Caller,
     h: Option<Handle>,
     served: Option<(ModuleId, usize)>,
     reply: Reply<T>,
@@ -456,7 +459,7 @@ fn finish<T>(
     };
     let (module, _) = served.ok_or(Error::Unsupported)?;
     let mut s = k.state.borrow_mut();
-    let token = s.pending.open(module, own, h)?;
+    let token = s.pending.open(module, own, caller, h)?;
     if let Some(slot) = h.and_then(|h| s.handles.get_mut(&h)) {
         slot.pending += 1;
     }
@@ -465,10 +468,11 @@ fn finish<T>(
 
 /// No vtable slot carries a cancel; a later `done` is dropped. The
 /// slot an `open` that was still waiting made goes with the token,
-/// its cookie being one nothing will ever deliver.
-fn cancel(k: &Kernel, token: Token) -> Answer {
+/// its cookie being one nothing will ever deliver. A token another
+/// caller holds is `Denied` and nothing moves.
+fn cancel(k: &Kernel, caller: Caller, token: Token) -> Answer {
     let mut s = k.state.borrow_mut();
-    if let Some(h) = s.pending.cancel(token)? {
+    if let Some(h) = s.pending.cancel(caller, token)? {
         s.handles.remove(&h);
     }
     Ok(Reply::ok(Out::Unit))

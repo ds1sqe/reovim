@@ -608,6 +608,21 @@ fn a_slow_watcher_gets_overflow() {
 }
 
 #[test]
+fn a_cursor_past_the_head_is_no_overflow() {
+    let (rig, test) = limited(Limits { watch_ring: 2, ..Limits::default() });
+    let cell = test.cell();
+    let h = rig.open(cell, Rights::READ);
+    rig.ok(Op::Watch { h, on: true });
+    for _ in 0..5 {
+        rig.calls().changed(cell, Kind::Modify).unwrap();
+    }
+    // The cursor is the caller's own number and `u64::MAX` is one it
+    // may send: at or past the head it is behind nothing, so it is no
+    // slow watcher and there is nothing left for it to hear.
+    assert_eq!(rig.kinds(u64::MAX), vec![]);
+}
+
+#[test]
 fn close_implies_unwatch() {
     let (rig, test) = fresh();
     let cell = test.cell();

@@ -1,10 +1,13 @@
 //! Token to outcome. A Driver's own token value is scoped by its Module;
-//! the caller sees a Kernel token.
+//! the caller sees a Kernel token. A token is the caller's that made
+//! it: no other may ask its answer out or cancel it.
 
-use alloc::collections::BTreeMap;
+use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::vec::Vec;
 
-use reovim_kernel_interface::{Error, Handle, ModuleId, Outcome, Token};
+use reovim_kernel_interface::{
+    Caller, Error, Handle, ModuleId, Outcome, Token,
+};
 
 pub enum State {
     Waiting,
@@ -13,6 +16,10 @@ pub enum State {
 }
 
 pub struct Wait {
+    /// The caller owed the answer: the one that ran the op. Its `Ask`
+    /// collects the outcome and its `Cancel` drops the wait; any other
+    /// caller naming this token is `Denied`.
+    pub caller: Caller,
     /// The handle the wait is counted against, and for an `open` the
     /// handle the caller will be given; `None` for `lookup` and
     /// `children`, which name none.
@@ -39,9 +46,10 @@ impl Pending {
         &mut self,
         module: ModuleId,
         own: u64,
+        caller: Caller,
         handle: Option<Handle>,
     ) -> Result<Token, Error> {
-        self.begin(module, own, handle, false)
+        self.begin(module, own, caller, handle, false)
     }
 
     /// The same for the `open` that made `handle`, whose `done` the
@@ -50,15 +58,17 @@ impl Pending {
         &mut self,
         module: ModuleId,
         own: u64,
+        caller: Caller,
         handle: Handle,
     ) -> Result<Token, Error> {
-        self.begin(module, own, Some(handle), true)
+        self.begin(module, own, caller, Some(handle), true)
     }
 
     fn begin(
         &mut self,
         module: ModuleId,
         own: u64,
+        caller: Caller,
         handle: Option<Handle>,
         opening: bool,
     ) -> Result<Token, Error> {
@@ -68,7 +78,7 @@ impl Pending {
         let token = Token(self.next);
         self.next += 1;
         self.by_driver.insert((module, own), token);
-        let wait = Wait { handle, opening, state: State::Waiting };
+        let wait = Wait { caller, handle, opening, state: State::Waiting };
         self.by_token.insert(token, wait);
         Ok(token)
     }
@@ -99,8 +109,13 @@ impl Pending {
     }
 
     /// `Busy` while waiting; the outcome once, then the token is gone.
-    pub fn ask(&mut self, token: Token) -> Outcome {
+    /// `Denied` to any caller but the one the answer is owed to, whose
+    /// bytes these are.
+    pub fn ask(&mut self, caller: Caller, token: Token) -> Outcome {
         let wait = self.by_token.get(&token).ok_or(Error::Invalid)?;
+        if wait.caller != caller {
+            return Err(Error::Denied);
+        }
         let outcome = match &wait.state {
             State::Waiting => return Err(Error::Busy),
             State::Done(outcome) => outcome.clone(),
@@ -117,14 +132,30 @@ impl Pending {
 
     /// Mark a waiting token; a finished one is left alone. Answers the
     /// handle of an `open` that was still waiting, whose cookie will
-    /// now never land.
-    pub fn cancel(&mut self, token: Token) -> Result<Option<Handle>, Error> {
-        let wait = self.by_token.get_mut(&token).ok_or(Error::Invalid)?;
+    /// now never land. `Denied` to any caller but the one the wait is
+    /// owed to: another caller may not drop this answer.
+    pub fn cancel(
+        &mut self,
+        caller: Caller,
+        token: Token,
+    ) -> Result<Option<Handle>, Error> {
+        let wait = self.by_token.get(&token).ok_or(Error::Invalid)?;
+        if wait.caller != caller {
+            return Err(Error::Denied);
+        }
+        Ok(self.stop(token))
+    }
+
+    /// The marking alone, for the Kernel's own reasons rather than a
+    /// caller's `Cancel`: no caller to check, and an unknown or
+    /// finished token is nothing to do.
+    fn stop(&mut self, token: Token) -> Option<Handle> {
+        let wait = self.by_token.get_mut(&token)?;
         if !matches!(wait.state, State::Waiting) {
-            return Ok(None);
+            return None;
         }
         wait.state = State::Cancelled;
-        Ok(if wait.opening { wait.handle } else { None })
+        if wait.opening { wait.handle } else { None }
     }
 
     /// A Module is gone: nothing will finish its waits, so a caller's
@@ -137,7 +168,27 @@ impl Pending {
         let gone: Vec<Token> =
             mine.iter().filter_map(|key| self.by_driver.remove(key)).collect();
         for token in gone {
-            let _ = self.cancel(token);
+            self.stop(token);
         }
+    }
+
+    /// The caller owed these answers is gone: no `Ask` will ever come
+    /// for them, so the waits go rather than stand in the table for
+    /// ever. Answers the handles of its `open`s that were still
+    /// waiting, whose cookies will never land, as a `Cancel` of one
+    /// does.
+    pub fn caller_end(&mut self, caller: Caller) -> Vec<Handle> {
+        let mine: BTreeSet<Token> = self
+            .by_token
+            .iter()
+            .filter(|(_, wait)| wait.caller == caller)
+            .map(|(token, _)| *token)
+            .collect();
+        self.by_driver.retain(|_, token| !mine.contains(token));
+        mine.iter()
+            .filter_map(|token| self.by_token.remove(token))
+            .filter(|wait| wait.opening && matches!(wait.state, State::Waiting))
+            .filter_map(|wait| wait.handle)
+            .collect()
     }
 }

@@ -354,11 +354,18 @@ impl State {
         self.emit(parent, Kind::Delete, Some(rd));
     }
 
-    /// The caller is gone: its client rd goes with it, and the Session
-    /// it was in ends once no caller is left in it. A named caller is
-    /// never forgotten this way, so a Session it is in stays for the
-    /// `Connect` that adopts it.
+    /// The caller is gone: every answer it was owed goes with it, so no
+    /// wait of its own is left in the table for an `Ask` that can never
+    /// come, and an `open` of its own that was still waiting takes the
+    /// half-made handle a `Cancel` of it would have taken. Its client
+    /// rd goes with it too, and the Session it was in ends once no
+    /// caller is left in it. A named caller is never forgotten this
+    /// way, so a Session it is in stays for the `Connect` that adopts
+    /// it.
     fn forget(&mut self, caller: Caller) {
+        for h in self.pending.caller_end(caller) {
+            self.handles.remove(&h);
+        }
         let client = self.callers.remove(&caller).and_then(|c| c.client);
         let Some((session, rd)) = client else { return };
         if let Some(parent) = self.table.get(rd).ok().and_then(|e| e.parent) {

@@ -8,8 +8,8 @@ use std::rc::Rc;
 
 use common::Rig;
 use reovim_kernel_interface::{
-    Calls, Driver, DriverId, Error, Flags, Handle, Module, Op, Out, Outcome,
-    Rd, Reply, Rights, Token,
+    Caller, Calls, Driver, DriverId, Error, Flags, Handle, Module, Op, Out,
+    Outcome, Rd, Reply, Rights, Token,
 };
 use reovim_kernel_runtime::{Limits, SYS};
 
@@ -115,6 +115,15 @@ fn opening(rig: &Rig, dir: Rd) -> (Handle, Token) {
     (h, rig.waits(Op::Open { rd: dir, rights: Rights::READ }))
 }
 
+/// `op` run by a caller that is not the rig's, at `seq` of its own:
+/// what a second Client on the one Kernel sends.
+fn by(rig: &Rig, caller: Caller, seq: u64, op: Op) -> Result<Out, Error> {
+    match rig.kernel.submit(caller, seq, op) {
+        Reply::Ready(result) => result,
+        other @ Reply::Pending(_) => panic!("expected Ready, got {other:?}"),
+    }
+}
+
 /// The child the Driver registers while the caller waits, as its
 /// `lookup` would have registered it at once.
 fn child(rig: &Rig, dir: Rd, name: &str) -> Rd {
@@ -216,6 +225,56 @@ fn an_open_cancelled_before_its_done_leaves_no_handle() {
     rig.done(Ok(Out::Handle(Handle(7))));
     assert_eq!(rig.err(Op::Ask { token }), Error::Cancelled);
     assert_eq!(rig.err(Op::Read { h, at: 0, len: 4 }), Error::Invalid);
+}
+
+#[test]
+fn another_callers_ask_is_denied_and_takes_nothing() {
+    let (rig, slow) = fresh();
+    let token = rig.waits(Op::Lookup { rd: slow.dir(), name: "a".into() });
+    let b = rig.kernel.caller_new();
+    assert_eq!(by(&rig, b, 1, Op::Ask { token }), Err(Error::Denied));
+    let a = child(&rig, slow.dir(), "a");
+    rig.done(Ok(Out::Rd(a)));
+    // The answer is the token's own caller's: B's second try does not
+    // collect it and the first try left it where it was.
+    assert_eq!(by(&rig, b, 2, Op::Ask { token }), Err(Error::Denied));
+    assert_eq!(rig.ok(Op::Ask { token }), Out::Rd(a));
+}
+
+#[test]
+fn another_callers_cancel_is_denied_and_the_handle_stands() {
+    let (rig, slow) = fresh();
+    let (h, token) = opening(&rig, slow.dir());
+    let b = rig.kernel.caller_new();
+    assert_eq!(by(&rig, b, 1, Op::Cancel { token }), Err(Error::Denied));
+    // The slot the waiting `open` made is still there for its cookie.
+    rig.done(Ok(Out::Handle(Handle(7))));
+    assert_eq!(rig.ok(Op::Ask { token }), Out::Handle(h));
+    rig.waits(Op::Read { h, at: 0, len: 4 });
+    assert_eq!(*slow.reads.borrow(), vec![7], "the Driver's cookie");
+}
+
+#[test]
+fn a_caller_that_ends_takes_its_waits_with_it() {
+    let (rig, slow) = fresh();
+    let b = rig.kernel.caller_new();
+    let lookup = Op::Lookup { rd: slow.dir(), name: "a".into() };
+    let Reply::Pending(token) = rig.kernel.submit(b, 1, lookup) else {
+        panic!("expected Pending")
+    };
+    let waiting = format!("pending token={} ", token.0);
+    let core = rig.core();
+    assert!(core.lines().any(|l| l.starts_with(&waiting)), "{core}");
+    rig.kernel.caller_end(b);
+    // Nobody is owed the answer any more, so the row is not kept for
+    // an `Ask` that can never come: the token is unknown, not waiting.
+    let core = rig.core();
+    assert!(!core.lines().any(|l| l.starts_with(&waiting)), "{core}");
+    let c = rig.kernel.caller_new();
+    assert_eq!(by(&rig, c, 1, Op::Ask { token }), Err(Error::Invalid));
+    let a = child(&rig, slow.dir(), "a");
+    let late = rig.calls().done(Token(1), Ok(Out::Rd(a)));
+    assert_eq!(late, Err(Error::Invalid), "the Driver's own token too");
 }
 
 #[test]
