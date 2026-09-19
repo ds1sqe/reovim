@@ -5,8 +5,12 @@
 //! and every other name resolves at the server's `/bin`.
 
 use reovim_client_sh::{Shell, complete, run};
-use reovim_kernel_interface::Calls;
+use reovim_kernel_interface::{
+    Calls, Decl, DriverId, Flags, Method, Rights, Ty,
+};
 use reovim_rig::Rig;
+use reovim_sdk::cell;
+use reovim_sdk::walk::ROOT;
 
 /// One typed line; its output, or the line a Miss would print.
 fn typed(ctx: &dyn Calls, shell: &mut Shell, line: &str) -> String {
@@ -125,4 +129,40 @@ fn tab_offers_the_names_the_flags_of_one_and_the_paths_under_the_cwd() {
     // and no token past the first offers a value.
     assert_eq!(offer(ctx, &shell, "cat nowhere/n"), none);
     assert_eq!(offer(ctx, &shell, "call open op"), none);
+}
+
+#[test]
+fn a_name_two_directories_of_path_hold_resolves_at_the_earlier_one() {
+    let rig = Rig::new("sh-shadow");
+    let host = rig.host();
+    let ctx = &host.own();
+    let mut shell = Shell::default();
+
+    // The server's `/bin` holds `ls`, which takes three flags and a
+    // list of targets.
+    let server = "ls [-l] [-a] [-w] [targets..]\n";
+    assert_eq!(typed(ctx, &mut shell, "help ls"), server);
+
+    // `/self/bin`, which stands before `/bin` in PATH, gains an `ls` of
+    // this Client's own, declared to take nothing at all.
+    let method = Method {
+        number: 0,
+        name: "run".to_string(),
+        input: Ty::Record(Vec::new()),
+        output: Ty::Rd,
+        right: Rights::READ,
+    };
+    let decl =
+        Decl { api: "shadow".to_string(), ver: 1, methods: vec![method] };
+    let at = cell::resolve(ctx, ROOT, "/self/bin").unwrap();
+    let rd = ctx.register(DriverId(0), at, Some("ls")).unwrap();
+    ctx.report(rd, Flags::READ | Flags::CONTAINER, &[decl]).unwrap();
+
+    // The earlier directory wins, so the line `ls` runs is the local
+    // one; the listing holds the name once, not twice.
+    assert_eq!(typed(ctx, &mut shell, "help ls"), "ls\n");
+    let said = typed(ctx, &mut shell, "help");
+    assert_eq!(said.lines().filter(|line| line.starts_with("ls")).count(), 1);
+    assert!(said.contains("\nls\n"), "{said}");
+    assert!(!said.contains(server), "{said}");
 }

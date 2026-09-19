@@ -18,10 +18,19 @@ export GIT_EDITOR="$BIN" GIT_SEQUENCE_EDITOR="$BIN"
 # that slept through its terminal going away would be left behind
 # spinning. The socket names are per-pid but $BIN is not, so a stray
 # editor is looked for by binary; check.sh runs the scripts serially.
+#
+# A run that failed is read from what it left: the panes are gone with
+# the server, but $DIR keeps the repository, the files written and each
+# pane's exit code, and the way out says where it is. A clean run
+# leaves neither the server nor the directory.
 cleanup() {
     local code=$? i
     "${TMUX[@]}" kill-server 2>/dev/null || true
-    rm -rf -- "$DIR"
+    if [[ "$code" == 0 ]]; then
+        rm -rf -- "$DIR"
+    else
+        printf 'smoke.sh: what the run left is under %s\n' "$DIR" >&2
+    fi
     for ((i = 0; i < 100; i++)); do
         pgrep -f "^$BIN( |\$)" >/dev/null || exit "$code"
         sleep 0.01
@@ -30,6 +39,7 @@ cleanup() {
     exit 1
 }
 trap cleanup EXIT
+trap 'exit 1' INT TERM
 
 fail() {
     printf 'smoke.sh: %s\n' "$1" >&2
@@ -67,24 +77,37 @@ keys() {
     done
 }
 
-# The exit code of the pane `name`, once it has ended.
+# The exit code of the pane `name`, once it has ended, into `ENDED`. A
+# `fail` inside a `$(ended ...)` would end the substitution alone and
+# leave the empty string behind, which every caller read as a code, so
+# the code is handed back in a variable and read from there.
+ENDED=
 ended() {
     local name="$1" i
     for ((i = 0; i < 200; i++)); do
-        [[ -f "$DIR/exit-$name" ]] && { cat "$DIR/exit-$name"; return; }
+        if [[ -f "$DIR/exit-$name" ]]; then
+            ENDED="$(cat "$DIR/exit-$name")"
+            return
+        fi
         sleep 0.01
     done
     fail "$name did not end"
 }
 
-# The editor holds the pane; the status row says which file.
+# The editor holds the pane; the status row says which file. A line, a
+# column and a revision are each at least one digit: `[0-9]*` alone is
+# a row with none of them.
 editing() {
-    shown "$1" "$2  [0-9]*:[0-9]*  r[0-9]*"
+    shown "$1" "$2  [0-9][0-9]*:[0-9][0-9]*  r[0-9][0-9]*"
 }
 
-# How many sockets the runtime directory holds.
+# How many sockets the runtime directory holds. A directory that is not
+# there holds no answer at all, which is not none; the caller says what
+# that is worth.
 sockets() {
-    ls "$XDG_RUNTIME_DIR" | grep -c '\.sock$' || true
+    local names
+    names="$(ls -- "$XDG_RUNTIME_DIR")" || return 1
+    grep -c '\.sock$' <<< "$names" || true
 }
 
 # `value` into the rd `target`. Bytes typed into an rd have one
@@ -126,7 +149,8 @@ editing commit COMMIT_EDITMSG
 # "the second" typed, `dw` takes "the ", `yyp` and `.` make three lines,
 # `dd` takes one back: a two-line message.
 keys commit i "the second" Escape 0 d w y y p . d d : w q Enter
-[[ "$(ended commit)" == 0 ]] || fail "git commit failed"
+ended commit
+[[ "$ENDED" == 0 ]] || fail "git commit failed"
 [[ "$(git log -1 --format=%B)" == $'second\nsecond' ]] \
     || fail "message not used: $(git log -1 --format=%B)"
 
@@ -136,7 +160,8 @@ head="$(git rev-parse HEAD)"
 start abort "$DIR/repo" "git commit"
 editing abort COMMIT_EDITMSG
 keys abort i "third" Escape : c q Enter
-[[ "$(ended abort)" != 0 ]] || fail "git commit went on after :cq"
+ended abort
+[[ "$ENDED" != 0 ]] || fail "git commit went on after :cq"
 [[ "$(git rev-parse HEAD)" == "$head" ]] || fail "abort committed"
 
 # --- a rebase todo: pick made reword, then the new message ----------
@@ -146,7 +171,8 @@ editing rebase git-rebase-todo
 keys rebase x x x x i "reword" Escape : w q Enter
 editing rebase COMMIT_EDITMSG
 keys rebase : s / t h i r d / r e w o r d e d " " t h i r d / Enter Z Z
-[[ "$(ended rebase)" == 0 ]] || fail "rebase failed"
+ended rebase
+[[ "$ENDED" == 0 ]] || fail "rebase failed"
 [[ "$(git log -1 --format=%s)" == "reworded third" ]] \
     || fail "reword not used: $(git log -1 --format=%s)"
 
@@ -170,13 +196,18 @@ said="$("$BIN" cli dmesg)"
 [[ "$said" == "["* ]] || fail "dmesg has no stamp: $said"
 [[ "$said" == *"listen $XDG_RUNTIME_DIR/reovim.sock"* ]] \
     || fail "dmesg does not say where the editor listens: $said"
-[[ -z "$("$BIN" cli dmesg -l err)" ]] || fail "dmesg -l err is not empty"
+# An empty answer is only empty where the run that gave it went well:
+# a cli that died says nothing either.
+said="$("$BIN" cli dmesg -l err)" && code=0 || code=$?
+[[ "$code" == 0 ]] || fail "dmesg -l err exits $code"
+[[ -z "$said" ]] || fail "dmesg -l err is not empty: $said"
 start follow "$DIR" "$BIN cli dmesg -w"
 shown follow 'connect session='
 poured /sys/log '<4>smoke-follows' >/dev/null
 shown follow 'smoke-follows'
 pkill -INT -f "^$BIN cli dmesg -w\$"
-[[ "$(ended follow)" == 0 ]] || fail "dmesg -w did not end on SIGINT"
+ended follow
+[[ "$ENDED" == 0 ]] || fail "dmesg -w did not end on SIGINT"
 
 # The cli as a shell in a terminal of its own: the prompt says where
 # the line stands, `cd` moves it, a listing comes from there, and
@@ -194,18 +225,21 @@ shown shell '^text$'
 keys shell p w d Enter
 shown shell '^/module$'
 keys shell C-d
-[[ "$(ended shell)" == 0 ]] || fail "Ctrl-D did not end the cli"
+ended shell
+[[ "$ENDED" == 0 ]] || fail "Ctrl-D did not end the cli"
 
 start other "$DIR/new" "$BIN ../other"
 editing other other
 # The first editor has the default socket, the second one of its own;
 # the cli reaches the first and finds the tui that holds its terminal.
-[[ "$(sockets)" == 2 ]] || fail "two editors have $(sockets) sockets"
+open="$(sockets)" || fail "$XDG_RUNTIME_DIR is not there"
+[[ "$open" == 2 ]] || fail "two editors have $open sockets"
 [[ "$("$BIN" cli ls -a /session/1/client)" == *" 1" ]] \
     || fail "the running editor has no client rd 1"
-# What this Client serves is `ls /self/dev` inside it; the cell a
-# second Client would read it from holds nothing until `/self` is on
-# the wire.
+# What this Client serves is `ls /self/dev` inside it, `/self` being
+# on the wire since 05.1; the cell a second Client would read a
+# capability from holds nothing, nothing writing it since the same
+# minor deleted `Client::capability`.
 serves="$("$BIN" cli cat /session/1/client/1/capability)"
 [[ -z "$serves" ]] || fail "the running editor's client serves $serves"
 # What the link has carried is the Client's own to know, and `link` is
@@ -309,7 +343,8 @@ counted "$((watchers + 1))"
 keys new x u
 shown told 'Modify'
 pkill -INT -f "^$BIN cli watch $watched\$"
-[[ "$(ended told)" == 0 ]] || fail "the watcher did not end on SIGINT"
+ended told
+[[ "$ENDED" == 0 ]] || fail "the watcher did not end on SIGINT"
 counted "$watchers"
 
 # --- a screen read and a keyboard typed from another terminal -------
@@ -405,22 +440,28 @@ editing sysed sysfile
 [[ "$("$BIN" cli --socket "$DIR/sys.sock" cat /sys/loglevel)" == debug ]] \
     || fail "--sys did not set the level before the modules loaded"
 keys sysed : q ! Enter
-[[ "$(ended sysed)" == 0 ]] || fail "the --sys editor did not quit"
+ended sysed
+[[ "$ENDED" == 0 ]] || fail "the --sys editor did not quit"
 
 [[ ! -e "$DIR/new/note" ]] || fail "a new file exists before its save"
 keys new : w q Enter
 keys other i "x" Escape : w Enter : q ! Enter
-[[ "$(ended new)" == 0 && "$(ended other)" == 0 ]] || fail "quit failed"
+ended new
+[[ "$ENDED" == 0 ]] || fail "the first editor did not quit"
+ended other
+[[ "$ENDED" == 0 ]] || fail "the second editor did not quit"
 [[ "$(cat "$DIR/new/note")" == fresh ]] || fail "new file not written"
 [[ "$(cat "$DIR/other")" == x ]] || fail "second editor not written"
-[[ "$(sockets)" == 0 ]] || fail "a socket was left behind"
+open="$(sockets)" || fail "$XDG_RUNTIME_DIR is not there"
+[[ "$open" == 0 ]] || fail "a socket was left behind"
 
 # --- a new file left unwritten leaves nothing behind -----------------
 start gone "$DIR" "$BIN $DIR/new/gone"
 editing gone gone
 shown gone '"new/gone" \[New\]'
 keys gone : q Enter
-[[ "$(ended gone)" == 0 ]] || fail ":q on a new file did not quit"
+ended gone
+[[ "$ENDED" == 0 ]] || fail ":q on a new file did not quit"
 [[ ! -e "$DIR/new/gone" ]] || fail ":q on a new file left one behind"
 
 # --- a new file below a directory that is not there ------------------
@@ -428,7 +469,8 @@ start deep "$DIR" "$BIN $DIR/new/a/b/x"
 editing deep x
 shown deep '"new/a/b/x" \[New DIRECTORY\]'
 keys deep i "deep" Escape : w q Enter
-[[ "$(ended deep)" == 0 ]] || fail "the deep new file did not quit"
+ended deep
+[[ "$ENDED" == 0 ]] || fail "the deep new file did not quit"
 [[ -d "$DIR/new/a/b" ]] || fail "the directories on the way were not made"
 [[ "$(cat "$DIR/new/a/b/x")" == deep ]] || fail "the deep file not written"
 
@@ -446,7 +488,8 @@ keys explore j j Enter
 editing explore note
 shown explore '^one$'
 keys explore : q Enter
-[[ "$(ended explore)" == 0 ]] || fail ":q left the file the listing opened"
+ended explore
+[[ "$ENDED" == 0 ]] || fail ":q left the file the listing opened"
 
 # A directory named on the command line is listed the same way, and
 # `:q` in a listing leaves with 0, there being nothing to lose.
@@ -454,7 +497,8 @@ start subdir "$DIR" "$BIN tree/sub"
 editing subdir sub
 shown subdir '^\.\./'
 keys subdir : q Enter
-[[ "$(ended subdir)" == 0 ]] || fail ":q in the listing did not quit"
+ended subdir
+[[ "$ENDED" == 0 ]] || fail ":q in the listing did not quit"
 
 # --- :explore from a file: its directory, and back into the file -----
 # `:exp[lore]` is Vim asking its Client for another rd in this region.
@@ -475,7 +519,8 @@ keys explored : e x p l o r e ! Enter
 editing explored tree
 shown explored '^\.\./'
 keys explored : q Enter
-[[ "$(ended explored)" == 0 ]] || fail ":q left the listing :explore made"
+ended explored
+[[ "$ENDED" == 0 ]] || fail ":q left the listing :explore made"
 [[ "$(cat "$DIR/tree/note")" == one ]] || fail ":explore! wrote the draft"
 
 # --- :cli: a shell in a region of its own ----------------------------
@@ -502,7 +547,8 @@ keys clibuf C-d
 editing clibuf note
 shown clibuf '^one$'
 keys clibuf : q Enter
-[[ "$(ended clibuf)" == 0 ]] || fail ":q after the cli buffer did not quit"
+ended clibuf
+[[ "$ENDED" == 0 ]] || fail ":q after the cli buffer did not quit"
 
 # --- the : line runs a Driver under /bin too -------------------------
 # A first token no name under `/self/vim/bin` begins is the shell's
@@ -526,7 +572,8 @@ shown words "note  1:1  r1 *$"
 : > "$DIR/f"
 "$BIN" cli ls /module '>' "/module/fs/root$DIR/f"
 keys words : q Enter
-[[ "$(ended words)" == 0 ]] || fail ":q after a shell line did not quit"
+ended words
+[[ "$ENDED" == 0 ]] || fail ":q after a shell line did not quit"
 
 # --- one line, three hosts, one file --------------------------------
 # `ls /module > f` from `reovim cli`, from the cli buffer and from
@@ -558,7 +605,8 @@ shown tab ":wq   write  \[wq\]  watch"
 keys tab Escape : w Tab Enter
 editing tab note
 keys tab : q Enter
-[[ "$(ended tab)" == 0 ]] || fail ":q after Tab did not quit"
+ended tab
+[[ "$ENDED" == 0 ]] || fail ":q after Tab did not quit"
 [[ "$(cat "$DIR/words/note")" == xone ]] || fail "Tab then Enter did not write"
 
 # --- Tab past the name: the argument from the tree -------------------
@@ -577,7 +625,8 @@ shown wild ":write Cargo.toml"
 keys wild x
 shown wild ":write Cargo.toml x"
 keys wild Escape : q Enter
-[[ "$(ended wild)" == 0 ]] || fail ":q after the argument Tab did not quit"
+ended wild
+[[ "$ENDED" == 0 ]] || fail ":q after the argument Tab did not quit"
 
 # --- no file: an unnamed buffer, E32 on :w, nothing written ---------
 start unnamed "$DIR" "$BIN"
@@ -585,7 +634,8 @@ editing unnamed '\[No Name\]'
 keys unnamed i "hi" Escape : w Enter
 shown unnamed "E32: No file name"
 keys unnamed : q ! Enter
-[[ "$(ended unnamed)" == 0 ]] || fail "the unnamed buffer did not quit"
+ended unnamed
+[[ "$ENDED" == 0 ]] || fail "the unnamed buffer did not quit"
 [[ ! -e "$DIR/[No Name]" && ! -e "$DIR/No Name" ]] \
     || fail "the unnamed buffer wrote a file"
 
@@ -595,17 +645,23 @@ editing named '\[No Name\]'
 keys named i "hi" Escape : w " " n o t e Enter
 editing named note
 keys named : q Enter
-[[ "$(ended named)" == 0 ]] || fail ":w NAME then :q failed"
+ended named
+[[ "$ENDED" == 0 ]] || fail ":w NAME then :q failed"
 [[ "$(cat "$DIR/note")" == hi ]] || fail ":w NAME did not write"
 
 # --- SIGTERM: the terminal cooked, the file untouched, exit 1 -------
-start term "$DIR" "$BIN other; echo \$? > '$DIR/exit-term'; \
-    stty -a > '$DIR/stty'; sleep 30"
+# The tty is read once the editor has let it go and before the pane's
+# own shell ends, so this pane has a line of its own; `start` writes
+# the code and sleeps, so the line hands the editor's code on and
+# neither is written twice.
+start term "$DIR" "$BIN other; code=\$?; \
+    stty -a > '$DIR/stty'; (exit \$code)"
 editing term other
 keys term i "zz" Escape
 sleep 0.05
 pkill -TERM -f "^$BIN other\$"
-[[ "$(ended term)" == 1 ]] || fail "SIGTERM did not exit 1"
+ended term
+[[ "$ENDED" == 1 ]] || fail "SIGTERM did not exit 1"
 grep -q ' icanon' "$DIR/stty" || fail "tty left raw after SIGTERM"
 alternate="$("${TMUX[@]}" display -p -t term '#{alternate_on}')"
 [[ "$alternate" == 0 ]] || fail "alternate screen left on after SIGTERM"
@@ -629,7 +685,8 @@ start time "$DIR" "$BIN other"
 editing time other
 after="$EPOCHREALTIME"
 keys time : q ! Enter
-[[ "$(ended time)" == 0 ]] || fail "the timed editor did not quit"
+ended time
+[[ "$ENDED" == 0 ]] || fail "the timed editor did not quit"
 millis="$(printf '%s %s\n' "$after" "$before" \
     | awk '{ printf "%d", ($1 - $2) * 1000 }')"
 printf 'smoke.sh: start to first frame %s ms (tmux included)\n' "$millis"

@@ -291,7 +291,9 @@ fn a_descriptor_serves_through_the_kernel() {
     assert_eq!(Rig::bytes(rig.submit(Op::Ask { token })), b"later");
     assert_eq!(Rig::bytes(rig.submit(call(h, 1))), b"ok");
     assert_eq!(Rig::bytes(rig.submit(call(h, 2))), b"");
-    assert!(rig.resolve("/module/native/counter").is_ok());
+    // `rename` moved the one rd, so the new name answers what the old
+    // name answered and no second rd was made.
+    assert_eq!(rig.resolve("/module/native/counter"), Ok(count));
     assert_eq!(
         rig.submit(Op::Write { h, at: 0, bytes: b"x".to_vec() }),
         Reply::err(Error::Invalid)

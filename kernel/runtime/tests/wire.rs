@@ -152,6 +152,38 @@ fn malformed_bytes_decode_to_nothing() {
     assert!(decode(&[]).is_none());
 }
 
+/// Every strict prefix of one encoded message is refused. A frame the
+/// transport cut short is no frame: the codec says so rather than
+/// reading past what it was given or taking a part for the whole.
+fn every_prefix_is_refused(message: &Message) {
+    let bytes = encode(9, message);
+    for len in 0..bytes.len() {
+        assert!(decode(&bytes[..len]).is_none(), "{len} of {message:?}");
+    }
+}
+
+#[test]
+fn a_frame_cut_inside_a_nested_body_is_refused_at_every_length() {
+    // The `Out` shapes that carry a length of their own — a byte
+    // string, a count of rds, a name and a list of apis, a list of
+    // events and a list of served ops — each inside the `Op::Done`
+    // that hands it back, where the length stands two bodies deep.
+    let nested = every_out().into_iter().filter(|out| {
+        matches!(
+            out,
+            Out::Bytes(_) | Out::Rds(_) | Out::Info(_) | Out::Events { .. }
+        )
+    });
+    for out in nested {
+        let done = Op::Done { token: Token(18), outcome: Ok(out) };
+        every_prefix_is_refused(&Message::Request(done));
+    }
+    for kind in KINDS {
+        let changed = Op::Changed { rd: Rd(21), kind };
+        every_prefix_is_refused(&Message::Request(changed));
+    }
+}
+
 #[test]
 fn the_endpoint_knows_what_went_unanswered() {
     let mut endpoint = Endpoint::default();

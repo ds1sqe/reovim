@@ -2,7 +2,7 @@
 //! target's method answered, and what a method that is not there, or an
 //! argument that does not fit, answers.
 
-use reovim_client::{Error, Fault, ROOT, Rd};
+use reovim_client::{Error, Fault, Flags, ROOT, Rd};
 use reovim_module_sysutils::bins::call::Args;
 use reovim_rig::Rig;
 use reovim_rig::bins::{drain, run};
@@ -48,7 +48,12 @@ fn a_run_answers_what_the_method_answered() {
     let new = args("/module/text/open", "new");
     let cell = run(&mut client, "call", &new).unwrap();
     let made = drain(&mut client, cell);
-    assert!(client.info(Rd(made.trim_end().parse().unwrap())).is_ok());
+    // The number printed is an rd of the tree: the unnamed Buffer that
+    // `new` makes, named after the count of them and holding the
+    // history a Buffer offers below it.
+    let info = client.info(Rd(made.trim_end().parse().unwrap())).unwrap();
+    let whole = Flags::READ | Flags::WRITE | Flags::CONTAINER;
+    assert_eq!((info.name.as_deref(), info.flags), (Some("new1"), whole));
     let cell = run(&mut client, "call", &new).unwrap();
     let other = drain(&mut client, cell);
     assert_ne!(made, other);

@@ -13,6 +13,20 @@ export const READ = 1;
 export const WRITE = 2;
 export const CONTAINER = 4;
 
+/** Every bit `Rights` spells: what a handle may do. */
+const RIGHTS = READ | WRITE;
+/** Every bit `Flags` spells: the shape a Driver reports. */
+const FLAGS = READ | WRITE | CONTAINER;
+
+/** A bit set as the Rust `from_bits` takes one: a u32 of known bits
+ * and nothing else. An unknown bit is refused at both ends, a frame
+ * this side would write being one the other side would not read. */
+function bits(value: number, known: number, what: string): number {
+  const whole = Number.isInteger(value) && value >= 0 && value <= 0xffffffff;
+  if (!whole || (value & ~known) !== 0) throw new RangeError(what);
+  return value;
+}
+
 export type Op =
   | { kind: 'lookup'; rd: Rd; name: string }
   | { kind: 'open'; rd: Rd; rights: number }
@@ -125,7 +139,9 @@ function putOp(w: Writer, op: Op): void {
   w.u8(tagOf(OPS, op.kind));
   switch (op.kind) {
     case 'lookup': w.u64(op.rd); w.str(op.name); break;
-    case 'open': w.u64(op.rd); w.u32(op.rights); break;
+    case 'open':
+      w.u64(op.rd); w.u32(bits(op.rights, RIGHTS, 'rights'));
+      break;
     case 'read': w.u64(op.h); w.u64(op.at); w.u32(op.len); break;
     case 'write': w.u64(op.h); w.u64(op.at); w.bytes(op.bytes); break;
     case 'call':
@@ -145,7 +161,8 @@ function getOp(r: Reader): Op {
   const kind = fromTag(OPS, r.u8());
   switch (kind) {
     case 'lookup': return { kind, rd: r.u64(), name: r.str() };
-    case 'open': return { kind, rd: r.u64(), rights: r.u32() };
+    case 'open':
+      return { kind, rd: r.u64(), rights: bits(r.u32(), RIGHTS, 'rights') };
     case 'read': return { kind, h: r.u64(), at: r.u64(), len: r.u32() };
     case 'write': return { kind, h: r.u64(), at: r.u64(), bytes: r.bytes() };
     case 'call':
@@ -174,7 +191,7 @@ function putInfo(w: Writer, info: Info): void {
     w.u8(1);
     w.str(info.name);
   }
-  w.u32(info.flags);
+  w.u32(bits(info.flags, FLAGS, 'flags'));
   w.u64(info.ctime);
   w.u64(info.mtime);
   w.u64(info.atime);
@@ -186,7 +203,7 @@ function getInfo(r: Reader): Info {
   const named = r.u8();
   if (named > 1) throw new RangeError('name');
   const name = named === 1 ? r.str() : undefined;
-  const flags = r.u32();
+  const flags = bits(r.u32(), FLAGS, 'flags');
   const ctime = r.u64(), mtime = r.u64(), atime = r.u64();
   const apis = items(r, () => r.u64());
   return name === undefined

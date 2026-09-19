@@ -30,6 +30,9 @@ fn a_run_writes_every_line_of_a_target_the_pattern_is_found_in() {
     // Every line a match stands in, in the order they stand.
     let all = "alpha\nbeta\ngamma\n";
     assert_eq!(text(&mut client, "grep", &args("a", &[one])), all);
+    // An empty pattern matches at the start of every line, as grep(1)'s
+    // does: nothing to find is found everywhere, not nowhere.
+    assert_eq!(text(&mut client, "grep", &args("", &[one])), all);
     // A line is what a `\n` ends, so the last one needs none of its own.
     rig.file("two", b"delta\nepsilon");
     let two = "/module/fs/root/two";

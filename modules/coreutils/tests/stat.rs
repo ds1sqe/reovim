@@ -2,7 +2,7 @@
 //! of one rd in one run's output cell, and what the cell is once its
 //! reader lets go of it.
 
-use reovim_client::{Error, Fault, ROOT, Rd};
+use reovim_client::{Error, Fault, Flags, ROOT, Rd};
 use reovim_module_coreutils::bins::stat::Args;
 use reovim_rig::Rig;
 use reovim_rig::bins::{drain, run, text};
@@ -93,7 +93,9 @@ fn the_cell_is_gone_from_the_tree_once_its_reader_closes_it() {
 
     let cell = run(&mut client, "stat", &args(ROOT, "/module/text")).unwrap();
     assert_eq!(client.children(stat), Ok(vec![cell]));
-    assert!(client.info(cell).is_ok());
+    // The cell is a nameless Resource the run's bytes are read from.
+    let info = client.info(cell).unwrap();
+    assert_eq!((info.name, info.flags), (None, Flags::READ));
 
     drain(&mut client, cell);
     // The Kernel knows no rd of that number any more, and `stat`'s

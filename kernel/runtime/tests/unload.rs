@@ -160,8 +160,43 @@ fn unload_waits_for_handles_then_removes_everything() {
 
     let again = Rc::new(Test::default());
     let driver: Rc<dyn Driver> = again.clone();
-    assert!(rig.kernel.load("t", again, vec![driver]).is_ok());
-    assert!(rig.resolve("/module/t/cell").is_ok());
+    let id = rig.kernel.load("t", again, vec![driver]).unwrap();
+    // A Module of its own: a fresh home, a fresh cell under it, and the
+    // id the load answered is what owns what is registered there.
+    let reloaded = rig.resolve("/module/t").unwrap();
+    let made = rig.resolve("/module/t/cell").unwrap();
+    assert_ne!(made, cell, "the first Module's rd given out again");
+    let calls = rig.kernel.calls(id);
+    let more = calls.register(DriverId(0), reloaded, Some("more"));
+    assert_eq!(more.map(|rd| rig.ok(Op::Parent { rd })), Ok(Out::Rd(reloaded)));
+}
+
+#[test]
+fn a_load_under_a_name_that_already_stands_is_refused() {
+    let (rig, _) = fresh();
+    let cell = rig.resolve("/module/t/cell").unwrap();
+    let twice = Rc::new(Test::default());
+    let driver: Rc<dyn Driver> = twice.clone();
+
+    // The name is the Module's while it stands, so nothing of the
+    // second is entered and its `start` never runs.
+    assert_eq!(
+        rig.kernel.load("t", twice.clone(), vec![driver]),
+        Err(Error::Invalid)
+    );
+    assert_eq!(twice.held.get(), None, "the refused Module was started");
+    assert_eq!(rig.resolve("/module/t/cell"), Ok(cell), "the first stands");
+
+    // The refusal is one `err` line naming the name and the cause.
+    let log = rig.resolve("/sys/log").unwrap();
+    let h = rig.opened(log, Rights::READ).unwrap();
+    let Reply::Ready(Ok(Out::Bytes(bytes))) =
+        rig.submit(Op::Read { h, at: 0, len: 4096 })
+    else {
+        panic!("log")
+    };
+    let said = String::from_utf8_lossy(&bytes);
+    assert!(said.contains("load module=t refused=Invalid"), "{said}");
 }
 
 #[test]

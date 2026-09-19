@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { Endpoint, decode, encode } from '../../target/browser/sdk/typescript/wire.js';
+import { CONTAINER, Endpoint, KINDS, READ, WRITE, decode, encode } from '../../target/browser/sdk/typescript/wire.js';
 import { decodeValue, field, parseDecl, show } from '../../target/browser/sdk/typescript/value.js';
 
 const bytes = (...b) => Uint8Array.from(b);
@@ -69,6 +69,61 @@ test('the bytes are what the Rust encoder writes', () => {
   assert.deepEqual(decode(reply), [2n, { kind: 'reply', reply: { kind: 'ok', out: { kind: 'rd', rd: 1n } } }]);
   assert.equal(decode(bytes(1, 2, 3)), undefined);
   assert.equal(decode(bytes(...connect, 0)), undefined, 'trailing byte');
+});
+
+// Every strict prefix of one encoded message is refused. A frame the
+// transport cut short is no frame: the codec says so rather than
+// reading past what it was given or taking a part for the whole.
+function everyPrefixIsRefused(what, message) {
+  const encoded = encode(9n, message);
+  for (let len = 0; len < encoded.length; len += 1) {
+    assert.equal(decode(encoded.slice(0, len)), undefined, `${what} cut at ${len} of ${encoded.length}`);
+  }
+}
+
+test('a frame cut inside a nested body is refused at every length', () => {
+  // The `out` shapes that carry a length of their own — a byte string,
+  // a count of rds, a name and a list of apis, a list of events and a
+  // list of served ops — each inside the `done` that hands it back,
+  // where the length stands two bodies deep.
+  const nested = outs.filter((out) => ['bytes', 'info', 'rds', 'events'].includes(out.kind));
+  assert.equal(nested.length, 6);
+  for (const out of nested) {
+    const op = { kind: 'done', token: 18n, outcome: { kind: 'ok', out } };
+    everyPrefixIsRefused(`done ${out.kind}`, { kind: 'request', op });
+  }
+  for (const change of KINDS) {
+    const op = { kind: 'changed', rd: 21n, change };
+    everyPrefixIsRefused(`changed ${change}`, { kind: 'request', op });
+  }
+});
+
+test('a bit no Rights or Flags spells is refused at both ends', () => {
+  // Rust reads both through `from_bits`, which takes the known bits
+  // and nothing else, and answers nothing at all to a frame it cannot
+  // decode; a frame this side wrote with an unknown bit in it would
+  // therefore go out and never be answered.
+  const open = (rights) => ({ kind: 'request', op: { kind: 'open', rd: 7n, rights } });
+  assert.throws(() => encode(0n, open(READ | WRITE | CONTAINER)), RangeError);
+  assert.throws(() => encode(0n, open(1 << 31)), RangeError);
+  assert.throws(() => encode(0n, open(-1)), RangeError);
+  // The same bytes read back: `rights` stands as a u32 at offset 18,
+  // after the sequence, the message tag, the op tag and the rd.
+  const bytes = encode(0n, open(READ | WRITE));
+  assert.deepEqual(decode(bytes)?.[1], open(READ | WRITE));
+  const unknown = Uint8Array.from(bytes);
+  unknown[18] = 4;
+  assert.equal(decode(unknown), undefined, 'an unknown rights bit');
+
+  // `flags` has the third bit too, and nothing above it.
+  const info = (flags) => ({ kind: 'reply', reply: { kind: 'ok', out: { kind: 'info', info: { flags, ctime: 0n, mtime: 0n, atime: 0n, apis: [] } } } });
+  assert.deepEqual(decode(encode(0n, info(READ | CONTAINER)))?.[1], info(READ | CONTAINER));
+  assert.throws(() => encode(0n, info(8)), RangeError);
+  const flags = encode(0n, info(READ | CONTAINER));
+  // `flags` is a u32 after the sequence, the message tag, the reply
+  // tag, the out tag and the `name` option's own tag.
+  flags[12] = 8;
+  assert.equal(decode(flags), undefined, 'an unknown flags bit');
 });
 
 test('the endpoint knows what went unanswered', () => {

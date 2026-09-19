@@ -313,7 +313,8 @@ fn register_follows_the_parent_owner() {
     let in_var = calls.register(DriverId(0), var, Some("v")).unwrap();
     assert_eq!(rig.ok(Op::Parent { rd: in_var }), Out::Rd(var));
     let session = rig.kernel.session_new();
-    assert!(calls.register(DriverId(0), session, Some("s")).is_ok());
+    let in_session = calls.register(DriverId(0), session, Some("s")).unwrap();
+    assert_eq!(rig.ok(Op::Parent { rd: in_session }), Out::Rd(session));
     assert_eq!(
         calls.register(DriverId(0), var, Some("v")),
         Err(Error::Invalid)
