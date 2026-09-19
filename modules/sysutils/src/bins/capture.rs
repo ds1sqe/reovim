@@ -1,10 +1,10 @@
 //! `capture`, a Driver under `/bin`: its declaration and its run. The
 //! slots it is served through are the crate's.
 //!
-//! One run answers with an output cell holding the rows a `display`
-//! cell was last drawn with, their trailing spaces cut as a terminal's
-//! own capture cuts them, and the cursor on a last line. A target that
-//! holds no screen fails the run and leaves no cell.
+//! One run answers with an output cell holding the rows a `text` cell
+//! was last drawn with, the status among them, and the cursor on a
+//! last line. A target that holds no `Screen` fails the run and
+//! leaves no cell.
 //!
 //! Under `f` the cell goes on: the run watches its target, and a read
 //! at the cell's end answers the whole screen again for every change
@@ -15,7 +15,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::fmt::Write;
 
-use reovim_client_api::{BAR, TTY, display};
+use reovim_client_api::{BAR, display, width};
 use reovim_kernel_interface::{Calls, Error, Event, Handle, Kind, Rd};
 use reovim_sdk::cell::{self, Follow};
 use reovim_sdk::{decode, ops};
@@ -57,37 +57,42 @@ fn begin(ctx: &dyn Calls, target: Rd) -> Result<(u64, Vec<u8>), Error> {
     Ok((cursor, shown(ctx, target)?))
 }
 
-/// The screen `target` holds, as a person reads it: one line a row
-/// with its trailing spaces cut, and `cursor ROW COL SHAPE` last.
+/// The screen `target` holds, as a person reads it: one line a row,
+/// its trailing spaces cut as a terminal's own capture cuts them, then
+/// the status the same way, then `cursor ROW COL SHAPE` last, `rows`
+/// telling how many blank rows pad `lines` out between the two.
 ///
-/// A whole read of the cell is one frame, the Client snapshotting it at
-/// the read of 0, so no line here is of another frame than its
-/// neighbours.
+/// A whole read of the cell is one frame, the Client snapshotting it
+/// at the read of 0, so no line here is of another frame than its
+/// neighbours; `rows` is that same frame's, not one a resize between
+/// two reads could disagree with it about.
 fn shown(ctx: &dyn Calls, target: Rd) -> Result<Vec<u8>, Error> {
     let screen: display::Screen = decode(&ops::bytes(ctx, target)?)?;
-    if screen.kind != TTY {
-        return Err(Error::Invalid);
-    }
-    let cols = usize::try_from(screen.cols).unwrap_or(usize::MAX);
+    let text_rows = usize::try_from(screen.rows).unwrap_or(usize::MAX);
     let mut text = String::new();
-    for row in screen.cells.chunks(cols.max(1)) {
-        text.extend(row.iter().filter_map(|cell| drawn(*cell)));
-        while text.ends_with(' ') {
-            text.pop();
-        }
+    for line in &screen.lines {
+        text.push_str(line.text.trim_end_matches(' '));
         text.push('\n');
     }
+    for _ in screen.lines.len()..text_rows.saturating_sub(1) {
+        text.push('\n');
+    }
+    text.push_str(screen.status.trim_end_matches(' '));
+    text.push('\n');
     let shape = if screen.shape == BAR { "bar" } else { "block" };
-    let (row, col) = (screen.row, screen.col);
+    let (row, col) = (screen.row, column(&screen));
     let _ = writeln!(text, "cursor {row} {col} {shape}");
     Ok(text.into_bytes())
 }
 
-/// What one cell draws: its char, or nothing where it is the second
-/// half of the wide char before it or no scalar value at all.
-fn drawn(cell: u64) -> Option<char> {
-    (cell != 0).then_some(cell)?;
-    u32::try_from(cell).ok().and_then(char::from_u32)
+/// The cell of its cursor's line where the byte `screen.col` names
+/// begins: the same cells-per-char rule the drawer counted it in.
+fn column(screen: &display::Screen) -> usize {
+    let byte = usize::try_from(screen.col).unwrap_or(usize::MAX);
+    let row = usize::try_from(screen.row).unwrap_or(usize::MAX);
+    screen.lines.get(row).map_or(0, |line| {
+        line.text[..byte.min(line.text.len())].chars().map(width).sum()
+    })
 }
 
 /// `f` between reads: the handle that holds the watch, what is

@@ -373,17 +373,27 @@ ended told
 counted "$watchers"
 
 # --- a screen read and a keyboard typed from another terminal -------
-# The tui writes what it drew into `display`, so a cli in another
-# terminal prints that Client's screen: the pane itself, less the
-# cursor line the capture ends with. `keys` types a whole notation into
-# that Client's keyboard in one write, which is one tick and not seven.
-screen=/session/1/client/1/self/dev/display
+# The tui writes what it drew into `display/0/text`, so a cli in
+# another terminal prints that Client's screen: the pane itself, less
+# the cursor line the capture ends with. `keys` types a whole notation
+# into that Client's keyboard in one write, which is one tick and not
+# seven.
+screen=/session/1/client/1/self/dev/display/0
 board=/session/1/client/1/self/dev/input/keyboard
 captured() {
-    "$BIN" cli capture "$screen" | head -n -1
+    "$BIN" cli capture "$screen/text" | head -n -1
+}
+# `info/rows` is the whole terminal, not the region: the pane's own
+# height, as tmux counts it.
+rows_match() {
+    local want got
+    want="$("${TMUX[@]}" display -p -t new '#{pane_height}')"
+    got="$("$BIN" cli cat "$screen/info/rows")"
+    [[ "$got" == "$want" ]] || fail "display rows is $got, not the pane's $want"
 }
 [[ "$(captured)" == "$("${TMUX[@]}" capture-pane -p -t new)" ]] \
     || fail "the capture is not the pane: $(captured)"
+rows_match
 "$BIN" cli keys "$board" 'ihello<Esc>'
 shown new hello
 [[ "$(captured)" == "$("${TMUX[@]}" capture-pane -p -t new)" ]] \
@@ -421,7 +431,9 @@ resized() {
 resized 12
 [[ "$(captured)" == "$("${TMUX[@]}" capture-pane -p -t new)" ]] \
     || fail "the capture after the resize is not the pane: $(captured)"
+rows_match
 resized 24
+rows_match
 
 # --- /sys as sysfs: the parameters, the facts, the core -------------
 # A file per parameter under /sys/limit, each in decimal and each

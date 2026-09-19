@@ -23,7 +23,7 @@ use alloc::vec::Vec;
 
 use reovim_client::{Host, HostCalls};
 use reovim_client_api::{
-    BAR, Key, MATCH, NONE, SELECTION, TTY, display, open, window,
+    BAR, Key, MATCH, NONE, SELECTION, display, open, window,
 };
 use reovim_kernel_interface::{Calls, Error, Event, Handle, Kind, Rd, Rights};
 use reovim_sdk::{cell, decode, encode, ops};
@@ -85,6 +85,10 @@ struct Cells {
     ask: Handle,
     view: Handle,
     display: Handle,
+    /// `display/0/info/rows` and `.../cols`: the terminal's own size,
+    /// written whenever it changes, beside the region's `size`.
+    rows: Handle,
+    cols: Handle,
 }
 
 impl Cells {
@@ -97,7 +101,9 @@ impl Cells {
             exit: ctx.open(at("exit")?, Rights::READ)?,
             ask: ctx.open(at("windows/0/ask")?, Rights::READ)?,
             view: ctx.open(at("windows/0/view")?, Rights::READ)?,
-            display: ctx.open(at("display")?, Rights::WRITE)?,
+            display: ctx.open(at("display/0/text")?, Rights::WRITE)?,
+            rows: ctx.open(at("display/0/info/rows")?, Rights::WRITE)?,
+            cols: ctx.open(at("display/0/info/cols")?, Rights::WRITE)?,
         })
     }
 }
@@ -130,10 +136,13 @@ pub struct Tui {
     name: String,
     /// The size `frame` was last asked for.
     size: (u16, u16),
+    /// The size `display/0/info` was last told, `None` until it has
+    /// been: the display's own facts, told on the first frame and
+    /// whenever the terminal's size moves, not on `self.size`, which
+    /// is the region's and starts already at what it assumes.
+    told: Option<(u16, u16)>,
     /// The View, the text or the revisions moved since the last step.
     moved: bool,
-    /// How many frames it has drawn, which is what `display` counts.
-    drawn: u64,
     /// Where this Client stands in the one stream of events, which the
     /// Host numbers for both sides.
     cursor: u64,
@@ -165,8 +174,8 @@ impl Tui {
             laid: None,
             name: String::from(UNNAMED),
             size: FIRST,
+            told: None,
             moved: false,
-            drawn: 0,
             cursor: 0,
         };
         tui.stepped()?;
@@ -225,44 +234,43 @@ impl Tui {
             ops::write(&self.ctx(), self.cells.size, 0, encode(&size))?;
             self.stepped()?;
         }
+        if self.told != Some((cols, rows)) {
+            self.told = Some((cols, rows));
+            // The display's own facts: the whole terminal, not the
+            // region's, told on this frame, the first, or a resize.
+            let line = |n: u16| format!("{n}\n").into_bytes();
+            ops::write(&self.ctx(), self.cells.rows, 0, line(rows))?;
+            ops::write(&self.ctx(), self.cells.cols, 0, line(cols))?;
+        }
         let frame = self.laid_out(cols, rows);
-        self.drew(&frame, cols, rows)?;
+        self.drew(&frame, rows)?;
         Ok(frame)
     }
 
-    /// The frame it is about to answer into `/self/dev/display`, so
-    /// that whoever reads that cell — another Client above all — sees
-    /// what this terminal shows. One write a drawn frame.
-    ///
-    /// The rows are already in the terminal's own cells, a tab its
-    /// spaces and a wide char two of them, so a cell is one char's
-    /// scalar value and the half-cell after a wide char is 0.
-    fn drew(
-        &mut self,
-        frame: &Frame,
-        cols: u16,
-        rows: u16,
-    ) -> Result<(), Error> {
-        self.drawn += 1;
-        // The status row is the last of them, so there is one row at
-        // the least however small the terminal says it is.
-        let rows = rows.max(1);
-        let (width, height) = (usize::from(cols), usize::from(rows));
-        let mut cells = Vec::with_capacity(width * height);
-        let text = frame.lines.iter().map(String::as_str);
-        for line in text.chain(core::iter::repeat("")).take(height - 1) {
-            fill(&mut cells, line, width);
-        }
-        fill(&mut cells, &frame.status, width);
+    /// The frame written into `display/0/text`, so that whoever reads
+    /// that cell — another Client above all — sees what this terminal
+    /// shows. One write a drawn frame, its cells turned to the bytes
+    /// of each line's own text.
+    fn drew(&self, frame: &Frame, rows: u16) -> Result<(), Error> {
+        let lines = frame
+            .lines
+            .iter()
+            .enumerate()
+            .map(|(row, text)| display::Line {
+                text: text.clone(),
+                runs: runs(frame, cell(row)),
+            })
+            .collect();
+        let cursor = frame.lines.get(usize::from(frame.cursor.0));
+        let col =
+            byte_at_cell(cursor.map_or("", String::as_str), frame.cursor.1);
         let screen = display::Screen {
-            kind: String::from(TTY),
-            cols: u64::from(cols),
-            rows: u64::from(rows),
+            rows: u64::from(rows.max(1)),
             row: u64::from(frame.cursor.0),
-            col: u64::from(frame.cursor.1),
+            col: as64(col),
             shape: frame.shape,
-            count: self.drawn,
-            cells,
+            lines,
+            status: frame.status.clone(),
         };
         ops::write(&self.ctx(), self.cells.display, 0, encode(&screen))?;
         Ok(())
@@ -556,6 +564,11 @@ fn cell(n: usize) -> u16 {
     u16::try_from(n).unwrap_or(u16::MAX)
 }
 
+/// A count as the wire's own `u64`, however far it goes.
+fn as64(n: usize) -> u64 {
+    u64::try_from(n).unwrap_or(u64::MAX)
+}
+
 /// `at` back to a char boundary of `text`, and not past its end: what
 /// the Plugin points at, whatever byte it named.
 fn boundary(text: &str, at: usize) -> usize {
@@ -620,6 +633,50 @@ fn span_on(
     (from < to).then_some((from, to))
 }
 
+/// `frame`'s runs on its row `row`, converted from cells to bytes.
+///
+/// The selection first, a match next, every other style after, all
+/// then sorted by where they start — the order the app paints in. A
+/// run past the line's own cells takes the byte past its text, which
+/// is how a whole selected line shows; a row past `frame.lines` has
+/// none.
+pub fn runs(frame: &Frame, row: u16) -> Vec<display::Run> {
+    let Some(line) = frame.lines.get(usize::from(row)) else {
+        return Vec::new();
+    };
+    let here = |at: u16| at == row;
+    let mut runs: Vec<(u16, u16, u64)> = Vec::new();
+    let selected = frame.selection.iter().filter(|s| here(s.0));
+    runs.extend(selected.map(|s| (s.1, s.2, SELECTION)));
+    let marked = frame.marks.iter().filter(|s| here(s.0));
+    runs.extend(marked.map(|s| (s.1, s.2, MATCH)));
+    let styled = frame.styled.iter().filter(|s| here(s.0));
+    runs.extend(styled.map(|s| (s.1, s.2, s.3)));
+    runs.sort_by_key(|run| run.0);
+    let cells: usize = line.chars().map(width).sum();
+    runs.into_iter()
+        .map(|(from, to, style)| {
+            let past = usize::from(usize::from(to) > cells);
+            let from = byte_at_cell(line, from);
+            let to = byte_at_cell(line, to) + past;
+            display::Run { from: as64(from), to: as64(to), style }
+        })
+        .collect()
+}
+
+/// The byte index in `line` where screen cell `cell` starts, or its
+/// end where `line` holds fewer.
+fn byte_at_cell(line: &str, cell: u16) -> usize {
+    let mut cells = 0;
+    for (at, c) in line.char_indices() {
+        if cells >= usize::from(cell) {
+            return at;
+        }
+        cells += width(c);
+    }
+    line.len()
+}
+
 /// `line` as the terminal shows it in `width` cells: a tab as the
 /// spaces to its stop, a wide char kept whole or left out at the edge.
 fn shown(line: &str, width: usize) -> String {
@@ -637,23 +694,6 @@ fn shown(line: &str, width: usize) -> String {
         cell = next;
     }
     out
-}
-
-/// One row of `cells`: each char of `line` as its scalar value, a wide
-/// char followed by the 0 that is its second half, cut and padded with
-/// spaces to `cols`.
-fn fill(cells: &mut Vec<u64>, line: &str, cols: usize) {
-    let end = cells.len() + cols;
-    for c in line.chars() {
-        if cells.len() + width(c) > end {
-            break;
-        }
-        cells.push(u64::from(c));
-        if width(c) == 2 {
-            cells.push(0);
-        }
-    }
-    cells.resize(end, u64::from(' '));
 }
 
 /// The screen cell after `c` drawn at `cell`: a tab reaches the next

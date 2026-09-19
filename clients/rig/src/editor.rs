@@ -13,31 +13,31 @@ use reovim_client_tui::{Frame, Step, Tui};
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, ops};
 
-/// A `Screen` of `cols` by `rows` saying `lines`, each row padded
-/// with spaces to `cols` and cut there.
+/// A `Screen` of `rows` in all, `lines`' last one its status and the
+/// rest its text.
 ///
-/// What a tui writes into `/self/dev/display` in the step it draws,
-/// for a case that has no tui. Its cursor is a block at the origin and
-/// its count is 1; a case that means another says so over this one.
+/// What a tui writes into `/self/dev/display/0/text` in the step it
+/// draws, for a case that has no tui. Its cursor is a block at the
+/// origin; a case that means another says so over this one.
 #[must_use]
-pub fn screen(cols: u64, rows: u64, lines: &[&str]) -> display::Screen {
-    let width = usize::try_from(cols).unwrap_or(usize::MAX);
-    let mut cells = Vec::new();
-    for row in 0..usize::try_from(rows).unwrap_or(usize::MAX) {
-        let end = cells.len() + width;
-        let said = lines.get(row).unwrap_or(&"");
-        cells.extend(said.chars().take(width).map(u64::from));
-        cells.resize(end, u64::from(' '));
-    }
+pub fn screen(rows: u64, lines: &[&str]) -> display::Screen {
+    let (status, lines) = match lines.split_last() {
+        Some((status, lines)) => (*status, lines),
+        None => ("", &[][..]),
+    };
     display::Screen {
-        kind: String::from("tty"),
-        cols,
         rows,
         row: 0,
         col: 0,
         shape: BLOCK,
-        count: 1,
-        cells,
+        lines: lines
+            .iter()
+            .map(|text| display::Line {
+                text: String::from(*text),
+                runs: Vec::new(),
+            })
+            .collect(),
+        status: String::from(status),
     }
 }
 

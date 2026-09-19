@@ -290,15 +290,15 @@ fn a_client_captures_another_clients_screen_and_types_into_it() {
     let there = "/session/1/client/1/self/dev";
 
     // a draws a frame of its own, as its tui would.
-    let drawn = reovim_sdk::encode(&screen(2, 1, &["hi"]));
-    ops::put(&mine, at(&mine, "/self/dev/display"), drawn).unwrap();
+    let drawn = reovim_sdk::encode(&screen(1, &["hi"]));
+    ops::put(&mine, at(&mine, "/self/dev/display/0/text"), drawn).unwrap();
 
     // b's own `capture` reads it through the mirror: one file, and a
     // mirrored rd is a target like any other.
     let args = capture::Args {
         f: false,
         cwd: ROOT,
-        target: format!("{there}/display"),
+        target: format!("{there}/display/0/text"),
     };
     let run = at(&theirs, "/self/bin/capture");
     let seen = said(&theirs, run, &args);

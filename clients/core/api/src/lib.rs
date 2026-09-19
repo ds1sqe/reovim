@@ -67,23 +67,38 @@ declare! {
 }
 
 declare! {
-    /// `/self/dev/display`: the Client's screen as it was last drawn.
+    /// `/self/dev/display`: what the Client shows, a Container of
+    /// however many forms the tree under it holds — `0` today.
     ///
-    /// `kind` is what the cells mean — `tty` and nothing else so far,
-    /// text cells with a cursor, what a tui draws. `row`, `col` and
-    /// `shape` are that cursor, in cells and as [`BLOCK`] or [`BAR`].
-    /// `count` rises by one a frame, for a reader that wants to know
-    /// whether it has seen this one; it need not look, a whole read
-    /// being one frame.
+    /// `display/0/info` is what THIS one is, a file a fact, as
+    /// `/sys/info` is what the Kernel is: `rows` and `cols`, decimal
+    /// text the drawer wrote, are the whole terminal (not the
+    /// region's own `windows/0/size`, which is `rows - 1`, the status
+    /// row taken out), and a missing file is a fact this display has
+    /// not — a gui would add `pixels`, `ppi`, a length, none of it
+    /// moving what is here.
     ///
-    /// A cell is a char's scalar value, as a [`Key`] is one number;
-    /// `0` is the second half of the wide char before it and draws
-    /// nothing. There is `cols * rows` of them, row by row, the last
-    /// row being the status row a tui shows.
+    /// `display/0/text` is what it shows: the frame the drawer laid
+    /// out. `lines` are its rows top to bottom, a tab already its
+    /// spaces and the rows below the last not sent; `status` stays
+    /// apart, as it does in a [`window::View`]. `row` and `col` are
+    /// the cursor: the line, and the BYTE in that line's `text` —
+    /// what a column is belongs to the reader, a tui counting cells
+    /// and a gui glyphs. `rows` is carried again here, the height
+    /// this frame was drawn for, so one read of `text` alone says
+    /// what it was drawn for and a resize cannot land between two
+    /// reads of it.
+    ///
+    /// A `Run` is in the bytes of its `Line`'s `text`, as a `View`'s
+    /// `Span` is in the bytes of `over`, `to` one past `text`'s own
+    /// length where the run runs on into the newline `text` does not
+    /// carry. `style` is the View's own number ([`SELECTION`],
+    /// [`MATCH`], the rest), a line's runs one list in paint order.
     api display ver 1 {}
-    record Screen { kind: utf8(16), cols: u64, rows: u64,
-                    row: u64, col: u64, shape: u64,
-                    count: u64, cells: [u64; 65536] }
+    record Screen { rows: u64, row: u64, col: u64, shape: u64,
+                    lines: [Line; 1024], status: utf8(4096) }
+    record Line { text: utf8(4096), runs: [Run; 1024] }
+    record Run { from: u64, to: u64, style: u64 }
 }
 
 declare! {
@@ -154,10 +169,6 @@ pub const MATCH: u64 = 2;
 /// stand for the same colors a Driver under `/bin` prints in; 1 and 2
 /// above are the Plugin's own and no Driver writes them.
 pub use reovim_sdk::sgr::{BLUE, BOLD, DIM, GREEN, RED, RED_BOLD, YELLOW};
-
-/// The `kind` of a [`display::Screen`] of text cells with a cursor,
-/// which is what a tui draws and the only one there is so far.
-pub const TTY: &str = "tty";
 
 /// A cursor drawn over the cell it is on.
 pub const BLOCK: u64 = 0;

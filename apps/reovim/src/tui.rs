@@ -9,8 +9,8 @@ use std::rc::Rc;
 
 use reovim_client::dev::{self, Table, Want};
 use reovim_client::{Clip, Error, Fault, Host};
-use reovim_client_api::{BAR, Key};
-use reovim_client_tui::{Frame, Step, Tui, width};
+use reovim_client_api::{BAR, Key, MATCH, SELECTION};
+use reovim_client_tui::{Frame, Step, Tui};
 use reovim_host::{clipboard, term};
 use reovim_sdk::path::under;
 use reovim_sdk::walk::ROOT;
@@ -189,55 +189,48 @@ fn draw(tui: &mut Tui, shape: &mut Option<u64>) -> Result<(), Fail> {
     Ok(out(screen.as_bytes())?)
 }
 
-/// What is drawn on the row `row`, in the order the runs start: the
-/// selection inverted, a search match underlined, and every other span
-/// in the color its style stands for.
-fn runs(frame: &Frame, row: usize) -> Vec<(u16, u16, &'static str)> {
-    let here = |at: u16| usize::from(at) == row;
-    let mut runs: Vec<(u16, u16, &'static str)> = Vec::new();
-    let selected = frame.selection.iter().filter(|s| here(s.0));
-    runs.extend(selected.map(|s| (s.1, s.2, "7")));
-    let marked = frame.marks.iter().filter(|s| here(s.0));
-    runs.extend(marked.map(|s| (s.1, s.2, "4")));
-    let styled = frame.styled.iter().filter(|s| here(s.0));
-    runs.extend(styled.map(|s| (s.1, s.2, sgr::code(s.3))));
-    runs.sort_by_key(|run| run.0);
-    runs
+/// What is drawn on the row `row`, already in the bytes of that row's
+/// own line: the selection inverted, a search match underlined, and
+/// every other style in the color it stands for, in paint order.
+fn runs(frame: &Frame, row: usize) -> Vec<(u64, u64, &'static str)> {
+    let row = u16::try_from(row).unwrap_or(u16::MAX);
+    reovim_client_tui::runs(frame, row)
+        .into_iter()
+        .map(|run| (run.from, run.to, code(run.style)))
+        .collect()
+}
+
+/// The SGR code `style` paints in: the tui's own two shapes, or the
+/// table every Driver under `/bin` and the app share.
+fn code(style: u64) -> &'static str {
+    match style {
+        SELECTION => "7",
+        MATCH => "4",
+        style => sgr::code(style),
+    }
 }
 
 /// `line` with each of `runs` in its SGR style, a run that overlaps
-/// the one before it left out; a cell past the line's end is the
+/// the one before it left out; `to` past `line`'s own length is the
 /// newline's, shown as a space.
-fn painted(line: &str, runs: &[(u16, u16, &str)]) -> String {
-    let cells: usize = line.chars().map(width).sum();
+fn painted(line: &str, runs: &[(u64, u64, &str)]) -> String {
+    let len = line.len();
     let mut out = String::new();
     let mut at = 0;
     for &(from, to, code) in runs {
-        let (from, end) = (usize::from(from), usize::from(to));
-        let (from, end) = (byte_at_cell(line, from), byte_at_cell(line, end));
+        let from = usize::try_from(from).unwrap_or(len).min(len);
         if from < at {
             continue;
         }
-        let newline = if usize::from(to) > cells { " " } else { "" };
+        let raw_to = usize::try_from(to).unwrap_or(len);
+        let end = raw_to.min(len);
+        let newline = if raw_to > len { " " } else { "" };
         let (head, mid) = (&line[at..from], &line[from..end]);
         let _ = write!(out, "{head}\x1b[{code}m{mid}{newline}\x1b[0m");
         at = end;
     }
     out.push_str(&line[at..]);
     out
-}
-
-/// The byte index in `line` where screen cell `cell` starts, or the
-/// end.
-fn byte_at_cell(line: &str, cell: usize) -> usize {
-    let mut cells = 0;
-    for (at, c) in line.char_indices() {
-        if cells >= cell {
-            return at;
-        }
-        cells += width(c);
-    }
-    line.len()
 }
 
 fn out(bytes: &[u8]) -> Result<(), Fault> {
@@ -274,21 +267,26 @@ mod tests {
 
     #[test]
     fn every_run_of_a_row_is_drawn_in_the_color_its_style_stands_for() {
+        let lines = vec![String::from("bin  ls")];
         let styled = vec![(0, 0, 3, BLUE), (0, 5, 7, GREEN), (1, 0, 1, BLUE)];
-        let frame = Frame { styled, ..Frame::default() };
+        let frame = Frame { lines, styled, ..Frame::default() };
         let drawn = painted("bin  ls", &runs(&frame, 0));
         assert_eq!(drawn, "\x1b[1;34mbin\x1b[0m  \x1b[32mls\x1b[0m");
     }
 
     #[test]
-    fn a_selection_through_the_newline_shows_that_cell_as_a_space() {
-        let frame = Frame { selection: vec![(0, 0, 4)], ..Frame::default() };
+    fn a_selection_through_the_newline_shows_that_byte_as_a_space() {
+        let lines = vec![String::from("abc")];
+        let frame =
+            Frame { lines, selection: vec![(0, 0, 4)], ..Frame::default() };
         assert_eq!(painted("abc", &runs(&frame, 0)), "\x1b[7mabc \x1b[0m");
     }
 
     #[test]
     fn a_run_that_overlaps_the_one_before_it_is_left_out() {
+        let lines = vec![String::from("bin  ls")];
         let frame = Frame {
+            lines,
             selection: vec![(0, 0, 7)],
             styled: vec![(0, 0, 3, BLUE)],
             ..Frame::default()

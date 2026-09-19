@@ -42,7 +42,7 @@ fn at(ctx: &dyn Calls, path: &str) -> Rd {
 }
 
 /// Where the screen these cases write stands.
-const DISPLAY: &str = "/self/dev/display";
+const DISPLAY: &str = "/self/dev/display/0/text";
 
 /// `screen` written into that Client's `display`.
 fn drew(ctx: &dyn Calls, screen: &display::Screen) {
@@ -57,28 +57,32 @@ fn a_run_prints_the_rows_of_a_screen_and_the_cursor_last() {
     let run = at(&ctx, "/self/bin/capture");
     let printed = || said(&ctx, run, &args(false, DISPLAY));
 
-    // One line a row with its trailing spaces cut, as a terminal's own
-    // capture cuts them, and the cursor on a line of its own.
-    drew(&ctx, &screen(6, 3, &["hi", "", "there"]));
+    // One line a row, and the cursor on a line of its own.
+    drew(&ctx, &screen(3, &["hi", "", "there"]));
     assert_eq!(printed().as_deref(), Ok("hi\n\nthere\ncursor 0 0 block\n"));
 
-    // The cursor is where it stands and the shape it is drawn in.
-    let bar =
-        display::Screen { row: 2, col: 3, shape: BAR, ..screen(6, 3, &[]) };
+    // The cursor is where it stands and the shape it is drawn in: the
+    // byte the record holds turned to the cell its own row's text
+    // gives it, a wide char two of them.
+    let bar = display::Screen {
+        row: 2,
+        col: 3,
+        shape: BAR,
+        ..screen(4, &["", "", "한a", ""])
+    };
     drew(&ctx, &bar);
-    assert_eq!(printed().as_deref(), Ok("\n\n\ncursor 2 3 bar\n"));
+    assert_eq!(printed().as_deref(), Ok("\n\n한a\n\ncursor 2 2 bar\n"));
 }
 
 #[test]
-fn a_kind_it_does_not_know_is_refused() {
-    let rig = Rig::new("capture-kind");
+fn bytes_that_do_not_decode_as_a_screen_are_refused() {
+    let rig = Rig::new("capture-invalid");
     let host = editor(&rig);
     let ctx = host.own();
-    let kind = String::from("pixels");
-    drew(&ctx, &display::Screen { kind, ..screen(2, 1, &["x"]) });
+    ops::put(&ctx, at(&ctx, DISPLAY), b"not a screen".to_vec()).unwrap();
 
-    // What a cell means is the Client's, and a reader that does not
-    // know this one says so rather than drawing whatever it holds.
+    // What a cell means is the Client's, and a reader given bytes that
+    // are no `Screen` says so rather than drawing whatever it holds.
     let run = at(&ctx, "/self/bin/capture");
     let refused = said(&ctx, run, &args(false, DISPLAY));
     assert_eq!(refused, Err(Error::Invalid));
@@ -89,7 +93,7 @@ fn a_following_run_prints_the_whole_screen_again_for_every_frame() {
     let rig = Rig::new("capture-follow");
     let host = editor(&rig);
     let ctx = host.own();
-    drew(&ctx, &screen(4, 1, &["one"]));
+    drew(&ctx, &screen(1, &["one"]));
 
     let run = at(&ctx, "/self/bin/capture");
     let cell = ran(&ctx, run, &args(true, DISPLAY)).unwrap();
@@ -102,7 +106,7 @@ fn a_following_run_prints_the_whole_screen_again_for_every_frame() {
     // frame that lands answers the whole screen again.
     let end = first.len() as u64;
     assert_eq!(ops::read(&ctx, h, end, 64), Err(Error::Busy));
-    drew(&ctx, &screen(4, 1, &["two"]));
+    drew(&ctx, &screen(1, &["two"]));
     let again = ops::read(&ctx, h, end, 64);
     assert_eq!(again, Ok(b"two\ncursor 0 0 block\n".to_vec()));
     ops::shut(&ctx, &[h]);

@@ -388,12 +388,30 @@ fn the_cells_of_dev_are_where_the_tree_says_they_are() {
         ]
     );
     assert_eq!(it.names(it.at("windows/0")), ["ask", "size", "view"]);
+    assert_eq!(it.names(it.at("display")), ["0"]);
+    assert_eq!(it.names(it.at("display/0")), ["info", "text"]);
+    assert_eq!(it.names(it.at("display/0/info")), ["cols", "rows"]);
     let size = it.at("windows/0/size");
     let at = ops::where_is(&it.calls(), size).unwrap();
     assert_eq!(at, "/self/dev/windows/0/size");
     // Nothing is loaded under `/self` but the Client's own two until
     // the first read of the view gives the region away.
     assert_eq!(it.names(SELF), ["bin", "dev"]);
+
+    // A display holds only the facts it has: nothing has drawn on this
+    // Host, so its own size and its frame all read empty, unlike
+    // `windows/0/size`, whose `FIRST` is the region's documented
+    // default.
+    let rows = it.at("display/0/info/rows");
+    let cols = it.at("display/0/info/cols");
+    let text = it.at("display/0/text");
+    assert_eq!(it.bytes(rows), b"");
+    assert_eq!(it.bytes(cols), b"");
+    assert_eq!(it.bytes(text), b"");
+    it.put(rows, b"12\n".to_vec());
+    it.put(cols, b"40\n".to_vec());
+    assert_eq!(it.bytes(rows), b"12\n");
+    assert_eq!(it.bytes(cols), b"40\n");
 
     // The region is taken for 80 by 23 until something writes a size.
     let held: window::Size = decode(&it.bytes(size)).unwrap();
@@ -747,10 +765,10 @@ fn a_whole_read_of_display_is_one_frame_per_handle() {
     let it = Dev::boot(&rig, none(), "", None, None);
     let own = it.calls();
     let ctx: &dyn Calls = &own;
-    let display = it.at("display");
+    let display = it.at("display/0/text");
 
     // The tui writes it whole, at 0 only, and a read gives it back.
-    let first = encode(&screen(4, 2, &["one", "two"]));
+    let first = encode(&screen(2, &["one", "two"]));
     it.put(display, first.clone());
     assert_eq!(it.bytes(display), first);
     let w = ctx.open(display, Rights::WRITE).unwrap();
@@ -765,7 +783,7 @@ fn a_whole_read_of_display_is_one_frame_per_handle() {
     let (a, b) = (reader(), reader());
     let head = ops::read(ctx, a, 0, 8).unwrap();
     assert_eq!(ops::read(ctx, b, 0, CHUNK), Ok(first.clone()));
-    let second = encode(&screen(4, 2, &["two", "one"]));
+    let second = encode(&screen(2, &["two", "one"]));
     it.put(display, second.clone());
     let mut whole = head;
     whole.extend(ops::read(ctx, a, 8, CHUNK).unwrap());

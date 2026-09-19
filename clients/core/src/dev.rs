@@ -9,7 +9,9 @@
 //!   buffers          call: the Client's own Buffers, crate::buffers
 //!   clipboard        read/write: the machine's clipboard, whole
 //!   cwd              read: where the Client stands, text
-//!   display          read/write: the Screen the Client last drew
+//!   display/0/info/rows  read/write: the terminal's own rows, decimal
+//!   display/0/info/cols  read/write: the terminal's own cols, decimal
+//!   display/0/text   read/write: the Screen the Client last drew
 //!   exit             read/write: the code in decimal; empty for none
 //!   input/keyboard   read/write: the stream of presses
 //!   link             read: what the wire has carried, labelled text
@@ -115,12 +117,33 @@ impl Clip {
     }
 }
 
+/// Which cell of `display/0` an rd is: `rows` and `cols` its own size
+/// (the whole terminal, not the region's) and `text` the frame it
+/// shows.
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum Part {
+    Rows,
+    Cols,
+    Text,
+}
+
+impl Part {
+    /// Where it stands in the display's own bytes, one slot each.
+    const fn slot(self) -> usize {
+        match self {
+            Self::Rows => 0,
+            Self::Cols => 1,
+            Self::Text => 2,
+        }
+    }
+}
+
 /// Which cell of `dev` an rd is.
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum Held {
     Clipboard,
     Cwd,
-    Display,
+    Display(Part),
     Exit,
     Keyboard,
     Link,
@@ -128,7 +151,8 @@ enum Held {
     Ask,
     Size,
     View,
-    /// `input` and `windows`, which hold the rest.
+    /// `input`, `windows`, `display` and `display/0`, which hold the
+    /// rest.
     Dir,
 }
 
@@ -190,9 +214,11 @@ struct State {
     client: Rd,
     dir: String,
     size: window::Size,
-    /// The last frame the Client drew, as `display` holds it: the
-    /// bytes of a `Screen`, whole, or none before the first one.
-    display: Vec<u8>,
+    /// `display/0`'s own bytes, one slot a [`Part`]: the frame the
+    /// Client last drew and the two facts of its own size, decimal
+    /// text; empty until the drawer has written that part, a display
+    /// holding only the facts it has.
+    display: [Vec<u8>; 3],
     /// What the region was opened with, as `windows/0/ask` holds it.
     ask: open::Ask,
     exit: Option<u8>,
@@ -218,6 +244,16 @@ impl State {
         }
         self.ask = ask;
         old
+    }
+
+    /// `display/0`'s bytes of `part`.
+    fn shown(&self, part: Part) -> Vec<u8> {
+        self.display[part.slot()].clone()
+    }
+
+    /// `display/0`'s bytes of `part`, set whole.
+    fn set(&mut self, part: Part, bytes: Vec<u8>) {
+        self.display[part.slot()] = bytes;
     }
 }
 
@@ -285,7 +321,7 @@ impl Dev {
             client: Rd(0),
             dir: String::from(dir),
             size: FIRST,
-            display: Vec::new(),
+            display: [Vec::new(), Vec::new(), Vec::new()],
             ask,
             exit: None,
             asked: None,
@@ -612,7 +648,12 @@ impl Module for Dev {
         self.buffers.start(ctx, home)?;
         self.add(ctx, home, "clipboard", rw, Held::Clipboard)?;
         self.add(ctx, home, "cwd", read, Held::Cwd)?;
-        self.add(ctx, home, "display", rw, Held::Display)?;
+        let display = self.add(ctx, home, "display", dir, Held::Dir)?;
+        let screen = self.add(ctx, display, "0", dir, Held::Dir)?;
+        self.add(ctx, screen, "text", rw, Held::Display(Part::Text))?;
+        let info = self.add(ctx, screen, "info", dir, Held::Dir)?;
+        self.add(ctx, info, "rows", rw, Held::Display(Part::Rows))?;
+        self.add(ctx, info, "cols", rw, Held::Display(Part::Cols))?;
         self.add(ctx, home, "exit", rw, Held::Exit)?;
         let input = self.add(ctx, home, "input", dir, Held::Dir)?;
         self.add(ctx, input, "keyboard", rw, Held::Keyboard)?;
@@ -724,9 +765,9 @@ impl Dev {
             Held::View => {
                 self.viewed(ctx, at, u32::try_from(len).unwrap_or(u32::MAX))
             }
-            Held::Display => self.snapped(h, at, len, || {
-                Ok(self.state.borrow().display.clone())
-            }),
+            Held::Display(part) => {
+                self.snapped(h, at, len, || Ok(self.state.borrow().shown(part)))
+            }
             Held::Link => self.snapped(h, at, len, || self.carried()),
             // Each read asks the machine: the cell holds nothing.
             Held::Clipboard => Ok(part(&(self.clip.read)()?, at, len)),
@@ -754,12 +795,13 @@ impl Dev {
                 ctx.changed(rd, Kind::Modify)?;
                 Ok(buf.len())
             }
-            // The frame whole, at 0 only. The announcement is what a
-            // remote follower wakes on; with no handle watching, the
-            // Host keeps nothing, so a frame nobody reads costs the
-            // write and no more.
-            Held::Display if at == 0 => {
-                self.state.borrow_mut().display = buf.to_vec();
+            // The frame, or a fact of the display's own size, whole,
+            // at 0 only. The announcement is what a remote follower
+            // wakes on; with no handle watching, the Host keeps
+            // nothing, so a frame nobody reads costs the write and no
+            // more.
+            Held::Display(part) if at == 0 => {
+                self.state.borrow_mut().set(part, buf.to_vec());
                 ctx.changed(rd, Kind::Modify)?;
                 Ok(buf.len())
             }
@@ -767,7 +809,7 @@ impl Dev {
             Held::Clipboard if at == 0 => {
                 (self.clip.write)(buf).map(|()| buf.len())
             }
-            Held::Clipboard | Held::Display => Err(Error::Invalid),
+            Held::Clipboard | Held::Display(_) => Err(Error::Invalid),
             _ => Err(Error::Unsupported),
         }
     }

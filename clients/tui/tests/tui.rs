@@ -18,7 +18,7 @@ use reovim_client::dev::{self, Clip, Table};
 use reovim_client::{Client, Host, ROOT};
 use reovim_client_api::{
     BAR, BLOCK, BLUE, GREEN, Key, MATCH, NONE, RED, Region, SELECTION, Surface,
-    count, display, open, window,
+    display, open, window,
 };
 use reovim_client_tui::{Frame, Step, Tui};
 use reovim_kernel_interface::{
@@ -630,27 +630,13 @@ fn every_key_the_tui_writes_reaches_the_plugin_once_in_order() {
     assert_eq!(tui.key(Key::Char('x')), Ok(Step::Same), "no show, no draw");
 }
 
-/// The rows of a `Screen`, each with its trailing spaces cut, as a
-/// person reading a terminal sees them.
-fn rows(screen: &display::Screen) -> Vec<String> {
-    let cols = count(screen.cols);
-    // A 0 is the second half of the wide char before it, which draws
-    // no cell of its own.
-    let drawn = |c: &u64| char::from_u32(u32::try_from(*c).ok()?);
-    let row = |cells: &[u64]| {
-        let chars = cells.iter().filter(|c| **c != 0).filter_map(drawn);
-        String::from_iter(chars).trim_end().to_string()
-    };
-    screen.cells.chunks(cols).map(row).collect()
-}
-
 #[test]
 fn the_frame_the_tui_answers_is_what_display_holds() {
     let rig = Rig::new("display");
     rig.file("note", "한글x\n".as_bytes());
     let (mut tui, stub, host) = hosted(&rig, Some("note"));
     let ctx = host.own();
-    let at = cell::resolve(&ctx, ROOT, "/self/dev/display").unwrap();
+    let at = cell::resolve(&ctx, ROOT, "/self/dev/display/0/text").unwrap();
     let held = || -> display::Screen {
         decode(&ops::bytes(&ctx, at).unwrap()).unwrap()
     };
@@ -661,24 +647,72 @@ fn the_frame_the_tui_answers_is_what_display_holds() {
     let frame = tui.frame(80, 24).unwrap();
     let screen = held();
 
-    // What the terminal was asked for, and the frame it was answered.
-    assert_eq!(screen.kind, "tty");
-    assert_eq!((screen.cols, screen.rows), (80, 24));
-    let mut drawn = rows(&screen);
-    assert_eq!(drawn.pop().as_deref(), Some(frame.status.as_str()));
-    assert_eq!(drawn[..1], frame.lines, "the rows the Plugin showed");
-    assert!(drawn[1..].iter().all(String::is_empty), "{drawn:?}");
-    assert_eq!(screen.cells.len(), 80 * 24);
-    assert_eq!(screen.cells[1], 0, "the second half of a wide char");
+    // What the terminal was asked for, and the frame it was answered:
+    // one `Line` a row the Plugin showed, its text the frame's own,
+    // the status apart.
+    assert_eq!(screen.rows, 24);
+    let info = |name: &str| {
+        let path = format!("/self/dev/display/0/info/{name}");
+        cell::resolve(&ctx, ROOT, &path).unwrap()
+    };
+    let fact = |at: Rd| ops::bytes(&ctx, at).unwrap();
+    assert_eq!(fact(info("rows")), b"24\n", "the whole terminal");
+    assert_eq!(fact(info("cols")), b"80\n");
+    let texts: Vec<String> =
+        screen.lines.iter().map(|line| line.text.clone()).collect();
+    assert_eq!(texts, frame.lines, "the rows the Plugin showed");
+    assert_eq!(screen.status, frame.status);
 
-    // The cursor is the frame's own, and the count rises by a frame.
+    // The cursor is the frame's own, turned from cells to bytes.
     assert_eq!((screen.row, screen.col), (0, 0));
     assert_eq!((screen.shape, frame.shape), (BLOCK, BLOCK));
-    let before = screen.count;
+
+    // A frame nobody asked for leaves the display as it was; the one
+    // asked for redraws it.
     press(&mut tui, &stub, Act::Show(view(6, ""))).unwrap();
-    let screen = held();
-    assert_eq!(screen.count, before, "a frame nobody asked for");
+    assert_eq!(held(), screen, "a frame nobody asked for");
     tui.frame(80, 24).unwrap();
-    assert_eq!(held().count, before + 1);
-    assert_eq!(held().col, 4, "the x, two wide chars along");
+    assert_ne!(held(), screen);
+    assert_eq!(held().col, 6, "the x, two wide chars along, in bytes");
+
+    // A resize follows in the facts too.
+    tui.frame(40, 10).unwrap();
+    assert_eq!(fact(info("rows")), b"10\n");
+    assert_eq!(fact(info("cols")), b"40\n");
+}
+
+#[test]
+fn a_selection_and_a_match_reach_the_display_s_runs() {
+    let rig = Rig::new("display-runs");
+    rig.file("note", "bin  ls\n한글x\n".as_bytes());
+    let (mut tui, stub, host) = hosted(&rig, Some("note"));
+    let ctx = host.own();
+    let at = cell::resolve(&ctx, ROOT, "/self/dev/display/0/text").unwrap();
+    let held = || -> display::Screen {
+        decode(&ops::bytes(&ctx, at).unwrap()).unwrap()
+    };
+
+    // A selection through the first row's newline and a match on the
+    // second row's `x`: neither has anywhere to stand in the record
+    // `08.0` replaces, `cells: [u64; 65536]` holding one scalar a cell
+    // and no style at all, so this failed before it with nowhere to
+    // put a run; here each lands on the right bytes of its own line.
+    let mut shown = view(0, "");
+    shown.spans = vec![span(0, 8, SELECTION), span(14, 15, MATCH)];
+    press(&mut tui, &stub, Act::Show(shown)).unwrap();
+    tui.frame(80, 24).unwrap();
+    let screen = held();
+
+    assert_eq!(screen.lines[0].text, "bin  ls");
+    assert_eq!(
+        screen.lines[0].runs,
+        [display::Run { from: 0, to: 8, style: SELECTION }],
+        "through the line's own newline, one byte past its text"
+    );
+    assert_eq!(screen.lines[1].text, "한글x");
+    assert_eq!(
+        screen.lines[1].runs,
+        [display::Run { from: 6, to: 7, style: MATCH }],
+        "the match on `x`, in the bytes of its own line"
+    );
 }
