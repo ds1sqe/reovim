@@ -17,7 +17,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::fmt::Write;
 
-use reovim_client_api::{BAR, display, width};
+use reovim_client_api::{BAR, column, display};
 use reovim_kernel_interface::{Calls, Error, Event, Handle, Kind, Rd};
 use reovim_sdk::cell::{self, Follow};
 use reovim_sdk::{decode, look, ops};
@@ -95,16 +95,6 @@ fn painted(line: &display::Line) -> String {
     let runs: Vec<(u64, u64, u64)> =
         line.runs.iter().map(|run| (run.from, run.to, run.style)).collect();
     look::painted(&line.text, &runs)
-}
-
-/// The cell of its cursor's line where the byte `screen.col` names
-/// begins: the same cells-per-char rule the drawer counted it in.
-fn column(screen: &display::Screen) -> usize {
-    let byte = usize::try_from(screen.col).unwrap_or(usize::MAX);
-    let row = usize::try_from(screen.row).unwrap_or(usize::MAX);
-    screen.lines.get(row).map_or(0, |line| {
-        line.text[..byte.min(line.text.len())].chars().map(width).sum()
-    })
 }
 
 /// `f` between reads: the handle that holds the watch, what is

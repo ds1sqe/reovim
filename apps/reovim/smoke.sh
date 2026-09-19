@@ -46,11 +46,18 @@ fail() {
     exit 1
 }
 
-# A pane running `command` in `dir`; its exit code lands in `$DIR/exit`.
-start() {
-    local name="$1" dir="$2" command="$3"
-    "${TMUX[@]}" new-session -d -s "$name" -x 80 -y 24 -c "$dir" \
+# A pane running `command` in `dir`, sized `cols`x`rows`; its exit code
+# lands in `$DIR/exit-$name`.
+sized() {
+    local name="$1" dir="$2" cols="$3" rows="$4" command="$5"
+    "${TMUX[@]}" new-session -d -s "$name" -x "$cols" -y "$rows" -c "$dir" \
         "$command; echo \$? > '$DIR/exit-$name'; sleep 30"
+}
+
+# A pane running `command` in `dir`, at 80x24; its exit code lands in
+# `$DIR/exit-$name`.
+start() {
+    sized "$1" "$2" 80 24 "$3"
 }
 
 # Wait up to two seconds for `pattern` on the pane of `name`.
@@ -455,6 +462,103 @@ keys new / f r e s h Enter
 [[ "$(captured)" == "$("${TMUX[@]}" capture-pane -p -t new)" ]] \
     || fail "a search match changes the plain capture: $(captured)"
 keys new : n o h Enter
+
+# --- 08.2: `reovim view`, the reader that knows it shows a display ---
+# `screen` still names `new`'s own display, at 80x24 with "fresh" its
+# whole text. tmux trims a captured row's own trailing spaces, so a
+# view row is trimmed the same way before it is held to `new`'s; a
+# fixed `·` suffix is stripped whole rather than sliced by index, so
+# neither depends on bash's own byte-or-char reading of a multibyte
+# row.
+DOT='·'
+rtrim() {
+    local s="$1"
+    printf '%s' "${s%"${s##*[![:space:]]}"}"
+}
+dots() {
+    local n="$1" out="" j
+    for ((j = 0; j < n; j++)); do out+="$DOT"; done
+    printf '%s' "$out"
+}
+
+# 100x30 on 80x24: the first 24 rows, cut at 80 cells, are `new`'s own
+# rows, twenty `·` past them; six more rows are a hundred `·` each.
+# Sized at 80x24 first and resized after, so this is `view`'s own
+# resize and not merely the size it opened at.
+sized viewbig "$DIR" 80 24 "$BIN view $screen"
+shown viewbig fresh
+"${TMUX[@]}" resize-window -t viewbig -x 100 -y 30
+for ((i = 0; i < 200; i++)); do
+    "${TMUX[@]}" capture-pane -p -t viewbig | grep -qF "$DOT" && break
+    sleep 0.01
+done
+readarray -t viewed < <("${TMUX[@]}" capture-pane -p -t viewbig)
+readarray -t edited < <("${TMUX[@]}" capture-pane -p -t new)
+[[ "${#viewed[@]}" == 30 ]] \
+    || fail "a 100x30 view has ${#viewed[@]} rows, not 30"
+fill20="$(dots 20)"
+for ((i = 0; i < 24; i++)); do
+    content="${viewed[i]%"$fill20"}"
+    [[ "$content" != "${viewed[i]}" ]] \
+        || fail "viewbig row $i has no twenty $DOT fill: ${viewed[i]}"
+    [[ "$(rtrim "$content")" == "${edited[i]}" ]] \
+        || fail "viewbig row $i is not new's own row: ${viewed[i]}"
+done
+fill100="$(dots 100)"
+for ((i = 24; i < 30; i++)); do
+    [[ "${viewed[i]}" == "$fill100" ]] \
+        || fail "viewbig row $i is not a hundred $DOT: ${viewed[i]}"
+done
+keys viewbig q
+ended viewbig
+[[ "$ENDED" == 0 ]] || fail "q did not end the 100x30 view"
+
+# 60x12: a row too long to fit whole ends in a dim `>`; a short row
+# is not cut at all, a plain cell standing where the marker would, a
+# narrower viewer alone marking nothing. `new`'s own buffer holds only
+# "fresh", too short ever to be cut at 59 usable cells, so a long line
+# is opened below it and undone after, one revision each way. Rows
+# lost past the viewer's own still collapse into `+N rows`, N computed
+# from the pane's real height and not the plan's own illustration,
+# which assumed a status row this session's height may not match.
+long="$(printf 'x%.0s' {1..70})"
+keys new o "$long" Escape
+rows="$("${TMUX[@]}" display -p -t new '#{pane_height}')"
+omitted=$((rows - (12 - 1)))
+sized viewcut "$DIR" 60 12 "$BIN view $screen"
+shown viewcut "+$omitted rows"
+readarray -t cut < <("${TMUX[@]}" capture-pane -p -t viewcut)
+[[ "${#cut[@]}" == 12 ]] || fail "a 60x12 view has ${#cut[@]} rows, not 12"
+[[ "${cut[0]}" == fresh ]] \
+    || fail "viewcut row 0 (short, uncut) is not just fresh: ${cut[0]}"
+[[ "${cut[1]}" == "${long:0:59}>" ]] \
+    || fail "viewcut row 1 is not the long row cut at 59, then >: ${cut[1]}"
+[[ "${cut[11]}" == "+$omitted rows" ]] \
+    || fail "viewcut's last row is not +$omitted rows: ${cut[11]}"
+keys viewcut q
+ended viewcut
+[[ "$ENDED" == 0 ]] || fail "q did not end the 60x12 view"
+keys new u
+
+# 80x24 with a selection: `view`'s own screen is `new`'s, colored runs
+# and all; the selection is a key typed at `new` alone, so the viewer
+# redrawing to show it (with no key of its own) is a Modify, not a
+# poll it happened to win.
+sized viewsel "$DIR" 80 24 "$BIN view $screen"
+shown viewsel fresh
+keys new v i w
+for ((i = 0; i < 200; i++)); do
+    [[ "$("${TMUX[@]}" capture-pane -e -p -t viewsel)" == \
+       "$("${TMUX[@]}" capture-pane -e -p -t new)" ]] && break
+    sleep 0.01
+done
+[[ "$("${TMUX[@]}" capture-pane -e -p -t viewsel)" == \
+   "$("${TMUX[@]}" capture-pane -e -p -t new)" ]] \
+    || fail "viewsel with a selection is not new's own screen"
+keys new Escape
+keys viewsel q
+ended viewsel
+[[ "$ENDED" == 0 ]] || fail "q did not end the 80x24 view"
 
 # --- /sys as sysfs: the parameters, the facts, the core -------------
 # A file per parameter under /sys/limit, each in decimal and each

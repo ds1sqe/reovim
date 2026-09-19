@@ -132,7 +132,8 @@ fn follow(
 
 /// A Client on the server at `socket`, behind the one door; a link
 /// that never opened says so with the path, which only the app knows.
-fn linked(socket: &str) -> Result<Rc<Host>, Fail> {
+/// The viewer connects the same way.
+pub fn linked(socket: &str) -> Result<Rc<Host>, Fail> {
     match Remote::client(socket, Vec::new()) {
         Err(Fail::Host(_) | Fail::Client(Fault::Carrier)) => {
             Err(Miss::line(&format!("no server at {socket}")).into())

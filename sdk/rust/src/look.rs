@@ -116,8 +116,12 @@ pub fn params(look: u64) -> String {
 ///
 /// `to` past `text`'s own length draws the one byte past it as a
 /// space, which is how a run that takes a line's newline shows.
-/// `runs` must not overlap and must be in order of `from` — the
-/// caller that built them keeps that, so this need not.
+/// `runs` should be in order of `from` and not overlap, for what they
+/// draw to mean anything, but this never panics on one that does not:
+/// a run before the last one drawn, one whose `to` comes before its
+/// own `from`, or one that does not cut `text` on a char's own
+/// boundary, is skipped whole and paints nothing — the frame these
+/// runs come in may be another Client's, corrupted or merely stale.
 #[must_use]
 pub fn painted(text: &str, runs: &[(u64, u64, u64)]) -> String {
     let len = text.len();
@@ -125,11 +129,13 @@ pub fn painted(text: &str, runs: &[(u64, u64, u64)]) -> String {
     let mut at = 0;
     for &(from, to, look) in runs {
         let from = usize::try_from(from).unwrap_or(len).min(len);
-        if from < at {
-            continue;
-        }
         let raw_to = usize::try_from(to).unwrap_or(len);
         let end = raw_to.min(len);
+        let boundary =
+            text.is_char_boundary(from) && text.is_char_boundary(end);
+        if from < at || end < from || !boundary {
+            continue;
+        }
         let pad = if raw_to > len { " " } else { "" };
         let _ = write!(
             out,
@@ -205,5 +211,29 @@ mod tests {
     fn a_run_past_the_text_paints_one_space_past_it() {
         let runs = [(0, 4, INVERSE)];
         assert_eq!(painted("abc", &runs), "\x1b[7mabc \x1b[0m");
+    }
+
+    /// A run whose `to` comes before its own `from` is a Client's
+    /// mistake, or worse, and not a range to slice on.
+    #[test]
+    fn a_run_that_goes_backwards_is_skipped_whole() {
+        let runs = [(5, 2, INVERSE)];
+        assert_eq!(painted("plain text", &runs), "plain text");
+    }
+
+    /// A run whose `to` lands inside a multi-byte char (`한` is bytes
+    /// 1..4 of "a한b") is skipped whole, not sliced at the byte it
+    /// named.
+    #[test]
+    fn a_run_ending_inside_a_char_is_skipped_whole() {
+        let runs = [(0, 2, INVERSE)];
+        assert_eq!(painted("a한b", &runs), "a한b");
+    }
+
+    /// A run whose `from` lands inside a multi-byte char, likewise.
+    #[test]
+    fn a_run_starting_inside_a_char_is_skipped_whole() {
+        let runs = [(2, 4, INVERSE)];
+        assert_eq!(painted("a한b", &runs), "a한b");
     }
 }

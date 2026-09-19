@@ -208,6 +208,28 @@ pub const fn width(c: char) -> usize {
     if wide { 2 } else { 1 }
 }
 
+/// The cell [`display::Screen`]'s own cursor stands at, in its
+/// `row`'s own text: the same width [`width`] counts every char in.
+///
+/// `row` past `lines` is 0, there being no text to stand in; `col`
+/// past its text is its end. A `col` on no char's own boundary — a
+/// byte a corrupted or a stale frame named, and not one the drawer
+/// ever meant — falls back to the nearest boundary below it and not
+/// above: the boundary above may open a wholly different char, and
+/// counting into one `col` never pointed at overstates where it
+/// stands.
+#[must_use]
+pub fn column(screen: &display::Screen) -> usize {
+    let row = usize::try_from(screen.row).unwrap_or(usize::MAX);
+    let Some(line) = screen.lines.get(row) else { return 0 };
+    let mut at =
+        usize::try_from(screen.col).unwrap_or(usize::MAX).min(line.text.len());
+    while !line.text.is_char_boundary(at) {
+        at -= 1;
+    }
+    line.text[..at].chars().map(width).sum()
+}
+
 /// Where the named keys start, past the last scalar a char can be.
 const NAMED: u64 = 0x11_0000;
 /// Where Control and a char start, past the named keys.
@@ -287,8 +309,11 @@ impl Key {
 
 #[cfg(test)]
 mod tests {
-    use super::Key;
+    use alloc::string::{String, ToString};
+    use alloc::vec;
+
     use super::notation::keys;
+    use super::{Key, column, display};
 
     /// Every key there is, in the order `Key` declares them.
     fn every() -> alloc::vec::Vec<Key> {
@@ -340,6 +365,25 @@ mod tests {
         assert_eq!(parsed, expected);
         assert_eq!(keys("<Nope>"), None);
         assert_eq!(keys("<C-"), None);
+    }
+
+    /// A `col` inside a multi-byte char (a byte no drawer ever named,
+    /// a stale or a corrupted frame's own) does not panic on the
+    /// slice, and falls back to that char's own start: `'한'` is bytes
+    /// 1..4 of "a한b", so byte 2 (inside it) counts no further than
+    /// `'a'` alone.
+    #[test]
+    fn column_inside_a_multibyte_char_does_not_panic() {
+        let line = display::Line { text: "a한b".to_string(), runs: vec![] };
+        let screen = display::Screen {
+            rows: 1,
+            row: 0,
+            col: 2,
+            shape: 0,
+            lines: vec![line],
+            status: String::new(),
+        };
+        assert_eq!(column(&screen), 1);
     }
 }
 

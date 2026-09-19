@@ -167,6 +167,30 @@ fn a_run_past_the_text_is_clamped_to_one_space() {
 }
 
 #[test]
+fn a_run_that_goes_backwards_prints_the_line_plain() {
+    let rig = Rig::new("capture-backwards-run");
+    let host = editor(&rig);
+    let ctx = host.own();
+    let run = at(&ctx, "/self/bin/capture");
+    let printed = || said(&ctx, run, &args(false, DISPLAY));
+
+    // A run whose `to` comes before its own `from` is another
+    // Client's mistake, or worse, and not a range to slice on: the
+    // line prints plain, the run `look::painted` cannot make sense of
+    // skipped whole, and `capture` never panics on it.
+    let backwards = display::Run { from: 8, to: 2, style: look::INVERSE };
+    let line = display::Line {
+        text: "hello world".to_string(),
+        runs: vec![backwards],
+    };
+    let screen = drawn(2, vec![line]);
+    drew(&ctx, &screen);
+    let out = printed().unwrap();
+    let lines: Vec<&str> = out.lines().collect();
+    assert_eq!(lines[0], "hello world", "the backwards run is skipped");
+}
+
+#[test]
 fn bytes_that_do_not_decode_as_a_screen_are_refused() {
     let rig = Rig::new("capture-invalid");
     let host = editor(&rig);

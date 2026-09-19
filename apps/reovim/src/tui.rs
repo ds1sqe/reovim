@@ -193,12 +193,13 @@ fn draw(tui: &mut Tui, shape: &mut Option<u64>) -> Result<(), Fail> {
 }
 
 /// `runs`, already looks and already bytes, as [`look::painted`] takes
-/// them.
-fn tupled(runs: &[display::Run]) -> Vec<(u64, u64, u64)> {
+/// them; the viewer's own painting reuses this too.
+pub fn tupled(runs: &[display::Run]) -> Vec<(u64, u64, u64)> {
     runs.iter().map(|run| (run.from, run.to, run.style)).collect()
 }
 
-fn out(bytes: &[u8]) -> Result<(), Fault> {
+/// Bytes to stdout, flushed; the viewer's own drawing reuses this too.
+pub fn out(bytes: &[u8]) -> Result<(), Fault> {
     let mut stdout = std::io::stdout();
     stdout
         .write_all(bytes)

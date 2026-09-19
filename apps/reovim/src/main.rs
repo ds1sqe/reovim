@@ -1,8 +1,8 @@
 #![forbid(unsafe_code)]
 //! The `reovim` binary: `server` boots the Kernel with every linked
 //! module behind one link; `cli` and `tui` drive a server from the
-//! shell and the terminal; bare `reovim FILE` is server and tui in one
-//! process.
+//! shell and the terminal; `view` reads a display without holding it;
+//! bare `reovim FILE` is server and tui in one process.
 
 mod cli;
 mod client;
@@ -12,6 +12,7 @@ mod log;
 mod remote;
 mod server;
 mod tui;
+mod view;
 
 /// The module table build.rs wrote from `modules`.
 mod link {
@@ -81,6 +82,7 @@ const USAGE: &str = "\
 usage: reovim server [--socket PATH] [--root DIR] [--log PATH] [--sys N=V]
        reovim cli [--socket PATH] [--color[=WHEN]] [--help] [LINE...]
        reovim tui [--socket PATH] [+N] [FILE]
+       reovim view [--socket PATH] [--color[=WHEN]] DISPLAY
        reovim [--socket PATH] [--log PATH] [--sys N=V] [+N] [FILE]
 defaults: --socket <runtime dir>/reovim.sock, --root <working directory>;
 the bare form edits any FILE, or none, and listens at the default
@@ -89,7 +91,10 @@ socket, or at reovim-<pid>.sock while another editor holds it;
 may be given more than once (--sys loglevel=debug --sys
 limit/log_ring=65536);
 the cli runs one typed LINE and exits, or reads lines until the end of
-the input; help typed at it lists every name PATH holds";
+the input; help typed at it lists every name PATH holds;
+view draws DISPLAY (a display's own directory, `.../display/0`) at
+this terminal's own size until q or Ctrl-C, drawing again on a change
+or a resize; it types nothing into what it shows";
 
 /// When the output may carry color: `--color=WHEN`, and `--color`
 /// alone as GNU ls takes it.
@@ -197,7 +202,7 @@ fn colored(when: When) -> bool {
 fn run(args: Vec<String>) -> Result<ExitCode, Fail> {
     let mut args = args.into_iter().peekable();
     let command = match args.peek().map(String::as_str) {
-        Some("server" | "cli" | "tui") => args.next(),
+        Some("server" | "cli" | "tui" | "view") => args.next(),
         _ => None,
     };
     let Options { socket: given, root, log, color, sys, rest } =
@@ -226,6 +231,10 @@ fn run(args: Vec<String>) -> Result<ExitCode, Fail> {
         (Some("tui"), rest) if plain => {
             let (line, file) = file_at(rest)?;
             tui::remote(&socket(given)?, line, file).map(ExitCode::from)
+        }
+        (Some("view"), [target]) if plain => {
+            view::run(&socket(given)?, target, colored(color))
+                .map(|()| ExitCode::SUCCESS)
         }
         (None, rest) if root.is_none() => {
             let (line, file) = file_at(rest)?;
