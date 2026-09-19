@@ -252,6 +252,49 @@ fn tab_completes_a_name_from_where_the_line_stands() {
 }
 
 #[test]
+fn tab_lists_several_under_the_line() {
+    let rig = work("several");
+    let seen = Seen::default();
+    let mut tui = buffer(&rig, &seen);
+    let at = prompt("work");
+
+    // Tab on an empty line: every name PATH and the builtins hold,
+    // each its own row as the process cli's `offer` writes them,
+    // above a fresh prompt; the line has no common prefix across them
+    // all and comes back empty. Twenty rows fit under the twenty-three
+    // the region shows, so nothing has scrolled off yet.
+    pressed(&mut tui, &[Key::Tab]);
+    let all = [
+        "load", "unload", "stat", "ls", "tree", "cat", "grep", "log", "dmesg",
+        "call", "watch", "date", "uptime", "capture", "keys", "cd", "pwd",
+        "help",
+    ];
+    let mut shown = vec![at.clone()];
+    shown.extend(all.iter().map(|name| String::from(*name)));
+    shown.push(at.clone());
+    assert_eq!(frame(&mut tui).lines, shown, "nothing has scrolled off yet");
+
+    // `c` then Tab: the names that begin with it, each its own row in
+    // the order `complete` gives them, above a fresh prompt holding
+    // their common prefix, `c` itself again. Six more rows scroll the
+    // transcript, so only the tail is compared.
+    pressed(&mut tui, &[Key::Char('c'), Key::Tab]);
+    let cs = ["cat", "call", "capture", "cd"];
+    let mut tail = vec![format!("{at}c")];
+    tail.extend(cs.iter().map(|name| String::from(*name)));
+    tail.push(format!("{at}c"));
+    let lines = frame(&mut tui).lines;
+    assert_eq!(lines[lines.len() - tail.len()..], tail);
+
+    // `d` then Tab: `cd` is the one candidate, which completes outright
+    // and lists nothing, the row before it unchanged.
+    pressed(&mut tui, &[Key::Char('d'), Key::Tab]);
+    *tail.last_mut().unwrap() = format!("{at}cd ");
+    let lines = frame(&mut tui).lines;
+    assert_eq!(lines[lines.len() - tail.len()..], tail);
+}
+
+#[test]
 fn ctrl_l_empties_what_was_run_and_keeps_the_line() {
     let rig = work("clear");
     let seen = Seen::default();

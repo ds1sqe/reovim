@@ -240,13 +240,23 @@ impl Loaded {
     }
 
     /// Tab: what may stand where the line does, found over the tree
-    /// from where the Shell stands, which the line then takes.
+    /// from where the Shell stands, which the line then takes. Several
+    /// candidates are ordinary output first, the prompt and the line
+    /// as it stood frozen above them and a fresh one below, one a row
+    /// as the process cli's own `offer` writes them, the buffer
+    /// scrolling under as many as there are; one alone or none is as
+    /// it was, the line simply taking what `apply` gives it.
     fn completing(&self, ctx: &dyn Calls) {
         let (shell, word) = {
             let cli = self.state.borrow();
             (cli.shell.clone(), String::from(cli.line.text()))
         };
         let found = complete(ctx, &shell, &word);
+        if found.candidates.len() > 1 {
+            let mut cli = self.state.borrow_mut();
+            cli.prompted(&word);
+            cli.said(&format!("{}\n", found.candidates.join("\n")));
+        }
         self.state.borrow_mut().line.apply(&found);
     }
 

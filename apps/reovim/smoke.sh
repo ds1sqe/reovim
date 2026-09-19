@@ -774,6 +774,11 @@ editing clibuf note
 keys clibuf : c l i Enter
 # The pane keeps no trailing space, so the prompt ends at the `>`.
 shown clibuf "^/module/fs/root$DIR/shell >$"
+# Tab on the empty prompt: several candidates, PATH's names among
+# them, are a row above the prompt that comes back empty.
+keys clibuf Tab
+shown clibuf 'cat'
+shown clibuf 'ls'
 keys clibuf l s Enter
 shown clibuf '^alpha  note$'
 # The one host that runs with color: what it paints on the way to its
