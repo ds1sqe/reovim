@@ -7,11 +7,11 @@
 //! these tests judge is the buffer: the prompt, the transcript, the
 //! line, and the way out.
 
-use reovim_client::dev::{self, Clip, Table, Want};
+use reovim_client::dev::{Clip, Table, Want};
 use reovim_client_api::{BLUE, Key, Region};
-use reovim_client_tui::{Frame, Step, Tui};
+use reovim_client_tui::{Step, Tui};
 use reovim_kernel_interface::{Calls, Error, Rd};
-use reovim_rig::{Rig, Seen, Stub};
+use reovim_rig::{Rig, Seen, Stub, frame, opened, pressed};
 use reovim_sdk::ops;
 
 /// What the stub does on any key: the cli buffer asked for over the
@@ -55,9 +55,7 @@ fn work(test: &str) -> Rig {
 
 /// The tui over `rig` with `table`, opened over the name `file`.
 fn editor(rig: &Rig, table: Table, file: Option<&str>) -> Tui {
-    let host = rig.host();
-    let dev = dev::boot(&host, table, Clip::none(), "", file, None).unwrap();
-    Tui::open(host, dev).unwrap()
+    opened(&rig.host(), table, Clip::none(), "", file, None).unwrap()
 }
 
 /// The region on `work/a` in the stub, then the key that hands it to
@@ -68,25 +66,11 @@ fn buffer(rig: &Rig, seen: &Seen) -> Tui {
     tui
 }
 
-/// The frame at the size the app always asks for.
-fn frame(tui: &mut Tui) -> Frame {
-    tui.frame(80, 24).unwrap()
-}
-
-/// Those keys, in order, and what the last one did.
-fn keys(tui: &mut Tui, keys: &[Key]) -> Step {
-    let mut step = Step::Same;
-    for key in keys {
-        step = tui.key(*key).unwrap();
-    }
-    step
-}
-
 /// That line typed and submitted.
 fn line(tui: &mut Tui, text: &str) -> Step {
     let mut typed: Vec<Key> = text.chars().map(Key::Char).collect();
     typed.push(Key::Enter);
-    keys(tui, &typed)
+    pressed(tui, &typed)
 }
 
 /// The prompt the line stands after, which is where the Shell stands:
@@ -227,13 +211,13 @@ fn tab_completes_a_name_from_where_the_line_stands() {
     let rig = work("tab");
     let seen = Seen::default();
     let mut tui = buffer(&rig, &seen);
-    keys(&mut tui, &[Key::Char('c'), Key::Char('d'), Key::Char(' ')]);
-    keys(&mut tui, &[Key::Char('s'), Key::Tab]);
+    pressed(&mut tui, &[Key::Char('c'), Key::Char('d'), Key::Char(' ')]);
+    pressed(&mut tui, &[Key::Char('s'), Key::Tab]);
     let at = prompt("work");
     // A Container keeps the `/` and takes no space, so the next Tab
     // would go on under it.
     assert_eq!(frame(&mut tui).lines, [format!("{at}cd sub/")]);
-    keys(&mut tui, &[Key::Enter]);
+    pressed(&mut tui, &[Key::Enter]);
     assert_eq!(frame(&mut tui).lines[1], prompt("work/sub"));
 }
 
@@ -243,8 +227,8 @@ fn ctrl_l_empties_what_was_run_and_keeps_the_line() {
     let seen = Seen::default();
     let mut tui = buffer(&rig, &seen);
     line(&mut tui, "ls");
-    keys(&mut tui, &[Key::Char('p'), Key::Char('w')]);
-    assert_eq!(keys(&mut tui, &[Key::Ctrl('l')]), Step::Changed);
+    pressed(&mut tui, &[Key::Char('p'), Key::Char('w')]);
+    assert_eq!(pressed(&mut tui, &[Key::Ctrl('l')]), Step::Changed);
     let at = prompt("work");
     assert_eq!(frame(&mut tui).lines, [format!("{at}pw")], "the line stands");
 }
@@ -257,7 +241,7 @@ fn ctrl_d_gives_the_region_back_to_what_it_came_from() {
     let mut other = rig.client();
     let a = other.resolve("/module/fs/root/work/a").unwrap();
     assert_eq!(*seen.borrow(), [Some(a)], "the stub, once");
-    let step = keys(&mut tui, &[Key::Ctrl('d')]);
+    let step = pressed(&mut tui, &[Key::Ctrl('d')]);
     assert_eq!(step, Step::Changed, "the file is shown again");
     assert_eq!(*seen.borrow(), [Some(a), Some(a)], "over the same rd");
     let frame = frame(&mut tui);
@@ -274,7 +258,7 @@ fn a_cli_buffer_that_was_the_first_thing_shown_leaves_with_nothing() {
         Box::new(|_| Some((String::from("cli"), reovim_plugin_cli::boot())));
     let mut tui = editor(&rig, table, Some("work"));
     assert_eq!(frame(&mut tui).lines, [prompt("work")]);
-    assert_eq!(keys(&mut tui, &[Key::Ctrl('d')]), Step::Quit(0));
+    assert_eq!(pressed(&mut tui, &[Key::Ctrl('d')]), Step::Quit(0));
 }
 
 #[test]

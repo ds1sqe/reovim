@@ -10,10 +10,9 @@
 use std::rc::Rc;
 
 use reovim_client::Host;
-use reovim_client::dev::{self, Clip, Table, Want};
+use reovim_client::dev::{Clip, Table, Want};
 use reovim_client_tui::Tui;
-use reovim_plugin_vim::notation::keys;
-use reovim_rig::Rig;
+use reovim_rig::{Rig, listed, opened, said, typed};
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, ops};
 
@@ -31,17 +30,9 @@ fn over(test: &str) -> (Rig, Tui, Rc<Host>) {
     let rig = Rig::new(test);
     rig.file("note", b"one\ntwo\n");
     let host = rig.host();
-    let dev = dev::boot(&host, table(), Clip::none(), "", Some("note"), None)
-        .unwrap();
-    let tui = Tui::open(host.clone(), dev).unwrap();
+    let tui =
+        opened(&host, table(), Clip::none(), "", Some("note"), None).unwrap();
     (rig, tui, host)
-}
-
-/// Every key of `text` in Vim notation.
-fn typed(tui: &mut Tui, text: &str) {
-    for key in keys(text).unwrap() {
-        tui.key(key).unwrap();
-    }
 }
 
 /// What the cell `path` under `/self/vim` holds, as `cat` prints it.
@@ -49,24 +40,6 @@ fn cat(host: &Rc<Host>, path: &str) -> String {
     let ctx = host.own();
     let rd = cell::resolve(&ctx, ROOT, &format!("/self/vim/{path}")).unwrap();
     String::from_utf8(ops::bytes(&ctx, rd).unwrap()).unwrap()
-}
-
-/// The names `ls` lists under `path`, in the order the tree holds them.
-fn ls(host: &Rc<Host>, path: &str) -> Vec<String> {
-    let ctx = host.own();
-    let rd = cell::resolve(&ctx, ROOT, path).unwrap();
-    ops::children(&ctx, rd)
-        .unwrap()
-        .into_iter()
-        .map(|child| ops::info(&ctx, child).unwrap().name.unwrap())
-        .collect()
-}
-
-/// Vim's own word of the status row: what follows the name, the
-/// position and the revision, which the tui writes before it.
-fn said(tui: &mut Tui) -> String {
-    let status = tui.frame(80, 24).unwrap().status;
-    status.split_once("   ").unwrap().1.into()
 }
 
 #[test]
@@ -143,10 +116,10 @@ fn the_registers_are_listed_by_every_name_one_can_have() {
     let (_rig, _tui, host) = over("cells-listed");
 
     assert_eq!(
-        ls(&host, "/self/vim"),
+        listed(&host, "/self/vim"),
         ["view", "mode", "pending", "registers", "bin"]
     );
-    let names = ls(&host, "/self/vim/registers");
+    let names = listed(&host, "/self/vim/registers");
     assert_eq!(names.len(), 27, "the unnamed one and `a` to `z`");
     assert_eq!(names[0], "\"");
     assert_eq!(names[26], "z");

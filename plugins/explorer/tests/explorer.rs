@@ -7,11 +7,11 @@
 //! corpus.
 
 use reovim_client::Client;
-use reovim_client::dev::{self, Clip, Table, Want};
+use reovim_client::dev::{Clip, Table, Want};
 use reovim_client_api::Key;
-use reovim_client_tui::{Frame, Step, Tui};
+use reovim_client_tui::{Step, Tui};
 use reovim_kernel_interface::{Error, Rd};
-use reovim_rig::{Limits, Rig, Seen, Stub};
+use reovim_rig::{Limits, Rig, Seen, Stub, frame, opened, pressed};
 use reovim_sdk::encode;
 
 /// The app's table in the small: the explorer for a Container, the
@@ -50,9 +50,7 @@ fn made(client: &mut Client, dir: Rd, name: &str) {
 
 /// The tui over `rig` with `table`, opened over the name `file`.
 fn editor(rig: &Rig, table: Table, file: Option<&str>) -> Result<Tui, Error> {
-    let host = rig.host();
-    let dev = dev::boot(&host, table, Clip::none(), "", file, None)?;
-    Tui::open(host, dev)
+    opened(&rig.host(), table, Clip::none(), "", file, None)
 }
 
 /// The region opened on `name`, a name under the root.
@@ -60,23 +58,9 @@ fn over(rig: &Rig, seen: &Seen) -> Tui {
     editor(rig, table(seen), Some("work")).unwrap()
 }
 
-/// The frame at the size the app always asks for.
-fn frame(tui: &mut Tui) -> Frame {
-    tui.frame(80, 24).unwrap()
-}
-
 /// One key, whatever it did.
 fn press(tui: &mut Tui, key: Key) -> Step {
     tui.key(key).unwrap()
-}
-
-/// Those keys, in order, and what the last one did.
-fn keys(tui: &mut Tui, keys: &[Key]) -> Step {
-    let mut step = Step::Same;
-    for key in keys {
-        step = press(tui, *key);
-    }
-    step
 }
 
 /// The row the cursor is on, which is the entry selected.
@@ -116,9 +100,9 @@ fn the_selection_walks_the_entries_and_stops_at_both_ends() {
     assert_eq!(row(&mut tui), 3, "`G` is the last");
     press(&mut tui, Key::Char('j'));
     assert_eq!(row(&mut tui), 3, "`j` stops at the last entry");
-    keys(&mut tui, &[Key::Char('g'), Key::Char('g')]);
+    pressed(&mut tui, &[Key::Char('g'), Key::Char('g')]);
     assert_eq!(row(&mut tui), 0, "`gg` is the first");
-    keys(&mut tui, &[Key::Char('g'), Key::Char('j')]);
+    pressed(&mut tui, &[Key::Char('g'), Key::Char('j')]);
     assert_eq!(row(&mut tui), 0, "a `g` before anything else is nothing");
 }
 
@@ -130,7 +114,7 @@ fn enter_on_a_cell_gives_the_region_to_the_cell_s_plugin() {
     let mut other = rig.client();
     let a = other.resolve("/module/fs/root/work/a").unwrap();
     let down = [Key::Char('j'), Key::Char('j'), Key::Enter];
-    keys(&mut tui, &down);
+    pressed(&mut tui, &down);
     assert_eq!(*seen.borrow(), [Some(a)], "started over the file");
     let frame = frame(&mut tui);
     assert_eq!(frame.lines, ["first"], "what that file holds");
@@ -142,7 +126,7 @@ fn enter_on_a_container_lists_it_and_minus_lists_the_parent() {
     let rig = work("down-up");
     let seen = Seen::default();
     let mut tui = over(&rig, &seen);
-    keys(&mut tui, &[Key::Char('j'), Key::Enter]);
+    pressed(&mut tui, &[Key::Char('j'), Key::Enter]);
     let below = frame(&mut tui);
     assert_eq!(below.lines, ["../"], "an empty directory holds its parent");
     assert_eq!(below.status, "sub  1:1  r2[+]   ");
@@ -221,7 +205,7 @@ fn the_prompt_is_the_status_and_esc_drops_it() {
     let mut tui = over(&rig, &seen);
     press(&mut tui, Key::Char(':'));
     assert_eq!(frame(&mut tui).status, "work  1:1  r2[+]   :");
-    keys(&mut tui, &[Key::Char('q'), Key::Char('!')]);
+    pressed(&mut tui, &[Key::Char('q'), Key::Char('!')]);
     assert_eq!(frame(&mut tui).status, "work  1:1  r2[+]   :q!");
     press(&mut tui, Key::Backspace);
     assert_eq!(frame(&mut tui).status, "work  1:1  r2[+]   :q");
@@ -239,7 +223,7 @@ fn a_line_the_explorer_has_not_got_is_the_message_nvim_gives() {
     let seen = Seen::default();
     let mut tui = over(&rig, &seen);
     let typed = [Key::Char(':'), Key::Char('x'), Key::Enter];
-    assert_eq!(keys(&mut tui, &typed), Step::Changed);
+    assert_eq!(pressed(&mut tui, &typed), Step::Changed);
     let said = "work  1:1  r2[+]   E492: Not an editor command: x";
     assert_eq!(frame(&mut tui).status, said);
     press(&mut tui, Key::Char('j'));
@@ -255,7 +239,7 @@ fn q_and_q_bang_leave_with_nothing_to_lose() {
         let mut typed = vec![Key::Char(':')];
         typed.extend(line.chars().map(Key::Char));
         typed.push(Key::Enter);
-        assert_eq!(keys(&mut tui, &typed), Step::Quit(0), ":{line}");
+        assert_eq!(pressed(&mut tui, &typed), Step::Quit(0), ":{line}");
     }
 }
 
@@ -267,6 +251,6 @@ fn a_region_over_a_cell_is_none_of_the_explorer_s() {
     let table: Table = Box::new(|_| {
         Some((String::from("explorer"), reovim_plugin_explorer::boot()))
     });
-    let opened = editor(&rig, table, Some("work/a"));
-    assert_eq!(opened.err(), Some(Error::Unsupported));
+    let asked = editor(&rig, table, Some("work/a"));
+    assert_eq!(asked.err(), Some(Error::Unsupported));
 }

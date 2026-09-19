@@ -7,12 +7,10 @@
 
 use std::rc::Rc;
 
-use reovim_client::Host;
-use reovim_client::dev::{self, Clip, Table};
+use reovim_client::dev::{Clip, Table};
 use reovim_client_tui::{Step, Tui};
 use reovim_plugin_vim::Editor;
-use reovim_plugin_vim::notation::keys;
-use reovim_rig::Rig;
+use reovim_rig::{Rig, opened, status, typed};
 
 /// What a write says when the file it would make is there already.
 const E13: &str = "E13: File exists (add ! to override)";
@@ -31,28 +29,14 @@ fn editor(
     let one = vim.clone();
     let table: Table =
         Box::new(move |_| Some((String::from("vim"), one.booted())));
-    let host: Rc<Host> = rig.host();
-    let dev = dev::boot(&host, table, Clip::none(), dir, file, line).unwrap();
-    (Tui::open(host, dev).unwrap(), vim)
+    let tui =
+        opened(&rig.host(), table, Clip::none(), dir, file, line).unwrap();
+    (tui, vim)
 }
 
 /// `file`, a name under the root, in an editor of its own.
 fn open(rig: &Rig, file: &str) -> Tui {
     editor(rig, "", Some(file), None).0
-}
-
-/// Every key of `text` in Vim notation; what the last one did.
-fn typed(tui: &mut Tui, text: &str) -> Step {
-    let mut step = Step::Same;
-    for key in keys(text).unwrap() {
-        step = tui.key(key).unwrap();
-    }
-    step
-}
-
-/// The status row at the size the app asks for.
-fn status(tui: &mut Tui) -> String {
-    tui.frame(80, 24).unwrap().status
 }
 
 #[test]

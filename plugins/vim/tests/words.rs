@@ -12,12 +12,9 @@
 use std::rc::Rc;
 
 use reovim_client::Host;
-use reovim_client::dev::{self, Clip, Table, Want};
+use reovim_client::dev::{Clip, Table, Want};
 use reovim_client_tui::{Step, Tui};
-use reovim_plugin_vim::notation::keys;
-use reovim_rig::{Rig, Seen, Stub};
-use reovim_sdk::walk::ROOT;
-use reovim_sdk::{cell, ops};
+use reovim_rig::{Rig, Seen, Stub, listed, opened, typed};
 
 /// The one editor a test drives, over whichever Plugin the table gives.
 type Editor = Tui;
@@ -51,36 +48,15 @@ fn work(test: &str) -> Rig {
 /// anything else at this Client reads the tree it registered in.
 fn hosted(rig: &Rig, seen: &Seen) -> (Rc<Host>, Editor) {
     let host = rig.host();
-    let dev =
-        dev::boot(&host, table(seen), Clip::none(), "d", Some("d/note"), None)
+    let tui =
+        opened(&host, table(seen), Clip::none(), "d", Some("d/note"), None)
             .unwrap();
-    let tui = Tui::open(host.clone(), dev).unwrap();
     (host, tui)
 }
 
 /// An editor over `d/note`, started in `d`.
 fn over(rig: &Rig, seen: &Seen) -> Editor {
     hosted(rig, seen).1
-}
-
-/// The names `ls` lists under `path`, in the order the tree holds them.
-fn ls(host: &Rc<Host>, path: &str) -> Vec<String> {
-    let ctx = host.own();
-    let rd = cell::resolve(&ctx, ROOT, path).unwrap();
-    ops::children(&ctx, rd)
-        .unwrap()
-        .into_iter()
-        .map(|child| ops::info(&ctx, child).unwrap().name.unwrap())
-        .collect()
-}
-
-/// Every key of `text` in Vim notation; what the last one did.
-fn typed(tui: &mut Editor, text: &str) -> Step {
-    let mut step = Step::Same;
-    for key in keys(text).unwrap() {
-        step = tui.key(key).unwrap();
-    }
-    step
 }
 
 /// What `text` did to an editor of its own, in one line: the step it
@@ -208,7 +184,7 @@ fn the_listing_computes_the_short_form_of_every_name() {
     let rig = work("words-order");
     let seen = Seen::default();
     let (host, _tui) = hosted(&rig, &seen);
-    let names = ls(&host, "/self/vim/bin");
+    let names = listed(&host, "/self/vim/bin");
     let all = [
         "write",
         "wq",

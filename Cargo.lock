@@ -324,6 +324,7 @@ version = "0.16.0-dev"
 dependencies = [
  "reovim-client",
  "reovim-client-api",
+ "reovim-client-tui",
  "reovim-host",
  "reovim-kernel-interface",
  "reovim-kernel-runtime",
@@ -331,6 +332,7 @@ dependencies = [
  "reovim-module-fs",
  "reovim-module-sysutils",
  "reovim-module-text",
+ "reovim-plugin-vim",
  "reovim-sdk",
  "reovim-text-api",
 ]

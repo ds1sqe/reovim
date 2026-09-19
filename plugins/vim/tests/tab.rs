@@ -8,11 +8,10 @@
 //! a walk through the history put back on the line. What a completed
 //! path ends as is nvim's own, and the corpus judges that.
 
-use reovim_client::dev::{self, Clip, Table, Want};
+use reovim_client::dev::{Clip, Table, Want};
 use reovim_client_tui::{Step, Tui};
 use reovim_plugin_vim::DIVERGENCES;
-use reovim_plugin_vim::notation::keys;
-use reovim_rig::Rig;
+use reovim_rig::{Rig, opened, said, typed};
 
 /// The one editor a test drives.
 type Editor = Tui;
@@ -34,27 +33,9 @@ fn over(test: &str) -> (Rig, Editor) {
     rig.file("d/note", b"one\ntwo\n");
     rig.file("d/sub/deep", b"");
     let host = rig.host();
-    let dev =
-        dev::boot(&host, table(), Clip::none(), "d", Some("d/note"), None)
-            .unwrap();
-    let tui = Tui::open(host, dev).unwrap();
+    let tui = opened(&host, table(), Clip::none(), "d", Some("d/note"), None)
+        .unwrap();
     (rig, tui)
-}
-
-/// Every key of `text` in Vim notation; what the last one did.
-fn typed(tui: &mut Editor, text: &str) -> Step {
-    let mut step = Step::Same;
-    for key in keys(text).unwrap() {
-        step = tui.key(key).unwrap();
-    }
-    step
-}
-
-/// Vim's own word of the status row: what follows the name, the
-/// position and the revision, which the tui writes before it.
-fn said(tui: &mut Editor) -> String {
-    let status = tui.frame(80, 24).unwrap().status;
-    status.split_once("   ").unwrap().1.into()
 }
 
 /// `text` typed, and the status row it left, the prompt still open.

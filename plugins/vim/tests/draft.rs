@@ -5,14 +5,12 @@
 //! runs it, and counts what this Client sent with `Rig::sent()`,
 //! against the one message a frame of its own spends.
 
-use std::rc::Rc;
-
-use reovim_client::dev::{self, Clip, Table};
-use reovim_client::{Client, Host, Rd};
+use reovim_client::dev::{Clip, Table};
+use reovim_client::{Client, Rd};
 use reovim_client_tui::{Step, Tui};
 use reovim_plugin_vim::Editor;
 use reovim_plugin_vim::notation::keys;
-use reovim_rig::Rig;
+use reovim_rig::{Rig, lines, opened, status, typed};
 use reovim_sdk::{decode, encode};
 use reovim_text_api::{history, text};
 
@@ -22,21 +20,10 @@ fn editor(rig: &Rig, file: &str) -> Tui {
     let vim = Editor::new();
     let table: Table =
         Box::new(move |_| Some((String::from("vim"), vim.booted())));
-    let host: Rc<Host> = rig.host();
-    let dev =
-        dev::boot(&host, table, Clip::none(), "", Some(file), None).unwrap();
-    let mut tui = Tui::open(host, dev).unwrap();
+    let mut tui =
+        opened(&rig.host(), table, Clip::none(), "", Some(file), None).unwrap();
     tui.frame(80, 24).unwrap();
     tui
-}
-
-/// Every key of `text` in Vim notation; what the last one did.
-fn typed(tui: &mut Tui, text: &str) -> Step {
-    let mut step = Step::Same;
-    for key in keys(text).unwrap() {
-        step = tui.key(key).unwrap();
-    }
-    step
 }
 
 /// What each key of `text` cost this Client on the wire.
@@ -55,16 +42,6 @@ fn idle(rig: &Rig, tui: &mut Tui) -> u32 {
     let was = rig.sent();
     tui.tick().unwrap();
     rig.sent() - was
-}
-
-/// The lines and the status row the screen shows now, at the size the
-/// app asks for.
-fn lines(tui: &mut Tui) -> Vec<String> {
-    tui.frame(80, 24).unwrap().lines
-}
-
-fn status(tui: &mut Tui) -> String {
-    tui.frame(80, 24).unwrap().status
 }
 
 /// The Buffer of the server's the draft over `file` is over, which

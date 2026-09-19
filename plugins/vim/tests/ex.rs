@@ -11,12 +11,11 @@
 use std::rc::Rc;
 
 use reovim_client::Host;
-use reovim_client::dev::{self, Clip, Table, Want};
+use reovim_client::dev::{Clip, Table, Want};
 use reovim_client_tui::{Step, Tui};
 use reovim_kernel_interface::Rd;
 use reovim_plugin_vim::bins::file;
-use reovim_plugin_vim::notation::keys;
-use reovim_rig::Rig;
+use reovim_rig::{Rig, lines, opened, said, typed};
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, ops};
 
@@ -34,32 +33,9 @@ fn over(test: &str) -> (Rig, Tui, Rc<Host>) {
     std::fs::create_dir_all(rig.dir().join("d")).unwrap();
     rig.file("d/note", b"one a\ntwo a\nthree a\n");
     let host = rig.host();
-    let dev =
-        dev::boot(&host, table(), Clip::none(), "d", Some("d/note"), None)
-            .unwrap();
-    let tui = Tui::open(host.clone(), dev).unwrap();
+    let tui = opened(&host, table(), Clip::none(), "d", Some("d/note"), None)
+        .unwrap();
     (rig, tui, host)
-}
-
-/// Every key of `text` in Vim notation; what the last one did.
-fn typed(tui: &mut Tui, text: &str) -> Step {
-    let mut step = Step::Same;
-    for key in keys(text).unwrap() {
-        step = tui.key(key).unwrap();
-    }
-    step
-}
-
-/// Vim's own word of the status row: what follows the name, the
-/// position and the revision, which the tui writes before it.
-fn said(tui: &mut Tui) -> String {
-    let status = tui.frame(80, 24).unwrap().status;
-    status.split_once("   ").unwrap().1.into()
-}
-
-/// The lines the editor shows now.
-fn lines(tui: &mut Tui) -> Vec<String> {
-    tui.frame(80, 24).unwrap().lines
 }
 
 #[test]

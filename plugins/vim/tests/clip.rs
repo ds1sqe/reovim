@@ -6,10 +6,9 @@
 //! this one follows the bytes out of the Plugin, through the cell, to
 //! the store the rig stands in for the machine's tool.
 
-use reovim_client::dev::{self, Clip, Table, Want};
+use reovim_client::dev::{Clip, Table, Want};
 use reovim_client_tui::Tui;
-use reovim_plugin_vim::notation::keys;
-use reovim_rig::Rig;
+use reovim_rig::{Rig, lines, opened, said, typed};
 
 /// Vim for a cell; nothing else is opened here.
 fn table() -> Table {
@@ -25,29 +24,9 @@ fn over(test: &str, clip: impl FnOnce(&Rig) -> Clip) -> (Rig, Tui) {
     let rig = Rig::new(test);
     rig.file("note", b"one\ntwo\n");
     let clip = clip(&rig);
-    let host = rig.host();
-    let dev = dev::boot(&host, table(), clip, "", Some("note"), None).unwrap();
-    let tui = Tui::open(host, dev).unwrap();
+    let tui =
+        opened(&rig.host(), table(), clip, "", Some("note"), None).unwrap();
     (rig, tui)
-}
-
-/// Every key of `text` in Vim notation.
-fn typed(tui: &mut Tui, text: &str) {
-    for key in keys(text).unwrap() {
-        tui.key(key).unwrap();
-    }
-}
-
-/// The rows the editor shows.
-fn lines(tui: &mut Tui) -> Vec<String> {
-    tui.frame(80, 24).unwrap().lines
-}
-
-/// Vim's own word of the status row: what follows the name, the
-/// position and the revision, which the tui writes before it.
-fn said(tui: &mut Tui) -> String {
-    let status = tui.frame(80, 24).unwrap().status;
-    status.split_once("   ").unwrap().1.into()
 }
 
 #[test]
