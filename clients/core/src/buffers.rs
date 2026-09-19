@@ -167,15 +167,29 @@ impl Buffers {
     /// which is what a flush counts from.
     fn drafted(
         &self,
-        mut ctx: &dyn Calls,
+        ctx: &dyn Calls,
         over: Rd,
         source: Option<Rd>,
     ) -> Result<Rd, Error> {
         if let Some(rd) = self.held(over) {
             return Ok(rd);
         }
-        let list = self.state.borrow().list.ok_or(Error::Invalid)?;
         let h = ctx.open(over, Rights::READ.union(Rights::WRITE))?;
+        // The handle is the draft's, and there is no draft but the one
+        // below: no path out of here leaves it open.
+        self.kept(ctx, over, source, h).inspect_err(|_| ops::shut(ctx, &[h]))
+    }
+
+    /// The draft the open stands on: the rd it is registered at, the
+    /// children below it, and the state that names it.
+    fn kept(
+        &self,
+        mut ctx: &dyn Calls,
+        over: Rd,
+        source: Option<Rd>,
+        h: Handle,
+    ) -> Result<Rd, Error> {
+        let list = self.state.borrow().list.ok_or(Error::Invalid)?;
         let bytes = ops::whole(ctx, h)?;
         let tree = history::Call(&mut ctx, h).tree()?;
         let name = {
@@ -450,12 +464,22 @@ impl buffers::Api for Buffers {
         self.drafted(ctx, over, None)
     }
 
+    /// The end of the draft and not of what was typed into it: what is
+    /// pending goes down as one revision first, and then the rd, the
+    /// children below it and the handle all go. The Buffer stays,
+    /// modules/text having no way to free one.
+    ///
+    /// Every step runs whatever the one before answered, so a draft
+    /// that is closing is closed whatever fails; the first error is
+    /// what the caller is told.
     fn close(&self, ctx: &dyn Calls, _: Rd, draft: Rd) -> Result<(), Error> {
         let h = self.handle(draft)?;
-        let below = ops::children(ctx, draft)?;
-        self.forgotten(draft, &below);
-        ctx.unregister(draft)?;
-        ops::close(ctx, h)
+        let sent = self.flushed(ctx, draft).map(|_| ());
+        let below = ops::children(ctx, draft);
+        self.forgotten(draft, below.as_deref().unwrap_or(&[]));
+        let gone = ctx.unregister(draft);
+        let closed = ops::close(ctx, h);
+        sent.and(below).and(gone).and(closed)
     }
 }
 

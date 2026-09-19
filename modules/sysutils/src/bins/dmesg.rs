@@ -22,6 +22,7 @@ use reovim_kernel_interface::{Calls, Error, Handle, Op, Rd};
 use reovim_sdk::cell::Follow;
 use reovim_sdk::date::civil;
 use reovim_sdk::log::{self, Entry};
+use reovim_sdk::ops;
 use reovim_sdk::sgr::{BLUE, BOLD, DIM, GREEN, RED, RED_BOLD, paint};
 
 use crate::names::{KERNEL, Names, decoded};
@@ -56,7 +57,10 @@ impl dmesg::Api for Sysutils {
         let (tails, held) = (args.w || args.W, !args.W);
         let form = Form::of(args)?;
         let h = entries::open(ctx)?;
-        let entries = entries::from(ctx, h, 0)?;
+        // The handle is the cell's once there is one to keep it: a run
+        // that ends before that hands it back here.
+        let read = entries::from(ctx, h, 0);
+        let entries = read.inspect_err(|_| ops::shut(ctx, &[h]))?;
         let boot = entries.first().map_or(0, |entry| entry.time);
         let from = entries.last().map_or(0, |entry| entry.seq + 1);
         let mut names = Names::default();

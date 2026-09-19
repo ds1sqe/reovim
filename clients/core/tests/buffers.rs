@@ -8,12 +8,18 @@
 //! offers, and reads the Buffer behind the draft through a Client of
 //! its own.
 
+use std::cell::Cell;
 use std::rc::Rc;
 
 use reovim_client::dev::{self, Table};
-use reovim_client::{Client, Clip, Error, Handle, Host, HostCalls, Rd, Rights};
+use reovim_client::{
+    Carrier, Client, Clip, Error, Fault, Handle, Host, HostCalls, Rd, Rights,
+};
 use reovim_client_api::{buffers, draft};
-use reovim_kernel_interface::Calls;
+use reovim_host::clock;
+use reovim_kernel_interface::wire::{self, Message};
+use reovim_kernel_interface::{Calls, Hash, Op, Reply};
+use reovim_kernel_runtime::{Connection, Heap, Kernel, Limits, NoLoader};
 use reovim_rig::Rig;
 use reovim_sdk::{cell, decode, encode, ops};
 use reovim_text_api::{history, publish, text};
@@ -24,6 +30,79 @@ use reovim_text_api::{history, publish, text};
 struct Draft {
     rd: Rd,
     h: Handle,
+}
+
+/// The api and method the link refuses, where it refuses one.
+type Refusal = Rc<Cell<Option<(Hash, u16)>>>;
+
+/// One Kernel with text alone, and a link that may refuse one call:
+/// what a draft does when the server answers no is what the cases
+/// below judge, and a scratch Buffer is all they stand on.
+struct Server {
+    kernel: Rc<Kernel>,
+    refuse: Refusal,
+}
+
+impl Server {
+    fn new() -> Self {
+        let kernel = Kernel::new(clock::now, Heap::default, Limits::default());
+        let text = reovim_module_text::boot("");
+        kernel.load("text", text.module, text.drivers).unwrap();
+        Self { kernel: Rc::new(kernel), refuse: Refusal::default() }
+    }
+
+    /// The one call the link refuses from here on, `None` being a link
+    /// that carries everything.
+    fn refuses(&self, call: Option<(Hash, u16)>) {
+        self.refuse.set(call);
+    }
+
+    fn client(&self) -> Client {
+        let link = Link {
+            kernel: self.kernel.clone(),
+            connection: Connection::new(),
+            refuse: self.refuse.clone(),
+        };
+        Client::connect(Box::new(link), Vec::new(), clock::now).unwrap()
+    }
+
+    /// A Client of its own behind the one door, as the rig makes one.
+    fn host(&self) -> Rc<Host> {
+        Rc::new(Host::over(self.client(), clock::now))
+    }
+}
+
+/// The link to that Kernel: every message but the one the case named
+/// reaches the server, and that one is `Denied` here.
+struct Link {
+    kernel: Rc<Kernel>,
+    connection: Connection,
+    refuse: Refusal,
+}
+
+impl Carrier for Link {
+    fn exchange(&mut self, bytes: &[u8]) -> Result<Vec<u8>, Fault> {
+        if let Some((seq, Message::Request(Op::Call { api, method, .. }))) =
+            wire::decode(bytes)
+            && self.refuse.get() == Some((api, method))
+        {
+            let denied = Message::Reply(Reply::err(Error::Denied));
+            return Ok(wire::encode(seq, &denied));
+        }
+        self.connection
+            .handle(&self.kernel, bytes, &mut NoLoader)
+            .ok_or(Fault::Wire)
+    }
+}
+
+/// How many handles `/sys/core` says are open on `rd`, read by another
+/// Client: what a handle nobody closed shows up in.
+fn handles_on(other: &mut Client, rd: Rd) -> usize {
+    let core = other.resolve("/sys/core").unwrap();
+    let text = String::from_utf8(other.read_all(core).unwrap()).unwrap();
+    let on = format!(" rd={} ", rd.0);
+    let held = |line: &&str| line.starts_with("handle ") && line.contains(&on);
+    text.lines().filter(held).count()
 }
 
 /// A Client with `dev` loaded over a rig, and its list of drafts.
@@ -39,7 +118,11 @@ impl Drafts {
     /// cases judge the list and what stands under it, and nothing ever
     /// holds the region.
     fn over(rig: &Rig) -> Self {
-        let host = rig.host();
+        Self::hosted(rig.host())
+    }
+
+    /// The same over a Host of any rig's making.
+    fn hosted(host: Rc<Host>) -> Self {
         let table: Table = Box::new(|_| None);
         let dev =
             dev::boot(&host, table, Clip::none(), "", None, None).unwrap();
@@ -69,13 +152,17 @@ impl Drafts {
 
     /// A draft over nothing.
     fn scratch(&self) -> Draft {
-        let rd = self.on(|ctx| buffers::Call(ctx, self.h).scratch());
-        self.held(rd.unwrap())
+        self.held(self.scratching().unwrap())
     }
 
-    /// That draft out of the tree.
-    fn close(&self, draft: Draft) {
-        self.on(|ctx| buffers::Call(ctx, self.h).close(draft.rd)).unwrap();
+    /// The same as the caller sees it, a refused one included.
+    fn scratching(&self) -> Result<Rd, Error> {
+        self.on(|ctx| buffers::Call(ctx, self.h).scratch())
+    }
+
+    /// That draft out of the tree, and what the close answered.
+    fn close(&self, draft: Draft) -> Result<(), Error> {
+        self.on(|ctx| buffers::Call(ctx, self.h).close(draft.rd))
     }
 
     /// The rd with a handle on it, as every case below holds one.
@@ -98,7 +185,12 @@ impl Drafts {
 
     /// The flush, and whether the draft's bytes moved under it.
     fn sync(&self, draft: Draft) -> bool {
-        self.on(|ctx| draft::Call(ctx, draft.h).sync()).unwrap()
+        self.synced(draft).unwrap()
+    }
+
+    /// The same as the caller sees it, a refused one included.
+    fn synced(&self, draft: Draft) -> Result<bool, Error> {
+        self.on(|ctx| draft::Call(ctx, draft.h).sync())
     }
 
     /// What the draft answers `history.tree` with.
@@ -194,7 +286,7 @@ fn a_draft_is_the_clients_own_copy_and_an_edit_of_it_is_no_message() {
     // with it and the count does not go back.
     assert_eq!(it.open(note).rd, draft.rd);
     assert_eq!(it.names(it.list), ["0"]);
-    it.close(draft);
+    it.close(draft).unwrap();
     assert_eq!(it.names(it.list), [] as [String; 0]);
     it.open(note);
     assert_eq!(it.names(it.list), ["1"]);
@@ -369,6 +461,89 @@ fn undo_and_redo_walk_the_servers_history_and_the_draft_follows() {
     assert!(!it.sync(draft));
     let over = it.points(draft, "over");
     assert_eq!(history_of(&mut other, over).head, 3, "as the server made it");
+}
+
+#[test]
+fn a_draft_the_server_would_not_answer_for_leaves_no_handle_open() {
+    let server = Server::new();
+    let it = Drafts::hosted(server.host());
+    let mut other = server.client();
+
+    // The Buffer is made and opened, and the history the flush counts
+    // from is refused: the draft cannot be made of what came back.
+    server.refuses(Some((history::hash(), 0)));
+    assert_eq!(it.scratching(), Err(Error::Denied));
+    assert_eq!(it.names(it.list), [] as [String; 0]);
+
+    // The Buffer stands, and nothing holds it: a draft that was not
+    // made keeps no handle on one.
+    let buffer = other.resolve("/module/text/new1").unwrap();
+    assert_eq!(handles_on(&mut other, buffer), 0, "the handle it opened");
+
+    // The next draft is made, holds it, and hands it back at the close.
+    server.refuses(None);
+    let draft = it.scratch();
+    let over = it.points(draft, "over");
+    assert_eq!(handles_on(&mut other, over), 1);
+    it.close(draft).unwrap();
+    assert_eq!(handles_on(&mut other, over), 0);
+}
+
+#[test]
+fn a_close_sends_what_is_pending_and_frees_the_draft_either_way() {
+    let server = Server::new();
+    let it = Drafts::hosted(server.host());
+    let mut other = server.client();
+
+    // A close is the end of the draft and not of what was typed into
+    // it: what is pending goes down before the Buffer is let go.
+    let draft = it.scratch();
+    let over = it.points(draft, "over");
+    it.edit(draft, 0, 0, "typed\n").unwrap();
+    assert_eq!(it.close(draft), Ok(()));
+    assert_eq!(other.read_all(over).unwrap(), b"typed\n", "not dropped");
+
+    // A flush the server refuses is what the caller is told, and every
+    // step of the close ran anyway: the draft is out of the tree and
+    // the handle it held is closed.
+    let next = it.scratch();
+    let over = it.points(next, "over");
+    it.edit(next, 0, 0, "lost\n").unwrap();
+    server.refuses(Some((text::hash(), 1)));
+    assert_eq!(it.close(next), Err(Error::Denied));
+    server.refuses(None);
+    assert_eq!(it.names(it.list), [] as [String; 0], "out of the tree");
+    assert_eq!(handles_on(&mut other, over), 0, "and not held");
+    assert_eq!(other.read_all(over).unwrap(), b"", "the flush was refused");
+}
+
+#[test]
+fn a_sync_the_server_refuses_keeps_the_draft_and_the_edits_pending() {
+    let server = Server::new();
+    let it = Drafts::hosted(server.host());
+    let mut other = server.client();
+    let draft = it.scratch();
+    let over = it.points(draft, "over");
+
+    // A refusal that is no `Stale` moves nothing: the draft holds what
+    // was typed, and the revision it reports is still the one the
+    // flush will make.
+    it.edit(draft, 0, 0, "one\n").unwrap();
+    let pending = it.tree(draft);
+    server.refuses(Some((text::hash(), 1)));
+    assert_eq!(it.synced(draft), Err(Error::Denied));
+    assert_eq!(it.bytes(draft.rd), b"one\n", "as the person typed it");
+    assert_eq!(it.tree(draft), pending, "and still unpublished");
+    assert_eq!(other.read_all(over).unwrap(), b"", "nothing landed");
+
+    // The next key works, on top of what is still pending, and the
+    // flush that is not refused sends every one of them as one state.
+    it.edit(draft, 0, 0, "two\n").unwrap();
+    assert_eq!(it.bytes(draft.rd), b"two\none\n");
+    server.refuses(None);
+    assert!(!it.sync(draft));
+    assert_eq!(other.read_all(over).unwrap(), b"two\none\n");
+    assert_eq!(history_of(&mut other, over).nodes.len(), 2, "one state");
 }
 
 #[test]

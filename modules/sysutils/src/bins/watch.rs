@@ -39,7 +39,10 @@ impl watch::Api for Sysutils {
         let info = ops::info(ctx, target)?;
         let name = info.name.unwrap_or_else(|| format!("rd:{}", target.0));
         let h = ops::watch(ctx, target)?;
-        let cursor = ops::since(ctx, 0)?.1;
+        // The watch is the cell's once there is one to keep it: a run
+        // that ends before that hands it back here.
+        let since = ops::since(ctx, 0);
+        let cursor = since.inspect_err(|_| ops::shut(ctx, &[h]))?.1;
         let happening =
             Happening { h, target, name, color: args.color, cursor };
         self.following(ctx, rd, Vec::new(), Box::new(happening))

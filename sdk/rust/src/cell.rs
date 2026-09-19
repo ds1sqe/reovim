@@ -95,6 +95,16 @@ struct Cell {
     follow: Option<Box<dyn Follow>>,
 }
 
+impl Cell {
+    /// The follow over, where there is one: what the run opened for it
+    /// is closed here and nowhere else.
+    fn ended(&mut self, ctx: &dyn Calls) {
+        if let Some(follow) = &mut self.follow {
+            follow.end(ctx);
+        }
+    }
+}
+
 /// The cells of the runs a Driver has open.
 ///
 /// One unnamed rd of bytes under the Driver's own rd, the thing a run
@@ -187,25 +197,33 @@ impl Cells {
         let Some(mut cell) = self.0.borrow_mut().remove(&rd) else {
             return Ok(());
         };
-        if let Some(follow) = &mut cell.follow {
-            follow.end(ctx);
-        }
+        cell.ended(ctx);
         ctx.unregister(rd)
     }
 
     /// A cell registered under `parent` and kept: the rd the run
     /// answers with.
+    ///
+    /// One that cannot be made leaves nothing behind: the rd goes back
+    /// out of the tree, and the follow ends, which is where the run
+    /// closes what it had opened for it.
     fn cell(
         &self,
         ctx: &dyn Calls,
         driver: DriverId,
         parent: Rd,
-        cell: Cell,
+        mut cell: Cell,
     ) -> Result<Rd, Error> {
-        let rd = ctx.register(driver, parent, None)?;
-        ctx.report(rd, Flags::READ, &[])?;
-        self.0.borrow_mut().insert(rd, cell);
-        Ok(rd)
+        match made(ctx, driver, parent) {
+            Ok(rd) => {
+                self.0.borrow_mut().insert(rd, cell);
+                Ok(rd)
+            }
+            Err(error) => {
+                cell.ended(ctx);
+                Err(error)
+            }
+        }
     }
 
     /// The follow of the cell `rd`, when a read at `at` is past what
@@ -240,4 +258,16 @@ impl Cells {
         let end = start.saturating_add(len).min(bytes.len());
         Ok(bytes[start..end].to_vec())
     }
+}
+
+/// One unnamed READ rd under `parent`, registered and reported, or
+/// nothing left in the tree: a name the Kernel holds and no Driver
+/// remembers is a name nobody can take back.
+fn made(ctx: &dyn Calls, driver: DriverId, parent: Rd) -> Result<Rd, Error> {
+    let rd = ctx.register(driver, parent, None)?;
+    let reported = ctx.report(rd, Flags::READ, &[]);
+    if reported.is_err() {
+        let _ = ctx.unregister(rd);
+    }
+    reported.map(|()| rd)
 }
