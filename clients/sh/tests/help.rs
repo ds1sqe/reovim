@@ -71,7 +71,7 @@ fn help_is_the_builtins_and_then_one_line_per_name_under_path() {
     assert_eq!(typed(ctx, &mut shell, "help pwd"), format!("{}\n", lines[1]));
     assert_eq!(
         typed(ctx, &mut shell, "help nope"),
-        "nope: not under /self/vim/bin /self/bin /bin; help lists them"
+        "nope: not under /self/bin /bin; help lists them"
     );
     assert_eq!(
         typed(ctx, &mut shell, "help ls cat"),

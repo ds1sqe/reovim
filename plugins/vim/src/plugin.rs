@@ -148,6 +148,7 @@ impl Module for Editor {
         let root = cell::resolve(ctx, ROOT, "/module/fs/root").unwrap_or(ROOT);
         let cwd = cell::resolve(ctx, root, &dir).unwrap_or(root);
         let mut shell = Shell::at(cwd, ops::where_is(ctx, cwd)?);
+        shell.first("/self/vim/bin");
         ranged(&mut shell, 0, 0, false);
         let clip = cell::resolve(ctx, ROOT, "/self/dev/clipboard").ok();
         {

@@ -110,6 +110,12 @@ pub struct Shell {
     /// What the host gave, by name: a field declared with this name and
     /// this value's type is filled from here and no token matches it.
     env: Vec<(String, Value)>,
+    /// Where a name resolves, in the order it does: this Client's own
+    /// userland, then the server's, unless [`Shell::first`] put one
+    /// ahead of them, as a host with names of its own does with its own
+    /// directory. A directory that is not there is skipped, so a Client
+    /// with no Host of its own still works.
+    dirs: Vec<String>,
 }
 
 impl Default for Shell {
@@ -125,10 +131,19 @@ impl Shell {
     /// where the Plugin is and not from the root.
     #[must_use]
     pub fn at(cwd: Rd, path: String) -> Self {
-        let mut shell = Self { cwd, path, back: None, env: Vec::new() };
+        let dirs = alloc::vec!["/self/bin".to_string(), "/bin".to_string()];
+        let mut shell = Self { cwd, path, back: None, env: Vec::new(), dirs };
         shell.screen(0, false);
         shell.input(ROOT);
         shell
+    }
+
+    /// `dir` first to resolve, ahead of every directory here already: a
+    /// host with names of its own puts its directory in front of its
+    /// Shell's this way, so one of its names and one of the Client's or
+    /// the server's never clash.
+    pub fn first(&mut self, dir: &str) {
+        self.dirs.insert(0, dir.to_string());
     }
 
     /// The screen a run writes for: the columns a listing lays its names
@@ -306,7 +321,7 @@ fn piped(
     // print as if nothing stood there: refused from the declarations,
     // before anything is called.
     for (name, _) in stages.iter().skip(1) {
-        if !run::joins(ctx, name) {
+        if !run::joins(ctx, shell, name) {
             return Err(no_stage("takes no input", name, &[]));
         }
     }
@@ -412,7 +427,7 @@ fn help(
         for entry in &BUILTINS {
             let _ = writeln!(out, "{}", entry.line());
         }
-        let mut names = run::names(ctx);
+        let mut names = run::names(ctx, shell);
         names.sort();
         for name in names {
             let _ = writeln!(out, "{}", run::form(ctx, shell, &name)?);

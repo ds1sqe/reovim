@@ -3,7 +3,9 @@
 
 use reovim_client_api::{BAR, display};
 use reovim_client_sh::{Shell, ran, run};
-use reovim_kernel_interface::{Calls, Error, Rd};
+use reovim_kernel_interface::{
+    Calls, Decl, DriverId, Error, Flags, Method, Rd, Rights, Ty,
+};
 use reovim_rig::Rig;
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, encode, look, ops};
@@ -245,6 +247,48 @@ fn an_environment_field_is_never_matched_by_a_token() {
     assert_eq!(down, "core\ndecls\ninfo\nlimit\nlog\nloglevel\n");
 }
 
+/// A directory `Shell::first` puts ahead of the Shell's own; PATH is
+/// the Shell's and not a directory clients/sh names by its own hand,
+/// so a directory it never heard of but Vim's `start` puts first works
+/// the same as `/self/bin` and `/bin` do.
+#[test]
+fn first_puts_a_directory_ahead_and_a_default_shell_never_walks_it() {
+    let rig = Rig::new("sh-first");
+    let host = rig.host();
+    let ctx = &host.own();
+
+    // `ls` is the server's `/bin`'s own, three flags and a list of
+    // targets. The same name stands under a directory made here as
+    // Vim's `start` makes `/self/vim/bin`, with no Vim loaded at all.
+    let self_rd = cell::resolve(ctx, ROOT, "/self").unwrap();
+    let vim = ctx.register(DriverId(0), self_rd, Some("vim")).unwrap();
+    ctx.report(vim, Flags::READ | Flags::CONTAINER, &[]).unwrap();
+    let bin = ctx.register(DriverId(0), vim, Some("bin")).unwrap();
+    ctx.report(bin, Flags::READ | Flags::CONTAINER, &[]).unwrap();
+    let method = Method {
+        number: 0,
+        name: "run".to_string(),
+        input: Ty::Record(Vec::new()),
+        output: Ty::Rd,
+        right: Rights::READ,
+    };
+    let decl =
+        Decl { api: "shadow".to_string(), ver: 1, methods: vec![method] };
+    let rd = ctx.register(DriverId(0), bin, Some("ls")).unwrap();
+    ctx.report(rd, Flags::READ | Flags::CONTAINER, &[decl]).unwrap();
+
+    // A default Shell never walks into it: the server's `ls` answers,
+    // as if the directory were not there at all.
+    let mut shell = Shell::default();
+    let server = "ls [-l] [-a] [-w] [targets..]\n";
+    assert_eq!(typed(ctx, &mut shell, "help ls"), server);
+
+    // Put first, it wins over every directory the Shell already had,
+    // `/self/bin` and `/bin` both.
+    shell.first("/self/vim/bin");
+    assert_eq!(typed(ctx, &mut shell, "help ls"), "ls\n");
+}
+
 #[test]
 fn a_token_too_many_is_a_miss_with_the_form() {
     let rig = Rig::new("sh-miss");
@@ -269,7 +313,7 @@ fn a_token_too_many_is_a_miss_with_the_form() {
     assert_eq!(go(ctx, "uptime x"), "uptime x: usage: uptime");
 
     // A name PATH does not hold, and a line that names none.
-    let held = "lookup: not under /self/vim/bin /self/bin /bin";
+    let held = "lookup: not under /self/bin /bin";
     assert_eq!(go(ctx, "lookup /"), format!("{held}; help lists them"));
     assert_eq!(go(ctx, "   "), "no name; help lists them");
 }
@@ -401,7 +445,7 @@ fn a_stage_that_cannot_stand_is_refused_and_leaves_no_cell_behind() {
 
     // A later stage that fails takes the cell it was handed with it.
     assert_eq!(go(ctx, "ls /module | nope"), {
-        "nope: not under /self/vim/bin /self/bin /bin; help lists them"
+        "nope: not under /self/bin /bin; help lists them"
     });
     assert_eq!(go(ctx, "ls /module | grep a\\{2}"), "grep a\\{2}: invalid");
     assert_eq!(cells(ctx, "ls"), Vec::new(), "the cells `ls` answered");

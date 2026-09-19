@@ -24,7 +24,7 @@ pub fn complete(ctx: &dyn Calls, shell: &Shell, line: &str) -> Completion {
     let token = &line[from..];
     let first = line[..from].split_whitespace().count() == 0;
     let candidates = if first {
-        names(ctx, token)
+        names(ctx, shell, token)
     } else if let Some(letters) = token.strip_prefix('-') {
         dashes(ctx, shell, line, letters)
     } else {
@@ -34,8 +34,8 @@ pub fn complete(ctx: &dyn Calls, shell: &Shell, line: &str) -> Completion {
 }
 
 /// What a line may begin with: the names under PATH, then the builtins.
-fn names(ctx: &dyn Calls, prefix: &str) -> Vec<String> {
-    let under = run::names(ctx).into_iter();
+fn names(ctx: &dyn Calls, shell: &Shell, prefix: &str) -> Vec<String> {
+    let under = run::names(ctx, shell).into_iter();
     let builtins = BUILTINS.iter().map(|entry| entry.name.to_string());
     under.chain(builtins).filter(|name| name.starts_with(prefix)).collect()
 }
@@ -51,7 +51,7 @@ fn dashes(
     let Some(name) = line.split_whitespace().next() else {
         return Vec::new();
     };
-    let Some(fields) = run::fields(ctx, name) else {
+    let Some(fields) = run::fields(ctx, shell, name) else {
         return Vec::new();
     };
     let begins = |flag: &String| flag[1..].starts_with(letters);

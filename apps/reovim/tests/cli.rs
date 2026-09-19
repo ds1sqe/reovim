@@ -116,7 +116,7 @@ fn a_line_says_what_it_could_not_do_and_help_needs_no_server() {
     let held = server.cli(&["cat", "/module/fs/root"], b"").unwrap_err();
     assert_eq!(held, "reovim: cat /module/fs/root: unsupported\n");
     let nonsense = server.cli(&["nonsense"], b"").unwrap_err();
-    let under = "/self/vim/bin /self/bin /bin";
+    let under = "/self/bin /bin";
     assert_eq!(
         nonsense,
         format!("reovim: nonsense: not under {under}; help lists them\n")
