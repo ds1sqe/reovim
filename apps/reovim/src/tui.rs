@@ -9,14 +9,12 @@ use std::rc::Rc;
 
 use reovim_client::dev::{self, Table, Want};
 use reovim_client::{Clip, Error, Fault, Host};
-use reovim_client_api::{
-    BAR, BLUE, BOLD, DIM, GREEN, Key, RED, RED_BOLD, YELLOW,
-};
+use reovim_client_api::{BAR, Key};
 use reovim_client_tui::{Frame, Step, Tui, width};
 use reovim_host::{clipboard, term};
 use reovim_sdk::path::under;
 use reovim_sdk::walk::ROOT;
-use reovim_sdk::{cell, ops};
+use reovim_sdk::{cell, ops, sgr};
 
 use crate::Fail;
 use crate::local::Local;
@@ -199,25 +197,9 @@ fn runs(frame: &Frame, row: usize) -> Vec<(u16, u16, &'static str)> {
     let marked = frame.marks.iter().filter(|s| here(s.0));
     runs.extend(marked.map(|s| (s.1, s.2, "4")));
     let styled = frame.styled.iter().filter(|s| here(s.0));
-    runs.extend(styled.map(|s| (s.1, s.2, sgr(s.3))));
+    runs.extend(styled.map(|s| (s.1, s.2, sgr::code(s.3))));
     runs.sort_by_key(|run| run.0);
     runs
-}
-
-/// The SGR parameter a style is drawn in: the seven a Driver under
-/// `/bin` writes, which plugins/cli read back into styles. One the
-/// app has no color for is drawn plain.
-const fn sgr(style: u64) -> &'static str {
-    match style {
-        BLUE => "1;34",
-        GREEN => "32",
-        RED => "31",
-        RED_BOLD => "1;31",
-        BOLD => "1",
-        YELLOW => "33",
-        DIM => "2",
-        _ => "0",
-    }
 }
 
 /// `line` with each of `runs` in its SGR style, a run that overlaps

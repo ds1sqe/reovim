@@ -16,8 +16,9 @@ use alloc::vec::Vec;
 use reovim_kernel_interface::{Calls, Error, Event, Handle, Kind, Op, Rd};
 use reovim_sdk::cell::{self, Follow};
 use reovim_sdk::ops;
+use reovim_sdk::sgr::{BOLD, GREEN, RED, YELLOW, paint};
 
-use crate::{Sysutils, sgr};
+use crate::Sysutils;
 
 reovim_sdk::declare! {
     api watch ver 1 {
@@ -29,15 +30,6 @@ reovim_sdk::declare! {
 /// What a run takes, beside the api it belongs to.
 pub use watch::Args;
 pub(crate) use watch::{decl, dispatch};
-
-/// A Create.
-const GREEN: &str = "32";
-/// A Delete or a Gone.
-const RED: &str = "31";
-/// An Attrib or a Move.
-const YELLOW: &str = "33";
-/// An Overflow, which says the ring outran the reader.
-const BOLD: &str = "1";
 
 impl watch::Api for Sysutils {
     fn run(&self, ctx: &dyn Calls, rd: Rd, args: Args) -> Result<Rd, Error> {
@@ -99,12 +91,12 @@ impl Happening {
         let color = self.color;
         match kind {
             Kind::Modify => "Modify".to_string(),
-            Kind::Attrib => sgr(color, YELLOW, "Attrib"),
-            Kind::Create => sgr(color, GREEN, "Create"),
-            Kind::Delete => sgr(color, RED, "Delete"),
-            Kind::Move => sgr(color, YELLOW, "Move"),
-            Kind::Gone => sgr(color, RED, "Gone"),
-            Kind::Overflow => sgr(color, BOLD, "Overflow"),
+            Kind::Attrib => paint(color, YELLOW, "Attrib"),
+            Kind::Create => paint(color, GREEN, "Create"),
+            Kind::Delete => paint(color, RED, "Delete"),
+            Kind::Move => paint(color, YELLOW, "Move"),
+            Kind::Gone => paint(color, RED, "Gone"),
+            Kind::Overflow => paint(color, BOLD, "Overflow"),
         }
     }
 }

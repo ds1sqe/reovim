@@ -148,22 +148,10 @@ pub const SELECTION: u64 = 1;
 /// A span that matches what the Plugin last searched for.
 pub const MATCH: u64 = 2;
 
-/// A span drawn in bold blue, the first of the seven a span may be
-/// colored: what one of these means is the color alone, and which
-/// stands for what is the Plugin's.
-pub const BLUE: u64 = 3;
-/// A span drawn in green.
-pub const GREEN: u64 = 4;
-/// A span drawn in red.
-pub const RED: u64 = 5;
-/// A span drawn in bold red.
-pub const RED_BOLD: u64 = 6;
-/// A span drawn in bold.
-pub const BOLD: u64 = 7;
-/// A span drawn in yellow.
-pub const YELLOW: u64 = 8;
-/// A span drawn dim.
-pub const DIM: u64 = 9;
+/// The seven a span may be colored, which are the sdk's table and
+/// stand for the same colors a Driver under `/bin` prints in; 1 and 2
+/// above are the Plugin's own and no Driver writes them.
+pub use reovim_sdk::sgr::{BLUE, BOLD, DIM, GREEN, RED, RED_BOLD, YELLOW};
 
 /// The `kind` of a [`display::Screen`] of text cells with a cursor,
 /// which is what a tui draws and the only one there is so far.

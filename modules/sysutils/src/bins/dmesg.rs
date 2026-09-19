@@ -22,9 +22,10 @@ use reovim_kernel_interface::{Calls, Error, Handle, Op, Rd};
 use reovim_sdk::cell::Follow;
 use reovim_sdk::date::civil;
 use reovim_sdk::log::{self, Entry};
+use reovim_sdk::sgr::{BLUE, BOLD, DIM, GREEN, RED, RED_BOLD, paint};
 
 use crate::names::{KERNEL, Names, decoded};
-use crate::{Sysutils, entries, sgr};
+use crate::{Sysutils, entries};
 
 reovim_sdk::declare! {
     api dmesg ver 1 {
@@ -49,19 +50,6 @@ reovim_sdk::declare! {
 /// What a run takes, beside the api it belongs to.
 pub use dmesg::Args;
 pub(crate) use dmesg::{decl, dispatch};
-
-/// The stamp's color.
-const GREEN: &str = "32";
-/// The `-H` minute break.
-const BLUE: &str = "1;34";
-/// The decode `x` puts in front of an entry.
-const DIM: &str = "2";
-/// An `err` entry.
-const RED: &str = "31";
-/// `crit` and above.
-const RED_BOLD: &str = "1;31";
-/// A `warn` entry.
-const BOLD: &str = "1";
 
 impl dmesg::Api for Sysutils {
     fn run(&self, ctx: &dyn Calls, rd: Rd, args: Args) -> Result<Rd, Error> {
@@ -218,7 +206,7 @@ fn line(
     let decode = if form.args.x {
         let mark = &entry.mark;
         let head = format!("{mark:<6}:{:<6}: ", entry.level_name());
-        sgr(color, DIM, &head)
+        paint(color, DIM, &head)
     } else {
         String::new()
     };
@@ -234,16 +222,16 @@ fn stamp(entry: &Entry, boot: u64, last: Option<u64>, form: &Form) -> String {
     match form.stamp() {
         Stamp::None if !form.args.d => String::new(),
         Stamp::None => {
-            sgr(color, GREEN, &format!("[{}]", since().trim_start())) + " "
+            paint(color, GREEN, &format!("[{}]", since().trim_start())) + " "
         }
         Stamp::Delta => {
             let (seconds, micros) = split(entry.time.saturating_sub(boot));
             let at = format!("[{seconds:>5}.{micros:06}{}]", since());
-            sgr(color, GREEN, &at) + " "
+            paint(color, GREEN, &at) + " "
         }
         Stamp::Ctime => {
             let at = format!("[{}{}]", ctime(entry.time), since());
-            sgr(color, GREEN, &at) + " "
+            paint(color, GREEN, &at) + " "
         }
         // `H` already says the time since the line before.
         Stamp::Human => human(entry.time, last, color) + " ",
@@ -271,10 +259,10 @@ fn human(time: u64, last: Option<u64>, color: bool) -> String {
         let c = civil(time);
         let (month, day) = (month_name(c.month), c.day);
         let at = format!("[{month}{day:>2} {:02}:{:02}]", c.hour, c.minute);
-        return sgr(color, BLUE, &at);
+        return paint(color, BLUE, &at);
     };
     let (seconds, micros) = split(time.saturating_sub(last));
-    sgr(color, GREEN, &format!("[  +{seconds}.{micros:06}]"))
+    paint(color, GREEN, &format!("[  +{seconds}.{micros:06}]"))
 }
 
 /// The text, the Kernel's own numbers said in words, colored by how
@@ -285,9 +273,9 @@ fn text(entry: &Entry, form: &Form, names: &Names) -> String {
     let text = if entry.mark == KERNEL { decoded(&text, names) } else { text };
     let color = form.args.color;
     match entry.level {
-        0..=2 => sgr(color, RED_BOLD, &text),
-        3 => sgr(color, RED, &text),
-        4 => sgr(color, BOLD, &text),
+        0..=2 => paint(color, RED_BOLD, &text),
+        3 => paint(color, RED, &text),
+        4 => paint(color, BOLD, &text),
         _ => text,
     }
 }

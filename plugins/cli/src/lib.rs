@@ -34,15 +34,14 @@ use alloc::vec::Vec;
 use core::cell::{OnceCell, RefCell};
 
 use reovim_client_api::{
-    BAR, BLUE, BOLD, DIM, Frames, GREEN, Key, NONE, RED, RED_BOLD, Region,
-    YELLOW, count, drafted, window,
+    BAR, Frames, Key, NONE, Region, count, drafted, window,
 };
 use reovim_client_sh::{Act, Line, Open, Ran, Shell, complete, run};
 use reovim_kernel_interface::{
     Booted, Calls, Driver, DriverId, Error, Flags, Handle, Module, Rd, Reply,
     Rights,
 };
-use reovim_sdk::encode;
+use reovim_sdk::{encode, sgr};
 use reovim_text_api::text;
 
 /// The cli buffer, ready for a Client to load.
@@ -411,7 +410,7 @@ fn read(said: &str, at: u64) -> (String, Vec<window::Span>) {
         text.push_str(&rest[..esc]);
         let at = at + text.len() as u64;
         let ended = |run: window::Span| window::Span { to: at, ..run };
-        match style(&tail[..end]) {
+        match sgr::style(&tail[..end]) {
             Some(style) => {
                 open = Some(window::Span { from: at, to: at, style });
             }
@@ -421,22 +420,6 @@ fn read(said: &str, at: u64) -> (String, Vec<window::Span>) {
     }
     text.push_str(rest);
     (text, spans)
-}
-
-/// The style a Driver's SGR parameter stands for: the one place the
-/// two spellings meet, the escape being the Driver's and the number
-/// the Client's. Anything else is no style, the reset first.
-fn style(code: &str) -> Option<u64> {
-    Some(match code {
-        "1;34" => BLUE,
-        "32" => GREEN,
-        "31" => RED,
-        "1;31" => RED_BOLD,
-        "1" => BOLD,
-        "33" => YELLOW,
-        "2" => DIM,
-        _ => return None,
-    })
 }
 
 #[cfg(test)]

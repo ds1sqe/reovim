@@ -10,6 +10,7 @@ use core::fmt::Write as _;
 use reovim_kernel_interface::{Calls, Error, Flags, Info, Rd};
 use reovim_sdk::date::civil;
 use reovim_sdk::ops;
+use reovim_sdk::sgr::{BLUE, GREEN, paint};
 
 /// One listed rd: its number, the name it shows under, and what the
 /// Kernel caches about it.
@@ -42,18 +43,15 @@ pub fn named(rd: Rd, info: &Info) -> String {
 }
 
 /// A name as a listing shows it: a Container bold blue, a cell that
-/// offers an api green, anything else as it is. The one place a Driver
-/// writes an escape, and only where the run asked for `color`.
+/// offers an api green, anything else as it is, and only where the run
+/// asked for `color`.
 pub fn painted(name: &str, info: &Info, color: bool) -> String {
-    if !color {
-        return name.to_string();
-    }
     if info.flags.contains(Flags::CONTAINER) {
-        format!("\x1b[1;34m{name}\x1b[0m")
+        paint(color, BLUE, name)
     } else if info.apis.is_empty() {
         name.to_string()
     } else {
-        format!("\x1b[32m{name}\x1b[0m")
+        paint(color, GREEN, name)
     }
 }
 

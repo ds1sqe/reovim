@@ -11,16 +11,12 @@
 //! screen and keyboard. The shape is coreutils' own and is the sdk's
 //! `drivers!`.
 //!
-//! Each api is a file of `bins`. Beside them the two things more than
-//! one of them reads: `entries`, the log from a sequence, and `names`,
-//! what the numbers of the Kernel's own lines stand for; and here the
-//! escape `dmesg` and `watch` both write and the fact the two readers
-//! both read.
+//! Each api is a file of `bins`. Beside them the three things more
+//! than one of them reads: `entries`, the log from a sequence,
+//! `names`, what the numbers of the Kernel's own lines stand for, and
+//! here the fact the two readers both read.
 
 extern crate alloc;
-
-use alloc::format;
-use alloc::string::{String, ToString};
 
 use reovim_kernel_interface::{Calls, Error};
 use reovim_sdk::cell;
@@ -47,10 +43,4 @@ fn fact(ctx: &dyn Calls, path: &str) -> Result<u64, Error> {
     let bytes = ops::bytes(ctx, rd)?;
     let text = core::str::from_utf8(&bytes).map_err(|_| Error::Invalid)?;
     text.parse().map_err(|_| Error::Invalid)
-}
-
-/// `text` in one SGR sequence when the run asked for color, reset after
-/// it, so a line never leaks a color into the next.
-fn sgr(color: bool, code: &str, text: &str) -> String {
-    if color { format!("\x1b[{code}m{text}\x1b[0m") } else { text.to_string() }
 }
