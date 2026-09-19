@@ -1,111 +1,15 @@
 //! The milestone slice through a real `reovim server` process: a
 //! buffer over a file, written through `reovim cli`, saved to disk.
 
-use std::io::Write;
-use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
-use std::time::{Duration, Instant};
+mod common;
 
+use std::process::{Command, Stdio};
+use std::time::Duration;
+
+use common::Server;
 use reovim_host::link;
 use reovim_kernel_interface::wire::{Endpoint, Message};
 use reovim_kernel_interface::{Op, Out, Rd, Reply};
-
-/// A server over a directory of its own, killed on drop.
-struct Server {
-    dir: PathBuf,
-    socket: String,
-    child: Child,
-}
-
-impl Server {
-    fn start(test: &str) -> Self {
-        let name = format!("reovim-cli-{}-{test}", std::process::id());
-        let dir = std::env::temp_dir().join(name);
-        std::fs::create_dir_all(&dir).unwrap();
-        let socket = dir.join("s").to_str().unwrap().to_string();
-        let child = Command::new(env!("CARGO_BIN_EXE_reovim"))
-            .args(["server", "--socket", &socket, "--root"])
-            .arg(&dir)
-            .stderr(Stdio::null())
-            .spawn()
-            .unwrap();
-        let server = Self { dir, socket, child };
-        let start = Instant::now();
-        while link::open(&server.socket).is_err() {
-            assert!(start.elapsed() < Duration::from_secs(10), "no server");
-            std::thread::sleep(Duration::from_millis(10));
-        }
-        server
-    }
-
-    fn file(&self, name: &str, content: &[u8]) -> Vec<u8> {
-        std::fs::write(self.dir.join(name), content).unwrap();
-        content.to_vec()
-    }
-
-    fn disk(&self, name: &str) -> Vec<u8> {
-        std::fs::read(self.dir.join(name)).unwrap()
-    }
-
-    /// `reovim cli` once; stdout, or the failure text.
-    fn cli(&self, args: &[&str], stdin: &[u8]) -> Result<Vec<u8>, String> {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_reovim"))
-            .args(["cli", "--socket", &self.socket])
-            .args(args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .unwrap();
-        child.stdin.take().unwrap().write_all(stdin).unwrap();
-        let out = child.wait_with_output().unwrap();
-        if out.status.success() {
-            Ok(out.stdout)
-        } else {
-            Err(String::from_utf8(out.stderr).unwrap())
-        }
-    }
-
-    fn line(&self, args: &[&str]) -> String {
-        let out = String::from_utf8(self.cli(args, b"").unwrap()).unwrap();
-        out.trim_end().to_string()
-    }
-
-    /// The rd of a target, read from the `rd` line of `stat`.
-    fn rd(&self, target: &str) -> String {
-        let said = self.line(&["stat", target]);
-        let line = said.lines().find(|line| line.starts_with("rd ")).unwrap();
-        line["rd ".len()..].to_string()
-    }
-
-    /// The names under `/session`, once there are `wanted` of them or
-    /// two seconds have gone. A link's end reaches the server a moment
-    /// after the cli process that held it is done, so the count is
-    /// asked for again until it settles.
-    fn sessions(&self, wanted: usize) -> Vec<String> {
-        let start = Instant::now();
-        let over = || start.elapsed() > Duration::from_secs(2);
-        let mut names = self.listed();
-        while names.len() != wanted && !over() {
-            std::thread::sleep(Duration::from_millis(10));
-            names = self.listed();
-        }
-        names
-    }
-
-    /// The names under `/session`, one per line into a pipe.
-    fn listed(&self) -> Vec<String> {
-        self.line(&["ls", "/session"]).lines().map(str::to_string).collect()
-    }
-}
-
-impl Drop for Server {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-        let _ = std::fs::remove_dir_all(&self.dir);
-    }
-}
 
 #[test]
 fn the_server_answers_a_raw_endpoint() {
