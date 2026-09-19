@@ -173,7 +173,7 @@ impl Rig {
             asks: self.asks.clone(),
             cut,
         };
-        Client::connect(Box::new(carrier), credential).unwrap()
+        Client::connect(Box::new(carrier), credential, clock::now).unwrap()
     }
 
     fn file(&self, name: &str, content: &[u8]) {
@@ -362,9 +362,15 @@ fn a_named_client_goes_on_after_its_link_is_cut() {
     client.watch(h, true).unwrap();
     let (session, cid) = (client.session(), client.cid());
     // The cut lands on this read; the answer still comes.
+    let link = client.link();
     assert_eq!(client.read(h, 0, 16).unwrap(), b"kept");
     assert_eq!((client.session(), client.cid()), (session, cid));
+    // A link that died and came back is no round trip anybody asked
+    // for: the reconnect's own `Connect`, the resend and the read they
+    // carried move no counter, so `worst_us` is not the story of one.
+    assert_eq!(client.link(), link, "the reconnect was counted");
     assert_eq!(client.read(h, 0, 16).unwrap(), b"kept", "the handle lives");
+    assert_eq!(client.link().messages, link.messages + 1, "one a message");
     assert!(client.since().is_ok(), "the cursor goes on");
 
     // An empty credential names nothing the Kernel could give back:

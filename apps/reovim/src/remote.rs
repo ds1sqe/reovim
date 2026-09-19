@@ -2,6 +2,7 @@
 //! fresh link to the same socket when the old one is gone.
 
 use reovim_client::{Carrier, Client, Fault};
+use reovim_host::clock;
 use reovim_host::link::{self, Link};
 
 use crate::Fail;
@@ -17,7 +18,7 @@ impl Remote {
     pub fn client(socket: &str, credential: Vec<u8>) -> Result<Client, Fail> {
         let link = link::open(socket)?;
         let remote = Self { link, socket: socket.to_string() };
-        Ok(Client::connect(Box::new(remote), credential)?)
+        Ok(Client::connect(Box::new(remote), credential, clock::now)?)
     }
 }
 

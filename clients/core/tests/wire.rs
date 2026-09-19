@@ -92,6 +92,42 @@ fn a_client_lists_another_clients_self_and_serves_nothing_unasked() {
     assert_eq!(rig.sent(), idle, "a's own listing is a's own");
 }
 
+#[test]
+fn a_remote_reads_the_link_of_the_client_that_carried_it() {
+    let rig = Rig::new("wire-link");
+    let a = editor(&rig, "");
+    let b = editor(&rig, "");
+    let theirs = b.own();
+    let said = |path: &str| {
+        let rd = cell::resolve(&theirs, ROOT, path).unwrap();
+        String::from_utf8(ops::bytes(&theirs, rd).unwrap()).unwrap()
+    };
+    let messages = |said: &str| -> u64 {
+        let first = said.lines().next().unwrap();
+        first.strip_prefix("messages ").unwrap().parse().unwrap()
+    };
+
+    // a has been on the wire and b has hardly, so neither cell can
+    // answer the other's number by accident.
+    for _ in 0..64 {
+        cell::resolve(&a.own(), ROOT, "/module/text").unwrap();
+    }
+
+    // b's own `link` is a local read of b's own numbers, exactly.
+    let near = said("/self/dev/link");
+    assert_eq!(messages(&near), b.wire().link().messages);
+
+    // a's is read through the mirror in the shape a fact prints in,
+    // and the number is a's, made while a was serving the read: it
+    // stands between what a had counted before the read and after.
+    let before = a.wire().link().messages;
+    let far = said("/session/1/client/1/self/dev/link");
+    let now = a.wire().link().messages;
+    let read = messages(&far);
+    assert!((before..=now).contains(&read), "a counted {before}..{now}");
+    assert!(read > messages(&near), "b read its own numbers");
+}
+
 /// A Module of a's own with two cells whose write is a `Modify` on the
 /// one written: the one thing a Client announces of its own account,
 /// and two of them so a case can say that a change on the cell nobody

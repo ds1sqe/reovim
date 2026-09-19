@@ -42,6 +42,25 @@ pub trait Carrier {
     fn pause(&mut self) {}
 }
 
+/// What this link has carried since `Connect`, which only this side
+/// can know: the server sees a caller's ops and not what they cost to
+/// move, and nobody at the far end holds the clock this is timed on.
+///
+/// A reconnect's own exchanges are not here. A link that died and came
+/// back is no round trip anybody asked for, and counting one would
+/// make `worst_us` the story of a single reconnect ever after.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct Link {
+    /// Messages out, each with the one reply it brought back.
+    pub messages: u64,
+    pub bytes_out: u64,
+    pub bytes_in: u64,
+    /// The last round trip, and the worst since connect, in
+    /// microseconds of the host's own clock.
+    pub last_us: u64,
+    pub worst_us: u64,
+}
+
 /// The tree a Client reaches: its credential, its Session and its
 /// client rd, with the seven ops and the helpers above them.
 ///
@@ -58,6 +77,10 @@ pub struct Tree {
     /// Kernel holds for this caller, so whoever replaces a Plugin can
     /// close what it left behind.
     handles: Vec<Handle>,
+    link: Link,
+    /// The host's monotonic tick in nanoseconds, as `Host` holds one:
+    /// the Tree times its own round trips and nothing else.
+    clock: fn() -> u64,
 }
 
 /// One connected Client: a `Tree`, the watch cursor it drains, and
@@ -72,6 +95,8 @@ pub struct Client {
 
 impl Client {
     /// The `Connect` exchange: a new Session, a client rd under it.
+    /// `clock` is the host's monotonic tick, which times what the link
+    /// carries and is the one the Host is given.
     ///
     /// # Errors
     /// `Kernel` when the Kernel refuses, `Carrier` or `Wire` from the
@@ -79,6 +104,7 @@ impl Client {
     pub fn connect(
         carrier: Box<dyn Carrier>,
         credential: Vec<u8>,
+        clock: fn() -> u64,
     ) -> Result<Self, Fault> {
         let tree = Tree {
             carrier,
@@ -87,6 +113,8 @@ impl Client {
             session: ROOT,
             cid: ROOT,
             handles: Vec::new(),
+            link: Link::default(),
+            clock,
         };
         let mut client = Self { tree, cursor: 0, served: Vec::new() };
         let connect = Message::Connect {
@@ -191,13 +219,35 @@ impl Tree {
         unit(&self.exchange(&unload)?)
     }
 
+    /// What this link has carried since `Connect`.
+    #[must_use]
+    pub const fn link(&self) -> Link {
+        self.link
+    }
+
+    /// One message out and the reply it brought back, on the clock.
+    /// Every byte of this link passes here and is counted here alone.
+    fn counted(&mut self, at: u64, out: usize, back: usize) {
+        let spent = (self.clock)().saturating_sub(at) / 1_000;
+        self.link.messages += 1;
+        self.link.bytes_out += out as u64;
+        self.link.bytes_in += back as u64;
+        self.link.last_us = spent;
+        self.link.worst_us = self.link.worst_us.max(spent);
+    }
+
     /// One message out, the reply to it back; a Pending reply is asked
     /// until it is not Busy.
     fn exchange(&mut self, message: &Message) -> Result<Out, Fault> {
         let (seq, bytes) = self.endpoint.send(message);
+        let at = (self.clock)();
         let answer = match self.carrier.exchange(&bytes) {
+            Ok(answer) => {
+                self.counted(at, bytes.len(), answer.len());
+                answer
+            }
             Err(Fault::Carrier) => self.recover(seq)?,
-            other => other?,
+            Err(other) => return Err(other),
         };
         let Some((_, Message::Reply(reply))) = self.endpoint.receive(&answer)
         else {

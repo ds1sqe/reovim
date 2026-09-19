@@ -8,6 +8,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use reovim_client::{Carrier, Client, Fault};
+use reovim_host::clock;
 use reovim_kernel_runtime::{Connection, Kernel};
 
 use crate::server::{Files, Links};
@@ -31,7 +32,7 @@ impl Local {
         let links = links.cloned();
         let local =
             Self { kernel, connection: Connection::new(), files: Files, links };
-        Client::connect(Box::new(local), Vec::new())
+        Client::connect(Box::new(local), Vec::new(), clock::now)
     }
 }
 

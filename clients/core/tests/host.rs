@@ -64,6 +64,8 @@ struct Local {
     slow: Rc<Slow>,
     asks: Rc<Cell<u32>>,
     sent: Rc<Cell<u32>>,
+    /// The bytes out and the bytes back, which `Link` is held against.
+    moved: Rc<Cell<(u64, u64)>>,
 }
 
 impl Carrier for Local {
@@ -89,6 +91,8 @@ impl Carrier for Local {
             let poke = Op::Lookup { rd: late, name: "finish".to_string() };
             self.kernel.submit(self.kernel.caller_new(), 1, poke);
         }
+        let (out, back) = self.moved.get();
+        self.moved.set((out + bytes.len() as u64, back + answer.len() as u64));
         Ok(answer)
     }
 }
@@ -100,6 +104,7 @@ struct Rig {
     slow: Rc<Slow>,
     asks: Rc<Cell<u32>>,
     sent: Rc<Cell<u32>>,
+    moved: Rc<Cell<(u64, u64)>>,
 }
 
 impl Rig {
@@ -113,7 +118,8 @@ impl Rig {
         kernel.load("slow", booted.module, booted.drivers).unwrap();
         let asks = Rc::new(Cell::new(0));
         let sent = Rc::new(Cell::new(0));
-        Self { kernel: Rc::new(kernel), slow, asks, sent }
+        let moved = Rc::new(Cell::new((0, 0)));
+        Self { kernel: Rc::new(kernel), slow, asks, sent, moved }
     }
 
     fn client(&self) -> Client {
@@ -123,8 +129,9 @@ impl Rig {
             slow: self.slow.clone(),
             asks: self.asks.clone(),
             sent: self.sent.clone(),
+            moved: self.moved.clone(),
         };
-        Client::connect(Box::new(carrier), Vec::new()).unwrap()
+        Client::connect(Box::new(carrier), Vec::new(), clock::now).unwrap()
     }
 }
 
@@ -340,6 +347,7 @@ fn a_handle_reaches_a_local_driver_and_the_wire_the_same_way() {
     // none of it over the link.
     let x = cell::resolve(ctx, ROOT, "/self/x").unwrap();
     let sent = rig.sent.get();
+    let link = host.wire().link();
     assert_eq!(ops::bytes(ctx, x).unwrap(), b"local\n");
     let h = ctx.open(x, Rights::WRITE).unwrap();
     assert!(h.0 >= LOCAL_BASE);
@@ -351,6 +359,13 @@ fn a_handle_reaches_a_local_driver_and_the_wire_the_same_way() {
     ops::shut(ctx, &[h]);
     assert_eq!(ops::bytes(ctx, x).unwrap(), b"called\n");
     assert_eq!(rig.sent.get(), sent, "a local op reaches no link");
+    // So no counter of the link moves for one, while what it has
+    // carried is what the carrier moved: the `Connect` and each op
+    // `over` made, and the clock in the order it runs.
+    assert_eq!(host.wire().link(), link, "a local op moved a counter");
+    assert_eq!(link.messages, u64::from(sent));
+    assert_eq!((link.bytes_out, link.bytes_in), rig.moved.get());
+    assert!(link.worst_us >= link.last_us, "{link:?}");
 
     // What the rd offers is what may be asked of it, on either side.
     assert_eq!(ctx.open(x, Rights::empty()), Err(Error::Denied));
@@ -366,6 +381,11 @@ fn a_handle_reaches_a_local_driver_and_the_wire_the_same_way() {
     assert!(buffer.0 < LOCAL_BASE);
     wrote(ctx, buffer, b"server\n");
     assert_eq!(ops::bytes(ctx, buffer).unwrap(), b"server\n");
+    // Those did reach it, and the two counts agree again.
+    let after = host.wire().link();
+    assert!(after.messages > link.messages, "the Buffer took no message");
+    assert_eq!(after.messages, u64::from(rig.sent.get()));
+    assert_eq!((after.bytes_out, after.bytes_in), rig.moved.get());
 }
 
 #[test]

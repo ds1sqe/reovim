@@ -21,7 +21,7 @@ mod host;
 pub mod log;
 
 pub use bin::Rvm;
-pub use client::{Carrier, Client, ROOT, Tree};
+pub use client::{Carrier, Client, Link, ROOT, Tree};
 pub use dev::{Clip, Table, Want};
 pub use fault::Fault;
 pub use host::{Host, HostCalls, LOCAL_BASE, SELF};

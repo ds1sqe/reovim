@@ -132,7 +132,7 @@ impl Rig {
         let sent = self.sent.clone();
         let others = self.hosts.borrow().clone();
         let carrier = Local { kernel, connection, sent, others };
-        Client::connect(Box::new(carrier), Vec::new()).unwrap()
+        Client::connect(Box::new(carrier), Vec::new(), clock::now).unwrap()
     }
 
     /// A Client of its own behind the one door, which is what

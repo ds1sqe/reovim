@@ -15,7 +15,7 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 
 use reovim_client::dev::{self, Table, Want};
-use reovim_client::{Client, Clip, Host, HostCalls, SELF, log};
+use reovim_client::{Client, Clip, Host, HostCalls, ROOT, SELF, log};
 use reovim_client_api::{Frames, Key, NONE, Region, keyboard, open, window};
 use reovim_host::clock;
 use reovim_kernel_interface::{
@@ -365,6 +365,7 @@ fn the_cells_of_dev_are_where_the_tree_says_they_are() {
             "display",
             "exit",
             "input",
+            "link",
             "open",
             "windows"
         ]
@@ -388,6 +389,60 @@ fn the_cells_of_dev_are_where_the_tree_says_they_are() {
     assert_eq!(it.exit(), b"");
     it.put(it.at("exit"), b"3".to_vec());
     assert_eq!(it.exit(), b"3");
+}
+
+#[test]
+fn the_link_cell_says_what_the_wire_has_carried_and_nothing_else() {
+    let rig = Rig::new("dev-link");
+    let it = Dev::boot(&rig, none(), "", None, None);
+    let link = it.at("link");
+    let said = |bytes: Vec<u8>| String::from_utf8(bytes).unwrap();
+    let messages = |said: &str| -> u64 {
+        let first = said.lines().next().unwrap();
+        first.strip_prefix("messages ").unwrap().parse().unwrap()
+    };
+
+    // Five labelled numbers in one order, as `/sys/info/mem` is three,
+    // and they are what this Client's own side of the wire holds.
+    let counted = it.host.wire().link();
+    let first = said(it.bytes(link));
+    let shown = format!(
+        "messages {}\nbytes_out {}\nbytes_in {}\nlast_us {}\nworst_us {}",
+        counted.messages,
+        counted.bytes_out,
+        counted.bytes_in,
+        counted.last_us,
+        counted.worst_us,
+    );
+    assert_eq!(first, shown);
+    assert!(counted.messages > 0, "the Connect is a message");
+    assert!(counted.worst_us >= counted.last_us, "{counted:?}");
+
+    // Made at the read and kept nowhere: the read of it is an op of
+    // the Client's own and moves nothing, and one that reaches the
+    // wire is what a second read sees.
+    assert_eq!(said(it.bytes(link)), first, "a read of it was a message");
+    cell::resolve(&it.calls(), ROOT, "/module/text").unwrap();
+    let again = said(it.bytes(link));
+    assert!(messages(&again) > messages(&first), "{again}");
+
+    // One answer a whole read, however many chunks it takes: the tail
+    // is served from what the read at 0 made. Here the numbers grow a
+    // digit between the two chunks, which a cell made afresh at each
+    // one would answer with a stray digit past its own end.
+    let own = it.calls();
+    let ctx: &dyn Calls = &own;
+    let h = ctx.open(link, Rights::READ).unwrap();
+    let whole = ops::read(ctx, h, 0, CHUNK).unwrap();
+    let digits = |n: u64| format!("{n}").len();
+    let was = digits(it.host.wire().link().messages);
+    while digits(it.host.wire().link().messages) == was {
+        cell::resolve(ctx, ROOT, "/module/text").unwrap();
+    }
+    let at = whole.len() as u64;
+    let tail = ops::read(ctx, h, at, CHUNK).unwrap();
+    assert!(tail.is_empty(), "the read was torn: {:?}", said(tail));
+    ops::shut(ctx, &[h]);
 }
 
 #[test]

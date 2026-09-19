@@ -12,6 +12,7 @@
 //!   display          read/write: the Screen the Client last drew
 //!   exit             read/write: the code in decimal; empty for none
 //!   input/keyboard   read/write: the stream of presses
+//!   link             read: what the wire has carried, labelled text
 //!   open             call: open(Ask), back()
 //!   windows/0/ask    read: the Ask this region was opened with
 //!   windows/0/size   read/write: the Size record
@@ -121,6 +122,7 @@ enum Held {
     Display,
     Exit,
     Keyboard,
+    Link,
     Open,
     Ask,
     Size,
@@ -134,8 +136,8 @@ enum Held {
 struct Slot {
     rd: Rd,
     at: u64,
-    /// For `display`, the frame this handle read at 0, which every
-    /// read past it is served from; empty for every other cell.
+    /// For a cell made at the read, what this handle read at 0, which
+    /// every read past it is served from; empty for the rest.
     snap: Vec<u8>,
 }
 
@@ -488,18 +490,48 @@ impl Dev {
         Ok(buf.len())
     }
 
-    /// One frame per handle: the read at 0 keeps what the cell holds
-    /// for this handle and every read past it is served from that, so
-    /// a whole read is one frame however many chunks it takes and
-    /// whatever was drawn between them.
-    fn framed(&self, h: u64, at: u64, len: usize) -> Result<Vec<u8>, Error> {
-        let mut s = self.state.borrow_mut();
+    /// One answer per handle: the read at 0 makes what the cell holds
+    /// and keeps it for this handle, and every read past it is served
+    /// from that. So a whole read is one frame however many chunks it
+    /// takes and whatever was drawn between them, and one set of the
+    /// wire's numbers however far they moved while it was read.
+    fn snapped(
+        &self,
+        h: u64,
+        at: u64,
+        len: usize,
+        made: impl FnOnce() -> Result<Vec<u8>, Error>,
+    ) -> Result<Vec<u8>, Error> {
         if at == 0 {
-            let frame = s.display.clone();
-            s.handles.get_mut(&h).ok_or(Error::Invalid)?.snap = frame;
+            let whole = made()?;
+            let mut s = self.state.borrow_mut();
+            s.handles.get_mut(&h).ok_or(Error::Invalid)?.snap = whole;
         }
+        let s = self.state.borrow();
         let slot = s.handles.get(&h).ok_or(Error::Invalid)?;
         Ok(part(&slot.snap, at, len))
+    }
+
+    /// The five numbers of the wire, made as the three of
+    /// `/sys/info/mem` are and kept nowhere: reading twice is what a
+    /// change is seen by.
+    ///
+    /// The borrow of the wire is taken and dropped here. A read of a
+    /// Plugin's own stands at depth one with the wire free, and a
+    /// served read runs from `Host::serve` after it has let the wire
+    /// go, so both reach this and neither holds it twice.
+    fn carried(&self) -> Result<Vec<u8>, Error> {
+        let host = self.host.upgrade().ok_or(Error::Gone)?;
+        let link = host.wire().link();
+        let said = format!(
+            "messages {}\nbytes_out {}\nbytes_in {}\nlast_us {}\nworst_us {}",
+            link.messages,
+            link.bytes_out,
+            link.bytes_in,
+            link.last_us,
+            link.worst_us,
+        );
+        Ok(said.into_bytes())
     }
 
     /// The code the Client leaves with, in decimal; an empty write is
@@ -533,6 +565,7 @@ impl Module for Dev {
         self.add(ctx, home, "exit", rw, Held::Exit)?;
         let input = self.add(ctx, home, "input", dir, Held::Dir)?;
         self.add(ctx, input, "keyboard", rw, Held::Keyboard)?;
+        self.add(ctx, home, "link", read, Held::Link)?;
         self.add(ctx, home, "open", (Flags::WRITE, &opened), Held::Open)?;
         let windows = self.add(ctx, home, "windows", dir, Held::Dir)?;
         let zero = self.add(ctx, windows, "0", dir, Held::Dir)?;
@@ -640,7 +673,10 @@ impl Dev {
             Held::View => {
                 self.viewed(ctx, at, u32::try_from(len).unwrap_or(u32::MAX))
             }
-            Held::Display => self.framed(h, at, len),
+            Held::Display => self.snapped(h, at, len, || {
+                Ok(self.state.borrow().display.clone())
+            }),
+            Held::Link => self.snapped(h, at, len, || self.carried()),
             // Each read asks the machine: the cell holds nothing.
             Held::Clipboard => Ok(part(&(self.clip.read)()?, at, len)),
             Held::Open | Held::Dir => Err(Error::Unsupported),

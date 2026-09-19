@@ -5,8 +5,10 @@
 //! runs it, and counts what this Client sent with `Rig::sent()`,
 //! against the one message a frame of its own spends.
 
+use std::rc::Rc;
+
 use reovim_client::dev::{Clip, Table};
-use reovim_client::{Client, Rd};
+use reovim_client::{Client, Host, Rd};
 use reovim_client_tui::{Step, Tui};
 use reovim_plugin_vim::Editor;
 use reovim_plugin_vim::notation::keys;
@@ -14,14 +16,14 @@ use reovim_rig::{Rig, lines, opened, status, typed};
 use reovim_sdk::{decode, encode};
 use reovim_text_api::{history, text};
 
-/// The editor `file` opens in, its first frame drawn so that no size
-/// is written inside a count below.
-fn editor(rig: &Rig, file: &str) -> Tui {
+/// The editor `file` opens in on `host`, its first frame drawn so that
+/// no size is written inside a count below.
+fn editor(host: &Rc<Host>, file: &str) -> Tui {
     let vim = Editor::new();
     let table: Table =
         Box::new(move |_| Some((String::from("vim"), vim.booted())));
     let mut tui =
-        opened(&rig.host(), table, Clip::none(), "", Some(file), None).unwrap();
+        opened(host, table, Clip::none(), "", Some(file), None).unwrap();
     tui.frame(80, 24).unwrap();
     tui
 }
@@ -62,15 +64,25 @@ fn revisions(client: &mut Client, buffer: Rd) -> history::Tree {
 fn a_key_in_insert_costs_no_message_and_the_esc_sends_them_all() {
     let rig = Rig::new("draft-insert");
     rig.file("note", b"one\n");
-    let mut tui = editor(&rig, "note");
+    let host = rig.host();
+    let mut tui = editor(&host, "note");
     let mut other = rig.client();
     let buffer = buffer(&mut other, "note");
 
     let idle = idle(&rig, &mut tui);
     assert_eq!(idle, 1, "an idle frame is the tui's own read");
+    let link = host.wire().link();
     assert_eq!(cost(&rig, &mut tui, "ihello"), [idle; 6], "no call at all");
-    assert_eq!(other.read_all(buffer).unwrap(), b"one\n", "nothing sent");
+    // What the counters a person reads say of the same six keys: the
+    // tick's own `Since` a key and no byte beyond it. Then a frame
+    // drawn for nobody, whose `display` write is the Client's own, is
+    // not a message either, so no counter of the link moves at all.
+    let keys = host.wire().link();
+    assert_eq!(keys.messages - link.messages, u64::from(idle) * 6);
+    let drawn = host.wire().link();
     assert_eq!(lines(&mut tui), ["helloone"], "and the screen has it");
+    assert_eq!(host.wire().link(), drawn, "a frame nobody reads");
+    assert_eq!(other.read_all(buffer).unwrap(), b"one\n", "nothing sent");
     assert!(status(&mut tui).contains("[+]"), "{}", status(&mut tui));
 
     // The Esc ends the revision: one message, holding every key.
@@ -84,7 +96,7 @@ fn a_key_in_insert_costs_no_message_and_the_esc_sends_them_all() {
 fn three_deletes_are_three_revisions_and_undo_walks_back_through_them() {
     let rig = Rig::new("draft-normal");
     rig.file("note", b"abcd\n");
-    let mut tui = editor(&rig, "note");
+    let mut tui = editor(&rig.host(), "note");
     let mut other = rig.client();
     let buffer = buffer(&mut other, "note");
 
@@ -115,7 +127,7 @@ fn three_deletes_are_three_revisions_and_undo_walks_back_through_them() {
 fn another_clients_run_reaches_the_screen_at_the_flush() {
     let rig = Rig::new("draft-stale");
     rig.file("note", b"one\n");
-    let mut tui = editor(&rig, "note");
+    let mut tui = editor(&rig.host(), "note");
     let mut other = rig.client();
     let buffer = buffer(&mut other, "note");
 

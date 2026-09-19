@@ -208,6 +208,27 @@ editing other other
 # the wire.
 serves="$("$BIN" cli cat /session/1/client/1/capability)"
 [[ -z "$serves" ]] || fail "the running editor's client serves $serves"
+# What the link has carried is the Client's own to know, and `link` is
+# the five numbers a person reads it as, made at the read: labelled
+# text, as `/sys/info/mem`'s three are.
+link=/session/1/client/1/self/dev/link
+labels="$("$BIN" cli cat $link | awk '{ print $1 }' | tr '\n' ' ')"
+[[ "$labels" == "messages bytes_out bytes_in last_us worst_us " ]] \
+    || fail "$link says $labels"
+carried() {
+    "$BIN" cli cat $link | awk '$1 == "messages" { print $2 }'
+}
+first="$(carried)"
+[[ "$first" -gt 0 ]] || fail "the editor's link has carried $first messages"
+# A second later it is higher, and by no more than a second of them:
+# the editor is idle, so what moves it is the tick's own `Since` and
+# the serving of these two reads.
+sleep 1
+second="$(carried)"
+[[ "$second" -gt "$first" ]] \
+    || fail "an idle editor's link stood still at $first"
+[[ "$((second - first))" -lt 200 ]] \
+    || fail "an idle second cost $((second - first)) messages"
 # A line that cannot run: one line on stderr, naming the Driver and the
 # target, and exit 1.
 said="$("$BIN" cli cat /session 2>&1 >/dev/null)" && code=0 || code=$?
