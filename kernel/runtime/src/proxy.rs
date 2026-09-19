@@ -16,11 +16,11 @@ use alloc::vec::Vec;
 use core::cell::RefCell;
 
 use reovim_kernel_interface::{
-    Calls, Driver, DriverId, Error, Flags, Handle, Hash, Info, ModuleId, Op,
-    Out, Outcome, Rd, Reply, Rights, Token,
+    Calls, Driver, DriverId, Error, Flags, Handle, Hash, Info, Kind, ModuleId,
+    Op, Out, Outcome, Rd, Reply, Rights, Token,
 };
 
-use crate::kernel::Kernel;
+use crate::kernel::{Kernel, kind_name};
 use crate::log::DEBUG;
 use crate::table::ROOT;
 
@@ -81,6 +81,22 @@ enum Then {
     /// An `Info` the proxy asked for itself, to give the rd the walk
     /// stopped at its name and flags.
     Shape(Walk),
+    /// The `Open` behind a forwarded watch on the mirror row `rd`: the
+    /// handle it answers is what the watch then goes out on. Nobody
+    /// waits on it.
+    Watching { rd: Rd },
+}
+
+/// A mirrored rd somebody watches, and what the proxy holds at the
+/// Client for it: one handle whatever the number of remotes, opened at
+/// the first watcher and closed with the last.
+#[derive(Default)]
+struct Watched {
+    /// How many remote watches the Kernel has told this Driver of.
+    n: u32,
+    /// The Client's handle, once its `open` has answered; the watch
+    /// goes out behind it.
+    h: Option<Handle>,
 }
 
 /// One op the Client has not answered.
@@ -111,6 +127,9 @@ struct State {
     queue: VecDeque<Job>,
     /// Ops sent and not answered, by the token the Client names.
     waiting: BTreeMap<Token, Then>,
+    /// The mirror rows a remote watches, and the Client's own handle
+    /// the proxy keeps for each. A row goes when the last watcher does.
+    watched: BTreeMap<Rd, Watched>,
     next: u64,
 }
 
@@ -240,7 +259,65 @@ impl Proxy {
                 self.walk(kernel, id, token, walk)
             }
             Then::Shape(walk) => self.shaped(kernel, id, token, walk, &outcome),
+            Then::Watching { rd } => {
+                self.opened(token, rd, &outcome);
+                Ok(())
+            }
         }
+    }
+
+    /// The Client's handle for a forwarded watch: the watch goes out
+    /// behind it, or, where the last remote left while the `open` was
+    /// in flight, a close does and the handle is nobody's.
+    fn opened(&self, token: Token, rd: Rd, outcome: &Outcome) {
+        let Ok(Out::Handle(h)) = *outcome else { return };
+        let mut s = self.state.borrow_mut();
+        let op = match s.watched.get_mut(&rd) {
+            Some(row) => {
+                row.h = Some(h);
+                Op::Watch { h, on: true }
+            }
+            None => Op::Close { h },
+        };
+        s.queue.push_back(Job { token, op, then: Then::Drop });
+    }
+
+    /// A remote started or stopped watching the mirror row `rd`. The
+    /// first watcher costs an `Open` and the `Watch` behind it and the
+    /// last an `Op::Close`, which is the whole of the dropping: the
+    /// Client's `close` takes the slot and its `emit` asks the slots,
+    /// so no handle means no watch and there is no `on: false` to send.
+    fn watching(&self, rd: Rd, on: bool) {
+        let mut s = self.state.borrow_mut();
+        let op = if on { first(&mut s, rd) } else { last(&mut s, rd) };
+        let Some(op) = op else { return };
+        let token = s.token();
+        let then = if on { Then::Watching { rd } } else { Then::Drop };
+        s.queue.push_back(Job { token, op, then });
+    }
+
+    /// A change the Client announced, put on the mirror row for the rd
+    /// it named: the Kernel emits to whoever watches and the remote's
+    /// next `Since` carries it. An rd this mirror has no row for, and
+    /// a kind `Calls::changed` does not take, are one `debug` line and
+    /// nothing else — a Client may say anything and none of it is
+    /// believed.
+    pub(crate) fn changed(
+        &self,
+        kernel: &Kernel,
+        id: ModuleId,
+        rd: Rd,
+        kind: Kind,
+    ) {
+        let row = self.state.borrow().to_server.get(&rd).copied();
+        let told = row.map(|row| kernel.calls(id).changed(row, kind));
+        if matches!(told, Some(Ok(()))) {
+            return;
+        }
+        let name = kind_name(kind);
+        kernel.say(DEBUG, || {
+            alloc::format!("changed rd={} kind={name} dropped", rd.0)
+        });
     }
 
     /// The Client's `/self`: the row the mirror was born with stands
@@ -385,11 +462,14 @@ impl Driver for Proxy {
         self.queue(Op::Call { h: Handle(h), api, method, input }, Then::Answer)
     }
 
-    fn watch(&self, _: &dyn Calls, _: Rd, _: bool) -> Reply<()> {
-        // A hint, and the Kernel's watch does not depend on what it
-        // answers, so a remote never waits for one to cross. The slot
-        // names an rd where the wire names a handle; what a forwarded
-        // watch is, and what it announces, is 05.2's.
+    fn watch(&self, _: &dyn Calls, rd: Rd, on: bool) -> Reply<()> {
+        // The slot names an rd where the wire names a handle, so what
+        // crosses is a handle of the proxy's own, one per mirrored rd
+        // however many remotes hold it. The Kernel's watch does not
+        // depend on what this answers, so a remote never waits for one
+        // to cross: it is answered here and goes out with the Client's
+        // next `Since`.
+        self.watching(rd, on);
         Reply::ok(())
     }
 
@@ -400,6 +480,27 @@ impl Driver for Proxy {
         let _: Reply<()> = self.queue(Op::Close { h: Handle(h) }, Then::Drop);
         Reply::ok(())
     }
+}
+
+/// One watcher more on `rd`: the `Open` the first of them costs, and
+/// nothing for any after it.
+fn first(s: &mut State, rd: Rd) -> Option<Op> {
+    let row = s.watched.entry(rd).or_default();
+    row.n += 1;
+    (row.n == 1).then_some(Op::Open { rd, rights: Rights::READ })
+}
+
+/// One watcher fewer on `rd`: the `Close` the last of them costs, and
+/// nothing while another holds it. A row whose `open` has not answered
+/// leaves no op here; the `done` it lands with closes the handle.
+fn last(s: &mut State, rd: Rd) -> Option<Op> {
+    let row = s.watched.get_mut(&rd)?;
+    row.n = row.n.saturating_sub(1);
+    if row.n > 0 {
+        return None;
+    }
+    let held = s.watched.remove(&rd)?.h?;
+    Some(Op::Close { h: held })
 }
 
 /// One mirror row for a Client's rd: registered under `at` with the
@@ -446,6 +547,7 @@ const fn word(op: &Op) -> &'static str {
         Op::Read { .. } => "read",
         Op::Write { .. } => "write",
         Op::Call { .. } => "call",
+        Op::Watch { .. } => "watch",
         Op::Close { .. } => "close",
         // Nothing else is ever queued.
         _ => "op",

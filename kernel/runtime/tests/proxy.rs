@@ -7,7 +7,8 @@ use std::collections::BTreeMap;
 
 use reovim_kernel_interface::wire::{Message, decode, encode};
 use reovim_kernel_interface::{
-    Error, Flags, Handle, Info, Op, Out, Outcome, Rd, Reply, Rights, Token,
+    Error, Event, Flags, Handle, Info, Kind, Op, Out, Outcome, Rd, Reply,
+    Rights, Token,
 };
 use reovim_kernel_runtime::{Connection, Heap, Kernel, Limits, NoLoader, ROOT};
 
@@ -48,14 +49,29 @@ fn node(rd: Rd) -> Result<Node, Error> {
     Ok(Node { name, flags, children, bytes })
 }
 
-/// One end of a link: its `Connection` and the sequence it counts.
+/// One end of a link: its `Connection`, the sequence it counts and its
+/// own place in the Kernel's event ring.
 #[derive(Default)]
 struct Side {
     link: Connection,
     seq: u64,
+    cursor: u64,
 }
 
 impl Side {
+    /// One `Op::Since` on this side's own cursor: the events on the
+    /// rds it watches, and the ops the server asks it to serve.
+    fn since(&mut self, kernel: &Kernel) -> (Vec<Event>, Vec<(Token, Op)>) {
+        let op = Op::Since { cursor: self.cursor };
+        match self.request(kernel, op) {
+            Reply::Ready(Ok(Out::Events { events, cursor, serve })) => {
+                self.cursor = cursor;
+                (events, serve)
+            }
+            other => panic!("not events: {other:?}"),
+        }
+    }
+
     /// `Connect` on a Session of its own; the client rd it was given.
     fn connect(&mut self, kernel: &Kernel) -> Rd {
         let connect =
@@ -87,8 +103,8 @@ impl Side {
 #[derive(Default)]
 struct Client {
     side: Side,
-    cursor: u64,
-    served: usize,
+    /// Every op the server has asked of it, in order.
+    asked: Vec<Op>,
     handles: BTreeMap<Handle, Rd>,
     next_handle: u64,
 }
@@ -98,14 +114,7 @@ impl Client {
     /// over what the server asks of it, and those ops run and
     /// answered. How many were run.
     fn turn(&mut self, kernel: &Kernel) -> usize {
-        let since = Op::Since { cursor: self.cursor };
-        let (cursor, serve) = match self.side.request(kernel, since) {
-            Reply::Ready(Ok(Out::Events { cursor, serve, .. })) => {
-                (cursor, serve)
-            }
-            other => panic!("not events: {other:?}"),
-        };
-        self.cursor = cursor;
+        let (_, serve) = self.side.since(kernel);
         for (token, op) in &serve {
             let outcome = self.run(op.clone());
             let done = Op::Done { token: *token, outcome };
@@ -115,15 +124,43 @@ impl Client {
         serve.len()
     }
 
+    /// The Client says one of its own rds changed, which is
+    /// `Calls::changed` as it goes out.
+    fn changed(&mut self, kernel: &Kernel, rd: Rd, kind: Kind) -> Reply<Out> {
+        self.side.request(kernel, Op::Changed { rd, kind })
+    }
+
+    /// How many ops it has been asked, which a case snapshots around
+    /// what it says costs none.
+    const fn served(&self) -> usize {
+        self.asked.len()
+    }
+
+    /// The ops asked since `from`, which [`Self::served`] gave, named
+    /// by their variant and in order: what a case counts them by.
+    fn since(&self, from: usize) -> String {
+        let named = |op: &Op| {
+            let shown = format!("{op:?}");
+            shown.split(' ').next().unwrap_or_default().to_string()
+        };
+        self.asked[from..].iter().map(named).collect::<Vec<_>>().join(" ")
+    }
+
     /// One op of the server's, run on this Client's own tree.
     fn run(&mut self, op: Op) -> Outcome {
-        self.served += 1;
+        self.asked.push(op.clone());
         match op {
             Op::Lookup { rd, name } => found(rd, &name),
             Op::Children { rd } => Ok(Out::Rds(node(rd)?.children)),
             Op::Info { rd } => Ok(Out::Info(info(rd)?)),
             Op::Open { rd, .. } => Ok(Out::Handle(self.opened(rd)?)),
             Op::Read { h, at, len } => self.read(h, at, len),
+            // A watch is on a handle this Client gave; the close that
+            // ends it is the whole of the dropping.
+            Op::Watch { h, .. } => {
+                let held = self.handles.contains_key(&h);
+                held.then_some(Out::Unit).ok_or(Error::Invalid)
+            }
             Op::Close { h } => {
                 self.handles.remove(&h);
                 Ok(Out::Unit)
@@ -202,32 +239,34 @@ impl Rig {
         rig
     }
 
-    /// The remote's op, waited out: the Client turns until the token
-    /// it was given is answered.
+    /// The rig's own remote's op, waited out.
     fn ask(&mut self, op: Op) -> Outcome {
-        match self.remote.request(&self.kernel, op) {
-            Reply::Ready(outcome) => outcome,
-            Reply::Pending(token) => self.waited(token),
-        }
+        let Self { kernel, client, remote, .. } = self;
+        ask_on(kernel, client, remote, op)
     }
 
     fn waited(&mut self, token: Token) -> Outcome {
-        let mut asked = Err(Error::Busy);
-        let mut turns = 0;
-        while asked == Err(Error::Busy) && turns < 8 {
-            turns += 1;
-            self.client.turn(&self.kernel);
-            asked = self.asked(token);
-        }
-        asked
+        let Self { kernel, client, remote, .. } = self;
+        waited_on(kernel, client, remote, token)
     }
 
-    /// One `Ask`, which is Ready here or nothing a case wants.
-    fn asked(&mut self, token: Token) -> Outcome {
-        match self.remote.request(&self.kernel, Op::Ask { token }) {
-            Reply::Ready(outcome) => outcome,
-            other @ Reply::Pending(_) => panic!("not an answer: {other:?}"),
-        }
+    /// Another remote's op, waited out as the rig's own is.
+    fn by(&mut self, side: &mut Side, op: Op) -> Outcome {
+        let Self { kernel, client, .. } = self;
+        ask_on(kernel, client, side, op)
+    }
+
+    /// A second remote on a link of its own, connected: what says that
+    /// two watchers of one mirrored rd cost the Client one watch.
+    fn other(&self) -> Side {
+        let mut side = Side::default();
+        side.connect(&self.kernel);
+        side
+    }
+
+    /// The rig's own remote's handle on `rd`.
+    fn opened(&mut self, rd: Rd) -> Handle {
+        handle(self.ask(Op::Open { rd, rights: Rights::READ }))
     }
 
     fn rd(&mut self, op: Op) -> Rd {
@@ -265,6 +304,64 @@ impl Rig {
     fn root(&mut self) -> Rd {
         self.lookup(self.at, "self")
     }
+
+    /// A handle of `side`'s on the mirrored `rd`, watching it, with
+    /// its cursor at the head: nothing the ring held before the watch
+    /// is this watcher's to hear, as a following run places its own.
+    fn watch(&mut self, side: &mut Side, rd: Rd) -> Handle {
+        let h = handle(self.by(side, Op::Open { rd, rights: Rights::READ }));
+        assert_eq!(self.by(side, Op::Watch { h, on: true }), Ok(Out::Unit));
+        side.since(&self.kernel);
+        h
+    }
+
+    /// The Client turned until it is asked nothing, which is what a
+    /// forwarded watch's two ticks want.
+    fn settled(&mut self) {
+        while self.client.turn(&self.kernel) != 0 {}
+    }
+}
+
+/// The handle an `Op::Open` answered.
+fn handle(outcome: Outcome) -> Handle {
+    match outcome {
+        Ok(Out::Handle(h)) => h,
+        other => panic!("not a handle: {other:?}"),
+    }
+}
+
+/// `side`'s op, waited out: the Client turns until the token it was
+/// given is answered.
+fn ask_on(
+    kernel: &Kernel,
+    client: &mut Client,
+    side: &mut Side,
+    op: Op,
+) -> Outcome {
+    match side.request(kernel, op) {
+        Reply::Ready(outcome) => outcome,
+        Reply::Pending(token) => waited_on(kernel, client, side, token),
+    }
+}
+
+fn waited_on(
+    kernel: &Kernel,
+    client: &mut Client,
+    side: &mut Side,
+    token: Token,
+) -> Outcome {
+    let mut asked = Err(Error::Busy);
+    let mut turns = 0;
+    while asked == Err(Error::Busy) && turns < 8 {
+        turns += 1;
+        client.turn(kernel);
+        // One `Ask`, which is Ready here or nothing a case wants.
+        asked = match side.request(kernel, Op::Ask { token }) {
+            Reply::Ready(outcome) => outcome,
+            other @ Reply::Pending(_) => panic!("not an answer: {other:?}"),
+        };
+    }
+    asked
 }
 
 #[test]
@@ -273,10 +370,7 @@ fn a_remote_walks_a_clients_self_and_reads_a_cell() {
     let root = rig.root();
     let dev = rig.lookup(root, "dev");
     let cwd = rig.lookup(dev, "cwd");
-    let h = match rig.ask(Op::Open { rd: cwd, rights: Rights::READ }) {
-        Ok(Out::Handle(h)) => h,
-        other => panic!("not a handle: {other:?}"),
-    };
+    let h = rig.opened(cwd);
     let read = Op::Read { h, at: 0, len: 64 };
     assert_eq!(rig.ask(read), Ok(Out::Bytes(b"/tmp".to_vec())));
     assert_eq!(rig.ask(Op::Close { h }), Ok(Out::Unit));
@@ -321,7 +415,7 @@ fn metadata_of_a_mirrored_rd_costs_no_message() {
     // Everything the Kernel answers from its own table: the served
     // count stands still across all of it, and so does a lookup of a
     // name the mirror already holds.
-    let served = rig.client.served;
+    let served = rig.client.served();
     assert_eq!(rig.rds(dev), vec![cwd]);
     assert_eq!(rig.rd(Op::Parent { rd: cwd }), dev);
     assert_eq!(rig.lookup(dev, "cwd"), cwd);
@@ -329,16 +423,16 @@ fn metadata_of_a_mirrored_rd_costs_no_message() {
         Ok(Out::Info(info)) => assert_eq!(info.name.as_deref(), Some("dev")),
         other => panic!("not info: {other:?}"),
     }
-    assert_eq!(rig.client.served, served, "the Client was asked");
+    assert_eq!(rig.client.served(), served, "the Client was asked");
 }
 
 #[test]
 fn a_client_rd_holds_capability_heard_and_self() {
     let mut rig = Rig::new();
-    let served = rig.client.served;
+    let served = rig.client.served();
     let children = rig.rds(rig.at);
     assert_eq!(rig.names(&children), vec!["capability", "heard", "self"]);
-    assert_eq!(rig.client.served, served, "a listing of it crosses nothing");
+    assert_eq!(rig.client.served(), served, "a listing of it crosses nothing");
 
     // The Driver that stands for a Client is no Module: `/module`
     // holds no row for it and `unload` never finds its name.
@@ -374,10 +468,7 @@ fn the_links_end_cancels_what_waits_and_takes_the_rows_with_it() {
     let mut rig = Rig::new();
     let root = rig.root();
     let mode = rig.lookup(root, "mode");
-    let h = match rig.ask(Op::Open { rd: mode, rights: Rights::READ }) {
-        Ok(Out::Handle(h)) => h,
-        other => panic!("not a handle: {other:?}"),
-    };
+    let h = rig.opened(mode);
     let read = Op::Read { h, at: 0, len: 8 };
     let Reply::Pending(token) = rig.remote.request(&rig.kernel, read) else {
         panic!("the read waits on the Client")
@@ -390,4 +481,106 @@ fn the_links_end_cancels_what_waits_and_takes_the_rows_with_it() {
     assert_eq!(rig.ask(read), Err(Error::Gone), "the rd went with the link");
     assert_eq!(rig.ask(Op::Info { rd: root }), Err(Error::Invalid));
     assert_eq!(rig.ask(Op::Info { rd: rig.at }), Err(Error::Invalid));
+}
+
+/// The kinds of `side`'s events on `rd` since it last looked.
+fn kinds(kernel: &Kernel, side: &mut Side, rd: Rd) -> Vec<Kind> {
+    let (events, _) = side.since(kernel);
+    events.iter().filter(|e| e.rd == rd).map(|e| e.kind).collect()
+}
+
+/// A rig whose Client's `mode` cell one remote watches, with the
+/// forwarded watch live and nothing left to serve: the rig, that
+/// remote, the mirrored rd and the remote's own handle on it.
+fn watching() -> (Rig, Side, Rd, Handle) {
+    let mut rig = Rig::new();
+    let root = rig.root();
+    let mode = rig.lookup(root, "mode");
+    let mut side = rig.other();
+    let h = rig.watch(&mut side, mode);
+    rig.settled();
+    (rig, side, mode, h)
+}
+
+#[test]
+fn a_watch_costs_the_client_one_open_and_one_watch_however_many_hold_it() {
+    let mut rig = Rig::new();
+    let root = rig.root();
+    let mode = rig.lookup(root, "mode");
+    let mut first = rig.other();
+
+    // The remote's own open is forwarded; what the watch adds is the
+    // proxy's own handle and the watch behind it, two ticks and no
+    // more, which nobody waits on.
+    let at = rig.client.served();
+    let h = rig.watch(&mut first, mode);
+    rig.settled();
+    assert_eq!(rig.client.since(at), "Open Open Watch", "the remote's own");
+
+    // A second remote on the same rd is the same one handle.
+    let mut second = rig.other();
+    let at = rig.client.served();
+    let other = rig.watch(&mut second, mode);
+    rig.settled();
+    assert_eq!(rig.client.since(at), "Open", "its own open and no watch");
+
+    // One `Op::Changed` from the Client, on the Client's own rd, is an
+    // event on the mirrored rd for both of them.
+    let said = rig.client.changed(&rig.kernel, MODE, Kind::Modify);
+    assert_eq!(said, Reply::ok(Out::Unit));
+    assert_eq!(kinds(&rig.kernel, &mut first, mode), vec![Kind::Modify]);
+    assert_eq!(kinds(&rig.kernel, &mut second, mode), vec![Kind::Modify]);
+
+    // The first to leave takes nothing with it; the last takes the
+    // proxy's handle, and a change after that reaches nobody.
+    let at = rig.client.served();
+    let off = Op::Watch { h, on: false };
+    assert_eq!(rig.by(&mut first, off), Ok(Out::Unit));
+    rig.settled();
+    assert_eq!(rig.client.since(at), "", "one watcher is left");
+    let off = Op::Watch { h: other, on: false };
+    assert_eq!(rig.by(&mut second, off), Ok(Out::Unit));
+    rig.settled();
+    assert_eq!(rig.client.since(at), "Close", "the proxy's own handle");
+    let _ = rig.client.changed(&rig.kernel, MODE, Kind::Modify);
+    assert_eq!(kinds(&rig.kernel, &mut first, mode), Vec::new());
+}
+
+#[test]
+fn a_remote_that_closes_without_unwatching_drops_the_forwarded_watch() {
+    let (mut rig, mut remote, _, h) = watching();
+
+    // `dispatch::close` tells the Driver of the unwatch a close
+    // implies, so the count reaches zero this way too and the Client
+    // is not left sending a message a frame for ever.
+    let at = rig.client.served();
+    assert_eq!(rig.by(&mut remote, Op::Close { h }), Ok(Out::Unit));
+    rig.settled();
+    let both = "Close Close";
+    assert_eq!(rig.client.since(at), both, "the remote's and the proxy's");
+}
+
+#[test]
+fn a_change_the_mirror_cannot_place_is_answered_and_dropped() {
+    let (mut rig, mut remote, mode, _) = watching();
+
+    // A Client may say anything and the Kernel believes none of it: a
+    // kind `Calls::changed` does not take, and an rd the mirror has no
+    // row for, are answered `Unit` and change nothing.
+    for kind in [Kind::Create, Kind::Delete, Kind::Move, Kind::Gone] {
+        let said = rig.client.changed(&rig.kernel, MODE, kind);
+        assert_eq!(said, Reply::ok(Out::Unit), "{kind:?}");
+    }
+    let stranger = rig.client.changed(&rig.kernel, Rd(BASE + 99), Kind::Modify);
+    assert_eq!(stranger, Reply::ok(Out::Unit));
+    assert_eq!(kinds(&rig.kernel, &mut remote, mode), Vec::new());
+
+    // `/sys/info/watchers` counts the Kernel's own watch table, where
+    // the remote's watch stands; the proxy's watch at the Client is
+    // the Client's and is counted nowhere, so the two do not double.
+    let sys = rig.lookup(ROOT, "sys");
+    let facts = rig.lookup(sys, "info");
+    let counted = rig.lookup(facts, "watchers");
+    let read = Op::Read { h: rig.opened(counted), at: 0, len: 16 };
+    assert_eq!(rig.ask(read), Ok(Out::Bytes(b"1".to_vec())));
 }

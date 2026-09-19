@@ -8,6 +8,9 @@
 use std::rc::Rc;
 
 use reovim_client::{Calls, Clip, Host, ROOT, SELF, Table, dev};
+use reovim_kernel_interface::{
+    Driver, DriverId, Error, Event, Flags, Kind, Module, Rd, Reply, Rights,
+};
 use reovim_rig::Rig;
 use reovim_sdk::{cell, ops};
 
@@ -84,4 +87,109 @@ fn a_client_lists_another_clients_self_and_serves_nothing_unasked() {
     let idle = rig.sent();
     let _ = ops::children(&mine, SELF).unwrap();
     assert_eq!(rig.sent(), idle, "a's own listing is a's own");
+}
+
+/// A Module of a's own with two cells whose write is a `Modify` on the
+/// one written: the one thing a Client announces of its own account,
+/// and two of them so a case can say that a change on the cell nobody
+/// watches costs nothing.
+struct Cells;
+
+impl Module for Cells {
+    fn start(&self, ctx: &dyn Calls, home: Rd) -> Result<(), Error> {
+        for name in ["one", "two"] {
+            let rd = ctx.register(DriverId(0), home, Some(name))?;
+            ctx.report(rd, Flags::READ.union(Flags::WRITE), &[])?;
+        }
+        Ok(())
+    }
+}
+
+impl Driver for Cells {
+    fn open(&self, _: &dyn Calls, rd: Rd, _: Rights) -> Reply<u64> {
+        Reply::ok(rd.0)
+    }
+
+    fn write(
+        &self,
+        ctx: &dyn Calls,
+        h: u64,
+        _: u64,
+        buf: &[u8],
+    ) -> Reply<usize> {
+        let _ = ctx.changed(Rd(h), Kind::Modify);
+        Reply::ok(buf.len())
+    }
+}
+
+/// One turn of a Client's own loop: the `Since` that brings over what
+/// the server asks of it, those ops run and answered, and the sweep.
+fn turn(host: &Host) -> usize {
+    let _ = ops::since(&host.own(), 0).unwrap();
+    host.serve()
+}
+
+#[test]
+fn a_change_on_a_client_reaches_a_remote_watcher_and_nobody_else() {
+    let rig = Rig::new("wire-changed");
+    let a = rig.host();
+    let cells = Rc::new(Cells);
+    a.load("cells", cells.clone(), vec![cells]).unwrap();
+    let b = rig.host();
+    let (mine, theirs) = (a.own(), b.own());
+    let at = |name: &str| {
+        let path = format!("/session/1/client/1/self/cells/{name}");
+        cell::resolve(&theirs, ROOT, &path).unwrap()
+    };
+    let (one, two) = (at("one"), at("two"));
+    let here = |name: &str| {
+        cell::resolve(&mine, ROOT, &format!("/self/cells/{name}")).unwrap()
+    };
+
+    // Nothing crosses while nobody reads: a's own editing is served to
+    // nobody, kept by nobody and announced to nobody.
+    let quiet = rig.sent();
+    ops::put(&mine, here("one"), b"x".to_vec()).unwrap();
+    assert_eq!(a.serve(), 0, "a served an op nobody asked of it");
+    assert_eq!(rig.sent(), quiet, "a's own change is a's own");
+
+    // b watches one cell, which costs a an open and a watch and two
+    // turns before it is live; nobody waits on either.
+    let h = ops::watch(&theirs, one).unwrap();
+    assert_eq!(turn(&a), 1, "the open of the proxy's own handle");
+    assert_eq!(turn(&a), 1, "the watch behind it");
+    assert_eq!(turn(&a), 0, "and nothing more");
+    let (_, cursor) = ops::since(&theirs, 0).unwrap();
+
+    // One message a change of that cell, and none for the other.
+    let before = rig.sent();
+    ops::put(&mine, here("one"), b"y".to_vec()).unwrap();
+    assert_eq!(rig.sent(), before, "the write is a's own");
+    a.serve();
+    assert_eq!(rig.sent(), before + 1, "one message a change");
+    ops::put(&mine, here("two"), b"z".to_vec()).unwrap();
+    a.serve();
+    assert_eq!(rig.sent(), before + 1, "a cell nobody watches is not said");
+
+    // What b hears is a `Modify` on the rd b holds, once, and nothing
+    // of the cell it has a mirror row for and no watch on.
+    let (events, cursor) = ops::since(&theirs, cursor).unwrap();
+    let cells = |e: &&Event| e.rd == one || e.rd == two;
+    let heard = |events: &[Event]| {
+        let of = |e: &Event| (e.rd, e.kind);
+        events.iter().filter(cells).map(of).collect::<Vec<_>>()
+    };
+    assert_eq!(heard(&events), vec![(one, Kind::Modify)]);
+
+    // b's close implies the unwatch, which the Kernel tells the proxy
+    // of: two closes reach a, b's own handle and the proxy's, and a's
+    // next write moves the count by nothing.
+    ops::close(&theirs, h).unwrap();
+    assert_eq!(turn(&a), 2, "b's handle closed and the proxy's with it");
+    let after = rig.sent();
+    ops::put(&mine, here("one"), b"w".to_vec()).unwrap();
+    a.serve();
+    assert_eq!(rig.sent(), after, "nothing crosses while nobody reads");
+    let (events, _) = ops::since(&theirs, cursor).unwrap();
+    assert_eq!(heard(&events), Vec::new());
 }

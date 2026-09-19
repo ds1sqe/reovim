@@ -81,6 +81,13 @@ pub trait Driver {
     }
 
     /// Hint: someone started or stopped watching `rd`.
+    ///
+    /// Every watch that ends is told here, a close included: closing a
+    /// watching handle implies unwatch, as [`Op::Close`]'s own doc
+    /// says, and the Driver is told of that one as it is told of every
+    /// other. So a Driver that counts what it is told reaches zero
+    /// whichever way the last watcher goes. The count is of watches on
+    /// `rd` and not of handles: two on one rd are two hints.
     fn watch(&self, ctx: &dyn Calls, rd: Rd, on: bool) -> Reply<()> {
         Reply::err(Error::Unsupported)
     }

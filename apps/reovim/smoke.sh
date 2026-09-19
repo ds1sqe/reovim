@@ -255,11 +255,41 @@ grep -qE "$round[-+][0-9]+$" <<< "$said" \
 # the op the trace holds is the flush's own call.
 grep -q 'op=call caller=' <<< "$said" || fail "no op is traced at debug"
 [[ "$said" != *"rd=/sys/log"* ]] || fail "the log traced its own reading"
+# Nothing crosses while nobody reads: the keys above are a Client's own
+# editing, and with no remote watching, no op was asked of it at all.
+[[ "$said" != *"serve token="* ]] || fail "the editor served an op unasked"
 # Back at `info`, an op that would have been traced adds nothing.
 count="$("$BIN" cli dmesg -l debug | wc -l)"
 "$BIN" cli ls /module > /dev/null
 [[ "$("$BIN" cli dmesg -l debug | wc -l)" == "$count" ]] \
     || fail "the trace goes on after the level says info"
+
+# --- a remote watch on a cell of this Client's own ------------------
+# The running editor is the Client on the default socket, so a `watch`
+# from outside stands on a mirrored rd of its `/self`. What counts the
+# watch is the Kernel's own table: the handle the proxy opened at the
+# Client is the Client's and is counted nowhere, so the number moves by
+# one and comes back. The pane ends with C-c, as the `dmesg -w` one
+# above does.
+watched=/session/1/client/1/self/dev/buffers/0
+watchers="$("$BIN" cli cat /sys/info/watchers)"
+counted() {
+    local i
+    for ((i = 0; i < 400; i++)); do
+        [[ "$("$BIN" cli cat /sys/info/watchers)" == "$1" ]] && return
+        sleep 0.01
+    done
+    fail "/sys/info/watchers is $("$BIN" cli cat /sys/info/watchers), not $1"
+}
+start told "$DIR" "$BIN cli watch $watched"
+counted "$((watchers + 1))"
+# One `Modify` a change of the draft; the change is taken back, so the
+# file this editor writes below is what it was.
+keys new x u
+shown told 'Modify'
+pkill -INT -f "^$BIN cli watch $watched\$"
+[[ "$(ended told)" == 0 ]] || fail "the watcher did not end on SIGINT"
+counted "$watchers"
 
 # --- /sys as sysfs: the parameters, the facts, the core -------------
 # A file per parameter under /sys/limit, each in decimal and each

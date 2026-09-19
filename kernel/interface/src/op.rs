@@ -5,7 +5,9 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use crate::types::{Event, Handle, Hash, Info, Outcome, Rd, Rights, Token};
+use crate::types::{
+    Event, Handle, Hash, Info, Kind, Outcome, Rd, Rights, Token,
+};
 
 /// One request, carried with the caller's sequence number.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -44,6 +46,12 @@ pub enum Op {
     /// rd and handle space. It is `Calls::done` as a Client makes it,
     /// and it never reaches the Kernel's dispatch.
     Done { token: Token, outcome: Outcome },
+    /// An rd this caller serves changed, for a watch it was asked to
+    /// keep: `Modify` or `Attrib`, which is what `Calls::changed` takes
+    /// at either end. A name that came or went is not announced; the
+    /// mirror is stale until somebody walks again, and the op that acts
+    /// says `gone`. Like `Done` it never reaches the Kernel's dispatch.
+    Changed { rd: Rd, kind: Kind },
 }
 
 /// One successful answer.

@@ -191,6 +191,11 @@ struct State {
     fixed: Fixed,
     events: VecDeque<Event>,
     next_seq: u64,
+    /// The handles a served `Op::Watch` turned on, by the rd each is
+    /// on: what a change on this Client is announced for, and nothing
+    /// else. A served `Op::Close` takes one out, as the Host's own
+    /// `close` takes the slot.
+    remote: BTreeMap<Handle, Rd>,
 }
 
 impl State {
@@ -354,6 +359,14 @@ impl State {
             .collect()
     }
 
+    /// Whether this event is one a remote is owed: a change of the two
+    /// kinds `Calls::changed` takes, on an rd a served watch holds.
+    /// Everything else the ring holds is somebody's local business.
+    fn announces(&self, event: &Event) -> bool {
+        matches!(event.kind, Kind::Modify | Kind::Attrib)
+            && self.remote.values().any(|rd| *rd == event.rd)
+    }
+
     /// Events after `cursor` and the cursor for the next ask. A cursor
     /// the ring no longer covers yields one `Overflow` on `ROOT`.
     fn since(&self, cursor: u64) -> (Vec<Event>, u64) {
@@ -387,6 +400,11 @@ pub struct Host {
     state: RefCell<State>,
     depth: Cell<u8>,
     clock: fn() -> u64,
+    /// How far the sweep of [`Host::serve`] has read the ring. It is
+    /// the Host's own and is held for this and nothing else, the ring
+    /// being read and not drained, so a local Plugin's cursor means
+    /// what it always meant.
+    said: Cell<u64>,
 }
 
 impl Host {
@@ -412,6 +430,7 @@ impl Host {
             fixed: Fixed::default(),
             events: VecDeque::new(),
             next_seq: 1,
+            remote: BTreeMap::new(),
         };
         // A Container of the Host's own, as `/bin` is a fixed row of
         // the Kernel's table: a Module the Client loads registers its
@@ -423,6 +442,7 @@ impl Host {
             state: RefCell::new(state),
             depth,
             clock,
+            said: Cell::new(0),
         }
     }
 
@@ -435,7 +455,8 @@ impl Host {
     }
 
     /// Every op a remote asked of this Client's tree, run here and
-    /// answered; how many were run.
+    /// answered, and then every change on an rd a remote watches
+    /// announced; how many ops were run.
     ///
     /// Called from the host's own loop and nowhere else. At any depth
     /// but zero the Host is inside a slot of its own, and a served
@@ -443,6 +464,11 @@ impl Host {
     /// the one `RefCell` borrowed twice; both guards below make that a
     /// nothing rather than a panic. The list itself rides a `Since`
     /// the loop already makes, so serving nothing costs no message.
+    ///
+    /// With nobody watching, the sweep walks an empty map and sends
+    /// nothing, and the Host's own `emit` kept no event for it to walk
+    /// in the first place: nothing crosses while nobody reads, and it
+    /// is those two gates and no third.
     pub fn serve(&self) -> usize {
         if self.depth.get() != 0 {
             return 0;
@@ -456,10 +482,46 @@ impl Host {
             // `ModuleId(0)` is the Client's own, which no `unload`
             // reaches, so a remote's handle outlives every Plugin.
             let outcome = self.run(ModuleId(0), op.clone());
+            self.noted(op, &outcome);
             let done = Op::Done { token: *token, outcome };
             let _ = self.wire.borrow_mut().request(done);
         }
+        self.announce();
         jobs.len()
+    }
+
+    /// What a served op does to the rds this Client announces for: an
+    /// `Op::Watch` that answered puts its handle's rd in or takes it
+    /// out, and an `Op::Close` takes it out whatever it answered, the
+    /// handle being gone either way. Every other op leaves it alone.
+    fn noted(&self, op: &Op, answer: &Answer) {
+        let mut s = self.state.borrow_mut();
+        let on = match (op, answer) {
+            (Op::Close { h }, _) | (Op::Watch { h, on: false }, Ok(_)) => {
+                s.remote.remove(h);
+                return;
+            }
+            (Op::Watch { h, on: true }, Ok(_)) => *h,
+            _ => return,
+        };
+        let Some(rd) = s.handles.get(&on).map(|slot| slot.rd) else { return };
+        s.remote.insert(on, rd);
+    }
+
+    /// One `Op::Changed` per change on an rd a remote watches, from
+    /// this Host's own place in its own ring. Everything else the ring
+    /// holds is somebody's local business and is passed over.
+    fn announce(&self) {
+        let said: Vec<Event> = {
+            let s = self.state.borrow();
+            let (events, cursor) = s.since(self.said.get());
+            self.said.set(cursor);
+            events.into_iter().filter(|event| s.announces(event)).collect()
+        };
+        for event in said {
+            let told = Op::Changed { rd: event.rd, kind: event.kind };
+            let _ = self.wire.borrow_mut().request(told);
+        }
     }
 
     /// Load a Module: make `/self/<name>`, then `start` it, as the
@@ -598,8 +660,9 @@ impl Host {
             // asking the server.
             op @ (Op::Ask { .. } | Op::Cancel { .. }) => self.sent(op),
             // What this Client was asked to serve is answered by
-            // [`Self::serve`] and asked of nobody.
-            Op::Done { .. } => Err(Error::Unsupported),
+            // [`Self::serve`], which is also what announces; neither is
+            // asked of anybody here.
+            Op::Done { .. } | Op::Changed { .. } => Err(Error::Unsupported),
         }
     }
 }

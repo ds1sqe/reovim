@@ -26,7 +26,10 @@ export type Op =
   | { kind: 'since'; cursor: bigint }
   | { kind: 'info'; rd: Rd }
   | { kind: 'parent'; rd: Rd }
-  | { kind: 'children'; rd: Rd };
+  | { kind: 'children'; rd: Rd }
+  | { kind: 'done'; token: Token; outcome: Outcome }
+  // `change` is what the Rust calls `kind`, which here names the op.
+  | { kind: 'changed'; rd: Rd; change: Kind };
 
 export const KINDS = [
   'modify', 'attrib', 'create', 'delete', 'move', 'gone', 'overflow',
@@ -70,10 +73,10 @@ export const CAUSES = [
 ] as const;
 export type Cause = (typeof CAUSES)[number];
 
-export type Reply =
-  | { kind: 'ok'; out: Out }
-  | { kind: 'err'; cause: Cause }
-  | { kind: 'pending'; token: Token };
+/** A reply that finished, which is what `done` carries. */
+export type Outcome = { kind: 'ok'; out: Out } | { kind: 'err'; cause: Cause };
+
+export type Reply = Outcome | { kind: 'pending'; token: Token };
 
 export type Message =
   | { kind: 'connect'; credential: Uint8Array; session?: Rd }
@@ -85,7 +88,7 @@ export type Message =
 const MESSAGES = ['connect', 'request', 'reply', 'load', 'unload'] as const;
 const OPS = [
   'lookup', 'open', 'read', 'write', 'call', 'watch', 'close', 'ask',
-  'cancel', 'since', 'info', 'parent', 'children',
+  'cancel', 'since', 'info', 'parent', 'children', 'done', 'changed',
 ] as const;
 const OUTS = [
   'unit', 'rd', 'handle', 'len', 'bytes', 'info', 'rds', 'events',
@@ -133,6 +136,8 @@ function putOp(w: Writer, op: Op): void {
     case 'ask': case 'cancel': w.u64(op.token); break;
     case 'since': w.u64(op.cursor); break;
     case 'info': case 'parent': case 'children': w.u64(op.rd); break;
+    case 'done': w.u64(op.token); putReply(w, op.outcome); break;
+    case 'changed': w.u64(op.rd); w.u8(tagOf(KINDS, op.change)); break;
   }
 }
 
@@ -150,7 +155,16 @@ function getOp(r: Reader): Op {
     case 'ask': case 'cancel': return { kind, token: r.u64() };
     case 'since': return { kind, cursor: r.u64() };
     case 'info': case 'parent': case 'children': return { kind, rd: r.u64() };
+    case 'done': return { kind, token: r.u64(), outcome: getOutcome(r) };
+    case 'changed': return { kind, rd: r.u64(), change: fromTag(KINDS, r.u8()) };
   }
+}
+
+/** The two `ready` tags of a reply, which is what `done` carries. */
+function getOutcome(r: Reader): Outcome {
+  const reply = getReply(r);
+  if (reply.kind === 'pending') throw new RangeError('outcome');
+  return reply;
 }
 
 function putInfo(w: Writer, info: Info): void {

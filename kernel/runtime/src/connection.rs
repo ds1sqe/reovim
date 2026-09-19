@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 
 use reovim_kernel_interface::wire::{Message, decode, encode};
 use reovim_kernel_interface::{
-    Caller, Error, ModuleId, Op, Out, Outcome, Rd, Reply, Token,
+    Caller, Error, Kind, ModuleId, Op, Out, Outcome, Rd, Reply, Token,
 };
 
 use crate::kernel::Kernel;
@@ -77,11 +77,12 @@ impl Connection {
     /// is `Invalid`. `load` and `unload` go to `loader` under the same
     /// reply window as a request.
     ///
-    /// Two ops are the link's own and never reach dispatch: `Op::Done`,
-    /// which finishes what this Client was asked to serve, and
-    /// `Op::Since`, whose answer carries what it is asked next. Both
-    /// run under the same window as the rest, so a sequence sent twice
-    /// is answered from memory and moves `heard` all the same.
+    /// Three ops are the link's own and never reach dispatch:
+    /// `Op::Done`, which finishes what this Client was asked to serve,
+    /// `Op::Changed`, which announces an rd it serves, and `Op::Since`,
+    /// whose answer carries what it is asked next. All run under the
+    /// same window as the rest, so a sequence sent twice is answered
+    /// from memory and moves `heard` all the same.
     pub fn handle(
         &mut self,
         kernel: &Kernel,
@@ -99,6 +100,9 @@ impl Connection {
             (Message::Request(Op::Done { token, outcome }), Some(caller)) => {
                 kernel
                     .once(caller, seq, || self.answered(kernel, token, outcome))
+            }
+            (Message::Request(Op::Changed { rd, kind }), Some(caller)) => {
+                kernel.once(caller, seq, || self.changed(kernel, rd, kind))
             }
             (Message::Request(Op::Since { cursor }), Some(caller)) => kernel
                 .once(caller, seq, || {
@@ -150,6 +154,17 @@ impl Connection {
             return Reply::err(Error::Invalid);
         };
         proxy.answered(kernel, *id, token, outcome).map(|()| Out::Unit).into()
+    }
+
+    /// A change the Client announced on one of its own rds. It is
+    /// always `Unit`: what the mirror can place becomes an event and
+    /// what it cannot is one `debug` line at the proxy, a Client
+    /// being believed about nothing.
+    fn changed(&self, kernel: &Kernel, rd: Rd, kind: Kind) -> Reply<Out> {
+        if let Some((proxy, id)) = &self.proxy {
+            proxy.changed(kernel, *id, rd, kind);
+        }
+        Reply::ok(Out::Unit)
     }
 
     /// The ops this Client is asked to serve, spliced into the answer

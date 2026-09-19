@@ -54,10 +54,11 @@ impl Kernel {
                 .map(|i| Reply::ok(Out::Info(i))),
             Op::Parent { rd } => parent(self, rd),
             Op::Children { rd } => children(self, rd),
-            // A caller's answer to what it was asked to serve is the
-            // link's business and not the tree's; whoever moves the
-            // bytes takes it before dispatch ever sees it.
-            Op::Done { .. } => Err(Error::Unsupported),
+            // A caller's answer to what it was asked to serve, and what
+            // it announces of the rds it serves, are the link's
+            // business and not the tree's; whoever moves the bytes
+            // takes both before dispatch ever sees them.
+            Op::Done { .. } | Op::Changed { .. } => Err(Error::Unsupported),
         };
         if let Some((words, at, before)) = trace {
             let took = self.now().saturating_sub(at);
@@ -164,10 +165,13 @@ fn words(k: &Kernel, caller: Caller, op: &Op) -> Option<String> {
         Op::Info { rd } => ("info", Some(*rd), empty()),
         Op::Parent { rd } => ("parent", Some(*rd), empty()),
         Op::Children { rd } => ("children", Some(*rd), empty()),
+        // `Changed` names an rd, but one the caller serves and nobody
+        // walked to here, so it is no Resource of this trace's.
         Op::Ask { .. }
         | Op::Cancel { .. }
         | Op::Since { .. }
-        | Op::Done { .. } => return None,
+        | Op::Done { .. }
+        | Op::Changed { .. } => return None,
     };
     let rd = rd?;
     if untraced(rd) {
@@ -365,8 +369,14 @@ fn close(k: &Kernel, caller: Caller, h: Handle) -> Answer {
         slot
     };
     if let Some((module, index)) = slot.served {
+        let calls = k.calls(module);
+        // A close implies unwatch, which is `Op::Close`'s own doc: the
+        // Driver is told of this one as it is told of every other.
+        if slot.watching {
+            let _ = k.driver(index).watch(&calls, slot.rd, false);
+        }
         // The handle is gone whatever the Driver says.
-        let _ = k.driver(index).close(&k.calls(module), slot.cookie);
+        let _ = k.driver(index).close(&calls, slot.cookie);
     }
     Ok(Reply::ok(Out::Unit))
 }

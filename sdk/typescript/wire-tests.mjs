@@ -28,6 +28,10 @@ const ops = [
   { kind: 'info', rd: 1n },
   { kind: 'parent', rd: 1n },
   { kind: 'children', rd: 1n },
+  { kind: 'done', token: 8n, outcome: { kind: 'ok', out: { kind: 'rd', rd: 9n } } },
+  { kind: 'done', token: 8n, outcome: { kind: 'err', cause: 'gone' } },
+  { kind: 'changed', rd: 1n, change: 'modify' },
+  { kind: 'changed', rd: 1n, change: 'attrib' },
 ];
 
 const outs = [

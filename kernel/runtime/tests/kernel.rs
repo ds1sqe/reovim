@@ -576,6 +576,37 @@ fn watch_modify_and_attrib_come_from_the_driver() {
 }
 
 #[test]
+fn a_close_tells_the_driver_of_the_unwatch_it_implies() {
+    let rig = Rig::default();
+    let cell = rig.cell();
+    let hints = || rig.test.inner.lock().unwrap().hints.clone();
+    let h = rig.open(cell, Rights::READ);
+    rig.ok(Op::Watch { h, on: true });
+    assert_eq!(hints(), vec![(cell, true)]);
+    // `Op::Close`'s own doc says it implies unwatch, and the Driver is
+    // told of this one as it is told of every other, so a Driver that
+    // counts what it is told reaches zero whichever way a watcher
+    // goes.
+    rig.ok(Op::Close { h });
+    assert_eq!(hints(), vec![(cell, true), (cell, false)]);
+
+    // A handle that was not watching says nothing; a second watch on
+    // one rd is a second hint, as two callers' would be.
+    let quiet = rig.open(cell, Rights::READ);
+    rig.ok(Op::Close { h: quiet });
+    let both = [rig.open(cell, Rights::READ), rig.open(cell, Rights::READ)];
+    for h in both {
+        rig.ok(Op::Watch { h, on: true });
+    }
+    for h in both {
+        rig.ok(Op::Close { h });
+    }
+    let on = (cell, true);
+    let off = (cell, false);
+    assert_eq!(hints(), vec![on, off, on, on, off, off]);
+}
+
+#[test]
 fn watch_tree_kinds_come_from_the_kernel() {
     let rig = Rig::default();
     let dir = rig.dir();

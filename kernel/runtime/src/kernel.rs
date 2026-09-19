@@ -442,7 +442,7 @@ impl State {
 }
 
 /// The kinds in the Kernel's own words, as a traced event says them.
-const fn kind_name(kind: Kind) -> &'static str {
+pub const fn kind_name(kind: Kind) -> &'static str {
     match kind {
         Kind::Modify => "modify",
         Kind::Attrib => "attrib",

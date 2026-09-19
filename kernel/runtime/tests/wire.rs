@@ -12,8 +12,23 @@ fn round_trip(seq: u64, message: &Message) {
     assert_eq!(decode(&bytes), Some((seq, message.clone())), "{message:?}");
 }
 
+/// Every kind an event and an `Op::Changed` spell with the one tag.
+const KINDS: [Kind; 7] = [
+    Kind::Modify,
+    Kind::Attrib,
+    Kind::Create,
+    Kind::Delete,
+    Kind::Move,
+    Kind::Gone,
+    Kind::Overflow,
+];
+
 fn every_op() -> Vec<Op> {
     let h = Handle(7);
+    // `Op::Changed` carries `Modify` and `Attrib` alone, which is what
+    // `Calls::changed` takes; the codec spells all seven all the same,
+    // the kind being one tag wherever it stands.
+    let changed = KINDS.map(|kind| Op::Changed { rd: Rd(21), kind });
     vec![
         Op::Lookup { rd: Rd(1), name: "name".to_string() },
         Op::Open { rd: Rd(2), rights: Rights::READ | Rights::WRITE },
@@ -31,6 +46,9 @@ fn every_op() -> Vec<Op> {
         Op::Done { token: Token(18), outcome: Ok(Out::Rd(Rd(19))) },
         Op::Done { token: Token(20), outcome: Err(Error::Gone) },
     ]
+    .into_iter()
+    .chain(changed)
+    .collect()
 }
 
 /// What a `serve` list carries: the token the answering `Op::Done`
@@ -43,16 +61,7 @@ fn served() -> Vec<(Token, Op)> {
 }
 
 fn every_out() -> Vec<Out> {
-    let kinds = [
-        Kind::Modify,
-        Kind::Attrib,
-        Kind::Create,
-        Kind::Delete,
-        Kind::Move,
-        Kind::Gone,
-        Kind::Overflow,
-    ];
-    let events = kinds
+    let events = KINDS
         .iter()
         .enumerate()
         .map(|(i, kind)| Event {

@@ -208,6 +208,11 @@ fn put_op(out: &mut Vec<u8>, op: &Op) {
             put_u64(out, token.0);
             put_outcome(out, outcome);
         }
+        Op::Changed { rd, kind } => {
+            put_u8(out, 14);
+            put_u64(out, rd.0);
+            put_u8(out, kind_tag(*kind));
+        }
     }
 }
 
@@ -234,6 +239,7 @@ fn get_op(r: &mut Reader) -> Option<Op> {
         11 => Op::Parent { rd: Rd(r.u64()?) },
         12 => Op::Children { rd: Rd(r.u64()?) },
         13 => Op::Done { token: Token(r.u64()?), outcome: get_outcome(r)? },
+        14 => Op::Changed { rd: Rd(r.u64()?), kind: kind_from(r.u8()?)? },
         _ => return None,
     };
     Some(op)
