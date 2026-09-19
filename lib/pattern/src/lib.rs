@@ -3,11 +3,12 @@
 //! Patterns in Vim's dialect, matched by hand: literals, `.`, `*`,
 //! `\+`, `\?`, `^`, `$`, `[...]`, `\<`, `\>`, `\d \w \s` and their
 //! negations, `\c`, `\C`, `\(...\)`, `\|`, `\n`; magic as nvim's
-//! default. Anything else parses to nothing, and the refusal is the
-//! caller's to word. Nesting deeper than a pattern written by hand
-//! ever does is refused with it, and a search that would cost more
-//! than the budget below answers [`Spent`] rather than no match: the
-//! matcher did not find out, and says so.
+//! default. `\v \V \m \M` are refused. Anything else parses to
+//! nothing, and the refusal is the caller's to word. Nesting deeper
+//! than a pattern written by hand ever does is refused with it, and
+//! a search that would cost more than the budget below answers
+//! [`Spent`] rather than no match: the matcher did not find out, and
+//! says so.
 
 extern crate alloc;
 
@@ -63,6 +64,17 @@ pub type Captures = Vec<Option<(usize, usize)>>;
 /// match nor the absence of one. Saying so is the caller's.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Spent;
+
+/// What [`Pattern::scan`] answered.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Scan {
+    /// A match, `caps[0]` the whole of it.
+    Match(usize, usize, Captures),
+    /// No match starting at or before `upto`.
+    None,
+    /// The budget ran out before an attempt at `at` was made.
+    Paused(usize),
+}
 
 /// What one attempt at one offset carries: the captures placed so
 /// far, the steps it has spent, and how many groups it stands inside.
@@ -183,6 +195,66 @@ const fn bounds(quant: Quant) -> (usize, usize) {
     }
 }
 
+/// `at`, past its char; unmoved at the text's end, a char's length
+/// there being 0.
+fn onward(text: &str, at: usize) -> usize {
+    at + text[at..].chars().next().map_or(0, char::len_utf8)
+}
+
+/// One attempt at `at`, on `budget`'s account: its match, or `None`
+/// on a miss that was not spent.
+fn attempted(
+    pattern: &Pattern,
+    text: &str,
+    at: usize,
+    budget: &mut usize,
+) -> Result<Option<(usize, usize, Captures)>, Spent> {
+    let mut attempt = pattern.attempt();
+    let end = pattern.matched(text, at, &mut attempt);
+    *budget = budget.saturating_sub(attempt.steps.max(1));
+    let Some(end) = end else {
+        return if attempt.spent() { Err(Spent) } else { Ok(None) };
+    };
+    attempt.caps[0] = Some((at, end));
+    Ok(Some((at, end, attempt.caps)))
+}
+
+/// `from` walked to `upto` inclusive, on `budget`'s account, one
+/// attempt at a time: a match or the budget running out settles it;
+/// a miss goes on to the next char, `onward` alone deciding where
+/// that is, so the loop's own condition is what keeps an attempt from
+/// ever starting past `upto`, whatever its char boundaries.
+///
+/// # Errors
+///
+/// [`Spent`] when an attempt ran its own budget out before it found
+/// out whether it matches.
+fn walk(
+    pattern: &Pattern,
+    text: &str,
+    from: usize,
+    upto: usize,
+    budget: &mut usize,
+) -> Result<Scan, Spent> {
+    let upto = upto.min(text.len());
+    let mut at = from;
+    while at <= upto {
+        if *budget == 0 {
+            return Ok(Scan::Paused(at));
+        }
+        if let Some((start, end, caps)) = attempted(pattern, text, at, budget)?
+        {
+            return Ok(Scan::Match(start, end, caps));
+        }
+        let next = onward(text, at);
+        if next == at {
+            break;
+        }
+        at = next;
+    }
+    Ok(Scan::None)
+}
+
 impl Pattern {
     /// `source` parsed; `ignorecase` and `smartcase` as the options
     /// have them, `\c` and `\C` overriding.
@@ -217,16 +289,40 @@ impl Pattern {
         from: usize,
     ) -> Result<Option<(usize, usize, Captures)>, Spent> {
         let mut at = from;
-        let mut attempt = self.attempt();
-        let mut end = self.matched(text, at, &mut attempt);
-        while end.is_none() && !attempt.spent() && at < text.len() {
-            at += text[at..].chars().next().map_or(0, char::len_utf8);
-            attempt = self.attempt();
-            end = self.matched(text, at, &mut attempt);
+        loop {
+            let mut budget = usize::MAX;
+            at = match self.scan(text, at, text.len(), &mut budget)? {
+                Scan::Match(at, end, caps) => return Ok(Some((at, end, caps))),
+                Scan::None => return Ok(None),
+                Scan::Paused(resume) => resume,
+            };
         }
-        let Some(end) = end else { return attempt.missed() };
-        attempt.caps[0] = Some((at, end));
-        Ok(Some((at, end, attempt.caps)))
+    }
+
+    /// One offset at a time from `from` to `upto`, on `budget`'s
+    /// account, stopping to say where it got to rather than walking
+    /// past its bound.
+    ///
+    /// `upto` is the last offset a match may start at, inclusive
+    /// since an empty match or a line's `$` may stand exactly there.
+    ///
+    /// [`Scan::Paused`] promises nothing was tried at `at`: a budget
+    /// of 1 or more always walks at least one offset, so a chain of
+    /// calls from each `Paused` ends. One call may overshoot its
+    /// budget by one attempt.
+    ///
+    /// # Errors
+    ///
+    /// [`Spent`] when an attempt ran its own budget out before it
+    /// found out whether it matches.
+    pub fn scan(
+        &self,
+        text: &str,
+        from: usize,
+        upto: usize,
+        budget: &mut usize,
+    ) -> Result<Scan, Spent> {
+        walk(self, text, from, upto, budget)
     }
 
     /// A match starting exactly at `at`: its end and captures.
@@ -506,8 +602,6 @@ impl Parser<'_> {
                 return Ok(None);
             }
             '(' => self.group().ok_or(())?,
-            // `\1` to `\9` are Vim's backreferences, which the subset
-            // has not got; a literal digit is not what they mean.
             '+'
             | '?'
             | '|'
@@ -518,7 +612,16 @@ impl Parser<'_> {
             | 'z'
             | '%'
             | '_'
-            | '1'..='9' => {
+            // `\1` to `\9` are Vim's backreferences, which the subset
+            // has not got; a literal digit is not what they mean.
+            | '1'..='9'
+            // `\v \V \m \M` set how the rest of the pattern is read,
+            // which a literal letter does not; refused rather than
+            // read as one. `\\v` is still a backslash and a `v`.
+            | 'v'
+            | 'V'
+            | 'm'
+            | 'M' => {
                 return Err(());
             }
             c => Atom::Char(c),
@@ -620,29 +723,86 @@ mod tests {
     use alloc::string::String;
     use alloc::vec;
 
-    use super::{Pattern, Spent, expand};
+    use super::{Captures, Pattern, Scan, Spent, expand};
 
     fn parse(source: &str) -> Pattern {
         Pattern::parse(source, false, false).unwrap()
     }
 
+    /// `scan` walked by hand from each `Scan::Paused(at)`, a fresh
+    /// budget each time, answering as `find` does: `find`'s own loop,
+    /// done outside it, so a caller of `scan` can be checked against
+    /// `find` at any budget.
+    fn chained(
+        pattern: &Pattern,
+        text: &str,
+        from: usize,
+        budget: usize,
+    ) -> Result<Option<(usize, usize, Captures)>, Spent> {
+        let mut at = from;
+        loop {
+            let mut left = budget;
+            match pattern.scan(text, at, text.len(), &mut left)? {
+                Scan::Match(at, end, caps) => return Ok(Some((at, end, caps))),
+                Scan::None => return Ok(None),
+                Scan::Paused(resume) => at = resume,
+            }
+        }
+    }
+
+    /// `pattern.find(text, from)`, after checking that `chained`
+    /// agrees at a few budgets: every pattern the crate tests goes
+    /// through here, so `scan`'s bounded walk is exercised the way
+    /// every caller of `find` uses it.
+    fn find(
+        pattern: &Pattern,
+        text: &str,
+        from: usize,
+    ) -> Result<Option<(usize, usize, Captures)>, Spent> {
+        let answer = pattern.find(text, from);
+        for budget in [1, 7, 1000] {
+            assert_eq!(
+                chained(pattern, text, from, budget),
+                answer,
+                "budget {budget}"
+            );
+        }
+        answer
+    }
+
     fn found(pattern: &str, text: &str) -> Option<(usize, usize)> {
-        let found = parse(pattern).find(text, 0).expect("a budget to spare");
+        let pattern = parse(pattern);
+        let found = find(&pattern, text, 0).expect("a budget to spare");
         found.map(|(a, b, _)| (a, b))
     }
 
     fn folded(pattern: &str, ic: bool, scs: bool, text: &str) -> Option<usize> {
         let pattern = Pattern::parse(pattern, ic, scs)?;
-        pattern.find(text, 0).expect("a budget to spare").map(|m| m.0)
+        find(&pattern, text, 0).expect("a budget to spare").map(|m| m.0)
     }
 
     #[test]
     fn the_subset_parses_and_the_rest_is_refused() {
-        for bad in
-            ["a\\{2}", "\\zs", "\\(ab", "[ab", "a\\@!", "\\%d", "\\(a\\)\\1"]
-        {
+        for bad in [
+            "a\\{2}",
+            "\\zs",
+            "\\(ab",
+            "[ab",
+            "a\\@!",
+            "\\%d",
+            "\\(a\\)\\1",
+            "\\vfoo",
+            "\\Vfoo",
+            "\\mfoo",
+            "\\Mfoo",
+        ] {
             assert!(Pattern::parse(bad, false, false).is_none(), "{bad}");
         }
+        assert_eq!(
+            found("\\\\v", "a\\v"),
+            Some((1, 3)),
+            "a backslash, then a v"
+        );
         let good = [
             "a.c",
             "^ab$",
@@ -663,6 +823,52 @@ mod tests {
                 "{pattern}"
             );
         }
+    }
+
+    #[test]
+    fn a_scan_stops_at_its_bounds() {
+        let c = parse("c");
+        assert_eq!(c.scan("abcabc", 0, 1, &mut 10), Ok(Scan::None));
+        assert_eq!(
+            c.scan("abcabc", 0, 2, &mut 10),
+            Ok(Scan::Match(2, 3, vec![Some((2, 3))]))
+        );
+        let bc = parse("bc");
+        assert_eq!(
+            bc.scan("abcabc", 0, 1, &mut 10),
+            Ok(Scan::Match(1, 3, vec![Some((1, 3))])),
+            "a match may end past `upto`"
+        );
+        let star = parse("x*");
+        assert_eq!(
+            star.scan("abc", 3, 3, &mut 10),
+            Ok(Scan::Match(3, 3, vec![Some((3, 3))])),
+            "an empty match at the text's end"
+        );
+        let z = parse("z");
+        let mut budget = 2;
+        assert_eq!(z.scan("abc", 0, 3, &mut budget), Ok(Scan::Paused(2)));
+        assert_eq!(budget, 0, "a budget of 2 spends to the pause");
+        let mut spent = 0;
+        assert_eq!(
+            z.scan("abc", 0, 3, &mut spent),
+            Ok(Scan::Paused(0)),
+            "a budget of 0 tries nothing"
+        );
+        assert_eq!(
+            z.scan("abc", 4, 3, &mut 10),
+            Ok(Scan::None),
+            "`from` past `upto`"
+        );
+        // "aéb": a=0 (1B), é=1 (2B, bytes 1..3), b=3 (1B); `upto` 2
+        // falls inside é, so the walk must not step past it to try an
+        // attempt at 3, where "b" would otherwise match.
+        let b = parse("b");
+        assert_eq!(
+            b.scan("a\u{e9}b", 0, 2, &mut 10),
+            Ok(Scan::None),
+            "a bound inside a char is never stepped past"
+        );
     }
 
     #[test]
@@ -696,9 +902,10 @@ mod tests {
         assert_eq!(found("ab\\=c", "abc"), Some((0, 3)));
         assert_eq!(found("^*a", "a"), Some((0, 1)));
         assert_eq!(found("x*", "abc"), Some((0, 0)), "an empty match");
-        let (start, end, caps) = parse("a*").find("bbb", 1).unwrap().unwrap();
+        let star = parse("a*");
+        let (start, end, caps) = find(&star, "bbb", 1).unwrap().unwrap();
         assert_eq!((start, end, caps), (1, 1, vec![Some((1, 1))]));
-        assert_eq!(parse("z").find("abc", 0), Ok(None));
+        assert_eq!(find(&parse("z"), "abc", 0), Ok(None));
         assert_eq!(parse("b").match_at("abc", 0), Ok(None), "exactly there");
         let at = parse("b").match_at("abc", 1).unwrap().map(|m| m.0);
         assert_eq!(at, Some(2));
@@ -707,12 +914,12 @@ mod tests {
     #[test]
     fn groups_alternate_and_capture() {
         let pattern = parse("\\(foo\\|ba\\(r\\|z\\)\\)!");
-        let (start, end, caps) = pattern.find("xbaz!", 0).unwrap().unwrap();
+        let (start, end, caps) = find(&pattern, "xbaz!", 0).unwrap().unwrap();
         assert_eq!((start, end), (1, 5));
         assert_eq!(caps, vec![Some((1, 5)), Some((1, 4)), Some((3, 4))]);
         let text = expand("[&|\\1|\\2|\\0]", "xbaz!", &caps);
         assert_eq!(text, "[baz!|baz|z|baz!]");
-        let (_, _, caps) = pattern.find("foo!", 0).unwrap().unwrap();
+        let (_, _, caps) = find(&pattern, "foo!", 0).unwrap().unwrap();
         assert_eq!(caps[2], None, "an alternative not taken holds nothing");
         assert_eq!(expand("\\2-", "foo!", &caps), "-");
         assert_eq!(found("a\\|b", "cb"), Some((1, 2)));
@@ -725,13 +932,13 @@ mod tests {
         assert_eq!(found("\\(a\\|ab\\)\\(c\\|bc\\)", "abc"), Some((0, 3)));
         assert_eq!(found("\\(a*\\)ab", "aab"), Some((0, 3)));
         assert_eq!(found("\\(a\\|aa\\)*$", "aaa"), Some((0, 3)));
-        let caps = parse("\\(a*\\)ab").find("aab", 0).unwrap().unwrap().2;
+        let caps = find(&parse("\\(a*\\)ab"), "aab", 0).unwrap().unwrap().2;
         assert_eq!(caps[1], Some((0, 1)), "the group gave back an `a`");
     }
 
     #[test]
     fn a_rejected_attempt_leaves_its_captures_as_they_were() {
-        let found = parse("\\(\\(a\\)x\\|ab\\)").find("ab", 0);
+        let found = find(&parse("\\(\\(a\\)x\\|ab\\)"), "ab", 0);
         let caps = found.unwrap().unwrap().2;
         assert_eq!(caps[2], None, "the alternative that failed holds none");
         assert_eq!(expand("[\\2]", "ab", &caps), "[]");
@@ -750,15 +957,15 @@ mod tests {
     #[test]
     fn a_pattern_that_ran_out_is_not_a_pattern_that_is_missing() {
         let text: String = core::iter::repeat_n('a', 30).collect();
-        let spent = parse("\\(a*\\)*b").find(&text, 0);
-        let missing = parse("zzz").find(&text, 0);
+        let spent = find(&parse("\\(a*\\)*b"), &text, 0);
+        let missing = find(&parse("zzz"), &text, 0);
         assert_ne!(spent, missing, "a spent attempt must not read as none");
     }
 
     #[test]
     fn what_no_budget_can_match_says_spent_and_does_not_hang() {
         let text: String = core::iter::repeat_n('a', 30).collect();
-        assert_eq!(parse("\\(a*\\)*b").find(&text, 0), Err(Spent));
+        assert_eq!(find(&parse("\\(a*\\)*b"), &text, 0), Err(Spent));
         assert_eq!(found("\\(a*\\)*b", "aaab"), Some((0, 4)));
         assert_eq!(found("\\(x*\\)*", "abc"), Some((0, 0)), "empty, once");
         assert_eq!(found("\\(\\)*x", "x"), Some((0, 1)));
@@ -768,7 +975,7 @@ mod tests {
             .collect();
         assert!(Pattern::parse(&deep, false, false).is_none(), "too deep");
         let long: String = core::iter::repeat_n('a', 1000).collect();
-        let turns = parse("\\(a\\)*b").find(&long, 0);
+        let turns = find(&parse("\\(a\\)*b"), &long, 0);
         assert_eq!(turns, Err(Spent), "more turns than the stack holds");
         assert_eq!(found("a*b", &long), None, "a plain atom has no turns");
     }
