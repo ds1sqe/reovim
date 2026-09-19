@@ -28,6 +28,14 @@ fn heap() -> Heap {
     Heap { live, peak: live * 2, allocs: 7 }
 }
 
+/// A clock a case moves by hand, so a fact grows a digit where the case
+/// says it does and not where the test happened to run.
+static AT: AtomicU64 = AtomicU64::new(0);
+
+fn at() -> u64 {
+    AT.load(Ordering::Relaxed)
+}
+
 /// `op` by a caller of its own, which is how a case reads one cell.
 fn alone(kernel: &Kernel, op: Op) -> Out {
     ok(kernel, kernel.caller_new(), 1, op)
@@ -203,6 +211,58 @@ fn the_one_clock_is_time_and_the_moment_it_began_is_uptime() {
     assert!(number("info/uptime") > uptime, "uptime stood still");
     // One word, the release this Kernel was built as.
     assert_eq!(cat(&kernel, "info/version"), env!("CARGO_PKG_VERSION"));
+}
+
+#[test]
+fn a_fact_is_one_value_however_many_reads_it_takes() {
+    AT.store(0, Ordering::Relaxed);
+    let kernel = Kernel::new(at, heap, Limits::default());
+    let rd = resolve(&kernel, "info/uptime");
+    let caller = kernel.caller_new();
+    let Out::Handle(h) = ok(&kernel, caller, 1, Op::Open { rd, rights: R })
+    else {
+        panic!("open")
+    };
+    let byte = |seq, at| {
+        let read = Op::Read { h, at, len: 1 };
+        match ok(&kernel, caller, seq, read) {
+            Out::Bytes(bytes) => bytes,
+            other => panic!("{other:?}"),
+        }
+    };
+    // A byte at a time, as every reader that walks a cell reads it, the
+    // Kernel a tick older between the two: the second chunk is the end
+    // of the text the first came from, so the number the reader holds
+    // is the one it began on and not `9` with the tail of `10` on it.
+    AT.store(9, Ordering::Relaxed);
+    let mut read = byte(2, 0);
+    AT.store(10, Ordering::Relaxed);
+    read.extend(byte(3, 1));
+    assert_eq!(String::from_utf8(read).unwrap(), "9");
+    ok(&kernel, caller, 4, Op::Close { h });
+    // A reader that wants the value as it stands now opens again.
+    assert_eq!(cat(&kernel, "info/uptime"), "10");
+}
+
+#[test]
+fn a_write_takes_back_what_the_handle_read_before_it() {
+    let kernel = Kernel::new(tick, heap, Limits::default());
+    let rd = resolve(&kernel, "loglevel");
+    let caller = kernel.caller_new();
+    let open = Op::Open { rd, rights: R | W };
+    let Out::Handle(h) = ok(&kernel, caller, 1, open) else { panic!("open") };
+    let whole = |seq| {
+        let read = Op::Read { h, at: 0, len: 1 << 16 };
+        match ok(&kernel, caller, seq, read) {
+            Out::Bytes(bytes) => String::from_utf8(bytes).unwrap(),
+            other => panic!("{other:?}"),
+        }
+    };
+    assert_eq!(whole(2), "info");
+    ok(&kernel, caller, 3, Op::Write { h, at: 0, bytes: b"debug".to_vec() });
+    // The handle holds the value it read; the write it made is what
+    // takes that back, so the next read of it is the level now.
+    assert_eq!(whole(4), "debug");
 }
 
 #[test]

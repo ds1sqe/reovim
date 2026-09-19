@@ -76,6 +76,20 @@ impl Driver for Test {
     }
 }
 
+/// A Module with one rd of its own under its home, whose `start` fails
+/// once it stands there when the case asked it to.
+struct Half(bool);
+
+impl Module for Half {
+    fn start(&self, ctx: &dyn Calls, home: Rd) -> Result<(), Error> {
+        let cell = ctx.register(DriverId(0), home, Some("cell"))?;
+        ctx.report(cell, Flags::READ, &[decl()])?;
+        if self.0 { Err(Error::NoSpace) } else { Ok(()) }
+    }
+}
+
+impl Driver for Half {}
+
 /// The Rig's own ops, refusal and all: an rd whose Module has gone
 /// answers `Invalid` where the cases above refuse to be panicked on.
 impl Rig {
@@ -197,6 +211,36 @@ fn a_load_under_a_name_that_already_stands_is_refused() {
     };
     let said = String::from_utf8_lossy(&bytes);
     assert!(said.contains("load module=t refused=Invalid"), "{said}");
+}
+
+#[test]
+fn a_module_whose_start_failed_is_not_loaded() {
+    let (rig, _) = fresh();
+    let bad = Rc::new(Half(true));
+    let driver: Rc<dyn Driver> = bad.clone();
+    assert_eq!(rig.kernel.load("u", bad, vec![driver]), Err(Error::NoSpace));
+
+    // Nothing of it is loaded: not its home, not the rd it registered
+    // before it failed, and no Module for `unload` to take out.
+    assert_eq!(rig.resolve("/module/u"), Err(Error::Invalid));
+    assert_eq!(rig.resolve("/module/u/cell"), Err(Error::Invalid));
+    assert_eq!(rig.kernel.unload("u"), Err(Error::Invalid));
+    // The name is nobody's, so a Module that does start takes it.
+    let good = Rc::new(Half(false));
+    let driver: Rc<dyn Driver> = good.clone();
+    assert!(rig.kernel.load("u", good, vec![driver]).is_ok());
+    assert!(rig.resolve("/module/u/cell").is_ok());
+    assert_eq!(rig.kernel.unload("u"), Ok(()));
+
+    let log = rig.resolve("/sys/log").unwrap();
+    let h = rig.opened(log, Rights::READ).unwrap();
+    let Reply::Ready(Ok(Out::Bytes(bytes))) =
+        rig.submit(Op::Read { h, at: 0, len: 8192 })
+    else {
+        panic!("log")
+    };
+    let said = String::from_utf8_lossy(&bytes);
+    assert!(said.contains("load module=u refused=NoSpace"), "{said}");
 }
 
 #[test]

@@ -184,11 +184,12 @@ pub struct State {
     pub log: Log,
     /// The bytes of every `Node::Cell`.
     pub cells: BTreeMap<Rd, Vec<u8>>,
-    /// The core each open handle on `/sys/core` serves. A core is one
-    /// moment, so the text is made when the handle opens and read from
-    /// there: a reader walking it in chunks is never torn by what the
-    /// Kernel did between two of them.
-    pub cores: BTreeMap<Handle, Vec<u8>>,
+    /// The text each open handle on a made-at-the-read cell serves: a
+    /// parameter, a fact, a caller's heard time, a core. Such a value is
+    /// one moment, so it is made at the handle's first read and read
+    /// from there: a reader walking it in chunks is never torn by what
+    /// the Kernel did between two of them.
+    pub snaps: BTreeMap<Handle, Vec<u8>>,
     pub next_session: u64,
     pub next_client: u64,
 }
@@ -508,7 +509,7 @@ impl Kernel {
             events: Ring::new(),
             log: Log::new(),
             cells: BTreeMap::new(),
-            cores: BTreeMap::new(),
+            snaps: BTreeMap::new(),
             next_session: 1,
             next_client: 1,
         };
@@ -571,8 +572,9 @@ impl Kernel {
     ///
     /// # Errors
     /// `Invalid` for a malformed or taken name; whatever `start` returns.
-    /// A failed `start` leaves the Module loaded with what it registered;
-    /// `unload` takes it out.
+    /// A failed `start` leaves nothing loaded: what the Module
+    /// registered before it failed is gone with its home, its Drivers
+    /// and its caller, and its name is free for the next load.
     pub fn load(
         &self,
         name: &str,
@@ -585,9 +587,17 @@ impl Kernel {
             Ok(both) => both,
             Err(error) => return Err(self.refused(name, error)),
         };
-        starter
-            .start(&self.calls(id), home)
-            .map_err(|error| self.refused(name, error))?;
+        if let Err(error) = starter.start(&self.calls(id), home) {
+            // `stop` is not called: a Module that never started is not
+            // stopped, and `unload`'s own way out is what takes the
+            // half of it that stands.
+            let mut s = self.state.borrow_mut();
+            let index = id.0 as usize;
+            s.modules[index].module = None;
+            s.remove_module(index);
+            drop(s);
+            return Err(self.refused(name, error));
+        }
         Ok(id)
     }
 

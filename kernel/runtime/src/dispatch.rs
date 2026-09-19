@@ -269,12 +269,6 @@ fn open(k: &Kernel, caller: Caller, rd: Rd, rights: Rights) -> Answer {
     if let Some(token) = token {
         return Ok(Reply::Pending(token));
     }
-    // A core is one moment: the handle takes the text here and serves
-    // it, so reading it in chunks reads one Kernel and not several.
-    if owner == Owner::Kernel(Node::Core) {
-        let text = core(&s);
-        s.cores.insert(h, text);
-    }
     Ok(Reply::ok(Out::Handle(h)))
 }
 
@@ -312,7 +306,14 @@ fn write(
     let slot = k.slot(caller, h, Rights::WRITE)?;
     room(k, &slot)?;
     let reply = match slot.served {
-        None => Reply::Ready(kernel_write(k, caller, slot.rd, at, bytes)),
+        None => {
+            let written = kernel_write(k, caller, slot.rd, at, bytes);
+            // The cell is new, so the text this handle read before the
+            // write is old: it goes, and the handle's next read makes
+            // the value afresh.
+            k.state.borrow_mut().snaps.remove(&h);
+            Reply::Ready(written)
+        }
         Some((module, index)) => {
             k.driver(index).write(&k.calls(module), slot.cookie, at, bytes)
         }
@@ -371,7 +372,7 @@ fn close(k: &Kernel, caller: Caller, h: Handle) -> Answer {
             return Err(Error::Denied);
         }
         let slot = s.handles.remove(&h).ok_or(Error::Invalid)?;
-        s.cores.remove(&h);
+        s.snaps.remove(&h);
         if slot.watching {
             unwatch(&mut s, caller, slot.rd);
         }
@@ -519,9 +520,9 @@ fn unwatch(s: &mut State, caller: Caller, rd: Rd) {
     }
 }
 
-/// The Kernel-served reads: declaration bytes, the log, a parameter, a
-/// fact, a caller's heard time and the core the handle took when it
-/// opened.
+/// The Kernel-served reads: declaration bytes, the log, the bytes of a
+/// cell, and the cells the Kernel makes out of what it holds, each
+/// served from the handle that reads it.
 fn kernel_read(
     k: &Kernel,
     h: Handle,
@@ -529,7 +530,7 @@ fn kernel_read(
     at: u64,
     len: usize,
 ) -> Result<Vec<u8>, Error> {
-    let s = k.state.borrow();
+    let mut s = k.state.borrow_mut();
     let Owner::Kernel(node) = s.table.get(rd)?.owner else {
         return Err(Error::Invalid);
     };
@@ -539,24 +540,39 @@ fn kernel_read(
             Ok(part(&bytes, at, len))
         }
         Node::Log => Ok(s.log.read(at, len)),
-        Node::Level => Ok(part(log::name(s.log.level()).as_bytes(), at, len)),
-        Node::Limit(param) => {
-            let value = alloc::format!("{}", s.limits.get(param));
-            Ok(part(value.as_bytes(), at, len))
-        }
-        Node::Info(which) => Ok(part(fact(&s, which).as_bytes(), at, len)),
-        Node::Core => Ok(part(s.cores.get(&h).ok_or(Error::Gone)?, at, len)),
-        Node::Heard(caller) => {
-            let state = s.callers.get(&caller).ok_or(Error::Gone)?;
-            let heard = alloc::format!("{}", state.heard);
-            Ok(part(heard.as_bytes(), at, len))
-        }
         Node::Cell => {
             let bytes = s.cells.get(&rd).ok_or(Error::Gone)?;
             Ok(part(bytes, at, len))
         }
         Node::Container | Node::Home(_) => Err(Error::Unsupported),
+        made => Ok(part(held(&mut s, h, made)?, at, len)),
     }
+}
+
+/// The text `h` serves for a cell the Kernel makes rather than stores:
+/// a parameter, a fact, a caller's heard time, a core. It is made at
+/// this handle's first read and every read of the handle is a part of
+/// that one text, so a reader walking the cell in chunks is answered
+/// one value and not one per chunk. A write through the handle takes it
+/// back; a reader that wants a newer value opens again.
+fn held(s: &mut State, h: Handle, node: Node) -> Result<&[u8], Error> {
+    if !s.snaps.contains_key(&h) {
+        let text = match node {
+            Node::Level => Vec::from(log::name(s.log.level()).as_bytes()),
+            Node::Limit(param) => {
+                alloc::format!("{}", s.limits.get(param)).into_bytes()
+            }
+            Node::Info(which) => fact(s, which).into_bytes(),
+            Node::Core => core(s),
+            Node::Heard(caller) => {
+                let heard = s.callers.get(&caller).ok_or(Error::Gone)?.heard;
+                alloc::format!("{heard}").into_bytes()
+            }
+            _ => return Err(Error::Unsupported),
+        };
+        s.snaps.insert(h, text);
+    }
+    s.snaps.get(&h).map(Vec::as_slice).ok_or(Error::Gone)
 }
 
 /// The Kernel-served writes: a log entry, marked by the caller, a
