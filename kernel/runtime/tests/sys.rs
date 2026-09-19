@@ -4,9 +4,12 @@
 //! `/sys/core`, everything the Kernel holds in one read that changes
 //! nothing.
 
+mod common;
+
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use common::{ok, tick, written};
 use reovim_kernel_interface::{
     Calls, Decl, Driver, DriverId, Error, Flags, Method, Module, Op, Out, Rd,
     Reply, Rights, Ty,
@@ -15,34 +18,26 @@ use reovim_kernel_runtime::{
     CORE, Heap, Kernel, LIMITS, LOG, LOGLEVEL, Limits, MEM, ROOT, SYS,
 };
 
-static CLOCK: AtomicU64 = AtomicU64::new(1);
 /// What the stand-in host has handed out. The Kernel crate links no
 /// allocator, so `/sys/info/mem` is tested against the one seam it
 /// has: the function the host passes.
 static LIVE: AtomicU64 = AtomicU64::new(64);
-
-fn tick() -> u64 {
-    CLOCK.fetch_add(1, Ordering::Relaxed)
-}
 
 fn heap() -> Heap {
     let live = LIVE.load(Ordering::Relaxed);
     Heap { live, peak: live * 2, allocs: 7 }
 }
 
-fn ok(kernel: &Kernel, op: Op) -> Out {
-    let caller = kernel.caller_new();
-    match kernel.submit(caller, 1, op) {
-        Reply::Ready(Ok(out)) => out,
-        other => panic!("{other:?}"),
-    }
+/// `op` by a caller of its own, which is how a case reads one cell.
+fn alone(kernel: &Kernel, op: Op) -> Out {
+    ok(kernel, kernel.caller_new(), 1, op)
 }
 
 /// The whole cell at `/sys/<path>`, as text.
 fn cat(kernel: &Kernel, path: &str) -> String {
     let rd = resolve(kernel, path);
     let caller = kernel.caller_new();
-    let Out::Handle(h) = step(kernel, caller, 1, Op::Open { rd, rights: R })
+    let Out::Handle(h) = ok(kernel, caller, 1, Op::Open { rd, rights: R })
     else {
         panic!("open {path}")
     };
@@ -52,7 +47,7 @@ fn cat(kernel: &Kernel, path: &str) -> String {
         seq += 1;
         let at = out.len() as u64;
         let read = Op::Read { h, at, len: 1 << 16 };
-        let Out::Bytes(bytes) = step(kernel, caller, seq, read) else {
+        let Out::Bytes(bytes) = ok(kernel, caller, seq, read) else {
             panic!("read {path}")
         };
         if bytes.is_empty() {
@@ -60,30 +55,18 @@ fn cat(kernel: &Kernel, path: &str) -> String {
         }
         out.extend_from_slice(&bytes);
     }
-    step(kernel, caller, seq + 1, Op::Close { h });
+    ok(kernel, caller, seq + 1, Op::Close { h });
     String::from_utf8(out).unwrap()
 }
 
 const R: Rights = Rights::READ;
 const W: Rights = Rights::WRITE;
 
-fn step(
-    kernel: &Kernel,
-    caller: reovim_kernel_interface::Caller,
-    seq: u64,
-    op: Op,
-) -> Out {
-    match kernel.submit(caller, seq, op) {
-        Reply::Ready(Ok(out)) => out,
-        other => panic!("{other:?}"),
-    }
-}
-
 /// `/sys/<path>` by its segments.
 fn resolve(kernel: &Kernel, path: &str) -> Rd {
     let mut rd = SYS;
     for name in path.split('/') {
-        let Out::Rd(next) = ok(kernel, Op::Lookup { rd, name: name.into() })
+        let Out::Rd(next) = alone(kernel, Op::Lookup { rd, name: name.into() })
         else {
             panic!("lookup {name}")
         };
@@ -108,37 +91,16 @@ fn write(kernel: &Kernel, path: &str, value: &str) -> Reply<Out> {
 fn fill(kernel: &Kernel, count: usize) {
     let caller = kernel.caller_new();
     let open = Op::Open { rd: LOG, rights: W };
-    let Out::Handle(h) = step(kernel, caller, 1, open) else { panic!("open") };
+    let Out::Handle(h) = ok(kernel, caller, 1, open) else { panic!("open") };
     for seq in 0..count {
         let bytes = format!("entry {seq}").into_bytes();
-        step(kernel, caller, seq as u64 + 2, Op::Write { h, at: 0, bytes });
+        ok(kernel, caller, seq as u64 + 2, Op::Write { h, at: 0, bytes });
     }
 }
 
 /// The `(level, text)` of every `/sys/log` entry now.
 fn said(kernel: &Kernel) -> Vec<(u8, String)> {
-    let caller = kernel.caller_new();
-    let open = Op::Open { rd: LOG, rights: R };
-    let Out::Handle(h) = step(kernel, caller, 1, open) else { panic!("open") };
-    let read = Op::Read { h, at: 1, len: 1 << 20 };
-    let Out::Bytes(bytes) = step(kernel, caller, 2, read) else {
-        panic!("read")
-    };
-    let mut out = Vec::new();
-    let mut rest = &bytes[..];
-    while rest.len() > 20 {
-        let blob = |at: usize, rest: &[u8]| {
-            let len = u32::from_le_bytes(rest[at..at + 4].try_into().unwrap());
-            (at + 4, len as usize)
-        };
-        let (at, len) = blob(16, rest);
-        let level = rest[at + len];
-        let (at, len) = blob(at + len + 1, rest);
-        let text = String::from_utf8(rest[at..at + len].to_vec()).unwrap();
-        out.push((level, text));
-        rest = &rest[at + len..];
-    }
-    out
+    written(kernel).into_iter().map(|(_, level, t)| (level, t)).collect()
 }
 
 #[test]
@@ -187,7 +149,7 @@ fn a_parameter_the_kernel_cannot_hold_is_refused() {
     // A parameter is one word: a write past its front is not one.
     let rd = resolve(&kernel, "limit/log_ring");
     let caller = kernel.caller_new();
-    let Out::Handle(h) = step(&kernel, caller, 1, Op::Open { rd, rights: W })
+    let Out::Handle(h) = ok(&kernel, caller, 1, Op::Open { rd, rights: W })
     else {
         panic!("open")
     };
@@ -226,7 +188,7 @@ fn mem_is_what_the_host_counts_at_the_read() {
 #[test]
 fn the_one_clock_is_time_and_the_moment_it_began_is_uptime() {
     let kernel = Kernel::new(tick, heap, Limits::default());
-    let Out::Info(root) = ok(&kernel, Op::Info { rd: ROOT }) else {
+    let Out::Info(root) = alone(&kernel, Op::Info { rd: ROOT }) else {
         panic!("info")
     };
     let number = |path: &str| cat(&kernel, path).parse::<u64>().unwrap();
@@ -249,11 +211,11 @@ fn watchers_counts_the_open_handles_that_are_watching() {
     assert_eq!(cat(&kernel, "info/watchers"), "0");
     let caller = kernel.caller_new();
     let open = Op::Open { rd: LOG, rights: R };
-    let Out::Handle(h) = step(&kernel, caller, 1, open) else { panic!("open") };
+    let Out::Handle(h) = ok(&kernel, caller, 1, open) else { panic!("open") };
     assert_eq!(cat(&kernel, "info/watchers"), "0", "an open is not a watch");
-    step(&kernel, caller, 2, Op::Watch { h, on: true });
+    ok(&kernel, caller, 2, Op::Watch { h, on: true });
     assert_eq!(cat(&kernel, "info/watchers"), "1");
-    step(&kernel, caller, 3, Op::Close { h });
+    ok(&kernel, caller, 3, Op::Close { h });
     assert_eq!(cat(&kernel, "info/watchers"), "0", "the close took it");
 }
 
@@ -262,7 +224,7 @@ fn a_fact_is_read_only_and_its_read_leaves_nothing_behind() {
     let kernel = Kernel::new(tick, heap, Limits::default());
     let atime = |path: &str| {
         let rd = resolve(&kernel, path);
-        match ok(&kernel, Op::Info { rd }) {
+        match alone(&kernel, Op::Info { rd }) {
             Out::Info(info) => info.atime,
             other => panic!("{other:?}"),
         }
@@ -331,15 +293,15 @@ fn a_core_holds_every_section_and_the_read_leaves_nothing() {
     let session = kernel.session_new();
     let (caller, client) = kernel.connect(session, b"named").unwrap();
     let Out::Rd(cap) =
-        ok(&kernel, Op::Lookup { rd: client, name: "capability".into() })
+        alone(&kernel, Op::Lookup { rd: client, name: "capability".into() })
     else {
         panic!("lookup")
     };
     let open = Op::Open { rd: cap, rights: R | W };
-    let Out::Handle(h) = step(&kernel, caller, 1, open) else { panic!("open") };
-    step(&kernel, caller, 2, Op::Write { h, at: 0, bytes: b"hi".to_vec() });
+    let Out::Handle(h) = ok(&kernel, caller, 1, open) else { panic!("open") };
+    ok(&kernel, caller, 2, Op::Write { h, at: 0, bytes: b"hi".to_vec() });
 
-    let atime = |rd: Rd| match ok(&kernel, Op::Info { rd }) {
+    let atime = |rd: Rd| match alone(&kernel, Op::Info { rd }) {
         Out::Info(info) => info.atime,
         other => panic!("{other:?}"),
     };

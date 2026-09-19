@@ -2,22 +2,18 @@
 //! api and a Container whose children appear on `lookup`, and one
 //! whose Driver goes back through the Kernel for its own work.
 
+mod common;
+
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU64, Ordering};
 
+use common::{Rig, entries, tick};
 use reovim_kernel_interface::{
-    Caller, Calls, Decl, Driver, DriverId, Error, Event, Flags, Handle, Hash,
-    Kind, Method, Module, ModuleId, Op, Out, Rd, Reply, Rights, Token, Ty,
+    Caller, Calls, Decl, Driver, DriverId, Error, Flags, Hash, Kind, Method,
+    Module, Op, Out, Rd, Reply, Rights, Token, Ty,
 };
-use reovim_kernel_runtime::{Heap, Kernel, Limits, ROOT, SYS};
-
-static CLOCK: AtomicU64 = AtomicU64::new(1);
-
-fn tick() -> u64 {
-    CLOCK.fetch_add(1, Ordering::Relaxed)
-}
+use reovim_kernel_runtime::{Limits, ROOT, SYS};
 
 #[derive(Default)]
 struct Inner {
@@ -171,94 +167,38 @@ const fn pending<T>(inner: &mut Inner) -> Reply<T> {
     Reply::Pending(Token(inner.next_token))
 }
 
-struct Rig {
-    kernel: Kernel,
-    module: ModuleId,
-    test: Rc<Test>,
-    caller: Caller,
-    seq: std::cell::Cell<u64>,
-}
-
-impl Rig {
-    fn new(limits: Limits) -> Self {
-        let kernel = Kernel::new(tick, Heap::default, limits);
-        let test = Rc::new(Test::default());
-        let driver: Rc<dyn Driver> = test.clone();
-        let module = kernel.load("t", test.clone(), vec![driver]).unwrap();
-        let caller = kernel.caller_new();
-        Self { kernel, module, test, caller, seq: std::cell::Cell::new(0) }
-    }
-
-    fn default() -> Self {
-        Self::new(Limits::default())
-    }
-
-    fn submit(&self, op: Op) -> Reply<Out> {
-        self.seq.set(self.seq.get() + 1);
-        self.kernel.submit(self.caller, self.seq.get(), op)
-    }
-
-    fn ok(&self, op: Op) -> Out {
-        match self.submit(op) {
-            Reply::Ready(Ok(out)) => out,
-            other => panic!("expected Ready(Ok), got {other:?}"),
-        }
-    }
-
-    fn err(&self, op: Op) -> Error {
-        match self.submit(op) {
-            Reply::Ready(Err(error)) => error,
-            other => panic!("expected Ready(Err), got {other:?}"),
-        }
-    }
-
-    fn lookup(&self, rd: Rd, name: &str) -> Rd {
-        match self.ok(Op::Lookup { rd, name: name.to_string() }) {
-            Out::Rd(rd) => rd,
-            other => panic!("{other:?}"),
-        }
-    }
-
-    fn open(&self, rd: Rd, rights: Rights) -> Handle {
-        match self.ok(Op::Open { rd, rights }) {
-            Out::Handle(h) => h,
-            other => panic!("{other:?}"),
-        }
-    }
-
+impl Test {
     fn cell(&self) -> Rd {
-        self.test.inner.lock().unwrap().cell.unwrap()
+        self.inner.lock().unwrap().cell.unwrap()
     }
 
     fn dir(&self) -> Rd {
-        self.test.inner.lock().unwrap().dir.unwrap()
+        self.inner.lock().unwrap().dir.unwrap()
     }
 
     fn runs(&self) -> usize {
-        self.test.inner.lock().unwrap().runs
+        self.inner.lock().unwrap().runs
     }
+}
 
-    fn calls(&self) -> impl Calls + '_ {
-        self.kernel.calls(self.module)
-    }
-
-    fn since(&self, cursor: u64) -> (Vec<Event>, u64) {
-        match self.ok(Op::Since { cursor }) {
-            Out::Events { events, cursor, .. } => (events, cursor),
-            other => panic!("{other:?}"),
-        }
-    }
-
-    fn kinds(&self, cursor: u64) -> Vec<(Rd, Kind, Option<Rd>)> {
-        self.since(cursor).0.iter().map(|e| (e.rd, e.kind, e.child)).collect()
-    }
-
+impl Rig {
     fn info(&self, rd: Rd) -> reovim_kernel_interface::Info {
         match self.ok(Op::Info { rd }) {
             Out::Info(info) => info,
             other => panic!("{other:?}"),
         }
     }
+}
+
+/// The Test Module on a Kernel bounded by `limits`, and the Module.
+fn limited(limits: Limits) -> (Rig, Rc<Test>) {
+    let test = Rc::new(Test::default());
+    let driver: Rc<dyn Driver> = test.clone();
+    (Rig::over(tick, limits, "t", test.clone(), vec![driver]), test)
+}
+
+fn fresh() -> (Rig, Rc<Test>) {
+    limited(Limits::default())
 }
 
 fn rw() -> Rights {
@@ -284,8 +224,8 @@ fn declaration_hash_is_stable_and_order_free() {
 
 #[test]
 fn fixed_tree_is_reachable_from_root() {
-    let rig = Rig::default();
-    assert!(rig.cell().0 >= 100, "registered rds start at 100");
+    let (rig, test) = fresh();
+    assert!(test.cell().0 >= 100, "registered rds start at 100");
     assert_eq!(rig.lookup(ROOT, "sys"), SYS);
     for name in ["bin", "module", "session", "var"] {
         let rd = rig.lookup(ROOT, name);
@@ -326,38 +266,38 @@ fn fixed_tree_is_reachable_from_root() {
 
 #[test]
 fn load_makes_home_and_start_registers_below_it() {
-    let rig = Rig::default();
+    let (rig, test) = fresh();
     let modules = rig.lookup(ROOT, "module");
     let home = rig.lookup(modules, "t");
-    assert_eq!(rig.lookup(home, "cell"), rig.cell());
-    let info = rig.info(rig.cell());
+    assert_eq!(rig.lookup(home, "cell"), test.cell());
+    let info = rig.info(test.cell());
     assert_eq!(info.name.as_deref(), Some("cell"));
     assert_eq!(info.flags, Flags::READ | Flags::WRITE);
     assert_eq!(info.apis, vec![api()]);
-    let again = rig.kernel.load("t", rig.test.clone(), vec![]);
+    let again = rig.kernel.load("t", test, vec![]);
     assert_eq!(again.err(), Some(Error::Invalid));
 }
 
 #[test]
 fn lookup_registers_the_child_inside_the_slot() {
-    let rig = Rig::default();
-    let dir = rig.dir();
+    let (rig, test) = fresh();
+    let dir = test.dir();
     let a = rig.lookup(dir, "a");
     assert_eq!(rig.ok(Op::Parent { rd: a }), Out::Rd(dir));
     assert_eq!(rig.lookup(dir, "a"), a, "cached; the slot is not asked");
-    assert_eq!(rig.runs(), 1);
+    assert_eq!(test.runs(), 1);
     let listed = rig.ok(Op::Children { rd: dir });
     let x = rig.lookup(dir, "x");
     let y = rig.lookup(dir, "y");
     assert_eq!(listed, Out::Rds(vec![a, x, y]));
-    assert_eq!(rig.runs(), 2, "listed once");
+    assert_eq!(test.runs(), 2, "listed once");
     rig.ok(Op::Children { rd: dir });
-    assert_eq!(rig.runs(), 2);
+    assert_eq!(test.runs(), 2);
 }
 
 #[test]
 fn register_follows_the_parent_owner() {
-    let rig = Rig::default();
+    let (rig, test) = fresh();
     let other = Rc::new(Test::default());
     let driver: Rc<dyn Driver> = other.clone();
     let u = rig.kernel.load("u", other, vec![driver]).unwrap();
@@ -365,7 +305,7 @@ fn register_follows_the_parent_owner() {
     let home_t = rig.lookup(rig.lookup(ROOT, "module"), "t");
     assert_eq!(calls.register(DriverId(0), home_t, None), Err(Error::Denied));
     assert_eq!(
-        calls.register(DriverId(0), rig.dir(), None),
+        calls.register(DriverId(0), test.dir(), None),
         Err(Error::Denied)
     );
     assert_eq!(calls.register(DriverId(0), ROOT, None), Err(Error::Denied));
@@ -383,13 +323,13 @@ fn register_follows_the_parent_owner() {
         Err(Error::Invalid)
     );
     assert_eq!(calls.register(DriverId(1), var, None), Err(Error::Invalid));
-    assert_eq!(calls.unregister(rig.cell()), Err(Error::Denied));
-    assert_eq!(calls.name(rig.cell(), None), Err(Error::Denied));
+    assert_eq!(calls.unregister(test.cell()), Err(Error::Denied));
+    assert_eq!(calls.name(test.cell(), None), Err(Error::Denied));
 }
 
 #[test]
 fn declarations_are_stored_once_and_served() {
-    let rig = Rig::default();
+    let (rig, test) = fresh();
     let decls = rig.lookup(SYS, "decls");
     let name = format!("{:016x}", api().0);
     let rd = rig.lookup(decls, &name);
@@ -400,7 +340,7 @@ fn declarations_are_stored_once_and_served() {
         rig.ok(Op::Read { h, at: 0, len: 2 }),
         Out::Bytes(decl().canonical()[..2].to_vec())
     );
-    rig.calls().report(rig.cell(), Flags::READ, &[decl()]).unwrap();
+    rig.calls().report(test.cell(), Flags::READ, &[decl()]).unwrap();
     assert_eq!(rig.ok(Op::Children { rd: decls }), Out::Rds(vec![rd]));
     let mut wide = decl();
     wide.methods.extend((3..300).map(|n| Method {
@@ -411,27 +351,27 @@ fn declarations_are_stored_once_and_served() {
         right: Rights::READ,
     }));
     assert_eq!(
-        rig.calls().report(rig.cell(), Flags::READ, &[wide]),
+        rig.calls().report(test.cell(), Flags::READ, &[wide]),
         Err(Error::Invalid)
     );
 }
 
 #[test]
 fn open_is_capped_by_flags() {
-    let rig = Rig::default();
+    let (rig, test) = fresh();
     assert_eq!(
-        rig.err(Op::Open { rd: rig.dir(), rights: Rights::WRITE }),
+        rig.err(Op::Open { rd: test.dir(), rights: Rights::WRITE }),
         Error::Denied
     );
     assert_eq!(
-        rig.err(Op::Open { rd: rig.cell(), rights: Rights::empty() }),
+        rig.err(Op::Open { rd: test.cell(), rights: Rights::empty() }),
         Error::Denied
     );
     assert_eq!(
         rig.err(Op::Open { rd: Rd(999), rights: Rights::READ }),
         Error::Invalid
     );
-    let h = rig.open(rig.cell(), Rights::READ);
+    let h = rig.open(test.cell(), Rights::READ);
     assert_eq!(rig.err(Op::Write { h, at: 0, bytes: vec![1] }), Error::Denied);
     let stranger = rig.kernel.caller_new();
     assert_eq!(
@@ -446,9 +386,9 @@ fn open_is_capped_by_flags() {
 
 #[test]
 fn read_and_write_go_through_the_handle() {
-    let rig = Rig::default();
-    let h = rig.open(rig.cell(), rw());
-    let before = rig.info(rig.cell()).atime;
+    let (rig, test) = fresh();
+    let h = rig.open(test.cell(), rw());
+    let before = rig.info(test.cell()).atime;
     assert_eq!(
         rig.ok(Op::Write { h, at: 0, bytes: b"hello".to_vec() }),
         Out::Len(5)
@@ -457,39 +397,39 @@ fn read_and_write_go_through_the_handle() {
         rig.ok(Op::Read { h, at: 1, len: 3 }),
         Out::Bytes(b"ell".to_vec())
     );
-    assert!(rig.info(rig.cell()).atime > before, "read stamps atime");
+    assert!(rig.info(test.cell()).atime > before, "read stamps atime");
     assert_eq!(rig.ok(Op::Read { h, at: 5, len: 3 }), Out::Bytes(vec![]));
     rig.ok(Op::Close { h });
     assert_eq!(rig.err(Op::Read { h, at: 0, len: 1 }), Error::Invalid);
-    let cookie = rig.cell().0 + 100;
-    assert_eq!(rig.test.inner.lock().unwrap().closed, vec![cookie]);
+    let cookie = test.cell().0 + 100;
+    assert_eq!(test.inner.lock().unwrap().closed, vec![cookie]);
 }
 
 #[test]
 fn call_is_checked_before_the_driver_runs() {
-    let rig = Rig::default();
-    let ro = rig.open(rig.cell(), Rights::READ);
+    let (rig, test) = fresh();
+    let ro = rig.open(test.cell(), Rights::READ);
     let call =
         |h, api, method, input: Vec<u8>| Op::Call { h, api, method, input };
     assert_eq!(rig.err(call(ro, Hash(1), 0, vec![])), Error::Unsupported);
     assert_eq!(rig.err(call(ro, api(), 9, vec![])), Error::Unsupported);
     assert_eq!(rig.err(call(ro, api(), 1, blob(b"x"))), Error::Denied);
-    let h = rig.open(rig.cell(), rw());
+    let h = rig.open(test.cell(), rw());
     assert_eq!(rig.err(call(h, api(), 1, blob(&[0; 17]))), Error::Invalid);
     assert_eq!(rig.err(call(h, api(), 1, b"x".to_vec())), Error::Invalid);
     assert_eq!(rig.err(call(h, api(), 0, vec![1])), Error::Invalid);
-    assert_eq!(rig.runs(), 0, "nothing reached the Driver");
+    assert_eq!(test.runs(), 0, "nothing reached the Driver");
     assert_eq!(rig.ok(call(h, api(), 1, blob(b"hi"))), Out::Bytes(vec![]));
     assert_eq!(rig.ok(call(ro, api(), 0, vec![])), Out::Bytes(b"hi".to_vec()));
-    assert_eq!(rig.runs(), 2);
+    assert_eq!(test.runs(), 2);
     let sys = rig.open(SYS, Rights::READ);
     assert_eq!(rig.err(call(sys, api(), 0, vec![])), Error::Unsupported);
 }
 
 #[test]
 fn pending_is_finished_by_done_and_asked_once() {
-    let rig = Rig::default();
-    let h = rig.open(rig.cell(), Rights::READ);
+    let (rig, test) = fresh();
+    let h = rig.open(test.cell(), Rights::READ);
     let Reply::Pending(token) =
         rig.submit(Op::Call { h, api: api(), method: 2, input: vec![] })
     else {
@@ -505,9 +445,9 @@ fn pending_is_finished_by_done_and_asked_once() {
 
 #[test]
 fn cancel_drops_the_later_done() {
-    let rig = Rig::default();
-    rig.test.inner.lock().unwrap().later = true;
-    let h = rig.open(rig.cell(), Rights::READ);
+    let (rig, test) = fresh();
+    test.inner.lock().unwrap().later = true;
+    let h = rig.open(test.cell(), Rights::READ);
     let Reply::Pending(token) = rig.submit(Op::Read { h, at: 0, len: 4 })
     else {
         panic!("expected Pending");
@@ -521,8 +461,9 @@ fn cancel_drops_the_later_done() {
 
 #[test]
 fn pending_cap_answers_busy() {
-    let rig = Rig::new(Limits { pending_per_handle: 1, ..Limits::default() });
-    let h = rig.open(rig.cell(), Rights::READ);
+    let (rig, test) =
+        limited(Limits { pending_per_handle: 1, ..Limits::default() });
+    let h = rig.open(test.cell(), Rights::READ);
     let op = || Op::Call { h, api: api(), method: 2, input: vec![] };
     assert!(matches!(rig.submit(op()), Reply::Pending(_)));
     assert_eq!(rig.err(op()), Error::Busy);
@@ -532,13 +473,13 @@ fn pending_cap_answers_busy() {
 
 #[test]
 fn a_repeated_sequence_is_answered_from_memory() {
-    let rig = Rig::new(Limits { reply_window: 2, ..Limits::default() });
-    let h = rig.open(rig.cell(), rw());
+    let (rig, test) = limited(Limits { reply_window: 2, ..Limits::default() });
+    let h = rig.open(test.cell(), rw());
     let write = Op::Write { h, at: 0, bytes: b"once".to_vec() };
     let first = rig.kernel.submit(rig.caller, 10, write.clone());
     assert_eq!(first, Reply::ok(Out::Len(4)));
     assert_eq!(rig.kernel.submit(rig.caller, 10, write.clone()), first);
-    assert_eq!(rig.runs(), 1, "the slot ran once");
+    assert_eq!(test.runs(), 1, "the slot ran once");
     assert_eq!(
         rig.kernel.submit(rig.caller, 5, write.clone()),
         Reply::err(Error::Stale)
@@ -549,17 +490,17 @@ fn a_repeated_sequence_is_answered_from_memory() {
         rig.kernel.submit(rig.caller, 10, write),
         Reply::err(Error::Stale)
     );
-    assert_eq!(rig.runs(), 1);
+    assert_eq!(test.runs(), 1);
 }
 
 #[test]
 fn watch_modify_and_attrib_come_from_the_driver() {
-    let rig = Rig::default();
-    let cell = rig.cell();
+    let (rig, test) = fresh();
+    let cell = test.cell();
     let h = rig.open(cell, Rights::READ);
     let (_, cursor) = rig.since(0);
     rig.ok(Op::Watch { h, on: true });
-    assert_eq!(rig.test.inner.lock().unwrap().hints, vec![(cell, true)]);
+    assert_eq!(test.inner.lock().unwrap().hints, vec![(cell, true)]);
     assert_eq!(rig.calls().changed(cell, Kind::Create), Err(Error::Invalid));
     let before = rig.info(cell);
     rig.calls().changed(cell, Kind::Modify).unwrap();
@@ -577,9 +518,9 @@ fn watch_modify_and_attrib_come_from_the_driver() {
 
 #[test]
 fn a_close_tells_the_driver_of_the_unwatch_it_implies() {
-    let rig = Rig::default();
-    let cell = rig.cell();
-    let hints = || rig.test.inner.lock().unwrap().hints.clone();
+    let (rig, test) = fresh();
+    let cell = test.cell();
+    let hints = || test.inner.lock().unwrap().hints.clone();
     let h = rig.open(cell, Rights::READ);
     rig.ok(Op::Watch { h, on: true });
     assert_eq!(hints(), vec![(cell, true)]);
@@ -608,8 +549,8 @@ fn a_close_tells_the_driver_of_the_unwatch_it_implies() {
 
 #[test]
 fn watch_tree_kinds_come_from_the_kernel() {
-    let rig = Rig::default();
-    let dir = rig.dir();
+    let (rig, test) = fresh();
+    let dir = test.dir();
     let h = rig.open(dir, Rights::READ);
     rig.ok(Op::Watch { h, on: true });
     let (_, cursor) = rig.since(0);
@@ -633,8 +574,8 @@ fn watch_tree_kinds_come_from_the_kernel() {
 
 #[test]
 fn unregister_takes_the_subtree_deepest_first() {
-    let rig = Rig::default();
-    let dir = rig.dir();
+    let (rig, test) = fresh();
+    let dir = test.dir();
     let a = rig.lookup(dir, "a");
     let h = rig.open(a, Rights::READ);
     rig.ok(Op::Watch { h, on: true });
@@ -649,8 +590,8 @@ fn unregister_takes_the_subtree_deepest_first() {
 
 #[test]
 fn a_slow_watcher_gets_overflow() {
-    let rig = Rig::new(Limits { watch_ring: 2, ..Limits::default() });
-    let cell = rig.cell();
+    let (rig, test) = limited(Limits { watch_ring: 2, ..Limits::default() });
+    let cell = test.cell();
     let h = rig.open(cell, Rights::READ);
     rig.ok(Op::Watch { h, on: true });
     let (_, cursor) = rig.since(0);
@@ -668,8 +609,8 @@ fn a_slow_watcher_gets_overflow() {
 
 #[test]
 fn close_implies_unwatch() {
-    let rig = Rig::default();
-    let cell = rig.cell();
+    let (rig, test) = fresh();
+    let cell = test.cell();
     let h = rig.open(cell, Rights::READ);
     rig.ok(Op::Watch { h, on: true });
     let (_, cursor) = rig.since(0);
@@ -680,12 +621,12 @@ fn close_implies_unwatch() {
 
 #[test]
 fn the_log_holds_the_call_pair_and_module_lines() {
-    let rig = Rig::default();
+    let (rig, test) = fresh();
     // The pair is measurement, not news: it is kept at `debug`.
     let level = rig.lookup(SYS, "loglevel");
     let hd = rig.open(level, Rights::WRITE);
     rig.ok(Op::Write { h: hd, at: 0, bytes: b"debug".to_vec() });
-    let h = rig.open(rig.cell(), Rights::READ);
+    let h = rig.open(test.cell(), Rights::READ);
     rig.ok(Op::Call { h, api: api(), method: 0, input: vec![] });
     let log = rig.lookup(SYS, "log");
     let hl = rig.calls().open(log, rw()).unwrap();
@@ -699,12 +640,12 @@ fn the_log_holds_the_call_pair_and_module_lines() {
     let Out::Bytes(bytes) = rig.ok(Op::Read { h, at: 1, len: 1 << 16 }) else {
         panic!()
     };
-    let text = String::from_utf8_lossy(&bytes);
-    assert!(text.contains("method=0 dispatch"), "{text}");
-    assert!(text.contains("method=0 reply"), "{text}");
-    assert!(text.contains("kernel"), "{text}");
+    let said = String::from_utf8_lossy(&bytes);
+    assert!(said.contains("method=0 dispatch"), "{said}");
+    assert!(said.contains("method=0 reply"), "{said}");
+    assert!(said.contains("kernel"), "{said}");
     assert!(
-        text.contains("hello") && text.contains("\u{1}\0\0\0t"),
+        said.contains("hello") && said.contains("\u{1}\0\0\0t"),
         "mark is the Module name"
     );
     assert_eq!(rig.ok(Op::Read { h, at: 0, len: 4 }), Out::Bytes(vec![]));
@@ -805,25 +746,6 @@ fn again(ctx: &dyn Calls, rd: Rd, at: u64, len: usize) -> Reply<Vec<u8>> {
     }
 }
 
-/// The `(level, text)` of every `/sys/log` entry, in the encoding
-/// `Op::Read` of the log serves: seq, time, mark, level, text.
-fn entries(bytes: &[u8]) -> Vec<(u8, String)> {
-    let mut out = Vec::new();
-    let mut rest = bytes;
-    while rest.len() > 24 {
-        let len = |at: usize| {
-            let four = rest[at..at + 4].try_into().unwrap();
-            u32::from_le_bytes(four) as usize
-        };
-        let level = 20 + len(16);
-        let end = level + 5 + len(level + 1);
-        let text = String::from_utf8_lossy(&rest[level + 5..end]);
-        out.push((rest[level], text.into_owned()));
-        rest = &rest[end..];
-    }
-    out
-}
-
 /// The Mirror Module loaded beside the Test one, with its rds.
 fn mirror(rig: &Rig) -> Rc<Mirror> {
     let mirror = Rc::new(Mirror::default());
@@ -832,19 +754,20 @@ fn mirror(rig: &Rig) -> Rc<Mirror> {
     mirror
 }
 
-/// Everything `/sys/log` holds now, read by the rig's caller.
+/// The `(level, text)` of everything `/sys/log` holds now, read by
+/// the rig's own caller.
 fn log(rig: &Rig) -> Vec<(u8, String)> {
     let h = rig.open(rig.lookup(SYS, "log"), Rights::READ);
     let Out::Bytes(bytes) = rig.ok(Op::Read { h, at: 1, len: 1 << 20 }) else {
         panic!("log")
     };
     rig.ok(Op::Close { h });
-    entries(&bytes)
+    entries(&bytes).into_iter().map(|(_, level, t)| (level, t)).collect()
 }
 
 #[test]
 fn a_driver_serving_itself_is_refused_not_hung() {
-    let rig = Rig::default();
+    let rig = fresh().0;
     let mirror = mirror(&rig);
     let deep = usize::from(Limits::default().reentry);
     let h = rig.open(mirror.own.get().unwrap(), Rights::READ);
@@ -881,7 +804,7 @@ fn limit(rig: &Rig, name: &str, value: &str) -> Reply<Out> {
 
 #[test]
 fn a_limit_written_holds_from_the_next_op_on() {
-    let rig = Rig::default();
+    let (rig, test) = fresh();
     let mirror = mirror(&rig);
     let deep = usize::from(Limits::default().reentry);
     let h = rig.open(mirror.own.get().unwrap(), Rights::READ);
@@ -901,7 +824,7 @@ fn a_limit_written_holds_from_the_next_op_on() {
         limit(&rig, "pending_per_handle", "1"),
         Reply::Ready(Ok(_))
     ));
-    let cell = rig.open(rig.cell(), Rights::READ | Rights::WRITE);
+    let cell = rig.open(test.cell(), Rights::READ | Rights::WRITE);
     let slow = || Op::Call { h: cell, api: api(), method: 2, input: vec![] };
     assert!(matches!(rig.submit(slow()), Reply::Pending(_)));
     assert_eq!(rig.err(slow()), Error::Busy, "one wait is the cap now");
@@ -909,7 +832,7 @@ fn a_limit_written_holds_from_the_next_op_on() {
 
 #[test]
 fn listing_from_inside_the_listing_sees_the_cache() {
-    let rig = Rig::default();
+    let rig = fresh().0;
     let mirror = mirror(&rig);
     let dir = mirror.dir.get().unwrap();
     let a = rig.lookup(dir, "a");

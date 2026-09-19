@@ -1,14 +1,17 @@
 //! A slot that answers `Pending` on the ops that name no handle, and
 //! on the `open` whose handle does not exist yet.
 
+mod common;
+
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
+use common::Rig;
 use reovim_kernel_interface::{
-    Caller, Calls, Driver, DriverId, Error, Flags, Handle, Module, ModuleId,
-    Op, Out, Outcome, Rd, Reply, Rights, Token,
+    Calls, Driver, DriverId, Error, Flags, Handle, Module, Op, Out, Outcome,
+    Rd, Reply, Rights, Token,
 };
-use reovim_kernel_runtime::{Heap, Kernel, Limits, SYS};
+use reovim_kernel_runtime::{Limits, SYS};
 
 /// One Container under home, and every slot of it waiting: the Driver
 /// answers `Pending` with a token of its own and the case is what
@@ -27,6 +30,10 @@ impl Slow {
     fn later<T>(&self) -> Reply<T> {
         self.next.set(self.next.get() + 1);
         Reply::Pending(Token(self.next.get()))
+    }
+
+    const fn dir(&self) -> Rd {
+        self.dir.get().unwrap()
     }
 }
 
@@ -59,77 +66,15 @@ impl Driver for Slow {
     }
 }
 
-struct Rig {
-    kernel: Kernel,
-    slow: Rc<Slow>,
-    module: ModuleId,
-    caller: Caller,
-    seq: Cell<u64>,
-}
-
 impl Rig {
-    fn new(limits: Limits) -> Self {
-        let kernel = Kernel::new(|| 1, Heap::default, limits);
-        let slow = Rc::new(Slow::default());
-        let driver: Rc<dyn Driver> = slow.clone();
-        let module = kernel.load("s", slow.clone(), vec![driver]).unwrap();
-        let caller = kernel.caller_new();
-        Self { kernel, slow, module, caller, seq: Cell::new(0) }
-    }
-
-    fn default() -> Self {
-        Self::new(Limits::default())
-    }
-
-    fn submit(&self, op: Op) -> Reply<Out> {
-        self.seq.set(self.seq.get() + 1);
-        self.kernel.submit(self.caller, self.seq.get(), op)
-    }
-
-    fn ok(&self, op: Op) -> Out {
-        match self.submit(op) {
-            Reply::Ready(Ok(out)) => out,
-            other => panic!("expected Ready(Ok), got {other:?}"),
-        }
-    }
-
-    fn err(&self, op: Op) -> Error {
-        match self.submit(op) {
-            Reply::Ready(Err(error)) => error,
-            other => panic!("expected Ready(Err), got {other:?}"),
-        }
-    }
-
-    fn waits(&self, op: Op) -> Token {
-        match self.submit(op) {
-            Reply::Pending(token) => token,
-            other @ Reply::Ready(_) => {
-                panic!("expected Pending, got {other:?}")
-            }
-        }
-    }
-
-    fn calls(&self) -> impl Calls + '_ {
-        self.kernel.calls(self.module)
-    }
-
     /// The Driver's first own token finished; every case makes one.
     fn done(&self, outcome: Outcome) {
         self.calls().done(Token(1), outcome).unwrap();
     }
 
-    fn dir(&self) -> Rd {
-        self.slow.dir.get().unwrap()
-    }
-
     /// One handle on `/sys/core`.
     fn core_handle(&self) -> Handle {
-        let found = self.ok(Op::Lookup { rd: SYS, name: "core".into() });
-        let Out::Rd(rd) = found else { panic!("{found:?}") };
-        match self.ok(Op::Open { rd, rights: Rights::READ }) {
-            Out::Handle(h) => h,
-            other => panic!("{other:?}"),
-        }
+        self.open(self.lookup(SYS, "core"), Rights::READ)
     }
 
     /// The handle the next `open` will be given, so a case can name a
@@ -152,27 +97,38 @@ impl Rig {
     }
 }
 
+/// The Slow Module on a Kernel that stands still, and the Module.
+fn limited(limits: Limits) -> (Rig, Rc<Slow>) {
+    let slow = Rc::new(Slow::default());
+    let driver: Rc<dyn Driver> = slow.clone();
+    (Rig::over(|| 1, limits, "s", slow.clone(), vec![driver]), slow)
+}
+
+fn fresh() -> (Rig, Rc<Slow>) {
+    limited(Limits::default())
+}
+
 /// An `open` of the Container that is waiting: the handle it made,
 /// which the caller does not hold yet, and the token it holds instead.
-fn opening(rig: &Rig) -> (Handle, Token) {
+fn opening(rig: &Rig, dir: Rd) -> (Handle, Token) {
     let h = rig.next_handle();
-    (h, rig.waits(Op::Open { rd: rig.dir(), rights: Rights::READ }))
+    (h, rig.waits(Op::Open { rd: dir, rights: Rights::READ }))
 }
 
 /// The child the Driver registers while the caller waits, as its
 /// `lookup` would have registered it at once.
-fn child(rig: &Rig, name: &str) -> Rd {
-    let rd = rig.calls().register(DriverId(0), rig.dir(), Some(name)).unwrap();
+fn child(rig: &Rig, dir: Rd, name: &str) -> Rd {
+    let rd = rig.calls().register(DriverId(0), dir, Some(name)).unwrap();
     rig.calls().report(rd, Flags::READ, &[]).unwrap();
     rd
 }
 
 #[test]
 fn a_lookup_that_waits_is_asked_out_as_the_child() {
-    let rig = Rig::default();
-    let token = rig.waits(Op::Lookup { rd: rig.dir(), name: "a".into() });
+    let (rig, slow) = fresh();
+    let token = rig.waits(Op::Lookup { rd: slow.dir(), name: "a".into() });
     assert_eq!(rig.err(Op::Ask { token }), Error::Busy);
-    let a = child(&rig, "a");
+    let a = child(&rig, slow.dir(), "a");
     rig.done(Ok(Out::Rd(a)));
     assert_eq!(rig.ok(Op::Ask { token }), Out::Rd(a));
     assert_eq!(rig.err(Op::Ask { token }), Error::Invalid, "asked once");
@@ -180,10 +136,10 @@ fn a_lookup_that_waits_is_asked_out_as_the_child() {
 
 #[test]
 fn a_listing_that_waits_is_asked_out_as_the_children() {
-    let rig = Rig::default();
-    let token = rig.waits(Op::Children { rd: rig.dir() });
+    let (rig, slow) = fresh();
+    let token = rig.waits(Op::Children { rd: slow.dir() });
     assert_eq!(rig.err(Op::Ask { token }), Error::Busy);
-    let (a, b) = (child(&rig, "a"), child(&rig, "b"));
+    let (a, b) = (child(&rig, slow.dir(), "a"), child(&rig, slow.dir(), "b"));
     // The listing is the Driver's own answer and not the table's: the
     // table was not full yet when the op returned.
     rig.done(Ok(Out::Rds(vec![a, b])));
@@ -193,10 +149,10 @@ fn a_listing_that_waits_is_asked_out_as_the_children() {
 
 #[test]
 fn a_cancel_before_the_done_answers_cancelled() {
-    let rig = Rig::default();
-    let token = rig.waits(Op::Lookup { rd: rig.dir(), name: "a".into() });
+    let (rig, slow) = fresh();
+    let token = rig.waits(Op::Lookup { rd: slow.dir(), name: "a".into() });
     assert_eq!(rig.ok(Op::Cancel { token }), Out::Unit);
-    let a = child(&rig, "a");
+    let a = child(&rig, slow.dir(), "a");
     rig.done(Ok(Out::Rd(a)));
     assert_eq!(rig.err(Op::Ask { token }), Error::Cancelled);
     assert_eq!(rig.err(Op::Ask { token }), Error::Invalid);
@@ -204,9 +160,9 @@ fn a_cancel_before_the_done_answers_cancelled() {
 
 #[test]
 fn a_core_says_dash_for_a_wait_that_names_no_handle() {
-    let rig = Rig::default();
-    let lookup = rig.waits(Op::Lookup { rd: rig.dir(), name: "a".into() });
-    let children = rig.waits(Op::Children { rd: rig.dir() });
+    let (rig, slow) = fresh();
+    let lookup = rig.waits(Op::Lookup { rd: slow.dir(), name: "a".into() });
+    let children = rig.waits(Op::Children { rd: slow.dir() });
     let core = rig.core();
     for token in [lookup, children] {
         let line = format!(
@@ -219,43 +175,43 @@ fn a_core_says_dash_for_a_wait_that_names_no_handle() {
 
 #[test]
 fn an_open_that_waits_is_the_handle_its_done_fills_in() {
-    let rig = Rig::default();
-    let (h, token) = opening(&rig);
+    let (rig, slow) = fresh();
+    let (h, token) = opening(&rig, slow.dir());
     // The caller holds the token, not the handle: the number exists
     // and nothing may be done through it.
     assert_eq!(rig.err(Op::Read { h, at: 0, len: 4 }), Error::Busy);
-    assert!(rig.slow.reads.borrow().is_empty(), "nothing reached the Driver");
+    assert!(slow.reads.borrow().is_empty(), "nothing reached the Driver");
 
     rig.done(Ok(Out::Handle(Handle(7))));
     assert_eq!(rig.ok(Op::Ask { token }), Out::Handle(h), "the Kernel's own");
     rig.waits(Op::Read { h, at: 0, len: 4 });
-    assert_eq!(*rig.slow.reads.borrow(), vec![7], "the Driver's cookie");
+    assert_eq!(*slow.reads.borrow(), vec![7], "the Driver's cookie");
 }
 
 #[test]
 fn an_open_refused_at_the_done_leaves_no_handle() {
-    let rig = Rig::default();
-    let (h, token) = opening(&rig);
+    let (rig, slow) = fresh();
+    let (h, token) = opening(&rig, slow.dir());
     rig.done(Err(Error::Denied));
     assert_eq!(rig.err(Op::Ask { token }), Error::Denied);
     assert_eq!(rig.err(Op::Read { h, at: 0, len: 4 }), Error::Invalid);
-    assert!(rig.slow.closed.borrow().is_empty(), "no handle to close");
+    assert!(slow.closed.borrow().is_empty(), "no handle to close");
 }
 
 #[test]
 fn an_open_closed_before_its_done_is_gone() {
-    let rig = Rig::default();
-    let (h, token) = opening(&rig);
+    let (rig, slow) = fresh();
+    let (h, token) = opening(&rig, slow.dir());
     assert_eq!(rig.ok(Op::Close { h }), Out::Unit);
-    assert_eq!(*rig.slow.closed.borrow(), vec![0], "no cookie to close on");
+    assert_eq!(*slow.closed.borrow(), vec![0], "no cookie to close on");
     rig.done(Ok(Out::Handle(Handle(7))));
     assert_eq!(rig.err(Op::Ask { token }), Error::Gone);
 }
 
 #[test]
 fn an_open_cancelled_before_its_done_leaves_no_handle() {
-    let rig = Rig::default();
-    let (h, token) = opening(&rig);
+    let (rig, slow) = fresh();
+    let (h, token) = opening(&rig, slow.dir());
     assert_eq!(rig.ok(Op::Cancel { token }), Out::Unit);
     rig.done(Ok(Out::Handle(Handle(7))));
     assert_eq!(rig.err(Op::Ask { token }), Error::Cancelled);
@@ -264,13 +220,14 @@ fn an_open_cancelled_before_its_done_leaves_no_handle() {
 
 #[test]
 fn the_cap_counts_the_open_and_then_the_ops_on_its_handle() {
-    let rig = Rig::new(Limits { pending_per_handle: 1, ..Limits::default() });
-    let token = rig.waits(Op::Open { rd: rig.dir(), rights: Rights::READ });
+    let (rig, slow) =
+        limited(Limits { pending_per_handle: 1, ..Limits::default() });
+    let token = rig.waits(Op::Open { rd: slow.dir(), rights: Rights::READ });
     rig.done(Ok(Out::Handle(Handle(7))));
     let Out::Handle(h) = rig.ok(Op::Ask { token }) else { panic!("ask") };
     // The `open`'s own wait was counted on the slot and given back at
     // its `done`, so the handle arrives with all of its room.
     rig.waits(Op::Read { h, at: 0, len: 4 });
     assert_eq!(rig.err(Op::Read { h, at: 0, len: 4 }), Error::Busy);
-    assert_eq!(rig.slow.reads.borrow().len(), 1, "the second never ran");
+    assert_eq!(slow.reads.borrow().len(), 1, "the second never ran");
 }

@@ -1,14 +1,17 @@
 //! `unload`: refused while a handle is open, then the Module's rds are
 //! gone, its Drivers dropped and the name free again.
 
+mod common;
+
 use std::cell::Cell;
 use std::rc::Rc;
 
+use common::Rig;
 use reovim_kernel_interface::{
-    Caller, Calls, Decl, Driver, DriverId, Error, Flags, Handle, Kind, Method,
-    Module, Op, Out, Rd, Reply, Rights, Token, Ty,
+    Calls, Decl, Driver, DriverId, Error, Flags, Handle, Kind, Method, Module,
+    Op, Out, Rd, Reply, Rights, Token, Ty,
 };
-use reovim_kernel_runtime::{Heap, Kernel, Limits, ROOT};
+use reovim_kernel_runtime::{Limits, ROOT};
 
 /// One rd under home and one under `/var`; `start` keeps a handle on
 /// the first until method `release` closes it.
@@ -73,29 +76,10 @@ impl Driver for Test {
     }
 }
 
-struct Rig {
-    kernel: Kernel,
-    test: Rc<Test>,
-    caller: Caller,
-    seq: Cell<u64>,
-}
-
+/// The Rig's own ops, refusal and all: an rd whose Module has gone
+/// answers `Invalid` where the cases above refuse to be panicked on.
 impl Rig {
-    fn new() -> Self {
-        let kernel = Kernel::new(|| 1, Heap::default, Limits::default());
-        let test = Rc::new(Test::default());
-        let driver: Rc<dyn Driver> = test.clone();
-        kernel.load("t", test.clone(), vec![driver]).unwrap();
-        let caller = kernel.caller_new();
-        Self { kernel, test, caller, seq: Cell::new(0) }
-    }
-
-    fn submit(&self, op: Op) -> Reply<Out> {
-        self.seq.set(self.seq.get() + 1);
-        self.kernel.submit(self.caller, self.seq.get(), op)
-    }
-
-    fn lookup(&self, rd: Rd, name: &str) -> Result<Rd, Error> {
+    fn step(&self, rd: Rd, name: &str) -> Result<Rd, Error> {
         match self.submit(Op::Lookup { rd, name: name.to_string() }) {
             Reply::Ready(Ok(Out::Rd(rd))) => Ok(rd),
             Reply::Ready(Err(e)) => Err(e),
@@ -106,35 +90,34 @@ impl Rig {
     fn resolve(&self, path: &str) -> Result<Rd, Error> {
         path.split('/')
             .filter(|n| !n.is_empty())
-            .try_fold(ROOT, |rd, n| self.lookup(rd, n))
+            .try_fold(ROOT, |rd, n| self.step(rd, n))
     }
 
-    fn open(&self, rd: Rd, rights: Rights) -> Result<Handle, Error> {
+    fn opened(&self, rd: Rd, rights: Rights) -> Result<Handle, Error> {
         match self.submit(Op::Open { rd, rights }) {
             Reply::Ready(Ok(Out::Handle(h))) => Ok(h),
             Reply::Ready(Err(e)) => Err(e),
             other => panic!("{other:?}"),
         }
     }
+}
 
-    fn events(&self, cursor: u64) -> Vec<(Rd, Kind, Option<Rd>)> {
-        match self.submit(Op::Since { cursor }) {
-            Reply::Ready(Ok(Out::Events { events, .. })) => {
-                events.iter().map(|e| (e.rd, e.kind, e.child)).collect()
-            }
-            other => panic!("{other:?}"),
-        }
-    }
+/// The Test Module on a Kernel that stands still, and the Module.
+fn fresh() -> (Rig, Rc<Test>) {
+    let test = Rc::new(Test::default());
+    let driver: Rc<dyn Driver> = test.clone();
+    let limits = Limits::default();
+    (Rig::over(|| 1, limits, "t", test.clone(), vec![driver]), test)
 }
 
 #[test]
 fn unload_waits_for_handles_then_removes_everything() {
-    let rig = Rig::new();
+    let (rig, test) = fresh();
     let home = rig.resolve("/module/t").unwrap();
     let cell = rig.resolve("/module/t/cell").unwrap();
     let var = rig.resolve("/var/t").unwrap();
     let modules = rig.resolve("/module").unwrap();
-    let watch = rig.open(modules, Rights::READ).unwrap();
+    let watch = rig.opened(modules, Rights::READ).unwrap();
     rig.submit(Op::Watch { h: watch, on: true });
     let cursor = match rig.submit(Op::Since { cursor: 0 }) {
         Reply::Ready(Ok(Out::Events { cursor, .. })) => cursor,
@@ -146,34 +129,34 @@ fn unload_waits_for_handles_then_removes_everything() {
         Err(Error::Busy),
         "the Module holds one"
     );
-    let h = rig.open(cell, Rights::WRITE).unwrap();
+    let h = rig.opened(cell, Rights::WRITE).unwrap();
     let api = decl().hash();
     rig.submit(Op::Call { h, api, method: 0, input: Vec::new() });
     assert_eq!(rig.kernel.unload("t"), Err(Error::Busy), "a caller holds one");
     rig.submit(Op::Close { h });
-    assert!(!rig.test.stopped.get());
+    assert!(!test.stopped.get());
 
     assert_eq!(rig.kernel.unload("t"), Ok(()));
-    assert!(rig.test.stopped.get());
+    assert!(test.stopped.get());
     assert_eq!(rig.kernel.unload("t"), Err(Error::Invalid));
     assert_eq!(rig.resolve("/module/t"), Err(Error::Invalid));
     assert_eq!(rig.resolve("/var/t"), Err(Error::Invalid));
-    assert_eq!(rig.open(cell, Rights::READ), Err(Error::Invalid));
-    let events = rig.events(cursor);
+    assert_eq!(rig.opened(cell, Rights::READ), Err(Error::Invalid));
+    let events = rig.kinds(cursor);
     assert!(
         events.contains(&(modules, Kind::Delete, Some(home))),
         "{events:?}"
     );
     assert!(!events.iter().any(|e| e.0 == cell || e.0 == var), "not watched");
     let log = rig.resolve("/sys/log").unwrap();
-    let h = rig.open(log, Rights::READ).unwrap();
+    let h = rig.opened(log, Rights::READ).unwrap();
     let Reply::Ready(Ok(Out::Bytes(bytes))) =
         rig.submit(Op::Read { h, at: 1, len: 4096 })
     else {
         panic!("log")
     };
-    let text = String::from_utf8_lossy(&bytes);
-    assert!(text.contains("unload module=t"), "{text}");
+    let said = String::from_utf8_lossy(&bytes);
+    assert!(said.contains("unload module=t"), "{said}");
 
     let again = Rc::new(Test::default());
     let driver: Rc<dyn Driver> = again.clone();
@@ -183,15 +166,15 @@ fn unload_waits_for_handles_then_removes_everything() {
 
 #[test]
 fn a_module_that_leaves_takes_its_waits_with_it() {
-    let rig = Rig::new();
+    let (rig, test) = fresh();
     let cell = rig.resolve("/module/t/cell").unwrap();
-    let h = rig.open(cell, Rights::WRITE).unwrap();
+    let h = rig.opened(cell, Rights::WRITE).unwrap();
     let api = decl().hash();
     rig.submit(Op::Call { h, api, method: 0, input: Vec::new() });
     rig.submit(Op::Close { h });
 
-    rig.test.later.set(true);
-    let h = rig.open(cell, Rights::READ).unwrap();
+    test.later.set(true);
+    let h = rig.opened(cell, Rights::READ).unwrap();
     let Reply::Pending(token) = rig.submit(Op::Read { h, at: 0, len: 4 })
     else {
         panic!("expected Pending")
@@ -208,12 +191,12 @@ fn a_module_that_leaves_takes_its_waits_with_it() {
         "not Busy for ever"
     );
     let core = rig.resolve("/sys/core").unwrap();
-    let h = rig.open(core, Rights::READ).unwrap();
+    let h = rig.opened(core, Rights::READ).unwrap();
     let Reply::Ready(Ok(Out::Bytes(bytes))) =
         rig.submit(Op::Read { h, at: 0, len: 65535 })
     else {
         panic!("core")
     };
-    let text = String::from_utf8(bytes).unwrap();
-    assert!(!text.contains("state=waiting"), "{text}");
+    let said = String::from_utf8(bytes).unwrap();
+    assert!(!said.contains("state=waiting"), "{said}");
 }

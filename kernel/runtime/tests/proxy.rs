@@ -3,20 +3,17 @@
 //! rows the mirror makes, what costs a message and what does not, the
 //! bound on a Client that answers nothing, and the link's end.
 
+mod common;
+
 use std::collections::BTreeMap;
 
+use common::tick;
 use reovim_kernel_interface::wire::{Message, decode, encode};
 use reovim_kernel_interface::{
     Error, Event, Flags, Handle, Info, Kind, Op, Out, Outcome, Rd, Reply,
     Rights, Token,
 };
 use reovim_kernel_runtime::{Connection, Heap, Kernel, Limits, NoLoader, ROOT};
-
-fn tick() -> u64 {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static CLOCK: AtomicU64 = AtomicU64::new(1);
-    CLOCK.fetch_add(1, Ordering::Relaxed)
-}
 
 /// The Client's own rd space, above every id the server hands out.
 const BASE: u64 = 1 << 63;

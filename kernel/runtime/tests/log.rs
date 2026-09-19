@@ -1,21 +1,16 @@
 //! `/sys/log` is a ring: past `log_ring` entries the oldest go, and a
 //! read from before the oldest starts at the oldest.
 
-use std::rc::Rc;
-use std::sync::atomic::{AtomicU64, Ordering};
+mod common;
 
+use std::rc::Rc;
+
+use common::{ok, tick, written};
 use reovim_kernel_interface::{
-    Caller, Calls, Decl, Driver, DriverId, Error, Flags, Hash, Method, Module,
-    Op, Out, Rd, Reply, Rights, Ty,
+    Calls, Decl, Driver, DriverId, Error, Flags, Hash, Method, Module, Op, Out,
+    Rd, Reply, Rights, Ty,
 };
 use reovim_kernel_runtime::{Heap, Kernel, LOG, LOGLEVEL, Limits};
-
-fn ok(kernel: &Kernel, caller: Caller, seq: u64, op: Op) -> Out {
-    match kernel.submit(caller, seq, op) {
-        Reply::Ready(Ok(out)) => out,
-        other => panic!("{other:?}"),
-    }
-}
 
 #[test]
 fn the_oldest_entries_are_trimmed() {
@@ -42,37 +37,6 @@ fn the_oldest_entries_are_trimmed() {
         panic!("read")
     };
     assert_eq!(none, Vec::new(), "nothing at the next seq yet");
-}
-
-/// Whole entries of the encoding `/sys/log` serves: `(mark, level,
-/// text)` per entry.
-fn entries(bytes: &[u8]) -> Vec<(String, u8, String)> {
-    let mut out = Vec::new();
-    let mut rest = bytes;
-    while rest.len() > 20 {
-        let blob = |at: usize, rest: &[u8]| {
-            let len = u32::from_le_bytes(rest[at..at + 4].try_into().unwrap());
-            (at + 4, len as usize)
-        };
-        let (at, len) = blob(16, rest);
-        let mark = String::from_utf8(rest[at..at + len].to_vec()).unwrap();
-        let level = rest[at + len];
-        let (at, len) = blob(at + len + 1, rest);
-        let text = String::from_utf8(rest[at..at + len].to_vec()).unwrap();
-        out.push((mark, level, text));
-        rest = &rest[at + len..];
-    }
-    out
-}
-
-/// Everything in the log now, read by a caller of its own.
-fn written(kernel: &Kernel) -> Vec<(String, u8, String)> {
-    let caller = kernel.caller_new();
-    let open = Op::Open { rd: LOG, rights: Rights::READ };
-    let Out::Handle(h) = ok(kernel, caller, 1, open) else { panic!("open") };
-    let read = Op::Read { h, at: 1, len: 1 << 20 };
-    let Out::Bytes(bytes) = ok(kernel, caller, 2, read) else { panic!("read") };
-    entries(&bytes)
 }
 
 /// A Module that refuses to boot, so `load` says so at `err`.
@@ -137,13 +101,6 @@ fn every_level_the_kernel_writes_has_its_source() {
     assert!(at(4).unwrap().starts_with("overflow caller="), "{said:?}");
     assert!(at(5).unwrap().starts_with("caller end caller="), "{said:?}");
     assert!(said.iter().all(|e| e.0 == "kernel"), "{said:?}");
-}
-
-static CLOCK: AtomicU64 = AtomicU64::new(1);
-
-/// A clock that moves, so a measured span is more than nothing.
-fn tick() -> u64 {
-    CLOCK.fetch_add(1, Ordering::Relaxed)
 }
 
 /// The level cell written, as a caller of its own writes it.

@@ -1,16 +1,13 @@
 //! One `Connection` on a Kernel with no Module: connect, ask, repeat.
 
+mod common;
+
+use common::tick;
 use reovim_kernel_interface::wire::{Message, decode, encode};
 use reovim_kernel_interface::{Error, Op, Out, Rd, Reply, Rights};
 use reovim_kernel_runtime::{
     Connection, Heap, Kernel, Limits, Loader, NoLoader, ROOT, SYS,
 };
-
-fn tick() -> u64 {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static CLOCK: AtomicU64 = AtomicU64::new(1);
-    CLOCK.fetch_add(1, Ordering::Relaxed)
-}
 
 struct Rig {
     kernel: Kernel,
