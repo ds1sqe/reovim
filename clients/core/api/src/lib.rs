@@ -92,8 +92,9 @@ declare! {
     /// A `Run` is in the bytes of its `Line`'s `text`, as a `View`'s
     /// `Span` is in the bytes of `over`, `to` one past `text`'s own
     /// length where the run runs on into the newline `text` does not
-    /// carry. `style` is the View's own number ([`SELECTION`],
-    /// [`MATCH`], the rest), a line's runs one list in paint order.
+    /// carry. `style` is a look ([`reovim_sdk::look`]), the drawer's
+    /// theme having resolved it already: never 0, and a line's runs
+    /// never overlap and stand in order of `from`.
     api display ver 1 {}
     record Screen { rows: u64, row: u64, col: u64, shape: u64,
                     lines: [Line; 1024], status: utf8(4096) }
@@ -160,15 +161,18 @@ declare! {
     }
 }
 
-/// A span that is part of what the Plugin has selected.
-pub const SELECTION: u64 = 1;
-/// A span that matches what the Plugin last searched for.
-pub const MATCH: u64 = 2;
+/// The nine a span may mean, the sdk's own theme: [`SELECTION`] and
+/// [`MATCH`] are the Plugin's own, and no Driver writes them; the rest
+/// stand for the same colors a Driver under `/bin` prints in. A
+/// theme resolves each to a look ([`reovim_sdk::look`]) in one place,
+/// clients/tui's own layout.
+pub use reovim_sdk::sgr::{
+    BLUE, BOLD, DIM, GREEN, MATCH, RED, RED_BOLD, SELECTION, YELLOW,
+};
 
-/// The seven a span may be colored, which are the sdk's table and
-/// stand for the same colors a Driver under `/bin` prints in; 1 and 2
-/// above are the Plugin's own and no Driver writes them.
-pub use reovim_sdk::sgr::{BLUE, BOLD, DIM, GREEN, RED, RED_BOLD, YELLOW};
+/// A look: what a run of text is drawn in, bits and never a theme's
+/// name for one — [`display::Run`]'s `style`.
+pub use reovim_sdk::look;
 
 /// A cursor drawn over the cell it is on.
 pub const BLOCK: u64 = 0;

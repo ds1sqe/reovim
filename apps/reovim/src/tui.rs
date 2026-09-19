@@ -9,12 +9,13 @@ use std::rc::Rc;
 
 use reovim_client::dev::{self, Table, Want};
 use reovim_client::{Clip, Error, Fault, Host};
-use reovim_client_api::{BAR, Key, MATCH, SELECTION};
+use reovim_client_api::{BAR, Key, display};
 use reovim_client_tui::{Frame, Step, Tui};
 use reovim_host::{clipboard, term};
+use reovim_sdk::look;
 use reovim_sdk::path::under;
 use reovim_sdk::walk::ROOT;
-use reovim_sdk::{cell, ops, sgr};
+use reovim_sdk::{cell, ops};
 
 use crate::Fail;
 use crate::local::Local;
@@ -165,15 +166,17 @@ fn drive(tui: &mut Tui, serve: Serve, host: &Host) -> Result<u8, Fail> {
 fn draw(tui: &mut Tui, shape: &mut Option<u64>) -> Result<(), Fail> {
     let (cols, rows) = term::size()?;
     let frame = tui.frame(cols, rows)?;
-    let Frame { lines, cursor, shape: wanted, status, .. } = &frame;
+    let Frame { lines, cursor, shape: wanted, status, runs } = &frame;
     let wanted = *wanted;
     let text_rows = usize::from(rows.saturating_sub(1));
     let blank = String::new();
     let rest =
         std::iter::repeat_n(&blank, text_rows.saturating_sub(lines.len()));
     let mut screen = String::from("\x1b[?25l\x1b[H");
+    let none = Vec::new();
     for (row, line) in lines.iter().chain(rest).enumerate() {
-        let shown = painted(line, &runs(&frame, row));
+        let tuples = tupled(runs.get(row).unwrap_or(&none));
+        let shown = look::painted(line, &tuples);
         let _ = write!(screen, "\x1b[2K{shown}\r\n");
     }
     let status: String = status.chars().take(usize::from(cols)).collect();
@@ -189,48 +192,10 @@ fn draw(tui: &mut Tui, shape: &mut Option<u64>) -> Result<(), Fail> {
     Ok(out(screen.as_bytes())?)
 }
 
-/// What is drawn on the row `row`, already in the bytes of that row's
-/// own line: the selection inverted, a search match underlined, and
-/// every other style in the color it stands for, in paint order.
-fn runs(frame: &Frame, row: usize) -> Vec<(u64, u64, &'static str)> {
-    let row = u16::try_from(row).unwrap_or(u16::MAX);
-    reovim_client_tui::runs(frame, row)
-        .into_iter()
-        .map(|run| (run.from, run.to, code(run.style)))
-        .collect()
-}
-
-/// The SGR code `style` paints in: the tui's own two shapes, or the
-/// table every Driver under `/bin` and the app share.
-fn code(style: u64) -> &'static str {
-    match style {
-        SELECTION => "7",
-        MATCH => "4",
-        style => sgr::code(style),
-    }
-}
-
-/// `line` with each of `runs` in its SGR style, a run that overlaps
-/// the one before it left out; `to` past `line`'s own length is the
-/// newline's, shown as a space.
-fn painted(line: &str, runs: &[(u64, u64, &str)]) -> String {
-    let len = line.len();
-    let mut out = String::new();
-    let mut at = 0;
-    for &(from, to, code) in runs {
-        let from = usize::try_from(from).unwrap_or(len).min(len);
-        if from < at {
-            continue;
-        }
-        let raw_to = usize::try_from(to).unwrap_or(len);
-        let end = raw_to.min(len);
-        let newline = if raw_to > len { " " } else { "" };
-        let (head, mid) = (&line[at..from], &line[from..end]);
-        let _ = write!(out, "{head}\x1b[{code}m{mid}{newline}\x1b[0m");
-        at = end;
-    }
-    out.push_str(&line[at..]);
-    out
+/// `runs`, already looks and already bytes, as [`look::painted`] takes
+/// them.
+fn tupled(runs: &[display::Run]) -> Vec<(u64, u64, u64)> {
+    runs.iter().map(|run| (run.from, run.to, run.style)).collect()
 }
 
 fn out(bytes: &[u8]) -> Result<(), Fault> {
@@ -260,38 +225,27 @@ const fn map(key: term::Key) -> Key {
 
 #[cfg(test)]
 mod tests {
-    use reovim_client_api::{BLUE, GREEN};
-    use reovim_client_tui::Frame;
+    use reovim_client_api::display;
+    use reovim_sdk::{look, sgr};
 
-    use super::{painted, runs};
+    use super::tupled;
+
+    /// A row's runs, already resolved to looks as `on_row` leaves
+    /// them: what the app paints from, and no more.
+    fn run(from: u64, to: u64, meaning: u64) -> display::Run {
+        display::Run { from, to, style: sgr::look(meaning) }
+    }
 
     #[test]
-    fn every_run_of_a_row_is_drawn_in_the_color_its_style_stands_for() {
-        let lines = vec![String::from("bin  ls")];
-        let styled = vec![(0, 0, 3, BLUE), (0, 5, 7, GREEN), (1, 0, 1, BLUE)];
-        let frame = Frame { lines, styled, ..Frame::default() };
-        let drawn = painted("bin  ls", &runs(&frame, 0));
+    fn every_run_of_a_row_is_drawn_in_the_look_it_holds() {
+        let runs = vec![run(0, 3, sgr::BLUE), run(5, 7, sgr::GREEN)];
+        let drawn = look::painted("bin  ls", &tupled(&runs));
         assert_eq!(drawn, "\x1b[1;34mbin\x1b[0m  \x1b[32mls\x1b[0m");
     }
 
     #[test]
-    fn a_selection_through_the_newline_shows_that_byte_as_a_space() {
-        let lines = vec![String::from("abc")];
-        let frame =
-            Frame { lines, selection: vec![(0, 0, 4)], ..Frame::default() };
-        assert_eq!(painted("abc", &runs(&frame, 0)), "\x1b[7mabc \x1b[0m");
-    }
-
-    #[test]
-    fn a_run_that_overlaps_the_one_before_it_is_left_out() {
-        let lines = vec![String::from("bin  ls")];
-        let frame = Frame {
-            lines,
-            selection: vec![(0, 0, 7)],
-            styled: vec![(0, 0, 3, BLUE)],
-            ..Frame::default()
-        };
-        let drawn = painted("bin  ls", &runs(&frame, 0));
-        assert_eq!(drawn, "\x1b[7mbin  ls\x1b[0m", "the selection stands");
+    fn a_run_past_the_text_shows_that_byte_as_a_space() {
+        let runs = vec![run(0, 4, sgr::SELECTION)];
+        assert_eq!(look::painted("abc", &tupled(&runs)), "\x1b[7mabc \x1b[0m");
     }
 }

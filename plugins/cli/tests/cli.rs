@@ -8,11 +8,11 @@
 //! line, and the way out.
 
 use reovim_client::dev::{Clip, Table, Want};
-use reovim_client_api::{BLUE, GREEN, Key, Region};
+use reovim_client_api::{BLUE, GREEN, Key, Region, display};
 use reovim_client_tui::{Step, Tui};
 use reovim_kernel_interface::{Calls, Error, Rd};
 use reovim_rig::{Rig, Seen, Stub, frame, opened, pressed};
-use reovim_sdk::ops;
+use reovim_sdk::{ops, sgr};
 
 /// What the stub does on any key: the cli buffer asked for over the
 /// directory the file it was started over is in, which is what `:cli`
@@ -198,7 +198,8 @@ fn an_escape_a_batch_ends_inside_waits_for_the_batch_after_it() {
     assert_eq!(tui.tick(), Ok(Step::Changed), "no key was pressed");
     let frame = frame(&mut tui);
     assert_eq!(frame.lines[2], "onetwo", "the escapes are out of the text");
-    assert_eq!(frame.styled, [(2, 3, 6, GREEN)], "where the run stood");
+    let run = display::Run { from: 3, to: 6, style: sgr::look(GREEN) };
+    assert_eq!(frame.runs[2], [run], "where the run stood");
 }
 
 #[test]
@@ -211,8 +212,10 @@ fn a_listing_leaves_no_escape_in_the_text_and_a_span_per_name() {
     assert_eq!(listed.lines[1], "a  b  sub", "the text the Buffer holds");
     // `sub` is the one Container; `a` and `b` offer no api and were
     // written plain.
-    let at = u16::try_from("a  b  ".len()).unwrap();
-    assert_eq!(listed.styled, [(1, at, at + 3, BLUE)], "where it stood");
+    let at = u64::try_from("a  b  ".len()).unwrap();
+    let run = display::Run { from: at, to: at + 3, style: sgr::look(BLUE) };
+    let one = core::slice::from_ref(&run);
+    assert_eq!(listed.runs[1].as_slice(), one, "where it stood");
 
     // Every name of the tree's own root is a Container: each is a run
     // of its own on the one row.
@@ -220,14 +223,16 @@ fn a_listing_leaves_no_escape_in_the_text_and_a_span_per_name() {
     let root = frame(&mut tui);
     assert_eq!(root.lines[3], "bin  module  session  sys  var");
     let names = ["bin", "module", "session", "sys", "var"];
-    let mut spans = vec![(1, at, at + 3, BLUE)];
-    let mut from = 0u16;
+    let mut runs = vec![run];
+    let mut from = 0u64;
     for name in names {
-        let wide = u16::try_from(name.len()).unwrap();
-        spans.push((3, from, from + wide, BLUE));
+        let wide = u64::try_from(name.len()).unwrap();
+        let style = sgr::look(BLUE);
+        runs.push(display::Run { from, to: from + wide, style });
         from += wide + 2;
     }
-    assert_eq!(root.styled, spans, "five runs on the one row");
+    let flat: Vec<display::Run> = root.runs.iter().flatten().cloned().collect();
+    assert_eq!(flat, runs, "five runs on the one row, one on the other");
 }
 
 #[test]

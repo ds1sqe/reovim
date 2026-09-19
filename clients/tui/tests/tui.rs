@@ -25,7 +25,7 @@ use reovim_kernel_interface::{
     Booted, Calls, Driver, Error, Handle, Module, Rd, Reply, Rights,
 };
 use reovim_rig::{Limits, Rig, buffer_over, shown};
-use reovim_sdk::{cell, decode, encode, ops};
+use reovim_sdk::{cell, decode, encode, ops, sgr};
 use reovim_text_api::{history, publish, text};
 
 /// What a scripted Plugin does with the next key.
@@ -337,15 +337,18 @@ fn a_view_is_laid_out_over_the_tui_s_own_text() {
     let rig = Rig::new("layout");
     rig.file("note", "a\tb\n한글x\nlast\n".as_bytes());
     let (mut tui, stub) = over(&rig, Some("note"));
-    // The cursor on `b`, the second line selected, `x` a match.
+    // The cursor on `b`, the second line's name selected, `x` a match.
     let mut shown = view(2, "-- VISUAL LINE --");
-    shown.spans = vec![span(4, 12, SELECTION), span(10, 11, MATCH)];
+    shown.spans = vec![span(4, 10, SELECTION), span(10, 11, MATCH)];
     assert_eq!(press(&mut tui, &stub, Act::Show(shown)), Ok(Step::Changed));
     let frame = frame(&mut tui);
     assert_eq!(frame.lines, ["a       b", "한글x", "last"], "tab to its stop");
     assert_eq!(frame.cursor, (0, 8), "the cell after the tab");
-    assert_eq!(frame.selection, [(1, 0, 6)], "through its newline");
-    assert_eq!(frame.marks, [(1, 4, 5)], "a wide char is two cells");
+    let runs = [
+        display::Run { from: 0, to: 6, style: sgr::look(SELECTION) },
+        display::Run { from: 6, to: 7, style: sgr::look(MATCH) },
+    ];
+    assert_eq!(frame.runs[1], runs, "a wide char is two bytes, one look each");
 
     // The top line is the line the top byte is on; a narrow region
     // leaves the rest out.
@@ -358,19 +361,23 @@ fn a_view_is_laid_out_over_the_tui_s_own_text() {
 }
 
 #[test]
-fn a_span_of_any_other_style_reaches_the_frame_with_its_number() {
+fn a_span_of_any_other_style_reaches_the_frame_with_its_look() {
     let rig = Rig::new("styled");
     rig.file("note", "bin  ls\n한글x\n".as_bytes());
     let (mut tui, stub) = over(&rig, Some("note"));
     // The two names of the first row and a wide one of the second, in
-    // styles the tui draws neither of itself.
+    // looks the tui does not draw itself.
     let mut shown = view(0, "");
     shown.spans = vec![span(0, 3, BLUE), span(5, 7, GREEN), span(8, 14, RED)];
     assert_eq!(press(&mut tui, &stub, Act::Show(shown)), Ok(Step::Changed));
     let frame = frame(&mut tui);
-    let styled = [(0, 0, 3, BLUE), (0, 5, 7, GREEN), (1, 0, 4, RED)];
-    assert_eq!(frame.styled, styled, "each run of a row, in cells");
-    assert_eq!((frame.selection, frame.marks), (Vec::new(), Vec::new()));
+    let row0 = [
+        display::Run { from: 0, to: 3, style: sgr::look(BLUE) },
+        display::Run { from: 5, to: 7, style: sgr::look(GREEN) },
+    ];
+    assert_eq!(frame.runs[0], row0, "each run of a row, in bytes");
+    let row1 = [display::Run { from: 0, to: 6, style: sgr::look(RED) }];
+    assert_eq!(frame.runs[1], row1, "a wide char is two of its own bytes");
 }
 
 #[test]
@@ -706,13 +713,72 @@ fn a_selection_and_a_match_reach_the_display_s_runs() {
     assert_eq!(screen.lines[0].text, "bin  ls");
     assert_eq!(
         screen.lines[0].runs,
-        [display::Run { from: 0, to: 8, style: SELECTION }],
+        [display::Run { from: 0, to: 8, style: sgr::look(SELECTION) }],
         "through the line's own newline, one byte past its text"
     );
     assert_eq!(screen.lines[1].text, "한글x");
     assert_eq!(
         screen.lines[1].runs,
-        [display::Run { from: 6, to: 7, style: MATCH }],
+        [display::Run { from: 6, to: 7, style: sgr::look(MATCH) }],
         "the match on `x`, in the bytes of its own line"
     );
+}
+
+/// `text` shown with `spans` over it, row 0's runs once drawn: what a
+/// later span left over an earlier one, in the bytes of its own line.
+fn overlap(
+    name: &str,
+    text: &str,
+    spans: Vec<window::Span>,
+) -> Vec<display::Run> {
+    let rig = Rig::new(name);
+    rig.file("note", format!("{text}\n").as_bytes());
+    let (mut tui, stub, host) = hosted(&rig, Some("note"));
+    let ctx = host.own();
+    let at = cell::resolve(&ctx, ROOT, "/self/dev/display/0/text").unwrap();
+    let mut shown = view(0, "");
+    shown.spans = spans;
+    press(&mut tui, &stub, Act::Show(shown)).unwrap();
+    tui.frame(80, 24).unwrap();
+    let screen: display::Screen =
+        decode(&ops::bytes(&ctx, at).unwrap()).unwrap();
+    assert_eq!(screen.lines[0].text, text);
+    screen.lines[0].runs.clone()
+}
+
+#[test]
+fn a_selection_beginning_inside_a_match_is_whole() {
+    // A match on `bin` and a selection that begins inside it and runs
+    // on: the selection is on top of the whole of what it covers, the
+    // match standing only where the selection does not reach.
+    let spans = vec![span(0, 3, MATCH), span(1, 7, SELECTION)];
+    let runs = overlap("overlap-begins", "bin  ls", spans);
+    let expected = [
+        display::Run { from: 0, to: 1, style: sgr::look(MATCH) },
+        display::Run { from: 1, to: 7, style: sgr::look(SELECTION) },
+    ];
+    assert_eq!(runs, expected, "the selection stands whole");
+}
+
+#[test]
+fn a_selection_over_a_match_inside_it_is_one_run() {
+    // Vim gives its matches before its selection: a match entirely
+    // inside a later selection must vanish under it whole, not clip
+    // the selection down to where the match happens to start.
+    let spans = vec![span(3, 5, MATCH), span(0, 10, SELECTION)];
+    let runs = overlap("overlap-inside", "0123456789", spans);
+    let expected =
+        [display::Run { from: 0, to: 10, style: sgr::look(SELECTION) }];
+    assert_eq!(runs, expected, "one run, the selection whole");
+}
+
+#[test]
+fn a_match_partly_under_a_selection_is_its_head_then_the_selection() {
+    let spans = vec![span(0, 6, MATCH), span(4, 10, SELECTION)];
+    let runs = overlap("overlap-partial", "0123456789", spans);
+    let expected = [
+        display::Run { from: 0, to: 4, style: sgr::look(MATCH) },
+        display::Run { from: 4, to: 10, style: sgr::look(SELECTION) },
+    ];
+    assert_eq!(runs, expected, "the match's head, then the selection");
 }

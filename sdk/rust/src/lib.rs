@@ -8,9 +8,9 @@
 //! alone, `drivers!`, the Module a set of Drivers under one `bin` is,
 //! and the output cell one of them answers a run with. Beside them
 //! what both sides of a Resource read the same way: the log's
-//! entries, the ops anything makes over its own `Calls`, the seven
-//! colors a run may print in, and a Kernel instant as a calendar
-//! reads it. It links kernel/interface and nothing else.
+//! entries, the ops anything makes over its own `Calls`, a look and
+//! the meanings a theme resolves to one, and a Kernel instant as a
+//! calendar reads it. It links kernel/interface and nothing else.
 
 extern crate alloc;
 
@@ -20,6 +20,7 @@ mod declare;
 mod drivers;
 pub mod dynamic;
 pub mod log;
+pub mod look;
 pub mod ops;
 pub mod path;
 pub mod sgr;

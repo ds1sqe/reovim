@@ -382,9 +382,8 @@ impl Cli {
     }
 }
 
-/// What a control sequence begins with, and what a CSI's begins with.
+/// What a control sequence begins with.
 const ESC: char = '\x1b';
-const CSI: &str = "\x1b[";
 
 /// The text `said` holds with the escapes taken out, and one span per
 /// run of one, in the Buffer's bytes from `at`. A sequence this chunk
@@ -405,7 +404,7 @@ fn read(
         text.push_str(&rest[..esc]);
         let to = at + text.len() as u64;
         let ended = |run: window::Span| window::Span { to, ..run };
-        let Some((code, after)) = csi(&rest[esc..]) else {
+        let Some((code, after)) = sgr::csi(&rest[esc..]) else {
             carry.push_str(&rest[esc..]);
             rest = "";
             break;
@@ -423,20 +422,6 @@ fn read(
     let to = at + text.len() as u64;
     spans.extend(open.map(|run| window::Span { to, ..run }));
     (text, spans)
-}
-
-/// The control sequence `seq` begins with: the parameters of an SGR,
-/// `None` for a sequence that is not one, and what follows it either
-/// way. A CSI ends at its first byte of 0x40-0x7E, and an escape that
-/// begins no CSI is one byte of nothing. `None` for a sequence that is
-/// not whole yet, which is the chunk's carry.
-fn csi(seq: &str) -> Option<(Option<&str>, &str)> {
-    let Some(body) = seq.strip_prefix(CSI) else {
-        return (seq.len() > 1).then(|| (None, &seq[1..]));
-    };
-    let end = body.bytes().position(|b| (0x40..=0x7e).contains(&b))?;
-    let code = (body.as_bytes()[end] == b'm').then(|| &body[..end]);
-    Some((code, &body[end + 1..]))
 }
 
 #[cfg(test)]

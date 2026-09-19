@@ -435,6 +435,27 @@ rows_match
 resized 24
 rows_match
 
+# --- a selection and a search match, painted as SGR -------------------
+# 08.1: the display holds looks and `capture` writes them. `--color` on
+# the cli is the shell's one fact; plain and painted read the same
+# runs, so a colored capture and the plain pane agree once stripped.
+painted() {
+    "$BIN" cli --color capture "$screen/text" | head -n -1
+}
+keys new v i w
+[[ "$(painted)" == *$'\x1b[7mfresh\x1b[0m'* ]] \
+    || fail "a selection is not inverse: $(painted)"
+[[ "$(captured)" == "$("${TMUX[@]}" capture-pane -p -t new)" ]] \
+    || fail "a selection changes the plain capture: $(captured)"
+keys new Escape
+keys new : s e t " " h l s Enter
+keys new / f r e s h Enter
+[[ "$(painted)" == *$'\x1b[4mfresh\x1b[0m'* ]] \
+    || fail "a search match is not underlined: $(painted)"
+[[ "$(captured)" == "$("${TMUX[@]}" capture-pane -p -t new)" ]] \
+    || fail "a search match changes the plain capture: $(captured)"
+keys new : n o h Enter
+
 # --- /sys as sysfs: the parameters, the facts, the core -------------
 # A file per parameter under /sys/limit, each in decimal and each
 # settable; a file per fact under /sys/info, each made at the read and
@@ -550,6 +571,23 @@ shown explore '^one$'
 keys explore : q Enter
 ended explore
 [[ "$ENDED" == 0 ]] || fail ":q left the file the listing opened"
+
+# The explorer colors a Container bold blue, the same rule a listing
+# colors names by; a socket of its own so a plain `cli` reaches it.
+start colors "$DIR/tree" "$BIN --socket $DIR/colors.sock ."
+editing colors tree
+shown colors '^\.\./'
+colored="$("$BIN" cli --socket "$DIR/colors.sock" --color capture \
+    /session/1/client/1/self/dev/display/0/text | head -n -1)"
+[[ "$colored" == *$'\x1b[1;34m../\x1b[0m'* ]] \
+    || fail "../ is not bold blue: $colored"
+plain="$("$BIN" cli --socket "$DIR/colors.sock" capture \
+    /session/1/client/1/self/dev/display/0/text | head -n -1)"
+[[ "$plain" == "$("${TMUX[@]}" capture-pane -p -t colors)" ]] \
+    || fail "the plain capture of a coloured name is not the pane: $plain"
+keys colors : q Enter
+ended colors
+[[ "$ENDED" == 0 ]] || fail ":q left the coloured listing"
 
 # A directory named on the command line is listed the same way, and
 # `:q` in a listing leaves with 0, there being nothing to lose.

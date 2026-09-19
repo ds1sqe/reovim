@@ -1008,9 +1008,12 @@ impl Vim {
             _ => Vec::new(),
         };
         let marks = self.search_spans(self.top, height);
+        // A match first, a selection last: the selection is on top
+        // where the two overlap, whole even where it begins inside a
+        // match.
         let mut spans: Vec<window::Span> =
-            selected.into_iter().map(span(SELECTION)).collect();
-        spans.extend(marks.into_iter().map(span(MATCH)));
+            marks.into_iter().map(span(MATCH)).collect();
+        spans.extend(selected.into_iter().map(span(SELECTION)));
         window::View {
             over: self.buffer.unwrap_or(NONE),
             top: self.line_at(self.top).unwrap_or(0) as u64,

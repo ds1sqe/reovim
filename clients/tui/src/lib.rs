@@ -19,14 +19,13 @@ extern crate alloc;
 use alloc::format;
 use alloc::rc::Rc;
 use alloc::string::String;
+use alloc::vec;
 use alloc::vec::Vec;
 
 use reovim_client::{Host, HostCalls};
-use reovim_client_api::{
-    BAR, Key, MATCH, NONE, SELECTION, display, open, window,
-};
+use reovim_client_api::{BAR, Key, NONE, display, open, window};
 use reovim_kernel_interface::{Calls, Error, Event, Handle, Kind, Rd, Rights};
-use reovim_sdk::{cell, decode, encode, ops};
+use reovim_sdk::{cell, decode, encode, ops, sgr};
 use reovim_text_api::history;
 
 /// The cells a char takes: the declarations', drawn on here and by the
@@ -51,10 +50,10 @@ pub enum Step {
 ///
 /// `rows - 1` text rows as the terminal shows them (a tab already the
 /// spaces to its stop, a wide char two cells), the cursor as (row,
-/// cell) on them, the selected cells as `(row, from, to)` with `to`
-/// exclusive, the spans of every other style in that shape with the
-/// style after them, and the status row.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+/// cell) on them, `runs` a line the same shape `display::Line`'s own
+/// are (already resolved to a look and to the bytes of that line), and
+/// the status row.
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Frame {
     pub lines: Vec<String>,
     pub cursor: (u16, u16),
@@ -62,13 +61,11 @@ pub struct Frame {
     /// terminal: the cell it names is the one it is drawn over, or the
     /// one it stands before.
     pub shape: u64,
-    pub selection: Vec<(u16, u16, u16)>,
-    /// Search matches, in the selection's shape.
-    pub marks: Vec<(u16, u16, u16)>,
-    /// Every span of a style the tui does not draw itself, in that
-    /// shape with the style the View gave it: what a style means is
-    /// the app's, which has the terminal.
-    pub styled: Vec<(u16, u16, u16, u64)>,
+    /// Every row's runs, aligned with `lines`: a later one on top of
+    /// what it covers, resolved against the theme already, so what
+    /// `drew` writes and the app paints needs none. What a meaning
+    /// means is the theme's, which is asked here and nowhere else.
+    pub runs: Vec<Vec<display::Run>>,
     pub status: String,
 }
 
@@ -255,10 +252,10 @@ impl Tui {
         let lines = frame
             .lines
             .iter()
-            .enumerate()
-            .map(|(row, text)| display::Line {
+            .zip(&frame.runs)
+            .map(|(text, runs)| display::Line {
                 text: text.clone(),
-                runs: runs(frame, cell(row)),
+                runs: runs.clone(),
             })
             .collect();
         let cursor = frame.lines.get(usize::from(frame.cursor.0));
@@ -483,7 +480,9 @@ impl Tui {
     }
 
     /// What of the View falls on the row `row`, the line of bytes
-    /// `at..end`: its spans in cells, and the cursor when it is there.
+    /// `at..end`: its spans, meaning resolved to a look and cells to
+    /// the bytes of `frame.lines[row]` (already pushed), and the
+    /// cursor when it is there.
     fn on_row(
         &self,
         frame: &mut Frame,
@@ -496,14 +495,14 @@ impl Tui {
         let cells = |span: &window::Span| {
             span_on(line, at, end, span).map(|at| (span.style, at))
         };
-        for (style, (from, to)) in view.spans.iter().filter_map(cells) {
-            let (from, to) = (cell(from), cell(to));
-            match style {
-                SELECTION => frame.selection.push((row, from, to)),
-                MATCH => frame.marks.push((row, from, to)),
-                style => frame.styled.push((row, from, to, style)),
-            }
-        }
+        let spans: Vec<(u64, u16, u16)> = view
+            .spans
+            .iter()
+            .filter_map(cells)
+            .map(|(style, (from, to))| (style, cell(from), cell(to)))
+            .collect();
+        let resolved = rowed(&frame.lines[usize::from(row)], &spans);
+        frame.runs.push(resolved);
         if (at..=end).contains(&cursor) {
             let at = cell_at(line, cursor - at, view.shape);
             frame.cursor = (row, cell(at.min(width - 1)));
@@ -633,35 +632,48 @@ fn span_on(
     (from < to).then_some((from, to))
 }
 
-/// `frame`'s runs on its row `row`, converted from cells to bytes.
+/// `spans` (meaning, cell-from, cell-to) on one row, resolved to looks
+/// and to the bytes of `shown` — that row already truncated to its own
+/// width, as the terminal draws it.
 ///
-/// The selection first, a match next, every other style after, all
-/// then sorted by where they start — the order the app paints in. A
-/// run past the line's own cells takes the byte past its text, which
-/// is how a whole selected line shows; a row past `frame.lines` has
-/// none.
-pub fn runs(frame: &Frame, row: u16) -> Vec<display::Run> {
-    let Some(line) = frame.lines.get(usize::from(row)) else {
-        return Vec::new();
-    };
-    let here = |at: u16| at == row;
-    let mut runs: Vec<(u16, u16, u64)> = Vec::new();
-    let selected = frame.selection.iter().filter(|s| here(s.0));
-    runs.extend(selected.map(|s| (s.1, s.2, SELECTION)));
-    let marked = frame.marks.iter().filter(|s| here(s.0));
-    runs.extend(marked.map(|s| (s.1, s.2, MATCH)));
-    let styled = frame.styled.iter().filter(|s| here(s.0));
-    runs.extend(styled.map(|s| (s.1, s.2, s.3)));
-    runs.sort_by_key(|run| run.0);
-    let cells: usize = line.chars().map(width).sum();
-    runs.into_iter()
-        .map(|(from, to, style)| {
-            let past = usize::from(usize::from(to) > cells);
-            let from = byte_at_cell(line, from);
-            let to = byte_at_cell(line, to) + past;
-            display::Run { from: as64(from), to: as64(to), style }
-        })
-        .collect()
+/// A View's spans are in paint order: painted here into one look a
+/// cell, a later one over whatever an earlier one left, so a span is
+/// whole wherever it stands and nothing needs a sort or a clip to say
+/// so. A span the theme holds no look for paints nothing — it does not
+/// erase what is already there. One cell past `shown`'s own is the
+/// newline a run may take, which is how a whole selected line shows;
+/// equal neighbours, that one included, then coalesce into runs.
+fn rowed(shown: &str, spans: &[(u64, u16, u16)]) -> Vec<display::Run> {
+    let cells: usize = shown.chars().map(width).sum();
+    let mut looks = vec![0u64; cells + 1];
+    for &(style, from, to) in spans {
+        let look = sgr::look(style);
+        if look == 0 {
+            continue;
+        }
+        let from = usize::from(from).min(looks.len());
+        let to = usize::from(to).min(looks.len());
+        looks[from..to].fill(look);
+    }
+    let mut runs = Vec::new();
+    let mut at = 0;
+    while at < looks.len() {
+        let look = looks[at];
+        let changed = looks[at..].iter().position(|&next| next != look);
+        let end = changed.map_or(looks.len(), |n| at + n);
+        if look != 0 {
+            let newline = usize::from(end > cells);
+            let from = byte_at_cell(shown, cell(at));
+            let to = byte_at_cell(shown, cell(end.min(cells))) + newline;
+            runs.push(display::Run {
+                from: as64(from),
+                to: as64(to),
+                style: look,
+            });
+        }
+        at = end;
+    }
+    runs
 }
 
 /// The byte index in `line` where screen cell `cell` starts, or its

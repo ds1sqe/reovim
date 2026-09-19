@@ -2,9 +2,11 @@
 //! slots it is served through are the crate's.
 //!
 //! One run answers with an output cell holding the rows a `text` cell
-//! was last drawn with, the status among them, and the cursor on a
-//! last line. A target that holds no `Screen` fails the run and
-//! leaves no cell.
+//! was last drawn with, each in its own runs painted as SGR, the
+//! status among them, and the cursor on a last line. A target that
+//! holds no `Screen` fails the run and leaves no cell. No table and no
+//! theme stand here: a look is bits already, and `look::painted` asks
+//! nothing else to draw it.
 //!
 //! Under `f` the cell goes on: the run watches its target, and a read
 //! at the cell's end answers the whole screen again for every change
@@ -18,7 +20,7 @@ use core::fmt::Write;
 use reovim_client_api::{BAR, display, width};
 use reovim_kernel_interface::{Calls, Error, Event, Handle, Kind, Rd};
 use reovim_sdk::cell::{self, Follow};
-use reovim_sdk::{decode, ops};
+use reovim_sdk::{decode, look, ops};
 
 use crate::Sysutils;
 
@@ -71,7 +73,7 @@ fn shown(ctx: &dyn Calls, target: Rd) -> Result<Vec<u8>, Error> {
     let text_rows = usize::try_from(screen.rows).unwrap_or(usize::MAX);
     let mut text = String::new();
     for line in &screen.lines {
-        text.push_str(line.text.trim_end_matches(' '));
+        text.push_str(painted(line).trim_end_matches(' '));
         text.push('\n');
     }
     for _ in screen.lines.len()..text_rows.saturating_sub(1) {
@@ -83,6 +85,16 @@ fn shown(ctx: &dyn Calls, target: Rd) -> Result<Vec<u8>, Error> {
     let (row, col) = (screen.row, column(&screen));
     let _ = writeln!(text, "cursor {row} {col} {shape}");
     Ok(text.into_bytes())
+}
+
+/// `line`'s own text with every run of it in the look it names, no
+/// table and no theme: `look::painted` reads the bits, and a look no
+/// reader recognizes still prints its own SGR. The trim above cuts
+/// trailing spaces off, which a run's own escape never ends in.
+fn painted(line: &display::Line) -> String {
+    let runs: Vec<(u64, u64, u64)> =
+        line.runs.iter().map(|run| (run.from, run.to, run.style)).collect();
+    look::painted(&line.text, &runs)
 }
 
 /// The cell of its cursor's line where the byte `screen.col` names

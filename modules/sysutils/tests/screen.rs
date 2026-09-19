@@ -13,7 +13,7 @@ use reovim_client_api::{BAR, Key, display, keyboard};
 use reovim_module_sysutils::bins::{capture, keys};
 use reovim_rig::bins::{ran, said};
 use reovim_rig::{Rig, screen};
-use reovim_sdk::{cell, decode, encode, ops};
+use reovim_sdk::{cell, decode, encode, look, ops};
 
 /// A Client with no Plugin at all: the cells of `/self/dev` are what
 /// these cases judge, and a region is nobody's.
@@ -72,6 +72,98 @@ fn a_run_prints_the_rows_of_a_screen_and_the_cursor_last() {
     };
     drew(&ctx, &bar);
     assert_eq!(printed().as_deref(), Ok("\n\n한a\n\ncursor 2 2 bar\n"));
+}
+
+/// `text` a `Line`, its whole span one run of `style`.
+fn styled(text: &str, style: u64) -> display::Line {
+    let to = u64::try_from(text.len()).unwrap_or(u64::MAX);
+    let run = display::Run { from: 0, to, style };
+    display::Line { text: text.to_string(), runs: vec![run] }
+}
+
+/// A `Screen` of `lines`, plain apart from their own runs.
+const fn drawn(rows: u64, lines: Vec<display::Line>) -> display::Screen {
+    display::Screen {
+        rows,
+        row: 0,
+        col: 0,
+        shape: BAR,
+        lines,
+        status: String::new(),
+    }
+}
+
+#[test]
+fn a_run_of_each_kind_writes_its_own_sgr() {
+    let rig = Rig::new("capture-looks");
+    let host = editor(&rig);
+    let ctx = host.own();
+    let run = at(&ctx, "/self/bin/capture");
+    let printed = || said(&ctx, run, &args(false, DISPLAY));
+
+    // No table and no theme: `capture` asks `look::painted` for the
+    // bits and nothing else, a palette 0-7, 8-15, past 15, an rgb fg
+    // and bg, and bold with inverse together.
+    let screen = drawn(
+        8,
+        vec![
+            styled("bin", look::fg(look::palette(4))),
+            styled("etc", look::bg(look::palette(12))),
+            styled("var", look::fg(look::palette(208))),
+            styled("usr", look::fg(look::rgb(1, 2, 3))),
+            styled("dev", look::bg(look::rgb(4, 5, 6))),
+            styled("opt", look::BOLD | look::INVERSE),
+        ],
+    );
+    drew(&ctx, &screen);
+    let out = printed().unwrap();
+    let lines: Vec<&str> = out.lines().collect();
+    assert_eq!(lines[0], "\x1b[34mbin\x1b[0m");
+    assert_eq!(lines[1], "\x1b[104metc\x1b[0m");
+    assert_eq!(lines[2], "\x1b[38;5;208mvar\x1b[0m");
+    assert_eq!(lines[3], "\x1b[38;2;1;2;3musr\x1b[0m");
+    assert_eq!(lines[4], "\x1b[48;2;4;5;6mdev\x1b[0m");
+    assert_eq!(lines[5], "\x1b[1;7mopt\x1b[0m");
+}
+
+#[test]
+fn a_look_no_theme_names_still_writes_its_sgr() {
+    let rig = Rig::new("capture-unknown-look");
+    let host = editor(&rig);
+    let ctx = host.own();
+    let run = at(&ctx, "/self/bin/capture");
+    let printed = || said(&ctx, run, &args(false, DISPLAY));
+
+    // `italic` and `strike` name no row of the theme at all, and
+    // `capture` writes their bits regardless: a reader shows what its
+    // own colours allow, and no table stands between it and them.
+    let unnamed = look::ITALIC | look::STRIKE;
+    let screen = drawn(2, vec![styled("hi", unnamed)]);
+    drew(&ctx, &screen);
+    let out = printed().unwrap();
+    let lines: Vec<&str> = out.lines().collect();
+    assert_eq!(lines[0], "\x1b[3;9mhi\x1b[0m", "no table, no theme, just bits");
+}
+
+#[test]
+fn a_run_past_the_text_is_clamped_to_one_space() {
+    let rig = Rig::new("capture-clamped-run");
+    let host = editor(&rig);
+    let ctx = host.own();
+    let run = at(&ctx, "/self/bin/capture");
+    let printed = || said(&ctx, run, &args(false, DISPLAY));
+
+    // `to` one past `text`'s own length is the newline a selection
+    // runs into: `painted` clamps it to one space, as the app draws
+    // it, and never panics on a byte past the text.
+    let past = display::Run { from: 0, to: 3, style: look::INVERSE };
+    let line = display::Line { text: "hi".to_string(), runs: vec![past] };
+    let screen = drawn(2, vec![line]);
+    drew(&ctx, &screen);
+    let out = printed().unwrap();
+    let lines: Vec<&str> = out.lines().collect();
+    let shown = "\x1b[7mhi \x1b[0m";
+    assert_eq!(lines[0], shown, "the byte past the text is a space");
 }
 
 #[test]

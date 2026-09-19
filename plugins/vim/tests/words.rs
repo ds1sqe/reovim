@@ -13,8 +13,10 @@ use std::rc::Rc;
 
 use reovim_client::Host;
 use reovim_client::dev::{Clip, Table, Want};
+use reovim_client_api::MATCH;
 use reovim_client_tui::{Step, Tui};
 use reovim_rig::{Rig, Seen, Stub, listed, opened, typed};
+use reovim_sdk::sgr;
 
 /// The one editor a test drives, over whichever Plugin the table gives.
 type Editor = Tui;
@@ -77,10 +79,15 @@ fn done(name: &str, keys: &str) -> String {
         Step::Quit(_) => String::from("quit"),
         _ => frame.status.clone(),
     };
+    let marks = frame
+        .runs
+        .iter()
+        .flatten()
+        .filter(|run| run.style == sgr::look(MATCH))
+        .count();
     format!(
-        "{step:?} [{status}] {:?} disk={disk:?} marks={} listed={}",
+        "{step:?} [{status}] {:?} disk={disk:?} marks={marks} listed={}",
         frame.lines,
-        frame.marks.len(),
         seen.borrow().len()
     )
 }

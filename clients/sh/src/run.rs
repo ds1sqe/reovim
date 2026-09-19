@@ -20,7 +20,7 @@ use reovim_kernel_interface::{
 };
 use reovim_sdk::dynamic::{self, Value};
 use reovim_sdk::walk::ROOT;
-use reovim_sdk::{cell, ops};
+use reovim_sdk::{cell, ops, sgr};
 
 use crate::{Miss, Shell, Step, decode, miss, resolved};
 
@@ -64,6 +64,13 @@ pub struct Open {
     /// Where a redirect puts the bytes, and what it has taken: a run
     /// that follows goes on writing where its first batch went.
     into: Option<Pour>,
+    /// Whether the shell asked for color on this stage: off, every read
+    /// with nowhere to pour strips a bin's own escapes before the
+    /// holder sees them, no bin having to ask what it is drawing for.
+    /// A redirect takes the bytes as the bin wrote them either way —
+    /// capture should be byte, and a file is not a reader to render
+    /// for.
+    color: bool,
 }
 
 /// Where a redirect puts a run's output: the target as typed, and `>>`,
@@ -95,11 +102,15 @@ impl Open {
         }
     }
 
-    /// One reading, into the redirect's target where the run has one,
-    /// which the holder then sees nothing of.
+    /// One reading, into the redirect's target where the run has one —
+    /// whole, the bin's own escapes and all, since a file is not a
+    /// reader for `color` to be asked of — or to the holder, stripped
+    /// of a bin's own escapes where the shell asked for no color.
     fn read(&mut self, ctx: &dyn Calls) -> Result<(Vec<u8>, bool), Miss> {
         let (bytes, ended) = reading(ctx, &self.name, self.h, &mut self.at)?;
-        let Some((rd, at)) = self.into else { return Ok((bytes, ended)) };
+        let Some((rd, at)) = self.into else {
+            return Ok((self.plain(bytes), ended));
+        };
         let refused = |e: Error| miss(&self.name, &self.typed, Step::Op, e, "");
         let wrote = bytes.len() as u64;
         written(ctx, rd, at, bytes).map_err(refused)?;
@@ -115,6 +126,18 @@ impl Open {
     pub fn close(&mut self, ctx: &dyn Calls) -> Result<(), Miss> {
         let refused = |e: Error| miss(&self.name, "", Step::Op, e, "");
         closed(ctx, self.h).map_err(refused)
+    }
+
+    /// `bytes` bound for the holder, a bin's own escapes taken out when
+    /// this stage asked for none: the one fact is the shell's `color`,
+    /// so a bin that declares it is told it and every other bin's
+    /// bytes are stripped here regardless of what it wrote. `cat` of
+    /// anything is a bin too, so this never touches a byte that is not
+    /// whole of an escape sequence — `sgr::plain` works on the bytes
+    /// themselves and asks nothing of them being text. Bytes bound for
+    /// a redirect never reach here: `read` writes those whole.
+    fn plain(&self, bytes: Vec<u8>) -> Vec<u8> {
+        if self.color { bytes } else { sgr::plain(&bytes) }
     }
 }
 
@@ -278,14 +301,23 @@ pub fn under_path(
     args: &[&str],
     sink: Option<Sink<'_>>,
 ) -> Result<Ran, Miss> {
+    let color = colored(shell);
     let (cell, into) = called(ctx, shell, name, args, sink)?;
     let typed = args.join(" ");
     let refused = |e: Error| miss(name, &typed, Step::Op, e, "");
     let h = ctx.open(cell, Rights::READ).map_err(refused)?;
     let name = name.to_string();
-    let mut open = Open { name, typed, h, at: 0, into };
+    let mut open = Open { name, typed, h, at: 0, into, color };
     let (out, ended) = open.more(ctx)?;
     Ok(Ran { out, open: (!ended).then_some(open) })
+}
+
+/// Whether `shell` was given color: the one fact a bin that declares
+/// its own `color` field is told, and [`Open::read`] strips a last
+/// stage's bytes by when it is off.
+fn colored(shell: &Shell) -> bool {
+    let color = shell.env.iter().find(|(name, _)| name == "color");
+    matches!(color, Some((_, Value::Bool(true))))
 }
 
 /// The rd of `name` under the first directory of PATH that holds it;

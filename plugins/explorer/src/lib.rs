@@ -6,10 +6,12 @@
 //! It knows no filesystem and no Module. A Container is whatever the
 //! tree says is one, and its listing is `children`, `info` and the
 //! name each child has under it: `../` first where there is a parent,
-//! then the Containers with a `/` after the name, then the cells. The
-//! listing goes into a scratch draft of `/self/dev/buffers`, whole, so
-//! a refill is one write and no wire message, and the View names that
-//! draft, which is what the Client lays out.
+//! then the Containers with a `/` after the name, then the cells,
+//! each span a Container bold blue and a cell that offers an api
+//! green, the same rule a listing colors names by. The listing goes
+//! into a scratch draft of `/self/dev/buffers`, whole, so a refill is
+//! one write and no wire message, and the View names that draft,
+//! which is what the Client lays out.
 //!
 //! Nothing here opens what it lists. Enter asks the Client to show the
 //! entry under the cursor, naming no Plugin, so which Plugin a
@@ -28,7 +30,9 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::cell::RefCell;
 
-use reovim_client_api::{BLOCK, Key, NONE, Surface, count, drafted, window};
+use reovim_client_api::{
+    BLOCK, BLUE, GREEN, Key, NONE, Surface, count, drafted, window,
+};
 use reovim_kernel_interface::{
     Booted, Calls, Driver, Error, Event, Flags, Handle, Kind, Module, Rd,
     Reply, Rights,
@@ -57,6 +61,9 @@ struct Entry {
     name: String,
     /// A Container is shown with a `/` after its name.
     container: bool,
+    /// A cell that offers an api, colored the same as a listing colors
+    /// one.
+    api: bool,
 }
 
 impl Entry {
@@ -69,6 +76,18 @@ impl Entry {
     /// What that line takes, its newline apart.
     fn bytes(&self) -> usize {
         self.name.len() + usize::from(self.container)
+    }
+
+    /// A Container bold blue, a cell that offers an api green, else
+    /// none — the same rule a listing colors names by.
+    const fn style(&self) -> Option<u64> {
+        if self.container {
+            Some(BLUE)
+        } else if self.api {
+            Some(GREEN)
+        } else {
+            None
+        }
     }
 }
 
@@ -345,7 +364,7 @@ impl Explorer {
             top: byte_at(&self.entries, self.top),
             cursor: byte_at(&self.entries, self.at),
             shape: BLOCK,
-            spans: Vec::new(),
+            spans: spans(&self.entries),
             status: self.status(),
         }
     }
@@ -374,7 +393,7 @@ fn listing(ctx: &dyn Calls, dir: Rd) -> Result<Vec<Entry>, Error> {
     let mut entries = Vec::new();
     if let Some(parent) = parent_of(ctx, dir)? {
         let name = String::from("..");
-        entries.push(Entry { rd: parent, name, container: true });
+        entries.push(Entry { rd: parent, name, container: true, api: false });
     }
     let mut below = Vec::new();
     for rd in ops::children(ctx, dir)? {
@@ -393,7 +412,24 @@ fn listing(ctx: &dyn Calls, dir: Rd) -> Result<Vec<Entry>, Error> {
 fn entry(ctx: &dyn Calls, rd: Rd) -> Result<Entry, Error> {
     let info = ops::info(ctx, rd)?;
     let container = info.flags.contains(Flags::CONTAINER);
-    Ok(Entry { rd, name: info.name.unwrap_or_default(), container })
+    let api = !info.apis.is_empty();
+    Ok(Entry { rd, name: info.name.unwrap_or_default(), container, api })
+}
+
+/// A span over each entry's own line, colored as [`Entry::style`]
+/// says, none for the rest: the same rule a listing colors names by,
+/// asked here and resolved to a look in clients/tui's own layout.
+fn spans(entries: &[Entry]) -> Vec<window::Span> {
+    let mut at = 0;
+    let mut spans = Vec::new();
+    for entry in entries {
+        let bytes = u64::try_from(entry.bytes()).unwrap_or(u64::MAX);
+        if let Some(style) = entry.style() {
+            spans.push(window::Span { from: at, to: at + bytes, style });
+        }
+        at += bytes + 1;
+    }
+    spans
 }
 
 /// The Container above `dir`, or nothing at the tree's root, which has

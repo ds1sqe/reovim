@@ -1,11 +1,12 @@
 //! A typed line over the rig: the name resolved under `/bin`, the
 //! record filled from the tokens, and the output cell read to its end.
 
+use reovim_client_api::{BAR, display};
 use reovim_client_sh::{Shell, ran, run};
 use reovim_kernel_interface::{Calls, Error, Rd};
 use reovim_rig::Rig;
 use reovim_sdk::walk::ROOT;
-use reovim_sdk::{cell, ops};
+use reovim_sdk::{cell, encode, look, ops};
 
 mod common;
 use common::typed;
@@ -433,6 +434,92 @@ fn a_line_that_redirects_or_pipes_writes_for_no_screen_at_all() {
     let line = format!("ls /module | grep text > {root}/out");
     assert_eq!(typed(ctx, &mut shell, &line), "");
     assert_eq!(ops::bytes(ctx, out), Ok(b"text\n".to_vec()));
+}
+
+/// A `Screen` of one line, its whole span inverse: what `capture`
+/// always paints, a bin that declares no `color` of its own and so
+/// asks the shell nothing about it.
+fn inverse(text: &str) -> Vec<u8> {
+    let to = u64::try_from(text.len()).unwrap_or(u64::MAX);
+    let run = display::Run { from: 0, to, style: look::INVERSE };
+    let line = display::Line { text: text.to_string(), runs: vec![run] };
+    encode(&display::Screen {
+        rows: 2,
+        row: 0,
+        col: 0,
+        shape: BAR,
+        lines: vec![line],
+        status: String::new(),
+    })
+}
+
+#[test]
+fn color_strips_or_keeps_a_bin_s_own_escapes_at_the_last_stage() {
+    let rig = Rig::new("sh-color-strip");
+    rig.file("screen", &inverse("hi"));
+    let host = rig.host();
+    let ctx = &host.own();
+    let root = "/module/fs/root";
+    let line = format!("capture {root}/screen");
+
+    // `capture` never asks the shell for `color`: it always paints its
+    // runs, and the shell strips them at the read where color is off.
+    let mut shell = Shell::default();
+    shell.screen(0, false);
+    let plain = typed(ctx, &mut shell, &line);
+    assert!(!plain.contains('\x1b'), "no escape is left: {plain:?}");
+    assert_eq!(plain, "hi\n\ncursor 0 0 bar\n");
+
+    // The same run, asked for color: the escapes stand.
+    let mut shell = Shell::default();
+    shell.screen(0, true);
+    let painted = typed(ctx, &mut shell, &line);
+    assert!(painted.contains("\x1b[7mhi\x1b[0m"), "escapes stand: {painted:?}");
+}
+
+#[test]
+fn a_redirect_target_holds_exactly_what_the_bin_wrote() {
+    let rig = Rig::new("sh-color-redirect");
+    rig.file("screen", &inverse("hi"));
+    rig.file("out", b"");
+    let host = rig.host();
+    let ctx = &host.own();
+    let root = "/module/fs/root";
+    let out = cell::resolve(ctx, ROOT, &format!("{root}/out")).unwrap();
+
+    // A file is not a reader for `color` to be asked of: capture should
+    // be byte, so a redirect target holds the run's own bytes whole,
+    // escapes and all, whatever the shell's own color asks for.
+    for color in [false, true] {
+        let mut shell = Shell::default();
+        shell.screen(0, color);
+        let line = format!("capture {root}/screen > {root}/out");
+        let printed = typed(ctx, &mut shell, &line);
+        assert_eq!(printed, "", "a redirect prints nothing, color={color}");
+        let held = ops::bytes(ctx, out).unwrap();
+        let expected = b"\x1b[7mhi\x1b[0m\n\ncursor 0 0 bar\n";
+        assert_eq!(held, expected, "color={color}");
+    }
+}
+
+#[test]
+fn a_redirect_copies_a_file_byte_for_byte_escapes_and_all() {
+    let rig = Rig::new("sh-color-cat-copy");
+    // A whole SGR run and a bare escape with nothing after it: neither
+    // is a Driver's own colour to strip, the file holding them as its
+    // own content — `cat` declares no `color` either.
+    let content: &[u8] = b"a\x1b[7mb\x1b[0m\x00\x1b";
+    rig.file("f", content);
+    rig.file("g", b"");
+    let host = rig.host();
+    let ctx = &host.own();
+    let root = "/module/fs/root";
+    let g = cell::resolve(ctx, ROOT, &format!("{root}/g")).unwrap();
+    let mut shell = Shell::default();
+    shell.screen(0, false);
+    let line = format!("cat {root}/f > {root}/g");
+    assert_eq!(typed(ctx, &mut shell, &line), "");
+    assert_eq!(ops::bytes(ctx, g).unwrap(), content, "byte for byte");
 }
 
 #[test]
