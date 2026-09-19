@@ -850,8 +850,30 @@ check_cache_owner_for_path() {
             printf '%s\n' global
             return
             ;;
+        # apps/web/check.sh already builds and tests this browser-side
+        # TypeScript unconditionally, every run; none of it is a Cargo
+        # package, so a change here is conservatively global, the same
+        # as scripts/* above.
+        apps/web/* | clients/gui/* | sdk/typescript/* | modules/hello/*)
+            printf '%s\n' global
+            return
+            ;;
+        # A top-level directory's own README (one per directory, kept
+        # true) is prose, not that directory's source; a README nested
+        # inside a package, like a package's own, still falls through
+        # to check_cache_package_owner below.
+        */README.md)
+            if [[ "${path%/README.md}" != */* ]]; then
+                printf '%s\n' documentation
+                return
+            fi
+            ;;
     esac
-    check_cache_package_owner "$path" "$graph"
+    check_cache_package_owner "$path" "$graph" || {
+        check_cache_issue CHECK_CACHE_UNOWNED_PATH \
+            "no ownership rule matches: $path"
+        return 1
+    }
 }
 
 check_cache_seal_file() {
@@ -1569,6 +1591,7 @@ check_cache_run_graph_fixtures() {
     local direct="$directory/fixture-direct"
     local selected="$directory/fixture-selected"
     local expected="$directory/fixture-expected"
+    local error
 
     {
         printf 'workspace\tfixture\tCargo.toml\tCargo.lock\n'
@@ -1586,6 +1609,33 @@ check_cache_run_graph_fixtures() {
             'toolchain window did not invalidate global coverage'
         return 1
     fi
+    if [[ "$(check_cache_owner_for_path clients/README.md "$graph")" \
+        != documentation ]]; then
+        check_cache_issue CHECK_CACHE_FIXTURE \
+            "a top-level directory's README had no owner"
+        return 1
+    fi
+    if [[ "$(check_cache_owner_for_path \
+        product/kernel/README.md "$graph")" != package:fixture:kernel ]]
+    then
+        check_cache_issue CHECK_CACHE_FIXTURE \
+            "a package's own README was not owned by its package"
+        return 1
+    fi
+    error="$(check_cache_owner_for_path \
+        clients/unowned.rs "$graph" 2>&1 1>/dev/null)" && {
+        check_cache_issue CHECK_CACHE_FIXTURE \
+            'an unowned path unexpectedly resolved'
+        return 1
+    }
+    case "$error" in
+        *'clients/unowned.rs'*) ;;
+        *)
+            check_cache_issue CHECK_CACHE_FIXTURE \
+                'an unowned path was not named in the issue'
+            return 1
+            ;;
+    esac
 
     printf '%s\n' fixture:tui >"$direct"
     check_cache_expand_components "$graph" "$direct" "$selected"
@@ -1694,7 +1744,8 @@ check_cache_run_transition_fixtures() {
         cross-owner-rename "$old" "$current" "$graph" selected \
         "$plan" "$changed" "$cases/cross-owner-rename" || return 1
 
-    if check_cache_owner_for_path unknown/input.rs "$graph" >/dev/null; then
+    if check_cache_owner_for_path unknown/input.rs "$graph" \
+        >/dev/null 2>&1; then
         check_cache_issue CHECK_CACHE_FIXTURE \
             'unknown ownership unexpectedly resolved'
         return 1
@@ -1711,8 +1762,9 @@ check_cache_run_failed_snapshot_fixture() (
         cp -- "$fixture_graph" "$directory/graph.tsv" || return 1
         printf '%s\n' "$directory/graph.tsv"
     }
-    # The fixture graph cannot own this checkout's actual provider files.
-    check_cache_prepare "$directory" yes || return 1
+    # The fixture graph cannot own this checkout's actual provider
+    # files, so every real file it meets is duly reported unowned.
+    check_cache_prepare "$directory" yes 2>/dev/null || return 1
     if [[ "$(<"$directory/mode")" != full \
         || "$(<"$directory/publishable")" != no \
         || -e "$directory/pre-state.v1" \
