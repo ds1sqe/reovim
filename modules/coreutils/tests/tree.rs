@@ -1,45 +1,15 @@
 //! `tree` over the rig: the drawing one run's output cell holds of the
 //! tree under its target, and the counts under it.
 
-use reovim_client::{Client, Error, Fault, ROOT, Rd, Rights};
+use reovim_client::{Error, Fault, ROOT};
 use reovim_module_coreutils::bins::tree::Args;
 use reovim_rig::Rig;
+use reovim_rig::bins::{run, text};
 
 /// A run of `target`, as a shell fills the record: every level, no
 /// color, from the root.
 fn args(target: &str) -> Args {
     Args { L: 0, cwd: ROOT, color: false, target: target.to_string() }
-}
-
-/// `call /bin/tree run {..}`: the rd of the output cell, or the fault
-/// the call answered with.
-fn run(client: &mut Client, args: &Args) -> Result<Rd, Fault> {
-    let tree = client.resolve("/bin/tree")?;
-    let out = client.call_by_name(tree, "run", reovim_sdk::encode(args))?;
-    Ok(reovim_sdk::decode(&out)?)
-}
-
-/// The cell `rd` read at an offset to the empty read that ends it, and
-/// closed, which is how a shell reads one.
-fn drain(client: &mut Client, rd: Rd) -> String {
-    let h = client.open(rd, Rights::READ).unwrap();
-    let mut bytes = Vec::new();
-    loop {
-        let at = bytes.len() as u64;
-        let chunk = client.read(h, at, 64).unwrap();
-        if chunk.is_empty() {
-            break;
-        }
-        bytes.extend(chunk);
-    }
-    client.close(h).unwrap();
-    String::from_utf8(bytes).unwrap()
-}
-
-/// The text one run's output cell holds, read to its end.
-fn text(client: &mut Client, args: &Args) -> String {
-    let cell = run(client, args).unwrap();
-    drain(client, cell)
 }
 
 #[test]
@@ -51,7 +21,7 @@ fn a_drawing_puts_containers_first_and_counts_what_it_drew() {
     let mut client = rig.client();
     let root = "/module/fs/root";
 
-    let drawn = text(&mut client, &args(root));
+    let drawn = text(&mut client, "tree", &args(root));
     assert_eq!(
         drawn,
         "/module/fs/root\n├── sub\n│   └── deep\n└── note\n\n\
@@ -63,18 +33,18 @@ fn a_drawing_puts_containers_first_and_counts_what_it_drew() {
     let mut one = args(root);
     one.L = 1;
     assert_eq!(
-        text(&mut client, &one),
+        text(&mut client, "tree", &one),
         "/module/fs/root\n├── sub\n└── note\n\n1 containers, 1 cells\n"
     );
 
     // A cell has nothing under it, and the root of the tree draws the
     // Kernel's own Containers.
     let note = format!("{root}/note");
-    let said = text(&mut client, &args(&note));
+    let said = text(&mut client, "tree", &args(&note));
     assert_eq!(said, format!("{note}\n\n0 containers, 0 cells\n"));
     let mut top = args("/");
     top.L = 1;
-    let said = text(&mut client, &top);
+    let said = text(&mut client, "tree", &top);
     assert!(said.starts_with("/\n├── bin\n├── module\n"), "{said}");
 }
 
@@ -90,7 +60,7 @@ fn no_target_is_the_cwd_and_the_first_line_says_where_that_is() {
     here.cwd = root;
     here.L = 1;
     assert_eq!(
-        text(&mut client, &here),
+        text(&mut client, "tree", &here),
         "/module/fs/root\n├── sub\n└── note\n\n1 containers, 1 cells\n"
     );
 
@@ -98,7 +68,10 @@ fn no_target_is_the_cwd_and_the_first_line_says_where_that_is() {
     // line is the target as it was named.
     let mut sub = args("sub");
     sub.cwd = root;
-    assert_eq!(text(&mut client, &sub), "sub\n\n0 containers, 0 cells\n");
+    assert_eq!(
+        text(&mut client, "tree", &sub),
+        "sub\n\n0 containers, 0 cells\n"
+    );
 }
 
 #[test]
@@ -117,7 +90,7 @@ fn a_cwd_too_deep_for_a_path_says_its_rd_on_the_first_line() {
 
     let mut here = args("");
     here.cwd = at;
-    let said = text(&mut client, &here);
+    let said = text(&mut client, "tree", &here);
     assert_eq!(said, format!("{rd}\n└── note\n\n0 containers, 1 cells\n"));
 }
 
@@ -127,7 +100,7 @@ fn color_wears_the_kind_of_every_name_drawn() {
     let mut client = rig.client();
     let mut painted = args("/module/text");
     painted.color = true;
-    let said = text(&mut client, &painted);
+    let said = text(&mut client, "tree", &painted);
     assert!(said.contains("└── \x1b[32mopen\x1b[0m\n"), "{said}");
 }
 
@@ -138,7 +111,7 @@ fn a_target_that_is_not_there_fails_the_run_and_leaves_no_cell() {
     let tree = client.resolve("/bin/tree").unwrap();
 
     assert_eq!(
-        run(&mut client, &args("/nowhere")),
+        run(&mut client, "tree", &args("/nowhere")),
         Err(Fault::Kernel(Error::Invalid))
     );
     assert_eq!(

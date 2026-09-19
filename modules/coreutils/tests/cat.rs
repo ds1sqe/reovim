@@ -4,9 +4,10 @@
 //! Under `f` the cell goes on, and a read at its end answers whatever a
 //! second client wrote into the target since the read before.
 
-use reovim_client::{Client, Error, Fault, Handle, ROOT, Rd, Rights};
+use reovim_client::{Error, Fault, ROOT, Rights};
 use reovim_module_coreutils::bins::cat::Args;
 use reovim_rig::Rig;
+use reovim_rig::bins::{next, run, text, watchers};
 
 /// A run of the targets, as a shell fills the record: from the root.
 fn args(targets: &[&str]) -> Args {
@@ -16,55 +17,6 @@ fn args(targets: &[&str]) -> Args {
         cwd: ROOT,
         targets: targets.iter().map(|t| (*t).to_string()).collect(),
     }
-}
-
-/// `call /bin/cat run {..}`: the rd of the output cell, or the fault
-/// the call answered with.
-fn run(client: &mut Client, args: &Args) -> Result<Rd, Fault> {
-    let cat = client.resolve("/bin/cat")?;
-    let out = client.call_by_name(cat, "run", reovim_sdk::encode(args))?;
-    Ok(reovim_sdk::decode(&out)?)
-}
-
-/// The cell `rd` read at an offset to the empty read that ends it, and
-/// closed, which is how a shell reads one.
-fn drain(client: &mut Client, rd: Rd) -> String {
-    let h = client.open(rd, Rights::READ).unwrap();
-    let mut bytes = Vec::new();
-    loop {
-        let at = bytes.len() as u64;
-        let chunk = client.read(h, at, 64).unwrap();
-        if chunk.is_empty() {
-            break;
-        }
-        bytes.extend(chunk);
-    }
-    client.close(h).unwrap();
-    String::from_utf8(bytes).unwrap()
-}
-
-/// The bytes one run's output cell holds, read to its end.
-fn text(client: &mut Client, args: &Args) -> String {
-    let cell = run(client, args).unwrap();
-    drain(client, cell)
-}
-
-/// The cell read at `at`, as a shell reads a following one: the bytes,
-/// or the fault it was sent back with.
-fn next(client: &mut Client, h: Handle, at: u64) -> Result<String, Fault> {
-    Ok(String::from_utf8(client.read(h, at, 64)?).unwrap())
-}
-
-/// The handles `/sys/core` says are watching `rd`.
-fn watchers(client: &mut Client, rd: Rd) -> Vec<String> {
-    let core = client.resolve("/sys/core").unwrap();
-    let text = String::from_utf8(client.read_all(core).unwrap()).unwrap();
-    let held = format!(" rd={} ", rd.0);
-    text.lines()
-        .filter(|line| line.starts_with("handle ") && line.contains(&held))
-        .filter(|line| line.ends_with("watch=on"))
-        .map(str::to_string)
-        .collect()
 }
 
 #[test]
@@ -77,11 +29,14 @@ fn a_run_writes_the_bytes_of_each_target_in_turn() {
 
     let one = format!("{root}/one");
     let two = format!("{root}/two");
-    assert_eq!(text(&mut client, &args(&[&one])), "first\n");
-    assert_eq!(text(&mut client, &args(&[&one, &two])), "first\nsecond\n");
+    assert_eq!(text(&mut client, "cat", &args(&[&one])), "first\n");
+    assert_eq!(
+        text(&mut client, "cat", &args(&[&one, &two])),
+        "first\nsecond\n"
+    );
 
     // A cell of the Kernel's own reads the same way a file does.
-    let level = text(&mut client, &args(&["/sys/loglevel"]));
+    let level = text(&mut client, "cat", &args(&["/sys/loglevel"]));
     assert_eq!(level, "info", "the level the Kernel logs at");
 }
 
@@ -99,12 +54,12 @@ fn a_target_is_walked_from_the_cwd_the_run_was_given() {
     {
         let mut relative = args(&[target]);
         relative.cwd = root;
-        assert_eq!(text(&mut client, &relative), bytes, "{target}");
+        assert_eq!(text(&mut client, "cat", &relative), bytes, "{target}");
     }
     // An rd names the same cell wherever the line stands.
     let note = client.resolve("/module/fs/root/note").unwrap();
     let rd = format!("rd:{}", note.0);
-    assert_eq!(text(&mut client, &args(&[&rd])), "hi\n");
+    assert_eq!(text(&mut client, "cat", &args(&[&rd])), "hi\n");
 }
 
 #[test]
@@ -116,12 +71,12 @@ fn a_target_that_holds_no_bytes_fails_the_run_and_leaves_no_cell() {
 
     // A Container has no bytes.
     assert_eq!(
-        run(&mut client, &args(&["/module/fs/root"])),
+        run(&mut client, "cat", &args(&["/module/fs/root"])),
         Err(Fault::Kernel(Error::Unsupported))
     );
     // A run stops at the first target that fails.
     assert_eq!(
-        run(&mut client, &args(&["/module/fs/root/note", "/nowhere"])),
+        run(&mut client, "cat", &args(&["/module/fs/root/note", "/nowhere"])),
         Err(Fault::Kernel(Error::Invalid))
     );
     assert_eq!(client.children(cat), Ok(Vec::new()), "a cell for a failed run");
@@ -131,7 +86,7 @@ fn a_target_that_holds_no_bytes_fails_the_run_and_leaves_no_cell() {
     let root = client.resolve("/module/fs/root").unwrap();
     let watching = Args { f: true, ..args(&["/module/fs/root"]) };
     assert_eq!(
-        run(&mut client, &watching),
+        run(&mut client, "cat", &watching),
         Err(Fault::Kernel(Error::Unsupported))
     );
     assert_eq!(watchers(&mut client, root), Vec::<String>::new());
@@ -149,7 +104,8 @@ fn a_following_run_answers_what_a_second_client_writes() {
 
     // The target is watched before it is read, so nothing written
     // between the two is missed.
-    let cell = run(&mut client, &Args { f: true, ..args(&[target]) }).unwrap();
+    let cell =
+        run(&mut client, "cat", &Args { f: true, ..args(&[target]) }).unwrap();
     let h = client.open(cell, Rights::READ).unwrap();
     assert_eq!(next(&mut client, h, 0).unwrap(), "first\n");
 
@@ -176,7 +132,7 @@ fn a_run_that_counts_its_answers_ends_after_them() {
     let cat = client.resolve("/bin/cat").unwrap();
 
     let counted = Args { f: true, n: 1, ..args(&[target]) };
-    let cell = run(&mut client, &counted).unwrap();
+    let cell = run(&mut client, "cat", &counted).unwrap();
     let h = client.open(cell, Rights::READ).unwrap();
     assert_eq!(next(&mut client, h, 0).unwrap(), "first\n");
 
@@ -201,7 +157,8 @@ fn a_follower_does_nothing_between_two_reads_and_closes_whole() {
     let rd = client.resolve(target).unwrap();
     let cat = client.resolve("/bin/cat").unwrap();
 
-    let cell = run(&mut client, &Args { f: true, ..args(&[target]) }).unwrap();
+    let cell =
+        run(&mut client, "cat", &Args { f: true, ..args(&[target]) }).unwrap();
     let h = client.open(cell, Rights::READ).unwrap();
     assert_eq!(next(&mut client, h, 0).unwrap(), "first\n");
 

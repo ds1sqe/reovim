@@ -2,9 +2,10 @@
 //! in, the name a second target puts before them, what a pattern the
 //! matcher has not does to the run, and the dialect being Vim's.
 
-use reovim_client::{Client, Error, Fault, ROOT, Rd, Rights};
+use reovim_client::{Client, Error, Fault, ROOT};
 use reovim_module_coreutils::bins::grep::Args;
 use reovim_rig::Rig;
+use reovim_rig::bins::{run, text};
 
 /// A run of the pattern over the targets, as a shell fills the record:
 /// from the root, with no stage standing before this one.
@@ -17,37 +18,6 @@ fn args(pattern: &str, targets: &[&str]) -> Args {
     }
 }
 
-/// `call /bin/grep run {..}`: the rd of the output cell, or the fault
-/// the call answered with.
-fn run(client: &mut Client, args: &Args) -> Result<Rd, Fault> {
-    let grep = client.resolve("/bin/grep")?;
-    let out = client.call_by_name(grep, "run", reovim_sdk::encode(args))?;
-    Ok(reovim_sdk::decode(&out)?)
-}
-
-/// The cell `rd` read at an offset to the empty read that ends it, and
-/// closed, which is how a shell reads one.
-fn drain(client: &mut Client, rd: Rd) -> String {
-    let h = client.open(rd, Rights::READ).unwrap();
-    let mut bytes = Vec::new();
-    loop {
-        let at = bytes.len() as u64;
-        let chunk = client.read(h, at, 64).unwrap();
-        if chunk.is_empty() {
-            break;
-        }
-        bytes.extend(chunk);
-    }
-    client.close(h).unwrap();
-    String::from_utf8(bytes).unwrap()
-}
-
-/// The lines one run's output cell holds, read to its end.
-fn text(client: &mut Client, args: &Args) -> String {
-    let cell = run(client, args).unwrap();
-    drain(client, cell)
-}
-
 #[test]
 fn a_run_writes_every_line_of_a_target_the_pattern_is_found_in() {
     let rig = Rig::new("grep-lines");
@@ -55,19 +25,19 @@ fn a_run_writes_every_line_of_a_target_the_pattern_is_found_in() {
     let mut client = rig.client();
     let one = "/module/fs/root/one";
 
-    assert_eq!(text(&mut client, &args("ph", &[one])), "alpha\n");
-    assert_eq!(text(&mut client, &args("^beta$", &[one])), "beta\n");
+    assert_eq!(text(&mut client, "grep", &args("ph", &[one])), "alpha\n");
+    assert_eq!(text(&mut client, "grep", &args("^beta$", &[one])), "beta\n");
     // Every line a match stands in, in the order they stand.
     let all = "alpha\nbeta\ngamma\n";
-    assert_eq!(text(&mut client, &args("a", &[one])), all);
+    assert_eq!(text(&mut client, "grep", &args("a", &[one])), all);
     // A line is what a `\n` ends, so the last one needs none of its own.
     rig.file("two", b"delta\nepsilon");
     let two = "/module/fs/root/two";
-    assert_eq!(text(&mut client, &args("psi", &[two])), "epsilon\n");
+    assert_eq!(text(&mut client, "grep", &args("psi", &[two])), "epsilon\n");
     // Nothing found is an empty cell, which is nothing printed.
-    assert_eq!(text(&mut client, &args("zeta", &[one])), "");
+    assert_eq!(text(&mut client, "grep", &args("zeta", &[one])), "");
     // No target at all is nowhere to look.
-    assert_eq!(text(&mut client, &args("a", &[])), "");
+    assert_eq!(text(&mut client, "grep", &args("a", &[])), "");
 }
 
 #[test]
@@ -81,14 +51,14 @@ fn more_than_one_target_puts_each_targets_name_before_its_lines() {
     // One target names nothing: the lines are its own.
     let mut here = args("ph", &["one"]);
     here.cwd = root;
-    assert_eq!(text(&mut client, &here), "alpha\n");
+    assert_eq!(text(&mut client, "grep", &here), "alpha\n");
 
     // Two name each line, which is the only thing that makes them
     // readable, and each target is walked from the cwd of the record.
     let mut both = args("ph", &["one", "two"]);
     both.cwd = root;
     let said = "one:alpha\ntwo:phi\ntwo:alpha\n";
-    assert_eq!(text(&mut client, &both), said);
+    assert_eq!(text(&mut client, "grep", &both), said);
 }
 
 #[test]
@@ -103,7 +73,7 @@ fn a_pattern_or_a_target_the_run_cannot_take_leaves_no_cell() {
     // matcher has not is the answer even where the target is not there.
     for target in [one, "/nowhere"] {
         assert_eq!(
-            run(&mut client, &args("a\\{2}", &[target])),
+            run(&mut client, "grep", &args("a\\{2}", &[target])),
             Err(Fault::Kernel(Error::Invalid)),
             "{target}"
         );
@@ -111,11 +81,11 @@ fn a_pattern_or_a_target_the_run_cannot_take_leaves_no_cell() {
     // A Container holds no bytes, and a run stops at the first target
     // that fails.
     assert_eq!(
-        run(&mut client, &args("a", &["/module/fs/root"])),
+        run(&mut client, "grep", &args("a", &["/module/fs/root"])),
         Err(Fault::Kernel(Error::Unsupported))
     );
     assert_eq!(
-        run(&mut client, &args("a", &[one, "/nowhere"])),
+        run(&mut client, "grep", &args("a", &[one, "/nowhere"])),
         Err(Fault::Kernel(Error::Invalid))
     );
     assert_eq!(
@@ -136,23 +106,26 @@ fn an_input_is_read_before_the_targets_and_stands_under_no_name() {
     // The cell one run answered with is what the next one reads: the
     // shell fills `input` with it and no token ever spells it. The
     // lines stand under no name, the cell being nobody's file.
-    let cell = run(&mut client, &args("a", &[one])).unwrap();
+    let cell = run(&mut client, "grep", &args("a", &[one])).unwrap();
     let mut after = args("^beta", &[]);
     after.input = cell;
-    assert_eq!(text(&mut client, &after), "beta\n");
+    assert_eq!(text(&mut client, "grep", &after), "beta\n");
     // One reader: reading it ended it, and neither run left a cell.
     assert_eq!(client.children(grep), Ok(Vec::new()));
 
     // An input and a target are both read, the input first; and an rd
     // this run cannot open is no place to look, the cell it named
     // having been read and ended already.
-    let cell = run(&mut client, &args("a", &[one])).unwrap();
+    let cell = run(&mut client, "grep", &args("a", &[one])).unwrap();
     let mut both = args("beta", &[one]);
     both.input = cell;
-    assert_eq!(text(&mut client, &both), "beta\nbeta\n");
+    assert_eq!(text(&mut client, "grep", &both), "beta\nbeta\n");
     let mut gone = args("a", &[]);
     gone.input = cell;
-    assert_eq!(run(&mut client, &gone), Err(Fault::Kernel(Error::Invalid)));
+    assert_eq!(
+        run(&mut client, "grep", &gone),
+        Err(Fault::Kernel(Error::Invalid))
+    );
     assert_eq!(client.children(grep), Ok(Vec::new()));
 }
 
@@ -163,7 +136,7 @@ fn the_dialect_is_vims_and_not_posix() {
     let mut client = rig.client();
     let one = "/module/fs/root/one";
     let found = |client: &mut Client, pattern: &str| {
-        text(client, &args(pattern, &[one]))
+        text(client, "grep", &args(pattern, &[one]))
     };
 
     // `\<` and `\>` are the ends of a name; `\b` is no atom of this

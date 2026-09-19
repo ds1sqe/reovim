@@ -2,34 +2,10 @@
 //! fact it is a wording of, what a token given to a run that takes
 //! nothing answers, and what the cell is once its reader closes it.
 
-use reovim_client::{Client, Error, Fault, Rd, Rights};
+use reovim_client::{Client, Error, Fault};
 use reovim_module_sysutils::bins::{date, uptime};
 use reovim_rig::Rig;
-
-/// `call /bin/<name> run {}`: the rd of the output cell, or the fault
-/// the call answered with.
-fn run(client: &mut Client, name: &str, input: Vec<u8>) -> Result<Rd, Fault> {
-    let rd = client.resolve(&format!("/bin/{name}"))?;
-    let out = client.call_by_name(rd, "run", input)?;
-    Ok(reovim_sdk::decode(&out)?)
-}
-
-/// The cell `rd` read at an offset to the empty read that ends it, and
-/// closed, which is how a shell reads one.
-fn drain(client: &mut Client, rd: Rd) -> String {
-    let h = client.open(rd, Rights::READ).unwrap();
-    let mut bytes = Vec::new();
-    loop {
-        let at = bytes.len() as u64;
-        let chunk = client.read(h, at, 64).unwrap();
-        if chunk.is_empty() {
-            break;
-        }
-        bytes.extend(chunk);
-    }
-    client.close(h).unwrap();
-    String::from_utf8(bytes).unwrap()
-}
+use reovim_rig::bins::{drain, run};
 
 /// The number the fact at `path` reads as, which is what the reader of
 /// it is held against.
@@ -58,7 +34,7 @@ fn a_run_of_date_says_the_civil_utc_of_the_clock() {
     // The clock is read before the run and after it, since a second
     // may have ticked between any two of the three reads.
     let before = fact(&mut client, "/sys/info/time");
-    let cell = run(&mut client, "date", reovim_sdk::encode(&date::Args {}));
+    let cell = run(&mut client, "date", &date::Args {});
     let said = drain(&mut client, cell.unwrap());
     let after = fact(&mut client, "/sys/info/time");
     assert!(said >= civil(before) && said <= civil(after), "{said}");
@@ -68,17 +44,16 @@ fn a_run_of_date_says_the_civil_utc_of_the_clock() {
 fn a_run_of_uptime_says_the_span_since_the_kernel_was_made() {
     let rig = Rig::new("uptime");
     let mut client = rig.client();
-    let args = || reovim_sdk::encode(&uptime::Args {});
 
     // A rig is made a moment before it is asked, and the seconds stand
     // whatever they are: nothing is ever bare.
-    let cell = run(&mut client, "uptime", args());
+    let cell = run(&mut client, "uptime", &uptime::Args {});
     let first = drain(&mut client, cell.unwrap());
     assert_eq!(first, "up 0h 0m 0s\n", "{first}");
 
     // A later run is no earlier than the one before it, which the
     // zeros of the first make a plain comparison.
-    let cell = run(&mut client, "uptime", args());
+    let cell = run(&mut client, "uptime", &uptime::Args {});
     let second = drain(&mut client, cell.unwrap());
     assert!(second >= first, "{second} stands before {first}");
 }
@@ -90,9 +65,9 @@ fn a_token_is_no_field_of_a_run_that_takes_nothing() {
 
     // The record has no field, so there is nothing for a token to be:
     // bytes that are not the empty record decode as nothing.
-    let token = reovim_sdk::encode(&"x".to_string());
+    let token = "x".to_string();
     for name in ["date", "uptime"] {
-        let refused = run(&mut client, name, token.clone());
+        let refused = run(&mut client, name, &token);
         assert_eq!(refused, Err(Fault::Kernel(Error::Invalid)), "{name}");
     }
 }
@@ -103,8 +78,7 @@ fn the_cell_is_gone_from_the_tree_once_its_reader_closes_it() {
     let mut client = rig.client();
     let bin = client.resolve("/bin/uptime").unwrap();
 
-    let args = reovim_sdk::encode(&uptime::Args {});
-    let cell = run(&mut client, "uptime", args).unwrap();
+    let cell = run(&mut client, "uptime", &uptime::Args {}).unwrap();
     assert_eq!(client.children(bin), Ok(vec![cell]));
 
     drain(&mut client, cell);
