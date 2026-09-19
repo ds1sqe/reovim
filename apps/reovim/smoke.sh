@@ -787,6 +787,28 @@ keys clibuf : q Enter
 ended clibuf
 [[ "$ENDED" == 0 ]] || fail ":q after the cli buffer did not quit"
 
+# --- reovim a b c: the ask, and the rest opened as drafts ------------
+# `missing` is not on disk, said in the log and skipped, the run going
+# on to `c`; `a`, `b` and `c` are drafts, `a`'s being the ask's own.
+mkdir -p "$DIR/several"
+echo alpha > "$DIR/several/a"
+echo beta > "$DIR/several/b"
+echo gamma > "$DIR/several/c"
+start several "$DIR/several" "$BIN a b missing c"
+editing several a
+listed="$("$BIN" cli ls /session/1/client/1/self/dev/buffers)"
+[[ "$listed" == $'0\n1\n2' ]] \
+    || fail "several opened $(tr '\n' ' ' <<< "$listed"), not 0 1 2"
+"$BIN" cli dmesg -t | grep -q "^open .*/several/missing: gone\$" \
+    || fail "missing is not said in the log"
+keys several : c l i Enter
+keys several l s " " / s e l f / d e v / b u f f e r s Enter
+shown several '^0  1  2  3$'
+keys several C-d
+keys several : q Enter
+ended several
+[[ "$ENDED" == 0 ]] || fail "the several tree did not quit"
+
 # --- the : line runs a Driver under /bin too -------------------------
 # A first token no name under `/self/vim/bin` begins is the shell's
 # line, run over the tree from the directory the file is in: `:ls`

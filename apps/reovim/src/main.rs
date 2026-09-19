@@ -81,12 +81,13 @@ impl From<reovim_kernel_interface::Error> for Fail {
 const USAGE: &str = "\
 usage: reovim server [--socket PATH] [--root DIR] [--log PATH] [--sys N=V]
        reovim cli [--socket PATH] [--color[=WHEN]] [--help] [LINE...]
-       reovim tui [--socket PATH] [+N] [FILE]
+       reovim tui [--socket PATH] [+N] [FILE...]
        reovim view [--socket PATH] [--color[=WHEN]] DISPLAY
-       reovim [--socket PATH] [--log PATH] [--sys N=V] [+N] [FILE]
+       reovim [--socket PATH] [--log PATH] [--sys N=V] [+N] [FILE...]
 defaults: --socket <runtime dir>/reovim.sock, --root <working directory>;
-the bare form edits any FILE, or none, and listens at the default
-socket, or at reovim-<pid>.sock while another editor holds it;
+the bare form edits every FILE, or none; the first is shown and +N is
+its line; it listens at the default socket, or at reovim-<pid>.sock
+while another editor holds it;
 --sys NAME=VALUE writes /sys/NAME before the first module loads, and
 may be given more than once (--sys loglevel=debug --sys
 limit/log_ring=65536);
@@ -229,35 +230,30 @@ fn run(args: Vec<String>) -> Result<ExitCode, Fail> {
                 .map(|()| ExitCode::SUCCESS)
         }
         (Some("tui"), rest) if plain => {
-            let (line, file) = file_at(rest)?;
-            tui::remote(&socket(given)?, line, file).map(ExitCode::from)
+            let (line, files) = files_at(rest)?;
+            tui::remote(&socket(given)?, line, files).map(ExitCode::from)
         }
         (Some("view"), [target]) if plain => {
             view::run(&socket(given)?, target, colored(color))
                 .map(|()| ExitCode::SUCCESS)
         }
         (None, rest) if root.is_none() => {
-            let (line, file) = file_at(rest)?;
+            let (line, files) = files_at(rest)?;
             let socket = free_socket(given)?;
-            tui::bare(&socket, log.as_deref(), &sys, line, file)
+            tui::bare(&socket, log.as_deref(), &sys, line, files)
                 .map(ExitCode::from)
         }
         _ => Err(usage()),
     }
 }
 
-/// `[+N] [FILE]`: the line to start on and the file, each if given.
-fn file_at(rest: &[String]) -> Result<(Option<usize>, Option<&str>), Fail> {
-    let (line, rest) = match rest {
-        [line, rest @ ..] if line.starts_with('+') => {
-            (Some(line[1..].parse().map_err(|_| usage())?), rest)
-        }
-        _ => (None, rest),
-    };
+/// `[+N] [FILE...]`: the line to start on and every file, in order.
+fn files_at(rest: &[String]) -> Result<(Option<usize>, &[String]), Fail> {
     match rest {
-        [] => Ok((line, None)),
-        [file] => Ok((line, Some(file.as_str()))),
-        _ => Err(usage()),
+        [line, rest @ ..] if line.starts_with('+') => {
+            Ok((Some(line[1..].parse().map_err(|_| usage())?), rest))
+        }
+        _ => Ok((None, rest)),
     }
 }
 
@@ -273,7 +269,7 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
-    use super::{When, file_at, options};
+    use super::{When, files_at, options};
 
     fn args(list: &[&str]) -> Vec<String> {
         list.iter().map(|s| (*s).to_string()).collect()
@@ -308,14 +304,20 @@ mod tests {
     }
 
     #[test]
-    fn a_file_may_carry_its_line_and_may_be_none() {
-        let (file, both) = (args(&["f"]), args(&["+7", "f"]));
+    fn files_may_carry_a_line_and_may_be_none() {
+        let (one, both) = (args(&["f"]), args(&["+7", "f"]));
         let (none, line) = (args(&[]), args(&["+7"]));
-        assert_eq!(file_at(&file).ok(), Some((None, Some("f"))));
-        assert_eq!(file_at(&both).ok(), Some((Some(7), Some("f"))));
-        assert_eq!(file_at(&none).ok(), Some((None, None)));
-        assert_eq!(file_at(&line).ok(), Some((Some(7), None)));
-        assert!(file_at(&args(&["+x", "f"])).is_err());
-        assert!(file_at(&args(&["a", "b"])).is_err());
+        let two = args(&["a", "b"]);
+        let three = args(&["+2", "a", "b"]);
+        assert_eq!(files_at(&one).ok(), Some((None, &args(&["f"])[..])));
+        assert_eq!(files_at(&both).ok(), Some((Some(7), &args(&["f"])[..])));
+        assert_eq!(files_at(&none).ok(), Some((None, &[][..])));
+        assert_eq!(files_at(&line).ok(), Some((Some(7), &[][..])));
+        assert_eq!(files_at(&two).ok(), Some((None, &args(&["a", "b"])[..])));
+        assert_eq!(
+            files_at(&three).ok(),
+            Some((Some(2), &args(&["a", "b"])[..]))
+        );
+        assert!(files_at(&args(&["+x", "a"])).is_err());
     }
 }

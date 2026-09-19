@@ -8,8 +8,9 @@ use std::io::Write;
 use std::rc::Rc;
 
 use reovim_client::dev::{self, Table, Want};
-use reovim_client::{Clip, Error, Fault, Host};
+use reovim_client::{Calls, Clip, Error, Fault, Host};
 use reovim_client_api::{BAR, Key, display};
+use reovim_client_region::drafted;
 use reovim_client_tui::{Frame, Step, Tui};
 use reovim_host::{clipboard, term};
 use reovim_sdk::look;
@@ -79,11 +80,11 @@ const fn mapped(error: reovim_host::Error) -> Error {
 pub fn remote(
     socket: &str,
     line: Option<usize>,
-    file: Option<&str>,
+    files: &[String],
 ) -> Result<u8, Fail> {
     let credential = format!("tui:{}", std::process::id()).into_bytes();
     let client = Remote::client(socket, credential)?;
-    run(crate::client::over(client)?, line, ("", file), &mut || Ok(()))
+    run(crate::client::over(client)?, line, ("", files), &mut || Ok(()))
 }
 
 /// Bare `reovim`: the server on this thread over `/`, listening at
@@ -94,7 +95,7 @@ pub fn bare(
     log: Option<&str>,
     sys: &[(String, String)],
     line: Option<usize>,
-    file: Option<&str>,
+    files: &[String],
 ) -> Result<u8, Fail> {
     let (kernel, _modules) = boot("/", sys)?;
     // Before the terminal is taken: the hook `enter` installs wraps
@@ -104,14 +105,15 @@ pub fn bare(
     let links = Rc::new(RefCell::new(Links::listen(socket)?));
     let mut sink = log.map(|path| Sink::open(&kernel, path)).transpose()?;
     let dir = under("", &reovim_host::dirs::work()?);
-    let file = file.map(|file| under(&dir, file));
+    let files: Vec<String> =
+        files.iter().map(|file| under(&dir, file)).collect();
     let client = Local::client(&kernel, Some(&links))?;
     let host = crate::client::over(client)?;
     // The terminal is the editor's, so where it listens is said in the
     // log the `server` form prints on stderr.
     let entry = cell::resolve(&host.own(), ROOT, "/sys/log")?;
     ops::put(&host.own(), entry, format!("listen {socket}").into_bytes())?;
-    run(host, line, (&dir, file.as_deref()), &mut || {
+    run(host, line, (&dir, &files), &mut || {
         links.borrow_mut().drain(&kernel);
         sink.as_mut().map_or(Ok(()), Sink::step)
     })
@@ -122,11 +124,13 @@ pub fn bare(
 fn run(
     host: Rc<Host>,
     line: Option<usize>,
-    (dir, file): (&str, Option<&str>),
+    (dir, files): (&str, &[String]),
     serve: Serve,
 ) -> Result<u8, Fail> {
     let line = line.map(|line| u64::try_from(line).unwrap_or(u64::MAX));
+    let file = files.first().map(String::as_str);
     let dev = dev::boot(&host, table(), clip(), dir, file, line)?;
+    drafts(&host.own(), files)?;
     // The tui takes the Host; what answers a remote holds it too.
     let served = host.clone();
     let mut tui = Tui::open(host, dev)?;
@@ -134,6 +138,37 @@ fn run(
     let result = drive(&mut tui, serve, &served);
     let _ = term::leave();
     result
+}
+
+/// Every name in `files` opened as a draft, in the order given, through
+/// [`drafted`]: `dev::boot`'s ask is the first, already read into
+/// `windows/0/ask`'s target, so its own open here answers that same
+/// draft and costs no new one, which is why it stands as draft `0`. A
+/// name not on disk, or a source `open` refuses (a directory), is
+/// skipped; from the second name on, that is said in `/sys/log`. The
+/// first is not said: not on disk it is the new file the ask already
+/// names, and a directory is the explorer's, `table` answering it a
+/// `Want::Container`.
+fn drafts(ctx: &dyn Calls, files: &[String]) -> Result<(), Error> {
+    for (index, file) in files.iter().enumerate() {
+        let opened =
+            cell::resolve(ctx, ROOT, &format!("/module/fs/root/{file}"))
+                .and_then(|source| drafted(ctx, Some(source)));
+        if let Err(error) = opened
+            && index > 0
+        {
+            warned(ctx, file, error)?;
+        }
+    }
+    Ok(())
+}
+
+/// One name that did not become a draft: `<4>open PATH: CAUSE` in
+/// `/sys/log`, `CAUSE` as [`Fault::Kernel`] prints it.
+fn warned(ctx: &dyn Calls, file: &str, error: Error) -> Result<(), Error> {
+    let entry = cell::resolve(ctx, ROOT, "/sys/log")?;
+    let said = format!("<4>open {file}: {}", Fault::Kernel(error));
+    ops::put(ctx, entry, said.into_bytes()).map(|_| ())
 }
 
 fn drive(tui: &mut Tui, serve: Serve, host: &Host) -> Result<u8, Fail> {
@@ -252,5 +287,72 @@ mod tests {
     fn a_run_past_the_text_shows_that_byte_as_a_space() {
         let runs = vec![run(0, 4, sgr::SELECTION)];
         assert_eq!(look::painted("abc", &tupled(&runs)), "\x1b[7mabc \x1b[0m");
+    }
+
+    use reovim_client::dev;
+    use reovim_client::{Calls, Rd};
+    use reovim_sdk::decode;
+    use reovim_sdk::log;
+    use reovim_sdk::walk::ROOT;
+    use reovim_sdk::{cell, ops};
+
+    use super::{clip, drafts, table};
+    use crate::client;
+    use crate::local::Local;
+    use crate::server;
+
+    /// `a`, `b` and a directory `d` on disk, `missing` not: `drafts`
+    /// over the four, the ask (`dev::boot`'s own `file`) among them,
+    /// makes two, in order, and says the other two once each, but not
+    /// the first, which is the ask's own case.
+    #[test]
+    fn the_files_are_drafts_in_the_order_given() {
+        let dir = std::env::temp_dir()
+            .join(format!("reovim-paths-{}", std::process::id()));
+        std::fs::create_dir(&dir).unwrap();
+        std::fs::write(dir.join("a"), "alpha").unwrap();
+        std::fs::write(dir.join("b"), "beta").unwrap();
+        std::fs::create_dir(dir.join("d")).unwrap();
+        let root = dir.to_str().unwrap();
+
+        let Ok((kernel, _modules)) = server::boot(root, &[]) else {
+            panic!("the server did not boot")
+        };
+        let client = Local::client(&kernel, None).unwrap();
+        let Ok(host) = client::over(client) else { panic!("no host") };
+        dev::boot(&host, table(), clip(), "", Some("a"), None).unwrap();
+
+        let own = host.own();
+        let ctx: &dyn Calls = &own;
+        let files = [
+            String::from("a"),
+            String::from("b"),
+            String::from("missing"),
+            String::from("d"),
+        ];
+        drafts(ctx, &files).unwrap();
+
+        let list = cell::resolve(ctx, ROOT, "/self/dev/buffers").unwrap();
+        let made = ops::children(ctx, list).unwrap();
+        assert_eq!(made.len(), 2, "a and b are on disk, missing and d not");
+        let a = cell::resolve(ctx, ROOT, "/module/fs/root/a").unwrap();
+        let b = cell::resolve(ctx, ROOT, "/module/fs/root/b").unwrap();
+        let origin = |draft: Rd| -> Rd {
+            let source = cell::resolve(ctx, draft, "source").unwrap();
+            decode(&ops::bytes(ctx, source).unwrap()).unwrap()
+        };
+        let over: Vec<Rd> = made.iter().map(|&draft| origin(draft)).collect();
+        assert_eq!(over, [a, b], "a and b, in the order given");
+
+        let entry = cell::resolve(ctx, ROOT, "/sys/log").unwrap();
+        let bytes = ops::bytes(ctx, entry).unwrap();
+        let said: Vec<String> =
+            log::parse(&bytes).iter().map(log::Entry::text).collect();
+        let holds = |text: &str| said.iter().any(|line| line.contains(text));
+        assert!(holds("open missing:"), "the log: {said:?}");
+        assert!(holds("open d:"), "the log: {said:?}");
+        assert!(!holds("open a:"), "the log: {said:?}");
+
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

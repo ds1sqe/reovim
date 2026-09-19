@@ -131,6 +131,7 @@ version = "0.16.0-dev"
 dependencies = [
  "reovim-client",
  "reovim-client-api",
+ "reovim-client-region",
  "reovim-client-sh",
  "reovim-client-tui",
  "reovim-host",
