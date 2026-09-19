@@ -40,6 +40,11 @@ export interface Event {
   child?: Rd;
 }
 
+/** One op the server asks this client to serve, with the token its
+ * answering `done` names again. A client that serves nothing gets an
+ * empty list and never sends one. */
+export type Served = [Token, Op];
+
 export interface Info {
   name?: string;
   flags: number;
@@ -57,7 +62,7 @@ export type Out =
   | { kind: 'bytes'; bytes: Uint8Array }
   | { kind: 'info'; info: Info }
   | { kind: 'rds'; rds: Rd[] }
-  | { kind: 'events'; events: Event[]; cursor: bigint };
+  | { kind: 'events'; events: Event[]; cursor: bigint; serve: Served[] };
 
 export const CAUSES = [
   'denied', 'unsupported', 'invalid', 'stale', 'busy', 'nospace', 'closed',
@@ -213,6 +218,8 @@ function putOut(w: Writer, out: Out): void {
       w.u32(out.events.length);
       for (const event of out.events) putEvent(w, event);
       w.u64(out.cursor);
+      w.u32(out.serve.length);
+      for (const [token, op] of out.serve) { w.u64(token); putOp(w, op); }
       break;
   }
 }
@@ -229,7 +236,9 @@ function getOut(r: Reader): Out {
     case 'rds': return { kind, rds: items(r, () => r.u64()) };
     case 'events': {
       const events = items(r, () => getEvent(r));
-      return { kind, events, cursor: r.u64() };
+      const cursor = r.u64();
+      const serve = items(r, (): Served => [r.u64(), getOp(r)]);
+      return { kind, events, cursor, serve };
     }
   }
 }

@@ -244,7 +244,7 @@ impl Rig {
 
     fn since(&self, cursor: u64) -> (Vec<Event>, u64) {
         match self.ok(Op::Since { cursor }) {
-            Out::Events { events, cursor } => (events, cursor),
+            Out::Events { events, cursor, .. } => (events, cursor),
             other => panic!("{other:?}"),
         }
     }

@@ -14,6 +14,7 @@ mod dispatch;
 mod kernel;
 mod log;
 mod pending;
+mod proxy;
 mod table;
 mod watch;
 

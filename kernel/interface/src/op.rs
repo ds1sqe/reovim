@@ -5,7 +5,7 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use crate::types::{Event, Handle, Hash, Info, Rd, Rights, Token};
+use crate::types::{Event, Handle, Hash, Info, Outcome, Rd, Rights, Token};
 
 /// One request, carried with the caller's sequence number.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -39,6 +39,11 @@ pub enum Op {
     /// answers from the Kernel's own table unless that listing went
     /// `Pending`, in which case the Driver's `done` is the listing.
     Children { rd: Rd },
+    /// An op this caller was asked to serve is finished: `token` is the
+    /// one the `serve` list named and `outcome` is in the caller's own
+    /// rd and handle space. It is `Calls::done` as a Client makes it,
+    /// and it never reaches the Kernel's dispatch.
+    Done { token: Token, outcome: Outcome },
 }
 
 /// One successful answer.
@@ -58,6 +63,9 @@ pub enum Out {
     Info(Info),
     /// `Children`.
     Rds(Vec<Rd>),
-    /// `Since`: events in order and the cursor for the next `Since`.
-    Events { events: Vec<Event>, cursor: u64 },
+    /// `Since`: events in order, the cursor for the next `Since`, and
+    /// the ops the Kernel asks this caller to serve, each with the
+    /// token its `Op::Done` names again. The list is empty for a
+    /// caller nothing is asked of.
+    Events { events: Vec<Event>, cursor: u64, serve: Vec<(Token, Op)> },
 }

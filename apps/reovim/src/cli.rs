@@ -11,6 +11,7 @@ use reovim_client::{Calls, Fault, Host};
 use reovim_client_api::Key;
 use reovim_client_sh::{Act, Line, Miss, Open, Ran, Shell, complete};
 use reovim_host::term;
+use reovim_sdk::ops;
 
 use crate::Fail;
 use crate::remote::Remote;
@@ -32,9 +33,22 @@ pub fn run(socket: &str, line: &[String], color: bool) -> Result<(), Fail> {
         // One line has no session to stand in: it runs at the root.
         let mut shell = Shell::default();
         let text = line.join(" ");
-        return once(&ctx, &mut shell, &text, color, Mode::Cooked);
+        return once(&ctx, &host, &mut shell, &text, color, Mode::Cooked);
     }
-    if term::is_tty() { terminal(&ctx, color) } else { piped(&ctx, color) }
+    if term::is_tty() {
+        terminal(&ctx, &host, color)
+    } else {
+        piped(&ctx, &host, color)
+    }
+}
+
+/// Every op a remote asked of this Client's tree, run and answered.
+/// The cli's own loop makes no `Since`, so the list rides the one made
+/// here: on each tick of a run that follows, and before each wait for
+/// a key.
+fn serve(host: &Host) {
+    let _ = ops::since(&host.own(), 0);
+    host.serve();
 }
 
 /// The terminal's columns, which a listing lays its names out across; 0
@@ -78,6 +92,7 @@ impl Mode {
 /// back open.
 fn once(
     ctx: &dyn Calls,
+    host: &Host,
     shell: &mut Shell,
     text: &str,
     color: bool,
@@ -88,17 +103,23 @@ fn once(
     let Ran { out, open } = reovim_client_sh::run(ctx, shell, text)?;
     mode.show(&out)?;
     let Some(open) = open else { return Ok(()) };
-    follow(ctx, open, mode)
+    follow(ctx, host, open, mode)
 }
 
 /// A run still open, read on every tick: what the cell holds now is
 /// printed and nothing is printed between, the empty read that ends the
 /// cell ends the loop, and Ctrl-C closes the cell and is no failure.
-fn follow(ctx: &dyn Calls, mut open: Open, mode: Mode) -> Result<(), Fail> {
+fn follow(
+    ctx: &dyn Calls,
+    host: &Host,
+    mut open: Open,
+    mode: Mode,
+) -> Result<(), Fail> {
     if mode == Mode::Cooked {
         term::catch_interrupt();
     }
     while mode.wait()? {
+        serve(host);
         let (bytes, ended) = open.more(ctx)?;
         mode.show(&bytes)?;
         if ended {
@@ -127,13 +148,13 @@ fn write(bytes: &[u8]) -> Result<(), Fault> {
 
 /// One typed line per stdin line until the end of the input, which ends
 /// the session; a fault ends the line, not the session.
-fn piped(ctx: &dyn Calls, color: bool) -> Result<(), Fail> {
+fn piped(ctx: &dyn Calls, host: &Host, color: bool) -> Result<(), Fail> {
     let stdin = std::io::stdin();
     let mut shell = Shell::default();
     let mut line = String::new();
     while stdin.read_line(&mut line).map_err(|_| Fault::Carrier)? != 0 {
         if !line.trim().is_empty() {
-            report(once(ctx, &mut shell, &line, color, Mode::Cooked));
+            report(once(ctx, host, &mut shell, &line, color, Mode::Cooked));
         }
         line.clear();
     }
@@ -148,14 +169,14 @@ fn report(result: Result<(), Fail>) {
 }
 
 /// The line editor under raw mode; back to cooked on every exit.
-fn terminal(ctx: &dyn Calls, color: bool) -> Result<(), Fail> {
+fn terminal(ctx: &dyn Calls, host: &Host, color: bool) -> Result<(), Fail> {
     term::enter()?;
-    let result = edit(ctx, color);
+    let result = edit(ctx, host, color);
     let _ = term::leave();
     result
 }
 
-fn edit(ctx: &dyn Calls, color: bool) -> Result<(), Fail> {
+fn edit(ctx: &dyn Calls, host: &Host, color: bool) -> Result<(), Fail> {
     let mut line = Line::default();
     let mut shell = Shell::default();
     draw(&line, &shell)?;
@@ -165,13 +186,14 @@ fn edit(ctx: &dyn Calls, color: bool) -> Result<(), Fail> {
         if term::stopped() {
             return Err(Fail::Signal);
         }
+        serve(host);
         let Some(key) = term::poll(1000)? else { continue };
         match line.key(map(key)) {
             Act::Nothing => continue,
             Act::Redraw => {}
             Act::Clear => write(CLEAR)?,
             Act::Complete => offer(ctx, &shell, &mut line)?,
-            Act::Submit(text) => submit(ctx, &mut shell, &text, color)?,
+            Act::Submit(text) => submit(ctx, host, &mut shell, &text, color)?,
             Act::Quit => return Ok(raw(b"\n")?),
         }
         draw(&line, &shell)?;
@@ -193,6 +215,7 @@ fn offer(ctx: &dyn Calls, shell: &Shell, line: &mut Line) -> Result<(), Fault> {
 /// a key here, and the line comes back after.
 fn submit(
     ctx: &dyn Calls,
+    host: &Host,
     shell: &mut Shell,
     text: &str,
     color: bool,
@@ -201,7 +224,7 @@ fn submit(
     if text.trim().is_empty() {
         return Ok(());
     }
-    if let Err(fail) = once(ctx, shell, text, color, Mode::Raw) {
+    if let Err(fail) = once(ctx, host, shell, text, color, Mode::Raw) {
         raw(format!("reovim: {fail}\n").as_bytes())?;
     }
     Ok(())

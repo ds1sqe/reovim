@@ -100,7 +100,7 @@ impl Rig {
 
     /// What the watched rds have seen since the last ask.
     fn kinds(&self) -> Vec<(Rd, Kind, Option<Rd>)> {
-        let Out::Events { events, cursor } =
+        let Out::Events { events, cursor, .. } =
             self.ok(Op::Since { cursor: self.cursor.get() })
         else {
             panic!("events")

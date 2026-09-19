@@ -14,7 +14,7 @@ use crate::codec::{
 };
 use crate::op::{Op, Out};
 use crate::types::{
-    Error, Event, Handle, Hash, Info, Kind, Rd, Reply, Rights, Token,
+    Error, Event, Handle, Hash, Info, Kind, Outcome, Rd, Reply, Rights, Token,
 };
 
 /// One message either way.
@@ -203,6 +203,11 @@ fn put_op(out: &mut Vec<u8>, op: &Op) {
             put_u8(out, 12);
             put_u64(out, rd.0);
         }
+        Op::Done { token, outcome } => {
+            put_u8(out, 13);
+            put_u64(out, token.0);
+            put_outcome(out, outcome);
+        }
     }
 }
 
@@ -228,6 +233,7 @@ fn get_op(r: &mut Reader) -> Option<Op> {
         10 => Op::Info { rd: Rd(r.u64()?) },
         11 => Op::Parent { rd: Rd(r.u64()?) },
         12 => Op::Children { rd: Rd(r.u64()?) },
+        13 => Op::Done { token: Token(r.u64()?), outcome: get_outcome(r)? },
         _ => return None,
     };
     Some(op)
@@ -235,14 +241,7 @@ fn get_op(r: &mut Reader) -> Option<Op> {
 
 fn put_reply(out: &mut Vec<u8>, reply: &Reply<Out>) {
     match reply {
-        Reply::Ready(Ok(value)) => {
-            put_u8(out, 0);
-            put_out(out, value);
-        }
-        Reply::Ready(Err(error)) => {
-            put_u8(out, 1);
-            put_u8(out, error_tag(*error));
-        }
+        Reply::Ready(outcome) => put_outcome(out, outcome),
         Reply::Pending(token) => {
             put_u8(out, 2);
             put_u64(out, token.0);
@@ -258,6 +257,28 @@ fn get_reply(r: &mut Reader) -> Option<Reply<Out>> {
         _ => return None,
     };
     Some(reply)
+}
+
+/// An outcome as the two `Ready` tags of a reply, which is what
+/// `Op::Done` carries and what a reply that finished is.
+fn put_outcome(out: &mut Vec<u8>, outcome: &Outcome) {
+    match outcome {
+        Ok(value) => {
+            put_u8(out, 0);
+            put_out(out, value);
+        }
+        Err(error) => {
+            put_u8(out, 1);
+            put_u8(out, error_tag(*error));
+        }
+    }
+}
+
+fn get_outcome(r: &mut Reader) -> Option<Outcome> {
+    match get_reply(r)? {
+        Reply::Ready(outcome) => Some(outcome),
+        Reply::Pending(_) => None,
+    }
 }
 
 fn put_out(out: &mut Vec<u8>, value: &Out) {
@@ -290,13 +311,18 @@ fn put_out(out: &mut Vec<u8>, value: &Out) {
                 put_u64(out, rd.0);
             }
         }
-        Out::Events { events, cursor } => {
+        Out::Events { events, cursor, serve } => {
             put_u8(out, 7);
             put_u32(out, count(events.len()));
             for event in events {
                 put_event(out, event);
             }
             put_u64(out, *cursor);
+            put_u32(out, count(serve.len()));
+            for (token, op) in serve {
+                put_u64(out, token.0);
+                put_op(out, op);
+            }
         }
     }
 }
@@ -310,7 +336,11 @@ fn get_out(r: &mut Reader) -> Option<Out> {
         4 => Out::Bytes(r.bytes()?),
         5 => Out::Info(get_info(r)?),
         6 => Out::Rds(get_items(r, |r| r.u64().map(Rd))?),
-        7 => Out::Events { events: get_items(r, get_event)?, cursor: r.u64()? },
+        7 => Out::Events {
+            events: get_items(r, get_event)?,
+            cursor: r.u64()?,
+            serve: get_items(r, get_served)?,
+        },
         _ => return None,
     };
     Some(value)
@@ -360,6 +390,12 @@ fn get_info(r: &mut Reader) -> Option<Info> {
         atime: r.u64()?,
         apis: get_items(r, |r| r.u64().map(Hash))?,
     })
+}
+
+/// One op the answer asks its caller to serve, with the token its
+/// `Op::Done` names again.
+fn get_served(r: &mut Reader) -> Option<(Token, Op)> {
+    Some((Token(r.u64()?), get_op(r)?))
 }
 
 fn put_event(out: &mut Vec<u8>, event: &Event) {

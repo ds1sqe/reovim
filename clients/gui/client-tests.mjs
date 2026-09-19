@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -19,7 +19,9 @@ const bin = join(root, 'target/debug/reovim');
 
 /** A server over a directory of its own; `stop` ends it. */
 async function server() {
-  if (!existsSync(bin)) execFileSync('cargo', ['build', '-p', 'reovim'], { cwd: root, stdio: 'inherit' });
+  // Always, a build that is fresh being nothing: a binary left from
+  // before the wire moved speaks another wire.
+  execFileSync('cargo', ['build', '-p', 'reovim'], { cwd: root, stdio: 'inherit' });
   const dir = mkdtempSync(join(tmpdir(), 'reovim-gui-'));
   const socket = join(dir, 's');
   writeFileSync(join(dir, 'note'), 'first\n');

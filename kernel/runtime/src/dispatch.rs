@@ -54,6 +54,10 @@ impl Kernel {
                 .map(|i| Reply::ok(Out::Info(i))),
             Op::Parent { rd } => parent(self, rd),
             Op::Children { rd } => children(self, rd),
+            // A caller's answer to what it was asked to serve is the
+            // link's business and not the tree's; whoever moves the
+            // bytes takes it before dispatch ever sees it.
+            Op::Done { .. } => Err(Error::Unsupported),
         };
         if let Some((words, at, before)) = trace {
             let took = self.now().saturating_sub(at);
@@ -160,7 +164,10 @@ fn words(k: &Kernel, caller: Caller, op: &Op) -> Option<String> {
         Op::Info { rd } => ("info", Some(*rd), empty()),
         Op::Parent { rd } => ("parent", Some(*rd), empty()),
         Op::Children { rd } => ("children", Some(*rd), empty()),
-        Op::Ask { .. } | Op::Cancel { .. } | Op::Since { .. } => return None,
+        Op::Ask { .. }
+        | Op::Cancel { .. }
+        | Op::Since { .. }
+        | Op::Done { .. } => return None,
     };
     let rd = rd?;
     if untraced(rd) {
@@ -374,7 +381,10 @@ fn since(k: &Kernel, caller: Caller, cursor: u64) -> Answer {
             alloc::format!("overflow caller={caller} cursor={cursor}")
         });
     }
-    Ok(Reply::ok(Out::Events { events, cursor }))
+    // Empty here always: what a caller is asked to serve is the link's
+    // and is spliced in by whoever moves the bytes.
+    let serve = Vec::new();
+    Ok(Reply::ok(Out::Events { events, cursor, serve }))
 }
 
 fn parent(k: &Kernel, rd: Rd) -> Answer {

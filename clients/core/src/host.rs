@@ -434,6 +434,34 @@ impl Host {
         self.wire.borrow_mut()
     }
 
+    /// Every op a remote asked of this Client's tree, run here and
+    /// answered; how many were run.
+    ///
+    /// Called from the host's own loop and nowhere else. At any depth
+    /// but zero the Host is inside a slot of its own, and a served
+    /// read of a region's view inside that region's own view read is
+    /// the one `RefCell` borrowed twice; both guards below make that a
+    /// nothing rather than a panic. The list itself rides a `Since`
+    /// the loop already makes, so serving nothing costs no message.
+    pub fn serve(&self) -> usize {
+        if self.depth.get() != 0 {
+            return 0;
+        }
+        let Ok(mut wire) = self.wire.try_borrow_mut() else {
+            return 0;
+        };
+        let jobs = wire.take_served();
+        drop(wire);
+        for (token, op) in &jobs {
+            // `ModuleId(0)` is the Client's own, which no `unload`
+            // reaches, so a remote's handle outlives every Plugin.
+            let outcome = self.run(ModuleId(0), op.clone());
+            let done = Op::Done { token: *token, outcome };
+            let _ = self.wire.borrow_mut().request(done);
+        }
+        jobs.len()
+    }
+
     /// Load a Module: make `/self/<name>`, then `start` it, as the
     /// Kernel loads one under `/module`.
     ///
@@ -569,6 +597,9 @@ impl Host {
             // No local token exists, so a caller asking after one is
             // asking the server.
             op @ (Op::Ask { .. } | Op::Cancel { .. }) => self.sent(op),
+            // What this Client was asked to serve is answered by
+            // [`Self::serve`] and asked of nobody.
+            Op::Done { .. } => Err(Error::Unsupported),
         }
     }
 }
@@ -968,7 +999,10 @@ fn since(host: &Host, cursor: u64) -> Answer {
         s.push(event);
     }
     let (events, cursor) = s.since(cursor);
-    Ok(Out::Events { events, cursor })
+    // The ops the server asked of this Client are not events: the
+    // wire's own list is kept for [`Host::serve`], which is the one
+    // thing that runs one.
+    Ok(Out::Events { events, cursor, serve: Vec::new() })
 }
 
 /// The slot for `h` if its rd still exists and it holds `need`, with

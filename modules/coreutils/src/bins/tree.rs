@@ -99,14 +99,18 @@ fn draw(
         }
         let name = format::painted(&kid.name, &kid.info, at.color);
         let _ = writeln!(out, "{prefix}{stem}{name}");
-        if container && at.depth > 1 {
+        // A Container that will not list is drawn all the same and
+        // not walked into: a name may go while the drawing is made,
+        // and one another Client serves may not be listable from
+        // inside the run this Client is waiting on.
+        let listed = format::entries(ctx, kid.rd);
+        if let (true, Ok(kids)) = (container && at.depth > 1, listed) {
             let deeper = Deeper {
                 prefix: format!("{prefix}{below}"),
                 depth: at.depth - 1,
                 color: at.color,
             };
-            let kids = ordered(format::entries(ctx, kid.rd)?);
-            draw(ctx, &kids, &deeper, out, count)?;
+            draw(ctx, &ordered(kids), &deeper, out, count)?;
         }
     }
     Ok(())

@@ -28,6 +28,17 @@ fn every_op() -> Vec<Op> {
         Op::Info { rd: Rd(15) },
         Op::Parent { rd: Rd(16) },
         Op::Children { rd: Rd(17) },
+        Op::Done { token: Token(18), outcome: Ok(Out::Rd(Rd(19))) },
+        Op::Done { token: Token(20), outcome: Err(Error::Gone) },
+    ]
+}
+
+/// What a `serve` list carries: the token the answering `Op::Done`
+/// names again, and one op in the Client's own rd and handle space.
+fn served() -> Vec<(Token, Op)> {
+    vec![
+        (Token(30), Op::Lookup { rd: Rd(31), name: "dev".to_string() }),
+        (Token(32), Op::Read { h: Handle(33), at: 34, len: 35 }),
     ]
 }
 
@@ -74,7 +85,8 @@ fn every_out() -> Vec<Out> {
             apis: Vec::new(),
         }),
         Out::Rds(vec![Rd(11), Rd(12)]),
-        Out::Events { events, cursor: 22 },
+        Out::Events { events, cursor: 22, serve: Vec::new() },
+        Out::Events { events: Vec::new(), cursor: 23, serve: served() },
     ]
 }
 

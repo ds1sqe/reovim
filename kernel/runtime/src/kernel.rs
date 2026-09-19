@@ -267,6 +267,26 @@ impl State {
             .map_or("caller", |m| m.name.as_str())
     }
 
+    /// One `modules` row with its Drivers and its caller: what a load
+    /// and an attach share, the home row being the load's alone.
+    fn row(
+        &mut self,
+        name: &str,
+        module: Option<Rc<dyn Module>>,
+        drivers: Vec<Rc<dyn Driver>>,
+    ) -> Result<ModuleId, Error> {
+        let id = ModuleId(
+            u32::try_from(self.modules.len()).or(Err(Error::NoSpace))?,
+        );
+        let first = self.drivers.len();
+        self.drivers.extend(drivers);
+        let indexes = (first..self.drivers.len()).collect();
+        let caller = self.new_caller(Some(id));
+        let name = String::from(name);
+        self.modules.push(Loaded { name, module, drivers: indexes, caller });
+        Ok(id)
+    }
+
     /// The loaded Module named `name`, taken out of its slot once no
     /// handle it serves or holds is open.
     fn take_module(
@@ -574,25 +594,46 @@ impl Kernel {
     ) -> Result<(ModuleId, Rd), Error> {
         let mut s = self.state.borrow_mut();
         s.table.check_name(MODULES, Some(name))?;
-        let id = ModuleId(
-            u32::try_from(s.modules.len()).map_err(|_| Error::NoSpace)?,
-        );
-        let first = s.drivers.len();
-        s.drivers.extend(drivers);
-        let indexes = (first..s.drivers.len()).collect();
-        let caller = s.new_caller(Some(id));
+        let id = s.row(name, Some(module), drivers)?;
         let owner = Owner::Kernel(Node::Home(id));
         let home = s.table.insert(MODULES, Some(name), owner, OPEN, now);
         s.emit(MODULES, Kind::Create, Some(home));
-        let loaded = Loaded {
-            name: String::from(name),
-            module: Some(module),
-            drivers: indexes,
-            caller,
-        };
-        s.modules.push(loaded);
         s.say(INFO, || alloc::format!("load module={name}"));
         Ok((id, home))
+    }
+
+    /// Drivers with no Module and no home: an id that owns rds, a
+    /// `Calls` and Pending tokens, for a link that serves part of the
+    /// tree itself. `/module` holds no row for it, so `ls /module` does
+    /// not name it and `unload` never finds it; [`Self::ended`] is its
+    /// only door.
+    ///
+    /// Nothing is said of it in the log: a link's own `connect` and
+    /// `disconnect` lines are already the two moments this Driver has.
+    ///
+    /// # Errors
+    /// `NoSpace` past as many Modules as an id can count.
+    pub fn attach(
+        &self,
+        name: &str,
+        drivers: Vec<Rc<dyn Driver>>,
+    ) -> Result<ModuleId, Error> {
+        self.state.borrow_mut().row(name, None, drivers)
+    }
+
+    /// What `attach` gave out is gone: every rd its Drivers serve is
+    /// unregistered with its `Gone`, every token outstanding on them
+    /// answers `Cancelled`, and the Drivers are dropped.
+    ///
+    /// Nothing here may refuse and nothing is asked: a Driver that
+    /// dies with its link is not the revocation 00-core.md forbids.
+    pub fn ended(&self, module: ModuleId) {
+        let mut s = self.state.borrow_mut();
+        let index = module.0 as usize;
+        if index >= s.modules.len() {
+            return;
+        }
+        s.remove_module(index);
     }
 
     /// A load the Kernel refused, or a Module whose `start` failed:
@@ -677,7 +718,10 @@ impl Kernel {
         let cid = s.next_client;
         s.next_client += 1;
         let name = alloc::format!("{cid}");
-        let rd = s.table.insert(clients, Some(&name), owner, CONTAINER, now);
+        // OPEN and not CONTAINER: the client rd is where the Driver
+        // that stands for this Client registers its one name, as
+        // `/session/<id>` and `/var` are open to a Module.
+        let rd = s.table.insert(clients, Some(&name), owner, OPEN, now);
         s.emit(clients, Kind::Create, Some(rd));
         let cell = Owner::Kernel(Node::Cell);
         let flags = Flags::READ.union(Flags::WRITE);

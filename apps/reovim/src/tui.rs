@@ -2,6 +2,7 @@
 //! the server in the same process: the terminal loop, drawing in plain
 //! ANSI. Keys go to the tui, the frame comes back.
 
+use std::cell::RefCell;
 use std::fmt::Write as _;
 use std::io::Write;
 use std::rc::Rc;
@@ -98,18 +99,18 @@ pub fn bare(
     // this one, so a panic gives the terminal back, then says where
     // the core went.
     crate::dump::watch(&kernel);
-    let mut links = Links::listen(socket)?;
+    let links = Rc::new(RefCell::new(Links::listen(socket)?));
     let mut sink = log.map(|path| Sink::open(&kernel, path)).transpose()?;
     let dir = under("", &reovim_host::dirs::work()?);
     let file = file.map(|file| under(&dir, file));
-    let client = Local::client(&kernel)?;
+    let client = Local::client(&kernel, Some(&links))?;
     let host = crate::client::over(client)?;
     // The terminal is the editor's, so where it listens is said in the
     // log the `server` form prints on stderr.
     let entry = cell::resolve(&host.own(), ROOT, "/sys/log")?;
     ops::put(&host.own(), entry, format!("listen {socket}").into_bytes())?;
     run(host, line, (&dir, file.as_deref()), &mut || {
-        links.drain(&kernel);
+        links.borrow_mut().drain(&kernel);
         sink.as_mut().map_or(Ok(()), Sink::step)
     })
 }
@@ -124,14 +125,16 @@ fn run(
 ) -> Result<u8, Fail> {
     let line = line.map(|line| u64::try_from(line).unwrap_or(u64::MAX));
     let dev = dev::boot(&host, table(), clip(), dir, file, line)?;
+    // The tui takes the Host; what answers a remote holds it too.
+    let served = host.clone();
     let mut tui = Tui::open(host, dev)?;
     term::enter()?;
-    let result = drive(&mut tui, serve);
+    let result = drive(&mut tui, serve, &served);
     let _ = term::leave();
     result
 }
 
-fn drive(tui: &mut Tui, serve: Serve) -> Result<u8, Fail> {
+fn drive(tui: &mut Tui, serve: Serve, host: &Host) -> Result<u8, Fail> {
     // The shape the terminal was last told of: it is told again only
     // when the Plugin has changed it.
     let mut shape = None;
@@ -143,6 +146,10 @@ fn drive(tui: &mut Tui, serve: Serve) -> Result<u8, Fail> {
             None if term::stopped() => return Err(Fail::Signal),
             None => tui.tick()?,
         };
+        // The step's own `Since` brought over what a remote asked of
+        // this Client; it is answered here, at the one depth where
+        // nothing of the Client's own is on the stack.
+        host.serve();
         match step {
             Step::Same => {}
             Step::Changed => draw(tui, &mut shape)?,

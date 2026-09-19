@@ -79,7 +79,7 @@ mod tests {
         };
         // A link makes a Session with a capability cell in it, and the
         // handle below is one the core counts.
-        let Ok(mut client) = Local::client(&kernel) else {
+        let Ok(mut client) = Local::client(&kernel, None) else {
             panic!("no client")
         };
         let log = client.resolve("/sys/log").unwrap();

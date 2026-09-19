@@ -34,6 +34,12 @@ pub trait Carrier {
     fn reconnect(&mut self) -> Result<(), Fault> {
         Err(Fault::Carrier)
     }
+
+    /// Between two `Op::Ask` on one token: the asker gives the machine
+    /// back. The default is nothing; a link that shares a thread with
+    /// whoever would answer must not spin, and must not touch its own
+    /// Client, whose wire is in use while it waits.
+    fn pause(&mut self) {}
 }
 
 /// The tree a Client reaches: its credential, its Session and its
@@ -54,10 +60,14 @@ pub struct Tree {
     handles: Vec<Handle>,
 }
 
-/// One connected Client: a `Tree`, and the watch cursor it drains.
+/// One connected Client: a `Tree`, the watch cursor it drains, and
+/// what the server has asked this Client to serve.
 pub struct Client {
     tree: Tree,
     cursor: u64,
+    /// The ops of the last `Since` answers that have not been run;
+    /// `Host::serve` is the only thing that takes them.
+    served: Vec<(Token, Op)>,
 }
 
 impl Client {
@@ -78,7 +88,7 @@ impl Client {
             cid: ROOT,
             handles: Vec::new(),
         };
-        let mut client = Self { tree, cursor: 0 };
+        let mut client = Self { tree, cursor: 0, served: Vec::new() };
         let connect = Message::Connect {
             credential: client.tree.credential.clone(),
             session: None,
@@ -93,28 +103,26 @@ impl Client {
         &mut self.tree
     }
 
-    /// `bytes` as this Client's `capability`, the Read rd under its
-    /// client rd that its Plugins understand; the Kernel keeps them.
-    ///
-    /// # Errors
-    /// What the Client says.
-    pub fn capability(&mut self, bytes: Vec<u8>) -> Result<(), Fault> {
-        let rd = self.tree.lookup(self.tree.cid, "capability")?;
-        self.tree.write_all(rd, bytes).map(|_| ())
-    }
-
-    /// Events on the watched rds since the last call; the cursor moves.
+    /// Events on the watched rds since the last call; the cursor moves
+    /// and the ops the server asks this Client to serve are kept for
+    /// [`crate::Host::serve`], which is the only thing that runs one.
     ///
     /// # Errors
     /// As [`Tree::lookup`].
     pub fn since(&mut self) -> Result<Vec<Event>, Fault> {
         match self.tree.request(Op::Since { cursor: self.cursor })? {
-            Out::Events { events, cursor } => {
+            Out::Events { events, cursor, serve } => {
                 self.cursor = cursor;
+                self.served.extend(serve);
                 Ok(events)
             }
             _ => Err(Fault::Wire),
         }
+    }
+
+    /// What is left to serve, taken out.
+    pub(crate) fn take_served(&mut self) -> Vec<(Token, Op)> {
+        core::mem::take(&mut self.served)
     }
 }
 
@@ -222,10 +230,14 @@ impl Tree {
         resend(&mut self.endpoint, self.carrier.as_mut(), seq)
     }
 
+    /// A token asked until it is not Busy. It never serves: an op of
+    /// this Client's own may not run while the wire is in use, so a
+    /// Client must never wait on an answer that needs itself.
     fn wait(&mut self, token: Token) -> Result<Out, Fault> {
         let ask = Message::Request(Op::Ask { token });
         let mut answer = self.exchange(&ask);
         while answer == Err(Fault::Kernel(Error::Busy)) {
+            self.carrier.pause();
             answer = self.exchange(&ask);
         }
         answer

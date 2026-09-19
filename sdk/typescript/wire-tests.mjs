@@ -39,7 +39,8 @@ const outs = [
   { kind: 'info', info: { name: 'x', flags: 5, ctime: 1n, mtime: 2n, atime: 3n, apis: [4n] } },
   { kind: 'info', info: { flags: 0, ctime: 0n, mtime: 0n, atime: 0n, apis: [] } },
   { kind: 'rds', rds: [1n, 2n] },
-  { kind: 'events', events: [{ seq: 1n, rd: 2n, kind: 'create', child: 3n }, { seq: 2n, rd: 2n, kind: 'overflow' }], cursor: 2n },
+  { kind: 'events', events: [{ seq: 1n, rd: 2n, kind: 'create', child: 3n }, { seq: 2n, rd: 2n, kind: 'overflow' }], cursor: 2n, serve: [] },
+  { kind: 'events', events: [], cursor: 3n, serve: [[4n, { kind: 'read', h: 5n, at: 6n, len: 7 }]] },
 ];
 
 test('every message round-trips', () => {

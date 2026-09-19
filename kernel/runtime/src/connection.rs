@@ -2,12 +2,16 @@
 //! moves the bytes calls `handle` and sends back what it returns, and
 //! `end` when the link is gone.
 
+use alloc::rc::Rc;
 use alloc::vec::Vec;
 
 use reovim_kernel_interface::wire::{Message, decode, encode};
-use reovim_kernel_interface::{Caller, Error, Out, Rd, Reply};
+use reovim_kernel_interface::{
+    Caller, Error, ModuleId, Op, Out, Outcome, Rd, Reply, Token,
+};
 
 use crate::kernel::Kernel;
+use crate::proxy::Proxy;
 
 /// What `load <path>` and `unload <name>` do: the connection-level
 /// commands of 02-client.md, served by whoever moves the bytes, since
@@ -42,20 +46,24 @@ impl Loader for NoLoader {
     }
 }
 
-/// One connection: once `Connect` was answered, its caller, Session
-/// and client rd. The `Connect` sequence is kept so a repeated
-/// `Connect` after a lost reply is answered again rather than refused.
+/// One link's end of the wire.
+///
+/// Once `Connect` was answered it holds that link's caller, Session and
+/// client rd, and the Driver that stands for its Client. The `Connect`
+/// sequence is kept so a repeated `Connect` after a lost reply is
+/// answered again rather than refused.
 #[derive(Default)]
 pub struct Connection {
     caller: Option<Caller>,
     connected: Option<(u64, Rd, Rd)>,
+    proxy: Option<(Rc<Proxy>, ModuleId)>,
 }
 
 impl Connection {
     /// A link that has not connected yet.
     #[must_use]
     pub const fn new() -> Self {
-        Self { caller: None, connected: None }
+        Self { caller: None, connected: None, proxy: None }
     }
 
     /// The client rd once `Connect` was answered.
@@ -68,6 +76,12 @@ impl Connection {
     /// `Reply` sent this way, answer nothing; anything before `Connect`
     /// is `Invalid`. `load` and `unload` go to `loader` under the same
     /// reply window as a request.
+    ///
+    /// Two ops are the link's own and never reach dispatch: `Op::Done`,
+    /// which finishes what this Client was asked to serve, and
+    /// `Op::Since`, whose answer carries what it is asked next. Both
+    /// run under the same window as the rest, so a sequence sent twice
+    /// is answered from memory and moves `heard` all the same.
     pub fn handle(
         &mut self,
         kernel: &Kernel,
@@ -82,6 +96,17 @@ impl Connection {
             }
             (Message::Reply(_), _) => return None,
             (_, None) => Reply::err(Error::Invalid),
+            (Message::Request(Op::Done { token, outcome }), Some(caller)) => {
+                kernel
+                    .once(caller, seq, || self.answered(kernel, token, outcome))
+            }
+            (Message::Request(Op::Since { cursor }), Some(caller)) => kernel
+                .once(caller, seq, || {
+                    self.serving(
+                        kernel,
+                        kernel.run(caller, Op::Since { cursor }),
+                    )
+                }),
             (Message::Request(op), Some(caller)) => {
                 kernel.submit(caller, seq, op)
             }
@@ -96,11 +121,51 @@ impl Connection {
     }
 
     /// The link is gone; what the caller keeps is the Kernel's rule.
+    ///
+    /// The Driver that stood for its Client goes first: nobody is left
+    /// to answer what it was asked, so its rds are `Gone` and every
+    /// token on them `Cancelled` before the caller's own handles
+    /// close.
     pub fn end(&mut self, kernel: &Kernel) {
+        if let Some((_, id)) = self.proxy.take() {
+            kernel.ended(id);
+        }
         if let Some(caller) = self.caller.take() {
             kernel.caller_end(caller);
         }
         self.connected = None;
+    }
+
+    /// The Client's answer to an op it was asked to serve. Its rds and
+    /// handles are its own; what the mirror makes of them is the
+    /// proxy's, and the caller waiting at the Kernel is answered from
+    /// there.
+    fn answered(
+        &self,
+        kernel: &Kernel,
+        token: Token,
+        outcome: Outcome,
+    ) -> Reply<Out> {
+        let Some((proxy, id)) = &self.proxy else {
+            return Reply::err(Error::Invalid);
+        };
+        proxy.answered(kernel, *id, token, outcome).map(|()| Out::Unit).into()
+    }
+
+    /// The ops this Client is asked to serve, spliced into the answer
+    /// to its `Op::Since`. It runs inside `Kernel::once`, so the reply
+    /// window remembers the list with the reply: a lost reply asked
+    /// again carries the same ops, and a sequence sent twice takes
+    /// none out of the queue.
+    fn serving(&self, kernel: &Kernel, reply: Reply<Out>) -> Reply<Out> {
+        let Some((proxy, _)) = &self.proxy else { return reply };
+        match reply {
+            Reply::Ready(Ok(Out::Events { events, cursor, .. })) => {
+                let serve = proxy.take_out(kernel);
+                Reply::ok(Out::Events { events, cursor, serve })
+            }
+            other => other,
+        }
     }
 
     fn connect(
@@ -122,6 +187,7 @@ impl Connection {
             Ok((caller, client)) => {
                 self.caller = Some(caller);
                 self.connected = Some((seq, session, client));
+                self.proxy = Proxy::attach(kernel, client);
                 Reply::ok(Out::Rds(alloc::vec![session, client]))
             }
             Err(error) => Reply::err(error),

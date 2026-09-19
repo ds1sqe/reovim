@@ -31,4 +31,11 @@ impl Carrier for Remote {
         self.link = link::open(&self.socket).map_err(|_| Fault::Carrier)?;
         Ok(())
     }
+
+    /// A millisecond: the answer is another process's to give, and an
+    /// asker that spun would keep the editor it asks of from ever
+    /// reaching the loop that would answer.
+    fn pause(&mut self) {
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
 }

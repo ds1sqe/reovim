@@ -121,7 +121,7 @@ impl Rig {
     /// Kinds of the events after `cursor`, and the next cursor.
     fn since(&self, cursor: u64) -> (Vec<Kind>, u64) {
         match self.ok(Op::Since { cursor }) {
-            Out::Events { events, cursor } => {
+            Out::Events { events, cursor, .. } => {
                 (events.iter().map(|e| e.kind).collect(), cursor)
             }
             other => panic!("{other:?}"),

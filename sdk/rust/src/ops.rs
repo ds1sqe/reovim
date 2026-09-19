@@ -278,7 +278,7 @@ pub fn shut(ctx: &dyn Calls, handles: &[Handle]) {
 /// As `Op::Since`.
 pub fn since(ctx: &dyn Calls, cursor: u64) -> Result<(Vec<Event>, u64), Error> {
     match ready(ctx.submit(Op::Since { cursor }))? {
-        Out::Events { events, cursor } => Ok((events, cursor)),
+        Out::Events { events, cursor, .. } => Ok((events, cursor)),
         _ => Err(Error::Invalid),
     }
 }

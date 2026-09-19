@@ -297,8 +297,9 @@ fn heard_is_the_clock_at_that_callers_last_message() {
         panic!("connect")
     };
     let (session, client) = (ids[0], ids[1]);
-    // The two names the Kernel keeps under a client rd.
-    assert_eq!(rig.rds(client).len(), 2, "capability and heard");
+    // The two names the Kernel keeps under a client rd, and the one
+    // the Driver that stands for this Client registers there.
+    assert_eq!(rig.rds(client).len(), 3, "capability, heard and self");
 
     // A second link that says nothing after its `Connect`.
     let mut idle = Connection::new();

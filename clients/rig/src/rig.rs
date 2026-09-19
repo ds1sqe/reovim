@@ -1,10 +1,11 @@
 use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 
 use reovim_client::{Carrier, Client, Clip, Fault, Host, Rvm, bin};
 use reovim_host::{clock, mem};
 use reovim_kernel_runtime::{Connection, Heap, Kernel, Limits, NoLoader};
+use reovim_sdk::ops;
 
 /// The process heap as the host counts it, in the Kernel's own shape.
 /// The rig passes what the server passes, so a test reading `/sys/mem`
@@ -21,6 +22,9 @@ struct Local {
     kernel: Rc<Kernel>,
     connection: Connection,
     sent: Rc<Cell<u32>>,
+    /// The Hosts of this rig that were there before this Client, and
+    /// never its own, whose wire is in use while it waits.
+    others: Vec<Weak<Host>>,
 }
 
 impl Carrier for Local {
@@ -29,6 +33,17 @@ impl Carrier for Local {
         self.connection
             .handle(&self.kernel, bytes, &mut NoLoader)
             .ok_or(Fault::Wire)
+    }
+
+    /// One turn of every Client that was here first, which is what
+    /// makes two Clients on one thread able to wait on each other: the
+    /// `Since` brings over what the server asks of them and `serve`
+    /// answers it.
+    fn pause(&mut self) {
+        for host in self.others.iter().filter_map(Weak::upgrade) {
+            let _ = ops::since(&host.own(), 0);
+            host.serve();
+        }
     }
 }
 
@@ -41,6 +56,9 @@ pub struct Rig {
     clipboard: Rc<RefCell<Vec<u8>>>,
     /// Messages every Client of this rig has put on the link.
     sent: Rc<Cell<u32>>,
+    /// Every Host this rig has made, in the order it made them: what a
+    /// later Client's waits answer.
+    hosts: RefCell<Vec<Weak<Host>>>,
 }
 
 impl Rig {
@@ -74,7 +92,8 @@ impl Rig {
         }
         let clipboard = Rc::new(RefCell::new(Vec::new()));
         let sent = Rc::new(Cell::new(0));
-        Self { dir, kernel: Rc::new(kernel), clipboard, sent }
+        let hosts = RefCell::new(Vec::new());
+        Self { dir, kernel: Rc::new(kernel), clipboard, sent, hosts }
     }
 
     /// What the clipboard holds.
@@ -110,7 +129,9 @@ impl Rig {
     pub fn client(&self) -> Client {
         let connection = Connection::new();
         let kernel = self.kernel.clone();
-        let carrier = Local { kernel, connection, sent: self.sent.clone() };
+        let sent = self.sent.clone();
+        let others = self.hosts.borrow().clone();
+        let carrier = Local { kernel, connection, sent, others };
         Client::connect(Box::new(carrier), Vec::new()).unwrap()
     }
 
@@ -127,6 +148,7 @@ impl Rig {
     pub fn host(&self) -> Rc<Host> {
         let host = Rc::new(Host::over(self.client(), clock::now));
         bin::boot(&host, Rvm::none()).unwrap();
+        self.hosts.borrow_mut().push(Rc::downgrade(&host));
         host
     }
 

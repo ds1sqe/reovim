@@ -26,7 +26,7 @@ pub struct Sink {
 impl Sink {
     /// A Client on `kernel` watching `/sys/log`; `path` made if missing.
     pub fn open(kernel: &Rc<Kernel>, path: &str) -> Result<Self, Fail> {
-        let mut client = Local::client(kernel)?;
+        let mut client = Local::client(kernel, None)?;
         let log = client.resolve("/sys/log")?;
         let h = client.open(log, Rights::READ)?;
         client.watch(h, true)?;
