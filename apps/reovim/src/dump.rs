@@ -3,6 +3,7 @@
 //! current directory, and then lets the panic go on.
 
 use std::cell::RefCell;
+use std::io::Write as _;
 use std::rc::Rc;
 
 use reovim_kernel_runtime::Kernel;
@@ -26,7 +27,11 @@ pub fn watch(kernel: &Rc<Kernel>) {
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic| {
         if let Some(path) = saved() {
-            eprintln!("reovim: core written to {path}");
+            // `eprintln!` panics on a failed write; a terminal that
+            // hung up takes stderr with it; here a second panic
+            // aborts, so the write's own result is dropped instead.
+            let _ =
+                writeln!(std::io::stderr(), "reovim: core written to {path}");
         }
         previous(panic);
     }));

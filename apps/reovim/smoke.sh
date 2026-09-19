@@ -944,6 +944,9 @@ alternate="$("${TMUX[@]}" display -p -t term '#{alternate_on}')"
 [[ "$(cat "$DIR/other")" == x ]] || fail "SIGTERM wrote the file"
 
 # --- the terminal gone: the editor goes with it ---------------------
+# `kill-session` takes the pty away outright: SIGHUP, not a typed
+# command. The editor must take that as the ordinary end SIGTERM and
+# SIGHUP already are, writing no core behind it.
 start hangup "$DIR" "$BIN other"
 editing hangup other
 "${TMUX[@]}" kill-session -t hangup
@@ -954,6 +957,8 @@ done
 if pgrep -f "^$BIN other\$" >/dev/null; then
     fail "the editor outlived its terminal"
 fi
+core="$(ls "$DIR"/reovim-core.* 2>/dev/null || true)"
+[[ -z "$core" ]] || fail "a hangup wrote a core: $core"
 
 # --- start to first frame -------------------------------------------
 before="$EPOCHREALTIME"

@@ -447,10 +447,15 @@ mod tty {
 /// One event within `ms`; a key is decoded, a resize is handed on as
 /// it is, anything else is `None`, and nothing is waited for after a
 /// signal. The wait is on stdin here: crossterm's own spins forever on
-/// a terminal that has gone away, and it is asked only for what has
-/// already arrived. A hangup stops the editor the way SIGHUP does.
+/// a terminal that has gone away, so a hangup already in effect is
+/// caught first, with no wait, before crossterm ever sees the fd. A
+/// hangup stops the editor the way SIGHUP does.
 pub fn poll(ms: u64) -> Result<Option<Event>, Error> {
     if stopped() {
+        return Ok(None);
+    }
+    if tty::hungup(0) {
+        STOP.store(true, Ordering::Relaxed);
         return Ok(None);
     }
     if !event::poll(Duration::ZERO)? {

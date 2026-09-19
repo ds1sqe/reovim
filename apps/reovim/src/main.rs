@@ -21,6 +21,7 @@ mod link {
 }
 
 use std::fmt;
+use std::io::Write as _;
 use std::process::ExitCode;
 
 use reovim_client::Fault;
@@ -261,7 +262,10 @@ fn main() -> ExitCode {
     match run(std::env::args().skip(1).collect()) {
         Ok(code) => code,
         Err(fail) => {
-            eprintln!("reovim: {fail}");
+            // `eprintln!` panics on a failed write; a terminal that
+            // hung up (`Fail::Signal`) takes stderr down with it, so
+            // the write's own result is dropped instead.
+            let _ = writeln!(std::io::stderr(), "reovim: {fail}");
             ExitCode::FAILURE
         }
     }
