@@ -156,6 +156,7 @@ name = "reovim-client"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-client-api",
+ "reovim-client-region",
  "reovim-host",
  "reovim-kernel-interface",
  "reovim-kernel-runtime",
@@ -177,6 +178,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-client-region"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-client-api",
+ "reovim-kernel-interface",
+ "reovim-sdk",
+]
+
+[[package]]
 name = "reovim-client-sh"
 version = "0.16.0-dev"
 dependencies = [
@@ -193,6 +203,7 @@ version = "0.16.0-dev"
 dependencies = [
  "reovim-client",
  "reovim-client-api",
+ "reovim-client-region",
  "reovim-kernel-interface",
  "reovim-rig",
  "reovim-sdk",
@@ -283,6 +294,7 @@ version = "0.16.0-dev"
 dependencies = [
  "reovim-client",
  "reovim-client-api",
+ "reovim-client-region",
  "reovim-client-sh",
  "reovim-client-tui",
  "reovim-kernel-interface",
@@ -297,6 +309,7 @@ version = "0.16.0-dev"
 dependencies = [
  "reovim-client",
  "reovim-client-api",
+ "reovim-client-region",
  "reovim-client-tui",
  "reovim-kernel-interface",
  "reovim-rig",
@@ -310,6 +323,7 @@ version = "0.16.0-dev"
 dependencies = [
  "reovim-client",
  "reovim-client-api",
+ "reovim-client-region",
  "reovim-client-sh",
  "reovim-client-tui",
  "reovim-kernel-interface",
@@ -326,6 +340,7 @@ version = "0.16.0-dev"
 dependencies = [
  "reovim-client",
  "reovim-client-api",
+ "reovim-client-region",
  "reovim-client-tui",
  "reovim-host",
  "reovim-kernel-interface",

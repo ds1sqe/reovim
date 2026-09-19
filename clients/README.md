@@ -9,6 +9,10 @@ The client side: the Clients themselves and the libraries they link.
 - `core/api`: what the Client's own Driver and the Plugins over it
   both spell: the keyboard presses, a region's size and the View it
   answers, and the `open` a Plugin asks its Client for.
+- `core/region`: what only a Plugin uses over one region of
+  `/self/dev`: the cells it reads and writes, the `view` cell it
+  serves, and the Buffer every Plugin that shows text opens its own
+  way.
 - `sh`: the shell: a typed line in, text out, over a `Calls`; the
   line and its editing, PATH, and the decoder from a line to the
   record a Driver under `/bin` declares.

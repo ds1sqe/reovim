@@ -16,6 +16,7 @@ reovim-sdk = { path = "../../sdk/rust" }
 reovim-text-api = { path = "../../modules/text/api" }
 
 [dev-dependencies]
+reovim-client-region = { path = "../core/region" }
 reovim-rig = { path = "../rig" }
 
 [lints]

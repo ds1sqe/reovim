@@ -9,7 +9,8 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use reovim_client_api::{BLOCK, NONE, Region, Surface, window};
+use reovim_client_api::{BLOCK, NONE, window};
+use reovim_client_region::{Region, Surface};
 use reovim_kernel_interface::{
     Booted, Calls, Driver, Error, Flags, Module, Rd, Reply, Rights,
 };

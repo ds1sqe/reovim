@@ -8,7 +8,8 @@
 //! line, and the way out.
 
 use reovim_client::dev::{Clip, Table, Want};
-use reovim_client_api::{BLUE, GREEN, Key, Region, display};
+use reovim_client_api::{BLUE, GREEN, Key, display};
+use reovim_client_region::Region;
 use reovim_client_tui::{Step, Tui};
 use reovim_kernel_interface::{Calls, Error, Rd};
 use reovim_rig::{Rig, Seen, Stub, frame, opened, pressed};

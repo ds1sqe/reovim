@@ -33,7 +33,8 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::cell::RefCell;
 
-use reovim_client_api::{BAR, Key, NONE, Surface, count, drafted, window};
+use reovim_client_api::{BAR, Key, NONE, window};
+use reovim_client_region::{Surface, count, drafted};
 use reovim_client_sh::{Act, Line, Open, Ran, Shell, complete, run};
 use reovim_kernel_interface::{
     Booted, Calls, Driver, Error, Handle, Module, Rd, Reply, Rights,

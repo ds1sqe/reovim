@@ -31,7 +31,8 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::cell::{OnceCell, Ref, RefCell};
 
-use reovim_client_api::{NONE, Surface, count, draft, drafted, part};
+use reovim_client_api::{NONE, draft, part};
+use reovim_client_region::{Surface, count, drafted};
 use reovim_client_sh::{self as sh, Ran, Shell};
 use reovim_kernel_interface::{
     Booted, Calls, Decl, Driver, DriverId, Error, Flags, Handle, Hash, Module,

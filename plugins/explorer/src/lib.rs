@@ -30,9 +30,8 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::cell::RefCell;
 
-use reovim_client_api::{
-    BLOCK, BLUE, GREEN, Key, NONE, Surface, count, drafted, window,
-};
+use reovim_client_api::{BLOCK, BLUE, GREEN, Key, NONE, window};
+use reovim_client_region::{Surface, count, drafted};
 use reovim_kernel_interface::{
     Booted, Calls, Driver, Error, Event, Flags, Handle, Kind, Module, Rd,
     Reply, Rights,

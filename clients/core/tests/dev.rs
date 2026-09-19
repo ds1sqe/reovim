@@ -16,7 +16,8 @@ use std::rc::Rc;
 
 use reovim_client::dev::{self, Table, Want};
 use reovim_client::{Client, Clip, Host, HostCalls, ROOT, SELF, bin, log};
-use reovim_client_api::{Key, NONE, Region, Surface, keyboard, open, window};
+use reovim_client_api::{Key, NONE, keyboard, open, window};
+use reovim_client_region::{Region, Surface};
 use reovim_host::clock;
 use reovim_kernel_interface::{
     Booted, Calls, Driver, Error, Handle, Kind, Module, Rd, Reply, Rights,

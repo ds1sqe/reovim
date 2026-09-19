@@ -17,9 +17,10 @@ use std::rc::Rc;
 use reovim_client::dev::{self, Clip, Table};
 use reovim_client::{Client, Host, ROOT};
 use reovim_client_api::{
-    BAR, BLOCK, BLUE, GREEN, Key, MATCH, NONE, RED, Region, SELECTION, Surface,
-    display, open, window,
+    BAR, BLOCK, BLUE, GREEN, Key, MATCH, NONE, RED, SELECTION, display, open,
+    window,
 };
+use reovim_client_region::{Region, Surface};
 use reovim_client_tui::{Frame, Step, Tui};
 use reovim_kernel_interface::{
     Booted, Calls, Driver, Error, Handle, Module, Rd, Reply, Rights,

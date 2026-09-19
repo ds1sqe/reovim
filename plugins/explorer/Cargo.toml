@@ -10,6 +10,7 @@ publish = false
 
 [dependencies]
 reovim-client-api = { path = "../../clients/core/api" }
+reovim-client-region = { path = "../../clients/core/region" }
 reovim-kernel-interface = { path = "../../kernel/interface" }
 reovim-sdk = { path = "../../sdk/rust" }
 reovim-text-api = { path = "../../modules/text/api" }
